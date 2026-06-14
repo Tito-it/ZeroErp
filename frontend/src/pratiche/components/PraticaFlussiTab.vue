@@ -1,132 +1,61 @@
 <script setup>
-// Scopo: Tab flussi dentro il drawer pratica.
-// Lista compatta flussi con stato, sequenza, esito.
-// Bottone "Nuovo flusso" se pratica in stato che lo consente.
+// Scopo: Tab "Flussi" della scheda pratica — SOLA LETTURA.
+// Due liste informative:
+//   1) Flussi istanziati della pratica (stato, esito, sequenza, scadenza);
+//   2) Step del percorso ancora da completare (roadmap residua).
+// Creazione ed esecuzione dei flussi NON vivono qui: avvengono nel percorso
+// template-driven della dashboard (PraticaPercorso + FlussoDrawer), unica
+// sorgente di verita'. La vecchia creazione di "flusso generico" (senza
+// template) e le azioni avvia/completa inline sono state rimosse (fuori modello).
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { listFlussi, createFlusso, cambiaStatoFlusso } from '../api/pratiche-api'
-import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { listFlussi, fetchPercorso } from '../api/pratiche-api'
 import { displayDate } from '../../core/utils/date'
 import { statoFlussoSeverity } from '../../core/utils/severity'
-import { STATO_PRATICA, STATO_FLUSSO, MANAGE_ICONS } from '../../core/constants'
+import { STATO_FLUSSO } from '../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
-import Select from 'primevue/select'
-import Button from 'primevue/button'
 
 const { t } = useI18n()
-const { execute } = useApiHandler()
-const isReadonly = useInjectReadonly()
 
 const props = defineProps({
   praticaId: { type: Number, required: true },
-  statoCodicePratica: { type: String, default: '' }
 })
 
-const emit = defineEmits(['refresh'])
-
 const flussi = ref([])
+const percorso = ref([])
 const loading = ref(false)
 
-// Dialog esito inline per completamento flusso
-const completandoFlussoId = ref(null)
-const esitoSelezionato = ref(null)
-const esitiOptions = computed(() => [
-  { value: 'POSITIVO', label: t('pratiche.esito_positivo') },
-  { value: 'NEGATIVO', label: t('pratiche.esito_negativo') },
-  { value: 'PARZIALE', label: t('pratiche.esito_parziale') },
-  { value: 'NON_APPLICABILE', label: t('pratiche.esito_non_applicabile') },
-])
-
-async function loadFlussi() {
+async function loadAll() {
+  if (!props.praticaId) return
   loading.value = true
   try {
-    const res = await listFlussi(props.praticaId)
-    flussi.value = res.data.data.results || []
+    const [resFlussi, resPercorso] = await Promise.all([
+      listFlussi(props.praticaId),
+      fetchPercorso(props.praticaId),
+    ])
+    flussi.value = resFlussi.data.data.results || []
+    percorso.value = resPercorso.data.data.results || []
   } finally {
     loading.value = false
   }
 }
 
-// Scopo: Crea un nuovo flusso per la pratica.
-async function onNuovoFlusso() {
-  const nextSeq = flussi.value.length > 0
-    ? Math.max(...flussi.value.map(f => f.sequenza || 0)) + 1
-    : 1
-  const result = await execute(
-    () => createFlusso(props.praticaId, { sequenza: nextSeq }),
-    { successMessage: t('pratiche.flusso_creato') }
-  )
-  if (result !== null) {
-    await loadFlussi()
-    emit('refresh')
-  }
-}
+// Step del percorso ancora da completare: non esiste un'istanza COMPLETATO.
+// Include sia gli step "da creare" (flusso_id null) sia quelli in corso/da
+// eseguire. Vista "cosa resta da fare", complementare alla lista flussi.
+const stepNonEseguiti = computed(() =>
+  percorso.value.filter(s => s.stato_codice_interno !== STATO_FLUSSO.COMPLETATO),
+)
 
-// Scopo: Avvia flusso (DA_ESEGUIRE → IN_CORSO).
-async function onAvviaFlusso(flusso) {
-  const result = await execute(
-    () => cambiaStatoFlusso(props.praticaId, flusso.id, { nuovo_stato: STATO_FLUSSO.IN_CORSO }),
-    { successMessage: t('pratiche.flusso_avviato') }
-  )
-  if (result !== null) {
-    await loadFlussi()
-    emit('refresh')
-  }
-}
-
-// Scopo: Apre il mini-form inline per scegliere l'esito prima di completare.
-function onChiediEsito(flusso) {
-  completandoFlussoId.value = flusso.id
-  esitoSelezionato.value = null
-}
-
-function onAnnullaEsito() {
-  completandoFlussoId.value = null
-  esitoSelezionato.value = null
-}
-
-// Scopo: Completa flusso (IN_CORSO → COMPLETATO) con esito scelto dall'utente.
-async function onConfermaCompletamento() {
-  if (!esitoSelezionato.value || !completandoFlussoId.value) return
-  const result = await execute(
-    () => cambiaStatoFlusso(props.praticaId, completandoFlussoId.value, {
-      nuovo_stato: STATO_FLUSSO.COMPLETATO,
-      esito: esitoSelezionato.value
-    }),
-    { successMessage: t('pratiche.flusso_completato') }
-  )
-  if (result !== null) {
-    completandoFlussoId.value = null
-    esitoSelezionato.value = null
-    await loadFlussi()
-    emit('refresh')
-  }
-}
-
-const canCreateFlusso = () => props.statoCodicePratica === STATO_PRATICA.APERTA
-
-watch(() => props.praticaId, (id) => {
-  if (id) loadFlussi()
-}, { immediate: true })
+watch(() => props.praticaId, (id) => { if (id) loadAll() }, { immediate: true })
 </script>
 
 <template>
   <div class="pratica-flussi-tab">
-    <!-- Toolbar -->
-    <div v-if="!isReadonly && canCreateFlusso()" class="pratica-flussi-toolbar">
-      <Button
-        :label="t('pratiche.nuovo_flusso')"
-        :icon="MANAGE_ICONS.ADD"
-        size="small"
-        class="app-action-btn"
-        @click="onNuovoFlusso"
-      />
-    </div>
-
-    <!-- Lista flussi -->
+    <!-- Lista 1: flussi istanziati (sola lettura) -->
+    <h4 class="pratica-flussi-titolo">{{ t('pratiche.flussi_titolo') }}</h4>
     <DataTable
       :value="flussi"
       :loading="loading"
@@ -153,55 +82,48 @@ watch(() => props.praticaId, (id) => {
       <Column field="data_scadenza" :header="t('pratiche.col_data_scadenza')" style="width: 100px;">
         <template #body="{ data }">{{ displayDate(data.data_scadenza) }}</template>
       </Column>
-      <Column :header="t('pratiche.flusso_col_azioni')" style="width: 260px;" :exportable="false">
+      <template #empty>
+        <div class="text-center text-color-secondary p-3">{{ t('pratiche.flussi_vuoti') }}</div>
+      </template>
+    </DataTable>
+
+    <!-- Lista 2: step del percorso ancora da completare (sola lettura) -->
+    <h4 class="pratica-flussi-titolo">{{ t('pratiche.flussi_step_da_completare') }}</h4>
+    <DataTable
+      :value="stepNonEseguiti"
+      :loading="loading"
+      striped-rows
+      class="app-datatable"
+      data-key="template_flusso_id"
+    >
+      <Column field="sequenza" :header="t('pratiche.flusso_col_seq')" style="width: 60px;" />
+      <Column field="template_flusso_codice" :header="t('pratiche.flusso_col_template')" style="width: 180px;">
         <template #body="{ data }">
-          <div v-if="!isReadonly" style="display: flex; gap: 0.25rem; align-items: center;">
-            <Button
-              v-if="(data.stato_codice_interno || '') === STATO_FLUSSO.DA_ESEGUIRE"
-              :icon="MANAGE_ICONS.PLAY"
-              text rounded size="small"
-              class="app-action-btn"
-              v-tooltip.top="t('pratiche.flusso_avvia')"
-              @click.stop="onAvviaFlusso(data)"
-            />
-            <!-- IN_CORSO: se non sto completando questo flusso, mostro il bottone -->
-            <Button
-              v-if="(data.stato_codice_interno || '') === STATO_FLUSSO.IN_CORSO && completandoFlussoId !== data.id"
-              :icon="MANAGE_ICONS.CONFIRM"
-              text rounded size="small"
-              class="app-action-btn"
-              v-tooltip.top="t('pratiche.flusso_completa')"
-              @click.stop="onChiediEsito(data)"
-            />
-            <!-- IN_CORSO + completando: mini-form esito inline -->
-            <div v-if="completandoFlussoId === data.id" style="display: flex; gap: 0.25rem; align-items: center;">
-              <Select
-                v-model="esitoSelezionato"
-                :options="esitiOptions"
-                option-label="label" option-value="value"
-                :placeholder="t('pratiche.flusso_esito')"
-                style="width: 150px;"
-              />
-              <Button :icon="MANAGE_ICONS.CONFIRM" text rounded size="small" severity="success"
-                :disabled="!esitoSelezionato"
-                @click.stop="onConfermaCompletamento" />
-              <Button :icon="MANAGE_ICONS.CANCEL" text rounded size="small" severity="secondary"
-                @click.stop="onAnnullaEsito" />
-            </div>
-          </div>
+          {{ data.template_flusso_descrizione || data.template_flusso_codice }}
+        </template>
+      </Column>
+      <Column :header="t('pratiche.col_stato')" style="width: 120px;">
+        <template #body="{ data }">
+          <Tag
+            v-if="data.flusso_id"
+            :value="data.stato_descrizione || data.stato_codice_interno"
+            :severity="statoFlussoSeverity(data.stato_codice_interno)"
+          />
+          <Tag v-else :value="t('pratiche.percorso_da_creare')" severity="secondary" />
         </template>
       </Column>
       <template #empty>
-        <div class="text-center text-color-secondary p-3">{{ t('pratiche.flussi_vuoti') }}</div>
+        <div class="text-center text-color-secondary p-3">{{ t('pratiche.flussi_step_tutti_completati') }}</div>
       </template>
     </DataTable>
   </div>
 </template>
 
 <style scoped>
-.pratica-flussi-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 0.5rem;
+.pratica-flussi-titolo {
+  margin: 0.75rem 0 0.4rem;
+}
+.pratica-flussi-titolo:first-child {
+  margin-top: 0;
 }
 </style>

@@ -73,3 +73,22 @@ Nessuna modifica funzionale obbligatoria: il backend già intercetta gli errori 
 parlanti e li rimappa. Andrà aggiunto il mapping del/i nuovo/i codice/i errore in
 `pratiche_service` (sulle stesse rotte di creazione/cambio stato flusso) per
 restituire un messaggio utente coerente. FE già a posto.
+
+## 6. Esito consegna (2026-06-14) — CHIUSO
+
+DB consegnato (2 migration):
+
+- `20260614-01` — `trgfn_flussi_guard_pratica_terminale`: blocca creazione/modifica
+  flussi su pratica terminale. Codici `PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO`
+  (490) e `PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE` (491).
+- `20260614-02` — `fn_coda_lavoro_operatore`: esclude i flussi di pratiche
+  terminali (definizione data-driven: stato senza transizioni in uscita). Scelta
+  l'alternativa "coda esclude terminali" invece della cascata sui flussi
+  all'annullamento → criterio di accettazione #7 soddisfatto.
+
+BE: marker dei due codici in `_KNOWN_DB_ERROR_MARKERS` + wrapping
+`avvia/completa/cambia_stato_flusso` (oltre a `crea_flusso`) con mapping parlante.
+4 test aggiunti, suite pratiche verde.
+
+FE: percorso + drawer flusso + scheda in sola lettura su pratica terminale; il
+gap "coda lavoro" è chiuso a monte dall'esclusione DB.

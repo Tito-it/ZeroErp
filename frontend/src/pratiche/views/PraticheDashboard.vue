@@ -88,12 +88,10 @@ const selectedPraticaCodice = computed(() => {
 // in sola lettura: niente nuovi step, flussi esistenti consultabili ma non
 // modificabili. La scheda pratica (PraticaDrawer) si auto-protegge dal proprio
 // dettaglio, qui copriamo percorso + drawer flusso che vivono nella dashboard.
-// Limite noto: lo stato si legge dalla riga in `store.items` (ricerca). Una
-// pratica selezionata dalla coda lavoro potrebbe non essere in `store.items`
-// (la coda non ritorna lo stato pratica) → readonly non rilevato in quel path.
-// La protezione robusta e' lato DB (vedi brief-db-pratiche-terminale-blocco-flussi):
-// l'annullamento chiude i flussi attivi → spariscono dalla coda; piu' il guard
-// che rifiuta comunque le operazioni su pratica terminale.
+// Lo stato si legge dalla riga in `store.items` (ricerca). La coda lavoro
+// esclude le pratiche terminali (fn_coda_lavoro_operatore) quindi non puo'
+// selezionare una terminale non presente in `store.items`; oltre alla difesa
+// DB (guard che rifiuta le operazioni su pratica terminale).
 const selectedPraticaReadonly = computed(() => {
   if (!store.selectedPraticaId) return false
   const item = store.items.find(i => i.id === store.selectedPraticaId)

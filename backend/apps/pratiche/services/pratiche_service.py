@@ -21,7 +21,7 @@ from apps.pratiche.db.pratiche_repository import PraticheRepository, coerce_json
 # Marker → codice per i guard DB workflow v2 (fn_log_and_raise_error solleva
 # il solo testo localizzato, senza codice: substring-match sul messaggio,
 # pattern speculare a lookup_service._KNOWN_DB_ERROR_MARKERS). I codici sono
-# quelli del catalogo DB (messaggi_errore id 483/485).
+# quelli del catalogo DB (messaggi_errore id 483/485/490/491).
 # ⚠ ASSUNZIONE: i marker sono sul testo ITALIANO e reggono perche' il
 # catalogo ha solo righe lingua='it' per questi codici (fn_get_messaggio fa
 # fallback a it). Se si aggiungono traduzioni, i marker vanno estesi o il
@@ -33,6 +33,9 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
         "PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI",
         "flussi obbligatori non completati",
     ),
+    # Guard pratica terminale (CHIUSA/ANNULLATA): blocco creazione/modifica flussi.
+    ("PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO", "Impossibile creare un flusso"),
+    ("PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE", "Impossibile modificare il flusso"),
 )
 
 
@@ -358,21 +361,27 @@ def avvia_flusso(flusso_id: int, *, user: str | None = None) -> dict[str, Any] |
     assert flusso_id > 0
 
     repo = PraticheRepository()
-    repo.update_stato_flusso(flusso_id, "IN_CORSO")
+    try:
+        repo.update_stato_flusso(flusso_id, "IN_CORSO")
 
-    # Dispatch handler (None se il flusso non ha handler → resta IN_CORSO,
-    # completamento manuale dall'operatore).
-    # NB sui prerequisiti: il guard esito-aware e' un trigger BEFORE INSERT sui
-    # flussi → scatta alla CREAZIONE del flusso, non qui. Un flusso CONFERMA
-    # esiste solo se APPROVAZIONE_CLIENTE era COMPLETATO+POSITIVO. La difesa a
-    # runtime, all'avvio, e' il check "preventivo ACCETTATO" dentro l'handler.
-    # Concorrenza: l'UPDATE di stato sopra prende il lock di riga del flusso →
-    # due avvii concorrenti sullo stesso flusso si serializzano (no doppio push).
-    result = dispatch_handler(flusso_id, user=user)
-    if result is not None:
-        # Handler eseguito con successo → completa il flusso (esito POSITIVO).
-        repo.update_stato_flusso(flusso_id, "COMPLETATO", esito="POSITIVO")
-    return result
+        # Dispatch handler (None se il flusso non ha handler → resta IN_CORSO,
+        # completamento manuale dall'operatore).
+        # NB sui prerequisiti: il guard esito-aware e' un trigger BEFORE INSERT sui
+        # flussi → scatta alla CREAZIONE del flusso, non qui. Un flusso CONFERMA
+        # esiste solo se APPROVAZIONE_CLIENTE era COMPLETATO+POSITIVO. La difesa a
+        # runtime, all'avvio, e' il check "preventivo ACCETTATO" dentro l'handler.
+        # Concorrenza: l'UPDATE di stato sopra prende il lock di riga del flusso →
+        # due avvii concorrenti sullo stesso flusso si serializzano (no doppio push).
+        result = dispatch_handler(flusso_id, user=user)
+        if result is not None:
+            # Handler eseguito con successo → completa il flusso (esito POSITIVO).
+            repo.update_stato_flusso(flusso_id, "COMPLETATO", esito="POSITIVO")
+        return result
+    except DatabaseError as exc:
+        # Guard pratica terminale (CHIUSA/ANNULLATA) → PRATICHE_TERMINALE_FLUSSO_
+        # NON_MODIFICABILE parlante; altri errori (handler, ecc.) al middleware.
+        _raise_known_db_error(exc, function_name="pratiche_service.avvia_flusso")
+        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: Completa un flusso con esito e note.
@@ -398,7 +407,11 @@ def completa_flusso(
     )
 
     repo = PraticheRepository()
-    repo.update_stato_flusso(flusso_id, "COMPLETATO", esito=esito, note_esito=note_esito)
+    try:
+        repo.update_stato_flusso(flusso_id, "COMPLETATO", esito=esito, note_esito=note_esito)
+    except DatabaseError as exc:
+        # Guard pratica terminale → PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE.
+        _raise_known_db_error(exc, function_name="pratiche_service.completa_flusso")
 
 
 # Scopo: Transizione generica di stato di un flusso tramite codice_interno.
@@ -424,7 +437,11 @@ def cambia_stato_flusso(
     )
 
     repo = PraticheRepository()
-    repo.update_stato_flusso(flusso_id, nuovo_stato, esito=esito, note_esito=note_esito)
+    try:
+        repo.update_stato_flusso(flusso_id, nuovo_stato, esito=esito, note_esito=note_esito)
+    except DatabaseError as exc:
+        # Guard pratica terminale → PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE.
+        _raise_known_db_error(exc, function_name="pratiche_service.cambia_stato_flusso")
 
 
 # Scopo: Verifica prerequisiti per un template flusso su una pratica (per UI/preview).
