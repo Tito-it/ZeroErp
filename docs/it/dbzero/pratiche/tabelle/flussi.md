@@ -6,7 +6,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | pratica_id | bigint | NO |  |
-| template_flusso_id | integer | YES |  |
+| template_flusso_id | integer | NO |  |
 | stato_id | integer | NO |  |
 | flusso_padre_id | bigint | YES |  |
 | risorsa_umana_id | bigint | YES |  |

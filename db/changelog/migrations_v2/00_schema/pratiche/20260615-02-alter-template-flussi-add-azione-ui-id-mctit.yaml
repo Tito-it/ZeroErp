@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# pratiche.template_flussi.azione_ui_id — FK opzionale a
+# pratiche.azioni_ui (20260615-01). Specchio di handler_id ->
+# handler_flussi: dichiara, per template, l'attivita' UI da offrire nel
+# flusso. NULL = nessuna attivita' interattiva (flusso avvia/completa
+# standard); coerente con analisi-pratiche-domini-anello3 §5.8.2
+# (l'aggancio e' sempre opzionale).
+# Indice FK NON creato a mano: registrato in dbops.fk_index_policy
+# (20260615-06, consentito=false: template_flussi e' tabella di
+# configurazione minuscola, indice non necessario).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260615-02-alter-template-flussi-add-azione-ui-id-mctit.yaml
+
+  - changeSet:
+      id: 20260615-02-alter-template-flussi-add-azione-ui-id
+      author: mctit
+      comment: >
+        template_flussi.azione_ui_id (FK nullable -> pratiche.azioni_ui).
+        Aggancio data-driven dell'attivita' UI al template di flusso,
+        specchio di handler_id. NULL = nessuna attivita' interattiva.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: pratiche
+                tableName: template_flussi
+                columnName: azione_ui_id
+      changes:
+        - addColumn:
+            schemaName: pratiche
+            tableName: template_flussi
+            columns:
+              - column:
+                  name: azione_ui_id
+                  type: integer
+                  remarks: "FK opzionale -> pratiche.azioni_ui. NULL = nessuna attivita' interattiva offerta dal flusso."
+                  constraints:
+                    nullable: true
+                    foreignKeyName: fk_template_flussi_azione_ui
+                    referencedTableSchemaName: pratiche
+                    referencedTableName: azioni_ui
+                    referencedColumnNames: id
+                    deleteCascade: false
+
+      rollback:
+        - dropColumn:
+            schemaName: pratiche
+            tableName: template_flussi
+            columnName: azione_ui_id

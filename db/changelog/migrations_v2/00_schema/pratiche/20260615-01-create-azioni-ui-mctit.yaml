@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Tabella pratiche.azioni_ui — catalogo attivita' UI lanciabili dal
+# flusso di pratica. E' lo specchio FE del registry handler
+# (pratiche.handler_flussi): handler_flussi mappa handler_key -> classe
+# Python per l'automazione server-side; azioni_ui mappa azione_ui_key ->
+# componente/drawer di dominio risolto dal registry FE UI_ACTIVITY_REGISTRY.
+# Il DB non interpreta mai azione_ui_key: e' un token risolto lato FE.
+# template_flussi.azione_ui_id (FK, 20260615-02) dichiara, per template,
+# quale attivita' interattiva offrire nel flusso (NULL = nessuna).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260615-01-create-azioni-ui-mctit.yaml
+
+  - changeSet:
+      id: 20260615-01-create-azioni-ui
+      author: mctit
+      comment: >
+        Catalogo attivita' UI da flusso (specchio FE di handler_flussi).
+        Ogni azione_ui_key e' risolta dal registry FE in un drawer di
+        dominio (es. APRI_PREVENTIVO). Il DB conserva solo la chiave.
+      changes:
+        - createTable:
+            schemaName: pratiche
+            tableName: azioni_ui
+            remarks: "Catalogo attivita' UI lanciabili dal flusso pratica — chiavi per il registry FE."
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_pratiche_azioni_ui
+                    nullable: false
+
+              - column:
+                  name: azione_ui_key
+                  type: character varying(100)
+                  remarks: "Chiave univoca risolta dal registry FE UI_ACTIVITY_REGISTRY (es. APRI_PREVENTIVO). Non interpretata dal DB."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: codice
+                  type: character varying(50)
+                  remarks: "Codice univoco leggibile."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: text
+                  remarks: "Descrizione per interfaccia."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: pratiche
+            tableName: azioni_ui
+            columnNames: azione_ui_key
+            constraintName: uq_pratiche_azioni_ui_key
+
+        - addUniqueConstraint:
+            schemaName: pratiche
+            tableName: azioni_ui
+            columnNames: codice
+            constraintName: uq_pratiche_azioni_ui_codice
+
+      rollback:
+        - dropTable:
+            schemaName: pratiche
+            tableName: azioni_ui
