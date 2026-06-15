@@ -10,12 +10,15 @@ import { useDrawerContentReady } from '../../core/composables/useDrawerContentRe
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { cambiaStatoFlusso } from '../api/pratiche-api'
 import { completaApprovazioneFlusso } from '../../vendite/preventivi/api/preventiviApi'
+import { getUiActivity } from '../uiActivityRegistry'
 import { DRAWER_WIDTH, STATO_FLUSSO } from '../../core/constants'
 
 // Processo PREVENTIVI (percorso pratica-first): prefisso tipo_prestazione +
-// codici template che abilitano il ramo preventivo/M2.
+// codice template che abilita il ramo M2 (completamento approvazione → accetta
+// preventivo). NB: l'APERTURA del drawer di dominio è ora data-driven via
+// `azione_ui_key` (registry UI_ACTIVITY_REGISTRY), non più hardcoded qui; resta
+// hardcoded solo il routing del COMPLETAMENTO M2 (concern separato, follow-up).
 const TIPO_PREVENTIVI_PREFIX = 'PREVENTIVI'
-const TEMPLATE_PREVENTIVAZIONE = 'PREVENTIVAZIONE'
 const TEMPLATE_APPROVAZIONE_CLIENTE = 'APPROVAZIONE_CLIENTE'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -43,9 +46,9 @@ const props = defineProps({
   readonly: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['update:visible', 'saved', 'open-preventivo'])
+const emit = defineEmits(['update:visible', 'saved', 'open-attivita'])
 
-// È un processo PREVENTIVI (pratica-first) → abilita il ramo preventivo/M2.
+// È un processo PREVENTIVI (pratica-first) → abilita il ramo M2 (completamento).
 const isPreventivi = computed(
   () => (props.tipoPrestazioneCodice || '').startsWith(TIPO_PREVENTIVI_PREFIX)
 )
@@ -72,6 +75,18 @@ const injectedReadonly = useInjectReadonly()
 const effectiveReadonly = computed(() => injectedReadonly.value || props.readonly)
 provide(READONLY_KEY, effectiveReadonly)
 
+// Attività UI data-driven: il flusso porta `template_azione_ui_key` (catalogo DB
+// pratiche.azioni_ui), risolta nel registry FE → drawer di dominio da aprire.
+const uiActivity = computed(() => getUiActivity(props.flusso?.template_azione_ui_key))
+// Gating cliente attivo: alcune attività (offerta/contratto) richiedono il BA.
+// Il flusso espone il BA risolto della pratica (NULL = prospect).
+const hasActiveClient = computed(() => props.flusso?.pratica_billing_account_id != null)
+const uiActivityVisible = computed(
+  () => !effectiveReadonly.value
+    && !!uiActivity.value
+    && (!uiActivity.value.requiresActiveClient || hasActiveClient.value),
+)
+
 // Deferimento contenuto: il drawer ha solo Select statico + Textarea, ma
 // applichiamo il pattern per coerenza con gli altri drawer entita'.
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
@@ -97,20 +112,25 @@ const drawerActions = computed(() => {
       disabled: loading.value,
       command: onAvvia,
     },
-    // PREVENTIVAZIONE (pratica-first): apre il PreventivoDrawer collegato.
-    // L'aggancio ROOT preventivo↔pratica avviene al salvataggio (gestito dal
-    // parent, che ospita il drawer e chiama collega-pratica).
+    // Attività UI di dominio (data-driven): se il template del flusso dichiara
+    // un'azione UI (azione_ui_key), apre il drawer di dominio risolto dal registry.
     // kind:'manage' = apertura sub-drawer → inline su desktop, nel kebab solo su
-    // schermo piccolo (è l'azione principale dello step, non un'utility da
-    // nascondere sempre nel kebab come farebbe kind:'secondary').
+    // schermo piccolo (è l'azione principale dello step). Label/icona dal registry.
     {
-      key: 'apri-preventivo',
+      key: 'apri-attivita',
       kind: 'manage',
-      label: t('pratiche.flusso_apri_preventivo'),
-      icon: 'pi pi-file-edit',
-      visible: !effectiveReadonly.value && isPreventivi.value && templateCodice.value === TEMPLATE_PREVENTIVAZIONE,
+      label: uiActivity.value ? t(uiActivity.value.label) : '',
+      icon: uiActivity.value?.icon,
+      visible: uiActivityVisible.value,
       disabled: loading.value,
-      command: () => emit('open-preventivo', props.praticaId),
+      command: () => emit('open-attivita', {
+        key: props.flusso.template_azione_ui_key,
+        praticaId: props.praticaId,
+        // Contesto cliente risolto dalla pratica (esposto sul flusso dal BE):
+        // il documento aperto eredita+blocca istanza (+ BA se cliente attivo).
+        billingAccountId: props.flusso.pratica_billing_account_id ?? null,
+        istanzaUtilityId: props.flusso.pratica_istanza_utility_id ?? null,
+      }),
     },
   ]
 })

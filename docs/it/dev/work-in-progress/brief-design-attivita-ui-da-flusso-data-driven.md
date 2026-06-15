@@ -3,9 +3,37 @@
 > **Tipo**: brief di design (proposta, non specifica di contratto). Richiede l'OK
 > di Tid prima di passare a codice/DB ([[feedback_regola_del_2_estrai_bb]],
 > [[feedback_no_quick_fix_soluzione_assoluta]]).
-> **Data**: 2026-06-14 · **Stato**: PROPOSTA, attende conferma
+> **Data**: 2026-06-14 · **Stato**: 🟡 **MECCANISMO IMPLEMENTATO (preventivo); resta da estendere a offerta/contratto**
 > **Origine**: PRA-0000171 (2° processo che chiede "eseguire l'attività dentro la
 > pratica") → trigger per promuovere il meccanismo da hardcoded a data-driven.
+
+## 0. Stato implementazione (2026-06-15)
+
+**✅ Fatto** (meccanismo end-to-end, consumatore `APRI_PREVENTIVO`):
+
+- **DB**: `pratiche.azioni_ui` + `template_flussi.azione_ui_id` + seed `APRI_PREVENTIVO`
+  sugli step PREVENTIVAZIONE (commit `f3c4710ca`). Vedi
+  [brief-db-ESECUZIONE](../work-done/brief-db-ESECUZIONE-azione-ui-e-contesto-cliente.md).
+- **BE**: flussi/percorso espongono `template_azione_ui_key`; flusso/dettaglio pratica
+  espongono `billing_account_id` derivato + istanza (`pratiche_repository.py`, passthrough).
+- **FE**: registry `uiActivityRegistry.js`; `FlussoDrawer` azione generica `apri-attivita`
+  (gating `requiresActiveClient`); `PraticheDashboard` host dinamico `<component :is>`;
+  rimosso l'hardcoding apertura preventivo. Build+lint+155 test BE verdi.
+- **FE (punto 3 — affordance percorso)**: `PraticaPercorso` mostra il pulsante "apri
+  documento" direttamente sullo step con `azione_ui_key` (gemello del pulsante nel
+  FlussoDrawer; stesso gating + payload). Contesto cliente passato dalla dashboard.
+
+**🔲 Aperto**:
+
+1. **`APRI_OFFERTA` / `APRI_CONTRATTO`**: registry pronto, **non** seedati né wirati —
+   non esistono ancora i `template_flussi` OFFERTA/CONTRATTO (concentrico: si aggiungono
+   quando nasceranno quei flussi; basta 1 voce registry + seed DB).
+2. **Routing del completamento data-driven** (punto 2): brief DB scritto
+   ([brief-db-flusso-azione-completamento-data-driven.md](brief-db-flusso-azione-completamento-data-driven.md))
+   — mirror di `azioni_ui` per il completamento (token `ACCETTA_PREVENTIVO`).
+   **Attende il prerequisito DB**; finché non c'è il seed resta il fallback hardcoded
+   M2 nel `FlussoDrawer` (no regressione). Sblocca offerta/contratto.
+3. **Smoke UI E2E** runtime (non eseguibile senza app+DB+pratica reale).
 
 ---
 
@@ -112,7 +140,7 @@ contesto pratica, valorizzati e **bloccati** (non possono divergere). È un conc
 distinto ma **paritetico** all'apertura del drawer, e si generalizza sugli stessi
 3 documenti. Dettaglio in:
 
-- [brief-db-pratica-preventivo-contesto-cliente.md](brief-db-pratica-preventivo-contesto-cliente.md)
+- [brief-db-pratica-preventivo-contesto-cliente.md](../work-done/brief-db-pratica-preventivo-contesto-cliente.md)
   (prerequisito DB: la pratica espone il contesto cliente risolto — BA + istanza
   coerenti — document-agnostico).
 - [brief-fe-pratica-preventivo-cliente-bloccato.md](brief-fe-pratica-preventivo-cliente-bloccato.md)

@@ -213,17 +213,37 @@ class CommesseRepositoryUnitTests(TestCase):
         params = mock_cursor_factory.return_value.execute.call_args[0][1]
         self.assertTrue(params[3])
 
-    # Scopo: Verifica mapping CommessaStatoResult da fn_get_commessa_stato.
+    # Scopo: Verifica mapping CommessaStatoResult da fn_get_commessa_stato
+    #        (stato + flag governance + tutti i contatori). Colonne nell'ordine
+    #        del RETURNS TABLE (senza commessa_id, non selezionato).
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
     def test_get_commessa_stato_maps_contatori(self, mock_cursor_factory):
-        mock_cursor_factory.return_value = _mock_cursor(fetchone=(10, 8, 6))
+        # stato_commessa_id, stato_commessa, chiude, emittibile, modificabile,
+        # policy, fatt_immediata, priorita, ba_id, utility_id, emittente_id,
+        # total_attivita, total_approvate, total_non_approvate, total_emesse,
+        # total_non_emesse, total_prezzo_da_riallineare, last_update
+        mock_cursor_factory.return_value = _mock_cursor(
+            fetchone=(
+                4, "PRONTA_FATTURAZIONE", False, True, True,
+                "DA_DOCUMENTO", False, None, 1001, 2, 555,
+                10, 8, 2, 6, 4, 1, None,
+            )
+        )
         repo = CommesseRepository()
         result = repo.get_commessa_stato(commessa_id=10)
         self.assertIsNotNone(result)
         assert result is not None
+        self.assertEqual(result["stato_commessa"], "PRONTA_FATTURAZIONE")
+        self.assertTrue(result["emittibile"])
+        self.assertTrue(result["modificabile"])
+        self.assertFalse(result["chiude_commessa"])
         self.assertEqual(result["total_attivita"], 10)
         self.assertEqual(result["total_approvate"], 8)
+        self.assertEqual(result["total_non_approvate"], 2)
         self.assertEqual(result["total_emesse"], 6)
+        self.assertEqual(result["total_non_emesse"], 4)
+        self.assertEqual(result["total_prezzo_da_riallineare"], 1)
+        self.assertIsNone(result["last_update"])
 
     # Scopo: Verifica che get_commessa_stato restituisca None quando la commessa non esiste.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")

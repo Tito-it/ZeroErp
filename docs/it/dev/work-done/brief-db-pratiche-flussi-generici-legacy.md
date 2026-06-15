@@ -3,6 +3,8 @@
 **Area:** `pratiche` · **Tipo:** pulizia dati (+ eventuale vincolo NOT NULL)
 **Branch destinazione:** `dev/db-tid`
 **Richiesto da:** backend agent (per conto di Tid) · **Data:** 2026-06-14
+**Stato:** ✅ **CHIUSO (2026-06-15)** — guard forward BE (`crea_flusso` esige `template_flusso_id`)
+in `c4ad07b4b`; pulizia dati + `template_flusso_id NOT NULL` applicati dal DB in `fbed7dc9f`.
 
 > Nota: questo brief descrive **cosa** deve garantire/pulire il DB, non **come**.
 > La scelta implementativa (SQL, fasi, eventuale migration, nome del vincolo) è

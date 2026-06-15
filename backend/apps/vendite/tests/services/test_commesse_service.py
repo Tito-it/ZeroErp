@@ -478,21 +478,36 @@ class CommesseServiceTests(TestCase):
 
     # --- fn_get_commessa_stato ---
 
-    # Scopo: commessa trovata → restituisce commessa_id + contatori.
+    # Scopo: commessa trovata → restituisce commessa_id + stato_codice_interno +
+    #        flag governance e contatori propagati dal repo (ApiCommessaStato).
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     def test_fn_get_commessa_stato_ok(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_get_commessa_stato
 
-        mock_repo_cls.return_value.get_commessa_stato.return_value = {
+        repo = mock_repo_cls.return_value
+        repo.get_commessa_stato_codice.return_value = "PRONTA_FATTURAZIONE"
+        repo.get_commessa_stato.return_value = {
+            "stato_commessa_id": 4,
+            "stato_commessa": "PRONTA_FATTURAZIONE",
+            "chiude_commessa": False,
+            "emittibile": True,
+            "modificabile": True,
             "total_attivita": 10,
             "total_approvate": 8,
+            "total_non_approvate": 2,
             "total_emesse": 5,
+            "total_non_emesse": 5,
+            "total_prezzo_da_riallineare": 0,
+            "last_update": "2026-06-15T10:00:00",
         }
 
         result = fn_get_commessa_stato(commessa_id=1)
 
         self.assertEqual(result["commessa_id"], 1)
+        self.assertEqual(result["stato_codice_interno"], "PRONTA_FATTURAZIONE")
+        self.assertTrue(result["emittibile"])
         self.assertEqual(result["total_attivita"], 10)
+        self.assertEqual(result["total_non_emesse"], 5)
 
     # Scopo: commessa non trovata → ServiceError.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
@@ -545,14 +560,15 @@ class CommesseServiceTests(TestCase):
         "uom_id": 1,
         "data_attivita": "2026-04-01",
         "meta": None,
-        "commessa_stato": "LIBERO",
+        "commessa_stato": "BOZZA",
+        "commessa_modificabile": True,
         "af_id": 601,
         "af_prezzo_unitario": "45.0000000000",
         "af_prezzo_bloccato": False,
         "fattura_riga_id": None,
     }
 
-    # Scopo: N7 - variazione eccezionale su commessa LIBERO OK.
+    # Scopo: N7 - variazione eccezionale su commessa modificabile OK.
     @patch("apps.vendite.services.commesse_service.transaction.atomic")
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     def test_variazione_eccezionale_ok(self, mock_repo_cls, mock_atomic):
@@ -569,14 +585,16 @@ class CommesseServiceTests(TestCase):
         call_kwargs = repo.update_attivita_prezzo.call_args.kwargs
         self.assertTrue(call_kwargs["prezzo_bloccato"])
 
-    # Scopo: N7 - commessa in stato non ammesso rifiutata.
+    # Scopo: N7 - commessa in stato non modificabile rifiutata (flag data-driven
+    #        stati_commessa.modificabile=false, es. CHIUSA/ANNULLATA).
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     def test_variazione_eccezionale_commessa_stato_bloccato(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import fn_variazione_prezzo_eccezionale
 
         repo = mock_repo_cls.return_value
         att = dict(self._ATT_BASE)
-        att["commessa_stato"] = "CHIUSO"
+        att["commessa_stato"] = "CHIUSA"
+        att["commessa_modificabile"] = False
         repo.get_attivita_pricing.return_value = att
 
         with self.assertRaises(ServiceError) as ctx:

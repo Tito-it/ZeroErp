@@ -1,9 +1,9 @@
 # Esecuzione DB — Attività UI da flusso (catalogo) + Pratica espone contesto cliente
 
 > **Tipo**: documento di esecuzione DB (consolida due brief). **Branch**: `dev/db-tid`.
-> **Data**: 2026-06-15 · **Stato**: PRONTO ALL'ESECUZIONE (attende "procedi" — [[feedback_no_commit_autonomo]]).
+> **Data**: 2026-06-15 · **Stato**: ✅ **ESEGUITO (commit `f3c4710ca`)** — migration + pgTAP + doc applicati; NOT NULL `template_flusso_id` in `fbed7dc9f`. BE/FE a valle implementati (passthrough + registry/drawer/lock).
 > **Origine brief**:
-> - [brief-design-attivita-ui-da-flusso-data-driven.md §3](brief-design-attivita-ui-da-flusso-data-driven.md) (solo la parte DB: `azione_ui_key`)
+> - [brief-design-attivita-ui-da-flusso-data-driven.md §3](../work-in-progress/brief-design-attivita-ui-da-flusso-data-driven.md) (solo la parte DB: `azione_ui_key`)
 > - [brief-db-pratica-preventivo-contesto-cliente.md](brief-db-pratica-preventivo-contesto-cliente.md) (intero: `billing_account_id` derivato)
 >
 > **Fuori scope**: tutto BE (passthrough `pratiche_repository.py`) e tutto FE (registry,
@@ -251,9 +251,9 @@ Indice test:
 
 - **BE**: passthrough `azione_ui_id`/`azione_ui_key` (join `azioni_ui`) nelle query
   `get_flusso`/`list_flussi`/percorso; proiezione `billing_account_id` via la nuova funzione
-  nel dettaglio pratica. ([brief-design §4](brief-design-attivita-ui-da-flusso-data-driven.md))
+  nel dettaglio pratica. ([brief-design §4](../work-in-progress/brief-design-attivita-ui-da-flusso-data-driven.md))
 - **FE**: registry `UI_ACTIVITY_REGISTRY`, `FlussoDrawer` generico, lock cliente/istanza.
-  ([brief-fe-pratica-preventivo-cliente-bloccato.md](brief-fe-pratica-preventivo-cliente-bloccato.md))
+  ([brief-fe-pratica-preventivo-cliente-bloccato.md](../work-in-progress/brief-fe-pratica-preventivo-cliente-bloccato.md))
 
 ---
 
