@@ -559,11 +559,24 @@ class CommesseRepository:
         return int(row[0]) if row else None
 
     def get_commessa_stato(self, commessa_id: int) -> CommessaStatoResult | None:
-        """Stato e contatori della commessa in un round-trip."""
+        """Stato testata + flag di governance + contatori della commessa in un
+        round-trip. Espone tutti i campi prodotti da `fn_get_commessa_stato`
+        (flag chiude/emittibile/modificabile, config testata, contatori righe):
+        servono alla UI commesse per stato e azioni senza chiamate extra."""
+
+        def _int(v: object) -> int | None:
+            return int(v) if v is not None else None  # type: ignore[arg-type]
+
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT total_attivita, total_approvate, total_emesse
+                SELECT stato_commessa_id, stato_commessa,
+                       chiude_commessa, emittibile, modificabile,
+                       policy_fatturazione, fatturazione_immediata, priorita_operativa,
+                       billing_account_id, utility_id, emittente_soggetto_ruolo_id,
+                       total_attivita, total_approvate, total_non_approvate,
+                       total_emesse, total_non_emesse, total_prezzo_da_riallineare,
+                       last_update
                 FROM vendite.fn_get_commessa_stato(%s)
                 """,
                 [commessa_id],
@@ -572,9 +585,24 @@ class CommesseRepository:
         if not row:
             return None
         return CommessaStatoResult(
-            total_attivita=int(row[0]),
-            total_approvate=int(row[1]),
-            total_emesse=int(row[2]),
+            stato_commessa_id=int(row[0]),
+            stato_commessa=row[1],
+            chiude_commessa=bool(row[2]),
+            emittibile=bool(row[3]),
+            modificabile=bool(row[4]),
+            policy_fatturazione=row[5],
+            fatturazione_immediata=(None if row[6] is None else bool(row[6])),
+            priorita_operativa=_int(row[7]),
+            billing_account_id=_int(row[8]),
+            utility_id=_int(row[9]),
+            emittente_soggetto_ruolo_id=_int(row[10]),
+            total_attivita=int(row[11]),
+            total_approvate=int(row[12]),
+            total_non_approvate=int(row[13]),
+            total_emesse=int(row[14]),
+            total_non_emesse=int(row[15]),
+            total_prezzo_da_riallineare=int(row[16]),
+            last_update=(row[17].isoformat() if row[17] is not None else None),
         )
 
     def get_commessa_stato_codice(self, commessa_id: int) -> str | None:
@@ -1008,7 +1036,8 @@ class CommesseRepository:
                     ca.uom_id,
                     ca.data_attivita,
                     ca.meta,
-                    c.stato AS commessa_stato,
+                    sc.codice_interno AS commessa_stato,
+                    sc.modificabile AS commessa_modificabile,
                     c.billing_account_id,
                     c.utility_id,
                     c.emittente_soggetto_ruolo_id,
@@ -1018,6 +1047,7 @@ class CommesseRepository:
                     af.fattura_riga_id
                   FROM vendite.commesse_attivita ca
                   JOIN vendite.commesse c ON c.id = ca.commessa_id
+                  JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id
                   LEFT JOIN vendite.attivita_fatturabili af
                     ON af.commessa_attivita_id = ca.id
                  WHERE ca.commessa_id = %s

@@ -3,6 +3,8 @@
 **Area:** `pratiche` (lettura) · **Tipo:** esposizione dato derivato
 **Branch destinazione:** `dev/db-tid`
 **Richiesto da:** backend agent (per conto di Tid) · **Data:** 2026-06-15
+**Stato:** ✅ **CHIUSO (2026-06-15)** — DB ha consegnato `script.fn_get_billing_account_by_istanza`
+(commit `f3c4710ca`); BE la proietta su dettaglio pratica + flusso, FE pre-compila e blocca.
 
 > **Portata** (Tid 2026-06-15): non solo preventivo. Stesso contesto serve ai
 > documenti che si aprono dal flusso pratica — **preventivo, offerta, contratto**
@@ -28,7 +30,7 @@ presente sulla pratica** ed è la fonte dell'istanza del documento. Il
 `billing_account_id` invece può esserci (cliente attivo) o no (prospect): la sua
 **presenza** governa anche quali documenti sono offribili dal flusso — offerta e
 contratto richiedono BA, il preventivo no (vedi
-[brief-design-attivita-ui-da-flusso-data-driven §5-bis](brief-design-attivita-ui-da-flusso-data-driven.md)).
+[brief-design-attivita-ui-da-flusso-data-driven §5-bis](../work-in-progress/brief-design-attivita-ui-da-flusso-data-driven.md)).
 
 ## 2. Cosa serve dal DB
 
@@ -78,5 +80,5 @@ Valore atteso del punto 2:
 Alla consegna del dato, il frontend (il drawer del documento aperto dalla pratica —
 preventivo/offerta/contratto) precompila istanza + BA dal contesto pratica e li
 blocca **da subito**. Piano FE in
-[brief-fe-pratica-preventivo-cliente-bloccato.md](brief-fe-pratica-preventivo-cliente-bloccato.md)
+[brief-fe-pratica-preventivo-cliente-bloccato.md](../work-in-progress/brief-fe-pratica-preventivo-cliente-bloccato.md)
 (in attesa di questo prerequisito — [[feedback_be_fe_attende_prerequisiti_db]]).

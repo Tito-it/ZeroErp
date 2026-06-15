@@ -383,7 +383,6 @@ def fn_list_commessa_attivita(
 
 # --- N5, N7, N7-sblocco: Pricing operations su commessa ---
 
-_STATI_COMMESSA_MODIFICABILI: frozenset[str] = frozenset({"LIBERO", "CONFERMATO"})
 _MOTIVO_MAX_LENGTH = 500
 
 
@@ -418,7 +417,11 @@ def _get_attivita_pricing_or_raise(
     return att
 
 
-# Scopo: Helper — guard stato commessa modificabile (LIBERO o CONFERMATO).
+# Scopo: Helper — guard stato commessa modificabile. Data-driven sul flag
+#        `stati_commessa.modificabile` (abilita upsert su commesse_attivita),
+#        non su un set di codici hardcoded: lo stato lifecycle vive nella FK
+#        stato_commessa_id e il flag e` la fonte di verita` per "si puo` ancora
+#        toccare il prezzo". get_attivita_pricing espone `commessa_modificabile`.
 def _assert_commessa_modificabile(
     att: dict[str, Any],
     *,
@@ -426,10 +429,10 @@ def _assert_commessa_modificabile(
 ) -> None:
     stato = str(att["commessa_stato"])
     ErrorManager.require(
-        stato in _STATI_COMMESSA_MODIFICABILI,
+        bool(att.get("commessa_modificabile")),
         code="E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA",
         message="Operazione non consentita sullo stato corrente della commessa.",
-        detail=f"Commessa in stato {stato}. Ammesso solo: {', '.join(sorted(_STATI_COMMESSA_MODIFICABILI))}.",
+        detail=f"Commessa in stato {stato}: non modificabile (stati_commessa.modificabile=false).",
         context={"commessa_stato": stato},
         function_name=function_name,
         log_to_db=True,

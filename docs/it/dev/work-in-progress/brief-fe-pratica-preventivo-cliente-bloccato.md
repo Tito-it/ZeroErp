@@ -1,10 +1,18 @@
 # Piano FE — Documento dalla pratica: cliente/istanza ereditati e bloccati
 
 > **Tipo**: piano frontend (Vue). **Prerequisito**: dato DB del
-> [brief-db-pratica-preventivo-contesto-cliente.md](brief-db-pratica-preventivo-contesto-cliente.md)
+> [brief-db-pratica-preventivo-contesto-cliente.md](../work-done/brief-db-pratica-preventivo-contesto-cliente.md)
 > (la pratica espone `billing_account_id` derivato + `istanza_utility_id`).
-> **In attesa** del prerequisito — niente codice prima ([[feedback_be_fe_attende_prerequisiti_db]]).
-> **Data**: 2026-06-15 · **Stato**: PIANO, bloccato sul prerequisito DB.
+> **Data**: 2026-06-15 · **Stato**: 🟡 **IMPLEMENTATO per PreventiviDrawer; resta offerta/contratto**
+>
+> **✅ Fatto** (prereq DB consegnato, `f3c4710ca`): `PreventiviDrawer` accetta
+> `praticaContext` → pre-compila istanza (+ BA se cliente attivo) e blocca **solo i
+> campi passati** (non-null) da subito; `PraticheDashboard` passa il contesto via
+> registry. Build+lint verdi.
+>
+> **🔲 Aperto**: stesso intervento su `OffertaDrawer`/`ContrattoDrawer` (quando
+> nasceranno i loro flussi); se il blocco risulta identico sui 3 → estrarre
+> composable `usePraticaContextLock` (regola del 2, §3.5). Smoke UI E2E.
 >
 > **Portata** (Tid 2026-06-15): stessa logica per i 3 documenti aperti dal flusso
 > — **preventivo, offerta, contratto**. Gli ordini restano fuori (push a valle).

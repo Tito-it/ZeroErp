@@ -42,6 +42,11 @@ class PraticheRepository:
     _PRATICA_SELECT = """
         p.id, p.emittente_fiscale_id, p.tipo_prestazione_id,
         p.soggetto_id, p.soggetto_ruolo_id, p.istanza_utility_id,
+        -- Cliente (BA) derivato dall'istanza: presente se cliente attivo, NULL se
+        -- prospect. Single source of truth a DB (script.fn_get_billing_account_by_istanza),
+        -- nessuna derivazione lato FE. Alimenta pre-fill+lock e gating documenti
+        -- (offerta/contratto richiedono BA) aprendo un documento dal flusso.
+        script.fn_get_billing_account_by_istanza(p.istanza_utility_id) AS billing_account_id,
         p.stato_id, p.priorita_id,
         p.risorsa_umana_id, p.unita_organizzativa_id,
         p.pratica_padre_id, p.flusso_origine_id, p.canale_origine_id,
@@ -308,8 +313,13 @@ class PraticheRepository:
         sf.descrizione AS stato_descrizione,
         tf.codice AS template_flusso_codice,
         tf.descrizione AS template_flusso_descrizione,
+        -- Attività UI data-driven (catalogo pratiche.azioni_ui): chiave risolta
+        -- dal registry FE → drawer di dominio da aprire dal flusso. NULL = nessuna.
+        au.azione_ui_key AS template_azione_ui_key,
         p.codice AS pratica_codice,
         p.data_apertura AS pratica_data_apertura,
+        p.istanza_utility_id AS pratica_istanza_utility_id,
+        script.fn_get_billing_account_by_istanza(p.istanza_utility_id) AS pratica_billing_account_id,
         s.ragione_sociale_completa AS pratica_soggetto_display,
         s.id_fiscale_univoco_cf_piva AS pratica_soggetto_id_fiscale
     """
@@ -317,6 +327,7 @@ class PraticheRepository:
     _FLUSSO_JOINS = """
         JOIN config.stati_flussi_pratiche sf ON sf.id = f.stato_id
         LEFT JOIN pratiche.template_flussi tf ON tf.id = f.template_flusso_id
+        LEFT JOIN pratiche.azioni_ui au ON au.id = tf.azione_ui_id
         JOIN pratiche.pratiche p ON p.id = f.pratica_id
         LEFT JOIN anagrafiche.soggetti s ON s.id = p.soggetto_id
     """
@@ -373,6 +384,7 @@ class PraticheRepository:
                 tf.obbligatorio,
                 tf.direzione,
                 (tf.handler_id IS NOT NULL) AS has_handler,
+                au.azione_ui_key AS template_azione_ui_key,
                 f.id AS flusso_id,
                 sf.codice_interno AS stato_codice_interno,
                 f.esito,
@@ -408,6 +420,7 @@ class PraticheRepository:
             FROM pratiche.pratiche p
             JOIN pratiche.template_flussi tf
               ON tf.tipo_prestazione_id = p.tipo_prestazione_id AND tf.attivo
+            LEFT JOIN pratiche.azioni_ui au ON au.id = tf.azione_ui_id
             LEFT JOIN pratiche.fn_check_chiusura_pratica(%s) cc
               ON cc.template_flusso_id = tf.id
             LEFT JOIN LATERAL (
