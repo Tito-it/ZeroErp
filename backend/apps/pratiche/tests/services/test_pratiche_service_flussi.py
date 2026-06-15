@@ -120,16 +120,56 @@ class PraticheServiceFlussiTests(SimpleTestCase):
             pratiche_service.avvia_flusso(0)
         self.assertEqual(ctx.exception.code, "E_INVALID_ID")
 
-    # Scopo: Verifica completamento flusso con esito POSITIVO.
+    # Scopo: Verifica completamento flusso con esito POSITIVO. Nessun binding
+    # evento → dispatch_handler_eventi e' un no-op (get_handler_eventi → []).
     @patch(f"{_SVC}.PraticheRepository")
     def test_completa_flusso_ok(self, MockRepo):
         repo = MockRepo.return_value
+        repo.get_flusso.return_value = _mock_flusso_row(1)
+        repo.get_handler_eventi.return_value = []
 
         pratiche_service.completa_flusso(1, esito="POSITIVO", note_esito="Tutto ok")
 
         repo.update_stato_flusso.assert_called_once_with(
             1, "COMPLETATO", esito="POSITIVO", note_esito="Tutto ok",
         )
+        # Dispatch evento COMPLETATO interrogato con l'esito effettivo.
+        repo.get_handler_eventi.assert_called_once_with(10, "COMPLETATO", "POSITIVO")
+
+    # Scopo: completamento con binding evento COMPLETATO → l'handler di dominio
+    # (es. accetta_preventivo) viene eseguito nella stessa transazione.
+    @patch("apps.pratiche.services.handler_registry.get_handler")
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_completa_flusso_dispatch_evento_completato(self, MockRepo, mock_get_handler):
+        repo = MockRepo.return_value
+        repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=9003)
+        repo.get_handler_eventi.return_value = [("vendita.accetta_preventivo", {"k": "v"})]
+        handler_instance = MagicMock()
+        mock_get_handler.return_value = MagicMock(return_value=handler_instance)
+
+        pratiche_service.completa_flusso(1, esito="POSITIVO", user="op1")
+
+        repo.get_handler_eventi.assert_called_once_with(9003, "COMPLETATO", "POSITIVO")
+        handler_instance.execute.assert_called_once()
+        kwargs = handler_instance.execute.call_args.kwargs
+        self.assertEqual(kwargs["flusso_id"], 1)
+        self.assertEqual(kwargs["pratica_id"], 1)
+        self.assertEqual(kwargs["handler_params"], {"k": "v"})
+        self.assertEqual(kwargs["user"], "op1")
+
+    # Scopo: binding seedato ma handler non in HANDLER_MAP → fail-fast (non si
+    # completa un flusso saltando silenziosamente l'azione di dominio promessa).
+    @patch("apps.pratiche.services.handler_registry.get_handler")
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_completa_flusso_handler_non_registrato(self, MockRepo, mock_get_handler):
+        repo = MockRepo.return_value
+        repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=9003)
+        repo.get_handler_eventi.return_value = [("vendita.ignoto", {})]
+        mock_get_handler.return_value = None
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.completa_flusso(1, esito="POSITIVO")
+        self.assertEqual(ctx.exception.code, "E_HANDLER_NON_REGISTRATO")
 
     # Scopo: Verifica errore con esito non valido.
     def test_completa_flusso_errore_esito_non_valido(self):

@@ -3,7 +3,10 @@
 > **Tipo**: brief di design (proposta, non specifica di contratto). Richiede l'OK
 > di Tid prima di passare a codice/DB ([[feedback_regola_del_2_estrai_bb]],
 > [[feedback_no_quick_fix_soluzione_assoluta]]).
-> **Data**: 2026-06-14 · **Stato**: 🟡 **MECCANISMO IMPLEMENTATO (preventivo); resta da estendere a offerta/contratto**
+> **Data**: 2026-06-14 · **Stato**: ✅ **CHIUSO (2026-06-15)** — meccanismo data-driven
+> implementato end-to-end sul consumatore reale (preventivo). Estensione a
+> offerta/contratto = 1 voce registry + seed quando nasceranno i loro flussi
+> (concentrico, non lavoro aperto). Dettaglio in §0.
 > **Origine**: PRA-0000171 (2° processo che chiede "eseguire l'attività dentro la
 > pratica") → trigger per promuovere il meccanismo da hardcoded a data-driven.
 
@@ -13,7 +16,7 @@
 
 - **DB**: `pratiche.azioni_ui` + `template_flussi.azione_ui_id` + seed `APRI_PREVENTIVO`
   sugli step PREVENTIVAZIONE (commit `f3c4710ca`). Vedi
-  [brief-db-ESECUZIONE](../work-done/brief-db-ESECUZIONE-azione-ui-e-contesto-cliente.md).
+  [brief-db-ESECUZIONE](brief-db-ESECUZIONE-azione-ui-e-contesto-cliente.md).
 - **BE**: flussi/percorso espongono `template_azione_ui_key`; flusso/dettaglio pratica
   espongono `billing_account_id` derivato + istanza (`pratiche_repository.py`, passthrough).
 - **FE**: registry `uiActivityRegistry.js`; `FlussoDrawer` azione generica `apri-attivita`
@@ -28,18 +31,22 @@
 1. **`APRI_OFFERTA` / `APRI_CONTRATTO`**: registry pronto, **non** seedati né wirati —
    non esistono ancora i `template_flussi` OFFERTA/CONTRATTO (concentrico: si aggiungono
    quando nasceranno quei flussi; basta 1 voce registry + seed DB).
-2. **Routing del completamento data-driven** (punto 2): brief DB scritto
-   ([brief-db-flusso-azione-completamento-data-driven.md](brief-db-flusso-azione-completamento-data-driven.md))
-   — mirror di `azioni_ui` per il completamento (token `ACCETTA_PREVENTIVO`).
-   **Attende il prerequisito DB**; finché non c'è il seed resta il fallback hardcoded
-   M2 nel `FlussoDrawer` (no regressione). Sblocca offerta/contratto.
-3. **Smoke UI E2E** runtime (non eseguibile senza app+DB+pratica reale).
+2. **Smoke UI E2E** runtime (non eseguibile senza app+DB+pratica reale).
+
+**✅ Fatto anche (punto 2 — completamento data-driven):** il DB ha consegnato
+`pratiche.template_flussi_handler_eventi` (handler per evento, esito-aware) +
+handler `vendita.accetta_preventivo`. BE: `dispatch_handler_eventi` su
+`completa_flusso`/`avvia_flusso` (evento COMPLETATO). FE: `FlussoDrawer` ora
+completa in modo **generico** (rimosso il routing M2 hardcoded — l'accept è
+server-side). Dettaglio:
+[brief-db-flusso-azione-completamento-data-driven.md](brief-db-flusso-azione-completamento-data-driven.md).
+**Offerta/contratto**: 1 riga seed (binding) quando nasceranno i loro flussi.
 
 ---
 
 ## 1. Problema
 
-Il modello ([analisi-pratiche-domini-anello3 §5.8](analisi-pratiche-domini-anello3.md))
+Il modello ([analisi-pratiche-domini-anello3 §5.8](../work-in-progress/analisi-pratiche-domini-anello3.md))
 prevede che ogni attività di dominio abbia **due punti di ingresso**: autonomo dal
 menù **e dentro un flusso di pratica**. Oggi il secondo punto di ingresso è
 **implementato ma hardcoded al solo processo PREVENTIVI** nel FE:
@@ -140,7 +147,7 @@ contesto pratica, valorizzati e **bloccati** (non possono divergere). È un conc
 distinto ma **paritetico** all'apertura del drawer, e si generalizza sugli stessi
 3 documenti. Dettaglio in:
 
-- [brief-db-pratica-preventivo-contesto-cliente.md](../work-done/brief-db-pratica-preventivo-contesto-cliente.md)
+- [brief-db-pratica-preventivo-contesto-cliente.md](brief-db-pratica-preventivo-contesto-cliente.md)
   (prerequisito DB: la pratica espone il contesto cliente risolto — BA + istanza
   coerenti — document-agnostico).
 - [brief-fe-pratica-preventivo-cliente-bloccato.md](brief-fe-pratica-preventivo-cliente-bloccato.md)

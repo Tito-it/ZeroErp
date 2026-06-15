@@ -83,7 +83,8 @@ Envelope paginata standard (`paginated_envelope`):
         "tipo_prestazione_id": 5,
         "soggetto_id": "aaa-bbb-ccc",
         "soggetto_ruolo_id": 100,
-        "istanza_utility_id": null,
+        "istanza_utility_id": 42,
+        "billing_account_id": 7,
         "stato_id": 1,
         "priorita_id": 2,
         "risorsa_umana_id": null,
@@ -143,6 +144,11 @@ Envelope paginata standard (`paginated_envelope`):
 - `is_search_endpoint = True` sulla view GET: attiva throttling `SearchBurstRateThrottle`.
 - Ordinamento GET: configurabile via `order_by`/`order_dir`, default `data_insert DESC`, tiebreaker `id`.
 - Whitelist colonne ordinamento: `codice`, `descrizione`, `data_apertura`, `data_scadenza`, `data_insert`, `tipo_prestazione_descrizione`, `stato_descrizione`, `priorita_descrizione`, `soggetto_display`, `risorsa_umana_display`.
+- (2026-06-15) Ogni riga espone `billing_account_id` **derivato** dall'istanza
+  (`script.fn_get_billing_account_by_istanza`): il BA del cliente attivo, `null` se
+  prospect. Single source of truth a DB (nessuna derivazione FE). Alimenta, aprendo
+  un documento dal flusso, l'eredità+lock cliente e il gating (offerta/contratto
+  richiedono BA). Non è un filtro di lista.
 - Paginazione offset: `COUNT(*)` + dati con `LIMIT/OFFSET`. Risposta via `paginated_envelope` (count, page, page_size, total_pages, results).
 - Parsing parametri via `parse_list_params` e `qp_int_strict` (building block core).
 

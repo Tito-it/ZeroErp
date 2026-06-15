@@ -43,11 +43,15 @@ GET restituisce i flussi ordinati per sequenza dal repository. POST delega a `pr
         "id": 5,
         "pratica_id": 1,
         "template_flusso_id": 10,
+        "template_flusso_codice": "PREVENTIVAZIONE",
+        "template_azione_ui_key": "APRI_PREVENTIVO",
         "stato_id": 1,
         "sequenza": 0,
         "esito": null,
         "data_scadenza": null,
         "meta": {},
+        "pratica_istanza_utility_id": 42,
+        "pratica_billing_account_id": 7,
         "data_insert": "2026-03-04T10:00:00+00:00",
         "user_insert": "zeroerp"
       }
@@ -84,6 +88,12 @@ GET restituisce i flussi ordinati per sequenza dal repository. POST delega a `pr
 ## Regole
 
 - GET: ordinamento `sequenza ASC, id ASC`.
+- GET (2026-06-15): ogni riga espone, oltre ai display fields, il contesto
+  data-driven per la UI: `template_azione_ui_key` (catalogo `pratiche.azioni_ui` —
+  attività/drawer di dominio apribile dal flusso; `null` se nessuna) e il contesto
+  cliente della pratica `pratica_istanza_utility_id` + `pratica_billing_account_id`
+  (BA derivato via `script.fn_get_billing_account_by_istanza`, `null` se prospect).
+  Alimentano l'apertura del documento dal flusso (eredità+lock cliente/istanza).
 - POST: `pratica_id` deve essere > 0.
 - POST (2026-06-14): `template_flusso_id` e' **obbligatorio** (> 0) — guard
   fail-fast `E_FLUSSO_VALIDATION` nel service. Chiude il path morto del vecchio

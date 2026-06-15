@@ -995,6 +995,29 @@ class PraticheRepository:
             return None
         return str(row[0]), coerce_jsonb_dict(row[1])
 
+    # Scopo: Binding handler legati a un EVENTO di flusso (template_flussi_handler_eventi).
+    # Generalizza il dispatch oltre l'avvio: per (template, evento) restituisce gli
+    # handler attivi il cui esito_richiesto combacia con l'esito effettivo (NULL =
+    # qualsiasi esito), ordinati per sequenza. Lista di (handler_key, handler_params).
+    def get_handler_eventi(
+        self, template_flusso_id: int, evento: str, esito: str | None,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        sql = """
+            SELECT hf.handler_key, tfhe.handler_params
+            FROM pratiche.template_flussi_handler_eventi tfhe
+            JOIN pratiche.handler_flussi hf ON hf.id = tfhe.handler_id
+            WHERE tfhe.template_flusso_id = %s
+              AND tfhe.evento = %s
+              AND tfhe.attivo = true
+              AND hf.attivo = true
+              AND (tfhe.esito_richiesto IS NULL OR tfhe.esito_richiesto = %s)
+            ORDER BY tfhe.sequenza, tfhe.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [template_flusso_id, evento, esito])
+            rows = cursor.fetchall()
+        return [(str(r[0]), coerce_jsonb_dict(r[1])) for r in rows]
+
     # -- TIPO PRESTAZIONE ------------------------------------------------
 
     # Scopo: Legge pre_attivazione e post_attivazione dal tipo prestazione.

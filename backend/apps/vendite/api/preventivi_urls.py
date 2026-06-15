@@ -24,7 +24,6 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventiviList,
     ApiPreventivoContestoPricing,
     ApiPreventivoDetail,
-    ApiPreventivoApprovazioneFlusso,
     ApiPreventivoCollegaPratica,
     ApiPreventivoGeneraOrdine,
     ApiPreventivoRigheSmistabiliOrdine,
@@ -92,13 +91,6 @@ urlpatterns = [
         "<int:preventivo_id>/genera-ordine/",
         ApiPreventivoGeneraOrdine.as_view(),
         name="vendite-preventivi-genera-ordine",
-    ),
-    # M2 (§8.3): completa flusso APPROVAZIONE_CLIENTE → accetta preventivo ROOT
-    # della pratica (collection-level: pratica_id + flusso_id nel body).
-    path(
-        "approvazione-flusso/",
-        ApiPreventivoApprovazioneFlusso.as_view(),
-        name="vendite-preventivi-approvazione-flusso",
     ),
     # PREVENTIVAZIONE: aggancia il preventivo come ROOT a una pratica
     path(

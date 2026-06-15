@@ -130,8 +130,9 @@ class FlussiApiTests(JwtMockedApiTest):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
+        # La view inoltra l'utente acting agli handler di completamento (p_user).
         mock_completa.assert_called_once_with(
-            5, esito="POSITIVO", note_esito="Tutto ok",
+            5, esito="POSITIVO", note_esito="Tutto ok", user=ANY,
         )
 
     # Scopo: Verifica POST avvio flusso (IN_CORSO).
