@@ -26,6 +26,65 @@ from apps.vendite.types import (
 
 # Facade servizi: mantiene firme dichiarative e delega alle classi OOP.
 
+# Scopo: Helper privato — valida i lookup ID opzionali della pipeline contro le
+#        tabelle config attive. Estratto (2ª occorrenza: run_lotto_pipeline +
+#        run_lotto_pipeline_until_done) per evitare duplicazione.
+def _validate_pipeline_lookups(
+    *,
+    tipo_doc_fiscale_id: int | None,
+    utility_id: int | None,
+    function_name: str,
+) -> None:
+    if tipo_doc_fiscale_id is not None:
+        dbops = DbopsRepository()
+        if not dbops.check_lookup_id_exists(rel="config.tipi_doc_fiscale", record_id=tipo_doc_fiscale_id):
+            ErrorManager.raise_error(
+                code="E_PIPELINE_VALIDATION",
+                message="Tipo documento fiscale non valido.",
+                detail=f"tipo_doc_fiscale_id={tipo_doc_fiscale_id} non trovato o non attivo in config.tipi_doc_fiscale",
+                context={"tipo_doc_fiscale_id": tipo_doc_fiscale_id},
+                function_name=function_name,
+            )
+    if utility_id is not None:
+        dbops = DbopsRepository()
+        if not dbops.check_lookup_id_exists(rel="config.utilities", record_id=utility_id):
+            ErrorManager.raise_error(
+                code="E_PIPELINE_VALIDATION",
+                message="Utility non valida.",
+                detail=f"utility_id={utility_id} non trovato o non attivo in config.utilities",
+                context={"utility_id": utility_id},
+                function_name=function_name,
+            )
+
+
+# Scopo: Costruisce i params del runner dai kwargs del facade (riuso single/until-done).
+def _build_pipeline_params(
+    *,
+    lotto_id: int | None,
+    competenza_mese: date | None,
+    tipo_doc_fiscale_id: int | None,
+    utility_id: int | None,
+    billing_account_id: int | None,
+    emittente_soggetto_ruolo_id: int | None,
+    lock_batch_id: str | None,
+    meta: LottoPipelineMeta | None,
+    dry_run: bool,
+    tipo_lotto: str,
+) -> LottoPipelineParams:
+    return LottoPipelineParams(
+        lotto_id=lotto_id,
+        competenza_mese=competenza_mese,
+        tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+        utility_id=utility_id,
+        billing_account_id=billing_account_id,
+        emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+        lock_batch_id=lock_batch_id,
+        meta=meta,
+        dry_run=dry_run,
+        tipo_lotto=tipo_lotto,
+    )
+
+
 # Scopo: Facade applicativa: avvia il runner pipeline lotto e restituisce lotto_id eseguito.
 def run_lotto_pipeline(
     *,
@@ -40,31 +99,14 @@ def run_lotto_pipeline(
     dry_run: bool = False,
     tipo_lotto: str = "MASSIVO",
 ) -> int:
-    """Entrypoint servizio Python per avvio pipeline lotto vendite."""
-    # Validazione lookup ID opzionali contro tabelle config attive.
-    if tipo_doc_fiscale_id is not None:
-        dbops = DbopsRepository()
-        if not dbops.check_lookup_id_exists(rel="config.tipi_doc_fiscale", record_id=tipo_doc_fiscale_id):
-            ErrorManager.raise_error(
-                code="E_PIPELINE_VALIDATION",
-                message="Tipo documento fiscale non valido.",
-                detail=f"tipo_doc_fiscale_id={tipo_doc_fiscale_id} non trovato o non attivo in config.tipi_doc_fiscale",
-                context={"tipo_doc_fiscale_id": tipo_doc_fiscale_id},
-                function_name="vendite.pipeline_service.run_lotto_pipeline",
-            )
-    if utility_id is not None:
-        dbops = DbopsRepository()
-        if not dbops.check_lookup_id_exists(rel="config.utilities", record_id=utility_id):
-            ErrorManager.raise_error(
-                code="E_PIPELINE_VALIDATION",
-                message="Utility non valida.",
-                detail=f"utility_id={utility_id} non trovato o non attivo in config.utilities",
-                context={"utility_id": utility_id},
-                function_name="vendite.pipeline_service.run_lotto_pipeline",
-            )
-    # Facade sottile: comportamento delegato al runner OOP.
+    """Entrypoint servizio Python per avvio pipeline lotto vendite (UN solo step)."""
+    _validate_pipeline_lookups(
+        tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+        utility_id=utility_id,
+        function_name="vendite.pipeline_service.run_lotto_pipeline",
+    )
     runner = LottoPipelineRunner()
-    params = LottoPipelineParams(
+    params = _build_pipeline_params(
         lotto_id=lotto_id,
         competenza_mese=competenza_mese,
         tipo_doc_fiscale_id=tipo_doc_fiscale_id,
@@ -77,6 +119,43 @@ def run_lotto_pipeline(
         tipo_lotto=tipo_lotto,
     )
     return runner.run_pipeline(params)
+
+
+# Scopo: Facade applicativa (driver F2): esegue la pipeline del lotto fino in fondo
+#        (più step concatenati) e restituisce l'esito strutturato del driver.
+def run_lotto_pipeline_until_done(
+    *,
+    lotto_id: int | None = None,
+    competenza_mese: date | None = None,
+    tipo_doc_fiscale_id: int | None = None,
+    utility_id: int | None = None,
+    billing_account_id: int | None = None,
+    emittente_soggetto_ruolo_id: int | None = None,
+    lock_batch_id: str | None = None,
+    meta: LottoPipelineMeta | None = None,
+    dry_run: bool = False,
+    tipo_lotto: str = "MASSIVO",
+) -> dict[str, object]:
+    """Entrypoint servizio Python per eseguire la catena lotto fino a conclusione."""
+    _validate_pipeline_lookups(
+        tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+        utility_id=utility_id,
+        function_name="vendite.pipeline_service.run_lotto_pipeline_until_done",
+    )
+    runner = LottoPipelineRunner()
+    params = _build_pipeline_params(
+        lotto_id=lotto_id,
+        competenza_mese=competenza_mese,
+        tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+        utility_id=utility_id,
+        billing_account_id=billing_account_id,
+        emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+        lock_batch_id=lock_batch_id,
+        meta=meta,
+        dry_run=dry_run,
+        tipo_lotto=tipo_lotto,
+    )
+    return runner.run_lotto_until_done(params)
 
 
 # Scopo: Facade applicativa: esegue un singolo step pipeline sul lotto richiesto.

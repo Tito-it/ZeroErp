@@ -417,7 +417,9 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(params[1], 1)
         self.assertEqual(params[2], 2)
         self.assertEqual(params[3], 3)
-        self.assertEqual(params[4], 1000)  # default limit
+        self.assertIsNone(params[4])  # fatturazione_immediata (default: nessun filtro)
+        self.assertEqual(params[5], 1000)  # default limit
+        self.assertIn("p_fatturazione_immediata", sql)
 
     # Scopo: Verifica che list_commesse_emittibili restituisca lista vuota se nessun risultato.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
@@ -426,6 +428,24 @@ class CommesseRepositoryUnitTests(TestCase):
         repo = CommesseRepository()
         result = repo.list_commesse_emittibili()
         self.assertEqual(result, [])
+
+    # Scopo: Verifica che list_emittibili_emittenti restituisca emittenti distinti
+    # (incluso NULL) passando il filtro fatturazione_immediata.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_list_emittibili_emittenti(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchall=[(5,), (None,), (7,)])
+        repo = CommesseRepository()
+        result = repo.list_emittibili_emittenti(
+            competenza_mese=date(2026, 6, 1),
+            utility_id=2,
+            fatturazione_immediata=True,
+        )
+        self.assertEqual(result, [5, None, 7])
+        sql = mock_cursor_factory.return_value.execute.call_args[0][0]
+        self.assertIn("DISTINCT emittente_soggetto_ruolo_id", sql)
+        self.assertIn("p_fatturazione_immediata", sql)
+        params = mock_cursor_factory.return_value.execute.call_args[0][1]
+        self.assertIs(params[4], True)  # fatturazione_immediata
 
     # Scopo: Verifica che list_commessa_attivita chiami count + fn DB e mappa le righe in dict.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")

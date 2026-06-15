@@ -831,9 +831,12 @@ class CommesseRepository:
         billing_account_id: int | None = None,
         utility_id: int | None = None,
         emittente_soggetto_ruolo_id: int | None = None,
+        fatturazione_immediata: bool | None = None,
         limit: int = 1000,
     ) -> list[int]:
-        """Chiama vendite.fn_list_commesse_emittibili e restituisce i commessa_id."""
+        """Chiama vendite.fn_list_commesse_emittibili e restituisce i commessa_id.
+        `fatturazione_immediata`: True=solo immediate, False=solo differite,
+        None=tutte (storico). Filtro usato per separare le corsie del driver."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -843,13 +846,43 @@ class CommesseRepository:
                     p_billing_account_id => %s,
                     p_utility_id => %s,
                     p_emittente_soggetto_ruolo_id => %s,
+                    p_fatturazione_immediata => %s,
                     p_limit => %s
                 )
                 """,
                 [competenza_mese, billing_account_id, utility_id,
-                 emittente_soggetto_ruolo_id, limit],
+                 emittente_soggetto_ruolo_id, fatturazione_immediata, limit],
             )
             return [row[0] for row in cursor.fetchall()]
+
+    def list_emittibili_emittenti(
+        self,
+        *,
+        competenza_mese: date | None = None,
+        utility_id: int | None = None,
+        fatturazione_immediata: bool | None = None,
+        limit: int = 10000,
+    ) -> list[int | None]:
+        """Emittenti distinti tra le commesse emittibili del perimetro/corsia.
+        Usato dal management command per creare UN lotto per emittente (la
+        numerazione fattura è per emittente). Include l'eventuale gruppo
+        emittente NULL come voce a sé."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT emittente_soggetto_ruolo_id
+                FROM vendite.fn_list_commesse_emittibili(
+                    p_competenza_mese => %s,
+                    p_billing_account_id => %s,
+                    p_utility_id => %s,
+                    p_emittente_soggetto_ruolo_id => %s,
+                    p_fatturazione_immediata => %s,
+                    p_limit => %s
+                )
+                """,
+                [competenza_mese, None, utility_id, None, fatturazione_immediata, limit],
+            )
+            return [None if row[0] is None else int(row[0]) for row in cursor.fetchall()]
 
     # --- Gruppo 3b: Lista attività commessa (paginata) ---
 

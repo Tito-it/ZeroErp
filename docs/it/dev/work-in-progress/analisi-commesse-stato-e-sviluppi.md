@@ -373,8 +373,10 @@ Quando servirà un flusso REALE con gate operativi/produzione, l'innesto è pron
 3. **🟠 ALTA — Driver orchestrazione fatturazione** (§7.4, §10): avanzamento multi-step,
    driver fino a fattura, corsie immediata (near-real-time) e differita via **systemd
    timer/cron con management command** (no pgAgent), più endpoint on-demand. *Decisioni
-   in §10.6.* **Prerequisito DB**: brief seed pipeline — step `pull_attivita_da_commessa`
-   non seedato, corsia GIORNALIERO incompleta, `chiude_lotto` (§10.5).
+   in §10.6.* Stato fasi (§10.4): **F1 ✅**, **F2 ✅**, **F3 ✅**, **F4 documentata**
+   (ricetta timer + caveat RLS; attivazione = ops) (2026-06-15); **F5** (osservabilità)
+   ancora da fare. ⚠️ Prima di attivare la RLS operatori: contesto di **sistema** per il
+   batch (§10.4 F4 caveat, §9).
 4. **🟡 MEDIA — Popolare snapshot pricing v5 nel push** (§4.3 #2): via `PricingService`.
 5. **🟡 MEDIA — Completare BoM/fan-out per sorgenti ≠ preventivo** (§4.3 #3): richiede
    brief DB per la fn di lookup componenti consumi.
@@ -389,9 +391,21 @@ Quando servirà un flusso REALE con gate operativi/produzione, l'innesto è pron
 
 ## 9. Azioni DB da passare al team (se confermate)
 
-Da formalizzare in brief separati al team DB (mai eseguite dal BE agent), **solo se le
-relative voci di roadmap vengono approvate**:
+Brief al team DB (mai eseguite dal BE agent). Stato driver fatturazione:
 
+- ✅ **FATTO** — seed pipeline pull commessa→AF + corsia GIORNALIERO + `chiude_lotto`:
+  [brief-db-pipeline-pull-commessa-seed.md](../work-done/brief-db-pipeline-pull-commessa-seed.md).
+- ✅ **FATTO** — filtro `fatturazione_immediata` nella discovery emittibili
+  (prerequisito Fase 3, §10.4):
+  [brief-db-emittibili-filtro-fatturazione-immediata.md](../work-done/brief-db-emittibili-filtro-fatturazione-immediata.md).
+
+Altri (solo se le relative voci di roadmap vengono approvate):
+
+- 🟠 **da fare insieme all'attivazione RLS operatori** — contesto di **sistema** per il
+  batch fatturazione (cron): ruolo dedicato `BYPASSRLS` **oppure** una policy permissiva
+  di sistema (`ruolo_applicativo='SISTEMA'`) su `fatturazione_lotti`/famiglia fatture. Senza, il batch
+  (non operatore) verrebbe default-deny quando la RLS è enforced (§10.4 F4 caveat). Non
+  ora (RLS oggi dry-run).
 - (eventuale) colonna `fase_lavorazione_id bigint NULL` senza FK su `commesse_attivita`
   — solo se si sceglie lo scaffolding esplicito invece del `meta` jsonb (§6.2);
 - fn di lookup componenti per `HandlerConsumi` (§4.3 #3);
@@ -479,37 +493,100 @@ Catalogo task pipeline già registrati (handler_registry, executor righe 39-50):
 Pipeline reali seedate (MASSIVO): DRAFT(select+generate) → EMESSA(fondi+iva) →
 DEFINITIVA(numera) → INVIATA(prepare_sdi). Catalogo ordinato per `stato_doc_fiscale.ordine`.
 
-**Fase 1 — BE: avanzamento multi-step nel percorso di successo.**
-- Generalizzare la risoluzione step in `run_pipeline`: calcolare l'indice corrente da
-  `lotto_stato_doc_corrente` e prendere lo step **successivo** anche in successo (non
-  solo nel rerun-errore), mantenendo `steps[:1]` come "uno step per chiamata".
-- Attenzione a non rompere il comportamento di rerun-errore esistente e al primo run
-  (stato iniziale del lotto). Test mirati (mock repository): primo step, avanzamento,
-  ultimo step con `chiude_lotto`, no-op a catena esaurita.
+**Fase 1 — ✅ FATTA (2026-06-15): avanzamento multi-step nel percorso di successo.**
+- `_resolve_steps_for_rerun` → generalizzata in **`_resolve_steps_for_run`**
+  ([pipeline_runner.py](../../../../backend/apps/vendite/services/pipeline_runner.py)):
+  rerun-errore invariato (`steps[current_index:]`); su **lotto esistente in successo**
+  avanza allo step **successivo** (`steps[current_index+1:]`); primo run / lotto appena
+  creato (lotto_id non passato) → primo step. Discriminante: `is_existing_lotto_request`
+  (l'errore-rerun resta su `job_stato==ERRORE`, indipendente).
+- Test: **25 verdi** (`test_pipeline_runner` + `test_pipeline_service`), inclusi i 2
+  nuovi (`..._success_advances_to_next_step`, `..._success_at_last_step_is_noop`) e tutti
+  gli esistenti su rerun-errore/successo preservati.
 
-**Fase 2 — BE: driver "run fino a fine" + esito strutturato.**
-- Servizio `run_lotto_until_done(params)` che chiama `run_pipeline` finché: lotto chiuso
-  / nessuno step successivo / `blocks_next_step` / errore. Ritorna esito
-  `{lotto_id, stato_finale, step_eseguiti, motivo_stop, segnalazioni}`.
-- Endpoint per **avvio on-demand** (operatore) accanto a `pipeline/run` esistente
-  (es. `pipeline/run-until-done/`), con `dry_run` supportato.
-- Test: catena completa fino a numerazione; stop su gate critical; stop su errore;
-  idempotenza (ri-lancio su lotto già chiuso = no-op).
+**Fase 2 — ✅ FATTA (2026-06-15): driver "run fino a fine" + esito strutturato + endpoint.**
+- `LottoPipelineRunner.run_lotto_until_done(params)`
+  ([pipeline_runner.py](../../../../backend/apps/vendite/services/pipeline_runner.py)):
+  chiama `run_pipeline` (1 step/chiamata) finché — step di **chiusura** (`chiude_lotto`,
+  cioè DEFINITIVA per scelta D3, **prima** di SDI), **nessun avanzamento** residuo,
+  **blocco critical** (`E_PIPELINE_LOTTO_CRITICAL`) o **errore**. Guard anti-loop
+  (`_MAX_STEP_ITERATIONS=50`). **Non** chiude il lotto direttamente (lo fa
+  `_process_close_lotto_by_flag` dentro `run_pipeline`) → niente doppia chiusura.
+  Esito: `{lotto_id, stato_lotto, stato_doc_fiscale_id, step_eseguiti, motivo_stop}`
+  (`COMPLETATO` / `BLOCCATO_CRITICITA` / `ERRORE` / `GUARD_MAX_ITER`); non solleva sui
+  motivi di stop noti (solo errore al primo run su lotto nuovo propaga).
+- Facade [pipeline_service.py](../../../../backend/apps/vendite/services/pipeline_service.py)
+  `run_lotto_pipeline_until_done(...)` + estrazione `_validate_pipeline_lookups`/
+  `_build_pipeline_params` (DRY con `run_lotto_pipeline`).
+- Endpoint on-demand **`POST /api/v1/vendite/pipeline/run-until-done/`**
+  (`ApiRunLottoPipelineUntilDone`), idempotency-key + `dry_run`, esito strutturato.
+- Test: **43 verdi**, inclusi i 3 nuovi (avanzamento+stop su `chiude_lotto`; stop
+  no-progress senza flag; `BLOCCATO_CRITICITA` su lotto esistente) + schema OpenAPI ok.
 
-**Fase 3 — BE: management command parametrico (corsie).**
-- Comando `run_fatturazione_batch` (pattern come
-  [send_pending_emails.py](../../../../backend/apps/core/management/commands/send_pending_emails.py)):
-  parametri `--modalita immediata|differita`, `--competenza`, filtri perimetro,
-  `--dry-run`. Flusso: discovery commesse emittibili (`fn_list_commesse_emittibili`) →
-  (per perimetro) crea lotto → `run_lotto_until_done`. Best-effort per-lotto con report
-  aggregato; nessuna criticità di un lotto blocca gli altri.
+**Fase 3 — ✅ FATTA (2026-06-15): management command + filtro corsia.**
+Prerequisito DB soddisfatto: `fn_list_commesse_emittibili` ora accetta
+`p_fatturazione_immediata` (true/false/NULL) ed espone la colonna (pushato su
+`dev/db-tid`, pgTAP verde — brief
+[brief-db-emittibili-filtro-fatturazione-immediata.md](../work-done/brief-db-emittibili-filtro-fatturazione-immediata.md)).
+- **Propagazione filtro (come da consiglio team DB: decide il driver, non l'handler)**:
+  il command mette `fatturazione_immediata` nel **`meta` del lotto**; `get_lotto_context`
+  lo espone (`LottoContext.fatturazione_immediata`); il pull
+  ([pipeline_step_executor.py](../../../../backend/apps/vendite/services/pipeline_step_executor.py))
+  lo passa a `list_commesse_emittibili`. Nessuna mappatura `tipo_lotto→filtro` sparsa
+  nell'handler.
+- **Repo** ([commesse_repository.py](../../../../backend/apps/vendite/db/commesse_repository.py)):
+  `list_commesse_emittibili(..., fatturazione_immediata=...)` + nuova
+  `list_emittibili_emittenti(...)` (emittenti distinti per la corsia/perimetro).
+- **Command** `run_fatturazione_batch`
+  ([run_fatturazione_batch.py](../../../../backend/apps/vendite/management/commands/run_fatturazione_batch.py)):
+  `--modalita immediata|differita` (→ GIORNALIERO+True / MASSIVO+False), `--competenza`
+  (default 1° del mese), `--emittente-id`, `--utility-id`, `--dry-run`, `--limit`.
+  Flusso: discovery emittenti → **un lotto per emittente** → `run_lotto_pipeline_until_done`,
+  best-effort (un emittente in errore non blocca gli altri) + report aggregato.
+  `--dry-run` = solo discovery/conteggio (nessun lotto creato).
+- Test: **104 verdi** (repo filtro+emittenti, command immediata/differita/dry-run/best-effort,
+  pull handler invariato via MagicMock, sweep commesse/pipeline).
 
-**Fase 4 — Scheduling (DECISO: systemd timer/cron).**
+> **Catch-up corsia immediata** (nota team DB): una commessa immediata il cui run
+> giornaliero fallisce **non** è ripresa dalla differita (filtro stretto) → il **timer
+> frequente** della corsia immediata (F4) fa da catch-up: al giro successivo la commessa,
+> ancora emittibile, viene ripresa.
+
+**Fase 4 — Scheduling (DOCUMENTATO 2026-06-15; esecuzione = ops sul server).**
+Nel repo **non** ci sono artefatti systemd/cron committati (come `send_pending_emails`):
+lo scheduling è config d'ambiente. F4 = ricetta + caveat RLS; l'attivazione la fa l'ops.
 - **systemd timer/cron** che lancia `manage.py run_fatturazione_batch` (solo BE/infra,
   nessun DB). **pgAgent escluso** (riservato a manutenzione DB).
-- Due timer: **immediata** (frequente, near-real-time, es. ogni 1-2 min) e **differita**
-  (mensile su competenza). In più: endpoint **on-demand** per avvio da interfaccia
-  operatore (già previsto in Fase 2).
+- **Due cadenze**:
+  - immediata (near-real-time, es. `OnCalendar=*:0/2` ≈ ogni 2 min):
+    `manage.py run_fatturazione_batch --modalita immediata` — il giro frequente fa anche
+    da **catch-up** per i fallimenti transitori;
+  - differita (mensile, es. `OnCalendar=*-*-01 02:00`):
+    `manage.py run_fatturazione_batch --modalita differita`.
+- In più: endpoint **on-demand** `pipeline/run-until-done/` per avvio da interfaccia
+  operatore (Fase 2).
+
+> **⚠️ Caveat RLS (verificato 2026-06-15)**: `zeroerp_app` è `NOBYPASSRLS`;
+> `vendite.fatturazione_lotti` ha RLS `ENABLE` (no FORCE) con **una sola policy**
+> `rls_fatturazione_lotti_ef_whitelist` che concede **solo** a sessioni
+> `app.ruolo_applicativo='OPERATORE'` con emittente in whitelist. Oggi la RLS è
+> **dry-run/dormiente** → il batch da cron (senza GUC) **funziona senza utente**.
+> **Ma** quando la RLS operatori sarà *enforced*, il batch (processo di **sistema**, non
+> operatore, deve vedere **tutti** gli emittenti) verrebbe **default-deny** → SELECT
+> vuoti + INSERT lotto negato. **Prima dell'attivazione RLS** serve un **contesto di
+> sistema** per il batch (ruolo dedicato `BYPASSRLS` **oppure** `ruolo_applicativo='SISTEMA'`
+> + policy permissiva di sistema): decisione DB (brief) da fare insieme
+> all'[attivazione RLS operatori](../work-done/analisi-attivazione-rls-operatori-be-fe.md),
+> **non ora**.
+
+Esempio unit systemd (riferimento, da posizionare in ambiente, non committato):
+
+```ini
+# fatturazione-immediata.service  → ExecStart=.../manage.py run_fatturazione_batch --modalita immediata
+# fatturazione-immediata.timer    → [Timer] OnCalendar=*:0/2  Persistent=true
+# fatturazione-differita.service  → ExecStart=.../manage.py run_fatturazione_batch --modalita differita
+# fatturazione-differita.timer    → [Timer] OnCalendar=*-*-01 02:00  Persistent=true
+```
 
 **Fase 5 — Osservabilità & hold (riuso, minimo).**
 - Riusare `lotti/<id>/segnalazioni/`, `task-runs/`, `event_log`. Hold/sblocco già
@@ -518,11 +595,14 @@ DEFINITIVA(numera) → INVIATA(prepare_sdi). Catalogo ordinato per `stato_doc_fi
 
 ### 10.5 Cosa serve dal DB — brief NECESSARIO (confermato in Fase 0)
 
-La verifica seed (§10.4 F0) ha trovato gap che **bloccano** il driver: serve un brief
-al team DB (azioni di seed/config = DB, mai eseguite dal BE agent — memoria
-`feedback_db_actions_passaggio_team`). → Brief redatto:
-[brief-db-pipeline-pull-commessa-seed.md](brief-db-pipeline-pull-commessa-seed.md).
-Contenuto del brief:
+La verifica seed (§10.4 F0) ha trovato gap che bloccavano il driver: brief al team DB
+(azioni di seed/config = DB, mai eseguite dal BE agent — memoria
+`feedback_db_actions_passaggio_team`). → ✅ **IMPLEMENTATO dal team DB (2026-06-15)**,
+pushato, pgTAP verde:
+[brief-db-pipeline-pull-commessa-seed.md §0](../work-done/brief-db-pipeline-pull-commessa-seed.md)
+(contiene anche i **vincoli BE** per il driver: idempotenza `close_lotto_operativo` su
+DEFINITIVA ora `chiude_lotto`, e perimetro del pull dal `LottoContext`). Il prerequisito
+DB del driver (roadmap §8 #3) è **soddisfatto**. Contenuto richiesto (storico):
 
 1. **Seed step `pull_attivita_da_commessa`** nella pipeline (es. nuovo step prima di
    `select_attivita` nel DRAFT, o step dedicato), per MASSIVO **e** GIORNALIERO. È il
