@@ -3,6 +3,7 @@
 ## 📚 Tabelle
 - [allegati_flussi](tabelle/allegati_flussi.md) — La tabella `pratiche.allegati_flussi` gestisce i **file allegati** a un flusso specifico. Struttura identica a `allegati_pratiche` ma collegata al singolo step di workflow anziche' alla pratica.
 - [allegati_pratiche](tabelle/allegati_pratiche.md) — La tabella `pratiche.allegati_pratiche` gestisce i **file allegati** a una pratica. Gli allegati sono **immutabili**: non vengono modificati ma versionati tramite `allegato_padre_id`.
+- [azioni_ui](tabelle/azioni_ui.md) — La tabella `pratiche.azioni_ui` e' il **catalogo delle attivita' UI lanciabili dal flusso di pratica**. E' lo **specchio lato frontend** del registry handler (`pratiche.handler_flussi`):
 - [calcoli_tempo](tabelle/calcoli_tempo.md) — Tabella di calcolo persistente: misura il tempo impiegato per transitare dal completamento di `flusso_da` al completamento di `flusso_a`. Alimentata automaticamente dal trigger `trgfn_flussi_calcolo_tempo_completamento` a due fasi (avvio + chiusura).
 - [competenze_flussi](tabelle/competenze_flussi.md) — Matrice delle competenze: definisce per ogni tipo di flusso (template) e reparto (unita' organizzativa), quali operatori (risorse umane) sono abilitati a eseguire quel tipo di flusso.
 - [flussi](tabelle/flussi.md) — La tabella `pratiche.flussi` contiene le **istanze operative dei flussi** di una pratica. Ogni flusso e' uno step del workflow, creato da un template (opzionale) o manualmente, con stato, esito e assegnazione propri.

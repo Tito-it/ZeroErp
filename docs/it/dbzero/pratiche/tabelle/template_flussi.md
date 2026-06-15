@@ -23,6 +23,7 @@
 | handler_params | jsonb | NO | '{}'::jsonb |
 | ripetibilita | character varying | NO | 'SE_NON_POSITIVO'::character varying |
 | chiude_pratica | boolean | NO | false |
+| azione_ui_id | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -30,6 +31,7 @@
 | CHECK | chk_template_flussi_chiusura_obbligatorio |  |
 | CHECK | chk_template_flussi_direzione |  |
 | CHECK | chk_template_flussi_ripetibilita |  |
+| FOREIGN KEY | fk_template_flussi_azione_ui | azione_ui_id |
 | FOREIGN KEY | fk_template_flussi_handler | handler_id |
 | FOREIGN KEY | fk_template_flussi_tipo_prestazione | tipo_prestazione_id |
 | PRIMARY KEY | pk_pratiche_template_flussi | id |

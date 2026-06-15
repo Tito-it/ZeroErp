@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_get_billing_account_by_istanza — resolver di lettura del
+# billing account del cliente attivo per una istanza utility.
+# Specchio di script.fn_get_stato_cliente_by_istanza (stesso schema,
+# stessa forma _by_istanza, stessa derivazione via anagrafiche.clienti).
+#
+# Serve alla pratica per esporre, sul documento collegato aperto dal
+# flusso (preventivo/offerta/contratto), il billing_account_id gia'
+# risolto dal proprio contesto (brief-db-pratica-preventivo-contesto-
+# cliente). Il BE proietta il campo nel dettaglio pratica:
+#   script.fn_get_billing_account_by_istanza(p.istanza_utility_id)
+# senza alcuna derivazione di dominio lato BE/FE.
+#
+# Coerenza (istanza, BA): garantita STRUTTURALMENTE dalla FK
+# fk_clienti_billing_account (billing_account_id, istanza_utility_id)
+# di anagrafiche.clienti — il BA ritornato appartiene per costruzione
+# all'istanza richiesta. Non serve invocare
+# script.fn_check_utility_istanza_coerenza.
+#
+# Semantica NULL (non raise): NULL/<=0 in input o istanza prospect
+# (nessun cliente) -> NULL. "Manca il billing account" e' una risposta
+# legittima (prospect), non un errore; allineato al fratello
+# fn_get_stato_cliente_by_istanza (deroga consapevole alla regola
+# generica "ID NULL/<=0 -> errore", valida per i punti di mutazione).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260615-03-create-fn-get-billing-account-by-istanza-mctit.yaml
+
+  - changeSet:
+      id: 20260615-03-create-fn-get-billing-account-by-istanza
+      author: mctit
+      runOnChange: true
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        fn_get_billing_account_by_istanza: billing_account_id del cliente
+        attivo per l'istanza utility, NULL se prospect. Specchio di
+        fn_get_stato_cliente_by_istanza. Coerenza (istanza,BA) garantita
+        dalla FK clienti.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- DROP+CREATE (non CREATE OR REPLACE): rende il changeSet
+              -- runOnChange robusto a eventuali variazioni di firma.
+              DROP FUNCTION IF EXISTS script.fn_get_billing_account_by_istanza(bigint);
+
+              CREATE FUNCTION script.fn_get_billing_account_by_istanza(
+                  p_istanza_id anagrafiche.istanze_utilities.id%TYPE
+              )
+              RETURNS anagrafiche.clienti.billing_account_id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  -- Tipo ancorato alla colonna sorgente (%TYPE): segue
+                  -- automaticamente eventuali cambi di tipo del BA.
+                  v_billing_account_id anagrafiche.clienti.billing_account_id%TYPE;
+              BEGIN
+                  -- =====================================================
+                  -- Scopo:
+                  --   Dato l'id di una istanza utility, restituire il
+                  --   billing account del cliente attivo su quell'istanza.
+                  --   NULL se l'istanza non ha cliente (prospect puro):
+                  --   il preventivo ammette BA nullo, offerta/contratto
+                  --   sono gated lato FE (requiresActiveClient).
+                  -- =====================================================
+
+                  -- Guard input esplicito (resolver di lettura): NULL o
+                  -- valore non valido -> NULL, niente raise. Allineato al
+                  -- comportamento di fn_get_stato_cliente_by_istanza.
+                  IF p_istanza_id IS NULL OR p_istanza_id <= 0 THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- anagrafiche.clienti ha UNIQUE(istanza_utility_id) ->
+                  -- al piu' 1 riga per istanza. ORDER BY id DESC + LIMIT 1
+                  -- e' difensivo (idempotente rispetto all'unicita').
+                  SELECT c.billing_account_id
+                    INTO v_billing_account_id
+                    FROM anagrafiche.clienti c
+                   WHERE c.istanza_utility_id = p_istanza_id
+                   ORDER BY c.id DESC
+                   LIMIT 1;
+
+                  RETURN v_billing_account_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_billing_account_by_istanza(bigint)
+              IS 'Resolver di lettura: billing_account_id del cliente attivo per l''istanza utility, NULL se prospect (nessun cliente) o input NULL/<=0. Specchio di fn_get_stato_cliente_by_istanza. Coerenza (istanza,BA) garantita dalla FK fk_clienti_billing_account. Consumata dal dettaglio pratica (contesto cliente per i documenti aperti dal flusso).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_billing_account_by_istanza(bigint);
