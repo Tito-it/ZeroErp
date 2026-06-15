@@ -5,6 +5,7 @@
 Approfondimento tabelle:
 >
 [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
+> [pratiche.template_flussi_handler_eventi](/dbzero/pratiche/tabelle/template_flussi_handler_eventi)
 
 ---
 ### 🎯 Scopo Principale
@@ -14,9 +15,10 @@ La tabella `pratiche.handler_flussi` e' il **registry degli handler flusso**. Og
 
 ### Ruolo nel processo
 
-* I template flussi con `handler_id NOT NULL` delegano l'esecuzione a un handler automatico.
+* I template flussi con `handler_id NOT NULL` delegano l'esecuzione a un handler automatico (su evento **IN_CORSO**).
 * I template con `handler_id NULL` rappresentano **step manuali** (completati dall'operatore).
 * Il campo `handler_key` e' la chiave usata da Django per risolvere la classe Python associata.
+* Gli handler non scattano più solo all'avvio: il legame [`template_flussi_handler_eventi`](/dbzero/pratiche/tabelle/template_flussi_handler_eventi) permette di eseguire un handler anche al **COMPLETATO** di uno step, **esito-aware** (es. `vendita.accetta_preventivo` su `APPROVAZIONE_CLIENTE` COMPLETATO/POSITIVO). Stesso registry, stesso `HANDLER_MAP`. In Fase 2 anche l'esecuzione IN_CORSO (oggi su `template_flussi.handler_id`) confluirà in quella tabella.
 
 ---
 

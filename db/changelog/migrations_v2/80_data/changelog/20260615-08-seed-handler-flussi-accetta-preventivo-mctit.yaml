@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed pratiche.handler_flussi: handler 'vendita.accetta_preventivo'
+# (id=9002). E' l'azione di COMPLETATO del flusso APPROVAZIONE_CLIENTE:
+# accetta il preventivo collegato quando l'esito e' POSITIVO. Riusa il
+# service gia' dietro l'endpoint M2 (approvazione-flusso). Mappato in
+# HANDLER_MAP lato BE in Fase 2.
+# CSV separato (additivo): non tocca handler_flussi.csv gia' mergiato.
+# Deve caricare PRIMA del binding (FK fk_tfhe_handler): ordine NN 08 < 09.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260615-08-seed-handler-flussi-accetta-preventivo-mctit.yaml
+
+  - changeSet:
+      id: 20260615-08-seed-handler-flussi-accetta-preventivo
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: handler_flussi
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/handler_flussi_accetta_preventivo.csv
+            tableName: handler_flussi
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: handler_key, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Allineamento sequenza autoincrement post-seed (max id seed 9002).
+              SELECT setval(
+                  pg_get_serial_sequence('pratiche.handler_flussi', 'id'),
+                  GREATEST(COALESCE(MAX(id), 1), 1),
+                  true
+              ) FROM pratiche.handler_flussi;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM pratiche.handler_flussi
+               WHERE handler_key = 'vendita.accetta_preventivo';

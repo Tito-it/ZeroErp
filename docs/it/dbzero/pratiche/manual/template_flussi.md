@@ -7,6 +7,7 @@ Approfondimento tabelle:
 [pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione)
 > [pratiche.handler_flussi](/dbzero/pratiche/tabelle/handler_flussi)
 > [pratiche.azioni_ui](/dbzero/pratiche/tabelle/azioni_ui)
+> [pratiche.template_flussi_handler_eventi](/dbzero/pratiche/tabelle/template_flussi_handler_eventi)
 > [pratiche.template_flussi_prerequisiti](/dbzero/pratiche/tabelle/template_flussi_prerequisiti)
 > [pratiche.template_flussi_canali](/dbzero/pratiche/tabelle/template_flussi_canali)
 > [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)

@@ -1,0 +1,3 @@
+id,template_flusso_id,evento,esito_richiesto,handler_id,handler_params,sequenza,attivo,data_insert,user_insert
+9001,9003,COMPLETATO,POSITIVO,9002,{},0,t,2026-06-15 00:00:00+02,SEED
+9002,9007,COMPLETATO,POSITIVO,9002,{},0,t,2026-06-15 00:00:00+02,SEED
