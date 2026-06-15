@@ -15,3 +15,4 @@ id,task_registry_id,implementation_key,handler_code,is_default,attivo,meta,data_
 14,14,default,normalizza_attivita_default,true,true,{},2026-02-22 15:30:00+01,titodb,,
 15,15,default,valida_attivita_default,true,true,{},2026-02-22 15:30:00+01,titodb,,
 16,16,default,deduplica_attivita_default,true,true,{},2026-02-22 15:30:00+01,titodb,,
+17,17,default,pull_attivita_da_commessa_default,true,true,{},2026-06-15 09:00:00+02,titodb,,
