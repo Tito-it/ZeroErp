@@ -4,7 +4,8 @@
 > Spiega *cosa* serve e *perché*; il *come* (nome colonna/indice/constraint,
 > changeset, strategia backfill) è scelta del team DB.
 >
-> **Data**: 2026-06-16 · **Stato**: 🟦 APERTO (da valutare/implementare)
+> **Data**: 2026-06-16 · **Stato**: 🟨 IMPLEMENTATO (changeset SCRITTI, non ancora
+> applicati) — vedi §6 per le decisioni prese e i deliverable.
 >
 > **Origine/Design**: [brief-design-aggancio-documento-flusso.md](brief-design-aggancio-documento-flusso.md).
 > **Prerequisito di**: refactor BE/FE "aggancio documento↔flusso" (non iniziano
@@ -84,4 +85,41 @@ completare all'emissione. Spostando l'ancora sul flusso, il modello diventa esat
   all'apertura del documento: **solo FE**.
 - Allineamento handler `accetta_preventivo`/`push_preventivo` a risolvere per-flusso:
   **solo BE**, opzionale/non bloccante.
+
+## 6. Implementazione DB (2026-06-16)
+
+**Decisioni prese** (§4):
+
+- **Granularità vincolo**: solo `flusso_id` (NON `+sorgente_tipo_id`). Un flusso = una
+  attività UI = un documento → "max 1 ROOT per flusso" è la garanzia corretta;
+  includere `sorgente_tipo_id` ammetterebbe due ROOT di tipi diversi sullo stesso
+  flusso, indebolendo il punto 1 del design.
+- **Vincolo per-pratica** `uq_..._pratica_tipo_uid_ruolo`: **mantenuto** (il BE ci fa
+  `ON CONFLICT` per l'idempotenza). Coesiste senza conflitto con il per-flusso.
+- **Aggiunta oltre il brief**: guard trigger di coerenza `pratica_id ↔
+  flussi.pratica_id` — la FK garantisce solo che `flusso_id` punti a un flusso
+  esistente, non che sia un flusso *di quella pratica*. Un `CHECK` non può fare
+  subquery cross-tabella → guard fail-fast (scatta solo se `flusso_id IS NOT NULL`;
+  flusso inesistente → lascia sollevare la FK).
+- **Backfill**: NON eseguito (no produzione, dato dbdev rigenerabile).
+
+**Deliverable** (changeset SCRITTI, non applicati — numerazione globale per data):
+
+- `00_schema/pratiche/20260616-04-alter-pratiche-sorgenti-add-flusso-id` — colonna
+  `flusso_id` (FK → `pratiche.flussi`, `ON DELETE RESTRICT`, nullable) + indice unico
+  parziale `uq_pratiche_sorgenti_flusso_root` (`WHERE ruolo_link='ROOT' AND flusso_id
+  IS NOT NULL`).
+- `20_code/pratiche/20260616-05-create-trgfn-pratiche-sorgenti-guard-coerenza-flusso`
+  — `trgfn_pratiche_sorgenti_guard_coerenza_flusso` + trigger
+  `trg_pratiche_sorgenti_a10_guard_coerenza_flusso_ins_upd`.
+- `80_data/changelog/20260616-06-upsert-messaggi-errore-sorgenti-flusso-incoerente` +
+  riga CSV `PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE` (id 493).
+- pgTAP: `db/pgtap/pratiche/test-pratiche-sorgenti-flusso.sql` (13 asserzioni).
+
+**Nota rollout**: l'indice parziale morde solo quando `flusso_id` è valorizzato; il BE
+oggi non lo propaga → fino al refactor BE/FE il vincolo "doppio ROOT impossibile" copre
+solo lo storico già agganciato. È *abilitazione* del fix, non fix completo finché il BE
+non passa `flusso_id`.
+
+**Aperto lato Tid**: applicazione changeset + run pgTAP sul DB.
 </content>
