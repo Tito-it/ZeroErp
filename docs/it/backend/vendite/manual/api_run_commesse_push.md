@@ -63,6 +63,41 @@ View: `ApiRunCommessePush` `ApiRunCommessePush` (`apps.vendite.api.views`).
 - La lista delle sorgenti processabili è dinamica: attivazione/disattivazione gestita in `config.sorgenti` senza deploy backend.
 - Il risultato per handler include contatori `created`, `updated`, `skipped` e lista `errors`.
 
+## Comportamento snapshot pricing v5 + fan-out compositi (2026-06)
+
+Il push, oltre a creare commessa e righe, arricchisce e materializza:
+
+- **Snapshot audit pricing v5** — per ogni riga il push popola su `commesse_attivita`
+  8 colonne di **derivazione del prezzo** (`prezzo_base_snapshot`, `origine_prezzo`,
+  `tipo_variazione_applicata`, `valore_variazione_applicata`, `promo_id`, `contratto_id`,
+  `categoria_cliente_id_snapshot`, `classe_utenza_id_snapshot`), ricostruite via
+  `PricingService.resolve_prezzo` (`fn_resolve_prezzo_listino_v2`). Caratteristiche:
+  - **`prezzo_snapshot` (prezzo negoziato) resta autoritativo**: NON viene sovrascritto;
+    l'audit è puramente diagnostico (ricostruzione della derivazione alla data di
+    competenza, può divergere da un prezzo negoziato manualmente);
+  - **best-effort**: input insufficienti (es. consumi senza articolo/uom) o errore
+    resolver → audit a `NULL`, il push NON si blocca;
+  - **whitelist `origine_prezzo`**: un valore fuori dal CHECK DB (es. resolver
+    `LISTINO_BUNDLE`) viene normalizzato a `NULL` invece di far fallire l'upsert;
+  - per i **componenti BoM** l'`origine_prezzo` già negoziato (in `meta`) prevale sulla
+    ricostruzione del resolver;
+  - **propagazione a valle**: la pull `fn_emit_attivita_fatturabili_da_commessa`
+    (changeset DB `20260616-01`) copia le 8 colonne 1:1 su `attivita_fatturabili`, quindi
+    l'audit è completo fino al livello di emissione.
+- **Fan-out compositi (modello unico)** — un articolo composito entra in commessa come
+  N righe componente, leggendo i componenti negoziati dalla rispettiva tabella
+  `*_righe_componenti`. Vale ora per **tutte** le sorgenti documento (preventivi,
+  ordini, contratti, DDT) tramite lo stesso `BoMComponentExpander` + loader snapshot.
+- **Consumi utility (gas/energia/acqua/…)**: la decomposizione tariffaria
+  (energia/trasporto/oneri/…) è **rimandata** (decisione 2026-06-16); un consumo entra
+  in commessa come **riga singola** (nessun fan-out).
+- **Punto d'innesto fasi di lavorazione**: `BaseSourceHandler._pre_commessa_hook(row)`
+  (default identity) è il gancio dove una futura fase di lavorazione precederebbe la
+  creazione commessa; oggi nessun effetto.
+
+> Nessuna modifica al **contratto HTTP** (input/output invariati): cambia solo il
+> contenuto materializzato a valle.
+
 ## Dipendenze DB
 
 - `vendite.fn_list_preventivi_da_pushare`
@@ -71,6 +106,9 @@ View: `ApiRunCommessePush` `ApiRunCommessePush` (`apps.vendite.api.views`).
 - `vendite.fn_list_ddt_da_pushare`
 - `vendite.fn_list_consumi_da_pushare`
 - `vendite.fn_get_or_create_commessa`
-- `vendite.fn_upsert_commessa_attivita`
+- `vendite.fn_upsert_commessa_attivita` (riceve le 8 colonne snapshot audit)
+- `vendite.fn_resolve_prezzo_listino_v2` (via `PricingService`, per l'audit snapshot v5)
 - `vendite.commesse_push_log` (log esecuzione)
 - Advisory lock: `pg_try_advisory_lock(hashtext('commesse_push_orchestrator'))`
+- A valle (pull, non chiamata dal push): `vendite.fn_emit_attivita_fatturabili_da_commessa`
+  propaga le 8 colonne audit su `attivita_fatturabili` (changeset `20260616-01`).

@@ -200,8 +200,8 @@ mostrano solo un toast con `push_log_id`, **senza link alla commessa risultante*
 | # | Gap | Area | Impatto |
 |---|---|---|---|
 | 1 | Nessuno scheduler/cron + pipeline "uno step per run" (`steps[:1]`) | TRASVERSALE | La fatturazione non è autonoma: serve un driver che concateni gli step (vedi §7) |
-| 2 | Snapshot pricing v5 **non popolato** dal push (8 colonne audit a `None`; solo `prezzo_snapshot` fluisce — [commesse_source_handlers.py:463-491](../../../../backend/apps/vendite/services/commesse_source_handlers.py#L463)) | BE | Audit prezzo incompleto lungo la catena fino alla fattura |
-| 3 | BoM cablata solo per HandlerPreventivi; `HandlerConsumi._fetch_componenti` è stub `return []` | BE | Compositi/consumi non materializzati in righe componente per sorgenti ≠ preventivo |
+| 2 | ✅ **FATTO END-TO-END (2026-06-16)** — Snapshot pricing v5: il push popola gli 8 campi audit su `commesse_attivita` (`BaseSourceHandler._resolve_pricing_audit` via `PricingService`, senza sovrascrivere `prezzo_snapshot`; best-effort, cache per-run, whitelist `origine_prezzo` contro il CHECK, origine da meta prevale per i componenti). La **pull** `fn_emit_attivita_fatturabili_da_commessa` ora li **propaga 1:1** ad `attivita_fatturabili` (changeset DB `20260616-01`, brief [work-done/brief-db-propaga-snapshot-pricing-pull-commessa-af.md](../work-done/brief-db-propaga-snapshot-pricing-pull-commessa-af.md)). | BE✅ + DB✅ | Audit prezzo completo: push → commessa → emissione |
+| 3 | ✅ **COMPOSITI FATTI (2026-06-15)** — il fan-out BoM usa ora il **modello unico** `*_righe_componenti` per **tutti** i documenti: estratto `BaseSourceHandler._componenti_repo_factory` (staticmethod) → ordini/contratti/DDT leggono i componenti negoziati come preventivi (no DB, le tabelle + mixin esistevano già; nuovo `DdtRepository` minimale). 🛑 **Consumi utility (gas/energia/acqua/…) — RIMANDATO, NON si fa ora (decisione Tid 2026-06-16)**: `attivita_consumi` è un totale piatto senza `*_righe_componenti`; la decomposizione tariffaria (energia/trasporto/oneri/quota fissa/accise) è un **modello DB dedicato** da progettare quando la fatturazione utility per-voce diventerà priorità. Oggi un consumo entra in commessa come **riga singola** (`_fetch_componenti` resta stub documentato, nessun fan-out). | BE✅ compositi / 🛑 consumi rimandato | Compositi ok per ogni sorgente; decomposizione utility fuori scope ora |
 | 4 | `fn_available_actions_commessa` inesistente + nessun innesco per CHIUSA / riapertura / ANNULLATA | TRASVERSALE | Ciclo di vita post-PRONTA non governabile: macchina stati per metà inerte |
 | 5 | ✅ **RISOLTO (2026-06-15)** — `fn_get_commessa_stato` esponeva flag governance + molti contatori, ma il repo BE ne leggeva solo 3 | BE | Ora `ApiCommessaStato` propaga stato + flag + tutti i contatori (74 test verdi) |
 | 6 | Discrepanza nome codice errore: brief cita `E_COMMESSA_TRANSIZIONE_NON_AMMESSA`, reale è `E_COMMESSA_STATO_TRANSIZIONE_INVALIDA` (472) | DB/doc | Confusione in doc/test |
@@ -228,10 +228,12 @@ Coerentemente con la scelta di lasciare **solo predisposizioni** (sviluppo conce
 no YAGNI ma neppure over-build), si innestano **punti di estensione** senza alcuna
 logica di produzione:
 
-1. **Hook no-op nel `BaseSourceHandler`** tra fetch righe e `get_or_create_commessa`:
-   un `_pre_commessa_hook(row) → row` che oggi ritorna la riga invariata (default
-   identity). È il punto naturale dove una fase di lavorazione precederebbe la
-   creazione commessa.
+1. ✅ **FATTO (2026-06-15) — Hook no-op nel `BaseSourceHandler`** tra fetch righe e
+   `get_or_create_commessa`: `_pre_commessa_hook(row) → row` (default identity, chiamato
+   per riga dentro il savepoint di `_process_rows`, prima di espansione/creazione). È il
+   punto naturale dove una fase di lavorazione precederebbe la creazione commessa; oggi
+   nessuna logica di produzione. Override per sottoclasse, contratto puro
+   `PushableRow → PushableRow`.
 2. **Campo `meta` jsonb già esistente** su `commesse_attivita` come contenitore per un
    futuro `fase_lavorazione_id` / `work_order_id`: niente nuova tabella né colonna
    NOT NULL ora (se serve esplicitezza, al massimo una colonna `fase_lavorazione_id
@@ -374,13 +376,27 @@ Quando servirà un flusso REALE con gate operativi/produzione, l'innesto è pron
    driver fino a fattura, corsie immediata (near-real-time) e differita via **systemd
    timer/cron con management command** (no pgAgent), più endpoint on-demand. *Decisioni
    in §10.6.* Stato fasi (§10.4): **F1 ✅**, **F2 ✅**, **F3 ✅**, **F4 documentata**
-   (ricetta timer + caveat RLS; attivazione = ops) (2026-06-15); **F5** (osservabilità)
-   ancora da fare. ⚠️ Prima di attivare la RLS operatori: contesto di **sistema** per il
-   batch (§10.4 F4 caveat, §9).
-4. **🟡 MEDIA — Popolare snapshot pricing v5 nel push** (§4.3 #2): via `PricingService`.
-5. **🟡 MEDIA — Completare BoM/fan-out per sorgenti ≠ preventivo** (§4.3 #3): richiede
-   brief DB per la fn di lookup componenti consumi.
-6. **🟡 MEDIA — Predisposizioni fasi di lavorazione** (§6): solo scaffolding.
+   (ricetta timer + caveat RLS; attivazione = ops) (2026-06-15); **F5 ✅ soddisfatta dal
+   riuso** (2026-06-15): osservabilità per-lotto già esposta (segnalazioni summary,
+   task-runs, lista lotti, fatture lotto) + hold/sblocco (reset-draft) + report aggregato
+   del batch; **driver committato+pushato** (`c4a9797f7`). ⚠️ Prima di attivare la RLS
+   operatori: contesto di **sistema** per il batch (§10.4 F4 caveat, §9). *Unico gap BE
+   residuo opzionale*: persistenza/interrogazione dell'esito del run batch (oggi solo
+   stdout/stderr) — vedi §10.4 F5. **Monitor lotti FE rinviato** (§4.2).
+4. **🟡 MEDIA — Popolare snapshot pricing v5 nel push** (§4.3 #2): ✅ **FATTO END-TO-END
+   (2026-06-16)** — BE su `commesse_attivita` via `PricingService` + propagazione DB nella
+   pull (changeset `20260616-01`, brief in
+   [work-done](../work-done/brief-db-propaga-snapshot-pricing-pull-commessa-af.md)).
+5. **🟡 MEDIA — Completare BoM/fan-out per sorgenti ≠ preventivo** (§4.3 #3): ✅ **FATTO
+   (2026-06-15)** per i **compositi** (ordini/contratti/DDT) riusando il modello unico
+   `*_righe_componenti` — **solo BE, nessun brief DB** (le tabelle/mixin esistevano già).
+   🛑 **Consumi utility (gas/energia/acqua/…): RIMANDATO, NON si fa ora** (decisione Tid
+   2026-06-16). La decomposizione tariffaria è un modello DB dedicato, da avviare solo
+   quando la fatturazione utility per-voce sarà priorità; oggi il consumo resta riga
+   singola.
+6. **🟡 MEDIA — Predisposizioni fasi di lavorazione** (§6): ✅ **FATTO (2026-06-15)** —
+   hook BE no-op `BaseSourceHandler._pre_commessa_hook(row)→row` (identity) come punto
+   d'innesto. Niente colonna DB / niente `meta` dedicato ora (decisione 2026-06-15).
 7. **🟢 BASSA — `fn_available_actions_commessa` + azioni di stato utente** (§4.3 #4).
 8. **🟢 BASSA — Allineare la documentazione** (§3): dopo i fix BE.
 9. **⏸️ RINVIATO (porta aperta) — UI gestione commesse** (§4.2, §7.4-7.5): non ora;
@@ -588,10 +604,26 @@ Esempio unit systemd (riferimento, da posizionare in ambiente, non committato):
 # fatturazione-differita.timer    → [Timer] OnCalendar=*-*-01 02:00  Persistent=true
 ```
 
-**Fase 5 — Osservabilità & hold (riuso, minimo).**
-- Riusare `lotti/<id>/segnalazioni/`, `task-runs/`, `event_log`. Hold/sblocco già
-  possibile via reset-draft + correzione segnalazioni. Un **monitor lotti** FE resta
-  **rinviato** (§4.2): valutarlo solo se l'operatività lo richiede.
+**Fase 5 — ✅ SODDISFATTA DAL RIUSO (2026-06-15). Osservabilità & hold.**
+L'osservabilità minima del driver è coperta dagli endpoint **già esistenti**, senza
+nuovo codice:
+- `GET lotti/<id>/segnalazioni/` (`ApiLottoSegnalazioniSummary`): critical/warning/
+  attention + `blocks_next_step` → la condizione di stop "criticità" del driver è
+  ispezionabile.
+- `GET lotti/<id>/task-runs/` (`ApiLottoTaskRuns`): runtime task del lotto.
+- `GET lotti/` (`ApiLottiList`, filtri stato/competenza/emittente/area) +
+  `GET lotti/<id>/fatture/` (`ApiLottoFattureList`).
+- Hold/sblocco: `POST lotti/<id>/reset-draft/` + `…/fatture/<id>/reset-draft/`.
+- Report aggregato per `motivo_stop` emesso dal command `run_fatturazione_batch`
+  (stdout/stderr) + `event_log`/`fatturazione_lotti_task_runs` popolati dalla pipeline.
+
+**Unico gap BE residuo (opzionale, non bloccante)**: l'esito del *run del batch* (per
+emittente: lotto, `motivo_stop`, bloccati su critical) è oggi solo su stdout/stderr e
+**non persistito/interrogabile** a livello di run. Migliorabile con una tabella di log
+batch (brief DB) + endpoint di lista — da fare solo se l'operatività lo richiede.
+
+Un **monitor lotti** FE resta **rinviato** (§4.2): valutarlo solo se l'operatività lo
+richiede.
 
 ### 10.5 Cosa serve dal DB — brief NECESSARIO (confermato in Fase 0)
 

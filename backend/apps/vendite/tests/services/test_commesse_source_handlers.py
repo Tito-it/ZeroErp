@@ -56,8 +56,32 @@ Path snapshot componenti pre-popolati (refactor 2026-05-11):
 38b) BoMComponentExpanderTests.test_snapshot_loader_esposto_default_false_se_assente
 39) BoMComponentExpanderTests.test_snapshot_loader_vuoto_fallback_resolver
 40) BoMComponentExpanderTests.test_snapshot_loader_skip_se_riga_sorgente_id_none
+
+Snapshot pricing v5 al push (F2-BE-12 / analisi-commesse §4.3 #2):
+41) PricingAuditSnapshotTests.test_audit_snapshot_popolato_da_resolver
+42) PricingAuditSnapshotTests.test_prezzo_snapshot_negoziato_non_sovrascritto
+43) PricingAuditSnapshotTests.test_audit_best_effort_resolver_errore_non_blocca
+44) PricingAuditSnapshotTests.test_origine_prezzo_da_meta_prevale_su_resolver
+45) PricingAuditSnapshotTests.test_audit_skip_se_uom_none_nessuna_chiamata_resolver
+46) PricingAuditSnapshotTests.test_audit_cache_dedup_stesso_contesto_un_solo_resolve
+
+Fan-out compositi modello unico per sorgenti ≠ preventivo (analisi-commesse §4.3 #3):
+47) CompositiFanOutWiringTests.test_factory_preventivi_ritorna_repo_componenti
+48) CompositiFanOutWiringTests.test_factory_ordini_ritorna_repo_componenti
+49) CompositiFanOutWiringTests.test_factory_contratti_ritorna_repo_componenti
+50) CompositiFanOutWiringTests.test_factory_ddt_ritorna_repo_componenti
+51) CompositiFanOutWiringTests.test_default_expander_ha_componenti_loader_per_documento
+52) CompositiFanOutWiringTests.test_consumi_nessuna_factory_componenti
+53) CompositiFanOutWiringTests.test_ordini_default_fanout_compositi_da_componenti
+54) PricingAuditSnapshotTests.test_audit_origine_fuori_check_diventa_null
+
+Hook fasi di lavorazione (scaffolding §6):
+55) PreCommessaHookTests.test_hook_default_identity
+56) PreCommessaHookTests.test_hook_override_applicato_al_push
 """
 
+import dataclasses
+from contextlib import nullcontext
 from datetime import date
 from decimal import Decimal
 from unittest import TestCase
@@ -1018,3 +1042,290 @@ class BoMModuleCacheIsCompositoTests(TestCase):
             BoMComponentExpander._default_is_composito("art-X")
             self.assertEqual(mock_cursor.call_count, 2,
                 "post invalidate la query DB deve essere ri-eseguita")
+
+
+class PricingAuditSnapshotTests(TestCase):
+    """Snapshot pricing v5 (F2-BE-12 / analisi-commesse §4.3 #2): il push popola
+    gli 8 campi audit di derivazione del prezzo via PricingService, senza
+    sovrascrivere il prezzo negoziato (autoritativo)."""
+
+    @staticmethod
+    def _handler(repo, pricing_service):
+        # is_composito_fn=False → expand pass-through senza query DB; resolver iniettato.
+        return HandlerPreventivi(
+            repo,
+            bom_expander=BoMComponentExpander(is_composito_fn=lambda _aid: False),
+            pricing_service=pricing_service,
+        )
+
+    @staticmethod
+    def _resolver_full() -> MagicMock:
+        ps = MagicMock()
+        ps.resolve_prezzo.return_value = {
+            "prezzo_base_snapshot": Decimal("30.00"),
+            "origine": "CONTRATTO_LISTINO",
+            "tipo_variazione_applicata": "PERCENTUALE",
+            "valore_variazione_applicata": Decimal("-10.00"),
+            "promo_id": None,
+            "contratto_id": 77,
+            "categoria_cliente_id_snapshot": 5,
+            "classe_utenza_id_snapshot": None,
+        }
+        return ps
+
+    @staticmethod
+    def _atomic_noop():
+        # transaction.atomic → no-op context (test unitario senza DB).
+        return patch(
+            "apps.vendite.services.commesse_source_handlers.transaction.atomic",
+            side_effect=lambda *a, **k: nullcontext(),
+        )
+
+    # Scopo: i 8 campi audit del resolver atterrano sul CommessaAttivitaInput.
+    def test_audit_snapshot_popolato_da_resolver(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [_make_row(uom_id=9)]
+        ps = self._resolver_full()
+        handler = self._handler(repo, ps)
+
+        with self._atomic_noop():
+            handler.run()
+
+        inp = repo.batch_upsert_attivita.call_args[0][0][0]
+        self.assertEqual(inp.prezzo_base_snapshot, Decimal("30.00"))
+        self.assertEqual(inp.origine_prezzo, "CONTRATTO_LISTINO")
+        self.assertEqual(inp.tipo_variazione_applicata, "PERCENTUALE")
+        self.assertEqual(inp.valore_variazione_applicata, Decimal("-10.00"))
+        self.assertIsNone(inp.promo_id)
+        self.assertEqual(inp.contratto_id, 77)
+        self.assertEqual(inp.categoria_cliente_id_snapshot, 5)
+        self.assertIsNone(inp.classe_utenza_id_snapshot)
+        ps.resolve_prezzo.assert_called_once()
+
+    # Scopo: il prezzo negoziato alla sorgente NON viene sovrascritto dal resolver.
+    def test_prezzo_snapshot_negoziato_non_sovrascritto(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [
+            _make_row(uom_id=9, prezzo_snapshot=Decimal("27.00"))
+        ]
+        handler = self._handler(repo, self._resolver_full())
+
+        with self._atomic_noop():
+            handler.run()
+
+        inp = repo.batch_upsert_attivita.call_args[0][0][0]
+        self.assertEqual(inp.prezzo_snapshot, Decimal("27.00"))
+
+    # Scopo: errore resolver → audit a None ma la riga e' comunque upsertata.
+    def test_audit_best_effort_resolver_errore_non_blocca(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [_make_row(uom_id=9)]
+        ps = MagicMock()
+        ps.resolve_prezzo.side_effect = RuntimeError("resolver down")
+        handler = self._handler(repo, ps)
+
+        with self._atomic_noop():
+            result = handler.run()
+
+        self.assertEqual(result.created, 1)
+        inp = repo.batch_upsert_attivita.call_args[0][0][0]
+        self.assertIsNone(inp.prezzo_base_snapshot)
+        self.assertIsNone(inp.contratto_id)
+
+    # Scopo: per i componenti BoM, origine_prezzo negoziato (meta) prevale.
+    def test_origine_prezzo_da_meta_prevale_su_resolver(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [
+            _make_row(
+                uom_id=9,
+                meta={
+                    "tipo_commessa": "AUTO",
+                    "policy_fatturazione": "DA_DOCUMENTO",
+                    "origine_prezzo": "PROMO",
+                },
+            )
+        ]
+        handler = self._handler(repo, self._resolver_full())
+
+        with self._atomic_noop():
+            handler.run()
+
+        inp = repo.batch_upsert_attivita.call_args[0][0][0]
+        self.assertEqual(inp.origine_prezzo, "PROMO")
+
+    # Scopo: uom None → resolver non chiamato (guard), audit a None.
+    def test_audit_skip_se_uom_none_nessuna_chiamata_resolver(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [_make_row(uom_id=None)]
+        ps = MagicMock()
+        handler = self._handler(repo, ps)
+
+        handler.run()
+
+        ps.resolve_prezzo.assert_not_called()
+        inp = repo.batch_upsert_attivita.call_args[0][0][0]
+        self.assertIsNone(inp.prezzo_base_snapshot)
+
+    # Scopo: due righe stesso contesto pricing → una sola risoluzione (cache).
+    def test_audit_cache_dedup_stesso_contesto_un_solo_resolve(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [
+            _make_row(uom_id=9, segment_key="S:1", sorgente_uid="u1"),
+            _make_row(uom_id=9, segment_key="S:2", sorgente_uid="u2"),
+        ]
+        ps = self._resolver_full()
+        handler = self._handler(repo, ps)
+
+        with self._atomic_noop():
+            handler.run()
+
+        self.assertEqual(ps.resolve_prezzo.call_count, 1)
+
+
+class CompositiFanOutWiringTests(TestCase):
+    """Fan-out compositi via modello unico `*_righe_componenti` per sorgenti
+    ≠ preventivo (analisi-commesse §4.3 #3): ordini/contratti/DDT riusano lo
+    stesso BoMComponentExpander + loader snapshot di preventivi."""
+
+    # Scopo: la factory preventivi punta alla tabella componenti del preventivo.
+    def test_factory_preventivi_ritorna_repo_componenti(self):
+        repo = HandlerPreventivi._componenti_repo_factory()
+        self.assertEqual(repo._componenti_table_name, "vendite.preventivi_righe_componenti")
+        self.assertEqual(repo._componenti_fk_riga, "riga_preventivo_id")
+        self.assertTrue(hasattr(repo, "list_componenti_riga"))
+
+    # Scopo: la factory ordini punta a ordini_righe_componenti.
+    def test_factory_ordini_ritorna_repo_componenti(self):
+        repo = HandlerOrdini._componenti_repo_factory()
+        self.assertEqual(repo._componenti_table_name, "vendite.ordini_righe_componenti")
+        self.assertEqual(repo._componenti_fk_riga, "riga_ordine_id")
+
+    # Scopo: la factory contratti punta a contratti_righe_componenti.
+    def test_factory_contratti_ritorna_repo_componenti(self):
+        repo = HandlerContratti._componenti_repo_factory()
+        self.assertEqual(repo._componenti_table_name, "vendite.contratti_righe_componenti")
+        self.assertEqual(repo._componenti_fk_riga, "riga_contratto_id")
+
+    # Scopo: la factory DDT punta a ddt_righe_componenti.
+    def test_factory_ddt_ritorna_repo_componenti(self):
+        repo = HandlerDdt._componenti_repo_factory()
+        self.assertEqual(repo._componenti_table_name, "vendite.ddt_righe_componenti")
+        self.assertEqual(repo._componenti_fk_riga, "riga_ddt_id")
+
+    # Scopo: l'expander di default dei 4 handler documento ha un componenti_loader
+    #        (il fan-out compositi NON e' piu' esclusiva dei preventivi).
+    def test_default_expander_ha_componenti_loader_per_documento(self):
+        for cls in (HandlerPreventivi, HandlerOrdini, HandlerContratti, HandlerDdt):
+            handler = cls(_mock_repo())
+            self.assertIsNotNone(
+                handler._bom_expander._componenti_loader,
+                f"{cls.__name__}: atteso loader componenti nel default expander",
+            )
+
+    # Scopo: i consumi NON usano il modello unico (decomposizione tariffaria a
+    #        parte, rinviata) → nessuna factory componenti.
+    def test_consumi_nessuna_factory_componenti(self):
+        self.assertIsNone(HandlerConsumi._componenti_repo_factory)
+        handler = HandlerConsumi(_mock_repo())
+        self.assertIsNone(handler._bom_expander._componenti_loader)
+
+    # Scopo: integrazione — un ordine con articolo composito fa fan-out in N
+    #        righe leggendo i componenti negoziati (default expander + factory).
+    def test_ordini_default_fanout_compositi_da_componenti(self):
+        repo = _mock_repo()
+        row = _make_row(uom_id=9, articolo_id="art-comp", riga_sorgente_id=55)
+        repo.fetch_pushable_rows.return_value = [row]
+
+        comp_repo = MagicMock()
+        comp_repo.list_componenti_riga.return_value = [
+            {"componente_id": "c1", "uom_operativa_id": 9,
+             "prezzo_unitario": Decimal("5.00"), "coeff_qta_snapshot": "1",
+             "esposto_in_fattura": True, "origine_prezzo": "CONTRATTO_LISTINO"},
+            {"componente_id": "c2", "uom_operativa_id": 9,
+             "prezzo_unitario": Decimal("3.00"), "coeff_qta_snapshot": "2",
+             "esposto_in_fattura": False, "origine_prezzo": "CONTRATTO_LISTINO"},
+        ]
+        ps = MagicMock()
+        ps.resolve_prezzo.return_value = {}  # audit best-effort, non rilevante qui
+
+        with patch.object(HandlerOrdini, "_componenti_repo_factory",
+                          staticmethod(lambda: comp_repo)), \
+             patch(
+                 "apps.vendite.services.commesse_source_handlers."
+                 "BoMComponentExpander._default_is_composito", return_value=True), \
+             patch(
+                 "apps.vendite.services.commesse_source_handlers.transaction.atomic",
+                 side_effect=lambda *a, **k: nullcontext()):
+            handler = HandlerOrdini(repo, pricing_service=ps)
+            handler.run()
+
+        comp_repo.list_componenti_riga.assert_called_once_with(55)
+        inputs = repo.batch_upsert_attivita.call_args[0][0]
+        self.assertEqual(len(inputs), 2, "articolo composito → 2 righe componente")
+        segment_keys = {i.segment_key for i in inputs}
+        self.assertTrue(all("#CMP:" in sk for sk in segment_keys))
+
+
+class _OrigineFuoriCheckTests(TestCase):
+    """Regressione: il resolver puo' restituire origine fuori dal CHECK
+    (es. 'LISTINO_BUNDLE') → deve diventare NULL, non far fallire l'upsert."""
+
+    # Scopo: origine resolver fuori set → origine_prezzo NULL, riga salvata.
+    def test_audit_origine_fuori_check_diventa_null(self):
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [_make_row(uom_id=9)]
+        ps = MagicMock()
+        ps.resolve_prezzo.return_value = {
+            "prezzo_base_snapshot": Decimal("12.00"),
+            "origine": "LISTINO_BUNDLE",  # NON nel CHECK
+            "tipo_variazione_applicata": "NESSUNA",
+            "valore_variazione_applicata": None,
+            "promo_id": None,
+            "contratto_id": None,
+            "categoria_cliente_id_snapshot": None,
+            "classe_utenza_id_snapshot": None,
+        }
+        handler = HandlerPreventivi(
+            repo,
+            bom_expander=BoMComponentExpander(is_composito_fn=lambda _aid: False),
+            pricing_service=ps,
+        )
+        with patch(
+            "apps.vendite.services.commesse_source_handlers.transaction.atomic",
+            side_effect=lambda *a, **k: nullcontext(),
+        ):
+            result = handler.run()
+
+        self.assertEqual(result.created, 1)
+        inp = repo.batch_upsert_attivita.call_args[0][0][0]
+        self.assertIsNone(inp.origine_prezzo, "origine fuori CHECK deve essere NULL")
+        self.assertEqual(inp.prezzo_base_snapshot, Decimal("12.00"))
+        self.assertEqual(inp.tipo_variazione_applicata, "NESSUNA")
+
+
+class PreCommessaHookTests(TestCase):
+    """Hook scaffolding fasi di lavorazione (§6): default identity, override
+    applicato per riga prima della creazione commessa."""
+
+    # Scopo: default = identity (ritorna la stessa riga).
+    def test_hook_default_identity(self):
+        row = _make_row()
+        handler = HandlerOrdini(_mock_repo())
+        self.assertIs(handler._pre_commessa_hook(row), row)
+
+    # Scopo: un override del hook altera la riga usata dal push (meta arricchito).
+    def test_hook_override_applicato_al_push(self):
+        class _HandlerConFase(HandlerOrdini):
+            def _pre_commessa_hook(self, row):
+                meta = {**(row.meta or {}), "fase_lavorazione_id": 99}
+                return dataclasses.replace(row, meta=meta)
+
+        repo = _mock_repo()
+        repo.fetch_pushable_rows.return_value = [
+            _make_row(meta={"tipo_commessa": "AUTO", "policy_fatturazione": "DA_DOCUMENTO"})
+        ]
+        handler = _HandlerConFase(repo)
+        handler.run()
+
+        inp = repo.batch_upsert_attivita.call_args[0][0][0]
+        self.assertEqual(inp.meta.get("fase_lavorazione_id"), 99)
