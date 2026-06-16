@@ -15,6 +15,7 @@ from apps.vendite.api.views import (
     ApiResetLottoFatturaDraft,
     ApiRunCommessePush,
     ApiRunLottoPipeline,
+    ApiRunLottoPipelineUntilDone,
 )
 from apps.vendite.api.views_approvazioni_prezzo import (
     ApprovaPrezzoContrattoView,
@@ -105,6 +106,11 @@ urlpatterns = [
     path("promo-articoli/<int:record_id>/", PromoArticoliDetailView.as_view(), name="vendite-promo-articoli-detail"),
     path("lotti/", ApiLottiList.as_view(), name="vendite-lotti-list"),
     path("pipeline/run/", ApiRunLottoPipeline.as_view(), name="vendite-run-lotto-pipeline"),
+    path(
+        "pipeline/run-until-done/",
+        ApiRunLottoPipelineUntilDone.as_view(),
+        name="vendite-run-lotto-pipeline-until-done",
+    ),
     path(
         "lotti/<int:lotto_id>/fatture/",
         ApiLottoFattureList.as_view(),

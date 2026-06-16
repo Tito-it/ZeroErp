@@ -673,6 +673,9 @@ class PipelineStepExecutor:
             utility_id=context.utility_id,
             billing_account_id=context.billing_account_id,
             emittente_soggetto_ruolo_id=context.emittente_soggetto_ruolo_id,
+            # Corsia: filtro propagato dal lotto (meta), non re-derivato qui dal
+            # tipo_lotto (separazione immediata/differita decisa dal driver).
+            fatturazione_immediata=context.fatturazione_immediata,
         )
         if dry_run:
             return

@@ -7,6 +7,13 @@
 > **Data**: 2026-06-07 · **Stato**: ✅ **IMPLEMENTATO** (2026-06-08) — changeset
 > applicati, pgTAP verdi. Vedi §0.
 >
+> **⚠️ NOTA POST-IMPLEMENTAZIONE (2026-06-16)** — naming codice errore: in questo
+> brief (C2/C6) il codice è citato come `E_COMMESSA_TRANSIZIONE_NON_AMMESSA`, ma il
+> nome **reale implementato** è **`E_COMMESSA_STATO_TRANSIZIONE_INVALIDA`** (HTTP 472),
+> usato da `trgfn_commesse_guard_transizione`, `config.messaggi_errore` e
+> `error_policies.py`. Riferirsi sempre al nome reale (`E_COMMESSA_TRANSIZIONE_NON_AMMESSA`
+> non esiste in codice/DB). Discrepanza tracciata in analisi-commesse §4.3 #6, ora chiusa.
+>
 > **Origine**: prerequisito **V9** del
 > [brief-db-pratica-preventivi.md](brief-db-pratica-preventivi.md). La verifica
 > critica (2026-06-07) ha trovato che il ramo commessa→fattura è **dormiente**:

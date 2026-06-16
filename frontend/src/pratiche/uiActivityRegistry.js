@@ -17,9 +17,20 @@ export const UI_ACTIVITY_REGISTRY = {
   APRI_PREVENTIVO: {
     // Loader del drawer di dominio (import dinamico): risolto all'apertura.
     loadComponent: () => import('../vendite/preventivi/components/PreventiviDrawer.vue'),
-    // Props passate al drawer, costruite dal contesto pratica.
-    buildProps: (ctx) => ({
-      mode: 'create',
+    // Riapertura: risolve il preventivo ROOT gia' collegato alla pratica.
+    // Ritorna l'id (→ apre in edit l'esistente) o null (→ create). Import lazy
+    // dell'API di dominio, coerente con la cautela di accoppiamento. Best-effort:
+    // un errore non blocca, ricade su create.
+    resolveExisting: (ctx) =>
+      import('../vendite/preventivi/api/preventiviApi')
+        .then(({ getRootPerPratica }) => getRootPerPratica(ctx.praticaId))
+        .then(res => res?.data?.data?.preventivo_id ?? null)
+        .catch(() => null),
+    // Props passate al drawer. `existingId` valorizzato (ROOT gia' collegato) →
+    // apre in EDIT l'esistente; null → CREATE con eredita'+lock cliente/istanza.
+    buildProps: (ctx, existingId = null) => ({
+      mode: existingId ? 'edit' : 'create',
+      preventivoId: existingId ?? null,
       praticaId: ctx.praticaId,
       // Contesto cliente ereditato dalla pratica: il drawer pre-compila e blocca
       // istanza (+ BA se cliente attivo). billingAccountId NULL = prospect.

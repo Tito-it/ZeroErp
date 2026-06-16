@@ -32,7 +32,7 @@ TestPreventivoEmissioneAllegati:
 
 import json
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import ANY, Mock, patch, MagicMock
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase
@@ -295,7 +295,8 @@ class TestPreventivoEmissioneAllegati(JwtMockedApiTest):
 
         self.assertEqual(resp.status_code, 200)
         # service.emetti chiamato una sola volta col preventivo_id corretto
-        svc_mod.emetti.assert_called_once_with(7)
+        # (+ user acting, inoltrato per il completamento del flusso pratica-first).
+        svc_mod.emetti.assert_called_once_with(7, user=ANY)
         # genera_documento ricevuto i parametri estratti dal preventivo +
         # l'allegato dal multipart
         kwargs = doc_svc_cls.return_value.genera_documento.call_args.kwargs

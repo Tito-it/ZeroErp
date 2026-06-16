@@ -76,12 +76,17 @@ function onApriScheda() {
   drawer.editRow({ id: store.selectedPraticaId }, 'id')
 }
 
+// Riga della pratica selezionata in `store.items` (ricerca). Fonte unica per i
+// derivati sotto (codice / terminale / contesto cliente), evita di ripetere il
+// find su selectedPraticaId.
+const selectedItem = computed(
+  () => (store.selectedPraticaId
+    ? store.items.find(i => i.id === store.selectedPraticaId)
+    : null) || null,
+)
+
 // Codice della pratica selezionata (per barra contesto sopra flussi)
-const selectedPraticaCodice = computed(() => {
-  if (!store.selectedPraticaId) return null
-  const item = store.items.find(i => i.id === store.selectedPraticaId)
-  return item?.codice || null
-})
+const selectedPraticaCodice = computed(() => selectedItem.value?.codice || null)
 
 // Pratica selezionata in stato terminale (CHIUSA/ANNULLATA) → percorso e flussi
 // in sola lettura: niente nuovi step, flussi esistenti consultabili ma non
@@ -92,8 +97,7 @@ const selectedPraticaCodice = computed(() => {
 // selezionare una terminale non presente in `store.items`; oltre alla difesa
 // DB (guard che rifiuta le operazioni su pratica terminale).
 const selectedPraticaReadonly = computed(() => {
-  if (!store.selectedPraticaId) return false
-  const item = store.items.find(i => i.id === store.selectedPraticaId)
+  const item = selectedItem.value
   return item ? STATI_PRATICA_TERMINALI.includes(item.stato_codice_interno) : false
 })
 
@@ -148,26 +152,13 @@ async function onFlussoSaved() {
   if (store.hasSearched) await store.fetchList()
 }
 
-// tipo_prestazione della pratica selezionata: discrimina il routing PREVENTIVI
-// nel FlussoDrawer (APPROVAZIONE_CLIENTE → M2, PREVENTIVAZIONE → apri preventivo).
-const selectedPraticaTipo = computed(() => {
-  if (!store.selectedPraticaId) return ''
-  const item = store.items.find(i => i.id === store.selectedPraticaId)
-  return item?.tipo_prestazione_codice || ''
-})
-
 // Contesto cliente della pratica selezionata (BA derivato + istanza), esposti
 // dalla lista (_PRATICA_SELECT). Alimenta l'affordance "apri documento" sul
 // percorso: gating cliente-attivo + eredità nel drawer (stesso payload del flusso).
-const selectedPraticaContext = computed(() => {
-  const item = store.selectedPraticaId
-    ? store.items.find(i => i.id === store.selectedPraticaId)
-    : null
-  return {
-    billingAccountId: item?.billing_account_id ?? null,
-    istanzaUtilityId: item?.istanza_utility_id ?? null,
-  }
-})
+const selectedPraticaContext = computed(() => ({
+  billingAccountId: selectedItem.value?.billing_account_id ?? null,
+  istanzaUtilityId: selectedItem.value?.istanza_utility_id ?? null,
+}))
 
 // --- Attività UI di dominio aperte da un flusso (data-driven, registry) ---
 // L'azione "apri documento" sul flusso (azione_ui_key) è risolta dal registry
@@ -190,10 +181,16 @@ async function onOpenAttivita(payload) {
   const entry = getUiActivity(payload?.key)
   if (!entry) return
   const mod = await entry.loadComponent()
+  // Riapertura pratica-first: se la pratica ha gia' un documento ROOT collegato,
+  // lo apriamo in EDIT invece di crearne uno nuovo (evita bozze duplicate e
+  // riprende il lavoro dove era). Il resolver e' opzionale e best-effort.
+  const existingId = entry.resolveExisting ? await entry.resolveExisting(payload) : null
   activityEntry.value = entry
   activityCtx.value = payload
-  activityProps.value = entry.buildProps(payload)
-  activityLinked.value = false
+  activityProps.value = entry.buildProps(payload, existingId)
+  // Documento gia' collegato → niente re-aggancio (l'onSaved e' comunque
+  // idempotente, ma cosi' evitiamo il toast "collegato" a ogni salvataggio).
+  activityLinked.value = existingId != null
   activityComponent.value = markRaw(mod.default)
   activityVisible.value = false
   await nextTick()
@@ -329,7 +326,6 @@ onUnmounted(() => {
       @update:visible="v => flussoDrawerVisible = v"
       :flusso="flussoSelezionato"
       :pratica-id="store.selectedPraticaId"
-      :tipo-prestazione-codice="selectedPraticaTipo"
       :readonly="selectedPraticaReadonly"
       @saved="onFlussoSaved"
       @open-attivita="onOpenAttivita"

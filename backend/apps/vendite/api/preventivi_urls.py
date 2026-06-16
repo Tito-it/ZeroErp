@@ -24,7 +24,6 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventiviList,
     ApiPreventivoContestoPricing,
     ApiPreventivoDetail,
-    ApiPreventivoApprovazioneFlusso,
     ApiPreventivoCollegaPratica,
     ApiPreventivoGeneraOrdine,
     ApiPreventivoRigheSmistabiliOrdine,
@@ -34,6 +33,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoPushCommessa,
     ApiPreventivoRevisione,
     ApiPreventivoRevisioniList,
+    ApiPreventivoRootPerPratica,
     ApiPreventivoRiepilogoIva,
     ApiPreventivoRigaComponenteDetail,
     ApiPreventivoRigaComponentiList,
@@ -53,6 +53,13 @@ urlpatterns = [
         "form-defaults/",
         ApiPreventivoFormDefaults.as_view(),
         name="vendite-preventivi-form-defaults",
+    ),
+    # Riapertura pratica-first: risolve il preventivo ROOT collegato a una
+    # pratica. Prima della rotta lista "" per matchare il path dedicato.
+    path(
+        "root-per-pratica/",
+        ApiPreventivoRootPerPratica.as_view(),
+        name="vendite-preventivi-root-per-pratica",
     ),
     # Export CSV/XLSX lista configurabile (DEF-1). Prima della rotta lista ""
     # per matchare il path dedicato.
@@ -92,13 +99,6 @@ urlpatterns = [
         "<int:preventivo_id>/genera-ordine/",
         ApiPreventivoGeneraOrdine.as_view(),
         name="vendite-preventivi-genera-ordine",
-    ),
-    # M2 (§8.3): completa flusso APPROVAZIONE_CLIENTE → accetta preventivo ROOT
-    # della pratica (collection-level: pratica_id + flusso_id nel body).
-    path(
-        "approvazione-flusso/",
-        ApiPreventivoApprovazioneFlusso.as_view(),
-        name="vendite-preventivi-approvazione-flusso",
     ),
     # PREVENTIVAZIONE: aggancia il preventivo come ROOT a una pratica
     path(

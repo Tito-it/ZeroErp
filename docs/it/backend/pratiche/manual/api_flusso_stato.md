@@ -20,6 +20,16 @@ COMPLETATO). Su eccezione dell'handler l'intera transizione rolla (il flusso
 torna `DA_ESEGUIRE`, ri-eseguibile) e l'errore parlante propaga. Per i flussi
 senza handler, l'avvio porta solo a `IN_CORSO` (completamento manuale).
 
+**Azioni di dominio al completamento (data-driven, 2026-06-15)**: al passaggio a
+`COMPLETATO`, `completa_flusso` esegue gli handler server-side legati all'evento
+in `pratiche.template_flussi_handler_eventi` (esito-aware: scattano solo se
+`esito_richiesto` combacia con l'esito effettivo, `NULL` = qualsiasi), nella
+**stessa transazione** del cambio stato. Esempio seedato: il flusso
+`APPROVAZIONE_CLIENTE` di una pratica PREVENTIVI, completato `POSITIVO`, esegue
+l'handler `vendita.accetta_preventivo` che porta il preventivo ROOT collegato ad
+`ACCETTATO`. Sostituisce il vecchio endpoint dedicato M2: la FE chiama il
+completamento **generico** e il motore esegue l'azione di dominio.
+
 La generazione automatica cross-pratica al completamento e' gestita dal trigger DB `trgfn_flussi_generazione`.
 
 ## Input
@@ -67,9 +77,17 @@ La generazione automatica cross-pratica al completamento e' gestita dal trigger 
 - `pratiche.trgfn_flussi_generazione` (trigger su UPDATE per generazione automatica)
 - `pratiche.trgfn_flussi_autochiusura_pratica` (trigger su UPDATE→COMPLETATO: auto-chiusura pratica)
 - `pratiche.trgfn_flussi_guard_pratica_terminale` / `trgfn_flussi_guard_chiusura_prematura` (guard)
+- `pratiche.template_flussi_handler_eventi` + `pratiche.handler_flussi` (binding handler per evento `COMPLETATO`, esito-aware, letti dal dispatch al completamento)
 
 ## Note di migrazione
 
 - La risoluzione stato avviene esplicitamente prima dell'UPDATE per evitare SET NULL su colonna NOT NULL.
 - La generazione automatica cross-pratica e' completamente lato DB; il backend non ha logica di generazione automatica.
+- (15 giugno 2026) Azioni di dominio al completamento **data-driven**: `completa_flusso`
+  (e l'auto-completamento di `avvia_flusso`) eseguono gli handler legati all'evento
+  `COMPLETATO` da `template_flussi_handler_eventi` (esito-aware), nella stessa
+  transazione. `completa_flusso` riceve l'utente acting (`user`) inoltrato agli
+  handler. Rimosso l'endpoint dedicato M2 (`approvazione-flusso/`): l'accettazione
+  del preventivo e' ora l'handler `vendita.accetta_preventivo` su `APPROVAZIONE_CLIENTE`
+  COMPLETATO+POSITIVO. Binding senza handler registrato → `E_HANDLER_NON_REGISTRATO` (fail-fast).
 - (14 giugno 2026) Chiusura guidata dal workflow: auto-chiusura al completamento dei flussi (lato DB), rimossa l'azione manuale "Chiudi" dal FE. Aggiunti i codici parlanti 491 (pratica terminale) e 492 (chiusura prematura del flusso di chiusura), mappati via marker; `avvia/completa/cambia_stato_flusso` ora wrappano i `DatabaseError` in `_raise_known_db_error`.

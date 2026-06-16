@@ -3,7 +3,14 @@
 **Area:** `pratiche` · **Tipo:** catalogo + aggancio su template (mirror di `azioni_ui`)
 **Branch destinazione:** `dev/db-tid`
 **Richiesto da:** backend agent (per conto di Tid) · **Data:** 2026-06-15
-**Stato:** 🔲 PROPOSTA, attende esecuzione DB
+**Stato:** ✅ **ESEGUITO (2026-06-15)** — il DB ha scelto una variante migliore della
+proposta: invece di un catalogo `azioni_completamento` dedicato, ha **esteso il
+pattern handler** con gli eventi → tabella `pratiche.template_flussi_handler_eventi`
+(binding template×evento×esito→handler) + handler `vendita.accetta_preventivo`
+seedato su APPROVAZIONE_CLIENTE (9003/9007, COMPLETATO/POSITIVO). Commit `de195171e`.
+BE+FE a valle implementati: `dispatch_handler_eventi` su `completa_flusso`/`avvia_flusso`,
+handler `AccettaPreventivoHandler`, FE `FlussoDrawer` completamento generico (rimosso
+il routing M2 hardcoded). Doc viva: [template_flussi_handler_eventi](/dbzero/pratiche/tabelle/template_flussi_handler_eventi).
 
 > Questo brief descrive **cosa** serve dal DB, **non come** (catalogo vs colonna,
 > nomi, SQL = scelta del team DB). Le azioni DB non sono eseguite dal backend agent.
@@ -43,7 +50,7 @@ il completamento all'endpoint giusto **per dati**, non per `if` sul codice:
    nel catalogo quando nasceranno i loro flussi (stesso precedente di `azioni_ui`).
 
 > Mirror esatto del lavoro già consegnato in
-> [brief-db-ESECUZIONE-azione-ui-e-contesto-cliente.md](../work-done/brief-db-ESECUZIONE-azione-ui-e-contesto-cliente.md):
+> [brief-db-ESECUZIONE-azione-ui-e-contesto-cliente.md](brief-db-ESECUZIONE-azione-ui-e-contesto-cliente.md):
 > stessa struttura (catalogo + FK nullable sul template), stessi trigger di audit,
 > stessa filosofia "il template dichiara, il motore esegue per dati".
 

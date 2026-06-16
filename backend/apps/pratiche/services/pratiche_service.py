@@ -402,6 +402,8 @@ def avvia_flusso(flusso_id: int, *, user: str | None = None) -> dict[str, Any] |
         if result is not None:
             # Handler eseguito con successo → completa il flusso (esito POSITIVO).
             repo.update_stato_flusso(flusso_id, "COMPLETATO", esito="POSITIVO")
+            # Azioni di dominio legate al COMPLETATO (template_flussi_handler_eventi).
+            dispatch_handler_eventi(flusso_id, evento="COMPLETATO", esito="POSITIVO", user=user)
         return result
     except DatabaseError as exc:
         # Guard pratica terminale (CHIUSA/ANNULLATA) → PRATICHE_TERMINALE_FLUSSO_
@@ -419,6 +421,7 @@ def completa_flusso(
     *,
     esito: str,
     note_esito: str | None = None,
+    user: str | None = None,
 ) -> None:
     ErrorManager.require(
         flusso_id > 0,
@@ -438,6 +441,11 @@ def completa_flusso(
     except DatabaseError as exc:
         # Guard pratica terminale → PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE.
         _raise_known_db_error(exc, function_name="pratiche_service.completa_flusso")
+    # Azioni di dominio legate al completamento (template_flussi_handler_eventi):
+    # es. accetta il preventivo collegato quando APPROVAZIONE_CLIENTE chiude
+    # POSITIVO. Stessa transazione → completamento + azione dominio atomici (sostituisce
+    # il routing M2 hardcoded lato FE). I flussi senza binding: no-op.
+    dispatch_handler_eventi(flusso_id, evento="COMPLETATO", esito=esito, user=user)
 
 
 # Scopo: Transizione generica di stato di un flusso tramite codice_interno.
@@ -503,6 +511,21 @@ def get_percorso(pratica_id: int) -> list[dict[str, Any]]:
     return PraticheRepository().get_percorso_pratica(pratica_id)
 
 
+# Scopo: Carica il flusso per il dispatch handler, con guard di esistenza.
+# Ritorna il flusso, o None se non ha template (handler e binding eventi vivono
+# sul template → niente da dispatchare). Preambolo condiviso da dispatch_handler
+# e dispatch_handler_eventi.
+def _flusso_per_dispatch(flusso_id: int) -> dict[str, Any] | None:
+    flusso = PraticheRepository().get_flusso(flusso_id)
+    ErrorManager.require(
+        flusso is not None,
+        code="E_FLUSSO_NOT_FOUND",
+        message=f"Flusso {flusso_id} non trovato",
+    )
+    assert flusso is not None
+    return flusso if flusso["template_flusso_id"] is not None else None
+
+
 # Scopo: Invoca l'handler Django configurato per il flusso.
 # Obiettivo: dispatch automatico se il template flusso ha un handler_key.
 # Perimetro: lookup handler dal registry, invocazione execute().
@@ -514,20 +537,12 @@ def dispatch_handler(flusso_id: int, *, user: str | None = None) -> dict[str, An
     )
     assert flusso_id > 0
 
-    repo = PraticheRepository()
-    flusso = repo.get_flusso(flusso_id)
-    ErrorManager.require(
-        flusso is not None,
-        code="E_FLUSSO_NOT_FOUND",
-        message=f"Flusso {flusso_id} non trovato",
-    )
-    assert flusso is not None
-
-    if flusso["template_flusso_id"] is None:
+    flusso = _flusso_per_dispatch(flusso_id)
+    if flusso is None:
         return None
 
     # Lookup handler_key e handler_params dal template flusso.
-    handler_info = repo.get_handler_info(flusso["template_flusso_id"])
+    handler_info = PraticheRepository().get_handler_info(flusso["template_flusso_id"])
     if handler_info is None:
         return None
 
@@ -549,6 +564,46 @@ def dispatch_handler(flusso_id: int, *, user: str | None = None) -> dict[str, An
         handler_params=handler_params,
         user=user,
     )
+
+
+# Scopo: Dispatch degli handler legati a un EVENTO di flusso
+# (pratiche.template_flussi_handler_eventi). Generalizza il dispatch oltre
+# l'avvio: su `COMPLETATO` esegue le azioni di dominio il cui `esito_richiesto`
+# combacia con l'esito effettivo (NULL = qualsiasi esito), in ordine di sequenza.
+# Perimetro: chiamato dentro la transazione del cambio stato del flusso, così
+# completamento + azione di dominio sono atomici (rimpiazza il routing M2
+# hardcoded lato FE). Eccezioni dell'handler propagano e rollano la transizione.
+def dispatch_handler_eventi(
+    flusso_id: int, *, evento: str, esito: str | None = None, user: str | None = None,
+) -> None:
+    flusso = _flusso_per_dispatch(flusso_id)
+    if flusso is None:
+        return
+
+    bindings = PraticheRepository().get_handler_eventi(flusso["template_flusso_id"], evento, esito)
+    if not bindings:
+        return
+
+    from apps.pratiche.services.handler_registry import get_handler
+    meta = coerce_jsonb_dict(flusso["meta"])
+    for handler_key, handler_params in bindings:
+        handler_class = get_handler(handler_key)
+        # Binding seedato a DB ma senza implementazione registrata = misconfig di
+        # deploy: fail-fast (non eseguire un completamento "monco" che salta
+        # silenziosamente l'azione di dominio promessa dal binding).
+        ErrorManager.require(
+            handler_class is not None,
+            code="E_HANDLER_NON_REGISTRATO",
+            message=f"Handler '{handler_key}' non registrato in HANDLER_MAP",
+        )
+        assert handler_class is not None
+        handler_class().execute(
+            flusso_id=flusso_id,
+            pratica_id=flusso["pratica_id"],
+            meta=meta,
+            handler_params=handler_params,
+            user=user,
+        )
 
 
 # Scopo: Restituisce il giornale di bordo di una pratica.

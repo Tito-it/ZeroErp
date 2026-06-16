@@ -30,17 +30,46 @@ View: `ApiCommessaStato` `ApiCommessaStato` (`apps.vendite.api.views`).
   "data": {
     "commessa_id": 1,
     "stato_codice_interno": "PRONTA_FATTURAZIONE",
+    "stato_commessa_id": 4,
+    "stato_commessa": "PRONTA_FATTURAZIONE",
+    "chiude_commessa": false,
+    "emittibile": true,
+    "modificabile": true,
+    "policy_fatturazione": "DA_DOCUMENTO",
+    "fatturazione_immediata": false,
+    "priorita_operativa": null,
+    "billing_account_id": 1001,
+    "utility_id": 2,
+    "emittente_soggetto_ruolo_id": 555,
     "total_attivita": 10,
     "total_approvate": 8,
-    "total_emesse": 5
+    "total_non_approvate": 2,
+    "total_emesse": 5,
+    "total_non_emesse": 5,
+    "total_prezzo_da_riallineare": 0,
+    "last_update": "2026-06-15T10:00:00"
   },
   "meta": { ... }
 }
 ```
 
-`stato_codice_interno` (2026-06-10): codice stato della testata
-(`vendite.stati_commessa.codice_interno`) — permette a FE/smoke di verificare
-l'esito del ponte di emittibilità post-push senza una seconda chiamata.
+Campi (2026-06-15): l'endpoint ora propaga **tutto** ciò che `fn_get_commessa_stato`
+espone, non più i soli 3 contatori. In dettaglio:
+
+- `stato_codice_interno` (2026-06-10): codice stato della testata
+  (`vendite.stati_commessa.codice_interno`) — verifica l'esito del ponte di
+  emittibilità post-push senza una seconda chiamata.
+- **Stato + governance** (da `vendite.stati_commessa`): `stato_commessa_id`,
+  `stato_commessa` (codice), flag `chiude_commessa` / `emittibile` / `modificabile`.
+- **Config testata**: `policy_fatturazione`, `fatturazione_immediata`,
+  `priorita_operativa`, `billing_account_id`, `utility_id`,
+  `emittente_soggetto_ruolo_id`.
+- **Contatori righe** `commesse_attivita`: `total_attivita`,
+  `total_approvate` / `total_non_approvate`, `total_emesse` / `total_non_emesse`,
+  `total_prezzo_da_riallineare`.
+- `last_update` (ISO 8601, nullable): max tra update testata e ultima riga.
+
+I campi nullable possono valere `null` (es. `priorita_operativa`, `last_update`).
 
 - `400`: `commessa_id` non valido (`E_COMMESSA_VALIDATION`)
 - `404`: commessa non trovata (`E_COMMESSA_NOT_FOUND`)
@@ -50,8 +79,8 @@ l'esito del ponte di emittibilità post-push senza una seconda chiamata.
 - Endpoint read-only, nessuna `Idempotency-Key` richiesta.
 - Endpoint v1 richiede JWT.
 - `commessa_id` deve essere > 0, altrimenti errore di validazione.
-- I contatori (`total_attivita`, `total_approvate`, `total_emesse`) sono calcolati
-  nel DB in un unico round-trip.
+- Stato, flag di governance e contatori sono calcolati nel DB in un unico round-trip
+  (`fn_get_commessa_stato`); il service li propaga integralmente.
 - Implementa il pattern standard `success_response` / `exception_to_error_response`.
 
 ## Dipendenze DB

@@ -9,17 +9,8 @@ import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { cambiaStatoFlusso } from '../api/pratiche-api'
-import { completaApprovazioneFlusso } from '../../vendite/preventivi/api/preventiviApi'
 import { getUiActivity } from '../uiActivityRegistry'
 import { DRAWER_WIDTH, STATO_FLUSSO } from '../../core/constants'
-
-// Processo PREVENTIVI (percorso pratica-first): prefisso tipo_prestazione +
-// codice template che abilita il ramo M2 (completamento approvazione → accetta
-// preventivo). NB: l'APERTURA del drawer di dominio è ora data-driven via
-// `azione_ui_key` (registry UI_ACTIVITY_REGISTRY), non più hardcoded qui; resta
-// hardcoded solo il routing del COMPLETAMENTO M2 (concern separato, follow-up).
-const TIPO_PREVENTIVI_PREFIX = 'PREVENTIVI'
-const TEMPLATE_APPROVAZIONE_CLIENTE = 'APPROVAZIONE_CLIENTE'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -37,22 +28,12 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   flusso: { type: Object, default: null },
   praticaId: { type: Number, default: null },
-  // Codice tipo_prestazione della pratica: discrimina il routing PREVENTIVI
-  // (es. APPROVAZIONE_CLIENTE → endpoint M2) da altri processi che riusano gli
-  // stessi codici template (es. OFFERTA_QUADRO).
-  tipoPrestazioneCodice: { type: String, default: '' },
   // Pratica in stato terminale (CHIUSA/ANNULLATA): sola lettura. Il flusso si
   // puo' consultare ma non avviare/completare e non si generano flussi a valle.
   readonly: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['update:visible', 'saved', 'open-attivita'])
-
-// È un processo PREVENTIVI (pratica-first) → abilita il ramo M2 (completamento).
-const isPreventivi = computed(
-  () => (props.tipoPrestazioneCodice || '').startsWith(TIPO_PREVENTIVI_PREFIX)
-)
-const templateCodice = computed(() => props.flusso?.template_flusso_codice || '')
 
 const esito = ref(null)
 const noteEsito = ref('')
@@ -144,27 +125,21 @@ async function onAvvia() {
   if (result !== null) { emit('saved'); emit('update:visible', false) }
 }
 
-// Scopo: Completa il flusso con esito obbligatorio.
-// Routing M2 (§8.3): per APPROVAZIONE_CLIENTE di una pratica PREVENTIVI, il
-// completamento guida l'accettazione del preventivo collegato → endpoint
-// vendite dedicato (preventivo risolto a BE dal ROOT). Altri flussi: generico.
+// Scopo: Completa il flusso con esito obbligatorio (completamento GENERICO).
+// Le azioni di dominio al completamento (es. accettazione del preventivo per
+// APPROVAZIONE_CLIENTE) sono ora SERVER-SIDE e data-driven: il motore pratiche
+// le esegue dai binding pratiche.template_flussi_handler_eventi nella stessa
+// transazione. Niente più routing M2 / endpoint dedicato nel FE.
 async function onCompleta() {
   if (!esito.value) return
-  const isApprovazioneM2 =
-    isPreventivi.value && templateCodice.value === TEMPLATE_APPROVAZIONE_CLIENTE
-  const action = isApprovazioneM2
-    ? () => completaApprovazioneFlusso({
-        pratica_id: props.praticaId,
-        flusso_id: props.flusso.id,
-        esito: esito.value,
-        note_esito: noteEsito.value || null,
-      })
-    : () => cambiaStatoFlusso(props.praticaId, props.flusso.id, {
-        nuovo_stato: 'COMPLETATO',
-        esito: esito.value,
-        note_esito: noteEsito.value || null,
-      })
-  const result = await execute(action, { successMessage: t('pratiche.flusso_completato') })
+  const result = await execute(
+    () => cambiaStatoFlusso(props.praticaId, props.flusso.id, {
+      nuovo_stato: 'COMPLETATO',
+      esito: esito.value,
+      note_esito: noteEsito.value || null,
+    }),
+    { successMessage: t('pratiche.flusso_completato') },
+  )
   if (result !== null) { emit('saved'); emit('update:visible', false) }
 }
 

@@ -4,15 +4,48 @@
 > Spiega *cosa* serve e *perché*; **non contiene DDL/seed pronto** — il *come*
 > (changeset liquibase, righe CSV, ordini, id) è scelta del team DB.
 >
-> **Data**: 2026-06-15 · **Stato**: 🟦 APERTO (da valutare/implementare)
+> **Data**: 2026-06-15 · **Stato**: ✅ **IMPLEMENTATO** (2026-06-15) — seed atterrato
+> su `dev/db-tid`, pgTAP verde (`test-seed-pull-commessa-pipeline-v1.sql`). Vedi §0.
 >
-> **Origine**: [analisi-commesse-stato-e-sviluppi.md §10](analisi-commesse-stato-e-sviluppi.md)
+> **Origine**: [analisi-commesse-stato-e-sviluppi.md §10](../work-in-progress/analisi-commesse-stato-e-sviluppi.md)
 > (piano driver di orchestrazione fatturazione). La verifica seed (Fase 0) ha
 > trovato che la catena commessa → fatturazione è **interrotta a livello di seed**.
 >
 > **Prerequisito di**: il **driver di orchestrazione fatturazione** (lavoro BE:
 > avanzamento multi-step, management command, timer near-real-time/mensile). Il
 > driver non può essere testato end-to-end finché questi seed non esistono.
+
+---
+
+## 0. Stato implementazione (2026-06-15, dal team DB)
+
+✅ **Atterrato su `dev/db-tid` e pushato, pgTAP verde** (`test-seed-pull-commessa-pipeline-v1.sql`).
+Solo seed/config, nessuna logica DB nuova.
+
+| Deliverable | Esito |
+|---|---|
+| **D1** pull → select → genera | `pull_attivita_da_commessa` registrato in `dbops.pipeline_task_registry`/`_impl` (dominio `FATTURAZIONE`, handler `pull_attivita_da_commessa_default`) e messo **in testa** alla pipeline MASSIVO/DRAFT. *(Senza la registrazione il dispatch falliva "Task non registrato": l'array `processi` da solo non bastava.)* |
+| **D2** corsia GIORNALIERO/DRAFT | Aggiunta pipeline GIORNALIERO/DRAFT (stato 1) con gli stessi 3 task della massiva (no fondi/IVA, che sono fase EMESSA). Riusa la transizione 1→8. Vecchia riga GIORNALIERO/EMESSA (vuota, mai raggiunta) lasciata: cleanup opzionale. |
+| **D3** `chiude_lotto` | **Opzione A su DEFINITIVA** (spostato da REGISTRATA, inerte). Non INVIATA perché SDI è fuori scope ora. |
+| task_policy | Aggiunte righe pull (massivo+giornaliero) e select/genera giornalieri per il tracing. |
+
+### Impatti comportamentali da tenere a mente lato BE (vincoli per il driver)
+
+1. **Chiusura lotto ora attiva**: `is_stato_doc_chiude_lotto(DEFINITIVA) == true` → quando
+   gira lo step DEFINITIVA (`numera_fatture`), `pipeline_runner._process_close_lotto_by_flag`
+   chiude il lotto (`close_lotto_operativo`). Prima non si chiudeva mai. **Il driver
+   multi-step non deve fare doppia chiusura; verificare l'idempotenza di
+   `close_lotto_operativo` nel flusso.**
+2. **Perimetro del pull dal `LottoContext`**: il pull deriva il perimetro da
+   `competenza_mese`/`utility_id`/`billing_account_id`/`emittente_soggetto_ruolo_id`.
+   **Il context va valorizzato sul lotto in DRAFT**: con filtri NULL la discovery prende
+   **tutte** le commesse emittibili nella competenza.
+3. **Futuro SDI**: quando l'invio SDI diventerà reale, valutare lo spostamento di
+   `chiude_lotto` su INVIATA.
+
+> **Resta a carico BE** (fuori scope DB, come da brief): scheduler/timer corsia
+> immediata+differita, management command, avanzamento multi-step di `run_pipeline`
+> (oggi 1 step per run), endpoint on-demand. **Nessun pgAgent.**
 
 ---
 

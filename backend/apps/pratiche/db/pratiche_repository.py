@@ -345,6 +345,33 @@ class PraticheRepository:
             cursor.execute(sql, [pratica_id])
             return rows_to_list(cursor)
 
+    # Scopo: Trova il flusso IN_CORSO di una pratica la cui attivita' UI
+    #        (template_flussi.azione_ui_id → azioni_ui.azione_ui_key) corrisponde
+    #        a `azione_ui_key`. Ritorna l'id o None. Alimenta l'auto-completamento
+    #        del flusso di preventivazione all'emissione del documento collegato:
+    #        l'emissione risale alla pratica e chiude il flusso che aveva aperto
+    #        il drawer (azione_ui_key APRI_PREVENTIVO). Solo IN_CORSO: i flussi
+    #        gia' COMPLETATO/ANNULLATO sono no-op (idempotenza ri-emissione).
+    def get_flusso_in_corso_by_azione_ui(
+        self, pratica_id: int, azione_ui_key: str,
+    ) -> int | None:
+        sql = """
+            SELECT f.id
+            FROM pratiche.flussi f
+            JOIN config.stati_flussi_pratiche sf ON sf.id = f.stato_id
+            JOIN pratiche.template_flussi tf ON tf.id = f.template_flusso_id
+            JOIN pratiche.azioni_ui au ON au.id = tf.azione_ui_id
+            WHERE f.pratica_id = %s
+              AND au.azione_ui_key = %s
+              AND sf.codice_interno = 'IN_CORSO'
+            ORDER BY f.sequenza, f.id
+            LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [pratica_id, azione_ui_key])
+            row = cursor.fetchone()
+        return int(row[0]) if row else None
+
     # Scopo: Restituisce il dettaglio di un singolo flusso con display fields.
     def get_flusso(self, flusso_id: int) -> dict[str, Any] | None:
         sql = f"""
@@ -994,6 +1021,29 @@ class PraticheRepository:
         if not row:
             return None
         return str(row[0]), coerce_jsonb_dict(row[1])
+
+    # Scopo: Binding handler legati a un EVENTO di flusso (template_flussi_handler_eventi).
+    # Generalizza il dispatch oltre l'avvio: per (template, evento) restituisce gli
+    # handler attivi il cui esito_richiesto combacia con l'esito effettivo (NULL =
+    # qualsiasi esito), ordinati per sequenza. Lista di (handler_key, handler_params).
+    def get_handler_eventi(
+        self, template_flusso_id: int, evento: str, esito: str | None,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        sql = """
+            SELECT hf.handler_key, tfhe.handler_params
+            FROM pratiche.template_flussi_handler_eventi tfhe
+            JOIN pratiche.handler_flussi hf ON hf.id = tfhe.handler_id
+            WHERE tfhe.template_flusso_id = %s
+              AND tfhe.evento = %s
+              AND tfhe.attivo = true
+              AND hf.attivo = true
+              AND (tfhe.esito_richiesto IS NULL OR tfhe.esito_richiesto = %s)
+            ORDER BY tfhe.sequenza, tfhe.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [template_flusso_id, evento, esito])
+            rows = cursor.fetchall()
+        return [(str(r[0]), coerce_jsonb_dict(r[1])) for r in rows]
 
     # -- TIPO PRESTAZIONE ------------------------------------------------
 

@@ -470,6 +470,14 @@ watch(() => props.visible, async (v) => {
   // "Revisioni" invece di "Testata"). Mirror OffertaDrawer.
   revisioniTab.reset()
   contestoFv.invalidate()
+  // Reset stato "edit-evolved" a OGNI apertura: questo drawer e' montato una
+  // sola volta come attivita' dinamica nella dashboard pratiche e riusato tra
+  // aperture diverse (l'istanza persiste). Senza azzerare createdId/detail, un
+  // createdId rimasto da una sessione CREATE precedente (bozza auto-salvata)
+  // farebbe puntare `effectivePreventivoId` al preventivo sbagliato riaprendo
+  // un'altra pratica in EDIT. In CREATE resetForm() li riazzera comunque.
+  createdId.value = null
+  detail.value = null
   // loadParamDefaults serve in entrambi i mode (paramBool/paramInt usati anche
   // in defaultForm). loadUtilityDefault serve solo in CREATE (in EDIT utility_id
   // arriva dal detail BE).
@@ -834,7 +842,7 @@ const drawerActions = computed(() => {
     position="right" :style="{ width: DRAWER_WIDTH.WIDE_PLUS }" :dismissable="true">
     <template #header>
       <DrawerTitle
-        :action="isEdit ? t('common.edit') : t('common.new')"
+        :action="(isEdit || hasDetail) ? t('common.edit') : t('common.new')"
         :title="t('preventivi.preventivo')"
         :icon="NAV_ICONS.PREVENTIVI"
       />

@@ -26,6 +26,12 @@ from apps.vendite.types import (
 
 # Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
 
+# Chiave nel `meta` jsonb del lotto che porta la corsia (filtro fatturazione_immediata)
+# decisa dal driver/management command. Contratto condiviso col command: usare SEMPRE
+# questa costante per scrivere/leggere il valore, evitando stringa magica duplicata.
+LOTTO_META_KEY_FATTURAZIONE_IMMEDIATA = "fatturazione_immediata"
+
+
 @dataclass(frozen=True)
 class LottoContext:
     competenza_mese: date
@@ -34,6 +40,9 @@ class LottoContext:
     billing_account_id: int | None
     lock_batch_id: str | None
     emittente_soggetto_ruolo_id: int | None = None
+    # Corsia driver: filtro fatturazione_immediata propagato dal management command
+    # via meta del lotto (True=immediata, False=differita, None=tutte/storico).
+    fatturazione_immediata: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -908,11 +917,12 @@ class VenditePipelineRepository:
                        utility_id,
                        billing_account_id,
                        lock_batch_id,
-                       emittente_soggetto_ruolo_id
+                       emittente_soggetto_ruolo_id,
+                       (meta->>%s)::boolean
                 FROM vendite.fatturazione_lotti
                 WHERE id = %s
                 """,
-                [lotto_id],
+                [LOTTO_META_KEY_FATTURAZIONE_IMMEDIATA, lotto_id],
             )
             row = cursor.fetchone()
         if not row:
@@ -924,6 +934,7 @@ class VenditePipelineRepository:
             billing_account_id=row[3],
             lock_batch_id=row[4],
             emittente_soggetto_ruolo_id=None if row[5] is None else int(row[5]),
+            fatturazione_immediata=row[6],
         )
 
     # Scopo: Recupera i task JSON dello step (processi o rollback) e normalizza il payload in lista Python.

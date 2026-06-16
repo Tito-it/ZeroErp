@@ -197,9 +197,9 @@ export function collegaPratica(preventivoId, payload) {
   return api.post(`${BASE}/${preventivoId}/collega-pratica/`, payload)
 }
 
-// M2 (§8.3): completa il flusso APPROVAZIONE_CLIENTE e, su esito POSITIVO,
-// accetta il preventivo ROOT della pratica. Body: {pratica_id, flusso_id, esito,
-// note_esito}. Il preventivo e' risolto lato BE dal legame ROOT.
-export function completaApprovazioneFlusso(payload) {
-  return api.post(`${BASE}/approvazione-flusso/`, payload)
+// Riapertura pratica-first: risolve il preventivo ROOT gia' collegato a una
+// pratica. Ritorna { preventivo_id: <id|null> }. Usato dall'attivita' UI "apri
+// preventivo" per riaprire il ROOT esistente in edit invece di crearne uno nuovo.
+export function getRootPerPratica(praticaId) {
+  return api.get(`${BASE}/root-per-pratica/`, { params: { pratica_id: praticaId } })
 }

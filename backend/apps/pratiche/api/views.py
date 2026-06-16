@@ -446,6 +446,9 @@ class ApiPraticaFlussoStato(DomainAPIView):
                     flusso_id,
                     esito=str(payload["esito"]),
                     note_esito=payload.get("note_esito"),
+                    # user acting (p_user): inoltrato agli handler di completamento
+                    # (es. accetta_preventivo) per audit nelle fn DB di dominio.
+                    user=getattr(request.user, "username", None) or None,
                 )
             elif nuovo_stato == "IN_CORSO":
                 # user acting (p_user §8.5): username se disponibile, altrimenti

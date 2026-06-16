@@ -1,9 +1,11 @@
 # Piano FE — Documento dalla pratica: cliente/istanza ereditati e bloccati
 
 > **Tipo**: piano frontend (Vue). **Prerequisito**: dato DB del
-> [brief-db-pratica-preventivo-contesto-cliente.md](../work-done/brief-db-pratica-preventivo-contesto-cliente.md)
+> [brief-db-pratica-preventivo-contesto-cliente.md](brief-db-pratica-preventivo-contesto-cliente.md)
 > (la pratica espone `billing_account_id` derivato + `istanza_utility_id`).
-> **Data**: 2026-06-15 · **Stato**: 🟡 **IMPLEMENTATO per PreventiviDrawer; resta offerta/contratto**
+> **Data**: 2026-06-15 · **Stato**: ✅ **CHIUSO (2026-06-15)** — implementato su
+> `PreventiviDrawer`. Estensione a `OffertaDrawer`/`ContrattoDrawer` quando nasceranno
+> i loro flussi (concentrico, non lavoro aperto).
 >
 > **✅ Fatto** (prereq DB consegnato, `f3c4710ca`): `PreventiviDrawer` accetta
 > `praticaContext` → pre-compila istanza (+ BA se cliente attivo) e blocca **solo i
