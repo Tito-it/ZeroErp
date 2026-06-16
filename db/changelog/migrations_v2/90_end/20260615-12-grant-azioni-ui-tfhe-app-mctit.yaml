@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# B-GRANT — sanatoria privilegi runtime su pratiche.azioni_ui e
+# pratiche.template_flussi_handler_eventi.
+#
+# Le due tabelle (consegna meccanismo attivita-UI / handler-eventi data-driven,
+# 20260615-01 / 20260615-07) sono lette dentro funzioni DB SECURITY INVOKER
+# (get_percorso_pratica, list_flussi via LEFT JOIN azioni_ui; get_handler_eventi
+# su template_flussi_handler_eventi) ma non avevano SELECT per il ruolo
+# applicativo zeroerp_app -> "permesso negato" -> 500 sugli endpoint percorso/
+# flussi (roadmap e lista flussi sparite in app).
+#
+# Causa sistemica: i grant runtime generici (90_end/ci_apply/20260205-41) girano
+# solo nel context 'ci_apply', quindi fuori CI il ruolo applicativo non riceve i
+# privilegi sulle tabelle nuove. Qui un GRANT mirato e idempotente, difensivo
+# (skip se il ruolo manca), valido in ogni contesto. Stesso pattern di
+# 20260608-12 (competenze_flussi). Solo SELECT: tabelle seed/config read-only
+# lato BE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260615-12-grant-azioni-ui-tfhe-app-mctit.yaml
+
+  - changeSet:
+      id: 20260615-12-grant-azioni-ui-tfhe-app
+      author: mctit
+      runOnChange: true
+      comment: >
+        GRANT SELECT su pratiche.azioni_ui e pratiche.template_flussi_handler_eventi
+        al ruolo applicativo zeroerp_app. Idempotente e difensivo.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+                v_tbl      text;
+                v_tables   text[] := ARRAY[
+                  'pratiche.azioni_ui',
+                  'pratiche.template_flussi_handler_eventi'
+                ];
+              BEGIN
+                -- Se il ruolo non esiste (es. bootstrap incompleto) non blocchiamo.
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  RAISE NOTICE 'Ruolo % assente: skip grant azioni_ui/tfhe.', v_app_role;
+                  RETURN;
+                END IF;
+
+                EXECUTE format('GRANT USAGE ON SCHEMA pratiche TO %I', v_app_role);
+
+                FOREACH v_tbl IN ARRAY v_tables LOOP
+                  EXECUTE format('GRANT SELECT ON TABLE %s TO %I', v_tbl, v_app_role);
+                END LOOP;
+              END;
+              $$;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+                v_tbl      text;
+                v_tables   text[] := ARRAY[
+                  'pratiche.azioni_ui',
+                  'pratiche.template_flussi_handler_eventi'
+                ];
+              BEGIN
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  FOREACH v_tbl IN ARRAY v_tables LOOP
+                    EXECUTE format('REVOKE SELECT ON TABLE %s FROM %I', v_tbl, v_app_role);
+                  END LOOP;
+                END IF;
+              END;
+              $$;
