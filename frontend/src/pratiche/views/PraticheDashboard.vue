@@ -181,10 +181,16 @@ async function onOpenAttivita(payload) {
   const entry = getUiActivity(payload?.key)
   if (!entry) return
   const mod = await entry.loadComponent()
+  // Riapertura pratica-first: se la pratica ha gia' un documento ROOT collegato,
+  // lo apriamo in EDIT invece di crearne uno nuovo (evita bozze duplicate e
+  // riprende il lavoro dove era). Il resolver e' opzionale e best-effort.
+  const existingId = entry.resolveExisting ? await entry.resolveExisting(payload) : null
   activityEntry.value = entry
   activityCtx.value = payload
-  activityProps.value = entry.buildProps(payload)
-  activityLinked.value = false
+  activityProps.value = entry.buildProps(payload, existingId)
+  // Documento gia' collegato → niente re-aggancio (l'onSaved e' comunque
+  // idempotente, ma cosi' evitiamo il toast "collegato" a ogni salvataggio).
+  activityLinked.value = existingId != null
   activityComponent.value = markRaw(mod.default)
   activityVisible.value = false
   await nextTick()

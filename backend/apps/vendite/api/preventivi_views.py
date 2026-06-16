@@ -439,6 +439,40 @@ class ApiPreventivoCollegaPratica(DomainAPIView):
         return handle_post_json(request, handler=_handler)
 
 
+class ApiPreventivoRootPerPratica(DomainAPIView):
+    """`GET /api/v1/vendite/preventivi/root-per-pratica/?pratica_id=<id>`:
+    risolve il preventivo ROOT collegato a una pratica (pratiche_sorgenti).
+    Alimenta la RIAPERTURA dal flusso pratica-first: l'attivita' UI "apri
+    preventivo" apre il ROOT esistente in edit invece di crearne uno nuovo.
+    Ritorna `{"preventivo_id": <id|null>}`. Lettura libera."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="pratica_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=True,
+            ),
+        ],
+        responses={200: inline_serializer(
+            name="PreventivoRootPerPraticaResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    def get(self, request: Request) -> JsonResponse:
+        pratica_id = optional_int({"v": request.query_params.get("pratica_id")}, "v")
+        ErrorManager.require(
+            pratica_id is not None,
+            code="E_PRATICA_ID_OBBLIGATORIO",
+            message="pratica_id obbligatorio.",
+        )
+        assert pratica_id is not None
+        return success_response(preventivi_service.get_root_per_pratica(pratica_id))
+
+
 class ApiPreventivoRevisioniList(DomainAPIView):
     area_funzionale = "vendite"
 

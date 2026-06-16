@@ -196,3 +196,10 @@ export function listPratiche(preventivoId) {
 export function collegaPratica(preventivoId, payload) {
   return api.post(`${BASE}/${preventivoId}/collega-pratica/`, payload)
 }
+
+// Riapertura pratica-first: risolve il preventivo ROOT gia' collegato a una
+// pratica. Ritorna { preventivo_id: <id|null> }. Usato dall'attivita' UI "apri
+// preventivo" per riaprire il ROOT esistente in edit invece di crearne uno nuovo.
+export function getRootPerPratica(praticaId) {
+  return api.get(`${BASE}/root-per-pratica/`, { params: { pratica_id: praticaId } })
+}

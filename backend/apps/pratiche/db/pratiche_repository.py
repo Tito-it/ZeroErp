@@ -345,6 +345,33 @@ class PraticheRepository:
             cursor.execute(sql, [pratica_id])
             return rows_to_list(cursor)
 
+    # Scopo: Trova il flusso IN_CORSO di una pratica la cui attivita' UI
+    #        (template_flussi.azione_ui_id → azioni_ui.azione_ui_key) corrisponde
+    #        a `azione_ui_key`. Ritorna l'id o None. Alimenta l'auto-completamento
+    #        del flusso di preventivazione all'emissione del documento collegato:
+    #        l'emissione risale alla pratica e chiude il flusso che aveva aperto
+    #        il drawer (azione_ui_key APRI_PREVENTIVO). Solo IN_CORSO: i flussi
+    #        gia' COMPLETATO/ANNULLATO sono no-op (idempotenza ri-emissione).
+    def get_flusso_in_corso_by_azione_ui(
+        self, pratica_id: int, azione_ui_key: str,
+    ) -> int | None:
+        sql = """
+            SELECT f.id
+            FROM pratiche.flussi f
+            JOIN config.stati_flussi_pratiche sf ON sf.id = f.stato_id
+            JOIN pratiche.template_flussi tf ON tf.id = f.template_flusso_id
+            JOIN pratiche.azioni_ui au ON au.id = tf.azione_ui_id
+            WHERE f.pratica_id = %s
+              AND au.azione_ui_key = %s
+              AND sf.codice_interno = 'IN_CORSO'
+            ORDER BY f.sequenza, f.id
+            LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [pratica_id, azione_ui_key])
+            row = cursor.fetchone()
+        return int(row[0]) if row else None
+
     # Scopo: Restituisce il dettaglio di un singolo flusso con display fields.
     def get_flusso(self, flusso_id: int) -> dict[str, Any] | None:
         sql = f"""

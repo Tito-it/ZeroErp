@@ -69,10 +69,22 @@ export function useDrawerAutosaveBozza({
     }
   }
 
-  watch(triggerSources, async (values) => {
+  // Osserviamo ANCHE contentReady, non solo i triggerSources. Nel flusso
+  // "prefill" (es. preventivo aperto da una pratica: cliente/istanza ereditati
+  // dal contesto) i campi-trigger vengono valorizzati PROGRAMMATICAMENTE durante
+  // l'apertura del drawer, PRIMA che l'animazione di slide finisca
+  // (contentReady=false). Con il watch sui soli triggerSources il callback
+  // scattava a contentReady=false → veniva skippato → e non ripartiva più (i
+  // trigger non cambiano più): la bozza non veniva mai auto-creata e il drawer
+  // restava in stato "nuovo" (niente edit-evolved, niente sezione righe).
+  // Includendo contentReady, quando l'animazione finisce e i trigger sono già
+  // pronti la bozza viene comunque creata. Nel flusso manuale (utente digita i
+  // campi a drawer già aperto) il comportamento è invariato: i guard sotto
+  // (isReady/contentReady/createdId) evitano doppie creazioni.
+  watch([triggerSources, contentReady], async () => {
     if (isEdit()) return
     if (createdId.value !== null) return
-    if (!isReady(values)) return
+    if (!isReady(triggerSources())) return
     if (!contentReady()) return
     if (loading.value) return
     await autoSaveBozza()

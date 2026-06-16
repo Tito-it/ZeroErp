@@ -33,6 +33,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoPushCommessa,
     ApiPreventivoRevisione,
     ApiPreventivoRevisioniList,
+    ApiPreventivoRootPerPratica,
     ApiPreventivoRiepilogoIva,
     ApiPreventivoRigaComponenteDetail,
     ApiPreventivoRigaComponentiList,
@@ -52,6 +53,13 @@ urlpatterns = [
         "form-defaults/",
         ApiPreventivoFormDefaults.as_view(),
         name="vendite-preventivi-form-defaults",
+    ),
+    # Riapertura pratica-first: risolve il preventivo ROOT collegato a una
+    # pratica. Prima della rotta lista "" per matchare il path dedicato.
+    path(
+        "root-per-pratica/",
+        ApiPreventivoRootPerPratica.as_view(),
+        name="vendite-preventivi-root-per-pratica",
     ),
     # Export CSV/XLSX lista configurabile (DEF-1). Prima della rotta lista ""
     # per matchare il path dedicato.

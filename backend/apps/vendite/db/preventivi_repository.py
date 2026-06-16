@@ -576,6 +576,27 @@ class PreventiviRepository(ComponentiRepositoryMixin):
             row = cursor.fetchone()
         return int(row[0]) if row else None
 
+    # Scopo: Reverse del legame ROOT — dato un preventivo, ritorna la pratica a
+    #        cui e' agganciato come ROOT (pratiche_sorgenti) o None se nessuna.
+    #        Alimenta l'auto-completamento del flusso di preventivazione
+    #        all'emissione (percorso pratica-first): l'emissione deve risalire
+    #        dalla testata preventivo alla pratica per chiudere il flusso aperto.
+    def get_pratica_id_by_preventivo_root(self, preventivo_id: int) -> int | None:
+        sql = """
+            SELECT ps.pratica_id
+            FROM pratiche.pratiche_sorgenti ps
+            JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
+            JOIN vendite.preventivi p ON p.uid::text = ps.sorgente_uid
+            WHERE p.id = %s
+              AND s.codice_interno = 'PREVENTIVO'
+              AND ps.ruolo_link = 'ROOT'
+            LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [preventivo_id])
+            row = cursor.fetchone()
+        return int(row[0]) if row else None
+
     # Scopo: Hard-delete preventivo. Usato dal flusso "abbandono bozza"
     #        (preventivi BOZZA orfani senza righe). I guard di dominio
     #        (stato BOZZA, zero righe, no pratiche/commesse collegate) sono

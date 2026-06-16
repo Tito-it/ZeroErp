@@ -109,7 +109,10 @@ class ApiPreventivoEmetti(DomainAPIView):
         allegati = extract_allegati(request)
 
         with transaction.atomic():
-            emit_result = preventivi_service.emetti(preventivo_id)
+            emit_result = preventivi_service.emetti(
+                preventivo_id,
+                user=getattr(request.user, "username", None) or None,
+            )
             preventivo, sorgente_tipo_id = _resolve_contesto_preventivo(preventivo_id)
             documento = DocumentGenerationService().genera_documento(
                 request.user,

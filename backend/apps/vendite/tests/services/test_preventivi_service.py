@@ -437,11 +437,49 @@ class TestPreventiviService(unittest.TestCase):
         from apps.vendite.services.preventivi_service import emetti
 
         self.mock_repo.cambia_stato.return_value = {"status": "ok"}
+        # Preventivo non agganciato a pratica → l'auto-completamento del flusso
+        # di preventivazione e' no-op (emetti resta un thin wrapper sul repo).
+        self.mock_repo.get_pratica_id_by_preventivo_root.return_value = None
         result = emetti(42)
         self.assertEqual(result, {"status": "ok"})
         self.mock_repo.cambia_stato.assert_called_once_with(
             42, "EMESSO", "django_api",
         )
+        self.mock_repo.get_pratica_id_by_preventivo_root.assert_called_once_with(42)
+
+    # Scopo: emettendo un preventivo ROOT di una pratica, il flusso di
+    # preventivazione (azione_ui APRI_PREVENTIVO) ancora IN_CORSO viene
+    # auto-completato POSITIVO (percorso pratica-first, Feature auto-EMESSO).
+    @patch("apps.pratiche.services.pratiche_service.completa_flusso")
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    def test_emetti_autocompleta_flusso_preventivazione(self, MockPratRepo, mock_completa):
+        from apps.vendite.services.preventivi_service import emetti
+
+        self.mock_repo.cambia_stato.return_value = {"status": "ok"}
+        self.mock_repo.get_pratica_id_by_preventivo_root.return_value = 245
+        MockPratRepo.return_value.get_flusso_in_corso_by_azione_ui.return_value = 315
+
+        emetti(7, user="giacomo")
+
+        MockPratRepo.return_value.get_flusso_in_corso_by_azione_ui.assert_called_once_with(
+            245, "APRI_PREVENTIVO",
+        )
+        mock_completa.assert_called_once_with(315, esito="POSITIVO", user="giacomo")
+
+    # Scopo: emettendo un preventivo ROOT senza flusso aperto (gia' completato o
+    # nessun APRI_PREVENTIVO IN_CORSO) → nessun completamento, idempotente.
+    @patch("apps.pratiche.services.pratiche_service.completa_flusso")
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    def test_emetti_no_flusso_aperto_no_completa(self, MockPratRepo, mock_completa):
+        from apps.vendite.services.preventivi_service import emetti
+
+        self.mock_repo.cambia_stato.return_value = {"status": "ok"}
+        self.mock_repo.get_pratica_id_by_preventivo_root.return_value = 245
+        MockPratRepo.return_value.get_flusso_in_corso_by_azione_ui.return_value = None
+
+        emetti(7)
+
+        mock_completa.assert_not_called()
 
     # ── Eliminazione bozza (abbandono drawer) ──
 

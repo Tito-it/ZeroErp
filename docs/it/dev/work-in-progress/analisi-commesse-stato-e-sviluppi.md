@@ -202,9 +202,9 @@ mostrano solo un toast con `push_log_id`, **senza link alla commessa risultante*
 | 1 | Nessuno scheduler/cron + pipeline "uno step per run" (`steps[:1]`) | TRASVERSALE | La fatturazione non è autonoma: serve un driver che concateni gli step (vedi §7) |
 | 2 | ✅ **FATTO END-TO-END (2026-06-16)** — Snapshot pricing v5: il push popola gli 8 campi audit su `commesse_attivita` (`BaseSourceHandler._resolve_pricing_audit` via `PricingService`, senza sovrascrivere `prezzo_snapshot`; best-effort, cache per-run, whitelist `origine_prezzo` contro il CHECK, origine da meta prevale per i componenti). La **pull** `fn_emit_attivita_fatturabili_da_commessa` ora li **propaga 1:1** ad `attivita_fatturabili` (changeset DB `20260616-01`, brief [work-done/brief-db-propaga-snapshot-pricing-pull-commessa-af.md](../work-done/brief-db-propaga-snapshot-pricing-pull-commessa-af.md)). | BE✅ + DB✅ | Audit prezzo completo: push → commessa → emissione |
 | 3 | ✅ **COMPOSITI FATTI (2026-06-15)** — il fan-out BoM usa ora il **modello unico** `*_righe_componenti` per **tutti** i documenti: estratto `BaseSourceHandler._componenti_repo_factory` (staticmethod) → ordini/contratti/DDT leggono i componenti negoziati come preventivi (no DB, le tabelle + mixin esistevano già; nuovo `DdtRepository` minimale). 🛑 **Consumi utility (gas/energia/acqua/…) — RIMANDATO, NON si fa ora (decisione Tid 2026-06-16)**: `attivita_consumi` è un totale piatto senza `*_righe_componenti`; la decomposizione tariffaria (energia/trasporto/oneri/quota fissa/accise) è un **modello DB dedicato** da progettare quando la fatturazione utility per-voce diventerà priorità. Oggi un consumo entra in commessa come **riga singola** (`_fetch_componenti` resta stub documentato, nessun fan-out). | BE✅ compositi / 🛑 consumi rimandato | Compositi ok per ogni sorgente; decomposizione utility fuori scope ora |
-| 4 | `fn_available_actions_commessa` inesistente + nessun innesco per CHIUSA / riapertura / ANNULLATA | TRASVERSALE | Ciclo di vita post-PRONTA non governabile: macchina stati per metà inerte |
+| 4 | 🟠 **BRIEF DB PRONTO (2026-06-16)** — `fn_available_actions_commessa` + seed transizioni `manuale=true`: brief [brief-db-fn-available-actions-commessa.md](brief-db-fn-available-actions-commessa.md) (mirror `fn_available_actions_ordine`). Il guard/matrice/`fn_cambia_stato_commessa` esistono già; mancano la fn capability e le transizioni marcate utente. **Consumer BE attende il DB** (endpoint `POST /commesse/<id>/stato/` + capability in `ApiCommessaStato`). | DB→BE | Ciclo di vita post-PRONTA: sbloccabile appena il DB applica il brief |
 | 5 | ✅ **RISOLTO (2026-06-15)** — `fn_get_commessa_stato` esponeva flag governance + molti contatori, ma il repo BE ne leggeva solo 3 | BE | Ora `ApiCommessaStato` propaga stato + flag + tutti i contatori (74 test verdi) |
-| 6 | Discrepanza nome codice errore: brief cita `E_COMMESSA_TRANSIZIONE_NON_AMMESSA`, reale è `E_COMMESSA_STATO_TRANSIZIONE_INVALIDA` (472) | DB/doc | Confusione in doc/test |
+| 6 | ✅ **RISOLTO (2026-06-16)** — Discrepanza nome codice errore: il nome reale è `E_COMMESSA_STATO_TRANSIZIONE_INVALIDA` (472); il placeholder `E_COMMESSA_TRANSIZIONE_NON_AMMESSA` **non esiste** in codice/DB/test (compariva solo nel brief storico `work-done/brief-db-commesse-transizioni-stati.md`, ora annotato). Nessun fix codice necessario. | DB/doc | Allineato |
 
 ---
 
@@ -397,8 +397,13 @@ Quando servirà un flusso REALE con gate operativi/produzione, l'innesto è pron
 6. **🟡 MEDIA — Predisposizioni fasi di lavorazione** (§6): ✅ **FATTO (2026-06-15)** —
    hook BE no-op `BaseSourceHandler._pre_commessa_hook(row)→row` (identity) come punto
    d'innesto. Niente colonna DB / niente `meta` dedicato ora (decisione 2026-06-15).
-7. **🟢 BASSA — `fn_available_actions_commessa` + azioni di stato utente** (§4.3 #4).
-8. **🟢 BASSA — Allineare la documentazione** (§3): dopo i fix BE.
+7. **🟢 BASSA — `fn_available_actions_commessa` + azioni di stato utente** (§4.3 #4):
+   🟠 **BRIEF DB PRONTO (2026-06-16)** → [brief-db-fn-available-actions-commessa.md](brief-db-fn-available-actions-commessa.md);
+   BE (endpoint stato + capability) attende l'applicazione DB.
+8. **🟢 BASSA — Allineare la documentazione** (§3): ✅ **FATTO (2026-06-16)** — guida
+   [gestione-commesse.md](/guide/gestione-commesse) allineata (transizioni, ROOT/COLLEGATO,
+   step pipeline reali, BoM snapshot, audit end-to-end); banner storico su
+   [gestione-commesse-v2.md](gestione-commesse-v2.md); naming codice errore (§4.3 #6) corretto.
 9. **⏸️ RINVIATO (porta aperta) — UI gestione commesse** (§4.2, §7.4-7.5): non ora;
    utile per flussi con produzione. Eventuale **monitor lotti/anomalie** minimo potrà
    servire al driver §7.4 per hold/sblocco delle segnalazioni critical.
