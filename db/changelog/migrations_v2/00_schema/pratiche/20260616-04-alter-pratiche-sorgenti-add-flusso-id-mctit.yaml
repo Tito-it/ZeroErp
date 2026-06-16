@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Aggancio documento->flusso (brief-db-aggancio-documento-flusso, 2026-06-16).
+#
+# Il legame documento<->pratica vive in pratiche.pratiche_sorgenti. Per i
+# preventivi aperti dal percorso pratica-first il link e' ruolo_link='ROOT',
+# oggi ancorato alla PRATICA. Concettualmente il documento appartiene al
+# FLUSSO di preventivazione (pratiche.flussi), non a tutta la pratica.
+#
+# Questo changeSet sposta l'ancora sul flusso:
+#   1. nuova colonna flusso_id (FK -> pratiche.flussi, NULLABLE): valorizzata
+#      per i link ROOT nati da un'attivita' UI di flusso; NULL per i link
+#      COLLEGATO a valle (commessa/ordine dai push handler), che non nascono
+#      da un flusso e non devono essere vincolati;
+#   2. indice UNIQUE parziale uq_pratiche_sorgenti_flusso_root: max un ROOT
+#      per flusso (un flusso = un'attivita' UI = un documento). Rende il
+#      "doppio ROOT" impossibile per costruzione una volta che il BE propaga
+#      flusso_id (refactor BE/FE a valle, fuori da questo brief).
+#
+# Il vincolo per-pratica esistente (uq_pratiche_sorgenti_pratica_tipo_uid_ruolo)
+# resta: il BE ci fa ON CONFLICT per l'idempotenza dell'upsert. I due vincoli
+# coesistono senza conflitto (il per-flusso interviene solo su un SECONDO uid
+# diverso sullo stesso flusso, ossia proprio cio' che vogliamo bloccare).
+#
+# Backfill dei link ROOT pregressi: non necessario (no produzione).
+# Coerenza pratica_id<->flussi.pratica_id: guard trigger in 20260616-05.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260616-04-alter-pratiche-sorgenti-add-flusso-id-mctit.yaml
+
+  - changeSet:
+      id: 20260616-04-alter-pratiche-sorgenti-add-flusso-id
+      author: mctit
+      comment: >
+        pratiche.pratiche_sorgenti: aggiunge flusso_id (FK -> pratiche.flussi,
+        nullable) + indice UNIQUE parziale uq_pratiche_sorgenti_flusso_root
+        (max un ROOT per flusso). Ancora il link ROOT al flusso d'origine.
+      changes:
+        - addColumn:
+            schemaName: pratiche
+            tableName: pratiche_sorgenti
+            columns:
+              - column:
+                  name: flusso_id
+                  type: bigint
+                  remarks: >
+                    FK a pratiche.flussi: flusso d'origine del link. Valorizzato
+                    per i ROOT nati da un'attivita' UI di flusso; NULL per i
+                    COLLEGATO a valle (non vincolati).
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: pratiche_sorgenti
+            baseColumnNames: flusso_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: flussi
+            referencedColumnNames: id
+            constraintName: fk_pratiche_sorgenti_flusso
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+
+        # -- Indice UNIQUE parziale: max un ROOT per flusso.
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_pratiche_sorgenti_flusso_root
+                ON pratiche.pratiche_sorgenti (flusso_id)
+                WHERE ruolo_link = 'ROOT' AND flusso_id IS NOT NULL;
+
+              COMMENT ON INDEX pratiche.uq_pratiche_sorgenti_flusso_root IS
+                'Max un documento ROOT per flusso: un flusso (attivita'' UI) apre un solo documento. Il "doppio ROOT" diventa impossibile per costruzione quando il BE propaga flusso_id (brief-db-aggancio-documento-flusso).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS pratiche.uq_pratiche_sorgenti_flusso_root;
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: pratiche_sorgenti
+            constraintName: fk_pratiche_sorgenti_flusso
+        - dropColumn:
+            schemaName: pratiche
+            tableName: pratiche_sorgenti
+            columnName: flusso_id
