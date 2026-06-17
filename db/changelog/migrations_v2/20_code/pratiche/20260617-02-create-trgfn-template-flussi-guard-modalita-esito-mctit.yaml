@@ -1,0 +1,116 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Guard parlante delle invarianti di coerenza della configurazione esito sul
+# template-step (template_flussi.modalita_esito / esito_default / direzione).
+# (brief-db-esito-configurabile-flussi, 2026-06-17)
+#
+#   Inv1: modalita_esito <> 'MANUALE' => esito_default NOT NULL
+#         (un automatismo deve sapere quale esito scrivere)
+#         -> TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO (494)
+#   Inv2: modalita_esito = 'AUTOMATICO' => direzione = 'INTERNA'
+#         (solo gli step interni possono auto-risolversi senza intervento umano;
+#          AUTOMATICO su ENTRATA/USCITA fabbricherebbe la risposta di una
+#          controparte esterna. CONTESTUALE non ha vincolo di direzione)
+#         -> TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA (495)
+#
+# I CHECK di dominio sui valori ammessi vivono come constraint (20260617-01);
+# qui solo le invarianti di coerenza, con errore PARLANTE (codici registrati)
+# perche' sono errori di disegno del template mostrati nel drawer di
+# amministrazione (coerente col pattern guard del sottosistema flussi, es.
+# FLUSSI_ESITO_OBBLIGATORIO 477). NON si tocca il guard runtime
+# trgfn_flussi_guard_esito_completato: l'Inv2 e' config-time su template_flussi,
+# non ha attinenza con flussi.esito/stato_id (vedi §6 brief-design corretto).
+#
+# Scritture rare (configurazione template) => costo a runtime trascurabile.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260617-02-create-trgfn-template-flussi-guard-modalita-esito-mctit.yaml
+
+  - changeSet:
+      id: 20260617-02-create-trgfn-template-flussi-guard-modalita-esito
+      author: mctit
+      runOnChange: false
+      comment: >
+        Guard BEFORE INSERT OR UPDATE su pratiche.template_flussi: enforce le
+        invarianti di coerenza Inv1 (esito_default obbligatorio se non MANUALE) e
+        Inv2 (AUTOMATICO solo su direzione INTERNA) con errori parlanti 494/495.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: invarianti di coerenza della configurazione esito del
+              --        template-step. I CHECK di dominio vivono come constraint;
+              --        qui solo coerenza, con errore parlante (config-time).
+              BEGIN
+                -- Invariante 1: un automatismo deve sapere quale esito scrivere.
+                IF NEW.modalita_esito <> 'MANUALE' AND NEW.esito_default IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'modalita_esito',     NEW.modalita_esito
+                    ),
+                    NEW.tx_id,
+                    NEW.modalita_esito,
+                    COALESCE(NEW.codice, '')
+                  );
+                END IF;
+
+                -- Invariante 2: solo gli step a direzione INTERNA possono
+                -- auto-risolversi senza intervento umano (AUTOMATICO).
+                IF NEW.modalita_esito = 'AUTOMATICO' AND NEW.direzione <> 'INTERNA' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'direzione',          NEW.direzione
+                    ),
+                    NEW.tx_id,
+                    COALESCE(NEW.codice, ''),
+                    NEW.direzione
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()
+                IS 'BEFORE INSERT OR UPDATE OF modalita_esito/esito_default/direzione su pratiche.template_flussi: enforce Inv1 (esito_default obbligatorio se non MANUALE, 494) e Inv2 (AUTOMATICO solo INTERNA, 495) con errori parlanti.';
+
+              DROP TRIGGER IF EXISTS trg_template_flussi_a10_guard_modalita_esito_ins_upd
+                ON pratiche.template_flussi;
+
+              CREATE TRIGGER trg_template_flussi_a10_guard_modalita_esito_ins_upd
+                BEFORE INSERT OR UPDATE OF modalita_esito, esito_default, direzione
+                ON pratiche.template_flussi
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_template_flussi_a10_guard_modalita_esito_ins_upd
+                ON pratiche.template_flussi;
+              DROP FUNCTION IF EXISTS pratiche.trgfn_template_flussi_guard_modalita_esito();

@@ -2,7 +2,22 @@
 
 > **Tipo documento**: brief operativo **per il team DB** (canale `dev/db-tid`).
 > **Priorità**: 🟢 normale — prerequisito per il lavoro BE/FE (che attende le colonne).
-> **Data**: 2026-06-17 · **Stato**: 🟡 da applicare.
+> **Data**: 2026-06-17 · **Stato**: 🟢 DB scritto — pgTAP verdi (10/10), da applicare/rigenerare autogen.
+>
+> **Decisione §4 (codice errore parlante)**: scelta **opzione (b) — guard**. I CHECK sulle
+> colonne sono di **solo dominio**; le due invarianti di coerenza (Inv1 `esito_default`
+> obbligatorio se non MANUALE; Inv2 `AUTOMATICO` solo INTERNA) vivono nel guard parlante
+> `trgfn_template_flussi_guard_modalita_esito` (codici `TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO`
+> 494, `TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA` 495). Il guard runtime
+> `trgfn_flussi_guard_esito_completato` resta **invariato** (Inv2 è config-time, non runtime).
+>
+> **Deliverable** (SCRITTI, non applicati): `00_schema/pratiche/20260617-01` (colonne + CHECK
+> dominio) · `20_code/pratiche/20260617-02` (guard + trigger
+> `trg_template_flussi_a10_guard_modalita_esito_ins_upd`) · codici 494/495 aggiunti a
+> `80_data/sql/config/messaggi_errore.csv` (ripresi dal loader runOnChange esistente
+> `20250717-22`, **nessun nuovo changeset**) · seed §6 `80_data/.../20260617-04-upsert-template-flussi-preventivi-esito`
+> (+ CSV `template_flussi_esito_config.csv`) · pgTAP `db/pgtap/pratiche/test-esito-configurabile-template-flussi.sql`.
+> **Aperto**: rigenerare `changelog-autogen.yaml` (`python scripts/gen_master_autogen.py --root db/changelog/migrations_v2`); lavoro BE/FE.
 >
 > **Design autorevole**: [brief-design-esito-configurabile-flussi.md](brief-design-esito-configurabile-flussi.md)
 > (modello, razionale invarianti, piano BE/FE). Questo brief contiene **solo** ciò che
