@@ -657,6 +657,12 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Commessa non trovata.",
         ),
+        "E_COMMESSA_AZIONE_NON_AMMESSA": ErrorPolicy(
+            code="E_COMMESSA_AZIONE_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Azione di stato non ammessa nello stato corrente della commessa.",
+        ),
         "E_COMMESSA_PUSH_LOG_NOT_FOUND": ErrorPolicy(
             code="E_COMMESSA_PUSH_LOG_NOT_FOUND",
             http_status=404,

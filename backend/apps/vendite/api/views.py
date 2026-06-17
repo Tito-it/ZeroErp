@@ -9,6 +9,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date, optional_uuid
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.commesse_service import (
+    cambia_stato_commessa,
     fn_get_commessa_stato,
     fn_get_commesse_push_log,
     fn_list_commessa_attivita,
@@ -591,6 +592,7 @@ class ApiCommessaStato(DomainAPIView):
                             "total_non_emesse": serializers.IntegerField(),
                             "total_prezzo_da_riallineare": serializers.IntegerField(),
                             "last_update": serializers.CharField(allow_null=True),
+                            "capabilities": serializers.DictField(),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -598,10 +600,54 @@ class ApiCommessaStato(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce via GET stato e contatori di una commessa.
+    # Scopo: Restituisce via GET stato, contatori e capability di una commessa.
     def get(self, request: Request, commessa_id: int) -> JsonResponse:
         data = fn_get_commessa_stato(commessa_id=commessa_id)
         return success_response(data)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeCommessaStatoRequest",
+            fields={"nuovo_stato": serializers.CharField()},
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeCommessaStatoChangeResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeCommessaStatoChangeData",
+                        fields={
+                            "commessa_id": serializers.IntegerField(),
+                            "stato_da": serializers.CharField(),
+                            "stato_a": serializers.CharField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Azione di stato utente (chiudi/riapri/annulla) sulla commessa.
+    def post(self, request: Request, commessa_id: int) -> JsonResponse:
+        # Scopo: applica la transizione richiesta con difesa applicativa nel service.
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            user = getattr(request.user, "username", None) or None
+            return cambia_stato_commessa(
+                commessa_id=commessa_id,
+                nuovo_stato=str(payload.get("nuovo_stato", "")),
+                user=user,
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
 

@@ -35,6 +35,14 @@ RUOLO_APPLICATIVO: tuple[str, ...] = (
     RUOLO_APPLICATIVO_DISABILITATO,
 )
 
+# Contesto di SISTEMA per i processi headless (es. batch fatturazione cron):
+# sentinel GUC-only per `app.ruolo_applicativo`, usato dalle policy RLS "_sistema"
+# (visibilità/scrittura piena, tutti gli emittenti). NON è un'identità digitale né un
+# valore dell'enum DB `config.ruolo_applicativo`: per questo resta FUORI dalla tupla
+# `RUOLO_APPLICATIVO` (che rispecchia l'enum). Vedi brief
+# work-in-progress/brief-db-contesto-sistema-batch-fatturazione-rls.md (RLS opzione B).
+RUOLO_APPLICATIVO_SISTEMA = "SISTEMA"
+
 # Scopo: Ruoli che accedono ai namespace portale (`/api/portale/*`).
 RUOLI_PORTALE: frozenset[str] = frozenset({
     RUOLO_APPLICATIVO_CLIENTE_PORTALE,

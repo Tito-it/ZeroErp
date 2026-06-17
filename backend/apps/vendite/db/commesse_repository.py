@@ -13,6 +13,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.db._helpers import call_jsonb_fn
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.types import CommessaEmitResult, CommessaPushLogRow, CommessaStatoResult
 
@@ -622,6 +623,17 @@ class CommesseRepository:
             )
             row = cursor.fetchone()
         return row[0] if row else None
+
+    # Scopo: Capability data-driven della commessa per il detail/stato API.
+    #        Wrapper su `script.fn_available_actions_commessa` (matrice
+    #        `vendite.transizioni_stati_commessa`): ritorna jsonb con
+    #        available_actions (transizioni manuali utente con UI hints),
+    #        can_change_state, can_edit_righe, is_emittibile, stato_codice.
+    #        Blob opaco lato Python (passato intatto al FE). Pattern gemello di
+    #        ordini/preventivi/offerte/contratti. {} se la fn ritorna NULL
+    #        (commessa inesistente — il caller verifica a monte con get_commessa_stato).
+    def get_capabilities(self, commessa_id: int) -> dict[str, Any]:
+        return call_jsonb_fn("script.fn_available_actions_commessa", commessa_id)
 
     # --- Gruppo 2: Attività commessa ---
 
