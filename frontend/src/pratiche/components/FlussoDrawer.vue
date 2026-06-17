@@ -107,6 +107,12 @@ const drawerActions = computed(() => {
       command: () => emit('open-attivita', {
         key: props.flusso.template_azione_ui_key,
         praticaId: props.praticaId,
+        // Aggancio per-flusso: qui il flusso esiste gia' (lo stiamo guardando) →
+        // passiamo il suo id (l'host non lo ri-crea) e il template (per uniformita'
+        // col percorso). Senza questi l'host proverebbe a creare il flusso con
+        // template vuoto → E_FLUSSO_VALIDATION.
+        flussoId: props.flusso.id,
+        templateFlussoId: props.flusso.template_flusso_id,
         // Contesto cliente risolto dalla pratica (esposto sul flusso dal BE):
         // il documento aperto eredita+blocca istanza (+ BA se cliente attivo).
         billingAccountId: props.flusso.pratica_billing_account_id ?? null,

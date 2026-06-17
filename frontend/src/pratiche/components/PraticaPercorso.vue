@@ -48,6 +48,11 @@ function onApriAttivita(step) {
     praticaId: props.praticaId,
     billingAccountId: props.praticaContext?.billingAccountId ?? null,
     istanzaUtilityId: props.praticaContext?.istanzaUtilityId ?? null,
+    // Aggancio per-flusso: il documento si lega al flusso d'origine di QUESTO
+    // step. Lo step puo' non avere ancora un'istanza (flusso_id null → l'host la
+    // crea); l'host legge lo stato reale dal BE e avvia il flusso se serve.
+    flussoId: step.flusso_id ?? null,
+    templateFlussoId: step.template_flusso_id,
   })
 }
 

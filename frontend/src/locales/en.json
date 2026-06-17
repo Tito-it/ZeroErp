@@ -2641,7 +2641,7 @@
     "flusso_col_template": "Template",
     "flusso_col_esito": "Outcome",
     "flusso_avvia": "Start flow",
-    "flusso_apri_preventivo": "Open linked quote",
+    "flusso_apri_preventivo": "Open quote",
     "preventivo_collegato": "Quote linked to the case",
     "percorso_titolo": "Path",
     "percorso_da_creare": "To create",

@@ -9,7 +9,7 @@ import Button from 'primevue/button'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { READONLY_DOMAINS, STATI_PRATICA_TERMINALI } from '../../core/constants'
+import { READONLY_DOMAINS, STATI_PRATICA_TERMINALI, STATO_FLUSSO } from '../../core/constants'
 import { usePraticheStore } from '../stores/pratiche'
 import PraticheCodaLavoro from '../components/PraticheCodaLavoro.vue'
 import PraticheSearchTable from '../components/PraticheSearchTable.vue'
@@ -17,7 +17,7 @@ import PraticaPercorso from '../components/PraticaPercorso.vue'
 import PraticaDrawer from '../components/PraticaDrawer.vue'
 import FlussoDrawer from '../components/FlussoDrawer.vue'
 import { getUiActivity } from '../uiActivityRegistry'
-import { getFlusso, createFlusso } from '../api/pratiche-api'
+import { getFlusso, createFlusso, cambiaStatoFlusso } from '../api/pratiche-api'
 
 const { t } = useI18n()
 const store = usePraticheStore()
@@ -177,38 +177,89 @@ const activityLinked = ref(false)
 // Carica il componente (lazy) PRIMA di montarlo, poi attiva `visible` al tick
 // successivo: il drawer monta con visible=false e il suo watch(visible) — che
 // NON è immediate — scatta sulla transizione false→true (resetForm/pre-fill).
+// Aggancio per-flusso: il documento si lega al flusso d'origine, che quindi DEVE
+// esistere ed essere IN_CORSO quando si apre. Garantiamo l'invariante: crea il
+// flusso se lo step non e' istanziato, lo avvia se DA_ESEGUIRE. Ritorna il
+// flusso_id effettivo, o null se l'utente/guard interrompe (non si apre).
+async function ensureFlussoInCorso(payload) {
+  let flussoId = payload.flussoId
+  if (!flussoId) {
+    const created = await execute(
+      () => createFlusso(store.selectedPraticaId, { template_flusso_id: payload.templateFlussoId }),
+      { successMessage: t('pratiche.flusso_creato') }
+    )
+    if (created === null) return null
+    flussoId = created.flusso_id
+  }
+  // Stato AUTOREVOLE dal BE, non da payload: il percorso puo' essere stantio (il
+  // flusso e' avanzato in un'altra sessione) e un flusso appena creato potrebbe
+  // non essere DA_ESEGUIRE se il template lo avvia da se'. Avviamo solo se lo
+  // stato reale e' DA_ESEGUIRE: IN_CORSO si usa com'e'; COMPLETATO/ANNULLATO
+  // riapre in sola lettura il documento gia' agganciato (niente avvio, niente
+  // transizione invalida che abortirebbe l'apertura).
+  const flusso = await execute(() => getFlusso(store.selectedPraticaId, flussoId))
+  if (flusso === null) return null
+  if (flusso.stato_codice_interno === STATO_FLUSSO.DA_ESEGUIRE) {
+    const avviato = await execute(
+      () => cambiaStatoFlusso(store.selectedPraticaId, flussoId, { nuovo_stato: STATO_FLUSSO.IN_CORSO }),
+    )
+    if (avviato === null) return null
+  }
+  return flussoId
+}
+
 async function onOpenAttivita(payload) {
   const entry = getUiActivity(payload?.key)
   if (!entry) return
-  const mod = await entry.loadComponent()
-  // Riapertura pratica-first: se la pratica ha gia' un documento ROOT collegato,
-  // lo apriamo in EDIT invece di crearne uno nuovo (evita bozze duplicate e
-  // riprende il lavoro dove era). Il resolver e' opzionale e best-effort.
-  const existingId = entry.resolveExisting ? await entry.resolveExisting(payload) : null
-  activityEntry.value = entry
-  activityCtx.value = payload
-  activityProps.value = entry.buildProps(payload, existingId)
-  // Documento gia' collegato → niente re-aggancio (l'onSaved e' comunque
-  // idempotente, ma cosi' evitiamo il toast "collegato" a ogni salvataggio).
-  activityLinked.value = existingId != null
-  activityComponent.value = markRaw(mod.default)
-  activityVisible.value = false
-  await nextTick()
-  activityVisible.value = true
+  if (percorsoBusy.value) return
+  percorsoBusy.value = true
+  try {
+    const mod = await entry.loadComponent()
+    // Garantiamo il flusso d'origine IN_CORSO prima di aprire il documento.
+    const flussoId = await ensureFlussoInCorso(payload)
+    if (flussoId == null) return
+    const ctx = { ...payload, flussoId }
+    // Riapertura: se QUESTO flusso ha gia' un documento ROOT, lo apriamo in EDIT
+    // invece di crearne uno nuovo (il lucchetto unico per-flusso a DB impedisce
+    // comunque il doppione). Resolver opzionale e best-effort.
+    const existingId = entry.resolveExisting ? await entry.resolveExisting(ctx) : null
+    activityEntry.value = entry
+    activityCtx.value = ctx
+    activityProps.value = entry.buildProps(ctx, existingId)
+    // Documento gia' agganciato → niente re-aggancio (onSaved e' comunque
+    // idempotente, ma cosi' evitiamo il toast "collegato" a ogni salvataggio).
+    activityLinked.value = existingId != null
+    activityComponent.value = markRaw(mod.default)
+    activityVisible.value = false
+    await nextTick()
+    activityVisible.value = true
+  } finally {
+    percorsoBusy.value = false
+  }
+  // La roadmap riflette il flusso ora avviato/creato.
+  if (store.selectedPraticaId) loadPercorsoPratica(store.selectedPraticaId)
 }
 
 // Salvataggio del documento: gancio post-save del registry (es. collega ROOT),
 // una sola volta, poi rinfresca il percorso (riflette M2/handler a valle).
 async function onActivitySaved(result) {
   const entry = activityEntry.value
-  if (entry?.onSaved && result?.id && !activityLinked.value) {
+  // Id robusto: l'evento 'saved' del drawer ha forme diverse (update/emissione/
+  // create) → il registry sa estrarlo (savedId). Senza, il collegamento saltava
+  // sul ramo update (result.id assente → solo preventivo_id).
+  const savedId = entry?.savedId ? entry.savedId(result) : result?.id
+  if (entry?.onSaved && savedId && !activityLinked.value) {
     const ok = await execute(
-      () => entry.onSaved(result, activityCtx.value),
+      () => entry.onSaved(savedId, activityCtx.value),
       { successMessage: t(entry.linkedMessage || 'pratiche.preventivo_collegato') }
     )
     if (ok !== null) activityLinked.value = true
   }
   if (store.selectedPraticaId) await loadPercorsoPratica(store.selectedPraticaId)
+  // Salvataggio/emissione concludono l'interazione col documento → chiudi il
+  // drawer attivita' (mirror dello standalone, dove il parent chiude su @saved).
+  // Riapribile dall'affordance del percorso (riprende il ROOT agganciato).
+  activityVisible.value = false
 }
 
 // --- PraticaDrawer ---
