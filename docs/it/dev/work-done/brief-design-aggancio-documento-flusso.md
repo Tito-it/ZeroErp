@@ -3,7 +3,8 @@
 > **Tipo**: documento di design autorevole (lato nostro). Il cambio schema è
 > delegato al team DB → [brief-db-aggancio-documento-flusso.md](brief-db-aggancio-documento-flusso.md).
 >
-> **Data**: 2026-06-16 · **Stato**: 🟦 APERTO (design approvato da Tid, in attesa DB)
+> **Data**: 2026-06-16 (smoke 2026-06-17) · **Stato**: ✅ COMPLETATO — DB applicato,
+> BE+FE implementato, **smoke E2E in-app OK**. Vedi §10 per deliverable e fix.
 >
 > **Origine**: review critica del flusso pratica→preventivo (sessione 2026-06-15/16).
 > Tre fragilità distinte convergono su un'unica causa di modello.
@@ -128,4 +129,61 @@ della pratica); pgTAP. *Il come è scelta del team DB.* → vedi
   doppione), anche con più preventivazioni nella stessa pratica.
 - Emettere completa **esattamente** il flusso del preventivo, senza ricerche.
 - Aprire un documento su un passo lo porta IN_CORSO: nessun "emesso ma flusso fermo".
+
+## 10. Implementazione BE+FE (2026-06-16)
+
+DB applicato su dbdev (colonna `flusso_id`, indice unico parziale
+`uq_pratiche_sorgenti_flusso_root`, guard `trgfn_pratiche_sorgenti_guard_coerenza_flusso`,
+errore 493). Protezioni verificate end-to-end (tx in rollback): 2° ROOT su stesso
+flusso → bloccato; flusso di altra pratica → guard parlante.
+
+- **BE**
+  - `PraticheRepository.upsert_pratica_sorgente(..., flusso_id=None)` — colonna nell'INSERT.
+  - `preventivi_service.collega_pratica(..., flusso_id=None)` — aggancio ROOT al flusso;
+    view `collega-pratica` legge `flusso_id` dal payload.
+  - `PreventiviRepository.get_preventivo_id_by_flusso_root` (riapertura) +
+    `get_flusso_id_by_preventivo_root` (reverse). Rimossi
+    `get_pratica_id_by_preventivo_root` e `get_flusso_in_corso_by_azione_ui` +
+    costante `_AZIONE_UI_APRI_PREVENTIVO` (ricerca per azione_ui superata).
+  - `_completa_flusso_preventivazione`: reverse diretto sul `flusso_id` del preventivo,
+    completa solo se IN_CORSO (idempotenza ri-emissione).
+  - Endpoint `GET preventivi/root-per-flusso/?flusso_id=` (era `root-per-pratica`).
+  - Test: 313 verdi (pratiche + vendite preventivi/handler).
+- **FE**
+  - `preventiviApi.getRootPerFlusso`; `uiActivityRegistry` risolve/aggancia per
+    `ctx.flussoId`.
+  - `PraticaPercorso` passa `flussoId`/`templateFlussoId`/`statoFlusso`.
+  - `PraticheDashboard.onOpenAttivita` → `ensureFlussoInCorso` (crea il flusso se lo
+    step non è istanziato, lo avvia se DA_ESEGUIRE) prima di aprire il documento;
+    poi risolve esistente per-flusso e apre edit/create. Lint+build verdi.
+
+**Review critica (2026-06-16, post-implementazione)** — fix applicati:
+
+- `ensureFlussoInCorso` leggeva uno stato flusso stantio/assunto → poteva abortire
+  l'apertura (avvio su flusso già IN_CORSO). Ora legge lo stato **autorevole** dal BE
+  (`getFlusso`) e avvia solo se davvero DA_ESEGUIRE.
+- Rimosso dato morto `statoFlusso` dal payload del percorso.
+- Estratto `_LINK_ROOT_PREVENTIVO_FROM` (preventivi_repository): i 3 resolver del legame
+  ROOT non duplicano più FROM/JOIN né i codici `PREVENTIVO`/`ROOT` (single source).
+
+**Smoke E2E (2026-06-17) — OK dopo questi fix emersi in prova:**
+
+- Secondo punto d'ingresso: il bottone "apri preventivo" **dentro** il FlussoDrawer
+  emetteva `open-attivita` senza `flussoId`/`templateFlussoId` → l'host provava a
+  ri-creare il flusso (`E_FLUSSO_VALIDATION`). Ora il FlussoDrawer passa
+  `flussoId: props.flusso.id` + `templateFlussoId`.
+- Collegamento ROOT non scattava: l'host gating si reggeva su `result.id`, ma l'evento
+  `saved` del drawer ha forme diverse (update → `preventivo_id`, emissione →
+  `preventivo.preventivo_id`, create → `id`). Col fix autosave il salvataggio passa dal
+  ramo update (`preventivo_id`, niente `id`) → link saltato. Introdotto
+  `uiActivityRegistry.savedId` (estrazione robusta) + l'host passa l'id risolto a `onSaved`.
+- Il drawer attività non si chiudeva su salva/emetti (si usciva solo con "Annulla").
+  Ora `onActivitySaved` chiude il drawer (mirror dello standalone).
+- Label "Apri preventivo collegato" fuorviante quando il preventivo non esiste ancora →
+  neutra "Apri preventivo" / "Open quote".
+
+**Non fatto di proposito**: backfill dei 13 ROOT storici (flusso_id resta NULL →
+non auto-completano/riaprono per-flusso; dato dbdev rigenerabile, no produzione).
+Allineamento handler accetta/push a risolvere per-flusso (resta per-pratica, ok finché
+1 preventivazione per pratica).
 </content>

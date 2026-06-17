@@ -61,10 +61,6 @@ _STATI_RIGHE_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 _STATI_FATTURABILI: frozenset[str] = frozenset({"ACCETTATO"})
 _STATI_GENERA_PRATICA: frozenset[str] = frozenset({"ACCETTATO"})
 _FN = "vendite.preventivi_service"
-# Chiave attivita' UI del flusso di preventivazione (pratiche.azioni_ui.azione_ui_key).
-# Contratto condiviso FE (uiActivityRegistry) / DB (seed azioni_ui) / BE (qui):
-# l'emissione completa il flusso IN_CORSO che porta questa azione.
-_AZIONE_UI_APRI_PREVENTIVO = "APRI_PREVENTIVO"
 
 
 # ══════════════════════════════════════════════════════════
@@ -647,23 +643,23 @@ def emetti(preventivo_id: int, *, user: str | None = None) -> dict[str, Any]:
     return result
 
 
-# Scopo: Completa il flusso di preventivazione (azione_ui APRI_PREVENTIVO) ancora
-#        IN_CORSO della pratica a cui il preventivo e' agganciato come ROOT.
-#        Esito POSITIVO: l'emissione e' il successo della preventivazione, e
-#        sblocca i passi a valle del percorso (es. APPROVAZIONE_CLIENTE).
-#        No-op se il preventivo non ha pratica ROOT o nessun flusso aperto.
-#        Direzione vendite→pratiche, import lazy (mirror del pattern handler).
+# Scopo: Completa il flusso d'origine del preventivo (aggancio per-flusso) quando
+#        questo viene emesso. Esito POSITIVO: l'emissione e' il successo della
+#        preventivazione e sblocca i passi a valle (es. APPROVAZIONE_CLIENTE).
+#        Il preventivo conosce IL SUO flusso (pratiche_sorgenti.flusso_id) → lo
+#        completo direttamente, senza cercarlo per azione_ui. No-op se il
+#        preventivo non nasce da un flusso o il flusso non e' IN_CORSO (gia'
+#        completato/non avviato → idempotenza ri-emissione). Direzione
+#        vendite→pratiche, import lazy (mirror del pattern handler).
 def _completa_flusso_preventivazione(preventivo_id: int, *, user: str | None = None) -> None:
     from apps.pratiche.db.pratiche_repository import PraticheRepository
     from apps.pratiche.services import pratiche_service
 
-    pratica_id = PreventiviRepository().get_pratica_id_by_preventivo_root(preventivo_id)
-    if pratica_id is None:
-        return
-    flusso_id = PraticheRepository().get_flusso_in_corso_by_azione_ui(
-        pratica_id, _AZIONE_UI_APRI_PREVENTIVO,
-    )
+    flusso_id = PreventiviRepository().get_flusso_id_by_preventivo_root(preventivo_id)
     if flusso_id is None:
+        return
+    flusso = PraticheRepository().get_flusso(flusso_id)
+    if flusso is None or flusso.get("stato_codice_interno") != "IN_CORSO":
         return
     pratiche_service.completa_flusso(flusso_id, esito="POSITIVO", user=user)
 
@@ -688,7 +684,9 @@ def list_revisioni(preventivo_id: int) -> list[dict[str, Any]]:
 #        Usato a PREVENTIVAZIONE sul percorso pratica-first. Idempotente.
 #        È la fonte di verità del legame preventivo↔pratica, da cui handler e
 #        M2 risolvono il preventivo. Direzione vendite→pratiche, import lazy.
-def collega_pratica(preventivo_id: int, *, pratica_id: int) -> dict[str, Any]:
+def collega_pratica(
+    preventivo_id: int, *, pratica_id: int, flusso_id: int | None = None,
+) -> dict[str, Any]:
     from apps.pratiche.db.pratiche_repository import PraticheRepository
 
     repo = PreventiviRepository()
@@ -701,28 +699,33 @@ def collega_pratica(preventivo_id: int, *, pratica_id: int) -> dict[str, Any]:
         function_name=f"{_FN}.collega_pratica",
     )
     assert prev is not None
+    # Aggancio ROOT per-flusso: flusso_id ancora il documento al flusso d'origine
+    # (brief-db-aggancio-documento-flusso). L'indice unico parziale impedisce un
+    # secondo ROOT sullo stesso flusso; il trigger guard verifica che il flusso
+    # sia DI questa pratica. flusso_id None = retrocompat / link non da flusso.
     PraticheRepository().upsert_pratica_sorgente(
         pratica_id=pratica_id, sorgente_codice="PREVENTIVO",
-        sorgente_uid=prev["uid"], ruolo_link="ROOT",
+        sorgente_uid=prev["uid"], ruolo_link="ROOT", flusso_id=flusso_id,
     )
-    return {"preventivo_id": preventivo_id, "pratica_id": pratica_id, "uid": prev["uid"]}
+    return {
+        "preventivo_id": preventivo_id, "pratica_id": pratica_id,
+        "flusso_id": flusso_id, "uid": prev["uid"],
+    }
 
 
-# Scopo: Risolve il preventivo ROOT collegato a una pratica (percorso
-#        pratica-first). Ritorna {"preventivo_id": id} o {"preventivo_id": None}
-#        se la pratica non ha ancora un ROOT. Alimenta la RIAPERTURA dal flusso:
-#        l'attivita' UI "apri preventivo" apre il ROOT esistente in edit invece
-#        di crearne uno nuovo. Letta da pratiche_sorgenti (ROOT, PREVENTIVO),
-#        stessa fonte di verita' usata dagli handler accetta/push.
-def get_root_per_pratica(pratica_id: int) -> dict[str, Any]:
+# Scopo: Risolve il preventivo ROOT collegato a un FLUSSO (percorso pratica-first,
+#        aggancio per-flusso). Ritorna {"preventivo_id": id|None}. Alimenta la
+#        RIAPERTURA: l'attivita' UI "apri preventivo" ha il flusso_id e riapre il
+#        ROOT di quel flusso in edit invece di crearne uno nuovo.
+def get_root_per_flusso(flusso_id: int) -> dict[str, Any]:
     ErrorManager.require(
-        pratica_id > 0,
-        code="E_PRATICA_ID_INVALIDO",
-        message="pratica_id non valido.",
-        detail=f"pratica_id={pratica_id}",
-        function_name=f"{_FN}.get_root_per_pratica",
+        flusso_id > 0,
+        code="E_FLUSSO_ID_INVALIDO",
+        message="flusso_id non valido.",
+        detail=f"flusso_id={flusso_id}",
+        function_name=f"{_FN}.get_root_per_flusso",
     )
-    preventivo_id = PreventiviRepository().get_preventivo_id_by_pratica_root(pratica_id)
+    preventivo_id = PreventiviRepository().get_preventivo_id_by_flusso_root(flusso_id)
     return {"preventivo_id": preventivo_id}
 
 

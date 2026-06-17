@@ -19,6 +19,15 @@ View: `ApiRunLottoPipelineUntilDone` (`apps.vendite.api.views`).
 > È l'avvio **on-demand da interfaccia** della fatturazione. La schedulazione
 > automatica (cron/timer immediata+differita) usa lo stesso motore via management
 > command `run_fatturazione_batch` (non un'API).
+>
+> **Scope RLS (contesto di esecuzione).** Questo endpoint gira nel contesto
+> **OPERATORE** del chiamante (GUC d'identità dal JWT): quando la RLS operatori sarà
+> *enforced*, l'operatore potrà fatturare **solo gli emittenti nella sua whitelist**
+> (un `emittente_soggetto_ruolo_id` fuori scope → nessun lotto/effetto). Il batch
+> **headless** (cron `run_fatturazione_batch`), invece, gira in contesto **SISTEMA**
+> (tutti gli emittenti). Vedi
+> [brief-db-contesto-sistema-batch-fatturazione-rls.md](/dev/work-in-progress/brief-db-contesto-sistema-batch-fatturazione-rls)
+> (RLS opzione B). Oggi (RLS dormiente) entrambi i percorsi vedono tutto.
 
 ## Input
 

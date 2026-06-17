@@ -202,7 +202,7 @@ mostrano solo un toast con `push_log_id`, **senza link alla commessa risultante*
 | 1 | Nessuno scheduler/cron + pipeline "uno step per run" (`steps[:1]`) | TRASVERSALE | La fatturazione non è autonoma: serve un driver che concateni gli step (vedi §7) |
 | 2 | ✅ **FATTO END-TO-END (2026-06-16)** — Snapshot pricing v5: il push popola gli 8 campi audit su `commesse_attivita` (`BaseSourceHandler._resolve_pricing_audit` via `PricingService`, senza sovrascrivere `prezzo_snapshot`; best-effort, cache per-run, whitelist `origine_prezzo` contro il CHECK, origine da meta prevale per i componenti). La **pull** `fn_emit_attivita_fatturabili_da_commessa` ora li **propaga 1:1** ad `attivita_fatturabili` (changeset DB `20260616-01`, brief [work-done/brief-db-propaga-snapshot-pricing-pull-commessa-af.md](../work-done/brief-db-propaga-snapshot-pricing-pull-commessa-af.md)). | BE✅ + DB✅ | Audit prezzo completo: push → commessa → emissione |
 | 3 | ✅ **COMPOSITI FATTI (2026-06-15)** — il fan-out BoM usa ora il **modello unico** `*_righe_componenti` per **tutti** i documenti: estratto `BaseSourceHandler._componenti_repo_factory` (staticmethod) → ordini/contratti/DDT leggono i componenti negoziati come preventivi (no DB, le tabelle + mixin esistevano già; nuovo `DdtRepository` minimale). 🛑 **Consumi utility (gas/energia/acqua/…) — RIMANDATO, NON si fa ora (decisione Tid 2026-06-16)**: `attivita_consumi` è un totale piatto senza `*_righe_componenti`; la decomposizione tariffaria (energia/trasporto/oneri/quota fissa/accise) è un **modello DB dedicato** da progettare quando la fatturazione utility per-voce diventerà priorità. Oggi un consumo entra in commessa come **riga singola** (`_fetch_componenti` resta stub documentato, nessun fan-out). | BE✅ compositi / 🛑 consumi rimandato | Compositi ok per ogni sorgente; decomposizione utility fuori scope ora |
-| 4 | 🟠 **BRIEF DB PRONTO (2026-06-16)** — `fn_available_actions_commessa` + seed transizioni `manuale=true`: brief [brief-db-fn-available-actions-commessa.md](brief-db-fn-available-actions-commessa.md) (mirror `fn_available_actions_ordine`). Il guard/matrice/`fn_cambia_stato_commessa` esistono già; mancano la fn capability e le transizioni marcate utente. **Consumer BE attende il DB** (endpoint `POST /commesse/<id>/stato/` + capability in `ApiCommessaStato`). | DB→BE | Ciclo di vita post-PRONTA: sbloccabile appena il DB applica il brief |
+| 4 | ✅ **FATTO END-TO-END (2026-06-16)** — Governance ciclo di vita commessa. **DB**: `script.fn_available_actions_commessa` + seed transizioni `manuale=true` (chiudi/riapri/annulla, con UI hints) — brief [work-done/brief-db-fn-available-actions-commessa.md](../work-done/brief-db-fn-available-actions-commessa.md). **BE**: `CommesseRepository.get_capabilities`, `capabilities` in `ApiCommessaStato` GET, servizio `cambia_stato_commessa` con difesa applicativa (azione ∈ `available_actions`), endpoint `POST /commesse/<id>/stato/`, codice `E_COMMESSA_AZIONE_NON_AMMESSA` (409); 5 test (suite 958 verde). | DB✅ + BE✅ | CHIUSA/riapertura/ANNULLATA ora governabili da API |
 | 5 | ✅ **RISOLTO (2026-06-15)** — `fn_get_commessa_stato` esponeva flag governance + molti contatori, ma il repo BE ne leggeva solo 3 | BE | Ora `ApiCommessaStato` propaga stato + flag + tutti i contatori (74 test verdi) |
 | 6 | ✅ **RISOLTO (2026-06-16)** — Discrepanza nome codice errore: il nome reale è `E_COMMESSA_STATO_TRANSIZIONE_INVALIDA` (472); il placeholder `E_COMMESSA_TRANSIZIONE_NON_AMMESSA` **non esiste** in codice/DB/test (compariva solo nel brief storico `work-done/brief-db-commesse-transizioni-stati.md`, ora annotato). Nessun fix codice necessario. | DB/doc | Allineato |
 
@@ -398,8 +398,11 @@ Quando servirà un flusso REALE con gate operativi/produzione, l'innesto è pron
    hook BE no-op `BaseSourceHandler._pre_commessa_hook(row)→row` (identity) come punto
    d'innesto. Niente colonna DB / niente `meta` dedicato ora (decisione 2026-06-15).
 7. **🟢 BASSA — `fn_available_actions_commessa` + azioni di stato utente** (§4.3 #4):
-   🟠 **BRIEF DB PRONTO (2026-06-16)** → [brief-db-fn-available-actions-commessa.md](brief-db-fn-available-actions-commessa.md);
-   BE (endpoint stato + capability) attende l'applicazione DB.
+   ✅ **FATTO END-TO-END (2026-06-16)** — DB (fn capability + seed transizioni manuali) +
+   BE (`get_capabilities`, `capabilities` in `ApiCommessaStato`, servizio
+   `cambia_stato_commessa` con difesa applicativa, `POST /commesse/<id>/stato/`,
+   `E_COMMESSA_AZIONE_NON_AMMESSA`). Brief in
+   [work-done](../work-done/brief-db-fn-available-actions-commessa.md).
 8. **🟢 BASSA — Allineare la documentazione** (§3): ✅ **FATTO (2026-06-16)** — guida
    [gestione-commesse.md](/guide/gestione-commesse) allineata (transizioni, ROOT/COLLEGATO,
    step pipeline reali, BoM snapshot, audit end-to-end); banner storico su
@@ -422,11 +425,15 @@ Brief al team DB (mai eseguite dal BE agent). Stato driver fatturazione:
 
 Altri (solo se le relative voci di roadmap vengono approvate):
 
-- 🟠 **da fare insieme all'attivazione RLS operatori** — contesto di **sistema** per il
-  batch fatturazione (cron): ruolo dedicato `BYPASSRLS` **oppure** una policy permissiva
-  di sistema (`ruolo_applicativo='SISTEMA'`) su `fatturazione_lotti`/famiglia fatture. Senza, il batch
-  (non operatore) verrebbe default-deny quando la RLS è enforced (§10.4 F4 caveat). Non
-  ora (RLS oggi dry-run).
+- 🟡 **OPZIONE B SCELTA (2026-06-16) — BE FATTO, DB da applicare col FORCE RLS** —
+  contesto di **sistema** per il batch fatturazione (cron): brief
+  [brief-db-contesto-sistema-batch-fatturazione-rls.md](brief-db-contesto-sistema-batch-fatturazione-rls.md).
+  **BE predisposto** (forward-compatible/innocuo finché RLS dormiente): costante
+  `RUOLO_APPLICATIVO_SISTEMA` + `run_fatturazione_batch._system_db_context` (setta
+  `app.ruolo_applicativo='SISTEMA'` nel solo percorso cron, on-demand resta OPERATORE).
+  **Resta al team DB**: policy `_sistema` su `fatturazione_lotti`/`fatture`/`fatture_scadenze`
+  (+ famiglia), **contestuali** al FORCE/enforce della RLS operatori. Senza, il batch
+  (non operatore) andrebbe default-deny quando la RLS è enforced (§10.4 F4 caveat).
 - (eventuale) colonna `fase_lavorazione_id bigint NULL` senza FK su `commesse_attivita`
   — solo se si sceglie lo scaffolding esplicito invece del `meta` jsonb (§6.2);
 - fn di lookup componenti per `HandlerConsumi` (§4.3 #3);

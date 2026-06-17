@@ -197,9 +197,10 @@ export function collegaPratica(preventivoId, payload) {
   return api.post(`${BASE}/${preventivoId}/collega-pratica/`, payload)
 }
 
-// Riapertura pratica-first: risolve il preventivo ROOT gia' collegato a una
-// pratica. Ritorna { preventivo_id: <id|null> }. Usato dall'attivita' UI "apri
-// preventivo" per riaprire il ROOT esistente in edit invece di crearne uno nuovo.
-export function getRootPerPratica(praticaId) {
-  return api.get(`${BASE}/root-per-pratica/`, { params: { pratica_id: praticaId } })
+// Riapertura pratica-first: risolve il preventivo ROOT gia' agganciato a un
+// flusso (aggancio per-flusso). Ritorna { preventivo_id: <id|null> }. Usato
+// dall'attivita' UI "apri preventivo" per riaprire il ROOT di quel flusso in
+// edit invece di crearne uno nuovo.
+export function getRootPerFlusso(flussoId) {
+  return api.get(`${BASE}/root-per-flusso/`, { params: { flusso_id: flussoId } })
 }

@@ -37,6 +37,13 @@ Indice test eseguiti:
 17) CommesseServiceTests.test_riallinea_prezzo_ok
 18) CommesseServiceTests.test_riallinea_prezzo_bloccato
 19) CommesseServiceTests.test_riallinea_prezzo_versione_cambiata_senza_conferma
+
+Azioni di stato commessa (#7 — fn_available_actions_commessa + cambia stato):
+20) CommesseServiceTests.test_fn_get_commessa_stato_include_capabilities
+21) CommesseServiceTests.test_cambia_stato_commessa_ok
+22) CommesseServiceTests.test_cambia_stato_commessa_azione_non_ammessa
+23) CommesseServiceTests.test_cambia_stato_commessa_not_found
+24) CommesseServiceTests.test_cambia_stato_commessa_validation
 """
 
 from unittest import TestCase
@@ -485,7 +492,13 @@ class CommesseServiceTests(TestCase):
         from apps.vendite.services.commesse_service import fn_get_commessa_stato
 
         repo = mock_repo_cls.return_value
-        repo.get_commessa_stato_codice.return_value = "PRONTA_FATTURAZIONE"
+        # stato_codice_interno deriva dal blob capability (stato_codice), non più
+        # da un round-trip dedicato get_commessa_stato_codice.
+        repo.get_capabilities.return_value = {
+            "available_actions": [], "can_change_state": False,
+            "can_edit_righe": True, "is_emittibile": True,
+            "stato_codice": "PRONTA_FATTURAZIONE",
+        }
         repo.get_commessa_stato.return_value = {
             "stato_commessa_id": 4,
             "stato_commessa": "PRONTA_FATTURAZIONE",
@@ -505,6 +518,8 @@ class CommesseServiceTests(TestCase):
 
         self.assertEqual(result["commessa_id"], 1)
         self.assertEqual(result["stato_codice_interno"], "PRONTA_FATTURAZIONE")
+        # de-dup: nessun round-trip dedicato a get_commessa_stato_codice
+        repo.get_commessa_stato_codice.assert_not_called()
         self.assertTrue(result["emittibile"])
         self.assertEqual(result["total_attivita"], 10)
         self.assertEqual(result["total_non_emesse"], 5)
@@ -519,6 +534,98 @@ class CommesseServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             fn_get_commessa_stato(commessa_id=999)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_NOT_FOUND")
+
+    # --- azioni di stato commessa (#7) ---
+
+    # Scopo: fn_get_commessa_stato propaga il blob capabilities dal repo.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_fn_get_commessa_stato_include_capabilities(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import fn_get_commessa_stato
+
+        repo = mock_repo_cls.return_value
+        repo.get_commessa_stato_codice.return_value = "PRONTA_FATTURAZIONE"
+        repo.get_commessa_stato.return_value = {
+            "stato_commessa_id": 4, "stato_commessa": "PRONTA_FATTURAZIONE",
+            "chiude_commessa": False, "emittibile": True, "modificabile": True,
+            "total_attivita": 1, "total_approvate": 1, "total_non_approvate": 0,
+            "total_emesse": 0, "total_non_emesse": 1, "total_prezzo_da_riallineare": 0,
+            "last_update": None,
+        }
+        caps = {
+            "available_actions": [
+                {"key": "chiudi", "target_state": "CHIUSA"},
+                {"key": "annulla", "target_state": "ANNULLATA"},
+            ],
+            "can_change_state": True, "can_edit_righe": True,
+            "is_emittibile": True, "stato_codice": "PRONTA_FATTURAZIONE",
+        }
+        repo.get_capabilities.return_value = caps
+
+        result = fn_get_commessa_stato(commessa_id=1)
+
+        self.assertEqual(result["capabilities"], caps)
+        repo.get_capabilities.assert_called_once_with(1)
+
+    # Scopo: transizione utente ammessa → delega a repo.cambia_stato_commessa.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_cambia_stato_commessa_ok(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import cambia_stato_commessa
+
+        repo = mock_repo_cls.return_value
+        repo.get_capabilities.return_value = {
+            "available_actions": [{"key": "chiudi", "target_state": "CHIUSA"}],
+            "stato_codice": "PRONTA_FATTURAZIONE",
+        }
+        repo.cambia_stato_commessa.return_value = {
+            "commessa_id": 1, "stato_da": "PRONTA_FATTURAZIONE", "stato_a": "CHIUSA",
+        }
+
+        result = cambia_stato_commessa(commessa_id=1, nuovo_stato="CHIUSA", user="op1")
+
+        self.assertEqual(result["stato_a"], "CHIUSA")
+        repo.cambia_stato_commessa.assert_called_once_with(
+            commessa_id=1, nuovo_stato="CHIUSA", user="op1",
+        )
+
+    # Scopo: difesa applicativa — stato non tra le azioni utente → errore, no UPDATE.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_cambia_stato_commessa_azione_non_ammessa(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import cambia_stato_commessa
+
+        repo = mock_repo_cls.return_value
+        # solo 'chiudi' ammessa: forzare →PRONTA (automatica) deve essere respinto
+        repo.get_capabilities.return_value = {
+            "available_actions": [{"key": "chiudi", "target_state": "CHIUSA"}],
+            "stato_codice": "PRONTA_FATTURAZIONE",
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            cambia_stato_commessa(commessa_id=1, nuovo_stato="PRONTA_FATTURAZIONE")
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_AZIONE_NON_AMMESSA")
+        repo.cambia_stato_commessa.assert_not_called()
+
+    # Scopo: capabilities vuoto (fn NULL) → commessa non trovata.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_cambia_stato_commessa_not_found(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import cambia_stato_commessa
+
+        repo = mock_repo_cls.return_value
+        repo.get_capabilities.return_value = {}
+
+        with self.assertRaises(ServiceError) as ctx:
+            cambia_stato_commessa(commessa_id=999, nuovo_stato="CHIUSA")
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_NOT_FOUND")
+        repo.cambia_stato_commessa.assert_not_called()
+
+    # Scopo: input non valido (nuovo_stato vuoto) → validazione, nessun lookup.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_cambia_stato_commessa_validation(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import cambia_stato_commessa
+
+        with self.assertRaises(ServiceError) as ctx:
+            cambia_stato_commessa(commessa_id=1, nuovo_stato="  ")
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        mock_repo_cls.return_value.cambia_stato_commessa.assert_not_called()
 
     # --- fn_list_commessa_attivita ---
 

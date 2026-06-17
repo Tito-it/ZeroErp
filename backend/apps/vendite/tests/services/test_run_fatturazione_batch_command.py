@@ -8,6 +8,7 @@
 #   2) differita → MASSIVO + meta fatturazione_immediata=False
 #   3) dry-run → solo discovery/conteggio, nessun run pipeline
 #   4) best-effort → un emittente in errore non blocca gli altri
+#   5) contesto di SISTEMA (RLS opzione B): setta GUC app.ruolo_applicativo=SISTEMA e ripristina
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -28,7 +29,8 @@ class RunFatturazioneBatchCommandTests(TestCase):
     # Scopo: corsia immediata → GIORNALIERO + filtro True, un run per emittente.
     def test_immediata_runs_per_emittente_with_giornaliero_and_filter(self):
         with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
-             patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run:
+             patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
+             patch(f"{_CMD}.connection"):
             RepoCls.return_value.list_emittibili_emittenti.return_value = [1, 2]
             mock_run.return_value = {"lotto_id": 100, "motivo_stop": "COMPLETATO", "step_eseguiti": 3}
             out = StringIO()
@@ -46,7 +48,8 @@ class RunFatturazioneBatchCommandTests(TestCase):
     # Scopo: corsia differita → MASSIVO + filtro False.
     def test_differita_uses_massivo_and_false_filter(self):
         with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
-             patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run:
+             patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
+             patch(f"{_CMD}.connection"):
             RepoCls.return_value.list_emittibili_emittenti.return_value = [9]
             mock_run.return_value = {"lotto_id": 1, "motivo_stop": "COMPLETATO", "step_eseguiti": 4}
             call_command("run_fatturazione_batch", "--modalita", "differita", stdout=StringIO())
@@ -58,7 +61,8 @@ class RunFatturazioneBatchCommandTests(TestCase):
     # Scopo: dry-run → solo discovery/conteggio, nessun run pipeline.
     def test_dry_run_only_discovers(self):
         with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
-             patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run:
+             patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
+             patch(f"{_CMD}.connection"):
             RepoCls.return_value.list_emittibili_emittenti.return_value = [1]
             RepoCls.return_value.list_commesse_emittibili.return_value = [10, 20]
             out = StringIO()
@@ -72,7 +76,8 @@ class RunFatturazioneBatchCommandTests(TestCase):
     # Scopo: best-effort → un emittente in errore non blocca gli altri.
     def test_best_effort_on_error(self):
         with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
-             patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run:
+             patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
+             patch(f"{_CMD}.connection"):
             RepoCls.return_value.list_emittibili_emittenti.return_value = [1, 2]
             mock_run.side_effect = [
                 ServiceError(code="E_PIPELINE", message="boom", detail="x"),
@@ -85,3 +90,25 @@ class RunFatturazioneBatchCommandTests(TestCase):
 
         self.assertEqual(mock_run.call_count, 2)
         self.assertIn("ERRORE", err.getvalue())
+
+    # Scopo: il batch headless stabilisce il contesto di SISTEMA (GUC) e lo ripristina (RLS opzione B).
+    def test_stabilisce_contesto_sistema_e_ripristina(self):
+        from apps.core.api.jwt_audit_authentication import JWT_GUC_RESET_SQL
+        from apps.core.services.auth_constants import RUOLO_APPLICATIVO_SISTEMA
+
+        with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
+             patch(f"{_CMD}.run_lotto_pipeline_until_done"), \
+             patch(f"{_CMD}.connection") as mock_conn:
+            RepoCls.return_value.list_emittibili_emittenti.return_value = []
+            call_command("run_fatturazione_batch", "--modalita", "differita", stdout=StringIO())
+
+        cur = mock_conn.cursor.return_value.__enter__.return_value
+        calls = [c.args for c in cur.execute.call_args_list]
+        # enter: ruolo_applicativo = SISTEMA (parametrizzato)
+        self.assertIn(
+            ("SELECT set_config(%s, %s, false)",
+             ["app.ruolo_applicativo", RUOLO_APPLICATIVO_SISTEMA]),
+            calls,
+        )
+        # exit: reset canonico riusato (JWT_GUC_RESET_SQL)
+        self.assertIn((JWT_GUC_RESET_SQL,), calls)

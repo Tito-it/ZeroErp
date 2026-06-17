@@ -433,44 +433,47 @@ class ApiPreventivoCollegaPratica(DomainAPIView):
     )
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
+            flusso_raw = payload.get("flusso_id")
             return preventivi_service.collega_pratica(
-                preventivo_id, pratica_id=int(payload["pratica_id"]),
+                preventivo_id,
+                pratica_id=int(payload["pratica_id"]),
+                flusso_id=int(flusso_raw) if flusso_raw is not None else None,
             )
         return handle_post_json(request, handler=_handler)
 
 
-class ApiPreventivoRootPerPratica(DomainAPIView):
-    """`GET /api/v1/vendite/preventivi/root-per-pratica/?pratica_id=<id>`:
-    risolve il preventivo ROOT collegato a una pratica (pratiche_sorgenti).
-    Alimenta la RIAPERTURA dal flusso pratica-first: l'attivita' UI "apri
-    preventivo" apre il ROOT esistente in edit invece di crearne uno nuovo.
-    Ritorna `{"preventivo_id": <id|null>}`. Lettura libera."""
+class ApiPreventivoRootPerFlusso(DomainAPIView):
+    """`GET /api/v1/vendite/preventivi/root-per-flusso/?flusso_id=<id>`:
+    risolve il preventivo ROOT agganciato a un flusso (pratiche_sorgenti,
+    aggancio per-flusso). Alimenta la RIAPERTURA dal percorso: l'attivita' UI
+    "apri preventivo" apre il ROOT esistente di quel flusso in edit invece di
+    crearne uno nuovo. Ritorna `{"preventivo_id": <id|null>}`. Lettura libera."""
 
     area_funzionale = "vendite"
 
     @extend_schema(
         parameters=[
             OpenApiParameter(
-                name="pratica_id",
+                name="flusso_id",
                 type=int,
                 location=OpenApiParameter.QUERY,
                 required=True,
             ),
         ],
         responses={200: inline_serializer(
-            name="PreventivoRootPerPraticaResponse",
+            name="PreventivoRootPerFlussoResponse",
             fields={"data": serializers.DictField()},
         )},
     )
     def get(self, request: Request) -> JsonResponse:
-        pratica_id = optional_int({"v": request.query_params.get("pratica_id")}, "v")
+        flusso_id = optional_int({"v": request.query_params.get("flusso_id")}, "v")
         ErrorManager.require(
-            pratica_id is not None,
-            code="E_PRATICA_ID_OBBLIGATORIO",
-            message="pratica_id obbligatorio.",
+            flusso_id is not None,
+            code="E_FLUSSO_ID_OBBLIGATORIO",
+            message="flusso_id obbligatorio.",
         )
-        assert pratica_id is not None
-        return success_response(preventivi_service.get_root_per_pratica(pratica_id))
+        assert flusso_id is not None
+        return success_response(preventivi_service.get_root_per_flusso(flusso_id))
 
 
 class ApiPreventivoRevisioniList(DomainAPIView):

@@ -2,10 +2,15 @@
 
 > **Tipo documento**: brief operativo **per il team DB** (canale `dev/db-tid`).
 > **Priorità**: 🔴 URGENTE — rompe il form-defaults del preventivo (valuta/termine/iva).
-> **Data**: 2026-06-15 · **Stato**: 🟥 APERTO (da applicare)
+> **Data**: 2026-06-15 · **Stato**: ✅ RISOLTO (2026-06-16, DB applicato + verificato).
 >
 > **Origine**: diagnosi "aprendo il preventivo da pratica la valuta del BA non
 > viene applicata". Causa root a DB (seed parametri), non nel codice BE/FE.
+>
+> **Esito (DB team)**: `VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG = '30'` creato con
+> id libero (38 → **53**); id 38 resta `documenti_allegato_upload_max_mb`. pgTAP
+> verde. Verificato su dbdev: param presente, endpoint form-defaults non solleva
+> più, valuta/termine/iva BA-derived tornano applicati. Nessuna modifica BE/FE.
 
 ---
 

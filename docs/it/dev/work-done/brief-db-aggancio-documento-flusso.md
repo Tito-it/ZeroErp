@@ -4,8 +4,8 @@
 > Spiega *cosa* serve e *perché*; il *come* (nome colonna/indice/constraint,
 > changeset, strategia backfill) è scelta del team DB.
 >
-> **Data**: 2026-06-16 · **Stato**: 🟨 IMPLEMENTATO (changeset SCRITTI, non ancora
-> applicati) — vedi §6 per le decisioni prese e i deliverable.
+> **Data**: 2026-06-16 (smoke 2026-06-17) · **Stato**: ✅ COMPLETATO — DB applicato,
+> BE/FE implementato, smoke E2E OK. Vedi §6 (decisioni + deliverable) e §7.
 >
 > **Origine/Design**: [brief-design-aggancio-documento-flusso.md](brief-design-aggancio-documento-flusso.md).
 > **Prerequisito di**: refactor BE/FE "aggancio documento↔flusso" (non iniziano
@@ -19,7 +19,7 @@ Il legame documento↔pratica vive in `pratiche.pratiche_sorgenti`. Per i preven
 aperti dal percorso pratica-first il legame è `ruolo_link='ROOT'`, oggi ancorato alla
 **pratica**:
 
-```
+```sql
 uq_pratiche_sorgenti_pratica_tipo_uid_ruolo
   UNIQUE (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
 ```
@@ -116,10 +116,18 @@ completare all'emissione. Spostando l'ancora sul flusso, il modello diventa esat
   riga CSV `PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE` (id 493).
 - pgTAP: `db/pgtap/pratiche/test-pratiche-sorgenti-flusso.sql` (13 asserzioni).
 
-**Nota rollout**: l'indice parziale morde solo quando `flusso_id` è valorizzato; il BE
-oggi non lo propaga → fino al refactor BE/FE il vincolo "doppio ROOT impossibile" copre
-solo lo storico già agganciato. È *abilitazione* del fix, non fix completo finché il BE
-non passa `flusso_id`.
+**Nota rollout**: l'indice parziale morde solo quando `flusso_id` è valorizzato. Col
+refactor BE/FE (sotto) il BE ora **propaga** `flusso_id` sui nuovi aggancio → il vincolo
+"doppio ROOT impossibile" è pieno per i preventivi nuovi (lo storico resta NULL, vedi
+backfill non eseguito).
 
-**Aperto lato Tid**: applicazione changeset + run pgTAP sul DB.
+## 7. Stato esecuzione (2026-06-16)
+
+- **DB**: changeset **applicati su dbdev**. Protezioni verificate end-to-end (tx in
+  rollback): 2° ROOT su stesso flusso → bloccato dall'indice unico; flusso di altra
+  pratica → guard `PRATICHE_SORGENTI_FLUSSO_PRATICA_INCOERENTE` (493). pgTAP verde.
+- **BE/FE**: implementato e testato (313 test verdi, build FE ok). Dettaglio nel design
+  → [brief-design-aggancio-documento-flusso.md](brief-design-aggancio-documento-flusso.md) §10.
+- **Residuo**: commit + smoke E2E in-app. Backfill 13 ROOT storici **non eseguito** di
+  proposito (dato dbdev rigenerabile, no produzione).
 </content>

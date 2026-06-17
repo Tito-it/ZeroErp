@@ -303,18 +303,24 @@ def fn_get_commesse_push_log(*, push_log_id: int) -> dict:
     return dict(row)
 
 
-# Scopo: Restituisce stato e contatori di una commessa per consultazione operativa.
-def fn_get_commessa_stato(*, commessa_id: int) -> dict:
-    """Entrypoint servizio Python: stato commessa con contatori."""
+# Scopo: guard standard su commessa_id (intero positivo) condiviso dagli entrypoint
+#        del service. Estratto (regola del 2): 3 occorrenze identiche tranne function_name.
+def _guard_commessa_id(commessa_id: int, *, function_name: str) -> None:
     ErrorManager.require(
         bool(commessa_id and commessa_id > 0),
         code="E_COMMESSA_VALIDATION",
         message="Parametri non validi.",
         detail="commessa_id obbligatorio e > 0",
         context={"commessa_id": commessa_id},
-        function_name="vendite.commesse_service.fn_get_commessa_stato",
+        function_name=function_name,
         log_to_db=True,
     )
+
+
+# Scopo: Restituisce stato e contatori di una commessa per consultazione operativa.
+def fn_get_commessa_stato(*, commessa_id: int) -> dict:
+    """Entrypoint servizio Python: stato commessa con contatori."""
+    _guard_commessa_id(commessa_id, function_name="vendite.commesse_service.fn_get_commessa_stato")
     repo = CommesseRepository()
     stato = repo.get_commessa_stato(commessa_id)
     if stato is None:
@@ -327,13 +333,72 @@ def fn_get_commessa_stato(*, commessa_id: int) -> dict:
             log_to_db=True,
         )
     assert stato is not None  # raise_error è NoReturn — aiuta il type checker
+    # Capability data-driven (azioni di stato utente + flag edit) per la UI: blob
+    # da `script.fn_available_actions_commessa`, stesso pattern di ordini/preventivi/
+    # offerte/contratti. Espone anche `stato_codice` (= sc.codice_interno).
+    capabilities = repo.get_capabilities(commessa_id)
     return {
         "commessa_id": commessa_id,
-        # Stato testata: permette a FE/smoke di verificare l'esito del ponte
-        # di emittibilita` (PRONTA_FATTURAZIONE) senza una seconda chiamata.
-        "stato_codice_interno": repo.get_commessa_stato_codice(commessa_id),
+        # `stato_codice_interno` (contratto smoke/FE: esito ponte emittibilità senza
+        # seconda chiamata) derivato dal blob capability (de-dup 2026-06-16: evita il
+        # round-trip dedicato `get_commessa_stato_codice`, gemello di `stato_codice`).
+        "stato_codice_interno": capabilities.get("stato_codice"),
         **dict(stato),
+        "capabilities": capabilities,
     }
+
+
+# Scopo: Azione di stato utente sulla testata commessa (chiudi/riapri/annulla).
+#        Difesa applicativa data-driven oltre al guard DB: la transizione e'
+#        ammessa solo se il `nuovo_stato` figura tra le `available_actions`
+#        (transizioni manuali) di `fn_available_actions_commessa` — questo
+#        impedisce di forzare via API le transizioni AUTOMATICHE (ponte
+#        push/emittibilita', es. →PRONTA_FATTURAZIONE) che il guard DB
+#        accetterebbe (valida la coppia, non il flag `manuale`). L'UPDATE
+#        effettivo + le precondizioni di matrice restano a `fn_cambia_stato_commessa`.
+def cambia_stato_commessa(*, commessa_id: int, nuovo_stato: str, user: str | None = None) -> dict:
+    _guard_commessa_id(commessa_id, function_name="vendite.commesse_service.cambia_stato_commessa")
+    nuovo_stato = (nuovo_stato or "").strip()
+    ErrorManager.require(
+        bool(nuovo_stato),
+        code="E_COMMESSA_VALIDATION",
+        message="Stato di destinazione obbligatorio.",
+        detail="nuovo_stato mancante",
+        context={"commessa_id": commessa_id},
+        function_name="vendite.commesse_service.cambia_stato_commessa",
+        log_to_db=True,
+    )
+
+    repo = CommesseRepository()
+    capabilities = repo.get_capabilities(commessa_id)
+    # capabilities vuoto ⇒ commessa inesistente (fn ritorna NULL → {}).
+    if not capabilities:
+        ErrorManager.raise_error(
+            code="E_COMMESSA_NOT_FOUND",
+            message="Commessa non trovata.",
+            detail=f"Nessuna commessa con id={commessa_id}",
+            context={"commessa_id": commessa_id},
+            function_name="vendite.commesse_service.cambia_stato_commessa",
+            log_to_db=True,
+        )
+
+    # Difesa applicativa: il target deve essere una transizione manuale ammessa.
+    azioni = capabilities.get("available_actions") or []
+    stati_ammessi = {a.get("target_state") for a in azioni}
+    ErrorManager.require(
+        nuovo_stato in stati_ammessi,
+        code="E_COMMESSA_AZIONE_NON_AMMESSA",
+        message="Azione di stato non ammessa nello stato corrente della commessa.",
+        detail=f"nuovo_stato={nuovo_stato!r} non tra le azioni utente {sorted(s for s in stati_ammessi if s)}",
+        context={"commessa_id": commessa_id, "nuovo_stato": nuovo_stato,
+                 "stato_corrente": capabilities.get("stato_codice")},
+        function_name="vendite.commesse_service.cambia_stato_commessa",
+        log_to_db=True,
+    )
+
+    return repo.cambia_stato_commessa(
+        commessa_id=commessa_id, nuovo_stato=nuovo_stato, user=user,
+    )
 
 
 # Scopo: Restituisce la lista paginata delle attività di una commessa.
@@ -347,15 +412,7 @@ def fn_list_commessa_attivita(
     offset: int = 0,
 ) -> dict:
     """Entrypoint servizio Python: lista attività commessa (paginata)."""
-    ErrorManager.require(
-        bool(commessa_id and commessa_id > 0),
-        code="E_COMMESSA_VALIDATION",
-        message="Parametri non validi.",
-        detail="commessa_id obbligatorio e > 0",
-        context={"commessa_id": commessa_id},
-        function_name="vendite.commesse_service.fn_list_commessa_attivita",
-        log_to_db=True,
-    )
+    _guard_commessa_id(commessa_id, function_name="vendite.commesse_service.fn_list_commessa_attivita")
     ErrorManager.require(
         1 <= int(limit) <= 200,
         code="E_COMMESSA_VALIDATION",

@@ -2,7 +2,19 @@
 
 > **Tipo documento**: brief operativo **per il team DB** (canale `dev/db-tid`).
 > **Priorità**: 🟢 BASSA — governance ciclo di vita commessa (azioni di stato utente).
-> **Data**: 2026-06-16 · **Stato**: 🟥 APERTO (da applicare)
+> **Data**: 2026-06-16 · **Stato**: ✅ **FATTO END-TO-END (2026-06-16)** — DB + BE.
+>
+> **DB** (pushato su `dev/db-tid`): `script.fn_available_actions_commessa`
+> (mirror di `fn_available_actions_ordine`, ritorna `available_actions`/`can_change_state`/
+> `can_edit_righe`/`is_emittibile`/`stato_codice`) + seed `meta.manuale=true` con UI hints
+> completi (`action_key`/`label_key`/`severity`/`icon`/`requires_confirm`/`outlined`) su
+> chiudi(4→5)/riapri(4→3)/annulla(da 1/2/3/4→6). Conforme al brief (+ arricchimento UI meta).
+>
+> **BE** (su `dev/backend-tid`): `CommesseRepository.get_capabilities`, `capabilities` in
+> `ApiCommessaStato` GET, servizio `cambia_stato_commessa` (difesa applicativa: azione ∈
+> `available_actions`), endpoint `POST /api/v1/vendite/commesse/<id>/stato/`, codice
+> `E_COMMESSA_AZIONE_NON_AMMESSA` (409); 5 test, suite 958 verde. Vedi
+> [api_commessa_stato.md](/backend/vendite/manual/api_commessa_stato).
 >
 > **Origine**: roadmap [analisi-commesse-stato-e-sviluppi.md](analisi-commesse-stato-e-sviluppi.md)
 > §4.3 #4 / §8 #7. Oggi il ciclo di vita post-`PRONTA_FATTURAZIONE` non è governabile da
