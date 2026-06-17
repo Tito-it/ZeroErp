@@ -103,6 +103,16 @@ registrazione), i GUC **non vengono settati**. Il DB vede valori vuoti,
 `fn_current_identita_context()` restituisce NULL-tuple, le policy RLS
 fail-closed.
 
+**Processi di sistema headless (canale batch).** I management command / cron che
+operano via un ruolo `zeroerp_batch_<job>` (`BYPASSRLS` — vedi
+[provisioning-db-roles](/dev/backend/provisioning-db-roles)) **non settano i GUC
+d'identita'** (`current_identita_id` / `ruolo_applicativo` / `soggetto_ruolo_id`):
+non hanno una veste applicativa e la RLS e' bypassata **a livello di ruolo**, non via
+GUC. Possono settare il solo `app.jwt_user` (es. `BATCH_FATTURAZIONE`) per dare un
+attore riconoscibile ai trigger audit. Questo canale e' riservato ai processi headless:
+**mai** usarlo per servire richieste web (guard fail-open statico+runtime, vedi
+`dev/work-in-progress/brief-db-contesto-sistema-batch-fatturazione-rls.md` §5.6).
+
 ---
 
 ## 4. Chi legge cosa

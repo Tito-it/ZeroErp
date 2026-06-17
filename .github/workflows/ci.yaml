@@ -155,6 +155,20 @@ jobs:
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
             update --contexts="!provision"
 
+      # Ruolo batch per-job zeroerp_batch_fatturazione: BYPASSRLS richiede superuser
+      # -> provisioning come 'postgres' (non Liquibase, che gira come 'zeroerp').
+      # Riusa lo stesso script admin di dbdev/prod (DRY). Dopo le migrazioni: le
+      # tabelle del perimetro esistono. migrator_role=zeroerp = owner oggetti in CI.
+      - name: Provision ruolo batch fatturazione (BYPASSRLS, superuser)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -v batch_role=zeroerp_batch_fatturazione \
+            -v batch_password=secret \
+            -v migrator_role=zeroerp \
+            -f scripts/sql/provision_db_role_batch_fatturazione.sql
+
       - name: Liquibase admin (provision - post)
         run: |
           liquibase \

@@ -3,7 +3,7 @@
 ## API
 - [api_approvazioni_prezzo](manual/api_approvazioni_prezzo.md) — Workflow **L3 approvazione out-of-policy** per override prezzo che violano i limiti L2 configurati: l'operatore richiede approvazione, l'approver (utente con approva_prezzo_override) decide approva/rifiuta dalla coda de…
 - [api_commessa_attivita](manual/api_commessa_attivita.md) — Esporre via HTTP la lista paginata delle attività (commesse_attivita) di una commessa, con filtri opzionali per stato emissione, stato approvazione e mese di competenza.
-- [api_commessa_stato](manual/api_commessa_stato.md) — Esporre via HTTP lo stato e i contatori aggregati di una singola commessa, per dashboard e monitoraggio avanzamento.
+- [api_commessa_stato](manual/api_commessa_stato.md) — Sulla risorsa stato di una commessa:
 - [api_commesse_pricing](manual/api_commesse_pricing.md) — Esporre via HTTP le operazioni di gestione prezzo su attivita` di commessa: riallineamento da listino (N5), variazione eccezionale manuale (N7) e sblocco prezzo bloccato (N7-sblocco).
 - [api_commesse_push_log](manual/api_commesse_push_log.md) — Esporre via HTTP il dettaglio di un singolo push log commesse, per consultazione operativa e diagnostica delle esecuzioni push.
 - [api_contratti](manual/api_contratti.md) — CRUD operativo dei contratti commerciali cliente-listino, con sub-entita' **righe** (vendite.contratti_righe) e **utility 1:1** (vendite.contratti_utilities). E' il ponte tra il cliente (BA) e il listino di riferimento.
