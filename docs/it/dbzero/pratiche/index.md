@@ -69,5 +69,6 @@
 - [trgfn_sospensioni_propaga](funzioni/trgfn_sospensioni_propaga.md) — Propaga la sospensione a livello pratica ai flussi attivi. AFTER INSERT su `pratiche.sospensioni`: se `flusso_id IS NULL`, tutti i flussi con stato DA_ESEGUIRE o IN_CORSO passano a SOSPESO.
 - [trgfn_sospensioni_riattiva](funzioni/trgfn_sospensioni_riattiva.md) — Ripristina gli stati precedenti alla riattivazione. AFTER UPDATE OF `data_fine` su `pratiche.sospensioni`: quando la sospensione viene chiusa (data_fine passa da NULL a valorizzata), ripristina lo stato precedente dei flussi (dal giornale) e riporta la pratica ad APERTA.
 - [trgfn_sospensioni_set_periodo](funzioni/trgfn_sospensioni_set_periodo.md)
+- [trgfn_template_flussi_guard_modalita_esito](funzioni/trgfn_template_flussi_guard_modalita_esito.md)
 
 ## 🔍 Views

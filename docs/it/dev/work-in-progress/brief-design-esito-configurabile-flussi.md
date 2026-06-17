@@ -147,10 +147,20 @@ testo hardcoded (frontend-standards §i18n).
 
 ## 6. Rollout / ordine
 
-DB (2 colonne + CHECK + adattamento guard `trgfn_flussi_guard_esito_completato` per
-invariante 2 a livello template; eventuale guard coerenza `esito_default`/`modalita_esito`)
-→ BE (proiezioni + `avvia_flusso` + `avvia_e_completa_flusso` + endpoint + test) →
-FE (FlussoDrawer/percorso + i18n). BE/FE **non** iniziano prima delle colonne.
+DB (2 colonne + CHECK di dominio sui valori ammessi + **guard dedicato sul template**
+`trgfn_template_flussi_guard_modalita_esito` che enforce le due invarianti di coerenza
+con errori parlanti — Inv1 `esito_default` obbligatorio se non MANUALE (494), Inv2
+AUTOMATICO solo INTERNA (495)) → BE (proiezioni + `avvia_flusso` +
+`avvia_e_completa_flusso` + endpoint + test) → FE (FlussoDrawer/percorso + i18n).
+BE/FE **non** iniziano prima delle colonne.
+
+> ⚠️ **Collocazione delle invarianti.** Le due invarianti vivono su `template_flussi`
+> (config-time), perché dipendono solo da `modalita_esito`/`esito_default`/`direzione`
+> della stessa riga. Il guard runtime `trgfn_flussi_guard_esito_completato` (su
+> `pratiche.flussi`) **non va toccato**: opera su `esito`/`stato_id` e non ha attinenza
+> con la `direzione` del template. Resta la rete fail-closed dell'esito al COMPLETATO,
+> invariato. (Correzione 2026-06-17: la stesura precedente collocava per errore
+> l'invariante 2 nel guard esito runtime.)
 
 Backfill: gli step esistenti restano `modalita_esito='MANUALE'`, `esito_default=NULL`
 → comportamento identico a oggi (nessuna regressione). La configurazione del template

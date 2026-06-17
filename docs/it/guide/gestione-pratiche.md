@@ -136,6 +136,8 @@ Ogni tipo prestazione ha un insieme di **template flussi** che definiscono gli s
 * **handler_id**: NULL = step manuale, NOT NULL = step automatizzato (Django dispatch)
 * **handler_params**: JSONB con parametri operativi per l'handler (es. invio_sms_conferma)
 * **obbligatorio**: se il flusso e' richiesto per completare la pratica
+* **modalita_esito**: come si registra l'esito dello step — `MANUALE` (default: l'operatore avvia, poi sceglie l'esito a mano), `AUTOMATICO` (lo step si avvia e si chiude da solo con un esito predefinito, senza scelta umana), `CONTESTUALE` (l'operatore avvia e conferma l'esito in un'unica azione, con un valore gia' pre-impostato e modificabile)
+* **esito_default**: l'esito predefinito applicato (AUTOMATICO) o pre-selezionato (CONTESTUALE). Obbligatorio quando `modalita_esito` non e' `MANUALE`. `AUTOMATICO` e' ammesso **solo** per gli step a direzione INTERNA: un esito automatico su uno step ENTRATA/USCITA equivarrebbe a fabbricare la risposta di una controparte esterna
 
 ### 3. I prerequisiti: il grafo del workflow
 
@@ -284,6 +286,19 @@ DA_ESEGUIRE --> IN_CORSO --> COMPLETATO (con esito)
 * Da IN_CORSO puo' andare in **ERRORE** (errore tecnico/handler). ERRORE non blocca la pratica: gli altri flussi continuano. Da ERRORE si puo' fare **retry** (→ IN_CORSO) o **abbandonare** il flusso (→ ANNULLATO)
 * Da DA_ESEGUIRE puo' essere **ANNULLATO** direttamente
 * Al completamento con `auto = true`, il trigger DB puo' generare automaticamente nuove pratiche
+
+> **Modalita' di registrazione dell'esito** (configurate sul template, vedi §2). Per
+> impostazione predefinita (`MANUALE`) avvio ed esito restano due momenti distinti. Un
+> template `AUTOMATICO` collassa i due momenti senza intervento umano (lo step si chiude
+> da solo con `esito_default`), ammesso **solo** per gli step INTERNA. Un template
+> `CONTESTUALE` li collassa mantenendo la conferma umana dell'esito (un solo Salva, valore
+> pre-impostato), senza vincolo di direzione. In tutti i casi l'esito al COMPLETATO resta
+> **obbligatorio**: la rete di sicurezza `trgfn_flussi_guard_esito_completato` e'
+> invariata, e il percorso resta `DA_ESEGUIRE -> IN_CORSO -> COMPLETATO` (nessuna
+> transizione diretta `DA_ESEGUIRE -> COMPLETATO`). La logica applicativa (azione unica
+> "Avvia e completa") arriva col lavoro BE/FE; il DB fornisce le colonne e le invarianti.
+
+<!-- -->
 
 > **Nota**: la macchina a stati e' implementata come **rigida** nel DB tramite la tabella `config.transizioni_stati_pratiche` / `config.transizioni_stati_flussi_pratiche` e trigger di validazione. Le transizioni non ammesse vengono rifiutate dal DB. La sospensione temporanea (con data di riattivazione e job pgAgent) e' implementata: il flusso SOSPESO torna al suo stato precedente alla riattivazione manuale o automatica.
 
@@ -675,6 +690,12 @@ I trigger standard (audit, lock codice_interno, attivo protection, tx_id, storic
 | `trg_pratiche_z90_giornale_stato_upd` | [`trgfn_pratiche_giornale_stato`](/dbzero/pratiche/funzioni/trgfn_pratiche_giornale_stato) | AFTER UPDATE OF stato_id | Registra STATO_CAMBIATO |
 | `trg_pratiche_z90_giornale_assegnazione_upd` | [`trgfn_pratiche_giornale_assegnazione`](/dbzero/pratiche/funzioni/trgfn_pratiche_giornale_assegnazione) | AFTER UPDATE OF risorsa/uo | Registra ASSEGNAZIONE_CAMBIATA |
 | `trg_pratiche_z90_giornale_priorita_upd` | [`trgfn_pratiche_giornale_priorita`](/dbzero/pratiche/funzioni/trgfn_pratiche_giornale_priorita) | AFTER UPDATE OF priorita_id | Registra PRIORITA_CAMBIATA |
+
+#### Su `pratiche.template_flussi`
+
+| Trigger | Funzione | Evento | Descrizione |
+| --- | --- | --- | --- |
+| `trg_template_flussi_a10_guard_modalita_esito_ins_upd` | [`trgfn_template_flussi_guard_modalita_esito`](/dbzero/pratiche/funzioni/trgfn_template_flussi_guard_modalita_esito) | BEFORE INSERT OR UPDATE OF modalita_esito/esito_default/direzione | Guard parlante: `esito_default` obbligatorio se `modalita_esito` non e' MANUALE (errore `TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO`); `AUTOMATICO` ammesso solo su direzione INTERNA (errore `TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA`) |
 
 #### Su `pratiche.flussi`
 
