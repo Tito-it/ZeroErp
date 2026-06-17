@@ -657,6 +657,12 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Commessa non trovata.",
         ),
+        "E_COMMESSA_AZIONE_NON_AMMESSA": ErrorPolicy(
+            code="E_COMMESSA_AZIONE_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Azione di stato non ammessa nello stato corrente della commessa.",
+        ),
         "E_COMMESSA_PUSH_LOG_NOT_FOUND": ErrorPolicy(
             code="E_COMMESSA_PUSH_LOG_NOT_FOUND",
             http_status=404,
@@ -730,17 +736,29 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Sospensione non trovata o gia' chiusa.",
         ),
-        "E_PRATICHE_TRANSIZIONE_NON_AMMESSA": ErrorPolicy(
-            code="E_PRATICHE_TRANSIZIONE_NON_AMMESSA",
+        # Guard transizione pratiche/flussi: codici del catalogo DB (301/302)
+        # sollevati dai trigger trgfn_pratiche/flussi_guard_transizione via
+        # script.fn_log_and_raise_error. Chiave SENZA prefisso E_ = codice DB
+        # verbatim (allineata al resto della famiglia pratiche workflow v2 sotto:
+        # il service li intercetta via marker e rilancia ServiceError con lo
+        # stesso codice). Con prefisso E_ ricadevano in E_GENERICO 500.
+        "PRATICHE_TRANSIZIONE_NON_AMMESSA": ErrorPolicy(
+            code="PRATICHE_TRANSIZIONE_NON_AMMESSA",
             http_status=409,
             ui_action="show_error_banner",
             user_message="Transizione di stato pratica non ammessa.",
         ),
-        "E_FLUSSI_TRANSIZIONE_NON_AMMESSA": ErrorPolicy(
-            code="E_FLUSSI_TRANSIZIONE_NON_AMMESSA",
+        "FLUSSI_TRANSIZIONE_NON_AMMESSA": ErrorPolicy(
+            code="FLUSSI_TRANSIZIONE_NON_AMMESSA",
             http_status=409,
             ui_action="show_error_banner",
             user_message="Transizione di stato flusso non ammessa.",
+        ),
+        "FLUSSI_ESITO_OBBLIGATORIO": ErrorPolicy(
+            code="FLUSSI_ESITO_OBBLIGATORIO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Esito obbligatorio per completare il flusso.",
         ),
         # ── Pratiche workflow v2 (D1/D3/D4, analisi-pratiche-workflow-v2) ──
         # Codici del catalogo DB (messaggi_errore 483/484/485) sollevati dai
@@ -763,6 +781,30 @@ class ErrorPolicyRegistry:
             http_status=409,
             ui_action="show_error_banner",
             user_message="Impossibile chiudere la pratica: flussi obbligatori non completati.",
+        ),
+        "PRATICHE_PREREQUISITI_NON_SODDISFATTI": ErrorPolicy(
+            code="PRATICHE_PREREQUISITI_NON_SODDISFATTI",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Flusso non ancora eseguibile: prerequisiti non soddisfatti.",
+        ),
+        "PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO": ErrorPolicy(
+            code="PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile creare un flusso: la pratica e' in stato terminale.",
+        ),
+        "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE": ErrorPolicy(
+            code="PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile modificare il flusso: la pratica e' in stato terminale.",
+        ),
+        "PRATICHE_CHIUSURA_FLUSSO_PREMATURO": ErrorPolicy(
+            code="PRATICHE_CHIUSURA_FLUSSO_PREMATURO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile completare il flusso di chiusura: restano altri flussi obbligatori da completare.",
         ),
         "E_SOSPENSIONI_FLUSSO_NON_COERENTE": ErrorPolicy(
             code="E_SOSPENSIONI_FLUSSO_NON_COERENTE",

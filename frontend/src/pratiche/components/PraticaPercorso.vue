@@ -8,6 +8,7 @@
 import { useI18n } from 'vue-i18n'
 import { statoFlussoSeverity } from '../../core/utils/severity'
 import { RAMO_STEP, STATO_FLUSSO } from '../../core/constants'
+import { getUiActivity } from '../uiActivityRegistry'
 import Tag from 'primevue/tag'
 
 const { t } = useI18n()
@@ -16,6 +17,9 @@ const props = defineProps({
   percorso: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
   praticaId: { type: Number, default: null },
+  // Contesto cliente della pratica (BA derivato + istanza): gating affordance
+  // "apri documento" + payload ereditato dal drawer. { billingAccountId, istanzaUtilityId }.
+  praticaContext: { type: Object, default: () => ({}) },
   // Azione in corso (create/open): blocca i click per evitare doppia creazione.
   busy: { type: Boolean, default: false },
   // Pratica in stato terminale (CHIUSA/ANNULLATA): sola lettura. Gli step "da
@@ -24,7 +28,33 @@ const props = defineProps({
   readonly: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['open-flusso', 'create-flusso'])
+const emit = defineEmits(['open-flusso', 'create-flusso', 'open-attivita'])
+
+// Attività UI di dominio offribile dallo step (azione_ui_key dal template):
+// affordance "apri documento" diretta dalla roadmap, gemella del pulsante nel
+// FlussoDrawer. Gating: non readonly, attività registrata, e (se richiesto dal
+// documento) pratica con cliente attivo (BA presente). null = nessuna affordance.
+function uiActivityFor(step) {
+  if (props.readonly) return null
+  const act = getUiActivity(step.template_azione_ui_key)
+  if (!act) return null
+  if (act.requiresActiveClient && props.praticaContext?.billingAccountId == null) return null
+  return act
+}
+function onApriAttivita(step) {
+  if (props.busy) return
+  emit('open-attivita', {
+    key: step.template_azione_ui_key,
+    praticaId: props.praticaId,
+    billingAccountId: props.praticaContext?.billingAccountId ?? null,
+    istanzaUtilityId: props.praticaContext?.istanzaUtilityId ?? null,
+    // Aggancio per-flusso: il documento si lega al flusso d'origine di QUESTO
+    // step. Lo step puo' non avere ancora un'istanza (flusso_id null → l'host la
+    // crea); l'host legge lo stato reale dal BE e avvia il flusso se serve.
+    flussoId: step.flusso_id ?? null,
+    templateFlussoId: step.template_flusso_id,
+  })
+}
 
 function statoLabel(step) {
   return step.flusso_id ? step.stato_codice_interno : t('pratiche.percorso_da_creare')
@@ -120,6 +150,16 @@ function onRipeti(step) {
               >
                 <i class="pi pi-replay" /> {{ t('pratiche.percorso_ripeti') }}
               </span>
+            </div>
+            <!-- Affordance "apri documento" (data-driven da azione_ui_key): scorciatoia
+                 diretta dalla roadmap, gemella del pulsante nel FlussoDrawer. -->
+            <div
+              v-if="uiActivityFor(step)"
+              class="percorso-step-action percorso-attivita"
+              :title="t(uiActivityFor(step).label)"
+              @click.stop="onApriAttivita(step)"
+            >
+              <i :class="uiActivityFor(step).icon" /> {{ t(uiActivityFor(step).label) }}
             </div>
           </div>
           <i v-if="i < percorso.length - 1" class="pi pi-angle-right percorso-arrow" />
@@ -238,6 +278,14 @@ function onRipeti(step) {
 }
 
 .percorso-ramo-chiuso { color: var(--text-color-secondary); }
+
+/* Affordance "apri documento": scorciatoia accentata sotto l'azione dello step. */
+.percorso-attivita {
+  margin-top: 0.3rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.percorso-attivita:hover { text-decoration: underline; }
 
 .percorso-ripeti {
   margin-left: auto;

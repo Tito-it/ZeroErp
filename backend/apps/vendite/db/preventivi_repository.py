@@ -56,6 +56,18 @@ _ORDER_COLS_PREVENTIVI: dict[str, str] = {
     "data_insert": "v.data_insert",
 }
 
+# Frammento condiviso dei 3 resolver del legame ROOT preventivo↔pratica/flusso
+# in pratiche_sorgenti (sorgente PREVENTIVO, ruolo ROOT). I resolver differiscono
+# solo per SELECT e chiave di filtro; FROM/JOIN e i codici PREVENTIVO/ROOT vivono
+# qui (single source). Interpolato come costante (nessun input utente) → S608 ok.
+_LINK_ROOT_PREVENTIVO_FROM = """
+    FROM pratiche.pratiche_sorgenti ps
+    JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
+    JOIN vendite.preventivi p ON p.uid::text = ps.sorgente_uid
+    WHERE s.codice_interno = 'PREVENTIVO'
+      AND ps.ruolo_link = 'ROOT'
+"""
+
 
 class PreventiviRepository(ComponentiRepositoryMixin):
     """Repository preventivi.
@@ -561,18 +573,35 @@ class PreventiviRepository(ComponentiRepositoryMixin):
     #        legame preventivo↔pratica sul percorso pratica-first (creato a
     #        PREVENTIVAZIONE). Ritorna None se nessun ROOT preventivo.
     def get_preventivo_id_by_pratica_root(self, pratica_id: int) -> int | None:
-        sql = """
-            SELECT p.id
-            FROM pratiche.pratiche_sorgenti ps
-            JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
-            JOIN vendite.preventivi p ON p.uid::text = ps.sorgente_uid
-            WHERE ps.pratica_id = %s
-              AND s.codice_interno = 'PREVENTIVO'
-              AND ps.ruolo_link = 'ROOT'
-            LIMIT 1
-        """
+        sql = f"SELECT p.id {_LINK_ROOT_PREVENTIVO_FROM} AND ps.pratica_id = %s LIMIT 1"  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
+            row = cursor.fetchone()
+        return int(row[0]) if row else None
+
+    # Scopo: Risolve l'id del preventivo agganciato come ROOT a un FLUSSO
+    #        (pratiche_sorgenti.flusso_id, aggancio per-flusso). Fonte di verita'
+    #        della RIAPERTURA dal percorso: l'attivita' UI ha il flusso_id e
+    #        riapre il preventivo di quel flusso. None se nessun ROOT su quel
+    #        flusso. L'indice unico parziale garantisce al piu' 1 riga.
+    def get_preventivo_id_by_flusso_root(self, flusso_id: int) -> int | None:
+        sql = f"SELECT p.id {_LINK_ROOT_PREVENTIVO_FROM} AND ps.flusso_id = %s LIMIT 1"  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [flusso_id])
+            row = cursor.fetchone()
+        return int(row[0]) if row else None
+
+    # Scopo: Reverse del legame ROOT per-flusso — dato un preventivo, ritorna il
+    #        flusso d'origine (pratiche_sorgenti.flusso_id) o None. Alimenta
+    #        l'auto-completamento all'emissione: il preventivo conosce IL SUO
+    #        flusso, lo si completa direttamente senza cercarlo per azione_ui.
+    def get_flusso_id_by_preventivo_root(self, preventivo_id: int) -> int | None:
+        sql = (  # noqa: S608
+            f"SELECT ps.flusso_id {_LINK_ROOT_PREVENTIVO_FROM} "
+            "AND p.id = %s AND ps.flusso_id IS NOT NULL LIMIT 1"
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [preventivo_id])
             row = cursor.fetchone()
         return int(row[0]) if row else None
 

@@ -26,6 +26,10 @@ Endpoint applicativo che invoca il servizio Python `run_lotto_pipeline`.
   - `dry_run` (bool) — esegue senza effetti reali
   - `tipo_lotto` (string) — `MASSIVO` (default) o `GIORNALIERO`
 
+> **Esegue UN solo step per chiamata.** Per concatenare gli step fino alla
+> conclusione della catena (driver), usare
+> [`pipeline/run-until-done/`](api_run_lotto_pipeline_until_done.md).
+
 ## Output
 
 - `200`: `{ "data": { "lotto_id": <id>, "status": "ok" }, "meta": { ... } }`

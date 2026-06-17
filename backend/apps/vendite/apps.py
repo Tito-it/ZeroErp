@@ -27,6 +27,10 @@ class VenditeConfig(AppConfig):
         # Lazy qui (non a livello modulo) per non creare la dipendenza di import
         # pratiche→vendite: e' vendite a registrarsi su pratiche al boot.
         from apps.pratiche.services.handler_registry import register_handler
+        from apps.vendite.handlers.accetta_preventivo_handler import AccettaPreventivoHandler
         from apps.vendite.handlers.push_preventivo_handler import PushPreventivoHandler
 
         register_handler("vendita.push_preventivo", PushPreventivoHandler)
+        # Handler di completamento (template_flussi_handler_eventi): accetta il
+        # preventivo collegato al COMPLETATO+POSITIVO di APPROVAZIONE_CLIENTE.
+        register_handler("vendita.accetta_preventivo", AccettaPreventivoHandler)

@@ -3,22 +3,21 @@
 // Layout: desktop = sidebar 280px + area principale con SearchTable sopra e roadmap sotto.
 // Tablet: sidebar collassa in toggle.
 // Riusa: PraticheCodaLavoro, PraticheSearchTable, PraticaPercorso, PraticaDrawer, FlussoDrawer.
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, shallowRef, computed, watch, onMounted, onUnmounted, nextTick, markRaw } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { READONLY_DOMAINS, STATI_PRATICA_TERMINALI } from '../../core/constants'
+import { READONLY_DOMAINS, STATI_PRATICA_TERMINALI, STATO_FLUSSO } from '../../core/constants'
 import { usePraticheStore } from '../stores/pratiche'
 import PraticheCodaLavoro from '../components/PraticheCodaLavoro.vue'
 import PraticheSearchTable from '../components/PraticheSearchTable.vue'
 import PraticaPercorso from '../components/PraticaPercorso.vue'
 import PraticaDrawer from '../components/PraticaDrawer.vue'
 import FlussoDrawer from '../components/FlussoDrawer.vue'
-import PreventiviDrawer from '../../vendite/preventivi/components/PreventiviDrawer.vue'
-import { collegaPratica } from '../../vendite/preventivi/api/preventiviApi'
-import { getFlusso, createFlusso } from '../api/pratiche-api'
+import { getUiActivity } from '../uiActivityRegistry'
+import { getFlusso, createFlusso, cambiaStatoFlusso } from '../api/pratiche-api'
 
 const { t } = useI18n()
 const store = usePraticheStore()
@@ -77,12 +76,17 @@ function onApriScheda() {
   drawer.editRow({ id: store.selectedPraticaId }, 'id')
 }
 
+// Riga della pratica selezionata in `store.items` (ricerca). Fonte unica per i
+// derivati sotto (codice / terminale / contesto cliente), evita di ripetere il
+// find su selectedPraticaId.
+const selectedItem = computed(
+  () => (store.selectedPraticaId
+    ? store.items.find(i => i.id === store.selectedPraticaId)
+    : null) || null,
+)
+
 // Codice della pratica selezionata (per barra contesto sopra flussi)
-const selectedPraticaCodice = computed(() => {
-  if (!store.selectedPraticaId) return null
-  const item = store.items.find(i => i.id === store.selectedPraticaId)
-  return item?.codice || null
-})
+const selectedPraticaCodice = computed(() => selectedItem.value?.codice || null)
 
 // Pratica selezionata in stato terminale (CHIUSA/ANNULLATA) → percorso e flussi
 // in sola lettura: niente nuovi step, flussi esistenti consultabili ma non
@@ -93,8 +97,7 @@ const selectedPraticaCodice = computed(() => {
 // selezionare una terminale non presente in `store.items`; oltre alla difesa
 // DB (guard che rifiuta le operazioni su pratica terminale).
 const selectedPraticaReadonly = computed(() => {
-  if (!store.selectedPraticaId) return false
-  const item = store.items.find(i => i.id === store.selectedPraticaId)
+  const item = selectedItem.value
   return item ? STATI_PRATICA_TERMINALI.includes(item.stato_codice_interno) : false
 })
 
@@ -142,41 +145,121 @@ async function onFlussoSaved() {
   flussoDrawerVisible.value = false
   if (store.selectedPraticaId) await loadPercorsoPratica(store.selectedPraticaId)
   await store.loadCodaLavoro()
+  // Il completamento di un flusso puo' aver auto-chiuso la pratica (APERTA →
+  // CHIUSA, trgfn_flussi_autochiusura_pratica): rinfresca la lista — senza
+  // resettare la pagina — cosi' lo stato in tabella e il readonly derivato
+  // (selectedPraticaReadonly) si aggiornano.
+  if (store.hasSearched) await store.fetchList()
 }
 
-// tipo_prestazione della pratica selezionata: discrimina il routing PREVENTIVI
-// nel FlussoDrawer (APPROVAZIONE_CLIENTE → M2, PREVENTIVAZIONE → apri preventivo).
-const selectedPraticaTipo = computed(() => {
-  if (!store.selectedPraticaId) return ''
-  const item = store.items.find(i => i.id === store.selectedPraticaId)
-  return item?.tipo_prestazione_codice || ''
-})
+// Contesto cliente della pratica selezionata (BA derivato + istanza), esposti
+// dalla lista (_PRATICA_SELECT). Alimenta l'affordance "apri documento" sul
+// percorso: gating cliente-attivo + eredità nel drawer (stesso payload del flusso).
+const selectedPraticaContext = computed(() => ({
+  billingAccountId: selectedItem.value?.billing_account_id ?? null,
+  istanzaUtilityId: selectedItem.value?.istanza_utility_id ?? null,
+}))
 
-// --- PreventivoDrawer (testa del flusso: PREVENTIVAZIONE) ---
-const preventivoDrawerVisible = ref(false)
-const preventivoCtxPraticaId = ref(null)
-const preventivoLinked = ref(false)
+// --- Attività UI di dominio aperte da un flusso (data-driven, registry) ---
+// L'azione "apri documento" sul flusso (azione_ui_key) è risolta dal registry
+// UI_ACTIVITY_REGISTRY: nessun drawer hardcoded qui. Il componente è dinamico,
+// le props e il gancio post-save arrivano dalla voce di registry.
+const activityVisible = ref(false)
+const activityComponent = shallowRef(null)
+const activityProps = ref({})
+const activityEntry = ref(null)
+const activityCtx = ref(null)
+// Flag anti-richiamo: l'aggancio ROOT documento↔pratica va fatto una volta
+// (l'auto-save bozza emette `saved` più volte). L'aggancio BE è comunque idempotente.
+const activityLinked = ref(false)
 
-// Apertura dal flusso PREVENTIVAZIONE: crea il preventivo collegato alla pratica.
-function onOpenPreventivo(praticaId) {
-  preventivoCtxPraticaId.value = praticaId
-  preventivoLinked.value = false
-  preventivoDrawerVisible.value = true
-}
-
-// Al primo salvataggio con id, aggancia il preventivo come ROOT alla pratica
-// (idempotente lato BE; flag per evitare chiamate ripetute sui salvataggi
-// successivi). È la testa che abilita M2 e l'handler a valle.
-async function onPreventivoSaved(result) {
-  const preventivoId = result?.id
-  if (preventivoCtxPraticaId.value && preventivoId && !preventivoLinked.value) {
-    const ok = await execute(
-      () => collegaPratica(preventivoId, { pratica_id: preventivoCtxPraticaId.value }),
-      { successMessage: t('pratiche.preventivo_collegato') }
+// Apertura da FlussoDrawer: risolve l'attività dal registry e apre il drawer.
+// Carica il componente (lazy) PRIMA di montarlo, poi attiva `visible` al tick
+// successivo: il drawer monta con visible=false e il suo watch(visible) — che
+// NON è immediate — scatta sulla transizione false→true (resetForm/pre-fill).
+// Aggancio per-flusso: il documento si lega al flusso d'origine, che quindi DEVE
+// esistere ed essere IN_CORSO quando si apre. Garantiamo l'invariante: crea il
+// flusso se lo step non e' istanziato, lo avvia se DA_ESEGUIRE. Ritorna il
+// flusso_id effettivo, o null se l'utente/guard interrompe (non si apre).
+async function ensureFlussoInCorso(payload) {
+  let flussoId = payload.flussoId
+  if (!flussoId) {
+    const created = await execute(
+      () => createFlusso(store.selectedPraticaId, { template_flusso_id: payload.templateFlussoId }),
+      { successMessage: t('pratiche.flusso_creato') }
     )
-    if (ok !== null) preventivoLinked.value = true
+    if (created === null) return null
+    flussoId = created.flusso_id
+  }
+  // Stato AUTOREVOLE dal BE, non da payload: il percorso puo' essere stantio (il
+  // flusso e' avanzato in un'altra sessione) e un flusso appena creato potrebbe
+  // non essere DA_ESEGUIRE se il template lo avvia da se'. Avviamo solo se lo
+  // stato reale e' DA_ESEGUIRE: IN_CORSO si usa com'e'; COMPLETATO/ANNULLATO
+  // riapre in sola lettura il documento gia' agganciato (niente avvio, niente
+  // transizione invalida che abortirebbe l'apertura).
+  const flusso = await execute(() => getFlusso(store.selectedPraticaId, flussoId))
+  if (flusso === null) return null
+  if (flusso.stato_codice_interno === STATO_FLUSSO.DA_ESEGUIRE) {
+    const avviato = await execute(
+      () => cambiaStatoFlusso(store.selectedPraticaId, flussoId, { nuovo_stato: STATO_FLUSSO.IN_CORSO }),
+    )
+    if (avviato === null) return null
+  }
+  return flussoId
+}
+
+async function onOpenAttivita(payload) {
+  const entry = getUiActivity(payload?.key)
+  if (!entry) return
+  if (percorsoBusy.value) return
+  percorsoBusy.value = true
+  try {
+    const mod = await entry.loadComponent()
+    // Garantiamo il flusso d'origine IN_CORSO prima di aprire il documento.
+    const flussoId = await ensureFlussoInCorso(payload)
+    if (flussoId == null) return
+    const ctx = { ...payload, flussoId }
+    // Riapertura: se QUESTO flusso ha gia' un documento ROOT, lo apriamo in EDIT
+    // invece di crearne uno nuovo (il lucchetto unico per-flusso a DB impedisce
+    // comunque il doppione). Resolver opzionale e best-effort.
+    const existingId = entry.resolveExisting ? await entry.resolveExisting(ctx) : null
+    activityEntry.value = entry
+    activityCtx.value = ctx
+    activityProps.value = entry.buildProps(ctx, existingId)
+    // Documento gia' agganciato → niente re-aggancio (onSaved e' comunque
+    // idempotente, ma cosi' evitiamo il toast "collegato" a ogni salvataggio).
+    activityLinked.value = existingId != null
+    activityComponent.value = markRaw(mod.default)
+    activityVisible.value = false
+    await nextTick()
+    activityVisible.value = true
+  } finally {
+    percorsoBusy.value = false
+  }
+  // La roadmap riflette il flusso ora avviato/creato.
+  if (store.selectedPraticaId) loadPercorsoPratica(store.selectedPraticaId)
+}
+
+// Salvataggio del documento: gancio post-save del registry (es. collega ROOT),
+// una sola volta, poi rinfresca il percorso (riflette M2/handler a valle).
+async function onActivitySaved(result) {
+  const entry = activityEntry.value
+  // Id robusto: l'evento 'saved' del drawer ha forme diverse (update/emissione/
+  // create) → il registry sa estrarlo (savedId). Senza, il collegamento saltava
+  // sul ramo update (result.id assente → solo preventivo_id).
+  const savedId = entry?.savedId ? entry.savedId(result) : result?.id
+  if (entry?.onSaved && savedId && !activityLinked.value) {
+    const ok = await execute(
+      () => entry.onSaved(savedId, activityCtx.value),
+      { successMessage: t(entry.linkedMessage || 'pratiche.preventivo_collegato') }
+    )
+    if (ok !== null) activityLinked.value = true
   }
   if (store.selectedPraticaId) await loadPercorsoPratica(store.selectedPraticaId)
+  // Salvataggio/emissione concludono l'interazione col documento → chiudi il
+  // drawer attivita' (mirror dello standalone, dove il parent chiude su @saved).
+  // Riapribile dall'affordance del percorso (riprende il ROOT agganciato).
+  activityVisible.value = false
 }
 
 // --- PraticaDrawer ---
@@ -266,10 +349,12 @@ onUnmounted(() => {
             :percorso="percorso"
             :loading="percorsoLoading"
             :pratica-id="store.selectedPraticaId"
+            :pratica-context="selectedPraticaContext"
             :busy="percorsoBusy"
             :readonly="selectedPraticaReadonly"
             @open-flusso="onOpenFlussoById"
             @create-flusso="onCreateFlusso"
+            @open-attivita="onOpenAttivita"
           />
         </div>
       </div>
@@ -292,20 +377,23 @@ onUnmounted(() => {
       @update:visible="v => flussoDrawerVisible = v"
       :flusso="flussoSelezionato"
       :pratica-id="store.selectedPraticaId"
-      :tipo-prestazione-codice="selectedPraticaTipo"
       :readonly="selectedPraticaReadonly"
       @saved="onFlussoSaved"
-      @open-preventivo="onOpenPreventivo"
+      @open-attivita="onOpenAttivita"
     />
 
-    <!-- Drawer: Preventivo collegato (testa PREVENTIVAZIONE). praticaId nasconde
-         l'azione accetta dal drawer: l'accettazione passa dal flusso M2. -->
-    <PreventiviDrawer
-      :visible="preventivoDrawerVisible"
-      @update:visible="v => preventivoDrawerVisible = v"
-      mode="create"
-      :pratica-id="preventivoCtxPraticaId"
-      @saved="onPreventivoSaved"
+    <!-- Drawer documento collegato (data-driven): componente risolto dal registry
+         UI_ACTIVITY_REGISTRY in base all'azione_ui_key del flusso. Per il
+         preventivo, praticaId+praticaContext (da buildProps) nascondono l'azione
+         accetta e pre-compilano/bloccano cliente+istanza; l'accettazione passa
+         dal flusso M2. -->
+    <component
+      :is="activityComponent"
+      v-if="activityComponent"
+      v-bind="activityProps"
+      :visible="activityVisible"
+      @update:visible="v => activityVisible = v"
+      @saved="onActivitySaved"
     />
 
   </div>

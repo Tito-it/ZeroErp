@@ -1,0 +1,2 @@
+id,azione_ui_key,codice,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update
+9001,APRI_PREVENTIVO,APRI_PREVENTIVO,Apri il preventivo collegato dal flusso di pratica (drawer preventivo precompilato col contesto cliente/istanza della pratica),t,{},2026-06-15 00:00:00+02,SEED,2026-06-15 00:00:00+02,SEED

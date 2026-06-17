@@ -21,6 +21,8 @@ Indice test eseguiti:
 9) test_process_request_skips_when_no_connection
 10) test_process_request_skips_non_api
 11) test_process_request_fail_closed_on_db_error
+12) test_process_request_rejects_bypassrls_connection (guard RLS Path A, fail-closed)
+13) test_process_request_passes_non_bypassrls_connection (guard ok, verifica una-volta)
 """
 
 from unittest import TestCase
@@ -28,10 +30,12 @@ from unittest.mock import MagicMock, patch
 
 from django.db import DatabaseError
 
+import apps.core.middleware.jwt_audit_middleware as jwt_mw
 from apps.core.middleware.jwt_audit_middleware import JwtAuditMiddleware
 
 _RESOLVER = "apps.core.middleware.jwt_audit_middleware.PermissionResolver"
 _LOAD_CACHE = "apps.core.middleware.jwt_audit_middleware.load_user_cache"
+_BYPASSRLS = "apps.core.middleware.jwt_audit_middleware.connection_role_bypasses_rls"
 
 
 def _mock_request(
@@ -52,6 +56,9 @@ class JwtAuditMiddlewareTests(TestCase):
     """Test per JwtAuditMiddleware."""
 
     def setUp(self) -> None:
+        # Reset del flag di processo del guard BYPASSRLS (evita contaminazione
+        # cross-test: è una global verificata-una-volta-per-processo).
+        jwt_mw._WEB_CONN_ROLE_VERIFIED = False
         self.middleware = JwtAuditMiddleware(get_response=MagicMock())
 
     # Scopo: Utente DISABILITATO su path /api/ deve ricevere 403.
@@ -123,8 +130,9 @@ class JwtAuditMiddlewareTests(TestCase):
     # Scopo: process_request azzera i 5 GUC in 1 sola execute quando
     # esiste gia' una connessione (potenzialmente sporca di una request
     # precedente con CONN_MAX_AGE>0). Incondizionato rispetto all'auth.
+    @patch(_BYPASSRLS, return_value=False)
     @patch("apps.core.middleware.jwt_audit_middleware.connection")
-    def test_process_request_resets_gucs_on_reused_connection(self, mock_conn):
+    def test_process_request_resets_gucs_on_reused_connection(self, mock_conn, _mock_bypass):
         mock_conn.connection = object()  # connessione gia' stabilita (riusata)
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
@@ -184,3 +192,41 @@ class JwtAuditMiddlewareTests(TestCase):
         body = result.json() if hasattr(result, "json") else {}
         if body:
             self.assertEqual(body["error"]["code"], "E_GUC_RESET_FAILED")
+
+    # Scopo: guard RLS Path A — se la connessione del percorso richiesta è su un
+    # ruolo BYPASSRLS (DB_USER misconfigurato sul ruolo batch o misuse del gateway
+    # di sistema nel web) la richiesta è rifiutata (500, fail-closed).
+    @patch(_BYPASSRLS, return_value=True)
+    @patch("apps.core.middleware.jwt_audit_middleware.connection")
+    def test_process_request_rejects_bypassrls_connection(self, mock_conn, _mock_bypass):
+        mock_conn.connection = object()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        request = _mock_request()
+        result = self.middleware.process_request(request)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.status_code, 500)
+        body = result.json() if hasattr(result, "json") else {}
+        if body:
+            self.assertEqual(body["error"]["code"], "E_DB_ROLE_UNSAFE")
+        # Flag NON deve essere stato impostato: ogni richiesta resta rifiutata.
+        self.assertFalse(jwt_mw._WEB_CONN_ROLE_VERIFIED)
+
+    # Scopo: guard RLS Path A — connessione web su ruolo NON-BYPASSRLS passa, e la
+    # verifica avviene UNA sola volta per processo (flag memorizzato).
+    @patch(_BYPASSRLS, return_value=False)
+    @patch("apps.core.middleware.jwt_audit_middleware.connection")
+    def test_process_request_passes_non_bypassrls_connection(self, mock_conn, mock_bypass):
+        mock_conn.connection = object()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        self.assertIsNone(self.middleware.process_request(_mock_request()))
+        self.assertTrue(jwt_mw._WEB_CONN_ROLE_VERIFIED)
+        # Seconda richiesta: il guard non interroga più il DB (verificato-una-volta).
+        self.assertIsNone(self.middleware.process_request(_mock_request()))
+        self.assertEqual(mock_bypass.call_count, 1)

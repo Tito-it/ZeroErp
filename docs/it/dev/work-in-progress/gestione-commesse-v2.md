@@ -1,5 +1,26 @@
 # Gestione commesse — Architettura e decisioni operative (v2 — 24-02-2026)
 
+> **⚠️ DOCUMENTO STORICO (piano feb 2026) — leggere con questo cappello (agg. 2026-06-16).**
+> Le FASI 1-7 backend sono in larga parte **implementate**, ma alcune descrizioni qui
+> sono **superate**. Fonte autorevole sullo stato reale:
+> [analisi-commesse-stato-e-sviluppi.md](analisi-commesse-stato-e-sviluppi.md) +
+> guida [gestione-commesse.md](/guide/gestione-commesse) (rev. 2026-06-16).
+> Divergenze principali rispetto a quanto scritto sotto:
+> - **Niente colonna `stato` testuale**: lo stato vive solo nella FK `stato_commessa_id`
+>   + **macchina di transizioni data-driven** (`transizioni_stati_commessa` +
+>   `trgfn_commesse_guard_transizione`, errore `E_COMMESSA_STATO_TRANSIZIONE_INVALIDA`),
+>   aggiunta dopo questo piano (2026-06-08).
+> - **Ruolo sorgente** auto `ROOT`/`COLLEGATO` deciso a DB (2026-06-09), non mono-ROOT.
+> - **FASE 4.5 "rettifiche listino" NON implementata** (i file `commesse_rettifiche_*`
+>   non esistono); il modello ricco AUTO/REALE + policy MISTA/conguaglio + lotto
+>   giornaliero è **scaffolding non attivato**.
+> - **Compositi**: espansione dal **modello snapshot** `*_righe_componenti` per tutte le
+>   sorgenti documento (rimosso `fn_resolve_prezzo_composito`); **consumi utility
+>   rimandati** (decisione 2026-06-16). Snapshot audit pricing v5 popolato dal push e
+>   propagato all'emissione (2026-06-16).
+> - Driver di **fatturazione automatica** (corsie immediata/differita) realizzato dopo
+>   questo piano: vedi analisi §10.
+
 Questo documento consolida tutte le decisioni architetturali prese nelle sessioni di analisi
 del 23-24/02/2026. Sostituisce la preanalisi `gestione-commesse.md` (v1).
 Da consegnare al team DB come base per DB-0 → DB-5.

@@ -81,6 +81,11 @@ const props = defineProps({
   // flusso APPROVAZIONE_CLIENTE (endpoint M2), che applica la politica di
   // fatturazione dalla configurazione, non i campi scelti qui.
   praticaId: { type: [Number, null], default: null },
+  // Contesto cliente ereditato dalla pratica (percorso pratica-first): quando
+  // valorizzato, in CREATE il drawer pre-compila istanza (+ BA se cliente
+  // attivo) e li BLOCCA da subito (non possono divergere dalla pratica). Shape:
+  // { billingAccountId: number|null, istanzaUtilityId: number|null }.
+  praticaContext: { type: [Object, null], default: null },
 })
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 const onClose = useDrawerClose(emit, 'cancelled')
@@ -215,8 +220,22 @@ const showSmistamento = computed(() => {
 // della testata. utility_id era gia' immutabile via metadata BE.
 const nonEditableFields = computed(() => {
   const base = detail.value?.non_editable_fields || []
-  if (!hasDetail.value) return base
-  return [...base, 'billing_account_id', 'istanza_utility_id']
+  // Post auto-save bozza / EDIT: cambiare BA o istanza sarebbe un altro
+  // preventivo, non una modifica → entrambi bloccati. utility_id è già
+  // immutabile via metadata BE.
+  if (hasDetail.value) return [...base, 'billing_account_id', 'istanza_utility_id']
+  // Aperto da pratica: blocca SOLO i campi effettivamente ereditati (passati,
+  // non-null) dal contesto — "se passati da esterno → valorizzati e non
+  // modificabili". Un campo assente (es. prospect senza BA) resta editabile:
+  // niente lock a vuoto che impedirebbe il salvataggio.
+  const ctx = props.praticaContext
+  if (ctx) {
+    const locked = [...base]
+    if (ctx.istanzaUtilityId != null) locked.push('istanza_utility_id')
+    if (ctx.billingAccountId != null) locked.push('billing_account_id')
+    return locked
+  }
+  return base
 })
 
 // Defaults non-BA da config.parameters (Fase 2 refactor frontend vendite).
@@ -396,6 +415,33 @@ async function loadDetail(id = null) {
   await loadRiepilogoIva(targetId)
 }
 
+// Scopo: in CREATE da pratica, pre-compila cliente/istanza dal contesto pratica
+// e ne ripristina gli _obj per i lookup (stesso restore di loadDetail). I campi
+// sono già bloccati da nonEditableFields (props.praticaContext). istanza sempre
+// presente dalla pratica; BA presente solo se cliente attivo (prospect → solo
+// istanza, picker istanza visibile ma disabilitato).
+async function prefillFromPratica() {
+  const ctx = props.praticaContext
+  if (!ctx) return
+  if (ctx.istanzaUtilityId) form.value.istanza_utility_id = ctx.istanzaUtilityId
+  if (ctx.billingAccountId) {
+    // Cliente attivo: BA-first, istanza derivata dal BA (picker istanza nascosto).
+    form.value.billing_account_id = ctx.billingAccountId
+    try {
+      const res = await getBillingAccountLookupById(ctx.billingAccountId)
+      const ba = res?.data?.data
+      if (ba) form.value.billing_account_obj = ba
+    } catch { /* best-effort: il campo resta col solo id, comunque bloccato */ }
+  } else if (ctx.istanzaUtilityId) {
+    // Prospect: nessun BA, istanza diretta (picker istanza visibile, disabilitato).
+    try {
+      const res = await getIstanzaUtilityLookupById(ctx.istanzaUtilityId)
+      const iu = res?.data?.data
+      if (iu) form.value.istanza_utility_obj = iu
+    } catch { /* best-effort */ }
+  }
+}
+
 // Scopo: ricarica solo il riepilogo IVA. Chiamato dopo ogni `@changed` delle
 // righe (in coppia con loadDetail per i totali aggregati di testata).
 async function loadRiepilogoIva(targetId = null) {
@@ -424,6 +470,14 @@ watch(() => props.visible, async (v) => {
   // "Revisioni" invece di "Testata"). Mirror OffertaDrawer.
   revisioniTab.reset()
   contestoFv.invalidate()
+  // Reset stato "edit-evolved" a OGNI apertura: questo drawer e' montato una
+  // sola volta come attivita' dinamica nella dashboard pratiche e riusato tra
+  // aperture diverse (l'istanza persiste). Senza azzerare createdId/detail, un
+  // createdId rimasto da una sessione CREATE precedente (bozza auto-salvata)
+  // farebbe puntare `effectivePreventivoId` al preventivo sbagliato riaprendo
+  // un'altra pratica in EDIT. In CREATE resetForm() li riazzera comunque.
+  createdId.value = null
+  detail.value = null
   // loadParamDefaults serve in entrambi i mode (paramBool/paramInt usati anche
   // in defaultForm). loadUtilityDefault serve solo in CREATE (in EDIT utility_id
   // arriva dal detail BE).
@@ -433,12 +487,16 @@ watch(() => props.visible, async (v) => {
   } else {
     await Promise.all([loadParamDefaults(), loadUtilityDefault()])
     resetForm()
+    // Contesto pratica (percorso pratica-first): eredita+blocca cliente/istanza.
+    await prefillFromPratica()
     // CREATE: pre-popoliamo la valuta dal BB resolve_valuta_default lato BE
     // (catena BA -> EF-del-BA -> EF-utente). Senza BA il BE applica il
     // livello 3 (EF dell'utente loggato, fallback gestore globale per admin
     // globale). Best-effort: se l'API fallisce il form resta vuoto.
     try {
-      const res = await getPreventivoFormDefaults(null)
+      // Se aperto da pratica con cliente attivo, il BA è già pre-compilato:
+      // passandolo, la valuta default riflette la catena BA -> EF-del-BA.
+      const res = await getPreventivoFormDefaults(form.value.billing_account_id ?? null)
       const data = res?.data?.data
       if (data && form.value.valuta_id == null && data.valuta_id != null) {
         form.value.valuta_id = data.valuta_id
@@ -784,7 +842,7 @@ const drawerActions = computed(() => {
     position="right" :style="{ width: DRAWER_WIDTH.WIDE_PLUS }" :dismissable="true">
     <template #header>
       <DrawerTitle
-        :action="isEdit ? t('common.edit') : t('common.new')"
+        :action="(isEdit || hasDetail) ? t('common.edit') : t('common.new')"
         :title="t('preventivi.preventivo')"
         :icon="NAV_ICONS.PREVENTIVI"
       />

@@ -53,10 +53,15 @@ watch(() => props.visible, async (val) => {
     }
   }
 
-  // Reset form
+  // Reset form: inizializza ogni campo dal default DB (col.default) quando noto,
+  // così i boolean rispettano il default reale della colonna (es. chiude_pratica
+  // / obbligatorio = false) invece di forzare true. Fallback al neutro per tipo
+  // se il default non e' un literal riconoscibile lato backend.
   const newForm = {}
   for (const col of editableColumns.value) {
-    if (col.type === 'boolean') newForm[col.name] = true
+    if (col.default !== null && col.default !== undefined) {
+      newForm[col.name] = col.default
+    } else if (col.type === 'boolean') newForm[col.name] = true
     else if (col.type === 'number') newForm[col.name] = null
     else newForm[col.name] = ''
   }

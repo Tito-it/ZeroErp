@@ -22,7 +22,7 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 
 | Funzione | Input | Output | Descrizione |
 |---|---|---|---|
-| `crea_pratica(...)` | emittente_fiscale_id, tipo_prestazione_id, priorita_id, ... | `int` (pratica_id) | Crea pratica con stato BOZZA |
+| `crea_pratica(...)` | emittente_fiscale_id, tipo_prestazione_id, priorita_id, ... | `int` (pratica_id) | Crea pratica con stato APERTA (la pratica nasce aperta) |
 | `aggiorna_pratica(pratica_id, data)` | pratica_id, dict campi | `None` | Aggiorna campi consentiti |
 | `cambia_stato_pratica(pratica_id, nuovo_stato)` | pratica_id, codice_interno stato | `None` | Transizione stato pratica |
 | `assegna_pratica(pratica_id, ...)` | pratica_id, risorsa_umana_id?, unita_organizzativa_id? | `None` | Assegna risorsa/UO |
@@ -32,9 +32,9 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 
 | Funzione | Input | Output | Descrizione |
 |---|---|---|---|
-| `crea_flusso(...)` | pratica_id, template_flusso_id?, ... | `int` (flusso_id) | Crea flusso con stato DA_ESEGUIRE |
-| `avvia_flusso(flusso_id)` | flusso_id | `None` | Transizione → IN_CORSO |
-| `completa_flusso(flusso_id, esito, note_esito?)` | flusso_id, esito | `None` | Transizione → COMPLETATO |
+| `crea_flusso(...)` | pratica_id, template_flusso_id (**obbligatorio**, > 0), ... | `int` (flusso_id) | Crea flusso con stato DA_ESEGUIRE |
+| `avvia_flusso(flusso_id, user?)` | flusso_id | `dict \| None` | Transizione → IN_CORSO (+ dispatch handler IN_CORSO; auto-completa se handler ok) |
+| `completa_flusso(flusso_id, esito, note_esito?, user?)` | flusso_id, esito | `None` | Transizione → COMPLETATO (+ dispatch handler evento COMPLETATO) |
 | `cambia_stato_flusso(flusso_id, nuovo_stato, ...)` | flusso_id, codice_interno, esito?, note_esito? | `None` | Transizione generica |
 
 ### Sospensioni
@@ -64,7 +64,8 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 |---|---|---|---|
 | `verifica_prerequisiti(pratica_id, template_flusso_id)` | pratica_id, template_flusso_id | `list[PrerequisitoCheckRow]` | Check prerequisiti (pura lettura) |
 | `get_canali_disponibili(template_flusso_id)` | template_flusso_id | `list[CanalePraticaRow]` | Canali abilitati per template |
-| `dispatch_handler(flusso_id)` | flusso_id | `dict \| None` | Invoca handler Python se configurato |
+| `dispatch_handler(flusso_id, user?)` | flusso_id | `dict \| None` | Invoca l'handler IN_CORSO del template (`template_flussi.handler_id`) se configurato |
+| `dispatch_handler_eventi(flusso_id, evento, esito?, user?)` | flusso_id, evento | `None` | Esegue gli handler legati all'evento (`template_flussi_handler_eventi`), esito-aware, in ordine di sequenza. Binding senza impl registrata → `E_HANDLER_NON_REGISTRATO` |
 | `verifica_flusso_pratica(repo, pratica_id, flusso_id)` | repo, pratica_id, flusso_id | `dict` | Verifica esistenza e ownership flusso/pratica |
 | `get_giornale(pratica_id, limit, offset)` | pratica_id, limit, offset | `(list[GiornaleRow], int)` | Giornale paginato |
 | `get_formule_tempo(tipo_prestazione_id)` | tipo_prestazione_id | `list[FormulaTempoRow]` | Formule tempo attive per tipo |
@@ -75,6 +76,7 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 - Validazione con `ErrorManager.require` + `assert` per type safety.
 - Esiti flusso ammessi: `POSITIVO`, `NEGATIVO`, `PARZIALE`, `NON_APPLICABILE`.
 - `dispatch_handler`: import inline di `handler_registry.get_handler` per evitare import circolari; ritorna `None` se il flusso non ha template, non ha handler_key, o l'handler non e' registrato.
+- `dispatch_handler_eventi` (2026-06-15): preambolo condiviso con `dispatch_handler` via `_flusso_per_dispatch` (fetch + guard + check template). Diversamente da `dispatch_handler`, un binding seedato senza impl registrata e' fail-fast (`E_HANDLER_NON_REGISTRATO`): non si completa un flusso saltando l'azione di dominio promessa. Eseguito nella transazione del completamento (atomicita' cambio stato + azione dominio). Chiamato da `completa_flusso` e dall'auto-completamento di `avvia_flusso`.
 - `assegna_pratica`: noop se nessun campo di assegnazione fornito.
 - Le funzioni sospensione verificano unicita' sospensione attiva prima dell'INSERT.
 - `verifica_flusso_pratica(repo, pratica_id, flusso_id)`: helper **pubblico** per ownership check flusso/pratica. Usato internamente dal service (sospensioni, flussi) e dalle views API (alias `_get_flusso_verificato`). Unica fonte di verita' per la verifica esistenza + appartenenza flusso.
@@ -107,6 +109,7 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 - `config.stati_pratiche` (risoluzione stato pratica)
 - `config.stati_flussi_pratiche` (risoluzione stato flusso)
 - `pratiche.handler_flussi` (lookup handler_key)
+- `pratiche.template_flussi_handler_eventi` (binding handler per evento COMPLETATO, esito-aware)
 - `pratiche.fn_check_prerequisiti_flusso` (verifica prerequisiti)
 - `pratiche.template_flussi_canali` + `config.canali_pratiche` (canali)
 - `pratiche.sospensioni` (CRUD sospensioni via PraticheRepository)

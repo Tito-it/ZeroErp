@@ -560,3 +560,119 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertEqual(len(error_calls), 1)
         self.assertEqual(error_calls[0].kwargs["severity"], "ERROR")
         self.assertEqual(error_calls[0].kwargs["domain"], "PIPELINE")
+
+    # Scopo: F1 — su lotto ESISTENTE in successo, il runner AVANZA allo step
+    # successivo a quello corrente (non ri-esegue il primo). Catalogo [1,2,8],
+    # stato corrente 1 → esegue lo step 2.
+    def test_runner_existing_lotto_success_advances_to_next_step(self):
+        repo = self._RepoMock()  # job_stato "DRAFT" (non ERRORE), stato_doc corrente 1
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            result = runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=True))
+        self.assertEqual(result, 10)
+        self.assertEqual(len(step_executor.calls), 1)
+        # Avanzamento: NON il primo step (1) ma il successivo (2).
+        self.assertEqual(step_executor.calls[0]["stato_doc_fiscale_id"], 2)
+
+    # Scopo: F1 — su lotto ESISTENTE in successo gia` all'ultimo step del catalogo,
+    # non resta nulla da eseguire: nessuno step e il lotto risulta COMPLETATO.
+    def test_runner_existing_lotto_success_at_last_step_is_noop(self):
+        class _AtLastStepRepo(self._RepoMock):
+            # Scopo: stato corrente = ultimo step del catalogo (8).
+            def get_lotto_stato_doc_fiscale_id(self, lotto_id):
+                return 8
+
+        repo = _AtLastStepRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            result = runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=True))
+        self.assertEqual(result, 10)
+        self.assertEqual(len(step_executor.calls), 0)
+        self.assertEqual(repo.last_stato, "COMPLETATO")
+
+    # --- F2: driver run_lotto_until_done ---
+
+    # Repo stateful: lo stato_doc avanza man mano che update_lotto_stato_doc viene
+    # chiamato, così il loop del driver progredisce realmente tra le iterazioni.
+    class _StatefulRepo(_RepoMock):
+        # Scopo: stato corrente del lotto, mutato dal runner ad ogni step.
+        def __init__(self, chiude_su=8):
+            self.current = None
+            self.last_stato = None
+            self._chiude_su = chiude_su
+
+        def get_lotto_stato_doc_fiscale_id(self, lotto_id):
+            return self.current
+
+        def update_lotto_stato_doc(self, lotto_id, stato_doc_fiscale_id):
+            self.current = stato_doc_fiscale_id
+
+        def is_stato_doc_chiude_lotto(self, stato_doc_fiscale_id):
+            return self._chiude_su is not None and stato_doc_fiscale_id == self._chiude_su
+
+    # Scopo: F2 — il driver concatena gli step del catalogo [1,2,8] e si ferma allo
+    # step di chiusura (chiude_lotto su 8): 3 step eseguiti, esito COMPLETATO.
+    def test_until_done_advances_and_stops_at_chiude_lotto(self):
+        repo = self._StatefulRepo(chiude_su=8)
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            esito = runner.run_lotto_until_done(LottoPipelineParams(dry_run=True))
+        self.assertEqual(esito["lotto_id"], 10)
+        self.assertEqual(esito["step_eseguiti"], 3)
+        self.assertEqual(esito["motivo_stop"], "COMPLETATO")
+        self.assertEqual(esito["stato_doc_fiscale_id"], 8)
+        self.assertEqual([c["stato_doc_fiscale_id"] for c in step_executor.calls], [1, 2, 8])
+
+    # Scopo: F2 — senza flag chiude_lotto, il driver si ferma per "nessun avanzamento"
+    # una volta esaurito il catalogo (3 step eseguiti), esito COMPLETATO.
+    def test_until_done_stops_on_no_progress_without_chiude_flag(self):
+        repo = self._StatefulRepo(chiude_su=None)
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            esito = runner.run_lotto_until_done(LottoPipelineParams(dry_run=True))
+        self.assertEqual(esito["step_eseguiti"], 3)
+        self.assertEqual(esito["motivo_stop"], "COMPLETATO")
+        self.assertEqual([c["stato_doc_fiscale_id"] for c in step_executor.calls], [1, 2, 8])
+
+    # Scopo: F2 (regressione bug step fantasma) — su lotto ESISTENTE già all'ultimo
+    # step, il driver NON conta step inesistenti: 0 step, esito COMPLETATO.
+    def test_until_done_existing_lotto_already_at_last_step_no_phantom_step(self):
+        repo = self._StatefulRepo(chiude_su=8)
+        repo.current = 8  # già all'ultimo step del catalogo [1,2,8]
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            esito = runner.run_lotto_until_done(LottoPipelineParams(lotto_id=10, dry_run=True))
+        self.assertEqual(esito["lotto_id"], 10)
+        self.assertEqual(esito["step_eseguiti"], 0)
+        self.assertEqual(esito["motivo_stop"], "COMPLETATO")
+        self.assertEqual(len(step_executor.calls), 0)
+
+    # Scopo: F2 — su lotto ESISTENTE con segnalazioni critical il driver non esegue
+    # step e ritorna un esito BLOCCATO_CRITICITA (no eccezione propagata).
+    def test_until_done_blocked_by_critical_returns_outcome(self):
+        class _CriticalRepo(self._StatefulRepo):
+            # Scopo: riepilogo con criticità attive → blocks_next_step.
+            def get_lotto_segnalazioni_summary(self, lotto_id):
+                return {
+                    "fatture_critical_count": 1,
+                    "fatture_warning_count": 0,
+                    "lotto_critical_count": 0,
+                    "lotto_warning_count": 0,
+                    "lotto_info_count": 0,
+                    "fatture_stato_esecuzione_errore_count": 0,
+                }
+
+        repo = _CriticalRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            esito = runner.run_lotto_until_done(LottoPipelineParams(lotto_id=10, dry_run=False))
+        self.assertEqual(esito["lotto_id"], 10)
+        self.assertEqual(esito["step_eseguiti"], 0)
+        self.assertEqual(esito["motivo_stop"], "BLOCCATO_CRITICITA")
+        self.assertEqual(len(step_executor.calls), 0)

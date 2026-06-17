@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed pratiche.azioni_ui: azione 'APRI_PREVENTIVO' (id=9001).
+# E' l'unica attivita' UI con un consumatore reale oggi (i template
+# PREVENTIVAZIONE delle pratiche PREVENTIVI). Le voci APRI_OFFERTA /
+# APRI_CONTRATTO entreranno nel catalogo quando nasceranno i loro
+# flussi (precedente handler_flussi: 1 riga = 1 consumatore reale).
+# I template_flussi.azione_ui_id puntano a id=9001 (20260615-05).
+# Deve caricare PRIMA dell'aggancio template (FK
+# fk_template_flussi_azione_ui): garantito dall'ordine NN (04 < 05).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260615-04-seed-azioni-ui-mctit.yaml
+
+  - changeSet:
+      id: 20260615-04-seed-azioni-ui
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: azioni_ui
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/azioni_ui.csv
+            tableName: azioni_ui
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: azione_ui_key, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Allineamento sequenza autoincrement post-seed (max id seed 9001).
+              SELECT setval(
+                  pg_get_serial_sequence('pratiche.azioni_ui', 'id'),
+                  GREATEST(COALESCE(MAX(id), 1), 1),
+                  true
+              ) FROM pratiche.azioni_ui;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM pratiche.azioni_ui
+               WHERE azione_ui_key = 'APRI_PREVENTIVO';

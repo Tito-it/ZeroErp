@@ -5,9 +5,9 @@ charset-normalizer==3.4.7
 click==8.4.1
 colorama==0.4.6
 deepmerge==2.0
-distlib==0.4.2
+distlib==0.4.3
 EditorConfig==0.17.1
-filelock==3.29.3
+filelock==3.29.4
 hjson==3.1.0
 identify==2.6.19
 idna==3.18
@@ -26,7 +26,7 @@ psycopg2-binary==2.9.12
 Pygments==2.20.0
 pymdown-extensions==10.21.3
 python-dateutil==2.9.0.post0
-python-discovery==1.4.0
+python-discovery==1.4.2
 python-dotenv==1.2.2
 PyYAML==6.0.3
 requests==2.34.2
@@ -37,6 +37,6 @@ termcolor==3.3.0
 tomli==2.4.1
 typing_extensions==4.15.0
 urllib3==2.7.0
-virtualenv==21.4.2
+virtualenv==21.5.0
 wcmatch==10.1
 zensical==0.0.45

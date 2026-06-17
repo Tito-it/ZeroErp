@@ -206,9 +206,6 @@ function onSospendiPratica() {
 function onRiattivaPratica() {
   executeAction(() => store.riattiva(props.praticaId))
 }
-function onChiudiPratica() {
-  executeAction(() => store.cambiaStato(props.praticaId, { nuovo_stato: STATO_PRATICA.CHIUSA }))
-}
 function onAnnullaPratica() {
   confirmAction({
     title: t('pratiche.azione_annulla'),
@@ -234,9 +231,11 @@ watch(contentReady, (ready) => {
 })
 
 // Azioni della testata pratica consumate da DrawerActionsBar (refactor UI
-// drawer 2026-05-22, Fase 3.A). 5 state actions condizionali per stato corrente
-// (BOZZA/APERTA/SOSPESA/CHIUSA/ANNULLATA). Annulla con confirmAction integrato.
-// CHIUSA e ANNULLATA sono terminali: nessuna azione visibile.
+// drawer 2026-05-22, Fase 3.A). State actions condizionali per stato corrente:
+// Apri (BOZZA), Sospendi (APERTA), Riattiva (SOSPESA), Annulla (non terminale).
+// La CHIUSURA non e' un'azione manuale: e' guidata dal workflow (auto-chiusura
+// al completamento dei flussi). CHIUSA/ANNULLATA terminali: nessuna azione.
+// Annulla con confirmAction integrato.
 const drawerActions = computed(() => {
   if (!isEdit.value || !detail.value) return []
   const s = statoCorrente.value
@@ -271,16 +270,8 @@ const drawerActions = computed(() => {
       hideWhenReadonly: true,
       command: onRiattivaPratica,
     },
-    {
-      key: 'chiudi',
-      kind: 'state',
-      label: t('pratiche.azione_chiudi'),
-      icon: 'pi pi-check-circle',
-      severity: 'success',
-      visible: s === STATO_PRATICA.APERTA || s === STATO_PRATICA.SOSPESA,
-      hideWhenReadonly: true,
-      command: onChiudiPratica,
-    },
+    // Chiusura: rimossa come azione manuale — ora e' guidata dal workflow
+    // (auto-chiusura al completamento dei flussi, trgfn_flussi_autochiusura_pratica).
     {
       key: 'annulla',
       kind: 'state',

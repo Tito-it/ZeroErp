@@ -26,7 +26,10 @@ Endpoint di scrittura che delega a `pratiche_service.cambia_stato_pratica`. Il s
 - `400`: `nuovo_stato` vuoto (`E_PRATICA_VALIDATION`), `pratica_id` non valido (`E_INVALID_ID`)
 - `401`: JWT mancante o non valido
 - `404`: pratica non trovata (`E_PRATICA_NOT_FOUND`)
-- `409`: transizione non in matrice (`E_PRATICHE_TRANSIZIONE_NON_AMMESSA`);
+- `409`: transizione non in matrice (`PRATICHE_TRANSIZIONE_NON_AMMESSA`,
+  catalogo DB id 301): la coppia `(stato_da, stato_a)` non e' in
+  `config.transizioni_stati_pratiche` (attiva). Guard
+  `trgfn_pratiche_guard_transizione`, tradotto via marker;
   **chiusura bloccata** (`PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI`,
   catalogo DB id 485, workflow v2 D4): la pratica sta andando a `CHIUSA` ma
   esistono template flussi `obbligatorio=true` ancora **percorribili**
@@ -45,6 +48,12 @@ Endpoint di scrittura che delega a `pratiche_service.cambia_stato_pratica`. Il s
   `fn_check_chiusura_pratica`); il service traduce l'errore DB nel codice
   parlante 485 via marker sul messaggio (vedi
   `pratiche_service._KNOWN_DB_ERROR_MARKERS`).
+- **Chiusura ora guidata dal workflow** (2026-06-14): la `CHIUSA` non e' piu'
+  un'azione manuale dell'operatore (pulsante "Chiudi" rimosso dal FE). La
+  pratica si auto-chiude al completamento dei flussi (trigger
+  `trgfn_flussi_autochiusura_pratica`, vedi [api_flusso_stato](api_flusso_stato.md)).
+  L'endpoint accetta ancora `CHIUSA` (transizione generica), ma non e' il
+  percorso normale di chiusura. `SOSPESA`/`ANNULLATA` restano azioni operatore.
 - Wrappato in `@transaction.atomic()`.
 - Permission: `cambia_stato_pratica` (area `pratiche`).
 - Endpoint v1 richiede JWT.

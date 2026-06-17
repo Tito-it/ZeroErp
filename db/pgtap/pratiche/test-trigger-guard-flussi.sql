@@ -13,10 +13,9 @@
 -- 3) INSERT flusso B (prerequisito, senza prerequisiti propri): lives
 -- 4) Completamento flusso B (stato → COMPLETATO)
 -- 5) INSERT flusso A con prerequisiti soddisfatti: lives
--- 6) INSERT flusso senza template (manuale): lives
--- 7) Cleanup
+-- 6) Cleanup
 -- ------------------------------------------------------------
-SELECT plan(6);
+SELECT plan(5);
 -- =========================================================
 -- 0) Precondizioni: provisioning config data (idempotente)
 -- =========================================================
@@ -303,25 +302,7 @@ SELECT lives_ok(
     '4. INSERT flusso A riuscito: prerequisito B soddisfatto'
   );
 -- =========================================================
--- 6) INSERT flusso senza template (manuale): lives
--- =========================================================
-SELECT lives_ok(
-    format(
-      'INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
-       VALUES (%s, NULL, %s)',
-      (
-        SELECT pratica_id
-        FROM tmp_tg_pratica
-      ),
-      (
-        SELECT stato_da_eseguire_id
-        FROM tmp_tg_refs
-      )
-    ),
-    '5. INSERT flusso manuale (template NULL) riuscito: guard bypassato'
-  );
--- =========================================================
--- 7) Cleanup
+-- 6) Cleanup
 -- =========================================================
 -- Cleanup resiliente (gestisce orfani da run precedenti falliti)
 DELETE FROM pratiche.giornale

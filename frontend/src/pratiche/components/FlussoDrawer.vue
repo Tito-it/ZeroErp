@@ -9,14 +9,8 @@ import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { cambiaStatoFlusso } from '../api/pratiche-api'
-import { completaApprovazioneFlusso } from '../../vendite/preventivi/api/preventiviApi'
+import { getUiActivity } from '../uiActivityRegistry'
 import { DRAWER_WIDTH, STATO_FLUSSO } from '../../core/constants'
-
-// Processo PREVENTIVI (percorso pratica-first): prefisso tipo_prestazione +
-// codici template che abilitano il ramo preventivo/M2.
-const TIPO_PREVENTIVI_PREFIX = 'PREVENTIVI'
-const TEMPLATE_PREVENTIVAZIONE = 'PREVENTIVAZIONE'
-const TEMPLATE_APPROVAZIONE_CLIENTE = 'APPROVAZIONE_CLIENTE'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -34,22 +28,12 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   flusso: { type: Object, default: null },
   praticaId: { type: Number, default: null },
-  // Codice tipo_prestazione della pratica: discrimina il routing PREVENTIVI
-  // (es. APPROVAZIONE_CLIENTE → endpoint M2) da altri processi che riusano gli
-  // stessi codici template (es. OFFERTA_QUADRO).
-  tipoPrestazioneCodice: { type: String, default: '' },
   // Pratica in stato terminale (CHIUSA/ANNULLATA): sola lettura. Il flusso si
   // puo' consultare ma non avviare/completare e non si generano flussi a valle.
   readonly: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['update:visible', 'saved', 'open-preventivo'])
-
-// È un processo PREVENTIVI (pratica-first) → abilita il ramo preventivo/M2.
-const isPreventivi = computed(
-  () => (props.tipoPrestazioneCodice || '').startsWith(TIPO_PREVENTIVI_PREFIX)
-)
-const templateCodice = computed(() => props.flusso?.template_flusso_codice || '')
+const emit = defineEmits(['update:visible', 'saved', 'open-attivita'])
 
 const esito = ref(null)
 const noteEsito = ref('')
@@ -71,6 +55,18 @@ const stato = computed(() => props.flusso?.stato_codice_interno || '')
 const injectedReadonly = useInjectReadonly()
 const effectiveReadonly = computed(() => injectedReadonly.value || props.readonly)
 provide(READONLY_KEY, effectiveReadonly)
+
+// Attività UI data-driven: il flusso porta `template_azione_ui_key` (catalogo DB
+// pratiche.azioni_ui), risolta nel registry FE → drawer di dominio da aprire.
+const uiActivity = computed(() => getUiActivity(props.flusso?.template_azione_ui_key))
+// Gating cliente attivo: alcune attività (offerta/contratto) richiedono il BA.
+// Il flusso espone il BA risolto della pratica (NULL = prospect).
+const hasActiveClient = computed(() => props.flusso?.pratica_billing_account_id != null)
+const uiActivityVisible = computed(
+  () => !effectiveReadonly.value
+    && !!uiActivity.value
+    && (!uiActivity.value.requiresActiveClient || hasActiveClient.value),
+)
 
 // Deferimento contenuto: il drawer ha solo Select statico + Textarea, ma
 // applichiamo il pattern per coerenza con gli altri drawer entita'.
@@ -97,18 +93,31 @@ const drawerActions = computed(() => {
       disabled: loading.value,
       command: onAvvia,
     },
-    // PREVENTIVAZIONE (pratica-first): apre il PreventivoDrawer collegato.
-    // L'aggancio ROOT preventivo↔pratica avviene al salvataggio (gestito dal
-    // parent, che ospita il drawer e chiama collega-pratica).
+    // Attività UI di dominio (data-driven): se il template del flusso dichiara
+    // un'azione UI (azione_ui_key), apre il drawer di dominio risolto dal registry.
+    // kind:'manage' = apertura sub-drawer → inline su desktop, nel kebab solo su
+    // schermo piccolo (è l'azione principale dello step). Label/icona dal registry.
     {
-      key: 'apri-preventivo',
-      kind: 'secondary',
-      label: t('pratiche.flusso_apri_preventivo'),
-      icon: 'pi pi-file-edit',
-      severity: 'secondary',
-      visible: !effectiveReadonly.value && isPreventivi.value && templateCodice.value === TEMPLATE_PREVENTIVAZIONE,
+      key: 'apri-attivita',
+      kind: 'manage',
+      label: uiActivity.value ? t(uiActivity.value.label) : '',
+      icon: uiActivity.value?.icon,
+      visible: uiActivityVisible.value,
       disabled: loading.value,
-      command: () => emit('open-preventivo', props.praticaId),
+      command: () => emit('open-attivita', {
+        key: props.flusso.template_azione_ui_key,
+        praticaId: props.praticaId,
+        // Aggancio per-flusso: qui il flusso esiste gia' (lo stiamo guardando) →
+        // passiamo il suo id (l'host non lo ri-crea) e il template (per uniformita'
+        // col percorso). Senza questi l'host proverebbe a creare il flusso con
+        // template vuoto → E_FLUSSO_VALIDATION.
+        flussoId: props.flusso.id,
+        templateFlussoId: props.flusso.template_flusso_id,
+        // Contesto cliente risolto dalla pratica (esposto sul flusso dal BE):
+        // il documento aperto eredita+blocca istanza (+ BA se cliente attivo).
+        billingAccountId: props.flusso.pratica_billing_account_id ?? null,
+        istanzaUtilityId: props.flusso.pratica_istanza_utility_id ?? null,
+      }),
     },
   ]
 })
@@ -122,27 +131,21 @@ async function onAvvia() {
   if (result !== null) { emit('saved'); emit('update:visible', false) }
 }
 
-// Scopo: Completa il flusso con esito obbligatorio.
-// Routing M2 (§8.3): per APPROVAZIONE_CLIENTE di una pratica PREVENTIVI, il
-// completamento guida l'accettazione del preventivo collegato → endpoint
-// vendite dedicato (preventivo risolto a BE dal ROOT). Altri flussi: generico.
+// Scopo: Completa il flusso con esito obbligatorio (completamento GENERICO).
+// Le azioni di dominio al completamento (es. accettazione del preventivo per
+// APPROVAZIONE_CLIENTE) sono ora SERVER-SIDE e data-driven: il motore pratiche
+// le esegue dai binding pratiche.template_flussi_handler_eventi nella stessa
+// transazione. Niente più routing M2 / endpoint dedicato nel FE.
 async function onCompleta() {
   if (!esito.value) return
-  const isApprovazioneM2 =
-    isPreventivi.value && templateCodice.value === TEMPLATE_APPROVAZIONE_CLIENTE
-  const action = isApprovazioneM2
-    ? () => completaApprovazioneFlusso({
-        pratica_id: props.praticaId,
-        flusso_id: props.flusso.id,
-        esito: esito.value,
-        note_esito: noteEsito.value || null,
-      })
-    : () => cambiaStatoFlusso(props.praticaId, props.flusso.id, {
-        nuovo_stato: 'COMPLETATO',
-        esito: esito.value,
-        note_esito: noteEsito.value || null,
-      })
-  const result = await execute(action, { successMessage: t('pratiche.flusso_completato') })
+  const result = await execute(
+    () => cambiaStatoFlusso(props.praticaId, props.flusso.id, {
+      nuovo_stato: 'COMPLETATO',
+      esito: esito.value,
+      note_esito: noteEsito.value || null,
+    }),
+    { successMessage: t('pratiche.flusso_completato') },
+  )
   if (result !== null) { emit('saved'); emit('update:visible', false) }
 }
 

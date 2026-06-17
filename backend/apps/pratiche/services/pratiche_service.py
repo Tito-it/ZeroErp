@@ -21,7 +21,7 @@ from apps.pratiche.db.pratiche_repository import PraticheRepository, coerce_json
 # Marker → codice per i guard DB workflow v2 (fn_log_and_raise_error solleva
 # il solo testo localizzato, senza codice: substring-match sul messaggio,
 # pattern speculare a lookup_service._KNOWN_DB_ERROR_MARKERS). I codici sono
-# quelli del catalogo DB (messaggi_errore id 483/485/490/491).
+# quelli del catalogo DB (messaggi_errore id 300/301/302/477/483/485/490/491/492).
 # ⚠ ASSUNZIONE: i marker sono sul testo ITALIANO e reggono perche' il
 # catalogo ha solo righe lingua='it' per questi codici (fn_get_messaggio fa
 # fallback a it). Se si aggiungono traduzioni, i marker vanno estesi o il
@@ -33,9 +33,23 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
         "PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI",
         "flussi obbligatori non completati",
     ),
+    # Guard prerequisiti (D: flusso non ancora eseguibile): step cliccato in
+    # anticipo nel percorso → messaggio parlante invece di E_DATABASE generico.
+    ("PRATICHE_PREREQUISITI_NON_SODDISFATTI", "Prerequisiti non soddisfatti per il template flusso"),
     # Guard pratica terminale (CHIUSA/ANNULLATA): blocco creazione/modifica flussi.
     ("PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO", "Impossibile creare un flusso"),
     ("PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE", "Impossibile modificare il flusso"),
+    # Chiusura workflow-driven: il flusso di chiusura non puo' completarsi finche'
+    # restano altri obbligatori bloccanti.
+    ("PRATICHE_CHIUSURA_FLUSSO_PREMATURO", "Impossibile completare il flusso di chiusura"),
+    # Guard transizione di stato (matrice config.transizioni_*): transizione non
+    # in matrice → 409 parlante invece di E_DATABASE 500. Guard di bordo: le
+    # transizioni valide non li toccano.
+    ("PRATICHE_TRANSIZIONE_NON_AMMESSA", "Transizione pratica non ammessa"),
+    ("FLUSSI_TRANSIZIONE_NON_AMMESSA", "Transizione flusso non ammessa"),
+    # Guard esito-aware: COMPLETATO richiede esito valorizzato (nessuna fase si
+    # chiude senza verdetto).
+    ("FLUSSI_ESITO_OBBLIGATORIO", "Esito obbligatorio per completare il flusso"),
 )
 
 
@@ -307,11 +321,17 @@ def cerca_pratiche(
 # Scopo: Crea un nuovo flusso per una pratica.
 # Il trigger DB valida i prerequisiti automaticamente (guard).
 # Se il trigger blocca l'INSERT, il DB solleva un errore gestito dal middleware.
+# Nota modello (workflow v2): ogni flusso e' template-driven — nasce sempre da un
+# template del percorso (FE PraticaPercorso) o dall'auto-generazione cross-pratica
+# (fn_genera_pratica_da_flusso, sempre con template_dest). Il vecchio "flusso
+# generico" senza template e' stato rimosso: template_flusso_id e' OBBLIGATORIO,
+# chiudiamo qui il path morto. I read-path (verifica_prerequisiti, canali) restano
+# tolleranti ai flussi legacy con template NULL eventualmente presenti a DB.
 @transaction.atomic()
 def crea_flusso(
     *,
     pratica_id: int,
-    template_flusso_id: int | None = None,
+    template_flusso_id: int,
     risorsa_umana_id: int | None = None,
     unita_organizzativa_id: int | None = None,
     sequenza: int = 0,
@@ -324,6 +344,12 @@ def crea_flusso(
         message="pratica_id deve essere > 0",
     )
     assert pratica_id > 0
+    ErrorManager.require(
+        template_flusso_id is not None and template_flusso_id > 0,
+        code="E_FLUSSO_VALIDATION",
+        message="template_flusso_id obbligatorio e > 0: un flusso nasce sempre da un template del percorso.",
+    )
+    assert template_flusso_id is not None and template_flusso_id > 0
 
     # Risolve stato iniziale DA_ESEGUIRE.
     repo = PraticheRepository()
@@ -376,6 +402,8 @@ def avvia_flusso(flusso_id: int, *, user: str | None = None) -> dict[str, Any] |
         if result is not None:
             # Handler eseguito con successo → completa il flusso (esito POSITIVO).
             repo.update_stato_flusso(flusso_id, "COMPLETATO", esito="POSITIVO")
+            # Azioni di dominio legate al COMPLETATO (template_flussi_handler_eventi).
+            dispatch_handler_eventi(flusso_id, evento="COMPLETATO", esito="POSITIVO", user=user)
         return result
     except DatabaseError as exc:
         # Guard pratica terminale (CHIUSA/ANNULLATA) → PRATICHE_TERMINALE_FLUSSO_
@@ -393,6 +421,7 @@ def completa_flusso(
     *,
     esito: str,
     note_esito: str | None = None,
+    user: str | None = None,
 ) -> None:
     ErrorManager.require(
         flusso_id > 0,
@@ -412,6 +441,11 @@ def completa_flusso(
     except DatabaseError as exc:
         # Guard pratica terminale → PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE.
         _raise_known_db_error(exc, function_name="pratiche_service.completa_flusso")
+    # Azioni di dominio legate al completamento (template_flussi_handler_eventi):
+    # es. accetta il preventivo collegato quando APPROVAZIONE_CLIENTE chiude
+    # POSITIVO. Stessa transazione → completamento + azione dominio atomici (sostituisce
+    # il routing M2 hardcoded lato FE). I flussi senza binding: no-op.
+    dispatch_handler_eventi(flusso_id, evento="COMPLETATO", esito=esito, user=user)
 
 
 # Scopo: Transizione generica di stato di un flusso tramite codice_interno.
@@ -477,6 +511,21 @@ def get_percorso(pratica_id: int) -> list[dict[str, Any]]:
     return PraticheRepository().get_percorso_pratica(pratica_id)
 
 
+# Scopo: Carica il flusso per il dispatch handler, con guard di esistenza.
+# Ritorna il flusso, o None se non ha template (handler e binding eventi vivono
+# sul template → niente da dispatchare). Preambolo condiviso da dispatch_handler
+# e dispatch_handler_eventi.
+def _flusso_per_dispatch(flusso_id: int) -> dict[str, Any] | None:
+    flusso = PraticheRepository().get_flusso(flusso_id)
+    ErrorManager.require(
+        flusso is not None,
+        code="E_FLUSSO_NOT_FOUND",
+        message=f"Flusso {flusso_id} non trovato",
+    )
+    assert flusso is not None
+    return flusso if flusso["template_flusso_id"] is not None else None
+
+
 # Scopo: Invoca l'handler Django configurato per il flusso.
 # Obiettivo: dispatch automatico se il template flusso ha un handler_key.
 # Perimetro: lookup handler dal registry, invocazione execute().
@@ -488,20 +537,12 @@ def dispatch_handler(flusso_id: int, *, user: str | None = None) -> dict[str, An
     )
     assert flusso_id > 0
 
-    repo = PraticheRepository()
-    flusso = repo.get_flusso(flusso_id)
-    ErrorManager.require(
-        flusso is not None,
-        code="E_FLUSSO_NOT_FOUND",
-        message=f"Flusso {flusso_id} non trovato",
-    )
-    assert flusso is not None
-
-    if flusso["template_flusso_id"] is None:
+    flusso = _flusso_per_dispatch(flusso_id)
+    if flusso is None:
         return None
 
     # Lookup handler_key e handler_params dal template flusso.
-    handler_info = repo.get_handler_info(flusso["template_flusso_id"])
+    handler_info = PraticheRepository().get_handler_info(flusso["template_flusso_id"])
     if handler_info is None:
         return None
 
@@ -523,6 +564,46 @@ def dispatch_handler(flusso_id: int, *, user: str | None = None) -> dict[str, An
         handler_params=handler_params,
         user=user,
     )
+
+
+# Scopo: Dispatch degli handler legati a un EVENTO di flusso
+# (pratiche.template_flussi_handler_eventi). Generalizza il dispatch oltre
+# l'avvio: su `COMPLETATO` esegue le azioni di dominio il cui `esito_richiesto`
+# combacia con l'esito effettivo (NULL = qualsiasi esito), in ordine di sequenza.
+# Perimetro: chiamato dentro la transazione del cambio stato del flusso, così
+# completamento + azione di dominio sono atomici (rimpiazza il routing M2
+# hardcoded lato FE). Eccezioni dell'handler propagano e rollano la transizione.
+def dispatch_handler_eventi(
+    flusso_id: int, *, evento: str, esito: str | None = None, user: str | None = None,
+) -> None:
+    flusso = _flusso_per_dispatch(flusso_id)
+    if flusso is None:
+        return
+
+    bindings = PraticheRepository().get_handler_eventi(flusso["template_flusso_id"], evento, esito)
+    if not bindings:
+        return
+
+    from apps.pratiche.services.handler_registry import get_handler
+    meta = coerce_jsonb_dict(flusso["meta"])
+    for handler_key, handler_params in bindings:
+        handler_class = get_handler(handler_key)
+        # Binding seedato a DB ma senza implementazione registrata = misconfig di
+        # deploy: fail-fast (non eseguire un completamento "monco" che salta
+        # silenziosamente l'azione di dominio promessa dal binding).
+        ErrorManager.require(
+            handler_class is not None,
+            code="E_HANDLER_NON_REGISTRATO",
+            message=f"Handler '{handler_key}' non registrato in HANDLER_MAP",
+        )
+        assert handler_class is not None
+        handler_class().execute(
+            flusso_id=flusso_id,
+            pratica_id=flusso["pratica_id"],
+            meta=meta,
+            handler_params=handler_params,
+            user=user,
+        )
 
 
 # Scopo: Restituisce il giornale di bordo di una pratica.

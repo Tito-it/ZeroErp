@@ -35,6 +35,15 @@ RUOLO_APPLICATIVO: tuple[str, ...] = (
     RUOLO_APPLICATIVO_DISABILITATO,
 )
 
+# Attore d'audit dei processi di sistema HEADLESS (es. batch fatturazione cron).
+# Path A (brief work-in-progress/brief-db-contesto-sistema-batch-fatturazione-rls.md):
+# la RLS è bypassata dal RUOLO DB del canale (`zeroerp_batch_fatturazione`), NON da un
+# sentinel applicativo. Questo valore è SOLO l'identità d'audit settata in `app.jwt_user`
+# dal gateway del canale di sistema (apps.core.services.system_context) per rendere
+# riconoscibili le righe scritte dal batch nel giornale. (Ritirato
+# `RUOLO_APPLICATIVO_SISTEMA`/Opzione B: non era una veste.)
+AUDIT_ACTOR_BATCH_FATTURAZIONE = "BATCH_FATTURAZIONE"
+
 # Scopo: Ruoli che accedono ai namespace portale (`/api/portale/*`).
 RUOLI_PORTALE: frozenset[str] = frozenset({
     RUOLO_APPLICATIVO_CLIENTE_PORTALE,

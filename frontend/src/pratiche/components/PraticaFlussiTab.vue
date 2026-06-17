@@ -12,7 +12,7 @@ import { useI18n } from 'vue-i18n'
 import { listFlussi, fetchPercorso } from '../api/pratiche-api'
 import { displayDate } from '../../core/utils/date'
 import { statoFlussoSeverity } from '../../core/utils/severity'
-import { STATO_FLUSSO } from '../../core/constants'
+import { STATO_FLUSSO, RAMO_STEP } from '../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
@@ -42,11 +42,14 @@ async function loadAll() {
   }
 }
 
-// Step del percorso ancora da completare: non esiste un'istanza COMPLETATO.
-// Include sia gli step "da creare" (flusso_id null) sia quelli in corso/da
-// eseguire. Vista "cosa resta da fare", complementare alla lista flussi.
+// Step del percorso ancora da completare: non esiste un'istanza COMPLETATO e
+// lo step e' ancora percorribile (escludo il ramo morto di un bivio, che non
+// sara' eseguito). Include "da creare" (flusso_id null) e in corso/da eseguire.
+// Vista "cosa resta da fare", complementare alla lista flussi.
 const stepNonEseguiti = computed(() =>
-  percorso.value.filter(s => s.stato_codice_interno !== STATO_FLUSSO.COMPLETATO),
+  percorso.value.filter(
+    s => s.stato_codice_interno !== STATO_FLUSSO.COMPLETATO && s.ramo !== RAMO_STEP.RAMO_CHIUSO,
+  ),
 )
 
 watch(() => props.praticaId, (id) => { if (id) loadAll() }, { immediate: true })

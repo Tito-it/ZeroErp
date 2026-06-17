@@ -413,44 +413,6 @@ class ApiPreventivoRigheSmistabiliOrdine(DomainAPIView):
         return success_response(data)
 
 
-class ApiPreventivoApprovazioneFlusso(DomainAPIView):
-    """`POST /api/v1/vendite/preventivi/approvazione-flusso/` (M2, brief BE §8.3):
-    completa il flusso APPROVAZIONE_CLIENTE di una pratica PREVENTIVI e, in esito
-    POSITIVO, accetta il preventivo ROOT collegato, in un'unica transazione. Il
-    preventivo è risolto dal legame `pratiche_sorgenti` ROOT (la FE passa solo
-    pratica_id + flusso_id)."""
-
-    area_funzionale = "vendite"
-    post_permission = "cambia_stato_preventivi"
-
-    @extend_schema(
-        request=inline_serializer(
-            name="PreventivoApprovazioneFlussoRequest",
-            fields={
-                "pratica_id": serializers.IntegerField(),
-                "flusso_id": serializers.IntegerField(),
-                "esito": serializers.CharField(),
-                "note_esito": serializers.CharField(required=False, allow_null=True),
-            },
-        ),
-        responses={200: inline_serializer(
-            name="PreventivoApprovazioneFlussoResponse",
-            fields={"data": serializers.DictField()},
-        )},
-    )
-    # Scopo: Completa l'approvazione cliente dal flusso pratica (M2).
-    def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
-            return preventivi_service.completa_approvazione_da_flusso(
-                int(payload["pratica_id"]),
-                flusso_id=int(payload["flusso_id"]),
-                esito=str(payload["esito"]),
-                note_esito=payload.get("note_esito"),
-                user=request.user,
-            )
-        return handle_post_json(request, handler=_handler)
-
-
 class ApiPreventivoCollegaPratica(DomainAPIView):
     """`POST /api/v1/vendite/preventivi/<id>/collega-pratica/`: aggancia il
     preventivo come ROOT a una pratica (pratiche_sorgenti). Usato a PREVENTIVAZIONE
@@ -471,10 +433,47 @@ class ApiPreventivoCollegaPratica(DomainAPIView):
     )
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
+            flusso_raw = payload.get("flusso_id")
             return preventivi_service.collega_pratica(
-                preventivo_id, pratica_id=int(payload["pratica_id"]),
+                preventivo_id,
+                pratica_id=int(payload["pratica_id"]),
+                flusso_id=int(flusso_raw) if flusso_raw is not None else None,
             )
         return handle_post_json(request, handler=_handler)
+
+
+class ApiPreventivoRootPerFlusso(DomainAPIView):
+    """`GET /api/v1/vendite/preventivi/root-per-flusso/?flusso_id=<id>`:
+    risolve il preventivo ROOT agganciato a un flusso (pratiche_sorgenti,
+    aggancio per-flusso). Alimenta la RIAPERTURA dal percorso: l'attivita' UI
+    "apri preventivo" apre il ROOT esistente di quel flusso in edit invece di
+    crearne uno nuovo. Ritorna `{"preventivo_id": <id|null>}`. Lettura libera."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="flusso_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=True,
+            ),
+        ],
+        responses={200: inline_serializer(
+            name="PreventivoRootPerFlussoResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    def get(self, request: Request) -> JsonResponse:
+        flusso_id = optional_int({"v": request.query_params.get("flusso_id")}, "v")
+        ErrorManager.require(
+            flusso_id is not None,
+            code="E_FLUSSO_ID_OBBLIGATORIO",
+            message="flusso_id obbligatorio.",
+        )
+        assert flusso_id is not None
+        return success_response(preventivi_service.get_root_per_flusso(flusso_id))
 
 
 class ApiPreventivoRevisioniList(DomainAPIView):

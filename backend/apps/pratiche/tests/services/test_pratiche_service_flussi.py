@@ -86,8 +86,21 @@ class PraticheServiceFlussiTests(SimpleTestCase):
     # Scopo: Verifica errore se pratica_id <= 0.
     def test_crea_flusso_errore_pratica_id_zero(self):
         with self.assertRaises(ServiceError) as ctx:
-            pratiche_service.crea_flusso(pratica_id=0)
+            pratiche_service.crea_flusso(pratica_id=0, template_flusso_id=10)
         self.assertEqual(ctx.exception.code, "E_INVALID_ID")
+
+    # Scopo: workflow v2 — template_flusso_id obbligatorio (chiuso il path morto
+    # del vecchio "flusso generico"). None o <= 0 → E_FLUSSO_VALIDATION fail-fast.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_flusso_errore_template_obbligatorio(self, MockRepo):
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.crea_flusso(pratica_id=1, template_flusso_id=None)  # type: ignore[arg-type]
+        self.assertEqual(ctx.exception.code, "E_FLUSSO_VALIDATION")
+        with self.assertRaises(ServiceError) as ctx2:
+            pratiche_service.crea_flusso(pratica_id=1, template_flusso_id=0)
+        self.assertEqual(ctx2.exception.code, "E_FLUSSO_VALIDATION")
+        # Nessun INSERT tentato quando il guard scatta.
+        MockRepo.return_value.create_flusso.assert_not_called()
 
     # Scopo: Verifica transizione flusso DA_ESEGUIRE → IN_CORSO.
     @patch(f"{_SVC}.PraticheRepository")
@@ -107,16 +120,56 @@ class PraticheServiceFlussiTests(SimpleTestCase):
             pratiche_service.avvia_flusso(0)
         self.assertEqual(ctx.exception.code, "E_INVALID_ID")
 
-    # Scopo: Verifica completamento flusso con esito POSITIVO.
+    # Scopo: Verifica completamento flusso con esito POSITIVO. Nessun binding
+    # evento → dispatch_handler_eventi e' un no-op (get_handler_eventi → []).
     @patch(f"{_SVC}.PraticheRepository")
     def test_completa_flusso_ok(self, MockRepo):
         repo = MockRepo.return_value
+        repo.get_flusso.return_value = _mock_flusso_row(1)
+        repo.get_handler_eventi.return_value = []
 
         pratiche_service.completa_flusso(1, esito="POSITIVO", note_esito="Tutto ok")
 
         repo.update_stato_flusso.assert_called_once_with(
             1, "COMPLETATO", esito="POSITIVO", note_esito="Tutto ok",
         )
+        # Dispatch evento COMPLETATO interrogato con l'esito effettivo.
+        repo.get_handler_eventi.assert_called_once_with(10, "COMPLETATO", "POSITIVO")
+
+    # Scopo: completamento con binding evento COMPLETATO → l'handler di dominio
+    # (es. accetta_preventivo) viene eseguito nella stessa transazione.
+    @patch("apps.pratiche.services.handler_registry.get_handler")
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_completa_flusso_dispatch_evento_completato(self, MockRepo, mock_get_handler):
+        repo = MockRepo.return_value
+        repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=9003)
+        repo.get_handler_eventi.return_value = [("vendita.accetta_preventivo", {"k": "v"})]
+        handler_instance = MagicMock()
+        mock_get_handler.return_value = MagicMock(return_value=handler_instance)
+
+        pratiche_service.completa_flusso(1, esito="POSITIVO", user="op1")
+
+        repo.get_handler_eventi.assert_called_once_with(9003, "COMPLETATO", "POSITIVO")
+        handler_instance.execute.assert_called_once()
+        kwargs = handler_instance.execute.call_args.kwargs
+        self.assertEqual(kwargs["flusso_id"], 1)
+        self.assertEqual(kwargs["pratica_id"], 1)
+        self.assertEqual(kwargs["handler_params"], {"k": "v"})
+        self.assertEqual(kwargs["user"], "op1")
+
+    # Scopo: binding seedato ma handler non in HANDLER_MAP → fail-fast (non si
+    # completa un flusso saltando silenziosamente l'azione di dominio promessa).
+    @patch("apps.pratiche.services.handler_registry.get_handler")
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_completa_flusso_handler_non_registrato(self, MockRepo, mock_get_handler):
+        repo = MockRepo.return_value
+        repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=9003)
+        repo.get_handler_eventi.return_value = [("vendita.ignoto", {})]
+        mock_get_handler.return_value = None
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.completa_flusso(1, esito="POSITIVO")
+        self.assertEqual(ctx.exception.code, "E_HANDLER_NON_REGISTRATO")
 
     # Scopo: Verifica errore con esito non valido.
     def test_completa_flusso_errore_esito_non_valido(self):
@@ -208,6 +261,22 @@ class PraticheServiceFlussiTests(SimpleTestCase):
             pratiche_service.crea_flusso(pratica_id=1, template_flusso_id=10)
         self.assertEqual(ctx.exception.code, "PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO")
 
+    # Scopo: guard prerequisiti (flusso non ancora eseguibile) sulla creazione
+    # flusso → ServiceError parlante invece di E_DATABASE generico.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_flusso_prerequisiti_non_soddisfatti(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.resolve_stato_flusso.return_value = 1
+        repo.create_flusso.side_effect = DatabaseError(
+            "Prerequisiti non soddisfatti per il template flusso. Mancanti: APPROVAZIONE_CLIENTE.",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.crea_flusso(pratica_id=1, template_flusso_id=10)
+        self.assertEqual(ctx.exception.code, "PRATICHE_PREREQUISITI_NON_SODDISFATTI")
+
     # Scopo: guard pratica terminale (491) sul cambio stato flusso (avvia/
     # completa/cambia_stato) → ServiceError parlante via marker.
     @patch(f"{_SVC}.PraticheRepository")
@@ -248,6 +317,82 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.cambia_stato_flusso(1, "SOSPESO")
         self.assertEqual(ctx.exception.code, "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE")
+
+    # Scopo: guard chiusura workflow-driven — il flusso di chiusura non puo'
+    # completarsi finche' restano obbligatori bloccanti → ServiceError parlante.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_completa_flusso_chiusura_prematura(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.update_stato_flusso.side_effect = DatabaseError(
+            "Impossibile completare il flusso di chiusura: restano altri flussi obbligatori da completare.",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.completa_flusso(1, esito="POSITIVO")
+        self.assertEqual(ctx.exception.code, "PRATICHE_CHIUSURA_FLUSSO_PREMATURO")
+
+    # Scopo: guard transizione flusso (matrice config) → ServiceError parlante
+    # invece di E_DATABASE 500 (gap ① allineamento marker+policy 2026-06-14).
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_cambia_stato_flusso_transizione_non_ammessa(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.update_stato_flusso.side_effect = DatabaseError(
+            "Transizione flusso non ammessa: DA_ESEGUIRE -> COMPLETATO",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.cambia_stato_flusso(1, "COMPLETATO", esito="POSITIVO")
+        self.assertEqual(ctx.exception.code, "FLUSSI_TRANSIZIONE_NON_AMMESSA")
+
+    # Scopo: guard esito-aware — COMPLETATO senza esito → ServiceError parlante.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_cambia_stato_flusso_esito_obbligatorio(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.update_stato_flusso.side_effect = DatabaseError(
+            "Esito obbligatorio per completare il flusso 42.",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.cambia_stato_flusso(1, "COMPLETATO")
+        self.assertEqual(ctx.exception.code, "FLUSSI_ESITO_OBBLIGATORIO")
+
+    # Scopo: guard transizione pratica (matrice config) → ServiceError parlante.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_cambia_stato_pratica_transizione_non_ammessa(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.update_stato_pratica.side_effect = DatabaseError(
+            "Transizione pratica non ammessa: CHIUSA -> APERTA",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.cambia_stato_pratica(1, "APERTA")
+        self.assertEqual(ctx.exception.code, "PRATICHE_TRANSIZIONE_NON_AMMESSA")
+
+    # Scopo: i codici workflow guard devono avere policy 409 (conflitto regola
+    # business), non finire nel default E_GENERICO (500). Regressione: codici
+    # mappati via marker ma non registrati in ErrorPolicyRegistry.
+    def test_workflow_guard_codes_hanno_policy_409(self):
+        from apps.core.services.error_policies import ErrorPolicyRegistry
+
+        for code in (
+            "PRATICHE_PREREQUISITI_NON_SODDISFATTI",
+            "PRATICHE_TERMINALE_NUOVO_FLUSSO_BLOCCATO",
+            "PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE",
+            "PRATICHE_CHIUSURA_FLUSSO_PREMATURO",
+            "PRATICHE_TRANSIZIONE_NON_AMMESSA",
+            "FLUSSI_TRANSIZIONE_NON_AMMESSA",
+            "FLUSSI_ESITO_OBBLIGATORIO",
+        ):
+            self.assertTrue(ErrorPolicyRegistry.has(code), f"{code} non registrato")
+            self.assertEqual(ErrorPolicyRegistry.resolve(code).http_status, 409, code)
 
     # Scopo: Regressione bug smoke 2026-06-11 — psycopg puo' restituire i
     # jsonb come str: meta del flusso str deve arrivare all'handler come dict

@@ -3,6 +3,7 @@
 ## 📚 Tabelle
 - [allegati_flussi](tabelle/allegati_flussi.md) — La tabella `pratiche.allegati_flussi` gestisce i **file allegati** a un flusso specifico. Struttura identica a `allegati_pratiche` ma collegata al singolo step di workflow anziche' alla pratica.
 - [allegati_pratiche](tabelle/allegati_pratiche.md) — La tabella `pratiche.allegati_pratiche` gestisce i **file allegati** a una pratica. Gli allegati sono **immutabili**: non vengono modificati ma versionati tramite `allegato_padre_id`.
+- [azioni_ui](tabelle/azioni_ui.md) — La tabella `pratiche.azioni_ui` e' il **catalogo delle attivita' UI lanciabili dal flusso di pratica**. E' lo **specchio lato frontend** del registry handler (`pratiche.handler_flussi`):
 - [calcoli_tempo](tabelle/calcoli_tempo.md) — Tabella di calcolo persistente: misura il tempo impiegato per transitare dal completamento di `flusso_da` al completamento di `flusso_a`. Alimentata automaticamente dal trigger `trgfn_flussi_calcolo_tempo_completamento` a due fasi (avvio + chiusura).
 - [competenze_flussi](tabelle/competenze_flussi.md) — Matrice delle competenze: definisce per ogni tipo di flusso (template) e reparto (unita' organizzativa), quali operatori (risorse umane) sono abilitati a eseguire quel tipo di flusso.
 - [flussi](tabelle/flussi.md) — La tabella `pratiche.flussi` contiene le **istanze operative dei flussi** di una pratica. Ogni flusso e' uno step del workflow, creato da un template (opzionale) o manualmente, con stato, esito e assegnazione propri.
@@ -17,6 +18,7 @@
 - [sospensioni](tabelle/sospensioni.md) — Registra i periodi di fermo di una pratica o di un singolo flusso. Ogni riga e' un intervallo aperto (`data_fine NULL` = sospensione ancora attiva).
 - [template_flussi](tabelle/template_flussi.md) — La tabella `pratiche.template_flussi` definisce i **template degli step di workflow** per ciascun tipo_prestazione. Ogni template descrive un flusso tipo: sequenza di esecuzione, obbligatorieta', direzione, handler automatico opzionale e parametri di configurazione.
 - [template_flussi_canali](tabelle/template_flussi_canali.md) — La tabella `pratiche.template_flussi_canali` e' la **relazione M:N** tra template flussi e canali di visibilita'. Definisce su quali interfacce esterne un flusso e' esposto (es. portale clienti, app tecnica).
+- [template_flussi_handler_eventi](tabelle/template_flussi_handler_eventi.md) — La tabella `pratiche.template_flussi_handler_eventi` è il **legame data-driven** tra un template di flusso e gli **handler** da eseguire al verificarsi di un **evento** di flusso, **esito-aware**. Generalizza il dispatch handler oltre il solo avvio:
 - [template_flussi_prerequisiti](tabelle/template_flussi_prerequisiti.md) — La tabella `pratiche.template_flussi_prerequisiti` definisce il **grafo diretto aciclico (DAG) dei prerequisiti** tra template flussi. Un flusso puo' essere creato solo se tutti i suoi prerequisiti sono stati completati.
 - [tipi_prestazione](tabelle/tipi_prestazione.md) — La tabella `pratiche.tipi_prestazione` definisce il **catalogo dei tipi di pratica** gestibili dal sistema. Ogni pratica ha un `tipo_prestazione_id` che ne determina la natura e il workflow applicabile.
 
@@ -60,11 +62,13 @@
 - [trgfn_pratiche_guard_contesto](funzioni/trgfn_pratiche_guard_contesto.md) — Guard: valida la coerenza del contesto anagrafico sulla pratica nel **modello a due rami**, pendenti indipendentemente dal soggetto:
 - [trgfn_pratiche_guard_transizione](funzioni/trgfn_pratiche_guard_transizione.md) — Trigger function guard che **blocca transizioni di stato non ammesse** per le pratiche. Consulta la matrice `config.transizioni_stati_pratiche` (solo righe con `attivo = true`) e solleva eccezione se la transizione non e' configurata.
 - [trgfn_pratiche_set_data_apertura](funzioni/trgfn_pratiche_set_data_apertura.md) — Valorizza automaticamente `data_apertura` quando la pratica entra in APERTA, sia per **creazione diretta** (INSERT con stato APERTA) sia per **transizione** BOZZA → APERTA su UPDATE. Immutabile: una volta valorizzata, non viene sovrascritta da transizioni successive (ne' da un valore esplicito gia' fornito all'INSERT).
+- [trgfn_pratiche_sorgenti_guard_coerenza_flusso](funzioni/trgfn_pratiche_sorgenti_guard_coerenza_flusso.md) — In `pratiche.pratiche_sorgenti` la colonna `flusso_id` **àncora il link ROOT al flusso d'origine** del documento (preventivo aperto da un'attività UI di flusso), non a tutta la pratica — vedi *brief-db-aggancio-documento-flusso*. Il flusso indicato deve appartenere alla **stessa pratica** del link.
 - [trgfn_sospensioni_giornale_ins](funzioni/trgfn_sospensioni_giornale_ins.md)
 - [trgfn_sospensioni_giornale_riattivazione](funzioni/trgfn_sospensioni_giornale_riattivazione.md)
 - [trgfn_sospensioni_guard_coerenza_flusso](funzioni/trgfn_sospensioni_guard_coerenza_flusso.md) — Guard: verifica che `flusso_id` appartenga alla stessa `pratica_id` della sospensione. Se `flusso_id IS NULL` (sospensione pratica intera), nessun controllo.
 - [trgfn_sospensioni_propaga](funzioni/trgfn_sospensioni_propaga.md) — Propaga la sospensione a livello pratica ai flussi attivi. AFTER INSERT su `pratiche.sospensioni`: se `flusso_id IS NULL`, tutti i flussi con stato DA_ESEGUIRE o IN_CORSO passano a SOSPESO.
 - [trgfn_sospensioni_riattiva](funzioni/trgfn_sospensioni_riattiva.md) — Ripristina gli stati precedenti alla riattivazione. AFTER UPDATE OF `data_fine` su `pratiche.sospensioni`: quando la sospensione viene chiusa (data_fine passa da NULL a valorizzata), ripristina lo stato precedente dei flussi (dal giornale) e riporta la pratica ad APERTA.
 - [trgfn_sospensioni_set_periodo](funzioni/trgfn_sospensioni_set_periodo.md)
+- [trgfn_template_flussi_guard_modalita_esito](funzioni/trgfn_template_flussi_guard_modalita_esito.md)
 
 ## 🔍 Views

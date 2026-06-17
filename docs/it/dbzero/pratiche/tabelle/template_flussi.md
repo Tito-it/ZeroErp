@@ -23,13 +23,19 @@
 | handler_params | jsonb | NO | '{}'::jsonb |
 | ripetibilita | character varying | NO | 'SE_NON_POSITIVO'::character varying |
 | chiude_pratica | boolean | NO | false |
+| azione_ui_id | integer | YES |  |
+| modalita_esito | character varying | NO | 'MANUALE'::character varying |
+| esito_default | character varying | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_template_flussi_chiusura_obbligatorio |  |
 | CHECK | chk_template_flussi_direzione |  |
+| CHECK | chk_template_flussi_esito_default |  |
+| CHECK | chk_template_flussi_modalita_esito |  |
 | CHECK | chk_template_flussi_ripetibilita |  |
+| FOREIGN KEY | fk_template_flussi_azione_ui | azione_ui_id |
 | FOREIGN KEY | fk_template_flussi_handler | handler_id |
 | FOREIGN KEY | fk_template_flussi_tipo_prestazione | tipo_prestazione_id |
 | PRIMARY KEY | pk_pratiche_template_flussi | id |
@@ -41,6 +47,12 @@
 | pk_pratiche_template_flussi | `CREATE UNIQUE INDEX pk_pratiche_template_flussi ON pratiche.template_flussi USING btree (id)` |
 | uq_pratiche_template_flussi_tipo_codice | `CREATE UNIQUE INDEX uq_pratiche_template_flussi_tipo_codice ON pratiche.template_flussi USING btree (tipo_prestazione_id, codice)` |
 | uq_template_flussi_chiusura | `CREATE UNIQUE INDEX uq_template_flussi_chiusura ON pratiche.template_flussi USING btree (tipo_prestazione_id) WHERE chiude_pratica` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_template_flussi_a10_guard_modalita_esito_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()` |
+| trg_template_flussi_a10_guard_modalita_esito_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()` |
 
 ---
 {% include-markdown "signature-core.md" %}

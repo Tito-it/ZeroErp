@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Difesa a regime: pratiche.flussi.template_flusso_id NOT NULL.
+# (brief-db-pulizia-flussi-generici-legacy, 2026-06-14)
+#
+# Nel modello workflow v2 ogni flusso e' template-driven: nasce da un
+# template del percorso o dall'auto-generazione cross-pratica
+# (fn_genera_pratica_da_flusso, sempre con template_flusso_dest). Il
+# "flusso generico" senza template e' stato rimosso (FE) e vietato (BE,
+# E_FLUSSO_VALIDATION). Il NOT NULL rende l'invariante difesa a DB,
+# anche contro INSERT diretti/batch.
+#
+# PREREQUISITO: le righe legacy template_flusso_id IS NULL vanno ripulite
+# PRIMA (pulizia manuale dev). La preCondition sqlCheck (onFail HALT)
+# impedisce l'applicazione se restano righe NULL. Su DB fresco (CI) non
+# esistono righe NULL (nessun seed le crea) -> applica senza ostacoli.
+#
+# Nota: il ramo no-op "IF NEW.template_flusso_id IS NULL THEN RETURN" in
+# trgfn_flussi_generazione diventa codice morto ma innocuo (lasciato).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260614-09-alter-flussi-template-flusso-id-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20260614-09-alter-flussi-template-flusso-id-not-null
+      author: mctit
+      comment: >
+        pratiche.flussi.template_flusso_id SET NOT NULL (ogni flusso e'
+        template-driven). Bloccato se restano righe legacy NULL.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: SELECT count(*) FROM pratiche.flussi WHERE template_flusso_id IS NULL
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pratiche.flussi
+                ALTER COLUMN template_flusso_id SET NOT NULL;
+
+              COMMENT ON COLUMN pratiche.flussi.template_flusso_id
+                IS 'Template del percorso da cui nasce il flusso. NOT NULL: ogni flusso e'' template-driven (percorso o auto-generazione cross-pratica). Il flusso "generico" senza template e'' deprecato.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pratiche.flussi
+                ALTER COLUMN template_flusso_id DROP NOT NULL;

@@ -112,9 +112,27 @@ class CommessaEmitResult(TypedDict):
 
 
 class CommessaStatoResult(TypedDict):
+    # Stato testata + flag di governance (da vendite.stati_commessa)
+    stato_commessa_id: int
+    stato_commessa: str
+    chiude_commessa: bool
+    emittibile: bool
+    modificabile: bool
+    # Config testata
+    policy_fatturazione: str | None
+    fatturazione_immediata: bool | None
+    priorita_operativa: int | None
+    billing_account_id: int | None
+    utility_id: int | None
+    emittente_soggetto_ruolo_id: int | None
+    # Contatori righe commesse_attivita
     total_attivita: int
     total_approvate: int
+    total_non_approvate: int
     total_emesse: int
+    total_non_emesse: int
+    total_prezzo_da_riallineare: int
+    last_update: str | None
 
 
 class CommessaPushLogRow(TypedDict):

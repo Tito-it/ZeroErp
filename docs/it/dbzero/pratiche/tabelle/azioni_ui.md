@@ -1,0 +1,33 @@
+{% include-markdown "it/dbzero/pratiche/manual/azioni_ui.md" %}
+# 📚 Tabella `azioni_ui`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | integer | NO |  |
+| azione_ui_key | character varying | NO |  |
+| codice | character varying | NO |  |
+| descrizione | text | NO |  |
+| attivo | boolean | NO | true |
+| meta | jsonb | NO | '{}'::jsonb |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | CURRENT_USER |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| PRIMARY KEY | pk_pratiche_azioni_ui | id |
+| UNIQUE | uq_pratiche_azioni_ui_codice | codice |
+| UNIQUE | uq_pratiche_azioni_ui_key | azione_ui_key |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| pk_pratiche_azioni_ui | `CREATE UNIQUE INDEX pk_pratiche_azioni_ui ON pratiche.azioni_ui USING btree (id)` |
+| uq_pratiche_azioni_ui_codice | `CREATE UNIQUE INDEX uq_pratiche_azioni_ui_codice ON pratiche.azioni_ui USING btree (codice)` |
+| uq_pratiche_azioni_ui_key | `CREATE UNIQUE INDEX uq_pratiche_azioni_ui_key ON pratiche.azioni_ui USING btree (azione_ui_key)` |
+
+---
+{% include-markdown "signature-core.md" %}

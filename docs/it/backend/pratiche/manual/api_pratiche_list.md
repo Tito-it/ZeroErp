@@ -10,7 +10,7 @@ Endpoint di lettura e scrittura su `pratiche.pratiche`. La GET interroga il repo
 su 6 tabelle (tipi_prestazione, stati, priorita', soggetti, risorse_umane, unita_organizzative)
 per restituire dati pronti per la UI con display fields. La POST delega a
 `pratiche_service.crea_pratica` che valida il contesto anagrafico, risolve lo stato iniziale
-BOZZA e inserisce la pratica in transazione atomica.
+`APERTA` e inserisce la pratica in transazione atomica.
 
 ## Input
 
@@ -83,7 +83,8 @@ Envelope paginata standard (`paginated_envelope`):
         "tipo_prestazione_id": 5,
         "soggetto_id": "aaa-bbb-ccc",
         "soggetto_ruolo_id": 100,
-        "istanza_utility_id": null,
+        "istanza_utility_id": 42,
+        "billing_account_id": 7,
         "stato_id": 1,
         "priorita_id": 2,
         "risorsa_umana_id": null,
@@ -93,15 +94,15 @@ Envelope paginata standard (`paginated_envelope`):
         "canale_origine_id": null,
         "codice": "PRA-0000001",
         "descrizione": "Manutenzione caldaia",
-        "data_apertura": null,
+        "data_apertura": "2026-03-28",
         "data_scadenza": "2026-04-30",
         "meta": {},
         "data_insert": "2026-03-28T10:00:00+00:00",
         "user_insert": "operatore1",
         "tipo_prestazione_codice": "MANUTENZIONE",
         "tipo_prestazione_descrizione": "Manutenzione ordinaria",
-        "stato_codice_interno": "BOZZA",
-        "stato_descrizione": "Bozza",
+        "stato_codice_interno": "APERTA",
+        "stato_descrizione": "Aperta",
         "priorita_codice_interno": "NORMALE",
         "priorita_descrizione": "Normale",
         "soggetto_display": "Rossi Mario",
@@ -131,7 +132,9 @@ Envelope paginata standard (`paginated_envelope`):
 
 - `emittente_fiscale_id` obbligatorio su GET; se assente → 400.
 - Su POST, `emittente_fiscale_id`, `tipo_prestazione_id` e `priorita_id` devono essere > 0.
-- Lo stato iniziale della pratica e' `BOZZA`, risolto automaticamente da `config.stati_pratiche`.
+- Lo stato iniziale della pratica e' `APERTA`, risolto automaticamente da `config.stati_pratiche`
+  (la pratica nasce gia' aperta: lo stato `BOZZA` resta nel modello per un eventuale "salva
+  bozza" futuro). Il trigger DB valorizza `data_apertura` anche alla creazione diretta in `APERTA`.
 - Il codice pratica `PRA-NNNNNNN` e' generato dal trigger DB via `config.sistema_codici`.
 - Validazione contesto anagrafico (service + trigger DB guard):
   - `istanza_utility_id` richiede `soggetto_ruolo_id`
@@ -141,6 +144,11 @@ Envelope paginata standard (`paginated_envelope`):
 - `is_search_endpoint = True` sulla view GET: attiva throttling `SearchBurstRateThrottle`.
 - Ordinamento GET: configurabile via `order_by`/`order_dir`, default `data_insert DESC`, tiebreaker `id`.
 - Whitelist colonne ordinamento: `codice`, `descrizione`, `data_apertura`, `data_scadenza`, `data_insert`, `tipo_prestazione_descrizione`, `stato_descrizione`, `priorita_descrizione`, `soggetto_display`, `risorsa_umana_display`.
+- (2026-06-15) Ogni riga espone `billing_account_id` **derivato** dall'istanza
+  (`script.fn_get_billing_account_by_istanza`): il BA del cliente attivo, `null` se
+  prospect. Single source of truth a DB (nessuna derivazione FE). Alimenta, aprendo
+  un documento dal flusso, l'eredità+lock cliente e il gating (offerta/contratto
+  richiedono BA). Non è un filtro di lista.
 - Paginazione offset: `COUNT(*)` + dati con `LIMIT/OFFSET`. Risposta via `paginated_envelope` (count, page, page_size, total_pages, results).
 - Parsing parametri via `parse_list_params` e `qp_int_strict` (building block core).
 
@@ -161,3 +169,4 @@ Envelope paginata standard (`paginated_envelope`):
 - Rimosso `solo_interna` (campo eliminato dal DB).
 - I display fields eliminano la necessita' di lookup client-side per le colonne lista.
 - v2.2 (1 aprile 2026): risposta GET allineata a `paginated_envelope` (aggiunto page, page_size, total_pages). Parsing via `parse_list_params`/`qp_int_strict`. Aggiunti parametri `data_da`, `data_a`, `order_by`, `order_dir`.
+- v2.3 (14 giugno 2026): la pratica nasce direttamente in stato `APERTA` (non piu' `BOZZA`); `data_apertura` valorizzato dal trigger anche alla creazione diretta in `APERTA` (oltre alla transizione `BOZZA → APERTA`). Lo stato `BOZZA` resta nel modello.

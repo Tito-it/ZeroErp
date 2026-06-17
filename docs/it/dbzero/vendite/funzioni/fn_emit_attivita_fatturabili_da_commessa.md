@@ -14,6 +14,7 @@ CREATE OR REPLACE FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_co
 AS $function$
 -- Scopo: emette righe da commesse_attivita verso attivita_fatturabili
 --        in modalita' idempotente (sorgente COMMESSA + segment_key).
+--        Propaga lo snapshot audit pricing v5 (8 colonne) 1:1.
 -- Sottosistema lotto rimosso (deprecato 20260227-16).
 DECLARE
     v_commessa              vendite.commesse%ROWTYPE;
@@ -86,7 +87,12 @@ BEGIN
                ca.competenza_dal, ca.competenza_al, ca.posticipa_al,
                ca.tipo_doc_fiscale_id, ca.valuta_id, ca.area_geografica_id,
                ca.prezzo_snapshot, ca.prezzo_bloccato, ca.stato_approvazione, ca.meta,
-               ca.sorgente_tipo_id AS ca_sorgente_tipo_id
+               ca.sorgente_tipo_id AS ca_sorgente_tipo_id,
+               -- Snapshot audit pricing v5 (propagati 1:1)
+               ca.prezzo_base_snapshot, ca.origine_prezzo,
+               ca.tipo_variazione_applicata, ca.valore_variazione_applicata,
+               ca.promo_id, ca.contratto_id,
+               ca.categoria_cliente_id_snapshot, ca.classe_utenza_id_snapshot
           FROM vendite.commesse_attivita ca
          WHERE ca.commessa_id = p_commessa_id
            AND ca.stato_emissione = 'NON_EMESSA'
@@ -95,7 +101,7 @@ BEGIN
     LOOP
         total_candidate := total_candidate + 1;
 
-        -- Hash segment_key → UUID deterministico
+        -- Hash segment_key -> UUID deterministico
         v_sorgente_uid_uuid := (
             substr(md5(v_row.segment_key), 1, 8) || '-' ||
             substr(md5(v_row.segment_key), 9, 4) || '-' ||
@@ -124,7 +130,10 @@ BEGIN
                 uom_operativa_id, factor_to_base, valuta_id, prezzo_unitario,
                 tipo_doc_fiscale_id, competenza_dal, competenza_al,
                 area_geografica_id, stato_esecuzione, prezzo_bloccato,
-                commessa_id, commessa_attivita_id, sorgente_origine_tipo_id
+                commessa_id, commessa_attivita_id, sorgente_origine_tipo_id,
+                prezzo_base_snapshot, origine_prezzo, tipo_variazione_applicata,
+                valore_variazione_applicata, promo_id, contratto_id,
+                categoria_cliente_id_snapshot, classe_utenza_id_snapshot
             )
             VALUES (
                 v_row.articolo_id, v_commessa.billing_account_id, v_row.istanza_utility_id,
@@ -139,7 +148,10 @@ BEGIN
                 v_row.valuta_id, v_row.prezzo_snapshot,
                 v_row.tipo_doc_fiscale_id, v_row.competenza_dal, v_row.competenza_al,
                 v_row.area_geografica_id, 'PENDING', v_row.prezzo_bloccato,
-                p_commessa_id, v_row.id, v_row.ca_sorgente_tipo_id
+                p_commessa_id, v_row.id, v_row.ca_sorgente_tipo_id,
+                v_row.prezzo_base_snapshot, v_row.origine_prezzo, v_row.tipo_variazione_applicata,
+                v_row.valore_variazione_applicata, v_row.promo_id, v_row.contratto_id,
+                v_row.categoria_cliente_id_snapshot, v_row.classe_utenza_id_snapshot
             );
             inserted_rows := inserted_rows + 1;
         ELSE
@@ -179,7 +191,16 @@ BEGIN
                    prezzo_bloccato = v_row.prezzo_bloccato,
                    commessa_id = p_commessa_id,
                    commessa_attivita_id = v_row.id,
-                   sorgente_origine_tipo_id = v_row.ca_sorgente_tipo_id
+                   sorgente_origine_tipo_id = v_row.ca_sorgente_tipo_id,
+                   -- Refresh snapshot audit pricing v5 (riga non ancora fatturata)
+                   prezzo_base_snapshot = v_row.prezzo_base_snapshot,
+                   origine_prezzo = v_row.origine_prezzo,
+                   tipo_variazione_applicata = v_row.tipo_variazione_applicata,
+                   valore_variazione_applicata = v_row.valore_variazione_applicata,
+                   promo_id = v_row.promo_id,
+                   contratto_id = v_row.contratto_id,
+                   categoria_cliente_id_snapshot = v_row.categoria_cliente_id_snapshot,
+                   classe_utenza_id_snapshot = v_row.classe_utenza_id_snapshot
              WHERE a.id = v_existing_id;
             updated_rows := updated_rows + 1;
         END IF;
@@ -192,7 +213,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean)
-IS 'Pull da commesse_attivita ad attivita_fatturabili con sorgente COMMESSA+segment_key (hash UUID) e idempotenza. Sottosistema lotto rimosso (deprecato 20260227-16). rev 2026-06-07.';
+IS 'Pull da commesse_attivita ad attivita_fatturabili con sorgente COMMESSA+segment_key (hash UUID) e idempotenza. Propaga lo snapshot audit pricing v5 (8 colonne) 1:1. Sottosistema lotto rimosso (deprecato 20260227-16). rev 2026-06-16.';
 ```
 
 ---

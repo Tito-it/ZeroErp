@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Upsert della configurazione esito sui template flussi PREVENTIVI
+# (tipo_prestazione 9002 PREVENTIVI_IMMEDIATA / 9003 PREVENTIVI_DIFFERITA).
+# (brief-db-esito-configurabile-flussi §6, design §3, 2026-06-17)
+#
+# Perche' un changeset DEDICATO (e non il loader base 20260608-08):
+#   il loader base e' runOnChange ma NON dichiara le colonne modalita_esito/
+#   esito_default -> non le caricherebbe. Questo e' il loader della "prima volta"
+#   per quelle due colonne. Mapping loadUpdateData per NOME header: dichiara solo
+#   id + le due colonne nuove (upsert mirato per PK, le altre colonne intatte).
+#
+# runOnChange: edit successivi ai VALORI nel CSV vengono ripresi da QUESTO stesso
+# changeset (nessun nuovo file da creare per ogni valore).
+#
+# Mappa (coerente coi CHECK/guard 20260617-01/02):
+#   RICHIESTA_CLIENTE    (9001/9005, ENTRATA) -> CONTESTUALE / POSITIVO
+#   PREVENTIVAZIONE      (9002/9006, INTERNA) -> MANUALE     / NULL (default odierno)
+#   APPROVAZIONE_CLIENTE (9003/9007, ENTRATA) -> CONTESTUALE / POSITIVO  (decisione B4)
+#   CONFERMA             (9004/9008, INTERNA) -> AUTOMATICO  / POSITIVO
+#
+# Inerte finche' il BE non legge modalita_esito (oggi comportamento MANUALE odierno).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260617-04-upsert-template-flussi-preventivi-esito-mctit.yaml
+
+  - changeSet:
+      id: 20260617-04-upsert-template-flussi-preventivi-esito
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pratiche
+                tableName: template_flussi
+            - columnExists:
+                schemaName: pratiche
+                tableName: template_flussi
+                columnName: modalita_esito
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/template_flussi_esito_config.csv
+            tableName: template_flussi
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id,             type: NUMERIC }
+              - column: { name: modalita_esito, type: STRING }
+              - column: { name: esito_default,  type: STRING }

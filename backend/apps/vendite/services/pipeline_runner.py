@@ -6,7 +6,7 @@
 # ------------------------------------------------------------
 
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any
 
@@ -120,15 +120,26 @@ class LottoPipelineRunner:
                 function_name="vendite.run_lotto_pipeline",
             )
 
-    # Scopo: Determina da quale step ripartire in caso di rerun MASSIVO su lotto in errore.
+    # Scopo: Normalizza lotto_id (0/None = "nuovo lotto", crea) → None oppure id reale.
     @staticmethod
-    def _resolve_steps_for_rerun(
+    def _normalize_lotto_id(lotto_id: int | None) -> int | None:
+        return None if lotto_id in (0, None) else lotto_id
+
+    # Scopo: Determina da quale step (singolo) ripartire. Tre casi:
+    #  - rerun MASSIVO in errore: ri-esegue dallo step CORRENTE (invariato);
+    #  - successo su lotto ESISTENTE (lotto_id passato dal driver): avanza allo step
+    #    SUCCESSIVO a quello gia` eseguito — abilita la progressione multi-step, prima
+    #    assente nel ramo di successo (steps[:1] prendeva sempre il primo step);
+    #  - primo run / lotto appena creato / stato non in catalogo: dal primo step.
+    @staticmethod
+    def _resolve_steps_for_run(
         *,
         steps: list[Any],
+        is_existing_lotto_request: bool,
         is_massivo_error_rerun: bool,
         lotto_stato_doc_corrente: int | None,
     ) -> list[Any]:
-        if not (is_massivo_error_rerun and lotto_stato_doc_corrente is not None):
+        if lotto_stato_doc_corrente is None:
             return steps
         step_index_by_stato = {
             step.stato_doc_fiscale_id: index for index, step in enumerate(steps)
@@ -136,8 +147,15 @@ class LottoPipelineRunner:
         current_index = step_index_by_stato.get(lotto_stato_doc_corrente)
         if current_index is None:
             return steps
-        # Resume su step corrente in errore; evita transizioni retroattive non ammesse.
-        return steps[current_index:]
+        if is_massivo_error_rerun:
+            # Resume su step corrente in errore; evita transizioni retroattive non ammesse.
+            return steps[current_index:]
+        if is_existing_lotto_request:
+            # Successo su lotto esistente: prosegui dallo step successivo (driver multi-step).
+            # Se era l'ultimo step, la lista resta vuota: nessun passo da eseguire.
+            return steps[current_index + 1:]
+        # Lotto appena creato (lotto_id non passato): parti dal primo step del catalogo.
+        return steps
 
     # Scopo: Valuta se eseguire rollback automatico dello step in rerun, escludendo rollback distruttivi.
     def _should_execute_auto_step_rollback(
@@ -257,7 +275,7 @@ class LottoPipelineRunner:
     def _resolve_lotto(self, params: LottoPipelineParams) -> tuple[int, bool]:
         """Restituisce (lotto_id, is_existing_lotto_request)."""
         with transaction.atomic():
-            normalized_lotto_id = None if params.lotto_id in (0, None) else params.lotto_id
+            normalized_lotto_id = self._normalize_lotto_id(params.lotto_id)
             is_existing_lotto_request = normalized_lotto_id is not None
             lotto_id = self.repository.get_or_create_lotto(
                 lotto_id=normalized_lotto_id,
@@ -335,8 +353,9 @@ class LottoPipelineRunner:
                     utility_id=lotto_context.utility_id,
                     tipo_doc_fiscale_id=lotto_context.tipo_doc_fiscale_id,
                 )
-                steps = self._resolve_steps_for_rerun(
+                steps = self._resolve_steps_for_run(
                     steps=steps,
+                    is_existing_lotto_request=is_existing_lotto_request,
                     is_massivo_error_rerun=is_massivo_error_rerun,
                     lotto_stato_doc_corrente=lotto_stato_doc_corrente,
                 )
@@ -448,3 +467,77 @@ class LottoPipelineRunner:
                 cause=exc,
             )
             raise  # unreachable: raise_error alza sempre; aiuta il type checker
+
+    # Guard anti-loop del driver "until done": i cataloghi reali hanno pochi step,
+    # un valore alto intercetta solo bug (es. step che non avanzano).
+    _MAX_STEP_ITERATIONS = 50
+
+    # Scopo: Driver F2 — esegue run_pipeline (uno step per chiamata) finché la catena
+    #        del lotto è conclusa. Condizioni di stop:
+    #          - step di CHIUSURA raggiunto (config.stati_doc_fiscale.chiude_lotto):
+    #            con la scelta D3 (chiude_lotto su DEFINITIVA) la catena si ferma alla
+    #            numerazione, PRIMA di INVIATA/SDI (fuori scope) — comportamento voluto;
+    #          - nessun avanzamento residuo (ultimo step già eseguito);
+    #          - blocco per segnalazioni critical (E_PIPELINE_LOTTO_CRITICAL);
+    #          - errore step.
+    #        Riusa run_pipeline (nessuna logica di stato duplicata) e NON chiude il lotto
+    #        direttamente (lo fa già _process_close_lotto_by_flag dentro run_pipeline) →
+    #        niente doppia chiusura. Sui motivi di stop noti non solleva: ritorna un
+    #        esito strutturato (l'endpoint/management command lo interpreta).
+    def run_lotto_until_done(self, params: LottoPipelineParams) -> dict[str, Any]:
+        lotto_id = self._normalize_lotto_id(params.lotto_id)
+        step_eseguiti = 0
+        last_stato_doc: int | None = None
+        motivo_stop = "COMPLETATO"
+        iterazioni = 0
+        while True:
+            iterazioni += 1
+            if iterazioni > self._MAX_STEP_ITERATIONS:
+                motivo_stop = "GUARD_MAX_ITER"
+                ErrorManager.log_error_only(
+                    code="E_PIPELINE_DRIVER_MAX_ITER",
+                    context={"lotto_id": lotto_id, "iterazioni": iterazioni},
+                    area="backend",
+                    function_name="vendite.run_lotto_until_done",
+                )
+                break
+            # Stato PRIMA del run: confronto before/after per rilevare l'avanzamento
+            # reale (un lotto esistente già all'ultimo step esegue 0 step → before==after).
+            before_stato_doc = (
+                self.repository.get_lotto_stato_doc_fiscale_id(lotto_id)
+                if lotto_id else None
+            )
+            run_params = params if lotto_id is None else replace(params, lotto_id=lotto_id)
+            try:
+                lotto_id = self.run_pipeline(run_params)
+            except ServiceError as exc:
+                motivo_stop = (
+                    "BLOCCATO_CRITICITA"
+                    if exc.code == "E_PIPELINE_LOTTO_CRITICAL"
+                    else "ERRORE"
+                )
+                if lotto_id is None:
+                    # Primo run su lotto nuovo fallito: nessun id da riportare → propaga.
+                    raise
+                break
+            after_stato_doc = self.repository.get_lotto_stato_doc_fiscale_id(lotto_id)
+            if after_stato_doc == before_stato_doc:
+                # Nessun avanzamento: catena esaurita (nessuno step eseguito).
+                motivo_stop = "COMPLETATO"
+                break
+            step_eseguiti += 1
+            last_stato_doc = after_stato_doc
+            if after_stato_doc is not None and self.repository.is_stato_doc_chiude_lotto(
+                after_stato_doc
+            ):
+                # Step di chiusura raggiunto: catena conclusa (non proseguire oltre).
+                motivo_stop = "COMPLETATO"
+                break
+        stato_lotto = self.repository.get_lotto_job_stato(lotto_id) if lotto_id else None
+        return {
+            "lotto_id": lotto_id,
+            "stato_lotto": stato_lotto,
+            "stato_doc_fiscale_id": last_stato_doc,
+            "step_eseguiti": step_eseguiti,
+            "motivo_stop": motivo_stop,
+        }

@@ -42,6 +42,11 @@ class PraticheRepository:
     _PRATICA_SELECT = """
         p.id, p.emittente_fiscale_id, p.tipo_prestazione_id,
         p.soggetto_id, p.soggetto_ruolo_id, p.istanza_utility_id,
+        -- Cliente (BA) derivato dall'istanza: presente se cliente attivo, NULL se
+        -- prospect. Single source of truth a DB (script.fn_get_billing_account_by_istanza),
+        -- nessuna derivazione lato FE. Alimenta pre-fill+lock e gating documenti
+        -- (offerta/contratto richiedono BA) aprendo un documento dal flusso.
+        script.fn_get_billing_account_by_istanza(p.istanza_utility_id) AS billing_account_id,
         p.stato_id, p.priorita_id,
         p.risorsa_umana_id, p.unita_organizzativa_id,
         p.pratica_padre_id, p.flusso_origine_id, p.canale_origine_id,
@@ -308,8 +313,13 @@ class PraticheRepository:
         sf.descrizione AS stato_descrizione,
         tf.codice AS template_flusso_codice,
         tf.descrizione AS template_flusso_descrizione,
+        -- Attività UI data-driven (catalogo pratiche.azioni_ui): chiave risolta
+        -- dal registry FE → drawer di dominio da aprire dal flusso. NULL = nessuna.
+        au.azione_ui_key AS template_azione_ui_key,
         p.codice AS pratica_codice,
         p.data_apertura AS pratica_data_apertura,
+        p.istanza_utility_id AS pratica_istanza_utility_id,
+        script.fn_get_billing_account_by_istanza(p.istanza_utility_id) AS pratica_billing_account_id,
         s.ragione_sociale_completa AS pratica_soggetto_display,
         s.id_fiscale_univoco_cf_piva AS pratica_soggetto_id_fiscale
     """
@@ -317,6 +327,7 @@ class PraticheRepository:
     _FLUSSO_JOINS = """
         JOIN config.stati_flussi_pratiche sf ON sf.id = f.stato_id
         LEFT JOIN pratiche.template_flussi tf ON tf.id = f.template_flusso_id
+        LEFT JOIN pratiche.azioni_ui au ON au.id = tf.azione_ui_id
         JOIN pratiche.pratiche p ON p.id = f.pratica_id
         LEFT JOIN anagrafiche.soggetti s ON s.id = p.soggetto_id
     """
@@ -373,6 +384,7 @@ class PraticheRepository:
                 tf.obbligatorio,
                 tf.direzione,
                 (tf.handler_id IS NOT NULL) AS has_handler,
+                au.azione_ui_key AS template_azione_ui_key,
                 f.id AS flusso_id,
                 sf.codice_interno AS stato_codice_interno,
                 f.esito,
@@ -408,6 +420,7 @@ class PraticheRepository:
             FROM pratiche.pratiche p
             JOIN pratiche.template_flussi tf
               ON tf.tipo_prestazione_id = p.tipo_prestazione_id AND tf.attivo
+            LEFT JOIN pratiche.azioni_ui au ON au.id = tf.azione_ui_id
             LEFT JOIN pratiche.fn_check_chiusura_pratica(%s) cc
               ON cc.template_flusso_id = tf.id
             LEFT JOIN LATERAL (
@@ -568,14 +581,19 @@ class PraticheRepository:
     def upsert_pratica_sorgente(
         self, *, pratica_id: int, sorgente_codice: str, sorgente_uid: str,
         ruolo_link: str = "ROOT", sorgente_riga: int | None = None,
-        meta: dict[str, Any] | None = None,
+        flusso_id: int | None = None, meta: dict[str, Any] | None = None,
     ) -> None:
+        # flusso_id ancora il ROOT documento->flusso d'origine (aggancio per-flusso,
+        # brief-db-aggancio-documento-flusso). NULL per i COLLEGATO a valle
+        # (commessa/ordine): non nascono da un flusso, non vincolati. L'indice
+        # parziale uq_pratiche_sorgenti_flusso_root impedisce due ROOT sullo stesso
+        # flusso; il trigger guard verifica che il flusso sia DI questa pratica.
         sql = """
             INSERT INTO pratiche.pratiche_sorgenti (
                 pratica_id, sorgente_tipo_id, sorgente_uid,
-                sorgente_riga, ruolo_link, meta
+                sorgente_riga, ruolo_link, flusso_id, meta
             )
-            SELECT %s, s.id, %s, %s, %s, %s::jsonb
+            SELECT %s, s.id, %s, %s, %s, %s, %s::jsonb
             FROM config.sorgenti s
             WHERE s.codice_interno = %s
             ON CONFLICT (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
@@ -584,7 +602,7 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [
                 pratica_id, sorgente_uid, sorgente_riga, ruolo_link,
-                json.dumps(meta or {}), sorgente_codice,
+                flusso_id, json.dumps(meta or {}), sorgente_codice,
             ])
             ErrorManager.require(
                 cursor.rowcount > 0 or self._sorgente_link_exists(
@@ -981,6 +999,29 @@ class PraticheRepository:
         if not row:
             return None
         return str(row[0]), coerce_jsonb_dict(row[1])
+
+    # Scopo: Binding handler legati a un EVENTO di flusso (template_flussi_handler_eventi).
+    # Generalizza il dispatch oltre l'avvio: per (template, evento) restituisce gli
+    # handler attivi il cui esito_richiesto combacia con l'esito effettivo (NULL =
+    # qualsiasi esito), ordinati per sequenza. Lista di (handler_key, handler_params).
+    def get_handler_eventi(
+        self, template_flusso_id: int, evento: str, esito: str | None,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        sql = """
+            SELECT hf.handler_key, tfhe.handler_params
+            FROM pratiche.template_flussi_handler_eventi tfhe
+            JOIN pratiche.handler_flussi hf ON hf.id = tfhe.handler_id
+            WHERE tfhe.template_flusso_id = %s
+              AND tfhe.evento = %s
+              AND tfhe.attivo = true
+              AND hf.attivo = true
+              AND (tfhe.esito_richiesto IS NULL OR tfhe.esito_richiesto = %s)
+            ORDER BY tfhe.sequenza, tfhe.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [template_flusso_id, evento, esito])
+            rows = cursor.fetchall()
+        return [(str(r[0]), coerce_jsonb_dict(r[1])) for r in rows]
 
     # -- TIPO PRESTAZIONE ------------------------------------------------
 

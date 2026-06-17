@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Aggancio attivita' UI ai template di flusso: i due step
+# PREVENTIVAZIONE (id 9002 = PREVENTIVI_IMMEDIATA, id 9006 =
+# PREVENTIVI_DIFFERITA) offrono l'attivita' APRI_PREVENTIVO (azioni_ui
+# id=9001). E' il punto del flusso in cui l'operatore apre il preventivo
+# collegato (oggi hardcoded nel FlussoDrawer al solo PREVENTIVI; questa
+# colonna lo promuove a data-driven).
+# Upsert mirato (solo id + azione_ui_id) sulle righe gia' seedate da
+# 20260608-08; gli altri step restano azione_ui_id NULL.
+# FK fk_template_flussi_azione_ui: richiede azioni_ui gia' seedata
+# (ordine NN: 04 < 05).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260615-05-upsert-template-flussi-azione-ui-mctit.yaml
+
+  - changeSet:
+      id: 20260615-05-upsert-template-flussi-azione-ui
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: azioni_ui
+        - columnExists:
+            schemaName: pratiche
+            tableName: template_flussi
+            columnName: azione_ui_id
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/template_flussi_azione_ui.csv
+            tableName: template_flussi
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: azione_ui_id, type: NUMERIC }
+      rollback:
+        - sql:
+            sql: |
+              UPDATE pratiche.template_flussi
+                 SET azione_ui_id = NULL
+               WHERE id IN (9002, 9006);

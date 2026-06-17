@@ -1,0 +1,36 @@
+{% include-markdown "it/dbzero/pratiche/manual/template_flussi_handler_eventi.md" %}
+# 📚 Tabella `template_flussi_handler_eventi`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO |  |
+| template_flusso_id | integer | NO |  |
+| evento | character varying | NO |  |
+| esito_richiesto | character varying | YES |  |
+| handler_id | integer | NO |  |
+| handler_params | jsonb | NO | '{}'::jsonb |
+| sequenza | integer | NO | 0 |
+| attivo | boolean | NO | true |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | CURRENT_USER |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | chk_tfhe_esito |  |
+| CHECK | chk_tfhe_evento |  |
+| FOREIGN KEY | fk_tfhe_handler | handler_id |
+| FOREIGN KEY | fk_tfhe_template_flusso | template_flusso_id |
+| PRIMARY KEY | pk_pratiche_template_flussi_handler_eventi | id |
+| UNIQUE | uq_tfhe | template_flusso_id, evento, esito_richiesto, handler_id |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| ix_template_flussi_handler_eventi_template_flusso_id | `CREATE INDEX ix_template_flussi_handler_eventi_template_flusso_id ON pratiche.template_flussi_handler_eventi USING btree (template_flusso_id)` |
+| pk_pratiche_template_flussi_handler_eventi | `CREATE UNIQUE INDEX pk_pratiche_template_flussi_handler_eventi ON pratiche.template_flussi_handler_eventi USING btree (id)` |
+| uq_tfhe | `CREATE UNIQUE INDEX uq_tfhe ON pratiche.template_flussi_handler_eventi USING btree (template_flusso_id, evento, esito_richiesto, handler_id) NULLS NOT DISTINCT` |
+
+---
+{% include-markdown "signature-core.md" %}

@@ -6,6 +6,8 @@ Approfondimento tabelle:
 >
 [pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione)
 > [pratiche.handler_flussi](/dbzero/pratiche/tabelle/handler_flussi)
+> [pratiche.azioni_ui](/dbzero/pratiche/tabelle/azioni_ui)
+> [pratiche.template_flussi_handler_eventi](/dbzero/pratiche/tabelle/template_flussi_handler_eventi)
 > [pratiche.template_flussi_prerequisiti](/dbzero/pratiche/tabelle/template_flussi_prerequisiti)
 > [pratiche.template_flussi_canali](/dbzero/pratiche/tabelle/template_flussi_canali)
 > [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
@@ -21,6 +23,7 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
 * Quando viene creata una pratica di un dato tipo, i flussi vengono istanziati dai template configurati.
 * I template definiscono l'**ordine** (`sequenza`), l'**obbligatorieta'**, la **direzione** e la **ripetibilita'** del flusso.
 * I template con `handler_id NOT NULL` sono automatizzati; quelli con `handler_id NULL` sono manuali.
+* I template con `azione_ui_id NOT NULL` **offrono un'attivita' UI interattiva** nel flusso (es. aprire il drawer di un preventivo dentro la pratica): la chiave e' risolta dal registry frontend ([azioni_ui](/dbzero/pratiche/tabelle/azioni_ui)). Concern ortogonale all'handler: `handler_id` automatizza lato server, `azione_ui_id` lancia un'attivita' interattiva lato client; un template puo' avere l'uno, l'altro, entrambi o nessuno.
 * I prerequisiti tra template sono definiti nella tabella `template_flussi_prerequisiti` (DAG).
 * La regola di **ripetibilita'** (D3) governa quante istanze dello stesso template possono nascere nella stessa pratica: enforcement a DB nel guard `trg_flussi_a10_guard_ripetibilita_ins` ([fn_check_ripetibilita_flusso](/dbzero/pratiche/funzioni/fn_check_ripetibilita_flusso)).
 * L'**obbligatorieta'** vincola la chiusura della pratica (D4): un template `obbligatorio = true` non completato e ancora percorribile blocca la transizione a CHIUSA ([fn_check_chiusura_pratica](/dbzero/pratiche/funzioni/fn_check_chiusura_pratica)). Il ramo morto di un bivio non blocca.
@@ -38,6 +41,7 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
 | `direzione` | VARCHAR(10) CHECK (ENTRATA, USCITA, INTERNA) DEFAULT 'INTERNA'. Caratterizza il flusso rispetto all'esterno: ENTRATA = dall'esterno verso il gestionale, USCITA = dal gestionale verso l'esterno, INTERNA = operazione interna. |
 | `ripetibilita` | VARCHAR(20) CHECK (MAI, SE_NON_POSITIVO, SEMPRE) DEFAULT 'SE_NON_POSITIVO'. Regola di ripetibilita' delle istanze nella stessa pratica: `MAI` = una sola istanza non annullata (es. CONFERMA); `SE_NON_POSITIVO` = nuova istanza solo se l'ultima e' COMPLETATO con esito diverso da POSITIVO (un'istanza ancora aperta blocca — es. APPUNTAMENTO andato male si rifa'); `SEMPRE` = libera (es. contatto telefonico). |
 | `handler_params` | JSONB DEFAULT '{}'. Parametri operativi passati all'handler Django in fase di esecuzione (es. `{"stampa_foglio": true, "invio_sms_conferma": true}`). Distinto da `meta` che contiene metadati generici. |
+| `azione_ui_id` | INTEGER nullable, FK → [`pratiche.azioni_ui`](/dbzero/pratiche/tabelle/azioni_ui). NULL = nessuna attivita' interattiva offerta dal flusso. NOT NULL = il frontend offre il lancio dell'attivita' dichiarata (es. APRI_PREVENTIVO). Specchio FE di `handler_id`. |
 
 ---
 
@@ -47,6 +51,7 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
 * **CHECK direzione**: solo valori ENTRATA, USCITA, INTERNA.
 * **CHECK ripetibilita**: solo valori MAI, SE_NON_POSITIVO, SEMPRE.
 * **FK handler_id nullable**: NULL = step manuale, NOT NULL = step automatizzato.
+* **FK azione_ui_id nullable** (`fk_template_flussi_azione_ui`): NULL = nessuna attivita' UI, NOT NULL = attivita' interattiva offerta dal flusso. Indice FK non creato (tabella di configurazione minuscola): registrato in `dbops.fk_index_policy` con `consentito = false`.
 
 ---
 

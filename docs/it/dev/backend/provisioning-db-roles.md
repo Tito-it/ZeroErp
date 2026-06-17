@@ -79,6 +79,48 @@ Uso tipico:
 
 Non deve essere configurato come `DB_USER` del backend.
 
+### Ruoli batch per-job `zeroerp_batch_<job>` (canale di sistema headless)
+
+I processi headless applicativi (management command, cron, job) che operano su
+tabelle protette da RLS **senza** un'identita' operatore usano un ruolo dedicato
+**per singolo job** — non `zeroerp_app`, non `postgres`/`titodb`.
+
+Modello (vedi
+`dev/work-in-progress/brief-db-contesto-sistema-batch-fatturazione-rls.md`):
+
+- `BYPASSRLS` — bypassa l'isolamento per-emittente (semantica corretta per un
+  processo di sistema che opera su **tutti** gli emittenti); trigger e constraint
+  di business restano comunque attivi;
+- `LOGIN`, `NOSUPERUSER NOCREATEDB NOCREATEROLE`;
+- **SELECT + EXECUTE ampi** sugli schemi applicativi (letture cross-tenant a basso
+  rischio; enumerare i lookup sarebbe fragile);
+- **DML (INSERT/UPDATE/DELETE) SOLO sul perimetro di scrittura del job**: il vettore
+  di danno di un ruolo `BYPASSRLS` e' la scrittura cross-tenant → va limitata. Una
+  tabella fuori perimetro fallisce **rumorosamente** (`permission denied`), non in
+  silenzio;
+- **NO membership di `zeroerp_app`** (darebbe read+write su tutto): grant espliciti;
+- usato via un **alias Django dedicato** (`DATABASES['system_<job>']`), **mai** come
+  `DB_USER` del web.
+
+> **Regola per-job**: un nuovo processo di sistema → **nuovo ruolo scoped**
+> (`zeroerp_batch_<job>`), mai allargare i grant di un ruolo esistente. Alla comparsa
+> del 2° job rivalutare "per-job vs ruolo condiviso-ma-scoped".
+
+Ruolo esistente: **`zeroerp_batch_fatturazione`** (batch di fatturazione).
+
+- Provisioning (admin DB): `scripts/sql/provision_db_role_batch_fatturazione.sql`
+- Verifica postura: `scripts/sql/check_db_role_batch_fatturazione.sql`
+- CI: step psql-as-`postgres` in `.github/workflows/ci.yaml` ("Provision ruolo batch
+  fatturazione") che riusa lo stesso script
+- pgTAP: `db/pgtap/rls/test-role-batch-fatturazione-postura.sql`
+
+> **`BYPASSRLS` richiede superuser.** Il provisioning di questi ruoli (creazione +
+> attributo `BYPASSRLS`) va eseguito **come superuser** (`postgres`): lo script admin e
+> lo step CI girano come `postgres`. **Non** metterlo in un changeset Liquibase del flusso
+> ordinario: lì la connessione e' `zeroerp_app`/`titodb` (non-superuser) e l'`ALTER ROLE
+> ... BYPASSRLS` fallisce. I soli GRANT (senza attributi di ruolo) sarebbero invece
+> eseguibili dall'owner degli oggetti.
+
 ## Come runtime e identita' si incontrano
 Il backend apre la connessione come `zeroerp_app`, poi `JwtAuditAuthentication`
 popola i GUC che rappresentano la veste applicativa della richiesta:
@@ -143,7 +185,7 @@ comportamento RLS. Controllare anche:
 ```sql
 SELECT rolname, rolcanlogin, rolbypassrls
 FROM pg_roles
-WHERE rolname IN ('zeroerp_app', 'titodb', 'postgres');
+WHERE rolname IN ('zeroerp_app', 'titodb', 'postgres', 'zeroerp_batch_fatturazione');
 ```
 
 Atteso:
@@ -151,6 +193,8 @@ Atteso:
 - `zeroerp_app`: `rolcanlogin = true`, `rolbypassrls = false`
 - `titodb`: ruolo tecnico di migrazione
 - `postgres`: superuser / ruolo esente
+- `zeroerp_batch_fatturazione`: `rolcanlogin = true`, `rolbypassrls = **true**` (ruolo
+  batch per-job; postura completa via `scripts/sql/check_db_role_batch_fatturazione.sql`)
 
 Controllare inoltre che la RLS sia davvero attiva sulle tabelle del lotto:
 

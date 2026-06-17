@@ -9,3 +9,7 @@ id,pipeline_id,task_code,annullabile,resume_mode,attivo,meta,data_insert,user_in
 8,5,prepare_sdi_payload_lotto,t,RESUME_TASK,t,"{""scope"":""INVIATA""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
 9,6,numera_fatture,f,RESUME_STEP,t,"{""scope"":""DEFINITIVA"",""tipo_lotto"":""GIORNALIERO""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
 10,7,prepare_sdi_payload_lotto,t,RESUME_TASK,t,"{""scope"":""INVIATA"",""tipo_lotto"":""GIORNALIERO""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
+11,1,pull_attivita_da_commessa,f,RESUME_TASK,t,"{""scope"":""DRAFT""}",2026-06-15 09:00:00+02,titodb,2026-06-15 09:00:00+02,titodb
+12,8,pull_attivita_da_commessa,f,RESUME_TASK,t,"{""scope"":""DRAFT"",""tipo_lotto"":""GIORNALIERO""}",2026-06-15 09:00:00+02,titodb,2026-06-15 09:00:00+02,titodb
+13,8,select_attivita,f,RESUME_TASK,t,"{""scope"":""DRAFT"",""tipo_lotto"":""GIORNALIERO""}",2026-06-15 09:00:00+02,titodb,2026-06-15 09:00:00+02,titodb
+14,8,generate_fatture_righe,t,RESUME_STEP,t,"{""scope"":""DRAFT"",""tipo_lotto"":""GIORNALIERO""}",2026-06-15 09:00:00+02,titodb,2026-06-15 09:00:00+02,titodb

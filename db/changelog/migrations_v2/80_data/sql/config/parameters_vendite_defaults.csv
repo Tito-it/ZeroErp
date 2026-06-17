@@ -1,5 +1,5 @@
 id,code,default_value,description,data_insert,user_insert,data_update,user_update,tx_id,storicizza
-38,VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG,30,Giorni di validita' di un preventivo (validita_al = oggi + N).,2026-04-30 00:00:00,titodb,2026-04-30 00:00:00,titodb,NULL,t
+53,VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG,30,Giorni di validita' di un preventivo (validita_al = oggi + N).,2026-04-30 00:00:00,titodb,2026-04-30 00:00:00,titodb,NULL,t
 39,VENDITE_PREVENTIVO_DEFAULT_FATTURAZIONE_IMMEDIATA,false,Default fatturazione immediata in create preventivo.,2026-04-30 00:00:00,titodb,2026-04-30 00:00:00,titodb,NULL,t
 40,VENDITE_CONTRATTO_DEFAULT_AMBITO,COMMODITY,Ambito proposto in create contratto (COMMODITY/COMMERCIO).,2026-04-30 00:00:00,titodb,2026-04-30 00:00:00,titodb,NULL,t
 42,VENDITE_CONTRATTO_DEFAULT_TIPO_VARIAZIONE_GLOBALE,PERCENTUALE,Tipo variazione proposto in create contratto (PERCENTUALE/VALORE_FISSO).,2026-04-30 00:00:00,titodb,2026-04-30 00:00:00,titodb,NULL,t

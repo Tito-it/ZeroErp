@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Esito configurabile sugli step di flusso (template_flussi).
+# (brief-db-esito-configurabile-flussi / brief-design-esito-configurabile-flussi,
+#  2026-06-17)
+#
+# Aggiunge due colonne di CONFIGURAZIONE al template-step:
+#   modalita_esito (MANUALE | AUTOMATICO | CONTESTUALE), default MANUALE
+#     = come si ottiene l'esito dello step.
+#   esito_default  (POSITIVO | NEGATIVO | PARZIALE | NON_APPLICABILE), nullable
+#     = esito applicato (AUTOMATICO) o pre-selezionato (CONTESTUALE).
+#
+# Qui vivono SOLO i CHECK di DOMINIO (insiemi di valori ammessi). Le INVARIANTI
+# di COERENZA (Inv1: automatismo => esito_default NOT NULL; Inv2: AUTOMATICO =>
+# direzione INTERNA) sono enforce-ate dal guard parlante
+# trg_template_flussi_a10_guard_modalita_esito_ins_upd (20260617-02), che solleva
+# i codici TEMPLATE_FLUSSO_* (494/495) con messaggio leggibile per il drawer di
+# amministrazione template. Vedi razionale §B1 dell'analisi (guard vs CHECK).
+#
+# Default MANUALE + NOT NULL => backfill implicito di tutti gli step esistenti a
+# comportamento odierno (nessuna regressione). %TYPE non ammesso in ADD COLUMN DDL.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260617-01-alter-template-flussi-add-esito-config-mctit.yaml
+
+  - changeSet:
+      id: 20260617-01-alter-template-flussi-add-esito-config
+      author: mctit
+      comment: >
+        Aggiunge modalita_esito (MANUALE/AUTOMATICO/CONTESTUALE, default MANUALE)
+        ed esito_default (dominio di flussi.esito, nullable) a
+        pratiche.template_flussi: configurazione di come lo step ottiene l'esito.
+        Solo CHECK di dominio; le invarianti di coerenza sono nel guard 20260617-02.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Come si ottiene l'esito dello step (configurazione, non codice).
+              ALTER TABLE pratiche.template_flussi
+                ADD COLUMN modalita_esito character varying(20) NOT NULL
+                DEFAULT 'MANUALE';
+
+              ALTER TABLE pratiche.template_flussi
+                ADD CONSTRAINT chk_template_flussi_modalita_esito
+                CHECK (modalita_esito IN ('MANUALE', 'AUTOMATICO', 'CONTESTUALE'));
+
+              -- Esito applicato (AUTOMATICO) / pre-selezionato (CONTESTUALE).
+              -- Stesso dominio di flussi.esito (chk_flussi_esito).
+              ALTER TABLE pratiche.template_flussi
+                ADD COLUMN esito_default character varying(20) NULL;
+
+              ALTER TABLE pratiche.template_flussi
+                ADD CONSTRAINT chk_template_flussi_esito_default
+                CHECK (esito_default IN ('POSITIVO', 'NEGATIVO', 'PARZIALE', 'NON_APPLICABILE'));
+
+              COMMENT ON COLUMN pratiche.template_flussi.modalita_esito IS
+                'Come lo step ottiene l''esito. MANUALE (default) = avvio poi form esito manuale (comportamento odierno); AUTOMATICO = avvia+completa con esito_default senza scelta umana (solo direzione INTERNA); CONTESTUALE = avvia+completa con esito_default pre-selezionato e confermato dall''operatore in un''unica azione. Coerenza: guard trg_template_flussi_a10_guard_modalita_esito_ins_upd.';
+
+              COMMENT ON COLUMN pratiche.template_flussi.esito_default IS
+                'Esito applicato (AUTOMATICO) o pre-selezionato (CONTESTUALE). Dominio di flussi.esito. Obbligatorio quando modalita_esito <> MANUALE (Inv1, guard).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pratiche.template_flussi
+                DROP CONSTRAINT IF EXISTS chk_template_flussi_esito_default;
+              ALTER TABLE pratiche.template_flussi
+                DROP CONSTRAINT IF EXISTS chk_template_flussi_modalita_esito;
+              ALTER TABLE pratiche.template_flussi
+                DROP COLUMN IF EXISTS esito_default;
+              ALTER TABLE pratiche.template_flussi
+                DROP COLUMN IF EXISTS modalita_esito;
