@@ -29,8 +29,22 @@ from apps.core.services.auth_constants import RUOLO_APPLICATIVO_DISABILITATO
 from apps.core.services.permissions_cache import load_user_cache
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.request_context import get_idempotency_key, get_request_id
+from apps.core.services.system_context import connection_role_bypasses_rls
 
 logger = logging.getLogger(__name__)
+
+# Guard fail-open (RLS Path A): la connessione del percorso richiesta NON deve mai
+# essere un ruolo BYPASSRLS (sarebbe `zeroerp_app` misconfigurato sul ruolo batch, o
+# un misuse del gateway di sistema dentro il web → leak cross-tenant). Verifica UNA
+# volta per processo e memorizza: il ruolo della connessione web è COSTANTE perché il
+# gateway `system_process_context` (l'unico che ripunta il `default` a un ruolo
+# BYPASSRLS) è vietato nel codice web dal check statico
+# `test_system_context_usage_whitelist` — la cache è quindi corretta, non un'ipotesi.
+# Resta a `False` finché il check non passa: connessione BYPASSRLS → ogni richiesta
+# rifiutata (fail-closed), il deploy si rompe rumorosamente. NB: come il reset GUC,
+# il check agisce sulle connessioni RIUSATE (CONN_MAX_AGE>0, default del progetto);
+# è un backstop di difesa-in-profondità, non l'unica difesa (config + check statico).
+_WEB_CONN_ROLE_VERIFIED = False
 
 
 def _json_error(code: str, message: str, status: int) -> JsonResponse:
@@ -173,4 +187,44 @@ class JwtAuditMiddleware(MiddlewareMixin):
                 "Errore interno di sicurezza sessione.",
                 500,
             )
+        return self._guard_request_connection_not_bypassrls(request)
+
+    # Scopo: guard fail-open (RLS Path A) — assicura che la connessione del percorso
+    #        richiesta NON sia un ruolo BYPASSRLS. Controllo UNA volta per processo
+    #        (il ruolo della connessione web è costante): becca un `DB_USER`
+    #        misconfigurato sul ruolo batch o un misuse del gateway di sistema dentro
+    #        il web. Fail-closed (500) se la connessione bypassa la RLS — meglio
+    #        rifiutare che servire dati cross-tenant. Gate su connessione stabilita
+    #        (test-safe come il reset GUC).
+    def _guard_request_connection_not_bypassrls(
+        self, request: HttpRequest,
+    ) -> HttpResponse | None:
+        global _WEB_CONN_ROLE_VERIFIED
+        if _WEB_CONN_ROLE_VERIFIED:
+            return None
+        try:
+            bypasses = connection_role_bypasses_rls()
+        except DatabaseError:
+            logger.error(
+                "jwt_audit_middleware.bypassrls_check_failed path=%s",
+                request.path,
+                exc_info=True,
+            )
+            return _json_error(
+                "E_DB_ROLE_UNSAFE",
+                "Errore interno di sicurezza sessione.",
+                500,
+            )
+        if bypasses:
+            logger.critical(
+                "security.web_connection_is_bypassrls path=%s — connessione web su "
+                "ruolo BYPASSRLS, richiesta rifiutata (fail-closed)",
+                request.path,
+            )
+            return _json_error(
+                "E_DB_ROLE_UNSAFE",
+                "Errore interno di sicurezza sessione.",
+                500,
+            )
+        _WEB_CONN_ROLE_VERIFIED = True
         return None

@@ -425,15 +425,18 @@ Brief al team DB (mai eseguite dal BE agent). Stato driver fatturazione:
 
 Altri (solo se le relative voci di roadmap vengono approvate):
 
-- 🟡 **OPZIONE B SCELTA (2026-06-16) — BE FATTO, DB da applicare col FORCE RLS** —
-  contesto di **sistema** per il batch fatturazione (cron): brief
-  [brief-db-contesto-sistema-batch-fatturazione-rls.md](brief-db-contesto-sistema-batch-fatturazione-rls.md).
-  **BE predisposto** (forward-compatible/innocuo finché RLS dormiente): costante
-  `RUOLO_APPLICATIVO_SISTEMA` + `run_fatturazione_batch._system_db_context` (setta
-  `app.ruolo_applicativo='SISTEMA'` nel solo percorso cron, on-demand resta OPERATORE).
-  **Resta al team DB**: policy `_sistema` su `fatturazione_lotti`/`fatture`/`fatture_scadenze`
-  (+ famiglia), **contestuali** al FORCE/enforce della RLS operatori. Senza, il batch
-  (non operatore) andrebbe default-deny quando la RLS è enforced (§10.4 F4 caveat).
+- ✅ **PATH A — DB+BE COMPLETATO (2026-06-17)** — contesto di **sistema** per il batch
+  fatturazione (cron) via **ruolo DB dedicato** `zeroerp_batch_fatturazione` (BYPASSRLS,
+  SELECT ampio + DML scoped al perimetro fatturazione) + alias Django `system_fatturazione`.
+  Brief [brief-db-contesto-sistema-batch-fatturazione-rls.md](brief-db-contesto-sistema-batch-fatturazione-rls.md).
+  **⚠️ Opzione B (sentinel `app.ruolo_applicativo='SISTEMA'` + policy `_sistema`) REVISIONATA
+  e ritirata**: non era break-proof (una policy per ogni tabella RLS futura). **DB (D1–D5)**:
+  ruolo + provisioning + check postura + pgTAP `ok 1..11` + doc (commit `cc2bf3831`). **BE
+  (D6–D9)**: alias + gateway `system_process_context` (routing A: redirect connessione
+  `default`, repo invariati, fail-loud se non-BYPASSRLS) + guard runtime fail-open
+  (`E_DB_ROLE_UNSAFE`) + check statico whitelist + ritiro Opzione B; suite verde (1347 test).
+  **Residuo ops** (prima dell'attivazione RLS): password reale del ruolo in
+  `DB_SYSTEM_FATTURAZIONE_PASSWORD` + smoke live "≥2 emittenti con RLS attiva".
 - (eventuale) colonna `fase_lavorazione_id bigint NULL` senza FK su `commesse_attivita`
   — solo se si sceglie lo scaffolding esplicito invece del `meta` jsonb (§6.2);
 - fn di lookup componenti per `HandlerConsumi` (§4.3 #3);
@@ -606,6 +609,12 @@ lo scheduling è config d'ambiente. F4 = ricetta + caveat RLS; l'attivazione la 
 > + policy permissiva di sistema): decisione DB (brief) da fare insieme
 > all'[attivazione RLS operatori](../work-done/analisi-attivazione-rls-operatori-be-fe.md),
 > **non ora**.
+>
+> ✅ **RISOLTO (2026-06-17) — Path A**: ruolo DB dedicato `zeroerp_batch_fatturazione`
+> (BYPASSRLS + DML scoped) + alias `system_fatturazione` + gateway BE
+> `system_process_context`. DB (D1–D5) e BE (D6–D9) completati — vedi §9 e
+> [brief-db-contesto-sistema-batch-fatturazione-rls.md](brief-db-contesto-sistema-batch-fatturazione-rls.md).
+> Residuo ops: password ruolo in env + smoke live con RLS *enforced*.
 
 Esempio unit systemd (riferimento, da posizionare in ambiente, non committato):
 
