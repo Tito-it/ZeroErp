@@ -191,6 +191,25 @@ ALTER TABLE vendite.fatture   ENABLE ROW LEVEL SECURITY;
 -- FORCE NON necessario: nessun owner fa DML applicativo a runtime.
 ```
 
+**Processi headless applicativi → ruoli batch `BYPASSRLS` per-job.** Oltre agli owner
+e ai ruoli di migrazione (che bypassano per natura), i processi headless del backend
+(management command, cron) che devono operare su **tutti** gli emittenti — senza
+un'identita' operatore via GUC — usano un ruolo `BYPASSRLS` **dedicato per singolo job**,
+non `zeroerp_app` ne' `postgres`/`titodb`:
+
+```sql
+-- Canale di sistema headless, uno per job (oggi: batch di fatturazione)
+ALTER ROLE zeroerp_batch_fatturazione BYPASSRLS;   -- salta SOLO l'isolamento per-emittente
+-- ...ma DML concesso SOLO sul perimetro del job: il least-privilege si fa coi GRANT,
+--    non con la RLS (vendite.ordini, fuori perimetro, resta non scrivibile -> fail-loud).
+```
+
+`BYPASSRLS` salta l'isolamento per-emittente, **non** i trigger/constraint di business
+(che restano attivi). Lo scoping del danno (scrittura cross-tenant) si ottiene coi
+**GRANT DML** limitati al perimetro. Regola: un nuovo job → un nuovo ruolo scoped, mai
+allargare l'esistente. Modello, provisioning, verifica e pgTAP:
+[provisioning-db-roles › Ruoli batch per-job](/dev/backend/provisioning-db-roles).
+
 Il parametro di sessione `row_security` (default `on`) permette a superuser o owner
 di forzare il comportamento: `SET row_security = off` causa errore se una query
 incontra una policy (utile per debug, **mai** in produzione).
