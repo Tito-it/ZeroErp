@@ -217,6 +217,27 @@ DATABASES = {
     }
 }
 
+# Alias DB dedicato ai processi di sistema HEADLESS (batch fatturazione cron).
+# Stesso DB/HOST/search_path del `default`, ma utenza `zeroerp_batch_fatturazione`
+# (ruolo BYPASSRLS con DML ristretto al perimetro fatturazione — brief
+# work-in-progress/brief-db-contesto-sistema-batch-fatturazione-rls.md, Path A).
+# NON è esposto al web: nessun DB router, accesso solo via il gateway
+# `apps.core.services.system_context.system_process_context` (routing A: il gateway
+# ripunta la connessione `default` a queste credenziali per il solo blocco batch).
+# USER default = nome del ruolo (noto); PASSWORD default vuota → se non configurata,
+# la connessione fallisce RUMOROSAMENTE (mai fallback silenzioso a `zeroerp_app`).
+DATABASES["system_fatturazione"] = {
+    **DATABASES["default"],
+    "USER": env("DB_SYSTEM_FATTURAZIONE_USER", "zeroerp_batch_fatturazione"),
+    "PASSWORD": env("DB_SYSTEM_FATTURAZIONE_PASSWORD", ""),
+    # `OPTIONS` è un dict annidato: lo spread `**` lo condividerebbe per riferimento
+    # col `default` → copia difensiva (stesso search_path, oggetto distinto).
+    "OPTIONS": dict(DATABASES["default"]["OPTIONS"]),
+    # In test l'alias rispecchia il DB del `default` (NIENTE secondo test-database):
+    # le credenziali reali del ruolo batch servono solo a runtime, via il gateway.
+    "TEST": {"MIRROR": "default"},
+}
+
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators

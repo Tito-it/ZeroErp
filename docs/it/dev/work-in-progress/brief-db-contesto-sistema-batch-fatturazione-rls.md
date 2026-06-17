@@ -8,8 +8,13 @@
 > **Data**: 2026-06-17 · **Stato**: 🟢 **Path A, modello per-job** (ruolo
 > `zeroerp_batch_fatturazione` BYPASSRLS, SELECT ampio + DML scoped al perimetro
 > fatturazione, alias Django dedicato). **Lato DB (D1–D5): COMPLETATO e verificato su
-> dbdev** (provisioning applicato, check postura verde, pgTAP `ok 1..11`). **Restano
-> D6–D9 lato BE** → vedi §10 (consegna al BE). Piano completo in §7.
+> dbdev** (provisioning applicato, check postura verde, pgTAP `ok 1..11`). **Lato BE
+> (D6–D9): COMPLETATO** (2026-06-17) — alias + gateway `system_process_context`
+> (routing A: redirect della connessione `default` al ruolo batch, repo invariati) +
+> guard runtime + check statico whitelist + ritiro Opzione B; suite core+vendite verde
+> (1347 test). **Residuo NON-codice (ops)**: inserire la password reale del ruolo
+> `zeroerp_batch_fatturazione` nelle env (`DB_SYSTEM_FATTURAZIONE_PASSWORD`) + smoke
+> live "≥2 emittenti con RLS attiva". Dettaglio in §10. Piano completo in §7.
 >
 > **⚠️ Questo brief REVISIONA la precedente scelta "Opzione B"** (sentinel
 > `app.ruolo_applicativo='SISTEMA'` + policy `_sistema` per-tabella) dopo analisi
@@ -248,10 +253,10 @@ Il lavoro B non è sprecato: il `_system_db_context` cambia *cosa fa*, non *che 
 | D3 | ✅ Provisioning CI: **step psql-as-postgres** in `.github/workflows/ci.yaml` ("Provision ruolo batch fatturazione") che riusa lo **stesso** script di D1 (DRY). **NON** un changeset Liquibase: `BYPASSRLS` richiede superuser, mentre Liquibase gira come `zeroerp`/`titodb` (non-superuser) → l'`ALTER ROLE ... BYPASSRLS` fallirebbe | DB | step dopo le migrazioni; `batch_password=secret`, `migrator_role=zeroerp` |
 | D4 | ✅ pgTAP postura **`db/pgtap/rls/test-role-batch-fatturazione-postura.sql`** (`plan(11)`): ruolo esiste, LOGIN, `BYPASSRLS`, non super/createdb/createrole, **non** membro di `zeroerp_app`, DML solo sul perimetro (no over-grant, no buchi), SELECT ampio, controprova fail-loud su `vendite.ordini` | DB | struttura, non comportamento; il cross-emittente è BE (D7) |
 | D5 | ✅ [provisioning-db-roles.md](../backend/provisioning-db-roles.md): nuova sezione "Ruoli batch per-job `zeroerp_batch_<job>`" + query di postura aggiornata; [contratto-guc-app](../../guide/contratto-guc-app.md): nota "Processi di sistema headless"; [row-level-security.md](../../postgresql/row-level-security.md): nota "Ruoli batch `BYPASSRLS` per-job" nella sezione ruoli DB | DB/doc | wording onesto: ruolo a privilegio scoped che bypassa l'isolamento per-emittente |
-| D6 | Alias `DATABASES['system_fatturazione']` in `settings.py` + env `DB_SYSTEM_FATTURAZIONE_USER`/`DB_SYSTEM_FATTURAZIONE_PASSWORD` (`env.sh`, `.env.systemd`); **nessun router** | BE | §5.2 |
-| D7 | `system_process_context(alias, actor)` (gateway parametrico) + refactor `run_fatturazione_batch` (§6) + test "batch su ≥2 emittenti con RLS attiva" | BE | sostituisce `_system_db_context` |
-| D8 | Guard fail-open (§5.6): **statico** (CI: alias `system_*` fuori whitelist → fail) **+ runtime** (middleware: connessione del percorso richiesta deve essere `rolbypassrls=false`, fail-closed) | BE | due controlli, buchi diversi; il runtime chiude il leak SELECT cross-tenant |
-| D9 | Ritiro `RUOLO_APPLICATIVO_SISTEMA` + eventuale `AUDIT_ACTOR_BATCH_FATTURAZIONE` | BE | §5.5/§6 |
+| D6 | ✅ Alias `DATABASES['system_fatturazione']` in `settings.py` (clone del `default` + `OPTIONS` copiato + `TEST:{MIRROR:default}`) + env `DB_SYSTEM_FATTURAZIONE_USER`/`DB_SYSTEM_FATTURAZIONE_PASSWORD` (`.env` tracciato; `env.sh`/`.env.systemd` ops); **nessun router** | BE | §5.2 — password reale = ops |
+| D7 | ✅ `system_process_context(alias, actor)` in `apps/core/services/system_context.py` (**routing A**: ripunta la connessione `default` alle credenziali dell'alias per il blocco → repo/`transaction.atomic` invariati; fail-loud se il ruolo non ha BYPASSRLS; audit `app.jwt_user`) + refactor `run_fatturazione_batch` (gateway al posto di `_system_db_context`). Test unit: gateway (swap+restore, fail-loud) + command-gira-nel-gateway. **Smoke live "≥2 emittenti con RLS attiva" = pendente env+RLS** | BE | sostituisce `_system_db_context` |
+| D8 | ✅ Guard fail-open (§5.6): **runtime** (middleware `_guard_request_connection_not_bypassrls`: connessione richiesta deve essere `rolbypassrls=false` → 500 `E_DB_ROLE_UNSAFE`, fail-closed, una-volta-per-processo) **+ statico** (test `test_system_context_usage_whitelist`: gateway + alias `system_fatturazione` solo nei moduli whitelisted → fail in CI). **NB routing A**: il guard runtime è la difesa primaria (non c'è `.using('system_*')` da intercettare); il check statico presidia il gateway-simbolo | BE | due controlli, buchi diversi |
+| D9 | ✅ Ritiro `RUOLO_APPLICATIVO_SISTEMA` (+ import GUC sentinel, vecchio test SISTEMA) → costante d'audit `AUDIT_ACTOR_BATCH_FATTURAZIONE`. Zero codice morto residuo (solo un commento storico) | BE | §5.5/§6 |
 
 **Sequenza di rollout sicura:**
 
@@ -313,29 +318,48 @@ Verifiche eseguite su dbdev: ruolo `zeroerp_batch_fatturazione` con `rolbypassrl
 nessuna membership, DML sulle 16 tabelle del perimetro (nessun over-grant, nessun buco),
 SELECT ampio attivo, fail-loud su `vendite.ordini`; pgTAP `ok 1..11`.
 
-### Lato BE — DA FARE (D6–D9)
+### Lato BE — COMPLETATO (D6–D9, 2026-06-17)
 
-Il DB **non** richiede altro: il BE consuma il canale già pronto.
+Implementato su `dev/backend-tid` con **routing A** (redirect della connessione `default`,
+repo invariati). Suite core+vendite verde (1347 test). File toccati:
 
-- **D6** — alias `DATABASES['system_fatturazione']` in `settings.py` (stesso DB,
-  `USER=zeroerp_batch_fatturazione`, stesso `search_path`) + env
-  `DB_SYSTEM_FATTURAZIONE_USER` / `DB_SYSTEM_FATTURAZIONE_PASSWORD`. **Nessun DB router.**
-- **D7** — `system_process_context(alias, actor)` (gateway parametrico) + refactor
-  `run_fatturazione_batch`: instrada su `connections['system_fatturazione']` e setta
-  `app.jwt_user='BATCH_FATTURAZIONE'`; **rimuove** il set di `app.ruolo_applicativo`
-  (sentinel B) e l'azzeramento GUC d'identità. Test: batch su ≥2 emittenti con RLS attiva.
-  *Questo sostituisce l'implementazione Opzione B già pushata (`_system_db_context`,
-  `RUOLO_APPLICATIVO_SISTEMA`).*
-- **D8** — guard fail-open: **statico** (CI: alias `system_*` fuori dai moduli whitelisted
-  → fail) **+ runtime** (middleware: connessione del percorso richiesta deve avere
-  `rolbypassrls=false`, fail-closed). Vedi §5.6.
-- **D9** — ritiro `RUOLO_APPLICATIVO_SISTEMA` (non è una veste) + eventuale costante audit
-  `AUDIT_ACTOR_BATCH_FATTURAZIONE`.
+- **D6** ✅ — alias `DATABASES['system_fatturazione']` in
+  [settings.py](../../../../backend/zeroerp_backend/settings.py) (clone del `default`,
+  `USER=zeroerp_batch_fatturazione`, stesso `search_path`, `OPTIONS` copiato per non
+  condividere il ref, `TEST:{MIRROR:default}`) + env `DB_SYSTEM_FATTURAZIONE_USER` /
+  `DB_SYSTEM_FATTURAZIONE_PASSWORD` in [backend/.env](../../../../backend/.env). **Nessun
+  DB router.**
+- **D7** ✅ — gateway
+  [`system_process_context(alias, actor)`](../../../../backend/apps/core/services/system_context.py):
+  ripunta la connessione `default` alle credenziali dell'alias per la durata del blocco
+  (così l'intera catena repo/`transaction.atomic` gira come ruolo batch **senza
+  modifiche**), **fail-loud** se il ruolo non ha BYPASSRLS, setta `app.jwt_user`. Refactor
+  [`run_fatturazione_batch`](../../../../backend/apps/vendite/management/commands/run_fatturazione_batch.py)
+  (gateway al posto di `_system_db_context`). *Sostituisce l'Opzione B pushata.*
+  > **Nota routing A vs §5.3**: il brief ipotizzava `connections['system_fatturazione']`
+  > esplicito; la catena batch usa però la connessione `default` implicita in ~10 repo.
+  > A (redirect del `default` nel gateway, processo cron isolato) evita un refactor di 10
+  > file e ottiene lo stesso risultato. Conseguenza: NIENTE `.using('system_*')` da
+  > intercettare → la difesa fail-open primaria è il **guard runtime** (D8), il check
+  > statico presidia il gateway-simbolo + l'alias.
+- **D8** ✅ — guard fail-open: **runtime** in
+  [jwt_audit_middleware.py](../../../../backend/apps/core/middleware/jwt_audit_middleware.py)
+  (la connessione del percorso richiesta deve avere `rolbypassrls=false`, altrimenti 500
+  `E_DB_ROLE_UNSAFE` fail-closed) **+ statico**
+  [test_system_context_usage_whitelist.py](../../../../backend/apps/core/tests/test_system_context_usage_whitelist.py)
+  (gateway + alias solo nei moduli whitelisted).
+- **D9** ✅ — ritiro `RUOLO_APPLICATIVO_SISTEMA` → `AUDIT_ACTOR_BATCH_FATTURAZIONE` in
+  [auth_constants.py](../../../../backend/apps/core/services/auth_constants.py).
 
-> **Credenziale**: la password di `zeroerp_batch_fatturazione` (scelta al provisioning
-> manuale) va inserita nelle env D6. In CI il ruolo è creato senza password dal changeset
-> ci_apply (DB locale/trusted).
->
+**Residuo NON-codice (ops, prima dell'attivazione RLS):**
+
+- inserire la password reale di `zeroerp_batch_fatturazione` (scelta al provisioning
+  manuale) in `DB_SYSTEM_FATTURAZIONE_PASSWORD` (`.env`/`env.sh`/`.env.systemd`). Senza,
+  il batch fallisce **rumorosamente** (mai fallback silenzioso a `zeroerp_app`);
+- **smoke live** "≥2 emittenti con RLS attiva" (criterio §8): da eseguire quando RLS è
+  *enforced* sull'ambiente + password configurata. In CI il ruolo è creato senza password
+  dal changeset ci_apply (DB locale/trusted).
+
 > **Endpoint on-demand**: `pipeline/run-until-done` **non** usa il canale di sistema →
 > resta nello scope OPERATORE del chiamante. Il canale `system_*` è solo per i percorsi
 > headless (cron/command).

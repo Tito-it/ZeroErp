@@ -8,7 +8,8 @@
 #   2) differita → MASSIVO + meta fatturazione_immediata=False
 #   3) dry-run → solo discovery/conteggio, nessun run pipeline
 #   4) best-effort → un emittente in errore non blocca gli altri
-#   5) contesto di SISTEMA (RLS opzione B): setta GUC app.ruolo_applicativo=SISTEMA e ripristina
+#   5) canale di SISTEMA (RLS Path A): il batch gira nel gateway system_process_context
+#      con alias system_fatturazione + attore d'audit BATCH_FATTURAZIONE
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ class RunFatturazioneBatchCommandTests(TestCase):
     def test_immediata_runs_per_emittente_with_giornaliero_and_filter(self):
         with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
              patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
-             patch(f"{_CMD}.connection"):
+             patch(f"{_CMD}.system_process_context"):
             RepoCls.return_value.list_emittibili_emittenti.return_value = [1, 2]
             mock_run.return_value = {"lotto_id": 100, "motivo_stop": "COMPLETATO", "step_eseguiti": 3}
             out = StringIO()
@@ -49,7 +50,7 @@ class RunFatturazioneBatchCommandTests(TestCase):
     def test_differita_uses_massivo_and_false_filter(self):
         with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
              patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
-             patch(f"{_CMD}.connection"):
+             patch(f"{_CMD}.system_process_context"):
             RepoCls.return_value.list_emittibili_emittenti.return_value = [9]
             mock_run.return_value = {"lotto_id": 1, "motivo_stop": "COMPLETATO", "step_eseguiti": 4}
             call_command("run_fatturazione_batch", "--modalita", "differita", stdout=StringIO())
@@ -62,7 +63,7 @@ class RunFatturazioneBatchCommandTests(TestCase):
     def test_dry_run_only_discovers(self):
         with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
              patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
-             patch(f"{_CMD}.connection"):
+             patch(f"{_CMD}.system_process_context"):
             RepoCls.return_value.list_emittibili_emittenti.return_value = [1]
             RepoCls.return_value.list_commesse_emittibili.return_value = [10, 20]
             out = StringIO()
@@ -77,7 +78,7 @@ class RunFatturazioneBatchCommandTests(TestCase):
     def test_best_effort_on_error(self):
         with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
              patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
-             patch(f"{_CMD}.connection"):
+             patch(f"{_CMD}.system_process_context"):
             RepoCls.return_value.list_emittibili_emittenti.return_value = [1, 2]
             mock_run.side_effect = [
                 ServiceError(code="E_PIPELINE", message="boom", detail="x"),
@@ -91,24 +92,21 @@ class RunFatturazioneBatchCommandTests(TestCase):
         self.assertEqual(mock_run.call_count, 2)
         self.assertIn("ERRORE", err.getvalue())
 
-    # Scopo: il batch headless stabilisce il contesto di SISTEMA (GUC) e lo ripristina (RLS opzione B).
-    def test_stabilisce_contesto_sistema_e_ripristina(self):
-        from apps.core.api.jwt_audit_authentication import JWT_GUC_RESET_SQL
-        from apps.core.services.auth_constants import RUOLO_APPLICATIVO_SISTEMA
+    # Scopo: il batch headless gira DENTRO il gateway di sistema (RLS Path A),
+    #        con l'alias del canale fatturazione e l'attore d'audit corretto.
+    def test_runs_inside_system_process_context(self):
+        from apps.core.services.auth_constants import AUDIT_ACTOR_BATCH_FATTURAZIONE
+        from apps.vendite.management.commands.run_fatturazione_batch import (
+            SYSTEM_FATTURAZIONE_DB_ALIAS,
+        )
 
         with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
              patch(f"{_CMD}.run_lotto_pipeline_until_done"), \
-             patch(f"{_CMD}.connection") as mock_conn:
+             patch(f"{_CMD}.system_process_context") as mock_gateway:
             RepoCls.return_value.list_emittibili_emittenti.return_value = []
             call_command("run_fatturazione_batch", "--modalita", "differita", stdout=StringIO())
 
-        cur = mock_conn.cursor.return_value.__enter__.return_value
-        calls = [c.args for c in cur.execute.call_args_list]
-        # enter: ruolo_applicativo = SISTEMA (parametrizzato)
-        self.assertIn(
-            ("SELECT set_config(%s, %s, false)",
-             ["app.ruolo_applicativo", RUOLO_APPLICATIVO_SISTEMA]),
-            calls,
+        mock_gateway.assert_called_once_with(
+            alias=SYSTEM_FATTURAZIONE_DB_ALIAS,
+            actor=AUDIT_ACTOR_BATCH_FATTURAZIONE,
         )
-        # exit: reset canonico riusato (JWT_GUC_RESET_SQL)
-        self.assertIn((JWT_GUC_RESET_SQL,), calls)

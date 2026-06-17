@@ -12,18 +12,19 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 from datetime import date, datetime
 
 from django.core.management.base import BaseCommand, CommandError
-from django.db import connection
 
-from apps.core.api.jwt_audit_authentication import JWT_GUC_RESET_SQL, JWT_IDENTITY_GUCS
-from apps.core.services.auth_constants import RUOLO_APPLICATIVO_SISTEMA
+from apps.core.services.auth_constants import AUDIT_ACTOR_BATCH_FATTURAZIONE
 from apps.core.services.service_errors import ServiceError
+from apps.core.services.system_context import system_process_context
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.pipeline_repository import LOTTO_META_KEY_FATTURAZIONE_IMMEDIATA
 from apps.vendite.services.pipeline_service import run_lotto_pipeline_until_done
+
+# Alias DB del canale di sistema per la fatturazione (settings.DATABASES) — Path A.
+SYSTEM_FATTURAZIONE_DB_ALIAS = "system_fatturazione"
 
 # Mappatura corsia → (tipo_lotto pipeline, filtro fatturazione_immediata).
 # Convenzione del modello a due corsie (vedi brief-db-emittibili-filtro-...).
@@ -31,28 +32,6 @@ _MODALITA = {
     "immediata": ("GIORNALIERO", True),
     "differita": ("MASSIVO", False),
 }
-
-# Scopo: stabilisce il contesto di SISTEMA per il batch HEADLESS (cron) — RLS opzione B.
-#        Setta `app.ruolo_applicativo='SISTEMA'` e azzera le altre GUC d'identità sulla
-#        connessione (così nessuno scope operatore viene ereditato dal pool), e ripristina
-#        tutto a fine run (igiene, riusando il reset canonico JWT_GUC_RESET_SQL). Le policy
-#        RLS "_sistema" concederanno visibilità/scrittura piena (tutti gli emittenti) a
-#        questo contesto. FORWARD-COMPATIBLE: finché le policy "_sistema" non esistono a DB
-#        e la RLS è dormiente, settare la GUC è innocuo. NON usato dall'endpoint on-demand,
-#        che mantiene lo scope OPERATORE del chiamante (un operatore fattura solo i suoi EF).
-#        Elenco GUC riusato da `JWT_IDENTITY_GUCS` (single source: jwt_audit_authentication).
-@contextmanager
-def _system_db_context():
-    enter = dict.fromkeys(JWT_IDENTITY_GUCS, "")
-    enter["app.ruolo_applicativo"] = RUOLO_APPLICATIVO_SISTEMA
-    with connection.cursor() as cur:
-        for name, value in enter.items():
-            cur.execute("SELECT set_config(%s, %s, false)", [name, value])
-    try:
-        yield
-    finally:
-        with connection.cursor() as cur:
-            cur.execute(JWT_GUC_RESET_SQL)
 
 
 class Command(BaseCommand):
@@ -108,10 +87,14 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
         limit = options["limit"]
 
-        # Contesto di SISTEMA per il batch headless (RLS opzione B): il cron non è un
-        # operatore e deve vedere/scrivere TUTTI gli emittenti. L'endpoint on-demand
-        # resta invece nello scope OPERATORE del chiamante.
-        with _system_db_context():
+        # Canale di SISTEMA per il batch headless (RLS Path A): instrada la catena DB
+        # sul ruolo BYPASSRLS `zeroerp_batch_fatturazione` (alias `system_fatturazione`)
+        # — il cron non è un operatore e deve vedere/scrivere TUTTI gli emittenti.
+        # L'endpoint on-demand resta invece nello scope OPERATORE del chiamante.
+        with system_process_context(
+            alias=SYSTEM_FATTURAZIONE_DB_ALIAS,
+            actor=AUDIT_ACTOR_BATCH_FATTURAZIONE,
+        ):
             self._run_batch(
                 modalita=modalita,
                 tipo_lotto=tipo_lotto,
@@ -124,7 +107,7 @@ class Command(BaseCommand):
             )
 
     # Scopo: corpo del batch (discovery + esecuzione per emittente) eseguito DENTRO il
-    #        contesto di sistema. Estratto da handle per isolare il setup GUC.
+    #        canale di sistema. Estratto da handle per isolare il setup del gateway.
     def _run_batch(
         self,
         *,
