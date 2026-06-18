@@ -29,5 +29,12 @@
 | uq_pratiche_azioni_ui_codice | `CREATE UNIQUE INDEX uq_pratiche_azioni_ui_codice ON pratiche.azioni_ui USING btree (codice)` |
 | uq_pratiche_azioni_ui_key | `CREATE UNIQUE INDEX uq_pratiche_azioni_ui_key ON pratiche.azioni_ui USING btree (azione_ui_key)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_azioni_ui_a10_template_flussi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'template_flussi', 'azione_ui_id', 'id', 'attivo')` |
+| trg_azioni_ui_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_azioni_ui_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

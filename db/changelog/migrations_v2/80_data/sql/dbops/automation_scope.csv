@@ -9,4 +9,5 @@ contabilita,*all
 magazzino,*all
 pagamenti,*all
 documenti,*all
+pratiche,*all
 dbops,sessioni_utente

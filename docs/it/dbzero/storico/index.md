@@ -18,6 +18,7 @@
 - [commesse](tabelle/commesse.md)
 - [commesse_attivita](tabelle/commesse_attivita.md)
 - [commesse_sorgenti](tabelle/commesse_sorgenti.md)
+- [competenze_flussi](tabelle/competenze_flussi.md)
 - [comune_trasformazioni](tabelle/comune_trasformazioni.md)
 - [comuni](tabelle/comuni.md) — * **Audit Trail**: Conservare una traccia immutabile di ogni modifica e cancellazione applicata a `config.comuni`. * **Versioning dei record**: Permettere la ricostruzione dello stato storico di ogni comune in un dato momento. * **Query storiche**: Supportare interrogazioni basate su intervalli temporali grazie ai campi `valid_from` e `valid_to`. * **Classificazione operazioni**: Utilizzare `tipo_operazione_id` e `change_type` per distinguere INSERT iniziale, UPDATE e DELETE. ---
 - [conti_bancari](tabelle/conti_bancari.md)
@@ -36,6 +37,7 @@
 - [fatture](tabelle/fatture.md)
 - [fatture_righe](tabelle/fatture_righe.md)
 - [fatture_scadenze](tabelle/fatture_scadenze.md)
+- [flussi](tabelle/flussi.md)
 - [forme_giuridiche](tabelle/forme_giuridiche.md)
 - [fornitori](tabelle/fornitori.md)
 - [identita_digitali](tabelle/identita_digitali.md)
@@ -52,6 +54,8 @@
 - [listini_tipologie_utilities](tabelle/listini_tipologie_utilities.md)
 - [magazzini](tabelle/magazzini.md)
 - [movimenti](tabelle/movimenti.md)
+- [note_flussi](tabelle/note_flussi.md)
+- [note_pratiche](tabelle/note_pratiche.md)
 - [note_stili](tabelle/note_stili.md)
 - [ordini](tabelle/ordini.md)
 - [ordini_righe](tabelle/ordini_righe.md)
@@ -59,6 +63,8 @@
 - [parameter_overrides](tabelle/parameter_overrides.md) — * **Versionamento degli override**   Catturare ogni modifica ai record di `config.parameter_overrides`, consentendo di risalire allo stato precedente o iniziale di un override. * **Audit e compliance**   Archivio immutabile di tutte le operazioni, con metadati di utente e timestamp, per garantire tracciabilità e analisi storiche.
 - [parameters](tabelle/parameters.md) — * **Versionamento dei parametri**   Registrare ogni modifica (INSERT, UPDATE, DELETE) sui parametri definiti in `config.parameters`, abilitando rollback e analisi storica. * **Audit e compliance**   Documentare chi (`user_insert`) e quando (`data_insert`) hanno effettuato le modifiche, mantenendo un registro immutabile.
 - [pdp](tabelle/pdp.md) — `storico.pdp` conserva la **timeline** dei Punti di Prelievo: per ogni modifica allo stato corrente (`anagrafiche.pdp`) registra uno **snapshot JSONB**, la **tipologia di operazione** (`I`,`U`,`D`), il **tx_id** e la **finestra di validità** (`valid_from`, `valid_to`). È di fatto una **SCD Type 2** (Slowly Changing Dimension) specializzata per i PDP.
+- [pratiche](tabelle/pratiche.md)
+- [pratiche_sorgenti](tabelle/pratiche_sorgenti.md)
 - [preventivi](tabelle/preventivi.md)
 - [profili_accesso](tabelle/profili_accesso.md)
 - [profili_accesso_aree](tabelle/profili_accesso_aree.md)
@@ -67,6 +73,7 @@
 - [psp](tabelle/psp.md)
 - [registri_fatturazione](tabelle/registri_fatturazione.md)
 - [regole_fatturazione_articolo](tabelle/regole_fatturazione_articolo.md)
+- [regole_generazione](tabelle/regole_generazione.md)
 - [render_engine_documento](tabelle/render_engine_documento.md)
 - [resellers](tabelle/resellers.md)
 - [reservations](tabelle/reservations.md)
@@ -79,6 +86,7 @@
 - [soggetti](tabelle/soggetti.md) — * **Versionamento dei soggetti**   Ogni modifica (INSERT, UPDATE, DELETE) su `anagrafiche.soggetti` genera un record in storico con lo stato precedente, il tipo di operazione e i metadati di audit.
 - [soggetti_conti_bancari](tabelle/soggetti_conti_bancari.md)
 - [soggetti_ruoli_conti_bancari](tabelle/soggetti_ruoli_conti_bancari.md)
+- [sospensioni](tabelle/sospensioni.md)
 - [stati_pdp](tabelle/stati_pdp.md)
 - [sto_demo_storico](tabelle/sto_demo_storico.md)
 - [stradario](tabelle/stradario.md) — * **Audit Trail**: Conservare una traccia completa di ogni modifica o cancellazione effettuata su `config.stradario`. * **Versioning dei record**: Permettere la ricostruzione dello stato di una via in un dato momento, grazie ai campi `valid_from` e `valid_to`. * **Riproduzione dello schema**: Utilizzare il campo **`snapshot`** (JSONB) per salvare tutti i dettagli di `config.stradario` al momento dell’operazione, anche a fronte di evoluzioni dello schema. * **Classificazione delle operazioni**: Impiegare **`tipo_operazione_id`** (1=insert iniziale, 2=update, 3=delete) e **`change_type`** (A=Active, S=Suppressed, F=Fused, D=Divided) per distinguere rapidamente la natura del cambiamento.
@@ -86,9 +94,11 @@
 - [template_asset](tabelle/template_asset.md)
 - [template_documenti](tabelle/template_documenti.md)
 - [template_documenti_versioni](tabelle/template_documenti_versioni.md)
+- [template_flussi](tabelle/template_flussi.md)
 - [tipi_asset_documento](tabelle/tipi_asset_documento.md)
 - [tipi_documento_output](tabelle/tipi_documento_output.md)
 - [tipi_file_documento](tabelle/tipi_file_documento.md)
+- [tipi_prestazione](tabelle/tipi_prestazione.md)
 - [tipi_ruoli_nature_ammesse](tabelle/tipi_ruoli_nature_ammesse.md)
 - [tipi_ruolo_tipi_indirizzo](tabelle/tipi_ruolo_tipi_indirizzo.md)
 - [tipi_soggetto_dettaglio_tipi_indirizzo](tabelle/tipi_soggetto_dettaglio_tipi_indirizzo.md)

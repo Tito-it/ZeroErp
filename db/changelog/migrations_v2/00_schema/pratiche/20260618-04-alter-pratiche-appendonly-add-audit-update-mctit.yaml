@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Audit utente reale su pratiche.* — Parte B (conforme al framework).
+# (brief-db-audit-utente-reale-pratiche, 2026-06-18)
+#
+# Le 5 tabelle append-only di pratiche avevano SOLO data_insert/user_insert,
+# quindi l'automation AUDIT_UPDATE (gate: data_update + user_update presenti)
+# le saltava -> user_insert restava zeroerp_app (bug del giornale).
+#
+# Fix conforme al framework: si AGGIUNGONO le colonne standard
+# data_update/user_update (come ogni altra tabella di dominio), cosi'
+# l'automation AUDIT_UPDATE le copre da sola al prossimo run
+# (trigger trg_{table}_audit_data_user_upd -> trgfn_audit_data_user_generic,
+#  che su INSERT imposta user_insert dalla GUC app.jwt_user). Nessun trigger
+# custom: niente special-case.
+#
+# Le tabelle restano di fatto append-only (nessun path UPDATE): data_update
+# coincide con l'istante di insert. Tipo/default allineati allo standard
+# audit (linee-guida-sql §7, come pratiche.flussi).
+# Default NOT NULL -> backfill implicito delle righe esistenti.
+#
+# Dopo l'applicazione: ri-eseguire l'automation audit perche' i trigger
+# vengano creati (CI: automatico via 90_end/ci_apply su DB nuovo; prod/DB
+# esistenti: SELECT dbops.fn_run_automations_audit_update('manual', NULL, false)).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260618-04-alter-pratiche-appendonly-add-audit-update-mctit.yaml
+
+  - changeSet:
+      id: 20260618-04-alter-pratiche-appendonly-add-audit-update
+      author: mctit
+      comment: >
+        Aggiunge data_update/user_update (standard audit) alle 5 tabelle
+        append-only di pratiche (giornale, allegati_pratiche, allegati_flussi,
+        template_flussi_prerequisiti, template_flussi_canali) cosi' l'automation
+        AUDIT_UPDATE le copre e user_insert registra l'utente reale (GUC).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pratiche.giornale
+                ADD COLUMN data_update timestamp with time zone NOT NULL DEFAULT now(),
+                ADD COLUMN user_update text NOT NULL DEFAULT CURRENT_USER;
+
+              ALTER TABLE pratiche.allegati_pratiche
+                ADD COLUMN data_update timestamp with time zone NOT NULL DEFAULT now(),
+                ADD COLUMN user_update text NOT NULL DEFAULT CURRENT_USER;
+
+              ALTER TABLE pratiche.allegati_flussi
+                ADD COLUMN data_update timestamp with time zone NOT NULL DEFAULT now(),
+                ADD COLUMN user_update text NOT NULL DEFAULT CURRENT_USER;
+
+              ALTER TABLE pratiche.template_flussi_prerequisiti
+                ADD COLUMN data_update timestamp with time zone NOT NULL DEFAULT now(),
+                ADD COLUMN user_update text NOT NULL DEFAULT CURRENT_USER;
+
+              ALTER TABLE pratiche.template_flussi_canali
+                ADD COLUMN data_update timestamp with time zone NOT NULL DEFAULT now(),
+                ADD COLUMN user_update text NOT NULL DEFAULT CURRENT_USER;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pratiche.giornale
+                DROP COLUMN IF EXISTS user_update, DROP COLUMN IF EXISTS data_update;
+              ALTER TABLE pratiche.allegati_pratiche
+                DROP COLUMN IF EXISTS user_update, DROP COLUMN IF EXISTS data_update;
+              ALTER TABLE pratiche.allegati_flussi
+                DROP COLUMN IF EXISTS user_update, DROP COLUMN IF EXISTS data_update;
+              ALTER TABLE pratiche.template_flussi_prerequisiti
+                DROP COLUMN IF EXISTS user_update, DROP COLUMN IF EXISTS data_update;
+              ALTER TABLE pratiche.template_flussi_canali
+                DROP COLUMN IF EXISTS user_update, DROP COLUMN IF EXISTS data_update;
