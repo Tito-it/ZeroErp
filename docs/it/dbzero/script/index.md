@@ -70,8 +70,8 @@
 - [fn_guard_utility_tipo_ruolo](funzioni/fn_guard_utility_tipo_ruolo.md) — (latest review 16-02-2026) `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:
 - [fn_has_identita_attiva](funzioni/fn_has_identita_attiva.md) — (latest review 19-04-2026)
 - [fn_is_super_admin](funzioni/fn_is_super_admin.md) — (latest review 20-04-2026 — filtro OPERATORE)
-- [fn_job_run_end](funzioni/fn_job_run_end.md)
-- [fn_job_run_start](funzioni/fn_job_run_start.md)
+- [fn_job_run_end](funzioni/fn_job_run_end.md) — (latest review 18-06-2026 — registrazione run job headless)
+- [fn_job_run_start](funzioni/fn_job_run_start.md) — (latest review 18-06-2026 — registrazione run job headless)
 - [fn_list_parameters_for_user](funzioni/fn_list_parameters_for_user.md)
 - [fn_log](funzioni/fn_log.md)
 - [fn_log_and_raise_error](funzioni/fn_log_and_raise_error.md) — (last review 24-04-2026)

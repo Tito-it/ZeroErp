@@ -45,13 +45,25 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_flussi_a10_guard_chiusura_prematura_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_chiusura_prematura()` |
-| trg_flussi_a10_guard_esito_completato_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_esito_completato()` |
 | trg_flussi_a10_guard_esito_completato_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_esito_completato()` |
+| trg_flussi_a10_guard_esito_completato_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_esito_completato()` |
 | trg_flussi_a10_guard_pratica_terminale_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_pratica_terminale()` |
 | trg_flussi_a10_guard_pratica_terminale_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_pratica_terminale()` |
 | trg_flussi_a10_guard_prerequisiti_ins | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_prerequisiti()` |
 | trg_flussi_a10_guard_ripetibilita_ins | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_ripetibilita()` |
 | trg_flussi_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_flussi_guard_transizione()` |
+| trg_flussi_a10_risorse_umane_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'risorse_umane', 'attivo', 'risorsa_umana_id', 'id')` |
+| trg_flussi_a10_risorse_umane_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'risorse_umane', 'attivo', 'risorsa_umana_id', 'id')` |
+| trg_flussi_a10_stati_flussi_pratiche_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_flussi_pratiche', 'attivo', 'stato_id', 'id')` |
+| trg_flussi_a10_stati_flussi_pratiche_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_flussi_pratiche', 'attivo', 'stato_id', 'id')` |
+| trg_flussi_a10_template_flussi_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_id', 'id')` |
+| trg_flussi_a10_template_flussi_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_id', 'id')` |
+| trg_flussi_a10_unita_organizzative_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
+| trg_flussi_a10_unita_organizzative_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
+| trg_flussi_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_flussi_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_flussi_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_flussi_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_flussi_z90_autochiusura_pratica_upd | AFTER | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_flussi_autochiusura_pratica()` |
 | trg_flussi_z90_calcolo_tempo_completamento_upd | AFTER | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_flussi_calcolo_tempo_completamento()` |
 | trg_flussi_z90_generazione_upd | AFTER | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_flussi_generazione()` |

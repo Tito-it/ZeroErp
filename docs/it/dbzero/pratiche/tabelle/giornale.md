@@ -13,6 +13,8 @@
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -29,6 +31,14 @@
 | ix_pratiche_giornale_azione | `CREATE INDEX ix_pratiche_giornale_azione ON pratiche.giornale USING btree (azione)` |
 | ix_pratiche_giornale_data_insert | `CREATE INDEX ix_pratiche_giornale_data_insert ON pratiche.giornale USING btree (data_insert)` |
 | pk_pratiche_giornale | `CREATE UNIQUE INDEX pk_pratiche_giornale ON pratiche.giornale USING btree (id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_giornale_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_giornale_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_giornale_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_giornale_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

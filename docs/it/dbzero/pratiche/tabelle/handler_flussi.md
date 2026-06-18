@@ -29,5 +29,13 @@
 | uq_pratiche_handler_flussi_codice | `CREATE UNIQUE INDEX uq_pratiche_handler_flussi_codice ON pratiche.handler_flussi USING btree (codice)` |
 | uq_pratiche_handler_flussi_handler_key | `CREATE UNIQUE INDEX uq_pratiche_handler_flussi_handler_key ON pratiche.handler_flussi USING btree (handler_key)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_handler_flussi_a10_template_flussi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'template_flussi', 'handler_id', 'id', 'attivo')` |
+| trg_handler_flussi_a10_template_flussi_handler_eventi_bl_109875 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'template_flussi_handler_eventi', 'handler_id', 'id', 'attivo')` |
+| trg_handler_flussi_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_handler_flussi_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

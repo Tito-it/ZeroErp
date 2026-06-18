@@ -36,19 +36,22 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_unita_organizzative_a10_competenze_flussi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'competenze_flussi', 'unita_organizzativa_id', 'id', 'attivo')` |
 | trg_unita_organizzative_a10_contatti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'contatti', 'unita_organizzativa_id', 'id', 'attivo')` |
 | trg_unita_organizzative_a10_email_account_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'email_account', 'unita_organizzativa_id', 'id', 'attivo')` |
 | trg_unita_organizzative_a10_email_log_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'email_log', 'unita_organizzativa_id', 'id', 'attivo')` |
 | trg_unita_organizzative_a10_email_outbox_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'email_outbox', 'unita_organizzativa_id', 'id', 'attivo')` |
 | trg_unita_organizzative_a10_email_template_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'email_template', 'unita_organizzativa_id', 'id', 'attivo')` |
+| trg_unita_organizzative_a10_flussi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'flussi', 'unita_organizzativa_id', 'id', 'attivo')` |
 | trg_unita_organizzative_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
+| trg_unita_organizzative_a10_pratiche_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'pratiche', 'unita_organizzativa_id', 'id', 'attivo')` |
 | trg_unita_organizzative_a10_profili_accesso_bindings_blo_9fc29b | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'profili_accesso_bindings', 'unita_organizzativa_id', 'id', 'attivo')` |
 | trg_unita_organizzative_a10_risorse_umane_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'risorse_umane', 'unita_organizzativa_id', 'id', 'attivo')` |
 | trg_unita_organizzative_a10_unita_organizzative_block_de_619e29 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'unita_organizzative', 'parent_id', 'id', 'attivo')` |
-| trg_unita_organizzative_a10_unita_organizzative_require__e47f05 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'parent_id', 'id')` |
 | trg_unita_organizzative_a10_unita_organizzative_require__e47f05 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'parent_id', 'id')` |
-| trg_unita_organizzative_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_unita_organizzative_a10_unita_organizzative_require__e47f05 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'parent_id', 'id')` |
 | trg_unita_organizzative_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_unita_organizzative_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

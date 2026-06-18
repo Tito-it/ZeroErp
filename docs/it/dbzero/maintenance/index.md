@@ -1,7 +1,7 @@
 # Schema `maintenance`
 
 ## 📚 Tabelle
-- [job_run_log](tabelle/job_run_log.md) — (latest review 07-01-26) La tabella `maintenance.job_run_log` memorizza i log di esecuzione dei job schedulati o lanciati manualmente all’interno del sistema Zero ERP. Ogni riga rappresenta una singola esecuzione di un job, includendo informazioni di stato, tempi di inizio/fine, eventuali errori e dettagli di esecuzione.
+- [job_run_log](tabelle/job_run_log.md) — (latest review 18-06-2026) La tabella `maintenance.job_run_log` memorizza i log di esecuzione dei job schedulati o lanciati manualmente all’interno del sistema Zero ERP. Ogni riga rappresenta una singola esecuzione di un job, includendo informazioni di stato, tempi di inizio/fine, eventuali errori e dettagli di esecuzione.
 - [test_pgagent_log](tabelle/test_pgagent_log.md)
 
 ## ⚙️ Funzioni
