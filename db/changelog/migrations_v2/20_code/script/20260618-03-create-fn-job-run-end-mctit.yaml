@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# J3 — script.fn_job_run_end: chiude un run aperto da fn_job_run_start.
+#
+# Vedi brief-db-job-run-registrazione.md §3. Note di design:
+#  - SCHEMA script, SECURITY DEFINER, search_path fisso (come fn_job_run_start).
+#  - Robusta su END-DOPO-SKIP: lo skip chiude gia' la riga in fn_job_run_start e
+#    NON possiede il lock per quel flusso; qui si sblocca SOLO se la riga non era
+#    gia' chiusa -> niente warning pg_advisory_unlock su lock non posseduto.
+#  - Advisory lock a DUE chiavi, stesso classid di fn_job_run_start (unlock simmetrico).
+#  - REVOKE EXECUTE FROM PUBLIC.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260618-03-create-fn-job-run-end-mctit.yaml
+
+  - changeSet:
+      id: 20260618-03-create-fn-job-run-end
+      author: mctit
+      runOnChange: false
+      validCheckSum: [ANY]
+      comment: >
+        J3: script.fn_job_run_end(id, ok, message, rows_affected, error_code,
+        error_detail, meta, lock_key). Chiude la riga job_run_log e rilascia
+        l'advisory lock (solo se posseduto da questo flusso). SECURITY DEFINER,
+        search_path fisso, REVOKE da PUBLIC.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists:
+              schemaName: maintenance
+              tableName: job_run_log
+              columnName: meta
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_job_run_end(
+                  p_id            maintenance.job_run_log.id%TYPE,
+                  p_ok            maintenance.job_run_log.ok%TYPE,
+                  p_message       maintenance.job_run_log.message%TYPE       DEFAULT NULL,
+                  p_rows_affected maintenance.job_run_log.rows_affected%TYPE DEFAULT NULL,
+                  p_error_code    maintenance.job_run_log.error_code%TYPE    DEFAULT NULL,
+                  p_error_detail  maintenance.job_run_log.error_detail%TYPE  DEFAULT NULL,
+                  p_meta          maintenance.job_run_log.meta%TYPE          DEFAULT NULL,
+                  p_lock_key      text                                        DEFAULT NULL  -- non e' una colonna
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, pg_temp
+              AS $function$
+              DECLARE
+                c_lock_class constant int := hashtext('zeroerp:job_run_log');
+                v_already_ended boolean;
+              BEGIN
+                SELECT (ended_at IS NOT NULL) INTO v_already_ended
+                FROM maintenance.job_run_log WHERE id = p_id;
+
+                UPDATE maintenance.job_run_log
+                   SET ended_at      = clock_timestamp(),
+                       ok            = p_ok,
+                       message       = COALESCE(p_message, message),
+                       rows_affected = COALESCE(p_rows_affected, rows_affected),
+                       error_code    = p_error_code,
+                       error_detail  = p_error_detail,
+                       meta          = COALESCE(p_meta, meta)
+                 WHERE id = p_id;
+
+                -- Sblocca SOLO se un lock e' realmente posseduto da questo flusso:
+                -- end-dopo-skip (riga gia' chiusa) non possiede il lock -> niente unlock/warning.
+                IF p_lock_key IS NOT NULL AND NOT COALESCE(v_already_ended, TRUE) THEN
+                  PERFORM pg_advisory_unlock(c_lock_class, hashtext(p_lock_key));
+                END IF;
+              END;
+              $function$;
+
+              REVOKE EXECUTE ON FUNCTION
+                script.fn_job_run_end(bigint, boolean, text, bigint, text, text, jsonb, text)
+              FROM PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS
+                script.fn_job_run_end(bigint, boolean, text, bigint, text, text, jsonb, text);

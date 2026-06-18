@@ -23,7 +23,7 @@ In Zero ERP convivono processi di natura diversa: automazioni schedulati via pgA
 Il sistema di tracciamento e organizzato su **tre livelli**, ciascuno con un ruolo preciso:
 
 * **Audit log** (`dbops.audit_log`) — traccia le operazioni generiche: automazioni, deploy, processi batch. E il livello trasversale, usato da qualsiasi componente
-* **Job run log** (`maintenance.job_run_log`) — traccia le esecuzioni dei job schedulati via pgAgent. Un record per ogni esecuzione con esito, durata e dettaglio errori
+* **Job run log** (`maintenance.job_run_log`) — traccia le esecuzioni dei **job schedulati**: pgAgent (lato DB) *e* job headless cron/command (management command Django, es. `run_fatturazione_batch`). Un record per ogni esecuzione con `origine`, esito, durata, dettaglio errori e `meta`
 * **Task registry e task runs** (`dbops` + `vendite`) — traccia l'esecuzione dei task all'interno delle pipeline applicative, con stato, tentativi e policy di resume
 
 Questi tre livelli non si sostituiscono: si affiancano. Un job pgAgent puo produrre record sia in `job_run_log` (per il job schedulato) sia in `audit_log` (per le automazioni che esegue), e un errore grave viene catturato anche in `error_log`.
@@ -57,7 +57,7 @@ Questi tre livelli non si sostituiscono: si affiancano. Un job pgAgent puo produ
 
 **Job schedulati:**
 
-* [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) — log esecuzioni pgAgent
+* [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) — log esecuzioni job schedulati (pgAgent + cron/command)
 
 ---
 
@@ -89,7 +89,7 @@ vendite (dominio specifico)
 maintenance (job schedulati)
     │
     └── job_run_log
-            un record per esecuzione pgAgent: jobname, ok, rows_affected
+            un record per esecuzione (pgAgent / cron / command): jobname, origine, ok, meta
 ```
 
 ---
@@ -223,13 +223,15 @@ Vincoli:
 
 ---
 
-### 3. Job schedulati: pgAgent e maintenance
+### 3. Job schedulati: pgAgent e job headless (cron/command)
 
 I job schedulati via pgAgent sono processi periodici gestiti dallo scheduler PostgreSQL: pulizia log, applicazione indici FK, storicizzazione, aggiornamento audit. Ogni job ha il proprio wrapper nel schema `maintenance` e registra le esecuzioni in `job_run_log`.
 
+`job_run_log` è però **generica**: oltre a pgAgent accoglie anche i **job headless cron/command** (management command Django via systemd, es. `run_fatturazione_batch`). La colonna `origine` (`PGAGENT` / `CRON` / `COMMAND`) distingue la sorgente; la colonna `meta` (jsonb) porta un riepilogo *generico* del run. Il dettaglio di dominio resta nei rispettivi schemi (es. `vendite.*` per la fatturazione), correlato via `run_uuid`.
+
 #### `maintenance.job_run_log`
 
-Un record per ogni esecuzione di un job schedulato. La struttura e piatta e semplice: nome del job, step, esito, errore, righe coinvolte.
+Un record per ogni esecuzione di un job schedulato. La struttura e piatta e semplice: nome del job, step, origine, esito, errore, righe coinvolte, meta.
 
 Da un punto di vista tecnico:
 
@@ -246,7 +248,9 @@ Da un punto di vista tecnico:
 | `error_code` | TEXT | SQLSTATE se errore |
 | `error_detail` | TEXT | Dettaglio errore (DETAIL + HINT + CONTEXT) |
 | `agent_host` | TEXT | Host di origine |
-| `run_uuid` | UUID | Correlatore di sessione (default: `uuidv7()`) |
+| `run_uuid` | UUID | Correlatore di sessione (default: `uuidv7()`); aggancia i record di dominio del run |
+| `origine` | VARCHAR(16) | `PGAGENT` (default) / `CRON` / `COMMAND` — CHECK `chk_job_run_log_origine` |
+| `meta` | JSONB | Riepilogo **generico** del run (es. conteggi per esito); default `{}` |
 
 > Documentazione dettagliata: [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log)
 
@@ -259,6 +263,15 @@ La funzione wrapper standard per i job pgAgent. Gestisce:
 * Cattura errori con SQLSTATE e contesto
 
 Ogni job schedulato ha una procedura dedicata (es. `proc_automations_storico_job`, `proc_automations_cleanup_job`) che internamente usa `fn_run_and_log` per la parte di logging.
+
+#### `script.fn_job_run_start` / `script.fn_job_run_end` (job headless)
+
+`fn_run_and_log` avvolge un blocco **SQL** e non è adatta a un corpo job in **Python** (management command). Per i job headless cron/command si usano due funzioni che spezzano start/end attorno al corpo applicativo:
+
+* [`script.fn_job_run_start(jobname, origine, stepname, lock_key, agent_host)`](/dbzero/script/funzioni/fn_job_run_start) → `(id, run_uuid, acquired)`: apre la riga; advisory lock di sessione opzionale per `lock_key` (anti-overlap fra run dello stesso job, cross-connessione). Se il lock è occupato ritorna `acquired=false` con riga *skip* già loggata.
+* [`script.fn_job_run_end(id, ok, message, rows, error_code, error_detail, meta, lock_key)`](/dbzero/script/funzioni/fn_job_run_end): chiude la riga e rilascia il lock.
+
+Entrambe sono `SECURITY DEFINER` (i ruoli batch headless `zeroerp_batch_<job>` hanno solo `EXECUTE`, **nessun DML diretto** su `job_run_log`) con `search_path` fisso e `EXECUTE` revocato da PUBLIC. Lato BE le avvolge il context manager `registered_job` (vedi `apps/core/services/job_run.py`).
 
 ---
 
