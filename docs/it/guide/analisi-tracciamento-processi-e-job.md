@@ -373,7 +373,7 @@ WHERE task_code = 'assegna_pratica';
 | --- | --- | --- | --- |
 | `dbops.audit_log` | Operazioni (successi, skip, errori) | In-transazione o dblink | Trasversale |
 | `dbops.error_log` | Errori con codice e contesto | Sempre dblink | Trasversale |
-| `maintenance.job_run_log` | Esecuzioni job pgAgent | In-transazione | Job schedulati |
+| `maintenance.job_run_log` | Esecuzioni job schedulati (pgAgent + cron/command, vedi `origine`) | In-transazione | Job schedulati |
 | `vendite.fatturazione_lotti_task_runs` | Esecuzioni task pipeline | In-transazione | Dominio vendite |
 | `vendite.fatturazione_lotti_log` | Log di dominio (fasi, esiti) | In-transazione | Dominio vendite |
 

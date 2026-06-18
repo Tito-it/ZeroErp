@@ -5,11 +5,11 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { fetchGiornale } from '../api/pratiche-api'
-import { displayDate } from '../../core/utils/date'
+import { displayDate, displayTime } from '../../core/utils/date'
 import { azioneGiornaleStyle } from '../../core/utils/severity'
 import Tag from 'primevue/tag'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const props = defineProps({
   praticaId: { type: Number, required: true }
@@ -21,21 +21,27 @@ const loading = ref(false)
 // Alias locale per brevita' nel template.
 const azioneStyle = azioneGiornaleStyle
 
-// Scopo: Formatta il dettaglio JSON in testo leggibile.
-function formatDettaglio(dettaglio) {
-  if (!dettaglio || typeof dettaglio !== 'object') return ''
+// Scopo: label leggibile dell'azione (i18n) con fallback al codice grezzo se la
+// chiave non esiste (codici nuovi a DB non ancora tradotti restano comunque visibili).
+function azioneLabel(azione) {
+  const key = `pratiche.giornale_azioni.${azione}`
+  return te(key) ? t(key) : azione
+}
+
+// Scopo: Formatta il dettaglio in testo leggibile. Usa i display fields decodificati
+// dal BE (transizione stati, descrizione flusso) invece degli id grezzi del jsonb.
+function formatDettaglio(ev) {
   const parts = []
-  if (dettaglio.da) parts.push(`${dettaglio.da} → ${dettaglio.a || '?'}`)
-  if (dettaglio.esito) parts.push(`${t('pratiche.flusso_col_esito')}: ${dettaglio.esito}`)
-  if (dettaglio.motivo) parts.push(dettaglio.motivo)
-  if (dettaglio.note_esito) parts.push(dettaglio.note_esito)
-  if (parts.length === 0) {
-    // Fallback: mostra chiavi principali
-    return Object.entries(dettaglio)
-      .filter(([, v]) => v != null && v !== '')
-      .map(([k, v]) => `${k}: ${v}`)
-      .join(', ')
+  // Transizione di stato: descrizioni decodificate lato BE (FLUSSO_STATO_CAMBIATO).
+  if (ev.dettaglio_stato_nuovo) {
+    parts.push(ev.dettaglio_stato_precedente
+      ? `${ev.dettaglio_stato_precedente} → ${ev.dettaglio_stato_nuovo}`
+      : ev.dettaglio_stato_nuovo)
   }
+  const d = ev.dettaglio && typeof ev.dettaglio === 'object' ? ev.dettaglio : {}
+  if (d.esito) parts.push(`${t('pratiche.flusso_col_esito')}: ${d.esito}`)
+  if (d.motivo) parts.push(d.motivo)
+  if (d.note_esito) parts.push(d.note_esito)
   return parts.join(' — ')
 }
 
@@ -68,12 +74,19 @@ watch(() => props.praticaId, (id) => {
       <div v-for="ev in eventi" :key="ev.id" class="giornale-entry">
         <div class="giornale-entry-header">
           <i :class="azioneStyle(ev.azione).icon" class="giornale-icon"></i>
-          <Tag :value="ev.azione" :severity="azioneStyle(ev.azione).severity" />
-          <span class="giornale-date">{{ displayDate(ev.data_insert) }}</span>
+          <Tag :value="azioneLabel(ev.azione)" :severity="azioneStyle(ev.azione).severity" />
+          <span v-if="ev.flusso_template_descrizione" class="giornale-flusso">
+            {{ ev.flusso_template_descrizione }}
+          </span>
           <span v-if="ev.user_insert" class="giornale-user">{{ ev.user_insert }}</span>
+          <!-- Quando: data sopra, ora sotto, allineati in fondo a destra. -->
+          <div class="giornale-when">
+            <span class="giornale-date">{{ displayDate(ev.data_insert) }}</span>
+            <span class="giornale-time">{{ displayTime(ev.data_insert) }}</span>
+          </div>
         </div>
-        <div v-if="formatDettaglio(ev.dettaglio)" class="giornale-detail">
-          {{ formatDettaglio(ev.dettaglio) }}
+        <div v-if="formatDettaglio(ev)" class="giornale-detail">
+          {{ formatDettaglio(ev) }}
         </div>
       </div>
     </div>
@@ -106,7 +119,28 @@ watch(() => props.praticaId, (id) => {
   color: var(--app-icon-color);
 }
 
+.giornale-flusso {
+  font-size: var(--app-font-size-sm);
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+/* Blocco "quando": spinto in fondo a destra, data sopra / ora sotto. */
+.giornale-when {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  line-height: 1.2;
+}
+
 .giornale-date {
+  font-size: var(--app-font-size-sm);
+  color: var(--app-topbar-breadcrumb-color);
+}
+
+.giornale-time {
   font-size: var(--app-font-size-sm);
   color: var(--app-topbar-breadcrumb-color);
 }

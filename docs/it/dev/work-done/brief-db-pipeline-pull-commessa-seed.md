@@ -7,7 +7,7 @@
 > **Data**: 2026-06-15 · **Stato**: ✅ **IMPLEMENTATO** (2026-06-15) — seed atterrato
 > su `dev/db-tid`, pgTAP verde (`test-seed-pull-commessa-pipeline-v1.sql`). Vedi §0.
 >
-> **Origine**: [analisi-commesse-stato-e-sviluppi.md §10](../work-in-progress/analisi-commesse-stato-e-sviluppi.md)
+> **Origine**: [analisi-commesse-stato-e-sviluppi.md §10](analisi-commesse-stato-e-sviluppi.md)
 > (piano driver di orchestrazione fatturazione). La verifica seed (Fase 0) ha
 > trovato che la catena commessa → fatturazione è **interrotta a livello di seed**.
 >

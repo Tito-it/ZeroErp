@@ -4,9 +4,10 @@
 > Il cambio schema/funzioni è delegato al team DB →
 > [brief-db-job-run-registrazione.md](brief-db-job-run-registrazione.md).
 >
-> **Data**: 2026-06-17 · **Stato**: 🟢 **DB applicato** (colonne + funzioni `script.fn_job_run_*`,
-> pgTAP verdi, doc aggiornata — vedi [brief DB §7](brief-db-job-run-registrazione.md)). Resta
-> il **BE**: `registered_job` + wiring `run_fatturazione_batch` (§6).
+> **Data**: 2026-06-17 · **Stato**: 🟢 **COMPLETATO (DB + BE)**. DB: colonne + funzioni
+> `script.fn_job_run_*`, pgTAP verdi (vedi [brief DB](brief-db-job-run-registrazione.md)).
+> **BE (2026-06-18)**: `apps.core.services.job_run.registered_job` + wiring
+> `run_fatturazione_batch` + test (suite core+vendite verde, 1065) — §6.
 >
 > **Decisioni (2026-06-17)**: **(a)** le funzioni `fn_job_run_start/end` vivono in
 > **`script`** (non `maintenance`) — i ruoli batch/app hanno già `USAGE`+`EXECUTE` su
@@ -111,7 +112,17 @@ riusando l'advisory-lock già in `fn_run_and_log`.
 - Lock occupato → il run **non aspetta**: esce subito con riga `job_run_log` esito
   "skip" (come fa già `fn_run_and_log`).
 
-## 6. Piano Backend (dopo le modifiche DB — non prima)
+## 6. Piano Backend — ✅ FATTO (2026-06-18)
+
+Implementato come da piano sotto: building block
+[`apps/core/services/job_run.py`](../../../../backend/apps/core/services/job_run.py)
+(`registered_job` + `JobRunHandle`, chiama `script.fn_job_run_start/end`, json.dumps+`::jsonb`
+per `meta`) + wiring in
+[`run_fatturazione_batch`](../../../../backend/apps/vendite/management/commands/run_fatturazione_batch.py)
+(registrazione **dentro** `system_process_context`, dry-run escluso, `_run_batch` ritorna il
+riepilogo → `job.set_meta`). Test: `apps/core/tests/services/test_job_run.py` (acquired/skip/
+errore) + command (registra + skip). Suite core+vendite verde (1065).
+
 
 1. **Building block generico** `apps/core/services/job_run.py` — context manager
    `registered_job(job_name, *, origine='CRON', stepname=None, lock_key=None,

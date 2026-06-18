@@ -1,5 +1,10 @@
 # Analisi commesse — stato attuale e sviluppi necessari
 
+> **Stato**: ✅ **CHIUSO (2026-06-18)** — roadmap §8 eseguita end-to-end (DB+BE). Restano
+> solo **rinvii consapevoli** (UI commesse/monitor FE §4.2·§9, consumi utility tariffario
+> §4.3#3, invio SDI reale §2.5) e **ops** (env/systemd + smoke a RLS *enforced*), che
+> avranno documenti dedicati alla loro apertura. Spostato in `work-done`.
+>
 > **Data**: 15 giugno 2026
 > **Tipo**: analisi di stato + piano sviluppi (base condivisa, pre-implementazione)
 > **Metodo**: ricognizione codice/DB + workflow dinamico multi-agente (mappa stato
@@ -9,8 +14,8 @@
 >
 > **Vedi anche**:
 > * [Guida tecnica API Commesse (DB layer)](/guide/gestione-commesse) — datata, da aggiornare (vedi §3)
-> * [gestione-commesse-v2.md](gestione-commesse-v2.md) — piano v2 (feb 2026), in larga parte implementato ma fermo a febbraio
-> * [sviluppo-fatturazione.md](sviluppo-fatturazione.md), [fatturazione-roadmap.md](fatturazione-roadmap.md), [fatturazione-attivita-progetto.md](fatturazione-attivita-progetto.md)
+> * [gestione-commesse-v2.md](../work-in-progress/gestione-commesse-v2.md) — piano v2 (feb 2026), in larga parte implementato ma fermo a febbraio
+> * [sviluppo-fatturazione.md](../work-in-progress/sviluppo-fatturazione.md), [fatturazione-roadmap.md](../work-in-progress/fatturazione-roadmap.md), [fatturazione-attivita-progetto.md](../work-in-progress/fatturazione-attivita-progetto.md)
 > * brief work-done: `brief-db-commesse-transizioni-stati.md`, `brief-db-commesse-multi-sorgente.md`, `brief-db-drop-uq-commesse-attivita-src-uid-partial.md`
 
 ---
@@ -200,9 +205,9 @@ mostrano solo un toast con `push_log_id`, **senza link alla commessa risultante*
 | # | Gap | Area | Impatto |
 |---|---|---|---|
 | 1 | Nessuno scheduler/cron + pipeline "uno step per run" (`steps[:1]`) | TRASVERSALE | La fatturazione non è autonoma: serve un driver che concateni gli step (vedi §7) |
-| 2 | ✅ **FATTO END-TO-END (2026-06-16)** — Snapshot pricing v5: il push popola gli 8 campi audit su `commesse_attivita` (`BaseSourceHandler._resolve_pricing_audit` via `PricingService`, senza sovrascrivere `prezzo_snapshot`; best-effort, cache per-run, whitelist `origine_prezzo` contro il CHECK, origine da meta prevale per i componenti). La **pull** `fn_emit_attivita_fatturabili_da_commessa` ora li **propaga 1:1** ad `attivita_fatturabili` (changeset DB `20260616-01`, brief [work-done/brief-db-propaga-snapshot-pricing-pull-commessa-af.md](../work-done/brief-db-propaga-snapshot-pricing-pull-commessa-af.md)). | BE✅ + DB✅ | Audit prezzo completo: push → commessa → emissione |
+| 2 | ✅ **FATTO END-TO-END (2026-06-16)** — Snapshot pricing v5: il push popola gli 8 campi audit su `commesse_attivita` (`BaseSourceHandler._resolve_pricing_audit` via `PricingService`, senza sovrascrivere `prezzo_snapshot`; best-effort, cache per-run, whitelist `origine_prezzo` contro il CHECK, origine da meta prevale per i componenti). La **pull** `fn_emit_attivita_fatturabili_da_commessa` ora li **propaga 1:1** ad `attivita_fatturabili` (changeset DB `20260616-01`, brief [work-done/brief-db-propaga-snapshot-pricing-pull-commessa-af.md](brief-db-propaga-snapshot-pricing-pull-commessa-af.md)). | BE✅ + DB✅ | Audit prezzo completo: push → commessa → emissione |
 | 3 | ✅ **COMPOSITI FATTI (2026-06-15)** — il fan-out BoM usa ora il **modello unico** `*_righe_componenti` per **tutti** i documenti: estratto `BaseSourceHandler._componenti_repo_factory` (staticmethod) → ordini/contratti/DDT leggono i componenti negoziati come preventivi (no DB, le tabelle + mixin esistevano già; nuovo `DdtRepository` minimale). 🛑 **Consumi utility (gas/energia/acqua/…) — RIMANDATO, NON si fa ora (decisione Tid 2026-06-16)**: `attivita_consumi` è un totale piatto senza `*_righe_componenti`; la decomposizione tariffaria (energia/trasporto/oneri/quota fissa/accise) è un **modello DB dedicato** da progettare quando la fatturazione utility per-voce diventerà priorità. Oggi un consumo entra in commessa come **riga singola** (`_fetch_componenti` resta stub documentato, nessun fan-out). | BE✅ compositi / 🛑 consumi rimandato | Compositi ok per ogni sorgente; decomposizione utility fuori scope ora |
-| 4 | ✅ **FATTO END-TO-END (2026-06-16)** — Governance ciclo di vita commessa. **DB**: `script.fn_available_actions_commessa` + seed transizioni `manuale=true` (chiudi/riapri/annulla, con UI hints) — brief [work-done/brief-db-fn-available-actions-commessa.md](../work-done/brief-db-fn-available-actions-commessa.md). **BE**: `CommesseRepository.get_capabilities`, `capabilities` in `ApiCommessaStato` GET, servizio `cambia_stato_commessa` con difesa applicativa (azione ∈ `available_actions`), endpoint `POST /commesse/<id>/stato/`, codice `E_COMMESSA_AZIONE_NON_AMMESSA` (409); 5 test (suite 958 verde). | DB✅ + BE✅ | CHIUSA/riapertura/ANNULLATA ora governabili da API |
+| 4 | ✅ **FATTO END-TO-END (2026-06-16)** — Governance ciclo di vita commessa. **DB**: `script.fn_available_actions_commessa` + seed transizioni `manuale=true` (chiudi/riapri/annulla, con UI hints) — brief [work-done/brief-db-fn-available-actions-commessa.md](brief-db-fn-available-actions-commessa.md). **BE**: `CommesseRepository.get_capabilities`, `capabilities` in `ApiCommessaStato` GET, servizio `cambia_stato_commessa` con difesa applicativa (azione ∈ `available_actions`), endpoint `POST /commesse/<id>/stato/`, codice `E_COMMESSA_AZIONE_NON_AMMESSA` (409); 5 test (suite 958 verde). | DB✅ + BE✅ | CHIUSA/riapertura/ANNULLATA ora governabili da API |
 | 5 | ✅ **RISOLTO (2026-06-15)** — `fn_get_commessa_stato` esponeva flag governance + molti contatori, ma il repo BE ne leggeva solo 3 | BE | Ora `ApiCommessaStato` propaga stato + flag + tutti i contatori (74 test verdi) |
 | 6 | ✅ **RISOLTO (2026-06-16)** — Discrepanza nome codice errore: il nome reale è `E_COMMESSA_STATO_TRANSIZIONE_INVALIDA` (472); il placeholder `E_COMMESSA_TRANSIZIONE_NON_AMMESSA` **non esiste** in codice/DB/test (compariva solo nel brief storico `work-done/brief-db-commesse-transizioni-stati.md`, ora annotato). Nessun fix codice necessario. | DB/doc | Allineato |
 
@@ -379,14 +384,15 @@ Quando servirà un flusso REALE con gate operativi/produzione, l'innesto è pron
    (ricetta timer + caveat RLS; attivazione = ops) (2026-06-15); **F5 ✅ soddisfatta dal
    riuso** (2026-06-15): osservabilità per-lotto già esposta (segnalazioni summary,
    task-runs, lista lotti, fatture lotto) + hold/sblocco (reset-draft) + report aggregato
-   del batch; **driver committato+pushato** (`c4a9797f7`). ⚠️ Prima di attivare la RLS
-   operatori: contesto di **sistema** per il batch (§10.4 F4 caveat, §9). *Unico gap BE
-   residuo opzionale*: persistenza/interrogazione dell'esito del run batch (oggi solo
-   stdout/stderr) — vedi §10.4 F5. **Monitor lotti FE rinviato** (§4.2).
+   del batch; **driver committato+pushato** (`c4a9797f7`). ✅ **Contesto di SISTEMA per il
+   batch (RLS Path A) COMPLETATO** (DB+BE, §9) e ✅ **persistenza esito run** in
+   `maintenance.job_run_log` via `registered_job` (§10.4 F5) — chiusi entrambi i residui.
+   Resta solo **ops** (password env + unit systemd) e lo **smoke live** a RLS *enforced*.
+   **Monitor lotti FE rinviato** (§4.2).
 4. **🟡 MEDIA — Popolare snapshot pricing v5 nel push** (§4.3 #2): ✅ **FATTO END-TO-END
    (2026-06-16)** — BE su `commesse_attivita` via `PricingService` + propagazione DB nella
    pull (changeset `20260616-01`, brief in
-   [work-done](../work-done/brief-db-propaga-snapshot-pricing-pull-commessa-af.md)).
+   [work-done](brief-db-propaga-snapshot-pricing-pull-commessa-af.md)).
 5. **🟡 MEDIA — Completare BoM/fan-out per sorgenti ≠ preventivo** (§4.3 #3): ✅ **FATTO
    (2026-06-15)** per i **compositi** (ordini/contratti/DDT) riusando il modello unico
    `*_righe_componenti` — **solo BE, nessun brief DB** (le tabelle/mixin esistevano già).
@@ -402,11 +408,11 @@ Quando servirà un flusso REALE con gate operativi/produzione, l'innesto è pron
    BE (`get_capabilities`, `capabilities` in `ApiCommessaStato`, servizio
    `cambia_stato_commessa` con difesa applicativa, `POST /commesse/<id>/stato/`,
    `E_COMMESSA_AZIONE_NON_AMMESSA`). Brief in
-   [work-done](../work-done/brief-db-fn-available-actions-commessa.md).
+   [work-done](brief-db-fn-available-actions-commessa.md).
 8. **🟢 BASSA — Allineare la documentazione** (§3): ✅ **FATTO (2026-06-16)** — guida
    [gestione-commesse.md](/guide/gestione-commesse) allineata (transizioni, ROOT/COLLEGATO,
    step pipeline reali, BoM snapshot, audit end-to-end); banner storico su
-   [gestione-commesse-v2.md](gestione-commesse-v2.md); naming codice errore (§4.3 #6) corretto.
+   [gestione-commesse-v2.md](../work-in-progress/gestione-commesse-v2.md); naming codice errore (§4.3 #6) corretto.
 9. **⏸️ RINVIATO (porta aperta) — UI gestione commesse** (§4.2, §7.4-7.5): non ora;
    utile per flussi con produzione. Eventuale **monitor lotti/anomalie** minimo potrà
    servire al driver §7.4 per hold/sblocco delle segnalazioni critical.
@@ -418,10 +424,10 @@ Quando servirà un flusso REALE con gate operativi/produzione, l'innesto è pron
 Brief al team DB (mai eseguite dal BE agent). Stato driver fatturazione:
 
 - ✅ **FATTO** — seed pipeline pull commessa→AF + corsia GIORNALIERO + `chiude_lotto`:
-  [brief-db-pipeline-pull-commessa-seed.md](../work-done/brief-db-pipeline-pull-commessa-seed.md).
+  [brief-db-pipeline-pull-commessa-seed.md](brief-db-pipeline-pull-commessa-seed.md).
 - ✅ **FATTO** — filtro `fatturazione_immediata` nella discovery emittibili
   (prerequisito Fase 3, §10.4):
-  [brief-db-emittibili-filtro-fatturazione-immediata.md](../work-done/brief-db-emittibili-filtro-fatturazione-immediata.md).
+  [brief-db-emittibili-filtro-fatturazione-immediata.md](brief-db-emittibili-filtro-fatturazione-immediata.md).
 
 Altri (solo se le relative voci di roadmap vengono approvate):
 
@@ -558,7 +564,7 @@ DEFINITIVA(numera) → INVIATA(prepare_sdi). Catalogo ordinato per `stato_doc_fi
 Prerequisito DB soddisfatto: `fn_list_commesse_emittibili` ora accetta
 `p_fatturazione_immediata` (true/false/NULL) ed espone la colonna (pushato su
 `dev/db-tid`, pgTAP verde — brief
-[brief-db-emittibili-filtro-fatturazione-immediata.md](../work-done/brief-db-emittibili-filtro-fatturazione-immediata.md)).
+[brief-db-emittibili-filtro-fatturazione-immediata.md](brief-db-emittibili-filtro-fatturazione-immediata.md)).
 - **Propagazione filtro (come da consiglio team DB: decide il driver, non l'handler)**:
   il command mette `fatturazione_immediata` nel **`meta` del lotto**; `get_lotto_context`
   lo espone (`LottoContext.fatturazione_immediata`); il pull
@@ -607,7 +613,7 @@ lo scheduling è config d'ambiente. F4 = ricetta + caveat RLS; l'attivazione la 
 > vuoti + INSERT lotto negato. **Prima dell'attivazione RLS** serve un **contesto di
 > sistema** per il batch (ruolo dedicato `BYPASSRLS` **oppure** `ruolo_applicativo='SISTEMA'`
 > + policy permissiva di sistema): decisione DB (brief) da fare insieme
-> all'[attivazione RLS operatori](../work-done/analisi-attivazione-rls-operatori-be-fe.md),
+> all'[attivazione RLS operatori](analisi-attivazione-rls-operatori-be-fe.md),
 > **non ora**.
 >
 > ✅ **RISOLTO (2026-06-17) — Path A**: ruolo DB dedicato `zeroerp_batch_fatturazione`
@@ -638,10 +644,15 @@ nuovo codice:
 - Report aggregato per `motivo_stop` emesso dal command `run_fatturazione_batch`
   (stdout/stderr) + `event_log`/`fatturazione_lotti_task_runs` popolati dalla pipeline.
 
-**Unico gap BE residuo (opzionale, non bloccante)**: l'esito del *run del batch* (per
-emittente: lotto, `motivo_stop`, bloccati su critical) è oggi solo su stdout/stderr e
-**non persistito/interrogabile** a livello di run. Migliorabile con una tabella di log
-batch (brief DB) + endpoint di lista — da fare solo se l'operatività lo richiede.
+**Gap BE residuo — ✅ CHIUSO (2026-06-18, registrazione run-level)**: l'esito del *run del
+batch* è ora **persistito** in `maintenance.job_run_log` (riga per esecuzione: start/end,
+esito, `meta` = riepilogo emittenti/falliti/per_motivo, `run_uuid` correlabile ai log di
+dominio in `vendite`). Building block generico `apps.core.services.job_run.registered_job`
+(riusabile da ogni cron) + funzioni DB `script.fn_job_run_start/end` (SECURITY DEFINER,
+anti-overlap advisory-lock per corsia). Brief DB
+[brief-db-job-run-registrazione.md](brief-db-job-run-registrazione.md) + design
+[brief-design-job-run-registrazione.md](brief-design-job-run-registrazione.md). *Eventuale
+endpoint di lista dei run = solo se l'operatività lo richiede.*
 
 Un **monitor lotti** FE resta **rinviato** (§4.2): valutarlo solo se l'operatività lo
 richiede.
@@ -652,7 +663,7 @@ La verifica seed (§10.4 F0) ha trovato gap che bloccavano il driver: brief al t
 (azioni di seed/config = DB, mai eseguite dal BE agent — memoria
 `feedback_db_actions_passaggio_team`). → ✅ **IMPLEMENTATO dal team DB (2026-06-15)**,
 pushato, pgTAP verde:
-[brief-db-pipeline-pull-commessa-seed.md §0](../work-done/brief-db-pipeline-pull-commessa-seed.md)
+[brief-db-pipeline-pull-commessa-seed.md §0](brief-db-pipeline-pull-commessa-seed.md)
 (contiene anche i **vincoli BE** per il driver: idempotenza `close_lotto_operativo` su
 DEFINITIVA ora `chiude_lotto`, e perimetro del pull dal `LottoContext`). Il prerequisito
 DB del driver (roadmap §8 #3) è **soddisfatto**. Contenuto richiesto (storico):

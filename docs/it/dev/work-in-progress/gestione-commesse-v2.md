@@ -3,7 +3,7 @@
 > **⚠️ DOCUMENTO STORICO (piano feb 2026) — leggere con questo cappello (agg. 2026-06-16).**
 > Le FASI 1-7 backend sono in larga parte **implementate**, ma alcune descrizioni qui
 > sono **superate**. Fonte autorevole sullo stato reale:
-> [analisi-commesse-stato-e-sviluppi.md](analisi-commesse-stato-e-sviluppi.md) +
+> [analisi-commesse-stato-e-sviluppi.md](../work-done/analisi-commesse-stato-e-sviluppi.md) +
 > guida [gestione-commesse.md](/guide/gestione-commesse) (rev. 2026-06-16).
 > Divergenze principali rispetto a quanto scritto sotto:
 > - **Niente colonna `stato` testuale**: lo stato vive solo nella FK `stato_commessa_id`

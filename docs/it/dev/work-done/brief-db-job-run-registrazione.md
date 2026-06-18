@@ -2,9 +2,12 @@
 
 > **Tipo documento**: brief operativo **per il team DB** (canale `dev/db-tid`).
 > **Priorità**: 🟢 normale — prerequisito per il lavoro BE (che attende colonne + funzioni).
-> **Data**: 2026-06-17 · **Stato**: 🟢 **Lato DB COMPLETATO** (J1–J7): changeset applicati
-> su dbdev, **pgTAP verdi**, doc tabella/funzioni + guida aggiornate. Resta il **BE**
-> (`registered_job` + wiring `run_fatturazione_batch`).
+> **Data**: 2026-06-17 · **Stato**: 🟢 **COMPLETATO (DB + BE)**. **DB (J1–J7)**: changeset
+> applicati su dbdev, **pgTAP verdi**, doc tabella/funzioni + guida aggiornate. **BE
+> (2026-06-18)**: building block `apps.core.services.job_run.registered_job` +
+> wiring `run_fatturazione_batch` (registrazione dentro `system_process_context`,
+> dry-run escluso, `meta` = riepilogo) + test (suite core+vendite verde, 1065). Dettaglio
+> BE in [brief-design-job-run-registrazione.md §6](brief-design-job-run-registrazione.md).
 >
 > **Decisioni prese (2026-06-17)**:
 >
