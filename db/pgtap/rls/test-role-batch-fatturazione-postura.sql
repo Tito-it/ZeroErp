@@ -26,7 +26,7 @@
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(11);
+SELECT plan(14);
 
 -- Perimetro di scrittura atteso (allineato al provisioning)
 CREATE TEMP TABLE _perimeter (nspname TEXT, relname TEXT) ON COMMIT DROP;
@@ -125,6 +125,25 @@ SELECT ok(
 SELECT ok(
     NOT has_table_privilege('zeroerp_batch_fatturazione', 'vendite.ordini', 'INSERT'),
     'zeroerp_batch_fatturazione: NESSUN INSERT su vendite.ordini (fail-loud)'
+);
+
+-- 12..13: canale run-log (J2/J3) — EXECUTE sulle funzioni SECURITY DEFINER in script
+-- (il ruolo le ottiene via il broad GRANT EXECUTE su schema script del provisioning)
+SELECT ok(
+    has_function_privilege('zeroerp_batch_fatturazione',
+        'script.fn_job_run_start(text,text,text,text,text)', 'EXECUTE'),
+    'zeroerp_batch_fatturazione: EXECUTE su script.fn_job_run_start'
+);
+SELECT ok(
+    has_function_privilege('zeroerp_batch_fatturazione',
+        'script.fn_job_run_end(bigint,boolean,text,bigint,text,text,jsonb,text)', 'EXECUTE'),
+    'zeroerp_batch_fatturazione: EXECUTE su script.fn_job_run_end'
+);
+
+-- 14: NESSUN DML diretto su maintenance.job_run_log (scrive solo via le funzioni)
+SELECT ok(
+    NOT has_table_privilege('zeroerp_batch_fatturazione', 'maintenance.job_run_log', 'INSERT'),
+    'zeroerp_batch_fatturazione: NESSUN INSERT diretto su maintenance.job_run_log'
 );
 
 SELECT * FROM finish();

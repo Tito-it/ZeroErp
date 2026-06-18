@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# J2 — script.fn_job_run_start: apre un run nel registro generico job headless.
+#
+# Vedi brief-db-job-run-registrazione.md §3. Note di design:
+#  - SCHEMA script (non maintenance): i ruoli batch/app hanno gia' USAGE+EXECUTE
+#    su script -> nessun GRANT nuovo, nessuna apertura di maintenance.
+#  - SECURITY DEFINER (owner = owner DDL, che possiede maintenance.job_run_log):
+#    il chiamante non ha bisogno di DML diretto sulla tabella.
+#  - search_path FISSO (pg_catalog, pg_temp) + tabella fully-qualified: nessuna
+#    dipendenza dal path del chiamante (hardening SECURITY DEFINER).
+#  - origine validata dal CHECK colonna (chk_job_run_log_origine): nessun guard
+#    ridondante con RAISE testo-libero.
+#  - Advisory lock a DUE chiavi (classid fisso headless + hashtext(lock_key)):
+#    namespace praticamente separato dai lock bigint di fn_run_and_log.
+#  - REVOKE EXECUTE FROM PUBLIC (defense-in-depth; il gate resta USAGE su script).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260618-02-create-fn-job-run-start-mctit.yaml
+
+  - changeSet:
+      id: 20260618-02-create-fn-job-run-start
+      author: mctit
+      runOnChange: false
+      validCheckSum: [ANY]
+      comment: >
+        J2: script.fn_job_run_start(jobname, origine, stepname, lock_key, agent_host)
+        -> (id, run_uuid, acquired). Apre una riga in maintenance.job_run_log per i
+        job headless; advisory lock di sessione opzionale (anti-overlap). SECURITY
+        DEFINER, search_path fisso, REVOKE da PUBLIC.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists:
+              schemaName: maintenance
+              tableName: job_run_log
+              columnName: origine
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_job_run_start(
+                  p_jobname    maintenance.job_run_log.jobname%TYPE,
+                  p_origine    text DEFAULT 'CRON',   -- text e non origine%TYPE: i parametri non portano il typmod (varchar(16)) e il valore e' gia' vincolato dal CHECK colonna
+                  p_stepname   maintenance.job_run_log.stepname%TYPE DEFAULT NULL,
+                  p_lock_key   text DEFAULT NULL,     -- identita logica del job: non e' una colonna
+                  p_agent_host maintenance.job_run_log.agent_host%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE(
+                  id       maintenance.job_run_log.id%TYPE,
+                  run_uuid maintenance.job_run_log.run_uuid%TYPE,
+                  acquired boolean
+              )
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, pg_temp
+              AS $function$
+              DECLARE
+                c_lock_class constant int := hashtext('zeroerp:job_run_log');  -- namespace lock headless
+                v_acquired boolean := true;
+                v_id   maintenance.job_run_log.id%TYPE;
+                v_uuid maintenance.job_run_log.run_uuid%TYPE;
+              BEGIN
+                -- origine e' validata dal CHECK colonna (chk_job_run_log_origine) all'INSERT.
+                IF p_lock_key IS NOT NULL THEN
+                  v_acquired := pg_try_advisory_lock(c_lock_class, hashtext(p_lock_key));
+                  IF NOT v_acquired THEN
+                    INSERT INTO maintenance.job_run_log
+                        (jobname, stepname, origine, ok, ended_at, message, agent_host)
+                    VALUES (p_jobname, p_stepname, p_origine, TRUE, clock_timestamp(),
+                            'skip: another run in progress',
+                            COALESCE(p_agent_host, inet_client_addr()::text))
+                    RETURNING job_run_log.id, job_run_log.run_uuid INTO v_id, v_uuid;
+                    RETURN QUERY SELECT v_id, v_uuid, FALSE;
+                    RETURN;
+                  END IF;
+                END IF;
+
+                INSERT INTO maintenance.job_run_log
+                    (jobname, stepname, origine, agent_host)
+                VALUES (p_jobname, p_stepname, p_origine,
+                        COALESCE(p_agent_host, inet_client_addr()::text))
+                RETURNING job_run_log.id, job_run_log.run_uuid INTO v_id, v_uuid;
+                RETURN QUERY SELECT v_id, v_uuid, TRUE;
+              END;
+              $function$;
+
+              REVOKE EXECUTE ON FUNCTION
+                script.fn_job_run_start(text, text, text, text, text)
+              FROM PUBLIC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS
+                script.fn_job_run_start(text, text, text, text, text);

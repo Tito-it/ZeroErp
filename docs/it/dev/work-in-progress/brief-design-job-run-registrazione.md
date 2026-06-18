@@ -4,8 +4,14 @@
 > Il cambio schema/funzioni è delegato al team DB →
 > [brief-db-job-run-registrazione.md](brief-db-job-run-registrazione.md).
 >
-> **Data**: 2026-06-17 · **Stato**: 🟡 design concordato con Tid — DB da applicare,
-> poi BE (regola prerequisiti DB).
+> **Data**: 2026-06-17 · **Stato**: 🟢 **DB applicato** (colonne + funzioni `script.fn_job_run_*`,
+> pgTAP verdi, doc aggiornata — vedi [brief DB §7](brief-db-job-run-registrazione.md)). Resta
+> il **BE**: `registered_job` + wiring `run_fatturazione_batch` (§6).
+>
+> **Decisioni (2026-06-17)**: **(a)** le funzioni `fn_job_run_start/end` vivono in
+> **`script`** (non `maintenance`) — i ruoli batch/app hanno già `USAGE`+`EXECUTE` su
+> `script`, niente apertura di `maintenance`; **(b)** `fn_run_and_log` **lasciata
+> invariata** (no refactor DRY). Dettagli/razionale: [brief DB §2-§5](brief-db-job-run-registrazione.md).
 >
 > **Origine**: residuo F5 di [analisi-commesse-stato-e-sviluppi.md](analisi-commesse-stato-e-sviluppi.md)
 > §10.4 ("l'esito del *run* del batch è solo su stdout/stderr, non persistito").
@@ -110,11 +116,11 @@ riusando l'advisory-lock già in `fn_run_and_log`.
 1. **Building block generico** `apps/core/services/job_run.py` — context manager
    `registered_job(job_name, *, origine='CRON', stepname=None, lock_key=None,
    agent_host=None)`:
-   - all'ingresso chiama `maintenance.fn_job_run_start(...)` → `{id, run_uuid, acquired}`;
+   - all'ingresso chiama `script.fn_job_run_start(...)` → `{id, run_uuid, acquired}`;
      se `acquired=False` (lock occupato) la riga "skip" è già loggata a DB e il CM espone
      `job.acquired=False` (il caller salta il corpo);
    - espone `job.run_uuid` (per correlare i log di dominio) e `job.set_meta(dict)`;
-   - all'uscita chiama `maintenance.fn_job_run_end(id, ok, message, rows, error_code,
+   - all'uscita chiama `script.fn_job_run_end(id, ok, message, rows, error_code,
      error_detail, meta)`: `ok=False` + `error_*` se è uscito per eccezione, poi rilancia.
    Riusabile da **qualsiasi** futuro command/cron (no accoppiamento fatturazione).
 2. **Integrazione in `run_fatturazione_batch`**: avvolgere il corpo (dentro
@@ -127,8 +133,9 @@ riusando l'advisory-lock già in `fn_run_and_log`.
 
 ## 7. Rollout / ordine
 
-DB (2 colonne + 2 funzioni start/end + refactor opzionale `fn_run_and_log` per DRY +
-GRANT al ruolo batch + pgTAP) → BE (`registered_job` + wiring command + test) →
+DB (2 colonne + 2 funzioni start/end **in `script`** + pgTAP; `fn_run_and_log` **invariata**;
+nessun GRANT nuovo — il ruolo batch ha già `EXECUTE` su `script`) → BE (`registered_job` +
+wiring command + test) →
 DOC (aggiornare la [guida processi e job](/guide/analisi-tracciamento-processi-e-job):
 `job_run_log` da "esecuzioni pgAgent" → "esecuzioni job schedulati: pgAgent + cron/command",
 colonna `origine`, le 2 nuove funzioni).
