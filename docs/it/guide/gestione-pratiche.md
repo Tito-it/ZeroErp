@@ -139,6 +139,10 @@ Ogni tipo prestazione ha un insieme di **template flussi** che definiscono gli s
 * **modalita_esito**: come si registra l'esito dello step — `MANUALE` (default: l'operatore avvia, poi sceglie l'esito a mano), `AUTOMATICO` (lo step si avvia e si chiude da solo con un esito predefinito, senza scelta umana), `CONTESTUALE` (l'operatore avvia e conferma l'esito in un'unica azione, con un valore gia' pre-impostato e modificabile)
 * **esito_default**: l'esito predefinito applicato (AUTOMATICO) o pre-selezionato (CONTESTUALE). Obbligatorio quando `modalita_esito` non e' `MANUALE`. `AUTOMATICO` e' ammesso **solo** per gli step a direzione INTERNA: un esito automatico su uno step ENTRATA/USCITA equivarrebbe a fabbricare la risposta di una controparte esterna
 
+> 📖 **Come si configura nel concreto** (creare uno step, scegliere la modalità esito,
+> automazioni, esempi): [Pratiche — Configurazione e opzioni del workflow](gestione-pratiche-configurazione.md).
+> Appendice operativa che cresce con le funzionalità di configurazione.
+
 ### 3. I prerequisiti: il grafo del workflow
 
 La tabella [`template_flussi_prerequisiti`](/dbzero/pratiche/tabelle/template_flussi_prerequisiti) definisce le dipendenze tra flussi:

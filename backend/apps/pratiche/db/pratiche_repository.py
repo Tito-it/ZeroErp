@@ -550,12 +550,30 @@ class PraticheRepository:
             FROM pratiche.giornale
             WHERE pratica_id = %s
         """
+        # Display fields (no lookup client-side): descrizione del flusso a cui
+        # l'evento si riferisce (giornale.flusso_id → template) e decode degli
+        # stati della transizione FLUSSO_STATO_CAMBIATO (dettaglio jsonb porta gli
+        # id). Il decode stati usa config.stati_flussi_pratiche SOLO per gli eventi
+        # di flusso (g.flusso_id NOT NULL): gli eventi di pratica (flusso_id NULL)
+        # referenziano un'altra tabella stati → niente join fuorviante.
         data_sql = """
             SELECT
                 g.id, g.pratica_id, g.flusso_id, g.azione,
                 g.origine, g.dettaglio, g.tx_id,
-                g.data_insert, g.user_insert
+                g.data_insert, g.user_insert,
+                tf.codice AS flusso_template_codice,
+                tf.descrizione AS flusso_template_descrizione,
+                sp.descrizione AS dettaglio_stato_precedente,
+                sn.descrizione AS dettaglio_stato_nuovo
             FROM pratiche.giornale g
+            LEFT JOIN pratiche.flussi f ON f.id = g.flusso_id
+            LEFT JOIN pratiche.template_flussi tf ON tf.id = f.template_flusso_id
+            LEFT JOIN config.stati_flussi_pratiche sp
+                ON g.flusso_id IS NOT NULL
+               AND sp.id = NULLIF(g.dettaglio->>'stato_precedente_id', '')::int
+            LEFT JOIN config.stati_flussi_pratiche sn
+                ON g.flusso_id IS NOT NULL
+               AND sn.id = NULLIF(g.dettaglio->>'stato_nuovo_id', '')::int
             WHERE g.pratica_id = %s
             ORDER BY g.data_insert DESC, g.id DESC
             LIMIT %s OFFSET %s
