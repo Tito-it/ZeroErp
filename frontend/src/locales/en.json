@@ -2641,6 +2641,8 @@
     "flusso_col_template": "Template",
     "flusso_col_esito": "Outcome",
     "flusso_avvia": "Start flow",
+    "flusso_avvia_e_completa": "Start and complete",
+    "flusso_avvia_e_registra_esito": "Start and record outcome",
     "flusso_apri_preventivo": "Open quote",
     "preventivo_collegato": "Quote linked to the case",
     "percorso_titolo": "Path",

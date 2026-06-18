@@ -785,13 +785,16 @@ a {
  * Sono operazioni di lettura (non modificano dati) e bloccarle rende
  * l'UI inutilizzabile su liste lunghe. La protezione resta attiva sui
  * form di scrittura (form-field, button salva, ecc.).
- * `p-tab` (tab navigation PrimeVue): cambio sezione = navigazione, non
- * azione di scrittura. Bloccarlo rende invisibili contenuti accessibili
- * solo da tab (es. drawer offerta tab "Revisioni" in readonly). */
+ * tab navigation PrimeVue: cambio sezione = navigazione, non azione di
+ * scrittura. Bloccarla rende inaccessibili contenuti raggiungibili solo da
+ * tab (es. drawer offerta tab "Revisioni", drawer pratica chiusa tutte le tab).
+ * Coprire ENTRAMBE le API: `p-tab` (nuova Tabs/Tab) e `p-tabview-tab-header`
+ * (legacy TabView/TabPanel, usata es. da PraticaDrawer). */
 .app-readonly .app-page-filters,
 .app-readonly .p-paginator,
 .app-readonly .p-datatable-thead,
-.app-readonly .p-tab {
+.app-readonly .p-tab,
+.app-readonly .p-tabview-tab-header {
   pointer-events: auto;
   opacity: 1;
 }

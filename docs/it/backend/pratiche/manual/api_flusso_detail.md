@@ -32,11 +32,19 @@ Endpoint di sola lettura su `pratiche.flussi`. Utilizza il pattern `_get_flusso_
     "note_esito": "Tutto ok",
     "data_scadenza": null,
     "meta": {},
+    "template_modalita_esito": "CONTESTUALE",
+    "template_esito_default": "POSITIVO",
     "data_insert": "2026-03-04T10:00:00+00:00",
     "user_insert": "zeroerp"
   }
 }
 ```
+
+> Oltre ai campi tabella, la proiezione include display fields dal template e dalla
+> pratica (`template_flusso_codice`/`_descrizione`, `stato_codice_interno`,
+> `template_azione_ui_key`, `pratica_*`). Dal 2026-06-17 espone anche
+> `template_modalita_esito` e `template_esito_default` (config esito dello step,
+> consumati dal `FlussoDrawer` FE — vedi [api_flusso_stato](api_flusso_stato.md)).
 
 - `400`: flusso non appartiene alla pratica (`E_FLUSSO_OWNERSHIP`)
 - `401`: JWT mancante o non valido

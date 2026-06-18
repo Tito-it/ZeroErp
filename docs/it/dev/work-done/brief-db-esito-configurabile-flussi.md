@@ -2,7 +2,9 @@
 
 > **Tipo documento**: brief operativo **per il team DB** (canale `dev/db-tid`).
 > **Priorità**: 🟢 normale — prerequisito per il lavoro BE/FE (che attende le colonne).
-> **Data**: 2026-06-17 · **Stato**: 🟢 DB scritto — pgTAP verdi (10/10), da applicare/rigenerare autogen.
+> **Data**: 2026-06-17 · **Stato**: 🟢 **DB applicato** (commit `28b7f3b5c`, pgTAP
+> 10/10) · **BE + FE implementati e verdi** (vedi
+> [brief-design §11](brief-design-esito-configurabile-flussi.md)). Resta lo smoke in-app.
 >
 > **Decisione §4 (codice errore parlante)**: scelta **opzione (b) — guard**. I CHECK sulle
 > colonne sono di **solo dominio**; le due invarianti di coerenza (Inv1 `esito_default`
@@ -17,7 +19,11 @@
 > `80_data/sql/config/messaggi_errore.csv` (ripresi dal loader runOnChange esistente
 > `20250717-22`, **nessun nuovo changeset**) · seed §6 `80_data/.../20260617-04-upsert-template-flussi-preventivi-esito`
 > (+ CSV `template_flussi_esito_config.csv`) · pgTAP `db/pgtap/pratiche/test-esito-configurabile-template-flussi.sql`.
-> **Aperto**: rigenerare `changelog-autogen.yaml` (`python scripts/gen_master_autogen.py --root db/changelog/migrations_v2`); lavoro BE/FE.
+> **Fatto dopo la stesura**: DB applicato (`28b7f3b5c`); **BE** (proiezioni +
+> `avvia_flusso` auto-esito + `avvia_e_completa_flusso` CONTESTUALE + endpoint +
+> `get_flusso_esito_config` + 163 test) e **FE** (`FlussoDrawer` 3 modalità + i18n)
+> implementati e verdi. Doc API aggiornate (`api_flusso_stato`, `pratiche_service`,
+> `api_flusso_detail`). **Aperto**: smoke in-app.
 >
 > **Design autorevole**: [brief-design-esito-configurabile-flussi.md](brief-design-esito-configurabile-flussi.md)
 > (modello, razionale invarianti, piano BE/FE). Questo brief contiene **solo** ciò che
