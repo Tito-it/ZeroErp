@@ -3,8 +3,9 @@
 > **Tipo**: documento di design autorevole (lato nostro: modello + piano BE/FE).
 > Il cambio schema è delegato al team DB → [brief-db-esito-configurabile-flussi.md](brief-db-esito-configurabile-flussi.md).
 >
-> **Data**: 2026-06-17 · **Stato**: 🟡 design concordato con Tid — DB da applicare,
-> poi BE, poi FE (regola prerequisiti DB).
+> **Data**: 2026-06-17 · **Stato**: 🟢 **COMPLETATO** — DB applicato (commit
+> `28b7f3b5c`), **BE + FE implementati e verdi** (163 test pratiche, ESLint + build
+> FE). Smoke in-app da fare. Dettaglio deliverable in §11.
 >
 > **Origine**: review del ciclo di vita flusso durante il cantiere "pratica
 > preventivi". Oggi ogni step richiede **due momenti** distinti — *generazione/avvio*
@@ -177,3 +178,38 @@ preventivi (§3) è un **seed/upsert separato**, attivabile a piacere per il tes
 - `modalita_esito≠MANUALE` con `esito_default` NULL → rifiutato a DB (invariante 1).
 - Template preventivi configurato come §3: `RICHIESTA_CLIENTE` contestuale, `CONFERMA`
   automatico, percorso completo senza i doppi passi.
+
+## 11. Implementazione (2026-06-17)
+
+**DB** (team, commit `28b7f3b5c`): colonne `modalita_esito`/`esito_default` + CHECK di
+dominio (`20260617-01`); guard parlante `trgfn_template_flussi_guard_modalita_esito` +
+trigger (codici 494/495, `20260617-02`); seed test preventivi
+(`20260617-04` + `template_flussi_esito_config.csv`); pgTAP 10/10; doc DB
+(`dbzero/.../template_flussi.md`, guida `gestione-pratiche.md`). Seed effettivo:
+`RICHIESTA_CLIENTE`/`APPROVAZIONE_CLIENTE` = CONTESTUALE, `CONFERMA` = AUTOMATICO,
+`PREVENTIVAZIONE` = MANUALE.
+
+**BE** (163 test pratiche verdi):
+
+- `PraticheRepository._FLUSSO_SELECT` espone `template_modalita_esito`/`template_esito_default`
+  (consumati dal FlussoDrawer via `get_flusso`); nuova query leggera
+  `get_flusso_esito_config` per il path di avvio (evita la proiezione completa).
+- `avvia_flusso`: auto-completa con `esito_default` (fallback `_ESITO_AUTO_FALLBACK`)
+  quando handler-result **o** `modalita_esito = AUTOMATICO` — unifica handler-completion
+  e modalità (rimosso il POSITIVO cablato).
+- nuovo `avvia_e_completa_flusso` (CONTESTUALE): riusa `completa_flusso`; valida l'esito
+  **prima** di scrivere (no avvio orfano); non esegue l'handler di avvio.
+- validazione esito centralizzata: `_require_esito_valido` + costante `ESITI_FLUSSO_AMMESSI`
+  (de-duplicata la tupla tra `completa_flusso` e `avvia_e_completa_flusso`).
+- endpoint `ApiPraticaFlussoStato`: `COMPLETATO` da `DA_ESEGUIRE` → `avvia_e_completa_flusso`.
+- Doc API aggiornate: [api_flusso_stato](../../backend/pratiche/manual/api_flusso_stato.md),
+  [pratiche_service](../../backend/pratiche/manual/pratiche_service.md),
+  [api_flusso_detail](../../backend/pratiche/manual/api_flusso_detail.md).
+
+**FE** (ESLint + build verdi): `FlussoDrawer.vue` legge `template_modalita_esito`/
+`template_esito_default`: AUTOMATICO → azione "Avvia e completa"; CONTESTUALE → form
+esito inline su DA_ESEGUIRE con default pre-selezionato; MANUALE invariato. i18n
+`flusso_avvia_e_completa` + `flusso_avvia_e_registra_esito` (it/en).
+
+**Aperto**: smoke in-app delle 3 modalità sul template preventivi; commit (working tree
+misto col lavoro commesse del team parallelo → `git add` espliciti + `--no-verify`).

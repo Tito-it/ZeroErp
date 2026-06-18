@@ -39,7 +39,13 @@ _SVC = "apps.pratiche.services.pratiche_service"
 _ATOMIC = "django.db.transaction.Atomic"
 
 
-def _mock_flusso_row(flusso_id: int = 1, *, template_flusso_id: int | None = 10) -> dict:
+def _mock_flusso_row(
+    flusso_id: int = 1,
+    *,
+    template_flusso_id: int | None = 10,
+    modalita_esito: str = "MANUALE",
+    esito_default: str | None = None,
+) -> dict:
     """Genera una FlussoRow fittizia per i test."""
     return {
         "id": flusso_id,
@@ -54,6 +60,8 @@ def _mock_flusso_row(flusso_id: int = 1, *, template_flusso_id: int | None = 10)
         "note_esito": None,
         "data_scadenza": None,
         "meta": {"chiave": "valore"},
+        "template_modalita_esito": modalita_esito,
+        "template_esito_default": esito_default,
         "data_insert": "2026-03-04T10:00:00+00:00",
         "user_insert": "test_user",
     }
@@ -108,6 +116,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         repo = MockRepo.return_value
         # Flusso senza handler (template None): avvia esegue solo IN_CORSO;
         # dispatch_handler ritorna None e non completa il flusso.
+        repo.get_flusso_esito_config.return_value = ("MANUALE", None)
         repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=None)
 
         pratiche_service.avvia_flusso(1)
@@ -119,6 +128,85 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.avvia_flusso(0)
         self.assertEqual(ctx.exception.code, "E_INVALID_ID")
+
+    # Scopo: modalita AUTOMATICO senza handler — avvia+completa con esito_default
+    # in un colpo (DA_ESEGUIRE → IN_CORSO → COMPLETATO), senza scelta umana.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_avvia_flusso_automatico_senza_handler(self, MockRepo):
+        from unittest.mock import call
+
+        repo = MockRepo.return_value
+        repo.get_flusso_esito_config.return_value = ("AUTOMATICO", "POSITIVO")
+        # dispatch_handler/eventi: nessun handler (template None) → no-op.
+        repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=None)
+
+        pratiche_service.avvia_flusso(1)
+
+        repo.update_stato_flusso.assert_has_calls([
+            call(1, "IN_CORSO"),
+            call(1, "COMPLETATO", esito="POSITIVO"),
+        ])
+
+    # Scopo: AUTOMATICO con handler — la auto-chiusura usa esito_default (NON il
+    # vecchio POSITIVO cablato): qui esito_default=PARZIALE → COMPLETATO+PARZIALE.
+    @patch("apps.pratiche.services.handler_registry.get_handler")
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_avvia_flusso_automatico_handler_usa_esito_default(self, MockRepo, mock_get_handler):
+        from unittest.mock import call
+
+        repo = MockRepo.return_value
+        repo.get_flusso_esito_config.return_value = ("AUTOMATICO", "PARZIALE")
+        repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=9004)
+        repo.get_handler_info.return_value = ("vendita.push_preventivo", {})
+        repo.get_handler_eventi.return_value = []
+        handler_instance = MagicMock()
+        handler_instance.execute.return_value = {"risultato": "ok"}
+        mock_get_handler.return_value = MagicMock(return_value=handler_instance)
+
+        pratiche_service.avvia_flusso(1)
+
+        repo.update_stato_flusso.assert_has_calls([
+            call(1, "IN_CORSO"),
+            call(1, "COMPLETATO", esito="PARZIALE"),
+        ])
+        repo.get_handler_eventi.assert_called_once_with(9004, "COMPLETATO", "PARZIALE")
+
+    # Scopo: MANUALE senza handler — solo IN_CORSO, nessuna auto-chiusura
+    # (l'esito lo registra l'operatore dopo). Regressione del comportamento odierno.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_avvia_flusso_manuale_non_completa(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_flusso_esito_config.return_value = ("MANUALE", None)
+        repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=None)
+
+        pratiche_service.avvia_flusso(1)
+
+        repo.update_stato_flusso.assert_called_once_with(1, "IN_CORSO")
+
+    # Scopo: modalita CONTESTUALE — avvia_e_completa_flusso porta DA_ESEGUIRE →
+    # IN_CORSO → COMPLETATO con l'esito scelto dall'operatore, stessa transazione.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_avvia_e_completa_flusso_ok(self, MockRepo):
+        from unittest.mock import call
+
+        repo = MockRepo.return_value
+        repo.get_flusso.return_value = _mock_flusso_row(
+            1, template_flusso_id=None, modalita_esito="CONTESTUALE", esito_default="POSITIVO",
+        )
+        repo.get_handler_eventi.return_value = []
+
+        pratiche_service.avvia_e_completa_flusso(1, esito="POSITIVO", note_esito="ok", user="op1")
+
+        repo.update_stato_flusso.assert_has_calls([
+            call(1, "IN_CORSO"),
+            call(1, "COMPLETATO", esito="POSITIVO", note_esito="ok"),
+        ])
+
+    # Scopo: CONTESTUALE — esito fuori dominio → E_FLUSSO_VALIDATION fail-fast.
+    def test_avvia_e_completa_flusso_esito_non_valido(self):
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.avvia_e_completa_flusso(1, esito="INVALIDO")
+        self.assertEqual(ctx.exception.code, "E_FLUSSO_VALIDATION")
 
     # Scopo: Verifica completamento flusso con esito POSITIVO. Nessun binding
     # evento → dispatch_handler_eventi e' un no-op (get_handler_eventi → []).
@@ -284,6 +372,7 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         from django.db import DatabaseError
 
         repo = MockRepo.return_value
+        repo.get_flusso_esito_config.return_value = ("MANUALE", None)
         repo.update_stato_flusso.side_effect = DatabaseError(
             "Impossibile modificare il flusso: la pratica e' in stato terminale (ANNULLATA).",
         )

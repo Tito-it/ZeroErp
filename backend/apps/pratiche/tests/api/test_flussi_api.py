@@ -35,12 +35,19 @@ _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _VIEWS = "apps.pratiche.api.views"
 
 
-def _mock_flusso_row(flusso_id: int = 1, *, pratica_id: int = 1, template_flusso_id: int | None = 10) -> dict:
+def _mock_flusso_row(
+    flusso_id: int = 1,
+    *,
+    pratica_id: int = 1,
+    template_flusso_id: int | None = 10,
+    stato_codice_interno: str | None = None,
+) -> dict:
     return {
         "id": flusso_id,
         "pratica_id": pratica_id,
         "template_flusso_id": template_flusso_id,
         "stato_id": 1,
+        "stato_codice_interno": stato_codice_interno,
         "flusso_padre_id": None,
         "risorsa_umana_id": None,
         "unita_organizzativa_id": None,
@@ -134,6 +141,33 @@ class FlussiApiTests(JwtMockedApiTest):
         mock_completa.assert_called_once_with(
             5, esito="POSITIVO", note_esito="Tutto ok", user=ANY,
         )
+
+    # Scopo: CONTESTUALE — COMPLETATO da DA_ESEGUIRE instrada ad avvia_e_completa
+    # (avvio + esito in un'unica azione), non a completa_flusso.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.avvia_e_completa_flusso")
+    @patch(f"{_VIEWS}.pratiche_service.completa_flusso")
+    @patch(f"{_VIEWS}.PraticheRepository")
+    def test_post_stato_flusso_completamento_contestuale(self, MockRepo, mock_completa, mock_avvia_e_completa, _auth):
+        repo = MockRepo.return_value
+        repo.get_flusso.return_value = _mock_flusso_row(
+            5, pratica_id=1, stato_codice_interno="DA_ESEGUIRE",
+        )
+
+        response = self.client.post(
+            "/api/v1/pratiche/1/flussi/5/stato/",
+            data=json.dumps({
+                "nuovo_stato": "COMPLETATO",
+                "esito": "POSITIVO",
+                "note_esito": "ok",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        mock_avvia_e_completa.assert_called_once_with(
+            5, esito="POSITIVO", note_esito="ok", user=ANY,
+        )
+        mock_completa.assert_not_called()
 
     # Scopo: Verifica POST avvio flusso (IN_CORSO).
     @patch(_AUTH, return_value=(Mock(), None))

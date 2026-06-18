@@ -313,6 +313,12 @@ class PraticheRepository:
         sf.descrizione AS stato_descrizione,
         tf.codice AS template_flusso_codice,
         tf.descrizione AS template_flusso_descrizione,
+        -- Configurazione esito dello step (20260617-01): governa come il FE
+        -- (FlussoDrawer) presenta avvio/completamento. MANUALE = avvio poi form
+        -- esito; AUTOMATICO = avvia+completa con esito_default; CONTESTUALE =
+        -- avvio+esito in un'unica azione (esito_default pre-selezionato).
+        tf.modalita_esito AS template_modalita_esito,
+        tf.esito_default AS template_esito_default,
         -- Attività UI data-driven (catalogo pratiche.azioni_ui): chiave risolta
         -- dal registry FE → drawer di dominio da aprire dal flusso. NULL = nessuna.
         au.azione_ui_key AS template_azione_ui_key,
@@ -356,6 +362,26 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [flusso_id])
             return row_to_dict(cursor)
+
+    # Scopo: Config esito dello step (modalita_esito + esito_default dal template).
+    # Query leggera per il path di avvio (evita la proiezione completa di get_flusso,
+    # che fa JOIN soggetti/azioni_ui + fn BA per soli 2 campi). Ritorna
+    # (modalita_esito, esito_default) o None se il flusso non esiste; template
+    # assente (flusso legacy senza template) → modalita MANUALE.
+    def get_flusso_esito_config(self, flusso_id: int) -> tuple[str, str | None] | None:
+        sql = """
+            SELECT COALESCE(tf.modalita_esito, 'MANUALE') AS modalita_esito,
+                   tf.esito_default
+            FROM pratiche.flussi f
+            LEFT JOIN pratiche.template_flussi tf ON tf.id = f.template_flusso_id
+            WHERE f.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [flusso_id])
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        return (row[0], row[1])
 
     # Scopo: Percorso suggerito della pratica = template_flussi del suo
     #        tipo_prestazione (in ordine), LEFT JOIN i flussi gia' istanziati.

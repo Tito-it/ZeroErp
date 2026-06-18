@@ -52,6 +52,25 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
     ("FLUSSI_ESITO_OBBLIGATORIO", "Esito obbligatorio per completare il flusso"),
 )
 
+# Esiti ammessi per un flusso: mirror applicativo del CHECK DB chk_flussi_esito.
+# Single source per la validazione fail-fast (completa/avvia_e_completa).
+ESITI_FLUSSO_AMMESSI = ("POSITIVO", "NEGATIVO", "PARZIALE", "NON_APPLICABILE")
+
+# Esito implicito dell'auto-completamento per gli step con handler ma senza
+# esito_default (retro-compatibilita' col vecchio POSITIVO cablato). Per gli step
+# AUTOMATICO l'esito_default e' garantito NOT NULL dal guard DB (Inv1) → questo
+# fallback li riguarda solo in assenza di configurazione.
+_ESITO_AUTO_FALLBACK = "POSITIVO"
+
+
+# Scopo: Guard fail-fast sull'esito di un flusso (dominio chk_flussi_esito).
+def _require_esito_valido(esito: str) -> None:
+    ErrorManager.require(
+        esito in ESITI_FLUSSO_AMMESSI,
+        code="E_FLUSSO_VALIDATION",
+        message=f"Esito non valido: {esito}",
+    )
+
 
 # Scopo: Traduce i DatabaseError dei guard workflow v2 in ServiceError parlante
 # (codice del catalogo DB + policy registrata). Errori non riconosciuti
@@ -373,8 +392,8 @@ def crea_flusso(
 
 
 # Scopo: Transizione flusso DA_ESEGUIRE → IN_CORSO; se il template ha un handler
-# lo esegue e completa il flusso, tutto in UNA transazione (§8.2 del brief BE:
-# IN_CORSO + execute + COMPLETATO non possono divergere). Su eccezione
+# o modalita_esito=AUTOMATICO lo completa, tutto in UNA transazione (§8.2 del
+# brief BE: IN_CORSO + execute + COMPLETATO non possono divergere). Su eccezione
 # dell'handler l'intera transizione rolla (flusso torna DA_ESEGUIRE, ri-eseguibile)
 # e l'errore parlante propaga all'operatore.
 @transaction.atomic()
@@ -387,11 +406,25 @@ def avvia_flusso(flusso_id: int, *, user: str | None = None) -> dict[str, Any] |
     assert flusso_id > 0
 
     repo = PraticheRepository()
+    # Config esito del template (20260617-01): modalita_esito + esito_default.
+    # auto_esito unifica handler-completion e modalita AUTOMATICO su un unico esito
+    # dichiarativo (fallback POSITIVO per gli step con handler ma senza esito_default,
+    # retro-compatibile col vecchio POSITIVO cablato). Query leggera dedicata:
+    # dispatch_handler/eventi rifanno la proiezione completa solo se serve.
+    config = repo.get_flusso_esito_config(flusso_id)
+    ErrorManager.require(
+        config is not None,
+        code="E_FLUSSO_NOT_FOUND",
+        message=f"Flusso {flusso_id} non trovato",
+    )
+    assert config is not None
+    modalita, esito_default = config
+    auto_esito = esito_default or _ESITO_AUTO_FALLBACK
     try:
         repo.update_stato_flusso(flusso_id, "IN_CORSO")
 
         # Dispatch handler (None se il flusso non ha handler → resta IN_CORSO,
-        # completamento manuale dall'operatore).
+        # completamento manuale/contestuale dall'operatore).
         # NB sui prerequisiti: il guard esito-aware e' un trigger BEFORE INSERT sui
         # flussi → scatta alla CREAZIONE del flusso, non qui. Un flusso CONFERMA
         # esiste solo se APPROVAZIONE_CLIENTE era COMPLETATO+POSITIVO. La difesa a
@@ -399,11 +432,13 @@ def avvia_flusso(flusso_id: int, *, user: str | None = None) -> dict[str, Any] |
         # Concorrenza: l'UPDATE di stato sopra prende il lock di riga del flusso →
         # due avvii concorrenti sullo stesso flusso si serializzano (no doppio push).
         result = dispatch_handler(flusso_id, user=user)
-        if result is not None:
-            # Handler eseguito con successo → completa il flusso (esito POSITIVO).
-            repo.update_stato_flusso(flusso_id, "COMPLETATO", esito="POSITIVO")
+        # Auto-completamento: l'handler ha prodotto un risultato OPPURE lo step e'
+        # configurato AUTOMATICO (avvia+chiudi senza scelta umana, ammesso solo su
+        # direzione INTERNA per l'Inv2 garantita dal guard a config-time).
+        if result is not None or modalita == "AUTOMATICO":
+            repo.update_stato_flusso(flusso_id, "COMPLETATO", esito=auto_esito)
             # Azioni di dominio legate al COMPLETATO (template_flussi_handler_eventi).
-            dispatch_handler_eventi(flusso_id, evento="COMPLETATO", esito="POSITIVO", user=user)
+            dispatch_handler_eventi(flusso_id, evento="COMPLETATO", esito=auto_esito, user=user)
         return result
     except DatabaseError as exc:
         # Guard pratica terminale (CHIUSA/ANNULLATA) → PRATICHE_TERMINALE_FLUSSO_
@@ -429,11 +464,7 @@ def completa_flusso(
         message="flusso_id deve essere > 0",
     )
     assert flusso_id > 0
-    ErrorManager.require(
-        esito in ("POSITIVO", "NEGATIVO", "PARZIALE", "NON_APPLICABILE"),
-        code="E_FLUSSO_VALIDATION",
-        message=f"Esito non valido: {esito}",
-    )
+    _require_esito_valido(esito)
 
     repo = PraticheRepository()
     try:
@@ -446,6 +477,45 @@ def completa_flusso(
     # POSITIVO. Stessa transazione → completamento + azione dominio atomici (sostituisce
     # il routing M2 hardcoded lato FE). I flussi senza binding: no-op.
     dispatch_handler_eventi(flusso_id, evento="COMPLETATO", esito=esito, user=user)
+
+
+# Scopo: Avvia E completa un flusso in un'unica azione (modalita CONTESTUALE).
+# Obiettivo: collassa i due momenti (avvio + registrazione esito) per gli step in
+# cui l'operatore registra l'esito contestualmente all'avvio. DA_ESEGUIRE →
+# IN_CORSO → COMPLETATO nella STESSA transazione (la matrice transizioni non ha la
+# 1→3 diretta: si passa sempre da IN_CORSO, come avvia_flusso per gli handler).
+# L'esito e' quello scelto/confermato dall'operatore (non fabbricato): valido su
+# qualsiasi direzione (Inv2 vincola solo AUTOMATICO).
+@transaction.atomic()
+def avvia_e_completa_flusso(
+    flusso_id: int,
+    *,
+    esito: str,
+    note_esito: str | None = None,
+    user: str | None = None,
+) -> None:
+    ErrorManager.require(
+        flusso_id > 0,
+        code="E_INVALID_ID",
+        message="flusso_id deve essere > 0",
+    )
+    assert flusso_id > 0
+    # Valida l'esito PRIMA di qualsiasi scrittura: niente avvio "orfano" (flusso
+    # lasciato IN_CORSO) se l'esito e' fuori dominio.
+    _require_esito_valido(esito)
+
+    repo = PraticheRepository()
+    try:
+        repo.update_stato_flusso(flusso_id, "IN_CORSO")
+    except DatabaseError as exc:
+        _raise_known_db_error(exc, function_name="pratiche_service.avvia_e_completa_flusso")
+    # Riusa il completamento canonico: COMPLETATO + esito + azioni di dominio
+    # (template_flussi_handler_eventi), nella stessa transazione → atomico.
+    # NB: CONTESTUALE NON esegue l'handler di AVVIO (dispatch_handler): e' la
+    # modalita "esito deciso dall'operatore"; l'automazione d'avvio appartiene ad
+    # AUTOMATICO/handler. Le reazioni di dominio all'esito viaggiano comunque su
+    # dispatch_handler_eventi dentro completa_flusso.
+    completa_flusso(flusso_id, esito=esito, note_esito=note_esito, user=user)
 
 
 # Scopo: Transizione generica di stato di un flusso tramite codice_interno.

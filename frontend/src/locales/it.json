@@ -2641,6 +2641,8 @@
     "flusso_col_template": "Template",
     "flusso_col_esito": "Esito",
     "flusso_avvia": "Avvia flusso",
+    "flusso_avvia_e_completa": "Avvia e completa",
+    "flusso_avvia_e_registra_esito": "Avvia e registra esito",
     "flusso_apri_preventivo": "Apri preventivo",
     "preventivo_collegato": "Preventivo collegato alla pratica",
     "percorso_titolo": "Percorso",

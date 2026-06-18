@@ -33,8 +33,9 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 | Funzione | Input | Output | Descrizione |
 |---|---|---|---|
 | `crea_flusso(...)` | pratica_id, template_flusso_id (**obbligatorio**, > 0), ... | `int` (flusso_id) | Crea flusso con stato DA_ESEGUIRE |
-| `avvia_flusso(flusso_id, user?)` | flusso_id | `dict \| None` | Transizione → IN_CORSO (+ dispatch handler IN_CORSO; auto-completa se handler ok) |
-| `completa_flusso(flusso_id, esito, note_esito?, user?)` | flusso_id, esito | `None` | Transizione → COMPLETATO (+ dispatch handler evento COMPLETATO) |
+| `avvia_flusso(flusso_id, user?)` | flusso_id | `dict \| None` | Transizione → IN_CORSO (+ dispatch handler; auto-completa con `esito_default` se handler ok **o** `modalita_esito = AUTOMATICO`) |
+| `avvia_e_completa_flusso(flusso_id, esito, note_esito?, user?)` | flusso_id, esito | `None` | **CONTESTUALE** (2026-06-17): DA_ESEGUIRE → IN_CORSO → COMPLETATO in una transazione; riusa `completa_flusso`. NON esegue l'handler di avvio (esito deciso dall'operatore) |
+| `completa_flusso(flusso_id, esito, note_esito?, user?)` | flusso_id, esito | `None` | Transizione → COMPLETATO (+ dispatch handler evento COMPLETATO). Esito validato da `_require_esito_valido` (`ESITI_FLUSSO_AMMESSI`) |
 | `cambia_stato_flusso(flusso_id, nuovo_stato, ...)` | flusso_id, codice_interno, esito?, note_esito? | `None` | Transizione generica |
 
 ### Sospensioni
@@ -125,3 +126,4 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 - Le funzioni inline `_resolve_stato_pratica`, `_resolve_stato_flusso`, `_get_handler_key` sono state migrate nel `PraticheRepository` come metodi di istanza.
 - `cambia_stato_flusso` e' stata aggiunta per gestire transizioni generiche (SOSPESO, ANNULLATO) senza passare dalla view con logica inline.
 - v2.2 (1 aprile 2026): `_verifica_flusso_pratica` rinominata `verifica_flusso_pratica` (pubblica). La funzione duplicata in `views.py` e' stata sostituita con alias al service. Repository allineato ai building block core (`row_to_dict`/`rows_to_list`, `ErrorManager.require` su tutti i fetchone). `pratica_select_sql()`/`pratica_joins_sql()` esposti come classmethod pubblici per uso cross-repository.
+- (17 giugno 2026) **Esito configurabile** (`template_flussi.modalita_esito`/`esito_default`): nuovo `avvia_e_completa_flusso` (CONTESTUALE, riusa `completa_flusso`); `avvia_flusso` auto-completa con `esito_default` (fallback `_ESITO_AUTO_FALLBACK = POSITIVO`) anche per `AUTOMATICO`; validazione esito estratta in `_require_esito_valido`/`ESITI_FLUSSO_AMMESSI` (de-duplica la tupla tra completa/avvia_e_completa); query leggera `PraticheRepository.get_flusso_esito_config` per il path di avvio; proiezione `get_flusso` arricchita con `template_modalita_esito`/`template_esito_default`. Vedi [api_flusso_stato](api_flusso_stato.md) e i brief `brief-design-esito-configurabile-flussi` / `brief-db-esito-configurabile-flussi`.
