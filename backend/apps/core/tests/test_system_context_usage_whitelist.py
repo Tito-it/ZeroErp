@@ -38,8 +38,11 @@ _ALIAS_WHITELIST = {
 
 
 def _offending_files(needle: str, whitelist: set[str]) -> list[str]:
-    """Scopo: file .py (escludendo i test) che contengono `needle` ma non sono
-    nella whitelist. Ritorna i path relativi ad apps/ in violazione."""
+    """Scopo: file .py (escludendo i test) che USANO `needle` in codice (non in
+    commenti) e non sono nella whitelist. Ritorna i path relativi ad apps/ in
+    violazione. Le righe-commento (`#`) sono ignorate: una semplice menzione del
+    canale in un commento/docstring-riga non è un uso e non deve far fallire il
+    guard (evita falsi positivi ricorrenti su commenti esplicativi)."""
     offenders: list[str] = []
     for path in _APPS_ROOT.rglob("*.py"):
         rel = path.relative_to(_APPS_ROOT).as_posix()
@@ -47,8 +50,12 @@ def _offending_files(needle: str, whitelist: set[str]) -> list[str]:
             continue  # i test possono riferirsi liberamente al canale
         if rel in whitelist:
             continue
-        if needle in path.read_text(encoding="utf-8"):
-            offenders.append(rel)
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.lstrip().startswith("#"):
+                continue  # riga-commento → non è un uso
+            if needle in line:
+                offenders.append(rel)
+                break
     return offenders
 
 

@@ -111,7 +111,7 @@ non hanno una veste applicativa e la RLS e' bypassata **a livello di ruolo**, no
 GUC. Possono settare il solo `app.jwt_user` (es. `BATCH_FATTURAZIONE`) per dare un
 attore riconoscibile ai trigger audit. Questo canale e' riservato ai processi headless:
 **mai** usarlo per servire richieste web (guard fail-open statico+runtime, vedi
-`dev/work-in-progress/brief-db-contesto-sistema-batch-fatturazione-rls.md` §5.6).
+`dev/work-done/brief-db-contesto-sistema-batch-fatturazione-rls.md` §5.6).
 
 ---
 

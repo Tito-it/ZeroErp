@@ -26,7 +26,7 @@ View: `ApiRunLottoPipelineUntilDone` (`apps.vendite.api.views`).
 > (un `emittente_soggetto_ruolo_id` fuori scope → nessun lotto/effetto). Il batch
 > **headless** (cron `run_fatturazione_batch`), invece, gira in contesto **SISTEMA**
 > (tutti gli emittenti). Vedi
-> [brief-db-contesto-sistema-batch-fatturazione-rls.md](/dev/work-in-progress/brief-db-contesto-sistema-batch-fatturazione-rls)
+> [brief-db-contesto-sistema-batch-fatturazione-rls.md](/dev/work-done/brief-db-contesto-sistema-batch-fatturazione-rls)
 > (RLS opzione B). Oggi (RLS dormiente) entrambi i percorsi vedono tutto.
 
 ## Input

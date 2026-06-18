@@ -17,6 +17,7 @@ from datetime import date, datetime
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.core.services.auth_constants import AUDIT_ACTOR_BATCH_FATTURAZIONE
+from apps.core.services.job_run import ORIGINE_CRON, registered_job
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.system_context import system_process_context
 from apps.vendite.db.commesse_repository import CommesseRepository
@@ -87,6 +88,16 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
         limit = options["limit"]
 
+        run_kwargs = dict(
+            modalita=modalita,
+            tipo_lotto=tipo_lotto,
+            fatturazione_immediata=fatturazione_immediata,
+            competenza=competenza,
+            emittente_id=emittente_id,
+            utility_id=utility_id,
+            limit=limit,
+        )
+
         # Canale di SISTEMA per il batch headless (RLS Path A): instrada la catena DB
         # sul ruolo BYPASSRLS `zeroerp_batch_fatturazione` (alias `system_fatturazione`)
         # — il cron non è un operatore e deve vedere/scrivere TUTTI gli emittenti.
@@ -95,19 +106,31 @@ class Command(BaseCommand):
             alias=SYSTEM_FATTURAZIONE_DB_ALIAS,
             actor=AUDIT_ACTOR_BATCH_FATTURAZIONE,
         ):
-            self._run_batch(
-                modalita=modalita,
-                tipo_lotto=tipo_lotto,
-                fatturazione_immediata=fatturazione_immediata,
-                competenza=competenza,
-                emittente_id=emittente_id,
-                utility_id=utility_id,
-                dry_run=dry_run,
-                limit=limit,
-            )
+            # DRY-RUN: solo discovery/conteggio → NON è un'esecuzione operativa, niente
+            # registrazione del run (design §6.2).
+            if dry_run:
+                self._run_batch(dry_run=True, **run_kwargs)
+                return
+
+            # Registrazione run-level (job_run_log) DENTRO il canale di sistema (stessa
+            # connessione del ruolo batch → advisory-lock di sessione valido per tutto il
+            # run). Chiave logica per-corsia: immediata e differita non si bloccano a
+            # vicenda. Lock occupato → skip senza attendere (riga "skip" già loggata).
+            job_id = f"run_fatturazione_batch:{modalita}"
+            with registered_job(job_id, origine=ORIGINE_CRON, lock_key=job_id) as job:
+                if not job.acquired:
+                    self.stdout.write(self.style.WARNING(
+                        f"skip: un altro run della corsia '{modalita}' è già in corso."
+                    ))
+                    return
+                summary = self._run_batch(dry_run=False, **run_kwargs)
+                job.set_meta(summary)
+                job.set_rows_affected(summary.get("emittenti", 0))
 
     # Scopo: corpo del batch (discovery + esecuzione per emittente) eseguito DENTRO il
     #        canale di sistema. Estratto da handle per isolare il setup del gateway.
+    #        Ritorna un riepilogo GENERICO del run (emittenti/falliti/per_motivo) usato
+    #        come `meta` di job_run_log; `{}` per dry-run (non registrato).
     def _run_batch(
         self,
         *,
@@ -119,7 +142,7 @@ class Command(BaseCommand):
         utility_id: int | None,
         dry_run: bool,
         limit: int,
-    ) -> None:
+    ) -> dict:
         repo = CommesseRepository()
 
         # Perimetri emittente: esplicito (--emittente-id) o scoperti tra gli emittibili.
@@ -151,7 +174,7 @@ class Command(BaseCommand):
 
         if not emittenti:
             self.stdout.write("Nessuna commessa emittibile (con emittente) per la corsia/competenza.")
-            return
+            return {"emittenti": 0, "falliti": 0, "per_motivo": {}}
 
         # DRY-RUN: solo discovery/conteggio, nessun lotto creato.
         if dry_run:
@@ -164,7 +187,7 @@ class Command(BaseCommand):
                     limit=limit,
                 ))
                 self.stdout.write(f"  emittente={em}: {count} commesse emittibili")
-            return
+            return {}
 
         # Esecuzione: un lotto per emittente, best-effort.
         esiti_per_motivo: dict[str, int] = {}
@@ -197,3 +220,8 @@ class Command(BaseCommand):
             f"Completato: {len(emittenti)} emittenti — {riepilogo or 'nessun esito'}"
             + (f", falliti={falliti}" if falliti else "")
         ))
+        return {
+            "emittenti": len(emittenti),
+            "falliti": falliti,
+            "per_motivo": esiti_per_motivo,
+        }

@@ -86,7 +86,7 @@ tabelle protette da RLS **senza** un'identita' operatore usano un ruolo dedicato
 **per singolo job** — non `zeroerp_app`, non `postgres`/`titodb`.
 
 Modello (vedi
-`dev/work-in-progress/brief-db-contesto-sistema-batch-fatturazione-rls.md`):
+`dev/work-done/brief-db-contesto-sistema-batch-fatturazione-rls.md`):
 
 - `BYPASSRLS` — bypassa l'isolamento per-emittente (semantica corretta per un
   processo di sistema che opera su **tutti** gli emittenti); trigger e constraint
