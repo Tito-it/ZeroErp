@@ -5,6 +5,8 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { statoFlussoSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
+import { MANAGE_ICONS } from '../../core/constants'
+import { CODA_LAVORO_LIVELLI, CODA_LAVORO_PRENDIBILI } from '../codaLavoroLivelli'
 import Tag from 'primevue/tag'
 import Badge from 'primevue/badge'
 import Button from 'primevue/button'
@@ -19,15 +21,21 @@ const props = defineProps({
 
 const emit = defineEmits(['select-flusso', 'prendi-in-carico'])
 
-// Raggruppamento per livello con configurazione label/severity
-const sezioni = computed(() => [
-  { key: 'ASSEGNATO', label: t('pratiche.coda_assegnati'), severity: 'danger',
-    items: props.items.filter(i => i.livello === 'ASSEGNATO') },
-  { key: 'COMPETENZA', label: t('pratiche.coda_competenza'), severity: 'warn',
-    items: props.items.filter(i => i.livello === 'COMPETENZA') },
-  { key: 'REPARTO', label: t('pratiche.coda_reparto'), severity: 'secondary',
-    items: props.items.filter(i => i.livello === 'REPARTO') },
-].filter(s => s.items.length > 0))
+// Raggruppamento per livello dalla config condivisa (ordine + severity coerenti
+// coi contatori di MieAttivitaPanel). LIBERO = policy reparto-first caso C
+// (flusso senza reparto/skill mostrato all'operatore della pratica).
+const sezioni = computed(() =>
+  CODA_LAVORO_LIVELLI
+    .map(l => ({
+      key: l.key,
+      label: t(l.labelKey),
+      severity: l.severity,
+      items: props.items.filter(i => i.livello === l.key),
+    }))
+    .filter(s => s.items.length > 0),
+)
+
+const PRENDIBILI = CODA_LAVORO_PRENDIBILI
 
 function onItemClick(item) {
   emit('select-flusso', item)
@@ -73,9 +81,9 @@ function onPrendiInCarico(item, event) {
             <!-- Azione specifica per livello -->
             <Tag v-if="item.livello === 'ASSEGNATO'" :value="item.priorita_codice" :severity="prioritaPraticaSeverity(item.priorita_codice)" size="small" />
             <Button
-              v-else-if="item.livello === 'COMPETENZA'"
+              v-else-if="PRENDIBILI.includes(item.livello)"
               :label="t('pratiche.prendi_in_carico')"
-              icon="pi pi-user-plus" size="small" text
+              :icon="MANAGE_ICONS.ASSIGN" size="small" text
               @click="onPrendiInCarico(item, $event)"
             />
             <span v-else-if="item.risorsa_assegnata" class="coda-item-risorsa">{{ item.risorsa_assegnata }}</span>

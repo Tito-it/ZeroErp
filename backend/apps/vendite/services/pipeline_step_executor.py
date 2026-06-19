@@ -456,7 +456,9 @@ class PipelineStepExecutor:
             ),
         )
 
-    # Scopo: Numera le fatture del lotto, gestisce errori per-fattura e sincronizza stato finale lotto-fatture.
+    # Scopo: Numera fiscalmente le fatture del lotto (idempotente, errori per-fattura).
+    # L'allineamento dello stato documentale (es. → DEFINITIVA/8) NON e' piu' qui: e'
+    # centralizzato nella finalizzazione di step del runner (sync per-step parametrico).
     def _handle_numera_fatture_task(
         self,
         *,
@@ -468,7 +470,9 @@ class PipelineStepExecutor:
         params: dict[str, Any],
         dry_run: bool,
     ) -> None:
-        # Numerazione documenti per lotto massivo con sync stato documento.
+        # Solo numerazione: il sync stato fatture allo stato dello step lo esegue ora
+        # _execute_pipeline_step (runner) dopo i task. Cosi' la fattura passa per EMESSA(2)
+        # prima della numerazione, evitando il salto 1→8 vietato dalla matrice transizioni.
         def _action() -> None:
             fattura_ids = self.repository.list_fatture_by_lotto(lotto_id)
             self._run_per_fattura_task(
@@ -477,10 +481,6 @@ class PipelineStepExecutor:
                 task=task,
                 fattura_ids=fattura_ids,
                 action=self.repository.numera_fattura_opz_emessa,
-            )
-            self.repository.sync_lotto_fatture_stato(
-                lotto_id=lotto_id,
-                stato_doc_fiscale_id=stato_doc_fiscale_id,
             )
 
         self._run_validated_task(

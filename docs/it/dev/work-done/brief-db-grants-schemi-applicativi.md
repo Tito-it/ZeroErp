@@ -1,7 +1,7 @@
 # Brief Team DB — Estensione whitelist schemi in `provision_db_roles.sql`
 
 **Data:** 2026-05-07
-**Riferimento:** [`sviluppo-personalizzazioni-liste.md`](../work-in-progress/sviluppo-personalizzazioni-liste.md) §10.2-bis (DB-5)
+**Riferimento:** [`sviluppo-personalizzazioni-liste.md`](../work-done/sviluppo-personalizzazioni-liste.md) §10.2-bis (DB-5)
 **Branch:** `dev/db-tid` (provisioning script vive in `scripts/sql/`, non in `db/changelog/`)
 **Priorita':** alta — bloccante per smoke test E5 e per Blocco F
 

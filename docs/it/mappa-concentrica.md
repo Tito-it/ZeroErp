@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 11 giugno 2026 — Anello 3 (vendite): **ordini di vendita** sviluppati end-to-end DB+BE+FE (CRUD, conferma, stato EVASO, stampa PDF, conversione preventivo/offerta→ordine, univocita' offerta→contratto XOR ordine); **pratica PREVENTIVI** eseguita end-to-end come primo consumatore reale del motore `pratiche` (handler `CONFERMA_VENDITA`, split per natura merce→ordine / servizi→commessa, smistamento riga-per-riga, commesse multi-sorgente) → Anello 2 `pratiche` passa a **validata con primo consumatore**; workflow pratiche v2 (ripetibilita', bivi condizionali, lenti contesto, guard chiusura). Vedi [analisi-pratiche-workflow-v2.md](dev/work-done/analisi-pratiche-workflow-v2.md) e [analisi-ordini-vendita.md](dev/work-in-progress/analisi-ordini-vendita.md).*
+*Ultimo aggiornamento: 20 giugno 2026 — Anello 3 (vendite): **batch fatturazione automatico end-to-end operativo** — driver CRON `run-until-done`, discovery a corsie `(emittente, tipo_doc_fiscale, utility)`, **sync dello stato fattura per-step** `1→2→8`, run headless in `job_run_log`; hardening commesse→fatturazione (normalize + **guard `tipo_doc` emittibile**, snapshot pricing v5 nel push, azioni stato commessa, pull agganciata agli step). Anello 2 (pratiche, workflow v2): **assegnazione flusso a operatore/reparto** (policy reparto-first) + **coda lavoro operatore** (pannello "Le mie attività"), **esito configurabile flussi** (MANUALE/AUTOMATICO/CONTESTUALE), aggancio documento↔flusso, audit utente reale. Dettaglio datato e completo nel [changelog della mappa](dev/mappa-concentrica-changelog.md).*
 >
 > *Aggiornamenti precedenti: vedi [changelog della mappa](dev/mappa-concentrica-changelog.md).*
 
@@ -173,7 +173,7 @@ Una tabella appartiene alla seconda categoria se: (a) non descrive un'entita' di
 
 E' classificato **di servizio** all'interno di Anello 1: il suo end-to-end richiedeva almeno un consumatore reale (prima lista migrata a `<ListaConfigurabile>`). Questo è avvenuto: le liste clienti e fornitori usano il componente configurabile, quindi il nucleo è stato **validato su casi reali** e si considera operativo. La lezione metodologica del caso pratiche (non completare prima della validazione su un caso reale) è stata rispettata.
 
-Riferimento architetturale: `docs/it/dev/work-in-progress/sviluppo-personalizzazioni-liste.md`. Sviluppi differiti: `docs/it/dev/work-in-progress/sviluppo-personalizzazioni-liste_def.md`.
+Riferimento architetturale: `docs/it/dev/work-done/sviluppo-personalizzazioni-liste.md`. Sviluppi differiti: `docs/it/dev/work-in-progress/sviluppo-personalizzazioni-liste_def.md`.
 
 ### Stabilita'
 
@@ -189,14 +189,16 @@ Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratich
 
 | Componente  | Tipo       | DB        | Backend   | Frontend   | Descrizione                                                                                                                                                          |
 | ----------- | ---------- | --------- | --------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pratiche`  | App Django | Operativo | Operativo | Operativo  | Workflow engine, giornale, generazione cross-pratica, handler dispatch, sospensioni, calcoli tempo, macchina a stati, note, allegati                                 |
+| `pratiche`  | App Django | Operativo | Operativo | Operativo  | Workflow engine, giornale, generazione cross-pratica, handler dispatch, sospensioni, calcoli tempo, macchina a stati, note, allegati; **assegnazione flusso operatore/reparto + coda lavoro** (pannello "Le mie attività"), **esito configurabile flussi**, **aggancio documento↔flusso**, **audit utente reale** |
 | `documenti` | App Django | Operativo | Operativo | In test UI | Motore documentale parametrico: template versionati, asset documentali, render PDF WeasyPrint, archivio documenti generati, lista/download da preventivo come pilota |
 
 ### Cosa fornisce agli anelli esterni
 
 - **Pratiche**: contenitore tracciabile per qualsiasi processo (onboarding cliente, gestione ordine, assistenza tecnica)
 - **Flussi**: step operativi con prerequisiti, esiti, scadenze, assegnazione risorse
-- **Giornale di bordo**: audit trail immutabile, append-only, con correlazione `tx_id`
+- **Assegnazione e coda lavoro operatore**: flusso assegnabile a operatore/reparto (policy reparto-first), coda a 4 livelli (`fn_coda_lavoro_operatore`: ASSEGNATO/COMPETENZA/REPARTO/LIBERO), presa in carico (`fn_prendi_in_carico_flusso`); consumer FE pannello "Le mie attività"
+- **Esito configurabile dei flussi**: MANUALE / AUTOMATICO / CONTESTUALE con `esito_default`
+- **Giornale di bordo**: audit trail immutabile, append-only, con correlazione `tx_id` e **utente reale** (`user_update`/`data_update`)
 - **Generazione cross-pratica**: un flusso completato puo' generare automaticamente nuove pratiche
 - **Handler dispatch**: mapping `handler_key` → classe Python per automazione step
 - **Canali**: visibilita' dei flussi su sorgenti esterne (WEB_CLIENTI, APP_TECNICA, PORTALE_FORNITORI)
@@ -259,7 +261,7 @@ Piano v1 (storico): `docs/it/dev/work-done/piano-gestione-pratiche.md`
 
 | Componente    | Tipo       | DB        | Backend   | Descrizione                                                                                                                                                                   |
 | ------------- | ---------- | --------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi rev2, offerte, contratti, **ordini operativi**, DDT, fatture, pipeline fatturazione, lotti, commesse multi-sorgente, **listini v3**, **pratica PREVENTIVI** (primo consumatore del motore `pratiche`), generazione PDF preventivo via `documenti` in test UI |
+| `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi rev2, offerte, contratti, **ordini operativi**, DDT, fatture, pipeline fatturazione (**batch automatico a corsie + sync stato fattura per-step**), lotti, commesse multi-sorgente, **listini v3**, **pratica PREVENTIVI** (primo consumatore del motore `pratiche`), generazione PDF preventivo via `documenti` in test UI |
 | `acquisti`    | App Django | Operativo | Stub      | Ciclo passivo: richieste offerta, ordini, DDT, fatture                                                                                                                        |
 | `magazzino`   | App Django | Operativo | Stub      | Movimenti, giacenze, lotti, seriali                                                                                                                                           |
 | `pagamenti`   | App Django | Operativo | Stub      | Scadenze, riconciliazioni                                                                                                                                                     |
@@ -295,14 +297,15 @@ I processi **massivi** (lotto fatturazione, import batch) mantengono la propria 
 
 | Area                                    | Stato                                                                         |
 | --------------------------------------- | ----------------------------------------------------------------------------- |
-| Pipeline fatturazione                   | Operativo                                                                     |
-| Lotti massivi/giornalieri               | Operativo                                                                     |
+| Pipeline fatturazione                   | Operativo — **batch automatico end-to-end** (driver CRON `run-until-done`, discovery a corsie `(emittente, tipo_doc, utility)`, **sync stato fattura per-step `1→2→8`**, run headless in `job_run_log`) (giugno 2026) |
+| Lotti massivi/giornalieri               | Operativo — stato documentale fattura allineato per-step (giornaliero unificato a `1→2→8`) |
 | Registry task DB multi-dominio          | Operativo                                                                     |
 | Dispatch task con implementation_key    | Operativo                                                                     |
 | Runtime task tracing                    | Operativo                                                                     |
 | Builder XML SDI                         | In corso (payload pronto, generazione XML da fare)                            |
 | Persistenza esito SDI                   | Da fare                                                                       |
-| Commesse (push, orchestrator, handlers) | Operativo — multi-sorgente (1 ROOT + N COLLEGATO), push idempotente           |
+| Commesse (push, orchestrator, handlers) | Operativo — multi-sorgente (1 ROOT + N COLLEGATO), push idempotente, snapshot pricing v5 nel push, capability azioni stato, pull→`attivita_fatturabili` agganciata agli step DRAFT |
+| Guard `tipo_doc_fiscale` emittibile     | Operativo — normalize all'upsert (default da `config.sorgenti`) + guard di riga `APPROVATA+NON_EMESSA ⇒ tipo_doc NOT NULL` (cod. 497) + CHECK backstop: niente "fatturato perso in silenzio" (giugno 2026) |
 | Ordini di vendita                       | Operativo — CRUD, lista DEF-8, conferma, EVASO automatico, stampa PDF, conversione preventivo/offerta→ordine, lock cliente (giugno 2026) |
 | Pratica PREVENTIVI (integrazione pratiche) | Operativo — handler `CONFERMA_VENDITA`, split per natura merce→ordine / servizi→commessa, smistamento riga-per-riga, gate EVASO (giugno 2026) |
 | Listini v3 (N2/N5/N6/N7/N8a)            | Operativo — Sprint B-v3 completato (aprile 2026)                              |
@@ -479,4 +482,4 @@ Riferimento implementazione: `docs/it/dev/work-done/automazione-chiusure-scadenz
 
 ---
 
-*Mappa Concentrica — ZeroERP (11 giugno 2026)*
+*Mappa Concentrica — ZeroERP (20 giugno 2026)*

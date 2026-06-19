@@ -10,12 +10,13 @@ import { useDrawerContentReady } from '../../core/composables/useDrawerContentRe
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { cambiaStatoFlusso } from '../api/pratiche-api'
 import { getUiActivity } from '../uiActivityRegistry'
-import { DRAWER_WIDTH, STATO_FLUSSO } from '../../core/constants'
+import { DRAWER_WIDTH, STATO_FLUSSO, MANAGE_ICONS } from '../../core/constants'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import PraticaContextHeader from './PraticaContextHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
+import FlussoAssegnaDialog from './FlussoAssegnaDialog.vue'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
@@ -47,6 +48,16 @@ const esitiOptions = computed(() => [
 
 const stato = computed(() => props.flusso?.stato_codice_interno || '')
 
+// Dialog di assegnazione (reparto + operatore). L'assegnazione ha senso finche'
+// il flusso e' attivo: non su COMPLETATO/ANNULLATO ne' in sola lettura.
+const assegnaVisible = ref(false)
+const canAssign = computed(() =>
+  !effectiveReadonly.value
+  && !!props.flusso
+  && stato.value !== STATO_FLUSSO.COMPLETATO
+  && stato.value !== STATO_FLUSSO.ANNULLATO,
+)
+
 // Sola lettura "effettiva": readonly da permessi operatore (iniettato dalla
 // view via useReadonlyMode) OR pratica in stato terminale (prop readonly).
 // Ri-fornito ai figli (DrawerTitle/ReadonlyBadge, DrawerActionsBar) come da
@@ -55,6 +66,23 @@ const stato = computed(() => props.flusso?.stato_codice_interno || '')
 const injectedReadonly = useInjectReadonly()
 const effectiveReadonly = computed(() => injectedReadonly.value || props.readonly)
 provide(READONLY_KEY, effectiveReadonly)
+
+// Configurazione esito dello step (20260617-01, esposta dal BE sul flusso):
+//   MANUALE     = avvio poi form esito (comportamento storico);
+//   AUTOMATICO  = un'azione "Avvia e completa" con esito_default (no scelta umana);
+//   CONTESTUALE = avvio + esito in un'unica azione (form subito su DA_ESEGUIRE,
+//                 esito_default pre-selezionato e modificabile).
+const modalita = computed(() => props.flusso?.template_modalita_esito || 'MANUALE')
+const esitoDefault = computed(() => props.flusso?.template_esito_default || null)
+
+// Form esito visibile: completamento manuale su IN_CORSO (come oggi) OPPURE
+// modalita CONTESTUALE su DA_ESEGUIRE (avvio+esito contestuale).
+const showEsitoForm = computed(() =>
+  !effectiveReadonly.value && (
+    stato.value === STATO_FLUSSO.IN_CORSO
+    || (stato.value === STATO_FLUSSO.DA_ESEGUIRE && modalita.value === 'CONTESTUALE')
+  )
+)
 
 // Attività UI data-driven: il flusso porta `template_azione_ui_key` (catalogo DB
 // pratiche.azioni_ui), risolta nel registry FE → drawer di dominio da aprire.
@@ -73,7 +101,9 @@ const uiActivityVisible = computed(
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 watch(() => props.visible, (val) => {
-  if (val) { esito.value = null; noteEsito.value = '' }
+  // Pre-seleziona l'esito_default (CONTESTUALE) o resta null (MANUALE: esito_default
+  // NULL → nessuna pre-selezione, comportamento odierno).
+  if (val) { esito.value = esitoDefault.value; noteEsito.value = '' }
 })
 
 // Azioni della testata flusso consumate da DrawerActionsBar.
@@ -86,10 +116,17 @@ const drawerActions = computed(() => {
     {
       key: 'avvia',
       kind: 'state',
-      label: t('pratiche.flusso_avvia'),
-      icon: 'pi pi-play',
+      // AUTOMATICO: un'unica azione "Avvia e completa" (il BE auto-completa con
+      // esito_default). MANUALE: "Avvia" (poi form esito su IN_CORSO). CONTESTUALE
+      // NON usa questo bottone: il form esito è già inline su DA_ESEGUIRE.
+      label: modalita.value === 'AUTOMATICO'
+        ? t('pratiche.flusso_avvia_e_completa')
+        : t('pratiche.flusso_avvia'),
+      icon: modalita.value === 'AUTOMATICO' ? 'pi pi-check' : 'pi pi-play',
       severity: 'info',
-      visible: !effectiveReadonly.value && stato.value === STATO_FLUSSO.DA_ESEGUIRE,
+      visible: !effectiveReadonly.value
+        && stato.value === STATO_FLUSSO.DA_ESEGUIRE
+        && modalita.value !== 'CONTESTUALE',
       disabled: loading.value,
       command: onAvvia,
     },
@@ -119,14 +156,31 @@ const drawerActions = computed(() => {
         istanzaUtilityId: props.flusso.pratica_istanza_utility_id ?? null,
       }),
     },
+    // Assegnazione del flusso a un reparto e/o operatore (policy reparto-first).
+    // kind:'manage' = apre il dialog dedicato. Disponibile finche' il flusso e'
+    // attivo (non COMPLETATO/ANNULLATO) e non in sola lettura. `action` gatea sul
+    // permesso di processo `assegna_pratica` (stesso codename del POST BE): chi
+    // non lo possiede non vede il pulsante, invece di scoprire il 403 al click.
+    {
+      key: 'assegna',
+      kind: 'manage',
+      label: t('pratiche.flusso_assegna'),
+      icon: MANAGE_ICONS.ASSIGN,
+      action: 'assegna_pratica',
+      visible: canAssign.value,
+      disabled: loading.value,
+      command: () => { assegnaVisible.value = true },
+    },
   ]
 })
 
-// Scopo: Avvia il flusso (DA_ESEGUIRE → IN_CORSO).
+// Scopo: Avvia il flusso (DA_ESEGUIRE → IN_CORSO). Per modalita AUTOMATICO il BE
+// auto-completa nella stessa richiesta → il messaggio rispecchia il completamento.
 async function onAvvia() {
+  const isAuto = modalita.value === 'AUTOMATICO'
   const result = await execute(
     () => cambiaStatoFlusso(props.praticaId, props.flusso.id, { nuovo_stato: 'IN_CORSO' }),
-    { successMessage: t('pratiche.flusso_avviato') }
+    { successMessage: isAuto ? t('pratiche.flusso_completato') : t('pratiche.flusso_avviato') }
   )
   if (result !== null) { emit('saved'); emit('update:visible', false) }
 }
@@ -196,11 +250,27 @@ const onClose = useDrawerClose(emit)
         <span class="form-value">{{ flusso.template_flusso_descrizione }}</span>
       </div>
 
-      <!-- IN_CORSO: Form completamento con esito.
-           Resta inline (transizione con dati di processo, non comprimibile
-           a `command: () => void` del BB DrawerActionsBar). -->
-      <div v-if="stato === STATO_FLUSSO.IN_CORSO && !effectiveReadonly" class="flusso-actions">
-        <h4>{{ t('pratiche.flusso_completa_con_esito') }}</h4>
+      <!-- Assegnazione corrente del flusso (reparto + operatore), display fields
+           dal BE. Mostrata solo se almeno uno valorizzato. -->
+      <div v-if="flusso.unita_organizzativa_descrizione || flusso.risorsa_umana_display"
+           class="form-grid-2col">
+        <div v-if="flusso.unita_organizzativa_descrizione" class="form-field">
+          <label>{{ t('pratiche.flusso_reparto') }}</label>
+          <span class="form-value">{{ flusso.unita_organizzativa_descrizione }}</span>
+        </div>
+        <div v-if="flusso.risorsa_umana_display" class="form-field">
+          <label>{{ t('pratiche.flusso_assegnatario') }}</label>
+          <span class="form-value">{{ flusso.risorsa_umana_display }}</span>
+        </div>
+      </div>
+
+      <!-- Form esito inline: completamento manuale su IN_CORSO oppure modalita
+           CONTESTUALE su DA_ESEGUIRE (avvio+esito in un'unica azione). Resta inline
+           (transizione con dati di processo, non comprimibile a `command` del BB). -->
+      <div v-if="showEsitoForm" class="flusso-actions">
+        <h4>{{ stato === STATO_FLUSSO.DA_ESEGUIRE
+          ? t('pratiche.flusso_avvia_e_registra_esito')
+          : t('pratiche.flusso_completa_con_esito') }}</h4>
         <div class="form-grid">
           <div class="form-field">
             <label>{{ t('pratiche.flusso_esito') }} *</label>
@@ -236,7 +306,7 @@ const onClose = useDrawerClose(emit)
            Negli altri stati (Avvia in alto / COMPLETATO / sola lettura) resta
            il solo Chiudi. -->
       <FormFooter
-        v-if="stato === STATO_FLUSSO.IN_CORSO && !effectiveReadonly"
+        v-if="showEsitoForm"
         :loading="loading"
         :disabled="!esito"
         @save="onCompleta"
@@ -245,6 +315,18 @@ const onClose = useDrawerClose(emit)
       <FormFooter v-else close-only @cancel="onClose" />
       </template>
     </div>
+
+    <!-- Dialog assegnazione: reparto + operatore del reparto. Su saved chiude il
+         drawer (emit saved) → il parent ricarica percorso/coda/lista. -->
+    <FlussoAssegnaDialog
+      v-if="flusso"
+      v-model:visible="assegnaVisible"
+      :pratica-id="praticaId"
+      :flusso-id="flusso.id"
+      :current-risorsa-id="flusso.risorsa_umana_id"
+      :current-unita-id="flusso.unita_organizzativa_id"
+      @saved="() => { emit('saved'); emit('update:visible', false) }"
+    />
   </Drawer>
 </template>
 

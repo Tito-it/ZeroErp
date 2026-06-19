@@ -9,7 +9,7 @@
 > su `dev/db-tid`, pgTAP verde. Decisione §4: mappatura corsia→filtro lato BE (il driver
 > mette il flag nel `meta` del lotto, il pull lo propaga). Lato BE: F3 completata.
 >
-> **Origine**: [analisi-commesse-stato-e-sviluppi.md §10](../work-in-progress/analisi-commesse-stato-e-sviluppi.md),
+> **Origine**: [analisi-commesse-stato-e-sviluppi.md §10](analisi-commesse-stato-e-sviluppi.md),
 > Fase 3 del driver di orchestrazione fatturazione. Seguito di
 > [brief-db-pipeline-pull-commessa-seed.md](brief-db-pipeline-pull-commessa-seed.md)
 > (già implementato).

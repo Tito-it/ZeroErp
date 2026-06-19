@@ -10,6 +10,8 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | esito_richiesto | character varying | YES |  |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -26,6 +28,16 @@
 |------|-------------|
 | pk_pratiche_template_flussi_prerequisiti | `CREATE UNIQUE INDEX pk_pratiche_template_flussi_prerequisiti ON pratiche.template_flussi_prerequisiti USING btree (id)` |
 | uq_pratiche_template_flussi_prereq_flusso_prereq | `CREATE UNIQUE INDEX uq_pratiche_template_flussi_prereq_flusso_prereq ON pratiche.template_flussi_prerequisiti USING btree (template_flusso_id, prerequisito_id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_template_flussi_prerequisiti_a10_template_flussi_req_838672 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_id', 'id')` |
+| trg_template_flussi_prerequisiti_a10_template_flussi_req_838672 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_id', 'id')` |
+| trg_template_flussi_prerequisiti_a10_template_flussi_req_ac3b2b | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'prerequisito_id', 'id')` |
+| trg_template_flussi_prerequisiti_a10_template_flussi_req_ac3b2b | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'prerequisito_id', 'id')` |
+| trg_template_flussi_prerequisiti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_template_flussi_prerequisiti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

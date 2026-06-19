@@ -32,5 +32,13 @@
 | pk_pratiche_template_flussi_handler_eventi | `CREATE UNIQUE INDEX pk_pratiche_template_flussi_handler_eventi ON pratiche.template_flussi_handler_eventi USING btree (id)` |
 | uq_tfhe | `CREATE UNIQUE INDEX uq_tfhe ON pratiche.template_flussi_handler_eventi USING btree (template_flusso_id, evento, esito_richiesto, handler_id) NULLS NOT DISTINCT` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_template_flussi_handler_eventi_a10_handler_flussi_re_70890c | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'handler_flussi', 'attivo', 'handler_id', 'id')` |
+| trg_template_flussi_handler_eventi_a10_handler_flussi_re_70890c | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'handler_flussi', 'attivo', 'handler_id', 'id')` |
+| trg_template_flussi_handler_eventi_a10_template_flussi_r_8a06d6 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_id', 'id')` |
+| trg_template_flussi_handler_eventi_a10_template_flussi_r_8a06d6 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_id', 'id')` |
+
 ---
 {% include-markdown "signature-core.md" %}

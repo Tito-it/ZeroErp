@@ -90,6 +90,13 @@ export function riattivaFlusso(praticaId, flussoId, payload = {}) {
   return api.post(`${BASE}/${praticaId}/flussi/${flussoId}/riattiva/`, payload)
 }
 
+// Assegna il flusso a un operatore e/o a un reparto. Il payload inviato
+// distingue chiave assente (non toccare) da null esplicito (de-assegna): il
+// caller include solo le chiavi che intende applicare.
+export function assegnaFlusso(praticaId, flussoId, payload) {
+  return api.post(`${BASE}/${praticaId}/flussi/${flussoId}/assegnazione/`, payload)
+}
+
 // --- Consultazione flusso ---
 
 export function fetchPrerequisiti(praticaId, flussoId) {
@@ -154,6 +161,14 @@ export function fetchCodaLavoro(params = {}) {
 
 export function prendiInCaricoFlusso(flussoId) {
   return api.post(`${BASE}/flussi/${flussoId}/prendi-in-carico/`, {})
+}
+
+// Operatori (risorse umane attive) di un reparto, per il picker di
+// assegnazione del flusso a un operatore specifico del reparto.
+export function fetchOperatoriReparto(unitaOrganizzativaId) {
+  return api.get(`${BASE}/operatori/`, {
+    params: { unita_organizzativa_id: unitaOrganizzativaId },
+  })
 }
 
 // --- Competenze flussi ---

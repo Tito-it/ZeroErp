@@ -51,7 +51,7 @@ BEGIN
     v_limit := CASE WHEN p_limit IS NOT NULL THEN ' LIMIT ' || p_limit::TEXT ELSE '' END;
 
     IF p_lock THEN
-        v_sql := 'WITH candidati AS (SELECT a.id FROM vendite.attivita_fatturabili a JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' || v_where || ' ORDER BY a.data_attivita, a.id' || v_limit || ' FOR UPDATE SKIP LOCKED) UPDATE vendite.attivita_fatturabili a SET lock_in_fatturazione = true, lock_batch_id = ' || quote_literal(p_lock_batch_id) || ', stato_esecuzione = ''PENDING'', data_update = now(), user_update = current_user FROM candidati c WHERE a.id = c.id AND a.fatturato IS FALSE AND COALESCE(a.lock_in_fatturazione, false) IS FALSE RETURNING a.*';
+        v_sql := 'WITH candidati AS (SELECT a.id FROM vendite.attivita_fatturabili a JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' || v_where || ' ORDER BY a.data_attivita, a.id' || v_limit || ' FOR UPDATE OF a SKIP LOCKED) UPDATE vendite.attivita_fatturabili a SET lock_in_fatturazione = true, lock_batch_id = ' || quote_literal(p_lock_batch_id) || ', stato_esecuzione = ''PENDING'', data_update = now(), user_update = current_user FROM candidati c WHERE a.id = c.id AND a.fatturato IS FALSE AND COALESCE(a.lock_in_fatturazione, false) IS FALSE RETURNING a.*';
     ELSE
         v_sql := 'WITH candidati AS (SELECT a.id FROM vendite.attivita_fatturabili a JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' || v_where || ' ORDER BY a.data_attivita, a.id' || v_limit || ') SELECT a.* FROM vendite.attivita_fatturabili a JOIN candidati c ON c.id = a.id ORDER BY a.data_attivita, a.id';
     END IF;

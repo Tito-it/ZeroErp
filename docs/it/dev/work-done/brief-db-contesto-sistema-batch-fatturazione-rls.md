@@ -24,8 +24,8 @@
 >
 > **Origine**: [analisi-commesse-stato-e-sviluppi.md](analisi-commesse-stato-e-sviluppi.md)
 > §9 + §10.4 F4 (caveat RLS). Coordinare con
-> [analisi-attivazione-rls-operatori-be-fe.md](../work-done/analisi-attivazione-rls-operatori-be-fe.md),
-> [db-brief-rls-ondata2-insert-bloccati.md](../work-done/db-brief-rls-ondata2-insert-bloccati.md)
+> [analisi-attivazione-rls-operatori-be-fe.md](analisi-attivazione-rls-operatori-be-fe.md),
+> [db-brief-rls-ondata2-insert-bloccati.md](db-brief-rls-ondata2-insert-bloccati.md)
 > e [provisioning-db-roles.md](../backend/provisioning-db-roles.md).
 
 ---

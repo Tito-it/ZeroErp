@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_job_run_end.md" %}
 # ⚙️ Funzione `fn_job_run_end`
 
 ```sql

@@ -304,6 +304,10 @@ export const MANAGE_ICONS = {
   // Workflow approvazione prezzi (Sprint E listini v5).
   APPROVE: 'pi pi-check',
   REJECT: 'pi pi-times',
+  // Assegnazione / presa in carico (pratiche): assegna flusso a operatore/reparto
+  // (FlussoDrawer) e "prendi in carico" dalla coda lavoro (PraticheCodaLavoro).
+  // Centralizzata: era hardcoded inline come `pi pi-user-plus` nei due punti.
+  ASSIGN: 'pi pi-user-plus',
 }
 
 // Scope readonly — area (schema DB) passata come primo arg a useReadonlyMode.

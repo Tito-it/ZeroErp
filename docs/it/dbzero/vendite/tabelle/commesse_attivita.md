@@ -61,6 +61,7 @@
 | CHECK | chk_commesse_attivita_sorgente_pair |  |
 | CHECK | chk_commesse_attivita_stato_approvazione |  |
 | CHECK | chk_commesse_attivita_stato_emissione |  |
+| CHECK | chk_commesse_attivita_tipo_doc_emittibile |  |
 | CHECK | chk_commesse_attivita_tipo_variazione_applicata |  |
 | FOREIGN KEY | commesse_attivita_listino_riga_id_fkey | listino_riga_id |
 | FOREIGN KEY | fk_commesse_attivita_area_geo | area_geografica_id |
@@ -84,6 +85,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_commesse_attivita_commessa_stati | `CREATE INDEX ix_commesse_attivita_commessa_stati ON vendite.commesse_attivita USING btree (commessa_id, stato_approvazione, stato_emissione)` |
+| ix_commesse_attivita_lane_candidate | `CREATE INDEX ix_commesse_attivita_lane_candidate ON vendite.commesse_attivita USING btree (commessa_id, competenza_mese, tipo_doc_fiscale_id) WHERE (((stato_emissione)::text = 'NON_EMESSA'::text) AND ((stato_approvazione)::text = 'APPROVATA'::text) AND (tipo_doc_fiscale_id IS NOT NULL))` |
 | ix_commesse_attivita_origine_prezzo | `CREATE INDEX ix_commesse_attivita_origine_prezzo ON vendite.commesse_attivita USING btree (origine_prezzo)` |
 | pk_commesse_attivita | `CREATE UNIQUE INDEX pk_commesse_attivita ON vendite.commesse_attivita USING btree (id)` |
 | uq_commesse_attivita_commessa_segment | `CREATE UNIQUE INDEX uq_commesse_attivita_commessa_segment ON vendite.commesse_attivita USING btree (commessa_id, segment_key)` |
@@ -91,20 +93,22 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_commesse_attivita_a10_area_geografica_fatturazione_r_4e9bb4 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id', 'id')` |
 | trg_commesse_attivita_a10_area_geografica_fatturazione_r_4e9bb4 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id', 'id')` |
+| trg_commesse_attivita_a10_area_geografica_fatturazione_r_4e9bb4 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id', 'id')` |
 | trg_commesse_attivita_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_commesse_attivita_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
-| trg_commesse_attivita_a10_listini_righe_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_righe', 'attivo', 'listino_riga_id', 'id')` |
+| trg_commesse_attivita_a10_guard_tipo_doc_emittibile_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile()` |
+| trg_commesse_attivita_a10_guard_tipo_doc_emittibile_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile()` |
 | trg_commesse_attivita_a10_listini_righe_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_righe', 'attivo', 'listino_riga_id', 'id')` |
-| trg_commesse_attivita_a10_listini_versioni_require_attiv_5d6a8d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
+| trg_commesse_attivita_a10_listini_righe_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_righe', 'attivo', 'listino_riga_id', 'id')` |
 | trg_commesse_attivita_a10_listini_versioni_require_attiv_5d6a8d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
+| trg_commesse_attivita_a10_listini_versioni_require_attiv_5d6a8d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
 | trg_commesse_attivita_a10_promo_articoli_require_attivo__12aecc | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'promo_articoli', 'attivo', 'promo_id', 'id')` |
 | trg_commesse_attivita_a10_promo_articoli_require_attivo__12aecc | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'promo_articoli', 'attivo', 'promo_id', 'id')` |
 | trg_commesse_attivita_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_commesse_attivita_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
-| trg_commesse_attivita_a10_tipi_doc_fiscale_require_attiv_89561d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
 | trg_commesse_attivita_a10_tipi_doc_fiscale_require_attiv_89561d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
+| trg_commesse_attivita_a10_tipi_doc_fiscale_require_attiv_89561d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
 | trg_commesse_attivita_a10_unita_misura_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id', 'id')` |
 | trg_commesse_attivita_a10_unita_misura_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id', 'id')` |
 | trg_commesse_attivita_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

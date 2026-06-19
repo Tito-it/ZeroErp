@@ -313,6 +313,12 @@ class PraticheRepository:
         sf.descrizione AS stato_descrizione,
         tf.codice AS template_flusso_codice,
         tf.descrizione AS template_flusso_descrizione,
+        -- Configurazione esito dello step (20260617-01): governa come il FE
+        -- (FlussoDrawer) presenta avvio/completamento. MANUALE = avvio poi form
+        -- esito; AUTOMATICO = avvia+completa con esito_default; CONTESTUALE =
+        -- avvio+esito in un'unica azione (esito_default pre-selezionato).
+        tf.modalita_esito AS template_modalita_esito,
+        tf.esito_default AS template_esito_default,
         -- Attività UI data-driven (catalogo pratiche.azioni_ui): chiave risolta
         -- dal registry FE → drawer di dominio da aprire dal flusso. NULL = nessuna.
         au.azione_ui_key AS template_azione_ui_key,
@@ -321,7 +327,12 @@ class PraticheRepository:
         p.istanza_utility_id AS pratica_istanza_utility_id,
         script.fn_get_billing_account_by_istanza(p.istanza_utility_id) AS pratica_billing_account_id,
         s.ragione_sociale_completa AS pratica_soggetto_display,
-        s.id_fiscale_univoco_cf_piva AS pratica_soggetto_id_fiscale
+        s.id_fiscale_univoco_cf_piva AS pratica_soggetto_id_fiscale,
+        -- Assegnazione del singolo step (20260618): operatore + reparto con
+        -- display fields via JOIN (no lookup client-side). Mirror del pattern
+        -- della lista pratiche.
+        sru.ragione_sociale_completa AS risorsa_umana_display,
+        uo.descrizione AS unita_organizzativa_descrizione
     """
 
     _FLUSSO_JOINS = """
@@ -330,6 +341,10 @@ class PraticheRepository:
         LEFT JOIN pratiche.azioni_ui au ON au.id = tf.azione_ui_id
         JOIN pratiche.pratiche p ON p.id = f.pratica_id
         LEFT JOIN anagrafiche.soggetti s ON s.id = p.soggetto_id
+        LEFT JOIN anagrafiche.risorse_umane ru ON ru.id = f.risorsa_umana_id
+        LEFT JOIN anagrafiche.soggetti_ruoli srr ON srr.id = ru.soggetto_ruolo_id
+        LEFT JOIN anagrafiche.soggetti sru ON sru.id = srr.soggetto_id
+        LEFT JOIN config.unita_organizzative uo ON uo.id = f.unita_organizzativa_id
     """
 
     # Scopo: Restituisce i flussi di una pratica ordinati per sequenza, con display fields.
@@ -356,6 +371,76 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [flusso_id])
             return row_to_dict(cursor)
+
+    # Scopo: Config esito dello step (modalita_esito + esito_default dal template).
+    # Query leggera per il path di avvio (evita la proiezione completa di get_flusso,
+    # che fa JOIN soggetti/azioni_ui + fn BA per soli 2 campi). Ritorna
+    # (modalita_esito, esito_default) o None se il flusso non esiste; template
+    # assente (flusso legacy senza template) → modalita MANUALE.
+    def get_flusso_esito_config(self, flusso_id: int) -> tuple[str, str | None] | None:
+        sql = """
+            SELECT COALESCE(tf.modalita_esito, 'MANUALE') AS modalita_esito,
+                   tf.esito_default
+            FROM pratiche.flussi f
+            LEFT JOIN pratiche.template_flussi tf ON tf.id = f.template_flusso_id
+            WHERE f.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [flusso_id])
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        return (row[0], row[1])
+
+    # Scopo: Aggiorna i campi di assegnazione di un flusso (whitelist).
+    # L'UPDATE di risorsa_umana_id/unita_organizzativa_id attiva il trigger
+    # giornale trg_flussi_z90_giornale_assegnazione_upd. Guard not-found esplicito.
+    def update_flusso(self, flusso_id: int, data: dict[str, Any]) -> None:
+        allowed_fields: dict[str, str] = {
+            "risorsa_umana_id": "risorsa_umana_id = %s",
+            "unita_organizzativa_id": "unita_organizzativa_id = %s",
+        }
+
+        set_parts: list[str] = []
+        params: list[Any] = []
+        for field_name, sql_fragment in allowed_fields.items():
+            if field_name in data:
+                set_parts.append(sql_fragment)
+                params.append(data[field_name])
+
+        if not set_parts:
+            return
+
+        params.append(flusso_id)
+        sql = f"""
+            UPDATE pratiche.flussi
+            SET {', '.join(set_parts)}
+            WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            ErrorManager.require(
+                cursor.rowcount > 0,
+                code="E_FLUSSO_NOT_FOUND",
+                message=f"Flusso {flusso_id} non trovato",
+            )
+
+    # Scopo: Operatori (risorse umane attive) di un reparto, per il picker di
+    # assegnazione flusso. Display = ragione sociale del soggetto collegato.
+    def list_operatori_reparto(self, unita_organizzativa_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT ru.id,
+                   sru.ragione_sociale_completa AS display
+            FROM anagrafiche.risorse_umane ru
+            JOIN anagrafiche.soggetti_ruoli srr ON srr.id = ru.soggetto_ruolo_id
+            JOIN anagrafiche.soggetti sru ON sru.id = srr.soggetto_id
+            WHERE ru.unita_organizzativa_id = %s
+              AND ru.attivo = true
+            ORDER BY sru.ragione_sociale_completa, ru.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [unita_organizzativa_id])
+            return rows_to_list(cursor)
 
     # Scopo: Percorso suggerito della pratica = template_flussi del suo
     #        tipo_prestazione (in ordine), LEFT JOIN i flussi gia' istanziati.
@@ -524,12 +609,30 @@ class PraticheRepository:
             FROM pratiche.giornale
             WHERE pratica_id = %s
         """
+        # Display fields (no lookup client-side): descrizione del flusso a cui
+        # l'evento si riferisce (giornale.flusso_id → template) e decode degli
+        # stati della transizione FLUSSO_STATO_CAMBIATO (dettaglio jsonb porta gli
+        # id). Il decode stati usa config.stati_flussi_pratiche SOLO per gli eventi
+        # di flusso (g.flusso_id NOT NULL): gli eventi di pratica (flusso_id NULL)
+        # referenziano un'altra tabella stati → niente join fuorviante.
         data_sql = """
             SELECT
                 g.id, g.pratica_id, g.flusso_id, g.azione,
                 g.origine, g.dettaglio, g.tx_id,
-                g.data_insert, g.user_insert
+                g.data_insert, g.user_insert,
+                tf.codice AS flusso_template_codice,
+                tf.descrizione AS flusso_template_descrizione,
+                sp.descrizione AS dettaglio_stato_precedente,
+                sn.descrizione AS dettaglio_stato_nuovo
             FROM pratiche.giornale g
+            LEFT JOIN pratiche.flussi f ON f.id = g.flusso_id
+            LEFT JOIN pratiche.template_flussi tf ON tf.id = f.template_flusso_id
+            LEFT JOIN config.stati_flussi_pratiche sp
+                ON g.flusso_id IS NOT NULL
+               AND sp.id = NULLIF(g.dettaglio->>'stato_precedente_id', '')::int
+            LEFT JOIN config.stati_flussi_pratiche sn
+                ON g.flusso_id IS NOT NULL
+               AND sn.id = NULLIF(g.dettaglio->>'stato_nuovo_id', '')::int
             WHERE g.pratica_id = %s
             ORDER BY g.data_insert DESC, g.id DESC
             LIMIT %s OFFSET %s

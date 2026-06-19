@@ -15,7 +15,12 @@ from django.db import connection
 
 from apps.core.db._helpers import call_jsonb_fn
 from apps.core.services.error_manager import ErrorManager
-from apps.vendite.types import CommessaEmitResult, CommessaPushLogRow, CommessaStatoResult
+from apps.vendite.types import (
+    CommessaEmitResult,
+    CommessaEmittibileLane,
+    CommessaPushLogRow,
+    CommessaStatoResult,
+)
 
 # Repository SQL: incapsula accesso DB per commesse, commesse_attivita e push log.
 
@@ -808,24 +813,25 @@ class CommesseRepository:
         self,
         commessa_id: int,
         *,
-        lotto_attivita_id: int | None = None,
         only_approved: bool = True,
         dry_run: bool = False,
     ) -> CommessaEmitResult:
         """Pull commessa → attivita_fatturabili (step 0 pipeline fatturazione).
-        Idempotente. Restituisce contatori candidati/inseriti/aggiornati."""
+        Idempotente. Restituisce contatori candidati/inseriti/aggiornati.
+
+        NB: la fn DB non ha più `p_lotto_attivita_id` (sottosistema lotto-attività
+        deprecato, changeset 20260227-16): firma a 3 parametri."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT total_candidate, inserted_rows, updated_rows
                 FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
                     p_commessa_id => %s,
-                    p_lotto_attivita_id => %s,
                     p_only_approved => %s,
                     p_dry_run => %s
                 )
                 """,
-                [commessa_id, lotto_attivita_id, only_approved, dry_run],
+                [commessa_id, only_approved, dry_run],
             )
             row = cursor.fetchone()
         assert row is not None
@@ -867,23 +873,36 @@ class CommesseRepository:
             )
             return [row[0] for row in cursor.fetchall()]
 
-    def list_emittibili_emittenti(
+    def list_emittibili_lane(
         self,
         *,
         competenza_mese: date | None = None,
+        billing_account_id: int | None = None,
         utility_id: int | None = None,
+        emittente_soggetto_ruolo_id: int | None = None,
         fatturazione_immediata: bool | None = None,
         limit: int = 10000,
-    ) -> list[int | None]:
-        """Emittenti distinti tra le commesse emittibili del perimetro/corsia.
-        Usato dal management command per creare UN lotto per emittente (la
-        numerazione fattura è per emittente). Include l'eventuale gruppo
-        emittente NULL come voce a sé."""
+    ) -> list[CommessaEmittibileLane]:
+        """Terne distinte `(emittente, tipo_doc_fiscale, utility)` con lavoro pronto da
+        fatturare, via vendite.fn_list_emittibili_lane. Usato dal driver batch per creare
+        UN lotto per terna: il lotto è identificato da (emittente, tipo_doc, utility,
+        competenza) e la numerazione fattura è per emittente.
+
+        Ogni lane porta:
+        - `utility_id`: asse di segregazione del lotto (NOT NULL a monte → mai NULL);
+        - `competenza_mese`: max delle righe candidate, con cui creare il lotto
+          (la select cattura poi via `<=` anche gli arretrati);
+        - `total_candidate`: righe APPROVATA+NON_EMESSA candidate, per il dry-run.
+
+        `competenza_mese` in input è un **bound superiore** (`<=`, cumulativo). Le righe
+        con tipo_doc_fiscale NULL sono escluse a monte dalla funzione DB. `limit` è il cap
+        sulle TERNE restituite."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT DISTINCT emittente_soggetto_ruolo_id
-                FROM vendite.fn_list_commesse_emittibili(
+                SELECT emittente_soggetto_ruolo_id, tipo_doc_fiscale_id,
+                       utility_id, competenza_mese, total_candidate
+                FROM vendite.fn_list_emittibili_lane(
                     p_competenza_mese => %s,
                     p_billing_account_id => %s,
                     p_utility_id => %s,
@@ -892,9 +911,19 @@ class CommesseRepository:
                     p_limit => %s
                 )
                 """,
-                [competenza_mese, None, utility_id, None, fatturazione_immediata, limit],
+                [competenza_mese, billing_account_id, utility_id,
+                 emittente_soggetto_ruolo_id, fatturazione_immediata, limit],
             )
-            return [None if row[0] is None else int(row[0]) for row in cursor.fetchall()]
+            return [
+                CommessaEmittibileLane(
+                    emittente_soggetto_ruolo_id=(None if row[0] is None else int(row[0])),
+                    tipo_doc_fiscale_id=int(row[1]),
+                    utility_id=int(row[2]),
+                    competenza_mese=row[3],
+                    total_candidate=int(row[4]),
+                )
+                for row in cursor.fetchall()
+            ]
 
     # --- Gruppo 3b: Lista attività commessa (paginata) ---
 

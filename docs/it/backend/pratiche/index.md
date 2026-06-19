@@ -1,9 +1,10 @@
 # Area 'pratiche' (Backend)
 
 ## API
-- [api_coda_lavoro](manual/api_coda_lavoro.md) — Esporre via HTTP la coda di lavoro dell'operatore autenticato, organizzata su tre livelli di priorita': flussi assegnati, flussi per competenza, flussi del reparto.
+- [api_coda_lavoro](manual/api_coda_lavoro.md) — Esporre via HTTP la coda di lavoro dell'operatore autenticato, organizzata su quattro livelli di priorita': flussi assegnati, flussi per competenza, flussi del reparto, flussi liberi.
 - [api_competenze_flussi](manual/api_competenze_flussi.md) — Esporre via HTTP la gestione della matrice competenze flussi: per ogni tipo di flusso e reparto, quali operatori sono abilitati a eseguire il flusso. Configurazione statica gestita dall'amministratore.
 - [api_flussi_list](manual/api_flussi_list.md) — Esporre via HTTP la lista e la creazione dei flussi di una pratica.
+- [api_flusso_assegnazione](manual/api_flusso_assegnazione.md) — Esporre via HTTP l'assegnazione di un **singolo flusso** (step) a un operatore e/o a un reparto. Simmetrico ad api_pratica_assegnazione, ma a livello di step invece che di testata pratica.
 - [api_flusso_canali](manual/api_flusso_canali.md) — Esporre via HTTP i canali abilitati per il template del flusso.
 - [api_flusso_detail](manual/api_flusso_detail.md) — Esporre via HTTP il dettaglio di un flusso con verifica ownership pratica.
 - [api_flusso_prerequisiti](manual/api_flusso_prerequisiti.md) — Esporre via HTTP i prerequisiti di un template flusso con flag soddisfatto per preview/UI.
@@ -12,6 +13,7 @@
 - [api_flusso_stato](manual/api_flusso_stato.md) — Esporre via HTTP le transizioni di stato di un flusso: avvio (IN_CORSO), completamento (COMPLETATO con esito) e transizioni generiche (SOSPESO, ANNULLATO, ecc.).
 - [api_formule_tempo](manual/api_formule_tempo.md) — Esporre via HTTP le formule tempo attive per un tipo prestazione.
 - [api_genera_pratica](manual/api_genera_pratica.md) — Esporre via HTTP la generazione manuale di una nuova pratica da un flusso applicando una regola di generazione.
+- [api_operatori_reparto](manual/api_operatori_reparto.md) — Esporre via HTTP l'elenco degli **operatori (risorse umane attive) di un reparto**, per alimentare il picker di assegnazione di un flusso a un operatore specifico del reparto (vedi api_flusso_assegnazione).
 - [api_percorso](manual/api_percorso.md) — Restituisce il **percorso suggerito** di una pratica = i template_flussi del suo tipo_prestazione (in ordine), ciascuno con lo stato di istanziazione. Alimenta la roadmap FE (PraticaPercorso.vue).
 - [api_pratica_assegnazione](manual/api_pratica_assegnazione.md) — Esporre via HTTP l'assegnazione di una pratica a risorsa umana e/o unita' organizzativa.
 - [api_pratica_calcoli_tempo](manual/api_pratica_calcoli_tempo.md) — Esporre via HTTP i calcoli tempo (prestazione da/a) di una pratica.

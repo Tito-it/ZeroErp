@@ -40,5 +40,16 @@
 | pk_pratiche_formule_tempo | `CREATE UNIQUE INDEX pk_pratiche_formule_tempo ON pratiche.formule_tempo USING btree (id)` |
 | uq_formule_tempo_tipo_da_a | `CREATE UNIQUE INDEX uq_formule_tempo_tipo_da_a ON pratiche.formule_tempo USING btree (tipo_prestazione_id, template_flusso_da_id, template_flusso_a_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_formule_tempo_a10_calcoli_tempo_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'calcoli_tempo', 'formula_tempo_id', 'id', 'attivo')` |
+| trg_formule_tempo_a10_template_flussi_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_a_id', 'id')` |
+| trg_formule_tempo_a10_template_flussi_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_a_id', 'id')` |
+| trg_formule_tempo_a10_tipi_prestazione_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'tipi_prestazione', 'attivo', 'tipo_prestazione_id', 'id')` |
+| trg_formule_tempo_a10_tipi_prestazione_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'tipi_prestazione', 'attivo', 'tipo_prestazione_id', 'id')` |
+| trg_formule_tempo_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_formule_tempo_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}

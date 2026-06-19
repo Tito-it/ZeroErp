@@ -68,6 +68,7 @@
 | trg_soggetti_a10_indirizzi_soggetti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'indirizzi_soggetti', 'soggetto_id', 'id', 'attivo')` |
 | trg_soggetti_a10_istanze_utilities_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'istanze_utilities', 'soggetto_id', 'id', 'attivo')` |
 | trg_soggetti_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'CODICE_NON_MODIFICABILE')` |
+| trg_soggetti_a10_pratiche_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'pratiche', 'soggetto_id', 'id', 'attivo')` |
 | trg_soggetti_a10_risorse_umane_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'risorse_umane', 'soggetto_id', 'id', 'attivo')` |
 | trg_soggetti_a10_soggetti_conti_bancari_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'soggetti_conti_bancari', 'soggetto_id', 'id', 'attivo')` |
 | trg_soggetti_a10_soggetti_ruoli_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'soggetti_ruoli', 'soggetto_id', 'id', 'attivo')` |
@@ -79,8 +80,8 @@
 | trg_soggetti_def_guard_indirizzi_required_aft_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required()` |
 | trg_soggetti_def_guard_soggetto_contatti_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_soggetto_contatti()` |
 | trg_soggetti_def_guard_soggetto_contatti_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_soggetto_contatti()` |
-| trg_soggetti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_soggetti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_soggetti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_soggetti_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_normalize()` |
 | trg_soggetti_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_normalize()` |
 | trg_soggetti_valida_cf_piva_dispatch_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()` |

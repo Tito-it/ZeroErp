@@ -45,9 +45,15 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_calcoli_tempo_a10_formule_tempo_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'formule_tempo', 'attivo', 'formula_tempo_id', 'id')` |
+| trg_calcoli_tempo_a10_formule_tempo_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'formule_tempo', 'attivo', 'formula_tempo_id', 'id')` |
 | trg_calcoli_tempo_a10_guard_immutabili_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_calcoli_tempo_guard_immutabili()` |
 | trg_calcoli_tempo_a20_set_periodo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_calcoli_tempo_set_periodo()` |
 | trg_calcoli_tempo_a20_set_periodo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_calcoli_tempo_set_periodo()` |
+| trg_calcoli_tempo_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_calcoli_tempo_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_calcoli_tempo_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_calcoli_tempo_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

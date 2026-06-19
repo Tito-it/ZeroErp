@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# E2 — indice PARZIALE di supporto per vendite.fn_list_emittibili_lane
+# (e per la discovery delle corsie in generale).
+#
+# Vedi brief-db-emittibili-lane-tipo-doc-fiscale.md (E2).
+#
+# Razionale: la fatturazione accumula righe nel tempo, ma le righe CANDIDATE
+# (APPROVATA + NON_EMESSA + tipo_doc valorizzato) sono una piccola frazione che
+# resta bounded — quasi tutte diventano EMESSA ed escono dall'indice. Un indice
+# PARZIALE su quel predicato resta quindi compatto anche con storico in crescita.
+#
+# Colonne: commessa_id (join ca.commessa_id = c.id, nested-loop) + competenza_mese
+# (filtro cumulativo <=) + tipo_doc_fiscale_id (raggruppamento/output).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260619-02-create-ix-commesse-attivita-lane-mctit.yaml
+
+  - changeSet:
+      id: 20260619-02-create-ix-commesse-attivita-lane
+      author: mctit
+      comment: >
+        E2: indice parziale ix_commesse_attivita_lane_candidate su
+        vendite.commesse_attivita (commessa_id, competenza_mese, tipo_doc_fiscale_id)
+        WHERE stato_emissione='NON_EMESSA' AND stato_approvazione='APPROVATA' AND
+        tipo_doc_fiscale_id IS NOT NULL. Supporta la discovery corsie
+        (fn_list_emittibili_lane); resta compatto perche' indicizza solo le righe
+        candidate (le altre diventano EMESSA).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: commesse_attivita
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_commesse_attivita_lane_candidate
+                ON vendite.commesse_attivita (commessa_id, competenza_mese, tipo_doc_fiscale_id)
+                WHERE stato_emissione = 'NON_EMESSA'
+                  AND stato_approvazione = 'APPROVATA'
+                  AND tipo_doc_fiscale_id IS NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_commesse_attivita_lane_candidate;

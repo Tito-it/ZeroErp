@@ -45,6 +45,22 @@ export function displayTimestamp(ts) {
   return `${day}/${m}/${y}, ${hh}:${mm}:${ss}`
 }
 
+/**
+ * Formatta solo l'ora (HH:mm) di un timestamp, in fuso locale.
+ * Accetta: stringa ISO, Date, null/undefined.
+ *
+ * @param {string|Date|null} ts - Valore timestamp
+ * @returns {string} - Stringa 'HH:mm' o stringa vuota
+ */
+export function displayTime(ts) {
+  if (!ts) return ''
+  const d = ts instanceof Date ? ts : new Date(ts)
+  if (isNaN(d.getTime())) return ''
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
 export function toDateString(d) {
   if (!d) return null
   if (d instanceof Date) {

@@ -227,6 +227,17 @@ class LottoPipelineRunner:
             rollback=False,
             dry_run=dry_run,
         )
+        # Allineamento fatture allo stato dello step (parametrico, per-step): la fattura
+        # segue il lotto 1→2→8→3, così EMESSA congela l'IVA prima della numerazione in
+        # DEFINITIVA (evita il salto 1→8 vietato dalla matrice transizioni). Eseguito DOPO
+        # i task dello step (semantica "EMESSA = IVA certificata"); idempotente grazie al
+        # guard `IS DISTINCT FROM` in fn_sync_lotto_fatture_stato (step DRAFT → 1→1 no-op).
+        # Solo forward (questo metodo non è il path di rollback) e mai in dry-run.
+        if not dry_run:
+            self.repository.sync_lotto_fatture_stato(
+                lotto_id=lotto_id,
+                stato_doc_fiscale_id=step.stato_doc_fiscale_id,
+            )
         self.repository.log_lotto_esito_fatture(lotto_id)
         self.repository.log_event(
             domain="PIPELINE",

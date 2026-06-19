@@ -20,6 +20,7 @@
 - [x] Area geografica fatturazione e colonne correlate.
 - [x] Chiusura operativa lotto guidata da flag `config.stati_doc_fiscale.chiude_lotto` a fine step.
 - [x] Numerazione spostata a step `DEFINITIVA` (pipeline massiva); `EMESSA` resta pre-fiscale/riapribile.
+- [x] Stato fattura allineato per-step dal runner (`1→2→8`), sync centralizzato — vedi [§ Allineamento stato fattura ↔ stato step](#-allineamento-stato-fattura--stato-step-sync-per-step).
 - [x] Reset tecnico modellato in pipeline (`rollback` step `EMESSA`) solo per `MASSIVO`.
 - [x] Step `EMESSA` massivo configurato con task minimi/fondi + ricalcolo IVA/totali.
 - [x] Step `INVIATA` massivo configurato con preparazione payload SDI su lotto.
@@ -212,6 +213,57 @@ Regole chiave:
 * il DB resta fonte di verita` per configurazione pipeline e fallback.
 * il dispatch e` controllato da registry DB + mapping statico in Django.
 * vincoli, trigger e funzioni di consistenza restano in DB.
+
+## 🧭 Allineamento stato fattura ↔ stato step (sync per-step)
+
+### Scopo
+Garantire che lo **stato documentale delle fatture** segua quello del **lotto**
+ad ogni avanzamento di step, in modo **parametrico** (nessuna logica per-stato
+cablata). Risolve il difetto per cui la fattura saltava da `DRAFT(1)` a
+`DEFINITIVA(8)` violando la matrice transizioni (`config.stati_doc_fiscale_transizioni`,
+che per la fattura ammette solo `1→2→8→3→6`).
+
+### Comportamento
+* La sincronizzazione e` **centralizzata** in un solo punto:
+  `LottoPipelineRunner._execute_pipeline_step` (in `apps/vendite/services/pipeline_runner.py`).
+  Dopo l'esecuzione dei task dello step (e prima del log esito / chiusura lotto)
+  il runner chiama `repository.sync_lotto_fatture_stato(lotto_id,
+  stato_doc_fiscale_id=step.stato_doc_fiscale_id)`.
+* Il task `numera_fatture` (`PipelineStepExecutor._handle_numera_fatture_task`)
+  **NON** sincronizza piu` lo stato: esegue **solo** la numerazione fiscale
+  (`fn_numera_fattura_opz_emessa`). Unico punto di sync ⇒ nessuna duplicazione.
+* **Dopo** i task: l'allineamento a `EMESSA(2)` avviene a valle del ricalcolo
+  IVA/totali (semantica *"EMESSA = IVA certificata"*), prima della numerazione
+  in `DEFINITIVA`.
+* **Solo forward**: `_execute_pipeline_step` non e` il path di rollback (il
+  rollback ha una chiamata `execute_step(rollback=True)` separata che non passa
+  da qui), quindi il sync non scatta mai in rollback.
+* **Mai in dry-run**: la chiamata e` sotto guard `if not dry_run`.
+* **Idempotente**: `fn_sync_lotto_fatture_stato` aggiorna solo le fatture con
+  `stato_doc_fiscale_id IS DISTINCT FROM` il target (lo step `DRAFT` ⇒ `1→1`
+  no-op, dato che le fatture nascono gia` `DRAFT`), preserva `critical`/`esclusa`.
+
+### Catena risultante
+* **MASSIVO**: `1 (DRAFT) → 2 (EMESSA) → 8 (DEFINITIVA)` automatico per fattura,
+  un hop per step; la chiusura lotto avviene su `DEFINITIVA` (`chiude_lotto=t`).
+* **GIORNALIERO**: stesso meccanismo; lo step `EMESSA` (`processi=[]`) porta
+  comunque la fattura a `2` prima della numerazione — **senza nuovi seed**.
+
+### Invariante (contratto)
+> **Ogni stato della pipeline deve essere `applica_fattura=TRUE`**, perche` la
+> fattura segue il lotto step-by-step. Gli step provengono da
+> `fn_list_fatturazione_pipeline_steps` (filtra `applica_lotto=TRUE`,
+> `ORDER BY stati_doc_fiscale.ordine`): l'ordine logico determina la sequenza
+> degli hop, che deve essere coperta dalla matrice transizioni fattura
+> (`solo_lotto=FALSE`). Se un futuro stato fosse lotto-only, il guard
+> `trgfn_fatture_guard_stato` fallirebbe in modo esplicito (fail-fast voluto,
+> nessun skip silenzioso lato applicativo).
+
+### Dipendenze DB
+* `vendite.fn_sync_lotto_fatture_stato(p_lotto_id, p_target_stato_doc_fiscale_id)`
+* `config.stati_doc_fiscale_transizioni` (matrice; ramo fattura = `solo_lotto=FALSE`)
+* `vendite.fn_list_fatturazione_pipeline_steps` (`ORDER BY ordine`)
+* `vendite.trgfn_fatture_guard_stato` (guard transizioni fattura)
 
 ## 📌 Generazione fatture puntuali (lotti giornalieri)
 

@@ -133,6 +133,18 @@ Le operazioni di scrittura (`POST`, `PATCH`, `DELETE` sul path classico) restano
 
 ---
 
+## Processi headless: canale di sistema RLS + registrazione run (`apps/core/services/`)
+
+Building block per i processi **headless** (management command / cron / systemd) che operano fuori dal ciclo richiesta web. Due concern ortogonali: (1) attraversare la RLS operatori come **processo di sistema** (RLS Path A, brief `work-done/brief-db-contesto-sistema-batch-fatturazione-rls.md`); (2) **registrare** ogni run in `maintenance.job_run_log` (brief `work-done/brief-design-job-run-registrazione.md`). Generici e riusabili da qualsiasi futuro job — nessun accoppiamento di dominio. Primo consumer: `run_fatturazione_batch`.
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `system_process_context` | [system_context.py](../../../../backend/apps/core/services/system_context.py) | Gateway dei processi headless sotto RLS (Path A). Context manager `(*, alias, actor)`: per la durata del blocco ripunta la connessione `default` alle credenziali dell'alias DB di sistema (es. `system_fatturazione` → ruolo BYPASSRLS `zeroerp_batch_fatturazione`), così l'intera catena repo/`transaction.atomic` esistente gira come ruolo di sistema **senza modifiche**; ripristina le credenziali web e chiude in uscita. **Fail-loud**: solleva se il ruolo del canale non ha BYPASSRLS (no batch in default-deny silenzioso). Setta `app.jwt_user=actor` per l'audit (NON `app.ruolo_applicativo`: la RLS è bypassata dal ruolo). ⚠️ USO ESCLUSIVO ai command/cron — mai in un ciclo richiesta web (difese: guard runtime `JwtAuditMiddleware` + check statico whitelist `test_system_context_usage_whitelist`). |
+| `connection_role_bypasses_rls` | [system_context.py](../../../../backend/apps/core/services/system_context.py) | Helper `(alias='default') -> bool`: legge `rolbypassrls` del ruolo della connessione. Usato dal gateway (sanity fail-loud sul canale) e dal middleware web (guard fail-open: la connessione richiesta non deve mai essere BYPASSRLS → 500 `E_DB_ROLE_UNSAFE`). |
+| `registered_job` / `JobRunHandle` | [job_run.py](../../../../backend/apps/core/services/job_run.py) | Registrazione **run-level** dei job headless in `maintenance.job_run_log` via `script.fn_job_run_start`/`fn_job_run_end` (SECURITY DEFINER → al ruolo batch basta `EXECUTE`). Context manager `registered_job(job_name, *, origine=ORIGINE_CRON, stepname=None, lock_key=None, agent_host=None)` → `JobRunHandle` (`.acquired`, `.run_uuid`, `.set_meta/.set_message/.set_rows_affected`). Apre la riga all'ingresso (advisory-lock anti-overlap se `lock_key`; `acquired=False` su lock occupato = riga *skip* già loggata, il caller salta il corpo), la chiude all'uscita con esito/`meta` (ok=False + `error_*` su eccezione, poi rilancia). Chiusura **best-effort** (un fallimento DB nel `finally` non maschera l'errore primario del job). DEVE girare sulla stessa connessione del corpo → per il batch fatturazione **dentro** `system_process_context`. Costanti `ORIGINE_PGAGENT`/`ORIGINE_CRON`/`ORIGINE_COMMAND` (mirror del CHECK `chk_job_run_log_origine`). |
+
+---
+
 ## Note partizionate — building block cross-dominio (`apps/core/`)
 
 Building block per gestire le note su `vendite.note` (PARTITIONED TABLE LIST su `target_tipo`). Una sola triade repo+service+view-factory riusabile da qualunque dominio sorgente (preventivo, contratto, ordine, DDT, fattura, attività fatturabile) e da futuri schemi che adotteranno lo stesso pattern. Aggiungere un dominio = istanziare il repo con i parametri della partizione (zero copia di codice).

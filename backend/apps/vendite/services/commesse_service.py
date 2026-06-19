@@ -59,6 +59,11 @@ _STATO_PUSH_COMPLETATO = "COMPLETATO"
 
 _STATO_COMMESSA_PRONTA = "PRONTA_FATTURAZIONE"
 
+# Codice del guard DB (497) che blocca l'approvazione di righe emittibili senza
+# tipo_doc_fiscale_id. fn_log_and_raise_error lo include nel messaggio RAISE → lo
+# riconosciamo nella stringa dell'eccezione per classificare i fallimenti del ponte.
+_ERR_TIPO_DOC_MANCANTE = "E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO"
+
 
 def _commesse_ids_da_report(report: PushReport) -> list[int]:
     """Unione ordinata delle commesse toccate da tutti gli handler del run."""
@@ -149,6 +154,7 @@ def pr_run_commesse_push(
     # Gli errori finiscono nel report, non sollevano.
     commesse_ids = _commesse_ids_da_report(report)
     emittibilita_errors: list[str] = []
+    tipo_doc_mancante: list[int] = []
     if not dry_run:
         for commessa_id in commesse_ids:
             try:
@@ -158,6 +164,29 @@ def pr_run_commesse_push(
                 emittibilita_errors.append(
                     f"commessa_id={commessa_id}: {type(exc).__name__}: {exc}"
                 )
+                # Categoria a sé: il guard tipo_doc (497) segnala righe approvabili
+                # con tipo_doc_fiscale_id mancante → altrimenti fatturato perso in
+                # silenzio. Lo isoliamo per renderlo osservabile (dashboard/alert).
+                if _ERR_TIPO_DOC_MANCANTE in str(exc):
+                    tipo_doc_mancante.append(commessa_id)
+
+        # Persistenza durevole: in un push headless gli errori del ponte
+        # vivrebbero solo nel dict di ritorno e andrebbero persi. Traccia un
+        # evento queryable (severity WARNING), evidenziando il tipo_doc mancante.
+        if emittibilita_errors:
+            repo.log_event(
+                domain="COMMESSE",
+                entity_type="TASK_RUN",
+                entity_id=report.push_log_id or 0,
+                event_code="EMITTIBILITA_FALLITA",
+                severity="WARNING",
+                payload={
+                    "push_log_id": report.push_log_id,
+                    "totale_falliti": len(emittibilita_errors),
+                    "tipo_doc_mancante_commesse": tipo_doc_mancante,
+                    "errori": emittibilita_errors,
+                },
+            )
     return {
         "stato": report.stato,
         "dry_run": report.dry_run,
@@ -166,6 +195,7 @@ def pr_run_commesse_push(
         "handlers": [r.as_dict() | {"handler_name": r.handler_name} for r in report.handlers],
         "commesse_ids": commesse_ids,
         "emittibilita_errors": emittibilita_errors,
+        "emittibilita_tipo_doc_mancante": tipo_doc_mancante,
     }
 
 

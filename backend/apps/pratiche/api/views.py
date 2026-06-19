@@ -430,9 +430,11 @@ class ApiPraticaFlussoStato(DomainAPIView):
     # Scopo: Gestisce la richiesta HTTP POST per cambiare stato flusso.
     # Obiettivo: gestisce sia avvio (IN_CORSO) che completamento (COMPLETATO con esito).
     def post(self, request: Request, pratica_id: int, flusso_id: int) -> JsonResponse:
-        # Verifica ownership flusso-pratica prima di procedere.
+        # Verifica ownership flusso-pratica prima di procedere; ne riusa lo stato
+        # corrente per instradare il completamento (CONTESTUALE da DA_ESEGUIRE).
         repo = PraticheRepository()
-        _get_flusso_verificato(repo, pratica_id, flusso_id)
+        flusso = _get_flusso_verificato(repo, pratica_id, flusso_id)
+        stato_corrente = (flusso or {}).get("stato_codice_interno")
 
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             nuovo_stato = str(payload["nuovo_stato"])
@@ -442,14 +444,25 @@ class ApiPraticaFlussoStato(DomainAPIView):
                     code="E_FLUSSO_VALIDATION",
                     message="esito obbligatorio per completamento flusso",
                 )
-                pratiche_service.completa_flusso(
-                    flusso_id,
-                    esito=str(payload["esito"]),
-                    note_esito=payload.get("note_esito"),
-                    # user acting (p_user): inoltrato agli handler di completamento
-                    # (es. accetta_preventivo) per audit nelle fn DB di dominio.
-                    user=getattr(request.user, "username", None) or None,
-                )
+                acting_user = getattr(request.user, "username", None) or None
+                if stato_corrente == "DA_ESEGUIRE":
+                    # Modalita CONTESTUALE: avvio + esito in un'unica azione
+                    # (DA_ESEGUIRE → IN_CORSO → COMPLETATO, stessa tx).
+                    pratiche_service.avvia_e_completa_flusso(
+                        flusso_id,
+                        esito=str(payload["esito"]),
+                        note_esito=payload.get("note_esito"),
+                        user=acting_user,
+                    )
+                else:
+                    pratiche_service.completa_flusso(
+                        flusso_id,
+                        esito=str(payload["esito"]),
+                        note_esito=payload.get("note_esito"),
+                        # user acting (p_user): inoltrato agli handler di completamento
+                        # (es. accetta_preventivo) per audit nelle fn DB di dominio.
+                        user=acting_user,
+                    )
             elif nuovo_stato == "IN_CORSO":
                 # user acting (p_user §8.5): username se disponibile, altrimenti
                 # None → le fn DB ricadono su CURRENT_USER.
@@ -1001,6 +1014,78 @@ class ApiPrendiInCarico(DomainAPIView):
             return {"assegnato": assegnato, "status": "ok"}
 
         return handle_post_json(request, handler=_handler)
+
+
+class ApiPraticaFlussoAssegnazione(DomainAPIView):
+    """POST assegna un flusso a un operatore e/o a un reparto."""
+    area_funzionale = "pratiche"
+    post_permission = "assegna_pratica"
+
+    @extend_schema(
+        request=inline_serializer(
+            name="FlussoAssegnazioneRequest",
+            fields={
+                "risorsa_umana_id": serializers.IntegerField(required=False, allow_null=True),
+                "unita_organizzativa_id": serializers.IntegerField(required=False, allow_null=True),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="FlussoAssegnazioneResponse",
+            fields={"data": inline_serializer(name="FlussoAssegnazioneData", fields={
+                "status": serializers.CharField(),
+            })},
+        )},
+    )
+    # Scopo: Gestisce la richiesta HTTP POST per assegnare un flusso.
+    # I flag set_* derivano dalla presenza della chiave nel payload: chiave
+    # assente = non toccare; valore None = de-assegna (azzera).
+    def post(self, request: Request, pratica_id: int, flusso_id: int) -> JsonResponse:
+        # Verifica ownership flusso-pratica (E_FLUSSO_OWNERSHIP), come gli altri
+        # endpoint di scrittura flusso: il flusso dell'URL deve appartenere alla
+        # pratica dell'URL.
+        repo = PraticheRepository()
+        _get_flusso_verificato(repo, pratica_id, flusso_id)
+
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            pratiche_service.assegna_flusso(
+                flusso_id,
+                risorsa_umana_id=optional_int(payload, "risorsa_umana_id"),
+                unita_organizzativa_id=optional_int(payload, "unita_organizzativa_id"),
+                set_risorsa="risorsa_umana_id" in payload,
+                set_unita="unita_organizzativa_id" in payload,
+            )
+            return {"status": "ok"}
+
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiOperatoriReparto(DomainAPIView):
+    """GET operatori (risorse umane attive) di un reparto, per il picker di assegnazione."""
+    area_funzionale = "pratiche"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="unita_organizzativa_id",
+                type=int,
+                required=True,
+                description="ID del reparto di cui elencare gli operatori attivi.",
+            ),
+        ],
+        responses={200: inline_serializer(
+            name="OperatoriRepartoResp",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    # Scopo: Restituisce via GET gli operatori attivi di un reparto.
+    def get(self, request: Request) -> JsonResponse:
+        unita_organizzativa_id = qp_int_strict(
+            request.query_params.get("unita_organizzativa_id"),
+            "unita_organizzativa_id",
+            0,
+        )
+        items = pratiche_service.list_operatori_reparto(unita_organizzativa_id)
+        return success_response({"results": items})
 
 
 # ================================================================== #

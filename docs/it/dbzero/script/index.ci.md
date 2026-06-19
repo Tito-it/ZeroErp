@@ -64,6 +64,8 @@
 - [fn_guard_utility_tipo_ruolo](manual/fn_guard_utility_tipo_ruolo.md) — (latest review 16-02-2026) `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:
 - [fn_has_identita_attiva](manual/fn_has_identita_attiva.md) — (latest review 19-04-2026)
 - [fn_is_super_admin](manual/fn_is_super_admin.md) — (latest review 20-04-2026 — filtro OPERATORE)
+- [fn_job_run_end](manual/fn_job_run_end.md) — (latest review 18-06-2026 — registrazione run job headless)
+- [fn_job_run_start](manual/fn_job_run_start.md) — (latest review 18-06-2026 — registrazione run job headless)
 - [fn_list_parameters_for_user](manual/fn_list_parameters_for_user.md)
 - [fn_log_and_raise_error](manual/fn_log_and_raise_error.md) — (last review 24-04-2026)
 - [fn_log_error_only](manual/fn_log_error_only.md) — (latest review 23-11-25) * **Logging “silenzioso”**: inserisce una riga in `dbops.error_log` con contesto ricco, ma **non** solleva eccezioni. * **Separazione delle responsabilità**: differenzia chiaramente i casi di **solo tracciamento** da quelli di **error handling critico** (per cui usare `fn_log_and_raise_error`).
