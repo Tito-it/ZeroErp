@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# U1 — vendite.fn_list_emittibili_lane: aggiunge utility_id alla GRANA.
+#
+# Vedi brief-db-emittibili-lane-utility-id.md. Follow-up di
+# 20260619-01 (lane tipo_doc): la grana reale del lotto e'
+# (emittente, tipo_doc, utility, competenza), perche':
+#  - fn_create_fatturazione_lotto pretende utility_id NOT NULL;
+#  - fn_select_attivita_fatturabili filtra le AF per ba.utility_id.
+# Senza utility in output il driver passa utility_id=NULL -> errore
+# E_PARAMETRO_INVALIDO (smoke live 2026-06-19).
+#
+# Decisioni (§3 del brief):
+#  - opzione A: grana per-utility (gas/ee/idrico = documenti distinti).
+#  - SOLO discovery: nessun guard/normalize/backfill (commesse.utility_id
+#    e' gia' NOT NULL -> utility_id in output mai NULL).
+#  - Coerenza c.utility_id = ba.utility_id imposta a monte da
+#    fn_get_or_create_commessa (E_CLIENTE_UTILITY_MISMATCH_BA): la terna
+#    della discovery non puo' mai essere scartata dal select a valle (§3.1).
+#  - DROP/CREATE: cambia RETURNS TABLE (un asse in piu') -> CREATE OR REPLACE
+#    non basta.
+#  - fn_list_commesse_emittibili (pull) resta invariata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260619-11-update-fn-list-emittibili-lane-utility-mctit.yaml
+
+  - changeSet:
+      id: 20260619-11-update-fn-list-emittibili-lane-utility
+      author: mctit
+      runOnChange: false
+      validCheckSum: [ANY]
+      comment: >
+        U1: vendite.fn_list_emittibili_lane -> aggiunge utility_id alla grana.
+        Output TABLE(emittente_soggetto_ruolo_id, tipo_doc_fiscale_id, utility_id,
+        competenza_mese, total_candidate). GROUP BY anche per c.utility_id. DROP/CREATE
+        (cambia RETURNS TABLE). Solo discovery: nessun guard (utility gia' NOT NULL).
+        fn_list_commesse_emittibili intatta.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: vendite, tableName: commesse }
+          - tableExists: { schemaName: vendite, tableName: commesse_attivita }
+          - tableExists: { schemaName: vendite, tableName: stati_commessa }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- DROP obbligatorio: la RETURNS TABLE cambia (utility_id in piu').
+              DROP FUNCTION IF EXISTS vendite.fn_list_emittibili_lane(
+                date, bigint, integer, bigint, boolean, integer
+              );
+
+              CREATE OR REPLACE FUNCTION vendite.fn_list_emittibili_lane(
+                p_competenza_mese             vendite.commesse_attivita.competenza_mese%TYPE        DEFAULT NULL::date,
+                p_billing_account_id          vendite.commesse.billing_account_id%TYPE              DEFAULT NULL::bigint,
+                p_utility_id                  vendite.commesse.utility_id%TYPE                       DEFAULT NULL::integer,
+                p_emittente_soggetto_ruolo_id vendite.commesse.emittente_soggetto_ruolo_id%TYPE     DEFAULT NULL::bigint,
+                p_fatturazione_immediata      vendite.commesse.fatturazione_immediata%TYPE          DEFAULT NULL::boolean,
+                p_limit                       integer                                                DEFAULT 1000
+              )
+              RETURNS TABLE(
+                emittente_soggetto_ruolo_id vendite.commesse.emittente_soggetto_ruolo_id%TYPE,
+                tipo_doc_fiscale_id         vendite.commesse_attivita.tipo_doc_fiscale_id%TYPE,
+                utility_id                  vendite.commesse.utility_id%TYPE,
+                competenza_mese             vendite.commesse_attivita.competenza_mese%TYPE,
+                total_candidate             bigint
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                v_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo: rispondere al driver batch "quali TERNE distinte
+                --   (emittente, tipo_doc, utility) hanno lavoro pronto da
+                --   fatturare, e fino a quale competenza creare il lotto".
+                -- Criteri:
+                --   1. commessa in stato emittibile (stati_commessa.emittibile=true)
+                --   2. righe commesse_attivita APPROVATA + NON_EMESSA (allineato pull)
+                --   3. tipo_doc_fiscale_id NOT NULL (il lotto lo richiede)
+                --   4. competenza CUMULATIVA: competenza_mese <= p_competenza_mese
+                --      (coerente con fn_select_attivita_fatturabili); NULL = no limite
+                --   5. filtri perimetro BA/utility/emittente; corsia fatturazione_immediata
+                -- Grana: (emittente, tipo_doc, utility). utility_id e' NOT NULL a monte
+                --   (commesse.utility_id) -> in output mai NULL. La coerenza
+                --   c.utility_id = ba.utility_id (E_CLIENTE_UTILITY_MISMATCH_BA in
+                --   fn_get_or_create_commessa) garantisce che la terna scoperta qui sia
+                --   esattamente quella che fn_select_attivita_fatturabili filtra a valle.
+                -- Output per terna: competenza_mese = max(...), total_candidate = count(*).
+                -- Regole: p_limit max 10000/default 1000; competenza normalizzata al mese;
+                --   STABLE (read-only); LIMIT sulle TERNE.
+                -- =========================================================
+                IF p_limit IS NULL OR p_limit <= 0 THEN
+                  p_limit := 1000;
+                END IF;
+                IF p_limit > 10000 THEN
+                  p_limit := 10000;
+                END IF;
+
+                v_competenza_mese := CASE
+                  WHEN p_competenza_mese IS NOT NULL
+                  THEN date_trunc('month', p_competenza_mese)::date
+                  ELSE NULL
+                END;
+
+                RETURN QUERY
+                SELECT
+                  c.emittente_soggetto_ruolo_id,
+                  ca.tipo_doc_fiscale_id,
+                  c.utility_id,
+                  max(ca.competenza_mese)        AS competenza_mese,
+                  count(ca.id)::bigint           AS total_candidate
+                FROM vendite.commesse c
+                JOIN vendite.stati_commessa sc
+                  ON sc.id = c.stato_commessa_id
+                 AND sc.emittibile = true
+                INNER JOIN vendite.commesse_attivita ca
+                  ON ca.commessa_id = c.id
+                 AND ca.stato_emissione = 'NON_EMESSA'
+                 AND ca.stato_approvazione = 'APPROVATA'
+                 AND ca.tipo_doc_fiscale_id IS NOT NULL
+                 AND (v_competenza_mese IS NULL OR ca.competenza_mese <= v_competenza_mese)
+                WHERE true
+                  AND (p_billing_account_id IS NULL OR c.billing_account_id = p_billing_account_id)
+                  AND (p_utility_id IS NULL OR c.utility_id = p_utility_id)
+                  AND (p_emittente_soggetto_ruolo_id IS NULL OR c.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+                  AND (p_fatturazione_immediata IS NULL OR c.fatturazione_immediata = p_fatturazione_immediata)
+                GROUP BY
+                  c.emittente_soggetto_ruolo_id,
+                  ca.tipo_doc_fiscale_id,
+                  c.utility_id
+                ORDER BY
+                  c.emittente_soggetto_ruolo_id,
+                  ca.tipo_doc_fiscale_id,
+                  c.utility_id
+                LIMIT p_limit;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_emittibili_lane(date, bigint, integer, bigint, boolean, integer)
+              IS 'Read-only/STABLE: discovery delle corsie (emittente, tipo_doc_fiscale, utility, competenza_mese) pronte da fatturare per il driver batch. Grana per-utility (il lotto e'' segregato per utility: fn_create pretende utility NOT NULL, fn_select filtra ba.utility_id). utility_id mai NULL (commesse.utility_id NOT NULL); coerenza c.utility_id=ba.utility_id garantita da fn_get_or_create_commessa. Criterio APPROVATA+NON_EMESSA, tipo_doc NOT NULL, competenza cumulativa (<=) con output competenza_mese=max. Filtri perimetro + corsia fatturazione_immediata. fn_list_commesse_emittibili resta separata e invariata.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_list_emittibili_lane(
+                date, bigint, integer, bigint, boolean, integer
+              );

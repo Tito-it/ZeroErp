@@ -16,20 +16,30 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 19-06-2026 — discovery corsie per il driver batch)
+(latest review 19-06-2026 — discovery corsie per il driver batch; grana estesa a `utility_id`)
 
 La funzione **`vendite.fn_list_emittibili_lane`** è la **discovery delle corsie** per il
 driver batch di fatturazione. Risponde a:
 
-> «Per questa corsia/perimetro, quali **coppie distinte
-> `(emittente_soggetto_ruolo_id, tipo_doc_fiscale_id)`** hanno lavoro pronto da fatturare,
-> e **fino a quale `competenza_mese`** creare il lotto?»
+> «Per questa corsia/perimetro, quali **terne distinte
+> `(emittente_soggetto_ruolo_id, tipo_doc_fiscale_id, utility_id)`** hanno lavoro pronto da
+> fatturare, e **fino a quale `competenza_mese`** creare il lotto?»
 
-Serve perché un **lotto** è identificato da `(emittente, tipo_doc_fiscale, competenza_mese)`
-(tutti NOT NULL): il driver deve aprire **un lotto per ogni coppia** presente, altrimenti
-le righe degli altri tipo_doc — pullate ma non catturate — resterebbero orfane
+Serve perché un **lotto** è segregato per `(emittente, tipo_doc_fiscale, utility, competenza_mese)`:
+oltre a emittente e tipo_doc, `fn_create_fatturazione_lotto` **pretende `utility_id` NOT NULL**
+e `fn_select_attivita_fatturabili` **filtra le AF per `ba.utility_id`** (gas/ee/idrico →
+documenti distinti). Il driver deve aprire **un lotto per ogni terna** presente, altrimenti
+le righe delle altre utility/tipo_doc — pullate ma non catturate — resterebbero orfane
 (fatturato perso in silenzio). È **separata** da `fn_list_commesse_emittibili` (che resta
 la discovery per-commessa dello step di pull): qui si raggruppa per corsia, non per commessa.
+
+> **Coerenza grana ↔ select (perché la terna è sicura).** La discovery raggruppa per
+> `c.utility_id` (`vendite.commesse`), mentre la select a valle filtra per `ba.utility_id`
+> (`anagrafiche.billing_account`). I due **coincidono per costruzione**: `fn_get_or_create_commessa`
+> impone `commessa.utility_id = billing_account.utility_id` (altrimenti
+> `E_CLIENTE_UTILITY_MISMATCH_BA`). Quindi una terna scoperta qui non potrà mai essere
+> scartata dalla select per disallineamento di utility — per questo non serve alcun guard
+> aggiuntivo su questo asse.
 
 ---
 
@@ -39,18 +49,20 @@ la discovery per-commessa dello step di pull): qui si raggruppa per corsia, non 
 | ------------------------------- | -------------------------------------------------------- | ------- | ------------------------------------------------------------------ |
 | `p_competenza_mese`             | `vendite.commesse_attivita.competenza_mese%TYPE`         | `NULL`  | **Limite superiore** della competenza (cumulativo, vedi sotto). NULL = nessun limite. |
 | `p_billing_account_id`          | `vendite.commesse.billing_account_id%TYPE`               | `NULL`  | Filtro perimetro BA.                                               |
-| `p_utility_id`                  | `vendite.commesse.utility_id%TYPE`                        | `NULL`  | Filtro perimetro utility.                                          |
+| `p_utility_id`                  | `vendite.commesse.utility_id%TYPE`                        | `NULL`  | Filtro perimetro utility (opzionale).                             |
 | `p_emittente_soggetto_ruolo_id` | `vendite.commesse.emittente_soggetto_ruolo_id%TYPE`      | `NULL`  | Filtro perimetro emittente.                                       |
 | `p_fatturazione_immediata`      | `vendite.commesse.fatturazione_immediata%TYPE`           | `NULL`  | Corsia: true=immediata / false=differita / NULL=indifferente.     |
-| `p_limit`                       | `integer`                                                | `1000`  | Normalizzato (default 1000, max 10000); si applica alle **coppie**. |
+| `p_limit`                       | `integer`                                                | `1000`  | Normalizzato (default 1000, max 10000); si applica alle **terne**. |
 
 ---
 
 ### Output
 
-`RETURNS TABLE(emittente_soggetto_ruolo_id, tipo_doc_fiscale_id, competenza_mese, total_candidate)`:
+`RETURNS TABLE(emittente_soggetto_ruolo_id, tipo_doc_fiscale_id, utility_id, competenza_mese, total_candidate)`:
 
-* **`competenza_mese`** = `max(competenza_mese)` fra le righe candidate della coppia → la
+* **`utility_id`** = utility della terna. **Mai NULL** (`commesse.utility_id` è NOT NULL a
+  monte): nessuna terna da escludere su questo asse.
+* **`competenza_mese`** = `max(competenza_mese)` fra le righe candidate della terna → la
   competenza con cui il driver crea il lotto.
 * **`total_candidate`** = numero di righe candidate (per dry-run/diagnostica).
 
@@ -71,12 +83,17 @@ la discovery per-commessa dello step di pull): qui si raggruppa per corsia, non 
    arretrato perso.
 5. Filtri perimetro BA/utility/emittente; corsia `fatturazione_immediata`.
 
+La grana di raggruppamento è **`(emittente, tipo_doc_fiscale, utility)`** con
+`competenza_mese = max(...)`: lo stesso emittente con lavoro su più utility (es. gas + ee)
+produce **terne distinte**, una per utility, ciascuna destinata a un lotto separato.
+
 ---
 
 ### Regole principali
 
 * Funzione **STABLE** (read-only, nessun effetto collaterale).
-* `LIMIT` sulle **coppie** (non sulle commesse).
+* `LIMIT` sulle **terne** (non sulle commesse).
+* `utility_id` in output **mai NULL** (`commesse.utility_id` è NOT NULL a monte).
 * `fn_list_commesse_emittibili` resta separata e **invariata** (approccio A3).
 
 ---
@@ -90,7 +107,7 @@ SELECT * FROM vendite.fn_list_emittibili_lane(
   p_emittente_soggetto_ruolo_id => 55,
   p_fatturazione_immediata => true
 );
--- -> (emittente, tipo_doc, competenza_mese=max, total_candidate) per ogni coppia
+-- -> (emittente, tipo_doc, utility, competenza_mese=max, total_candidate) per ogni terna
 ```
 
 ---

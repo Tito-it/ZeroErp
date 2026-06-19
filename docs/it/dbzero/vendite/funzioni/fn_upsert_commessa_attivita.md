@@ -18,6 +18,7 @@ DECLARE
   v_existing_stato_emissione vendite.commesse_attivita.stato_emissione%TYPE;
   v_modificabile             vendite.stati_commessa.modificabile%TYPE;
   v_competenza_mese          vendite.commesse_attivita.competenza_mese%TYPE;
+  v_tipo_doc_fiscale_id      vendite.commesse_attivita.tipo_doc_fiscale_id%TYPE;
   v_tipo_movimento           varchar(32);
   v_tipo_consumo             varchar(32);
   v_meta_effective           jsonb;
@@ -127,6 +128,21 @@ BEGIN
     'tipo_consumo',   v_tipo_consumo
   );
 
+  -- Normalize tipo_doc_fiscale_id (NO derivazione di business).
+  -- Se non passato esplicitamente, applica il default OPZIONALE
+  -- configurato sulla sorgente (config.sorgenti.tipo_doc_fiscale_id).
+  -- Single source of truth lato DB. Se la sorgente non ha default,
+  -- resta NULL: l'obbligo di valorizzazione sullo stato emittibile
+  -- (APPROVATA+NON_EMESSA) e' imposto dal guard
+  -- trg_commesse_attivita_a10_guard_tipo_doc_emittibile, non qui.
+  v_tipo_doc_fiscale_id := p_tipo_doc_fiscale_id;
+  IF v_tipo_doc_fiscale_id IS NULL AND p_sorgente_tipo_id IS NOT NULL THEN
+    SELECT s.tipo_doc_fiscale_id
+      INTO v_tipo_doc_fiscale_id
+      FROM config.sorgenti s
+     WHERE s.id = p_sorgente_tipo_id;
+  END IF;
+
   -- Guard: commessa esistente e in stato modificabile.
   SELECT sc.modificabile
   INTO v_modificabile
@@ -194,7 +210,7 @@ BEGIN
     p_commessa_id, btrim(p_segment_key), p_articolo_id, p_istanza_utility_id, p_data_attivita,
     p_uom_id, p_quantita, p_qta_operativa, p_uom_operativa_id, COALESCE(p_factor_to_base, 1::numeric),
     v_competenza_mese, p_competenza_dal, p_competenza_al, p_posticipa_al,
-    p_tipo_doc_fiscale_id, p_valuta_id, p_area_geografica_id, p_listino_versione_id,
+    v_tipo_doc_fiscale_id, p_valuta_id, p_area_geografica_id, p_listino_versione_id,
     p_prezzo_snapshot, COALESCE(p_prezzo_bloccato, false), COALESCE(p_pricing_mode, 'FIXED'::varchar), COALESCE(p_prezzo_da_riallineare, false),
     COALESCE(p_stato_approvazione, 'BOZZA'::varchar), COALESCE(p_stato_emissione, 'NON_EMESSA'::varchar), p_sorgente_tipo_id, NULLIF(btrim(p_sorgente_uid), ''), v_meta_effective,
     p_prezzo_base_snapshot, p_origine_prezzo,
@@ -215,7 +231,9 @@ BEGIN
       competenza_dal                 = EXCLUDED.competenza_dal,
       competenza_al                  = EXCLUDED.competenza_al,
       posticipa_al                   = EXCLUDED.posticipa_al,
-      tipo_doc_fiscale_id            = EXCLUDED.tipo_doc_fiscale_id,
+      -- No-regressione: un re-push con tipo_doc in arrivo NULL non
+      -- azzera un valore gia' risolto (brief-db-guard-tipo-doc-attivita).
+      tipo_doc_fiscale_id            = COALESCE(EXCLUDED.tipo_doc_fiscale_id, vendite.commesse_attivita.tipo_doc_fiscale_id),
       valuta_id                      = EXCLUDED.valuta_id,
       area_geografica_id             = EXCLUDED.area_geografica_id,
       listino_versione_id            = EXCLUDED.listino_versione_id,
@@ -245,7 +263,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_upsert_commessa_attivita(p_commessa_id bigint, p_segment_key character varying, p_articolo_id uuid, p_istanza_utility_id bigint, p_data_attivita date, p_uom_id bigint, p_quantita numeric, p_competenza_mese date, p_competenza_dal date, p_competenza_al date, p_prezzo_snapshot numeric, p_prezzo_base_snapshot numeric, p_origine_prezzo character varying, p_tipo_variazione_applicata character varying, p_valore_variazione_applicata numeric, p_promo_id bigint, p_contratto_id bigint, p_categoria_cliente_id_snapshot smallint, p_classe_utenza_id_snapshot integer, p_qta_operativa numeric, p_uom_operativa_id bigint, p_factor_to_base numeric, p_posticipa_al date, p_tipo_doc_fiscale_id bigint, p_valuta_id integer, p_area_geografica_id bigint, p_listino_versione_id bigint, p_prezzo_bloccato boolean, p_pricing_mode character varying, p_prezzo_da_riallineare boolean, p_stato_approvazione character varying, p_stato_emissione character varying, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_tipo_movimento character varying, p_tipo_consumo character varying, p_meta jsonb)
-IS 'Upsert commesse_attivita (pricing v5). Restituisce (attivita_id, is_new). Snapshot pricing v5 obbligatorio in firma; passare NULL esplicito per dimensioni non applicabili (es. classe_utenza per utility commercio).';
+IS 'Upsert commesse_attivita (pricing v5). Restituisce (attivita_id, is_new). Snapshot pricing v5 obbligatorio in firma; passare NULL esplicito per dimensioni non applicabili (es. classe_utenza per utility commercio). tipo_doc_fiscale_id: normalize da config.sorgenti se param NULL (default opzionale, no derivazione di business) + no-regressione COALESCE su ON CONFLICT. rev 2026-06-19.';
 ```
 
 ---
