@@ -760,6 +760,23 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Esito obbligatorio per completare il flusso.",
         ),
+        # ── Presa in carico flusso: eligibilita' reparto-first (20260618-05) ──
+        # Casi A/D (skill-lock): l'operatore non ha competenza attiva per il tipo
+        # di step. Caso B (reparto, no skill): l'operatore non appartiene al
+        # reparto anagrafico instradato. Entrambi sollevati da
+        # pratiche.fn_prendi_in_carico_flusso e tradotti via marker nel service.
+        "FLUSSI_COMPETENZA_MANCANTE": ErrorPolicy(
+            code="FLUSSI_COMPETENZA_MANCANTE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Operatore non abilitato per questo tipo di flusso.",
+        ),
+        "FLUSSI_PRESA_NON_ELIGIBILE": ErrorPolicy(
+            code="FLUSSI_PRESA_NON_ELIGIBILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Presa in carico non consentita: il flusso e' instradato a un altro reparto.",
+        ),
         # ── Pratiche workflow v2 (D1/D3/D4, analisi-pratiche-workflow-v2) ──
         # Codici del catalogo DB (messaggi_errore 483/484/485) sollevati dai
         # guard via script.fn_log_and_raise_error; il service li intercetta

@@ -50,6 +50,16 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
     # Guard esito-aware: COMPLETATO richiede esito valorizzato (nessuna fase si
     # chiude senza verdetto).
     ("FLUSSI_ESITO_OBBLIGATORIO", "Esito obbligatorio per completare il flusso"),
+    # Presa in carico flusso (eligibilita' reparto-first, fn_prendi_in_carico_flusso):
+    # casi A/D = competenza mancante; caso B = operatore fuori dal reparto instradato.
+    # I marker sono substring stabili dei messaggi catalogo (id 322 / 496), immuni
+    # alla sostituzione dei %s. NB: per il 496 si usa "non consentita del flusso"
+    # (NON il prefisso "Presa in carico non consentita"): quest'ultimo collide col
+    # messaggio di FLUSSI_PRESA_CARICO_STATO_ERRATO (486, "...: presa in carico non
+    # consentita.") differendo solo per maiuscola — marker fragile. "del flusso"
+    # e' presente solo nel 496.
+    ("FLUSSI_COMPETENZA_MANCANTE", "non abilitato per il flusso"),
+    ("FLUSSI_PRESA_NON_ELIGIBILE", "non consentita del flusso"),
 )
 
 # Esiti ammessi per un flusso: mirror applicativo del CHECK DB chk_flussi_esito.
@@ -389,6 +399,40 @@ def crea_flusso(
         # PRATICHE_FLUSSO_NON_RIPETIBILE parlante; altri errori al middleware.
         _raise_known_db_error(exc, function_name="pratiche_service.crea_flusso")
         raise  # irraggiungibile, per il type checker
+
+
+# Scopo: Assegna un flusso esistente a un operatore e/o a un reparto.
+# Simmetrico ad assegna_pratica ma sul singolo step. I flag set_* distinguono
+# "chiave assente" (non toccare) da "valore None esplicito" (de-assegna): la view
+# li deriva da `"<key>" in payload`. Il trigger DB
+# trg_flussi_z90_giornale_assegnazione_upd registra l'evento nel giornale; la
+# validazione FK (operatore/reparto esistenti) e' lasciata al DB.
+def assegna_flusso(
+    flusso_id: int,
+    *,
+    risorsa_umana_id: int | None = None,
+    unita_organizzativa_id: int | None = None,
+    set_risorsa: bool = False,
+    set_unita: bool = False,
+) -> None:
+    ErrorManager.require(
+        flusso_id > 0,
+        code="E_INVALID_ID",
+        message="flusso_id deve essere > 0",
+    )
+    assert flusso_id > 0
+
+    update_data: dict[str, Any] = {}
+    if set_risorsa:
+        update_data["risorsa_umana_id"] = risorsa_umana_id
+    if set_unita:
+        update_data["unita_organizzativa_id"] = unita_organizzativa_id
+
+    if not update_data:
+        return
+
+    repo = PraticheRepository()
+    repo.update_flusso(flusso_id, update_data)
 
 
 # Scopo: Transizione flusso DA_ESEGUIRE → IN_CORSO; se il template ha un handler
@@ -1051,7 +1095,28 @@ def prendi_in_carico(flusso_id: int, risorsa_umana_id: int) -> bool:
     assert risorsa_umana_id > 0
 
     repo = PraticheRepository()
-    return repo.prendi_in_carico_flusso(flusso_id, risorsa_umana_id)
+    try:
+        return repo.prendi_in_carico_flusso(flusso_id, risorsa_umana_id)
+    except DatabaseError as exc:
+        # Eligibilita' reparto-first (fn_prendi_in_carico_flusso): competenza
+        # mancante (A/D) o operatore fuori reparto (B) → ServiceError parlante
+        # invece di E_DATABASE generico. Altri errori al middleware.
+        _raise_known_db_error(exc, function_name="pratiche_service.prendi_in_carico")
+        raise  # irraggiungibile, per il type checker
+
+
+# Scopo: Lista operatori (risorse umane attive) di un reparto, per il picker di
+# assegnazione flusso. Coerente con la policy "operatore di quel reparto".
+def list_operatori_reparto(unita_organizzativa_id: int) -> list[dict[str, Any]]:
+    ErrorManager.require(
+        unita_organizzativa_id > 0,
+        code="E_INVALID_ID",
+        message="unita_organizzativa_id deve essere > 0",
+    )
+    assert unita_organizzativa_id > 0
+
+    repo = PraticheRepository()
+    return repo.list_operatori_reparto(unita_organizzativa_id)
 
 
 # -- COMPETENZE FLUSSI ----------------------------------------------------

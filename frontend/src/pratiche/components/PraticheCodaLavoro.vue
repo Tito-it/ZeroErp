@@ -27,7 +27,16 @@ const sezioni = computed(() => [
     items: props.items.filter(i => i.livello === 'COMPETENZA') },
   { key: 'REPARTO', label: t('pratiche.coda_reparto'), severity: 'secondary',
     items: props.items.filter(i => i.livello === 'REPARTO') },
+  // LIBERO (policy reparto-first, caso C): flusso senza reparto/skill mostrato
+  // all'operatore della pratica → prendibile liberamente.
+  { key: 'LIBERO', label: t('pratiche.coda_libero'), severity: 'info',
+    items: props.items.filter(i => i.livello === 'LIBERO') },
 ].filter(s => s.items.length > 0))
+
+// Livelli per cui il flusso e' non assegnato e prendibile dall'operatore
+// (coerente con la policy DB fn_prendi_in_carico_flusso): COMPETENZA (skill),
+// REPARTO (membro del reparto), LIBERO (presa libera).
+const PRENDIBILI = ['COMPETENZA', 'REPARTO', 'LIBERO']
 
 function onItemClick(item) {
   emit('select-flusso', item)
@@ -73,7 +82,7 @@ function onPrendiInCarico(item, event) {
             <!-- Azione specifica per livello -->
             <Tag v-if="item.livello === 'ASSEGNATO'" :value="item.priorita_codice" :severity="prioritaPraticaSeverity(item.priorita_codice)" size="small" />
             <Button
-              v-else-if="item.livello === 'COMPETENZA'"
+              v-else-if="PRENDIBILI.includes(item.livello)"
               :label="t('pratiche.prendi_in_carico')"
               icon="pi pi-user-plus" size="small" text
               @click="onPrendiInCarico(item, $event)"

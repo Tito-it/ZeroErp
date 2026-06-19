@@ -109,18 +109,22 @@ export function esitoFlussoSeverity(codice) {
 
 // --- Mappa azioni giornale pratica ---
 // Associa azione giornale a severity e icona per la timeline audit.
+// Chiavi = codici azione REALI del giornale (pratiche.giornale.azione, CHECK
+// chk_giornale_azione), non nomi astratti: azioneGiornaleStyle riceve il codice
+// grezzo (es. 'FLUSSO_STATO_CAMBIATO'), quindi le chiavi devono combaciare.
 export const AZIONE_GIORNALE_MAP = {
-  CREAZIONE: { severity: 'info', icon: 'pi pi-plus-circle' },
-  CAMBIO_STATO: { severity: 'warn', icon: 'pi pi-sync' },
-  ASSEGNAZIONE: { severity: 'secondary', icon: 'pi pi-user' },
-  CAMBIO_PRIORITA: { severity: 'secondary', icon: 'pi pi-flag' },
-  NOTA: { severity: 'secondary', icon: 'pi pi-comment' },
-  ALLEGATO: { severity: 'secondary', icon: 'pi pi-paperclip' },
-  SOSPENSIONE: { severity: 'warn', icon: 'pi pi-pause' },
-  RIATTIVAZIONE: { severity: 'success', icon: 'pi pi-play' },
-  CREAZIONE_FLUSSO: { severity: 'info', icon: 'pi pi-sitemap' },
-  CAMBIO_STATO_FLUSSO: { severity: 'warn', icon: 'pi pi-sync' },
-  GENERAZIONE: { severity: 'info', icon: 'pi pi-copy' },
+  PRATICA_CREATA: { severity: 'info', icon: 'pi pi-plus-circle' },
+  PRATICA_GENERATA: { severity: 'info', icon: 'pi pi-copy' },
+  STATO_CAMBIATO: { severity: 'warn', icon: 'pi pi-sync' },
+  PRIORITA_CAMBIATA: { severity: 'secondary', icon: 'pi pi-flag' },
+  ASSEGNAZIONE_CAMBIATA: { severity: 'secondary', icon: 'pi pi-user' },
+  FLUSSO_CREATO: { severity: 'info', icon: 'pi pi-sitemap' },
+  FLUSSO_STATO_CAMBIATO: { severity: 'warn', icon: 'pi pi-sync' },
+  FLUSSO_ASSEGNAZIONE_CAMBIATA: { severity: 'secondary', icon: 'pi pi-user-plus' },
+  NOTA_AGGIUNTA: { severity: 'secondary', icon: 'pi pi-comment' },
+  ALLEGATO_AGGIUNTO: { severity: 'secondary', icon: 'pi pi-paperclip' },
+  SOSPENSIONE_REGISTRATA: { severity: 'warn', icon: 'pi pi-pause' },
+  SOSPENSIONE_CHIUSA: { severity: 'success', icon: 'pi pi-play' },
 }
 
 const _AZIONE_DEFAULT = { severity: 'secondary', icon: 'pi pi-circle' }

@@ -13,12 +13,14 @@ from apps.pratiche.api.views import (
     ApiCompetenzaFlussoDetail,
     ApiCompetenzeFlussiList,
     ApiFormuleTempo,
+    ApiOperatoriReparto,
     ApiPraticaAllegatoDetail,
     ApiPraticaAllegatiList,
     ApiPraticaAssegnazione,
     ApiPraticaCalcoliTempo,
     ApiPraticaDetail,
     ApiPraticaFlussiList,
+    ApiPraticaFlussoAssegnazione,
     ApiPraticaFlussoCanali,
     ApiPraticaFlussoDetail,
     ApiPraticaFlussoGenera,
@@ -43,6 +45,7 @@ from apps.pratiche.api.views import (
 urlpatterns = [
     # --- Coda lavoro e competenze ---
     path("coda-lavoro/", ApiCodaLavoro.as_view(), name="pratiche-coda-lavoro"),
+    path("operatori/", ApiOperatoriReparto.as_view(), name="pratiche-operatori-reparto"),
     path("competenze-flussi/", ApiCompetenzeFlussiList.as_view(), name="pratiche-competenze-flussi-list"),
     path("competenze-flussi/<int:competenza_id>/", ApiCompetenzaFlussoDetail.as_view(), name="pratiche-competenza-flusso-detail"),
     # --- Formule tempo ---
@@ -68,6 +71,7 @@ urlpatterns = [
     path("<int:pratica_id>/flussi/", ApiPraticaFlussiList.as_view(), name="pratiche-flussi-list"),
     path("<int:pratica_id>/flussi/<int:flusso_id>/", ApiPraticaFlussoDetail.as_view(), name="pratiche-flusso-detail"),
     path("<int:pratica_id>/flussi/<int:flusso_id>/stato/", ApiPraticaFlussoStato.as_view(), name="pratiche-flusso-stato"),
+    path("<int:pratica_id>/flussi/<int:flusso_id>/assegnazione/", ApiPraticaFlussoAssegnazione.as_view(), name="pratiche-flusso-assegnazione"),
     path("<int:pratica_id>/flussi/<int:flusso_id>/prerequisiti/", ApiPraticaFlussoPrerequisiti.as_view(), name="pratiche-flusso-prerequisiti"),
     path("<int:pratica_id>/flussi/<int:flusso_id>/canali/", ApiPraticaFlussoCanali.as_view(), name="pratiche-flusso-canali"),
     # --- Generazione cross-pratica ---

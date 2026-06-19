@@ -26,6 +26,15 @@ Indice test eseguiti:
 15) PraticheServiceFlussiTests.test_dispatch_handler_meta_jsonb_str
 16) PraticheServiceFlussiTests.test_coerce_jsonb_dict
 17) PraticheServiceFlussiTests.test_crea_flusso_non_ripetibile_483
+18) PraticheServiceFlussiTests.test_assegna_flusso_operatore_ok
+19) PraticheServiceFlussiTests.test_assegna_flusso_reparto_ok
+20) PraticheServiceFlussiTests.test_assegna_flusso_de_assegna_null
+21) PraticheServiceFlussiTests.test_assegna_flusso_nessun_flag_no_update
+22) PraticheServiceFlussiTests.test_assegna_flusso_errore_id_zero
+23) PraticheServiceFlussiTests.test_prendi_in_carico_competenza_mancante
+24) PraticheServiceFlussiTests.test_prendi_in_carico_non_eligibile
+25) PraticheServiceFlussiTests.test_list_operatori_reparto_ok
+26) PraticheServiceFlussiTests.test_list_operatori_reparto_errore_id_zero
 """
 
 from unittest.mock import MagicMock, patch
@@ -567,3 +576,102 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["codice"], "WEB_CLIENTI")
+
+    # -- Assegnazione flusso a operatore/reparto -------------------------
+
+    # Scopo: Assegna un flusso a un operatore (set_risorsa) → update_flusso.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_assegna_flusso_operatore_ok(self, MockRepo):
+        repo = MockRepo.return_value
+
+        pratiche_service.assegna_flusso(5, risorsa_umana_id=10, set_risorsa=True)
+
+        repo.update_flusso.assert_called_once()
+        flusso_id, data = repo.update_flusso.call_args[0]
+        self.assertEqual(flusso_id, 5)
+        self.assertEqual(data, {"risorsa_umana_id": 10})
+
+    # Scopo: Assegna un flusso a un reparto (set_unita) → update_flusso.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_assegna_flusso_reparto_ok(self, MockRepo):
+        repo = MockRepo.return_value
+
+        pratiche_service.assegna_flusso(5, unita_organizzativa_id=3, set_unita=True)
+
+        repo.update_flusso.assert_called_once()
+        _, data = repo.update_flusso.call_args[0]
+        self.assertEqual(data, {"unita_organizzativa_id": 3})
+
+    # Scopo: De-assegnazione esplicita (set_* True con valore None) azzera i campi.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_assegna_flusso_de_assegna_null(self, MockRepo):
+        repo = MockRepo.return_value
+
+        pratiche_service.assegna_flusso(
+            5, risorsa_umana_id=None, set_risorsa=True,
+            unita_organizzativa_id=None, set_unita=True,
+        )
+
+        _, data = repo.update_flusso.call_args[0]
+        self.assertIsNone(data["risorsa_umana_id"])
+        self.assertIsNone(data["unita_organizzativa_id"])
+
+    # Scopo: Senza flag set_* (chiave assente nel payload) non si chiama update.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_assegna_flusso_nessun_flag_no_update(self, MockRepo):
+        repo = MockRepo.return_value
+
+        pratiche_service.assegna_flusso(5, risorsa_umana_id=10)
+
+        repo.update_flusso.assert_not_called()
+
+    # Scopo: Guard flusso_id <= 0.
+    def test_assegna_flusso_errore_id_zero(self):
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.assegna_flusso(0, risorsa_umana_id=10, set_risorsa=True)
+        self.assertEqual(ctx.exception.code, "E_INVALID_ID")
+
+    # Scopo: prendi_in_carico — competenza mancante (caso A/D) tradotta via marker.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_prendi_in_carico_competenza_mancante(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.prendi_in_carico_flusso.side_effect = DatabaseError(
+            "Operatore 10 non abilitato per il flusso 5.",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.prendi_in_carico(5, 10)
+        self.assertEqual(ctx.exception.code, "FLUSSI_COMPETENZA_MANCANTE")
+
+    # Scopo: prendi_in_carico — operatore fuori reparto (caso B) → 496 via marker.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_prendi_in_carico_non_eligibile(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.prendi_in_carico_flusso.side_effect = DatabaseError(
+            "Presa in carico non consentita del flusso 5 per l'operatore 10.",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.prendi_in_carico(5, 10)
+        self.assertEqual(ctx.exception.code, "FLUSSI_PRESA_NON_ELIGIBILE")
+
+    # Scopo: lista operatori del reparto delegata al repository.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_list_operatori_reparto_ok(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.list_operatori_reparto.return_value = [{"id": 1, "display": "Rossi Mario"}]
+
+        result = pratiche_service.list_operatori_reparto(3)
+
+        repo.list_operatori_reparto.assert_called_once_with(3)
+        self.assertEqual(result[0]["display"], "Rossi Mario")
+
+    # Scopo: Guard unita_organizzativa_id <= 0 sul lookup operatori.
+    def test_list_operatori_reparto_errore_id_zero(self):
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.list_operatori_reparto(0)
+        self.assertEqual(ctx.exception.code, "E_INVALID_ID")

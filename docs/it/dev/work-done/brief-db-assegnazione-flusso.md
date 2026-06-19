@@ -4,7 +4,9 @@
 > **Priorità**: 🟢 normale — prerequisito di coerenza per il filone
 > "assegnazione flusso a operatore/reparto" (il BE `assegna_flusso` può iniziare prima, ma
 > la semantica completa — presa libera, coda reparto, tracciamento — dipende da qui).
-> **Data**: 2026-06-18 · **Stato**: 🟢 **DB scritto** (`20260618-05..08` + pgTAP) — da applicare/test.
+> **Data**: 2026-06-18 (chiuso 2026-06-19) · **Stato**: ✅ **COMPLETATO** — DB `20260618-05..08`
+> applicati e committati; BE+FE implementati, testati e documentati (vedi
+> [brief-design-assegnazione-flusso-user-reparto.md](brief-design-assegnazione-flusso-user-reparto.md) §esito).
 >
 > **Design autorevole**:
 > [brief-design-assegnazione-flusso-user-reparto.md](brief-design-assegnazione-flusso-user-reparto.md)
@@ -19,7 +21,7 @@
 > **Deliverable scritti**: `20_code/pratiche/20260618-05` (prendi_in_carico eligibilità A/B/C/D) ·
 > `-06` (coda 4 livelli, REPARTO anagrafico + LIBERO) · `-07` (ALTER chk_giornale_azione) ·
 > `-08` (trigger giornale assegnazione flusso) · codice 496 in `messaggi_errore.csv` (loader runOnChange) ·
-> pgTAP `db/pgtap/pratiche/test-assegnazione-flusso-eligibilita.sql` (plan 10). **Non applicati/committati.**
+> pgTAP `db/pgtap/pratiche/test-assegnazione-flusso-eligibilita.sql` (plan 10). **Applicati e committati.**
 
 ---
 
@@ -130,7 +132,7 @@ trg_flussi_z90_giornale_assegnazione_upd
 
 ## 6. Coordinamento audit utente (Part B)
 
-⚠️ Allinearsi con [brief-db-audit-user-pratiche.md](brief-db-audit-user-pratiche.md)
+⚠️ Allinearsi con [brief-db-audit-user-pratiche.md](../work-in-progress/brief-db-audit-user-pratiche.md)
 (**Part B**): il giornale è append-only e attribuisce a `zeroerp_app` finché il default
 `user_insert` non è GUC-aware
 (`COALESCE(NULLIF(current_setting('app.jwt_user',true),''),CURRENT_USER)`). La riga
