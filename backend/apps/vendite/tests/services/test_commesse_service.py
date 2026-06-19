@@ -293,6 +293,50 @@ class CommesseServiceTests(TestCase):
             commessa_id=2, nuovo_stato="PRONTA_FATTURAZIONE", user=None,
         )
 
+    # Scopo (osservabilita' guard tipo_doc): un fallimento del ponte col codice
+    # E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO e' classificato a parte
+    # (emittibilita_tipo_doc_mancante) e tracciato in event_log (EMITTIBILITA_FALLITA).
+    @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service._build_handlers")
+    def test_pr_run_commesse_push_emittibilita_tipo_doc_mancante_osservabile(
+        self, mock_build, mock_repo_cls, mock_orch_cls,
+    ):
+        from apps.vendite.services.commesse_service import pr_run_commesse_push
+
+        mock_repo = MagicMock()
+        mock_repo_cls.return_value = mock_repo
+        mock_repo.get_commessa_stato_codice.return_value = "BOZZA"
+        # Commessa 1: guard tipo_doc (codice nel messaggio, come da fn_log_and_raise_error).
+        # Commessa 2: errore generico. Commessa 3: ok.
+        mock_repo.approva_commessa_attivita.side_effect = [
+            RuntimeError("E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO: Tipo documento fiscale obbligatorio..."),
+            RuntimeError("guard DB generico"),
+            1,
+        ]
+        mock_build.return_value = []
+        report = PushReport(
+            dry_run=False,
+            stato="COMPLETATO",
+            handlers=[HandlerResult(handler_name="HandlerA", commesse_ids={1, 2, 3})],
+            push_log_id=10,
+            durata_ms=120,
+        )
+        mock_orch_cls.return_value.run.return_value = report
+
+        result = pr_run_commesse_push(dry_run=False)
+
+        # Classificazione: solo la commessa 1 nel gruppo tipo_doc mancante.
+        self.assertEqual(result["emittibilita_tipo_doc_mancante"], [1])
+        self.assertEqual(len(result["emittibilita_errors"]), 2)
+        # Evento durevole emesso con il riepilogo (incluso il tipo_doc mancante).
+        mock_repo.log_event.assert_called_once()
+        kw = mock_repo.log_event.call_args.kwargs
+        self.assertEqual(kw["event_code"], "EMITTIBILITA_FALLITA")
+        self.assertEqual(kw["severity"], "WARNING")
+        self.assertEqual(kw["payload"]["tipo_doc_mancante_commesse"], [1])
+        self.assertEqual(kw["payload"]["totale_falliti"], 2)
+
     # Scopo: codice sorgente non riconosciuto → ServiceError validazione.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     @patch("apps.vendite.services.commesse_service._build_handlers")

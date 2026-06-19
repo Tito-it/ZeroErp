@@ -3,7 +3,18 @@
 > **Tipo documento**: brief operativo **per il team DB** (canale `dev/db-tid`).
 > **Priorità**: 🟠 ALTA — bug di audit/tracciabilità: ogni scrittura su `pratiche.*`
 > è attribuita a `zeroerp_app` (ruolo di connessione) invece che all'operatore reale.
-> **Data**: 2026-06-18 · **Stato**: 🟡 da applicare.
+> **Data**: 2026-06-18 (chiuso 2026-06-19) · **Stato**: ✅ **COMPLETATO** — applicato e
+> verificato live (l'attribuzione utente reale su `pratiche.*`, giornale incluso, ora funziona).
+>
+> **Esito**: **Part A** — `pratiche,*all` aggiunto a `dbops.automation_scope`
+> (`automation_scope.csv` riga 12). **Part B** — risolta in forma **conforme al framework**
+> (anziché il default-change GUC proposto qui): migration `20260618-04` aggiunge le colonne
+> standard `data_update`/`user_update` alle 5 tabelle append-only (`giornale`,
+> `allegati_pratiche`, `allegati_flussi`, `template_flussi_prerequisiti`,
+> `template_flussi_canali`), così l'automation `AUDIT_UPDATE` le copre da sola (trigger
+> `trg_giornale_audit_data_user_upd` → `script.trgfn_audit_data_user_generic`, presente in
+> doc autogen). Nessun trigger custom. Confermato live: il giornale registra l'operatore reale
+> dalla GUC `app.jwt_user`.
 
 ---
 

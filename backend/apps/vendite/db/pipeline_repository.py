@@ -55,7 +55,7 @@ class PipelineStep:
 @dataclass(frozen=True)
 class GroupAttivitaInput:
     attivita_id: int
-    articolo_id: int
+    articolo_id: str  # uuid (catalogo.articoli.id)
     dest_billing_account_id: int | None
     uom_id: int | None
     prezzo_unitario: Decimal | None
@@ -74,7 +74,7 @@ class GroupAttivitaInput:
 @dataclass(frozen=True)
 class AttivitaDaFatturare:
     id: int
-    articolo_id: int
+    articolo_id: str  # uuid (catalogo.articoli.id)
     quantita: Decimal | None
     prezzo_unitario: Decimal | None
     uom_id: int | None
@@ -1144,7 +1144,7 @@ class VenditePipelineRepository:
         for row in rows:
             result[int(row[0])] = GroupAttivitaInput(
                 attivita_id=int(row[0]),
-                articolo_id=int(row[1]),
+                articolo_id=None if row[1] is None else str(row[1]),
                 dest_billing_account_id=None if row[2] is None else int(row[2]),
                 uom_id=None if row[3] is None else int(row[3]),
                 prezzo_unitario=row[4],
@@ -1205,7 +1205,7 @@ class VenditePipelineRepository:
         return [
             AttivitaDaFatturare(
                 id=int(row[0]),
-                articolo_id=int(row[1]),
+                articolo_id=None if row[1] is None else str(row[1]),
                 quantita=row[2],
                 prezzo_unitario=row[3],
                 uom_id=None if row[4] is None else int(row[4]),
@@ -1654,7 +1654,7 @@ class VenditePipelineRepository:
         attivita_ids: list[int],
         fattura_ids: list[int],
         riga_nrs: list[int],
-        articolo_ids: list[int],
+        articolo_ids: list[str],  # uuid (catalogo.articoli.id) — cast ::uuid[] nell'unnest
         descrizioni: list[str | None],
         uom_ids: list[int | None],
         qtas: list[Decimal | None],
@@ -1677,7 +1677,7 @@ class VenditePipelineRepository:
                         %s::int[],
                         %s::int[],
                         %s::int[],
-                        %s::int[],
+                        %s::uuid[],
                         %s::text[],
                         %s::int[],
                         %s::numeric[],
@@ -1685,7 +1685,7 @@ class VenditePipelineRepository:
                         %s::int[],
                         %s::int[],
                         %s::int[],
-                        %s::text[],
+                        %s::uuid[],
                         %s::int[],
                         %s::jsonb[]
                     ) AS t(

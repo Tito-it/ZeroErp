@@ -14,6 +14,7 @@ export DB_USER=zeroerp_app
 export DB_PASS=⚠️StrongPassword
 export DB_HOST=⚠️dbdev.tailXXXX.ts.net
 export DB_PORT=5432
+export DB_BATCH_PASS=⚠️StrongBatchPassword   # ruolo zeroerp_batch_fatturazione (§15, batch fatturazione)
 ```
 
 ## 0) Host Proxmox – abilita TUN e riavvia CT
@@ -214,3 +215,109 @@ nginx -t
 ```bash
 pct snapshot $CTID baseline-$(date +%F) --description "Django ok, HTTPS, UFW, Tailscale"
 ```
+
+## 15) Batch fatturazione (systemd timer — driver commesse→fattura)
+
+Il driver `manage.py run_fatturazione_batch --modalita immediata|differita` gira **headless**
+nel **canale di sistema** (RLS Path A): usa il ruolo DB `zeroerp_batch_fatturazione`
+(BYPASSRLS) via l'alias `system_fatturazione`. Serve quindi un env con le **credenziali del
+ruolo batch**, isolate dal resto (gunicorn/operatore non le usa).
+
+> **NB**: niente pgAgent (riservato a manutenzione DB). L'anti-overlap è gestito dal command
+> stesso (advisory-lock `registered_job`): fire concorrenti del timer sono sicuri (skip se un
+> run è già in corso). Ogni run è registrato in `maintenance.job_run_log` (`origine=CRON`).
+
+### 15.1) Env credenziali ruolo batch (overlay)
+
+```bash
+cat > /etc/zeroerp/zeroerp-batch.env <<EOF
+DB_SYSTEM_FATTURAZIONE_USER=zeroerp_batch_fatturazione
+DB_SYSTEM_FATTURAZIONE_PASSWORD='${DB_BATCH_PASS}'
+EOF
+chown root:$APP_USER /etc/zeroerp/zeroerp-batch.env && chmod 640 /etc/zeroerp/zeroerp-batch.env
+```
+
+> Senza `DB_SYSTEM_FATTURAZIONE_PASSWORD` la connessione di sistema **fallisce
+> rumorosamente** (nessun fallback silente a `zeroerp_app`): è voluto.
+
+### 15.2) Service + timer (corsia immediata, near-real-time)
+
+```bash
+cat > /etc/systemd/system/zeroerp-fatturazione-immediata.service <<EOF
+[Unit]
+Description=ZeroERP fatturazione batch — corsia immediata (GIORNALIERO)
+After=network.target
+
+[Service]
+Type=oneshot
+User=${APP_USER}
+Group=${APP_USER}
+WorkingDirectory=/home/${APP_USER}/apps/zeroerp/backend
+Environment="PATH=/home/${APP_USER}/apps/zeroerp/.venv/bin"
+EnvironmentFile=/etc/zeroerp/zeroerp.env
+EnvironmentFile=/etc/zeroerp/zeroerp-batch.env
+ExecStart=/home/${APP_USER}/apps/zeroerp/.venv/bin/python manage.py run_fatturazione_batch --modalita immediata
+EOF
+
+cat > /etc/systemd/system/zeroerp-fatturazione-immediata.timer <<EOF
+[Unit]
+Description=Timer corsia immediata fatturazione (near-real-time)
+
+[Timer]
+OnCalendar=*:0/2
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+```
+
+> `OnCalendar=*:0/2` = ogni 2 min (cadenza **tunable**, da concordare). Il giro frequente fa
+> anche da **catch-up**: una commessa immediata il cui run fallisce viene ripresa al tick
+> successivo (la differita, a filtro stretto, **non** la riprende).
+
+### 15.3) Service + timer (corsia differita, mensile su competenza)
+
+```bash
+cat > /etc/systemd/system/zeroerp-fatturazione-differita.service <<EOF
+[Unit]
+Description=ZeroERP fatturazione batch — corsia differita (MASSIVO)
+After=network.target
+
+[Service]
+Type=oneshot
+User=${APP_USER}
+Group=${APP_USER}
+WorkingDirectory=/home/${APP_USER}/apps/zeroerp/backend
+Environment="PATH=/home/${APP_USER}/apps/zeroerp/.venv/bin"
+EnvironmentFile=/etc/zeroerp/zeroerp.env
+EnvironmentFile=/etc/zeroerp/zeroerp-batch.env
+ExecStart=/home/${APP_USER}/apps/zeroerp/.venv/bin/python manage.py run_fatturazione_batch --modalita differita
+EOF
+
+cat > /etc/systemd/system/zeroerp-fatturazione-differita.timer <<EOF
+[Unit]
+Description=Timer corsia differita fatturazione (mensile)
+
+[Timer]
+OnCalendar=*-*-01 02:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+```
+
+### 15.4) Attiva e verifica
+
+```bash
+systemctl daemon-reload
+systemctl enable --now zeroerp-fatturazione-immediata.timer zeroerp-fatturazione-differita.timer
+systemctl list-timers | grep fatturazione          # prossimo run
+systemctl start zeroerp-fatturazione-immediata.service   # run manuale di prova
+journalctl -u zeroerp-fatturazione-immediata.service -n 50 --no-pager
+# Esito persistito: SELECT id, origine, ok, meta FROM maintenance.job_run_log ORDER BY id DESC LIMIT 5;
+```
+
+> Si abilitano i **`.timer`** (non i `.service`). Per un run on-demand manuale si lancia il
+> `.service`. Endpoint UI on-demand restano l'alternativa interattiva (scope operatore).

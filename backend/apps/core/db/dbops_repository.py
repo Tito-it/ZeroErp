@@ -300,7 +300,10 @@ class DbopsRepository:
         ]
         return results, total_count
 
-    # Scopo: Verifica esistenza di un record attivo in una tabella config whitelisted per ID.
+    # Scopo: Verifica esistenza di un record in una tabella config whitelisted per ID.
+    #        Se la tabella ha la colonna `attivo` il record deve anche essere attivo;
+    #        per le anagrafiche fisse senza `attivo` (es. config.utilities) vale la sola
+    #        esistenza (quelle tabelle non hanno il concetto di attivazione).
     def check_lookup_id_exists(self, *, rel: str, record_id: int) -> bool:
         if rel not in _REL_CONSENTITE:
             raise ServiceError(
@@ -308,9 +311,21 @@ class DbopsRepository:
                 message="Relazione non consentita.",
                 detail=f"rel '{rel}' non e` nella whitelist delle lookup consentite.",
             )
+        schema, _, table = rel.partition(".")
         with connection.cursor() as cursor:
             cursor.execute(
-                f"SELECT EXISTS(SELECT 1 FROM {rel} WHERE id = %s AND attivo = true)",
+                """
+                SELECT EXISTS(
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = %s AND table_name = %s AND column_name = 'attivo'
+                )
+                """,
+                [schema, table],
+            )
+            has_attivo = bool(cursor.fetchone()[0])
+            predicate = " AND attivo = true" if has_attivo else ""
+            cursor.execute(
+                f"SELECT EXISTS(SELECT 1 FROM {rel} WHERE id = %s{predicate})",
                 [record_id],
             )
             row = cursor.fetchone()

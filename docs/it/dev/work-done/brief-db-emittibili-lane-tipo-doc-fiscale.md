@@ -4,9 +4,13 @@
 > Spiega *cosa* serve e *perché*; **non contiene DDL pronto** — il *come* (nome
 > funzione, firma, tipi, changeset, indici, pgTAP) è scelta del team DB.
 >
-> **Data**: 2026-06-18 · **Stato**: 🟢 **DECISIONI PRESE (2026-06-19), in implementazione**
-> — vedi §4. Novità chiave emersa in analisi critica: la **competenza** è un terzo asse
-> (vedi §2.3), non un semplice filtro.
+> **Data**: 2026-06-18 · **Stato**: ✅ **DB IMPLEMENTATO E TESTATO (2026-06-19)** —
+> `vendite.fn_list_emittibili_lane` creata (changeset `20260619-01`), pgTAP
+> `test-fn-list-emittibili-lane.sql`. Seguito poi da
+> [brief-db-emittibili-lane-utility-id.md](brief-db-emittibili-lane-utility-id.md) che ha
+> aggiunto l'asse `utility_id` alla stessa fn. BE driver: vedi
+> [brief-be-driver-batch-lane-utility.md](brief-be-driver-batch-lane-utility.md).
+> Novità chiave §2.3: la **competenza** è un terzo asse, non un semplice filtro.
 >
 > **Decisione concordata con Tid**: approccio **A3** — *nuova* funzione dedicata,
 > lasciando `vendite.fn_list_commesse_emittibili` **intatta** (continua ad alimentare

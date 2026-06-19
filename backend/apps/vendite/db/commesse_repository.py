@@ -813,24 +813,25 @@ class CommesseRepository:
         self,
         commessa_id: int,
         *,
-        lotto_attivita_id: int | None = None,
         only_approved: bool = True,
         dry_run: bool = False,
     ) -> CommessaEmitResult:
         """Pull commessa → attivita_fatturabili (step 0 pipeline fatturazione).
-        Idempotente. Restituisce contatori candidati/inseriti/aggiornati."""
+        Idempotente. Restituisce contatori candidati/inseriti/aggiornati.
+
+        NB: la fn DB non ha più `p_lotto_attivita_id` (sottosistema lotto-attività
+        deprecato, changeset 20260227-16): firma a 3 parametri."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT total_candidate, inserted_rows, updated_rows
                 FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
                     p_commessa_id => %s,
-                    p_lotto_attivita_id => %s,
                     p_only_approved => %s,
                     p_dry_run => %s
                 )
                 """,
-                [commessa_id, lotto_attivita_id, only_approved, dry_run],
+                [commessa_id, only_approved, dry_run],
             )
             row = cursor.fetchone()
         assert row is not None
@@ -882,24 +883,25 @@ class CommesseRepository:
         fatturazione_immediata: bool | None = None,
         limit: int = 10000,
     ) -> list[CommessaEmittibileLane]:
-        """Coppie distinte `(emittente, tipo_doc_fiscale)` con lavoro pronto da
-        fatturare, via vendite.fn_list_emittibili_lane. Usato dal driver batch per
-        creare UN lotto per coppia: il lotto è identificato da
-        (emittente, tipo_doc, competenza) e la numerazione fattura è per emittente.
+        """Terne distinte `(emittente, tipo_doc_fiscale, utility)` con lavoro pronto da
+        fatturare, via vendite.fn_list_emittibili_lane. Usato dal driver batch per creare
+        UN lotto per terna: il lotto è identificato da (emittente, tipo_doc, utility,
+        competenza) e la numerazione fattura è per emittente.
 
         Ogni lane porta:
+        - `utility_id`: asse di segregazione del lotto (NOT NULL a monte → mai NULL);
         - `competenza_mese`: max delle righe candidate, con cui creare il lotto
           (la select cattura poi via `<=` anche gli arretrati);
         - `total_candidate`: righe APPROVATA+NON_EMESSA candidate, per il dry-run.
 
         `competenza_mese` in input è un **bound superiore** (`<=`, cumulativo). Le righe
         con tipo_doc_fiscale NULL sono escluse a monte dalla funzione DB. `limit` è il cap
-        sulle COPPIE restituite."""
+        sulle TERNE restituite."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT emittente_soggetto_ruolo_id, tipo_doc_fiscale_id,
-                       competenza_mese, total_candidate
+                       utility_id, competenza_mese, total_candidate
                 FROM vendite.fn_list_emittibili_lane(
                     p_competenza_mese => %s,
                     p_billing_account_id => %s,
@@ -916,8 +918,9 @@ class CommesseRepository:
                 CommessaEmittibileLane(
                     emittente_soggetto_ruolo_id=(None if row[0] is None else int(row[0])),
                     tipo_doc_fiscale_id=int(row[1]),
-                    competenza_mese=row[2],
-                    total_candidate=int(row[3]),
+                    utility_id=int(row[2]),
+                    competenza_mese=row[3],
+                    total_candidate=int(row[4]),
                 )
                 for row in cursor.fetchall()
             ]

@@ -2721,7 +2721,11 @@
     "esito_non_applicabile": "Non applicabile",
     "competenze_flussi": "Competenze flussi",
     "visualizzazione_pratica": "Visualizzazione pratica codice: {codice}",
-    "apri_scheda": "Apri scheda pratica"
+    "apri_scheda": "Apri scheda pratica",
+    "mie_attivita_titolo": "Le mie attività",
+    "mie_attivita_vuoto": "Nessuna attività",
+    "mie_attivita_espandi": "Espandi",
+    "mie_attivita_comprimi": "Comprimi"
   },
   "ai": {
     "title": "Assistente AI",

@@ -211,7 +211,10 @@ class CommesseRepositoryUnitTests(TestCase):
         result = repo.emit_attivita_fatturabili(commessa_id=10, dry_run=True)
         self.assertEqual(result["total_candidate"], 3)
         params = mock_cursor_factory.return_value.execute.call_args[0][1]
-        self.assertTrue(params[3])
+        # Firma a 3 parametri (commessa_id, only_approved, dry_run): dry_run = params[2].
+        self.assertTrue(params[2])
+        sql = mock_cursor_factory.return_value.execute.call_args[0][0]
+        self.assertNotIn("p_lotto_attivita_id", sql)
 
     # Scopo: Verifica mapping CommessaStatoResult da fn_get_commessa_stato
     #        (stato + flag governance + tutti i contatori). Colonne nell'ordine
@@ -429,31 +432,33 @@ class CommesseRepositoryUnitTests(TestCase):
         result = repo.list_commesse_emittibili()
         self.assertEqual(result, [])
 
-    # Scopo: Verifica che list_emittibili_lane mappi le coppie (emittente, tipo_doc,
+    # Scopo: Verifica che list_emittibili_lane mappi le terne (emittente, tipo_doc, utility,
     # competenza, conteggio), incluso il gruppo emittente NULL, passando il filtro corsia.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
     def test_list_emittibili_lane(self, mock_cursor_factory):
+        # Colonne nell'ordine della RETURNS TABLE: (emittente, tipo_doc, utility, competenza, total)
         mock_cursor_factory.return_value = _mock_cursor(fetchall=[
-            (5, 3, date(2026, 6, 1), 4),
-            (5, 7, date(2026, 5, 1), 1),
-            (None, 3, date(2026, 6, 1), 2),
+            (5, 3, 9, date(2026, 6, 1), 4),
+            (5, 7, 9, date(2026, 5, 1), 1),
+            (None, 3, 9, date(2026, 6, 1), 2),
         ])
         repo = CommesseRepository()
         result = repo.list_emittibili_lane(
             competenza_mese=date(2026, 6, 1),
-            utility_id=2,
+            utility_id=9,
             fatturazione_immediata=True,
         )
         self.assertEqual(result, [
-            {"emittente_soggetto_ruolo_id": 5, "tipo_doc_fiscale_id": 3,
+            {"emittente_soggetto_ruolo_id": 5, "tipo_doc_fiscale_id": 3, "utility_id": 9,
              "competenza_mese": date(2026, 6, 1), "total_candidate": 4},
-            {"emittente_soggetto_ruolo_id": 5, "tipo_doc_fiscale_id": 7,
+            {"emittente_soggetto_ruolo_id": 5, "tipo_doc_fiscale_id": 7, "utility_id": 9,
              "competenza_mese": date(2026, 5, 1), "total_candidate": 1},
-            {"emittente_soggetto_ruolo_id": None, "tipo_doc_fiscale_id": 3,
+            {"emittente_soggetto_ruolo_id": None, "tipo_doc_fiscale_id": 3, "utility_id": 9,
              "competenza_mese": date(2026, 6, 1), "total_candidate": 2},
         ])
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
         self.assertIn("fn_list_emittibili_lane", sql)
+        self.assertIn("utility_id", sql)
         self.assertIn("p_fatturazione_immediata", sql)
         params = mock_cursor_factory.return_value.execute.call_args[0][1]
         self.assertIs(params[4], True)  # fatturazione_immediata
