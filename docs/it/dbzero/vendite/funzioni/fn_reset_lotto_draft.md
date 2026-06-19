@@ -17,6 +17,7 @@ DECLARE
     v_stato_doc_fiscale_id vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
     v_lock_batch_id        vendite.fatturazione_lotti.lock_batch_id%TYPE;
     v_draft_id             config.stati_doc_fiscale.id%TYPE;
+    v_emessa_id            config.stati_doc_fiscale.id%TYPE;
     v_annullata_id         config.stati_doc_fiscale.id%TYPE;
     v_fatture_ids          BIGINT[];
     v_bad_fatture          INTEGER := 0;
@@ -51,6 +52,12 @@ BEGIN
             jsonb_build_object('codice_interno', 'DRAFT'), NULL::uuid, 'stato DRAFT non configurato');
     END IF;
 
+    SELECT s.id INTO v_emessa_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'EMESSA' AND s.attivo IS TRUE LIMIT 1;
+    IF v_emessa_id IS NULL THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_draft', 'E_CONFIG_MANCANTE',
+            jsonb_build_object('codice_interno', 'EMESSA'), NULL::uuid, 'stato EMESSA non configurato');
+    END IF;
+
     SELECT s.id INTO v_annullata_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'ANNULLATA' AND s.attivo IS TRUE LIMIT 1;
     IF v_annullata_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_draft', 'E_CONFIG_MANCANTE',
@@ -63,14 +70,18 @@ BEGIN
             NULL::uuid, concat('rollback solo se DRAFT, stato=', v_stato_doc_fiscale_id));
     END IF;
 
+    -- Le fatture devono essere PRE-FISCALI (DRAFT o EMESSA): pre-fiscale = non
+    -- numerata -> cancellabile dal rollback. Le fiscali (DEFINITIVA+) sono rifiutate.
     SELECT count(*) INTO v_bad_fatture
       FROM vendite.fatture f JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = f.id
-     WHERE lf.lotto_id = p_lotto_id AND f.stato_doc_fiscale_id IS DISTINCT FROM v_draft_id;
+     WHERE lf.lotto_id = p_lotto_id
+       AND f.stato_doc_fiscale_id IS DISTINCT FROM v_draft_id
+       AND f.stato_doc_fiscale_id IS DISTINCT FROM v_emessa_id;
 
     IF v_bad_fatture > 0 THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_draft', 'E_PARAMETRO_INVALIDO',
-            jsonb_build_object('parametro', 'fatture_non_draft', 'count', v_bad_fatture, 'lotto_id', p_lotto_id),
-            NULL::uuid, concat('fatture non DRAFT: ', v_bad_fatture));
+            jsonb_build_object('parametro', 'fatture_non_pre_fiscali', 'count', v_bad_fatture, 'lotto_id', p_lotto_id),
+            NULL::uuid, concat('fatture non pre-fiscali (DRAFT/EMESSA): ', v_bad_fatture));
     END IF;
 
     SELECT array_agg(lf.fattura_id) INTO v_fatture_ids
@@ -88,7 +99,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_reset_lotto_draft(p_lotto_id bigint)
-IS 'Rollback tecnico lotto MASSIVO DRAFT: elimina fatture/righe e ripristina attivita.';
+IS 'Rollback tecnico lotto MASSIVO DRAFT: elimina fatture/righe PRE-FISCALI (DRAFT/EMESSA) e ripristina attivita.';
 ```
 
 ---

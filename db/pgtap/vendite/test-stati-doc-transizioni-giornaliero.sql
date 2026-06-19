@@ -1,0 +1,66 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: matrice transizioni stato LOTTO giornaliero (DB-1, piano-fix-stato-fattura)
+--
+-- Dopo l'unificazione a 1->2->8: le transizioni lotto 1->2 e 2->8 sono universali
+-- (meta={}), quindi valgono anche per il GIORNALIERO; la 1->8 (id 4, GIORNALIERO)
+-- e' stata deprecata (ammesso=f). Si verifica il guard trgfn_fatturazione_lotti_guard_stato.
+--
+-- Indice test (1..3):
+--   1) riferimenti minimi presenti (stati + anagrafiche)
+--   2) lotto GIORNALIERO: 1->2 (DRAFT->EMESSA) AMMESSO (prima della fix era rifiutato)
+--   3) lotto GIORNALIERO: 1->8 (DRAFT->DEFINITIVA) NON ammesso (deprecato)
+-- ------------------------------------------------------------
+BEGIN;
+SELECT plan(3);
+
+CREATE TEMP TABLE tmp_r AS
+SELECT
+  (SELECT id FROM config.stati_doc_fiscale WHERE upper(btrim(codice)) = 'DRAFT'      LIMIT 1) AS draft,
+  (SELECT id FROM config.stati_doc_fiscale WHERE upper(btrim(codice)) = 'EMESSA'     LIMIT 1) AS emessa,
+  (SELECT id FROM config.stati_doc_fiscale WHERE upper(btrim(codice)) = 'DEFINITIVA' LIMIT 1) AS definitiva,
+  (SELECT ba.id FROM anagrafiche.billing_account ba WHERE anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL ORDER BY ba.data_insert DESC NULLS LAST LIMIT 1) AS ba,
+  (SELECT ba.utility_id FROM anagrafiche.billing_account ba WHERE anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL ORDER BY ba.data_insert DESC NULLS LAST LIMIT 1) AS util,
+  (SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id) FROM anagrafiche.billing_account ba WHERE anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL ORDER BY ba.data_insert DESC NULLS LAST LIMIT 1) AS emit,
+  (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tdf;
+
+SELECT ok(
+  (SELECT draft IS NOT NULL AND emessa IS NOT NULL AND definitiva IS NOT NULL
+       AND ba IS NOT NULL AND emit IS NOT NULL AND tdf IS NOT NULL FROM tmp_r),
+  'Riferimenti minimi presenti'
+);
+
+-- lotto GIORNALIERO a DRAFT (per il caso 1->2)
+CREATE TEMP TABLE tmp_g AS WITH ins AS (
+  INSERT INTO vendite.fatturazione_lotti
+    (lock_batch_id, competenza_mese, tipo_doc_fiscale_id, utility_id, billing_account_id, emittente_soggetto_ruolo_id, stato_doc_fiscale_id, tipo_lotto)
+  SELECT uuidv7(), date_trunc('month', current_date)::date, tdf, util, ba, emit, draft, 'GIORNALIERO' FROM tmp_r
+  RETURNING id
+) SELECT * FROM ins;
+
+-- 2) 1->2 ora ammesso per il giornaliero (transizione universale)
+SELECT lives_ok(
+  format('UPDATE vendite.fatturazione_lotti SET stato_doc_fiscale_id = %s WHERE id = %s',
+         (SELECT emessa FROM tmp_r), (SELECT id FROM tmp_g)),
+  'GIORNALIERO lotto 1->2 (DRAFT->EMESSA) ammesso'
+);
+
+-- nuovo lotto GIORNALIERO a DRAFT (per il caso 1->8)
+CREATE TEMP TABLE tmp_g2 AS WITH ins AS (
+  INSERT INTO vendite.fatturazione_lotti
+    (lock_batch_id, competenza_mese, tipo_doc_fiscale_id, utility_id, billing_account_id, emittente_soggetto_ruolo_id, stato_doc_fiscale_id, tipo_lotto)
+  SELECT uuidv7(), date_trunc('month', current_date)::date, tdf, util, ba, emit, draft, 'GIORNALIERO' FROM tmp_r
+  RETURNING id
+) SELECT * FROM ins;
+
+-- 3) 1->8 deprecato -> il guard solleva
+SELECT throws_ok(
+  format('UPDATE vendite.fatturazione_lotti SET stato_doc_fiscale_id = %s WHERE id = %s',
+         (SELECT definitiva FROM tmp_r), (SELECT id FROM tmp_g2)),
+  NULL, NULL,
+  'GIORNALIERO lotto 1->8 (DRAFT->DEFINITIVA) NON ammesso (deprecato)'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

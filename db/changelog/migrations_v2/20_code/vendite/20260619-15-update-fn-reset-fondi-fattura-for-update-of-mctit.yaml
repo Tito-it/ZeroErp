@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fix FOR UPDATE over-broad: vendite.fn_reset_fondi_fattura.
+#
+# La CTE src (SELECT ... s JOIN tipi_fondi_fattura t JOIN fatture fs ... FOR UPDATE)
+# bloccava ANCHE vendite.tipi_fondi_fattura (lookup) e vendite.fatture (display).
+# Il ruolo batch (INVOKER) non ha UPDATE su tipi_fondi_fattura -> permission denied.
+# Fix: FOR UPDATE OF s -> locka solo le righe vendite.fatture_fondi_fattura_source
+# (alias s), le uniche poi aggiornate dalle CTE ann/upd.
+# Corpo dalla doc auto-gen (versione viva 20260331-19), %TYPE in firma/DECLARE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260619-15-update-fn-reset-fondi-fattura-for-update-of-mctit.yaml
+
+  - changeSet:
+      id: 20260619-15-update-fn-reset-fondi-fattura-for-update-of
+      author: mctit
+      runOnChange: false
+      validCheckSum: [ANY]
+      comment: >
+        Fix FOR UPDATE OF s in vendite.fn_reset_fondi_fattura: il lock non deve
+        estendersi a vendite.tipi_fondi_fattura (lookup) ne' a vendite.fatture
+        (display). Evita permission denied per il ruolo batch su tipi_fondi_fattura.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: vendite, tableName: fatture_fondi_fattura_source }
+          - tableExists: { schemaName: vendite, tableName: tipi_fondi_fattura }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_reset_fondi_fattura(
+                  p_fattura_id vendite.fatture.id%TYPE
+              )
+              RETURNS TABLE(updated_source INTEGER, deleted_fondi INTEGER)
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_updated_source INTEGER := 0;
+                  v_deleted_fondi  INTEGER := 0;
+                  v_stato_contabile_chiusa_id pagamenti.vendite_contabili_stati.id%TYPE;
+              BEGIN
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                  END IF;
+
+                  SELECT s.id INTO v_stato_contabile_chiusa_id
+                    FROM pagamenti.vendite_contabili_stati s WHERE s.codice_interno = 'CHIUSA' AND s.attivo IS TRUE LIMIT 1;
+
+                  IF v_stato_contabile_chiusa_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_fondi_fattura', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('codice_interno', 'CHIUSA'), NULL::uuid, 'stato contabile CHIUSA non configurato');
+                  END IF;
+
+                  -- Logica CTE invariata dall'originale.
+                  -- src: lock SOLO delle righe source (alias s) da resettare; le JOIN su
+                  -- tipi_fondi_fattura (t, filtro) e fatture (fs, display) NON vanno bloccate.
+                  WITH src AS (
+                      SELECT s.id AS source_id, s.fattura_sorgente_id, fs.numero AS fattura_sorgente_numero, fs.data AS fattura_sorgente_data
+                        FROM vendite.fatture_fondi_fattura_source s
+                        JOIN vendite.tipi_fondi_fattura t ON t.id = s.tipo_fondo_fattura_id
+                        JOIN vendite.fatture fs ON fs.id = s.fattura_sorgente_id
+                       WHERE s.fattura_figlia_id = p_fattura_id AND s.stato = 'ASSEGNATO' AND t.codice_interno = 'F_F_ADD_ACC'
+                         FOR UPDATE OF s
+                  ), bloccate AS (
+                      SELECT DISTINCT src.source_id, src.fattura_sorgente_id, src.fattura_sorgente_numero, src.fattura_sorgente_data
+                        FROM src
+                        JOIN pagamenti.vendite_contabili_righe cr ON cr.attivo IS TRUE AND COALESCE(cr.meta->>'origine', '') = 'FONDO_FATTURA' AND COALESCE(cr.meta->>'fondo_source_id', '') = src.source_id::text
+                        JOIN pagamenti.vendite_contabili c ON c.id = cr.contabile_id
+                       WHERE c.stato_id = v_stato_contabile_chiusa_id
+                  ), warn AS (
+                      INSERT INTO vendite.fatture_log (fattura_id, data_ora, messaggio, status, disabilitato, meta, data_insert, user_insert, data_update, user_update)
+                      SELECT p_fattura_id, now(), format('Minimo non ripristinabile: gia postato (fattura %s del %s)', COALESCE(b.fattura_sorgente_numero::text, 'N/D'), COALESCE(to_char(b.fattura_sorgente_data, 'YYYY-MM-DD'), 'N/D')),
+                             'W', FALSE, jsonb_build_object('source_id', b.source_id, 'fattura_sorgente_id', b.fattura_sorgente_id, 'cause', 'CONTABILE_CHIUSA'), now(), current_user, now(), current_user
+                        FROM bloccate b RETURNING id
+                  ), ann AS (
+                      UPDATE vendite.fatture_fondi_fattura_source s SET stato = 'ANNULLATO', data_update = now(), user_update = current_user FROM bloccate b WHERE s.id = b.source_id RETURNING s.id
+                  ), resettabili AS (
+                      SELECT s.* FROM src s WHERE NOT EXISTS (SELECT 1 FROM bloccate b WHERE b.source_id = s.source_id)
+                  ), del_righe AS (
+                      DELETE FROM pagamenti.vendite_contabili_righe cr USING resettabili r, pagamenti.vendite_contabili c
+                      WHERE c.id = cr.contabile_id AND COALESCE(cr.meta->>'origine', '') = 'FONDO_FATTURA' AND COALESCE(cr.meta->>'fondo_source_id', '') = r.source_id::text AND c.stato_id IS DISTINCT FROM v_stato_contabile_chiusa_id RETURNING cr.id
+                  ), upd AS (
+                      UPDATE vendite.fatture_fondi_fattura_source s SET fattura_figlia_id = NULL, data_assegnazione = NULL, user_assegnazione = NULL, stato = 'DISPONIBILE', data_update = now(), user_update = current_user FROM resettabili r WHERE s.id = r.source_id RETURNING s.id, s.fattura_sorgente_id
+                  ), del_ff AS (
+                      DELETE FROM vendite.fatture_fondi_fattura ff USING upd u WHERE ff.fattura_id = p_fattura_id AND ff.riferimento_fattura_id = u.fattura_sorgente_id RETURNING ff.id
+                  )
+                  SELECT (SELECT COUNT(*)::INTEGER FROM upd), (SELECT COUNT(*)::INTEGER FROM del_ff) INTO v_updated_source, v_deleted_fondi;
+
+                  RETURN QUERY SELECT COALESCE(v_updated_source, 0), COALESCE(v_deleted_fondi, 0);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_reset_fondi_fattura(BIGINT)
+                IS 'Reset fondi applicati alla fattura con blocco su contabili CHIUSA e warning.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback: ripristino non automatizzato (CREATE OR REPLACE).
+              -- Riapplicare il changeset precedente (20260331-19) per tornare a FOR UPDATE over-broad.
+              SELECT 1;

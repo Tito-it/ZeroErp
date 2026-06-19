@@ -30,14 +30,16 @@ BEGIN
             jsonb_build_object('codice_interno', 'CHIUSA'), NULL::uuid, 'stato contabile CHIUSA non configurato');
     END IF;
 
-    -- Logica CTE invariata dall'originale
+    -- Logica CTE invariata dall'originale.
+    -- src: lock SOLO delle righe source (alias s) da resettare; le JOIN su
+    -- tipi_fondi_fattura (t, filtro) e fatture (fs, display) NON vanno bloccate.
     WITH src AS (
         SELECT s.id AS source_id, s.fattura_sorgente_id, fs.numero AS fattura_sorgente_numero, fs.data AS fattura_sorgente_data
           FROM vendite.fatture_fondi_fattura_source s
           JOIN vendite.tipi_fondi_fattura t ON t.id = s.tipo_fondo_fattura_id
           JOIN vendite.fatture fs ON fs.id = s.fattura_sorgente_id
          WHERE s.fattura_figlia_id = p_fattura_id AND s.stato = 'ASSEGNATO' AND t.codice_interno = 'F_F_ADD_ACC'
-           FOR UPDATE
+           FOR UPDATE OF s
     ), bloccate AS (
         SELECT DISTINCT src.source_id, src.fattura_sorgente_id, src.fattura_sorgente_numero, src.fattura_sorgente_data
           FROM src

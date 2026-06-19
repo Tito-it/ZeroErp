@@ -34,12 +34,12 @@ BEGIN
             NULL::uuid, 'p_codice_interno_emessa obbligatorio se p_set_emessa=true');
     END IF;
 
-    -- Lock riga fattura
+    -- Lock riga fattura (solo la riga fattura, alias f)
     SELECT f.numero IS NOT NULL, f.data, f.registro_id, r.reset_policy, f.anno, f.serie, f.numero
       INTO v_is_numbered, v_data, v_registro_id, v_reset, v_anno, v_serie, v_numero
       FROM vendite.fatture f
       JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
-     WHERE f.id = p_fattura_id FOR UPDATE;
+     WHERE f.id = p_fattura_id FOR UPDATE OF f;
 
     IF v_registro_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_numera_fattura_opz_emessa', 'E_FATTURA_NON_TROVATA',

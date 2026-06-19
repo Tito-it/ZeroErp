@@ -138,27 +138,44 @@ FROM _app_schemas s
 
 -- ------------------------------------------------------------------
 -- Perimetro di SCRITTURA del batch fatturazione (§3 del brief).
--- DML (INSERT/UPDATE/DELETE) concesso SOLO qui. Include le tabelle scritte
--- anche indirettamente dai trigger della pipeline.
+-- DML concesso SOLO qui, con privilege-set GRADUATO per tabella:
+--   * iud -> full DML (INSERT/UPDATE/DELETE): tabelle dominio fattura/lotto.
+--   * iu  -> INSERT+UPDATE: run-log (start->complete) e upsert ON CONFLICT DO UPDATE.
+--   * i   -> INSERT only: append-only (audit/log) o upsert ON CONFLICT DO NOTHING.
+--   * u   -> UPDATE only: tabelle che il batch SOLO aggiorna (es. stato_emissione),
+--            senza inserirle/cancellarle (l'INSERT e' del flusso operatore/push).
+-- Tutte le tabelle scritte anche INDIRETTAMENTE dai trigger/upsert della pipeline.
+-- Una tabella nuova non concessa fallisce RUMOROSAMENTE (permission denied):
+-- quando la pipeline scrive una nuova tabella, aggiungere la riga nel grado giusto.
 -- ------------------------------------------------------------------
-CREATE TEMP TABLE _perimeter (nspname TEXT, relname TEXT);
-INSERT INTO _perimeter (nspname, relname) VALUES
-    ('vendite', 'fatturazione_lotti'),
-    ('vendite', 'fatture'),
-    ('vendite', 'fatture_righe'),
-    ('vendite', 'fatture_fondi_fattura'),
-    ('vendite', 'fatture_fondi_fattura_source'),
-    ('vendite', 'fatture_riepiloghi_iva'),
-    ('vendite', 'attivita_fatturabili'),
-    ('vendite', 'registri_fatturazione_progressivi'),
-    ('vendite', 'fatturazione_lotti_fatture'),
-    ('vendite', 'fatture_log'),
-    ('vendite', 'fatturazione_lotti_log'),
-    ('vendite', 'note_fatture'),
-    ('vendite', 'fatture_sdi'),
-    ('vendite', 'fatture_scadenze'),
-    ('pagamenti', 'vendite_contabili'),
-    ('pagamenti', 'vendite_contabili_righe');
+CREATE TEMP TABLE _perimeter (nspname TEXT, relname TEXT, grade TEXT);
+INSERT INTO _perimeter (nspname, relname, grade) VALUES
+    -- full DML (INSERT/UPDATE/DELETE)
+    ('vendite', 'fatturazione_lotti',               'iud'),
+    ('vendite', 'fatture',                          'iud'),
+    ('vendite', 'fatture_righe',                    'iud'),
+    ('vendite', 'fatture_fondi_fattura',            'iud'),
+    ('vendite', 'fatture_fondi_fattura_source',     'iud'),
+    ('vendite', 'fatture_riepiloghi_iva',           'iud'),
+    ('vendite', 'attivita_fatturabili',             'iud'),
+    ('vendite', 'registri_fatturazione_progressivi','iud'),
+    ('vendite', 'fatturazione_lotti_fatture',       'iud'),
+    ('vendite', 'fatture_log',                      'iud'),
+    ('vendite', 'fatturazione_lotti_log',           'iud'),
+    ('vendite', 'note_fatture',                     'iud'),
+    ('vendite', 'fatture_sdi',                      'iud'),
+    ('vendite', 'fatture_scadenze',                 'iud'),
+    ('pagamenti', 'vendite_contabili',              'iud'),
+    ('pagamenti', 'vendite_contabili_righe',        'iud'),
+    -- INSERT+UPDATE: run-log task (start->complete) + upsert ON CONFLICT DO UPDATE
+    ('vendite', 'fatturazione_lotti_task_runs',     'iu'),
+    ('vendite', 'fatture_arrotondamenti_scope',     'iu'),
+    -- INSERT only: append-only (audit/log) o upsert ON CONFLICT DO NOTHING
+    ('vendite', 'event_log',                        'i'),
+    ('vendite', 'attivita_fatturabili_log',         'i'),
+    ('pagamenti', 'vendite_contabili_lotti',        'i'),
+    -- UPDATE only: il batch aggiorna stato_emissione, non inserisce/cancella
+    ('vendite', 'commesse_attivita',                'u');
 
 -- Filtra le tabelle inesistenti (DB parziali / ambienti test)
 DELETE FROM _perimeter p
@@ -170,20 +187,82 @@ WHERE NOT EXISTS (
       AND c.relkind IN ('r', 'p')
 );
 
--- DML scoped sul perimetro (SELECT gia' coperto dal grant ampio sopra)
+-- DML scoped sul perimetro, secondo il grado (SELECT gia' coperto sopra)
 SELECT format('GRANT INSERT, UPDATE, DELETE ON TABLE %I.%I TO %I', p.nspname, p.relname, :'batch_role')
-FROM _perimeter p
+FROM _perimeter p WHERE p.grade = 'iud'
 \gexec
 
--- Sequenze associate alle tabelle del perimetro (serial 'a' / identity 'i'):
--- USAGE+SELECT per consentire nextval/currval in INSERT.
-SELECT format('GRANT USAGE, SELECT ON SEQUENCE %I.%I TO %I', seq_ns.nspname, seq.relname, :'batch_role')
+SELECT format('GRANT INSERT, UPDATE ON TABLE %I.%I TO %I', p.nspname, p.relname, :'batch_role')
+FROM _perimeter p WHERE p.grade = 'iu'
+\gexec
+
+SELECT format('GRANT INSERT ON TABLE %I.%I TO %I', p.nspname, p.relname, :'batch_role')
+FROM _perimeter p WHERE p.grade = 'i'
+\gexec
+
+SELECT format('GRANT UPDATE ON TABLE %I.%I TO %I', p.nspname, p.relname, :'batch_role')
+FROM _perimeter p WHERE p.grade = 'u'
+\gexec
+
+-- ------------------------------------------------------------------
+-- Shadow storico.* del perimetro. I trigger di storicizzazione
+-- (script.trgfn_storico_generic, SECURITY INVOKER -> girano come ruolo batch)
+-- scrivono in storico.<tabella> all'UPDATE delle tabelle del perimetro:
+--   * INSERT del nuovo snapshot + UPDATE di chiusura (valid_to) del precedente
+--     -> servono INSERT+UPDATE. NO DELETE (gli snapshot non si cancellano).
+-- Derivato dai TRIGGER (non da liste): ogni tabella del perimetro che e'
+-- storicizzata aggancia automaticamente la sua shadow -> niente sync manuale.
+-- ------------------------------------------------------------------
+CREATE TEMP TABLE _perimeter_hist (nspname TEXT, relname TEXT);
+INSERT INTO _perimeter_hist (nspname, relname)
+SELECT DISTINCT hn.nspname, hc.relname
 FROM _perimeter p
-JOIN pg_class t        ON t.relname = p.relname
-JOIN pg_namespace tn   ON tn.oid = t.relnamespace AND tn.nspname = p.nspname
+JOIN pg_class c        ON c.relname = p.relname
+JOIN pg_namespace n    ON n.oid = c.relnamespace AND n.nspname = p.nspname
+JOIN pg_trigger tg     ON tg.tgrelid = c.oid AND NOT tg.tgisinternal
+JOIN pg_proc pr        ON pr.oid = tg.tgfoid AND pr.proname = 'trgfn_storico_generic'
+JOIN pg_namespace pn   ON pn.oid = pr.pronamespace AND pn.nspname = 'script'
+JOIN pg_class hc       ON hc.relname = c.relname AND hc.relkind IN ('r', 'p')
+JOIN pg_namespace hn   ON hn.oid = hc.relnamespace AND hn.nspname = 'storico';
+
+SELECT format('GRANT INSERT, UPDATE ON TABLE %I.%I TO %I', h.nspname, h.relname, :'batch_role')
+FROM _perimeter_hist h
+\gexec
+
+-- Sequenze identity/serial possedute dalle tabelle del perimetro E dalle loro shadow
+-- storico (deptype 'a'/'i'): USAGE+SELECT per consentire nextval in INSERT
+-- (PK identity delle ancillari e delle shadow, es. storico.<t>_id_seq).
+SELECT format('GRANT USAGE, SELECT ON SEQUENCE %I.%I TO %I', seq_ns.nspname, seq.relname, :'batch_role')
+FROM (
+    SELECT nspname, relname FROM _perimeter
+    UNION
+    SELECT nspname, relname FROM _perimeter_hist
+) tbl
+JOIN pg_class t        ON t.relname = tbl.relname
+JOIN pg_namespace tn   ON tn.oid = t.relnamespace AND tn.nspname = tbl.nspname
 JOIN pg_depend d       ON d.refobjid = t.oid AND d.deptype IN ('a', 'i')
 JOIN pg_class seq      ON seq.oid = d.objid AND seq.relkind = 'S'
 JOIN pg_namespace seq_ns ON seq_ns.oid = seq.relnamespace
+\gexec
+
+-- Sequenze-codice STANDALONE del perimetro: usate da script.fn_generate_codice via
+-- nextval dinamico, NON legate a una colonna -> il join pg_depend sopra non le prende.
+-- Vanno enumerate esplicitamente (fail-loud: una code-sequence nuova va aggiunta qui).
+CREATE TEMP TABLE _perimeter_seq (nspname TEXT, relname TEXT);
+INSERT INTO _perimeter_seq (nspname, relname) VALUES
+    ('vendite', 'fatturazione_lotti_codice_seq');
+
+DELETE FROM _perimeter_seq s
+WHERE NOT EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = s.nspname
+      AND c.relname = s.relname
+      AND c.relkind = 'S'
+);
+
+SELECT format('GRANT USAGE, SELECT ON SEQUENCE %I.%I TO %I', s.nspname, s.relname, :'batch_role')
+FROM _perimeter_seq s
 \gexec
 
 \echo [ZeroErp] OK: provisioning zeroerp_batch_fatturazione completato

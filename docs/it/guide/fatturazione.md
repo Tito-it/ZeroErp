@@ -390,6 +390,28 @@ erDiagram
 3. DEFINITIVA: numerazione documento.
 4. INVIATA: preparazione/invio su canale esterno (es. SDI).
 
+### Stato documentale della fattura: segue lo step (invariante)
+
+Lotto **e** fatture condividono `config.stati_doc_fiscale` ma con **macchine a stati
+distinte** (`config.stati_doc_fiscale_transizioni`, colonne `solo_lotto` / `solo_fattura`).
+Lo stato della **fattura** segue lo `stato_doc_fiscale_id` dello **step** di pipeline: a ogni
+avanzamento di step le fatture del lotto vengono allineate (`fn_sync_lotto_fatture_stato`).
+
+**Invariante (imposto dalla matrice + `trgfn_fatture_guard_stato`)**: la fattura deve passare
+per **EMESSA(2) prima di DEFINITIVA(8)** — `1→2→8`, **mai** `1→8`. Semantica: non si assegna
+un numero fiscale (DEFINITIVA) a una fattura di cui non si è certificata l'IVA (EMESSA).
+
+* **MASSIVO**: la fattura fa `1→2→8→3`. Lo step EMESSA calcola l'IVA (rifacibile: ha rollback
+  `reset_lotto_draft`), poi DEFINITIVA numera.
+* **GIORNALIERO**: stessa sequenza `1→2→8→3` a livello sia di lotto sia di fattura. L'IVA è già
+  calcolata alla nascita del documento, quindi lo step EMESSA giornaliero non ha task
+  (`processi=[]`): serve solo a portare lotto e fattura a EMESSA prima della numerazione,
+  garantendo lo stesso invariante.
+
+> Rollback: ammesso solo da stati **pre-fiscali** (DRAFT/EMESSA). `fn_reset_lotto_draft`
+> **cancella** le fatture pre-fiscali del lotto (non numerate); le fiscali (DEFINITIVA in poi)
+> sono rifiutate.
+
 ### Rollback di step (`fatturazione_pipeline.rollback`)
 
 Ogni riga di `fatturazione_pipeline` ha due array JSONB paralleli:
