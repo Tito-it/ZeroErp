@@ -132,8 +132,8 @@ trg_flussi_z90_giornale_assegnazione_upd
 
 ## 6. Coordinamento audit utente (Part B)
 
-⚠️ Allinearsi con [brief-db-audit-user-pratiche.md](../work-in-progress/brief-db-audit-user-pratiche.md)
-(**Part B**): il giornale è append-only e attribuisce a `zeroerp_app` finché il default
+⚠️ Allinearsi con [brief-db-audit-user-pratiche.md](brief-db-audit-user-pratiche.md)
+(**Part B**, ✅ completata): il giornale è append-only e attribuiva a `zeroerp_app` finché il default
 `user_insert` non è GUC-aware
 (`COALESCE(NULLIF(current_setting('app.jwt_user',true),''),CURRENT_USER)`). La riga
 giornale dell'assegnazione flusso eredita lo stesso percorso — nessun lavoro extra qui, solo
