@@ -6,9 +6,9 @@
 #
 annotated-types==0.7.0
     # via pydantic
-anthropic==0.109.1
+anthropic==0.111.0
     # via -r ../requirements.in
-anyio==4.13.0
+anyio==4.14.0
     # via
     #   anthropic
     #   httpx
@@ -24,7 +24,7 @@ bleach==6.4.0
     # via -r ../requirements.in
 brotli==1.2.0
     # via fonttools
-certifi==2026.5.20
+certifi==2026.6.17
     # via
     #   httpcore
     #   httpx
