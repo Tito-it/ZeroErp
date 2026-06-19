@@ -19,6 +19,8 @@ Indice test eseguiti:
 17) LottoPipelineRunnerUnitTests.test_runner_emits_pipeline_completed_event
 18) LottoPipelineRunnerUnitTests.test_runner_emits_step_completed_event
 19) LottoPipelineRunnerUnitTests.test_runner_emits_pipeline_error_event
+20) LottoPipelineRunnerUnitTests.test_runner_syncs_fatture_to_step_stato_on_forward
+21) LottoPipelineRunnerUnitTests.test_runner_does_not_sync_fatture_in_dry_run
 """
 
 from contextlib import nullcontext
@@ -114,6 +116,13 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
 
         # Scopo: Gestisce `log_lotto_esito_fatture` nel flusso applicativo del modulo.
         def log_lotto_esito_fatture(self, lotto_id):
+            return None
+
+        # Scopo: Stub `sync_lotto_fatture_stato` con tracking delle chiamate (lotto, stato).
+        def sync_lotto_fatture_stato(self, *, lotto_id, stato_doc_fiscale_id=None):
+            if not hasattr(self, "sync_calls"):
+                self.sync_calls = []
+            self.sync_calls.append((lotto_id, stato_doc_fiscale_id))
             return None
 
         # Scopo: Gestisce `log_fatture_lotto` nel flusso applicativo del modulo.
@@ -414,6 +423,45 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             result = runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(result, 10)
         self.assertIsNone(getattr(repo, "close_lotto_operativo_called", None))
+
+    # Scopo: Verifica che dopo lo step (forward, non dry-run) le fatture vengano
+    # sincronizzate allo stato_doc_fiscale_id dello step (es. EMESSA/2), così la
+    # fattura segue il lotto e non salta a DEFINITIVA/8 violando la matrice.
+    def test_runner_syncs_fatture_to_step_stato_on_forward(self):
+        class _SingleEmessaStepRepo(self._RepoMock):
+            # Scopo: Forza il resolve a tenere lo step EMESSA come unico step da eseguire.
+            def get_lotto_stato_doc_fiscale_id(self, lotto_id):
+                return None
+
+            # Scopo: Restituisce un solo step EMESSA(2).
+            def list_pipeline_steps(self, tipo_lotto, utility_id=None, tipo_doc_fiscale_id=None):
+                class _Step:
+                    # Scopo: Inizializza la istanza.
+                    def __init__(self, stato_doc_fiscale_id, descrizione, ordine):
+                        self.stato_doc_fiscale_id = stato_doc_fiscale_id
+                        self.descrizione = descrizione
+                        self.ordine = ordine
+
+                return [_Step(2, "Step EMESSA", 1)]
+
+        repo = _SingleEmessaStepRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            result = runner.run_pipeline(LottoPipelineParams(dry_run=False))
+        self.assertEqual(result, 10)
+        # La fattura viene allineata allo stato dello step (lotto 10, stato 2).
+        self.assertEqual(getattr(repo, "sync_calls", []), [(10, 2)])
+
+    # Scopo: Verifica che in dry-run NON venga sincronizzato lo stato delle fatture.
+    def test_runner_does_not_sync_fatture_in_dry_run(self):
+        repo = self._RepoMock()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            result = runner.run_pipeline(LottoPipelineParams(dry_run=True))
+        self.assertEqual(result, 10)
+        self.assertEqual(getattr(repo, "sync_calls", []), [])
 
     # Scopo: Verifica il caso `test_runner_does_not_block_new_lotto_when_initial_state_is_in_esecuzione`.
     def test_runner_does_not_block_new_lotto_when_initial_state_is_in_esecuzione(self):

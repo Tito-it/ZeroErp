@@ -28,12 +28,13 @@ from apps.core.services.service_errors import ServiceError
 _CMD = "apps.vendite.management.commands.run_fatturazione_batch"
 
 
-# Scopo: helper che costruisce una lane (coppia emittente, tipo_doc) come la
+# Scopo: helper che costruisce una lane (terna emittente, tipo_doc, utility) come la
 #        ritorna CommesseRepository.list_emittibili_lane.
-def _lane(em, *, tipo_doc=1, comp=date(2026, 6, 1), tot=1):
+def _lane(em, *, tipo_doc=1, utility=9, comp=date(2026, 6, 1), tot=1):
     return {
         "emittente_soggetto_ruolo_id": em,
         "tipo_doc_fiscale_id": tipo_doc,
+        "utility_id": utility,
         "competenza_mese": comp,
         "total_candidate": tot,
     }
@@ -62,8 +63,8 @@ class RunFatturazioneBatchCommandTests(TestCase):
              patch(f"{_CMD}.system_process_context"), \
              patch(f"{_CMD}.registered_job", cm):
             RepoCls.return_value.list_emittibili_lane.return_value = [
-                _lane(1, tipo_doc=3, comp=date(2026, 6, 1)),
-                _lane(2, tipo_doc=7, comp=date(2026, 5, 1)),
+                _lane(1, tipo_doc=3, utility=9, comp=date(2026, 6, 1)),
+                _lane(2, tipo_doc=7, utility=4, comp=date(2026, 5, 1)),
             ]
             mock_run.return_value = {"lotto_id": 100, "motivo_stop": "COMPLETATO", "step_eseguiti": 3}
             out = StringIO()
@@ -79,14 +80,15 @@ class RunFatturazioneBatchCommandTests(TestCase):
             RepoCls.return_value.list_emittibili_lane.call_args.kwargs["competenza_mese"],
             date(2026, 6, 1),
         )
-        # ogni lotto creato con (emittente, tipo_doc, competenza) della propria lane
-        coppie = {
+        # ogni lotto creato con (emittente, tipo_doc, utility, competenza) della propria lane
+        terne = {
             (c.kwargs["emittente_soggetto_ruolo_id"],
              c.kwargs["tipo_doc_fiscale_id"],
+             c.kwargs["utility_id"],
              c.kwargs["competenza_mese"])
             for c in mock_run.call_args_list
         }
-        self.assertEqual(coppie, {(1, 3, date(2026, 6, 1)), (2, 7, date(2026, 5, 1))})
+        self.assertEqual(terne, {(1, 3, 9, date(2026, 6, 1)), (2, 7, 4, date(2026, 5, 1))})
 
     # Scopo: corsia differita → MASSIVO + filtro False.
     def test_differita_uses_massivo_and_false_filter(self):
@@ -117,6 +119,7 @@ class RunFatturazioneBatchCommandTests(TestCase):
         mock_run.assert_not_called()
         mock_reg.assert_not_called()  # dry-run NON registra il job
         self.assertIn("DRY-RUN", out.getvalue())
+        self.assertIn("utility=9", out.getvalue())
         self.assertIn("2 righe candidate", out.getvalue())
 
     # Scopo: best-effort → un emittente in errore non blocca gli altri.

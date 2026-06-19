@@ -114,13 +114,15 @@ class CommessaEmitResult(TypedDict):
 
 
 class CommessaEmittibileLane(TypedDict):
-    # Coppia (emittente, tipo_doc_fiscale) con lavoro pronto da fatturare, prodotta
+    # Terna (emittente, tipo_doc_fiscale, utility) con lavoro pronto da fatturare, prodotta
     # da vendite.fn_list_emittibili_lane (discovery del driver batch). `competenza_mese`
     # è la competenza (max delle righe candidate) con cui creare il lotto; le righe con
     # tipo_doc_fiscale NULL sono escluse a monte dalla funzione DB (il lotto la richiede
-    # NOT NULL). emittente può essere NULL (commesse senza emittente, non fatturabili).
+    # NOT NULL). utility_id è NOT NULL a monte (commesse.utility_id) → mai NULL. emittente
+    # può essere NULL (commesse senza emittente, non fatturabili).
     emittente_soggetto_ruolo_id: int | None
     tipo_doc_fiscale_id: int
+    utility_id: int
     competenza_mese: date
     total_candidate: int
 

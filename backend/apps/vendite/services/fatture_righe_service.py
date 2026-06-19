@@ -159,7 +159,7 @@ class FattureRigheService:
             b_attivita_ids: list[int] = []
             b_fattura_ids: list[int] = []
             b_riga_nrs: list[int] = []
-            b_articolo_ids: list[int] = []
+            b_articolo_ids: list[str] = []  # uuid (catalogo.articoli.id), non int
             b_descrizioni: list[str | None] = []
             b_uom_ids: list[int | None] = []
             b_qtas: list[Decimal | None] = []

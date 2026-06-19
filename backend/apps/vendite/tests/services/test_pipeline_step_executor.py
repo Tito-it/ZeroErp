@@ -235,10 +235,9 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.list_fatture_by_lotto.assert_called_once_with(9)
         repo.numera_fattura_opz_emessa.assert_any_call(101)
         repo.numera_fattura_opz_emessa.assert_any_call(102)
-        repo.sync_lotto_fatture_stato.assert_called_once_with(
-            lotto_id=9,
-            stato_doc_fiscale_id=2,
-        )
+        # Il task numera NON sincronizza piu' lo stato documentale: l'allineamento allo
+        # stato dello step (→ DEFINITIVA/8) e' centralizzato nel runner (_execute_pipeline_step).
+        repo.sync_lotto_fatture_stato.assert_not_called()
 
     # Scopo: Verifica il caso `test_execute_step_runs_close_lotto_task`.
     def test_execute_step_runs_close_lotto_task(self):

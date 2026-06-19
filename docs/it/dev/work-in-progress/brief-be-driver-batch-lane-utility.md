@@ -4,9 +4,9 @@
 >
 > **Data**: 2026-06-19 · **Stato**: 🟡 **ATTENDE PREREQUISITO DB**
 >
-> **Prerequisito (bloccante)**: [brief-db-emittibili-lane-utility-axis.md](brief-db-emittibili-lane-utility-axis.md)
-> — `fn_list_emittibili_lane` deve restituire `utility_id` nella grana. Finché non atterra,
-> il BE **non si tocca** ([feedback_be_fe_attende_prerequisiti_db]).
+> **Prerequisito**: [brief-db-emittibili-lane-utility-id.md](../work-done/brief-db-emittibili-lane-utility-id.md)
+> — `fn_list_emittibili_lane` restituisce `utility_id` nella grana. ✅ **ATTERRATO**
+> (DB implementato e testato), quindi il BE è sbloccato ([feedback_be_fe_attende_prerequisiti_db]).
 >
 > **Origine**: smoke live 2026-06-19 — il run reale fallisce su `utility_id obbligatoria`
 > perché il driver crea il lotto senza utility. Seguito del fix tipo_doc (già committabile).
