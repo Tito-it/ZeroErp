@@ -128,6 +128,7 @@
 - [fn_list_consumi_da_pushare](manual/fn_list_consumi_da_pushare.md) — `vendite.fn_list_consumi_da_pushare(...)` seleziona i consumi utility pronti per il push verso `commesse_attivita`, restituendo un payload di base per l'handler di calcolo componenti.
 - [fn_list_contratti_da_pushare](manual/fn_list_contratti_da_pushare.md) — `vendite.fn_list_contratti_da_pushare(...)` seleziona le righe contratto pronte per il push verso `commesse_attivita`, restituendo un payload completo per l'handler di acquisizione.
 - [fn_list_ddt_da_pushare](manual/fn_list_ddt_da_pushare.md) — `vendite.fn_list_ddt_da_pushare(...)` seleziona le righe DDT pronte per il push verso `commesse_attivita`, restituendo un payload completo per l'handler di acquisizione.
+- [fn_list_emittibili_lane](manual/fn_list_emittibili_lane.md) — (latest review 19-06-2026 — discovery corsie per il driver batch)
 - [fn_list_fatturazione_pipeline_steps](manual/fn_list_fatturazione_pipeline_steps.md) — (latest review 08-02-2026)   La funzione restituisce la lista step pipeline risolti per `tipo_lotto`, `utility_id` e `tipo_doc_fiscale_id`, delegando la precedenza a `fn_resolve_fatturazione_pipeline_step`.
 - [fn_list_lotto_task_runs](manual/fn_list_lotto_task_runs.md) — Elenca i task run di un lotto, con filtri opzionali per step e task.
 - [fn_list_ordini_da_pushare](manual/fn_list_ordini_da_pushare.md) — `vendite.fn_list_ordini_da_pushare(...)` seleziona le righe ordine pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.

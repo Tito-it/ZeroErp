@@ -13,64 +13,58 @@ CREATE OR REPLACE FUNCTION pratiche.fn_prendi_in_carico_flusso(p_flusso_id bigin
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: assegnare un flusso DA_ESEGUIRE all'operatore corrente,
---        verificando che abbia competenza attiva per quel tipo di flusso.
+--        applicando la policy di eligibilita' reparto-first +
+--        competenza opzionale (design assegnazione-flusso §2.2).
 -- Regole:
 --   1. Il flusso deve esistere
---   2. Il flusso deve essere in stato DA_ESEGUIRE
---   3. Il flusso non deve essere gia' assegnato ad altro operatore
---   4. L'operatore deve avere competenza attiva per il template_flusso_id
+--   2. Stato DA_ESEGUIRE
+--   3. Non gia' assegnato ad altro operatore
+--   4. Eligibilita' (casi A/B/C/D, vedi sotto)
 -- Risultato: true se assegnato, false se gia' assegnato allo stesso operatore.
--- Errori: raise se il flusso non esiste, stato errato, o competenza mancante.
--- Nota: usa SELECT ... FOR UPDATE per evitare race condition
---       tra lettura stato e assegnazione.
+-- Nota: SELECT ... FOR UPDATE per evitare race condition.
 DECLARE
     v_stato_id          pratiche.flussi.stato_id%TYPE;
     v_risorsa_attuale   pratiche.flussi.risorsa_umana_id%TYPE;
     v_template_id       pratiche.flussi.template_flusso_id%TYPE;
+    v_unita_org         pratiche.flussi.unita_organizzativa_id%TYPE;
     v_da_eseguire_id    config.stati_flussi_pratiche.id%TYPE;
-    v_ha_competenza     BOOLEAN;
+    v_has_skill_lock    BOOLEAN;
+    v_competente        BOOLEAN;
+    v_reparto_operatore anagrafiche.risorse_umane.unita_organizzativa_id%TYPE;
     v_righe_aggiornate  INTEGER;
 BEGIN
     -- Guard: parametri obbligatori
     IF p_flusso_id IS NULL OR p_flusso_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
-            'pratiche',
-            'pratiche.fn_prendi_in_carico_flusso',
+            'pratiche', 'pratiche.fn_prendi_in_carico_flusso',
             'E_PARAMETRO_INVALIDO',
             jsonb_build_object('p_flusso_id', p_flusso_id),
-            NULL::uuid,
-            'p_flusso_id'
+            NULL::uuid, 'p_flusso_id'
         );
     END IF;
 
     IF p_risorsa_umana_id IS NULL OR p_risorsa_umana_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
-            'pratiche',
-            'pratiche.fn_prendi_in_carico_flusso',
+            'pratiche', 'pratiche.fn_prendi_in_carico_flusso',
             'E_PARAMETRO_INVALIDO',
             jsonb_build_object('p_risorsa_umana_id', p_risorsa_umana_id),
-            NULL::uuid,
-            'p_risorsa_umana_id'
+            NULL::uuid, 'p_risorsa_umana_id'
         );
     END IF;
 
-    -- Recupera stato corrente del flusso CON LOCK (FOR UPDATE)
-    -- per evitare race condition: due operatori non possono
-    -- prendere in carico lo stesso flusso contemporaneamente
-    SELECT f.stato_id, f.risorsa_umana_id, f.template_flusso_id
-      INTO v_stato_id, v_risorsa_attuale, v_template_id
+    -- Recupera stato + routing del flusso CON LOCK (FOR UPDATE)
+    SELECT f.stato_id, f.risorsa_umana_id, f.template_flusso_id, f.unita_organizzativa_id
+      INTO v_stato_id, v_risorsa_attuale, v_template_id, v_unita_org
       FROM pratiche.flussi f
      WHERE f.id = p_flusso_id
        FOR UPDATE;
 
     IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error(
-            'pratiche',
-            'pratiche.fn_prendi_in_carico_flusso',
+            'pratiche', 'pratiche.fn_prendi_in_carico_flusso',
             'E_VALORE_MANCANTE',
             jsonb_build_object('flusso_id', p_flusso_id),
-            NULL::uuid,
-            concat('flusso_id ', p_flusso_id)
+            NULL::uuid, concat('flusso_id ', p_flusso_id)
         );
     END IF;
 
@@ -81,16 +75,10 @@ BEGIN
 
     IF v_stato_id <> v_da_eseguire_id THEN
         PERFORM script.fn_log_and_raise_error(
-            'pratiche',
-            'pratiche.fn_prendi_in_carico_flusso',
+            'pratiche', 'pratiche.fn_prendi_in_carico_flusso',
             'FLUSSI_PRESA_CARICO_STATO_ERRATO',
-            jsonb_build_object(
-                'flusso_id', p_flusso_id,
-                'stato_id', v_stato_id,
-                'stato_richiesto', v_da_eseguire_id
-            ),
-            NULL::uuid,
-            p_flusso_id::text
+            jsonb_build_object('flusso_id', p_flusso_id, 'stato_id', v_stato_id, 'stato_richiesto', v_da_eseguire_id),
+            NULL::uuid, p_flusso_id::text
         );
     END IF;
 
@@ -102,44 +90,63 @@ BEGIN
     -- Gia' assegnato ad altro operatore: errore
     IF v_risorsa_attuale IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error(
-            'pratiche',
-            'pratiche.fn_prendi_in_carico_flusso',
+            'pratiche', 'pratiche.fn_prendi_in_carico_flusso',
             'FLUSSI_GIA_ASSEGNATO',
-            jsonb_build_object(
-                'flusso_id', p_flusso_id,
-                'risorsa_attuale', v_risorsa_attuale,
-                'risorsa_richiedente', p_risorsa_umana_id
-            ),
-            NULL::uuid,
-            p_flusso_id::text,
-            v_risorsa_attuale::text
+            jsonb_build_object('flusso_id', p_flusso_id, 'risorsa_attuale', v_risorsa_attuale, 'risorsa_richiedente', p_risorsa_umana_id),
+            NULL::uuid, p_flusso_id::text, v_risorsa_attuale::text
         );
     END IF;
 
-    -- Verifica competenza (solo per flussi template-based)
-    IF v_template_id IS NOT NULL THEN
+    -- ============================================================
+    -- Eligibilita' (policy reparto-first + competenza opzionale)
+    -- ============================================================
+    -- skill-lock: la matrice competenze e' configurata (attiva) per il template
+    v_has_skill_lock := (v_template_id IS NOT NULL) AND EXISTS (
+        SELECT 1 FROM pratiche.competenze_flussi cf
+         WHERE cf.template_flusso_id = v_template_id
+           AND cf.attivo = true
+    );
+
+    IF v_has_skill_lock THEN
+        -- Casi A/D: serve competenza ATTIVA dell'operatore
         SELECT EXISTS (
             SELECT 1 FROM pratiche.competenze_flussi cf
              WHERE cf.template_flusso_id = v_template_id
                AND cf.risorsa_umana_id = p_risorsa_umana_id
                AND cf.attivo = true
-        ) INTO v_ha_competenza;
+        ) INTO v_competente;
 
-        IF NOT v_ha_competenza THEN
+        IF NOT v_competente THEN
             PERFORM script.fn_log_and_raise_error(
-                'pratiche',
-                'pratiche.fn_prendi_in_carico_flusso',
+                'pratiche', 'pratiche.fn_prendi_in_carico_flusso',
                 'FLUSSI_COMPETENZA_MANCANTE',
-                jsonb_build_object(
-                    'flusso_id', p_flusso_id,
-                    'template_flusso_id', v_template_id,
-                    'risorsa_umana_id', p_risorsa_umana_id
-                ),
-                NULL::uuid,
-                p_flusso_id::text,
-                p_risorsa_umana_id::text
+                jsonb_build_object('flusso_id', p_flusso_id, 'template_flusso_id', v_template_id, 'risorsa_umana_id', p_risorsa_umana_id),
+                NULL::uuid, p_flusso_id::text, p_risorsa_umana_id::text
             );
         END IF;
+
+    ELSIF v_unita_org IS NOT NULL THEN
+        -- Caso B: niente skill-lock ma reparto valorizzato -> serve
+        -- appartenenza al reparto ANAGRAFICO dell'operatore
+        SELECT unita_organizzativa_id INTO v_reparto_operatore
+          FROM anagrafiche.risorse_umane
+         WHERE id = p_risorsa_umana_id;
+
+        IF v_reparto_operatore IS NULL OR v_reparto_operatore <> v_unita_org THEN
+            PERFORM script.fn_log_and_raise_error(
+                'pratiche', 'pratiche.fn_prendi_in_carico_flusso',
+                'FLUSSI_PRESA_NON_ELIGIBILE',
+                jsonb_build_object(
+                    'flusso_id', p_flusso_id,
+                    'unita_organizzativa_flusso', v_unita_org,
+                    'unita_organizzativa_operatore', v_reparto_operatore,
+                    'risorsa_umana_id', p_risorsa_umana_id
+                ),
+                NULL::uuid, p_flusso_id::text, p_risorsa_umana_id::text
+            );
+        END IF;
+
+    -- ELSE: Caso C (niente reparto, niente skill-lock) -> presa libera
     END IF;
 
     -- Assegna il flusso e verifica risultato
@@ -151,12 +158,10 @@ BEGIN
 
     IF v_righe_aggiornate <> 1 THEN
         PERFORM script.fn_log_and_raise_error(
-            'pratiche',
-            'pratiche.fn_prendi_in_carico_flusso',
+            'pratiche', 'pratiche.fn_prendi_in_carico_flusso',
             'E_QUERY_FAILED',
             jsonb_build_object('flusso_id', p_flusso_id),
-            NULL::uuid,
-            'pratiche', 'flussi', 'UPDATE'
+            NULL::uuid, 'pratiche', 'flussi', 'UPDATE'
         );
     END IF;
 
@@ -165,7 +170,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.fn_prendi_in_carico_flusso(p_flusso_id bigint, p_risorsa_umana_id bigint)
-IS 'Assegna un flusso DA_ESEGUIRE all''operatore, verificando competenza attiva. Usa FOR UPDATE per evitare race condition.';
+IS 'Assegna un flusso DA_ESEGUIRE all''operatore con policy eligibilita'' reparto-first + competenza opzionale (casi A/B/C/D). FOR UPDATE anti-race.';
 ```
 
 ---

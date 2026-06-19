@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Assegnazione flusso — Intervento 3a (brief-db-assegnazione-flusso §4, DEC-3=a).
+# Aggiunge l'azione FLUSSO_ASSEGNAZIONE_CAMBIATA alla whitelist di
+# chk_giornale_azione, simmetrica a FLUSSO_STATO_CAMBIATO (eventi a livello
+# flusso). La regex DOMINIO_* e gli altri 11 eventi di motore restano invariati.
+# Non si edita il changeset mergiato 20260608-04: DROP+ADD in nuovo changeset.
+# Prerequisito del trigger giornale assegnazione flusso (20260618-08).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260618-07-alter-giornale-azione-check-flusso-assegnazione-mctit.yaml
+
+  - changeSet:
+      id: 20260618-07-alter-giornale-azione-check-flusso-assegnazione
+      author: mctit
+      comment: >
+        chk_giornale_azione: aggiunge FLUSSO_ASSEGNAZIONE_CAMBIATA (evento a
+        livello flusso, simmetrico a FLUSSO_STATO_CAMBIATA). Regex DOMINIO_* e
+        gli 11 eventi di motore invariati.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE pratiche.giornale
+                DROP CONSTRAINT chk_giornale_azione;
+
+              ALTER TABLE pratiche.giornale
+                ADD CONSTRAINT chk_giornale_azione
+                CHECK (
+                  azione IN (
+                    'PRATICA_CREATA', 'STATO_CAMBIATO', 'ASSEGNAZIONE_CAMBIATA',
+                    'PRIORITA_CAMBIATA', 'FLUSSO_CREATO', 'FLUSSO_STATO_CAMBIATO',
+                    'FLUSSO_ASSEGNAZIONE_CAMBIATA',
+                    'NOTA_AGGIUNTA', 'ALLEGATO_AGGIUNTO', 'PRATICA_GENERATA',
+                    'SOSPENSIONE_REGISTRATA', 'SOSPENSIONE_CHIUSA'
+                  )
+                  OR azione ~ '^DOMINIO_[A-Z][A-Z0-9_]*$'
+                );
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE pratiche.giornale
+                DROP CONSTRAINT chk_giornale_azione;
+
+              ALTER TABLE pratiche.giornale
+                ADD CONSTRAINT chk_giornale_azione
+                CHECK (
+                  azione IN (
+                    'PRATICA_CREATA', 'STATO_CAMBIATO', 'ASSEGNAZIONE_CAMBIATA',
+                    'PRIORITA_CAMBIATA', 'FLUSSO_CREATO', 'FLUSSO_STATO_CAMBIATO',
+                    'NOTA_AGGIUNTA', 'ALLEGATO_AGGIUNTO', 'PRATICA_GENERATA',
+                    'SOSPENSIONE_REGISTRATA', 'SOSPENSIONE_CHIUSA'
+                  )
+                  OR azione ~ '^DOMINIO_[A-Z][A-Z0-9_]*$'
+                );
