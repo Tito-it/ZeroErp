@@ -10,6 +10,57 @@
 
 ---
 
+## 20 giugno 2026
+
+Anello 3 (vendite): **batch fatturazione automatico end-to-end operativo**. Driver CRON
+`run-until-done` con discovery a **corsie** `(emittente, tipo_doc_fiscale, utility)`
+(`fn_list_emittibili_lane` + lane utility-id), **sync dello stato documentale della fattura
+per-step** (`1→2→8`: l'IVA è certificata in EMESSA prima della numerazione in DEFINITIVA;
+fix asimmetria di orchestrazione, matrice e guard invariati), registrazione delle run
+headless in `job_run_log` (`script.fn_job_run_start/end`), contesto sistema/RLS per il batch.
+Hardening commesse→fatturazione: **normalize + guard `tipo_doc_fiscale` emittibile**
+(invariante di riga `APPROVATA + NON_EMESSA ⇒ tipo_doc NOT NULL`, codice 497 + CHECK backstop
+— evita "fatturato perso in silenzio"), snapshot pricing v5 nel push commesse, fan-out
+compositi multi-sorgente, capability azioni stato commessa (`fn_available_actions_commessa`),
+pull commessa→`attivita_fatturabili` agganciata agli step DRAFT. La **pipeline fatturazione
+passa da "operativa (manuale)" a batch automatico end-to-end**. Vedi
+[piano-fix-stato-fattura-pipeline-per-step.md](work-in-progress/piano-fix-stato-fattura-pipeline-per-step.md),
+[brief-db-emittibili-lane-tipo-doc-fiscale.md](work-in-progress/brief-db-emittibili-lane-tipo-doc-fiscale.md),
+[brief-db-guard-tipo-doc-attivita.md](work-in-progress/brief-db-guard-tipo-doc-attivita.md).
+
+## 13-19 giugno 2026
+
+Anello 2 (pratiche): estensioni workflow v2 del motore (validato sul primo consumatore,
+vendite). Arco completo del periodo:
+
+- **Completamento flusso event-driven**: rimosso l'endpoint manuale M2; il completamento è
+  guidato dagli eventi del workflow.
+- **Azione di completamento flusso data-driven**: l'azione che chiude lo step è risolta da
+  configurazione, non cablata.
+- **Aggancio documento↔flusso** (ROOT per-flusso): il documento sorgente (es. preventivo) si
+  àncora a uno **specifico flusso** della pratica, non alla sola testata; guard di coerenza
+  flusso↔pratica (codice 493).
+- **Contesto pratica del preventivo a 3 livelli**: `soggetto → ruolo → istanza`
+  (derivata/filtrata), con guard di coerenza.
+- **Chiusura pratica workflow-driven**: la pratica si chiude solo a flussi obbligatori
+  completati; il flusso `chiude_pratica` va eseguito per ultimo (guard 485/492).
+- **Esito configurabile dei flussi**: modalità **MANUALE / AUTOMATICO / CONTESTUALE** con
+  `esito_default` (guard 494/495: AUTOMATICO solo su step a direzione INTERNA).
+- **Giornale più parlante** + appendice di configurazione workflow nella documentazione.
+- **Audit utente reale** su `pratiche.*`: `user_update`/`data_update` valorizzati
+  dall'operatore reale + trigger insert-only/append-only sul giornale.
+- **Assegnazione del singolo flusso a operatore/reparto** con policy **reparto-first**
+  (`flussi.risorsa_umana_id` / `unita_organizzativa_id`; eligibilità A/B/C/D — skill-lock,
+  competenza, reparto anagrafico, libero; codice 496) tramite `fn_prendi_in_carico_flusso`.
+- **Coda lavoro operatore** a 4 livelli (`fn_coda_lavoro_operatore`:
+  ASSEGNATO > COMPETENZA > REPARTO > LIBERO) e **consumer FE pannello "Le mie attività"** +
+  gating del permesso di assegnazione.
+
+Vedi [analisi-pratiche-workflow-v2.md](work-done/analisi-pratiche-workflow-v2.md),
+[brief-design-esito-configurabile-flussi.md](work-in-progress/brief-design-esito-configurabile-flussi.md),
+[brief-db-assegnazione-flusso.md](work-in-progress/brief-db-assegnazione-flusso.md),
+[brief-design-coda-lavoro-mie-attivita.md](work-in-progress/brief-design-coda-lavoro-mie-attivita.md).
+
 ## 11 giugno 2026
 
 Anello 3 (vendite): **ordini di vendita** sviluppati end-to-end DB+BE+FE (CRUD, conferma, stato EVASO, stampa PDF, conversione preventivo/offerta→ordine, univocita' offerta→contratto XOR ordine); **pratica PREVENTIVI** eseguita end-to-end come primo consumatore reale del motore `pratiche` (handler `CONFERMA_VENDITA`, split per natura merce→ordine / servizi→commessa, smistamento riga-per-riga, commesse multi-sorgente) → Anello 2 `pratiche` passa a **validata con primo consumatore**; workflow pratiche v2 (ripetibilita', bivi condizionali, lenti contesto, guard chiusura). Vedi [analisi-pratiche-workflow-v2.md](work-done/analisi-pratiche-workflow-v2.md) e [analisi-ordini-vendita.md](work-in-progress/analisi-ordini-vendita.md).
