@@ -429,20 +429,31 @@ class CommesseRepositoryUnitTests(TestCase):
         result = repo.list_commesse_emittibili()
         self.assertEqual(result, [])
 
-    # Scopo: Verifica che list_emittibili_emittenti restituisca emittenti distinti
-    # (incluso NULL) passando il filtro fatturazione_immediata.
+    # Scopo: Verifica che list_emittibili_lane mappi le coppie (emittente, tipo_doc,
+    # competenza, conteggio), incluso il gruppo emittente NULL, passando il filtro corsia.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
-    def test_list_emittibili_emittenti(self, mock_cursor_factory):
-        mock_cursor_factory.return_value = _mock_cursor(fetchall=[(5,), (None,), (7,)])
+    def test_list_emittibili_lane(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchall=[
+            (5, 3, date(2026, 6, 1), 4),
+            (5, 7, date(2026, 5, 1), 1),
+            (None, 3, date(2026, 6, 1), 2),
+        ])
         repo = CommesseRepository()
-        result = repo.list_emittibili_emittenti(
+        result = repo.list_emittibili_lane(
             competenza_mese=date(2026, 6, 1),
             utility_id=2,
             fatturazione_immediata=True,
         )
-        self.assertEqual(result, [5, None, 7])
+        self.assertEqual(result, [
+            {"emittente_soggetto_ruolo_id": 5, "tipo_doc_fiscale_id": 3,
+             "competenza_mese": date(2026, 6, 1), "total_candidate": 4},
+            {"emittente_soggetto_ruolo_id": 5, "tipo_doc_fiscale_id": 7,
+             "competenza_mese": date(2026, 5, 1), "total_candidate": 1},
+            {"emittente_soggetto_ruolo_id": None, "tipo_doc_fiscale_id": 3,
+             "competenza_mese": date(2026, 6, 1), "total_candidate": 2},
+        ])
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
-        self.assertIn("DISTINCT emittente_soggetto_ruolo_id", sql)
+        self.assertIn("fn_list_emittibili_lane", sql)
         self.assertIn("p_fatturazione_immediata", sql)
         params = mock_cursor_factory.return_value.execute.call_args[0][1]
         self.assertIs(params[4], True)  # fatturazione_immediata

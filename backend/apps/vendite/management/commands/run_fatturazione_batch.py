@@ -3,11 +3,12 @@
 # Copyright (C) 2025 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Management command — driver batch della fatturazione (Fase 3).
-#        Scopre le commesse emittibili di una corsia (immediata/differita) e
-#        porta a termine la pipeline lotto PER EMITTENTE (un lotto per emittente,
-#        la numerazione fattura è per emittente). Best-effort: una corsia/emittente
-#        in errore non blocca gli altri. Eseguibile come cron job (systemd/crontab),
-#        NON pgAgent (riservato a manutenzione DB).
+#        Scopre le COPPIE (emittente, tipo_doc_fiscale) emittibili di una corsia
+#        (immediata/differita) e porta a termine la pipeline lotto PER COPPIA — un
+#        lotto è identificato da (emittente, tipo_doc, competenza) e la numerazione
+#        fattura è per emittente. Best-effort: una coppia in errore non blocca le
+#        altre. Eseguibile come cron job (systemd/crontab), NON pgAgent (riservato a
+#        manutenzione DB).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -49,13 +50,15 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--competenza", type=str, default=None,
-            help="Mese di competenza ISO (YYYY-MM-DD, normalizzato al 1°). "
-                 "Default: primo giorno del mese corrente.",
+            help="Competenza massima ISO (YYYY-MM-DD, normalizzata al 1°). È un BOUND "
+                 "SUPERIORE cumulativo (<=): include anche gli arretrati dei mesi "
+                 "precedenti. Default: primo giorno del mese corrente.",
         )
         parser.add_argument(
             "--emittente-id", type=int, default=None,
-            help="Limita a un singolo emittente (soggetto_ruolo_id). "
-                 "Default: tutti gli emittenti con commesse emittibili.",
+            help="Restringe la discovery a un singolo emittente (soggetto_ruolo_id); "
+                 "le coppie (emittente, tipo_doc) di quell'emittente vengono comunque "
+                 "scoperte. Default: tutti gli emittenti emittibili.",
         )
         parser.add_argument(
             "--utility-id", type=int, default=None,
@@ -67,7 +70,7 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--limit", type=int, default=10000,
-            help="Cap discovery commesse emittibili (default 10000).",
+            help="Cap sulle COPPIE (emittente, tipo_doc) scoperte (default 10000).",
         )
 
     # Scopo: Risolve la competenza (default = primo del mese corrente).
@@ -125,11 +128,11 @@ class Command(BaseCommand):
                     return
                 summary = self._run_batch(dry_run=False, **run_kwargs)
                 job.set_meta(summary)
-                job.set_rows_affected(summary.get("emittenti", 0))
+                job.set_rows_affected(summary.get("lane", 0))
 
-    # Scopo: corpo del batch (discovery + esecuzione per emittente) eseguito DENTRO il
+    # Scopo: corpo del batch (discovery + esecuzione per coppia) eseguito DENTRO il
     #        canale di sistema. Estratto da handle per isolare il setup del gateway.
-    #        Ritorna un riepilogo GENERICO del run (emittenti/falliti/per_motivo) usato
+    #        Ritorna un riepilogo GENERICO del run (lane/falliti/per_motivo) usato
     #        come `meta` di job_run_log; `{}` per dry-run (non registrato).
     def _run_batch(
         self,
@@ -145,58 +148,63 @@ class Command(BaseCommand):
     ) -> dict:
         repo = CommesseRepository()
 
-        # Perimetri emittente: esplicito (--emittente-id) o scoperti tra gli emittibili.
-        if emittente_id is not None:
-            scoperti: list[int | None] = [emittente_id]
-        else:
-            scoperti = repo.list_emittibili_emittenti(
-                competenza_mese=competenza,
-                utility_id=utility_id,
-                fatturazione_immediata=fatturazione_immediata,
-                limit=limit,
-            )
+        # Discovery delle coppie (emittente, tipo_doc_fiscale) emittibili: sempre via
+        # fn_list_emittibili_lane, anche con --emittente-id (che restringe il filtro),
+        # perché il lotto ha bisogno del tipo_doc per coppia. `competenza` è il bound
+        # superiore (<=, cumulativo): la lane riporta la competenza_mese con cui creare
+        # il lotto. Le righe con tipo_doc NULL sono escluse a monte dalla funzione DB.
+        lanes = repo.list_emittibili_lane(
+            competenza_mese=competenza,
+            utility_id=utility_id,
+            emittente_soggetto_ruolo_id=emittente_id,
+            fatturazione_immediata=fatturazione_immediata,
+            limit=limit,
+        )
 
         # Un lotto richiede un emittente (emittente_soggetto_ruolo_id NOT NULL): le
-        # commesse emittibili senza emittente non sono fatturabili da qui → saltate.
-        emittenti = [e for e in scoperti if e is not None]
-        senza_emittente = len(scoperti) - len(emittenti)
+        # coppie senza emittente non sono fatturabili da qui → saltate.
+        coppie = [lane for lane in lanes if lane["emittente_soggetto_ruolo_id"] is not None]
+        senza_emittente = len(lanes) - len(coppie)
         if senza_emittente:
             self.stderr.write(self.style.WARNING(
-                f"{senza_emittente} gruppo/i di commesse emittibili SENZA emittente: "
-                "non fatturabili (il lotto richiede emittente), saltati."
+                f"{senza_emittente} coppia/e emittibili SENZA emittente: "
+                "non fatturabili (il lotto richiede emittente), saltate."
             ))
 
         self.stdout.write(
             f"Corsia={modalita} (tipo_lotto={tipo_lotto}, immediata={fatturazione_immediata}) "
-            f"competenza={competenza.isoformat()} emittenti={len(emittenti)}"
+            f"competenza<={competenza.isoformat()} coppie={len(coppie)}"
             + (" [DRY-RUN]" if dry_run else "")
         )
 
-        if not emittenti:
-            self.stdout.write("Nessuna commessa emittibile (con emittente) per la corsia/competenza.")
-            return {"emittenti": 0, "falliti": 0, "per_motivo": {}}
+        if not coppie:
+            self.stdout.write("Nessuna coppia (emittente, tipo_doc) emittibile per la corsia/competenza.")
+            return {"lane": 0, "falliti": 0, "per_motivo": {}}
 
-        # DRY-RUN: solo discovery/conteggio, nessun lotto creato.
+        # DRY-RUN: solo discovery/conteggio (total_candidate già nella lane).
         if dry_run:
-            for em in emittenti:
-                count = len(repo.list_commesse_emittibili(
-                    competenza_mese=competenza,
-                    utility_id=utility_id,
-                    emittente_soggetto_ruolo_id=em,
-                    fatturazione_immediata=fatturazione_immediata,
-                    limit=limit,
-                ))
-                self.stdout.write(f"  emittente={em}: {count} commesse emittibili")
+            for lane in coppie:
+                self.stdout.write(
+                    f"  emittente={lane['emittente_soggetto_ruolo_id']} "
+                    f"tipo_doc={lane['tipo_doc_fiscale_id']} "
+                    f"competenza={lane['competenza_mese'].isoformat()}: "
+                    f"{lane['total_candidate']} righe candidate"
+                )
             return {}
 
-        # Esecuzione: un lotto per emittente, best-effort.
+        # Esecuzione: un lotto per coppia (emittente, tipo_doc), best-effort. La
+        # competenza del lotto è quella riportata dalla lane (max righe candidate);
+        # la select cattura poi via `<=` anche gli eventuali arretrati.
         esiti_per_motivo: dict[str, int] = {}
         falliti = 0
-        for em in emittenti:
+        for lane in coppie:
+            em = lane["emittente_soggetto_ruolo_id"]
+            tipo_doc = lane["tipo_doc_fiscale_id"]
             try:
                 esito = run_lotto_pipeline_until_done(
-                    competenza_mese=competenza,
+                    competenza_mese=lane["competenza_mese"],
                     emittente_soggetto_ruolo_id=em,
+                    tipo_doc_fiscale_id=tipo_doc,
                     utility_id=utility_id,
                     tipo_lotto=tipo_lotto,
                     meta={LOTTO_META_KEY_FATTURAZIONE_IMMEDIATA: fatturazione_immediata},
@@ -205,23 +213,23 @@ class Command(BaseCommand):
             except ServiceError as exc:
                 falliti += 1
                 self.stderr.write(self.style.ERROR(
-                    f"  emittente={em}: ERRORE {exc.code} - {exc.detail or exc}"
+                    f"  emittente={em} tipo_doc={tipo_doc}: ERRORE {exc.code} - {exc.detail or exc}"
                 ))
                 continue
             motivo = str(esito.get("motivo_stop"))
             esiti_per_motivo[motivo] = esiti_per_motivo.get(motivo, 0) + 1
             self.stdout.write(
-                f"  emittente={em}: lotto={esito.get('lotto_id')} "
+                f"  emittente={em} tipo_doc={tipo_doc}: lotto={esito.get('lotto_id')} "
                 f"motivo={motivo} step_eseguiti={esito.get('step_eseguiti')}"
             )
 
         riepilogo = ", ".join(f"{k}={v}" for k, v in sorted(esiti_per_motivo.items()))
         self.stdout.write(self.style.SUCCESS(
-            f"Completato: {len(emittenti)} emittenti — {riepilogo or 'nessun esito'}"
+            f"Completato: {len(coppie)} coppie — {riepilogo or 'nessun esito'}"
             + (f", falliti={falliti}" if falliti else "")
         ))
         return {
-            "emittenti": len(emittenti),
+            "lane": len(coppie),
             "falliti": falliti,
             "per_motivo": esiti_per_motivo,
         }
