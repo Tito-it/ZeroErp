@@ -10,7 +10,7 @@ import { useDrawerContentReady } from '../../core/composables/useDrawerContentRe
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { cambiaStatoFlusso } from '../api/pratiche-api'
 import { getUiActivity } from '../uiActivityRegistry'
-import { DRAWER_WIDTH, STATO_FLUSSO } from '../../core/constants'
+import { DRAWER_WIDTH, STATO_FLUSSO, MANAGE_ICONS } from '../../core/constants'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
@@ -158,12 +158,15 @@ const drawerActions = computed(() => {
     },
     // Assegnazione del flusso a un reparto e/o operatore (policy reparto-first).
     // kind:'manage' = apre il dialog dedicato. Disponibile finche' il flusso e'
-    // attivo (non COMPLETATO/ANNULLATO) e non in sola lettura.
+    // attivo (non COMPLETATO/ANNULLATO) e non in sola lettura. `action` gatea sul
+    // permesso di processo `assegna_pratica` (stesso codename del POST BE): chi
+    // non lo possiede non vede il pulsante, invece di scoprire il 403 al click.
     {
       key: 'assegna',
       kind: 'manage',
       label: t('pratiche.flusso_assegna'),
-      icon: 'pi pi-user-plus',
+      icon: MANAGE_ICONS.ASSIGN,
+      action: 'assegna_pratica',
       visible: canAssign.value,
       disabled: loading.value,
       command: () => { assegnaVisible.value = true },

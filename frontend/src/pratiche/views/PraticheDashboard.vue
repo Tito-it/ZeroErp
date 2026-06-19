@@ -1,8 +1,9 @@
 <script setup>
-// Scopo: Dashboard pratiche con sidebar coda lavoro + master-detail (SearchTable + roadmap percorso).
-// Layout: desktop = sidebar 280px + area principale con SearchTable sopra e roadmap sotto.
-// Tablet: sidebar collassa in toggle.
-// Riusa: PraticheCodaLavoro, PraticheSearchTable, PraticaPercorso, PraticaDrawer, FlussoDrawer.
+// Scopo: Dashboard pratiche con pannello "Le mie attività" (coda lavoro) in alto +
+// master-detail (SearchTable + roadmap percorso).
+// Layout: colonna full-width = pannello collassabile sempre visibile, poi
+// SearchTable e roadmap percorso. Adattabile ai piccoli schermi (niente larghezza fissa).
+// Riusa: MieAttivitaPanel, PraticheSearchTable, PraticaPercorso, PraticaDrawer, FlussoDrawer.
 import { ref, shallowRef, computed, watch, onMounted, onUnmounted, nextTick, markRaw } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
@@ -11,7 +12,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { READONLY_DOMAINS, STATI_PRATICA_TERMINALI, STATO_FLUSSO } from '../../core/constants'
 import { usePraticheStore } from '../stores/pratiche'
-import PraticheCodaLavoro from '../components/PraticheCodaLavoro.vue'
+import MieAttivitaPanel from '../components/MieAttivitaPanel.vue'
 import PraticheSearchTable from '../components/PraticheSearchTable.vue'
 import PraticaPercorso from '../components/PraticaPercorso.vue'
 import PraticaDrawer from '../components/PraticaDrawer.vue'
@@ -29,8 +30,9 @@ useReadonlyMode(READONLY_DOMAINS.PRATICHE)
 onMounted(() => { store.loadCodaLavoro() })
 
 function onCodaSelectFlusso(item) {
-  // Seleziona la pratica nella tabella e carica i flussi
+  // Seleziona la pratica nella tabella, evidenzia il flusso in coda e carica i flussi
   store.selectedPraticaId = item.pratica_id
+  selectedFlussoId.value = item.flusso_id
   loadPercorsoPratica(item.pratica_id)
 }
 
@@ -63,6 +65,8 @@ async function loadPercorsoPratica(praticaId) {
 // Quando cambia la pratica selezionata nella SearchTable
 function onRowClick(data) {
   store.selectedPraticaId = data.id
+  // Selezione dalla tabella: nessun item della coda evidenziato.
+  selectedFlussoId.value = null
   loadPercorsoPratica(data.id)
 }
 
@@ -302,17 +306,16 @@ onUnmounted(() => {
 <template>
   <div ref="dashboardRef" class="app-page pratiche-dashboard">
 
-    <!-- Sidebar: Coda lavoro -->
-    <aside v-if="store.hasSearched" class="dashboard-sidebar">
-      <div class="dashboard-sidebar-spacer" />
-      <PraticheCodaLavoro
-        :items="store.codaLavoro"
-        :loading="store.codaLoading"
-        :selected-flusso-id="selectedFlussoId"
-        @select-flusso="onCodaSelectFlusso"
-        @prendi-in-carico="onPrendiInCarico"
-      />
-    </aside>
+    <!-- Pannello "Le mie attività" (coda lavoro): full-width, sempre visibile,
+         collassabile coi contatori per livello. Click su un'attività → seleziona
+         la pratica e ne carica il percorso (onCodaSelectFlusso). -->
+    <MieAttivitaPanel
+      :items="store.codaLavoro"
+      :loading="store.codaLoading"
+      :selected-flusso-id="selectedFlussoId"
+      @select-flusso="onCodaSelectFlusso"
+      @prendi-in-carico="onPrendiInCarico"
+    />
 
     <!-- Area principale -->
     <main class="dashboard-main">
@@ -402,26 +405,10 @@ onUnmounted(() => {
 <style scoped>
 .pratiche-dashboard {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   height: 100%;
   overflow: hidden;
   gap: 0;
-}
-
-.dashboard-sidebar {
-  width: 260px;
-  min-width: 260px;
-  flex-shrink: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Spacer: allinea coda lavoro con le prime righe della tabella (toolbar + paginator) */
-.dashboard-sidebar-spacer {
-  height: 90px;
-  flex-shrink: 0;
-  background: var(--surface-ground);
 }
 
 .dashboard-main {
@@ -479,22 +466,12 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-/* Tablet/mobile: layout verticale, container scrolla */
+/* Tablet/mobile: il container scrolla, le sezioni non si comprimono */
 @media (max-width: 1279px) {
   .pratiche-dashboard {
-    flex-direction: column;
     overflow-y: auto;
     overflow-x: hidden;
   }
-  .dashboard-sidebar {
-    width: 100%;
-    min-width: 100%;
-    height: 160px;
-    flex: 0 0 160px;
-    border-right: none;
-    border-bottom: 2px solid var(--p-info-color, var(--p-primary-color));
-  }
-  .dashboard-sidebar-spacer { display: none; }
   .dashboard-main {
     overflow: visible;
     flex: 0 0 auto;

@@ -2721,7 +2721,11 @@
     "esito_non_applicabile": "Not applicable",
     "competenze_flussi": "Flow competences",
     "visualizzazione_pratica": "Viewing practice code: {codice}",
-    "apri_scheda": "Open case sheet"
+    "apri_scheda": "Open case sheet",
+    "mie_attivita_titolo": "My activities",
+    "mie_attivita_vuoto": "No activities",
+    "mie_attivita_espandi": "Expand",
+    "mie_attivita_comprimi": "Collapse"
   },
   "ai": {
     "title": "AI Assistant",
