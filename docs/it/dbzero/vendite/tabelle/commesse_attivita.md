@@ -97,8 +97,8 @@
 | trg_commesse_attivita_a10_area_geografica_fatturazione_r_4e9bb4 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id', 'id')` |
 | trg_commesse_attivita_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_commesse_attivita_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
-| trg_commesse_attivita_a10_guard_tipo_doc_emittibile_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile()` |
-| trg_commesse_attivita_a10_guard_tipo_doc_emittibile_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile()` |
+| trg_commesse_attivita_a10_guard_tipo_doc_emittibile_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile()` |
+| trg_commesse_attivita_a10_guard_tipo_doc_emittibile_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile()` |
 | trg_commesse_attivita_a10_listini_righe_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_righe', 'attivo', 'listino_riga_id', 'id')` |
 | trg_commesse_attivita_a10_listini_righe_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_righe', 'attivo', 'listino_riga_id', 'id')` |
 | trg_commesse_attivita_a10_listini_versioni_require_attiv_5d6a8d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |

@@ -30,7 +30,7 @@ BEGIN
         );
     END IF;
 
-    -- Recupera dati fattura + registro con lock
+    -- Recupera dati fattura + registro con lock (solo la riga fattura, alias f)
     SELECT f.registro_id,
            f.data,
            COALESCE(f.serie, r.serie_default, ''),
@@ -39,7 +39,7 @@ BEGIN
       FROM vendite.fatture f
       JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
      WHERE f.id = p_fattura_id
-       FOR UPDATE;
+       FOR UPDATE OF f;
 
     IF v_registro_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(

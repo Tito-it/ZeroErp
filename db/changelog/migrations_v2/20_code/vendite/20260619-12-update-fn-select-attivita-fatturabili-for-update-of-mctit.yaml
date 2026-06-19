@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fix FOR UPDATE over-broad: vendite.fn_select_attivita_fatturabili.
+#
+# Il SELECT ... FOR UPDATE SKIP LOCKED del ramo p_lock non aveva la clausola OF,
+# quindi bloccava ANCHE anagrafiche.billing_account (in JOIN solo per filtro
+# utility). In PostgreSQL FOR UPDATE richiede privilegio UPDATE sulle tabelle
+# bloccate: il ruolo batch (zeroerp_batch_fatturazione, BYPASSRLS, fn INVOKER)
+# NON ha UPDATE su billing_account -> permission denied. zeroerp_app lo mascherava
+# solo perche' ha grant schema-wide.
+#
+# Fix: FOR UPDATE OF a -> locka SOLO vendite.attivita_fatturabili (alias a), la
+# riga effettivamente aggiornata. Corretto anche sul merito concorrenza: non si
+# devono lockare righe di anagrafiche in JOIN per filtro. Corpo dalla doc auto-gen
+# (versione viva 20260331-27), %TYPE in firma/RETURNS/DECLARE. Solo la clausola
+# FOR UPDATE cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260619-12-update-fn-select-attivita-fatturabili-for-update-of-mctit.yaml
+
+  - changeSet:
+      id: 20260619-12-update-fn-select-attivita-fatturabili-for-update-of
+      author: mctit
+      runOnChange: false
+      validCheckSum: [ANY]
+      comment: >
+        Fix FOR UPDATE OF a in vendite.fn_select_attivita_fatturabili: il lock
+        non deve estendersi a anagrafiche.billing_account (JOIN per filtro). Evita
+        permission denied per il ruolo batch su billing_account.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: vendite, tableName: attivita_fatturabili }
+          - tableExists: { schemaName: anagrafiche, tableName: billing_account }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_select_attivita_fatturabili(
+                  p_competenza_mese             DATE,
+                  p_tipo_doc_fiscale_id         config.tipi_doc_fiscale.id%TYPE,
+                  p_lock_batch_id               UUID DEFAULT NULL,
+                  p_lock                        BOOLEAN DEFAULT FALSE,
+                  p_data_fatturazione           DATE DEFAULT CURRENT_DATE,
+                  p_billing_account_id          anagrafiche.billing_account.id%TYPE DEFAULT NULL,
+                  p_utility_id                  config.utilities.id%TYPE DEFAULT NULL,
+                  p_valuta_id                   config.valute.id%TYPE DEFAULT NULL,
+                  p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE DEFAULT NULL,
+                  p_area_geografica_id          BIGINT DEFAULT NULL,
+                  p_limit                       INTEGER DEFAULT NULL
+              )
+              RETURNS SETOF vendite.attivita_fatturabili
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_competenza DATE;
+                  v_data_fatturazione DATE;
+                  v_where TEXT;
+                  v_limit TEXT;
+                  v_sql TEXT;
+              BEGIN
+                  IF p_competenza_mese IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_select_attivita_fatturabili', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_competenza_mese', 'valore', NULL), NULL::uuid, 'p_competenza_mese obbligatoria');
+                  END IF;
+                  IF p_tipo_doc_fiscale_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_select_attivita_fatturabili', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_doc_fiscale_id', 'valore', NULL), NULL::uuid, 'p_tipo_doc_fiscale_id obbligatorio');
+                  END IF;
+                  IF p_lock AND p_lock_batch_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_select_attivita_fatturabili', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lock_batch_id', 'valore', NULL), NULL::uuid, 'p_lock_batch_id obbligatorio quando p_lock=true');
+                  END IF;
+
+                  v_competenza := date_trunc('month', p_competenza_mese)::DATE;
+                  v_data_fatturazione := COALESCE(p_data_fatturazione, CURRENT_DATE);
+
+                  v_where := ' WHERE a.approvato IS TRUE AND a.fatturato IS FALSE AND a.sospesa IS FALSE AND COALESCE(a.lock_in_fatturazione, false) IS FALSE'
+                      || ' AND (a.posticipa_al IS NULL OR a.posticipa_al <= ' || quote_literal(v_data_fatturazione) || ')'
+                      || ' AND a.competenza_mese <= ' || quote_literal(v_competenza)
+                      || ' AND a.tipo_doc_fiscale_id = ' || quote_literal(p_tipo_doc_fiscale_id);
+
+                  IF p_billing_account_id IS NOT NULL THEN v_where := v_where || ' AND a.billing_account_id = ' || quote_literal(p_billing_account_id); END IF;
+                  IF p_utility_id IS NOT NULL THEN v_where := v_where || ' AND ba.utility_id = ' || quote_literal(p_utility_id); END IF;
+                  IF p_valuta_id IS NOT NULL THEN v_where := v_where || ' AND a.valuta_id = ' || quote_literal(p_valuta_id); END IF;
+                  IF p_emittente_soggetto_ruolo_id IS NOT NULL THEN
+                      v_where := v_where || ' AND a.billing_account_id IS NOT NULL AND anagrafiche.fn_get_emittente_fiscale_id(a.billing_account_id) = ' || quote_literal(p_emittente_soggetto_ruolo_id);
+                  END IF;
+                  IF p_area_geografica_id IS NOT NULL THEN v_where := v_where || ' AND a.area_geografica_id = ' || quote_literal(p_area_geografica_id); END IF;
+
+                  v_limit := CASE WHEN p_limit IS NOT NULL THEN ' LIMIT ' || p_limit::TEXT ELSE '' END;
+
+                  IF p_lock THEN
+                      v_sql := 'WITH candidati AS (SELECT a.id FROM vendite.attivita_fatturabili a JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' || v_where || ' ORDER BY a.data_attivita, a.id' || v_limit || ' FOR UPDATE OF a SKIP LOCKED) UPDATE vendite.attivita_fatturabili a SET lock_in_fatturazione = true, lock_batch_id = ' || quote_literal(p_lock_batch_id) || ', stato_esecuzione = ''PENDING'', data_update = now(), user_update = current_user FROM candidati c WHERE a.id = c.id AND a.fatturato IS FALSE AND COALESCE(a.lock_in_fatturazione, false) IS FALSE RETURNING a.*';
+                  ELSE
+                      v_sql := 'WITH candidati AS (SELECT a.id FROM vendite.attivita_fatturabili a JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' || v_where || ' ORDER BY a.data_attivita, a.id' || v_limit || ') SELECT a.* FROM vendite.attivita_fatturabili a JOIN candidati c ON c.id = a.id ORDER BY a.data_attivita, a.id';
+                  END IF;
+
+                  RETURN QUERY EXECUTE v_sql;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_select_attivita_fatturabili(DATE, BIGINT, UUID, BOOLEAN, DATE, BIGINT, INTEGER, INTEGER, BIGINT, BIGINT, INTEGER)
+                IS 'Select attivita_fatturabili eleggibili con lock opzionale e stato_esecuzione=PENDING.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback: ripristino non automatizzato (CREATE OR REPLACE).
+              -- Riapplicare il changeset precedente (20260331-27) per tornare a FOR UPDATE over-broad.
+              SELECT 1;
