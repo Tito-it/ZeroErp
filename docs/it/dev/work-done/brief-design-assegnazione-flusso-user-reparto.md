@@ -2,7 +2,8 @@
 
 > **Tipo documento**: brief design (autorevole) BE + FE.
 > **Priorità**: 🟢 normale.
-> **Data**: 2026-06-18 · **Stato**: 🟡 **design** — niente codice scritto.
+> **Data**: 2026-06-18 (chiuso 2026-06-19) · **Stato**: ✅ **COMPLETATO** — BE+FE implementati,
+> testati (176 test pratiche verdi) e documentati; DB `20260618-05..08`. Vedi §Esito in fondo.
 > **Prerequisito DB**: modifiche a 2 funzioni + nuovo trigger giornale — vedi
 > [brief-db-assegnazione-flusso.md](brief-db-assegnazione-flusso.md)
 > ([[feedback_db_actions_passaggio_team]] · [[feedback_be_fe_attende_prerequisiti_db]]).
@@ -175,3 +176,28 @@ Il BE `assegna_flusso` + endpoint non dipendono da questi (scrivono solo le colo
 - Default di assegnazione/reparto sul `template_flussi` (instradamento automatico per
   tipo step): estensione futura.
 - Entry point FE definitivo (drawer vs percorso) e collocazione lookup operatori: fase FE.
+
+## Esito (completato 2026-06-19)
+
+**Backend** (`apps/pratiche`, `apps/core`):
+
+- `pratiche_service.assegna_flusso` + `PraticheRepository.update_flusso` (whitelist + guard
+  `E_FLUSSO_NOT_FOUND`); `list_operatori_reparto` + `PraticheRepository.list_operatori_reparto`.
+- Endpoint `POST /pratiche/<id>/flussi/<id>/assegnazione/` (`ApiPraticaFlussoAssegnazione`,
+  ownership `_get_flusso_verificato`, `post_permission=assegna_pratica`) + `GET
+  /pratiche/operatori/?unita_organizzativa_id=` (`ApiOperatoriReparto`).
+- Display fields `risorsa_umana_display`/`unita_organizzativa_descrizione` su `get_flusso`/lista.
+- Codici `FLUSSI_COMPETENZA_MANCANTE`/`FLUSSI_PRESA_NON_ELIGIBILE` (409) in `error_policies` +
+  traduzione marker DB in `prendi_in_carico`.
+- Test: +10 service / +4 api → **176 test pratiche verdi**.
+
+**Frontend** (`src/pratiche`, `src/core`):
+
+- API `assegnaFlusso`/`fetchOperatoriReparto`; nuovo `FlussoAssegnaDialog.vue` (reparto →
+  operatore filtrato); azione "Assegna" + info assegnazione in `FlussoDrawer.vue`.
+- `PraticheCodaLavoro.vue`: livello `LIBERO` + presa in carico estesa a COMPETENZA/REPARTO/LIBERO.
+- i18n IT/EN; **fix mappa giornale** (`severity.js` `AZIONE_GIORNALE_MAP` riallineata ai
+  codici azione reali, incl. `FLUSSO_ASSEGNAZIONE_CAMBIATA`). ESLint + build verdi.
+
+**Doc API**: `api_flusso_assegnazione.md`, `api_operatori_reparto.md` (nuovi) +
+`api_prendi_in_carico.md`/`api_coda_lavoro.md`/`api_flusso_detail.md`/`pratiche_service.md`/`api.md`.

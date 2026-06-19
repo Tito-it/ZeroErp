@@ -37,6 +37,7 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 | `avvia_e_completa_flusso(flusso_id, esito, note_esito?, user?)` | flusso_id, esito | `None` | **CONTESTUALE** (2026-06-17): DA_ESEGUIRE → IN_CORSO → COMPLETATO in una transazione; riusa `completa_flusso`. NON esegue l'handler di avvio (esito deciso dall'operatore) |
 | `completa_flusso(flusso_id, esito, note_esito?, user?)` | flusso_id, esito | `None` | Transizione → COMPLETATO (+ dispatch handler evento COMPLETATO). Esito validato da `_require_esito_valido` (`ESITI_FLUSSO_AMMESSI`) |
 | `cambia_stato_flusso(flusso_id, nuovo_stato, ...)` | flusso_id, codice_interno, esito?, note_esito? | `None` | Transizione generica |
+| `assegna_flusso(flusso_id, *, risorsa_umana_id?, unita_organizzativa_id?, set_risorsa?, set_unita?)` | flusso_id + flag `set_*` | `None` | Assegna lo step a operatore/reparto (flag `set_*` = chiave presente; `None` = de-assegna). Trigger giornale `FLUSSO_ASSEGNAZIONE_CAMBIATA`. Vedi [api_flusso_assegnazione](api_flusso_assegnazione.md) |
 
 ### Sospensioni
 
@@ -53,8 +54,9 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 
 | Funzione | Input | Output | Descrizione |
 |---|---|---|---|
-| `get_coda_lavoro(risorsa_umana_id, emittente_fiscale_id)` | risorsa_umana_id, emittente_fiscale_id | `list[CodaLavoroRow]` | Coda lavoro operatore su 3 livelli |
-| `prendi_in_carico(flusso_id, risorsa_umana_id)` | flusso_id, risorsa_umana_id | `bool` | Assegna flusso DA_ESEGUIRE all'operatore |
+| `get_coda_lavoro(risorsa_umana_id, emittente_fiscale_id)` | risorsa_umana_id, emittente_fiscale_id | `list[CodaLavoroRow]` | Coda lavoro operatore su 4 livelli (ASSEGNATO/COMPETENZA/REPARTO/LIBERO) |
+| `prendi_in_carico(flusso_id, risorsa_umana_id)` | flusso_id, risorsa_umana_id | `bool` | Presa in carico flusso DA_ESEGUIRE (eligibilità reparto-first; traduce gli errori DB `FLUSSI_COMPETENZA_MANCANTE`/`FLUSSI_PRESA_NON_ELIGIBILE`) |
+| `list_operatori_reparto(unita_organizzativa_id)` | unita_organizzativa_id | `list[dict]` | Operatori attivi del reparto (picker assegnazione). Vedi [api_operatori_reparto](api_operatori_reparto.md) |
 | `get_competenze_flussi()` | — | `list[CompetenzaFlussoRow]` | Matrice competenze con display fields |
 | `crea_competenza_flusso(...)` | template_flusso_id, unita_organizzativa_id, risorsa_umana_id, attivo? | `int` (competenza_id) | Crea competenza (admin) |
 | `elimina_competenza_flusso(competenza_id)` | competenza_id | `None` | Elimina competenza (admin) |

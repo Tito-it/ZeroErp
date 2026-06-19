@@ -16,6 +16,7 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import PraticaContextHeader from './PraticaContextHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
+import FlussoAssegnaDialog from './FlussoAssegnaDialog.vue'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
@@ -46,6 +47,16 @@ const esitiOptions = computed(() => [
 ])
 
 const stato = computed(() => props.flusso?.stato_codice_interno || '')
+
+// Dialog di assegnazione (reparto + operatore). L'assegnazione ha senso finche'
+// il flusso e' attivo: non su COMPLETATO/ANNULLATO ne' in sola lettura.
+const assegnaVisible = ref(false)
+const canAssign = computed(() =>
+  !effectiveReadonly.value
+  && !!props.flusso
+  && stato.value !== STATO_FLUSSO.COMPLETATO
+  && stato.value !== STATO_FLUSSO.ANNULLATO,
+)
 
 // Sola lettura "effettiva": readonly da permessi operatore (iniettato dalla
 // view via useReadonlyMode) OR pratica in stato terminale (prop readonly).
@@ -145,6 +156,18 @@ const drawerActions = computed(() => {
         istanzaUtilityId: props.flusso.pratica_istanza_utility_id ?? null,
       }),
     },
+    // Assegnazione del flusso a un reparto e/o operatore (policy reparto-first).
+    // kind:'manage' = apre il dialog dedicato. Disponibile finche' il flusso e'
+    // attivo (non COMPLETATO/ANNULLATO) e non in sola lettura.
+    {
+      key: 'assegna',
+      kind: 'manage',
+      label: t('pratiche.flusso_assegna'),
+      icon: 'pi pi-user-plus',
+      visible: canAssign.value,
+      disabled: loading.value,
+      command: () => { assegnaVisible.value = true },
+    },
   ]
 })
 
@@ -224,6 +247,20 @@ const onClose = useDrawerClose(emit)
         <span class="form-value">{{ flusso.template_flusso_descrizione }}</span>
       </div>
 
+      <!-- Assegnazione corrente del flusso (reparto + operatore), display fields
+           dal BE. Mostrata solo se almeno uno valorizzato. -->
+      <div v-if="flusso.unita_organizzativa_descrizione || flusso.risorsa_umana_display"
+           class="form-grid-2col">
+        <div v-if="flusso.unita_organizzativa_descrizione" class="form-field">
+          <label>{{ t('pratiche.flusso_reparto') }}</label>
+          <span class="form-value">{{ flusso.unita_organizzativa_descrizione }}</span>
+        </div>
+        <div v-if="flusso.risorsa_umana_display" class="form-field">
+          <label>{{ t('pratiche.flusso_assegnatario') }}</label>
+          <span class="form-value">{{ flusso.risorsa_umana_display }}</span>
+        </div>
+      </div>
+
       <!-- Form esito inline: completamento manuale su IN_CORSO oppure modalita
            CONTESTUALE su DA_ESEGUIRE (avvio+esito in un'unica azione). Resta inline
            (transizione con dati di processo, non comprimibile a `command` del BB). -->
@@ -275,6 +312,18 @@ const onClose = useDrawerClose(emit)
       <FormFooter v-else close-only @cancel="onClose" />
       </template>
     </div>
+
+    <!-- Dialog assegnazione: reparto + operatore del reparto. Su saved chiude il
+         drawer (emit saved) → il parent ricarica percorso/coda/lista. -->
+    <FlussoAssegnaDialog
+      v-if="flusso"
+      v-model:visible="assegnaVisible"
+      :pratica-id="praticaId"
+      :flusso-id="flusso.id"
+      :current-risorsa-id="flusso.risorsa_umana_id"
+      :current-unita-id="flusso.unita_organizzativa_id"
+      @saved="() => { emit('saved'); emit('update:visible', false) }"
+    />
   </Drawer>
 </template>
 

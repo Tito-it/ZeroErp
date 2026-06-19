@@ -2,7 +2,7 @@
 
 ## Scopo
 
-Esporre via HTTP la coda di lavoro dell'operatore autenticato, organizzata su tre livelli di priorita': flussi assegnati, flussi per competenza, flussi del reparto.
+Esporre via HTTP la coda di lavoro dell'operatore autenticato, organizzata su quattro livelli di priorita': flussi assegnati, flussi per competenza, flussi del reparto, flussi liberi.
 
 ## Contesto
 
@@ -48,10 +48,15 @@ Endpoint di sola lettura che alimenta la sidebar della dashboard pratiche. Risol
 | Livello | Significato | Stato flusso |
 |---------|-------------|--------------|
 | `ASSEGNATO` | Flussi assegnati direttamente all'operatore | DA_ESEGUIRE, IN_CORSO |
-| `COMPETENZA` | Flussi non assegnati, operatore ha competenza attiva | DA_ESEGUIRE |
-| `REPARTO` | Flussi del reparto dell'operatore (visibilita') | DA_ESEGUIRE, IN_CORSO |
+| `COMPETENZA` | Flussi non assegnati, operatore ha competenza attiva per il template (casi A/D) | DA_ESEGUIRE |
+| `REPARTO` | Flussi instradati al reparto **anagrafico** dell'operatore (`risorse_umane.unita_organizzativa_id`), senza skill-lock attivo (caso B) | DA_ESEGUIRE |
+| `LIBERO` | Flussi senza reparto né skill-lock, mostrati all'operatore della **pratica** (caso C) | DA_ESEGUIRE |
 
-Ogni flusso appare in un solo livello (quello piu' alto applicabile). Il campo `risorsa_assegnata` e' valorizzato solo per livello REPARTO (mostra chi ha il flusso).
+Ogni flusso appare in un solo livello (quello piu' alto applicabile: `ASSEGNATO` >
+`COMPETENZA` > `REPARTO` > `LIBERO`). I livelli COMPETENZA/REPARTO/LIBERO sono **prendibili
+in carico** dall'operatore (coerente con la policy di
+[api_prendi_in_carico](api_prendi_in_carico.md)). Il campo `risorsa_assegnata` è sempre
+`null` (i livelli mostrati sono auto-assegnato o non assegnati).
 
 ### Errori
 
@@ -82,3 +87,5 @@ Ogni flusso appare in un solo livello (quello piu' alto applicabile). Il campo `
 - Funzione DB creata in migration `20260329-14-create-fn-coda-lavoro-operatore-mctit.yaml`.
 - Helper `get_risorsa_umana_id` in `apps/core/api/endpoint_helpers.py` con cache per-request.
 - (14 giugno 2026) `20260614-02`: la funzione esclude i flussi delle pratiche terminali.
+- (18 giugno 2026) `20260618-06`: allineamento policy reparto-first — livello REPARTO sul
+  reparto **anagrafico** (non più i reparti-da-competenza) + nuovo livello `LIBERO` (caso C).

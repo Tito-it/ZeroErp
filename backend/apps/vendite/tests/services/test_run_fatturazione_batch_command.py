@@ -4,10 +4,10 @@
 # Doc: Python
 # Scopo: Test management command run_fatturazione_batch (driver F3).
 # Indice test:
-#   1) immediata → GIORNALIERO + meta fatturazione_immediata=True, un lotto per emittente
+#   1) immediata → GIORNALIERO + meta fatturazione_immediata=True, un lotto per coppia
 #   2) differita → MASSIVO + meta fatturazione_immediata=False
 #   3) dry-run → solo discovery/conteggio, nessun run pipeline, NESSUNA registrazione job
-#   4) best-effort → un emittente in errore non blocca gli altri
+#   4) best-effort → una coppia in errore non blocca le altre
 #   5) canale di SISTEMA (RLS Path A): il batch gira nel gateway system_process_context
 #   6) registrazione run-level: il run reale è avvolto in registered_job + meta riepilogo
 #   7) skip anti-overlap: lock occupato (acquired=False) → corpo NON eseguito
@@ -28,6 +28,17 @@ from apps.core.services.service_errors import ServiceError
 _CMD = "apps.vendite.management.commands.run_fatturazione_batch"
 
 
+# Scopo: helper che costruisce una lane (coppia emittente, tipo_doc) come la
+#        ritorna CommesseRepository.list_emittibili_lane.
+def _lane(em, *, tipo_doc=1, comp=date(2026, 6, 1), tot=1):
+    return {
+        "emittente_soggetto_ruolo_id": em,
+        "tipo_doc_fiscale_id": tipo_doc,
+        "competenza_mese": comp,
+        "total_candidate": tot,
+    }
+
+
 # Scopo: helper che costruisce un patch di registered_job con un handle controllabile
 #        (acquired) usabile come context manager.
 def _registered_job_cm(*, acquired: bool = True):
@@ -42,14 +53,18 @@ def _registered_job_cm(*, acquired: bool = True):
 
 
 class RunFatturazioneBatchCommandTests(TestCase):
-    # Scopo: corsia immediata → GIORNALIERO + filtro True, un run per emittente.
-    def test_immediata_runs_per_emittente_with_giornaliero_and_filter(self):
+    # Scopo: corsia immediata → GIORNALIERO + filtro True, un run per coppia, con
+    #        tipo_doc_fiscale_id e competenza presi DALLA LANE.
+    def test_immediata_runs_per_coppia_with_giornaliero_and_filter(self):
         cm, _h = _registered_job_cm()
         with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
              patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
              patch(f"{_CMD}.system_process_context"), \
              patch(f"{_CMD}.registered_job", cm):
-            RepoCls.return_value.list_emittibili_emittenti.return_value = [1, 2]
+            RepoCls.return_value.list_emittibili_lane.return_value = [
+                _lane(1, tipo_doc=3, comp=date(2026, 6, 1)),
+                _lane(2, tipo_doc=7, comp=date(2026, 5, 1)),
+            ]
             mock_run.return_value = {"lotto_id": 100, "motivo_stop": "COMPLETATO", "step_eseguiti": 3}
             out = StringIO()
             call_command("run_fatturazione_batch", "--modalita", "immediata",
@@ -59,9 +74,19 @@ class RunFatturazioneBatchCommandTests(TestCase):
         for call in mock_run.call_args_list:
             self.assertEqual(call.kwargs["tipo_lotto"], "GIORNALIERO")
             self.assertEqual(call.kwargs["meta"], {"fatturazione_immediata": True})
-            self.assertEqual(call.kwargs["competenza_mese"], date(2026, 6, 1))
-        emittenti = {c.kwargs["emittente_soggetto_ruolo_id"] for c in mock_run.call_args_list}
-        self.assertEqual(emittenti, {1, 2})
+        # discovery col bound competenza (1° del mese), non la data grezza --competenza
+        self.assertEqual(
+            RepoCls.return_value.list_emittibili_lane.call_args.kwargs["competenza_mese"],
+            date(2026, 6, 1),
+        )
+        # ogni lotto creato con (emittente, tipo_doc, competenza) della propria lane
+        coppie = {
+            (c.kwargs["emittente_soggetto_ruolo_id"],
+             c.kwargs["tipo_doc_fiscale_id"],
+             c.kwargs["competenza_mese"])
+            for c in mock_run.call_args_list
+        }
+        self.assertEqual(coppie, {(1, 3, date(2026, 6, 1)), (2, 7, date(2026, 5, 1))})
 
     # Scopo: corsia differita → MASSIVO + filtro False.
     def test_differita_uses_massivo_and_false_filter(self):
@@ -70,7 +95,7 @@ class RunFatturazioneBatchCommandTests(TestCase):
              patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
              patch(f"{_CMD}.system_process_context"), \
              patch(f"{_CMD}.registered_job", cm):
-            RepoCls.return_value.list_emittibili_emittenti.return_value = [9]
+            RepoCls.return_value.list_emittibili_lane.return_value = [_lane(9)]
             mock_run.return_value = {"lotto_id": 1, "motivo_stop": "COMPLETATO", "step_eseguiti": 4}
             call_command("run_fatturazione_batch", "--modalita", "differita", stdout=StringIO())
 
@@ -84,8 +109,7 @@ class RunFatturazioneBatchCommandTests(TestCase):
              patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
              patch(f"{_CMD}.system_process_context"), \
              patch(f"{_CMD}.registered_job") as mock_reg:
-            RepoCls.return_value.list_emittibili_emittenti.return_value = [1]
-            RepoCls.return_value.list_commesse_emittibili.return_value = [10, 20]
+            RepoCls.return_value.list_emittibili_lane.return_value = [_lane(1, tot=2)]
             out = StringIO()
             call_command("run_fatturazione_batch", "--modalita", "immediata",
                          "--dry-run", stdout=out)
@@ -93,7 +117,7 @@ class RunFatturazioneBatchCommandTests(TestCase):
         mock_run.assert_not_called()
         mock_reg.assert_not_called()  # dry-run NON registra il job
         self.assertIn("DRY-RUN", out.getvalue())
-        self.assertIn("2 commesse", out.getvalue())
+        self.assertIn("2 righe candidate", out.getvalue())
 
     # Scopo: best-effort → un emittente in errore non blocca gli altri.
     def test_best_effort_on_error(self):
@@ -102,7 +126,7 @@ class RunFatturazioneBatchCommandTests(TestCase):
              patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
              patch(f"{_CMD}.system_process_context"), \
              patch(f"{_CMD}.registered_job", cm):
-            RepoCls.return_value.list_emittibili_emittenti.return_value = [1, 2]
+            RepoCls.return_value.list_emittibili_lane.return_value = [_lane(1), _lane(2)]
             mock_run.side_effect = [
                 ServiceError(code="E_PIPELINE", message="boom", detail="x"),
                 {"lotto_id": 2, "motivo_stop": "COMPLETATO", "step_eseguiti": 3},
@@ -125,7 +149,7 @@ class RunFatturazioneBatchCommandTests(TestCase):
              patch(f"{_CMD}.run_lotto_pipeline_until_done"), \
              patch(f"{_CMD}.registered_job", cm), \
              patch(f"{_CMD}.system_process_context") as mock_gateway:
-            RepoCls.return_value.list_emittibili_emittenti.return_value = []
+            RepoCls.return_value.list_emittibili_lane.return_value = []
             call_command("run_fatturazione_batch", "--modalita", "differita", stdout=StringIO())
 
         mock_gateway.assert_called_once_with(
@@ -152,7 +176,7 @@ class RunFatturazioneBatchCommandTests(TestCase):
              patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
              patch(f"{_CMD}.system_process_context"), \
              patch(f"{_CMD}.registered_job", _cm):
-            RepoCls.return_value.list_emittibili_emittenti.return_value = [7]
+            RepoCls.return_value.list_emittibili_lane.return_value = [_lane(7)]
             mock_run.return_value = {"lotto_id": 5, "motivo_stop": "COMPLETATO", "step_eseguiti": 2}
             call_command("run_fatturazione_batch", "--modalita", "immediata", stdout=StringIO())
 
@@ -162,7 +186,7 @@ class RunFatturazioneBatchCommandTests(TestCase):
         # meta riepilogo scritto sul handle.
         captured["handle"].set_meta.assert_called_once()
         meta = captured["handle"].set_meta.call_args[0][0]
-        self.assertEqual(meta["emittenti"], 1)
+        self.assertEqual(meta["lane"], 1)
         self.assertEqual(meta["per_motivo"], {"COMPLETATO": 1})
 
     # Scopo: lock occupato (acquired=False) → il corpo NON viene eseguito (skip).
@@ -176,5 +200,5 @@ class RunFatturazioneBatchCommandTests(TestCase):
             call_command("run_fatturazione_batch", "--modalita", "immediata", stdout=out)
 
         mock_run.assert_not_called()
-        RepoCls.return_value.list_emittibili_emittenti.assert_not_called()
+        RepoCls.return_value.list_emittibili_lane.assert_not_called()
         self.assertIn("skip", out.getvalue())

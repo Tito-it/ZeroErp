@@ -1,3 +1,5 @@
+from datetime import date
+
 from typing import Any, TypeAlias, TypedDict
 
 # Tipi condivisi pipeline vendite per ridurre chiavi "magiche" e firma duplicate.
@@ -109,6 +111,18 @@ class CommessaEmitResult(TypedDict):
     total_candidate: int
     inserted_rows: int
     updated_rows: int
+
+
+class CommessaEmittibileLane(TypedDict):
+    # Coppia (emittente, tipo_doc_fiscale) con lavoro pronto da fatturare, prodotta
+    # da vendite.fn_list_emittibili_lane (discovery del driver batch). `competenza_mese`
+    # è la competenza (max delle righe candidate) con cui creare il lotto; le righe con
+    # tipo_doc_fiscale NULL sono escluse a monte dalla funzione DB (il lotto la richiede
+    # NOT NULL). emittente può essere NULL (commesse senza emittente, non fatturabili).
+    emittente_soggetto_ruolo_id: int | None
+    tipo_doc_fiscale_id: int
+    competenza_mese: date
+    total_candidate: int
 
 
 class CommessaStatoResult(TypedDict):

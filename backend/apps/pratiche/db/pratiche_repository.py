@@ -327,7 +327,12 @@ class PraticheRepository:
         p.istanza_utility_id AS pratica_istanza_utility_id,
         script.fn_get_billing_account_by_istanza(p.istanza_utility_id) AS pratica_billing_account_id,
         s.ragione_sociale_completa AS pratica_soggetto_display,
-        s.id_fiscale_univoco_cf_piva AS pratica_soggetto_id_fiscale
+        s.id_fiscale_univoco_cf_piva AS pratica_soggetto_id_fiscale,
+        -- Assegnazione del singolo step (20260618): operatore + reparto con
+        -- display fields via JOIN (no lookup client-side). Mirror del pattern
+        -- della lista pratiche.
+        sru.ragione_sociale_completa AS risorsa_umana_display,
+        uo.descrizione AS unita_organizzativa_descrizione
     """
 
     _FLUSSO_JOINS = """
@@ -336,6 +341,10 @@ class PraticheRepository:
         LEFT JOIN pratiche.azioni_ui au ON au.id = tf.azione_ui_id
         JOIN pratiche.pratiche p ON p.id = f.pratica_id
         LEFT JOIN anagrafiche.soggetti s ON s.id = p.soggetto_id
+        LEFT JOIN anagrafiche.risorse_umane ru ON ru.id = f.risorsa_umana_id
+        LEFT JOIN anagrafiche.soggetti_ruoli srr ON srr.id = ru.soggetto_ruolo_id
+        LEFT JOIN anagrafiche.soggetti sru ON sru.id = srr.soggetto_id
+        LEFT JOIN config.unita_organizzative uo ON uo.id = f.unita_organizzativa_id
     """
 
     # Scopo: Restituisce i flussi di una pratica ordinati per sequenza, con display fields.
@@ -382,6 +391,56 @@ class PraticheRepository:
         if row is None:
             return None
         return (row[0], row[1])
+
+    # Scopo: Aggiorna i campi di assegnazione di un flusso (whitelist).
+    # L'UPDATE di risorsa_umana_id/unita_organizzativa_id attiva il trigger
+    # giornale trg_flussi_z90_giornale_assegnazione_upd. Guard not-found esplicito.
+    def update_flusso(self, flusso_id: int, data: dict[str, Any]) -> None:
+        allowed_fields: dict[str, str] = {
+            "risorsa_umana_id": "risorsa_umana_id = %s",
+            "unita_organizzativa_id": "unita_organizzativa_id = %s",
+        }
+
+        set_parts: list[str] = []
+        params: list[Any] = []
+        for field_name, sql_fragment in allowed_fields.items():
+            if field_name in data:
+                set_parts.append(sql_fragment)
+                params.append(data[field_name])
+
+        if not set_parts:
+            return
+
+        params.append(flusso_id)
+        sql = f"""
+            UPDATE pratiche.flussi
+            SET {', '.join(set_parts)}
+            WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            ErrorManager.require(
+                cursor.rowcount > 0,
+                code="E_FLUSSO_NOT_FOUND",
+                message=f"Flusso {flusso_id} non trovato",
+            )
+
+    # Scopo: Operatori (risorse umane attive) di un reparto, per il picker di
+    # assegnazione flusso. Display = ragione sociale del soggetto collegato.
+    def list_operatori_reparto(self, unita_organizzativa_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT ru.id,
+                   sru.ragione_sociale_completa AS display
+            FROM anagrafiche.risorse_umane ru
+            JOIN anagrafiche.soggetti_ruoli srr ON srr.id = ru.soggetto_ruolo_id
+            JOIN anagrafiche.soggetti sru ON sru.id = srr.soggetto_id
+            WHERE ru.unita_organizzativa_id = %s
+              AND ru.attivo = true
+            ORDER BY sru.ragione_sociale_completa, ru.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [unita_organizzativa_id])
+            return rows_to_list(cursor)
 
     # Scopo: Percorso suggerito della pratica = template_flussi del suo
     #        tipo_prestazione (in ordine), LEFT JOIN i flussi gia' istanziati.

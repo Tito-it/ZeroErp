@@ -23,6 +23,10 @@ Indice test eseguiti:
 12) FlussiApiTests.test_post_genera_pratica_ok
 13) FlussiApiTests.test_get_pratiche_generate_ok
 14) FlussiApiTests.test_v1_richiede_jwt
+15) FlussiApiTests.test_post_assegnazione_flusso_ok
+16) FlussiApiTests.test_post_assegnazione_flusso_ownership_mismatch
+17) FlussiApiTests.test_post_assegnazione_flusso_parziale
+18) FlussiApiTests.test_get_operatori_reparto_ok
 """
 
 import json
@@ -294,6 +298,68 @@ class FlussiApiTests(JwtMockedApiTest):
         response = self.client.get("/api/v1/pratiche/1/flussi/5/pratiche-generate/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["results"], [])
+
+    # Scopo: POST assegnazione flusso a operatore → service con flag set_*.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.assegna_flusso")
+    @patch(f"{_VIEWS}.PraticheRepository")
+    def test_post_assegnazione_flusso_ok(self, MockRepo, mock_assegna, _auth):
+        MockRepo.return_value.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1)
+
+        response = self.client.post(
+            "/api/v1/pratiche/1/flussi/5/assegnazione/",
+            data=json.dumps({"risorsa_umana_id": 10, "unita_organizzativa_id": 3}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        mock_assegna.assert_called_once()
+        _, kwargs = mock_assegna.call_args
+        self.assertEqual(kwargs["risorsa_umana_id"], 10)
+        self.assertEqual(kwargs["unita_organizzativa_id"], 3)
+        self.assertTrue(kwargs["set_risorsa"])
+        self.assertTrue(kwargs["set_unita"])
+
+    # Scopo: POST assegnazione su flusso di altra pratica → 400 ownership.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.PraticheRepository")
+    def test_post_assegnazione_flusso_ownership_mismatch(self, MockRepo, _auth):
+        MockRepo.return_value.get_flusso.return_value = _mock_flusso_row(5, pratica_id=99)
+
+        response = self.client.post(
+            "/api/v1/pratiche/1/flussi/5/assegnazione/",
+            data=json.dumps({"risorsa_umana_id": 10}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    # Scopo: POST assegnazione con la sola chiave operatore → set_unita False
+    # (il reparto non viene toccato).
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.assegna_flusso")
+    @patch(f"{_VIEWS}.PraticheRepository")
+    def test_post_assegnazione_flusso_parziale(self, MockRepo, mock_assegna, _auth):
+        MockRepo.return_value.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1)
+
+        response = self.client.post(
+            "/api/v1/pratiche/1/flussi/5/assegnazione/",
+            data=json.dumps({"risorsa_umana_id": 10}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        _, kwargs = mock_assegna.call_args
+        self.assertTrue(kwargs["set_risorsa"])
+        self.assertFalse(kwargs["set_unita"])
+
+    # Scopo: GET operatori del reparto delegato al service.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.list_operatori_reparto")
+    def test_get_operatori_reparto_ok(self, mock_lista, _auth):
+        mock_lista.return_value = [{"id": 1, "display": "Rossi Mario"}]
+
+        response = self.client.get("/api/v1/pratiche/operatori/?unita_organizzativa_id=3")
+        self.assertEqual(response.status_code, 200)
+        mock_lista.assert_called_once_with(3)
+        self.assertEqual(response.json()["data"]["results"][0]["display"], "Rossi Mario")
 
     # Scopo: Verifica che endpoint V1 flussi richieda JWT.
     def test_v1_richiede_jwt(self):
