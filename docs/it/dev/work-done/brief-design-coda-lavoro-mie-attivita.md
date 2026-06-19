@@ -2,8 +2,9 @@
 
 > **Tipo documento**: brief design (autorevole) — **FE** (il BE esiste già).
 > **Priorità**: 🟡 media — chiude l'anello dell'assegnazione flusso (consumer lato operatore).
-> **Data**: 2026-06-19 · **Stato**: 🟢 **design validato** — presentazione decisa (pannello
-> in alto). Da implementare.
+> **Data**: 2026-06-19 · **Stato**: ✅ **IMPLEMENTATO** (FE, commit `acec053c2`, 2026-06-20)
+> — presentazione decisa (pannello in alto), deliverable F1–F5 completi e criteri di
+> accettazione §8 soddisfatti (ESLint + build verdi). Vedi §9 per i residui.
 >
 > **Origine**: lo sviluppo dell'**assegnazione flusso a operatore/reparto**
 > ([brief-design-assegnazione-flusso-user-reparto.md](../work-done/brief-design-assegnazione-flusso-user-reparto.md),
@@ -12,7 +13,7 @@
 > **coda lavoro**, oggi presente ma mal presentata (sidebar nascosta finché non cerchi).
 >
 > **Riferimento di visione**:
-> [analisi-gestione-operativa-attivita.md](analisi-gestione-operativa-attivita.md) (agenda
+> [analisi-gestione-operativa-attivita.md](../work-in-progress/analisi-gestione-operativa-attivita.md) (agenda
 > operatore/responsabile/direzione). Questo brief realizza **solo il primo tassello**: la
 > coda dell'**operatore**, ben presentata nella gestione pratiche.
 
@@ -121,9 +122,9 @@ Prerequisito: nessuno (BE pronto). Tutto frontend, basso rischio (refactor di pr
 - La sidebar coda non esiste più (sostituita dal pannello); la lista admin resta intatta.
 - ESLint + build verdi.
 
-## 9. Aperto
+## 9. Aperto / chiuso
 
-- **`PraticheView.vue` orfano** (vecchia lista pre-dashboard, non instradata): dead code da
-  eliminare — **solo con OK esplicito** (azione distruttiva). Indipendente da questo lavoro.
-- Collasso di default del pannello: aperto/chiuso al primo accesso (proposta: **chiuso** con
-  contatori, per non rubare spazio; l'operatore espande).
+- ✅ **`PraticheView.vue` orfano** (vecchia lista pre-dashboard, non instradata): **eliminato**
+  2026-06-20 (zero referenze in `src/`, soppiantata da `PraticheDashboard.vue`).
+- ✅ **Collasso di default del pannello**: adottata la proposta **chiuso** con contatori
+  (non ruba spazio; l'operatore espande).

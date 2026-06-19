@@ -7,12 +7,12 @@
 >
 > Per l'**architettura del modulo `ui`** (problema, 3 livelli, tabelle DB,
 > fn `fn_resolve_lista_config`, regole, storia cronologica degli atterraggi)
-> vedi [sviluppo-personalizzazioni-liste.md](sviluppo-personalizzazioni-liste.md).
+> vedi [sviluppo-personalizzazioni-liste.md](../work-done/sviluppo-personalizzazioni-liste.md).
 
 **Modulo:** UI / Presentazione
-**Riferimento principale:** [sviluppo-personalizzazioni-liste.md](sviluppo-personalizzazioni-liste.md)
+**Riferimento principale:** [sviluppo-personalizzazioni-liste.md](../work-done/sviluppo-personalizzazioni-liste.md)
 **Stato Blocco F:** Fase 1 ATTERRATA 2026-05-08 (preset + permessi colonne in `/config/personalizzazioni-liste`). Fase 2 = DEF-5b ATTERRATA 2026-05-10.
-**Aggiornato:** 2026-05-11
+**Aggiornato:** 2026-06-20
 
 Questo documento e' la **roadmap operativa** degli sviluppi non implementati: per ogni DEF c'e' stato corrente, decisioni operative da chiudere prima di partire, struttura tecnica, dipendenze e stima sforzo. Quando un DEF atterra completamente la sezione si riduce a "Sintesi delivery" + decisioni chiuse; il dettaglio cronologico passa al doc architettura.
 
@@ -36,16 +36,16 @@ Questo documento e' la **roadmap operativa** degli sviluppi non implementati: pe
 | # | Item | Stato | Sforzo | Priorita' | Dipende da |
 |---|---|---|---|---|---|
 | DEF-5b | Fase 2 Blocco F (CRUD `lista_definizione` + `lista_colonna` + `etichetta_i18n_key` UX) | 🟢 Done 2026-05-10 | L | — | — |
-| DEF-8 | Estendere parametrizzazione ad altre liste (incrementale) | 🟡 Parziale (3/N done) | S per lista | **Alta** | Blocco F Fase 1 done |
+| DEF-8 | Estendere parametrizzazione ad altre liste (incrementale) | 🟡 In corso — 7 migrate, ~7 residue **on-demand** | S per lista | **Alta** | Blocco F Fase 1 done |
 | DEF-1 | Export CSV/Excel con metadati filtri | 🟢 Done 2026-05-10 | M | — | — |
 | DEF-2 | Notifica "preset aggiornato" | 🟢 Done 2026-05-11 (BE+FE; DB in brief) | S | — | — |
 | DEF-10 | Pattern formalizzato colonne composte FE-only | 🟡 Parziale (esiste come trick) | S | Media | DEF-5b o standalone |
-| DEF-6 | Layout mobile / card list responsive | 🔴 Todo | M | Bassa | Blocco D done |
+| DEF-6 | Comportamento schermi piccoli (responsive toolbar/kebab) | 🟢 Done — decisione: NO card-list | S | — | Blocco D done |
 | DEF-3 | Viste nominate multiple per utente | 🔴 Todo | L | Bassa | Migration `lista_preferenza_utente` |
 | DEF-4 | Condivisione viste tra utenti | 🔴 Todo | M | Bassa | DEF-3 |
 | DEF-7 | Colonne calcolate lato client (`tipo_colonna='calcolata'`) | 🔴 Todo | L | Futura | Contratto formula stabile |
 
-**Ordine consigliato di esecuzione**: DEF-8 (incrementale) → DEF-10 (colonne composte) → DEF-6 (mobile) → resto in base a richieste utenti. (DEF-1, DEF-2, DEF-5b atterrati 2026-05-10/11).
+**Ordine consigliato di esecuzione**: DEF-8 (incrementale, on-demand) → DEF-10 (colonne composte) → resto (DEF-3/4/7) in base a richieste utenti. (DEF-1, DEF-2, DEF-5b atterrati 2026-05-10/11; DEF-6 chiuso 2026-06-20 con decisione "no card-list").
 
 ---
 
@@ -194,7 +194,7 @@ Un team lead crea una vista personalizzata e la condivide con i colleghi del rep
 **Stato Fase 1:** 🟢 Done — atterrata 2026-05-08 (preset + permessi colonne sotto `/config/personalizzazioni-liste`)
 **Stato Fase 2:** 🔴 Todo — vedere **DEF-5b** sotto.
 
-Il piano dettagliato vive in [sviluppo-personalizzazioni-liste.md §11.F](sviluppo-personalizzazioni-liste.md). Il paragrafo originale di DEF-5 e' archiviato; questo item esiste oggi solo per la **parte Fase 2** non ancora implementata, riformulata come DEF-5b.
+Il piano dettagliato vive in [sviluppo-personalizzazioni-liste.md §11.F](../work-done/sviluppo-personalizzazioni-liste.md). Il paragrafo originale di DEF-5 e' archiviato; questo item esiste oggi solo per la **parte Fase 2** non ancora implementata, riformulata come DEF-5b.
 
 ---
 
@@ -294,29 +294,35 @@ Oggi entrambe sono gestite solo via seed CSV → ogni nuova lista richiede un PR
 
 ---
 
-## DEF-6 — Layout mobile / card list responsive
+## DEF-6 — Comportamento schermi piccoli (responsive)
 
-**Stato:** 🔴 Todo
-**Sforzo:** M
+**Stato:** 🟢 Done — chiuso 2026-06-20 con **decisione di design** (no card-list)
+**Sforzo:** S (consuntivo: assorbito nel pattern lista standard, niente componente nuovo)
 
-### Cosa serve
+### Decisione presa (sostituisce le "decisioni aperte" originali)
 
-`<ListaConfigurabile>` oggi e' DataTable desktop. Su viewport stretto (mobile/tablet portrait) una tabella con 8+ colonne e' inutilizzabile. Servirebbe modalita' card list automatica.
+Su viewport stretto **NON** si introduce una modalita' card-list dedicata. Il
+comportamento responsive e' gestito dal **pattern lista standard** gia' in uso:
 
-### Decisioni operative aperte
+1. **Toolbar/azioni responsive**: su touch/tablet le azioni `kind:'utility'`
+   collassano nel **kebab compact** (`PageActionsBar`); solo `kind:'primary'`
+   ("Nuovo") resta visibile. Rilevamento via `useSearchTable.js` →
+   `window.matchMedia('(max-width: ' + (BREAKPOINTS.TABLET - 1) + 'px)')`.
+2. **Tabella**: resta `<DataTable>` con scroll orizzontale; la
+   personalizzazione colonne (modale Blocco D) permette di ridurre le colonne
+   visibili su schermi piccoli (toggle visibilita').
+3. **Nessun rendering alternativo** in `<ListaConfigurabile>`: una sola resa,
+   meno superficie da mantenere. Card-list rivalutabile solo su richiesta utente.
 
-1. **Breakpoint switch**: < 640px? < 768px? Configurabile in `BREAKPOINTS` di `constants.js`?
-2. **Quali colonne mostrare nella card**: solo `tipo_colonna='identificatore'` + prime N (configurabile)? O lasciare all'utente via modale separata?
-3. **Personalizzazione colonne su mobile**: drag&drop non e' fattibile su touch, restano solo toggle visibilita'?
+### Motivazione
 
-### Architettura
-
-- **DB/BE**: nessuno.
-- **FE**: nuova modalita' di rendering in `<ListaConfigurabile>` (computed `useCardLayout = ui.isMobile`). CSS responsive in `main.css`. Modale personalizzazione semplificata (solo toggle, no riordino).
+- Evita di duplicare logica di rendering (card vs tabella) e di personalizzazione.
+- Il kebab compact + toggle colonne + scroll orizzontale coprono i casi reali
+  d'uso tablet/mobile-portrait senza un secondo layout da testare.
 
 ### Dipendenze
 
-- Blocco D done.
+- Blocco D done. Pattern responsive azioni: vedi §"Convenzioni acquisite" punto 5.
 
 ---
 
@@ -358,7 +364,7 @@ Differenza chiave: DEF-7 calcola, DEF-10 compone. Implementativamente entrambi f
 
 ## DEF-8 — Seed catalogo per altre liste (incrementale)
 
-**Stato:** 🟡 Parziale — 4 liste migrate (clienti + soggetti + fornitori + contratti)
+**Stato:** 🟡 In corso — **7 liste migrate** (clienti, soggetti, fornitori, contratti, preventivi, offerte, ordini); ~7 residue **on-demand** (per design: si migra a richiesta/ticket, non sara' mai "100%")
 **Sforzo:** S per lista
 
 ### Cosa serve
@@ -377,21 +383,22 @@ Estendere il pattern Blocco E (atterrato per `anagrafiche.clienti`) ad altre lis
 | `anagrafiche.clienti` | ClientiSearchTable.vue | 🟢 Done (Blocco E5 + DEF-1 export) |
 | `anagrafiche.soggetti` | SoggettiSearchTable.vue | 🟢 Done 2026-05-11 (DEF-8 + DEF-1 export) |
 | `anagrafiche.fornitori` | FornitoriSearchTable.vue | 🟢 Done 2026-05-24 (DEF-8 + DEF-1 export) |
-| `anagrafiche.indirizzi` | IndirizziSearchTable.vue | 🔴 Todo |
-| `catalogo.articoli` | ArticoliSearchTable.vue | 🔴 Todo |
-| `catalogo.unita-misura` | UnitaMisuraSearchTable.vue | 🔴 Todo |
-| `vendite.preventivi` | PreventiviSearchTable.vue | 🔴 Todo |
+| `vendite.preventivi` | PreventiviList.vue | 🟢 Done 2026-06 (migrata a ListaConfigurabile) |
+| `vendite.offerte` | OfferteSearchTable.vue | 🟢 Done 2026-06 (migrata a ListaConfigurabile) |
+| `vendite.ordini` | OrdiniSearchTable.vue | 🟢 Done 2026-06 (migrata a ListaConfigurabile) |
 | `vendite.contratti` | ContrattiSearchTable.vue | 🟢 Done 2026-06-03 (refactor-lista-contratti) |
-| `vendite.listini` | ListiniSearchTable.vue | 🔴 Todo |
-| `vendite.promo-articoli` | PromoArticoliListView.vue | 🔴 Todo |
-| `vendite.approvazioni-prezzo` | ApprovazioniPrezzoSearchTable.vue | 🔴 Todo |
-| `pratiche` | PraticheDashboard.vue | 🔴 Todo |
+| `anagrafiche.indirizzi` | IndirizziSearchTable.vue | 🔴 Todo (on-demand) |
+| `catalogo.articoli` | ArticoliSearchTable.vue | 🔴 Todo (on-demand) |
+| `catalogo.unita-misura` | UnitaMisuraSearchTable.vue | 🔴 Todo (on-demand) |
+| `vendite.listini` | ListiniSearchTable.vue | 🔴 Todo (on-demand) |
+| `vendite.promo-articoli` | PromoArticoliListView.vue | 🔴 Todo (on-demand) |
+| `vendite.approvazioni-prezzo` | ApprovazioniPrezzoSearchTable.vue | 🔴 Todo (on-demand) |
+| `pratiche` | PraticheDashboard.vue | 🔴 Todo (on-demand) |
 
-8 liste residue. Ordine suggerito per impatto utente:
+7 liste residue, migrazione **on-demand** (per design). Ordine suggerito per impatto utente:
 
 1. `catalogo.articoli` (lista molto frequente)
-2. `vendite.preventivi`
-3. Resto in ordine di ticket / richieste utenti
+2. Resto in ordine di ticket / richieste utenti
 
 ### Decisioni operative aperte (per ogni lista)
 

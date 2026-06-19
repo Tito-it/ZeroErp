@@ -2,9 +2,12 @@
 
 > **Tipo documento**: piano **backend**. Dipende da una modifica DB già consegnata al team.
 >
-> **Data**: 2026-06-19 · **Stato**: 🟡 **ATTENDE PREREQUISITO DB**
+> **Data**: 2026-06-19 (chiuso 2026-06-20) · **Stato**: 🟢 **COMPLETATO** — BE committato
+> (`8824cafc7` su `dev/backend-tid`); **smoke E2E verde dal vivo** (lotto 117 MASSIVO →
+> `DEFINITIVA/CHIUSO`, fattura 210 `DEFINITIVA` numerata 1/2026/R2). La catena per-step
+> `1→2→8` gira end-to-end (vedi [piano-fix-stato-fattura-pipeline-per-step.md](piano-fix-stato-fattura-pipeline-per-step.md)).
 >
-> **Prerequisito**: [brief-db-emittibili-lane-utility-id.md](../work-done/brief-db-emittibili-lane-utility-id.md)
+> **Prerequisito**: [brief-db-emittibili-lane-utility-id.md](brief-db-emittibili-lane-utility-id.md)
 > — `fn_list_emittibili_lane` restituisce `utility_id` nella grana. ✅ **ATTERRATO**
 > (DB implementato e testato), quindi il BE è sbloccato ([feedback_be_fe_attende_prerequisiti_db]).
 >

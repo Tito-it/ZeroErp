@@ -3,7 +3,7 @@
 > **Branch**: `dev/db-tid`. **Destinatario**: team DB.
 > **Natura**: brief di **logica e requisiti**, NON specifica implementativa. Qui c'è *cosa* serve e *perché*; la **strada implementativa (struttura changeset, ordine seed, nomi changelog) la sceglie il team DB**, nel rispetto del pattern liste già rodato.
 > **Origine**: refactor UX "niente scrollbar orizzontale quando si apre la sidebar". Decisione Tid 2026-06-02: la riduzione dinamica delle colonne deve passare dalla migrazione della lista contratti nel sistema liste configurabili (no logica ad-hoc su `<DataTable>` grezza) + **un solo attributo nuovo** (`priorita`) nel catalogo colonne (la larghezza riusa lo standard `larghezza_default` già esistente).
-> **Architettura di riferimento**: [sviluppo-personalizzazioni-liste.md](../work-in-progress/sviluppo-personalizzazioni-liste.md) (modello a 3 livelli, tabelle `ui.*`, `fn_resolve_lista_config`), [sviluppo-personalizzazioni-liste_def.md](../work-in-progress/sviluppo-personalizzazioni-liste_def.md) (DEF-8 — pattern di migrazione di una lista, precedente più vicino: **fornitori** 2026-05-24).
+> **Architettura di riferimento**: [sviluppo-personalizzazioni-liste.md](../work-done/sviluppo-personalizzazioni-liste.md) (modello a 3 livelli, tabelle `ui.*`, `fn_resolve_lista_config`), [sviluppo-personalizzazioni-liste_def.md](../work-in-progress/sviluppo-personalizzazioni-liste_def.md) (DEF-8 — pattern di migrazione di una lista, precedente più vicino: **fornitori** 2026-05-24).
 > **Vincolo**: ZeroErp NON in produzione → breaking change ammessi, niente migrazione dati su tabella popolata in prod. Convenzione: `[VERIFICATO]` su codice attuale; `[DA VERIFICARE SU DB]` = introspezione runtime non disponibile dall'analisi.
 
 ---

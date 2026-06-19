@@ -12,6 +12,13 @@
 > [preventivi](../../../../frontend/src/vendite/preventivi/) (righe+componenti BoM+integrazione),
 > [lista-offerte-comm.md](../work-done/lista-offerte-comm.md) / [lista-preventivi.md](../work-done/lista-preventivi.md)
 > (DEF-8 lista configurabile).
+>
+> **Stato (2026-06-20)**: ✅ **implementazione COMPLETA** — scheletro BE+FE, chiusura
+> giro (conferma/push/ponte commessa), stampa PDF, conversioni preventivo/offerta→ordine.
+> Doc spostato in `work-done/`. **Residui delegati a doc dedicati**: (1) **agente (E)** →
+> [analisi-ruolo-agente.md](../work-in-progress/analisi-ruolo-agente.md); (2) **smoke
+> conferma + push** ancora da eseguire →
+> [promemoria-smoke-conferma-push-ordini.md](../work-in-progress/promemoria-smoke-conferma-push-ordini.md).
 
 ---
 
@@ -576,7 +583,7 @@ vendite, lista DEF-8 diretta). File: `api/ordiniApi.js`, `stores/ordini.js`
    esiste ma non ci sono soggetti, né flusso di creazione, né lookup, né guard sul
    FK). La colonna `agente_soggetto_ruolo_id` **resta nullable e non gestita**
    (decisione Tid). Tema rinviato a sviluppo dedicato →
-   [analisi-ruolo-agente.md](analisi-ruolo-agente.md). La colonna
+   [analisi-ruolo-agente.md](../work-in-progress/analisi-ruolo-agente.md). La colonna
    `agente_denominazione` resta opt-in nella lista (catalogo), di fatto vuota.
 2. **PDF in lista omesso.** Non c'è generazione documenti `ORDINE_VENDITA` nello
    scheletro BE (nessun endpoint `/documenti/`): la lista resta consultazione +
@@ -726,7 +733,7 @@ Decisione §8.3: **stesso pattern attuale di preventivi/offerte = push singolo**
 - **BE**: endpoint `POST /api/v1/vendite/ordini/{id}/push/` che invoca
   `HandlerOrdini`/orchestratore con `sorgente_uid` del singolo ordine, su
   `fn_list_ordini_da_pushare(p_ordine_id := ...)` (già esistente, precedente
-  [sviluppo-push-singolo-preventivo.md](sviluppo-push-singolo-preventivo.md)).
+  [sviluppo-push-singolo-preventivo.md](../work-in-progress/sviluppo-push-singolo-preventivo.md)).
 - **FE**: dialog «push a commessa» clone 1:1 di
   [OffertaPushDialog.vue](../../../../frontend/src/vendite/offerte/components/dialogs/OffertaPushDialog.vue)
   (pattern idempotenza: seconda push fallisce con errore controllato).
@@ -881,8 +888,11 @@ lasciando spazio, memoria `feedback_concentrico_no_yagni`):
 
 ## 9. Sequenza consigliata
 
-> **Stato avanzamento (verifica 2026-06-04)**: passi 1-5 ✅ **FATTI**; restano
-> aperti la chiusura-giro/smoke (6-7) e gli item residui raccolti in §9.bis.
+> **Stato avanzamento (2026-06-20)**: passi 1-6 ✅ **FATTI** (scheletro BE+FE,
+> chiusura giro, stampa, conversioni). Del passo 7 (smoke E2E) resta solo
+> **conferma + push** da eseguire → tracciato in
+> [promemoria-smoke-conferma-push-ordini.md](../work-in-progress/promemoria-smoke-conferma-push-ordini.md).
+> Item residui in §9.bis.
 
 1. ✅ **Ratifica decisioni §8** (Tid).
 2. ✅ **Consegna al team DB** (`dev/db-tid`): brief eseguibile
@@ -899,11 +909,12 @@ lasciando spazio, memoria `feedback_concentrico_no_yagni`):
 5. ✅ **FE scheletro** (§6): albero `src/vendite/ordini/` con lista DEF-8 diretta +
    drawer (testata+righe+componenti) + store/api + i18n; build verde. *(Picker
    agente E omesso, §6.ter.1.)*
-6. ⏳ **Chiusura giro** (§7): conferma ordine end-to-end + push singolo;
-   smoke ordine→commessa→fattura.
-7. ⏳ **Smoke E2E**: lista carica/filtri/ritiro colonne/personalizzazione/export
-   CSV-XLSX rispetta ordine-visibilità, CRUD testata+righe+componenti, note,
-   PDF `ORDINE_VENDITA` (§12 — da fare), conferma→push→attività fatturabile generata.
+6. ✅ **Chiusura giro** (§7): conferma ordine + push singolo + ponte commessa —
+   implementati e collaudati (BE + `smoke-test-ordini-giro-commessa.sh`).
+7. 🟡 **Smoke E2E**: lista/filtri/ritiro colonne/personalizzazione/export CSV-XLSX
+   (ordine-visibilità), CRUD testata+righe+componenti, note, PDF `ORDINE_VENDITA`
+   **verdi**; resta da eseguire **conferma + push** →
+   [promemoria-smoke-conferma-push-ordini.md](../work-in-progress/promemoria-smoke-conferma-push-ordini.md).
 8. Riepilogo a video + attesa OK Tid (memoria `feedback_memoria_solo_su_richiesta`).
 
 ## 9.bis. Item residui aperti (verifica 2026-06-04)
@@ -920,17 +931,16 @@ Cosa resta **davvero da fare** dopo lo scheletro BE+FE:
    documenti + route (BE), `EntityPdfButton` nel drawer + client/costanti/i18n
    (FE). **Template HTML + versione PUBBLICATA creati** → stampa end-to-end
    (l'anteprima rende il PDF).
-3. ⛔ **Agente (E)** (§6.ter.1): **NON è solo un picker mancante** — manca l'intero
-   sottosistema. Il ruolo `VENDITORE` esiste in tassonomia, ma non ci sono soggetti
-   con quel ruolo, né flusso di creazione, né lookup, né guard sul FK (accetta
-   qualsiasi ruolo — difetto logico). **Decisione Tid 2026-06-04**: colonna
-   `agente_soggetto_ruolo_id` **resta nullable e non gestita**; il tema è oggetto
-   di analisi/sviluppo dedicato → [analisi-ruolo-agente.md](analisi-ruolo-agente.md).
+3. ➡️ **Agente (E)** — **spostato fuori da questo doc**: il sottosistema agente
+   (soggetti/lookup/guard FK/picker) è interamente tracciato e sviluppato a parte in
+   [analisi-ruolo-agente.md](../work-in-progress/analisi-ruolo-agente.md). La colonna
+   `agente_soggetto_ruolo_id` resta nullable e non gestita (decisione Tid 2026-06-04).
 4. 🟢 **Conversione upstream** (§7.4): **preventivo → ordine** e **offerta → ordine**
    entrambe **FATTE 2026-06-04** (BE service + endpoint `genera-ordine` + test, FE
    azione sui rispettivi drawer, `documento_origine` valorizzato). L'offerta usa la
    fn DB `fn_offerta_righe_espanse` (atterrata) con prezzi negoziati preservati.
-5. 🟡 **Smoke E2E** (passo 7) non ancora eseguito.
+5. 🟡 **Smoke E2E** (passo 7): la maggior parte è verde; resta da eseguire
+   **conferma + push** → [promemoria-smoke-conferma-push-ordini.md](../work-in-progress/promemoria-smoke-conferma-push-ordini.md).
 
 ---
 

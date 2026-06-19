@@ -8,7 +8,7 @@
 > renderlo gestibile. **Non** è un piano esecutivo: sarà oggetto di sviluppo
 > dedicato.
 > **Origine**: richiesta Tid 2026-06-04 — durante lo scheletro ordini (estensione
-> «E — agente», [analisi-ordini-vendita.md §1.bis.E](analisi-ordini-vendita.md))
+> «E — agente», [analisi-ordini-vendita.md §1.bis.E](../work-done/analisi-ordini-vendita.md))
 > si è scoperto che il picker agente non è realizzabile: il dato non è gestibile.
 > **Decisione Tid**: la colonna `agente_soggetto_ruolo_id` **resta nullable e non
 > gestita** finché questo tema non viene sviluppato a parte.
@@ -69,7 +69,7 @@ ma **non esiste il sottosistema** che lo rende un dato reale e affidabile.
    modello (`feedback_bug_logici_modello`): un ordine potrebbe avere come «agente»
    un cliente. Va chiuso quando il tema si sviluppa.
 4. **Nessun picker FE** nel drawer ordine (omesso deliberatamente,
-   [analisi-ordini-vendita.md §6.ter.1](analisi-ordini-vendita.md)).
+   [analisi-ordini-vendita.md §6.ter.1](../work-done/analisi-ordini-vendita.md)).
 5. **Nessuna gestione anagrafica** dell'agente come entità (creazione, ricerca,
    eventuale scheda con dati commerciali/provvigioni).
 6. **Nessun modulo provvigioni/commissioni** (la parola «provvigioni» compare solo
@@ -173,7 +173,7 @@ nessun debito bloccante sullo scheletro ordini).
 
 ## 7. Riferimenti
 
-- Origine + decisione nullable: [analisi-ordini-vendita.md](analisi-ordini-vendita.md)
+- Origine + decisione nullable: [analisi-ordini-vendita.md](../work-done/analisi-ordini-vendita.md)
   (§1.bis.E agente, §6.ter.1 picker omesso, §9.bis #3).
 - Tassonomia ruoli: `config.tipi_ruoli` (VENDITORE id=4) +
   [soggetti_ruoli](../../dbzero/anagrafiche/tabelle/soggetti_ruoli.md).

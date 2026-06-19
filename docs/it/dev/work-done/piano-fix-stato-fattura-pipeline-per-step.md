@@ -4,7 +4,10 @@
 > la parte **DB** si esegue su `dev/db-tid`.
 >
 > **Data**: 2026-06-19 (agg. 2026-06-20) · **Stato**: 🟢 **DB IMPLEMENTATO E APPLICATO**
-> (DB-1/DB-2/DB-3 su `dev/db-tid`); **BE da fare** (handoff team). Dettaglio esecuzione in §4.1.
+> (DB-1/DB-2/DB-3 su `dev/db-tid`) · 🟢 **BE IMPLEMENTATO E COMMITTATO** (`8824cafc7` su
+> `dev/backend-tid`) · ✅ **SMOKE E2E VERDE DAL VIVO** (2026-06-20): lotto 117 MASSIVO
+> `DEFINITIVA/CHIUSO`, fattura 210 `DEFINITIVA` numerata 1/2026/R2 — catena per-step
+> `1→2→8` completata end-to-end. Dettaglio esecuzione DB in §4.1, BE in §3.1.
 
 ---
 
@@ -62,6 +65,32 @@ Risultato:
 
 > Obiettivo: spostare il sync fattura da "dentro il task numera" a **finalizzazione
 > generica di step**, guidata da `step.stato_doc_fiscale_id`.
+
+### 3.1 Stato esecuzione BE (2026-06-20)
+
+| Item | Stato | Note |
+| --- | --- | --- |
+| **B1** sync fattura per-step nel runner | ✅ committato | `pipeline_runner.py::_execute_pipeline_step`: `sync_lotto_fatture_stato(stato=step.stato_doc_fiscale_id)` dopo `execute_step`, sotto guard `if not dry_run`. |
+| **B2** rimosso sync dal task numera | ✅ committato | `_handle_numera_fatture_task` resta **solo numerazione** (`fn_numera_fattura_opz_emessa`). Sync accentrato → niente duplicazione. |
+| **B3** rollback / dry-run | ✅ by-design | dry-run sotto guard; il rollback **non** passa da `_execute_pipeline_step` (path separato `execute_step(rollback=True)`) → il sync non scatta mai in rollback, nessun codice extra. |
+| **B4** test BE | ✅ committato | +2 test runner (sync su forward; nessun sync in dry-run); executor asserisce `sync_lotto_fatture_stato.assert_not_called()`. **957 test vendite+core verdi**. |
+
+> Commit BE: **`8824cafc7`** su `dev/backend-tid` (insieme alla discovery lane a 4 assi e ai
+> fix uuid/grant del workstream batch). Doc orchestrazione aggiornata in
+> `work-in-progress/fatturazione-attivita-progetto.md` (sez. *"Allineamento stato fattura ↔
+> stato step"*).
+>
+> ⚠️ **Osservazione su DB-2 (reset EMESSA→DRAFT) — da chiarire col team DB.** La fn viva
+> `fn_reset_lotto_draft` ora accetta fatture **DRAFT/EMESSA** (✅), ma **mantiene il guard
+> "il lotto deve essere DRAFT"** (`stato_doc_fiscale_id IS DISTINCT FROM v_draft_id` →
+> errore). Con la fix per-step **lotto e fattura avanzano insieme**: dopo lo step EMESSA il
+> **lotto** è a `2` (EMESSA), quindi `fn_reset_lotto_draft` lo **rifiuterebbe sul guard
+> lotto** prima ancora di arrivare al controllo fattura. Lo stato "lotto DRAFT + fatture
+> EMESSA" **non si produce** nel MASSIVO per-step. → Perché il reset sia davvero usabile
+> dopo EMESSA, il **guard del lotto** va rilassato a pre-fiscale (DRAFT *o* EMESSA),
+> simmetrico a quello fattura appena introdotto. Altrimenti il reset post-EMESSA resta
+> inarrivabile e la relax fattura di DB-2 non è esercitabile dal flusso reale (solo da test
+> con stato fabbricato). Vedi §4.5.
 
 ### B1 — Sync fattura generico per step (core)
 In [`pipeline_runner.py::_execute_pipeline_step`](../../../../backend/apps/vendite/services/pipeline_runner.py#L193):

@@ -1,6 +1,9 @@
 # Ristrutturazione documentale — piano operativo
 
-> **Stato:** WIP — avviato 2026-05-29
+> **Stato:** ✅ COMPLETO (2026-06-20) — spostato in `work-done/`. Punti (a), (b.2–4),
+> (c) fatti e verificati. Unico deliverable deferito: la riscrittura di `installazione.md`
+> (punto b.1), in attesa della decisione Docker vs venv →
+> [promemoria-installazione-md.md](../work-in-progress/promemoria-installazione-md.md).
 > **Scopo:** ricondurre la documentazione generica (top-level + `dev/` + `glossario/`) e le guide
 > alla forma di una "mappa" navigabile, partendo da una segnalazione esterna che proponeva un
 > *developer guide* in 8 sezioni. La diagnosi: non manca documentazione (ce n'è moltissima),
@@ -60,8 +63,13 @@ Tutte modifiche **additive o di solo path**, nessuno spostamento fisico di file:
 ### Punto (b) — Documenti nuovi connettivi (la "mappa") *(da fare dopo)*
 
 1. **Riscrittura `installazione.md`** → "Come farlo girare su una macchina qualsiasi": servizi + ordine di avvio, env vars, login, applica/rollback migrazione, modello branch/PR. Separare il generico riproducibile dall'infra personale (Proxmox/Tailscale resta come riferimento marcato). *Pezzo a leva più alta.*
-   **⏸️ SOSPESO (2026-05-29).** Decisione utente: aspettare. L'utente è orientato verso **Docker** ma non ha ancora deciso e **non ha chiaro lo stato attuale del setup**. Stato reale rilevato: venv + `makefile` (target `db-migrate`/`db-setup` per Liquibase), `Dockerfile` per la CI (con librerie WeasyPrint), **nessun `docker-compose` dev**, modello a due server (DB + backend).
-   **Prossimo passo quando si riprende:** prima *chiarire/auditare lo stato del setup attuale*, poi decidere Docker vs venv, poi scrivere la pagina.
+   **➡️ DEFERITO fuori da questo piano (2026-06-20)** → tracciato in
+   [promemoria-installazione-md.md](../work-in-progress/promemoria-installazione-md.md).
+   Sospeso il 2026-05-29 per decisione utente (aspettare): orientamento verso **Docker**
+   ma non deciso, e stato del setup non chiaro. Stato reale rilevato: venv + `makefile`
+   (target `db-migrate`/`db-setup` per Liquibase), `Dockerfile` per la CI (con librerie
+   WeasyPrint), **nessun `docker-compose` dev**, modello a due server (DB + backend).
+   Prossimo passo: auditare il setup attuale → decidere Docker vs venv → scrivere la pagina.
 2. **[x] Riscrittura `architettura.md`** (2026-05-29) → "Architettura a colpo d'occhio": regola DB-first, tabella strati, diagramma mermaid del ciclo di richiesta, mezza pagina RLS/GUC in linguaggio semplice che **linka** (non duplica) multi-face/contratto-GUC/permessi. Già nel nav.
 3. **[x] Nuovo "Ricette: dove intervenire per…"** (2026-05-29) → `dev/ricette-dove-intervenire.md`, nel nav. 3 ricette in sequenza DB→BE→FE: aggiungere un campo, aggiungere uno stato (data-driven), creare un nuovo dominio tracciato. Linka convenzioni/BB, non duplica.
 4. **[x] Nuovo "Trappole"** → `dev/trappole.md` creato (2026-05-29), aggiunto al nav sotto "Sviluppatori", linguaggio non-tecnico. Consolidamento delle mine già pagate: delete head branches/`Tito-dev`, changelog Liquibase immutabili, periodi validità calcolati, indici FK, campi audit, codici errore, guard restrittivi, no logica business nel BE, no duplicazioni FE, dipendenze con conferma.
@@ -106,5 +114,4 @@ Decisioni §5 prese: **(1) unificare fisicamente; (2) termini dominio sulla stes
 
 - 2026-05-29 — Creato il documento. Diagnosi completata. Avvio punto (a).
 - 2026-05-29 — Punto (a) completato: fix nav `mkdocs.yml` (link `frontend-standards` riparato, 2 cataloghi BB + Policy ricerca/paginazione + frontend-standards aggiunti, sottosezione Backend riallineata, 3 glossari raggruppati con `glossario-utility`). Build zensical exit 0.
-</content>
-</invoke>
+- 2026-06-20 — Piano **CHIUSO** e spostato in `work-done/`. Punti (a), (b.2–4), (c) completati e verificati contro i file reali. Unico residuo — riscrittura `installazione.md` (b.1) — **deferito** a [promemoria-installazione-md.md](../work-in-progress/promemoria-installazione-md.md), in attesa della decisione Docker vs venv. Rimosse due righe spurie in fondo al file (`</content>`/`</invoke>`).

@@ -173,7 +173,7 @@ Una tabella appartiene alla seconda categoria se: (a) non descrive un'entita' di
 
 E' classificato **di servizio** all'interno di Anello 1: il suo end-to-end richiedeva almeno un consumatore reale (prima lista migrata a `<ListaConfigurabile>`). Questo è avvenuto: le liste clienti e fornitori usano il componente configurabile, quindi il nucleo è stato **validato su casi reali** e si considera operativo. La lezione metodologica del caso pratiche (non completare prima della validazione su un caso reale) è stata rispettata.
 
-Riferimento architetturale: `docs/it/dev/work-in-progress/sviluppo-personalizzazioni-liste.md`. Sviluppi differiti: `docs/it/dev/work-in-progress/sviluppo-personalizzazioni-liste_def.md`.
+Riferimento architetturale: `docs/it/dev/work-done/sviluppo-personalizzazioni-liste.md`. Sviluppi differiti: `docs/it/dev/work-in-progress/sviluppo-personalizzazioni-liste_def.md`.
 
 ### Stabilita'
 

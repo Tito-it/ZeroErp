@@ -1,7 +1,7 @@
 # Brief Team DB — Blocco F.2: i18n etichette + fix seed `anagrafiche.clienti`
 
 **Data:** 2026-05-08
-**Riferimento:** [`sviluppo-personalizzazioni-liste.md`](../work-in-progress/sviluppo-personalizzazioni-liste.md), §10/§11 Blocco E + Blocco F.
+**Riferimento:** [`sviluppo-personalizzazioni-liste.md`](../work-done/sviluppo-personalizzazioni-liste.md), §10/§11 Blocco E + Blocco F.
 **Branch:** `dev/db-tid`
 **Priorità:** alta — la lista clienti operativa (`anagrafiche.clienti`) ha colonne sbagliate / mancanti / non multilingua; gli utenti EN vedono header italiani statici.
 
