@@ -51,7 +51,11 @@ SELECT
   (
     SELECT s.id FROM config.sorgenti s
     WHERE s.codice = 'PREVENTIVO' LIMIT 1
-  ) AS root_sorgente_tipo_id;
+  ) AS root_sorgente_tipo_id,
+  (
+    SELECT t.id FROM config.tipi_doc_fiscale t
+    WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1
+  ) AS tipo_doc_fiscale_id;
 
 -- Commessa di test isolata
 CREATE TEMP TABLE tmp_commessa_au AS
@@ -101,6 +105,9 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_contratto_id => NULL,
   p_categoria_cliente_id_snapshot => NULL,
   p_classe_utenza_id_snapshot => NULL,
+  -- tipo_doc valorizzato: il guard tipo_doc emittibile (20260619-05) richiede
+  -- tipo_doc_fiscale_id NOT NULL sulle righe APPROVATA+NON_EMESSA.
+  p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_au),
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'NORMALE',

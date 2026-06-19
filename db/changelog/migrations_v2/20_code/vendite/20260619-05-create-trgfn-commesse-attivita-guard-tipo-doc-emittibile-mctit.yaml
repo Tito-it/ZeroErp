@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CREATE vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile (+ trigger)
+#   Guard simmetrico fail-fast (brief-db-guard-tipo-doc-attivita §2.2).
+#
+#   Invariante di RIGA imposto:
+#     una riga in stato (stato_approvazione='APPROVATA' AND
+#     stato_emissione='NON_EMESSA') DEVE avere tipo_doc_fiscale_id IS NOT NULL.
+#
+#   Motivo: una riga emittibile con tipo_doc NULL e' invisibile alla discovery
+#   delle corsie (vendite.fn_list_emittibili_lane richiede tipo_doc NOT NULL) e
+#   nessun altro processo la ripesca -> fatturato perso in silenzio. Il guard
+#   sposta il fallimento sulla creazione/approvazione (dove e' osservabile e
+#   correggibile), non a valle dove sparisce.
+#
+#   E' un invariante di RIGA (non "almeno una riga della commessa"): ogni riga
+#   che raggiunge lo stato emittibile deve avere il tipo_doc. Si incatena col
+#   guard di testata E_COMMESSA_NESSUNA_RIGA_APPROVATA (473): una commessa con
+#   sole righe a tipo_doc NULL non porta righe ad APPROVATA -> fallisce gia' 473
+#   al passaggio a PRONTA_FATTURAZIONE.
+#
+#   Fase _a10_ (verifica/blocco). BEFORE INSERT OR UPDATE OF
+#   (stato_approvazione, stato_emissione, tipo_doc_fiscale_id): copre l'INSERT
+#   diretto in stato emittibile, l'UPDATE di approvazione, e l'azzeramento del
+#   tipo_doc su una riga gia' emittibile.
+#
+#   PERCHE' BEFORE (non AFTER): coesiste col CHECK constraint
+#   chk_commesse_attivita_tipo_doc_emittibile (20260619-06). In PostgreSQL i
+#   CHECK sono valutati DOPO i BEFORE trigger ma PRIMA degli AFTER trigger: con
+#   un guard AFTER il CHECK (errore non parlante 23514) preempterebbe sempre
+#   l'errore parlante. Con BEFORE l'errore parlante 497 e' il primario e il
+#   CHECK resta vero backstop (scatta solo se il trigger e' disabilitato).
+#   Coerente con trgfn_commesse_guard_transizione (anch'esso BEFORE _a10_).
+#
+#   Codice errore registrato in 20260619-04 (E_COMMESSA_ATTIVITA_TIPO_DOC_
+#   OBBLIGATORIO, id 497) - no E_GENERICO.
+# Dipendenze: vendite.commesse_attivita, script.fn_log_and_raise_error,
+#   config.messaggi_errore (codice 497, 20260619-04).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260619-05-create-trgfn-commesse-attivita-guard-tipo-doc-emittibile-mctit.yaml
+
+    - changeSet:
+          id: 20260619-05-create-trgfn-commesse-attivita-guard-tipo-doc-emittibile
+          author: mctit
+          runOnChange: false
+          validCheckSums:
+              - ANY
+          comment: >
+              Crea vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile + trigger
+              trg_commesse_attivita_a10_guard_tipo_doc_emittibile_ins_upd (BEFORE INSERT
+              OR UPDATE OF stato_approvazione, stato_emissione, tipo_doc_fiscale_id).
+              Invariante di riga: (APPROVATA AND NON_EMESSA) => tipo_doc_fiscale_id NOT
+              NULL (E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO). Evita righe emittibili
+              invisibili alla discovery delle corsie (fatturato perso in silenzio).
+          preConditions:
+              - onFail: HALT
+              - tableExists:
+                    schemaName: vendite
+                    tableName: commesse_attivita
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        -- Scopo: invariante di riga. Una riga commesse_attivita in stato
+                        --   emittibile (APPROVATA + NON_EMESSA) deve avere tipo_doc_fiscale_id
+                        --   valorizzato, altrimenti sarebbe invisibile alla discovery delle
+                        --   corsie di fatturazione (fn_list_emittibili_lane) e il fatturato
+                        --   andrebbe perso in silenzio. Fail-fast con codice parlante.
+                        BEGIN
+                            IF NEW.stato_approvazione = 'APPROVATA'
+                               AND NEW.stato_emissione = 'NON_EMESSA'
+                               AND NEW.tipo_doc_fiscale_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    TG_NAME::text,
+                                    'E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO',
+                                    jsonb_build_object(
+                                        'commessa_id', NEW.commessa_id,
+                                        'attivita_id', NEW.id,
+                                        'segment_key', NEW.segment_key
+                                    ),
+                                    NEW.tx_id,
+                                    NEW.commessa_id::text,
+                                    NEW.id::text
+                                );
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile()
+                        IS 'Trigger function: invariante di riga commesse_attivita. (APPROVATA + '
+                           'NON_EMESSA) => tipo_doc_fiscale_id NOT NULL '
+                           '(E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO). Evita righe emittibili '
+                           'invisibili alla discovery delle corsie. rev 2026-06-19.';
+
+                        DROP TRIGGER IF EXISTS trg_commesse_attivita_a10_guard_tipo_doc_emittibile_ins_upd
+                            ON vendite.commesse_attivita;
+
+                        CREATE TRIGGER trg_commesse_attivita_a10_guard_tipo_doc_emittibile_ins_upd
+                            BEFORE INSERT OR UPDATE OF stato_approvazione, stato_emissione, tipo_doc_fiscale_id
+                            ON vendite.commesse_attivita
+                            FOR EACH ROW
+                            EXECUTE FUNCTION vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile();
+          rollback:
+              - sql:
+                    splitStatements: false
+                    sql: |
+                        DROP TRIGGER IF EXISTS trg_commesse_attivita_a10_guard_tipo_doc_emittibile_ins_upd
+                            ON vendite.commesse_attivita;
+                        DROP FUNCTION IF EXISTS vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile();

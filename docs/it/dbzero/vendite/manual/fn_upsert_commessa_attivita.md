@@ -73,6 +73,18 @@ Tutti obbligatori in firma. Passare `NULL` esplicito quando la dimensione non si
 
 `p_qta_operativa`, `p_uom_operativa_id`, `p_factor_to_base` (default 1), `p_posticipa_al`, `p_tipo_doc_fiscale_id`, `p_valuta_id`, `p_area_geografica_id`, `p_listino_versione_id`, `p_prezzo_bloccato` (default false), `p_pricing_mode` (default `FIXED`), `p_prezzo_da_riallineare` (default false), `p_stato_approvazione` (default `BOZZA`), `p_stato_emissione` (default `NON_EMESSA`), `p_sorgente_tipo_id`, `p_sorgente_uid`, `p_tipo_movimento` (default `NORMALE`), `p_tipo_consumo` (default `CONGUAGLIO`), `p_meta` (default `'{}'::jsonb`).
 
+> La firma usa `%TYPE` su ogni parametro che riflette una colonna di `commesse_attivita` (più `p_tipo_movimento`/`p_tipo_consumo` `varchar(32)`, salvati in `meta`).
+
+---
+
+### Normalize `tipo_doc_fiscale_id` (rev 2026-06-19)
+
+Il `tipo_doc_fiscale` **non si deriva da una regola di business** (semantica aperta, configurabile per azienda — vedi `brief-db-guard-tipo-doc-attivita`). La funzione applica solo un **default opzionale**:
+
+* se `p_tipo_doc_fiscale_id` è valorizzato → ha **priorità** (usato così com'è);
+* se è `NULL` e `p_sorgente_tipo_id` è valorizzato → risolve il default da `config.sorgenti.tipo_doc_fiscale_id` (single source of truth, **dentro** la funzione);
+* se anche la sorgente non ha default → resta `NULL`. La valorizzazione **non è imposta qui**: l'obbligo scatta solo sullo stato emittibile, via il guard `trg_commesse_attivita_a10_guard_tipo_doc_emittibile` (codice `E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO`, 497).
+
 ---
 
 ### Output
@@ -93,7 +105,9 @@ RETURNS TABLE (
 
 ### Regole UPDATE (ON CONFLICT)
 
-* Tutte le colonne **sovrascritte** da EXCLUDED tranne `meta`: il `meta` esistente viene **mergeato** con quello in input (`COALESCE(meta, '{}') || COALESCE(EXCLUDED.meta, '{}')`). Chi usa `tipo_movimento`/`tipo_consumo` in meta li vede aggiornati.
+* Tutte le colonne **sovrascritte** da EXCLUDED tranne `meta` e `tipo_doc_fiscale_id`:
+  * `meta` esistente **mergeato** con l'input (`COALESCE(meta, '{}') || COALESCE(EXCLUDED.meta, '{}')`). Chi usa `tipo_movimento`/`tipo_consumo` in meta li vede aggiornati.
+  * `tipo_doc_fiscale_id` **no-regressione** (rev 2026-06-19): `COALESCE(EXCLUDED.tipo_doc_fiscale_id, commesse_attivita.tipo_doc_fiscale_id)`. Un re-push con valore in arrivo `NULL` **non azzera** un tipo_doc già risolto; un cambio a un valore non-NULL resta consentito.
 * Snapshot pricing v5: **sovrascrive sempre** (rappresenta lo snapshot del calcolo corrente; se il resolver è stato rieseguito, il nuovo risultato vince).
 * Guard: se la riga esistente ha `stato_emissione ≠ NON_EMESSA`, update bloccato con `E_COMMESSA_ATTIVITA_GIA_EMESSA`.
 
@@ -114,9 +128,9 @@ Via `script.fn_log_and_raise_error` (`SQLSTATE 'P0001'`).
 
 ### Dipendenze DB
 
-* Tabelle: `vendite.commesse_attivita`, `vendite.commesse`, `vendite.stati_commessa`.
+* Tabelle: `vendite.commesse_attivita`, `vendite.commesse`, `vendite.stati_commessa`, `config.sorgenti` (lookup default `tipo_doc_fiscale_id`).
 * Funzioni: `script.fn_log_and_raise_error`.
-* Trigger/CHECK DB: `chk_commesse_attivita_origine_prezzo`, `chk_commesse_attivita_tipo_variazione_applicata` garantiscono i domini enum anche se il guard applicativo è bypassato.
+* Trigger/CHECK DB: `chk_commesse_attivita_origine_prezzo`, `chk_commesse_attivita_tipo_variazione_applicata` garantiscono i domini enum anche se il guard applicativo è bypassato; `trg_commesse_attivita_a10_guard_tipo_doc_emittibile` + `chk_commesse_attivita_tipo_doc_emittibile` impongono `tipo_doc_fiscale_id NOT NULL` sullo stato emittibile (APPROVATA+NON_EMESSA).
 
 ---
 
