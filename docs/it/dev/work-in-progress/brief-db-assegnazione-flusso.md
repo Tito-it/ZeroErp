@@ -4,11 +4,22 @@
 > **Priorità**: 🟢 normale — prerequisito di coerenza per il filone
 > "assegnazione flusso a operatore/reparto" (il BE `assegna_flusso` può iniziare prima, ma
 > la semantica completa — presa libera, coda reparto, tracciamento — dipende da qui).
-> **Data**: 2026-06-18 · **Stato**: 🟡 **da applicare** (niente scritto/eseguito da BE).
+> **Data**: 2026-06-18 · **Stato**: 🟢 **DB scritto** (`20260618-05..08` + pgTAP) — da applicare/test.
 >
 > **Design autorevole**:
 > [brief-design-assegnazione-flusso-user-reparto.md](brief-design-assegnazione-flusso-user-reparto.md)
 > (policy §2.2). Questo brief contiene **solo** ciò che serve a DB.
+>
+> **Decisioni prese (2026-06-18)**: DEC-1 caso C → livello **LIBERO** all'operatore della pratica ·
+> DEC-2 **due** codici (`FLUSSI_COMPETENZA_MANCANTE` A/D, `FLUSSI_PRESA_NON_ELIGIBILE` 496 per B) ·
+> DEC-3 **(a)** `FLUSSO_ASSEGNAZIONE_CAMBIATA` (ALTER CHECK) · DEC-4 `origine='UTENTE'` (pratica resta SISTEMA) ·
+> DEC-5 `competenze_flussi.unita_organizzativa_id` non più usata qui (voluto) · DEC-6 nessun guard `attivo`.
+> Refinement: **skill-lock = competenza ATTIVA** (non "qualsiasi riga") per evitare flussi non prendibili.
+>
+> **Deliverable scritti**: `20_code/pratiche/20260618-05` (prendi_in_carico eligibilità A/B/C/D) ·
+> `-06` (coda 4 livelli, REPARTO anagrafico + LIBERO) · `-07` (ALTER chk_giornale_azione) ·
+> `-08` (trigger giornale assegnazione flusso) · codice 496 in `messaggi_errore.csv` (loader runOnChange) ·
+> pgTAP `db/pgtap/pratiche/test-assegnazione-flusso-eligibilita.sql` (plan 10). **Non applicati/committati.**
 
 ---
 

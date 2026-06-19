@@ -4,7 +4,9 @@
 > Spiega *cosa* serve e *perché*; **non contiene DDL pronto** — il *come* (nome
 > funzione, firma, tipi, changeset, indici, pgTAP) è scelta del team DB.
 >
-> **Data**: 2026-06-18 · **Stato**: 🟡 **DA IMPLEMENTARE** (in attesa team DB)
+> **Data**: 2026-06-18 · **Stato**: 🟢 **DECISIONI PRESE (2026-06-19), in implementazione**
+> — vedi §4. Novità chiave emersa in analisi critica: la **competenza** è un terzo asse
+> (vedi §2.3), non un semplice filtro.
 >
 > **Decisione concordata con Tid**: approccio **A3** — *nuova* funzione dedicata,
 > lasciando `vendite.fn_list_commesse_emittibili` **intatta** (continua ad alimentare
@@ -110,6 +112,27 @@ risolvere un default? La raccomandazione è **escluderle** (la risoluzione del d
 appartiene al momento dell'upsert riga, non alla discovery — single source of truth), e
 che il BE le **logghi come saltate** come fa già per gli emittenti NULL.
 
+### 2.3 La competenza è un terzo asse (decisione presa)
+
+Un lotto è identificato da `(emittente, tipo_doc, **competenza_mese**)`:
+`fatturazione_lotti.competenza_mese` è **NOT NULL** e
+`fn_select_attivita_fatturabili` filtra le AF con **`competenza_mese <= v_competenza`**
+(cumulativo) `AND tipo_doc = …`. Due conseguenze:
+
+1. **Il driver deve sapere quale competenza mettere sul lotto** (campo obbligatorio): la
+   discovery deve quindi **restituirla**.
+2. **Coerenza discovery↔select**: la fn esistente filtra la competenza con `=` (esatto),
+   ma la select usa `<=` (cumulativo). Se la lane fn ereditasse `=`, una coppia con soli
+   **arretrati** (righe `< mese`) non verrebbe scoperta, mentre la select li avrebbe
+   catturati → **fatturato arretrato perso in silenzio**.
+
+**Decisione**: la lane fn (a) filtra la competenza con **`<= p_competenza_mese`**
+(cumulativo, allineato alla select; `NULL` = nessun limite superiore) e (b) **restituisce
+`competenza_mese = max(ca.competenza_mese)`** fra le righe candidate della coppia — la
+competenza con cui il driver crea il lotto (la select `<=` spazza poi tutti gli arretrati).
+Funziona anche con `p_competenza_mese = NULL` (run-all), dove altrimenti la competenza del
+lotto sarebbe indefinita.
+
 ---
 
 ## 3. Criteri di accettazione
@@ -137,17 +160,29 @@ Inoltre:
 
 ---
 
-## 4. Decisioni da concordare (DB + Tid)
+## 4. Decisioni prese (2026-06-19)
 
-1. **Righe con `tipo_doc_fiscale_id IS NULL`**: escluderle dalla discovery (raccomandato)
-   o risolvere un default nella funzione? (La raccomandazione è escluderle: il default
-   appartiene all'upsert.)
-2. **Conteggio in output**: `total_candidate` (righe) e/o `n_commesse`? (Serve solo al
-   dry-run/diagnostica del command; indicare la grana preferita.)
-3. **Nome/firma**: a discrezione team DB. Proposta di intento (non vincolante):
-   `vendite.fn_list_emittibili_lane(p_competenza_mese, p_billing_account_id,
-   p_utility_id, p_emittente_soggetto_ruolo_id, p_fatturazione_immediata, p_limit)`
-   → `TABLE(emittente_soggetto_ruolo_id, tipo_doc_fiscale_id, total_candidate)`.
+1. **`tipo_doc_fiscale_id IS NULL`** → **escluse** dalla discovery (il lotto lo richiede
+   NOT NULL; il default appartiene all'upsert, non alla discovery). Il BE le logga come saltate.
+2. **Criterio inclusione** → **`stato_approvazione = 'APPROVATA'` AND `stato_emissione =
+   'NON_EMESSA'`** (allineato alla pull `p_only_approved=true`).
+3. **Competenza** (§2.3) → filtro **`<= p_competenza_mese`** (cumulativo) + output
+   **`competenza_mese = max(...)`** per coppia.
+4. **Conteggio** → `total_candidate` (righe candidate). `n_commesse` non incluso (non serve).
+5. **Nome/firma**:
+   `vendite.fn_list_emittibili_lane(p_competenza_mese, p_billing_account_id, p_utility_id,
+   p_emittente_soggetto_ruolo_id, p_fatturazione_immediata, p_limit)`
+   → `TABLE(emittente_soggetto_ruolo_id, tipo_doc_fiscale_id, **competenza_mese**, total_candidate)`.
+   `STABLE`, `%TYPE`, `p_limit` norm. (default 1000, max 10000); `LIMIT` sulle **coppie**.
+
+### Piano DB (deliverable)
+
+| # | Deliverable | Path | Note |
+| --- | --- | --- | --- |
+| E1 | `vendite.fn_list_emittibili_lane` (§4.5) | `20_code/vendite/20260619-01-…` | `runOnChange:false` + `validCheckSum:[ANY]`; `fn_list_commesse_emittibili` **intatta** |
+| E2 | Indice **parziale** `ix_commesse_attivita_lane_candidate` su `commesse_attivita (commessa_id, competenza_mese, tipo_doc_fiscale_id)` WHERE candidate | `00_schema/vendite/20260619-02-…` | **FATTO** (deciso: fatturazione accumula nel tempo). Parziale → resta compatto (indicizza solo le righe candidate) |
+| E3 | pgTAP: tipo_doc misto, non-approvata esclusa, tipo_doc NULL esclusa, filtro corsia, **arretrati `<` mese inclusi via `<=`**, fn esistente non toccata | `db/pgtap/vendite/test-fn-list-emittibili-lane.sql` | criteri §3 + caso competenza |
+| E4 | Manual companion doc (autogen via `gen_db_docs.py`) | `docs/it/dbzero/vendite/manual/fn_list_emittibili_lane.md` | — |
 
 ---
 
