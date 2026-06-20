@@ -13,7 +13,7 @@ Funzioni / oggetti collegati:
 
 `fn_check_*` puro (no raise): risponde "la pratica e' **chiudibile**?", cioe' non
 resta alcun template **obbligatorio bloccante** (obbligatorio, non completato,
-ancora percorribile) secondo [fn_check_chiusura_pratica](fn_check_chiusura_pratica.md).
+ancora percorribile) secondo `fn_check_chiusura_pratica`.
 Il ramo morto di un bivio non blocca.
 
 ---
