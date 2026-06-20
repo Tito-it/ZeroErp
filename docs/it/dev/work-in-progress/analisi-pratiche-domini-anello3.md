@@ -1,12 +1,17 @@
 # Analisi — Pratiche come container di processo: integrazione domini Anello 3
 
-> **Stato**: ANALISI infrastrutturale, nessuna decisione operativa, nessun brief DB
-> ancora scritto. Documento di consolidamento delle convenzioni di aggancio fra
-> motore `pratiche` (Anello 2) e processi di Anello 3 (`vendite`, `acquisti`,
-> `magazzino`, ...).
+> **Stato**: ANALISI infrastrutturale + **Fase E chiusa** (primo consumatore
+> PREVENTIVI validato runtime, §8.5). Documento di consolidamento delle convenzioni
+> di aggancio fra motore `pratiche` (Anello 2) e processi di Anello 3 (`vendite`,
+> `acquisti`, `magazzino`, ...).
 >
-> **Data**: 2026-05-18 (rev. 2026-05-19 — integrazione critica e decisioni
-> aggiuntive)
+> **➡️ Per i prossimi passi operativi** (urgenze, item aperti, pratiche
+> offerta/contratto/ordine) il riferimento autorevole è
+> [gestione-pratiche-come-procedere.md](gestione-pratiche-come-procedere.md). Questa
+> analisi resta la **visione** dell'integrazione domini.
+>
+> **Data**: 2026-05-18 (rev. 2026-05-19 — integrazione critica; aggiornamento
+> 2026-06-20 — allineamento §8 al codice reale)
 >
 > **Owner concettuale**: Tid (Michele Carlo Titini). L'analisi nasce dalla domanda
 > "come iniziamo a integrare preventivi e ordini nelle pratiche?" e risponde con
@@ -1175,21 +1180,25 @@ Quattro fasi successive. Ogni fase chiude prima di iniziare la successiva.
 > (nessuno split natura, niente ordine/contratto). Tracciato in tre brief
 > dedicati:
 > [brief-db-pratica-preventivi.md](../work-done/brief-db-pratica-preventivi.md),
-> [brief-be-pratica-preventivi.md](brief-be-pratica-preventivi.md),
-> [brief-fe-pratica-preventivi.md](brief-fe-pratica-preventivi.md).
+> [brief-be-pratica-preventivi.md](../work-done/brief-be-pratica-preventivi.md),
+> [brief-fe-pratica-preventivi.md](../work-done/brief-fe-pratica-preventivi.md).
 >
 > - **Fase B (DB)** — ✅ **CONSEGNATA** (2026-06-08): seed `PREVENTIVI_IMMEDIATA/_DIFFERITA`
 >   + 8 `template_flussi` + handler_flussi `vendita.push_preventivo`, motore
 >   prerequisiti **esito-aware** (guard `COMPLETATO⇒esito`), `fn_log_evento_dominio`
 >   (`DOMINIO_*`), macchina transizioni commesse, codici errore, GRANT. **Più**
->   `config.nature_vendita` come groundwork (non ancora attiva nel routing, §9 del
->   brief BE). **Non** consegnati (rinviati): `fn_push_preventivo_a_ordine`, split
->   per natura, `uq_ordini_da_preventivo`.
+>   `config.nature_vendita` come groundwork. *(Aggiornamento 2026-06-20: lo split
+>   per natura — `fn_push_preventivo_a_ordine`, routing MERCE→ordine/SERVIZIO→commessa,
+>   `uq_ordini_da_preventivo` — è stato **poi consegnato e attivato** (handoff
+>   2026-06-09); la frase "non consegnati/rinviati" era vera solo al 2026-06-08.)*
 > - **Fase C (BE)** — ✅ **CONSEGNATA** (2026-06-08): handler `vendita.push_preventivo`
 >   (atomico, idempotente, policy via c7-2), registrazione `HANDLER_MAP` lazy,
->   dispatch su `IN_CORSO` in transazione unica, accoppiamento accettazione↔flusso
->   **M2** (`completa_approvazione_da_flusso` + endpoint `approvazione-flusso`).
->   9 test unitari verdi + 837 regressione verde.
+>   dispatch su `IN_CORSO` in transazione unica, accoppiamento accettazione↔flusso.
+>   9 test unitari verdi + 837 regressione verde. *(Aggiornamento 2026-06-20:
+>   l'accoppiamento accettazione↔flusso **M2** — `completa_approvazione_da_flusso` +
+>   endpoint `approvazione-flusso` — è stato **poi rimosso** e sostituito
+>   dall'handler event-driven `vendita.accetta_preventivo` su COMPLETATO+POSITIVO via
+>   `template_flussi_handler_eventi`; vedi brief BE §8.3.)*
 > - **Fase D (FE)** — ✅ **CONSEGNATA** (2026-06-08, build+lint verdi): roadmap
 >   percorso da `template_flussi` (`PraticaPercorso.vue` + endpoint
 >   `GET /pratiche/<id>/percorso/`, creazione flussi **template-bound**);
