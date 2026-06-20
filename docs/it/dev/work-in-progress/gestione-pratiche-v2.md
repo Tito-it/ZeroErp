@@ -1,12 +1,27 @@
 # Gestione Pratiche v2 — Piano di completamento
 
-> **Stato**: In corso (DB completato, BE/FE da fare)
+> **Stato**: ✅ **COMPLETATO + in gran parte STORICO** (Fasi 1-7 atterrate). Questo
+> piano v1→v2 ha guidato il completamento del modulo; il motore è poi evoluto
+> (workflow v2, integrazione domini, esito configurabile, coda lavoro). **Non è più
+> il riferimento corrente per i prossimi passi.**
 > **Prerequisiti**: Pratiche v1 (DB+BE completi, FE stub)
 > **Approccio**: refactor diretto, nessuna retrocompatibilita', nessuna produzione attiva
 >
 > Questo documento completa il modulo pratiche. I documenti v1
 > (`sviluppo-gestione-pratiche.md`, `piano-gestione-pratiche.md`) sono spostati in work-done
 > come riferimento storico.
+>
+> **➡️ Riferimenti correnti** (superano questo piano): per la **visione integrazione
+> domini** [analisi-pratiche-domini-anello3.md](analisi-pratiche-domini-anello3.md);
+> per il **motore workflow** [analisi-pratiche-workflow-v2.md](../work-done/analisi-pratiche-workflow-v2.md);
+> per i **prossimi passi operativi** [gestione-pratiche-come-procedere.md](gestione-pratiche-come-procedere.md).
+>
+> ⚠️ **Punti stale noti (2026-06-20)**: la `config.modalita_fatturazione` descritta
+> in §6.2/§6.5 **NON è stata creata** (decisione modeling: la politica
+> immediata/differita vive nei `handler_params` JSONB del template, validata in
+> codice); e il "ramo fatturazione" dell'handler `vendita.push_preventivo` (§6.5) è
+> oggi un **orchestratore con split per natura** (merce→ordine/servizio→commessa),
+> non il single-branch qui descritto.
 
 ---
 
