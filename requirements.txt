@@ -2,9 +2,9 @@ bracex==2.6
 certifi==2026.6.17
 cfgv==3.5.0
 charset-normalizer==3.4.7
-click==8.4.1
+click==8.4.2
 colorama==0.4.6
-deepmerge==2.0
+deepmerge==2.1.0
 distlib==0.4.3
 EditorConfig==0.17.1
 filelock==3.29.4
@@ -12,7 +12,7 @@ hjson==3.1.0
 identify==2.6.19
 idna==3.18
 Jinja2==3.1.6
-jsbeautifier==1.15.4
+jsbeautifier==2.0.1
 Markdown==3.10.2
 MarkupSafe==3.0.3
 nodeenv==1.10.0
@@ -24,7 +24,7 @@ platformdirs==4.10.0
 pre_commit==4.6.0
 psycopg2-binary==2.9.12
 Pygments==2.20.0
-pymdown-extensions==10.21.3
+pymdown-extensions==11.0
 python-dateutil==2.9.0.post0
 python-discovery==1.4.2
 python-dotenv==1.2.2
@@ -39,4 +39,4 @@ typing_extensions==4.15.0
 urllib3==2.7.0
 virtualenv==21.5.1
 wcmatch==10.1
-zensical==0.0.45
+zensical==0.0.46
