@@ -26,6 +26,7 @@ import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import PraticaFlussiTab from './PraticaFlussiTab.vue'
 import PraticaNoteTab from './PraticaNoteTab.vue'
 import PraticaAllegatiTab from './PraticaAllegatiTab.vue'
+import PraticaSospensioniTab from './PraticaSospensioniTab.vue'
 import PraticaGiornaleTab from './PraticaGiornaleTab.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
@@ -527,6 +528,11 @@ const onClose = useDrawerClose(emit, 'cancelled')
           <!-- Tab Allegati -->
           <TabPanel :header="t('pratiche.tab_allegati')">
             <PraticaAllegatiTab :pratica-id="props.praticaId" />
+          </TabPanel>
+
+          <!-- Tab Sospensioni -->
+          <TabPanel :header="t('pratiche.tab_sospensioni')">
+            <PraticaSospensioniTab :pratica-id="props.praticaId" />
           </TabPanel>
 
           <!-- Tab Giornale -->
