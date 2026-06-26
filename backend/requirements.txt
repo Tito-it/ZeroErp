@@ -6,9 +6,9 @@
 #
 annotated-types==0.7.0
     # via pydantic
-anthropic==0.111.0
+anthropic==0.112.0
     # via -r ../requirements.in
-anyio==4.14.0
+anyio==4.14.1
     # via
     #   anthropic
     #   httpx
@@ -116,7 +116,7 @@ pyphen==0.17.2
     # via weasyprint
 pyyaml==6.0.3
     # via drf-spectacular
-redis==8.0.0
+redis==8.0.1
     # via
     #   -r ../requirements.in
     #   django-redis
