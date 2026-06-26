@@ -67,6 +67,7 @@
 - [trgfn_sospensioni_giornale_ins](funzioni/trgfn_sospensioni_giornale_ins.md)
 - [trgfn_sospensioni_giornale_riattivazione](funzioni/trgfn_sospensioni_giornale_riattivazione.md)
 - [trgfn_sospensioni_guard_coerenza_flusso](funzioni/trgfn_sospensioni_guard_coerenza_flusso.md) — Guard: verifica che `flusso_id` appartenga alla stessa `pratica_id` della sospensione. Se `flusso_id IS NULL` (sospensione pratica intera), nessun controllo.
+- [trgfn_sospensioni_guard_data_non_futura](funzioni/trgfn_sospensioni_guard_data_non_futura.md) — Guard: vieta che una sospensione **inizi** o **finisca** nel futuro. `data_inizio` e `data_fine` non possono superare `now()` oltre una tolleranza di **2 minuti** (clock-skew tra orologio client e server). Una sospensione registra un evento già avvenuto — anche retroattivo, ma non pianificato.
 - [trgfn_sospensioni_propaga](funzioni/trgfn_sospensioni_propaga.md) — Propaga la sospensione a livello pratica ai flussi attivi. AFTER INSERT su `pratiche.sospensioni`: se `flusso_id IS NULL`, tutti i flussi con stato DA_ESEGUIRE o IN_CORSO passano a SOSPESO.
 - [trgfn_sospensioni_riattiva](funzioni/trgfn_sospensioni_riattiva.md) — Ripristina gli stati precedenti alla riattivazione. AFTER UPDATE OF `data_fine` su `pratiche.sospensioni`: quando la sospensione viene chiusa (data_fine passa da NULL a valorizzata), ripristina lo stato precedente dei flussi (dal giornale) e riporta la pratica ad APERTA.
 - [trgfn_sospensioni_set_periodo](funzioni/trgfn_sospensioni_set_periodo.md)

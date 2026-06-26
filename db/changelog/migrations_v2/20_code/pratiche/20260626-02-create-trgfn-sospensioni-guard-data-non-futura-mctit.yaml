@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Trigger function + trigger: guard date non future su pratiche.sospensioni.
+#
+# Con le date manuali (UI nuova) una sospensione non puo' INIZIARE ne' FINIRE nel
+# futuro: la registrazione e' di un evento gia' avvenuto (anche retroattivo). La
+# pianificazione e' un altro concetto -> data_riattivazione_prevista (previsione,
+# tipo date) NON e' soggetta a questo guard e resta libera nel futuro.
+#
+# Tolleranza clock-skew: finestra di 2 minuti (now() + interval '2 minutes'), per
+# assorbire lo sfasamento tra orologio client e server senza falsi positivi sulla
+# chiusura "ora". Una data realmente futura resta bloccata.
+#
+# Fase a10 (gira prima di a20 set_periodo). Codice errore E_SOSPENSIONE_DATA_FUTURA
+# registrato in config.messaggi_errore da 20260626-03 (serve solo a runtime).
+# Brief: docs/it/dev/work-in-progress/brief-db-sospensioni-anti-overlap-data-manuale_db.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/pratiche/20260626-02-create-trgfn-sospensioni-guard-data-non-futura-mctit.yaml
+
+    - changeSet:
+          id: 20260626-02-create-trgfn-sospensioni-guard-data-non-futura
+          author: mctit
+          runOnChange: false
+          comment: >
+              Trigger function + trigger BEFORE INSERT/UPDATE OF data_inizio,data_fine:
+              vieta data_inizio/data_fine nel futuro (tolleranza 2 min). Non tocca
+              data_riattivazione_prevista (previsione).
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_guard_data_non_futura()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        -- Scopo: vieta date di sospensione/riattivazione nel futuro.
+                        -- data_inizio e data_fine non possono superare now() + tolleranza
+                        -- clock-skew (2 min). data_riattivazione_prevista (previsione) esclusa.
+                        DECLARE
+                            v_limite pratiche.sospensioni.data_inizio%TYPE := now() + interval '2 minutes';
+                        BEGIN
+                            IF NEW.data_inizio > v_limite THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'pratiche',
+                                    'pratiche.trgfn_sospensioni_guard_data_non_futura',
+                                    'E_SOSPENSIONE_DATA_FUTURA',
+                                    jsonb_build_object('campo', 'data_inizio', 'valore', NEW.data_inizio, 'now', now()),
+                                    NULL::uuid,
+                                    NEW.data_inizio::text
+                                );
+                            END IF;
+
+                            IF NEW.data_fine IS NOT NULL AND NEW.data_fine > v_limite THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'pratiche',
+                                    'pratiche.trgfn_sospensioni_guard_data_non_futura',
+                                    'E_SOSPENSIONE_DATA_FUTURA',
+                                    jsonb_build_object('campo', 'data_fine', 'valore', NEW.data_fine, 'now', now()),
+                                    NULL::uuid,
+                                    NEW.data_fine::text
+                                );
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION pratiche.trgfn_sospensioni_guard_data_non_futura()
+                          IS 'Guard: vieta data_inizio/data_fine nel futuro su sospensioni (tolleranza clock-skew 2 min). Non tocca data_riattivazione_prevista.';
+
+                        -- Trigger
+                        DROP TRIGGER IF EXISTS trg_sospensioni_a10_guard_data_non_futura_ins_upd
+                        ON pratiche.sospensioni;
+
+                        CREATE TRIGGER trg_sospensioni_a10_guard_data_non_futura_ins_upd
+                        BEFORE INSERT OR UPDATE OF data_inizio, data_fine
+                        ON pratiche.sospensioni
+                        FOR EACH ROW
+                        EXECUTE FUNCTION pratiche.trgfn_sospensioni_guard_data_non_futura();
+
+                        COMMENT ON TRIGGER trg_sospensioni_a10_guard_data_non_futura_ins_upd
+                        ON pratiche.sospensioni
+                        IS 'Guard: vieta date sospensione/riattivazione nel futuro (tolleranza 2 min).';
+
+          rollback:
+              - sql:
+                    sql: |
+                        DROP TRIGGER IF EXISTS trg_sospensioni_a10_guard_data_non_futura_ins_upd ON pratiche.sospensioni;
+                        DROP FUNCTION IF EXISTS pratiche.trgfn_sospensioni_guard_data_non_futura();

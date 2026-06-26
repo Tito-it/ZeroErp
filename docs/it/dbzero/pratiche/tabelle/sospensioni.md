@@ -30,6 +30,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ex_sospensioni_no_overlap | `CREATE INDEX ex_sospensioni_no_overlap ON pratiche.sospensioni USING gist (pratica_id, COALESCE(flusso_id, ('-1'::integer)::bigint), periodo_sospensione)` |
 | pk_pratiche_sospensioni | `CREATE UNIQUE INDEX pk_pratiche_sospensioni ON pratiche.sospensioni USING btree (id)` |
 | uq_sospensioni_attiva_flusso | `CREATE UNIQUE INDEX uq_sospensioni_attiva_flusso ON pratiche.sospensioni USING btree (pratica_id, flusso_id) WHERE ((data_fine IS NULL) AND (flusso_id IS NOT NULL))` |
 | uq_sospensioni_attiva_pratica | `CREATE UNIQUE INDEX uq_sospensioni_attiva_pratica ON pratiche.sospensioni USING btree (pratica_id) WHERE ((data_fine IS NULL) AND (flusso_id IS NULL))` |
@@ -39,18 +40,20 @@
 |------|--------|--------|--------|
 | trg_sospensioni_a10_guard_coerenza_flusso_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_guard_coerenza_flusso()` |
 | trg_sospensioni_a10_guard_coerenza_flusso_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_guard_coerenza_flusso()` |
+| trg_sospensioni_a10_guard_data_non_futura_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_guard_data_non_futura()` |
+| trg_sospensioni_a10_guard_data_non_futura_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_guard_data_non_futura()` |
 | trg_sospensioni_a20_set_periodo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_set_periodo()` |
 | trg_sospensioni_a20_set_periodo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_set_periodo()` |
-| trg_sospensioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_sospensioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_sospensioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_sospensioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_sospensioni_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_sospensioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_sospensioni_z90_giornale_ins | AFTER | INSERT | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_giornale_ins()` |
 | trg_sospensioni_z90_giornale_riattivazione_upd | AFTER | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_giornale_riattivazione()` |
 | trg_sospensioni_z90_propaga_riattivazione_upd | AFTER | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_riattiva()` |
 | trg_sospensioni_z90_propaga_sospensione_ins | AFTER | INSERT | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_propaga()` |
-| trg_sospensioni_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('sospensioni_id')` |
 | trg_sospensioni_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('sospensioni_id')` |
+| trg_sospensioni_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('sospensioni_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}
