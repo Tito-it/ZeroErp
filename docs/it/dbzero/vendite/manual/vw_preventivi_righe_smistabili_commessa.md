@@ -23,13 +23,24 @@ Una riga e' eleggibile se:
 * `attivo IS TRUE`, `quantita > 0`, `prezzo_unitario >= 0`;
 * natura di riga NULL (pregresso pre-trigger, trattata COMMESSA) **oppure**
   `nature_vendita.destinazione_tipo = 'COMMESSA'`;
-* non gia' **EMESSA** in commessa (`NOT EXISTS` su `commesse_attivita` per
-  `segment_key 'PREV:<uid>:R:<riga_id>'` con `stato_emissione = 'EMESSA'`) —
+* non gia' **instradata** in commessa (`NOT EXISTS` su `commesse_attivita`):
+  esclusa appena esiste un'attivita per il suo `segment_key`
+  `'PREV:<uid>:R:<riga_id>'` **oppure** per un suo componente BoM
+  `'PREV:<uid>:R:<riga_id>#CMP:%'` — **qualsiasi `stato_emissione`** —
   idempotenza di riga.
 
 Le condizioni di **testata** (billing account, utility, stato ACCETTATO,
 competenza) restano fuori dalla vista: le applica chi la consuma, come per la
 gemella del ramo ordine.
+
+> ⚙️ **Simmetria con il ramo ordine (fix gate EVASO, 2026-06-28).** La condizione
+> di esclusione ancora il "residuo" all'**instradamento** (esistenza dell'attivita),
+> esattamente come la gemella ordine lo ancora all'**allocazione**
+> (`ordini_righe.preventivo_riga_id`). Prima ancorava alla **fatturazione**
+> (`stato_emissione = 'EMESSA'`): il preventivo non raggiungeva mai `EVASO` al push,
+> perche' il push crea le attivita in `NON_EMESSA`. `EVASO` = "tutte le righe
+> instradate alla destinazione documentale", **non** "tutto fatturato".
+> Brief: `brief-db-gate-evaso-ramo-commessa-asimmetria.md`.
 
 ---
 
@@ -38,6 +49,15 @@ gemella del ramo ordine.
 * `security_invoker = on` (policy RLS).
 * La merce (`destinazione_tipo = 'ORDINE'`) e' esclusa: il suo predicato e'
   `vw_preventivi_righe_smistabili_ordine`.
-* Test: coperta indirettamente da
-  `test-fn-preventivo-ha-residuo-commessa-v1.sql` e
+* **Attivita `ANNULLATA`**: una riga la cui unica attivita e' annullata risulta
+  comunque **instradata** (esclusa) → non blocca `EVASO` e **non e' ri-pushabile**
+  (`fn_upsert_commessa_attivita` vieta l'update se lo stato esistente
+  `<> NON_EMESSA`). Decisione di dominio: una riga annullata a valle non riapre il
+  preventivo. Coerente col ramo ordine ed evita preventivi permanentemente bloccati.
+* **Match `segment_key`**: l'esclusione confronta il `segment_key` su **tutte** le
+  commesse (non per singola commessa); l'idempotenza dell'upsert e' invece su
+  `(commessa_id, segment_key)`. Rilevante solo se la stessa riga-preventivo dovesse
+  instradarsi verso commesse diverse (oggi non accade).
+* Test: `test-fn-preventivo-ha-residuo-commessa-v1.sql` (casi 8 `EMESSA`,
+  10 `NON_EMESSA`, 11 componente BoM `#CMP`, 12 `ANNULLATA`) e
   `test-fn-list-preventivi-da-pushare-righe-ids-v1.sql`.
