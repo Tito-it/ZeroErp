@@ -68,10 +68,13 @@ POST delega a `ai_assistant_service.query()` che orchestra il flusso completo: v
 
 - Il messaggio non puo' essere vuoto ne' superare 2000 caratteri.
 - Il catalogo strumenti e' filtrato per permessi dell'utente autenticato: se l'operatore non ha accesso all'area `pratiche`, il tool `cerca_pratiche` non e' disponibile.
+- **Permessi ri-verificati a execution-time** (difesa in profondità, non solo all'offer-time): quando l'LLM invoca un tool, il service ri-controlla che l'utente possa usarlo (predicato unico `is_tool_allowed_for_user`) **prima** di preview/execute, e di nuovo alla conferma `__confirm__`. Chiude il TOCTOU (permesso revocato tra preview e conferma) e un tool_call per un tool fuori scope (injection/errore modello). I service chiamati dai tool non rifanno il check area-level (vive nel layer view, non attraversato dall'AI): il backstop è qui.
+- **Granularità come la UI** (area + azione fine): un tool può dichiarare `required_action` (codename azione di processo) speculare al `<action>_permission` dell'endpoint corrispondente. È verificato via `PermissionResolver.check_azione`. Es.: `cambia_stato_pratica` richiede l'azione `cambia_stato_pratica` come l'endpoint `ApiPraticaStato`.
 - Il loop tool_call ha un limite di 5 iterazioni. Al superamento restituisce risposta parziale con `has_more: true`.
 - La conversazione in-memory ha un TTL di 15 minuti (configurabile via `AI_CONVERSATION_TTL`). Dopo la scadenza, il `conversation_id` non e' piu' valido e viene creata una nuova conversazione.
-- Il system prompt non contiene mai dati dal database — solo vocabolario e regole operative. I dati arrivano come `tool_result` e sono trattati dall'LLM come dati, non istruzioni (protezione prompt injection).
-- Ogni interazione viene loggata in `dbops.ai_query_log` con `request_id`, strumenti chiamati, token consumati e durata. Il logging e' best-effort: un errore di log non blocca la risposta.
+- **Conferme di scrittura durabili in cache** (`django.core.cache` → Redis in prod): le conferme pendenti sopravvivono tra i worker gunicorn, con TTL nativo di 5 minuti. Chiave per scope `(conversazione, owner_user_id, owner_identita_id)`: una conferma per conversazione (un nuovo preview sovrascrive) e isolamento sicurezza nella chiave (un altro owner non vede/annulla la conferma altrui).
+- Il system prompt non contiene mai dati dal database — solo vocabolario e regole operative; i dati arrivano come `tool_result`. ⚠️ Questo è **igiene** (riduce injection diretta e invenzioni), **non** una protezione contro la prompt injection: per il modello `tool_result` e system prompt sono lo stesso flusso. La difesa vera è il *blast radius* — permessi + RLS + conferma sulle scritture (vedi [guida AI §4](../../../guide/integrazione-ai.md)).
+- Ogni interazione viene loggata in `dbops.ai_query_log` con `request_id`, strumenti chiamati, token consumati e durata. Il logging delle **letture** è best-effort (un errore non blocca la risposta); per le **scritture confermate** è **affidabile** (`reliable=True`): se l'audit fallisce viene emesso un **alert ERROR** (l'audit è anche il sistema di rilevamento anomalie). Retention via framework `dbops` cleanup (`cleanup_at`, regola `*all` 30gg default).
 - L'endpoint richiede `area_funzionale = ai_assistant` nel sistema permessi (`ZeroERPPermission`).
 - Guard `AI_ENABLED`: se `false`, l'endpoint restituisce `501` senza tentare alcuna operazione.
 
@@ -85,4 +88,5 @@ POST delega a `ai_assistant_service.query()` che orchestra il flusso completo: v
 
 - L'endpoint e' disponibile solo se `AI_ENABLED=True` in settings (l'app `ai_assistant` non viene caricata altrimenti).
 - Il provider AI e' configurabile via `AI_PROVIDER` (anthropic, mistral, mock).
-- Le conversazioni sono in-memory (non persistite in DB). In futuro, se necessario, migrazione a Redis.
+- Le **conferme pendenti** sono in **cache** (`django.core.cache` → Redis in prod, LocMemCache in CI/test): durano tra i worker gunicorn, TTL 5 minuti.
+- Le **conversazioni** sono ancora **in-memory per processo** (non condivise tra worker gunicorn): un follow-up che colpisce un altro worker non ne ricostruisce il contesto. Migrazione alla cache (stesso meccanismo delle conferme) consigliata come follow-up — vedi [analisi-sicurezza-aggiornata.md](../../../dev/work-done/analisi-sicurezza-aggiornata.md).

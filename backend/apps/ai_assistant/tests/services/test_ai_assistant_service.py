@@ -16,10 +16,15 @@
 # 6. test_query_max_iterations
 # 7. test_conversation_scope_isolates_users (post-fix 23-04-2026 data leak cross-user)
 # 8. test_conversation_scope_isolates_identita (stessa persona, veste diversa)
+# 9. test_query_tool_call_not_permitted_is_refused (ri-check permessi nel loop)
+# 10. test_execute_confirmation_refused_when_permission_lost (ri-check TOCTOU alla conferma)
+# 11. TestAuditLogReliability.test_reliable_failure_logs_error / _best_effort_failure_logs_warning
 
 import unittest
 from typing import Any
 from unittest.mock import MagicMock, patch
+
+from django.core.cache.backends.locmem import LocMemCache
 
 from apps.ai_assistant.providers.mock_provider import MockProvider
 from apps.ai_assistant.services import ai_assistant_service
@@ -46,6 +51,11 @@ class TestAIAssistantService(unittest.TestCase):
     """Test ai_assistant_service.query()."""
 
     def setUp(self):
+        # Cache conferme isolata in-process (no Redis: regola CI "test senza servizi").
+        patcher = patch.object(ai_assistant_service, "cache", LocMemCache("ai-test-service", {}))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
         ai_assistant_service.clear_conversations()
         tool_registry.clear_registry()
 
@@ -311,3 +321,131 @@ class TestAIAssistantService(unittest.TestCase):
             str(m.get("content", "")) for m in provider_v2.last_messages
         )
         self.assertNotIn("ciao dalla veste 1", all_contents)
+
+    # Scopo: ri-check permessi a execution-time nel loop. Anche se il catalogo
+    #        inviato e' filtrato, un tool_call per un tool NON permesso (prompt
+    #        injection / errore modello) deve essere rifiutato, senza preview ne'
+    #        execute.
+    @patch("apps.ai_assistant.services.ai_assistant_service.get_ai_provider")
+    @patch("apps.ai_assistant.services.ai_assistant_service._log_query")
+    @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
+    @patch.object(PermissionResolver, "get_livello_area", return_value="LETTURA")
+    def test_query_tool_call_not_permitted_is_refused(
+        self, mock_perms, mock_disabled, mock_log, mock_provider
+    ):
+        spy = _SpyWriteTool(
+            name="cambia_stato_pratica", description="d", input_schema={},
+            required_area="pratiche", required_level="TUTTO",
+            requires_confirmation=True,
+        )
+        tool_registry.register_tool(spy)
+
+        # L'LLM chiama comunque il tool in scrittura (l'utente ha solo LETTURA).
+        provider = MockProvider(
+            tool_response=ToolCall(id="tc1", name="cambia_stato_pratica", input={}),
+            default_response="Non posso eseguire questa operazione.",
+        )
+        mock_provider.return_value = provider
+
+        result = ai_assistant_service.query(
+            user=self.user, request=self.request, message="cambia stato pratica 1",
+        )
+
+        # Rifiutato prima di preview/execute: nessuna conferma proposta.
+        self.assertFalse(spy.executed)
+        self.assertFalse(spy.previewed)
+        self.assertFalse(any(a.get("type") == "confirm" for a in result["actions"]))
+
+    # Scopo: ri-check permessi alla conferma (TOCTOU). Tool offerto+previewato con
+    #        TUTTO, poi il livello scende a LETTURA prima del __confirm__: la
+    #        conferma deve essere rifiutata e il tool NON eseguito.
+    @patch("apps.ai_assistant.services.ai_assistant_service.get_ai_provider")
+    @patch("apps.ai_assistant.services.ai_assistant_service._log_query")
+    @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
+    def test_execute_confirmation_refused_when_permission_lost(
+        self, mock_disabled, mock_log, mock_provider
+    ):
+        spy = _SpyWriteTool(
+            name="cambia_stato_pratica", description="d", input_schema={},
+            required_area="pratiche", required_level="TUTTO",
+            requires_confirmation=True,
+        )
+        tool_registry.register_tool(spy)
+
+        provider = MockProvider(
+            tool_response=ToolCall(
+                id="tc1", name="cambia_stato_pratica",
+                input={"pratica_id": 1, "nuovo_stato": "APERTA"},
+            ),
+            default_response="Vuoi confermare?",
+        )
+        mock_provider.return_value = provider
+
+        # Fase 1: permesso pieno → preview + conferma pendente.
+        with patch.object(PermissionResolver, "get_livello_area", return_value="TUTTO"):
+            r1 = ai_assistant_service.query(
+                user=self.user, request=self.request, message="cambia stato pratica 1",
+            )
+        conv_id = r1["conversation_id"]
+        self.assertTrue(any(a.get("type") == "confirm" for a in r1["actions"]))
+        self.assertTrue(spy.previewed)
+        self.assertFalse(spy.executed)
+
+        # Fase 2: permesso declassato → conferma rifiutata, tool non eseguito.
+        with patch.object(PermissionResolver, "get_livello_area", return_value="LETTURA"):
+            r2 = ai_assistant_service.query(
+                user=self.user, request=self.request, message="__confirm__",
+                conversation_id=conv_id,
+            )
+        self.assertFalse(spy.executed)
+        self.assertIn("permessi", r2["response"].lower())
+
+
+class _SpyWriteTool(AITool):
+    """Tool in scrittura di test: traccia preview/execute senza effetti reali."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.previewed = False
+        self.executed = False
+
+    def preview(self, params: dict[str, Any], request: Any) -> dict[str, Any]:
+        self.previewed = True
+        return {"summary": "preview operazione", "details": params}
+
+    def execute(self, params: dict[str, Any], request: Any) -> dict[str, Any]:
+        self.executed = True
+        return {"message": "operazione eseguita"}
+
+
+class TestAuditLogReliability(unittest.TestCase):
+    """Test affidabilita' audit ai_query_log (P2): le scritture confermate
+    devono alzare un alert ERROR se il logging fallisce; le letture restano
+    best-effort (WARNING)."""
+
+    def _save_with_failing_db(self, *, reliable: bool):
+        from apps.ai_assistant.db import ai_query_log_repository as mod
+
+        repo = mod.AIQueryLogRepository()
+        with patch.object(mod, "connection") as mock_conn:
+            mock_conn.cursor.side_effect = RuntimeError("db down")
+            with self.assertLogs(mod.logger, level="WARNING") as cm:
+                repo.save_query_log(
+                    request_id="req-1", user_id=1, input_text="x",
+                    tools_called=None, response_text=None,
+                    provider="mock", model="m",
+                    tokens_input=None, tokens_output=None,
+                    duration_ms=1, error_code=None, reliable=reliable,
+                )
+        return cm
+
+    # Scopo: scrittura confermata (reliable=True) → fallimento log = alert ERROR.
+    def test_reliable_failure_logs_error(self):
+        cm = self._save_with_failing_db(reliable=True)
+        self.assertTrue(any(r.levelname == "ERROR" for r in cm.records))
+
+    # Scopo: lettura (reliable=False) → fallimento log = solo WARNING.
+    def test_best_effort_failure_logs_warning(self):
+        cm = self._save_with_failing_db(reliable=False)
+        self.assertTrue(any(r.levelname == "WARNING" for r in cm.records))
+        self.assertFalse(any(r.levelname == "ERROR" for r in cm.records))

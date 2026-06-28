@@ -97,6 +97,13 @@ Aggiungere incrementalmente quando le API del dominio sono stabili e testate. Og
 
 ### Rendering
 
+> ⚠️ **Regola di sicurezza (fissata 2026-06-26, prima di scrivere il codice)**: il rendering
+> arricchito resta su **testo strutturato e azioni interne** (rotte Vue). **Mai** abilitare
+> immagini o risorse esterne caricate a partire dall'output del modello: sarebbe una via di
+> **esfiltrazione** (un'injection può costruire un URL-immagine che fa uscire dati riservati
+> nell'indirizzo). Così si conserva la proprietà "il widget non ha vie di esfiltrazione".
+> Vedi [analisi-sicurezza-aggiornata.md](../work-done/analisi-sicurezza-aggiornata.md) §3 e guida AI §4.5.
+
 - [ ] Rendering risultati lista come mini-tabella nel widget (righe cliccabili)
 - [ ] Rendering dettaglio singolo come card informativa
 - [ ] Troncamento risultati > 5 con link "e altri N risultati" → lista dominio con filtri
@@ -109,6 +116,14 @@ Aggiungere incrementalmente quando le API del dominio sono stabili e testate. Og
 ### Quando farli
 
 Dopo test in produzione con operatori reali — le priorita' emergono dall'uso.
+
+---
+
+## Durabilità conversazioni (multi-worker)
+
+> Emerso durante l'hardening sicurezza 2026-06-26 (vedi [analisi-sicurezza-aggiornata.md](../work-done/analisi-sicurezza-aggiornata.md)).
+
+- [ ] Le **conversazioni** AI sono oggi un dict **in-memory per processo** (`_conversations` in `ai_assistant_service.py`): con gunicorn multi-worker un follow-up che colpisce un altro worker **non** ricostruisce il contesto. Le **conferme pendenti** sono già state migrate a `django.core.cache` (Redis); migrare le conversazioni **allo stesso meccanismo** (cache con TTL `AI_CONVERSATION_TTL`, chiave per scope conv+owner, mantenendo l'isolamento sicurezza già presente). Non urgente (degrada la continuità multi-turno, non la sicurezza), ma necessario per coerenza in produzione.
 
 ---
 

@@ -18,12 +18,17 @@ from datetime import datetime, timezone
 from typing import Any
 
 from django.conf import settings
+from django.core.cache import cache
 
 from apps.ai_assistant.db.ai_query_log_repository import AIQueryLogRepository
 from apps.ai_assistant.providers.base import AIProvider
 from apps.ai_assistant.providers.factory import get_ai_provider
 from apps.ai_assistant.services.prompt_builder import build_system_prompt
-from apps.ai_assistant.services.tool_registry import get_tool_by_name, get_tools_for_user
+from apps.ai_assistant.services.tool_registry import (
+    get_tool_by_name,
+    get_tools_for_user,
+    is_tool_allowed_for_user,
+)
 from apps.ai_assistant.types import AIQueryResult
 from apps.core.services.auth_constants import JWT_CLAIM_IDENTITA_ID
 from apps.core.services.error_manager import ErrorManager
@@ -54,20 +59,55 @@ MAX_TOOL_LOOP_TIMEOUT = 30
 #     in depth). Pre-fix: chiunque conosceva l'UUID leggeva chat altrui.
 _conversations: dict[str, dict[str, Any]] = {}
 
-# Conferme pendenti.
-# Struttura:
-#   {confirmation_id: {
-#       "tool_name": ...,
-#       "params": ...,
-#       "conv_id": ...,              # conversation_id di appartenenza
-#       "owner_user_id": int,        # scope sicurezza
-#       "owner_identita_id": int|None,
-#       "created_at": datetime,
-#   }}
-_pending_confirmations: dict[str, dict[str, Any]] = {}
+# Conferme pendenti: persistite in cache (django.core.cache) per durare tra i
+# worker gunicorn (Redis in prod; LocMemCache in CI/test). La chiave include lo
+# scope conversazione+proprietario, quindi:
+#  - una conferma pendente per (conversazione, owner): un nuovo preview sovrascrive;
+#  - l'isolamento sicurezza e' nella chiave (un altro owner calcola una chiave
+#    diversa → non vede/annulla la conferma altrui, come il vecchio scope-match);
+#  - la scadenza e' gestita dal TTL nativo della cache (niente pulizia lazy).
+# Dato persistito: tool_name, params, conv_id, owner_user_id, owner_identita_id,
+# confirmation_id (per l'azione frontend).
 
 # TTL conferme pendenti (5 minuti — piu' corto delle conversazioni)
 _CONFIRMATION_TTL = 300
+
+
+# Scopo: Chiave cache della conferma pendente per scope (conversazione+owner).
+def _pending_confirm_key(
+    conversation_id: str, owner_user_id: int, owner_identita_id: int | None
+) -> str:
+    return f"ai:pending_confirm:{owner_user_id}:{owner_identita_id}:{conversation_id}"
+
+
+# Scopo: Salva la conferma pendente in cache con TTL nativo.
+def _store_pending_confirmation(
+    *, conversation_id: str, owner_user_id: int, owner_identita_id: int | None,
+    data: dict[str, Any],
+) -> None:
+    cache.set(
+        _pending_confirm_key(conversation_id, owner_user_id, owner_identita_id),
+        data,
+        timeout=_CONFIRMATION_TTL,
+    )
+
+
+# Scopo: Recupera la conferma pendente per scope (None se assente/scaduta).
+def _get_pending_confirmation(
+    *, conversation_id: str, owner_user_id: int, owner_identita_id: int | None
+) -> dict[str, Any] | None:
+    return cache.get(
+        _pending_confirm_key(conversation_id, owner_user_id, owner_identita_id)
+    )
+
+
+# Scopo: Rimuove la conferma pendente per scope.
+def _delete_pending_confirmation(
+    *, conversation_id: str, owner_user_id: int, owner_identita_id: int | None
+) -> None:
+    cache.delete(
+        _pending_confirm_key(conversation_id, owner_user_id, owner_identita_id)
+    )
 
 
 # Scopo: estrae la coppia (owner_user_id, owner_identita_id) che definisce
@@ -277,19 +317,36 @@ def _run_tool_loop(
                     "error": f"Strumento '{tool_name}' non disponibile."
                 })
                 logger.warning("LLM ha richiesto tool non registrato: %s", tool_name)
+            elif not is_tool_allowed_for_user(request.user, tool_obj):
+                # Ri-check permessi a execution-time: il catalogo inviato e' gia'
+                # filtrato, ma un tool_call puo' arrivare per un tool fuori scope
+                # (prompt injection / errore modello) o dopo un downgrade permessi.
+                # Difesa-in-profondita' coerente col filtro catalogo (stesso predicato).
+                tool_result_content = json.dumps({
+                    "error": f"Strumento '{tool_name}' non disponibile."
+                })
+                logger.warning(
+                    "Tool non permesso richiesto dall'LLM: %s (user=%s)",
+                    tool_name, getattr(request.user, "id", None),
+                )
             elif tool_obj.requires_confirmation:
                 # Tool in scrittura: preview + richiesta conferma
                 try:
                     preview_result = tool_obj.preview(tool_input, request)
                     confirmation_id = str(uuid.uuid4())
-                    _pending_confirmations[confirmation_id] = {
-                        "tool_name": tool_name,
-                        "params": tool_input,
-                        "conv_id": conversation_id,
-                        "owner_user_id": owner_user_id,
-                        "owner_identita_id": owner_identita_id,
-                        "created_at": time.monotonic(),
-                    }
+                    _store_pending_confirmation(
+                        conversation_id=conversation_id,
+                        owner_user_id=owner_user_id,
+                        owner_identita_id=owner_identita_id,
+                        data={
+                            "tool_name": tool_name,
+                            "params": tool_input,
+                            "conv_id": conversation_id,
+                            "owner_user_id": owner_user_id,
+                            "owner_identita_id": owner_identita_id,
+                            "confirmation_id": confirmation_id,
+                        },
+                    )
                     preview_result["requires_confirmation"] = True
                     preview_result["confirmation_id"] = confirmation_id
                     tool_result_content = json.dumps(preview_result, default=str)
@@ -375,31 +432,16 @@ def _execute_confirmation(
     owner_user_id: int,
     owner_identita_id: int | None,
 ) -> AIQueryResult:
-    # Pulizia lazy conferme scadute
-    now = time.monotonic()
-    expired = [
-        cid for cid, data in _pending_confirmations.items()
-        if now - data.get("created_at", 0) > _CONFIRMATION_TTL
-    ]
-    for cid in expired:
-        del _pending_confirmations[cid]
-
-    # Cerca conferma pendente per questa conversazione.
-    # Scope enforcement: owner_user_id + owner_identita_id devono coincidere
-    # con quelli registrati al momento della preview. Altrimenti la conferma
-    # resta "invisibile" al chiamante corrente (comportamento = non esistente,
-    # impedisce takeover di operazione in scrittura altrui).
-    confirmation_id = None
-    pending = None
-    for cid, data in _pending_confirmations.items():
-        if (
-            data.get("conv_id") == conversation_id
-            and data.get("owner_user_id") == owner_user_id
-            and data.get("owner_identita_id") == owner_identita_id
-        ):
-            confirmation_id = cid
-            pending = data
-            break
+    # Recupera la conferma pendente per questa conversazione. La scadenza e' gestita
+    # dal TTL della cache. Scope enforcement: la chiave include owner_user_id +
+    # owner_identita_id → un chiamante con scope diverso calcola una chiave diversa e
+    # la conferma resta "invisibile" (impedisce takeover di scrittura altrui).
+    scope = {
+        "conversation_id": conversation_id,
+        "owner_user_id": owner_user_id,
+        "owner_identita_id": owner_identita_id,
+    }
+    pending = _get_pending_confirmation(**scope)
 
     if pending is None:
         return AIQueryResult(
@@ -413,10 +455,28 @@ def _execute_confirmation(
     # Recupera il tool e esegui
     tool_obj = get_tool_by_name(pending["tool_name"])
     if tool_obj is None:
-        del _pending_confirmations[confirmation_id]
+        _delete_pending_confirmation(**scope)
         return AIQueryResult(
             conversation_id=conversation_id,
             response="Strumento non piu' disponibile.",
+            tools_used=[],
+            actions=[],
+            has_more=False,
+        )
+
+    # Ri-check permessi a execution-time (chiude il TOCTOU): tra preview e conferma
+    # il livello dell'operatore puo' essere cambiato (revoca/declassamento). I service
+    # chiamati dai tool non rifanno il check area-level (vive nel layer view, che l'AI
+    # non attraversa) → il backstop deve stare qui.
+    if not is_tool_allowed_for_user(user, tool_obj):
+        _delete_pending_confirmation(**scope)
+        logger.warning(
+            "Conferma rifiutata: permesso non piu' disponibile per tool=%s (user=%s)",
+            pending["tool_name"], getattr(user, "id", None),
+        )
+        return AIQueryResult(
+            conversation_id=conversation_id,
+            response="Operazione non piu' consentita: permessi non sufficienti.",
             tools_used=[],
             actions=[],
             has_more=False,
@@ -442,10 +502,12 @@ def _execute_confirmation(
             total_input_tokens=0,
             total_output_tokens=0,
             error_code=None,
+            # Scrittura confermata: audit affidabile (alert ERROR se il log fallisce).
+            reliable=True,
         )
 
         # Rimuovi conferma pendente
-        del _pending_confirmations[confirmation_id]
+        _delete_pending_confirmation(**scope)
 
         return AIQueryResult(
             conversation_id=conversation_id,
@@ -455,7 +517,7 @@ def _execute_confirmation(
             has_more=False,
         )
     except Exception as exc:
-        del _pending_confirmations[confirmation_id]
+        _delete_pending_confirmation(**scope)
         logger.error("Errore esecuzione confermata %s: %s", pending["tool_name"], exc, exc_info=True)
         error_msg = getattr(exc, "message", str(exc))
         return AIQueryResult(
@@ -476,16 +538,14 @@ def _cancel_confirmation(
     owner_user_id: int,
     owner_identita_id: int | None,
 ) -> AIQueryResult:
-    cancelled = False
-    for cid, data in list(_pending_confirmations.items()):
-        if (
-            data.get("conv_id") == conversation_id
-            and data.get("owner_user_id") == owner_user_id
-            and data.get("owner_identita_id") == owner_identita_id
-        ):
-            del _pending_confirmations[cid]
-            cancelled = True
-            break
+    scope = {
+        "conversation_id": conversation_id,
+        "owner_user_id": owner_user_id,
+        "owner_identita_id": owner_identita_id,
+    }
+    cancelled = _get_pending_confirmation(**scope) is not None
+    if cancelled:
+        _delete_pending_confirmation(**scope)
 
     return AIQueryResult(
         conversation_id=conversation_id,
@@ -579,6 +639,7 @@ def _log_query(
     total_input_tokens: int,
     total_output_tokens: int,
     error_code: str | None,
+    reliable: bool = False,
 ) -> None:
     request_id = get_request_id() or str(uuid.uuid4())
     provider_name = getattr(settings, "AI_PROVIDER", "mock")
@@ -597,10 +658,13 @@ def _log_query(
         tokens_output=total_output_tokens or None,
         duration_ms=duration_ms,
         error_code=error_code,
+        reliable=reliable,
     )
 
 
-# Scopo: Svuota le conversazioni e conferme in-memory. Solo per test.
+# Scopo: Svuota le conversazioni in-memory. Solo per test.
+#        Le conferme pendenti vivono in cache: i test che le esercitano usano
+#        override_settings(LocMemCache) + cache.clear() nel proprio setUp, per non
+#        rischiare un FLUSHDB su una Redis reale da questo helper condiviso.
 def clear_conversations() -> None:
     _conversations.clear()
-    _pending_confirmations.clear()

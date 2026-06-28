@@ -755,6 +755,10 @@ class PraticheRepository:
     """
 
     # Scopo: Inserisce una nuova sospensione per pratica (o flusso) e ritorna l'ID.
+    # data_inizio opzionale (ISO): se assente usa NOW() (retro-compatibile); se
+    # valorizzato consente la data/ora manuale, anche retroattiva. Il guard DB
+    # (trg a10) rifiuta le date nel futuro; l'EXCLUDE ex_sospensioni_no_overlap
+    # rifiuta i periodi sovrapposti sullo stesso scope.
     def create_sospensione(
         self,
         pratica_id: int,
@@ -762,17 +766,24 @@ class PraticheRepository:
         *,
         flusso_id: int | None = None,
         data_riattivazione_prevista: str | None = None,
+        data_inizio: str | None = None,
     ) -> int:
         sql = """
             INSERT INTO pratiche.sospensioni (
                 pratica_id, flusso_id, data_inizio, motivo,
                 data_riattivazione_prevista
             ) VALUES (
-                %s, %s, NOW(), %s, %s
+                %s, %s, COALESCE(%s::timestamptz, NOW()), %s, %s
             )
             RETURNING id
         """
-        params = [pratica_id, flusso_id, motivo, data_riattivazione_prevista]
+        params = [
+            pratica_id,
+            flusso_id,
+            data_inizio,
+            motivo,
+            data_riattivazione_prevista,
+        ]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = cursor.fetchone()
@@ -784,16 +795,24 @@ class PraticheRepository:
             assert row is not None
         return int(row[0])
 
-    # Scopo: Chiude la sospensione attiva impostando data_fine = NOW().
+    # Scopo: Chiude la sospensione attiva impostando data_fine.
+    # data_fine opzionale (ISO): se assente usa NOW() (retro-compatibile); se
+    # valorizzato consente la data/ora manuale di riattivazione. Il CHECK DB
+    # garantisce data_fine > data_inizio, il guard a10 rifiuta date future.
     # Il trigger DB gestisce la riattivazione (ripristino stati flussi).
-    def chiudi_sospensione(self, sospensione_id: int) -> None:
+    def chiudi_sospensione(
+        self,
+        sospensione_id: int,
+        *,
+        data_fine: str | None = None,
+    ) -> None:
         sql = """
             UPDATE pratiche.sospensioni
-            SET data_fine = NOW()
+            SET data_fine = COALESCE(%s::timestamptz, NOW())
             WHERE id = %s AND data_fine IS NULL
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [sospensione_id])
+            cursor.execute(sql, [data_fine, sospensione_id])
             ErrorManager.require(
                 cursor.rowcount > 0,
                 code="E_SOSPENSIONE_NOT_FOUND",
