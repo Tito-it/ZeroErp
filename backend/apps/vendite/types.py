@@ -137,7 +137,7 @@ class CommessaStatoResult(TypedDict):
     # Config testata
     policy_fatturazione: str | None
     fatturazione_immediata: bool | None
-    priorita_operativa: int | None
+    priorita_operativa: str | None
     billing_account_id: int | None
     utility_id: int | None
     emittente_soggetto_ruolo_id: int | None

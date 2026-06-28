@@ -581,7 +581,7 @@ class ApiCommessaStato(DomainAPIView):
                             "modificabile": serializers.BooleanField(),
                             "policy_fatturazione": serializers.CharField(allow_null=True),
                             "fatturazione_immediata": serializers.BooleanField(allow_null=True),
-                            "priorita_operativa": serializers.IntegerField(allow_null=True),
+                            "priorita_operativa": serializers.CharField(allow_null=True),
                             "billing_account_id": serializers.IntegerField(allow_null=True),
                             "utility_id": serializers.IntegerField(allow_null=True),
                             "emittente_soggetto_ruolo_id": serializers.IntegerField(allow_null=True),

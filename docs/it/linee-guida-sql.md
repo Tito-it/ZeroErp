@@ -194,6 +194,39 @@ Mescolare i nomi a caso:
 
 ---
 
+### 6c. Esposizione `codice` vs `codice_interno` (alias FEDELE alla sorgente)
+
+Le tabelle di stato/catalogo (`config.stati_*`, ecc.) espongono spesso **due** colonne con ruoli **opposti**:
+
+| Colonna | Natura | Uso |
+| --- | --- | --- |
+| **`codice_interno`** | **immutabile** (lock `script.trgfn_lock_columns`) | **riferimento interno di sistema**: confronti, filtri, state-machine, mapping, seed. La logica si basa SOLO su questo. |
+| **`codice`** | **modificabile** dall'utente | **etichetta a video** (spesso si mostra invece la `descrizione`). Mai usato in logica. |
+
+**Regola d'oro**: la logica (DB/BE/FE) usa **sempre** `codice_interno`; il `codice` e' solo display. I valori come `DRAFT`/`ATTIVO`/`CESSATO` sono `codice_interno`.
+
+**Convenzione di naming (alias fedele 1:1)**: l'alias deve **rispecchiare la colonna sorgente**.
+
+```sql
+sd.codice_interno AS stato_codice_interno   -- ✅ logica (immutabile)
+sd.codice          AS stato_codice           -- ✅ display (mutabile)
+```
+
+* **VIETATO** `codice_interno AS *_codice` (e il simmetrico `codice AS *_codice_interno`): il nome mentirebbe sulla sorgente. È un bug latente — il FE che fa `stato_codice === 'DRAFT'` funziona _per caso_ finché qualcuno non "corregge" la vista in `codice AS stato_codice` e l'utente rinomina il codice in `BOZZA`, rompendo la logica in silenzio.
+* Se servono **entrambi** (logica + display), esporli **entrambi** con nome fedele (come fanno gia' `vw_preventivi_*`/`vw_ordini_*`).
+
+**Guardrail CI** (uccide la classe di bug): un check che fallisce sul pattern mislabel —
+
+```bash
+grep -rEn "codice_interno[[:space:]]+AS[[:space:]]+[a-z_]*codice\b" db/ \
+  | grep -vE "AS[[:space:]]+[a-z_]*codice_interno\b" && exit 1   # codice_interno AS *_codice
+grep -rEn "[^_]codice[[:space:]]+AS[[:space:]]+[a-z_]*codice_interno\b" db/ && exit 1  # codice AS *_codice_interno
+```
+
+> **Bonifica in corso (2026-06-28)**: 6 oggetti DB violano la regola (`vw_contratti_lista`, `script.fn_available_actions_contratto`, `vw_clienti_lista`, `vw_clienti_codice_ba`, `vw_fornitori_dettaglio`, `fn_coda_lavoro_operatore`) — tracciata in [brief-naming-stato-codice-interno.md](dev/work-in-progress/brief-naming-stato-codice-interno.md).
+
+---
+
 ### 7. Colonne di Audit e Log
 
 Standardizzare i campi di auditing:

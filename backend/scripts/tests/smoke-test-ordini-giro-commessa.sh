@@ -160,8 +160,12 @@ log_info "articolo_id = $ARTICOLO_ID"
 echo ""; echo "-- 2. Crea ordine BOZZA (fatturazione_trigger=CONFERMATO) --"
 # trigger CONFERMATO esplicito: e' il ramo che pusha a commessa (gli altri
 # trigger SPEDITO/CONSEGNATO passano dal DDT, fuori scope — §7 analisi).
+# L'operatore smoke puo' non avere emittente assegnato
+# (E_CONTRATTO_EMITTENTE_NON_RISOLTO): inietta un emittente esplicito nel
+# payload (default 32, override EMITTENTE_ID).
+EMITTENTE_FISCALE_ID="${EMITTENTE_ID:-32}"
 do_curl POST "/api/v1/vendite/ordini/" \
-    "{\"billing_account_id\": ${BA_ID}, \"utility_id\": ${UTILITY_ID}, \"fatturazione_trigger\": \"CONFERMATO\"}"
+    "{\"billing_account_id\": ${BA_ID}, \"utility_id\": ${UTILITY_ID}, \"emittente_fiscale_id\": ${EMITTENTE_FISCALE_ID}, \"fatturazione_trigger\": \"CONFERMATO\"}"
 if ! check "POST crea ordine" 200 "data.id"; then
     echo -e "${RED}Setup fallito: impossibile creare ordine. Stop.${NC}"; exit 1
 fi

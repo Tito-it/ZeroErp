@@ -33,8 +33,8 @@
 #  4) RICHIESTA_CLIENTE: crea flusso template-bound -> IN_CORSO -> COMPLETATO
 #  5) PREVENTIVAZIONE: crea flusso -> IN_CORSO; preventivo MISTO +
 #     collega-pratica (ROOT) + /emetti/ [prereq-gated]; COMPLETATO POSITIVO
-#  6) APPROVAZIONE_CLIENTE: crea flusso -> IN_CORSO -> bridge M2
-#     (/vendite/preventivi/approvazione-flusso/) -> preventivo ACCETTATO
+#  6) APPROVAZIONE_CLIENTE: crea flusso -> IN_CORSO -> completamento POSITIVO
+#     -> handler event-driven vendita.accetta_preventivo -> preventivo ACCETTATO
 #  7) CONFERMA: crea flusso (guard prerequisiti esito-aware) -> IN_CORSO
 #     (handler) -> flusso COMPLETATO POSITIVO
 #  8) Verifiche post-handler: preventivo EVASO, righe-smistabili-ordine
@@ -286,22 +286,26 @@ if crea_e_avvia_flusso "$TPL_PREVENTIVAZIONE" "PREVENTIVAZIONE"; then
     fi
 fi
 
-# --- 6. APPROVAZIONE_CLIENTE via bridge M2 ---
+# --- 6. APPROVAZIONE_CLIENTE: completamento flusso -> handler accetta_preventivo ---
+# L'M2 (/vendite/preventivi/approvazione-flusso/) e' stato RIMOSSO: l'accettazione
+# ora e' event-driven. Completare il flusso APPROVAZIONE_CLIENTE con esito POSITIVO
+# fa scattare l'handler vendita.accetta_preventivo (binding template_flussi_handler_eventi
+# su COMPLETATO+POSITIVO), che porta il preventivo ROOT ad ACCETTATO in transazione.
 if [[ "$GIRO_OK" == "1" ]]; then
-    echo ""; echo "-- 6. APPROVAZIONE_CLIENTE: bridge M2 -> preventivo ACCETTATO --"
+    echo ""; echo "-- 6. APPROVAZIONE_CLIENTE: completamento POSITIVO -> handler -> ACCETTATO --"
     GIRO_OK=0
     if crea_e_avvia_flusso "$TPL_APPROVAZIONE" "APPROVAZIONE_CLIENTE"; then
         FLUSSO_APPROVAZIONE_ID="$FLUSSO_ID"
-        do_curl POST "/api/v1/vendite/preventivi/approvazione-flusso/" \
-            "{\"pratica_id\": ${PRATICA_ID}, \"flusso_id\": ${FLUSSO_ID}, \"esito\": \"POSITIVO\"}"
-        check "POST approvazione-flusso (M2, POSITIVO)" 200 || true
+        do_curl POST "/api/v1/pratiche/${PRATICA_ID}/flussi/${FLUSSO_ID}/stato/" \
+            '{"nuovo_stato": "COMPLETATO", "esito": "POSITIVO"}'
+        check "POST completa APPROVAZIONE_CLIENTE (POSITIVO) -> handler accetta_preventivo" 200 || true
         do_curl GET "/api/v1/vendite/preventivi/${PREV_ID}/"
         ST=$(json_get "$LAST_BODY" "data.stato_codice_interno")
         if [[ "$ST" == "ACCETTATO" ]]; then
-            log_ok "preventivo ACCETTATO (M2 ha guidato l'accettazione)"
+            log_ok "preventivo ACCETTATO (handler event-driven su completamento flusso)"
             GIRO_OK=1
         else
-            log_fail "atteso ACCETTATO dopo M2, trovato '$ST'"
+            log_fail "atteso ACCETTATO dopo completamento APPROVAZIONE_CLIENTE, trovato '$ST'"
         fi
     fi
 fi
