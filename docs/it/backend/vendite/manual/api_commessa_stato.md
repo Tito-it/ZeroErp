@@ -86,8 +86,8 @@ espone, non più i soli 3 contatori. In dettaglio:
   > due **colonne distinte** di `stati_commessa` (oggi con lo stesso valore nel seed, ma
   > separate per design: display vs chiave interna stabile) — non sono un duplicato.
 - **Config testata**: `policy_fatturazione`, `fatturazione_immediata`,
-  `priorita_operativa`, `billing_account_id`, `utility_id`,
-  `emittente_soggetto_ruolo_id`.
+  `priorita_operativa` (**stringa**, codice `NORMALE`/`ALTA`/`BASSA`, nullable — non un
+  intero), `billing_account_id`, `utility_id`, `emittente_soggetto_ruolo_id`.
 - **Contatori righe** `commesse_attivita`: `total_attivita`,
   `total_approvate` / `total_non_approvate`, `total_emesse` / `total_non_emesse`,
   `total_prezzo_da_riallineare`.

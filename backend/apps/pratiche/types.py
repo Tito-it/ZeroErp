@@ -221,6 +221,8 @@ class CodaLavoroRow(TypedDict):
     tipo_prestazione_codice: str
     template_flusso_codice: str | None
     template_flusso_desc: str | None
+    # stato_flusso_codice = display (mutabile); _interno = logica (immutabile, severity).
+    stato_flusso_codice_interno: str
     stato_flusso_codice: str
     sequenza: int
     data_scadenza: str | None

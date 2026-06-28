@@ -77,7 +77,7 @@ function onPrendiInCarico(item, event) {
           <div class="coda-item-title">{{ item.pratica_codice }}</div>
           <div class="coda-item-desc">{{ item.template_flusso_codice || item.template_flusso_desc }}</div>
           <div class="coda-item-meta">
-            <Tag :value="item.stato_flusso_codice" :severity="statoFlussoSeverity(item.stato_flusso_codice)" size="small" />
+            <Tag :value="item.stato_flusso_codice" :severity="statoFlussoSeverity(item.stato_flusso_codice_interno)" size="small" />
             <!-- Azione specifica per livello -->
             <Tag v-if="item.livello === 'ASSEGNATO'" :value="item.priorita_codice" :severity="prioritaPraticaSeverity(item.priorita_codice)" size="small" />
             <Button

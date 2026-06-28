@@ -192,8 +192,8 @@ ATTIVO_OK=0
 if [[ "$LAST_STATUS" == "200" ]]; then
     log_ok "POST /emetti/ → ATTIVO"
     do_curl GET "/api/v1/vendite/contratti/${CONTRATTO_ID}/"
-    # Il contratto espone `stato_codice` (non stato_codice_interno come prev/ordini).
-    ST=$(json_get "$LAST_BODY" "data.stato_codice")
+    # Logica su stato_codice_interno (immutabile); il display sarebbe stato_descrizione.
+    ST=$(json_get "$LAST_BODY" "data.stato_codice_interno")
     [[ "$ST" == "ATTIVO" ]] && { log_ok "stato = ATTIVO"; ATTIVO_OK=1; } \
         || log_fail "stato atteso ATTIVO, trovato '$ST'"
 else

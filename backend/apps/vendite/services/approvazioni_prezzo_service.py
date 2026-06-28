@@ -213,7 +213,7 @@ def _get_tipo_prestazione_id() -> int:
     if _TIPO_PRESTAZIONE_ID_CACHE is None:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT id FROM pratiche.tipi_prestazione WHERE codice = %s AND attivo = true",
+                "SELECT id FROM pratiche.tipi_prestazione WHERE codice_interno = %s AND attivo = true",
                 [TIPO_PRESTAZIONE_CODICE],
             )
             row = cursor.fetchone()

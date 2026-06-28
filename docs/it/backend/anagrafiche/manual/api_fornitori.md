@@ -59,6 +59,10 @@ Restituisce l'elenco paginato dei fornitori con ricerca full-text e filtri.
 
 ### Risposta (200)
 
+> **Naming (2026-06-28)**: `stato_codice_interno` è il codice **immutabile** dello stato
+> (per la logica/severity: `AT`/`SO`/`CE`/…); `stato_codice` porta il `codice` **mutabile**
+> (display). Per il display preferire `stato_descrizione`. Vedi linee-guida-sql.md §6c.
+
 ```json
 {
   "data": {
@@ -71,6 +75,7 @@ Restituisce l'elenco paginato dei fornitori con ricerca full-text e filtri.
         "id": 1,
         "codice": "FO-000001",
         "attivo": true,
+        "stato_codice_interno": "AT",
         "stato_codice": "AT",
         "stato_descrizione": "Attivo",
         "blocca_ordini": false,
@@ -229,6 +234,7 @@ Restituisce il dettaglio completo di un fornitore con dati soggetto e decodifich
     "pec_email": "acme@pec.it",
     "rating": 80,
     "qualifica_scadenza": null,
+    "stato_codice_interno": "AT",
     "stato_codice": "AT",
     "stato_descrizione": "Attivo",
     "blocca_ordini": false,

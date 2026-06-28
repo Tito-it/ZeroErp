@@ -126,7 +126,7 @@ class TestClientiListDetail(TestCase):
         """Dettaglio cliente completo."""
         mock_repo.return_value.get_cliente.return_value = {
             "id": 1, "soggetto_id": FAKE_UUID, "ragione_sociale_completa": "Rossi",
-            "ba_codice": "BA-001", "stato_codice": "AT",
+            "ba_codice": "BA-001", "stato_codice_interno": "AT", "stato_codice": "AT",
         }
         from apps.anagrafiche.services.clienti_service import ClientiService
         result = ClientiService().get_cliente(1)

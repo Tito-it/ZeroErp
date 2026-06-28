@@ -64,7 +64,7 @@ def _testata_default() -> dict[str, object]:
         "istanza_utility_id": 20,
         "utility_id": 3,
         "stato_doc_contratto_id": 1,
-        "stato_codice": "DRAFT",
+        "stato_codice_interno": "DRAFT",
         "valido_dal": date.today() - timedelta(days=1),
         "listino_id": 100,
         "tipo_variazione_globale": "PERCENTUALE",
@@ -147,7 +147,7 @@ class ContrattiServiceTests(TestCase):
         repo.list_righe.return_value = []
         repo.list_righe_preview.return_value = []
         repo.get_capabilities.return_value = {
-            "stato_codice": "ATTIVO",
+            "stato_codice_interno": "ATTIVO",
             "available_actions": [{
                 "key": "cessa", "target_state": "CESSATO",
                 "label_key": "contratti.azione_cessa",
@@ -573,7 +573,7 @@ class ContrattiServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_contratto.return_value = {
             **_testata_default(),
-            "stato_codice": "ATTIVO",
+            "stato_codice_interno": "ATTIVO",
             "categoria_cliente_id_snapshot": 1,
         }
 
@@ -590,7 +590,7 @@ class ContrattiServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_contratto.return_value = {
             **_testata_default(),
-            "stato_codice": "ATTIVO",
+            "stato_codice_interno": "ATTIVO",
         }
         repo.update_contratto.return_value = True
         repo.get_utility.return_value = None
@@ -610,7 +610,7 @@ class ContrattiServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_contratto.return_value = {
             **_testata_default(),
-            "stato_codice": "CESSATO",
+            "stato_codice_interno": "CESSATO",
         }
 
         with self.assertRaises(ServiceError) as ctx:
@@ -625,7 +625,7 @@ class ContrattiServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_contratto.return_value = {
             **_testata_default(),
-            "stato_codice": "ATTIVO",
+            "stato_codice_interno": "ATTIVO",
         }
 
         with self.assertRaises(ServiceError) as ctx:
@@ -647,7 +647,7 @@ class ContrattiServiceTests(TestCase):
         repo.get_riga.return_value = {"id": 99, "contratto_id": 1}
         repo.get_contratto.return_value = {
             **_testata_default(),
-            "stato_codice": "ATTIVO",
+            "stato_codice_interno": "ATTIVO",
         }
 
         with self.assertRaises(ServiceError) as ctx:
@@ -663,7 +663,7 @@ class ContrattiServiceTests(TestCase):
         repo.get_riga.return_value = {"id": 99, "contratto_id": 1}
         repo.get_contratto.return_value = {
             **_testata_default(),
-            "stato_codice": "ATTIVO",
+            "stato_codice_interno": "ATTIVO",
         }
 
         with self.assertRaises(ServiceError) as ctx:
@@ -678,7 +678,7 @@ class ContrattiServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_contratto.return_value = {
             **_testata_default(),
-            "stato_codice": "ATTIVO",
+            "stato_codice_interno": "ATTIVO",
         }
 
         with self.assertRaises(ServiceError) as ctx:
@@ -699,7 +699,7 @@ class ContrattiServiceTests(TestCase):
         repo.update_stato.return_value = True
         repo.get_contratto.return_value = {
             **_testata_default(),
-            "stato_codice": "CESSATO",
+            "stato_codice_interno": "CESSATO",
         }
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
@@ -711,7 +711,7 @@ class ContrattiServiceTests(TestCase):
         # update_contratto chiamato per valido_al, poi update_stato.
         repo.update_contratto.assert_called_once_with(1, {"valido_al": ieri})
         repo.update_stato.assert_called_once_with(1, 5)
-        self.assertEqual(result["stato_codice"], "CESSATO")
+        self.assertEqual(result["stato_codice_interno"], "CESSATO")
 
     # Scopo: cessazione PROGRAMMATA (valido_al futura) -> applica solo
     #        PATCH valido_al, lo stato resta invariato. Il job notturno
@@ -727,7 +727,7 @@ class ContrattiServiceTests(TestCase):
         repo.update_contratto.return_value = True
         repo.get_contratto.return_value = {
             **_testata_default(),
-            "stato_codice": "ATTIVO",  # stato resta ATTIVO post-call
+            "stato_codice_interno": "ATTIVO",  # stato resta ATTIVO post-call
         }
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
@@ -739,7 +739,7 @@ class ContrattiServiceTests(TestCase):
         # Solo PATCH valido_al; UPDATE stato NON chiamato (programmazione).
         repo.update_contratto.assert_called_once_with(1, {"valido_al": domani})
         repo.update_stato.assert_not_called()
-        self.assertEqual(result["stato_codice"], "ATTIVO")
+        self.assertEqual(result["stato_codice_interno"], "ATTIVO")
 
     # Scopo: cessazione data ODIERNA -> cessazione IMMEDIATA. La data == oggi
     #        non e' programmazione futura: il contratto passa subito a CESSATO
@@ -757,7 +757,7 @@ class ContrattiServiceTests(TestCase):
         repo.update_stato.return_value = True
         repo.get_contratto.return_value = {
             **_testata_default(),
-            "stato_codice": "ATTIVO",
+            "stato_codice_interno": "ATTIVO",
         }
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
@@ -973,7 +973,7 @@ class ContrattiServiceTests(TestCase):
         repo.resolve_contesto_pricing_contratto.return_value = {
             "contratto_id": 1,
             "forma": "con_listino",
-            "stato_codice": "ATTIVO",
+            "stato_codice_interno": "ATTIVO",
             "listino_id": 100,
             "listino_codice": "LST-001",
             "listino_versione_id": 5,
@@ -1859,7 +1859,7 @@ class ContrattiServiceComponentiTests(TestCase):
             "componente_id": 100,
             "riga_contratto_id": 99,
             "contratto_id": 1,
-            "stato_codice": "DRAFT",
+            "stato_codice_interno": "DRAFT",
         }
         repo_cls.return_value = repo
 
@@ -2092,7 +2092,7 @@ class ContrattiServiceComponentiTests(TestCase):
             "componente_id": 100,
             "riga_contratto_id": 5,
             "contratto_id": 1,
-            "stato_codice": "DRAFT",
+            "stato_codice_interno": "DRAFT",
         }
         repo.delete_componente.return_value = True
         repo_cls.return_value = repo

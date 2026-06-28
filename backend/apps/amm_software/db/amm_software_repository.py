@@ -1175,13 +1175,18 @@ class AmmSoftwareRepository:
         where_clause = " AND ".join(conditions)
 
         # Genera una subquery per ogni area funzionale.
-        # I codici area provengono dal DB (config.aree_funzionali) — validati come
-        # identificatori sicuri (solo alfanumerici + underscore) per prevenire injection.
+        # `fn_resolve_livello_area` matcha sulla colonna IMMUTABILE
+        # `aree_funzionali.schema_db` (chiave tecnica), NON sul `codice`
+        # (etichetta mutabile rinominabile dall'utente): l'arg deve essere
+        # `schema_db`. L'alias colonna resta su `codice` perche' il FE mappa le
+        # colonne `area_<codice>` con la lista `aree` ricevuta in parallelo.
+        # Entrambi validati come identificatori sicuri (solo alfanumerici +
+        # underscore) per prevenire injection.
         _SAFE_IDENT = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
         area_columns = ", ".join(
-            f"script.fn_resolve_livello_area(au.id, '{a['codice']}')::text AS area_{a['codice']}"
+            f"script.fn_resolve_livello_area(au.id, '{a['schema_db']}')::text AS area_{a['codice']}"
             for a in aree
-            if _SAFE_IDENT.match(a['codice'])
+            if _SAFE_IDENT.match(a['codice']) and _SAFE_IDENT.match(a['schema_db'])
         )
 
         sql = f"""
@@ -1224,7 +1229,8 @@ class AmmSoftwareRepository:
     def list_aree_funzionali(self) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT id, codice, descrizione, ordinamento
+                """SELECT id, codice, codice_interno, schema_db, descrizione,
+                          ordinamento
                      FROM config.aree_funzionali
                     WHERE attivo = true
                     ORDER BY ordinamento, codice"""

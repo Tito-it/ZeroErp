@@ -330,6 +330,7 @@ _VERSIONI_PROJECTION = """
     v.titolo,
     v.formato_template,
     v.render_engine_id,
+    re.codice_interno    AS render_engine_codice_interno,
     re.codice            AS render_engine_codice,
     re.descrizione       AS render_engine_descrizione,
     v.page_format,
@@ -1069,11 +1070,12 @@ class DocumentiRepository:
             assert row is not None
             return int(row[0])
 
-    # Scopo: Lookup tipo file per codice (es. 'PDF_FINALE'). v1 seed minimo
-    #        contiene un solo codice. Usato dall'orchestratore per ottenere
-    #        l'`id` da passare a `create_documento_generato_file.file_tipo_id`
-    #        senza hardcodare ID numerici (memoria
-    #        feedback_no_hardcoded_ids).
+    # Scopo: Lookup tipo file per codice_interno (es. 'PDF_FINALE'). Match
+    #        sulla colonna IMMUTABILE codice_interno (non `codice`, che e'
+    #        l'etichetta a video mutabile). Usato dall'orchestratore per
+    #        ottenere l'`id` da passare a
+    #        `create_documento_generato_file.file_tipo_id` senza hardcodare ID
+    #        numerici (memoria feedback_no_hardcoded_ids).
     def get_tipo_file_documento_by_codice(
         self, codice: str
     ) -> dict[str, Any] | None:
@@ -1082,7 +1084,7 @@ class DocumentiRepository:
                 """
                 SELECT id, codice, attivo
                   FROM documenti.tipi_file_documento
-                 WHERE codice = %s
+                 WHERE codice_interno = %s
                 """,
                 [codice],
             )
@@ -1095,9 +1097,10 @@ class DocumentiRepository:
     # Lookup sorgente + lista documenti generati (Tranche K)
     # =================================================================
 
-    # Scopo: Lookup `config.sorgenti.id` per codice (es. 'PREVENTIVO').
-    #        Usato dal caller (es. view di dominio Tranche K) per evitare
-    #        ID numerici hardcoded a livello applicativo.
+    # Scopo: Lookup `config.sorgenti.id` per codice_interno (es. 'PREVENTIVO').
+    #        Match sulla colonna IMMUTABILE codice_interno (non `codice`
+    #        mutabile). Usato dal caller (es. view di dominio Tranche K) per
+    #        evitare ID numerici hardcoded a livello applicativo.
     def get_sorgente_tipo_id_by_codice(
         self, codice: str
     ) -> dict[str, Any] | None:
@@ -1106,7 +1109,7 @@ class DocumentiRepository:
                 """
                 SELECT id, codice, attivo
                   FROM config.sorgenti
-                 WHERE codice = %s
+                 WHERE codice_interno = %s
                 """,
                 [codice],
             )

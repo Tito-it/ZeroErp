@@ -106,9 +106,9 @@ const righeCount = computed(() => detail.value?.righe_count ?? detail.value?.rig
 // Prima usava `!canEditTestata` (true in ATTIVO/ANNULLATO perche' la fn DB
 // considera ATTIVO parzialmente editabile) -> sub-drawer righe restava
 // erroneamente editabile in stati terminali. Allineato al footer
-// Salva/Chiudi che gia' usa stato_codice === 'DRAFT'.
+// Salva/Chiudi che gia' usa stato_codice_interno === 'DRAFT'.
 const isContractLocked = computed(
-  () => isEdit.value && detail.value?.stato_codice !== 'DRAFT',
+  () => isEdit.value && detail.value?.stato_codice_interno !== 'DRAFT',
 )
 
 // isReadonly effettivo del drawer: OR tra permessi area e stato post-DRAFT.
@@ -409,7 +409,7 @@ function buildPayload() {
   // - DRAFT: tutti i campi
   // - ATTIVO: solo valido_al + meta (programma cessazione + note)
   // - CESSATO: nessuno (Salva non dovrebbe nemmeno essere cliccabile)
-  const stato = isEdit.value ? (detail.value?.stato_codice || null) : 'DRAFT'
+  const stato = isEdit.value ? (detail.value?.stato_codice_interno || null) : 'DRAFT'
   const isDraft = stato === 'DRAFT'
 
   if (!isDraft) {
@@ -707,7 +707,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
           <template #status>
             <Tag
               :value="detail.stato_descrizione"
-              :severity="statoContrattoSeverity(detail.stato_codice)"
+              :severity="statoContrattoSeverity(detail.stato_codice_interno)"
             />
           </template>
         </DrawerEntityHeader>
@@ -717,7 +717,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.CONTRATTO"
               :entity-id="props.contrattoId"
-              :stato-codice="detail.stato_codice"
+              :stato-codice="detail.stato_codice_interno"
               :stati-preview="STATI_CONTRATTO_ANTEPRIMA_PDF"
               :stati-con-documento="STATI_CONTRATTO_CON_DOCUMENTO"
               i18n-prefix="contratti.pdf"
@@ -731,11 +731,11 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
         <!-- Banner contratto bloccato: in stati post-DRAFT ammessa solo
              modifica valido_al (programma cessazione) + cambio stato.
              Coerente con Profilo A whitelist BE. -->
-        <Message v-if="isContractLocked && detail.stato_codice !== 'CESSATO'"
+        <Message v-if="isContractLocked && detail.stato_codice_interno !== 'CESSATO'"
           severity="info" :closable="false" size="small" class="mt-2">
           {{ t('contratti.banner_locked_attivo', { stato: detail.stato_descrizione }) }}
         </Message>
-        <Message v-else-if="isContractLocked && detail.stato_codice === 'CESSATO'"
+        <Message v-else-if="isContractLocked && detail.stato_codice_interno === 'CESSATO'"
           severity="warn" :closable="false" size="small" class="mt-2">
           {{ t('contratti.banner_locked_cessato') }}
         </Message>
@@ -845,13 +845,13 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
              - CESSATO: readonly come "Data cessazione" -->
         <div class="form-field"
           v-if="!isEdit
-            || detail?.stato_codice === 'DRAFT'
-            || detail?.stato_codice === 'CESSATO'
-            || (form.valido_al && detail?.stato_codice === 'ATTIVO')">
+            || detail?.stato_codice_interno === 'DRAFT'
+            || detail?.stato_codice_interno === 'CESSATO'
+            || (form.valido_al && detail?.stato_codice_interno === 'ATTIVO')">
           <label>
-            {{ detail?.stato_codice === 'CESSATO'
+            {{ detail?.stato_codice_interno === 'CESSATO'
               ? t('contratti.field_data_cessazione')
-              : detail?.stato_codice === 'ATTIVO' && form.valido_al
+              : detail?.stato_codice_interno === 'ATTIVO' && form.valido_al
                 ? t('contratti.field_cessazione_programmata')
                 : t('contratti.field_valido_al') }}
           </label>
@@ -945,17 +945,17 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
           <label>{{ t('contratti.field_tipo_utenza') }}</label>
           <LookupSelect v-model="form.utility_tipo_utenza_id" rel="config.tipi_utenze" class="w-full"
             :placeholder="t('contratti.select_tipo_utenza')" show-clear
-            :disabled="isEdit && detail?.stato_codice !== 'DRAFT'" />
+            :disabled="isEdit && detail?.stato_codice_interno !== 'DRAFT'" />
         </div>
         <div class="form-field">
           <label>{{ t('contratti.field_classe_utenza') }}</label>
           <LookupSelect v-model="form.utility_classe_utenza_id" rel="config.classi_utenze" class="w-full"
             :placeholder="t('contratti.select_classe_utenza')" show-clear
-            :disabled="isEdit && detail?.stato_codice !== 'DRAFT'" />
+            :disabled="isEdit && detail?.stato_codice_interno !== 'DRAFT'" />
         </div>
       </div>
 
-      <template v-if="isEdit && detail && detail.stato_codice !== 'DRAFT'">
+      <template v-if="isEdit && detail && detail.stato_codice_interno !== 'DRAFT'">
         <h4 class="mt-3">{{ t('contratti.pdf.section_documenti') }}</h4>
         <!-- L'escape dal contenuto `app-readonly` e' ora applicato dal BB
              stesso alla sua radice (azioni di sola lettura). -->
@@ -978,7 +978,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
            Quindi UX: mostrare solo Chiudi sgombera il footer da azioni
            ingannevoli ("Salva" semanticamente non porta a nessuna modifica
            visibile per l'operatore in ATTIVO). -->
-      <FormFooter v-if="!isReadonly && (!detail || detail.stato_codice === 'DRAFT')"
+      <FormFooter v-if="!isReadonly && (!detail || detail.stato_codice_interno === 'DRAFT')"
         :loading="loading" :disabled="!canSave"
         @save="handleSave" @cancel="onClose" />
       <!-- Fallback close-only: stati post-DRAFT o LETTURA. Footer dedicato
@@ -1001,7 +1001,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
       :contratto-cliente="detail.ba_ragione_sociale"
       :contratto-valido-dal="detail.valido_dal"
       :contratto-valido-al="detail.valido_al"
-      :contratto-stato-codice="detail.stato_codice"
+      :contratto-stato-codice="detail.stato_codice_interno"
       :contratto-stato-descrizione="detail.stato_descrizione"
       @changed="refreshDetail"
     />

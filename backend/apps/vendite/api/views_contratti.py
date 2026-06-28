@@ -441,7 +441,7 @@ class ApiContrattoContestoPricing(DomainAPIView):
                     "forma": serializers.CharField(
                         help_text="'con_listino' | 'senza_listino'",
                     ),
-                    "stato_codice": serializers.CharField(),
+                    "stato_codice_interno": serializers.CharField(),
                     "listino_id": serializers.IntegerField(allow_null=True),
                     "listino_codice": serializers.CharField(allow_null=True),
                     "listino_descrizione": serializers.CharField(allow_null=True),

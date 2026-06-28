@@ -46,7 +46,10 @@ def _testata_row(*, listino_id: int | None = 100) -> dict[str, Any]:
         "valido_al": None,
         "parent_contratto_id": None,
         "stato_doc_contratto_id": 1,
-        "stato_codice": "ATTIVO",
+        # codice = display (mutabile), codice_interno = logica (immutabile): valori
+        # DISTINTI per provare che il builder li mappa dalla colonna giusta.
+        "stato_codice": "ATT",
+        "stato_codice_interno": "ATTIVO",
         "stato_descrizione": "Attivo",
         "listino_id": listino_id,
         "listino_codice": "LIS-2026" if listino_id else None,
@@ -95,6 +98,9 @@ class BuildContextContrattoTests(SimpleTestCase):
         self.assertEqual(ctx["contratto"]["data"], "06-05-2026")
         self.assertEqual(ctx["contratto"]["data_iso"], "2026-05-06")
         self.assertEqual(ctx["contratto"]["valido_dal"], "01-05-2026")
+        # Stato: codice = display ('ATT'), codice_interno = logica ('ATTIVO').
+        self.assertEqual(ctx["contratto"]["stato"]["codice"], "ATT")
+        self.assertEqual(ctx["contratto"]["stato"]["codice_interno"], "ATTIVO")
         self.assertEqual(ctx["contratto"]["pricing"]["modalita"], "A")
         self.assertEqual(ctx["cliente"]["denominazione"], "Cliente Contratto Srl")
         self.assertEqual(ctx["righe"], ctx["righe_preview"])

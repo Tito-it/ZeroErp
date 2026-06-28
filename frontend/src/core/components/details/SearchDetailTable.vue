@@ -41,9 +41,9 @@ const { detailRows, loading } = useSearchDetail(props)
       <Column v-if="variant === 'cliente'" field="stato_descrizione" :header="t('search.detail_status')" style="width: 130px">
         <template #body="{ data }">
           <Tag
-            v-if="data.stato_codice"
+            v-if="data.stato_codice_interno"
             :value="data.stato_descrizione"
-            :severity="STATO_CLIENTE_MAP[(data.stato_codice || '').trim()] || 'secondary'"
+            :severity="STATO_CLIENTE_MAP[(data.stato_codice_interno || '').trim()] || 'secondary'"
           />
           <span v-else>-</span>
         </template>

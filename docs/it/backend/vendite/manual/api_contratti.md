@@ -107,7 +107,9 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 > (lista configurabile `vendite.contratti`, ritiro dinamico colonne lato FE).
 > I campi display usano i **nomi canonici della vista** — cliente =
 > `ragione_sociale_completa`, id. fiscale = `id_fiscale_univoco_cf_piva` (niente
-> alias `ba_*`); stato = `stato_descrizione` + `stato_codice`. Il **dettaglio**
+> alias `ba_*`); stato = `stato_descrizione` (display) + `stato_codice` (codice
+> **mutabile**, display) + `stato_codice_interno` (codice **immutabile**, per la logica —
+> es. confronti `DRAFT`/`ATTIVO`/`CESSATO`; vedi linee-guida-sql.md §6c). Il **dettaglio**
 > (`GET .../<id>/`) conserva invece i nomi storici (`ba_ragione_sociale`,
 > `id_fiscale`): è una fonte diversa (JOIN su tabelle base, non la vista).
 
@@ -507,7 +509,7 @@ Ritorna la "forma" derivata e i riferimenti pricing per il banner FE:
   "data": {
     "contratto_id": 42,
     "forma": "con_listino",
-    "stato_codice": "ATTIVO",
+    "stato_codice_interno": "ATTIVO",
     "listino_id": 100,
     "listino_codice": "LST-001",
     "listino_descrizione": "Listino energia 2026",
@@ -785,7 +787,7 @@ Il dettaglio (`GET /<id>/`) include:
   "data": {
     "id": 1, "numero": "CNT0000001", "billing_account_id": 10,
     "ba_ragione_sociale": "...", "utility_id": 3, "utility_codice": "GAS",
-    "stato_codice": "DRAFT", "stato_descrizione": "Bozza",
+    "stato_codice_interno": "DRAFT", "stato_codice": "DRAFT", "stato_descrizione": "Bozza",
     "listino_id": 100, "listino_codice": "LST-GAS-2026",
     "tipo_variazione_globale": "PERCENTUALE", "valore_variazione_globale": "10",
     "categoria_cliente_id_snapshot": 3,

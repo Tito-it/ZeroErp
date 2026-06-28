@@ -208,7 +208,7 @@ onMounted(() => {
 
         <!-- Stato cliente: tag colorato per severity. -->
         <template #cell-stato="{ data }">
-          <Tag :value="data.stato_descrizione" :severity="statoClienteSeverity(data.stato_codice)" />
+          <Tag :value="data.stato_descrizione" :severity="statoClienteSeverity(data.stato_codice_interno)" />
         </template>
 
         <template #actions="{ data, compact }">

@@ -223,7 +223,9 @@ grep -rEn "codice_interno[[:space:]]+AS[[:space:]]+[a-z_]*codice\b" db/ \
 grep -rEn "[^_]codice[[:space:]]+AS[[:space:]]+[a-z_]*codice_interno\b" db/ && exit 1  # codice AS *_codice_interno
 ```
 
-> **Bonifica in corso (2026-06-28)**: 6 oggetti DB violano la regola (`vw_contratti_lista`, `script.fn_available_actions_contratto`, `vw_clienti_lista`, `vw_clienti_codice_ba`, `vw_fornitori_dettaglio`, `fn_coda_lavoro_operatore`) — tracciata in [brief-naming-stato-codice-interno.md](dev/work-in-progress/brief-naming-stato-codice-interno.md).
+> **Bonifica completata (2026-06-28)**: i mislabel DB sono stati corretti (sweep
+> `20260628-02..11`) e la regola è applicata da un guardrail CI bloccante
+> (`scripts/sql/check_naming_stato_codice.sql`). Storia in [brief-naming-stato-codice-interno.md](dev/work-done/brief-naming-stato-codice-interno.md).
 
 ---
 

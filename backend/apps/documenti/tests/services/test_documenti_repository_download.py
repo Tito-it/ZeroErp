@@ -85,7 +85,7 @@ class GetSorgenteTipoIdByCodiceTests(TestCase):
         )
         sql, params = cursor_ok.execute.call_args_list[0].args
         self.assertIn("FROM config.sorgenti", sql)
-        self.assertIn("WHERE codice = %s", sql)
+        self.assertIn("WHERE codice_interno = %s", sql)
         self.assertEqual(params, ["PREVENTIVO"])
 
         cursor_none = _mk_cursor(fetchone_results=[None])

@@ -73,7 +73,7 @@ function onContiBancari(data) {
 // Scopo: Determina se il BA ammette la creazione di nuovi contratti.
 // Regola attuale: blocca su stato CESSATO/CHIUSO (estendibile).
 function resolveCanCreateContratto(cliente) {
-  const stato = (cliente?.stato_codice || '').toUpperCase()
+  const stato = (cliente?.stato_codice_interno || '').toUpperCase()
   if (stato === 'CESSATO' || stato === 'CHIUSO') {
     return { canCreate: false, reason: t('clienti.ba_chiuso_no_contratti') }
   }

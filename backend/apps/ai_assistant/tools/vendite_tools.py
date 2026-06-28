@@ -104,7 +104,7 @@ class CercaContrattiTool(AITool):
         "categoria_cliente": "categoria_cliente_snapshot_codice",
         "valido_dal": "valido_dal",
         "valido_al": "valido_al",
-        "stato": "stato_codice",
+        "stato": "stato_codice_interno",
         "stato_descrizione": "stato_descrizione",
     }
 
@@ -200,7 +200,7 @@ class DettaglioContrattoTool(AITool):
             "cliente_codice": contratto.get("ba_codice"),
             "utility": contratto.get("utility_codice"),
             "ambito": contratto.get("ambito"),
-            "stato": contratto.get("stato_codice"),
+            "stato": contratto.get("stato_codice_interno"),
             "stato_descrizione": contratto.get("stato_descrizione"),
             "listino": contratto.get("listino_codice"),
             "tipo_variazione_globale": contratto.get("tipo_variazione_globale"),
