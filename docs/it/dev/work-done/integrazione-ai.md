@@ -275,14 +275,21 @@ Queste garanzie devono essere esplicite nel prompt di sistema inviato all'LLM ad
 
 ## Considerazioni di sicurezza
 
-### Autorizzazioni
-L'endpoint `/api/ai/query/` è soggetto alle stesse autorizzazioni JWT del resto delle API. L'LLM opera con i permessi dell'utente autenticato: se un operatore non può vedere le fatture, l'AI non gliele mostrerà — perché le API restituiranno 403.
+> **Principio**: la prompt injection **non è eliminabile**; la difesa è il **blast radius**
+> (limitare i danni se accade), non il system prompt. Versione estesa e autorevole nella
+> [guida AI §4](../../guide/integrazione-ai.md). Sintesi qui sotto.
 
-### Prompt injection
-Testo proveniente dal database (nomi clienti, note libere, descrizioni) non deve mai essere inserito nel prompt di sistema. Va trattato come dato, non come istruzione.
+### Pilastri (le difese vere)
+- **Permessi**: il catalogo strumenti è filtrato per area/livello — un'operazione vietata all'utente **non è nemmeno offerta** all'AI (lo strumento non esiste nel suo catalogo).
+- **RLS**: le tabelle sensibili (`vendite.fatture`, `vendite.fatturazione_lotti`, ...) filtrano le righe per contesto operatore — un tool di lettura restituisce **solo** ciò che l'utente vedrebbe nella UI.
+- **Conferma umana** sulle scritture: preview + confirm, parametri ripresi dallo stato server, permessi **da ri-verificare a execution-time** (vedi [analisi-sicurezza-aggiornata.md](analisi-sicurezza-aggiornata.md) §2).
+- **Nessuna esfiltrazione**: il widget mostra solo testo + link interni. Da preservare in v2: **mai** immagini/risorse esterne caricate dall'output AI.
 
-### Audit trail
-Ogni chiamata AI viene loggata: input utente, tool chiamati, parametri, timestamp, utente autenticato. Questo è coerente con il meccanismo di audit già definito in ZeroERP (correlazione `request_id`).
+### Igiene (NON difesa principale)
+Mettere i dati nel `tool_result` **non** protegge dalla prompt injection: per il modello è lo stesso flusso del system prompt. È igiene contro injection *diretta* e *invenzioni* (CF/PIVA/importi). La protezione vera resta il blast radius (pilastri sopra).
+
+### Audit
+Ogni chiamata è loggata in `dbops.ai_query_log` (`request_id` correla con `request_log` HTTP). Oltre alla tracciabilità è il **sistema di rilevamento anomalie**: per le scritture confermate il logging va reso **affidabile** (alert se fallisce), non best-effort.
 
 ---
 

@@ -1,15 +1,32 @@
-# Brief DB — Sospensioni pratiche: anti-overlap + guard data manuale
+# Brief — Sospensioni pratiche: anti-overlap + guard data manuale
 
-> **Tipo documento**: brief operativo **per il team DB** (canale `dev/db-tid`).
-> Spiega *cosa* fare e *perché*; **non contiene DDL pronto** (lo scrive il team
-> DB nel changelog liquibase, secondo template e convenzioni del repo).
+> **Tipo documento**: brief operativo originato per il team DB (canale
+> `dev/db-tid`), ora **esteso col piano di sviluppo applicativo BE/FE**.
 >
-> **Data**: 2026-06-26 · **Stato**: 🔴 **DA FARE**
+> **Data**: 2026-06-26 · **Stato**: ✅ **COMPLETATO** (DB + BE/FE + smoke E2E manuale
+> fatti; test BE verdi, build FE verde)
 >
 > **Origine**: nuova UI di gestione sospensioni/riattivazioni pratiche con
 > **data/ora inserita manualmente** (anche retroattiva). Decisione di prodotto
 > (Tid, 2026-06-26): la soluzione dev'essere completa e difesa a DB, niente
 > guard solo applicativo.
+
+---
+
+## 0. Stato e roadmap del cantiere
+
+| Fase | Cosa | Stato |
+|---|---|---|
+| **DB** | EXCLUDE `ex_sospensioni_no_overlap` (framework `dbops.automazione_overlap`, scope `(pratica_id, COALESCE(flusso_id,-1))`, totale) + trigger `a10` `trgfn_sospensioni_guard_data_non_futura` (tolleranza 2 min) + codici `E_SOSPENSIONE_OVERLAP` (498) / `E_SOSPENSIONE_DATA_FUTURA` (499) + pgTAP | ✅ **FATTO** — vedi [brief-db-…_db.md](brief-db-sospensioni-anti-overlap-data-manuale_db.md) |
+| **FE-1** | Tab "Sospensioni" di sola visualizzazione (storico) tra Allegati e Giornale | ✅ **FATTO** (no dipendenza DB) — `PraticaSospensioniTab.vue` |
+| **BE** | Parametrizzazione date + mapping errori DB + API + test (253 verdi) | ✅ **FATTO** (§6.A) |
+| **FE-2** | `SospensionePraticaDialog` (AppDialog) condiviso + wiring pulsanti Sospendi/Riattiva + refresh tab + i18n | ✅ **FATTO** (§6.B) |
+| **Smoke** | E2E manuale: retroattiva ok / overlap 409 / data futura 422 | ✅ **FATTO** (§6.C) |
+
+> ⚠️ Rispetto all'ipotesi iniziale di questo brief, il team DB ha cambiato due
+> cose (vedi brief `_db`): l'anti-overlap è un **EXCLUDE unico via framework**
+> (non due parziali speculari) e la violazione è un **native `23P01`** (non un
+> raise custom) → il BE la mappa per **nome constraint**, come `ex_contratti_no_overlap`.
 
 ---
 
@@ -93,41 +110,84 @@ concetto, vedi 2.3).
 
 ---
 
-## 3. Lato backend (lo faccio io dopo l'OK DB — qui solo per contesto)
-
-Non è lavoro del team DB, ma spiega perché servono i vincoli sopra:
-
-- `pratiche_repository.create_sospensione`: `data_inizio` diventa parametro
-  (default `NOW()` se non passato) invece di `NOW()` hardcoded.
-- `pratiche_repository.chiudi_sospensione`: `data_fine` diventa parametro.
-- `pratiche_service.sospendi_pratica` / `riattiva_pratica`: accettano e validano
-  `data_inizio` / `data_fine` ISO; mappano gli errori DB
-  (`E_SOSPENSIONE_OVERLAP`, `E_SOSPENSIONE_DATA_FUTURA`) sul codice/HTTP.
-- API `sospendi/` e `riattiva/`: nuovi campi opzionali nel payload.
-
-La validazione applicativa è **difesa in profondità**, non sostituisce i vincoli
-DB (DB-first): il DB resta l'autorità.
+> **NB**: le sezioni §1–§2 sopra documentano i requisiti DB originali. La sezione
+> §6 sotto è il **piano di sviluppo applicativo reale** (approvato Tid 2026-06-26)
+> che sostituisce la vecchia bozza "lato backend". I vincoli DB descritti sono già
+> implementati (vedi §0 + brief `_db`).
 
 ---
 
-## 4. Test attesi (pgTAP)
+## 6. Piano di sviluppo applicativo BE/FE (approvato — IN CORSO)
 
-- INSERT sospensione che si sovrappone a una già chiusa stesso scope → errore
-  `E_SOSPENSIONE_OVERLAP`.
-- INSERT sospensione di **flusso** sovrapposta a una di **pratica** stesso
-  periodo → **ammessa** (scope diversi: sono due assi indipendenti) — confermare
-  che questo è il comportamento voluto con Tid se in dubbio.
-- INSERT con `data_inizio` futura → `E_SOSPENSIONE_DATA_FUTURA`.
-- UPDATE `data_fine` futura → `E_SOSPENSIONE_DATA_FUTURA`.
-- INSERT due sospensioni storiche **non** sovrapposte stesso scope → ok.
-- `data_riattivazione_prevista` futura → ok (non bloccata).
+### 6.A Backend
+
+**1. Repository** [`pratiche_repository.py`](../../../../backend/apps/pratiche/db/pratiche_repository.py)
+— parametrizzare le date (oggi `NOW()` hardcoded), default `None` retro-compatibile:
+- `create_sospensione(..., data_inizio: str | None = None)` →
+  `VALUES (..., COALESCE(%s::timestamptz, NOW()), ...)`.
+- `chiudi_sospensione(sospensione_id, data_fine: str | None = None)` →
+  `SET data_fine = COALESCE(%s::timestamptz, NOW())`.
+
+**2. Service** [`pratiche_service.py`](../../../../backend/apps/pratiche/services/pratiche_service.py):
+- `sospendi_pratica(..., data_inizio=None)` e `riattiva_pratica(..., data_fine=None)`:
+  passano la data al repository.
+- **Overlap** = native `23P01 IntegrityError` su `ex_sospensioni_no_overlap` →
+  mappato con `map_integrity_error` (mappa `{ "ex_sospensioni_no_overlap":
+  (E_SOSPENSIONE_OVERLAP, msg) }`), **stesso pattern di `ex_contratti_no_overlap`**.
+- **Data futura** = `DatabaseError` dal trigger `a10` → nuovo marker in
+  `_KNOWN_DB_ERROR_MARKERS` (`"non puo' essere nel futuro"` →
+  `E_SOSPENSIONE_DATA_FUTURA`), riusa `_raise_known_db_error` esistente.
+
+**3. error_policies** [`error_policies.py`](../../../../backend/apps/core/services/error_policies.py)
+— registrare `E_SOSPENSIONE_OVERLAP` (409) e `E_SOSPENSIONE_DATA_FUTURA` (422) + UI action.
+
+**4. Views** [`views.py`](../../../../backend/apps/pratiche/api/views.py) —
+`ApiPraticaSospendi`/`ApiPraticaRiattiva`: campi opzionali `data_inizio`/`data_fine`
+nel payload + `inline_serializer`/`@extend_schema`.
+
+**5. Test service** (`apps/pratiche/tests/services/`): overlap→409, data_futura→422,
+passthrough date, default `NOW()` invariato (mock `IntegrityError`/`DatabaseError`
+come i test contratti).
+
+### 6.B Frontend
+
+**6. `SospensionePraticaDialog.vue`** (nuovo, `pratiche/components/`, su **AppDialog**)
+— dialog condiviso precaricato con data/ora attuale:
+- modo **sospendi**: `motivo` (Textarea), `data_inizio` (DatePicker `showTime`,
+  default adesso), `data_riattivazione_prevista` (DatePicker data, opz.);
+- modo **riattiva**: `data_fine` (DatePicker `showTime`, default adesso);
+- `@saved` → `store.sospendi`/`store.riattiva` con payload ISO.
+
+**7. [`PraticaDrawer.vue`](../../../../frontend/src/pratiche/components/PraticaDrawer.vue)**
+— i pulsanti **Sospendi/Riattiva** della `DrawerActionsBar` **aprono il dialog**
+(non più chiamata diretta con `NOW()`); su `@saved` ricarica dettaglio + rinfresca tab.
+
+**8. [`PraticaSospensioniTab.vue`](../../../../frontend/src/pratiche/components/PraticaSospensioniTab.vue)**
+— refresh della lista dopo un'azione (key/metodo esposto), storico subito aggiornato.
+
+**9. i18n** it/en — etichette dialog + validazioni.
+
+### 6.C Smoke manuale finale
+Sospendi con data retroattiva → ok; riattiva → ok; tentativo overlap → **409**;
+tentativo data futura → **422**; `data_riattivazione_prevista` futura → ok.
 
 ---
 
-## 5. Aperto / da confermare con Tid
+## 7. Decisioni chiuse / fuori scope
 
-- **Modifica di righe storiche**: la UI v1 non prevede edit/delete di sospensioni
-  già registrate (solo crea sospensione + chiudi/riattiva). Se in futuro
-  serviranno correzioni a posteriori, i vincoli 2.1/2.2 le copriranno comunque.
-- **Overlap cross-livello** (pratica vs flusso sullo stesso istante): assunto
-  **ammesso** (assi indipendenti). Confermare.
+- **Overlap cross-livello** (pratica vs flusso): **ammesso** by-design (assi
+  indipendenti). Chiuso col team DB (brief `_db` §6.1).
+- **Warning ridondanza pratica↔flusso**: avviso UX non bloccante quando si sospende
+  un flusso già coperto da una sospensione di pratica. Riguarda la UI **flusso**,
+  non questo dialog pratica-level → **follow-up applicativo separato** (brief `_db` §7).
+- **Modifica di righe storiche** (edit/delete sospensioni): **non in v1**. I vincoli
+  DB le validano comunque; richiederebbe trigger AFTER UPDATE "correction-aware".
+
+---
+
+## Appendice — Test pgTAP attesi (storico, già implementati dal team DB)
+
+- INSERT sovrapposta a chiusa stesso scope → `23P01` (`E_SOSPENSIONE_OVERLAP`).
+- INSERT flusso sovrapposta a pratica stesso periodo → ammessa (assi indipendenti).
+- `data_inizio`/`data_fine` futura → `E_SOSPENSIONE_DATA_FUTURA`.
+- storiche non sovrapposte → ok; `data_riattivazione_prevista` futura → ok.

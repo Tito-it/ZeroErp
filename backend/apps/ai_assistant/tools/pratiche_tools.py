@@ -306,6 +306,9 @@ class CambiaStatoPraticaTool(AITool):
             required_area="pratiche",
             required_level="TUTTO",
             requires_confirmation=True,
+            # Stessa granularita' fine dell'endpoint UI ApiPraticaStato
+            # (post_permission="cambia_stato_pratica").
+            required_action="cambia_stato_pratica",
         )
 
     # Scopo: Genera il sommario del cambio stato per la conferma.

@@ -36,6 +36,7 @@ class AIQueryLogRepository:
         tokens_output: int | None,
         duration_ms: int | None,
         error_code: str | None,
+        reliable: bool = False,
     ) -> None:
         sql = """
             INSERT INTO dbops.ai_query_log (
@@ -66,9 +67,20 @@ class AIQueryLogRepository:
                     error_code,
                 ])
         except Exception:
-            # Il logging non deve mai bloccare la risposta all'utente
-            logger.warning(
-                "Errore salvataggio ai_query_log per request_id=%s",
-                request_id,
-                exc_info=True,
-            )
+            # Il logging non deve mai bloccare la risposta all'utente.
+            # Ma per le operazioni delicate (scritture confermate, MCP/supporto)
+            # l'audit e' anche il sistema di rilevamento anomalie: un fallimento
+            # va emesso a livello ERROR (alert), non solo WARNING.
+            if reliable:
+                logger.error(
+                    "AUDIT FALLITO su ai_query_log per operazione affidabile "
+                    "(request_id=%s): traccia mancante per operazione confermata/privilegiata.",
+                    request_id,
+                    exc_info=True,
+                )
+            else:
+                logger.warning(
+                    "Errore salvataggio ai_query_log per request_id=%s",
+                    request_id,
+                    exc_info=True,
+                )

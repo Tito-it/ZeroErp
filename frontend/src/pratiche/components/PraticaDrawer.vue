@@ -28,6 +28,7 @@ import PraticaNoteTab from './PraticaNoteTab.vue'
 import PraticaAllegatiTab from './PraticaAllegatiTab.vue'
 import PraticaSospensioniTab from './PraticaSospensioniTab.vue'
 import PraticaGiornaleTab from './PraticaGiornaleTab.vue'
+import SospensionePraticaDialog from './SospensionePraticaDialog.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
@@ -201,11 +202,27 @@ async function executeAction(fn) {
 function onApriPratica() {
   executeAction(() => store.cambiaStato(props.praticaId, { nuovo_stato: STATO_PRATICA.APERTA }))
 }
+
+// Sospendi/Riattiva non sono piu' azioni dirette: aprono il dialog condiviso
+// (data/ora manuale + motivo). Il dialog chiama lo store e, su successo, emette
+// `saved` → ricarico dettaglio ed emetto `saved` al parent come le altre azioni
+// di stato (Apri/Annulla): il parent rinfresca lista/coda e chiude il drawer
+// (feedback_dialog_cambio_stato_dati_processo). Lo storico nel tab Sospensioni
+// e' quindi sempre fresco alla riapertura della scheda.
+const sospDialogVisible = ref(false)
+const sospDialogMode = ref('sospendi')
+
 function onSospendiPratica() {
-  executeAction(() => store.sospendi(props.praticaId, { motivo: t('pratiche.sospensione_manuale') }))
+  sospDialogMode.value = 'sospendi'
+  sospDialogVisible.value = true
 }
 function onRiattivaPratica() {
-  executeAction(() => store.riattiva(props.praticaId))
+  sospDialogMode.value = 'riattiva'
+  sospDialogVisible.value = true
+}
+async function onSospensioneSaved(result) {
+  await reloadDetail()
+  emit('saved', result)
 }
 function onAnnullaPratica() {
   confirmAction({
@@ -541,6 +558,16 @@ const onClose = useDrawerClose(emit, 'cancelled')
           </TabPanel>
 
         </TabView>
+
+        <!-- Dialog condiviso sospendi/riattiva (data/ora manuale) aperto dai
+             pulsanti della DrawerActionsBar. -->
+        <SospensionePraticaDialog
+          :visible="sospDialogVisible"
+          :mode="sospDialogMode"
+          :pratica-id="props.praticaId"
+          @update:visible="v => sospDialogVisible = v"
+          @saved="onSospensioneSaved"
+        />
       </template>
 
       </template>

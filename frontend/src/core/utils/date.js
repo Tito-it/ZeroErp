@@ -74,6 +74,22 @@ export function toDateString(d) {
 }
 
 /**
+ * Converte un valore data/ora in stringa ISO 8601 (UTC) per campi timestamptz.
+ * A differenza di toDateString (solo data, no shift di fuso), qui serve l'istante
+ * assoluto: per un timestamp completo toISOString() e' corretto e non ambiguo
+ * (il backend lo casta a timestamptz).
+ *
+ * @param {Date|string|null} d - Valore data/ora
+ * @returns {string|null} - Stringa ISO con offset (UTC) o null
+ */
+export function toTimestampString(d) {
+  if (!d) return null
+  const date = d instanceof Date ? d : new Date(d)
+  if (isNaN(date.getTime())) return null
+  return date.toISOString()
+}
+
+/**
  * Converte una stringa ISO 'YYYY-MM-DD' in Date locale senza shift di fuso.
  * Usato per precaricare DatePicker da valori persistiti nel backend.
  *

@@ -19,6 +19,8 @@ import unittest
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from django.core.cache.backends.locmem import LocMemCache
+
 from apps.ai_assistant.services import ai_assistant_service, tool_registry
 from apps.ai_assistant.providers.mock_provider import MockProvider
 from apps.ai_assistant.types import ToolCall
@@ -77,6 +79,11 @@ class TestConfirmationFlow(unittest.TestCase):
     """Verifica il flusso conferma nel service."""
 
     def setUp(self):
+        # Cache conferme isolata in-process (no Redis: regola CI "test senza servizi").
+        patcher = patch.object(ai_assistant_service, "cache", LocMemCache("ai-test-fase4", {}))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
         ai_assistant_service.clear_conversations()
         tool_registry.clear_registry()
         tool_registry.populate_registry()
@@ -98,8 +105,9 @@ class TestConfirmationFlow(unittest.TestCase):
     @patch("apps.ai_assistant.services.ai_assistant_service.get_ai_provider")
     @patch("apps.ai_assistant.services.ai_assistant_service._log_query")
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
+    @patch.object(PermissionResolver, "check_azione", return_value=True)
     @patch.object(PermissionResolver, "get_livello_area", return_value="TUTTO")
-    def test_confirmation_flow(self, mock_livello, mock_disabled, mock_log, mock_provider):
+    def test_confirmation_flow(self, mock_livello, mock_azione, mock_disabled, mock_log, mock_provider):
         # Provider simula tool_call per crea_pratica
         provider = MockProvider(
             tool_response=ToolCall(
@@ -119,11 +127,18 @@ class TestConfirmationFlow(unittest.TestCase):
         # Deve avere un'azione di conferma
         confirm_actions = [a for a in result["actions"] if a["type"] == "confirm"]
         self.assertTrue(len(confirm_actions) > 0, "Deve avere azione confirm")
-        confirmation_id = confirm_actions[0]["confirmation_id"]
         conv_id = result["conversation_id"]
 
-        # Verifica che la conferma pendente sia stata salvata
-        self.assertIn(confirmation_id, ai_assistant_service._pending_confirmations)
+        # Verifica che la conferma pendente sia stata salvata in cache (per scope).
+        owner_user_id, owner_identita_id = ai_assistant_service._extract_scope(
+            self.user, self.request
+        )
+        scope = {
+            "conversation_id": conv_id,
+            "owner_user_id": owner_user_id,
+            "owner_identita_id": owner_identita_id,
+        }
+        self.assertIsNotNone(ai_assistant_service._get_pending_confirmation(**scope))
 
         # Step 2: conferma — deve eseguire (mockiamo il service pratiche)
         with patch("apps.pratiche.services.pratiche_service.crea_pratica", return_value=42):
@@ -135,5 +150,5 @@ class TestConfirmationFlow(unittest.TestCase):
 
             self.assertIn("42", result2["response"])
 
-        # La conferma pendente deve essere stata rimossa
-        self.assertNotIn(confirmation_id, ai_assistant_service._pending_confirmations)
+        # La conferma pendente deve essere stata rimossa dalla cache.
+        self.assertIsNone(ai_assistant_service._get_pending_confirmation(**scope))

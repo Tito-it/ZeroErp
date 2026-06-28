@@ -17,6 +17,11 @@
 # 7. test_tool_without_area_available_to_all
 # 8. test_blacklist_disables_tool
 # 9. test_clear_registry
+# 10. test_is_allowed_read_tool_lettura
+# 11. test_is_allowed_blocked
+# 12. test_is_allowed_write_requires_tutto
+# 13. test_is_allowed_blacklist
+# 14. test_is_allowed_required_action
 
 import unittest
 from typing import Any
@@ -148,3 +153,62 @@ class TestToolRegistry(unittest.TestCase):
         self.assertEqual(len(tool_registry.get_all_tools()), 1)
         tool_registry.clear_registry()
         self.assertEqual(len(tool_registry.get_all_tools()), 0)
+
+    # --- is_tool_allowed_for_user (predicato condiviso filtro/ri-check) ---
+
+    # Scopo: tool di lettura su area LETTURA → permesso.
+    @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
+    @patch.object(PermissionResolver, "get_livello_area")
+    def test_is_allowed_read_tool_lettura(self, mock_livello, mock_disabled):
+        mock_livello.side_effect = _mock_livello({"pratiche": "LETTURA"})
+        t = _DummyTool(name="t_r", description="d", input_schema={}, required_area="pratiche")
+        self.assertTrue(tool_registry.is_tool_allowed_for_user(MagicMock(), t))
+
+    # Scopo: area BLOCCATO → negato.
+    @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
+    @patch.object(PermissionResolver, "get_livello_area")
+    def test_is_allowed_blocked(self, mock_livello, mock_disabled):
+        mock_livello.side_effect = _mock_livello({"pratiche": "BLOCCATO"})
+        t = _DummyTool(name="t_b", description="d", input_schema={}, required_area="pratiche")
+        self.assertFalse(tool_registry.is_tool_allowed_for_user(MagicMock(), t))
+
+    # Scopo: tool in scrittura → richiede TUTTO (LETTURA negato, TUTTO permesso).
+    @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
+    @patch.object(PermissionResolver, "get_livello_area")
+    def test_is_allowed_write_requires_tutto(self, mock_livello, mock_disabled):
+        t = _DummyTool(
+            name="t_w", description="d", input_schema={},
+            required_area="pratiche", required_level="TUTTO",
+        )
+        mock_livello.side_effect = _mock_livello({"pratiche": "LETTURA"})
+        self.assertFalse(tool_registry.is_tool_allowed_for_user(MagicMock(), t))
+        mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO"})
+        self.assertTrue(tool_registry.is_tool_allowed_for_user(MagicMock(), t))
+
+    # Scopo: tool in blacklist → negato anche con permessi pieni.
+    @patch.object(PermissionResolver, "get_livello_area")
+    def test_is_allowed_blacklist(self, mock_livello):
+        mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO"})
+        t = _DummyTool(name="t_disabled", description="d", input_schema={}, required_area="pratiche")
+        self.assertFalse(
+            tool_registry.is_tool_allowed_for_user(
+                MagicMock(), t, disabled={"t_disabled"}
+            )
+        )
+
+    # Scopo: azione di processo fine (granularità come la UI): con area TUTTO ma
+    #        azione disabilitata → negato; azione abilitata → permesso.
+    @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
+    @patch.object(PermissionResolver, "check_azione")
+    @patch.object(PermissionResolver, "get_livello_area")
+    def test_is_allowed_required_action(self, mock_livello, mock_azione, mock_disabled):
+        mock_livello.side_effect = _mock_livello({"pratiche": "TUTTO"})
+        t = _DummyTool(
+            name="t_act", description="d", input_schema={},
+            required_area="pratiche", required_level="TUTTO",
+            required_action="cambia_stato_pratica",
+        )
+        mock_azione.return_value = False
+        self.assertFalse(tool_registry.is_tool_allowed_for_user(MagicMock(), t))
+        mock_azione.return_value = True
+        self.assertTrue(tool_registry.is_tool_allowed_for_user(MagicMock(), t))

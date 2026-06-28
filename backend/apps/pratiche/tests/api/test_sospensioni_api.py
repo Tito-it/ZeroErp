@@ -62,6 +62,7 @@ class SospensioniApiTests(JwtMockedApiTest):
         mock_sospendi.assert_called_once_with(
             1, "Attesa documenti",
             data_riattivazione_prevista=None,
+            data_inizio=None,
         )
 
     # Scopo: Verifica errore senza motivo (il service valida e rifiuta).
@@ -96,6 +97,28 @@ class SospensioniApiTests(JwtMockedApiTest):
         mock_sospendi.assert_called_once_with(
             1, "Attesa tecnico",
             data_riattivazione_prevista="2026-03-15",
+            data_inizio=None,
+        )
+
+    # Scopo: Verifica che data_inizio manuale (ISO) sia inoltrata al service.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.sospendi_pratica")
+    def test_post_sospendi_pratica_con_data_inizio(self, mock_sospendi, _auth):
+        mock_sospendi.return_value = 102
+
+        response = self.client.post(
+            "/api/v1/pratiche/1/sospendi/",
+            data=json.dumps({
+                "motivo": "Retroattiva",
+                "data_inizio": "2026-06-20T09:30:00+00:00",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        mock_sospendi.assert_called_once_with(
+            1, "Retroattiva",
+            data_riattivazione_prevista=None,
+            data_inizio="2026-06-20T09:30:00+00:00",
         )
 
     # -- RIATTIVA PRATICA ------------------------------------------------
@@ -112,7 +135,7 @@ class SospensioniApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["data"]["status"], "ok")
-        mock_riattiva.assert_called_once_with(1)
+        mock_riattiva.assert_called_once_with(1, data_fine=None)
 
     # -- SOSPENDI FLUSSO -------------------------------------------------
 
