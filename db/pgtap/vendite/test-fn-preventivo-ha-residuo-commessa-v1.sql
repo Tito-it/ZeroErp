@@ -19,10 +19,16 @@
 --   8) Post-push (riga servizio EMESSA in commessa): residuo MISTO = false
 --      (la merce residua non conta sul ramo commessa)
 --   9) available_actions DRAFT: reason PREVENTIVO_NON_ACCETTATO
+--  10) Post-push NON_EMESSA -> residuo = false (fix gate EVASO: la riga e'
+--      esclusa appena instradata, non solo dopo fatturazione)
+--  11) Post-push componente BoM (segment_key #CMP, NON_EMESSA) -> residuo = false
+--      (match a prefisso §4: una riga composita viene esclusa)
+--  12) Attivita ANNULLATA -> residuo = false (decisione: riga instradata, non
+--      ri-pushabile; non riapre il preventivo)
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(10);
+SELECT plan(13);
 
 -- ============================================================
 -- 0) Riferimenti minimi + classificazione nature
@@ -271,6 +277,131 @@ SELECT ok(
       AND (j->>'can_push_commessa_reason') = 'PREVENTIVO_NON_ACCETTATO'
      FROM (SELECT script.fn_available_actions_preventivo((SELECT id FROM tmp_rc_draft)) AS j) s),
   '9. DRAFT: can_push=false, reason PREVENTIVO_NON_ACCETTATO'
+);
+
+-- ============================================================
+-- Setup casi 10-12: tre preventivi servizio (BA ok), riusano la
+-- commessa del caso 8 (tmp_rc_commessa) con segment_key distinti.
+-- Helper inline: crea preventivo+riga servizio, ritorna id/uid/riga_id.
+-- ============================================================
+CREATE TEMP TABLE tmp_rc_nonemessa AS
+WITH p AS (
+  INSERT INTO vendite.preventivi (
+    numero, rev, billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
+  SELECT 'PGTAP-RC-NONEMESSA', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+         DATE '2080-01-01', false, false,
+         jsonb_build_object('test_scope','pgtap_residuo_nonemessa'), r.emittente_fiscale_id
+    FROM tmp_rc_refs r RETURNING id, uid),
+rg AS (
+  INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
+  SELECT p.id, r.art_serv_id, 1.000000, 25.000000, r.iva_id, true FROM p, tmp_rc_refs r
+  RETURNING id)
+SELECT (SELECT id FROM p) AS prev_id, (SELECT uid FROM p) AS prev_uid, (SELECT id FROM rg) AS riga_id;
+
+CREATE TEMP TABLE tmp_rc_bom AS
+WITH p AS (
+  INSERT INTO vendite.preventivi (
+    numero, rev, billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
+  SELECT 'PGTAP-RC-BOM', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+         DATE '2080-01-01', false, false,
+         jsonb_build_object('test_scope','pgtap_residuo_bom'), r.emittente_fiscale_id
+    FROM tmp_rc_refs r RETURNING id, uid),
+rg AS (
+  INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
+  SELECT p.id, r.art_serv_id, 1.000000, 25.000000, r.iva_id, true FROM p, tmp_rc_refs r
+  RETURNING id)
+SELECT (SELECT id FROM p) AS prev_id, (SELECT uid FROM p) AS prev_uid, (SELECT id FROM rg) AS riga_id;
+
+CREATE TEMP TABLE tmp_rc_annull AS
+WITH p AS (
+  INSERT INTO vendite.preventivi (
+    numero, rev, billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
+  SELECT 'PGTAP-RC-ANNULL', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+         DATE '2080-01-01', false, false,
+         jsonb_build_object('test_scope','pgtap_residuo_annull'), r.emittente_fiscale_id
+    FROM tmp_rc_refs r RETURNING id, uid),
+rg AS (
+  INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
+  SELECT p.id, r.art_serv_id, 1.000000, 25.000000, r.iva_id, true FROM p, tmp_rc_refs r
+  RETURNING id)
+SELECT (SELECT id FROM p) AS prev_id, (SELECT uid FROM p) AS prev_uid, (SELECT id FROM rg) AS riga_id;
+
+-- Attivita NON_EMESSA con segment_key esatto (caso 10)
+INSERT INTO vendite.commesse_attivita (
+  commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
+  competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
+  pricing_mode, stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+SELECT (SELECT id FROM tmp_rc_commessa),
+  'PREV:' || (SELECT prev_uid FROM tmp_rc_nonemessa)::text || ':R:' || (SELECT riga_id FROM tmp_rc_nonemessa)::text,
+  r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
+  DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31', r.tipo_doc_fiscale_id, r.valuta_id, 25.000000,
+  'FIXED', 'BOZZA', 'NON_EMESSA',
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1),
+  (SELECT prev_uid FROM tmp_rc_nonemessa)::text
+FROM tmp_rc_refs r;
+
+-- Attivita NON_EMESSA con segment_key componente BoM '#CMP:<id>' (caso 11)
+INSERT INTO vendite.commesse_attivita (
+  commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
+  competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
+  pricing_mode, stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+SELECT (SELECT id FROM tmp_rc_commessa),
+  'PREV:' || (SELECT prev_uid FROM tmp_rc_bom)::text || ':R:' || (SELECT riga_id FROM tmp_rc_bom)::text || '#CMP:999',
+  r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
+  DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31', r.tipo_doc_fiscale_id, r.valuta_id, 25.000000,
+  'FIXED', 'BOZZA', 'NON_EMESSA',
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1),
+  (SELECT prev_uid FROM tmp_rc_bom)::text
+FROM tmp_rc_refs r;
+
+-- Attivita ANNULLATA con segment_key esatto (caso 12)
+INSERT INTO vendite.commesse_attivita (
+  commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
+  competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
+  pricing_mode, stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+SELECT (SELECT id FROM tmp_rc_commessa),
+  'PREV:' || (SELECT prev_uid FROM tmp_rc_annull)::text || ':R:' || (SELECT riga_id FROM tmp_rc_annull)::text,
+  r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
+  DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31', r.tipo_doc_fiscale_id, r.valuta_id, 25.000000,
+  'FIXED', 'BOZZA', 'ANNULLATA',
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1),
+  (SELECT prev_uid FROM tmp_rc_annull)::text
+FROM tmp_rc_refs r;
+
+-- ============================================================
+-- 10) NON_EMESSA -> residuo = false (IL FIX: esclusa appena instradata)
+-- ============================================================
+SELECT is(
+  vendite.fn_preventivo_ha_residuo_commessa((SELECT prev_id FROM tmp_rc_nonemessa)),
+  false,
+  '10. Post-push NON_EMESSA: residuo commessa = false (fix gate EVASO)'
+);
+
+-- ============================================================
+-- 11) Componente BoM (#CMP) NON_EMESSA -> residuo = false (match a prefisso)
+-- ============================================================
+SELECT is(
+  vendite.fn_preventivo_ha_residuo_commessa((SELECT prev_id FROM tmp_rc_bom)),
+  false,
+  '11. Post-push componente BoM (#CMP): residuo commessa = false (match prefisso §4)'
+);
+
+-- ============================================================
+-- 12) Attivita ANNULLATA -> residuo = false (riga instradata, non ri-pushabile)
+-- ============================================================
+SELECT is(
+  vendite.fn_preventivo_ha_residuo_commessa((SELECT prev_id FROM tmp_rc_annull)),
+  false,
+  '12. Attivita ANNULLATA: residuo commessa = false (decisione: non riapre il preventivo)'
 );
 
 SELECT * FROM finish();

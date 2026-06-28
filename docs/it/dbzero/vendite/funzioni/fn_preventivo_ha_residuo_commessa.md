@@ -50,7 +50,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_preventivo_ha_residuo_commessa(p_preventivo_id bigint)
-IS 'TRUE se il preventivo ha righe natura COMMESSA (servizi; natura NULL = pregresso) non ancora EMESSE in commessa E testata completa (billing_account_id, utility_id NOT NULL). Predicato condiviso (vista vw_preventivi_righe_smistabili_commessa): capability can_push_commessa + gate EVASO lato BE. Gemella di fn_preventivo_ha_residuo_ordine; non considera ORDINE (gestita da fn_push_preventivo_a_ordine).';
+IS 'TRUE se il preventivo ha righe natura COMMESSA (servizi; natura NULL = pregresso) non ancora instradate in commessa (nessuna attivita sul segment_key di riga, inclusi componenti #CMP, qualsiasi stato_emissione) E testata completa (billing_account_id, utility_id NOT NULL). Predicato condiviso (vista vw_preventivi_righe_smistabili_commessa): capability can_push_commessa + gate EVASO lato BE. Gemella di fn_preventivo_ha_residuo_ordine; non considera ORDINE (gestita da fn_push_preventivo_a_ordine).';
 ```
 
 ---
