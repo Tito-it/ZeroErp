@@ -598,7 +598,7 @@ class CommesseRepository:
             modificabile=bool(row[4]),
             policy_fatturazione=row[5],
             fatturazione_immediata=(None if row[6] is None else bool(row[6])),
-            priorita_operativa=_int(row[7]),
+            priorita_operativa=row[7],
             billing_account_id=_int(row[8]),
             utility_id=_int(row[9]),
             emittente_soggetto_ruolo_id=_int(row[10]),

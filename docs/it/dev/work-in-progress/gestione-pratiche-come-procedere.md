@@ -64,7 +64,7 @@ smoke-verificata** moltiplica il rischio. Da chiudere per primi:
 | Pri | Item | Dettaglio | Fonte |
 |---|---|---|---|
 | 🔴 | **Smoke UI E2E pratiche MAI eseguito** | esiste solo smoke BE/unit; il giro UI reale (crea pratica → avanza flussi → accetta → conferma → commessa/fattura, su app+DB seedato+auth) non è mai stato fatto | handoff 0609, 0615, 0618 (ricorrente) |
-| 🔴 | **Ordini: smoke conferma + push** | le 2 transizioni finali del giro OdV non eseguite | [a-test-push-commesse-fatturazione.md](a-test-push-commesse-fatturazione.md) |
+| ✅ | **Ordini: smoke conferma + push** | **CHIUSO 2026-06-28**: smoke BE verde (conferma→push→EVASO→commessa emittibile, idempotenza). Giro preventivo (§1) + ordine (§2) push→commessa validati a mano. Emersi e risolti 2 bug reali (DB gate EVASO commessa + BE `priorita_operativa`). Resta fuori: ultimo miglio lotto→fattura (blocco DB `1→8`, handoff 0619) e UX FE | [a-test-push-commesse-fatturazione.md](a-test-push-commesse-fatturazione.md) |
 | 🟡 | **Part B audit giornale** (append-only) | audit utente reale su `pratiche.*` — la parte giornale/append-only resta aperta lato **team DB** | handoff 0618 |
 
 ---
