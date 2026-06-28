@@ -60,7 +60,9 @@ SELECT idp.id AS istanza_dati_precontrattuali_id,
     iud.data_insert AS istanza_data_insert,
     iud.user_insert AS istanza_user_insert,
     iud.data_update AS istanza_data_update,
-    iud.user_update AS istanza_user_update
+    iud.user_update AS istanza_user_update,
+    iud.stato_pdp_codice_interno,
+    iud.utility_codice_interno
    FROM (((anagrafiche.istanze_dati_precontrattuali idp
      JOIN anagrafiche.vw_istanze_utilities_dettaglio iud ON ((iud.istanza_id = idp.istanza_utility_id)))
      LEFT JOIN config.classi_utenze cu ON ((cu.id = idp.classe_utenza_id)))

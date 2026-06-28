@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Bonifica naming stato (brief-naming-stato-codice-interno.md, dominio anagrafiche).
+#
+# PRIMA: sc.codice_interno AS stato_codice  (mislabel).
+# DOPO (alias fedele 1:1, linee-guida-sql §6c):
+#   sc.codice_interno    AS stato_codice_interno   (logica)
+#   sc.codice            AS stato_codice           (display)
+#   sc.descrizione_breve AS stato_descrizione      (invariato)
+#
+# Vista usata come entita_tabella (tipi_ruoli, tipo CL) per ricerca codice
+# universale / dettaglio entita: il consumer fn_get_entita_ruolo_detail legge
+# i campi per display, non usa stato_codice per logica. BE/FE su stato_codice_interno.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260628-04-update-vw-clienti-codice-ba-stato-codice-interno-mctit.yaml
+
+  - changeSet:
+      id: 20260628-04-update-vw-clienti-codice-ba-stato-codice-interno
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_clienti_codice_ba: alias fedele dello stato — stato_codice_interno
+        (codice_interno) + stato_codice (codice). Bonifica mislabel.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: anagrafiche
+            tableName: clienti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS anagrafiche.vw_clienti_codice_ba;
+              CREATE VIEW anagrafiche.vw_clienti_codice_ba AS
+              SELECT
+                cl.soggetto_ruolo_id,
+                cl.id,
+                cl.id                    AS entita_id,
+                cl.billing_account_id,
+                ba.codice,
+                cl.utility_id,
+                cl.stato_cliente_id,
+                sc.codice_interno        AS stato_codice_interno,
+                sc.codice                AS stato_codice,
+                sc.descrizione_breve     AS stato_descrizione,
+                cl.data_attivazione,
+                cl.data_sospensione,
+                cl.data_riattivazione,
+                cl.data_chiusura
+              FROM anagrafiche.clienti cl
+                JOIN config.stati_cliente sc
+                  ON sc.id = cl.stato_cliente_id
+                LEFT JOIN anagrafiche.billing_account ba
+                  ON ba.id = cl.billing_account_id;
+
+              COMMENT ON VIEW anagrafiche.vw_clienti_codice_ba IS
+                'Vista flat clienti con codice da billing_account, stato e date ciclo vita. Usata per ricerca codice universale (entita_tabella in tipi_ruoli) e come source dati per dettaglio entita'' CL. stato_codice_interno = codice_interno (logica), stato_codice = codice (display).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS anagrafiche.vw_clienti_codice_ba;
