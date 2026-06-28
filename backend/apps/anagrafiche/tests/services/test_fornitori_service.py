@@ -54,7 +54,7 @@ def _fornitore_detail():
         "ritenuta_aliquota": None, "regime_fiscale": "RF01",
         "bollo_esente": False, "canale_fe": "0000000", "pec_email": "acme@pec.it",
         "rating": 80, "qualifica_scadenza": None,
-        "stato_codice": "AT", "stato_descrizione": "Attivo", "blocca_ordini": False,
+        "stato_codice_interno": "AT", "stato_codice": "AT", "stato_descrizione": "Attivo", "blocca_ordini": False,
         "note": None, "data_insert": "2026-01-01", "data_update": "2026-01-01",
     }
 

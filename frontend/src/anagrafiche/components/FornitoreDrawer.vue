@@ -258,7 +258,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
               <InputText :model-value="detail.codice" disabled class="w-full" />
             </div>
             <div class="form-field" style="align-self: flex-end;">
-              <Tag :value="detail.stato_descrizione" :severity="statoFornitoreSeverity(detail.stato_codice)"
+              <Tag :value="detail.stato_descrizione" :severity="statoFornitoreSeverity(detail.stato_codice_interno)"
                 style="font-size: 0.95rem; padding: 0.5rem 1rem;" />
             </div>
           </div>

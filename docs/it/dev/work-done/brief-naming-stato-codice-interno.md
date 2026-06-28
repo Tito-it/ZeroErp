@@ -1,5 +1,13 @@
 # Brief — Convenzione naming `codice_interno` vs `codice` + bonifica mislabel `stato_codice`
 
+> **Stato**: ✅ **RISOLTO** (2026-06-28). DB sweep COMPLETO + applicato (`20260628-02..11`) +
+> guardrail CI bloccante (`scripts/sql/check_naming_stato_codice.sql`, step in `ci-validate.yaml`,
+> verde sul DB live). BE+FE: tutte le slice migrate e verificate (2105+ test, build FE, review
+> critica con 1 bug PDF corretto). Doc API + `linee-guida-sql.md §6c` aggiornati.
+> **Unico residuo NON bloccante** (DB, tracciato): cascata `tipo_indirizzo_codice_interno` sui
+> `SELECT *` `vw_indirizzi_resolved_ruolo/soggetto/all` (oggi espongono solo il display) — **nessun
+> consumer logico** lo legge, quindi non impatta; completamento simmetrico rinviato (§8/§9 follow-up).
+>
 > **Tipo**: brief di convenzione + bonifica (DB → team DB; BE/FE → backend agent). · **Priorità**: 🟡 media (debito di modello, rischio latente). · **Data**: 2026-06-28.
 > **Origine**: emerso scrivendo lo smoke contratto (`a-test-push-commesse-fatturazione.md §3b`): il contratto espone lo stato come `stato_codice`, mentre preventivi/ordini/commesse usano `stato_codice_interno`. Indagando si è visto che il **valore** di `stato_codice` sui contratti è in realtà `codice_interno` (alias fuorviante).
 
@@ -113,7 +121,7 @@ completamento successivo, non bloccante. Le catene sono ricreate insieme nei cha
 `20260402-04` (indirizzi-resolved) e `20260402-09` (istanze) — usare quelli come sorgente
 SQL leggibile, non il blob normalizzato dell'autogen.
 
-### Ondata 3 — funzioni search-detail (🔴 DA FARE)
+### Ondata 3 — funzioni search-detail (✅ FATTO — changeset `20260628-10`, vedi §8)
 
 | Dominio | Oggetto | Chiavi mislabel (jsonb) |
 | --- | --- | --- |
@@ -170,9 +178,9 @@ TABLE`: `DROP FUNCTION + CREATE`. Per jsonb/scalari: `CREATE OR REPLACE`. Funzio
 
 0. **Doc convenzione** `linee-guida-sql.md §6c` — ✅ FATTA (Fase 0).
 1. **Ondata 1 DB** — contratti + anagrafiche (liste) + pratiche (coda): 6 changeset
-   `20260628-02..07` — ✅ scritti (non applicati/committati). Sblocca lo smoke contratto §3b.
-2. **Ondata 2 DB** — viste indirizzi/istanze/pdp (§4). 🔴 DA FARE.
-3. **Ondata 3 DB** — funzioni search-detail (§4). 🔴 DA FARE.
+   `20260628-02..07` — ✅ **APPLICATA** (vedi §8). Sblocca lo smoke contratto §3b.
+2. **Ondata 2 DB** — viste indirizzi/istanze/pdp (§4). ✅ **FATTO** (changeset `20260628-08/09`, vedi §8).
+3. **Ondata 3 DB** — funzioni search-detail (§4). ✅ **FATTO** (changeset `20260628-10`, vedi §8).
 4. **BE+FE per ogni ondata** (backend agent, **dopo** il DB della rispettiva ondata):
    migrare i consumer alla logica su `*_codice_interno`; display resta `*_descrizione`.
    Include il `campo_sorgente` dei seed `ui.lista_colonna` usato per la *severity*
@@ -239,6 +247,7 @@ e `codice_interno AS *_descrizione`: **zero**.
 > (es. stati_pdp 16 vs 64), e `CREATE OR REPLACE VIEW` **non può cambiare il tipo** di
 > una colonna. Regola: per togliere il mislabel usare **sempre `DROP+CREATE`** (come
 > Ondata 1), gestendo la cascata dei dipendenti.
+
 - **Ondata 3 — DB** (`fn_get_search_detail`): ✅ changeset `20260628-10` (CREATE OR REPLACE
   jsonb, niente cascade) — branch `CL`:
   - `'utility_codice' => u.codice_interno` → `'utility_codice_interno' => u.codice_interno`
@@ -256,7 +265,7 @@ e `codice_interno AS *_descrizione`: **zero**.
   step **bloccante** in `.github/workflows/ci-validate.yaml` (dopo `liquibase update`).
   Eseguito sul DB live: **OK, nessun mislabel**.
 - **DB sweep**: ✅ **COMPLETO** (changeset `20260628-02..11`, applicati).
-- **BE/FE**: 🔴 handoff (vedi §9).
+- **BE/FE**: ✅ **COMPLETO** (tutte le slice — vedi §9 handoff + §10 avanzamento).
 
 ---
 
@@ -302,7 +311,91 @@ una bomba a orologeria.
 - `fn_get_indirizzi_by_ruolo` (RETURNS TABLE esplicito): per esporre
   `tipo_indirizzo_codice_interno` serve un suo update dedicato.
 
+## 10. Avanzamento BE/FE (backend agent)
+
+> Logica → `*_codice_interno`; display resta `*_descrizione` (o `*_codice` dove serve).
+> Negli SQL inline BE l'alias mislabel `codice_interno AS stato_codice` è stato corretto
+> esponendo **entrambi** (`codice_interno AS stato_codice_interno` + `codice AS stato_codice`).
+
+- **CONTRATTI** — ✅ **FATTO** (2026-06-28).
+  - BE: `contratti_repository.py` (col_map +`stato_codice_interno`; 3 SQL inline; CTE
+    capability/forma), `contratti_service.py` (4 guard di stato → `stato_codice_interno`),
+    `types.py` (dataclass capability), `views_contratti.py` (serializer),
+    `ai_assistant/tools/vendite_tools.py`. Test mock allineati.
+  - FE: `ContrattiSearchTable`, `ContrattiListView`, `ContrattoDrawer`,
+    `ContrattiBillingAccountDrawer` (logica/severity → `stato_codice_interno`).
+  - Verifica: BE **957 vendite + 72 ai** verdi; ESLint pulito; smoke §3b aggiornato.
+  - Follow-up minore: nomi-prop FE (`:contratto-stato-codice`) portano già il valore
+    corretto (codice_interno); rename cosmetico dei nomi-prop rinviato.
+- **ANAGRAFICHE** — ✅ **FATTO** (2026-06-28).
+  - BE: `clienti_repository.py` (2 SQL inline), `fornitori_repository.py` (lista da vista
+    `v.stato_codice_interno` + detail inline). Nessun guard BE leggeva il campo (solo FE).
+    Mock `test_clienti_service`/`test_fornitori_service` allineati.
+  - FE: `ClienteDrawer`, `ClientiSearchTable`, `FornitoreDrawer`, `FornitoriSearchTable`,
+    `ClientiView` (severity/logica → `stato_codice_interno`). Le mappe severity
+    (`core/utils/severity.js`) switchano su codici immutabili (VE/AT/SO/CE…).
+  - Verifica: clienti/fornitori service **46** verdi; clienti/emittenti API **31** verdi
+    (in isolamento — i 429 del run completo sono rate-limit infra, non regressioni);
+    ESLint pulito.
+- **PRATICHE coda** — ✅ **FATTO** (2026-06-28).
+  - BE: `pratiche_repository.list_coda_lavoro` fa `SELECT *` → espone già
+    `stato_flusso_codice_interno` (nessun cambio SQL). `types.py` (+ campo). Nessun guard
+    BE legge il campo. Mock `test_coda_competenze_service`/`_api` allineati.
+  - FE: `PraticheCodaLavoro.vue` — severity → `stato_flusso_codice_interno` (label resta
+    `stato_flusso_codice` = display). `STATO_FLUSSO_MAP` switcha su codici immutabili.
+  - Verifica: coda service+api **18** verdi; ESLint pulito.
+- **ISTANZE / precontrattuali / search-detail / indirizzi** — ✅ **FATTO** (2026-06-28).
+  - Scoperta: `stato_pdp_codice`, `tipo_indirizzo_codice`, `utility_codice` (dai view/fn
+    cambiati) **non hanno consumer LOGICI** — sono solo display/passthrough → niente da
+    migrare lì.
+  - Unico consumer breaking: **`SearchDetailTable.vue`** (variante cliente) leggeva
+    `data.stato_codice` dal jsonb di `fn_get_search_detail` (chiave **rimossa**, ora
+    `stato_codice_interno`) per il Tag severity → migrato a `data.stato_codice_interno`.
+    (Variante fornitore usa `attivo`, non toccata.)
+  - Verifica: ESLint pulito; nessun reader BE di `stato_codice` nel jsonb search (opaco).
+
+### Review critica post-implementazione (2026-06-28)
+
+Caccia esaustiva ai reader `.get("stato_codice")` / `["stato_codice"]` nel BE:
+
+- 🐛 **BUG TROVATO e CORRETTO** — `contratto_document_context_builder.py:131`: il campo
+  `codice_interno` del contesto documento (PDF) leggeva `testata.get("stato_codice")` →
+  dopo il rename porta il **display mutabile**, non l'interno. È la time-bomb esatta del
+  brief, esposta dal cambio di semantica del detail. Fix → `stato_codice_interno` (allineato
+  al pattern corretto di preventivo/ordine builder). Test indurito: mock con valori
+  **distinti** (`stato_codice='ATT'`, `stato_codice_interno='ATTIVO'`) + assertion su
+  `stato.codice` e `stato.codice_interno` (prima nessuna assertion copriva il campo → il bug
+  era passato).
+- ✅ Altri reader verificati sani: `commesse_service.py:424` (commessa, NON nello sweep +
+  metadata d'errore), `preventivo_document_context_builder` (pattern corretto),
+  `views_ordini.py:154/221` (filtro/azione = target_state codice_interno, fuori scope §5).
+- ✅ Detail API espone `stato_codice_interno` (view passthrough `DictField`; `get_contratto`
+  service fa `testata.update(capabilities)` — SQL e fn capability coerenti, entrambi
+  display+interno). Document builder usa `repo.get_contratto` → ha il campo.
+- ✅ Fix collaterale `priorita_operativa` (int→str): nessun consumer BE/FE la usa come numero.
+- ⚠️ Minori (accettati): label di error-context in `contratti_service` (`"stato_codice":`
+  con valore codice_interno — metadata di log, non contratto dati); nuovo smoke contratto
+  ha fragilità note (UID vuoto non guardato → fallisce loudly; push = batch globale, documentato).
+
+### Doc API aggiornati (2026-06-28)
+
+Allineata la documentazione API manuale alle nuove shape di risposta:
+`api_contratti.md` (nota convenzione + esempi detail/pricing-context con `stato_codice_interno`),
+`api_fornitori.md` (esempi + nota), `api_coda_lavoro.md` (esempio + nota
+`stato_flusso_codice_interno`), `api_search_universale.md` (rename **breaking**
+`stato_codice`→`stato_codice_interno` + `utility_codice_interno` + nota),
+`api_commessa_stato.md` (`priorita_operativa` chiarito **stringa** `NORMALE`/`ALTA`/`BASSA`,
+non intero). Domini non in sweep (offerte/preventivi) invariati.
+
+### Esito complessivo BE/FE
+
+✅ **TUTTE le slice completate** (contratti, anagrafiche, pratiche coda, istanze/search).
+Verifica finale: **2105 test BE verdi** (vendite+pratiche+ai_assistant+core+anagrafiche.services);
+**ESLint pulito** sugli 11 file FE toccati. (I 429 nei run API anagrafiche in bulk sono
+rate-limit infra, non regressioni — confermato in isolamento.) Raccomandato un `npm run build`
+FE completo prima del merge.
+
 ---
 
 *Brief naming `codice_interno`/`codice` — ZeroERP 2026-06-28. DB sweep COMPLETO
-(`20260628-02..11`) + guardrail CI attivo. §9 = handoff BE/FE.*
+(`20260628-02..11`) + guardrail CI attivo. §9 = handoff BE/FE; §10 = avanzamento.*

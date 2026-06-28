@@ -69,7 +69,7 @@ async function onOpenRighe(data) {
     cliente: detail.ba_ragione_sociale,
     validoDal: detail.valido_dal,
     validoAl: detail.valido_al,
-    statoCodice: detail.stato_codice,
+    statoCodice: detail.stato_codice_interno,
     statoDescrizione: detail.stato_descrizione,
   }
 }

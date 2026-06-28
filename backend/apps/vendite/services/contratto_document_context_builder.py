@@ -128,7 +128,7 @@ class ContrattoDocumentContextBuilder(DocumentContextBuilder):
             "stato": {
                 "id": testata.get("stato_doc_contratto_id"),
                 "codice": testata.get("stato_codice"),
-                "codice_interno": testata.get("stato_codice"),
+                "codice_interno": testata.get("stato_codice_interno"),
                 "descrizione": testata.get("stato_descrizione"),
             },
             "utility": {

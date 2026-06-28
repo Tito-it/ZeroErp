@@ -33,6 +33,7 @@ Endpoint di sola lettura che alimenta la sidebar della dashboard pratiche. Risol
         "tipo_prestazione_codice": "ASSISTENZA_TECNICA",
         "template_flusso_codice": "VALUTAZIONE",
         "template_flusso_desc": "Valutazione iniziale",
+        "stato_flusso_codice_interno": "DA_ESEGUIRE",
         "stato_flusso_codice": "DA_ESEGUIRE",
         "sequenza": 10,
         "data_scadenza": "2026-04-15",
@@ -42,6 +43,10 @@ Endpoint di sola lettura che alimenta la sidebar della dashboard pratiche. Risol
   }
 }
 ```
+
+> **Naming (2026-06-28)**: `stato_flusso_codice_interno` è il codice **immutabile** dello
+> stato flusso (per la logica/severity: `DA_ESEGUIRE`/`IN_CORSO`/…). `stato_flusso_codice`
+> porta il `codice` **mutabile** (display). Vedi linee-guida-sql.md §6c.
 
 ### Livelli
 

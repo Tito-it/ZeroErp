@@ -90,9 +90,10 @@ Esempio per CLIENTE:
         "istanza_id": 29,
         "utility_id": 2,
         "utility_codice": "GAS",
+        "utility_codice_interno": "GAS",
         "indirizzo": "Via Roma 12",
         "comune": "Bergamo",
-        "stato_codice": "AT",
+        "stato_codice_interno": "AT",
         "stato_descrizione": "Attivo",
         "stato_macro": "AT",
         "stato_cliente_id": 1,
@@ -104,6 +105,12 @@ Esempio per CLIENTE:
   "meta": { "request_id": "..." }
 }
 ```
+
+> **Naming (2026-06-28)**: per la logica usare i campi `*_codice_interno` (immutabili).
+> `stato_codice` è stato **rinominato** in `stato_codice_interno` (chiave `stato_codice`
+> non più presente nel detail cliente; il display dello stato è `stato_descrizione` /
+> `stato_macro`). `utility_codice` ora porta il `codice` **mutabile** (display); per la
+> logica usare il nuovo `utility_codice_interno`. Vedi linee-guida-sql.md §6c.
 
 ### GET /api/v1/core/lookup/tipi-ruoli/ — Lookup tipi ruolo
 

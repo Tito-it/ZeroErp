@@ -94,14 +94,16 @@ la generazione canoni non è progettata**. (Nota: stessa anomalia EVASO del §1 
 - [ ] *(rinviato — utilities)* Smoke canone periodico: da scrivere quando la
       generazione canoni per competenza sarà implementata.
 
-### 3b. ✅ Addebito STANDARD (una-tantum, non a canone) — DA TESTARE ORA
+### 3b. ✅ Addebito STANDARD (una-tantum, non a canone) — VERDE
 
 L'addebito standard di un contratto ATTIVO → 1 `commesse_attivita` (mese d'inizio) →
-commessa emittibile, con idempotenza del push. È implementato: questo si testa.
+commessa emittibile, con idempotenza del push. Smoke dedicato
+`smoke-test-contratti-addebito-standard.sh` (2026-06-28) **verde**.
 
-- [ ] Contratto ATTIVO con riga (addebito standard) → push CONTRATTO →
-      1 `commesse_attivita` con `segment_key CONTR:{uid}:R:{riga}:M:{mese-inizio}`,
+- [x] Contratto ATTIVO con riga (addebito standard, AGGIUNTA/UNA_TANTUM/FISSA) → push
+      CONTRATTO → 1 `commesse_attivita` con `segment_key CONTR:{uid}:R:{riga}:M:{mese-inizio}`,
       commessa → `PRONTA_FATTURAZIONE`; re-run push = nessun doppione (upsert su segment_key).
+      Logica su `stato_codice_interno` (post-uniformazione naming).
 
 ## 4. Come eseguire
 

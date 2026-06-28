@@ -36,6 +36,8 @@ E_RENDER_FAILED = "E_DOCUMENTI_RENDER_FAILED"
 # Whitelist applicativa engine. v1: solo WeasyPrint. Decisione 3 +
 # Tranche B (settings + Dockerfile native deps gia' presenti).
 # Nuovi engine si aggiungono qui + lookup `render_engine_documento`.
+# Match sul codice_interno IMMUTABILE: il `codice` e' l'etichetta mutabile
+# (rinominabile dall'utente) e non puo' reggere la whitelist di logica.
 _ENGINE_WHITELIST: frozenset[str] = frozenset({"WEASYPRINT"})
 
 
@@ -43,7 +45,7 @@ _ENGINE_WHITELIST: frozenset[str] = frozenset({"WEASYPRINT"})
 #        documentare il contratto col repo `_VERSIONI_PROJECTION_DETAIL`.
 _VERSIONE_KEYS_REQUIRED = (
     "html_template",
-    "render_engine_codice",
+    "render_engine_codice_interno",
 )
 
 
@@ -57,7 +59,7 @@ def render_pdf(
     context: dict[str, Any],
 ) -> bytes:
     _guard_versione_minima(template_versione)
-    engine = (template_versione.get("render_engine_codice") or "").upper()
+    engine = (template_versione.get("render_engine_codice_interno") or "").upper()
     if engine not in _ENGINE_WHITELIST:
         ErrorManager.raise_error(
             code=E_RENDER_FAILED,

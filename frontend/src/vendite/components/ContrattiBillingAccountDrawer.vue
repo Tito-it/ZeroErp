@@ -152,7 +152,7 @@ async function onOpenRighe(data) {
     cliente: props.billingAccountLabel,
     validoDal: detail.valido_dal,
     validoAl: detail.valido_al,
-    statoCodice: detail.stato_codice,
+    statoCodice: detail.stato_codice_interno,
     statoDescrizione: detail.stato_descrizione,
   }
 }
@@ -248,7 +248,7 @@ const onClose = useDrawerClose(emit)
         </Column>
         <Column field="stato_descrizione" :header="t('contratti.col_stato')" sortable style="width: 100px;">
           <template #body="{ data }">
-            <Tag :value="data.stato_descrizione" :severity="statoContrattoSeverity(data.stato_codice)" />
+            <Tag :value="data.stato_descrizione" :severity="statoContrattoSeverity(data.stato_codice_interno)" />
           </template>
         </Column>
         <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">

@@ -736,7 +736,7 @@ class ContrattiService:
         # appare nelle whitelist non-DRAFT, quindi viene rifiutato implicitamente
         # con messaggio coerente. Errore parlante con detail che lista i campi
         # ammessi per lo stato corrente.
-        stato_corrente = str(existing.get("stato_codice") or "")
+        stato_corrente = str(existing.get("stato_codice_interno") or "")
         allowed_for_state = _CONTRATTO_PATCH_ALLOWED_BY_STATE.get(stato_corrente, frozenset())
         non_ammessi = sorted(set(payload.keys()) - allowed_for_state)
         if non_ammessi:
@@ -1166,7 +1166,7 @@ class ContrattiService:
             context={"contratto_id": contratto_id},
         )
         assert contratto is not None
-        stato = str(contratto.get("stato_codice") or "")
+        stato = str(contratto.get("stato_codice_interno") or "")
         if stato != "DRAFT":
             ErrorManager.raise_error(
                 code="E_CONTRATTO_NON_MODIFICABILE",
@@ -1635,7 +1635,7 @@ class ContrattiService:
         # Guard stato modificabile: contratti_righe_componenti seguono la
         # stessa policy delle righe padre (solo DRAFT modificabile). Lo
         # stato e' gia' nella tupla del JOIN — nessun round-trip extra.
-        stato = str(scope.get("stato_codice") or "")
+        stato = str(scope.get("stato_codice_interno") or "")
         if stato != "DRAFT":
             ErrorManager.raise_error(
                 code="E_CONTRATTO_NON_MODIFICABILE",
@@ -1794,7 +1794,7 @@ class ContrattiService:
         )
         assert testata is not None
         # Guard Profilo A: utility 1:1 modificabile solo in DRAFT.
-        stato_corrente = str(testata.get("stato_codice") or "")
+        stato_corrente = str(testata.get("stato_codice_interno") or "")
         if stato_corrente != "DRAFT":
             ErrorManager.raise_error(
                 code="E_CONTRATTO_NON_MODIFICABILE",

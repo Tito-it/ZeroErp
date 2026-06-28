@@ -60,6 +60,7 @@ class TemplateVersioneListRow(TypedDict):
     titolo: str
     formato_template: str
     render_engine_id: int
+    render_engine_codice_interno: str
     render_engine_codice: str
     render_engine_descrizione: str
     page_format: str

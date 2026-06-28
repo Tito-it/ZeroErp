@@ -442,7 +442,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <Checkbox v-model="form.servizio_da_fatturare" :binary="true" />
           </div>
           <div v-if="isEdit && detail" class="form-field" style="flex: 1; align-self: flex-end;">
-            <Tag :value="detail.stato_descrizione" :severity="statoClienteSeverity(detail.stato_codice)"
+            <Tag :value="detail.stato_descrizione" :severity="statoClienteSeverity(detail.stato_codice_interno)"
               style="font-size: 0.95rem; padding: 0.5rem 1rem;" />
           </div>
         </div>

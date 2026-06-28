@@ -138,6 +138,7 @@ documentati nelle API delle sorgenti funzionali che li espongono
         "titolo": "v1 standard",
         "formato_template": "HTML",
         "render_engine_id": 1,
+        "render_engine_codice_interno": "WEASYPRINT",
         "render_engine_codice": "WEASYPRINT",
         "render_engine_descrizione": "WeasyPrint",
         "page_format": "A4",
@@ -156,6 +157,13 @@ documentati nelle API delle sorgenti funzionali che li espongono
 
 - `400`: `stato` non in whitelist — codice `E_DOCUMENTI_VALIDATION`
 - `404`: template inesistente o fuori scope — codice `E_DOCUMENTI_NOT_FOUND`
+
+> **Campi render engine** — `render_engine_codice_interno` e' la chiave
+> **immutabile** (`documenti.render_engine_documento.codice_interno`, es.
+> `WEASYPRINT`): e' su questo che il backend valida la whitelist engine. Il
+> `render_engine_codice` e' l'etichetta **mutabile** a video (rinominabile
+> dall'utente) — usarlo solo per display, mai per logica. La logica FE che deve
+> discriminare l'engine usi `render_engine_codice_interno`.
 
 ### 4. Dettaglio versione
 

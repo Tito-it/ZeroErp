@@ -96,6 +96,7 @@ class FornitoriRepository:
                    v.soggetto_ruolo_id,
                    v.codice,
                    v.attivo,
+                   v.stato_codice_interno,
                    v.stato_codice,
                    v.stato_descrizione,
                    v.blocca_ordini,
@@ -179,7 +180,8 @@ class FornitoriRepository:
                    f.rating,
                    f.qualifica_scadenza,
                    -- Stato
-                   sf.codice_interno      AS stato_codice,
+                   sf.codice_interno      AS stato_codice_interno,
+                   sf.codice              AS stato_codice,
                    sf.descrizione_breve   AS stato_descrizione,
                    sf.blocca_ordini,
                    -- Note e audit
