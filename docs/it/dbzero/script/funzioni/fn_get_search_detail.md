@@ -17,115 +17,71 @@ DECLARE
   v_tipo_ruolo_codice  config.tipi_ruoli.codice_interno%TYPE;
   v_result             jsonb;
 BEGIN
-  -- Guard: soggetto obbligatorio
   IF p_soggetto_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'database',
-      'script.fn_get_search_detail',
-      'E_PARAMETRO_INVALIDO',
-      jsonb_build_object(
-        'parametro', 'p_soggetto_id',
-        'valore', NULL
-      ),
-      NULL::uuid,
-      'p_soggetto_id obbligatorio'
+      'database', 'script.fn_get_search_detail', 'E_PARAMETRO_INVALIDO',
+      jsonb_build_object('parametro', 'p_soggetto_id', 'valore', NULL),
+      NULL::uuid, 'p_soggetto_id obbligatorio'
     );
   END IF;
 
-  -- Guard: tipo ruolo obbligatorio e valido
   IF p_tipo_ruolo_id IS NULL OR p_tipo_ruolo_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
-      'database',
-      'script.fn_get_search_detail',
-      'E_PARAMETRO_INVALIDO',
-      jsonb_build_object(
-        'parametro', 'p_tipo_ruolo_id',
-        'valore', p_tipo_ruolo_id
-      ),
-      NULL::uuid,
-      'p_tipo_ruolo_id obbligatorio e > 0'
+      'database', 'script.fn_get_search_detail', 'E_PARAMETRO_INVALIDO',
+      jsonb_build_object('parametro', 'p_tipo_ruolo_id', 'valore', p_tipo_ruolo_id),
+      NULL::uuid, 'p_tipo_ruolo_id obbligatorio e > 0'
     );
   END IF;
 
-  -- Recupera codice_interno del tipo ruolo
   SELECT tr.codice_interno INTO v_tipo_ruolo_codice
   FROM config.tipi_ruoli tr
   WHERE tr.id = p_tipo_ruolo_id;
 
   IF v_tipo_ruolo_codice IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
-      'database',
-      'script.fn_get_search_detail',
-      'E_TIPO_RUOLO_NON_TROVATO',
-      jsonb_build_object(
-        'detail', 'tipo_ruolo_id non trovato in config.tipi_ruoli',
-        'p_tipo_ruolo_id', p_tipo_ruolo_id
-      ),
-      NULL::uuid,
-      p_tipo_ruolo_id::text
+      'database', 'script.fn_get_search_detail', 'E_TIPO_RUOLO_NON_TROVATO',
+      jsonb_build_object('detail', 'tipo_ruolo_id non trovato in config.tipi_ruoli', 'p_tipo_ruolo_id', p_tipo_ruolo_id),
+      NULL::uuid, p_tipo_ruolo_id::text
     );
   END IF;
 
-  -- Costruisci dettaglio in base al codice_interno del tipo ruolo
-  -- (codice_interno e' immutabile, protetto da trgfn_lock_columns)
+  -- Dettaglio per codice_interno del tipo ruolo (immutabile).
   CASE v_tipo_ruolo_codice
 
   WHEN 'CL' THEN
-    -- Righe cliente: per ogni cliente del soggetto_ruolo,
-    -- istanza_utility + indirizzo + dati entita'.
-    -- Indirizzo: da istanza_utility se presente, fallback fn_get_indirizzo RES.
-    -- Filtro scope emittente: se p_emittente_ids IS NOT NULL,
-    -- mostra solo clienti il cui billing_account e' collegato
-    -- a un emittente autorizzato via emittenti_fiscali_billing_account.
-    -- Supporta gestore globale (is_default=true, ba_id NULL).
     SELECT jsonb_build_object(
       'tipo_ruolo', v_tipo_ruolo_codice,
-      'righe', COALESCE(jsonb_agg(row_detail ORDER BY row_detail->>'utility_codice', row_detail->>'stato_descrizione'), '[]'::jsonb)
+      'righe', COALESCE(jsonb_agg(row_detail ORDER BY row_detail->>'utility_codice_interno', row_detail->>'stato_descrizione'), '[]'::jsonb)
     ) INTO v_result
     FROM (
       SELECT jsonb_build_object(
-        'cliente_id',          cl.id,
-        'soggetto_ruolo_id',   cl.soggetto_ruolo_id,
-        'codice',              ba.codice,
-        'istanza_codice',      iu.codice,
-        'istanza_id',          iu.id,
-        'utility_id',          u.id,
-        'utility_codice',      u.codice_interno,
-        'utility_descrizione', u.descrizione,
-        'stato_cliente_id',    sc.id,
-        'stato_codice',        sc.codice_interno,
-        'stato_descrizione',   sc.descrizione_breve,
-        'stato_macro',         sc.codice,
-        'indirizzo',           COALESCE(
-                                 idv.indirizzo_normalizzato,
-                                 fb_ind.indirizzo_completo,
-                                 ''
-                               ),
-        'comune',              COALESCE(
-                                 idv.descrizione_comune,
-                                 fb_ind.comune_descrizione,
-                                 ''
-                               ),
-        'data_attivazione',    cl.data_attivazione,
-        'data_sospensione',    cl.data_sospensione,
-        'data_riattivazione',  cl.data_riattivazione,
-        'data_chiusura',       cl.data_chiusura
+        'cliente_id',             cl.id,
+        'soggetto_ruolo_id',      cl.soggetto_ruolo_id,
+        'codice',                 ba.codice,
+        'istanza_codice',         iu.codice,
+        'istanza_id',             iu.id,
+        'utility_id',             u.id,
+        'utility_codice_interno', u.codice_interno,
+        'utility_codice',         u.codice,
+        'utility_descrizione',    u.descrizione,
+        'stato_cliente_id',       sc.id,
+        'stato_codice_interno',   sc.codice_interno,
+        'stato_descrizione',      sc.descrizione_breve,
+        'stato_macro',            sc.codice,
+        'indirizzo',              COALESCE(idv.indirizzo_normalizzato, fb_ind.indirizzo_completo, ''),
+        'comune',                 COALESCE(idv.descrizione_comune, fb_ind.comune_descrizione, ''),
+        'data_attivazione',       cl.data_attivazione,
+        'data_sospensione',       cl.data_sospensione,
+        'data_riattivazione',     cl.data_riattivazione,
+        'data_chiusura',          cl.data_chiusura
       ) AS row_detail
       FROM anagrafiche.soggetti_ruoli sr
-        JOIN anagrafiche.clienti cl
-          ON cl.soggetto_ruolo_id = sr.id
-        JOIN config.stati_cliente sc
-          ON sc.id = cl.stato_cliente_id
-        LEFT JOIN anagrafiche.billing_account ba
-          ON ba.id = cl.billing_account_id
-        LEFT JOIN anagrafiche.istanze_utilities iu
-          ON iu.id = cl.istanza_utility_id
-        LEFT JOIN config.utilities u
-          ON u.id = cl.utility_id
-        LEFT JOIN anagrafiche.vw_indirizzi_dettaglio idv
-          ON idv.indirizzo_dettaglio_id = iu.indirizzo_dettaglio_id
-        -- Fallback indirizzo: fn_get_indirizzo(RES) con policy master/fallback
-        -- Usato solo quando istanza non ha indirizzo_dettaglio_id
+        JOIN anagrafiche.clienti cl ON cl.soggetto_ruolo_id = sr.id
+        JOIN config.stati_cliente sc ON sc.id = cl.stato_cliente_id
+        LEFT JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id
+        LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = cl.istanza_utility_id
+        LEFT JOIN config.utilities u ON u.id = cl.utility_id
+        LEFT JOIN anagrafiche.vw_indirizzi_dettaglio idv ON idv.indirizzo_dettaglio_id = iu.indirizzo_dettaglio_id
         LEFT JOIN LATERAL (
           SELECT gi.indirizzo_completo, gi.comune_descrizione
           FROM script.fn_get_indirizzo(sr.id, 'RES') gi
@@ -134,20 +90,11 @@ BEGIN
       WHERE sr.soggetto_id = p_soggetto_id
         AND sr.tipo_ruolo_id = p_tipo_ruolo_id
         AND (p_utility_id IS NULL OR cl.utility_id = p_utility_id)
-        -- Filtro scope emittente: delega la logica a 3 livelli
-        -- (mapping specifico, fallback default, non visibile) a
-        -- script.fn_check_ba_visible_for_emittenti per evitare
-        -- duplicazione con fn_search_soggetti_universale.
         AND (p_emittente_ids IS NULL
-             OR script.fn_check_ba_visible_for_emittenti(
-                  cl.billing_account_id, p_emittente_ids
-                )
-        )
+             OR script.fn_check_ba_visible_for_emittenti(cl.billing_account_id, p_emittente_ids))
     ) sub;
 
   WHEN 'FO' THEN
-    -- Righe fornitore: entita_detail + indirizzo sede operativa.
-    -- Nessun filtro emittente per FO.
     SELECT jsonb_build_object(
       'tipo_ruolo', v_tipo_ruolo_codice,
       'righe', COALESCE(jsonb_agg(row_detail), '[]'::jsonb)
@@ -163,9 +110,7 @@ BEGIN
         'comune',              COALESCE(fb_ind.comune_descrizione, '')
       ) AS row_detail
       FROM anagrafiche.soggetti_ruoli sr
-        JOIN anagrafiche.fornitori f
-          ON f.soggetto_ruolo_id = sr.id
-        -- Indirizzo default fornitore: sede operativa con fallback
+        JOIN anagrafiche.fornitori f ON f.soggetto_ruolo_id = sr.id
         LEFT JOIN LATERAL (
           SELECT gi.indirizzo_completo, gi.comune_descrizione
           FROM script.fn_get_indirizzo(sr.id, 'SEDEOP') gi
@@ -176,10 +121,6 @@ BEGIN
     ) sub;
 
   ELSE
-    -- Qualsiasi altro tipo ruolo: dati entita' + indirizzo residenza.
-    -- fn_get_entita_ruolo_detail gestisce tutti i casi specifici
-    -- (EF, VT, GE, BANK_B, RIS_UMANA, generici).
-    -- Nessun filtro emittente per ruoli non-CL.
     SELECT jsonb_build_object(
       'tipo_ruolo', v_tipo_ruolo_codice,
       'entita_detail', script.fn_get_entita_ruolo_detail(sr.id, p_utility_id),
@@ -193,7 +134,6 @@ BEGIN
       )
     ) INTO v_result
     FROM anagrafiche.soggetti_ruoli sr
-      -- Indirizzo default: residenza con fallback
       LEFT JOIN LATERAL (
         SELECT gi.indirizzo_completo, gi.comune_descrizione
         FROM script.fn_get_indirizzo(sr.id, 'RES') gi
@@ -209,7 +149,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer, p_emittente_ids bigint[])
-IS 'Dettaglio soggetto per tipo ruolo (livello 2 ricerca universale). JSONB con righe specifiche. CL: istanza+utility+billing_account+stato+indirizzo+date+filtro scope emittente via emittenti_fiscali_billing_account con fallback is_default=true (gestore globale). FO: codice+attivo+indirizzo SEDEOP. ELSE: entita_detail via fn_get_entita_ruolo_detail + indirizzo RES.';
+IS 'Dettaglio ricerca per tipo_ruolo (CASE su codice_interno). Branch CL: espone utility_codice_interno (codice_interno, logica) + utility_codice (codice, display) e stato_codice_interno (codice_interno); stato_macro = stati_cliente.codice. rev 2026-06-28 (naming stato).';
 ```
 
 ---
