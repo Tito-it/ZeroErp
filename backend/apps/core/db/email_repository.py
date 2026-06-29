@@ -135,17 +135,22 @@ class EmailRepository:
         attivo: bool = True,
     ) -> int:
         encrypted_pw = crypto_service.encrypt(smtp_password) if smtp_password else None
+        # `codice_interno` e' la chiave logica IMMUTABILE (NOT NULL, lockata,
+        # nessun default DB): qui il `codice` e' MUTABILE (in _ACCOUNT_UPDATE_COLS),
+        # quindi codice_interno va fissato = codice alla create e poi resta stabile
+        # anche se il codice viene rinominato. Senza, l'INSERT viola NOT NULL
+        # (colonna aggiunta dal DB in 20260629-05, vedi analisi-hardcoded-codice.md §4 #2).
         sql = """
             INSERT INTO config.email_account
-                (codice, descrizione, unita_organizzativa_id,
+                (codice, codice_interno, descrizione, unita_organizzativa_id,
                  smtp_host, smtp_port, smtp_use_tls, smtp_use_ssl,
                  smtp_username, smtp_password_encrypted,
                  email_from, email_reply_to, attivo)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """
         params = [
-            codice, descrizione, unita_organizzativa_id,
+            codice, codice, descrizione, unita_organizzativa_id,
             smtp_host, smtp_port, smtp_use_tls, smtp_use_ssl,
             smtp_username, encrypted_pw,
             email_from, email_reply_to, attivo,

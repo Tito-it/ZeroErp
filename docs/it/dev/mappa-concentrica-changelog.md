@@ -10,6 +10,43 @@
 
 ---
 
+## 28 giugno 2026
+
+**Qualità di modello — convenzione `codice_interno` / `codice` (cross-anello).** Bonifica
+della coppia di colonne delle tabelle `config.*`/lookup (`codice_interno` **immutabile** per
+la logica, `codice` **mutabile** per il display), in due interventi complementari:
+
+- **Mislabel alias** `codice_interno AS *_codice` (alias bugiardo che esponeva l'immutabile
+  col nome del mutabile): sweep completo DB (viste/funzioni liste contratti/clienti/fornitori/
+  coda, indirizzi/istanze, search-detail) + migrazione consumer BE/FE a `*_codice_interno` +
+  guardrail CI catalog-based bloccante. Vedi
+  [brief-naming-stato-codice-interno.md](work-done/brief-naming-stato-codice-interno.md).
+- **Hardcode contro la colonna mutabile** (`WHERE codice = 'X'` dove la logica doveva usare
+  `codice_interno`): audit multi-superficie, **21 BUG_DUAL + 7 CANDIDATE** corretti. DB: 16
+  oggetti della pipeline commesse→push→fatturazione (`fn_list_*_da_pushare`, `config.sorgenti`,
+  `stati_doc_*`) + fix di un **bug reale** in `fn_lookup_utilities_per_ba` (ritornava 0 righe
+  perché `codice ≠ codice_interno`). BE: render engine documenti, lookup documenti/sorgenti,
+  approvazioni prezzo, super-admin riconosciuto via enum `tipo`, categorie clienti. Estratto il
+  BB `resolve_config_id_by_codice_interno` (regola del 2) e corretti **2 bug di create**
+  emersi in review (colonna `codice_interno NOT NULL` aggiunta senza default → INSERT rotto su
+  categorie clienti ed email account). Vedi
+  [analisi-hardcoded-codice.md](work-done/analisi-hardcoded-codice.md).
+
+**Anello 3 (vendite) — gate EVASO ramo commessa.** Corretta l'asimmetria logica col ramo
+ordine nel gate EVASO della pratica (bug logico del modello), applicata e **verificata
+runtime** (smoke preventivo→EVASO al push, evento `DOMINIO_PREVENTIVO_EVASO`, re-push su EVASO
+bloccato). Avviato lo smoke E2E push commesse→fatturazione. Vedi
+[brief-db-gate-evaso-commessa-asimmetria.md](work-done/brief-db-gate-evaso-commessa-asimmetria.md),
+[a-test-push-commesse-fatturazione.md](work-in-progress/a-test-push-commesse-fatturazione.md).
+
+**Anello 2 (pratiche) — sospensioni anti-overlap + guard data manuale.** Anti-sovrapposizione
+delle sospensioni pratica + guard sulla data manuale (DB + piano BE/FE). Vedi
+[brief-db-sospensioni-anti-overlap-data-manuale.md](work-done/brief-db-sospensioni-anti-overlap-data-manuale.md).
+
+**Sicurezza AI/agenti.** Revisione critica del documento di considerazioni sicurezza AI
+(2026-06-26) tradotta in piano di allineamento documentale/operativo. Vedi
+[analisi-sicurezza-aggiornata.md](work-done/analisi-sicurezza-aggiornata.md).
+
 ## 20 giugno 2026
 
 Anello 3 (vendite): **batch fatturazione automatico end-to-end operativo**. Driver CRON

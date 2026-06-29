@@ -122,6 +122,12 @@ POST /api/v1/amm-software/email-accounts/
 | `unita_organizzativa_id` | int | No | NULL = account di sistema |
 | `attivo` | bool | No | Default true |
 
+> **`codice_interno` (chiave logica immutabile)**: NON è un campo del payload. Alla
+> create il backend lo valorizza automaticamente `= codice` e da lì resta **stabile
+> e immutabile** (lockato a DB), mentre il `codice` può essere rinominato via PATCH.
+> La logica di sistema (es. fallback account `SISTEMA` in `fn_resolve_email_account`)
+> usa `codice_interno`, non il `codice` mutabile.
+
 ### Dettaglio / Modifica / Elimina
 
 ```http

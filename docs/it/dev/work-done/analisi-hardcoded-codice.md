@@ -192,6 +192,15 @@ viste-lista (completamento della stessa logica del brief naming §9 follow-up).
    #4 `domini_task` lock `codice`. pgTAP esistenti adeguati (vedi §11.2).
 4. **Sistemico** — §7: valutare esposizione `*_codice_interno` sulle viste-lista (allineato
    al follow-up del brief naming). Follow-up FE, non bloccante.
+5. **Dedup (regola del 2)** — ✅ FATTO (2026-06-28): estratto BB
+   `apps/core/db/_helpers.resolve_config_id_by_codice_interno` (generalizza
+   `pratiche_repository._resolve_stato`) e fatti convergere i lookup
+   `SELECT id … WHERE codice_interno = %s AND attivo` della "Famiglia A — risolvi
+   id o solleva `E_CONFIG_MANCANTE`": pratiche (`_resolve_stato` +
+   `create_nota`/`create_allegato`) e `approvazioni_prezzo_service`
+   (`tipi_prestazione`, `priorita_pratiche`). Registrato nel catalogo BB.
+   La "Famiglia B — id o `None`" (`ordini`/`note_stili`) **non** unificata
+   (decisione: solo A).
 
 > **🟢 Lato DB l'intero documento è COMPLETO** (§3a A–E + §4 #1–#4 scritti, applicati e
 > testati; pgTAP esistenti adeguati). Quanto resta è **lato BE**: consolidato in **§11**.
@@ -352,13 +361,13 @@ Tutto il lato DB è applicato e testato. Quanto segue è ciò che resta **lato b
 I fn DB ora risolvono internamente per `codice_interno`/enum: il BE deve allinearsi solo
 dove **interroga direttamente** quelle tabelle o dove **passa** codici come parametro.
 
-### 11.1 Da fare (refactor/fix BE)
+### 11.1 BE — ✅ FATTO (2026-06-29, test verdi: amm_software+anagrafiche 524, vendite 957)
 
-| # | Origine | File:riga | Cosa cambiare | Rischio |
+| # | Origine | File:riga | Fatto | Esito |
 | --- | --- | --- | --- | --- |
-| BE-1 | §4 #1 `profili_accesso` | `backend/apps/amm_software/db/amm_software_repository.py` (lookup profilo SUPER_ADMIN, ~280/292/411) | Il DB ora identifica il super-admin per l'**enum `tipo`** (i 3 guard usano `pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso`). Allineare le query BE: `WHERE codice = 'SUPER_ADMIN'` → `WHERE tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso`. (Niente `codice_interno`: per questa tabella si è scelto l'enum, vedi §10/#1.) | 🟡 |
-| BE-2 | §4 #3 `categorie_clienti` | `backend/apps/anagrafiche/db/clienti_repository.py:132` (`get_categoria_cliente_id_by_codice`, default `STANDARD`) | `SELECT id FROM anagrafiche.categorie_clienti WHERE codice = %s` → `WHERE codice_interno = %s`. La colonna `codice_interno` ora esiste (immutabile, lockata). | 🟡 |
-| BE-3 | §3a (verifica) | `backend/apps/vendite/db/preventivi_repository.py:630` (`fn_cambia_stato_preventivo`), ed eventuali caller di `fn_set_documento_canale_stato` | I fn ora risolvono **stati/sorgenti per `codice_interno`**. Verificare che il BE passi il **`codice_interno`** dello stato/canale (non il `codice` display). Oggi `codice == codice_interno` → nessuna rottura, ma allineare la semantica (e i punti dove il valore arriva dal FE/request). | 🟢 basso |
+| BE-1 | §4 #1 `profili_accesso` | `backend/apps/amm_software/db/amm_software_repository.py` (280/292/411) | ✅ `WHERE pa.codice = 'SUPER_ADMIN'` → `WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso` (3 occorrenze: INSERT/DELETE/COUNT binding). | Allineato ai 3 guard DB. ⚠️ Nota: `tipo` è una *categoria* (non UNIQUE come `codice`); profilo SUPER_ADMIN oggi **unico** (seed idempotente) → INSERT binding corretto. |
+| BE-2 | §4 #3 `categorie_clienti` | `backend/apps/anagrafiche/db/clienti_repository.py:132` (`get_categoria_cliente_id_by_codice`) | ✅ `WHERE codice = %s` → `WHERE codice_interno = %s`. | Seed `codice_interno == codice` (STANDARD); unico caller passa `'STANDARD'` (codice_interno). |
+| BE-3 | §3a (verifica) | `backend/apps/vendite/db/preventivi_repository.py:630`, caller di `fn_set_documento_canale_stato` | ✅ **verificato, nessuna modifica**: `cambia_stato` passa già `nuovo_stato` come `codice_interno` (guard su `"EMESSO"/"ACCETTATO"`, modello su `stato_codice_interno`); `fn_set_documento_canale_stato` **non ha caller BE** (solo DB→DB). | Contratto già su codice_interno. |
 
 ### 11.2 Nessun intervento BE necessario (verificato)
 
@@ -383,6 +392,33 @@ dove **interroga direttamente** quelle tabelle o dove **passa** codici come para
 
 - §7 sistemico: esporre `*_codice_interno` sulle viste-lista che oggi proiettano solo `*_codice`,
   così i consumer FE confrontano la chiave stabile. Allineato al follow-up del brief naming.
+
+### 11.5 BE — chiusura §11.1 + bug downstream emersi (2026-06-29)
+
+- **BE-1** ✅ `amm_software_repository` (280/292/411): super-admin riconosciuto via **enum
+  `tipo`** (`pa.tipo = %s::config.tipo_profilo_accesso`), literale `'SUPER_ADMIN'` ×3 sostituito
+  dalla costante `apps.core.services.auth_constants.TIPO_PROFILO_SUPER_ADMIN` (no hardcode).
+- **BE-2** ✅ `clienti_repository.get_categoria_cliente_id_by_codice`: era **codice morto**
+  (zero chiamanti) → **rimosso** + corretto il commento stale in `create_billing_account`.
+- **BE-3** ✅ verificato, nessuna modifica (`cambia_stato` passa già `codice_interno`).
+
+> **🔴 Due bug downstream introdotti dalle migration §4 (NON segnalati nell'handoff DB),
+> trovati in review critica e corretti**: le colonne `codice_interno NOT NULL` aggiunte
+> (§4 #2 email_account `20260629-05`, §4 #3 categorie_clienti `20260629-06`) sono **senza
+> default né trigger di popolamento**, ma le rispettive **create BE non scrivevano la
+> colonna** → l'INSERT violava NOT NULL.
+>
+> - `categorie_clienti_repository.create_categoria`: ✅ ora set `codice_interno = codice`
+>   (qui `codice` è già immutabile lato API → coincidono).
+> - `email_repository.create_account`: ✅ ora set `codice_interno = codice` (qui `codice` è
+>   **mutabile** via PATCH → `codice_interno` è la chiave stabile fissata alla create).
+>
+> **Lezione**: aggiungere una colonna `NOT NULL` senza default impatta **tutte le create
+> applicative**, non solo i lookup. L'handoff DB aveva indicato solo il lookup (per giunta
+> codice morto), mancando le due create reali ([[feedback_audit_db_preventivo_smoke]]).
+> Doc API aggiornate: `api_categorie_clienti.md`, `api_email.md`.
+
+**Test**: core + anagrafiche + amm_software = 1126 verdi.
 
 ---
 

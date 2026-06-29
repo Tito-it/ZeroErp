@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 20 giugno 2026 — Anello 3 (vendite): **batch fatturazione automatico end-to-end operativo** — driver CRON `run-until-done`, discovery a corsie `(emittente, tipo_doc_fiscale, utility)`, **sync dello stato fattura per-step** `1→2→8`, run headless in `job_run_log`; hardening commesse→fatturazione (normalize + **guard `tipo_doc` emittibile**, snapshot pricing v5 nel push, azioni stato commessa, pull agganciata agli step). Anello 2 (pratiche, workflow v2): **assegnazione flusso a operatore/reparto** (policy reparto-first) + **coda lavoro operatore** (pannello "Le mie attività"), **esito configurabile flussi** (MANUALE/AUTOMATICO/CONTESTUALE), aggancio documento↔flusso, audit utente reale. Dettaglio datato e completo nel [changelog della mappa](dev/mappa-concentrica-changelog.md).*
+*Ultimo aggiornamento: 28 giugno 2026 — **Qualità di modello cross-anello**: bonifica completa della convenzione `codice_interno`/`codice` (immutabile per la logica, mutabile per il display) — sweep del mislabel-alias e correzione degli hardcode contro la colonna mutabile (DB+BE+FE, pipeline commesse→push→fatturazione). Anello 3 (vendite): gate **EVASO ramo commessa** allineato al ramo ordine (bug logico). Anello 2 (pratiche): **sospensioni anti-overlap + guard data manuale**. Sicurezza AI/agenti: revisione + piano di allineamento. Dettaglio datato e completo nel [changelog della mappa](dev/mappa-concentrica-changelog.md).*
 >
 > *Aggiornamenti precedenti: vedi [changelog della mappa](dev/mappa-concentrica-changelog.md).*
 
