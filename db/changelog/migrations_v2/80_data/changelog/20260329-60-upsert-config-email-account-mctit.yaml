@@ -34,6 +34,7 @@ databaseChangeLog:
             columns:
               - column: { name: id, type: STRING }
               - column: { name: codice, type: STRING }
+              - column: { name: codice_interno, type: STRING }
               - column: { name: descrizione, type: STRING }
               - column: { name: unita_organizzativa_id, type: NUMERIC }
               - column: { name: smtp_host, type: STRING }

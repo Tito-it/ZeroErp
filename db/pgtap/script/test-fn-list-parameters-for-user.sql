@@ -173,8 +173,8 @@ SELECT is(
 -- ============================================================
 
 -- Categoria di test (id 9999, smallint; attivo=true per trigger req-active-parent)
-INSERT INTO anagrafiche.categorie_clienti (id, codice, descrizione)
-VALUES (9999, '_TEST_CAT_LIST_', 'Categoria test fn_list_parameters_for_user')
+INSERT INTO anagrafiche.categorie_clienti (id, codice, codice_interno, descrizione)
+VALUES (9999, '_TEST_CAT_LIST_', '_TEST_CAT_LIST_', 'Categoria test fn_list_parameters_for_user')
 ON CONFLICT (id) DO NOTHING;
 
 -- Override categoria su parametro A (scope puro: no user/group/emittente/session/function)

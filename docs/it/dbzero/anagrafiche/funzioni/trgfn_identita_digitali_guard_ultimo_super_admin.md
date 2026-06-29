@@ -27,6 +27,9 @@ BEGIN
     --      Altrimenti il count non puo' peggiorare.
     --   3. Se a rischio, verifica post-stato via fn_check.
     --      Se false, raise E_PROFILO_ULTIMO_SUPER_ADMIN.
+    --
+    -- rev 2026-06-29: profilo SUPER_ADMIN identificato per l'enum
+    --   stabile tipo invece che per codice (mutabile) -- §4a.
     -- =========================================================
 
     IF NOT (OLD.attivo = true AND NEW.attivo = false) THEN
@@ -40,7 +43,7 @@ BEGIN
             ON pa.id = pab.profilo_accesso_id
          WHERE pab.identita_digitale_id = OLD.id
            AND pab.attivo = true
-           AND pa.codice  = 'SUPER_ADMIN'
+           AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
            AND pa.attivo  = true
     )
     INTO v_was_super_admin;
@@ -70,7 +73,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin()
-IS 'Guard anti-lockout: impedisce di disattivare un''identita che portava l''ultimo binding SUPER_ADMIN attivo. Delega il check a script.fn_check_almeno_un_super_admin_attivo. Codice errore E_PROFILO_ULTIMO_SUPER_ADMIN.';
+IS 'Guard anti-lockout: impedisce di disattivare un''identita che portava l''ultimo binding SUPER_ADMIN attivo (profilo identificato per tipo enum). Delega il check a script.fn_check_almeno_un_super_admin_attivo. Codice errore E_PROFILO_ULTIMO_SUPER_ADMIN. rev 2026-06-29: tipo invece di codice (§4a).';
 ```
 
 ---

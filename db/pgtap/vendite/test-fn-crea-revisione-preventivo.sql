@@ -10,14 +10,15 @@
 -- 4) Revisione da EMESSO ammessa: nuova rev in DRAFT
 -- 5) Revisione copia righe attive
 -- 6) Revisione copia indirizzi
--- 7) Revisione disattiva precedente (is_revision_attiva = false)
+-- 7) Revisione disattiva precedente (vw_preventivi.is_attiva = false)
 -- 8) Revisione da DRAFT vietata
 -- 9) Revisione da ACCETTATO vietata (rev 03-05-2026: ACCETTATO chiude
 --    la negoziazione, non rivisitabile - regola di dominio)
+-- 10) anti-regressione: rename codice stati -> revisione risolta per codice_interno
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(9);
+SELECT plan(10);
 
 -- ============================================================
 -- Setup GUC app.current_user_id: serve a fn_crea_revisione_preventivo
@@ -123,7 +124,7 @@ SELECT ok(
 CREATE TEMP TABLE tmp_rv_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, is_revision_attiva,
+    numero, rev,
     billing_account_id, istanza_utility_id, utility_id,
     validita_dal, validita_al, valuta_id,
     stato_doc_preventivo_id, data,
@@ -132,7 +133,7 @@ WITH ins AS (
   )
   SELECT
     'PGTAP-RV-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0, true,
+    0,
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
     r.stato_emesso_id, DATE '2026-06-01',
@@ -218,10 +219,10 @@ SELECT ok(
 -- 7) Revisione precedente disattivata
 -- ============================================================
 SELECT ok(
-  (SELECT is_revision_attiva = false
-   FROM vendite.preventivi
+  (SELECT is_attiva = false
+   FROM vendite.vw_preventivi
    WHERE id = (SELECT id FROM tmp_rv_prev)),
-  '7. Revisione precedente disattivata (is_revision_attiva = false)'
+  '7. Revisione precedente disattivata (vw_preventivi.is_attiva = false; is_revision_attiva droppata 20260515-05)'
 );
 
 -- ============================================================
@@ -230,7 +231,7 @@ SELECT ok(
 CREATE TEMP TABLE tmp_rv_prev_draft AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, is_revision_attiva,
+    numero, rev,
     billing_account_id, istanza_utility_id, utility_id,
     validita_dal, validita_al, valuta_id,
     stato_doc_preventivo_id, data,
@@ -239,7 +240,7 @@ WITH ins AS (
   )
   SELECT
     'PGTAP-RVD-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0, true,
+    0,
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
     r.stato_draft_id, DATE '2026-06-01',
@@ -267,7 +268,7 @@ SELECT throws_ok(
 CREATE TEMP TABLE tmp_rv_prev_accettato AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, is_revision_attiva,
+    numero, rev,
     billing_account_id, istanza_utility_id, utility_id,
     validita_dal, validita_al, valuta_id,
     stato_doc_preventivo_id, data,
@@ -276,7 +277,7 @@ WITH ins AS (
   )
   SELECT
     'PGTAP-RVA-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0, true,
+    0,
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
     r.stato_accettato_id, DATE '2026-06-01',
@@ -294,6 +295,59 @@ SELECT throws_ok(
   ),
   'P0001', NULL,
   '9. Revisione da ACCETTATO vietata (PREV_REVISIONE_STATO_NON_AMMESSO)'
+);
+
+-- ============================================================
+-- 10) Anti-regressione codice_interno (analisi-hardcoded-codice §3a #2):
+--     rinominando il `codice` (mutabile) degli stati, la creazione revisione
+--     DEVE risolvere stato corrente (EMESSO) e DRAFT per `codice_interno`.
+--     Col vecchio codice lo stato corrente non risulterebbe 'EMESSO' ->
+--     PREV_REVISIONE_STATO_NON_AMMESSO. Preventivo EMESSO fresco (numero nuovo,
+--     nessuna revisione DRAFT preesistente).
+-- ============================================================
+CREATE TEMP TABLE tmp_rv_prev_antireg AS
+WITH ins AS (
+  INSERT INTO vendite.preventivi (
+    numero, rev,
+    billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, valuta_id,
+    stato_doc_preventivo_id, data,
+    emittente_fiscale_id,
+    storicizza, meta
+  )
+  SELECT
+    'PGTAP-RVAR-' || substr(md5(clock_timestamp()::text), 1, 8),
+    0,
+    r.billing_account_id, r.istanza_utility_id, r.utility_id,
+    DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
+    r.stato_emesso_id, DATE '2026-06-01',
+    r.emittente_fiscale_id,
+    false, jsonb_build_object('test_scope', 'pgtap_revisione')
+  FROM tmp_rv_refs r
+  RETURNING id, uid, numero
+)
+SELECT * FROM ins;
+
+-- Riga attiva con quantita > 0 (copiata dalla revisione)
+INSERT INTO vendite.preventivi_righe (
+  preventivo_id, articolo_id, qta_operativa, quantita,
+  prezzo_unitario, iva_id, attivo, ordine, meta
+)
+SELECT p.id, r.articolo_id, 10, 10, 100.00, r.iva_id, true, 1,
+       jsonb_build_object('test_scope', 'pgtap_revisione')
+FROM tmp_rv_prev_antireg p, tmp_rv_refs r;
+
+-- Rinomina il codice (mutabile) di EMESSO/DRAFT; codice_interno invariato.
+UPDATE config.stati_doc_preventivi
+   SET codice = codice || '_RENAMED'
+ WHERE codice_interno IN ('EMESSO', 'DRAFT');
+
+SELECT lives_ok(
+  format(
+    'SELECT * FROM vendite.fn_crea_revisione_preventivo(%s, ''pgtap'')',
+    (SELECT id FROM tmp_rv_prev_antireg)
+  ),
+  '10. anti-regressione: rename codice stati -> revisione risolta per codice_interno'
 );
 
 -- ============================================================

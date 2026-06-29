@@ -5,17 +5,18 @@
 --       audit pricing v5 (8 colonne) da commesse_attivita ad attivita_fatturabili
 -- (changeset 20260616-01)
 -- ------------------------------------------------------------
--- Indice test (1..5):
+-- Indice test (1..6):
 --  1) emit inserisce 1 riga
 --  2) prezzo_base_snapshot propagato su attivita_fatturabili
 --  3) origine_prezzo propagato
 --  4) tipo_variazione_applicata + valore_variazione_applicata propagati
 --  5) re-run idempotente: la riga ora EMESSA non e' piu' candidata
+--  6) anti-regressione: rename codice sorgente COMMESSA -> risoluzione per codice_interno (no E_CODICE)
 -- ------------------------------------------------------------
 
 BEGIN;
 
-SELECT plan(5);
+SELECT plan(6);
 
 -- ============================================================
 -- SETUP: riferimenti minimi
@@ -179,6 +180,22 @@ SELECT is(
   (SELECT total_candidate FROM tmp_emit_au2),
   0,
   're-run idempotente: la riga ora EMESSA non e'' piu'' candidata'
+);
+
+-- ============================================================
+-- TEST 6) Anti-regressione codice_interno (analisi-hardcoded-codice §3a):
+--   rinominando il `codice` (mutabile) della sorgente COMMESSA, l'emit DEVE
+--   continuare a risolverla per `codice_interno` (immutabile): nessun E_CODICE.
+--   dry_run = true: raggiunge il lookup sorgente senza mutare dati.
+-- ============================================================
+UPDATE config.sorgenti
+   SET codice = codice || '_RENAMED'
+ WHERE codice_interno = 'COMMESSA';
+
+SELECT lives_ok(
+  $$ SELECT 1 FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
+        (SELECT commessa_id FROM tmp_commessa_au), true, true) $$,
+  '6. anti-regressione: rename codice sorgente COMMESSA -> emit risolve per codice_interno (no E_CODICE)'
 );
 
 SELECT * FROM finish();

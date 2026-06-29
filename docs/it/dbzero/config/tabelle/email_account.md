@@ -22,21 +22,25 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| codice_interno | character varying | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_email_account_codice_interno_nonvuoto |  |
 | CHECK | chk_email_account_smtp_port |  |
 | CHECK | chk_email_account_tls_ssl_exclusive |  |
 | FOREIGN KEY | email_account_unita_organizzativa_id_fkey | unita_organizzativa_id |
 | PRIMARY KEY | email_account_pkey | id |
 | UNIQUE | uq_email_account_codice | codice |
+| UNIQUE | uq_email_account_codice_interno | codice_interno |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | email_account_pkey | `CREATE UNIQUE INDEX email_account_pkey ON config.email_account USING btree (id)` |
 | uq_email_account_codice | `CREATE UNIQUE INDEX uq_email_account_codice ON config.email_account USING btree (codice)` |
+| uq_email_account_codice_interno | `CREATE UNIQUE INDEX uq_email_account_codice_interno ON config.email_account USING btree (codice_interno)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

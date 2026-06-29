@@ -18,6 +18,11 @@ DECLARE
     v_emittente_sr_id     anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
     v_today               date := current_date;
 BEGIN
+    -- rev 2026-06-29 (analisi-hardcoded-codice §3a #15 / §9.5):
+    --   ruoli soggetto/EF risolti per codice_interno (immutabile).
+    --   In tipi_ruoli codice_interno != codice -> col vecchio `codice`
+    --   la funzione ritornava 0 righe.
+
     -- Guard input
     IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -81,7 +86,7 @@ BEGIN
      AND (utr_sogg.valido_al  IS NULL OR utr_sogg.valido_al  >= v_today)
     JOIN config.tipi_ruoli tr_sogg
       ON tr_sogg.id = utr_sogg.tipo_ruolo_id
-     AND tr_sogg.codice = p_ruolo_codice_soggetto
+     AND tr_sogg.codice_interno = p_ruolo_codice_soggetto
     -- ammessa per il ruolo EF (emittente fiscale)
     JOIN config.utilities_tipi_ruolo utr_ef
       ON utr_ef.utility_id = u.id
@@ -90,7 +95,7 @@ BEGIN
      AND (utr_ef.valido_al  IS NULL OR utr_ef.valido_al  >= v_today)
     JOIN config.tipi_ruoli tr_ef
       ON tr_ef.id = utr_ef.tipo_ruolo_id
-     AND tr_ef.codice = 'EF'
+     AND tr_ef.codice_interno = 'EF'
     -- override parametri per emittente (politica ibrida: LEFT JOIN)
     LEFT JOIN anagrafiche.emittenti_fiscali_utilities efu
       ON efu.utility_id = u.id
@@ -101,7 +106,7 @@ END
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_lookup_utilities_per_ba(p_billing_account_id bigint, p_ruolo_codice_soggetto text)
-IS 'Combo "utility per BA": ritorna le utility ammesse per il ruolo del soggetto del BA E per il ruolo EF dell''emittente collegato al BA, decorate con i parametri override di emittenti_fiscali_utilities (politica ibrida: utility non personalizzate restano visibili). Risolve l''emittente del BA via fn_get_emittente_fiscale_pk (mapping specifico -> default globale).';
+IS 'Utility ammesse per un billing account, guidate da emittente: intersezione ruolo soggetto (p_ruolo_codice_soggetto, codice_interno: CL/FO/GE) AND ruolo EF (codice_interno EF), con override parametri per emittente (LEFT JOIN). rev 2026-06-29: ruoli risolti per codice_interno (analisi-hardcoded-codice §3a #15) - col vecchio codice ritornava 0 righe.';
 ```
 
 ---

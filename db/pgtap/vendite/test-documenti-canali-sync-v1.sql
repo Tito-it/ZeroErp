@@ -18,10 +18,26 @@
 -- 12) ordine consumato verso ddt
 -- 13) contratto di test creato
 -- 14) contratto apre canale DIRETTO
+-- 15) anti-regressione: rename codice sorgenti -> trigger apre comunque canale (risoluzione per codice_interno)
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(14);
+SELECT plan(15);
+
+-- ============================================================
+-- Setup GUC app.current_user_id: il trigger trgfn_preventivi_default_emittente
+-- richiede l'emittente fiscale dell'operatore loggato. In contesto pgTAP la GUC
+-- e' vuota -> la valorizziamo con un utente che ha un emittente in
+-- config.user_emittenti_fiscali, altrimenti l'INSERT su preventivi solleva
+-- E_PREV_EMITTENTE_NON_RISOLTO. (Stesso pattern di test-fn-crea-revisione-preventivo.)
+-- ============================================================
+SELECT set_config(
+  'app.current_user_id',
+  (SELECT uef.auth_user_id::text
+     FROM config.user_emittenti_fiscali uef
+    ORDER BY uef.auth_user_id LIMIT 1),
+  true
+);
 
 SELECT ok(
   EXISTS (
@@ -123,7 +139,6 @@ WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero,
     rev,
-    is_revision_attiva,
     billing_account_id,
     istanza_utility_id,
     utility_id,
@@ -132,7 +147,6 @@ WITH ins AS (
   SELECT
     'PRE-' || token,
     0,
-    true,
     billing_account_id,
     istanza_utility_id,
     utility_id,
@@ -284,6 +298,50 @@ SELECT ok(
       AND c.stato_canale = 'APERTO'
   ),
   'contratto apre canale DIRETTO'
+);
+
+-- ============================================================
+-- TEST 15) Anti-regressione codice_interno (analisi-hardcoded-codice §3a #13/#14):
+--   dopo rename del `codice` (mutabile) delle 4 sorgenti, il trigger di sync
+--   (write, file 20260628-18) e fn_set_documento_canale_stato (read, 20260628-19)
+--   DEVONO continuare a risolverle per `codice_interno`: il canale si apre comunque.
+-- ============================================================
+UPDATE config.sorgenti
+   SET codice = codice || '_RENAMED'
+ WHERE codice_interno IN ('PREVENTIVO', 'ORDINE_VENDITA', 'DDT_VENDITA', 'CONTRATTO');
+
+CREATE TEMP TABLE tmp_sync_prev_antireg AS
+WITH ins AS (
+  INSERT INTO vendite.preventivi (
+    numero,
+    rev,
+    billing_account_id,
+    istanza_utility_id,
+    utility_id,
+    stato_doc_preventivo_id
+  )
+  SELECT
+    'PAR-' || token,
+    0,
+    billing_account_id,
+    istanza_utility_id,
+    utility_id,
+    stato_preventivo_id
+  FROM tmp_canali_sync_refs
+  RETURNING id, uid
+)
+SELECT id, uid FROM ins;
+
+SELECT ok(
+  EXISTS (
+    SELECT 1
+    FROM vendite.documenti_fatturazione_canali c
+    WHERE c.sorgente_tipo_id = (SELECT src_preventivo_id FROM tmp_canali_sync_refs)
+      AND c.sorgente_uid = (SELECT uid::text FROM tmp_sync_prev_antireg)
+      AND c.canale_codice = 'PREVENTIVO'
+      AND c.stato_canale = 'APERTO'
+  ),
+  '15. anti-regressione: rename codice sorgenti -> il trigger apre comunque il canale PREVENTIVO (risoluzione per codice_interno)'
 );
 
 SELECT * FROM finish();

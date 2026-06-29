@@ -1,0 +1,269 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Fix hardcode codice -> codice_interno (analisi-hardcoded-codice.md §3a #13, lotto B).
+#
+# Anello canali fatturazione (lato SCRITTURA): questa trgfn risolve le sorgenti
+# (PREVENTIVO/ORDINE_VENDITA/DDT_VENDITA/CONTRATTO) per il loro `codice` (mutabile)
+# e passa il canale_codice a vendite.fn_set_documento_canale_stato, che lo RILEGGE
+# (lato lettura, file 20260628-19). Le due funzioni vanno corrette INSIEME perche'
+# condividono l'identita' di canale: trgfn passa il literale -> fn risolve in
+# config.sorgenti -> scrive documenti_fatturazione_canali.canale_codice.
+#
+# PRIMA: s.codice = 'PREVENTIVO'/'ORDINE_VENDITA'/'DDT_VENDITA'/'CONTRATTO' (CASE + IN)
+#        SELECT s.codice INTO v_source_code ... (risoluzione sorgente origine)
+# DOPO:  tutti i confronti su `codice_interno` (immutabile). v_source_code dichiarato
+#        come config.sorgenti.codice_interno%TYPE.
+# INVARIATI: i literali passati come p_canale_codice (= codice_interno della sorgente,
+#        identici ai valori odierni) e il sentinel 'DIRETTO' (canale speciale, non e'
+#        una sorgente). Pre-check seed: codice == codice_interno per le 4 sorgenti
+#        -> i canale_codice gia' persistiti restano coerenti, nessuna migrazione dati.
+# CREATE OR REPLACE (RETURNS trigger, firma invariata).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260628-18-fix-trgfn-documenti-sync-canali-codice-interno-mctit.yaml
+
+  - changeSet:
+      id: 20260628-18-fix-trgfn-documenti-sync-canali-codice-interno
+      author: mctit
+      runOnChange: false
+      #  validCheckSums:
+      #     - ANY
+      failOnError: true
+      comment: >
+        trgfn_documenti_sync_canali: risoluzione sorgenti canali per codice_interno
+        invece di codice (lato scrittura anello canali). Hardcode fix §3a #13.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_documenti_sync_canali()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_source_code config.sorgenti.codice_interno%TYPE;
+                v_order_uid text;
+                v_ddt_uid text;
+                v_prev_src_id config.sorgenti.id%TYPE;
+                v_ord_src_id config.sorgenti.id%TYPE;
+                v_ddt_src_id config.sorgenti.id%TYPE;
+                v_ctr_src_id config.sorgenti.id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Sincronizzare il registro canali fatturabili su eventi
+                --   documento principali del dominio vendite.
+                --
+                -- Regole:
+                --   - preventivi: apre canale PREVENTIVO su INSERT o cambio uid
+                --   - ordini: apre canale ORDINE_VENDITA; se da PREVENTIVO,
+                --     consuma canale PREVENTIVO
+                --   - ddt: apre canale DDT_VENDITA; se da ORDINE_VENDITA,
+                --     consuma canale ordine
+                --   - ddt_ordini: safety net consumo ordine->ddt
+                --   - contratti: apre canale DIRETTO su sorgente CONTRATTO
+                --   Tutte le sorgenti aprono il proprio canale alla creazione
+                --   per simmetria e completezza della storia documento.
+                --
+                -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #13):
+                --   le sorgenti sono risolte per codice_interno (immutabile), non per
+                --   codice (mutabile). I canale_codice passati restano i medesimi
+                --   literali (= codice_interno della sorgente). 'DIRETTO' = sentinel.
+                -- =========================================================
+
+                IF TG_TABLE_SCHEMA <> 'vendite' THEN
+                  RETURN COALESCE(NEW, OLD);
+                END IF;
+
+                -- Lookup unico per tutti i codici sorgente usati dalla funzione.
+                SELECT
+                  max(CASE WHEN s.codice_interno = 'PREVENTIVO'      THEN s.id END),
+                  max(CASE WHEN s.codice_interno = 'ORDINE_VENDITA'  THEN s.id END),
+                  max(CASE WHEN s.codice_interno = 'DDT_VENDITA'     THEN s.id END),
+                  max(CASE WHEN s.codice_interno = 'CONTRATTO'       THEN s.id END)
+                INTO
+                  v_prev_src_id,
+                  v_ord_src_id,
+                  v_ddt_src_id,
+                  v_ctr_src_id
+                FROM config.sorgenti s
+                WHERE s.attivo IS TRUE
+                  AND s.codice_interno IN ('PREVENTIVO', 'ORDINE_VENDITA', 'DDT_VENDITA', 'CONTRATTO');
+
+                -- ---------------------------------------------------------
+                -- PREVENTIVI
+                -- ---------------------------------------------------------
+                IF TG_TABLE_NAME = 'preventivi' THEN
+                  IF TG_OP = 'INSERT'
+                     OR (TG_OP = 'UPDATE' AND NEW.uid IS DISTINCT FROM OLD.uid) THEN
+                    IF v_prev_src_id IS NOT NULL THEN
+                      PERFORM vendite.fn_set_documento_canale_stato(
+                        p_sorgente_tipo_id => v_prev_src_id,
+                        p_sorgente_uid     => NEW.uid::text,
+                        p_canale_codice    => 'PREVENTIVO',
+                        p_stato_canale     => 'APERTO',
+                        p_meta             => jsonb_build_object('event', 'PREVENTIVO_UPSERT', 'table', TG_TABLE_NAME)
+                      );
+                    END IF;
+                  END IF;
+
+                  RETURN NEW;
+                END IF;
+
+                -- ---------------------------------------------------------
+                -- ORDINI
+                -- ---------------------------------------------------------
+                IF TG_TABLE_NAME = 'ordini' THEN
+                  IF TG_OP = 'INSERT'
+                     OR (TG_OP = 'UPDATE'
+                         AND (
+                           NEW.sorgente_tipo_id IS DISTINCT FROM OLD.sorgente_tipo_id
+                           OR NEW.sorgente_uid IS DISTINCT FROM OLD.sorgente_uid
+                         )) THEN
+
+                    IF v_ord_src_id IS NOT NULL THEN
+                      PERFORM vendite.fn_set_documento_canale_stato(
+                        p_sorgente_tipo_id => v_ord_src_id,
+                        p_sorgente_uid     => NEW.uid::text,
+                        p_canale_codice    => 'ORDINE_VENDITA',
+                        p_stato_canale     => 'APERTO',
+                        p_meta             => jsonb_build_object('event', 'ORDINI_UPSERT', 'table', TG_TABLE_NAME)
+                      );
+                    END IF;
+
+                    IF NEW.sorgente_tipo_id IS NOT NULL AND NEW.sorgente_uid IS NOT NULL THEN
+                      SELECT s.codice_interno INTO v_source_code
+                      FROM config.sorgenti s
+                      WHERE s.id = NEW.sorgente_tipo_id
+                      LIMIT 1;
+
+                      IF v_source_code = 'PREVENTIVO' THEN
+                        PERFORM vendite.fn_set_documento_canale_stato(
+                          p_sorgente_tipo_id     => NEW.sorgente_tipo_id,
+                          p_sorgente_uid         => NEW.sorgente_uid::text,
+                          p_canale_codice        => 'PREVENTIVO',
+                          p_stato_canale         => 'CONSUMATO',
+                          p_target_sorgente_tipo_id => v_ord_src_id,
+                          p_target_sorgente_uid  => NEW.uid::text,
+                          p_meta                 => jsonb_build_object('event', 'PREVENTIVO_TO_ORDINE', 'ordine_id', NEW.id)
+                        );
+                      END IF;
+                    END IF;
+                  END IF;
+
+                  RETURN NEW;
+                END IF;
+
+                -- ---------------------------------------------------------
+                -- DDT
+                -- ---------------------------------------------------------
+                IF TG_TABLE_NAME = 'ddt' THEN
+                  IF TG_OP = 'INSERT'
+                     OR (TG_OP = 'UPDATE'
+                         AND (
+                           NEW.sorgente_tipo_id IS DISTINCT FROM OLD.sorgente_tipo_id
+                           OR NEW.sorgente_uid IS DISTINCT FROM OLD.sorgente_uid
+                         )) THEN
+
+                    IF v_ddt_src_id IS NOT NULL THEN
+                      PERFORM vendite.fn_set_documento_canale_stato(
+                        p_sorgente_tipo_id => v_ddt_src_id,
+                        p_sorgente_uid     => NEW.uid::text,
+                        p_canale_codice    => 'DDT_VENDITA',
+                        p_stato_canale     => 'APERTO',
+                        p_meta             => jsonb_build_object('event', 'DDT_UPSERT', 'table', TG_TABLE_NAME)
+                      );
+                    END IF;
+
+                    IF NEW.sorgente_tipo_id IS NOT NULL AND NEW.sorgente_uid IS NOT NULL THEN
+                      SELECT s.codice_interno INTO v_source_code
+                      FROM config.sorgenti s
+                      WHERE s.id = NEW.sorgente_tipo_id
+                      LIMIT 1;
+
+                      IF v_source_code = 'ORDINE_VENDITA' THEN
+                        IF v_ord_src_id IS NOT NULL AND v_ddt_src_id IS NOT NULL THEN
+                          PERFORM vendite.fn_set_documento_canale_stato(
+                            p_sorgente_tipo_id     => v_ord_src_id,
+                            p_sorgente_uid         => NEW.sorgente_uid::text,
+                            p_canale_codice        => 'ORDINE_VENDITA',
+                            p_stato_canale         => 'CONSUMATO',
+                            p_target_sorgente_tipo_id => v_ddt_src_id,
+                            p_target_sorgente_uid  => NEW.uid::text,
+                            p_meta                 => jsonb_build_object('event', 'ORDINE_TO_DDT', 'ddt_id', NEW.id)
+                          );
+                        END IF;
+                      END IF;
+                    END IF;
+                  END IF;
+
+                  RETURN NEW;
+                END IF;
+
+                -- ---------------------------------------------------------
+                -- DDT_ORDINI (safety net)
+                -- ---------------------------------------------------------
+                IF TG_TABLE_NAME = 'ddt_ordini' AND TG_OP = 'INSERT' THEN
+                  SELECT o.uid::text INTO v_order_uid
+                  FROM vendite.ordini o
+                  WHERE o.id = NEW.ordine_id;
+
+                  SELECT d.uid::text INTO v_ddt_uid
+                  FROM vendite.ddt d
+                  WHERE d.id = NEW.ddt_id;
+
+                  IF v_ord_src_id IS NOT NULL
+                     AND v_ddt_src_id IS NOT NULL
+                     AND v_order_uid IS NOT NULL
+                     AND v_ddt_uid IS NOT NULL THEN
+                    PERFORM vendite.fn_set_documento_canale_stato(
+                      p_sorgente_tipo_id     => v_ord_src_id,
+                      p_sorgente_uid         => v_order_uid,
+                      p_canale_codice        => 'ORDINE_VENDITA',
+                      p_stato_canale         => 'CONSUMATO',
+                      p_target_sorgente_tipo_id => v_ddt_src_id,
+                      p_target_sorgente_uid  => v_ddt_uid,
+                      p_meta                 => jsonb_build_object('event', 'ORDINE_TO_DDT_LINK', 'ddt_id', NEW.ddt_id, 'ordine_id', NEW.ordine_id)
+                    );
+                  END IF;
+
+                  RETURN NEW;
+                END IF;
+
+                -- ---------------------------------------------------------
+                -- CONTRATTI
+                -- ---------------------------------------------------------
+                IF TG_TABLE_NAME = 'contratti' AND TG_OP = 'INSERT' THEN
+                  IF v_ctr_src_id IS NOT NULL THEN
+                    PERFORM vendite.fn_set_documento_canale_stato(
+                      p_sorgente_tipo_id => v_ctr_src_id,
+                      p_sorgente_uid     => NEW.uid::text,
+                      p_canale_codice    => 'DIRETTO',
+                      p_stato_canale     => 'APERTO',
+                      p_meta             => jsonb_build_object('event', 'CONTRATTO_UPSERT', 'contratto_id', NEW.id)
+                    );
+                  END IF;
+
+                  RETURN NEW;
+                END IF;
+
+                RETURN COALESCE(NEW, OLD);
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_documenti_sync_canali()
+              IS 'Sincronizza documenti_fatturazione_canali su eventi preventivi/ordini/ddt/ddt_ordini/contratti. Tutte le sorgenti aprono il proprio canale alla creazione per simmetria. Transizioni: PREVENTIVO->ORDINE, ORDINE->DDT. rev 2026-06-28: sorgenti risolte per codice_interno (analisi-hardcoded-codice §3a #13).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: ri-applicare la definizione autogen antecedente a
+              -- 20260628-18 (risoluzione sorgenti per `codice`). Non duplicata qui.
+              SELECT 1;

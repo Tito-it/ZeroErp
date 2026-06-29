@@ -14,7 +14,7 @@ CREATE OR REPLACE FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bi
 AS $function$
 DECLARE
   v_stato_corrente_id   vendite.preventivi.stato_doc_preventivo_id%TYPE;
-  v_stato_corrente_cod  config.stati_doc_preventivi.codice%TYPE;
+  v_stato_corrente_cod  config.stati_doc_preventivi.codice_interno%TYPE;
   v_nuovo_stato_id      config.stati_doc_preventivi.id%TYPE;
   v_transizione_ok      boolean;
   v_count_righe         bigint;
@@ -38,11 +38,16 @@ BEGIN
   --
   -- Parametri:
   --   p_preventivo_id : ID del preventivo
-  --   p_nuovo_stato   : codice dello stato destinazione
+  --   p_nuovo_stato   : codice_interno dello stato destinazione
   --   p_user          : utente che esegue la transizione
   --
   -- Ritorna:
-  --   preventivo_id, stato_precedente (codice), stato_nuovo (codice)
+  --   preventivo_id, stato_precedente (codice_interno), stato_nuovo (codice_interno)
+  --
+  -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #1):
+  --   stato corrente e destinazione risolti per codice_interno
+  --   (immutabile), non per codice (mutabile). Literali DRAFT/EMESSO/
+  --   ANNULLATO sono codice_interno.
   -- ==========================================================
 
   -- Guard: parametri obbligatori
@@ -57,7 +62,7 @@ BEGIN
   END IF;
 
   -- Recupera stato corrente, numero e uid in una sola query
-  SELECT p.stato_doc_preventivo_id, sdp.codice, p.numero, p.uid
+  SELECT p.stato_doc_preventivo_id, sdp.codice_interno, p.numero, p.uid
     INTO v_stato_corrente_id, v_stato_corrente_cod, v_numero, v_uid
     FROM vendite.preventivi p
     JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
@@ -76,7 +81,7 @@ BEGIN
   -- Recupera ID dello stato destinazione
   SELECT id INTO v_nuovo_stato_id
     FROM config.stati_doc_preventivi
-   WHERE codice = p_nuovo_stato AND attivo IS TRUE;
+   WHERE codice_interno = p_nuovo_stato AND attivo IS TRUE;
 
   IF v_nuovo_stato_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
@@ -184,7 +189,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
-IS 'Transizione stato preventivo vendita. Valida via matrice config.transizioni_stati_preventivi. Guard: righe/totale per emissione, blocco annullamento con commessa attiva.';
+IS 'Transizione di stato preventivo validata dalla matrice config.transizioni_stati_preventivi. Guard DRAFT->EMESSO (righe+totale) e verso ANNULLATO (no commessa EMESSA). Stato corrente/destinazione e RETURNS per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #1.';
 ```
 
 ---

@@ -36,10 +36,10 @@ SELECT
 -- Due categorie test: una attiva, una disattiva.
 -- IDs alti per evitare collisioni con dati seed.
 INSERT INTO anagrafiche.categorie_clienti
-    (id, codice, descrizione, partecipa_promo, ordinamento, attivo)
+    (id, codice, codice_interno, descrizione, partecipa_promo, ordinamento, attivo)
 VALUES
-    (9001, 'TEST_CATCLI_ATTIVA',   'Categoria test attiva',   TRUE, 900, TRUE),
-    (9002, 'TEST_CATCLI_DISATTIVA','Categoria test disattiva', TRUE, 901, FALSE);
+    (9001, 'TEST_CATCLI_ATTIVA',   'TEST_CATCLI_ATTIVA',   'Categoria test attiva',   TRUE, 900, TRUE),
+    (9002, 'TEST_CATCLI_DISATTIVA','TEST_CATCLI_DISATTIVA','Categoria test disattiva', TRUE, 901, FALSE);
 
 -- ============================================================
 -- 1) Colonna presente
@@ -151,11 +151,23 @@ SELECT ok(
 
 -- ============================================================
 -- 9) Trigger guard presente
+--    Il framework genera il nome con suffisso hash (es. ..._require_at_431944):
+--    si verifica per funzione + tabella padre, non per nome esatto.
 -- ============================================================
-SELECT has_trigger(
-    'config', 'parameter_overrides',
-    'trg_parameter_overrides_a10_cat_clienti_req_attivo_ins_upd',
-    '9) Trigger guard categoria attiva presente'
+SELECT ok(
+    EXISTS (
+        SELECT 1
+          FROM pg_trigger t
+          JOIN pg_class c      ON c.oid = t.tgrelid
+          JOIN pg_namespace ns ON ns.oid = c.relnamespace
+          JOIN pg_proc p       ON p.oid = t.tgfoid
+         WHERE ns.nspname = 'config'
+           AND c.relname  = 'parameter_overrides'
+           AND p.proname  = 'trgfn_child_requires_active_parent'
+           AND NOT t.tgisinternal
+           AND pg_get_triggerdef(t.oid) ILIKE '%categorie_clienti%'
+    ),
+    '9) Trigger guard categoria attiva presente (nome generato dal framework)'
 );
 
 -- ============================================================
@@ -186,7 +198,12 @@ SELECT lives_ok(
 
 -- ============================================================
 -- 12) INSERT override con categoria disattiva -> raise
+--     Il guard e' un CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED: la
+--     violazione emerge al check del vincolo, non all'INSERT. Si forza il check
+--     immediato per osservare il raise in modo sincrono nel throws_ok.
 -- ============================================================
+SET CONSTRAINTS ALL IMMEDIATE;
+
 SELECT throws_ok(
     format(
         $$INSERT INTO config.parameter_overrides

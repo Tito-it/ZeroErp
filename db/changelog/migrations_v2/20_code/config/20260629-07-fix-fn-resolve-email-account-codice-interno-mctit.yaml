@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# CANDIDATE_ADD_CI consumer (analisi-hardcoded-codice.md §4b / §10, #2).
+#
+# Dopo l'aggiunta di config.email_account.codice_interno (20260629-05), il fallback
+# "account di sistema" risolve per codice_interno (immutabile) invece che per codice.
+#   PRIMA: WHERE ea.codice = 'SISTEMA'
+#   DOPO:  WHERE ea.codice_interno = 'SISTEMA'
+# INVARIATO: 'codice', ea.codice nei jsonb_build_object (e' il codice dell'account,
+#   esposto nel payload per display). Pre-check seed: codice == codice_interno.
+# CREATE OR REPLACE (firma/return invariati).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260629-07-fix-fn-resolve-email-account-codice-interno-mctit.yaml
+
+  - changeSet:
+      id: 20260629-07-fix-fn-resolve-email-account-codice-interno
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_resolve_email_account: fallback account SISTEMA risolto per codice_interno
+        invece di codice (mutabile). CANDIDATE_ADD_CI §4b.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_resolve_email_account(p_unita_organizzativa_id integer DEFAULT NULL::integer)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_result jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Risolve l'account SMTP da usare per l'invio email.
+                  --   Catena di fallback:
+                  --     1. Account specifico del reparto (unita_organizzativa_id)
+                  --     2. Account di sistema (codice_interno = 'SISTEMA')
+                  --
+                  -- Parametri:
+                  --   p_unita_organizzativa_id: ID reparto (NULL = usa diretto SISTEMA)
+                  --
+                  -- Restituisce:
+                  --   JSONB con: id, codice, smtp_host, smtp_port, smtp_use_tls,
+                  --   smtp_use_ssl, smtp_username, smtp_password_encrypted,
+                  --   email_from, email_reply_to.
+                  --   NULL se nessun account attivo trovato.
+                  --
+                  -- rev 2026-06-29: fallback SISTEMA per codice_interno (immutabile),
+                  --   non per codice (mutabile) -- analisi-hardcoded-codice §4b.
+                  -- =========================================================
+
+                  -- 1. Tentativo: account specifico del reparto
+                  IF p_unita_organizzativa_id IS NOT NULL THEN
+                      SELECT jsonb_build_object(
+                          'id',                      ea.id,
+                          'codice',                  ea.codice,
+                          'smtp_host',               ea.smtp_host,
+                          'smtp_port',               ea.smtp_port,
+                          'smtp_use_tls',            ea.smtp_use_tls,
+                          'smtp_use_ssl',            ea.smtp_use_ssl,
+                          'smtp_username',           ea.smtp_username,
+                          'smtp_password_encrypted', ea.smtp_password_encrypted,
+                          'email_from',              ea.email_from,
+                          'email_reply_to',          ea.email_reply_to
+                      )
+                      INTO v_result
+                      FROM config.email_account ea
+                      WHERE ea.unita_organizzativa_id = p_unita_organizzativa_id
+                        AND ea.attivo = true
+                      ORDER BY ea.id
+                      LIMIT 1;
+
+                      IF v_result IS NOT NULL THEN
+                          RETURN v_result;
+                      END IF;
+                  END IF;
+
+                  -- 2. Fallback: account di sistema (codice_interno immutabile)
+                  SELECT jsonb_build_object(
+                      'id',                      ea.id,
+                      'codice',                  ea.codice,
+                      'smtp_host',               ea.smtp_host,
+                      'smtp_port',               ea.smtp_port,
+                      'smtp_use_tls',            ea.smtp_use_tls,
+                      'smtp_use_ssl',            ea.smtp_use_ssl,
+                      'smtp_username',           ea.smtp_username,
+                      'smtp_password_encrypted', ea.smtp_password_encrypted,
+                      'email_from',              ea.email_from,
+                      'email_reply_to',          ea.email_reply_to
+                  )
+                  INTO v_result
+                  FROM config.email_account ea
+                  WHERE ea.codice_interno = 'SISTEMA'
+                    AND ea.attivo = true;
+
+                  RETURN v_result;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_resolve_email_account(p_unita_organizzativa_id integer)
+              IS 'Risolve account SMTP per invio email. Fallback: reparto -> SISTEMA (per codice_interno). Ritorna JSONB con dati account (inclusa password crittografata). rev 2026-06-29: SISTEMA per codice_interno (§4b).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: ri-applicare la definizione autogen antecedente a
+              -- 20260629-07 (WHERE ea.codice = 'SISTEMA'). Non duplicata qui.
+              SELECT 1;
