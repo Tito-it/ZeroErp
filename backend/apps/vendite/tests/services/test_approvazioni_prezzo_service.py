@@ -43,7 +43,7 @@ class CreaRichiestaApprovazioneTests(TestCase):
     @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_pratica")
     @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository")
-    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    @patch("apps.core.db._helpers.connection")
     def test_crea_richiesta_pratica_aperta_con_email_bestffort(
         self, mock_conn, mock_repo_cls, mock_crea_pratica, mock_cambia_stato, mock_email
     ):
@@ -363,7 +363,7 @@ class ListaCodaTests(TestCase):
     @patch("apps.vendite.services.approvazioni_prezzo_service.cerca_pratiche")
     @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
     @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
-    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    @patch("apps.core.db._helpers.connection")
     def test_lista_coda_filtra_aperte_per_emittente(
         self, mock_conn, mock_get_user, mock_perm, mock_cerca
     ):
@@ -540,7 +540,7 @@ class LookupCacheTests(TestCase):
         svc.invalidate_lookup_cache()
         self.addCleanup(svc.invalidate_lookup_cache)
 
-    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    @patch("apps.core.db._helpers.connection")
     def test_tipo_prestazione_lookup_riusa_cache(self, mock_conn):
         mock_cursor = MagicMock()
         mock_cursor.fetchone.return_value = (5,)
@@ -552,7 +552,7 @@ class LookupCacheTests(TestCase):
         svc._get_tipo_prestazione_id()
         self.assertEqual(mock_cursor.execute.call_count, 1)
 
-    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    @patch("apps.core.db._helpers.connection")
     def test_invalidate_cache_forza_re_query(self, mock_conn):
         mock_cursor = MagicMock()
         mock_cursor.fetchone.return_value = (5,)

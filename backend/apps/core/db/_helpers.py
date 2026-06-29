@@ -7,6 +7,8 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.services.error_manager import ErrorManager
+
 
 def row_to_dict(cursor) -> dict[str, Any] | None:
     """Converte la riga corrente (fetchone) in dict {colonna: valore}.
@@ -79,6 +81,56 @@ def call_jsonb_fn(fn_name: str, *args: Any) -> dict[str, Any]:
         if isinstance(payload, str):
             payload = json.loads(payload)
         return payload
+
+
+def resolve_config_id_by_codice_interno(
+    tabella: str,
+    codice_interno: str,
+    *,
+    etichetta: str,
+    not_found_message: str | None = None,
+    function_name: str = "django_service",
+) -> int:
+    """Risolve l'`id` di una riga config/lookup dal `codice_interno` IMMUTABILE.
+
+    Match SEMPRE sulla colonna `codice_interno` (lockata da
+    `script.trgfn_lock_columns`), MAI sul `codice` mutabile (etichetta a video):
+    confrontare un literale di logica contro `codice` e' un bug latente (si
+    rompe se l'utente rinomina il codice). Filtra `attivo = true`. Solleva
+    `E_CONFIG_MANCANTE` se la riga non esiste o non e' attiva.
+
+    Regola del 2: centralizza il pattern
+    `SELECT id FROM <config> WHERE codice_interno = %s AND attivo = true`
+    ripetuto in piu' repository/service (estratto da
+    `pratiche_repository._resolve_stato`; vedi `analisi-hardcoded-codice.md`).
+
+    `tabella` deve essere un identificatore schema-qualificato controllato dal
+    codice (mai input utente): viene interpolato nella query.
+
+    `not_found_message` permette al chiamante di preservare un messaggio
+    diagnostico specifico (es. hint sul seed mancante); in assenza usa un
+    default costruito da `etichetta`.
+    """
+    sql = f"""
+        SELECT id FROM {tabella}
+        WHERE codice_interno = %s AND attivo = true
+        LIMIT 1
+    """  # noqa: S608 — `tabella` e' un identificatore controllato dal codice
+    with connection.cursor() as cursor:
+        cursor.execute(sql, [codice_interno])
+        row = cursor.fetchone()
+    ErrorManager.require(
+        row is not None,
+        code="E_CONFIG_MANCANTE",
+        message=(
+            not_found_message
+            or f"{etichetta} '{codice_interno}' non trovato in {tabella} "
+            "(o non attivo)."
+        ),
+        function_name=function_name,
+    )
+    assert row is not None
+    return int(row[0])
 
 
 def dynamic_update(table: str, pk: int, **kwargs: Any) -> bool:
