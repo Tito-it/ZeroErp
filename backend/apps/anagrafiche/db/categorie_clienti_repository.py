@@ -145,6 +145,14 @@ class CategorieClientiRepository:
             if col in data:
                 cols.append(col)
                 vals.append(data[col])
+        # `codice_interno` e' la chiave logica IMMUTABILE (NOT NULL, lockata,
+        # nessun default DB): non e' esposta dall'API CRUD e qui il `codice` e'
+        # gia' immutabile, quindi i due coincidono. Va valorizzata = codice alla
+        # create, altrimenti l'INSERT viola NOT NULL (colonna aggiunta dal DB
+        # in 20260629-06, vedi analisi-hardcoded-codice.md §4 #3).
+        if "codice" in data:
+            cols.append("codice_interno")
+            vals.append(data["codice"])
         placeholders = ["%s"] * len(cols)
         sql = f"""
             INSERT INTO anagrafiche.categorie_clienti ({", ".join(cols)})
