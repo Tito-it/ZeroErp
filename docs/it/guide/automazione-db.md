@@ -78,7 +78,7 @@ Le **regole** (`dbops.automation_rules_tbl`) dichiarano quale automazione applic
 Non tutte le tabelle seguono le convenzioni standard. Le tabelle di override permettono di gestire i casi speciali:
 
 * `automation_overrides_cols` — nomi colonna non standard (es. `attivo_flag` invece di `attivo`, FK storico diverse)
-* `automation_fk_exclusions` — coppie parent/child da escludere per la regola ATTIVO
+* `automation_fk_exclusions` — coppie parent/child da escludere per la regola ATTIVO. ⚠️ **Attualmente inerte**: il filtro è stato disattivato in `20260113-01` ("non più utilizzato") e non re-introdotto; `fn_run_automations_attivo` non consulta la tabella. Per ritirare config senza toccare il guard si usa il pattern `obsoleto_dal` (vedi `brief-db-deprecabilita-catalogo-vs-istanze.md`). Riabilitarlo richiede re-inserire il `NOT EXISTS` nel cursor FK
 * `automation_cleanup_exclusions` — tabelle da escludere dal cleanup automatico
 * `automation_lock_columns` — colonne extra da bloccare per singola tabella
 

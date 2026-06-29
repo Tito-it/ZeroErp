@@ -7,3 +7,9 @@ id,tipo_prestazione_id,handler_id,codice,descrizione,sequenza,obbligatorio,direz
 9006,9003,,PREVENTIVAZIONE,Preventivazione interna,20,t,INTERNA,t,{},{},SE_NON_POSITIVO,2026-06-08 00:00:00+02,SEED,2026-06-08 00:00:00+02,SEED
 9007,9003,,APPROVAZIONE_CLIENTE,Approvazione del cliente,30,t,ENTRATA,t,{},{},SE_NON_POSITIVO,2026-06-08 00:00:00+02,SEED,2026-06-08 00:00:00+02,SEED
 9008,9003,9001,CONFERMA,Conferma e push del preventivo a commessa (fatturazione differita),40,t,INTERNA,t,{},"{""modalita_fatturazione"":""DIFFERITA""}",MAI,2026-06-08 00:00:00+02,SEED,2026-06-08 00:00:00+02,SEED
+9009,9004,,RICHIESTA_CLIENTE,Richiesta del cliente,10,t,ENTRATA,t,{},{},SE_NON_POSITIVO,2026-06-30 00:00:00+02,SEED,2026-06-30 00:00:00+02,SEED
+9010,9004,,PREVENTIVAZIONE,Preventivazione interna,20,t,INTERNA,t,{},{},SE_NON_POSITIVO,2026-06-30 00:00:00+02,SEED,2026-06-30 00:00:00+02,SEED
+9011,9004,,APPROVAZIONE_CLIENTE,Approvazione del cliente,30,t,ENTRATA,t,{},{},SE_NON_POSITIVO,2026-06-30 00:00:00+02,SEED,2026-06-30 00:00:00+02,SEED
+9012,9004,,SMISTAMENTO,Smistamento righe del preventivo (merce->ordine / servizi->commessa),40,t,INTERNA,t,{},{},SE_NON_POSITIVO,2026-06-30 00:00:00+02,SEED,2026-06-30 00:00:00+02,SEED
+9013,9004,,CONFERMA_ORDINE,Conferma dell'ordine merce generato dallo smistamento (condizionale ramo merce),50,f,INTERNA,t,{},{},MAI,2026-06-30 00:00:00+02,SEED,2026-06-30 00:00:00+02,SEED
+9014,9004,,INVIO_COMMESSA,Invio a commessa dell'ordine merce confermato (condizionale ramo merce),60,f,INTERNA,t,{},{},MAI,2026-06-30 00:00:00+02,SEED,2026-06-30 00:00:00+02,SEED

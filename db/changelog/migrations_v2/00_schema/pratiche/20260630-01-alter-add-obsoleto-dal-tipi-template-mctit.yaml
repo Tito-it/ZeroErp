@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Deprecabilità del catalogo pratiche: colonna obsoleto_dal (DATA)
+# (brief-db-deprecabilita-catalogo-vs-istanze, decisione P1, 2026-06-30)
+#
+# PROBLEMA: "ritirare" una configurazione (tipo pratica / template flusso) senza
+# rompere le pratiche/flussi già eseguite. Usare attivo=false NON va bene:
+#   - i consumatori risolvono la config filtrando per attivo (es.
+#     pratiche_repository: JOIN template_flussi ... AND tf.attivo) → disattivare
+#     romperebbe le istanze esistenti;
+#   - il guard dbops.prevent_deactivate_if_children lo blocca giustamente
+#     (protezione corretta su dati referenziati: vedi anche IVA/soggetti).
+#
+# SOLUZIONE (P1): separare l'asse "selezionabile per il nuovo" da attivo
+# ("riferimento valido"). attivo resta TRUE (storia e guard intatti); una nuova
+# colonna DATA dice DA QUANDO la voce non è più offerta per il nuovo.
+#
+#   obsoleto_dal date NULL
+#     NULL                     -> selezionabile (mai obsoleto)
+#     valorizzata <= oggi      -> non più selezionabile per il nuovo
+#     valorizzata >  oggi       -> ritiro PROGRAMMATO (selezionabile fino a quella data)
+#
+# La selezione-per-il-nuovo (BE) filtrerà: attivo AND (obsoleto_dal IS NULL OR
+# obsoleto_dal > CURRENT_DATE). Le letture STORICHE non filtrano obsoleto_dal.
+# Perché una DATA e non un booleano: registra QUANDO è cessato l'uso (audit) e
+# consente il ritiro programmato. %TYPE non ammesso in ADD COLUMN DDL.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260630-01-alter-add-obsoleto-dal-tipi-template-mctit.yaml
+
+  - changeSet:
+      id: 20260630-01-alter-add-obsoleto-dal-tipi-template
+      author: mctit
+      comment: >
+        Aggiunge obsoleto_dal (date NULL) a pratiche.tipi_prestazione e
+        pratiche.template_flussi: data dalla quale la voce di catalogo non è più
+        selezionabile per nuove pratiche/flussi (asse separato da attivo, che
+        resta "riferimento valido"). Storia e guard prevent_deactivate intatti.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pratiche
+                tableName: tipi_prestazione
+            - tableExists:
+                schemaName: pratiche
+                tableName: template_flussi
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pratiche.tipi_prestazione
+                ADD COLUMN IF NOT EXISTS obsoleto_dal date NULL;
+
+              ALTER TABLE pratiche.template_flussi
+                ADD COLUMN IF NOT EXISTS obsoleto_dal date NULL;
+
+              COMMENT ON COLUMN pratiche.tipi_prestazione.obsoleto_dal IS
+                'Data dalla quale il tipo prestazione non è più SELEZIONABILE per nuove pratiche (NULL = selezionabile; <= oggi = ritirato; > oggi = ritiro programmato). NON intacca attivo né le pratiche esistenti: la selezione-per-il-nuovo filtra attivo AND (obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE); le letture storiche no.';
+
+              COMMENT ON COLUMN pratiche.template_flussi.obsoleto_dal IS
+                'Data dalla quale il template flusso non è più SELEZIONABILE per nuovi flussi (NULL = selezionabile; <= oggi = ritirato; > oggi = ritiro programmato). Vedi tipi_prestazione.obsoleto_dal.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pratiche.template_flussi  DROP COLUMN IF EXISTS obsoleto_dal;
+              ALTER TABLE pratiche.tipi_prestazione DROP COLUMN IF EXISTS obsoleto_dal;
