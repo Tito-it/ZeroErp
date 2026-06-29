@@ -16,7 +16,7 @@
 > [analisi-commesse-stato-e-sviluppi.md](analisi-commesse-stato-e-sviluppi.md).
 > Doc spostato in `work-done/`. I **test del giro push→commessa→fatturazione**
 > (preventivo + ordine) sono in
-> [a-test-push-commesse-fatturazione.md](../work-in-progress/a-test-push-commesse-fatturazione.md).
+> [a-test-push-commesse-fatturazione.md](a-test-push-commesse-fatturazione.md).
 
 ## 1) Obiettivo
 

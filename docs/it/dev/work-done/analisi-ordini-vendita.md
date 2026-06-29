@@ -18,7 +18,7 @@
 > Doc spostato in `work-done/`. **Residui delegati a doc dedicati**: (1) **agente (E)** →
 > [analisi-ruolo-agente.md](../work-in-progress/analisi-ruolo-agente.md); (2) **smoke
 > conferma + push** ancora da eseguire →
-> [a-test-push-commesse-fatturazione.md](../work-in-progress/a-test-push-commesse-fatturazione.md).
+> [a-test-push-commesse-fatturazione.md](a-test-push-commesse-fatturazione.md).
 
 ---
 
@@ -891,7 +891,7 @@ lasciando spazio, memoria `feedback_concentrico_no_yagni`):
 > **Stato avanzamento (2026-06-20)**: passi 1-6 ✅ **FATTI** (scheletro BE+FE,
 > chiusura giro, stampa, conversioni). Del passo 7 (smoke E2E) resta solo
 > **conferma + push** da eseguire → tracciato in
-> [a-test-push-commesse-fatturazione.md](../work-in-progress/a-test-push-commesse-fatturazione.md).
+> [a-test-push-commesse-fatturazione.md](a-test-push-commesse-fatturazione.md).
 > Item residui in §9.bis.
 
 1. ✅ **Ratifica decisioni §8** (Tid).
@@ -914,7 +914,7 @@ lasciando spazio, memoria `feedback_concentrico_no_yagni`):
 7. 🟡 **Smoke E2E**: lista/filtri/ritiro colonne/personalizzazione/export CSV-XLSX
    (ordine-visibilità), CRUD testata+righe+componenti, note, PDF `ORDINE_VENDITA`
    **verdi**; resta da eseguire **conferma + push** →
-   [a-test-push-commesse-fatturazione.md](../work-in-progress/a-test-push-commesse-fatturazione.md).
+   [a-test-push-commesse-fatturazione.md](a-test-push-commesse-fatturazione.md).
 8. Riepilogo a video + attesa OK Tid (memoria `feedback_memoria_solo_su_richiesta`).
 
 ## 9.bis. Item residui aperti (verifica 2026-06-04)
@@ -940,7 +940,7 @@ Cosa resta **davvero da fare** dopo lo scheletro BE+FE:
    azione sui rispettivi drawer, `documento_origine` valorizzato). L'offerta usa la
    fn DB `fn_offerta_righe_espanse` (atterrata) con prezzi negoziati preservati.
 5. 🟡 **Smoke E2E** (passo 7): la maggior parte è verde; resta da eseguire
-   **conferma + push** → [a-test-push-commesse-fatturazione.md](../work-in-progress/a-test-push-commesse-fatturazione.md).
+   **conferma + push** → [a-test-push-commesse-fatturazione.md](a-test-push-commesse-fatturazione.md).
 
 ---
 

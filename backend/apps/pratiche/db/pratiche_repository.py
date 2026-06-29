@@ -182,7 +182,7 @@ class PraticheRepository:
             FROM pratiche.pratiche p
             {self._PRATICA_JOINS}
             {where_clause}
-            ORDER BY {order_col} {direction}, p.id
+            ORDER BY {order_col} {direction} NULLS LAST, p.id
             LIMIT %s OFFSET %s
         """
 
