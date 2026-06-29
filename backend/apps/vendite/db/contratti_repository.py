@@ -648,6 +648,11 @@ class ContrattiRepository(ComponentiRepositoryMixin):
         write_cols = (
             "numero",
             "billing_account_id",
+            # emittente_fiscale_id: se il payload lo specifica DEVE finire nell'INSERT
+            # (il trigger trgfn_contratti_default_emittente lo deriva solo se NULL).
+            # Senza, un operatore senza emittente assegnato non puo' creare contratti
+            # nemmeno passandolo esplicitamente (asimmetria service-accetta/repo-scarta).
+            "emittente_fiscale_id",
             "istanza_utility_id",
             "utility_id",
             "ambito",

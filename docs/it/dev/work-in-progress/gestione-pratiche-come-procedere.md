@@ -64,7 +64,7 @@ smoke-verificata** moltiplica il rischio. Da chiudere per primi:
 | Pri | Item | Dettaglio | Fonte |
 |---|---|---|---|
 | 🔴 | **Smoke UI E2E pratiche MAI eseguito** | esiste solo smoke BE/unit; il giro UI reale (crea pratica → avanza flussi → accetta → conferma → commessa/fattura, su app+DB seedato+auth) non è mai stato fatto | handoff 0609, 0615, 0618 (ricorrente) |
-| ✅ | **Ordini: smoke conferma + push** | **CHIUSO 2026-06-28**: smoke BE verde (conferma→push→EVASO→commessa emittibile, idempotenza). Giro preventivo (§1) + ordine (§2) push→commessa validati a mano. Emersi e risolti 2 bug reali (DB gate EVASO commessa + BE `priorita_operativa`). Resta fuori: ultimo miglio lotto→fattura (blocco DB `1→8`, handoff 0619) e UX FE | [a-test-push-commesse-fatturazione.md](a-test-push-commesse-fatturazione.md) |
+| ✅ | **Push→commessa→fatturazione (prev/ord/contratto)** | **CHIUSO 2026-06-29** → doc in `work-done`. Smoke verdi: §1 preventivo, §2 ordine (super admin + operatore reale), §3b contratto addebito standard. §3a contratto ricorrente rinviato (utilities). 4 bug reali risolti (DB gate EVASO commessa; BE `priorita_operativa`, `codice_interno` PDF contratto, `emittente_fiscale_id` in `create_contratto`). Resta fuori: ultimo miglio lotto→fattura (blocco DB `1→8`, handoff 0619), UX FE | [a-test-push-commesse-fatturazione.md](../work-done/a-test-push-commesse-fatturazione.md) |
 | 🟡 | **Part B audit giornale** (append-only) | audit utente reale su `pratiche.*` — la parte giornale/append-only resta aperta lato **team DB** | handoff 0618 |
 
 ---
@@ -194,7 +194,7 @@ priorità di business: estensione **in profondità** (vendite: offerta/contratto
 - [analisi-pratiche-workflow-v2.md](../work-done/analisi-pratiche-workflow-v2.md) — motore workflow (ripetibilità, bivi, lenti contesto, guard chiusura).
 - Brief PREVENTIVI (work-done): db / be / fe — il template implementativo.
 - [brief-preventivi-ordini.md](../work-done/brief-preventivi-ordini.md) — split per natura.
-- [a-test-push-commesse-fatturazione.md](a-test-push-commesse-fatturazione.md) — smoke OdV residuo.
+- [a-test-push-commesse-fatturazione.md](../work-done/a-test-push-commesse-fatturazione.md) — smoke OdV residuo.
 
 ---
 

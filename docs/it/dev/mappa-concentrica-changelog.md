@@ -37,7 +37,7 @@ ordine nel gate EVASO della pratica (bug logico del modello), applicata e **veri
 runtime** (smoke preventivo→EVASO al push, evento `DOMINIO_PREVENTIVO_EVASO`, re-push su EVASO
 bloccato). Avviato lo smoke E2E push commesse→fatturazione. Vedi
 [brief-db-gate-evaso-commessa-asimmetria.md](work-done/brief-db-gate-evaso-commessa-asimmetria.md),
-[a-test-push-commesse-fatturazione.md](work-in-progress/a-test-push-commesse-fatturazione.md).
+[a-test-push-commesse-fatturazione.md](work-done/a-test-push-commesse-fatturazione.md).
 
 **Anello 2 (pratiche) — sospensioni anti-overlap + guard data manuale.** Anti-sovrapposizione
 delle sospensioni pratica + guard sulla data manuale (DB + piano BE/FE). Vedi

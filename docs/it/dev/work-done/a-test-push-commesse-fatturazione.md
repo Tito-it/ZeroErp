@@ -1,17 +1,24 @@
 # Test richiesti — Push su commesse + fatturazione (preventivo / ordine / contratto)
 
-> **Tipo**: documento di test operativo (checklist da eseguire). · **Stato**: 🟡 **DA ESEGUIRE**.
-> **Data**: 2026-06-20. · Prefisso `a-` per restare in cima alla cartella.
+> **Tipo**: documento di test operativo (checklist). · **Stato**: ✅ **COMPLETATO** (2026-06-29).
+> **Data**: 2026-06-20 → chiuso 2026-06-29. · Prefisso `a-` (storico work-in-progress).
+>
+> **Esito**: §1 PREVENTIVO ✅, §2 ORDINE ✅ (super admin + operatore reale), §3b CONTRATTO
+> addebito standard ✅. §3a contratto **ricorrente** rinviato (fatturazione utilities, sviluppo
+> fermo). Fuori scope (documentati): ultimo miglio lotto→fattura (blocco DB `1→8`, handoff 0619),
+> UX FE post-push. Bug emersi e risolti: gate EVASO ramo commessa (DB), `priorita_operativa`
+> int→str (BE), `codice_interno` nel context PDF contratto (BE), `emittente_fiscale_id` scartato
+> in `create_contratto` (BE).
 >
 > **Scopo**: raccoglie in un punto solo i **test del giro push → commessa →
 > fatturazione** per i diversi documenti di vendita. Nasce perché PR1 "push
-> singolo" è in produzione ([sviluppo-push-singolo-preventivo.md](../work-done/sviluppo-push-singolo-preventivo.md))
+> singolo" è in produzione ([sviluppo-push-singolo-preventivo.md](sviluppo-push-singolo-preventivo.md))
 > ma il **giro end-to-end non è mai stato verificato a mano** per ciascun tipo.
 >
 > **Assorbe** il precedente `promemoria-smoke-conferma-push-ordini.md` (eliminato).
 > **Complementare** (non sostituisce) allo **smoke UI E2E pratiche** — quello prova
 > il percorso pratica nella dashboard; qui si prova il giro push/fatturazione del
-> documento. Vedi [gestione-pratiche-come-procedere.md §2](gestione-pratiche-come-procedere.md).
+> documento. Vedi [gestione-pratiche-come-procedere.md §2](../work-in-progress/gestione-pratiche-come-procedere.md).
 
 ---
 
@@ -21,7 +28,7 @@
 abilitanti emersi: (a) script — endpoint M2 rimosso → completamento flusso, +
 emittente esplicito; (b) **DB** — bug gate EVASO ramo commessa (residuo ancorato
 a `stato_emissione='EMESSA'` invece che all'allocazione), risolto dal team DB
-([brief-db-gate-evaso-commessa-asimmetria.md](../work-done/brief-db-gate-evaso-commessa-asimmetria.md),
+([brief-db-gate-evaso-commessa-asimmetria.md](brief-db-gate-evaso-commessa-asimmetria.md),
 include §4 BoM + semantica ANNULLATA).
 
 - [x] **Push** (da pratica: CONFERMA del flusso → handler `vendita.push_preventivo`;
@@ -105,6 +112,14 @@ commessa emittibile, con idempotenza del push. Smoke dedicato
       commessa → `PRONTA_FATTURAZIONE`; re-run push = nessun doppione (upsert su segment_key).
       Logica su `stato_codice_interno` (post-uniformazione naming).
 
+> **Re-run regressione 2026-06-29** (post-refactor naming): §1/§2/§3b **tutti verdi**.
+> Emerso e corretto un **bug BE pre-esistente**: `ContrattiRepository.create_contratto`
+> non includeva `emittente_fiscale_id` nel `write_cols` dell'INSERT → un operatore senza
+> emittente assegnato non poteva creare contratti **nemmeno passandolo esplicitamente**
+> (il service lo accettava, la repo lo scartava). Fix: campo aggiunto al `write_cols`
+> (957 test vendite verdi). Smoke irrobustito: emittente derivato dal doc sorgente +
+> log del payload, niente più `32` hardcoded (solo ultimo fallback = gestore globale).
+
 ## 4. Come eseguire
 
 Servono **backend + DB attivi** e un utente con permessi vendite (o super admin per
@@ -123,5 +138,5 @@ SMOKE_USER=<operatore_con_whitelist> ./scripts/tests/smoke-test-ordini-giro-comm
 
 Quando un blocco è verde: spuntare le voci; quando **tutti** i blocchi attivi
 (preventivo + ordine, e contratto se in scope) sono verdi, aggiornare
-[gestione-pratiche-come-procedere.md §2](gestione-pratiche-come-procedere.md) e
+[gestione-pratiche-come-procedere.md §2](../work-in-progress/gestione-pratiche-come-procedere.md) e
 spostare questo doc in `work-done/`.

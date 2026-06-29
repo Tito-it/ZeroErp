@@ -28,7 +28,9 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 USERNAME="${SMOKE_USER:-tid}"
 PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
-EMITTENTE_FISCALE_ID="${EMITTENTE_ID:-32}"
+# Override esplicito emittente (opzionale). Se vuoto, si deriva dal documento
+# sorgente del BA (vedi setup); ultimo fallback 32.
+EMITTENTE_OVERRIDE="${EMITTENTE_ID:-}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 PASS=0; FAIL=0; SKIP=0
@@ -112,6 +114,10 @@ BA_ID=$(echo "$TRIPLE" | awk '{print $1}')
 UTILITY_ID=$(echo "$TRIPLE" | awk '{print $2}')
 ISTANZA_ID=$(echo "$TRIPLE" | awk '{print $3}')
 
+# Emittente: NON hardcodare (no-hardcoded-ids). Si deriva dallo stesso documento
+# sorgente del BA → coerente per costruzione col guard BA<->emittente del contratto.
+# Override esplicito via EMITTENTE_ID; fallback finale 32 solo se nulla risolto.
+EF_SRC=""
 if [[ -z "$BA_ID" || -z "$ISTANZA_ID" ]]; then
     log_info "lookup BA vuoto/scope; provo a riusare un documento esistente (preventivi/ordini/contratti)"
     for SRC in preventivi ordini contratti; do
@@ -120,9 +126,12 @@ if [[ -z "$BA_ID" || -z "$ISTANZA_ID" ]]; then
 import sys, json
 try:
     rows = json.load(sys.stdin).get('data',{}).get('results',[])
-    for r in rows:
-        if r.get('billing_account_id') and r.get('istanza_utility_id'):
-            print(r['billing_account_id'], r.get('utility_id') or '', r['istanza_utility_id']); break
+    # Preferisci una riga che espone anche l'emittente (coerente col BA → guard BA<->EF);
+    # se nessuna lo espone, ripiega sulla prima riga BA+istanza valida (emittente vuoto → 32).
+    cand = [r for r in rows if r.get('billing_account_id') and r.get('istanza_utility_id')]
+    best = next((r for r in cand if r.get('emittente_fiscale_id')), cand[0] if cand else None)
+    if best:
+        print(best['billing_account_id'], best.get('utility_id') or '', best['istanza_utility_id'], best.get('emittente_fiscale_id') or '')
 except Exception:
     pass
 " 2>/dev/null)
@@ -130,7 +139,8 @@ except Exception:
             BA_ID=$(echo "$PAIR" | awk '{print $1}')
             UTILITY_ID=$(echo "$PAIR" | awk '{print $2}')
             ISTANZA_ID=$(echo "$PAIR" | awk '{print $3}')
-            log_info "tripla da '$SRC'"
+            EF_SRC=$(echo "$PAIR" | awk '{print $4}')
+            log_info "tripla+emittente da '$SRC' (emittente_fiscale_id=$EF_SRC)"
             break
         fi
     done
@@ -160,8 +170,11 @@ echo ""; echo "-- 2. Crea contratto DRAFT --"
 # (BA, istanza, utility, ambito) nel periodo di validità può far fallire la create
 # se esiste già un contratto sovrapposto — in quel caso l'errore è parlante.
 AMBITO="${SMOKE_AMBITO:-COMMODITY}"
-do_curl POST "/api/v1/vendite/contratti/" \
-    "{\"billing_account_id\": ${BA_ID}, \"utility_id\": ${UTILITY_ID:-null}, \"istanza_utility_id\": ${ISTANZA_ID}, \"ambito\": \"${AMBITO}\", \"emittente_fiscale_id\": ${EMITTENTE_FISCALE_ID}, \"valido_dal\": \"${OGGI}\", \"data\": \"${OGGI}\"}"
+# Emittente coerente col BA: override esplicito → emittente del doc sorgente → 32.
+EMITTENTE_FISCALE_ID="${EMITTENTE_OVERRIDE:-${EF_SRC:-32}}"
+CREATE_PAYLOAD="{\"billing_account_id\": ${BA_ID}, \"utility_id\": ${UTILITY_ID:-null}, \"istanza_utility_id\": ${ISTANZA_ID}, \"ambito\": \"${AMBITO}\", \"emittente_fiscale_id\": ${EMITTENTE_FISCALE_ID}, \"valido_dal\": \"${OGGI}\", \"data\": \"${OGGI}\"}"
+log_info "payload create = $CREATE_PAYLOAD"
+do_curl POST "/api/v1/vendite/contratti/" "$CREATE_PAYLOAD"
 if ! check "POST crea contratto" 200 "data.id"; then
     echo -e "${RED}Setup fallito: impossibile creare contratto. Stop.${NC}"; exit 1
 fi
