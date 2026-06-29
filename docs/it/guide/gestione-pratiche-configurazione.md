@@ -171,13 +171,46 @@ Riferimenti modello: [template_flussi](/dbzero/pratiche/tabelle/template_flussi)
 * Le scelte di `modalita_esito`/`esito_default` sono **per template**: lo stesso step
   può essere MANUALE in un tipo prestazione e CONTESTUALE in un altro, se modellato così.
 
-## 7. Funzionalità di configurazione — stato e roadmap
+## 7. Aggancio di un documento versionato a una pratica (link parametrico)
+
+> 🟠 **Convenzione proposta / in adozione** col primo consumatore (pratica PREVENTIVI) —
+> non ancora a catalogo. Riferimento:
+> [brief-db-pratica-preventivi-tipo-unico-flussi.md](../dev/work-in-progress/brief-db-pratica-preventivi-tipo-unico-flussi.md).
+
+Quando una pratica usa un **documento di dominio versionato** (es. un preventivo, che a ogni
+revisione è una **nuova riga** con `uid`/`id` nuovi ma **stesso `numero`**), il legame ROOT in
+`pratiche.pratiche_sorgenti` deve poter **seguire la versione viva** senza che `pratiche`
+sappia cosa sia quel documento (direzione anelli: `pratiche` non legge `vendite`).
+
+Convenzione (in `pratiche_sorgenti.meta`, niente nuove colonne):
+
+```json
+{
+  "ref_stable_key": "PREV-100",   // identità STABILE (es. numero), non l'uid della singola revisione
+  "follow_active": true            // true = segui la versione attiva; assente/false = pin alla versione agganciata
+}
+```
+
+Regole:
+
+* il **kind** non si ripete in `meta`: lo dà già `sorgente_tipo_id` (PREVENTIVO/…);
+* `sorgente_uid` resta l'uid dell'**entry-point** (la versione al momento dell'aggancio) → tracciabilità;
+* **chi risolve la versione viva è il dominio proprietario** (es. `vendite` via
+  `vw_preventivi.is_attiva`), a **read-time**: il link resta fermo (nessun UPDATE/trigger).
+  All'annullamento di una revisione la versione attiva torna da sola al predecessore.
+
+> **Generalizzazione rinviata** (manifesto §7): la forma `meta` è generica per riuso futuro
+> (es. revisione di contratto/offerta in pratica), ma il framework/registro generico si
+> costruisce solo **dopo un 2° consumatore reale** — non ora.
+
+## 8. Funzionalità di configurazione — stato e roadmap
 
 | Funzionalità | Stato | Riferimento |
 |---|---|---|
 | Esito configurabile (MANUALE / AUTOMATICO / CONTESTUALE) | ✅ disponibile | §3 · [brief design](../dev/work-done/brief-design-esito-configurabile-flussi.md) |
 | Attività UI da flusso (apri preventivo/offerta/contratto) | ✅ disponibile | §2.2 |
 | Handler di dominio + handler di evento | ✅ disponibile | §2.1 · [Handler Django](gestione-pratiche.md#handler-django-registry-pattern) |
+| Link parametrico a documento versionato (`meta.ref_stable_key`/`follow_active`) | 🟠 in adozione (1° consumatore: preventivi) | §7 |
 | UI di amministrazione del workflow (no-seed) | ⏳ futuro | — |
 
 > Aggiornare questa tabella e le sezioni §2–§3 a ogni nuova opzione di configurazione

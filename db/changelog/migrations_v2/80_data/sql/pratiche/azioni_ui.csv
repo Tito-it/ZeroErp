@@ -1,2 +1,5 @@
 id,azione_ui_key,codice,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update
 9001,APRI_PREVENTIVO,APRI_PREVENTIVO,Apri il preventivo collegato dal flusso di pratica (drawer preventivo precompilato col contesto cliente/istanza della pratica),t,{},2026-06-15 00:00:00+02,SEED,2026-06-15 00:00:00+02,SEED
+9002,SMISTAMENTO,SMISTAMENTO,Apri il pannello di smistamento righe del preventivo (merce->ordine / servizi->commessa),t,{},2026-06-30 00:00:00+02,SEED,2026-06-30 00:00:00+02,SEED
+9003,CONFERMA_ORDINE,CONFERMA_ORDINE,Apri e conferma l'ordine merce generato dallo smistamento,t,{},2026-06-30 00:00:00+02,SEED,2026-06-30 00:00:00+02,SEED
+9004,INVIO_COMMESSA,INVIO_COMMESSA,Invia a commessa l'ordine merce confermato,t,{},2026-06-30 00:00:00+02,SEED,2026-06-30 00:00:00+02,SEED

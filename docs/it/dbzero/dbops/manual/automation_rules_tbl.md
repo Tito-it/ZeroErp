@@ -98,7 +98,7 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
 ### Interazione con le altre tabelle
 
 * **`automation_overrides_cols`** → risolve nomi di colonne non standard: `ATTIVO_COL`, `AUDIT_TS`, `AUDIT_USER`, `STORICO_FK`.
-* **`automation_fk_exclusions`** → esclude specifiche coppie *parent/child* dalla regola `ATTIVO`.
+* **`automation_fk_exclusions`** → *(storicamente)* escludeva specifiche coppie *parent/child* dalla regola `ATTIVO`. ⚠️ **Filtro attualmente NON applicato**: disattivato deliberatamente in `20260113-01` (commento "non più utilizzato") e non re-introdotto nel rewrite `20260408-06`. La tabella esiste ma è **inerte**: `fn_run_automations_attivo` non la consulta. (Riabilitarlo è possibile ma richiede di re-inserire il filtro `NOT EXISTS` nel cursor FK — vedi `brief-db-deprecabilita-catalogo-vs-istanze.md`.)
 * **`automation_cleanup_exclusions`** → esclude tabelle dal cleanup (rule_type CLEANUP_*).
 
 ---
@@ -107,7 +107,7 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
 
 * Scopo schemi: da `p_schemas` o tabella `dbops.automation_scope` (se presente), altrimenti tutti gli schemi *user* escluso `storico`.
 * Per **TX_ID / AUDIT_UPDATE / STORICO**: loop per tabelle che matchano la regola (schema + table/pattern), valutano pre‑requisiti (colonne, storico presente), costruiscono nome via template, verificano esistenza secondo `existence_strategy`, **creano il trigger** se mancante (o **DRYRUN** se `p_dry_run=true`).
-* Per **ATTIVO**: loop su **tutte** le FK nell'ambito (indipendentemente da `confdeltype`), filtra con `automation_fk_exclusions`, risolve colonne `attivo` su parent/child via overrides, poi applica:
+* Per **ATTIVO**: loop su **tutte** le FK nell'ambito (indipendentemente da `confdeltype`), risolve colonne `attivo` su parent/child via overrides, poi applica (NB: il filtro `automation_fk_exclusions` **non è più applicato**, vedi sopra):
 
   * **BLOCK** sul padre: impedisce `attivo=true -> false` se esistono figli **attivi** (o figli in generale se la colonna `attivo` sul figlio non esiste).
   * **REQUIRE** sul figlio: impedisce insert/update verso un padre non attivo. Se il figlio ha `attivo`, il controllo vale solo quando `attivo=true`.
