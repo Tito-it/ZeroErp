@@ -44,7 +44,7 @@ export const usePraticheStore = defineStore('pratiche', () => {
     data_a: null,
     limit: 10,
     offset: 0,
-    order_by: 'data_insert',
+    order_by: 'data_apertura',
     order_dir: 'desc'
   })
 

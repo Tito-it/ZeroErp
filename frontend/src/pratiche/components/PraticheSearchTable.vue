@@ -27,7 +27,7 @@ const { t } = useI18n()
 const store = usePraticheStore()
 const isBlocked = useInjectBlocked()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'data_insert',
+  defaultSortField: 'data_apertura',
   defaultSortOrder: -1
 })
 
