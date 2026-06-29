@@ -11,7 +11,11 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    resolve_config_id_by_codice_interno,
+    row_to_dict,
+    rows_to_list,
+)
 from apps.core.services.error_manager import ErrorManager
 
 
@@ -886,24 +890,20 @@ class PraticheRepository:
     def create_nota_pratica(
         self, pratica_id: int, tipo_nota_codice: str, contenuto: str,
     ) -> int:
+        # Risolve tipo_nota_id prima dell'INSERT per errore chiaro
+        tipo_nota_id = resolve_config_id_by_codice_interno(
+            "config.tipi_nota",
+            tipo_nota_codice,
+            etichetta="Tipo nota",
+            not_found_message=(
+                f"Tipo nota '{tipo_nota_codice}' non trovato o non attivo"
+            ),
+        )
         with connection.cursor() as cursor:
-            # Risolve tipo_nota_id prima dell'INSERT per errore chiaro
-            cursor.execute(
-                "SELECT id FROM config.tipi_nota WHERE codice_interno = %s AND attivo = true",
-                [tipo_nota_codice],
-            )
-            tipo_row = cursor.fetchone()
-            ErrorManager.require(
-                tipo_row is not None,
-                code="E_CONFIG_MANCANTE",
-                message=f"Tipo nota '{tipo_nota_codice}' non trovato o non attivo",
-            )
-            assert tipo_row is not None
-
             cursor.execute(
                 """INSERT INTO pratiche.note_pratiche (pratica_id, tipo_nota_id, contenuto)
                    VALUES (%s, %s, %s) RETURNING id""",
-                [pratica_id, tipo_row[0], contenuto],
+                [pratica_id, tipo_nota_id, contenuto],
             )
             row = cursor.fetchone()
             ErrorManager.require(
@@ -972,26 +972,22 @@ class PraticheRepository:
         mime_type: str | None = None, dimensione: int | None = None,
         allegato_padre_id: int | None = None,
     ) -> int:
+        # Risolve tipo_allegato_id prima dell'INSERT per errore chiaro
+        tipo_allegato_id = resolve_config_id_by_codice_interno(
+            "config.tipi_allegato",
+            tipo_allegato_codice,
+            etichetta="Tipo allegato",
+            not_found_message=(
+                f"Tipo allegato '{tipo_allegato_codice}' non trovato o non attivo"
+            ),
+        )
         with connection.cursor() as cursor:
-            # Risolve tipo_allegato_id prima dell'INSERT per errore chiaro
-            cursor.execute(
-                "SELECT id FROM config.tipi_allegato WHERE codice_interno = %s AND attivo = true",
-                [tipo_allegato_codice],
-            )
-            tipo_row = cursor.fetchone()
-            ErrorManager.require(
-                tipo_row is not None,
-                code="E_CONFIG_MANCANTE",
-                message=f"Tipo allegato '{tipo_allegato_codice}' non trovato o non attivo",
-            )
-            assert tipo_row is not None
-
             cursor.execute(
                 """INSERT INTO pratiche.allegati_pratiche (
                        pratica_id, tipo_allegato_id, nome_file,
                        percorso, mime_type, dimensione, allegato_padre_id
                    ) VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-                [pratica_id, tipo_row[0], nome_file,
+                [pratica_id, tipo_allegato_id, nome_file,
                  percorso, mime_type, dimensione, allegato_padre_id],
             )
             row = cursor.fetchone()
@@ -1059,21 +1055,14 @@ class PraticheRepository:
     # Scopo: Risolve l'ID di uno stato da codice_interno su una tabella config.
     # Metodo generico usato dai wrapper resolve_stato_pratica / resolve_stato_flusso.
     def _resolve_stato(self, tabella: str, codice_interno: str, etichetta: str) -> int:
-        sql = f"""
-            SELECT id FROM {tabella}
-            WHERE codice_interno = %s AND attivo = true
-            LIMIT 1
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [codice_interno])
-            row = cursor.fetchone()
-        ErrorManager.require(
-            row is not None,
-            code="E_CONFIG_MANCANTE",
-            message=f"Stato {etichetta} '{codice_interno}' non trovato in {tabella}",
+        return resolve_config_id_by_codice_interno(
+            tabella,
+            codice_interno,
+            etichetta=f"Stato {etichetta}",
+            not_found_message=(
+                f"Stato {etichetta} '{codice_interno}' non trovato in {tabella}"
+            ),
         )
-        assert row is not None
-        return int(row[0])
 
     # Scopo: Risolve l'ID di uno stato pratica da codice_interno.
     def resolve_stato_pratica(self, codice_interno: str) -> int:
