@@ -16,6 +16,8 @@ DECLARE
   v_sorgente_tipo_id    config.sorgenti.id%TYPE;
   v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
 BEGIN
+  -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente risolta
+  -- per codice_interno (immutabile), non per codice (mutabile).
   -- Guard: p_consumo_id, se specificato, deve essere > 0.
   IF p_consumo_id IS NOT NULL AND p_consumo_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
@@ -31,7 +33,7 @@ BEGIN
   SELECT s.id, s.tipo_doc_fiscale_id
     INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
   FROM config.sorgenti s
-  WHERE s.codice = 'ATTIVITA_CONSUMI' AND s.attivo IS TRUE
+  WHERE s.codice_interno = 'ATTIVITA_CONSUMI' AND s.attivo IS TRUE
   LIMIT 1;
 
   IF v_sorgente_tipo_id IS NULL THEN
@@ -97,7 +99,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_consumi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_consumo_id bigint)
-IS 'Lista consumi eligible al push su commessa (stato_calcolo OK, non fatturati). p_consumo_id (opzionale): NULL=lista globale batch, NOT NULL=singolo consumo. Tutti i filtri in AND. Esclude consumi gia` emessi via NOT EXISTS su commesse_attivita.';
+IS 'Lista consumi eligible al push su commessa (stato_calcolo OK, non fatturati). p_consumo_id (opzionale): NULL=lista globale batch, NOT NULL=singolo consumo. Tutti i filtri in AND. Esclude consumi gia` emessi via NOT EXISTS su commesse_attivita. rev 2026-06-28: sorgente per codice_interno (analisi-hardcoded-codice §3a).';
 ```
 
 ---

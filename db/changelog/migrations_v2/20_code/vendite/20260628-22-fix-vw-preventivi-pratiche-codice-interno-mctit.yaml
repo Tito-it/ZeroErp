@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Fix hardcode codice -> codice_interno (analisi-hardcoded-codice.md §3a #16, lotto D).
+#
+# Vista vw_preventivi_pratiche: il JOIN su config.sorgenti filtra la sorgente
+# PREVENTIVO per `codice` (mutabile).
+#   PRIMA: JOIN config.sorgenti s ON s.codice = 'PREVENTIVO' AND s.attivo IS TRUE
+#   DOPO:  JOIN ... ON s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE
+# Pre-check seed: codice == codice_interno per PREVENTIVO -> zero-risk.
+#
+# INVARIATE (display, NON logica -> restano sul `codice`):
+#   pr.codice AS pratica_codice            (codice proprio della pratica)
+#   sp.codice AS stato_codice              (etichetta stato pratica)
+#   tp.codice AS tipo_prestazione_codice   (etichetta tipo prestazione)
+# NB: l'esposizione del solo *_codice mutabile (senza *_codice_interno) e' il
+#   follow-up sistemico §7 dell'analisi, fuori scope di questo brief.
+#
+# CREATE OR REPLACE VIEW: cambia solo la condizione di JOIN, lista colonne
+# invariata (nessun cambio nome/tipo/ordine).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260628-22-fix-vw-preventivi-pratiche-codice-interno-mctit.yaml
+
+  - changeSet:
+      id: 20260628-22-fix-vw-preventivi-pratiche-codice-interno
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vw_preventivi_pratiche: JOIN sorgente PREVENTIVO per codice_interno invece
+        di codice (le altre codice del SELECT sono display). Hardcode fix §3a #16.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_pratiche AS
+              SELECT p.id AS preventivo_id,
+                  p.uid AS preventivo_uid,
+                  p.numero AS preventivo_numero,
+                  ps.id AS sorgente_id,
+                  ps.ruolo_link,
+                  ps.sorgente_riga,
+                  pr.id AS pratica_id,
+                  pr.codice AS pratica_codice,
+                  pr.descrizione AS pratica_descrizione,
+                  sp.codice AS stato_codice,
+                  sp.descrizione AS stato_descrizione,
+                  tp.codice AS tipo_prestazione_codice,
+                  tp.descrizione AS tipo_prestazione_descrizione,
+                  pr.data_apertura,
+                  pr.data_scadenza,
+                  ps.meta AS sorgente_meta
+                 FROM vendite.preventivi p
+                   JOIN config.sorgenti s
+                     ON s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE
+                   JOIN pratiche.pratiche_sorgenti ps
+                     ON ps.sorgente_tipo_id = s.id AND ps.sorgente_uid = (p.uid)::text
+                   JOIN pratiche.pratiche pr
+                     ON pr.id = ps.pratica_id
+                   LEFT JOIN config.stati_pratiche sp
+                     ON sp.id = pr.stato_id
+                   LEFT JOIN pratiche.tipi_prestazione tp
+                     ON tp.id = pr.tipo_prestazione_id;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: ri-applicare la definizione autogen antecedente a
+              -- 20260628-22 (JOIN sorgente per `codice`). Non duplicata qui.
+              SELECT 1;

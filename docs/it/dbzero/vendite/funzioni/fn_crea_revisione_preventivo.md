@@ -13,7 +13,7 @@ CREATE OR REPLACE FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id 
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_stato_corrente_cod  config.stati_doc_preventivi.codice%TYPE;
+  v_stato_corrente_cod  config.stati_doc_preventivi.codice_interno%TYPE;
   v_numero              vendite.preventivi.numero%TYPE;
   v_max_rev             vendite.preventivi.rev%TYPE;
   v_stato_draft_id      config.stati_doc_preventivi.id%TYPE;
@@ -41,6 +41,10 @@ BEGIN
   -- Parametri:
   --   p_preventivo_id : ID del preventivo da revisionare
   --   p_user          : utente che esegue l'operazione
+  --
+  -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #2):
+  --   stato corrente e risoluzione DRAFT per codice_interno (immutabile),
+  --   non per codice (mutabile). Literali EMESSO/DRAFT sono codice_interno.
   -- ==========================================================
 
   -- Guard: parametro obbligatorio
@@ -55,7 +59,7 @@ BEGIN
   END IF;
 
   -- Recupera stato corrente e numero
-  SELECT sdp.codice, p.numero
+  SELECT sdp.codice_interno, p.numero
     INTO v_stato_corrente_cod, v_numero
     FROM vendite.preventivi p
     JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
@@ -91,7 +95,7 @@ BEGIN
       FROM vendite.preventivi p2
       JOIN config.stati_doc_preventivi sdp2 ON sdp2.id = p2.stato_doc_preventivo_id
      WHERE p2.numero = v_numero
-       AND sdp2.codice = 'DRAFT'
+       AND sdp2.codice_interno = 'DRAFT'
   ) INTO v_has_draft;
 
   IF v_has_draft THEN
@@ -107,7 +111,7 @@ BEGIN
   -- Recupera stato DRAFT id
   SELECT id INTO v_stato_draft_id
     FROM config.stati_doc_preventivi
-   WHERE codice = 'DRAFT' AND attivo IS TRUE;
+   WHERE codice_interno = 'DRAFT' AND attivo IS TRUE;
 
   IF v_stato_draft_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
@@ -181,7 +185,7 @@ BEGIN
   -- sequenziale) sono assegnati nello stesso ordine → RN allineati 1:1.
   -- Il trigger trgfn_componenti_calcola_quantita (BEFORE INSERT)
   -- ricalcola quantita/qta_operativa da coeff_qta_snapshot: i valori
-  -- copiati vengono sovrасcritti correttamente.
+  -- copiati vengono sovrascritti correttamente.
   WITH old_righe AS (
       SELECT id AS old_riga_id,
              ROW_NUMBER() OVER (ORDER BY ordine, id) AS rn
@@ -243,7 +247,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
-IS 'Crea nuova revisione preventivo: copia testata + righe attive + componenti BoM (con FK remap ROW_NUMBER) + indirizzi. Non gestisce is_revision_attiva (derivata in vendite.vw_preventivi tramite stati_doc_preventivi.is_abortito). Guard: stato EMESSO, no DRAFT esistente. rev 2026-05-15.';
+IS 'Crea revisione DRAFT da preventivo EMESSO: copia testata, righe attive, componenti BoM (FK remap) e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2.';
 ```
 
 ---

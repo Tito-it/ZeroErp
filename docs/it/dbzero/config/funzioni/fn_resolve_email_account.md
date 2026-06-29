@@ -21,7 +21,7 @@ BEGIN
     --   Risolve l'account SMTP da usare per l'invio email.
     --   Catena di fallback:
     --     1. Account specifico del reparto (unita_organizzativa_id)
-    --     2. Account di sistema (codice = 'SISTEMA')
+    --     2. Account di sistema (codice_interno = 'SISTEMA')
     --
     -- Parametri:
     --   p_unita_organizzativa_id: ID reparto (NULL = usa diretto SISTEMA)
@@ -31,6 +31,9 @@ BEGIN
     --   smtp_use_ssl, smtp_username, smtp_password_encrypted,
     --   email_from, email_reply_to.
     --   NULL se nessun account attivo trovato.
+    --
+    -- rev 2026-06-29: fallback SISTEMA per codice_interno (immutabile),
+    --   non per codice (mutabile) -- analisi-hardcoded-codice §4b.
     -- =========================================================
 
     -- 1. Tentativo: account specifico del reparto
@@ -59,7 +62,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- 2. Fallback: account di sistema
+    -- 2. Fallback: account di sistema (codice_interno immutabile)
     SELECT jsonb_build_object(
         'id',                      ea.id,
         'codice',                  ea.codice,
@@ -74,7 +77,7 @@ BEGIN
     )
     INTO v_result
     FROM config.email_account ea
-    WHERE ea.codice = 'SISTEMA'
+    WHERE ea.codice_interno = 'SISTEMA'
       AND ea.attivo = true;
 
     RETURN v_result;
@@ -82,7 +85,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION config.fn_resolve_email_account(p_unita_organizzativa_id integer)
-IS 'Risolve account SMTP per invio email. Fallback: reparto -> SISTEMA. Ritorna JSONB con dati account (inclusa password crittografata).';
+IS 'Risolve account SMTP per invio email. Fallback: reparto -> SISTEMA (per codice_interno). Ritorna JSONB con dati account (inclusa password crittografata). rev 2026-06-29: SISTEMA per codice_interno (§4b).';
 ```
 
 ---

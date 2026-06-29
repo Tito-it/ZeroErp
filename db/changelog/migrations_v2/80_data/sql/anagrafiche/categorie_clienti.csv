@@ -1,6 +1,6 @@
-id,codice,descrizione,partecipa_promo,ordinamento,meta,attivo,data_insert,user_insert,data_update,user_update
-1,STANDARD,Cliente standard,f,10,{},t,2026-04-14 00:00:00+02,titodb,2026-04-14 00:00:00+02,titodb
-2,BASE,Cliente base,t,20,{},t,2026-04-14 00:00:00+02,titodb,2026-04-14 00:00:00+02,titodb
-3,SILVER,Cliente silver,t,30,{},t,2026-04-14 00:00:00+02,titodb,2026-04-14 00:00:00+02,titodb
-4,GOLD,Cliente gold,t,40,{},t,2026-04-14 00:00:00+02,titodb,2026-04-14 00:00:00+02,titodb
-5,PLATINUM,Cliente platinum,t,50,{},t,2026-04-14 00:00:00+02,titodb,2026-04-14 00:00:00+02,titodb
+id,codice,codice_interno,descrizione,partecipa_promo,ordinamento,meta,attivo,data_insert,user_insert,data_update,user_update
+1,STANDARD,STANDARD,Cliente standard,f,10,{},t,2026-04-14 00:00:00+02,titodb,2026-04-14 00:00:00+02,titodb
+2,BASE,BASE,Cliente base,t,20,{},t,2026-04-14 00:00:00+02,titodb,2026-04-14 00:00:00+02,titodb
+3,SILVER,SILVER,Cliente silver,t,30,{},t,2026-04-14 00:00:00+02,titodb,2026-04-14 00:00:00+02,titodb
+4,GOLD,GOLD,Cliente gold,t,40,{},t,2026-04-14 00:00:00+02,titodb,2026-04-14 00:00:00+02,titodb
+5,PLATINUM,PLATINUM,Cliente platinum,t,50,{},t,2026-04-14 00:00:00+02,titodb,2026-04-14 00:00:00+02,titodb

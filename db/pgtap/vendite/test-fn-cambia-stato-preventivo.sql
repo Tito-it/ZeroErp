@@ -9,14 +9,29 @@
 -- 3) Setup preventivo DRAFT con riga valida
 -- 4) DRAFT -> EMESSO ammessa (riga attiva + totale > 0)
 -- 5) EMESSO -> ACCETTATO ammessa
--- 6) ACCETTATO -> ANNULLATO ammessa (senza commessa)
+-- 6) DRAFT -> ANNULLATO ammessa (senza commessa; ACCETTATO->ANNULLATO disattivata nel seed)
 -- 7) DRAFT -> ACCETTATO vietata (non in matrice)
 -- 8) DRAFT -> EMESSO vietata senza righe attive
 -- 9) DRAFT -> EMESSO vietata con totale = 0
--- 10) Cleanup (finish)
+-- 10) anti-regressione: rename codice stati -> DRAFT->EMESSO risolta per codice_interno
 -- ------------------------------------------------------------
 BEGIN;
-SELECT plan(9);
+SELECT plan(10);
+-- ============================================================
+-- Setup GUC app.current_user_id: il trigger trgfn_preventivi_default_emittente
+-- richiede l'emittente fiscale dell'operatore loggato (GUC popolata in API da
+-- JwtAuditAuthentication). In contesto pgTAP la GUC e' vuota -> la valorizziamo
+-- con un utente che ha un emittente in config.user_emittenti_fiscali, altrimenti
+-- l'INSERT su preventivi solleva E_PREV_EMITTENTE_NON_RISOLTO. (Stesso pattern di
+-- test-fn-crea-revisione-preventivo.)
+-- ============================================================
+SELECT set_config(
+  'app.current_user_id',
+  (SELECT uef.auth_user_id::text
+     FROM config.user_emittenti_fiscali uef
+    ORDER BY uef.auth_user_id LIMIT 1),
+  true
+);
 -- ============================================================
 -- 1) Funzione presente
 -- ============================================================
@@ -124,7 +139,6 @@ CREATE TEMP TABLE tmp_cs_prev1 AS WITH ins AS (
   INSERT INTO vendite.preventivi (
       numero,
       rev,
-      is_revision_attiva,
       billing_account_id,
       istanza_utility_id,
       utility_id,
@@ -138,7 +152,6 @@ CREATE TEMP TABLE tmp_cs_prev1 AS WITH ins AS (
     )
   SELECT 'PGTAP-CS-' || substr(md5(clock_timestamp()::text), 1, 8),
     0,
-    true,
     r.billing_account_id,
     r.istanza_utility_id,
     r.utility_id,
@@ -211,17 +224,56 @@ SELECT lives_ok(
     '5. EMESSO -> ACCETTATO ammessa'
   );
 -- ============================================================
--- 6) ACCETTATO -> ANNULLATO ammessa (senza commessa)
+-- 6) DRAFT -> ANNULLATO ammessa (senza commessa)
+--    Matrice attuale (config.transizioni_stati_preventivi): ANNULLATO e'
+--    raggiungibile SOLO da DRAFT (1->9). ACCETTATO->ANNULLATO e' stata
+--    DISATTIVATA nel seed (row id 7, attivo=f, mctit 2026-05-22): da ACCETTATO
+--    si transita a EVASO. Si verifica la transizione verso ANNULLATO + guard
+--    "no commessa" su un preventivo DRAFT dedicato.
 -- ============================================================
+CREATE TEMP TABLE tmp_cs_prev_ann AS WITH ins AS (
+  INSERT INTO vendite.preventivi (
+      numero,
+      rev,
+      billing_account_id,
+      istanza_utility_id,
+      utility_id,
+      validita_dal,
+      validita_al,
+      valuta_id,
+      stato_doc_preventivo_id,
+      data,
+      storicizza,
+      meta
+    )
+  SELECT 'PGTAP-CSA-' || substr(md5(clock_timestamp()::text), 1, 8),
+    0,
+    r.billing_account_id,
+    r.istanza_utility_id,
+    r.utility_id,
+    DATE '2026-06-01',
+    DATE '2026-06-30',
+    r.valuta_id,
+    r.stato_draft_id,
+    DATE '2026-06-01',
+    false,
+    jsonb_build_object('test_scope', 'pgtap_cambia_stato')
+  FROM tmp_cs_refs r
+  RETURNING id,
+    uid,
+    numero
+)
+SELECT *
+FROM ins;
 SELECT lives_ok(
     format(
       'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''ANNULLATO'', ''pgtap'')',
       (
         SELECT id
-        FROM tmp_cs_prev1
+        FROM tmp_cs_prev_ann
       )
     ),
-    '6. ACCETTATO -> ANNULLATO ammessa (no commessa)'
+    '6. DRAFT -> ANNULLATO ammessa (no commessa)'
   );
 -- ============================================================
 -- 7) DRAFT -> ACCETTATO vietata (non in matrice transizioni)
@@ -230,7 +282,6 @@ CREATE TEMP TABLE tmp_cs_prev2 AS WITH ins AS (
   INSERT INTO vendite.preventivi (
       numero,
       rev,
-      is_revision_attiva,
       billing_account_id,
       istanza_utility_id,
       utility_id,
@@ -244,7 +295,6 @@ CREATE TEMP TABLE tmp_cs_prev2 AS WITH ins AS (
     )
   SELECT 'PGTAP-CS2-' || substr(md5(clock_timestamp()::text), 1, 8),
     0,
-    true,
     r.billing_account_id,
     r.istanza_utility_id,
     r.utility_id,
@@ -302,7 +352,6 @@ CREATE TEMP TABLE tmp_cs_prev3 AS WITH ins AS (
   INSERT INTO vendite.preventivi (
       numero,
       rev,
-      is_revision_attiva,
       billing_account_id,
       istanza_utility_id,
       utility_id,
@@ -316,7 +365,6 @@ CREATE TEMP TABLE tmp_cs_prev3 AS WITH ins AS (
     )
   SELECT 'PGTAP-CS3-' || substr(md5(clock_timestamp()::text), 1, 8),
     0,
-    true,
     r.billing_account_id,
     r.istanza_utility_id,
     r.utility_id,
@@ -355,7 +403,6 @@ CREATE TEMP TABLE tmp_cs_prev4 AS WITH ins AS (
   INSERT INTO vendite.preventivi (
       numero,
       rev,
-      is_revision_attiva,
       billing_account_id,
       istanza_utility_id,
       utility_id,
@@ -369,7 +416,6 @@ CREATE TEMP TABLE tmp_cs_prev4 AS WITH ins AS (
     )
   SELECT 'PGTAP-CS4-' || substr(md5(clock_timestamp()::text), 1, 8),
     0,
-    true,
     r.billing_account_id,
     r.istanza_utility_id,
     r.utility_id,
@@ -421,7 +467,82 @@ SELECT throws_ok(
     '9. DRAFT -> EMESSO vietata con totale = 0'
   );
 -- ============================================================
--- 10) Finish
+-- 10) Anti-regressione codice_interno (analisi-hardcoded-codice §3a #1):
+--     rinominando il `codice` (mutabile) degli stati, la transizione DEVE
+--     continuare a risolvere stato corrente e destinazione per `codice_interno`.
+--     Col vecchio codice la risoluzione di 'EMESSO' fallirebbe (E_STATO_SCONOSCIUTO).
+-- ============================================================
+CREATE TEMP TABLE tmp_cs_prev5 AS WITH ins AS (
+  INSERT INTO vendite.preventivi (
+      numero,
+      rev,
+      billing_account_id,
+      istanza_utility_id,
+      utility_id,
+      validita_dal,
+      validita_al,
+      valuta_id,
+      stato_doc_preventivo_id,
+      data,
+      storicizza,
+      meta
+    )
+  SELECT 'PGTAP-CS5-' || substr(md5(clock_timestamp()::text), 1, 8),
+    0,
+    r.billing_account_id,
+    r.istanza_utility_id,
+    r.utility_id,
+    DATE '2026-06-01',
+    DATE '2026-06-30',
+    r.valuta_id,
+    r.stato_draft_id,
+    DATE '2026-06-01',
+    false,
+    jsonb_build_object('test_scope', 'pgtap_cambia_stato')
+  FROM tmp_cs_refs r
+  RETURNING id,
+    uid,
+    numero
+)
+SELECT *
+FROM ins;
+-- Riga con quantita e prezzo > 0 (guard DRAFT->EMESSO soddisfatto)
+INSERT INTO vendite.preventivi_righe (
+    preventivo_id,
+    articolo_id,
+    qta_operativa,
+    quantita,
+    prezzo_unitario,
+    iva_id,
+    attivo,
+    meta
+  )
+SELECT p.id,
+  r.articolo_id,
+  10,
+  10,
+  100.00,
+  r.iva_id,
+  true,
+  jsonb_build_object('test_scope', 'pgtap_cambia_stato')
+FROM tmp_cs_prev5 p,
+  tmp_cs_refs r;
+-- Rinomina il codice (mutabile) di DRAFT/EMESSO; codice_interno resta invariato.
+UPDATE config.stati_doc_preventivi
+   SET codice = codice || '_RENAMED'
+ WHERE codice_interno IN ('DRAFT', 'EMESSO');
+SELECT lives_ok(
+    format(
+      'SELECT * FROM vendite.fn_cambia_stato_preventivo(%s, ''EMESSO'', ''pgtap'')',
+      (
+        SELECT id
+        FROM tmp_cs_prev5
+      )
+    ),
+    '10. anti-regressione: rename codice stati -> DRAFT->EMESSO risolta per codice_interno'
+  );
+-- ============================================================
+-- Finish
 -- ============================================================
 SELECT *
 FROM finish();

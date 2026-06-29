@@ -53,9 +53,11 @@ SELECT is(
 );
 
 -- 6) UNIQUE su codice
+--    codice_interno valorizzato (distinto, NOT NULL da 20260629-06) per
+--    superare il NOT NULL e colpire davvero la UNIQUE su codice.
 SELECT throws_ok(
-    $$INSERT INTO anagrafiche.categorie_clienti(codice, descrizione)
-      VALUES ('STANDARD', 'Duplicato test')$$,
+    $$INSERT INTO anagrafiche.categorie_clienti(codice, codice_interno, descrizione)
+      VALUES ('STANDARD', 'DUP_TEST_STANDARD', 'Duplicato test')$$,
     '23505',
     NULL,
     'Insert con codice duplicato viola uq_categorie_clienti_codice'

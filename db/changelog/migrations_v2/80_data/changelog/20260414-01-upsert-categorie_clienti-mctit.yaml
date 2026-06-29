@@ -36,6 +36,7 @@ databaseChangeLog:
             columns:
               - column: { name: id, type: NUMERIC }
               - column: { name: codice, type: STRING }
+              - column: { name: codice_interno, type: STRING }
               - column: { name: descrizione, type: STRING }
               - column: { name: partecipa_promo, type: BOOLEAN }
               - column: { name: ordinamento, type: NUMERIC }

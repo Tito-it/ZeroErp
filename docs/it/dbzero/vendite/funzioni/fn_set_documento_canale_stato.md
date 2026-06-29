@@ -29,6 +29,10 @@ BEGIN
   --   - APERTO blocca automaticamente altri canali APERTO
   --   - BLOCCATO richiede motivo_blocco
   --   - target_sorgente_* deve essere valorizzato a coppia
+  --
+  -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #14):
+  --   il canale (v_canale) e' risolto in config.sorgenti per
+  --   codice_interno (immutabile), non per codice. 'DIRETTO' = sentinel.
   -- =========================================================
   IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
@@ -59,12 +63,12 @@ BEGIN
     );
   END IF;
 
-  -- Canale = codice sorgente configurata (attiva) o eccezione DIRETTO.
+  -- Canale = codice_interno sorgente configurata (attiva) o eccezione DIRETTO.
   IF v_canale <> 'DIRETTO' THEN
     SELECT s.id
     INTO v_canale_source_id
     FROM config.sorgenti s
-    WHERE s.codice = v_canale
+    WHERE s.codice_interno = v_canale
       AND s.attivo IS TRUE
     LIMIT 1;
 
@@ -172,7 +176,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_set_documento_canale_stato(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_canale_codice character varying, p_stato_canale character varying, p_target_sorgente_tipo_id bigint, p_target_sorgente_uid text, p_motivo_blocco text, p_meta jsonb)
-IS 'Imposta stato canale (APERTO/CONSUMATO/BLOCCATO) per sorgente documento con upsert idempotente; APERTO blocca altri canali aperti.';
+IS 'Imposta stato canale (APERTO/CONSUMATO/BLOCCATO) per sorgente documento con upsert idempotente; APERTO blocca altri canali aperti. rev 2026-06-28: canale risolto per codice_interno (analisi-hardcoded-codice §3a #14).';
 ```
 
 ---

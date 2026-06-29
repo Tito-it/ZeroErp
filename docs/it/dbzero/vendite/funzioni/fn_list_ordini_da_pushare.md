@@ -17,6 +17,8 @@ DECLARE
   v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
   v_stato_confermato_id config.stati_doc_ordini.id%TYPE;
 BEGIN
+  -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente/stato
+  -- risolti per codice_interno (immutabile), non per codice (mutabile).
   IF p_ordine_id IS NOT NULL AND p_ordine_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_list_ordini_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
@@ -29,7 +31,7 @@ BEGIN
   SELECT s.id, s.tipo_doc_fiscale_id
     INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
   FROM config.sorgenti s
-  WHERE s.codice = 'ORDINE_VENDITA' AND s.attivo IS TRUE LIMIT 1;
+  WHERE s.codice_interno = 'ORDINE_VENDITA' AND s.attivo IS TRUE LIMIT 1;
 
   IF v_sorgente_tipo_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
@@ -41,7 +43,7 @@ BEGIN
 
   SELECT s.id INTO v_stato_confermato_id
   FROM config.stati_doc_ordini s
-  WHERE s.codice = 'CONFERMATO' AND s.attivo IS TRUE LIMIT 1;
+  WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE LIMIT 1;
 
   RETURN QUERY
   SELECT
@@ -103,7 +105,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ordini_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ordine_id bigint)
-IS 'Lista righe ordine eligible al push su commessa (stato CONFERMATO, fatturazione_trigger CONFERMATO). uom_id da catalogo.articoli (canonica). p_ordine_id opzionale: NULL=batch globale, NOT NULL=singolo ordine. Filtri in AND. Esclude EMESSA via NOT EXISTS.';
+IS 'Lista righe ordine eligible al push su commessa (stato CONFERMATO, fatturazione_trigger CONFERMATO). uom_id da catalogo.articoli (canonica). p_ordine_id opzionale: NULL=batch globale, NOT NULL=singolo ordine. Filtri in AND. Esclude EMESSA via NOT EXISTS. rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a).';
 ```
 
 ---
