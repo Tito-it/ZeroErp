@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# CANDIDATE_ADD_CI (analisi-hardcoded-codice.md §4b / §10, #2).
+#
+# config.email_account aveva solo `codice` (mutabile), usato in logica da
+# config.fn_resolve_email_account (WHERE codice = 'SISTEMA', fallback account di
+# sistema). Si aggiunge `codice_interno` (immutabile: lock auto-provisionato dal
+# runner dbops.fn_run_automations_lock_columns sulla sola presenza della colonna,
+# cfr. linee-guida-sql §6b), backfill codice_interno=codice, UNIQUE + CHECK nonvuoto.
+# Il consumer fn_resolve_email_account passa a codice_interno (file 20260629-07).
+# Seed: email_account.csv + loader aggiornati (codice_interno='SISTEMA').
+#
+# ZeroERP non in produzione. Su DB esistente il backfill popola la riga corrente;
+# su build fresca la colonna e' aggiunta a tabella vuota (00_schema < 80_data) e il
+# seed CSV fornisce codice_interno.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260629-05-alter-email-account-add-codice-interno-mctit.yaml
+
+  - changeSet:
+      id: 20260629-05-alter-email-account-add-codice-interno
+      author: mctit
+      failOnError: true
+      comment: >
+        email_account: add codice_interno (immutabile) + backfill=codice + UNIQUE
+        + CHECK nonvuoto. CANDIDATE_ADD_CI §4b.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.email_account
+                  ADD COLUMN codice_interno character varying;
+
+              UPDATE config.email_account
+                 SET codice_interno = codice
+               WHERE codice_interno IS NULL
+                  OR btrim(codice_interno) = '';
+
+              ALTER TABLE config.email_account
+                  ALTER COLUMN codice_interno SET NOT NULL;
+
+              ALTER TABLE config.email_account
+                  ADD CONSTRAINT uq_email_account_codice_interno UNIQUE (codice_interno);
+
+              ALTER TABLE config.email_account
+                  ADD CONSTRAINT chk_email_account_codice_interno_nonvuoto
+                  CHECK (btrim(codice_interno) <> '');
+
+              COMMENT ON COLUMN config.email_account.codice_interno
+                  IS 'Codice interno immutabile (lock automatico via dbops.fn_run_automations_lock_columns) per la logica applicativa (es. fallback account SISTEMA). rev 2026-06-29 (analisi-hardcoded-codice §4b).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.email_account DROP CONSTRAINT IF EXISTS chk_email_account_codice_interno_nonvuoto;
+              ALTER TABLE config.email_account DROP CONSTRAINT IF EXISTS uq_email_account_codice_interno;
+              ALTER TABLE config.email_account DROP COLUMN IF EXISTS codice_interno;

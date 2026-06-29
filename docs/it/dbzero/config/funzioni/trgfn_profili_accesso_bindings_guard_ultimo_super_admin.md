@@ -34,10 +34,13 @@ BEGIN
     --   3. Se a rischio, verifica post-stato via
     --      fn_check_almeno_un_super_admin_attivo. Se false,
     --      raise E_PROFILO_ULTIMO_SUPER_ADMIN.
+    --
+    -- rev 2026-06-29: profilo SUPER_ADMIN identificato per l'enum
+    --   stabile tipo invece che per codice (mutabile) -- §4a.
     -- =========================================================
 
     IF OLD.attivo = true THEN
-        SELECT (pa.codice = 'SUPER_ADMIN')
+        SELECT (pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso)
           INTO v_old_is_super_admin
           FROM config.profili_accesso pa
          WHERE pa.id = OLD.profilo_accesso_id;
@@ -81,7 +84,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION config.trgfn_profili_accesso_bindings_guard_ultimo_super_admin()
-IS 'Guard anti-lockout: impedisce operazioni su profili_accesso_bindings che lascerebbero il sistema senza SUPER_ADMIN raggiungibili. Delega il check a script.fn_check_almeno_un_super_admin_attivo. Codice errore E_PROFILO_ULTIMO_SUPER_ADMIN.';
+IS 'Guard anti-lockout: impedisce operazioni su profili_accesso_bindings che lascerebbero il sistema senza SUPER_ADMIN raggiungibili (profilo identificato per tipo enum). Delega il check a script.fn_check_almeno_un_super_admin_attivo. Codice errore E_PROFILO_ULTIMO_SUPER_ADMIN. rev 2026-06-29: tipo invece di codice (§4a).';
 ```
 
 ---

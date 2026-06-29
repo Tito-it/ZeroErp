@@ -2,7 +2,47 @@
 
 > Anello esterno al nucleo pratiche
 > Documento di analisi — non implementativo
-> 05-03-2026
+> 05-03-2026 (rev. stato 2026-06-29)
+
+---
+
+> ## ⚠️ Stato (rev. 2026-06-29)
+>
+> Documento **valido come visione, praticamente non realizzato**. Verifica
+> effettuata contro il codice attuale:
+>
+> 1. **La coda lavoro NON sostituisce l'agenda — è complementare.** Ciò che è
+>    stato costruito (commit `acec053c2`, pannello "Le mie attività" +
+>    `fn_coda_lavoro_operatore`, vedi
+>    [brief-design-coda-lavoro-mie-attivita.md](../work-done/brief-design-coda-lavoro-mie-attivita.md))
+>    è una **coda *pull-based* per assegnazione** (livelli
+>    ASSEGNATO/REPARTO/LIBERO/COMPETENZA), **svincolata dalle date**: la
+>    scadenza è solo un attributo mostrato, non l'asse organizzativo.
+>    L'**agenda** di questo documento è invece la **vista temporale** (fasce
+>    per scadenza, avvisi, posticipazioni) ed è **più ampia**: copre flussi di
+>    pratica **+ appuntamenti + altre attività** non-pratica. Le due cose
+>    coesistono, nessuna rimpiazza l'altra.
+>
+> 2. **Tutto il resto è da fare.** Non esiste codice per: agenda a fasce
+>    temporali (operatore/responsabile/direzione), sistema avvisi,
+>    posticipazione, sospensione del *singolo* flusso (esistono solo le
+>    sospensioni di *pratica*), piano ferie/assenze + riallocazione + carico.
+>    Nessuna entità `appuntamento`/`calendario` esiste nel codice.
+>
+> 3. **Punto di modello mancante.** §7.1 assume "agenda legge solo dal nucleo
+>    pratiche", ma un **appuntamento non è un flusso**: l'agenda completa
+>    richiede una **sorgente di attività non-pratica** (candidata: pattern C
+>    `ext_appuntamento` di
+>    [analisi-pratiche-domini-anello3.md §2.3-2.4](analisi-pratiche-domini-anello3.md))
+>    e un'astrazione "voce d'agenda" che unifichi *flusso con scadenza* +
+>    *appuntamento* + *altra attività* su un asse-data comune. Da progettare.
+>
+> 4. **Query §8 con nomi colonna stale** — corretti in questa revisione:
+>    `flusso.operatore_id` → `f.risorsa_umana_id`,
+>    `flusso.unita_org_id` → `f.unita_organizzativa_id`,
+>    `data_prevista_fine` → `f.data_scadenza` (DATE).
+>    Tracker autorevole prossimi passi pratiche:
+>    [gestione-pratiche-come-procedere.md](gestione-pratiche-come-procedere.md).
 
 ---
 
@@ -259,10 +299,10 @@ Questo permette al responsabile di riallocare verso l'operatore meno carico, non
 ```sql
 SELECT
     CASE
-        WHEN f.data_prevista_fine < CURRENT_DATE THEN 'SCADUTO'
-        WHEN f.data_prevista_fine = CURRENT_DATE THEN 'OGGI'
-        WHEN f.data_prevista_fine <= CURRENT_DATE + 5 THEN 'ENTRO_5GG'
-        WHEN f.data_prevista_fine <= CURRENT_DATE + 10 THEN 'ENTRO_10GG'
+        WHEN f.data_scadenza < CURRENT_DATE THEN 'SCADUTO'
+        WHEN f.data_scadenza = CURRENT_DATE THEN 'OGGI'
+        WHEN f.data_scadenza <= CURRENT_DATE + 5 THEN 'ENTRO_5GG'
+        WHEN f.data_scadenza <= CURRENT_DATE + 10 THEN 'ENTRO_10GG'
         ELSE 'OLTRE_10GG'
     END AS fascia,
     f.id AS flusso_id,
@@ -271,25 +311,25 @@ SELECT
     tp.descrizione AS tipo_prestazione,
     f.descrizione AS flusso_descrizione,
     p.priorita,
-    f.data_prevista_fine,
-    (f.data_prevista_fine - CURRENT_DATE) AS giorni_rimanenti,
+    f.data_scadenza,
+    (f.data_scadenza - CURRENT_DATE) AS giorni_rimanenti,
     f.stato
 FROM pratiche.flusso f
 JOIN pratiche.pratica p ON p.id = f.pratica_id
 JOIN pratiche.tipo_prestazione tp ON tp.id = p.tipo_prestazione_id
-WHERE f.operatore_id = :operatore_id
+WHERE f.risorsa_umana_id = :risorsa_umana_id
   AND f.stato IN ('DA_ESEGUIRE', 'IN_CORSO')
   AND p.stato IN ('APERTA', 'SOSPESA')
 ORDER BY
     CASE
-        WHEN f.data_prevista_fine < CURRENT_DATE THEN 0
-        WHEN f.data_prevista_fine = CURRENT_DATE THEN 1
-        WHEN f.data_prevista_fine <= CURRENT_DATE + 5 THEN 2
-        WHEN f.data_prevista_fine <= CURRENT_DATE + 10 THEN 3
+        WHEN f.data_scadenza < CURRENT_DATE THEN 0
+        WHEN f.data_scadenza = CURRENT_DATE THEN 1
+        WHEN f.data_scadenza <= CURRENT_DATE + 5 THEN 2
+        WHEN f.data_scadenza <= CURRENT_DATE + 10 THEN 3
         ELSE 4
     END,
     p.priorita DESC,
-    f.data_prevista_fine ASC;
+    f.data_scadenza ASC;
 ```
 
 ### 8.2 Flussi a rischio per assenza operatore
@@ -298,37 +338,37 @@ ORDER BY
 SELECT
     f.id AS flusso_id,
     f.descrizione,
-    f.data_prevista_fine,
-    f.operatore_id,
+    f.data_scadenza,
+    f.risorsa_umana_id,
     a.data_inizio AS assenza_da,
     a.data_fine AS assenza_a,
     a.tipo_assenza,
     a.sostituto_id
 FROM pratiche.flusso f
-JOIN risorse_umane.assenze_operatore a ON a.operatore_id = f.operatore_id
+JOIN risorse_umane.assenze_operatore a ON a.risorsa_umana_id = f.risorsa_umana_id
 WHERE f.stato IN ('DA_ESEGUIRE', 'IN_CORSO')
-  AND f.data_prevista_fine BETWEEN a.data_inizio AND a.data_fine
+  AND f.data_scadenza BETWEEN a.data_inizio AND a.data_fine
   AND a.approvata = TRUE
-  AND f.unita_org_id = :reparto_id
-ORDER BY f.data_prevista_fine;
+  AND f.unita_organizzativa_id = :reparto_id
+ORDER BY f.data_scadenza;
 ```
 
 ### 8.3 Carico di lavoro per reparto
 
 ```sql
 SELECT
-    f.operatore_id,
+    f.risorsa_umana_id,
     COUNT(*) FILTER (WHERE f.stato IN ('DA_ESEGUIRE','IN_CORSO')) AS flussi_attivi,
-    COUNT(*) FILTER (WHERE f.data_prevista_fine < CURRENT_DATE
+    COUNT(*) FILTER (WHERE f.data_scadenza < CURRENT_DATE
                      AND f.stato IN ('DA_ESEGUIRE','IN_CORSO')) AS flussi_scaduti,
-    COUNT(*) FILTER (WHERE f.data_prevista_fine BETWEEN CURRENT_DATE
+    COUNT(*) FILTER (WHERE f.data_scadenza BETWEEN CURRENT_DATE
                      AND CURRENT_DATE + 5
                      AND f.stato IN ('DA_ESEGUIRE','IN_CORSO')) AS in_scadenza_5gg
 FROM pratiche.flusso f
 JOIN pratiche.pratica p ON p.id = f.pratica_id
-WHERE f.unita_org_id = :reparto_id
+WHERE f.unita_organizzativa_id = :reparto_id
   AND p.stato IN ('APERTA')
-GROUP BY f.operatore_id
+GROUP BY f.risorsa_umana_id
 ORDER BY flussi_scaduti DESC, flussi_attivi DESC;
 ```
 

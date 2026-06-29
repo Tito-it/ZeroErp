@@ -116,7 +116,7 @@ SELECT ok(
 CREATE TEMP TABLE tmp_rc_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, is_revision_attiva,
+    numero, rev,
     billing_account_id, istanza_utility_id, utility_id,
     validita_dal, validita_al, valuta_id,
     stato_doc_preventivo_id, data,
@@ -125,7 +125,7 @@ WITH ins AS (
   )
   SELECT
     'PGTAP-RC-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0, true,
+    0,
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
     r.stato_draft_id, DATE '2026-06-01',

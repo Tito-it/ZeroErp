@@ -630,6 +630,10 @@ class ApiPraticaSospendi(DomainAPIView):
             name="PraticaSospendiRequest",
             fields={
                 "motivo": serializers.CharField(),
+                # data_inizio opzionale (ISO datetime): data/ora manuale, anche
+                # retroattiva. Se assente il DB usa NOW(). Difesa a DB: guard a10
+                # rifiuta date future, EXCLUDE rifiuta periodi sovrapposti.
+                "data_inizio": serializers.DateTimeField(required=False, allow_null=True),
                 "data_riattivazione_prevista": serializers.DateField(required=False, allow_null=True),
             },
         ),
@@ -647,7 +651,8 @@ class ApiPraticaSospendi(DomainAPIView):
             sospensione_id = pratiche_service.sospendi_pratica(
                 pratica_id,
                 str(payload.get("motivo", "")),
-                data_riattivazione_prevista=payload.get("data_riattivazione_prevista"),
+                data_riattivazione_prevista=payload.get("data_riattivazione_prevista") or None,
+                data_inizio=payload.get("data_inizio") or None,
             )
             return {"sospensione_id": sospensione_id, "status": "ok"}
 
@@ -662,7 +667,11 @@ class ApiPraticaRiattiva(DomainAPIView):
     @extend_schema(
         request=inline_serializer(
             name="PraticaRiattivaRequest",
-            fields={},
+            fields={
+                # data_fine opzionale (ISO datetime): data/ora manuale di
+                # riattivazione, anche retroattiva. Se assente il DB usa NOW().
+                "data_fine": serializers.DateTimeField(required=False, allow_null=True),
+            },
         ),
         responses={200: inline_serializer(
             name="PraticaRiattivaResponse",
@@ -674,7 +683,10 @@ class ApiPraticaRiattiva(DomainAPIView):
     # Scopo: Gestisce la richiesta HTTP POST per riattivare una pratica sospesa.
     def post(self, request: Request, pratica_id: int) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
-            pratiche_service.riattiva_pratica(pratica_id)
+            pratiche_service.riattiva_pratica(
+                pratica_id,
+                data_fine=payload.get("data_fine") or None,
+            )
             return {"status": "ok"}
 
         return handle_post_json(request, handler=_handler)

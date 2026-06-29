@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 from django.db import connection, transaction
 from django.utils.timezone import now
 
+from apps.core.db._helpers import resolve_config_id_by_codice_interno
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.permissions_resolver import PermissionResolver
@@ -211,23 +212,16 @@ def invalidate_lookup_cache() -> None:
 def _get_tipo_prestazione_id() -> int:
     global _TIPO_PRESTAZIONE_ID_CACHE
     if _TIPO_PRESTAZIONE_ID_CACHE is None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT id FROM pratiche.tipi_prestazione WHERE codice = %s AND attivo = true",
-                [TIPO_PRESTAZIONE_CODICE],
-            )
-            row = cursor.fetchone()
-            ErrorManager.require(
-                row is not None,
-                code="E_CONFIG_MANCANTE",
-                message=(
-                    f"Tipo prestazione '{TIPO_PRESTAZIONE_CODICE}' non configurato in "
-                    f"pratiche.tipi_prestazione. Richiesto seed Sprint E DB-E-2."
-                ),
-                function_name=f"{_FN}._get_tipo_prestazione_id",
-            )
-            assert row is not None
-            _TIPO_PRESTAZIONE_ID_CACHE = int(row[0])
+        _TIPO_PRESTAZIONE_ID_CACHE = resolve_config_id_by_codice_interno(
+            "pratiche.tipi_prestazione",
+            TIPO_PRESTAZIONE_CODICE,
+            etichetta="Tipo prestazione",
+            not_found_message=(
+                f"Tipo prestazione '{TIPO_PRESTAZIONE_CODICE}' non configurato in "
+                f"pratiche.tipi_prestazione. Richiesto seed Sprint E DB-E-2."
+            ),
+            function_name=f"{_FN}._get_tipo_prestazione_id",
+        )
     return _TIPO_PRESTAZIONE_ID_CACHE
 
 
@@ -235,23 +229,16 @@ def _get_tipo_prestazione_id() -> int:
 def _get_priorita_default_id() -> int:
     global _PRIORITA_DEFAULT_ID_CACHE
     if _PRIORITA_DEFAULT_ID_CACHE is None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT id FROM config.priorita_pratiche WHERE codice_interno = %s AND attivo = true",
-                [PRIORITA_DEFAULT_CODICE_INTERNO],
-            )
-            row = cursor.fetchone()
-            ErrorManager.require(
-                row is not None,
-                code="E_CONFIG_MANCANTE",
-                message=(
-                    f"Priorita default '{PRIORITA_DEFAULT_CODICE_INTERNO}' non trovata "
-                    f"in config.priorita_pratiche."
-                ),
-                function_name=f"{_FN}._get_priorita_default_id",
-            )
-            assert row is not None
-            _PRIORITA_DEFAULT_ID_CACHE = int(row[0])
+        _PRIORITA_DEFAULT_ID_CACHE = resolve_config_id_by_codice_interno(
+            "config.priorita_pratiche",
+            PRIORITA_DEFAULT_CODICE_INTERNO,
+            etichetta="Priorita default",
+            not_found_message=(
+                f"Priorita default '{PRIORITA_DEFAULT_CODICE_INTERNO}' non trovata "
+                f"in config.priorita_pratiche."
+            ),
+            function_name=f"{_FN}._get_priorita_default_id",
+        )
     return _PRIORITA_DEFAULT_ID_CACHE
 
 

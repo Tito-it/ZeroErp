@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Bonifica naming stato (brief-naming-stato-codice-interno.md, dominio anagrafiche/fornitori).
+#
+# PRIMA: sf.codice_interno AS stato_codice  (mislabel).
+# DOPO (alias fedele 1:1, linee-guida-sql §6c):
+#   sf.codice_interno    AS stato_codice_interno       (logica)
+#   sf.codice            AS stato_codice               (display)
+#   sf.descrizione       AS stato_descrizione          (invariato)
+#   sf.descrizione_breve AS stato_descrizione_breve    (invariato)
+#
+# Vista foglia (dettaglio fornitore, sorgente lista DEF-8). BE/FE su stato_codice_interno.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260628-05-update-vw-fornitori-dettaglio-stato-codice-interno-mctit.yaml
+
+  - changeSet:
+      id: 20260628-05-update-vw-fornitori-dettaglio-stato-codice-interno
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_fornitori_dettaglio: alias fedele dello stato — stato_codice_interno
+        (codice_interno) + stato_codice (codice). Bonifica mislabel.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: anagrafiche
+            tableName: fornitori
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS anagrafiche.vw_fornitori_dettaglio;
+              CREATE VIEW anagrafiche.vw_fornitori_dettaglio AS
+              SELECT f.id,
+                  f.uid,
+                  f.codice,
+                  f.attivo,
+                  f.soggetto_ruolo_id,
+                  f.stato_fornitore_id,
+                  sf.codice_interno AS stato_codice_interno,
+                  sf.codice AS stato_codice,
+                  sf.descrizione AS stato_descrizione,
+                  sf.descrizione_breve AS stato_descrizione_breve,
+                  sf.blocca_ordini,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.codice_fiscale,
+                  s.partita_iva,
+                  f.valuta_id,
+                  v.iso_code AS valuta_iso,
+                  f.modalita_pagamento_id,
+                  mp.codice AS modalita_pagamento_codice,
+                  mp.descrizione AS modalita_pagamento_desc,
+                  f.termine_pagamento_id,
+                  tp.codice AS termine_pagamento_codice,
+                  f.giorni_pagamento,
+                  f.fine_mese,
+                  f.split_payment,
+                  f.ritenuta_acconto,
+                  f.ritenuta_aliquota,
+                  f.regime_fiscale,
+                  f.bollo_esente,
+                  f.canale_fe,
+                  f.pec_email,
+                  f.rating,
+                  f.qualifica_scadenza,
+                  f.data_insert,
+                  f.data_update,
+                  s.id_fiscale_univoco_cf_piva
+              FROM anagrafiche.fornitori f
+                JOIN anagrafiche.soggetti_ruoli sr ON sr.id = f.soggetto_ruolo_id
+                JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                LEFT JOIN config.stati_fornitore sf ON sf.id = f.stato_fornitore_id
+                LEFT JOIN config.valute v ON v.id = f.valuta_id
+                LEFT JOIN config.modalita_pagamento mp ON mp.id = f.modalita_pagamento_id
+                LEFT JOIN config.termini_pagamento tp ON tp.id = f.termine_pagamento_id;
+
+              COMMENT ON VIEW anagrafiche.vw_fornitori_dettaglio IS
+                'Dettaglio fornitore con soggetto, stato, valuta, modalita'' e termine pagamento. Include id_fiscale_univoco_cf_piva per lista configurabile DEF-8. stato_codice_interno = codice_interno (logica), stato_codice = codice (display).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS anagrafiche.vw_fornitori_dettaglio;

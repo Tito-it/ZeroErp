@@ -17,6 +17,7 @@ from django.db import DatabaseError, connection, transaction
 
 from apps.core.db._helpers import row_to_dict, rows_to_list
 
+from apps.core.services.auth_constants import TIPO_PROFILO_SUPER_ADMIN
 from apps.core.services.error_manager import ErrorManager
 from apps.amm_software.constants import DEFAULT_LIMIT
 from apps.amm_software.types import OperatoreDetailRow, OperatoreRow
@@ -277,10 +278,10 @@ class AmmSoftwareRepository:
                        SELECT pa.id, id.id
                          FROM config.profili_accesso pa
                         CROSS JOIN anagrafiche.identita_digitali id
-                        WHERE pa.codice = 'SUPER_ADMIN'
+                        WHERE pa.tipo = %s::config.tipo_profilo_accesso
                           AND id.auth_user_id = %s
                        ON CONFLICT DO NOTHING""",
-                    [auth_user_id],
+                    [TIPO_PROFILO_SUPER_ADMIN, auth_user_id],
                 )
             else:
                 cursor.execute(
@@ -289,9 +290,9 @@ class AmmSoftwareRepository:
                               config.profili_accesso pa
                         WHERE pab.identita_digitale_id = id.id
                           AND pab.profilo_accesso_id  = pa.id
-                          AND pa.codice = 'SUPER_ADMIN'
+                          AND pa.tipo = %s::config.tipo_profilo_accesso
                           AND id.auth_user_id = %s""",
-                    [auth_user_id],
+                    [TIPO_PROFILO_SUPER_ADMIN, auth_user_id],
                 )
 
     # Scopo: Aggiorna i campi modificabili di un operatore (auth_user +
@@ -408,10 +409,11 @@ class AmmSoftwareRepository:
                        ON pa.id = pab.profilo_accesso_id
                      JOIN anagrafiche.identita_digitali id
                        ON id.id = pab.identita_digitale_id
-                    WHERE pa.codice = 'SUPER_ADMIN'
+                    WHERE pa.tipo = %s::config.tipo_profilo_accesso
                       AND pa.attivo = true
                       AND id.attivo = true
                       AND id.ruolo_applicativo <> 'DISABILITATO'""",
+                [TIPO_PROFILO_SUPER_ADMIN],
             )
             return cursor.fetchone()[0]
 
@@ -1175,13 +1177,18 @@ class AmmSoftwareRepository:
         where_clause = " AND ".join(conditions)
 
         # Genera una subquery per ogni area funzionale.
-        # I codici area provengono dal DB (config.aree_funzionali) — validati come
-        # identificatori sicuri (solo alfanumerici + underscore) per prevenire injection.
+        # `fn_resolve_livello_area` matcha sulla colonna IMMUTABILE
+        # `aree_funzionali.schema_db` (chiave tecnica), NON sul `codice`
+        # (etichetta mutabile rinominabile dall'utente): l'arg deve essere
+        # `schema_db`. L'alias colonna resta su `codice` perche' il FE mappa le
+        # colonne `area_<codice>` con la lista `aree` ricevuta in parallelo.
+        # Entrambi validati come identificatori sicuri (solo alfanumerici +
+        # underscore) per prevenire injection.
         _SAFE_IDENT = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
         area_columns = ", ".join(
-            f"script.fn_resolve_livello_area(au.id, '{a['codice']}')::text AS area_{a['codice']}"
+            f"script.fn_resolve_livello_area(au.id, '{a['schema_db']}')::text AS area_{a['codice']}"
             for a in aree
-            if _SAFE_IDENT.match(a['codice'])
+            if _SAFE_IDENT.match(a['codice']) and _SAFE_IDENT.match(a['schema_db'])
         )
 
         sql = f"""
@@ -1224,7 +1231,8 @@ class AmmSoftwareRepository:
     def list_aree_funzionali(self) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT id, codice, descrizione, ordinamento
+                """SELECT id, codice, codice_interno, schema_db, descrizione,
+                          ordinamento
                      FROM config.aree_funzionali
                     WHERE attivo = true
                     ORDER BY ordinamento, codice"""

@@ -31,6 +31,7 @@ class AITool(abc.ABC):
         required_level: str = "LETTURA",
         route_template: dict[str, Any] | None = None,
         requires_confirmation: bool = False,
+        required_action: str | None = None,
     ) -> None:
         self.name = name
         self.description = description
@@ -39,6 +40,11 @@ class AITool(abc.ABC):
         self.required_level = required_level
         self.route_template = route_template
         self.requires_confirmation = requires_confirmation
+        # Azione di processo fine (codename) richiesta, speculare al
+        # `<action>_permission` dell'endpoint UI corrispondente. Se valorizzata,
+        # il filtro/ri-check verifica anche check_azione → l'AI ha la STESSA
+        # granularita' (area + azione fine) della UI. None = solo area-level.
+        self.required_action = required_action
 
     # Scopo: Esegue il tool con i parametri forniti dall'LLM.
     #        Ogni sottoclasse deve implementare questo metodo.

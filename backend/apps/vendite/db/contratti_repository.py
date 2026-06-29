@@ -65,6 +65,9 @@ _ORDER_COLS_CONTRATTI: dict[str, str] = {
     "valuta_codice": "v.valuta_codice",
     "emittente_fiscale_codice": "v.emittente_fiscale_codice",
     "stato_descrizione": "v.stato_descrizione",
+    # codice_interno = logica (immutabile); codice = display (mutabile). Vedi
+    # linee-guida-sql.md §6c. La vista ora espone entrambi con nome fedele.
+    "stato_codice_interno": "v.stato_codice_interno",
     "stato_codice": "v.stato_codice",
     "categoria_cliente_snapshot_codice": "v.categoria_cliente_snapshot_codice",
     "data_insert": "v.data_insert",
@@ -103,7 +106,8 @@ _SELECT_COLS_CONTRATTO = """
     c.valido_al,
     c.parent_contratto_id,
     c.stato_doc_contratto_id,
-    sd.codice_interno AS stato_codice,
+    sd.codice_interno AS stato_codice_interno,
+    sd.codice AS stato_codice,
     sd.descrizione AS stato_descrizione,
     c.listino_id,
     l.codice AS listino_codice,
@@ -498,7 +502,7 @@ class ContrattiRepository(ComponentiRepositoryMixin):
                        c.tipo_variazione_globale,
                        c.valore_variazione_globale,
                        c.categoria_cliente_id_snapshot,
-                       sd.codice_interno AS stato_codice
+                       sd.codice_interno AS stato_codice_interno
                   FROM vendite.contratti c
                   JOIN config.stati_doc_contratti sd
                     ON sd.id = c.stato_doc_contratto_id
@@ -547,7 +551,7 @@ class ContrattiRepository(ComponentiRepositoryMixin):
                 cnt.id AS contratto_id,
                 CASE WHEN cnt.listino_id IS NULL THEN 'senza_listino'
                      ELSE 'con_listino' END AS forma,
-                cnt.stato_codice,
+                cnt.stato_codice_interno,
                 cnt.listino_id,
                 l.codice AS listino_codice,
                 l.descrizione AS listino_descrizione,
@@ -644,6 +648,11 @@ class ContrattiRepository(ComponentiRepositoryMixin):
         write_cols = (
             "numero",
             "billing_account_id",
+            # emittente_fiscale_id: se il payload lo specifica DEVE finire nell'INSERT
+            # (il trigger trgfn_contratti_default_emittente lo deriva solo se NULL).
+            # Senza, un operatore senza emittente assegnato non puo' creare contratti
+            # nemmeno passandolo esplicitamente (asimmetria service-accetta/repo-scarta).
+            "emittente_fiscale_id",
             "istanza_utility_id",
             "utility_id",
             "ambito",
@@ -985,7 +994,7 @@ class ContrattiRepository(ComponentiRepositoryMixin):
             SELECT c.id          AS componente_id,
                    c.riga_contratto_id,
                    r.contratto_id,
-                   sd.codice_interno AS stato_codice
+                   sd.codice_interno AS stato_codice_interno
               FROM vendite.contratti_righe_componenti c
               JOIN vendite.contratti_righe r ON r.id = c.riga_contratto_id
               JOIN vendite.contratti co      ON co.id = r.contratto_id

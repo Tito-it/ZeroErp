@@ -42,8 +42,8 @@
 # 11) POST push-commessa → COMPLETATO + commesse_ids; stato resta ACCETTATO
 #     (gate EVASO D6: residuo merce)
 # 12) POST genera-ordine → merce smistata
-# 13) POST push-commessa di nuovo → COMPLETATO (idempotente) + stato EVASO
-#     (gate D6 soddisfatto: nessun residuo)
+# 13) Stato EVASO a smistamento completo (gate D6: nessun residuo, scatta a
+#     genera-ordine) + re-push su EVASO bloccato 4xx (idempotenza via stato terminale)
 # 14) Multi-sorgente: secondo preventivo servizio-only stesse dimensioni →
 #     push → CONFLUISCE nella STESSA commessa (auto-ruolo COLLEGATO, skip
 #     PRONTA idempotente), nessun errore
@@ -193,6 +193,16 @@ if [[ -z "$PREV_PAYLOAD" ]]; then
     log_info "Suggerimento: verifica che l'utente smoke abbia un emittente con almeno un BA valido (utility+istanza)."
     exit 1
 fi
+# L'operatore smoke puo' non avere emittente assegnato (E_PREV_EMITTENTE_NON_RISOLTO
+# dal trigger default trgfn_preventivi_default_emittente): inietta un emittente
+# esplicito nel payload (default 32, override EMITTENTE_ID), come fa lo smoke 1a.
+EMITTENTE_FISCALE_ID="${EMITTENTE_ID:-32}"
+PREV_PAYLOAD=$(echo "$PREV_PAYLOAD" | python3 -c "
+import sys, json
+p = json.load(sys.stdin)
+p['emittente_fiscale_id'] = $EMITTENTE_FISCALE_ID
+print(json.dumps(p))
+" 2>/dev/null)
 log_info "payload create = $PREV_PAYLOAD"
 do_curl POST "/api/v1/vendite/preventivi/" "$PREV_PAYLOAD"
 if ! check "POST crea preventivo" 200 "data.id"; then
@@ -354,19 +364,26 @@ if [[ "$MISTO_OK" == "1" ]]; then
         log_info "ordine_id = $EXTRACTED"
     fi
 
-    echo ""; echo "-- 13. re-push-commessa (attesa: idempotente + stato EVASO) --"
-    # Key NUOVA: una key già usata farebbe replay della response cached invece
-    # di rieseguire il push (e il gate EVASO non verrebbe esercitato).
-    do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/push-commessa/" '{}' \
-        "Idempotency-Key: smoke-repush-$(date +%s%N)"
-    if check "POST re-push-commessa" 200 "data.stato"; then
-        [[ "$EXTRACTED" == "COMPLETATO" ]] && log_ok "re-push idempotente COMPLETATO" \
-            || log_fail "re-push atteso COMPLETATO, trovato '$EXTRACTED'"
-    fi
+    echo ""; echo "-- 13. EVASO a smistamento completo + re-push bloccato (stato terminale) --"
+    # Smistati ENTRAMBI i rami (servizio→commessa step 11, merce→ordine step 12),
+    # il gate EVASO scatta: genera-ordine richiama lo stesso
+    # transiziona_a_evaso_se_smistato. Il preventivo e' gia' EVASO qui.
     do_curl GET "/api/v1/vendite/preventivi/${PREV2_ID}/"
     ST2=$(json_get "$LAST_BODY" "data.stato_codice_interno")
     [[ "$ST2" == "EVASO" ]] && log_ok "stato = EVASO (smistamento completo, gate D6 soddisfatto)" \
         || log_fail "atteso EVASO a smistamento completo, trovato '$ST2'"
+    # Idempotenza via STATO TERMINALE: un re-push su EVASO e' bloccato dal guard
+    # (E_PREV_STATO_TRANSIZIONE), come il re-push ordini su stato EVASO (smoke
+    # ordini §9). Prima del fix DB gate-EVASO il preventivo restava ACCETTATO e
+    # il re-push tornava 200: con EVASO al push l'idempotenza e' lo stato, non il replay.
+    do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/push-commessa/" '{}' \
+        "Idempotency-Key: smoke-repush-$(date +%s%N)"
+    if [[ "$LAST_STATUS" =~ ^4 ]]; then
+        CODE=$(json_get "$LAST_BODY" "error.code")
+        log_ok "re-push su EVASO bloccato (HTTP $LAST_STATUS, code=$CODE)"
+    else
+        log_fail "re-push su EVASO: atteso 4xx (stato terminale), ricevuto $LAST_STATUS"
+    fi
 elif [[ "$SPLIT_OK" == "1" ]]; then
     log_skip "Passi misto saltati (articolo servizio non disponibile)"
 fi

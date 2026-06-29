@@ -194,6 +194,81 @@ Mescolare i nomi a caso:
 
 ---
 
+### 6c. Esposizione `codice` vs `codice_interno` (alias FEDELE alla sorgente)
+
+Le tabelle di stato/catalogo (`config.stati_*`, ecc.) espongono spesso **due** colonne con ruoli **opposti**:
+
+| Colonna | Natura | Uso |
+| --- | --- | --- |
+| **`codice_interno`** | **immutabile** (lock `script.trgfn_lock_columns`) | **riferimento interno di sistema**: confronti, filtri, state-machine, mapping, seed. La logica si basa SOLO su questo. |
+| **`codice`** | **modificabile** dall'utente | **etichetta a video** (spesso si mostra invece la `descrizione`). Mai usato in logica. |
+
+**Regola d'oro**: la logica (DB/BE/FE) usa **sempre** `codice_interno`; il `codice` e' solo display. I valori come `DRAFT`/`ATTIVO`/`CESSATO` sono `codice_interno`.
+
+**Convenzione di naming (alias fedele 1:1)**: l'alias deve **rispecchiare la colonna sorgente**.
+
+```sql
+sd.codice_interno AS stato_codice_interno   -- ✅ logica (immutabile)
+sd.codice          AS stato_codice           -- ✅ display (mutabile)
+```
+
+* **VIETATO** `codice_interno AS *_codice` (e il simmetrico `codice AS *_codice_interno`): il nome mentirebbe sulla sorgente. È un bug latente — il FE che fa `stato_codice === 'DRAFT'` funziona _per caso_ finché qualcuno non "corregge" la vista in `codice AS stato_codice` e l'utente rinomina il codice in `BOZZA`, rompendo la logica in silenzio.
+* Se servono **entrambi** (logica + display), esporli **entrambi** con nome fedele (come fanno gia' `vw_preventivi_*`/`vw_ordini_*`).
+
+**Guardrail CI** (uccide la classe di bug): un check che fallisce sul pattern mislabel —
+
+```bash
+grep -rEn "codice_interno[[:space:]]+AS[[:space:]]+[a-z_]*codice\b" db/ \
+  | grep -vE "AS[[:space:]]+[a-z_]*codice_interno\b" && exit 1   # codice_interno AS *_codice
+grep -rEn "[^_]codice[[:space:]]+AS[[:space:]]+[a-z_]*codice_interno\b" db/ && exit 1  # codice AS *_codice_interno
+```
+
+> **Bonifica completata (2026-06-28)**: i mislabel DB sono stati corretti (sweep
+> `20260628-02..11`) e la regola è applicata da un guardrail CI bloccante
+> (`scripts/sql/check_naming_stato_codice.sql`). Storia in [brief-naming-stato-codice-interno.md](dev/work-done/brief-naming-stato-codice-interno.md).
+
+---
+
+### 6d. Antipattern: literale hardcoded contro `codice` + cosa fare se manca `codice_interno`
+
+**Il dubbio da porsi SEMPRE** (a design time): ogni volta che scrivi un **literale di codice**
+in un `WHERE`/`JOIN`/`CASE`/`IN` contro una tabella di catalogo o stato (es. `'PREVENTIVO'`,
+`'SUPER_ADMIN'`, `'STANDARD'`, `'SISTEMA'`, `'EF'`), fermati e chiediti: **sto confrontando
+contro `codice` (mutabile) o contro la chiave stabile?**
+
+**Antipattern (BUG_DUAL)** — confronto logico contro la colonna mutabile:
+
+```sql
+WHERE s.codice          = 'PREVENTIVO'   -- ❌ BUG latente (colonna mutabile)
+WHERE s.codice_interno  = 'PREVENTIVO'   -- ✅ chiave immutabile
+```
+
+È una classe **diversa** dal mislabel di alias (§6c): qui il valore _letto/filtrato_ è proprio
+`codice`. Funziona _per caso_ finché nessuno rinomina il `codice`; al primo rename → lookup a
+0 righe, state-machine che non risolve, documento che non si genera, **in silenzio**. ⚠️ Il
+guardrail di §6c (sugli alias) **NON** intercetta questo pattern: serve un controllo a parte,
+necessariamente euristico (`codice_fiscale`/`codice_iva`/`codice_articolo`/`codice_ba`/… sono
+usi legittimi di `codice`). Caso di studio completo: [analisi-hardcoded-codice.md](dev/work-in-progress/analisi-hardcoded-codice.md)
+(§3a 21 occorrenze BUG_DUAL bonificate).
+
+**Se la tabella NON espone `codice_interno`** (CANDIDATE_ADD_CI) — decisione, in quest'ordine:
+
+1. **Esiste già una chiave stabile per-design?** Enum di `tipo` (es. `config.tipo_profilo_accesso`
+   valore `SUPER_ADMIN`), codici ISO (`code_iso2/3`, `currency_code`), altra colonna immutabile
+   documentata → **usala**, niente nuova colonna. (Caso reale: i guard anti-lockout SUPER_ADMIN
+   usano l'enum `tipo`, non un nuovo `codice_interno` — vedi analisi §10/#1.)
+2. **Altrimenti aggiungi `codice_interno`**: immutabile (il lock si **auto-provisiona** dal
+   runner per la sola presenza della colonna, §6b), backfill `= codice`, `UNIQUE` + `CHECK`
+   nonvuoto; migra i consumer e aggiorna il **seed CSV** (`codice_interno = codice`).
+3. **Tabella di infrastruttura / chiave-di-sistema non rinominabile** → **lock esplicito** del
+   `codice` (riga in `dbops.automation_lock_columns`, `exec_mode=AUTO`), senza nuova colonna.
+
+> **Regola pratica anti-duplicazione**: NON introdurre un terzo identificatore se ne esiste già
+> uno stabile. Aggiungere `codice_interno` ha senso quando la tabella ha **solo** `codice`
+> mutabile ed è referenziata da logica/seed.
+
+---
+
 ### 7. Colonne di Audit e Log
 
 Standardizzare i campi di auditing:

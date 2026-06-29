@@ -33,6 +33,10 @@ BEGIN
   --   - prezzo_bloccato = fatturazione_immediata
   --   - tipo_commessa target: REALE, policy: DA_DOCUMENTO
   --
+  -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a):
+  --   sorgente/stato risolti per codice_interno (immutabile), non per
+  --   codice (mutabile). Difesa dai rename utente.
+  --
   -- Competenza (rev 10-06-2026, brief competenza):
   --   - competenza_dal/al NON nulli (commesse_attivita NOT NULL):
   --     fallback validita -> competenza_mese -> data. GREATEST su
@@ -77,7 +81,7 @@ BEGIN
   SELECT s.id, s.tipo_doc_fiscale_id
     INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
   FROM config.sorgenti s
-  WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1;
+  WHERE s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1;
 
   IF v_sorgente_tipo_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
@@ -89,7 +93,7 @@ BEGIN
 
   SELECT s.id INTO v_stato_accettato_id
   FROM config.stati_doc_preventivi s
-  WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1;
+  WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1;
 
   RETURN QUERY
   SELECT
@@ -163,7 +167,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_preventivo_id bigint, p_righe_ids bigint[])
-IS 'Righe preventivo pronte per il push su commessa (stato ACCETTATO, testata completa; predicato di riga dalla vista unica vw_preventivi_righe_smistabili_commessa). p_preventivo_id: push singolo UI-driven. p_righe_ids (rev 12-06-2026, brief smistamento): sottoinsieme righe del pannello, richiede p_preventivo_id (E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO), righe non eleggibili skippate in silenzio (D5). NULL = batch invariato.';
+IS 'Righe preventivo pronte per il push su commessa (stato ACCETTATO, testata completa; predicato di riga dalla vista unica vw_preventivi_righe_smistabili_commessa). p_preventivo_id: push singolo UI-driven. p_righe_ids (rev 12-06-2026, brief smistamento): sottoinsieme righe del pannello, richiede p_preventivo_id (E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO), righe non eleggibili skippate in silenzio (D5). NULL = batch invariato. rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a).';
 ```
 
 ---

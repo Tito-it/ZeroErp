@@ -16,6 +16,8 @@ DECLARE
   v_sorgente_tipo_id    config.sorgenti.id%TYPE;
   v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
 BEGIN
+  -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente e stato DDT
+  -- risolti per codice_interno (immutabile), non per codice (mutabile).
   IF p_ddt_id IS NOT NULL AND p_ddt_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_list_ddt_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
@@ -28,7 +30,7 @@ BEGIN
   SELECT s.id, s.tipo_doc_fiscale_id
     INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
   FROM config.sorgenti s
-  WHERE s.codice = 'DDT_VENDITA' AND s.attivo IS TRUE LIMIT 1;
+  WHERE s.codice_interno = 'DDT_VENDITA' AND s.attivo IS TRUE LIMIT 1;
 
   IF v_sorgente_tipo_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
@@ -100,11 +102,11 @@ BEGIN
     AND (
       (src.src_fatturazione_trigger IS NOT NULL
        AND src.src_fatturazione_trigger != 'CONFERMATO'
-       AND sdd.codice = src.src_fatturazione_trigger)
+       AND sdd.codice_interno = src.src_fatturazione_trigger)
       OR
       (src.src_fatturazione_trigger IS NULL
        AND d.billing_account_id IS NOT NULL
-       AND sdd.codice IN ('SPEDITO', 'CONSEGNATO'))
+       AND sdd.codice_interno IN ('SPEDITO', 'CONSEGNATO'))
     )
     AND (p_competenza_mese IS NULL OR date_trunc('month', d.data)::date = p_competenza_mese)
     AND (p_billing_account_id IS NULL
@@ -121,7 +123,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ddt_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ddt_id bigint)
-IS 'Lista righe DDT eligible al push su commessa (stato SPEDITO/CONSEGNATO o trigger specifico). uom_id da catalogo.articoli (canonica). p_ddt_id opzionale: NULL=batch globale, NOT NULL=singolo DDT. Filtri in AND. Esclude EMESSA via NOT EXISTS.';
+IS 'Lista righe DDT eligible al push su commessa (stato SPEDITO/CONSEGNATO o trigger specifico). uom_id da catalogo.articoli (canonica). p_ddt_id opzionale: NULL=batch globale, NOT NULL=singolo DDT. Filtri in AND. Esclude EMESSA via NOT EXISTS. rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a).';
 ```
 
 ---

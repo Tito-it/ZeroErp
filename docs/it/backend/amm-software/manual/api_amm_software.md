@@ -840,11 +840,24 @@ Lista delle aree funzionali attive, ordinate per ordinamento e codice.
 {
   "data": {
     "results": [
-      { "id": 3, "codice": "VENDITE", "descrizione": "Gestione vendite", "ordinamento": 10 }
+      {
+        "id": 3,
+        "codice": "vendite",
+        "codice_interno": "vendite",
+        "schema_db": "vendite",
+        "descrizione": "Gestione vendite",
+        "ordinamento": 10
+      }
     ]
   }
 }
 ```
+
+> **Tre chiavi distinte** (`config.aree_funzionali`): `codice` e' l'etichetta
+> **mutabile** a video; `codice_interno` e' la chiave **immutabile**; `schema_db`
+> e' la chiave tecnica (nome schema DB) su cui si risolvono i livelli di accesso
+> via `script.fn_resolve_livello_area`. La **logica** (matrice permessi) usa
+> `schema_db`, non `codice`.
 
 **Esempio curl:**
 

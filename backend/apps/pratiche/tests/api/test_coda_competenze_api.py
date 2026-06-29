@@ -42,7 +42,7 @@ def _mock_coda_row():
         "tipo_prestazione_codice": "MANUTENZIONE",
         "template_flusso_codice": "VALUTAZIONE",
         "template_flusso_desc": "Valutazione",
-        "stato_flusso_codice": "DA_ESEGUIRE",
+        "stato_flusso_codice_interno": "DA_ESEGUIRE", "stato_flusso_codice": "DA_ESEGUIRE",
         "sequenza": 10,
         "data_scadenza": None,
         "risorsa_assegnata": None,

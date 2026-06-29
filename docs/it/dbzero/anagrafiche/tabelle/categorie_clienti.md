@@ -16,12 +16,15 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| codice_interno | character varying | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_categorie_clienti_codice_interno_nonvuoto |  |
 | PRIMARY KEY | pk_categorie_clienti | id |
 | UNIQUE | uq_categorie_clienti_codice | codice |
+| UNIQUE | uq_categorie_clienti_codice_interno | codice_interno |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -29,6 +32,7 @@
 | ix_categorie_clienti_attivo | `CREATE INDEX ix_categorie_clienti_attivo ON anagrafiche.categorie_clienti USING btree (attivo)` |
 | pk_categorie_clienti | `CREATE UNIQUE INDEX pk_categorie_clienti ON anagrafiche.categorie_clienti USING btree (id)` |
 | uq_categorie_clienti_codice | `CREATE UNIQUE INDEX uq_categorie_clienti_codice ON anagrafiche.categorie_clienti USING btree (codice)` |
+| uq_categorie_clienti_codice_interno | `CREATE UNIQUE INDEX uq_categorie_clienti_codice_interno ON anagrafiche.categorie_clienti USING btree (codice_interno)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

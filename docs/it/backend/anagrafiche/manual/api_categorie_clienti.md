@@ -93,6 +93,7 @@ Validazione payload e traduzione vincoli DB delegate al building block
 | --- | --- | --- |
 | `anagrafiche.categorie_clienti` | Tabella | Master categorie |
 | `uq_categorie_clienti_codice` | UNIQUE | Garanzia univocita` codice (mappata su `E_ANAG_DUPLICATO`) |
+| `codice_interno` + `uq_categorie_clienti_codice_interno` | Colonna + UNIQUE | Chiave logica **immutabile** (NOT NULL, lockata). Valorizzata dal BE `= codice` alla create (qui `codice` è già immutabile, quindi i due coincidono). Non esposta dal CRUD; serve la logica di sistema che deve poggiare su una chiave stabile (convenzione `codice_interno`/`codice`, vedi `analisi-hardcoded-codice.md`). |
 | `anagrafiche.billing_account.categoria_cliente_id` | FK | Ogni BA ha una categoria (v5) |
 | `anagrafiche.categorie_clienti_listini.categoria_cliente_id` | FK | Matrice categoria → listino (v5) |
 

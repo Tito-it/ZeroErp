@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Hardcode codice mutabile -> identificatore stabile (analisi-hardcoded-codice.md §4a / §10, #1).
+#
+# config.profili_accesso ha un identificatore SUPER_ADMIN gia' STABILE: l'enum
+# `tipo` (config.tipo_profilo_accesso, valore 'SUPER_ADMIN'). Le funzioni sorelle
+# (fn_is_super_admin, fn_check_ultimo_super_admin_attivo, trgfn_..._guard_coerenza)
+# usano gia' `pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso`. Solo i 3 guard
+# anti-lockout usavano `pa.codice = 'SUPER_ADMIN'` (colonna mutabile dall'utente):
+# se il codice venisse rinominato le guardie di sicurezza smetterebbero di proteggere.
+#
+# Decisione (no nuova colonna codice_interno): allineare i 3 guard all'enum `tipo`,
+# eliminando la duplicazione di identificatori. Questo file: guard 1/3.
+#   PRIMA: WHERE pa.codice = 'SUPER_ADMIN'
+#   DOPO:  WHERE pa.tipo   = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+# CREATE OR REPLACE (firma/return invariati).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260629-02-fix-fn-check-almeno-un-super-admin-attivo-tipo-enum-mctit.yaml
+
+  - changeSet:
+      id: 20260629-02-fix-fn-check-almeno-un-super-admin-attivo-tipo-enum
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_check_almeno_un_super_admin_attivo: identifica il profilo SUPER_ADMIN per
+        l'enum stabile tipo invece che per codice (mutabile). Security §4a.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_almeno_un_super_admin_attivo()
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Condizione di sicurezza: il sistema mantiene almeno un
+                  -- amministratore raggiungibile. Tre livelli AND obbligatori:
+                  --   1) profilo_accesso.tipo = 'SUPER_ADMIN' (enum stabile) (+ attivo)
+                  --   2) binding attivo verso quel profilo, di tipo AD_HOC
+                  --      (identita_digitale_id valorizzato)
+                  --   3) identita_digitali attiva
+                  -- Un unico EXISTS short-circuita: sufficiente trovare uno.
+                  -- rev 2026-06-29: tipo (enum) invece di codice (mutabile) -- §4a.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.profili_accesso           pa
+                        JOIN config.profili_accesso_bindings  pab
+                          ON pab.profilo_accesso_id = pa.id
+                        JOIN anagrafiche.identita_digitali    id
+                          ON id.id = pab.identita_digitale_id
+                       WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                         AND pa.attivo = true
+                         AND pab.attivo = true
+                         AND id.attivo  = true
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_almeno_un_super_admin_attivo()
+              IS 'Ritorna true se esiste almeno un''identita attiva con binding attivo verso un profilo SUPER_ADMIN (identificato per tipo enum). Usato dai guard anti-lockout su profili_accesso_bindings e identita_digitali. STABLE, fail-closed nessun raise. rev 2026-06-29: tipo invece di codice (§4a).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: ri-applicare la definizione autogen antecedente a
+              -- 20260629-02 (pa.codice = 'SUPER_ADMIN'). Non duplicata qui.
+              SELECT 1;

@@ -712,6 +712,30 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Pratica non trovata.",
         ),
+        # Sospensioni con data manuale (catalogo DB id 498/499):
+        # EXCLUDE ex_sospensioni_no_overlap (23P01) e guard a10 data non futura.
+        "E_SOSPENSIONE_OVERLAP": ErrorPolicy(
+            code="E_SOSPENSIONE_OVERLAP",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Esiste gia' una sospensione che copre questo periodo "
+                         "per la stessa pratica o lo stesso flusso.",
+        ),
+        "E_SOSPENSIONE_DATA_FUTURA": ErrorPolicy(
+            code="E_SOSPENSIONE_DATA_FUTURA",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message="La data della sospensione non puo' essere nel futuro.",
+        ),
+        # CHECK chk_sospensioni_data_fine: data_fine di riattivazione anteriore
+        # all'inizio della sospensione (data manuale retroattiva incoerente).
+        "E_SOSPENSIONE_DATA_FINE": ErrorPolicy(
+            code="E_SOSPENSIONE_DATA_FINE",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message="La data di riattivazione deve essere successiva "
+                         "all'inizio della sospensione.",
+        ),
         "E_FLUSSO_VALIDATION": ErrorPolicy(
             code="E_FLUSSO_VALIDATION",
             http_status=400,

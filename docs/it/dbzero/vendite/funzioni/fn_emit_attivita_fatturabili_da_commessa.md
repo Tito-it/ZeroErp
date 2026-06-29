@@ -16,6 +16,8 @@ AS $function$
 --        in modalita' idempotente (sorgente COMMESSA + segment_key).
 --        Propaga lo snapshot audit pricing v5 (8 colonne) 1:1.
 -- Sottosistema lotto rimosso (deprecato 20260227-16).
+-- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente COMMESSA
+--        risolta per codice_interno (immutabile), non per codice.
 DECLARE
     v_commessa              vendite.commesse%ROWTYPE;
     v_root_id               vendite.commesse_sorgenti.id%TYPE;
@@ -68,7 +70,7 @@ BEGIN
     -- Sorgente COMMESSA
     SELECT s.id INTO v_commessa_source_id
       FROM config.sorgenti s
-     WHERE s.codice = 'COMMESSA' AND s.attivo IS TRUE
+     WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE
      LIMIT 1;
 
     IF v_commessa_source_id IS NULL THEN
@@ -213,7 +215,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean)
-IS 'Pull da commesse_attivita ad attivita_fatturabili con sorgente COMMESSA+segment_key (hash UUID) e idempotenza. Propaga lo snapshot audit pricing v5 (8 colonne) 1:1. Sottosistema lotto rimosso (deprecato 20260227-16). rev 2026-06-16.';
+IS 'Pull da commesse_attivita ad attivita_fatturabili con sorgente COMMESSA+segment_key (hash UUID) e idempotenza. Propaga lo snapshot audit pricing v5 (8 colonne) 1:1. Sottosistema lotto rimosso (deprecato 20260227-16). rev 2026-06-28: sorgente per codice_interno (analisi-hardcoded-codice §3a).';
 ```
 
 ---

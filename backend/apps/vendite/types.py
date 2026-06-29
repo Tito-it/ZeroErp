@@ -137,7 +137,7 @@ class CommessaStatoResult(TypedDict):
     # Config testata
     policy_fatturazione: str | None
     fatturazione_immediata: bool | None
-    priorita_operativa: int | None
+    priorita_operativa: str | None
     billing_account_id: int | None
     utility_id: int | None
     emittente_soggetto_ruolo_id: int | None
@@ -446,7 +446,7 @@ class OffertaRow(TypedDict):
     can_push_contratto_reason: str | None
     can_push_contratto_reason_key: str | None
     non_editable_fields: list[str]
-    stato_codice: str
+    stato_codice_interno: str
     # Audit
     data_insert: str
     user_insert: str

@@ -19,6 +19,7 @@
 | user_update | text | NO | CURRENT_USER |
 | pre_attivazione | boolean | NO | true |
 | post_attivazione | boolean | NO | true |
+| obsoleto_dal | date | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

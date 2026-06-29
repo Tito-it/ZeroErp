@@ -52,7 +52,7 @@ def _versione(
         "id": versione_id,
         "html_template": html,
         "css_template": css,
-        "render_engine_codice": engine,
+        "render_engine_codice_interno": engine,
     }
 
 

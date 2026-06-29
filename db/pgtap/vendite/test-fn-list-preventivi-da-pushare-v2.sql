@@ -3,8 +3,8 @@
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_preventivi_da_pushare — parametro p_preventivo_id (v2)
 -- ------------------------------------------------------------
--- Indice test (1..9):
--- 1) Firma funzione: 4 parametri (pronargs)
+-- Indice test (1..10):
+-- 1) Firma funzione: 5 parametri (pronargs) [era 4, stale: p_righe_ids dal 12-06-2026]
 -- 2) p_preventivo_id NULL: regressione — preventivo ACCETTATO restituito (comportamento batch invariato)
 -- 3) p_preventivo_id valido pushable: restituisce solo le righe del preventivo specificato
 -- 4) p_preventivo_id valido preventivo non-ACCETTATO (BOZZA): 0 righe, no errore
@@ -13,10 +13,11 @@
 -- 7) p_preventivo_id preventivo gia` pushato (segment_key EMESSA in commesse_attivita): 0 righe
 -- 8) Guard p_preventivo_id = 0: eccezione sollevata
 -- 9) uom_id valorizzato da catalogo.articoli (fix bug proiezione NULL)
+-- 10) anti-regressione: rename codice sorgente PREVENTIVO -> risoluzione per codice_interno (no E_CODICE)
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(9);
+SELECT plan(10);
 
 -- ============================================================
 -- Setup riferimenti minimi (estende tmp_refs_prev aggiungendo
@@ -161,16 +162,19 @@ SELECT
 FROM tmp_prev_p2_bozza pb, tmp_refs_p2 r;
 
 -- ============================================================
--- TEST 1) Firma funzione: 4 parametri
+-- TEST 1) Firma funzione: 5 parametri
+-- (p_competenza_mese, p_billing_account_id, p_limit, p_preventivo_id,
+--  p_righe_ids — quest'ultimo aggiunto rev 12-06-2026, brief smistamento.
+--  Asserzione aggiornata: il test v2 era rimasto a 4.)
 -- ============================================================
 SELECT ok(
-  (SELECT p.pronargs = 4
+  (SELECT p.pronargs = 5
      FROM pg_proc p
      JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'vendite'
       AND p.proname = 'fn_list_preventivi_da_pushare'
     LIMIT 1),
-  'fn_list_preventivi_da_pushare ha 4 parametri (pronargs = 4)'
+  'fn_list_preventivi_da_pushare ha 5 parametri (pronargs = 5)'
 );
 
 -- ============================================================
@@ -338,6 +342,20 @@ SELECT ok(
       AND uom_id IS NOT NULL
   ),
   'p_preventivo_id: uom_id valorizzato da catalogo.articoli (fix bug proiezione NULL)'
+);
+
+-- ============================================================
+-- TEST 10) Anti-regressione codice_interno (analisi-hardcoded-codice §3a):
+--   rinominando il `codice` (mutabile) della sorgente, la funzione DEVE
+--   continuare a risolverla per `codice_interno` (immutabile): nessun E_CODICE.
+-- ============================================================
+UPDATE config.sorgenti
+   SET codice = codice || '_RENAMED'
+ WHERE codice_interno = 'PREVENTIVO';
+
+SELECT lives_ok(
+  $$ SELECT 1 FROM vendite.fn_list_preventivi_da_pushare(p_limit => 1) $$,
+  '10. anti-regressione: rename codice sorgente PREVENTIVO -> risoluzione per codice_interno (no E_CODICE)'
 );
 
 SELECT * FROM finish();

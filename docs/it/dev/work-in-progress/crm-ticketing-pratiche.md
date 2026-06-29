@@ -7,7 +7,7 @@
 >
 > - [Guida Gestione Pratiche](/guide/gestione-pratiche)
 > - [Gestione Pratiche v2](gestione-pratiche-v2.md) (WIP)
-> - [Integrazione CRM & Ticketing (bozza ago 2025)](/Progetti-idee-sviluppo/integrazione-con-crm-e-ticketing.md)
+> - Integrazione CRM & Ticketing (bozza ago 2025) — doc `Analisi_varie/Progetti-idee-sviluppo/integrazione-con-crm-e-ticketing.md`
 > - [Mappa Concentrica](/mappa-concentrica)
 
 ---
@@ -339,7 +339,7 @@ CREATE TABLE assistenza.ticket_materiali (
 ## Ponte verso fatturazione
 
 Il ponte tra ticketing e fatturazione riusa il meccanismo gia' descritto nella
-[bozza CRM/Ticketing](/Progetti-idee-sviluppo/integrazione-con-crm-e-ticketing.md):
+bozza CRM/Ticketing (doc `Analisi_varie/Progetti-idee-sviluppo/integrazione-con-crm-e-ticketing.md`):
 le righe approvate di `ticket_worklog` e `ticket_materiali` fluiscono in
 `vendite.attivita_fatturabili` tramite campi fonte.
 

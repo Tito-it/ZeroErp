@@ -31,26 +31,40 @@ WHERE uo.attivo = true
 ORDER BY uo.id
 LIMIT 1;
 
--- Account SISTEMA (fallback)
+-- Ambiente self-contained. Il seed fornisce un account SISTEMA, ma:
+--   - codice_interno e' UNIQUE (20260629-05) -> non si puo' inserire un 2o SISTEMA;
+--   - il SISTEMA seed ha figli attivi (email_log/email_outbox) e il guard
+--     dbops.trgfn_prevent_deactivate_if_children ne impedisce la disattivazione
+--     (serve al test 7).
+-- Percio' rimuovo il SISTEMA seed + i suoi figli e ricreo un SISTEMA pulito
+-- (senza figli, disattivabile). Tutto in transazione: ROLLBACK ripristina.
+DELETE FROM config.email_log
+ WHERE email_account_id IN (SELECT id FROM config.email_account WHERE codice_interno = 'SISTEMA');
+DELETE FROM config.email_outbox
+ WHERE email_account_id IN (SELECT id FROM config.email_account WHERE codice_interno = 'SISTEMA');
+DELETE FROM config.email_account
+ WHERE codice_interno IN ('SISTEMA', 'REPARTO_TEST');
+
+-- Account SISTEMA (fallback). codice_interno = chiave immutabile risolta dalla fn.
 INSERT INTO config.email_account
-    (codice, descrizione, unita_organizzativa_id,
+    (codice, codice_interno, descrizione, unita_organizzativa_id,
      smtp_host, smtp_port, smtp_use_tls, smtp_use_ssl,
      smtp_username, smtp_password_encrypted,
      email_from, attivo)
 VALUES
-    ('SISTEMA', 'Account di sistema test', NULL,
+    ('SISTEMA', 'SISTEMA', 'Account di sistema test', NULL,
      'smtp.test.local', 587, true, false,
      'test@test.local', 'encrypted_pwd_test',
      'noreply@test.local', true);
 
 -- Account per il reparto
 INSERT INTO config.email_account
-    (codice, descrizione, unita_organizzativa_id,
+    (codice, codice_interno, descrizione, unita_organizzativa_id,
      smtp_host, smtp_port, smtp_use_tls, smtp_use_ssl,
      smtp_username, smtp_password_encrypted,
      email_from, attivo)
 VALUES
-    ('REPARTO_TEST', 'Account reparto test',
+    ('REPARTO_TEST', 'REPARTO_TEST', 'Account reparto test',
      (SELECT uo_id FROM tmp_email_ctx),
      'smtp.reparto.local', 587, true, false,
      'reparto@test.local', 'encrypted_pwd_reparto',

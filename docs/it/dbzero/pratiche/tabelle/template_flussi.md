@@ -26,6 +26,7 @@
 | azione_ui_id | integer | YES |  |
 | modalita_esito | character varying | NO | 'MANUALE'::character varying |
 | esito_default | character varying | YES |  |
+| obsoleto_dal | date | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

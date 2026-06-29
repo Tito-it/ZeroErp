@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Bonifica naming codice_interno/codice — straggler trovato dal guardrail
+# (scripts/sql/check_naming_stato_codice.sql). brief-naming-stato-codice-interno.md.
+#
+# Mislabel di TIPO B (speculare): la vista diagnostica esponeva
+#   tr.codice AS tipo_ruolo_codice_interno
+# cioe' il MUTABILE (config.tipi_ruoli.codice) col nome dell'IMMUTABILE
+# (*_codice_interno). DOPO: tr.codice_interno AS tipo_ruolo_codice_interno (fedele).
+#
+# DROP+CREATE (non CREATE OR REPLACE): il tipo della colonna potrebbe cambiare
+# (tr.codice vs tr.codice_interno, varchar di lunghezza diversa). Vista diagnostica
+# dbops senza dipendenti -> nessuna cascade. security_invoker=on preservato
+# (era stato impostato da 20260601-26).
+# Storico 20260402-06 / 20260601-26 non toccati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260628-11-fix-vw-diag-v-clienti-links-tipo-ruolo-codice-interno-mctit.yaml
+
+  - changeSet:
+      id: 20260628-11-fix-vw-diag-v-clienti-links-tipo-ruolo-codice-interno
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_diag_v_clienti_links: tipo_ruolo_codice_interno ora = tr.codice_interno
+        (era tr.codice — mislabel speculare). DROP+CREATE, security_invoker preservato.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_diag_v_clienti_links;
+              CREATE VIEW dbops.vw_diag_v_clienti_links
+              WITH (security_invoker = on) AS
+              SELECT c.id AS cliente_id,
+                  c.soggetto_ruolo_id AS cliente_soggetto_ruolo_id,
+                  c.istanza_utility_id AS cliente_istanza_utility_id,
+                  c.utility_id AS cliente_utility_id,
+                  c.billing_account_id AS cliente_billing_account_id,
+                  ba.id AS ba_id,
+                  ba.istanza_utility_id AS ba_istanza_utility_id,
+                  ba.soggetto_ruolo_id AS ba_soggetto_ruolo_id,
+                  ba.utility_id AS ba_utility_id,
+                  s.id AS soggetto_id,
+                  s.codice AS soggetto_codice,
+                  s.ragione_sociale,
+                  s.cognome,
+                  s.nome,
+                  iu.id AS istanza_id,
+                  iu.fittizia AS istanza_fittizia,
+                  u.id AS utility_id,
+                  u.codice_interno AS utility_codice_interno,
+                  u.descrizione AS utility_descrizione,
+                  tr.id AS tipo_ruolo_id,
+                  tr.codice_interno AS tipo_ruolo_codice_interno,
+                  tr.descrizione AS tipo_ruolo_descrizione,
+                  iv.id AS iva_id,
+                  iv.codice AS iva_codice,
+                  iv.descrizione AS iva_descrizione,
+                  (ba.istanza_utility_id = c.istanza_utility_id) AS ba_match_istanza,
+                  (ba.soggetto_ruolo_id = c.soggetto_ruolo_id) AS ba_match_soggetto_ruolo,
+                  (ba.utility_id = c.utility_id) AS ba_match_utility
+              FROM anagrafiche.clienti c
+                  LEFT JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+                  LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = c.soggetto_ruolo_id
+                  LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                  LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = c.istanza_utility_id
+                  LEFT JOIN config.utilities u ON u.id = c.utility_id
+                  LEFT JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
+                  LEFT JOIN config.iva iv ON iv.id = c.iva_id;
+
+              COMMENT ON VIEW dbops.vw_diag_v_clienti_links IS
+                'Diagnostica relazioni cliente: verifica coerenza FK tra cliente, billing_account, soggetto, istanza, utility e IVA. tipo_ruolo_codice_interno = tr.codice_interno (fedele).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_diag_v_clienti_links;

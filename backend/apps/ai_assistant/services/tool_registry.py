@@ -38,41 +38,68 @@ def register_tools(tools: list[AITool]) -> None:
         register_tool(tool)
 
 
-# Scopo: Restituisce i tool disponibili per un utente specifico.
-#        Applica tre livelli di filtro:
-#        1. Blacklist da config.parameters (disabilitati per installazione)
-#        2. Permessi area_funzionale dell'utente (via PermissionResolver core)
-#        3. Livello accesso minimo richiesto dal tool
-def get_tools_for_user(user: Any) -> list[AITool]:
+# Scopo: Predicato unico "questo utente puo' usare questo tool?".
+#        Fonte di verita' condivisa dal filtro catalogo (offer-time) E dal
+#        ri-check a execution-time nel service (preview/confirm), per chiudere
+#        il gap TOCTOU: senza questo, l'unico gate sarebbe il catalogo all'offer-time.
+#        Applica gli stessi tre filtri: blacklist, area BLOCCATO, livello minimo.
+def is_tool_allowed_for_user(
+    user: Any,
+    tool: AITool,
+    *,
+    perm_cache: dict[str, Any] | None = None,
+    disabled: set[str] | None = None,
+) -> bool:
     from apps.core.services.permissions_resolver import PermissionResolver
 
-    # Carica blacklist da config.parameters
-    disabled = _get_disabled_tools()
+    if perm_cache is None:
+        perm_cache = {}
 
-    # Cache per-request per evitare query ripetute sulla stessa area
+    # Filtro 1: blacklist installazione
+    if disabled is None:
+        disabled = _get_disabled_tools()
+    if tool.name in disabled:
+        return False
+
+    # Filtro 2: area funzionale (None = disponibile a tutti)
+    if tool.required_area is not None:
+        area_level = PermissionResolver.get_livello_area(
+            user, tool.required_area, cache=perm_cache
+        )
+        if area_level == "BLOCCATO":
+            return False
+
+        # Filtro 3: livello accesso minimo
+        if tool.required_level == "TUTTO" and area_level != "TUTTO":
+            return False
+
+    # Filtro 4: azione di processo fine (stessa granularita' della UI).
+    # Speculare al `<action>_permission` dell'endpoint: se il tool dichiara
+    # required_action, l'utente deve avere anche quell'azione abilitata.
+    if tool.required_action:
+        if not PermissionResolver.check_azione(
+            user, tool.required_action, cache=perm_cache
+        ):
+            return False
+
+    return True
+
+
+# Scopo: Restituisce i tool disponibili per un utente specifico.
+#        Filtro all'offer-time del catalogo inviato al modello. Usa lo stesso
+#        predicato `is_tool_allowed_for_user` del ri-check a execution-time.
+def get_tools_for_user(user: Any) -> list[AITool]:
+    # Carica blacklist una volta + cache permessi per-request
+    disabled = _get_disabled_tools()
     perm_cache: dict[str, Any] = {}
 
-    filtered: list[AITool] = []
-    for tool in _REGISTRY.values():
-        # Filtro 1: blacklist installazione
-        if tool.name in disabled:
-            continue
-
-        # Filtro 2: area funzionale (None = disponibile a tutti)
-        if tool.required_area is not None:
-            area_level = PermissionResolver.get_livello_area(
-                user, tool.required_area, cache=perm_cache
-            )
-            if area_level == "BLOCCATO":
-                continue
-
-            # Filtro 3: livello accesso minimo
-            if tool.required_level == "TUTTO" and area_level != "TUTTO":
-                continue
-
-        filtered.append(tool)
-
-    return filtered
+    return [
+        tool
+        for tool in _REGISTRY.values()
+        if is_tool_allowed_for_user(
+            user, tool, perm_cache=perm_cache, disabled=disabled
+        )
+    ]
 
 
 # Scopo: Recupera un tool per nome dal catalogo.

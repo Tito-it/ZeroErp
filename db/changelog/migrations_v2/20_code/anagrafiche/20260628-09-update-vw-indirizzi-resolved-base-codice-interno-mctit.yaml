@@ -1,0 +1,180 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Bonifica naming codice_interno/codice — Ondata 2 (anagrafiche/indirizzi-resolved).
+# Brief: brief-naming-stato-codice-interno.md §4 (Ondata 2).
+#
+# PRIMA (vw_indirizzi_resolved_base): ti.codice_interno AS tipo_indirizzo_codice (mislabel).
+# DOPO (alias fedele 1:1, linee-guida-sql §6c):
+#   tipo_indirizzo_codice          = ti.codice          (display)
+#   tipo_indirizzo_codice_interno  = ti.codice_interno  (logica, appesa in coda)
+#
+# APPROCCIO MINIMO (solo base, CREATE OR REPLACE): i consumer della catena
+# (vw_indirizzi_resolved_ruolo/soggetto/all = SELECT * da base; fn_get_indirizzi_by_*,
+# ecc.) referenziano base PER NOME e continuano a leggere tipo_indirizzo_codice (ora
+# display) -> NON vanno ricreati. Si evita cosi' il DROP base CASCADE che travolgerebbe
+# 3 viste + piu' funzioni (incl. RETURNS SETOF resolved_soggetto).
+#
+# ⚠ TYPE-CHANGE evitato col CAST: tipi_indirizzi.codice_interno e' varchar(10), codice
+# e' varchar(15). Esporre `ti.codice` cambierebbe la colonna tipo_indirizzo_codice da
+# varchar(10) a varchar(15) -> CREATE OR REPLACE vietato (verificato in apply). Soluzione
+# zero-cascade: `ti.codice::varchar(10)` -> la colonna resta varchar(10), nessun
+# type-change, niente DROP base/cascade sull'hub (3 viste + ~5 funzioni RETURNS SETOF).
+# tipo_indirizzo_codice_interno appesa = ti.codice_interno (varchar(10), gia' <=10).
+#
+# ⚠ TRUNCATION: il cast a varchar(10) tronca eventuali codice display > 10 char. Per
+# tipi_indirizzi (lookup tipi indirizzo, codici brevi) e' atteso <=10. VERIFICARE:
+#   SELECT max(length(codice)) FROM config.tipi_indirizzi;   -- deve essere <= 10
+# Se > 10: il display verrebbe troncato -> in tal caso passare al full-chain DROP+CREATE.
+#
+# NOTA: i consumer SELECT * (resolved_ruolo/soggetto/all) restano "congelati" e NON
+# espongono ancora tipo_indirizzo_codice_interno a valle: cascata di completamento
+# (ricreare i SELECT *) = follow-up separato, non bloccante per il guardrail (la
+# sorgente base non ha piu' l'alias letterale mislabel).
+# Storico 20260402-04 non toccato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260628-09-update-vw-indirizzi-resolved-base-codice-interno-mctit.yaml
+
+  - changeSet:
+      id: 20260628-09-update-vw-indirizzi-resolved-base-codice-interno
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_indirizzi_resolved_base: alias fedele — tipo_indirizzo_codice_interno
+        (codice_interno) + tipo_indirizzo_codice (codice, display). Solo base
+        (CREATE OR REPLACE append), i consumer passano attraverso.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: tipi_indirizzi
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_resolved_base AS
+              SELECT b.scope,
+                  b.scope AS source,
+                  b.indirizzo_id,
+                  b.soggetto_id,
+                  b.soggetto_ruolo_id,
+                  b.istanza_utility_id,
+                  b.tipo_indirizzo_id,
+                  ti.codice::character varying(10) AS tipo_indirizzo_codice,
+                  ti.descrizione AS tipo_indirizzo_descrizione,
+                  (b.indirizzo_dettaglio_id IS NOT NULL) AS is_normalizzato,
+                  b.indirizzo_dettaglio_id,
+                  COALESCE(vidd.indirizzo_normalizzato, NULLIF(btrim(b.indirizzo_libero), ''::text), NULLIF(btrim(concat_ws(', '::text, NULLIF(btrim((b.postal_box)::text), ''::text), NULLIF(btrim((b.sublocality)::text), ''::text), NULLIF(btrim((b.locality)::text), ''::text), NULLIF(btrim((b.administrative_area)::text), ''::text))), ''::text)) AS indirizzo_display,
+                  b.indirizzo_libero,
+                  b.administrative_area,
+                  b.locality,
+                  b.sublocality,
+                  b.postal_box,
+                  COALESCE(vidd.comune_id, b.comune_id) AS comune_id,
+                  COALESCE(vidd.descrizione_comune, co_ai.descrizione, co_s.descrizione, ic.comune) AS comune_descrizione,
+                  COALESCE(vidd.cap, ic.codice_postale) AS cap,
+                  COALESCE(vidd.provincia, ic.provincia) AS provincia,
+                  COALESCE(pr_ai.id, pr_s.id) AS provincia_id,
+                  COALESCE(pr_ai.sigla, pr_s.sigla) AS provincia_sigla,
+                  COALESCE(pr_ai.descrizione, pr_s.descrizione) AS provincia_descrizione,
+                  COALESCE(re_ai.id, re_s.id) AS regione_id,
+                  COALESCE(re_ai.descrizione, re_s.descrizione) AS regione_descrizione,
+                  COALESCE(b.stato_id, re_ai.stato_id, re_s.stato_id) AS stato_id,
+                  st.descrizione AS stato_descrizione,
+                  st.codice_iso2 AS stato_iso2,
+                  COALESCE(b.codice_postale_id, cp_s.id) AS codice_postale_id,
+                  COALESCE(cp_ai.codice, cp_s.codice) AS cap_codice,
+                  vidd.stradario_id,
+                  vidd.via_norm,
+                  vidd.civico,
+                  vidd.estensione_civico,
+                  vidd.palazzina,
+                  vidd.scala,
+                  vidd.piano,
+                  vidd.interno,
+                  vidd.altro,
+                  COALESCE(vidd.civic_geoloc, vidd.street_geoloc, b.geoloc) AS geoloc,
+                  b.storicizza,
+                  b.tx_id,
+                  b.data_insert,
+                  b.user_insert,
+                  b.data_update,
+                  b.user_update,
+                  ti.codice_interno AS tipo_indirizzo_codice_interno
+              FROM (SELECT 'RUOLO'::text AS scope,
+                        i.id AS indirizzo_id,
+                        sr.soggetto_id,
+                        i.soggetto_ruolo_id,
+                        i.istanza_utility_id,
+                        i.tipo_indirizzo_id,
+                        i.indirizzo_dettaglio_id,
+                        i.indirizzo_libero,
+                        i.stato_id,
+                        i.administrative_area,
+                        i.locality,
+                        i.sublocality,
+                        i.postal_box,
+                        i.comune_id,
+                        i.codice_postale_id,
+                        i.geoloc,
+                        i.storicizza,
+                        i.tx_id,
+                        i.data_insert,
+                        i.user_insert,
+                        i.data_update,
+                        i.user_update
+                    FROM anagrafiche.indirizzi i
+                        JOIN anagrafiche.soggetti_ruoli sr ON sr.id = i.soggetto_ruolo_id
+                    UNION ALL
+                    SELECT 'SOGGETTO'::text AS scope,
+                        isg.id AS indirizzo_id,
+                        isg.soggetto_id,
+                        NULL::bigint AS soggetto_ruolo_id,
+                        NULL::bigint AS istanza_utility_id,
+                        isg.tipo_indirizzo_id,
+                        isg.indirizzo_dettaglio_id,
+                        isg.indirizzo_libero,
+                        isg.stato_id,
+                        isg.administrative_area,
+                        isg.locality,
+                        isg.sublocality,
+                        isg.postal_box,
+                        isg.comune_id,
+                        isg.codice_postale_id,
+                        isg.geoloc,
+                        isg.storicizza,
+                        isg.tx_id,
+                        isg.data_insert,
+                        isg.user_insert,
+                        isg.data_update,
+                        isg.user_update
+                    FROM anagrafiche.indirizzi_soggetti isg) b
+                JOIN config.tipi_indirizzi ti ON ti.id = b.tipo_indirizzo_id
+                LEFT JOIN anagrafiche.vw_indirizzi_dettaglio vidd ON vidd.indirizzo_dettaglio_id = b.indirizzo_dettaglio_id
+                LEFT JOIN script.vw_indirizzo_completo ic ON ic.id_comune = b.comune_id
+                LEFT JOIN config.stradario s ON s.id = vidd.stradario_id
+                LEFT JOIN config.comuni co_s ON co_s.id = s.comune_id
+                LEFT JOIN config.codici_postali cp_s ON cp_s.id = s.codice_postale_id
+                LEFT JOIN config.comuni co_ai ON co_ai.id = b.comune_id
+                LEFT JOIN config.codici_postali cp_ai ON cp_ai.id = b.codice_postale_id
+                LEFT JOIN config.province pr_ai ON pr_ai.id = co_ai.provincia_id
+                LEFT JOIN config.province pr_s ON pr_s.id = co_s.provincia_id
+                LEFT JOIN config.regioni re_ai ON re_ai.id = pr_ai.regione_id
+                LEFT JOIN config.regioni re_s ON re_s.id = pr_s.regione_id
+                LEFT JOIN config.stati st ON st.id = COALESCE(b.stato_id, re_ai.stato_id, re_s.stato_id);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: ri-applicare lo storico 20260402-04.
+              SELECT 1;

@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Fix bug logico gate EVASO ramo commessa — asimmetria con ramo ordine.
+# Brief: brief-db-gate-evaso-ramo-commessa-asimmetria.md
+#
+# PROBLEMA: vw_preventivi_righe_smistabili_commessa escludeva una riga solo
+# quando l'attivita era gia' EMESSA (= fatturata), mentre la gemella ordine
+# (vw_preventivi_righe_smistabili_ordine) la esclude appena ALLOCATA. Il push
+# crea le commesse_attivita in NON_EMESSA -> il ramo commessa restava "residuo"
+# fino alla fatturazione -> il preventivo non raggiungeva mai EVASO al push.
+# EVASO = "tutte le righe instradate alla destinazione documentale", NON
+# "tutto fatturato" (gestione-pratiche-come-procedere.md §1.1).
+#
+# FIX (simmetrico al ramo ordine), CREATE OR REPLACE VIEW (stesse colonne,
+# cambia solo il predicato NOT EXISTS):
+#   §3 — rimosso il filtro `ca.stato_emissione = 'EMESSA'`: la riga e' esclusa
+#        appena esiste un'attivita per il suo segment_key, qualsiasi stato.
+#   §4 — match BoM: oltre all'uguaglianza 'PREV:<uid>:R:<id>', si esclude anche
+#        sui componenti 'PREV:<uid>:R:<id>#CMP:%' (LIKE). Senza, una riga BoM
+#        (le cui attivita hanno suffisso #CMP) non sarebbe mai esclusa -> stesso
+#        bug per i preventivi compositi. Il prefisso non contiene wildcard LIKE
+#        (uid=UUID, id=numerico); l'uguaglianza esatta evita la collisione
+#        :R:5 vs :R:53 (il LIKE pretende '#CMP:' subito dopo l'id).
+#
+# DECISIONE ANNULLATA: una riga la cui unica attivita e' ANNULLATA risulta
+# "instradata" (esclusa) -> non blocca EVASO e non e' ri-pushabile (l'upsert
+# fn_upsert_commessa_attivita gia' vieta l'update se lo stato esistente <>
+# NON_EMESSA). Coerente col ramo ordine (esclude su esistenza allocazione) ed
+# evita preventivi permanentemente bloccati. Una riga annullata a valle non
+# riapre il preventivo.
+#
+# Propaga ai 3 consumer della vista senza tocchi BE:
+#   - fn_preventivo_ha_residuo_commessa (gate EVASO + capability can_push_commessa)
+#   - fn_list_preventivi_da_pushare (push-list: niente ri-listing perpetuo)
+#   - fn_available_actions_preventivo (reason capability)
+#
+# Allineati i commenti (vista + fn_preventivo_ha_residuo_commessa) alla nuova
+# semantica ("instradata", non "EMESSA"): elimina il "commento != codice".
+# Storico 20260612-02 NON modificato (nuovo changeset forward).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260628-01-update-vw-preventivi-righe-smistabili-commessa-evaso-symmetry-mctit.yaml
+
+  - changeSet:
+      id: 20260628-01-update-vw-preventivi-righe-smistabili-commessa-evaso-symmetry
+      author: mctit
+      runOnChange: false
+      validCheckSums: [ANY]
+      failOnError: true
+      comment: >
+        Fix gate EVASO ramo commessa: la vista esclude la riga appena instradata
+        in commessa (qualsiasi stato, incl. componenti BoM #CMP), simmetrica al
+        ramo ordine. Rimosso filtro stato_emissione='EMESSA'. Commenti allineati.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_smistabili_commessa
+              WITH (security_invoker = on) AS
+              SELECT
+                  pr.preventivo_id,
+                  pr.id,
+                  p.uid                      AS preventivo_uid,
+                  pr.natura_vendita_id,
+                  pr.articolo_id,
+                  pr.descrizione,
+                  pr.prezzo_unitario,
+                  pr.sconto_percentuale,
+                  pr.iva_id,
+                  pr.quantita,
+                  pr.qta_operativa,
+                  pr.uom_operativa_id,
+                  pr.factor_to_base,
+                  pr.ordine
+              FROM vendite.preventivi_righe pr
+              JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+              -- Natura di riga: LEFT JOIN per non perdere le righe a natura
+              -- NULL (pregresso pre-trigger, trattata COMMESSA).
+              LEFT JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
+              WHERE pr.attivo IS TRUE
+                AND pr.quantita > 0
+                AND pr.prezzo_unitario >= 0
+                AND (pr.natura_vendita_id IS NULL
+                     OR nv.destinazione_tipo = 'COMMESSA')
+                -- Idempotenza di riga, simmetrica al ramo ordine: esclude la riga
+                -- appena esiste un'attivita per il suo segment_key (qualsiasi
+                -- stato_emissione), inclusi i componenti BoM (#CMP:<id>).
+                AND NOT EXISTS (
+                  SELECT 1
+                    FROM vendite.commesse_attivita ca
+                   WHERE ca.segment_key = 'PREV:' || p.uid::text || ':R:' || pr.id::text
+                      OR ca.segment_key LIKE 'PREV:' || p.uid::text || ':R:' || pr.id::text || '#CMP:%'
+                );
+
+              COMMENT ON VIEW vendite.vw_preventivi_righe_smistabili_commessa IS
+                'Righe preventivo eleggibili al push commessa (servizi una tantum): attive, qta>0, prezzo>=0, natura NULL/COMMESSA, non gia'' instradate in commessa (esiste attivita sul segment_key di riga, inclusi componenti BoM #CMP, qualsiasi stato_emissione). Simmetrica a vw_preventivi_righe_smistabili_ordine (esclude su allocazione, non su fatturazione). Predicato di riga unico condiviso con fn_list_preventivi_da_pushare e fn_preventivo_ha_residuo_commessa; condizioni di testata a carico dei consumer. Fix gate EVASO (brief-db-gate-evaso-ramo-commessa-asimmetria.md).';
+
+              COMMENT ON FUNCTION vendite.fn_preventivo_ha_residuo_commessa(bigint) IS
+                'TRUE se il preventivo ha righe natura COMMESSA (servizi; natura NULL = pregresso) non ancora instradate in commessa (nessuna attivita sul segment_key di riga, inclusi componenti #CMP, qualsiasi stato_emissione) E testata completa (billing_account_id, utility_id NOT NULL). Predicato condiviso (vista vw_preventivi_righe_smistabili_commessa): capability can_push_commessa + gate EVASO lato BE. Gemella di fn_preventivo_ha_residuo_ordine; non considera ORDINE (gestita da fn_push_preventivo_a_ordine).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristina la versione 20260612-02 (filtro stato_emissione='EMESSA',
+              -- nessun match #CMP). NB: ripristina anche il bug — solo per coerenza
+              -- transazionale del rollback.
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_smistabili_commessa
+              WITH (security_invoker = on) AS
+              SELECT
+                  pr.preventivo_id, pr.id, p.uid AS preventivo_uid, pr.natura_vendita_id,
+                  pr.articolo_id, pr.descrizione, pr.prezzo_unitario, pr.sconto_percentuale,
+                  pr.iva_id, pr.quantita, pr.qta_operativa, pr.uom_operativa_id,
+                  pr.factor_to_base, pr.ordine
+              FROM vendite.preventivi_righe pr
+              JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+              LEFT JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
+              WHERE pr.attivo IS TRUE
+                AND pr.quantita > 0
+                AND pr.prezzo_unitario >= 0
+                AND (pr.natura_vendita_id IS NULL OR nv.destinazione_tipo = 'COMMESSA')
+                AND NOT EXISTS (
+                  SELECT 1 FROM vendite.commesse_attivita ca
+                   WHERE ca.segment_key = 'PREV:' || p.uid::text || ':R:' || pr.id::text
+                     AND ca.stato_emissione = 'EMESSA'
+                );

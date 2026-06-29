@@ -12,10 +12,35 @@
 > contratto pronto per l'handler è in **§0**. Coerente con
 > [feedback_be_fe_attende_prerequisiti_db]: i prerequisiti DB ora ci sono, il BE può partire.
 >
-> **Data**: 2026-06-06 · **Stato**: pronto, riscontri di codice risolti
+> **Data**: 2026-06-06 · **Stato**: ✅ **IMPLEMENTATO** — allineato al codice reale
+> (2026-06-20), vedi nota sotto. Spostato in `work-done/`.
 >
 > **Decisione di prodotto (Tid)**: politica immediata/differita **in
 > configurazione** (`handler_params`), non scelta dall'operatore al runtime.
+
+---
+
+> **⚠️ Allineamento al codice reale (2026-06-20).** L'handler è **implementato**
+> (`apps/vendite/handlers/push_preventivo_handler.py`, registrato in
+> `apps/vendite/apps.py:ready()`), ma lo sviluppo è andato **oltre questo brief** su
+> 2 punti — le sezioni interessate hanno una nota puntuale:
+>
+> 1. **Accettazione ↔ flusso (§8.3)**: l'endpoint M2 `/approvazione-flusso/` +
+>    `completa_approvazione_da_flusso` è stato **RIMOSSO** e sostituito da un
+>    **secondo handler event-driven `vendita.accetta_preventivo`**
+>    (`apps/vendite/handlers/accetta_preventivo_handler.py`), dispatchato su
+>    **COMPLETATO+POSITIVO** di `APPROVAZIONE_CLIENTE` via
+>    `pratiche.template_flussi_handler_eventi` → `dispatch_handler_eventi`. La FE
+>    chiama il completamento generico del flusso; il motore accetta il preventivo
+>    nella stessa transazione.
+> 2. **Split per natura (§5/§9)**: `push_preventivo` **non** pusha più tutto a
+>    commessa — smista per natura (MERCE→ordine via `fn_push_preventivo_a_ordine`,
+>    SERVIZIO→commessa via `pr_run_commesse_push_one`, RICORRENTE bloccata a DB),
+>    poi gate EVASO (D6). Vedi [brief-preventivi-ordini.md](brief-preventivi-ordini.md).
+>
+> Restano validi: dispatch di `push_preventivo` su **IN_CORSO** della CONFERMA
+> (C3-a), atomicità (§8.1), threading user (§8.5), policy c7-2 (§C7). Handoff di
+> riferimento: 2026-06-09 (split natura), 2026-06-15 (handler event-driven accetta).
 
 ---
 
@@ -346,7 +371,14 @@ commessa **già** PRONTA fallisce (matrice non ha `PRONTA→PRONTA`, CHECK `da�
 Niente logica di "riprendi a metà" (Opz. 2 scartata): non serve, perché (1) rende
 impossibile il mezzo-stato.
 
-### 8.3 Accoppiamento accettazione preventivo ↔ flusso `APPROVAZIONE_CLIENTE` → ✅ DECISO (Tid 2026-06-08)
+### 8.3 Accoppiamento accettazione preventivo ↔ flusso `APPROVAZIONE_CLIENTE` → ✅ DECISO (Tid 2026-06-08) · ⚠️ POI SUPERATO
+
+> **⚠️ Superato (2026-06-20).** La soluzione M2 descritta sotto — endpoint
+> `/vendite/preventivi/<id>/approvazione-flusso/` + `completa_approvazione_da_flusso`
+> — è stata **rimossa** e rimpiazzata dall'handler event-driven
+> `vendita.accetta_preventivo` (dispatch su COMPLETATO+POSITIVO via
+> `template_flussi_handler_eventi`; vedi nota di allineamento in testa). Il testo
+> seguente resta come razionale storico della decisione M2.
 
 Con i prerequisiti **esito-aware** (DB B-PREREQ), `CONFERMA` si abilita solo se
 `APPROVAZIONE_CLIENTE` è `COMPLETATO` con `esito='POSITIVO'`. La decisione DB V15
@@ -442,7 +474,14 @@ così da "lavoro da stimare" a **3 punti precisi** + threading kwargs. ✅ nodo 
 
 ---
 
-## 9. Semplificazione natura v1 (gap dichiarato — verificato 2026-06-08)
+## 9. Semplificazione natura v1 (gap dichiarato — verificato 2026-06-08) · ⚠️ POI CHIUSO
+
+> **⚠️ Chiuso (2026-06-20).** Il "gap v1 = pusha tutto a commessa, **no split**"
+> descritto qui è stato **superato**: lo split per natura è implementato in
+> `push_preventivo` (MERCE→ordine via `fn_push_preventivo_a_ordine`, SERVIZIO→commessa,
+> RICORRENTE bloccata a DB), con gate EVASO D6. Vedi
+> [brief-preventivi-ordini.md](brief-preventivi-ordini.md). Il testo seguente è la
+> motivazione storica del rinvio.
 
 Il push del 2026-06-08 ha consegnato `config.nature_vendita` (MERCE→ORDINE,
 SERVIZIO_UNA_TANTUM→COMMESSA, SERVIZIO_RICORRENTE→CONTRATTO) + colonne su

@@ -20,7 +20,7 @@ SELECT p.id AS preventivo_id,
     pr.data_scadenza,
     ps.meta AS sorgente_meta
    FROM (((((vendite.preventivi p
-     JOIN config.sorgenti s ON ((((s.codice)::text = 'PREVENTIVO'::text) AND (s.attivo IS TRUE))))
+     JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'PREVENTIVO'::text) AND (s.attivo IS TRUE))))
      JOIN pratiche.pratiche_sorgenti ps ON (((ps.sorgente_tipo_id = s.id) AND (ps.sorgente_uid = (p.uid)::text))))
      JOIN pratiche.pratiche pr ON ((pr.id = ps.pratica_id)))
      LEFT JOIN config.stati_pratiche sp ON ((sp.id = pr.stato_id)))

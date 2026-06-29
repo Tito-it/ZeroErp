@@ -22,7 +22,7 @@ SELECT pr.preventivo_id,
      LEFT JOIN config.nature_vendita nv ON ((nv.id = pr.natura_vendita_id)))
   WHERE ((pr.attivo IS TRUE) AND (pr.quantita > (0)::numeric) AND (pr.prezzo_unitario >= (0)::numeric) AND ((pr.natura_vendita_id IS NULL) OR ((nv.destinazione_tipo)::text = 'COMMESSA'::text)) AND (NOT (EXISTS ( SELECT 1
            FROM vendite.commesse_attivita ca
-          WHERE (((ca.segment_key)::text = ((('PREV:'::text || (p.uid)::text) || ':R:'::text) || (pr.id)::text)) AND ((ca.stato_emissione)::text = 'EMESSA'::text))))));
+          WHERE (((ca.segment_key)::text = ((('PREV:'::text || (p.uid)::text) || ':R:'::text) || (pr.id)::text)) OR ((ca.segment_key)::text ~~ (((('PREV:'::text || (p.uid)::text) || ':R:'::text) || (pr.id)::text) || '#CMP:%'::text)))))));
 ```
 
 

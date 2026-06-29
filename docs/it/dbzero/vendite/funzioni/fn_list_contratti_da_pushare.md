@@ -17,6 +17,8 @@ DECLARE
   v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
   v_stato_attivo_id     config.stati_doc_contratti.id%TYPE;
 BEGIN
+  -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente/stato
+  -- risolti per codice_interno (immutabile), non per codice (mutabile).
   IF p_contratto_id IS NOT NULL AND p_contratto_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_list_contratti_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
@@ -29,7 +31,7 @@ BEGIN
   SELECT s.id, s.tipo_doc_fiscale_id
     INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
   FROM config.sorgenti s
-  WHERE s.codice = 'CONTRATTO' AND s.attivo IS TRUE LIMIT 1;
+  WHERE s.codice_interno = 'CONTRATTO' AND s.attivo IS TRUE LIMIT 1;
 
   IF v_sorgente_tipo_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
@@ -41,7 +43,7 @@ BEGIN
 
   SELECT s.id INTO v_stato_attivo_id
   FROM config.stati_doc_contratti s
-  WHERE s.codice = 'ATTIVO' AND s.attivo IS TRUE LIMIT 1;
+  WHERE s.codice_interno = 'ATTIVO' AND s.attivo IS TRUE LIMIT 1;
 
   RETURN QUERY
   SELECT
@@ -105,7 +107,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_contratti_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_contratto_id bigint)
-IS 'Lista righe contratto eligible al push su commessa (stato ATTIVO). uom_id da catalogo.articoli (canonica). p_contratto_id opzionale: NULL=batch globale, NOT NULL=singolo contratto. Filtri in AND. Esclude EMESSA via NOT EXISTS. (20260511-33: cr.quantita_fissa -> cr.quantita dopo rename colonna)';
+IS 'Lista righe contratto eligible al push su commessa (stato ATTIVO). uom_id da catalogo.articoli (canonica). p_contratto_id opzionale: NULL=batch globale, NOT NULL=singolo contratto. Filtri in AND. Esclude EMESSA via NOT EXISTS. (20260511-33: cr.quantita_fissa -> cr.quantita dopo rename colonna) rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a).';
 ```
 
 ---

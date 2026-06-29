@@ -7,16 +7,20 @@
 >
 > **Data**: 2026-06-06 · **Rev. critica**: 2026-06-08 (allineamento split DB:
 > accoppiamento accettazione↔flusso F1, abilitazione esito-aware §6) · **Stato**:
-> pronto, riscontri FE risolti
+> ✅ **IMPLEMENTATO**, allineato al codice reale (2026-06-20). Spostato in `work-done/`.
 >
 > **✅ Stato implementazione (2026-06-08)** — consegnato (build+lint FE verdi):
 > - **PREVENTIVAZIONE (testa)**: `FlussoDrawer` mostra "Apri preventivo collegato"
 >   per il flusso `PREVENTIVAZIONE` di una pratica `PREVENTIVI_*` → la dashboard
 >   ospita `PreventiviDrawer` (create) e, al primo `saved`, chiama `collega-pratica`
 >   (aggancio ROOT idempotente, guard con flag).
-> - **F1 (M2)**: `FlussoDrawer` instrada il "Completa" di `APPROVAZIONE_CLIENTE`
->   (solo pratiche `PREVENTIVI_*`, discriminato da `tipoPrestazioneCodice`)
->   sull'endpoint `POST /vendite/preventivi/approvazione-flusso/`.
+> - **F1 (M2)** — ⚠️ **poi superato (2026-06-20)**: in origine `FlussoDrawer`
+>   instradava il "Completa" di `APPROVAZIONE_CLIENTE` sull'endpoint dedicato
+>   `/vendite/preventivi/<id>/approvazione-flusso/`. Quell'endpoint è stato
+>   **rimosso**: ora la FE chiama il **completamento generico** del flusso e il BE
+>   esegue l'handler event-driven `vendita.accetta_preventivo` (COMPLETATO+POSITIVO
+>   via `template_flussi_handler_eventi`). Nessun routing speciale lato FE — vedi
+>   [brief-be-pratica-preventivi.md](brief-be-pratica-preventivi.md) §8.3.
 > - **F2 (CONFERMA)**: funziona col bottone "Avvia" esistente (il BE esegue
 >   l'handler; errori parlanti via toast `useApiHandler`). Nessuna modifica.
 > - **i18n**: `flusso_apri_preventivo`, `preventivo_collegato` (it+en).
@@ -86,7 +90,14 @@
 
 ## 2. Deliverable FE
 
-### F1 — Riconciliazione dialog accettazione preventivo (conseguenza decisione Tid)
+### F1 — Riconciliazione dialog accettazione preventivo (conseguenza decisione Tid) · ⚠️ ROUTING M2 SUPERATO
+
+> **⚠️ Aggiornamento (2026-06-20).** Il routing verso l'endpoint dedicato
+> `/approvazione-flusso/` descritto in questa sezione è stato **rimosso**: la FE ora
+> completa il flusso `APPROVAZIONE_CLIENTE` con l'azione generica e il BE accetta il
+> preventivo via handler event-driven `vendita.accetta_preventivo`
+> (`template_flussi_handler_eventi`). **Resta valida** la soppressione dei campi
+> fatturazione sul percorso pratica (policy dalla pratica, non dal dialog).
 
 **Il punto FE più importante.** Oggi il dialog di accettazione chiede SEMPRE
 `fatturazione_immediata` + `competenza_mese` all'operatore. Con la politica **in

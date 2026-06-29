@@ -12,9 +12,10 @@
 
 from typing import Any
 
-from django.db import DatabaseError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import map_integrity_error
 from apps.core.services.service_errors import ServiceError
 from apps.pratiche.db.pratiche_repository import PraticheRepository, coerce_jsonb_dict
 
@@ -60,7 +61,36 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
     # e' presente solo nel 496.
     ("FLUSSI_COMPETENZA_MANCANTE", "non abilitato per il flusso"),
     ("FLUSSI_PRESA_NON_ELIGIBILE", "non consentita del flusso"),
+    # Guard data non futura sospensioni (trg a10 trgfn_sospensioni_guard_data_non_futura,
+    # catalogo id 499): la sospensione registra un evento gia' avvenuto, non
+    # pianificato. Marker sul testo IT del catalogo, immune al %s del valore.
+    ("E_SOSPENSIONE_DATA_FUTURA", "non puo' essere nel futuro"),
 )
+
+# Mapping vincoli DB sospensioni -> codici errore applicativi.
+# L'EXCLUDE ex_sospensioni_no_overlap (framework dbops.automazione_overlap)
+# solleva un native 23P01 IntegrityError: lo mappiamo per nome constraint,
+# pattern speculare a ex_contratti_no_overlap -> E_VENDITE_CONTRATTO_OVERLAP.
+_SOSPENSIONE_OVERLAP_CONSTRAINTS: dict[str, tuple[str, str]] = {
+    "ex_sospensioni_no_overlap": (
+        "E_SOSPENSIONE_OVERLAP",
+        "Esiste gia' una sospensione che copre questo periodo per la stessa "
+        "pratica o lo stesso flusso. Correggi le date oppure chiudi prima la "
+        "sospensione esistente.",
+    ),
+}
+
+# CHECK chk_sospensioni_data_fine (data_fine > data_inizio): con la data
+# manuale di riattivazione l'operatore puo' indicare una data_fine anteriore
+# all'inizio della sospensione -> IntegrityError (23514). Mappato a errore
+# parlante invece del 500 generico.
+_SOSPENSIONE_CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+    "chk_sospensioni_data_fine": (
+        "E_SOSPENSIONE_DATA_FINE",
+        "La data di riattivazione deve essere successiva all'inizio della "
+        "sospensione.",
+    ),
+}
 
 # Esiti ammessi per un flusso: mirror applicativo del CHECK DB chk_flussi_esito.
 # Single source per la validazione fail-fast (completa/avvia_e_completa).
@@ -835,6 +865,7 @@ def sospendi_pratica(
     motivo: str,
     *,
     data_riattivazione_prevista: str | None = None,
+    data_inizio: str | None = None,
 ) -> int:
     ErrorManager.require(
         pratica_id > 0,
@@ -862,11 +893,28 @@ def sospendi_pratica(
     repo.update_stato_pratica(pratica_id, "SOSPESA")
 
     # INSERT sospensione: il trigger DB propaga ai flussi e registra nel giornale.
-    return repo.create_sospensione(
-        pratica_id,
-        motivo,
-        data_riattivazione_prevista=data_riattivazione_prevista,
-    )
+    # data_inizio manuale (opz.) e' difesa a DB: l'EXCLUDE rifiuta i periodi
+    # sovrapposti (23P01 -> 409), il guard a10 le date future (-> 422). L'intera
+    # transazione (incluso il cambio stato sopra) rolla back su errore.
+    try:
+        return repo.create_sospensione(
+            pratica_id,
+            motivo,
+            data_riattivazione_prevista=data_riattivazione_prevista,
+            data_inizio=data_inizio,
+        )
+    except IntegrityError as exc:
+        map_integrity_error(
+            exc,
+            unique_constraints=_SOSPENSIONE_OVERLAP_CONSTRAINTS,
+            fallback_code="E_PRATICA_VALIDATION",
+            fallback_message="Violazione vincolo DB su sospensione.",
+            context={"pratica_id": pratica_id},
+        )
+    except DatabaseError as exc:
+        # Guard data futura (trg a10) -> E_SOSPENSIONE_DATA_FUTURA parlante.
+        _raise_known_db_error(exc, function_name="pratiche_service.sospendi_pratica")
+        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: Riattiva una pratica sospesa.
@@ -875,7 +923,7 @@ def sospendi_pratica(
 #   Il trigger DB ripristina gli stati dei flussi, cambia stato pratica ad APERTA
 #   e registra nel giornale.
 @transaction.atomic()
-def riattiva_pratica(pratica_id: int) -> None:
+def riattiva_pratica(pratica_id: int, *, data_fine: str | None = None) -> None:
     ErrorManager.require(
         pratica_id > 0,
         code="E_INVALID_ID",
@@ -898,7 +946,23 @@ def riattiva_pratica(pratica_id: int) -> None:
     repo.update_stato_pratica(pratica_id, "APERTA")
 
     # Chiude la sospensione: il trigger DB riattiva i flussi e registra nel giornale.
-    repo.chiudi_sospensione(sosp_attiva["id"])
+    # data_fine manuale (opz.) e' difesa a DB: CHECK data_fine > data_inizio
+    # (23514 -> E_SOSPENSIONE_DATA_FINE), guard a10 rifiuta le date future (P0001
+    # -> E_SOSPENSIONE_DATA_FUTURA). IntegrityError e' sottoclasse di DatabaseError:
+    # va intercettato PRIMA, altrimenti il CHECK finisce nel ramo generico (500).
+    try:
+        repo.chiudi_sospensione(sosp_attiva["id"], data_fine=data_fine)
+    except IntegrityError as exc:
+        map_integrity_error(
+            exc,
+            check_constraints=_SOSPENSIONE_CHECK_CONSTRAINTS,
+            fallback_code="E_PRATICA_VALIDATION",
+            fallback_message="Violazione vincolo DB su sospensione.",
+            context={"pratica_id": pratica_id},
+        )
+    except DatabaseError as exc:
+        _raise_known_db_error(exc, function_name="pratiche_service.riattiva_pratica")
+        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: Verifica che il flusso esista e appartenga alla pratica indicata.

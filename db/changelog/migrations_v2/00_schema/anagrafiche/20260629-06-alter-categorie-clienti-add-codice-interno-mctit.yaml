@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# CANDIDATE_ADD_CI (analisi-hardcoded-codice.md §4b / §10, #3).
+#
+# anagrafiche.categorie_clienti aveva solo `codice` (mutabile, catalogo user-facing),
+# usato in logica dal BE (clienti_repository.get_categoria_cliente_id_by_codice,
+# default categoria 'STANDARD'). Si aggiunge `codice_interno` (immutabile: lock
+# auto-provisionato dal runner sulla sola presenza della colonna, linee-guida-sql §6b),
+# backfill codice_interno=codice, UNIQUE + CHECK nonvuoto. Nessun consumer DB (solo BE,
+# che si adegua dopo). Seed: categorie_clienti.csv + loader aggiornati (codice_interno=codice).
+#
+# NB: la riga STANDARD e' inserita inline in 00_schema/20260414-03 (pre-questa migration):
+# il backfill qui la copre; il seed CSV (80_data) riallinea poi tutte e 5 le categorie.
+# ZeroERP non in produzione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260629-06-alter-categorie-clienti-add-codice-interno-mctit.yaml
+
+  - changeSet:
+      id: 20260629-06-alter-categorie-clienti-add-codice-interno
+      author: mctit
+      failOnError: true
+      comment: >
+        categorie_clienti: add codice_interno (immutabile) + backfill=codice + UNIQUE
+        + CHECK nonvuoto. CANDIDATE_ADD_CI §4b.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.categorie_clienti
+                  ADD COLUMN codice_interno character varying;
+
+              UPDATE anagrafiche.categorie_clienti
+                 SET codice_interno = codice
+               WHERE codice_interno IS NULL
+                  OR btrim(codice_interno) = '';
+
+              ALTER TABLE anagrafiche.categorie_clienti
+                  ALTER COLUMN codice_interno SET NOT NULL;
+
+              ALTER TABLE anagrafiche.categorie_clienti
+                  ADD CONSTRAINT uq_categorie_clienti_codice_interno UNIQUE (codice_interno);
+
+              ALTER TABLE anagrafiche.categorie_clienti
+                  ADD CONSTRAINT chk_categorie_clienti_codice_interno_nonvuoto
+                  CHECK (btrim(codice_interno) <> '');
+
+              COMMENT ON COLUMN anagrafiche.categorie_clienti.codice_interno
+                  IS 'Codice interno immutabile (lock automatico via dbops.fn_run_automations_lock_columns) per la logica applicativa (es. default categoria STANDARD). rev 2026-06-29 (analisi-hardcoded-codice §4b).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.categorie_clienti DROP CONSTRAINT IF EXISTS chk_categorie_clienti_codice_interno_nonvuoto;
+              ALTER TABLE anagrafiche.categorie_clienti DROP CONSTRAINT IF EXISTS uq_categorie_clienti_codice_interno;
+              ALTER TABLE anagrafiche.categorie_clienti DROP COLUMN IF EXISTS codice_interno;

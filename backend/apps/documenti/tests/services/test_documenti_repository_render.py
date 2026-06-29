@@ -425,7 +425,7 @@ class GetTipoFileDocumentoByCodiceTests(TestCase):
         )
         sql, params = cursor_ok.execute.call_args_list[0].args
         self.assertIn("FROM documenti.tipi_file_documento", sql)
-        self.assertIn("WHERE codice = %s", sql)
+        self.assertIn("WHERE codice_interno = %s", sql)
         self.assertEqual(params, ["PDF_FINALE"])
 
         cursor_none = _mk_cursor(fetchone_results=[None])

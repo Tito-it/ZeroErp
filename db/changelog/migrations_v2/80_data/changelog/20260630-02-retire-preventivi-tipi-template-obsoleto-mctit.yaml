@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ritiro dei vecchi tipi pratica PREVENTIVI_IMMEDIATA / PREVENTIVI_DIFFERITA
+# (confluiti nel tipo unico PREVENTIVI 9004) marcandoli obsoleti via obsoleto_dal
+# (colonna aggiunta da 20260630-01). Decisione P1:
+#   - NON si usa attivo=false (romperebbe le pratiche esistenti e sarebbe bloccato
+#     dal guard prevent_deactivate_if_children);
+#   - obsoleto_dal = data odierna => non più selezionabili per nuove pratiche,
+#     ma le pratiche già eseguite e i loro riferimenti restano intatti (attivo=true).
+#
+# Risolto per codice_interno (no ID hardcodati). Idempotente (WHERE obsoleto_dal
+# IS NULL): non sovrascrive un'eventuale data già impostata.
+# Prerequisito: colonna obsoleto_dal (20260630-01) + tipi/template seedati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260630-02-retire-preventivi-tipi-template-obsoleto-mctit.yaml
+
+  - changeSet:
+      id: 20260630-02-retire-preventivi-tipi-template-obsoleto
+      author: mctit
+      comment: >
+        Marca obsoleti (obsoleto_dal = 2026-06-30) i tipi PREVENTIVI_IMMEDIATA /
+        PREVENTIVI_DIFFERITA e i loro template_flussi: non più selezionabili per
+        il nuovo, pratiche esistenti intatte (attivo invariato). Risolto per
+        codice_interno; idempotente.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pratiche
+                tableName: tipi_prestazione
+                columnName: obsoleto_dal
+            - columnExists:
+                schemaName: pratiche
+                tableName: template_flussi
+                columnName: obsoleto_dal
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Tipi: i due preventivi storici confluiti nel tipo unico PREVENTIVI.
+              UPDATE pratiche.tipi_prestazione
+                 SET obsoleto_dal = DATE '2026-06-30'
+               WHERE codice_interno IN ('PREVENTIVI_IMMEDIATA', 'PREVENTIVI_DIFFERITA')
+                 AND obsoleto_dal IS NULL;
+
+              -- Template flussi appartenenti a quei tipi (ritiro coerente del sotto-catalogo).
+              UPDATE pratiche.template_flussi tf
+                 SET obsoleto_dal = DATE '2026-06-30'
+               WHERE tf.tipo_prestazione_id IN (
+                       SELECT tp.id
+                         FROM pratiche.tipi_prestazione tp
+                        WHERE tp.codice_interno IN ('PREVENTIVI_IMMEDIATA', 'PREVENTIVI_DIFFERITA')
+                     )
+                 AND tf.obsoleto_dal IS NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              UPDATE pratiche.template_flussi tf
+                 SET obsoleto_dal = NULL
+               WHERE tf.tipo_prestazione_id IN (
+                       SELECT tp.id FROM pratiche.tipi_prestazione tp
+                        WHERE tp.codice_interno IN ('PREVENTIVI_IMMEDIATA', 'PREVENTIVI_DIFFERITA'));
+              UPDATE pratiche.tipi_prestazione
+                 SET obsoleto_dal = NULL
+               WHERE codice_interno IN ('PREVENTIVI_IMMEDIATA', 'PREVENTIVI_DIFFERITA');

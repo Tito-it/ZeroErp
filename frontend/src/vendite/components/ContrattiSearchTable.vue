@@ -107,7 +107,7 @@ const noteDrawerVisible = ref(false)
 const noteDrawerContratto = ref(null)
 
 function onPdfClick(row) {
-  if (!row || row.stato_codice === 'DRAFT') return
+  if (!row || row.stato_codice_interno === 'DRAFT') return
   pdfDialogContratto.value = row
   pdfDialogVisible.value = true
 }
@@ -125,8 +125,8 @@ function buildRowActions(data) {
       label: t('contratti.pdf.label_scarica'),
       icon: MANAGE_ICONS.PDF,
       severity: 'primary',
-      disabled: data.stato_codice === 'DRAFT',
-      tooltip: data.stato_codice === 'DRAFT'
+      disabled: data.stato_codice_interno === 'DRAFT',
+      tooltip: data.stato_codice_interno === 'DRAFT'
         ? t('contratti.pdf.tooltip_lista_disabilitato')
         : t('contratti.pdf.tooltip_lista'),
       command: () => onPdfClick(data),
@@ -223,7 +223,7 @@ onMounted(() => {
       >
         <!-- Stato contratto: Tag colorato per severity. -->
         <template #cell-stato="{ data }">
-          <Tag :value="data.stato_descrizione" :severity="statoContrattoSeverity(data.stato_codice)" />
+          <Tag :value="data.stato_descrizione" :severity="statoContrattoSeverity(data.stato_codice_interno)" />
         </template>
 
         <template #actions="{ data, compact }">

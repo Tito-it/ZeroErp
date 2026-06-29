@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Registra in dbops.automazione_overlap il vincolo anti-overlap di
+# pratiche.sospensioni come fonte di verita' per l'anti-regressione: se un futuro
+# refactor droppa l'EXCLUDE, fn_apply_automazione_overlap lo ricrea identico.
+#
+# L'EXCLUDE esiste gia' (migration 20260626-01): fn_apply e' idempotente e lo
+# SALTA. Questa riga e' la registrazione dichiarativa.
+#
+# Config:
+#   key_columns     = {pratica_id}                colonna semplice (validata+quotata)
+#   key_expressions = {COALESCE(flusso_id, -1)}   scope pratica vs flusso (as-is)
+#   range_col       = periodo_sospensione         tstzrange gia' mantenuto (WITH &&)
+#   where_predicate = NULL                        vincolo TOTALE (ogni riga conta)
+#   constraint_name = ex_sospensioni_no_overlap
+#
+# NOTA: come per gli altri 6 vincoli (20260602-10), l'anti-regressione e' effettiva
+# solo se fn_apply_automazione_overlap viene eseguito nella pipeline (oggi NON
+# schedulato per OVERLAP). Questa migration registra; lo scheduling e' separato.
+#
+# Upsert idempotente su PK (target_schema, target_table).
+# Brief: docs/it/dev/work-in-progress/brief-db-sospensioni-anti-overlap-data-manuale_db.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260626-04-insert-automazione-overlap-sospensioni-mctit.yaml
+
+  - changeSet:
+      id: 20260626-04-insert-automazione-overlap-sospensioni
+      author: mctit
+      comment: >
+        Registra pratiche.sospensioni in dbops.automazione_overlap (scope
+        pratica_id + COALESCE(flusso_id,-1) su periodo_sospensione, vincolo totale,
+        active=true). Upsert idempotente.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: dbops
+                tableName: automazione_overlap
+                columnName: where_predicate
+            - columnExists:
+                schemaName: dbops
+                tableName: automazione_overlap
+                columnName: key_expressions
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              INSERT INTO dbops.automazione_overlap
+                  (target_schema, target_table, key_columns, key_expressions,
+                   range_col, where_predicate, constraint_name, active, exec_mode, note)
+              VALUES
+                  ('pratiche', 'sospensioni',
+                   ARRAY['pratica_id'],
+                   ARRAY['COALESCE(flusso_id, -1)'],
+                   'periodo_sospensione', NULL,
+                   'ex_sospensioni_no_overlap', true, 'AUTO',
+                   'brief sospensioni anti-overlap: scope pratica/flusso via COALESCE, vincolo totale')
+              ON CONFLICT (target_schema, target_table) DO UPDATE SET
+                  key_columns     = EXCLUDED.key_columns,
+                  key_expressions = EXCLUDED.key_expressions,
+                  range_col       = EXCLUDED.range_col,
+                  where_predicate = EXCLUDED.where_predicate,
+                  constraint_name = EXCLUDED.constraint_name,
+                  active          = EXCLUDED.active,
+                  exec_mode       = EXCLUDED.exec_mode,
+                  note            = EXCLUDED.note;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.automazione_overlap
+               WHERE target_schema = 'pratiche' AND target_table = 'sospensioni';

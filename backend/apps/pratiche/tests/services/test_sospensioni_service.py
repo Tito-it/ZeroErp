@@ -9,10 +9,16 @@
 """
 Indice test eseguiti:
 1) SospensioniServiceTests.test_sospendi_pratica_ok
+1b) SospensioniServiceTests.test_sospendi_pratica_data_inizio_passthrough
+1c) SospensioniServiceTests.test_sospendi_pratica_overlap
+1d) SospensioniServiceTests.test_sospendi_pratica_data_futura
 2) SospensioniServiceTests.test_sospendi_pratica_errore_id_zero
 3) SospensioniServiceTests.test_sospendi_pratica_errore_motivo_vuoto
 4) SospensioniServiceTests.test_sospendi_pratica_errore_gia_sospesa
 5) SospensioniServiceTests.test_riattiva_pratica_ok
+5b) SospensioniServiceTests.test_riattiva_pratica_data_fine_passthrough
+5c) SospensioniServiceTests.test_riattiva_pratica_data_futura
+5d) SospensioniServiceTests.test_riattiva_pratica_data_fine_anteriore
 6) SospensioniServiceTests.test_riattiva_pratica_errore_id_zero
 7) SospensioniServiceTests.test_riattiva_pratica_errore_nessuna_sospensione
 8) SospensioniServiceTests.test_sospendi_flusso_ok
@@ -30,6 +36,7 @@ Indice test eseguiti:
 
 from unittest.mock import patch
 
+from django.db import DatabaseError, IntegrityError
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
@@ -101,7 +108,59 @@ class SospensioniServiceTests(SimpleTestCase):
         repo.create_sospensione.assert_called_once_with(
             1, "Attesa documenti",
             data_riattivazione_prevista=None,
+            data_inizio=None,
         )
+
+    # Scopo: data_inizio manuale (ISO) passa al repository invariata.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_sospendi_pratica_data_inizio_passthrough(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_sospensione_attiva_pratica.return_value = None
+        repo.create_sospensione.return_value = 101
+
+        pratiche_service.sospendi_pratica(
+            1, "Retroattiva",
+            data_inizio="2026-06-20T09:30:00+00:00",
+            data_riattivazione_prevista="2026-07-01",
+        )
+
+        repo.create_sospensione.assert_called_once_with(
+            1, "Retroattiva",
+            data_riattivazione_prevista="2026-07-01",
+            data_inizio="2026-06-20T09:30:00+00:00",
+        )
+
+    # Scopo: overlap EXCLUDE (23P01) -> ServiceError E_SOSPENSIONE_OVERLAP (409).
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_sospendi_pratica_overlap(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_sospensione_attiva_pratica.return_value = None
+        repo.create_sospensione.side_effect = IntegrityError(
+            'conflicting key value violates exclusion constraint '
+            '"ex_sospensioni_no_overlap"'
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.sospendi_pratica(
+                1, "Retroattiva", data_inizio="2026-06-20T09:30:00+00:00",
+            )
+        self.assertEqual(ctx.exception.code, "E_SOSPENSIONE_OVERLAP")
+
+    # Scopo: guard data futura (trg a10) -> ServiceError E_SOSPENSIONE_DATA_FUTURA (422).
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_sospendi_pratica_data_futura(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_sospensione_attiva_pratica.return_value = None
+        repo.create_sospensione.side_effect = DatabaseError(
+            "La data indicata per la sospensione non puo' essere nel futuro "
+            "(valore: 2030-01-01)."
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.sospendi_pratica(
+                1, "Futura", data_inizio="2030-01-01T00:00:00+00:00",
+            )
+        self.assertEqual(ctx.exception.code, "E_SOSPENSIONE_DATA_FUTURA")
 
     # Scopo: Verifica errore se pratica_id <= 0.
     def test_sospendi_pratica_errore_id_zero(self):
@@ -136,7 +195,48 @@ class SospensioniServiceTests(SimpleTestCase):
         pratiche_service.riattiva_pratica(1)
 
         repo.update_stato_pratica.assert_called_once_with(1, "APERTA")
-        repo.chiudi_sospensione.assert_called_once_with(100)
+        repo.chiudi_sospensione.assert_called_once_with(100, data_fine=None)
+
+    # Scopo: data_fine manuale (ISO) passa al repository invariata.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_riattiva_pratica_data_fine_passthrough(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_sospensione_attiva_pratica.return_value = _mock_sospensione_row(100)
+
+        pratiche_service.riattiva_pratica(1, data_fine="2026-06-21T18:00:00+00:00")
+
+        repo.chiudi_sospensione.assert_called_once_with(
+            100, data_fine="2026-06-21T18:00:00+00:00",
+        )
+
+    # Scopo: riattivazione con data futura -> E_SOSPENSIONE_DATA_FUTURA (422).
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_riattiva_pratica_data_futura(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_sospensione_attiva_pratica.return_value = _mock_sospensione_row(100)
+        repo.chiudi_sospensione.side_effect = DatabaseError(
+            "La data indicata per la sospensione non puo' essere nel futuro "
+            "(valore: 2030-01-01)."
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.riattiva_pratica(1, data_fine="2030-01-01T00:00:00+00:00")
+        self.assertEqual(ctx.exception.code, "E_SOSPENSIONE_DATA_FUTURA")
+
+    # Scopo: data_fine anteriore all'inizio (CHECK chk_sospensioni_data_fine,
+    # IntegrityError 23514) -> E_SOSPENSIONE_DATA_FINE (422), non 500 generico.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_riattiva_pratica_data_fine_anteriore(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_sospensione_attiva_pratica.return_value = _mock_sospensione_row(100)
+        repo.chiudi_sospensione.side_effect = IntegrityError(
+            'new row for relation "sospensioni" violates check constraint '
+            '"chk_sospensioni_data_fine"'
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.riattiva_pratica(1, data_fine="2020-01-01T00:00:00+00:00")
+        self.assertEqual(ctx.exception.code, "E_SOSPENSIONE_DATA_FINE")
 
     # Scopo: Verifica errore se pratica_id <= 0.
     def test_riattiva_pratica_errore_id_zero(self):

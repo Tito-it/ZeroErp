@@ -97,9 +97,9 @@ class ClientiRepository:
         categoria_cliente_id: int,
     ) -> int:
         # categoria_cliente_id e' obbligatorio: il service deve averlo gia'
-        # risolto (default via `get_categoria_cliente_id_by_codice('STANDARD')`).
-        # La colonna DB e' NOT NULL post-backfill F1-DB-03; la FK e' validata
-        # dal trigger `fk_billing_account_categoria_cliente`.
+        # risolto (dal payload `ba_categoria_cliente_id`). La colonna DB e'
+        # NOT NULL post-backfill F1-DB-03; la FK e' validata dal trigger
+        # `fk_billing_account_categoria_cliente`.
         cols = [
             "istanza_utility_id", "soggetto_ruolo_id", "utility_id",
             "parent_account_id", "categoria_cliente_id",
@@ -122,18 +122,6 @@ class ClientiRepository:
             row = cursor.fetchone()
             assert row is not None
             return row[0]
-
-    # Scopo: Risolve l'id di una categoria cliente dal codice. Ritorna None se
-    #        la categoria non esiste: il service deve decidere se e' errore
-    #        (`STANDARD` seed mancante) o fallback applicativo.
-    def get_categoria_cliente_id_by_codice(self, codice: str) -> int | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT id FROM anagrafiche.categorie_clienti WHERE codice = %s",
-                [codice],
-            )
-            row = cursor.fetchone()
-            return int(row[0]) if row else None
 
     # Scopo: Crea record cliente con stato ATTIVO.
     #        I trigger DB gestiscono: sync_utility, set_periodo, sync_pdp, guard.
@@ -241,7 +229,8 @@ class ClientiRepository:
                    u.descrizione AS utility_descrizione,
                    u.id AS utility_id,
                    sc.descrizione_breve AS stato_descrizione,
-                   sc.codice_interno AS stato_codice,
+                   sc.codice_interno AS stato_codice_interno,
+                   sc.codice AS stato_codice,
                    cl.data_attivazione,
                    cl.data_chiusura,
                    cl.data_sospensione,
@@ -393,7 +382,8 @@ class ClientiRepository:
                    iu.codice AS istanza_codice,
                    -- FK descrizioni
                    u.descrizione AS utility_descrizione,
-                   sc.codice_interno AS stato_codice,
+                   sc.codice_interno AS stato_codice_interno,
+                   sc.codice AS stato_codice,
                    sc.descrizione_breve AS stato_descrizione,
                    iva.descrizione AS iva_descrizione,
                    mp.descrizione AS modalita_pagamento_descrizione,

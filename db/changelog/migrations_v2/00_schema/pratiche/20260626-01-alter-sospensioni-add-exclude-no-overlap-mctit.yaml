@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Anti-overlap su pratiche.sospensioni (date manuali/retroattive).
+#
+# Contesto: la nuova UI consente data/ora di sospensione e riattivazione
+# inserite a mano (anche retroattive). Le difese esistenti coprono solo due
+# sospensioni ATTIVE contemporanee (uq_sospensioni_attiva_pratica/flusso) e la
+# coerenza interna del singolo intervallo (chk_sospensioni_data_fine), ma NON la
+# sovrapposizione tra periodi storici / retroattivi.
+#
+# Soluzione: EXCLUDE USING gist sulla colonna periodo_sospensione (tstzrange gia'
+# mantenuta da trgfn_sospensioni_set_periodo). Scope separato pratica vs flusso via
+# espressione COALESCE(flusso_id,-1): le righe di pratica (flusso_id NULL) cadono
+# nello scope (pratica_id,-1), quelle di flusso in (pratica_id,flusso_id>0) ->
+# assi indipendenti (overlap cross-livello ammesso by-design). Vincolo TOTALE
+# (nessun WHERE): ogni riga conta; storicizza accende solo la copia nello storico,
+# non e' un soft-delete; la tabella non ha colonna attivo.
+#
+# Richiede btree_gist (gia' installata: baseline 001-01 + listini-core). Il temporal
+# UNIQUE PG18 non e' utilizzabile qui (lo scope e' un'espressione COALESCE, non una
+# colonna semplice) -> serve EXCLUDE.
+#
+# Pre-flight: la preCondition rileva eventuali overlap gia' presenti (stesso scope)
+# e HALTa prima di tentare l'ADD CONSTRAINT (che fallirebbe). Col vecchio flusso
+# NOW()-based sono improbabili ma non impossibili.
+#
+# Registrazione anti-regressione in dbops.automazione_overlap: 20260626-04.
+# Brief: docs/it/dev/work-in-progress/brief-db-sospensioni-anti-overlap-data-manuale_db.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260626-01-alter-sospensioni-add-exclude-no-overlap-mctit.yaml
+
+  - changeSet:
+      id: 20260626-01-alter-sospensioni-add-exclude-no-overlap
+      author: mctit
+      comment: >
+        Aggiunge EXCLUDE USING gist ex_sospensioni_no_overlap su pratiche.sospensioni
+        (pratica_id, COALESCE(flusso_id,-1), periodo_sospensione) — vincolo totale,
+        scope pratica/flusso indipendenti. Pre-flight overlap esistenti.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pratiche
+                tableName: sospensioni
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*)::text FROM pg_extension WHERE extname = 'btree_gist';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: |
+                  -- Constraint non ancora presente (idempotenza)
+                  SELECT COUNT(*)::text
+                    FROM pg_constraint con
+                    JOIN pg_class c     ON c.oid = con.conrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'pratiche'
+                     AND c.relname = 'sospensioni'
+                     AND con.conname = 'ex_sospensioni_no_overlap'
+                     AND con.contype = 'x';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: |
+                  -- Pre-flight: nessun overlap gia' presente nello stesso scope
+                  SELECT COUNT(*)::text
+                    FROM pratiche.sospensioni a
+                    JOIN pratiche.sospensioni b
+                      ON a.id < b.id
+                     AND a.pratica_id = b.pratica_id
+                     AND COALESCE(a.flusso_id, -1) = COALESCE(b.flusso_id, -1)
+                     AND a.periodo_sospensione && b.periodo_sospensione;
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pratiche.sospensioni
+                  ADD CONSTRAINT ex_sospensioni_no_overlap
+                  EXCLUDE USING gist (
+                      pratica_id                 WITH =,
+                      (COALESCE(flusso_id, -1))  WITH =,
+                      periodo_sospensione        WITH &&
+                  );
+
+              COMMENT ON CONSTRAINT ex_sospensioni_no_overlap ON pratiche.sospensioni
+              IS 'Anti-overlap periodi sospensione, scope (pratica_id, COALESCE(flusso_id,-1)): vieta sovrapposizioni stesso livello, ammette pratica vs flusso. Native 23P01 -> BE E_SOSPENSIONE_OVERLAP.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE pratiche.sospensioni
+                  DROP CONSTRAINT IF EXISTS ex_sospensioni_no_overlap;

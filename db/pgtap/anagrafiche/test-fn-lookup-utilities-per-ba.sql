@@ -13,14 +13,22 @@
 --     codice utility non nullo e is_personalizzata_per_ef boolean.
 --  5) is_personalizzata_per_ef = true se esiste row in
 --     emittenti_fiscali_utilities per (emittente, utility), false altrimenti.
+--  6) FIX codice_interno (analisi-hardcoded-codice §3a #15 / §9.5): con una utility
+--     mappata sia a CL sia a EF (per codice_interno), la funzione la RITORNA.
+--     Col vecchio `codice` (tipi_ruoli: CL/CLIENTE, EF/EMITT_FISC) i JOIN
+--     fallivano -> 0 righe. Prova reale del fix.
+--  7) anti-regressione: rename del `codice` (mutabile) dei ruoli CL/EF -> la
+--     funzione resta invariata (risolve per codice_interno).
 --
 -- NOTA: i casi 4-5 dipendono dallo stato del DB di sviluppo. Sono "smoke"
--- pragmatici, non test esaustivi della politica ibrida.
+-- pragmatici, non test esaustivi della politica ibrida. I casi 6-7 sono reali
+-- quando il DB ha un BA con emittente risolvibile e una utility con ruolo CL
+-- (degradano a soft-pass se i prerequisiti non ci sono).
 -- ------------------------------------------------------------
 
 BEGIN;
 
-SELECT plan(5);
+SELECT plan(7);
 
 -- ============================================================
 -- 1) p_billing_account_id NULL -> throws
@@ -107,6 +115,67 @@ SELECT is(
     ),
     0,
     'is_personalizzata_per_ef coerente con emittenti_fiscali_utilities'
+);
+
+-- ============================================================
+-- 6) FIX codice_interno: utility mappata a CL + EF -> ritornata
+--    Fixture: prende una utility con mapping ATTIVO al ruolo CL (codice_interno)
+--    e le aggiunge il mapping al ruolo EF (codice_interno), cosi' l'intersezione
+--    CL x EF della funzione ha almeno una utility candidata.
+-- ============================================================
+CREATE TEMP TABLE tmp_lookup_util AS
+SELECT utr.utility_id
+  FROM config.utilities_tipi_ruolo utr
+  JOIN config.tipi_ruoli tr ON tr.id = utr.tipo_ruolo_id
+ WHERE tr.codice_interno = 'CL'
+   AND utr.attivo = true
+   AND (utr.valido_dal IS NULL OR utr.valido_dal <= current_date)
+   AND (utr.valido_al  IS NULL OR utr.valido_al  >= current_date)
+ LIMIT 1;
+
+-- Aggiunge il mapping EF per quella utility (il seed non mappa nulla a EF).
+INSERT INTO config.utilities_tipi_ruolo (utility_id, tipo_ruolo_id, attivo, meta)
+SELECT (SELECT utility_id FROM tmp_lookup_util),
+       (SELECT id FROM config.tipi_ruoli WHERE codice_interno = 'EF'),
+       true,
+       '{}'::jsonb
+WHERE (SELECT utility_id FROM tmp_lookup_util) IS NOT NULL
+ON CONFLICT (utility_id, tipo_ruolo_id) DO NOTHING;
+
+SELECT ok(
+    -- soft-pass se mancano i prerequisiti (BA con emittente / utility CL);
+    -- assertion REALE quando presenti: col vecchio `codice` qui avremmo 0 righe.
+    (SELECT ba_id FROM tmp_lookup_ba) IS NULL
+    OR (SELECT utility_id FROM tmp_lookup_util) IS NULL
+    OR EXISTS (
+        SELECT 1
+          FROM anagrafiche.fn_lookup_utilities_per_ba(
+                   (SELECT ba_id FROM tmp_lookup_ba), 'CL')
+         WHERE utility_id = (SELECT utility_id FROM tmp_lookup_util)
+    ),
+    '6. fn risolve i ruoli per codice_interno: utility CL+EF ritornata (col vecchio codice: 0 righe)'
+);
+
+-- ============================================================
+-- 7) Anti-regressione: rename del `codice` (mutabile) dei ruoli CL/EF
+--    -> la funzione resta invariata (usa codice_interno). codice_interno lockato.
+-- ============================================================
+-- codice e' varchar(10) (EMITT_FISC e' gia' 10 char): si SOSTITUISCE con un
+-- valore corto e distinto (non si appende), comunque != codice_interno.
+UPDATE config.tipi_ruoli
+   SET codice = 'REN' || id::text
+ WHERE codice_interno IN ('CL', 'EF');
+
+SELECT ok(
+    (SELECT ba_id FROM tmp_lookup_ba) IS NULL
+    OR (SELECT utility_id FROM tmp_lookup_util) IS NULL
+    OR EXISTS (
+        SELECT 1
+          FROM anagrafiche.fn_lookup_utilities_per_ba(
+                   (SELECT ba_id FROM tmp_lookup_ba), 'CL')
+         WHERE utility_id = (SELECT utility_id FROM tmp_lookup_util)
+    ),
+    '7. anti-regressione: rename codice ruoli CL/EF -> fn invariata (risoluzione per codice_interno)'
 );
 
 SELECT * FROM finish();

@@ -37,10 +37,10 @@ Non viene applicata alcuna cascata automatica.
 
 La funzione considera:
 
-* Vincoli **FK (`pg_constraint.contype = 'f'`)**
+* Vincoli **FK (`pg_constraint.contype = 'f'`)** monocolonna con FK col `_id`
 * Con **padre e figlio entrambi nell'ambito** degli schemi
-* Non esclusi tramite `dbops.automation_fk_exclusions`
-* Escludendo sempre lo schema `storico`
+* `storico` escluso (a livello di **ambito**, `fn_resolve_scope`)
+* ⚠️ Il filtro `dbops.automation_fk_exclusions` **NON è più applicato** (disattivato in `20260113-01`, "non più utilizzato"; non ripristinato nel rewrite `20260408-06`). La tabella resta inerte. Vedi `brief-db-deprecabilita-catalogo-vs-istanze.md`.
 
 > ⚠️ Se una tabella non partecipa ad alcuna FK eleggibile come **padre**, **nessuna automazione viene applicata**.
 

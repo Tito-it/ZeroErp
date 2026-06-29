@@ -13,7 +13,7 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_documenti_sync_canali()
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_source_code config.sorgenti.codice%TYPE;
+  v_source_code config.sorgenti.codice_interno%TYPE;
   v_order_uid text;
   v_ddt_uid text;
   v_prev_src_id config.sorgenti.id%TYPE;
@@ -36,6 +36,11 @@ BEGIN
   --   - contratti: apre canale DIRETTO su sorgente CONTRATTO
   --   Tutte le sorgenti aprono il proprio canale alla creazione
   --   per simmetria e completezza della storia documento.
+  --
+  -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #13):
+  --   le sorgenti sono risolte per codice_interno (immutabile), non per
+  --   codice (mutabile). I canale_codice passati restano i medesimi
+  --   literali (= codice_interno della sorgente). 'DIRETTO' = sentinel.
   -- =========================================================
 
   IF TG_TABLE_SCHEMA <> 'vendite' THEN
@@ -44,10 +49,10 @@ BEGIN
 
   -- Lookup unico per tutti i codici sorgente usati dalla funzione.
   SELECT
-    max(CASE WHEN s.codice = 'PREVENTIVO'      THEN s.id END),
-    max(CASE WHEN s.codice = 'ORDINE_VENDITA'  THEN s.id END),
-    max(CASE WHEN s.codice = 'DDT_VENDITA'     THEN s.id END),
-    max(CASE WHEN s.codice = 'CONTRATTO'       THEN s.id END)
+    max(CASE WHEN s.codice_interno = 'PREVENTIVO'      THEN s.id END),
+    max(CASE WHEN s.codice_interno = 'ORDINE_VENDITA'  THEN s.id END),
+    max(CASE WHEN s.codice_interno = 'DDT_VENDITA'     THEN s.id END),
+    max(CASE WHEN s.codice_interno = 'CONTRATTO'       THEN s.id END)
   INTO
     v_prev_src_id,
     v_ord_src_id,
@@ -55,7 +60,7 @@ BEGIN
     v_ctr_src_id
   FROM config.sorgenti s
   WHERE s.attivo IS TRUE
-    AND s.codice IN ('PREVENTIVO', 'ORDINE_VENDITA', 'DDT_VENDITA', 'CONTRATTO');
+    AND s.codice_interno IN ('PREVENTIVO', 'ORDINE_VENDITA', 'DDT_VENDITA', 'CONTRATTO');
 
   -- ---------------------------------------------------------
   -- PREVENTIVI
@@ -99,7 +104,7 @@ BEGIN
       END IF;
 
       IF NEW.sorgente_tipo_id IS NOT NULL AND NEW.sorgente_uid IS NOT NULL THEN
-        SELECT s.codice INTO v_source_code
+        SELECT s.codice_interno INTO v_source_code
         FROM config.sorgenti s
         WHERE s.id = NEW.sorgente_tipo_id
         LIMIT 1;
@@ -143,7 +148,7 @@ BEGIN
       END IF;
 
       IF NEW.sorgente_tipo_id IS NOT NULL AND NEW.sorgente_uid IS NOT NULL THEN
-        SELECT s.codice INTO v_source_code
+        SELECT s.codice_interno INTO v_source_code
         FROM config.sorgenti s
         WHERE s.id = NEW.sorgente_tipo_id
         LIMIT 1;
@@ -219,7 +224,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_documenti_sync_canali()
-IS 'Sincronizza documenti_fatturazione_canali su eventi preventivi/ordini/ddt/ddt_ordini/contratti. Tutte le sorgenti aprono il proprio canale alla creazione per simmetria. Transizioni: PREVENTIVO->ORDINE, ORDINE->DDT.';
+IS 'Sincronizza documenti_fatturazione_canali su eventi preventivi/ordini/ddt/ddt_ordini/contratti. Tutte le sorgenti aprono il proprio canale alla creazione per simmetria. Transizioni: PREVENTIVO->ORDINE, ORDINE->DDT. rev 2026-06-28: sorgenti risolte per codice_interno (analisi-hardcoded-codice §3a #13).';
 ```
 
 ---

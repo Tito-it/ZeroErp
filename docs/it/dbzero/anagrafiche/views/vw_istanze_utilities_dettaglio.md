@@ -13,10 +13,10 @@ SELECT iu.id AS istanza_id,
     iu.pdp_id,
     p.pdp AS pdp_codice,
     p.stato_pdp_id,
-    sp.codice_interno AS stato_pdp_codice,
-    sp.codice AS stato_pdp_descrizione,
+    sp.codice AS stato_pdp_codice,
+    sp.descrizione AS stato_pdp_descrizione,
     p.utility_id,
-    u.codice_interno AS utility_codice,
+    u.codice AS utility_codice,
     u.descrizione AS utility_descrizione,
     iu.parent_istanza_id,
     iu.indirizzo_dettaglio_id,
@@ -42,7 +42,9 @@ SELECT iu.id AS istanza_id,
     iu.data_insert,
     iu.user_insert,
     iu.data_update,
-    iu.user_update
+    iu.user_update,
+    sp.codice_interno AS stato_pdp_codice_interno,
+    u.codice_interno AS utility_codice_interno
    FROM ((((((anagrafiche.istanze_utilities iu
      JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)))
      LEFT JOIN anagrafiche.pdp p ON ((p.id = iu.pdp_id)))

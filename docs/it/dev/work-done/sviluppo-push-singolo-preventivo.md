@@ -4,8 +4,19 @@
 > **Branch DB gemello**: `dev/db-tid` (vedi
 > [brief-db-fn-list-preventivi-push-singolo.md](brief-db-fn-list-preventivi-push-singolo.md)).
 > **Trigger**: §3.4 del test plan
-> [sviluppo-listini-v5-test-ui.md](sviluppo-listini-v5-test-ui.md)
+> [sviluppo-listini-v5-test-ui.md](../work-in-progress/sviluppo-listini-v5-test-ui.md)
 > non eseguibile in stato attuale (BE-stub con TODO esplicito).
+>
+> **➡️ Stato (2026-06-20)**: **PR1 ✅ FATTA e in produzione** —
+> `pr_run_commesse_push_one` (`commesse_service.py`) + `push_a_commessa` riscritto
+> (`preventivi_service.py`); è la base del push usata anche dall'handler pratica
+> `vendita.push_preventivo`. **PR2 "emissione immediata" (§9) NON implementata come
+> scritta**: superata dal driver batch fatturazione (`run_fatturazione_batch`, corsie
+> immediata `GIORNALIERO` / differita `MASSIVO`) — vedi
+> [analisi-commesse-stato-e-sviluppi.md](analisi-commesse-stato-e-sviluppi.md).
+> Doc spostato in `work-done/`. I **test del giro push→commessa→fatturazione**
+> (preventivo + ordine) sono in
+> [a-test-push-commesse-fatturazione.md](a-test-push-commesse-fatturazione.md).
 
 ## 1) Obiettivo
 
@@ -28,7 +39,7 @@ sorgenti alle righe commessa (gia' fatto da `BoMComponentExpander`/
 `HandlerPreventivi` esistenti) ma **non scatena** l'emit immediato verso
 `attivita_fatturabili`. Per quel pezzo (Fase 3 puntuale, "servizio
 emissione immediata" elencato come "sviluppo necessario minimo" in
-[fatturazione-attivita-progetto.md §"Emissione immediata"](fatturazione-attivita-progetto.md))
+[fatturazione-attivita-progetto.md §"Emissione immediata"](../work-in-progress/fatturazione-attivita-progetto.md))
 seguira' una **PR2** dedicata, che scrivera' lotto giornaliero APERTO,
 emit puntuale, log su `fatturazione_lotti_log`. Vedi §9 in coda.
 
@@ -279,7 +290,7 @@ l'utente ne lancia un altro (idempotente sul DB ma confusing UX).
 ## 5) Test plan UI §3.4
 
 Dopo il deploy DB+BE+FE, riabilitare lo scenario §3.4 in
-[sviluppo-listini-v5-test-ui.md](sviluppo-listini-v5-test-ui.md):
+[sviluppo-listini-v5-test-ui.md](../work-in-progress/sviluppo-listini-v5-test-ui.md):
 
 * Push preventivo con riga articolo composito → verifica creazione N
   attivita' in `vendite.commesse_attivita` (1 per componente esposto in
@@ -314,7 +325,7 @@ Dopo il deploy DB+BE+FE, riabilitare lo scenario §3.4 in
   brief al team DB.
 * Guida: [fatturazione.md §Fase 1](../../guide/fatturazione.md#fase-1---push-sorgenti-su-commesse).
 * Guida: [gestione-commesse.md §Flusso push](../../guide/gestione-commesse.md).
-* WIP architetturale: [gestione-commesse-v2.md §6.3](gestione-commesse-v2.md).
+* WIP architetturale: [gestione-commesse-v2.md §6.3](../work-in-progress/gestione-commesse-v2.md).
 
 ## 9) Prossimo step — PR2: servizio "emissione immediata" (Fase 3 puntuale)
 
@@ -326,7 +337,7 @@ correttamente il flag, ma nessuno scatena l'emit verso AF al di fuori del
 batch pipeline lotto. PR2 chiude il gap.
 
 **Componenti da realizzare** (sintesi da
-[fatturazione-attivita-progetto.md §"Sviluppi necessari (minimo)"](fatturazione-attivita-progetto.md)):
+[fatturazione-attivita-progetto.md §"Sviluppi necessari (minimo)"](../work-in-progress/fatturazione-attivita-progetto.md)):
 
 * Servizio Django `emissione_immediata_service.emetti_da_commessa(commessa_id)`:
   * risolve/crea lotto giornaliero APERTO per emittente e data corrente;
