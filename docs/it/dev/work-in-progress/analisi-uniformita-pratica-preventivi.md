@@ -129,71 +129,87 @@ modello. Si preferisce **B (ordine esplicito)**, coerente col flusso standalone.
 
 ---
 
-## 6. Piano operativo
+## 6. Principio di layering (correzione del team DB, recepita)
 
-> Sequenza: prima i prerequisiti **DB** (brief al team), poi **BE**, poi **FE**.
-> Non si tocca BE/FE prima dei prerequisiti DB (vincolo di progetto).
+`pratiche` è **Anello 2 (motore generico)**: sa di flussi/esiti/prerequisiti,
+**non** sa cosa sia un preventivo, un ordine o la "merce". `vendite` (Anello 3)
+**usa** `pratiche`, mai il contrario. Due punti del piano iniziale, se messi nel DB
+di `pratiche`, avrebbero forzato `pratiche` a leggere `vendite` → **inversione
+vietata**. Vanno quindi spostati nel layer `vendite`/BE:
 
-### 6.0 Conseguenza strutturale — fusione dei tipi pratica
+- **"50/60 solo se c'è ordine merce"** → NON è prerequisito DB (significherebbe
+  leggere `vendite.preventivi_righe`): è **istanziazione condizionale** fatta
+  dall'handler SMISTAMENTO (vendite), che crea i flussi 50/60 **solo** se ha
+  prodotto un ordine merce. Regge perché i flussi nascono **on-demand**
+  (`crea_flusso` per singolo template, nessun bulk alla nascita pratica).
+- **"following rev attiva"** → la risoluzione `numero → rev attiva` la fa
+  `vendite` (proprietario di `vw_preventivi.is_attiva`), non `pratiche`.
 
-`PREVENTIVI_IMMEDIATA` (9002) e `PREVENTIVI_DIFFERITA` (9003) differiscono **solo**
-per `handler_params.modalita_fatturazione` cablato sul flusso CONFERMA. Con la
-decisione 3 la modalità si sceglie all'accettazione → i due tipi **si fondono in
-un unico `PREVENTIVI`**. Meno catalogo, una sola UX. *(Da confermare in apertura
-brief DB: migrazione delle pratiche storiche dei due tipi al tipo unico.)*
+## 7. Stato implementazione
 
-### 6.1 Nuova sequenza di flussi (tipo unico `PREVENTIVI`)
+### 7.1 DB — ✅ APPLICATO (2026-06-30, commit `a7824db27`)
 
-| Seq | Flusso | Azione = standalone | Note |
-|---|---|---|---|
-| 10 | RICHIESTA_CLIENTE | (manuale) | invariato |
-| 20 | PREVENTIVAZIONE | apre `PreventiviDrawer` **+ revisione** | dec. 4 |
-| 30 | APPROVAZIONE_CLIENTE | **dialog accettazione** (modalità+competenza) → preventivo ACCETTATO | dec. 3 |
-| 40 | SMISTAMENTO | apre **Pannello Smistamento** (merce→ordine, servizi→commessa) | dec. 1; sostituisce l'handler auto |
-| 50 | CONFERMA_ORDINE | **Emetti** ordine `DRAFT→CONFERMATO` (+PDF) | dec. 2; solo se esiste ramo merce |
-| 60 | INVIO_COMMESSA | **Push** ordine `CONFERMATO→EVASO` → commessa AUTO | dec. 2; solo se esiste ramo merce |
+Riferimenti: [brief-db-pratica-preventivi-tipo-unico-flussi.md](brief-db-pratica-preventivi-tipo-unico-flussi.md)
++ [brief-db-deprecabilita-catalogo-vs-istanze.md](brief-db-deprecabilita-catalogo-vs-istanze.md).
 
-I flussi 50/60 sono **condizionali** (solo se lo smistamento ha prodotto un
-ordine). Il ramo servizi chiude la sua commessa già allo step 40.
+- **Tipo unico `PREVENTIVI` (id 9004)** con catalogo 6 flussi (id 9009-9014):
+  RICHIESTA_CLIENTE / PREVENTIVAZIONE (azione APRI_PREVENTIVO) / APPROVAZIONE_CLIENTE
+  (event-handler `vendita.accetta_preventivo`) / SMISTAMENTO / CONFERMA_ORDINE
+  (`obbligatorio=f`) / INVIO_COMMESSA (`obbligatorio=f`). `handler_id` **vuoto** su
+  tutti (l'handler monolitico è ritirato).
+- **Ritiro 9002/9003 NON via `attivo=false`** (bloccato dal guard
+  `prevent_deactivate_if_children`, corretto) ma via **nuova colonna
+  `obsoleto_dal`** su `tipi_prestazione`/`template_flussi`. `attivo` resta true
+  (storia intatta); 9002/9003 hanno `obsoleto_dal=2026-06-30`. Pattern riusabile
+  cross-dominio ([reference_deprecabilita_catalogo_obsoleto_dal]).
+- **Following-rev**: convenzione in `pratiche_sorgenti.meta`
+  (`ref_stable_key`=numero, `follow_active`), `sorgente_uid` resta l'uid
+  entry-point. Nessuna nuova struttura, nessun trigger; risoluzione a read-time in
+  vendite. JSONB finché non emerge il 2° consumatore.
 
-### 6.2 DB (brief al team `dev/db-tid`)
+🟡 **Punto da confermare col DB**: i prerequisiti sono `50 ← 40` **e** `60 ← 40`
+(entrambi da SMISTAMENTO). Logicamente INVIO_COMMESSA(60) richiede l'ordine
+CONFERMATO, output di CONFERMA_ORDINE(50) → atteso **`60 ← 50`**. Mitigato dalla
+creazione on-demand BE, ma da raddrizzare per pulizia di modello.
 
-- **Seed**: tipo unico `PREVENTIVI` (+ migrazione 9002/9003 → unico), nuovi
-  `template_flussi` 10-60, `template_flussi_prerequisiti` esito-aware, `azioni_ui`
-  per SMISTAMENTO/CONFERMA_ORDINE/INVIO_COMMESSA, binding `handler_eventi` dove
-  serve. Rimuovere `handler_params.modalita_fatturazione` dal CONFERMA.
-- **Aggancio revisione**: `pratiche_sorgenti` ROOT deve seguire la **rev attiva**
-  del preventivo (fn/trigger su `fn_crea_revisione_preventivo` o risoluzione
-  dinamica via `vw_preventivi.is_attiva`). Da progettare nel brief.
+### 7.2 Selezione tipo: filtro `obsoleto_dal` — **DB, non BE**
 
-### 6.3 BE (`apps/vendite`, `apps/pratiche`)
+La lista dei tipi selezionabili è servita dalla fn DB generica
+`dbops.fn_get_lookup_codici` (lookup `rel=`), che già filtra `attivo` per
+introspezione colonne. Il filtro `obsoleto_dal` va aggiunto **lì** (un solo punto,
+tutti i cataloghi), con un toggle per i contesti "filtro/storico" che devono
+mostrare anche gli obsoleti. → brief dedicato
+[brief-db-obsoleto-dal-lookup-guard.md](brief-db-obsoleto-dal-lookup-guard.md).
+**BE/FE: niente** per la selezione.
 
-- **Ritiro/snellimento** dell'handler monolitico `vendita.push_preventivo`: lo
-  smistamento torna alle azioni standalone (`genera_ordine`/`push_commessa`)
-  guidate dai flussi; l'handler non decide più al posto dell'operatore.
-- Accettazione: il path pratica riusa il **service accettazione standalone**
-  (persiste modalità+competenza sul preventivo). Rimuove la dipendenza da
-  `meta["competenza_fatturazione"]` (chiude **bug §3.1.2**).
-- Flussi 50/60: agganciano le azioni ordine esistenti (Emetti, Push commessa) +
-  giornale `DOMINIO_*` + `pratiche_sorgenti` (ordine COLLEGATO, commessa COLLEGATO).
+### 7.3 BE/FE — DA FARE (dopo i prerequisiti DB)
 
-### 6.4 FE
+| # | Layer | Cosa |
+|---|---|---|
+| B1 | BE vendite | handler **SMISTAMENTO**: split righe + crea on-demand 50/60 **solo se ordine merce** |
+| B2 | BE vendite | **push a commessa** ricollocato su **INVIO_COMMESSA** (modalità presa dal **preventivo**, non da `handler_params`) |
+| B3 | BE vendite | **CONFERMA_ORDINE**: Emetti ordine (`DRAFT→CONFERMATO`) agganciato al flusso |
+| B4 | BE vendite | accettazione (flusso 30) riusa il **service accettazione standalone** → persiste modalità+competenza sul preventivo (chiude bug §3.1.2) |
+| B5 | BE vendite | following-rev: popola `meta` (`ref_stable_key`/`follow_active`) all'aggancio + risolutore `numero→rev attiva` |
+| F1 | FE | **Pannello Smistamento**: pulsante **"Smista tutto"** quando destinazione unica (riuso pratica+standalone) |
+| F2 | FE | pratica: flussi 40/50/60 aprono le **stesse** UI standalone; drawer da pratica **espone revisione** |
+| F3 | FE | dialog accettazione nel flusso 30; chiavi azioni UI (SMISTAMENTO/CONFERMA_ORDINE/INVIO_COMMESSA) nel registry; etichette flussi |
 
-- **Pannello Smistamento base**: aggiungere il pulsante **"Smista tutto"** quando
-  destinazione unica (riuso in pratica e standalone).
-- Pratica: i flussi 40/50/60 aprono le **stesse** UI standalone (pannello
-  smistamento, azioni ordine). Drawer preventivo da pratica: **esporre revisione**.
-- Accettazione (flusso 30): riusare il **dialog accettazione** standalone.
-- Correggere le **descrizioni/etichette** dei flussi (la CONFERMA non promette più
-  "push a commessa": ora c'è SMISTAMENTO + CONFERMA_ORDINE + INVIO_COMMESSA).
+Ritiro dell'handler monolitico `vendita.push_preventivo` come parte di B1-B3.
 
-## 7. Bug chiusi da questo intervento
+## 8. Bug chiusi da questo intervento
 
-- 🔴 §3.1.1 merce ferma all'ordine DRAFT → risolto da flussi 50/60.
-- 🔴 §3.1.2 competenza DIFFERITA mai popolata → risolto spostando la scelta al
-  dialog di accettazione (dec. 3).
-- 🔴 §3.1.3 revisione assente → risolto (dec. 4).
-- 🟡 §3.1.4 etichetta fuorviante → risolto (nuove etichette flussi).
+- 🔴 §3.1.1 merce ferma all'ordine DRAFT → flussi 50/60 (B1-B3).
+- 🔴 §3.1.2 competenza DIFFERITA mai popolata → scelta spostata al dialog di
+  accettazione, persistita sul preventivo (B4).
+- 🔴 §3.1.3 revisione assente → riesposta nel drawer da pratica (F2).
+- 🟡 §3.1.4 etichetta fuorviante → nuove etichette/azioni flussi (F3).
 
-> Stato: piano approvato a livello di direzione. Prossimo passo operativo =
-> **brief DB** (§6.2) come primo deliverable; BE/FE seguono i prerequisiti DB.
+## 9. Backfill `data_apertura` — non fare
+
+Vedi [nota-be-backfill-data-apertura-pratiche.md]. Su dati test è cosmetica
+(`ORDER BY … NULLS LAST` neutralizza); su dati reali la fonte corretta è la
+transizione →APERTA del giornale, non `data_insert`. Rinviato.
+
+> Stato: DB applicato; restano BE/FE (§7.3) + filtro `obsoleto_dal` lato DB (§7.2)
+> + conferma prereq `60←50` (§7.1).
