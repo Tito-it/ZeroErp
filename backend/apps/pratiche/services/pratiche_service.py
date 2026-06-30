@@ -531,6 +531,7 @@ def completa_flusso(
     esito: str,
     note_esito: str | None = None,
     user: str | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> None:
     ErrorManager.require(
         flusso_id > 0,
@@ -550,7 +551,11 @@ def completa_flusso(
     # es. accetta il preventivo collegato quando APPROVAZIONE_CLIENTE chiude
     # POSITIVO. Stessa transazione → completamento + azione dominio atomici (sostituisce
     # il routing M2 hardcoded lato FE). I flussi senza binding: no-op.
-    dispatch_handler_eventi(flusso_id, evento="COMPLETATO", esito=esito, user=user)
+    # `meta` = contesto d'azione fornito dall'operatore (es. modalita/competenza
+    # di fatturazione all'accettazione): passa all'handler, non viene persistito sul flusso.
+    dispatch_handler_eventi(
+        flusso_id, evento="COMPLETATO", esito=esito, user=user, extra_meta=meta,
+    )
 
 
 # Scopo: Avvia E completa un flusso in un'unica azione (modalita CONTESTUALE).
@@ -567,6 +572,7 @@ def avvia_e_completa_flusso(
     esito: str,
     note_esito: str | None = None,
     user: str | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> None:
     ErrorManager.require(
         flusso_id > 0,
@@ -589,7 +595,7 @@ def avvia_e_completa_flusso(
     # modalita "esito deciso dall'operatore"; l'automazione d'avvio appartiene ad
     # AUTOMATICO/handler. Le reazioni di dominio all'esito viaggiano comunque su
     # dispatch_handler_eventi dentro completa_flusso.
-    completa_flusso(flusso_id, esito=esito, note_esito=note_esito, user=user)
+    completa_flusso(flusso_id, esito=esito, note_esito=note_esito, user=user, meta=meta)
 
 
 # Scopo: Transizione generica di stato di un flusso tramite codice_interno.
@@ -719,6 +725,7 @@ def dispatch_handler(flusso_id: int, *, user: str | None = None) -> dict[str, An
 # hardcoded lato FE). Eccezioni dell'handler propagano e rollano la transizione.
 def dispatch_handler_eventi(
     flusso_id: int, *, evento: str, esito: str | None = None, user: str | None = None,
+    extra_meta: dict[str, Any] | None = None,
 ) -> None:
     flusso = _flusso_per_dispatch(flusso_id)
     if flusso is None:
@@ -729,7 +736,11 @@ def dispatch_handler_eventi(
         return
 
     from apps.pratiche.services.handler_registry import get_handler
-    meta = coerce_jsonb_dict(flusso["meta"])
+    # meta = stato persistito del flusso + contesto transiente fornito
+    # dall'operatore al completamento (es. modalita/competenza all'accettazione):
+    # l'extra prevale sul persistito ma NON viene scritto su flusso.meta (input
+    # d'azione, non stato). Le scelte durevoli le persiste l'handler sul dominio.
+    meta = {**coerce_jsonb_dict(flusso["meta"]), **(extra_meta or {})}
     for handler_key, handler_params in bindings:
         handler_class = get_handler(handler_key)
         # Binding seedato a DB ma senza implementazione registrata = misconfig di

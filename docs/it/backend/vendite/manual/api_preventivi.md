@@ -597,6 +597,28 @@ natura-aware il 2026-06-12: `vw_preventivi_smistamento` + `_righe`, le vecchie
 
 ---
 
+### 16b. Risoluzione preventivo ROOT (percorso pratica)
+
+Due endpoint di lettura che risolvono il preventivo ROOT agganciato a una pratica
+(`pratiche_sorgenti`, ruolo_link `ROOT`). Alimentano gli step del percorso che
+aprono lo stesso `PreventiviDrawer`. Ritornano `{"preventivo_id": <id|null>}`.
+
+- **Per flusso**: `GET /api/v1/vendite/preventivi/root-per-flusso/?flusso_id=<id>`
+  — ROOT agganciato a **quel flusso** (aggancio per-flusso). Usato dalla
+  riapertura del flusso PREVENTIVAZIONE (`azione_ui` APRI_PREVENTIVO): se il ROOT
+  esiste apre in EDIT, altrimenti CREATE. `flusso_id` obbligatorio
+  (`E_FLUSSO_ID_OBBLIGATORIO`).
+- **Per pratica**: `GET /api/v1/vendite/preventivi/root-per-pratica/?pratica_id=<id>`
+  — ROOT della **pratica** (non del flusso corrente). Usato dagli step **a valle**
+  (es. `azione_ui` SMISTAMENTO, flusso che non possiede il ROOT: agganciato a
+  monte da PREVENTIVAZIONE). `pratica_id` obbligatorio
+  (`E_PRATICA_ID_OBBLIGATORIO`). Il FE non apre in CREATE se ritorna `null`
+  (`requiresExisting`): lo step a valle richiede un preventivo già esistente.
+- Lettura libera (area `vendite`); l'apertura del documento applica comunque RLS
+  sull'emittente.
+
+---
+
 ### 17. Contesto pricing
 
 - Metodo: `GET`

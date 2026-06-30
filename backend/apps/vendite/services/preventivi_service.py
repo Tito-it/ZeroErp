@@ -729,6 +729,21 @@ def get_root_per_flusso(flusso_id: int) -> dict[str, Any]:
     return {"preventivo_id": preventivo_id}
 
 
+# Scopo: risolve il preventivo ROOT della PRATICA (non per-flusso). Usato dal
+# percorso pratica per gli step a valle (es. SMISTAMENTO) che operano sul
+# preventivo gia' agganciato a monte (flusso PREVENTIVAZIONE), non sul proprio.
+def get_root_per_pratica(pratica_id: int) -> dict[str, Any]:
+    ErrorManager.require(
+        pratica_id > 0,
+        code="E_PRATICA_ID_INVALIDO",
+        message="pratica_id non valido.",
+        detail=f"pratica_id={pratica_id}",
+        function_name=f"{_FN}.get_root_per_pratica",
+    )
+    preventivo_id = PreventiviRepository().get_preventivo_id_by_pratica_root(pratica_id)
+    return {"preventivo_id": preventivo_id}
+
+
 # ══════════════════════════════════════════════════════════
 #  SCRITTURE — Righe
 # ══════════════════════════════════════════════════════════

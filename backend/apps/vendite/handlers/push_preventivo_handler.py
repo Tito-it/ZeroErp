@@ -36,6 +36,7 @@ from django.db import transaction
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.preventivi_repository import PreventiviRepository
+from apps.vendite.handlers._handler_helpers import parse_competenza_mese
 from apps.vendite.services._smistamento_gate_helpers import (
     transiziona_a_evaso_se_smistato,
 )
@@ -52,26 +53,6 @@ _STATO_PREVENTIVO_ACCETTATO = "ACCETTATO"
 
 _SORGENTE_PREVENTIVO = "PREVENTIVO"
 _SORGENTE_COMMESSA = "COMMESSA"
-
-
-# Scopo: normalizza il valore competenza (string/date) al primo del mese.
-# Accetta 'YYYY-MM-DD', 'YYYY-MM', o un date. None/invalido → None.
-def _parse_competenza_mese(value: Any) -> date | None:
-    if value is None:
-        return None
-    if isinstance(value, date):
-        return value.replace(day=1)
-    if isinstance(value, str):
-        raw = value.strip()
-        if not raw:
-            return None
-        if len(raw) == 7:  # 'YYYY-MM'
-            raw = f"{raw}-01"
-        try:
-            return date.fromisoformat(raw).replace(day=1)
-        except ValueError:
-            return None
-    return None
 
 
 class PushPreventivoHandler:
@@ -202,7 +183,7 @@ class PushPreventivoHandler:
                     competenza_mese = date.today().replace(day=1)
                 else:  # DIFFERITA
                     fatturazione_immediata = False
-                    competenza_mese = _parse_competenza_mese(
+                    competenza_mese = parse_competenza_mese(
                         meta.get("competenza_fatturazione"),
                     )
                     ErrorManager.require(

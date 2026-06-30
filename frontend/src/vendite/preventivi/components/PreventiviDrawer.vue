@@ -48,10 +48,8 @@ import { SORGENTE_CODES } from '../../../documenti/constants'
 import DocumentiGeneratiSorgenteList from '../../../documenti/components/DocumentiGeneratiSorgenteList.vue'
 import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
 import PreventivoEmissioneDialog from './dialogs/PreventivoEmissioneDialog.vue'
+import PreventivoAccettazioneDialog from './dialogs/PreventivoAccettazioneDialog.vue'
 import Drawer from 'primevue/drawer'
-import AppDialog from '../../../core/components/AppDialog.vue'
-import DatePicker from 'primevue/datepicker'
-import ToggleSwitch from 'primevue/toggleswitch'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 import Message from 'primevue/message'
@@ -658,49 +656,16 @@ const acceptDialogVisible = ref(false)
 // (refactor 2026-05-28, mirror del flusso offerta `ApiOffertaEmetti`).
 const emissioneDialogVisible = ref(false)
 const emissioneLoading = ref(false)
-const acceptForm = ref({
-  fatturazione_immediata: false,
-  // Default 1° del mese corrente: scelta sensata se l'operatore conferma "non
-  // immediata" senza modificare. Comunque editabile.
-  competenza_mese: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-})
-// Regola di priorita': immediata=true ⇒ competenza forzata al mese corrente.
-// Il BE applica comunque la stessa regola lato server (defense-in-depth);
-// qui pre-blocchiamo il datepicker per chiarezza UX.
-const acceptCompetenzaDisabled = computed(
-  () => acceptForm.value.fatturazione_immediata === true,
-)
-
-// Helper: primo giorno del mese corrente (snapshot tx-time, allineato BE).
-function _firstOfCurrentMonth() {
-  const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth(), 1)
-}
-
-// Sync UX↔BE: quando l'utente attiva "fatturazione immediata", il datepicker
-// si disabilita e mostriamo il mese corrente (= valore che il BE forzera').
-// Evita drift tra valore visibile e valore effettivamente persistito.
-watch(() => acceptForm.value.fatturazione_immediata, (immediata) => {
-  if (immediata) {
-    acceptForm.value.competenza_mese = _firstOfCurrentMonth()
-  }
-})
-
+// Dialog accettazione estratto in PreventivoAccettazioneDialog (componente
+// condiviso col percorso pratica): qui resta solo apertura + conferma. Il
+// payload {fatturazione_immediata, competenza_mese} arriva gia' BE-ready.
 function openAcceptDialog() {
-  acceptForm.value = {
-    fatturazione_immediata: false,
-    competenza_mese: _firstOfCurrentMonth(),
-  }
   acceptDialogVisible.value = true
 }
 
-async function confirmAcceptDialog() {
-  const f = acceptForm.value
+async function confirmAcceptDialog(payload) {
   acceptDialogVisible.value = false
-  await eseguiCambioStato(STATO_PREVENTIVO.ACCETTATO, {
-    fatturazione_immediata: f.fatturazione_immediata,
-    competenza_mese: f.competenza_mese ? toDateString(f.competenza_mese) : null,
-  })
+  await eseguiCambioStato(STATO_PREVENTIVO.ACCETTATO, payload)
 }
 
 function onCambiaStato(action) {
@@ -1115,36 +1080,13 @@ const drawerActions = computed(() => {
     @confirm="handleEmissioneConferma"
   />
 
-  <!-- Dialog accettazione preventivo (transizione EMESSO → ACCETTATO).
-       Richiede modalita' di fatturazione: toggle immediata + datepicker mese
-       di competenza. Regola di priorita' (BE+FE): immediata=true forza
-       competenza al mese corrente. -->
-  <AppDialog v-model:visible="acceptDialogVisible" :closable="false"
-    :header="t('preventivi.accetta_titolo')" width="sm"
+  <!-- Dialog accettazione preventivo (EMESSO → ACCETTATO): componente condiviso
+       col percorso pratica. Emette il payload {fatturazione_immediata,
+       competenza_mese} gia' BE-ready. -->
+  <PreventivoAccettazioneDialog
+    v-model:visible="acceptDialogVisible"
     :readonly="props.readonly || parentReadonly"
-    :save-label="t('preventivi.accetta_conferma')"
-    :save-disabled="!acceptForm.fatturazione_immediata && !acceptForm.competenza_mese"
-    @save="confirmAcceptDialog">
-    <p style="margin: 0 0 1rem 0; color: var(--text-color-secondary);">
-      {{ t('preventivi.accetta_descrizione') }}
-    </p>
-    <div class="form-grid">
-      <div class="form-field" style="display: flex; align-items: center; gap: 0.75rem;">
-        <ToggleSwitch v-model="acceptForm.fatturazione_immediata" inputId="accept-immediata" />
-        <label for="accept-immediata">{{ t('preventivi.accetta_fatturazione_immediata') }}</label>
-      </div>
-      <div class="form-field">
-        <label>{{ t('preventivi.accetta_competenza') }}</label>
-        <DatePicker v-model="acceptForm.competenza_mese" :date-format="DATE_FORMAT"
-          show-icon view="month" :disabled="acceptCompetenzaDisabled" />
-        <small v-if="acceptCompetenzaDisabled" style="color: var(--text-color-secondary);">
-          {{ t('preventivi.accetta_competenza_hint_immediata') }}
-        </small>
-        <small v-else-if="!acceptForm.competenza_mese" class="app-field-error">
-          {{ t('preventivi.accetta_competenza_required') }}
-        </small>
-      </div>
-    </div>
-  </AppDialog>
+    @confirm="confirmAcceptDialog"
+  />
 </template>
 

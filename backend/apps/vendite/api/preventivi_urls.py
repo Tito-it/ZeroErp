@@ -34,6 +34,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoRevisione,
     ApiPreventivoRevisioniList,
     ApiPreventivoRootPerFlusso,
+    ApiPreventivoRootPerPratica,
     ApiPreventivoRiepilogoIva,
     ApiPreventivoRigaComponenteDetail,
     ApiPreventivoRigaComponentiList,
@@ -60,6 +61,12 @@ urlpatterns = [
         "root-per-flusso/",
         ApiPreventivoRootPerFlusso.as_view(),
         name="vendite-preventivi-root-per-flusso",
+    ),
+    # Step a valle del percorso (es. SMISTAMENTO): risolve il ROOT della pratica.
+    path(
+        "root-per-pratica/",
+        ApiPreventivoRootPerPratica.as_view(),
+        name="vendite-preventivi-root-per-pratica",
     ),
     # Export CSV/XLSX lista configurabile (DEF-1). Prima della rotta lista ""
     # per matchare il path dedicato.

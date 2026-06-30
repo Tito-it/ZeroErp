@@ -425,6 +425,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <LookupSelect
               v-model="form.tipo_prestazione_id"
               rel="pratiche.tipi_prestazione"
+              :includi-obsoleti="false"
               class="w-full" :placeholder="t('pratiche.select_tipo_prestazione')"
             />
           </div>

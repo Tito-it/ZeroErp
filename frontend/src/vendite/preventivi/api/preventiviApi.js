@@ -204,3 +204,10 @@ export function collegaPratica(preventivoId, payload) {
 export function getRootPerFlusso(flussoId) {
   return api.get(`${BASE}/root-per-flusso/`, { params: { flusso_id: flussoId } })
 }
+
+// Risolve il preventivo ROOT della PRATICA (non per-flusso): usato dagli step a
+// valle del percorso (es. SMISTAMENTO) che operano sul preventivo agganciato a
+// monte. Ritorna { preventivo_id: <id|null> }.
+export function getRootPerPratica(praticaId) {
+  return api.get(`${BASE}/root-per-pratica/`, { params: { pratica_id: praticaId } })
+}

@@ -9,6 +9,7 @@ import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useNotify } from '../../core/composables/useNotify'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { READONLY_DOMAINS, STATI_PRATICA_TERMINALI, STATO_FLUSSO } from '../../core/constants'
 import { usePraticheStore } from '../stores/pratiche'
@@ -24,6 +25,7 @@ const { t } = useI18n()
 const store = usePraticheStore()
 const drawer = useDrawerState()
 const { execute } = useApiHandler()
+const notify = useNotify()
 useReadonlyMode(READONLY_DOMAINS.PRATICHE)
 
 // --- Coda lavoro ---
@@ -227,6 +229,12 @@ async function onOpenAttivita(payload) {
     // invece di crearne uno nuovo (il lucchetto unico per-flusso a DB impedisce
     // comunque il doppione). Resolver opzionale e best-effort.
     const existingId = entry.resolveExisting ? await entry.resolveExisting(ctx) : null
+    // Step a valle (es. SMISTAMENTO): il documento DEVE gia' esistere. Niente
+    // fallback in create (eviterebbe un documento orfano): errore parlante e stop.
+    if (entry.requiresExisting && existingId == null) {
+      notify.error(t('pratiche.attivita_documento_mancante'))
+      return
+    }
     activityEntry.value = entry
     activityCtx.value = ctx
     activityProps.value = entry.buildProps(ctx, existingId)

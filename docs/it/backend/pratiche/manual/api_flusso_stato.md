@@ -55,6 +55,16 @@ l'handler `vendita.accetta_preventivo` che porta il preventivo ROOT collegato ad
 `ACCETTATO`. Sostituisce il vecchio endpoint dedicato M2: la FE chiama il
 completamento **generico** e il motore esegue l'azione di dominio.
 
+**Contesto d'azione al completamento (`meta`, 2026-06-30)**: il body può includere un
+oggetto `meta` opzionale, inoltrato agli handler di evento `COMPLETATO` come `extra_meta`
+(fuso sopra `flussi.meta`, **senza persisterlo**: è input d'azione, non stato — le scelte
+durevoli le scrive l'handler sul dominio). È il canale con cui l'operatore passa i dati di
+processo che l'esito richiede. Esempio: l'accettazione del preventivo nel percorso pratica
+non usa più una politica neutra cablata: la FE apre il dialog di accettazione (modalità di
+fatturazione + competenza) al completamento di `APPROVAZIONE_CLIENTE`, e l'handler
+`vendita.accetta_preventivo` legge `meta.fatturazione_immediata` / `meta.competenza_mese` e
+li persiste sul preventivo (DIFFERITA senza competenza → `E_VENDITA_COMPETENZA_RICHIESTA`).
+
 La generazione automatica cross-pratica al completamento e' gestita dal trigger DB `trgfn_flussi_generazione`.
 
 ## Input
@@ -66,6 +76,13 @@ La generazione automatica cross-pratica al completamento e' gestita dal trigger 
   - `nuovo_stato` (string, **obbligatorio**) — codice_interno dello stato (es. `IN_CORSO`, `COMPLETATO`, `SOSPESO`, `ANNULLATO`)
   - `esito` (string, obbligatorio se `nuovo_stato = COMPLETATO`) — esito del flusso: `POSITIVO`, `NEGATIVO`, `PARZIALE`, `NON_APPLICABILE`
   - `note_esito` (string, opzionale) — note sull'esito
+  - `meta` (object, opzionale) — **contesto d'azione** del completamento, inoltrato agli
+    handler di dominio su evento `COMPLETATO` (fuso sopra `flussi.meta`, **non persistito**
+    sul flusso). Usato quando l'esito richiede dati di processo: es. l'accettazione del
+    preventivo (`APPROVAZIONE_CLIENTE`/`POSITIVO`) riceve `{"fatturazione_immediata": bool,
+    "competenza_mese": "YYYY-MM-DD"|null}` che l'handler persiste **sul preventivo**.
+    Valido solo con `nuovo_stato = COMPLETATO` (instrada a `completa_flusso` /
+    `avvia_e_completa_flusso`); ignorato sugli altri stati.
 
 ## Output
 
@@ -107,6 +124,14 @@ La generazione automatica cross-pratica al completamento e' gestita dal trigger 
 
 ## Note di migrazione
 
+- (30 giugno 2026) **Contesto d'azione `meta` al completamento**: `completa_flusso` e
+  `avvia_e_completa_flusso` accettano un `meta` opzionale, inoltrato a
+  `dispatch_handler_eventi(..., extra_meta=meta)` e fuso sopra `flussi.meta` **senza
+  persistenza**. Abilita l'accettazione preventivo uniforme al programma standalone:
+  modalità di fatturazione + competenza scelte dall'operatore (non più politica neutra
+  cablata né `handler_params` sul CONFERMA). L'handler `vendita.accetta_preventivo` legge i
+  due valori da `meta` e li persiste sul preventivo; fallback retro-compatibile (meta assente
+  → politica neutra). Vedi `analisi-uniformita-pratica-preventivi.md` (Fase 1).
 - (17 giugno 2026) **Esito configurabile sullo step** (colonne `template_flussi.modalita_esito`
   e `esito_default`, migration `20260617-01`/`-02`): `avvia_flusso` auto-completa con
   `esito_default` quando l'handler ritorna un risultato **oppure** `modalita_esito =

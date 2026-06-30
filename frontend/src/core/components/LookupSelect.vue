@@ -52,6 +52,10 @@ const props = defineProps({
   // lista (es. stato email log). Etichetta da `allLabel`.
   includeAllOption: { type: Boolean, default: false },
   allLabel: { type: String, default: '' },
+  // Default true = comportamento storico (mostra anche le voci di catalogo
+  // obsolete, obsoleto_dal <= oggi). Passare false nella "selezione per il
+  // nuovo" (es. tipo nuova pratica) per nasconderle. Vale solo in modalita' `rel`.
+  includiObsoleti: { type: Boolean, default: true },
 })
 
 if (import.meta.env.DEV && !props.rel === !props.fetcher) {
@@ -64,10 +68,17 @@ const emit = defineEmits(['update:modelValue', 'change'])
 // Cache globale per-chiave: tutte le istanze con la stessa chiave condividono
 // la stessa fetch (evita N chiamate duplicate nei form con piu' dropdown).
 // Chiave = `rel` nel modo storico, `lookupKey` (fallback `rel`) col fetcher.
-const lookupKeyResolved = props.fetcher ? (props.lookupKey || props.rel) : props.rel
+// In modalita' `rel`, se si escludono gli obsoleti la chiave cache deve
+// differire da quella di default (stesso `rel` con set diverso → niente
+// collisione nella cache globale condivisa).
+const relCacheKey = props.includiObsoleti ? props.rel : `${props.rel}::no-obsoleti`
+const lookupKeyResolved = props.fetcher ? (props.lookupKey || props.rel) : relCacheKey
 const fetchFn = props.fetcher
   ? props.fetcher
-  : () => lookupCodici(props.rel, { page_size: props.pageSize })
+  : () => lookupCodici(props.rel, {
+      page_size: props.pageSize,
+      ...(props.includiObsoleti ? {} : { includi_obsoleti: false }),
+    })
 const lookupOptions = { immediate: true }
 if (props.transform) lookupOptions.transform = props.transform
 const lookup = useGlobalLookup(lookupKeyResolved, fetchFn, lookupOptions)

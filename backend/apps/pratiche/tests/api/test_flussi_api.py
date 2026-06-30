@@ -143,7 +143,7 @@ class FlussiApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 200)
         # La view inoltra l'utente acting agli handler di completamento (p_user).
         mock_completa.assert_called_once_with(
-            5, esito="POSITIVO", note_esito="Tutto ok", user=ANY,
+            5, esito="POSITIVO", note_esito="Tutto ok", user=ANY, meta=None,
         )
 
     # Scopo: CONTESTUALE — COMPLETATO da DA_ESEGUIRE instrada ad avvia_e_completa
@@ -169,7 +169,7 @@ class FlussiApiTests(JwtMockedApiTest):
         )
         self.assertEqual(response.status_code, 200)
         mock_avvia_e_completa.assert_called_once_with(
-            5, esito="POSITIVO", note_esito="ok", user=ANY,
+            5, esito="POSITIVO", note_esito="ok", user=ANY, meta=None,
         )
         mock_completa.assert_not_called()
 

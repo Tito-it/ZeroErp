@@ -77,6 +77,16 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Parametri non validi.",
         ),
+        # Guard catalogo obsoleto (dbops.trgfn_child_requires_non_obsolete_parent):
+        # tentata creazione/ri-aggancio di un'istanza su una voce di catalogo con
+        # obsoleto_dal <= oggi. Conflitto di stato del catalogo → 409 (come gli
+        # altri guard). Messaggio parlante dal DB (messaggi_errore id 500).
+        "E_CATALOGO_OBSOLETO_NUOVA_ISTANZA": ErrorPolicy(
+            code="E_CATALOGO_OBSOLETO_NUOVA_ISTANZA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Voce di catalogo obsoleta: non selezionabile per nuove istanze.",
+        ),
         # ── Building block note partizionate (apps/core/services/partitioned_note_service.py) ──
         # Codici cross-area: il service in apps/core/ scrive su qualunque partizione
         # di vendite.note (PREVENTIVO/CONTRATTO/ORDINE/DDT/FATTURA/ATTIVITAFT) e in
