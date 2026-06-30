@@ -1,0 +1,2 @@
+id,handler_key,codice,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update
+9003,vendita.post_smistamento,VENDITA_POST_SMISTAMENTO,Handler di completamento post-SMISTAMENTO (PREVENTIVI): se lo smistamento ha prodotto un ordine merce lo aggancia alla pratica (pratiche_sorgenti COLLEGATO) e crea on-demand i flussi CONFERMA_ORDINE/INVIO_COMMESSA; se tutto-servizi non crea nulla. Idempotente sul re-fire. Mappato in HANDLER_MAP lato BE.,t,{},2026-06-30 00:00:00+02,SEED,2026-06-30 00:00:00+02,SEED
