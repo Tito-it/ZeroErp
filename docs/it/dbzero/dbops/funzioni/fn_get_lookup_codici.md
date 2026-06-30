@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_get_lookup_codici`
 
 ```sql
-CREATE FUNCTION fn_get_lookup_codici(p_rel regclass, p_order_col text, p_order_dir text, p_attivo_only boolean, p_limit integer, p_offset integer)
+CREATE FUNCTION fn_get_lookup_codici(p_rel regclass, p_order_col text, p_order_dir text, p_attivo_only boolean, p_limit integer, p_offset integer, p_includi_obsoleti boolean)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_get_lookup_codici(p_rel regclass, p_order_col text DEFAULT 'descrizione'::text, p_order_dir text DEFAULT 'ASC'::text, p_attivo_only boolean DEFAULT true, p_limit integer DEFAULT 500, p_offset integer DEFAULT 0)
+CREATE OR REPLACE FUNCTION dbops.fn_get_lookup_codici(p_rel regclass, p_order_col text DEFAULT 'descrizione'::text, p_order_dir text DEFAULT 'ASC'::text, p_attivo_only boolean DEFAULT true, p_limit integer DEFAULT 500, p_offset integer DEFAULT 0, p_includi_obsoleti boolean DEFAULT true)
  RETURNS TABLE(id bigint, codice text, codice_interno text, descrizione text, attivo boolean)
  LANGUAGE plpgsql
 AS $function$
@@ -22,6 +22,9 @@ DECLARE
   v_has_descrizione     boolean;
   v_has_attivo          boolean;
   v_attivo_is_boolean   boolean;
+  v_has_obsoleto        boolean;
+  v_obsoleto_is_date    boolean;
+  v_conds       text[]  := ARRAY[]::text[];
   v_sql         text;
   -- Override dichiarativi da automation_overrides_cols.
   v_rel_schema              text;
@@ -32,13 +35,20 @@ BEGIN
   -- =========================================================
   -- Scopo:
   --   Estrazione lookup veloce per tabelle con colonne
-  --   id/codice/codice_interno/descrizione/attivo.
+  --   id/codice/codice_interno/descrizione/attivo, con filtri
+  --   opzionali su attivo e obsoleto_dal.
   --
   -- Regole:
   --   - id deve essere integer/bigint (uuid non ammesso)
   --   - ordinamento ammesso solo su codice|descrizione e ASC|DESC
   --   - se la tabella ha colonna attivo e p_attivo_only=true,
-  --     applica WHERE attivo IS TRUE
+  --     applica attivo IS TRUE
+  --   - se la tabella ha colonna obsoleto_dal e
+  --     p_includi_obsoleti=false, esclude i record con
+  --     obsoleto_dal <= CURRENT_DATE (selezione per il nuovo).
+  --     Default p_includi_obsoleti=true: mostra tutto (storico).
+  --   - attivo e obsoleto_dal sono OPZIONALI: se la colonna manca,
+  --     il relativo predicato non viene applicato (lista intera).
   --   - codice: colonna 'codice' o override CODICE_COL,
   --     altrimenti COALESCE(codice_interno/override, id::text)
   --   - codice_interno: colonna 'codice_interno' o override
@@ -223,6 +233,32 @@ BEGIN
     END IF;
   END IF;
 
+  -- Check colonna obsoleto_dal (opzionale, deve essere date).
+  -- Gemella di attivo: se manca, nessun filtro (lista intera).
+  SELECT EXISTS (
+    SELECT 1 FROM pg_attribute a
+     WHERE a.attrelid = p_rel AND a.attname = 'obsoleto_dal'
+       AND a.attnum > 0 AND NOT a.attisdropped
+  ) INTO v_has_obsoleto;
+
+  IF v_has_obsoleto THEN
+    SELECT EXISTS (
+      SELECT 1 FROM pg_attribute a
+      JOIN pg_type t ON t.oid = a.atttypid
+      WHERE a.attrelid = p_rel AND a.attname = 'obsoleto_dal'
+        AND a.attnum > 0 AND NOT a.attisdropped AND t.typname = 'date'
+    ) INTO v_obsoleto_is_date;
+
+    IF NOT v_obsoleto_is_date THEN
+      PERFORM script.fn_log_and_raise_error(
+        'dbops', 'fn_get_lookup_codici', 'E_LOOKUP_STRUTTURA_TABELLA_INVALIDA',
+        jsonb_build_object('detail', 'colonna obsoleto_dal non date', 'tabella', p_rel::text),
+        NULL::uuid,
+        p_rel::text, 'colonna obsoleto_dal presente ma non di tipo date'
+      );
+    END IF;
+  END IF;
+
   -- Risolvi colonna effettiva per ORDER BY 'codice'.
   -- Se override CODICE_COL: usa il nome reale (es. 'codice_iso').
   -- Se codice non esiste (neanche override): fallback a 'descrizione'.
@@ -252,8 +288,19 @@ BEGIN
     p_rel::text
   );
 
+  -- Accumulatore predicati: con piu' filtri possibili (attivo +
+  -- obsoleto) le condizioni si concatenano con AND. Concatenare
+  -- piu' "WHERE" produrrebbe SQL invalido.
   IF p_attivo_only AND v_has_attivo THEN
-    v_sql := v_sql || ' WHERE t.attivo IS TRUE';
+    v_conds := v_conds || 't.attivo IS TRUE';
+  END IF;
+
+  IF NOT p_includi_obsoleti AND v_has_obsoleto THEN
+    v_conds := v_conds || '(t.obsoleto_dal IS NULL OR t.obsoleto_dal > CURRENT_DATE)';
+  END IF;
+
+  IF array_length(v_conds, 1) > 0 THEN
+    v_sql := v_sql || ' WHERE ' || array_to_string(v_conds, ' AND ');
   END IF;
 
   v_sql := v_sql || format(' ORDER BY t.%I %s NULLS LAST', v_order_col, v_order_dir);
@@ -270,8 +317,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION dbops.fn_get_lookup_codici(p_rel regclass, p_order_col text, p_order_dir text, p_attivo_only boolean, p_limit integer, p_offset integer)
-IS 'Lookup generico id/codice/codice_interno/descrizione/attivo. Consulta automation_overrides_cols (CODICE_COL/CODICE_INTERNO_COL) prima di pg_attribute: tabelle con chiavi non-standard (es. codice_iso, iso_code) funzionano senza modifiche. codice/attivo opzionali con fallback. Base: 20260327-01.';
+COMMENT ON FUNCTION dbops.fn_get_lookup_codici(p_rel regclass, p_order_col text, p_order_dir text, p_attivo_only boolean, p_limit integer, p_offset integer, p_includi_obsoleti boolean)
+IS 'Lookup generico id/codice/codice_interno/descrizione/attivo. Filtri opzionali e introspettivi: attivo (p_attivo_only, DEFAULT true) e obsoleto_dal (p_includi_obsoleti, DEFAULT true = mostra tutto; false = esclude obsoleto_dal <= CURRENT_DATE, selezione per il nuovo). Colonne attivo/obsoleto_dal opzionali: se assenti il filtro non si applica. Consulta automation_overrides_cols (CODICE_COL/CODICE_INTERNO_COL). Base: 20260520-04.';
 ```
 
 ---
