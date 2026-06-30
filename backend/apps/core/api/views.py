@@ -79,6 +79,7 @@ class ApiLookupCodici(DomainAPIView):
             OpenApiParameter(name="order_col", type=str, location=OpenApiParameter.QUERY, required=False, enum=["codice", "descrizione"], description="Colonna di ordinamento (default: descrizione)."),
             OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, enum=["asc", "desc"], description="Direzione ordinamento (default: asc)."),
             OpenApiParameter(name="attivo_only", type=bool, location=OpenApiParameter.QUERY, required=False, description="Filtra solo record attivi (default: true)."),
+            OpenApiParameter(name="includi_obsoleti", type=bool, location=OpenApiParameter.QUERY, required=False, description="Includi voci di catalogo obsolete (obsoleto_dal <= oggi). Default: true (mostra tutto). Passare false nella selezione-per-il-nuovo per nascondere gli obsoleti."),
             OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
             OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description="Dimensione pagina (default 50, max 200)."),
         ],
@@ -113,6 +114,9 @@ class ApiLookupCodici(DomainAPIView):
         order_dir = request.query_params.get("order_dir", "asc").strip() or "asc"
 
         attivo_only = qp_bool(request.query_params.get("attivo_only"))
+        # Default true = comportamento storico (mostra tutto, anche gli obsoleti):
+        # è il chiamante "selezione per il nuovo" a passare false per nasconderli.
+        includi_obsoleti = qp_bool(request.query_params.get("includi_obsoleti"))
 
         page = qp_int_strict(request.query_params.get("page"), "page", 1)
         page_size = qp_int_strict(request.query_params.get("page_size"), "page_size", 50)
@@ -123,6 +127,7 @@ class ApiLookupCodici(DomainAPIView):
             order_col=order_col,
             order_dir=order_dir,
             attivo_only=attivo_only,
+            includi_obsoleti=includi_obsoleti,
             page=page,
             page_size=page_size,
         )

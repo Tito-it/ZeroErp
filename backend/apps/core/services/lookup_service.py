@@ -44,6 +44,7 @@ def fn_list_lookup_codici(
     order_col: str = "descrizione",
     order_dir: str = "asc",
     attivo_only: bool = True,
+    includi_obsoleti: bool = True,
     page: int = 1,
     page_size: int = 50,
 ) -> dict[str, object]:
@@ -93,6 +94,7 @@ def fn_list_lookup_codici(
             order_col=order_col,
             order_dir=order_dir.upper(),
             attivo_only=attivo_only,
+            includi_obsoleti=includi_obsoleti,
             limit=page_size,
             offset=offset,
         )

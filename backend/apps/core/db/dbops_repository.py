@@ -207,6 +207,7 @@ class DbopsRepository:
         order_col: str = "descrizione",
         order_dir: str = "ASC",
         attivo_only: bool = True,
+        includi_obsoleti: bool = True,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
@@ -245,7 +246,8 @@ class DbopsRepository:
                                %s,
                                %s,
                                %s,
-                               0
+                               0,
+                               %s
                            )
                 )
                 SELECT
@@ -273,6 +275,7 @@ class DbopsRepository:
                     order_dir,
                     attivo_only,
                     LOOKUP_MAX_SOURCE_ROWS,
+                    includi_obsoleti,
                     search_pattern,
                     search_pattern,
                     search_pattern,

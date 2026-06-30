@@ -2,7 +2,7 @@
 // Scopo: Drawer esecuzione flusso — avvio, completamento con esito, sospensione.
 // Riutilizzabile: riceve flusso via props, emette eventi per refresh.
 // Il contenuto e' dinamico: mostra azioni in base allo stato corrente del flusso.
-import { ref, watch, computed, provide } from 'vue'
+import { ref, shallowRef, markRaw, watch, computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
@@ -10,6 +10,7 @@ import { useDrawerContentReady } from '../../core/composables/useDrawerContentRe
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { cambiaStatoFlusso } from '../api/pratiche-api'
 import { getUiActivity } from '../uiActivityRegistry'
+import { getCompletionDialog } from '../flussoCompletionRegistry'
 import { DRAWER_WIDTH, STATO_FLUSSO, MANAGE_ICONS } from '../../core/constants'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -190,17 +191,56 @@ async function onAvvia() {
 // APPROVAZIONE_CLIENTE) sono ora SERVER-SIDE e data-driven: il motore pratiche
 // le esegue dai binding pratiche.template_flussi_handler_eventi nella stessa
 // transazione. Niente più routing M2 / endpoint dedicato nel FE.
-async function onCompleta() {
-  if (!esito.value) return
+// Dialog di completamento (registry-driven): alcuni step richiedono dati di
+// processo all'esito (es. APPROVAZIONE_CLIENTE/POSITIVO → modalita'+competenza
+// di fatturazione). Il componente e' caricato lazy e reso inline; il suo payload
+// viaggia come `meta` del completamento (FlussoDrawer resta generico).
+const completionDialogVisible = ref(false)
+const completionDialogComponent = shallowRef(null)
+const completionDialogDef = computed(() =>
+  getCompletionDialog(props.flusso?.template_flusso_codice),
+)
+// Drawer riusato per flussi diversi: al cambio flusso azzera la dialog cachata,
+// così non resta montato il dialog di completamento del flusso precedente.
+watch(() => props.flusso?.id, () => {
+  completionDialogVisible.value = false
+  completionDialogComponent.value = null
+})
+
+// Esegue il completamento; `meta` opzionale = contesto d'azione (es. accettazione).
+async function _doComplete(meta = null) {
   const result = await execute(
     () => cambiaStatoFlusso(props.praticaId, props.flusso.id, {
       nuovo_stato: 'COMPLETATO',
       esito: esito.value,
       note_esito: noteEsito.value || null,
+      ...(meta ? { meta } : {}),
     }),
     { successMessage: t('pratiche.flusso_completato') },
   )
   if (result !== null) { emit('saved'); emit('update:visible', false) }
+}
+
+async function onCompleta() {
+  if (!esito.value) return
+  // Se lo step ha una dialog di completamento per l'esito scelto, raccoglie i
+  // dati di processo PRIMA di completare (il payload diventa `meta`).
+  const def = completionDialogDef.value
+  if (def && esito.value === def.esitoRichiesto) {
+    if (!completionDialogComponent.value) {
+      const mod = await def.loadComponent()
+      completionDialogComponent.value = markRaw(mod.default)
+    }
+    completionDialogVisible.value = true
+    return
+  }
+  await _doComplete(null)
+}
+
+// Conferma della dialog di completamento → completa con il payload come meta.
+async function onCompletionConfirm(meta) {
+  completionDialogVisible.value = false
+  await _doComplete(meta)
 }
 
 const onClose = useDrawerClose(emit)
@@ -326,6 +366,16 @@ const onClose = useDrawerClose(emit)
       :current-risorsa-id="flusso.risorsa_umana_id"
       :current-unita-id="flusso.unita_organizzativa_id"
       @saved="() => { emit('saved'); emit('update:visible', false) }"
+    />
+
+    <!-- Dialog di completamento dinamica (registry): raccoglie i dati di processo
+         dell'esito e li inoltra come `meta` del completamento flusso. -->
+    <component
+      :is="completionDialogComponent"
+      v-if="completionDialogComponent"
+      v-model:visible="completionDialogVisible"
+      :readonly="effectiveReadonly"
+      @confirm="onCompletionConfirm"
     />
   </Drawer>
 </template>

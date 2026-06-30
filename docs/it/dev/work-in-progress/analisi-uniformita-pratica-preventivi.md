@@ -172,15 +172,29 @@ Riferimenti: [brief-db-pratica-preventivi-tipo-unico-flussi.md](brief-db-pratica
 CONFERMATO, output di CONFERMA_ORDINE(50) → atteso **`60 ← 50`**. Mitigato dalla
 creazione on-demand BE, ma da raddrizzare per pulizia di modello.
 
-### 7.2 Selezione tipo: filtro `obsoleto_dal` — **DB, non BE**
+### 7.2 Filtro `obsoleto_dal` — ✅ DB FATTO (2026-06-30, commit `2f8d4f092`)
 
-La lista dei tipi selezionabili è servita dalla fn DB generica
-`dbops.fn_get_lookup_codici` (lookup `rel=`), che già filtra `attivo` per
-introspezione colonne. Il filtro `obsoleto_dal` va aggiunto **lì** (un solo punto,
-tutti i cataloghi), con un toggle per i contesti "filtro/storico" che devono
-mostrare anche gli obsoleti. → brief dedicato
-[brief-db-obsoleto-dal-lookup-guard.md](brief-db-obsoleto-dal-lookup-guard.md).
-**BE/FE: niente** per la selezione.
+Implementato come da [brief-db-obsoleto-dal-filtro-lookup-e-guard.md](../work-done/brief-db-obsoleto-dal-filtro-lookup-e-guard.md)
+(`20260630-03/04/05`, pgTAP verde):
+
+- **Selezione** (`dbops.fn_get_lookup_codici`): nuovo 7° parametro
+  **`p_includi_obsoleti boolean DEFAULT true`**. Introspezione `obsoleto_dal`
+  opzionale (come `attivo`); predicato `(obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE)`
+  applicato **solo se il chiamante passa `false`**.
+  ⚠️ **Differenza chiave dal piano**: il default è **`true` = mostra tutto**
+  (niente regressione silenziosa sui contesti storico/filtro). Quindi **NON è
+  vero "BE/FE niente"**: il BE **deve passare `includi_obsoleti=false`** nei
+  lookup di **selezione-per-il-nuovo** (es. tipo per nuova pratica), altrimenti i
+  tipi obsoleti continuano a comparire. La chiamata posizionale a 6 arg resta
+  valida (retro-compat).
+- **Guard** (difesa in profondità): trgfn generica
+  `dbops.trgfn_child_requires_non_obsolete_parent` + 2 trigger su
+  `pratiche.pratiche` (`tipo_prestazione_id`) e `pratiche.flussi`
+  (`template_flusso_id`) → creare una nuova istanza su catalogo obsoleto fallisce
+  con **`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`** (id 500). Le istanze storiche e gli
+  avanzamenti di lifecycle non sono toccati.
+- **Whitelist** `_REL_CONSENTITE`: già include `pratiche.tipi_prestazione` e
+  `pratiche.template_flussi` ([dbops_repository.py:107-108]) → ok, nessun lavoro.
 
 ### 7.3 BE/FE — DA FARE (dopo i prerequisiti DB)
 
@@ -191,6 +205,9 @@ mostrare anche gli obsoleti. → brief dedicato
 | B3 | BE vendite | **CONFERMA_ORDINE**: Emetti ordine (`DRAFT→CONFERMATO`) agganciato al flusso |
 | B4 | BE vendite | accettazione (flusso 30) riusa il **service accettazione standalone** → persiste modalità+competenza sul preventivo (chiude bug §3.1.2) |
 | B5 | BE vendite | following-rev: popola `meta` (`ref_stable_key`/`follow_active`) all'aggancio + risolutore `numero→rev attiva` |
+| B6 | BE core | passare **`includi_obsoleti=false`** nei lookup di **selezione-per-il-nuovo** del tipo pratica (e in generale dei cataloghi con `obsoleto_dal`) — il default DB è `true` (mostra tutto) |
+| B7 | BE/FE | mappare il codice errore **`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`** (id 500) nel registry errori (messaggio parlante) |
+| B8 | DB seed (igienico, opz.) | ritirare la riga smoke-test `regole_generazione` 9001 → tipo obsoleto (altrimenti uno smoke futuro inciampa nel guard) |
 | F1 | FE | **Pannello Smistamento**: pulsante **"Smista tutto"** quando destinazione unica (riuso pratica+standalone) |
 | F2 | FE | pratica: flussi 40/50/60 aprono le **stesse** UI standalone; drawer da pratica **espone revisione** |
 | F3 | FE | dialog accettazione nel flusso 30; chiavi azioni UI (SMISTAMENTO/CONFERMA_ORDINE/INVIO_COMMESSA) nel registry; etichette flussi |

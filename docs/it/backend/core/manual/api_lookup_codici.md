@@ -35,6 +35,7 @@ Query string:
 | `order_col`  | string  | No           | `descrizione` | Valori ammessi: `codice`, `descrizione`           |
 | `order_dir`  | string  | No           | `asc`         | Valori ammessi: `asc`, `desc`                     |
 | `attivo_only`| bool    | No           | `true`        | Se `false`, include anche record non attivi       |
+| `includi_obsoleti`| bool | No        | `true`        | Se `false`, esclude le voci obsolete (`obsoleto_dal <= oggi`) |
 | `page`       | int     | No           | `1`           | Pagina (>= 1)                                     |
 | `page_size`  | int     | No           | `50`          | Righe per pagina (1-200)                          |
 
@@ -87,6 +88,10 @@ raggiunga il database.
 - `search` vuoto o assente equivale a nessun filtro testo.
 - `attivo_only=true` applica `WHERE attivo IS TRUE` tramite la funzione DB (solo se la tabella
   ha colonna `attivo boolean`).
+- `includi_obsoleti=false` esclude le voci con `obsoleto_dal <= CURRENT_DATE` (solo se la
+  tabella ha la colonna `obsoleto_dal date`; introspezione opzionale come `attivo`). Il default
+  è `true` (mostra tutto) per non cambiare i contesti storico/filtro: è la **selezione per il
+  nuovo** (es. tipo nuova pratica) a passare `false`. Pattern riusabile cross-catalogo.
 - Ordinamento limitato a `codice` / `descrizione` per sicurezza (la funzione DB valida internamente).
 - `order_col` e `order_dir` sono validati a livello Python **prima** della chiamata DB;
   non vengono passati come parametri SQL (`%s`) ma inseriti nel testo della query solo dopo
@@ -176,8 +181,9 @@ in `backend/apps/core/db/dbops_repository.py`.
 
 ## Dipendenze DB
 
-- `dbops.fn_get_lookup_codici(p_rel, p_order_col, p_order_dir, p_attivo_only, p_limit, p_offset)`
-  -- funzione generica lookup con validazione interna colonne e tipo id.
+- `dbops.fn_get_lookup_codici(p_rel, p_order_col, p_order_dir, p_attivo_only, p_limit, p_offset, p_includi_obsoleti)`
+  -- funzione generica lookup con validazione interna colonne e tipo id. Il 7° parametro
+  `p_includi_obsoleti boolean DEFAULT true` filtra `obsoleto_dal` per introspezione (opzionale).
 
 ## Codici errore
 
