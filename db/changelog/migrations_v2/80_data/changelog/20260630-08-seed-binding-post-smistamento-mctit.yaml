@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Binding handler-evento su SMISTAMENTO (9012) della catena PREVENTIVI:
+# COMPLETATO + esito POSITIVO -> handler 'vendita.post_smistamento'.
+# (brief-db-binding-handler-evento-smistamento, Fase 2 uniformita PREVENTIVI)
+#
+# Stessa forma del binding esistente su APPROVAZIONE_CLIENTE (9011 ->
+# vendita.accetta_preventivo). Il dispatch (pratiche_service.dispatch_handler_eventi)
+# avviene nella STESSA transazione del completamento del flusso.
+#
+# attivo = TRUE: progetto senza ambiente di produzione, binding attivo da subito
+# (decisione utente: il disaccoppiamento attivo=false non serve senza prod).
+# NOTA: il dispatch (pratiche_service.dispatch_handler_eventi) e' BE-side (Python) e
+# fail-fast: completare SMISTAMENTO via API/service richiede che l'handler
+# 'vendita.post_smistamento' sia registrato in HANDLER_MAP, altrimenti
+# E_HANDLER_NON_REGISTRATO. NON impatta i test pgTAP (il dispatch non e' un trigger DB).
+# Se in futuro esistera' la produzione, valutare seed attivo=false + attivazione
+# separata (vedi memoria reference_binding_handler_flusso_attivo_false).
+#
+# runOnChange:false (run-once), idempotente via ON CONFLICT DO NOTHING. Risoluzione per
+# CHIAVE STABILE (codici), no id hardcoded. Ordine: handler 20260630-07 (FK) prima di 08.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260630-08-seed-binding-post-smistamento-mctit.yaml
+
+  - changeSet:
+      id: 20260630-08-seed-binding-post-smistamento
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pratiche
+                tableName: template_flussi_handler_eventi
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Binding SMISTAMENTO(9012) COMPLETATO/POSITIVO -> vendita.post_smistamento.
+              -- attivo=true: binding attivo da subito (progetto senza produzione). L'handler BE
+              -- 'vendita.post_smistamento' deve essere registrato in HANDLER_MAP per il dispatch.
+              -- Risoluzione per chiave stabile: (tipo_prestazione.codice_interno,
+              -- template_flussi.codice) e handler_flussi.handler_key.
+              INSERT INTO pratiche.template_flussi_handler_eventi
+                  (template_flusso_id, evento, esito_richiesto, handler_id, handler_params, sequenza, attivo)
+              SELECT tf.id, 'COMPLETATO', 'POSITIVO', hf.id, '{}'::jsonb, 0, true
+                FROM pratiche.template_flussi tf
+                JOIN pratiche.tipi_prestazione tp ON tp.id = tf.tipo_prestazione_id
+                CROSS JOIN pratiche.handler_flussi hf
+               WHERE tp.codice_interno = 'PREVENTIVI'
+                 AND tf.codice         = 'SMISTAMENTO'
+                 AND hf.handler_key    = 'vendita.post_smistamento'
+              ON CONFLICT ON CONSTRAINT uq_tfhe DO NOTHING;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM pratiche.template_flussi_handler_eventi p
+                USING pratiche.template_flussi tf
+                JOIN  pratiche.tipi_prestazione tp ON tp.id = tf.tipo_prestazione_id,
+                      pratiche.handler_flussi hf
+               WHERE p.template_flusso_id = tf.id
+                 AND p.handler_id         = hf.id
+                 AND tp.codice_interno    = 'PREVENTIVI'
+                 AND tf.codice            = 'SMISTAMENTO'
+                 AND hf.handler_key       = 'vendita.post_smistamento'
+                 AND p.evento             = 'COMPLETATO'
+                 AND p.esito_richiesto    = 'POSITIVO';

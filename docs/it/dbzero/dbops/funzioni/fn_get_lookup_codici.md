@@ -292,11 +292,11 @@ BEGIN
   -- obsoleto) le condizioni si concatenano con AND. Concatenare
   -- piu' "WHERE" produrrebbe SQL invalido.
   IF p_attivo_only AND v_has_attivo THEN
-    v_conds := v_conds || 't.attivo IS TRUE';
+    v_conds := array_append(v_conds, 't.attivo IS TRUE');
   END IF;
 
   IF NOT p_includi_obsoleti AND v_has_obsoleto THEN
-    v_conds := v_conds || '(t.obsoleto_dal IS NULL OR t.obsoleto_dal > CURRENT_DATE)';
+    v_conds := array_append(v_conds, '(t.obsoleto_dal IS NULL OR t.obsoleto_dal > CURRENT_DATE)');
   END IF;
 
   IF array_length(v_conds, 1) > 0 THEN

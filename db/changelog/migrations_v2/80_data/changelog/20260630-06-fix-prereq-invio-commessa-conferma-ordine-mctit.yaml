@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fix prerequisito catena PREVENTIVI: INVIO_COMMESSA (60) deve dipendere da
+# CONFERMA_ORDINE (50), non da SMISTAMENTO (40).
+#
+# CONTESTO (decisione BE): il seed 20260608-09 (committato, NON modificabile)
+# cabla INVIO_COMMESSA <- SMISTAMENTO (60<-40). A livello DATO e' innocuo (il push
+# ordine->commessa richiede comunque l'ordine CONFERMATO via
+# fn_list_ordini_da_pushare, quindi un INVIO_COMMESSA prematuro e' no-op). MA il
+# grafo dei prerequisiti e' anche ROADMAP e documentazione del processo: con
+# 60<-40 lo step INVIO_COMMESSA diventa cliccabile gia' dopo lo SMISTAMENTO, e
+# l'operatore puo' premerlo prima di confermare l'ordine beccandosi un errore di
+# dominio confondente invece di vedere lo step "non ancora disponibile".
+# La dipendenza logica corretta e' 60<-50: INVIO_COMMESSA = "invio a commessa
+# dell'ordine merce CONFERMATO".
+#
+# Poiche' 50<-40 esiste gia' (CONFERMA_ORDINE<-SMISTAMENTO, riga seed 9010),
+# 60<-50 ASSORBE 60<-40 per transitivita': e' una SOSTITUZIONE pulita, non
+# un'aggiunta. Lo stato ordine CONFERMATO resta la guardia DATO a valle.
+#
+# Non si modifica il seed committato: si fa un UPDATE mirato, idempotente e per
+# CHIAVE STABILE (codici, no id hardcoded). Re-eseguibile a vuoto: una volta
+# spostato l'arco su CONFERMA_ORDINE, il WHERE (prereq = SMISTAMENTO) non matcha
+# piu'. Ordine: 80_data includeAll applica 20260608-09 (seed) prima di 20260630-06.
+#
+# runAlways: true (NON runOnChange) perche' 20260608-09 e' runOnChange:true: a OGNI
+# modifica del suo CSV (file di seed vivo) si ri-esegue e fa l'upsert di tutte le
+# righe, riportando la 9011 a SMISTAMENTO (60<-40). Un fix runOnChange:false girerebbe
+# una volta sola e verrebbe poi silenziosamente annullato. runAlways fa girare questa
+# UPDATE (idempotente) a ogni migrate, subito dopo l'eventuale re-seed di 09, mantenendo
+# 60<-50 in modo durevole. E' il pattern corretto per "patch sopra un seed committato
+# immutabile". Da rimuovere solo quando il fix verra' assorbito nel seed alla fonte.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260630-06-fix-prereq-invio-commessa-conferma-ordine-mctit.yaml
+
+  - changeSet:
+      id: 20260630-06-fix-prereq-invio-commessa-conferma-ordine
+      author: mctit
+      runAlways: false
+      validCheckSum:
+        - ANY
+      comment: >
+        Catena PREVENTIVI: sposta il prerequisito di INVIO_COMMESSA da SMISTAMENTO
+        a CONFERMA_ORDINE (60<-40 => 60<-50). Roadmap/process-graph corretto; la
+        guardia dato (ordine CONFERMATO) resta a valle. UPDATE per chiave stabile,
+        idempotente. Il seed 20260608-09 committato non viene toccato.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: template_flussi_prerequisiti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Risoluzione per chiave stabile: (tipo_prestazione.codice_interno, template_flussi.codice).
+              WITH ref AS (
+                SELECT
+                  (SELECT tf.id FROM pratiche.template_flussi tf
+                     JOIN pratiche.tipi_prestazione tp ON tp.id = tf.tipo_prestazione_id
+                    WHERE tp.codice_interno = 'PREVENTIVI' AND tf.codice = 'INVIO_COMMESSA')  AS invio_id,
+                  (SELECT tf.id FROM pratiche.template_flussi tf
+                     JOIN pratiche.tipi_prestazione tp ON tp.id = tf.tipo_prestazione_id
+                    WHERE tp.codice_interno = 'PREVENTIVI' AND tf.codice = 'CONFERMA_ORDINE') AS conferma_id,
+                  (SELECT tf.id FROM pratiche.template_flussi tf
+                     JOIN pratiche.tipi_prestazione tp ON tp.id = tf.tipo_prestazione_id
+                    WHERE tp.codice_interno = 'PREVENTIVI' AND tf.codice = 'SMISTAMENTO')     AS smistamento_id
+              )
+              UPDATE pratiche.template_flussi_prerequisiti p
+                 SET prerequisito_id = ref.conferma_id
+                FROM ref
+               WHERE ref.invio_id        IS NOT NULL
+                 AND ref.conferma_id     IS NOT NULL
+                 AND ref.smistamento_id  IS NOT NULL
+                 AND p.template_flusso_id = ref.invio_id
+                 AND p.prerequisito_id    = ref.smistamento_id;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristina 60<-40 (INVIO_COMMESSA <- SMISTAMENTO).
+              WITH ref AS (
+                SELECT
+                  (SELECT tf.id FROM pratiche.template_flussi tf
+                     JOIN pratiche.tipi_prestazione tp ON tp.id = tf.tipo_prestazione_id
+                    WHERE tp.codice_interno = 'PREVENTIVI' AND tf.codice = 'INVIO_COMMESSA')  AS invio_id,
+                  (SELECT tf.id FROM pratiche.template_flussi tf
+                     JOIN pratiche.tipi_prestazione tp ON tp.id = tf.tipo_prestazione_id
+                    WHERE tp.codice_interno = 'PREVENTIVI' AND tf.codice = 'CONFERMA_ORDINE') AS conferma_id,
+                  (SELECT tf.id FROM pratiche.template_flussi tf
+                     JOIN pratiche.tipi_prestazione tp ON tp.id = tf.tipo_prestazione_id
+                    WHERE tp.codice_interno = 'PREVENTIVI' AND tf.codice = 'SMISTAMENTO')     AS smistamento_id
+              )
+              UPDATE pratiche.template_flussi_prerequisiti p
+                 SET prerequisito_id = ref.smistamento_id
+                FROM ref
+               WHERE p.template_flusso_id = ref.invio_id
+                 AND p.prerequisito_id    = ref.conferma_id;
