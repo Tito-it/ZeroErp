@@ -476,6 +476,39 @@ class ApiPreventivoRootPerFlusso(DomainAPIView):
         return success_response(preventivi_service.get_root_per_flusso(flusso_id))
 
 
+class ApiPreventivoRootPerPratica(DomainAPIView):
+    """`GET /api/v1/vendite/preventivi/root-per-pratica/?pratica_id=<id>`:
+    risolve il preventivo ROOT della PRATICA (non per-flusso). Alimenta gli step
+    a valle del percorso (es. SMISTAMENTO) che operano sul preventivo gia'
+    agganciato a monte. Ritorna `{"preventivo_id": <id|null>}`. Lettura libera."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="pratica_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=True,
+            ),
+        ],
+        responses={200: inline_serializer(
+            name="PreventivoRootPerPraticaResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    def get(self, request: Request) -> JsonResponse:
+        pratica_id = optional_int({"v": request.query_params.get("pratica_id")}, "v")
+        ErrorManager.require(
+            pratica_id is not None,
+            code="E_PRATICA_ID_OBBLIGATORIO",
+            message="pratica_id obbligatorio.",
+        )
+        assert pratica_id is not None
+        return success_response(preventivi_service.get_root_per_pratica(pratica_id))
+
+
 class ApiPreventivoRevisioniList(DomainAPIView):
     area_funzionale = "vendite"
 

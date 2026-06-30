@@ -66,6 +66,18 @@ const tutteSmistate = computed(() => {
   return (a?.righe_totali ?? 0) > 0 && (a?.righe_residue ?? 0) === 0
 })
 
+// Etichetta azione: "Smista tutto" quando le righe residue hanno un'unica
+// destinazione e sono tutte selezionate (caso comune, es. preventivo tutto-merce:
+// niente scelta da fare); altrimenti "Smista selezionate" (preventivo misto o
+// selezione parziale). Le righe sono comunque preselezionate (smista-tutto di default).
+const smistaLabel = computed(() => {
+  const dest = new Set(righeResidue.value.map(r => r.destinazione_tipo))
+  const tutteSelezionate = selected.value.length === righeResidue.value.length
+  return dest.size === 1 && tutteSelezionate
+    ? t('preventivi.smista_tutto')
+    : t('preventivi.smista_selezionate')
+})
+
 // Selezione vincolata alle sole righe RESIDUA: una riga gia' smistata non e'
 // ri-selezionabile (il setter filtra, il checkbox "rimbalza"). Difesa UX: il
 // BE/DB farebbe comunque skip silenzioso (D5), ma il conteggio del confirm
@@ -259,7 +271,7 @@ defineExpose({ loadIntegrazione })
     </div>
 
     <Button v-if="!consuntivo && righeResidue.length" icon="pi pi-send"
-      :label="t('preventivi.smista_selezionate')"
+      :label="smistaLabel"
       severity="info" size="small" :loading="loading"
       :disabled="selected.length === 0" @click="onSmista"
       style="align-self: flex-start;" />

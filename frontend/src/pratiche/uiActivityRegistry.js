@@ -13,6 +13,23 @@
 // risoluzione PRIMA di montare/mostrare il drawer, così il suo watch(visible)
 // (non immediate) scatta sulla transizione false→true (vedi PraticheDashboard).
 
+// Props comuni per aprire il PreventiviDrawer da un flusso pratica (riuso fra
+// APRI_PREVENTIVO e SMISTAMENTO): existingId valorizzato → EDIT dell'esistente,
+// null → CREATE con eredita'+lock cliente/istanza dal contesto pratica.
+function preventivoDrawerProps(ctx, existingId = null) {
+  return {
+    mode: existingId ? 'edit' : 'create',
+    preventivoId: existingId ?? null,
+    praticaId: ctx.praticaId,
+    // Contesto cliente ereditato dalla pratica: il drawer pre-compila e blocca
+    // istanza (+ BA se cliente attivo). billingAccountId NULL = prospect.
+    praticaContext: {
+      billingAccountId: ctx.billingAccountId ?? null,
+      istanzaUtilityId: ctx.istanzaUtilityId ?? null,
+    },
+  }
+}
+
 export const UI_ACTIVITY_REGISTRY = {
   APRI_PREVENTIVO: {
     // Loader del drawer di dominio (import dinamico): risolto all'apertura.
@@ -27,20 +44,8 @@ export const UI_ACTIVITY_REGISTRY = {
         .then(({ getRootPerFlusso }) => getRootPerFlusso(ctx.flussoId))
         .then(res => res?.data?.data?.preventivo_id ?? null)
         .catch(() => null),
-    // Props passate al drawer. `existingId` valorizzato (ROOT gia' agganciato al
-    // flusso) → apre in EDIT l'esistente; null → CREATE con eredita'+lock
-    // cliente/istanza.
-    buildProps: (ctx, existingId = null) => ({
-      mode: existingId ? 'edit' : 'create',
-      preventivoId: existingId ?? null,
-      praticaId: ctx.praticaId,
-      // Contesto cliente ereditato dalla pratica: il drawer pre-compila e blocca
-      // istanza (+ BA se cliente attivo). billingAccountId NULL = prospect.
-      praticaContext: {
-        billingAccountId: ctx.billingAccountId ?? null,
-        istanzaUtilityId: ctx.istanzaUtilityId ?? null,
-      },
-    }),
+    // Props passate al drawer (helper condiviso, vedi preventivoDrawerProps).
+    buildProps: preventivoDrawerProps,
     // Estrae l'id preventivo dalle forme ETEROGENEE dell'evento 'saved' del
     // drawer (l'id non e' in una posizione fissa):
     //   create   → { id, ... }
@@ -71,6 +76,30 @@ export const UI_ACTIVITY_REGISTRY = {
     icon: 'pi pi-file-edit',
     // Toast i18n al primo aggancio documento↔pratica.
     linkedMessage: 'pratiche.preventivo_collegato',
+  },
+  SMISTAMENTO: {
+    // Apre lo STESSO drawer preventivo, ma sul ROOT della PRATICA (lo step
+    // SMISTAMENTO e' a valle: il preventivo e' agganciato al flusso
+    // PREVENTIVAZIONE, non a questo). In stato ACCETTATO il drawer mostra il
+    // Pannello Smistamento (selezione righe → ordine/commessa), uniforme allo
+    // standalone. Niente onSaved: il ROOT e' gia' agganciato a monte.
+    loadComponent: () => import('../vendite/preventivi/components/PreventiviDrawer.vue'),
+    // ROOT per-pratica (non per-flusso): il preventivo lo ha agganciato il
+    // flusso PREVENTIVAZIONE. Best-effort: errore → null (drawer in create, ma
+    // non dovrebbe accadere a questo punto del percorso).
+    resolveExisting: (ctx) =>
+      import('../vendite/preventivi/api/preventiviApi')
+        .then(({ getRootPerPratica }) => getRootPerPratica(ctx.praticaId))
+        .then(res => res?.data?.data?.preventivo_id ?? null)
+        .catch(() => null),
+    buildProps: preventivoDrawerProps,
+    requiresActiveClient: false,
+    // Lo step e' a valle: il preventivo DEVE gia' esistere. Se il ROOT non si
+    // risolve (errore/assente) NON si apre il drawer in create (eviterebbe un
+    // preventivo orfano): l'host blocca con errore parlante.
+    requiresExisting: true,
+    label: 'pratiche.flusso_smistamento',
+    icon: 'pi pi-send',
   },
   // APRI_OFFERTA / APRI_CONTRATTO: da aggiungere quando nasceranno i loro
   // template_flussi (oggi non esistono → nessun seed DB li referenzia). Stessa

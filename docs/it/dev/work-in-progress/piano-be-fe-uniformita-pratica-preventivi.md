@@ -73,7 +73,17 @@ sul preventivo; nessun `E_VENDITA_COMPETENZA_RICHIESTA` a valle. (Bug §3.1.2 ch
 
 ---
 
-## Fase 2 — Smistamento via pannello standalone + on-demand 50/60
+## Fase 2 — Smistamento via pannello standalone + on-demand 50/60 — 🔄 IN CORSO
+
+> ✅ **F2a**: il flusso SMISTAMENTO (azione_ui `SMISTAMENTO`) apre lo stesso `PreventiviDrawer`
+> sul **ROOT della pratica** (nuovo endpoint BE `GET /vendite/preventivi/root-per-pratica/` +
+> `getRootPerPratica` + voce `uiActivityRegistry.SMISTAMENTO`); in ACCETTATO mostra il Pannello
+> Smistamento. ✅ **F1**: etichetta "Smista tutto" quando destinazione unica + tutte selezionate
+> (il pannello preseleziona già le residue). Test BE 960 + lint/build verdi.
+> 🔴 **B1 (in attesa binding DB)**: handler `vendita.post_smistamento` su SMISTAMENTO COMPLETATO
+> → aggancia l'ordine alla pratica + crea on-demand 9013/9014 se c'è ordine merce. Brief:
+> [brief-db-binding-smistamento-handler.md](brief-db-binding-smistamento-handler.md). L'handler BE
+> si implementa quando il binding è seedato.
 
 Il flusso SMISTAMENTO (40) apre il **Pannello Smistamento** standalone; lo split usa gli
 endpoint esistenti (`genera_ordine` / `push_commessa`). Al completamento, se è nato un ordine
