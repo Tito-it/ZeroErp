@@ -2653,6 +2653,8 @@
     "flusso_assegnatario_scegli_reparto": "Seleziona prima il reparto",
     "flusso_apri_preventivo": "Apri preventivo",
     "flusso_smistamento": "Smista righe (ordine/commessa)",
+    "flusso_conferma_ordine": "Conferma ordine",
+    "flusso_invio_commessa": "Invia ordine a commessa",
     "attivita_documento_mancante": "Documento della pratica non trovato: completa prima lo step precedente.",
     "preventivo_collegato": "Preventivo collegato alla pratica",
     "percorso_titolo": "Percorso",

@@ -30,6 +30,20 @@ function preventivoDrawerProps(ctx, existingId = null) {
   }
 }
 
+// Props per aprire l'OrdiniDrawer da un flusso pratica a valle (CONFERMA_ORDINE,
+// INVIO_COMMESSA): l'ordine esiste gia' (agganciato dallo smistamento) → sempre EDIT.
+function ordineDrawerProps(_ctx, existingId = null) {
+  return { mode: 'edit', ordineId: existingId ?? null }
+}
+
+// Risolve l'ordine COLLEGATO della pratica (import lazy del dominio vendite).
+function resolveOrdinePerPratica(ctx) {
+  return import('../vendite/ordini/api/ordiniApi')
+    .then(({ getOrdinePerPratica }) => getOrdinePerPratica(ctx.praticaId))
+    .then(res => res?.data?.data?.ordine_id ?? null)
+    .catch(() => null)
+}
+
 export const UI_ACTIVITY_REGISTRY = {
   APRI_PREVENTIVO: {
     // Loader del drawer di dominio (import dinamico): risolto all'apertura.
@@ -101,10 +115,32 @@ export const UI_ACTIVITY_REGISTRY = {
     label: 'pratiche.flusso_smistamento',
     icon: 'pi pi-send',
   },
+  // Step a valle merce: aprono l'OrdiniDrawer sull'ordine COLLEGATO della pratica
+  // (creato dallo smistamento, agganciato da PostSmistamentoHandler). Stesso
+  // drawer per entrambi, ad azioni diverse secondo lo stato dell'ordine:
+  //   CONFERMA_ORDINE → Emetti (DRAFT→CONFERMATO);
+  //   INVIO_COMMESSA  → Push a commessa (CONFERMATO→EVASO).
+  // requiresExisting: l'ordine DEVE esistere → niente fallback create.
+  CONFERMA_ORDINE: {
+    loadComponent: () => import('../vendite/ordini/components/OrdiniDrawer.vue'),
+    resolveExisting: resolveOrdinePerPratica,
+    buildProps: ordineDrawerProps,
+    requiresExisting: true,
+    label: 'pratiche.flusso_conferma_ordine',
+    icon: 'pi pi-check-square',
+  },
+  INVIO_COMMESSA: {
+    loadComponent: () => import('../vendite/ordini/components/OrdiniDrawer.vue'),
+    resolveExisting: resolveOrdinePerPratica,
+    buildProps: ordineDrawerProps,
+    requiresExisting: true,
+    label: 'pratiche.flusso_invio_commessa',
+    icon: 'pi pi-send',
+  },
   // APRI_OFFERTA / APRI_CONTRATTO: da aggiungere quando nasceranno i loro
   // template_flussi (oggi non esistono → nessun seed DB li referenzia). Stessa
   // forma; `requiresActiveClient: true` (BA obbligatorio) e onSaved sul rispettivo
-  // endpoint collega-pratica. Gli ORDINI restano fuori (push a valle, non drawer).
+  // endpoint collega-pratica.
 }
 
 // Scopo: risolve la voce registry da una chiave `azione_ui_key`; null se assente

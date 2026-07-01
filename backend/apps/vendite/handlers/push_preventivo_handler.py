@@ -2,6 +2,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
+# ⚠️ DEPRECATO (2026-06-30, uniformità pratica preventivi): l'orchestratore
+#    monolitico è SUPERATO dal percorso a passi espliciti del tipo unico
+#    `PREVENTIVI` (9004): accettazione (accetta_preventivo) → SMISTAMENTO
+#    (Pannello Smistamento) → post_smistamento (crea CONFERMA_ORDINE/INVIO_COMMESSA).
+#    Il nuovo catalogo NON lo referenzia. Resta registrato SOLO per le pratiche
+#    storiche dei tipi obsoleti 9002/9003 (PREVENTIVI_IMMEDIATA/DIFFERITA), il cui
+#    flusso CONFERMA è ancora bound a `vendita.push_preventivo`. Rimozione fisica
+#    (handler + handler_flussi) quando 9002/9003 e le loro istanze saranno eliminati.
+#
 # Scopo: Handler flusso `vendita.push_preventivo` — orchestratore CONFERMA_VENDITA.
 #        Al passaggio del flusso CONFERMA in IN_CORSO smista per natura le righe
 #        del preventivo ACCETTATO verso le destinazioni operative:

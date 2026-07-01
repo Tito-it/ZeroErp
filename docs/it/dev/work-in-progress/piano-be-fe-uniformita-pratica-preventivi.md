@@ -1,7 +1,11 @@
 # Piano di sviluppo BE/FE — Uniformità pratica preventivi
 
 > **Tipo**: piano operativo (BE/FE) · **Data**: 2026-06-30 · **Stato**: 🟢 in corso —
-> **Fase 0 ✅ + Fase 1 ✅ fatte** (BE+FE, test verdi); restano Fasi 2-4.
+> Fasi 0-4 implementate. 🔴 **BLOCCO E2E merce**: la pratica si **auto-chiude a
+> SMISTAMENTO** (regola chiusura template-based + timing) prima dei flussi ordine
+> condizionali → serve la nuova **regola di chiusura "nessun lavoro pendente"**
+> (motore, DB): [brief-db-chiusura-pratica-no-lavoro-pendente.md](brief-db-chiusura-pratica-no-lavoro-pendente.md).
+> Include il binding on-demand di INVIO_COMMESSA (post_smistamento su CONFERMA_ORDINE).
 > **Analisi (il perché)**: [analisi-uniformita-pratica-preventivi.md](analisi-uniformita-pratica-preventivi.md)
 > **Prerequisiti DB**: ✅ tutti applicati (catalogo `PREVENTIVI` 9004 + flussi 9009-9014,
 > `obsoleto_dal` + lookup/guard) — brief in `work-done`.
@@ -73,7 +77,16 @@ sul preventivo; nessun `E_VENDITA_COMPETENZA_RICHIESTA` a valle. (Bug §3.1.2 ch
 
 ---
 
-## Fase 2 — Smistamento via pannello standalone + on-demand 50/60 — 🔄 IN CORSO
+## Fase 2 — Smistamento via pannello standalone + on-demand 50/60 — ✅ FATTA
+
+> **B1 ✅ (2026-06-30)**: binding DB `vendita.post_smistamento` su SMISTAMENTO
+> COMPLETATO/POSITIVO seedato dal team DB; implementato `PostSmistamentoHandler`
+> (`apps/vendite/handlers/post_smistamento_handler.py`, registrato in
+> `apps.py:ready()`): se lo smistamento ha prodotto un ordine merce, lo aggancia
+> alla pratica (`pratiche_sorgenti` COLLEGATO) e crea on-demand CONFERMA_ORDINE +
+> INVIO_COMMESSA (template risolti per codice dal percorso, idempotente); se
+> tutto-servizi non crea nulla. +4 test handler. Limite noto: aggancia il primo
+> ordine (consegne parziali = 1:N) — caso pratica tipico = 1 ordine.
 
 > ✅ **F2a**: il flusso SMISTAMENTO (azione_ui `SMISTAMENTO`) apre lo stesso `PreventiviDrawer`
 > sul **ROOT della pratica** (nuovo endpoint BE `GET /vendite/preventivi/root-per-pratica/` +
@@ -82,7 +95,7 @@ sul preventivo; nessun `E_VENDITA_COMPETENZA_RICHIESTA` a valle. (Bug §3.1.2 ch
 > (il pannello preseleziona già le residue). Test BE 960 + lint/build verdi.
 > 🔴 **B1 (in attesa binding DB)**: handler `vendita.post_smistamento` su SMISTAMENTO COMPLETATO
 > → aggancia l'ordine alla pratica + crea on-demand 9013/9014 se c'è ordine merce. Brief:
-> [brief-db-binding-smistamento-handler.md](brief-db-binding-smistamento-handler.md). L'handler BE
+> [brief-db-binding-smistamento-handler.md](../work-done/brief-db-binding-smistamento-handler.md). L'handler BE
 > si implementa quando il binding è seedato.
 
 Il flusso SMISTAMENTO (40) apre il **Pannello Smistamento** standalone; lo split usa gli
@@ -100,7 +113,30 @@ unica); merce→ordine, servizi→commessa; 50/60 compaiono **solo** se c'è ord
 
 ---
 
-## Fase 3 — Ordine→commessa espliciti (merce arriva in commessa)
+## Fase 3 — Ordine→commessa espliciti (merce arriva in commessa) — ✅ FATTA (+ review)
+
+> **Review 2026-06-30 — bug critico corretto**: il guard `trg_flussi_a10_guard_prerequisiti_ins`
+> è **BEFORE INSERT** → i prerequisiti sono enforced alla **creazione**. `PostSmistamentoHandler`
+> creava sia CONFERMA_ORDINE sia INVIO_COMMESSA → la creazione di INVIO_COMMESSA **falliva**
+> (prereq `CONFERMA_ORDINE POSITIVO` non ancora soddisfatto). Corretto: l'handler crea solo i
+> flussi a valle **percorribili** (prereq soddisfatti ora) → a smistamento solo CONFERMA_ORDINE;
+> INVIO_COMMESSA nasce alla chiusura di CONFERMA_ORDINE (operatore dal percorso, o binding
+> opzionale dello stesso handler su 9013 COMPLETATO — vedi brief). Test handler aggiornati.
+> Doc API `api_ordini` (per-pratica) aggiornata.
+
+> **F2b + B2/B3 ✅ (2026-06-30)**: i flussi a valle aprono l'**OrdiniDrawer**
+> sull'ordine COLLEGATO della pratica (azioni standalone Emetti/push riusate):
+> - BE: endpoint `GET /vendite/ordini/per-pratica/` + `ordini_service.get_ordine_per_pratica`
+>   + `OrdiniRepository.get_ordine_id_by_pratica` (legge `pratiche_sorgenti` COLLEGATO).
+> - FE: voci registry `CONFERMA_ORDINE` (Emetti) e `INVIO_COMMESSA` (push commessa),
+>   `requiresExisting` (ordine deve esistere), helper `ordineDrawerProps`/`resolveOrdinePerPratica`,
+>   `getOrdinePerPratica`, i18n.
+> - **Ritiro handler monolitico** `push_preventivo`: marcato **DEPRECATO** (non più
+>   usato dal catalogo 9004; resta registrato per i soli tipi obsoleti 9002/9003
+>   storici, rimozione fisica quando saranno eliminati).
+>
+> Test BE vendite 964 + FE lint/build verdi. **Pendenti**: review critica + doc API
+> (`api_ordini` per-pratica) + smoke E2E live.
 
 | ID | Layer | Deliverable |
 |---|---|---|
@@ -117,7 +153,28 @@ fermo in DRAFT). (Bug §3.1.1 chiuso.) Verifica DB: catena preventivo EVASO → 
 
 ---
 
-## Fase 4 — Revisione nella pratica (following rev attiva)
+## Fase 4 — Revisione nella pratica (following rev attiva) — ✅ FATTA (no DB)
+
+> **B5 ✅ (2026-06-30, solo BE, nessun DB)**: i resolver del ROOT preventivo
+> (`get_preventivo_id_by_pratica_root` / `_by_flusso_root`) ora risolvono
+> **numero+emittente → rev ATTIVA** (`vw_preventivi.is_attiva`) invece dell'uid
+> agganciato: la pratica segue la revisione viva; annullando una revisione torna
+> al predecessore (gratis da `is_attiva`). Reverse (`get_flusso_id_by_preventivo_root`)
+> reso robusto: match per numero → qualsiasi rev trova il flusso (emissione di una
+> rev successiva auto-completa PREVENTIVAZIONE). Risoluzione a read-time, nessun
+> UPDATE/trigger; il numero si deriva dall'uid agganciato → **niente `meta` da
+> popolare** (convenzione `ref_stable_key` rinviata, non serve). Verificato live su
+> PRA-0000216 (ritorna la rev attiva 375). Test BE 1147 verdi.
+>
+> **F2c — nessuna modifica necessaria**: `crea_revisione` è **già esposto** nel
+> drawer preventivo aperto da pratica (azione data-driven da `available_actions`,
+> non filtrata; resa da `mapAvailableActionsToDrawerActions` se non readonly).
+> L'analisi §3.1.3 "revisione assente" era imprecisa: il gap reale era il
+> following-rev (B5).
+>
+> Caveat residuo (UX, non bloccante): re-aprire il preventivo per revisionarlo
+> dopo che PREVENTIVAZIONE si è auto-completata all'emissione (riapertura di un
+> flusso COMPLETATO) — flusso da rifinire separatamente.
 
 | ID | Layer | Deliverable |
 |---|---|---|

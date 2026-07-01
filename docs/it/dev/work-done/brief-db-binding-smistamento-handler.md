@@ -45,3 +45,19 @@ L'handler `vendita.post_smistamento`:
   9013←9012, esito POSITIVO). Nessuna modifica ai prerequisiti richiesta.
 - Coerente con la direzione anelli: `pratiche` resta generico (esegue un binding), la
   conoscenza "ordine/merce" vive in `vendite` (handler).
+
+## Aggiornamento (2026-06-30, post-implementazione + review)
+
+- ✅ Binding `vendita.post_smistamento` su SMISTAMENTO COMPLETATO/POSITIVO **applicato a DB**;
+  handler `PostSmistamentoHandler` implementato e registrato. CHIUSO lato binding.
+- ⚠️ **Scoperta in review**: il guard `trg_flussi_a10_guard_prerequisiti_ins` è **BEFORE
+  INSERT** → i prerequisiti sono enforced **alla creazione** del flusso. Quindi l'handler
+  **non può** creare INVIO_COMMESSA (9014) alla chiusura di SMISTAMENTO (il suo prereq
+  `9013 POSITIVO` non è ancora soddisfatto): crea **solo i flussi percorribili adesso**
+  (a smistamento = CONFERMA_ORDINE). INVIO_COMMESSA nasce dopo, alla chiusura di
+  CONFERMA_ORDINE.
+- 🟡 **Binding opzionale (per auto-creare INVIO_COMMESSA)**: ribindare lo **stesso** handler
+  `vendita.post_smistamento` anche su **CONFERMA_ORDINE (9013) · COMPLETATO · POSITIVO**.
+  L'handler è già generico (crea i post-ordine percorribili): su 9013 chiuso creerebbe 9014.
+  Senza questo binding, INVIO_COMMESSA si crea comunque dal **percorso** (operatore, un click,
+  prereq allora soddisfatto). Da decidere se aggiungerlo per il flusso pienamente automatico.

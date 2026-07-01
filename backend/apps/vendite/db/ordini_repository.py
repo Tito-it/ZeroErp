@@ -451,6 +451,28 @@ class OrdiniRepository(ComponentiRepositoryMixin):
             cursor.execute(sql, [tipo, int(origine_id)])
             return row_to_dict(cursor)
 
+    # Scopo: Risolve l'ordine COLLEGATO a una PRATICA (pratiche_sorgenti, sorgente
+    #        ORDINE_VENDITA, ruolo COLLEGATO; aggancio fatto da
+    #        PostSmistamentoHandler). Alimenta gli step pratica a valle
+    #        (CONFERMA_ORDINE / INVIO_COMMESSA) che aprono l'OrdiniDrawer su
+    #        quell'ordine. None se non agganciato. Cross-schema read vendite→pratiche
+    #        (direzione anelli consentita). sorgente_uid = id ordine (text).
+    def get_ordine_id_by_pratica(self, pratica_id: int) -> int | None:
+        sql = """
+            SELECT ps.sorgente_uid::bigint
+              FROM pratiche.pratiche_sorgenti ps
+              JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
+             WHERE s.codice_interno = 'ORDINE_VENDITA'
+               AND ps.ruolo_link    = 'COLLEGATO'
+               AND ps.pratica_id    = %s
+             ORDER BY ps.id DESC
+             LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [pratica_id])
+            row = cursor.fetchone()
+        return int(row[0]) if row else None
+
     # Scopo: Aggiorna campi modificabili della testata ordine. Accetta None per
     #        azzerare campi nullable. Campi jsonb (meta) serializzati ::jsonb.
     def update_ordine(self, ordine_id: int, **kwargs: Any) -> bool:

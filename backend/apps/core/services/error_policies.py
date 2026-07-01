@@ -87,6 +87,15 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Voce di catalogo obsoleta: non selezionabile per nuove istanze.",
         ),
+        # Pratica preventivi: completamento SMISTAMENTO senza aver smistato la
+        # merce (nessun ordine, residuo merce). 422: lo step non e' processabile
+        # finche' l'operatore non genera l'ordine dal Pannello Smistamento.
+        "E_VENDITA_SMISTAMENTO_NON_ESEGUITO": ErrorPolicy(
+            code="E_VENDITA_SMISTAMENTO_NON_ESEGUITO",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message="Esegui lo smistamento della merce (genera ordine) prima di completare lo step.",
+        ),
         # ── Building block note partizionate (apps/core/services/partitioned_note_service.py) ──
         # Codici cross-area: il service in apps/core/ scrive su qualunque partizione
         # di vendite.note (PREVENTIVO/CONTRATTO/ORDINE/DDT/FATTURA/ATTIVITAFT) e in
