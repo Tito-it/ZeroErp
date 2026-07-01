@@ -1,7 +1,7 @@
-id,codice,codice_interno,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update
-1,POSITIVO,POSITIVO,Esito positivo,t,{},2026-07-01 00:00:00+02,SEED,2026-07-01 00:00:00+02,SEED
-2,NEGATIVO,NEGATIVO,Esito negativo,t,{},2026-07-01 00:00:00+02,SEED,2026-07-01 00:00:00+02,SEED
-3,PARZIALE,PARZIALE,Esito parziale,t,{},2026-07-01 00:00:00+02,SEED,2026-07-01 00:00:00+02,SEED
-4,NON_APPLICABILE,NON_APPLICABILE,Esito non applicabile,t,{},2026-07-01 00:00:00+02,SEED,2026-07-01 00:00:00+02,SEED
-5,MERCE_PRESENTE,MERCE_PRESENTE,Smistamento con merce presente (ramo ordine->commessa dovuto),t,{},2026-07-01 00:00:00+02,SEED,2026-07-01 00:00:00+02,SEED
-6,SOLO_SERVIZI,SOLO_SERVIZI,Smistamento di soli servizi (commessa diretta; ramo ordine non percorribile),t,{},2026-07-01 00:00:00+02,SEED,2026-07-01 00:00:00+02,SEED
+id,codice,codice_interno,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update,is_verdetto
+1,POSITIVO,POSITIVO,Esito positivo,t,{},2026-07-01 00:00:00+02,SEED,2026-07-01 00:00:00+02,SEED,t
+2,NEGATIVO,NEGATIVO,Esito negativo,t,{},2026-07-01 00:00:00+02,SEED,2026-07-01 00:00:00+02,SEED,t
+3,PARZIALE,PARZIALE,Esito parziale,t,{},2026-07-01 00:00:00+02,SEED,2026-07-01 00:00:00+02,SEED,t
+4,NON_APPLICABILE,NON_APPLICABILE,Esito non applicabile,t,{},2026-07-01 00:00:00+02,SEED,2026-07-01 00:00:00+02,SEED,t
+5,MERCE_PRESENTE,MERCE_PRESENTE,Smistamento con merce presente (ramo ordine->commessa dovuto),t,{},2026-07-01 00:00:00+02,SEED,2026-07-01 00:00:00+02,SEED,f
+6,SOLO_SERVIZI,SOLO_SERVIZI,Smistamento di soli servizi (commessa diretta; ramo ordine non percorribile),t,{},2026-07-01 00:00:00+02,SEED,2026-07-01 00:00:00+02,SEED,f

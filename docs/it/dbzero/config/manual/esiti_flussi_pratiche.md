@@ -34,14 +34,22 @@ dello SMISTAMENTO) senza portare semantica di dominio in un CHECK di motore (lay
 
 ### Valori previsti (seed)
 
-| codice_interno | Origine | Descrizione |
-|----------------|---------|-------------|
-| `POSITIVO` | motore (strutturale) | Esito positivo |
-| `NEGATIVO` | motore (strutturale) | Esito negativo |
-| `PARZIALE` | motore (strutturale) | Esito parziale |
-| `NON_APPLICABILE` | motore (strutturale) | Esito non applicabile |
-| `MERCE_PRESENTE` | dominio (vendite) | Ramo merce dello SMISTAMENTO (ordine→commessa dovuto) |
-| `SOLO_SERVIZI` | dominio (vendite) | Ramo soli servizi (commessa diretta; ramo ordine morto) |
+| codice_interno | Origine | `is_verdetto` | Descrizione |
+|----------------|---------|---------------|-------------|
+| `POSITIVO` | motore (strutturale) | ✅ | Esito positivo |
+| `NEGATIVO` | motore (strutturale) | ✅ | Esito negativo |
+| `PARZIALE` | motore (strutturale) | ✅ | Esito parziale |
+| `NON_APPLICABILE` | motore (strutturale) | ✅ | Esito non applicabile |
+| `MERCE_PRESENTE` | dominio (vendite) | ❌ | Ramo merce dello SMISTAMENTO (ordine→commessa dovuto) |
+| `SOLO_SERVIZI` | dominio (vendite) | ❌ | Ramo soli servizi (commessa diretta; ramo ordine morto) |
+
+**`is_verdetto`** (2026-07-01, brief `brief-db-proiezione-stato-dominio` decisione B):
+discrimina i **verdetti** (chiusure valutative) dagli esiti di **instradamento** di
+dominio (rami di un bivio). Solo i verdetti sono ammessi come proiezione `esito` sulle
+`config.stati_doc_*` (guard `config.trgfn_stati_doc_guard_esito_verdetto`,
+`E_STATO_DOC_ESITO_NON_VERDETTO`) e — in prospettiva (fase GUIDA) — come condizione di
+avanzamento milestone. Default `false` = fail-closed: un nuovo esito non e` un verdetto
+finche' chi lo seeda non lo dichiara.
 
 I 4 esiti **strutturali** sono bootstrappati con lo schema (necessari alla FK sul DB vivo);
 gli esiti di **dominio** sono seedati dai domini in `80_data`. Fonte gestita: il CSV

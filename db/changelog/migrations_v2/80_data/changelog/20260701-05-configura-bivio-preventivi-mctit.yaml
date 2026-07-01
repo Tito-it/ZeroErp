@@ -41,7 +41,7 @@ databaseChangeLog:
   - changeSet:
       id: 20260701-05-configura-bivio-preventivi
       author: mctit
-      runAlways: true
+      runAlways: false
       validCheckSum:
         - ANY
       preConditions:

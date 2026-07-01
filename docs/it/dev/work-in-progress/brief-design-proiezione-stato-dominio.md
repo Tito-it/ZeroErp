@@ -1,7 +1,11 @@
 # Brief Design — Proiezione generica dello stato di dominio nelle pratiche
 
 > **Tipo**: brief di design autorevole (modello + piano DB/BE, FE di consumo) · **Data**: 2026-07-01
-> **Owner**: Tid · **Stato**: 🟠 proposto — da validare come principio prima del cantiere.
+> **Owner**: Tid · **Stato**: 🟡 in lavorazione — principio validato; increment DB PREVENTIVI
+> (D1-D3) in cantiere su `dev/db-tid`, vedi
+> [brief-db-proiezione-stato-dominio.md](brief-db-proiezione-stato-dominio.md) §0 per le
+> decisioni accettate (A-E: vista union senza `resolver_key`, `is_verdetto`, `risolto` nel
+> descrittore, placement `script`, `is_abortito` intatto).
 >
 > **Origine**: voce **V10** e §2.4 di
 > [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md) — la
