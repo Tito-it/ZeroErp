@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D1 - hardening chiusura pratica: helper "flussi aperti" (lavoro pendente).
+# (brief-db-chiusura-pratica-nessun-lavoro-pendente §3.B / D1.a-b)
+#
+# fn_pratica_flussi_aperti: ritorna i flussi ISTANZIATI della pratica in stato NON
+# TERMINALE. "Terminale" e' DERIVATO dai dati (nessun codice_interno cablato): stato
+# senza alcuna transizione di stato in uscita ATTIVA in
+# config.transizioni_stati_flussi_pratiche — stessa definizione auto-mantenuta usata dal
+# guard pratica-terminale (oggi rende terminali COMPLETATO/ANNULLATO; ERRORE resta NON
+# terminale => blocca, corretto). Fonte unica del predicato "lavoro pendente", consumata
+# da fn_check_pratica_chiudibile (auto-chiusura + guard prematura) e dal guard di chiusura
+# pratica (chiusura manuale): manuale e auto condividono cosi' la stessa definizione.
+#
+# RETURNS TABLE: DROP + CREATE (CREATE OR REPLACE non cambia la firma di output).
+# Firma/return-table/declare in %TYPE (linee-guida-sql).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260701-06-create-fn-pratica-flussi-aperti-mctit.yaml
+
+  - changeSet:
+      id: 20260701-06-create-fn-pratica-flussi-aperti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_pratica_flussi_aperti(pratica, escludi_flusso): flussi istanziati in stato non
+        terminale (terminale derivato da transizioni_stati_flussi_pratiche). Predicato
+        unico "lavoro pendente" per chiusura manuale e auto (D1).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- RETURNS TABLE: ricreazione necessaria se cambia la firma di output.
+              DROP FUNCTION IF EXISTS pratiche.fn_pratica_flussi_aperti(bigint, bigint);
+
+              CREATE FUNCTION pratiche.fn_pratica_flussi_aperti(
+                  p_pratica_id        pratiche.flussi.pratica_id%TYPE,
+                  p_escludi_flusso_id pratiche.flussi.id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE(
+                  flusso_id            pratiche.flussi.id%TYPE,
+                  template_flusso_id   pratiche.flussi.template_flusso_id%TYPE,
+                  codice               pratiche.template_flussi.codice%TYPE,
+                  stato_codice_interno config.stati_flussi_pratiche.codice_interno%TYPE
+              )
+              LANGUAGE sql
+              STABLE
+              AS $function$
+              -- Scopo: fn_check_* puro (no raise). Flussi ISTANZIATI della pratica in
+              --   stato NON TERMINALE = lavoro pendente. Terminale = stato senza
+              --   transizione di stato in uscita attiva (config.transizioni_stati_flussi_
+              --   pratiche), auto-mantenuto come il guard pratica-terminale.
+              --   p_escludi_flusso_id: ignora un'istanza (es. il flusso che sta
+              --   completando, ancora non-terminale nel guard BEFORE).
+                  SELECT f.id, f.template_flusso_id, tf.codice, sfp.codice_interno
+                    FROM pratiche.flussi f
+                    JOIN config.stati_flussi_pratiche sfp ON sfp.id = f.stato_id
+                    LEFT JOIN pratiche.template_flussi tf ON tf.id = f.template_flusso_id
+                   WHERE f.pratica_id = p_pratica_id
+                     AND (p_escludi_flusso_id IS NULL OR f.id <> p_escludi_flusso_id)
+                     AND EXISTS (
+                           SELECT 1
+                             FROM config.transizioni_stati_flussi_pratiche t
+                            WHERE t.stato_da_id = f.stato_id
+                              AND t.attivo
+                     );
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_pratica_flussi_aperti(bigint, bigint)
+              IS 'Pure check (D1): flussi istanziati in stato NON terminale (lavoro pendente) della pratica. Terminale = stato senza transizione di stato in uscita attiva (config.transizioni_stati_flussi_pratiche), auto-mantenuto. p_escludi_flusso_id ignora un''istanza (il flusso che sta completando). Consumata da fn_check_pratica_chiudibile e dal guard di chiusura pratica.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS pratiche.fn_pratica_flussi_aperti(bigint, bigint);

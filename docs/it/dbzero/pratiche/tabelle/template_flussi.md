@@ -33,10 +33,10 @@
 |------|------|---------|
 | CHECK | chk_template_flussi_chiusura_obbligatorio |  |
 | CHECK | chk_template_flussi_direzione |  |
-| CHECK | chk_template_flussi_esito_default |  |
 | CHECK | chk_template_flussi_modalita_esito |  |
 | CHECK | chk_template_flussi_ripetibilita |  |
 | FOREIGN KEY | fk_template_flussi_azione_ui | azione_ui_id |
+| FOREIGN KEY | fk_template_flussi_esito_default | esito_default |
 | FOREIGN KEY | fk_template_flussi_handler | handler_id |
 | FOREIGN KEY | fk_template_flussi_tipo_prestazione | tipo_prestazione_id |
 | PRIMARY KEY | pk_pratiche_template_flussi | id |
