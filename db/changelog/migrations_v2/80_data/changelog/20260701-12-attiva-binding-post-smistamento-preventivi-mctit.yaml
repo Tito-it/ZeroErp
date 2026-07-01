@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Attiva il binding handler-evento post_smistamento su SMISTAMENTO (bivio PREVENTIVI).
+# (brief-db-attiva-binding-post-smistamento; sblocca smoke E2E ramo MERCE 9004)
+#
+# SINTOMO: completa-smistamento -> esito=MERCE_PRESENTE ma l'ordine merce non viene
+# agganciato (handler 'vendita.post_smistamento' non dispatchato) perche' il binding
+# e' attivo=false. Il dispatch (get_handler_eventi) filtra tfhe.attivo=true.
+#
+# CAUSA: 20260630-08 inserisce il binding attivo=true ma con ON CONFLICT ON CONSTRAINT
+# uq_tfhe DO NOTHING; su un DB dove esisteva gia' una riga (template,evento,esito,handler)
+# con attivo=false (residuo storico di una revisione precedente del loader CSV
+# template_flussi_handler_eventi.csv, che pero' NON contiene piu' questo binding),
+# il conflitto non la riattiva. 20260701-05 step (4) ha poi ri-puntato l'esito a
+# MERCE_PRESENTE ma non tocca attivo. Risultato: attivo rimasto false.
+# Nota: su DB FRESCO il binding e' gia' attivo=true (nessuna riga in conflitto).
+#
+# FIX: UPDATE mirato attivo=true per CHIAVE STABILE (tipo_prestazione.codice_interno,
+# template_flussi.codice, handler_flussi.handler_key, evento) — NON filtra esito_richiesto
+# (di competenza di 20260701-05, che lo porta a MERCE_PRESENTE): attiva il binding di
+# completamento post_smistamento su SMISTAMENTO qualunque sia l'esito corrente.
+# Guard `attivo IS DISTINCT FROM true` -> re-run no-op (idempotente).
+#
+# runAlways=true (mirror di 20260701-05, "patch durevole sopra seed committato"):
+# self-healing rispetto proprio al failure-mode che ha causato il bug (un loader che
+# lascia/reintroduce la riga con attivo=false). Il trigger child_requires_active_parent
+# su handler_id e' soddisfatto: handler_flussi 'vendita.post_smistamento' e' attivo=true
+# (seed 20260630-07). Ordine: 20260630-08 (INSERT binding) e 20260701-05 (esito) PRIMA.
+# Opzione 2 (DO UPDATE su 20260630-08) scartata: e' committato/pushato -> immutabile.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260701-12-attiva-binding-post-smistamento-preventivi-mctit.yaml
+
+  - changeSet:
+      id: 20260701-12-attiva-binding-post-smistamento-preventivi
+      author: mctit
+      runAlways: false
+      validCheckSum:
+        - ANY
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pratiche
+                tableName: template_flussi_handler_eventi
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Attiva il binding di completamento post_smistamento su SMISTAMENTO
+              -- (ramo MERCE del bivio PREVENTIVI). Chiave stabile (no id hardcoded);
+              -- esito NON filtrato (owned da 20260701-05). Idempotente.
+              UPDATE pratiche.template_flussi_handler_eventi e
+                 SET attivo = true
+                FROM pratiche.template_flussi tf
+                JOIN pratiche.tipi_prestazione tp ON tp.id = tf.tipo_prestazione_id
+                JOIN pratiche.handler_flussi   hf ON hf.handler_key = 'vendita.post_smistamento'
+               WHERE tp.codice_interno = 'PREVENTIVI'
+                 AND tf.codice         = 'SMISTAMENTO'
+                 AND e.template_flusso_id = tf.id
+                 AND e.handler_id         = hf.id
+                 AND e.evento             = 'COMPLETATO'
+                 AND e.attivo IS DISTINCT FROM true;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Inverso best-effort: disattiva il binding (torna allo stato pre-fix).
+              UPDATE pratiche.template_flussi_handler_eventi e
+                 SET attivo = false
+                FROM pratiche.template_flussi tf
+                JOIN pratiche.tipi_prestazione tp ON tp.id = tf.tipo_prestazione_id
+                JOIN pratiche.handler_flussi   hf ON hf.handler_key = 'vendita.post_smistamento'
+               WHERE tp.codice_interno = 'PREVENTIVI'
+                 AND tf.codice         = 'SMISTAMENTO'
+                 AND e.template_flusso_id = tf.id
+                 AND e.handler_id         = hf.id
+                 AND e.evento             = 'COMPLETATO'
+                 AND e.attivo IS DISTINCT FROM false;

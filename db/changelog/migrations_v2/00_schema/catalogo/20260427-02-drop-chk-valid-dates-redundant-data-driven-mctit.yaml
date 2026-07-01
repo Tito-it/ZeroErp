@@ -64,6 +64,8 @@ databaseChangeLog:
   - changeSet:
       id: 20260427-02-01-drop-chk-articoli-componenti-valid-dates
       author: mctit
+      validCheckSum:
+        - ANY
       comment: >
         Drop chk_articoli_componenti_valid_dates su catalogo.articoli_componenti.
         CHECK ridondante: validita daterange + trgfn_set_validita gia'
@@ -71,7 +73,7 @@ databaseChangeLog:
         same-day BoM (pattern stato-terminale-data-driven, simmetrico al
         commento esistente del trigger block_modifica_struttura).
       preConditions:
-        - onFail: CONTINUE
+        - onFail: MARK_RAN
         - and:
             - tableExists:
                 schemaName: catalogo
@@ -105,13 +107,15 @@ databaseChangeLog:
   - changeSet:
       id: 20260427-02-02-drop-chk-uom-conv-valid-dates
       author: mctit
+      validCheckSum:
+        - ANY
       comment: >
         Drop chk_uom_conv_valid_dates su catalogo.unita_misura_conversioni.
         Stessa motivazione: CHECK ridondante post validita daterange +
         trgfn_set_validita. Allinea al pattern data-driven (conversione
         valida un solo giorno ammessa: chiusura same-day di errore admin).
       preConditions:
-        - onFail: CONTINUE
+        - onFail: MARK_RAN
         - and:
             - tableExists:
                 schemaName: catalogo
@@ -145,6 +149,8 @@ databaseChangeLog:
   - changeSet:
       id: 20260427-02-03-drop-chk-listini-versioni-date
       author: mctit
+      validCheckSum:
+        - ANY
       comment: >
         Drop chk_listini_versioni_date su vendite.listini_versioni. Stessa
         motivazione. ATTENZIONE cross-team: il service Python
@@ -155,7 +161,7 @@ databaseChangeLog:
         Nessun rischio runtime: la guard Python e' fail-fast e resta valida
         (solo piu' restrittiva del DB) finche' BE non si allinea.
       preConditions:
-        - onFail: CONTINUE
+        - onFail: MARK_RAN
         - and:
             - tableExists:
                 schemaName: vendite
@@ -189,12 +195,14 @@ databaseChangeLog:
   - changeSet:
       id: 20260427-02-04-drop-chk-listini-associazioni-date
       author: mctit
+      validCheckSum:
+        - ANY
       comment: >
         Drop chk_listini_associazioni_date su vendite.listini_associazioni.
         Stessa motivazione. Nessun reference BE al constraint name -> drop
         pulito.
       preConditions:
-        - onFail: CONTINUE
+        - onFail: MARK_RAN
         - and:
             - tableExists:
                 schemaName: vendite

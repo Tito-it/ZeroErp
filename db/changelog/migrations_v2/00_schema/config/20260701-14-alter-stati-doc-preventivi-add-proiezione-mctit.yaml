@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Proiezione stato di dominio — D1 su PREVENTIVI (primo dominio del roll-out).
+# (brief-db-proiezione-stato-dominio §4 D1; origine brief-design V10)
+#
+# Il dominio DICHIARA LA MAPPA di normalizzazione del proprio ciclo di vita;
+# il motore pratiche consuma fase/esito/terminale senza mai nominare uno stato
+# di dominio. Colonne aggiunte a config.stati_doc_preventivi:
+#   fase      varchar NOT NULL  — APERTO | IN_CORSO | IN_ATTESA | CHIUSO (CHECK;
+#                                 vocabolario POSSEDUTO DAL MOTORE, per questo
+#                                 CHECK e non tabella — asimmetria voluta vs esito)
+#   esito     varchar NULL      — FK config.esiti_flussi_pratiche(codice_interno);
+#                                 NULL = nessun verdetto. Solo verdetti
+#                                 (is_verdetto=true, guard 20260701-15)
+#   terminale boolean NOT NULL  — il documento non evolvera' piu'. CHECK di
+#                                 coerenza: terminale => fase='CHIUSO' (invariante
+#                                 su cui poggia l'auto-chiusura milestone).
+#                                 DIVERSO da is_abortito (abbandono revisione),
+#                                 che resta INVARIATO (decisione E)
+#
+# MAPPA (vocabolario universale, brief design §3 — copre il 100% del seed reale):
+#   DRAFT     -> APERTO     NULL      false
+#   EMESSO    -> IN_ATTESA  NULL      false   (si aspetta il cliente)
+#   ACCETTATO -> IN_CORSO   POSITIVO  false
+#   RIFIUTATO -> CHIUSO     NEGATIVO  true
+#   SCADUTO   -> CHIUSO     NEGATIVO  true
+#   EVASO     -> CHIUSO     POSITIVO  true
+#   ANNULLATO -> CHIUSO     NEGATIVO  true    (is_abortito)
+#
+# SEED (playbook is_abortito 20260515-02):
+#   - DB vivo: backfill UPDATE qui sotto, keyed su codice_interno; poi SET NOT
+#     NULL su fase. Se esistessero stati custom non mappati il SET NOT NULL
+#     FALLISCE: e' voluto (il dominio DEVE dichiarare la mappa, niente default
+#     silenziosi).
+#   - Fresh DB: la tabella qui e' vuota (seed in 80_data) -> il backfill e' no-op
+#     e il NOT NULL e' soddisfatto dalla CSV stati_doc_preventivi.csv, estesa con
+#     fase/terminale. `esito` NON e' in CSV: il changeset immutabile 20250917-01
+#     ha nullValue:"" e non puo' esprimere NULL (feedback_liquibase_csv_null_
+#     sentinel) -> seed esito nel changeset UPDATE 80_data 20260701-19.
+#
+# ORDINE: richiede 20260701-01 (esiti_flussi_pratiche + 4 strutturali seedati,
+# target FK). Indice FK: NON creato a mano (policy 90_end apply_fk_index_policy).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260701-14-alter-stati-doc-preventivi-add-proiezione-mctit.yaml
+
+  - changeSet:
+      id: 20260701-14-alter-stati-doc-preventivi-add-proiezione
+      author: mctit
+      comment: >
+        D1 proiezione stato dominio su config.stati_doc_preventivi: aggiunge
+        fase (NOT NULL, CHECK 4 valori), esito (FK esiti_flussi_pratiche, NULL
+        ammesso), terminale (NOT NULL DEFAULT false, CHECK terminale=>CHIUSO) e
+        seeda la mappa per i 7 stati. is_abortito invariato (decisione E).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_preventivi
+            - tableExists:
+                schemaName: config
+                tableName: esiti_flussi_pratiche
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_preventivi
+                ADD COLUMN fase      VARCHAR(20),
+                ADD COLUMN esito     VARCHAR(50),
+                ADD COLUMN terminale BOOLEAN NOT NULL DEFAULT false;
+
+              -- Backfill della mappa dichiarata dal dominio (DB vivo; no-op su
+              -- fresh DB dove il seed arriva da 80_data). Keyed su codice_interno
+              -- (chiave naturale immutabile), mai su id.
+              UPDATE config.stati_doc_preventivi s
+                 SET fase      = m.fase,
+                     esito     = m.esito,
+                     terminale = m.terminale
+                FROM (VALUES
+                        ('DRAFT',     'APERTO',    NULL::varchar, false),
+                        ('EMESSO',    'IN_ATTESA', NULL::varchar, false),
+                        ('ACCETTATO', 'IN_CORSO',  'POSITIVO',    false),
+                        ('RIFIUTATO', 'CHIUSO',    'NEGATIVO',    true),
+                        ('SCADUTO',   'CHIUSO',    'NEGATIVO',    true),
+                        ('EVASO',     'CHIUSO',    'POSITIVO',    true),
+                        ('ANNULLATO', 'CHIUSO',    'NEGATIVO',    true)
+                     ) AS m(codice_interno, fase, esito, terminale)
+               WHERE s.codice_interno = m.codice_interno;
+
+              -- Fail-fast voluto: uno stato non mappato blocca qui la migration
+              -- (il dominio deve dichiarare la mappa, niente default silenziosi).
+              ALTER TABLE config.stati_doc_preventivi
+                ALTER COLUMN fase SET NOT NULL;
+
+              ALTER TABLE config.stati_doc_preventivi
+                ADD CONSTRAINT chk_stati_doc_preventivi_fase
+                CHECK (fase IN ('APERTO', 'IN_CORSO', 'IN_ATTESA', 'CHIUSO'));
+
+              -- Invariante della mappa universale: un terminale e' sempre CHIUSO.
+              ALTER TABLE config.stati_doc_preventivi
+                ADD CONSTRAINT chk_stati_doc_preventivi_terminale_chiuso
+                CHECK (NOT terminale OR fase = 'CHIUSO');
+
+              ALTER TABLE config.stati_doc_preventivi
+                ADD CONSTRAINT fk_stati_doc_preventivi_esito
+                FOREIGN KEY (esito)
+                REFERENCES config.esiti_flussi_pratiche (codice_interno);
+
+              COMMENT ON COLUMN config.stati_doc_preventivi.fase IS
+                  'Proiezione normalizzata per il motore pratiche (D1, brief-db-proiezione-'
+                  'stato-dominio): APERTO | IN_CORSO | IN_ATTESA | CHIUSO. Il motore ragiona '
+                  'su questa, mai sui codici di dominio. Dichiarata dal dominio vendite.';
+              COMMENT ON COLUMN config.stati_doc_preventivi.esito IS
+                  'Verdetto proiettato dello stato (config.esiti_flussi_pratiche.codice_interno '
+                  'con is_verdetto=true; guard trgfn_stati_doc_guard_esito_verdetto). NULL = '
+                  'nessun verdetto. Base della futura fase GUIDA (avanza-su-esito-proiettato).';
+              COMMENT ON COLUMN config.stati_doc_preventivi.terminale IS
+                  'true = il documento in questo stato non evolvera'' piu'' (CHECK: implica '
+                  'fase=CHIUSO). Asse uniforme cross-dominio; NON sostituisce is_abortito '
+                  '(semantica diversa: abbandono della revisione).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_preventivi
+                DROP CONSTRAINT IF EXISTS fk_stati_doc_preventivi_esito,
+                DROP CONSTRAINT IF EXISTS chk_stati_doc_preventivi_terminale_chiuso,
+                DROP CONSTRAINT IF EXISTS chk_stati_doc_preventivi_fase;
+              ALTER TABLE config.stati_doc_preventivi
+                DROP COLUMN IF EXISTS terminale,
+                DROP COLUMN IF EXISTS esito,
+                DROP COLUMN IF EXISTS fase;
