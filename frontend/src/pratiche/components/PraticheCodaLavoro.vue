@@ -75,9 +75,13 @@ function onPrendiInCarico(item, event) {
           @click="onItemClick(item)"
         >
           <div class="coda-item-title">{{ item.pratica_codice }}</div>
-          <div class="coda-item-desc">{{ item.template_flusso_codice || item.template_flusso_desc }}</div>
+          <div class="coda-item-desc">{{ item.template_flusso_desc || item.template_flusso_codice }}</div>
           <div class="coda-item-meta">
-            <Tag :value="item.stato_flusso_codice" :severity="statoFlussoSeverity(item.stato_flusso_codice_interno)" size="small" />
+            <!-- Stato via descrizione umana (fallback al codice finche' il brief DB non
+                 espone `stato_flusso_descrizione` nella fn coda). Severity sul codice
+                 interno: la fn ritorna il codice_interno nel campo `stato_flusso_codice`
+                 (il campo `stato_flusso_codice_interno` non esiste → severity era undefined). -->
+            <Tag :value="item.stato_flusso_descrizione || item.stato_flusso_codice" :severity="statoFlussoSeverity(item.stato_flusso_codice)" size="small" />
             <!-- Azione specifica per livello -->
             <Tag v-if="item.livello === 'ASSEGNATO'" :value="item.priorita_codice" :severity="prioritaPraticaSeverity(item.priorita_codice)" size="small" />
             <Button

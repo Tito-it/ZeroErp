@@ -136,6 +136,10 @@ class TestPreventiviService(unittest.TestCase):
         self.MockRepoClass = self.repo_patcher.start()
         self.mock_repo = MagicMock()
         self.MockRepoClass.return_value = self.mock_repo
+        # Default: preventivo NON agganciato a una pratica (push standalone). Il
+        # ramo aggancio-commessa di push_a_commessa (rev.3) resta no-op — i test
+        # pratica-aware lo sovrascrivono esplicitamente.
+        self.mock_repo.get_flusso_id_by_preventivo_root.return_value = None
 
         # Mock BB anagrafiche usati da crea_preventivo per validator dominio
         # (post brief DB rev2: derivazione istanza dal BA + pre-check coerenza
@@ -482,6 +486,157 @@ class TestPreventiviService(unittest.TestCase):
         emetti(7)
 
         mock_completa.assert_not_called()
+
+    # ── completa_smistamento — bivio-per-esito rev.3 ──
+
+    # completa_smistamento e' testato al SUO confine: risoluzione pratica + guard
+    # residuo + esito di ramo, delegando l'idempotenza/transizione al BB motore
+    # `pratiche_service.completa_step_pratica` (mockato qui, testato in pratiche).
+    _STEP = "apps.pratiche.services.pratiche_service.completa_step_pratica"
+
+    def _mock_pratica(self, MockPratRepo, *, pratica_id=290):
+        # preventivo → flusso ROOT → pratica (per _resolve_pratica_id_da_preventivo).
+        self.mock_repo.get_flusso_id_by_preventivo_root.return_value = 315
+        MockPratRepo.return_value.get_flusso.return_value = {"pratica_id": pratica_id}
+
+    def _no_residuo(self):
+        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
+        self.mock_repo.preventivo_ha_residuo_commessa.return_value = False
+
+    @staticmethod
+    def _mock_ordine_origine(MockOrd, *, esiste):
+        # Esito di ramo = STESSO lookup dell'handler (get_ordine_by_documento_origine):
+        # ordine presente → MERCE_PRESENTE, assente → SOLO_SERVIZI.
+        MockOrd.return_value.get_ordine_by_documento_origine.return_value = (
+            {"id": 1, "numero": "ORD1"} if esiste else None
+        )
+
+    # Scopo: ramo MERCE — e' nato un ordine → esito MERCE_PRESENTE (9013/9014 dovuti).
+    @patch("apps.vendite.db.ordini_repository.OrdiniRepository")
+    @patch(_STEP)
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    def test_completa_smistamento_merce(self, MockPratRepo, mock_step, MockOrd):
+        from apps.vendite.services.preventivi_service import completa_smistamento
+
+        self._mock_pratica(MockPratRepo)
+        self._no_residuo()
+        self._mock_ordine_origine(MockOrd, esiste=True)
+        mock_step.return_value = {"flusso_id": 500, "stato_precedente": "IN_CORSO", "completato": True}
+
+        out = completa_smistamento(7, user="op")
+
+        self.assertEqual(out["esito"], "MERCE_PRESENTE")
+        self.assertFalse(out["gia_completato"])
+        mock_step.assert_called_once_with(
+            290, template_codice="SMISTAMENTO", esito="MERCE_PRESENTE", user="op",
+        )
+
+    # Scopo: ramo SERVIZI — nessun ordine → esito SOLO_SERVIZI (ramo ordine morto).
+    @patch("apps.vendite.db.ordini_repository.OrdiniRepository")
+    @patch(_STEP)
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    def test_completa_smistamento_servizi(self, MockPratRepo, mock_step, MockOrd):
+        from apps.vendite.services.preventivi_service import completa_smistamento
+
+        self._mock_pratica(MockPratRepo)
+        self._no_residuo()
+        self._mock_ordine_origine(MockOrd, esiste=False)
+        mock_step.return_value = {"flusso_id": 500, "stato_precedente": "IN_CORSO", "completato": True}
+
+        out = completa_smistamento(7)
+
+        self.assertEqual(out["esito"], "SOLO_SERVIZI")
+        mock_step.assert_called_once_with(
+            290, template_codice="SMISTAMENTO", esito="SOLO_SERVIZI", user=None,
+        )
+
+    # Scopo: step gia' terminale (BB completato=False) → gia_completato=True.
+    @patch("apps.vendite.db.ordini_repository.OrdiniRepository")
+    @patch(_STEP)
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    def test_completa_smistamento_idempotente(self, MockPratRepo, mock_step, MockOrd):
+        from apps.vendite.services.preventivi_service import completa_smistamento
+
+        self._mock_pratica(MockPratRepo)
+        self._no_residuo()
+        self._mock_ordine_origine(MockOrd, esiste=True)
+        mock_step.return_value = {"flusso_id": 500, "stato_precedente": "COMPLETATO", "completato": False}
+
+        out = completa_smistamento(7)
+
+        self.assertTrue(out["gia_completato"])
+
+    # Scopo: SMISTAMENTO non istanziato (BB flusso_id=None) → E_PREV_VALIDAZIONE.
+    @patch("apps.vendite.db.ordini_repository.OrdiniRepository")
+    @patch(_STEP)
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    def test_completa_smistamento_step_non_istanziato(self, MockPratRepo, mock_step, MockOrd):
+        from apps.vendite.services.preventivi_service import completa_smistamento
+
+        self._mock_pratica(MockPratRepo)
+        self._no_residuo()
+        self._mock_ordine_origine(MockOrd, esiste=False)
+        mock_step.return_value = {"flusso_id": None, "stato_precedente": None, "completato": False}
+
+        with self.assertRaises(ServiceError) as ctx:
+            completa_smistamento(7)
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+
+    # Scopo: preventivo non in una pratica → E_VENDITA_PREVENTIVO_NON_COLLEGATO.
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    def test_completa_smistamento_no_pratica(self, MockPratRepo):
+        from apps.vendite.services.preventivi_service import completa_smistamento
+
+        self.mock_repo.get_flusso_id_by_preventivo_root.return_value = None
+
+        with self.assertRaises(ServiceError) as ctx:
+            completa_smistamento(7)
+        self.assertEqual(ctx.exception.code, "E_VENDITA_PREVENTIVO_NON_COLLEGATO")
+
+    # Scopo: residuo merce non smistato → E_VENDITA_SMISTAMENTO_NON_ESEGUITO
+    # (guard PRIMA del BB: il BB non viene chiamato).
+    @patch(_STEP)
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    def test_completa_smistamento_residuo_blocca(self, MockPratRepo, mock_step):
+        from apps.vendite.services.preventivi_service import completa_smistamento
+
+        self._mock_pratica(MockPratRepo)
+        self.mock_repo.preventivo_ha_residuo_ordine.return_value = True
+
+        with self.assertRaises(ServiceError) as ctx:
+            completa_smistamento(7)
+        self.assertEqual(ctx.exception.code, "E_VENDITA_SMISTAMENTO_NON_ESEGUITO")
+        mock_step.assert_not_called()
+
+    # Scopo: push_a_commessa in contesto pratica → aggancia la commessa-servizi
+    # come COLLEGATO (ramo servizi dello split, rev.3).
+    @patch("apps.vendite.db.commesse_repository.CommesseRepository")
+    @patch("apps.pratiche.db.pratiche_repository.PraticheRepository")
+    @patch("apps.vendite.services.commesse_service.pr_run_commesse_push_one")
+    def test_push_a_commessa_aggancia_a_pratica(self, mock_push_one, MockPratRepo, MockCommRepo):
+        from apps.vendite.services.preventivi_service import push_a_commessa
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
+        }
+        self.mock_repo.count_righe_pushable.return_value = 2
+        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
+        self.mock_repo.preventivo_ha_residuo_commessa.return_value = False
+        # preventivo in una pratica → aggancio commessa attivo.
+        self.mock_repo.get_flusso_id_by_preventivo_root.return_value = 315
+        MockPratRepo.return_value.get_flusso.return_value = {"pratica_id": 290}
+        MockCommRepo.return_value.get_commessa_id_by_sorgente.return_value = 77
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO", "dry_run": False, "push_log_id": 42,
+            "durata_ms": 5, "handlers": [],
+        }
+
+        push_a_commessa(1)
+
+        MockPratRepo.return_value.upsert_pratica_sorgente.assert_called_once_with(
+            pratica_id=290, sorgente_codice="COMMESSA",
+            sorgente_uid="77", ruolo_link="COLLEGATO",
+        )
 
     # ── Eliminazione bozza (abbandono drawer) ──
 

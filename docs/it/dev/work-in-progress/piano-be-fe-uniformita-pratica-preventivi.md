@@ -4,8 +4,10 @@
 > Fasi 0-4 implementate. 🔴 **BLOCCO E2E merce**: la pratica si **auto-chiude a
 > SMISTAMENTO** (regola chiusura template-based + timing) prima dei flussi ordine
 > condizionali → serve la nuova **regola di chiusura "nessun lavoro pendente"**
-> (motore, DB): [brief-db-chiusura-pratica-no-lavoro-pendente.md](brief-db-chiusura-pratica-no-lavoro-pendente.md).
-> Include il binding on-demand di INVIO_COMMESSA (post_smistamento su CONFERMA_ORDINE).
+> (motore, DB): [brief-db-chiusura-pratica-nessun-lavoro-pendente.md](brief-db-chiusura-pratica-nessun-lavoro-pendente.md).
+> Fix (rev. 3): **bivio-per-esito** — 9013/9014 `obbligatorio=true` percorribili solo sul ramo
+> merce via esito `MERCE_PRESENTE` di SMISTAMENTO (niente creazione on-demand / chaining). ✅ DB
+> applicato + pgTAP verde; resta il BE (SMISTAMENTO calcola l'esito, `post_smistamento` merce-only).
 > **Analisi (il perché)**: [analisi-uniformita-pratica-preventivi.md](analisi-uniformita-pratica-preventivi.md)
 > **Prerequisiti DB**: ✅ tutti applicati (catalogo `PREVENTIVI` 9004 + flussi 9009-9014,
 > `obsoleto_dal` + lookup/guard) — brief in `work-done`.

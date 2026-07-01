@@ -48,6 +48,9 @@ const esitiOptions = computed(() => [
 ])
 
 const stato = computed(() => props.flusso?.stato_codice_interno || '')
+// Descrizione umana dello stato (display field BE `stato_descrizione`): mostrata nel Tag.
+// Il `stato` codice_interno resta per la logica (transizioni, visibilita' azioni, severity).
+const statoDescrizione = computed(() => props.flusso?.stato_descrizione || stato.value)
 
 // Dialog di assegnazione (reparto + operatore). L'assegnazione ha senso finche'
 // il flusso e' attivo: non su COMPLETATO/ANNULLATO ne' in sola lettura.
@@ -257,8 +260,8 @@ const onClose = useDrawerClose(emit)
     <template #header>
       <DrawerTitle
         :action="t('pratiche.flusso_esecuzione')"
-        :title="flusso?.template_flusso_codice || t('pratiche.flusso_generico')"
-        icon="pi pi-sitemap"
+        :title="flusso?.template_flusso_descrizione || t('pratiche.flusso_generico')"
+        icon="pi pi-briefcase"
       />
     </template>
 
@@ -278,17 +281,15 @@ const onClose = useDrawerClose(emit)
         :id-fiscale="flusso.pratica_soggetto_id_fiscale"
       >
         <template #status>
-          <Tag :value="stato" :severity="statoFlussoSeverity(stato)" />
+          <Tag :value="statoDescrizione" :severity="statoFlussoSeverity(stato)" />
         </template>
       </PraticaContextHeader>
 
       <DrawerActionsBar :actions="drawerActions" />
 
-      <!-- Info flusso: template descrittivo (codice gia' visibile nel titolo). -->
-      <div v-if="flusso.template_flusso_descrizione" class="form-field">
-        <label>{{ t('pratiche.flusso_col_template') }}</label>
-        <span class="form-value">{{ flusso.template_flusso_descrizione }}</span>
-      </div>
+      <!-- La descrizione dell'attivita' e' gia' nel titolo del drawer: niente campo
+           "Template" per l'operatore (era gergo di configurazione). Torna in modalita'
+           tecnica (super-admin) con B5. -->
 
       <!-- Assegnazione corrente del flusso (reparto + operatore), display fields
            dal BE. Mostrata solo se almeno uno valorizzato. -->

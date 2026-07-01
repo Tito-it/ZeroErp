@@ -675,3 +675,73 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as ctx:
             pratiche_service.list_operatori_reparto(0)
         self.assertEqual(ctx.exception.code, "E_INVALID_ID")
+
+
+class CompletaStepPraticaTests(SimpleTestCase):
+    """BB motore completa_step_pratica: idempotenza + scelta transizione, guidata
+    dal percorso (bivio rev.3, de-dup preventivi/ordini)."""
+
+    @staticmethod
+    def _percorso(codice, stato="IN_CORSO", flusso_id=700):
+        return [{"template_flusso_codice": codice, "flusso_id": flusso_id,
+                 "stato_codice_interno": stato}]
+
+    # Scopo: step non istanziato (assente dal percorso) → flusso_id None, no-op.
+    @patch(f"{_SVC}.completa_flusso")
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_step_non_istanziato(self, MockRepo, mock_completa):
+        MockRepo.return_value.get_percorso_pratica.return_value = []
+        out = pratiche_service.completa_step_pratica(1, template_codice="SMISTAMENTO", esito="POSITIVO")
+        self.assertIsNone(out["flusso_id"])
+        self.assertFalse(out["completato"])
+        mock_completa.assert_not_called()
+
+    # Scopo: step presente ma non istanziato (flusso_id None) → no-op.
+    @patch(f"{_SVC}.completa_flusso")
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_step_percorribile_non_istanziato(self, MockRepo, mock_completa):
+        MockRepo.return_value.get_percorso_pratica.return_value = self._percorso(
+            "SMISTAMENTO", flusso_id=None,
+        )
+        out = pratiche_service.completa_step_pratica(1, template_codice="SMISTAMENTO", esito="POSITIVO")
+        self.assertIsNone(out["flusso_id"])
+        self.assertFalse(out["completato"])
+        mock_completa.assert_not_called()
+
+    # Scopo: step gia' terminale → completato False, nessuna transizione.
+    @patch(f"{_SVC}.completa_flusso")
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_step_terminale_idempotente(self, MockRepo, mock_completa):
+        MockRepo.return_value.get_percorso_pratica.return_value = self._percorso(
+            "SMISTAMENTO", stato="COMPLETATO",
+        )
+        out = pratiche_service.completa_step_pratica(1, template_codice="SMISTAMENTO", esito="POSITIVO")
+        self.assertEqual(out["flusso_id"], 700)
+        self.assertFalse(out["completato"])
+        mock_completa.assert_not_called()
+
+    # Scopo: step IN_CORSO → completa_flusso, completato True.
+    @patch(f"{_SVC}.completa_flusso")
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_step_in_corso_completa(self, MockRepo, mock_completa):
+        MockRepo.return_value.get_percorso_pratica.return_value = self._percorso(
+            "CONFERMA_ORDINE", stato="IN_CORSO",
+        )
+        out = pratiche_service.completa_step_pratica(
+            1, template_codice="CONFERMA_ORDINE", esito="POSITIVO", user="op",
+        )
+        self.assertTrue(out["completato"])
+        mock_completa.assert_called_once_with(700, esito="POSITIVO", user="op")
+
+    # Scopo: step DA_ESEGUIRE → avvia+completa (CONTESTUALE).
+    @patch(f"{_SVC}.avvia_e_completa_flusso")
+    @patch(f"{_SVC}.completa_flusso")
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_step_da_eseguire_avvia_e_completa(self, MockRepo, mock_completa, mock_avvia):
+        MockRepo.return_value.get_percorso_pratica.return_value = self._percorso(
+            "SMISTAMENTO", stato="DA_ESEGUIRE",
+        )
+        out = pratiche_service.completa_step_pratica(1, template_codice="SMISTAMENTO", esito="MERCE_PRESENTE")
+        self.assertTrue(out["completato"])
+        mock_avvia.assert_called_once_with(700, esito="MERCE_PRESENTE", user=None)
+        mock_completa.assert_not_called()

@@ -24,7 +24,7 @@ Indice test eseguiti:
     orchestra conferma + genera_documento(allegati=...) in transazione atomica
 """
 
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
@@ -90,7 +90,8 @@ class TestOrdiniApi(JwtMockedApiTest):
         resp = self.client.post(f"{_BASE}7/conferma/", content_type="application/json")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["data"]["stato"], "CONFERMATO")
-        mock_conf.assert_called_once_with(7)
+        # user propagato dal JWT (audit del completamento step CONFERMA_ORDINE).
+        mock_conf.assert_called_once_with(7, user=ANY)
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.push_a_commessa")
@@ -99,7 +100,7 @@ class TestOrdiniApi(JwtMockedApiTest):
         resp = self.client.post(f"{_BASE}7/push/", content_type="application/json")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["data"]["stato"], "COMPLETATO")
-        mock_push.assert_called_once_with(7)
+        mock_push.assert_called_once_with(7, user=ANY)
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.cambia_stato")

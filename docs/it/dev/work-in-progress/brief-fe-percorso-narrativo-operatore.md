@@ -1,7 +1,7 @@
 # Brief FE — Il Percorso pratica da grafo-macchina a racconto operatore
 
 > **Tipo**: brief FE (design → implementazione) · **Data**: 2026-07-01
-> **Owner**: Tid · **Stato**: 🟠 proposto — da validare su PREVENTIVI prima di estendere.
+> **Owner**: Tid · **Stato**: 🟢 decisioni §7 chiuse (2026-07-01) — attesa prerequisiti BE/DB (§5), poi implementazione. Validare su PREVENTIVI prima di estendere.
 >
 > **Origine**: voce **V1** di
 > [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md)
@@ -50,9 +50,11 @@ fare adesso».
 1. **L'operatore non deve mai vedere «il flusso».** *Flusso, template, prerequisito,
    sequenza, handler, direzione, modalità esito* sono plumbing: mai a video per un
    operatore. (Una modalità "tecnica/avanzata" per super-admin è ammessa — §6.)
-2. **La vista è un racconto con un solo pulsante attivo.** «Sei qui → il prossimo passo è
-   questo → [un pulsante]». Il grafo, i rami morti e gli stati-macchina restano nel
-   motore, non a video.
+2. **La vista è un racconto con l'azione del momento in evidenza.** «Sei qui → il
+   prossimo passo è questo → [un pulsante]». Di norma il passo attivo è uno, ma il modello
+   ammette rami paralleli e ripetizione (`ripetibile_adesso`): la vista regge **1..N passi
+   attivi**, non ne assume esattamente uno. Il grafo, i rami morti e gli stati-macchina
+   restano nel motore, non a video.
 3. **Uniformità con lo standalone.** Il pulsante attivo apre *le stesse schermate* che
    l'operatore già conosce (già vero per l'affordance "Apri documento"): la pratica
    *orchestra*, non reinventa.
@@ -73,7 +75,7 @@ Chiude gran parte della perdita **lessicale** senza toccare il motore. Due mosse
 |---|---|---|---|
 | Percorso — titolo step | `template_flusso_codice` | `template_flusso_descrizione` | display field già presente sul flusso (usato nel drawer); da esporre anche nel payload percorso |
 | Percorso / Coda / Drawer — stato | `stato_codice_interno` / `stato_flusso_codice` | `stato_*_descrizione` | **BE**: esporre display field `stato_descrizione` dove manca |
-| Percorso — esito | `step.esito` (grezzo) | `esito_descrizione` | **BE**: display field da `config.esiti_flussi_pratiche.descrizione` (data-driven: gli esiti di dominio non sono hardcodabili in i18n) |
+| Percorso — esito | `step.esito` (grezzo) | `esito_descrizione` | **BE**: display field da `config.esiti_flussi_pratiche.descrizione`. ⚠️ **Decisione §7.4**: data-driven anche in *scrittura* — il `Select` esiti di [FlussoDrawer.vue:43-48](../../../../frontend/src/pratiche/components/FlussoDrawer.vue#L43-L48) (oggi 4 valori hardcodati in i18n) sorge dagli esiti ammessi **per template**, non solo la `descrizione` in lettura |
 | Coda — riga | codice-first | `descrizione`-first (invertire il fallback) | display field già disponibile |
 
 **(b) i18n — togliere il gergo dalle superfici operatore:**
@@ -103,9 +105,9 @@ Il Percorso smette di essere la mappa del template e diventa il **viaggio della 
   implementativo.
 
 **Cosa mostrare:**
-- **un solo passo attivo**, in grande, con **una azione primaria** ("Fai il preventivo",
-  "Conferma col cliente", "Avvia e completa") — riusando `modalita_esito` per collassare i
-  click come già fa il motore;
+- **il passo attivo** (di norma uno; **1..N** con rami paralleli o step ripetibile), in
+  grande, con **una azione primaria** ("Fai il preventivo", "Conferma col cliente", "Avvia
+  e completa") — riusando `modalita_esito` per collassare i click come già fa il motore;
 - **dove si è nel viaggio**, in forma leggera e leggibile: passi *fatti* (✓, con la loro
   `descrizione`), passo *corrente*, e — se serve — «poi mancherà…» come **testo**, non come
   griglia di card cliccabili;
@@ -149,23 +151,38 @@ La stessa informazione, ma l'operatore legge **cosa ha fatto**, **cosa deve fare
 
 ## 5. Deliverable FE (+ prerequisiti BE)
 
-**BE (prerequisito, piccolo — display fields):**
-- esporre nel payload del **percorso** e della **coda**: `*_descrizione` per template
-  step, stato ed esito (leggendo le colonne `descrizione` già esistenti). Nessuna logica
-  nuova: solo campi display.
+**BE (prerequisiti):**
+
+- *Display field (piccolo, no logica)*: esporre nel payload di **percorso** e **coda** i
+  `*_descrizione` per template step, stato ed esito (leggendo le colonne `descrizione` già
+  esistenti).
+- *Esiti data-driven (§7.4)*: esporre gli **esiti ammessi per template** (codice +
+  `descrizione`) per alimentare il `Select` di FlussoDrawer, non più i 4 valori hardcodati.
+  Se `config.esiti_flussi_pratiche` non ha già il binding template↔esiti → **brief al team
+  DB** (view/funzione), non azione dall'agente.
+- *Futuro certo-vs-condizionale (§7.2)*: per rendere "poi…" come testo troncato al primo
+  bivio, il payload percorso deve marcare quali step futuri sono sul **percorso certo** vs
+  **oltre un bivio non deciso**. Oggi c'è solo `RAMO_CHIUSO`; se il segnale non esiste →
+  aggiungerlo (BE/DB) oppure il "poi…" degrada al solo prossimo step.
 
 **FE:**
-- **B1** — `PraticaPercorso.vue`: riprogettazione vista-racconto (§3.2 + §4): un passo
-  attivo + timeline leggera; rimozione card "Da creare"/"Ramo chiuso" dalla vista
-  operatore; render `descrizione`.
+
+- **B1** — `PraticaPercorso.vue`: riprogettazione vista-racconto (§3.2 + §4): tre fasce
+  **Fatti / Adesso (1..N) / Poi (testo)**; rimozione card "Da creare"/"Ramo chiuso" dalla
+  vista operatore; "poi…" troncato al primo bivio (§7.2); render `descrizione`. Il
+  rendering tecnico attuale **non si cancella**: diventa il ramo "modalità tecnica"
+  gateato (B5).
 - **B2** — `PraticheCodaLavoro.vue`: `descrizione`-first, stato via `descrizione`, empty
   "attività".
 - **B3** — `FlussoDrawer.vue`: titolo senza "flusso"/codice grezzo (usare `descrizione` +
   contesto pratica), rimuovere il campo "Template" dalla vista operatore, stato via
-  `descrizione`.
+  `descrizione`; `Select` esiti data-driven per-template (§7.4), non più i 4 valori
+  hardcodati.
 - **B4** — i18n `it.json`/`en.json`: unificare "attività", ripulire le chiavi gergo (§3.1b).
-- **B5** — (opzionale) toggle **modalità tecnica** per super-admin che ri-espone codici,
-  sequenza, stati-macchina, rami (§6).
+- **B5** — **(in-scope, §7.3)** toggle **modalità tecnica** per super-admin che ri-espone
+  codici, sequenza, stati-macchina, rami (§6). Gate su **permesso reale** (super-admin,
+  modello permessi v3), non flag libero; `modalitaTecnica` iniettato via `provide` e letto
+  da `PraticaPercorso`/`FlussoDrawer`.
 
 ---
 
@@ -173,21 +190,212 @@ La stessa informazione, ma l'operatore legge **cosa ha fatto**, **cosa deve fare
 
 - **Non si tocca il motore** (DB/trigger/macchina a stati). Solo FE + display fields BE.
 - **Nessuna regola nel FE**: prerequisiti/ripetibilità/rami restano a DB (errore parlante).
-- **Modalità tecnica ammessa**: per super-admin/diagnostica va bene ri-mostrare
-  codici/sequenza/stati/rami — ma è **opt-in**, mai il default dell'operatore.
+- **Modalità tecnica (in-scope, §7.3)**: per super-admin/diagnostica ri-mostra
+  codici/sequenza/stati/rami — **opt-in gateato su permesso**, mai il default dell'operatore.
 - **Non è l'ispettore di configurazione** (voce V4/V5 dell'analisi): questa è la vista
   *runtime* dell'operatore, non l'editor del workflow. Sono due lavori distinti.
 
 ---
 
-## 7. Domande aperte (decisioni per l'owner)
+## 7. Decisioni chiuse (2026-07-01)
 
-1. **Quanto "viaggio" mostrare?** Solo il passo corrente, oppure una mini-timeline
-   fatti/corrente/prossimi come **testo**? (Proposta: fatti + corrente + una riga "poi…".)
-2. **Rami condizionali**: quando il percorso ha bivi, mostrare i passi futuri come incerti
-   o ometterli finché non sono percorribili? (Proposta: ometterli; il DB decide.)
-3. **Modalità tecnica**: serve già ora (B5) o si rimanda? (Proposta: rimandare; prima
-   validare la vista operatore su PREVENTIVI.)
+Le tre domande aperte sono state chiuse dall'owner; si aggiunge una 4ª emersa in analisi
+(esiti data-driven anche in scrittura).
+
+1. **Quanto "viaggio" mostrare?** → ✅ **Fatti + adesso + "poi…"**. Tre fasce: passi
+   *fatti* (✓ compatti, con `descrizione`), *adesso* (**1..N** card azione, non una sola),
+   *poi* (testo). Vedi §3.2/§4.
+2. **Rami condizionali** → ✅ **Ometti fino a percorribile**. Rami chiusi spariti; il
+   "poi…" si tronca al primo bivio non deciso. Richiede segnale BE certo-vs-condizionale
+   (§5) o, in mancanza, degrado al solo prossimo step.
+3. **Modalità tecnica (B5)** → ✅ **Costruita ora**, non rimandata. In-scope con B1;
+   gateata su permesso super-admin (§5, §6). *(Override della proposta iniziale di
+   rimandare.)*
+4. **Esiti data-driven** *(emersa in analisi)* → ✅ **Sì**. Non solo la `esito_descrizione`
+   in lettura: anche il `Select` esiti di FlussoDrawer (oggi 4 valori hardcodati) diventa
+   data-driven (§3.1, §5). ⚠️ **La ricognizione ha stabilito che gli esiti sono globali, non
+   per-template** (nessun binding a DB): la variante "per template" va ridefinita → **§9**.
+
+**Stato**: decisioni chiuse → **si attende completamento prerequisiti BE/DB (§5)** prima di
+aprire l'implementazione B1→B5. Validazione su PREVENTIVI prima di estendere ad altri tipi
+pratica.
+
+---
+
+## 8. Piano di sviluppo
+
+Due vincoli guidano l'ordine: **(a)** i prerequisiti BE/DB gattano il FE — il FE non
+parte finché i dati non ci sono (memoria `feedback_be_fe_attende_prerequisiti_db`); **(b)**
+lo **Strato A** (lessico, §3.1) dipende solo dai display field ed è indipendente dallo
+**Strato B** (racconto, §3.2): si spedisce prima, per valore immediato e a rischio basso.
+
+> Convenzioni FE vincolanti per tutte le fasi (da `frontend-standards.md`): nessun testo
+> hardcoded (tutto `$t()`), severity dai building block `statoFlussoSeverity`/
+> `esitoFlussoSeverity`, azioni drawer via `DrawerActionsBar`, sola-lettura via
+> `useReadonlyMode`. La modalità tecnica (§6) si modella come **mirror** di
+> `useReadonlyMode` (provider/consumer con `provide`/`inject`), non come flag sparso.
+
+### Fase 0 — Prerequisiti BE/DB (gate) — ✅ ricognizione fatta 2026-07-01
+
+Esito della ricognizione BE/DB (payload percorso/coda/flusso + modello esiti). Riferimenti:
+`backend/apps/pratiche/db/pratiche_repository.py` (percorso `get_percorso_pratica`, flusso
+`get_flusso`), `fn_coda_lavoro_operatore` (funzione DB, coda),
+`config.esiti_flussi_pratiche`, `pratiche.template_flussi`.
+
+**P0.1 — Display field `*_descrizione`** — parzialmente pronto, **misto BE-puro / DB**:
+
+- **Percorso** (query SQL in Python): `template_flusso_descrizione` ✅ già esposto;
+  `stato_descrizione` ❌ e `esito_descrizione` ❌ mancanti → **BE puro** (aggiungere
+  `sf.descrizione` sul join già presente + join a `config.esiti_flussi_pratiche` su
+  `f.esito`). Agent-doable, niente team DB.
+- **Flusso dettaglio** (`get_flusso`): `stato_descrizione` ✅, `template_flusso_descrizione`
+  ✅, `esito_default` ✅. **Completo**.
+- **Coda** (`fn_coda_lavoro_operatore`, **funzione DB**): `template_flusso_desc` ✅;
+  `stato_flusso_descrizione` ❌ mancante. La coda è prodotta da una **funzione DB**, non da
+  query Python → esporre la descrizione stato richiede **brief al team DB**
+  (`feedback_db_actions_passaggio_team`): →
+  [brief-db-coda-lavoro-descrizione-stato.md](brief-db-coda-lavoro-descrizione-stato.md)
+  (redatto 2026-07-01). ✅ **Chiarito il "bug severity"**: la fn ritorna `stato_flusso_codice`
+  che *contiene già il `codice_interno`*; il FE calcolava la severity su
+  `stato_flusso_codice_interno` (campo inesistente → `undefined`). **Fix FE-side** in B2
+  (usare `stato_flusso_codice`), nessuna dipendenza DB per la severity.
+
+**P0.2 — Esiti data-driven** — ⚠️ **il modello contraddice l'assunzione "per template"**:
+
+- `config.esiti_flussi_pratiche` ha `descrizione` NOT NULL ✅, con 4 esiti strutturali +
+  esiti di **dominio** seedati per ramo (vendite ecc.).
+- **NON esiste** alcuna tabella di binding template↔esiti-ammessi: gli esiti sono
+  **globali/universali** (ogni template può chiudersi con qualsiasi esito). `template_flussi`
+  dichiara solo `esito_default`.
+- Conseguenza: il "per template" della decisione §7.4 **non è supportato dal modello
+  attuale** → ridefinizione su due opzioni A/B in **§9**.
+
+**P0.3 — Segnale certo-vs-condizionale** — parzialmente pronto:
+
+- Il percorso espone già `ramo` ∈ {COMPLETATO, PERCORRIBILE, RAMO_CHIUSO, FUTURO} ✅.
+- `RAMO_CHIUSO` = bivio non preso → **ometti** (soddisfa §7.2); `FUTURO` = step a valle →
+  materiale per il "poi…".
+- **Manca** un flag esplicito "oltre-bivio": con più step `FUTURO` non si distingue il ramo
+  lineare da una biforcazione aperta. → il "poi…" **oggi** si costruisce elencando gli step
+  `FUTURO` come testo (o solo il prossimo); la troncatura precisa al bivio è un **refinement
+  opzionale** = brief DB.
+
+**P0.4 — Gate permesso modalità tecnica** — ❌ da decidere (owner + eventuale seed):
+codename dedicato (es. `pratiche_vista_tecnica`) vs riuso `RUOLO_SISTEMA.ADMIN`. Decisione di
+modello, vedi §9.
+
+**Uscita Fase 0 (aggiornata)**: la **Fase 1** può partire SUBITO per **percorso** (BE puro)
+e **flusso** (già completo); la parte **coda** richiede un breve **brief DB** (descrizione
+stato + verifica severity). **P0.2** attende la decisione §9 (A/B). **P0.3** usa il fallback
+oggi. **P0.4** attende decisione owner.
+
+### Fase 1 — Strato A: lessico (dipende da P0.1)
+
+- **B2 — `PraticheCodaLavoro.vue`**: riga `descrizione`-first (invertire il fallback a
+  [L78](../../../../frontend/src/pratiche/components/PraticheCodaLavoro.vue#L78)); `Tag`
+  stato con *value* = `stato_flusso_descrizione || stato_flusso_codice` (forward-compatible:
+  mostra la descrizione appena il brief DB atterra, intanto il codice), severity via
+  `statoFlussoSeverity(stato_flusso_codice)` (**fix del campo inesistente**
+  `stato_flusso_codice_interno`,
+  [L80](../../../../frontend/src/pratiche/components/PraticheCodaLavoro.vue#L80)); empty via
+  i18n. Fattibile **subito**; la sola descrizione stato completa arriva col brief DB.
+- **B3a — `FlussoDrawer.vue` (parte lessicale)**: `DrawerTitle` con titolo da `descrizione`
+  e contesto pratica invece del codice grezzo
+  ([L258-262](../../../../frontend/src/pratiche/components/FlussoDrawer.vue#L258-L262));
+  rimuovere il campo "Template"
+  ([L288-291](../../../../frontend/src/pratiche/components/FlussoDrawer.vue#L288-L291))
+  dalla vista operatore (torna in modalità tecnica, Fase 3); `Tag` stato via descrizione;
+  valutare icona meno "organigramma" al posto di `pi-sitemap`.
+- **B4 — i18n `it.json`/`en.json`**: `coda_vuota` → "Nessuna attività in coda"; una sola
+  parola "attività" (mai "flusso"); `percorso_handler` → "Passo automatico" (via "handler");
+  espungere "Template"/"flusso"/"handler" dalle superfici operatore.
+
+**Acceptance F1**: su coda e testata drawer un operatore non legge codici grezzi né gergo;
+comportamento invariato.
+
+### Fase 2 — Strato B: la vista-racconto (dipende da P0.1; arricchita da P0.3)
+
+- **B1 — `PraticaPercorso.vue`**: riscrittura in tre fasce (§3.2/§4):
+  - **Fatti** — lista compatta ✓ con `template_flusso_descrizione`; niente sequenza né
+    stato-macchina.
+  - **Adesso (1..N)** — card grande per **ogni** step attivo (istanza `IN_CORSO`/
+    `DA_ESEGUIRE`, o `COMPLETATO` con `ripetibile_adesso`) con **una** azione primaria.
+    **Si riusa la logica esistente** (`uiActivityFor`, emit `open-attivita`/`open-flusso`/
+    `create-flusso`) → uniformità con lo standalone; `modalita_esito` collassa i click come
+    già fa il motore.
+  - **Poi** — testo troncato al primo bivio (P0.3), oppure solo prossimo step lineare
+    (fallback).
+  - **Nascondere** le card "Da creare" future e gli step `RAMO_CHIUSO`.
+  - Il rendering attuale (codici/sequenza/stati/rami) **non si cancella**: si isola dietro
+    il flag `modalitaTecnica` (Fase 3).
+  - Regole **invariate**: click non percorribile → errore parlante DB; `ripetibile_adesso`
+    deciso dal DB. Nessuna regola di business nel FE (§2.4).
+
+> Nota architetturale (memoria `feedback_regola_del_2_estrai_bb` + `feedback_concentrico_no_yagni`):
+> tenere le tre fasce **dentro** `PraticaPercorso.vue`; estrarre sotto-componenti solo alla
+> 2ª occorrenza reale — niente astrazione prematura.
+
+**Acceptance F2**: l'operatore legge fatti / adesso / poi + un pulsante; nessun grafo,
+nessuno stato-macchina, nessun ramo morto a video.
+
+### Fase 3 — Modalità tecnica + esiti data-driven
+
+- **B3b — Esiti data-driven** (§9.1 opzione **A**): sostituire `esitiOptions` hardcodati
+  ([FlussoDrawer.vue:43-48](../../../../frontend/src/pratiche/components/FlussoDrawer.vue#L43-L48))
+  con la lista **globale attiva** di `config.esiti_flussi_pratiche` (`codice_interno` +
+  `descrizione`) via lookup BE (whitelist + `lookupCodici`); render esito (COMPLETATO +
+  percorso) via `esito_descrizione`. `esitoFlussoSeverity` invariata. Nessun filtro
+  per-template (coerente col modello).
+- **B5 — Modalità tecnica** (§9.2, gate **`RUOLO_SISTEMA.ADMIN`**): provider
+  `useTechnicalMode` (mirror di `useReadonlyMode`) al livello detail pratica, con toggle
+  visibile solo se `auth` è ADMIN; `PraticaPercorso` e `FlussoDrawer` iniettano il flag e
+  **ri-mostrano** codici/sequenza/stati/rami/"Template" quando attivo. **Default off**.
+  Nessun seed DB.
+
+**Acceptance F3**: il super-admin ri-vede tutto il plumbing con un toggle; l'operatore no.
+
+### Validazione e chiusura
+
+Validazione **E2E su un tipo pratica PREVENTIVI** (coda → percorso → drawer → completamento
+con esito) prima di estendere ad altri tipi. A chiusura: aggiornare lo stato in testa e la
+riga V1 di [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md).
+
+**Sequenza consigliata**: P0.1 → Fase 1 (valore subito, rischio basso) → P0.3 → Fase 2 →
+P0.2/P0.4 → Fase 3. Le fasi 1 e 2 sono indipendenti: parallelizzabili se P0.1 è pronto.
+
+---
+
+## 9. Decisioni aperte post-ricognizione (2026-07-01)
+
+La ricognizione di Fase 0 ha fatto emergere due punti risolti dall'owner il 2026-07-01.
+
+### 9.1 Esiti: lista globale vs binding per-template → ✅ **A (globale)**
+
+Il modello rende gli esiti **globali** (nessun binding template↔esiti). La decisione §7.4
+si ridefinisce su:
+
+- **A — Lista globale data-driven** *(raccomandata, BE puro)*: il `Select` di FlussoDrawer e
+  il render esito sorgono dall'elenco **globale attivo** di `config.esiti_flussi_pratiche`
+  (`codice_interno` + `descrizione`). Colma la perdita reale — gli esiti di **dominio** non
+  sono hardcodabili in i18n — e mostra tutti gli esiti validi. Nessuna DDL: lookup BE
+  (whitelist + `lookupCodici`, `feedback_lookup_whitelist_first`). Non filtra per template
+  (coerente col modello).
+- **B — Binding per-template** *(estende il modello, DB)*: nuova tabella/relazione
+  `template_flussi ↔ esiti_ammessi` per restringere gli esiti per template. Soddisfa la
+  lettera del §7.4 ma richiede **modello + brief team DB**, e va motivata da un bisogno reale
+  (oggi assente: nessun template vieta esiti).
+
+Raccomandazione: **A** ora; **B** solo se emerge un template che deve vietare certi esiti.
+**→ Deciso: A.** B3b usa la lista globale attiva di `config.esiti_flussi_pratiche` via
+lookup BE; niente per-template.
+
+### 9.2 Gate della modalità tecnica (B5) → ✅ **`RUOLO_SISTEMA.ADMIN`**
+
+Il gate di P0.4 va deciso: **codename di processo dedicato** (es. `pratiche_vista_tecnica`,
+seed permesso a DB, granulare) **oppure** riuso di **`RUOLO_SISTEMA.ADMIN`** (immediato, già
+in `auth`, nessun DB). Trade-off: granularità/seed vs semplicità/subito. **→ Deciso:
+`RUOLO_SISTEMA.ADMIN`** — nessun seed DB; il toggle modalità tecnica è visibile solo agli
+ADMIN. Rivalutare un permesso dedicato solo se serve granularità futura.
 
 ---
 

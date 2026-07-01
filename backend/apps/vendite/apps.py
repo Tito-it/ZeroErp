@@ -35,6 +35,8 @@ class VenditeConfig(AppConfig):
         # Handler di completamento (template_flussi_handler_eventi): accetta il
         # preventivo collegato al COMPLETATO+POSITIVO di APPROVAZIONE_CLIENTE.
         register_handler("vendita.accetta_preventivo", AccettaPreventivoHandler)
-        # Handler di completamento SMISTAMENTO (COMPLETATO+POSITIVO): aggancia
-        # l'ordine merce alla pratica e crea on-demand CONFERMA_ORDINE/INVIO_COMMESSA.
+        # Handler di completamento SMISTAMENTO (COMPLETATO + esito MERCE_PRESENTE,
+        # bivio-per-esito rev.3): merce-only, aggancia l'ordine merce alla pratica
+        # come sorgente COLLEGATO. NON crea flussi a valle: 9013/9014 sono
+        # obbligatori-su-ramo e compaiono via roadmap/prerequisiti.
         register_handler("vendita.post_smistamento", PostSmistamentoHandler)
