@@ -476,7 +476,9 @@ class PraticheRepository:
                 au.azione_ui_key AS template_azione_ui_key,
                 f.id AS flusso_id,
                 sf.codice_interno AS stato_codice_interno,
+                sf.descrizione AS stato_descrizione,
                 f.esito,
+                ef.descrizione AS esito_descrizione,
                 pratiche.fn_check_ripetibilita_flusso(p.id, tf.id) AS ripetibile_adesso,
                 COALESCE(cc.completato, false) AS completato,
                 COALESCE(cc.percorribile, false) AS percorribile,
@@ -520,6 +522,9 @@ class PraticheRepository:
                 LIMIT 1
             ) f ON true
             LEFT JOIN config.stati_flussi_pratiche sf ON sf.id = f.stato_id
+            -- Descrizione umana dell'esito (data-driven da config.esiti_flussi_pratiche,
+            -- vocabolario globale): il FE mostra `esito_descrizione`, non il codice grezzo.
+            LEFT JOIN config.esiti_flussi_pratiche ef ON ef.codice_interno = f.esito
             WHERE p.id = %s
             ORDER BY tf.sequenza, tf.id
         """
@@ -718,6 +723,29 @@ class PraticheRepository:
                 code="E_PRATICA_SORGENTE_TIPO_INVALIDO",
                 message=f"Codice sorgente '{sorgente_codice}' non in config.sorgenti",
             )
+
+    # Scopo: Reverse di upsert_pratica_sorgente — risolve la pratica cui una
+    # sorgente e' agganciata (sorgente_codice + uid, opzionalmente per ruolo).
+    # None se non agganciata. Usato dagli step ordine del percorso pratica
+    # (CONFERMA_ORDINE/INVIO_COMMESSA) per risalire alla pratica dall'ordine
+    # COLLEGATO e auto-completare il flusso all'azione standalone. Cross-schema
+    # read consentito. ruolo_link=None = qualunque ruolo.
+    def get_pratica_id_by_sorgente(
+        self, *, sorgente_codice: str, sorgente_uid: str, ruolo_link: str | None = None,
+    ) -> int | None:
+        sql = """
+            SELECT ps.pratica_id
+            FROM pratiche.pratiche_sorgenti ps
+            JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
+            WHERE s.codice_interno = %s AND ps.sorgente_uid = %s
+              AND (%s::text IS NULL OR ps.ruolo_link = %s)
+            ORDER BY ps.id DESC
+            LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [sorgente_codice, sorgente_uid, ruolo_link, ruolo_link])
+            row = cursor.fetchone()
+        return int(row[0]) if row else None
 
     def _sorgente_link_exists(
         self, pratica_id: int, sorgente_codice: str, sorgente_uid: str, ruolo_link: str,

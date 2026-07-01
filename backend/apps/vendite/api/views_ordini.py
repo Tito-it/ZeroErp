@@ -229,7 +229,8 @@ class ApiOrdineConferma(DomainAPIView):
     area_funzionale = "vendite"
 
     def post(self, request: Request, ordine_id: int) -> JsonResponse:
-        return success_response(ordini_service.conferma(int(ordine_id)))
+        user = getattr(request.user, "username", None) or None
+        return success_response(ordini_service.conferma(int(ordine_id), user=user))
 
 
 class ApiOrdinePush(DomainAPIView):
@@ -238,7 +239,8 @@ class ApiOrdinePush(DomainAPIView):
     area_funzionale = "vendite"
 
     def post(self, request: Request, ordine_id: int) -> JsonResponse:
-        return success_response(ordini_service.push_a_commessa(int(ordine_id)))
+        user = getattr(request.user, "username", None) or None
+        return success_response(ordini_service.push_a_commessa(int(ordine_id), user=user))
 
 
 class ApiOrdineCambiaStato(DomainAPIView):

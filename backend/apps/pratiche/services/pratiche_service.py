@@ -34,6 +34,11 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
         "PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI",
         "flussi obbligatori non completati",
     ),
+    # Chiusura pratica (manuale + auto): restano flussi ISTANZIATI in stato NON
+    # terminale (DA_ESEGUIRE/IN_CORSO/SOSPESO/ERRORE). D1 hardening — invariante
+    # condiviso guard manuale + auto-chiusura (brief-db-chiusura-pratica-nessun-
+    # lavoro-pendente, errore catalogo 501).
+    ("PRATICHE_CHIUSURA_FLUSSI_APERTI", "flussi ancora aperti"),
     # Guard prerequisiti (D: flusso non ancora eseguibile): step cliccato in
     # anticipo nel percorso → messaggio parlante invece di E_DATABASE generico.
     ("PRATICHE_PREREQUISITI_NON_SODDISFATTI", "Prerequisiti non soddisfatti per il template flusso"),
@@ -92,9 +97,19 @@ _SOSPENSIONE_CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     ),
 }
 
-# Esiti ammessi per un flusso: mirror applicativo del CHECK DB chk_flussi_esito.
-# Single source per la validazione fail-fast (completa/avvia_e_completa).
-ESITI_FLUSSO_AMMESSI = ("POSITIVO", "NEGATIVO", "PARZIALE", "NON_APPLICABILE")
+# Esiti ammessi per un flusso: mirror applicativo fail-fast del vocabolario DB
+# `config.esiti_flussi_pratiche` (ex CHECK chk_flussi_esito, ora FK — changeset
+# 20260701-02). Difesa-in-profondita': la FK DB e' il guard autoritativo; questo
+# mirror da' l'errore parlante PRIMA del round-trip. Gli esiti di RAMO
+# (MERCE_PRESENTE/SOLO_SERVIZI, bivio SMISTAMENTO —
+# brief-db-chiusura-pratica-nessun-lavoro-pendente) sono valori CALCOLATI dal
+# dominio (mai input utente): inclusi qui perche' completa_flusso li valida.
+# NB: un nuovo esito del vocabolario DB va aggiunto anche qui, altrimenti la FK
+# lo respinge con un errore meno parlante.
+ESITI_FLUSSO_AMMESSI = (
+    "POSITIVO", "NEGATIVO", "PARZIALE", "NON_APPLICABILE",
+    "MERCE_PRESENTE", "SOLO_SERVIZI",
+)
 
 # Esito implicito dell'auto-completamento per gli step con handler ma senza
 # esito_default (retro-compatibilita' col vecchio POSITIVO cablato). Per gli step
@@ -596,6 +611,49 @@ def avvia_e_completa_flusso(
     # AUTOMATICO/handler. Le reazioni di dominio all'esito viaggiano comunque su
     # dispatch_handler_eventi dentro completa_flusso.
     completa_flusso(flusso_id, esito=esito, note_esito=note_esito, user=user, meta=meta)
+
+
+# Stati terminali di un flusso: mirror applicativo della derivazione data-driven
+# DB (fn_pratica_flussi_aperti / trgfn_flussi_guard_pratica_terminale: stato senza
+# transizione di stato in uscita attiva). Usato per l'idempotenza degli
+# auto-completamenti di step (ri-azione dal programma base = no-op). La FK/guard DB
+# resta autoritativa; questo mirror evita un round-trip sull'idempotenza.
+_STATI_FLUSSO_TERMINALI = ("COMPLETATO", "ANNULLATO")
+
+
+# Scopo: Completa (idempotente) il flusso ISTANZIATO di `template_codice` nel
+# percorso della pratica. Building block di orchestrazione dominio→motore: i
+# domini (vendite) risolvono la pratica dal proprio documento (preventivo/ordine)
+# e delegano QUI il completamento dello step-per-codice, senza duplicare la logica
+# percorso + idempotenza + scelta avvia-e-completa/completa (regola del 2:
+# preventivi.completa_smistamento + ordini._completa_flusso_ordine_pratica).
+# Ritorna {"flusso_id": id|None, "stato_precedente": str|None, "completato": bool}:
+#   - flusso_id None → step non istanziato nel percorso (il caller decide se e' un
+#     no-op legittimo o un errore);
+#   - completato False con flusso_id valorizzato → step gia' terminale (no-op
+#     idempotente su ri-azione);
+#   - completato True → transizione effettuata (avvia+completa se DA_ESEGUIRE,
+#     altrimenti completa).
+def completa_step_pratica(
+    pratica_id: int, *, template_codice: str, esito: str, user: str | None = None,
+) -> dict[str, Any]:
+    repo = PraticheRepository()
+    step = next(
+        (s for s in repo.get_percorso_pratica(pratica_id)
+         if s.get("template_flusso_codice") == template_codice),
+        None,
+    )
+    if step is None or step.get("flusso_id") is None:
+        return {"flusso_id": None, "stato_precedente": None, "completato": False}
+    stato = step.get("stato_codice_interno")
+    flusso_id = int(step["flusso_id"])
+    if stato in _STATI_FLUSSO_TERMINALI:
+        return {"flusso_id": flusso_id, "stato_precedente": stato, "completato": False}
+    if stato == "DA_ESEGUIRE":
+        avvia_e_completa_flusso(flusso_id, esito=esito, user=user)
+    else:
+        completa_flusso(flusso_id, esito=esito, user=user)
+    return {"flusso_id": flusso_id, "stato_precedente": stato, "completato": True}
 
 
 # Scopo: Transizione generica di stato di un flusso tramite codice_interno.

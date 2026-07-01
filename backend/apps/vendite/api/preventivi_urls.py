@@ -43,6 +43,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoRigaSuggerisciPrezzo,
     ApiPreventivoRigheList,
     ApiPreventivoStato,
+    ApiPreventivoCompletaSmistamento,
     ApiPreventivoSmistamento,
 )
 from apps.vendite.api.views_form_defaults import ApiPreventivoFormDefaults
@@ -191,6 +192,12 @@ urlpatterns = [
         "<int:preventivo_id>/smistamento/",
         ApiPreventivoSmistamento.as_view(),
         name="vendite-preventivi-smistamento",
+    ),
+    # Integrazione: completa SMISTAMENTO (esito di ramo calcolato dal dominio)
+    path(
+        "<int:preventivo_id>/completa-smistamento/",
+        ApiPreventivoCompletaSmistamento.as_view(),
+        name="vendite-preventivi-completa-smistamento",
     ),
     # Integrazione: genera pratica
     path(

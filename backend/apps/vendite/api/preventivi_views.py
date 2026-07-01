@@ -1077,6 +1077,38 @@ class ApiPreventivoSmistamento(DomainAPIView):
         return success_response(data)
 
 
+class ApiPreventivoCompletaSmistamento(DomainAPIView):
+    """`POST /api/v1/vendite/preventivi/<id>/completa-smistamento/` — completa il
+    flusso SMISTAMENTO della pratica con l'esito di RAMO calcolato dal dominio
+    (MERCE_PRESENTE/SOLO_SERVIZI, bivio-per-esito rev.3). L'operatore NON sceglie
+    l'esito (il FE sopprime il picker): e' derivato dallo split gia' eseguito nel
+    Pannello. Guard: smistamento completo su entrambi i rami. Idempotente."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PreventivoCompletaSmistamentoResponse",
+            fields={"data": inline_serializer(
+                name="PreventivoCompletaSmistamentoData",
+                fields={
+                    "flusso_id": serializers.IntegerField(),
+                    "esito": serializers.CharField(),
+                    "gia_completato": serializers.BooleanField(),
+                },
+            )},
+        )},
+    )
+    # Scopo: Completa lo step SMISTAMENTO con esito di ramo calcolato dal dominio.
+    def post(self, request: Request, preventivo_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return preventivi_service.completa_smistamento(
+                preventivo_id,
+                user=getattr(request.user, "username", None) or None,
+            )
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
 # ── Integrazione: genera pratica ──
 
 
