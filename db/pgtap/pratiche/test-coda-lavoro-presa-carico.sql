@@ -9,14 +9,16 @@
 -- 1) Setup: tipo prestazione, template flusso, competenza, pratica, flusso
 -- 2) Coda lavoro: flusso assegnato appare come ASSEGNATO
 -- 3) Coda lavoro: flusso non assegnato con competenza appare come COMPETENZA
--- 4) Coda lavoro: flusso di altro operatore nel reparto appare come REPARTO
--- 5) Coda lavoro: nessun duplicato tra livelli
--- 6) Prendi in carico: flusso DA_ESEGUIRE con competenza — OK
--- 7) Prendi in carico: flusso gia' assegnato allo stesso — FALSE (noop)
--- 8) Prendi in carico: flusso gia' assegnato ad altro — ERRORE
--- 9) Prendi in carico: stato errato (IN_CORSO) — ERRORE
--- 10) Prendi in carico: senza competenza — ERRORE
--- 11) Prendi in carico: parametri NULL — ERRORE
+--    (REPARTO coperto nel file dedicato test-assegnazione-flusso-eligibilita.sql,
+--     policy reparto-first 2026-06-18)
+-- 4) Coda lavoro: nessun duplicato tra livelli
+-- 5) Prendi in carico: flusso DA_ESEGUIRE con competenza — OK
+-- 6) Prendi in carico: flusso gia' assegnato allo stesso — FALSE (noop)
+-- 7) Prendi in carico: flusso gia' assegnato ad altro — ERRORE
+-- 8) Prendi in carico: stato errato (IN_CORSO) — ERRORE
+-- 9) Prendi in carico: senza competenza — ERRORE
+-- 10) Prendi in carico: parametri NULL — ERRORE
+-- 11) Coda lavoro: stato_flusso_descrizione = descrizione umana dello stato
 -- 12) Cleanup
 -- ------------------------------------------------------------
 SELECT plan(13);
@@ -146,7 +148,7 @@ WITH ins AS (
 )
 SELECT id AS flusso_id FROM ins;
 
--- Flusso C: assegnato a risorsa_2, DA_ESEGUIRE (per test REPARTO)
+-- Flusso C: assegnato a risorsa_2, DA_ESEGUIRE (usato al test 8: portato a IN_CORSO)
 CREATE TEMP TABLE tmp_cl_flusso_c AS
 WITH ins AS (
   INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id, risorsa_umana_id, unita_organizzativa_id, sequenza)
@@ -193,21 +195,7 @@ SELECT ok(
 );
 
 -- =========================================================
--- 4) Coda: flusso C di altro operatore → REPARTO
--- =========================================================
-SELECT ok(
-  EXISTS (
-    SELECT 1 FROM pratiche.fn_coda_lavoro_operatore(
-      (SELECT risorsa_1_id FROM tmp_cl_risorse),
-      (SELECT emittente_id FROM tmp_cl_refs)
-    ) WHERE livello = 'REPARTO'
-      AND flusso_id = (SELECT flusso_id FROM tmp_cl_flusso_c)
-  ),
-  '4. Flusso di altro operatore nel reparto appare come REPARTO'
-);
-
--- =========================================================
--- 5) Nessun duplicato tra livelli
+-- 4) Nessun duplicato tra livelli
 -- =========================================================
 SELECT is(
   (SELECT count(*) FROM (
@@ -220,11 +208,11 @@ SELECT is(
     HAVING count(*) > 1
   ) dup),
   0::BIGINT,
-  '5. Nessun duplicato tra livelli'
+  '4. Nessun duplicato tra livelli'
 );
 
 -- =========================================================
--- 6) Prendi in carico: flusso B (non assegnato, DA_ESEGUIRE, competenza) — OK
+-- 5) Prendi in carico: flusso B (non assegnato, DA_ESEGUIRE, competenza) — OK
 -- =========================================================
 SELECT is(
   pratiche.fn_prendi_in_carico_flusso(
@@ -232,11 +220,11 @@ SELECT is(
     (SELECT risorsa_1_id FROM tmp_cl_risorse)
   ),
   TRUE,
-  '6. Prendi in carico flusso DA_ESEGUIRE con competenza — TRUE'
+  '5. Prendi in carico flusso DA_ESEGUIRE con competenza — TRUE'
 );
 
 -- =========================================================
--- 7) Prendi in carico: stesso flusso, stesso operatore — FALSE (noop)
+-- 6) Prendi in carico: stesso flusso, stesso operatore — FALSE (noop)
 -- =========================================================
 -- Prima riporta a DA_ESEGUIRE e riassegna per testare
 -- In realta' ora e' assegnato, quindi proviamo di nuovo
@@ -246,11 +234,11 @@ SELECT is(
     (SELECT risorsa_1_id FROM tmp_cl_risorse)
   ),
   FALSE,
-  '7. Prendi in carico stesso operatore — FALSE (noop)'
+  '6. Prendi in carico stesso operatore — FALSE (noop)'
 );
 
 -- =========================================================
--- 8) Prendi in carico: flusso gia' assegnato a risorsa_1, risorsa_2 prova — ERRORE
+-- 7) Prendi in carico: flusso gia' assegnato a risorsa_1, risorsa_2 prova — ERRORE
 -- =========================================================
 -- Flusso A e' assegnato a risorsa_1 e in DA_ESEGUIRE
 SELECT throws_ok(
@@ -258,11 +246,11 @@ SELECT throws_ok(
     (SELECT flusso_id FROM tmp_cl_flusso_a),
     (SELECT risorsa_2_id FROM tmp_cl_risorse)),
   NULL, NULL,
-  '8. Prendi in carico flusso gia'' assegnato ad altro — ERRORE'
+  '7. Prendi in carico flusso gia'' assegnato ad altro — ERRORE'
 );
 
 -- =========================================================
--- 9) Prendi in carico: stato errato (IN_CORSO) — ERRORE
+-- 8) Prendi in carico: stato errato (IN_CORSO) — ERRORE
 -- =========================================================
 -- Porta flusso C a IN_CORSO
 UPDATE pratiche.flussi
@@ -274,11 +262,11 @@ SELECT throws_ok(
     (SELECT flusso_id FROM tmp_cl_flusso_c),
     (SELECT risorsa_1_id FROM tmp_cl_risorse)),
   NULL, NULL,
-  '9. Prendi in carico stato IN_CORSO — ERRORE'
+  '8. Prendi in carico stato IN_CORSO — ERRORE'
 );
 
 -- =========================================================
--- 10) Prendi in carico: senza competenza — ERRORE
+-- 9) Prendi in carico: senza competenza — ERRORE
 -- =========================================================
 -- Nuovo flusso DA_ESEGUIRE non assegnato (flusso C ora e' IN_CORSO, non riciclabile)
 CREATE TEMP TABLE tmp_cl_flusso_d AS
@@ -301,16 +289,32 @@ SELECT throws_ok(
     (SELECT flusso_id FROM tmp_cl_flusso_d),
     (SELECT risorsa_2_id FROM tmp_cl_risorse)),
   NULL, NULL,
-  '10. Prendi in carico senza competenza — ERRORE'
+  '9. Prendi in carico senza competenza — ERRORE'
 );
 
 -- =========================================================
--- 11) Prendi in carico: parametri NULL — ERRORE
+-- 10) Prendi in carico: parametri NULL — ERRORE
 -- =========================================================
 SELECT throws_ok(
   'SELECT pratiche.fn_prendi_in_carico_flusso(NULL, NULL)',
   NULL, NULL,
-  '11. Prendi in carico parametri NULL — ERRORE'
+  '10. Prendi in carico parametri NULL — ERRORE'
+);
+
+-- =========================================================
+-- 11) Coda: stato_flusso_descrizione = descrizione umana dello stato
+-- =========================================================
+-- Flusso A e' ASSEGNATO e ancora in DA_ESEGUIRE (test 5-10 toccano solo B/C/D):
+-- la sua stato_flusso_descrizione deve combaciare con la descrizione dello stato.
+SELECT is(
+  (SELECT stato_flusso_descrizione
+     FROM pratiche.fn_coda_lavoro_operatore(
+       (SELECT risorsa_1_id FROM tmp_cl_risorse),
+       (SELECT emittente_id FROM tmp_cl_refs)
+     )
+    WHERE flusso_id = (SELECT flusso_id FROM tmp_cl_flusso_a)),
+  (SELECT descrizione FROM config.stati_flussi_pratiche WHERE codice_interno = 'DA_ESEGUIRE'),
+  '11. stato_flusso_descrizione = descrizione dello stato DA_ESEGUIRE'
 );
 
 -- =========================================================
