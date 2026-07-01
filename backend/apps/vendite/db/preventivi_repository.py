@@ -56,14 +56,22 @@ _ORDER_COLS_PREVENTIVI: dict[str, str] = {
     "data_insert": "v.data_insert",
 }
 
-# Frammento condiviso dei 3 resolver del legame ROOT preventivo↔pratica/flusso
-# in pratiche_sorgenti (sorgente PREVENTIVO, ruolo ROOT). I resolver differiscono
-# solo per SELECT e chiave di filtro; FROM/JOIN e i codici PREVENTIVO/ROOT vivono
-# qui (single source). Interpolato come costante (nessun input utente) → S608 ok.
-_LINK_ROOT_PREVENTIVO_FROM = """
+# Risoluzione "rev attiva" del legame ROOT preventivo↔pratica/flusso
+# (pratiche_sorgenti, sorgente PREVENTIVO, ruolo ROOT). Il link memorizza l'uid
+# della rev AGGANCIATA (`p_link`); da essa deriviamo numero+emittente e
+# ritorniamo la rev ATTIVA (`vw_preventivi.is_attiva`): la pratica segue sempre la
+# revisione viva (revisione → nuova rev; annullamento revisione → predecessore,
+# gratis da is_attiva). Nessun UPDATE del link, nessun trigger: risoluzione a
+# read-time (Fase 4 uniformità pratica preventivi). Interpolato come costante
+# (nessun input utente) → S608 ok.
+_ROOT_PREVENTIVO_ATTIVO_FROM = """
     FROM pratiche.pratiche_sorgenti ps
     JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
-    JOIN vendite.preventivi p ON p.uid::text = ps.sorgente_uid
+    JOIN vendite.preventivi p_link ON p_link.uid::text = ps.sorgente_uid
+    JOIN vendite.vw_preventivi p_attivo
+      ON p_attivo.numero = p_link.numero
+     AND p_attivo.emittente_fiscale_id = p_link.emittente_fiscale_id
+     AND p_attivo.is_attiva
     WHERE s.codice_interno = 'PREVENTIVO'
       AND ps.ruolo_link = 'ROOT'
 """
@@ -571,9 +579,10 @@ class PreventiviRepository(ComponentiRepositoryMixin):
     # Scopo: Risolve l'id del preventivo agganciato come ROOT a una pratica
     #        (pratiche_sorgenti, sorgente PREVENTIVO). Unica fonte di verita' del
     #        legame preventivo↔pratica sul percorso pratica-first (creato a
-    #        PREVENTIVAZIONE). Ritorna None se nessun ROOT preventivo.
+    #        PREVENTIVAZIONE). Ritorna la rev ATTIVA del numero agganciato (segue
+    #        la revisione viva), None se nessun ROOT preventivo.
     def get_preventivo_id_by_pratica_root(self, pratica_id: int) -> int | None:
-        sql = f"SELECT p.id {_LINK_ROOT_PREVENTIVO_FROM} AND ps.pratica_id = %s LIMIT 1"  # noqa: S608
+        sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.pratica_id = %s LIMIT 1"  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
             row = cursor.fetchone()
@@ -583,9 +592,10 @@ class PreventiviRepository(ComponentiRepositoryMixin):
     #        (pratiche_sorgenti.flusso_id, aggancio per-flusso). Fonte di verita'
     #        della RIAPERTURA dal percorso: l'attivita' UI ha il flusso_id e
     #        riapre il preventivo di quel flusso. None se nessun ROOT su quel
-    #        flusso. L'indice unico parziale garantisce al piu' 1 riga.
+    #        flusso. L'indice unico parziale garantisce al piu' 1 riga. Ritorna la
+    #        rev ATTIVA del numero agganciato (segue la revisione viva).
     def get_preventivo_id_by_flusso_root(self, flusso_id: int) -> int | None:
-        sql = f"SELECT p.id {_LINK_ROOT_PREVENTIVO_FROM} AND ps.flusso_id = %s LIMIT 1"  # noqa: S608
+        sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.flusso_id = %s LIMIT 1"  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql, [flusso_id])
             row = cursor.fetchone()
@@ -595,11 +605,24 @@ class PreventiviRepository(ComponentiRepositoryMixin):
     #        flusso d'origine (pratiche_sorgenti.flusso_id) o None. Alimenta
     #        l'auto-completamento all'emissione: il preventivo conosce IL SUO
     #        flusso, lo si completa direttamente senza cercarlo per azione_ui.
+    #        Match per numero+emittente (non per uid): QUALSIASI revisione del
+    #        numero agganciato trova il flusso (emissione di una rev successiva
+    #        completa comunque PREVENTIVAZIONE).
     def get_flusso_id_by_preventivo_root(self, preventivo_id: int) -> int | None:
-        sql = (  # noqa: S608
-            f"SELECT ps.flusso_id {_LINK_ROOT_PREVENTIVO_FROM} "
-            "AND p.id = %s AND ps.flusso_id IS NOT NULL LIMIT 1"
-        )
+        sql = """
+            SELECT ps.flusso_id
+              FROM pratiche.pratiche_sorgenti ps
+              JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
+              JOIN vendite.preventivi p_link ON p_link.uid::text = ps.sorgente_uid
+              JOIN vendite.preventivi p_in
+                ON p_in.numero = p_link.numero
+               AND p_in.emittente_fiscale_id = p_link.emittente_fiscale_id
+             WHERE s.codice_interno = 'PREVENTIVO'
+               AND ps.ruolo_link = 'ROOT'
+               AND ps.flusso_id IS NOT NULL
+               AND p_in.id = %s
+             LIMIT 1
+        """
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
             row = cursor.fetchone()

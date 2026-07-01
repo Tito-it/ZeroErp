@@ -23,6 +23,19 @@ def env(name, default=None, required=False):
     return v
 
 
+# Gate deprecation Django 7.0 (opt-in via env, attivo in CI). Escala a errore
+# SOLO i RemovedInDjango70Warning: un uso deprecato fa fallire il test che lo
+# tocca invece di scoprirli tutti al salto 6.x -> 7.0. Non usiamo PYTHONWARNINGS
+# perche' la classe Django non e' risolvibile all'avvio dell'interprete (il
+# filtro verrebbe scartato in silenzio). Le deprecation di terze parti restano
+# warning. Oggi la suite ne emette 0: guard anti-regressione, non bonifica.
+if env("DJANGO_DEPRECATION_GATE", "0") == "1":
+    import warnings
+    from django.utils.deprecation import RemovedInDjango70Warning
+
+    warnings.filterwarnings("error", category=RemovedInDjango70Warning)
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 

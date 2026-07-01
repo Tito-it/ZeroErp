@@ -2653,6 +2653,8 @@
     "flusso_assegnatario_scegli_reparto": "Select the department first",
     "flusso_apri_preventivo": "Open quote",
     "flusso_smistamento": "Dispatch lines (order/job)",
+    "flusso_conferma_ordine": "Confirm order",
+    "flusso_invio_commessa": "Send order to job",
     "attivita_documento_mancante": "Practice document not found: complete the previous step first.",
     "preventivo_collegato": "Quote linked to the case",
     "percorso_titolo": "Path",

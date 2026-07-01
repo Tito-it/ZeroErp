@@ -86,6 +86,13 @@ export function pushOrdineACommessa(id) {
   return api.post(`${BASE}/${id}/push/`, {})
 }
 
+// Risolve l'ordine COLLEGATO a una pratica (agganciato dallo smistamento). Usato
+// dagli step pratica a valle (CONFERMA_ORDINE / INVIO_COMMESSA) per aprire
+// l'OrdiniDrawer sull'ordine giusto. Ritorna { ordine_id: <id|null> }.
+export function getOrdinePerPratica(praticaId) {
+  return api.get(`${BASE}/per-pratica/`, { params: { pratica_id: praticaId } })
+}
+
 // --- Righe ---
 
 export function listRighe(ordineId) {

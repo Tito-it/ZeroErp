@@ -228,6 +228,20 @@ def list_righe(ordine_id: int) -> list[dict[str, Any]]:
     return OrdiniRepository().list_righe(ordine_id)
 
 
+# Scopo: risolve l'ordine COLLEGATO a una pratica (per gli step a valle del
+# percorso: CONFERMA_ORDINE / INVIO_COMMESSA aprono l'OrdiniDrawer su quell'ordine).
+# Ritorna {"ordine_id": <id|null>}.
+def get_ordine_per_pratica(pratica_id: int) -> dict[str, object]:
+    ErrorManager.require(
+        pratica_id > 0,
+        code="E_PRATICA_ID_INVALIDO",
+        message="pratica_id non valido.",
+        detail=f"pratica_id={pratica_id}",
+        function_name=f"{_FN}.get_ordine_per_pratica",
+    )
+    return {"ordine_id": OrdiniRepository().get_ordine_id_by_pratica(pratica_id)}
+
+
 # Scopo: Riepilogo IVA aggregato dell'ordine (una riga per aliquota). Calcolo
 #        fiscalmente corretto gia' applicato in DB via la view derivata
 #        vw_ordini_riepilogo_iva_dettaglio (stessa formula dei preventivi): il

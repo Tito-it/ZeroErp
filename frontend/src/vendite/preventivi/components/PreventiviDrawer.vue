@@ -972,15 +972,17 @@ const drawerActions = computed(() => {
                  hint con la reason e' nell'area banner in alto.
                  `app-escape`: in ACCETTATO il contenuto drawer e'
                  `app-readonly` (lock-di-stato) ma lo smistamento e' un'azione
-                 di processo che deve restare cliccabile. In readonly PURO
-                 (LETTURA/forzato/superseded) e sul percorso pratica (smista
-                 l'orchestratore CONFERMA_VENDITA) il pannello e' `consuntivo`:
-                 niente selezione ne' azioni, l'escape resta innocuo. -->
+                 di processo che deve restare cliccabile. Sul percorso pratica
+                 (step SMISTAMENTO) il pannello e' INTERATTIVO come nello
+                 standalone (uniformita', Fase 2): l'operatore smista qui; il
+                 post_smistamento aggancia ordine e crea i flussi a valle. Solo
+                 in readonly PURO (LETTURA/forzato/superseded) il pannello e'
+                 `consuntivo` (niente selezione/azioni, escape innocuo). -->
             <template v-if="contentReady && hasDetail && showSmistamento">
               <Divider />
               <div class="app-escape">
                 <PreventiviSmistamentoPanel :preventivo-id="effectivePreventivoId"
-                  :consuntivo="isReadonlyPuro || !!props.praticaId"
+                  :consuntivo="isReadonlyPuro"
                   @smistato="onSmistato" />
               </div>
             </template>

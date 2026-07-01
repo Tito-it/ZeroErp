@@ -128,6 +128,18 @@ Testata (dalla vista + `meta`/`storicizza`) + capability **data-driven** da
 più un flag: la conferma è un'entry di `available_actions`.)* 404
 (`E_ORD_NOT_FOUND`) se inesistente o fuori scope (RLS).
 
+### Ordine per pratica `GET /api/v1/vendite/ordini/per-pratica/?pratica_id=<id>`
+
+Risolve l'ordine **COLLEGATO** a una pratica (`pratiche_sorgenti`, sorgente
+`ORDINE_VENDITA`, ruolo `COLLEGATO` — aggancio fatto dal `PostSmistamentoHandler`
+alla chiusura di SMISTAMENTO). Alimenta gli step a valle del percorso pratica
+(`azione_ui` CONFERMA_ORDINE / INVIO_COMMESSA), che aprono l'`OrdiniDrawer` su
+quell'ordine. Ritorna `{"ordine_id": <id|null>}` (`null` se nessun ordine
+agganciato — preventivo tutto-servizi). `pratica_id` obbligatorio
+(`E_PRATICA_ID_OBBLIGATORIO`). Lettura libera (area `vendite`). Se più ordini
+(consegne parziali, 1:N) ritorna il più recente. Gemello di
+`GET /vendite/preventivi/root-per-pratica/`.
+
 ### Riepilogo IVA `GET /api/v1/vendite/ordini/<id>/riepilogo-iva/`
 
 Riepilogo IVA aggregato dell'ordine: **una riga per aliquota** con `imponibile`,
