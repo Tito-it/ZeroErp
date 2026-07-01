@@ -140,6 +140,40 @@ propone un seed di `template_flussi` + prerequisiti → lo mostra come diagramma
 corregge. Il modello è **dichiarativo e con guard rail**: è il substrato *perfetto*
 perché un LLM generi la configurazione e il DB scarti da solo le combinazioni illegali.
 
+### 2.4 La radice profonda del Problema 1 — due macchine a stati
+
+> Non è un quarto problema: è la **causa sotto il Problema 1**, emersa ragionando
+> (2026-07-01). Il dettaglio e il piano stanno nel brief dedicato:
+> [brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md).
+
+Le pratiche sono una macchina a stati, ma **anche** preventivo, offerta, contratto e
+ordine lo sono — coi propri drawer che *già sanno* avanzare i loro stati. Dentro la
+pratica le due macchine si **sovrappongono**: la pratica è una macchina *grossolana e
+parallela* che **non conosce lo stato fine del documento**. Esempio: il flusso
+`PREVENTIVAZIONE` si chiude all'**emissione**, ma il preventivo poi continua a vivere
+(comunicato → accettato → eventualmente revisionato → evaso). La pratica va **cieca** e
+l'operatore, per capire *cosa sta accadendo*, deve **uscire dalla pratica**. È la causa
+profonda della sensazione «graficamente non rende».
+
+- **Trappola** (l'istinto naturale): *ogni stato del documento diventa un flusso*
+  (mirror). Duplica la macchina a stati su due livelli — **viola la regola #1** (no
+  logica duplicata), fa divergere le due macchine, costringe l'Anello 2 a conoscere la
+  semantica di dominio. **No.**
+- **Soluzione**: il flusso è un **traguardo (milestone)** che **proietta** lo stato vivo
+  del documento. Il **dominio possiede la semantica**; il motore consuma un **descrittore
+  normalizzato** (`descrizione` per il display, `fase`/`esito`/`terminale` per la logica).
+  Read-time, single source of truth = il documento, l'Anello 2 resta agnostico. Degrada
+  con grazia (nessun resolver → milestone manuale come oggi).
+- **Regola discriminante**: uno stato di documento diventa un **flusso** *solo* se è un
+  punto di **responsabilità o di attesa** (serve assegnazione/coda/SLA). Tutto il resto è
+  **status: si mostra, non si trasforma in flusso.**
+
+Validato sui quattro cicli di vita reali (preventivo/offerta/ordine/contratto): mappano
+tutti su un piccolo vocabolario universale `{APERTO · IN_CORSO · IN_ATTESA · CHIUSO}` ×
+`esito`. Ed è in gran parte **riuso**: `pratiche_sorgenti`, `config.sorgenti`,
+`stati_doc_*` (con `descrizione`/`is_abortito`), `fn_available_actions_*`,
+`vw_preventivi_pratiche` e gli `esiti_flussi_pratiche` di oggi esistono già.
+
 ---
 
 ## 3. La strategia di prodotto proposta: convenzione con vie di fuga
@@ -179,6 +213,7 @@ sforzo*, non urgenza assoluta.
 | **V7** | **AI copilota di configurazione** | L'AI genera/valida il seed dei workflow dal linguaggio naturale, sopra il modello dichiarativo + guard. Visione, non ora. | Visione | 🟢 futura | nota |
 | **V8** | **Bilanciamento dello sforzo** | Regola di metodo: *fermarsi ad aggiungere manopole al motore* finché lo strato-prodotto (V1/V4) non recupera. Trasversale a tutto. | Metodo | — | (principio) |
 | **V9** | **Uniformità pratica ⇄ standalone** | Già in corso ([analisi-uniformita](analisi-uniformita-pratica-preventivi.md)). Confermarlo come principio guida **anche per la UX** (V1 ne è un corollario). | Design | (in corso) | esistente |
+| **V10** | **Proiezione generica dello stato di dominio** | Le pratiche non conoscono lo stato dei documenti in corso (preventivo/offerta/ordine/contratto): descrittore normalizzato (`fase`/`esito`/`terminale` + `descrizione`) che ogni dominio produce e la pratica mostra. **Radice profonda del Problema 1** (§2.4). | Design → DB/BE | 🔴 alta | ✅ [brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md) |
 
 ---
 
@@ -188,6 +223,8 @@ sforzo*, non urgenza assoluta.
    affronta il 30% strutturale (la vista-racconto) su *un* workflow che già gira
    end-to-end (PREVENTIVI). O dissolve il dubbio, o mostra *esattamente* quale assunzione
    del motore è sbagliata — a costo molto più basso che indovinarlo a tavolino.
+   **Attenzione**: V1 poggia su **V10** — la vista-racconto ha senso solo se la pratica
+   *conosce* lo stato del documento in corso. Vanno pensati insieme.
 2. **Poi V3 (strategia) prima di V2 (implementazione).** Decidere "preset + fork" come
    forma prima di committare l'asse per-azienda al buio.
 3. **V2 e V4/V5** a seguire; **V6** emerge insieme a V2; **V7** resta visione.

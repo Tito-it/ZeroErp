@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/esiti_flussi_pratiche.md" %}
 # 📚 Tabella `esiti_flussi_pratiche`
 
 ## 🗂️ Campi principali

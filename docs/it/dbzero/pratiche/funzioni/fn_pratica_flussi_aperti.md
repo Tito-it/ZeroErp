@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/fn_pratica_flussi_aperti.md" %}
 # ⚙️ Funzione `fn_pratica_flussi_aperti`
 
 ```sql
