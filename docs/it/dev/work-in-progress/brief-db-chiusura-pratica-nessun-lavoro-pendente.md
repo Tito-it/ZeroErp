@@ -119,7 +119,9 @@ passano a **`obbligatorio=true`** in `template_flussi` (oggi `false`).
 
 **A.2 — Prerequisiti esito-aware (seed).**
 
-- `9013 ← SMISTAMENTO` con `esito_richiesto = <esito ramo-merce>` (oggi `9013←9012 POSITIVO`).
+- `9013 ← SMISTAMENTO` con `esito_richiesto = MERCE_PRESENTE` (oggi `9013←9012 POSITIVO`). Nota:
+  **`POSITIVO` esce dal vocabolario di SMISTAMENTO** → grep di sicurezza su chi lo attende (a
+  oggi solo il binding `post_smistamento`, ripuntato — R3/§10).
 - `9014 ← CONFERMA_ORDINE` con `esito_richiesto = POSITIVO` (già a posto: `60←50` applicato da
   `20260630-06`). ⚠️ vedi §4 sulla fragilità `runAlways` di quel fix.
 
@@ -229,11 +231,13 @@ clausola-istanza; il guard passa `NEW.id`, l'auto-chiusura passa `NEW.id` (innoc
   `runOnChange:true` e un re-seed riporterebbe `60←40`). Rischio: `9014` torna a dipendere da
   SMISTAMENTO invece che da CONFERMA_ORDINE. **Riallineare `runAlways`/commento** (o assorbire
   il fix nel seed) prima di appoggiarci il bivio.
-- **⚠️ Δ 4.3 — Re-binding `post_smistamento`.** Oggi il binding è su SMISTAMENTO
-  **COMPLETATO/POSITIVO**. Se SMISTAMENTO passa a esiti di ramo (`MERCE_PRESENTE`/`SOLO_SERVIZI`),
-  il binding su `POSITIVO` **non scatterebbe più**: va ripuntato (es. `esito_richiesto=NULL`
-  = qualunque esito, o un binding per ramo). L'handler perde il compito di `crea_flusso` a valle
-  (§3.A.4) e resta responsabile di: agganciare l'ordine/commessa come `pratiche_sorgenti`.
+- **⚠️ Δ 4.3 — Re-binding `post_smistamento` (per-ramo).** Oggi il binding è su SMISTAMENTO
+  **COMPLETATO/POSITIVO**. Si ripunta a **`esito_richiesto=MERCE_PRESENTE`** (R3, §10): l'handler
+  diventa **merce-only** (retro-aggancio dell'ordine come `pratiche_sorgenti`) e non fa più
+  `crea_flusso` a valle (§3.A.4). Lo **split e l'aggancio di entrambi i rami** stanno sui
+  **percorsi standalone** (`push_a_ordine`/`push_a_commessa`); l'aggancio **commessa-servizi** va
+  spostato su `push_a_commessa` **pratica-aware** (BE) **prima/insieme** al ritiro del monolite,
+  altrimenti il per-ramo lo lascia scoperto.
 - **⚠️ Δ 4.4 — D1 richiede la via d'uscita `annulla flusso`** (per gli **opzionali** di altri
   tipi, non per PREVENTIVI): un opzionale istanziato e lasciato aperto blocca la chiusura finché
   non portato ad ANNULLATO. Il grafo lo prevede (`DA_ESEGUIRE→ANNULLATO`), ma l'azione va esposta
@@ -268,9 +272,13 @@ clausola-istanza; il guard passa `NEW.id`, l'auto-chiusura passa `NEW.id` (innoc
   digitato. Va passato a `completa_flusso(esito=...)` così è scritto **nella stessa UPDATE** che
   completa il flusso (il check template-based lo legge subito). *(Se SMISTAMENTO diventa
   esito-AUTOMATICO/CONTESTUALE, allineare `modalita_esito`.)*
-- **Niente `crea_flusso` a valle (cade il vecchio B1/D3).** 9013/9014 compaiono via
-  roadmap/prerequisiti. `post_smistamento` fa solo lo split (merce→ordine DRAFT,
-  servizi→commessa) e l'aggancio `pratiche_sorgenti` COLLEGATO. Ripuntare il binding (§4.3).
+- **Split e aggancio sui percorsi standalone; `post_smistamento` merce-only.** Lo split
+  (merce→ordine DRAFT, servizi→commessa) e l'aggancio `pratiche_sorgenti` di **entrambi** i rami
+  avvengono nel **pannello smistamento** (`push_a_ordine`/`push_a_commessa`), non nell'handler.
+  `post_smistamento` (bindato su `MERCE_PRESENTE`, §4.3) fa solo il **retro-aggancio dell'ordine**
+  come `pratiche_sorgenti` COLLEGATO; **non** fa `crea_flusso` a valle (9013/9014 compaiono via
+  roadmap/prerequisiti). **BE**: spostare l'aggancio **commessa-servizi** dal monolite a
+  `push_a_commessa` **pratica-aware**, prima/insieme al ritiro del monolite.
 - **Azioni di dominio su 9013/9014**: Emetti ordine (`DRAFT→CONFERMATO`) su CONFERMA_ORDINE;
   push ordine→commessa su INVIO_COMMESSA (modalità presa dal preventivo). Come handler di
   completamento o azioni standalone aperte dal flusso (uniformità col programma base).
@@ -324,7 +332,7 @@ prerequisiti esito-aware). Rev. 3 fa un passo in più verso il "motore configura
 | # | Punto | Cosa deve sapere il BE |
 |---|---|---|
 | Δ3.A.3 | **Esito ora è un vocabolario di motore fisso** (`chk_flussi_esito`: 4 valori) | Il bivio richiede **esiti configurabili per-template** (valori di ramo nel **seed di dominio**, non nel CHECK). Dipende dall'aver **applicato** la esito-config `20260617-*` (oggi scritta-non-applicata) ed **esteso** al vocabolario per-template |
-| Δ4.3 | Re-binding `post_smistamento` | Oggi su `POSITIVO`; con esiti di ramo va ripuntato (`esito_richiesto=NULL` o per ramo). L'handler **non fa più `crea_flusso`** a valle |
+| Δ4.3 | Re-binding `post_smistamento` (per-ramo) | Ripuntato a **`esito_richiesto=MERCE_PRESENTE`**. Handler **merce-only** (retro-aggancio ordine), niente `crea_flusso`. Split+aggancio di entrambi i rami sui percorsi standalone; **aggancio commessa-servizi → `push_a_commessa` pratica-aware** (BE), prima/insieme al ritiro del monolite |
 | Δ4.2 | Fix `60←50` fragile (`runAlways:false` vs commento) | Un re-seed di `20260608-09` può riportare `60←40` → verificare/riallineare prima del bivio |
 
 ### 9.3 Cosa cambia concretamente per BE/FE (aggiornato)
@@ -333,7 +341,9 @@ prerequisiti esito-aware). Rev. 3 fa un passo in più verso il "motore configura
   dallo split, passato a `completa_flusso(esito=...)`. **Non** è più una scelta operatore
   (POSITIVO).
 - **Niente creazione on-demand di 9013/9014** (cade il vecchio B1): compaiono da
-  roadmap/prerequisiti. `post_smistamento` si riduce a split + aggancio sorgenti.
+  roadmap/prerequisiti. `post_smistamento` si riduce al **retro-aggancio ordine (merce-only)**;
+  lo split e l'aggancio commessa-servizi stanno sui percorsi standalone (`push_a_commessa`
+  **pratica-aware**).
 - **Azioni di dominio** su 9013 (Emetti ordine) e 9014 (push commessa) restano — come
   handler di completamento o azioni standalone del flusso.
 - **`annulla flusso`** va esposto (D1) per i tipi con flussi opzionali.
@@ -358,3 +368,102 @@ prerequisiti esito-aware). Rev. 3 fa un passo in più verso il "motore configura
 3. **D1** (hardening generale): invariante condiviso + terminali data-driven + `p_escludi_flusso_id`.
 4. **BE**: SMISTAMENTO calcola l'esito; handler ridotto; azioni 9013/9014; `annulla flusso`.
 5. **Test**: bivio + D1 + fail-safe + regressioni.
+
+---
+
+## 10. Q&A DB↔BE — decisioni di dettaglio (2026-07-01)
+
+Risposte DB alle domande BE, recepite nel brief.
+
+**R1 — Esiti di ramo.** `MERCE_PRESENTE` / `SOLO_SERVIZI`, dichiarati **solo su SMISTAMENTO
+(9012)** nel seed vendite (vocabolario per-template, §3.A.3). `MERCE_PRESENTE` copre
+**merce + misto** (bastano due valori). **`POSITIVO` esce** dal vocabolario di SMISTAMENTO →
+grep di sicurezza su chi lo attende (a oggi solo il binding, ripuntato in R3). Un esito
+negativo/annullo su SMISTAMENTO si aggiunge solo se il flusso può davvero fallire (oggi no).
+
+**R2 — `modalita_esito` di SMISTAMENTO = `MANUALE`.** Non `AUTOMATICO`/`CONTESTUALE`: il guard
+`trgfn_template_flussi_guard_modalita_esito` (Inv1) pretende un `esito_default` **fisso** per
+ogni modalità ≠ MANUALE, ma qui l'esito **varia** (merce/servizi). `MANUALE` a livello motore
+significa *"esito fornito al completamento, nessun default"*: il **BE calcola** l'esito di ramo
+dallo split e lo passa a `completa_flusso(esito=...)`; il **FE** per SMISTAMENTO **sopprime il
+picker esiti** (la modalità DB non impone alcun picker: lo decide il FE).
+
+**R3 — Binding `post_smistamento` = `esito_richiesto=MERCE_PRESENTE`** (per-ramo). Nota di
+coerenza BE recepita: lo **split e l'aggancio di entrambi i rami** stanno sui **percorsi
+standalone** (pannello smistamento: `push_a_ordine`/`push_a_commessa`); `post_smistamento` è
+**merce-only** (retro-aggancio dell'ordine come `pratiche_sorgenti`).
+
+- **BE**: spostare l'aggancio **commessa-servizi** dal monolite a `push_a_commessa`
+  **pratica-aware**, **prima/insieme** al ritiro del monolite (senza, il per-ramo lascia scoperto
+  l'aggancio servizi). Rientra nella riduzione dell'handler già prevista: "rimuovi step 4" →
+  "rimuovi step 4 **e** sposta l'aggancio commessa nel push servizi".
+- **DB**: nessun blocco. Unico check: che `trgfn_pratiche_sorgenti_guard_coerenza_flusso`
+  accetti il link **commessa-servizi** creato dal percorso smistamento (ramo servizi, senza i
+  flussi 9013/9014). Se il guard pretende un flusso coerente per la sorgente, adeguarlo lato
+  guard (unico punto DB toccato, non un blocco).
+
+---
+
+## 11. Stato realizzazione (2026-07-01) — **DB ✅ APPLICATO + TESTATO**
+
+Lato DB completato in 4 increment, **applicati** sul DB e **pgTAP verde**. Resta il BE (§9.3 + §10).
+
+### 11.1 Increment 1 — Vocabolario esiti data-driven (schema)
+
+- `00_schema/config/20260701-01-create-esiti-flussi-pratiche` — crea `config.esiti_flussi_pratiche`
+  (gemella di `stati_flussi_pratiche`) + seed dei 4 esiti strutturali.
+- `00_schema/pratiche/20260701-02-alter-esito-checks-to-fk` — sostituisce 3 CHECK enum con FK
+  verso `esiti_flussi_pratiche(codice_interno)`.
+
+> **⚠️ Δ vs piano (§3.A.3):** il vocabolario NON è stato realizzato estendendo la esito-config
+> `20260617-*` "per-template", ma come **tabella-vocabolario globale dedicata**
+> (`config.esiti_flussi_pratiche`, FK via `codice_interno`). È **layering-clean** lo stesso (i
+> valori di ramo vivono nel **seed di dominio**, non nel motore) ed è più semplice/consistente
+> con le altre `config.*`. Lo **scoping per-template** (quali esiti un template può produrre) è
+> **rinviato**: non serve alla correttezza (i prerequisiti matchano il valore; l'operatore/BE
+> passa l'esito giusto). Ne consegue che la "dipendenza esito-config applicata" di §9.2/§4.1
+> **decade**: il bivio non dipende più dalla esito-config.
+
+### 11.2 Increment 2 — Bivio PREVENTIVI (seed)
+
+- `00_schema/pratiche/20260701-03-alter-tfhe-esito-check-to-fk` — **4° CHECK** (`chk_tfhe_esito`
+  sul binding) → FK. *(Era mancante nel piano "3 CHECK": censito e aggiunto. `chk_regole_gen_esito`
+  resta fuori: vocabolario diverso.)*
+- `80_data/.../20260701-04-upsert-config-esiti-flussi-pratiche` (+ CSV `esiti_flussi_pratiche.csv`)
+  — seed vocabolario completo (base + `MERCE_PRESENTE`/`SOLO_SERVIZI`), stile loadUpdateData.
+- `80_data/.../20260701-05-configura-bivio-preventivi` (runAlways) — 9013/9014 `obbligatorio=true`;
+  prereq `9013←SMISTAMENTO` esito→`MERCE_PRESENTE`; consolida `60←50` durevole (supera la
+  fragilità `runAlways:false` di 20260630-06); re-binding `post_smistamento`→`MERCE_PRESENTE`.
+
+### 11.3 Increment 3 — D1 hardening (20_code)
+
+- `20260701-06-create-fn-pratica-flussi-aperti` — helper "flussi aperti" (terminali **data-driven**
+  da `transizioni_stati_flussi_pratiche`).
+- `20260701-07-update-fn-check-pratica-chiudibile-flussi-aperti` — clausola (b) + `p_escludi_flusso_id`.
+- `20260701-08-update-trgfn-pratiche-guard-chiusura-flussi-aperti` — chiusura **manuale** rifiuta
+  flussi aperti → **errore 501** `PRATICHE_CHIUSURA_FLUSSI_APERTI` (riga in `messaggi_errore.csv`).
+- `20260701-09-…guard-chiusura-prematura-escludi-flusso` e `20260701-10-…autochiusura-escludi-flusso`
+  — passano `NEW.id` (escludono sé stessi).
+
+### 11.4 Increment 4 — pgTAP
+
+- `db/pgtap/pratiche/test-chiusura-nessun-lavoro-pendente.sql` — **verde (11/11)**: bivio
+  merce/servizi/misto, catena 9013→9014, D1 (blocco + annulla + coerenza manuale/auto), fail-safe 490.
+- **Da rilanciare (non-regressione):** `db/pgtap/pratiche/test-autochiusura-pratica.sql` (modelli A/B;
+  passa grazie all'esclusione `NEW.id` del 09).
+
+### 11.5 Documentazione (manual concettuale)
+
+Aggiornata/creata la doc `manual/` (le pagine auto-gen `funzioni/`/`tabelle/` si rigenerano dal DB):
+
+- **nuove**: `pratiche/manual/fn_pratica_flussi_aperti.md`, `config/manual/esiti_flussi_pratiche.md`;
+- **aggiornate**: `fn_check_pratica_chiudibile`, `trgfn_pratiche_guard_chiusura_flussi`,
+  `trgfn_flussi_guard_chiusura_prematura`, `trgfn_flussi_autochiusura_pratica`.
+
+### 11.6 Resta da fare
+
+- **Non-regressione**: rilanciare `test-autochiusura-pratica.sql` (§11.4).
+- **Rigenerare** le doc auto-gen dbzero (funzioni + nuova tabella) col loro script.
+- **BE** (§9.3 + §10): sblocco `ESITI_FLUSSO_AMMESSI`, SMISTAMENTO calcola l'esito di ramo,
+  `post_smistamento` merce-only, `push_a_commessa` pratica-aware, azioni 9013/9014, `annulla flusso`,
+  mappatura errore 501 in `error_policies.py`.

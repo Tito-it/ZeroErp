@@ -20,6 +20,7 @@
 - [email_log](tabelle/email_log.md) — La tabella `config.email_log` registra **ogni email inviata dal sistema**, conservando il corpo esattamente come inviato (dopo eventuali modifiche manuali dall'outbox), lo stato di invio, il contesto e l'ambito di visibilita'.
 - [email_outbox](tabelle/email_outbox.md) — La tabella `config.email_outbox` contiene le **bozze email** preparate dal sistema e modificabili dall'operatore prima dell'invio. Rappresenta il passaggio intermedio tra la generazione automatica dal template e l'invio effettivo.
 - [email_template](tabelle/email_template.md) — La tabella `config.email_template` contiene i **template email parametrizzabili** con variabili `{{...}}`. Ogni template puo' essere specializzato per reparto, tipo prestazione e lingua, con una catena di fallback a 5 livelli.
+- [esiti_flussi_pratiche](tabelle/esiti_flussi_pratiche.md)
 - [forme_giuridiche](tabelle/forme_giuridiche.md) — (latest review 21-12-25)
 - [forme_giuridiche_tipi_soggetto_dettaglio](tabelle/forme_giuridiche_tipi_soggetto_dettaglio.md) — (latest review 21-12-25) La tabella **`config.forme_giuridiche_tipi_soggetto_dettaglio`** è una **matrice di configurazione** (Strada **B**) che definisce:
 - [identita_scope_bindings](tabelle/identita_scope_bindings.md) — (latest revision 18-04-2026)

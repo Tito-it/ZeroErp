@@ -1,0 +1,152 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D1: il guard di chiusura prematura esclude SE STESSO dai flussi aperti.
+# (brief-db-chiusura-pratica-nessun-lavoro-pendente §3.B / D1.c)
+#
+# fn_check_pratica_chiudibile ora include la clausola (b) "nessun flusso istanziato
+# aperto". In BEFORE UPDATE il flusso di chiusura che sta completando e' ancora IN_CORSO
+# (non terminale): senza escluderlo, la clausola (b) conterebbe SE STESSO e il guard
+# solleverebbe sempre PRATICHE_CHIUSURA_FLUSSO_PREMATURO. Si passa quindi NEW.id come
+# terzo argomento (p_escludi_flusso_id). Unica modifica: la chiamata a
+# fn_check_pratica_chiudibile (aggiunto NEW.id). Richiede 20260701-07.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260701-09-update-trgfn-flussi-guard-chiusura-prematura-escludi-flusso-mctit.yaml
+
+  - changeSet:
+      id: 20260701-09-update-trgfn-flussi-guard-chiusura-prematura-escludi-flusso
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        trgfn_flussi_guard_chiusura_prematura: passa NEW.id come p_escludi_flusso_id a
+        fn_check_pratica_chiudibile, cosi' la clausola D1 "flussi aperti" non conta il
+        flusso di chiusura che sta completando (ancora IN_CORSO in BEFORE).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_chiusura_prematura()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: il flusso "di chiusura" (template.chiude_pratica) chiude la
+              --   pratica: non puo' essere completato finche' la pratica non e'
+              --   chiudibile (fn_check_pratica_chiudibile) ESCLUDENDO se stesso
+              --   (template dai bloccanti, istanza dai flussi aperti). Coerente col guard
+              --   di chiusura della pratica; evita che l'auto-chiusura conseguente fallisca.
+              -- Regole:
+              --   1. Scatta solo alla transizione di stato verso COMPLETATO.
+              --   2. Solo se il template del flusso e' chiude_pratica.
+              --   3. fn_check_pratica_chiudibile escludendo il template (bloccanti) e
+              --      l'istanza (flussi aperti) del flusso di chiusura stesso: se false
+              --      -> errore parlante.
+              DECLARE
+                  v_completato_id config.stati_flussi_pratiche.id%TYPE;
+                  v_e_chiusura    boolean;
+              BEGIN
+                  -- (1) Solo verso COMPLETATO, e solo a stato realmente cambiato.
+                  SELECT id INTO v_completato_id
+                    FROM config.stati_flussi_pratiche
+                   WHERE codice_interno = 'COMPLETATO';
+
+                  IF NEW.stato_id IS DISTINCT FROM v_completato_id
+                     OR OLD.stato_id = NEW.stato_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- (2) Solo flussi da template "di chiusura".
+                  IF NEW.template_flusso_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT tf.chiude_pratica INTO v_e_chiusura
+                    FROM pratiche.template_flussi tf
+                   WHERE tf.id = NEW.template_flusso_id;
+
+                  IF NOT COALESCE(v_e_chiusura, false) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- (3) Ammesso solo se la pratica e' chiudibile escludendo SE STESSO
+                  --     (template dai bloccanti + istanza NEW.id dai flussi aperti, D1).
+                  IF NOT pratiche.fn_check_pratica_chiudibile(NEW.pratica_id, NEW.template_flusso_id, NEW.id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.trgfn_flussi_guard_chiusura_prematura',
+                          'PRATICHE_CHIUSURA_FLUSSO_PREMATURO',
+                          jsonb_build_object(
+                              'pratica_id', NEW.pratica_id,
+                              'flusso_id', NEW.id,
+                              'template_flusso_id', NEW.template_flusso_id
+                          ),
+                          NEW.tx_id,
+                          NEW.id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_flussi_guard_chiusura_prematura()
+              IS 'BEFORE UPDATE OF stato_id su flussi: blocca il completamento del flusso di chiusura (template.chiude_pratica) se la pratica non e'' chiudibile escludendo se stesso (fn_check_pratica_chiudibile con p_escludi_template_id + p_escludi_flusso_id=NEW.id).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina la chiamata a 2 argomenti (pre-D1).
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_chiusura_prematura()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_completato_id config.stati_flussi_pratiche.id%TYPE;
+                  v_e_chiusura    boolean;
+              BEGIN
+                  SELECT id INTO v_completato_id
+                    FROM config.stati_flussi_pratiche
+                   WHERE codice_interno = 'COMPLETATO';
+                  IF NEW.stato_id IS DISTINCT FROM v_completato_id
+                     OR OLD.stato_id = NEW.stato_id THEN
+                      RETURN NEW;
+                  END IF;
+                  IF NEW.template_flusso_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+                  SELECT tf.chiude_pratica INTO v_e_chiusura
+                    FROM pratiche.template_flussi tf
+                   WHERE tf.id = NEW.template_flusso_id;
+                  IF NOT COALESCE(v_e_chiusura, false) THEN
+                      RETURN NEW;
+                  END IF;
+                  IF NOT pratiche.fn_check_pratica_chiudibile(NEW.pratica_id, NEW.template_flusso_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.trgfn_flussi_guard_chiusura_prematura',
+                          'PRATICHE_CHIUSURA_FLUSSO_PREMATURO',
+                          jsonb_build_object(
+                              'pratica_id', NEW.pratica_id,
+                              'flusso_id', NEW.id,
+                              'template_flusso_id', NEW.template_flusso_id
+                          ),
+                          NEW.tx_id,
+                          NEW.id::text
+                      );
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;

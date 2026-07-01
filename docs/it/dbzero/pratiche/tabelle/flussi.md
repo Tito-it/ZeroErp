@@ -27,7 +27,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_flussi_esito |  |
+| FOREIGN KEY | fk_flussi_esito | esito |
 | FOREIGN KEY | fk_flussi_flusso_padre | flusso_padre_id |
 | FOREIGN KEY | fk_flussi_pratica | pratica_id |
 | FOREIGN KEY | fk_flussi_risorsa_umana | risorsa_umana_id |

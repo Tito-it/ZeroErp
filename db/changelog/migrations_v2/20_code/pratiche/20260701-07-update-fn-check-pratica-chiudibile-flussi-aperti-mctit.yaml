@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D1: fn_check_pratica_chiudibile ora richiede ANCHE "nessun flusso aperto".
+# (brief-db-chiusura-pratica-nessun-lavoro-pendente §3.B / D1.a-c)
+#
+# Aggiunge la clausola (b) "nessun flusso istanziato non terminale"
+# (fn_pratica_flussi_aperti) alla condizione di chiudibilita', oltre alla (a) "nessun
+# template obbligatorio bloccante" gia' presente. Nuovo parametro p_escludi_flusso_id
+# (per-ISTANZA) per non contare il flusso che sta completando: il guard di chiusura
+# prematura la chiama in BEFORE (il flusso e' ancora IN_CORSO) e conterebbe se stesso.
+#
+# CAMBIO FIRMA (2 -> 3 arg con default): serve DROP della vecchia (bigint,integer) prima
+# del CREATE. La nuova, con default, resta callabile a 2 arg (retro-compat dei chiamanti
+# non ancora aggiornati). runOnChange: DROP IF EXISTS della vecchia firma e' idempotente.
+# Ordine: 20260701-06 (fn_pratica_flussi_aperti) prima di questo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260701-07-update-fn-check-pratica-chiudibile-flussi-aperti-mctit.yaml
+
+  - changeSet:
+      id: 20260701-07-update-fn-check-pratica-chiudibile-flussi-aperti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_check_pratica_chiudibile: aggiunge la clausola "nessun flusso istanziato aperto"
+        (D1) + nuovo p_escludi_flusso_id. DROP della vecchia firma (bigint,integer) +
+        CREATE della nuova (bigint,integer,bigint).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS pratiche.fn_check_pratica_chiudibile(bigint, integer);
+
+              CREATE OR REPLACE FUNCTION pratiche.fn_check_pratica_chiudibile(
+                  p_pratica_id          pratiche.flussi.pratica_id%TYPE,
+                  p_escludi_template_id pratiche.template_flussi.id%TYPE DEFAULT NULL,
+                  p_escludi_flusso_id   pratiche.flussi.id%TYPE          DEFAULT NULL
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+              -- Scopo: fn_check_* puro (no raise). La pratica e' chiudibile quando NON ha
+              --   piu' lavoro (brief §2):
+              --   (a) nessun template obbligatorio "bloccante" (fn_check_chiusura_pratica), E
+              --   (b) nessun flusso ISTANZIATO in stato non terminale (fn_pratica_flussi_aperti, D1).
+              -- p_escludi_template_id: ignora un template dai bloccanti (guard pre-completamento).
+              -- p_escludi_flusso_id: ignora un'istanza dai flussi aperti (il flusso che sta
+              --   completando, ancora non-terminale nel guard BEFORE).
+                  SELECT NOT EXISTS (
+                           SELECT 1
+                             FROM pratiche.fn_check_chiusura_pratica(p_pratica_id) c
+                            WHERE c.bloccante
+                              AND (p_escludi_template_id IS NULL
+                                   OR c.template_flusso_id <> p_escludi_template_id)
+                         )
+                     AND NOT EXISTS (
+                           SELECT 1
+                             FROM pratiche.fn_pratica_flussi_aperti(p_pratica_id, p_escludi_flusso_id)
+                         );
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_check_pratica_chiudibile(bigint, integer, bigint)
+              IS 'Pure check: la pratica e'' chiudibile se (a) nessun obbligatorio bloccante (fn_check_chiusura_pratica) E (b) nessun flusso istanziato non terminale (fn_pratica_flussi_aperti, D1). p_escludi_template_id ignora un template dai bloccanti (flusso di chiusura pre-completamento); p_escludi_flusso_id ignora un''istanza dai flussi aperti (il flusso che sta completando). Consumata da auto-chiusura e guard pre-completamento.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina la firma/semantica pre-D1 (solo clausola bloccanti).
+              DROP FUNCTION IF EXISTS pratiche.fn_check_pratica_chiudibile(bigint, integer, bigint);
+
+              CREATE OR REPLACE FUNCTION pratiche.fn_check_pratica_chiudibile(
+                  p_pratica_id pratiche.flussi.pratica_id%TYPE,
+                  p_escludi_template_id pratiche.template_flussi.id%TYPE DEFAULT NULL
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  SELECT NOT EXISTS (
+                      SELECT 1
+                        FROM pratiche.fn_check_chiusura_pratica(p_pratica_id) c
+                       WHERE c.bloccante
+                         AND (p_escludi_template_id IS NULL
+                              OR c.template_flusso_id <> p_escludi_template_id)
+                  );
+              $function$;

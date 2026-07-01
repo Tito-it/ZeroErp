@@ -1,0 +1,166 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D1: la CHIUSURA MANUALE rifiuta anche i flussi istanziati aperti.
+# (brief-db-chiusura-pratica-nessun-lavoro-pendente §3.B/D1.a, §5.1)
+#
+# trgfn_pratiche_guard_chiusura_flussi (BEFORE UPDATE OF stato_id su pratiche.pratiche)
+# oggi blocca la transizione -> CHIUSA solo con template obbligatori bloccanti (485).
+# D1 aggiunge la clausola (b): blocca anche se esistono flussi ISTANZIATI non terminali
+# (fn_pratica_flussi_aperti) -> errore PRATICHE_CHIUSURA_FLUSSI_APERTI (501). Cosi'
+# chiusura manuale e auto-chiusura (fn_check_pratica_chiudibile) condividono lo stesso
+# predicato "nessun lavoro pendente" (unica fonte di verita'). Via d'uscita: portare i
+# flussi opzionali rimasti aperti ad ANNULLATO (brief §5.2).
+#
+# Solo CREATE OR REPLACE della funzione: il trigger esistente
+# (trg_pratiche_a10_guard_chiusura_flussi_upd) punta gia' a questa funzione, non va
+# ricreato. Codice errore 501 seedato in messaggi_errore.csv.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260701-08-update-trgfn-pratiche-guard-chiusura-flussi-aperti-mctit.yaml
+
+  - changeSet:
+      id: 20260701-08-update-trgfn-pratiche-guard-chiusura-flussi-aperti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        trgfn_pratiche_guard_chiusura_flussi: aggiunge la clausola D1 "nessun flusso
+        istanziato aperto" (fn_pratica_flussi_aperti -> errore 501) alla chiusura manuale,
+        oltre ai template obbligatori bloccanti (485).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_chiusura_flussi()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_codice_a  config.stati_pratiche.codice_interno%TYPE;
+                  v_bloccanti text;
+                  v_aperti    text;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Blocca la transizione a CHIUSA se la pratica ha ancora lavoro:
+                --   (a) flussi obbligatori non completati e ancora percorribili
+                --       (fn_check_chiusura_pratica; ramo morto di un bivio non blocca), OPPURE
+                --   (b) flussi ISTANZIATI in stato non terminale (fn_pratica_flussi_aperti, D1).
+                --   Stesso predicato dell'auto-chiusura (fn_check_pratica_chiudibile).
+                --   ANNULLATA non passa di qui (stato diverso da CHIUSA).
+                -- =========================================================
+
+                -- Nessuna transizione: niente da validare.
+                IF OLD.stato_id = NEW.stato_id THEN
+                    RETURN NEW;
+                END IF;
+
+                -- Solo verso CHIUSA.
+                SELECT sp.codice_interno
+                  INTO v_codice_a
+                  FROM config.stati_pratiche sp
+                 WHERE sp.id = NEW.stato_id;
+
+                IF v_codice_a IS DISTINCT FROM 'CHIUSA' THEN
+                    RETURN NEW;
+                END IF;
+
+                -- (a) Template bloccanti: obbligatori, non completati, percorribili.
+                SELECT string_agg(c.codice, ', ' ORDER BY c.codice)
+                  INTO v_bloccanti
+                  FROM pratiche.fn_check_chiusura_pratica(NEW.id) c
+                 WHERE c.bloccante;
+
+                IF v_bloccanti IS NOT NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                        'pratiche',
+                        'pratiche.trgfn_pratiche_guard_chiusura_flussi',
+                        'PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI',
+                        jsonb_build_object(
+                            'pratica_id', NEW.id,
+                            'flussi_bloccanti', v_bloccanti
+                        ),
+                        NULL::uuid,
+                        v_bloccanti
+                    );
+                END IF;
+
+                -- (b) D1: flussi istanziati ancora aperti (lavoro avviato pendente).
+                SELECT string_agg(
+                         COALESCE(a.codice, 'flusso#' || a.flusso_id) || ' (' || a.stato_codice_interno || ')',
+                         ', ' ORDER BY COALESCE(a.codice, 'flusso#' || a.flusso_id)
+                       )
+                  INTO v_aperti
+                  FROM pratiche.fn_pratica_flussi_aperti(NEW.id) a;
+
+                IF v_aperti IS NOT NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                        'pratiche',
+                        'pratiche.trgfn_pratiche_guard_chiusura_flussi',
+                        'PRATICHE_CHIUSURA_FLUSSI_APERTI',
+                        jsonb_build_object(
+                            'pratica_id', NEW.id,
+                            'flussi_aperti', v_aperti
+                        ),
+                        NULL::uuid,
+                        v_aperti
+                    );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_pratiche_guard_chiusura_flussi()
+              IS 'BEFORE UPDATE OF stato_id: blocca la transizione a CHIUSA se restano (a) flussi obbligatori non completati ancora percorribili (fn_check_chiusura_pratica, err 485) o (b) flussi istanziati non terminali (fn_pratica_flussi_aperti, err 501, D1). Ramo morto di un bivio non blocca. Stesso predicato dell''auto-chiusura.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina la versione pre-D1 (solo clausola template bloccanti).
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_chiusura_flussi()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_codice_a  config.stati_pratiche.codice_interno%TYPE;
+                  v_bloccanti text;
+              BEGIN
+                IF OLD.stato_id = NEW.stato_id THEN
+                    RETURN NEW;
+                END IF;
+                SELECT sp.codice_interno INTO v_codice_a
+                  FROM config.stati_pratiche sp WHERE sp.id = NEW.stato_id;
+                IF v_codice_a IS DISTINCT FROM 'CHIUSA' THEN
+                    RETURN NEW;
+                END IF;
+                SELECT string_agg(c.codice, ', ' ORDER BY c.codice)
+                  INTO v_bloccanti
+                  FROM pratiche.fn_check_chiusura_pratica(NEW.id) c
+                 WHERE c.bloccante;
+                IF v_bloccanti IS NOT NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                        'pratiche',
+                        'pratiche.trgfn_pratiche_guard_chiusura_flussi',
+                        'PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI',
+                        jsonb_build_object('pratica_id', NEW.id, 'flussi_bloccanti', v_bloccanti),
+                        NULL::uuid,
+                        v_bloccanti
+                    );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
