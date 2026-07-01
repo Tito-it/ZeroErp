@@ -5,8 +5,8 @@
 > **Data**: 2026-07-01 · **Rev. 3** (decisione presa: **niente deferral D2**, si adotta il **bivio-per-esito**; riscrittura del brief `2026-06-30`)
 > **Origine**: PRA-0000225 — la pratica si **auto-chiude a SMISTAMENTO**, prima che nascano i
 > flussi ordine condizionali (CONFERMA_ORDINE/INVIO_COMMESSA). Vedi
-> [analisi-uniformita-pratica-preventivi.md](analisi-uniformita-pratica-preventivi.md),
-> [piano-be-fe-uniformita-pratica-preventivi.md](piano-be-fe-uniformita-pratica-preventivi.md).
+> [analisi-uniformita-pratica-preventivi.md](../work-in-progress/analisi-uniformita-pratica-preventivi.md),
+> [piano-be-fe-uniformita-pratica-preventivi.md](../work-in-progress/piano-be-fe-uniformita-pratica-preventivi.md).
 >
 > **Nota di lettura**: i punti marcati **`⚠️ Δ`** differiscono dal brief iniziale (rev. 1).
 > La sintesi completa per il team BE è in **§9**.
@@ -460,10 +460,26 @@ Aggiornata/creata la doc `manual/` (le pagine auto-gen `funzioni/`/`tabelle/` si
 - **aggiornate**: `fn_check_pratica_chiudibile`, `trgfn_pratiche_guard_chiusura_flussi`,
   `trgfn_flussi_guard_chiusura_prematura`, `trgfn_flussi_autochiusura_pratica`.
 
-### 11.6 Resta da fare
+### 11.6 Stato BE — **✅ FATTO** (2026-07-01, `dev/backend-tid`)
 
-- **Non-regressione**: rilanciare `test-autochiusura-pratica.sql` (§11.4).
-- **Rigenerare** le doc auto-gen dbzero (funzioni + nuova tabella) col loro script.
-- **BE** (§9.3 + §10): sblocco `ESITI_FLUSSO_AMMESSI`, SMISTAMENTO calcola l'esito di ramo,
-  `post_smistamento` merce-only, `push_a_commessa` pratica-aware, azioni 9013/9014, `annulla flusso`,
-  mappatura errore 501 in `error_policies.py`.
+Tutto il lato BE del bivio (§9.3 + §10) è implementato e **1764 test verdi**; commit fatto.
+
+- ✅ **`ESITI_FLUSSO_AMMESSI`** esteso (`MERCE_PRESENTE`/`SOLO_SERVIZI`), mirror fail-fast del vocabolario DB.
+- ✅ **`completa_smistamento`** (`preventivi_service`) + endpoint `POST …/preventivi/{id}/completa-smistamento/`: calcola l'esito di ramo dal dominio (stesso lookup `documento_origine` dell'handler → nessun disallineamento) e completa lo step nella stessa UPDATE.
+- ✅ **`post_smistamento` merce-only** (rimosso il `crea_flusso` a valle; retro-aggancio ordine + fail-safe).
+- ✅ **`push_a_commessa` pratica-aware** (aggancio commessa-servizi COLLEGATO — gap R3 chiuso).
+- ✅ **Azioni 9013/9014**: auto-completamento step su `ordini_service.conferma` (CONFERMA_ORDINE) e `push_a_commessa` ordine (INVIO_COMMESSA), via BB motore estratto **`pratiche_service.completa_step_pratica`** (regola del 2).
+- ✅ **Errore 501** `PRATICHE_CHIUSURA_FLUSSI_APERTI` + `E_VENDITA_PREVENTIVO_NON_COLLEGATO` mappati in `error_policies.py`.
+- 📄 Doc API aggiornate: `api_preventivi.md` (§14b, §13, §6c), `api_ordini.md` (conferma/push), catalogo BB (sezione Pratiche).
+
+**Rinviato (non serve al percorso PREVENTIVI):** `annulla flusso` (transizione →ANNULLATO) — hardening D1 generale per i tipi con flussi **opzionali** (§4.4/§8.1), non per 9004.
+
+**Residui DB (team `dev/db-tid`):** rilanciare la non-regressione `test-autochiusura-pratica.sql` (§11.4); rigenerare le doc auto-gen dbzero (funzioni + `esiti_flussi_pratiche`).
+
+**Validazione finale:** ✅ smoke E2E **verde** (`smoke-test-pratica-preventivi-bivio.sh`,
+rami MERCE + SOLO_SERVIZI) — 2026-07-01. Lo smoke ha scoperto e fatto chiudere due
+gap che i test mock non vedevano: (1) BE — `_resolve_pratica_id_da_preventivo`
+dipendeva dal `flusso_id` sul link ROOT (fix: risoluzione diretta
+`get_pratica_id_by_preventivo_root`); (2) DB — binding `post_smistamento` su
+SMISTAMENTO era `attivo=false`, riattivato (brief chiuso
+[brief-db-attiva-binding-post-smistamento-bivio.md](brief-db-attiva-binding-post-smistamento-bivio.md)).

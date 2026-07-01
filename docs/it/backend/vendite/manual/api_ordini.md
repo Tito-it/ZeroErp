@@ -219,6 +219,15 @@ validate dal **trigger guard DB** `trgfn_ordini_guard_transizione`
 `E_ORD_NESSUNA_RIGA` (defense-in-depth + messaggio). Le altre transizioni manuali
 (es. annulla) passano da `cambia-stato`.
 
+**Percorso pratica — auto-completamento step `CONFERMA_ORDINE` (9013, bivio rev.3):**
+se l'ordine è **COLLEGATO** a una pratica, la conferma completa anche lo step
+`CONFERMA_ORDINE` con esito `POSITIVO`, **nella stessa transazione** (atomico:
+conferma + completamento). Sblocca `INVIO_COMMESSA` (prereq `POSITIVO`). Riusa
+l'azione standalone (la pratica orchestra, non decide al posto dell'operatore);
+delega al BB motore `pratiche_service.completa_step_pratica`, **idempotente**
+(no-op se lo step è già terminale o l'ordine non nasce da una pratica). L'`user`
+del JWT è propagato per l'audit del completamento.
+
 ### Cambia stato `POST /api/v1/vendite/ordini/<id>/cambia-stato/`
 
 Transizione di stato **generica data-driven** (es. annulla `DRAFT→ANNULLATO`).
@@ -244,6 +253,14 @@ l'autorizzazione delle attività generate. Il ponte vive in
 `pr_run_commesse_push_one` e vale per ogni percorso (preventivi standalone,
 ordini, handler pratica; il batch `pr_run_commesse_push` lo applica
 best-effort per commessa con errori in `emittibilita_errors`).
+
+**Percorso pratica — auto-completamento step `INVIO_COMMESSA` (9014, bivio rev.3):**
+a push `COMPLETATO`, se l'ordine è **COLLEGATO** a una pratica, si completa anche
+lo step `INVIO_COMMESSA` con esito `POSITIVO`. È lo step **terminale** del ramo
+merce: completandolo (nessun altro flusso aperto, obbligatori fatti) la pratica
+**si auto-chiude** (chiusura data-driven del motore). Stesso BB
+`pratiche_service.completa_step_pratica` (idempotente, no-op fuori-pratica); gated
+su push `COMPLETATO` (PARZIALE/ERRORE non completano lo step). `user` JWT propagato.
 
 La response espone `commesse_ids` (commesse toccate dal push), oltre a
 `stato`/`push_log_id`/`handlers`/`righe_pushable`/`fatturazione_trigger`.
