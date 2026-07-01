@@ -97,8 +97,13 @@ jobs:
    # Istalla il driver PostgreSQL       
       - name: Install PostgreSQL driver for Liquibase 5
         run: |
-          # Installa il driver PostgreSQL tramite LPM (Liquibase Package Manager)
-          liquibase lpm add postgresql --global
+          # Driver PostgreSQL da Maven Central (NIENTE LPM): evita il fallimento
+          # "Checksum validation failed" del package manager LPM. Liquibase carica
+          # automaticamente i .jar in LIQUIBASE_HOME/lib. 42.7.x è compatibile con PG 18.
+          LB_HOME="${LIQUIBASE_HOME:-$(dirname "$(readlink -f "$(command -v liquibase)")")}"
+          mkdir -p "$LB_HOME/lib"
+          curl -fsSL -o "$LB_HOME/lib/postgresql.jar" \
+            https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.4/postgresql-42.7.4.jar
           liquibase --version
  # Dicembre 2025 fine passaggio a Liquibase 5 Community
       
