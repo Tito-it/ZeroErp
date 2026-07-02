@@ -2,22 +2,26 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: seed catalogo pratica PREVENTIVI (B4-B7)
+-- Test: seed catalogo pratica PREVENTIVI (B4-B7) — post ritiro handler
+--       monolitico push_preventivo (2026-07-02, brief disinnesco binding).
 --       tipi_prestazione + template_flussi + handler_params + prerequisiti
 --       esito-aware + handler_flussi + canali. Asserzioni read-only sui dati.
 --
--- Indice test:
+-- Indice test (0..10):
 -- 0) 2 tipi_prestazione PREVENTIVI (pre/post false, categoria COMMERCIALE)
--- 1) 4 template_flussi per ciascun tipo (8 totali)
--- 2) Catena codici + direzioni corrette
--- 3) CONFERMA: handler_params modalita_fatturazione IMMEDIATA/DIFFERITA
--- 4) CONFERMA: handler_id -> handler_key 'vendita.push_preventivo'
--- 5) Prerequisiti lineari con esito_richiesto='POSITIVO' (3 per tipo)
--- 6) Canali WEB_CLIENTI sui flussi ENTRATA
--- 7) handler_flussi 'vendita.push_preventivo' attivo
+-- 1) 8 template_flussi (4 per tipo IMMEDIATA/DIFFERITA)
+-- 2) Catena 4 codici (RICHIESTA_CLIENTE->PREVENTIVAZIONE->APPROVAZIONE_CLIENTE->CONFERMA)
+-- 3) RICHIESTA_CLIENTE/APPROVAZIONE_CLIENTE sono ENTRATA (4)
+-- 4) CONFERMA IMMEDIATA: handler_params.modalita_fatturazione = IMMEDIATA
+-- 5) CONFERMA DIFFERITA: handler_params.modalita_fatturazione = DIFFERITA
+-- 6) CONFERMA di 9002/9003 SBINDATI (handler_id IS NULL) — push_preventivo ritirato
+-- 7) 6 prerequisiti lineari esito_richiesto='POSITIVO' (3 per tipo)
+-- 8) 4 canali WEB_CLIENTI sui flussi ENTRATA
+-- 9) handler_flussi 'vendita.push_preventivo' deprecato (attivo=false)
+-- 10) tipi IMMEDIATA/DIFFERITA con obsoleto_dal valorizzato
 -- ------------------------------------------------------------
 
-SELECT plan(9);
+SELECT plan(11);
 
 -- =========================================================
 -- 0) tipi_prestazione PREVENTIVI
@@ -90,19 +94,18 @@ SELECT is(
 );
 
 -- =========================================================
--- 4) CONFERMA: handler_id -> handler_key
+-- 4) CONFERMA sbindati: handler push_preventivo ritirato (unbind seed 08)
 -- =========================================================
 
 SELECT is(
     (SELECT count(*)::integer
        FROM pratiche.template_flussi tf
        JOIN pratiche.tipi_prestazione tp ON tp.id = tf.tipo_prestazione_id
-       JOIN pratiche.handler_flussi hf ON hf.id = tf.handler_id
       WHERE tp.codice_interno IN ('PREVENTIVI_IMMEDIATA','PREVENTIVI_DIFFERITA')
         AND tf.codice = 'CONFERMA'
-        AND hf.handler_key = 'vendita.push_preventivo'),
+        AND tf.handler_id IS NULL),
     2,
-    '6. Entrambi i CONFERMA puntano a handler vendita.push_preventivo'
+    '6. I CONFERMA di 9002/9003 sono sbindati (handler_id IS NULL): push_preventivo ritirato'
 );
 
 -- =========================================================
@@ -135,6 +138,27 @@ SELECT is(
         AND cp.codice_interno = 'WEB_CLIENTI'),
     4,
     '8. 4 canali WEB_CLIENTI sui flussi ENTRATA'
+);
+
+-- =========================================================
+-- 7) Ritiro handler push_preventivo + obsolescenza tipi (2026-07-02)
+-- =========================================================
+
+SELECT is(
+    (SELECT hf.attivo
+       FROM pratiche.handler_flussi hf
+      WHERE hf.handler_key = 'vendita.push_preventivo'),
+    false,
+    '9. handler_flussi vendita.push_preventivo e'' deprecato (attivo=false)'
+);
+
+SELECT is(
+    (SELECT count(*)::integer
+       FROM pratiche.tipi_prestazione
+      WHERE codice_interno IN ('PREVENTIVI_IMMEDIATA','PREVENTIVI_DIFFERITA')
+        AND obsoleto_dal IS NOT NULL),
+    2,
+    '10. tipi IMMEDIATA/DIFFERITA hanno obsoleto_dal valorizzato (tipo unico PREVENTIVI subentra)'
 );
 
 SELECT * FROM finish();
