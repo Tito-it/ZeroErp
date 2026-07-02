@@ -315,6 +315,9 @@ class PraticheRepository:
         f.meta, f.data_insert, f.user_insert,
         sf.codice_interno AS stato_codice_interno,
         sf.descrizione AS stato_descrizione,
+        -- Descrizione umana dell'esito registrato (vocabolario globale
+        -- config.esiti_flussi_pratiche): il FE mostra esito_descrizione, non il codice.
+        ef.descrizione AS esito_descrizione,
         tf.codice AS template_flusso_codice,
         tf.descrizione AS template_flusso_descrizione,
         -- Configurazione esito dello step (20260617-01): governa come il FE
@@ -341,6 +344,7 @@ class PraticheRepository:
 
     _FLUSSO_JOINS = """
         JOIN config.stati_flussi_pratiche sf ON sf.id = f.stato_id
+        LEFT JOIN config.esiti_flussi_pratiche ef ON ef.codice_interno = f.esito
         LEFT JOIN pratiche.template_flussi tf ON tf.id = f.template_flusso_id
         LEFT JOIN pratiche.azioni_ui au ON au.id = tf.azione_ui_id
         JOIN pratiche.pratiche p ON p.id = f.pratica_id

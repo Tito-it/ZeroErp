@@ -1299,6 +1299,26 @@ a {
   border-bottom: none;
 }
 
+/* ===== Toggle collassa/espandi =====
+ * Bottone icona quadrato trasparente per collassare/espandere pannelli e rail
+ * (percorso pratiche, rail "Le mie attivita'", futuri pannelli). Estratto alla
+ * 2ª occorrenza (regola del 2): stile unico, icona a carico del caller
+ * (MANAGE_ICONS.EXPAND/COLLAPSE per i toggle verticali). */
+.app-collapse-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--app-text-muted);
+  cursor: pointer;
+}
+.app-collapse-toggle:hover { background: var(--surface-hover); }
+
 /* ===== Responsive: schermi piccoli =====
  * Tablet: < 1024px — filtri wrappano, pulsanti azione solo icona + tooltip
  * Mobile: < 768px — padding ridotto (gestito da AppLayout)

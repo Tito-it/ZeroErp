@@ -67,8 +67,13 @@ GET /api/v1/core/lookup/codici/?rel=config.qualifiche
 GET /api/v1/core/lookup/codici/?rel=config.stati_pratiche&search=ape
 ```
 
-Un'unica API, parametro `rel` con whitelist (~45 tabelle config).
-Restituisce sempre `id, codice, descrizione` con paginazione e search.
+Un'unica API, parametro `rel` con whitelist (83 tabelle su 9 schemi, 2026-07-02).
+Restituisce sempre `id, codice, codice_interno, descrizione, attivo, codice_stabile`
+con paginazione e search. Variante **specializzata** (config `_LOOKUP_SPECIALIZZATE`):
+stessa API e contratto + UNA colonna extra per relazione (es.
+`pratiche.tipi_prestazione` → `categoria`, `catalogo.unita_misura` → `tipo_uom_id`)
+— preferirla a un endpoint dedicato quando serve un solo campo in piu'.
+Dettagli: `docs/it/backend/core/manual/api_lookup_codici.md`.
 
 **2. Lookup dedicato** — quando servono JOIN o campi extra non riducibili a `id, codice, descrizione`:
 

@@ -168,7 +168,8 @@ export const DOMAIN_MENUS = {
   'pagamenti': [],
   'contabilita': [],
   'pratiche': [
-    { key: 'gestione', icon: NAV_ICONS.FOLDER_OPEN, to: '/pratiche' }
+    { key: 'home', icon: NAV_ICONS.HOME, to: '/pratiche' },
+    { key: 'gestione', icon: NAV_ICONS.FOLDER_OPEN, to: '/pratiche/gestione' }
   ],
   'config': [
     { key: 'tabelle', icon: NAV_ICONS.TABELLE, to: '/config/tabelle' },

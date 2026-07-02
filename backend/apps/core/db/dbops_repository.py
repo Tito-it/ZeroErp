@@ -36,6 +36,7 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.classi_utenze",
         "config.conti_contabili",
         "config.email_account",
+        "config.esiti_flussi_pratiche",
         "config.forme_giuridiche",
         "config.iva",
         "config.iva_assoggettamenti",
@@ -125,52 +126,103 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
 LOOKUP_MAX_SOURCE_ROWS = 10_000
 
 
+# Lookup specializzati: relazioni che estendono il contratto generico
+# (id/codice/codice_interno/descrizione/attivo/codice_stabile) con UNA colonna
+# in piu' per il frontend, senza endpoint dedicati. Estratto alla 2ª occorrenza
+# (regola del 2: unita_misura + tipi_prestazione) in un unico handler
+# parametrico — le prossime relazioni aggiungono una riga qui, non 70 di SQL.
+#   extra_col          → colonna aggiuntiva esposta nel payload
+#   has_codice_interno → la tabella ha codice_interno (ricerca + codice_stabile)
+#   has_obsoleto       → la tabella ha obsoleto_dal (filtro includi_obsoleti,
+#                        stessa semantica della fn generica: esclude
+#                        obsoleto_dal <= CURRENT_DATE quando false)
+_LOOKUP_SPECIALIZZATE: dict[str, dict] = {
+    "catalogo.unita_misura": {
+        # tipo_uom_id: usato dal FE per filtrare conversioni same-type.
+        "extra_col": "tipo_uom_id",
+        "has_codice_interno": False,
+        "has_obsoleto": False,
+    },
+    "pratiche.tipi_prestazione": {
+        # categoria: usata dalla home pratiche per raggruppare le tile.
+        "extra_col": "categoria",
+        "has_codice_interno": True,
+        "has_obsoleto": True,
+    },
+}
+
+
 class DbopsRepository:
     """Repository per funzioni generiche dbops (lookup codici, utility)."""
 
-    # Scopo: Lookup specializzato per catalogo.unita_misura. Mantiene il
-    # contratto generico id/codice/descrizione e aggiunge tipo_uom_id, usato
-    # dal frontend per filtrare conversioni globali same-type senza endpoint
-    # dedicati o combo duplicate.
-    def _list_lookup_catalogo_unita_misura(
+    # Scopo: Handler unico dei lookup specializzati (_LOOKUP_SPECIALIZZATE):
+    # contratto generico + una colonna extra, con filtri attivo/obsoleto e
+    # ricerca ILIKE coerenti con la fn generica. Gli identificatori interpolati
+    # nella SQL (tabella, colonna extra, order) vengono SOLO dalla config
+    # statica e dalle whitelist di ordinamento gia' validate a monte.
+    def _list_lookup_specializzato(
         self,
         *,
+        rel: str,
         search: str | None,
         order_col: str,
         order_dir: str,
         attivo_only: bool,
+        includi_obsoleti: bool,
         limit: int,
         offset: int,
     ) -> tuple[list[dict], int]:
+        spec = _LOOKUP_SPECIALIZZATE[rel]
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         order_map = {
-            "codice": "u.codice",
-            "descrizione": "u.descrizione",
+            "codice": "t.codice",
+            "descrizione": "t.descrizione",
         }
         order_column = order_map[order_col]
+
+        codice_interno_sql = (
+            "t.codice_interno" if spec["has_codice_interno"] else "NULL::text"
+        )
+        obsoleto_pred = (
+            "AND (%(includi_obsoleti)s IS TRUE"
+            " OR t.obsoleto_dal IS NULL OR t.obsoleto_dal > CURRENT_DATE)"
+            if spec["has_obsoleto"]
+            else ""
+        )
+        search_codice_interno = (
+            "OR t.codice_interno ILIKE %(search)s" if spec["has_codice_interno"] else ""
+        )
 
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
                 SELECT
-                    u.id,
-                    u.codice,
-                    NULL::text AS codice_interno,
-                    u.descrizione,
-                    u.attivo,
-                    u.tipo_uom_id,
+                    t.id,
+                    t.codice,
+                    {codice_interno_sql} AS codice_interno,
+                    t.descrizione,
+                    t.attivo,
+                    t.{spec["extra_col"]},
                     COUNT(*) OVER () AS total_count
-                  FROM catalogo.unita_misura u
-                 WHERE (%s IS FALSE OR u.attivo = true)
+                  FROM {rel} t
+                 WHERE (%(attivo_only)s IS FALSE OR t.attivo = true)
+                   {obsoleto_pred}
                    AND (
-                       %s::text IS NULL
-                       OR u.codice ILIKE %s
-                       OR u.descrizione ILIKE %s
+                       %(search)s::text IS NULL
+                       OR t.codice ILIKE %(search)s
+                       {search_codice_interno}
+                       OR t.descrizione ILIKE %(search)s
                    )
-                 ORDER BY {order_column} {order_dir}, u.id
-                 LIMIT %s OFFSET %s
+                 ORDER BY {order_column} {order_dir}, t.id
+                 LIMIT %(limit)s OFFSET %(offset)s
                 """,
-                [attivo_only, search_pattern, search_pattern, search_pattern, limit, offset],
+                {
+                    "attivo_only": attivo_only,
+                    "includi_obsoleti": includi_obsoleti,
+                    "search": search_pattern,
+                    "limit": limit,
+                    "offset": offset,
+                },
             )
             rows = cursor.fetchall()
 
@@ -185,8 +237,8 @@ class DbopsRepository:
                 "codice_interno": row[2],
                 "descrizione": row[3],
                 "attivo": row[4],
-                "codice_stabile": row[1],
-                "tipo_uom_id": row[5],
+                "codice_stabile": row[2] or row[1],  # COALESCE(codice_interno, codice)
+                spec["extra_col"]: row[5],
             }
             for row in rows
         ]
@@ -218,12 +270,14 @@ class DbopsRepository:
                 detail=f"rel '{rel}' non è nella whitelist delle lookup consentite.",
             )
 
-        if rel == "catalogo.unita_misura":
-            return self._list_lookup_catalogo_unita_misura(
+        if rel in _LOOKUP_SPECIALIZZATE:
+            return self._list_lookup_specializzato(
+                rel=rel,
                 search=search,
                 order_col=order_col,
                 order_dir=order_dir,
                 attivo_only=attivo_only,
+                includi_obsoleti=includi_obsoleti,
                 limit=limit,
                 offset=offset,
             )

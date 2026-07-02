@@ -9,6 +9,9 @@ import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { cambiaStatoFlusso } from '../api/pratiche-api'
+import { lookupCodici } from '../../core/apiCore'
+import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
+import { useInjectTechnicalMode } from '../../core/composables/useTechnicalMode'
 import { getUiActivity } from '../uiActivityRegistry'
 import { getCompletionDialog } from '../flussoCompletionRegistry'
 import { DRAWER_WIDTH, STATO_FLUSSO, MANAGE_ICONS } from '../../core/constants'
@@ -40,12 +43,26 @@ const emit = defineEmits(['update:visible', 'saved', 'open-attivita'])
 const esito = ref(null)
 const noteEsito = ref('')
 
-const esitiOptions = computed(() => [
-  { value: 'POSITIVO', label: t('pratiche.esito_positivo') },
-  { value: 'NEGATIVO', label: t('pratiche.esito_negativo') },
-  { value: 'PARZIALE', label: t('pratiche.esito_parziale') },
-  { value: 'NON_APPLICABILE', label: t('pratiche.esito_non_applicabile') },
-])
+// Flag modalita' tecnica (super-admin): default false = vista operatore. Fornito
+// da PraticheDashboard (provideTechnicalMode, toggle gateato su auth.isSuperAdmin);
+// qui riespone il "plumbing" (codice template).
+const tecnico = useInjectTechnicalMode()
+
+// Esiti data-driven dal vocabolario globale config.esiti_flussi_pratiche (§9.1-A):
+// non piu' 4 valori hardcodati in i18n → include anche gli esiti di dominio.
+// ⚠️ Gli esiti di RAMO (calcolati dai domini, mai input utente) compaiono nel
+// vocabolario: il guard BE (require_esito_selezionabile_operatore) li respinge
+// con errore parlante; il filtro alla fonte arriva col discriminatore a DB
+// (brief-db-esiti-flussi-selezionabilita.md).
+// value = codice_interno (inviato al BE), label = descrizione umana. Cache
+// modulo-level condivisa (useGlobalLookup), caricata all'apertura del drawer.
+const { items: esitiCatalogo, load: loadEsiti } = useGlobalLookup(
+  'config.esiti_flussi_pratiche',
+  () => lookupCodici('config.esiti_flussi_pratiche'),
+)
+const esitiOptions = computed(() =>
+  esitiCatalogo.value.map(e => ({ value: e.codice_interno, label: e.descrizione })),
+)
 
 const stato = computed(() => props.flusso?.stato_codice_interno || '')
 // Descrizione umana dello stato (display field BE `stato_descrizione`): mostrata nel Tag.
@@ -107,7 +124,11 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 watch(() => props.visible, (val) => {
   // Pre-seleziona l'esito_default (CONTESTUALE) o resta null (MANUALE: esito_default
   // NULL → nessuna pre-selezione, comportamento odierno).
-  if (val) { esito.value = esitoDefault.value; noteEsito.value = '' }
+  if (val) {
+    esito.value = esitoDefault.value
+    noteEsito.value = ''
+    loadEsiti().catch(() => { /* errore gia' in errorRef del lookup */ })
+  }
 })
 
 // Azioni della testata flusso consumate da DrawerActionsBar.
@@ -288,8 +309,12 @@ const onClose = useDrawerClose(emit)
       <DrawerActionsBar :actions="drawerActions" />
 
       <!-- La descrizione dell'attivita' e' gia' nel titolo del drawer: niente campo
-           "Template" per l'operatore (era gergo di configurazione). Torna in modalita'
-           tecnica (super-admin) con B5. -->
+           "Template" per l'operatore (era gergo di configurazione). In modalita'
+           tecnica (super-admin) riespone codice + descrizione del template. -->
+      <div v-if="tecnico" class="form-field">
+        <label>{{ t('pratiche.flusso_col_template') }}</label>
+        <span class="form-value">{{ flusso.template_flusso_codice }} — {{ flusso.template_flusso_descrizione }}</span>
+      </div>
 
       <!-- Assegnazione corrente del flusso (reparto + operatore), display fields
            dal BE. Mostrata solo se almeno uno valorizzato. -->
@@ -334,7 +359,7 @@ const onClose = useDrawerClose(emit)
       <div v-if="stato === STATO_FLUSSO.COMPLETATO" class="form-grid mt-3">
         <div class="form-field">
           <label>{{ t('pratiche.flusso_esito') }}</label>
-          <Tag :value="flusso.esito" :severity="esitoFlussoSeverity(flusso.esito)" />
+          <Tag :value="flusso.esito_descrizione || flusso.esito" :severity="esitoFlussoSeverity(flusso.esito)" />
         </div>
         <div v-if="flusso.note_esito" class="form-field">
           <label>{{ t('pratiche.flusso_note_esito') }}</label>

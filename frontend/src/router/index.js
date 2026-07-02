@@ -328,7 +328,15 @@ const router = createRouter({
 
         // --- Pratiche ---
         {
+          // Atterraggio dominio = home launcher (comincia/continua); la
+          // dashboard-lista (consultazione/ricerca) vive su /pratiche/gestione.
           path: 'pratiche',
+          name: 'pratiche-home',
+          component: () => import('../pratiche/views/PraticheHome.vue'),
+          meta: { domain: 'pratiche', menuKey: 'home' }
+        },
+        {
+          path: 'pratiche/gestione',
           name: 'pratiche-gestione',
           component: () => import('../pratiche/views/PraticheDashboard.vue'),
           meta: { domain: 'pratiche', menuKey: 'gestione' }

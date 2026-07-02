@@ -445,6 +445,10 @@ class ApiPraticaFlussoStato(DomainAPIView):
                     code="E_FLUSSO_VALIDATION",
                     message="esito obbligatorio per completamento flusso",
                 )
+                # L'esito arriva dall'operatore: gli esiti di ramo (calcolati
+                # dal dominio, es. bivio SMISTAMENTO) non sono selezionabili
+                # a mano — errore parlante prima di toccare il flusso.
+                pratiche_service.require_esito_selezionabile_operatore(str(payload["esito"]))
                 acting_user = getattr(request.user, "username", None) or None
                 # Contesto d'azione opzionale (es. modalita/competenza di
                 # fatturazione all'accettazione): inoltrato agli handler di
