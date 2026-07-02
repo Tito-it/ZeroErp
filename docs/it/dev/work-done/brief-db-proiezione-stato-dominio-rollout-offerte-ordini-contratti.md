@@ -1,16 +1,31 @@
 # Brief DB — Roll-out proiezione stato di dominio: OFFERTA · ORDINE · CONTRATTO
 
 > **Tipo**: brief DB (DDL + seed + viste) · **Destinatario**: team DB (`dev/db-tid`)
-> **Priorità**: 🟠 media · **Data**: 2026-07-02 · **Stato**: 🟡 **DA PRENDERE IN CARICO**
+> **Priorità**: 🟠 media · **Data**: 2026-07-02 · **Stato**: ✅ **CHIUSO 2026-07-02**
+> (spostato in `work-done/`).
+>
+> **Consegna**: DB mergiato (`c880bea5e`, PR #915) — 3 resolver
+> `vendite.vw_stato_sorgente_{offerta,ordine,contratto}` (rispettano il `key_selector`:
+> offerta `uid`, ordine/contratto `id`), union `script.vw_stato_sorgente` a 4 rami, vista
+> d'àncora pratica-level `script.vw_pratica_doc_sorgente` (regola
+> `risolto → non-terminale → ROOT → più recente`), colonne D1 `fase`/`esito`/`terminale`
+> seedate al 100% sulle tre `stati_doc_*`, indici a espressione, pgTAP verdi + doc dbzero.
+> **BE** (mio, `pratiche_repository.py`): àncora dettaglio/lista commutata dal LATERAL
+> ROOT-only al `LEFT JOIN script.vw_pratica_doc_sorgente` → ordine/commessa `COLLEGATO` si
+> accendono a livello pratica; 190/190 test verdi. **Verifica live**: i 4 domini proiettano
+> `fase`/`esito`/`terminale` corretti; la vista pratica-level seleziona il documento più
+> vivo (confermato su `PRA-…225` ancorata su ORDINE_VENDITA `COLLEGATO`). **Residuo → D4**:
+> pinning per-milestone dell'ordine sul percorso narrativo (richiede mappa step→sorgente,
+> condivisa con GUIDA), tracciato nel [brief design](../work-in-progress/brief-design-proiezione-stato-dominio.md).
 >
 > **Scope confermato da Tid (2026-07-02)**: (1) le pratiche OFFERTA/CONTRATTO ancoreranno
 > il documento come **ROOT con `flusso_id`** (simmetria con PREVENTIVI); (2) si **accende
 > anche l'ORDINE** in questo giro — quindi la vista d'àncora condivisa
 > `script.vw_pratica_doc_sorgente` (nota (b)/(c)) entra **in scope**, non è più opzionale.
 >
-> **Origine / autorevole**: [brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md)
+> **Origine / autorevole**: [brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md)
 > (voce **V10**) + increment PREVENTIVI già chiuso
-> ([brief-db-proiezione-stato-dominio.md](../work-done/brief-db-proiezione-stato-dominio.md)).
+> ([brief-db-proiezione-stato-dominio.md](brief-db-proiezione-stato-dominio.md)).
 > Qui si **replica lo stesso playbook** (D1→D2→D3) sui tre domini residui. Modello,
 > principio (proiezione ≠ mirror), vocabolario universale e vincoli sono nel brief di
 > design: leggerlo prima. Le 5 decisioni A-E dell'increment PREVENTIVI restano valide.
@@ -252,6 +267,6 @@ resolver + `vw_pratica_doc_sorgente` + update `vw_stato_sorgente`,
 ---
 
 *Brief vivo. A presa in carico: aggiornare lo stato in testa. A chiusura: riga V10 di
-[analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md) e stato del
-[brief design](brief-design-proiezione-stato-dominio.md). Regola `feedback_db_actions_passaggio_team`:
+[analisi-pratiche-valutazione-stato.md](../work-in-progress/analisi-pratiche-valutazione-stato.md) e stato del
+[brief design](../work-in-progress/brief-design-proiezione-stato-dominio.md). Regola `feedback_db_actions_passaggio_team`:
 DDL/trigger/viste/pgTAP eseguiti dal team DB su `dev/db-tid`, non da qui.*
