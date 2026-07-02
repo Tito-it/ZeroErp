@@ -10,7 +10,7 @@
 
 from contextlib import nullcontext
 from datetime import date
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.db import DatabaseError, IntegrityError
 from django.test import SimpleTestCase
@@ -20,10 +20,27 @@ from apps.vendite.services import ordini_service
 from apps.vendite.services.ordini_service import _db_errors
 
 _REPO = "apps.vendite.services.ordini_service.OrdiniRepository"
+# Helper auto-completamento step pratica (CONFERMA_ORDINE/INVIO_COMMESSA): usa
+# PraticheRepository reale → patchato a no-op nei test di transizione stato ordine
+# (SimpleTestCase, DB vietato). L'auto-completamento e' testato a parte.
+_COMPLETA_STEP = "apps.vendite.services.ordini_service._completa_flusso_ordine_pratica"
+
+
+def _patch_atomic_noop(testcase) -> None:
+    # conferma avvolge update_stato + completamento step in transaction.atomic:
+    # no-op in SimpleTestCase (no connessione DB), come test_preventivi_service.
+    patcher = patch("apps.vendite.services.ordini_service.transaction.atomic")
+    mock_atomic = patcher.start()
+    mock_atomic.return_value.__enter__ = MagicMock(return_value=None)
+    mock_atomic.return_value.__exit__ = MagicMock(return_value=False)
+    testcase.addCleanup(patcher.stop)
 
 
 class OrdiniServiceGuardsTests(SimpleTestCase):
     """Guard di stato e not-found (mock repository)."""
+
+    def setUp(self) -> None:
+        _patch_atomic_noop(self)
 
     @patch(_REPO)
     def test_get_ordine_not_found(self, repo_cls) -> None:
@@ -49,8 +66,9 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
             ordini_service.conferma(7)
         self.assertEqual(cm.exception.code, "E_ORD_NESSUNA_RIGA")
 
+    @patch(_COMPLETA_STEP)
     @patch(_REPO)
-    def test_conferma_ok_deriva_stato(self, repo_cls) -> None:
+    def test_conferma_ok_deriva_stato(self, repo_cls, _mock_step) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
         repo.list_righe.return_value = [{"id": 1}]
@@ -510,9 +528,10 @@ class OrdiniPushCommessaTests(SimpleTestCase):
 
     _PUSH_ONE = "apps.vendite.services.commesse_service.pr_run_commesse_push_one"
 
+    @patch(_COMPLETA_STEP)
     @patch(_PUSH_ONE)
     @patch(_REPO)
-    def test_push_completato_transita_a_evaso(self, ord_cls, mock_push_one) -> None:
+    def test_push_completato_transita_a_evaso(self, ord_cls, mock_push_one, _mock_step) -> None:
         repo = ord_cls.return_value
         repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
         repo.count_righe_pushable.return_value = 2
@@ -538,9 +557,10 @@ class OrdiniPushCommessaTests(SimpleTestCase):
         ordini_service.push_a_commessa(55)
         repo.update_stato.assert_not_called()
 
+    @patch(_COMPLETA_STEP)
     @patch(_PUSH_ONE)
     @patch(_REPO)
-    def test_push_seed_evaso_assente_soft(self, ord_cls, mock_push_one) -> None:
+    def test_push_seed_evaso_assente_soft(self, ord_cls, mock_push_one, _mock_step) -> None:
         # Robustezza deploy parziale: EVASO non seedato → niente raise, niente update.
         repo = ord_cls.return_value
         repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
@@ -553,9 +573,10 @@ class OrdiniPushCommessaTests(SimpleTestCase):
         self.assertEqual(out["stato"], "COMPLETATO")
         repo.update_stato.assert_not_called()
 
+    @patch(_COMPLETA_STEP)
     @patch(_PUSH_ONE)
     @patch(_REPO)
-    def test_push_transizione_db_error_soft(self, ord_cls, mock_push_one) -> None:
+    def test_push_transizione_db_error_soft(self, ord_cls, mock_push_one, _mock_step) -> None:
         # Se il trigger DB rifiuta la transizione → warning, non fa fallire il push.
         repo = ord_cls.return_value
         repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
@@ -567,3 +588,89 @@ class OrdiniPushCommessaTests(SimpleTestCase):
         }
         out = ordini_service.push_a_commessa(55)  # non solleva
         self.assertEqual(out["stato"], "COMPLETATO")
+
+
+class OrdiniStepPraticaTests(SimpleTestCase):
+    """Auto-completamento step pratica CONFERMA_ORDINE/INVIO_COMMESSA all'azione
+    standalone del programma base (conferma / push a commessa) — bivio rev.3."""
+
+    def setUp(self) -> None:
+        _patch_atomic_noop(self)
+
+    # L'auto-completamento delega al BB motore completa_step_pratica (mockato qui,
+    # testato in pratiche): questi test verificano il CABLAGGIO — risoluzione
+    # pratica dall'ordine + template_codice + esito corretti + gating.
+    _PRAT_REPO = "apps.pratiche.db.pratiche_repository.PraticheRepository"
+    _STEP = "apps.pratiche.services.pratiche_service.completa_step_pratica"
+    _PUSH_ONE = "apps.vendite.services.commesse_service.pr_run_commesse_push_one"
+
+    # Scopo: conferma ordine collegato a pratica → completa CONFERMA_ORDINE POSITIVO.
+    @patch(_STEP)
+    @patch(_PRAT_REPO)
+    @patch(_REPO)
+    def test_conferma_completa_step_conferma_ordine(self, ord_cls, MockPrat, mock_step) -> None:
+        repo = ord_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.list_righe.return_value = [{"id": 1}]
+        repo.get_stato_id_by_codice.return_value = 2
+        MockPrat.return_value.get_pratica_id_by_sorgente.return_value = 290
+
+        ordini_service.conferma(7, user="op")
+
+        mock_step.assert_called_once_with(
+            290, template_codice="CONFERMA_ORDINE", esito="POSITIVO", user="op",
+        )
+
+    # Scopo: ordine non in pratica → no-op (BB non chiamato).
+    @patch(_STEP)
+    @patch(_PRAT_REPO)
+    @patch(_REPO)
+    def test_conferma_senza_pratica_noop(self, ord_cls, MockPrat, mock_step) -> None:
+        repo = ord_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.list_righe.return_value = [{"id": 1}]
+        repo.get_stato_id_by_codice.return_value = 2
+        MockPrat.return_value.get_pratica_id_by_sorgente.return_value = None
+
+        ordini_service.conferma(7)
+
+        mock_step.assert_not_called()
+
+    # Scopo: push a commessa (COMPLETATO) di ordine in pratica → completa
+    # INVIO_COMMESSA POSITIVO (step terminale → sblocca la chiusura pratica).
+    @patch(_STEP)
+    @patch(_PRAT_REPO)
+    @patch(_PUSH_ONE)
+    @patch(_REPO)
+    def test_push_completa_step_invio_commessa(self, ord_cls, mock_push_one, MockPrat, mock_step) -> None:
+        repo = ord_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
+        repo.count_righe_pushable.return_value = 2
+        repo.get_stato_id_by_codice.return_value = 8
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO", "push_log_id": 7, "durata_ms": 5, "handlers": [],
+        }
+        MockPrat.return_value.get_pratica_id_by_sorgente.return_value = 290
+
+        ordini_service.push_a_commessa(55, user="op")
+
+        mock_step.assert_called_once_with(
+            290, template_codice="INVIO_COMMESSA", esito="POSITIVO", user="op",
+        )
+
+    # Scopo: push PARZIALE → non completa lo step (gated su COMPLETATO).
+    @patch(_STEP)
+    @patch(_PRAT_REPO)
+    @patch(_PUSH_ONE)
+    @patch(_REPO)
+    def test_push_parziale_non_completa_step(self, ord_cls, mock_push_one, MockPrat, mock_step) -> None:
+        repo = ord_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
+        repo.count_righe_pushable.return_value = 2
+        mock_push_one.return_value = {
+            "stato": "PARZIALE", "push_log_id": 7, "durata_ms": 5, "handlers": [],
+        }
+
+        ordini_service.push_a_commessa(55)
+
+        mock_step.assert_not_called()

@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Vocabolario data-driven degli esiti dei flussi: config.esiti_flussi_pratiche.
+# (brief-db-chiusura-pratica-nessun-lavoro-pendente §3.A.3, decisione 2026-07-01)
+#
+# PERCHE': gli esiti dei flussi erano cablati in 3 CHECK con enum fisso a 4 valori
+# (chk_flussi_esito su flussi.esito, chk_template_flussi_esito_default,
+# chk_template_flussi_prereq_esito). Il bivio-per-esito (SMISTAMENTO instrada
+# merce/servizi via esito) richiede esiti di DOMINIO (es. MERCE_PRESENTE/SOLO_SERVIZI):
+# metterli in un CHECK di motore violerebbe il layering (semantica vendite in Anello 2).
+# Soluzione: tabella-vocabolario (come config.stati_flussi_pratiche); i CHECK diventano
+# FK verso codice_interno (20260701-02). Il motore fornisce il MECCANISMO, i domini
+# seedano i VALORI.
+#
+# SEED IN 00_schema: i 4 esiti STRUTTURALI di motore (verdetto: POSITIVO/NEGATIVO/
+# PARZIALE/NON_APPLICABILE) sono seedati qui perche' la FK 20260701-02 valida le righe
+# ESISTENTI di flussi.esito/esito_default/esito_richiesto su DB vivo: devono preesistere.
+# Pattern gia' usato nel repo (config.stati_commessa, config.stati_pdp, config.lingue).
+# Gli esiti di DOMINIO (ramo) li seedano i domini in 80_data (increment 2, vendite).
+#
+# Trigger audit (data/user) e lock su codice_interno: AUTO-PROVISIONATI dalle
+# automazioni (dbops.fn_run_automations_*) per la sola presenza della colonna
+# codice_interno; non dichiarati qui (coerente con config.stati_flussi_pratiche).
+#
+# id: IDENTITY BY DEFAULT; NESSUN id esplicito nel seed (l'id e' tecnico e non
+# referenziato: i riferimenti sono per codice_interno) -> la sequence resta coerente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260701-01-create-esiti-flussi-pratiche-mctit.yaml
+
+  - changeSet:
+      id: 20260701-01-create-esiti-flussi-pratiche
+      author: mctit
+      comment: >
+        Crea config.esiti_flussi_pratiche (vocabolario esiti dei flussi, analogo a
+        config.stati_flussi_pratiche) e seeda i 4 esiti strutturali di motore. Base per
+        rendere l'enum esito data-driven: i CHECK diventano FK in 20260701-02.
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: esiti_flussi_pratiche
+            remarks: "Vocabolario degli esiti dei flussi operativi (verdetto/instradamento)."
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica (non referenziata: i riferimenti sono per codice_interno)."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_esiti_flussi_pratiche
+                    nullable: false
+              - column:
+                  name: codice
+                  type: character varying(50)
+                  remarks: "Codice display (rinominabile)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: codice_interno
+                  type: character varying(50)
+                  remarks: "Chiave naturale immutabile (lock auto-provisionato). Target delle FK esito."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: descrizione
+                  type: text
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: esiti_flussi_pratiche
+            columnNames: codice
+            constraintName: uq_esiti_flussi_pratiche_codice
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: esiti_flussi_pratiche
+            columnNames: codice_interno
+            constraintName: uq_esiti_flussi_pratiche_codice_interno
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Esiti STRUTTURALI di motore (verdetto). Devono preesistere alla FK
+              -- 20260701-02 (validazione righe esistenti su DB vivo). id non esplicito
+              -- (IDENTITY assegna; il riferimento e' codice_interno).
+              INSERT INTO config.esiti_flussi_pratiche (codice, codice_interno, descrizione)
+              VALUES
+                ('POSITIVO',        'POSITIVO',        'Esito positivo'),
+                ('NEGATIVO',        'NEGATIVO',        'Esito negativo'),
+                ('PARZIALE',        'PARZIALE',        'Esito parziale'),
+                ('NON_APPLICABILE', 'NON_APPLICABILE', 'Esito non applicabile')
+              ON CONFLICT (codice_interno) DO NOTHING;
+
+              COMMENT ON TABLE config.esiti_flussi_pratiche IS
+                'Vocabolario data-driven degli esiti dei flussi (pratiche.flussi.esito). Referenziato via codice_interno da flussi.esito, template_flussi.esito_default e template_flussi_prerequisiti.esito_richiesto (FK, 20260701-02). Base strutturale di motore (POSITIVO/NEGATIVO/PARZIALE/NON_APPLICABILE) seedata con lo schema; gli esiti di dominio (es. instradamento di un bivio) sono seedati dai domini in 80_data. Sostituisce l''enum cablato chk_flussi_esito.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: esiti_flussi_pratiche

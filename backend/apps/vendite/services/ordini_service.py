@@ -228,6 +228,56 @@ def list_righe(ordine_id: int) -> list[dict[str, Any]]:
     return OrdiniRepository().list_righe(ordine_id)
 
 
+# Scopo: risolve l'ordine COLLEGATO a una pratica (per gli step a valle del
+# percorso: CONFERMA_ORDINE / INVIO_COMMESSA aprono l'OrdiniDrawer su quell'ordine).
+# Ritorna {"ordine_id": <id|null>}.
+def get_ordine_per_pratica(pratica_id: int) -> dict[str, object]:
+    ErrorManager.require(
+        pratica_id > 0,
+        code="E_PRATICA_ID_INVALIDO",
+        message="pratica_id non valido.",
+        detail=f"pratica_id={pratica_id}",
+        function_name=f"{_FN}.get_ordine_per_pratica",
+    )
+    return {"ordine_id": OrdiniRepository().get_ordine_id_by_pratica(pratica_id)}
+
+
+# Step ordine del percorso pratica (bivio-per-esito rev.3). Entrambi si completano
+# POSITIVO all'azione standalone del programma base: CONFERMA_ORDINE alla conferma
+# dell'ordine (sblocca INVIO_COMMESSA, prereq 60←50 POSITIVO); INVIO_COMMESSA al
+# push a commessa (terminale → sblocca la chiusura della pratica).
+_ESITO_STEP_ORDINE = "POSITIVO"
+_CODICE_CONFERMA_ORDINE = "CONFERMA_ORDINE"
+_CODICE_INVIO_COMMESSA = "INVIO_COMMESSA"
+
+
+# Scopo: Auto-completa (idempotente) il flusso `codice_flusso` della pratica cui
+#        l'ordine e' COLLEGATO, all'azione standalone del programma base. Mirror
+#        di preventivi_service._completa_flusso_preventivazione per gli step
+#        ordine: la pratica orchestra ma il "successo" dello step e' l'azione
+#        stessa (conferma / push), non un handler che decide al posto
+#        dell'operatore. No-op se: l'ordine non e' in una pratica; lo step non e'
+#        istanziato; lo step e' gia' terminale (ri-azione). Direzione
+#        vendite→pratiche, import lazy.
+def _completa_flusso_ordine_pratica(
+    ordine_id: int, *, codice_flusso: str, user: str | None = None,
+) -> None:
+    from apps.pratiche.db.pratiche_repository import PraticheRepository
+    from apps.pratiche.services import pratiche_service
+
+    pratica_id = PraticheRepository().get_pratica_id_by_sorgente(
+        sorgente_codice="ORDINE_VENDITA", sorgente_uid=str(ordine_id),
+        ruolo_link="COLLEGATO",
+    )
+    if pratica_id is None:
+        return  # ordine non nato da una pratica → nessuno step da completare
+    # Idempotenza + percorso + avvia-e-completa/completa: delegati al BB motore
+    # (completa_step_pratica). No-op se lo step non e' istanziato o gia' terminale.
+    pratiche_service.completa_step_pratica(
+        pratica_id, template_codice=codice_flusso, esito=_ESITO_STEP_ORDINE, user=user,
+    )
+
+
 # Scopo: Riepilogo IVA aggregato dell'ordine (una riga per aliquota). Calcolo
 #        fiscalmente corretto gia' applicato in DB via la view derivata
 #        vw_ordini_riepilogo_iva_dettaglio (stessa formula dei preventivi): il
@@ -636,7 +686,7 @@ def elimina_ordine(ordine_id: int) -> dict[str, Any]:
 
 # Scopo: Conferma ordine (DRAFT → CONFERMATO). La transizione e' validata dal
 #        trigger DB; qui si applica solo il guard di stato + righe presenti.
-def conferma(ordine_id: int) -> dict[str, Any]:
+def conferma(ordine_id: int, *, user: str | None = None) -> dict[str, Any]:
     repo = OrdiniRepository()
     stato = _assert_stato(repo, ordine_id, _STATI_MODIFICABILI, op="conferma")
     righe = repo.list_righe(ordine_id)
@@ -655,8 +705,16 @@ def conferma(ordine_id: int) -> dict[str, Any]:
         function_name=f"{_FN}.conferma",
     )
     assert stato_conf_id is not None
-    with _db_errors("conferma"):
+    # Atomico: conferma ordine + completamento dello step CONFERMA_ORDINE del
+    # percorso pratica sono un'unita' di lavoro (o entrambi o nessuno).
+    with _db_errors("conferma"), transaction.atomic():
         repo.update_stato(ordine_id, int(stato_conf_id))
+        # Percorso pratica: la conferma dell'ordine E' il successo dello step
+        # CONFERMA_ORDINE → lo completa POSITIVO (sblocca INVIO_COMMESSA). No-op
+        # se l'ordine non nasce da una pratica o lo step e' gia' chiuso.
+        _completa_flusso_ordine_pratica(
+            ordine_id, codice_flusso=_CODICE_CONFERMA_ORDINE, user=user,
+        )
     return {"ordine_id": ordine_id, "stato_precedente": stato, "stato": _STATO_CONFERMATO}
 
 
@@ -931,7 +989,7 @@ def delete_componente(
 #        l'orchestratore commesse esistente con sorgente ORDINE_VENDITA →
 #        attivita_fatturabili → pipeline lotto → fattura. Pattern push singolo
 #        gemello preventivi/offerte (decisione §8.3).
-def push_a_commessa(ordine_id: int) -> dict[str, Any]:
+def push_a_commessa(ordine_id: int, *, user: str | None = None) -> dict[str, Any]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="push_a_commessa")
     ErrorManager.require(
@@ -982,6 +1040,15 @@ def push_a_commessa(ordine_id: int) -> dict[str, Any]:
                 "ordini.push.transizione_evaso_skipped ordine_id=%s reason=%s",
                 ordine_id, str(exc),
             )
+
+        # Percorso pratica: il push a commessa E' il successo dello step
+        # INVIO_COMMESSA → lo completa POSITIVO. E' lo step TERMINALE del ramo
+        # merce: completandolo (nessun altro flusso aperto, obbligatori fatti) la
+        # pratica si chiude (auto-chiusura data-driven del motore). No-op se
+        # l'ordine non nasce da una pratica.
+        _completa_flusso_ordine_pratica(
+            ordine_id, codice_flusso=_CODICE_INVIO_COMMESSA, user=user,
+        )
 
     return {
         "ordine_id": ordine_id,

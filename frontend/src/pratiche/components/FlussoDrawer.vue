@@ -2,14 +2,18 @@
 // Scopo: Drawer esecuzione flusso — avvio, completamento con esito, sospensione.
 // Riutilizzabile: riceve flusso via props, emette eventi per refresh.
 // Il contenuto e' dinamico: mostra azioni in base allo stato corrente del flusso.
-import { ref, watch, computed, provide } from 'vue'
+import { ref, shallowRef, markRaw, watch, computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { cambiaStatoFlusso } from '../api/pratiche-api'
+import { lookupCodici } from '../../core/apiCore'
+import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
+import { useInjectTechnicalMode } from '../../core/composables/useTechnicalMode'
 import { getUiActivity } from '../uiActivityRegistry'
+import { getCompletionDialog } from '../flussoCompletionRegistry'
 import { DRAWER_WIDTH, STATO_FLUSSO, MANAGE_ICONS } from '../../core/constants'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -39,14 +43,33 @@ const emit = defineEmits(['update:visible', 'saved', 'open-attivita'])
 const esito = ref(null)
 const noteEsito = ref('')
 
-const esitiOptions = computed(() => [
-  { value: 'POSITIVO', label: t('pratiche.esito_positivo') },
-  { value: 'NEGATIVO', label: t('pratiche.esito_negativo') },
-  { value: 'PARZIALE', label: t('pratiche.esito_parziale') },
-  { value: 'NON_APPLICABILE', label: t('pratiche.esito_non_applicabile') },
-])
+// Flag modalita' tecnica (super-admin): default false = vista operatore. Fornito
+// da PraticheDashboard (provideTechnicalMode, toggle gateato su auth.isSuperAdmin);
+// qui riespone il "plumbing" (codice template).
+const tecnico = useInjectTechnicalMode()
+
+// Esiti data-driven dal vocabolario globale config.esiti_flussi_pratiche (§9.1-A):
+// non piu' 4 valori hardcodati in i18n. Il Select offre SOLO i verdetti
+// dell'operatore: il lookup espone `selezionabile_operatore` (derivato a BE da
+// is_verdetto, verita' unica a DB) e gli esiti di RAMO calcolati dal dominio
+// (es. bivio SMISTAMENTO) vengono filtrati qui; il guard BE
+// (require_esito_selezionabile_operatore) resta la difesa in profondita'.
+// value = codice_interno (inviato al BE), label = descrizione umana. Cache
+// modulo-level condivisa (useGlobalLookup), caricata all'apertura del drawer.
+const { items: esitiCatalogo, load: loadEsiti, loading: esitiLoading } = useGlobalLookup(
+  'config.esiti_flussi_pratiche',
+  () => lookupCodici('config.esiti_flussi_pratiche'),
+)
+const esitiOptions = computed(() =>
+  esitiCatalogo.value
+    .filter(e => e.selezionabile_operatore)
+    .map(e => ({ value: e.codice_interno, label: e.descrizione })),
+)
 
 const stato = computed(() => props.flusso?.stato_codice_interno || '')
+// Descrizione umana dello stato (display field BE `stato_descrizione`): mostrata nel Tag.
+// Il `stato` codice_interno resta per la logica (transizioni, visibilita' azioni, severity).
+const statoDescrizione = computed(() => props.flusso?.stato_descrizione || stato.value)
 
 // Dialog di assegnazione (reparto + operatore). L'assegnazione ha senso finche'
 // il flusso e' attivo: non su COMPLETATO/ANNULLATO ne' in sola lettura.
@@ -101,9 +124,25 @@ const uiActivityVisible = computed(
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 watch(() => props.visible, (val) => {
-  // Pre-seleziona l'esito_default (CONTESTUALE) o resta null (MANUALE: esito_default
-  // NULL → nessuna pre-selezione, comportamento odierno).
-  if (val) { esito.value = esitoDefault.value; noteEsito.value = '' }
+  if (val) {
+    esito.value = null
+    noteEsito.value = ''
+    // Pre-seleziona l'esito_default (CONTESTUALE) SOLO se presente fra le
+    // opzioni selezionabili caricate: un default fuori lista sarebbe un
+    // valore invisibile a video ma inviato al BE (stessa classe di bug del
+    // preset tipo in PraticaDrawer). Lookup fallito/vuoto → nessuna
+    // preselezione, Select vuoto e "Salva" disabilitato (:disabled="!esito").
+    // Guard `esito.value == null`: con cache fredda la promise risolve tardi
+    // e NON deve sovrascrivere una scelta gia' fatta dall'operatore.
+    loadEsiti()
+      .then(() => {
+        const def = esitoDefault.value
+        if (esito.value == null && def && esitiOptions.value.some(o => o.value === def)) {
+          esito.value = def
+        }
+      })
+      .catch(() => { /* errore gia' in errorRef del lookup */ })
+  }
 })
 
 // Azioni della testata flusso consumate da DrawerActionsBar.
@@ -190,17 +229,56 @@ async function onAvvia() {
 // APPROVAZIONE_CLIENTE) sono ora SERVER-SIDE e data-driven: il motore pratiche
 // le esegue dai binding pratiche.template_flussi_handler_eventi nella stessa
 // transazione. Niente più routing M2 / endpoint dedicato nel FE.
-async function onCompleta() {
-  if (!esito.value) return
+// Dialog di completamento (registry-driven): alcuni step richiedono dati di
+// processo all'esito (es. APPROVAZIONE_CLIENTE/POSITIVO → modalita'+competenza
+// di fatturazione). Il componente e' caricato lazy e reso inline; il suo payload
+// viaggia come `meta` del completamento (FlussoDrawer resta generico).
+const completionDialogVisible = ref(false)
+const completionDialogComponent = shallowRef(null)
+const completionDialogDef = computed(() =>
+  getCompletionDialog(props.flusso?.template_flusso_codice),
+)
+// Drawer riusato per flussi diversi: al cambio flusso azzera la dialog cachata,
+// così non resta montato il dialog di completamento del flusso precedente.
+watch(() => props.flusso?.id, () => {
+  completionDialogVisible.value = false
+  completionDialogComponent.value = null
+})
+
+// Esegue il completamento; `meta` opzionale = contesto d'azione (es. accettazione).
+async function _doComplete(meta = null) {
   const result = await execute(
     () => cambiaStatoFlusso(props.praticaId, props.flusso.id, {
       nuovo_stato: 'COMPLETATO',
       esito: esito.value,
       note_esito: noteEsito.value || null,
+      ...(meta ? { meta } : {}),
     }),
     { successMessage: t('pratiche.flusso_completato') },
   )
   if (result !== null) { emit('saved'); emit('update:visible', false) }
+}
+
+async function onCompleta() {
+  if (!esito.value) return
+  // Se lo step ha una dialog di completamento per l'esito scelto, raccoglie i
+  // dati di processo PRIMA di completare (il payload diventa `meta`).
+  const def = completionDialogDef.value
+  if (def && esito.value === def.esitoRichiesto) {
+    if (!completionDialogComponent.value) {
+      const mod = await def.loadComponent()
+      completionDialogComponent.value = markRaw(mod.default)
+    }
+    completionDialogVisible.value = true
+    return
+  }
+  await _doComplete(null)
+}
+
+// Conferma della dialog di completamento → completa con il payload come meta.
+async function onCompletionConfirm(meta) {
+  completionDialogVisible.value = false
+  await _doComplete(meta)
 }
 
 const onClose = useDrawerClose(emit)
@@ -217,8 +295,8 @@ const onClose = useDrawerClose(emit)
     <template #header>
       <DrawerTitle
         :action="t('pratiche.flusso_esecuzione')"
-        :title="flusso?.template_flusso_codice || t('pratiche.flusso_generico')"
-        icon="pi pi-sitemap"
+        :title="flusso?.template_flusso_descrizione || t('pratiche.flusso_generico')"
+        icon="pi pi-briefcase"
       />
     </template>
 
@@ -238,16 +316,18 @@ const onClose = useDrawerClose(emit)
         :id-fiscale="flusso.pratica_soggetto_id_fiscale"
       >
         <template #status>
-          <Tag :value="stato" :severity="statoFlussoSeverity(stato)" />
+          <Tag :value="statoDescrizione" :severity="statoFlussoSeverity(stato)" />
         </template>
       </PraticaContextHeader>
 
       <DrawerActionsBar :actions="drawerActions" />
 
-      <!-- Info flusso: template descrittivo (codice gia' visibile nel titolo). -->
-      <div v-if="flusso.template_flusso_descrizione" class="form-field">
+      <!-- La descrizione dell'attivita' e' gia' nel titolo del drawer: niente campo
+           "Template" per l'operatore (era gergo di configurazione). In modalita'
+           tecnica (super-admin) riespone codice + descrizione del template. -->
+      <div v-if="tecnico" class="form-field">
         <label>{{ t('pratiche.flusso_col_template') }}</label>
-        <span class="form-value">{{ flusso.template_flusso_descrizione }}</span>
+        <span class="form-value">{{ flusso.template_flusso_codice }} — {{ flusso.template_flusso_descrizione }}</span>
       </div>
 
       <!-- Assegnazione corrente del flusso (reparto + operatore), display fields
@@ -281,6 +361,14 @@ const onClose = useDrawerClose(emit)
               class="w-full"
               :placeholder="t('pratiche.flusso_esito')"
             />
+            <!-- Lookup esiti fallito o vuoto: senza feedback l'operatore resta
+                 bloccato (Salva disabilitato) senza capire perche'. -->
+            <small
+              v-if="!esitiLoading && !esitiOptions.length"
+              class="p-error"
+            >
+              {{ t('pratiche.flusso_esiti_non_disponibili') }}
+            </small>
           </div>
           <div class="form-field">
             <label>{{ t('pratiche.flusso_note_esito') }}</label>
@@ -293,7 +381,7 @@ const onClose = useDrawerClose(emit)
       <div v-if="stato === STATO_FLUSSO.COMPLETATO" class="form-grid mt-3">
         <div class="form-field">
           <label>{{ t('pratiche.flusso_esito') }}</label>
-          <Tag :value="flusso.esito" :severity="esitoFlussoSeverity(flusso.esito)" />
+          <Tag :value="flusso.esito_descrizione || flusso.esito" :severity="esitoFlussoSeverity(flusso.esito)" />
         </div>
         <div v-if="flusso.note_esito" class="form-field">
           <label>{{ t('pratiche.flusso_note_esito') }}</label>
@@ -326,6 +414,16 @@ const onClose = useDrawerClose(emit)
       :current-risorsa-id="flusso.risorsa_umana_id"
       :current-unita-id="flusso.unita_organizzativa_id"
       @saved="() => { emit('saved'); emit('update:visible', false) }"
+    />
+
+    <!-- Dialog di completamento dinamica (registry): raccoglie i dati di processo
+         dell'esito e li inoltra come `meta` del completamento flusso. -->
+    <component
+      :is="completionDialogComponent"
+      v-if="completionDialogComponent"
+      v-model:visible="completionDialogVisible"
+      :readonly="effectiveReadonly"
+      @confirm="onCompletionConfirm"
     />
   </Drawer>
 </template>

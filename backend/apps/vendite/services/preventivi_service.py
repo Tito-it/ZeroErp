@@ -729,6 +729,21 @@ def get_root_per_flusso(flusso_id: int) -> dict[str, Any]:
     return {"preventivo_id": preventivo_id}
 
 
+# Scopo: risolve il preventivo ROOT della PRATICA (non per-flusso). Usato dal
+# percorso pratica per gli step a valle (es. SMISTAMENTO) che operano sul
+# preventivo gia' agganciato a monte (flusso PREVENTIVAZIONE), non sul proprio.
+def get_root_per_pratica(pratica_id: int) -> dict[str, Any]:
+    ErrorManager.require(
+        pratica_id > 0,
+        code="E_PRATICA_ID_INVALIDO",
+        message="pratica_id non valido.",
+        detail=f"pratica_id={pratica_id}",
+        function_name=f"{_FN}.get_root_per_pratica",
+    )
+    preventivo_id = PreventiviRepository().get_preventivo_id_by_pratica_root(pratica_id)
+    return {"preventivo_id": preventivo_id}
+
+
 # ══════════════════════════════════════════════════════════
 #  SCRITTURE — Righe
 # ══════════════════════════════════════════════════════════
@@ -1775,6 +1790,12 @@ def push_a_commessa(
             user="django_api", swallow_db_error=True,
             log_label="preventivi.push",
         )
+        # Aggancio del RAMO SERVIZI dello split (rev.3 bivio-per-esito): lo split
+        # standalone e' il punto d'aggancio di ENTRAMBI i rami. post_smistamento
+        # e' merce-only (retro-aggancio ordine), quindi la commessa-servizi la
+        # lega qui — senza, sul ramo SOLO_SERVIZI la pratica resterebbe priva del
+        # link commessa. No-op se il preventivo non nasce da una pratica.
+        _aggancia_commessa_servizi_a_pratica(preventivo_id, str(testata["uid"]))
 
     return {
         "preventivo_id": preventivo_id,
@@ -1822,6 +1843,124 @@ def smistamento(preventivo_id: int) -> dict[str, Any]:
 # ══════════════════════════════════════════════════════════
 #  INTEGRAZIONE — Pratiche
 # ══════════════════════════════════════════════════════════
+
+# Esiti di RAMO dello SMISTAMENTO (bivio-per-esito rev.3, seed
+# config.esiti_flussi_pratiche): MERCE_PRESENTE rende percorribili+obbligatori i
+# flussi ordine 9013/9014; SOLO_SERVIZI e' ramo morto (pratica chiude subito).
+_ESITO_SMISTAMENTO_MERCE = "MERCE_PRESENTE"
+_ESITO_SMISTAMENTO_SERVIZI = "SOLO_SERVIZI"
+_CODICE_FLUSSO_SMISTAMENTO = "SMISTAMENTO"
+# Sorgenti pratiche_sorgenti / documento_origine (config.sorgenti codice_interno).
+_SORGENTE_PREVENTIVO_ORIGINE = "PREVENTIVO"
+_SORGENTE_COMMESSA = "COMMESSA"
+_RUOLO_COLLEGATO = "COLLEGATO"
+
+
+# Scopo: Risolve la pratica di appartenenza di un preventivo dal suo link ROOT
+#        (pratiche_sorgenti.pratica_id). None se il preventivo non nasce da una
+#        pratica (percorso standalone). NB: risolve dalla pratica sul link, non
+#        dal flusso — funziona anche se il ROOT e' agganciato senza flusso_id.
+def _resolve_pratica_id_da_preventivo(preventivo_id: int) -> int | None:
+    return PreventiviRepository().get_pratica_id_by_preventivo_root(preventivo_id)
+
+
+# Scopo: Lega la commessa-servizi del preventivo alla sua pratica come COLLEGATO
+#        (idempotente, ON CONFLICT DO NOTHING). Aggancio del RAMO SERVIZI dello
+#        split (rev.3): post_smistamento e' merce-only, quindi la commessa-servizi
+#        si aggancia dal push standalone. No-op se il preventivo non e' in una
+#        pratica o se nessuna commessa risulta agganciata alla sorgente.
+def _aggancia_commessa_servizi_a_pratica(preventivo_id: int, preventivo_uid: str) -> None:
+    from apps.pratiche.db.pratiche_repository import PraticheRepository
+    from apps.vendite.db.commesse_repository import CommesseRepository
+
+    pratica_id = _resolve_pratica_id_da_preventivo(preventivo_id)
+    if pratica_id is None:
+        return
+    commessa_id = CommesseRepository().get_commessa_id_by_sorgente(
+        sorgente_codice=_SORGENTE_PREVENTIVO_ORIGINE, sorgente_uid=preventivo_uid,
+    )
+    if commessa_id is None:
+        return
+    PraticheRepository().upsert_pratica_sorgente(
+        pratica_id=pratica_id, sorgente_codice=_SORGENTE_COMMESSA,
+        sorgente_uid=str(commessa_id), ruolo_link=_RUOLO_COLLEGATO,
+    )
+
+
+# Scopo: Completa il flusso SMISTAMENTO della pratica con l'esito di RAMO
+#        CALCOLATO dal dominio (MERCE_PRESENTE/SOLO_SERVIZI), non scelto
+#        dall'operatore (rev.3 bivio-per-esito, brief-db-chiusura-pratica-nessun-
+#        lavoro-pendente). L'esito e' scritto nella STESSA UPDATE che completa il
+#        flusso: il check di chiusura template-based lo legge subito → sul ramo
+#        merce 9013/9014 restano dovuti (pratica APERTA), sul ramo servizi sono
+#        ramo morto (pratica si chiude). Guard: smistamento completo su ENTRAMBI i
+#        rami (nessun residuo). Idempotente: no-op se lo step e' gia' terminale.
+#        Direzione vendite→pratiche, import lazy.
+def completa_smistamento(preventivo_id: int, *, user: str | None = None) -> dict[str, Any]:
+    from apps.pratiche.services import pratiche_service
+    from apps.vendite.db.ordini_repository import OrdiniRepository
+
+    repo = PreventiviRepository()
+
+    # 1. Pratica del preventivo (percorso pratica-first).
+    pratica_id = _resolve_pratica_id_da_preventivo(preventivo_id)
+    ErrorManager.require(
+        pratica_id is not None,
+        code="E_VENDITA_PREVENTIVO_NON_COLLEGATO",
+        message="Il preventivo non e' collegato a una pratica.",
+        detail=f"preventivo_id={preventivo_id}",
+        function_name=f"{_FN}.completa_smistamento",
+    )
+    assert pratica_id is not None
+
+    # 2. Guard smistamento completo (bi-ramo): nessun residuo su ORDINE ne' COMMESSA
+    #    (l'operatore deve aver smistato tutto dal Pannello prima di completare).
+    #    Idempotenti su ri-azione: dopo lo smistamento non c'e' piu' residuo → non
+    #    bloccano; l'idempotenza effettiva la garantisce completa_step_pratica.
+    ErrorManager.require(
+        not repo.preventivo_ha_residuo_ordine(preventivo_id),
+        code="E_VENDITA_SMISTAMENTO_NON_ESEGUITO",
+        message="Esegui lo smistamento della merce (genera ordine) prima di completare lo step.",
+        detail=f"preventivo_id={preventivo_id}: residuo merce non smistato",
+        function_name=f"{_FN}.completa_smistamento",
+    )
+    ErrorManager.require(
+        not repo.preventivo_ha_residuo_commessa(preventivo_id),
+        code="E_VENDITA_SMISTAMENTO_NON_ESEGUITO",
+        message="Esegui lo smistamento dei servizi (invia a commessa) prima di completare lo step.",
+        detail=f"preventivo_id={preventivo_id}: residuo servizi non smistato",
+        function_name=f"{_FN}.completa_smistamento",
+    )
+
+    # 3. Esito di RAMO: MERCE_PRESENTE se e' nato un ordine dal preventivo,
+    #    altrimenti SOLO_SERVIZI (copre anche il misto: c'e' merce → MERCE_PRESENTE).
+    #    STESSO lookup dell'handler post_smistamento (get_ordine_by_documento_origine)
+    #    → MERCE_PRESENTE ⟺ l'handler trovera' l'ordine da agganciare: nessun
+    #    disallineamento fra classificatore d'esito e handler (evita il fail-safe
+    #    su artefatti incoerenti).
+    ha_ordine = OrdiniRepository().get_ordine_by_documento_origine(
+        _SORGENTE_PREVENTIVO_ORIGINE, preventivo_id,
+    ) is not None
+    esito = _ESITO_SMISTAMENTO_MERCE if ha_ordine else _ESITO_SMISTAMENTO_SERVIZI
+
+    # 4. Completa (idempotente) lo step SMISTAMENTO via BB motore: l'esito scritto
+    #    qui e' letto dal check chiusura nella stessa transazione.
+    result = pratiche_service.completa_step_pratica(
+        pratica_id, template_codice=_CODICE_FLUSSO_SMISTAMENTO, esito=esito, user=user,
+    )
+    ErrorManager.require(
+        result["flusso_id"] is not None,
+        code="E_PREV_VALIDAZIONE",
+        message="Flusso SMISTAMENTO non avviato per questa pratica.",
+        detail=f"pratica_id={pratica_id}",
+        function_name=f"{_FN}.completa_smistamento",
+    )
+
+    return {
+        "preventivo_id": preventivo_id, "pratica_id": pratica_id,
+        "flusso_id": result["flusso_id"], "esito": esito,
+        "gia_completato": not result["completato"],
+    }
 
 
 # Scopo: Genera pratica esecutiva da preventivo accettato.

@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Disinnesco del binding handler monolitico vendita.push_preventivo.
+# (brief "Disinnesco binding vendita.push_preventivo", residuo
+#  analisi-uniformita-pratica-preventivi §7.3 / tracker Fase 3)
+#
+# CONTESTO: il BE (dev/backend-tid, 2026-07-02) ha gia' rimosso l'handler
+# Python vendita.push_preventivo. A DB restava il binding sui template CONFERMA
+# di 9002/9003 (handler_id=9001) -> dispatch di quei flussi = E_HANDLER_NON_
+# REGISTRATO. Il grosso del ritiro e' DICHIARATIVO nei seed (runOnChange):
+#   - template_flussi.csv (20260608-08): handler_id svuotato su 9004/9008 (unbind)
+#   - tipi_prestazione.csv (20260422-05): obsoleto_dal=2026-06-30 su IMMEDIATA/DIFFERITA
+#   - regole_generazione.csv (20260612-01): regola smoke 9001 attivo=false (B8)
+#
+# PERCHE' QUESTO CHANGESET ESISTE (l'unico pezzo NON esprimibile in CSV):
+# la disattivazione dell'handler deve girare DOPO l'unbind dei template, ma il
+# seed handler_flussi.csv (20260608-07) gira PRIMA del seed template (08). Se
+# mettessimo attivo=false nel CSV handler, alla riapplicazione 07 proverebbe a
+# disattivare 9001 mentre 9004/9008 sono ancora bound e ATTIVI -> il trigger
+# prevent_deactivate_if_children (blocca "se figli attivi") farebbe fallire la
+# migration su DB esistente. Questo changeset e' datato 20260702 -> gira DOPO
+# 08 (unbind gia' avvenuto) -> deactivate sicuro.
+#
+# NON si tocca vendite.fn_push_preventivo_a_ordine (primitiva copia righe usata
+# dallo SMISTAMENTO). Nessun DELETE: solo UPDATE idempotente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260702-01-deprecate-handler-push-preventivo-mctit.yaml
+
+  - changeSet:
+      id: 20260702-01-deprecate-handler-push-preventivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Disattiva pratiche.handler_flussi vendita.push_preventivo (attivo=false).
+        Unico pezzo non esprimibile via CSV per l'ordine dei seed (handler 07
+        prima di template 08): gira dopo l'unbind dei CONFERMA. Idempotente.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: handler_flussi
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Deactivate idempotente: no-op se gia' inattivo. Prerequisito
+              -- (garantito dall'ordine): nessun template_flussi attivo con
+              -- handler_id verso questo handler (unbind fatto dal seed 08).
+              UPDATE pratiche.handler_flussi
+                 SET attivo = false
+               WHERE handler_key = 'vendita.push_preventivo'
+                 AND attivo IS TRUE;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              UPDATE pratiche.handler_flussi
+                 SET attivo = true
+               WHERE handler_key = 'vendita.push_preventivo';

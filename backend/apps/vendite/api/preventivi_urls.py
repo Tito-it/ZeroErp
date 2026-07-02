@@ -34,6 +34,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoRevisione,
     ApiPreventivoRevisioniList,
     ApiPreventivoRootPerFlusso,
+    ApiPreventivoRootPerPratica,
     ApiPreventivoRiepilogoIva,
     ApiPreventivoRigaComponenteDetail,
     ApiPreventivoRigaComponentiList,
@@ -42,6 +43,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoRigaSuggerisciPrezzo,
     ApiPreventivoRigheList,
     ApiPreventivoStato,
+    ApiPreventivoCompletaSmistamento,
     ApiPreventivoSmistamento,
 )
 from apps.vendite.api.views_form_defaults import ApiPreventivoFormDefaults
@@ -60,6 +62,12 @@ urlpatterns = [
         "root-per-flusso/",
         ApiPreventivoRootPerFlusso.as_view(),
         name="vendite-preventivi-root-per-flusso",
+    ),
+    # Step a valle del percorso (es. SMISTAMENTO): risolve il ROOT della pratica.
+    path(
+        "root-per-pratica/",
+        ApiPreventivoRootPerPratica.as_view(),
+        name="vendite-preventivi-root-per-pratica",
     ),
     # Export CSV/XLSX lista configurabile (DEF-1). Prima della rotta lista ""
     # per matchare il path dedicato.
@@ -184,6 +192,12 @@ urlpatterns = [
         "<int:preventivo_id>/smistamento/",
         ApiPreventivoSmistamento.as_view(),
         name="vendite-preventivi-smistamento",
+    ),
+    # Integrazione: completa SMISTAMENTO (esito di ramo calcolato dal dominio)
+    path(
+        "<int:preventivo_id>/completa-smistamento/",
+        ApiPreventivoCompletaSmistamento.as_view(),
+        name="vendite-preventivi-completa-smistamento",
     ),
     # Integrazione: genera pratica
     path(

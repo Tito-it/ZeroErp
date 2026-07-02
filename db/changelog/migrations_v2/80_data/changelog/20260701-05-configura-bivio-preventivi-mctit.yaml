@@ -1,0 +1,147 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Configura il BIVIO-PER-ESITO della catena PREVENTIVI (9004) — fix di PRA-0000225.
+# (brief-db-chiusura-pratica-nessun-lavoro-pendente §3.A)
+#
+# Modella i flussi ordine come "obbligatori sul ramo merce" invece di "opzionali
+# creati on-demand". Quattro UPDATE mirati per CHIAVE STABILE (codici, no id):
+#
+#   1) CONFERMA_ORDINE (9013) e INVIO_COMMESSA (9014) -> obbligatorio=true.
+#      (chk_template_flussi_chiusura_obbligatorio = NOT chiude_pratica OR obbligatorio:
+#       non violato, chiude_pratica=false su entrambi.)
+#   2) Prereq CONFERMA_ORDINE <- SMISTAMENTO: esito POSITIVO -> MERCE_PRESENTE.
+#      => percorribile (e quindi bloccante) SOLO sul ramo merce; sul ramo servizi
+#         (esito SOLO_SERVIZI) e' RAMO MORTO -> non blocca la chiusura.
+#   3) Consolida 60<-50: prereq INVIO_COMMESSA <- CONFERMA_ORDINE (non SMISTAMENTO).
+#      Rende DUREVOLE il fix 20260630-06 (che e' runAlways:false: un re-seed del
+#      loader prereq runOnChange lo riporterebbe a 60<-40). Idempotente.
+#   4) Binding post_smistamento su SMISTAMENTO: esito POSITIVO -> MERCE_PRESENTE
+#      (binding per-ramo, R3/§10): l'handler merce-only scatta solo sul ramo merce.
+#
+# runAlways=true (NON runOnChange): i loader seed di template_flussi /
+# template_flussi_prerequisiti sono runOnChange; un loro re-run riporterebbe
+# obbligatorio=false / esito=POSITIVO / prereq=SMISTAMENTO. Questa UPDATE idempotente
+# gira a ogni migrate DOPO l'eventuale re-seed e mantiene il bivio. Pattern
+# "patch durevole sopra seed committato" (come 20260630-06, ma runAlways per robustezza).
+#
+# Ordine: 00_schema (FK esito, 20260701-02/03) e 20260701-04 (esito MERCE_PRESENTE nel
+# vocabolario) PRIMA di questo: le UPDATE 2/4 scrivono MERCE_PRESENTE (validato da FK).
+# La preCondition sqlCheck su MERCE_PRESENTE fa HALT se 04 non e' ancora applicato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260701-05-configura-bivio-preventivi-mctit.yaml
+
+  - changeSet:
+      id: 20260701-05-configura-bivio-preventivi
+      author: mctit
+      runAlways: false
+      validCheckSum:
+        - ANY
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pratiche
+                tableName: template_flussi_prerequisiti
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM config.esiti_flussi_pratiche
+                   WHERE codice_interno = 'MERCE_PRESENTE';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- (1) CONFERMA_ORDINE / INVIO_COMMESSA -> obbligatorio=true (ramo merce).
+              UPDATE pratiche.template_flussi tf
+                 SET obbligatorio = true
+                FROM pratiche.tipi_prestazione tp
+               WHERE tp.id = tf.tipo_prestazione_id
+                 AND tp.codice_interno = 'PREVENTIVI'
+                 AND tf.codice IN ('CONFERMA_ORDINE', 'INVIO_COMMESSA')
+                 AND tf.obbligatorio = false;
+
+              -- (2) Prereq CONFERMA_ORDINE <- SMISTAMENTO: POSITIVO -> MERCE_PRESENTE.
+              --     Percorribile (bloccante) solo sul ramo merce; SOLO_SERVIZI = ramo morto.
+              UPDATE pratiche.template_flussi_prerequisiti p
+                 SET esito_richiesto = 'MERCE_PRESENTE'
+                FROM pratiche.template_flussi tf_c
+                JOIN pratiche.tipi_prestazione tp ON tp.id = tf_c.tipo_prestazione_id
+                JOIN pratiche.template_flussi tf_s
+                     ON tf_s.tipo_prestazione_id = tp.id AND tf_s.codice = 'SMISTAMENTO'
+               WHERE tp.codice_interno = 'PREVENTIVI'
+                 AND tf_c.codice = 'CONFERMA_ORDINE'
+                 AND p.template_flusso_id = tf_c.id
+                 AND p.prerequisito_id    = tf_s.id
+                 AND p.esito_richiesto    = 'POSITIVO';
+
+              -- (3) Consolida 60<-50: prereq INVIO_COMMESSA <- CONFERMA_ORDINE.
+              --     Idempotente (dopo lo spostamento il WHERE prereq=SMISTAMENTO non matcha).
+              UPDATE pratiche.template_flussi_prerequisiti p
+                 SET prerequisito_id = tf_c.id
+                FROM pratiche.template_flussi tf_i
+                JOIN pratiche.tipi_prestazione tp ON tp.id = tf_i.tipo_prestazione_id
+                JOIN pratiche.template_flussi tf_c
+                     ON tf_c.tipo_prestazione_id = tp.id AND tf_c.codice = 'CONFERMA_ORDINE'
+                JOIN pratiche.template_flussi tf_s
+                     ON tf_s.tipo_prestazione_id = tp.id AND tf_s.codice = 'SMISTAMENTO'
+               WHERE tp.codice_interno = 'PREVENTIVI'
+                 AND tf_i.codice = 'INVIO_COMMESSA'
+                 AND p.template_flusso_id = tf_i.id
+                 AND p.prerequisito_id    = tf_s.id;
+
+              -- (4) Binding post_smistamento: esito POSITIVO -> MERCE_PRESENTE (per-ramo).
+              UPDATE pratiche.template_flussi_handler_eventi e
+                 SET esito_richiesto = 'MERCE_PRESENTE'
+                FROM pratiche.template_flussi tf
+                JOIN pratiche.tipi_prestazione tp ON tp.id = tf.tipo_prestazione_id
+                JOIN pratiche.handler_flussi hf ON hf.handler_key = 'vendita.post_smistamento'
+               WHERE tp.codice_interno = 'PREVENTIVI'
+                 AND tf.codice = 'SMISTAMENTO'
+                 AND e.template_flusso_id = tf.id
+                 AND e.handler_id         = hf.id
+                 AND e.evento             = 'COMPLETATO'
+                 AND e.esito_richiesto    = 'POSITIVO';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristino best-effort (inverso delle 4 UPDATE, per chiave stabile).
+              UPDATE pratiche.template_flussi_handler_eventi e
+                 SET esito_richiesto = 'POSITIVO'
+                FROM pratiche.template_flussi tf
+                JOIN pratiche.tipi_prestazione tp ON tp.id = tf.tipo_prestazione_id
+                JOIN pratiche.handler_flussi hf ON hf.handler_key = 'vendita.post_smistamento'
+               WHERE tp.codice_interno = 'PREVENTIVI'
+                 AND tf.codice = 'SMISTAMENTO'
+                 AND e.template_flusso_id = tf.id
+                 AND e.handler_id         = hf.id
+                 AND e.evento             = 'COMPLETATO'
+                 AND e.esito_richiesto    = 'MERCE_PRESENTE';
+
+              UPDATE pratiche.template_flussi_prerequisiti p
+                 SET esito_richiesto = 'POSITIVO'
+                FROM pratiche.template_flussi tf_c
+                JOIN pratiche.tipi_prestazione tp ON tp.id = tf_c.tipo_prestazione_id
+               WHERE tp.codice_interno = 'PREVENTIVI'
+                 AND tf_c.codice = 'CONFERMA_ORDINE'
+                 AND p.template_flusso_id = tf_c.id
+                 AND p.esito_richiesto    = 'MERCE_PRESENTE';
+
+              UPDATE pratiche.template_flussi tf
+                 SET obbligatorio = false
+                FROM pratiche.tipi_prestazione tp
+               WHERE tp.id = tf.tipo_prestazione_id
+                 AND tp.codice_interno = 'PREVENTIVI'
+                 AND tf.codice IN ('CONFERMA_ORDINE', 'INVIO_COMMESSA');

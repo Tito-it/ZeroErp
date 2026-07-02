@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Upsert dati config.esiti_flussi_pratiche
+# ------------------------------------------------------------
+# Seed del vocabolario esiti dei flussi (stile CSV, come config.stati_flussi_pratiche).
+# (brief-db-chiusura-pratica-nessun-lavoro-pendente §3.A, R1/§10)
+#
+# Contiene il vocabolario COMPLETO (fonte di verita' going-forward):
+#   - 4 esiti STRUTTURALI di motore (POSITIVO/NEGATIVO/PARZIALE/NON_APPLICABILE):
+#     gia' bootstrappati inline in 20260701-01 (necessari alla FK sul DB vivo); qui
+#     ri-upsertati per PK (no-op, valori identici) -> il CSV resta la fonte gestita.
+#   - 2 esiti di DOMINIO (vendite) per il bivio SMISTAMENTO: MERCE_PRESENTE / SOLO_SERVIZI.
+#
+# loadUpdateData primaryKey=id, runOnChange (edit ai valori ripresi da questo changeset).
+# Il lock su codice_interno non scatta sull'upsert (valore invariato). Deve precedere
+# 20260701-05 (che referenzia MERCE_PRESENTE). Richiede config.esiti_flussi_pratiche
+# (20260701-01) applicata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260701-04-upsert-config-esiti-flussi-pratiche-mctit.yaml
+
+  - changeSet:
+      id: 20260701-04-upsert-config-esiti-flussi-pratiche
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: esiti_flussi_pratiche
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/esiti_flussi_pratiche.csv
+            tableName: esiti_flussi_pratiche
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }

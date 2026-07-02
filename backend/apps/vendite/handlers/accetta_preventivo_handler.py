@@ -20,6 +20,7 @@ from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.preventivi_repository import PreventiviRepository
+from apps.vendite.handlers._handler_helpers import parse_competenza_mese
 
 
 class AccettaPreventivoHandler:
@@ -27,9 +28,12 @@ class AccettaPreventivoHandler:
 
     # Scopo: Accetta il preventivo collegato (ROOT) alla pratica.
     # Obiettivo: su COMPLETATO+POSITIVO di APPROVAZIONE_CLIENTE porta il preventivo
-    #   ad ACCETTATO con politica neutra; gira nella transazione del completamento
-    #   flusso (atomicita'). meta/handler_params non usati in v1 (accept senza
-    #   parametri); la firma rispetta il Protocol BaseFlussoHandler.
+    #   ad ACCETTATO con la modalita di fatturazione scelta dall'operatore nel
+    #   dialog di accettazione (uniforme al programma standalone): i valori
+    #   arrivano in `meta` dal completamento flusso e si persistono SUL PREVENTIVO
+    #   (single source of truth), non piu' cablati sul template CONFERMA.
+    #   Gira nella transazione del completamento (atomicita'). Fallback retro-compat:
+    #   senza `meta` (chiamata legacy) accetta con politica neutra differita/mese corrente.
     def execute(
         self,
         flusso_id: int,
@@ -43,6 +47,7 @@ class AccettaPreventivoHandler:
         # service per evitare cicli).
         from apps.vendite.services import preventivi_service
 
+        meta = meta or {}
         preventivo_id = PreventiviRepository().get_preventivo_id_by_pratica_root(pratica_id)
         ErrorManager.require(
             preventivo_id is not None,
@@ -53,13 +58,32 @@ class AccettaPreventivoHandler:
         )
         assert preventivo_id is not None
 
-        # Policy neutra all'accettazione: fatturazione differita / mese corrente.
-        # L'autorita' sulla politica e' l'handler push a CONFERMA (c7-2), non qui.
+        # Modalita di fatturazione scelta all'accettazione (dialog FE → meta):
+        #   - immediata=True  → competenza forzata al primo del mese corrente;
+        #   - immediata=False → competenza obbligatoria (parsata dal meta);
+        #   - assente (legacy) → neutra differita/mese corrente (retro-compat).
+        if "fatturazione_immediata" in meta:
+            fatturazione_immediata = bool(meta.get("fatturazione_immediata"))
+            if fatturazione_immediata:
+                competenza_mese = date.today().replace(day=1)
+            else:
+                competenza_mese = parse_competenza_mese(meta.get("competenza_mese"))
+                ErrorManager.require(
+                    competenza_mese is not None,
+                    code="E_VENDITA_COMPETENZA_RICHIESTA",
+                    message="Competenza di fatturazione richiesta per la modalita differita.",
+                    detail=f"competenza_mese={meta.get('competenza_mese')!r}",
+                    function_name="AccettaPreventivoHandler.execute",
+                )
+        else:
+            fatturazione_immediata = False
+            competenza_mese = date.today().replace(day=1)
+
         result = preventivi_service.cambia_stato(
             preventivo_id,
             "ACCETTATO",
-            fatturazione_immediata=False,
-            competenza_mese=date.today().replace(day=1),
+            fatturazione_immediata=fatturazione_immediata,
+            competenza_mese=competenza_mese,
             user=user,
         )
         return {"preventivo_id": preventivo_id, "preventivo": result}

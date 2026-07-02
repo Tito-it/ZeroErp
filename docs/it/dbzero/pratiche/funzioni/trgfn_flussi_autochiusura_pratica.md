@@ -20,7 +20,8 @@ AS $function$
 --   3. Tipo CON flusso di chiusura -> chiude sse il flusso completato
 --      e' quello; nessun altro flusso chiude la pratica.
 --   4. Tipo SENZA flusso di chiusura ma con >=1 obbligatorio attivo
---      -> chiude sse fn_check_pratica_chiudibile (nessun bloccante).
+--      -> chiude sse fn_check_pratica_chiudibile (D1: nessun bloccante E
+--      nessun flusso istanziato aperto, escluso NEW.id gia' terminale).
 --   5. Tipo senza obbligatori e senza flusso di chiusura -> no-op.
 --   6. La UPDATE su pratiche attraversa guard transizione/chiusura e
 --      giornale esistenti (chiusura registrata come la manuale).
@@ -77,7 +78,7 @@ BEGIN
         ) INTO v_ha_obbligatori;
 
         v_deve_chiudere := v_ha_obbligatori
-                           AND pratiche.fn_check_pratica_chiudibile(NEW.pratica_id);
+                           AND pratiche.fn_check_pratica_chiudibile(NEW.pratica_id, NULL, NEW.id);
     END IF;
 
     IF v_deve_chiudere THEN
@@ -96,7 +97,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.trgfn_flussi_autochiusura_pratica()
-IS 'AFTER UPDATE OF stato_id su flussi: al completamento chiude la pratica padre (APERTA -> CHIUSA) secondo il modello misto (flusso di chiusura | auto con >=1 obbligatorio | no-op). Riusa guard transizione/chiusura e giornale.';
+IS 'AFTER UPDATE OF stato_id su flussi: al completamento chiude la pratica padre (APERTA -> CHIUSA) secondo il modello misto (flusso di chiusura | auto con >=1 obbligatorio | no-op). Il modello auto usa fn_check_pratica_chiudibile con predicato D1 (nessun bloccante E nessun flusso aperto, escluso NEW.id). Riusa guard transizione/chiusura e giornale.';
 ```
 
 ---

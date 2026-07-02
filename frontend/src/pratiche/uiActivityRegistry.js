@@ -13,6 +13,37 @@
 // risoluzione PRIMA di montare/mostrare il drawer, così il suo watch(visible)
 // (non immediate) scatta sulla transizione false→true (vedi PraticheDashboard).
 
+// Props comuni per aprire il PreventiviDrawer da un flusso pratica (riuso fra
+// APRI_PREVENTIVO e SMISTAMENTO): existingId valorizzato → EDIT dell'esistente,
+// null → CREATE con eredita'+lock cliente/istanza dal contesto pratica.
+function preventivoDrawerProps(ctx, existingId = null) {
+  return {
+    mode: existingId ? 'edit' : 'create',
+    preventivoId: existingId ?? null,
+    praticaId: ctx.praticaId,
+    // Contesto cliente ereditato dalla pratica: il drawer pre-compila e blocca
+    // istanza (+ BA se cliente attivo). billingAccountId NULL = prospect.
+    praticaContext: {
+      billingAccountId: ctx.billingAccountId ?? null,
+      istanzaUtilityId: ctx.istanzaUtilityId ?? null,
+    },
+  }
+}
+
+// Props per aprire l'OrdiniDrawer da un flusso pratica a valle (CONFERMA_ORDINE,
+// INVIO_COMMESSA): l'ordine esiste gia' (agganciato dallo smistamento) → sempre EDIT.
+function ordineDrawerProps(_ctx, existingId = null) {
+  return { mode: 'edit', ordineId: existingId ?? null }
+}
+
+// Risolve l'ordine COLLEGATO della pratica (import lazy del dominio vendite).
+function resolveOrdinePerPratica(ctx) {
+  return import('../vendite/ordini/api/ordiniApi')
+    .then(({ getOrdinePerPratica }) => getOrdinePerPratica(ctx.praticaId))
+    .then(res => res?.data?.data?.ordine_id ?? null)
+    .catch(() => null)
+}
+
 export const UI_ACTIVITY_REGISTRY = {
   APRI_PREVENTIVO: {
     // Loader del drawer di dominio (import dinamico): risolto all'apertura.
@@ -27,20 +58,8 @@ export const UI_ACTIVITY_REGISTRY = {
         .then(({ getRootPerFlusso }) => getRootPerFlusso(ctx.flussoId))
         .then(res => res?.data?.data?.preventivo_id ?? null)
         .catch(() => null),
-    // Props passate al drawer. `existingId` valorizzato (ROOT gia' agganciato al
-    // flusso) → apre in EDIT l'esistente; null → CREATE con eredita'+lock
-    // cliente/istanza.
-    buildProps: (ctx, existingId = null) => ({
-      mode: existingId ? 'edit' : 'create',
-      preventivoId: existingId ?? null,
-      praticaId: ctx.praticaId,
-      // Contesto cliente ereditato dalla pratica: il drawer pre-compila e blocca
-      // istanza (+ BA se cliente attivo). billingAccountId NULL = prospect.
-      praticaContext: {
-        billingAccountId: ctx.billingAccountId ?? null,
-        istanzaUtilityId: ctx.istanzaUtilityId ?? null,
-      },
-    }),
+    // Props passate al drawer (helper condiviso, vedi preventivoDrawerProps).
+    buildProps: preventivoDrawerProps,
     // Estrae l'id preventivo dalle forme ETEROGENEE dell'evento 'saved' del
     // drawer (l'id non e' in una posizione fissa):
     //   create   → { id, ... }
@@ -72,10 +91,56 @@ export const UI_ACTIVITY_REGISTRY = {
     // Toast i18n al primo aggancio documento↔pratica.
     linkedMessage: 'pratiche.preventivo_collegato',
   },
+  SMISTAMENTO: {
+    // Apre lo STESSO drawer preventivo, ma sul ROOT della PRATICA (lo step
+    // SMISTAMENTO e' a valle: il preventivo e' agganciato al flusso
+    // PREVENTIVAZIONE, non a questo). In stato ACCETTATO il drawer mostra il
+    // Pannello Smistamento (selezione righe → ordine/commessa), uniforme allo
+    // standalone. Niente onSaved: il ROOT e' gia' agganciato a monte.
+    loadComponent: () => import('../vendite/preventivi/components/PreventiviDrawer.vue'),
+    // ROOT per-pratica (non per-flusso): il preventivo lo ha agganciato il
+    // flusso PREVENTIVAZIONE. Best-effort: errore → null (drawer in create, ma
+    // non dovrebbe accadere a questo punto del percorso).
+    resolveExisting: (ctx) =>
+      import('../vendite/preventivi/api/preventiviApi')
+        .then(({ getRootPerPratica }) => getRootPerPratica(ctx.praticaId))
+        .then(res => res?.data?.data?.preventivo_id ?? null)
+        .catch(() => null),
+    buildProps: preventivoDrawerProps,
+    requiresActiveClient: false,
+    // Lo step e' a valle: il preventivo DEVE gia' esistere. Se il ROOT non si
+    // risolve (errore/assente) NON si apre il drawer in create (eviterebbe un
+    // preventivo orfano): l'host blocca con errore parlante.
+    requiresExisting: true,
+    label: 'pratiche.flusso_smistamento',
+    icon: 'pi pi-send',
+  },
+  // Step a valle merce: aprono l'OrdiniDrawer sull'ordine COLLEGATO della pratica
+  // (creato dallo smistamento, agganciato da PostSmistamentoHandler). Stesso
+  // drawer per entrambi, ad azioni diverse secondo lo stato dell'ordine:
+  //   CONFERMA_ORDINE → Emetti (DRAFT→CONFERMATO);
+  //   INVIO_COMMESSA  → Push a commessa (CONFERMATO→EVASO).
+  // requiresExisting: l'ordine DEVE esistere → niente fallback create.
+  CONFERMA_ORDINE: {
+    loadComponent: () => import('../vendite/ordini/components/OrdiniDrawer.vue'),
+    resolveExisting: resolveOrdinePerPratica,
+    buildProps: ordineDrawerProps,
+    requiresExisting: true,
+    label: 'pratiche.flusso_conferma_ordine',
+    icon: 'pi pi-check-square',
+  },
+  INVIO_COMMESSA: {
+    loadComponent: () => import('../vendite/ordini/components/OrdiniDrawer.vue'),
+    resolveExisting: resolveOrdinePerPratica,
+    buildProps: ordineDrawerProps,
+    requiresExisting: true,
+    label: 'pratiche.flusso_invio_commessa',
+    icon: 'pi pi-send',
+  },
   // APRI_OFFERTA / APRI_CONTRATTO: da aggiungere quando nasceranno i loro
   // template_flussi (oggi non esistono → nessun seed DB li referenzia). Stessa
   // forma; `requiresActiveClient: true` (BA obbligatorio) e onSaved sul rispettivo
-  // endpoint collega-pratica. Gli ORDINI restano fuori (push a valle, non drawer).
+  // endpoint collega-pratica.
 }
 
 // Scopo: risolve la voce registry da una chiave `azione_ui_key`; null se assente

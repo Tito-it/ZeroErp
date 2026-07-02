@@ -48,7 +48,10 @@ const { confirmAction } = useConfirmAction()
 const props = defineProps({
   visible: Boolean,
   mode: { type: String, default: 'create' },
-  praticaId: { type: Number, default: null }
+  praticaId: { type: Number, default: null },
+  // Default tipo prestazione in creazione (home launcher / filtro lista
+  // attivo): pre-compila il Select, l'operatore puo' sempre cambiarlo.
+  presetTipoPrestazioneId: { type: Number, default: null }
 })
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
@@ -158,9 +161,34 @@ watch(() => props.visible, async (val) => {
     populateFormFromDetail(d)
   } else {
     resetForm()
+    await preselectTipoPreset()
     await preselectPrioritaDefault()
   }
 })
+
+// Scopo: preset tipo dal contesto del caller (filtro lista attivo): default
+// visibile, non un lock — il Select resta editabile. Validato contro le
+// OPZIONI del Select (lookup no-obsoleti, stessa chiave cache: zero round-trip
+// extra): il filtro lista include gli obsoleti, e un id fuori opzioni
+// renderebbe il Select vuoto a video ma il valore verrebbe comunque salvato.
+// Preset non tra le opzioni → si ignora (campo vuoto, scelta all'operatore).
+const tipiLookup = useGlobalLookup(
+  'pratiche.tipi_prestazione::no-obsoleti',
+  () => lookupCodici('pratiche.tipi_prestazione', { page_size: 200, includi_obsoleti: false }),
+)
+
+async function preselectTipoPreset() {
+  const presetId = props.presetTipoPrestazioneId
+  if (presetId == null) return
+  try {
+    await tipiLookup.load()
+    if (tipiLookup.items.value.some(r => r.id === presetId)) {
+      form.value.tipo_prestazione_id = presetId
+    }
+  } catch {
+    // Lookup fallito: nessun preset, l'operatore sceglie dal Select.
+  }
+}
 
 // Scopo: default priorita' NORMALE in creazione, risolto per codice_interno
 // dal lookup (mai id hardcodato — feedback_no_hardcoded_ids). Il BE applica
@@ -425,6 +453,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <LookupSelect
               v-model="form.tipo_prestazione_id"
               rel="pratiche.tipi_prestazione"
+              :includi-obsoleti="false"
               class="w-full" :placeholder="t('pratiche.select_tipo_prestazione')"
             />
           </div>

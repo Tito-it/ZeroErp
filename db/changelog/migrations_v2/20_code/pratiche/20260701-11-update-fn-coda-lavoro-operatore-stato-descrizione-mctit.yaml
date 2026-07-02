@@ -1,0 +1,318 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Coda lavoro: espone la DESCRIZIONE umana dello stato flusso (display field).
+# (brief-db-coda-lavoro-stato-descrizione, prerequisito P0.1 del brief FE
+#  percorso-narrativo-operatore §8)
+#
+# AGGIUNGE la colonna di output `stato_flusso_descrizione` = config
+# .stati_flussi_pratiche.descrizione (NOT NULL), valore da mostrare nel Tag di
+# stato al posto del codice grezzo. Le colonne esistenti restano invariate:
+#   stato_flusso_codice_interno = sf.codice_interno  (logica/severity, immutabile)
+#   stato_flusso_codice         = sf.codice          (display, codice mutabile)
+#   stato_flusso_descrizione    = sf.descrizione     (display umano)  <-- NUOVA
+#
+# Implementazione: la descrizione e' gia' a portata del CTE `stati_pendenti`
+# (che gia' seleziona id/codice_interno/codice) -> la si porta lungo la pipeline
+# (stati_pendenti -> flussi_base -> classificati via fb.* -> SELECT finale).
+# Nessun JOIN aggiuntivo, nessun re-scan di config.stati_flussi_pratiche.
+#
+# CAMBIO FIRMA (colonna aggiunta a RETURNS TABLE): CREATE OR REPLACE non puo'
+# cambiare la RETURNS TABLE -> serve DROP FUNCTION + CREATE. Consumer a valle:
+# BE `list_coda_lavoro` fa `SELECT *` con mapping per-nome (rows_to_list) e FE
+# legge per nome -> l'aggiunta di colonna in coda e' non-breaking.
+# Base: versione viva 20260628-07 (naming stato). Storico non toccato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260701-11-update-fn-coda-lavoro-operatore-stato-descrizione-mctit.yaml
+
+  - changeSet:
+      id: 20260701-11-update-fn-coda-lavoro-operatore-stato-descrizione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_coda_lavoro_operatore: aggiunge output stato_flusso_descrizione
+        (config.stati_flussi_pratiche.descrizione, display umano). DROP+CREATE
+        (cambia RETURNS TABLE). Colonne esistenti invariate.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS pratiche.fn_coda_lavoro_operatore(bigint, bigint);
+
+              CREATE FUNCTION pratiche.fn_coda_lavoro_operatore(
+                  p_risorsa_umana_id     anagrafiche.risorse_umane.id%TYPE,
+                  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE
+              )
+              RETURNS TABLE (
+                  livello                     TEXT,
+                  flusso_id                   pratiche.flussi.id%TYPE,
+                  pratica_id                  pratiche.pratiche.id%TYPE,
+                  pratica_codice              pratiche.pratiche.codice%TYPE,
+                  pratica_descrizione         pratiche.pratiche.descrizione%TYPE,
+                  priorita_codice             config.priorita_pratiche.codice_interno%TYPE,
+                  tipo_prestazione_codice     pratiche.tipi_prestazione.codice%TYPE,
+                  template_flusso_codice      pratiche.template_flussi.codice%TYPE,
+                  template_flusso_desc        pratiche.template_flussi.descrizione%TYPE,
+                  stato_flusso_codice_interno config.stati_flussi_pratiche.codice_interno%TYPE,
+                  stato_flusso_codice         config.stati_flussi_pratiche.codice%TYPE,
+                  stato_flusso_descrizione    config.stati_flussi_pratiche.descrizione%TYPE,
+                  sequenza                    pratiche.flussi.sequenza%TYPE,
+                  data_scadenza               pratiche.pratiche.data_scadenza%TYPE,
+                  risorsa_assegnata           TEXT
+              )
+              LANGUAGE sql
+              STABLE
+              AS $function$
+              -- Coda di lavoro operatore su quattro livelli (policy reparto-first §2.2):
+              --   ASSEGNATO > COMPETENZA (A/D) > REPARTO (B) > LIBERO (C).
+              -- Ogni flusso appare in un solo livello (il piu' alto applicabile).
+              -- stato_codice_interno (interno alla query) = codice_interno per la LOGICA;
+              -- in output: stato_flusso_codice_interno (logica), stato_flusso_codice
+              -- (display = codice), stato_flusso_descrizione (display umano = descrizione).
+              WITH stati_pendenti AS (
+                  SELECT id, codice_interno, codice, descrizione
+                    FROM config.stati_flussi_pratiche
+                   WHERE codice_interno IN ('DA_ESEGUIRE', 'IN_CORSO')
+              ),
+              operatore AS (
+                  SELECT unita_organizzativa_id AS reparto_anagrafico
+                    FROM anagrafiche.risorse_umane
+                   WHERE id = p_risorsa_umana_id
+              ),
+              competenze_op AS (
+                  SELECT cf.template_flusso_id
+                    FROM pratiche.competenze_flussi cf
+                   WHERE cf.risorsa_umana_id = p_risorsa_umana_id
+                     AND cf.attivo = true
+              ),
+              flussi_base AS (
+                  SELECT
+                      f.id AS flusso_id,
+                      f.pratica_id,
+                      f.template_flusso_id,
+                      f.risorsa_umana_id,
+                      f.unita_organizzativa_id,
+                      f.sequenza,
+                      f.data_scadenza AS flusso_scadenza,
+                      sf.codice_interno AS stato_codice_interno,
+                      sf.codice         AS stato_codice,
+                      sf.descrizione    AS stato_descrizione,
+                      p.risorsa_umana_id AS pratica_risorsa
+                  FROM pratiche.flussi f
+                  JOIN stati_pendenti sf ON sf.id = f.stato_id
+                  JOIN pratiche.pratiche p ON p.id = f.pratica_id
+                  WHERE p.emittente_fiscale_id = p_emittente_fiscale_id
+                    AND EXISTS (
+                        SELECT 1 FROM config.transizioni_stati_pratiche t
+                         WHERE t.stato_da_id = p.stato_id AND t.attivo
+                    )
+              ),
+              classificati AS (
+                  SELECT
+                      fb.*,
+                      CASE
+                          WHEN fb.risorsa_umana_id = p_risorsa_umana_id
+                              THEN 'ASSEGNATO'
+                          WHEN fb.risorsa_umana_id IS NULL
+                               AND fb.stato_codice_interno = 'DA_ESEGUIRE'
+                               AND EXISTS (SELECT 1 FROM competenze_op co
+                                            WHERE co.template_flusso_id = fb.template_flusso_id)
+                              THEN 'COMPETENZA'
+                          WHEN fb.risorsa_umana_id IS NULL
+                               AND fb.stato_codice_interno = 'DA_ESEGUIRE'
+                               AND fb.unita_organizzativa_id IS NOT NULL
+                               AND fb.unita_organizzativa_id = (SELECT reparto_anagrafico FROM operatore)
+                               AND NOT EXISTS (SELECT 1 FROM pratiche.competenze_flussi cf
+                                                WHERE cf.template_flusso_id = fb.template_flusso_id
+                                                  AND cf.attivo = true)
+                              THEN 'REPARTO'
+                          WHEN fb.risorsa_umana_id IS NULL
+                               AND fb.stato_codice_interno = 'DA_ESEGUIRE'
+                               AND fb.unita_organizzativa_id IS NULL
+                               AND fb.pratica_risorsa = p_risorsa_umana_id
+                               AND NOT EXISTS (SELECT 1 FROM pratiche.competenze_flussi cf
+                                                WHERE cf.template_flusso_id = fb.template_flusso_id
+                                                  AND cf.attivo = true)
+                              THEN 'LIBERO'
+                      END AS livello
+                  FROM flussi_base fb
+              )
+              SELECT
+                  c.livello,
+                  c.flusso_id,
+                  p.id,
+                  p.codice,
+                  p.descrizione,
+                  pp.codice_interno,
+                  tp.codice,
+                  tf.codice,
+                  tf.descrizione,
+                  c.stato_codice_interno,  -- -> stato_flusso_codice_interno (codice_interno)
+                  c.stato_codice,          -- -> stato_flusso_codice (codice, display)
+                  c.stato_descrizione,     -- -> stato_flusso_descrizione (descrizione, display umano)
+                  c.sequenza,
+                  COALESCE(c.flusso_scadenza, p.data_scadenza),
+                  NULL::text
+              FROM classificati c
+              JOIN pratiche.pratiche p ON p.id = c.pratica_id
+              JOIN config.priorita_pratiche pp ON pp.id = p.priorita_id
+              JOIN pratiche.tipi_prestazione tp ON tp.id = p.tipo_prestazione_id
+              LEFT JOIN pratiche.template_flussi tf ON tf.id = c.template_flusso_id
+              WHERE c.livello IS NOT NULL
+              ORDER BY
+                  CASE c.livello
+                      WHEN 'ASSEGNATO'  THEN 1
+                      WHEN 'COMPETENZA' THEN 2
+                      WHEN 'REPARTO'    THEN 3
+                      WHEN 'LIBERO'     THEN 4
+                  END,
+                  pp.codice_interno DESC,
+                  COALESCE(c.flusso_scadenza, p.data_scadenza) NULLS LAST,
+                  c.sequenza;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_coda_lavoro_operatore(bigint, bigint)
+              IS 'Coda di lavoro operatore su quattro livelli: ASSEGNATO, COMPETENZA (A/D), REPARTO (B, reparto anagrafico + no skill-lock), LIBERO (C, all''operatore della pratica). Esclude pratiche terminali. Espone stato_flusso_codice_interno (codice_interno, logica), stato_flusso_codice (codice, display) e stato_flusso_descrizione (descrizione, display umano). rev 2026-07-01 (display descrizione stato).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina la versione 20260628-07 (senza stato_flusso_descrizione).
+              DROP FUNCTION IF EXISTS pratiche.fn_coda_lavoro_operatore(bigint, bigint);
+
+              CREATE FUNCTION pratiche.fn_coda_lavoro_operatore(
+                  p_risorsa_umana_id     anagrafiche.risorse_umane.id%TYPE,
+                  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE
+              )
+              RETURNS TABLE (
+                  livello                     TEXT,
+                  flusso_id                   pratiche.flussi.id%TYPE,
+                  pratica_id                  pratiche.pratiche.id%TYPE,
+                  pratica_codice              pratiche.pratiche.codice%TYPE,
+                  pratica_descrizione         pratiche.pratiche.descrizione%TYPE,
+                  priorita_codice             config.priorita_pratiche.codice_interno%TYPE,
+                  tipo_prestazione_codice     pratiche.tipi_prestazione.codice%TYPE,
+                  template_flusso_codice      pratiche.template_flussi.codice%TYPE,
+                  template_flusso_desc        pratiche.template_flussi.descrizione%TYPE,
+                  stato_flusso_codice_interno config.stati_flussi_pratiche.codice_interno%TYPE,
+                  stato_flusso_codice         config.stati_flussi_pratiche.codice%TYPE,
+                  sequenza                    pratiche.flussi.sequenza%TYPE,
+                  data_scadenza               pratiche.pratiche.data_scadenza%TYPE,
+                  risorsa_assegnata           TEXT
+              )
+              LANGUAGE sql
+              STABLE
+              AS $function$
+              WITH stati_pendenti AS (
+                  SELECT id, codice_interno, codice
+                    FROM config.stati_flussi_pratiche
+                   WHERE codice_interno IN ('DA_ESEGUIRE', 'IN_CORSO')
+              ),
+              operatore AS (
+                  SELECT unita_organizzativa_id AS reparto_anagrafico
+                    FROM anagrafiche.risorse_umane
+                   WHERE id = p_risorsa_umana_id
+              ),
+              competenze_op AS (
+                  SELECT cf.template_flusso_id
+                    FROM pratiche.competenze_flussi cf
+                   WHERE cf.risorsa_umana_id = p_risorsa_umana_id
+                     AND cf.attivo = true
+              ),
+              flussi_base AS (
+                  SELECT
+                      f.id AS flusso_id,
+                      f.pratica_id,
+                      f.template_flusso_id,
+                      f.risorsa_umana_id,
+                      f.unita_organizzativa_id,
+                      f.sequenza,
+                      f.data_scadenza AS flusso_scadenza,
+                      sf.codice_interno AS stato_codice_interno,
+                      sf.codice         AS stato_codice,
+                      p.risorsa_umana_id AS pratica_risorsa
+                  FROM pratiche.flussi f
+                  JOIN stati_pendenti sf ON sf.id = f.stato_id
+                  JOIN pratiche.pratiche p ON p.id = f.pratica_id
+                  WHERE p.emittente_fiscale_id = p_emittente_fiscale_id
+                    AND EXISTS (
+                        SELECT 1 FROM config.transizioni_stati_pratiche t
+                         WHERE t.stato_da_id = p.stato_id AND t.attivo
+                    )
+              ),
+              classificati AS (
+                  SELECT
+                      fb.*,
+                      CASE
+                          WHEN fb.risorsa_umana_id = p_risorsa_umana_id
+                              THEN 'ASSEGNATO'
+                          WHEN fb.risorsa_umana_id IS NULL
+                               AND fb.stato_codice_interno = 'DA_ESEGUIRE'
+                               AND EXISTS (SELECT 1 FROM competenze_op co
+                                            WHERE co.template_flusso_id = fb.template_flusso_id)
+                              THEN 'COMPETENZA'
+                          WHEN fb.risorsa_umana_id IS NULL
+                               AND fb.stato_codice_interno = 'DA_ESEGUIRE'
+                               AND fb.unita_organizzativa_id IS NOT NULL
+                               AND fb.unita_organizzativa_id = (SELECT reparto_anagrafico FROM operatore)
+                               AND NOT EXISTS (SELECT 1 FROM pratiche.competenze_flussi cf
+                                                WHERE cf.template_flusso_id = fb.template_flusso_id
+                                                  AND cf.attivo = true)
+                              THEN 'REPARTO'
+                          WHEN fb.risorsa_umana_id IS NULL
+                               AND fb.stato_codice_interno = 'DA_ESEGUIRE'
+                               AND fb.unita_organizzativa_id IS NULL
+                               AND fb.pratica_risorsa = p_risorsa_umana_id
+                               AND NOT EXISTS (SELECT 1 FROM pratiche.competenze_flussi cf
+                                                WHERE cf.template_flusso_id = fb.template_flusso_id
+                                                  AND cf.attivo = true)
+                              THEN 'LIBERO'
+                      END AS livello
+                  FROM flussi_base fb
+              )
+              SELECT
+                  c.livello,
+                  c.flusso_id,
+                  p.id,
+                  p.codice,
+                  p.descrizione,
+                  pp.codice_interno,
+                  tp.codice,
+                  tf.codice,
+                  tf.descrizione,
+                  c.stato_codice_interno,
+                  c.stato_codice,
+                  c.sequenza,
+                  COALESCE(c.flusso_scadenza, p.data_scadenza),
+                  NULL::text
+              FROM classificati c
+              JOIN pratiche.pratiche p ON p.id = c.pratica_id
+              JOIN config.priorita_pratiche pp ON pp.id = p.priorita_id
+              JOIN pratiche.tipi_prestazione tp ON tp.id = p.tipo_prestazione_id
+              LEFT JOIN pratiche.template_flussi tf ON tf.id = c.template_flusso_id
+              WHERE c.livello IS NOT NULL
+              ORDER BY
+                  CASE c.livello
+                      WHEN 'ASSEGNATO'  THEN 1
+                      WHEN 'COMPETENZA' THEN 2
+                      WHEN 'REPARTO'    THEN 3
+                      WHEN 'LIBERO'     THEN 4
+                  END,
+                  pp.codice_interno DESC,
+                  COALESCE(c.flusso_scadenza, p.data_scadenza) NULLS LAST,
+                  c.sequenza;
+              $function$;

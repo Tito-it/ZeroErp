@@ -18,8 +18,8 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_tfhe_esito |  |
 | CHECK | chk_tfhe_evento |  |
+| FOREIGN KEY | fk_tfhe_esito_richiesto | esito_richiesto |
 | FOREIGN KEY | fk_tfhe_handler | handler_id |
 | FOREIGN KEY | fk_tfhe_template_flusso | template_flusso_id |
 | PRIMARY KEY | pk_pratiche_template_flussi_handler_eventi | id |

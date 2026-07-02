@@ -31,10 +31,11 @@ Query string:
 | Parametro    | Tipo    | Obbligatorio | Default       | Note                                              |
 |--------------|---------|:------------:|---------------|---------------------------------------------------|
 | `rel`        | string  | Si           | —             | Relazione config (es. `config.stati_sdi`)         |
-| `search`     | string  | No           | —             | Testo ILIKE su `codice` o `descrizione`           |
+| `search`     | string  | No           | —             | ILIKE su `codice`/`codice_interno`/`descrizione`  |
 | `order_col`  | string  | No           | `descrizione` | Valori ammessi: `codice`, `descrizione`           |
 | `order_dir`  | string  | No           | `asc`         | Valori ammessi: `asc`, `desc`                     |
 | `attivo_only`| bool    | No           | `true`        | Se `false`, include anche record non attivi       |
+| `includi_obsoleti`| bool | No        | `true`        | Se `false`, esclude le voci obsolete (`obsoleto_dal <= oggi`) |
 | `page`       | int     | No           | `1`           | Pagina (>= 1)                                     |
 | `page_size`  | int     | No           | `50`          | Righe per pagina (1-200)                          |
 
@@ -80,6 +81,34 @@ raggiunga il database.
 | `codice_interno` | string  | Codice interno (puo` essere null se la tabella non lo ha)    |
 | `descrizione`    | string  | Descrizione leggibile                                        |
 | `attivo`         | bool    | Stato attivo/inattivo del record                             |
+| `codice_stabile` | string  | `COALESCE(codice_interno, codice)` — chiave stabile FE       |
+
+Per le relazioni **specializzate** (vedi sotto) il payload include **una colonna
+in piu`** oltre al contratto generico.
+
+## Lookup specializzati (colonna extra)
+
+Alcune relazioni estendono il contratto generico con una colonna aggiuntiva che
+il frontend usa per filtri/raggruppamenti, senza endpoint dedicati. Sono
+gestite da un handler parametrico unico (`_list_lookup_specializzato`,
+config `_LOOKUP_SPECIALIZZATE` in `dbops_repository.py` — regola del 2,
+2026-07-02): stesso contratto, stessi filtri `attivo_only`/`includi_obsoleti`
+(quest'ultimo solo se la tabella ha `obsoleto_dal`), stessa ricerca ILIKE.
+
+| `rel`                          | Colonna extra             | Uso FE                                       |
+|--------------------------------|---------------------------|----------------------------------------------|
+| `catalogo.unita_misura`        | `tipo_uom_id`             | Filtro conversioni same-type (`filterField`) |
+| `config.esiti_flussi_pratiche` | `selezionabile_operatore` | Filtro Select esiti FlussoDrawer             |
+| `pratiche.tipi_prestazione`    | `categoria`               | Raggruppamento tile della home pratiche      |
+
+Il nome API della colonna extra può differire dalla colonna fisica
+(`extra_expr`): es. `selezionabile_operatore` è derivato da `is_verdetto`
+(true = verdetto dell'operatore, false = esito di ramo calcolato dal dominio)
+— il contratto parla la lingua del consumer, la verità memorizzata resta una.
+
+Per aggiungere una relazione specializzata: una riga di config in
+`_LOOKUP_SPECIALIZZATE` (`extra_col`, opz. `extra_expr`, `has_codice_interno`,
+`has_obsoleto`) — niente nuovo SQL.
 
 ## Regole
 
@@ -87,6 +116,10 @@ raggiunga il database.
 - `search` vuoto o assente equivale a nessun filtro testo.
 - `attivo_only=true` applica `WHERE attivo IS TRUE` tramite la funzione DB (solo se la tabella
   ha colonna `attivo boolean`).
+- `includi_obsoleti=false` esclude le voci con `obsoleto_dal <= CURRENT_DATE` (solo se la
+  tabella ha la colonna `obsoleto_dal date`; introspezione opzionale come `attivo`). Il default
+  è `true` (mostra tutto) per non cambiare i contesti storico/filtro: è la **selezione per il
+  nuovo** (es. tipo nuova pratica) a passare `false`. Pattern riusabile cross-catalogo.
 - Ordinamento limitato a `codice` / `descrizione` per sicurezza (la funzione DB valida internamente).
 - `order_col` e `order_dir` sono validati a livello Python **prima** della chiamata DB;
   non vengono passati come parametri SQL (`%s`) ma inseriti nel testo della query solo dopo
@@ -96,88 +129,108 @@ raggiunga il database.
 
 ## Relazioni consentite (whitelist attuale)
 
-Include tutte le tabelle con struttura `id / codice / descrizione` distribuite su 6 schemi.
+Include tutte le tabelle con struttura `id / codice / descrizione` distribuite su 9 schemi.
 La funzione DB `fn_get_lookup_codici` valida ulteriormente la struttura reale delle colonne
 e solleva errore se mancante.
 
-Totale: **68 tabelle**.
+Totale: **83 tabelle** (elenco generato dal codice, 2026-07-02).
 
-### config (50)
+### anagrafiche (1)
 
 ```text
-config.ambiti                       config.stati
-config.aree_funzionali              config.stati_assets
-config.aspetti_beni                 config.stati_cliente
-config.assets_ownership             config.stati_doc_contratti
-config.canali_pratiche              config.stati_doc_ddt
-config.categoria_accisa             config.stati_doc_fiscale
-config.causali_trasporto            config.stati_doc_ordini
-config.classi_utenze                config.stati_doc_preventivi
-config.conti_contabili              config.stati_flussi_pratiche
-config.forme_giuridiche             config.stati_pdp
-config.iva                          config.stati_pratiche
-config.iva_assoggettamenti          config.stati_sdi
-config.iva_natura                   config.termini_pagamento
-config.lingue                       config.tipi_allegato
-config.modalita_addebito_trasporto  config.tipi_attivita
-config.modalita_pagamento           config.tipi_contatti
-config.note_stili                   config.tipi_doc_fiscale
-config.priorita_pratiche            config.tipi_documenti
-config.qualifiche                   config.tipi_evento_assets
-config.sistema_codici               config.tipi_indirizzi
-config.sorgenti                     config.tipi_nota
-                                    config.tipi_ruoli
-                                    config.tipi_soggetto_dettaglio
-                                    config.tipi_ubicazione
-                                    config.tipi_utenze
-                                    config.titoli_cortesia
-                                    config.unita_organizzative
-                                    config.utilities
-                                    config.valute
+anagrafiche.categorie_clienti
 ```
 
-### catalogo (1)
+### catalogo (2)
 
 ```text
-catalogo.unita_misura
+catalogo.unita_misura  catalogo.uom_tipi
+```
+
+### config (57)
+
+```text
+config.ambiti                       config.stati_doc_contratti
+config.aree_funzionali              config.stati_doc_ddt
+config.aspetti_beni                 config.stati_doc_fiscale
+config.assets_ownership             config.stati_doc_offerte
+config.canali_pratiche              config.stati_doc_ordini
+config.categoria_accisa             config.stati_doc_preventivi
+config.causali_trasporto            config.stati_flussi_pratiche
+config.classi_utenze                config.stati_fornitore
+config.conti_contabili              config.stati_pdp
+config.email_account                config.stati_pratiche
+config.esiti_flussi_pratiche        config.stati_sdi
+config.forme_giuridiche             config.termini_pagamento
+config.iva                          config.tipi_allegato
+config.iva_assoggettamenti          config.tipi_attivita
+config.iva_natura                   config.tipi_contatti
+config.lingue                       config.tipi_doc_fiscale
+config.listini_tipologie            config.tipi_documenti
+config.modalita_addebito_trasporto  config.tipi_evento_assets
+config.modalita_pagamento           config.tipi_indirizzi
+config.nature_vendita               config.tipi_nota
+config.note_stili                   config.tipi_ruoli
+config.priorita_pratiche            config.tipi_soggetto_dettaglio
+config.profili_accesso              config.tipi_ubicazione
+config.qualifiche                   config.tipi_utenze
+config.sistema_codici               config.titoli_cortesia
+config.sorgenti                     config.unita_organizzative
+config.stati                        config.utilities
+config.stati_assets                 config.valute
+config.stati_cliente
+```
+
+### documenti (4)
+
+```text
+documenti.render_engine_documento  documenti.tipi_documento_output
+documenti.tipi_asset_documento     documenti.tipi_file_documento
 ```
 
 ### magazzino (4)
 
 ```text
-magazzino.ambito_causale            magazzino.magazzini
-magazzino.causali                   magazzino.ubicazioni
+magazzino.ambito_causale  magazzino.magazzini
+magazzino.causali         magazzino.ubicazioni
 ```
 
 ### pagamenti (4)
 
 ```text
-pagamenti.centri_riscossione        pagamenti.vendite_contabili_righe_stati
-pagamenti.enti_incasso              pagamenti.vendite_contabili_stati
+pagamenti.centri_riscossione  pagamenti.vendite_contabili_righe_stati
+pagamenti.enti_incasso        pagamenti.vendite_contabili_stati
 ```
 
 ### pratiche (3)
 
 ```text
-pratiche.handler_flussi             pratiche.tipi_prestazione
+pratiche.handler_flussi   pratiche.tipi_prestazione
 pratiche.template_flussi
 ```
 
-### vendite (6)
+### ui (1)
 
 ```text
-vendite.area_geografica_fatturazione  vendite.articoli_tipologie
+ui.lista_definizione
+```
+
+### vendite (7)
+
+```text
+vendite.area_geografica_fatturazione  vendite.listini
 vendite.articoli_gruppi               vendite.stati_commessa
 vendite.articoli_spesa                vendite.tipi_fondi_fattura
+vendite.articoli_tipologie
 ```
 
 Per aggiungere una nuova relazione: inserire la stringa `schema.tabella` in `_REL_CONSENTITE`
 in `backend/apps/core/db/dbops_repository.py`.
-
 ## Dipendenze DB
 
-- `dbops.fn_get_lookup_codici(p_rel, p_order_col, p_order_dir, p_attivo_only, p_limit, p_offset)`
-  -- funzione generica lookup con validazione interna colonne e tipo id.
+- `dbops.fn_get_lookup_codici(p_rel, p_order_col, p_order_dir, p_attivo_only, p_limit, p_offset, p_includi_obsoleti)`
+  -- funzione generica lookup con validazione interna colonne e tipo id. Il 7° parametro
+  `p_includi_obsoleti boolean DEFAULT true` filtra `obsoleto_dal` per introspezione (opzionale).
 
 ## Codici errore
 

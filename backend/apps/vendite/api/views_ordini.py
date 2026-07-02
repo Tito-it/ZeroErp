@@ -29,6 +29,7 @@ from apps.core.api.payload_validators import (
     qp_str,
 )
 from apps.core.api.success_responses import success_response
+from apps.core.services.error_manager import ErrorManager
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.services import ordini_service
@@ -189,13 +190,47 @@ class ApiOrdineDetail(DomainAPIView):
         return success_response(ordini_service.elimina_ordine(int(ordine_id)))
 
 
+class ApiOrdinePerPratica(DomainAPIView):
+    """`GET /api/v1/vendite/ordini/per-pratica/?pratica_id=<id>`: risolve
+    l'ordine COLLEGATO a una pratica (agganciato da PostSmistamentoHandler).
+    Alimenta gli step a valle del percorso (CONFERMA_ORDINE / INVIO_COMMESSA)
+    che aprono l'OrdiniDrawer su quell'ordine. Ritorna `{"ordine_id": <id|null>}`."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="pratica_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=True,
+            ),
+        ],
+        responses={200: inline_serializer(
+            name="OrdinePerPraticaResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    def get(self, request: Request) -> JsonResponse:
+        pratica_id = qp_int_optional(request.query_params.get("pratica_id"), "pratica_id")
+        ErrorManager.require(
+            pratica_id is not None,
+            code="E_PRATICA_ID_OBBLIGATORIO",
+            message="pratica_id obbligatorio.",
+        )
+        assert pratica_id is not None
+        return success_response(ordini_service.get_ordine_per_pratica(pratica_id))
+
+
 class ApiOrdineConferma(DomainAPIView):
     """POST /api/v1/vendite/ordini/<ordine_id>/conferma/ (DRAFT->CONFERMATO)."""
 
     area_funzionale = "vendite"
 
     def post(self, request: Request, ordine_id: int) -> JsonResponse:
-        return success_response(ordini_service.conferma(int(ordine_id)))
+        user = getattr(request.user, "username", None) or None
+        return success_response(ordini_service.conferma(int(ordine_id), user=user))
 
 
 class ApiOrdinePush(DomainAPIView):
@@ -204,7 +239,8 @@ class ApiOrdinePush(DomainAPIView):
     area_funzionale = "vendite"
 
     def post(self, request: Request, ordine_id: int) -> JsonResponse:
-        return success_response(ordini_service.push_a_commessa(int(ordine_id)))
+        user = getattr(request.user, "username", None) or None
+        return success_response(ordini_service.push_a_commessa(int(ordine_id), user=user))
 
 
 class ApiOrdineCambiaStato(DomainAPIView):

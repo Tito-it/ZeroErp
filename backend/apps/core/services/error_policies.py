@@ -77,6 +77,34 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Parametri non validi.",
         ),
+        # Guard catalogo obsoleto (dbops.trgfn_child_requires_non_obsolete_parent):
+        # tentata creazione/ri-aggancio di un'istanza su una voce di catalogo con
+        # obsoleto_dal <= oggi. Conflitto di stato del catalogo → 409 (come gli
+        # altri guard). Messaggio parlante dal DB (messaggi_errore id 500).
+        "E_CATALOGO_OBSOLETO_NUOVA_ISTANZA": ErrorPolicy(
+            code="E_CATALOGO_OBSOLETO_NUOVA_ISTANZA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Voce di catalogo obsoleta: non selezionabile per nuove istanze.",
+        ),
+        # Pratica preventivi: completamento SMISTAMENTO senza aver smistato la
+        # merce (nessun ordine, residuo merce). 422: lo step non e' processabile
+        # finche' l'operatore non genera l'ordine dal Pannello Smistamento.
+        "E_VENDITA_SMISTAMENTO_NON_ESEGUITO": ErrorPolicy(
+            code="E_VENDITA_SMISTAMENTO_NON_ESEGUITO",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message="Esegui lo smistamento della merce (genera ordine) prima di completare lo step.",
+        ),
+        # Preventivo non agganciato a una pratica: azioni del percorso pratica
+        # (es. completa_smistamento) richiedono il legame pratiche_sorgenti ROOT.
+        # Gia' usato dagli handler di dominio (post_smistamento/accetta/push).
+        "E_VENDITA_PREVENTIVO_NON_COLLEGATO": ErrorPolicy(
+            code="E_VENDITA_PREVENTIVO_NON_COLLEGATO",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message="Il preventivo non e' collegato a una pratica: azione non disponibile.",
+        ),
         # ── Building block note partizionate (apps/core/services/partitioned_note_service.py) ──
         # Codici cross-area: il service in apps/core/ scrive su qualunque partizione
         # di vendite.note (PREVENTIVO/CONTRATTO/ORDINE/DDT/FATTURA/ATTIVITAFT) e in
@@ -822,6 +850,15 @@ class ErrorPolicyRegistry:
             http_status=409,
             ui_action="show_error_banner",
             user_message="Impossibile chiudere la pratica: flussi obbligatori non completati.",
+        ),
+        # D1 hardening (brief-db-chiusura-pratica-nessun-lavoro-pendente, errore
+        # catalogo 501): chiusura pratica con flussi ISTANZIATI ancora aperti (non
+        # terminali). Guard condiviso chiusura manuale + auto-chiusura.
+        "PRATICHE_CHIUSURA_FLUSSI_APERTI": ErrorPolicy(
+            code="PRATICHE_CHIUSURA_FLUSSI_APERTI",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile chiudere la pratica: ci sono flussi ancora aperti. Completali o annullali, poi riprova.",
         ),
         "PRATICHE_PREREQUISITI_NON_SODDISFATTI": ErrorPolicy(
             code="PRATICHE_PREREQUISITI_NON_SODDISFATTI",

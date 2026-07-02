@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Guard verdetto sulla proiezione `esito` delle config.stati_doc_*.
+# (brief-db-proiezione-stato-dominio §4 D1, decisione B)
+#
+# La FK fk_stati_doc_*_esito garantisce che `esito` esista nel vocabolario
+# config.esiti_flussi_pratiche, ma NON che sia un VERDETTO: il vocabolario
+# contiene anche esiti di instradamento di dominio (MERCE_PRESENTE/SOLO_SERVIZI)
+# che come proiezione di stato documento sono nonsense. Questo guard chiude il
+# buco: esito NULL ok (nessun verdetto); esito valorizzato -> deve avere
+# is_verdetto=true.
+#
+# GENERICO: legge NEW.esito e NEW.codice_interno, colonne condivise da tutte le
+# config.stati_doc_* -> la stessa trgfn si riusa sugli altri domini del roll-out
+# (offerte/ordini/contratti) senza nuovo codice, solo CREATE TRIGGER.
+#
+# Convenzioni: fase _a10_ (guard/block), BEFORE INSERT OR UPDATE OF esito;
+# errore parlante via script.fn_log_and_raise_error con codice registrato
+# E_STATO_DOC_ESITO_NON_VERDETTO (id 503, seed 20260701-20). tx_id: le
+# stati_doc_* non hanno la colonna -> NULL.
+#
+# Impatto esistente verificato (feedback_guard_breaks_existing_tests): nessun
+# pgTAP/BE fa INSERT/UPDATE su config.stati_doc_preventivi; i seed (backfill
+# 20260701-14 e CSV/UPDATE 80_data) scrivono solo verdetti -> guard trasparente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260701-15-create-trgfn-stati-doc-guard-esito-verdetto-mctit.yaml
+
+  - changeSet:
+      id: 20260701-15-create-trgfn-stati-doc-guard-esito-verdetto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea config.trgfn_stati_doc_guard_esito_verdetto (generica per tutte le
+        stati_doc_*) e il trigger a10 su config.stati_doc_preventivi: la
+        proiezione `esito` deve referenziare un esito con is_verdetto=true
+        (NULL ammesso). Errore E_STATO_DOC_ESITO_NON_VERDETTO.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'config'
+                 AND table_name   = 'esiti_flussi_pratiche'
+                 AND column_name  = 'is_verdetto';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Guard (fase a10): la proiezione `esito` di una config.stati_doc_*
+              -- deve essere un verdetto (esiti_flussi_pratiche.is_verdetto=true).
+              -- NULL = nessun verdetto: ammesso. Codice inesistente: bloccato qui
+              -- (prima della FK) con lo stesso errore parlante.
+              DECLARE
+                  v_is_verdetto boolean;
+              BEGIN
+                  IF NEW.esito IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT e.is_verdetto
+                    INTO v_is_verdetto
+                    FROM config.esiti_flussi_pratiche e
+                   WHERE e.codice_interno = NEW.esito;
+
+                  IF v_is_verdetto IS DISTINCT FROM true THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config',
+                          'config.trgfn_stati_doc_guard_esito_verdetto',
+                          'E_STATO_DOC_ESITO_NON_VERDETTO',
+                          jsonb_build_object(
+                              'tabella',        TG_TABLE_NAME,
+                              'codice_interno', NEW.codice_interno,
+                              'esito',          NEW.esito
+                          ),
+                          NULL,
+                          NEW.esito::text,
+                          TG_TABLE_NAME::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()
+              IS 'Guard generico per le config.stati_doc_*: la proiezione `esito` (D1, brief-db-proiezione-stato-dominio) deve referenziare un esito con is_verdetto=true in config.esiti_flussi_pratiche; NULL ammesso (nessun verdetto). Blocca gli esiti di instradamento di dominio e i codici inesistenti con E_STATO_DOC_ESITO_NON_VERDETTO. Riusabile su ogni dominio del roll-out (legge solo NEW.esito/NEW.codice_interno).';
+
+              DROP TRIGGER IF EXISTS trg_stati_doc_preventivi_a10_guard_esito_verdetto_ins_upd
+                ON config.stati_doc_preventivi;
+
+              CREATE TRIGGER trg_stati_doc_preventivi_a10_guard_esito_verdetto_ins_upd
+                BEFORE INSERT OR UPDATE OF esito
+                ON config.stati_doc_preventivi
+                FOR EACH ROW
+                EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_stati_doc_preventivi_a10_guard_esito_verdetto_ins_upd
+                ON config.stati_doc_preventivi;
+              DROP FUNCTION IF EXISTS config.trgfn_stati_doc_guard_esito_verdetto();

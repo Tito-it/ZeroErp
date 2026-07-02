@@ -13,14 +13,16 @@ CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_chiusura_prematura()
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: il flusso "di chiusura" (template.chiude_pratica) chiude la
---   pratica: non puo' essere completato finche' restano ALTRI
---   obbligatori bloccanti. Coerente col guard di chiusura della
---   pratica; evita che l'auto-chiusura conseguente fallisca.
+--   pratica: non puo' essere completato finche' la pratica non e'
+--   chiudibile (fn_check_pratica_chiudibile) ESCLUDENDO se stesso
+--   (template dai bloccanti, istanza dai flussi aperti). Coerente col guard
+--   di chiusura della pratica; evita che l'auto-chiusura conseguente fallisca.
 -- Regole:
 --   1. Scatta solo alla transizione di stato verso COMPLETATO.
 --   2. Solo se il template del flusso e' chiude_pratica.
---   3. fn_check_pratica_chiudibile escludendo il template di chiusura
---      stesso (non ancora COMPLETATO): se false -> errore parlante.
+--   3. fn_check_pratica_chiudibile escludendo il template (bloccanti) e
+--      l'istanza (flussi aperti) del flusso di chiusura stesso: se false
+--      -> errore parlante.
 DECLARE
     v_completato_id config.stati_flussi_pratiche.id%TYPE;
     v_e_chiusura    boolean;
@@ -48,8 +50,9 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- (3) Ammesso solo se nessun ALTRO obbligatorio e' bloccante.
-    IF NOT pratiche.fn_check_pratica_chiudibile(NEW.pratica_id, NEW.template_flusso_id) THEN
+    -- (3) Ammesso solo se la pratica e' chiudibile escludendo SE STESSO
+    --     (template dai bloccanti + istanza NEW.id dai flussi aperti, D1).
+    IF NOT pratiche.fn_check_pratica_chiudibile(NEW.pratica_id, NEW.template_flusso_id, NEW.id) THEN
         PERFORM script.fn_log_and_raise_error(
             'pratiche',
             'pratiche.trgfn_flussi_guard_chiusura_prematura',
@@ -69,7 +72,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.trgfn_flussi_guard_chiusura_prematura()
-IS 'BEFORE UPDATE OF stato_id su flussi: blocca il completamento del flusso di chiusura (template.chiude_pratica) se restano altri obbligatori bloccanti (fn_check_pratica_chiudibile escludendo il template stesso).';
+IS 'BEFORE UPDATE OF stato_id su flussi: blocca il completamento del flusso di chiusura (template.chiude_pratica) se la pratica non e'' chiudibile escludendo se stesso (fn_check_pratica_chiudibile con p_escludi_template_id + p_escludi_flusso_id=NEW.id).';
 ```
 
 ---

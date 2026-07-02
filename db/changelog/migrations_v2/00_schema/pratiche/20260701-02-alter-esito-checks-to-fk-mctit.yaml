@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Esito data-driven: sostituisce i 3 CHECK enum con FK verso il vocabolario
+# config.esiti_flussi_pratiche(codice_interno).
+# (brief-db-chiusura-pratica-nessun-lavoro-pendente §3.A.3, decisione 2026-07-01)
+#
+# CHECK sostituiti (enum fisso a 4 valori) -> FK a chiave naturale:
+#   pratiche.flussi.esito                         chk_flussi_esito              -> fk_flussi_esito
+#   pratiche.template_flussi.esito_default        chk_template_flussi_esito_default
+#                                                                               -> fk_template_flussi_esito_default
+#   pratiche.template_flussi_prerequisiti.esito_richiesto
+#                                                 chk_template_flussi_prereq_esito
+#                                                                               -> fk_tf_prereq_esito_richiesto
+#
+# Effetto: i domini aggiungono nuovi esiti (es. MERCE_PRESENTE/SOLO_SERVIZI per il
+# bivio SMISTAMENTO) inserendo una riga nel vocabolario in 80_data, senza toccare il
+# motore -> layering rispettato (nessun valore di dominio in un CHECK di motore).
+# fn_check_prerequisiti_flusso resta INVARIATA (confronta esito come stringa).
+#
+# ORDINE: richiede 20260701-01 (tabella + esiti base seedati) applicata PRIMA: la FK
+# valida le righe esistenti (flussi.esito/esito_default/esito_richiesto usano i 4 base).
+# La preCondition su config.esiti_flussi_pratiche fa HALT se l'ordine non e' rispettato.
+# Numerazione globale per data: 01 (config) prima di 02 (pratiche).
+#
+# Colonne FK tutte NULLABLE (esito NULL finche' il flusso non e' completato; NULL non
+# e' validato dalla FK). Nessun indice FK creato a mano: policy in 90_end
+# (dbops.apply_fk_index_policy) — verificare la registrazione delle 3 nuove FK.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260701-02-alter-esito-checks-to-fk-mctit.yaml
+
+  - changeSet:
+      id: 20260701-02-alter-esito-checks-to-fk
+      author: mctit
+      comment: >
+        Sostituisce i 3 CHECK enum esito (chk_flussi_esito,
+        chk_template_flussi_esito_default, chk_template_flussi_prereq_esito) con FK verso
+        config.esiti_flussi_pratiche(codice_interno). Vocabolario esiti data-driven,
+        layering rispettato. Richiede 20260701-01 (esiti base seedati).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: esiti_flussi_pratiche
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- flussi.esito: CHECK enum -> FK vocabolario (codice_interno).
+              ALTER TABLE pratiche.flussi
+                DROP CONSTRAINT IF EXISTS chk_flussi_esito;
+              ALTER TABLE pratiche.flussi
+                ADD CONSTRAINT fk_flussi_esito
+                FOREIGN KEY (esito)
+                REFERENCES config.esiti_flussi_pratiche (codice_interno);
+
+              -- template_flussi.esito_default: CHECK enum -> FK vocabolario.
+              ALTER TABLE pratiche.template_flussi
+                DROP CONSTRAINT IF EXISTS chk_template_flussi_esito_default;
+              ALTER TABLE pratiche.template_flussi
+                ADD CONSTRAINT fk_template_flussi_esito_default
+                FOREIGN KEY (esito_default)
+                REFERENCES config.esiti_flussi_pratiche (codice_interno);
+
+              -- template_flussi_prerequisiti.esito_richiesto: CHECK enum -> FK vocabolario.
+              ALTER TABLE pratiche.template_flussi_prerequisiti
+                DROP CONSTRAINT IF EXISTS chk_template_flussi_prereq_esito;
+              ALTER TABLE pratiche.template_flussi_prerequisiti
+                ADD CONSTRAINT fk_tf_prereq_esito_richiesto
+                FOREIGN KEY (esito_richiesto)
+                REFERENCES config.esiti_flussi_pratiche (codice_interno);
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina i 3 CHECK enum (dominio storico a 4 valori) e rimuove le FK.
+              ALTER TABLE pratiche.template_flussi_prerequisiti
+                DROP CONSTRAINT IF EXISTS fk_tf_prereq_esito_richiesto;
+              ALTER TABLE pratiche.template_flussi_prerequisiti
+                ADD CONSTRAINT chk_template_flussi_prereq_esito
+                CHECK (esito_richiesto IN ('POSITIVO', 'NEGATIVO', 'PARZIALE', 'NON_APPLICABILE'));
+
+              ALTER TABLE pratiche.template_flussi
+                DROP CONSTRAINT IF EXISTS fk_template_flussi_esito_default;
+              ALTER TABLE pratiche.template_flussi
+                ADD CONSTRAINT chk_template_flussi_esito_default
+                CHECK (esito_default IN ('POSITIVO', 'NEGATIVO', 'PARZIALE', 'NON_APPLICABILE'));
+
+              ALTER TABLE pratiche.flussi
+                DROP CONSTRAINT IF EXISTS fk_flussi_esito;
+              ALTER TABLE pratiche.flussi
+                ADD CONSTRAINT chk_flussi_esito
+                CHECK (esito IN ('POSITIVO', 'NEGATIVO', 'PARZIALE', 'NON_APPLICABILE'));

@@ -34,6 +34,11 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
         "PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI",
         "flussi obbligatori non completati",
     ),
+    # Chiusura pratica (manuale + auto): restano flussi ISTANZIATI in stato NON
+    # terminale (DA_ESEGUIRE/IN_CORSO/SOSPESO/ERRORE). D1 hardening — invariante
+    # condiviso guard manuale + auto-chiusura (brief-db-chiusura-pratica-nessun-
+    # lavoro-pendente, errore catalogo 501).
+    ("PRATICHE_CHIUSURA_FLUSSI_APERTI", "flussi ancora aperti"),
     # Guard prerequisiti (D: flusso non ancora eseguibile): step cliccato in
     # anticipo nel percorso → messaggio parlante invece di E_DATABASE generico.
     ("PRATICHE_PREREQUISITI_NON_SODDISFATTI", "Prerequisiti non soddisfatti per il template flusso"),
@@ -92,9 +97,16 @@ _SOSPENSIONE_CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     ),
 }
 
-# Esiti ammessi per un flusso: mirror applicativo del CHECK DB chk_flussi_esito.
-# Single source per la validazione fail-fast (completa/avvia_e_completa).
-ESITI_FLUSSO_AMMESSI = ("POSITIVO", "NEGATIVO", "PARZIALE", "NON_APPLICABILE")
+# Validazione esiti data-driven dal vocabolario DB `config.esiti_flussi_pratiche`
+# (bonifica 2026-07-02: rimossi i mirror hardcoded ESITI_FLUSSO_AMMESSI e
+# ESITI_FLUSSO_RAMO — una sola verita', la colonna `is_verdetto` DEFAULT false
+# fail-closed consegnata dal team DB):
+#   is_verdetto = true  → verdetto deciso dall'operatore (selezionabile a mano);
+#   is_verdetto = false → esito di RAMO calcolato dal dominio (bivio SMISTAMENTO),
+#                         ammesso solo dai BB di dominio (completa_step_pratica).
+# La FK su flussi.esito resta il guard autoritativo; le letture qui sotto danno
+# l'errore parlante PRIMA del round-trip di scrittura. Un nuovo esito seedato a
+# DB e' automaticamente valido: nessuna costante da aggiornare.
 
 # Esito implicito dell'auto-completamento per gli step con handler ma senza
 # esito_default (retro-compatibilita' col vecchio POSITIVO cablato). Per gli step
@@ -103,12 +115,36 @@ ESITI_FLUSSO_AMMESSI = ("POSITIVO", "NEGATIVO", "PARZIALE", "NON_APPLICABILE")
 _ESITO_AUTO_FALLBACK = "POSITIVO"
 
 
-# Scopo: Guard fail-fast sull'esito di un flusso (dominio chk_flussi_esito).
-def _require_esito_valido(esito: str) -> None:
+# Scopo: Guard fail-fast sull'esito di un flusso: deve esistere ATTIVO nel
+# vocabolario DB (is_verdetto qualsiasi: vale per operatore e BB di dominio).
+# `repo` iniettabile (simmetrico al guard operatore). NB: sul percorso API il
+# guard operatore ha gia' letto la stessa voce — la seconda lettura qui e' una
+# PK-lookup volutamente accettata: completa_flusso resta autosufficiente per i
+# BB di dominio senza threading di stato fra i layer.
+def _require_esito_valido(esito: str, repo: PraticheRepository | None = None) -> None:
+    voce = (repo or PraticheRepository()).get_esito_flusso_vocabolario(esito)
     ErrorManager.require(
-        esito in ESITI_FLUSSO_AMMESSI,
+        voce is not None and voce[0],
         code="E_FLUSSO_VALIDATION",
         message=f"Esito non valido: {esito}",
+    )
+
+
+# Scopo: Guard sul percorso OPERATORE (API cambio stato flusso): l'esito scelto
+# a mano deve essere un verdetto (`is_verdetto`); gli esiti di ramo restano
+# riservati ai BB di dominio. Il lookup FE espone `selezionabile_operatore`
+# (derivato da is_verdetto) e filtra il Select alla fonte; questo guard e' la
+# difesa in profondita' sul contratto API. Codice inesistente → passa: ci pensa
+# _require_esito_valido a valle con l'errore parlante giusto.
+# `repo` iniettabile: la view riusa la propria istanza (gia' mockata nei test API).
+def require_esito_selezionabile_operatore(
+    esito: str, repo: PraticheRepository | None = None,
+) -> None:
+    voce = (repo or PraticheRepository()).get_esito_flusso_vocabolario(esito)
+    ErrorManager.require(
+        voce is None or voce[1],
+        code="E_FLUSSO_VALIDATION",
+        message=f"Esito calcolato dal dominio, non selezionabile manualmente: {esito}",
     )
 
 
@@ -521,25 +557,18 @@ def avvia_flusso(flusso_id: int, *, user: str | None = None) -> dict[str, Any] |
         raise  # irraggiungibile, per il type checker
 
 
-# Scopo: Completa un flusso con esito e note.
-# Obiettivo: transizione → COMPLETATO. La generazione automatica
-# cross-pratica e' gestita dal trigger DB (trgfn_flussi_generazione).
-@transaction.atomic()
-def completa_flusso(
+# Scopo: corpo del completamento (transizione COMPLETATO + azioni di dominio),
+# SENZA validazione esito: i chiamanti pubblici (completa_flusso,
+# avvia_e_completa_flusso) validano UNA volta e delegano qui — niente doppia
+# lettura del vocabolario sul percorso CONTESTUALE.
+def _completa_flusso_validato(
     flusso_id: int,
     *,
     esito: str,
-    note_esito: str | None = None,
-    user: str | None = None,
+    note_esito: str | None,
+    user: str | None,
+    meta: dict[str, Any] | None,
 ) -> None:
-    ErrorManager.require(
-        flusso_id > 0,
-        code="E_INVALID_ID",
-        message="flusso_id deve essere > 0",
-    )
-    assert flusso_id > 0
-    _require_esito_valido(esito)
-
     repo = PraticheRepository()
     try:
         repo.update_stato_flusso(flusso_id, "COMPLETATO", esito=esito, note_esito=note_esito)
@@ -550,7 +579,35 @@ def completa_flusso(
     # es. accetta il preventivo collegato quando APPROVAZIONE_CLIENTE chiude
     # POSITIVO. Stessa transazione → completamento + azione dominio atomici (sostituisce
     # il routing M2 hardcoded lato FE). I flussi senza binding: no-op.
-    dispatch_handler_eventi(flusso_id, evento="COMPLETATO", esito=esito, user=user)
+    # `meta` = contesto d'azione fornito dall'operatore (es. modalita/competenza
+    # di fatturazione all'accettazione): passa all'handler, non viene persistito sul flusso.
+    dispatch_handler_eventi(
+        flusso_id, evento="COMPLETATO", esito=esito, user=user, extra_meta=meta,
+    )
+
+
+# Scopo: Completa un flusso con esito e note.
+# Obiettivo: transizione → COMPLETATO. La generazione automatica
+# cross-pratica e' gestita dal trigger DB (trgfn_flussi_generazione).
+@transaction.atomic()
+def completa_flusso(
+    flusso_id: int,
+    *,
+    esito: str,
+    note_esito: str | None = None,
+    user: str | None = None,
+    meta: dict[str, Any] | None = None,
+) -> None:
+    ErrorManager.require(
+        flusso_id > 0,
+        code="E_INVALID_ID",
+        message="flusso_id deve essere > 0",
+    )
+    assert flusso_id > 0
+    _require_esito_valido(esito)
+    _completa_flusso_validato(
+        flusso_id, esito=esito, note_esito=note_esito, user=user, meta=meta,
+    )
 
 
 # Scopo: Avvia E completa un flusso in un'unica azione (modalita CONTESTUALE).
@@ -567,6 +624,7 @@ def avvia_e_completa_flusso(
     esito: str,
     note_esito: str | None = None,
     user: str | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> None:
     ErrorManager.require(
         flusso_id > 0,
@@ -583,13 +641,59 @@ def avvia_e_completa_flusso(
         repo.update_stato_flusso(flusso_id, "IN_CORSO")
     except DatabaseError as exc:
         _raise_known_db_error(exc, function_name="pratiche_service.avvia_e_completa_flusso")
-    # Riusa il completamento canonico: COMPLETATO + esito + azioni di dominio
+    # Riusa il corpo del completamento canonico (gia' validato sopra: niente
+    # seconda lettura del vocabolario): COMPLETATO + esito + azioni di dominio
     # (template_flussi_handler_eventi), nella stessa transazione → atomico.
     # NB: CONTESTUALE NON esegue l'handler di AVVIO (dispatch_handler): e' la
     # modalita "esito deciso dall'operatore"; l'automazione d'avvio appartiene ad
     # AUTOMATICO/handler. Le reazioni di dominio all'esito viaggiano comunque su
-    # dispatch_handler_eventi dentro completa_flusso.
-    completa_flusso(flusso_id, esito=esito, note_esito=note_esito, user=user)
+    # dispatch_handler_eventi.
+    _completa_flusso_validato(
+        flusso_id, esito=esito, note_esito=note_esito, user=user, meta=meta,
+    )
+
+
+# Stati terminali di un flusso: mirror applicativo della derivazione data-driven
+# DB (fn_pratica_flussi_aperti / trgfn_flussi_guard_pratica_terminale: stato senza
+# transizione di stato in uscita attiva). Usato per l'idempotenza degli
+# auto-completamenti di step (ri-azione dal programma base = no-op). La FK/guard DB
+# resta autoritativa; questo mirror evita un round-trip sull'idempotenza.
+_STATI_FLUSSO_TERMINALI = ("COMPLETATO", "ANNULLATO")
+
+
+# Scopo: Completa (idempotente) il flusso ISTANZIATO di `template_codice` nel
+# percorso della pratica. Building block di orchestrazione dominio→motore: i
+# domini (vendite) risolvono la pratica dal proprio documento (preventivo/ordine)
+# e delegano QUI il completamento dello step-per-codice, senza duplicare la logica
+# percorso + idempotenza + scelta avvia-e-completa/completa (regola del 2:
+# preventivi.completa_smistamento + ordini._completa_flusso_ordine_pratica).
+# Ritorna {"flusso_id": id|None, "stato_precedente": str|None, "completato": bool}:
+#   - flusso_id None → step non istanziato nel percorso (il caller decide se e' un
+#     no-op legittimo o un errore);
+#   - completato False con flusso_id valorizzato → step gia' terminale (no-op
+#     idempotente su ri-azione);
+#   - completato True → transizione effettuata (avvia+completa se DA_ESEGUIRE,
+#     altrimenti completa).
+def completa_step_pratica(
+    pratica_id: int, *, template_codice: str, esito: str, user: str | None = None,
+) -> dict[str, Any]:
+    repo = PraticheRepository()
+    step = next(
+        (s for s in repo.get_percorso_pratica(pratica_id)
+         if s.get("template_flusso_codice") == template_codice),
+        None,
+    )
+    if step is None or step.get("flusso_id") is None:
+        return {"flusso_id": None, "stato_precedente": None, "completato": False}
+    stato = step.get("stato_codice_interno")
+    flusso_id = int(step["flusso_id"])
+    if stato in _STATI_FLUSSO_TERMINALI:
+        return {"flusso_id": flusso_id, "stato_precedente": stato, "completato": False}
+    if stato == "DA_ESEGUIRE":
+        avvia_e_completa_flusso(flusso_id, esito=esito, user=user)
+    else:
+        completa_flusso(flusso_id, esito=esito, user=user)
+    return {"flusso_id": flusso_id, "stato_precedente": stato, "completato": True}
 
 
 # Scopo: Transizione generica di stato di un flusso tramite codice_interno.
@@ -719,6 +823,7 @@ def dispatch_handler(flusso_id: int, *, user: str | None = None) -> dict[str, An
 # hardcoded lato FE). Eccezioni dell'handler propagano e rollano la transizione.
 def dispatch_handler_eventi(
     flusso_id: int, *, evento: str, esito: str | None = None, user: str | None = None,
+    extra_meta: dict[str, Any] | None = None,
 ) -> None:
     flusso = _flusso_per_dispatch(flusso_id)
     if flusso is None:
@@ -729,7 +834,11 @@ def dispatch_handler_eventi(
         return
 
     from apps.pratiche.services.handler_registry import get_handler
-    meta = coerce_jsonb_dict(flusso["meta"])
+    # meta = stato persistito del flusso + contesto transiente fornito
+    # dall'operatore al completamento (es. modalita/competenza all'accettazione):
+    # l'extra prevale sul persistito ma NON viene scritto su flusso.meta (input
+    # d'azione, non stato). Le scelte durevoli le persiste l'handler sul dominio.
+    meta = {**coerce_jsonb_dict(flusso["meta"]), **(extra_meta or {})}
     for handler_key, handler_params in bindings:
         handler_class = get_handler(handler_key)
         # Binding seedato a DB ma senza implementazione registrata = misconfig di

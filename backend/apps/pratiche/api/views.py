@@ -418,6 +418,7 @@ class ApiPraticaFlussoStato(DomainAPIView):
                 "nuovo_stato": serializers.CharField(),
                 "esito": serializers.CharField(required=False, allow_null=True),
                 "note_esito": serializers.CharField(required=False, allow_null=True),
+                "meta": serializers.DictField(required=False, allow_null=True),
             },
         ),
         responses={200: inline_serializer(
@@ -444,7 +445,19 @@ class ApiPraticaFlussoStato(DomainAPIView):
                     code="E_FLUSSO_VALIDATION",
                     message="esito obbligatorio per completamento flusso",
                 )
+                # L'esito arriva dall'operatore: gli esiti di ramo (calcolati
+                # dal dominio, es. bivio SMISTAMENTO, is_verdetto=false) non
+                # sono selezionabili a mano — errore parlante prima di toccare
+                # il flusso. Riusa il repo dell'ownership check.
+                pratiche_service.require_esito_selezionabile_operatore(
+                    str(payload["esito"]), repo=repo,
+                )
                 acting_user = getattr(request.user, "username", None) or None
+                # Contesto d'azione opzionale (es. modalita/competenza di
+                # fatturazione all'accettazione): inoltrato agli handler di
+                # completamento, non persistito sul flusso.
+                meta_raw = payload.get("meta")
+                meta = meta_raw if isinstance(meta_raw, dict) else None
                 if stato_corrente == "DA_ESEGUIRE":
                     # Modalita CONTESTUALE: avvio + esito in un'unica azione
                     # (DA_ESEGUIRE → IN_CORSO → COMPLETATO, stessa tx).
@@ -453,6 +466,7 @@ class ApiPraticaFlussoStato(DomainAPIView):
                         esito=str(payload["esito"]),
                         note_esito=payload.get("note_esito"),
                         user=acting_user,
+                        meta=meta,
                     )
                 else:
                     pratiche_service.completa_flusso(
@@ -462,6 +476,7 @@ class ApiPraticaFlussoStato(DomainAPIView):
                         # user acting (p_user): inoltrato agli handler di completamento
                         # (es. accetta_preventivo) per audit nelle fn DB di dominio.
                         user=acting_user,
+                        meta=meta,
                     )
             elif nuovo_stato == "IN_CORSO":
                 # user acting (p_user §8.5): username se disponibile, altrimenti

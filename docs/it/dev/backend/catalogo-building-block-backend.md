@@ -564,6 +564,21 @@ ai domini funzionali).
 
 ---
 
+## Pratiche — orchestrazione percorso (`apps/pratiche/`)
+
+Building block del motore pratiche riusati dai domini (vendite) per completare gli
+step del percorso senza duplicare la logica percorso + idempotenza. Il dominio
+risolve la *propria* pratica dal proprio documento e delega la transizione al
+motore (direzione anelli: vendite→pratiche).
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `completa_step_pratica` | [pratiche_service.py](../../../../backend/apps/pratiche/services/pratiche_service.py) | **BB orchestrazione dominio→motore (bivio-per-esito rev.3, estratto regola del 2).** `(pratica_id, *, template_codice, esito, user=None)`: trova il flusso ISTANZIATO di `template_codice` nel percorso e lo completa **idempotente**. Ritorna `{flusso_id: id\|None, stato_precedente, completato: bool}`: `flusso_id=None` → step non istanziato (il caller decide se no-op o errore); `completato=False` con flusso_id valorizzato → step già terminale (no-op su ri-azione); `completato=True` → transizione fatta (avvia+completa se `DA_ESEGUIRE`, altrimenti completa). Caller: `preventivi_service.completa_smistamento` (SMISTAMENTO) + `ordini_service._completa_flusso_ordine_pratica` (CONFERMA_ORDINE/INVIO_COMMESSA). |
+| `_STATI_FLUSSO_TERMINALI` | [pratiche_service.py](../../../../backend/apps/pratiche/services/pratiche_service.py) | Costante `("COMPLETATO", "ANNULLATO")`: mirror applicativo fail-fast della derivazione data-driven DB (`fn_pratica_flussi_aperti` / `trgfn_flussi_guard_pratica_terminale`) per l'idempotenza degli auto-completamenti. La guard DB resta autoritativa. |
+| `PraticheRepository.get_pratica_id_by_sorgente` | [pratiche_repository.py](../../../../backend/apps/pratiche/db/pratiche_repository.py) | Reverse di `upsert_pratica_sorgente`: risolve la pratica cui una sorgente è agganciata `(sorgente_codice, sorgente_uid, ruolo_link=None)` → `pratica_id\|None`. Usato per risalire alla pratica **dall'ordine** COLLEGATO (auto-completamento step 9013/9014). |
+
+---
+
 ## Mixin e Tipi (`apps/core/`)
 
 | Building Block | File | Descrizione |

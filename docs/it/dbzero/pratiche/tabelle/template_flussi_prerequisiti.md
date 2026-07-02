@@ -16,10 +16,10 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_template_flussi_prereq_esito |  |
 | CHECK | chk_template_flussi_prereq_no_self |  |
 | FOREIGN KEY | fk_template_flussi_prereq_flusso | template_flusso_id |
 | FOREIGN KEY | fk_template_flussi_prereq_prerequisito | prerequisito_id |
+| FOREIGN KEY | fk_tf_prereq_esito_richiesto | esito_richiesto |
 | PRIMARY KEY | pk_pratiche_template_flussi_prerequisiti | id |
 | UNIQUE | uq_pratiche_template_flussi_prereq_flusso_prereq | template_flusso_id, prerequisito_id |
 

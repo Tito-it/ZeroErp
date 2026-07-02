@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Proiezione stato di dominio — D3: vista union di motore.
+# (brief-db-proiezione-stato-dominio §4 D3, decisione A)
+#
+# UNICA SUPERFICIE DI DISPATCH: questa union E' il registro dei resolver.
+# Niente config.sorgenti.resolver_key, niente CASE statico (decisione A: la
+# tripla resolver_key + CASE + UNION era una tripla sorgente di verita' da
+# tenere allineata a mano). Registrare un dominio = aggiungere un ramo
+# UNION ALL con un NUOVO changeset (additivo, MAI modificare questo file dopo
+# il merge). Ogni ramo aggancia da se' il proprio sorgente_tipo_id via
+# config.sorgenti.codice_interno -> un tipo senza ramo semplicemente non ha
+# righe = non risolto (degrado a UNKNOWN nel wrapper fn_stato_sorgente).
+#
+# PLACEMENT script (decisione D): layer applicativo riusabile tra motore e
+# domini. Non in pratiche (l'engine non va editato a ogni nuovo dominio), non
+# in un dominio (e' cross-dominio). Layering: pratiche -> script -> dominio.
+#
+# risolto=true su ogni riga (decisione C): il consumatore distingue "APERTO
+# reale" dal fallback UNKNOWN del wrapper. Tipi normalizzati a text: i domini
+# hanno varchar di lunghezze diverse, la union le uniforma al contratto.
+#
+# USO LISTE (niente N+1): LEFT JOIN da pratiche.pratiche_sorgenti su
+# (sorgente_tipo_id, sorgente_uid); riga assente = dominio non risolto.
+# Dettaglio singolo: pratiche.fn_stato_sorgente (20260701-18).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260701-17-create-vw-stato-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20260701-17-create-vw-stato-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D3: crea script.vw_stato_sorgente, union dei resolver di dominio (oggi:
+        PREVENTIVI). Unica superficie di dispatch della proiezione stato
+        (decisione A, niente resolver_key): nuovi domini = nuovo ramo UNION ALL
+        via changeset additivo. Espone risolto=true e tipi normalizzati a text.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: vendite
+            viewName: vw_stato_sorgente_preventivo
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW script.vw_stato_sorgente AS
+              -- Ramo PREVENTIVI (vendite). Futuri domini: UNION ALL di un nuovo
+              -- ramo <dominio>.vw_stato_sorgente_<tipo> via changeset dedicato.
+              SELECT
+                  r.sorgente_tipo_id,
+                  r.sorgente_uid,
+                  true                        AS risolto,
+                  (r.stato_codice_interno)::text AS stato_codice_interno,
+                  (r.stato_codice)::text      AS stato_codice,
+                  (r.stato_descrizione)::text AS stato_descrizione,
+                  (r.fase)::text              AS fase,
+                  (r.esito)::text             AS esito,
+                  r.terminale
+                FROM vendite.vw_stato_sorgente_preventivo r;
+
+              COMMENT ON VIEW script.vw_stato_sorgente IS
+                'D3 (brief-db-proiezione-stato-dominio, decisione A): union dei resolver di dominio della proiezione stato — UNICA superficie di dispatch (nessun resolver_key/CASE). Chiave (sorgente_tipo_id, sorgente_uid), al piu'' una riga per chiave; riga assente = tipo/documento non risolto (il wrapper pratiche.fn_stato_sorgente degrada a UNKNOWN). risolto=true su ogni riga proiettata. Per le liste: LEFT JOIN da pratiche.pratiche_sorgenti. Nuovo dominio = nuovo ramo UNION ALL con changeset additivo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS script.vw_stato_sorgente;

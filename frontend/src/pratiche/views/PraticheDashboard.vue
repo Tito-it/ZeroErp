@@ -4,14 +4,19 @@
 // Layout: colonna full-width = pannello collassabile sempre visibile, poi
 // SearchTable e roadmap percorso. Adattabile ai piccoli schermi (niente larghezza fissa).
 // Riusa: MieAttivitaPanel, PraticheSearchTable, PraticaPercorso, PraticaDrawer, FlussoDrawer.
-import { ref, shallowRef, computed, watch, onMounted, onUnmounted, nextTick, markRaw } from 'vue'
+import { ref, shallowRef, computed, watch, onMounted, onActivated, onUnmounted, nextTick, markRaw } from 'vue'
+import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useNotify } from '../../core/composables/useNotify'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { READONLY_DOMAINS, STATI_PRATICA_TERMINALI, STATO_FLUSSO } from '../../core/constants'
+import { provideTechnicalMode } from '../../core/composables/useTechnicalMode'
+import { useAuthStore } from '../../stores/auth'
+import { MANAGE_ICONS, READONLY_DOMAINS, STATI_PRATICA_TERMINALI, STATO_FLUSSO } from '../../core/constants'
 import { usePraticheStore } from '../stores/pratiche'
+import { usePrendiInCarico } from '../composables/usePrendiInCarico'
 import MieAttivitaPanel from '../components/MieAttivitaPanel.vue'
 import PraticheSearchTable from '../components/PraticheSearchTable.vue'
 import PraticaPercorso from '../components/PraticaPercorso.vue'
@@ -21,13 +26,91 @@ import { getUiActivity } from '../uiActivityRegistry'
 import { getFlusso, createFlusso, cambiaStatoFlusso } from '../api/pratiche-api'
 
 const { t } = useI18n()
+const route = useRoute()
 const store = usePraticheStore()
 const drawer = useDrawerState()
+
+// Deep-link dalla home launcher (PraticheHome): la home non esegue azioni di
+// business, apre la dashboard "in uno stato preimpostato" via query param.
+// - tipo_prestazione_id → filtro tipo attivo; il valore 0 azzera la lente
+//   ("Tutte le pratiche"); param assente = non toccare (navigazione da menu).
+// - pratica_id (+flusso_id) → selezione pratica + percorso (stessa semantica
+//   del click in coda).
+// ⚠️ KeepAlive (AppLayout, key=$route.path): la dashboard viene messa in cache
+// e ri-attivata senza remount — setup/onMounted girano UNA volta sola. I
+// deep-link si applicano quindi in onActivated (fired anche al primo mount),
+// in modo idempotente. Il filtro tipo e' pero' anticipato ANCHE nel setup:
+// al primo mount la SearchTable figlia inizializza i Select da store.filters
+// nel proprio setup (che gira dopo questo) e fa la fetch eager gia' filtrata.
+function _queryId(name) {
+  // vue-router: param ripetuto → array; prendi il primo. NaN/negativi → null.
+  const raw = route.query[name]
+  const v = Number(Array.isArray(raw) ? raw[0] : raw)
+  return raw != null && Number.isInteger(v) && v >= 0 ? v : null
+}
+
+// Scopo: applica il deep-link del filtro tipo. `refetch` true quando la lista
+// puo' essere gia' stata caricata (ri-attivazioni): la SearchTable in cache
+// non rifetcha da sola.
+function applyTipoDeepLink({ refetch }) {
+  const tipoId = _queryId('tipo_prestazione_id')
+  if (tipoId == null) return
+  const next = tipoId > 0 ? tipoId : null // 0 = azzera la lente
+  if (store.filters.tipo_prestazione_id === next) return
+  store.filters.tipo_prestazione_id = next
+  store.filters.offset = 0
+  if (refetch) store.fetchList()
+}
+
+// Scopo: applica il deep-link di selezione pratica (+flusso evidenziato).
+// Ricarica il percorso anche a parita' di pratica (freshness su ri-attivazione).
+function applyPraticaDeepLink() {
+  const praticaId = _queryId('pratica_id')
+  if (!praticaId) return
+  selectedFlussoId.value = _queryId('flusso_id') || null
+  if (store.selectedPraticaId !== praticaId) {
+    store.selectedPraticaId = praticaId // il watch carica il percorso
+  } else {
+    loadPercorsoPratica(praticaId)
+  }
+}
+
+applyTipoDeepLink({ refetch: false }) // primo mount: fetcha la SearchTable
 const { execute } = useApiHandler()
+const notify = useNotify()
 useReadonlyMode(READONLY_DOMAINS.PRATICHE)
 
-// --- Coda lavoro ---
-onMounted(() => { store.loadCodaLavoro() })
+// Modalita' tecnica (diagnostica super-admin, B5): toggle opt-in che riespone
+// il plumbing del motore (codici/sequenza/stati/rami) nelle viste runtime
+// (PraticaPercorso, FlussoDrawer). Default spento; il toggle e' visibile solo
+// agli ADMIN (auth.isSuperAdmin). Il flag e' fornito ai figli via provide.
+const auth = useAuthStore()
+const modalitaTecnica = ref(false)
+provideTechnicalMode(modalitaTecnica)
+
+// Percorso a comparsa (master-detail sotto la lista): visibile solo con una
+// pratica selezionata; collassabile per ridare spazio alla lista.
+const percorsoCollapsed = ref(false)
+
+// --- Coda lavoro + deep-link (KeepAlive-aware) ---
+onMounted(() => {
+  // Remount dopo eviction dalla cache KeepAlive: selectedPraticaId persiste
+  // nello store ma il percorso (ref locale) riparte vuoto e il watch scatta
+  // solo sul CAMBIO di id → ricarica esplicita (il deep-link, se presente,
+  // e' gestito da onActivated subito dopo).
+  if (store.selectedPraticaId && !_queryId('pratica_id')) {
+    loadPercorsoPratica(store.selectedPraticaId)
+  }
+})
+
+// onActivated scatta al primo mount E ad ogni ri-attivazione dalla cache:
+// unico punto affidabile per applicare i deep-link (idempotenti) e tenere
+// fresca la coda al rientro dalla home.
+onActivated(() => {
+  store.loadCodaLavoro()
+  applyTipoDeepLink({ refetch: true })
+  applyPraticaDeepLink()
+})
 
 function onCodaSelectFlusso(item) {
   // Seleziona la pratica nella tabella, evidenzia il flusso in coda e carica i flussi
@@ -36,16 +119,11 @@ function onCodaSelectFlusso(item) {
   loadPercorsoPratica(item.pratica_id)
 }
 
-async function onPrendiInCarico(item) {
-  const result = await execute(
-    () => store.prendiInCarico(item.flusso_id),
-    { successMessage: t('pratiche.preso_in_carico') }
-  )
-  if (result !== null) {
-    await store.loadCodaLavoro()
-    if (store.selectedPraticaId) await loadPercorsoPratica(store.selectedPraticaId)
-  }
-}
+// Prendi in carico: azione condivisa (usePrendiInCarico); qui in piu' si
+// rinfresca il percorso della pratica selezionata.
+const { prendiInCarico: onPrendiInCarico } = usePrendiInCarico(async () => {
+  if (store.selectedPraticaId) await loadPercorsoPratica(store.selectedPraticaId)
+})
 
 // --- Percorso (roadmap) della pratica selezionata ---
 const percorso = ref([])
@@ -89,8 +167,16 @@ const selectedItem = computed(
     : null) || null,
 )
 
-// Codice della pratica selezionata (per barra contesto sopra flussi)
-const selectedPraticaCodice = computed(() => selectedItem.value?.codice || null)
+// Codice della pratica selezionata (per barra contesto sopra flussi).
+// Fallback `#id`: una pratica deep-linkata puo' non essere nella lista
+// filtrata corrente (data_da/tipo) → niente riga in store.items, ma il
+// percorso funziona lo stesso e la barra non deve restare senza riferimento.
+// (Per la stessa ragione selectedPraticaReadonly puo' non vedere lo stato
+// terminale: la difesa autoritativa restano i guard DB con errore parlante.)
+const selectedPraticaCodice = computed(
+  () => selectedItem.value?.codice
+    || (store.selectedPraticaId ? `#${store.selectedPraticaId}` : null),
+)
 
 // Pratica selezionata in stato terminale (CHIUSA/ANNULLATA) → percorso e flussi
 // in sola lettura: niente nuovi step, flussi esistenti consultabili ma non
@@ -227,6 +313,12 @@ async function onOpenAttivita(payload) {
     // invece di crearne uno nuovo (il lucchetto unico per-flusso a DB impedisce
     // comunque il doppione). Resolver opzionale e best-effort.
     const existingId = entry.resolveExisting ? await entry.resolveExisting(ctx) : null
+    // Step a valle (es. SMISTAMENTO): il documento DEVE gia' esistere. Niente
+    // fallback in create (eviterebbe un documento orfano): errore parlante e stop.
+    if (entry.requiresExisting && existingId == null) {
+      notify.error(t('pratiche.attivita_documento_mancante'))
+      return
+    }
     activityEntry.value = entry
     activityCtx.value = ctx
     activityProps.value = entry.buildProps(ctx, existingId)
@@ -328,10 +420,16 @@ onUnmounted(() => {
         />
       </div>
 
-      <!-- Barra contesto pratica + flussi — v-show mantiene spazio nel flex layout -->
-      <div class="dashboard-flussi-wrapper">
+      <!-- Percorso della pratica selezionata (master-detail a comparsa): appare
+           solo con una pratica selezionata, collassabile per ridare spazio alla
+           lista. -->
+      <div
+        v-if="store.selectedPraticaId"
+        class="dashboard-flussi-wrapper"
+        :class="{ 'is-collapsed': percorsoCollapsed }"
+      >
         <div class="dashboard-flussi-context">
-          <span v-if="selectedPraticaCodice" class="flussi-context-label">
+          <span class="flussi-context-label">
             <i class="pi pi-folder-open" />
             {{ t('pratiche.visualizzazione_pratica', { codice: selectedPraticaCodice }) }}
             <Button
@@ -343,11 +441,29 @@ onUnmounted(() => {
               @click="onApriScheda"
             />
           </span>
-          <span v-else class="flussi-context-hint">
-            {{ t('pratiche.flussi_panel_vuoto') }}
-          </span>
+          <!-- Toggle modalità tecnica (super-admin): riespone il plumbing del
+               motore nelle viste runtime. Opt-in, mai il default operatore. -->
+          <Button
+            v-if="auth.isSuperAdmin"
+            :label="t('pratiche.modalita_tecnica')"
+            :icon="modalitaTecnica ? 'pi pi-eye-slash' : 'pi pi-wrench'"
+            text
+            size="small"
+            class="tecnico-toggle"
+            :aria-pressed="modalitaTecnica"
+            @click="modalitaTecnica = !modalitaTecnica"
+          />
+          <button
+            type="button"
+            class="app-collapse-toggle"
+            :aria-label="t(percorsoCollapsed ? 'pratiche.percorso_espandi' : 'pratiche.percorso_comprimi')"
+            :aria-expanded="!percorsoCollapsed"
+            @click="percorsoCollapsed = !percorsoCollapsed"
+          >
+            <i :class="percorsoCollapsed ? MANAGE_ICONS.EXPAND : MANAGE_ICONS.COLLAPSE" />
+          </button>
         </div>
-        <div class="dashboard-flussi">
+        <div v-show="!percorsoCollapsed" class="dashboard-flussi">
           <PraticaPercorso
             :percorso="percorso"
             :loading="percorsoLoading"
@@ -365,11 +481,14 @@ onUnmounted(() => {
     </main>
 
     <!-- Drawer: Creazione/Dettaglio pratica -->
+    <!-- Preset B6: "Nuova pratica" col filtro tipo attivo parte gia' su quel
+         tipo (default visibile e modificabile, non un lock). -->
     <PraticaDrawer
       :visible="drawer.state.visible"
       @update:visible="v => drawer.state.visible = v"
       :mode="drawer.state.mode"
       :pratica-id="drawer.state.itemId"
+      :preset-tipo-prestazione-id="store.filters.tipo_prestazione_id"
       @saved="onDrawerSaved"
       @cancelled="drawer.close"
     />
@@ -405,7 +524,7 @@ onUnmounted(() => {
 <style scoped>
 .pratiche-dashboard {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100%;
   overflow: hidden;
   gap: 0;
@@ -426,13 +545,20 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-/* Wrapper flussi: altezza fissa, non comprimibile */
+/* Percorso: master-detail sotto la lista, altezza generosa e collassabile. */
 .dashboard-flussi-wrapper {
-  height: 230px;
-  flex: 0 0 230px;
+  flex: 0 0 auto;
+  height: 42vh;
+  min-height: 170px;
+  max-height: 65vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+.dashboard-flussi-wrapper.is-collapsed {
+  height: auto;
+  min-height: 0;
+  max-height: none;
 }
 
 /* Barra contesto pratica sopra il separatore */
@@ -447,18 +573,21 @@ onUnmounted(() => {
   flex: 0 0 auto;
 }
 
+/* La label occupa lo spazio libero → i pulsanti (tecnico, collassa) vanno a destra. */
 .flussi-context-label {
   color: var(--p-info-color, var(--p-primary-color));
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-.flussi-context-hint {
-  color: var(--text-color-secondary);
-  font-style: italic;
-  font-weight: 400;
+.tecnico-toggle {
+  flex: 0 0 auto;
 }
+
+/* Toggle collassa/espandi percorso: classe condivisa .app-collapse-toggle (main.css). */
 
 .dashboard-flussi {
   flex: 1 1 0;
@@ -466,9 +595,10 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-/* Tablet/mobile: il container scrolla, le sezioni non si comprimono */
+/* Tablet/mobile: la dashboard impila (rail sopra) e scrolla per intero */
 @media (max-width: 1279px) {
   .pratiche-dashboard {
+    flex-direction: column;
     overflow-y: auto;
     overflow-x: hidden;
   }
@@ -479,10 +609,11 @@ onUnmounted(() => {
   .dashboard-table {
     overflow: visible;
     flex: 0 0 auto;
+    min-height: 55vh;
   }
   .dashboard-flussi-wrapper {
-    height: 200px;
-    flex: 0 0 200px;
+    height: auto;
+    max-height: none;
   }
 }
 </style>

@@ -1,17 +1,36 @@
 <script setup>
-// Scopo: Roadmap del percorso pratica = template_flussi del tipo_prestazione in
-// ordine, ciascuno con lo stato di istanziazione. I flussi NON sono materializzati
-// alla creazione (percorsi condizionali): la roadmap mostra il percorso suggerito
-// e permette di creare/eseguire lo step (template-bound) o aprire quello esistente.
-// Le regole di prerequisito (esito-aware) sono a DB: cliccare uno step non ancora
-// abilitato → errore parlante (gestito dal parent via toast).
+// Scopo: vista-racconto del percorso pratica per l'operatore (brief FE
+// "percorso narrativo"). Il percorso e' i template_flussi del tipo_prestazione;
+// la fn DB dice per ciascuno lo stato del ramo (`ramo`). La vista racconta il
+// viaggio in tre fasce — FATTI (✓), ADESSO (1..N azioni), POI (testo) —
+// nascondendo grafo, stati-macchina, sequenza e rami morti.
+//
+//   ramo COMPLETATO  → FATTI      (con descrizione + esito umano)
+//   ramo PERCORRIBILE→ ADESSO     (1..N passi attivi: istanza in corso o step
+//                                  pronto da creare; una azione primaria ciascuno)
+//   ramo FUTURO      → POI        (solo come testo leggero)
+//   ramo RAMO_CHIUSO → nascosto   (bivio non preso)
+//
+// Le regole (prerequisiti esito-aware, ripetibilita', rami) restano a DB con
+// errore parlante: qui nessuna logica di business duplicata.
+//
+// Modalita' tecnica (super-admin, B5): quando il flag iniettato e' attivo, la
+// vista ri-espone il "plumbing" del motore — codici, sequenza, stati-macchina,
+// rami — nel rendering a card orizzontali (ramo `tecnico` sotto). Default: spento.
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { statoFlussoSeverity } from '../../core/utils/severity'
+import { statoFlussoSeverity, faseSorgenteSeverity } from '../../core/utils/severity'
 import { RAMO_STEP, STATO_FLUSSO } from '../../core/constants'
+import { useInjectTechnicalMode } from '../../core/composables/useTechnicalMode'
 import { getUiActivity } from '../uiActivityRegistry'
 import Tag from 'primevue/tag'
+import Button from 'primevue/button'
 
 const { t } = useI18n()
+
+// Flag modalita' tecnica (default false = vista operatore). Provider + toggle
+// ADMIN (auth.isSuperAdmin) montati in PraticheDashboard (provideTechnicalMode).
+const tecnico = useInjectTechnicalMode()
 
 const props = defineProps({
   percorso: { type: Array, default: () => [] },
@@ -30,10 +49,68 @@ const props = defineProps({
 
 const emit = defineEmits(['open-flusso', 'create-flusso', 'open-attivita'])
 
+// --- Fasce della vista-racconto (derivate dal `ramo` calcolato dal DB) ---
+// Regola di presentazione: un'istanza APERTA (DA_ESEGUIRE/IN_CORSO/SOSPESO) e'
+// SEMPRE lavoro vivo → fascia ADESSO, qualunque sia il `ramo` del template.
+// Copre due casi reali che il solo `ramo` nasconderebbe:
+//  - ramo COMPLETATO con nuova istanza aperta dopo "Ripeti" (la fn di chiusura
+//    vede l'istanza chiusa precedente e vince nel CASE);
+//  - ramo RAMO_CHIUSO con istanza gia' avviata prima che il bivio prendesse
+//    l'altra strada (il ramo si nasconde, il lavoro in corso no).
+const STATI_ISTANZA_APERTA = [
+  STATO_FLUSSO.DA_ESEGUIRE, STATO_FLUSSO.IN_CORSO, STATO_FLUSSO.SOSPESO,
+]
+function istanzaAperta(step) {
+  return Boolean(step.flusso_id) && STATI_ISTANZA_APERTA.includes(step.stato_codice_interno)
+}
+const fatti = computed(
+  () => props.percorso.filter(s => s.ramo === RAMO_STEP.COMPLETATO && !istanzaAperta(s)),
+)
+const adesso = computed(
+  () => props.percorso.filter(s => s.ramo === RAMO_STEP.PERCORRIBILE || istanzaAperta(s)),
+)
+const poi = computed(() => props.percorso.filter(s => s.ramo === RAMO_STEP.FUTURO))
+const percorsoVuoto = computed(
+  () => !fatti.value.length && !adesso.value.length && !poi.value.length,
+)
+// Passi ADESSO con l'affordance di dominio pre-risolta (una volta per step,
+// non 3 lookup a registry per render dentro il v-for).
+const adessoConAttivita = computed(
+  () => adesso.value.map(step => ({ step, attivita: uiActivityFor(step) })),
+)
+// "Poi …" come testo: descrizioni degli step futuri in sequenza. Senza segnale
+// certo-vs-condizionale dal DB (P0.3 non consegnata), elenca i FUTURO come testo;
+// i rami chiusi non compaiono comunque.
+const poiTesto = computed(() => poi.value.map(stepTitolo).join(', '))
+
+// Titolo umano dello step: descrizione (fallback codice).
+function stepTitolo(step) {
+  return step.template_flusso_descrizione || step.template_flusso_codice
+}
+
+// Proiezione V10 (fase MOSTRA): lo step con documento agganciato mostra lo
+// stato VIVO del documento (display fields doc_* dal BE, read-time).
+// Asimmetria voluta fra le fasce: sui passi FATTI il Tag compare solo finche'
+// il documento vive (doc_terminale=false — il caso "il flusso si chiude
+// all'emissione ma il preventivo continua a vivere"; a documento chiuso
+// tacere, l'esito del passo basta); sulla card ADESSO compare SEMPRE, anche
+// terminale (sul passo attivo lo stato finale del documento e' informazione
+// operativa). doc_risolto=false/NULL → nessuna proiezione (milestone come
+// oggi); doc_terminale e' NOT NULL a modello quando risolto (D1).
+function docVivo(step) {
+  return step.doc_risolto === true
+}
+function docSev(step) {
+  return faseSorgenteSeverity(step.doc_fase, step.doc_esito)
+}
+// Severity dal codice interno dello stato (invariata: unico valore mappato).
+function statoSev(step) {
+  return step.flusso_id ? statoFlussoSeverity(step.stato_codice_interno) : 'secondary'
+}
+
 // Attività UI di dominio offribile dallo step (azione_ui_key dal template):
-// affordance "apri documento" diretta dalla roadmap, gemella del pulsante nel
-// FlussoDrawer. Gating: non readonly, attività registrata, e (se richiesto dal
-// documento) pratica con cliente attivo (BA presente). null = nessuna affordance.
+// affordance "apri documento" diretta, gemella del pulsante nel FlussoDrawer.
+// Gating: non readonly, attività registrata, e (se richiesto) cliente attivo.
 function uiActivityFor(step) {
   if (props.readonly) return null
   const act = getUiActivity(step.template_azione_ui_key)
@@ -56,40 +133,39 @@ function onApriAttivita(step) {
   })
 }
 
-function statoLabel(step) {
-  return step.flusso_id ? step.stato_codice_interno : t('pratiche.percorso_da_creare')
-}
-function statoSev(step) {
-  return step.flusso_id ? statoFlussoSeverity(step.stato_codice_interno) : 'secondary'
-}
-// Ramo morto (workflow v2 D4): il bivio ha preso l'altra strada. Solo resa
-// visiva: il click resta possibile (il guard prerequisiti a DB risponde con
-// errore parlante — nessuna regola duplicata lato FE).
-function isRamoChiuso(step) {
-  return step.ramo === RAMO_STEP.RAMO_CHIUSO
-}
-// Ripeti (workflow v2 D3): un'istanza esiste gia' E una nuova e' creabile
-// ORA. La decisione e' interamente del DB (fn_check_ripetibilita_flusso:
-// regola template + stato/esito dell'ultima istanza) — nessuna condizione
-// sullo stato qui, coprirebbe male i casi ANNULLATO/ERRORE che il flag
-// gia' considera.
-function canRipeti(step) {
-  // Pratica terminale: niente ripetizione (creerebbe un nuovo flusso).
-  return !props.readonly && Boolean(step.flusso_id) && step.ripetibile_adesso === true
-}
-// Step "da creare" non cliccabile su pratica terminale: nessun nuovo flusso.
-function isStepCliccabile(step) {
-  return Boolean(step.flusso_id) || !props.readonly
-}
+// Azione primaria generica dello step ADESSO (quando non c'e' un'affordance di
+// dominio): apri l'istanza esistente, oppure creala ed eseguila.
 function onClick(step) {
   if (props.busy) return
   if (step.flusso_id) { emit('open-flusso', step.flusso_id); return }
   if (props.readonly) return
   emit('create-flusso', step.template_flusso_id)
 }
+// Un passo ADESSO e' azionabile con la primaria generica se: ha gia' un'istanza
+// (sempre apribile, anche readonly → drawer in sola lettura) OPPURE e' creabile
+// (non readonly). In readonly senza istanza → non azionabile (niente nuovo flusso).
+function canActGenerico(step) {
+  return Boolean(step.flusso_id) || !props.readonly
+}
+
+// Ripeti (workflow v2 D3): un'istanza chiusa esiste E una nuova e' creabile ORA.
+// Decisione interamente del DB (`ripetibile_adesso`). Offerta come link discreto
+// sia sul passo FATTO sia sulla card ADESSO: un'istanza ANNULLATO/ERRORE lascia
+// lo step percorribile (→ ADESSO) e il retry deve restare raggiungibile.
+function canRipeti(step) {
+  return !props.readonly && Boolean(step.flusso_id) && step.ripetibile_adesso === true
+}
 function onRipeti(step) {
   if (props.busy) return
   emit('create-flusso', step.template_flusso_id)
+}
+
+// --- Helpers usati SOLO dal rendering tecnico (super-admin) ---
+function statoLabel(step) {
+  return step.flusso_id ? step.stato_codice_interno : t('pratiche.percorso_da_creare')
+}
+function isRamoChiuso(step) {
+  return step.ramo === RAMO_STEP.RAMO_CHIUSO
 }
 </script>
 
@@ -103,7 +179,117 @@ function onRipeti(step) {
 
     <template v-else>
       <div class="percorso-header">{{ t('pratiche.percorso_titolo') }}</div>
-      <div class="percorso-steps">
+
+      <!-- ============================ VISTA OPERATORE (racconto) ============================ -->
+      <div v-if="!tecnico" class="rac">
+        <div v-if="percorsoVuoto" class="rac-vuoto">{{ t('pratiche.percorso_vuoto') }}</div>
+
+        <template v-else>
+          <!-- FATTI: passi conclusi, compatti, con esito umano -->
+          <div v-if="fatti.length" class="rac-fatti">
+            <div v-for="step in fatti" :key="step.template_flusso_id" class="rac-fatto">
+              <i class="pi pi-check-circle rac-fatto-icon" />
+              <span class="rac-fatto-title">{{ stepTitolo(step) }}</span>
+              <span v-if="step.esito_descrizione" class="rac-fatto-esito">· {{ step.esito_descrizione }}</span>
+              <!-- Documento del passo ancora VIVO dopo la chiusura del passo
+                   (proiezione V10): la pratica non va piu' "cieca". -->
+              <span v-if="docVivo(step) && !step.doc_terminale" class="rac-doc">
+                ·
+                <Tag
+                  :value="step.doc_stato_descrizione"
+                  :severity="docSev(step)"
+                  size="small"
+                  :title="step.doc_sorgente_descrizione"
+                />
+              </span>
+              <span
+                v-if="canRipeti(step)"
+                class="rac-ripeti"
+                :title="t('pratiche.percorso_ripeti_hint')"
+                @click="onRipeti(step)"
+              >
+                <i class="pi pi-replay" /> {{ t('pratiche.percorso_ripeti') }}
+              </span>
+            </div>
+          </div>
+
+          <!-- ADESSO: 1..N passi attivi, ciascuno con una azione primaria -->
+          <div v-for="{ step, attivita } in adessoConAttivita" :key="step.template_flusso_id" class="rac-adesso">
+            <div class="rac-adesso-head">
+              <span class="rac-adesso-label">{{ t('pratiche.percorso_adesso') }}</span>
+              <Tag
+                v-if="step.flusso_id && step.stato_descrizione"
+                :value="step.stato_descrizione"
+                :severity="statoSev(step)"
+                size="small"
+              />
+            </div>
+            <div class="rac-adesso-title">{{ stepTitolo(step) }}</div>
+            <!-- Stato vivo del documento collegato al passo (proiezione V10):
+                 "sei qui nella vita del documento" senza uscire dalla pratica. -->
+            <div v-if="docVivo(step)" class="rac-adesso-doc">
+              <span class="rac-doc-label">{{ step.doc_sorgente_descrizione }}</span>
+              <Tag
+                :value="step.doc_stato_descrizione"
+                :severity="docSev(step)"
+                size="small"
+              />
+            </div>
+            <div class="rac-adesso-actions">
+              <!-- Affordance di dominio (apri documento) se dichiarata dal template… -->
+              <Button
+                v-if="attivita"
+                :label="t(attivita.label)"
+                :icon="attivita.icon"
+                size="small"
+                :disabled="busy"
+                @click="onApriAttivita(step)"
+              />
+              <!-- Azione generica: primaria se non c'e' attivita' di dominio;
+                   secondaria (testuale) accanto all'attivita' quando l'istanza
+                   esiste — registrare esito/sospendere/assegnare passa dal
+                   drawer del passo e deve restare raggiungibile. -->
+              <Button
+                v-if="!attivita && canActGenerico(step)"
+                :label="step.flusso_id ? t('pratiche.percorso_apri') : t('pratiche.percorso_crea')"
+                :icon="step.flusso_id ? 'pi pi-folder-open' : 'pi pi-plus-circle'"
+                size="small"
+                :disabled="busy"
+                @click="onClick(step)"
+              />
+              <Button
+                v-else-if="attivita && step.flusso_id"
+                :label="t('pratiche.percorso_apri')"
+                icon="pi pi-folder-open"
+                size="small"
+                text
+                :disabled="busy"
+                @click="onClick(step)"
+              />
+              <!-- Retry di un'istanza ANNULLATO/ERRORE ancora percorribile -->
+              <span
+                v-if="canRipeti(step)"
+                class="rac-ripeti"
+                :title="t('pratiche.percorso_ripeti_hint')"
+                @click="onRipeti(step)"
+              >
+                <i class="pi pi-replay" /> {{ t('pratiche.percorso_ripeti') }}
+              </span>
+              <span v-if="!attivita && !canActGenerico(step)" class="rac-locked">
+                <i class="pi pi-lock" /> {{ t('pratiche.percorso_non_disponibile') }}
+              </span>
+            </div>
+          </div>
+
+          <!-- POI: prossimi passi come testo leggero (non card cliccabili) -->
+          <div v-if="poi.length" class="rac-poi">
+            <span class="rac-poi-label">{{ t('pratiche.percorso_poi') }}:</span> {{ poiTesto }}
+          </div>
+        </template>
+      </div>
+
+      <!-- ===================== VISTA TECNICA (super-admin, B5) — plumbing motore ===================== -->
+      <div v-else class="percorso-steps">
         <template v-for="(step, i) in percorso" :key="step.template_flusso_id">
           <div
             class="percorso-step"
@@ -112,7 +298,7 @@ function onRipeti(step) {
               'percorso-step-todo': !step.flusso_id,
               'percorso-step-busy': busy,
               'percorso-step-ramo-chiuso': isRamoChiuso(step),
-              'percorso-step-disabled': !isStepCliccabile(step),
+              'percorso-step-disabled': !canActGenerico(step),
             }"
             @click="onClick(step)"
           >
@@ -131,11 +317,22 @@ function onRipeti(step) {
             <div v-if="step.esito" class="percorso-step-esito">
               {{ t('pratiche.flusso_esito') }}: <strong>{{ step.esito }}</strong>
             </div>
+            <!-- Plumbing proiezione V10: descrittore raw del documento sorgente.
+                 risolto=false = link presente ma dominio senza resolver (decisione C):
+                 marcatore esplicito, non campi vuoti. -->
+            <div v-if="step.doc_risolto === true" class="percorso-step-esito">
+              doc: {{ step.doc_stato_codice_interno }} · {{ step.doc_fase }}
+              <template v-if="step.doc_esito">· {{ step.doc_esito }}</template>
+              <template v-if="step.doc_terminale">· terminale</template>
+            </div>
+            <div v-else-if="step.doc_risolto === false" class="percorso-step-esito">
+              doc: UNKNOWN (no resolver)
+            </div>
             <div v-if="isRamoChiuso(step)" class="percorso-step-action percorso-ramo-chiuso">
               <i class="pi pi-ban" :title="t('pratiche.percorso_ramo_chiuso_hint')" />
               {{ t('pratiche.percorso_ramo_chiuso') }}
             </div>
-            <div v-else-if="!isStepCliccabile(step)" class="percorso-step-action">
+            <div v-else-if="!canActGenerico(step)" class="percorso-step-action">
               <i class="pi pi-lock" :title="t('pratiche.percorso_non_disponibile')" />
               {{ t('pratiche.percorso_non_disponibile') }}
             </div>
@@ -151,8 +348,6 @@ function onRipeti(step) {
                 <i class="pi pi-replay" /> {{ t('pratiche.percorso_ripeti') }}
               </span>
             </div>
-            <!-- Affordance "apri documento" (data-driven da azione_ui_key): scorciatoia
-                 diretta dalla roadmap, gemella del pulsante nel FlussoDrawer. -->
             <div
               v-if="uiActivityFor(step)"
               class="percorso-step-action percorso-attivita"
@@ -200,6 +395,133 @@ function onRipeti(step) {
   flex-shrink: 0;
 }
 
+/* ---------------- Vista-racconto (operatore) ---------------- */
+.rac {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem;
+  overflow-y: auto;
+  flex: 1;
+  /* Senza min-height:0 il figlio flex non scende sotto l'altezza del contenuto
+     (min-height:auto) → overflow-y non si attiva e il pannello (overflow:hidden)
+     taglia il fondo del racconto. Con min-height:0 scrolla dentro i suoi 230px. */
+  min-height: 0;
+}
+
+.rac-vuoto {
+  color: var(--text-color-secondary);
+  font-size: 0.85rem;
+  padding: 0.5rem 0;
+}
+
+/* FATTI */
+.rac-fatti {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rac-fatto {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--text-color-secondary);
+}
+
+.rac-fatto-icon {
+  color: var(--app-success-color);
+  font-size: 0.9rem;
+}
+
+.rac-fatto-title { font-weight: 500; }
+.rac-fatto-esito { font-style: italic; }
+
+/* Proiezione documento sorgente (V10) */
+.rac-doc {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.rac-adesso-doc {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.rac-doc-label {
+  color: var(--app-text-muted);
+}
+
+.rac-ripeti {
+  margin-left: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: var(--p-primary-color);
+  font-weight: 600;
+  cursor: pointer;
+}
+.rac-ripeti:hover { text-decoration: underline; }
+
+/* ADESSO */
+.rac-adesso {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem;
+  border: 1px solid var(--p-primary-color);
+  border-radius: 8px;
+  background: var(--surface-0);
+}
+
+.rac-adesso-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rac-adesso-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--p-primary-color);
+}
+
+.rac-adesso-title {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.rac-adesso-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rac-locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--text-color-secondary);
+}
+
+/* POI */
+.rac-poi {
+  font-size: 0.82rem;
+  color: var(--text-color-secondary);
+  line-height: 1.4;
+}
+.rac-poi-label { font-weight: 600; }
+
+/* ---------------- Vista tecnica (super-admin) — rendering a card orizzontali ---------------- */
 .percorso-steps {
   display: flex;
   align-items: stretch;
@@ -232,11 +554,8 @@ function onRipeti(step) {
 .percorso-step-done { opacity: 0.8; }
 .percorso-step-todo { border-style: dashed; }
 .percorso-step-busy { pointer-events: none; opacity: 0.6; }
-/* Step "da creare" su pratica terminale: non cliccabile (niente nuovi flussi). */
 .percorso-step-disabled { cursor: not-allowed; opacity: 0.5; }
 .percorso-step-disabled:hover { background: var(--surface-0); border-color: var(--surface-border); }
-/* Ramo morto (D4): attenuato e tratteggiato fitto — visivamente "fuori
-   strada", ma resta cliccabile (guard parlante a DB). */
 .percorso-step-ramo-chiuso { opacity: 0.5; border-style: dotted; }
 
 .percorso-step-top {
@@ -279,7 +598,6 @@ function onRipeti(step) {
 
 .percorso-ramo-chiuso { color: var(--text-color-secondary); }
 
-/* Affordance "apri documento": scorciatoia accentata sotto l'azione dello step. */
 .percorso-attivita {
   margin-top: 0.3rem;
   font-weight: 600;
@@ -294,7 +612,6 @@ function onRipeti(step) {
   gap: 0.2rem;
   font-weight: 600;
 }
-
 .percorso-ripeti:hover { text-decoration: underline; }
 
 .percorso-arrow {

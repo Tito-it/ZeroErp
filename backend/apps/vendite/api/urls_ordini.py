@@ -22,6 +22,7 @@ from apps.vendite.api.views_ordini import (
     ApiOrdineCambiaStato,
     ApiOrdineConferma,
     ApiOrdineDetail,
+    ApiOrdinePerPratica,
     ApiOrdinePush,
     ApiOrdineRiepilogoIva,
     ApiOrdineRigaComponenteDetail,
@@ -40,6 +41,11 @@ urlpatterns = [
     # Form-defaults BA-aware (utility/valuta) per il drawer.
     path("form-defaults/", ApiOrdineFormDefaults.as_view(),
          name="vendite-ordine-form-defaults"),
+
+    # Step pratica a valle: risolve l'ordine COLLEGATO della pratica
+    # (prima di <int:ordine_id>/ per matchare il path dedicato).
+    path("per-pratica/", ApiOrdinePerPratica.as_view(),
+         name="vendite-ordine-per-pratica"),
 
     # Lista + create
     path("", ApiOrdiniList.as_view(), name="vendite-ordini-list"),

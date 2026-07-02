@@ -476,6 +476,39 @@ class ApiPreventivoRootPerFlusso(DomainAPIView):
         return success_response(preventivi_service.get_root_per_flusso(flusso_id))
 
 
+class ApiPreventivoRootPerPratica(DomainAPIView):
+    """`GET /api/v1/vendite/preventivi/root-per-pratica/?pratica_id=<id>`:
+    risolve il preventivo ROOT della PRATICA (non per-flusso). Alimenta gli step
+    a valle del percorso (es. SMISTAMENTO) che operano sul preventivo gia'
+    agganciato a monte. Ritorna `{"preventivo_id": <id|null>}`. Lettura libera."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="pratica_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=True,
+            ),
+        ],
+        responses={200: inline_serializer(
+            name="PreventivoRootPerPraticaResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    def get(self, request: Request) -> JsonResponse:
+        pratica_id = optional_int({"v": request.query_params.get("pratica_id")}, "v")
+        ErrorManager.require(
+            pratica_id is not None,
+            code="E_PRATICA_ID_OBBLIGATORIO",
+            message="pratica_id obbligatorio.",
+        )
+        assert pratica_id is not None
+        return success_response(preventivi_service.get_root_per_pratica(pratica_id))
+
+
 class ApiPreventivoRevisioniList(DomainAPIView):
     area_funzionale = "vendite"
 
@@ -1042,6 +1075,38 @@ class ApiPreventivoSmistamento(DomainAPIView):
     def get(self, request: Request, preventivo_id: int) -> JsonResponse:
         data = preventivi_service.smistamento(preventivo_id)
         return success_response(data)
+
+
+class ApiPreventivoCompletaSmistamento(DomainAPIView):
+    """`POST /api/v1/vendite/preventivi/<id>/completa-smistamento/` — completa il
+    flusso SMISTAMENTO della pratica con l'esito di RAMO calcolato dal dominio
+    (MERCE_PRESENTE/SOLO_SERVIZI, bivio-per-esito rev.3). L'operatore NON sceglie
+    l'esito (il FE sopprime il picker): e' derivato dallo split gia' eseguito nel
+    Pannello. Guard: smistamento completo su entrambi i rami. Idempotente."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PreventivoCompletaSmistamentoResponse",
+            fields={"data": inline_serializer(
+                name="PreventivoCompletaSmistamentoData",
+                fields={
+                    "flusso_id": serializers.IntegerField(),
+                    "esito": serializers.CharField(),
+                    "gia_completato": serializers.BooleanField(),
+                },
+            )},
+        )},
+    )
+    # Scopo: Completa lo step SMISTAMENTO con esito di ramo calcolato dal dominio.
+    def post(self, request: Request, preventivo_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return preventivi_service.completa_smistamento(
+                preventivo_id,
+                user=getattr(request.user, "username", None) or None,
+            )
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
 # ── Integrazione: genera pratica ──

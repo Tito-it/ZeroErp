@@ -102,12 +102,18 @@ jobs:
       - name: Setup Liquibase 5 (oss)
         uses: liquibase/setup-liquibase@v2.1.1
         with:
-          version: '5.0.2'
+          version: '5.0.3'
           edition: 'oss'
 
       - name: Install PostgreSQL driver for Liquibase 5
         run: |
-          liquibase lpm add postgresql --global
+          # Driver PostgreSQL da Maven Central (NIENTE LPM): evita il fallimento
+          # "Checksum validation failed" del package manager LPM. Liquibase carica
+          # automaticamente i .jar in LIQUIBASE_HOME/lib. 42.7.x è compatibile con PG 18.
+          LB_HOME="${LIQUIBASE_HOME:-$(dirname "$(readlink -f "$(command -v liquibase)")")}"
+          mkdir -p "$LB_HOME/lib"
+          curl -fsSL -o "$LB_HOME/lib/postgresql.jar" \
+            https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.4/postgresql-42.7.4.jar
           liquibase --version
 
       - name: Generate Liquibase autogen master (timeline)
@@ -204,6 +210,15 @@ jobs:
           # SimpleTestCase e il counter persiste tra test ravvicinati sugli
           # endpoint is_search_endpoint=True -> 429 falsi positivi.
           DJANGO_API_SEARCH_THROTTLE_RATE: "100000/min"
+          # Gate deprecation Django 7.0: escala a errore i RemovedInDjango70Warning
+          # emessi durante i test, cosi' un uso deprecato fa fallire il test che
+          # lo tocca invece di scoprirli tutti al salto 6.x -> 7.0. Oggi la suite
+          # ne emette 0: guard anti-regressione, non una bonifica. Il filtro e'
+          # in settings.py (NON via PYTHONWARNINGS: la classe Django non e'
+          # risolvibile all'avvio dell'interprete). Solo questa classe viene
+          # escalata: le deprecation di terze parti (es. _UnionGenericAlias da
+          # drf_spectacular) restano warning.
+          DJANGO_DEPRECATION_GATE: "1"
         run: |
           source .venv/bin/activate
           python manage.py test
