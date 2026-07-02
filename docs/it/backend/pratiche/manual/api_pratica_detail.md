@@ -59,6 +59,14 @@ GET restituisce la pratica dal repository. PATCH delega a `pratiche_service.aggi
 - `401`: JWT mancante o non valido
 - `404`: pratica non trovata (`E_PRATICA_NOT_FOUND`)
 
+### Descrittore documento sorgente `doc_*` (2026-07-02, proiezione V10)
+
+Il payload (GET e lista) espone i display fields `doc_*` del documento **ROOT**
+della pratica (`pratiche_sorgenti.ruolo_link='ROOT'`): `doc_risolto`,
+`doc_stato_codice_interno`, `doc_stato_descrizione`, `doc_fase`, `doc_esito`,
+`doc_terminale`, `doc_sorgente_descrizione`. Semantica e fonte in
+`api_percorso.md` (proiezione read-time via `script.vw_stato_sorgente`).
+
 ## Regole
 
 - GET: se la pratica non esiste → `E_PRATICA_NOT_FOUND` (404).

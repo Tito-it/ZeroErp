@@ -131,7 +131,11 @@ LOOKUP_MAX_SOURCE_ROWS = 10_000
 # in piu' per il frontend, senza endpoint dedicati. Estratto alla 2ª occorrenza
 # (regola del 2: unita_misura + tipi_prestazione) in un unico handler
 # parametrico — le prossime relazioni aggiungono una riga qui, non 70 di SQL.
-#   extra_col          → colonna aggiuntiva esposta nel payload
+#   extra_col          → nome della colonna aggiuntiva nel payload
+#   extra_expr         → (opzionale) espressione SQL sorgente quando il nome
+#                        API differisce dalla colonna fisica (layering: il
+#                        contratto parla la lingua del consumer, la verita'
+#                        memorizzata resta una sola); default `t.<extra_col>`
 #   has_codice_interno → la tabella ha codice_interno (ricerca + codice_stabile)
 #   has_obsoleto       → la tabella ha obsoleto_dal (filtro includi_obsoleti,
 #                        stessa semantica della fn generica: esclude
@@ -141,6 +145,16 @@ _LOOKUP_SPECIALIZZATE: dict[str, dict] = {
         # tipo_uom_id: usato dal FE per filtrare conversioni same-type.
         "extra_col": "tipo_uom_id",
         "has_codice_interno": False,
+        "has_obsoleto": False,
+    },
+    "config.esiti_flussi_pratiche": {
+        # selezionabile_operatore: derivato da is_verdetto (true = verdetto
+        # dell'operatore; false = esito di ramo calcolato dal dominio). Il FE
+        # filtra il Select esiti; il guard BE rifiuta i non-verdetto sul
+        # percorso operatore (pratiche_service).
+        "extra_col": "selezionabile_operatore",
+        "extra_expr": "t.is_verdetto",
+        "has_codice_interno": True,
         "has_obsoleto": False,
     },
     "pratiche.tipi_prestazione": {
@@ -192,6 +206,7 @@ class DbopsRepository:
         search_codice_interno = (
             "OR t.codice_interno ILIKE %(search)s" if spec["has_codice_interno"] else ""
         )
+        extra_expr = spec.get("extra_expr", f"t.{spec['extra_col']}")
 
         with connection.cursor() as cursor:
             cursor.execute(
@@ -202,7 +217,7 @@ class DbopsRepository:
                     {codice_interno_sql} AS codice_interno,
                     t.descrizione,
                     t.attivo,
-                    t.{spec["extra_col"]},
+                    {extra_expr} AS {spec["extra_col"]},
                     COUNT(*) OVER () AS total_count
                   FROM {rel} t
                  WHERE (%(attivo_only)s IS FALSE OR t.attivo = true)

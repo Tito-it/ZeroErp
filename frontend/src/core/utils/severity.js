@@ -107,6 +107,26 @@ export function esitoFlussoSeverity(codice) {
   return resolveSeverity(ESITO_FLUSSO_MAP, codice)
 }
 
+// --- Mappa fase documento sorgente (proiezione stato dominio, V10) ---
+// Vocabolario universale del descrittore doc_* (script.vw_stato_sorgente):
+// APERTO=secondario (bozza), IN_ATTESA=arancio (si aspetta il cliente),
+// IN_CORSO=info; CHIUSO colora per esito (verdetto): POSITIVO=verde,
+// NEGATIVO=rosso, altrimenti secondario.
+export const FASE_SORGENTE_MAP = {
+  APERTO: 'secondary',
+  IN_ATTESA: 'warn',
+  IN_CORSO: 'info',
+}
+
+// Scopo: Severity per lo stato del documento sorgente proiettato nella
+// pratica. `fase` guida il colore; su CHIUSO decide l'esito.
+export function faseSorgenteSeverity(fase, esito) {
+  if ((fase || '').trim() === 'CHIUSO') {
+    return resolveSeverity(ESITO_FLUSSO_MAP, esito)
+  }
+  return resolveSeverity(FASE_SORGENTE_MAP, fase)
+}
+
 // --- Mappa azioni giornale pratica ---
 // Associa azione giornale a severity e icona per la timeline audit.
 // Chiavi = codici azione REALI del giornale (pratiche.giornale.azione, CHECK

@@ -97,19 +97,16 @@ _SOSPENSIONE_CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     ),
 }
 
-# Esiti ammessi per un flusso: mirror applicativo fail-fast del vocabolario DB
-# `config.esiti_flussi_pratiche` (ex CHECK chk_flussi_esito, ora FK — changeset
-# 20260701-02). Difesa-in-profondita': la FK DB e' il guard autoritativo; questo
-# mirror da' l'errore parlante PRIMA del round-trip. Gli esiti di RAMO
-# (MERCE_PRESENTE/SOLO_SERVIZI, bivio SMISTAMENTO —
-# brief-db-chiusura-pratica-nessun-lavoro-pendente) sono valori CALCOLATI dal
-# dominio (mai input utente): inclusi qui perche' completa_flusso li valida.
-# NB: un nuovo esito del vocabolario DB va aggiunto anche qui, altrimenti la FK
-# lo respinge con un errore meno parlante.
-ESITI_FLUSSO_AMMESSI = (
-    "POSITIVO", "NEGATIVO", "PARZIALE", "NON_APPLICABILE",
-    "MERCE_PRESENTE", "SOLO_SERVIZI",
-)
+# Validazione esiti data-driven dal vocabolario DB `config.esiti_flussi_pratiche`
+# (bonifica 2026-07-02: rimossi i mirror hardcoded ESITI_FLUSSO_AMMESSI e
+# ESITI_FLUSSO_RAMO — una sola verita', la colonna `is_verdetto` DEFAULT false
+# fail-closed consegnata dal team DB):
+#   is_verdetto = true  → verdetto deciso dall'operatore (selezionabile a mano);
+#   is_verdetto = false → esito di RAMO calcolato dal dominio (bivio SMISTAMENTO),
+#                         ammesso solo dai BB di dominio (completa_step_pratica).
+# La FK su flussi.esito resta il guard autoritativo; le letture qui sotto danno
+# l'errore parlante PRIMA del round-trip di scrittura. Un nuovo esito seedato a
+# DB e' automaticamente valido: nessuna costante da aggiornare.
 
 # Esito implicito dell'auto-completamento per gli step con handler ma senza
 # esito_default (retro-compatibilita' col vecchio POSITIVO cablato). Per gli step
@@ -118,32 +115,34 @@ ESITI_FLUSSO_AMMESSI = (
 _ESITO_AUTO_FALLBACK = "POSITIVO"
 
 
-# Esiti di RAMO: valori CALCOLATI dai domini (bivio SMISTAMENTO), mai input
-# utente — sottoinsieme di ESITI_FLUSSO_AMMESSI. Il guard API li respinge sul
-# percorso operatore (require_esito_selezionabile_operatore); i BB di dominio
-# (completa_step_pratica → completa_flusso) li passano liberamente. Mirror
-# applicativo in attesa del discriminatore data-driven a DB
-# (brief-db-esiti-flussi-selezionabilita.md): quando arrivera' la colonna,
-# questo mirror e il guard si sostituiscono col filtro sul vocabolario.
-ESITI_FLUSSO_RAMO = ("MERCE_PRESENTE", "SOLO_SERVIZI")
-
-
-# Scopo: Guard fail-fast sull'esito di un flusso (dominio chk_flussi_esito).
-def _require_esito_valido(esito: str) -> None:
+# Scopo: Guard fail-fast sull'esito di un flusso: deve esistere ATTIVO nel
+# vocabolario DB (is_verdetto qualsiasi: vale per operatore e BB di dominio).
+# `repo` iniettabile (simmetrico al guard operatore). NB: sul percorso API il
+# guard operatore ha gia' letto la stessa voce — la seconda lettura qui e' una
+# PK-lookup volutamente accettata: completa_flusso resta autosufficiente per i
+# BB di dominio senza threading di stato fra i layer.
+def _require_esito_valido(esito: str, repo: PraticheRepository | None = None) -> None:
+    voce = (repo or PraticheRepository()).get_esito_flusso_vocabolario(esito)
     ErrorManager.require(
-        esito in ESITI_FLUSSO_AMMESSI,
+        voce is not None and voce[0],
         code="E_FLUSSO_VALIDATION",
         message=f"Esito non valido: {esito}",
     )
 
 
 # Scopo: Guard sul percorso OPERATORE (API cambio stato flusso): l'esito scelto
-# a mano non puo' essere un esito di ramo (calcolato dal dominio). Errore
-# parlante prima del completamento; il vocabolario globale del lookup FE li
-# espone ancora (nessun discriminatore a DB) → difesa qui.
-def require_esito_selezionabile_operatore(esito: str) -> None:
+# a mano deve essere un verdetto (`is_verdetto`); gli esiti di ramo restano
+# riservati ai BB di dominio. Il lookup FE espone `selezionabile_operatore`
+# (derivato da is_verdetto) e filtra il Select alla fonte; questo guard e' la
+# difesa in profondita' sul contratto API. Codice inesistente → passa: ci pensa
+# _require_esito_valido a valle con l'errore parlante giusto.
+# `repo` iniettabile: la view riusa la propria istanza (gia' mockata nei test API).
+def require_esito_selezionabile_operatore(
+    esito: str, repo: PraticheRepository | None = None,
+) -> None:
+    voce = (repo or PraticheRepository()).get_esito_flusso_vocabolario(esito)
     ErrorManager.require(
-        esito not in ESITI_FLUSSO_RAMO,
+        voce is None or voce[1],
         code="E_FLUSSO_VALIDATION",
         message=f"Esito calcolato dal dominio, non selezionabile manualmente: {esito}",
     )
@@ -558,6 +557,35 @@ def avvia_flusso(flusso_id: int, *, user: str | None = None) -> dict[str, Any] |
         raise  # irraggiungibile, per il type checker
 
 
+# Scopo: corpo del completamento (transizione COMPLETATO + azioni di dominio),
+# SENZA validazione esito: i chiamanti pubblici (completa_flusso,
+# avvia_e_completa_flusso) validano UNA volta e delegano qui — niente doppia
+# lettura del vocabolario sul percorso CONTESTUALE.
+def _completa_flusso_validato(
+    flusso_id: int,
+    *,
+    esito: str,
+    note_esito: str | None,
+    user: str | None,
+    meta: dict[str, Any] | None,
+) -> None:
+    repo = PraticheRepository()
+    try:
+        repo.update_stato_flusso(flusso_id, "COMPLETATO", esito=esito, note_esito=note_esito)
+    except DatabaseError as exc:
+        # Guard pratica terminale → PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE.
+        _raise_known_db_error(exc, function_name="pratiche_service.completa_flusso")
+    # Azioni di dominio legate al completamento (template_flussi_handler_eventi):
+    # es. accetta il preventivo collegato quando APPROVAZIONE_CLIENTE chiude
+    # POSITIVO. Stessa transazione → completamento + azione dominio atomici (sostituisce
+    # il routing M2 hardcoded lato FE). I flussi senza binding: no-op.
+    # `meta` = contesto d'azione fornito dall'operatore (es. modalita/competenza
+    # di fatturazione all'accettazione): passa all'handler, non viene persistito sul flusso.
+    dispatch_handler_eventi(
+        flusso_id, evento="COMPLETATO", esito=esito, user=user, extra_meta=meta,
+    )
+
+
 # Scopo: Completa un flusso con esito e note.
 # Obiettivo: transizione → COMPLETATO. La generazione automatica
 # cross-pratica e' gestita dal trigger DB (trgfn_flussi_generazione).
@@ -577,21 +605,8 @@ def completa_flusso(
     )
     assert flusso_id > 0
     _require_esito_valido(esito)
-
-    repo = PraticheRepository()
-    try:
-        repo.update_stato_flusso(flusso_id, "COMPLETATO", esito=esito, note_esito=note_esito)
-    except DatabaseError as exc:
-        # Guard pratica terminale → PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE.
-        _raise_known_db_error(exc, function_name="pratiche_service.completa_flusso")
-    # Azioni di dominio legate al completamento (template_flussi_handler_eventi):
-    # es. accetta il preventivo collegato quando APPROVAZIONE_CLIENTE chiude
-    # POSITIVO. Stessa transazione → completamento + azione dominio atomici (sostituisce
-    # il routing M2 hardcoded lato FE). I flussi senza binding: no-op.
-    # `meta` = contesto d'azione fornito dall'operatore (es. modalita/competenza
-    # di fatturazione all'accettazione): passa all'handler, non viene persistito sul flusso.
-    dispatch_handler_eventi(
-        flusso_id, evento="COMPLETATO", esito=esito, user=user, extra_meta=meta,
+    _completa_flusso_validato(
+        flusso_id, esito=esito, note_esito=note_esito, user=user, meta=meta,
     )
 
 
@@ -626,13 +641,16 @@ def avvia_e_completa_flusso(
         repo.update_stato_flusso(flusso_id, "IN_CORSO")
     except DatabaseError as exc:
         _raise_known_db_error(exc, function_name="pratiche_service.avvia_e_completa_flusso")
-    # Riusa il completamento canonico: COMPLETATO + esito + azioni di dominio
+    # Riusa il corpo del completamento canonico (gia' validato sopra: niente
+    # seconda lettura del vocabolario): COMPLETATO + esito + azioni di dominio
     # (template_flussi_handler_eventi), nella stessa transazione → atomico.
     # NB: CONTESTUALE NON esegue l'handler di AVVIO (dispatch_handler): e' la
     # modalita "esito deciso dall'operatore"; l'automazione d'avvio appartiene ad
     # AUTOMATICO/handler. Le reazioni di dominio all'esito viaggiano comunque su
-    # dispatch_handler_eventi dentro completa_flusso.
-    completa_flusso(flusso_id, esito=esito, note_esito=note_esito, user=user, meta=meta)
+    # dispatch_handler_eventi.
+    _completa_flusso_validato(
+        flusso_id, esito=esito, note_esito=note_esito, user=user, meta=meta,
+    )
 
 
 # Stati terminali di un flusso: mirror applicativo della derivazione data-driven

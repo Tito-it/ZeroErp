@@ -1,16 +1,17 @@
 # Brief FE — Il Percorso pratica da grafo-macchina a racconto operatore
 
 > **Tipo**: brief FE (design → implementazione) · **Data**: 2026-07-01
-> **Owner**: Tid · **Stato**: 🟢 implementazione completa (2026-07-01): **B1-B5 fatti** (Strato A lessico + vista-racconto + esiti globali data-driven + modalità tecnica ADMIN); BE percorso/flusso con display fields; brief DB coda consegnato. **Resta solo la verifica in-app** su PREVENTIVI prima di estendere ad altri tipi pratica.
+> **Owner**: Tid · **Stato**: ✅ **CHIUSO 2026-07-02** (spostato in `work-done/`): **B1-B5 fatti** (Strato A lessico + vista-racconto + esiti globali data-driven + modalità tecnica ADMIN); BE percorso/flusso con display fields; brief DB coda consegnato; review critica 2026-07-02 passata (vedi sotto) con esiti resi data-driven end-to-end via `is_verdetto`. Committato e mergiato (PR #910). La verifica in-app su PREVENTIVI si completa in esercizio; estensione ad altri tipi pratica al bisogno.
 >
 > **Review critica 2026-07-02** — bug trovati e corretti sull'implementato:
 > **(a)** B3b era **rotto**: `config.esiti_flussi_pratiche` mancava dalla whitelist
 > lookup BE → Select esiti sempre vuoto, completamento manuale impossibile
 > (errore inghiottito dal catch silente). Whitelist corretta; scoperto in cascata
 > che il vocabolario espone anche gli **esiti di ramo** (`MERCE_PRESENTE`/
-> `SOLO_SERVIZI`, mai input utente) → guard BE interim
-> `require_esito_selezionabile_operatore` + discriminatore a DB richiesto con
-> [brief-db-esiti-flussi-selezionabilita.md](brief-db-esiti-flussi-selezionabilita.md).
+> `SOLO_SERVIZI`, mai input utente) → **risolto data-driven** (2026-07-02, riuso
+> `is_verdetto` del team DB): lookup con `selezionabile_operatore` derivato, Select FE
+> filtrato, guard BE da vocabolario, mirror hardcoded eliminati —
+> [brief chiuso](brief-db-esiti-flussi-selezionabilita.md).
 > **(b)** B1, fasce: un'istanza **aperta** (DA_ESEGUIRE/IN_CORSO/SOSPESO) ora va
 > SEMPRE in ADESSO anche con `ramo` COMPLETATO (ripetizione in corso) o
 > RAMO_CHIUSO (lavoro avviato prima del bivio): prima spariva dalla vista
@@ -21,7 +22,7 @@
 > stantii "B5 arriverà" aggiornati, check verde via `--app-success-color`.
 >
 > **Origine**: voce **V1** di
-> [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md)
+> [analisi-pratiche-valutazione-stato.md](../work-in-progress/analisi-pratiche-valutazione-stato.md)
 > (Problema 1 — comprensibilità operatore), con **misura** delle superfici FE reali
 > fatta il 2026-07-01. Principio guida ereditato da
 > [analisi-uniformita-pratica-preventivi.md](analisi-uniformita-pratica-preventivi.md):
@@ -269,7 +270,7 @@ Esito della ricognizione BE/DB (payload percorso/coda/flusso + modello esiti). R
   ✅, `esito_default` ✅. **Completo**.
 - **Coda** (`fn_coda_lavoro_operatore`, **funzione DB**): `template_flusso_desc` ✅;
   `stato_flusso_descrizione` aggiunta dal team DB con migration **20260701-11** su richiesta
-  del [brief-db-coda-lavoro-descrizione-stato.md](../work-done/brief-db-coda-lavoro-descrizione-stato.md)
+  del [brief-db-coda-lavoro-descrizione-stato.md](brief-db-coda-lavoro-descrizione-stato.md)
   → ✅ **CONSEGNATO**. ⚠️ **Correzione alla ricognizione**: avevo introspezionato la fn dal
   file di migration **stantio** `20260614-02` invece che dalla versione **viva** `20260628-07`
   (violazione `feedback_db_doc_first`). Sulla versione viva **non esiste** alcun bug severity:
@@ -381,7 +382,7 @@ nessuno stato-macchina, nessun ramo morto a video.
 
 Validazione **E2E su un tipo pratica PREVENTIVI** (coda → percorso → drawer → completamento
 con esito) prima di estendere ad altri tipi. A chiusura: aggiornare lo stato in testa e la
-riga V1 di [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md).
+riga V1 di [analisi-pratiche-valutazione-stato.md](../work-in-progress/analisi-pratiche-valutazione-stato.md).
 
 **Sequenza consigliata**: P0.1 → Fase 1 (valore subito, rischio basso) → P0.3 → Fase 2 →
 P0.2/P0.4 → Fase 3. Le fasi 1 e 2 sono indipendenti: parallelizzabili se P0.1 è pronto.
@@ -426,4 +427,4 @@ ADMIN. Rivalutare un permesso dedicato solo se serve granularità futura.
 ---
 
 *Brief vivo: aggiornare lo stato in testa e la riga V1 di
-[analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md) a chiusura.*
+[analisi-pratiche-valutazione-stato.md](../work-in-progress/analisi-pratiche-valutazione-stato.md) a chiusura.*

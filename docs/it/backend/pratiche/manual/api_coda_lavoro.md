@@ -63,6 +63,15 @@ in carico** dall'operatore (coerente con la policy di
 [api_prendi_in_carico](api_prendi_in_carico.md)). Il campo `risorsa_assegnata` è sempre
 `null` (i livelli mostrati sono auto-assegnato o non assegnati).
 
+### Descrittore documento sorgente `doc_*` (2026-07-02, proiezione V10)
+
+Ogni item di coda espone anche i display fields `doc_*` (stato vivo del
+documento agganciato al flusso in coda): `doc_risolto`, `doc_stato_codice_interno`,
+`doc_stato_descrizione`, `doc_fase`, `doc_esito`, `doc_terminale`,
+`doc_sorgente_descrizione`. Semantica e fonte in `api_percorso.md` (stessa
+proiezione, ancora per flusso; la fn DB della coda resta invariata — il join
+alla vista `script.vw_stato_sorgente` vive nel wrapper SQL del repository).
+
 ### Errori
 
 - `400`: `emittente_fiscale_id` mancante o non valido (`E_PRATICA_VALIDATION`)

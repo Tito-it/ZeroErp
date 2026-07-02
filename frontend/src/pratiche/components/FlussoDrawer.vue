@@ -49,19 +49,21 @@ const noteEsito = ref('')
 const tecnico = useInjectTechnicalMode()
 
 // Esiti data-driven dal vocabolario globale config.esiti_flussi_pratiche (§9.1-A):
-// non piu' 4 valori hardcodati in i18n → include anche gli esiti di dominio.
-// ⚠️ Gli esiti di RAMO (calcolati dai domini, mai input utente) compaiono nel
-// vocabolario: il guard BE (require_esito_selezionabile_operatore) li respinge
-// con errore parlante; il filtro alla fonte arriva col discriminatore a DB
-// (brief-db-esiti-flussi-selezionabilita.md).
+// non piu' 4 valori hardcodati in i18n. Il Select offre SOLO i verdetti
+// dell'operatore: il lookup espone `selezionabile_operatore` (derivato a BE da
+// is_verdetto, verita' unica a DB) e gli esiti di RAMO calcolati dal dominio
+// (es. bivio SMISTAMENTO) vengono filtrati qui; il guard BE
+// (require_esito_selezionabile_operatore) resta la difesa in profondita'.
 // value = codice_interno (inviato al BE), label = descrizione umana. Cache
 // modulo-level condivisa (useGlobalLookup), caricata all'apertura del drawer.
-const { items: esitiCatalogo, load: loadEsiti } = useGlobalLookup(
+const { items: esitiCatalogo, load: loadEsiti, loading: esitiLoading } = useGlobalLookup(
   'config.esiti_flussi_pratiche',
   () => lookupCodici('config.esiti_flussi_pratiche'),
 )
 const esitiOptions = computed(() =>
-  esitiCatalogo.value.map(e => ({ value: e.codice_interno, label: e.descrizione })),
+  esitiCatalogo.value
+    .filter(e => e.selezionabile_operatore)
+    .map(e => ({ value: e.codice_interno, label: e.descrizione })),
 )
 
 const stato = computed(() => props.flusso?.stato_codice_interno || '')
@@ -122,12 +124,24 @@ const uiActivityVisible = computed(
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 watch(() => props.visible, (val) => {
-  // Pre-seleziona l'esito_default (CONTESTUALE) o resta null (MANUALE: esito_default
-  // NULL → nessuna pre-selezione, comportamento odierno).
   if (val) {
-    esito.value = esitoDefault.value
+    esito.value = null
     noteEsito.value = ''
-    loadEsiti().catch(() => { /* errore gia' in errorRef del lookup */ })
+    // Pre-seleziona l'esito_default (CONTESTUALE) SOLO se presente fra le
+    // opzioni selezionabili caricate: un default fuori lista sarebbe un
+    // valore invisibile a video ma inviato al BE (stessa classe di bug del
+    // preset tipo in PraticaDrawer). Lookup fallito/vuoto → nessuna
+    // preselezione, Select vuoto e "Salva" disabilitato (:disabled="!esito").
+    // Guard `esito.value == null`: con cache fredda la promise risolve tardi
+    // e NON deve sovrascrivere una scelta gia' fatta dall'operatore.
+    loadEsiti()
+      .then(() => {
+        const def = esitoDefault.value
+        if (esito.value == null && def && esitiOptions.value.some(o => o.value === def)) {
+          esito.value = def
+        }
+      })
+      .catch(() => { /* errore gia' in errorRef del lookup */ })
   }
 })
 
@@ -347,6 +361,14 @@ const onClose = useDrawerClose(emit)
               class="w-full"
               :placeholder="t('pratiche.flusso_esito')"
             />
+            <!-- Lookup esiti fallito o vuoto: senza feedback l'operatore resta
+                 bloccato (Salva disabilitato) senza capire perche'. -->
+            <small
+              v-if="!esitiLoading && !esitiOptions.length"
+              class="p-error"
+            >
+              {{ t('pratiche.flusso_esiti_non_disponibili') }}
+            </small>
           </div>
           <div class="form-field">
             <label>{{ t('pratiche.flusso_note_esito') }}</label>

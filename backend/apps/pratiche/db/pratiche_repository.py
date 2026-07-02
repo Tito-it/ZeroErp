@@ -39,6 +39,58 @@ _PRATICHE_ORDER_COLS = {
 }
 
 
+# -- Descrittore stato sorgente (proiezione V10, fase MOSTRA) ----------------
+# Proietta lo stato VIVO del documento di dominio collegato (preventivo,
+# offerta, ...) come display fields `doc_*`, via script.vw_stato_sorgente
+# (union dei resolver di dominio) + pratiche.pratiche_sorgenti. Read-time,
+# nessun mirror: il documento resta l'unica verita' (brief design V10).
+#   doc_risolto=true  → proiezione reale del dominio;
+#   doc_risolto=false → collegamento presente ma dominio senza resolver
+#                       (fallback: il FE mostra il milestone come oggi);
+#   doc_* NULL        → nessun documento collegato all'ancora.
+_DOC_SORGENTE_SELECT = """
+        ds.risolto AS doc_risolto,
+        ds.stato_codice_interno AS doc_stato_codice_interno,
+        ds.stato_descrizione AS doc_stato_descrizione,
+        ds.fase AS doc_fase,
+        ds.esito AS doc_esito,
+        ds.terminale AS doc_terminale,
+        ds.sorgente_descrizione AS doc_sorgente_descrizione
+"""
+
+
+# Scopo: frammento LATERAL del descrittore. `anchor_cond` distingue l'aggancio
+# (per-flusso: percorso/coda; ROOT pratica: dettaglio/lista) ed e' SEMPRE un
+# frammento statico scelto dai metodi del repository, mai input utente.
+# COALESCE su risolto: link presente ma dominio senza resolver → false
+# (decisione C del brief design), non NULL. ROOT preferito a parita' di ancora,
+# poi il link piu' recente (ps.id DESC).
+# ⚠️ Regola dell'ANCORA (quale documento rappresenta lo step/la pratica): oggi
+# vive solo qui. La fase GUIDA (D4, brief design §11.4) dovra' risolvere la
+# STESSA ancora a livello motore: quando arrivera', promuovere la regola a
+# vista DB condivisa (es. vw_pratica_doc_sorgente) per non biforcarla.
+# Riferimento semantico del fallback: pratiche.fn_stato_sorgente (sentinella
+# UNKNOWN); qui il join diretto alla vista e' la via sancita per le liste
+# (doc fn_stato_sorgente: "niente N+1").
+def _doc_sorgente_lateral(anchor_cond: str) -> str:
+    return f"""
+        LEFT JOIN LATERAL (
+            SELECT COALESCE(ss.risolto, false) AS risolto,
+                   ss.stato_codice_interno, ss.stato_descrizione,
+                   ss.fase, ss.esito, ss.terminale,
+                   so.descrizione AS sorgente_descrizione
+            FROM pratiche.pratiche_sorgenti ps
+            JOIN config.sorgenti so ON so.id = ps.sorgente_tipo_id
+            LEFT JOIN script.vw_stato_sorgente ss
+              ON ss.sorgente_tipo_id = ps.sorgente_tipo_id
+             AND ss.sorgente_uid = ps.sorgente_uid
+            WHERE {anchor_cond}
+            ORDER BY (ps.ruolo_link = 'ROOT') DESC, ps.id DESC
+            LIMIT 1
+        ) ds ON true
+    """
+
+
 class PraticheRepository:
 
     # -- SQL comuni pratiche (JOIN display fields) --
@@ -65,10 +117,13 @@ class PraticheRepository:
         s.ragione_sociale_completa AS soggetto_display,
         s.id_fiscale_univoco_cf_piva AS soggetto_id_fiscale,
         sru.ragione_sociale_completa AS risorsa_umana_display,
-        uo.descrizione AS unita_organizzativa_descrizione
-    """
+        uo.descrizione AS unita_organizzativa_descrizione,
+    """ + _DOC_SORGENTE_SELECT
 
-    _PRATICA_JOINS = """
+    # JOIN base (senza LATERAL): per la COUNT della lista, che non proietta
+    # colonne — il LATERAL del descrittore e' cardinalita'-neutro (LIMIT 1)
+    # ma costerebbe una risoluzione per riga filtrata, per zero output.
+    _PRATICA_JOINS_BASE = """
         JOIN pratiche.tipi_prestazione tp ON tp.id = p.tipo_prestazione_id
         JOIN config.stati_pratiche sp ON sp.id = p.stato_id
         JOIN config.priorita_pratiche pp ON pp.id = p.priorita_id
@@ -78,6 +133,11 @@ class PraticheRepository:
         LEFT JOIN anagrafiche.soggetti sru ON sru.id = srr.soggetto_id
         LEFT JOIN config.unita_organizzative uo ON uo.id = p.unita_organizzativa_id
     """
+
+    # Descrittore doc_*: ancora = documento ROOT della pratica (proiezione V10).
+    _PRATICA_JOINS = _PRATICA_JOINS_BASE + _doc_sorgente_lateral(
+        "ps.pratica_id = p.id AND ps.ruolo_link = 'ROOT'"
+    )
 
     # -- Metodi pubblici per SQL comuni (usati anche da GenerazioneRepository) --
 
@@ -173,7 +233,7 @@ class PraticheRepository:
         count_sql = f"""
             SELECT COUNT(*)
             FROM pratiche.pratiche p
-            {self._PRATICA_JOINS}
+            {self._PRATICA_JOINS_BASE}
             {where_clause}
         """
 
@@ -400,6 +460,26 @@ class PraticheRepository:
             return None
         return (row[0], row[1])
 
+    # Scopo: Voce del vocabolario esiti per codice_interno (attivo + is_verdetto).
+    # Fonte unica di verita' per la validazione applicativa degli esiti (errore
+    # parlante prima del round-trip di scrittura): sostituisce i mirror
+    # hardcoded ESITI_FLUSSO_AMMESSI/ESITI_FLUSSO_RAMO del service.
+    # is_verdetto true = esito deciso dall'operatore (selezionabile a mano);
+    # false = esito di ramo calcolato dal dominio (DEFAULT fail-closed a DB).
+    # Ritorna (attivo, is_verdetto) o None se il codice non e' a vocabolario.
+    def get_esito_flusso_vocabolario(self, codice_interno: str) -> tuple[bool, bool] | None:
+        sql = """
+            SELECT e.attivo, e.is_verdetto
+            FROM config.esiti_flussi_pratiche e
+            WHERE e.codice_interno = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [codice_interno])
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        return (bool(row[0]), bool(row[1]))
+
     # Scopo: Aggiorna i campi di assegnazione di un flusso (whitelist).
     # L'UPDATE di risorsa_umana_id/unita_organizzativa_id attiva il trigger
     # giornale trg_flussi_z90_giornale_assegnazione_upd. Guard not-found esplicito.
@@ -468,7 +548,11 @@ class PraticheRepository:
         #                  l'altra strada (allo stato attuale: un retry del
         #                  predecessore puo' riaprirlo);
         #   FUTURO       → prerequisiti non ancora decisi (step a valle).
-        sql = """
+        # Proiezione V10 (fase MOSTRA): per ogni step con documento agganciato
+        # al SUO flusso (pratiche_sorgenti.flusso_id), i display fields doc_*
+        # proiettano lo stato vivo del documento (vista-racconto: "il flusso
+        # si chiude all'emissione, il preventivo continua a vivere").
+        sql = f"""
             SELECT
                 tf.id AS template_flusso_id,
                 tf.codice AS template_flusso_codice,
@@ -511,7 +595,8 @@ class PraticheRepository:
                           )
                     ) THEN 'RAMO_CHIUSO'
                     ELSE 'FUTURO'
-                END AS ramo
+                END AS ramo,
+                {_DOC_SORGENTE_SELECT}
             FROM pratiche.pratiche p
             JOIN pratiche.template_flussi tf
               ON tf.tipo_prestazione_id = p.tipo_prestazione_id AND tf.attivo
@@ -529,6 +614,7 @@ class PraticheRepository:
             -- Descrizione umana dell'esito (data-driven da config.esiti_flussi_pratiche,
             -- vocabolario globale): il FE mostra `esito_descrizione`, non il codice grezzo.
             LEFT JOIN config.esiti_flussi_pratiche ef ON ef.codice_interno = f.esito
+            {_doc_sorgente_lateral("ps.pratica_id = p.id AND ps.flusso_id = f.id")}
             WHERE p.id = %s
             ORDER BY tf.sequenza, tf.id
         """
@@ -693,7 +779,11 @@ class PraticheRepository:
     # Scopo: Aggancia (idempotente) una sorgente alla pratica. Risolve il
     # sorgente_tipo_id da config.sorgenti per codice_interno (no id hardcoded).
     # ON CONFLICT sulla UNIQUE (pratica_id, sorgente_tipo_id, sorgente_uid,
-    # ruolo_link): la seconda chiamata e' un no-op.
+    # ruolo_link): la ri-chiamata NON e' piu' un no-op totale — aggiorna
+    # flusso_id (se fornito) per ri-ancorare il link all'istanza corrente.
+    # Caso reale: step ripetuto ("Ripeti") → nuova istanza flusso; con DO
+    # NOTHING il ROOT restava ancorato al flusso vecchio e la proiezione
+    # doc_* (LATERAL su ps.flusso_id = f.id, f = ultima istanza) spariva.
     def upsert_pratica_sorgente(
         self, *, pratica_id: int, sorgente_codice: str, sorgente_uid: str,
         ruolo_link: str = "ROOT", sorgente_riga: int | None = None,
@@ -713,7 +803,9 @@ class PraticheRepository:
             FROM config.sorgenti s
             WHERE s.codice_interno = %s
             ON CONFLICT (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-            DO NOTHING
+            DO UPDATE SET flusso_id = COALESCE(
+                EXCLUDED.flusso_id, pratiche_sorgenti.flusso_id
+            )
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
@@ -1191,14 +1283,24 @@ class PraticheRepository:
 
     # Scopo: Restituisce la coda di lavoro di un operatore su tre livelli
     #        (ASSEGNATO, COMPETENZA, REPARTO) chiamando la funzione DB.
+    # La fn resta l'unica fonte della coda; il wrapper aggiunge i display
+    # fields doc_* (proiezione V10) sul documento agganciato al flusso in coda.
     def list_coda_lavoro(
         self,
         risorsa_umana_id: int,
         emittente_fiscale_id: int,
     ) -> list[dict[str, Any]]:
-        sql = """
-            SELECT *
-            FROM pratiche.fn_coda_lavoro_operatore(%s, %s)
+        # WITH ORDINALITY + ORDER BY: l'ordinamento e' PROPRIETA' della fn
+        # (livello, priorita, scadenza, ...) e joinare la fn non lo garantisce
+        # piu' contrattualmente — l'ordinale lo preserva senza duplicarne le
+        # chiavi qui. La colonna `ordinality` viaggia nel payload ed e' inerte
+        # per il FE.
+        sql = f"""
+            SELECT c.*,
+                {_DOC_SORGENTE_SELECT}
+            FROM pratiche.fn_coda_lavoro_operatore(%s, %s) WITH ORDINALITY c
+            {_doc_sorgente_lateral("ps.pratica_id = c.pratica_id AND ps.flusso_id = c.flusso_id")}
+            ORDER BY c.ordinality
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [risorsa_umana_id, emittente_fiscale_id])

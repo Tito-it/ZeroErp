@@ -1,7 +1,7 @@
 # Analisi — Uniformità pratica ⇄ programma standalone (preventivi/ordini/commesse)
 
 > **Tipo**: analisi di design (non implementativa) · **Data**: 2026-06-29
-> **Owner**: Tid · **Stato**: 🟢 aperta — definisce il principio e la riprogettazione.
+> **Owner**: Tid · **Stato**: ✅ **CHIUSA** (2026-07-02) — principio applicato; DB+BE+FE fatti, ultimo residuo (handler monolitico) chiuso. (§9 backfill `data_apertura` = rinviato, non-lavoro.)
 >
 > **Origine**: smoke su pratica `PRA-0000216` (preventivo DIFFERITA, tutta merce).
 > A video tutto verde, ma a DB **nessuna commessa**: l'ordine creato è rimasto
@@ -10,8 +10,8 @@
 >
 > **Documenti collegati**: [gestione-preventivi.md](../../guide/gestione-preventivi.md)
 > (§8 smistamento), [gestione-ordini.md](../../guide/gestione-ordini.md) (§9-§10
-> conferma + push commessa), [gestione-pratiche-come-procedere.md](gestione-pratiche-come-procedere.md),
-> [analisi-pratiche-domini-anello3.md](analisi-pratiche-domini-anello3.md) (§5 caso vendite).
+> conferma + push commessa), [gestione-pratiche-come-procedere.md](../work-in-progress/gestione-pratiche-come-procedere.md),
+> [analisi-pratiche-domini-anello3.md](../work-in-progress/analisi-pratiche-domini-anello3.md) (§5 caso vendite).
 
 ---
 
@@ -174,7 +174,7 @@ creazione on-demand BE, ma da raddrizzare per pulizia di modello.
 
 ### 7.2 Filtro `obsoleto_dal` — ✅ DB FATTO (2026-06-30, commit `2f8d4f092`)
 
-Implementato come da [brief-db-obsoleto-dal-filtro-lookup-e-guard.md](../work-done/brief-db-obsoleto-dal-filtro-lookup-e-guard.md)
+Implementato come da [brief-db-obsoleto-dal-filtro-lookup-e-guard.md](brief-db-obsoleto-dal-filtro-lookup-e-guard.md)
 (`20260630-03/04/05`, pgTAP verde):
 
 - **Selezione** (`dbops.fn_get_lookup_codici`): nuovo 7° parametro
@@ -213,6 +213,13 @@ Implementato come da [brief-db-obsoleto-dal-filtro-lookup-e-guard.md](../work-do
 | F3 | FE | dialog accettazione nel flusso 30; chiavi azioni UI (SMISTAMENTO/CONFERMA_ORDINE/INVIO_COMMESSA) nel registry; etichette flussi |
 
 Ritiro dell'handler monolitico `vendita.push_preventivo` come parte di B1-B3.
+**✅ CHIUSO (2026-07-02) — BE + DB**: BE ha rimosso classe `PushPreventivoHandler` +
+registrazione + test (`check` verde, 63 test verdi); DB (pgTAP verdi) ha fatto **solo UPDATE,
+zero delete**: unbind `template_flussi.handler_id`, `handler_flussi.attivo=false`,
+`obsoleto_dal=2026-06-30` sui tipi (istanze esistenti vive, guard blocca solo le nuove), B8
+`regole_generazione` 9001 `attivo=false`. Dettaglio:
+[brief-db-ritiro-handler-monolitico-push-preventivo.md](brief-db-ritiro-handler-monolitico-push-preventivo.md).
+⚠️ `vendite.fn_push_preventivo_a_ordine` (primitiva copia righe) **intatta**: la usa SMISTAMENTO.
 
 ## 8. Bug chiusi da questo intervento
 
@@ -228,5 +235,6 @@ Vedi [nota-be-backfill-data-apertura-pratiche.md]. Su dati test è cosmetica
 (`ORDER BY … NULLS LAST` neutralizza); su dati reali la fonte corretta è la
 transizione →APERTA del giornale, non `data_insert`. Rinviato.
 
-> Stato: DB applicato; restano BE/FE (§7.3) + filtro `obsoleto_dal` lato DB (§7.2)
-> + conferma prereq `60←50` (§7.1).
+> Stato: ✅ **CHIUSA (2026-07-02)** — DB + BE + FE fatti; ultimo residuo (ritiro handler
+> monolitico `vendita.push_preventivo`) chiuso BE+DB. §9 backfill `data_apertura` rinviato
+> (non-lavoro). Archiviato in `work-done/` (link entranti/uscenti aggiornati).

@@ -1,7 +1,7 @@
 # Brief DB — Discriminatore di selezionabilità sugli esiti flussi pratiche
 
 > **Tipo**: brief DB (piccolo: 1 colonna + seed) · **Data**: 2026-07-02
-> **Owner**: Tid · **Per**: team DB (`dev/db-tid`) · **Stato**: 🟢 aperto
+> **Owner**: Tid · **Per**: team DB (`dev/db-tid`) · **Stato**: ✅ **CHIUSO 2026-07-02 — risolto con l'opzione RIUSO** (valutazione team DB): nessuna colonna nuova, si riusa `is_verdetto` (già a modello, DEFAULT false fail-closed, seed corretto: 4 verdetti true, 2 esiti di ramo false). Implementato lato applicativo lo stesso giorno: lookup specializzato che espone `selezionabile_operatore` derivato da `is_verdetto` (il contratto API parla di selezionabilità, la verità memorizzata resta una), Select FE filtrato alla fonte, guard API `require_esito_selezionabile_operatore` e `_require_esito_valido` che leggono il vocabolario a DB, **mirror hardcoded `ESITI_FLUSSO_AMMESSI`/`ESITI_FLUSSO_RAMO` eliminati**. La colonna dedicata resta l'opzione futura (migration additiva a basso costo) solo se gli assi verdetto/selezionabilità divergeranno.
 >
 > **Origine**: review critica 2026-07-02 sul cantiere V1/B3b (esiti data-driven,
 > [brief-fe-percorso-narrativo-operatore.md](brief-fe-percorso-narrativo-operatore.md) §9.1-A).
