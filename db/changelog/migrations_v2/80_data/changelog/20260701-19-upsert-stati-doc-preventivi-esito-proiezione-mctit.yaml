@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Proiezione stato di dominio — seed della colonna `esito` su
+# config.stati_doc_preventivi (brief-db-proiezione-stato-dominio §4 D1).
+#
+# PERCHE' UPDATE E NON CSV: il changeset CSV storico 20250917-01 (immutabile,
+# gia' mergiato) ha nullValue:"" -> una cella vuota caricherebbe '' (stringa
+# vuota, viola la FK verso esiti_flussi_pratiche) e il token 'NULL' verrebbe
+# caricato come stringa letterale (feedback_liquibase_csv_null_sentinel).
+# DRAFT/EMESSO richiedono esito NULL -> la colonna esito NON sta nella CSV;
+# fase/terminale (mai NULL) invece SI (stesso playbook is_abortito).
+#
+# ORDINE fresh-DB: 80_data gira dopo tutto l'autogen (00_schema+20_code) e,
+# dentro 80_data (includeAll alfabetico), 20250917-01 (INSERT righe con
+# fase/terminale da CSV) precede questo file -> le righe esistono. Sul DB vivo
+# il backfill 20260701-14 ha gia' valorizzato tutto: questo UPDATE e'
+# idempotente (IS DISTINCT FROM) e non tocca nulla.
+#
+# Il guard trg_stati_doc_preventivi_a10_guard_esito_verdetto_ins_upd e' attivo:
+# qui si scrivono solo verdetti (POSITIVO/NEGATIVO) -> trasparente.
+# Mappa completa nel commento di 20260701-14. Keyed su codice_interno, mai id.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260701-19-upsert-stati-doc-preventivi-esito-proiezione-mctit.yaml
+
+  - changeSet:
+      id: 20260701-19-upsert-stati-doc-preventivi-esito-proiezione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Seed della proiezione `esito` su config.stati_doc_preventivi (UPDATE
+        idempotente keyed su codice_interno): ACCETTATO/EVASO=POSITIVO,
+        RIFIUTATO/SCADUTO/ANNULLATO=NEGATIVO, DRAFT/EMESSO=NULL. In UPDATE e non
+        in CSV perche' il changeset CSV storico (nullValue:"") non puo'
+        esprimere NULL.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'config'
+                 AND table_name   = 'stati_doc_preventivi'
+                 AND column_name  = 'esito';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Verdetti proiettati (mappa universale brief design §3).
+              UPDATE config.stati_doc_preventivi s
+                 SET esito = m.esito
+                FROM (VALUES
+                        ('ACCETTATO', 'POSITIVO'),
+                        ('RIFIUTATO', 'NEGATIVO'),
+                        ('SCADUTO',   'NEGATIVO'),
+                        ('EVASO',     'POSITIVO'),
+                        ('ANNULLATO', 'NEGATIVO')
+                     ) AS m(codice_interno, esito)
+               WHERE s.codice_interno = m.codice_interno
+                 AND s.esito IS DISTINCT FROM m.esito;
+
+              -- Nessun verdetto per gli stati non conclusivi (re-seed-safe).
+              UPDATE config.stati_doc_preventivi s
+                 SET esito = NULL
+               WHERE s.codice_interno IN ('DRAFT', 'EMESSO')
+                 AND s.esito IS NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback dati: azzera la proiezione esito (la colonna resta,
+              -- e' di 20260701-14).
+              UPDATE config.stati_doc_preventivi
+                 SET esito = NULL
+               WHERE esito IS NOT NULL;

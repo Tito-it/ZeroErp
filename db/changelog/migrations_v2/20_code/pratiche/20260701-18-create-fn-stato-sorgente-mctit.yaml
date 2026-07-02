@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Proiezione stato di dominio — D3: wrapper scalare di motore.
+# (brief-db-proiezione-stato-dominio §4 D3, decisioni A e C)
+#
+# pratiche.fn_stato_sorgente(tipo, uid) = API del motore per il DETTAGLIO
+# singolo (per le liste si joina direttamente script.vw_stato_sorgente).
+# Ritorna SEMPRE esattamente 1 riga:
+#   - la proiezione del dominio se il tipo ha un ramo resolver e il documento
+#     esiste (risolto=true);
+#   - altrimenti la riga sentinella UNKNOWN (risolto=false, stato 'UNKNOWN',
+#     descrizione 'n/d', fase 'APERTO', esito NULL, terminale false) SENZA
+#     errore: degrado con grazia, il milestone resta manuale come oggi.
+# Il flag `risolto` (decisione C) permette al consumer di distinguere l'APERTO
+# reale dal fallback: fase='APERTO' resta solo per il routing del motore.
+#
+# DESCRITTORE IN text/boolean PIANI (no %TYPE di colonne di dominio): il
+# contratto e' cross-dominio e il motore (Anello 2) non deve dipendere dai tipi
+# delle tabelle di vendite/config.stati_doc_* (layering). I parametri invece
+# sono %TYPE su tabelle di competenza (config.sorgenti, pratiche_sorgenti).
+#
+# GUARD parametri (regola AGENTS: id NULL o <=0 -> errore, niente
+# normalizzazione silenziosa): E_STATO_SORGENTE_PARAM_INVALIDO (id 502, seed
+# 20260701-20). NB: tipo VALIDO ma senza resolver NON e' errore (-> UNKNOWN).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260701-18-create-fn-stato-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20260701-18-create-fn-stato-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D3: crea pratiche.fn_stato_sorgente(sorgente_tipo_id, sorgente_uid) —
+        wrapper scalare su script.vw_stato_sorgente. Sempre 1 riga: proiezione
+        del dominio (risolto=true) o sentinella UNKNOWN (risolto=false) senza
+        errore. Guard parametri E_STATO_SORGENTE_PARAM_INVALIDO.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: script
+            viewName: vw_stato_sorgente
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS pratiche.fn_stato_sorgente(bigint, text);
+
+              CREATE FUNCTION pratiche.fn_stato_sorgente(
+                  p_sorgente_tipo_id config.sorgenti.id%TYPE,
+                  p_sorgente_uid     pratiche.pratiche_sorgenti.sorgente_uid%TYPE
+              )
+              RETURNS TABLE (
+                  sorgente_tipo_id     config.sorgenti.id%TYPE,
+                  sorgente_uid         pratiche.pratiche_sorgenti.sorgente_uid%TYPE,
+                  risolto              BOOLEAN,
+                  stato_codice_interno TEXT,
+                  stato_codice         TEXT,
+                  stato_descrizione    TEXT,
+                  fase                 TEXT,
+                  esito                TEXT,
+                  terminale            BOOLEAN
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Descrittore normalizzato dello stato del documento sorgente
+              -- (contratto §4 brief design V10). Dispatch: lookup sulla union
+              -- script.vw_stato_sorgente (unica superficie, decisione A);
+              -- nessuna riga -> sentinella UNKNOWN, mai errore (additivita':
+              -- dominio senza resolver = comportamento di oggi).
+              BEGIN
+                  -- Guard fail-fast sui parametri (id NULL/<=0, uid vuoto).
+                  IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0
+                     OR p_sorgente_uid IS NULL OR btrim(p_sorgente_uid) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'pratiche',
+                          'pratiche.fn_stato_sorgente',
+                          'E_STATO_SORGENTE_PARAM_INVALIDO',
+                          jsonb_build_object(
+                              'sorgente_tipo_id', p_sorgente_tipo_id,
+                              'sorgente_uid',     p_sorgente_uid
+                          ),
+                          NULL,
+                          COALESCE(p_sorgente_tipo_id::text, 'NULL'),
+                          COALESCE(p_sorgente_uid, 'NULL')
+                      );
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT
+                      v.sorgente_tipo_id,
+                      v.sorgente_uid,
+                      v.risolto,
+                      v.stato_codice_interno,
+                      v.stato_codice,
+                      v.stato_descrizione,
+                      v.fase,
+                      v.esito,
+                      v.terminale
+                    FROM script.vw_stato_sorgente v
+                   WHERE v.sorgente_tipo_id = p_sorgente_tipo_id
+                     AND v.sorgente_uid     = p_sorgente_uid;
+
+                  -- Degrado con grazia: tipo senza resolver o documento non
+                  -- trovato -> sentinella UNKNOWN (risolto=false). fase=APERTO
+                  -- e' il default di routing; il consumer usa `risolto` per il
+                  -- fallback UI (milestone manuale come oggi).
+                  IF NOT FOUND THEN
+                      RETURN QUERY
+                      SELECT
+                          p_sorgente_tipo_id,
+                          p_sorgente_uid,
+                          false,
+                          'UNKNOWN'::text,
+                          'UNKNOWN'::text,
+                          'n/d'::text,
+                          'APERTO'::text,
+                          NULL::text,
+                          false;
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_stato_sorgente(bigint, text)
+              IS 'API di motore per il descrittore normalizzato dello stato del documento sorgente (D3, brief-db-proiezione-stato-dominio). Sempre esattamente 1 riga: proiezione da script.vw_stato_sorgente (risolto=true) oppure sentinella UNKNOWN (risolto=false, fase APERTO, esito NULL, terminale false) senza errore — un tipo senza resolver degrada al comportamento manuale odierno. Guard parametri: E_STATO_SORGENTE_PARAM_INVALIDO su tipo NULL/<=0 o uid vuoto. Per le liste joinare direttamente script.vw_stato_sorgente (niente N+1). rev 2026-07-01.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS pratiche.fn_stato_sorgente(bigint, text);

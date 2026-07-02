@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Proiezione stato di dominio — D2: resolver del dominio vendite/PREVENTIVI.
+# (brief-db-proiezione-stato-dominio §4 D2)
+#
+# Espone il descrittore normalizzato dello stato VIVO di ogni preventivo:
+# stato nativo (codice_interno/codice/descrizione, alias FEDELI §6c linee-guida)
+# + mapping D1 (fase/esito/terminale) dichiarato su config.stati_doc_preventivi.
+# Read-time, nessun mirror: il documento resta l'unica verita'.
+#
+# CHIAVE: (sorgente_tipo_id, sorgente_uid) coerente con pratiche.pratiche_sorgenti.
+#   - sorgente_tipo_id risolto via config.sorgenti.codice_interno='PREVENTIVO'
+#     (chiave naturale immutabile, MAI id letterale — §6d linee-guida);
+#   - sorgente_uid = (preventivi.uid)::text, coerente con key_selector='uid'
+#     del tipo sorgente (stesso pattern di vw_preventivi_pratiche).
+# CONTRATTO RESOLVER: al piu' UNA riga per (tipo, uid) — garantito da uid UNIQUE.
+#
+# NOTA LAG (da manuale): la proiezione fotografa lo stato MEMORIZZATO. La
+# transizione EMESSO->SCADUTO e' asincrona (job notturno, §7c linee-guida-sql):
+# un preventivo scaduto-per-data ma non ancora flippato proietta IN_ATTESA fino
+# al giro del job. Il resolver NON ricalcola la scadenza (sarebbe logica di
+# dominio duplicata).
+#
+# Consumata da script.vw_stato_sorgente (20260701-17): e' il ramo PREVENTIVI
+# della union di motore. Non interrogarla direttamente dal motore (layering:
+# engine -> script -> dominio).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260701-16-create-vw-stato-sorgente-preventivo-mctit.yaml
+
+  - changeSet:
+      id: 20260701-16-create-vw-stato-sorgente-preventivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D2: crea vendite.vw_stato_sorgente_preventivo, resolver normalizzato del
+        dominio PREVENTIVI — descrittore (stato nativo + fase/esito/terminale)
+        per (sorgente_tipo_id, sorgente_uid). Ramo della union
+        script.vw_stato_sorgente.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'config'
+                 AND table_name   = 'stati_doc_preventivi'
+                 AND column_name  = 'fase';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_preventivo AS
+              SELECT
+                  s.id                AS sorgente_tipo_id,
+                  (p.uid)::text       AS sorgente_uid,
+                  -- Alias FEDELI alla sorgente (§6c): codice_interno = logica
+                  -- (immutabile), codice/descrizione = display (mutabili).
+                  sdp.codice_interno  AS stato_codice_interno,
+                  sdp.codice          AS stato_codice,
+                  sdp.descrizione     AS stato_descrizione,
+                  -- Mapping D1 dichiarato dal dominio (config.stati_doc_preventivi).
+                  sdp.fase,
+                  sdp.esito,
+                  sdp.terminale
+                FROM vendite.preventivi p
+                JOIN config.sorgenti s
+                  ON s.codice_interno = 'PREVENTIVO'
+                 AND s.attivo IS TRUE
+                JOIN config.stati_doc_preventivi sdp
+                  ON sdp.id = p.stato_doc_preventivo_id;
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_preventivo IS
+                'Resolver di dominio D2 (brief-db-proiezione-stato-dominio): descrittore normalizzato dello stato vivo di ogni preventivo — stato nativo (alias fedeli) + fase/esito/terminale dichiarati su config.stati_doc_preventivi. Chiave (sorgente_tipo_id, sorgente_uid) coerente con pratiche.pratiche_sorgenti (key_selector=uid); al piu'' una riga per chiave. Read-time (nessun mirror); fotografa lo stato MEMORIZZATO: la transizione EMESSO->SCADUTO e'' asincrona (job notturno). Consumata dal motore solo via script.vw_stato_sorgente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_stato_sorgente_preventivo;

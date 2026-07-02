@@ -9,18 +9,18 @@ CREATE FUNCTION fn_coda_lavoro_operatore(p_risorsa_umana_id bigint, p_emittente_
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_coda_lavoro_operatore(p_risorsa_umana_id bigint, p_emittente_fiscale_id bigint)
- RETURNS TABLE(livello text, flusso_id bigint, pratica_id bigint, pratica_codice text, pratica_descrizione text, priorita_codice character varying, tipo_prestazione_codice character varying, template_flusso_codice character varying, template_flusso_desc text, stato_flusso_codice_interno character varying, stato_flusso_codice character varying, sequenza integer, data_scadenza date, risorsa_assegnata text)
+ RETURNS TABLE(livello text, flusso_id bigint, pratica_id bigint, pratica_codice text, pratica_descrizione text, priorita_codice character varying, tipo_prestazione_codice character varying, template_flusso_codice character varying, template_flusso_desc text, stato_flusso_codice_interno character varying, stato_flusso_codice character varying, stato_flusso_descrizione text, sequenza integer, data_scadenza date, risorsa_assegnata text)
  LANGUAGE sql
  STABLE
 AS $function$
 -- Coda di lavoro operatore su quattro livelli (policy reparto-first §2.2):
 --   ASSEGNATO > COMPETENZA (A/D) > REPARTO (B) > LIBERO (C).
 -- Ogni flusso appare in un solo livello (il piu' alto applicabile).
--- stato_codice (interno alla query) = codice_interno per la LOGICA;
--- in output: stato_flusso_codice_interno (logica) + stato_flusso_codice
--- (display = codice).
+-- stato_codice_interno (interno alla query) = codice_interno per la LOGICA;
+-- in output: stato_flusso_codice_interno (logica), stato_flusso_codice
+-- (display = codice), stato_flusso_descrizione (display umano = descrizione).
 WITH stati_pendenti AS (
-    SELECT id, codice_interno, codice
+    SELECT id, codice_interno, codice, descrizione
       FROM config.stati_flussi_pratiche
      WHERE codice_interno IN ('DA_ESEGUIRE', 'IN_CORSO')
 ),
@@ -46,6 +46,7 @@ flussi_base AS (
         f.data_scadenza AS flusso_scadenza,
         sf.codice_interno AS stato_codice_interno,
         sf.codice         AS stato_codice,
+        sf.descrizione    AS stato_descrizione,
         p.risorsa_umana_id AS pratica_risorsa
     FROM pratiche.flussi f
     JOIN stati_pendenti sf ON sf.id = f.stato_id
@@ -98,6 +99,7 @@ SELECT
     tf.descrizione,
     c.stato_codice_interno,  -- -> stato_flusso_codice_interno (codice_interno)
     c.stato_codice,          -- -> stato_flusso_codice (codice, display)
+    c.stato_descrizione,     -- -> stato_flusso_descrizione (descrizione, display umano)
     c.sequenza,
     COALESCE(c.flusso_scadenza, p.data_scadenza),
     NULL::text
@@ -120,7 +122,7 @@ ORDER BY
 $function$
 
 COMMENT ON FUNCTION pratiche.fn_coda_lavoro_operatore(p_risorsa_umana_id bigint, p_emittente_fiscale_id bigint)
-IS 'Coda di lavoro operatore su quattro livelli: ASSEGNATO, COMPETENZA (A/D), REPARTO (B, reparto anagrafico + no skill-lock), LIBERO (C, all''operatore della pratica). Esclude pratiche terminali. Espone stato_flusso_codice_interno (codice_interno, logica) e stato_flusso_codice (codice, display). rev 2026-06-28 (naming stato).';
+IS 'Coda di lavoro operatore su quattro livelli: ASSEGNATO, COMPETENZA (A/D), REPARTO (B, reparto anagrafico + no skill-lock), LIBERO (C, all''operatore della pratica). Esclude pratiche terminali. Espone stato_flusso_codice_interno (codice_interno, logica), stato_flusso_codice (codice, display) e stato_flusso_descrizione (descrizione, display umano). rev 2026-07-01 (display descrizione stato).';
 ```
 
 ---

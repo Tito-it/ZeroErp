@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Proiezione stato di dominio (brief-db-proiezione-stato-dominio, decisione B):
+# discriminatore is_verdetto su config.esiti_flussi_pratiche.
+#
+# PERCHE': la tabella fa doppio lavoro — verdetti (POSITIVO/NEGATIVO/PARZIALE/
+# NON_APPLICABILE, strutturali di motore) ED esiti di INSTRADAMENTO di dominio
+# (es. MERCE_PRESENTE/SOLO_SERVIZI del bivio SMISTAMENTO). La colonna `esito`
+# delle config.stati_doc_* (proiezione D1) referenzia questo vocabolario via FK,
+# ma la sola FK non impedirebbe di mappare uno stato documento su un esito di
+# instradamento (nonsense semantico). is_verdetto marca il sottoinsieme ammesso;
+# l'enforcement e' nel guard trigger config.trgfn_stati_doc_guard_esito_verdetto
+# (20260701-15). Utile anche alla futura fase GUIDA (D4): il motore avanza i
+# milestone solo su verdetti, mai su esiti di instradamento.
+#
+# DEFAULT false = fail-closed: un nuovo esito NON e' un verdetto finche' chi lo
+# seeda non lo dichiara esplicitamente.
+#
+# SEED: backfill true sui 4 strutturali qui in 00_schema (copre il DB vivo e i
+# fresh-DB prima del load 80_data); la CSV esiti_flussi_pratiche.csv e' estesa
+# con la colonna (copre i re-seed; instradamento = f). Playbook is_abortito
+# (20260515-02): ALTER+backfill in 00_schema, valori anche in CSV.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260701-13-alter-esiti-flussi-pratiche-add-is-verdetto-mctit.yaml
+
+  - changeSet:
+      id: 20260701-13-alter-esiti-flussi-pratiche-add-is-verdetto
+      author: mctit
+      comment: >
+        Aggiunge is_verdetto BOOLEAN NOT NULL DEFAULT false a
+        config.esiti_flussi_pratiche e lo setta a true sui 4 esiti strutturali
+        (POSITIVO/NEGATIVO/PARZIALE/NON_APPLICABILE). Discrimina i verdetti dagli
+        esiti di instradamento: solo i verdetti sono ammessi come proiezione
+        `esito` sulle config.stati_doc_* (guard 20260701-15).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: esiti_flussi_pratiche
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.esiti_flussi_pratiche
+                ADD COLUMN is_verdetto BOOLEAN NOT NULL DEFAULT false;
+
+              -- I 4 esiti strutturali di motore sono verdetti; gli esiti di
+              -- instradamento di dominio restano al default false (fail-closed).
+              UPDATE config.esiti_flussi_pratiche
+                 SET is_verdetto = true
+               WHERE codice_interno IN ('POSITIVO', 'NEGATIVO', 'PARZIALE', 'NON_APPLICABILE');
+
+              COMMENT ON COLUMN config.esiti_flussi_pratiche.is_verdetto IS
+                  'true = l''esito e'' un verdetto (chiusura valutativa: POSITIVO/NEGATIVO/'
+                  'PARZIALE/NON_APPLICABILE), utilizzabile come proiezione `esito` sulle '
+                  'config.stati_doc_* (guard trgfn_stati_doc_guard_esito_verdetto) e come '
+                  'condizione di avanzamento milestone (fase GUIDA). false = esito di '
+                  'instradamento di dominio (es. ramo di un bivio): valido per i flussi, '
+                  'mai come verdetto di documento. Default false = fail-closed.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.esiti_flussi_pratiche
+                DROP COLUMN IF EXISTS is_verdetto;
