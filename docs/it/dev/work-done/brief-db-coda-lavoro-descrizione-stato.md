@@ -15,7 +15,7 @@
 > `stati_pendenti`.
 >
 > **Origine**: prerequisito **P0.1 (coda)** del
-> [brief-fe-percorso-narrativo-operatore.md](brief-fe-percorso-narrativo-operatore.md §8),
+> [brief-fe-percorso-narrativo-operatore.md](brief-fe-percorso-narrativo-operatore.md),
 > emerso dalla ricognizione Fase 0 del 2026-07-01.
 
 ---

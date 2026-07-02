@@ -2,10 +2,14 @@
 
 > **Tipo**: brief DB (DDL + seed + funzioni/viste) · **Destinatario**: team DB (`dev/db-tid`)
 > **Priorità**: 🟠 media-alta (abilita V1 "vista-racconto" e salda il debito GUIDA)
-> **Data**: 2026-07-01 · **Stato**: 🟢 increment PREVENTIVI (D1-D3) applicato e testato —
-> resta BE/FE (fase MOSTRA), altri domini, D4
+> **Data**: 2026-07-01 · **Stato**: ✅ **CHIUSO 2026-07-02** (spostato in `work-done/`):
+> attività DB dell'increment PREVENTIVI (D1-D3 + codici errore + pgTAP + doc) consegnate
+> e mergiate dal team DB. I residui NON-DB (fase MOSTRA BE/FE, roll-out
+> offerte/ordini/contratti, D4 GUIDA fase 2) restano tracciati nel brief di design
+> [brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md),
+> che resta aperto in `work-in-progress/`.
 >
-> **Origine / autorevole**: [brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md)
+> **Origine / autorevole**: [brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md)
 > (voce **V10**). Qui si estraggono le **sole attività DB** (D1-D4). Modello, principio e
 > vincoli sono nel brief di design: leggerlo prima.
 
@@ -23,10 +27,10 @@
 | pgTAP `test-proiezione-stato-sorgente.sql` (17 test) | ✅ verde |
 | Doc auto-gen dbzero (rigenerata da `gen_db_docs.py`) | ✅ |
 | Doc manuale: `fn_stato_sorgente`, `vw_stato_sorgente`, `vw_stato_sorgente_preventivo` + update `stati_doc_preventivi`/`esiti_flussi_pratiche` | ✅ |
-| **BE** — descrittore nei payload pratica/percorso/coda (fase MOSTRA) | ⬜ da fare |
-| **FE** — vista-racconto V1 | ⬜ da fare |
-| Roll-out offerte/ordini/contratti (stesso playbook, guard già generico) | ⬜ dopo MOSTRA |
-| **D4** — GUIDA "avanza-su-esito-proiettato" (idempotente) | ⬜ fase 2 |
+| **BE** — descrittore nei payload pratica/percorso/coda (fase MOSTRA) | ✅ 2026-07-02 (display fields `doc_*`, frammento `_doc_sorgente_lateral` su `script.vw_stato_sorgente`; doc in `api_percorso.md`) |
+| **FE** — vista-racconto V1 | ✅ 2026-07-02 (Tag stato-documento su ADESSO e FATTI-vivi, BB `faseSorgenteSeverity`) |
+| Roll-out offerte/ordini/contratti (stesso playbook, guard già generico) | ⬜ dopo validazione — tracciato nel [brief design](../work-in-progress/brief-design-proiezione-stato-dominio.md) |
+| **D4** — GUIDA "avanza-su-esito-proiettato" (idempotente) | ⬜ fase 2 — tracciato nel [brief design](../work-in-progress/brief-design-proiezione-stato-dominio.md) |
 
 ---
 
@@ -218,5 +222,5 @@ domini offerte/ordini/contratti (replica dopo validazione), D4.
 ---
 
 *Alla presa in carico: aggiornato lo stato in testa (2026-07-01) e l'addendum decisioni nel
-brief design [brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md).
+brief design [brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md).
 A chiusura increment: aggiornare la riga V10 di analisi-pratiche-valutazione-stato.md.*

@@ -1,7 +1,30 @@
 # Brief Design — Proiezione generica dello stato di dominio nelle pratiche
 
 > **Tipo**: brief di design autorevole (modello + piano DB/BE, FE di consumo) · **Data**: 2026-07-01
-> **Owner**: Tid · **Stato**: 🟢 piano pronto (2026-07-01) — recon DB fatta (§11.1), decisioni §10 adottate (§11.2), **piano di sviluppo in §11**. Attività DB estratte nel brief separato [brief-db-proiezione-stato-dominio.md](brief-db-proiezione-stato-dominio.md) (→ team DB). Cantiere da avviare su PREVENTIVI.
+> **Owner**: Tid · **Stato**: 🟢 **fase MOSTRA implementata su PREVENTIVI (2026-07-02)** —
+> Fase 0 DB ✅ (D1-D3 consegnate dal team DB, [brief chiuso](../work-done/brief-db-proiezione-stato-dominio.md));
+> Fase 1 BE ✅ (display fields `doc_*` nei payload **percorso/coda/dettaglio+lista** via
+> frammento condiviso `_doc_sorgente_lateral` su `script.vw_stato_sorgente`, ancore
+> per-flusso e ROOT; smoke live: PREVENTIVAZIONE COMPLETATO proietta "Preventivo /
+> Emesso / IN_ATTESA"); Fase 2 FE ✅ (vista-racconto: Tag stato-documento su card
+> ADESSO e sui FATTI finché `doc_terminale=false`; BB `faseSorgenteSeverity` in
+> `core/utils/severity.js`; plumbing raw in modalità tecnica). Doc API aggiornata
+> (`api_percorso/api_coda_lavoro/api_pratica_detail`).
+> **Restano**: validazione E2E in-app su PREVENTIVI → roll-out offerte/ordini/contratti
+> (brief DB per dominio) → Fase 3 GUIDA (D4).
+>
+> **Note per il roll-out** (review critica 2026-07-02): **(a)** i resolver espongono
+> `sorgente_uid` castando la chiave nativa (`preventivi.uid::text`) — il predicato pushdown
+> della LATERAL non usa l'indice btree su `uid`: al crescere dei volumi serve un **indice a
+> espressione** `((uid::text))` per dominio (voce per il brief DB di roll-out). **(b)** i link
+> **COLLEGATO** (ordine/commessa da post-smistamento) nascono **senza `flusso_id`** per
+> decisione documentata ("non nascono da un flusso"): quando arriveranno i resolver
+> ordine/commessa, gli step CONFERMA_ORDINE/INVIO_COMMESSA non proietteranno nulla con
+> l'ancora per-flusso attuale — decidere allora se valorizzare `flusso_id` sui COLLEGATO o
+> dare alla LATERAL del percorso un fallback pratica-level. **(c)** la **regola dell'ancora**
+> (ROOT preferito, poi link più recente) oggi vive solo nel frammento Python
+> `_doc_sorgente_lateral`: la fase GUIDA (D4) dovrà risolvere la STESSA ancora a livello
+> motore → promuoverla a vista DB condivisa (es. `vw_pratica_doc_sorgente`) in quel cantiere.
 >
 > **Origine**: voce **V10** e §2.4 di
 > [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md) — la
@@ -9,8 +32,8 @@
 > stati sovrapposte**, e la pratica non conosce lo stato del documento in corso.
 > Cicli di vita **verificati** sui quattro domini reali (§3).
 >
-> **Documenti collegati**: [brief-fe-percorso-narrativo-operatore.md](brief-fe-percorso-narrativo-operatore.md)
-> (V1, consuma questa proiezione), [analisi-uniformita-pratica-preventivi.md](analisi-uniformita-pratica-preventivi.md)
+> **Documenti collegati**: [brief-fe-percorso-narrativo-operatore.md](../work-done/brief-fe-percorso-narrativo-operatore.md)
+> (V1, consuma questa proiezione), [analisi-uniformita-pratica-preventivi.md](../work-done/analisi-uniformita-pratica-preventivi.md)
 > (principio "non divergere dallo standalone"), [Guida Gestione Pratiche](../../guide/gestione-pratiche.md).
 
 ---
@@ -219,7 +242,7 @@ lettura ≠ esecuzione di scrittura.)*
 ### 11.4 Fasi
 
 - **Fase 0 — Prerequisiti DB** → **brief separato al team DB**
-  ([brief-db-proiezione-stato-dominio.md](brief-db-proiezione-stato-dominio.md),
+  ([brief-db-proiezione-stato-dominio.md](../work-done/brief-db-proiezione-stato-dominio.md),
   `feedback_db_actions_passaggio_team`): **D1** (colonne norm + seed mapping per dominio),
   **D2** (resolver per dominio: vista/fn che dà il descrittore §4), **D3** (`resolver_key` +
   dispatch `fn_stato_sorgente` / vista normalizzata). **Additivo, roll-out per dominio**:

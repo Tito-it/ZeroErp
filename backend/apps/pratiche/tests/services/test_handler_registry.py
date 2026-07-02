@@ -26,10 +26,12 @@ from apps.pratiche.services.handler_registry import (
 
 class HandlerRegistryTests(SimpleTestCase):
 
-    # Scopo: il primo handler reale (vendita.push_preventivo) e' registrato al
-    # boot da apps/vendite/apps.py:ready() — non piu' registry vuoto.
+    # Scopo: gli handler reali del dominio vendite sono registrati al boot da
+    # apps/vendite/apps.py:ready() — non piu' registry vuoto. (L'orchestratore
+    # monolitico `vendita.push_preventivo` e' stato ritirato con l'uniformita'
+    # pratica preventivi: il percorso e' ora a passi espliciti.)
     def test_handler_vendite_registrato_al_boot(self):
-        self.assertIn("vendita.push_preventivo", HANDLER_MAP)
+        self.assertIn("vendita.post_smistamento", HANDLER_MAP)
 
     # Scopo: Verifica che get_handler ritorni None per chiave non registrata.
     def test_get_handler_chiave_mancante(self):

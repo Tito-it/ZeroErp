@@ -108,14 +108,15 @@ La generazione automatica cross-pratica al completamento e' gestita dal trigger 
 ## Regole
 
 - Ownership check prima di qualsiasi operazione; lo stato corrente del flusso (letto dal `get_flusso` di verifica) instrada il completamento (CONTESTUALE da `DA_ESEGUIRE` vs completamento da `IN_CORSO`).
-- Se `nuovo_stato = COMPLETATO`, `esito` e' obbligatorio e deve appartenere al vocabolario
-  (validazione centralizzata in `pratiche_service._require_esito_valido`, costante
-  `ESITI_FLUSSO_AMMESSI` — mirror applicativo della FK verso `config.esiti_flussi_pratiche`).
-  In piu', sul percorso operatore (questo endpoint) l'esito NON puo' essere un **esito di
-  ramo** (`ESITI_FLUSSO_RAMO`: `MERCE_PRESENTE`, `SOLO_SERVIZI` — valori calcolati dal
-  dominio via `completa_step_pratica`): guard `require_esito_selezionabile_operatore`,
-  errore parlante `E_FLUSSO_VALIDATION`. Il filtro data-driven alla fonte arriva col
-  discriminatore a DB (`brief-db-esiti-flussi-selezionabilita.md`).
+- Se `nuovo_stato = COMPLETATO`, `esito` e' obbligatorio e deve esistere **attivo** nel
+  vocabolario `config.esiti_flussi_pratiche` (lettura DB in
+  `pratiche_service._require_esito_valido` — nessun mirror applicativo: un nuovo esito
+  seedato e' automaticamente valido). In piu', sul percorso operatore (questo endpoint)
+  l'esito deve essere un **verdetto** (`is_verdetto = true`): gli esiti di ramo
+  (`is_verdetto = false`, es. `MERCE_PRESENTE`/`SOLO_SERVIZI`, calcolati dal dominio via
+  `completa_step_pratica`) sono respinti dal guard `require_esito_selezionabile_operatore`
+  con errore parlante `E_FLUSSO_VALIDATION`. Il Select FE filtra alla fonte sul campo
+  `selezionabile_operatore` esposto dal lookup (derivato da `is_verdetto`).
 - Se `nuovo_stato = COMPLETATO` e lo stato corrente è `DA_ESEGUIRE` (modalita CONTESTUALE), il servizio esegue `avvia_e_completa_flusso` (avvio + esito atomico); altrimenti `completa_flusso` da `IN_CORSO`.
 - Se `nuovo_stato = IN_CORSO`, il servizio transiziona a `IN_CORSO` e, se il flusso ha un handler **o** `modalita_esito = AUTOMATICO`, lo completa con `esito_default` (vedi Contesto). L'utente acting è passato all'handler (`p_user` delle fn DB).
 - Per qualsiasi altro stato, il servizio delega a `cambia_stato_flusso` con validazione stato non vuoto.
@@ -129,6 +130,8 @@ La generazione automatica cross-pratica al completamento e' gestita dal trigger 
 
 - `pratiche.flussi` (UPDATE stato_id, esito, note_esito)
 - `config.stati_flussi_pratiche` (risoluzione codice_interno → id)
+- `config.esiti_flussi_pratiche` (SELECT `attivo`, `is_verdetto` per la validazione
+  esito: esistenza + selezionabilita' operatore)
 - `pratiche.trgfn_flussi_generazione` (trigger su UPDATE per generazione automatica)
 - `pratiche.trgfn_flussi_autochiusura_pratica` (trigger su UPDATE→COMPLETATO: auto-chiusura pratica)
 - `pratiche.trgfn_flussi_guard_pratica_terminale` / `trgfn_flussi_guard_chiusura_prematura` (guard)
@@ -136,16 +139,19 @@ La generazione automatica cross-pratica al completamento e' gestita dal trigger 
 
 ## Note di migrazione
 
-- (2 luglio 2026) **Guard esiti di ramo sul percorso operatore**: con il `Select` esiti FE
-  diventato data-driven dal vocabolario globale (`config.esiti_flussi_pratiche` aggiunta
-  alla whitelist del lookup generico core), nel dropdown compaiono anche gli esiti di ramo
-  `MERCE_PRESENTE`/`SOLO_SERVIZI` (bivio SMISTAMENTO), che sono **calcolati dal dominio e
-  mai input utente**. Questo endpoint ora li respinge con
-  `pratiche_service.require_esito_selezionabile_operatore` (mirror `ESITI_FLUSSO_RAMO`,
-  `E_FLUSSO_VALIDATION`); i BB di dominio (`completa_step_pratica` → `completa_flusso`)
-  restano liberi di passarli. Interim in attesa del discriminatore data-driven a DB
-  (`brief-db-esiti-flussi-selezionabilita.md`): a colonna consegnata, il lookup filtra
-  alla fonte e il mirror si elimina.
+- (2 luglio 2026) **Esiti data-driven end-to-end (`is_verdetto`)**: con il `Select` esiti
+  FE diventato data-driven dal vocabolario globale (`config.esiti_flussi_pratiche` aggiunta
+  alla whitelist del lookup generico core), serviva distinguere i **verdetti**
+  dell'operatore dagli **esiti di ramo** calcolati dal dominio (`MERCE_PRESENTE`/
+  `SOLO_SERVIZI`, bivio SMISTAMENTO — mai input utente). Risolto col riuso della colonna
+  `is_verdetto` (DEFAULT false fail-closed, team DB): il lookup espone
+  `selezionabile_operatore` derivato (il FE filtra il Select alla fonte), l'endpoint
+  respinge i non-verdetto via `require_esito_selezionabile_operatore` (repo iniettabile,
+  `E_FLUSSO_VALIDATION`), e la validazione di esistenza (`_require_esito_valido`) legge il
+  vocabolario a DB. **Bonifica**: eliminati i mirror hardcoded `ESITI_FLUSSO_AMMESSI` e
+  `ESITI_FLUSSO_RAMO` — una sola verità. I BB di dominio (`completa_step_pratica` →
+  `completa_flusso`) restano liberi di passare gli esiti di ramo. Chiude
+  `brief-db-esiti-flussi-selezionabilita.md` (opzione riuso, nessuna colonna nuova).
 - (30 giugno 2026) **Contesto d'azione `meta` al completamento**: `completa_flusso` e
   `avvia_e_completa_flusso` accettano un `meta` opzionale, inoltrato a
   `dispatch_handler_eventi(..., extra_meta=meta)` e fuso sopra `flussi.meta` **senza

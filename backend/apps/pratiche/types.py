@@ -227,3 +227,14 @@ class CodaLavoroRow(TypedDict):
     sequenza: int
     data_scadenza: str | None
     risorsa_assegnata: str | None
+    # Aggiunti dal wrapper repository (non dalla fn): ordinale che preserva
+    # l'ordinamento della fn + descrittore stato documento sorgente
+    # (proiezione V10, display fields doc_*).
+    ordinality: int
+    doc_risolto: bool | None
+    doc_stato_codice_interno: str | None
+    doc_stato_descrizione: str | None
+    doc_fase: str | None
+    doc_esito: str | None
+    doc_terminale: bool | None
+    doc_sorgente_descrizione: str | None

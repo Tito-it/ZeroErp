@@ -2757,6 +2757,7 @@
     "flusso_esito": "Esito",
     "flusso_note_esito": "Note esito",
     "flusso_completa_con_esito": "Completa con esito",
+    "flusso_esiti_non_disponibili": "Elenco esiti non disponibile: chiudere e riaprire per riprovare",
     "competenze_flussi": "Competenze flussi",
     "visualizzazione_pratica": "Visualizzazione pratica codice: {codice}",
     "apri_scheda": "Apri scheda pratica",

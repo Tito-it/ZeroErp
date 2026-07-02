@@ -95,14 +95,20 @@ config `_LOOKUP_SPECIALIZZATE` in `dbops_repository.py` — regola del 2,
 2026-07-02): stesso contratto, stessi filtri `attivo_only`/`includi_obsoleti`
 (quest'ultimo solo se la tabella ha `obsoleto_dal`), stessa ricerca ILIKE.
 
-| `rel`                        | Colonna extra  | Uso FE                                        |
-|------------------------------|----------------|-----------------------------------------------|
-| `catalogo.unita_misura`      | `tipo_uom_id`  | Filtro conversioni same-type (`filterField`)  |
-| `pratiche.tipi_prestazione`  | `categoria`    | Raggruppamento tile della home pratiche       |
+| `rel`                          | Colonna extra             | Uso FE                                       |
+|--------------------------------|---------------------------|----------------------------------------------|
+| `catalogo.unita_misura`        | `tipo_uom_id`             | Filtro conversioni same-type (`filterField`) |
+| `config.esiti_flussi_pratiche` | `selezionabile_operatore` | Filtro Select esiti FlussoDrawer             |
+| `pratiche.tipi_prestazione`    | `categoria`               | Raggruppamento tile della home pratiche      |
+
+Il nome API della colonna extra può differire dalla colonna fisica
+(`extra_expr`): es. `selezionabile_operatore` è derivato da `is_verdetto`
+(true = verdetto dell'operatore, false = esito di ramo calcolato dal dominio)
+— il contratto parla la lingua del consumer, la verità memorizzata resta una.
 
 Per aggiungere una relazione specializzata: una riga di config in
-`_LOOKUP_SPECIALIZZATE` (`extra_col`, `has_codice_interno`, `has_obsoleto`) —
-niente nuovo SQL.
+`_LOOKUP_SPECIALIZZATE` (`extra_col`, opz. `extra_expr`, `has_codice_interno`,
+`has_obsoleto`) — niente nuovo SQL.
 
 ## Regole
 

@@ -2757,6 +2757,7 @@
     "flusso_esito": "Outcome",
     "flusso_note_esito": "Outcome notes",
     "flusso_completa_con_esito": "Complete with outcome",
+    "flusso_esiti_non_disponibili": "Outcome list unavailable: close and reopen to retry",
     "competenze_flussi": "Flow competences",
     "visualizzazione_pratica": "Viewing practice code: {codice}",
     "apri_scheda": "Open case sheet",

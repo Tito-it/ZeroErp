@@ -19,7 +19,7 @@
 // rami — nel rendering a card orizzontali (ramo `tecnico` sotto). Default: spento.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { statoFlussoSeverity } from '../../core/utils/severity'
+import { statoFlussoSeverity, faseSorgenteSeverity } from '../../core/utils/severity'
 import { RAMO_STEP, STATO_FLUSSO } from '../../core/constants'
 import { useInjectTechnicalMode } from '../../core/composables/useTechnicalMode'
 import { getUiActivity } from '../uiActivityRegistry'
@@ -86,6 +86,22 @@ const poiTesto = computed(() => poi.value.map(stepTitolo).join(', '))
 // Titolo umano dello step: descrizione (fallback codice).
 function stepTitolo(step) {
   return step.template_flusso_descrizione || step.template_flusso_codice
+}
+
+// Proiezione V10 (fase MOSTRA): lo step con documento agganciato mostra lo
+// stato VIVO del documento (display fields doc_* dal BE, read-time).
+// Asimmetria voluta fra le fasce: sui passi FATTI il Tag compare solo finche'
+// il documento vive (doc_terminale=false — il caso "il flusso si chiude
+// all'emissione ma il preventivo continua a vivere"; a documento chiuso
+// tacere, l'esito del passo basta); sulla card ADESSO compare SEMPRE, anche
+// terminale (sul passo attivo lo stato finale del documento e' informazione
+// operativa). doc_risolto=false/NULL → nessuna proiezione (milestone come
+// oggi); doc_terminale e' NOT NULL a modello quando risolto (D1).
+function docVivo(step) {
+  return step.doc_risolto === true
+}
+function docSev(step) {
+  return faseSorgenteSeverity(step.doc_fase, step.doc_esito)
 }
 // Severity dal codice interno dello stato (invariata: unico valore mappato).
 function statoSev(step) {
@@ -175,6 +191,17 @@ function isRamoChiuso(step) {
               <i class="pi pi-check-circle rac-fatto-icon" />
               <span class="rac-fatto-title">{{ stepTitolo(step) }}</span>
               <span v-if="step.esito_descrizione" class="rac-fatto-esito">· {{ step.esito_descrizione }}</span>
+              <!-- Documento del passo ancora VIVO dopo la chiusura del passo
+                   (proiezione V10): la pratica non va piu' "cieca". -->
+              <span v-if="docVivo(step) && !step.doc_terminale" class="rac-doc">
+                ·
+                <Tag
+                  :value="step.doc_stato_descrizione"
+                  :severity="docSev(step)"
+                  size="small"
+                  :title="step.doc_sorgente_descrizione"
+                />
+              </span>
               <span
                 v-if="canRipeti(step)"
                 class="rac-ripeti"
@@ -198,6 +225,16 @@ function isRamoChiuso(step) {
               />
             </div>
             <div class="rac-adesso-title">{{ stepTitolo(step) }}</div>
+            <!-- Stato vivo del documento collegato al passo (proiezione V10):
+                 "sei qui nella vita del documento" senza uscire dalla pratica. -->
+            <div v-if="docVivo(step)" class="rac-adesso-doc">
+              <span class="rac-doc-label">{{ step.doc_sorgente_descrizione }}</span>
+              <Tag
+                :value="step.doc_stato_descrizione"
+                :severity="docSev(step)"
+                size="small"
+              />
+            </div>
             <div class="rac-adesso-actions">
               <!-- Affordance di dominio (apri documento) se dichiarata dal template… -->
               <Button
@@ -279,6 +316,17 @@ function isRamoChiuso(step) {
             </div>
             <div v-if="step.esito" class="percorso-step-esito">
               {{ t('pratiche.flusso_esito') }}: <strong>{{ step.esito }}</strong>
+            </div>
+            <!-- Plumbing proiezione V10: descrittore raw del documento sorgente.
+                 risolto=false = link presente ma dominio senza resolver (decisione C):
+                 marcatore esplicito, non campi vuoti. -->
+            <div v-if="step.doc_risolto === true" class="percorso-step-esito">
+              doc: {{ step.doc_stato_codice_interno }} · {{ step.doc_fase }}
+              <template v-if="step.doc_esito">· {{ step.doc_esito }}</template>
+              <template v-if="step.doc_terminale">· terminale</template>
+            </div>
+            <div v-else-if="step.doc_risolto === false" class="percorso-step-esito">
+              doc: UNKNOWN (no resolver)
             </div>
             <div v-if="isRamoChiuso(step)" class="percorso-step-action percorso-ramo-chiuso">
               <i class="pi pi-ban" :title="t('pratiche.percorso_ramo_chiuso_hint')" />
@@ -389,6 +437,24 @@ function isRamoChiuso(step) {
 
 .rac-fatto-title { font-weight: 500; }
 .rac-fatto-esito { font-style: italic; }
+
+/* Proiezione documento sorgente (V10) */
+.rac-doc {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.rac-adesso-doc {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.rac-doc-label {
+  color: var(--app-text-muted);
+}
 
 .rac-ripeti {
   margin-left: 0.35rem;

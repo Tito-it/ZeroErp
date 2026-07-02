@@ -88,6 +88,28 @@ Delega a `pratiche_service.get_percorso` → `PraticheRepository.get_percorso_pr
   La verità esito-aware resta nella fn DB `fn_check_prerequisiti_flusso`
   (riusata nella query, nessuna regola duplicata lato BE).
 
+### Descrittore documento sorgente `doc_*` (2026-07-02, proiezione V10 fase MOSTRA)
+
+Ogni step espone lo stato **vivo** del documento di dominio agganciato al suo
+flusso (`pratiche_sorgenti.flusso_id`), via `script.vw_stato_sorgente` (union
+dei resolver di dominio) — read-time, nessun mirror. Display fields puri:
+
+- `doc_risolto` (bool|null) — `true` = proiezione reale; `false` = documento
+  collegato ma dominio senza resolver (il FE degrada al milestone manuale);
+  `null` = nessun documento agganciato allo step;
+- `doc_stato_codice_interno` / `doc_stato_descrizione` — stato nativo del
+  documento (display);
+- `doc_fase` ∈ `APERTO · IN_CORSO · IN_ATTESA · CHIUSO` — vocabolario
+  universale dichiarato dal dominio (colonne su `config.stati_doc_*`);
+- `doc_esito` — verdetto proiettato (`POSITIVO`/`NEGATIVO`/… o null);
+- `doc_terminale` (bool) — il documento non evolverà più;
+- `doc_sorgente_descrizione` — etichetta del tipo sorgente (`config.sorgenti`).
+
+A parità di ancora vince il link `ROOT` (poi il più recente). Stessi campi
+esposti da coda lavoro (ancora per flusso) e dettaglio/lista pratiche (ancora
+ROOT della pratica). Nota: la proiezione fotografa lo **stato scritto** sul
+documento (es. scadenza flippata dal job notturno, non ricalcolata qui).
+
 ## Regole
 
 - Ordine per `sequenza, template_flusso_id`.

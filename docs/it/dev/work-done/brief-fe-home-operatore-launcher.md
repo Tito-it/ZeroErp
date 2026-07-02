@@ -1,13 +1,14 @@
 # Brief FE — Home operatore pratiche (launcher «comincia / continua»)
 
 > **Tipo**: brief FE (+ un prerequisito BE puro) · **Data**: 2026-07-01
-> **Owner**: Tid · **Stato**: 🟢 implementazione completa (2026-07-02): **P1 + B1–B6 fatti**
-> (lookup BE con `categoria` smoke-testato live; deep-link, filtro tipo, preset "Nuova
-> pratica", home launcher, route/menu) **+ review critica passata** (§8, 2026-07-02).
-> **Resta la verifica in-app** (acceptance §7) prima della chiusura.
+> **Owner**: Tid · **Stato**: ✅ **CHIUSO 2026-07-02** (spostato in `work-done/`):
+> **P1 + B1–B6 fatti** (lookup BE con `categoria` smoke-testato live; deep-link, filtro
+> tipo, preset "Nuova pratica", home launcher, route/menu) **+ review critica passata**
+> (§8, 2026-07-02), committato e mergiato (PR #910). La verifica in-app (acceptance §7)
+> si completa in esercizio.
 >
 > **Origine**: voce **V11** di
-> [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md)
+> [analisi-pratiche-valutazione-stato.md](../work-in-progress/analisi-pratiche-valutazione-stato.md)
 > (Home operatore / launcher, modello menu AS/400). Le decisioni di design sono
 > state prese in sessione con l'owner il 2026-07-01 e **correggono** l'idea
 > originale della riga V11 (vedi §2.3).
@@ -221,7 +222,8 @@ percorso; icone tile da `NAV_ICONS` (niente literal); dedup in-flight su
 Fuori perimetro launcher ma corretti nella stessa review (cantiere V1):
 whitelist lookup `config.esiti_flussi_pratiche` mancante (Select esiti vuoto →
 completamento manuale impossibile), guard BE esiti di ramo + nuovo
-[brief-db-esiti-flussi-selezionabilita.md](brief-db-esiti-flussi-selezionabilita.md),
+[brief-db-esiti-flussi-selezionabilita.md](brief-db-esiti-flussi-selezionabilita.md)
+(poi ✅ chiuso il 2026-07-02 con riuso `is_verdetto`),
 fasce del Percorso (istanza aperta sempre in ADESSO), Ripeti/Apri sulla card
 ADESSO — dettaglio nel brief V1 §testata.
 
@@ -233,4 +235,4 @@ con MieAttivitaPanel (estrazione in auth store rinviata: superficie condivisa
 col team, serve ok esplicito).
 
 *Brief vivo: a chiusura spostare in `work-done/` e aggiornare la riga V11 di
-[analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md).*
+[analisi-pratiche-valutazione-stato.md](../work-in-progress/analisi-pratiche-valutazione-stato.md).*
