@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Proiezione stato di dominio — D2: resolver del dominio vendite/ORDINE.
+# (brief-db-proiezione-stato-dominio-rollout §3; specchio di
+#  vendite.vw_stato_sorgente_preventivo 20260701-16)
+#
+# Espone il descrittore normalizzato dello stato VIVO di ogni ordine di VENDITA:
+# stato nativo (alias FEDELI §6c) + mapping D1 (fase/esito/terminale) da
+# config.stati_doc_ordini. Read-time, nessun mirror.
+#
+# CHIAVE: (sorgente_tipo_id, sorgente_uid) coerente con pratiche_sorgenti.
+#   - sorgente_tipo_id via config.sorgenti.codice_interno='ORDINE_VENDITA'
+#     (chiave naturale immutabile, MAI id letterale);
+#   - sorgente_uid = (ordini.id)::text, coerente con key_selector='id' del tipo
+#     sorgente ORDINE_VENDITA (diverso da offerta/preventivo che usano uid!).
+# CONTRATTO RESOLVER: al piu' UNA riga per (tipo, uid) — garantito da id PK.
+#
+# NB dominio-di-vendita: legge SOLO vendite.ordini (la sorgente ORDINE_VENDITA
+# punta li'). La mappa D1 su config.stati_doc_ordini e' centrata sul ciclo di
+# vendita anche se la tabella stati e' condivisa con acquisti.ordini (vedi R3 in
+# 20260702-03).
+#
+# Consumata da script.vw_stato_sorgente (20260702-09): ramo ORDINE. Non
+# interrogarla dal motore (layering: engine -> script -> dominio).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260702-07-create-vw-stato-sorgente-ordine-mctit.yaml
+
+  - changeSet:
+      id: 20260702-07-create-vw-stato-sorgente-ordine
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D2: crea vendite.vw_stato_sorgente_ordine, resolver normalizzato del
+        dominio ORDINE (vendita) — descrittore per (sorgente_tipo_id,
+        sorgente_uid) con sorgente_uid = (ordini.id)::text (key_selector=id).
+        Ramo della union script.vw_stato_sorgente.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'config'
+                 AND table_name   = 'stati_doc_ordini'
+                 AND column_name  = 'fase';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_ordine AS
+              SELECT
+                  s.id                AS sorgente_tipo_id,
+                  (o.id)::text        AS sorgente_uid,
+                  -- Alias FEDELI alla sorgente (§6c).
+                  sdor.codice_interno AS stato_codice_interno,
+                  sdor.codice         AS stato_codice,
+                  sdor.descrizione    AS stato_descrizione,
+                  -- Mapping D1 dichiarato dal dominio (config.stati_doc_ordini).
+                  sdor.fase,
+                  sdor.esito,
+                  sdor.terminale
+                FROM vendite.ordini o
+                JOIN config.sorgenti s
+                  ON s.codice_interno = 'ORDINE_VENDITA'
+                 AND s.attivo IS TRUE
+                JOIN config.stati_doc_ordini sdor
+                  ON sdor.id = o.stato_doc_ordine_id;
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_ordine IS
+                'Resolver di dominio D2 (brief-db-proiezione-stato-dominio roll-out): descrittore normalizzato dello stato vivo di ogni ordine di VENDITA — stato nativo (alias fedeli) + fase/esito/terminale da config.stati_doc_ordini (mappa centrata sul ciclo di vendita). Chiave (sorgente_tipo_id, sorgente_uid) con sorgente_uid=(id)::text (key_selector=id); al piu'' una riga per chiave. Read-time. Consumata dal motore solo via script.vw_stato_sorgente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_stato_sorgente_ordine;

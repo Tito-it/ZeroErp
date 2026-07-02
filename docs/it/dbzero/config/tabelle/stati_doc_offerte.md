@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/stati_doc_offerte.md" %}
 # 📚 Tabella `stati_doc_offerte`
 
 ## 🗂️ Campi principali
@@ -14,10 +15,16 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
+| fase | character varying | NO |  |
+| esito | character varying | YES |  |
+| terminale | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_doc_offerte_fase |  |
+| CHECK | chk_stati_doc_offerte_terminale_chiuso |  |
+| FOREIGN KEY | fk_stati_doc_offerte_esito | esito |
 | PRIMARY KEY | pk_stati_doc_offerte | id |
 | UNIQUE | uq_stati_doc_offerte_codice | codice |
 | UNIQUE | uq_stati_doc_offerte_codice_interno | codice_interno |
@@ -33,6 +40,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_stati_doc_offerte_a10_guard_esito_verdetto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()` |
+| trg_stati_doc_offerte_a10_guard_esito_verdetto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()` |
 | trg_stati_doc_offerte_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
 | trg_stati_doc_offerte_a10_offerte_commerciali_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali', 'stato_doc_offerta_id', 'id', 'attivo')` |
 | trg_stati_doc_offerte_a10_stati_doc_offerte_transizioni__3acc96 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_offerte_transizioni', 'stato_a_id', 'id', 'attivo')` |

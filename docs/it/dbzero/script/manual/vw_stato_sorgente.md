@@ -28,10 +28,14 @@ Vive in `script` (layer applicativo riusabile) per non costringere a editare l'e
 | Ramo | Dominio | Registrato |
 |------|---------|-----------|
 | `vendite.vw_stato_sorgente_preventivo` | PREVENTIVI | 2026-07-01 |
+| `vendite.vw_stato_sorgente_offerta` | OFFERTA | 2026-07-02 |
+| `vendite.vw_stato_sorgente_ordine` | ORDINE (vendita) | 2026-07-02 |
+| `vendite.vw_stato_sorgente_contratto` | CONTRATTO | 2026-07-02 |
 
-Roll-out previsto: offerte, ordini, contratti (dopo validazione MOSTRA su preventivi).
 Ogni ramo aggancia il proprio `sorgente_tipo_id` via `config.sorgenti.codice_interno`
-(mai id letterale) e rispetta il contratto **al più una riga per (tipo, uid)**.
+(mai id letterale) e rispetta il contratto **al più una riga per (tipo, uid)**. La
+COMMESSA resta fuori (è un `PIPELINE_MARKER`, non ha `stati_doc_*` a ciclo-vita): un tipo
+senza ramo semplicemente non ha righe = non risolto.
 
 ---
 

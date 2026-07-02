@@ -60,6 +60,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_ordini_emittente_fiscale_id | `CREATE INDEX ix_ordini_emittente_fiscale_id ON vendite.ordini USING btree (emittente_fiscale_id)` |
+| ix_ordini_id_text | `CREATE INDEX ix_ordini_id_text ON vendite.ordini USING btree (((id)::text))` |
 | ix_ordini_v_cliente_statoid_data | `CREATE INDEX ix_ordini_v_cliente_statoid_data ON vendite.ordini USING btree (soggetto_ruolo_id, stato_doc_ordine_id, data)` |
 | ix_vendite_ordini_stato_doc_ordine_id | `CREATE INDEX ix_vendite_ordini_stato_doc_ordine_id ON vendite.ordini USING btree (stato_doc_ordine_id)` |
 | pk_ordini | `CREATE UNIQUE INDEX pk_ordini ON vendite.ordini USING btree (id)` |

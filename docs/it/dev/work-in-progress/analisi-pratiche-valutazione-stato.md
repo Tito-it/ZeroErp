@@ -115,6 +115,18 @@ Nota di layering: l'asse va progettato **rispettando l'agnosticità dell'Anello 
 Non è greenfield: esiste già l'infrastruttura di scope multi-company
 (`script.trgfn_guard_emittente_scope`, RLS operatori).
 
+> **✅ DECISO (2026-07-02)** — modello **C «edizioni versionate + fork»** (scelto fra
+> clone / patch per-step / definizione versionata, dopo confronto con i due precedenti
+> in casa `config.parameter_overrides` e `ui.lista_preset`): header
+> `workflow_definizioni` (tipo, emittente `NULL` = preset, **versione**, stato
+> BOZZA/PUBBLICATA/RITIRATA); la pratica **pinna l'edizione alla creazione**; il fork è
+> una copia con provenance dal preset (diff/banner "preset aggiornato", pattern
+> `ui.lista_preset` DEF-2). Le tre sotto-decisioni si sciolgono così: (a) l'override
+> **sostituisce l'intero set** (copia assistita, non patch); (b) le pratiche in volo
+> **restano stabili** (pin → **V6 risolta strutturalmente**); (c) il preset **È** la
+> definizione con `emittente = NULL`. Brief:
+> [brief-design-workflow-definizioni-versionate.md](brief-design-workflow-definizioni-versionate.md).
+
 ### 2.3 Problema 3 — Gli strumenti di configurazione, e l'analogia con l'AI da correggere (governo)
 
 Oggi *ogni* modifica al workflow è un changeset Liquibase (guida configurazione §6):
@@ -205,11 +217,11 @@ sforzo*, non urgenza assoluta.
 | # | Tema | Cosa valutare | Tipo | Priorità | Brief |
 |---|---|---|---|---|---|
 | **V1** | **Comprensibilità operatore** | Il *Percorso* è un debugger della macchina a stati, non un racconto; il lessico da motore trapela. Trasformarlo in "sei qui / prossimo passo / un pulsante". | FE (+ display fields BE) | 🔴 alta | ✅ [brief-fe-percorso-narrativo-operatore.md](../work-done/brief-fe-percorso-narrativo-operatore.md) |
-| **V2** | **Variazione per azienda** | Asse `emittente`/override sui workflow (oggi i template sono globali). Le tre sotto-decisioni §2.2. La decisione a più alta leva. | Design → DB | 🔴 alta (strategica) | da generare |
+| **V2** | **Variazione per azienda** | Asse `emittente`/override sui workflow (oggi i template sono globali). **✅ Deciso 2026-07-02: modello C «edizioni versionate + fork»** (§2.2) — definizioni con versione, pratica pinnata all'edizione, fork con provenance. **Assorbe V6.** | Design → DB | 🔴 alta (strategica) | ✅ [brief-design-workflow-definizioni-versionate.md](brief-design-workflow-definizioni-versionate.md) |
 | **V3** | **Preset per settore + fork** | Formalizzare "convenzione con vie di fuga" (§3): cosa è preset, cosa è fork, quali paletti. Inquadra V2 e V4. | Design | 🟠 media-alta | da generare |
 | **V4** | **UI di amministrazione workflow** | Oggi solo seed Liquibase. Serve editor/ispettore (anche solo read-only all'inizio) che renda visibili gli step, i prerequisiti, gli esiti. | FE + BE | 🟠 media | da generare |
 | **V5** | **Discoverability delle opzioni** | "Capire le opzioni possibili": il §5 della guida configurazione è già la specifica di questa vista. Può nascere gemella di V4 (ispettore read-only). | FE | 🟡 media | da generare |
-| **V6** | **Estensibilità senza rotture** | Versionamento delle definizioni: cosa accade alle pratiche aperte quando un template cambia. Emerge inevitabilmente con V2. | DB + design | 🟡 media | da generare |
+| **V6** | **Estensibilità senza rotture** | Versionamento delle definizioni: cosa accade alle pratiche aperte quando un template cambia. **Assorbita da V2** (modello C: il pin dell'edizione alla creazione la risolve strutturalmente). | DB + design | 🟡 media | → risolta nel brief V2 |
 | **V7** | **AI copilota di configurazione** | L'AI genera/valida il seed dei workflow dal linguaggio naturale, sopra il modello dichiarativo + guard. Visione, non ora. | Visione | 🟢 futura | nota |
 | **V8** | **Bilanciamento dello sforzo** | Regola di metodo: *fermarsi ad aggiungere manopole al motore* finché lo strato-prodotto (V1/V4) non recupera. Trasversale a tutto. | Metodo | — | (principio) |
 | **V9** | **Uniformità pratica ⇄ standalone** | Già in corso ([analisi-uniformita](../work-done/analisi-uniformita-pratica-preventivi.md)). Confermarlo come principio guida **anche per la UX** (V1 ne è un corollario). | Design | (in corso) | esistente |
@@ -227,8 +239,12 @@ sforzo*, non urgenza assoluta.
    **Attenzione**: V1 poggia su **V10** — la vista-racconto ha senso solo se la pratica
    *conosce* lo stato del documento in corso. Vanno pensati insieme.
 2. **Poi V3 (strategia) prima di V2 (implementazione).** Decidere "preset + fork" come
-   forma prima di committare l'asse per-azienda al buio.
-3. **V2 e V4/V5** a seguire; **V6** emerge insieme a V2; **V7** resta visione.
+   forma prima di committare l'asse per-azienda al buio. **✅ Fatto (2026-07-02)**: la
+   *meccanica* è decisa col modello C di V2 (il preset È l'edizione a scope NULL); a V3
+   resta il **catalogo** dei preset di settore (la libreria da cui forkare), non più la
+   meccanica.
+3. **V2 e V4/V5** a seguire; **V6** emerge insieme a V2 (**risolta dal pin** del modello
+   C); **V7** resta visione.
 4. **V8 come guardrail continuo**: ogni proposta di nuova manopola di motore passa prima
    la domanda «questo aiuta l'operatore o l'admin, o solo il motore?».
 

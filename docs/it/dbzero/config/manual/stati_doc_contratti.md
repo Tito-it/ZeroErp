@@ -56,7 +56,6 @@ sovrascritture).
 | `ATTIVO` | 20 | false | Contratto in vigore — usato dal resolver pricing |
 | `CESSATO` | 50 | false | Contratto scaduto o terminato — terminale |
 | `ANNULLATO` | 70 | **true** | Bozza annullata prima dell'attivazione — terminale |
-| `SOSPESO` | — | false | Esiste ma fuori scope operativo attuale |
 
 ---
 
@@ -76,6 +75,25 @@ sovrascritture).
 * **Attivazione**: `ATTIVO` — contratto operativo, resolver pricing attivo, lock post-attivazione.
 * **Chiusura ordinaria**: `CESSATO` — scadenza automatica (job notturno) o cessazione manuale.
 * **Annullamento bozza**: `ANNULLATO` — bozza non ancora attivata; non blocca nuovi contratti sulla stessa quadrupla.
+
+---
+
+### Proiezione stato di dominio (mappa dichiarata)
+
+Mappa D1 (brief `brief-db-proiezione-stato-dominio`) consumata via
+`vendite.vw_stato_sorgente_contratto` → `script.vw_stato_sorgente`:
+
+| `codice_interno` | `fase` | `esito` | `terminale` |
+|------------------|--------|---------|-------------|
+| `DRAFT` | `APERTO` | — | no |
+| `ATTIVO` | `IN_CORSO` | — | no |
+| `CESSATO` | `CHIUSO` | `POSITIVO` | sì |
+| `ANNULLATO` | `CHIUSO` | `NEGATIVO` | sì |
+
+* `fase` NOT NULL con CHECK sui 4 valori; `esito` = verdetto (`is_verdetto=true`, guard
+  `trg_stati_doc_contratti_a10_guard_esito_verdetto_ins_upd`) o NULL; `terminale ⇒ CHIUSO`.
+* `terminale` **non sostituisce** `is_abortito`: `CESSATO` è terminale ma non abortito;
+  `ANNULLATO` è entrambi. Sono assi distinti (§decisione E del brief).
 
 ---
 

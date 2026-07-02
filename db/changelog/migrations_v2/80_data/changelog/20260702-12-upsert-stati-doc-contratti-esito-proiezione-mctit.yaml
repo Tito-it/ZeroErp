@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Proiezione stato di dominio — seed della colonna `esito` su
+# config.stati_doc_contratti (roll-out §7; playbook 20260701-19).
+#
+# PERCHE' UPDATE E NON CSV: il changeset CSV 20250917-02 ha nullValue:"" e
+# DRAFT/ATTIVO richiedono esito NULL -> non esprimibile in CSV
+# (feedback_liquibase_csv_null_sentinel). fase/terminale (mai NULL) in CSV.
+#
+# ORDINE fresh-DB: 20250917-02 (load CSV) e 20260520-08 (upsert ANNULLATO)
+# precedono questo file dentro 80_data. Sul DB vivo il backfill 20260702-04 ha
+# gia' valorizzato: UPDATE idempotente.
+#
+# Guard trg_stati_doc_contratti_a10_guard_esito_verdetto_ins_upd attivo: solo
+# verdetti (POSITIVO/NEGATIVO). Keyed su codice_interno, mai id.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260702-12-upsert-stati-doc-contratti-esito-proiezione-mctit.yaml
+
+  - changeSet:
+      id: 20260702-12-upsert-stati-doc-contratti-esito-proiezione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Seed della proiezione `esito` su config.stati_doc_contratti (UPDATE
+        idempotente keyed su codice_interno): CESSATO=POSITIVO,
+        ANNULLATO=NEGATIVO, DRAFT/ATTIVO=NULL. In UPDATE e non in CSV perche' il
+        changeset CSV (nullValue:"") non puo' esprimere NULL.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'config'
+                 AND table_name   = 'stati_doc_contratti'
+                 AND column_name  = 'esito';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Verdetti proiettati (mappa universale brief design §3).
+              UPDATE config.stati_doc_contratti s
+                 SET esito = m.esito
+                FROM (VALUES
+                        ('CESSATO',   'POSITIVO'),
+                        ('ANNULLATO', 'NEGATIVO')
+                     ) AS m(codice_interno, esito)
+               WHERE s.codice_interno = m.codice_interno
+                 AND s.esito IS DISTINCT FROM m.esito;
+
+              -- Nessun verdetto per gli stati non conclusivi (re-seed-safe).
+              UPDATE config.stati_doc_contratti s
+                 SET esito = NULL
+               WHERE s.codice_interno IN ('DRAFT', 'ATTIVO')
+                 AND s.esito IS NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              UPDATE config.stati_doc_contratti
+                 SET esito = NULL
+               WHERE esito IS NOT NULL;

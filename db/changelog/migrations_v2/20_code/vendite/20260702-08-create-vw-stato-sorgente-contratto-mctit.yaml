@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Proiezione stato di dominio — D2: resolver del dominio vendite/CONTRATTO.
+# (brief-db-proiezione-stato-dominio-rollout §3; specchio di
+#  vendite.vw_stato_sorgente_preventivo 20260701-16)
+#
+# Espone il descrittore normalizzato dello stato VIVO di ogni contratto: stato
+# nativo (alias FEDELI §6c) + mapping D1 (fase/esito/terminale) da
+# config.stati_doc_contratti. Read-time, nessun mirror.
+#
+# CHIAVE: (sorgente_tipo_id, sorgente_uid) coerente con pratiche_sorgenti.
+#   - sorgente_tipo_id via config.sorgenti.codice_interno='CONTRATTO'
+#     (chiave naturale immutabile, MAI id letterale);
+#   - sorgente_uid = (contratti.id)::text, coerente con key_selector='id' del
+#     tipo sorgente CONTRATTO.
+# CONTRATTO RESOLVER: al piu' UNA riga per (tipo, uid) — garantito da id PK.
+#
+# Consumata da script.vw_stato_sorgente (20260702-09): ramo CONTRATTO. Non
+# interrogarla dal motore (layering: engine -> script -> dominio).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260702-08-create-vw-stato-sorgente-contratto-mctit.yaml
+
+  - changeSet:
+      id: 20260702-08-create-vw-stato-sorgente-contratto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D2: crea vendite.vw_stato_sorgente_contratto, resolver normalizzato del
+        dominio CONTRATTO — descrittore per (sorgente_tipo_id, sorgente_uid) con
+        sorgente_uid = (contratti.id)::text (key_selector=id). Ramo della union
+        script.vw_stato_sorgente.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'config'
+                 AND table_name   = 'stati_doc_contratti'
+                 AND column_name  = 'fase';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_contratto AS
+              SELECT
+                  s.id                AS sorgente_tipo_id,
+                  (c.id)::text        AS sorgente_uid,
+                  -- Alias FEDELI alla sorgente (§6c).
+                  sdc.codice_interno  AS stato_codice_interno,
+                  sdc.codice          AS stato_codice,
+                  sdc.descrizione     AS stato_descrizione,
+                  -- Mapping D1 dichiarato dal dominio (config.stati_doc_contratti).
+                  sdc.fase,
+                  sdc.esito,
+                  sdc.terminale
+                FROM vendite.contratti c
+                JOIN config.sorgenti s
+                  ON s.codice_interno = 'CONTRATTO'
+                 AND s.attivo IS TRUE
+                JOIN config.stati_doc_contratti sdc
+                  ON sdc.id = c.stato_doc_contratto_id;
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_contratto IS
+                'Resolver di dominio D2 (brief-db-proiezione-stato-dominio roll-out): descrittore normalizzato dello stato vivo di ogni contratto — stato nativo (alias fedeli) + fase/esito/terminale da config.stati_doc_contratti. Chiave (sorgente_tipo_id, sorgente_uid) con sorgente_uid=(id)::text (key_selector=id); al piu'' una riga per chiave. Read-time. Consumata dal motore solo via script.vw_stato_sorgente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_stato_sorgente_contratto;
