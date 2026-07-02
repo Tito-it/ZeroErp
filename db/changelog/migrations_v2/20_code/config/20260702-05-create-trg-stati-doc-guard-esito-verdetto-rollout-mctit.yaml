@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Roll-out proiezione stato dominio — aggancio del guard verdetto ai 3 domini
+# residui (offerte/ordini/contratti).
+# (brief-db-proiezione-stato-dominio-rollout-offerte-ordini-contratti §2/§7)
+#
+# RIUSO, NIENTE CODICE NUOVO: la trgfn generica
+# config.trgfn_stati_doc_guard_esito_verdetto (creata dall'increment PREVENTIVI
+# 20260701-15) legge solo NEW.esito / NEW.codice_interno -> colonne condivise da
+# tutte le config.stati_doc_* . Qui si aggancia solo il trigger (fase _a10_,
+# BEFORE INSERT OR UPDATE OF esito) alle tre nuove tabelle: la proiezione `esito`
+# deve referenziare un esito con is_verdetto=true (NULL ammesso = nessun
+# verdetto). Errore parlante E_STATO_DOC_ESITO_NON_VERDETTO (id 503).
+#
+# ORDINE: richiede che le colonne `esito` esistano gia' sulle tre tabelle
+# (D1 20260702-02/03/04, fase 00_schema che precede 20_code) e che la trgfn
+# esista (20260701-15). Verificato in preCondition.
+#
+# Impatto esistente (feedback_guard_breaks_existing_tests): nessun pgTAP/BE fa
+# INSERT/UPDATE di `esito` su queste tabelle; i seed (backfill 00_schema e
+# UPDATE 80_data) scrivono solo verdetti -> guard trasparente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260702-05-create-trg-stati-doc-guard-esito-verdetto-rollout-mctit.yaml
+
+  - changeSet:
+      id: 20260702-05-create-trg-stati-doc-guard-esito-verdetto-rollout
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Aggancia il trigger a10 guard esito-verdetto (trgfn generica
+        config.trgfn_stati_doc_guard_esito_verdetto, gia' esistente) alle
+        config.stati_doc_{offerte,ordini,contratti}: la proiezione `esito`
+        deve essere un verdetto (is_verdetto=true), NULL ammesso.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'config'
+                     AND p.proname = 'trgfn_stati_doc_guard_esito_verdetto';
+            - sqlCheck:
+                expectedResult: 3
+                sql: |
+                  SELECT COUNT(*)
+                    FROM information_schema.columns
+                   WHERE table_schema = 'config'
+                     AND table_name IN ('stati_doc_offerte', 'stati_doc_ordini', 'stati_doc_contratti')
+                     AND column_name = 'esito';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_stati_doc_offerte_a10_guard_esito_verdetto_ins_upd
+                ON config.stati_doc_offerte;
+              CREATE TRIGGER trg_stati_doc_offerte_a10_guard_esito_verdetto_ins_upd
+                BEFORE INSERT OR UPDATE OF esito
+                ON config.stati_doc_offerte
+                FOR EACH ROW
+                EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto();
+
+              DROP TRIGGER IF EXISTS trg_stati_doc_ordini_a10_guard_esito_verdetto_ins_upd
+                ON config.stati_doc_ordini;
+              CREATE TRIGGER trg_stati_doc_ordini_a10_guard_esito_verdetto_ins_upd
+                BEFORE INSERT OR UPDATE OF esito
+                ON config.stati_doc_ordini
+                FOR EACH ROW
+                EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto();
+
+              DROP TRIGGER IF EXISTS trg_stati_doc_contratti_a10_guard_esito_verdetto_ins_upd
+                ON config.stati_doc_contratti;
+              CREATE TRIGGER trg_stati_doc_contratti_a10_guard_esito_verdetto_ins_upd
+                BEFORE INSERT OR UPDATE OF esito
+                ON config.stati_doc_contratti
+                FOR EACH ROW
+                EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_stati_doc_offerte_a10_guard_esito_verdetto_ins_upd
+                ON config.stati_doc_offerte;
+              DROP TRIGGER IF EXISTS trg_stati_doc_ordini_a10_guard_esito_verdetto_ins_upd
+                ON config.stati_doc_ordini;
+              DROP TRIGGER IF EXISTS trg_stati_doc_contratti_a10_guard_esito_verdetto_ins_upd
+                ON config.stati_doc_contratti;

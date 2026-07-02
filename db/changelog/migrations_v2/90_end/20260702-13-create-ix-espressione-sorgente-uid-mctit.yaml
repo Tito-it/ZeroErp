@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Proiezione stato di dominio — indici a espressione per il pushdown della
+# LATERAL percorso/coda (roll-out §5a/§7 nota (a)).
+#
+# PERCHE': i resolver espongono sorgente_uid CASTANDO la chiave nativa a text
+# ((uid)::text per preventivo/offerta, (id)::text per ordine/contratto). La
+# LATERAL del BE (_doc_sorgente_lateral) filtra
+# script.vw_stato_sorgente.sorgente_uid = ps.sorgente_uid: il predicato cade
+# sull'ESPRESSIONE, non sull'indice btree nativo (uid uuid / id bigint). Al
+# crescere dei volumi, e poiche' la union non pota i rami per tipo (sorgente_tipo_id
+# e' derivato via join, non literal), ogni riga puo' toccare tutti e 4 i rami:
+# un indice a espressione per dominio rende ogni ramo una index lookup.
+#
+# NON sono indici FK (la policy dbops.apply_fk_index_policy NON li tocca):
+# creazione manuale consentita. Naming ix_<tabella>_<espressione>.
+#
+# NB TABELLE GRANDI: CREATE INDEX prende un lock breve in scrittura. Su un DB di
+# produzione con testate molto popolate il DBA puo' preferire crearli
+# CONCURRENTLY fuori-banda (poi rieseguire questo changeset: IF NOT EXISTS lo
+# rende no-op). In CI/fresh-DB le tabelle sono vuote -> costo nullo.
+#
+# Additivo e reversibile: nessun impatto su viste/BE (solo piano di esecuzione).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260702-13-create-ix-espressione-sorgente-uid-mctit.yaml
+
+  - changeSet:
+      id: 20260702-13-create-ix-espressione-sorgente-uid
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Indici a espressione per il pushdown del join proiezione stato:
+        ((uid::text)) su vendite.preventivi e vendite.offerte_commerciali,
+        ((id::text)) su vendite.ordini e vendite.contratti. Perf, additivi,
+        IF NOT EXISTS. Non sono indici FK.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_preventivi_uid_text
+                ON vendite.preventivi (((uid)::text));
+
+              CREATE INDEX IF NOT EXISTS ix_offerte_commerciali_uid_text
+                ON vendite.offerte_commerciali (((uid)::text));
+
+              CREATE INDEX IF NOT EXISTS ix_ordini_id_text
+                ON vendite.ordini (((id)::text));
+
+              CREATE INDEX IF NOT EXISTS ix_contratti_id_text
+                ON vendite.contratti (((id)::text));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_preventivi_uid_text;
+              DROP INDEX IF EXISTS vendite.ix_offerte_commerciali_uid_text;
+              DROP INDEX IF EXISTS vendite.ix_ordini_id_text;
+              DROP INDEX IF EXISTS vendite.ix_contratti_id_text;

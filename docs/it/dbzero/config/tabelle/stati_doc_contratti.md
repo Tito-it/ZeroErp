@@ -17,10 +17,16 @@
 | user_update | text | YES | CURRENT_USER |
 | is_abortito | boolean | NO | false |
 | is_bozza | boolean | NO | false |
+| fase | character varying | NO |  |
+| esito | character varying | YES |  |
+| terminale | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_doc_contratti_fase |  |
+| CHECK | chk_stati_doc_contratti_terminale_chiuso |  |
+| FOREIGN KEY | fk_stati_doc_contratti_esito | esito |
 | PRIMARY KEY | pk_stati_doc_contratti | id |
 | UNIQUE | uq_stati_doc_contratti_codice | codice |
 | UNIQUE | uq_stati_doc_contratti_codice_interno | codice_interno |
@@ -37,6 +43,8 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_stati_doc_contratti_a10_contratti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'contratti', 'stato_doc_contratto_id', 'id', 'attivo')` |
+| trg_stati_doc_contratti_a10_guard_esito_verdetto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()` |
+| trg_stati_doc_contratti_a10_guard_esito_verdetto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()` |
 | trg_stati_doc_contratti_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
 | trg_stati_doc_contratti_a10_transizioni_stati_contratti__70c7e0 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_contratti', 'stato_a_id', 'id', 'attivo')` |
 | trg_stati_doc_contratti_a10_transizioni_stati_contratti__98586e | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_contratti', 'stato_da_id', 'id', 'attivo')` |
