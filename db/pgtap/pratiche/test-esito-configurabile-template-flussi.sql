@@ -3,11 +3,14 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: esito configurabile sugli step di flusso (template_flussi).
---       Colonne modalita_esito (MANUALE/AUTOMATICO/CONTESTUALE) +
---       esito_default; CHECK di dominio (20260617-01) e guard parlante
---       trg_template_flussi_a10_guard_modalita_esito_ins_upd (20260617-02):
---         Inv1 = automatismo => esito_default NOT NULL (494)
---         Inv2 = AUTOMATICO  => direzione INTERNA       (495)
+--       Colonne modalita_esito (MANUALE/AUTOMATICO/CONTESTUALE/DOMINIO) +
+--       esito_default; CHECK di dominio (20260617-01 + 20260702-15) e guard
+--       parlante trg_template_flussi_a10_guard_modalita_esito_ins_upd
+--       (20260617-02, esteso 20260702-16):
+--         Inv1 = AUTOMATICO/CONTESTUALE => esito_default NOT NULL (494)
+--         Inv2 = AUTOMATICO  => direzione INTERNA                 (495)
+--         Inv3 = DOMINIO     => esito_default VIETATO             (505)
+--         Inv4 = AUTOMATICO/CONTESTUALE => esito_default verdetto (506)
 --       + regressione del guard esito al COMPLETATO (477) invariato.
 --
 -- Indice test:
@@ -21,9 +24,13 @@
 -- 7)  Inv2 su UPDATE: AUTOMATICO+INTERNA poi direzione->ENTRATA -> errore (495)
 -- 8)  Dominio: modalita_esito non ammessa -> check_violation
 -- 9)  Regressione: guard esito al COMPLETATO con esito NULL continua a bloccare
--- 10) Cleanup
+-- 10) Inv1 riformulata: DOMINIO + esito_default NULL -> ammesso (con la vecchia
+--     Inv1 "<> MANUALE" sarebbe stato rifiutato)
+-- 11) Inv3: DOMINIO + esito_default valorizzato -> errore (505)
+-- 12) Inv4: AUTOMATICO + INTERNA + esito_default di ramo -> errore (506)
+-- 13) Cleanup
 -- ------------------------------------------------------------
-SELECT plan(10);
+SELECT plan(13);
 
 -- =========================================================
 -- 0) Precondizioni: provisioning config data (idempotente)
@@ -41,6 +48,13 @@ ON CONFLICT (codice_interno) DO NOTHING;
 
 INSERT INTO config.priorita_pratiche (codice, codice_interno, descrizione, sequenza, attivo)
 VALUES ('NORMALE', 'NORMALE', 'Normale', 20, true)
+ON CONFLICT (codice_interno) DO NOTHING;
+
+-- Esiti (FK di esito_default dal 20260701-02): POSITIVO verdetto, MERCE_PRESENTE
+-- di ramo. is_verdetto ESPLICITO (default colonna false).
+INSERT INTO config.esiti_flussi_pratiche (codice, codice_interno, descrizione, is_verdetto)
+VALUES ('POSITIVO','POSITIVO','Esito positivo',true),
+       ('MERCE_PRESENTE','MERCE_PRESENTE','Merce presente',false)
 ON CONFLICT (codice_interno) DO NOTHING;
 
 CREATE TEMP TABLE tmp_ece_refs AS
@@ -205,7 +219,46 @@ SELECT throws_ok(
 );
 
 -- =========================================================
--- 10) Cleanup (resiliente)
+-- 10) Inv1 riformulata: DOMINIO + esito_default NULL -> ammesso.
+--     Test chiave della riformulazione (20260702-16): con la vecchia Inv1
+--     "modalita <> MANUALE => default obbligatorio" questo INSERT falliva.
+-- =========================================================
+SELECT lives_ok(
+  format($q$INSERT INTO pratiche.template_flussi
+              (tipo_prestazione_id, codice, descrizione, sequenza, attivo, direzione, modalita_esito, esito_default)
+            VALUES (%s, 'TF_ECE_DOMINIO', 'Esito calcolato dal dominio', 70, true, 'INTERNA', 'DOMINIO', NULL)$q$,
+    (SELECT tp_id FROM tmp_ece_tp)),
+  '10. Inv1 riformulata: DOMINIO senza esito_default e'' ammesso'
+);
+
+-- =========================================================
+-- 11) Inv3: DOMINIO + esito_default valorizzato -> errore parlante (505)
+-- =========================================================
+SELECT throws_like(
+  format($q$INSERT INTO pratiche.template_flussi
+              (tipo_prestazione_id, codice, descrizione, sequenza, attivo, direzione, modalita_esito, esito_default)
+            VALUES (%s, 'TF_ECE_DOM_DEFAULT', 'Dominio con default', 80, true, 'INTERNA', 'DOMINIO', 'POSITIVO')$q$,
+    (SELECT tp_id FROM tmp_ece_tp)),
+  '%non ammette esito_default%',
+  '11. Inv3: DOMINIO con esito_default valorizzato e'' rifiutato (505)'
+);
+
+-- =========================================================
+-- 12) Inv4: AUTOMATICO + INTERNA + esito_default di ramo (is_verdetto=false)
+--     -> errore parlante (506). Dal 20260701-02 esito_default e' FK senza
+--     vincolo di classe: Inv4 lo reintroduce data-driven.
+-- =========================================================
+SELECT throws_like(
+  format($q$INSERT INTO pratiche.template_flussi
+              (tipo_prestazione_id, codice, descrizione, sequenza, attivo, direzione, modalita_esito, esito_default)
+            VALUES (%s, 'TF_ECE_AUTO_RAMO', 'Auto con default di ramo', 85, true, 'INTERNA', 'AUTOMATICO', 'MERCE_PRESENTE')$q$,
+    (SELECT tp_id FROM tmp_ece_tp)),
+  '%richiedono un verdetto%',
+  '12. Inv4: AUTOMATICO con esito_default di ramo e'' rifiutato (506)'
+);
+
+-- =========================================================
+-- 13) Cleanup (resiliente)
 -- =========================================================
 DELETE FROM pratiche.giornale
 WHERE pratica_id IN (

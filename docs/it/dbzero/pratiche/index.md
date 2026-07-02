@@ -21,6 +21,7 @@
 - [template_flussi_handler_eventi](tabelle/template_flussi_handler_eventi.md) — La tabella `pratiche.template_flussi_handler_eventi` è il **legame data-driven** tra un template di flusso e gli **handler** da eseguire al verificarsi di un **evento** di flusso, **esito-aware**. Generalizza il dispatch handler oltre il solo avvio:
 - [template_flussi_prerequisiti](tabelle/template_flussi_prerequisiti.md) — La tabella `pratiche.template_flussi_prerequisiti` definisce il **grafo diretto aciclico (DAG) dei prerequisiti** tra template flussi. Un flusso puo' essere creato solo se tutti i suoi prerequisiti sono stati completati.
 - [tipi_prestazione](tabelle/tipi_prestazione.md) — La tabella `pratiche.tipi_prestazione` definisce il **catalogo dei tipi di pratica** gestibili dal sistema. Ogni pratica ha un `tipo_prestazione_id` che ne determina la natura e il workflow applicabile.
+- [workflow_definizioni](tabelle/workflow_definizioni.md)
 
 ## ⚙️ Funzioni
 - [fn_calcola_tempo_netto_da_a](funzioni/fn_calcola_tempo_netto_da_a.md) — Funzione **check** (pura, STABLE): calcola i giorni netti trascorsi tra il completamento di `flusso_da` e il completamento di `flusso_a`, sottraendo i periodi di sospensione della pratica.
@@ -36,6 +37,7 @@
 - [fn_log_evento_dominio](funzioni/fn_log_evento_dominio.md)
 - [fn_pratica_flussi_aperti](funzioni/fn_pratica_flussi_aperti.md) — `fn_check_*` puro (no raise): elenca i **flussi ISTANZIATI** della pratica che sono in stato **non terminale**, cioe' il **lavoro ancora pendente** (D1 — brief-db-chiusura-pratica-nessun-lavoro-pendente).
 - [fn_prendi_in_carico_flusso](funzioni/fn_prendi_in_carico_flusso.md) — Assegna un flusso DA_ESEGUIRE all'operatore corrente applicando la **policy di eligibilita' reparto-first + competenza opzionale** (vedi sotto). Operazione atomica con lock pessimistico (`FOR UPDATE`) per evitare race condition.
+- [fn_risolvi_definizione](funzioni/fn_risolvi_definizione.md)
 - [fn_stato_sorgente](funzioni/fn_stato_sorgente.md) — API del **motore pratiche** per il **descrittore normalizzato** dello stato del documento sorgente collegato (brief-db-proiezione-stato-dominio, deliverable D3). Dato `(sorgente_tipo_id, sorgente_uid)` ritorna **sempre esattamente 1 riga**:
 - [fn_valuta_tempo_esecuzione_da_a](funzioni/fn_valuta_tempo_esecuzione_da_a.md) — Funzione **check** (pura, STABLE): confronta il tempo netto trascorso tra due flussi con la formula tempo configurata. Restituisce lo stato temporale corrente.
 - [trgfn_allegati_flussi_giornale](funzioni/trgfn_allegati_flussi_giornale.md) — Registra l'azione **ALLEGATO_AGGIUNTO** nel giornale a livello flusso. Si attiva **AFTER INSERT** su `pratiche.allegati_flussi`.
@@ -49,6 +51,7 @@
 - [trgfn_flussi_giornale_ins](funzioni/trgfn_flussi_giornale_ins.md) — Registra l'azione **FLUSSO_CREATO** nel giornale. Si attiva **AFTER INSERT** su `pratiche.flussi`.
 - [trgfn_flussi_giornale_stato](funzioni/trgfn_flussi_giornale_stato.md) — Registra l'azione **FLUSSO_STATO_CAMBIATO** nel giornale. Si attiva **AFTER UPDATE OF stato_id** su `pratiche.flussi`, solo quando il valore cambia realmente.
 - [trgfn_flussi_guard_chiusura_prematura](funzioni/trgfn_flussi_guard_chiusura_prematura.md) — Il **flusso "di chiusura"** (`template_flussi.chiude_pratica`) e' lo step che chiude la pratica: non puo' essere completato finche' la pratica **non e' chiudibile**. Coerente col guard di chiusura della pratica; evita che l'auto-chiusura conseguente fallisca (e quindi un rollback della transazione di completamento).
+- [trgfn_flussi_guard_esito_classe](funzioni/trgfn_flussi_guard_esito_classe.md) — Guard **runtime di classe esito** al completamento del flusso: alla transizione verso COMPLETATO la classe dell'esito deve corrispondere alla `modalita_esito` del template. È la **difesa in profondità autoritativa** dell'invariante degli step a esito di dominio — vale per qualunque percorso di scrittura (BB di dominio, percorso generico, UPDATE SQL diretto).
 - [trgfn_flussi_guard_esito_completato](funzioni/trgfn_flussi_guard_esito_completato.md)
 - [trgfn_flussi_guard_pratica_terminale](funzioni/trgfn_flussi_guard_pratica_terminale.md) — Difesa lato DB contro le operazioni su una **pratica conclusa**. Quando la pratica padre e' in uno **stato terminale**, i suoi flussi sono **congelati**: non possono essere creati nuovi flussi ne' modificati quelli esistenti (transizioni di stato, `esito`, `note_esito` o qualunque altro campo operativo).
 - [trgfn_flussi_guard_prerequisiti](funzioni/trgfn_flussi_guard_prerequisiti.md) — Trigger function wrapper per la guard prerequisiti. Si attiva **BEFORE INSERT** su `pratiche.flussi`: se il flusso ha un `template_flusso_id` valorizzato, delega la verifica a `fn_guard_prerequisiti_flusso`.
@@ -56,6 +59,7 @@
 - [trgfn_flussi_guard_transizione](funzioni/trgfn_flussi_guard_transizione.md) — Trigger function guard che **blocca transizioni di stato non ammesse** per i flussi pratica. Consulta la matrice `config.transizioni_stati_flussi_pratiche` (solo righe con `attivo = true`) e solleva eccezione se la transizione non e' configurata.
 - [trgfn_note_flussi_giornale](funzioni/trgfn_note_flussi_giornale.md) — Registra l'azione **NOTA_AGGIUNTA** nel giornale a livello flusso. Si attiva **AFTER INSERT** su `pratiche.note_flussi`.
 - [trgfn_note_pratiche_giornale](funzioni/trgfn_note_pratiche_giornale.md) — Registra l'azione **NOTA_AGGIUNTA** nel giornale a livello pratica. Si attiva **AFTER INSERT** su `pratiche.note_pratiche`.
+- [trgfn_pratiche_default_definizione](funzioni/trgfn_pratiche_default_definizione.md)
 - [trgfn_pratiche_gen_codice](funzioni/trgfn_pratiche_gen_codice.md)
 - [trgfn_pratiche_giornale_assegnazione](funzioni/trgfn_pratiche_giornale_assegnazione.md) — Registra l'azione **ASSEGNAZIONE_CAMBIATA** nel giornale. Si attiva **AFTER UPDATE OF risorsa_umana_id, unita_organizzativa_id** su `pratiche.pratiche`, solo quando almeno uno dei due valori cambia realmente.
 - [trgfn_pratiche_giornale_ins](funzioni/trgfn_pratiche_giornale_ins.md) — Registra l'azione **PRATICA_CREATA** nel giornale. Si attiva **AFTER INSERT** su `pratiche.pratiche`.
@@ -73,6 +77,8 @@
 - [trgfn_sospensioni_propaga](funzioni/trgfn_sospensioni_propaga.md) — Propaga la sospensione a livello pratica ai flussi attivi. AFTER INSERT su `pratiche.sospensioni`: se `flusso_id IS NULL`, tutti i flussi con stato DA_ESEGUIRE o IN_CORSO passano a SOSPESO.
 - [trgfn_sospensioni_riattiva](funzioni/trgfn_sospensioni_riattiva.md) — Ripristina gli stati precedenti alla riattivazione. AFTER UPDATE OF `data_fine` su `pratiche.sospensioni`: quando la sospensione viene chiusa (data_fine passa da NULL a valorizzata), ripristina lo stato precedente dei flussi (dal giornale) e riporta la pratica ad APERTA.
 - [trgfn_sospensioni_set_periodo](funzioni/trgfn_sospensioni_set_periodo.md)
-- [trgfn_template_flussi_guard_modalita_esito](funzioni/trgfn_template_flussi_guard_modalita_esito.md)
+- [trgfn_template_flussi_default_definizione](funzioni/trgfn_template_flussi_default_definizione.md)
+- [trgfn_template_flussi_guard_modalita_esito](funzioni/trgfn_template_flussi_guard_modalita_esito.md) — Guard **config-time** delle invarianti di coerenza dell'asse esito del template-step (`modalita_esito` / `esito_default` / `direzione`). I CHECK di dominio (insiemi di valori ammessi) vivono come constraint sulla tabella; qui vive la **coerenza tra i campi**, con errore parlante — sono errori di disegno del template mostrati nel drawer di amministrazione.
+- [trgfn_tipi_prestazione_bootstrap_definizione](funzioni/trgfn_tipi_prestazione_bootstrap_definizione.md)
 
 ## 🔍 Views

@@ -28,6 +28,14 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
 * La regola di **ripetibilita'** (D3) governa quante istanze dello stesso template possono nascere nella stessa pratica: enforcement a DB nel guard `trg_flussi_a10_guard_ripetibilita_ins` ([fn_check_ripetibilita_flusso](/dbzero/pratiche/funzioni/fn_check_ripetibilita_flusso)).
 * L'**obbligatorieta'** vincola la chiusura della pratica (D4): un template `obbligatorio = true` non completato e ancora percorribile blocca la transizione a CHIUSA ([fn_check_chiusura_pratica](/dbzero/pratiche/funzioni/fn_check_chiusura_pratica)). Il ramo morto di un bivio non blocca.
 * La **chiusura guidata dal workflow** (`chiude_pratica`): la pratica si chiude in automatico al completamento dei flussi, non con un'azione manuale. Se il tipo prestazione ha un template `chiude_pratica = true` (il "flusso di chiusura", max uno per tipo), la pratica passa a CHIUSA al completamento di quel flusso ([trgfn_flussi_autochiusura_pratica](/dbzero/pratiche/funzioni/trgfn_flussi_autochiusura_pratica)); altrimenti, se il tipo ha almeno un obbligatorio, si auto-chiude quando non restano obbligatori bloccanti. Un tipo senza obbligatori e senza flusso di chiusura non ha un percorso di chiusura deterministico (non si chiude).
+* Ogni template appartiene a una **edizione di workflow** (`definizione_id` →
+  [workflow_definizioni](workflow_definizioni.md)): il set di template di
+  un'edizione E' la definizione. In assenza di valore esplicito, l'INSERT si
+  aggancia al preset del tipo ([auto-default](trgfn_template_flussi_default_definizione.md)).
+* L'**asse esito** (`modalita_esito`/`esito_default`) governa come lo step ottiene
+  l'esito e quale classe di esito e' ammessa al completamento — invarianti config-time
+  in [trgfn_template_flussi_guard_modalita_esito](trgfn_template_flussi_guard_modalita_esito.md),
+  guard runtime in [trgfn_flussi_guard_esito_classe](trgfn_flussi_guard_esito_classe.md).
 
 ---
 
@@ -42,12 +50,19 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
 | `ripetibilita` | VARCHAR(20) CHECK (MAI, SE_NON_POSITIVO, SEMPRE) DEFAULT 'SE_NON_POSITIVO'. Regola di ripetibilita' delle istanze nella stessa pratica: `MAI` = una sola istanza non annullata (es. CONFERMA); `SE_NON_POSITIVO` = nuova istanza solo se l'ultima e' COMPLETATO con esito diverso da POSITIVO (un'istanza ancora aperta blocca — es. APPUNTAMENTO andato male si rifa'); `SEMPRE` = libera (es. contatto telefonico). |
 | `handler_params` | JSONB DEFAULT '{}'. Parametri operativi passati all'handler Django in fase di esecuzione (es. `{"stampa_foglio": true, "invio_sms_conferma": true}`). Distinto da `meta` che contiene metadati generici. |
 | `azione_ui_id` | INTEGER nullable, FK → [`pratiche.azioni_ui`](/dbzero/pratiche/tabelle/azioni_ui). NULL = nessuna attivita' interattiva offerta dal flusso. NOT NULL = il frontend offre il lancio dell'attivita' dichiarata (es. APRI_PREVENTIVO). Specchio FE di `handler_id`. |
+| `modalita_esito` | VARCHAR(20) CHECK (MANUALE, AUTOMATICO, CONTESTUALE, DOMINIO) DEFAULT 'MANUALE'. Come lo step ottiene l'esito: MANUALE = form esito; AUTOMATICO = avvia+completa con `esito_default` (solo INTERNA); CONTESTUALE = default pre-selezionato confermato in un'unica azione; **DOMINIO** = esito calcolato da un BB di dominio (es. SMISTAMENTO → `vendite.completa_smistamento`), nessuna scelta operatore, al completamento solo esiti di ramo `is_verdetto=false` (guard 504). |
+| `esito_default` | VARCHAR(20) nullable, FK → `config.esiti_flussi_pratiche(codice_interno)`. Obbligatorio per AUTOMATICO/CONTESTUALE (Inv1, 494) e deve essere un verdetto (Inv4, 506); **vietato** con DOMINIO (Inv3, 505). |
+| `definizione_id` | INTEGER NOT NULL. Edizione di workflow di appartenenza ([workflow_definizioni](workflow_definizioni.md)); default automatico al preset del tipo. FK **composita** con `tipo_prestazione_id` → coerenza tipo per costruzione. |
 
 ---
 
 ### Vincoli
 
-* **UQ composito**: `(tipo_prestazione_id, codice)` — codice univoco per tipo_prestazione.
+* **UQ composito**: `(tipo_prestazione_id, codice)` — codice univoco per tipo_prestazione
+  (valido nell'era pre-fork; verra' rimosso in Fase 2 a favore del solo per-definizione).
+* **UQ per-definizione**: `(definizione_id, codice)` — il codice e' il contratto stabile
+  dei BB runtime dentro l'edizione (contratto C5); `uq_template_flussi_chiusura_definizione`
+  = max un `chiude_pratica` per edizione.
 * **CHECK direzione**: solo valori ENTRATA, USCITA, INTERNA.
 * **CHECK ripetibilita**: solo valori MAI, SE_NON_POSITIVO, SEMPRE.
 * **FK handler_id nullable**: NULL = step manuale, NOT NULL = step automatizzato.

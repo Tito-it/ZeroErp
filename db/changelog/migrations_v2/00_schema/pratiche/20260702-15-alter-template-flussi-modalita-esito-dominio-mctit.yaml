@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Step a esito di dominio: quarto valore DOMINIO di modalita_esito.
+# (brief-db-step-dominio-e-definizioni-versionate Parte 1 / D1-1, 2026-07-02;
+#  origine: incidente PRA-0000243, brief-db-guard-esito-smistamento assorbito)
+#
+# DOMINIO = l'esito dello step e' CALCOLATO da un building block di dominio
+# (es. vendite.completa_smistamento -> MERCE_PRESENTE/SOLO_SERVIZI); nessuna
+# scelta operatore; esito_default vietato (Inv3, guard 20260702-16); al
+# completamento sono ammessi solo esiti di ramo is_verdetto=false (guard
+# runtime 20260702-17, FLUSSI_ESITO_NON_AMMESSO 504).
+#
+# NB: gli step "bivio su verdetto" (l'operatore sceglie POSITIVO/NEGATIVO e i
+# prerequisiti esito-aware ramificano) NON sono DOMINIO: restano MANUALE/
+# CONTESTUALE. DOMINIO marca solo gli step a esito calcolato.
+#
+# Qui SOLO il CHECK di dominio (insieme valori ammessi) + COMMENT aggiornati;
+# le invarianti di coerenza vivono nel guard config-time (20260702-16).
+# Il CHECK originale e' del changeset mergiato 20260617-01: DROP+ADD in nuovo
+# file con numerazione successiva (mai modificare changelog mergiati).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260702-15-alter-template-flussi-modalita-esito-dominio-mctit.yaml
+
+  - changeSet:
+      id: 20260702-15-alter-template-flussi-modalita-esito-dominio
+      author: mctit
+      comment: >
+        Estende chk_template_flussi_modalita_esito con il valore DOMINIO
+        (esito calcolato da un building block di dominio, nessuna scelta
+        operatore) e aggiorna i COMMENT di modalita_esito/esito_default.
+        Invarianti di coerenza nel guard 20260702-16; guard runtime di classe
+        esito in 20260702-17.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pratiche
+                tableName: template_flussi
+                columnName: modalita_esito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Quarto valore DOMINIO nel CHECK di dominio.
+              ALTER TABLE pratiche.template_flussi
+                DROP CONSTRAINT IF EXISTS chk_template_flussi_modalita_esito;
+
+              ALTER TABLE pratiche.template_flussi
+                ADD CONSTRAINT chk_template_flussi_modalita_esito
+                CHECK (modalita_esito IN ('MANUALE', 'AUTOMATICO', 'CONTESTUALE', 'DOMINIO'));
+
+              COMMENT ON COLUMN pratiche.template_flussi.modalita_esito IS
+                'Come lo step ottiene l''esito. MANUALE (default) = avvio poi form esito manuale (comportamento odierno); AUTOMATICO = avvia+completa con esito_default senza scelta umana (solo direzione INTERNA); CONTESTUALE = avvia+completa con esito_default pre-selezionato e confermato dall''operatore in un''unica azione; DOMINIO = esito CALCOLATO da un building block di dominio (es. vendite.completa_smistamento), nessuna scelta operatore, esito_default vietato (Inv3), al completamento solo esiti di ramo is_verdetto=false (guard trg_flussi_a10_guard_esito_classe_ins_upd, 504). Coerenza: guard trg_template_flussi_a10_guard_modalita_esito_ins_upd.';
+
+              COMMENT ON COLUMN pratiche.template_flussi.esito_default IS
+                'Esito applicato (AUTOMATICO) o pre-selezionato (CONTESTUALE). FK a config.esiti_flussi_pratiche(codice_interno). Obbligatorio quando modalita_esito IN (AUTOMATICO, CONTESTUALE) (Inv1, 494) e deve essere un verdetto is_verdetto=true (Inv4, 506); vietato con DOMINIO (Inv3, 505). Guard trg_template_flussi_a10_guard_modalita_esito_ins_upd.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Best-effort: fallisce se esistono righe DOMINIO (rimuoverle prima).
+              ALTER TABLE pratiche.template_flussi
+                DROP CONSTRAINT IF EXISTS chk_template_flussi_modalita_esito;
+              ALTER TABLE pratiche.template_flussi
+                ADD CONSTRAINT chk_template_flussi_modalita_esito
+                CHECK (modalita_esito IN ('MANUALE', 'AUTOMATICO', 'CONTESTUALE'));
+              COMMENT ON COLUMN pratiche.template_flussi.modalita_esito IS
+                'Come lo step ottiene l''esito. MANUALE (default) = avvio poi form esito manuale (comportamento odierno); AUTOMATICO = avvia+completa con esito_default senza scelta umana (solo direzione INTERNA); CONTESTUALE = avvia+completa con esito_default pre-selezionato e confermato dall''operatore in un''unica azione. Coerenza: guard trg_template_flussi_a10_guard_modalita_esito_ins_upd.';
+              COMMENT ON COLUMN pratiche.template_flussi.esito_default IS
+                'Esito applicato (AUTOMATICO) o pre-selezionato (CONTESTUALE). Dominio di flussi.esito. Obbligatorio quando modalita_esito <> MANUALE (Inv1, guard).';

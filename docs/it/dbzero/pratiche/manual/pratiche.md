@@ -20,6 +20,11 @@ La tabella `pratiche.pratiche` e' l'**entita' principale** del modulo gestione p
 ### Ruolo nel processo
 
 * Ogni pratica ha un **tipo_prestazione** che ne determina i template flussi disponibili.
+* La pratica **pinna l'edizione di workflow** alla creazione (`definizione_id` →
+  [workflow_definizioni](workflow_definizioni.md), auto-pin
+  [trgfn_pratiche_default_definizione](trgfn_pratiche_default_definizione.md): edizione
+  PUBBLICATA dell'emittente > preset) e la tiene per sempre — le modifiche future alle
+  definizioni non cambiano la roadmap delle pratiche in volo.
 * Lo **stato** governa le transizioni del ciclo di vita (BOZZA → APERTA → CHIUSA). La transizione a **CHIUSA** e' inoltre vincolata ai flussi obbligatori percorribili non completati (guard `trg_pratiche_a10_guard_chiusura_flussi_upd`, D4 — il ramo morto di un bivio non blocca).
 * Il **contesto anagrafico** a due rami (`soggetto_id` → `soggetto_ruolo_id` **oppure** `soggetto_id` → `istanza_utility_id`) classifica la pratica nelle lenti canoniche D1: RUOLO / ISTANZA / SOGGETTO / INTERNA (tutti NULL). Lettura canonica: [fn_lista_pratiche_per_contesto](/dbzero/pratiche/funzioni/fn_lista_pratiche_per_contesto); coerenza garantita da `trgfn_pratiche_guard_contesto`.
 * L'**assegnazione** (risorsa umana / unita' organizzativa) definisce chi lavora la pratica — ortogonale al contesto cliente (le pratiche interne sono "contesto vuoto + assegnazione", D2).
@@ -33,6 +38,7 @@ La tabella `pratiche.pratiche` e' l'**entita' principale** del modulo gestione p
 | Colonna | Note |
 |---------|------|
 | `emittente_fiscale_id` | BIGINT NOT NULL. FK a `anagrafiche.emittenti_fiscali` — identita' fiscale che gestisce la pratica. |
+| `definizione_id` | INTEGER NOT NULL. **Pin** dell'edizione di workflow ([workflow_definizioni](workflow_definizioni.md)), risolto alla creazione dall'auto-pin e mai aggiornato (immutabilita' enforce-ata dal guard di Fase 1). FK **composita** con `tipo_prestazione_id` → coerenza tipo per costruzione. |
 | `soggetto_id` | UUID nullable. FK a `anagrafiche.soggetti` — il soggetto interessato dalla pratica. NULL = pratica interna. |
 | `soggetto_ruolo_id` | BIGINT nullable. FK a `anagrafiche.soggetti_ruoli` — contesto ruolo (ramo 1). Richiede `soggetto_id` coerente (guard contesto). |
 | `istanza_utility_id` | BIGINT nullable. FK a `anagrafiche.istanze_utilities` — contesto istanza/utility (ramo 2, indipendente dal ruolo: prospect puro ammesso). Richiede `soggetto_id` coerente. |
@@ -67,6 +73,7 @@ La tabella `pratiche.pratiche` e' l'**entita' principale** del modulo gestione p
 | `fk_pratiche_pratica_padre` | `pratiche.pratiche(id)` | SET NULL |
 | `fk_pratiche_flusso_origine` | `pratiche.flussi(id)` | SET NULL |
 | `fk_pratiche_canale_origine` | `config.canali_pratiche(id)` | NO ACTION |
+| `fk_pratiche_definizione` (composita: `definizione_id, tipo_prestazione_id`) | `pratiche.workflow_definizioni(id, tipo_prestazione_id)` | NO ACTION |
 
 ---
 
