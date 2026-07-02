@@ -1,5 +1,5 @@
-id,codice,codice_interno,descrizione,categoria,attivo,meta,pre_attivazione,post_attivazione,data_insert,user_insert,data_update,user_update
-9001,APPROVAZIONE_PREZZO,APPROVAZIONE_PREZZO,Approvazione prezzo commerciale out-of-policy (workflow L3 listini v5 Sprint E),VENDITE,t,{},t,t,2026-04-22 00:00:00+02,SEED,2026-04-22 00:00:00+02,SEED
-9002,PREVENTIVI_IMMEDIATA,PREVENTIVI_IMMEDIATA,Pratica preventivi con fatturazione immediata,COMMERCIALE,t,{},f,f,2026-06-08 00:00:00+02,SEED,2026-06-08 00:00:00+02,SEED
-9003,PREVENTIVI_DIFFERITA,PREVENTIVI_DIFFERITA,Pratica preventivi con fatturazione differita,COMMERCIALE,t,{},f,f,2026-06-08 00:00:00+02,SEED,2026-06-08 00:00:00+02,SEED
-9004,PREVENTIVI,PREVENTIVI,Pratica preventivi (tipo unico; modalita fatturazione scelta all'accettazione non cablata),COMMERCIALE,t,{},f,f,2026-06-30 00:00:00+02,SEED,2026-06-30 00:00:00+02,SEED
+id,codice,codice_interno,descrizione,categoria,attivo,meta,pre_attivazione,post_attivazione,data_insert,user_insert,data_update,user_update,obsoleto_dal
+9001,APPROVAZIONE_PREZZO,APPROVAZIONE_PREZZO,Approvazione prezzo commerciale out-of-policy (workflow L3 listini v5 Sprint E),VENDITE,t,{},t,t,2026-04-22 00:00:00+02,SEED,2026-04-22 00:00:00+02,SEED,
+9002,PREVENTIVI_IMMEDIATA,PREVENTIVI_IMMEDIATA,Pratica preventivi con fatturazione immediata,COMMERCIALE,t,{},f,f,2026-06-08 00:00:00+02,SEED,2026-06-08 00:00:00+02,SEED,2026-06-30
+9003,PREVENTIVI_DIFFERITA,PREVENTIVI_DIFFERITA,Pratica preventivi con fatturazione differita,COMMERCIALE,t,{},f,f,2026-06-08 00:00:00+02,SEED,2026-06-08 00:00:00+02,SEED,2026-06-30
+9004,PREVENTIVI,PREVENTIVI,Pratica preventivi (tipo unico; modalita fatturazione scelta all'accettazione non cablata),COMMERCIALE,t,{},f,f,2026-06-30 00:00:00+02,SEED,2026-06-30 00:00:00+02,SEED,

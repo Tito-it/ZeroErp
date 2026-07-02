@@ -33,6 +33,13 @@ databaseChangeLog:
         Escluse dal CSV: tx_id (trgfn_tx_id_managed), storicizza
         (default true), i campi audit potrebbero essere omessi ma li
         includiamo per tracciabilita' del seed (user='SEED').
+
+        obsoleto_dal (2026-07-02, brief disinnesco push_preventivo): colonna
+        DATE nullable seed-driven (cella vuota = NULL). PREVENTIVI_IMMEDIATA/
+        DIFFERITA = 2026-06-30 (superati dal tipo unico PREVENTIVI): il seed e'
+        la fonte unica dell'obsolescenza (nessun UPDATE separato). Il guard
+        trgfn_child_requires_non_obsolete_parent blocca solo NUOVE pratiche su
+        questi tipi; le istanze esistenti restano.
       preConditions:
         - onFail: HALT
         - tableExists:
@@ -65,6 +72,7 @@ databaseChangeLog:
               - column: { name: user_insert, type: STRING }
               - column: { name: data_update, type: STRING }
               - column: { name: user_update, type: STRING }
+              - column: { name: obsoleto_dal, type: DATE }
 
         - sql:
             splitStatements: false
