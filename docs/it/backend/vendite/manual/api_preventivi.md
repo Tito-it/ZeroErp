@@ -299,10 +299,13 @@ Smista a un **ordine di vendita DRAFT** **solo le righe MERCE** del preventivo
   residuo su **nessun** ramo (`fn_preventivo_ha_residuo_ordine` +
   `fn_preventivo_ha_residuo_commessa`), il service transita ACCETTATO→EVASO
   (warning-tolerant al deploy parziale, come il gemello su push-commessa §13).
-- **Percorso pratica**: lo smistamento è orchestrato da `CONFERMA_VENDITA`
-  (handler `vendita.push_preventivo`), che chiama la stessa primitiva passando
-  `p_pratica_id` per l'aggancio `pratiche_sorgenti` (ordine `COLLEGATO`). Questo
-  endpoint è il percorso **standalone** (fuori-pratica, `p_pratica_id=NULL`).
+- **Percorso pratica (bivio-per-esito rev.3)**: lo smistamento merce si esegue da
+  qui (Pannello Smistamento); quando il preventivo è in una pratica, **l'aggancio
+  dell'ordine** come `pratiche_sorgenti` `COLLEGATO` avviene alla chiusura di
+  SMISTAMENTO via l'handler **merce-only** `post_smistamento` (esito
+  `MERCE_PRESENTE`), non da un orchestratore monolitico. Il vecchio
+  `CONFERMA_VENDITA` / `vendita.push_preventivo` è **deprecato** (solo tipi legacy
+  9002/9003). Vedi §14b (completa smistamento).
 
 > **Offerta → ordine**: non disponibile (l'offerta non ha righe materializzate,
 > solo eccezioni su listino). Prerequisito DB: brief
@@ -521,8 +524,13 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   (`fn_preventivo_ha_residuo_ordine` **e** `fn_preventivo_ha_residuo_commessa`
   entrambe false). Il check commessa non è ridondante: con `righe_ids`
   COMPLETATO si riferisce al solo sottoinsieme. Lo **stesso gate** vive anche
-  sul ramo ordine (`ordini_service.crea_ordine_da_preventivo`) e nel handler
-  pratica `CONFERMA_VENDITA`.
+  sul ramo ordine (`ordini_service.crea_ordine_da_preventivo`).
+- **Aggancio pratica (ramo servizi dello split, bivio rev.3)**: se il preventivo
+  appartiene a una pratica, a push `COMPLETATO` la commessa-servizi viene legata
+  alla pratica come `pratiche_sorgenti` **COLLEGATO** (idempotente). È il punto
+  d'aggancio del ramo servizi: l'handler `post_smistamento` è **merce-only**, quindi
+  la commessa-servizi non passa da lì. No-op per i push standalone (preventivo non
+  in pratica).
 - Output `200`: report orchestrator `{ stato, push_log_id, durata_ms, handlers,
   commesse_ids, righe_pushable, fatturazione_immediata }`
 - Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400)
@@ -566,6 +574,48 @@ natura-aware il 2026-06-12: `vw_preventivi_smistamento` + `_righe`, le vecchie
   (allineato a capability e list-fn — fix della divergenza preesistente).
   `righe_residue` alimenta il progress X/Y verso EVASO del pannello.
 - Errori: `E_PREV_NOT_FOUND` (404)
+
+---
+
+### 14b. Completa smistamento (percorso pratica — bivio-per-esito)
+
+Completa lo step **SMISTAMENTO** della pratica con un **esito di RAMO calcolato dal
+dominio** (`MERCE_PRESENTE` / `SOLO_SERVIZI`), **non scelto dall'operatore**. È il
+fix di PRA-0000225 (bivio-per-esito rev.3,
+[brief-db-chiusura-pratica-nessun-lavoro-pendente.md](../../../dev/work-done/brief-db-chiusura-pratica-nessun-lavoro-pendente.md)):
+l'esito viene scritto nella **stessa UPDATE** che completa il flusso, così il check
+di chiusura template-based lo legge subito.
+
+- Metodo: `POST`
+- Path: `/api/v1/vendite/preventivi/{id}/completa-smistamento/`
+- Auth: area `vendite`, `Idempotency-Key` obbligatoria
+- Body JSON: **nessuno** (l'esito NON è un input: il FE **sopprime il picker esiti**
+  per SMISTAMENTO — `modalita_esito=MANUALE` a livello motore).
+- View `ApiPreventivoCompletaSmistamento` → `preventivi_service.completa_smistamento`.
+- Comportamento:
+  1. risolve la pratica del preventivo (ROOT per-flusso) → `E_VENDITA_PREVENTIVO_NON_COLLEGATO` (422) se il preventivo non nasce da una pratica;
+  2. **guard bi-ramo**: nessun residuo su ORDINE né COMMESSA (`fn_preventivo_ha_residuo_ordine` / `_commessa`) → `E_VENDITA_SMISTAMENTO_NON_ESEGUITO` (422) se resta merce/servizi da smistare;
+  3. **esito di ramo**: `MERCE_PRESENTE` se dal preventivo è nato un ordine
+     (stesso lookup `documento_origine` dell'handler `post_smistamento`, così
+     l'handler troverà l'ordine da agganciare), altrimenti `SOLO_SERVIZI` — copre
+     anche il caso **misto** (c'è merce → `MERCE_PRESENTE`);
+  4. completa (o avvia+completa se lo step è ancora `DA_ESEGUIRE`) delegando al BB
+     motore `pratiche_service.completa_step_pratica`.
+- Effetto sul percorso pratica:
+  - **`MERCE_PRESENTE`** → i flussi ordine `CONFERMA_ORDINE` (9013) e `INVIO_COMMESSA`
+    (9014) sono percorribili+obbligatori → la pratica **resta APERTA** finché non
+    completati; nasce anche il retro-aggancio dell'ordine (handler `post_smistamento`);
+  - **`SOLO_SERVIZI`** → 9013/9014 sono **ramo morto** (non bloccano) → la pratica
+    **si chiude subito** (nessun lavoro pendente).
+- Idempotente: se lo step è già terminale → no-op, `gia_completato=true`.
+- Output `200`:
+
+```json
+{ "data": { "preventivo_id": 1, "pratica_id": 42, "flusso_id": 500,
+            "esito": "MERCE_PRESENTE", "gia_completato": false } }
+```
+
+- Errori: `E_VENDITA_PREVENTIVO_NON_COLLEGATO` (422), `E_VENDITA_SMISTAMENTO_NON_ESEGUITO` (422), `E_PREV_VALIDAZIONE` (400, flusso SMISTAMENTO non istanziato).
 
 ---
 

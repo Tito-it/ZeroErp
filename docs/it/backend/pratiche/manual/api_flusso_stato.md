@@ -74,7 +74,11 @@ La generazione automatica cross-pratica al completamento e' gestita dal trigger 
 - Header: `Content-Type: application/json`, `Authorization: Bearer <access_token>`
 - Body:
   - `nuovo_stato` (string, **obbligatorio**) — codice_interno dello stato (es. `IN_CORSO`, `COMPLETATO`, `SOSPESO`, `ANNULLATO`)
-  - `esito` (string, obbligatorio se `nuovo_stato = COMPLETATO`) — esito del flusso: `POSITIVO`, `NEGATIVO`, `PARZIALE`, `NON_APPLICABILE`
+  - `esito` (string, obbligatorio se `nuovo_stato = COMPLETATO`) — `codice_interno` dal
+    vocabolario `config.esiti_flussi_pratiche` (il FE lo alimenta via lookup generico,
+    whitelist 2026-07-02). Gli **esiti di ramo** (`MERCE_PRESENTE`, `SOLO_SERVIZI`) sono
+    calcolati dal dominio e **non selezionabili da questo endpoint** (guard
+    `require_esito_selezionabile_operatore` → `E_FLUSSO_VALIDATION`)
   - `note_esito` (string, opzionale) — note sull'esito
   - `meta` (object, opzionale) — **contesto d'azione** del completamento, inoltrato agli
     handler di dominio su evento `COMPLETATO` (fuso sopra `flussi.meta`, **non persistito**
@@ -91,7 +95,8 @@ La generazione automatica cross-pratica al completamento e' gestita dal trigger 
 { "data": { "status": "ok" } }
 ```
 
-- `400`: ownership mismatch (`E_FLUSSO_OWNERSHIP`), esito non valido (`E_FLUSSO_VALIDATION`), stato vuoto (`E_FLUSSO_VALIDATION`)
+- `400`: ownership mismatch (`E_FLUSSO_OWNERSHIP`), esito non valido o **esito di ramo non
+  selezionabile manualmente** (`E_FLUSSO_VALIDATION`), stato vuoto (`E_FLUSSO_VALIDATION`)
 - `401`: JWT mancante o non valido
 - `404`: flusso non trovato (`E_FLUSSO_NOT_FOUND`)
 - `409`: **pratica terminale** (`PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE`, catalogo DB id 491): transizione/modifica di un flusso di una pratica `CHIUSA`/`ANNULLATA`. Guard `trg_flussi_a10_guard_pratica_terminale_ins_upd`.
@@ -103,7 +108,14 @@ La generazione automatica cross-pratica al completamento e' gestita dal trigger 
 ## Regole
 
 - Ownership check prima di qualsiasi operazione; lo stato corrente del flusso (letto dal `get_flusso` di verifica) instrada il completamento (CONTESTUALE da `DA_ESEGUIRE` vs completamento da `IN_CORSO`).
-- Se `nuovo_stato = COMPLETATO`, `esito` e' obbligatorio e deve essere uno tra: `POSITIVO`, `NEGATIVO`, `PARZIALE`, `NON_APPLICABILE` (validazione centralizzata in `pratiche_service._require_esito_valido`, costante `ESITI_FLUSSO_AMMESSI`).
+- Se `nuovo_stato = COMPLETATO`, `esito` e' obbligatorio e deve appartenere al vocabolario
+  (validazione centralizzata in `pratiche_service._require_esito_valido`, costante
+  `ESITI_FLUSSO_AMMESSI` — mirror applicativo della FK verso `config.esiti_flussi_pratiche`).
+  In piu', sul percorso operatore (questo endpoint) l'esito NON puo' essere un **esito di
+  ramo** (`ESITI_FLUSSO_RAMO`: `MERCE_PRESENTE`, `SOLO_SERVIZI` — valori calcolati dal
+  dominio via `completa_step_pratica`): guard `require_esito_selezionabile_operatore`,
+  errore parlante `E_FLUSSO_VALIDATION`. Il filtro data-driven alla fonte arriva col
+  discriminatore a DB (`brief-db-esiti-flussi-selezionabilita.md`).
 - Se `nuovo_stato = COMPLETATO` e lo stato corrente è `DA_ESEGUIRE` (modalita CONTESTUALE), il servizio esegue `avvia_e_completa_flusso` (avvio + esito atomico); altrimenti `completa_flusso` da `IN_CORSO`.
 - Se `nuovo_stato = IN_CORSO`, il servizio transiziona a `IN_CORSO` e, se il flusso ha un handler **o** `modalita_esito = AUTOMATICO`, lo completa con `esito_default` (vedi Contesto). L'utente acting è passato all'handler (`p_user` delle fn DB).
 - Per qualsiasi altro stato, il servizio delega a `cambia_stato_flusso` con validazione stato non vuoto.
@@ -124,6 +136,16 @@ La generazione automatica cross-pratica al completamento e' gestita dal trigger 
 
 ## Note di migrazione
 
+- (2 luglio 2026) **Guard esiti di ramo sul percorso operatore**: con il `Select` esiti FE
+  diventato data-driven dal vocabolario globale (`config.esiti_flussi_pratiche` aggiunta
+  alla whitelist del lookup generico core), nel dropdown compaiono anche gli esiti di ramo
+  `MERCE_PRESENTE`/`SOLO_SERVIZI` (bivio SMISTAMENTO), che sono **calcolati dal dominio e
+  mai input utente**. Questo endpoint ora li respinge con
+  `pratiche_service.require_esito_selezionabile_operatore` (mirror `ESITI_FLUSSO_RAMO`,
+  `E_FLUSSO_VALIDATION`); i BB di dominio (`completa_step_pratica` → `completa_flusso`)
+  restano liberi di passarli. Interim in attesa del discriminatore data-driven a DB
+  (`brief-db-esiti-flussi-selezionabilita.md`): a colonna consegnata, il lookup filtra
+  alla fonte e il mirror si elimina.
 - (30 giugno 2026) **Contesto d'azione `meta` al completamento**: `completa_flusso` e
   `avvia_e_completa_flusso` accettano un `meta` opzionale, inoltrato a
   `dispatch_handler_eventi(..., extra_meta=meta)` e fuso sopra `flussi.meta` **senza

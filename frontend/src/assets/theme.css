@@ -76,6 +76,11 @@
   --app-text-color: var(--p-text-color);
   --app-text-muted: var(--p-text-muted-color);
 
+  /* ===== Semantica esiti ===== */
+  /* Verde "fatto/successo" per icone di completamento (es. check dei passi
+   * conclusi nel percorso pratica). Centralizzato: mai green hardcoded. */
+  --app-success-color: var(--p-green-500);
+
   /* ===== Lookup dropdown multi-riga ===== */
   /* Usato da BillingAccountLookup e futuri lookup ricchi (ClienteLookup, ecc.).
    * Dropdown con 3 righe: primary (nome entita'), secondary (codice), meta (id fiscale / pdp). */

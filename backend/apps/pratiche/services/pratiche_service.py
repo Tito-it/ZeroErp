@@ -118,12 +118,34 @@ ESITI_FLUSSO_AMMESSI = (
 _ESITO_AUTO_FALLBACK = "POSITIVO"
 
 
+# Esiti di RAMO: valori CALCOLATI dai domini (bivio SMISTAMENTO), mai input
+# utente — sottoinsieme di ESITI_FLUSSO_AMMESSI. Il guard API li respinge sul
+# percorso operatore (require_esito_selezionabile_operatore); i BB di dominio
+# (completa_step_pratica → completa_flusso) li passano liberamente. Mirror
+# applicativo in attesa del discriminatore data-driven a DB
+# (brief-db-esiti-flussi-selezionabilita.md): quando arrivera' la colonna,
+# questo mirror e il guard si sostituiscono col filtro sul vocabolario.
+ESITI_FLUSSO_RAMO = ("MERCE_PRESENTE", "SOLO_SERVIZI")
+
+
 # Scopo: Guard fail-fast sull'esito di un flusso (dominio chk_flussi_esito).
 def _require_esito_valido(esito: str) -> None:
     ErrorManager.require(
         esito in ESITI_FLUSSO_AMMESSI,
         code="E_FLUSSO_VALIDATION",
         message=f"Esito non valido: {esito}",
+    )
+
+
+# Scopo: Guard sul percorso OPERATORE (API cambio stato flusso): l'esito scelto
+# a mano non puo' essere un esito di ramo (calcolato dal dominio). Errore
+# parlante prima del completamento; il vocabolario globale del lookup FE li
+# espone ancora (nessun discriminatore a DB) → difesa qui.
+def require_esito_selezionabile_operatore(esito: str) -> None:
+    ErrorManager.require(
+        esito not in ESITI_FLUSSO_RAMO,
+        code="E_FLUSSO_VALIDATION",
+        message=f"Esito calcolato dal dominio, non selezionabile manualmente: {esito}",
     )
 
 

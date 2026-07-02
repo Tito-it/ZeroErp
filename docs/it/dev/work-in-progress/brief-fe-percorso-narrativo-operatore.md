@@ -1,7 +1,24 @@
 # Brief FE — Il Percorso pratica da grafo-macchina a racconto operatore
 
 > **Tipo**: brief FE (design → implementazione) · **Data**: 2026-07-01
-> **Owner**: Tid · **Stato**: 🟢 decisioni §7 chiuse (2026-07-01) — attesa prerequisiti BE/DB (§5), poi implementazione. Validare su PREVENTIVI prima di estendere.
+> **Owner**: Tid · **Stato**: 🟢 implementazione completa (2026-07-01): **B1-B5 fatti** (Strato A lessico + vista-racconto + esiti globali data-driven + modalità tecnica ADMIN); BE percorso/flusso con display fields; brief DB coda consegnato. **Resta solo la verifica in-app** su PREVENTIVI prima di estendere ad altri tipi pratica.
+>
+> **Review critica 2026-07-02** — bug trovati e corretti sull'implementato:
+> **(a)** B3b era **rotto**: `config.esiti_flussi_pratiche` mancava dalla whitelist
+> lookup BE → Select esiti sempre vuoto, completamento manuale impossibile
+> (errore inghiottito dal catch silente). Whitelist corretta; scoperto in cascata
+> che il vocabolario espone anche gli **esiti di ramo** (`MERCE_PRESENTE`/
+> `SOLO_SERVIZI`, mai input utente) → guard BE interim
+> `require_esito_selezionabile_operatore` + discriminatore a DB richiesto con
+> [brief-db-esiti-flussi-selezionabilita.md](brief-db-esiti-flussi-selezionabilita.md).
+> **(b)** B1, fasce: un'istanza **aperta** (DA_ESEGUIRE/IN_CORSO/SOSPESO) ora va
+> SEMPRE in ADESSO anche con `ramo` COMPLETATO (ripetizione in corso) o
+> RAMO_CHIUSO (lavoro avviato prima del bivio): prima spariva dalla vista
+> operatore. **(c)** B1, card ADESSO: aggiunti "Ripeti" (istanza ANNULLATO/ERRORE
+> ripetibile) e l'azione generica "Apri" accanto all'affordance di dominio
+> (prima mutuamente esclusive: il drawer del passo era irraggiungibile per gli
+> step con documento). **(d)** pulizie: chiavi i18n orfane rimosse, commenti
+> stantii "B5 arriverà" aggiornati, check verde via `--app-success-color`.
 >
 > **Origine**: voce **V1** di
 > [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md)
@@ -251,14 +268,14 @@ Esito della ricognizione BE/DB (payload percorso/coda/flusso + modello esiti). R
 - **Flusso dettaglio** (`get_flusso`): `stato_descrizione` ✅, `template_flusso_descrizione`
   ✅, `esito_default` ✅. **Completo**.
 - **Coda** (`fn_coda_lavoro_operatore`, **funzione DB**): `template_flusso_desc` ✅;
-  `stato_flusso_descrizione` ❌ mancante. La coda è prodotta da una **funzione DB**, non da
-  query Python → esporre la descrizione stato richiede **brief al team DB**
-  (`feedback_db_actions_passaggio_team`): →
-  [brief-db-coda-lavoro-descrizione-stato.md](brief-db-coda-lavoro-descrizione-stato.md)
-  (redatto 2026-07-01). ✅ **Chiarito il "bug severity"**: la fn ritorna `stato_flusso_codice`
-  che *contiene già il `codice_interno`*; il FE calcolava la severity su
-  `stato_flusso_codice_interno` (campo inesistente → `undefined`). **Fix FE-side** in B2
-  (usare `stato_flusso_codice`), nessuna dipendenza DB per la severity.
+  `stato_flusso_descrizione` aggiunta dal team DB con migration **20260701-11** su richiesta
+  del [brief-db-coda-lavoro-descrizione-stato.md](../work-done/brief-db-coda-lavoro-descrizione-stato.md)
+  → ✅ **CONSEGNATO**. ⚠️ **Correzione alla ricognizione**: avevo introspezionato la fn dal
+  file di migration **stantio** `20260614-02` invece che dalla versione **viva** `20260628-07`
+  (violazione `feedback_db_doc_first`). Sulla versione viva **non esiste** alcun bug severity:
+  il campo logico è `stato_flusso_codice_interno` (già usato, corretto), `stato_flusso_codice`
+  è il codice **display**. Contratto reale della fn: `stato_flusso_codice_interno` +
+  `stato_flusso_codice` + `stato_flusso_descrizione`.
 
 **P0.2 — Esiti data-driven** — ⚠️ **il modello contraddice l'assunzione "per template"**:
 
@@ -293,12 +310,11 @@ oggi. **P0.4** attende decisione owner.
 
 - **B2 — `PraticheCodaLavoro.vue`**: riga `descrizione`-first (invertire il fallback a
   [L78](../../../../frontend/src/pratiche/components/PraticheCodaLavoro.vue#L78)); `Tag`
-  stato con *value* = `stato_flusso_descrizione || stato_flusso_codice` (forward-compatible:
-  mostra la descrizione appena il brief DB atterra, intanto il codice), severity via
-  `statoFlussoSeverity(stato_flusso_codice)` (**fix del campo inesistente**
-  `stato_flusso_codice_interno`,
+  stato con *value* = `stato_flusso_descrizione || stato_flusso_codice`, severity via
+  `statoFlussoSeverity(stato_flusso_codice_interno)` (**invariata**: il campo logico esiste
+  ed era già corretto — vedi la correzione della ricognizione in Fase 0,
   [L80](../../../../frontend/src/pratiche/components/PraticheCodaLavoro.vue#L80)); empty via
-  i18n. Fattibile **subito**; la sola descrizione stato completa arriva col brief DB.
+  i18n. ✅ **fatto** — descrizione stato consegnata da 20260701-11.
 - **B3a — `FlussoDrawer.vue` (parte lessicale)**: `DrawerTitle` con titolo da `descrizione`
   e contesto pratica invece del codice grezzo
   ([L258-262](../../../../frontend/src/pratiche/components/FlussoDrawer.vue#L258-L262));
@@ -330,6 +346,12 @@ comportamento invariato.
     il flag `modalitaTecnica` (Fase 3).
   - Regole **invariate**: click non percorribile → errore parlante DB; `ripetibile_adesso`
     deciso dal DB. Nessuna regola di business nel FE (§2.4).
+  - ✅ **Implementato 2026-07-01**: fasce derivate dal `ramo`
+    (COMPLETATO→Fatti, PERCORRIBILE→Adesso 1..N, FUTURO→Poi testo), `RAMO_CHIUSO` nascosto;
+    esito via `esito_descrizione`, stato via `stato_descrizione`. Emit verso il parent
+    invariati (`open-flusso`/`create-flusso`/`open-attivita`). Il rendering tecnico è
+    **preservato e isolato** dietro `useInjectTechnicalMode()` (`core/composables/useTechnicalMode.js`,
+    default `false`) → resta **B5**: provider + toggle ADMIN nella detail pratica.
 
 > Nota architetturale (memoria `feedback_regola_del_2_estrai_bb` + `feedback_concentrico_no_yagni`):
 > tenere le tre fasce **dentro** `PraticaPercorso.vue`; estrarre sotto-componenti solo alla
@@ -340,17 +362,18 @@ nessuno stato-macchina, nessun ramo morto a video.
 
 ### Fase 3 — Modalità tecnica + esiti data-driven
 
-- **B3b — Esiti data-driven** (§9.1 opzione **A**): sostituire `esitiOptions` hardcodati
-  ([FlussoDrawer.vue:43-48](../../../../frontend/src/pratiche/components/FlussoDrawer.vue#L43-L48))
+- **B3b — Esiti data-driven** (§9.1 opzione **A**): sostituiti gli `esitiOptions` hardcodati
   con la lista **globale attiva** di `config.esiti_flussi_pratiche` (`codice_interno` +
-  `descrizione`) via lookup BE (whitelist + `lookupCodici`); render esito (COMPLETATO +
-  percorso) via `esito_descrizione`. `esitoFlussoSeverity` invariata. Nessun filtro
-  per-template (coerente col modello).
-- **B5 — Modalità tecnica** (§9.2, gate **`RUOLO_SISTEMA.ADMIN`**): provider
-  `useTechnicalMode` (mirror di `useReadonlyMode`) al livello detail pratica, con toggle
-  visibile solo se `auth` è ADMIN; `PraticaPercorso` e `FlussoDrawer` iniettano il flag e
-  **ri-mostrano** codici/sequenza/stati/rami/"Template" quando attivo. **Default off**.
-  Nessun seed DB.
+  `descrizione`) via `lookupCodici` + `useGlobalLookup` (cache modulo-level); render esito
+  registrato via `esito_descrizione` (esposto ora anche da `get_flusso`/`list_flussi`, BE).
+  `esitoFlussoSeverity` invariata. Nessun filtro per-template (coerente col modello).
+  ✅ **fatto 2026-07-01**.
+- **B5 — Modalità tecnica** (§9.2): provider `provideTechnicalMode` (mirror di
+  `useReadonlyMode`) montato in `PraticheDashboard`, con toggle visibile solo se
+  **`auth.isSuperAdmin`** (realizzazione concreta di "super-admin/ADMIN" nel modello
+  permessi di questo codebase). `PraticaPercorso` (ramo tecnico) e `FlussoDrawer` (campo
+  "Template" + codice) iniettano il flag e **ri-mostrano** il plumbing quando attivo.
+  **Default off**, nessun seed DB. ✅ **fatto 2026-07-01**.
 
 **Acceptance F3**: il super-admin ri-vede tutto il plumbing con un toggle; l'operatore no.
 
@@ -396,6 +419,9 @@ seed permesso a DB, granulare) **oppure** riuso di **`RUOLO_SISTEMA.ADMIN`** (im
 in `auth`, nessun DB). Trade-off: granularità/seed vs semplicità/subito. **→ Deciso:
 `RUOLO_SISTEMA.ADMIN`** — nessun seed DB; il toggle modalità tecnica è visibile solo agli
 ADMIN. Rivalutare un permesso dedicato solo se serve granularità futura.
+> **Realizzazione**: in codice il gate è `auth.isSuperAdmin` (profilo SUPER_ADMIN id 9100),
+> il concetto di "admin/super-admin" già esposto dall'auth store — non esiste un flag
+> `ruolo_sistema` grezzo lato FE. Semanticamente equivalente all'intento §9.2.
 
 ---
 

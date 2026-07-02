@@ -139,7 +139,7 @@ class TestPreventiviService(unittest.TestCase):
         # Default: preventivo NON agganciato a una pratica (push standalone). Il
         # ramo aggancio-commessa di push_a_commessa (rev.3) resta no-op — i test
         # pratica-aware lo sovrascrivono esplicitamente.
-        self.mock_repo.get_flusso_id_by_preventivo_root.return_value = None
+        self.mock_repo.get_pratica_id_by_preventivo_root.return_value = None
 
         # Mock BB anagrafiche usati da crea_preventivo per validator dominio
         # (post brief DB rev2: derivazione istanza dal BA + pre-check coerenza
@@ -495,9 +495,8 @@ class TestPreventiviService(unittest.TestCase):
     _STEP = "apps.pratiche.services.pratiche_service.completa_step_pratica"
 
     def _mock_pratica(self, MockPratRepo, *, pratica_id=290):
-        # preventivo → flusso ROOT → pratica (per _resolve_pratica_id_da_preventivo).
-        self.mock_repo.get_flusso_id_by_preventivo_root.return_value = 315
-        MockPratRepo.return_value.get_flusso.return_value = {"pratica_id": pratica_id}
+        # preventivo → pratica dal link ROOT (per _resolve_pratica_id_da_preventivo).
+        self.mock_repo.get_pratica_id_by_preventivo_root.return_value = pratica_id
 
     def _no_residuo(self):
         self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
@@ -587,7 +586,7 @@ class TestPreventiviService(unittest.TestCase):
     def test_completa_smistamento_no_pratica(self, MockPratRepo):
         from apps.vendite.services.preventivi_service import completa_smistamento
 
-        self.mock_repo.get_flusso_id_by_preventivo_root.return_value = None
+        self.mock_repo.get_pratica_id_by_preventivo_root.return_value = None
 
         with self.assertRaises(ServiceError) as ctx:
             completa_smistamento(7)
@@ -623,8 +622,7 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
         self.mock_repo.preventivo_ha_residuo_commessa.return_value = False
         # preventivo in una pratica → aggancio commessa attivo.
-        self.mock_repo.get_flusso_id_by_preventivo_root.return_value = 315
-        MockPratRepo.return_value.get_flusso.return_value = {"pratica_id": 290}
+        self.mock_repo.get_pratica_id_by_preventivo_root.return_value = 290
         MockCommRepo.return_value.get_commessa_id_by_sorgente.return_value = 77
         mock_push_one.return_value = {
             "stato": "COMPLETATO", "dry_run": False, "push_log_id": 42,

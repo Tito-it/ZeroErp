@@ -2,7 +2,7 @@
 // Scopo: DataTable paginata pratiche con search, filtro stato, priorita' e data.
 // I campi display (stato_descrizione, soggetto_display, ecc.) arrivano dal backend via JOIN.
 // I lookup servono solo per popolare i filtri Select.
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePraticheStore } from '../stores/pratiche'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -37,6 +37,13 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 // lista filtrata ma Select visivamente vuoti).
 const statoFilter = ref(store.filters.stato ?? null)
 const prioritaFilter = ref(store.filters.priorita_id ?? null)
+// Filtro tipo prestazione: preimpostabile dal deep-link della home launcher
+// (tile "Comincia" → dashboard filtrata sul tipo). Il watch tiene il Select
+// allineato quando il deep-link cambia il filtro a componente GIA' montato:
+// sotto KeepAlive la dashboard viene ri-attivata senza remount, quindi
+// l'init a setup-time da solo non basta.
+const tipoPrestazioneFilter = ref(store.filters.tipo_prestazione_id ?? null)
+watch(() => store.filters.tipo_prestazione_id, v => { tipoPrestazioneFilter.value = v ?? null })
 // Lente di contesto D1 (workflow v2): solo pratiche interne (senza soggetto).
 const soloInterneFilter = ref(store.filters.solo_interne || false)
 
@@ -71,6 +78,11 @@ function onStatoChange() {
 
 function onPrioritaChange() {
   store.filters.priorita_id = prioritaFilter.value
+  applyFilters()
+}
+
+function onTipoPrestazioneChange() {
+  store.filters.tipo_prestazione_id = tipoPrestazioneFilter.value
   applyFilters()
 }
 
@@ -146,6 +158,13 @@ onUnmounted(() => { window.removeEventListener('resize', recalcScrollHeight) })
           :placeholder="t('pratiche.filtro_priorita')"
           show-clear
           @change="onPrioritaChange"
+        />
+        <LookupSelect
+          v-model="tipoPrestazioneFilter"
+          rel="pratiche.tipi_prestazione"
+          :placeholder="t('pratiche.filtro_tipo_prestazione')"
+          show-clear
+          @change="onTipoPrestazioneChange"
         />
         <DatePicker
           v-model="dataDaFilter"

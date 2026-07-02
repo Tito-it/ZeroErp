@@ -1856,18 +1856,12 @@ _SORGENTE_COMMESSA = "COMMESSA"
 _RUOLO_COLLEGATO = "COLLEGATO"
 
 
-# Scopo: Risolve la pratica di appartenenza di un preventivo via il suo flusso
-#        ROOT (pratiche_sorgenti ROOT per-flusso → pratica). None se il preventivo
-#        non nasce da una pratica (percorso standalone). Direzione vendite→pratiche,
-#        import lazy (mirror del pattern handler).
+# Scopo: Risolve la pratica di appartenenza di un preventivo dal suo link ROOT
+#        (pratiche_sorgenti.pratica_id). None se il preventivo non nasce da una
+#        pratica (percorso standalone). NB: risolve dalla pratica sul link, non
+#        dal flusso — funziona anche se il ROOT e' agganciato senza flusso_id.
 def _resolve_pratica_id_da_preventivo(preventivo_id: int) -> int | None:
-    from apps.pratiche.db.pratiche_repository import PraticheRepository
-
-    root_flusso_id = PreventiviRepository().get_flusso_id_by_preventivo_root(preventivo_id)
-    if root_flusso_id is None:
-        return None
-    flusso = PraticheRepository().get_flusso(root_flusso_id)
-    return int(flusso["pratica_id"]) if flusso else None
+    return PreventiviRepository().get_pratica_id_by_preventivo_root(preventivo_id)
 
 
 # Scopo: Lega la commessa-servizi del preventivo alla sua pratica come COLLEGATO

@@ -1,13 +1,14 @@
 # Piano di sviluppo BE/FE — Uniformità pratica preventivi
 
 > **Tipo**: piano operativo (BE/FE) · **Data**: 2026-06-30 · **Stato**: 🟢 in corso —
-> Fasi 0-4 implementate. 🔴 **BLOCCO E2E merce**: la pratica si **auto-chiude a
-> SMISTAMENTO** (regola chiusura template-based + timing) prima dei flussi ordine
-> condizionali → serve la nuova **regola di chiusura "nessun lavoro pendente"**
-> (motore, DB): [brief-db-chiusura-pratica-nessun-lavoro-pendente.md](brief-db-chiusura-pratica-nessun-lavoro-pendente.md).
-> Fix (rev. 3): **bivio-per-esito** — 9013/9014 `obbligatorio=true` percorribili solo sul ramo
-> merce via esito `MERCE_PRESENTE` di SMISTAMENTO (niente creazione on-demand / chaining). ✅ DB
-> applicato + pgTAP verde; resta il BE (SMISTAMENTO calcola l'esito, `post_smistamento` merce-only).
+> Fasi 0-4 implementate. Ex-blocco auto-chiusura a SMISTAMENTO **RISOLTO** con la regola
+> di chiusura "nessun lavoro pendente" (**bivio-per-esito**, motore DB + BE):
+> [brief-db-chiusura-pratica-nessun-lavoro-pendente.md](../work-done/brief-db-chiusura-pratica-nessun-lavoro-pendente.md)
+> (✅ **DB applicato + pgTAP verde**, ✅ **BE fatto + 1764 test verdi** — brief §11.6, chiuso in work-done).
+> 9013/9014 `obbligatorio=true` percorribili solo sul ramo merce via esito `MERCE_PRESENTE` di
+> SMISTAMENTO (niente creazione on-demand / chaining). ✅ **Smoke E2E BE verde** (2026-07-01,
+> `smoke-test-pratica-preventivi-bivio.sh`, rami MERCE + SOLO_SERVIZI). **Resta solo il FE**
+> (item residui sotto).
 > **Analisi (il perché)**: [analisi-uniformita-pratica-preventivi.md](analisi-uniformita-pratica-preventivi.md)
 > **Prerequisiti DB**: ✅ tutti applicati (catalogo `PREVENTIVI` 9004 + flussi 9009-9014,
 > `obsoleto_dal` + lookup/guard) — brief in `work-done`.

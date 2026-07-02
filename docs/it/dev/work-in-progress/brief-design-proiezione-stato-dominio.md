@@ -1,11 +1,7 @@
 # Brief Design — Proiezione generica dello stato di dominio nelle pratiche
 
 > **Tipo**: brief di design autorevole (modello + piano DB/BE, FE di consumo) · **Data**: 2026-07-01
-> **Owner**: Tid · **Stato**: 🟡 in lavorazione — principio validato; increment DB PREVENTIVI
-> (D1-D3) in cantiere su `dev/db-tid`, vedi
-> [brief-db-proiezione-stato-dominio.md](brief-db-proiezione-stato-dominio.md) §0 per le
-> decisioni accettate (A-E: vista union senza `resolver_key`, `is_verdetto`, `risolto` nel
-> descrittore, placement `script`, `is_abortito` intatto).
+> **Owner**: Tid · **Stato**: 🟢 piano pronto (2026-07-01) — recon DB fatta (§11.1), decisioni §10 adottate (§11.2), **piano di sviluppo in §11**. Attività DB estratte nel brief separato [brief-db-proiezione-stato-dominio.md](brief-db-proiezione-stato-dominio.md) (→ team DB). Cantiere da avviare su PREVENTIVI.
 >
 > **Origine**: voce **V10** e §2.4 di
 > [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md) — la
@@ -136,7 +132,7 @@ descrittore universale (§4) →  la pratica lo MOSTRA / ci ROUTA sopra
 | `config.sorgenti` | ✅ esiste | registry dei tipi sorgente (da estendere con `resolver_key`) |
 | `config.stati_doc_*` con `descrizione` | ✅ esiste | display già pronto; `is_abortito` = abbozzo di normalizzazione |
 | `fn_available_actions_*` | ✅ preventivo/offerta (ordini parziale) | la "prossima azione" per stato |
-| `vw_preventivi_pratiche` | ✅ esiste | **prima** proiezione preventivo↔pratiche già in casa |
+| `vw_preventivi_pratiche` | ⚠️ **non verificata** come vista DB | non documentata in `docs/it/dbzero/` né trovata in migration → probabile **join Python ad hoc**, non una proiezione DB pronta (recon 2026-07-01). Non contarci come base |
 | `config.esiti_flussi_pratiche` | ✅ 2026-07-01 | il target normalizzato dell'`esito` |
 | `template_flussi_handler_eventi` | ✅ esiste | la direzione GUIDA in embrione |
 
@@ -183,6 +179,65 @@ descrittore universale (§4) →  la pratica lo MOSTRA / ci ROUTA sopra
    MOSTRA? *Proposta: dopo — prima "cosa sta accadendo", poi "cosa fare".*
 4. **Struttura esatta di `config.sorgenti`** come registry: verificare colonne prima di
    aggiungere `resolver_key`.
+
+---
+
+## 11. Piano di sviluppo
+
+### 11.1 Esito ricognizione DB (docs/it/dbzero, 2026-07-01) — cosa c'è davvero
+
+| Pezzo | Realtà verificata |
+|---|---|
+| `pratiche.pratiche_sorgenti` | ✅ `sorgente_tipo_id`, `sorgente_uid`, `ruolo_link` (ROOT/COLLEGATO), `meta`, **`flusso_id`** (àncora il ROOT al flusso d'origine) |
+| `config.sorgenti` | ✅ ma **senza `resolver_key`**. Ha `codice_interno`/`codice`/`categoria`/`descrizione`/`scope` + **`target_table`** (regclass) + **`key_selector`** (`id`\|`uid`) + `tipo_doc_fiscale_id`. È un registry descrittivo con polimorfismo `target_table`+`key_selector` |
+| `config.stati_doc_{preventivi,offerte,ordini,contratti}` | ✅ tutte con `descrizione`; **`is_abortito` solo su preventivi/contratti**, `is_bozza` solo contratti; **nessuna** colonna di normalizzazione (`fase`/`terminale`/`esito_norm`) → **D1 è nuovo** |
+| `fn_available_actions_{preventivo,offerta,ordine,contratto}` | ✅ ritornano `jsonb` capability → per la fase **azioni** (§10.3, dopo) |
+| `vw_preventivi_pratiche` | ⚠️ **non verificata** come vista DB (vedi §7): non è una base pronta |
+| `config.esiti_flussi_pratiche` | ✅ target dell'`esito` normalizzato |
+| dispatch `handler_key` | ✅ `handler_key` (UNIQUE, immutabile) → **registry Python statico** (`HANDLER_MAP`, no dynamic SQL, fail-fast). Modello per la disciplina della chiave |
+
+### 11.2 Decisioni §10 — adottate come da proposta dell'owner
+
+- **§10.1** read-time + **vista** per le liste; materializzare solo su evidenza di performance.
+- **§10.2** colonne di normalizzazione **sulle `stati_doc_*`** (dominio-owned, minimale).
+- **§10.3** `azioni` nel descrittore **dopo** la fase MOSTRA.
+- **§10.4** *(risolto dalla recon)* aggiungere **`resolver_key` su `config.sorgenti`** come
+  **chiave controllata** (stessa disciplina di `handler_key`: UNIQUE, immutabile, registrata;
+  no dynamic).
+
+### 11.3 Nota architetturale — dove vive il dispatch del resolver
+
+Il pattern `handler_key` dispatcha in **Python** perché gli handler eseguono side-effect
+**write-time, uno alla volta**. Il resolver è invece **read-time e proiettato su liste**
+(molte pratiche insieme): un dispatch per-riga in Python sarebbe **N+1**. Quindi il resolver
+conviene **DB-side** — resolver per dominio come **vista/funzione** + dispatch a **CASE
+statico** su `resolver_key` (o vista normalizzata `UNION` per le liste). Coerente col
+`fn_stato_sorgente` del §5; la "chiave controllata" mantiene la disciplina di `handler_key`
+(niente dynamic SQL). *(È la differenza motivata rispetto al pattern handler: proiezione di
+lettura ≠ esecuzione di scrittura.)*
+
+### 11.4 Fasi
+
+- **Fase 0 — Prerequisiti DB** → **brief separato al team DB**
+  ([brief-db-proiezione-stato-dominio.md](brief-db-proiezione-stato-dominio.md),
+  `feedback_db_actions_passaggio_team`): **D1** (colonne norm + seed mapping per dominio),
+  **D2** (resolver per dominio: vista/fn che dà il descrittore §4), **D3** (`resolver_key` +
+  dispatch `fn_stato_sorgente` / vista normalizzata). **Additivo, roll-out per dominio**:
+  senza resolver → descrittore `UNKNOWN`, milestone manuale come oggi. **Partire da
+  vendite/PREVENTIVI** (il workflow E2E già validato per V1).
+- **Fase 1 — BE** (gated da D1-D3): esporre il descrittore §4 nei payload
+  **pratica/percorso/coda** come **display fields** (nessuna logica). Alimenta V1.
+- **Fase 2 — FE** (gated da Fase 1): consumo nella **vista-racconto** (brief V1) — "sei qui
+  nella vita del documento": `stato_descrizione`+`fase` del documento vivo accanto al passo
+  *Adesso*. Riusa `esito_descrizione` già introdotto in V1.
+- **Fase 3 — GUIDA (D4)**: generalizzare "avanza-su-esito-proiettato"
+  (config su `template_flussi_handler_eventi` o binding dedicato), sostituendo l'handler
+  accetta per-pratica. **Solo dopo** che MOSTRA è validato.
+
+**Sequenza**: D1→D2→D3 (DB, su PREVENTIVI) → Fase 1 BE → Fase 2 FE → validazione su
+PREVENTIVI → estensione agli altri domini (offerta/ordine/contratto) → Fase 3 GUIDA.
+**MOSTRA prima di GUIDA** (§6). Coordinare con **V1**: il descrittore è esattamente ciò che
+la vista-racconto deve renderizzare.
 
 ---
 

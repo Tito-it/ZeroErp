@@ -35,6 +35,9 @@ export const usePraticheStore = defineStore('pratiche', () => {
     // `stato` (fix 2026-06-12: prima si inviava `stato_id`, ignorato dal BE).
     stato: null,
     priorita_id: null,
+    // Filtro tipo prestazione (home launcher: le tile "Comincia" atterrano
+    // sulla dashboard con questo filtro preimpostato via query param).
+    tipo_prestazione_id: null,
     risorsa_umana_id: null,
     // Lente di contesto canonica (D1, workflow v2): solo pratiche interne
     // (senza soggetto). Esclusiva con le lenti ruolo/istanza (usate dalle
@@ -77,6 +80,7 @@ export const usePraticheStore = defineStore('pratiche', () => {
       if (searchTerm.length >= 3) params.search = searchTerm
       if (f.stato) params.stato = f.stato
       if (f.priorita_id != null) params.priorita_id = f.priorita_id
+      if (f.tipo_prestazione_id != null) params.tipo_prestazione_id = f.tipo_prestazione_id
       if (f.risorsa_umana_id != null) params.risorsa_umana_id = f.risorsa_umana_id
       if (f.solo_interne) params.solo_interne = true
       if (f.data_da) params.data_da = f.data_da
@@ -165,7 +169,10 @@ export const usePraticheStore = defineStore('pratiche', () => {
 
   // Scopo: Carica coda lavoro dell'operatore corrente su tre livelli.
   // Usa emittenteCorrente (1-a-1) per coerenza col refactor.
+  // Dedup in-flight: home e dashboard la chiamano entrambe all'attivazione
+  // (KeepAlive) — se una fetch e' gia' in corso la seconda non riparte.
   async function loadCodaLavoro() {
+    if (codaLoading.value) return
     const emittenteId = auth.emittenteCorrente?.id
     if (!emittenteId) { codaLavoro.value = []; return }
     codaLoading.value = true

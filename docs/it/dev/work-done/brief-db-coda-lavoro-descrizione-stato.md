@@ -1,7 +1,18 @@
 # Brief DB — Coda lavoro: esporre `stato_flusso_descrizione`
 
 > **Tipo**: brief al team DB (dev/db-tid) · **Data**: 2026-07-01 · **Owner**: Tid
-> **Priorità**: bassa (display field, nessuna logica) · **Stato**: 🟠 proposto
+> **Priorità**: bassa (display field, nessuna logica) · **Stato**: ✅ **CONSEGNATO** via
+> migration `20260701-11-update-fn-coda-lavoro-operatore-stato-descrizione` (commit
+> `1ebb54295`).
+>
+> **⚠️ Correzione post-consegna**: questo brief era scritto sulla **base stantia**
+> `20260614-02`. La versione **viva** era `20260628-07` (naming stato già bonificato). Di
+> conseguenza: il §4 sotto era **già chiuso** (nessuna azione FE serviva), e il campo logico
+> si chiama `stato_flusso_codice_interno` (non `stato_flusso_codice`). Contratto finale della
+> fn: `stato_flusso_codice_interno` (logico) + `stato_flusso_codice` (display) +
+> `stato_flusso_descrizione` (nuova). Il team DB ha giustamente ignorato la "nota
+> implementativa" §2 (il JOIN suggerito non avrebbe matchato) ed esteso il CTE
+> `stati_pendenti`.
 >
 > **Origine**: prerequisito **P0.1 (coda)** del
 > [brief-fe-percorso-narrativo-operatore.md](brief-fe-percorso-narrativo-operatore.md §8),
