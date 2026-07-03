@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/trgfn_flussi_guard_definizione.md" %}
 # ⚙️ Funzione `trgfn_flussi_guard_definizione`
 
 ```sql

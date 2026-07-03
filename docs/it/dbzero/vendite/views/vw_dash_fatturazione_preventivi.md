@@ -1,0 +1,46 @@
+{% include-markdown "it/dbzero/vendite/manual/vw_dash_fatturazione_preventivi.md" %}
+# 🔍 View `vw_dash_fatturazione_preventivi`
+
+```sql
+CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_preventivi AS
+WITH righe AS (
+         SELECT sr.preventivo_id,
+            sr.riga_id,
+            ((COALESCE(sr.quantita, (0)::numeric) * sr.prezzo_unitario) * ((1)::numeric - (COALESCE(pr.sconto_percentuale, (0)::numeric) / 100.0))) AS valore_riga,
+            (sr.stato_smistamento <> 'RESIDUA'::text) AS transitata
+           FROM (vendite.vw_preventivi_smistamento_righe sr
+             JOIN vendite.preventivi_righe pr ON ((pr.id = sr.riga_id)))
+        )
+ SELECT 'PREVENTIVI'::character varying AS area,
+    COALESCE(p.competenza_mese, (date_trunc('month'::text, (p.validita_dal)::timestamp with time zone))::date, (date_trunc('month'::text, (p.data)::timestamp with time zone))::date) AS competenza_mese,
+    p.id AS documento_id,
+    (p.uid)::text AS documento_uid,
+    (p.numero)::text AS codice,
+    p.emittente_fiscale_id,
+    NULL::bigint AS emittente_soggetto_ruolo_id,
+    COALESCE(sum(r.valore_riga), (0)::numeric) AS valore_totale,
+    COALESCE(sum(r.valore_riga) FILTER (WHERE r.transitata), (0)::numeric) AS valore_transitato,
+    (count(r.riga_id))::integer AS unita_totali,
+    (count(r.riga_id) FILTER (WHERE r.transitata))::integer AS unita_transitate,
+    ((count(r.riga_id) > 0) AND (count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata))) AS is_transitato,
+    ((sdp.esito)::text = 'NEGATIVO'::text) AS is_abortito,
+    (
+        CASE
+            WHEN ((sdp.esito)::text = 'NEGATIVO'::text) THEN NULL::text
+            WHEN ((count(r.riga_id) > 0) AND (count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata))) THEN NULL::text
+            WHEN ((sdp.codice_interno)::text = 'DRAFT'::text) THEN 'DOC_BOZZA'::text
+            WHEN ((sdp.codice_interno)::text = 'EMESSO'::text) THEN 'IN_ATTESA_ACCETTAZIONE'::text
+            ELSE 'RIGA_RESIDUA'::text
+        END)::character varying AS motivo_fermo,
+    sdp.codice_interno AS stato_codice_interno,
+    sdp.codice AS stato_codice,
+    sdp.fase
+   FROM ((vendite.preventivi p
+     JOIN config.stati_doc_preventivi sdp ON ((sdp.id = p.stato_doc_preventivo_id)))
+     LEFT JOIN righe r ON ((r.preventivo_id = p.id)))
+  GROUP BY p.id, p.uid, p.numero, p.competenza_mese, p.validita_dal, p.data, p.emittente_fiscale_id, sdp.codice_interno, sdp.codice, sdp.fase, sdp.esito;
+```
+
+
+---
+{% include-markdown "signature-core.md" %}

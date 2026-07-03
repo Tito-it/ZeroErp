@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Dashboard fatturazione — resolver area PREVENTIVI (brief-design-dashboard-
+# fatturazione §5, Fase 1). Una riga per preventivo: valore totale (imponibile
+# righe attive) vs valore transitato (righe con smistamento != RESIDUA).
+#
+# SEMANTICA (allineata al dominio, zero logica nuova):
+#   - il transito riga e' letto da vendite.vw_preventivi_smistamento_righe
+#     (vista canonica dello smistamento): RESIDUA = ferma; A_ORDINE /
+#     IN_COMMESSA / EMESSA_AF / FATTURATA = transitata. Il predicato canonico
+#     richiede stato_emissione='EMESSA' per il ramo commessa (attivita
+#     NON_EMESSA = riga ancora residua, simmetria gate EVASO).
+#   - competenza: COALESCE(competenza_mese, mese di validita_dal, mese di
+#     data) — competenza_mese (scritta all'accettazione) e' autorevole quando
+#     esiste; i fallback sono gli stessi campi della policy di
+#     fn_list_preventivi_da_pushare.
+#   - is_abortito = (esito 'NEGATIVO' da config.stati_doc_preventivi, D1
+#     proiezione stato dominio): il documento esce dal confronto
+#     totale/transitato (contatore separato nella vista mensile).
+#   - valore = imponibile: qta * prezzo * (1 - sconto%/100), senza IVA
+#     (decisione D-4 del brief).
+#
+# Vocabolario motivo_fermo di quest'area: DOC_BOZZA, IN_ATTESA_ACCETTAZIONE,
+# RIGA_RESIDUA. NULL se transitato o abortito.
+#
+# Consumata da vendite.vw_dash_fatturazione_documenti (20260703-56).
+# RLS: la vista gira come invoker — lo scope emittente sugli operatori
+# si applica automaticamente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260703-51-create-vw-dash-fatturazione-preventivi-mctit.yaml
+
+  - changeSet:
+      id: 20260703-51-create-vw-dash-fatturazione-preventivi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Dashboard fatturazione Fase 1: crea vendite.vw_dash_fatturazione_preventivi,
+        resolver area PREVENTIVI (valore totale vs transitato per competenza,
+        riuso vw_preventivi_smistamento_righe).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname   = 'vw_preventivi_smistamento_righe';
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'config'
+                 AND table_name   = 'stati_doc_preventivi'
+                 AND column_name  = 'esito';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_preventivi AS
+              WITH righe AS (
+                -- Riuso della vista canonica di smistamento (righe attive):
+                -- transitata = qualunque stato diverso da RESIDUA.
+                SELECT
+                    sr.preventivo_id,
+                    sr.riga_id,
+                    (COALESCE(sr.quantita, 0) * sr.prezzo_unitario
+                       * (1 - COALESCE(pr.sconto_percentuale, 0) / 100.0)) AS valore_riga,
+                    (sr.stato_smistamento <> 'RESIDUA')                    AS transitata
+                  FROM vendite.vw_preventivi_smistamento_righe sr
+                  JOIN vendite.preventivi_righe pr ON pr.id = sr.riga_id
+              )
+              SELECT
+                  'PREVENTIVI'::varchar                          AS area,
+                  COALESCE(p.competenza_mese,
+                           (date_trunc('month', p.validita_dal))::date,
+                           (date_trunc('month', p.data))::date)  AS competenza_mese,
+                  p.id                                           AS documento_id,
+                  (p.uid)::text                                  AS documento_uid,
+                  (p.numero)::text                               AS codice,
+                  p.emittente_fiscale_id,
+                  NULL::bigint                                   AS emittente_soggetto_ruolo_id,
+                  COALESCE(SUM(r.valore_riga), 0)                AS valore_totale,
+                  COALESCE(SUM(r.valore_riga)
+                             FILTER (WHERE r.transitata), 0)     AS valore_transitato,
+                  COUNT(r.riga_id)::integer                      AS unita_totali,
+                  (COUNT(r.riga_id)
+                     FILTER (WHERE r.transitata))::integer       AS unita_transitate,
+                  (COUNT(r.riga_id) > 0
+                     AND COUNT(r.riga_id) =
+                         COUNT(r.riga_id) FILTER (WHERE r.transitata)) AS is_transitato,
+                  (sdp.esito = 'NEGATIVO')                       AS is_abortito,
+                  CASE
+                    WHEN sdp.esito = 'NEGATIVO' THEN NULL
+                    WHEN COUNT(r.riga_id) > 0
+                         AND COUNT(r.riga_id) =
+                             COUNT(r.riga_id) FILTER (WHERE r.transitata) THEN NULL
+                    WHEN sdp.codice_interno = 'DRAFT'  THEN 'DOC_BOZZA'
+                    WHEN sdp.codice_interno = 'EMESSO' THEN 'IN_ATTESA_ACCETTAZIONE'
+                    ELSE 'RIGA_RESIDUA'
+                  END::varchar                                   AS motivo_fermo,
+                  -- Alias FEDELI alla sorgente (linee-guida-sql §6c).
+                  sdp.codice_interno                             AS stato_codice_interno,
+                  sdp.codice                                     AS stato_codice,
+                  sdp.fase
+                FROM vendite.preventivi p
+                JOIN config.stati_doc_preventivi sdp
+                  ON sdp.id = p.stato_doc_preventivo_id
+                LEFT JOIN righe r ON r.preventivo_id = p.id
+               GROUP BY p.id, p.uid, p.numero, p.competenza_mese, p.validita_dal,
+                        p.data, p.emittente_fiscale_id,
+                        sdp.codice_interno, sdp.codice, sdp.fase, sdp.esito;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_preventivi IS
+                'Dashboard fatturazione (brief-design-dashboard-fatturazione §5): resolver area PREVENTIVI. Una riga per preventivo con valore imponibile totale vs transitato (righe con smistamento != RESIDUA da vw_preventivi_smistamento_righe, predicato canonico EMESSA sul ramo commessa). Competenza: COALESCE(competenza_mese, mese validita_dal, mese data). is_abortito=esito NEGATIVO (fuori dal confronto). motivo_fermo: DOC_BOZZA | IN_ATTESA_ACCETTAZIONE | RIGA_RESIDUA. Consumata da vw_dash_fatturazione_documenti.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_dash_fatturazione_preventivi;

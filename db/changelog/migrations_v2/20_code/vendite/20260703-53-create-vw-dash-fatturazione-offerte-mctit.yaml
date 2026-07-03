@@ -1,0 +1,127 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Dashboard fatturazione — resolver area OFFERTE (brief-design-dashboard-
+# fatturazione §5, Fase 1). Una riga per offerta, A CONTEGGI (decisione D-2:
+# le offerte non hanno totali di testata — le righe sono eccezioni al
+# listino; il valore in euro e' rinviato a v2): valore_* = NULL,
+# unita_totali = 1, unita_transitate = 0/1.
+#
+# SEMANTICA:
+#   - l'offerta NON ha uno stato post-push (resta ACCETTATA): il transito
+#     si legge dai FIGLI — contratto via contratti.offerta_id (UNIQUE) o
+#     ordine via ordini.documento_origine_tipo='OFFERTA' +
+#     documento_origine_id (UNIQUE parziale). XOR permanente.
+#   - transitata = figlio VIVO: contratto con NOT is_abortito_snapshot,
+#     oppure ordine con esito IS DISTINCT FROM 'NEGATIVO'.
+#   - caso "bloccata" (brief §8.1): figlio esistente ma abortito ->
+#     motivo_fermo FIGLIO_ABORTITO (la XOR impedisce di rigenerarlo:
+#     serve revisione dell'offerta).
+#   - competenza: mese di COALESCE(validita_dal, data_emissione, data_insert)
+#     (l'offerta non ha competenza nativa).
+#   - 'OFFERTA' e' un valore dell'enum CHECK chk_ordini_documento_origine_tipo
+#     (non un codice di catalogo): literale ammesso (linee-guida-sql §6d).
+#
+# Vocabolario motivo_fermo: DOC_BOZZA, IN_ATTESA_ACCETTAZIONE, SENZA_FIGLIO,
+# FIGLIO_ABORTITO. NULL se transitata o abortita.
+#
+# Consumata da vendite.vw_dash_fatturazione_documenti (20260703-56).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260703-53-create-vw-dash-fatturazione-offerte-mctit.yaml
+
+  - changeSet:
+      id: 20260703-53-create-vw-dash-fatturazione-offerte
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Dashboard fatturazione Fase 1: crea vendite.vw_dash_fatturazione_offerte,
+        resolver area OFFERTE a conteggi (transito letto dai figli
+        contratto/ordine vivi; caso FIGLIO_ABORTITO esposto).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'config'
+                 AND table_name   = 'stati_doc_offerte'
+                 AND column_name  = 'esito';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_offerte AS
+              SELECT
+                  'OFFERTE'::varchar                             AS area,
+                  (date_trunc('month',
+                     COALESCE(o.validita_dal,
+                              (o.data_emissione)::date,
+                              (o.data_insert)::date)))::date     AS competenza_mese,
+                  o.id                                           AS documento_id,
+                  (o.uid)::text                                  AS documento_uid,
+                  (o.codice)::text                               AS codice,
+                  o.emittente_fiscale_id,
+                  NULL::bigint                                   AS emittente_soggetto_ruolo_id,
+                  NULL::numeric                                  AS valore_totale,
+                  NULL::numeric                                  AS valore_transitato,
+                  1::integer                                     AS unita_totali,
+                  CASE WHEN (ct.id IS NOT NULL AND NOT ct.is_abortito_snapshot)
+                         OR (fo.ordine_id IS NOT NULL
+                             AND fo.esito IS DISTINCT FROM 'NEGATIVO')
+                       THEN 1 ELSE 0 END::integer                AS unita_transitate,
+                  ((ct.id IS NOT NULL AND NOT ct.is_abortito_snapshot)
+                     OR (fo.ordine_id IS NOT NULL
+                         AND fo.esito IS DISTINCT FROM 'NEGATIVO')) AS is_transitato,
+                  (sdo.esito = 'NEGATIVO')                       AS is_abortito,
+                  CASE
+                    WHEN sdo.esito = 'NEGATIVO' THEN NULL
+                    WHEN (ct.id IS NOT NULL AND NOT ct.is_abortito_snapshot)
+                      OR (fo.ordine_id IS NOT NULL
+                          AND fo.esito IS DISTINCT FROM 'NEGATIVO') THEN NULL
+                    -- Figlio generato ma abortito: la XOR permanente impedisce
+                    -- di rigenerarlo — serve una revisione dell'offerta.
+                    WHEN ct.id IS NOT NULL OR fo.ordine_id IS NOT NULL
+                      THEN 'FIGLIO_ABORTITO'
+                    WHEN sdo.codice_interno = 'BOZZA'  THEN 'DOC_BOZZA'
+                    WHEN sdo.codice_interno = 'EMESSA' THEN 'IN_ATTESA_ACCETTAZIONE'
+                    ELSE 'SENZA_FIGLIO'
+                  END::varchar                                   AS motivo_fermo,
+                  -- Alias FEDELI alla sorgente (linee-guida-sql §6c).
+                  sdo.codice_interno                             AS stato_codice_interno,
+                  sdo.codice                                     AS stato_codice,
+                  sdo.fase
+                FROM vendite.offerte_commerciali o
+                JOIN config.stati_doc_offerte sdo
+                  ON sdo.id = o.stato_doc_offerta_id
+                -- Figlio contratto: al piu' uno (uq_contratti_offerta_id).
+                LEFT JOIN vendite.contratti ct ON ct.offerta_id = o.id
+                -- Figlio ordine: al piu' uno (uq_ordini_v_documento_origine_offerta).
+                LEFT JOIN LATERAL (
+                  SELECT od.id AS ordine_id, sdor.esito
+                    FROM vendite.ordini od
+                    JOIN config.stati_doc_ordini sdor
+                      ON sdor.id = od.stato_doc_ordine_id
+                   WHERE od.documento_origine_tipo = 'OFFERTA'
+                     AND od.documento_origine_id = o.id
+                   LIMIT 1
+                ) fo ON TRUE;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_offerte IS
+                'Dashboard fatturazione (brief-design-dashboard-fatturazione §5): resolver area OFFERTE, a conteggi (D-2: niente valore euro in v1). Transitata = figlio vivo (contratto via offerta_id con NOT is_abortito_snapshot, o ordine da documento_origine OFFERTA con esito != NEGATIVO). Figlio esistente ma abortito -> motivo_fermo FIGLIO_ABORTITO (XOR permanente, serve revisione). Competenza: mese di COALESCE(validita_dal, data_emissione, data_insert). Consumata da vw_dash_fatturazione_documenti.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_dash_fatturazione_offerte;

@@ -1,8 +1,15 @@
 # Brief Design — Dashboard Fatturazione (controllo del transito per competenza)
 
 > **Tipo**: brief di design autorevole (modello + piano DB/BE/FE) · **Data**: 2026-07-02
-> **Owner**: Tid · **Stato**: 🟡 **design v1 chiuso** — decisioni §9 prese il 2026-07-02;
-> prossimo passo: Fase 1 DB (§11).
+> **Owner**: Tid · **Stato**: 🟢 **Fase 1 DB APPLICATA + TESTATA (2026-07-03)** —
+> migrations `20260703-51..57` (20_code/vendite: 5 resolver + union
+> `vw_dash_fatturazione_documenti` + aggregata `vw_dash_fatturazione_mensile`) +
+> `20260703-58` (90_end: indici `ix_commesse_attivita_segment_key` e
+> `ix_commesse_attivita_sorgente_competenza`) + **fix `20260703-59`**
+> (is_abortito null-safe, vedi §11) + doc manuale
+> `dbzero/vendite/manual/vw_dash_fatturazione_*.md` a standard.
+> pgTAP `test-vw-dash-fatturazione-v1.sql` **VERDE 19/19** sul DB di sviluppo.
+> Prossimo: Fase 2 BE (§11); EXPLAIN su dati reali da fare quando i volumi crescono.
 >
 > **Origine**: richiesta Tid 2026-07-02 — "dashboard fondamentale per avere sotto controllo
 > la fatturazione": per un dato anno/mese di **competenza**, per ciascuna area che porta
@@ -282,17 +289,51 @@ Nuova rotta `/vendite/dashboard-fatturazione` (meta.domain `vendite`, voce menu 
 | Fase | Dove | Deliverable | Stato |
 |---|---|---|---|
 | 0 — Design | questo brief | semantica per area + decisioni D-1..D-6 | ✅ 2026-07-02 |
-| 1 — DB | `dev/db-tid` | 5 viste resolver + union + `vw_dash_fatturazione_mensile`; vocabolario `motivo_fermo`; pgTAP; doc manuale; EXPLAIN su dati reali | ⬜ |
+| 1 — DB | `dev/db-tid` | 5 viste resolver + union + `vw_dash_fatturazione_mensile`; vocabolario `motivo_fermo`; pgTAP; doc manuale; EXPLAIN su dati reali | ✅ APPLICATA + pgTAP 19/19 VERDE 2026-07-03 (`20260703-51..59`); EXPLAIN rinviato a volumi reali |
 | 2 — BE | `dev/backend-tid` | 2 endpoint GET + repository + test + `api_dashboard_fatturazione.md` | ⬜ |
 | 3 — FE | `dev/backend-tid` | chart.js, `DonutTransito`, vista+store+rotta+menu+i18n | ⬜ |
 | 4 — Guida | docs | sezione "Dashboard fatturazione" nella guida fatturazione (linguaggio non tecnico) | ⬜ |
 
-Domande da chiudere in Fase 1 (non bloccano il design):
+Domande di Fase 1 — **chiuse in implementazione (2026-07-03)**:
 
-* formato esatto del `segment_key` degli ordini in `commesse_attivita` (simmetrico a
-  `PREV:…`?) — verificare su doc auto-gen prima di scrivere `vw_dash_fatturazione_ordini`;
-* per i contratti, individuare il marcatore autoritativo del "canone del mese generato"
-  (sorgente CONTRATTO in `commesse_sorgenti` vs `contratto_id` snapshot su
-  `commesse_attivita`) — allinearsi a come scrive l'handler `fn_list_contratti_da_pushare`;
-* eventuale necessità di indici a espressione `((uid::text))` per i join con
-  `vw_stato_sorgente` (nota (a) del brief proiezione).
+* **`segment_key` ordini**: `'ORD:<uid>:R:<riga_id>'` (verificato in
+  `fn_list_ordini_da_pushare`); contratti: `'CONTR:<uid>:R:<riga_id>:M:YYYY-MM'`.
+* **Marcatore canone contratti**: colonne `sorgente_tipo_id` (sorgente CONTRATTO per
+  `codice_interno`) + `sorgente_uid` + `competenza_mese` su `commesse_attivita`, con
+  `stato_emissione='EMESSA'` — future-proof rispetto al push ricorrente. Nota: oggi
+  `fn_list_contratti_da_pushare` ancora il canone al **mese di inizio validità**
+  (nessuna iterazione mensile): nei mesi successivi i contratti appaiono fermi
+  (`CANONE_NON_GENERATO`) — è la realtà operativa finché non esisterà il push
+  ricorrente, la dashboard non la maschera.
+* **Indici**: niente join su `vw_stato_sorgente` (i resolver joinano direttamente le
+  proprie `config.stati_doc_*`, più economico); aggiunti invece
+  `ix_commesse_attivita_segment_key` e `ix_commesse_attivita_sorgente_competenza`
+  (90_end `20260703-58`) per gli EXISTS di transito.
+
+Decisioni implementative aggiuntive (Fase 1):
+
+* **Predicato canonico EMESSA**: una riga presente in commessa ma `NON_EMESSA` conta
+  come ferma in tutte le aree (stesso NOT EXISTS delle `fn_list_*_da_pushare` e della
+  vista smistamento, test #6 di `test-vw-preventivi-smistamento-v1.sql`). Conseguenza:
+  il valore parcheggiato non-emesso risulta fermo sia nell'area sorgente sia in
+  COMMESSE — coerente: non è avanzato.
+* **Contratti × mese, cap al mese corrente**: niente righe-mese future (la domanda
+  "canone generato?" ha senso solo per mesi non futuri) e niente esplosione per i
+  contratti aperti.
+* **Contratti abortiti esclusi a monte** dal resolver: `n_abortiti = 0` per l'area
+  CONTRATTI in v1 (un annullato per-mese non ha significato).
+
+Diario applicazione + test (2026-07-03, DB sviluppo):
+
+* **Bug scovato dal pgTAP (test 18) → fix `20260703-59`**: nei resolver
+  preventivi/ordini/offerte `is_abortito = (esito = 'NEGATIVO')` valeva **NULL**
+  per gli stati senza verdetto (esito NULL: BOZZA, DRAFT, EMESSO…) e nella mensile
+  quei documenti sparivano sia da `n_documenti` sia da `n_abortiti` (i `FILTER`
+  scartano i NULL). Fix: `COALESCE(esito = 'NEGATIVO', false)`; regressione
+  bloccata dall'assert #8 (offerta BOZZA → `is_abortito = false`).
+* **Fixture pgTAP**: in contesto test la GUC `app.current_user_id` è vuota →
+  gli INSERT su `vendite.contratti` devono passare `emittente_fiscale_id`
+  esplicito (derivato dal BA via `anagrafiche.fn_get_emittente_fiscale_pk`,
+  pattern batch documentato da `E_CONTRATTO_EMITTENTE_NON_RISOLTO`);
+  `commesse_attivita.competenza_al` è NOT NULL (niente attività "aperte").
+* Esito finale: `test-vw-dash-fatturazione-v1.sql` **19/19 verde**.

@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Dashboard fatturazione — resolver area COMMESSE (brief-design-dashboard-
+# fatturazione §5, Fase 1). Una riga per COMMESSA x MESE di competenza delle
+# attivita' (commesse_attivita.competenza_mese, la competenza "vera" del
+# funnel): valore totale (somma prezzo_snapshot x quantita, imponibile) vs
+# transitato (attivita' EMESSE in attivita_fatturabili).
+#
+# SEMANTICA:
+#   - transitata = stato_emissione 'EMESSA' (la riga e' stata pullata in
+#     attivita_fatturabili da fn_emit_attivita_fatturabili_da_commessa);
+#     'EMESSA'/'NON_EMESSA' sono enum CHECK di colonna (literale ammesso,
+#     linee-guida-sql §6d — stessi literali delle fn di dominio).
+#   - is_abortito = commessa in stato ANNULLATA (vendite.stati_commessa per
+#     codice_interno; le commesse non hanno fase/esito D1 -> fase NULL).
+#   - motivo_fermo distingue il collo di bottiglia: ATTIVITA_NON_APPROVATA
+#     (esistono ferme non ancora APPROVATA) vs ATTIVITA_NON_EMESSA.
+#   - le commesse senza attivita' non compaiono (nessun valore, nessun mese).
+#
+# Consumata da vendite.vw_dash_fatturazione_documenti (20260703-56).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260703-55-create-vw-dash-fatturazione-commesse-mctit.yaml
+
+  - changeSet:
+      id: 20260703-55-create-vw-dash-fatturazione-commesse
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Dashboard fatturazione Fase 1: crea vendite.vw_dash_fatturazione_commesse,
+        resolver area COMMESSE (commessa x competenza_mese, valore snapshot
+        totale vs emesso in attivita fatturabili).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'vendite'
+                 AND table_name   = 'commesse_attivita'
+                 AND column_name  = 'competenza_mese';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_commesse AS
+              SELECT
+                  'COMMESSE'::varchar                            AS area,
+                  ca.competenza_mese,
+                  co.id                                          AS documento_id,
+                  (co.id)::text                                  AS documento_uid,
+                  (co.codice)::text                              AS codice,
+                  NULL::bigint                                   AS emittente_fiscale_id,
+                  co.emittente_soggetto_ruolo_id,
+                  SUM(COALESCE(ca.prezzo_snapshot, 0)
+                        * ca.quantita)                           AS valore_totale,
+                  COALESCE(SUM(COALESCE(ca.prezzo_snapshot, 0) * ca.quantita)
+                             FILTER (WHERE ca.stato_emissione = 'EMESSA'),
+                           0)                                    AS valore_transitato,
+                  COUNT(*)::integer                              AS unita_totali,
+                  (COUNT(*)
+                     FILTER (WHERE ca.stato_emissione = 'EMESSA'))::integer
+                                                                 AS unita_transitate,
+                  (COUNT(*) =
+                     COUNT(*) FILTER (WHERE ca.stato_emissione = 'EMESSA'))
+                                                                 AS is_transitato,
+                  (sc.codice_interno = 'ANNULLATA')              AS is_abortito,
+                  CASE
+                    WHEN sc.codice_interno = 'ANNULLATA' THEN NULL
+                    WHEN COUNT(*) =
+                         COUNT(*) FILTER (WHERE ca.stato_emissione = 'EMESSA')
+                      THEN NULL
+                    WHEN COUNT(*) FILTER (WHERE ca.stato_emissione <> 'EMESSA'
+                                            AND ca.stato_approvazione <> 'APPROVATA') > 0
+                      THEN 'ATTIVITA_NON_APPROVATA'
+                    ELSE 'ATTIVITA_NON_EMESSA'
+                  END::varchar                                   AS motivo_fermo,
+                  -- Alias FEDELI alla sorgente (linee-guida-sql §6c).
+                  sc.codice_interno                              AS stato_codice_interno,
+                  sc.codice                                      AS stato_codice,
+                  NULL::varchar                                  AS fase
+                FROM vendite.commesse co
+                JOIN vendite.stati_commessa sc
+                  ON sc.id = co.stato_commessa_id
+                JOIN vendite.commesse_attivita ca
+                  ON ca.commessa_id = co.id
+               GROUP BY co.id, co.codice, co.emittente_soggetto_ruolo_id,
+                        ca.competenza_mese, sc.codice_interno, sc.codice;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_commesse IS
+                'Dashboard fatturazione (brief-design-dashboard-fatturazione §5): resolver area COMMESSE. Una riga per commessa x competenza_mese delle attivita: valore imponibile totale (prezzo_snapshot x quantita) vs transitato (attivita EMESSE in attivita_fatturabili). is_abortito = stato ANNULLATA (codice_interno). motivo_fermo: ATTIVITA_NON_APPROVATA | ATTIVITA_NON_EMESSA. fase NULL (le commesse non hanno la proiezione D1). Consumata da vw_dash_fatturazione_documenti.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_dash_fatturazione_commesse;
