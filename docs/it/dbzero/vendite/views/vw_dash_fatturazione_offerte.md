@@ -18,10 +18,10 @@ SELECT 'OFFERTE'::character varying AS area,
             ELSE 0
         END AS unita_transitate,
     (((ct.id IS NOT NULL) AND (NOT ct.is_abortito_snapshot)) OR ((fo.ordine_id IS NOT NULL) AND ((fo.esito)::text IS DISTINCT FROM 'NEGATIVO'::text))) AS is_transitato,
-    ((sdo.esito)::text = 'NEGATIVO'::text) AS is_abortito,
+    COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) AS is_abortito,
     (
         CASE
-            WHEN ((sdo.esito)::text = 'NEGATIVO'::text) THEN NULL::text
+            WHEN COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) THEN NULL::text
             WHEN (((ct.id IS NOT NULL) AND (NOT ct.is_abortito_snapshot)) OR ((fo.ordine_id IS NOT NULL) AND ((fo.esito)::text IS DISTINCT FROM 'NEGATIVO'::text))) THEN NULL::text
             WHEN ((ct.id IS NOT NULL) OR (fo.ordine_id IS NOT NULL)) THEN 'FIGLIO_ABORTITO'::text
             WHEN ((sdo.codice_interno)::text = 'BOZZA'::text) THEN 'DOC_BOZZA'::text

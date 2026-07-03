@@ -15,7 +15,7 @@ Funzioni collegate:
 
 ---
 ### 🎯 Scopo Principale
-La funzione **`pratiche.fn_check_chiusura_pratica`** e' una **pure check** (`fn_check_*`) che fotografa i template flusso della pratica ai fini della **chiusura** (decisione D4, analisi-pratiche-workflow-v2): per ogni template attivo del tipo prestazione dice se e' stato eseguito, se e' ancora percorribile e se **blocca** la transizione a `CHIUSA`.
+La funzione **`pratiche.fn_check_chiusura_pratica`** e' una **pure check** (`fn_check_*`) che fotografa i template flusso della pratica ai fini della **chiusura** (decisione D4, analisi-pratiche-workflow-v2): per ogni template attivo della **definizione pinnata** della pratica (`definizione_id`, **fork-aware**) dice se e' stato eseguito, se e' ancora percorribile e se **blocca** la transizione a `CHIUSA`.
 
 E' anche la fonte BE per la **resa del percorso a bivi**: da `completato`/`percorribile` si deriva lo stato visuale di ogni step (completato / eseguibile / **ramo chiuso**).
 
@@ -77,6 +77,7 @@ SELECT codice,
 
 ### Note operative
 
-* Consumata da `trgfn_pratiche_guard_chiusura_flussi` (guard sulla transizione a CHIUSA) e dal percorso BE.
+* Consumata da `trgfn_pratiche_guard_chiusura_flussi` (guard sulla transizione a CHIUSA), da `fn_check_pratica_chiudibile` (delega per il predicato "nessun obbligatorio bloccante", quindi anche auto-chiusura e guard pre-completamento) e dal percorso BE.
+* **Fork-aware** (`20260703-13`, completamento Fase 1): scopa i template per `definizione_id` pinnata, **non** per `tipo_prestazione_id`. Con i fork (Fase 2) piu' definizioni condividono il tipo: una pratica considera solo gli step della **sua** edizione. Con una definizione per tipo il comportamento e' identico a prima.
 * Le istanze `ANNULLATO` non contano come eseguite.
-* Test: `db/pgtap/pratiche/test-bivi-condizionali.sql`.
+* Test: `db/pgtap/pratiche/test-bivi-condizionali.sql`, `db/pgtap/pratiche/test-fork-chiusura-per-definizione.sql`.
