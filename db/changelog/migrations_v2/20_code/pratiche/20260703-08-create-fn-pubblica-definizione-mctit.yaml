@@ -1,0 +1,150 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_pubblica_definizione — pubblicazione atomica di un'edizione (D2-13, Fase 2).
+# (brief-db-step-dominio-e-definizioni-versionate Parte 2 / Fase 2)
+#
+# Valida la BOZZA e la promuove a PUBBLICATA, RITIRANDO in transazione la
+# precedente PUBBLICATA dello stesso scope (una sola PUBBLICATA per scope,
+# uq_workflow_definizioni_pubblicata). Ordine: RITIRA la vecchia PRIMA di
+# pubblicare la nuova, per non collidere sull'indice parziale.
+#
+# Validazioni (fail-fast DEFINIZIONE_NON_PUBBLICABILE 511):
+#   - la definizione deve essere in BOZZA;
+#   - almeno uno step (template) ATTIVO;
+#   - nessun CICLO nel grafo dei prerequisiti (chiusura transitiva: uno step che
+#     richiede se stesso). Il no-self e' gia' garantito da chk_no_self; qui si
+#     coprono i cicli multi-nodo.
+#   (max un chiude_pratica per definizione e' gia' garantito dall'indice
+#    uq_template_flussi_chiusura_definizione.)
+#
+# Le transizioni BOZZA->PUBBLICATA e PUBBLICATA->RITIRATA passano per il guard
+# trgfn_workflow_definizioni_guard (Fase 1), che le ammette.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260703-08-create-fn-pubblica-definizione-mctit.yaml
+
+  - changeSet:
+      id: 20260703-08-create-fn-pubblica-definizione
+      author: mctit
+      runOnChange: false
+      comment: >
+        fn_pubblica_definizione(id): valida la BOZZA (>=1 step attivo, nessun
+        ciclo prerequisiti) e la pubblica ritirando in transazione la precedente
+        PUBBLICATA dello scope. Errore parlante DEFINIZIONE_NON_PUBBLICABILE (511).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: workflow_definizioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.fn_pubblica_definizione(
+                  p_definizione_id pratiche.workflow_definizioni.id%TYPE
+              )
+              RETURNS pratiche.workflow_definizioni.id%TYPE
+              LANGUAGE plpgsql
+              VOLATILE
+              AS $function$
+              -- Scopo: validare e pubblicare una BOZZA, ritirando la precedente
+              --        PUBBLICATA dello stesso scope (atomico).
+              DECLARE
+                v_tipo_id   pratiche.workflow_definizioni.tipo_prestazione_id%TYPE;
+                v_emittente pratiche.workflow_definizioni.emittente_fiscale_id%TYPE;
+                v_stato     pratiche.workflow_definizioni.stato%TYPE;
+                v_n_attivi  integer;
+                v_has_cycle boolean;
+              BEGIN
+                IF p_definizione_id IS NULL OR p_definizione_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche', 'pratiche.fn_pubblica_definizione', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','p_definizione_id','valore',p_definizione_id),
+                    NULL::uuid, 'p_definizione_id obbligatorio e > 0');
+                END IF;
+
+                SELECT wd.tipo_prestazione_id, wd.emittente_fiscale_id, wd.stato
+                  INTO v_tipo_id, v_emittente, v_stato
+                  FROM pratiche.workflow_definizioni wd
+                 WHERE wd.id = p_definizione_id;
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche', 'pratiche.fn_pubblica_definizione', 'E_VALORE_MANCANTE',
+                    jsonb_build_object('definizione_id', p_definizione_id),
+                    NULL::uuid, concat('workflow_definizioni id ', p_definizione_id));
+                END IF;
+
+                -- (a) deve essere in BOZZA.
+                IF v_stato <> 'BOZZA' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche', 'pratiche.fn_pubblica_definizione', 'DEFINIZIONE_NON_PUBBLICABILE',
+                    jsonb_build_object('definizione_id', p_definizione_id, 'stato', v_stato),
+                    NULL::uuid, p_definizione_id::text,
+                    concat('non e'' in BOZZA (stato ', v_stato, ')'));
+                END IF;
+
+                -- (b) almeno uno step attivo.
+                SELECT count(*) INTO v_n_attivi
+                  FROM pratiche.template_flussi tf
+                 WHERE tf.definizione_id = p_definizione_id AND tf.attivo;
+                IF v_n_attivi = 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche', 'pratiche.fn_pubblica_definizione', 'DEFINIZIONE_NON_PUBBLICABILE',
+                    jsonb_build_object('definizione_id', p_definizione_id),
+                    NULL::uuid, p_definizione_id::text, 'nessuno step attivo nella definizione');
+                END IF;
+
+                -- (c) nessun ciclo nel grafo dei prerequisiti (chiusura transitiva).
+                WITH RECURSIVE closure(start_node, cur) AS (
+                  SELECT p.template_flusso_id, p.prerequisito_id
+                    FROM pratiche.template_flussi_prerequisiti p
+                    JOIN pratiche.template_flussi t
+                         ON t.id = p.template_flusso_id AND t.definizione_id = p_definizione_id
+                  UNION
+                  SELECT c.start_node, p.prerequisito_id
+                    FROM closure c
+                    JOIN pratiche.template_flussi_prerequisiti p ON p.template_flusso_id = c.cur
+                    JOIN pratiche.template_flussi t
+                         ON t.id = p.template_flusso_id AND t.definizione_id = p_definizione_id
+                )
+                SELECT EXISTS (SELECT 1 FROM closure WHERE start_node = cur) INTO v_has_cycle;
+                IF v_has_cycle THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche', 'pratiche.fn_pubblica_definizione', 'DEFINIZIONE_NON_PUBBLICABILE',
+                    jsonb_build_object('definizione_id', p_definizione_id),
+                    NULL::uuid, p_definizione_id::text, 'ciclo nel grafo dei prerequisiti');
+                END IF;
+
+                -- Ritira la precedente PUBBLICATA dello scope, poi pubblica.
+                UPDATE pratiche.workflow_definizioni
+                   SET stato = 'RITIRATA'
+                 WHERE tipo_prestazione_id = v_tipo_id
+                   AND emittente_fiscale_id IS NOT DISTINCT FROM v_emittente
+                   AND stato = 'PUBBLICATA';
+
+                UPDATE pratiche.workflow_definizioni
+                   SET stato = 'PUBBLICATA'
+                 WHERE id = p_definizione_id;
+
+                RETURN p_definizione_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_pubblica_definizione(integer)
+                IS 'Valida una BOZZA (>=1 step attivo, nessun ciclo nei prerequisiti) e la pubblica ritirando in transazione la precedente PUBBLICATA dello stesso scope (una sola PUBBLICATA per scope). Errore parlante DEFINIZIONE_NON_PUBBLICABILE (511). Transizioni via trgfn_workflow_definizioni_guard.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS pratiche.fn_pubblica_definizione(integer);

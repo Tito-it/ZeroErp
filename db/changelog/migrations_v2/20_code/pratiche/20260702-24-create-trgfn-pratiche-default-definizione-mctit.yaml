@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Auto-pin dell'edizione di workflow alla creazione della pratica (V6).
+# (brief-db-step-dominio-e-definizioni-versionate Parte 2 / Fase 0,
+#  raffinamento §2.1 punto 1: anticipato dalla Fase 1 — senza auto-pin il
+#  SET NOT NULL avrebbe rotto il create_pratica del BE, che non passa la
+#  colonna. DB-first: il BE resta invariato.)
+#
+# BEFORE INSERT: se definizione_id e' NULL lo risolve con
+# fn_risolvi_definizione(tipo, emittente della pratica): edizione PUBBLICATA
+# dell'emittente (fork, Fase 2) > preset. Se valorizzato ESPLICITO, la FK
+# composita garantisce gia' la coerenza col tipo; i guard su scope/stato del
+# pin esplicito e l'immutabilita' del pin (no UPDATE) arrivano in Fase 1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260702-24-create-trgfn-pratiche-default-definizione-mctit.yaml
+
+  - changeSet:
+      id: 20260702-24-create-trgfn-pratiche-default-definizione
+      author: mctit
+      runOnChange: false
+      comment: >
+        Trigger BEFORE INSERT su pratiche.pratiche: auto-pin di definizione_id
+        via fn_risolvi_definizione(tipo, emittente) quando NULL. Il BE
+        create_pratica resta invariato.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: pratiche
+            tableName: pratiche
+            columnName: definizione_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_default_definizione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: PIN dell'edizione di workflow alla nascita della
+              --        pratica. Risolve per (tipo, emittente): l'edizione
+              --        dell'emittente vince sul preset. Il pin e' per sempre
+              --        (immutabilita' enforce-ata dal guard di Fase 1).
+              BEGIN
+                IF NEW.definizione_id IS NULL THEN
+                  NEW.definizione_id := pratiche.fn_risolvi_definizione(
+                    NEW.tipo_prestazione_id,
+                    NEW.emittente_fiscale_id
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_pratiche_default_definizione()
+                IS 'BEFORE INSERT su pratiche.pratiche: auto-pin di definizione_id via fn_risolvi_definizione(tipo, emittente) quando NULL — edizione PUBBLICATA dell''emittente > preset. Il BE create_pratica non deve passare la colonna.';
+
+              DROP TRIGGER IF EXISTS trg_pratiche_a10_default_definizione_ins
+                ON pratiche.pratiche;
+
+              CREATE TRIGGER trg_pratiche_a10_default_definizione_ins
+                BEFORE INSERT
+                ON pratiche.pratiche
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_pratiche_default_definizione();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_pratiche_a10_default_definizione_ins
+                ON pratiche.pratiche;
+              DROP FUNCTION IF EXISTS pratiche.trgfn_pratiche_default_definizione();

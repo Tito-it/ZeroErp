@@ -18,6 +18,10 @@ La tabella `pratiche.tipi_prestazione` definisce il **catalogo dei tipi di prati
 
 * Definisce **quali pratiche** il sistema puo' gestire (es. "Sopralluogo", "Allacciamento", "Reclamo").
 * Ogni tipo e' collegato a uno o piu' **template flussi** che definiscono gli step del workflow.
+* Ogni tipo nasce con la sua **definizione workflow preset v1 PUBBLICATA**
+  ([workflow_definizioni](workflow_definizioni.md), trigger di
+  [bootstrap](trgfn_tipi_prestazione_bootstrap_definizione.md)): il tipo resta
+  l'identita' condivisa (reporting), le edizioni ne versionano il workflow.
 * Le **regole di generazione cross-pratica** fanno riferimento al tipo_prestazione come destinazione.
 * Il campo `categoria` (VARCHAR(50), nullable) consente raggruppamenti liberi (es. "TECNICA", "COMMERCIALE", "AMMINISTRATIVA").
 

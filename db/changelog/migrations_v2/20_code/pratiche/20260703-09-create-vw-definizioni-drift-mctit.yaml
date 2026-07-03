@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vw_definizioni_drift — edizioni forkate "indietro" rispetto al preset (D2-14).
+# (brief-db-step-dominio-e-definizioni-versionate Parte 2 / Fase 2)
+#
+# Un fork nasce con versione_origine = la versione del preset al momento del
+# fork. Se in seguito il preset avanza (nuova versione PUBBLICATA con versione >
+# versione_origine), il fork e' "in drift": la vista lo espone per alimentare il
+# banner "preset aggiornato" (pattern DEF-2), diff informativo. L'allineamento
+# resta una scelta manuale (mai automatico).
+#
+# security_invoker: la vista gira coi permessi del chiamante (coerente con le
+# viste RLS-aware del progetto; workflow_definizioni non e' sotto RLS ma manteniamo
+# la convenzione).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260703-09-create-vw-definizioni-drift-mctit.yaml
+
+  - changeSet:
+      id: 20260703-09-create-vw-definizioni-drift
+      author: mctit
+      runOnChange: false
+      comment: >
+        Vista pratiche.vw_definizioni_drift: edizioni forkate il cui preset
+        d'origine ha una PUBBLICATA con versione superiore a versione_origine
+        (drift, banner "preset aggiornato").
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: workflow_definizioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW pratiche.vw_definizioni_drift
+              WITH (security_invoker = true) AS
+              SELECT f.id                      AS definizione_id,
+                     f.tipo_prestazione_id,
+                     f.emittente_fiscale_id,
+                     f.versione                AS versione_edizione,
+                     f.stato                   AS stato_edizione,
+                     f.versione_origine,
+                     pc.id                     AS preset_corrente_id,
+                     pc.versione               AS versione_preset_corrente,
+                     (pc.versione - f.versione_origine) AS versioni_indietro
+                FROM pratiche.workflow_definizioni f
+                JOIN pratiche.workflow_definizioni pc
+                     ON pc.tipo_prestazione_id = f.tipo_prestazione_id
+                    AND pc.emittente_fiscale_id IS NULL
+                    AND pc.stato = 'PUBBLICATA'
+               WHERE f.preset_origine_id IS NOT NULL
+                 AND f.versione_origine IS NOT NULL
+                 AND f.emittente_fiscale_id IS NOT NULL
+                 AND f.stato IN ('BOZZA', 'PUBBLICATA')
+                 AND pc.versione > f.versione_origine;
+
+              COMMENT ON VIEW pratiche.vw_definizioni_drift IS
+                'Edizioni forkate (emittente-scoped, vive) il cui preset d''origine ha una PUBBLICATA con versione > versione_origine: sono "in drift" rispetto al preset. Alimenta il banner "preset aggiornato" (DEF-2). versioni_indietro = di quante versioni il fork e'' rimasto indietro.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS pratiche.vw_definizioni_drift;

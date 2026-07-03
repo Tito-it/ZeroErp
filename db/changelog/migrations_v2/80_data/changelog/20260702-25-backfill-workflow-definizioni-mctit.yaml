@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Backfill Fase 0 definizioni workflow + SET NOT NULL.
+# (brief-db-step-dominio-e-definizioni-versionate Parte 2 / Fase 0 / D2-4)
+#
+# 1) Preset v1 PUBBLICATA per OGNI tipo che ne e' privo (i tipi esistenti sono
+#    nati prima del trigger di bootstrap 20260702-22; il predicato NOT EXISTS
+#    copre anche eventuali tipi sintetici residui di test). Mappatura per JOIN
+#    sul tipo — niente id fissi.
+# 2) template_flussi.definizione_id = preset del tipo (righe esistenti).
+# 3) pratiche.definizione_id = preset del tipo (pin retroattivo: le pratiche
+#    esistenti sono nate sul set corrente == preset v1).
+# 4) SET NOT NULL su entrambe le colonne.
+#
+# PERCHE' il DDL (SET NOT NULL) sta in 80_data e non in 00_schema (decisione
+# owner 2026-07-02, "opzione A"): sul replay CI da zero i loader CSV dei
+# template (gia' mergiati, senza la colonna) girano in 80_data PRIMA di questo
+# file; un NOT NULL in 00_schema li farebbe fallire. Qui il vincolo nasce dopo
+# che trigger di default (INSERT nuovi) e backfill (righe esistenti) lo hanno
+# reso soddisfacibile. Vincolo vero nello schema > guard "finto" su colonna
+# nullable. Ordine includeAll alfabetico: 20260702-25 gira dopo tutti i loader.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260702-25-backfill-workflow-definizioni-mctit.yaml
+
+  - changeSet:
+      id: 20260702-25-backfill-workflow-definizioni
+      author: mctit
+      comment: >
+        Fase 0: preset v1 PUBBLICATA per ogni tipo privo di preset; backfill
+        definizione_id su template_flussi e pratiche (join sul tipo);
+        SET NOT NULL su entrambe (collocato qui per l'ordine di replay CI —
+        opzione A).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pratiche
+                tableName: template_flussi
+                columnName: definizione_id
+            - columnExists:
+                schemaName: pratiche
+                tableName: pratiche
+                columnName: definizione_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- (1) Preset v1 per ogni tipo senza preset PUBBLICATA (idempotente).
+              INSERT INTO pratiche.workflow_definizioni
+                     (tipo_prestazione_id, emittente_fiscale_id, versione, stato, descrizione)
+              SELECT tp.id, NULL, 1, 'PUBBLICATA',
+                     'v1 — preset iniziale del tipo ' || tp.codice_interno
+                     || ' (fotografia del set corrente, backfill Fase 0)'
+                FROM pratiche.tipi_prestazione tp
+               WHERE NOT EXISTS (
+                       SELECT 1
+                         FROM pratiche.workflow_definizioni wd
+                        WHERE wd.tipo_prestazione_id = tp.id
+                          AND wd.emittente_fiscale_id IS NULL
+                          AND wd.stato = 'PUBBLICATA'
+                     );
+
+              -- (2) Re-parent dei template esistenti sul preset del loro tipo.
+              UPDATE pratiche.template_flussi tf
+                 SET definizione_id = wd.id
+                FROM pratiche.workflow_definizioni wd
+               WHERE wd.tipo_prestazione_id = tf.tipo_prestazione_id
+                 AND wd.emittente_fiscale_id IS NULL
+                 AND wd.stato = 'PUBBLICATA'
+                 AND tf.definizione_id IS NULL;
+
+              -- (3) Pin retroattivo delle pratiche esistenti sul preset del tipo.
+              UPDATE pratiche.pratiche p
+                 SET definizione_id = wd.id
+                FROM pratiche.workflow_definizioni wd
+               WHERE wd.tipo_prestazione_id = p.tipo_prestazione_id
+                 AND wd.emittente_fiscale_id IS NULL
+                 AND wd.stato = 'PUBBLICATA'
+                 AND p.definizione_id IS NULL;
+
+              -- (4) Vincolo vero: da qui in poi il default (trigger) + il pin
+              --     (trigger) garantiscono i nuovi INSERT.
+              ALTER TABLE pratiche.template_flussi
+                ALTER COLUMN definizione_id SET NOT NULL;
+              ALTER TABLE pratiche.pratiche
+                ALTER COLUMN definizione_id SET NOT NULL;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pratiche.pratiche
+                ALTER COLUMN definizione_id DROP NOT NULL;
+              ALTER TABLE pratiche.template_flussi
+                ALTER COLUMN definizione_id DROP NOT NULL;

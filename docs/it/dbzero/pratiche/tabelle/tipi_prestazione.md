@@ -47,6 +47,7 @@
 | trg_tipi_prestazione_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_tipi_prestazione_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_tipi_prestazione_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_tipi_prestazione_z90_bootstrap_definizione_ins | AFTER | INSERT | `EXECUTE FUNCTION pratiche.trgfn_tipi_prestazione_bootstrap_definizione()` |
 | trg_tipi_prestazione_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('tipi_prestazione_id')` |
 | trg_tipi_prestazione_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('tipi_prestazione_id')` |
 
