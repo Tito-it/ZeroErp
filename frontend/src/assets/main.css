@@ -1513,10 +1513,14 @@ a {
   color: var(--app-sidebar-item-active-color);
 }
 
-/* Colonna principale: header competenza + card + totali + fermi. */
+/* Colonna principale: header competenza + card + totali + fermi.
+ * min-height: 0 e' OBBLIGATORIO: senza, il figlio flex non si restringe e
+ * l'overflow-y non si attiva mai (card sotto il fold irraggiungibili,
+ * visto su piccoli schermi con 2 card per riga). */
 .app-dash-main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
@@ -1606,23 +1610,46 @@ a {
   font-weight: 600;
 }
 
+/* Stepper compatto anno/mese — solo piccoli schermi. Sostituisce il pannello
+ * 12 mesi: ◀ Mese Anno + semaforo ▶, le card restano sempre visibili sotto.
+ * Il passo mese scavalca l'anno (dic ▶ = gennaio anno successivo). */
+.app-dash-stepper {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex: none;
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: 8px;
+  padding: 0.3rem 0.5rem;
+}
+
+.app-dash-stepper-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
 @media (max-width: 767px) {
   .app-dash-layout {
     flex-direction: column;
   }
 
+  /* Il pannello 12 mesi lascia il posto allo stepper compatto. */
   .app-dash-mesi {
-    width: 100%;
-    flex-direction: row;
-    flex-wrap: wrap;
-    overflow-y: visible;
+    display: none;
   }
 
-  .app-dash-anno {
-    width: 100%;
+  .app-dash-stepper {
+    display: flex;
   }
 
-  .app-dash-mese-btn {
-    width: auto;
+  /* Il titolo "Competenza <mese> <anno>" duplicherebbe la label dello
+   * stepper: nascosto su piccoli schermi. */
+  .app-dash-header {
+    display: none;
   }
 }

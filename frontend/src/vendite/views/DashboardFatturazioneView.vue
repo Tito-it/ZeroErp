@@ -102,6 +102,21 @@ function cambiaAnno(delta) {
   areaSelezionata.value = null
 }
 
+// Scopo: passo mese ±1 per lo stepper compatto (piccoli schermi),
+//        scavalcando l'anno ai bordi (dic ▶ = gennaio anno successivo).
+function stepMese(delta) {
+  let idx = meseIdx.value + delta
+  if (idx > 11) {
+    anno.value += 1
+    idx = 0
+  } else if (idx < 0) {
+    anno.value -= 1
+    idx = 11
+  }
+  meseIdx.value = idx
+  areaSelezionata.value = null
+}
+
 // Severity Tag per gli stati documento mostrati nel drill-down (mock).
 const STATO_FERMO_SEVERITY = {
   DRAFT: 'secondary',
@@ -206,6 +221,41 @@ const pageActions = computed(() => [
 
       <!-- Colonna principale: competenza + card aree + totali + fermi. -->
       <div class="app-dash-main">
+        <!-- Stepper compatto anno/mese: visibile SOLO su piccoli schermi
+             (CSS-first, sostituisce il pannello 12 mesi). -->
+        <div class="app-dash-stepper">
+          <Button
+            icon="pi pi-chevron-left"
+            text
+            rounded
+            size="small"
+            :aria-label="t('dashboard_fatturazione.mese_precedente')"
+            @click="stepMese(-1)"
+          />
+          <span class="app-dash-stepper-label">
+            {{ nomeMese(meseIdx) }} {{ anno }}
+            <template v-if="statoMese(meseCorrente).stato === 'ok'">
+              <i class="pi pi-check app-dash-mese-ok" />
+            </template>
+            <template v-else-if="statoMese(meseCorrente).stato === 'fermi'">
+              <span class="app-dash-mese-fermi">
+                <i class="pi pi-exclamation-triangle" /> {{ statoMese(meseCorrente).fermi }}
+              </span>
+            </template>
+            <template v-else>
+              <i class="pi pi-minus app-dash-mese-vuoto" />
+            </template>
+          </span>
+          <Button
+            icon="pi pi-chevron-right"
+            text
+            rounded
+            size="small"
+            :aria-label="t('dashboard_fatturazione.mese_successivo')"
+            @click="stepMese(1)"
+          />
+        </div>
+
         <div class="app-dash-header">
           <h3 style="margin: 0;">
             {{ t('dashboard_fatturazione.competenza_titolo', { mese: nomeMese(meseIdx), anno }) }}

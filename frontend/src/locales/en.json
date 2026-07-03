@@ -2430,6 +2430,8 @@
     "mock_azione": "Action available with real data (Phase 2/3): this is a preview with sample data.",
     "anno_precedente": "Previous year",
     "anno_successivo": "Next year",
+    "mese_precedente": "Previous month",
+    "mese_successivo": "Next month",
     "competenza_titolo": "Accrual {mese} {anno}",
     "mese_ok": "All month value has moved forward",
     "mese_fermi": "{n} stalled items in the month",

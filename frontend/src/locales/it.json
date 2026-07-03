@@ -2430,6 +2430,8 @@
     "mock_azione": "Azione disponibile con i dati reali (Fase 2/3): questa è un'anteprima con dati di esempio.",
     "anno_precedente": "Anno precedente",
     "anno_successivo": "Anno successivo",
+    "mese_precedente": "Mese precedente",
+    "mese_successivo": "Mese successivo",
     "competenza_titolo": "Competenza {mese} {anno}",
     "mese_ok": "Tutto il valore del mese è transitato",
     "mese_fermi": "{n} elementi fermi nel mese",
