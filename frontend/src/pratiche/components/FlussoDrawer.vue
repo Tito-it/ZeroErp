@@ -116,14 +116,29 @@ const showDomainComplete = computed(() =>
 
 // Form esito visibile: completamento manuale su IN_CORSO (come oggi) OPPURE
 // modalita CONTESTUALE su DA_ESEGUIRE (avvio+esito contestuale). SOPPRESSO per gli
-// step a completamento di dominio: li' l'esito e' calcolato, non un verdetto scelto.
+// step a completamento di dominio (registry) E, fail-closed, per QUALSIASI step
+// `modalita_esito === 'DOMINIO'` (companion FE-1.5): l'esito è calcolato, mai un
+// verdetto scelto — così un DOMINIO senza entry registry non mostra mai il picker
+// (che il guard DB id 504 rifiuterebbe).
 const showEsitoForm = computed(() =>
   !effectiveReadonly.value
   && !domainCompletion.value
+  && modalita.value !== 'DOMINIO'
   && (
     stato.value === STATO_FLUSSO.IN_CORSO
     || (stato.value === STATO_FLUSSO.DA_ESEGUIRE && modalita.value === 'CONTESTUALE')
   )
+)
+
+// Step DOMINIO completabile ma SENZA azione di completamento cablata nel registry
+// FE: al posto del picker (soppresso) mostra un messaggio informativo — l'esito lo
+// produce il processo di dominio, non l'operatore. Fail-closed leggibile invece di
+// un form che porterebbe al 504.
+const showEsitoDominioInfo = computed(() =>
+  !effectiveReadonly.value
+  && !domainCompletion.value
+  && modalita.value === 'DOMINIO'
+  && stato.value === STATO_FLUSSO.IN_CORSO
 )
 
 // Attività UI data-driven: il flusso porta `template_azione_ui_key` (catalogo DB
@@ -419,6 +434,13 @@ const onClose = useDrawerClose(emit)
       <div v-if="showDomainComplete" class="flusso-actions">
         <h4>{{ t(domainCompletion.label) }}</h4>
         <p class="flusso-domain-hint">{{ t('pratiche.flusso_completa_dominio_hint') }}</p>
+      </div>
+
+      <!-- Step DOMINIO senza azione di completamento cablata: niente picker
+           verdetti (il DB lo rifiuterebbe) — solo un messaggio: l'esito lo
+           produce il processo di dominio. -->
+      <div v-else-if="showEsitoDominioInfo" class="flusso-actions">
+        <p class="flusso-domain-hint">{{ t('pratiche.flusso_esito_dominio_senza_azione') }}</p>
       </div>
 
       <!-- COMPLETATO: Mostra esito (readonly) -->

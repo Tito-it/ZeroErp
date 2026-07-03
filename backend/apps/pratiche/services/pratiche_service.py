@@ -56,6 +56,12 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
     # Guard esito-aware: COMPLETATO richiede esito valorizzato (nessuna fase si
     # chiude senza verdetto).
     ("FLUSSI_ESITO_OBBLIGATORIO", "Esito obbligatorio per completare il flusso"),
+    # Guard classe esito (step DOMINIO vs verdetto, brief-db-step-dominio-e-
+    # definizioni-versionate §1.3, catalogo id 504): al completamento uno step
+    # DOMINIO esige un esito di ramo (is_verdetto=false) e uno step non-DOMINIO un
+    # verdetto. Marker = substring stabile del messaggio "Esito %s non ammesso per
+    # lo step %s: richiesto un esito di %s.", immune ai %s.
+    ("FLUSSI_ESITO_NON_AMMESSO", "non ammesso per lo step"),
     # Presa in carico flusso (eligibilita' reparto-first, fn_prendi_in_carico_flusso):
     # casi A/D = competenza mancante; caso B = operatore fuori dal reparto instradato.
     # I marker sono substring stabili dei messaggi catalogo (id 322 / 496), immuni
@@ -70,6 +76,12 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
     # catalogo id 499): la sospensione registra un evento gia' avvenuto, non
     # pianificato. Marker sul testo IT del catalogo, immune al %s del valore.
     ("E_SOSPENSIONE_DATA_FUTURA", "non puo' essere nel futuro"),
+    # Workflow definizioni versionate (Fase 1, companion BE-2.2): risoluzione
+    # definizione alla creazione pratica (DEFINIZIONE_NON_TROVATA, id 507) e guard
+    # flusso↔definizione pinnata (FLUSSI_TEMPLATE_FUORI_DEFINIZIONE). Marker =
+    # substring stabile dei messaggi catalogo, immune ai %s.
+    ("DEFINIZIONE_NON_TROVATA", "Nessuna definizione workflow pubblicata"),
+    ("FLUSSI_TEMPLATE_FUORI_DEFINIZIONE", "non appartiene alla definizione"),
 )
 
 # Mapping vincoli DB sospensioni -> codici errore applicativi.
@@ -145,6 +157,29 @@ def require_esito_selezionabile_operatore(
         voce is None or voce[1],
         code="E_FLUSSO_VALIDATION",
         message=f"Esito calcolato dal dominio, non selezionabile manualmente: {esito}",
+    )
+
+
+# Scopo: Guard simmetrico sul percorso OPERATORE (companion BE-1.3): vieta di
+# COMPLETARE manualmente uno step il cui esito e' calcolato dal dominio
+# (modalita_esito = DOMINIO, es. SMISTAMENTO). `require_esito_selezionabile_
+# operatore` blocca l'esito di ramo scelto a mano, non il verdetto su uno step
+# DOMINIO: questo copre il caso opposto e chiude il buco dell'incidente
+# PRA-0000243 (POSITIVO su SMISTAMENTO) con errore parlante prima del DB.
+# ⚠️ Vive SOLO sul percorso operatore (view), NON dentro completa_flusso/
+# avvia_e_completa_flusso: il percorso di dominio (completa_step_pratica ←
+# vendite.completa_smistamento) passa da li' e deve continuare a funzionare.
+# La difesa autoritativa resta il guard DB di classe (id 504). Config assente →
+# passa (MANUALE): ci pensa _require_esito_valido a valle.
+def require_completamento_operatore_ammesso(
+    flusso_id: int, repo: PraticheRepository | None = None,
+) -> None:
+    config = (repo or PraticheRepository()).get_flusso_esito_config(flusso_id)
+    modalita = config[0] if config else "MANUALE"
+    ErrorManager.require(
+        modalita != "DOMINIO",
+        code="E_FLUSSO_VALIDATION",
+        message="Esito calcolato dal dominio: completare lo step con l'azione di dominio dedicata.",
     )
 
 
@@ -259,21 +294,29 @@ def crea_pratica(
     stato_id = repo.resolve_stato_pratica("APERTA")
     if priorita_id is None:
         priorita_id = repo.resolve_priorita_pratica("NORMALE")
-    return repo.create_pratica({
-        "emittente_fiscale_id": emittente_fiscale_id,
-        "tipo_prestazione_id": tipo_prestazione_id,
-        "soggetto_id": soggetto_id,
-        "soggetto_ruolo_id": soggetto_ruolo_id,
-        "istanza_utility_id": istanza_utility_id,
-        "stato_id": stato_id,
-        "priorita_id": priorita_id,
-        "risorsa_umana_id": risorsa_umana_id,
-        "unita_organizzativa_id": unita_organizzativa_id,
-        "canale_origine_id": canale_origine_id,
-        "descrizione": descrizione,
-        "data_scadenza": data_scadenza,
-        "meta": meta or {},
-    })
+    try:
+        return repo.create_pratica({
+            "emittente_fiscale_id": emittente_fiscale_id,
+            "tipo_prestazione_id": tipo_prestazione_id,
+            "soggetto_id": soggetto_id,
+            "soggetto_ruolo_id": soggetto_ruolo_id,
+            "istanza_utility_id": istanza_utility_id,
+            "stato_id": stato_id,
+            "priorita_id": priorita_id,
+            "risorsa_umana_id": risorsa_umana_id,
+            "unita_organizzativa_id": unita_organizzativa_id,
+            "canale_origine_id": canale_origine_id,
+            "descrizione": descrizione,
+            "data_scadenza": data_scadenza,
+            "meta": meta or {},
+        })
+    except DatabaseError as exc:
+        # Pin definizione alla creazione (Fase 1, trgfn_pratiche_default_definizione
+        # → fn_risolvi_definizione): un tipo senza definizione pubblicata risolvibile
+        # solleva DEFINIZIONE_NON_TROVATA → ServiceError parlante invece di E_DATABASE
+        # generico (rende effettivo il marker, altrimenti morto su questo percorso).
+        _raise_known_db_error(exc, function_name="pratiche_service.crea_pratica")
+        raise  # irraggiungibile, per il type checker
 
 
 # Scopo: Aggiorna i campi modificabili di una pratica.
@@ -545,7 +588,13 @@ def avvia_flusso(flusso_id: int, *, user: str | None = None) -> dict[str, Any] |
         # Auto-completamento: l'handler ha prodotto un risultato OPPURE lo step e'
         # configurato AUTOMATICO (avvia+chiudi senza scelta umana, ammesso solo su
         # direzione INTERNA per l'Inv2 garantita dal guard a config-time).
-        if result is not None or modalita == "AUTOMATICO":
+        # Esclusione DOMINIO (brief-db-step-dominio §1.3 / companion BE-1.2): uno
+        # step a esito calcolato dal dominio ha esito_default NULL (guard DB Inv3)
+        # → auto_esito ricadrebbe sul fallback verdetto POSITIVO, che il guard di
+        # classe (id 504) rifiuterebbe a runtime. Fail-safe prima del DB: uno step
+        # DOMINIO su avvio resta IN_CORSO (come MANUALE) e si completa SOLO dal BB
+        # di dominio (completa_step_pratica ← es. vendite.completa_smistamento).
+        if modalita != "DOMINIO" and (result is not None or modalita == "AUTOMATICO"):
             repo.update_stato_flusso(flusso_id, "COMPLETATO", esito=auto_esito)
             # Azioni di dominio legate al COMPLETATO (template_flussi_handler_eventi).
             dispatch_handler_eventi(flusso_id, evento="COMPLETATO", esito=auto_esito, user=user)

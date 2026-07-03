@@ -452,6 +452,13 @@ class ApiPraticaFlussoStato(DomainAPIView):
                 pratiche_service.require_esito_selezionabile_operatore(
                     str(payload["esito"]), repo=repo,
                 )
+                # Guard simmetrico: uno step il cui esito e' CALCOLATO dal dominio
+                # (modalita_esito = DOMINIO, es. SMISTAMENTO) non si completa dal
+                # percorso operatore — va chiuso dall'azione di dominio dedicata
+                # (completa_smistamento). Errore parlante prima del guard DB (id 504).
+                pratiche_service.require_completamento_operatore_ammesso(
+                    flusso_id, repo=repo,
+                )
                 acting_user = getattr(request.user, "username", None) or None
                 # Contesto d'azione opzionale (es. modalita/competenza di
                 # fatturazione all'accettazione): inoltrato agli handler di

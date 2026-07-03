@@ -2760,6 +2760,7 @@
     "flusso_completa_smistamento": "Complete dispatch",
     "flusso_completa_dominio_hint": "The outcome is computed automatically from the work done: no need to choose it.",
     "flusso_completa_dominio_errore": "Cannot complete the step: make sure all lines have been dispatched.",
+    "flusso_esito_dominio_senza_azione": "This step's outcome is computed by the domain process: complete it from the dedicated action, not here.",
     "flusso_esiti_non_disponibili": "Outcome list unavailable: close and reopen to retry",
     "competenze_flussi": "Flow competences",
     "visualizzazione_pratica": "Viewing practice code: {codice}",

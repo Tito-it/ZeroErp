@@ -2,16 +2,11 @@
 
 > **Tipo**: brief di design autorevole (modello + piano; il cambio schema sarà delegato
 > al team DB con brief dedicato) · **Data**: 2026-07-02
-> **Owner**: Tid · **Stato**: 🟠 proposto — **modello deciso** (C «edizioni versionate +
-> fork», decisione 2026-07-02). **Delega DB emessa (2026-07-02)**: Fasi 0–2 specificate
-> nella **Parte 2** di
+> **Owner**: Tid · **Stato**: 🟢 in corso — **modello deciso** (C «edizioni versionate +
+> fork», decisione 2026-07-02). **Fasi 0–2 delegate al DB** in
 > [brief-db-step-dominio-e-definizioni-versionate.md](brief-db-step-dominio-e-definizioni-versionate.md)
-> (con contratto anti-collisione C1–C6 verso il cantiere step bivio/`DOMINIO`); consumi
-> BE/FE in
-> [brief-be-fe-step-dominio-e-definizioni-versionate.md](brief-be-fe-step-dominio-e-definizioni-versionate.md).
-> La domanda aperta **#3 è chiusa**: lock strutturale della PUBBLICATA **incluso l'asse
-> esito** (`modalita_esito`, `esito_default`, futura whitelist esiti-per-step); display
-> correggibile.
+> (Parte 2); **Fasi 0–1 applicate dal team DB (2026-07-02)**. Questo brief resta il
+> **design-of-record**: razionale, modello, **Fase 3** (UI admin V4/V5) e domande aperte.
 >
 > **Origine**: voce **V2** e §2.2 di
 > [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md) — il
