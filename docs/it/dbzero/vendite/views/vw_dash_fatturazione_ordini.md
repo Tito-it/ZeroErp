@@ -26,10 +26,10 @@ WITH righe AS (
     (count(r.riga_id))::integer AS unita_totali,
     (count(r.riga_id) FILTER (WHERE r.transitata))::integer AS unita_transitate,
     ((count(r.riga_id) > 0) AND (count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata))) AS is_transitato,
-    ((sdo.esito)::text = 'NEGATIVO'::text) AS is_abortito,
+    COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) AS is_abortito,
     (
         CASE
-            WHEN ((sdo.esito)::text = 'NEGATIVO'::text) THEN NULL::text
+            WHEN COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) THEN NULL::text
             WHEN ((count(r.riga_id) > 0) AND (count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata))) THEN NULL::text
             WHEN ((sdo.codice_interno)::text = 'DRAFT'::text) THEN 'DOC_BOZZA'::text
             WHEN (count(r.riga_id) FILTER (WHERE r.transitata) = 0) THEN 'PUSH_NON_ESEGUITO'::text
