@@ -1,0 +1,173 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Immutabilita' strutturale «Leggera» dei TEMPLATE su edizione forkata pubblicata
+# (D2-9 Fase 2b). (brief-db-step-dominio-e-definizioni-versionate Parte 2 / F2b)
+#
+# BEFORE INSERT OR UPDATE OR DELETE su pratiche.template_flussi:
+#   se la definizione del template e' congelata (fork PUBBLICATO, vedi
+#   fn_check_definizione_congelata 20260703-10) ->
+#     INSERT  : sempre vietato (aggiungere uno step a un'edizione emessa);
+#     DELETE  : sempre vietato (rimuovere uno step);
+#     UPDATE  : vietato se cambia una colonna DIVERSA da descrizione (unico campo
+#               display correggibile a caldo, contratto C4). Gli audit tecnici
+#               (tx_id, data_/user_insert/update) sono esclusi dal confronto.
+#   -> TEMPLATE_DEFINIZIONE_CONGELATA (514).
+#
+# «Leggera»: il PRESET (emittente NULL) resta editabile da seed CSV in qualsiasi
+# stato; solo il fork PUBBLICATO si congela. Le BOZZA (in lavorazione) e le
+# RITIRATA (da smantellare) non sono congelate. Per modificare un fork emesso si
+# crea una nuova versione (fn_nuova_versione_definizione -> BOZZA -> modifica ->
+# fn_pubblica_definizione, che RITIRA la precedente); le pratiche in volo restano
+# pinnate sull'edizione con cui sono nate (V6).
+#
+# UPDATE robusto ai nuovi campi: il confronto e' su to_jsonb(NEW/OLD) meno una
+# ALLOWLIST esplicita (descrizione + audit). Una futura colonna strutturale e'
+# quindi congelata di default (fail-safe); una futura colonna display va aggiunta
+# esplicitamente all'allowlist.
+#
+# Ordine trigger _a10_ su template_flussi: 'default_definizione' (risolve
+# NEW.definizione_id su INSERT) fira PRIMA di 'guard_immutabile' (d < g), che
+# fira PRIMA di 'guard_modalita_esito', 'audit', 'gen_tx_id', 'z90_storico'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260703-11-create-trgfn-template-flussi-guard-immutabile-mctit.yaml
+
+  - changeSet:
+      id: 20260703-11-create-trgfn-template-flussi-guard-immutabile
+      author: mctit
+      runOnChange: false
+      comment: >
+        Guard BEFORE INS/UPD/DEL su pratiche.template_flussi: struttura immutabile
+        su edizione forkata pubblicata (514), descrizione correggibile a caldo.
+        Immutabilita' «Leggera» Fase 2b.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pratiche' AND p.proname = 'fn_check_definizione_congelata';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: immutabilita' strutturale «Leggera» dei template su fork
+              --        PUBBLICATO. INSERT/DELETE vietati; UPDATE vietato se tocca
+              --        una colonna diversa da descrizione. Preset e BOZZA/RITIRATA
+              --        restano liberi.
+              DECLARE
+                v_old_congelata boolean;
+                v_new_congelata boolean;
+                v_def_report    pratiche.workflow_definizioni.id%TYPE;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  IF pratiche.fn_check_definizione_congelata(OLD.definizione_id) THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'pratiche',
+                      'pratiche.trgfn_template_flussi_guard_immutabile',
+                      'TEMPLATE_DEFINIZIONE_CONGELATA',
+                      jsonb_build_object(
+                        'operazione',        'DELETE',
+                        'tabella',           'template_flussi',
+                        'template_flusso_id', OLD.id,
+                        'codice',             OLD.codice,
+                        'definizione_id',     OLD.definizione_id
+                      ),
+                      OLD.tx_id,
+                      OLD.definizione_id::text
+                    );
+                  END IF;
+                  RETURN OLD;
+
+                ELSIF TG_OP = 'INSERT' THEN
+                  IF pratiche.fn_check_definizione_congelata(NEW.definizione_id) THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'pratiche',
+                      'pratiche.trgfn_template_flussi_guard_immutabile',
+                      'TEMPLATE_DEFINIZIONE_CONGELATA',
+                      jsonb_build_object(
+                        'operazione',     'INSERT',
+                        'tabella',        'template_flussi',
+                        'codice',         NEW.codice,
+                        'definizione_id', NEW.definizione_id
+                      ),
+                      NEW.tx_id,
+                      NEW.definizione_id::text
+                    );
+                  END IF;
+                  RETURN NEW;
+
+                ELSE  -- UPDATE
+                  v_old_congelata := pratiche.fn_check_definizione_congelata(OLD.definizione_id);
+                  v_new_congelata := pratiche.fn_check_definizione_congelata(NEW.definizione_id);
+
+                  -- Se una delle due edizioni (origine o destinazione del re-parent)
+                  -- e' congelata, blocca ogni cambiamento che non sia solo la
+                  -- descrizione. Il confronto esclude descrizione + audit tecnici;
+                  -- qualunque altra colonna (compreso il re-parent definizione_id)
+                  -- ricade nel diff => bloccata.
+                  IF (v_old_congelata OR v_new_congelata)
+                     AND (to_jsonb(NEW) - 'descrizione' - 'tx_id'
+                                        - 'data_insert' - 'user_insert'
+                                        - 'data_update' - 'user_update')
+                         IS DISTINCT FROM
+                         (to_jsonb(OLD) - 'descrizione' - 'tx_id'
+                                        - 'data_insert' - 'user_insert'
+                                        - 'data_update' - 'user_update')
+                  THEN
+                    v_def_report := CASE WHEN v_old_congelata
+                                         THEN OLD.definizione_id
+                                         ELSE NEW.definizione_id END;
+                    PERFORM script.fn_log_and_raise_error(
+                      'pratiche',
+                      'pratiche.trgfn_template_flussi_guard_immutabile',
+                      'TEMPLATE_DEFINIZIONE_CONGELATA',
+                      jsonb_build_object(
+                        'operazione',        'UPDATE',
+                        'tabella',           'template_flussi',
+                        'template_flusso_id', NEW.id,
+                        'codice',             NEW.codice,
+                        'definizione_id',     v_def_report
+                      ),
+                      NEW.tx_id,
+                      v_def_report::text
+                    );
+                  END IF;
+                  RETURN NEW;
+                END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()
+                IS 'BEFORE INS/UPD/DEL su pratiche.template_flussi: immutabilita'' strutturale «Leggera» (Fase 2b). Su edizione forkata pubblicata (fn_check_definizione_congelata) blocca INSERT/DELETE e ogni UPDATE che tocchi una colonna diversa da descrizione (audit esclusi) -> TEMPLATE_DEFINIZIONE_CONGELATA (514). Preset (emittente NULL) e BOZZA/RITIRATA restano editabili.';
+
+              DROP TRIGGER IF EXISTS trg_template_flussi_a10_guard_immutabile_iud
+                ON pratiche.template_flussi;
+
+              CREATE TRIGGER trg_template_flussi_a10_guard_immutabile_iud
+                BEFORE INSERT OR UPDATE OR DELETE
+                ON pratiche.template_flussi
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_immutabile();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_template_flussi_a10_guard_immutabile_iud
+                ON pratiche.template_flussi;
+              DROP FUNCTION IF EXISTS pratiche.trgfn_template_flussi_guard_immutabile();

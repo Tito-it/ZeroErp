@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/trgfn_workflow_definizioni_guard.md" %}
 # ⚙️ Funzione `trgfn_workflow_definizioni_guard`
 
 ```sql

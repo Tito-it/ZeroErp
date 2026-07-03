@@ -34,7 +34,15 @@ SELECT plan(14);
 -- morto a meta' (prima del cleanup finale) lascia residui. Si rimuovono qui in
 -- testa cosi' il test e' auto-guarente e ripetibile. Ordine: figli -> template
 -- -> pratiche -> tipi (cascata workflow_definizioni via ON DELETE CASCADE).
+-- Nota (Fase 2b): un fork PUBBLICATO e' congelato (guard immutabilita' 2b) e i
+-- suoi template/figli non sono cancellabili finche' resta PUBBLICATO -> va
+-- prima RITIRATO (PUBBLICATA->RITIRATA, che lo scongela).
 -- =========================================================
+UPDATE pratiche.workflow_definizioni SET stato = 'RITIRATA'
+ WHERE tipo_prestazione_id IN (
+         SELECT id FROM pratiche.tipi_prestazione WHERE codice_interno IN ('TEST_WF2','TEST_WF2CY'))
+   AND emittente_fiscale_id IS NOT NULL
+   AND stato = 'PUBBLICATA';
 DELETE FROM pratiche.regole_generazione WHERE template_flusso_origine_id IN (
   SELECT id FROM pratiche.template_flussi WHERE tipo_prestazione_id IN (
     SELECT id FROM pratiche.tipi_prestazione WHERE codice_interno IN ('TEST_WF2','TEST_WF2CY')));
@@ -252,7 +260,14 @@ SELECT ok(
 
 -- =========================================================
 -- 12) Cleanup (delete tipi -> cascata workflow_definizioni)
+--     Il fork del test 7 e' PUBBLICATO (congelato dall'immutabilita' 2b): va
+--     RITIRATO prima, altrimenti il guard blocca la cancellazione dei suoi
+--     template/figli.
 -- =========================================================
+UPDATE pratiche.workflow_definizioni SET stato = 'RITIRATA'
+ WHERE tipo_prestazione_id IN ((SELECT tp_id FROM tmp_wf2_tp),(SELECT tp_id FROM tmp_wf2cy_tp))
+   AND emittente_fiscale_id IS NOT NULL
+   AND stato = 'PUBBLICATA';
 DELETE FROM pratiche.regole_generazione WHERE template_flusso_origine_id IN (
   SELECT id FROM pratiche.template_flussi WHERE tipo_prestazione_id IN (
     (SELECT tp_id FROM tmp_wf2_tp),(SELECT tp_id FROM tmp_wf2cy_tp)));

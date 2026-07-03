@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/trgfn_pratiche_guard_pin_immutabile.md" %}
 # ⚙️ Funzione `trgfn_pratiche_guard_pin_immutabile`
 
 ```sql

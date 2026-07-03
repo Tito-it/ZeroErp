@@ -16,12 +16,11 @@
 > [brief-be-fe-step-dominio-e-definizioni-versionate.md](brief-be-fe-step-dominio-e-definizioni-versionate.md)
 > — consumi backend/frontend, da rilasciare in lockstep dove indicato.
 >
-> **Stato (2026-07-03)**: **Parte 1 ✅** · **Fase 0 ✅** (committate) · **Fase 1 ✅
-> APPLICATA + TESTATA + DOC** (§2.2) · **Fase 2a ✅ APPLICATA + TESTATA + DOC** (fork/
-> versioni/pubblica/drift + drop uniques; dettaglio in coda a §2.3) — commit in attesa di
-> "procedi". · Prossimo: **Fase 2b** (immutabilità strutturale template «Leggera») +
-> consumi BE/FE Parte 1 + switch `get_percorso_pratica`→`definizione_id` (lockstep pre-fork,
-> ora necessario perché i fork esistono).
+> **Stato (2026-07-03)**: **Parte 1 ✅** · **Fase 0 ✅** · **Fase 1 ✅** · **Fase 2a ✅**
+> (tutte APPLICATE + TESTATE + DOC + COMMITTATE, `d21b68f2e` + `2834a43aa`) · **Fase 2b ✅
+> APPLICATA + TESTATA + DOC** (immutabilità strutturale template «Leggera»; dettaglio in
+> coda a §2.3) — commit in attesa di "procedi". · Prossimo (fuori scope DB): consumi BE/FE
+> Parte 1 e switch `get_percorso_pratica`→`definizione_id` (ora necessario perché i fork esistono).
 
 ---
 
@@ -544,10 +543,42 @@ restano sul pin; drift visibile a vista.
   `test-guard-pratica-terminale` (D1 chiusura-flussi-aperti, `20260701`),
   `test-transizioni-stati` + `test-sospensioni-tempi` (`template_flusso_id` NOT NULL,
   `20260614-09`), `test-template-flussi-handler-eventi` (CHECK→FK esito, `20260701-03`).
-- **NON fatto (Fase 2b)**: immutabilità strutturale template su PUBBLICATA («Leggera»:
-  preset editabile da seed, solo fork congelati). Lockstep BE: switch
+- **Poi fatto in Fase 2b** (dettaglio nel blocco STATO qui sotto): immutabilità strutturale
+  template su PUBBLICATA («Leggera»: preset editabile da seed, solo fork congelati). Resta
+  aperto solo il **lockstep BE** (fuori scope DB): switch
   `get_percorso_pratica`→`definizione_id` **ora necessario** (i fork rendono ambiguo il join
   per tipo).
+
+**STATO Fase 2b — FATTA (2026-07-03, applicata + pgTAP verdi):**
+
+- **strategia «Leggera»** (decisione owner 2026-07-03): solo i **fork** (emittente NOT NULL)
+  in stato PUBBLICATA si congelano; il **preset** (emittente NULL) resta editabile da seed
+  in qualsiasi stato; BOZZA/RITIRATA mai congelate. Chiude la domanda aperta #3 (contratto C4).
+- `20_code`: `20260703-10` **fn_check_definizione_congelata** (predicato puro `fn_check_*`,
+  regola unica «congelata» = PUBBLICATA + emittente NOT NULL), `-11`
+  **trgfn_template_flussi_guard_immutabile** (BEFORE INS/UPD/DEL su `template_flussi`:
+  INSERT/DELETE vietati, UPDATE ammesso solo su `descrizione` — confronto via `to_jsonb`
+  meno allowlist, fail-safe sui nuovi campi), `-12`
+  **trgfn_template_flussi_figli_guard_immutabile** (una fn generica + 6 trigger sui figli
+  del set di copia C6; FK→template via `TG_ARGV`; nessuna eccezione display). Errore unico
+  `TEMPLATE_DEFINIZIONE_CONGELATA` (514).
+- CSV: `messaggi_errore.csv` +514 — **solo append** (loader runOnChange, nessun nuovo loader).
+- pgTAP: **nuovo** `test-workflow-definizioni-fase2b.sql` (plan 15: preset/BOZZA editabili;
+  fork PUBBLICATO congelato su template + figli; sola descrizione correggibile a caldo).
+  **Stale test sistemato**: `test-workflow-definizioni-fase2.sql` — il suo cleanup cancellava
+  il fork PUBBLICATO del test 7: aggiunto un `UPDATE ... RITIRATA` (scongela) prima delle
+  DELETE in pre- e post-cleanup. Un fork pubblicato non è smantellabile finché resta
+  PUBBLICATA (il guard blocca anche i DELETE): va prima RITIRATO.
+- doc manuale: nuove `manual/fn_check_definizione_congelata.md`,
+  `manual/trgfn_template_flussi_guard_immutabile.md`,
+  `manual/trgfn_template_flussi_figli_guard_immutabile.md`; aggiornate
+  `manual/template_flussi.md` e `manual/workflow_definizioni.md`. Autogen + index rigenerati (Tid).
+- **Numerazione**: `-10/-11/-12` (buco `-10..-50` lasciato dall'owner; `-51`+ = dashboard
+  fatturazione vendite, non toccare).
+- **Marker BE** (companion): il 514 porta la sottostringa stabile «per-emittente (congelata)»
+  — da comunicare per `_KNOWN_DB_ERROR_MARKERS` se il BE la intercetta.
+- **Resta (DB)**: solo il **commit** (attesa "procedi"). Fuori scope DB: consumi BE/FE
+  Parte 1 e lo switch `get_percorso_pratica`→`definizione_id` (ora necessario coi fork).
 
 ### 2.4 Errori nuovi Parte 2 (stesse avvertenze §1.5, id proposti)
 

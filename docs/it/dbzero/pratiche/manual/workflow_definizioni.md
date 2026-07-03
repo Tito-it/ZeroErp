@@ -19,6 +19,9 @@ Funzioni collegate:
 > [pratiche.trgfn_tipi_prestazione_bootstrap_definizione](trgfn_tipi_prestazione_bootstrap_definizione.md)
 > [pratiche.trgfn_template_flussi_default_definizione](trgfn_template_flussi_default_definizione.md)
 > [pratiche.trgfn_pratiche_default_definizione](trgfn_pratiche_default_definizione.md)
+> [pratiche.fn_check_definizione_congelata](fn_check_definizione_congelata.md)
+> [pratiche.trgfn_template_flussi_guard_immutabile](trgfn_template_flussi_guard_immutabile.md)
+> [pratiche.trgfn_template_flussi_figli_guard_immutabile](trgfn_template_flussi_figli_guard_immutabile.md)
 
 ---
 ### 🎯 Scopo Principale
@@ -43,8 +46,9 @@ pratiche aperte).
 * **Identità condivisa**: il `tipo_prestazione` resta l'identità di reporting; le
   edizioni sono varianti/versioni del suo workflow.
 * **Ciclo di vita**: `BOZZA` (editabile) → `PUBBLICATA` (istanziabile, **unica per
-  scope**, strutturalmente immutabile dal guard di Fase 1) → `RITIRATA` (non
-  istanziabile; le pratiche in volo continuano sul pin).
+  scope**; header immutabile dal guard di Fase 1 e — per i soli **fork** — struttura dei
+  template congelata da Fase 2b) → `RITIRATA` (non istanziabile; le pratiche in volo
+  continuano sul pin. È anche lo stato che **scongela** un fork per poterlo smantellare).
 * **Pin alla creazione**: ogni pratica risolve e pinna la propria edizione alla nascita
   (`pratiche.definizione_id`, [auto-pin](trgfn_pratiche_default_definizione.md)) e la
   tiene per sempre.
@@ -57,11 +61,15 @@ pratiche aperte).
   **Fase 2** (attuale): **fork/nuova versione/pubblica** ([fn_fork_definizione](fn_fork_definizione.md),
   [fn_nuova_versione_definizione](fn_nuova_versione_definizione.md),
   [fn_pubblica_definizione](fn_pubblica_definizione.md), motore
-  [fn_copia_definizione](fn_copia_definizione.md)) + **drift**
+  [fn_copia_definizione](fn_copia_definizione.md)) + **drift** (Fase 2a)
   ([vw_definizioni_drift](vw_definizioni_drift.md)); rimossi i vincoli per-tipo su
-  `template_flussi` (più definizioni per tipo con gli stessi codici). **Rinviato** (Fase 2b):
+  `template_flussi` (più definizioni per tipo con gli stessi codici). **Fase 2b** (immutabilità strutturale «Leggera»):
   immutabilità strutturale dei template su PUBBLICATA (strategia «Leggera»: preset editabile
-  da seed, solo i fork si congelano).
+  da seed, solo i fork si congelano) — guard
+  [trgfn_template_flussi_guard_immutabile](trgfn_template_flussi_guard_immutabile.md) +
+  [trgfn_template_flussi_figli_guard_immutabile](trgfn_template_flussi_figli_guard_immutabile.md),
+  predicato [fn_check_definizione_congelata](fn_check_definizione_congelata.md),
+  errore `TEMPLATE_DEFINIZIONE_CONGELATA` (514).
 
 ---
 

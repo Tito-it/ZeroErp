@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Dashboard fatturazione — aggregata mensile per area (brief-design-
+# dashboard-fatturazione §5, Fase 1). E' la vista letta dall'endpoint
+# GET /api/v1/vendite/dashboard-fatturazione/?anno= (matrice 12 mesi x aree;
+# i mesi mancanti li genera il BE con generate_series, non questa vista).
+#
+# I documenti abortiti (esito NEGATIVO) sono FUORI dal confronto
+# totale/transitato (regola-cardine del brief §3.3: se restassero nel totale
+# il pareggio non tornerebbe mai) e contati a parte in n_abortiti.
+#
+# Contratto pensato per reggere una futura materializzazione (snapshot
+# notturno) senza cambiare l'interfaccia verso il BE (brief §5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260703-57-create-vw-dash-fatturazione-mensile-mctit.yaml
+
+  - changeSet:
+      id: 20260703-57-create-vw-dash-fatturazione-mensile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Dashboard fatturazione Fase 1: crea vendite.vw_dash_fatturazione_mensile,
+        aggregata area x competenza_mese (valori e conteggi totali/transitati/
+        fermi, abortiti a parte).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname   = 'vw_dash_fatturazione_documenti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_mensile AS
+              SELECT
+                  d.area,
+                  d.competenza_mese,
+                  SUM(d.valore_totale)
+                    FILTER (WHERE NOT d.is_abortito)     AS valore_totale,
+                  SUM(d.valore_transitato)
+                    FILTER (WHERE NOT d.is_abortito)     AS valore_transitato,
+                  COUNT(*)
+                    FILTER (WHERE NOT d.is_abortito)     AS n_documenti,
+                  COUNT(*)
+                    FILTER (WHERE NOT d.is_abortito
+                              AND d.is_transitato)       AS n_transitati,
+                  COUNT(*)
+                    FILTER (WHERE NOT d.is_abortito
+                              AND NOT d.is_transitato)   AS n_fermi,
+                  COUNT(*)
+                    FILTER (WHERE d.is_abortito)         AS n_abortiti
+                FROM vendite.vw_dash_fatturazione_documenti d
+               GROUP BY d.area, d.competenza_mese;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_mensile IS
+                'Dashboard fatturazione (brief-design-dashboard-fatturazione §5): aggregata area x competenza_mese. valore_totale/valore_transitato in euro imponibile (NULL per le aree a conteggi OFFERTE e CONTRATTI in v1), n_documenti/n_transitati/n_fermi sui soli documenti vivi, n_abortiti (esito NEGATIVO) contati a parte. Totale = transitato quando il mese e'' a posto. Letta dall''endpoint GET /vendite/dashboard-fatturazione/.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_dash_fatturazione_mensile;

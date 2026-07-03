@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Dashboard fatturazione — resolver area ORDINI (brief-design-dashboard-
+# fatturazione §5, Fase 1). Una riga per ordine: valore totale (imponibile
+# righe attive) vs valore transitato (righe gia' in commessa).
+#
+# SEMANTICA (allineata al predicato di fn_list_ordini_da_pushare):
+#   - riga transitata = EXISTS attivita con segment_key
+#     'ORD:<uid>:R:<riga_id>' e stato_emissione='EMESSA' — lo stesso
+#     NOT EXISTS che rende la riga non piu' eligible al push. Attivita
+#     NON_EMESSA = riga ancora ferma (ri-pushabile, upsert idempotente).
+#   - competenza: mese di ordini.data (l'ordine non ha competenza nativa;
+#     la competenza puntuale nasce sulla commessa). Documentato nel brief §4.
+#   - is_abortito = esito 'NEGATIVO' (config.stati_doc_ordini, D1 proiezione).
+#   - valore = imponibile: qta * prezzo * (1 - sconto%/100) (decisione D-4).
+#
+# Vocabolario motivo_fermo di quest'area: DOC_BOZZA, PUSH_NON_ESEGUITO,
+# PUSH_PARZIALE. NULL se transitato o abortito.
+#
+# Consumata da vendite.vw_dash_fatturazione_documenti (20260703-56).
+# Perf: l'EXISTS su segment_key e' assistito da ix_commesse_attivita_segment_key
+# (20260703-58, 90_end).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260703-52-create-vw-dash-fatturazione-ordini-mctit.yaml
+
+  - changeSet:
+      id: 20260703-52-create-vw-dash-fatturazione-ordini
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Dashboard fatturazione Fase 1: crea vendite.vw_dash_fatturazione_ordini,
+        resolver area ORDINI (valore totale vs transitato a commessa,
+        predicato allineato a fn_list_ordini_da_pushare).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'config'
+                 AND table_name   = 'stati_doc_ordini'
+                 AND column_name  = 'esito';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_ordini AS
+              WITH righe AS (
+                SELECT
+                    orr.ordine_id,
+                    orr.id AS riga_id,
+                    (orr.quantita * orr.prezzo_unitario
+                       * (1 - COALESCE(orr.sconto_percentuale, 0) / 100.0)) AS valore_riga,
+                    EXISTS (
+                      SELECT 1
+                        FROM vendite.commesse_attivita ca
+                       WHERE ca.segment_key =
+                             ('ORD:' || (o2.uid)::text || ':R:' || orr.id::text)
+                         AND ca.stato_emissione = 'EMESSA'
+                    ) AS transitata
+                  FROM vendite.ordini_righe orr
+                  JOIN vendite.ordini o2 ON o2.id = orr.ordine_id
+                 WHERE orr.attivo IS TRUE
+              )
+              SELECT
+                  'ORDINI'::varchar                              AS area,
+                  (date_trunc('month', o.data))::date            AS competenza_mese,
+                  o.id                                           AS documento_id,
+                  (o.uid)::text                                  AS documento_uid,
+                  (o.numero)::text                               AS codice,
+                  o.emittente_fiscale_id,
+                  NULL::bigint                                   AS emittente_soggetto_ruolo_id,
+                  COALESCE(SUM(r.valore_riga), 0)                AS valore_totale,
+                  COALESCE(SUM(r.valore_riga)
+                             FILTER (WHERE r.transitata), 0)     AS valore_transitato,
+                  COUNT(r.riga_id)::integer                      AS unita_totali,
+                  (COUNT(r.riga_id)
+                     FILTER (WHERE r.transitata))::integer       AS unita_transitate,
+                  (COUNT(r.riga_id) > 0
+                     AND COUNT(r.riga_id) =
+                         COUNT(r.riga_id) FILTER (WHERE r.transitata)) AS is_transitato,
+                  (sdo.esito = 'NEGATIVO')                       AS is_abortito,
+                  CASE
+                    WHEN sdo.esito = 'NEGATIVO' THEN NULL
+                    WHEN COUNT(r.riga_id) > 0
+                         AND COUNT(r.riga_id) =
+                             COUNT(r.riga_id) FILTER (WHERE r.transitata) THEN NULL
+                    WHEN sdo.codice_interno = 'DRAFT' THEN 'DOC_BOZZA'
+                    WHEN COUNT(r.riga_id) FILTER (WHERE r.transitata) = 0
+                      THEN 'PUSH_NON_ESEGUITO'
+                    ELSE 'PUSH_PARZIALE'
+                  END::varchar                                   AS motivo_fermo,
+                  -- Alias FEDELI alla sorgente (linee-guida-sql §6c).
+                  sdo.codice_interno                             AS stato_codice_interno,
+                  sdo.codice                                     AS stato_codice,
+                  sdo.fase
+                FROM vendite.ordini o
+                JOIN config.stati_doc_ordini sdo
+                  ON sdo.id = o.stato_doc_ordine_id
+                LEFT JOIN righe r ON r.ordine_id = o.id
+               GROUP BY o.id, o.uid, o.numero, o.data, o.emittente_fiscale_id,
+                        sdo.codice_interno, sdo.codice, sdo.fase, sdo.esito;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_ordini IS
+                'Dashboard fatturazione (brief-design-dashboard-fatturazione §5): resolver area ORDINI. Una riga per ordine con valore imponibile totale vs transitato a commessa (riga transitata = attivita EMESSA con segment_key ORD:<uid>:R:<riga>, predicato allineato a fn_list_ordini_da_pushare). Competenza: mese di ordini.data. is_abortito=esito NEGATIVO. motivo_fermo: DOC_BOZZA | PUSH_NON_ESEGUITO | PUSH_PARZIALE. Consumata da vw_dash_fatturazione_documenti.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_dash_fatturazione_ordini;

@@ -1,0 +1,234 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# FIX dashboard fatturazione (bug scovato dal pgTAP test 18): nei resolver
+# preventivi/ordini/offerte `is_abortito = (esito = 'NEGATIVO')` restituiva
+# NULL (non false) per gli stati SENZA verdetto (esito NULL: DRAFT, EMESSO,
+# BOZZA, ...). Conseguenza nell'aggregata mensile: quei documenti sparivano
+# sia da n_documenti sia da n_abortiti (i FILTER `NOT is_abortito` /
+# `is_abortito` scartano i NULL).
+#
+# Fix: COALESCE(esito = 'NEGATIVO', false). Anche il CASE motivo_fermo usa
+# ora lo stesso predicato null-safe (era corretto per caduta nel ramo
+# successivo, ma l'allineamento evita fragilita' future).
+#
+# Le viste contratti (letterale false / filtro IS DISTINCT FROM) e commesse
+# (codice_interno NOT NULL) erano gia' null-safe.
+#
+# Sostituisce le definizioni di 20260703-51/52/53 (applicate ma non ancora
+# mergiate: nuovo file con numerazione successiva, mai modificare changeset
+# gia' applicati).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260703-59-update-vw-dash-fatturazione-is-abortito-null-safe-mctit.yaml
+
+  - changeSet:
+      id: 20260703-59-update-vw-dash-fatturazione-is-abortito-null-safe
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Fix null-safe is_abortito (COALESCE su esito='NEGATIVO') nei resolver
+        dashboard fatturazione preventivi/ordini/offerte: gli stati senza
+        verdetto (esito NULL) producevano is_abortito NULL e sparivano dai
+        conteggi della mensile.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname IN ('vw_dash_fatturazione_preventivi',
+                                  'vw_dash_fatturazione_ordini',
+                                  'vw_dash_fatturazione_offerte');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_preventivi AS
+              WITH righe AS (
+                -- Riuso della vista canonica di smistamento (righe attive):
+                -- transitata = qualunque stato diverso da RESIDUA.
+                SELECT
+                    sr.preventivo_id,
+                    sr.riga_id,
+                    (COALESCE(sr.quantita, 0) * sr.prezzo_unitario
+                       * (1 - COALESCE(pr.sconto_percentuale, 0) / 100.0)) AS valore_riga,
+                    (sr.stato_smistamento <> 'RESIDUA')                    AS transitata
+                  FROM vendite.vw_preventivi_smistamento_righe sr
+                  JOIN vendite.preventivi_righe pr ON pr.id = sr.riga_id
+              )
+              SELECT
+                  'PREVENTIVI'::varchar                          AS area,
+                  COALESCE(p.competenza_mese,
+                           (date_trunc('month', p.validita_dal))::date,
+                           (date_trunc('month', p.data))::date)  AS competenza_mese,
+                  p.id                                           AS documento_id,
+                  (p.uid)::text                                  AS documento_uid,
+                  (p.numero)::text                               AS codice,
+                  p.emittente_fiscale_id,
+                  NULL::bigint                                   AS emittente_soggetto_ruolo_id,
+                  COALESCE(SUM(r.valore_riga), 0)                AS valore_totale,
+                  COALESCE(SUM(r.valore_riga)
+                             FILTER (WHERE r.transitata), 0)     AS valore_transitato,
+                  COUNT(r.riga_id)::integer                      AS unita_totali,
+                  (COUNT(r.riga_id)
+                     FILTER (WHERE r.transitata))::integer       AS unita_transitate,
+                  (COUNT(r.riga_id) > 0
+                     AND COUNT(r.riga_id) =
+                         COUNT(r.riga_id) FILTER (WHERE r.transitata)) AS is_transitato,
+                  -- Null-safe: esito NULL (stato senza verdetto) NON e' abortito.
+                  COALESCE(sdp.esito = 'NEGATIVO', false)        AS is_abortito,
+                  CASE
+                    WHEN COALESCE(sdp.esito = 'NEGATIVO', false) THEN NULL
+                    WHEN COUNT(r.riga_id) > 0
+                         AND COUNT(r.riga_id) =
+                             COUNT(r.riga_id) FILTER (WHERE r.transitata) THEN NULL
+                    WHEN sdp.codice_interno = 'DRAFT'  THEN 'DOC_BOZZA'
+                    WHEN sdp.codice_interno = 'EMESSO' THEN 'IN_ATTESA_ACCETTAZIONE'
+                    ELSE 'RIGA_RESIDUA'
+                  END::varchar                                   AS motivo_fermo,
+                  -- Alias FEDELI alla sorgente (linee-guida-sql §6c).
+                  sdp.codice_interno                             AS stato_codice_interno,
+                  sdp.codice                                     AS stato_codice,
+                  sdp.fase
+                FROM vendite.preventivi p
+                JOIN config.stati_doc_preventivi sdp
+                  ON sdp.id = p.stato_doc_preventivo_id
+                LEFT JOIN righe r ON r.preventivo_id = p.id
+               GROUP BY p.id, p.uid, p.numero, p.competenza_mese, p.validita_dal,
+                        p.data, p.emittente_fiscale_id,
+                        sdp.codice_interno, sdp.codice, sdp.fase, sdp.esito;
+
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_ordini AS
+              WITH righe AS (
+                SELECT
+                    orr.ordine_id,
+                    orr.id AS riga_id,
+                    (orr.quantita * orr.prezzo_unitario
+                       * (1 - COALESCE(orr.sconto_percentuale, 0) / 100.0)) AS valore_riga,
+                    EXISTS (
+                      SELECT 1
+                        FROM vendite.commesse_attivita ca
+                       WHERE ca.segment_key =
+                             ('ORD:' || (o2.uid)::text || ':R:' || orr.id::text)
+                         AND ca.stato_emissione = 'EMESSA'
+                    ) AS transitata
+                  FROM vendite.ordini_righe orr
+                  JOIN vendite.ordini o2 ON o2.id = orr.ordine_id
+                 WHERE orr.attivo IS TRUE
+              )
+              SELECT
+                  'ORDINI'::varchar                              AS area,
+                  (date_trunc('month', o.data))::date            AS competenza_mese,
+                  o.id                                           AS documento_id,
+                  (o.uid)::text                                  AS documento_uid,
+                  (o.numero)::text                               AS codice,
+                  o.emittente_fiscale_id,
+                  NULL::bigint                                   AS emittente_soggetto_ruolo_id,
+                  COALESCE(SUM(r.valore_riga), 0)                AS valore_totale,
+                  COALESCE(SUM(r.valore_riga)
+                             FILTER (WHERE r.transitata), 0)     AS valore_transitato,
+                  COUNT(r.riga_id)::integer                      AS unita_totali,
+                  (COUNT(r.riga_id)
+                     FILTER (WHERE r.transitata))::integer       AS unita_transitate,
+                  (COUNT(r.riga_id) > 0
+                     AND COUNT(r.riga_id) =
+                         COUNT(r.riga_id) FILTER (WHERE r.transitata)) AS is_transitato,
+                  -- Null-safe: esito NULL (stato senza verdetto) NON e' abortito.
+                  COALESCE(sdo.esito = 'NEGATIVO', false)        AS is_abortito,
+                  CASE
+                    WHEN COALESCE(sdo.esito = 'NEGATIVO', false) THEN NULL
+                    WHEN COUNT(r.riga_id) > 0
+                         AND COUNT(r.riga_id) =
+                             COUNT(r.riga_id) FILTER (WHERE r.transitata) THEN NULL
+                    WHEN sdo.codice_interno = 'DRAFT' THEN 'DOC_BOZZA'
+                    WHEN COUNT(r.riga_id) FILTER (WHERE r.transitata) = 0
+                      THEN 'PUSH_NON_ESEGUITO'
+                    ELSE 'PUSH_PARZIALE'
+                  END::varchar                                   AS motivo_fermo,
+                  -- Alias FEDELI alla sorgente (linee-guida-sql §6c).
+                  sdo.codice_interno                             AS stato_codice_interno,
+                  sdo.codice                                     AS stato_codice,
+                  sdo.fase
+                FROM vendite.ordini o
+                JOIN config.stati_doc_ordini sdo
+                  ON sdo.id = o.stato_doc_ordine_id
+                LEFT JOIN righe r ON r.ordine_id = o.id
+               GROUP BY o.id, o.uid, o.numero, o.data, o.emittente_fiscale_id,
+                        sdo.codice_interno, sdo.codice, sdo.fase, sdo.esito;
+
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_offerte AS
+              SELECT
+                  'OFFERTE'::varchar                             AS area,
+                  (date_trunc('month',
+                     COALESCE(o.validita_dal,
+                              (o.data_emissione)::date,
+                              (o.data_insert)::date)))::date     AS competenza_mese,
+                  o.id                                           AS documento_id,
+                  (o.uid)::text                                  AS documento_uid,
+                  (o.codice)::text                               AS codice,
+                  o.emittente_fiscale_id,
+                  NULL::bigint                                   AS emittente_soggetto_ruolo_id,
+                  NULL::numeric                                  AS valore_totale,
+                  NULL::numeric                                  AS valore_transitato,
+                  1::integer                                     AS unita_totali,
+                  CASE WHEN (ct.id IS NOT NULL AND NOT ct.is_abortito_snapshot)
+                         OR (fo.ordine_id IS NOT NULL
+                             AND fo.esito IS DISTINCT FROM 'NEGATIVO')
+                       THEN 1 ELSE 0 END::integer                AS unita_transitate,
+                  ((ct.id IS NOT NULL AND NOT ct.is_abortito_snapshot)
+                     OR (fo.ordine_id IS NOT NULL
+                         AND fo.esito IS DISTINCT FROM 'NEGATIVO')) AS is_transitato,
+                  -- Null-safe: esito NULL (stato senza verdetto) NON e' abortito.
+                  COALESCE(sdo.esito = 'NEGATIVO', false)        AS is_abortito,
+                  CASE
+                    WHEN COALESCE(sdo.esito = 'NEGATIVO', false) THEN NULL
+                    WHEN (ct.id IS NOT NULL AND NOT ct.is_abortito_snapshot)
+                      OR (fo.ordine_id IS NOT NULL
+                          AND fo.esito IS DISTINCT FROM 'NEGATIVO') THEN NULL
+                    -- Figlio generato ma abortito: la XOR permanente impedisce
+                    -- di rigenerarlo — serve una revisione dell'offerta.
+                    WHEN ct.id IS NOT NULL OR fo.ordine_id IS NOT NULL
+                      THEN 'FIGLIO_ABORTITO'
+                    WHEN sdo.codice_interno = 'BOZZA'  THEN 'DOC_BOZZA'
+                    WHEN sdo.codice_interno = 'EMESSA' THEN 'IN_ATTESA_ACCETTAZIONE'
+                    ELSE 'SENZA_FIGLIO'
+                  END::varchar                                   AS motivo_fermo,
+                  -- Alias FEDELI alla sorgente (linee-guida-sql §6c).
+                  sdo.codice_interno                             AS stato_codice_interno,
+                  sdo.codice                                     AS stato_codice,
+                  sdo.fase
+                FROM vendite.offerte_commerciali o
+                JOIN config.stati_doc_offerte sdo
+                  ON sdo.id = o.stato_doc_offerta_id
+                -- Figlio contratto: al piu' uno (uq_contratti_offerta_id).
+                LEFT JOIN vendite.contratti ct ON ct.offerta_id = o.id
+                -- Figlio ordine: al piu' uno (uq_ordini_v_documento_origine_offerta).
+                LEFT JOIN LATERAL (
+                  SELECT od.id AS ordine_id, sdor.esito
+                    FROM vendite.ordini od
+                    JOIN config.stati_doc_ordini sdor
+                      ON sdor.id = od.stato_doc_ordine_id
+                   WHERE od.documento_origine_tipo = 'OFFERTA'
+                     AND od.documento_origine_id = o.id
+                   LIMIT 1
+                ) fo ON TRUE;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: nessuna azione (le definizioni precedenti sono in
+              -- 20260703-51/52/53; il fix e' solo migliorativo e idempotente).
+              SELECT 1;

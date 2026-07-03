@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_check_definizione_congelata — predicato "edizione congelata" (D2-9 Fase 2b).
+# (brief-db-step-dominio-e-definizioni-versionate Parte 2 / Fase 2b)
+#
+# Ritorna TRUE sse la definizione e' un'edizione forkata (emittente_fiscale_id
+# valorizzato) e in stato PUBBLICATA: e' la definizione della strategia di
+# immutabilita' strutturale «Leggera» (decisa 2026-07-03).
+#   - il PRESET di fabbrica (emittente NULL) NON e' mai congelato, in QUALSIASI
+#     stato: resta editabile da seed CSV / migrazioni (zero attrito sul seeding);
+#   - le edizioni forkate in BOZZA o RITIRATA NON sono congelate: la BOZZA e'
+#     ancora in lavorazione, la RITIRATA e' fuori uso e va potuta smantellare.
+#   - solo il fork PUBBLICATO si congela: e' li' che serve la garanzia "la
+#     struttura non cambia sotto le pratiche gia' emesse per quell'emittente".
+#
+# Funzione pura (fn_check_*): boolean, NO raise. Unico punto che definisce la
+# regola "congelata"; la usano i due guard di immutabilita' (20260703-11/-12) e
+# resta riusabile da viste/BE. p_definizione_id NULL o non trovata => false
+# (fail-open: la coerenza referenziale la garantiscono le FK a monte).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260703-10-create-fn-check-definizione-congelata-mctit.yaml
+
+  - changeSet:
+      id: 20260703-10-create-fn-check-definizione-congelata
+      author: mctit
+      runOnChange: false
+      comment: >
+        fn_check_definizione_congelata(definizione_id): TRUE sse edizione forkata
+        (emittente NOT NULL) e PUBBLICATA. Regola unica dell'immutabilita'
+        «Leggera»; usata dai guard template/figli (Fase 2b).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: workflow_definizioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.fn_check_definizione_congelata(
+                  p_definizione_id pratiche.workflow_definizioni.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: dire se una definizione e' un'edizione forkata pubblicata
+              --        (congelata dalla strategia «Leggera»). Funzione pura, no
+              --        raise: la usano i guard di immutabilita' strutturale.
+              DECLARE
+                v_congelata boolean;
+              BEGIN
+                IF p_definizione_id IS NULL THEN
+                  RETURN false;
+                END IF;
+
+                SELECT (wd.stato = 'PUBBLICATA'
+                        AND wd.emittente_fiscale_id IS NOT NULL)
+                  INTO v_congelata
+                  FROM pratiche.workflow_definizioni wd
+                 WHERE wd.id = p_definizione_id;
+
+                RETURN COALESCE(v_congelata, false);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_check_definizione_congelata(integer)
+                IS 'TRUE sse la definizione workflow e'' un''edizione forkata (emittente_fiscale_id valorizzato) in stato PUBBLICATA: e'' congelata dall''immutabilita'' strutturale «Leggera». Il preset (emittente NULL) e le BOZZA/RITIRATA non sono mai congelati. Funzione pura (no raise); usata dai guard trgfn_template_flussi_guard_immutabile e trgfn_template_flussi_figli_guard_immutabile. NULL/non trovata => false.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS pratiche.fn_check_definizione_congelata(integer);
