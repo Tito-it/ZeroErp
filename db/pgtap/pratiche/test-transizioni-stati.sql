@@ -209,12 +209,24 @@ UPDATE pratiche.pratiche
 SET stato_id = (SELECT st_aperta FROM tmp_tr_refs)
 WHERE id = (SELECT pratica_id FROM tmp_tr_pratica4);
 
+-- Template per i flussi di test (template_flusso_id e' NOT NULL dal 20260614-09;
+-- ripetibilita SEMPRE perche' il test crea due istanze nella stessa pratica).
+CREATE TEMP TABLE tmp_tr_tf AS
+WITH ins AS (
+  INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo, ripetibilita)
+  VALUES ((SELECT tp_id FROM tmp_tr_tp), 'TR_STEP', 'Step transizioni', 1, false, true, 'SEMPRE')
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET ripetibilita = EXCLUDED.ripetibilita
+  RETURNING id
+)
+SELECT id AS tf_id FROM ins;
+
 -- Flusso in DA_ESEGUIRE
 CREATE TEMP TABLE tmp_tr_flusso1 AS
 WITH ins AS (
-  INSERT INTO pratiche.flussi (pratica_id, stato_id)
+  INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
   VALUES (
     (SELECT pratica_id FROM tmp_tr_pratica4),
+    (SELECT tf_id FROM tmp_tr_tf),
     (SELECT sf_da_eseguire FROM tmp_tr_refs)
   )
   RETURNING id
@@ -249,9 +261,10 @@ SELECT throws_ok(
 -- Nuovo flusso per test DA_ESEGUIRE → COMPLETATO
 CREATE TEMP TABLE tmp_tr_flusso2 AS
 WITH ins AS (
-  INSERT INTO pratiche.flussi (pratica_id, stato_id)
+  INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
   VALUES (
     (SELECT pratica_id FROM tmp_tr_pratica4),
+    (SELECT tf_id FROM tmp_tr_tf),
     (SELECT sf_da_eseguire FROM tmp_tr_refs)
   )
   RETURNING id
@@ -315,6 +328,8 @@ WHERE pratica_id IN (
   WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_tr_tp)
 );
 DELETE FROM pratiche.pratiche
+WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_tr_tp);
+DELETE FROM pratiche.template_flussi
 WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_tr_tp);
 DELETE FROM pratiche.tipi_prestazione
 WHERE id = (SELECT tp_id FROM tmp_tr_tp);

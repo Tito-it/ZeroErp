@@ -81,7 +81,7 @@ CREATE TEMP TABLE tmp_gec_tf AS WITH ins AS (
   VALUES ((SELECT tp_id FROM tmp_gec_tp),'GEC_DOM','Step a esito di dominio',10,true,true,'INTERNA','DOMINIO'),
          ((SELECT tp_id FROM tmp_gec_tp),'GEC_MAN','Step manuale',20,true,true,'INTERNA','MANUALE'),
          ((SELECT tp_id FROM tmp_gec_tp),'GEC_GUARDIA','Guardia anti-autochiusura',90,true,true,'INTERNA','MANUALE')
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE
+  ON CONFLICT (definizione_id, codice) DO UPDATE
      SET descrizione=EXCLUDED.descrizione, modalita_esito=EXCLUDED.modalita_esito
   RETURNING id, codice)
 SELECT max(id) FILTER (WHERE codice='GEC_DOM') AS tf_dom,

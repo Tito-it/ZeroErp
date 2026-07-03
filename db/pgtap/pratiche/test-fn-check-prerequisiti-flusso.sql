@@ -72,7 +72,7 @@ CREATE TEMP TABLE tmp_test_tfa AS
 WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, attivo)
   VALUES ((SELECT tp_id FROM tmp_test_tp), 'TF_A_PGTAP', 'Template A test', true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
   RETURNING id
 )
 SELECT id AS tfa_id FROM ins;
@@ -81,7 +81,7 @@ CREATE TEMP TABLE tmp_test_tfb AS
 WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, attivo)
   VALUES ((SELECT tp_id FROM tmp_test_tp), 'TF_B_PGTAP', 'Template B test (prerequisito)', true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
   RETURNING id
 )
 SELECT id AS tfb_id FROM ins;

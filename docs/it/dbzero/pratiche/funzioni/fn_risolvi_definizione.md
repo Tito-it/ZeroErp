@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/fn_risolvi_definizione.md" %}
 # ⚙️ Funzione `fn_risolvi_definizione`
 
 ```sql

@@ -88,7 +88,7 @@ CREATE TEMP TABLE tmp_np_tf_biv AS WITH ins AS (
   VALUES ((SELECT tp_id FROM tmp_np_tp_biv),'NP_SMIST','Smistamento (bivio)',10,true,true,'DOMINIO'),
          ((SELECT tp_id FROM tmp_np_tp_biv),'NP_CONFERMA','Conferma ordine',20,true,true,'MANUALE'),
          ((SELECT tp_id FROM tmp_np_tp_biv),'NP_INVIO','Invio a commessa',30,true,true,'MANUALE')
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE
+  ON CONFLICT (definizione_id, codice) DO UPDATE
      SET descrizione=EXCLUDED.descrizione, modalita_esito=EXCLUDED.modalita_esito RETURNING id, codice)
 SELECT max(id) FILTER (WHERE codice='NP_SMIST')    AS tf_smist,
        max(id) FILTER (WHERE codice='NP_CONFERMA') AS tf_conf,
@@ -109,7 +109,7 @@ CREATE TEMP TABLE tmp_np_tf_d1 AS WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo)
   VALUES ((SELECT tp_id FROM tmp_np_tp_d1),'NP_OBBL','Obbligatorio',10,true,true),
          ((SELECT tp_id FROM tmp_np_tp_d1),'NP_OPT','Opzionale',20,false,true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione=EXCLUDED.descrizione RETURNING id, codice)
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione=EXCLUDED.descrizione RETURNING id, codice)
 SELECT max(id) FILTER (WHERE codice='NP_OBBL') AS tf_obbl,
        max(id) FILTER (WHERE codice='NP_OPT')  AS tf_opt
   FROM ins;

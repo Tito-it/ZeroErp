@@ -58,11 +58,14 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
 
 ### Vincoli
 
-* **UQ composito**: `(tipo_prestazione_id, codice)` — codice univoco per tipo_prestazione
-  (valido nell'era pre-fork; verra' rimosso in Fase 2 a favore del solo per-definizione).
-* **UQ per-definizione**: `(definizione_id, codice)` — il codice e' il contratto stabile
-  dei BB runtime dentro l'edizione (contratto C5); `uq_template_flussi_chiusura_definizione`
-  = max un `chiude_pratica` per edizione.
+* **UQ per-definizione**: `uq_template_flussi_definizione_codice (definizione_id, codice)` —
+  il codice e' il contratto stabile dei BB runtime dentro l'edizione (contratto C5);
+  `uq_template_flussi_chiusura_definizione (definizione_id) WHERE chiude_pratica` = max un
+  `chiude_pratica` per edizione.
+* I vecchi vincoli **per-tipo** (`uq_pratiche_template_flussi_tipo_codice`,
+  `uq_template_flussi_chiusura`) sono stati **rimossi in Fase 2** (`20260703-05`): con le
+  edizioni versionate un tipo puo' avere piu' definizioni (preset + fork + versioni) con
+  gli **stessi codici**, quindi i vincoli per-tipo diventerebbero errati.
 * **CHECK direzione**: solo valori ENTRATA, USCITA, INTERNA.
 * **CHECK ripetibilita**: solo valori MAI, SE_NON_POSITIVO, SEMPRE.
 * **FK handler_id nullable**: NULL = step manuale, NOT NULL = step automatizzato.

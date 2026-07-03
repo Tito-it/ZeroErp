@@ -83,7 +83,7 @@ SELECT id AS tp_id FROM ins;
 CREATE TEMP TABLE tmp_rip_tf_mai AS WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, attivo, ripetibilita)
   VALUES ((SELECT tp_id FROM tmp_rip_tp), 'TF_RIP_MAI', 'Template MAI', 10, true, 'MAI')
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET ripetibilita = EXCLUDED.ripetibilita
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET ripetibilita = EXCLUDED.ripetibilita
   RETURNING id
 )
 SELECT id AS tf_id FROM ins;
@@ -92,7 +92,7 @@ SELECT id AS tf_id FROM ins;
 CREATE TEMP TABLE tmp_rip_tf_mai2 AS WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, attivo, ripetibilita)
   VALUES ((SELECT tp_id FROM tmp_rip_tp), 'TF_RIP_MAI2', 'Template MAI 2', 20, true, 'MAI')
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET ripetibilita = EXCLUDED.ripetibilita
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET ripetibilita = EXCLUDED.ripetibilita
   RETURNING id
 )
 SELECT id AS tf_id FROM ins;
@@ -101,7 +101,7 @@ SELECT id AS tf_id FROM ins;
 CREATE TEMP TABLE tmp_rip_tf_snp AS WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, attivo)
   VALUES ((SELECT tp_id FROM tmp_rip_tp), 'TF_RIP_SNP', 'Template default', 30, true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
   RETURNING id
 )
 SELECT id AS tf_id FROM ins;
@@ -110,7 +110,7 @@ SELECT id AS tf_id FROM ins;
 CREATE TEMP TABLE tmp_rip_tf_sempre AS WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, attivo, ripetibilita)
   VALUES ((SELECT tp_id FROM tmp_rip_tp), 'TF_RIP_SEMPRE', 'Template SEMPRE', 40, true, 'SEMPRE')
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET ripetibilita = EXCLUDED.ripetibilita
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET ripetibilita = EXCLUDED.ripetibilita
   RETURNING id
 )
 SELECT id AS tf_id FROM ins;

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/workflow_definizioni.md" %}
 # 📚 Tabella `workflow_definizioni`
 
 ## 🗂️ Campi principali
@@ -37,6 +38,11 @@
 | uq_workflow_definizioni_id_tipo | `CREATE UNIQUE INDEX uq_workflow_definizioni_id_tipo ON pratiche.workflow_definizioni USING btree (id, tipo_prestazione_id)` |
 | uq_workflow_definizioni_pubblicata | `CREATE UNIQUE INDEX uq_workflow_definizioni_pubblicata ON pratiche.workflow_definizioni USING btree (tipo_prestazione_id, emittente_fiscale_id) NULLS NOT DISTINCT WHERE ((stato)::text = 'PUBBLICATA'::text)` |
 | uq_workflow_definizioni_scope_versione | `CREATE UNIQUE INDEX uq_workflow_definizioni_scope_versione ON pratiche.workflow_definizioni USING btree (tipo_prestazione_id, emittente_fiscale_id, versione) NULLS NOT DISTINCT` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_workflow_definizioni_a10_guard_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_workflow_definizioni_guard()` |
 
 ---
 {% include-markdown "signature-core.md" %}

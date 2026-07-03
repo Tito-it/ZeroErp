@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/trgfn_tipi_prestazione_bootstrap_definizione.md" %}
 # ⚙️ Funzione `trgfn_tipi_prestazione_bootstrap_definizione`
 
 ```sql

@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Rimozione dei vincoli UNIQUE PER-TIPO su template_flussi (Fase 2).
+# (brief-db-step-dominio-e-definizioni-versionate Parte 2 / Fase 2, §2.1 racc.3)
+#
+# Con le edizioni versionate un TIPO puo' avere PIU' definizioni (preset + fork
+# + versioni) e i loro template condividono gli stessi CODICI: i vincoli
+# per-tipo diventano errati e bloccherebbero fork/nuova-versione. Si rimuovono a
+# favore degli equivalenti PER-DEFINIZIONE, gia' creati in Fase 0
+# (20260702-19): uq_template_flussi_definizione_codice,
+# uq_template_flussi_chiusura_definizione.
+#
+#   - uq_pratiche_template_flussi_tipo_codice = (tipo_prestazione_id, codice)
+#     -> e' una table CONSTRAINT: ALTER TABLE ... DROP CONSTRAINT.
+#   - uq_template_flussi_chiusura = (tipo_prestazione_id) WHERE chiude_pratica
+#     -> e' solo un INDICE unico parziale: DROP INDEX.
+#
+# ⚠️ Impatto pgTAP: 19 file usavano ON CONFLICT (tipo_prestazione_id, codice);
+# migrati a (definizione_id, codice) nello stesso commit (l'indice per-def
+# esiste e definizione_id e' valorizzato dall'auto-default). Seed CSV non
+# impattati (loadUpdateData primaryKey:id). BE non impattato (nessun ON
+# CONFLICT su quella chiave nel codice attivo).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260703-05-drop-template-flussi-unique-per-tipo-mctit.yaml
+
+  - changeSet:
+      id: 20260703-05-drop-template-flussi-unique-per-tipo
+      author: mctit
+      comment: >
+        Rimuove i vincoli per-tipo su template_flussi
+        (uq_pratiche_template_flussi_tipo_codice constraint +
+        uq_template_flussi_chiusura index): con le edizioni versionate un tipo
+        ha piu' definizioni con gli stessi codici. Restano gli equivalenti
+        per-definizione (Fase 0).
+      preConditions:
+        - onFail: HALT
+        # Gli equivalenti per-definizione (Fase 0) devono esistere prima di
+        # rimuovere quelli per-tipo. sqlCheck (non indexExists) per risolvere
+        # in modo esplicito lo schema pratiche.
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_indexes
+               WHERE schemaname = 'pratiche'
+                 AND indexname IN ('uq_template_flussi_definizione_codice',
+                                   'uq_template_flussi_chiusura_definizione');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pratiche.template_flussi
+                DROP CONSTRAINT IF EXISTS uq_pratiche_template_flussi_tipo_codice;
+              DROP INDEX IF EXISTS pratiche.uq_template_flussi_chiusura;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino best-effort (fallisce se esistono gia' piu' definizioni
+              -- per tipo con codici collidenti, cioe' dopo il primo fork).
+              ALTER TABLE pratiche.template_flussi
+                ADD CONSTRAINT uq_pratiche_template_flussi_tipo_codice
+                UNIQUE (tipo_prestazione_id, codice);
+              CREATE UNIQUE INDEX uq_template_flussi_chiusura
+                ON pratiche.template_flussi (tipo_prestazione_id)
+                WHERE chiude_pratica;

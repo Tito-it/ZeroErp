@@ -16,9 +16,12 @@
 > [brief-be-fe-step-dominio-e-definizioni-versionate.md](brief-be-fe-step-dominio-e-definizioni-versionate.md)
 > — consumi backend/frontend, da rilasciare in lockstep dove indicato.
 >
-> **Stato (2026-07-02)**: **Parte 1 ✅ APPLICATA + TESTATA** (dettaglio in coda a §1.8) ·
-> **Parte 2 Fase 0 ✅ APPLICATA + TESTATA** (dettaglio in coda a §2.1) · **doc manuale
-> fatta** per entrambe · commit in attesa di "procedi" · prossimo: **Fase 1** (§2.2).
+> **Stato (2026-07-03)**: **Parte 1 ✅** · **Fase 0 ✅** (committate) · **Fase 1 ✅
+> APPLICATA + TESTATA + DOC** (§2.2) · **Fase 2a ✅ APPLICATA + TESTATA + DOC** (fork/
+> versioni/pubblica/drift + drop uniques; dettaglio in coda a §2.3) — commit in attesa di
+> "procedi". · Prossimo: **Fase 2b** (immutabilità strutturale template «Leggera») +
+> consumi BE/FE Parte 1 + switch `get_percorso_pratica`→`definizione_id` (lockstep pre-fork,
+> ora necessario perché i fork esistono).
 
 ---
 
@@ -422,29 +425,76 @@ bloccherebbe. Adeguamento richiesto:
 - verificare le colonne di `regole_generazione`: se referenziano template di **origine** per
   id, in Fase 2 le regole entrano nel set di copia del fork (C6) con remap degli id; il lato
   **destinazione** resta risolto per codice a runtime.
-- verificare anche `pratiche.fn_coda_lavoro_operatore`: se joina `template_flussi` per tipo,
-  va portata sulla definizione pinnata della pratica.
+- `pratiche.fn_coda_lavoro_operatore`: **VERIFICATA (2026-07-03) — nessun cambio**. Joina il
+  template per `tf.id = c.template_flusso_id` (il template del flusso **già istanziato**), non
+  per tipo → è indifferente alla definizione. Il join per tipo che diventa definizione-aware è
+  solo `get_percorso_pratica` (BE, companion §BE-2.2).
 
-#### D2-9 — Immutabilità PUBBLICATA + transizioni di stato
+Codice fail-fast (D2-8): `GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE` (512). Deciso fail-fast
+(non skip+log): coerente col dispatch in-transazione. In Fase 1 (nessun fork) il remap
+risolve allo stesso id del preset → no-op comportamentale; serve perché il guard D2-7 passi
+anche in presenza di fork (Fase 2).
 
-- Trigger sulle righe di `workflow_definizioni`: transizioni ammesse solo
-  `BOZZA→PUBBLICATA` e `PUBBLICATA→RITIRATA` (raise `DEFINIZIONE_TRANSIZIONE_NON_AMMESSA`);
-  header strutturale immutabile fuori da BOZZA (tipo, emittente, versione, provenance)
-  → `DEFINIZIONE_PUBBLICATA_IMMUTABILE`; `descrizione`/`meta` sempre correggibili.
-- Trigger su `template_flussi` **e figli** (`template_flussi_prerequisiti`,
-  `template_flussi_canali`, `template_flussi_handler_eventi`, `competenze_flussi`,
-  `formule_tempo`, futura whitelist C3): INSERT/UPDATE/DELETE bloccati se la definizione del
-  template non è BOZZA → `DEFINIZIONE_PUBBLICATA_IMMUTABILE`; su `template_flussi` la sola
-  `descrizione` resta aggiornabile (C4). ⚠️ Regola guard-restrittivo: prima di scrivere
-  questi trigger, grep dei pgTAP che creano/modificano template al volo (molti test creano
-  template sintetici: le fixture dovranno crearli dentro una definizione BOZZA di test o
-  appoggiarsi a definizioni di test dedicate — prevedere un helper di fixture).
+#### D2-9 — Immutabilità: header/pin ora, template rinviati alla Fase 2
+
+**In Fase 1 (fatto ora):**
+
+- **`trgfn_workflow_definizioni_guard`** (BEFORE UPDATE OF stato/tipo/emittente/versione/
+  provenance): transizioni ammesse solo `BOZZA→PUBBLICATA` e `PUBBLICATA→RITIRATA`
+  (`DEFINIZIONE_TRANSIZIONE_NON_AMMESSA` 510); header strutturale immutabile fuori da BOZZA
+  (tipo, emittente, versione, provenance) → `DEFINIZIONE_PUBBLICATA_IMMUTABILE` (509);
+  `descrizione`/`meta` sempre correggibili (l'evento `UPDATE OF` non li include).
+- **`trgfn_pratiche_guard_pin_immutabile`** (BEFORE UPDATE OF definizione_id): il pin, una
+  volta valorizzato, non cambia → `PRATICHE_PIN_IMMUTABILE` (513). Ammette solo NULL→valore
+  (il backfill Fase 0, che in replay CI gira **dopo** questo guard): la condizione è
+  `OLD.definizione_id IS NOT NULL AND OLD IS DISTINCT FROM NEW`.
+
+**Rinviato alla Fase 2 — immutabilità strutturale dei template su PUBBLICATA** (`template_flussi`
++ figli). ⚠️ **Non fattibile in Fase 1**: il preset v1 è PUBBLICATA e i **seed CSV**
+(`template_flussi.csv`) scrivono i template proprio lì via auto-default; un guard di
+immutabilità li bloccherebbe tutti. Ha senso solo col workflow BOZZA→publish (Fase 2/3).
+
+**DECISIONE OWNER (2026-07-03) — strategia immutabilità = «Leggera»** per la Fase 2:
+
+- il **preset** (workflow "di fabbrica", mantenuto via CSV/migrazioni) **resta editabile da
+  seed**, come oggi — zero attrito sul workflow di seeding;
+- solo le **edizioni forkate** (per-emittente) si **congelano alla pubblicazione**: è lì che
+  serve la garanzia "la società A non cambia da sotto";
+- il pin (Fase 0) già evita il caso pericoloso (pratiche in volo che cambiano roadmap) *a
+  patto di alzare la versione quando si vuole una modifica pulita* — disciplina, non blocco,
+  accettabile con un solo manutentore. Scartata la «Severa» (preset congelato, ogni modifica
+  = nuova versione): cerimonia sul seed senza reale beneficio con un solo autore.
+
+**Seed di `pratiche.flussi` (istanze) via CSV — deciso 2026-07-03**: previsto (dati
+demo/collaudo). Compatibile con D2-7 **per costruzione**: un flusso seedato ha template e
+pratica dello stesso tipo → stessa definizione preset → guard soddisfatto. Il guard scatta
+solo su seed incoerente (flusso con template di altra definizione). pgTAP di Fase 1 copre
+entrambi i casi.
 
 **Accettazione Fase 1**: pratiche nuove pinnate (auto-pin trasparente per il BE); flusso con
-template fuori definizione rifiutato; definizioni pubblicate immutabili; generazione
-cross-pratica funziona con remap per codice; `get_percorso_pratica` BE passato alla join per
-`definizione_id` (companion §BE-2.2 — **lockstep**: da Fase 1 il percorso per tipo diventerebbe
-ambiguo appena esistono due definizioni dello stesso tipo).
+template fuori definizione rifiutato (508); pin e header/stato definizione immutabili
+(509/510/513); generazione cross-pratica funziona con remap per codice (512); flusso-da-CSV
+coerente ammesso, incoerente rifiutato. `get_percorso_pratica` BE (join per tipo) **resta
+corretto in Fase 1** (una definizione per tipo); il passaggio a `definizione_id` è **lockstep
+con la Fase 2** (companion §BE-2.2 — diventa ambiguo solo col primo fork), non blocca la Fase 1.
+
+**STATO Fase 1 — FATTA (2026-07-03, applicata + pgTAP verdi):**
+
+- changeset (tutti `20_code/pratiche`): `20260703-01` (guard flusso↔definizione 508),
+  `-02` (fn_genera_pratica_da_flusso definizione-aware, remap per codice + 512, `%TYPE`),
+  `-03` (guard workflow_definizioni header/transizioni 509/510), `-04` (pin immutabile 513);
+- CSV: `messaggi_errore.csv` +508/509/510/512/513 (solo append; **511 riservato** a
+  `DEFINIZIONE_NON_PUBBLICABILE` Fase 2);
+- pgTAP: `test-workflow-definizioni-fase1.sql` (plan 12) — suite pratiche in regressione
+  verde (incluso `test-generazione-cross-pratica.sql` col remap no-op);
+- doc manuale: nuove `manual/trgfn_flussi_guard_definizione.md`,
+  `manual/trgfn_workflow_definizioni_guard.md`,
+  `manual/trgfn_pratiche_guard_pin_immutabile.md`; aggiornate
+  `manual/fn_genera_pratica_da_flusso.md` (remap+512), `manual/flussi.md` (guard 508 +
+  fix esito FK/classe); autogen rigenerata (Tid).
+- **NON fatto (rinviato/lockstep)**: immutabilità strutturale template (Fase 2, «Leggera»);
+  switch BE `get_percorso_pratica` → `definizione_id` (lockstep pre-fork, companion §BE-2.2);
+  consumi BE/FE Parte 1.
 
 ### 2.3 Fase 2 — Fork, versioni, pubblicazione, drift
 
@@ -470,6 +520,34 @@ ambiguo appena esistono due definizioni dello stesso tipo).
 **Accettazione Fase 2**: fork completo e coerente (pgTAP: conta figli sorgente = conta figli
 copia, per tabella); pubblicazione atomica con ritiro della precedente; le pratiche in volo
 restano sul pin; drift visibile a vista.
+
+**STATO Fase 2a — FATTA (2026-07-03, applicata + pgTAP verdi):**
+
+- `00_schema`: `20260703-05` DROP dei vincoli per-tipo su `template_flussi`
+  (`uq_pratiche_template_flussi_tipo_codice` constraint + `uq_template_flussi_chiusura`
+  index) — restano gli equivalenti per-definizione (Fase 0). **Churn associato**: 19 pgTAP
+  migrati da `ON CONFLICT (tipo_prestazione_id, codice)` a `(definizione_id, codice)` (34
+  occorrenze).
+- `20_code`: `20260703-06` **fn_copia_definizione** (motore, 6 figli con remap per codice;
+  `regole_generazione` copiata con origine remappata, dest lasciata a runtime),
+  `-07` **fn_fork_definizione** + **fn_nuova_versione_definizione**, `-08`
+  **fn_pubblica_definizione** (validazione ≥1 step attivo + no-ciclo via CTE ricorsiva +
+  ritira/pubblica atomico, 511), `-09` **vw_definizioni_drift** (`security_invoker`).
+- CSV: `messaggi_errore.csv` +`DEFINIZIONE_NON_PUBBLICABILE` (511) — solo append.
+- pgTAP: `test-workflow-definizioni-fase2.sql` (plan 14, con pre-cleanup in testa perché
+  `pg_prove` committa) — full-loop pratiche verde.
+- doc manuale: nuove `manual/fn_copia_definizione.md`, `fn_fork_definizione.md`,
+  `fn_nuova_versione_definizione.md`, `fn_pubblica_definizione.md`, `vw_definizioni_drift.md`;
+  aggiornate `workflow_definizioni.md`, `template_flussi.md`; autogen rigenerata (Tid).
+- **Stale tests pre-esistenti sistemati nel full-loop** (NON regressioni Fase 2, tutti da
+  evoluzioni DB di giugno-luglio; il guard 508 ne cambiava solo il messaggio d'errore):
+  `test-guard-pratica-terminale` (D1 chiusura-flussi-aperti, `20260701`),
+  `test-transizioni-stati` + `test-sospensioni-tempi` (`template_flusso_id` NOT NULL,
+  `20260614-09`), `test-template-flussi-handler-eventi` (CHECK→FK esito, `20260701-03`).
+- **NON fatto (Fase 2b)**: immutabilità strutturale template su PUBBLICATA («Leggera»:
+  preset editabile da seed, solo fork congelati). Lockstep BE: switch
+  `get_percorso_pratica`→`definizione_id` **ora necessario** (i fork rendono ambiguo il join
+  per tipo).
 
 ### 2.4 Errori nuovi Parte 2 (stesse avvertenze §1.5, id proposti)
 

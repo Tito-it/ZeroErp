@@ -134,7 +134,7 @@ CREATE TEMP TABLE tmp_tg_tfa AS WITH ins AS (
       'TF_GUARD_FL_A',
       'Template A guard flussi',
       true
-    ) ON CONFLICT (tipo_prestazione_id, codice) DO
+    ) ON CONFLICT (definizione_id, codice) DO
   UPDATE
   SET descrizione = EXCLUDED.descrizione
   RETURNING id
@@ -151,7 +151,7 @@ CREATE TEMP TABLE tmp_tg_tfb AS WITH ins AS (
       'TF_GUARD_FL_B',
       'Template B (prerequisito)',
       true
-    ) ON CONFLICT (tipo_prestazione_id, codice) DO
+    ) ON CONFLICT (definizione_id, codice) DO
   UPDATE
   SET descrizione = EXCLUDED.descrizione
   RETURNING id

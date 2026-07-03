@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/trgfn_template_flussi_default_definizione.md" %}
 # ⚙️ Funzione `trgfn_template_flussi_default_definizione`
 
 ```sql

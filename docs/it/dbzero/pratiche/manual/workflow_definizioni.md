@@ -11,6 +11,11 @@ Approfondimento tabelle:
 Funzioni collegate:
 >
 [pratiche.fn_risolvi_definizione](fn_risolvi_definizione.md)
+> [pratiche.fn_fork_definizione](fn_fork_definizione.md)
+> [pratiche.fn_nuova_versione_definizione](fn_nuova_versione_definizione.md)
+> [pratiche.fn_pubblica_definizione](fn_pubblica_definizione.md)
+> [pratiche.fn_copia_definizione](fn_copia_definizione.md)
+> [pratiche.vw_definizioni_drift](vw_definizioni_drift.md)
 > [pratiche.trgfn_tipi_prestazione_bootstrap_definizione](trgfn_tipi_prestazione_bootstrap_definizione.md)
 > [pratiche.trgfn_template_flussi_default_definizione](trgfn_template_flussi_default_definizione.md)
 > [pratiche.trgfn_pratiche_default_definizione](trgfn_pratiche_default_definizione.md)
@@ -46,10 +51,17 @@ pratiche aperte).
 * **Bootstrap**: ogni nuovo tipo prestazione nasce con il suo **preset v1 PUBBLICATA**
   ([trigger di bootstrap](trgfn_tipi_prestazione_bootstrap_definizione.md)) —
   invariante: `fn_risolvi_definizione` risolve sempre per un tipo appena creato.
-* **Fase 0** (attuale): una definizione preset v1 per tipo ≡ comportamento odierno,
-  nessun effetto visibile. **Fase 1**: guard (flusso↔definizione, immutabilità
-  PUBBLICATA, immutabilità del pin, generazione cross-pratica definizione-aware).
-  **Fase 2**: fork/nuova versione/pubblica + drift (`preset_origine_id`/`versione_origine`).
+* **Fase 0**: una definizione preset v1 per tipo ≡ comportamento odierno (bootstrap +
+  auto-pin/auto-default). **Fase 1**: guard (flusso↔definizione 508, immutabilità header
+  509/transizioni 510, immutabilità del pin 513, generazione definizione-aware).
+  **Fase 2** (attuale): **fork/nuova versione/pubblica** ([fn_fork_definizione](fn_fork_definizione.md),
+  [fn_nuova_versione_definizione](fn_nuova_versione_definizione.md),
+  [fn_pubblica_definizione](fn_pubblica_definizione.md), motore
+  [fn_copia_definizione](fn_copia_definizione.md)) + **drift**
+  ([vw_definizioni_drift](vw_definizioni_drift.md)); rimossi i vincoli per-tipo su
+  `template_flussi` (più definizioni per tipo con gli stessi codici). **Rinviato** (Fase 2b):
+  immutabilità strutturale dei template su PUBBLICATA (strategia «Leggera»: preset editabile
+  da seed, solo i fork si congelano).
 
 ---
 

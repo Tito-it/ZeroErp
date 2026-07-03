@@ -19,7 +19,7 @@
 -- 5) ANNULLATA: INSERT nuovo flusso -> throws (490)
 -- 6) ANNULLATA: UPDATE stato flusso (IN_CORSO->COMPLETATO) -> throws (491)
 -- 7) ANNULLATA: UPDATE esito/note_esito (stato invariato) -> throws (491)
--- 8) [criterio 6] APERTA -> CHIUSA con flusso attivo -> lives (terminazione permessa)
+-- 8) APERTA -> CHIUSA (flusso completato prima, per D1) -> lives (terminazione permessa)
 -- 9) CHIUSA: INSERT nuovo flusso -> throws (490)
 -- 10) CHIUSA: UPDATE stato flusso -> throws (491)
 -- 11) Cleanup
@@ -76,7 +76,7 @@ CREATE TEMP TABLE tmp_pt_tf AS
 WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo, ripetibilita)
   VALUES ((SELECT tp_id FROM tmp_pt_tp), 'TEST_PT_STEP', 'Step test', 10, false, true, 'SEMPRE')
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione, ripetibilita = EXCLUDED.ripetibilita
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione, ripetibilita = EXCLUDED.ripetibilita
   RETURNING id
 )
 SELECT id AS tf_id FROM ins;
@@ -205,8 +205,13 @@ SELECT throws_ok(
 );
 
 -- =========================================================
--- 8) [criterio 6] APERTA -> CHIUSA con flusso attivo -> lives
---    (nessun template obbligatorio -> guard chiusura non blocca)
+-- 8) APERTA -> CHIUSA -> lives.
+--    NB: dal guard D1 (20260701, brief-db-chiusura-pratica-nessun-lavoro-pendente,
+--    err 501) la CHIUSA richiede che non restino flussi ISTANZIATI aperti
+--    (indipendentemente da obbligatorio). Il flusso va quindi portato a
+--    terminale PRIMA di chiudere: qui lo completo (DA_ESEGUIRE->IN_CORSO->
+--    COMPLETATO, esito verdetto). Sotto test resta il guard "pratica terminale"
+--    (490/491), non D1.
 -- =========================================================
 INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
 VALUES (
@@ -222,13 +227,19 @@ SELECT id AS flusso_id
  ORDER BY id DESC
  LIMIT 1;
 
+-- Porta il flusso a terminale (COMPLETATO) prima della chiusura (D1).
+UPDATE pratiche.flussi SET stato_id = (SELECT fl_in_corso FROM tmp_pt_refs)
+ WHERE id = (SELECT flusso_id FROM tmp_pt_flusso2);
+UPDATE pratiche.flussi SET stato_id = (SELECT fl_completato FROM tmp_pt_refs), esito = 'POSITIVO'
+ WHERE id = (SELECT flusso_id FROM tmp_pt_flusso2);
+
 SELECT lives_ok(
   format(
     'UPDATE pratiche.pratiche SET stato_id = %s WHERE id = %s',
     (SELECT st_chiusa FROM tmp_pt_refs),
     (SELECT pratica_id FROM tmp_pt_pratica2)
   ),
-  '8. APERTA -> CHIUSA con flusso attivo: terminazione consentita'
+  '8. APERTA -> CHIUSA (flusso completato prima, per D1): terminazione consentita'
 );
 
 -- =========================================================

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/trgfn_pratiche_default_definizione.md" %}
 # ⚙️ Funzione `trgfn_pratiche_default_definizione`
 
 ```sql

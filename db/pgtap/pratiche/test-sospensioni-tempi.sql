@@ -96,13 +96,13 @@ CREATE TEMP TABLE tmp_st_tpl AS
 WITH tpl_da AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, attivo)
   VALUES ((SELECT tp_id FROM tmp_st_tp), 'STEP_DA', 'Step da (partenza)', 1, true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
   RETURNING id
 ),
 tpl_a AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, attivo)
   VALUES ((SELECT tp_id FROM tmp_st_tp), 'STEP_A', 'Step a (arrivo)', 2, true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
   RETURNING id
 )
 SELECT
@@ -351,9 +351,12 @@ WHERE id = (SELECT pratica_id FROM tmp_st_pratica2);
 
 CREATE TEMP TABLE tmp_st_flusso_altro AS
 WITH ins AS (
-  INSERT INTO pratiche.flussi (pratica_id, stato_id, sequenza)
+  -- template_flusso_id e' NOT NULL dal 20260614-09: riusa STEP_DA della pratica2
+  -- (stesso tipo/definizione -> guard flusso<->definizione 508 soddisfatto).
+  INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id, sequenza)
   VALUES (
     (SELECT pratica_id FROM tmp_st_pratica2),
+    (SELECT tpl_da_id FROM tmp_st_tpl),
     (SELECT sf_da_eseguire FROM tmp_st_refs),
     1
   )

@@ -82,7 +82,7 @@ CREATE TEMP TABLE tmp_bv_tf AS WITH ins AS (
     ((SELECT tp_id FROM tmp_bv_tp), 'TF_BV_APPROVAZIONE', 'Approvazione (nodo del bivio)', 10, true, true),
     ((SELECT tp_id FROM tmp_bv_tp), 'TF_BV_CONFERMA', 'Conferma (ramo POSITIVO)', 20, true, true),
     ((SELECT tp_id FROM tmp_bv_tp), 'TF_BV_NEGOZIAZIONE', 'Negoziazione (ramo NEGATIVO)', 30, true, true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
   RETURNING id, codice
 )
 SELECT

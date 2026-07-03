@@ -85,7 +85,7 @@ WITH ins AS (
     ((SELECT tp_id FROM tmp_ea_tp), 'TF_EA_B', 'Template B (prerequisito esito-aware)', true, 'SEMPRE'),
     ((SELECT tp_id FROM tmp_ea_tp), 'TF_EA_C', 'Template C (richiede D, esito qualsiasi)', true, 'SEMPRE'),
     ((SELECT tp_id FROM tmp_ea_tp), 'TF_EA_D', 'Template D (prerequisito retro-compat)', true, 'SEMPRE')
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione, ripetibilita = EXCLUDED.ripetibilita
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione, ripetibilita = EXCLUDED.ripetibilita
   RETURNING id, codice
 )
 SELECT
