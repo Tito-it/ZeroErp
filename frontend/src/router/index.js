@@ -284,6 +284,12 @@ const router = createRouter({
 
         // --- Vendite ---
         {
+          path: 'vendite/dashboard-fatturazione',
+          name: 'vendite-dashboard-fatturazione',
+          component: () => import('../vendite/views/DashboardFatturazioneView.vue'),
+          meta: { domain: 'vendite', menuKey: 'dashboard-fatturazione' }
+        },
+        {
           path: 'vendite/preventivi',
           name: 'vendite-preventivi',
           component: () => import('../vendite/preventivi/views/PreventiviView.vue'),

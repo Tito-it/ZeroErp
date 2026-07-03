@@ -280,7 +280,7 @@ Nuova rotta `/vendite/dashboard-fatturazione` (meta.domain `vendite`, voce menu 
    dell'espansione listino e calcolo del canone atteso.
 2. **Riconciliazione con le fatture emesse** — sesta colonna "Fatture del mese"
    (Σ per `data_contabilizzazione` o competenza lotto): candidata naturale per v2,
-   chiude il funnel end-to-end.
+   chiude il funnel end-to-end. Evoluta in **pagina dedicata** (vedi annotazioni §12).
 3. **DDT e consumi come aree autonome**, trend multi-mese (linee), export XLSX del
    drill-down, snapshot storici/materializzazione (predisposta ma non attivata, §5).
 
@@ -337,3 +337,32 @@ Diario applicazione + test (2026-07-03, DB sviluppo):
   pattern batch documentato da `E_CONTRATTO_EMITTENTE_NON_RISOLTO`);
   `commesse_attivita.competenza_al` è NOT NULL (niente attività "aperte").
 * Esito finale: `test-vw-dash-fatturazione-v1.sql` **19/19 verde**.
+
+## 12. Annotazioni v2 — Dashboard fatturato (idee Tid 2026-07-03, da non perdere)
+
+Durante la validazione grafica del mock FE è emerso che questa dashboard copre il
+funnel **fino all'emissione** (commesse → attività fatturabili) ma manca il tratto
+finale: **il fatturato**. Decisione: NON si aggiunge una sesta card qui — sarà una
+**pagina dashboard dedicata**, da progettare con un brief proprio quando si aprirà
+il cantiere. Idee da riprendere in quel brief:
+
+1. **Riconciliazione commesse ↔ fatturato** — per mese di competenza, confronto tra
+   il valore presente in commessa (Σ `commesse_attivita`) e il valore effettivamente
+   fatturato (`attivita_fatturabili.fattura_riga_id IS NOT NULL` → righe fattura):
+   la differenza è il "non ancora fatturato", speculare al totale/transitato di
+   questa dashboard ma sull'ultimo tratto del funnel.
+2. **Breakdown del fatturato per stato fattura** — il totale fatturato da solo non
+   basta: serve la ripartizione per stato del documento fiscale (es. quanto in
+   BOZZA/DRAFT, quanto numerato, quanto inviato a SDI, ecc. — stati da
+   `config.stati_doc_fiscale`), così si vede quanta parte del fatturato del mese è
+   davvero consolidata e quanta è ancora in lavorazione nella pipeline lotti.
+3. **Log di fatturazione in dashboard** — pannello/drill-down sugli errori: fatture
+   ferme in errore nella pipeline, alimentato da `vendite.fatture_log` (flag
+   `critical`) e dai run della pipeline lotti (`fatturazione_lotti_task_runs`).
+   Obiettivo: dal cruscotto si vede subito se c'è un lotto/fattura inceppato, senza
+   andare a caccia nei log.
+
+Nota di perimetro: il punto 2 e il punto 3 riguardano lo **stato interno** del
+processo di fatturazione (pipeline lotti), non il transito per competenza — un
+motivo in più per tenerli su una pagina separata con semantica propria. La sesta
+colonna "Fatture del mese" citata in §10.2 resta assorbita da questa pagina.

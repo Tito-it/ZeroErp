@@ -26,6 +26,7 @@ export const NAV_ICONS = Object.freeze({
   FATTURE: 'app-nav-icon app-nav-icon-fatture',
   LISTINI: 'app-nav-icon app-nav-icon-listini',
   APPROVAZIONI_PREZZO: 'app-nav-icon app-nav-icon-approvazioni-prezzo',
+  DASHBOARD_FATTURAZIONE: 'pi pi-chart-pie',
   PROMO_ARTICOLI: 'app-nav-icon app-nav-icon-promo-articoli',
   PERSONALIZZAZIONI_LISTE: 'pi pi-th-large',
   HOME: 'pi pi-home',
@@ -155,6 +156,7 @@ export const DOMAIN_MENUS = {
     { key: 'uom-tipi', icon: NAV_ICONS.TAGS, to: '/catalogo/uom-tipi' }
   ],
   'vendite': [
+    { key: 'dashboard-fatturazione', icon: NAV_ICONS.DASHBOARD_FATTURAZIONE, to: '/vendite/dashboard-fatturazione' },
     { key: 'preventivi', icon: NAV_ICONS.PREVENTIVI, to: '/vendite/preventivi' },
     { key: 'offerte', icon: NAV_ICONS.OFFERTE, to: '/vendite/offerte' },
     { key: 'ordini', icon: NAV_ICONS.ORDINI, to: '/vendite/ordini' },
