@@ -2,8 +2,11 @@
 
 > **Tipo**: brief di design autorevole (modello + piano; il cambio schema sarà delegato
 > al team DB con brief dedicato) · **Data**: 2026-07-02
-> **Owner**: Tid · **Stato**: 🟠 proposto — **modello deciso** (C «edizioni versionate +
-> fork», decisione 2026-07-02), cantiere da avviare.
+> **Owner**: Tid · **Stato**: 🟢 in corso — **modello deciso** (C «edizioni versionate +
+> fork», decisione 2026-07-02). **Fasi 0–2 delegate al DB** in
+> [brief-db-step-dominio-e-definizioni-versionate.md](brief-db-step-dominio-e-definizioni-versionate.md)
+> (Parte 2); **Fasi 0–1 applicate dal team DB (2026-07-02)**. Questo brief resta il
+> **design-of-record**: razionale, modello, **Fase 3** (UI admin V4/V5) e domande aperte.
 >
 > **Origine**: voce **V2** e §2.2 di
 > [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md) — il

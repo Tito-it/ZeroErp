@@ -2760,6 +2760,7 @@
     "flusso_completa_smistamento": "Completa smistamento",
     "flusso_completa_dominio_hint": "L'esito viene calcolato automaticamente in base al lavoro svolto: non serve sceglierlo.",
     "flusso_completa_dominio_errore": "Impossibile completare lo step: verifica che lo smistamento sia stato eseguito su tutte le righe.",
+    "flusso_esito_dominio_senza_azione": "L'esito di questo step è calcolato dal processo di dominio: si completa dall'azione dedicata, non da qui.",
     "flusso_esiti_non_disponibili": "Elenco esiti non disponibile: chiudere e riaprire per riprovare",
     "competenze_flussi": "Competenze flussi",
     "visualizzazione_pratica": "Visualizzazione pratica codice: {codice}",

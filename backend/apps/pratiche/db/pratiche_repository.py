@@ -603,8 +603,12 @@ class PraticheRepository:
                 END AS ramo,
                 {_DOC_SORGENTE_SELECT}
             FROM pratiche.pratiche p
+            -- Percorso definizione-aware (workflow versionati, Fase 1 / companion
+            -- BE-2.2): i template si selezionano per la DEFINIZIONE pinnata sulla
+            -- pratica, non per tipo. Da quando esistono più definizioni dello
+            -- stesso tipo (fork, Fase 2) la join per tipo duplicherebbe le righe.
             JOIN pratiche.template_flussi tf
-              ON tf.tipo_prestazione_id = p.tipo_prestazione_id AND tf.attivo
+              ON tf.definizione_id = p.definizione_id AND tf.attivo
             LEFT JOIN pratiche.azioni_ui au ON au.id = tf.azione_ui_id
             LEFT JOIN pratiche.fn_check_chiusura_pratica(%s) cc
               ON cc.template_flusso_id = tf.id

@@ -173,6 +173,29 @@ class FlussiApiTests(JwtMockedApiTest):
         )
         mock_completa.assert_not_called()
 
+    # Scopo: step DOMINIO (esito calcolato dal dominio) — POST COMPLETATO dal
+    # percorso operatore respinto con 400 parlante (companion BE-1.3): va chiuso
+    # dall'azione di dominio dedicata, non qui. completa_flusso mai chiamato.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.completa_flusso")
+    @patch(f"{_VIEWS}.PraticheRepository")
+    def test_post_stato_flusso_dominio_respinto(self, MockRepo, mock_completa, _auth):
+        repo = MockRepo.return_value
+        repo.get_flusso.return_value = _mock_flusso_row(5, pratica_id=1)
+        # POSITIVO è un verdetto (passa il guard selezionabile); è la modalità
+        # DOMINIO dello step a respingere il completamento manuale.
+        repo.get_esito_flusso_vocabolario.return_value = (True, True)
+        repo.get_flusso_esito_config.return_value = ("DOMINIO", None)
+
+        response = self.client.post(
+            "/api/v1/pratiche/1/flussi/5/stato/",
+            data=json.dumps({"nuovo_stato": "COMPLETATO", "esito": "POSITIVO"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"]["code"], "E_FLUSSO_VALIDATION")
+        mock_completa.assert_not_called()
+
     # Scopo: Verifica POST avvio flusso (IN_CORSO).
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_VIEWS}.pratiche_service.avvia_flusso")
