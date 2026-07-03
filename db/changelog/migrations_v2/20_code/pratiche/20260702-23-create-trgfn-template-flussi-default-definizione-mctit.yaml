@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Auto-default di template_flussi.definizione_id al preset del tipo.
+# (brief-db-step-dominio-e-definizioni-versionate Parte 2 / Fase 0,
+#  raffinamento §2.1: anticipo del default per rendere sicuro il NOT NULL)
+#
+# BEFORE INSERT: se definizione_id e' NULL, risolve il PRESET del tipo
+# (fn_risolvi_definizione con emittente NULL). Effetto: seed CSV e fixture
+# pgTAP esistenti (INSERT senza la colonna) continuano a funzionare invariati
+# anche dopo il SET NOT NULL.
+#
+# Prospettiva Fase 1/2: chi lavora su un'edizione specifica (fork/BOZZA)
+# passa definizione_id ESPLICITO (il default risolve solo il preset); il
+# guard di immutabilita' della PUBBLICATA (Fase 1) intercettera' comunque i
+# tentativi di aggiungere step a un'edizione pubblicata, default incluso.
+# Fase a10 con nome "default" < "guard": gira prima dei guard della tabella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260702-23-create-trgfn-template-flussi-default-definizione-mctit.yaml
+
+  - changeSet:
+      id: 20260702-23-create-trgfn-template-flussi-default-definizione
+      author: mctit
+      runOnChange: false
+      comment: >
+        Trigger BEFORE INSERT su pratiche.template_flussi: definizione_id NULL
+        -> preset del tipo via fn_risolvi_definizione(tipo, NULL). Seed e
+        fixture invariati dopo il NOT NULL.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: pratiche
+            tableName: template_flussi
+            columnName: definizione_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_default_definizione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: default del re-parent — un template inserito senza
+              --        edizione appartiene al PRESET del suo tipo (realta'
+              --        pre-fork). Le edizioni specifiche si passano esplicite.
+              BEGIN
+                IF NEW.definizione_id IS NULL THEN
+                  NEW.definizione_id := pratiche.fn_risolvi_definizione(NEW.tipo_prestazione_id, NULL);
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_template_flussi_default_definizione()
+                IS 'BEFORE INSERT su pratiche.template_flussi: se definizione_id e'' NULL lo risolve al preset PUBBLICATA del tipo (fn_risolvi_definizione). Mantiene invariati seed e fixture dopo il SET NOT NULL di Fase 0.';
+
+              DROP TRIGGER IF EXISTS trg_template_flussi_a10_default_definizione_ins
+                ON pratiche.template_flussi;
+
+              CREATE TRIGGER trg_template_flussi_a10_default_definizione_ins
+                BEFORE INSERT
+                ON pratiche.template_flussi
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_template_flussi_default_definizione();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_template_flussi_a10_default_definizione_ins
+                ON pratiche.template_flussi;
+              DROP FUNCTION IF EXISTS pratiche.trgfn_template_flussi_default_definizione();

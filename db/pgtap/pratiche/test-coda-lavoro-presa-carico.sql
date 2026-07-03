@@ -82,7 +82,7 @@ WITH ins AS (
     (SELECT tp_id FROM tmp_cl_tp),
     'TEST_CL_STEP', 'Step test coda lavoro', 10, false, 'INTERNA', true, 'SEMPRE'
   )
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione, ripetibilita = EXCLUDED.ripetibilita
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione, ripetibilita = EXCLUDED.ripetibilita
   RETURNING id
 )
 SELECT id AS tf_id FROM ins;

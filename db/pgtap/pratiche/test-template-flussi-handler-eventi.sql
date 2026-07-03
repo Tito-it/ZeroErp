@@ -14,7 +14,7 @@
 --    5. binding 9003 (APPROVAZIONE_CLIENTE imm.) -> COMPLETATO/POSITIVO/accetta_preventivo
 --    6. binding 9007 (APPROVAZIONE_CLIENTE diff.) -> COMPLETATO/POSITIVO/accetta_preventivo
 --    7. evento fuori vocabolario -> viola CHECK (23514)
---    8. esito_richiesto fuori vocabolario -> viola CHECK (23514)
+--    8. esito_richiesto fuori vocabolario -> viola FK (23503)
 --    9. handler_id inesistente -> viola FK (23503)
 --
 -- BEGIN; + ROLLBACK finale: nessuna manipolazione persiste.
@@ -105,15 +105,17 @@ SELECT throws_ok(
 );
 
 -- ============================================================
--- 8) esito fuori vocabolario -> CHECK chk_tfhe_esito (23514)
+-- 8) esito fuori vocabolario -> FK fk_tfhe_esito_richiesto (23503)
+--    Dal 20260701-03 esito_richiesto e' FK a config.esiti_flussi_pratiche
+--    (codice_interno), non piu' CHECK: un valore non a vocabolario viola la FK.
 -- ============================================================
 SELECT throws_ok(
     $$ INSERT INTO pratiche.template_flussi_handler_eventi
            (template_flusso_id, evento, esito_richiesto, handler_id)
        VALUES (9001, 'COMPLETATO', 'BOH', 9001) $$,
-    '23514',
+    '23503',
     NULL,
-    '8. esito_richiesto non ammesso -> viola CHECK (23514)'
+    '8. esito_richiesto non ammesso -> viola FK (23503)'
 );
 
 -- ============================================================

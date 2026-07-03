@@ -40,12 +40,14 @@ VALUES ('DA_ESEGUIRE','DA_ESEGUIRE','Da eseguire',true),
        ('COMPLETATO','COMPLETATO','Completato',true),
        ('ANNULLATO','ANNULLATO','Annullato',true)
 ON CONFLICT (codice_interno) DO NOTHING;
--- Esiti: base (POSITIVO) + di ramo (MERCE_PRESENTE/SOLO_SERVIZI). Se il seed e' gia'
--- applicato l'ON CONFLICT no-op; qui rende il test auto-contenuto.
-INSERT INTO config.esiti_flussi_pratiche (codice, codice_interno, descrizione)
-VALUES ('POSITIVO','POSITIVO','Esito positivo'),
-       ('MERCE_PRESENTE','MERCE_PRESENTE','Merce presente'),
-       ('SOLO_SERVIZI','SOLO_SERVIZI','Solo servizi')
+-- Esiti: base (POSITIVO, verdetto) + di ramo (MERCE_PRESENTE/SOLO_SERVIZI,
+-- is_verdetto=false). Se il seed e' gia' applicato l'ON CONFLICT no-op; qui rende
+-- il test auto-contenuto. is_verdetto ESPLICITO: il default colonna e' false e su
+-- DB vergine POSITIVO nascerebbe non-verdetto (guard esito classe 504 lo rifiuterebbe).
+INSERT INTO config.esiti_flussi_pratiche (codice, codice_interno, descrizione, is_verdetto)
+VALUES ('POSITIVO','POSITIVO','Esito positivo',true),
+       ('MERCE_PRESENTE','MERCE_PRESENTE','Merce presente',false),
+       ('SOLO_SERVIZI','SOLO_SERVIZI','Solo servizi',false)
 ON CONFLICT (codice_interno) DO NOTHING;
 INSERT INTO config.priorita_pratiche (codice, codice_interno, descrizione, sequenza, attivo)
 VALUES ('NORMALE','NORMALE','Normale',20,true) ON CONFLICT (codice_interno) DO NOTHING;
@@ -79,12 +81,15 @@ CREATE TEMP TABLE tmp_np_tp_biv AS WITH ins AS (
   VALUES ('TEST_NP_BIVIO','TEST_NP_BIVIO','Bivio esito-aware',true)
   ON CONFLICT (codice_interno) DO UPDATE SET descrizione=EXCLUDED.descrizione RETURNING id)
 SELECT id AS tp_id FROM ins;
+-- NP_SMIST e' modalita_esito=DOMINIO (esito calcolato dal dominio): il guard
+-- esito classe (20260702-17) ammette gli esiti di ramo SOLO sugli step DOMINIO.
 CREATE TEMP TABLE tmp_np_tf_biv AS WITH ins AS (
-  INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo)
-  VALUES ((SELECT tp_id FROM tmp_np_tp_biv),'NP_SMIST','Smistamento (bivio)',10,true,true),
-         ((SELECT tp_id FROM tmp_np_tp_biv),'NP_CONFERMA','Conferma ordine',20,true,true),
-         ((SELECT tp_id FROM tmp_np_tp_biv),'NP_INVIO','Invio a commessa',30,true,true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione=EXCLUDED.descrizione RETURNING id, codice)
+  INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo, modalita_esito)
+  VALUES ((SELECT tp_id FROM tmp_np_tp_biv),'NP_SMIST','Smistamento (bivio)',10,true,true,'DOMINIO'),
+         ((SELECT tp_id FROM tmp_np_tp_biv),'NP_CONFERMA','Conferma ordine',20,true,true,'MANUALE'),
+         ((SELECT tp_id FROM tmp_np_tp_biv),'NP_INVIO','Invio a commessa',30,true,true,'MANUALE')
+  ON CONFLICT (definizione_id, codice) DO UPDATE
+     SET descrizione=EXCLUDED.descrizione, modalita_esito=EXCLUDED.modalita_esito RETURNING id, codice)
 SELECT max(id) FILTER (WHERE codice='NP_SMIST')    AS tf_smist,
        max(id) FILTER (WHERE codice='NP_CONFERMA') AS tf_conf,
        max(id) FILTER (WHERE codice='NP_INVIO')    AS tf_invio
@@ -104,7 +109,7 @@ CREATE TEMP TABLE tmp_np_tf_d1 AS WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo)
   VALUES ((SELECT tp_id FROM tmp_np_tp_d1),'NP_OBBL','Obbligatorio',10,true,true),
          ((SELECT tp_id FROM tmp_np_tp_d1),'NP_OPT','Opzionale',20,false,true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione=EXCLUDED.descrizione RETURNING id, codice)
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione=EXCLUDED.descrizione RETURNING id, codice)
 SELECT max(id) FILTER (WHERE codice='NP_OBBL') AS tf_obbl,
        max(id) FILTER (WHERE codice='NP_OPT')  AS tf_opt
   FROM ins;

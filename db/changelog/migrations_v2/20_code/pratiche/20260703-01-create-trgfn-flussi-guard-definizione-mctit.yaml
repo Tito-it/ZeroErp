@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Guard flusso <-> definizione (D2-7, Fase 1).
+# (brief-db-step-dominio-e-definizioni-versionate Parte 2 / Fase 1)
+#
+# BEFORE INSERT su pratiche.flussi: il template del flusso deve appartenere alla
+# STESSA edizione di workflow pinnata dalla pratica. Impedisce che una pratica
+# accolga uno step di un'altra definizione (altro tipo o, in Fase 2, altra
+# edizione/fork dello stesso tipo).
+#   template.definizione_id <> pratica.definizione_id -> FLUSSI_TEMPLATE_FUORI_DEFINIZIONE (508)
+#
+# Compatibile per costruzione con:
+#   - i pgTAP e i seed esistenti: template e pratica sono sempre dello stesso
+#     tipo -> stessa definizione preset;
+#   - il seed CSV di ISTANZE pratiche.flussi (previsto, dati demo): idem, se
+#     pratica e template sono coerenti; un seed incoerente e' un errore di dato
+#     e va giustamente rifiutato;
+#   - la generazione cross-pratica: fn_genera_pratica_da_flusso (20260703-02)
+#     rimappa il template destinazione per codice dentro la definizione pinnata
+#     della figlia -> il flusso inserito soddisfa questo guard.
+#
+# Solo INSERT (coerente coi guard sorella _prerequisiti/_ripetibilita): pratica_id
+# e template_flusso_id sono di fatto immutabili dopo la creazione del flusso.
+# Entrambe le colonne definizione_id sono NOT NULL (Fase 0) -> confronto netto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260703-01-create-trgfn-flussi-guard-definizione-mctit.yaml
+
+  - changeSet:
+      id: 20260703-01-create-trgfn-flussi-guard-definizione
+      author: mctit
+      runOnChange: false
+      comment: >
+        Guard BEFORE INSERT su pratiche.flussi: il template del flusso deve
+        appartenere alla definizione pinnata dalla pratica
+        (FLUSSI_TEMPLATE_FUORI_DEFINIZIONE 508).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: pratiche
+                tableName: flussi
+                columnName: template_flusso_id
+            - columnExists:
+                schemaName: pratiche
+                tableName: pratiche
+                columnName: definizione_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_definizione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: un flusso appartiene a una pratica; il suo template deve
+              --        stare nella STESSA edizione di workflow che la pratica ha
+              --        pinnato alla nascita. Difesa a DB della coerenza pin<->step.
+              DECLARE
+                v_pratica_definizione_id  pratiche.pratiche.definizione_id%TYPE;
+                v_template_definizione_id pratiche.template_flussi.definizione_id%TYPE;
+                v_template_codice         pratiche.template_flussi.codice%TYPE;
+              BEGIN
+                SELECT p.definizione_id
+                  INTO v_pratica_definizione_id
+                  FROM pratiche.pratiche p
+                 WHERE p.id = NEW.pratica_id;
+
+                SELECT tf.definizione_id, tf.codice
+                  INTO v_template_definizione_id, v_template_codice
+                  FROM pratiche.template_flussi tf
+                 WHERE tf.id = NEW.template_flusso_id;
+
+                IF v_template_definizione_id IS DISTINCT FROM v_pratica_definizione_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_flussi_guard_definizione',
+                    'FLUSSI_TEMPLATE_FUORI_DEFINIZIONE',
+                    jsonb_build_object(
+                      'flusso_pratica_id',       NEW.pratica_id,
+                      'template_flusso_id',      NEW.template_flusso_id,
+                      'template_codice',         v_template_codice,
+                      'template_definizione_id', v_template_definizione_id,
+                      'pratica_definizione_id',  v_pratica_definizione_id
+                    ),
+                    NEW.tx_id,
+                    COALESCE(v_template_codice, NEW.template_flusso_id::text),
+                    COALESCE(v_pratica_definizione_id::text, 'NULL'),
+                    NEW.pratica_id::text
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_flussi_guard_definizione()
+                IS 'BEFORE INSERT su pratiche.flussi: il template del flusso deve appartenere alla definizione (edizione di workflow) pinnata dalla pratica -> FLUSSI_TEMPLATE_FUORI_DEFINIZIONE (508). Difesa a DB della coerenza pin<->step (V6/versionamento).';
+
+              DROP TRIGGER IF EXISTS trg_flussi_a10_guard_definizione_ins
+                ON pratiche.flussi;
+
+              CREATE TRIGGER trg_flussi_a10_guard_definizione_ins
+                BEFORE INSERT
+                ON pratiche.flussi
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_flussi_guard_definizione();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_flussi_a10_guard_definizione_ins
+                ON pratiche.flussi;
+              DROP FUNCTION IF EXISTS pratiche.trgfn_flussi_guard_definizione();

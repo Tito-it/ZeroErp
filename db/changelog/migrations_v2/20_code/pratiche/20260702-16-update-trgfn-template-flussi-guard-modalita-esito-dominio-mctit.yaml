@@ -1,0 +1,207 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Estensione del guard config-time del template-step per la modalita DOMINIO.
+# (brief-db-step-dominio-e-definizioni-versionate Parte 1 / D1-3, 2026-07-02)
+# Corpo ripreso dalla doc autogen (docs/it/dbzero/pratiche/funzioni/
+# trgfn_template_flussi_guard_modalita_esito.md) — regola DDL-dalla-doc.
+#
+#   Inv1 RIFORMULATA: esito_default obbligatorio se modalita IN
+#         (AUTOMATICO, CONTESTUALE) — prima era <> MANUALE, che con DOMINIO
+#         diventerebbe errata (DOMINIO NON vuole un default).
+#         -> TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO (494), invariato.
+#   Inv2 INVARIATA: AUTOMATICO solo su direzione INTERNA -> 495.
+#   Inv3 NUOVA: DOMINIO => esito_default VIETATO (l'esito lo calcola il
+#         building block di dominio; un default mascherebbe errori).
+#         -> TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO (505).
+#   Inv4 NUOVA: AUTOMATICO/CONTESTUALE => esito_default deve essere un
+#         VERDETTO (is_verdetto=true). Dal 20260701-02 esito_default e' FK al
+#         vocabolario SENZA vincolo di classe: senza Inv4 un default di ramo
+#         (es. MERCE_PRESENTE) esploderebbe solo a runtime sul guard 504 —
+#         meglio fail-fast a config-time.
+#         -> TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO (506).
+#
+# L'evento del trigger resta OF modalita_esito, esito_default, direzione:
+# nessuna ricreazione necessaria. Richiede 20260702-15 (CHECK con DOMINIO) e
+# i codici 505/506 a catalogo (append a messaggi_errore.csv, ripreso dai
+# loader runOnChange esistenti; su DB fresco l'ordine fasi 20_code < 80_data
+# e' rispettato perche' fn_log_and_raise_error risolve il messaggio solo al
+# momento del raise, non alla CREATE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260702-16-update-trgfn-template-flussi-guard-modalita-esito-dominio-mctit.yaml
+
+  - changeSet:
+      id: 20260702-16-update-trgfn-template-flussi-guard-modalita-esito-dominio
+      author: mctit
+      runOnChange: false
+      comment: >
+        trgfn_template_flussi_guard_modalita_esito: Inv1 riformulata
+        (esito_default obbligatorio solo per AUTOMATICO/CONTESTUALE), Inv3
+        (DOMINIO vieta esito_default, 505), Inv4 (esito_default di
+        AUTOMATICO/CONTESTUALE deve essere un verdetto, 506). Inv2 invariata.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: invarianti di coerenza della configurazione esito del
+              --        template-step. I CHECK di dominio vivono come constraint;
+              --        qui solo coerenza, con errore parlante (config-time).
+              --        DOMINIO = esito calcolato da un BB di dominio: niente
+              --        default (Inv3); gli automatismi che scrivono un default
+              --        devono scrivere un verdetto (Inv4).
+              BEGIN
+                -- Invariante 1: un automatismo deve sapere quale esito scrivere.
+                -- (Riformulata per DOMINIO: vale solo per AUTOMATICO/CONTESTUALE.)
+                IF NEW.modalita_esito IN ('AUTOMATICO', 'CONTESTUALE')
+                   AND NEW.esito_default IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'modalita_esito',     NEW.modalita_esito
+                    ),
+                    NEW.tx_id,
+                    NEW.modalita_esito,
+                    COALESCE(NEW.codice, '')
+                  );
+                END IF;
+
+                -- Invariante 2: solo gli step a direzione INTERNA possono
+                -- auto-risolversi senza intervento umano (AUTOMATICO).
+                IF NEW.modalita_esito = 'AUTOMATICO' AND NEW.direzione <> 'INTERNA' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'direzione',          NEW.direzione
+                    ),
+                    NEW.tx_id,
+                    COALESCE(NEW.codice, ''),
+                    NEW.direzione
+                  );
+                END IF;
+
+                -- Invariante 3: DOMINIO non ammette esito_default (l'esito e'
+                -- calcolato a runtime dal building block di dominio).
+                IF NEW.modalita_esito = 'DOMINIO' AND NEW.esito_default IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'TEMPLATE_FLUSSO_DOMINIO_ESITO_DEFAULT_VIETATO',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'esito_default',      NEW.esito_default
+                    ),
+                    NEW.tx_id,
+                    COALESCE(NEW.codice, ''),
+                    NEW.esito_default
+                  );
+                END IF;
+
+                -- Invariante 4: il default di un automatismo deve essere un
+                -- VERDETTO (is_verdetto=true): gli esiti di ramo sono calcolati
+                -- dal dominio, mai applicabili come default.
+                IF NEW.modalita_esito IN ('AUTOMATICO', 'CONTESTUALE')
+                   AND NEW.esito_default IS NOT NULL
+                   AND EXISTS (
+                     SELECT 1
+                       FROM config.esiti_flussi_pratiche e
+                      WHERE e.codice_interno = NEW.esito_default
+                        AND NOT e.is_verdetto
+                   ) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'TEMPLATE_FLUSSO_ESITO_DEFAULT_NON_VERDETTO',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'modalita_esito',     NEW.modalita_esito,
+                      'esito_default',      NEW.esito_default
+                    ),
+                    NEW.tx_id,
+                    NEW.esito_default,
+                    COALESCE(NEW.codice, '')
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()
+                IS 'BEFORE INSERT OR UPDATE OF modalita_esito/esito_default/direzione su pratiche.template_flussi: enforce Inv1 (esito_default obbligatorio per AUTOMATICO/CONTESTUALE, 494), Inv2 (AUTOMATICO solo INTERNA, 495), Inv3 (DOMINIO vieta esito_default, 505), Inv4 (esito_default di automatismo deve essere verdetto is_verdetto=true, 506) con errori parlanti.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina il corpo precedente (autogen pre-20260702, Inv1+Inv2).
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: invarianti di coerenza della configurazione esito del
+              --        template-step. I CHECK di dominio vivono come constraint;
+              --        qui solo coerenza, con errore parlante (config-time).
+              BEGIN
+                IF NEW.modalita_esito <> 'MANUALE' AND NEW.esito_default IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'TEMPLATE_FLUSSO_ESITO_DEFAULT_OBBLIGATORIO',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'modalita_esito',     NEW.modalita_esito
+                    ),
+                    NEW.tx_id,
+                    NEW.modalita_esito,
+                    COALESCE(NEW.codice, '')
+                  );
+                END IF;
+
+                IF NEW.modalita_esito = 'AUTOMATICO' AND NEW.direzione <> 'INTERNA' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_guard_modalita_esito',
+                    'TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA',
+                    jsonb_build_object(
+                      'template_flusso_id', NEW.id,
+                      'codice',             NEW.codice,
+                      'direzione',          NEW.direzione
+                    ),
+                    NEW.tx_id,
+                    COALESCE(NEW.codice, ''),
+                    NEW.direzione
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()
+                IS 'BEFORE INSERT OR UPDATE OF modalita_esito/esito_default/direzione su pratiche.template_flussi: enforce Inv1 (esito_default obbligatorio se non MANUALE, 494) e Inv2 (AUTOMATICO solo INTERNA, 495) con errori parlanti.';

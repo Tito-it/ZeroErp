@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# template_flussi.definizione_id — re-parent dei template sotto l'edizione.
+# (brief-db-step-dominio-e-definizioni-versionate Parte 2 / Fase 0 / D2-2)
+#
+# Colonna NULLABLE in DDL: i loader seed gia' mergiati caricano senza la
+# colonna; il default arriva dal trigger 20260702-23 (preset del tipo) e il
+# SET NOT NULL sta nel backfill 80_data (20260702-25, decisione owner
+# "opzione A": vincolo vero nello schema, collocato dove il replay CI lo
+# consente).
+#
+# FK COMPOSITA (definizione_id, tipo_prestazione_id): un template non puo'
+# mai puntare a una definizione di un altro tipo — coerenza garantita dal
+# vincolo, zero trigger. tipo_prestazione_id RESTA (query e seed invariati).
+#
+# Unique NUOVI (chiavi per-definizione):
+#   uq_template_flussi_definizione_codice (definizione_id, codice)
+#   uq_template_flussi_chiusura_definizione (definizione_id) WHERE chiude_pratica
+# I VECCHI unique per-tipo (uq_pratiche_template_flussi_tipo_codice,
+# uq_template_flussi_chiusura) NON si toccano qui: restano corretti finche'
+# esiste una sola definizione per tipo (pre-fork) e i pgTAP fanno ON CONFLICT
+# su (tipo_prestazione_id, codice). Verranno rimossi con la Fase 2 (primo
+# fork) — deviazione motivata, vedi brief §2.1 "Raffinamenti".
+#
+# Niente indice FK manuale: policy dbops in 90_end; il nuovo unique
+# (definizione_id, codice) copre gia' il prefisso definizione_id.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260702-19-alter-template-flussi-add-definizione-mctit.yaml
+
+  - changeSet:
+      id: 20260702-19-alter-template-flussi-add-definizione
+      author: mctit
+      comment: >
+        template_flussi.definizione_id (nullable, FK composita con
+        tipo_prestazione_id verso workflow_definizioni) + unique per-definizione
+        (codice, chiusura). I vecchi unique per-tipo restano fino alla Fase 2.
+        NOT NULL nel backfill 80_data.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pratiche
+                tableName: workflow_definizioni
+            - not:
+                - columnExists:
+                    schemaName: pratiche
+                    tableName: template_flussi
+                    columnName: definizione_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pratiche.template_flussi
+                ADD COLUMN definizione_id integer NULL;
+
+              -- Coerenza tipo per costruzione (FK composita, MATCH SIMPLE:
+              -- inerte finche' definizione_id e' NULL, cioe' fino al backfill).
+              ALTER TABLE pratiche.template_flussi
+                ADD CONSTRAINT fk_template_flussi_definizione
+                FOREIGN KEY (definizione_id, tipo_prestazione_id)
+                REFERENCES pratiche.workflow_definizioni (id, tipo_prestazione_id)
+                ON UPDATE CASCADE ON DELETE NO ACTION;
+
+              -- Chiave stabile per-definizione (il codice resta il contratto dei
+              -- BB runtime: completa_step_pratica risolve per codice dentro la
+              -- definizione pinnata — contratto C5). NULL distinti: inerte
+              -- durante il replay CI finche' il backfill non valorizza.
+              CREATE UNIQUE INDEX uq_template_flussi_definizione_codice
+                  ON pratiche.template_flussi (definizione_id, codice);
+
+              -- Max 1 step di chiusura per definizione (erede per-definizione di
+              -- uq_template_flussi_chiusura per-tipo).
+              CREATE UNIQUE INDEX uq_template_flussi_chiusura_definizione
+                  ON pratiche.template_flussi (definizione_id)
+                  WHERE chiude_pratica;
+
+              COMMENT ON COLUMN pratiche.template_flussi.definizione_id IS
+                'Edizione di workflow (pratiche.workflow_definizioni) a cui lo step appartiene. Default automatico al preset del tipo (trigger a10_default_definizione, pre-fork); FK composita con tipo_prestazione_id = coerenza tipo per costruzione. NOT NULL dal backfill Fase 0.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS pratiche.uq_template_flussi_chiusura_definizione;
+              DROP INDEX IF EXISTS pratiche.uq_template_flussi_definizione_codice;
+              ALTER TABLE pratiche.template_flussi
+                DROP CONSTRAINT IF EXISTS fk_template_flussi_definizione;
+              ALTER TABLE pratiche.template_flussi
+                DROP COLUMN IF EXISTS definizione_id;

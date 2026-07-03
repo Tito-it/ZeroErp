@@ -55,7 +55,7 @@ CREATE TEMP TABLE tmp_tc_tf AS
 WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, attivo)
   VALUES ((SELECT tp_id FROM tmp_tc_tp), 'TF_CANALI_TEST', 'Template test canali', true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
   RETURNING id
 )
 SELECT id AS tf_id FROM ins;

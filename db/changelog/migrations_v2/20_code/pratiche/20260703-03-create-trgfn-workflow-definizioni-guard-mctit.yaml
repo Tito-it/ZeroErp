@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Guard header + transizioni di stato della definizione (D2-9a, Fase 1).
+# (brief-db-step-dominio-e-definizioni-versionate Parte 2 / Fase 1)
+#
+# BEFORE UPDATE OF (stato, tipo_prestazione_id, emittente_fiscale_id, versione,
+# preset_origine_id, versione_origine) su pratiche.workflow_definizioni:
+#
+#   Inv A (transizioni): cambio di stato ammesso solo BOZZA->PUBBLICATA e
+#         PUBBLICATA->RITIRATA -> DEFINIZIONE_TRANSIZIONE_NON_AMMESSA (510).
+#         Ogni altro cambio (BOZZA->RITIRATA, PUBBLICATA->BOZZA, RITIRATA->*)
+#         e' vietato. Una BOZZA da scartare si CANCELLA (DELETE), non si ritira.
+#   Inv B (immutabilita' header): se OLD.stato <> 'BOZZA', i campi strutturali
+#         (tipo, emittente, versione, provenance) sono immutabili ->
+#         DEFINIZIONE_PUBBLICATA_IMMUTABILE (509).
+#
+# descrizione/meta NON sono nell'evento UPDATE OF -> restano correggibili sempre
+# (C4 "display correggibile"). L'INSERT non e' vincolato (bootstrap/backfill
+# creano righe gia' PUBBLICATA direttamente, coerente con la convenzione
+# "matrice transizioni solo su UPDATE" — linee-guida-sql §7c).
+#
+# NB Fase 1 vs Fase 2: qui si blindano SOLO l'header e le transizioni della
+# definizione. L'immutabilita' STRUTTURALE dei template su PUBBLICATA e'
+# RINVIATA alla Fase 2 (strategia «Leggera», decisa 2026-07-03): il preset
+# resta editabile da seed CSV; si congelano solo le edizioni forkate. Vedi
+# brief §2.2 D2-9.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260703-03-create-trgfn-workflow-definizioni-guard-mctit.yaml
+
+  - changeSet:
+      id: 20260703-03-create-trgfn-workflow-definizioni-guard
+      author: mctit
+      runOnChange: false
+      comment: >
+        Guard BEFORE UPDATE su pratiche.workflow_definizioni: transizioni di
+        stato ammesse (510) e immutabilita' header fuori da BOZZA (509).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: workflow_definizioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_workflow_definizioni_guard()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: proteggere il ciclo di vita dell'edizione di workflow.
+              --   Inv A: transizioni di stato ammesse (BOZZA->PUBBLICATA,
+              --          PUBBLICATA->RITIRATA).
+              --   Inv B: header strutturale immutabile fuori da BOZZA.
+              BEGIN
+                -- Inv A: transizioni di stato.
+                IF NEW.stato IS DISTINCT FROM OLD.stato THEN
+                  IF NOT (
+                       (OLD.stato = 'BOZZA'      AND NEW.stato = 'PUBBLICATA')
+                    OR (OLD.stato = 'PUBBLICATA' AND NEW.stato = 'RITIRATA')
+                  ) THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'pratiche',
+                      'pratiche.trgfn_workflow_definizioni_guard',
+                      'DEFINIZIONE_TRANSIZIONE_NON_AMMESSA',
+                      jsonb_build_object(
+                        'definizione_id', NEW.id,
+                        'stato_da',       OLD.stato,
+                        'stato_a',        NEW.stato
+                      ),
+                      NEW.tx_id,
+                      OLD.stato,
+                      NEW.stato
+                    );
+                  END IF;
+                END IF;
+
+                -- Inv B: header strutturale immutabile fuori da BOZZA.
+                IF OLD.stato <> 'BOZZA' AND (
+                       NEW.tipo_prestazione_id  IS DISTINCT FROM OLD.tipo_prestazione_id
+                    OR NEW.emittente_fiscale_id IS DISTINCT FROM OLD.emittente_fiscale_id
+                    OR NEW.versione             IS DISTINCT FROM OLD.versione
+                    OR NEW.preset_origine_id    IS DISTINCT FROM OLD.preset_origine_id
+                    OR NEW.versione_origine     IS DISTINCT FROM OLD.versione_origine
+                ) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_workflow_definizioni_guard',
+                    'DEFINIZIONE_PUBBLICATA_IMMUTABILE',
+                    jsonb_build_object(
+                      'definizione_id', NEW.id,
+                      'stato',          OLD.stato
+                    ),
+                    NEW.tx_id,
+                    NEW.id::text,
+                    OLD.stato
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_workflow_definizioni_guard()
+                IS 'BEFORE UPDATE OF stato/header su pratiche.workflow_definizioni: transizioni ammesse BOZZA->PUBBLICATA e PUBBLICATA->RITIRATA (510); header strutturale (tipo/emittente/versione/provenance) immutabile fuori da BOZZA (509). descrizione/meta sempre correggibili (fuori dall''evento UPDATE OF).';
+
+              DROP TRIGGER IF EXISTS trg_workflow_definizioni_a10_guard_upd
+                ON pratiche.workflow_definizioni;
+
+              CREATE TRIGGER trg_workflow_definizioni_a10_guard_upd
+                BEFORE UPDATE OF stato, tipo_prestazione_id, emittente_fiscale_id,
+                                 versione, preset_origine_id, versione_origine
+                ON pratiche.workflow_definizioni
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_workflow_definizioni_guard();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_workflow_definizioni_a10_guard_upd
+                ON pratiche.workflow_definizioni;
+              DROP FUNCTION IF EXISTS pratiche.trgfn_workflow_definizioni_guard();
