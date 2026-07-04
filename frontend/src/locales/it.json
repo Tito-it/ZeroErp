@@ -144,6 +144,7 @@
       "matrice-utilities-ruoli": "Matrice Utilities/Ruoli",
       "matrice-indirizzi-ruoli": "Matrice Indirizzi/Ruoli",
       "categorie-clienti": "Categorie cliente",
+      "definizioni-workflow": "Definizioni workflow",
       "matrice-categorie-listini": "Matrice Categorie/Listini",
       "audit-log": "Audit Log",
       "email-accounts": "Account Email",
@@ -2645,6 +2646,28 @@
   "validation": {
     "email_format": "Formato email non valido",
     "campo_obbligatorio": "Campo obbligatorio"
+  },
+  "definizioni_workflow": {
+    "filtro_tipo": "Tipo prestazione",
+    "col_tipo": "Tipo",
+    "col_emittente": "Emittente",
+    "col_versione": "Versione",
+    "col_stato": "Stato",
+    "col_drift": "Aggiornamento",
+    "col_descrizione": "Descrizione",
+    "preset": "— (preset)",
+    "drift_badge": "Preset aggiornato (+{n})",
+    "azione_fork": "Crea edizione (fork)",
+    "azione_nuova_versione": "Nuova versione",
+    "azione_pubblica": "Pubblica",
+    "fork_dialog_title": "Nuova edizione per emittente",
+    "fork_emittente_label": "Emittente",
+    "fork_emittente_placeholder": "Seleziona emittente",
+    "conferma_nuova_versione": "Creare una nuova versione BOZZA da questa edizione pubblicata?",
+    "conferma_pubblica": "Pubblicare questa BOZZA? L'edizione pubblicata precedente dello stesso scope verrà ritirata.",
+    "msg_fork_ok": "Edizione creata in BOZZA.",
+    "msg_nuova_versione_ok": "Nuova versione creata in BOZZA.",
+    "msg_pubblica_ok": "Edizione pubblicata."
   },
   "pratiche": {
     "search_placeholder": "Cerca per codice, descrizione, soggetto...",
