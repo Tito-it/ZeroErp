@@ -45,16 +45,22 @@ LANGUAGE plpgsql VOLATILE
   legge l'emittente della sorgente e copia nello stesso scope, **senza provenance** (non è
   un fork).
 - Errore parlante `E_VALORE_MANCANTE` se la sorgente non esiste.
+- **Guard ciclo di vita** (`20260704-06`): (1) la sorgente **deve** essere in stato
+  **`PUBBLICATA`** — la nuova versione si deriva dall'edizione pubblicata dello scope, non
+  da una bozza arbitraria; da BOZZA/RITIRATA → `DEFINIZIONE_NO_PUBBLICATA` (516). (2) lo
+  scope non deve avere **già una BOZZA** aperta → `DEFINIZIONE_BOZZA_ESISTENTE` (515),
+  invariante **≤1 BOZZA per scope** (indice `uq_workflow_definizioni_bozza`).
 - Differenza da [fn_fork_definizione](fn_fork_definizione.md): il fork cambia scope
   (verso un nuovo emittente, con provenance); la nuova versione resta nello **stesso**
-  scope (versione successiva).
+  scope (versione successiva) e parte dalla **PUBBLICATA** corrente.
 - **Accesso** (`20260703-16`, P1 strada B): `SECURITY DEFINER` + `search_path` fisso (come
   [fn_fork_definizione](fn_fork_definizione.md)) — la DML interna gira come owner, il ruolo
   app la esegue senza grant DML diretto; `EXECUTE` ristretto al solo ruolo app (`20260703-18`),
   gate applicativo AdminAPIView super-admin.
-- Introdotta con `20260703-07` (Parte 2 / Fase 2, D2-12); resa SECURITY DEFINER con `20260703-16`.
+- Introdotta con `20260703-07` (Parte 2 / Fase 2, D2-12); SECURITY DEFINER con `20260703-16`;
+  guard PUBBLICATA + ≤1 BOZZA con `20260704-06`.
 - Test: `db/pgtap/pratiche/test-workflow-definizioni-fase2.sql` (nuova versione + pubblica
-  con ritiro della precedente).
+  con ritiro) e `test-definizione-bozza-unica.sql` (guard 515/516 + flusso pulito).
 
 ---
 {% include-markdown "signature-core.md" %}
