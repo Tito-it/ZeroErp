@@ -284,3 +284,176 @@ class DefinizioniServiceTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as ctx:
             definizioni_service.delete_step(419, 12345)
         self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NOT_FOUND")
+
+    # --- Write figli per-nodo (Slice 2 anello 4) ---
+
+    # Scopo: create verifica ownership step→definizione, pulisce il payload sui soli
+    # campi scrivibili del kind e passa (kind, step_id, data) al repository.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_create_figlio_ok(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.step_in_definizione.return_value = True
+        repo.create_child.return_value = 77
+        out = definizioni_service.create_step_figlio(419, 100, "canali", {
+            "canale_id": 3, "attivo": True, "campo_ignoto": "x",
+        })
+        self.assertEqual(out, {"id": 77})
+        repo.step_in_definizione.assert_called_once_with(419, 100)
+        kind, step, data = repo.create_child.call_args.args
+        self.assertEqual((kind, step), ("canali", 100))
+        self.assertEqual(data, {"canale_id": 3, "attivo": True})  # campo_ignoto scartato
+
+    # Scopo: step fuori dalla definizione → 404, senza INSERT.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_create_figlio_step_fuori_scope(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.step_in_definizione.return_value = False
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.create_step_figlio(419, 999, "canali", {"canale_id": 3})
+        self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NOT_FOUND")
+        repo.create_child.assert_not_called()
+
+    # Scopo: campo required del kind mancante → 400 parlante (prima del NOT NULL DB).
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_create_figlio_required_mancante(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.step_in_definizione.return_value = True
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.create_step_figlio(419, 100, "handler_eventi", {"evento": "AVVIO"})
+        self.assertEqual(ctx.exception.code, "E_VALIDATION_INPUT")  # manca handler_id
+        repo.create_child.assert_not_called()
+
+    # Scopo: guard immutabilità sul figlio (edizione emessa) → marker parlante.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_create_figlio_congelata_marker(self, MockRepo):
+        from django.db import DatabaseError
+        repo = MockRepo.return_value
+        repo.step_in_definizione.return_value = True
+        repo.create_child.side_effect = DatabaseError(
+            "… e' un'edizione per-emittente gia' emessa, struttura congelata.")
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.create_step_figlio(418, 9660, "canali", {"canale_id": 3})
+        self.assertEqual(ctx.exception.code, "TEMPLATE_DEFINIZIONE_CONGELATA")
+
+    # Scopo: update fuori scope (riga/step/definizione) → rowcount 0 → 404.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_update_figlio_non_trovato(self, MockRepo):
+        MockRepo.return_value.update_child.return_value = 0
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.update_step_figlio(419, 100, "handler_eventi", 55, {"sequenza": 2})
+        self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NOT_FOUND")
+
+    # Scopo: update senza campi scrivibili → 400 (no UPDATE vuoto).
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_update_figlio_payload_vuoto(self, MockRepo):
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.update_step_figlio(419, 100, "canali", 5, {"xxx": 1})
+        self.assertEqual(ctx.exception.code, "E_VALIDATION_INPUT")
+        MockRepo.return_value.update_child.assert_not_called()
+
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_delete_figlio_ok(self, MockRepo):
+        MockRepo.return_value.delete_child.return_value = 1
+        out = definizioni_service.delete_step_figlio(419, 100, "competenze", 9)
+        self.assertEqual(out, {"deleted": True})
+        MockRepo.return_value.delete_child.assert_called_once_with("competenze", 419, 100, 9)
+
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_delete_figlio_non_trovato(self, MockRepo):
+        MockRepo.return_value.delete_child.return_value = 0
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.delete_step_figlio(419, 100, "canali", 12345)
+        self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NOT_FOUND")
+
+    # --- Write archi del grafo (Slice 2 anello 5) ---
+
+    # Scopo: create prerequisito valida entrambi gli endpoint step in-definizione
+    # e inserisce i soli campi writable.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_create_arco_prerequisito_ok(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_definizione.return_value = {"id": 419, "tipo_prestazione_id": 9004}
+        repo.step_in_definizione.return_value = True
+        repo.create_edge.return_value = 88
+        out = definizioni_service.create_arco(419, "prerequisiti", {
+            "template_flusso_id": 100, "prerequisito_id": 101, "esito_richiesto": "POSITIVO",
+        })
+        self.assertEqual(out, {"id": 88})
+        # entrambi gli endpoint validati in-definizione
+        self.assertEqual(repo.step_in_definizione.call_count, 2)
+        kind, data = repo.create_edge.call_args.args
+        self.assertEqual(kind, "prerequisiti")
+        self.assertEqual(data["prerequisito_id"], 101)
+
+    # Scopo: uno step-endpoint non nella definizione → 404, senza INSERT.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_create_arco_endpoint_fuori_scope(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_definizione.return_value = {"id": 419, "tipo_prestazione_id": 9004}
+        repo.step_in_definizione.side_effect = [True, False]  # prerequisito_id fuori scope
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.create_arco(419, "prerequisiti", {
+                "template_flusso_id": 100, "prerequisito_id": 999})
+        self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NOT_FOUND")
+        repo.create_edge.assert_not_called()
+
+    # Scopo: formule_tempo → il BE auto-imposta tipo_prestazione_id dal tipo della definizione.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_create_arco_formule_autoset_tipo(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_definizione.return_value = {"id": 419, "tipo_prestazione_id": 9004}
+        repo.step_in_definizione.return_value = True
+        repo.create_edge.return_value = 5
+        definizioni_service.create_arco(419, "formule_tempo", {
+            "template_flusso_da_id": 100, "template_flusso_a_id": 101,
+            "giorni_esecuzione": 5, "giorni_warning": 3, "giorni_critico": 7,
+        })
+        _, data = repo.create_edge.call_args.args
+        self.assertEqual(data["tipo_prestazione_id"], 9004)  # auto-set dal BE
+
+    # Scopo: campo required mancante → 400 prima dell'INSERT.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_create_arco_required_mancante(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_definizione.return_value = {"id": 419, "tipo_prestazione_id": 9004}
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.create_arco(419, "regole_generazione", {
+                "template_flusso_origine_id": 100})  # manca tipo_prestazione_dest_id
+        self.assertEqual(ctx.exception.code, "E_VALIDATION_INPUT")
+        repo.create_edge.assert_not_called()
+
+    # Scopo: guard immutabilità sull'arco (edizione emessa) → marker parlante.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_create_arco_congelata_marker(self, MockRepo):
+        from django.db import DatabaseError
+        repo = MockRepo.return_value
+        repo.get_definizione.return_value = {"id": 418, "tipo_prestazione_id": 9004}
+        repo.step_in_definizione.return_value = True
+        repo.create_edge.side_effect = DatabaseError(
+            "… e' un'edizione per-emittente gia' emessa, struttura congelata.")
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.create_arco(418, "prerequisiti", {
+                "template_flusso_id": 1, "prerequisito_id": 2})
+        self.assertEqual(ctx.exception.code, "TEMPLATE_DEFINIZIONE_CONGELATA")
+
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_delete_arco_ok(self, MockRepo):
+        MockRepo.return_value.delete_edge.return_value = 1
+        out = definizioni_service.delete_arco(419, "prerequisiti", 88)
+        self.assertEqual(out, {"deleted": True})
+        MockRepo.return_value.delete_edge.assert_called_once_with("prerequisiti", 419, 88)
+
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_delete_arco_non_trovato(self, MockRepo):
+        MockRepo.return_value.delete_edge.return_value = 0
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.delete_arco(419, "prerequisiti", 12345)
+        self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NOT_FOUND")
+
+    # Scopo: update senza campi writable → 400 (no UPDATE vuoto).
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_update_arco_payload_vuoto(self, MockRepo):
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.update_arco(419, "formule_tempo", 5, {"xxx": 1})
+        self.assertEqual(ctx.exception.code, "E_VALIDATION_INPUT")
+        MockRepo.return_value.update_edge.assert_not_called()

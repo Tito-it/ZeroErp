@@ -169,3 +169,91 @@ class ApiDefinizioneStepDetail(AdminAPIView):
     )})
     def delete(self, request: Request, definizione_id: int, step_id: int) -> JsonResponse:
         return success_response(definizioni_service.delete_step(definizione_id, step_id))
+
+
+# --- Figli per-nodo di uno step su BOZZA (Slice 2 anello 4) -------------------
+# Una coppia di view generiche parametrizzate da `child_kind` (canali /
+# handler_eventi / competenze), passato dalla urlconf (allowlist fissa).
+_FIGLIO_SCHEMA = inline_serializer(
+    name="PraticheStepFiglioReq", fields={"__campi__": serializers.DictField()},
+)
+
+
+class ApiDefinizioneStepFigli(AdminAPIView):
+    """`POST /pratiche/definizioni/<id>/steps/<step_id>/{canali|handler-eventi|competenze}/`
+    — aggiunge un figlio per-nodo allo step della BOZZA."""
+
+    @extend_schema(request=_FIGLIO_SCHEMA, responses={200: inline_serializer(
+        name="PraticheStepFiglioCreateResp", fields={"data": serializers.DictField()},
+    )})
+    def post(self, request: Request, definizione_id: int, step_id: int,
+             child_kind: str) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return definizioni_service.create_step_figlio(
+                definizione_id, step_id, child_kind, dict(payload))
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiDefinizioneStepFiglioDetail(AdminAPIView):
+    """`PATCH/DELETE .../steps/<step_id>/<kind>/<row_id>/` — aggiorna o cancella
+    (hard) un figlio per-nodo dello step della BOZZA."""
+
+    @extend_schema(request=_FIGLIO_SCHEMA, responses={200: inline_serializer(
+        name="PraticheStepFiglioUpdateResp", fields={"data": serializers.DictField()},
+    )})
+    def patch(self, request: Request, definizione_id: int, step_id: int,
+              child_kind: str, row_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return definizioni_service.update_step_figlio(
+                definizione_id, step_id, child_kind, row_id, dict(payload))
+        return handle_post_json(request, handler=_handler)
+
+    @extend_schema(responses={200: inline_serializer(
+        name="PraticheStepFiglioDeleteResp", fields={"data": serializers.DictField()},
+    )})
+    def delete(self, request: Request, definizione_id: int, step_id: int,
+               child_kind: str, row_id: int) -> JsonResponse:
+        return success_response(definizioni_service.delete_step_figlio(
+            definizione_id, step_id, child_kind, row_id))
+
+
+# --- Archi del grafo di una BOZZA (Slice 2 anello 5) -------------------------
+# Gli archi vivono al livello edizione (collegano due step); `edge_kind` (prerequisiti
+# / formule_tempo / regole_generazione) è passato dalla urlconf (allowlist fissa).
+_ARCO_SCHEMA = inline_serializer(
+    name="PraticheArcoReq", fields={"__campi__": serializers.DictField()},
+)
+
+
+class ApiDefinizioneArchi(AdminAPIView):
+    """`POST /pratiche/definizioni/<id>/archi/{prerequisiti|formule-tempo|regole-generazione}/`
+    — aggiunge un arco al grafo della BOZZA."""
+
+    @extend_schema(request=_ARCO_SCHEMA, responses={200: inline_serializer(
+        name="PraticheArcoCreateResp", fields={"data": serializers.DictField()},
+    )})
+    def post(self, request: Request, definizione_id: int, edge_kind: str) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return definizioni_service.create_arco(definizione_id, edge_kind, dict(payload))
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiDefinizioneArcoDetail(AdminAPIView):
+    """`PATCH/DELETE .../archi/<kind>/<row_id>/` — aggiorna o cancella (hard) un
+    arco del grafo della BOZZA."""
+
+    @extend_schema(request=_ARCO_SCHEMA, responses={200: inline_serializer(
+        name="PraticheArcoUpdateResp", fields={"data": serializers.DictField()},
+    )})
+    def patch(self, request: Request, definizione_id: int, edge_kind: str,
+              row_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return definizioni_service.update_arco(definizione_id, edge_kind, row_id, dict(payload))
+        return handle_post_json(request, handler=_handler)
+
+    @extend_schema(responses={200: inline_serializer(
+        name="PraticheArcoDeleteResp", fields={"data": serializers.DictField()},
+    )})
+    def delete(self, request: Request, definizione_id: int, edge_kind: str,
+               row_id: int) -> JsonResponse:
+        return success_response(definizioni_service.delete_arco(definizione_id, edge_kind, row_id))
