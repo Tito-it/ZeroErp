@@ -94,6 +94,11 @@ pratiche aperte).
 * **`uq_workflow_definizioni_scope_versione`** `(tipo_prestazione_id,
   emittente_fiscale_id, versione)` **NULLS NOT DISTINCT** — il preset (emittente NULL)
   è uno scope come gli altri.
+* **`uq_workflow_definizioni_bozza`** (`20260704-05`) — indice unico **parziale**
+  `(tipo_prestazione_id, emittente_fiscale_id) NULLS NOT DISTINCT WHERE stato = 'BOZZA'`:
+  **al più una BOZZA per scope** (una sola edizione in lavorazione alla volta). Rete di
+  sicurezza dei guard `DEFINIZIONE_BOZZA_ESISTENTE` (515) in
+  [fn_fork_definizione](fn_fork_definizione.md) / [fn_nuova_versione_definizione](fn_nuova_versione_definizione.md).
 * **`uq_workflow_definizioni_pubblicata`** — indice unico **parziale**
   `(tipo_prestazione_id, emittente_fiscale_id) NULLS NOT DISTINCT WHERE stato =
   'PUBBLICATA'`: una sola pubblicata per scope. È anche l'arbitro dell'`ON CONFLICT`

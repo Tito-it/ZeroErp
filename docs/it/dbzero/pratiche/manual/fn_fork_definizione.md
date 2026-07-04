@@ -47,6 +47,10 @@ LANGUAGE plpgsql VOLATILE
 - **Guard**: `p_emittente_fiscale_id` NOT NULL e > 0 → altrimenti `E_PARAMETRO_INVALIDO`.
   Il fork ha per definizione uno scope emittente; per una **nuova versione dello stesso
   scope** (preset incluso) usare [fn_nuova_versione_definizione](fn_nuova_versione_definizione.md).
+- **Guard ≤1 BOZZA per scope** (`20260704-06`): se lo scope destinazione (tipo sorgente,
+  emittente) ha già una BOZZA aperta → `DEFINIZIONE_BOZZA_ESISTENTE` (515), invece dello
+  `unique_violation` grezzo dell'indice `uq_workflow_definizioni_bozza`. Una sola edizione
+  in lavorazione per scope alla volta.
 - La BOZZA prodotta va poi validata e attivata con
   [fn_pubblica_definizione](fn_pubblica_definizione.md); da quel momento le pratiche di
   quell'emittente pinnano il fork (risoluzione emittente > preset in
@@ -58,8 +62,10 @@ LANGUAGE plpgsql VOLATILE
   `20260703-18`); l'autorizzazione "chi puo' forkare" resta al gate app-layer (AdminAPIView
   super-admin). `search_path` include le schema fidate coinvolte dalla catena di trigger
   (pratiche/script/config/dbops), non il solo `pg_catalog`.
-- Introdotta con `20260703-07` (Parte 2 / Fase 2, D2-11); resa SECURITY DEFINER con `20260703-16`.
-- Test: `db/pgtap/pratiche/test-workflow-definizioni-fase2.sql` (fork + copia + provenance).
+- Introdotta con `20260703-07` (Parte 2 / Fase 2, D2-11); SECURITY DEFINER con `20260703-16`;
+  guard ≤1 BOZZA con `20260704-06`.
+- Test: `db/pgtap/pratiche/test-workflow-definizioni-fase2.sql` (fork + copia + provenance)
+  e `test-definizione-bozza-unica.sql` (guard 515 scope con bozza aperta).
 
 ---
 {% include-markdown "signature-core.md" %}

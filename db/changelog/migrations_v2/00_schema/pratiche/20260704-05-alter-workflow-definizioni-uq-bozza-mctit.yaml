@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Invariante «al piu' una BOZZA per scope» (tipo_prestazione, emittente).
+# (brief-db-nuova-versione-bozza-unica) — defense-in-depth.
+#
+# Il ciclo edizioni garantiva l'unicita' solo sulla PUBBLICATA
+# (uq_workflow_definizioni_pubblicata). Senza vincolo sulle BOZZE, fork e
+# nuova-versione potevano accumulare BOZZE parallele nello stesso scope: due
+# bozze "prossima versione" sono ambigue (pubblicandone una si ritira la base
+# dell'altra). Simmetrico all'indice PUBBLICATA, NULLS NOT DISTINCT cosi' anche
+# il preset (emittente NULL) rientra nell'invariante.
+#
+# I guard fail-fast in fn_fork_definizione / fn_nuova_versione_definizione
+# (20260704-06) intercettano la violazione PRIMA dell'INSERT con errore parlante
+# (DEFINIZIONE_BOZZA_ESISTENTE 515); questo indice e' la rete di sicurezza per
+# SQL diretto / race.
+#
+# ⚠️ APPLY: se sul DB esistono gia' 2+ BOZZE nello stesso scope (artefatti E2E),
+# la preCondition HALTA la migrazione. Rimuovere le BOZZE duplicate prima di
+# applicare (quale tenere e' una decisione di dominio, non auto-risolvibile).
+# Diagnostica: SELECT tipo_prestazione_id, emittente_fiscale_id, count(*),
+#   array_agg(id ORDER BY versione) FROM pratiche.workflow_definizioni
+#   WHERE stato='BOZZA' GROUP BY 1,2 HAVING count(*) > 1;
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260704-05-alter-workflow-definizioni-uq-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20260704-05-alter-workflow-definizioni-uq-bozza
+      author: mctit
+      runOnChange: false
+      comment: >
+        Indice unico parziale uq_workflow_definizioni_bozza (tipo, emittente)
+        WHERE stato='BOZZA' NULLS NOT DISTINCT: al piu' una BOZZA per scope.
+        HALTA se esistono gia' BOZZE duplicate (rimuoverle prima).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: workflow_definizioni
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM (
+                SELECT 1 FROM pratiche.workflow_definizioni
+                 WHERE stato = 'BOZZA'
+                 GROUP BY tipo_prestazione_id, emittente_fiscale_id
+                HAVING count(*) > 1
+              ) dup
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Al piu' una BOZZA per scope (tipo, emittente); NULLS NOT DISTINCT
+              -- per lo scope preset (emittente NULL). Simmetrico a
+              -- uq_workflow_definizioni_pubblicata.
+              CREATE UNIQUE INDEX uq_workflow_definizioni_bozza
+                  ON pratiche.workflow_definizioni (tipo_prestazione_id, emittente_fiscale_id)
+                  NULLS NOT DISTINCT
+                  WHERE stato = 'BOZZA';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS pratiche.uq_workflow_definizioni_bozza;
