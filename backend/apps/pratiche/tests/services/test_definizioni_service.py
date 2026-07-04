@@ -457,3 +457,24 @@ class DefinizioniServiceTests(SimpleTestCase):
             definizioni_service.update_arco(419, "formule_tempo", 5, {"xxx": 1})
         self.assertEqual(ctx.exception.code, "E_VALIDATION_INPUT")
         MockRepo.return_value.update_edge.assert_not_called()
+
+    # Scopo (regressione): un PATCH che ri-punta un endpoint dell'arco a uno step
+    # fuori dalla definizione → 404, SENZA UPDATE (il guard DB non lo intercetta).
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_update_arco_endpoint_fuori_scope(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.step_in_definizione.return_value = False
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.update_arco(419, "prerequisiti", 88, {"template_flusso_id": 999})
+        self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NOT_FOUND")
+        repo.update_edge.assert_not_called()
+
+    # Scopo: update di soli attributi (nessun endpoint nel payload) → nessuna
+    # rivalidazione step, procede.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_update_arco_solo_attributo(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.update_edge.return_value = 1
+        out = definizioni_service.update_arco(419, "prerequisiti", 88, {"esito_richiesto": "NEGATIVO"})
+        self.assertEqual(out, {"id": 88})
+        repo.step_in_definizione.assert_not_called()

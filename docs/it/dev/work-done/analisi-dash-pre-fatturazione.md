@@ -1,5 +1,13 @@
 # Analisi — Dashboard pre-fatturazione: bucket mensile, situazioni anomale, gap temporale
 
+> ✅ **CHIUSA (2026-07-04) — spostata in `work-done`.** Le domande aperte A-E di questo
+> documento sono tutte decise; la loro risoluzione vive ora nel design-of-record
+> [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md)
+> (ridisegno a **due lenti**: Competenza a valle + Backlog a monte). In sintesi: **A** →
+> risolta dalla separazione delle lenti (asse competenza vera solo a valle); **B/C/D** →
+> decise (DL-6/7/8 + C nel nuovo brief); **E** → già decisa (`20260703-61`). Conservato come
+> traccia dell'analisi che ha originato il ridisegno.
+>
 > **Tipo**: documento di **analisi descrittiva** (capire quanto costruito prima di
 > decidere). NON contiene decisioni: le apre. · **Owner**: Tid · **Data**: 2026-07-04.
 > **Origine**: revisione UI della dashboard fatturazione con Tid — due domande aperte:

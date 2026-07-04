@@ -162,6 +162,17 @@ def _clean_writable(fields: tuple[str, ...], payload: dict[str, Any]) -> dict[st
     return data
 
 
+# Scopo: guard di bordo — ogni campo `required` deve essere presente e non vuoto
+# in `data` (400 parlante prima del NOT NULL DB). Condiviso figli/archi.
+def _require_fields(data: dict[str, Any], required: tuple[str, ...], kind: str) -> None:
+    for campo in required:
+        ErrorManager.require(
+            data.get(campo) not in (None, ""),
+            code="E_VALIDATION_INPUT",
+            message=f"campo '{campo}' obbligatorio per {kind}",
+        )
+
+
 # Scopo: crea uno step nella BOZZA. 404 se la definizione non esiste; DatabaseError
 # (immutabilità/unique codice) → marker parlante.
 def create_step(definizione_id: int, payload: dict[str, Any]) -> dict[str, Any]:
@@ -246,12 +257,7 @@ def create_step_figlio(
         message=f"Step {step_id} non trovato nella definizione {definizione_id}",
     )
     data = _clean_child_payload(child_kind, payload)
-    for campo in CHILD_SPECS[child_kind].required:
-        ErrorManager.require(
-            data.get(campo) not in (None, ""),
-            code="E_VALIDATION_INPUT",
-            message=f"campo '{campo}' obbligatorio per {child_kind}",
-        )
+    _require_fields(data, CHILD_SPECS[child_kind].required, child_kind)
     with _mapped_db_errors(f"definizioni_service.create_step_figlio.{child_kind}"):
         row_id = repo.create_child(child_kind, step_id, data)
     return {"id": row_id}
@@ -306,21 +312,24 @@ def delete_step_figlio(
 # NOT NULL) è auto-derivato dalla definizione. Immutabilità dai guard figli DB.
 
 
-# Scopo: valida che gli step-endpoint dell'arco siano nella definizione (404 se no)
-# e auto-imposta la colonna tipo (dove prevista) dal tipo della definizione.
-def _prepara_arco(edge_kind: str, definizione_id: int, header: dict[str, Any],
-                  data: dict[str, Any]) -> None:
-    spec = EDGE_SPECS[edge_kind]
+# Scopo: ogni endpoint step dell'arco PRESENTE in `data` (in_def_cols) deve
+# appartenere alla definizione (404 altrimenti). Vale in create E in update: senza
+# questo, un PATCH potrebbe ri-puntare un arco a uno step di un'altra edizione (il
+# guard DB non lo impedisce: verifica solo che l'edizione corrente sia editabile).
+def _valida_endpoint_in_def(definizione_id: int, edge_kind: str, data: dict[str, Any]) -> None:
     repo = DefinizioniRepository()
-    for col in spec.in_def_cols:
-        sid = data.get(col)
+    for col in EDGE_SPECS[edge_kind].in_def_cols:
+        if col not in data:
+            continue
+        try:
+            sid = int(data[col])
+        except (TypeError, ValueError):
+            sid = None
         ErrorManager.require(
-            sid is not None and repo.step_in_definizione(definizione_id, int(sid)),
+            sid is not None and repo.step_in_definizione(definizione_id, sid),
             code="E_DEFINIZIONE_NOT_FOUND",
-            message=f"lo step '{col}'={sid} non appartiene alla definizione {definizione_id}",
+            message=f"lo step '{col}'={data[col]} non appartiene alla definizione {definizione_id}",
         )
-    if spec.tipo_col:
-        data[spec.tipo_col] = header["tipo_prestazione_id"]
 
 
 # Scopo: crea un arco nel grafo della BOZZA. 404 se la definizione o uno step
@@ -336,19 +345,17 @@ def create_arco(definizione_id: int, edge_kind: str, payload: dict[str, Any]) ->
         message=f"Definizione workflow {definizione_id} non trovata",
     )
     data = _clean_writable(spec.writable, payload)
-    for campo in spec.required:
-        ErrorManager.require(
-            data.get(campo) not in (None, ""),
-            code="E_VALIDATION_INPUT",
-            message=f"campo '{campo}' obbligatorio per {edge_kind}",
-        )
-    _prepara_arco(edge_kind, definizione_id, header, data)
+    _require_fields(data, spec.required, edge_kind)
+    _valida_endpoint_in_def(definizione_id, edge_kind, data)
+    if spec.tipo_col:
+        data[spec.tipo_col] = header["tipo_prestazione_id"]
     with _mapped_db_errors(f"definizioni_service.create_arco.{edge_kind}"):
         row_id = repo.create_edge(edge_kind, data)
     return {"id": row_id}
 
 
-# Scopo: aggiorna un arco (solo campi writable), scoping anchor→definizione. 404 fuori scope.
+# Scopo: aggiorna un arco (solo campi writable), scoping anchor→definizione. 404 fuori
+# scope. Se il payload cambia un endpoint step, lo si rivalida in-definizione.
 def update_arco(definizione_id: int, edge_kind: str, row_id: int,
                 payload: dict[str, Any]) -> dict[str, Any]:
     _require_id(definizione_id, "definizione_id")
@@ -359,6 +366,7 @@ def update_arco(definizione_id: int, edge_kind: str, row_id: int,
         code="E_VALIDATION_INPUT",
         message="nessun campo aggiornabile nel payload",
     )
+    _valida_endpoint_in_def(definizione_id, edge_kind, data)
     with _mapped_db_errors(f"definizioni_service.update_arco.{edge_kind}"):
         n = DefinizioniRepository().update_edge(edge_kind, definizione_id, row_id, data)
     ErrorManager.require(
