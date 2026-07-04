@@ -1,5 +1,12 @@
 # Brief BE/FE — Consumi motore pratiche: step `DOMINIO` + definizioni versionate
 
+> **✅ CHIUSO (2026-07-04)** — Parte 1 (step `DOMINIO`) + Fase 0/1 + Fase 2 Slice 1a/1b
+> (admin edizioni) + Slice 2 anelli 1-3 (dettaglio lettura + editing step BOZZA) fatti,
+> test verdi, E2E validato in-app. **Residuo (nuovo brief quando si parte)**: Slice 2
+> anelli 4/5 (write figli per-nodo + archi), FE-2.4 banner drift operatore, Fase 3 editor
+> UI (cantiere V4/V5). API BE documentate in
+> [api_definizioni_workflow](../../backend/pratiche/manual/api_definizioni_workflow.md).
+>
 > **Per**: team backend (`dev/backend-tid`) e frontend. · **Da**: backend/frontend agent
 > (analisi congiunta 2026-07-02). · **Data**: 2026-07-02.
 > **Companion DB** (fonte delle decisioni di modello):

@@ -59,6 +59,79 @@ class DefinizioniServiceTests(SimpleTestCase):
         self.assertEqual(rows[0]["drift"]["versioni_indietro"], 2)
         self.assertEqual(rows[0]["drift"]["preset_corrente_id"], 7)
 
+    # --- Dettaglio editing (Slice 2 anello 1) ---
+
+    @staticmethod
+    def _mock_dettaglio_repo(repo):
+        """Configura il repo mock per un dettaglio a 2 step con figli/archi vuoti."""
+        repo.get_definizione.return_value = {
+            "id": 12, "tipo_prestazione_id": 9004, "stato": "BOZZA",
+            "emittente_fiscale_id": 155, "versione": 2,
+            "versioni_indietro": 1, "preset_corrente_id": 7,
+            "versione_preset_corrente": 3,
+        }
+        repo.list_steps_definizione.return_value = [
+            {"id": 100, "codice": "STEP_A", "sequenza": 10},
+            {"id": 101, "codice": "STEP_B", "sequenza": 20},
+        ]
+        for m in ("list_canali_definizione", "list_handler_eventi_definizione",
+                  "list_competenze_definizione", "list_prerequisiti_definizione",
+                  "list_formule_tempo_definizione", "list_regole_generazione_definizione"):
+            getattr(repo, m).return_value = []
+
+    # Scopo: il dettaglio annida il drift nell'header e affianca gli steps; passa
+    # l'id al repository per tutte le letture.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_get_dettaglio_ok(self, MockRepo):
+        repo = MockRepo.return_value
+        self._mock_dettaglio_repo(repo)
+        out = definizioni_service.get_definizione_dettaglio(12)
+        self.assertEqual(out["definizione"]["id"], 12)
+        self.assertEqual(out["definizione"]["drift"]["versioni_indietro"], 1)
+        self.assertNotIn("versioni_indietro", out["definizione"])
+        self.assertEqual([s["codice"] for s in out["steps"]], ["STEP_A", "STEP_B"])
+        # ogni step ha le tre liste figlio (vuote qui) e il payload ha archi.
+        self.assertEqual(out["steps"][0]["canali"], [])
+        self.assertEqual(set(out["archi"]), {"prerequisiti", "formule_tempo", "regole_generazione"})
+        repo.get_definizione.assert_called_once_with(12)
+        repo.list_steps_definizione.assert_called_once_with(12)
+
+    # Scopo: i figli per-nodo si annidano sotto lo step giusto (per template_flusso_id)
+    # e la chiave di raggruppamento non resta nell'oggetto annidato.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_get_dettaglio_annida_figli(self, MockRepo):
+        repo = MockRepo.return_value
+        self._mock_dettaglio_repo(repo)
+        repo.list_canali_definizione.return_value = [
+            {"id": 1, "template_flusso_id": 100, "canale_codice": "WEB"},
+            {"id": 2, "template_flusso_id": 101, "canale_codice": "MAIL"},
+        ]
+        repo.list_prerequisiti_definizione.return_value = [
+            {"id": 9, "template_flusso_id": 101, "prerequisito_id": 100, "esito_richiesto": None},
+        ]
+        out = definizioni_service.get_definizione_dettaglio(12)
+        step_a, step_b = out["steps"]
+        self.assertEqual([c["canale_codice"] for c in step_a["canali"]], ["WEB"])
+        self.assertEqual([c["canale_codice"] for c in step_b["canali"]], ["MAIL"])
+        self.assertNotIn("template_flusso_id", step_a["canali"][0])
+        self.assertEqual(out["archi"]["prerequisiti"][0]["prerequisito_id"], 100)
+
+    # Scopo: id inesistente → 404 parlante, senza interrogare gli steps.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_get_dettaglio_non_trovata(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_definizione.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.get_definizione_dettaglio(999)
+        self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NOT_FOUND")
+        repo.list_steps_definizione.assert_not_called()
+
+    # Scopo: guard di bordo sull'id (0/negativo) → E_INVALID_ID, coerente con le azioni.
+    def test_get_dettaglio_id_invalido(self):
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.get_definizione_dettaglio(0)
+        self.assertEqual(ctx.exception.code, "E_INVALID_ID")
+
     # --- Azioni ciclo di vita (Slice 1b) ---
 
     @patch(f"{_SVC}.DefinizioniRepository")
@@ -96,3 +169,118 @@ class DefinizioniServiceTests(SimpleTestCase):
         MockRepo.return_value.nuova_versione_definizione.return_value = 20
         out = definizioni_service.nuova_versione_definizione(7)
         self.assertEqual(out, {"definizione_id": 20})
+
+    # Scopo: guard invariante «≤1 BOZZA per scope» (fork) → marker parlante.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_fork_bozza_esistente(self, MockRepo):
+        from django.db import DatabaseError
+
+        MockRepo.return_value.fork_definizione.side_effect = DatabaseError(
+            "Esiste gia' una bozza di edizione workflow per lo scope "
+            "(tipo prestazione 9004, emittente 44): completarla o scartarla.",
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.fork_definizione(7, 44)
+        self.assertEqual(ctx.exception.code, "DEFINIZIONE_BOZZA_ESISTENTE")
+
+    # Scopo: nuova-versione da sorgente non PUBBLICATA → marker parlante.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_nuova_versione_no_pubblicata(self, MockRepo):
+        from django.db import DatabaseError
+
+        MockRepo.return_value.nuova_versione_definizione.side_effect = DatabaseError(
+            "Nuova versione non ammessa: la definizione 419 non e' in stato PUBBLICATA.",
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.nuova_versione_definizione(419)
+        self.assertEqual(ctx.exception.code, "DEFINIZIONE_NO_PUBBLICATA")
+
+    # --- Write step su BOZZA (Slice 2 anello 3) ---
+
+    # Scopo: create risolve tipo dalla definizione, normalizza il payload e passa
+    # definizione_id + tipo_prestazione_id espliciti al repository.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_create_step_ok(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_definizione.return_value = {"id": 419, "tipo_prestazione_id": 9004, "stato": "BOZZA"}
+        repo.create_step.return_value = 555
+        out = definizioni_service.create_step(419, {
+            "codice": " NUOVO ", "descrizione": "Nuovo step", "sequenza": 15,
+            "esito_default": "  ",  # vuoto → None
+        })
+        self.assertEqual(out, {"step_id": 555})
+        args = repo.create_step.call_args
+        self.assertEqual(args.args[0], 419)          # definizione_id
+        self.assertEqual(args.args[1], 9004)         # tipo_prestazione_id
+        data = args.args[2]
+        self.assertEqual(data["codice"], "NUOVO")    # trim
+        self.assertIsNone(data["esito_default"])     # vuoto → None
+
+    # Scopo: definizione inesistente → 404, senza toccare il repository di scrittura.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_create_step_definizione_non_trovata(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_definizione.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.create_step(999, {"codice": "X", "descrizione": "Y"})
+        self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NOT_FOUND")
+        repo.create_step.assert_not_called()
+
+    # Scopo: codice/descrizione obbligatori → E_VALIDATION_INPUT prima dell'INSERT.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_create_step_manca_core(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_definizione.return_value = {"id": 419, "tipo_prestazione_id": 9004, "stato": "BOZZA"}
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.create_step(419, {"descrizione": "manca il codice"})
+        self.assertEqual(ctx.exception.code, "E_VALIDATION_INPUT")
+        repo.create_step.assert_not_called()
+
+    # Scopo: guard immutabilità (edizione emessa) → marker TEMPLATE_DEFINIZIONE_CONGELATA.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_create_step_congelata_marker(self, MockRepo):
+        from django.db import DatabaseError
+        repo = MockRepo.return_value
+        repo.get_definizione.return_value = {"id": 418, "tipo_prestazione_id": 9004, "stato": "PUBBLICATA"}
+        repo.create_step.side_effect = DatabaseError(
+            "Struttura della definizione workflow 418 non modificabile: e' un'edizione "
+            "per-emittente gia' emessa (pubblicata o ritirata), struttura congelata.",
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.create_step(418, {"codice": "X", "descrizione": "Y"})
+        self.assertEqual(ctx.exception.code, "TEMPLATE_DEFINIZIONE_CONGELATA")
+
+    # Scopo: update tocca solo lo scope (id, definizione_id); rowcount 0 → 404.
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_update_step_non_trovato(self, MockRepo):
+        MockRepo.return_value.update_step.return_value = 0
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.update_step(419, 12345, {"descrizione": "x"})
+        self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NOT_FOUND")
+
+    # Scopo: update senza campi core → E_VALIDATION_INPUT (no UPDATE vuoto).
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_update_step_payload_vuoto(self, MockRepo):
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.update_step(419, 100, {"campo_sconosciuto": 1})
+        self.assertEqual(ctx.exception.code, "E_VALIDATION_INPUT")
+        MockRepo.return_value.update_step.assert_not_called()
+
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_update_step_ok(self, MockRepo):
+        MockRepo.return_value.update_step.return_value = 1
+        out = definizioni_service.update_step(419, 100, {"descrizione": "aggiornato"})
+        self.assertEqual(out, {"step_id": 100})
+
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_delete_step_ok(self, MockRepo):
+        MockRepo.return_value.delete_step.return_value = 1
+        out = definizioni_service.delete_step(419, 100)
+        self.assertEqual(out, {"deleted": True})
+
+    @patch(f"{_SVC}.DefinizioniRepository")
+    def test_delete_step_non_trovato(self, MockRepo):
+        MockRepo.return_value.delete_step.return_value = 0
+        with self.assertRaises(ServiceError) as ctx:
+            definizioni_service.delete_step(419, 12345)
+        self.assertEqual(ctx.exception.code, "E_DEFINIZIONE_NOT_FOUND")

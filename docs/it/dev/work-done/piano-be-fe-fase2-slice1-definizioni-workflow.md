@@ -1,5 +1,10 @@
 # Piano BE/FE — Fase 2 Slice 1: admin edizioni workflow (lista + drift + azioni)
 
+> **✅ CHIUSO (2026-07-04)** — Slice 1 completata (lista + drift + azioni fork/nuova-versione/
+> pubblica, BE+FE, test verdi, E2E in-app). Proseguita in Slice 2 anelli 1-3 (dettaglio +
+> editing step BOZZA). Residuo tracciato nel companion
+> `brief-be-fe-step-dominio-e-definizioni-versionate` (anelli 4/5, Fase 3 editor UI).
+>
 > **Da**: backend/frontend agent · **Data**: 2026-07-03 · **Stato**: 🟡 contratto congelato,
 > pronto al via.
 > **Dipende da**: (1) decisione owner sul **gate app-layer** (AdminAPIView vs permesso di

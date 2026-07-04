@@ -1,5 +1,11 @@
 # Brief DB — Motore pratiche: step a esito di dominio (`DOMINIO`) + definizioni workflow versionate
 
+> **✅ CHIUSO (2026-07-04)** — DB fondazione applicata e testata: step `DOMINIO` +
+> definizioni versionate Fasi 0/1/2 (seed preset, `definizione_id` su template/pratiche,
+> `fn_risolvi_definizione`, pin, guard immutabilità, fork/nuova-versione/pubblica). I
+> follow-up DB emersi in review sono chiusi in brief separati (già in `work-done/`):
+> accesso write editing BOZZA + invariante «≤1 BOZZA per scope». **Nessun residuo DB.**
+>
 > **Per**: team DB (`dev/db-tid`). · **Da**: backend/frontend agent (analisi congiunta 2026-07-02).
 > **Priorità**: Parte 1 🔴 **alta** (buco API vivo, vedi §1.1) · Parte 2 🟠 media (fondazione,
 > nessun comportamento visibile fino alla Fase 2). · **Data**: 2026-07-02.
