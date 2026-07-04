@@ -15,15 +15,20 @@ Tabelle:
 ---
 ### 🎯 Scopo Principale
 
-**Immutabilità strutturale «Leggera»** dei **figli di configurazione** del template
-su un'edizione forkata pubblicata (congelata). Un'unica trigger function
-**generica** presidia i 6 figli del set di copia (contratto C6): blocca
-**INSERT / UPDATE / DELETE** se il template referenziato appartiene a un'edizione
-congelata → `TEMPLATE_DEFINIZIONE_CONGELATA` (514).
+**Immutabilità strutturale «Leggera»** dei **figli di configurazione** del template.
+Un'unica trigger function **generica** presidia i 6 figli del set di copia (contratto
+C6), con la **strategia C** (freeze *modifica* ≠ freeze *cancellazione*), coerente col
+guard sul template padre:
 
-A differenza dei template (dove `descrizione` resta correggibile a caldo), i figli
-**non hanno campo display**: su fork pubblicato **ogni** scrittura è vietata (il lock
-strutturale include l'intero grafo — C4).
+* **INSERT / UPDATE** vietati se il template referenziato appartiene a un'edizione
+  forkata **emessa** (PUBBLICATA **o RITIRATA**):
+  [`fn_check_definizione_struttura_bloccata`](fn_check_definizione_struttura_bloccata.md);
+* **DELETE** vietato solo se il template è di un'edizione **PUBBLICATA** (in uso):
+  [`fn_check_definizione_congelata`](fn_check_definizione_congelata.md) → i figli di
+  una **RITIRATA** sono **cancellabili** (housekeeping).
+
+Errore unico `TEMPLATE_DEFINIZIONE_CONGELATA` (514). I figli **non hanno campo
+display**: nessuna eccezione descrizione (a differenza del template).
 
 ---
 
@@ -54,9 +59,10 @@ Tutti `BEFORE INSERT OR UPDATE OR DELETE ... FOR EACH ROW`.
   che **non deve** governare il congelamento della regola.
 * Estrazione FK **data-driven**: `to_jsonb(riga) ->> TG_ARGV[0]`. FK non risolvibile
   (riga incoerente) → il guard non decide: lasciano decidere le FK / gli altri guard.
-* La verità "congelata" è
-  [fn_check_definizione_congelata](fn_check_definizione_congelata.md) (regola unica,
-  non ripetuta qui).
+* Le due verità sono i predicati puri
+  [fn_check_definizione_struttura_bloccata](fn_check_definizione_struttura_bloccata.md)
+  (INSERT/UPDATE) e [fn_check_definizione_congelata](fn_check_definizione_congelata.md)
+  (DELETE), scelti per `TG_OP` (regole non ripetute qui).
 
 ---
 
@@ -66,12 +72,14 @@ Tutti `BEFORE INSERT OR UPDATE OR DELETE ... FOR EACH ROW`.
   [fn_copia_definizione](fn_copia_definizione.md)**. Aggiungere un figlio al set di
   copia = aggiungere qui un `CREATE TRIGGER`, nient'altro.
 * Durante `fn_fork_definizione` / `fn_nuova_versione_definizione` i figli sono inseriti
-  nella nuova **BOZZA** (non congelata) → il guard è trasparente. Si attiva solo quando
-  si tenta di scrivere su un fork **già pubblicato**.
-* **Teardown**: un fork pubblicato va **ritirato** (`PUBBLICATA→RITIRATA`) prima di
-  poterne cancellare i figli. Vale per manutenzione e cleanup pgTAP.
-* Introdotto con `20260703-12` (Parte 2 / Fase 2b, D2-9).
-* Test: `db/pgtap/pratiche/test-workflow-definizioni-fase2b.sql` (casi 9–11).
+  nella nuova **BOZZA** (non bloccata) → il guard è trasparente. Si attiva solo quando
+  si tenta di scrivere su un fork **già emesso** (pubblicato o ritirato).
+* **Teardown**: un fork **PUBBLICATO** va **ritirato** (`PUBBLICATA→RITIRATA`) prima di
+  poterne cancellare i figli; da RITIRATA il DELETE è consentito (strategia C). Vale per
+  manutenzione e cleanup pgTAP.
+* Introdotto con `20260703-12` (Fase 2b, D2-9); **strategia C** con `20260704-04`.
+* Test: `db/pgtap/pratiche/test-workflow-definizioni-fase2b.sql` (PUBBLICATA, casi 9–11)
+  e `test-definizione-ritirata-edit-freeze.sql` (RITIRATA).
 
 ---
 {% include-markdown "signature-core.md" %}

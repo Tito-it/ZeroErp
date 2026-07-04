@@ -19,6 +19,7 @@ Funzioni collegate:
 > [pratiche.trgfn_tipi_prestazione_bootstrap_definizione](trgfn_tipi_prestazione_bootstrap_definizione.md)
 > [pratiche.trgfn_template_flussi_default_definizione](trgfn_template_flussi_default_definizione.md)
 > [pratiche.trgfn_pratiche_default_definizione](trgfn_pratiche_default_definizione.md)
+> [pratiche.fn_check_definizione_struttura_bloccata](fn_check_definizione_struttura_bloccata.md)
 > [pratiche.fn_check_definizione_congelata](fn_check_definizione_congelata.md)
 > [pratiche.trgfn_template_flussi_guard_immutabile](trgfn_template_flussi_guard_immutabile.md)
 > [pratiche.trgfn_template_flussi_figli_guard_immutabile](trgfn_template_flussi_figli_guard_immutabile.md)
@@ -47,8 +48,9 @@ pratiche aperte).
   edizioni sono varianti/versioni del suo workflow.
 * **Ciclo di vita**: `BOZZA` (editabile) → `PUBBLICATA` (istanziabile, **unica per
   scope**; header immutabile dal guard di Fase 1 e — per i soli **fork** — struttura dei
-  template congelata da Fase 2b) → `RITIRATA` (non istanziabile; le pratiche in volo
-  continuano sul pin. È anche lo stato che **scongela** un fork per poterlo smantellare).
+  template congelata da Fase 2b, non modificabile né cancellabile) → `RITIRATA` (non
+  istanziabile; le pratiche in volo continuano sul pin. Struttura ancora **non
+  modificabile** — ha pratiche pinnate — ma **cancellabile** per smantellamento, strategia C).
 * **Pin alla creazione**: ogni pratica risolve e pinna la propria edizione alla nascita
   (`pratiche.definizione_id`, [auto-pin](trgfn_pratiche_default_definizione.md)) e la
   tiene per sempre.
@@ -63,12 +65,14 @@ pratiche aperte).
   [fn_pubblica_definizione](fn_pubblica_definizione.md), motore
   [fn_copia_definizione](fn_copia_definizione.md)) + **drift** (Fase 2a)
   ([vw_definizioni_drift](vw_definizioni_drift.md)); rimossi i vincoli per-tipo su
-  `template_flussi` (più definizioni per tipo con gli stessi codici). **Fase 2b** (immutabilità strutturale «Leggera»):
-  immutabilità strutturale dei template su PUBBLICATA (strategia «Leggera»: preset editabile
-  da seed, solo i fork si congelano) — guard
+  `template_flussi` (più definizioni per tipo con gli stessi codici). **Fase 2b** (immutabilità strutturale «Leggera», **strategia C**):
+  i **fork emessi** (PUBBLICATA o RITIRATA) hanno la struttura dei template bloccata a
+  INSERT/UPDATE; il DELETE è bloccato solo su PUBBLICATA (una RITIRATA resta cancellabile).
+  Preset e BOZZA editabili — guard
   [trgfn_template_flussi_guard_immutabile](trgfn_template_flussi_guard_immutabile.md) +
   [trgfn_template_flussi_figli_guard_immutabile](trgfn_template_flussi_figli_guard_immutabile.md),
-  predicato [fn_check_definizione_congelata](fn_check_definizione_congelata.md),
+  predicati [fn_check_definizione_struttura_bloccata](fn_check_definizione_struttura_bloccata.md)
+  (INSERT/UPDATE) e [fn_check_definizione_congelata](fn_check_definizione_congelata.md) (DELETE),
   errore `TEMPLATE_DEFINIZIONE_CONGELATA` (514).
 
 ---

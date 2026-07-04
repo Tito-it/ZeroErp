@@ -30,8 +30,9 @@ SELECT 'OFFERTE'::character varying AS area,
         END)::character varying AS motivo_fermo,
     sdo.codice_interno AS stato_codice_interno,
     sdo.codice AS stato_codice,
-    sdo.fase
-   FROM (((vendite.offerte_commerciali o
+    sdo.fase,
+    s.ragione_sociale_completa AS cliente_display
+   FROM (((((vendite.offerte_commerciali o
      JOIN config.stati_doc_offerte sdo ON ((sdo.id = o.stato_doc_offerta_id)))
      LEFT JOIN vendite.contratti ct ON ((ct.offerta_id = o.id)))
      LEFT JOIN LATERAL ( SELECT od.id AS ordine_id,
@@ -39,7 +40,9 @@ SELECT 'OFFERTE'::character varying AS area,
            FROM (vendite.ordini od
              JOIN config.stati_doc_ordini sdor ON ((sdor.id = od.stato_doc_ordine_id)))
           WHERE (((od.documento_origine_tipo)::text = 'OFFERTA'::text) AND (od.documento_origine_id = o.id))
-         LIMIT 1) fo ON (true));
+         LIMIT 1) fo ON (true))
+     LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = o.istanza_utility_id)))
+     LEFT JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)));
 ```
 
 

@@ -25,11 +25,17 @@ SELECT 'COMMESSE'::character varying AS area,
         END)::character varying AS motivo_fermo,
     sc.codice_interno AS stato_codice_interno,
     sc.codice AS stato_codice,
-    NULL::character varying AS fase
-   FROM ((vendite.commesse co
+    NULL::character varying AS fase,
+    s.ragione_sociale_completa AS cliente_display
+   FROM ((((((vendite.commesse co
      JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
      JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
-  GROUP BY co.id, co.codice, co.emittente_soggetto_ruolo_id, ca.competenza_mese, sc.codice_interno, sc.codice;
+     LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+     LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+     LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+     CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+  WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)))
+  GROUP BY co.id, co.codice, co.emittente_soggetto_ruolo_id, ca.competenza_mese, sc.codice_interno, sc.codice, s.ragione_sociale_completa;
 ```
 
 

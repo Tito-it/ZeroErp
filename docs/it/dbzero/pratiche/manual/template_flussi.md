@@ -36,16 +36,17 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
   l'esito e quale classe di esito e' ammessa al completamento — invarianti config-time
   in [trgfn_template_flussi_guard_modalita_esito](trgfn_template_flussi_guard_modalita_esito.md),
   guard runtime in [trgfn_flussi_guard_esito_classe](trgfn_flussi_guard_esito_classe.md).
-* **Immutabilità strutturale «Leggera»** (Fase 2b): se l'edizione di appartenenza è un
-  **fork PUBBLICATO** (`emittente_fiscale_id` valorizzato) la struttura è **congelata** —
-  INSERT/DELETE del template vietati, UPDATE ammesso solo su `descrizione`; ogni scrittura
-  sui figli di configurazione (canali, handler_eventi, competenze, prerequisiti,
-  formule_tempo, regole_generazione) è vietata. Errore
-  `TEMPLATE_DEFINIZIONE_CONGELATA` (514). Il **preset** (emittente NULL) e le edizioni
-  `BOZZA`/`RITIRATA` restano editabili (da seed CSV il preset).
+* **Immutabilità strutturale «Leggera» (strategia C)**: se l'edizione di appartenenza è
+  un **fork già emesso** (`emittente_fiscale_id` valorizzato, stato PUBBLICATA o RITIRATA)
+  la struttura è protetta — `INSERT`/`UPDATE` di template e figli **vietati** (UPDATE del
+  solo `descrizione` ammesso). Il `DELETE` è vietato **solo** su **PUBBLICATA** (in uso):
+  una **RITIRATA** resta **cancellabile** (housekeeping) pur non essendo modificabile.
+  Errore `TEMPLATE_DEFINIZIONE_CONGELATA` (514). Il **preset** (emittente NULL) e le
+  `BOZZA` restano liberamente editabili.
   Guard: [trgfn_template_flussi_guard_immutabile](trgfn_template_flussi_guard_immutabile.md)
-  e [trgfn_template_flussi_figli_guard_immutabile](trgfn_template_flussi_figli_guard_immutabile.md)
-  (predicato [fn_check_definizione_congelata](fn_check_definizione_congelata.md)).
+  e [trgfn_template_flussi_figli_guard_immutabile](trgfn_template_flussi_figli_guard_immutabile.md);
+  predicati [fn_check_definizione_struttura_bloccata](fn_check_definizione_struttura_bloccata.md)
+  (INSERT/UPDATE) e [fn_check_definizione_congelata](fn_check_definizione_congelata.md) (DELETE).
 
 ---
 

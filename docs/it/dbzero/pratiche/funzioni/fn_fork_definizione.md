@@ -11,10 +11,13 @@ CREATE FUNCTION fn_fork_definizione(p_definizione_id integer, p_emittente_fiscal
 CREATE OR REPLACE FUNCTION pratiche.fn_fork_definizione(p_definizione_id integer, p_emittente_fiscale_id bigint)
  RETURNS integer
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'pratiche', 'script', 'config', 'dbops', 'pg_temp'
 AS $function$
 -- Scopo: creare l'edizione di un emittente a partire da una
 --        definizione (di solito il preset), con provenance per il
 --        rilevamento drift. Wrapper di fn_copia_definizione.
+-- SECURITY DEFINER: la DML interna (via fn_copia) gira come owner.
 BEGIN
   IF p_emittente_fiscale_id IS NULL OR p_emittente_fiscale_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
@@ -30,7 +33,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.fn_fork_definizione(p_definizione_id integer, p_emittente_fiscale_id bigint)
-IS 'Crea l''edizione di un emittente a partire da una definizione (di solito il preset), in stato BOZZA, con provenance (preset_origine_id/versione_origine) per il drift. Wrapper di fn_copia_definizione(..., true). Guard: emittente NOT NULL.';
+IS 'Crea l''edizione di un emittente a partire da una definizione (di solito il preset), in stato BOZZA, con provenance (preset_origine_id/versione_origine) per il drift. Wrapper di fn_copia_definizione(..., true). Guard: emittente NOT NULL. SECURITY DEFINER (search_path fisso): la DML interna passa senza grant diretto; autorizzazione al gate app-layer (AdminAPIView).';
 ```
 
 ---
