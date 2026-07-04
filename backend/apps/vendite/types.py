@@ -545,3 +545,32 @@ class OffertaPushResult(TypedDict):
     contratto_id: int
     contratto_codice: str
     sorgente_uid: str
+
+
+class DashFatturazioneAreaRow(TypedDict):
+    # Cella area × mese della dashboard fatturazione (vw_dash_fatturazione_mensile).
+    # valore_* NULL per le aree a conteggi (OFFERTE/CONTRATTI in v1, decisioni D-2/D-3).
+    area: str
+    valore_totale: str | None
+    valore_transitato: str | None
+    n_documenti: int
+    n_transitati: int
+    n_fermi: int
+    n_abortiti: int
+
+
+class DashFatturazioneFermoRow(TypedDict):
+    # Riga drill-down fermi (vw_dash_fatturazione_documenti, NOT is_transitato
+    # AND NOT is_abortito). valore_* NULL per le aree a conteggi.
+    documento_id: int
+    documento_uid: str | None
+    codice: str | None
+    cliente_display: str | None
+    valore_totale: str | None
+    valore_transitato: str | None
+    unita_totali: int | None
+    unita_transitate: int | None
+    motivo_fermo: str | None
+    stato_codice_interno: str | None
+    stato_codice: str | None
+    fase: str | None

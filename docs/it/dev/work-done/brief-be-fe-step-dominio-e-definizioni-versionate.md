@@ -1,5 +1,12 @@
 # Brief BE/FE — Consumi motore pratiche: step `DOMINIO` + definizioni versionate
 
+> **✅ CHIUSO (2026-07-04)** — Parte 1 (step `DOMINIO`) + Fase 0/1 + Fase 2 Slice 1a/1b
+> (admin edizioni) + Slice 2 anelli 1-3 (dettaglio lettura + editing step BOZZA) fatti,
+> test verdi, E2E validato in-app. **Residuo (nuovo brief quando si parte)**: Slice 2
+> anelli 4/5 (write figli per-nodo + archi), FE-2.4 banner drift operatore, Fase 3 editor
+> UI (cantiere V4/V5). API BE documentate in
+> [api_definizioni_workflow](../../backend/pratiche/manual/api_definizioni_workflow.md).
+>
 > **Per**: team backend (`dev/backend-tid`) e frontend. · **Da**: backend/frontend agent
 > (analisi congiunta 2026-07-02). · **Data**: 2026-07-02.
 > **Companion DB** (fonte delle decisioni di modello):
@@ -172,6 +179,40 @@ definizioni — cantiere V4/V5, fuori scope qui.
 | 2. verifica BE-2.1 | BE | DB Fase 0 (nessun codice) |
 | 3. BE-2.2 (percorso + marker) | BE | DB Fase 1 |
 | 4. BE-2.3 + FE banner drift | BE+FE | DB Fase 2 + cantiere V4/V5 |
+
+---
+
+## Stato attività (aggiornato 2026-07-03)
+
+### Parte 1 — step `DOMINIO` ✅ COMPLETA (BE+FE, test verdi)
+
+- **BE-1.1** ✅ marker `FLUSSI_ESITO_NON_AMMESSO` in `_KNOWN_DB_ERROR_MARKERS`.
+- **BE-1.2** ✅ `avvia_flusso` esclude `DOMINIO` dall'auto-completamento (`modalita != "DOMINIO"`).
+- **BE-1.3** ✅ `require_completamento_operatore_ammesso` (service) + chiamata in `ApiPraticaFlussoStato.post`.
+- **BE-1.4** ✅ test service (avvio DOMINIO non completa; guard operatore; marker 504) + test API (POST COMPLETATO su DOMINIO → 400).
+- **FE-1.5** ✅ `FlussoDrawer`: `showEsitoForm` fail-closed su `template_modalita_esito === 'DOMINIO'` + messaggio `flusso_esito_dominio_senza_azione`.
+
+### Parte 2 Fase 0/1 — definizioni versionate ✅ COMPLETA
+
+- **BE-2.1** ✅ verifica non-regressione (percorso invariato con 1 definizione/tipo).
+- **BE-2.2** ✅ `get_percorso_pratica` join per `definizione_id` (non più per tipo) + marker
+  `DEFINIZIONE_NON_TROVATA` e `FLUSSI_TEMPLATE_FUORI_DEFINIZIONE`. Fix collaterale: `crea_pratica`
+  instrada i `DatabaseError` a `_raise_known_db_error` (marker altrimenti morto).
+- **Audit fork-aware** ✅ → `brief-db-fork-gap-chiusura-definizione-aware.md` (2 fn per-tipo residue,
+  **corrette dal DB**, verificate).
+
+### Parte 2 Fase 2 — admin edizioni 🟡 Slice 1 fatto, resta editing BOZZA (Slice 2)
+Gate scelto: **AdminAPIView (super-admin)**. Prerequisiti DB in
+`brief-db-accesso-be-definizioni-workflow.md` (P0 lettura + P1 conversione DEFINER) **chiusi**.
+
+- **Slice 1a** ✅ `GET /api/v1/pratiche/definizioni/` (repository+service+view) + FE list-view
+  `amministrazione` con stato e banner drift + rotta/nav/i18n. Test verdi.
+- **Slice 1b** ✅ `POST …/{fork,nuova-versione,pubblica}/` (AdminAPIView, idempotenti) + FE azioni
+  `RowActionsMenu` + dialog fork (scelta emittente). Test verdi. **Verificato**: la conversione
+  DEFINER risolve il permesso (il fork supera "permesso negato"); E2E persistito da fare via app.
+- **Slice 2** ⏳ editing strutturale di una BOZZA (`template_flussi` + figli scoped a definizione) —
+  richiede accesso write ai guard immutabilità (P1 deferito, nessun consumatore finora).
+- **Banner drift operatore** (FE-2.4) ⏳ cantiere V4/V5.
 
 *Consumi BE/FE dei due sviluppi DB (step DOMINIO + definizioni versionate). Ogni modifica qui
 elencata è puntuale: file, righe e condizioni citati dal codice vivo al 2026-07-02.*

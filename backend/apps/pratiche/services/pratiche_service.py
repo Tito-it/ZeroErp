@@ -82,6 +82,21 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, str], ...] = (
     # substring stabile dei messaggi catalogo, immune ai %s.
     ("DEFINIZIONE_NON_TROVATA", "Nessuna definizione workflow pubblicata"),
     ("FLUSSI_TEMPLATE_FUORI_DEFINIZIONE", "non appartiene alla definizione"),
+    # Azioni ciclo di vita edizioni (Fase 2 Slice 1b: fork/nuova-versione/pubblica).
+    # Marker = substring stabile dei messaggi catalogo (id 509/510/511), immune ai %s.
+    ("DEFINIZIONE_NON_PUBBLICABILE", "non pubblicabile"),
+    ("DEFINIZIONE_PUBBLICATA_IMMUTABILE", "non modificabile: stato"),
+    ("DEFINIZIONE_TRANSIZIONE_NON_AMMESSA", "Transizione di stato definizione workflow"),
+    # Invariante «≤1 BOZZA per scope» + derivazione nuova-versione da PUBBLICATA
+    # (brief-db-guard-bozza-unica-nuova-versione, guard in fn_fork/fn_nuova_versione).
+    # Marker = substring stabile dei messaggi catalogo, immune ai %s.
+    ("DEFINIZIONE_BOZZA_ESISTENTE", "una bozza di edizione workflow"),
+    ("DEFINIZIONE_NO_PUBBLICATA", "Nuova versione non ammessa"),
+    # Editing strutturale BOZZA (Slice 2): guard immutabilità su edizione
+    # per-emittente gia' emessa (514, brief-db-accesso-write-editing-strutturale-bozza)
+    # + unique codice per definizione. Marker = substring stabile.
+    ("TEMPLATE_DEFINIZIONE_CONGELATA", "edizione per-emittente"),
+    ("E_TEMPLATE_CODICE_DUPLICATO", "uq_template_flussi_definizione_codice"),
 )
 
 # Mapping vincoli DB sospensioni -> codici errore applicativi.

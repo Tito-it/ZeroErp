@@ -26,6 +26,10 @@ from apps.vendite.api.views_approvazioni_prezzo import (
     RifiutaPrezzoOffertaView,
     RifiutaPrezzoView,
 )
+from apps.vendite.api.views_dashboard_fatturazione import (
+    ApiDashboardFatturazione,
+    ApiDashboardFatturazioneFermi,
+)
 from apps.vendite.api.views_lookups import (
     ApiAmbitiContrattoLookup,
     ApiListiniSelezionabiliContrattoLookup,
@@ -104,6 +108,18 @@ urlpatterns = [
     # candidata come tabella config lookup (semantica temporale).
     path("promo-articoli/", PromoArticoliView.as_view(), name="vendite-promo-articoli-list"),
     path("promo-articoli/<int:record_id>/", PromoArticoliDetailView.as_view(), name="vendite-promo-articoli-detail"),
+    # Dashboard fatturazione — controllo del transito per competenza
+    # (brief-design-dashboard-fatturazione §6): matrice mensile + fermi.
+    path(
+        "dashboard-fatturazione/",
+        ApiDashboardFatturazione.as_view(),
+        name="vendite-dashboard-fatturazione",
+    ),
+    path(
+        "dashboard-fatturazione/fermi/",
+        ApiDashboardFatturazioneFermi.as_view(),
+        name="vendite-dashboard-fatturazione-fermi",
+    ),
     path("lotti/", ApiLottiList.as_view(), name="vendite-lotti-list"),
     path("pipeline/run/", ApiRunLottoPipeline.as_view(), name="vendite-run-lotto-pipeline"),
     path(

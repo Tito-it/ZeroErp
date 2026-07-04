@@ -1,5 +1,12 @@
 # Brief Design — Definizioni di workflow versionate per emittente (edizioni + fork)
 
+> **✅ CHIUSO (2026-07-04)** — Design implementato: Fasi 0-2 (DB + BE + admin edizioni) e
+> Slice 2 anelli 1-3 (editing strutturale BOZZA) in produzione-dev, validati E2E. Le
+> decisioni aperte §6 sono state risolte in fase di implementazione (immutabilità «Leggera»
+> = lock strutturale + display correggibile; ≤1 BOZZA per scope). **Residuo**: Fase 3
+> (editor UI, cantiere V4/V5) + catalogo preset di settore V3 — da riaprire con brief
+> dedicato al momento del bisogno.
+>
 > **Tipo**: brief di design autorevole (modello + piano; il cambio schema sarà delegato
 > al team DB con brief dedicato) · **Data**: 2026-07-02
 > **Owner**: Tid · **Stato**: 🟢 in corso — **modello deciso** (C «edizioni versionate +

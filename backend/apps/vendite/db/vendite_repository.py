@@ -13,7 +13,11 @@ from typing import Any
 
 from django.db import connection
 
-from apps.vendite.types import LottoFattureRow, LottoListRow
+from apps.vendite.types import (
+    DashFatturazioneFermoRow,
+    LottoFattureRow,
+    LottoListRow,
+)
 
 # Whitelist colonne ordinamento per list_lotto_fatture; mai interpolate direttamente.
 _SORT_COLUMNS: dict[str, str] = {
@@ -21,6 +25,23 @@ _SORT_COLUMNS: dict[str, str] = {
     "nominativo": "srd.ragione_sociale_completa",
     "totale_doc": "f.totale_doc",
 }
+
+# Aree della dashboard fatturazione, nell'ordine del funnel (brief
+# brief-design-dashboard-fatturazione §4). Allineate al discriminante `area`
+# della union vendite.vw_dash_fatturazione_documenti.
+DASH_FATTURAZIONE_AREE: tuple[str, ...] = (
+    "PREVENTIVI",
+    "ORDINI",
+    "OFFERTE",
+    "CONTRATTI",
+    "COMMESSE",
+)
+
+# Aree con valore monetario (imponibile, decisione D-4). OFFERTE e CONTRATTI
+# restano a conteggi in v1 (decisioni D-2/D-3): valore_* = NULL.
+DASH_FATTURAZIONE_AREE_EURO: frozenset[str] = frozenset(
+    {"PREVENTIVI", "ORDINI", "COMMESSE"}
+)
 
 
 class VenditeRepository:
@@ -165,6 +186,134 @@ class VenditeRepository:
                     "emittente_soggetto_ruolo_id": None if row[14] is None else int(row[14]),
                     "data_insert": row[15].isoformat() if row[15] is not None else None,
                     "user_insert": str(row[16]),
+                }
+            )
+        return result, total_count
+
+    # Scopo: Restituisce le righe non vuote (area × mese) dell'aggregata
+    #        dashboard fatturazione per un anno. Il completamento a griglia
+    #        12 mesi × 5 aree (contratto D-5: mesi/aree vuoti = zeri) è a carico
+    #        del service — qui NON si duplica, si legge solo ciò che esiste.
+    # Perimetro: sola lettura su vw_dash_fatturazione_mensile (invoker → la RLS
+    #        emittente su preventivi/ordini/offerte/contratti filtra da sola).
+    # Risultato: lista piatta delle sole (area, mese) con almeno un documento
+    #        (≤ 60 righe).
+    def list_dash_fatturazione_mensile(self, *, anno: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                competenza_mese,
+                area,
+                valore_totale,
+                valore_transitato,
+                n_documenti,
+                n_transitati,
+                n_fermi,
+                n_abortiti
+            FROM vendite.vw_dash_fatturazione_mensile
+            WHERE competenza_mese >= make_date(%s, 1, 1)
+              AND competenza_mese <  (make_date(%s, 1, 1) + interval '1 year')
+            ORDER BY competenza_mese, area
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [anno, anno])
+            rows = cursor.fetchall()
+
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            result.append(
+                {
+                    "competenza_mese": row[0].isoformat(),
+                    "area": str(row[1]),
+                    "valore_totale": str(row[2]) if row[2] is not None else None,
+                    "valore_transitato": str(row[3]) if row[3] is not None else None,
+                    "n_documenti": int(row[4]),
+                    "n_transitati": int(row[5]),
+                    "n_fermi": int(row[6]),
+                    "n_abortiti": int(row[7]),
+                }
+            )
+        return result
+
+    # Scopo: Restituisce il drill-down paginato degli elementi FERMI di
+    #        un'area in un mese di competenza (vw_dash_fatturazione_documenti,
+    #        predicato NOT is_transitato AND NOT is_abortito).
+    # Perimetro: sola lettura; lo scope emittente e' interamente DB-side —
+    #        RLS invoker per le 4 aree documento, filtro nel resolver
+    #        vw_dash_fatturazione_commesse via GUC app.current_user_id per le
+    #        COMMESSE (migration 20260703-60). Nessun filtro applicativo qui.
+    # Risultato: tuple (lista DashFatturazioneFermoRow, conteggio totale).
+    def list_dash_fatturazione_fermi(
+        self,
+        *,
+        area: str,
+        competenza_mese: date,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[DashFatturazioneFermoRow], int]:
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+
+        conditions: list[str] = [
+            "d.area = %s",
+            "d.competenza_mese = %s",
+            "NOT d.is_transitato",
+            "NOT d.is_abortito",
+        ]
+        params: list[Any] = [area, competenza_mese]
+
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+        count_sql = f"""
+            SELECT COUNT(*)
+            FROM vendite.vw_dash_fatturazione_documenti d
+            {where_clause}
+        """
+
+        data_sql = f"""
+            SELECT
+                d.documento_id,
+                d.documento_uid,
+                d.codice,
+                d.cliente_display,
+                d.valore_totale,
+                d.valore_transitato,
+                d.unita_totali,
+                d.unita_transitate,
+                d.motivo_fermo,
+                d.stato_codice_interno,
+                d.stato_codice,
+                d.fase
+            FROM vendite.vw_dash_fatturazione_documenti d
+            {where_clause}
+            ORDER BY d.valore_totale DESC NULLS LAST, d.codice ASC, d.documento_id ASC
+            LIMIT %s OFFSET %s
+        """
+
+        with connection.cursor() as cursor:
+            cursor.execute(count_sql, params)
+            row = cursor.fetchone()
+            assert row is not None
+            total_count = int(row[0])
+
+            cursor.execute(data_sql, params + [safe_limit, safe_offset])
+            rows = cursor.fetchall()
+
+        result: list[DashFatturazioneFermoRow] = []
+        for row in rows:
+            result.append(
+                {
+                    "documento_id": int(row[0]),
+                    "documento_uid": None if row[1] is None else str(row[1]),
+                    "codice": None if row[2] is None else str(row[2]),
+                    "cliente_display": None if row[3] is None else str(row[3]),
+                    "valore_totale": str(row[4]) if row[4] is not None else None,
+                    "valore_transitato": str(row[5]) if row[5] is not None else None,
+                    "unita_totali": None if row[6] is None else int(row[6]),
+                    "unita_transitate": None if row[7] is None else int(row[7]),
+                    "motivo_fermo": None if row[8] is None else str(row[8]),
+                    "stato_codice_interno": None if row[9] is None else str(row[9]),
+                    "stato_codice": None if row[10] is None else str(row[10]),
+                    "fase": None if row[11] is None else str(row[11]),
                 }
             )
         return result, total_count

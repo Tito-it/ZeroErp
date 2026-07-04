@@ -1,12 +1,18 @@
 # Brief DB — Motore pratiche: step a esito di dominio (`DOMINIO`) + definizioni workflow versionate
 
+> **✅ CHIUSO (2026-07-04)** — DB fondazione applicata e testata: step `DOMINIO` +
+> definizioni versionate Fasi 0/1/2 (seed preset, `definizione_id` su template/pratiche,
+> `fn_risolvi_definizione`, pin, guard immutabilità, fork/nuova-versione/pubblica). I
+> follow-up DB emersi in review sono chiusi in brief separati (già in `work-done/`):
+> accesso write editing BOZZA + invariante «≤1 BOZZA per scope». **Nessun residuo DB.**
+>
 > **Per**: team DB (`dev/db-tid`). · **Da**: backend/frontend agent (analisi congiunta 2026-07-02).
 > **Priorità**: Parte 1 🔴 **alta** (buco API vivo, vedi §1.1) · Parte 2 🟠 media (fondazione,
 > nessun comportamento visibile fino alla Fase 2). · **Data**: 2026-07-02.
 >
 > **Assorbe/attua due cantieri**:
 >
-> 1. [brief-db-guard-esito-smistamento.md](brief-db-guard-esito-smistamento.md) — invariante
+> 1. [brief-db-guard-esito-smistamento.md](../work-done/brief-db-guard-esito-smistamento.md) — invariante
 >    step bivio (incidente `PRA-0000243`) → **Parte 1**, con correzioni fattuali (§1.1).
 > 2. [brief-design-workflow-definizioni-versionate.md](brief-design-workflow-definizioni-versionate.md)
 >    — modello C «edizioni versionate + fork» (decisione 2026-07-02) → **Parte 2** = la delega

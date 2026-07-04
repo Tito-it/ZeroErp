@@ -1,18 +1,18 @@
 # Brief DB — Guard: lo step SMISTAMENTO accetta solo l'esito di RAMO (bivio)
 
 > ⛔ **SUPERATO / DEPRECATO (2026-07-02)** — assorbito e **corretto** dalla **Parte 1** di
-> [brief-db-step-dominio-e-definizioni-versionate.md](brief-db-step-dominio-e-definizioni-versionate.md)
+> [brief-db-step-dominio-e-definizioni-versionate.md](../work-in-progress/brief-db-step-dominio-e-definizioni-versionate.md)
 > (già **applicata + testata** dal team DB: `modalita_esito = 'DOMINIO'` + guard runtime
 > `FLUSSI_ESITO_NON_AMMESSO`). Il brief unificato corregge un errore fattuale di questo
 > documento: il percorso che accettava `POSITIVO` non è il generico `cambia_stato_flusso`
 > ma il percorso mainstream `ApiPraticaFlussoStato` → `completa_flusso`. **Non attuare
 > questo brief**: mantenuto solo come riferimento storico (link dal brief unificato).
 > ⚠️ **ASSORBITO (2026-07-02)** nella **Parte 1** di
-> [brief-db-step-dominio-e-definizioni-versionate.md](brief-db-step-dominio-e-definizioni-versionate.md),
+> [brief-db-step-dominio-e-definizioni-versionate.md](../work-in-progress/brief-db-step-dominio-e-definizioni-versionate.md),
 > che contiene anche le **correzioni fattuali** emerse dall'analisi (il percorso scoperto è
 > quello mainstream `completa_flusso`, non solo il generico; mitigazione solo FE ⇒ priorità
 > alta; modello scelto: `modalita_esito = 'DOMINIO'`). Consumi BE/FE nel companion
-> [brief-be-fe-step-dominio-e-definizioni-versionate.md](brief-be-fe-step-dominio-e-definizioni-versionate.md).
+> [brief-be-fe-step-dominio-e-definizioni-versionate.md](../work-in-progress/brief-be-fe-step-dominio-e-definizioni-versionate.md).
 > Questo file resta come **storia dell'incidente `PRA-0000243`** — non usarlo come specifica.
 >
 > **Per**: team DB (`dev/db-tid`). · **Da**: backend/frontend agent. · **Priorità**: 🟠 media
