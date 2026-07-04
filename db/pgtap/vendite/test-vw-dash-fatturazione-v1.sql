@@ -38,10 +38,13 @@
 --   21) cliente_display non-null preventivo (path istanza->soggetti)
 --   22) cliente_display non-null contratto (path BA->soggetto_ruolo->soggetti)
 --   23) cliente_display non-null commessa (path BA->soggetto_ruolo->soggetti)
+--   24) VOID esclusi: 2080-06 EMESSA+ANNULLATA+RIFIUTATA -> totale = solo EMESSA
+--   25) mese di sole void (ANNULLATA): assente da resolver e drill-down
+--   26) edge EMESSA+RIFIUTATA (gia' transitata): tenuta, non persa
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(25);
+SELECT plan(28);
 
 -- ============================================================
 -- 0) Riferimenti minimi
@@ -684,6 +687,111 @@ SELECT ok(
     WHERE v.documento_id = (SELECT id FROM tmp_df_commessa)
       AND v.competenza_mese = DATE '2080-01-01'),
   '23. cliente_display valorizzato per la commessa (path BA->soggetto_ruolo->soggetti)'
+);
+
+-- ============================================================
+-- 24-26) Esclusione attivita' VOID dal denominatore (20260703-61)
+--   Fixture su commessa A (emittente A, in scope operatore) in mesi freschi,
+--   cosi' i test 2080-01 restano intatti.
+-- ============================================================
+
+-- Helper inline: inserisce un'attivita' void/edge su commessa A in un mese.
+-- 2080-06: EMESSA(100) + ANNULLATA(999) + RIFIUTATA/NON_EMESSA(888)
+INSERT INTO vendite.commesse_attivita (
+  commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
+  uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
+  tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
+  stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+SELECT (SELECT id FROM tmp_df_commessa),
+       'PGTAP-DF-V6E-' || substr(md5(clock_timestamp()::text), 1, 8),
+       r.art_serv_id, r.istanza_utility_id, DATE '2080-06-01', r.uom_id, 1,
+       DATE '2080-06-01', DATE '2080-06-01', DATE '2080-06-30',
+       r.tipo_doc_fiscale_id, r.valuta_id, 100.000000, 'FIXED',
+       'APPROVATA', 'EMESSA', r.sorg_preventivo_id, (SELECT uid FROM tmp_df_prev)::text
+FROM tmp_df_refs r;
+
+INSERT INTO vendite.commesse_attivita (
+  commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
+  uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
+  tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
+  stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+SELECT (SELECT id FROM tmp_df_commessa),
+       'PGTAP-DF-V6A-' || substr(md5(clock_timestamp()::text), 1, 8),
+       r.art_serv_id, r.istanza_utility_id, DATE '2080-06-01', r.uom_id, 1,
+       DATE '2080-06-01', DATE '2080-06-01', DATE '2080-06-30',
+       r.tipo_doc_fiscale_id, r.valuta_id, 999.000000, 'FIXED',
+       'APPROVATA', 'ANNULLATA', r.sorg_preventivo_id, (SELECT uid FROM tmp_df_prev)::text
+FROM tmp_df_refs r;
+
+INSERT INTO vendite.commesse_attivita (
+  commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
+  uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
+  tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
+  stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+SELECT (SELECT id FROM tmp_df_commessa),
+       'PGTAP-DF-V6R-' || substr(md5(clock_timestamp()::text), 1, 8),
+       r.art_serv_id, r.istanza_utility_id, DATE '2080-06-01', r.uom_id, 1,
+       DATE '2080-06-01', DATE '2080-06-01', DATE '2080-06-30',
+       r.tipo_doc_fiscale_id, r.valuta_id, 888.000000, 'FIXED',
+       'RIFIUTATA', 'NON_EMESSA', r.sorg_preventivo_id, (SELECT uid FROM tmp_df_prev)::text
+FROM tmp_df_refs r;
+
+SELECT ok(
+  (SELECT v.unita_totali = 1 AND v.valore_totale = 100
+      AND v.valore_transitato = 100 AND v.is_transitato = true
+      AND v.motivo_fermo IS NULL
+     FROM vendite.vw_dash_fatturazione_commesse v
+    WHERE v.documento_id = (SELECT id FROM tmp_df_commessa)
+      AND v.competenza_mese = DATE '2080-06-01'),
+  '24. Void esclusi: 2080-06 EMESSA(100)+ANNULLATA(999)+RIFIUTATA(888) -> totale 100, unita 1, transitato'
+);
+
+-- 2080-07: solo 1 ANNULLATA -> mese interamente void -> assente dal resolver
+INSERT INTO vendite.commesse_attivita (
+  commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
+  uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
+  tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
+  stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+SELECT (SELECT id FROM tmp_df_commessa),
+       'PGTAP-DF-V7A-' || substr(md5(clock_timestamp()::text), 1, 8),
+       r.art_serv_id, r.istanza_utility_id, DATE '2080-07-01', r.uom_id, 1,
+       DATE '2080-07-01', DATE '2080-07-01', DATE '2080-07-31',
+       r.tipo_doc_fiscale_id, r.valuta_id, 555.000000, 'FIXED',
+       'BOZZA', 'ANNULLATA', r.sorg_preventivo_id, (SELECT uid FROM tmp_df_prev)::text
+FROM tmp_df_refs r;
+
+SELECT ok(
+  (SELECT NOT EXISTS (
+     SELECT 1 FROM vendite.vw_dash_fatturazione_commesse v
+      WHERE v.documento_id = (SELECT id FROM tmp_df_commessa)
+        AND v.competenza_mese = DATE '2080-07-01')
+   AND NOT EXISTS (
+     SELECT 1 FROM vendite.vw_dash_fatturazione_documenti d
+      WHERE d.area = 'COMMESSE' AND d.competenza_mese = DATE '2080-07-01')),
+  '25. Mese di sole void (2080-07 ANNULLATA): assente dal resolver e dal drill-down'
+);
+
+-- 2080-08: EMESSA+RIFIUTATA (assi indipendenti) -> gia' transitata, TENUTA.
+INSERT INTO vendite.commesse_attivita (
+  commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
+  uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
+  tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
+  stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
+SELECT (SELECT id FROM tmp_df_commessa),
+       'PGTAP-DF-V8ER-' || substr(md5(clock_timestamp()::text), 1, 8),
+       r.art_serv_id, r.istanza_utility_id, DATE '2080-08-01', r.uom_id, 1,
+       DATE '2080-08-01', DATE '2080-08-01', DATE '2080-08-31',
+       r.tipo_doc_fiscale_id, r.valuta_id, 200.000000, 'FIXED',
+       'RIFIUTATA', 'EMESSA', r.sorg_preventivo_id, (SELECT uid FROM tmp_df_prev)::text
+FROM tmp_df_refs r;
+
+SELECT ok(
+  (SELECT v.unita_totali = 1 AND v.valore_totale = 200
+      AND v.is_transitato = true
+     FROM vendite.vw_dash_fatturazione_commesse v
+    WHERE v.documento_id = (SELECT id FROM tmp_df_commessa)
+      AND v.competenza_mese = DATE '2080-08-01'),
+  '26. Edge EMESSA+RIFIUTATA (gia'' transitata): tenuta, non persa dal totale/transitato'
 );
 
 SELECT * FROM finish();

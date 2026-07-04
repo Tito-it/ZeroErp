@@ -30,6 +30,7 @@ in `attivita_fatturabili`). È il tratto finale pre-fattura.
 | Aspetto | Regola |
 |---------|--------|
 | Valore | `Σ prezzo_snapshot × quantita` per `competenza_mese`; transitato = filtro `stato_emissione = 'EMESSA'`. `'EMESSA'`/`'NON_EMESSA'` sono enum CHECK di colonna (literale ammesso §6d, stessi literali delle fn di dominio) |
+| **Denominatore (computabile)** | Il totale/unità e quindi `is_transitato`/valore-fermo contano solo le attività **non void**, `WHERE stato_emissione <> 'ANNULLATA' AND (stato_approvazione <> 'RIFIUTATA' OR stato_emissione = 'EMESSA')`. Simmetrico a `orr.attivo` degli ordini. `ANNULLATA` = void emissione; `RIFIUTATA` = void terminale (decisione 2026-07-04) salvo se già `EMESSA` (transitata, non va persa). Un mese di sole void sparisce (nulla da fatturare) e non finisce nel drill-down |
 | **Scope emittente** | Applicato **nel resolver** (commesse fuori RLS): `co.emittente_soggetto_ruolo_id` filtrato da `script.fn_get_emittenti_scope_sr_ids(app.current_user_id)` letto da GUC. Semantica: `NULL`=tutto (super-admin) · `'{}'`=niente · array=whitelist. Commessa con emittente NULL: esclusa per l'operatore scoped (fail-safe), visibile al super-admin |
 | `is_abortito` | Commessa `ANNULLATA` (`stati_commessa.codice_interno`) — le commesse non hanno la proiezione fase/esito D1 → `fase` NULL |
 | `motivo_fermo` | `ATTIVITA_NON_APPROVATA` (esistono ferme non ancora `APPROVATA`: collo di bottiglia = approvazione) · `ATTIVITA_NON_EMESSA` (tutte approvate, manca l'emissione) |
