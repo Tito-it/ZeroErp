@@ -1568,13 +1568,14 @@ a {
   font-size: var(--app-font-size-base);
 }
 
-/* Aree a conteggi (offerte/contratti, D-2/D-3): frazione n/n al posto
- * del donut, stessa altezza del plot per allineare le card. */
-.app-dash-frazione {
+/* Modalita' 'fraction' di DonutTransito (aree a conteggi, D-2/D-3): frazione
+ * n/n al posto del grafico. L'altezza arriva dalla prop `size` inline (stessa
+ * del plot donut) per allineare le card euro e count senza numeri magici. */
+.app-donut-transito-fraction {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 132px;
+  width: 100%;
   font-size: 1.6rem;
   font-weight: 700;
   color: var(--app-text-color);

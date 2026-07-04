@@ -1,16 +1,23 @@
 <script setup>
-// Scopo: Donut a 2 spicchi "transitato vs fermo" per le card della dashboard
+// Scopo: Visualizzazione "transitato vs fermo" per le card della dashboard
 //        fatturazione (brief-design-dashboard-fatturazione §7, decisione D-1:
 //        chart.js via PrimeVue <Chart>). Unico punto dell'app che parla con
 //        chart.js: le view usano solo questo wrapper.
+//        Due modalita':
+//          - mode="donut"    → donut a 2 spicchi con percentuale al centro
+//                              (aree con valore in euro, D-4);
+//          - mode="fraction" → frazione n/n al posto del grafico (aree a
+//                              conteggi, D-2/D-3) — stessa altezza e stessa
+//                              mini-legenda, cosi' le card restano allineate
+//                              senza duplicare markup nei caller.
 //
 //        Palette: SOLO variabili theme.css (--app-chart-transitato /
 //        --app-chart-fermo / --app-chart-track), risolte a runtime con
 //        getComputedStyle e ricalcolate al toggle dark/light — mai colori
-//        hardcoded (feedback_css_centralizzazione). La coppia green-600 /
-//        orange-600 e' validata CVD+contrasto su entrambe le superfici.
-//        L'identita' non e' mai solo-colore: percentuale al centro +
-//        mini-legenda con etichetta e valore per ogni spicchio.
+//        hardcoded (feedback_css_centralizzazione). La risoluzione e' cachata
+//        a livello modulo per tema (un solo getComputedStyle per toggle,
+//        non uno per istanza). L'identita' non e' mai solo-colore:
+//        percentuale/frazione + mini-legenda con etichetta e valore.
 import { ref, computed, watch, onMounted } from 'vue'
 import Chart from 'primevue/chart'
 import { useUiStore } from '../../../stores/ui'
@@ -21,37 +28,56 @@ const props = defineProps({
   transitato: { type: Number, required: true },
   // Valore ancora fermo nell'area (totale - transitato).
   fermo: { type: Number, required: true },
+  // 'donut' (default) oppure 'fraction' (n/n, aree a conteggi).
+  mode: {
+    type: String,
+    default: 'donut',
+    validator: (v) => ['donut', 'fraction'].includes(v),
+  },
   // 'currency' per le aree in euro, 'count' per le aree a conteggi.
   format: { type: String, default: 'currency' },
   // Etichette tradotte fornite dal caller (il wrapper resta i18n-agnostico).
   labelTransitato: { type: String, required: true },
   labelFermo: { type: String, required: true },
-  // Diametro del donut in px.
+  // Diametro del donut / altezza della frazione, in px.
   size: { type: Number, default: 132 },
 })
 
 const ui = useUiStore()
 
-// Colori risolti dalle variabili CSS. Ref (non computed) perche' il valore
-// dipende dal DOM: ricalcolato esplicitamente al mount e al toggle tema.
-const palette = ref({ transitato: '#888', fermo: '#888', track: '#888', surface: '#fff' })
-
-// Scopo: risolve le variabili tema in colori concreti per chart.js
-// (il canvas non sa leggere var(--...)).
-function resolvePalette() {
-  const style = getComputedStyle(document.documentElement)
-  const read = (name, fallback) => style.getPropertyValue(name).trim() || fallback
-  palette.value = {
-    transitato: read('--app-chart-transitato', '#16a34a'),
-    fermo: read('--app-chart-fermo', '#ea580c'),
-    track: read('--app-chart-track', '#52525b'),
-    // Bordo spicchi = colore card: crea il gap di 2px fra gli spicchi.
-    surface: read('--app-card-bg', '#ffffff'),
-  }
+const _FALLBACK_PALETTE = {
+  transitato: '#16a34a',
+  fermo: '#ea580c',
+  track: '#52525b',
+  surface: '#ffffff',
 }
 
-onMounted(resolvePalette)
-watch(() => ui.isDark, () => resolvePalette(), { flush: 'post' })
+// Cache modulo-level per tema: N istanze donut condividono UNA risoluzione
+// getComputedStyle per toggle dark/light (evita style recalc moltiplicati).
+const _paletteCache = new Map()
+
+// Scopo: risolve le variabili tema in colori concreti per chart.js
+// (il canvas non sa leggere var(--...)), con cache per tema.
+function resolvePalette(isDark) {
+  const key = isDark ? 'dark' : 'light'
+  if (_paletteCache.has(key)) return _paletteCache.get(key)
+  const style = getComputedStyle(document.documentElement)
+  const read = (name, fallback) => style.getPropertyValue(name).trim() || fallback
+  const resolved = {
+    transitato: read('--app-chart-transitato', _FALLBACK_PALETTE.transitato),
+    fermo: read('--app-chart-fermo', _FALLBACK_PALETTE.fermo),
+    track: read('--app-chart-track', _FALLBACK_PALETTE.track),
+    // Bordo spicchi = colore card: crea il gap di 2px fra gli spicchi.
+    surface: read('--app-card-bg', _FALLBACK_PALETTE.surface),
+  }
+  _paletteCache.set(key, resolved)
+  return resolved
+}
+
+const palette = ref(_FALLBACK_PALETTE)
+
+onMounted(() => { palette.value = resolvePalette(ui.isDark) })
+watch(() => ui.isDark, (isDark) => { palette.value = resolvePalette(isDark) }, { flush: 'post' })
 
 const totale = computed(() => props.transitato + props.fermo)
 const isEmpty = computed(() => totale.value <= 0)
@@ -61,12 +87,19 @@ const pctTransitato = computed(() => {
   return Math.round((props.transitato / totale.value) * 100)
 })
 
-// Scopo: formatta un valore per legenda/tooltip secondo la natura dell'area.
+// Scopo: formatta un valore per legenda/tooltip secondo la natura del dato.
 function formatValue(value) {
   return props.format === 'currency'
     ? formatCurrency(value)
     : formatNumber(value, { minimumFractionDigits: 0 })
 }
+
+// Righe della mini-legenda (dot + etichetta + valore) — un solo markup
+// per entrambe le modalita'.
+const legendRows = computed(() => [
+  { key: 'transitato', color: palette.value.transitato, label: props.labelTransitato, value: formatValue(props.transitato) },
+  { key: 'fermo', color: palette.value.fermo, label: props.labelFermo, value: formatValue(props.fermo) },
+])
 
 const chartData = computed(() => {
   // Nessun dato: anello neutro pieno (nessun semaforo da comunicare).
@@ -88,25 +121,34 @@ const chartData = computed(() => {
   }
 })
 
-const chartOptions = computed(() => ({
+// Options STATICHE (non computed): PrimeVue <Chart> fa destroy+reinit a ogni
+// cambio di riferimento di `options` — con l'oggetto stabile solo `data`
+// triggera il redraw. Lo stato "vuoto" passa dal filter (closure su isEmpty).
+const chartOptions = {
   cutout: '68%',
   responsive: false,
   plugins: {
     // La legenda vive sotto il donut (mini-legenda HTML con i valori).
     legend: { display: false },
     tooltip: {
-      enabled: !isEmpty.value,
+      // Niente tooltip sull'anello neutro "nessun dato".
+      filter: () => !isEmpty.value,
       callbacks: {
         label: (ctx) => ` ${ctx.label}: ${formatValue(ctx.parsed)}`,
       },
     },
   },
-}))
+}
 </script>
 
 <template>
   <div class="app-donut-transito">
-    <div class="app-donut-transito-plot" :style="{ width: `${size}px`, height: `${size}px` }">
+    <!-- Modalita' donut: grafico + percentuale al centro. -->
+    <div
+      v-if="mode === 'donut'"
+      class="app-donut-transito-plot"
+      :style="{ width: `${size}px`, height: `${size}px` }"
+    >
       <Chart
         type="doughnut"
         :data="chartData"
@@ -120,17 +162,22 @@ const chartOptions = computed(() => ({
         <span v-else class="app-donut-transito-pct app-donut-transito-pct-empty">—</span>
       </div>
     </div>
-    <!-- Mini-legenda: dot colore + etichetta + valore per ogni spicchio. -->
+
+    <!-- Modalita' fraction: n/n grande, stessa altezza del plot donut. -->
+    <div
+      v-else
+      class="app-donut-transito-fraction"
+      :style="{ height: `${size}px` }"
+    >
+      {{ isEmpty ? '—' : `${formatValue(transitato)}/${formatValue(totale)}` }}
+    </div>
+
+    <!-- Mini-legenda: dot colore + etichetta + valore per ogni voce. -->
     <div class="app-donut-transito-legend">
-      <div class="app-donut-transito-legend-row">
-        <span class="app-donut-transito-dot" :style="{ background: palette.transitato }" />
-        <span class="app-donut-transito-label">{{ labelTransitato }}</span>
-        <span class="app-donut-transito-value">{{ formatValue(transitato) }}</span>
-      </div>
-      <div class="app-donut-transito-legend-row">
-        <span class="app-donut-transito-dot" :style="{ background: palette.fermo }" />
-        <span class="app-donut-transito-label">{{ labelFermo }}</span>
-        <span class="app-donut-transito-value">{{ formatValue(fermo) }}</span>
+      <div v-for="row in legendRows" :key="row.key" class="app-donut-transito-legend-row">
+        <span class="app-donut-transito-dot" :style="{ background: row.color }" />
+        <span class="app-donut-transito-label">{{ row.label }}</span>
+        <span class="app-donut-transito-value">{{ row.value }}</span>
       </div>
     </div>
   </div>

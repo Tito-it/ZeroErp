@@ -15,7 +15,7 @@
 // paginatorProps include: totalRecords, rows, first, rowsPerPageOptions,
 //   paginator, paginatorTemplate, currentPageReportTemplate
 
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onActivated, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useContextStore } from '../../stores/context'
@@ -48,6 +48,11 @@ export function useSearchTable(store, options = {}) {
   // Risolve termine ricerca iniziale: route query > context > vuoto
   const resolvedSearch = route.query.search || ctx.searchTerm || ''
   const searchText = ref(resolvedSearch)
+  // Ultimo `?search` di deep-link gia' consumato: serve a onActivated per
+  // ri-applicare SOLO un deep-link NUOVO, non a re-imporre quello vecchio a
+  // ogni riattivazione (altrimenti svuotare/modificare la ricerca in pagina
+  // verrebbe annullato al rientro nel tab, finche' l'URL conserva ?search).
+  let lastConsumedSearch = route.query.search || null
   if (resolvedSearch) {
     store.filters.search = resolvedSearch
   }
@@ -118,6 +123,31 @@ export function useSearchTable(store, options = {}) {
   onMounted(() => {
     window.addEventListener('keydown', onKeydown)
     compactRowsQuery?.addEventListener('change', onRowsMediaChange)
+  })
+
+  // Scopo: deep-link `?search=` verso una view gia' cachata da KeepAlive
+  // (AppLayout usa `:key="$route.path"`: navigare allo stesso path con query
+  // diversa RIATTIVA la view, non la rimonta, quindi il setup — unica lettura
+  // di route.query.search, riga ~49 — non ri-esegue). Senza questo hook il
+  // filtro da un deep-link (es. "apri documento" dalla dashboard fatturazione)
+  // verrebbe ignorato dopo la prima visita della lista.
+  // Idempotente: al primo mount searchText coincide gia' con la query (il
+  // guard evita il doppio fetch); `skipNextDebounce` neutralizza il watch
+  // debounced su searchText. Pattern memoria feedback_keepalive_onactivated.
+  onActivated(() => {
+    const qs = route.query.search
+    // Applica solo un deep-link NUOVO (query cambiata da quando l'abbiamo
+    // consumata l'ultima volta), non a ogni riattivazione: preserva le
+    // modifiche/lo svuotamento fatti dall'utente sulla ricerca in pagina.
+    if (qs && qs !== lastConsumedSearch) {
+      lastConsumedSearch = qs
+      clearTimeout(searchTimeout)
+      skipNextDebounce = true
+      searchText.value = qs
+      store.filters.search = qs
+      store.filters.offset = 0
+      store.fetchList()
+    }
   })
 
   // Cleanup timeout e listener on unmount

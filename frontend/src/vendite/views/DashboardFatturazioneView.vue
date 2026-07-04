@@ -1,17 +1,16 @@
 <script setup>
 // Scopo: Dashboard fatturazione — controllo del transito per competenza
-//        (brief-design-dashboard-fatturazione §7).
-//        ⚠️ VERSIONE MOCK per validazione grafica: i dati arrivano da
-//        `vendite/mock/dashboardFatturazione.mock.js`, NESSUNA chiamata BE.
-//        Alla Fase 3 il mock viene sostituito da store Pinia + API
-//        `/api/v1/vendite/dashboard-fatturazione/` senza toccare il layout.
-//        Layout: pannello laterale anno + 12 mesi con semaforo (D-5),
-//        card per area (donut € / frazione conteggi, D-2/D-3/D-4),
-//        drill-down fermi in pagina (non drawer: confronto card↔dettaglio).
-import { ref, computed } from 'vue'
+//        (brief-design-dashboard-fatturazione §7, Fase 3 FE).
+//        Dati reali da GET /vendite/dashboard-fatturazione/ (+ /fermi/) via
+//        store Pinia; la semantica totale/transitato/fermo vive nel DB.
+//        Layout: pannello laterale anno + 12 mesi con semaforo (D-5) —
+//        stepper compatto su piccoli schermi; card per area (donut € /
+//        frazione conteggi, D-2/D-3/D-4); drill-down fermi in pagina.
+import { computed, nextTick, onActivated, ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
-import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -21,37 +20,67 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import DonutTransito from '../../core/components/charts/DonutTransito.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
-import { MANAGE_ICONS, READONLY_DOMAINS } from '../../core/constants'
+import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
+import { extractApiError } from '../../core/utils/apiError'
 import { formatCurrency } from '../../core/utils/format'
-import { resolveSeverity } from '../../core/utils/severity'
-import { AREE, buildMockAnno, listMockFermi } from '../mock/dashboardFatturazione.mock'
+import {
+  statoCommessaSeverity,
+  statoContrattoSeverity,
+  statoOffertaSeverity,
+  statoOrdineSeverity,
+  statoPreventiveSeverity,
+} from '../../core/utils/severity'
+import { useDashboardFatturazioneStore } from '../stores/dashboardFatturazione'
 
 const { t, locale } = useI18n()
 const notify = useNotify()
+const router = useRouter()
 
 // Provider readonly di area: la dashboard e' consultazione pura, ma il
 // provider mantiene il pattern standard (ReadonlyBadge nel suffix toolbar).
 useReadonlyMode(READONLY_DOMAINS.VENDITE)
 
-// Anno libero (D-5): frecce ◀ ▶, 12 mesi sempre presenti.
-const anno = ref(2026)
-// Mese selezionato (indice 0-11). Default: maggio, il mese "caldo" del mock.
-const meseIdx = ref(4)
-// Area selezionata per il drill-down fermi (click su card).
-const areaSelezionata = ref(null)
+const store = useDashboardFatturazioneStore()
+const {
+  anno,
+  meseIdx,
+  areaSelezionata,
+  mesi,
+  fermi,
+  fermiCount,
+  fermiPage,
+  fermiPageSize,
+  fermiLoading,
+} = storeToRefs(store)
 
-const matrice = computed(() => buildMockAnno(anno.value))
-const mesi = computed(() => matrice.value.mesi)
-const meseCorrente = computed(() => mesi.value[meseIdx.value])
+// Config UNICA per area (ordine funnel, allineata alla whitelist BE
+// DASH_FATTURAZIONE_AREE). kind: 'euro' = donut con importi (D-4),
+// 'count' = frazione n/n (D-2/D-3). route: lista FE per "apri documento"
+// (null = area senza view, riga consultiva — COMMESSE in v1).
+// severity: shortcut centralizzata in core/utils/severity.js per gli stati
+// documento nel drill-down (un solo punto di modifica dei colori).
+const AREE = [
+  { key: 'PREVENTIVI', kind: 'euro', route: '/vendite/preventivi', severity: statoPreventiveSeverity },
+  { key: 'ORDINI', kind: 'euro', route: '/vendite/ordini', severity: statoOrdineSeverity },
+  { key: 'OFFERTE', kind: 'count', route: '/vendite/offerte', severity: statoOffertaSeverity },
+  { key: 'CONTRATTI', kind: 'count', route: '/vendite/contratti', severity: statoContrattoSeverity },
+  { key: 'COMMESSE', kind: 'euro', route: null, severity: statoCommessaSeverity },
+]
+const AREA_BY_KEY = Object.fromEntries(AREE.map((a) => [a.key, a]))
 
-// Scopo: nome mese localizzato dal locale i18n attivo (niente 12 chiavi i18n).
-function nomeMese(idx, forma = 'long') {
-  return new Date(anno.value, idx, 1).toLocaleDateString(locale.value, { month: forma })
-}
+const meseCorrente = computed(() => mesi.value[meseIdx.value] ?? null)
 
-// Scopo: semaforo del mese per il pannello laterale.
-//        'ok' = ha dati e tutto transitato; 'fermi' = fermi > 0; 'vuoto' = zero dati.
-function statoMese(mese) {
+// Nomi mese localizzati: un solo Intl.DateTimeFormat per (anno, locale),
+// array di 12 stringhe — evita di ricostruire il formatter a ogni render.
+const nomiMesi = computed(() => {
+  const fmt = new Intl.DateTimeFormat(locale.value, { month: 'long' })
+  return Array.from({ length: 12 }, (_, m) => fmt.format(new Date(anno.value, m, 1)))
+})
+
+// Scopo: semaforo del mese: 'ok' = ha dati e tutto transitato;
+//        'fermi' = fermi > 0; 'vuoto' = zero dati.
+function computeStatoMese(mese) {
+  if (!mese) return { stato: 'vuoto', fermi: 0 }
   const nFermi = mese.aree.reduce((acc, a) => acc + a.n_fermi, 0)
   const nDocumenti = mese.aree.reduce((acc, a) => acc + a.n_documenti, 0)
   if (nDocumenti === 0) return { stato: 'vuoto', fermi: 0 }
@@ -59,47 +88,98 @@ function statoMese(mese) {
   return { stato: 'ok', fermi: 0 }
 }
 
-// Righe card del mese selezionato, decorate con la config area (kind €/n).
-const cards = computed(() =>
-  AREE.map((cfg) => {
-    const dati = meseCorrente.value.aree.find((a) => a.area === cfg.key)
-    return { ...cfg, ...dati }
-  })
-)
+// Semaforo pre-calcolato UNA volta per mese (usato dal pannello laterale e,
+// per il mese corrente, dallo stepper) — niente ricalcolo nel template.
+const statiMesi = computed(() => mesi.value.map(computeStatoMese))
+const statoMeseCorrente = computed(() => statiMesi.value[meseIdx.value] ?? { stato: 'vuoto', fermi: 0 })
 
-// Riepilogo mese: somme delle sole aree in euro (le aree a conteggi non
-// hanno valore monetario in v1) + conteggi fermi/abortiti cross-area.
-const totaliMese = computed(() => {
-  const euro = meseCorrente.value.aree.filter((a) => a.valore_totale !== null)
-  const totale = euro.reduce((acc, a) => acc + a.valore_totale, 0)
-  const transitato = euro.reduce((acc, a) => acc + a.valore_transitato, 0)
-  const fermi = meseCorrente.value.aree.reduce((acc, a) => acc + a.n_fermi, 0)
-  const abortiti = meseCorrente.value.aree.reduce((acc, a) => acc + a.n_abortiti, 0)
-  return { totale, transitato, fermo: totale - transitato, fermi, abortiti }
+// Card del mese selezionato: config area + cella BE (valori string → Number).
+const cards = computed(() => {
+  if (!meseCorrente.value) return []
+  return AREE.map((cfg) => {
+    const dati = meseCorrente.value.aree.find((a) => a.area === cfg.key) ?? {}
+    const nDoc = dati.n_documenti ?? 0
+    const nTrans = dati.n_transitati ?? 0
+    return {
+      ...cfg,
+      ...dati,
+      valoreTotale: Number(dati.valore_totale ?? 0),
+      valoreTransitato: Number(dati.valore_transitato ?? 0),
+      // Per le aree a conteggi: fermo = documenti - transitati (= n_fermi tra
+      // i vivi), cosi' la frazione mostra transitati/documenti.
+      nDocumenti: nDoc,
+      nTransitati: nTrans,
+      nFermoConteggio: Math.max(0, nDoc - nTrans),
+    }
+  })
 })
 
-// Drill-down fermi dell'area selezionata nel mese corrente.
-const fermiRows = computed(() => {
-  if (!areaSelezionata.value) return []
-  return listMockFermi(meseCorrente.value.competenza_mese, areaSelezionata.value)
+// Riepilogo mese: somme delle sole aree in euro + conteggio abortiti.
+const totaliMese = computed(() => {
+  const vuoto = { totale: 0, transitato: 0, fermo: 0, abortiti: 0 }
+  if (!meseCorrente.value) return vuoto
+  const aree = meseCorrente.value.aree
+  // Aree in euro dalla config unica (AREA_BY_KEY.kind), non sniffando la
+  // forma del dato: evita un encoding parallelo di euro/count.
+  const euro = aree.filter((a) => AREA_BY_KEY[a.area]?.kind === 'euro')
+  const totale = euro.reduce((acc, a) => acc + Number(a.valore_totale), 0)
+  const transitato = euro.reduce((acc, a) => acc + Number(a.valore_transitato), 0)
+  return {
+    totale,
+    transitato,
+    fermo: totale - transitato,
+    abortiti: aree.reduce((acc, a) => acc + a.n_abortiti, 0),
+  }
 })
 
 const areaSelezionataLabel = computed(() =>
   areaSelezionata.value ? t(`dashboard_fatturazione.area_${areaSelezionata.value.toLowerCase()}`) : ''
 )
 
-function selezionaMese(idx) {
-  meseIdx.value = idx
-  areaSelezionata.value = null
+// Scopo: carica la matrice annuale con gestione errori standard.
+async function loadMatrice() {
+  try {
+    await store.fetchMatrice()
+  } catch (err) {
+    notify.error(extractApiError(err, t('common.error')))
+  }
 }
 
+// Scopo: carica la pagina corrente di fermi (mese+area selezionati).
+async function loadFermi() {
+  if (!meseCorrente.value) return
+  try {
+    await store.fetchFermi(meseCorrente.value.competenza_mese)
+  } catch (err) {
+    notify.error(extractApiError(err, t('common.error')))
+  }
+}
+
+function selezionaMese(idx) {
+  meseIdx.value = idx
+  store.resetFermi()
+}
+
+// Ref alla sezione fermi per l'auto-scroll post-selezione.
+const fermiSection = ref(null)
+
 function selezionaArea(areaKey) {
-  areaSelezionata.value = areaSelezionata.value === areaKey ? null : areaKey
+  if (areaSelezionata.value === areaKey) {
+    store.resetFermi()
+    return
+  }
+  store.resetFermi()
+  areaSelezionata.value = areaKey
+  loadFermi()
+  // Su schermi piccoli la sezione fermi renderizza sotto il fold: senza
+  // auto-scroll il click sembra non fare nulla. Scroll dopo il re-render.
+  nextTick(() => fermiSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
 }
 
 function cambiaAnno(delta) {
   anno.value += delta
-  areaSelezionata.value = null
+  store.resetFermi()
+  loadMatrice()
 }
 
 // Scopo: passo mese ±1 per lo stepper compatto (piccoli schermi),
@@ -109,48 +189,65 @@ function stepMese(delta) {
   if (idx > 11) {
     anno.value += 1
     idx = 0
+    loadMatrice()
   } else if (idx < 0) {
     anno.value -= 1
     idx = 11
+    loadMatrice()
   }
-  meseIdx.value = idx
-  areaSelezionata.value = null
+  selezionaMese(idx)
 }
 
-// Severity Tag per gli stati documento mostrati nel drill-down (mock).
-const STATO_FERMO_SEVERITY = {
-  DRAFT: 'secondary',
-  EMESSO: 'info',
-  ACCETTATO: 'info',
-  ACCETTATA: 'info',
-  CONFERMATO: 'info',
-  ATTIVO: 'success',
-  APERTA: 'info',
+// Scopo: paginazione DataTable fermi (lazy, paginator top).
+function onFermiPage(event) {
+  fermiPageSize.value = event.rows
+  fermiPage.value = Math.floor(event.first / event.rows) + 1
+  loadFermi()
 }
 
-// Azioni riga drill-down: "apri documento" — nel mock notifica soltanto
-// (con dati reali navighera' alla lista area con ?search=<codice>).
-function buildRowActions() {
+// Severity Tag per lo stato documento del drill-down: dispatch alla shortcut
+// centralizzata dell'area selezionata (colori single-source in severity.js).
+function statoSeverity(codice) {
+  const fn = AREA_BY_KEY[areaSelezionata.value]?.severity
+  return fn ? fn(codice) : 'secondary'
+}
+
+// Azioni riga drill-down: "apri documento" naviga alla lista area con
+// ?search=<codice> (pattern ricerca-universale). COMMESSE: consultiva (v1).
+function buildRowActions(data) {
+  const route = AREA_BY_KEY[areaSelezionata.value]?.route
   return [
     {
       key: 'apri',
       label: t('dashboard_fatturazione.apri_documento'),
       icon: MANAGE_ICONS.LIST,
-      command: () => notify.warn(t('dashboard_fatturazione.mock_azione')),
+      visible: Boolean(route && data.codice),
+      command: () => router.push({ path: route, query: { search: data.codice } }),
     },
   ]
 }
 
-// Toolbar standard: solo ricarica (nel mock notifica il contesto di esempio).
 const pageActions = computed(() => [
   {
     key: 'reload',
     kind: 'utility',
     label: t('common.reload_list'),
     icon: MANAGE_ICONS.RELOAD,
-    command: () => notify.warn(t('dashboard_fatturazione.mock_azione')),
+    command: () => {
+      loadMatrice()
+      if (areaSelezionata.value) loadFermi()
+    },
   },
 ])
+
+// KeepAlive (ContentTabs): onActivated scatta anche al primo mount e a ogni
+// rientro in foreground — refresh idempotente di matrice E drill-down aperto,
+// cosi' card e tabella non restano incoerenti dopo modifiche in altri tab
+// (memoria feedback_keepalive_onactivated).
+onActivated(() => {
+  loadMatrice()
+  if (areaSelezionata.value) loadFermi()
+})
 </script>
 
 <template>
@@ -166,11 +263,6 @@ const pageActions = computed(() => [
         </template>
       </PageActionsBar>
     </div>
-
-    <!-- Banner mock: la pagina mostra dati di esempio, nessuna chiamata BE. -->
-    <Message severity="warn" :closable="false" size="small">
-      {{ t('dashboard_fatturazione.mock_banner') }}
-    </Message>
 
     <div class="app-dash-layout">
       <!-- Pannello laterale: anno libero + 12 mesi con semaforo (D-5). -->
@@ -204,18 +296,24 @@ const pageActions = computed(() => [
           :class="{ 'is-active': idx === meseIdx }"
           @click="selezionaMese(idx)"
         >
-          <span class="app-dash-mese-nome">{{ nomeMese(idx) }}</span>
-          <template v-if="statoMese(mese).stato === 'ok'">
-            <i class="pi pi-check app-dash-mese-ok" v-tooltip.right="t('dashboard_fatturazione.mese_ok')" />
-          </template>
-          <template v-else-if="statoMese(mese).stato === 'fermi'">
-            <span class="app-dash-mese-fermi" v-tooltip.right="t('dashboard_fatturazione.mese_fermi', { n: statoMese(mese).fermi })">
-              <i class="pi pi-exclamation-triangle" /> {{ statoMese(mese).fermi }}
-            </span>
-          </template>
-          <template v-else>
-            <i class="pi pi-minus app-dash-mese-vuoto" v-tooltip.right="t('dashboard_fatturazione.mese_vuoto')" />
-          </template>
+          <span class="app-dash-mese-nome">{{ nomiMesi[idx] }}</span>
+          <i
+            v-if="statiMesi[idx].stato === 'ok'"
+            class="pi pi-check app-dash-mese-ok"
+            v-tooltip.right="t('dashboard_fatturazione.mese_ok')"
+          />
+          <span
+            v-else-if="statiMesi[idx].stato === 'fermi'"
+            class="app-dash-mese-fermi"
+            v-tooltip.right="t('dashboard_fatturazione.mese_fermi', { n: statiMesi[idx].fermi })"
+          >
+            <i class="pi pi-exclamation-triangle" /> {{ statiMesi[idx].fermi }}
+          </span>
+          <i
+            v-else
+            class="pi pi-minus app-dash-mese-vuoto"
+            v-tooltip.right="t('dashboard_fatturazione.mese_vuoto')"
+          />
         </button>
       </aside>
 
@@ -233,18 +331,12 @@ const pageActions = computed(() => [
             @click="stepMese(-1)"
           />
           <span class="app-dash-stepper-label">
-            {{ nomeMese(meseIdx) }} {{ anno }}
-            <template v-if="statoMese(meseCorrente).stato === 'ok'">
-              <i class="pi pi-check app-dash-mese-ok" />
-            </template>
-            <template v-else-if="statoMese(meseCorrente).stato === 'fermi'">
-              <span class="app-dash-mese-fermi">
-                <i class="pi pi-exclamation-triangle" /> {{ statoMese(meseCorrente).fermi }}
-              </span>
-            </template>
-            <template v-else>
-              <i class="pi pi-minus app-dash-mese-vuoto" />
-            </template>
+            {{ nomiMesi[meseIdx] }} {{ anno }}
+            <i v-if="statoMeseCorrente.stato === 'ok'" class="pi pi-check app-dash-mese-ok" />
+            <span v-else-if="statoMeseCorrente.stato === 'fermi'" class="app-dash-mese-fermi">
+              <i class="pi pi-exclamation-triangle" /> {{ statoMeseCorrente.fermi }}
+            </span>
+            <i v-else class="pi pi-minus app-dash-mese-vuoto" />
           </span>
           <Button
             icon="pi pi-chevron-right"
@@ -258,7 +350,7 @@ const pageActions = computed(() => [
 
         <div class="app-dash-header">
           <h3 style="margin: 0;">
-            {{ t('dashboard_fatturazione.competenza_titolo', { mese: nomeMese(meseIdx), anno }) }}
+            {{ t('dashboard_fatturazione.competenza_titolo', { mese: nomiMesi[meseIdx], anno }) }}
           </h3>
         </div>
 
@@ -277,32 +369,25 @@ const pageActions = computed(() => [
               {{ t(`dashboard_fatturazione.area_${card.key.toLowerCase()}`) }}
             </span>
 
-            <!-- Aree in euro: donut transitato vs fermo (D-4: imponibile). -->
+            <!-- Aree in euro: donut transitato vs fermo (D-4: imponibile).
+                 Aree a conteggi (D-2/D-3): frazione n/n, stessa card. -->
             <DonutTransito
               v-if="card.kind === 'euro'"
-              :transitato="card.valore_transitato"
-              :fermo="card.valore_totale - card.valore_transitato"
+              :transitato="card.valoreTransitato"
+              :fermo="card.valoreTotale - card.valoreTransitato"
               format="currency"
               :label-transitato="t('dashboard_fatturazione.transitato')"
               :label-fermo="t('dashboard_fatturazione.fermo')"
             />
-
-            <!-- Aree a conteggi (D-2/D-3): frazione n/n + dettaglio. -->
-            <template v-else>
-              <div class="app-dash-frazione">
-                {{ card.n_documenti > 0 ? `${card.n_transitati}/${card.n_documenti}` : '—' }}
-              </div>
-              <div class="app-donut-transito-legend">
-                <div class="app-donut-transito-legend-row">
-                  <span class="app-donut-transito-label">{{ t('dashboard_fatturazione.transitati_n') }}</span>
-                  <span class="app-donut-transito-value">{{ card.n_transitati }}</span>
-                </div>
-                <div class="app-donut-transito-legend-row">
-                  <span class="app-donut-transito-label">{{ t('dashboard_fatturazione.fermi_n') }}</span>
-                  <span class="app-donut-transito-value">{{ card.n_fermi }}</span>
-                </div>
-              </div>
-            </template>
+            <DonutTransito
+              v-else
+              mode="fraction"
+              format="count"
+              :transitato="card.nTransitati"
+              :fermo="card.nFermoConteggio"
+              :label-transitato="t('dashboard_fatturazione.transitati_n')"
+              :label-fermo="t('dashboard_fatturazione.fermi_n')"
+            />
           </div>
         </div>
 
@@ -326,33 +411,58 @@ const pageActions = computed(() => [
         </div>
 
         <!-- Drill-down fermi in pagina (click su card, §7). -->
-        <div class="app-dash-fermi">
+        <div ref="fermiSection" class="app-dash-fermi">
           <template v-if="areaSelezionata">
             <h4 class="app-dash-fermi-title">
               {{ t('dashboard_fatturazione.fermi_titolo', { area: areaSelezionataLabel }) }}
             </h4>
             <DataTable
-              v-if="fermiRows.length > 0"
-              :value="fermiRows"
+              v-if="fermiCount > 0 || fermiLoading"
+              :value="fermi"
+              :loading="fermiLoading"
+              :total-records="fermiCount"
+              :rows="fermiPageSize"
+              :first="(fermiPage - 1) * fermiPageSize"
+              paginator
+              paginator-position="top"
+              lazy
+              :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
               class="app-datatable app-datatable--inner"
               striped-rows
-              data-key="codice"
+              data-key="documento_id"
+              @page="onFermiPage"
             >
-              <Column field="codice" :header="t('dashboard_fatturazione.col_codice')" style="width: 130px;" />
-              <Column field="cliente" :header="t('dashboard_fatturazione.col_cliente')" />
-              <Column field="valore" :header="t('dashboard_fatturazione.col_valore')" style="width: 120px;">
+              <Column field="codice" :header="t('dashboard_fatturazione.col_codice')" style="width: 130px;">
                 <template #body="{ data }">
-                  {{ data.valore !== null ? formatCurrency(data.valore) : '—' }}
+                  {{ data.codice ?? '—' }}
+                </template>
+              </Column>
+              <Column field="cliente_display" :header="t('dashboard_fatturazione.col_cliente')">
+                <template #body="{ data }">
+                  {{ data.cliente_display ?? '—' }}
+                </template>
+              </Column>
+              <Column field="valore_totale" :header="t('dashboard_fatturazione.col_valore')" style="width: 130px;">
+                <template #body="{ data }">
+                  {{ data.valore_totale !== null ? formatCurrency(data.valore_totale) : '—' }}
+                </template>
+              </Column>
+              <Column field="unita_totali" :header="t('dashboard_fatturazione.col_unita')" style="width: 110px;">
+                <template #body="{ data }">
+                  {{ data.unita_transitate ?? 0 }}/{{ data.unita_totali ?? 0 }}
                 </template>
               </Column>
               <Column field="motivo_fermo" :header="t('dashboard_fatturazione.col_motivo')">
                 <template #body="{ data }">
-                  {{ t(`dashboard_fatturazione.motivo_fermo.${data.motivo_fermo}`) }}
+                  {{ data.motivo_fermo ? t(`dashboard_fatturazione.motivo_fermo.${data.motivo_fermo}`) : '—' }}
                 </template>
               </Column>
               <Column field="stato_codice" :header="t('dashboard_fatturazione.col_stato')" style="width: 130px;">
                 <template #body="{ data }">
-                  <Tag :value="data.stato_codice" :severity="resolveSeverity(STATO_FERMO_SEVERITY, data.stato_codice)" />
+                  <Tag
+                    :value="data.stato_codice ?? '—'"
+                    :severity="statoSeverity(data.stato_codice_interno)"
+                  />
                 </template>
               </Column>
               <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">

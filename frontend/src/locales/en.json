@@ -2426,8 +2426,6 @@
   "dashboard_fatturazione": {
     "page_title": "Invoicing dashboard",
     "page_description": "Monitors the flow toward invoicing by accrual month.",
-    "mock_banner": "Graphic preview with SAMPLE DATA — no backend calls. Used to validate the dashboard look before development.",
-    "mock_azione": "Action available with real data (Phase 2/3): this is a preview with sample data.",
     "anno_precedente": "Previous year",
     "anno_successivo": "Next year",
     "mese_precedente": "Previous month",
@@ -2456,18 +2454,20 @@
     "col_codice": "Code",
     "col_cliente": "Customer",
     "col_valore": "Value",
+    "col_unita": "Units",
     "col_motivo": "Reason",
     "col_stato": "Status",
     "motivo_fermo": {
-      "RIGA_RESIDUA": "Residual row to dispatch",
+      "DOC_BOZZA": "Document still in draft",
       "IN_ATTESA_ACCETTAZIONE": "Awaiting acceptance",
-      "ORDINE_DRAFT": "Draft order",
+      "RIGA_RESIDUA": "Residual rows to dispatch",
+      "PUSH_NON_ESEGUITO": "Push to job not executed",
       "PUSH_PARZIALE": "Partial push to job",
       "SENZA_FIGLIO": "Accepted without generated contract/order",
-      "FIGLIO_ABORTITO": "Generated document later cancelled",
+      "FIGLIO_ABORTITO": "Generated document later cancelled — revision needed",
       "CANONE_NON_GENERATO": "Month fee not generated",
-      "NON_APPROVATA": "Activity not approved",
-      "NON_EMESSA": "Activity not issued"
+      "ATTIVITA_NON_APPROVATA": "Activity not approved",
+      "ATTIVITA_NON_EMESSA": "Activity not issued"
     }
   },
   "approvazioni_prezzo": {

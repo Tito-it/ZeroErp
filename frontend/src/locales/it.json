@@ -2426,8 +2426,6 @@
   "dashboard_fatturazione": {
     "page_title": "Dashboard fatturazione",
     "page_description": "Controllo del transito verso la fatturazione per mese di competenza.",
-    "mock_banner": "Anteprima grafica con DATI DI ESEMPIO — nessuna chiamata al backend. Serve a validare l'aspetto della dashboard prima dello sviluppo.",
-    "mock_azione": "Azione disponibile con i dati reali (Fase 2/3): questa è un'anteprima con dati di esempio.",
     "anno_precedente": "Anno precedente",
     "anno_successivo": "Anno successivo",
     "mese_precedente": "Mese precedente",
@@ -2456,18 +2454,20 @@
     "col_codice": "Codice",
     "col_cliente": "Cliente",
     "col_valore": "Valore",
+    "col_unita": "Unità",
     "col_motivo": "Motivo",
     "col_stato": "Stato",
     "motivo_fermo": {
-      "RIGA_RESIDUA": "Riga residua da smistare",
+      "DOC_BOZZA": "Documento ancora in bozza",
       "IN_ATTESA_ACCETTAZIONE": "In attesa di accettazione",
-      "ORDINE_DRAFT": "Ordine in bozza",
-      "PUSH_PARZIALE": "Push parziale verso commessa",
+      "RIGA_RESIDUA": "Righe residue da smistare",
+      "PUSH_NON_ESEGUITO": "Push a commessa non eseguito",
+      "PUSH_PARZIALE": "Push a commessa parziale",
       "SENZA_FIGLIO": "Accettata senza contratto/ordine generato",
-      "FIGLIO_ABORTITO": "Documento generato poi annullato",
+      "FIGLIO_ABORTITO": "Documento generato poi annullato — serve revisione",
       "CANONE_NON_GENERATO": "Canone del mese non generato",
-      "NON_APPROVATA": "Attività non approvata",
-      "NON_EMESSA": "Attività non emessa"
+      "ATTIVITA_NON_APPROVATA": "Attività non approvata",
+      "ATTIVITA_NON_EMESSA": "Attività non emessa"
     }
   },
   "approvazioni_prezzo": {

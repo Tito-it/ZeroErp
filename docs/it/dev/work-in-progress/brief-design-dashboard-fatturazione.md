@@ -1,15 +1,18 @@
 # Brief Design — Dashboard Fatturazione (controllo del transito per competenza)
 
 > **Tipo**: brief di design autorevole (modello + piano DB/BE/FE) · **Data**: 2026-07-02
-> **Owner**: Tid · **Stato**: 🟢 **Fase 1 DB APPLICATA + TESTATA (2026-07-03)** —
-> migrations `20260703-51..57` (20_code/vendite: 5 resolver + union
-> `vw_dash_fatturazione_documenti` + aggregata `vw_dash_fatturazione_mensile`) +
-> `20260703-58` (90_end: indici `ix_commesse_attivita_segment_key` e
-> `ix_commesse_attivita_sorgente_competenza`) + **fix `20260703-59`**
-> (is_abortito null-safe, vedi §11) + doc manuale
-> `dbzero/vendite/manual/vw_dash_fatturazione_*.md` a standard.
+> **Owner**: Tid · **Stato**: 🟢 **Fasi 1-2-3 COMPLETE (2026-07-03)** —
+> **Fase 1 DB** applicata+testata: migrations `20260703-51..57` (20_code/vendite:
+> 5 resolver + union `vw_dash_fatturazione_documenti` + aggregata
+> `vw_dash_fatturazione_mensile`) + `20260703-58` (90_end: indici
+> `ix_commesse_attivita_segment_key` e `ix_commesse_attivita_sorgente_competenza`)
+> + **fix `20260703-59`** (is_abortito null-safe, vedi §11) + doc manuale
+> `dbzero/vendite/manual/vw_dash_fatturazione_*.md` a standard;
 > pgTAP `test-vw-dash-fatturazione-v1.sql` **VERDE 19/19** sul DB di sviluppo.
-> Prossimo: Fase 2 BE (§11); EXPLAIN su dati reali da fare quando i volumi crescono.
+> **Fase 2 BE + Fase 3 FE** implementate su `dev/backend-tid` (vedi §11, diario
+> 2026-07-03; grafica validata prima con pagina mock in-app, poi swap mock→API).
+> Prossimo: validazione in-app Tid → Fase 4 guida; EXPLAIN su dati reali quando i
+> volumi crescono.
 >
 > **Origine**: richiesta Tid 2026-07-02 — "dashboard fondamentale per avere sotto controllo
 > la fatturazione": per un dato anno/mese di **competenza**, per ciascuna area che porta
@@ -290,9 +293,9 @@ Nuova rotta `/vendite/dashboard-fatturazione` (meta.domain `vendite`, voce menu 
 |---|---|---|---|
 | 0 — Design | questo brief | semantica per area + decisioni D-1..D-6 | ✅ 2026-07-02 |
 | 1 — DB | `dev/db-tid` | 5 viste resolver + union + `vw_dash_fatturazione_mensile`; vocabolario `motivo_fermo`; pgTAP; doc manuale; EXPLAIN su dati reali | ✅ APPLICATA + pgTAP 19/19 VERDE 2026-07-03 (`20260703-51..59`); EXPLAIN rinviato a volumi reali |
-| 2 — BE | `dev/backend-tid` | 2 endpoint GET + repository + test + `api_dashboard_fatturazione.md` | ⬜ |
-| 3 — FE | `dev/backend-tid` | chart.js, `DonutTransito`, vista+store+rotta+menu+i18n | ⬜ |
-| 4 — Guida | docs | sezione "Dashboard fatturazione" nella guida fatturazione (linguaggio non tecnico) | ⬜ |
+| 2 — BE | `dev/backend-tid` | 2 endpoint GET + repository + test + `api_dashboard_fatturazione.md` | ✅ 2026-07-03 (22 test verdi, suite vendite 984/984) |
+| 3 — FE | `dev/backend-tid` | chart.js, `DonutTransito`, vista+store+rotta+menu+i18n | ✅ 2026-07-03 (mock grafico validato da Tid → swap mock→API) |
+| 4 — Guida | docs | sezione "Dashboard fatturazione" nella guida fatturazione (linguaggio non tecnico) | ⬜ (dopo validazione in-app) |
 
 Domande di Fase 1 — **chiuse in implementazione (2026-07-03)**:
 
@@ -337,6 +340,33 @@ Diario applicazione + test (2026-07-03, DB sviluppo):
   pattern batch documentato da `E_CONTRATTO_EMITTENTE_NON_RISOLTO`);
   `commesse_attivita.competenza_al` è NOT NULL (niente attività "aperte").
 * Esito finale: `test-vw-dash-fatturazione-v1.sql` **19/19 verde**.
+
+Diario Fase 2 BE + Fase 3 FE (2026-07-03, branch `dev/backend-tid`):
+
+* **Percorso**: prima una **pagina mock in-app** (dati finti hardcoded, chart.js
+  reale) per validare la grafica con Tid — layout §7 confermato con 2 iterazioni
+  responsive (fix scroll `min-height:0`, stepper compatto ◀ Mese Anno ▶ sotto i
+  768px al posto del pannello 12 mesi, auto-scroll alla sezione fermi al click
+  card) — poi swap mock→API senza toccare il layout.
+* **BE**: `VenditeRepository.list_dash_fatturazione_mensile` (LEFT JOIN su
+  `generate_series` × aree: 12 mesi sempre presenti, D-5) +
+  `list_dash_fatturazione_fermi` (`NOT is_transitato AND NOT is_abortito`,
+  paginato, ordinato per valore DESC); service `fn_dash_fatturazione_*`
+  (validazioni anno 2000-2100/area whitelist/competenza→1° del mese; aree €
+  vuote = `"0"`, aree a conteggi = `null`); view GET sottili
+  `views_dashboard_fatturazione.py` + route + `@extend_schema`. Test: 12 API +
+  10 service (mock, CI-safe). Doc: `api_dashboard_fatturazione.md`.
+* **Scope COMMESSE**: fuori RLS by design DB → filtro applicativo
+  `fn_get_emittenti_scope_sr_ids` sul drill-down; caveat documentato: l'aggregata
+  mensile non è scopabile per COMMESSE (pre-aggregata) — se servirà multi-emittente
+  va risolto lato DB (resolver commesse scoped).
+* **FE**: chart.js 4.5.1 (D-1) incapsulato in `core/components/charts/DonutTransito.vue`
+  (palette `--app-chart-transitato/-fermo` = green-600/orange-600, validata
+  CVD+contrasto su entrambe le superfici dark/light in theme.css); store Pinia
+  `vendite/stores/dashboardFatturazione.js` (`userScoped`, tiene anno/mese/area);
+  vocabolario `motivo_fermo` i18n it/en allineato alla vista DB (10 codici);
+  drill-down con azione "apri documento" → lista area `?search=<codice>`
+  (COMMESSE consultiva, v1). Rotta `/vendite/dashboard-fatturazione` + voce menu.
 
 ## 12. Annotazioni v2 — Dashboard fatturato (idee Tid 2026-07-03, da non perdere)
 
