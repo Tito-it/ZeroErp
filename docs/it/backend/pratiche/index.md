@@ -3,7 +3,7 @@
 ## API
 - [api_coda_lavoro](manual/api_coda_lavoro.md) — Esporre via HTTP la coda di lavoro dell'operatore autenticato, organizzata su quattro livelli di priorita': flussi assegnati, flussi per competenza, flussi del reparto, flussi liberi.
 - [api_competenze_flussi](manual/api_competenze_flussi.md) — Esporre via HTTP la gestione della matrice competenze flussi: per ogni tipo di flusso e reparto, quali operatori sono abilitati a eseguire il flusso. Configurazione statica gestita dall'amministratore.
-- [api_definizioni_workflow](manual/api_definizioni_workflow.md) — Esporre via HTTP l'amministrazione (super-admin) delle edizioni di workflow versionate: elenco con drift, dettaglio strutturale (step + figli + archi), ciclo di vita (fork/nuova-versione/pubblica) ed editing degli step della BOZZA.
+- [api_definizioni_workflow](manual/api_definizioni_workflow.md) — Espone l'amministrazione delle **edizioni di workflow versionate** (pratiche.workflow_definizioni): elenco con drift, dettaglio strutturale (step + figli + archi), azioni di ciclo di vita (fork / nuova versione / pubbli…
 - [api_flussi_list](manual/api_flussi_list.md) — Esporre via HTTP la lista e la creazione dei flussi di una pratica.
 - [api_flusso_assegnazione](manual/api_flusso_assegnazione.md) — Esporre via HTTP l'assegnazione di un **singolo flusso** (step) a un operatore e/o a un reparto. Simmetrico ad api_pratica_assegnazione, ma a livello di step invece che di testata pratica.
 - [api_flusso_canali](manual/api_flusso_canali.md) — Esporre via HTTP i canali abilitati per il template del flusso.
