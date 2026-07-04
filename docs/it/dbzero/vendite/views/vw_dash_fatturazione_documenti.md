@@ -19,7 +19,8 @@ SELECT vw_dash_fatturazione_preventivi.area,
     vw_dash_fatturazione_preventivi.motivo_fermo,
     vw_dash_fatturazione_preventivi.stato_codice_interno,
     vw_dash_fatturazione_preventivi.stato_codice,
-    vw_dash_fatturazione_preventivi.fase
+    vw_dash_fatturazione_preventivi.fase,
+    vw_dash_fatturazione_preventivi.cliente_display
    FROM vendite.vw_dash_fatturazione_preventivi
 UNION ALL
  SELECT vw_dash_fatturazione_ordini.area,
@@ -38,7 +39,8 @@ UNION ALL
     vw_dash_fatturazione_ordini.motivo_fermo,
     vw_dash_fatturazione_ordini.stato_codice_interno,
     vw_dash_fatturazione_ordini.stato_codice,
-    vw_dash_fatturazione_ordini.fase
+    vw_dash_fatturazione_ordini.fase,
+    vw_dash_fatturazione_ordini.cliente_display
    FROM vendite.vw_dash_fatturazione_ordini
 UNION ALL
  SELECT vw_dash_fatturazione_offerte.area,
@@ -57,7 +59,8 @@ UNION ALL
     vw_dash_fatturazione_offerte.motivo_fermo,
     vw_dash_fatturazione_offerte.stato_codice_interno,
     vw_dash_fatturazione_offerte.stato_codice,
-    vw_dash_fatturazione_offerte.fase
+    vw_dash_fatturazione_offerte.fase,
+    vw_dash_fatturazione_offerte.cliente_display
    FROM vendite.vw_dash_fatturazione_offerte
 UNION ALL
  SELECT vw_dash_fatturazione_contratti.area,
@@ -76,7 +79,8 @@ UNION ALL
     vw_dash_fatturazione_contratti.motivo_fermo,
     vw_dash_fatturazione_contratti.stato_codice_interno,
     vw_dash_fatturazione_contratti.stato_codice,
-    vw_dash_fatturazione_contratti.fase
+    vw_dash_fatturazione_contratti.fase,
+    vw_dash_fatturazione_contratti.cliente_display
    FROM vendite.vw_dash_fatturazione_contratti
 UNION ALL
  SELECT vw_dash_fatturazione_commesse.area,
@@ -95,7 +99,8 @@ UNION ALL
     vw_dash_fatturazione_commesse.motivo_fermo,
     vw_dash_fatturazione_commesse.stato_codice_interno,
     vw_dash_fatturazione_commesse.stato_codice,
-    vw_dash_fatturazione_commesse.fase
+    vw_dash_fatturazione_commesse.fase,
+    vw_dash_fatturazione_commesse.cliente_display
    FROM vendite.vw_dash_fatturazione_commesse;
 ```
 

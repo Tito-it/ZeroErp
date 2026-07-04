@@ -14,20 +14,25 @@ Funzioni / oggetti collegati:
 ### 🎯 Scopo Principale
 
 Predicato **puro** (boolean, nessun raise) che risponde a una sola domanda:
-**questa edizione di workflow è "congelata"?** È il punto unico che definisce la
-regola dell'immutabilità strutturale **«Leggera»** (Fase 2b):
+**questa edizione di workflow è "congelata" (in uso, non cancellabile)?**
 
 > `TRUE` **se e solo se** la definizione è un'edizione **forkata**
 > (`emittente_fiscale_id` valorizzato) **e** in stato **`PUBBLICATA`**.
+
+Con la **strategia C** dell'immutabilità «Leggera» questo predicato governa
+**specificamente il blocco `DELETE`** (un'edizione in uso non si smantella). Il blocco
+`INSERT`/`UPDATE` (modifica struttura) è invece governato dal predicato più ampio
+[fn_check_definizione_struttura_bloccata](fn_check_definizione_struttura_bloccata.md)
+(PUBBLICATA **o** RITIRATA).
 
 Conseguenze dirette:
 
 * il **preset** di fabbrica (`emittente_fiscale_id NULL`) **non è mai congelato**, in
   qualsiasi stato → resta editabile da seed CSV / migrazioni (zero attrito sul seeding);
-* le edizioni forkate in **`BOZZA`** (in lavorazione) o **`RITIRATA`** (da smantellare)
-  **non sono congelate**;
-* solo il **fork `PUBBLICATA`** è congelato: è lì che serve la garanzia "la struttura
-  non cambia sotto le pratiche già emesse per quell'emittente" (V6).
+* solo il **fork `PUBBLICATA`** è congelato → non cancellabile (né modificabile);
+* una **`RITIRATA`-emittente** **non è congelata** → **cancellabile** (housekeeping), pur
+  restando **non modificabile** (è struttura-bloccata: ha ancora pratiche pinnate);
+* le **`BOZZA`** non sono congelate → editabili e cancellabili.
 
 ---
 

@@ -12,16 +12,19 @@ CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- Scopo: immutabilita' strutturale «Leggera» dei template su fork
---        PUBBLICATO. INSERT/DELETE vietati; UPDATE vietato se tocca
---        una colonna diversa da descrizione. Preset e BOZZA/RITIRATA
---        restano liberi.
+-- Scopo: immutabilita' strutturale «Leggera» dei template (strategia C).
+--   INSERT/UPDATE vietati su edizione forkata emessa (pubblicata o
+--   ritirata); DELETE vietato solo su pubblicata (in uso). RITIRATA:
+--   non editabile ma cancellabile. descrizione sempre correggibile.
+--   Preset e BOZZA liberi.
 DECLARE
-  v_old_congelata boolean;
-  v_new_congelata boolean;
-  v_def_report    pratiche.workflow_definizioni.id%TYPE;
+  v_old_bloccata boolean;
+  v_new_bloccata boolean;
+  v_def_report   pratiche.workflow_definizioni.id%TYPE;
 BEGIN
   IF TG_OP = 'DELETE' THEN
+    -- Cancellazione: vietata solo su edizione PUBBLICATA (in uso).
+    -- Una RITIRATA-emittente resta cancellabile (housekeeping).
     IF pratiche.fn_check_definizione_congelata(OLD.definizione_id) THEN
       PERFORM script.fn_log_and_raise_error(
         'pratiche',
@@ -41,7 +44,8 @@ BEGIN
     RETURN OLD;
 
   ELSIF TG_OP = 'INSERT' THEN
-    IF pratiche.fn_check_definizione_congelata(NEW.definizione_id) THEN
+    -- Inserimento: vietato su edizione emessa (pubblicata o ritirata).
+    IF pratiche.fn_check_definizione_struttura_bloccata(NEW.definizione_id) THEN
       PERFORM script.fn_log_and_raise_error(
         'pratiche',
         'pratiche.trgfn_template_flussi_guard_immutabile',
@@ -59,15 +63,13 @@ BEGIN
     RETURN NEW;
 
   ELSE  -- UPDATE
-    v_old_congelata := pratiche.fn_check_definizione_congelata(OLD.definizione_id);
-    v_new_congelata := pratiche.fn_check_definizione_congelata(NEW.definizione_id);
+    v_old_bloccata := pratiche.fn_check_definizione_struttura_bloccata(OLD.definizione_id);
+    v_new_bloccata := pratiche.fn_check_definizione_struttura_bloccata(NEW.definizione_id);
 
-    -- Se una delle due edizioni (origine o destinazione del re-parent)
-    -- e' congelata, blocca ogni cambiamento che non sia solo la
-    -- descrizione. Il confronto esclude descrizione + audit tecnici;
-    -- qualunque altra colonna (compreso il re-parent definizione_id)
-    -- ricade nel diff => bloccata.
-    IF (v_old_congelata OR v_new_congelata)
+    -- Blocca se una delle due edizioni (origine/destinazione del
+    -- re-parent) e' emessa e cambia qualcosa oltre alla descrizione
+    -- (+ audit tecnici esclusi dal confronto).
+    IF (v_old_bloccata OR v_new_bloccata)
        AND (to_jsonb(NEW) - 'descrizione' - 'tx_id'
                           - 'data_insert' - 'user_insert'
                           - 'data_update' - 'user_update')
@@ -76,7 +78,7 @@ BEGIN
                           - 'data_insert' - 'user_insert'
                           - 'data_update' - 'user_update')
     THEN
-      v_def_report := CASE WHEN v_old_congelata
+      v_def_report := CASE WHEN v_old_bloccata
                            THEN OLD.definizione_id
                            ELSE NEW.definizione_id END;
       PERFORM script.fn_log_and_raise_error(
@@ -100,7 +102,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()
-IS 'BEFORE INS/UPD/DEL su pratiche.template_flussi: immutabilita'' strutturale «Leggera» (Fase 2b). Su edizione forkata pubblicata (fn_check_definizione_congelata) blocca INSERT/DELETE e ogni UPDATE che tocchi una colonna diversa da descrizione (audit esclusi) -> TEMPLATE_DEFINIZIONE_CONGELATA (514). Preset (emittente NULL) e BOZZA/RITIRATA restano editabili.';
+IS 'BEFORE INS/UPD/DEL su pratiche.template_flussi: immutabilita'' strutturale «Leggera» strategia C. INSERT/UPDATE (oltre descrizione) vietati su edizione forkata emessa (pubblicata o ritirata, fn_check_definizione_struttura_bloccata); DELETE vietato solo su pubblicata (fn_check_definizione_congelata) -> RITIRATA cancellabile. Errore TEMPLATE_DEFINIZIONE_CONGELATA (514). Preset (emittente NULL) e BOZZA editabili.';
 ```
 
 ---

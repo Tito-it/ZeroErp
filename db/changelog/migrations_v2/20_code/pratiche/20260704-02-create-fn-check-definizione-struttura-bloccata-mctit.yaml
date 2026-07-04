@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_check_definizione_struttura_bloccata — predicato "struttura bloccata"
+# (raffinamento immutabilita' «Leggera», strategia C: freeze modifica != freeze
+#  cancellazione). (brief-db-accesso-write-editing-bozza §Problema 3)
+#
+# Ritorna TRUE sse la definizione e' un'edizione FORKATA (emittente_fiscale_id
+# valorizzato) GIA' EMESSA, cioe' fuori da BOZZA (stato IN PUBBLICATA/RITIRATA):
+# la STRUTTURA e' bloccata -> INSERT/UPDATE di template + figli vietati. Motivo:
+# le pratiche pinnate a un'edizione emessa non devono vedere cambiare la struttura
+# sotto di loro (V6), e questo vale anche per una RITIRATA (ha ancora pratiche
+# pinnate alla sua versione).
+#
+# E' piu' AMPIA di fn_check_definizione_congelata (20260703-10, = solo PUBBLICATA):
+#   - congelata (PUBBLICATA) governa il blocco DELETE: un'edizione in USO non si
+#     puo' smantellare;
+#   - struttura_bloccata (PUBBLICATA o RITIRATA) governa il blocco INSERT/UPDATE.
+# Conseguenza (strategia C): una RITIRATA e' struttura-bloccata (non editabile) ma
+# NON congelata (CANCELLABILE, housekeeping delle edizioni storiche). Il preset
+# (emittente NULL) e le BOZZA restano liberamente editabili.
+#
+# Funzione pura (fn_check_*): boolean, no raise. NULL/non trovata => false.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260704-02-create-fn-check-definizione-struttura-bloccata-mctit.yaml
+
+  - changeSet:
+      id: 20260704-02-create-fn-check-definizione-struttura-bloccata
+      author: mctit
+      runOnChange: false
+      comment: >
+        fn_check_definizione_struttura_bloccata(definizione_id): TRUE sse edizione
+        forkata (emittente NOT NULL) fuori da BOZZA (PUBBLICATA o RITIRATA). Governa
+        il blocco INSERT/UPDATE (strategia C); il DELETE resta su fn_check_definizione_congelata.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: workflow_definizioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.fn_check_definizione_struttura_bloccata(
+                  p_definizione_id pratiche.workflow_definizioni.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              -- Scopo: dire se la STRUTTURA di una definizione e' bloccata
+              --        (edizione forkata gia' emessa: PUBBLICATA o RITIRATA).
+              --        Governa il blocco INSERT/UPDATE di template e figli.
+              --        Funzione pura, no raise.
+              DECLARE
+                v_bloccata boolean;
+              BEGIN
+                IF p_definizione_id IS NULL THEN
+                  RETURN false;
+                END IF;
+
+                SELECT (wd.stato <> 'BOZZA'
+                        AND wd.emittente_fiscale_id IS NOT NULL)
+                  INTO v_bloccata
+                  FROM pratiche.workflow_definizioni wd
+                 WHERE wd.id = p_definizione_id;
+
+                RETURN COALESCE(v_bloccata, false);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_check_definizione_struttura_bloccata(integer)
+                IS 'TRUE sse la definizione workflow e'' un''edizione forkata (emittente_fiscale_id valorizzato) fuori da BOZZA (PUBBLICATA o RITIRATA): la struttura e'' bloccata (INSERT/UPDATE di template e figli vietati, strategia C). Piu'' ampia di fn_check_definizione_congelata (solo PUBBLICATA, blocco DELETE): una RITIRATA e'' struttura-bloccata ma cancellabile. Preset (emittente NULL) e BOZZA liberi. Funzione pura (no raise); usata dai guard di immutabilita'' strutturale.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS pratiche.fn_check_definizione_struttura_bloccata(integer);

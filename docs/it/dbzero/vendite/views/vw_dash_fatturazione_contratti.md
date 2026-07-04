@@ -27,10 +27,14 @@ SELECT 'CONTRATTI'::character varying AS area,
         END)::character varying AS motivo_fermo,
     sdc.codice_interno AS stato_codice_interno,
     sdc.codice AS stato_codice,
-    sdc.fase
-   FROM ((((vendite.contratti c
+    sdc.fase,
+    sog.ragione_sociale_completa AS cliente_display
+   FROM (((((((vendite.contratti c
      JOIN config.stati_doc_contratti sdc ON (((sdc.id = c.stato_doc_contratto_id) AND ((sdc.esito)::text IS DISTINCT FROM 'NEGATIVO'::text))))
      JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'CONTRATTO'::text) AND (s.attivo IS TRUE))))
+     LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = c.billing_account_id)))
+     LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+     LEFT JOIN anagrafiche.soggetti sog ON ((sog.id = sr.soggetto_id)))
      CROSS JOIN LATERAL generate_series(date_trunc('month'::text, (c.valido_dal)::timestamp with time zone), LEAST(COALESCE(date_trunc('month'::text, (c.valido_al)::timestamp with time zone), (date_trunc('month'::text, (CURRENT_DATE)::timestamp without time zone))::timestamp with time zone), (date_trunc('month'::text, (CURRENT_DATE)::timestamp without time zone))::timestamp with time zone), '1 mon'::interval) m(mese_ts))
      CROSS JOIN LATERAL ( SELECT (EXISTS ( SELECT 1
                    FROM vendite.commesse_attivita ca
