@@ -129,6 +129,7 @@ export const DOMAIN_MENUS = {
     { key: 'permessi', icon: NAV_ICONS.SHIELD, to: '/amm-software/permessi' },
     { key: 'emittenti-fiscali', icon: NAV_ICONS.ID_CARD, to: '/amm-software/emittenti-fiscali' },
     { key: 'categorie-clienti', icon: NAV_ICONS.TAGS, to: '/amm-software/categorie-clienti' },
+    { key: 'definizioni-workflow', icon: NAV_ICONS.SITEMAP, to: '/amm-software/definizioni-workflow' },
     { key: 'matrici', icon: NAV_ICONS.TABELLE, to: '/amm-software/matrici' },
     { key: 'audit-log', icon: NAV_ICONS.HISTORY, to: '/amm-software/audit-log' },
     { key: 'email-accounts', icon: NAV_ICONS.AT, to: '/amm-software/email-accounts' },

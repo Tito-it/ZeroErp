@@ -168,6 +168,12 @@ const router = createRouter({
           meta: { domain: 'amm-software', menuKey: 'categorie-clienti' }
         },
         {
+          path: 'amm-software/definizioni-workflow',
+          name: 'amm-software-definizioni-workflow',
+          component: () => import('../amministrazione/views/DefinizioniWorkflowListView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'definizioni-workflow' }
+        },
+        {
           path: 'amm-software/matrice-categorie-listini',
           name: 'amm-software-matrice-categorie-listini',
           component: () => import('../amministrazione/views/CategorieClientiListiniListView.vue'),

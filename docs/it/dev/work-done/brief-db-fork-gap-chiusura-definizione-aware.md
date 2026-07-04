@@ -1,5 +1,11 @@
 # Brief DB — Gap fork (Fase 1 incompleta): chiusura/auto-chiusura ancora per TIPO, non per DEFINIZIONE
 
+> ✅ **RISOLTO / APPLICATO (2026-07-03)** dal team DB (commit `25922d602`, pgTAP eseguito).
+> Verificato sul DB vivo: `fn_check_chiusura_pratica` → `JOIN ON p.definizione_id =
+> tf.definizione_id`; `trgfn_flussi_autochiusura_pratica` → legge `p.definizione_id` e scopa
+> chiusura + gate obbligatori per `tf.definizione_id`. Ri-scan cross-schema: **nessuna**
+> selezione template per-tipo residua. Documento mantenuto come storia del gap fork.
+>
 > **Per**: team DB (`dev/db-tid`). · **Da**: backend/frontend agent. · **Priorità**: 🟠 **media-alta**
 > — **latente** (oggi corretto: 1 definizione per tipo, 0 fork nei dati) ma **bloccante**: morde
 > alla PRIMA fork/versione, capacità appena abilitata dalla Fase 2. Da chiudere **prima** che

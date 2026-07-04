@@ -6,7 +6,7 @@
 >
 > **Assorbe/attua due cantieri**:
 >
-> 1. [brief-db-guard-esito-smistamento.md](brief-db-guard-esito-smistamento.md) — invariante
+> 1. [brief-db-guard-esito-smistamento.md](../work-done/brief-db-guard-esito-smistamento.md) — invariante
 >    step bivio (incidente `PRA-0000243`) → **Parte 1**, con correzioni fattuali (§1.1).
 > 2. [brief-design-workflow-definizioni-versionate.md](brief-design-workflow-definizioni-versionate.md)
 >    — modello C «edizioni versionate + fork» (decisione 2026-07-02) → **Parte 2** = la delega
