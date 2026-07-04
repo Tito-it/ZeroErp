@@ -174,6 +174,15 @@ const router = createRouter({
           meta: { domain: 'amm-software', menuKey: 'definizioni-workflow' }
         },
         {
+          // Editor/ispettore di una singola edizione (rotta dedicata: il dettaglio
+          // strutturale e' troppo ricco per un drawer). menuKey = parent, per tenere
+          // evidenziata la voce "Definizioni workflow" nella sidebar.
+          path: 'amm-software/definizioni-workflow/:id',
+          name: 'amm-software-definizione-editor',
+          component: () => import('../amministrazione/views/DefinizioneEditorView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'definizioni-workflow' }
+        },
+        {
           path: 'amm-software/matrice-categorie-listini',
           name: 'amm-software-matrice-categorie-listini',
           component: () => import('../amministrazione/views/CategorieClientiListiniListView.vue'),

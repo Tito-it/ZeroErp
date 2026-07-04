@@ -1,10 +1,10 @@
 # Brief BE/FE — Consumi motore pratiche: step `DOMINIO` + definizioni versionate
 
 > **✅ CHIUSO (2026-07-04)** — Parte 1 (step `DOMINIO`) + Fase 0/1 + Fase 2 Slice 1a/1b
-> (admin edizioni) + Slice 2 anelli 1-3 (dettaglio lettura + editing step BOZZA) fatti,
-> test verdi, E2E validato in-app. **Residuo (nuovo brief quando si parte)**: Slice 2
-> anelli 4/5 (write figli per-nodo + archi), FE-2.4 banner drift operatore, Fase 3 editor
-> UI (cantiere V4/V5). API BE documentate in
+> (admin edizioni) + **Slice 2 anelli 1-5 completi** (dettaglio lettura + editing step/figli/archi
+> della BOZZA), 40 test verdi, E2E validato in-app. **Residuo (nuovo brief quando si parte)**:
+> Slice 2 rifiniture (campi step avanzati, «scarta BOZZA», marker CHECK), FE-2.4 banner drift
+> operatore, Fase 3 editor UI (cantiere V4/V5). API BE documentate in
 > [api_definizioni_workflow](../../backend/pratiche/manual/api_definizioni_workflow.md).
 >
 > **Per**: team backend (`dev/backend-tid`) e frontend. · **Da**: backend/frontend agent
@@ -201,17 +201,26 @@ definizioni — cantiere V4/V5, fuori scope qui.
 - **Audit fork-aware** ✅ → `brief-db-fork-gap-chiusura-definizione-aware.md` (2 fn per-tipo residue,
   **corrette dal DB**, verificate).
 
-### Parte 2 Fase 2 — admin edizioni 🟡 Slice 1 fatto, resta editing BOZZA (Slice 2)
+### Parte 2 Fase 2 — admin edizioni ✅ Slice 1 + editing BOZZA (Slice 2 BE) completi
 Gate scelto: **AdminAPIView (super-admin)**. Prerequisiti DB in
 `brief-db-accesso-be-definizioni-workflow.md` (P0 lettura + P1 conversione DEFINER) **chiusi**.
 
 - **Slice 1a** ✅ `GET /api/v1/pratiche/definizioni/` (repository+service+view) + FE list-view
   `amministrazione` con stato e banner drift + rotta/nav/i18n. Test verdi.
 - **Slice 1b** ✅ `POST …/{fork,nuova-versione,pubblica}/` (AdminAPIView, idempotenti) + FE azioni
-  `RowActionsMenu` + dialog fork (scelta emittente). Test verdi. **Verificato**: la conversione
-  DEFINER risolve il permesso (il fork supera "permesso negato"); E2E persistito da fare via app.
-- **Slice 2** ⏳ editing strutturale di una BOZZA (`template_flussi` + figli scoped a definizione) —
-  richiede accesso write ai guard immutabilità (P1 deferito, nessun consumatore finora).
+  `RowActionsMenu` + dialog fork (scelta emittente). Test verdi. **E2E persistito validato in-app**.
+- **Slice 2 — editing strutturale BOZZA (BE)** ✅ prerequisiti DB chiusi
+  (`brief-db-accesso-write-editing-strutturale-bozza`, `brief-db-guard-bozza-unica-nuova-versione`,
+  entrambi in `work-done/`). Superficie BE completa, 40 test verdi, E2E validato, doc
+  [`api_definizioni_workflow`](../../backend/pratiche/manual/api_definizioni_workflow.md):
+  - **anello 1** ✅ `GET /definizioni/<id>/` dettaglio header+drift+steps;
+  - **anello 2** ✅ figli per-nodo + archi annidati nel dettaglio;
+  - **anello 3** ✅ write step (`POST/PATCH/DELETE …/steps/…`, campi core, hard delete);
+  - **anello 4** ✅ write figli per-nodo (`…/steps/<id>/{canali|handler-eventi|competenze}/`);
+  - **anello 5** ✅ write archi (`…/archi/{prerequisiti|formule-tempo|regole-generazione}/`).
+- **Slice 2 residuo** ⏳ campi step avanzati (handler/azione_ui/chiude_pratica), «scarta BOZZA»
+  (DELETE intera edizione), marker parlanti per i CHECK di dominio.
+- **Fase 3 — editor UI (FE)** ⏳ il consumatore di tutta la superficie BE — cantiere V4/V5.
 - **Banner drift operatore** (FE-2.4) ⏳ cantiere V4/V5.
 
 *Consumi BE/FE dei due sviluppi DB (step DOMINIO + definizioni versionate). Ogni modifica qui

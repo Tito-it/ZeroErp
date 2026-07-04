@@ -17,7 +17,12 @@ from typing import Any
 from django.db import DatabaseError
 
 from apps.core.services.error_manager import ErrorManager
-from apps.pratiche.db.definizioni_repository import STEP_CORE_FIELDS, DefinizioniRepository
+from apps.pratiche.db.definizioni_repository import (
+    CHILD_SPECS,
+    EDGE_SPECS,
+    STEP_CORE_FIELDS,
+    DefinizioniRepository,
+)
 from apps.pratiche.services.pratiche_service import _raise_known_db_error
 
 _DRIFT_KEYS = ("versioni_indietro", "preset_corrente_id", "versione_preset_corrente")
@@ -140,22 +145,32 @@ def pubblica_definizione(definizione_id: int) -> dict[str, Any]:
 # handler/azione_ui/chiude_pratica/ripetibilita arrivano dopo. L'immutabilita'
 # (edizione per-emittente emessa) è enforce dai guard DB (marker
 # TEMPLATE_DEFINIZIONE_CONGELATA); qui solo validazione di bordo + ownership.
-_STEP_STR_FIELDS = ("codice", "descrizione", "direzione", "modalita_esito", "esito_default")
 
 
-# Scopo: estrae dal payload i soli campi core noti, normalizzando le stringhe
-# (trim; vuoto → None). Non decide default né valida gli enum: quelli sono dei
-# CHECK/DEFAULT DB (una sola verità).
-def _clean_step_payload(payload: dict[str, Any]) -> dict[str, Any]:
+# Scopo: estrae dal payload i soli campi in `fields`, trimmando le stringhe (vuoto
+# → None). Cleaner condiviso da step/figli/archi. Non decide default né valida
+# enum/FK: sono constraint DB (una sola verità).
+def _clean_writable(fields: tuple[str, ...], payload: dict[str, Any]) -> dict[str, Any]:
     data: dict[str, Any] = {}
-    for k in STEP_CORE_FIELDS:
+    for k in fields:
         if k not in payload:
             continue
         v = payload[k]
-        if k in _STEP_STR_FIELDS and v is not None:
-            v = str(v).strip() or None
+        if isinstance(v, str):
+            v = v.strip() or None
         data[k] = v
     return data
+
+
+# Scopo: guard di bordo — ogni campo `required` deve essere presente e non vuoto
+# in `data` (400 parlante prima del NOT NULL DB). Condiviso figli/archi.
+def _require_fields(data: dict[str, Any], required: tuple[str, ...], kind: str) -> None:
+    for campo in required:
+        ErrorManager.require(
+            data.get(campo) not in (None, ""),
+            code="E_VALIDATION_INPUT",
+            message=f"campo '{campo}' obbligatorio per {kind}",
+        )
 
 
 # Scopo: crea uno step nella BOZZA. 404 se la definizione non esiste; DatabaseError
@@ -169,7 +184,7 @@ def create_step(definizione_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         code="E_DEFINIZIONE_NOT_FOUND",
         message=f"Definizione workflow {definizione_id} non trovata",
     )
-    data = _clean_step_payload(payload)
+    data = _clean_writable(STEP_CORE_FIELDS, payload)
     ErrorManager.require(
         bool(data.get("codice")) and bool(data.get("descrizione")),
         code="E_VALIDATION_INPUT",
@@ -185,7 +200,7 @@ def create_step(definizione_id: int, payload: dict[str, Any]) -> dict[str, Any]:
 def update_step(definizione_id: int, step_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     _require_id(definizione_id, "definizione_id")
     _require_id(step_id, "step_id")
-    data = _clean_step_payload(payload)
+    data = _clean_writable(STEP_CORE_FIELDS, payload)
     ErrorManager.require(
         bool(data),
         code="E_VALIDATION_INPUT",
@@ -212,5 +227,165 @@ def delete_step(definizione_id: int, step_id: int) -> dict[str, Any]:
         n > 0,
         code="E_DEFINIZIONE_NOT_FOUND",
         message=f"Step {step_id} non trovato nella definizione {definizione_id}",
+    )
+    return {"deleted": True}
+
+
+# --- Write figli per-nodo su BOZZA (Slice 2 anello 4) ------------------------
+# CRUD dei figli (canali/handler_eventi/competenze) parametrizzato da CHILD_SPECS
+# (unica fonte col repository). `child_kind` arriva dalla urlconf (allowlist fissa).
+# Immutabilità enforce dal guard figli DB (marker TEMPLATE_DEFINIZIONE_CONGELATA).
+
+
+# Scopo: estrae dal payload le sole colonne scrivibili del figlio (via cleaner condiviso).
+def _clean_child_payload(child_kind: str, payload: dict[str, Any]) -> dict[str, Any]:
+    return _clean_writable(CHILD_SPECS[child_kind].writable, payload)
+
+
+# Scopo: crea un figlio sotto uno step della BOZZA. 404 se lo step non è nello
+# scope della definizione; campi `required` mancanti → 400; DatabaseError
+# (immutabilità) → marker parlante.
+def create_step_figlio(
+    definizione_id: int, step_id: int, child_kind: str, payload: dict[str, Any],
+) -> dict[str, Any]:
+    _require_id(definizione_id, "definizione_id")
+    _require_id(step_id, "step_id")
+    repo = DefinizioniRepository()
+    ErrorManager.require(
+        repo.step_in_definizione(definizione_id, step_id),
+        code="E_DEFINIZIONE_NOT_FOUND",
+        message=f"Step {step_id} non trovato nella definizione {definizione_id}",
+    )
+    data = _clean_child_payload(child_kind, payload)
+    _require_fields(data, CHILD_SPECS[child_kind].required, child_kind)
+    with _mapped_db_errors(f"definizioni_service.create_step_figlio.{child_kind}"):
+        row_id = repo.create_child(child_kind, step_id, data)
+    return {"id": row_id}
+
+
+# Scopo: aggiorna un figlio (scoping riga→step→definizione). 404 fuori scope.
+def update_step_figlio(
+    definizione_id: int, step_id: int, child_kind: str, row_id: int,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    _require_id(definizione_id, "definizione_id")
+    _require_id(step_id, "step_id")
+    _require_id(row_id, "row_id")
+    data = _clean_child_payload(child_kind, payload)
+    ErrorManager.require(
+        bool(data),
+        code="E_VALIDATION_INPUT",
+        message="nessun campo aggiornabile nel payload",
+    )
+    with _mapped_db_errors(f"definizioni_service.update_step_figlio.{child_kind}"):
+        n = DefinizioniRepository().update_child(
+            child_kind, definizione_id, step_id, row_id, data)
+    ErrorManager.require(
+        n > 0,
+        code="E_DEFINIZIONE_NOT_FOUND",
+        message=f"{child_kind} {row_id} non trovato per lo step {step_id}",
+    )
+    return {"id": row_id}
+
+
+# Scopo: hard DELETE di un figlio (scoping riga→step→definizione). 404 fuori scope.
+def delete_step_figlio(
+    definizione_id: int, step_id: int, child_kind: str, row_id: int,
+) -> dict[str, Any]:
+    _require_id(definizione_id, "definizione_id")
+    _require_id(step_id, "step_id")
+    _require_id(row_id, "row_id")
+    with _mapped_db_errors(f"definizioni_service.delete_step_figlio.{child_kind}"):
+        n = DefinizioniRepository().delete_child(child_kind, definizione_id, step_id, row_id)
+    ErrorManager.require(
+        n > 0,
+        code="E_DEFINIZIONE_NOT_FOUND",
+        message=f"{child_kind} {row_id} non trovato per lo step {step_id}",
+    )
+    return {"deleted": True}
+
+
+# --- Write archi del grafo su BOZZA (Slice 2 anello 5) -----------------------
+# CRUD degli archi (prerequisiti/formule_tempo/regole_generazione) parametrizzato
+# da EDGE_SPECS (unica fonte col repository). `edge_kind` dalla urlconf. Gli step
+# referenziati devono appartenere alla definizione (in_def_cols); il tipo (dove
+# NOT NULL) è auto-derivato dalla definizione. Immutabilità dai guard figli DB.
+
+
+# Scopo: ogni endpoint step dell'arco PRESENTE in `data` (in_def_cols) deve
+# appartenere alla definizione (404 altrimenti). Vale in create E in update: senza
+# questo, un PATCH potrebbe ri-puntare un arco a uno step di un'altra edizione (il
+# guard DB non lo impedisce: verifica solo che l'edizione corrente sia editabile).
+def _valida_endpoint_in_def(definizione_id: int, edge_kind: str, data: dict[str, Any]) -> None:
+    repo = DefinizioniRepository()
+    for col in EDGE_SPECS[edge_kind].in_def_cols:
+        if col not in data:
+            continue
+        try:
+            sid = int(data[col])
+        except (TypeError, ValueError):
+            sid = None
+        ErrorManager.require(
+            sid is not None and repo.step_in_definizione(definizione_id, sid),
+            code="E_DEFINIZIONE_NOT_FOUND",
+            message=f"lo step '{col}'={data[col]} non appartiene alla definizione {definizione_id}",
+        )
+
+
+# Scopo: crea un arco nel grafo della BOZZA. 404 se la definizione o uno step
+# endpoint non esiste nello scope; campi required mancanti → 400; immutabilità → marker.
+def create_arco(definizione_id: int, edge_kind: str, payload: dict[str, Any]) -> dict[str, Any]:
+    _require_id(definizione_id, "definizione_id")
+    spec = EDGE_SPECS[edge_kind]
+    repo = DefinizioniRepository()
+    header = repo.get_definizione(definizione_id)
+    ErrorManager.require(
+        header is not None,
+        code="E_DEFINIZIONE_NOT_FOUND",
+        message=f"Definizione workflow {definizione_id} non trovata",
+    )
+    data = _clean_writable(spec.writable, payload)
+    _require_fields(data, spec.required, edge_kind)
+    _valida_endpoint_in_def(definizione_id, edge_kind, data)
+    if spec.tipo_col:
+        data[spec.tipo_col] = header["tipo_prestazione_id"]
+    with _mapped_db_errors(f"definizioni_service.create_arco.{edge_kind}"):
+        row_id = repo.create_edge(edge_kind, data)
+    return {"id": row_id}
+
+
+# Scopo: aggiorna un arco (solo campi writable), scoping anchor→definizione. 404 fuori
+# scope. Se il payload cambia un endpoint step, lo si rivalida in-definizione.
+def update_arco(definizione_id: int, edge_kind: str, row_id: int,
+                payload: dict[str, Any]) -> dict[str, Any]:
+    _require_id(definizione_id, "definizione_id")
+    _require_id(row_id, "row_id")
+    data = _clean_writable(EDGE_SPECS[edge_kind].writable, payload)
+    ErrorManager.require(
+        bool(data),
+        code="E_VALIDATION_INPUT",
+        message="nessun campo aggiornabile nel payload",
+    )
+    _valida_endpoint_in_def(definizione_id, edge_kind, data)
+    with _mapped_db_errors(f"definizioni_service.update_arco.{edge_kind}"):
+        n = DefinizioniRepository().update_edge(edge_kind, definizione_id, row_id, data)
+    ErrorManager.require(
+        n > 0,
+        code="E_DEFINIZIONE_NOT_FOUND",
+        message=f"{edge_kind} {row_id} non trovato nella definizione {definizione_id}",
+    )
+    return {"id": row_id}
+
+
+# Scopo: hard DELETE di un arco, scoping anchor→definizione. 404 fuori scope.
+def delete_arco(definizione_id: int, edge_kind: str, row_id: int) -> dict[str, Any]:
+    _require_id(definizione_id, "definizione_id")
+    _require_id(row_id, "row_id")
+    with _mapped_db_errors(f"definizioni_service.delete_arco.{edge_kind}"):
+        n = DefinizioniRepository().delete_edge(edge_kind, definizione_id, row_id)
+    ErrorManager.require(
+        n > 0,
+        code="E_DEFINIZIONE_NOT_FOUND",
+        message=f"{edge_kind} {row_id} non trovato nella definizione {definizione_id}",
     )
     return {"deleted": True}

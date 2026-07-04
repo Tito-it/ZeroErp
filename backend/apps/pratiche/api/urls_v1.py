@@ -9,11 +9,15 @@
 from django.urls import path
 
 from apps.pratiche.api.views_definizioni import (
+    ApiDefinizioneArcoDetail,
+    ApiDefinizioneArchi,
     ApiDefinizioneDettaglio,
     ApiDefinizioneFork,
     ApiDefinizioneNuovaVersione,
     ApiDefinizionePubblica,
     ApiDefinizioneStepDetail,
+    ApiDefinizioneStepFigli,
+    ApiDefinizioneStepFiglioDetail,
     ApiDefinizioneSteps,
     ApiDefinizioniWorkflow,
 )
@@ -67,6 +71,20 @@ urlpatterns = [
     path("definizioni/<int:definizione_id>/pubblica/", ApiDefinizionePubblica.as_view(), name="pratiche-definizione-pubblica"),
     path("definizioni/<int:definizione_id>/steps/", ApiDefinizioneSteps.as_view(), name="pratiche-definizione-steps"),
     path("definizioni/<int:definizione_id>/steps/<int:step_id>/", ApiDefinizioneStepDetail.as_view(), name="pratiche-definizione-step-detail"),
+    # Figli per-nodo dello step (Slice 2 anello 4): child_kind fisso dalla urlconf.
+    path("definizioni/<int:definizione_id>/steps/<int:step_id>/canali/", ApiDefinizioneStepFigli.as_view(), {"child_kind": "canali"}, name="pratiche-definizione-step-canali"),
+    path("definizioni/<int:definizione_id>/steps/<int:step_id>/canali/<int:row_id>/", ApiDefinizioneStepFiglioDetail.as_view(), {"child_kind": "canali"}, name="pratiche-definizione-step-canale-detail"),
+    path("definizioni/<int:definizione_id>/steps/<int:step_id>/handler-eventi/", ApiDefinizioneStepFigli.as_view(), {"child_kind": "handler_eventi"}, name="pratiche-definizione-step-handler-eventi"),
+    path("definizioni/<int:definizione_id>/steps/<int:step_id>/handler-eventi/<int:row_id>/", ApiDefinizioneStepFiglioDetail.as_view(), {"child_kind": "handler_eventi"}, name="pratiche-definizione-step-handler-evento-detail"),
+    path("definizioni/<int:definizione_id>/steps/<int:step_id>/competenze/", ApiDefinizioneStepFigli.as_view(), {"child_kind": "competenze"}, name="pratiche-definizione-step-competenze"),
+    path("definizioni/<int:definizione_id>/steps/<int:step_id>/competenze/<int:row_id>/", ApiDefinizioneStepFiglioDetail.as_view(), {"child_kind": "competenze"}, name="pratiche-definizione-step-competenza-detail"),
+    # Archi del grafo (Slice 2 anello 5): livello edizione, edge_kind fisso dalla urlconf.
+    path("definizioni/<int:definizione_id>/archi/prerequisiti/", ApiDefinizioneArchi.as_view(), {"edge_kind": "prerequisiti"}, name="pratiche-definizione-prerequisiti"),
+    path("definizioni/<int:definizione_id>/archi/prerequisiti/<int:row_id>/", ApiDefinizioneArcoDetail.as_view(), {"edge_kind": "prerequisiti"}, name="pratiche-definizione-prerequisito-detail"),
+    path("definizioni/<int:definizione_id>/archi/formule-tempo/", ApiDefinizioneArchi.as_view(), {"edge_kind": "formule_tempo"}, name="pratiche-definizione-formule-tempo"),
+    path("definizioni/<int:definizione_id>/archi/formule-tempo/<int:row_id>/", ApiDefinizioneArcoDetail.as_view(), {"edge_kind": "formule_tempo"}, name="pratiche-definizione-formula-tempo-detail"),
+    path("definizioni/<int:definizione_id>/archi/regole-generazione/", ApiDefinizioneArchi.as_view(), {"edge_kind": "regole_generazione"}, name="pratiche-definizione-regole-generazione"),
+    path("definizioni/<int:definizione_id>/archi/regole-generazione/<int:row_id>/", ApiDefinizioneArcoDetail.as_view(), {"edge_kind": "regole_generazione"}, name="pratiche-definizione-regola-generazione-detail"),
     # --- Pratiche ---
     path("", ApiPraticheList.as_view(), name="pratiche-list"),
     path("<int:pratica_id>/", ApiPraticaDetail.as_view(), name="pratiche-detail"),
