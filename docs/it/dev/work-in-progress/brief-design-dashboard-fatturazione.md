@@ -323,6 +323,36 @@ Decisioni implementative aggiuntive (Fase 1):
 * **Contratti abortiti esclusi a monte** dal resolver: `n_abortiti = 0` per l'area
   CONTRATTI in v1 (un annullato per-mese non ha significato).
 
+Rifiniture v1 (2026-07-04, migration `20260703-60`) — brief-db "scope emittente
+COMMESSE + colonna cliente drill-down":
+
+* **P2 `cliente_display`**: aggiunta ai 5 resolver → union `vw_dash_fatturazione_documenti`
+  (ultima colonna, `::text`). Il path al cliente **non è uniforme**: si riusa lo
+  stesso join della rispettiva `vw_*_lista` per non divergere dalle liste —
+  preventivi/offerte `istanze_utilities → soggetti`, ordini `soggetto_ruolo_id`,
+  contratti/commesse `billing_account → soggetto_ruolo → soggetti`. `LEFT JOIN`
+  ovunque (nullable).
+* **P1 scope COMMESSE nel resolver**: prima lo scope era applicato dal BE solo sul
+  drill-down, non sull'aggregata pre-sommata → card e drill-down potevano divergere
+  per un operatore ristretto. Portato **dentro** `vw_dash_fatturazione_commesse` via
+  `script.fn_get_emittenti_scope_sr_ids(app.current_user_id)` letto da GUC (NULL=tutto,
+  `'{}'`=niente, array=whitelist); così matrice **e** drill-down ereditano il filtro
+  e il BE può togliere il branch `if area == 'COMMESSE'`.
+  * **Perché non RLS su `commesse`**: `commesse` è tabella di pipeline scritta in molti
+    contesti non-web (push/batch/`fn_get_or_create_commessa`); attivare RLS lì avrebbe
+    blast-radius sull'intera pipeline. Lo scope nel solo resolver di reporting è
+    chirurgico. (È il motivo del "commesse fuori RLS by design".)
+  * ⚠️ **Caveat fail-closed**: un filtro-in-vista **non è aggirato da `BYPASSRLS`** →
+    senza GUC operatore il resolver commesse dà 0 righe (psql/batch/superuser ad-hoc).
+    Accettabile (dashboard solo-web, GUC sempre valorizzata) e documentato nel manuale;
+    il pgTAP imposta la GUC esplicitamente.
+* pgTAP esteso a `plan(25)`: setup operatore OPERATORE non-super + whitelist emittente A
+  + GUC; test coerenza 2 emittenti (commessa B non visibile all'op. A, card==drill-down)
+  con skip condizionale se il seed ha un solo emittente; assert `cliente_display` non-null
+  per preventivo/contratto/commessa. **Nota BE post-fix**: rimuovere il branch scope
+  applicativo COMMESSE in `vendite_repository.list_dash_fatturazione_fermi` e aggiornare
+  il caveat in `api_dashboard_fatturazione.md`.
+
 Diario applicazione + test (2026-07-03, DB sviluppo):
 
 * **Bug scovato dal pgTAP (test 18) → fix `20260703-59`**: nei resolver

@@ -32,10 +32,16 @@
 --   16) COMMESSE: attivita APPROVATA ma non emessa -> ATTIVITA_NON_EMESSA
 --   17) MENSILE: PREVENTIVI 2080-01 -> 1 doc, 1 fermo, 140/110
 --   18) MENSILE: OFFERTE 2080-03 -> 4 docs, 1 transitata, 3 ferme, 0 abortite
+--   14b) Setup: operatore OPERATORE non-super trovato (scope commesse)
+--   19) SCOPE: operatore A vede commessa A, non commessa B (emittente diverso)
+--   20) COERENZA: mese di sola commessa B vuoto in mensile E in documenti (op. A)
+--   21) cliente_display non-null preventivo (path istanza->soggetti)
+--   22) cliente_display non-null contratto (path BA->soggetto_ruolo->soggetti)
+--   23) cliente_display non-null commessa (path BA->soggetto_ruolo->soggetti)
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(19);
+SELECT plan(25);
 
 -- ============================================================
 -- 0) Riferimenti minimi
@@ -82,6 +88,17 @@ SELECT
     ORDER BY sc.id LIMIT 1) AS stato_commessa_id,
   (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
     ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+  -- Emittente A (= emittente_fiscale_id) e il suo soggetto_ruolo_id, per lo
+  -- scope commesse (P1): la commessa fixture ha emittente A e l'operatore di
+  -- test e' whitelistato su A.
+  (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+    WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS ef_a_sr,
+  -- Emittente B: secondo emittente attivo distinto da A (per il test di
+  -- coerenza card/drill-down: la commessa di B non deve comparire per l'op. A).
+  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
+    ORDER BY ef.id OFFSET 1 LIMIT 1) AS ef_b_id,
+  (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+    WHERE ef.attivo IS TRUE ORDER BY ef.id OFFSET 1 LIMIT 1) AS ef_b_sr,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1) AS listino_id,
   (SELECT lv.id FROM vendite.listini_versioni lv WHERE lv.stato = 'ATTIVA'
@@ -169,11 +186,15 @@ SELECT * FROM ins;
 SELECT vendite.fn_push_preventivo_a_ordine((SELECT id FROM tmp_df_prev));
 
 -- Ramo commessa: servizio "emesso" (commessa + attivita EMESSA, comp. 2080-01).
+-- emittente_soggetto_ruolo_id = emittente A: il resolver commesse (20260703-60)
+-- filtra per scope emittente da GUC; l'operatore di test (impostato prima del
+-- test 15) e' whitelistato su A, quindi vede questa commessa.
 CREATE TEMP TABLE tmp_df_commessa AS
 WITH ins AS (
-  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id, stato_commessa_id)
+  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
+                                emittente_soggetto_ruolo_id, stato_commessa_id)
   SELECT 'PGTAP-DF-CMD-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id, r.stato_commessa_id
+         r.billing_account_id, r.utility_id, r.ef_a_sr, r.stato_commessa_id
     FROM tmp_df_refs r
   RETURNING id)
 SELECT id FROM ins;
@@ -486,6 +507,47 @@ SELECT is(
 );
 
 -- ============================================================
+-- Setup scope operatore (P1): il resolver commesse (20260703-60) filtra per
+-- scope emittente da GUC ed e' FAIL-CLOSED (senza GUC operatore -> 0 righe,
+-- NON aggirato da BYPASSRLS). Da qui in avanti impostiamo la sessione come un
+-- operatore OPERATORE non-super whitelistato sull'emittente A: cosi' vede la
+-- commessa fixture (emittente A) e NON quelle di altri emittenti.
+-- ============================================================
+CREATE TEMP TABLE tmp_df_op AS
+SELECT id.auth_user_id AS user_id
+  FROM anagrafiche.identita_digitali id
+ WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+   AND id.attivo = true
+   AND NOT EXISTS (
+       SELECT 1 FROM config.profili_accesso_bindings pab
+       JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
+       WHERE pab.identita_digitale_id = id.id
+         AND pab.attivo = true
+         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso)
+ ORDER BY id.id LIMIT 1;
+
+SELECT ok(
+  (SELECT user_id IS NOT NULL FROM tmp_df_op),
+  '14b. Trovato un operatore OPERATORE non-super per il test scope commesse'
+);
+
+-- Whitelist emittente A per l'operatore (override delete guardato).
+SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
+DELETE FROM config.user_emittenti_fiscali
+ WHERE auth_user_id = (SELECT user_id FROM tmp_df_op);
+SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+
+INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id, meta)
+SELECT o.user_id, r.emittente_fiscale_id,
+       '{"test_scope":"pgtap_dash_fatturazione"}'::jsonb
+  FROM tmp_df_op o, tmp_df_refs r
+ WHERE o.user_id IS NOT NULL;
+
+-- Sessione = operatore ristretto (scope commesse attivo da qui).
+SELECT set_config('app.current_user_id',
+    (SELECT user_id::text FROM tmp_df_op), true);
+
+-- ============================================================
 -- 15-16) Area COMMESSE (bucket 2080-01: EMESSA 60 + NON_EMESSA 30)
 -- ============================================================
 SELECT ok(
@@ -532,6 +594,96 @@ SELECT ok(
      FROM vendite.vw_dash_fatturazione_mensile m
     WHERE m.area = 'OFFERTE' AND m.competenza_mese = DATE '2080-03-01'),
   '18. Mensile OFFERTE 2080-03: 4 documenti, 1 transitata, 3 ferme, valori NULL (area a conteggi)'
+);
+
+-- ============================================================
+-- 19-20) P1: coerenza scope commesse card vs drill-down (2 emittenti)
+--   Commessa B (emittente B) NON deve comparire per l'operatore A, ne' nel
+--   resolver/drill-down ne' nella mensile (card). Se il seed ha un solo
+--   emittente (ef_b_sr NULL) i due test sono skippati.
+-- ============================================================
+CREATE TEMP TABLE tmp_df_commessa_b AS
+WITH ins AS (
+  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
+                                emittente_soggetto_ruolo_id, stato_commessa_id)
+  SELECT 'PGTAP-DF-CMB-' || substr(md5(clock_timestamp()::text), 1, 8),
+         r.billing_account_id, r.utility_id, r.ef_b_sr, r.stato_commessa_id
+    FROM tmp_df_refs r
+   WHERE r.ef_b_sr IS NOT NULL
+  RETURNING id)
+SELECT id FROM ins;
+
+INSERT INTO vendite.commesse_attivita (
+  commessa_id, segment_key,
+  articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
+  competenza_mese, competenza_dal, competenza_al,
+  tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
+  pricing_mode, stato_approvazione, stato_emissione,
+  sorgente_tipo_id, sorgente_uid)
+SELECT
+  (SELECT id FROM tmp_df_commessa_b),
+  'PGTAP-DF-B-' || substr(md5(clock_timestamp()::text), 1, 8),
+  r.art_serv_id, r.istanza_utility_id, DATE '2080-05-01', r.uom_id, 1,
+  DATE '2080-05-01', DATE '2080-05-01', DATE '2080-05-31',
+  r.tipo_doc_fiscale_id, r.valuta_id, 77.000000,
+  'FIXED', 'APPROVATA', 'EMESSA',
+  r.sorg_preventivo_id, (SELECT uid FROM tmp_df_prev)::text
+FROM tmp_df_refs r
+WHERE EXISTS (SELECT 1 FROM tmp_df_commessa_b);
+
+-- 19) Il resolver/drill-down commesse (operatore A) esclude la commessa B e
+--     include la A: card e drill-down leggono la stessa vista scope-aware.
+SELECT CASE WHEN (SELECT ef_b_sr FROM tmp_df_refs) IS NULL
+  THEN pass('19. [skip] seed con un solo emittente: coerenza scope non testabile')
+  ELSE ok(
+    (SELECT NOT EXISTS (
+       SELECT 1 FROM vendite.vw_dash_fatturazione_commesse v
+        WHERE v.documento_id = (SELECT id FROM tmp_df_commessa_b))
+     AND EXISTS (
+       SELECT 1 FROM vendite.vw_dash_fatturazione_commesse v
+        WHERE v.documento_id = (SELECT id FROM tmp_df_commessa))),
+    '19. Scope commesse: operatore A vede la commessa A, NON la commessa B (emittente diverso)'
+  )
+END;
+
+-- 20) Coerenza card (mensile) vs drill-down (documenti) sul mese di B: per
+--     l'operatore A entrambi NON contano la commessa B (stesso perimetro).
+SELECT CASE WHEN (SELECT ef_b_sr FROM tmp_df_refs) IS NULL
+  THEN pass('20. [skip] seed con un solo emittente: coerenza card/drill-down non testabile')
+  ELSE ok(
+    (SELECT COALESCE((SELECT m.n_documenti FROM vendite.vw_dash_fatturazione_mensile m
+                       WHERE m.area = 'COMMESSE' AND m.competenza_mese = DATE '2080-05-01'), 0) = 0
+        AND NOT EXISTS (
+              SELECT 1 FROM vendite.vw_dash_fatturazione_documenti d
+               WHERE d.area = 'COMMESSE' AND d.competenza_mese = DATE '2080-05-01')),
+    '20. Coerenza card/drill-down: mese 2080-05 (solo commessa B) vuoto in mensile E in documenti per l''operatore A'
+  )
+END;
+
+-- ============================================================
+-- 21-23) P2: cliente_display valorizzato (path per-area delle vw_*_lista)
+-- ============================================================
+SELECT ok(
+  (SELECT v.cliente_display IS NOT NULL
+     FROM vendite.vw_dash_fatturazione_preventivi v
+    WHERE v.documento_id = (SELECT id FROM tmp_df_prev)),
+  '21. cliente_display valorizzato per il preventivo (path istanza->soggetti)'
+);
+
+SELECT ok(
+  (SELECT v.cliente_display IS NOT NULL
+     FROM vendite.vw_dash_fatturazione_contratti v
+    WHERE v.documento_id = (SELECT id FROM tmp_df_contratto)
+    LIMIT 1),
+  '22. cliente_display valorizzato per il contratto (path BA->soggetto_ruolo->soggetti)'
+);
+
+SELECT ok(
+  (SELECT v.cliente_display IS NOT NULL
+     FROM vendite.vw_dash_fatturazione_commesse v
+    WHERE v.documento_id = (SELECT id FROM tmp_df_commessa)
+      AND v.competenza_mese = DATE '2080-01-01'),
+  '23. cliente_display valorizzato per la commessa (path BA->soggetto_ruolo->soggetti)'
 );
 
 SELECT * FROM finish();

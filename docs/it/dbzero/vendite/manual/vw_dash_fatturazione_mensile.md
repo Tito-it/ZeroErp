@@ -47,6 +47,11 @@ ORDER BY competenza_mese, area;
 
 * I mesi senza documenti **non** compaiono: è il backend a generare sempre i 12 mesi
   dell'anno richiesto con zeri (contratto API, decisione D-5).
+* Le righe **COMMESSE** sono **scope-aware**: il resolver
+  `vw_dash_fatturazione_commesse` filtra per emittente da GUC, quindi anche
+  l'aggregata mensile rispetta lo scope dell'operatore (card e drill-down
+  concordano). Le altre 4 aree sono filtrate dalla RLS. Senza GUC operatore la
+  sezione commesse dell'aggregata è vuota (fail-closed, vedi scheda commesse).
 * Il contratto colonne è pensato per reggere una futura **materializzazione**
   (snapshot notturno) senza cambiare l'interfaccia verso il backend.
 * Test: `db/pgtap/vendite/test-vw-dash-fatturazione-v1.sql`.
