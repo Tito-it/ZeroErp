@@ -33,6 +33,7 @@ motivo del fermo. Read-time, nessun mirror.
 | Competenza | `COALESCE(competenza_mese, mese di validita_dal, mese di data)` — la `competenza_mese` scritta all'accettazione è autorevole quando esiste; i fallback sono gli stessi campi della policy di `fn_list_preventivi_da_pushare` |
 | `is_abortito` | `esito = 'NEGATIVO'` da `config.stati_doc_preventivi` (D1 proiezione stato dominio) |
 | `motivo_fermo` | `DOC_BOZZA` (DRAFT) · `IN_ATTESA_ACCETTAZIONE` (EMESSO) · `RIGA_RESIDUA` (accettato con residuo bi-ramo) |
+| `cliente_display` | Ragione sociale intestatario istanza (`istanze_utilities → soggetti`, path `vw_preventivi_lista`), nullable |
 
 ---
 

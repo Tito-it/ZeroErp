@@ -48,7 +48,11 @@ LANGUAGE plpgsql VOLATILE
 - Differenza da [fn_fork_definizione](fn_fork_definizione.md): il fork cambia scope
   (verso un nuovo emittente, con provenance); la nuova versione resta nello **stesso**
   scope (versione successiva).
-- Introdotta con `20260703-07` (Parte 2 / Fase 2, D2-12).
+- **Accesso** (`20260703-16`, P1 strada B): `SECURITY DEFINER` + `search_path` fisso (come
+  [fn_fork_definizione](fn_fork_definizione.md)) — la DML interna gira come owner, il ruolo
+  app la esegue senza grant DML diretto; `EXECUTE` ristretto al solo ruolo app (`20260703-18`),
+  gate applicativo AdminAPIView super-admin.
+- Introdotta con `20260703-07` (Parte 2 / Fase 2, D2-12); resa SECURITY DEFINER con `20260703-16`.
 - Test: `db/pgtap/pratiche/test-workflow-definizioni-fase2.sql` (nuova versione + pubblica
   con ritiro della precedente).
 

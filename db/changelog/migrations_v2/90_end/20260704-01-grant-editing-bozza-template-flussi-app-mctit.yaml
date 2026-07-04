@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Accesso write per l'editing strutturale di una definizione in BOZZA (prereq
+# Slice 2). (brief-db-accesso-write-editing-bozza §Problema 1 + §Problema 2)
+#
+# L'editing di una BOZZA (aggiungi/togli step + figli, come zeroerp_app, percorso
+# INVOKER diretto — NON via le fn azione DEFINER) deve attraversare l'intera
+# catena trigger senza "permesso negato". Due buchi:
+#
+# Problema 1 — DML mancante su un figlio del set di copia:
+#   template_flussi_handler_eventi ha per il ruolo app SOLO SELECT (20260615-12),
+#   mentre gli altri 5 figli hanno DML pieno. Qui si allinea con
+#   GRANT SELECT,INSERT,UPDATE,DELETE (+ USAGE sequenza).
+#
+# Problema 2 — INSERT sullo storico (audit preventivo, non bug-per-bug):
+#   script.trgfn_storico_generic e' SECURITY INVOKER e su UPDATE/DELETE fa
+#   INSERT INTO storico.<tabella> come CHIAMANTE -> editando una BOZZA il ruolo
+#   app deve avere INSERT sullo storico delle tabelle storicizzate del set.
+#   Storicizzati (colonna storicizza + trigger z90): template_flussi,
+#   competenze_flussi, regole_generazione. Loop difensivo su to_regclass: concede
+#   dove lo storico esiste, salta altrove (robusto a estensioni future del set).
+#
+#   Le LETTURE della catena (child_requires_active_parent, prevent_deactivate_if_
+#   children, guard_modalita_esito, default_definizione, guard immutabilita' 2b)
+#   sono gia' coperte: template_flussi+figli+config lookups hanno SELECT, e
+#   workflow_definizioni ha SELECT dal P0 (20260703-15). Nessun grant di lettura
+#   nuovo necessario.
+#
+# Idempotente e difensivo (skip se il ruolo o la tabella mancano). runOnChange:
+# true come gli altri grant runtime mirati (grant idempotenti, ri-applicabili).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260704-01-grant-editing-bozza-template-flussi-app-mctit.yaml
+
+  - changeSet:
+      id: 20260704-01-grant-editing-bozza-template-flussi-app
+      author: mctit
+      runOnChange: true
+      comment: >
+        Editing strutturale BOZZA (prereq Slice 2): DML su
+        template_flussi_handler_eventi (allineamento figli) + INSERT sullo storico
+        delle tabelle storicizzate del set editabile, per il ruolo zeroerp_app.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+                v_editable text[] := ARRAY[
+                  'template_flussi',
+                  'template_flussi_canali',
+                  'template_flussi_handler_eventi',
+                  'template_flussi_prerequisiti',
+                  'competenze_flussi',
+                  'formule_tempo',
+                  'regole_generazione'
+                ];
+                v_tbl text;
+                v_seq text;
+              BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  RAISE NOTICE 'Ruolo % assente: skip grant editing BOZZA.', v_app_role;
+                  RETURN;
+                END IF;
+
+                EXECUTE format('GRANT USAGE ON SCHEMA pratiche TO %I', v_app_role);
+
+                -- Problema 1: allinea template_flussi_handler_eventi agli altri 5 figli.
+                EXECUTE format(
+                  'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE pratiche.template_flussi_handler_eventi TO %I',
+                  v_app_role
+                );
+                v_seq := pg_get_serial_sequence('pratiche.template_flussi_handler_eventi', 'id');
+                IF v_seq IS NOT NULL THEN
+                  EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE %s TO %I', v_seq, v_app_role);
+                END IF;
+
+                -- Problema 2: INSERT sullo storico delle tabelle storicizzate del set.
+                -- trgfn_storico_generic e' INVOKER -> lo snapshot su UPDATE/DELETE
+                -- e' scritto coi privilegi del ruolo app.
+                EXECUTE format('GRANT USAGE ON SCHEMA storico TO %I', v_app_role);
+                FOREACH v_tbl IN ARRAY v_editable LOOP
+                  IF to_regclass('storico.' || quote_ident(v_tbl)) IS NOT NULL THEN
+                    EXECUTE format('GRANT INSERT ON TABLE storico.%I TO %I', v_tbl, v_app_role);
+                    v_seq := pg_get_serial_sequence('storico.' || quote_ident(v_tbl), 'id');
+                    IF v_seq IS NOT NULL THEN
+                      EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE %s TO %I', v_seq, v_app_role);
+                    END IF;
+                  END IF;
+                END LOOP;
+              END;
+              $$;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+                v_editable text[] := ARRAY[
+                  'template_flussi','template_flussi_canali','template_flussi_handler_eventi',
+                  'template_flussi_prerequisiti','competenze_flussi','formule_tempo','regole_generazione'
+                ];
+                v_tbl text;
+              BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  RETURN;
+                END IF;
+                -- Problema 1: riporta template_flussi_handler_eventi al solo SELECT.
+                EXECUTE format(
+                  'REVOKE INSERT, UPDATE, DELETE ON TABLE pratiche.template_flussi_handler_eventi FROM %I',
+                  v_app_role
+                );
+                -- Problema 2: revoca INSERT sullo storico concesso.
+                FOREACH v_tbl IN ARRAY v_editable LOOP
+                  IF to_regclass('storico.' || quote_ident(v_tbl)) IS NOT NULL THEN
+                    EXECUTE format('REVOKE INSERT ON TABLE storico.%I FROM %I', v_tbl, v_app_role);
+                  END IF;
+                END LOOP;
+              END;
+              $$;

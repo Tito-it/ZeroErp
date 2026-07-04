@@ -1,0 +1,212 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Immutabilita' strutturale «Leggera» — strategia C: freeze MODIFICA != freeze
+# CANCELLAZIONE per le edizioni RITIRATE. (brief-db-accesso-write-editing-bozza
+#  §Problema 3; sostituisce il comportamento di 20260703-11.)
+#
+# Prima (Fase 2b, 20260703-11): il guard bloccava INSERT/UPDATE/DELETE solo sulla
+# PUBBLICATA-emittente; la RITIRATA era interamente editabile (bug logico: editare
+# una RITIRATA cambia la struttura sotto le pratiche pinnate a quella versione).
+#
+# Ora (strategia C):
+#   INSERT / UPDATE -> vietati se l'edizione e' forkata GIA' EMESSA (PUBBLICATA o
+#     RITIRATA): fn_check_definizione_struttura_bloccata (20260704-02). Niente
+#     modifica retroattiva della struttura per pratiche pinnate.
+#   DELETE          -> vietato solo se PUBBLICATA-emittente (in uso):
+#     fn_check_definizione_congelata (20260703-10). Una RITIRATA-emittente resta
+#     CANCELLABILE (housekeeping / smantellamento; il pattern "ritira-poi-cancella"
+#     dei cleanup resta valido).
+#   descrizione     -> sempre correggibile a caldo (unico campo display, C4).
+# Preset (emittente NULL) e BOZZA restano liberamente editabili.
+#
+# CREATE OR REPLACE (firma invariata). Gira dopo 20260703-11 (stessa funzione, per
+# data) -> e' lo stato finale. Errore unico TEMPLATE_DEFINIZIONE_CONGELATA (514),
+# messaggio generalizzato (pubblicata o ritirata).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260704-03-update-trgfn-template-flussi-guard-immutabile-strategia-c-mctit.yaml
+
+  - changeSet:
+      id: 20260704-03-update-trgfn-template-flussi-guard-immutabile-strategia-c
+      author: mctit
+      runOnChange: false
+      comment: >
+        trgfn_template_flussi_guard_immutabile strategia C: INSERT/UPDATE vietati su
+        edizione emessa (pubblicata o ritirata, struttura_bloccata), DELETE vietato
+        solo su pubblicata (congelata). RITIRATA editabile=no, cancellabile=si.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pratiche' AND p.proname = 'fn_check_definizione_struttura_bloccata';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: immutabilita' strutturale «Leggera» dei template (strategia C).
+              --   INSERT/UPDATE vietati su edizione forkata emessa (pubblicata o
+              --   ritirata); DELETE vietato solo su pubblicata (in uso). RITIRATA:
+              --   non editabile ma cancellabile. descrizione sempre correggibile.
+              --   Preset e BOZZA liberi.
+              DECLARE
+                v_old_bloccata boolean;
+                v_new_bloccata boolean;
+                v_def_report   pratiche.workflow_definizioni.id%TYPE;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  -- Cancellazione: vietata solo su edizione PUBBLICATA (in uso).
+                  -- Una RITIRATA-emittente resta cancellabile (housekeeping).
+                  IF pratiche.fn_check_definizione_congelata(OLD.definizione_id) THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'pratiche',
+                      'pratiche.trgfn_template_flussi_guard_immutabile',
+                      'TEMPLATE_DEFINIZIONE_CONGELATA',
+                      jsonb_build_object(
+                        'operazione',        'DELETE',
+                        'tabella',           'template_flussi',
+                        'template_flusso_id', OLD.id,
+                        'codice',             OLD.codice,
+                        'definizione_id',     OLD.definizione_id
+                      ),
+                      OLD.tx_id,
+                      OLD.definizione_id::text
+                    );
+                  END IF;
+                  RETURN OLD;
+
+                ELSIF TG_OP = 'INSERT' THEN
+                  -- Inserimento: vietato su edizione emessa (pubblicata o ritirata).
+                  IF pratiche.fn_check_definizione_struttura_bloccata(NEW.definizione_id) THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'pratiche',
+                      'pratiche.trgfn_template_flussi_guard_immutabile',
+                      'TEMPLATE_DEFINIZIONE_CONGELATA',
+                      jsonb_build_object(
+                        'operazione',     'INSERT',
+                        'tabella',        'template_flussi',
+                        'codice',         NEW.codice,
+                        'definizione_id', NEW.definizione_id
+                      ),
+                      NEW.tx_id,
+                      NEW.definizione_id::text
+                    );
+                  END IF;
+                  RETURN NEW;
+
+                ELSE  -- UPDATE
+                  v_old_bloccata := pratiche.fn_check_definizione_struttura_bloccata(OLD.definizione_id);
+                  v_new_bloccata := pratiche.fn_check_definizione_struttura_bloccata(NEW.definizione_id);
+
+                  -- Blocca se una delle due edizioni (origine/destinazione del
+                  -- re-parent) e' emessa e cambia qualcosa oltre alla descrizione
+                  -- (+ audit tecnici esclusi dal confronto).
+                  IF (v_old_bloccata OR v_new_bloccata)
+                     AND (to_jsonb(NEW) - 'descrizione' - 'tx_id'
+                                        - 'data_insert' - 'user_insert'
+                                        - 'data_update' - 'user_update')
+                         IS DISTINCT FROM
+                         (to_jsonb(OLD) - 'descrizione' - 'tx_id'
+                                        - 'data_insert' - 'user_insert'
+                                        - 'data_update' - 'user_update')
+                  THEN
+                    v_def_report := CASE WHEN v_old_bloccata
+                                         THEN OLD.definizione_id
+                                         ELSE NEW.definizione_id END;
+                    PERFORM script.fn_log_and_raise_error(
+                      'pratiche',
+                      'pratiche.trgfn_template_flussi_guard_immutabile',
+                      'TEMPLATE_DEFINIZIONE_CONGELATA',
+                      jsonb_build_object(
+                        'operazione',        'UPDATE',
+                        'tabella',           'template_flussi',
+                        'template_flusso_id', NEW.id,
+                        'codice',             NEW.codice,
+                        'definizione_id',     v_def_report
+                      ),
+                      NEW.tx_id,
+                      v_def_report::text
+                    );
+                  END IF;
+                  RETURN NEW;
+                END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()
+                IS 'BEFORE INS/UPD/DEL su pratiche.template_flussi: immutabilita'' strutturale «Leggera» strategia C. INSERT/UPDATE (oltre descrizione) vietati su edizione forkata emessa (pubblicata o ritirata, fn_check_definizione_struttura_bloccata); DELETE vietato solo su pubblicata (fn_check_definizione_congelata) -> RITIRATA cancellabile. Errore TEMPLATE_DEFINIZIONE_CONGELATA (514). Preset (emittente NULL) e BOZZA editabili.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina la versione Fase 2b (20260703-11): tutto su congelata.
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_old_congelata boolean;
+                v_new_congelata boolean;
+                v_def_report    pratiche.workflow_definizioni.id%TYPE;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  IF pratiche.fn_check_definizione_congelata(OLD.definizione_id) THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'pratiche', 'pratiche.trgfn_template_flussi_guard_immutabile',
+                      'TEMPLATE_DEFINIZIONE_CONGELATA',
+                      jsonb_build_object('operazione','DELETE','tabella','template_flussi',
+                                         'template_flusso_id',OLD.id,'codice',OLD.codice,
+                                         'definizione_id',OLD.definizione_id),
+                      OLD.tx_id, OLD.definizione_id::text);
+                  END IF;
+                  RETURN OLD;
+                ELSIF TG_OP = 'INSERT' THEN
+                  IF pratiche.fn_check_definizione_congelata(NEW.definizione_id) THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'pratiche', 'pratiche.trgfn_template_flussi_guard_immutabile',
+                      'TEMPLATE_DEFINIZIONE_CONGELATA',
+                      jsonb_build_object('operazione','INSERT','tabella','template_flussi',
+                                         'codice',NEW.codice,'definizione_id',NEW.definizione_id),
+                      NEW.tx_id, NEW.definizione_id::text);
+                  END IF;
+                  RETURN NEW;
+                ELSE
+                  v_old_congelata := pratiche.fn_check_definizione_congelata(OLD.definizione_id);
+                  v_new_congelata := pratiche.fn_check_definizione_congelata(NEW.definizione_id);
+                  IF (v_old_congelata OR v_new_congelata)
+                     AND (to_jsonb(NEW) - 'descrizione' - 'tx_id' - 'data_insert' - 'user_insert'
+                                        - 'data_update' - 'user_update')
+                         IS DISTINCT FROM
+                         (to_jsonb(OLD) - 'descrizione' - 'tx_id' - 'data_insert' - 'user_insert'
+                                        - 'data_update' - 'user_update')
+                  THEN
+                    v_def_report := CASE WHEN v_old_congelata THEN OLD.definizione_id ELSE NEW.definizione_id END;
+                    PERFORM script.fn_log_and_raise_error(
+                      'pratiche', 'pratiche.trgfn_template_flussi_guard_immutabile',
+                      'TEMPLATE_DEFINIZIONE_CONGELATA',
+                      jsonb_build_object('operazione','UPDATE','tabella','template_flussi',
+                                         'template_flusso_id',NEW.id,'codice',NEW.codice,
+                                         'definizione_id',v_def_report),
+                      NEW.tx_id, v_def_report::text);
+                  END IF;
+                  RETURN NEW;
+                END IF;
+              END;
+              $function$;

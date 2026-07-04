@@ -1,15 +1,18 @@
 # Brief Design — Dashboard Fatturazione (controllo del transito per competenza)
 
 > **Tipo**: brief di design autorevole (modello + piano DB/BE/FE) · **Data**: 2026-07-02
-> **Owner**: Tid · **Stato**: 🟢 **Fase 1 DB APPLICATA + TESTATA (2026-07-03)** —
-> migrations `20260703-51..57` (20_code/vendite: 5 resolver + union
-> `vw_dash_fatturazione_documenti` + aggregata `vw_dash_fatturazione_mensile`) +
-> `20260703-58` (90_end: indici `ix_commesse_attivita_segment_key` e
-> `ix_commesse_attivita_sorgente_competenza`) + **fix `20260703-59`**
-> (is_abortito null-safe, vedi §11) + doc manuale
-> `dbzero/vendite/manual/vw_dash_fatturazione_*.md` a standard.
-> pgTAP `test-vw-dash-fatturazione-v1.sql` **VERDE 19/19** sul DB di sviluppo.
-> Prossimo: Fase 2 BE (§11); EXPLAIN su dati reali da fare quando i volumi crescono.
+> **Owner**: Tid · **Stato**: 🟢 **Fase 1 DB CHIUSA (2026-07-04)** — deliverable
+> completo, applicato e testato sul DB di sviluppo. Migrations:
+> `20260703-51..57` (5 resolver + union `vw_dash_fatturazione_documenti` +
+> aggregata `vw_dash_fatturazione_mensile`), `20260703-58` (90_end: indici
+> `ix_commesse_attivita_segment_key` / `_sorgente_competenza`), `-59` (is_abortito
+> null-safe), `-60` (`cliente_display` + scope emittente nel resolver commesse),
+> `-61` (esclusione attività void dal denominatore). Doc manuale
+> `dbzero/vendite/manual/vw_dash_fatturazione_*.md` a standard; pgTAP
+> `test-vw-dash-fatturazione-v1.sql` **VERDE `plan(28)`**.
+> **Prossimo (fuori DB)**: Fase 2 BE (§11) — inclusa la rimozione del branch scope
+> applicativo COMMESSE e l'aggiunta di `cliente_display` al payload; EXPLAIN su
+> dati reali quando i volumi crescono.
 >
 > **Origine**: richiesta Tid 2026-07-02 — "dashboard fondamentale per avere sotto controllo
 > la fatturazione": per un dato anno/mese di **competenza**, per ciascuna area che porta
@@ -322,6 +325,62 @@ Decisioni implementative aggiuntive (Fase 1):
   contratti aperti.
 * **Contratti abortiti esclusi a monte** dal resolver: `n_abortiti = 0` per l'area
   CONTRATTI in v1 (un annullato per-mese non ha significato).
+
+Rifinitura v1 (2026-07-04, migration `20260703-61`) — brief-db "escludere le
+attività di commessa annullate/rifiutate dai conteggi":
+
+* **Bug logico latente**: il resolver commesse contava **tutte** le
+  `commesse_attivita` nel denominatore. Una commessa viva con anche una sola
+  attività void → totale gonfiato, `is_transitato` falso **in eterno**
+  (`COUNT(*) > COUNT(EMESSA)` perché una void non sarà mai EMESSA), semaforo mese
+  che non si spegne, `motivo_fermo` fuorviante ("da lavorare" su un void).
+* **Fix**: predicato "computabile" nel `WHERE` del resolver, simmetrico a
+  `orr.attivo IS TRUE` degli ordini:
+  `stato_emissione <> 'ANNULLATA' AND (stato_approvazione <> 'RIFIUTATA' OR stato_emissione = 'EMESSA')`.
+  `ANNULLATA` = void emissione; **`RIFIUTATA` = void terminale** (decisione Tid
+  2026-07-04: come ANNULLATA — un rifiuto è par a un documento `esito=NEGATIVO`
+  nelle altre 4 aree). Eccezione di sicurezza: `EMESSA+RIFIUTATA` (assi
+  indipendenti nel CHECK) è già transitata → **tenuta**, non persa. Dopo
+  l'esclusione, `ATTIVITA_NON_APPROVATA` torna vero solo per le BOZZA reali.
+* **Fatto chiave**: oggi **nessun percorso DB/BE** scrive `ANNULLATA`/`RIFIUTATA`
+  su `commesse_attivita` (stati CHECK-validi ma dead) → fix difensivo-in-avanti,
+  **regressione zero**. La `RIFIUTATA` non è cablata all'L3 (che rifiuta il
+  *prezzo* su `preventivi_righe`/`contratti_righe`, non le attività).
+* Solo il resolver commesse cambia (documenti/mensile hanno lo stesso set colonne).
+  ⚠️ Il `WHERE` scope (`OR`) è stato **parentesizzato** aggiungendo l'`AND`.
+* pgTAP → `plan(28)`: 2080-06 `EMESSA(100)+ANNULLATA(999)+RIFIUTATA(888)` → totale
+  100/unità 1/transitato; mese di sole void assente da resolver e drill-down;
+  edge `EMESSA+RIFIUTATA` tenuta.
+
+Rifiniture v1 (2026-07-04, migration `20260703-60`) — brief-db "scope emittente
+COMMESSE + colonna cliente drill-down":
+
+* **P2 `cliente_display`**: aggiunta ai 5 resolver → union `vw_dash_fatturazione_documenti`
+  (ultima colonna, `::text`). Il path al cliente **non è uniforme**: si riusa lo
+  stesso join della rispettiva `vw_*_lista` per non divergere dalle liste —
+  preventivi/offerte `istanze_utilities → soggetti`, ordini `soggetto_ruolo_id`,
+  contratti/commesse `billing_account → soggetto_ruolo → soggetti`. `LEFT JOIN`
+  ovunque (nullable).
+* **P1 scope COMMESSE nel resolver**: prima lo scope era applicato dal BE solo sul
+  drill-down, non sull'aggregata pre-sommata → card e drill-down potevano divergere
+  per un operatore ristretto. Portato **dentro** `vw_dash_fatturazione_commesse` via
+  `script.fn_get_emittenti_scope_sr_ids(app.current_user_id)` letto da GUC (NULL=tutto,
+  `'{}'`=niente, array=whitelist); così matrice **e** drill-down ereditano il filtro
+  e il BE può togliere il branch `if area == 'COMMESSE'`.
+  * **Perché non RLS su `commesse`**: `commesse` è tabella di pipeline scritta in molti
+    contesti non-web (push/batch/`fn_get_or_create_commessa`); attivare RLS lì avrebbe
+    blast-radius sull'intera pipeline. Lo scope nel solo resolver di reporting è
+    chirurgico. (È il motivo del "commesse fuori RLS by design".)
+  * ⚠️ **Caveat fail-closed**: un filtro-in-vista **non è aggirato da `BYPASSRLS`** →
+    senza GUC operatore il resolver commesse dà 0 righe (psql/batch/superuser ad-hoc).
+    Accettabile (dashboard solo-web, GUC sempre valorizzata) e documentato nel manuale;
+    il pgTAP imposta la GUC esplicitamente.
+* pgTAP esteso a `plan(25)`: setup operatore OPERATORE non-super, whitelist emittente A
+  e GUC; test coerenza 2 emittenti (commessa B non visibile all'op. A, card==drill-down)
+  con skip condizionale se il seed ha un solo emittente; assert `cliente_display` non-null
+  per preventivo/contratto/commessa. **Nota BE post-fix**: rimuovere il branch scope
+  applicativo COMMESSE in `vendite_repository.list_dash_fatturazione_fermi` e aggiornare
+  il caveat in `api_dashboard_fatturazione.md`.
 
 Diario applicazione + test (2026-07-03, DB sviluppo):
 

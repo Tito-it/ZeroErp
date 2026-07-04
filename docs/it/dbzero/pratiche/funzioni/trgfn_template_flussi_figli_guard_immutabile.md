@@ -12,14 +12,16 @@ CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- Scopo: immutabilita' strutturale «Leggera» dei figli di
---        configurazione del template su fork PUBBLICATO. Generica:
---        la colonna FK verso template_flussi arriva in TG_ARGV[0].
+-- Scopo: immutabilita' strutturale «Leggera» dei figli (strategia C).
+--   INSERT/UPDATE vietati su edizione forkata emessa; DELETE vietato
+--   solo su pubblicata. La colonna FK verso template arriva in
+--   TG_ARGV[0]. Nessuna eccezione display sui figli.
 DECLARE
   v_rec   jsonb;
   v_tf_id pratiche.template_flussi.id%TYPE;
   v_def   pratiche.workflow_definizioni.id%TYPE;
   v_tx    uuid;
+  v_bloccata boolean;
 BEGIN
   IF TG_OP = 'DELETE' THEN
     v_rec := to_jsonb(OLD);
@@ -28,8 +30,7 @@ BEGIN
   END IF;
 
   v_tf_id := (v_rec ->> TG_ARGV[0])::integer;
-  -- FK non risolvibile (riga incoerente): non e' compito di questo
-  -- guard; decidono le FK / gli altri guard.
+  -- FK non risolvibile: non e' compito di questo guard.
   IF v_tf_id IS NULL THEN
     RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
   END IF;
@@ -39,7 +40,15 @@ BEGIN
     FROM pratiche.template_flussi tf
    WHERE tf.id = v_tf_id;
 
-  IF pratiche.fn_check_definizione_congelata(v_def) THEN
+  -- DELETE -> solo PUBBLICATA (congelata); INSERT/UPDATE -> anche
+  -- RITIRATA (struttura_bloccata).
+  IF TG_OP = 'DELETE' THEN
+    v_bloccata := pratiche.fn_check_definizione_congelata(v_def);
+  ELSE
+    v_bloccata := pratiche.fn_check_definizione_struttura_bloccata(v_def);
+  END IF;
+
+  IF v_bloccata THEN
     v_tx := NULLIF(v_rec ->> 'tx_id', '')::uuid;
     PERFORM script.fn_log_and_raise_error(
       'pratiche',
@@ -61,7 +70,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile()
-IS 'Guard generico BEFORE INS/UPD/DEL sui figli di configurazione di template_flussi (canali, handler_eventi, competenze, prerequisiti, formule_tempo, regole_generazione): su edizione forkata pubblicata (fn_check_definizione_congelata) ogni scrittura e'' vietata -> TEMPLATE_DEFINIZIONE_CONGELATA (514). La colonna FK verso template_flussi arriva in TG_ARGV[0]. Immutabilita'' strutturale «Leggera» Fase 2b.';
+IS 'Guard generico BEFORE INS/UPD/DEL sui figli di template_flussi (canali, handler_eventi, competenze, prerequisiti, formule_tempo, regole_generazione), strategia C: INSERT/UPDATE vietati su edizione forkata emessa (pubblicata o ritirata, fn_check_definizione_struttura_bloccata); DELETE vietato solo su pubblicata (fn_check_definizione_congelata) -> figli di RITIRATA cancellabili. FK verso template in TG_ARGV[0]. Errore TEMPLATE_DEFINIZIONE_CONGELATA (514).';
 ```
 
 ---

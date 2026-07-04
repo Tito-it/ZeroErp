@@ -1,0 +1,179 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P1 — fn_fork_definizione + fn_nuova_versione_definizione a SECURITY DEFINER.
+# (brief-db-accesso-ruolo-be-definizioni-workflow §2 strada B; consumatore Slice 1b
+#  BE pronto: endpoint POST /pratiche/definizioni/<id>/{fork,nuova-versione}/ su
+#  AdminAPIView super-admin.)
+#
+# Le due funzioni (via il motore fn_copia_definizione) INSERISCONO su
+# workflow_definizioni + template_flussi + 6 figli. Da INVOKER giravano coi
+# privilegi del chiamante (zeroerp_app), che NON ha DML su quelle tabelle ->
+# "permesso negato" restituito come E_DATABASE. Rese SECURITY DEFINER: la DML
+# interna gira coi privilegi dell'owner (owner DDL, che possiede le tabelle
+# pratiche.*) senza esporre alcun grant DML diretto sulla tabella (schermata).
+# L'autorizzazione applicativa resta al gate app-layer (AdminAPIView super-admin).
+#
+# fn_copia_definizione resta INVOKER: e' interna, chiamata solo da questi due
+# wrapper, quindi eredita il contesto DEFINER (e il search_path) transitivamente.
+#
+# search_path FISSO (hardening SECURITY DEFINER): non solo pg_catalog perche' gli
+# INSERT scatenano una CATENA DI TRIGGER cross-schema (audit/tx_id/storico/lock +
+# i guard di modalita_esito/immutabilita' + default_definizione) che eredita
+# questo search_path. Fissato sulle schema FIDATE coinvolte (pratiche, script,
+# config, dbops) + pg_catalog, con pg_temp per ultimo: il chiamante non puo'
+# iniettare un path malevolo (path fisso) e il ruolo app non ha CREATE su quelle
+# schema, quindi nessuna possibilita' di shadowing. Deviazione motivata dal
+# pattern single-table di script.fn_job_run_start (li' basta pg_catalog).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260703-16-alter-fn-fork-nuova-versione-security-definer-mctit.yaml
+
+  - changeSet:
+      id: 20260703-16-alter-fn-fork-nuova-versione-security-definer
+      author: mctit
+      runOnChange: false
+      comment: >
+        fn_fork_definizione + fn_nuova_versione_definizione a SECURITY DEFINER +
+        search_path fisso (P1 strada B): la DML interna su workflow_definizioni e
+        figli passa senza grant diretto. Consumatore BE Slice 1b (AdminAPIView).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pratiche' AND p.proname = 'fn_copia_definizione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- FORK: nuova edizione per uno scope EMITTENTE (provenance).
+              CREATE OR REPLACE FUNCTION pratiche.fn_fork_definizione(
+                  p_definizione_id       pratiche.workflow_definizioni.id%TYPE,
+                  p_emittente_fiscale_id pratiche.workflow_definizioni.emittente_fiscale_id%TYPE
+              )
+              RETURNS pratiche.workflow_definizioni.id%TYPE
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY DEFINER
+              SET search_path = pg_catalog, pratiche, script, config, dbops, pg_temp
+              AS $function$
+              -- Scopo: creare l'edizione di un emittente a partire da una
+              --        definizione (di solito il preset), con provenance per il
+              --        rilevamento drift. Wrapper di fn_copia_definizione.
+              -- SECURITY DEFINER: la DML interna (via fn_copia) gira come owner.
+              BEGIN
+                IF p_emittente_fiscale_id IS NULL OR p_emittente_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche', 'pratiche.fn_fork_definizione', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','p_emittente_fiscale_id',
+                                       'valore',p_emittente_fiscale_id),
+                    NULL::uuid,
+                    'il fork richiede un emittente valido; per una nuova versione dello stesso scope usare fn_nuova_versione_definizione');
+                END IF;
+
+                RETURN pratiche.fn_copia_definizione(p_definizione_id, p_emittente_fiscale_id, true);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_fork_definizione(integer, bigint)
+                IS 'Crea l''edizione di un emittente a partire da una definizione (di solito il preset), in stato BOZZA, con provenance (preset_origine_id/versione_origine) per il drift. Wrapper di fn_copia_definizione(..., true). Guard: emittente NOT NULL. SECURITY DEFINER (search_path fisso): la DML interna passa senza grant diretto; autorizzazione al gate app-layer (AdminAPIView).';
+
+              -- NUOVA VERSIONE: nuova BOZZA nello STESSO scope della sorgente.
+              CREATE OR REPLACE FUNCTION pratiche.fn_nuova_versione_definizione(
+                  p_definizione_id pratiche.workflow_definizioni.id%TYPE
+              )
+              RETURNS pratiche.workflow_definizioni.id%TYPE
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY DEFINER
+              SET search_path = pg_catalog, pratiche, script, config, dbops, pg_temp
+              AS $function$
+              -- Scopo: creare una nuova versione BOZZA nello stesso scope della
+              --        sorgente (stesso emittente, preset incluso). Per modificare
+              --        in sicurezza un'edizione gia' pubblicata.
+              -- SECURITY DEFINER: la DML interna (via fn_copia) gira come owner.
+              DECLARE
+                v_emittente pratiche.workflow_definizioni.emittente_fiscale_id%TYPE;
+                v_found     boolean;
+              BEGIN
+                SELECT wd.emittente_fiscale_id, true
+                  INTO v_emittente, v_found
+                  FROM pratiche.workflow_definizioni wd
+                 WHERE wd.id = p_definizione_id;
+
+                IF v_found IS NOT TRUE THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche', 'pratiche.fn_nuova_versione_definizione', 'E_VALORE_MANCANTE',
+                    jsonb_build_object('definizione_sorgente_id', p_definizione_id),
+                    NULL::uuid, concat('workflow_definizioni id ', p_definizione_id));
+                END IF;
+
+                RETURN pratiche.fn_copia_definizione(p_definizione_id, v_emittente, false);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_nuova_versione_definizione(integer)
+                IS 'Crea una nuova versione BOZZA nello stesso scope (tipo+emittente) della definizione sorgente, senza provenance. Per modificare in sicurezza un''edizione pubblicata (bozza -> modifica -> fn_pubblica_definizione, che ritira la precedente). Wrapper di fn_copia_definizione(..., false). SECURITY DEFINER (search_path fisso): la DML interna passa senza grant diretto.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina la versione SECURITY INVOKER (pre-P1).
+              CREATE OR REPLACE FUNCTION pratiche.fn_fork_definizione(
+                  p_definizione_id       pratiche.workflow_definizioni.id%TYPE,
+                  p_emittente_fiscale_id pratiche.workflow_definizioni.emittente_fiscale_id%TYPE
+              )
+              RETURNS pratiche.workflow_definizioni.id%TYPE
+              LANGUAGE plpgsql
+              VOLATILE
+              AS $function$
+              BEGIN
+                IF p_emittente_fiscale_id IS NULL OR p_emittente_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche', 'pratiche.fn_fork_definizione', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','p_emittente_fiscale_id',
+                                       'valore',p_emittente_fiscale_id),
+                    NULL::uuid,
+                    'il fork richiede un emittente valido; per una nuova versione dello stesso scope usare fn_nuova_versione_definizione');
+                END IF;
+                RETURN pratiche.fn_copia_definizione(p_definizione_id, p_emittente_fiscale_id, true);
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION pratiche.fn_nuova_versione_definizione(
+                  p_definizione_id pratiche.workflow_definizioni.id%TYPE
+              )
+              RETURNS pratiche.workflow_definizioni.id%TYPE
+              LANGUAGE plpgsql
+              VOLATILE
+              AS $function$
+              DECLARE
+                v_emittente pratiche.workflow_definizioni.emittente_fiscale_id%TYPE;
+                v_found     boolean;
+              BEGIN
+                SELECT wd.emittente_fiscale_id, true
+                  INTO v_emittente, v_found
+                  FROM pratiche.workflow_definizioni wd
+                 WHERE wd.id = p_definizione_id;
+                IF v_found IS NOT TRUE THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche', 'pratiche.fn_nuova_versione_definizione', 'E_VALORE_MANCANTE',
+                    jsonb_build_object('definizione_sorgente_id', p_definizione_id),
+                    NULL::uuid, concat('workflow_definizioni id ', p_definizione_id));
+                END IF;
+                RETURN pratiche.fn_copia_definizione(p_definizione_id, v_emittente, false);
+              END;
+              $function$;

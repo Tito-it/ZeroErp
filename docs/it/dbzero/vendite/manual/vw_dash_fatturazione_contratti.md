@@ -34,6 +34,7 @@ M, quali contratti non hanno ancora generato il canone?"*
 | Transito nel mese M | `EXISTS` attività con sorgente `CONTRATTO` (`config.sorgenti.codice_interno`, mai id letterale), `sorgente_uid = uid::text`, `competenza_mese = M`, `stato_emissione = 'EMESSA'` |
 | Contratti abortiti | Esclusi a monte (`esito = 'NEGATIVO'`, es. ANNULLATO): per quest'area `n_abortiti = 0` in v1 |
 | `motivo_fermo` | `DOC_BOZZA` (DRAFT) · `CANONE_NON_GENERATO` |
+| `cliente_display` | Ragione sociale intestatario BA (`billing_account → soggetto_ruolo → soggetti`, path `vw_contratti_lista`), nullable |
 
 ---
 

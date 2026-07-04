@@ -51,7 +51,14 @@ LANGUAGE plpgsql VOLATILE
   [fn_pubblica_definizione](fn_pubblica_definizione.md); da quel momento le pratiche di
   quell'emittente pinnano il fork (risoluzione emittente > preset in
   [fn_risolvi_definizione](fn_risolvi_definizione.md)).
-- Introdotta con `20260703-07` (Parte 2 / Fase 2, D2-11).
+- **Accesso** (`20260703-16`, P1 strada B): `SECURITY DEFINER` + `search_path` fisso — la
+  DML interna (via `fn_copia_definizione`, che eredita il contesto) gira coi privilegi
+  dell'owner, quindi il ruolo app `zeroerp_app` la esegue **senza** grant DML diretto su
+  `workflow_definizioni`/figli. `EXECUTE` ristretto al solo ruolo app (`REVOKE` da PUBLIC,
+  `20260703-18`); l'autorizzazione "chi puo' forkare" resta al gate app-layer (AdminAPIView
+  super-admin). `search_path` include le schema fidate coinvolte dalla catena di trigger
+  (pratiche/script/config/dbops), non il solo `pg_catalog`.
+- Introdotta con `20260703-07` (Parte 2 / Fase 2, D2-11); resa SECURITY DEFINER con `20260703-16`.
 - Test: `db/pgtap/pratiche/test-workflow-definizioni-fase2.sql` (fork + copia + provenance).
 
 ---

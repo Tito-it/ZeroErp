@@ -57,7 +57,12 @@ Il vincolo "max un `chiude_pratica` per definizione" è già garantito dall'indi
   scope distinti e non si interferiscono.
 - Errori parlanti: `E_PARAMETRO_INVALIDO` (id NULL/≤0), `E_VALORE_MANCANTE` (id inesistente),
   `DEFINIZIONE_NON_PUBBLICABILE` (511) con il motivo (non-BOZZA / nessuno step attivo / ciclo).
-- Introdotta con `20260703-08` (Parte 2 / Fase 2, D2-13).
+- **Accesso** (`20260703-17`, P1 strada B): `SECURITY DEFINER` + `search_path` fisso — gli
+  `UPDATE` di ritiro/pubblicazione girano come owner, il ruolo app li esegue senza grant DML
+  diretto su `workflow_definizioni`; `EXECUTE` ristretto al solo ruolo app (`20260703-18`),
+  gate applicativo AdminAPIView super-admin. `search_path` sulle schema fidate coinvolte dai
+  trigger (il guard header/transizioni gira sotto lo stesso path).
+- Introdotta con `20260703-08` (Parte 2 / Fase 2, D2-13); resa SECURITY DEFINER con `20260703-17`.
 - Test: `db/pgtap/pratiche/test-workflow-definizioni-fase2.sql` (pubblica atomica con
   ritiro; ciclo → 511; non-BOZZA → 511).
 

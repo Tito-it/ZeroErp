@@ -37,11 +37,14 @@ WITH righe AS (
         END)::character varying AS motivo_fermo,
     sdo.codice_interno AS stato_codice_interno,
     sdo.codice AS stato_codice,
-    sdo.fase
-   FROM ((vendite.ordini o
+    sdo.fase,
+    s.ragione_sociale_completa AS cliente_display
+   FROM ((((vendite.ordini o
      JOIN config.stati_doc_ordini sdo ON ((sdo.id = o.stato_doc_ordine_id)))
      LEFT JOIN righe r ON ((r.ordine_id = o.id)))
-  GROUP BY o.id, o.uid, o.numero, o.data, o.emittente_fiscale_id, sdo.codice_interno, sdo.codice, sdo.fase, sdo.esito;
+     LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = o.soggetto_ruolo_id)))
+     LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+  GROUP BY o.id, o.uid, o.numero, o.data, o.emittente_fiscale_id, sdo.codice_interno, sdo.codice, sdo.fase, sdo.esito, s.ragione_sociale_completa;
 ```
 
 

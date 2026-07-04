@@ -11,10 +11,13 @@ CREATE FUNCTION fn_nuova_versione_definizione(p_definizione_id integer)
 CREATE OR REPLACE FUNCTION pratiche.fn_nuova_versione_definizione(p_definizione_id integer)
  RETURNS integer
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'pratiche', 'script', 'config', 'dbops', 'pg_temp'
 AS $function$
 -- Scopo: creare una nuova versione BOZZA nello stesso scope della
 --        sorgente (stesso emittente, preset incluso). Per modificare
 --        in sicurezza un'edizione gia' pubblicata.
+-- SECURITY DEFINER: la DML interna (via fn_copia) gira come owner.
 DECLARE
   v_emittente pratiche.workflow_definizioni.emittente_fiscale_id%TYPE;
   v_found     boolean;
@@ -36,7 +39,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.fn_nuova_versione_definizione(p_definizione_id integer)
-IS 'Crea una nuova versione BOZZA nello stesso scope (tipo+emittente) della definizione sorgente, senza provenance. Per modificare in sicurezza un''edizione pubblicata (bozza -> modifica -> fn_pubblica_definizione, che ritira la precedente). Wrapper di fn_copia_definizione(..., false).';
+IS 'Crea una nuova versione BOZZA nello stesso scope (tipo+emittente) della definizione sorgente, senza provenance. Per modificare in sicurezza un''edizione pubblicata (bozza -> modifica -> fn_pubblica_definizione, che ritira la precedente). Wrapper di fn_copia_definizione(..., false). SECURITY DEFINER (search_path fisso): la DML interna passa senza grant diretto.';
 ```
 
 ---

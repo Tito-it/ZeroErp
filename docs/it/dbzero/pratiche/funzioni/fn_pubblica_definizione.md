@@ -11,9 +11,12 @@ CREATE FUNCTION fn_pubblica_definizione(p_definizione_id integer)
 CREATE OR REPLACE FUNCTION pratiche.fn_pubblica_definizione(p_definizione_id integer)
  RETURNS integer
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'pratiche', 'script', 'config', 'dbops', 'pg_temp'
 AS $function$
 -- Scopo: validare e pubblicare una BOZZA, ritirando la precedente
 --        PUBBLICATA dello stesso scope (atomico).
+-- SECURITY DEFINER: gli UPDATE su workflow_definizioni girano come owner.
 DECLARE
   v_tipo_id   pratiche.workflow_definizioni.tipo_prestazione_id%TYPE;
   v_emittente pratiche.workflow_definizioni.emittente_fiscale_id%TYPE;
@@ -96,7 +99,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.fn_pubblica_definizione(p_definizione_id integer)
-IS 'Valida una BOZZA (>=1 step attivo, nessun ciclo nei prerequisiti) e la pubblica ritirando in transazione la precedente PUBBLICATA dello stesso scope (una sola PUBBLICATA per scope). Errore parlante DEFINIZIONE_NON_PUBBLICABILE (511). Transizioni via trgfn_workflow_definizioni_guard.';
+IS 'Valida una BOZZA e la pubblica, ritirando in transazione la precedente PUBBLICATA dello scope (una sola per scope). Validazioni fail-fast DEFINIZIONE_NON_PUBBLICABILE (511): non-BOZZA, nessuno step attivo, ciclo prerequisiti. SECURITY DEFINER (search_path fisso): gli UPDATE passano senza grant diretto; autorizzazione al gate app-layer (AdminAPIView).';
 ```
 
 ---

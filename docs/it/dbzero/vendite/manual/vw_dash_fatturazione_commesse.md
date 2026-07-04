@@ -30,8 +30,11 @@ in `attivita_fatturabili`). È il tratto finale pre-fattura.
 | Aspetto | Regola |
 |---------|--------|
 | Valore | `Σ prezzo_snapshot × quantita` per `competenza_mese`; transitato = filtro `stato_emissione = 'EMESSA'`. `'EMESSA'`/`'NON_EMESSA'` sono enum CHECK di colonna (literale ammesso §6d, stessi literali delle fn di dominio) |
+| **Denominatore (computabile)** | Il totale/unità e quindi `is_transitato`/valore-fermo contano solo le attività **non void**, `WHERE stato_emissione <> 'ANNULLATA' AND (stato_approvazione <> 'RIFIUTATA' OR stato_emissione = 'EMESSA')`. Simmetrico a `orr.attivo` degli ordini. `ANNULLATA` = void emissione; `RIFIUTATA` = void terminale (decisione 2026-07-04) salvo se già `EMESSA` (transitata, non va persa). Un mese di sole void sparisce (nulla da fatturare) e non finisce nel drill-down |
+| **Scope emittente** | Applicato **nel resolver** (commesse fuori RLS): `co.emittente_soggetto_ruolo_id` filtrato da `script.fn_get_emittenti_scope_sr_ids(app.current_user_id)` letto da GUC. Semantica: `NULL`=tutto (super-admin) · `'{}'`=niente · array=whitelist. Commessa con emittente NULL: esclusa per l'operatore scoped (fail-safe), visibile al super-admin |
 | `is_abortito` | Commessa `ANNULLATA` (`stati_commessa.codice_interno`) — le commesse non hanno la proiezione fase/esito D1 → `fase` NULL |
 | `motivo_fermo` | `ATTIVITA_NON_APPROVATA` (esistono ferme non ancora `APPROVATA`: collo di bottiglia = approvazione) · `ATTIVITA_NON_EMESSA` (tutte approvate, manca l'emissione) |
+| `cliente_display` | Ragione sociale intestatario BA (`billing_account → soggetto_ruolo → soggetti`, path `vw_contratti_lista`) |
 | Commesse senza attività | Non compaiono (nessun valore, nessun mese) |
 
 ---
@@ -60,6 +63,13 @@ ORDER BY valore_fermo DESC;
   per l'eventuale filtro applicativo lato BE (`emittente_fiscale_id` è NULL).
 * Una riga sorgente parcheggiata in commessa `NON_EMESSA` risulta ferma **anche**
   nell'area sorgente (predicato canonico EMESSA): coerente, il valore non è avanzato.
+* ⚠️ **Fail-closed dello scope**: a differenza dell'RLS, il filtro-in-vista **non
+  è aggirato da `BYPASSRLS`**. Senza GUC operatore (`app.current_user_id`) il
+  resolver commesse restituisce **0 righe** — vale per superuser/psql/batch
+  ad-hoc. Accettabile perché la dashboard è solo-web (GUC sempre valorizzata da
+  `JwtAuditAuthentication`) e coerente con la postura "connessione senza GUC vede
+  0 righe". Per interrogare a mano: impostare `app.current_user_id` (operatore o
+  super-admin) o leggere le tabelle base. Il pgTAP imposta la GUC esplicitamente.
 * Test: `db/pgtap/vendite/test-vw-dash-fatturazione-v1.sql`.
 
 ---
