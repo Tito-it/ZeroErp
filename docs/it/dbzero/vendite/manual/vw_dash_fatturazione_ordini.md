@@ -34,6 +34,7 @@ Read-time, nessun mirror.
 | Competenza | Mese di `ordini.data` (l'ordine non ha competenza nativa; quella puntuale nasce sulla commessa) |
 | `is_abortito` | `esito = 'NEGATIVO'` da `config.stati_doc_ordini` |
 | `motivo_fermo` | `DOC_BOZZA` (DRAFT) · `PUSH_NON_ESEGUITO` (confermato, 0 righe transitate) · `PUSH_PARZIALE` |
+| `cliente_display` | Ragione sociale del `soggetto_ruolo_id` (path `vw_ordini_lista`), nullable |
 
 ---
 

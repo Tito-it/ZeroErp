@@ -47,6 +47,7 @@ l'aggregata mensile — mai i resolver singoli.
 | `is_abortito` | `esito = 'NEGATIVO'` (proiezione stato dominio D1) — fuori dal confronto totale/transitato |
 | `motivo_fermo` | Vocabolario chiuso (sotto); NULL se transitato o abortito |
 | `stato_codice_interno` / `stato_codice` / `fase` | Stato nativo (alias fedeli §6c) + fase D1 (NULL per COMMESSE) |
+| `cliente_display` | Ragione sociale del cliente (nullable). Path **per-area** riusato dalle rispettive `vw_*_lista`: preventivi/offerte da `istanze_utilities → soggetti`; ordini da `soggetto_ruolo_id`; contratti/commesse da `billing_account → soggetto_ruolo → soggetti` |
 
 ---
 
@@ -90,7 +91,11 @@ ORDER BY valore_totale DESC NULLS LAST;
 * **Regola-cardine abortiti**: i documenti con esito `NEGATIVO` escono dal confronto
   — se restassero nel totale, `totale = transitato` non tornerebbe mai (brief §3.3).
 * **RLS**: la vista gira come invoker — lo scope emittente degli operatori su
-  preventivi/ordini/offerte/contratti si applica automaticamente.
+  preventivi/ordini/offerte/contratti si applica automaticamente. L'area
+  **COMMESSE è fuori RLS by design** (tabella di pipeline): lo scope è applicato
+  **dentro** il resolver `vw_dash_fatturazione_commesse` via GUC, così che
+  aggregata mensile e drill-down concordino (vedi quella scheda per il caveat
+  fail-closed).
 * Test: `db/pgtap/vendite/test-vw-dash-fatturazione-v1.sql`.
 
 ---

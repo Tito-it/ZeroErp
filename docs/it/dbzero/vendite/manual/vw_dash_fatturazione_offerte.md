@@ -38,6 +38,7 @@ legge dai **figli**, in XOR permanente.
 | Competenza | Mese di `COALESCE(validita_dal, data_emissione, data_insert)` |
 | `is_abortito` | `esito = 'NEGATIVO'` (RIFIUTATA / ANNULLATA / SUPERATA secondo il seed D1) |
 | `motivo_fermo` | `DOC_BOZZA` · `IN_ATTESA_ACCETTAZIONE` (EMESSA) · `SENZA_FIGLIO` (accettata, nessun figlio) · `FIGLIO_ABORTITO` (figlio generato ma annullato) |
+| `cliente_display` | Ragione sociale intestatario istanza (`istanze_utilities → soggetti`, path `vw_offerte_commerciali_lista`), nullable |
 
 ---
 
