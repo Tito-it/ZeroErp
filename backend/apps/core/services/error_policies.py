@@ -740,6 +740,15 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Pratica non trovata.",
         ),
+        # Edizioni workflow versionate (Slice 2): definizione o step non trovato
+        # / fuori dallo scope della definizione (ownership) → 404 esplicito
+        # (il codice generico E_NOT_FOUND non è in policy → ricadrebbe in 400).
+        "E_DEFINIZIONE_NOT_FOUND": ErrorPolicy(
+            code="E_DEFINIZIONE_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Edizione di workflow o step non trovato.",
+        ),
         # Sospensioni con data manuale (catalogo DB id 498/499):
         # EXCLUDE ex_sospensioni_no_overlap (23P01) e guard a10 data non futura.
         "E_SOSPENSIONE_OVERLAP": ErrorPolicy(

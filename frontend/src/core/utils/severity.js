@@ -310,3 +310,19 @@ export const STATO_ORDINE_MAP = {
 export function statoOrdineSeverity(codice) {
   return resolveSeverity(STATO_ORDINE_MAP, codice)
 }
+
+// --- Mappa stati commessa ---
+// BOZZA=grigio, APERTA/IN_ESECUZIONE/PRONTA_FATTURAZIONE=azzurro (ciclo in corso),
+// CHIUSA=verde (concluso), ANNULLATA=rosso.
+// Allineato a vendite.stati_commessa.codice_interno.
+export const STATO_COMMESSA_MAP = {
+  BOZZA: 'secondary',
+  APERTA: 'info',
+  IN_ESECUZIONE: 'info',
+  PRONTA_FATTURAZIONE: 'info',
+  CHIUSA: 'success',
+  ANNULLATA: 'danger',
+}
+export function statoCommessaSeverity(codice) {
+  return resolveSeverity(STATO_COMMESSA_MAP, codice)
+}

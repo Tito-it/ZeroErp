@@ -65,6 +65,7 @@
 | ix_contratti_ambito | `CREATE INDEX ix_contratti_ambito ON vendite.contratti USING btree (ambito)` |
 | ix_contratti_ba_istanza | `CREATE INDEX ix_contratti_ba_istanza ON vendite.contratti USING btree (billing_account_id, istanza_utility_id)` |
 | ix_contratti_categoria_cliente_snapshot | `CREATE INDEX ix_contratti_categoria_cliente_snapshot ON vendite.contratti USING btree (categoria_cliente_id_snapshot)` |
+| ix_contratti_id_text | `CREATE INDEX ix_contratti_id_text ON vendite.contratti USING btree (((id)::text))` |
 | ix_contratti_listino_versione | `CREATE INDEX ix_contratti_listino_versione ON vendite.contratti USING btree (listino_versione_id)` |
 | pk_contratti | `CREATE UNIQUE INDEX pk_contratti ON vendite.contratti USING btree (id)` |
 | uq_contratti_numero | `CREATE UNIQUE INDEX uq_contratti_numero ON vendite.contratti USING btree (numero)` |

@@ -11,10 +11,16 @@
 | attivo | boolean | NO | true |
 | ordine | smallint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
+| fase | character varying | NO |  |
+| esito | character varying | YES |  |
+| terminale | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_doc_ordini_fase |  |
+| CHECK | chk_stati_doc_ordini_terminale_chiuso |  |
+| FOREIGN KEY | fk_stati_doc_ordini_esito | esito |
 | PRIMARY KEY | pk_stati_doc_ordini | id |
 | UNIQUE | uq_stati_doc_ordini_codice | codice |
 | UNIQUE | uq_stati_doc_ordini_codice_interno | codice_interno |
@@ -30,6 +36,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_stati_doc_ordini_a10_guard_esito_verdetto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()` |
+| trg_stati_doc_ordini_a10_guard_esito_verdetto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()` |
 | trg_stati_doc_ordini_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
 | trg_stati_doc_ordini_a10_ordini_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini', 'stato_doc_ordine_id', 'id', 'attivo')` |
 | trg_stati_doc_ordini_a10_ordini_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini_righe', 'stato_doc_ordine_id', 'id', 'attivo')` |

@@ -20,6 +20,8 @@ BEGIN
   --   della chiusura: eseguito? ancora percorribile?
   --   blocca la transizione a CHIUSA?
   --   Funzione fn_check_*: puro report, no raise.
+  --   Fork-aware: scopa i template della DEFINIZIONE pinnata
+  --   della pratica (definizione_id), non del tipo.
   -- =========================================================
 
   RETURN QUERY
@@ -61,14 +63,14 @@ BEGIN
       )
     ) AS fl_bloccante
   FROM pratiche.template_flussi tf
-  JOIN pratiche.pratiche p ON p.tipo_prestazione_id = tf.tipo_prestazione_id
+  JOIN pratiche.pratiche p ON p.definizione_id = tf.definizione_id
   WHERE p.id = p_pratica_id
     AND tf.attivo = true;
 END;
 $function$
 
 COMMENT ON FUNCTION pratiche.fn_check_chiusura_pratica(p_pratica_id bigint)
-IS 'Pure check: per ogni template attivo del tipo prestazione della pratica ritorna completato (istanza COMPLETATO, qualsiasi esito), percorribile (prerequisiti esito-aware soddisfatti) e bloccante (obbligatorio non completato ancora percorribile). Il ramo morto di un bivio non blocca. Consumato dal guard di chiusura e dal percorso BE.';
+IS 'Pure check: per ogni template attivo della DEFINIZIONE pinnata della pratica (fork-aware, definizione_id) ritorna completato (istanza COMPLETATO, qualsiasi esito), percorribile (prerequisiti esito-aware soddisfatti) e bloccante (obbligatorio non completato ancora percorribile). Il ramo morto di un bivio non blocca. Consumato dal guard di chiusura, da fn_check_pratica_chiudibile e dal percorso BE.';
 ```
 
 ---

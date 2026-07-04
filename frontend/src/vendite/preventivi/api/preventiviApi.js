@@ -177,6 +177,20 @@ export function getSmistamento(preventivoId) {
   return api.get(`${BASE}/${preventivoId}/smistamento/`)
 }
 
+// Completa lo step SMISTAMENTO della pratica agganciata al preventivo. L'esito di
+// RAMO (MERCE_PRESENTE/SOLO_SERVIZI) e' CALCOLATO dal BE dallo split gia' eseguito
+// nel Pannello — l'operatore NON lo sceglie (il FE sopprime il picker). Guard BE:
+// smistamento completo su entrambi i rami (nessun residuo). Idempotency-Key:
+// completamento write-once, evita doppia esecuzione su retry/doppio click.
+// Ritorna { flusso_id, esito, gia_completato }.
+export function completaSmistamento(preventivoId) {
+  return api.post(
+    `${BASE}/${preventivoId}/completa-smistamento/`,
+    {},
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
 // Idempotency-Key obbligatoria lato BE (`require_idempotency_key=True`):
 // la generazione pratica e' write-once, evita doppia pratica su retry.
 export function generaPratica(preventivoId, payload) {

@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Proiezione stato di dominio — D1 su ORDINE (roll-out offerte/ordini/contratti).
+# (brief-db-proiezione-stato-dominio-rollout-offerte-ordini-contratti §2/§7;
+#  playbook identico all'increment PREVENTIVI 20260701-14, decisioni A-E)
+#
+# Il dominio DICHIARA LA MAPPA di normalizzazione del proprio ciclo di vita; il
+# motore pratiche consuma fase/esito/terminale senza mai nominare uno stato di
+# dominio. Colonne aggiunte a config.stati_doc_ordini:
+#   fase      varchar NOT NULL  — APERTO | IN_CORSO | IN_ATTESA | CHIUSO (CHECK)
+#   esito     varchar NULL      — FK config.esiti_flussi_pratiche(codice_interno);
+#                                 NULL = nessun verdetto (guard 20260702-05)
+#   terminale boolean NOT NULL  — CHECK terminale => fase='CHIUSO'
+#
+# MAPPA (vocabolario universale — copre il 100% del seed reale stati_doc_ordini.csv):
+#   DRAFT      -> APERTO     NULL      false
+#   CONFERMATO -> IN_CORSO   NULL      false
+#   ALLOCATO   -> IN_CORSO   NULL      false   (fulfillment)
+#   SPEDITO    -> IN_CORSO   NULL      false   (fulfillment)
+#   CONSEGNATO -> IN_CORSO   NULL      false   (fulfillment)
+#   EVASO      -> CHIUSO     POSITIVO  true
+#   FATTURATO  -> CHIUSO     POSITIVO  true
+#   ANNULLATO  -> CHIUSO     NEGATIVO  true
+#
+# ⚠️ TABELLA CONDIVISA (rilievo R3 del brief roll-out): config.stati_doc_ordini
+# e' referenziata da trigger di deattivazione sia da acquisti.ordini sia da
+# vendite.ordini. Il resolver della proiezione (vw_stato_sorgente_ordine) legge
+# SOLO vendite.ordini (sorgente ORDINE_VENDITA): questa mappa e' quindi
+# CENTRATA SUL CICLO DI VENDITA. E' corretta per l'ordine vivo proiettato oggi;
+# quando/se nascera' un resolver per l'ordine di ACQUISTO, la stessa mappa gli
+# verra' imposta (es. FATTURATO=terminale/POSITIVO potrebbe non calzare la
+# semantica d'acquisto) -> validare la mappa o valutare lo split. Nota anche nel
+# manuale di stati_doc_ordini.
+#
+# SEED (playbook is_abortito / increment PREVENTIVI):
+#   - DB vivo: backfill UPDATE keyed su codice_interno; poi SET NOT NULL su fase
+#     (fail-fast su stati non mappati).
+#   - Fresh DB: tabella vuota qui -> backfill no-op; NOT NULL soddisfatto dalla
+#     CSV stati_doc_ordini.csv estesa con fase/terminale. `esito` via UPDATE
+#     80_data 20260702-11 (nullValue:"" non esprime NULL).
+#
+# ORDINE: richiede config.esiti_flussi_pratiche.is_verdetto (20260701-13).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260702-03-alter-stati-doc-ordini-add-proiezione-mctit.yaml
+
+  - changeSet:
+      id: 20260702-03-alter-stati-doc-ordini-add-proiezione
+      author: mctit
+      comment: >
+        D1 proiezione stato dominio su config.stati_doc_ordini: aggiunge fase
+        (NOT NULL, CHECK 4 valori), esito (FK esiti_flussi_pratiche, NULL
+        ammesso), terminale (NOT NULL DEFAULT false, CHECK terminale=>CHIUSO) e
+        seeda la mappa per gli 8 stati. Mappa centrata sul ciclo di VENDITA
+        (tabella condivisa con acquisti.ordini: vedi header R3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_ordini
+            - tableExists:
+                schemaName: config
+                tableName: esiti_flussi_pratiche
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_ordini
+                ADD COLUMN fase      VARCHAR(20),
+                ADD COLUMN esito     VARCHAR(50),
+                ADD COLUMN terminale BOOLEAN NOT NULL DEFAULT false;
+
+              -- Backfill della mappa dichiarata dal dominio (DB vivo; no-op su
+              -- fresh DB). Keyed su codice_interno, mai su id.
+              UPDATE config.stati_doc_ordini s
+                 SET fase      = m.fase,
+                     esito     = m.esito,
+                     terminale = m.terminale
+                FROM (VALUES
+                        ('DRAFT',      'APERTO',    NULL::varchar, false),
+                        ('CONFERMATO', 'IN_CORSO',  NULL::varchar, false),
+                        ('ALLOCATO',   'IN_CORSO',  NULL::varchar, false),
+                        ('SPEDITO',    'IN_CORSO',  NULL::varchar, false),
+                        ('CONSEGNATO', 'IN_CORSO',  NULL::varchar, false),
+                        ('EVASO',      'CHIUSO',    'POSITIVO',    true),
+                        ('FATTURATO',  'CHIUSO',    'POSITIVO',    true),
+                        ('ANNULLATO',  'CHIUSO',    'NEGATIVO',    true)
+                     ) AS m(codice_interno, fase, esito, terminale)
+               WHERE s.codice_interno = m.codice_interno;
+
+              -- Fail-fast voluto: uno stato non mappato blocca qui la migration.
+              ALTER TABLE config.stati_doc_ordini
+                ALTER COLUMN fase SET NOT NULL;
+
+              ALTER TABLE config.stati_doc_ordini
+                ADD CONSTRAINT chk_stati_doc_ordini_fase
+                CHECK (fase IN ('APERTO', 'IN_CORSO', 'IN_ATTESA', 'CHIUSO'));
+
+              ALTER TABLE config.stati_doc_ordini
+                ADD CONSTRAINT chk_stati_doc_ordini_terminale_chiuso
+                CHECK (NOT terminale OR fase = 'CHIUSO');
+
+              ALTER TABLE config.stati_doc_ordini
+                ADD CONSTRAINT fk_stati_doc_ordini_esito
+                FOREIGN KEY (esito)
+                REFERENCES config.esiti_flussi_pratiche (codice_interno);
+
+              COMMENT ON COLUMN config.stati_doc_ordini.fase IS
+                  'Proiezione normalizzata per il motore pratiche (D1, brief-db-proiezione-'
+                  'stato-dominio): APERTO | IN_CORSO | IN_ATTESA | CHIUSO. Mappa centrata sul '
+                  'ciclo di VENDITA (tabella condivisa con acquisti.ordini). Dichiarata da vendite.';
+              COMMENT ON COLUMN config.stati_doc_ordini.esito IS
+                  'Verdetto proiettato dello stato (config.esiti_flussi_pratiche.codice_interno '
+                  'con is_verdetto=true; guard trgfn_stati_doc_guard_esito_verdetto). NULL = '
+                  'nessun verdetto. Base della futura fase GUIDA (avanza-su-esito-proiettato).';
+              COMMENT ON COLUMN config.stati_doc_ordini.terminale IS
+                  'true = il documento in questo stato non evolvera'' piu'' (CHECK: implica '
+                  'fase=CHIUSO). Asse uniforme cross-dominio.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_ordini
+                DROP CONSTRAINT IF EXISTS fk_stati_doc_ordini_esito,
+                DROP CONSTRAINT IF EXISTS chk_stati_doc_ordini_terminale_chiuso,
+                DROP CONSTRAINT IF EXISTS chk_stati_doc_ordini_fase;
+              ALTER TABLE config.stati_doc_ordini
+                DROP COLUMN IF EXISTS terminale,
+                DROP COLUMN IF EXISTS esito,
+                DROP COLUMN IF EXISTS fase;

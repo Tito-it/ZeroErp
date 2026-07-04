@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fix fork-aware (completamento Fase 1): fn_check_chiusura_pratica scopa i
+# template per DEFINIZIONE pinnata della pratica, non per tipo_prestazione_id.
+# (brief-db-gap-fork-fase1-chiusura-per-definizione §2.1)
+#
+# Con la Fase 2 (fork/versioni) esistono PIU' definizioni per lo stesso tipo. La
+# JOIN `p.tipo_prestazione_id = tf.tipo_prestazione_id` restituiva i template di
+# TUTTE le edizioni del tipo -> il calcolo bloccanti/percorribili di una pratica
+# forkata includeva step di altre edizioni. Fix: `p.definizione_id =
+# tf.definizione_id` (entrambe NOT NULL; la coerenza tipo e' gia' garantita dalla
+# FK composita). Con una sola definizione per tipo il comportamento e' identico
+# (join per-tipo == join per-definizione): nessuna regressione.
+#
+# Propagazione: fn_check_pratica_chiudibile delega a questa funzione per il
+# predicato "nessun obbligatorio bloccante" -> il fix la rende fork-aware senza
+# altri interventi (idem il guard pre-completamento e l'auto-chiusura che la usano).
+#
+# Nessun cambio di firma/RETURNS TABLE -> CREATE OR REPLACE sufficiente (no DROP).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260703-13-update-fn-check-chiusura-pratica-definizione-aware-mctit.yaml
+
+  - changeSet:
+      id: 20260703-13-update-fn-check-chiusura-pratica-definizione-aware
+      author: mctit
+      runOnChange: false
+      comment: >
+        fn_check_chiusura_pratica fork-aware: seleziona i template della
+        DEFINIZIONE pinnata (definizione_id) invece che del tipo_prestazione_id.
+        Completamento Fase 1 (gap fork).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: pratiche
+            tableName: pratiche
+            columnName: definizione_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.fn_check_chiusura_pratica(p_pratica_id bigint)
+               RETURNS TABLE(template_flusso_id integer, codice character varying, obbligatorio boolean, completato boolean, percorribile boolean, bloccante boolean)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Fotografia dei template flusso della pratica ai fini
+                --   della chiusura: eseguito? ancora percorribile?
+                --   blocca la transizione a CHIUSA?
+                --   Funzione fn_check_*: puro report, no raise.
+                --   Fork-aware: scopa i template della DEFINIZIONE pinnata
+                --   della pratica (definizione_id), non del tipo.
+                -- =========================================================
+
+                RETURN QUERY
+                SELECT
+                  tf.id,
+                  tf.codice,
+                  tf.obbligatorio,
+                  -- Eseguito: almeno un'istanza COMPLETATO (qualsiasi esito).
+                  EXISTS (
+                    SELECT 1
+                      FROM pratiche.flussi f
+                      JOIN config.stati_flussi_pratiche sfp ON sfp.id = f.stato_id
+                     WHERE f.pratica_id         = p_pratica_id
+                       AND f.template_flusso_id = tf.id
+                       AND sfp.codice_interno   = 'COMPLETATO'
+                  ) AS fl_completato,
+                  -- Percorribile: nessun prerequisito insoddisfatto
+                  -- (esito-aware). Il ramo morto risulta false.
+                  NOT EXISTS (
+                    SELECT 1
+                      FROM pratiche.fn_check_prerequisiti_flusso(p_pratica_id, tf.id) pr
+                     WHERE NOT pr.soddisfatto
+                  ) AS fl_percorribile,
+                  -- Bloccante: obbligatorio, non eseguito, ancora percorribile.
+                  (
+                    tf.obbligatorio
+                    AND NOT EXISTS (
+                      SELECT 1
+                        FROM pratiche.flussi f
+                        JOIN config.stati_flussi_pratiche sfp ON sfp.id = f.stato_id
+                       WHERE f.pratica_id         = p_pratica_id
+                         AND f.template_flusso_id = tf.id
+                         AND sfp.codice_interno   = 'COMPLETATO'
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1
+                        FROM pratiche.fn_check_prerequisiti_flusso(p_pratica_id, tf.id) pr
+                       WHERE NOT pr.soddisfatto
+                    )
+                  ) AS fl_bloccante
+                FROM pratiche.template_flussi tf
+                JOIN pratiche.pratiche p ON p.definizione_id = tf.definizione_id
+                WHERE p.id = p_pratica_id
+                  AND tf.attivo = true;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_check_chiusura_pratica(p_pratica_id bigint)
+              IS 'Pure check: per ogni template attivo della DEFINIZIONE pinnata della pratica (fork-aware, definizione_id) ritorna completato (istanza COMPLETATO, qualsiasi esito), percorribile (prerequisiti esito-aware soddisfatti) e bloccante (obbligatorio non completato ancora percorribile). Il ramo morto di un bivio non blocca. Consumato dal guard di chiusura, da fn_check_pratica_chiudibile e dal percorso BE.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina la versione per-tipo (pre-fix, corretta solo con 1 definizione per tipo).
+              CREATE OR REPLACE FUNCTION pratiche.fn_check_chiusura_pratica(p_pratica_id bigint)
+               RETURNS TABLE(template_flusso_id integer, codice character varying, obbligatorio boolean, completato boolean, percorribile boolean, bloccante boolean)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              BEGIN
+                RETURN QUERY
+                SELECT
+                  tf.id, tf.codice, tf.obbligatorio,
+                  EXISTS (
+                    SELECT 1 FROM pratiche.flussi f
+                      JOIN config.stati_flussi_pratiche sfp ON sfp.id = f.stato_id
+                     WHERE f.pratica_id = p_pratica_id AND f.template_flusso_id = tf.id
+                       AND sfp.codice_interno = 'COMPLETATO'
+                  ) AS fl_completato,
+                  NOT EXISTS (
+                    SELECT 1 FROM pratiche.fn_check_prerequisiti_flusso(p_pratica_id, tf.id) pr
+                     WHERE NOT pr.soddisfatto
+                  ) AS fl_percorribile,
+                  (
+                    tf.obbligatorio
+                    AND NOT EXISTS (
+                      SELECT 1 FROM pratiche.flussi f
+                        JOIN config.stati_flussi_pratiche sfp ON sfp.id = f.stato_id
+                       WHERE f.pratica_id = p_pratica_id AND f.template_flusso_id = tf.id
+                         AND sfp.codice_interno = 'COMPLETATO'
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM pratiche.fn_check_prerequisiti_flusso(p_pratica_id, tf.id) pr
+                       WHERE NOT pr.soddisfatto
+                    )
+                  ) AS fl_bloccante
+                FROM pratiche.template_flussi tf
+                JOIN pratiche.pratiche p ON p.tipo_prestazione_id = tf.tipo_prestazione_id
+                WHERE p.id = p_pratica_id
+                  AND tf.attivo = true;
+              END;
+              $function$;

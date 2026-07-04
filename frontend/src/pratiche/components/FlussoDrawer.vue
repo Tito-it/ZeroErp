@@ -14,6 +14,7 @@ import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { useInjectTechnicalMode } from '../../core/composables/useTechnicalMode'
 import { getUiActivity } from '../uiActivityRegistry'
 import { getCompletionDialog } from '../flussoCompletionRegistry'
+import { getDomainCompletion } from '../flussoDomainCompletionRegistry'
 import { DRAWER_WIDTH, STATO_FLUSSO, MANAGE_ICONS } from '../../core/constants'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -98,13 +99,46 @@ provide(READONLY_KEY, effectiveReadonly)
 const modalita = computed(() => props.flusso?.template_modalita_esito || 'MANUALE')
 const esitoDefault = computed(() => props.flusso?.template_esito_default || null)
 
+// Step a completamento di DOMINIO (esito CALCOLATO dal BE, non scelto): il picker
+// esito e' soppresso e il completamento passa da un'azione dedicata che chiama
+// l'endpoint di dominio (registry per template_flusso_codice, import lazy). Es.
+// SMISTAMENTO → MERCE_PRESENTE/SOLO_SERVIZI, il bivio che attiva o meno i flussi
+// merce a valle (CONFERMA_ORDINE/INVIO_COMMESSA).
+const domainCompletion = computed(() => getDomainCompletion(props.flusso?.template_flusso_codice))
+
+// Azione di completamento di dominio: disponibile quando lo step e' completabile
+// (IN_CORSO) — mirror della visibilita' del form esito generico, ma senza picker.
+const showDomainComplete = computed(() =>
+  !effectiveReadonly.value
+  && !!domainCompletion.value
+  && stato.value === STATO_FLUSSO.IN_CORSO
+)
+
 // Form esito visibile: completamento manuale su IN_CORSO (come oggi) OPPURE
-// modalita CONTESTUALE su DA_ESEGUIRE (avvio+esito contestuale).
+// modalita CONTESTUALE su DA_ESEGUIRE (avvio+esito contestuale). SOPPRESSO per gli
+// step a completamento di dominio (registry) E, fail-closed, per QUALSIASI step
+// `modalita_esito === 'DOMINIO'` (companion FE-1.5): l'esito è calcolato, mai un
+// verdetto scelto — così un DOMINIO senza entry registry non mostra mai il picker
+// (che il guard DB id 504 rifiuterebbe).
 const showEsitoForm = computed(() =>
-  !effectiveReadonly.value && (
+  !effectiveReadonly.value
+  && !domainCompletion.value
+  && modalita.value !== 'DOMINIO'
+  && (
     stato.value === STATO_FLUSSO.IN_CORSO
     || (stato.value === STATO_FLUSSO.DA_ESEGUIRE && modalita.value === 'CONTESTUALE')
   )
+)
+
+// Step DOMINIO completabile ma SENZA azione di completamento cablata nel registry
+// FE: al posto del picker (soppresso) mostra un messaggio informativo — l'esito lo
+// produce il processo di dominio, non l'operatore. Fail-closed leggibile invece di
+// un form che porterebbe al 504.
+const showEsitoDominioInfo = computed(() =>
+  !effectiveReadonly.value
+  && !domainCompletion.value
+  && modalita.value === 'DOMINIO'
+  && stato.value === STATO_FLUSSO.IN_CORSO
 )
 
 // Attività UI data-driven: il flusso porta `template_azione_ui_key` (catalogo DB
@@ -281,6 +315,22 @@ async function onCompletionConfirm(meta) {
   await _doComplete(meta)
 }
 
+// Completamento di DOMINIO: delega alla voce di registry (es. SMISTAMENTO →
+// completa-smistamento), che calcola l'esito di ramo lato BE e verifica gli
+// invarianti. Niente esito scelto qui: il picker e' soppresso.
+async function onDomainComplete() {
+  const entry = domainCompletion.value
+  if (!entry) return
+  const result = await execute(
+    () => entry.complete({ praticaId: props.praticaId, flusso: props.flusso }),
+    {
+      successMessage: t('pratiche.flusso_completato'),
+      errorMessage: t('pratiche.flusso_completa_dominio_errore'),
+    },
+  )
+  if (result !== null) { emit('saved'); emit('update:visible', false) }
+}
+
 const onClose = useDrawerClose(emit)
 </script>
 
@@ -377,6 +427,22 @@ const onClose = useDrawerClose(emit)
         </div>
       </div>
 
+      <!-- Completamento di DOMINIO (es. SMISTAMENTO): niente picker esito — il BE
+           calcola l'esito di ramo dallo split gia' eseguito nel Pannello e completa
+           lo step. Una sola azione conferma; il BE rifiuta se restano righe non
+           smistate (residuo merce/servizi) con errore parlante. -->
+      <div v-if="showDomainComplete" class="flusso-actions">
+        <h4>{{ t(domainCompletion.label) }}</h4>
+        <p class="flusso-domain-hint">{{ t('pratiche.flusso_completa_dominio_hint') }}</p>
+      </div>
+
+      <!-- Step DOMINIO senza azione di completamento cablata: niente picker
+           verdetti (il DB lo rifiuterebbe) — solo un messaggio: l'esito lo
+           produce il processo di dominio. -->
+      <div v-else-if="showEsitoDominioInfo" class="flusso-actions">
+        <p class="flusso-domain-hint">{{ t('pratiche.flusso_esito_dominio_senza_azione') }}</p>
+      </div>
+
       <!-- COMPLETATO: Mostra esito (readonly) -->
       <div v-if="stato === STATO_FLUSSO.COMPLETATO" class="form-grid mt-3">
         <div class="form-field">
@@ -398,6 +464,13 @@ const onClose = useDrawerClose(emit)
         :loading="loading"
         :disabled="!esito"
         @save="onCompleta"
+        @cancel="onClose"
+      />
+      <FormFooter
+        v-else-if="showDomainComplete"
+        :loading="loading"
+        :save-label="t(domainCompletion.label)"
+        @save="onDomainComplete"
         @cancel="onClose"
       />
       <FormFooter v-else close-only @cancel="onClose" />
@@ -433,6 +506,12 @@ const onClose = useDrawerClose(emit)
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid var(--surface-border);
+}
+
+.flusso-domain-hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-color-secondary);
 }
 
 .form-value {

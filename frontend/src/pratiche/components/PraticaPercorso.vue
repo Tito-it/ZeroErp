@@ -45,6 +45,10 @@ const props = defineProps({
   // creare" non sono cliccabili (niente nuovi flussi), i flussi esistenti
   // restano apribili ma il drawer li mostra in sola lettura.
   readonly: { type: Boolean, default: false },
+  // Flusso da evidenziare: arriva dal deep-link della coda lavoro della home
+  // (flusso_id). Lo step con questo flusso viene marcato "selezionato" nel
+  // racconto, così l'operatore ritrova subito il passo da cui è partito.
+  selectedFlussoId: { type: Number, default: null },
 })
 
 const emit = defineEmits(['open-flusso', 'create-flusso', 'open-attivita'])
@@ -106,6 +110,11 @@ function docSev(step) {
 // Severity dal codice interno dello stato (invariata: unico valore mappato).
 function statoSev(step) {
   return step.flusso_id ? statoFlussoSeverity(step.stato_codice_interno) : 'secondary'
+}
+
+// Step evidenziato: quello il cui flusso corrisponde al deep-link della coda home.
+function isSelected(step) {
+  return Boolean(props.selectedFlussoId) && step.flusso_id === props.selectedFlussoId
 }
 
 // Attività UI di dominio offribile dallo step (azione_ui_key dal template):
@@ -187,7 +196,7 @@ function isRamoChiuso(step) {
         <template v-else>
           <!-- FATTI: passi conclusi, compatti, con esito umano -->
           <div v-if="fatti.length" class="rac-fatti">
-            <div v-for="step in fatti" :key="step.template_flusso_id" class="rac-fatto">
+            <div v-for="step in fatti" :key="step.template_flusso_id" class="rac-fatto" :class="{ 'is-selected': isSelected(step) }">
               <i class="pi pi-check-circle rac-fatto-icon" />
               <span class="rac-fatto-title">{{ stepTitolo(step) }}</span>
               <span v-if="step.esito_descrizione" class="rac-fatto-esito">· {{ step.esito_descrizione }}</span>
@@ -214,7 +223,7 @@ function isRamoChiuso(step) {
           </div>
 
           <!-- ADESSO: 1..N passi attivi, ciascuno con una azione primaria -->
-          <div v-for="{ step, attivita } in adessoConAttivita" :key="step.template_flusso_id" class="rac-adesso">
+          <div v-for="{ step, attivita } in adessoConAttivita" :key="step.template_flusso_id" class="rac-adesso" :class="{ 'is-selected': isSelected(step) }">
             <div class="rac-adesso-head">
               <span class="rac-adesso-label">{{ t('pratiche.percorso_adesso') }}</span>
               <Tag
@@ -299,6 +308,7 @@ function isRamoChiuso(step) {
               'percorso-step-busy': busy,
               'percorso-step-ramo-chiuso': isRamoChiuso(step),
               'percorso-step-disabled': !canActGenerico(step),
+              'is-selected': isSelected(step),
             }"
             @click="onClick(step)"
           >
@@ -438,6 +448,15 @@ function isRamoChiuso(step) {
 .rac-fatto-title { font-weight: 500; }
 .rac-fatto-esito { font-style: italic; }
 
+/* Step evidenziato dal deep-link della coda home: accento a sinistra + fondo. */
+.rac-fatto.is-selected {
+  background: var(--surface-hover);
+  border-left: 3px solid var(--p-primary-color);
+  border-radius: 4px;
+  padding: 0.15rem 0.4rem;
+  margin-left: -0.4rem;
+}
+
 /* Proiezione documento sorgente (V10) */
 .rac-doc {
   display: inline-flex;
@@ -476,6 +495,11 @@ function isRamoChiuso(step) {
   border: 1px solid var(--p-primary-color);
   border-radius: 8px;
   background: var(--surface-0);
+}
+
+/* Card ADESSO evidenziata dal deep-link della coda home: anello d'accento. */
+.rac-adesso.is-selected {
+  box-shadow: 0 0 0 2px var(--p-primary-color);
 }
 
 .rac-adesso-head {
@@ -557,6 +581,10 @@ function isRamoChiuso(step) {
 .percorso-step-disabled { cursor: not-allowed; opacity: 0.5; }
 .percorso-step-disabled:hover { background: var(--surface-0); border-color: var(--surface-border); }
 .percorso-step-ramo-chiuso { opacity: 0.5; border-style: dotted; }
+.percorso-step.is-selected {
+  border-color: var(--p-primary-color);
+  box-shadow: 0 0 0 2px var(--p-primary-color);
+}
 
 .percorso-step-top {
   display: flex;

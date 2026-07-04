@@ -1,9 +1,9 @@
 <script setup>
-// Scopo: Dashboard pratiche con pannello "Le mie attività" (coda lavoro) in alto +
-// master-detail (SearchTable + roadmap percorso).
-// Layout: colonna full-width = pannello collassabile sempre visibile, poi
-// SearchTable e roadmap percorso. Adattabile ai piccoli schermi (niente larghezza fissa).
-// Riusa: MieAttivitaPanel, PraticheSearchTable, PraticaPercorso, PraticaDrawer, FlussoDrawer.
+// Scopo: Dashboard pratiche master-detail (SearchTable + roadmap percorso).
+// La coda lavoro ("Le mie attività") vive ora nella home (PraticheHome); qui
+// resta la sola lista pratiche con il percorso della pratica selezionata.
+// Adattabile ai piccoli schermi (niente larghezza fissa).
+// Riusa: PraticheSearchTable, PraticaPercorso, PraticaDrawer, FlussoDrawer.
 import { ref, shallowRef, computed, watch, onMounted, onActivated, onUnmounted, nextTick, markRaw } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -16,8 +16,6 @@ import { provideTechnicalMode } from '../../core/composables/useTechnicalMode'
 import { useAuthStore } from '../../stores/auth'
 import { MANAGE_ICONS, READONLY_DOMAINS, STATI_PRATICA_TERMINALI, STATO_FLUSSO } from '../../core/constants'
 import { usePraticheStore } from '../stores/pratiche'
-import { usePrendiInCarico } from '../composables/usePrendiInCarico'
-import MieAttivitaPanel from '../components/MieAttivitaPanel.vue'
 import PraticheSearchTable from '../components/PraticheSearchTable.vue'
 import PraticaPercorso from '../components/PraticaPercorso.vue'
 import PraticaDrawer from '../components/PraticaDrawer.vue'
@@ -62,7 +60,10 @@ function applyTipoDeepLink({ refetch }) {
   if (refetch) store.fetchList()
 }
 
-// Scopo: applica il deep-link di selezione pratica (+flusso evidenziato).
+// Scopo: applica il deep-link di selezione pratica (+flusso dalla coda home).
+// La coda lavoro della home (PraticheHome) naviga qui con pratica_id [+flusso_id]:
+// selezioniamo la pratica e ne carichiamo il percorso. Il flusso_id viene tenuto
+// in `selectedFlussoId` (stato dashboard) per evidenziare lo step d'origine.
 // Ricarica il percorso anche a parita' di pratica (freshness su ri-attivazione).
 function applyPraticaDeepLink() {
   const praticaId = _queryId('pratica_id')
@@ -104,30 +105,17 @@ onMounted(() => {
 })
 
 // onActivated scatta al primo mount E ad ogni ri-attivazione dalla cache:
-// unico punto affidabile per applicare i deep-link (idempotenti) e tenere
-// fresca la coda al rientro dalla home.
+// unico punto affidabile per applicare i deep-link (idempotenti).
 onActivated(() => {
-  store.loadCodaLavoro()
   applyTipoDeepLink({ refetch: true })
   applyPraticaDeepLink()
-})
-
-function onCodaSelectFlusso(item) {
-  // Seleziona la pratica nella tabella, evidenzia il flusso in coda e carica i flussi
-  store.selectedPraticaId = item.pratica_id
-  selectedFlussoId.value = item.flusso_id
-  loadPercorsoPratica(item.pratica_id)
-}
-
-// Prendi in carico: azione condivisa (usePrendiInCarico); qui in piu' si
-// rinfresca il percorso della pratica selezionata.
-const { prendiInCarico: onPrendiInCarico } = usePrendiInCarico(async () => {
-  if (store.selectedPraticaId) await loadPercorsoPratica(store.selectedPraticaId)
 })
 
 // --- Percorso (roadmap) della pratica selezionata ---
 const percorso = ref([])
 const percorsoLoading = ref(false)
+// Flusso arrivato dal deep-link della coda home (flusso_id): trasportato nello
+// stato dashboard per l'evidenziazione dello step d'origine nel percorso.
 const selectedFlussoId = ref(null)
 
 async function loadPercorsoPratica(praticaId) {
@@ -143,7 +131,7 @@ async function loadPercorsoPratica(praticaId) {
 // Quando cambia la pratica selezionata nella SearchTable
 function onRowClick(data) {
   store.selectedPraticaId = data.id
-  // Selezione dalla tabella: nessun item della coda evidenziato.
+  // Selezione dalla tabella: nessun flusso della coda evidenziato.
   selectedFlussoId.value = null
   loadPercorsoPratica(data.id)
 }
@@ -234,7 +222,6 @@ async function onCreateFlusso(templateFlussoId) {
 async function onFlussoSaved() {
   flussoDrawerVisible.value = false
   if (store.selectedPraticaId) await loadPercorsoPratica(store.selectedPraticaId)
-  await store.loadCodaLavoro()
   // Il completamento di un flusso puo' aver auto-chiuso la pratica (APERTA →
   // CHIUSA, trgfn_flussi_autochiusura_pratica): rinfresca la lista — senza
   // resettare la pagina — cosi' lo stato in tabella e il readonly derivato
@@ -362,7 +349,6 @@ async function onActivitySaved(result) {
 async function onDrawerSaved() {
   store.filters.offset = 0
   if (store.hasSearched) await store.fetchList()
-  await store.loadCodaLavoro()
   if (store.selectedPraticaId) await loadPercorsoPratica(store.selectedPraticaId)
   drawer.close()
 }
@@ -397,17 +383,6 @@ onUnmounted(() => {
 
 <template>
   <div ref="dashboardRef" class="app-page pratiche-dashboard">
-
-    <!-- Pannello "Le mie attività" (coda lavoro): full-width, sempre visibile,
-         collassabile coi contatori per livello. Click su un'attività → seleziona
-         la pratica e ne carica il percorso (onCodaSelectFlusso). -->
-    <MieAttivitaPanel
-      :items="store.codaLavoro"
-      :loading="store.codaLoading"
-      :selected-flusso-id="selectedFlussoId"
-      @select-flusso="onCodaSelectFlusso"
-      @prendi-in-carico="onPrendiInCarico"
-    />
 
     <!-- Area principale -->
     <main class="dashboard-main">
@@ -471,6 +446,7 @@ onUnmounted(() => {
             :pratica-context="selectedPraticaContext"
             :busy="percorsoBusy"
             :readonly="selectedPraticaReadonly"
+            :selected-flusso-id="selectedFlussoId"
             @open-flusso="onOpenFlussoById"
             @create-flusso="onCreateFlusso"
             @open-attivita="onOpenAttivita"

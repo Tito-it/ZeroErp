@@ -32,10 +32,13 @@
 |------|--------|--------|--------|
 | trg_template_flussi_canali_a10_canali_pratiche_require_a_b1f4df | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'canali_pratiche', 'attivo', 'canale_id', 'id')` |
 | trg_template_flussi_canali_a10_canali_pratiche_require_a_b1f4df | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'canali_pratiche', 'attivo', 'canale_id', 'id')` |
+| trg_template_flussi_canali_a10_guard_immutabile_iud | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile('template_flusso_id')` |
+| trg_template_flussi_canali_a10_guard_immutabile_iud | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile('template_flusso_id')` |
+| trg_template_flussi_canali_a10_guard_immutabile_iud | BEFORE | DELETE | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile('template_flusso_id')` |
 | trg_template_flussi_canali_a10_template_flussi_require_a_6a3242 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_id', 'id')` |
 | trg_template_flussi_canali_a10_template_flussi_require_a_6a3242 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_id', 'id')` |
-| trg_template_flussi_canali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_template_flussi_canali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_template_flussi_canali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

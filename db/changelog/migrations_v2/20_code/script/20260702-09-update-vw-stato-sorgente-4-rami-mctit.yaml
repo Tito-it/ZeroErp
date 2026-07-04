@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Proiezione stato di dominio — D3 (roll-out): estende la vista union di motore
+# script.vw_stato_sorgente da 1 a 4 rami (preventivo + offerta/ordine/contratto).
+# (brief-db-proiezione-stato-dominio-rollout §4, decisione A)
+#
+# NUOVO FILE, MAI editare lo YAML mergiato 20260701-17 (regola changelog): qui
+# si fa CREATE OR REPLACE con i 4 rami. Registrare un dominio = aggiungere un
+# ramo UNION ALL con un nuovo changeset additivo — questo file E' quel changeset
+# per i tre domini del roll-out.
+#
+# UNICA SUPERFICIE DI DISPATCH (decisione A): niente resolver_key, niente CASE.
+# Ogni ramo aggancia da se' il proprio sorgente_tipo_id via i resolver di
+# dominio (che a loro volta joinano config.sorgenti.codice_interno) -> un tipo
+# senza ramo semplicemente non ha righe = non risolto (degrado a UNKNOWN nel
+# wrapper pratiche.fn_stato_sorgente, invariato).
+#
+# risolto=true su ogni riga (decisione C); tipi normalizzati a text (i domini
+# hanno varchar di lunghezze diverse, la union li uniforma al contratto).
+# pratiche.fn_stato_sorgente e il consumo BE (_doc_sorgente_lateral) restano
+# INVARIATI: l'aggiunta di rami e' trasparente a valle.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260702-09-update-vw-stato-sorgente-4-rami-mctit.yaml
+
+  - changeSet:
+      id: 20260702-09-update-vw-stato-sorgente-4-rami
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D3 roll-out: CREATE OR REPLACE script.vw_stato_sorgente a 4 rami UNION
+        ALL (preventivo + offerta + ordine + contratto). Unica superficie di
+        dispatch (decisione A, niente resolver_key). risolto=true, tipi a text.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_stato_sorgente_preventivo
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_stato_sorgente_offerta
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_stato_sorgente_ordine
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_stato_sorgente_contratto
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW script.vw_stato_sorgente AS
+              -- Ramo PREVENTIVI (vendite).
+              SELECT
+                  r.sorgente_tipo_id,
+                  r.sorgente_uid,
+                  true                            AS risolto,
+                  (r.stato_codice_interno)::text  AS stato_codice_interno,
+                  (r.stato_codice)::text          AS stato_codice,
+                  (r.stato_descrizione)::text     AS stato_descrizione,
+                  (r.fase)::text                  AS fase,
+                  (r.esito)::text                 AS esito,
+                  r.terminale
+                FROM vendite.vw_stato_sorgente_preventivo r
+              UNION ALL
+              -- Ramo OFFERTA (vendite).
+              SELECT
+                  r.sorgente_tipo_id,
+                  r.sorgente_uid,
+                  true,
+                  (r.stato_codice_interno)::text,
+                  (r.stato_codice)::text,
+                  (r.stato_descrizione)::text,
+                  (r.fase)::text,
+                  (r.esito)::text,
+                  r.terminale
+                FROM vendite.vw_stato_sorgente_offerta r
+              UNION ALL
+              -- Ramo ORDINE (vendite).
+              SELECT
+                  r.sorgente_tipo_id,
+                  r.sorgente_uid,
+                  true,
+                  (r.stato_codice_interno)::text,
+                  (r.stato_codice)::text,
+                  (r.stato_descrizione)::text,
+                  (r.fase)::text,
+                  (r.esito)::text,
+                  r.terminale
+                FROM vendite.vw_stato_sorgente_ordine r
+              UNION ALL
+              -- Ramo CONTRATTO (vendite).
+              SELECT
+                  r.sorgente_tipo_id,
+                  r.sorgente_uid,
+                  true,
+                  (r.stato_codice_interno)::text,
+                  (r.stato_codice)::text,
+                  (r.stato_descrizione)::text,
+                  (r.fase)::text,
+                  (r.esito)::text,
+                  r.terminale
+                FROM vendite.vw_stato_sorgente_contratto r;
+
+              COMMENT ON VIEW script.vw_stato_sorgente IS
+                'D3 (brief-db-proiezione-stato-dominio, decisione A): union dei resolver di dominio della proiezione stato — UNICA superficie di dispatch (nessun resolver_key/CASE). Rami: preventivo, offerta, ordine, contratto. Chiave (sorgente_tipo_id, sorgente_uid), al piu'' una riga per chiave; riga assente = tipo/documento non risolto (il wrapper pratiche.fn_stato_sorgente degrada a UNKNOWN). risolto=true su ogni riga proiettata. Per le liste: LEFT JOIN da pratiche.pratiche_sorgenti. Nuovo dominio = nuovo ramo UNION ALL con changeset additivo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristina la union al solo ramo PREVENTIVI (stato 20260701-17).
+              CREATE OR REPLACE VIEW script.vw_stato_sorgente AS
+              SELECT
+                  r.sorgente_tipo_id,
+                  r.sorgente_uid,
+                  true                            AS risolto,
+                  (r.stato_codice_interno)::text  AS stato_codice_interno,
+                  (r.stato_codice)::text          AS stato_codice,
+                  (r.stato_descrizione)::text     AS stato_descrizione,
+                  (r.fase)::text                  AS fase,
+                  (r.esito)::text                 AS esito,
+                  r.terminale
+                FROM vendite.vw_stato_sorgente_preventivo r;

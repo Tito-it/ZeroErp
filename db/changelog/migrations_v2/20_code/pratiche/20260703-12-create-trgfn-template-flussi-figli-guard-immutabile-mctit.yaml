@@ -1,0 +1,192 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Immutabilita' strutturale «Leggera» dei FIGLI di configurazione del template su
+# edizione forkata pubblicata (D2-9 Fase 2b).
+# (brief-db-step-dominio-e-definizioni-versionate Parte 2 / Fase 2b)
+#
+# Un'unica trigger function GENERICA presidia i 6 figli del set di copia (C6),
+# ciascuno "posseduto" dalla definizione tramite un template. Blocca INSERT /
+# UPDATE / DELETE se il template referenziato appartiene a un'edizione congelata
+# (fork PUBBLICATO, fn_check_definizione_congelata 20260703-10) ->
+# TEMPLATE_DEFINIZIONE_CONGELATA (514). I figli NON hanno campo display: nessuna
+# eccezione (a differenza di descrizione sui template) — su fork pubblicato ogni
+# scrittura e' vietata (C4: il lock strutturale include l'intero grafo).
+#
+# La colonna FK verso template_flussi cambia per tabella: arriva come argomento
+# del trigger (TG_ARGV[0]). Per prerequisiti/formule/regole si usa il lato
+# "proprietario" della riga (template_flusso_id / _da_id / _origine_id): l'altro
+# lato appartiene alla stessa definizione (prereq/formula) o e' la destinazione
+# cross-definizione (regole), che non deve governare il congelamento della regola.
+#
+# Set di copia presidiato (allineato a fn_copia_definizione, C6):
+#   template_flussi_canali          -> template_flusso_id
+#   template_flussi_handler_eventi  -> template_flusso_id
+#   competenze_flussi               -> template_flusso_id
+#   template_flussi_prerequisiti    -> template_flusso_id  (lato proprietario)
+#   formule_tempo                   -> template_flusso_da_id
+#   regole_generazione              -> template_flusso_origine_id
+# Aggiungere un figlio al set di copia (C6) = aggiungere qui un CREATE TRIGGER.
+#
+# NB teardown: un fork PUBBLICATO non e' smantellabile finche' resta PUBBLICATO
+# (il guard blocca anche i DELETE dei figli). Per smantellarlo va prima RITIRATO
+# (PUBBLICATA->RITIRATA), che lo scongela. Vale per la manutenzione e per il
+# cleanup dei test pgTAP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260703-12-create-trgfn-template-flussi-figli-guard-immutabile-mctit.yaml
+
+  - changeSet:
+      id: 20260703-12-create-trgfn-template-flussi-figli-guard-immutabile
+      author: mctit
+      runOnChange: false
+      comment: >
+        Guard generico BEFORE INS/UPD/DEL sui 6 figli di template_flussi: su
+        edizione forkata pubblicata ogni scrittura e' vietata (514). Immutabilita'
+        «Leggera» Fase 2b. FK->template via TG_ARGV[0].
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pratiche' AND p.proname = 'fn_check_definizione_congelata';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: immutabilita' strutturale «Leggera» dei figli di
+              --        configurazione del template su fork PUBBLICATO. Generica:
+              --        la colonna FK verso template_flussi arriva in TG_ARGV[0].
+              DECLARE
+                v_rec   jsonb;
+                v_tf_id pratiche.template_flussi.id%TYPE;
+                v_def   pratiche.workflow_definizioni.id%TYPE;
+                v_tx    uuid;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  v_rec := to_jsonb(OLD);
+                ELSE
+                  v_rec := to_jsonb(NEW);
+                END IF;
+
+                v_tf_id := (v_rec ->> TG_ARGV[0])::integer;
+                -- FK non risolvibile (riga incoerente): non e' compito di questo
+                -- guard; decidono le FK / gli altri guard.
+                IF v_tf_id IS NULL THEN
+                  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+                END IF;
+
+                SELECT tf.definizione_id
+                  INTO v_def
+                  FROM pratiche.template_flussi tf
+                 WHERE tf.id = v_tf_id;
+
+                IF pratiche.fn_check_definizione_congelata(v_def) THEN
+                  v_tx := NULLIF(v_rec ->> 'tx_id', '')::uuid;
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche',
+                    'pratiche.trgfn_template_flussi_figli_guard_immutabile',
+                    'TEMPLATE_DEFINIZIONE_CONGELATA',
+                    jsonb_build_object(
+                      'operazione',        TG_OP,
+                      'tabella',           TG_TABLE_NAME,
+                      'template_flusso_id', v_tf_id,
+                      'definizione_id',     v_def
+                    ),
+                    v_tx,
+                    v_def::text
+                  );
+                END IF;
+
+                RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile()
+                IS 'Guard generico BEFORE INS/UPD/DEL sui figli di configurazione di template_flussi (canali, handler_eventi, competenze, prerequisiti, formule_tempo, regole_generazione): su edizione forkata pubblicata (fn_check_definizione_congelata) ogni scrittura e'' vietata -> TEMPLATE_DEFINIZIONE_CONGELATA (514). La colonna FK verso template_flussi arriva in TG_ARGV[0]. Immutabilita'' strutturale «Leggera» Fase 2b.';
+
+              -- 1) Canali
+              DROP TRIGGER IF EXISTS trg_template_flussi_canali_a10_guard_immutabile_iud
+                ON pratiche.template_flussi_canali;
+              CREATE TRIGGER trg_template_flussi_canali_a10_guard_immutabile_iud
+                BEFORE INSERT OR UPDATE OR DELETE
+                ON pratiche.template_flussi_canali
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile('template_flusso_id');
+
+              -- 2) Handler-eventi
+              DROP TRIGGER IF EXISTS trg_template_flussi_handler_eventi_a10_guard_immutabile_iud
+                ON pratiche.template_flussi_handler_eventi;
+              CREATE TRIGGER trg_template_flussi_handler_eventi_a10_guard_immutabile_iud
+                BEFORE INSERT OR UPDATE OR DELETE
+                ON pratiche.template_flussi_handler_eventi
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile('template_flusso_id');
+
+              -- 3) Competenze
+              DROP TRIGGER IF EXISTS trg_competenze_flussi_a10_guard_immutabile_iud
+                ON pratiche.competenze_flussi;
+              CREATE TRIGGER trg_competenze_flussi_a10_guard_immutabile_iud
+                BEFORE INSERT OR UPDATE OR DELETE
+                ON pratiche.competenze_flussi
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile('template_flusso_id');
+
+              -- 4) Prerequisiti (lato proprietario = template_flusso_id)
+              DROP TRIGGER IF EXISTS trg_template_flussi_prerequisiti_a10_guard_immutabile_iud
+                ON pratiche.template_flussi_prerequisiti;
+              CREATE TRIGGER trg_template_flussi_prerequisiti_a10_guard_immutabile_iud
+                BEFORE INSERT OR UPDATE OR DELETE
+                ON pratiche.template_flussi_prerequisiti
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile('template_flusso_id');
+
+              -- 5) Formule tempo (lato proprietario = template_flusso_da_id)
+              DROP TRIGGER IF EXISTS trg_formule_tempo_a10_guard_immutabile_iud
+                ON pratiche.formule_tempo;
+              CREATE TRIGGER trg_formule_tempo_a10_guard_immutabile_iud
+                BEFORE INSERT OR UPDATE OR DELETE
+                ON pratiche.formule_tempo
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile('template_flusso_da_id');
+
+              -- 6) Regole generazione (lato proprietario = template_flusso_origine_id)
+              DROP TRIGGER IF EXISTS trg_regole_generazione_a10_guard_immutabile_iud
+                ON pratiche.regole_generazione;
+              CREATE TRIGGER trg_regole_generazione_a10_guard_immutabile_iud
+                BEFORE INSERT OR UPDATE OR DELETE
+                ON pratiche.regole_generazione
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile('template_flusso_origine_id');
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_regole_generazione_a10_guard_immutabile_iud
+                ON pratiche.regole_generazione;
+              DROP TRIGGER IF EXISTS trg_formule_tempo_a10_guard_immutabile_iud
+                ON pratiche.formule_tempo;
+              DROP TRIGGER IF EXISTS trg_template_flussi_prerequisiti_a10_guard_immutabile_iud
+                ON pratiche.template_flussi_prerequisiti;
+              DROP TRIGGER IF EXISTS trg_competenze_flussi_a10_guard_immutabile_iud
+                ON pratiche.competenze_flussi;
+              DROP TRIGGER IF EXISTS trg_template_flussi_handler_eventi_a10_guard_immutabile_iud
+                ON pratiche.template_flussi_handler_eventi;
+              DROP TRIGGER IF EXISTS trg_template_flussi_canali_a10_guard_immutabile_iud
+                ON pratiche.template_flussi_canali;
+              DROP FUNCTION IF EXISTS pratiche.trgfn_template_flussi_figli_guard_immutabile();

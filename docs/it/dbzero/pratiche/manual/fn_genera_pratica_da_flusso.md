@@ -61,7 +61,7 @@ LANGUAGE plpgsql
    - `stato_id` = APERTA
    - `pratica_padre_id` = pratica sorgente (fix-2)
    - `flusso_origine_id` = `p_flusso_id`
-8. **Flusso iniziale (fix-3)**: se la regola dichiara `template_flusso_dest_id`, crea il primo flusso della figlia in `DA_ESEGUIRE` con la `sequenza` del template. Il template destinazione deve essere **senza prerequisiti** (la figlia nasce vuota): in caso contrario il guard prerequisiti fa fallire la generazione — fail-fast voluto, e' un errore di seed della regola.
+8. **Flusso iniziale (fix-3) — definizione-aware (D2-8, Fase 1)**: se la regola dichiara `template_flusso_dest_id`, crea il primo flusso della figlia in `DA_ESEGUIRE`. Il template destinazione **non** viene usato per id: la regola punta a un template del **preset**, ma la figlia potrebbe essere pinnata a un'edizione diversa (fork). Si legge quindi il **codice** del template dichiarato e lo si **rimappa** all'id reale dentro la **definizione pinnata della figlia** (`tf2.definizione_id = figlia.definizione_id AND tf2.codice = codice_regola`); la `sequenza` viene dal template rimappato. In Fase 1 (nessun fork) risolve allo stesso id del preset → no-op comportamentale; serve perché il flusso soddisfi il guard [trgfn_flussi_guard_definizione](trgfn_flussi_guard_definizione.md) (508) anche in presenza di fork. Il template destinazione deve essere **senza prerequisiti** (la figlia nasce vuota): altrimenti il guard prerequisiti fa fallire la generazione (errore di seed della regola).
 9. **Ritorna** l'ID della pratica (nuova o esistente).
 
 ---
@@ -74,6 +74,7 @@ LANGUAGE plpgsql
 | `E_VALORE_MANCANTE` | Flusso non trovato |
 | `E_CODICE` | Regola non trovata o non attiva |
 | `E_CODICE` | Stato APERTA (pratiche) o DA_ESEGUIRE (flussi) non configurato |
+| `GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE` (512) | Il template destinazione (per codice) non esiste nella definizione pinnata della figlia (es. fork che ha rimosso quello step) — fail-fast D2-8 |
 
 ---
 

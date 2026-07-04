@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Proiezione stato di dominio — D1 su OFFERTA (roll-out offerte/ordini/contratti).
+# (brief-db-proiezione-stato-dominio-rollout-offerte-ordini-contratti §2/§7;
+#  playbook identico all'increment PREVENTIVI 20260701-14, decisioni A-E)
+#
+# Il dominio DICHIARA LA MAPPA di normalizzazione del proprio ciclo di vita; il
+# motore pratiche consuma fase/esito/terminale senza mai nominare uno stato di
+# dominio. Colonne aggiunte a config.stati_doc_offerte:
+#   fase      varchar NOT NULL  — APERTO | IN_CORSO | IN_ATTESA | CHIUSO (CHECK;
+#                                 vocabolario POSSEDUTO DAL MOTORE)
+#   esito     varchar NULL      — FK config.esiti_flussi_pratiche(codice_interno);
+#                                 NULL = nessun verdetto. Solo verdetti
+#                                 (is_verdetto=true, guard 20260702-05)
+#   terminale boolean NOT NULL  — il documento non evolvera' piu'. CHECK di
+#                                 coerenza: terminale => fase='CHIUSO'
+#
+# MAPPA (vocabolario universale — copre il 100% del seed reale stati_doc_offerte.csv):
+#   BOZZA     -> APERTO     NULL      false
+#   EMESSA    -> IN_ATTESA  NULL      false   (si aspetta il cliente)
+#   ACCETTATA -> IN_CORSO   POSITIVO  false
+#   RIFIUTATA -> CHIUSO     NEGATIVO  true
+#   SUPERATA  -> CHIUSO     NEGATIVO  true
+#   ANNULLATA -> CHIUSO     NEGATIVO  true
+#
+# SEED (playbook is_abortito 20260515-02 / increment PREVENTIVI):
+#   - DB vivo: backfill UPDATE qui sotto, keyed su codice_interno; poi SET NOT
+#     NULL su fase. Se esistessero stati custom non mappati il SET NOT NULL
+#     FALLISCE: e' voluto (il dominio DEVE dichiarare la mappa, niente default).
+#   - Fresh DB: tabella vuota qui (seed in 80_data) -> backfill no-op; il NOT
+#     NULL e' soddisfatto dalla CSV stati_doc_offerte.csv estesa con fase/terminale.
+#     `esito` NON e' in CSV (nullValue:"" non esprime NULL,
+#     feedback_liquibase_csv_null_sentinel) -> seed esito nel changeset UPDATE
+#     80_data 20260702-10.
+#
+# ORDINE: richiede config.esiti_flussi_pratiche.is_verdetto (20260701-13, target
+# FK/guard). Indice FK: NON creato a mano (policy 90_end apply_fk_index_policy).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260702-02-alter-stati-doc-offerte-add-proiezione-mctit.yaml
+
+  - changeSet:
+      id: 20260702-02-alter-stati-doc-offerte-add-proiezione
+      author: mctit
+      comment: >
+        D1 proiezione stato dominio su config.stati_doc_offerte: aggiunge fase
+        (NOT NULL, CHECK 4 valori), esito (FK esiti_flussi_pratiche, NULL
+        ammesso), terminale (NOT NULL DEFAULT false, CHECK terminale=>CHIUSO) e
+        seeda la mappa per i 6 stati (roll-out proiezione, playbook PREVENTIVI).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_offerte
+            - tableExists:
+                schemaName: config
+                tableName: esiti_flussi_pratiche
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_offerte
+                ADD COLUMN fase      VARCHAR(20),
+                ADD COLUMN esito     VARCHAR(50),
+                ADD COLUMN terminale BOOLEAN NOT NULL DEFAULT false;
+
+              -- Backfill della mappa dichiarata dal dominio (DB vivo; no-op su
+              -- fresh DB dove il seed arriva da 80_data). Keyed su codice_interno
+              -- (chiave naturale immutabile), mai su id.
+              UPDATE config.stati_doc_offerte s
+                 SET fase      = m.fase,
+                     esito     = m.esito,
+                     terminale = m.terminale
+                FROM (VALUES
+                        ('BOZZA',     'APERTO',    NULL::varchar, false),
+                        ('EMESSA',    'IN_ATTESA', NULL::varchar, false),
+                        ('ACCETTATA', 'IN_CORSO',  'POSITIVO',    false),
+                        ('RIFIUTATA', 'CHIUSO',    'NEGATIVO',    true),
+                        ('SUPERATA',  'CHIUSO',    'NEGATIVO',    true),
+                        ('ANNULLATA', 'CHIUSO',    'NEGATIVO',    true)
+                     ) AS m(codice_interno, fase, esito, terminale)
+               WHERE s.codice_interno = m.codice_interno;
+
+              -- Fail-fast voluto: uno stato non mappato blocca qui la migration
+              -- (il dominio deve dichiarare la mappa, niente default silenziosi).
+              ALTER TABLE config.stati_doc_offerte
+                ALTER COLUMN fase SET NOT NULL;
+
+              ALTER TABLE config.stati_doc_offerte
+                ADD CONSTRAINT chk_stati_doc_offerte_fase
+                CHECK (fase IN ('APERTO', 'IN_CORSO', 'IN_ATTESA', 'CHIUSO'));
+
+              -- Invariante della mappa universale: un terminale e' sempre CHIUSO.
+              ALTER TABLE config.stati_doc_offerte
+                ADD CONSTRAINT chk_stati_doc_offerte_terminale_chiuso
+                CHECK (NOT terminale OR fase = 'CHIUSO');
+
+              ALTER TABLE config.stati_doc_offerte
+                ADD CONSTRAINT fk_stati_doc_offerte_esito
+                FOREIGN KEY (esito)
+                REFERENCES config.esiti_flussi_pratiche (codice_interno);
+
+              COMMENT ON COLUMN config.stati_doc_offerte.fase IS
+                  'Proiezione normalizzata per il motore pratiche (D1, brief-db-proiezione-'
+                  'stato-dominio): APERTO | IN_CORSO | IN_ATTESA | CHIUSO. Il motore ragiona '
+                  'su questa, mai sui codici di dominio. Dichiarata dal dominio vendite.';
+              COMMENT ON COLUMN config.stati_doc_offerte.esito IS
+                  'Verdetto proiettato dello stato (config.esiti_flussi_pratiche.codice_interno '
+                  'con is_verdetto=true; guard trgfn_stati_doc_guard_esito_verdetto). NULL = '
+                  'nessun verdetto. Base della futura fase GUIDA (avanza-su-esito-proiettato).';
+              COMMENT ON COLUMN config.stati_doc_offerte.terminale IS
+                  'true = il documento in questo stato non evolvera'' piu'' (CHECK: implica '
+                  'fase=CHIUSO). Asse uniforme cross-dominio.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_offerte
+                DROP CONSTRAINT IF EXISTS fk_stati_doc_offerte_esito,
+                DROP CONSTRAINT IF EXISTS chk_stati_doc_offerte_terminale_chiuso,
+                DROP CONSTRAINT IF EXISTS chk_stati_doc_offerte_fase;
+              ALTER TABLE config.stati_doc_offerte
+                DROP COLUMN IF EXISTS terminale,
+                DROP COLUMN IF EXISTS esito,
+                DROP COLUMN IF EXISTS fase;

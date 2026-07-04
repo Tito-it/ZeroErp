@@ -13,8 +13,17 @@ from datetime import date
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_pagination
-from apps.vendite.db.vendite_repository import VenditeRepository
-from apps.vendite.types import LottoFattureRow, LottoListRow
+from apps.vendite.db.vendite_repository import (
+    DASH_FATTURAZIONE_AREE,
+    DASH_FATTURAZIONE_AREE_EURO,
+    VenditeRepository,
+)
+from apps.vendite.types import (
+    DashFatturazioneAreaRow,
+    DashFatturazioneFermoRow,
+    LottoFattureRow,
+    LottoListRow,
+)
 
 _SORT_BY_VALIDI: frozenset[str] = frozenset({"fattura_id", "nominativo", "totale_doc"})
 _SORT_DIR_VALIDI: frozenset[str] = frozenset({"asc", "desc"})
@@ -122,6 +131,97 @@ def fn_list_lotto_fatture(
         auth_user_id=auth_user_id,
         sort_by=sort_by,
         sort_dir=sort_dir,
+        limit=page_size,
+        offset=offset,
+    )
+    return _build_list_response(results, total_count, page, page_size)
+
+
+# Range anni ammesso per la dashboard fatturazione (brief §6: anno libero
+# validato con range sensato).
+_DASH_ANNO_MIN = 2000
+_DASH_ANNO_MAX = 2100
+
+
+# Scopo: Restituisce la matrice della dashboard fatturazione per un anno:
+#        12 mesi SEMPRE presenti (D-5), ognuno con le 5 aree del funnel in
+#        ordine fisso. I mesi/aree senza dati arrivano con zeri; per le aree
+#        in euro il valore assente e' "0", per le aree a conteggi resta None
+#        (D-2/D-3: OFFERTE e CONTRATTI senza valore monetario in v1).
+# Perimetro: sola lettura; la RLS emittente filtra via vista invoker.
+# Risultato: dict {anno, mesi: [{competenza_mese, aree: [...] x5}] x12}.
+def fn_dash_fatturazione_mensile(
+    *,
+    anno: int,
+) -> dict[str, object]:
+    ErrorManager.require(
+        _DASH_ANNO_MIN <= anno <= _DASH_ANNO_MAX,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro anno fuori range.",
+        detail=f"Valori ammessi: {_DASH_ANNO_MIN}-{_DASH_ANNO_MAX}",
+        context={"anno": anno},
+        function_name="vendite.vendite_service.fn_dash_fatturazione_mensile",
+    )
+    repository = VenditeRepository()
+    rows = repository.list_dash_fatturazione_mensile(anno=anno)
+    by_key = {(r["competenza_mese"], r["area"]): r for r in rows}
+
+    mesi: list[dict[str, object]] = []
+    for mese_num in range(1, 13):
+        competenza = date(anno, mese_num, 1).isoformat()
+        aree: list[DashFatturazioneAreaRow] = []
+        for area in DASH_FATTURAZIONE_AREE:
+            r = by_key.get((competenza, area))
+            is_euro = area in DASH_FATTURAZIONE_AREE_EURO
+            valore_totale = r["valore_totale"] if r else None
+            valore_transitato = r["valore_transitato"] if r else None
+            aree.append(
+                {
+                    "area": area,
+                    # Aree euro: zero esplicito quando il mese e' vuoto, cosi'
+                    # il FE non distingue "mese vuoto" da "totale zero".
+                    "valore_totale": (valore_totale or "0") if is_euro else None,
+                    "valore_transitato": (valore_transitato or "0") if is_euro else None,
+                    "n_documenti": r["n_documenti"] if r else 0,
+                    "n_transitati": r["n_transitati"] if r else 0,
+                    "n_fermi": r["n_fermi"] if r else 0,
+                    "n_abortiti": r["n_abortiti"] if r else 0,
+                }
+            )
+        mesi.append({"competenza_mese": competenza, "aree": aree})
+    return {"anno": anno, "mesi": mesi}
+
+
+# Scopo: Restituisce il drill-down paginato degli elementi fermi di un'area
+#        in un mese di competenza (dashboard fatturazione). La competenza
+#        viene normalizzata al 1° del mese (bucket mensile).
+# Perimetro: sola lettura; lo scope emittente e' interamente DB-side (RLS per
+#        le aree documento, filtro GUC nel resolver commesse dal 20260703-60):
+#        nessun parametro scope applicativo.
+# Risultato: dict con count, page, page_size, total_pages, results.
+def fn_dash_fatturazione_fermi(
+    *,
+    competenza_mese: date,
+    area: str,
+    page: int = 1,
+    page_size: int = 50,
+) -> dict[str, object]:
+    ErrorManager.require(
+        area in DASH_FATTURAZIONE_AREE,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro area non valido.",
+        detail=f"Valori ammessi: {', '.join(DASH_FATTURAZIONE_AREE)}",
+        context={"area": area},
+        function_name="vendite.vendite_service.fn_dash_fatturazione_fermi",
+    )
+    offset = _validate_pagination(
+        page, page_size, "vendite.vendite_service.fn_dash_fatturazione_fermi"
+    )
+    repository = VenditeRepository()
+    results: list[DashFatturazioneFermoRow]
+    results, total_count = repository.list_dash_fatturazione_fermi(
+        area=area,
+        competenza_mese=competenza_mese.replace(day=1),
         limit=page_size,
         offset=offset,
     )

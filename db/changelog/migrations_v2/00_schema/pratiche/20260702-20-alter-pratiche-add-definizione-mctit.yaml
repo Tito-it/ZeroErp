@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# pratiche.definizione_id — il PIN dell'edizione di workflow (V6).
+# (brief-db-step-dominio-e-definizioni-versionate Parte 2 / Fase 0 / D2-3)
+#
+# La pratica pinna l'edizione ALLA CREAZIONE e la tiene per sempre: le
+# modifiche future alle definizioni non cambiano retroattivamente la roadmap
+# delle pratiche in volo. Il pin e' riempito dal trigger di auto-pin
+# (20260702-24: risolve emittente -> preset via fn_risolvi_definizione), cosi'
+# il BE create_pratica resta invariato. NULLABLE in DDL; SET NOT NULL nel
+# backfill 80_data (20260702-25). L'immutabilita' del pin (no UPDATE) arriva
+# col guard di Fase 1.
+#
+# FK COMPOSITA (definizione_id, tipo_prestazione_id): il pin non puo' mai
+# divergere dal tipo della pratica — per costruzione, zero trigger.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260702-20-alter-pratiche-add-definizione-mctit.yaml
+
+  - changeSet:
+      id: 20260702-20-alter-pratiche-add-definizione
+      author: mctit
+      comment: >
+        pratiche.definizione_id (pin dell'edizione workflow alla creazione,
+        nullable, FK composita con tipo_prestazione_id). Auto-pin via trigger
+        20260702-24; NOT NULL nel backfill 80_data.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pratiche
+                tableName: workflow_definizioni
+            - not:
+                - columnExists:
+                    schemaName: pratiche
+                    tableName: pratiche
+                    columnName: definizione_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pratiche.pratiche
+                ADD COLUMN definizione_id integer NULL;
+
+              ALTER TABLE pratiche.pratiche
+                ADD CONSTRAINT fk_pratiche_definizione
+                FOREIGN KEY (definizione_id, tipo_prestazione_id)
+                REFERENCES pratiche.workflow_definizioni (id, tipo_prestazione_id)
+                ON UPDATE CASCADE ON DELETE NO ACTION;
+
+              COMMENT ON COLUMN pratiche.pratiche.definizione_id IS
+                'PIN dell''edizione di workflow (pratiche.workflow_definizioni), risolto alla creazione (trigger a10_default_definizione: edizione PUBBLICATA dell''emittente, altrimenti preset) e mai aggiornato: le pratiche in volo restano sull''edizione con cui sono nate. FK composita con tipo_prestazione_id = coerenza tipo per costruzione. NOT NULL dal backfill Fase 0; guard di immutabilita'' in Fase 1.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pratiche.pratiche
+                DROP CONSTRAINT IF EXISTS fk_pratiche_definizione;
+              ALTER TABLE pratiche.pratiche
+                DROP COLUMN IF EXISTS definizione_id;

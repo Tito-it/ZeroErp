@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Proiezione stato di dominio — D3b (roll-out §5b/§7): vista d'ancora pratica-level.
+# (brief-db-proiezione-stato-dominio-rollout-offerte-ordini-contratti)
+#
+# PROBLEMA (§5b): l'ancora dettaglio/lista del BE (_doc_sorgente_lateral) e' oggi
+# ROOT-only. Una pratica evoluta preventivo->ordine ha il preventivo ROOT
+# (spesso gia' terminale, es. EVASO) che vincerebbe SEMPRE sull'ordine COLLEGATO
+# vivo -> l'ordine non si vedrebbe mai. Gli ordini/commesse a valle nascono
+# COLLEGATO senza flusso_id (trgfn_pratiche_sorgenti_guard_coerenza_flusso).
+#
+# SOLUZIONE: promuovere a DB la "regola d'ancora" oggi inline nel BE, scegliendo
+# per ogni pratica IL DOCUMENTO PIU' VIVO tra tutti i suoi link (ROOT+COLLEGATO)
+# e proiettandone il descrittore. Unica sede, riusabile da D4 (GUIDA).
+#
+# REGOLA D'ANCORA (confermata da Tid 2026-07-02, "R1" della review) — priorita':
+#   1) risolto batte non-risolto     COALESCE(ss.risolto,false) DESC
+#   2) vivo batte terminale          (NOT COALESCE(ss.terminale,false)) DESC
+#   3) ROOT come tiebreak            (ps.ruolo_link='ROOT') DESC
+#   4) link piu' recente             ps.id DESC
+# NB CRITICO (NULL-safe): la naive "ORDER BY (NOT terminale) DESC" REGREDISCE le
+# pratiche preventivo->commessa — la commessa e' COLLEGATO non risolto (PIPELINE_
+# MARKER, nessun ramo resolver) -> ss.terminale NULL -> sotto DESC i NULL
+# ordinano PRIMA e vincerebbero sul preventivo ROOT risolto. La chiave 1)
+# (risolto-first) e i COALESCE chiudono il buco: la commessa non risolta perde,
+# il preventivo resta proiettato. Un ordine risolto&vivo invece batte il
+# preventivo risolto&terminale (chiavi 1 pari, 2 premia il vivo) -> l'ordine si
+# accende. Vedi pgTAP test-proiezione-stato-sorgente.sql (casi vw_pratica_doc_sorgente).
+#
+# SEMANTICA FALLBACK (identica al BE odierno, NON la sentinella UNKNOWN dello
+# scalare fn_stato_sorgente): link scelto non risolto -> risolto=false e campi
+# stato_* NULL (il FE mostra il milestone come oggi). Pratica senza link -> nessuna
+# riga (il consumer LEFT JOIN ottiene NULL). PLACEMENT script (layer applicativo
+# cross-dominio), coerente con vw_stato_sorgente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260702-14-create-vw-pratica-doc-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20260702-14-create-vw-pratica-doc-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D3b: crea script.vw_pratica_doc_sorgente — una riga per pratica col
+        descrittore del documento PIU' VIVO tra i suoi link (regola d'ancora
+        risolto-first/vivo-first/ROOT-tiebreak/id, NULL-safe). Promuove a DB la
+        regola oggi inline nel BE; unica sede, riusabile da D4 (GUIDA).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: script
+                viewName: vw_stato_sorgente
+            - tableExists:
+                schemaName: pratiche
+                tableName: pratiche_sorgenti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW script.vw_pratica_doc_sorgente AS
+              -- DISTINCT ON (pratica_id): tra tutti i link della pratica tiene il
+              -- primo per la regola d'ancora sotto (documento piu' vivo).
+              SELECT DISTINCT ON (ps.pratica_id)
+                  ps.pratica_id,
+                  ps.sorgente_tipo_id,
+                  ps.sorgente_uid,
+                  ps.ruolo_link,
+                  so.descrizione                               AS sorgente_descrizione,
+                  -- Fallback come il BE odierno: link scelto non risolto ->
+                  -- risolto=false e stato_* NULL (NON la sentinella UNKNOWN, che
+                  -- vive solo nello scalare pratiche.fn_stato_sorgente).
+                  COALESCE(ss.risolto, false)                  AS risolto,
+                  ss.stato_codice_interno,
+                  ss.stato_codice,
+                  ss.stato_descrizione,
+                  ss.fase,
+                  ss.esito,
+                  ss.terminale
+                FROM pratiche.pratiche_sorgenti ps
+                JOIN config.sorgenti so
+                  ON so.id = ps.sorgente_tipo_id
+                LEFT JOIN script.vw_stato_sorgente ss
+                  ON ss.sorgente_tipo_id = ps.sorgente_tipo_id
+                 AND ss.sorgente_uid     = ps.sorgente_uid
+               ORDER BY
+                  ps.pratica_id,
+                  COALESCE(ss.risolto, false)          DESC,  -- 1) risolto batte non-risolto
+                  (NOT COALESCE(ss.terminale, false))  DESC,  -- 2) vivo batte terminale
+                  (ps.ruolo_link = 'ROOT')             DESC,  -- 3) ROOT come tiebreak
+                  ps.id                                DESC;  -- 4) link piu' recente
+
+              COMMENT ON VIEW script.vw_pratica_doc_sorgente IS
+                'D3b (brief-db-proiezione-stato-dominio roll-out §5b): una riga per pratica col descrittore del documento PIU'' VIVO tra i suoi link (ROOT+COLLEGATO). Regola d''ancora NULL-safe: risolto-first, poi vivo(non-terminale)-first, poi ROOT come tiebreak, poi link piu'' recente (ps.id). Accende l''ordine COLLEGATO vivo su una pratica preventivo->ordine SENZA regredire preventivo->commessa (la commessa non risolta perde per risolto-first). Fallback come il BE odierno: link non risolto -> risolto=false e stato_* NULL (non la sentinella UNKNOWN dello scalare fn_stato_sorgente). Promuove a DB la regola oggi inline in pratiche_repository._doc_sorgente_lateral; sede unica, riusabile da D4 (GUIDA).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS script.vw_pratica_doc_sorgente;

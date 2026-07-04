@@ -81,6 +81,16 @@
    * conclusi nel percorso pratica). Centralizzato: mai green hardcoded. */
   --app-success-color: var(--p-green-500);
 
+  /* ===== Grafici (dashboard) ===== */
+  /* Coppia stato transitato/fermo dei donut dashboard fatturazione.
+   * green-600 + orange-600 validata CVD+contrasto su ENTRAMBE le superfici
+   * (dark surface-950, light surface-50): stessa coppia nei due modi,
+   * nessun override light necessario. Track = anello neutro quando il
+   * mese/area non ha valori. */
+  --app-chart-transitato: var(--p-green-600);
+  --app-chart-fermo: var(--p-orange-600);
+  --app-chart-track: var(--p-surface-700);
+
   /* ===== Lookup dropdown multi-riga ===== */
   /* Usato da BillingAccountLookup e futuri lookup ricchi (ClienteLookup, ecc.).
    * Dropdown con 3 righe: primary (nome entita'), secondary (codice), meta (id fiscale / pdp). */
@@ -207,6 +217,10 @@
 
   /* Context chip */
   --app-context-chip-bg: var(--p-surface-100);
+
+  /* Grafici: track neutro chiaro (la coppia transitato/fermo resta invariata,
+   * validata su entrambe le superfici) */
+  --app-chart-track: var(--p-surface-300);
 
   /* DataTable */
   --app-table-stripe-bg: color-mix(in srgb, var(--p-surface-100) 60%, transparent);

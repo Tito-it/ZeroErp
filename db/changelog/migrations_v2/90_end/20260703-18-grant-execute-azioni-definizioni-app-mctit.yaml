@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P1 — EXECUTE mirato sulle 3 azioni definizioni (hardening strada B).
+# (brief-db-accesso-ruolo-be-definizioni-workflow §4.3 "nessuna regressione di
+#  sicurezza: se strada B, EXECUTE mirato".)
+#
+# Le 3 funzioni sono SECURITY DEFINER (20260703-16/-17): girano coi privilegi
+# dell'owner. Lasciarle EXECUTE-abili da PUBLIC sarebbe una superficie di
+# escalation. Hardening: REVOKE EXECUTE FROM PUBLIC + GRANT EXECUTE al solo ruolo
+# applicativo zeroerp_app (unico role della connessione BE). L'autorizzazione
+# "chi puo' gestire le edizioni" resta al gate app-layer (AdminAPIView super-admin):
+# a livello DB l'accesso e' del ruolo app, il permesso e' applicativo.
+#
+# Nota: senza il GRANT esplicito, dopo il REVOKE FROM PUBLIC l'app perderebbe
+# EXECUTE (sul DB reale l'EXECUTE arriva oggi da PUBLIC). Idempotente e difensivo
+# (skip GRANT se il ruolo manca; il REVOKE FROM PUBLIC e' sempre sicuro).
+# pg_prove/superuser bypassano il check EXECUTE -> i pgTAP restano verdi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260703-18-grant-execute-azioni-definizioni-app-mctit.yaml
+
+  - changeSet:
+      id: 20260703-18-grant-execute-azioni-definizioni-app
+      author: mctit
+      runOnChange: true
+      comment: >
+        EXECUTE mirato sulle azioni definizioni (fork/nuova-versione/pubblica):
+        REVOKE da PUBLIC + GRANT al ruolo app zeroerp_app. Hardening delle fn
+        SECURITY DEFINER (P1). Idempotente e difensivo.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+              BEGIN
+                -- Hardening: le 3 azioni SECURITY DEFINER non devono restare
+                -- EXECUTE-abili da PUBLIC. Il REVOKE e' sempre sicuro.
+                REVOKE EXECUTE ON FUNCTION pratiche.fn_fork_definizione(integer, bigint) FROM PUBLIC;
+                REVOKE EXECUTE ON FUNCTION pratiche.fn_nuova_versione_definizione(integer) FROM PUBLIC;
+                REVOKE EXECUTE ON FUNCTION pratiche.fn_pubblica_definizione(integer) FROM PUBLIC;
+
+                -- EXECUTE mirato al solo ruolo applicativo (se presente).
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  EXECUTE format('GRANT EXECUTE ON FUNCTION pratiche.fn_fork_definizione(integer, bigint) TO %I', v_app_role);
+                  EXECUTE format('GRANT EXECUTE ON FUNCTION pratiche.fn_nuova_versione_definizione(integer) TO %I', v_app_role);
+                  EXECUTE format('GRANT EXECUTE ON FUNCTION pratiche.fn_pubblica_definizione(integer) TO %I', v_app_role);
+                ELSE
+                  RAISE NOTICE 'Ruolo % assente: skip GRANT EXECUTE azioni definizioni.', v_app_role;
+                END IF;
+              END;
+              $$;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+              BEGIN
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  EXECUTE format('REVOKE EXECUTE ON FUNCTION pratiche.fn_fork_definizione(integer, bigint) FROM %I', v_app_role);
+                  EXECUTE format('REVOKE EXECUTE ON FUNCTION pratiche.fn_nuova_versione_definizione(integer) FROM %I', v_app_role);
+                  EXECUTE format('REVOKE EXECUTE ON FUNCTION pratiche.fn_pubblica_definizione(integer) FROM %I', v_app_role);
+                END IF;
+                -- Ripristina l'EXECUTE di default (PUBLIC).
+                GRANT EXECUTE ON FUNCTION pratiche.fn_fork_definizione(integer, bigint) TO PUBLIC;
+                GRANT EXECUTE ON FUNCTION pratiche.fn_nuova_versione_definizione(integer) TO PUBLIC;
+                GRANT EXECUTE ON FUNCTION pratiche.fn_pubblica_definizione(integer) TO PUBLIC;
+              END;
+              $$;

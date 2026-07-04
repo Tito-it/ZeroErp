@@ -192,6 +192,27 @@ class PraticheServiceFlussiTests(SimpleTestCase):
 
         repo.update_stato_flusso.assert_called_once_with(1, "IN_CORSO")
 
+    # Scopo: step DOMINIO — anche se l'handler di avvio produce un risultato,
+    # avvia_flusso NON auto-completa (companion BE-1.2): l'esito lo calcola il BB
+    # di dominio, non un fallback verdetto. Resta IN_CORSO. Regressione dell'incidente
+    # PRA-0000243 (esito_default NULL → auto_esito POSITIVO che il guard DB 504 vieta).
+    @patch("apps.pratiche.services.handler_registry.get_handler")
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_avvia_flusso_dominio_handler_non_completa(self, MockRepo, mock_get_handler):
+        repo = MockRepo.return_value
+        repo.get_flusso_esito_config.return_value = ("DOMINIO", None)
+        repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=9012)
+        repo.get_handler_info.return_value = ("vendita.post_smistamento", {})
+        repo.get_handler_eventi.return_value = []
+        handler_instance = MagicMock()
+        handler_instance.execute.return_value = {"risultato": "ok"}
+        mock_get_handler.return_value = MagicMock(return_value=handler_instance)
+
+        pratiche_service.avvia_flusso(1)
+
+        repo.update_stato_flusso.assert_called_once_with(1, "IN_CORSO")
+        repo.get_handler_eventi.assert_not_called()
+
     # Scopo: modalita CONTESTUALE — avvia_e_completa_flusso porta DA_ESEGUIRE →
     # IN_CORSO → COMPLETATO con l'esito scelto dall'operatore, stessa transazione.
     @patch(f"{_SVC}.PraticheRepository")
@@ -298,6 +319,32 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_FLUSSO_VALIDATION")
         repo.get_esito_flusso_vocabolario.return_value = (True, True)
         pratiche_service.require_esito_selezionabile_operatore("POSITIVO")  # nessun errore
+
+    # Scopo: guard simmetrico (companion BE-1.3) — uno step DOMINIO non si completa
+    # dal percorso operatore (errore parlante); uno step non-DOMINIO passa.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_require_completamento_operatore_ammesso(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_flusso_esito_config.return_value = ("DOMINIO", None)
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.require_completamento_operatore_ammesso(1)
+        self.assertEqual(ctx.exception.code, "E_FLUSSO_VALIDATION")
+        repo.get_flusso_esito_config.return_value = ("MANUALE", None)
+        pratiche_service.require_completamento_operatore_ammesso(1)  # nessun errore
+
+    # Scopo: marker guard di classe esito (id 504) — un DatabaseError col messaggio
+    # catalogo si traduce nel ServiceError parlante FLUSSI_ESITO_NON_AMMESSO.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_completa_flusso_esito_non_ammesso_504(self, MockRepo):
+        from django.db import DatabaseError
+
+        repo = MockRepo.return_value
+        repo.update_stato_flusso.side_effect = DatabaseError(
+            "Esito POSITIVO non ammesso per lo step SMISTAMENTO: richiesto un esito di ramo (calcolato dal dominio).",
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.completa_flusso(1, esito="POSITIVO")
+        self.assertEqual(ctx.exception.code, "FLUSSI_ESITO_NON_AMMESSO")
 
     # Scopo: Verifica transizione generica di stato flusso.
     @patch(f"{_SVC}.PraticheRepository")

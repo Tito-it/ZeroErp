@@ -25,10 +25,25 @@
 -- 15) fn_stato_sorgente uid inesistente su tipo PREVENTIVO -> UNKNOWN (risolto=false)
 -- 16) fn_stato_sorgente guard: sorgente_tipo_id NULL -> errore parametri
 -- 17) fn_stato_sorgente guard: sorgente_tipo_id 0 -> errore parametri
+-- --- Roll-out offerte/ordini/contratti (brief-db-...-rollout) ---
+-- 18) Seed D1 OFFERTA: mappa completa (fase/esito/terminale per stato)
+-- 19) Seed D1 ORDINE: mappa completa
+-- 20) Seed D1 CONTRATTO: mappa completa
+-- 21) Invariante terminale=>CHIUSO su offerte+ordini+contratti
+-- 22) Guard verdetto attivo su config.stati_doc_offerte
+-- 23) Guard verdetto attivo su config.stati_doc_ordini
+-- 24) Guard verdetto attivo su config.stati_doc_contratti
+-- --- vw_pratica_doc_sorgente: regola d'ancora R1 (§5b) ---
+-- 25) Ancora A: pratica mono-doc (ROOT preventivo EMESSO) -> proietta EMESSO
+-- 26) Ancora B: ROOT terminale (ANNULLATO) + COLLEGATO vivo (ACCETTATO) ->
+--     proietta ACCETTATO (vivo batte terminale)
+-- 27) Ancora C [REGRESSIONE prev->commessa]: ROOT risolto (EMESSO) + COLLEGATO
+--     non-risolto (fake) -> proietta EMESSO (risolto batte non-risolto)
+-- 28) Ancora D: pratica con solo link non-risolto -> risolto=false, stato NULL
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(17);
+SELECT plan(28);
 
 -- ============================================================
 -- Riferimenti minimi per creare preventivi in pgTAP
@@ -270,6 +285,200 @@ SELECT throws_like(
   $$SELECT * FROM pratiche.fn_stato_sorgente(0::bigint, 'abc')$$,
   '%stato sorgente non validi%',
   'fn_stato_sorgente: sorgente_tipo_id 0 -> E_STATO_SORGENTE_PARAM_INVALIDO'
+);
+
+-- ============================================================
+-- 18-20) Seed D1 dei 3 domini del roll-out: mappa completa ordinata
+--        (ORDER BY ordine per confronto deterministico)
+-- ============================================================
+SELECT results_eq(
+  $$SELECT fase, esito, terminale FROM config.stati_doc_offerte ORDER BY ordine$$,
+  $$VALUES ('APERTO'::varchar,    NULL::varchar,       false),
+          ('IN_ATTESA'::varchar, NULL::varchar,       false),
+          ('IN_CORSO'::varchar,  'POSITIVO'::varchar, false),
+          ('CHIUSO'::varchar,    'NEGATIVO'::varchar, true),
+          ('CHIUSO'::varchar,    'NEGATIVO'::varchar, true),
+          ('CHIUSO'::varchar,    'NEGATIVO'::varchar, true)$$,
+  '18) Seed D1 OFFERTA: BOZZA/EMESSA/ACCETTATA/RIFIUTATA/SUPERATA/ANNULLATA mappati'
+);
+
+SELECT results_eq(
+  $$SELECT fase, esito, terminale FROM config.stati_doc_ordini ORDER BY ordine$$,
+  $$VALUES ('APERTO'::varchar,   NULL::varchar,       false),
+          ('IN_CORSO'::varchar, NULL::varchar,       false),
+          ('CHIUSO'::varchar,   'POSITIVO'::varchar, true),
+          ('IN_CORSO'::varchar, NULL::varchar,       false),
+          ('IN_CORSO'::varchar, NULL::varchar,       false),
+          ('IN_CORSO'::varchar, NULL::varchar,       false),
+          ('CHIUSO'::varchar,   'NEGATIVO'::varchar, true),
+          ('CHIUSO'::varchar,   'POSITIVO'::varchar, true)$$,
+  '19) Seed D1 ORDINE: DRAFT/CONFERMATO/EVASO/ALLOCATO/SPEDITO/CONSEGNATO/ANNULLATO/FATTURATO mappati'
+);
+
+SELECT results_eq(
+  $$SELECT fase, esito, terminale FROM config.stati_doc_contratti ORDER BY ordine$$,
+  $$VALUES ('APERTO'::varchar,   NULL::varchar,       false),
+          ('IN_CORSO'::varchar, NULL::varchar,       false),
+          ('CHIUSO'::varchar,   'POSITIVO'::varchar, true),
+          ('CHIUSO'::varchar,   'NEGATIVO'::varchar, true)$$,
+  '20) Seed D1 CONTRATTO: DRAFT/ATTIVO/CESSATO/ANNULLATO mappati'
+);
+
+-- ============================================================
+-- 21) Invariante universale terminale => fase CHIUSO sui 3 domini
+-- ============================================================
+SELECT is(
+  (SELECT COUNT(*)::int FROM (
+      SELECT 1 FROM config.stati_doc_offerte   WHERE terminale AND fase <> 'CHIUSO'
+      UNION ALL
+      SELECT 1 FROM config.stati_doc_ordini    WHERE terminale AND fase <> 'CHIUSO'
+      UNION ALL
+      SELECT 1 FROM config.stati_doc_contratti WHERE terminale AND fase <> 'CHIUSO'
+   ) t),
+  0,
+  '21) Invariante: nessuno stato terminale fuori da CHIUSO (offerte+ordini+contratti)'
+);
+
+-- ============================================================
+-- 22-24) Guard verdetto agganciato ai 3 domini (esito non-verdetto -> errore)
+-- ============================================================
+SELECT throws_like(
+  $$UPDATE config.stati_doc_offerte
+       SET esito = 'ESITO_INESISTENTE_PGTAP'
+     WHERE codice_interno = 'ACCETTATA'$$,
+  '%verdetto%',
+  '22) Guard verdetto attivo su stati_doc_offerte'
+);
+
+SELECT throws_like(
+  $$UPDATE config.stati_doc_ordini
+       SET esito = 'ESITO_INESISTENTE_PGTAP'
+     WHERE codice_interno = 'EVASO'$$,
+  '%verdetto%',
+  '23) Guard verdetto attivo su stati_doc_ordini'
+);
+
+SELECT throws_like(
+  $$UPDATE config.stati_doc_contratti
+       SET esito = 'ESITO_INESISTENTE_PGTAP'
+     WHERE codice_interno = 'CESSATO'$$,
+  '%verdetto%',
+  '24) Guard verdetto attivo su stati_doc_contratti'
+);
+
+-- ============================================================
+-- Fixture per vw_pratica_doc_sorgente (regola d'ancora R1, §5b).
+-- Riusa i preventivi tmp_prev_pss (EMESSO=vivo, ACCETTATO=vivo, ANNULLATO=
+-- terminale). I link non-risolti usano un uid fittizio (nessun documento ->
+-- nessuna riga in vw_stato_sorgente -> risolto=false). flusso_id NULL: il guard
+-- coerenza-flusso scatta solo se valorizzato, e la mappa vw_pratica_doc_sorgente
+-- ignora flusso_id (considera tutti i link della pratica).
+-- ============================================================
+CREATE TEMP TABLE tmp_anc_refs AS
+SELECT
+  (SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo = true ORDER BY id LIMIT 1) AS emittente_id,
+  (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1)                    AS soggetto_id,
+  (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'APERTA')       AS st_aperta,
+  (SELECT id FROM config.priorita_pratiche WHERE codice_interno = 'NORMALE')   AS priorita_id,
+  (SELECT id FROM config.sorgenti WHERE codice_interno = 'PREVENTIVO')         AS src_preventivo;
+
+CREATE TEMP TABLE tmp_anc_tp AS
+WITH ins AS (
+  INSERT INTO pratiche.tipi_prestazione (codice, codice_interno, descrizione, attivo)
+  VALUES ('TEST_PSS_ANC', 'TEST_PSS_ANC', 'Tipo test proiezione ancora', true)
+  ON CONFLICT (codice_interno) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  RETURNING id
+)
+SELECT id AS tp_id FROM ins;
+
+CREATE TEMP TABLE tmp_anc_pa AS
+WITH ins AS (
+  INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id, priorita_id)
+  VALUES ((SELECT emittente_id FROM tmp_anc_refs), (SELECT tp_id FROM tmp_anc_tp),
+          (SELECT soggetto_id FROM tmp_anc_refs), (SELECT st_aperta FROM tmp_anc_refs),
+          (SELECT priorita_id FROM tmp_anc_refs))
+  RETURNING id
+) SELECT id AS pratica_id FROM ins;
+
+CREATE TEMP TABLE tmp_anc_pb AS
+WITH ins AS (
+  INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id, priorita_id)
+  VALUES ((SELECT emittente_id FROM tmp_anc_refs), (SELECT tp_id FROM tmp_anc_tp),
+          (SELECT soggetto_id FROM tmp_anc_refs), (SELECT st_aperta FROM tmp_anc_refs),
+          (SELECT priorita_id FROM tmp_anc_refs))
+  RETURNING id
+) SELECT id AS pratica_id FROM ins;
+
+CREATE TEMP TABLE tmp_anc_pc AS
+WITH ins AS (
+  INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id, priorita_id)
+  VALUES ((SELECT emittente_id FROM tmp_anc_refs), (SELECT tp_id FROM tmp_anc_tp),
+          (SELECT soggetto_id FROM tmp_anc_refs), (SELECT st_aperta FROM tmp_anc_refs),
+          (SELECT priorita_id FROM tmp_anc_refs))
+  RETURNING id
+) SELECT id AS pratica_id FROM ins;
+
+CREATE TEMP TABLE tmp_anc_pd AS
+WITH ins AS (
+  INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id, priorita_id)
+  VALUES ((SELECT emittente_id FROM tmp_anc_refs), (SELECT tp_id FROM tmp_anc_tp),
+          (SELECT soggetto_id FROM tmp_anc_refs), (SELECT st_aperta FROM tmp_anc_refs),
+          (SELECT priorita_id FROM tmp_anc_refs))
+  RETURNING id
+) SELECT id AS pratica_id FROM ins;
+
+INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
+VALUES
+  -- A) mono ROOT EMESSO (vivo)
+  ((SELECT pratica_id FROM tmp_anc_pa), (SELECT src_preventivo FROM tmp_anc_refs),
+   (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO'),    'ROOT',      NULL),
+  -- B) ROOT ANNULLATO (terminale) + COLLEGATO ACCETTATO (vivo)
+  ((SELECT pratica_id FROM tmp_anc_pb), (SELECT src_preventivo FROM tmp_anc_refs),
+   (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'ANNULLATO'), 'ROOT',      NULL),
+  ((SELECT pratica_id FROM tmp_anc_pb), (SELECT src_preventivo FROM tmp_anc_refs),
+   (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'ACCETTATO'), 'COLLEGATO', NULL),
+  -- C) ROOT EMESSO (risolto) + COLLEGATO fake (non-risolto: mima la commessa)
+  ((SELECT pratica_id FROM tmp_anc_pc), (SELECT src_preventivo FROM tmp_anc_refs),
+   (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO'),    'ROOT',      NULL),
+  ((SELECT pratica_id FROM tmp_anc_pc), (SELECT src_preventivo FROM tmp_anc_refs),
+   'FAKE-UNRESOLVED-C-' || substr(md5(clock_timestamp()::text), 1, 8),      'COLLEGATO', NULL),
+  -- D) solo ROOT non-risolto
+  ((SELECT pratica_id FROM tmp_anc_pd), (SELECT src_preventivo FROM tmp_anc_refs),
+   'FAKE-UNRESOLVED-D-' || substr(md5(clock_timestamp()::text), 1, 8),      'ROOT',      NULL);
+
+-- ============================================================
+-- 25-28) vw_pratica_doc_sorgente: la regola d'ancora sceglie il doc PIU' VIVO
+-- ============================================================
+SELECT results_eq(
+  $$SELECT stato_codice_interno, risolto, fase
+      FROM script.vw_pratica_doc_sorgente
+     WHERE pratica_id = (SELECT pratica_id FROM tmp_anc_pa)$$,
+  $$VALUES ('EMESSO'::text, true, 'IN_ATTESA'::text)$$,
+  '25) Ancora A (mono-doc): proietta il preventivo EMESSO (ROOT)'
+);
+
+SELECT results_eq(
+  $$SELECT stato_codice_interno, risolto
+      FROM script.vw_pratica_doc_sorgente
+     WHERE pratica_id = (SELECT pratica_id FROM tmp_anc_pb)$$,
+  $$VALUES ('ACCETTATO'::text, true)$$,
+  '26) Ancora B: COLLEGATO vivo (ACCETTATO) batte ROOT terminale (ANNULLATO)'
+);
+
+SELECT results_eq(
+  $$SELECT stato_codice_interno, risolto
+      FROM script.vw_pratica_doc_sorgente
+     WHERE pratica_id = (SELECT pratica_id FROM tmp_anc_pc)$$,
+  $$VALUES ('EMESSO'::text, true)$$,
+  '27) Ancora C [regressione prev->commessa]: ROOT risolto (EMESSO) batte COLLEGATO non-risolto'
+);
+
+SELECT results_eq(
+  $$SELECT stato_codice_interno, risolto
+      FROM script.vw_pratica_doc_sorgente
+     WHERE pratica_id = (SELECT pratica_id FROM tmp_anc_pd)$$,
+  $$VALUES (NULL::text, false)$$,
+  '28) Ancora D: solo link non-risolto -> risolto=false, stato NULL (fallback come oggi)'
 );
 
 SELECT * FROM finish();

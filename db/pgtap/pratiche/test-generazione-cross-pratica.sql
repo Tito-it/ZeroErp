@@ -102,7 +102,7 @@ SELECT id AS tp_id FROM ins;
 CREATE TEMP TABLE tmp_gen_tf AS WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, attivo, ripetibilita)
   VALUES ((SELECT tp_id FROM tmp_gen_tp_src), 'TF_GEN_SRC', 'Template sorgente generazione', true, 'SEMPRE')
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione, ripetibilita = EXCLUDED.ripetibilita
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione, ripetibilita = EXCLUDED.ripetibilita
   RETURNING id
 )
 SELECT id AS tf_id FROM ins;
@@ -111,7 +111,7 @@ SELECT id AS tf_id FROM ins;
 CREATE TEMP TABLE tmp_gen_tf_dest AS WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, attivo)
   VALUES ((SELECT tp_id FROM tmp_gen_tp_dest), 'TF_GEN_DEST_INIT', 'Step iniziale pratica generata', 10, true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
   RETURNING id
 )
 SELECT id AS tf_id FROM ins;

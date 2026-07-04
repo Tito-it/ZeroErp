@@ -79,13 +79,13 @@ CREATE TEMP TABLE tmp_so_tpl AS
 WITH t1 AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, attivo)
   VALUES ((SELECT tp_id FROM tmp_so_tp), 'STEP_1', 'Step 1', 1, true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
   RETURNING id
 ),
 t2 AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, attivo)
   VALUES ((SELECT tp_id FROM tmp_so_tp), 'STEP_2', 'Step 2', 2, true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione
   RETURNING id
 )
 SELECT (SELECT id FROM t1) AS tpl1_id, (SELECT id FROM t2) AS tpl2_id;

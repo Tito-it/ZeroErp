@@ -59,18 +59,17 @@ _DOC_SORGENTE_SELECT = """
 """
 
 
-# Scopo: frammento LATERAL del descrittore. `anchor_cond` distingue l'aggancio
-# (per-flusso: percorso/coda; ROOT pratica: dettaglio/lista) ed e' SEMPRE un
-# frammento statico scelto dai metodi del repository, mai input utente.
+# Scopo: frammento LATERAL del descrittore per l'aggancio PER-FLUSSO (percorso/
+# coda): `anchor_cond` = "ps.flusso_id = f.id", SEMPRE statico, mai input utente.
 # COALESCE su risolto: link presente ma dominio senza resolver → false
-# (decisione C del brief design), non NULL. ROOT preferito a parita' di ancora,
-# poi il link piu' recente (ps.id DESC).
-# ⚠️ Regola dell'ANCORA (quale documento rappresenta lo step/la pratica): oggi
-# vive solo qui. La fase GUIDA (D4, brief design §11.4) dovra' risolvere la
-# STESSA ancora a livello motore: quando arrivera', promuovere la regola a
-# vista DB condivisa (es. vw_pratica_doc_sorgente) per non biforcarla.
+# (decisione C del brief design), non NULL.
+# NB l'ancora PRATICA-LEVEL (dettaglio/lista) NON usa piu' questo frammento: e'
+# stata promossa alla vista DB condivisa script.vw_pratica_doc_sorgente (roll-out
+# offerte/ordini/contratti), che accende anche i COLLEGATO senza flusso_id. Qui
+# resta solo il per-flusso, finche' D4 (pinning per-step del COLLEGATO, mappa
+# step→sorgente condivisa con GUIDA) non promuovera' anche questo.
 # Riferimento semantico del fallback: pratiche.fn_stato_sorgente (sentinella
-# UNKNOWN); qui il join diretto alla vista e' la via sancita per le liste
+# UNKNOWN); il join diretto alla vista e' la via sancita per le liste
 # (doc fn_stato_sorgente: "niente N+1").
 def _doc_sorgente_lateral(anchor_cond: str) -> str:
     return f"""
@@ -134,10 +133,16 @@ class PraticheRepository:
         LEFT JOIN config.unita_organizzative uo ON uo.id = p.unita_organizzativa_id
     """
 
-    # Descrittore doc_*: ancora = documento ROOT della pratica (proiezione V10).
-    _PRATICA_JOINS = _PRATICA_JOINS_BASE + _doc_sorgente_lateral(
-        "ps.pratica_id = p.id AND ps.ruolo_link = 'ROOT'"
-    )
+    # Descrittore doc_*: ancora pratica-level = documento PIU' VIVO della pratica
+    # (proiezione V10, roll-out offerte/ordini/contratti). La regola d'ancora
+    # (risolto → non-terminale → ROOT → piu' recente) vive ora nella vista DB
+    # condivisa script.vw_pratica_doc_sorgente (una riga per pratica, DISTINCT ON),
+    # non piu' inline: cosi' i documenti COLLEGATO senza flusso_id (ordine/commessa
+    # da post-smistamento) si accendono a livello pratica. LEFT JOIN: pratica senza
+    # sorgenti → doc_* NULL. Le colonne combaciano con _DOC_SORGENTE_SELECT.
+    _PRATICA_JOINS = _PRATICA_JOINS_BASE + """
+        LEFT JOIN script.vw_pratica_doc_sorgente ds ON ds.pratica_id = p.id
+    """
 
     # -- Metodi pubblici per SQL comuni (usati anche da GenerazioneRepository) --
 
@@ -598,8 +603,12 @@ class PraticheRepository:
                 END AS ramo,
                 {_DOC_SORGENTE_SELECT}
             FROM pratiche.pratiche p
+            -- Percorso definizione-aware (workflow versionati, Fase 1 / companion
+            -- BE-2.2): i template si selezionano per la DEFINIZIONE pinnata sulla
+            -- pratica, non per tipo. Da quando esistono più definizioni dello
+            -- stesso tipo (fork, Fase 2) la join per tipo duplicherebbe le righe.
             JOIN pratiche.template_flussi tf
-              ON tf.tipo_prestazione_id = p.tipo_prestazione_id AND tf.attivo
+              ON tf.definizione_id = p.definizione_id AND tf.attivo
             LEFT JOIN pratiche.azioni_ui au ON au.id = tf.azione_ui_id
             LEFT JOIN pratiche.fn_check_chiusura_pratica(%s) cc
               ON cc.template_flusso_id = tf.id

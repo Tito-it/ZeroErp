@@ -74,7 +74,7 @@ CREATE TEMP TABLE tmp_ps_tf AS
 WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo, ripetibilita)
   VALUES ((SELECT tp_id FROM tmp_ps_tp), 'TEST_PS_STEP', 'Step test', 10, false, true, 'SEMPRE')
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione, ripetibilita = EXCLUDED.ripetibilita
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione = EXCLUDED.descrizione, ripetibilita = EXCLUDED.ripetibilita
   RETURNING id
 )
 SELECT id AS tf_id FROM ins;

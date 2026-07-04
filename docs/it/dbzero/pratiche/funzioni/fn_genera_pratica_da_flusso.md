@@ -25,6 +25,11 @@ DECLARE
     v_stato_flusso_id       config.stati_flussi_pratiche.id%TYPE;
     v_dest_sequenza         pratiche.template_flussi.sequenza%TYPE;
     v_nuova_pratica_id      pratiche.pratiche.id%TYPE;
+    -- D2-8 (Fase 1): remap del template destinazione per codice
+    -- dentro la definizione pinnata della figlia.
+    v_nuova_definizione_id       pratiche.pratiche.definizione_id%TYPE;
+    v_dest_codice                pratiche.template_flussi.codice%TYPE;
+    v_template_dest_effettivo_id pratiche.template_flussi.id%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -34,7 +39,9 @@ BEGIN
     --   figlia; le chiamate successive ritornano l'id esistente.
     --   Copia emittente/soggetto/contesto/priorita, valorizza
     --   pratica_padre_id + flusso_origine_id e, se la regola lo
-    --   dichiara, crea il flusso iniziale della figlia.
+    --   dichiara, crea il flusso iniziale della figlia (template
+    --   destinazione rimappato per codice nella definizione della
+    --   figlia, D2-8 definizione-aware).
     -- =========================================================
 
     -- Guard: parametri obbligatori
@@ -141,6 +148,8 @@ BEGIN
 
     -- Crea pratica target: genealogia completa (fix-2) e
     -- contesto propagato (fix-4, coerente col soggetto copiato).
+    -- definizione_id NON passata: l'auto-pin (BEFORE INSERT) la
+    -- risolve per l'emittente della figlia; RETURNING la rilegge.
     INSERT INTO pratiche.pratiche (
         emittente_fiscale_id,
         tipo_prestazione_id,
@@ -162,7 +171,8 @@ BEGIN
         v_pratica_sorgente_id,
         p_flusso_id
     )
-    RETURNING id INTO v_nuova_pratica_id;
+    RETURNING id, definizione_id
+         INTO v_nuova_pratica_id, v_nuova_definizione_id;
 
     -- Flusso iniziale della figlia (fix-3): solo se la regola
     -- lo dichiara. Il template deve essere senza prerequisiti
@@ -187,11 +197,40 @@ BEGIN
             );
         END IF;
 
-        -- Sequenza dal template (ordinamento percorso coerente).
-        SELECT tf.sequenza
-          INTO v_dest_sequenza
+        -- D2-8: la regola dichiara il template destinazione per id
+        -- (nel preset). Rimappa per CODICE nella definizione PINNATA
+        -- della figlia: con un fork l'id del preset non vi appartiene
+        -- e il guard D2-7 lo bloccherebbe. In Fase 1 (no fork) e' lo
+        -- stesso template. La sequenza viene dal template rimappato.
+        SELECT tf.codice
+          INTO v_dest_codice
           FROM pratiche.template_flussi tf
          WHERE tf.id = v_template_dest_id;
+
+        SELECT tf2.id, tf2.sequenza
+          INTO v_template_dest_effettivo_id, v_dest_sequenza
+          FROM pratiche.template_flussi tf2
+         WHERE tf2.definizione_id = v_nuova_definizione_id
+           AND tf2.codice = v_dest_codice;
+
+        IF NOT FOUND THEN
+            -- La definizione pinnata della figlia non contiene lo
+            -- step dichiarato dalla regola (es. fork che l'ha rimosso).
+            PERFORM script.fn_log_and_raise_error(
+                'database',
+                'fn_genera_pratica_da_flusso',
+                'GENERAZIONE_TEMPLATE_NON_IN_DEFINIZIONE',
+                jsonb_build_object(
+                    'regola_id',              p_regola_id,
+                    'template_dest_codice',   v_dest_codice,
+                    'definizione_figlia_id',  v_nuova_definizione_id,
+                    'pratica_figlia_id',      v_nuova_pratica_id
+                ),
+                NULL::uuid,
+                COALESCE(v_dest_codice, v_template_dest_id::text),
+                v_nuova_definizione_id::text
+            );
+        END IF;
 
         INSERT INTO pratiche.flussi (
             pratica_id,
@@ -200,7 +239,7 @@ BEGIN
             sequenza
         ) VALUES (
             v_nuova_pratica_id,
-            v_template_dest_id,
+            v_template_dest_effettivo_id,
             v_stato_flusso_id,
             COALESCE(v_dest_sequenza, 0)
         );
@@ -211,7 +250,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.fn_genera_pratica_da_flusso(p_flusso_id bigint, p_regola_id bigint)
-IS 'Genera pratica figlia da flusso completato secondo regola di generazione. Idempotente per (flusso, tipo dest): ritorna la figlia esistente. Copia emittente/soggetto/contesto/priorita; valorizza pratica_padre_id e flusso_origine_id; crea il flusso iniziale se la regola dichiara template_flusso_dest_id. Stato iniziale APERTA (data_apertura dal trigger INSERT).';
+IS 'Genera pratica figlia da flusso completato secondo regola di generazione. Idempotente per (flusso, tipo dest): ritorna la figlia esistente. Copia emittente/soggetto/contesto/priorita; valorizza pratica_padre_id e flusso_origine_id; crea il flusso iniziale se la regola dichiara template_flusso_dest_id, RIMAPPANDOLO per codice nella definizione pinnata della figlia (D2-8 definizione-aware; fail-fast 512 se assente). Stato iniziale APERTA.';
 ```
 
 ---

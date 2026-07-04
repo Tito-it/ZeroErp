@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Proiezione stato di dominio — D2: resolver del dominio vendite/OFFERTA.
+# (brief-db-proiezione-stato-dominio-rollout §3; specchio di
+#  vendite.vw_stato_sorgente_preventivo 20260701-16)
+#
+# Espone il descrittore normalizzato dello stato VIVO di ogni offerta
+# commerciale: stato nativo (codice_interno/codice/descrizione, alias FEDELI
+# §6c linee-guida) + mapping D1 (fase/esito/terminale) dichiarato su
+# config.stati_doc_offerte. Read-time, nessun mirror.
+#
+# CHIAVE: (sorgente_tipo_id, sorgente_uid) coerente con pratiche_sorgenti.
+#   - sorgente_tipo_id via config.sorgenti.codice_interno='OFFERTA_COMMERCIALE'
+#     (chiave naturale immutabile, MAI id letterale — §6d linee-guida);
+#   - sorgente_uid = (offerte_commerciali.uid)::text, coerente con
+#     key_selector='uid' del tipo sorgente (come il resolver preventivo).
+# CONTRATTO RESOLVER: al piu' UNA riga per (tipo, uid) — garantito da uid UNIQUE.
+#
+# Consumata da script.vw_stato_sorgente (union di motore, 20260702-09): e' il
+# ramo OFFERTA. Non interrogarla dal motore (layering: engine -> script -> dominio).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260702-06-create-vw-stato-sorgente-offerta-mctit.yaml
+
+  - changeSet:
+      id: 20260702-06-create-vw-stato-sorgente-offerta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        D2: crea vendite.vw_stato_sorgente_offerta, resolver normalizzato del
+        dominio OFFERTA — descrittore (stato nativo + fase/esito/terminale) per
+        (sorgente_tipo_id, sorgente_uid). Ramo della union script.vw_stato_sorgente.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'config'
+                 AND table_name   = 'stati_doc_offerte'
+                 AND column_name  = 'fase';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_offerta AS
+              SELECT
+                  s.id                AS sorgente_tipo_id,
+                  (oc.uid)::text      AS sorgente_uid,
+                  -- Alias FEDELI alla sorgente (§6c): codice_interno = logica
+                  -- (immutabile), codice/descrizione = display (mutabili).
+                  sdo.codice_interno  AS stato_codice_interno,
+                  sdo.codice          AS stato_codice,
+                  sdo.descrizione     AS stato_descrizione,
+                  -- Mapping D1 dichiarato dal dominio (config.stati_doc_offerte).
+                  sdo.fase,
+                  sdo.esito,
+                  sdo.terminale
+                FROM vendite.offerte_commerciali oc
+                JOIN config.sorgenti s
+                  ON s.codice_interno = 'OFFERTA_COMMERCIALE'
+                 AND s.attivo IS TRUE
+                JOIN config.stati_doc_offerte sdo
+                  ON sdo.id = oc.stato_doc_offerta_id;
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_offerta IS
+                'Resolver di dominio D2 (brief-db-proiezione-stato-dominio roll-out): descrittore normalizzato dello stato vivo di ogni offerta commerciale — stato nativo (alias fedeli) + fase/esito/terminale dichiarati su config.stati_doc_offerte. Chiave (sorgente_tipo_id, sorgente_uid) coerente con pratiche_sorgenti (key_selector=uid); al piu'' una riga per chiave. Read-time (nessun mirror). Consumata dal motore solo via script.vw_stato_sorgente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_stato_sorgente_offerta;

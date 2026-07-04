@@ -1354,3 +1354,303 @@ a {
 .p-confirmdialog-mask {
   z-index: 2000 !important;
 }
+
+/* ===================================================================
+ * Dashboard fatturazione — donut transito + layout pagina
+ * (brief-design-dashboard-fatturazione §7). Classi centralizzate:
+ * solo variabili tema, nessun colore hardcoded.
+ * =================================================================== */
+
+/* --- DonutTransito (core/components/charts) --- */
+.app-donut-transito {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.app-donut-transito-plot {
+  position: relative;
+  flex: none;
+}
+
+/* Percentuale al centro del donut (overlay HTML, non canvas). */
+.app-donut-transito-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.app-donut-transito-pct {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--app-text-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-donut-transito-pct-empty {
+  color: var(--app-text-muted);
+  font-weight: 400;
+}
+
+.app-donut-transito-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+}
+
+.app-donut-transito-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: var(--app-font-size-sm);
+}
+
+.app-donut-transito-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.app-donut-transito-label {
+  color: var(--app-text-muted);
+}
+
+.app-donut-transito-value {
+  margin-left: auto;
+  color: var(--app-text-color);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* --- Layout dashboard: pannello mesi + area card --- */
+.app-dash-layout {
+  display: flex;
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Pannello laterale anno + 12 mesi (sempre tutti presenti, D-5). */
+.app-dash-mesi {
+  width: 200px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: 8px;
+  padding: 0.65rem;
+  overflow-y: auto;
+}
+
+.app-dash-anno {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.app-dash-mese-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-text-color);
+  font: inherit;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+}
+
+.app-dash-mese-btn:hover {
+  background: var(--app-table-hover-bg);
+}
+
+.app-dash-mese-btn.is-active {
+  background: var(--app-sidebar-item-active-bg);
+  color: var(--app-sidebar-item-active-color);
+}
+
+.app-dash-mese-nome {
+  flex: 1;
+  text-transform: capitalize;
+}
+
+/* Semaforo mese: ok (tutto transitato) / fermi (con conteggio) / vuoto. */
+.app-dash-mese-ok {
+  color: var(--app-chart-transitato);
+}
+
+.app-dash-mese-fermi {
+  color: var(--app-chart-fermo);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.app-dash-mese-vuoto {
+  color: var(--app-text-muted);
+}
+
+/* Il mese attivo usa il contrast color della selezione, non i colori semaforo
+ * (che sui fondi primary non garantiscono contrasto). */
+.app-dash-mese-btn.is-active .app-dash-mese-ok,
+.app-dash-mese-btn.is-active .app-dash-mese-fermi,
+.app-dash-mese-btn.is-active .app-dash-mese-vuoto {
+  color: var(--app-sidebar-item-active-color);
+}
+
+/* Colonna principale: header competenza + card + totali + fermi.
+ * min-height: 0 e' OBBLIGATORIO: senza, il figlio flex non si restringe e
+ * l'overflow-y non si attiva mai (card sotto il fold irraggiungibili,
+ * visto su piccoli schermi con 2 card per riga). */
+.app-dash-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  overflow-y: auto;
+}
+
+.app-dash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.app-dash-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.75rem;
+}
+
+.app-dash-card {
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  transition: border-color var(--app-transition-fast, 0.15s);
+}
+
+.app-dash-card:hover {
+  border-color: var(--app-card-hover-border);
+}
+
+.app-dash-card.is-selected {
+  border-color: var(--p-primary-color);
+  box-shadow: 0 0 0 1px var(--p-primary-color);
+}
+
+.app-dash-card-title {
+  font-weight: 600;
+  font-size: var(--app-font-size-base);
+}
+
+/* Modalita' 'fraction' di DonutTransito (aree a conteggi, D-2/D-3): frazione
+ * n/n al posto del grafico. L'altezza arriva dalla prop `size` inline (stessa
+ * del plot donut) per allineare le card euro e count senza numeri magici. */
+.app-donut-transito-fraction {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--app-text-color);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Riga riepilogo mese sotto le card. */
+.app-dash-totali {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem 1.5rem;
+  flex-wrap: wrap;
+  color: var(--app-text-muted);
+  font-size: var(--app-font-size-base);
+}
+
+.app-dash-totali strong {
+  color: var(--app-text-color);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sezione drill-down fermi (in pagina, non drawer: confronto card↔dettaglio). */
+.app-dash-fermi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.app-dash-fermi-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/* Stepper compatto anno/mese — solo piccoli schermi. Sostituisce il pannello
+ * 12 mesi: ◀ Mese Anno + semaforo ▶, le card restano sempre visibili sotto.
+ * Il passo mese scavalca l'anno (dic ▶ = gennaio anno successivo). */
+.app-dash-stepper {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex: none;
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-card-border);
+  border-radius: 8px;
+  padding: 0.3rem 0.5rem;
+}
+
+.app-dash-stepper-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+@media (max-width: 767px) {
+  .app-dash-layout {
+    flex-direction: column;
+  }
+
+  /* Il pannello 12 mesi lascia il posto allo stepper compatto. */
+  .app-dash-mesi {
+    display: none;
+  }
+
+  .app-dash-stepper {
+    display: flex;
+  }
+
+  /* Il titolo "Competenza <mese> <anno>" duplicherebbe la label dello
+   * stepper: nascosto su piccoli schermi. */
+  .app-dash-header {
+    display: none;
+  }
+}

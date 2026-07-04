@@ -76,7 +76,7 @@ CREATE TEMP TABLE tmp_ac_tf_a AS WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo)
   VALUES ((SELECT tp_id FROM tmp_ac_tp_a),'AC_STEP1','Step 1',10,true,true),
          ((SELECT tp_id FROM tmp_ac_tp_a),'AC_STEP2','Step 2',20,true,true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione=EXCLUDED.descrizione RETURNING id, codice)
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione=EXCLUDED.descrizione RETURNING id, codice)
 SELECT max(id) FILTER (WHERE codice='AC_STEP1') AS tf1, max(id) FILTER (WHERE codice='AC_STEP2') AS tf2 FROM ins;
 
 -- Tipo B (flusso di chiusura): WORK obbligatorio + CLOSE chiude_pratica (obbligatorio per D4).
@@ -89,7 +89,7 @@ CREATE TEMP TABLE tmp_ac_tf_b AS WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, chiude_pratica, attivo)
   VALUES ((SELECT tp_id FROM tmp_ac_tp_b),'AC_WORK','Lavoro',10,true,false,true),
          ((SELECT tp_id FROM tmp_ac_tp_b),'AC_CLOSE','Chiusura',20,true,true,true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione=EXCLUDED.descrizione RETURNING id, codice)
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione=EXCLUDED.descrizione RETURNING id, codice)
 SELECT max(id) FILTER (WHERE codice='AC_WORK') AS tf_work, max(id) FILTER (WHERE codice='AC_CLOSE') AS tf_close FROM ins;
 
 -- Tipo C (sospesa): 1 obbligatorio.
@@ -101,7 +101,7 @@ SELECT id AS tp_id FROM ins;
 CREATE TEMP TABLE tmp_ac_tf_c AS WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo)
   VALUES ((SELECT tp_id FROM tmp_ac_tp_c),'AC_SOSP_STEP','Step',10,true,true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione=EXCLUDED.descrizione RETURNING id)
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione=EXCLUDED.descrizione RETURNING id)
 SELECT id AS tf_id FROM ins;
 
 -- Tipo D (bare): nessun obbligatorio, nessun flusso di chiusura.
@@ -113,7 +113,7 @@ SELECT id AS tp_id FROM ins;
 CREATE TEMP TABLE tmp_ac_tf_d AS WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo)
   VALUES ((SELECT tp_id FROM tmp_ac_tp_d),'AC_BARE_STEP','Step',10,false,true)
-  ON CONFLICT (tipo_prestazione_id, codice) DO UPDATE SET descrizione=EXCLUDED.descrizione RETURNING id)
+  ON CONFLICT (definizione_id, codice) DO UPDATE SET descrizione=EXCLUDED.descrizione RETURNING id)
 SELECT id AS tf_id FROM ins;
 
 -- Pratiche (tutte create APERTA direttamente)

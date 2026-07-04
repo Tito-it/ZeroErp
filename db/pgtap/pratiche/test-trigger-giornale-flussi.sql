@@ -121,7 +121,7 @@ CREATE TEMP TABLE tmp_gf_tf AS WITH ins AS (
       'TF_GIORN_FL',
       'Template test giornale flussi',
       true
-    ) ON CONFLICT (tipo_prestazione_id, codice) DO
+    ) ON CONFLICT (definizione_id, codice) DO
   UPDATE
   SET descrizione = EXCLUDED.descrizione
   RETURNING id

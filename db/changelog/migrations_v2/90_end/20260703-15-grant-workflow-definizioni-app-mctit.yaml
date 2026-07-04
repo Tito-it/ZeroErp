@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# P0 — sanatoria privilegi runtime su pratiche.workflow_definizioni (+ vista drift).
+# (brief-db-accesso-ruolo-be-definizioni-workflow §0 — regressione Fase 1)
+#
+# La tabella workflow_definizioni (Fase 0) non ha mai ricevuto il grant al ruolo
+# applicativo. Il trigger di pin (trgfn_pratiche_default_definizione) chiama
+# fn_risolvi_definizione (SECURITY INVOKER) su OGNI INSERT di pratica: quella
+# funzione legge workflow_definizioni coi privilegi del chiamante (zeroerp_app,
+# ruolo web) -> "permesso negato" -> il pin aborta -> la creazione di QUALSIASI
+# pratica dal web e' rotta.
+#
+# I grant runtime generici (90_end/ci_apply/20260205-41) girano solo nel context
+# 'ci_apply', quindi in CI la tabella e' accessibile (e pg_prove gira privilegiato):
+# il buco e' invisibile a test/CI e si manifesta solo col vero zeroerp_app. Stessa
+# classe del fix storico 20260608-12 (grant-competenze-flussi-app, smoke test 26).
+#
+# Fix minimo e sicuro: GRANT SELECT su workflow_definizioni al ruolo app. Sblocca:
+#   - il pin alla creazione pratica (fn_risolvi_definizione, SECURITY INVOKER);
+#   - la generazione cross-pratica (fn_genera_pratica_da_flusso risolve la
+#     definizione via la stessa funzione);
+#   - le letture dei guard di immutabilita' Fase 2b (fn_check_definizione_congelata)
+#     quando l'editing di template_flussi/figli parte dal web.
+# vw_definizioni_drift e' security_invoker (gira coi permessi del chiamante) ->
+# serve SELECT sia sulla vista sia sulla tabella sotto: entrambe qui.
+#
+# SOLO lettura: nessuna sequenza (le INSERT sono P1 - fork/pubblica/bootstrap, che
+# andranno rese SECURITY DEFINER in un changeset separato). Idempotente e
+# difensivo (skip se il ruolo manca), valido in ogni contesto. runOnChange: true
+# come gli altri grant runtime mirati (ri-applicabile: e' un GRANT idempotente).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260703-15-grant-workflow-definizioni-app-mctit.yaml
+
+  - changeSet:
+      id: 20260703-15-grant-workflow-definizioni-app
+      author: mctit
+      runOnChange: true
+      comment: >
+        GRANT SELECT su pratiche.workflow_definizioni e pratiche.vw_definizioni_drift
+        al ruolo applicativo zeroerp_app (P0: sblocca la creazione pratica rotta
+        dal pin di Fase 1). Idempotente e difensivo.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+              BEGIN
+                -- Se il ruolo non esiste (es. bootstrap incompleto) non blocchiamo.
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  RAISE NOTICE 'Ruolo % assente: skip grant workflow_definizioni.', v_app_role;
+                  RETURN;
+                END IF;
+
+                EXECUTE format('GRANT USAGE ON SCHEMA pratiche TO %I', v_app_role);
+                EXECUTE format(
+                  'GRANT SELECT ON TABLE pratiche.workflow_definizioni TO %I',
+                  v_app_role
+                );
+                EXECUTE format(
+                  'GRANT SELECT ON pratiche.vw_definizioni_drift TO %I',
+                  v_app_role
+                );
+              END;
+              $$;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+              BEGIN
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  EXECUTE format('REVOKE SELECT ON pratiche.vw_definizioni_drift FROM %I', v_app_role);
+                  EXECUTE format('REVOKE SELECT ON TABLE pratiche.workflow_definizioni FROM %I', v_app_role);
+                END IF;
+              END;
+              $$;

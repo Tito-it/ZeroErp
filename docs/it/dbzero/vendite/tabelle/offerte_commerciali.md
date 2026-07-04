@@ -61,6 +61,7 @@
 | ix_offerte_commerciali_listino_versione | `CREATE INDEX ix_offerte_commerciali_listino_versione ON vendite.offerte_commerciali USING btree (listino_versione_id) WHERE (listino_versione_id IS NOT NULL)` |
 | ix_offerte_commerciali_revisione_padre | `CREATE INDEX ix_offerte_commerciali_revisione_padre ON vendite.offerte_commerciali USING btree (revisione_padre_id) WHERE (revisione_padre_id IS NOT NULL)` |
 | ix_offerte_commerciali_stato_doc | `CREATE INDEX ix_offerte_commerciali_stato_doc ON vendite.offerte_commerciali USING btree (stato_doc_offerta_id)` |
+| ix_offerte_commerciali_uid_text | `CREATE INDEX ix_offerte_commerciali_uid_text ON vendite.offerte_commerciali USING btree (((uid)::text))` |
 | pk_offerte_commerciali | `CREATE UNIQUE INDEX pk_offerte_commerciali ON vendite.offerte_commerciali USING btree (id)` |
 | uq_offerte_commerciali_codice | `CREATE UNIQUE INDEX uq_offerte_commerciali_codice ON vendite.offerte_commerciali USING btree (codice)` |
 | uq_offerte_commerciali_uid | `CREATE UNIQUE INDEX uq_offerte_commerciali_uid ON vendite.offerte_commerciali USING btree (uid)` |

@@ -35,13 +35,13 @@ Fase `_z90_` (effetto a valle del completamento). Indipendente da
 
 1. Scatta solo alla **transizione** di stato verso `COMPLETATO`.
 2. Solo da pratica **APERTA** (SOSPESA/BOZZA/terminale non si auto-chiudono).
-3. Tipo prestazione **con flusso di chiusura** (`template_flussi.chiude_pratica`):
+3. **Definizione pinnata con flusso di chiusura** (`template_flussi.chiude_pratica`):
    chiude **sse** il flusso completato e' quello.
-4. Tipo prestazione **senza flusso di chiusura ma con ≥1 obbligatorio**: chiude
+4. **Definizione pinnata senza flusso di chiusura ma con ≥1 obbligatorio**: chiude
    **sse** [fn_check_pratica_chiudibile](fn_check_pratica_chiudibile.md) — predicato
    **D1**: nessun obbligatorio bloccante **e** nessun flusso istanziato aperto (escluso
    `NEW.id`, gia' terminale).
-5. Tipo **senza obbligatori e senza flusso di chiusura**: **no-op** (nessun percorso
+5. **Definizione senza obbligatori e senza flusso di chiusura**: **no-op** (nessun percorso
    di chiusura deterministico — la pratica resta APERTA).
 6. La chiusura e' un `UPDATE pratiche → CHIUSA` che riusa i guard transizione/chiusura
    e il **giornale** esistenti: l'evento `STATO_CAMBIATO` e' registrato come per la
@@ -58,8 +58,16 @@ Fase `_z90_` (effetto a valle del completamento). Indipendente da
   cosi' il predicato template-based blocca **prima** che serva creare istanze a valle.
   Se un flusso a valle venisse creato su pratica gia' chiusa, il guard pratica-terminale
   fallisce in modo **rumoroso** (err 490): rete fail-safe che rende inutile il deferral.
-* Test: `db/pgtap/pratiche/test-autochiusura-pratica.sql` (modelli A/B) e
-  `test-chiusura-nessun-lavoro-pendente.sql` (bivio + D1).
+* **Fork-aware** (`20260703-14`, completamento Fase 1): il flusso di chiusura (regola 3) e
+  il gate obbligatori (regola 4) sono scopati per `definizione_id` **pinnata** della pratica,
+  **non** per `tipo_prestazione_id`. Con i fork (Fase 2) piu' definizioni condividono il tipo
+  e l'unique `uq_template_flussi_chiusura_definizione` garantisce **un** `chiude_pratica` per
+  definizione: senza il fix la SELECT del template di chiusura leggeva piu' righe (pick
+  arbitrario) e il gate contava obbligatori di edizioni diverse. Con una definizione per tipo
+  il comportamento e' identico a prima.
+* Test: `db/pgtap/pratiche/test-autochiusura-pratica.sql` (modelli A/B),
+  `test-chiusura-nessun-lavoro-pendente.sql` (bivio + D1) e
+  `test-fork-chiusura-per-definizione.sql` (isolamento fork: due definizioni stesso tipo).
 
 ---
 {% include-markdown "signature-core.md" %}

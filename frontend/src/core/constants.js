@@ -215,6 +215,13 @@ export const STATO_FLUSSO = {
   ERRORE: 'ERRORE',
 }
 
+// Stato edizione workflow versionata (pratiche.workflow_definizioni.stato).
+export const STATO_DEFINIZIONE = {
+  BOZZA: 'BOZZA',
+  PUBBLICATA: 'PUBBLICATA',
+  RITIRATA: 'RITIRATA',
+}
+
 // Stato del ramo nel percorso pratica (workflow v2 D4, campo `ramo` del
 // GET /pratiche/<id>/percorso/ — vedi api_percorso.md).
 export const RAMO_STEP = {

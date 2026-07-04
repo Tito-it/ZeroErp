@@ -1,0 +1,216 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_copia_definizione — MOTORE di copia di un'edizione di workflow (D2-10, Fase 2).
+# (brief-db-step-dominio-e-definizioni-versionate Parte 2 / Fase 2)
+#
+# Copia l'header + TUTTI i figli di configurazione di una definizione in una
+# nuova edizione BOZZA, rimappando gli id dei template PER CODICE (il codice e'
+# unico per definizione, quindi e' la chiave naturale del remap). E' l'UNICO
+# punto che elenca il set di copia (contratto C6): aggiungere un figlio =
+# aggiungere un blocco qui, nient'altro.
+#
+# Set di copia (figli "posseduti" dalla definizione via i suoi template):
+#   template_flussi            (header dei template; codice preservato, id nuovo)
+#   template_flussi_canali     (remap template_flusso_id)
+#   template_flussi_handler_eventi (remap template_flusso_id; handler_id globale invariato)
+#   competenze_flussi          (remap template_flusso_id)
+#   template_flussi_prerequisiti (remap DOPPIO: template_flusso_id + prerequisito_id)
+#   formule_tempo              (remap DOPPIO: template_flusso_da_id + _a_id; tipo invariato)
+#   regole_generazione         (remap ORIGINE per codice; dest lasciata invariata —
+#                               fn_genera la rimappa per codice a runtime, D2-8)
+# NON copiati: istanze runtime (flussi, calcoli_tempo) e i valori generati/audit
+# (id, tx_id, storicizza, data_/user_).
+#
+# p_provenance=true (fork): valorizza preset_origine_id/versione_origine (per il
+# drift). p_provenance=false (nuova versione stesso scope): li lascia NULL.
+# La nuova edizione nasce sempre BOZZA (uq_pubblicata non collide) con versione
+# = max(scope)+1 (uq_scope_versione).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260703-06-create-fn-copia-definizione-mctit.yaml
+
+  - changeSet:
+      id: 20260703-06-create-fn-copia-definizione
+      author: mctit
+      runOnChange: false
+      comment: >
+        fn_copia_definizione(sorgente, emittente_dest, provenance): copia header
+        + template + 6 figli in una nuova edizione BOZZA con remap dei template
+        per codice. Unico punto del set di copia (C6).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: workflow_definizioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.fn_copia_definizione(
+                  p_sorgente_id    pratiche.workflow_definizioni.id%TYPE,
+                  p_emittente_dest pratiche.workflow_definizioni.emittente_fiscale_id%TYPE,
+                  p_provenance     boolean
+              )
+              RETURNS pratiche.workflow_definizioni.id%TYPE
+              LANGUAGE plpgsql
+              VOLATILE
+              AS $function$
+              -- Scopo: copiare un'edizione di workflow (header + template + figli)
+              --        in una nuova edizione BOZZA, rimappando i template per
+              --        codice. Motore condiviso di fork e nuova-versione.
+              DECLARE
+                v_tipo_id      pratiche.workflow_definizioni.tipo_prestazione_id%TYPE;
+                v_src_versione pratiche.workflow_definizioni.versione%TYPE;
+                v_src_descr    pratiche.workflow_definizioni.descrizione%TYPE;
+                v_src_meta     pratiche.workflow_definizioni.meta%TYPE;
+                v_versione     pratiche.workflow_definizioni.versione%TYPE;
+                v_new_id       pratiche.workflow_definizioni.id%TYPE;
+              BEGIN
+                IF p_sorgente_id IS NULL OR p_sorgente_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche', 'pratiche.fn_copia_definizione', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','p_sorgente_id','valore',p_sorgente_id),
+                    NULL::uuid, 'p_sorgente_id obbligatorio e > 0');
+                END IF;
+
+                SELECT wd.tipo_prestazione_id, wd.versione, wd.descrizione, wd.meta
+                  INTO v_tipo_id, v_src_versione, v_src_descr, v_src_meta
+                  FROM pratiche.workflow_definizioni wd
+                 WHERE wd.id = p_sorgente_id;
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche', 'pratiche.fn_copia_definizione', 'E_VALORE_MANCANTE',
+                    jsonb_build_object('definizione_sorgente_id', p_sorgente_id),
+                    NULL::uuid, concat('workflow_definizioni id ', p_sorgente_id));
+                END IF;
+
+                -- Versione progressiva nello scope (tipo, emittente destinazione).
+                SELECT COALESCE(MAX(wd.versione), 0) + 1
+                  INTO v_versione
+                  FROM pratiche.workflow_definizioni wd
+                 WHERE wd.tipo_prestazione_id = v_tipo_id
+                   AND wd.emittente_fiscale_id IS NOT DISTINCT FROM p_emittente_dest;
+
+                -- Header nuova edizione (BOZZA).
+                INSERT INTO pratiche.workflow_definizioni
+                       (tipo_prestazione_id, emittente_fiscale_id, versione, stato,
+                        preset_origine_id, versione_origine, descrizione, meta)
+                VALUES (v_tipo_id, p_emittente_dest, v_versione, 'BOZZA',
+                        CASE WHEN p_provenance THEN p_sorgente_id ELSE NULL END,
+                        CASE WHEN p_provenance THEN v_src_versione ELSE NULL END,
+                        v_src_descr, v_src_meta)
+                RETURNING id INTO v_new_id;
+
+                -- 1) Template (codice preservato; definizione_id = nuova; id nuovo).
+                INSERT INTO pratiche.template_flussi
+                       (tipo_prestazione_id, handler_id, codice, descrizione, sequenza,
+                        obbligatorio, direzione, attivo, meta, handler_params, ripetibilita,
+                        chiude_pratica, azione_ui_id, modalita_esito, esito_default,
+                        obsoleto_dal, definizione_id)
+                SELECT tf.tipo_prestazione_id, tf.handler_id, tf.codice, tf.descrizione,
+                       tf.sequenza, tf.obbligatorio, tf.direzione, tf.attivo, tf.meta,
+                       tf.handler_params, tf.ripetibilita, tf.chiude_pratica, tf.azione_ui_id,
+                       tf.modalita_esito, tf.esito_default, tf.obsoleto_dal, v_new_id
+                  FROM pratiche.template_flussi tf
+                 WHERE tf.definizione_id = p_sorgente_id;
+
+                -- 2) Canali (remap singolo per codice).
+                INSERT INTO pratiche.template_flussi_canali
+                       (template_flusso_id, canale_id, attivo)
+                SELECT nt.id, c.canale_id, c.attivo
+                  FROM pratiche.template_flussi_canali c
+                  JOIN pratiche.template_flussi ot
+                       ON ot.id = c.template_flusso_id AND ot.definizione_id = p_sorgente_id
+                  JOIN pratiche.template_flussi nt
+                       ON nt.definizione_id = v_new_id AND nt.codice = ot.codice;
+
+                -- 3) Handler-eventi (remap singolo; handler_id globale invariato).
+                INSERT INTO pratiche.template_flussi_handler_eventi
+                       (template_flusso_id, evento, esito_richiesto, handler_id,
+                        handler_params, sequenza, attivo)
+                SELECT nt.id, e.evento, e.esito_richiesto, e.handler_id,
+                       e.handler_params, e.sequenza, e.attivo
+                  FROM pratiche.template_flussi_handler_eventi e
+                  JOIN pratiche.template_flussi ot
+                       ON ot.id = e.template_flusso_id AND ot.definizione_id = p_sorgente_id
+                  JOIN pratiche.template_flussi nt
+                       ON nt.definizione_id = v_new_id AND nt.codice = ot.codice;
+
+                -- 4) Competenze (remap singolo).
+                INSERT INTO pratiche.competenze_flussi
+                       (template_flusso_id, unita_organizzativa_id, risorsa_umana_id, attivo, meta)
+                SELECT nt.id, cf.unita_organizzativa_id, cf.risorsa_umana_id, cf.attivo, cf.meta
+                  FROM pratiche.competenze_flussi cf
+                  JOIN pratiche.template_flussi ot
+                       ON ot.id = cf.template_flusso_id AND ot.definizione_id = p_sorgente_id
+                  JOIN pratiche.template_flussi nt
+                       ON nt.definizione_id = v_new_id AND nt.codice = ot.codice;
+
+                -- 5) Prerequisiti (remap DOPPIO: entrambi i lati sono template della
+                --    stessa definizione).
+                INSERT INTO pratiche.template_flussi_prerequisiti
+                       (template_flusso_id, prerequisito_id, esito_richiesto)
+                SELECT nt.id, np.id, p.esito_richiesto
+                  FROM pratiche.template_flussi_prerequisiti p
+                  JOIN pratiche.template_flussi ot
+                       ON ot.id = p.template_flusso_id AND ot.definizione_id = p_sorgente_id
+                  JOIN pratiche.template_flussi op
+                       ON op.id = p.prerequisito_id AND op.definizione_id = p_sorgente_id
+                  JOIN pratiche.template_flussi nt
+                       ON nt.definizione_id = v_new_id AND nt.codice = ot.codice
+                  JOIN pratiche.template_flussi np
+                       ON np.definizione_id = v_new_id AND np.codice = op.codice;
+
+                -- 6) Formule tempo (remap DOPPIO da/a; tipo_prestazione_id invariato).
+                INSERT INTO pratiche.formule_tempo
+                       (tipo_prestazione_id, template_flusso_da_id, template_flusso_a_id,
+                        giorni_esecuzione, giorni_warning, giorni_critico, attivo, descrizione, meta)
+                SELECT ft.tipo_prestazione_id, nda.id, na.id,
+                       ft.giorni_esecuzione, ft.giorni_warning, ft.giorni_critico,
+                       ft.attivo, ft.descrizione, ft.meta
+                  FROM pratiche.formule_tempo ft
+                  JOIN pratiche.template_flussi oda
+                       ON oda.id = ft.template_flusso_da_id AND oda.definizione_id = p_sorgente_id
+                  JOIN pratiche.template_flussi oa
+                       ON oa.id = ft.template_flusso_a_id AND oa.definizione_id = p_sorgente_id
+                  JOIN pratiche.template_flussi nda
+                       ON nda.definizione_id = v_new_id AND nda.codice = oda.codice
+                  JOIN pratiche.template_flussi na
+                       ON na.definizione_id = v_new_id AND na.codice = oa.codice;
+
+                -- 7) Regole generazione (remap ORIGINE per codice; dest lasciata
+                --    invariata: fn_genera_pratica_da_flusso la rimappa per codice a
+                --    runtime nella definizione pinnata della figlia, D2-8).
+                INSERT INTO pratiche.regole_generazione
+                       (template_flusso_origine_id, tipo_prestazione_dest_id,
+                        template_flusso_dest_id, esito_richiesto, auto, attivo, descrizione, meta)
+                SELECT no.id, rg.tipo_prestazione_dest_id, rg.template_flusso_dest_id,
+                       rg.esito_richiesto, rg.auto, rg.attivo, rg.descrizione, rg.meta
+                  FROM pratiche.regole_generazione rg
+                  JOIN pratiche.template_flussi oo
+                       ON oo.id = rg.template_flusso_origine_id AND oo.definizione_id = p_sorgente_id
+                  JOIN pratiche.template_flussi no
+                       ON no.definizione_id = v_new_id AND no.codice = oo.codice;
+
+                RETURN v_new_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_copia_definizione(integer, bigint, boolean)
+                IS 'Motore di copia di un''edizione di workflow: header + template + 6 figli (canali, handler_eventi, competenze, prerequisiti, formule_tempo, regole_generazione) in una nuova edizione BOZZA, con remap dei template per codice. Unico punto del set di copia (C6). p_provenance=true valorizza preset_origine_id/versione_origine (fork). Usato da fn_fork_definizione e fn_nuova_versione_definizione.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS pratiche.fn_copia_definizione(integer, bigint, boolean);

@@ -8,6 +8,15 @@
 
 from django.urls import path
 
+from apps.pratiche.api.views_definizioni import (
+    ApiDefinizioneDettaglio,
+    ApiDefinizioneFork,
+    ApiDefinizioneNuovaVersione,
+    ApiDefinizionePubblica,
+    ApiDefinizioneStepDetail,
+    ApiDefinizioneSteps,
+    ApiDefinizioniWorkflow,
+)
 from apps.pratiche.api.views import (
     ApiCodaLavoro,
     ApiCompetenzaFlussoDetail,
@@ -50,6 +59,14 @@ urlpatterns = [
     path("competenze-flussi/<int:competenza_id>/", ApiCompetenzaFlussoDetail.as_view(), name="pratiche-competenza-flusso-detail"),
     # --- Formule tempo ---
     path("formule-tempo/", ApiFormuleTempo.as_view(), name="pratiche-formule-tempo"),
+    # --- Definizioni workflow versionate (admin, Fase 2) ---
+    path("definizioni/", ApiDefinizioniWorkflow.as_view(), name="pratiche-definizioni-list"),
+    path("definizioni/<int:definizione_id>/", ApiDefinizioneDettaglio.as_view(), name="pratiche-definizione-detail"),
+    path("definizioni/<int:definizione_id>/fork/", ApiDefinizioneFork.as_view(), name="pratiche-definizione-fork"),
+    path("definizioni/<int:definizione_id>/nuova-versione/", ApiDefinizioneNuovaVersione.as_view(), name="pratiche-definizione-nuova-versione"),
+    path("definizioni/<int:definizione_id>/pubblica/", ApiDefinizionePubblica.as_view(), name="pratiche-definizione-pubblica"),
+    path("definizioni/<int:definizione_id>/steps/", ApiDefinizioneSteps.as_view(), name="pratiche-definizione-steps"),
+    path("definizioni/<int:definizione_id>/steps/<int:step_id>/", ApiDefinizioneStepDetail.as_view(), name="pratiche-definizione-step-detail"),
     # --- Pratiche ---
     path("", ApiPraticheList.as_view(), name="pratiche-list"),
     path("<int:pratica_id>/", ApiPraticaDetail.as_view(), name="pratiche-detail"),

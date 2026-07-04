@@ -50,6 +50,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_preventivi_emittente_fiscale_id | `CREATE INDEX ix_preventivi_emittente_fiscale_id ON vendite.preventivi USING btree (emittente_fiscale_id)` |
+| ix_preventivi_uid_text | `CREATE INDEX ix_preventivi_uid_text ON vendite.preventivi USING btree (((uid)::text))` |
 | pk_preventivi | `CREATE UNIQUE INDEX pk_preventivi ON vendite.preventivi USING btree (id)` |
 | uq_preventivi_numero_rev | `CREATE UNIQUE INDEX uq_preventivi_numero_rev ON vendite.preventivi USING btree (numero, rev)` |
 | uq_preventivi_uid | `CREATE UNIQUE INDEX uq_preventivi_uid ON vendite.preventivi USING btree (uid)` |

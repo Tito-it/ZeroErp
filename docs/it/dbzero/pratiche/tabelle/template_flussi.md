@@ -27,6 +27,7 @@
 | modalita_esito | character varying | NO | 'MANUALE'::character varying |
 | esito_default | character varying | YES |  |
 | obsoleto_dal | date | YES |  |
+| definizione_id | integer | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -36,31 +37,35 @@
 | CHECK | chk_template_flussi_modalita_esito |  |
 | CHECK | chk_template_flussi_ripetibilita |  |
 | FOREIGN KEY | fk_template_flussi_azione_ui | azione_ui_id |
+| FOREIGN KEY | fk_template_flussi_definizione | definizione_id, tipo_prestazione_id |
 | FOREIGN KEY | fk_template_flussi_esito_default | esito_default |
 | FOREIGN KEY | fk_template_flussi_handler | handler_id |
 | FOREIGN KEY | fk_template_flussi_tipo_prestazione | tipo_prestazione_id |
 | PRIMARY KEY | pk_pratiche_template_flussi | id |
-| UNIQUE | uq_pratiche_template_flussi_tipo_codice | tipo_prestazione_id, codice |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_pratiche_template_flussi | `CREATE UNIQUE INDEX pk_pratiche_template_flussi ON pratiche.template_flussi USING btree (id)` |
-| uq_pratiche_template_flussi_tipo_codice | `CREATE UNIQUE INDEX uq_pratiche_template_flussi_tipo_codice ON pratiche.template_flussi USING btree (tipo_prestazione_id, codice)` |
-| uq_template_flussi_chiusura | `CREATE UNIQUE INDEX uq_template_flussi_chiusura ON pratiche.template_flussi USING btree (tipo_prestazione_id) WHERE chiude_pratica` |
+| uq_template_flussi_chiusura_definizione | `CREATE UNIQUE INDEX uq_template_flussi_chiusura_definizione ON pratiche.template_flussi USING btree (definizione_id) WHERE chiude_pratica` |
+| uq_template_flussi_definizione_codice | `CREATE UNIQUE INDEX uq_template_flussi_definizione_codice ON pratiche.template_flussi USING btree (definizione_id, codice)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_template_flussi_a10_azioni_ui_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'azioni_ui', 'attivo', 'azione_ui_id', 'id')` |
 | trg_template_flussi_a10_azioni_ui_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'azioni_ui', 'attivo', 'azione_ui_id', 'id')` |
+| trg_template_flussi_a10_azioni_ui_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'azioni_ui', 'attivo', 'azione_ui_id', 'id')` |
 | trg_template_flussi_a10_competenze_flussi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'competenze_flussi', 'template_flusso_id', 'id', 'attivo')` |
+| trg_template_flussi_a10_default_definizione_ins | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_default_definizione()` |
 | trg_template_flussi_a10_flussi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'flussi', 'template_flusso_id', 'id', 'attivo')` |
 | trg_template_flussi_a10_formule_tempo_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'formule_tempo', 'template_flusso_a_id', 'id', 'attivo')` |
+| trg_template_flussi_a10_guard_immutabile_iud | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()` |
+| trg_template_flussi_a10_guard_immutabile_iud | BEFORE | DELETE | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()` |
+| trg_template_flussi_a10_guard_immutabile_iud | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()` |
 | trg_template_flussi_a10_guard_modalita_esito_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()` |
 | trg_template_flussi_a10_guard_modalita_esito_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_guard_modalita_esito()` |
-| trg_template_flussi_a10_handler_flussi_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'handler_flussi', 'attivo', 'handler_id', 'id')` |
 | trg_template_flussi_a10_handler_flussi_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'handler_flussi', 'attivo', 'handler_id', 'id')` |
+| trg_template_flussi_a10_handler_flussi_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'handler_flussi', 'attivo', 'handler_id', 'id')` |
 | trg_template_flussi_a10_regole_generazione_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'regole_generazione', 'template_flusso_dest_id', 'id', 'attivo')` |
 | trg_template_flussi_a10_template_flussi_canali_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'template_flussi_canali', 'template_flusso_id', 'id', 'attivo')` |
 | trg_template_flussi_a10_template_flussi_handler_eventi_b_3bd6a7 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'template_flussi_handler_eventi', 'template_flusso_id', 'id', 'attivo')` |

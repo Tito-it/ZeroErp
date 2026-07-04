@@ -217,25 +217,25 @@ onUnmounted(() => { window.removeEventListener('resize', recalcScrollHeight) })
       selection-mode="single"
       data-key="id"
     >
-      <Column field="codice" :header="t('pratiche.col_codice')" sortable style="width: 140px;" />
-      <Column field="tipo_prestazione_descrizione" :header="t('pratiche.col_tipo_prestazione')" sortable style="width: 160px;" />
+      <Column field="codice" :header="t('pratiche.col_codice')" sortable style="width: 110px;" />
+      <Column field="tipo_prestazione_descrizione" :header="t('pratiche.col_tipo_prestazione')" sortable style="width: 200px;" />
       <Column field="soggetto_display" :header="t('pratiche.col_soggetto')" sortable style="width: 200px;" />
-      <Column field="stato_descrizione" :header="t('pratiche.col_stato')" sortable style="width: 110px;">
-        <template #body="{ data }">
-          <Tag :value="data.stato_descrizione" :severity="statoPraticaSeverity(data.stato_codice_interno)" />
-        </template>
-      </Column>
-      <Column field="priorita_descrizione" :header="t('pratiche.col_priorita')" sortable style="width: 110px;">
-        <template #body="{ data }">
-          <Tag v-if="data.priorita_descrizione" :value="data.priorita_descrizione" :severity="prioritaPraticaSeverity(data.priorita_codice_interno)" />
-        </template>
-      </Column>
       <Column field="risorsa_umana_display" :header="t('pratiche.col_assegnata_a')" sortable style="width: 160px;" />
       <Column field="data_scadenza" :header="t('pratiche.col_data_scadenza')" sortable style="width: 110px;">
         <template #body="{ data }">{{ displayDate(data.data_scadenza) }}</template>
       </Column>
       <Column field="data_apertura" :header="t('pratiche.col_data_apertura')" sortable style="width: 110px;">
         <template #body="{ data }">{{ displayDate(data.data_apertura) }}</template>
+      </Column>
+      <Column field="priorita_descrizione" :header="t('pratiche.col_priorita')" sortable style="width: 110px;">
+        <template #body="{ data }">
+          <Tag v-if="data.priorita_descrizione" :value="data.priorita_descrizione" :severity="prioritaPraticaSeverity(data.priorita_codice_interno)" />
+        </template>
+      </Column>
+      <Column field="stato_descrizione" :header="t('pratiche.col_stato')" sortable style="width: 110px;">
+        <template #body="{ data }">
+          <Tag :value="data.stato_descrizione" :severity="statoPraticaSeverity(data.stato_codice_interno)" />
+        </template>
       </Column>
     </DataTable>
     </template>

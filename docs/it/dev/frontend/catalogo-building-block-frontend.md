@@ -439,6 +439,12 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 | `SessioniAttivePanel` | [SessioniAttivePanel.vue](../../../../frontend/src/core/components/SessioniAttivePanel.vue) | Pannello sessioni attive (readonly) |
 | `AiAssistantDrawer` | [AiAssistantDrawer.vue](../../../../frontend/src/core/components/AiAssistantDrawer.vue) | Interfaccia chat assistente AI |
 
+### Grafici (`src/core/components/charts/`)
+
+| Componente | File | Descrizione |
+|---|---|---|
+| `DonutTransito` | [charts/DonutTransito.vue](../../../../frontend/src/core/components/charts/DonutTransito.vue) | **Unico wrapper chart.js dell'app (decisione D-1 dashboard fatturazione, 2026-07-03).** Le view NON parlano mai con chart.js direttamente: passano da qui. Visualizza "transitato vs fermo" in due modalita': `mode="donut"` (default, donut a 2 spicchi via PrimeVue `<Chart>` + percentuale al centro, per valori in euro) e `mode="fraction"` (frazione n/n grande al posto del grafico, stessa altezza e mini-legenda, per aree a conteggi). Palette SOLO da variabili `theme.css` (`--app-chart-transitato`/`-fermo`/`-track`, coppia green-600/orange-600 validata CVD+contrasto su dark/light; mai colori hardcoded, `feedback_css_centralizzazione`); risoluzione `getComputedStyle` cachata a livello modulo per tema (una sola lettura per toggle dark/light, non per istanza). Options chart STATICHE (non computed) per evitare il destroy+reinit di PrimeVue `<Chart>` a ogni ricalcolo. Props: `transitato` (Number), `fermo` (Number), `mode` (`donut`\|`fraction`), `format` (`currency`\|`count`), `labelTransitato`/`labelFermo` (i18n dal caller), `size` (px, default 132). Identita' mai solo-colore: percentuale/frazione + legenda con dot+etichetta+valore. Consumer: `DashboardFatturazioneView`. |
+
 ### Lookup geografico (condivisi)
 
 | Componente | File | Descrizione |

@@ -87,6 +87,8 @@
 | ix_commesse_attivita_commessa_stati | `CREATE INDEX ix_commesse_attivita_commessa_stati ON vendite.commesse_attivita USING btree (commessa_id, stato_approvazione, stato_emissione)` |
 | ix_commesse_attivita_lane_candidate | `CREATE INDEX ix_commesse_attivita_lane_candidate ON vendite.commesse_attivita USING btree (commessa_id, competenza_mese, tipo_doc_fiscale_id) WHERE (((stato_emissione)::text = 'NON_EMESSA'::text) AND ((stato_approvazione)::text = 'APPROVATA'::text) AND (tipo_doc_fiscale_id IS NOT NULL))` |
 | ix_commesse_attivita_origine_prezzo | `CREATE INDEX ix_commesse_attivita_origine_prezzo ON vendite.commesse_attivita USING btree (origine_prezzo)` |
+| ix_commesse_attivita_segment_key | `CREATE INDEX ix_commesse_attivita_segment_key ON vendite.commesse_attivita USING btree (segment_key)` |
+| ix_commesse_attivita_sorgente_competenza | `CREATE INDEX ix_commesse_attivita_sorgente_competenza ON vendite.commesse_attivita USING btree (sorgente_uid, competenza_mese) WHERE (sorgente_uid IS NOT NULL)` |
 | pk_commesse_attivita | `CREATE UNIQUE INDEX pk_commesse_attivita ON vendite.commesse_attivita USING btree (id)` |
 | uq_commesse_attivita_commessa_segment | `CREATE UNIQUE INDEX uq_commesse_attivita_commessa_segment ON vendite.commesse_attivita USING btree (commessa_id, segment_key)` |
 
