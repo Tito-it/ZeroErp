@@ -1,0 +1,162 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Lente 1 Competenza — vista di dettaglio a grana ATTIVITA' (brief-db
+# fatturazione-due-lenti §4.1; design due-lenti §4, decisioni DL-2/5/8).
+#
+# Spina dati (tutta a valle, competenza VERA — nessun proxy):
+#   commesse_attivita (competenza_mese) -> attivita_fatturabili (1:1 via
+#   UNIQUE commessa_attivita_id) -> fatture_righe -> fatture -> stato fiscale.
+#
+# STADI del funnel (blocchi 1-2-3 del design, formato colonna 'stadio'):
+#   DA_APPROVARE          = non emessa, non approvata (BOZZA reale: i void sono
+#                           gia' esclusi dal WHERE)
+#   DA_EMETTERE           = approvata, non ancora emessa
+#   EMESSA_NON_FATTURATA  = emessa (riga AF presente), fattura_riga_id NULL
+#   FATTURATA             = fattura_riga_id valorizzato (breakdown 3a via
+#                           stato_fattura_codice_interno)
+#
+# RECUPERI TARDIVI (DL-5, validazione 2026-07-06): data_emissione =
+# attivita_fatturabili.data_insert. Affidabile: la riga AF nasce una volta sola
+# all'emissione, mai DELETE in produzione, il reset lotto (fn_cleanup_fatture_
+# by_ids) fa solo UPDATE (azzera fattura_riga_id, data_insert intatta), nessuna
+# re-emissione possibile. Caveat C1 (documentato nel manuale): il ramo UPDATE
+# di fn_emit cerca per sorgente_uid senza commessa_id -> una collisione di
+# segment_key erediterebbe un data_insert PIU' VECCHIO (il flag ritardo puo'
+# solo sotto-stimare, mai falso positivo). emessa_in_ritardo = mese(data_insert)
+# > competenza_mese.
+#
+# MISURA (DB-6): valore = prezzo_snapshot * quantita su TUTTI gli stadi
+# (omogeneita' del funnel, stessa misura del resolver commesse);
+# valore_fatturato = fatture_righe.imponibile_riga come riconciliazione.
+#
+# PREDICATO COMPUTABILE: riuso identico di 20260703-61 (esclude attivita' void:
+# ANNULLATA; RIFIUTATA se non gia' EMESSA) + commessa viva (testata non
+# ANNULLATA: i void di testata qui si escludono, non si marcano).
+#
+# SCOPE EMITTENTE (DB-8): commesse/AF/fatture sono fuori RLS operatori ->
+# stesso scope GUC fail-closed del resolver commesse (fn_get_emittenti_scope_
+# sr_ids: NULL=tutto, '{}'=niente, array=whitelist). security_invoker=on
+# (standard liste) per coerenza con le catene RLS sottostanti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260706-09-create-vw-dash-competenza-attivita-mctit.yaml
+
+  - changeSet:
+      id: 20260706-09-create-vw-dash-competenza-attivita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Lente 1 Competenza: vista di dettaglio a grana attivita' di commessa
+        (stadi DA_APPROVARE/DA_EMETTERE/EMESSA_NON_FATTURATA/FATTURATA,
+        emessa_in_ritardo da attivita_fatturabili.data_insert, valore snapshot
+        + valore_fatturato di riconciliazione, scope emittente GUC fail-closed).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: '1'
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_get_emittenti_scope_sr_ids';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+              WITH (security_invoker = on) AS
+              SELECT
+                  ca.competenza_mese,
+                  co.id                                          AS commessa_id,
+                  (co.codice)::text                              AS commessa_codice,
+                  ca.id                                          AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa::text               AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  -- Stadio del funnel: i primi due rami valgono per attivita' non
+                  -- emesse (BOZZA reale vs approvata da emettere: i void sono gia'
+                  -- fuori dal WHERE); gli ultimi due seguono l'aggancio fattura.
+                  CASE
+                    WHEN ca.stato_emissione <> 'EMESSA'
+                         AND ca.stato_approvazione <> 'APPROVATA' THEN 'DA_APPROVARE'
+                    WHEN ca.stato_emissione <> 'EMESSA'           THEN 'DA_EMETTERE'
+                    WHEN af.fattura_riga_id IS NULL               THEN 'EMESSA_NON_FATTURATA'
+                    ELSE 'FATTURATA'
+                  END::varchar                                   AS stadio,
+                  -- Misura unica del funnel (DB-6): stessa formula del resolver commesse.
+                  (COALESCE(ca.prezzo_snapshot, 0) * ca.quantita) AS valore,
+                  af.data_insert                                 AS data_emissione,
+                  -- Recupero tardivo: emessa in un mese successivo alla competenza.
+                  -- NULL per le attivita' non ancora emesse (nessuna riga AF).
+                  CASE
+                    WHEN af.id IS NULL THEN NULL
+                    ELSE (date_trunc('month', af.data_insert))::date > ca.competenza_mese
+                  END                                            AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id                                           AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno                                         AS fattura_anno,
+                  f.serie                                        AS fattura_serie,
+                  f.numero                                       AS fattura_numero,
+                  sdf.codice_interno                             AS stato_fattura_codice_interno,
+                  sdf.codice                                     AS stato_fattura_codice,
+                  -- Riconciliazione (DB-6): il valore realmente in fattura.
+                  fr.imponibile_riga                             AS valore_fatturato,
+                  COALESCE(f.critical, false)                    AS fattura_critical
+                FROM vendite.commesse co
+                JOIN vendite.stati_commessa sc
+                  ON sc.id = co.stato_commessa_id
+                JOIN vendite.commesse_attivita ca
+                  ON ca.commessa_id = co.id
+                -- 1:1 garantito da uq_attivita_fatturabili_commessa_attivita.
+                LEFT JOIN vendite.attivita_fatturabili af
+                  ON af.commessa_attivita_id = ca.id
+                LEFT JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                LEFT JOIN vendite.fatture f        ON f.id = fr.fattura_id
+                LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = f.stato_doc_fiscale_id
+                -- Cliente = intestatario BA (stesso path del resolver commesse).
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = co.billing_account_id
+                LEFT JOIN anagrafiche.soggetti_ruoli sr  ON sr.id = ba.soggetto_ruolo_id
+                LEFT JOIN anagrafiche.soggetti s         ON s.id = sr.soggetto_id
+                -- Scope emittente (commesse fuori RLS): valutato UNA volta da GUC.
+                -- NULL=super-admin (tutto), '{}'=GUC vuota/no-scope (niente),
+                -- array=whitelist. Fail-closed by design.
+                CROSS JOIN LATERAL (
+                  SELECT script.fn_get_emittenti_scope_sr_ids(
+                           NULLIF(current_setting('app.current_user_id', true), '')::integer
+                         ) AS sr_ids
+                ) escope
+               WHERE (escope.sr_ids IS NULL
+                      OR co.emittente_soggetto_ruolo_id = ANY(escope.sr_ids))
+                 -- Commessa viva: le testate ANNULLATE sono void, escluse (la Lente 1
+                 -- non le marca come abortite: non appartengono al funnel).
+                 AND sc.codice_interno <> 'ANNULLATA'
+                 -- Predicato "computabile" (riuso 20260703-61): esclude attivita' void.
+                 AND ca.stato_emissione <> 'ANNULLATA'
+                 AND (ca.stato_approvazione <> 'RIFIUTATA'
+                      OR ca.stato_emissione = 'EMESSA');
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_attivita IS
+                'Lente 1 Competenza (due lenti): dettaglio a grana attivita'' di commessa, competenza VERA (ca.competenza_mese). Stadi funnel: DA_APPROVARE / DA_EMETTERE / EMESSA_NON_FATTURATA / FATTURATA (+ stato_fattura_codice_interno per il breakdown 3a). valore = prezzo_snapshot*quantita su tutti gli stadi (DB-6); valore_fatturato = imponibile_riga (riconciliazione). data_emissione = attivita_fatturabili.data_insert (DL-5, validata 2026-07-06: mai spostata da reset/re-fatturazione; caveat C1 nel manuale); emessa_in_ritardo = mese(data_emissione) > competenza_mese. Esclude commesse ANNULLATE e attivita'' void (predicato 20260703-61). SCOPE EMITTENTE via fn_get_emittenti_scope_sr_ids(GUC app.current_user_id): NULL=tutto, ''{}''=niente (fail-closed: senza GUC 0 righe), array=whitelist. security_invoker=on. Consumata da vw_dash_competenza_mensile e dal drill-down BE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_attivita;

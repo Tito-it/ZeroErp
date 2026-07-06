@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Lente 1 Competenza — blocco 4 "errori" (brief-db §4.3; design due-lenti §4
+# blocco 4, assorbe le idee §12.3 del brief pre-fatturazione).
+#
+# Due popolazioni di "errore vivo", unite con regola di competenza esplicita:
+#
+# 1) TASK_ERRORE — vendite.fatturazione_lotti_task_runs con task_stato='ERRORE'
+#    e attivo, NON superato da un run COMPLETATO successivo sulla stessa chiave
+#    (lotto_id, stato_doc_fiscale_id, task_code): un retry riuscito "spegne"
+#    l'errore. Competenza = fatturazione_lotti.competenza_mese (NOT NULL).
+#
+# 2) FATTURA_CRITICA — vendite.fatture.critical IS TRUE (flag mantenuto dai
+#    trigger di sync su fatture_log; si spegne quando il log critico viene
+#    disabilitato/risolto). messaggio = ultimo log non disabilitato della
+#    fattura. Competenza (DB-7, in ordine):
+#      a) mese del lotto collegato (fatturazione_lotti_fatture);
+#      b) mesi DISTINTI delle attivita' fatturabili collegate (una riga per
+#         mese) — solo fatture senza lotto;
+#      c) fallback: mese della data fattura (fatture manuali senza AF).
+#
+# SCOPE EMITTENTE (DB-8): stesso scope GUC fail-closed delle altre viste della
+# famiglia (lotti e fatture hanno emittente_soggetto_ruolo_id NOT NULL).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260706-11-create-vw-dash-competenza-errori-mctit.yaml
+
+  - changeSet:
+      id: 20260706-11-create-vw-dash-competenza-errori
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Lente 1 Competenza blocco 4: errori vivi della pipeline per mese di
+        competenza (task run in ERRORE non superati + fatture critical), con
+        regola di competenza lotto -> mesi AF -> mese data fattura (DB-7) e
+        scope emittente GUC fail-closed.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: vendite, tableName: fatturazione_lotti_task_runs }
+        - tableExists: { schemaName: vendite, tableName: fatturazione_lotti_fatture }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_errori
+              WITH (security_invoker = on) AS
+              WITH escope AS (
+                  -- Scope emittente da GUC, valutato una volta (fail-closed).
+                  SELECT script.fn_get_emittenti_scope_sr_ids(
+                           NULLIF(current_setting('app.current_user_id', true), '')::integer
+                         ) AS sr_ids
+              ),
+              task_err AS (
+                  -- Errore "vivo": run ERRORE attivo non superato da un run
+                  -- COMPLETATO successivo sulla stessa chiave (lotto, step, task).
+                  SELECT tr.lotto_id,
+                         tr.task_code,
+                         tr.tentativo,
+                         tr.error_code,
+                         tr.error_message,
+                         tr.started_at
+                    FROM vendite.fatturazione_lotti_task_runs tr
+                   WHERE tr.task_stato = 'ERRORE'
+                     AND tr.attivo IS TRUE
+                     AND NOT EXISTS (
+                           SELECT 1
+                             FROM vendite.fatturazione_lotti_task_runs tr2
+                            WHERE tr2.lotto_id = tr.lotto_id
+                              AND tr2.stato_doc_fiscale_id IS NOT DISTINCT FROM tr.stato_doc_fiscale_id
+                              AND tr2.task_code = tr.task_code
+                              AND tr2.tentativo > tr.tentativo
+                              AND tr2.task_stato = 'COMPLETATO'
+                              AND tr2.attivo IS TRUE)
+              ),
+              fatture_critiche AS (
+                  SELECT f.id,
+                         f.anno,
+                         f.serie,
+                         f.numero,
+                         f.data,
+                         f.emittente_soggetto_ruolo_id,
+                         ll.messaggio,
+                         ll.data_ora
+                    FROM vendite.fatture f
+                    -- Ultimo log non disabilitato = messaggio parlante dell'errore.
+                    LEFT JOIN LATERAL (
+                          SELECT fl.messaggio, fl.data_ora
+                            FROM vendite.fatture_log fl
+                           WHERE fl.fattura_id = f.id
+                             AND fl.disabilitato IS FALSE
+                           ORDER BY fl.data_ora DESC
+                           LIMIT 1
+                         ) ll ON true
+                   WHERE f.critical IS TRUE
+              ),
+              fatture_competenze AS (
+                  -- DB-7 (a): mese del lotto collegato.
+                  SELECT fc.id AS fattura_id, l.competenza_mese, lf.lotto_id
+                    FROM fatture_critiche fc
+                    JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = fc.id
+                    JOIN vendite.fatturazione_lotti l          ON l.id = lf.lotto_id
+                  UNION
+                  -- DB-7 (b): mesi distinti delle AF collegate (solo senza lotto).
+                  SELECT fc.id, af.competenza_mese, NULL::bigint
+                    FROM fatture_critiche fc
+                    JOIN vendite.fatture_righe fr          ON fr.fattura_id = fc.id
+                    JOIN vendite.attivita_fatturabili af   ON af.fattura_riga_id = fr.id
+                   WHERE NOT EXISTS (SELECT 1
+                                       FROM vendite.fatturazione_lotti_fatture lf2
+                                      WHERE lf2.fattura_id = fc.id)
+                  UNION
+                  -- DB-7 (c): fallback mese data fattura (senza lotto ne' AF).
+                  SELECT fc.id, (date_trunc('month', fc.data))::date, NULL::bigint
+                    FROM fatture_critiche fc
+                   WHERE NOT EXISTS (SELECT 1
+                                       FROM vendite.fatturazione_lotti_fatture lf3
+                                      WHERE lf3.fattura_id = fc.id)
+                     AND NOT EXISTS (SELECT 1
+                                       FROM vendite.fatture_righe fr2
+                                       JOIN vendite.attivita_fatturabili af2
+                                         ON af2.fattura_riga_id = fr2.id
+                                      WHERE fr2.fattura_id = fc.id)
+              )
+              SELECT 'TASK_ERRORE'::varchar          AS tipo_evento,
+                     l.competenza_mese,
+                     l.id                            AS lotto_id,
+                     l.codice                        AS lotto_codice,
+                     l.stato_lotto,
+                     NULL::bigint                    AS fattura_id,
+                     NULL::smallint                  AS fattura_anno,
+                     NULL::varchar                   AS fattura_serie,
+                     NULL::bigint                    AS fattura_numero,
+                     te.task_code,
+                     te.error_code,
+                     te.error_message                AS messaggio,
+                     te.started_at                   AS data_evento,
+                     l.emittente_soggetto_ruolo_id
+                FROM task_err te
+                JOIN vendite.fatturazione_lotti l ON l.id = te.lotto_id
+                CROSS JOIN escope
+               WHERE (escope.sr_ids IS NULL
+                      OR l.emittente_soggetto_ruolo_id = ANY(escope.sr_ids))
+              UNION ALL
+              SELECT 'FATTURA_CRITICA'::varchar,
+                     fk.competenza_mese,
+                     fk.lotto_id,
+                     l2.codice,
+                     l2.stato_lotto,
+                     fc.id,
+                     fc.anno,
+                     fc.serie,
+                     fc.numero,
+                     NULL::varchar                   AS task_code,
+                     NULL::varchar                   AS error_code,
+                     fc.messaggio,
+                     fc.data_ora                     AS data_evento,
+                     fc.emittente_soggetto_ruolo_id
+                FROM fatture_critiche fc
+                JOIN fatture_competenze fk ON fk.fattura_id = fc.id
+                LEFT JOIN vendite.fatturazione_lotti l2 ON l2.id = fk.lotto_id
+                CROSS JOIN escope
+               WHERE (escope.sr_ids IS NULL
+                      OR fc.emittente_soggetto_ruolo_id = ANY(escope.sr_ids));
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_errori IS
+                'Lente 1 Competenza, blocco errori: eventi "vivi" della pipeline di fatturazione per mese di competenza. TASK_ERRORE = run in ERRORE (attivo) non superato da un COMPLETATO successivo sulla stessa chiave (lotto/step/task), competenza dal lotto. FATTURA_CRITICA = fatture.critical (sync da fatture_log), messaggio = ultimo log non disabilitato; competenza: lotto collegato -> mesi distinti delle AF (una riga per mese) -> fallback mese data fattura (DB-7). SCOPE EMITTENTE via fn_get_emittenti_scope_sr_ids(GUC): fail-closed. security_invoker=on.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_errori;

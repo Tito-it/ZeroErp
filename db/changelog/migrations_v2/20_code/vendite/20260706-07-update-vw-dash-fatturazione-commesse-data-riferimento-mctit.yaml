@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Due lenti / Lente 2 Backlog — colonna data_riferimento sul resolver COMMESSE
+# (brief-db-fatturazione-due-lenti §5.1). data_riferimento = ca.competenza_mese
+# (chiave del GROUP BY): per un'attivita' ferma l'anzianita' naturale e' quanto
+# e' vecchia la competenza non ancora emessa. Colonna appesa IN CODA:
+# contratto invariato. Corpo = definizione 20260703-61 (viva, verificata
+# contro la doc auto-gen) + colonna. Vedi 20260706-03 per il razionale.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260706-07-update-vw-dash-fatturazione-commesse-data-riferimento-mctit.yaml
+
+  - changeSet:
+      id: 20260706-07-update-vw-dash-fatturazione-commesse-data-riferimento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Due lenti / Lente 2: appende data_riferimento (= competenza_mese) al
+        resolver commesse per l'anzianita' del backlog. Colonna in coda,
+        contratto esistente invariato.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: '1'
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname   = 'vw_dash_fatturazione_commesse';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_commesse AS
+              SELECT
+                  'COMMESSE'::varchar                            AS area,
+                  ca.competenza_mese,
+                  co.id                                          AS documento_id,
+                  (co.id)::text                                  AS documento_uid,
+                  (co.codice)::text                              AS codice,
+                  NULL::bigint                                   AS emittente_fiscale_id,
+                  co.emittente_soggetto_ruolo_id,
+                  SUM(COALESCE(ca.prezzo_snapshot, 0)
+                        * ca.quantita)                           AS valore_totale,
+                  COALESCE(SUM(COALESCE(ca.prezzo_snapshot, 0) * ca.quantita)
+                             FILTER (WHERE ca.stato_emissione = 'EMESSA'),
+                           0)                                    AS valore_transitato,
+                  COUNT(*)::integer                              AS unita_totali,
+                  (COUNT(*)
+                     FILTER (WHERE ca.stato_emissione = 'EMESSA'))::integer
+                                                                 AS unita_transitate,
+                  (COUNT(*) =
+                     COUNT(*) FILTER (WHERE ca.stato_emissione = 'EMESSA'))
+                                                                 AS is_transitato,
+                  (sc.codice_interno = 'ANNULLATA')              AS is_abortito,
+                  CASE
+                    WHEN sc.codice_interno = 'ANNULLATA' THEN NULL
+                    WHEN COUNT(*) =
+                         COUNT(*) FILTER (WHERE ca.stato_emissione = 'EMESSA')
+                      THEN NULL
+                    -- Void gia' esclusi dal WHERE: non-EMESSA & non-APPROVATA = BOZZA reale.
+                    WHEN COUNT(*) FILTER (WHERE ca.stato_emissione <> 'EMESSA'
+                                            AND ca.stato_approvazione <> 'APPROVATA') > 0
+                      THEN 'ATTIVITA_NON_APPROVATA'
+                    ELSE 'ATTIVITA_NON_EMESSA'
+                  END::varchar                                   AS motivo_fermo,
+                  sc.codice_interno                              AS stato_codice_interno,
+                  sc.codice                                      AS stato_codice,
+                  NULL::varchar                                  AS fase,
+                  s.ragione_sociale_completa::text               AS cliente_display,
+                  -- Lente 2 Backlog: anzianita' = quanto e' vecchia la competenza ferma.
+                  ca.competenza_mese                             AS data_riferimento
+                FROM vendite.commesse co
+                JOIN vendite.stati_commessa sc
+                  ON sc.id = co.stato_commessa_id
+                JOIN vendite.commesse_attivita ca
+                  ON ca.commessa_id = co.id
+                -- Cliente = intestatario BA (stesso path di vw_contratti_lista).
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = co.billing_account_id
+                LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                -- Scope emittente (commesse fuori RLS): valutato UNA volta da GUC.
+                -- NULL=super-admin (tutto), '{}'=GUC vuota/no-scope (niente),
+                -- array=whitelist. Fail-closed by design.
+                CROSS JOIN LATERAL (
+                  SELECT script.fn_get_emittenti_scope_sr_ids(
+                           NULLIF(current_setting('app.current_user_id', true), '')::integer
+                         ) AS sr_ids
+                ) escope
+               WHERE (escope.sr_ids IS NULL
+                      OR co.emittente_soggetto_ruolo_id = ANY(escope.sr_ids))
+                 -- Predicato "computabile" (20260703-61): esclude le attivita' void.
+                 AND ca.stato_emissione <> 'ANNULLATA'
+                 AND (ca.stato_approvazione <> 'RIFIUTATA'
+                      OR ca.stato_emissione = 'EMESSA')
+               GROUP BY co.id, co.codice, co.emittente_soggetto_ruolo_id,
+                        ca.competenza_mese, sc.codice_interno, sc.codice,
+                        s.ragione_sociale_completa;
+
+              COMMENT ON COLUMN vendite.vw_dash_fatturazione_commesse.data_riferimento IS
+                'Anzianita'' backlog (due lenti): competenza_mese della riga (quanto e'' vecchia la competenza ferma).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la definizione precedente e' 20260703-61.
+              -- Per revertire, ri-applicare quel changeset.
+              SELECT 1;

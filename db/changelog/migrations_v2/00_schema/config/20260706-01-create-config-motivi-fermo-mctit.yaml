@@ -1,0 +1,158 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fatturazione a due lenti — lookup classi di azionabilita' (DL-6/DL-7,
+# brief-db-fatturazione-due-lenti §3).
+#
+# I 10 codici motivo_fermo emessi dai resolver vw_dash_fatturazione_* sono
+# letterali nei CASE WHEN delle viste: NON esiste (prima di questa migration)
+# alcun livello dati che li descriva. La classe di azionabilita' (chi deve
+# agire e con che urgenza) NON si deriva dallo stato grezzo: e' una mappatura
+# statica motivo_fermo -> classe decisa dal dominio (design due-lenti §5):
+#   FISIOLOGICO       (3.a, verde)  = nessuna azione, in lavorazione/limite noto
+#   RECUPERABILE      (3.b, arancio)= lavoro interno da fare ORA (il numero che conta)
+#   ANOMALIA          (3.c, rosso)  = da rivedere, non un semplice ritardo
+#   SOLLECITO_CLIENTE (3.d, blu)    = palla al cliente, filtro dedicato
+# Le 4 classi sono il contratto semantico del design -> CHECK, non seconda lookup.
+#
+# codice_interno = chiave naturale immutabile (lock auto-provisionato dalle
+# automazioni per la sola presenza della colonna, linee-guida-sql §6b): e' il
+# valore emesso dalle viste e usato da FE/BE per il join di decodifica.
+# Nessuna FK possibile dalle viste (emettono testo): la coerenza e' garantita
+# fail-visible (vw_dash_backlog_documenti: COALESCE classe -> 'ANOMALIA') +
+# assert pgTAP (test-vw-dash-backlog-v1.sql).
+#
+# Seed dei 10 codici in 80_data via CSV (20260706-02), non qui: nessuna FK
+# richiede le righe preesistenti allo schema.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260706-01-create-config-motivi-fermo-mctit.yaml
+
+  - changeSet:
+      id: 20260706-01-create-config-motivi-fermo
+      author: mctit
+      comment: >
+        Crea config.motivi_fermo: vocabolario dei motivi di fermo della dashboard
+        fatturazione con classe di azionabilita' (FISIOLOGICO/RECUPERABILE/
+        ANOMALIA/SOLLECITO_CLIENTE). Lookup DB-first per Lente 2 Backlog (DL-6).
+        Seed CSV in 20260706-02.
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: motivi_fermo
+            remarks: "Vocabolario motivi di fermo dashboard fatturazione + classe di azionabilita' (due lenti, DL-6/7)."
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica (non referenziata: i riferimenti sono per codice_interno)."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_motivi_fermo
+                    nullable: false
+              - column:
+                  name: codice_interno
+                  type: character varying(50)
+                  remarks: "Chiave naturale immutabile (lock auto-provisionato). Valore emesso dalle viste vw_dash_fatturazione_* in motivo_fermo."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: codice
+                  type: character varying(50)
+                  remarks: "Codice display (rinominabile). Mai usato in logica."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: descrizione
+                  type: text
+                  constraints:
+                    nullable: false
+              - column:
+                  name: classe
+                  type: character varying(30)
+                  remarks: "Classe di azionabilita' (design due-lenti §5): FISIOLOGICO | RECUPERABILE | ANOMALIA | SOLLECITO_CLIENTE."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: azione
+                  type: character varying(200)
+                  remarks: "Hint operativo per l'utente (es. 'Smista le righe residue'). NULL per i FISIOLOGICO."
+              - column:
+                  name: ordine
+                  type: smallint
+                  remarks: "Ordinamento di presentazione."
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: motivi_fermo
+            columnNames: codice_interno
+            constraintName: uq_motivi_fermo_codice_interno
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: motivi_fermo
+            columnNames: codice
+            constraintName: uq_motivi_fermo_codice
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Le 4 classi sono il contratto semantico del design (non configurabili
+              -- dall'utente): CHECK esplicito, whitelist chiusa.
+              ALTER TABLE config.motivi_fermo
+                ADD CONSTRAINT chk_motivi_fermo_classe CHECK
+                  (classe IN ('FISIOLOGICO', 'RECUPERABILE', 'ANOMALIA', 'SOLLECITO_CLIENTE'));
+
+              COMMENT ON TABLE config.motivi_fermo IS
+                'Vocabolario dei motivi di fermo della dashboard fatturazione (due lenti). Una riga per codice motivo_fermo emesso dai resolver vw_dash_fatturazione_* con la sua classe di azionabilita'' (FISIOLOGICO=verde nessuna azione, RECUPERABILE=arancio lavoro interno, ANOMALIA=rosso da rivedere, SOLLECITO_CLIENTE=blu palla al cliente). Consumata da vendite.vw_dash_backlog_documenti (LEFT JOIN fail-visible: motivo non mappato -> classe ANOMALIA) e dal FE per colore/filtro. Nuovo codice = append al CSV seed + mappatura classe PRIMA di emetterlo da una vista (pgTAP di coerenza in test-vw-dash-backlog-v1.sql).';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: motivi_fermo
