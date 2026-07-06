@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GUIDA (D4) — G5: osservabilita' dei fallimenti di riconciliazione.
+# Brief: brief-db-guida-avanza-esito-proiettato.md §G5 / decisione D-B7.
+#
+# Il trigger generico (G3b) e' best-effort: il documento e' SOVRANO, quindi
+# un errore lato pratiche viene INGHIOTTITO (blocco EXCEPTION) e NON fa
+# rollback del cambio-stato del documento. Senza una superficie osservabile
+# il milestone "semplicemente non avanza" in silenzio (anche in caso di bug).
+#
+# Questa tabella e' il sink append-only di quei fallimenti (e degli skip
+# deliberati, es. tie-break ambiguo di fn_reconcile_sorgente):
+#   - la scrive il trigger G3b nel proprio handler EXCEPTION (persiste nella
+#     transazione esterna del cambio-stato documento, fuori dal savepoint
+#     rollbackato) e fn_reconcile_sorgente per gli skip ambigui;
+#   - NESSUNA FK verso pratiche/flussi: e' un log resiliente che deve
+#     sopravvivere anche se la causa del fallimento e' proprio un dato
+#     inconsistente sulla pratica.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260706-18-create-reconcile-errori-mctit.yaml
+
+  - changeSet:
+      id: 20260706-18-create-reconcile-errori
+      author: mctit
+      comment: >
+        Crea pratiche.reconcile_errori: log append-only dei reconcile falliti
+        (inghiottiti dal best-effort di G3b) e degli skip ambigui, per rendere
+        diagnosticabile un avanzamento milestone mancato (GUIDA D4/G5, D-B7).
+      changes:
+        - createTable:
+            schemaName: pratiche
+            tableName: reconcile_errori
+            remarks: "GUIDA D4/G5: sink append-only dei fallimenti/skip della riconciliazione su esito proiettato (osservabilita' del best-effort)."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_reconcile_errori
+                    nullable: false
+              - column:
+                  name: sorgente_tipo_id
+                  type: bigint
+                  remarks: "Tipo sorgente (config.sorgenti) del documento che ha innescato il reconcile."
+              - column:
+                  name: sorgente_uid
+                  type: text
+                  remarks: "UID del documento (chiave nativa castata a text)."
+              - column:
+                  name: pratica_id
+                  type: bigint
+                  remarks: "Pratica coinvolta, se risolta (no FK: log resiliente)."
+              - column:
+                  name: flusso_id
+                  type: bigint
+                  remarks: "Milestone coinvolto, se identificato (no FK: log resiliente)."
+              - column:
+                  name: errcode
+                  type: text
+                  remarks: "SQLSTATE del fallimento, oppure codice dello skip deliberato (es. E_RECONCILE_AMBIGUO)."
+              - column:
+                  name: messaggio
+                  type: text
+                  remarks: "SQLERRM / descrizione dello skip."
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction-id di sessione per correlazione col giornale/log."
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX ix_reconcile_errori_data_insert
+                ON pratiche.reconcile_errori (data_insert DESC);
+
+              CREATE INDEX ix_reconcile_errori_sorgente
+                ON pratiche.reconcile_errori (sorgente_tipo_id, sorgente_uid);
+
+              COMMENT ON TABLE pratiche.reconcile_errori IS
+                'GUIDA D4/G5: log append-only dei fallimenti di pratiche.fn_reconcile_sorgente inghiottiti dal trigger best-effort G3b (documento sovrano -> nessun rollback del cambio-stato) e degli skip deliberati (tie-break ambiguo). Rende diagnosticabile un avanzamento milestone mancato. Nessuna FK: log resiliente per definizione.';
+
+      rollback:
+        - dropTable:
+            schemaName: pratiche
+            tableName: reconcile_errori

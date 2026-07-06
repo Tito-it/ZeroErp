@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GUIDA (D4) — G3b: trigger generico di innesco (best-effort).
+# Brief: brief-db-guida-avanza-esito-proiettato.md §G3b / decisioni §9.1, D-B7, D-B9.
+#
+# Trigger-function GENERICA e parametrica (stile dbops.trgfn_*): da agganciare
+# in AFTER UPDATE OF <colonna_stato> a ogni tabella-documento del roll-out. Dopo
+# un cambio-stato del documento (QUALSIASI percorso di scrittura, STANDALONE
+# incluso) invoca pratiche.fn_reconcile_sorgente(tipo, uid).
+#
+# Parametrizzazione ESPLICITA (D-B9): gli argomenti li fornisce il seed
+# per-dominio (CREATE TRIGGER ... EXECUTE FUNCTION ...('<tipo>','<keycol>')),
+# NON si fa reverse-lookup da config.sorgenti.target_table (una stessa
+# target_table puo' avere piu' righe per scope/tipo_doc_fiscale -> ambiguo):
+#     TG_ARGV[0] = sorgente_tipo_id (config.sorgenti.id)
+#     TG_ARGV[1] = colonna chiave nativa del documento ('id' | 'uid')
+#
+# Best-effort (D-B7): il DOCUMENTO e' SOVRANO. La chiamata al reconcile e'
+# racchiusa in un blocco EXCEPTION cosi' che un errore lato pratiche NON
+# propaghi e NON faccia rollback del cambio-stato del documento; l'errore e'
+# loggato su pratiche.reconcile_errori (l'INSERT del handler EXCEPTION gira
+# nella transazione esterna, fuori dal savepoint rollbackato).
+#
+# NB: la CREATE TRIGGER sulle singole tabelle-documento (pilota PREVENTIVI) e'
+# un seed PER-DOMINIO, in un changeset separato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260706-20-create-trgfn-documento-reconcile-proiezione-mctit.yaml
+
+  - changeSet:
+      id: 20260706-20-create-trgfn-documento-reconcile-proiezione
+      author: mctit
+      runOnChange: false
+      comment: >
+        Crea la trigger-function generica pratiche.trgfn_documento_reconcile_proiezione
+        (AFTER UPDATE OF colonna-stato, best-effort): innesca fn_reconcile_sorgente
+        dopo un cambio-stato documento su qualsiasi percorso di scrittura (GUIDA D4/G3b).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: reconcile_errori
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_documento_reconcile_proiezione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: innesco generico dell'avanzamento su esito proiettato (GUIDA D4/G3b).
+              --   Da agganciare AFTER UPDATE OF <colonna_stato> alle tabelle-documento.
+              --   Parametri dal seed: TG_ARGV[0]=sorgente_tipo_id, TG_ARGV[1]=colonna
+              --   chiave ('id'|'uid'). Best-effort: documento sovrano.
+              DECLARE
+                v_tipo   config.sorgenti.id%TYPE := TG_ARGV[0]::bigint;
+                v_keycol text := TG_ARGV[1];  -- nome colonna: nessun mirror di tabella
+                v_uid    pratiche.pratiche_sorgenti.sorgente_uid%TYPE;
+              BEGIN
+                -- UID del documento dalla colonna-chiave indicata dal seed, senza
+                -- SQL dinamico: estrazione per nome dal record via jsonb.
+                v_uid := to_jsonb(NEW) ->> v_keycol;
+
+                IF v_uid IS NULL THEN
+                  RETURN NULL;
+                END IF;
+
+                -- Sovranita' del documento (D-B7): un errore lato pratiche viene
+                -- inghiottito e loggato, MAI propagato (niente rollback del cambio-stato).
+                BEGIN
+                  PERFORM pratiche.fn_reconcile_sorgente(v_tipo, v_uid);
+                EXCEPTION WHEN OTHERS THEN
+                  INSERT INTO pratiche.reconcile_errori
+                         (sorgente_tipo_id, sorgente_uid, errcode, messaggio, tx_id)
+                  VALUES (v_tipo, v_uid, SQLSTATE, SQLERRM,
+                          dbops.fn_get_or_create_session_tx_id());
+                END;
+
+                RETURN NULL;  -- AFTER trigger: valore di ritorno ignorato.
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_documento_reconcile_proiezione()
+                IS 'GUIDA D4/G3b: trigger-function generica AFTER UPDATE OF <colonna_stato> su tabella-documento. Innesca pratiche.fn_reconcile_sorgente(TG_ARGV[0]::tipo, to_jsonb(NEW)->>TG_ARGV[1]::uid) dopo un cambio-stato (standalone incluso). Best-effort: documento sovrano, errore loggato su pratiche.reconcile_errori senza rollback. Agganciata per-dominio (CREATE TRIGGER con args espliciti, D-B9).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS pratiche.trgfn_documento_reconcile_proiezione();

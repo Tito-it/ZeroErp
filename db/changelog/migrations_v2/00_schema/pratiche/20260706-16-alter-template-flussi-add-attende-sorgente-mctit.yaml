@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GUIDA (D4) — G1: mappa step -> sorgente attesa.
+# Brief: brief-db-guida-avanza-esito-proiettato.md §G1 / decisione §9.3.
+#
+# Dichiara, sul template step, QUALE tipo sorgente quel milestone attende
+# (config.sorgenti). E' il tassello che permette al motore di riconciliazione
+# (fn_reconcile_sorgente) di sapere "quale milestone e' in attesa del verdetto
+# di quale tipo documento", anche per i COLLEGATO con flusso_id NULL dove
+# l'ancora per-flusso non basta.
+#
+# Additiva: NULL = milestone non projection-driven -> comportamento di oggi
+# (nessun avanzamento automatico). L'indice FK NON si crea a mano: lo gestisce
+# dbops.apply_fk_index_policy() in 90_end.
+#
+# La colonna deve essere propagata da fn_copia_definizione (fork/nuova-versione):
+# l'edit del motore di copia e' nel changeset 20_code 20260706-22.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260706-16-alter-template-flussi-add-attende-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20260706-16-alter-template-flussi-add-attende-sorgente
+      author: mctit
+      comment: >
+        Aggiunge pratiche.template_flussi.attende_sorgente_tipo_id (FK
+        config.sorgenti, nullable): tipo sorgente atteso dal milestone per
+        l'avanzamento su esito proiettato (GUIDA D4/G1). Additiva.
+      changes:
+        - addColumn:
+            schemaName: pratiche
+            tableName: template_flussi
+            columns:
+              - column:
+                  name: attende_sorgente_tipo_id
+                  type: bigint
+                  remarks: "GUIDA D4/G1: tipo sorgente (config.sorgenti) il cui verdetto proiettato fa avanzare questo milestone. NULL = step non projection-driven (comportamento di oggi)."
+
+        - addForeignKeyConstraint:
+            constraintName: fk_template_flussi_attende_sorgente
+            baseTableSchemaName: pratiche
+            baseTableName: template_flussi
+            baseColumnNames: attende_sorgente_tipo_id
+            referencedTableSchemaName: config
+            referencedTableName: sorgenti
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN pratiche.template_flussi.attende_sorgente_tipo_id IS
+                'GUIDA D4/G1: FK config.sorgenti del tipo documento il cui verdetto proiettato (fn_stato_sorgente.esito) fa avanzare automaticamente questo milestone. NULL = milestone non projection-driven -> nessun avanzamento automatico (comportamento di oggi). Consumata da pratiche.fn_reconcile_sorgente; copiata da fn_copia_definizione per fork/nuova-versione.';
+
+      rollback:
+        - dropColumn:
+            schemaName: pratiche
+            tableName: template_flussi
+            columnName: attende_sorgente_tipo_id

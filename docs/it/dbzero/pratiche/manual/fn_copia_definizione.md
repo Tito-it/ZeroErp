@@ -51,13 +51,14 @@ LANGUAGE plpgsql VOLATILE
 
 | Tabella | Remap |
 |---|---|
-| `template_flussi` | header dei template (codice preservato, id nuovo, `definizione_id` = nuova) |
+| `template_flussi` | header dei template (codice preservato, id nuovo, `definizione_id` = nuova; include `attende_sorgente_tipo_id`, GUIDA D4/G1) |
 | `template_flussi_canali` | singolo (`template_flusso_id`) |
 | `template_flussi_handler_eventi` | singolo (`handler_id` globale invariato) |
 | `competenze_flussi` | singolo |
 | `template_flussi_prerequisiti` | **doppio** (`template_flusso_id` + `prerequisito_id`) |
 | `formule_tempo` | **doppio** (`template_flusso_da_id` + `_a_id`; `tipo_prestazione_id` invariato) |
 | `regole_generazione` | **origine** rimappata per codice; **dest** lasciata invariata — [fn_genera_pratica_da_flusso](fn_genera_pratica_da_flusso.md) la rimappa per codice a runtime (D2-8) |
+| `template_flussi_avanzamento_proiezione` | singolo (`template_flusso_id`) — GUIDA D4/G2, binding avanzamento su proiezione |
 
 **NON copiati**: istanze runtime (`flussi`, `calcoli_tempo`) e i valori
 generati/audit (`id`, `tx_id`, `storicizza`, `data_/user_`).
