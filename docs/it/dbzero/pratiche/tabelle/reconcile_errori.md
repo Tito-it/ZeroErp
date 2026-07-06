@@ -27,5 +27,11 @@
 | ix_reconcile_errori_sorgente | `CREATE INDEX ix_reconcile_errori_sorgente ON pratiche.reconcile_errori USING btree (sorgente_tipo_id, sorgente_uid)` |
 | pk_reconcile_errori | `CREATE UNIQUE INDEX pk_reconcile_errori ON pratiche.reconcile_errori USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_reconcile_errori_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_reconcile_errori_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}
