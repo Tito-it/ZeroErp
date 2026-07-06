@@ -1582,6 +1582,76 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
+/* Lente Competenza: card stadio con statistiche testuali (n attivita' + €)
+ * e breakdown per stato fattura (blocco 3a). Stessa griglia app-dash-cards. */
+.app-dash-stat-n {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--app-text-color);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.app-dash-stat-euro {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--app-text-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-dash-stat-sub {
+  font-size: 0.78rem;
+  color: var(--app-text-muted);
+}
+
+/* Recuperi tardivi (emesse fuori dal mese di competenza): colore "fermo". */
+.app-dash-ritardo {
+  font-size: 0.78rem;
+  color: var(--app-chart-fermo);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Breakdown stati fattura dentro la card FATTURATA (una riga per stato). */
+.app-dash-breakdown {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+}
+
+.app-dash-breakdown-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Filtro inline nelle sezioni drill-down (checkbox + label cliccabile). */
+.app-dash-filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--app-text-muted);
+}
+
+/* Semaforo mese Lente Competenza: badge errori vivi (blocco 4) accanto al
+ * conteggio da-fatturare; stesso pattern di app-dash-mese-fermi. */
+.app-dash-mese-errori {
+  color: var(--app-chart-errore);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.app-dash-mese-btn.is-active .app-dash-mese-errori {
+  color: var(--app-sidebar-item-active-color);
+}
+
 /* Riga riepilogo mese sotto le card. */
 .app-dash-totali {
   display: flex;

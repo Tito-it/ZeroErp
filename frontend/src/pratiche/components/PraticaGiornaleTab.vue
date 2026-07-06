@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { fetchGiornale } from '../api/pratiche-api'
 import { displayDate, displayTime } from '../../core/utils/date'
 import { azioneGiornaleStyle } from '../../core/utils/severity'
+import { labelOrCode } from '../../core/utils/i18nLabel'
 import Tag from 'primevue/tag'
 
 const { t, te } = useI18n()
@@ -25,7 +26,7 @@ const azioneStyle = azioneGiornaleStyle
 // chiave non esiste (codici nuovi a DB non ancora tradotti restano comunque visibili).
 function azioneLabel(azione) {
   const key = `pratiche.giornale_azioni.${azione}`
-  return te(key) ? t(key) : azione
+  return labelOrCode(t, te, key, azione)
 }
 
 // Scopo: Formatta il dettaglio in testo leggibile. Usa i display fields decodificati

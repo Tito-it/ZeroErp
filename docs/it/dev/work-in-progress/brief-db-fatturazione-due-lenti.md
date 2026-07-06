@@ -381,7 +381,7 @@ preConditions `viewExists`/`tableExists` tra fasi.
 | DB-3 | Anti-drift | fail-visible: non mappato ⇒ `ANOMALIA`, mai perso | §3.3 |
 | DB-4 | Anzianità | `data_riferimento` additiva su resolver+union | tocca famiglia congelata, additivo |
 | DB-5 | Lente 1 | nuova famiglia grana attività, riuso predicati non viste | §4 |
-| DB-6 | Misura | `prezzo_snapshot×quantita` su tutti gli stadi (funnel omogeneo) + `valore_fatturato` (`imponibile_riga`) come riconciliazione | ⚠️ conferma Tid: quale delle due il FE mostra come "fatturato" |
+| DB-6 | Misura | `prezzo_snapshot×quantita` su tutti gli stadi (funnel omogeneo) + `valore_fatturato` (`imponibile_riga`) come riconciliazione | ✅ deciso (Tid 2026-07-06): il FE mostra **sempre `imponibile_riga`** come "fatturato"; `valore` teorico resta misura del funnel per gli stadi non fatturati |
 | DB-7 | Competenza errori | lotto → mesi AF → mese data fattura | §4.3 |
 | DB-8 | Scope | GUC fail-closed in-vista + `security_invoker=on` su tutto il nuovo | + esito V-1 |
 

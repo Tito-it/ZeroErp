@@ -305,6 +305,18 @@ const router = createRouter({
           meta: { domain: 'vendite', menuKey: 'dashboard-fatturazione' }
         },
         {
+          path: 'vendite/dashboard-competenza',
+          name: 'vendite-dashboard-competenza',
+          component: () => import('../vendite/views/DashboardCompetenzaView.vue'),
+          meta: { domain: 'vendite', menuKey: 'dashboard-competenza' }
+        },
+        {
+          path: 'vendite/dashboard-backlog',
+          name: 'vendite-dashboard-backlog',
+          component: () => import('../vendite/views/DashboardBacklogView.vue'),
+          meta: { domain: 'vendite', menuKey: 'dashboard-backlog' }
+        },
+        {
           path: 'vendite/preventivi',
           name: 'vendite-preventivi',
           component: () => import('../vendite/preventivi/views/PreventiviView.vue'),
