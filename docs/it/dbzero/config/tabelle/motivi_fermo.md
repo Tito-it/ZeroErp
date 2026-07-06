@@ -33,5 +33,11 @@
 | uq_motivi_fermo_codice | `CREATE UNIQUE INDEX uq_motivi_fermo_codice ON config.motivi_fermo USING btree (codice)` |
 | uq_motivi_fermo_codice_interno | `CREATE UNIQUE INDEX uq_motivi_fermo_codice_interno ON config.motivi_fermo USING btree (codice_interno)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_motivi_fermo_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_motivi_fermo_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}
