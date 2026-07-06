@@ -238,6 +238,11 @@ dentro il transitato, **"fatto in tempo"** da **"recuperato in ritardo"** (anali
   anzianità si misura sulla **data documento** ("fermo da…").
 * **Non bloccante**: Lente 1 v1 (senza recuperi tardivi) e Lente 2 v1 (anzianità-proxy)
   partono senza attendere la validazione DB.
+* ✅ **Validazione eseguita (2026-07-06)** — vedi
+  [brief-db-fatturazione-due-lenti.md](brief-db-fatturazione-due-lenti.md) §2:
+  `data_insert` confermata affidabile (reset lotto = solo UPDATE, nessuna re-emissione
+  possibile, colonna mai aggiornata); unico caveat latente C1 (collisione `segment_key`
+  nel ramo UPDATE di `fn_emit`) documentato con test-sentinella. Nessun campo nuovo.
 
 ## 8. Punti aperti da chiudere con Tid
 
@@ -282,7 +287,7 @@ dentro il transitato, **"fatto in tempo"** da **"recuperato in ritardo"** (anali
 |---|---|---|---|
 | 0 — Disegno unitario | questo brief | due lenti + decomposizione + punti aperti B/C/D | ✅ 2026-07-04 |
 | 0-bis — Chiusura punti aperti | con Tid | decisioni **B, C, D, Lente 1** (DL-6/7/8 + C) | ✅ 2026-07-04 |
-| DB — Timestamp transito | `dev/db-tid` (brief al team) | **validare** `attivita_fatturabili.data_insert` come data-emissione (casi reset/re-emissione); eventuale vista di comodo (§7) | ⬜ (parallelo; forse nessun oggetto nuovo) |
+| DB — Timestamp transito | `dev/db-tid` (brief al team) | **validare** `attivita_fatturabili.data_insert` come data-emissione (casi reset/re-emissione); eventuale vista di comodo (§7) | 🟢 **FATTO** ([brief-db-fatturazione-due-lenti.md](brief-db-fatturazione-due-lenti.md), 2026-07-06): validazione ✅ `data_insert` affidabile (nessun campo nuovo) e **substrato DB di ENTRAMBE le lenti applicato+testato** — migrations `20260706-01..15` EXECUTED, pgTAP competenza (15) + backlog (14) verdi; lookup classi `config.motivi_fermo` (DL-6), viste `vw_dash_competenza_*` (Lente 1, 4 blocchi), `vw_dash_backlog_*` (Lente 2) e fix `-15` security_invoker famiglia 5-card (V-1: bypassava la RLS emittente, ora chiuso). Non committato |
 | 1 — Lente Competenza | `dev/backend-tid` | resolver a valle (commessa→fattura per competenza), **4 blocchi predisposti** (§4) + BE + FE; riusa resolver Commesse | ⬜ |
 | 2 — Lente Backlog | `dev/backend-tid` | lista non-collegati per anzianità + `motivo_fermo` + azionabilità; v1 anzianità-proxy | ⬜ (dopo 0-bis; raffinata dal DB) |
 | 3 — Dismissione | `dev/backend-tid` | rimozione dashboard pre-fatturazione a copertura completata | ⬜ |

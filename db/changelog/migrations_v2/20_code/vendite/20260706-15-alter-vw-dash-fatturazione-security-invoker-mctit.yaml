@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# FIX V-1 (brief-db-fatturazione-due-lenti §10) — scope RLS della famiglia
+# vw_dash_fatturazione_* NON applicato.
+#
+# VERIFICATO SUL DB (2026-07-06): le 7 viste della dashboard 5-card non hanno
+# `security_invoker = on` (reloptions vuote) e sono owned da `titodb`, che e'
+# anche owner delle 4 tabelle documentali (preventivi/ordini/offerte_
+# commerciali/contratti) con RLS enabled=true ma FORCED=false. L'owner e'
+# esente dalla RLS non-forced -> qualunque lettura via vista (incluso il
+# backend con zeroerp_app) valuta le tabelle come owner e BYPASSA la RLS
+# emittente: un operatore ristretto vede in dashboard i documenti di TUTTI
+# gli emittenti (solo il resolver COMMESSE e' correttamente scopato via GUC,
+# 20260703-60). Il claim "RLS gratis" del brief pre-fatturazione non era
+# implementato.
+#
+# FIX: security_invoker = on su tutte e 7 le viste (standard liste, come
+# vw_preventivi_lista): le tabelle sottostanti vengono valutate come il
+# CHIAMANTE (zeroerp_app, soggetto a RLS) e le policy emittente si applicano.
+# Le viste interne consumate dai resolver (vw_preventivi_smistamento_righe,
+# vw_*_lista) sono gia' invoker.
+#
+# Impatti attesi: nessuno per super-admin/web con GUC valorizzata; per
+# operatori ristretti la dashboard smette di mostrare emittenti fuori
+# whitelist (comportamento CORRETTO, prima era un leak). In contesti psql/
+# batch senza GUC il comportamento segue la postura fail-closed delle policy.
+# ALTER VIEW ... SET non cambia la definizione: nessun impatto sul contratto
+# colonne.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260706-15-alter-vw-dash-fatturazione-security-invoker-mctit.yaml
+
+  - changeSet:
+      id: 20260706-15-alter-vw-dash-fatturazione-security-invoker
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Fix V-1: security_invoker=on sulle 7 viste vw_dash_fatturazione_* —
+        senza, girano come owner (=owner tabelle, esente da RLS non-forced) e
+        lo scope emittente RLS delle 4 aree documentali era bypassato.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: '7'
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname IN ('vw_dash_fatturazione_preventivi',
+                                  'vw_dash_fatturazione_ordini',
+                                  'vw_dash_fatturazione_offerte',
+                                  'vw_dash_fatturazione_contratti',
+                                  'vw_dash_fatturazione_commesse',
+                                  'vw_dash_fatturazione_documenti',
+                                  'vw_dash_fatturazione_mensile');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER VIEW vendite.vw_dash_fatturazione_preventivi SET (security_invoker = on);
+              ALTER VIEW vendite.vw_dash_fatturazione_ordini     SET (security_invoker = on);
+              ALTER VIEW vendite.vw_dash_fatturazione_offerte    SET (security_invoker = on);
+              ALTER VIEW vendite.vw_dash_fatturazione_contratti  SET (security_invoker = on);
+              ALTER VIEW vendite.vw_dash_fatturazione_commesse   SET (security_invoker = on);
+              ALTER VIEW vendite.vw_dash_fatturazione_documenti  SET (security_invoker = on);
+              ALTER VIEW vendite.vw_dash_fatturazione_mensile    SET (security_invoker = on);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER VIEW vendite.vw_dash_fatturazione_preventivi RESET (security_invoker);
+              ALTER VIEW vendite.vw_dash_fatturazione_ordini     RESET (security_invoker);
+              ALTER VIEW vendite.vw_dash_fatturazione_offerte    RESET (security_invoker);
+              ALTER VIEW vendite.vw_dash_fatturazione_contratti  RESET (security_invoker);
+              ALTER VIEW vendite.vw_dash_fatturazione_commesse   RESET (security_invoker);
+              ALTER VIEW vendite.vw_dash_fatturazione_documenti  RESET (security_invoker);
+              ALTER VIEW vendite.vw_dash_fatturazione_mensile    RESET (security_invoker);

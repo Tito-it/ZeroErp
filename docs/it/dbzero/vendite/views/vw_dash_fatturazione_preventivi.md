@@ -35,7 +35,8 @@ WITH righe AS (
     sdp.codice_interno AS stato_codice_interno,
     sdp.codice AS stato_codice,
     sdp.fase,
-    s.ragione_sociale_completa AS cliente_display
+    s.ragione_sociale_completa AS cliente_display,
+    p.data AS data_riferimento
    FROM ((((vendite.preventivi p
      JOIN config.stati_doc_preventivi sdp ON ((sdp.id = p.stato_doc_preventivo_id)))
      LEFT JOIN righe r ON ((r.preventivo_id = p.id)))

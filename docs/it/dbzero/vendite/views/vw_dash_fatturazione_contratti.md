@@ -28,7 +28,8 @@ SELECT 'CONTRATTI'::character varying AS area,
     sdc.codice_interno AS stato_codice_interno,
     sdc.codice AS stato_codice,
     sdc.fase,
-    sog.ragione_sociale_completa AS cliente_display
+    sog.ragione_sociale_completa AS cliente_display,
+    (m.mese_ts)::date AS data_riferimento
    FROM (((((((vendite.contratti c
      JOIN config.stati_doc_contratti sdc ON (((sdc.id = c.stato_doc_contratto_id) AND ((sdc.esito)::text IS DISTINCT FROM 'NEGATIVO'::text))))
      JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'CONTRATTO'::text) AND (s.attivo IS TRUE))))

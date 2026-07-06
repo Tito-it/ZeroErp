@@ -1,0 +1,47 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fatturazione a due lenti — indice di supporto su attivita_fatturabili
+# (brief-db-fatturazione-due-lenti §6).
+#
+# La Lente 1 scandisce attivita_fatturabili per mese di competenza
+# (vw_dash_competenza_attivita/mensile e la regola DB-7 (b) della vista
+# errori). Oggi l'unico indice con competenza_mese e'
+# ix_attivita_billing_competenza (billing_account_id, competenza_mese) con
+# billing_account_id in testa: inutilizzabile per la scansione per solo mese.
+#
+# Additivo e reversibile: nessun impatto funzionale, solo piano di esecuzione.
+# Non e' un indice FK (la policy dbops non lo gestisce).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260706-14-create-ix-attivita-fatturabili-competenza-mese-mctit.yaml
+
+  - changeSet:
+      id: 20260706-14-create-ix-attivita-fatturabili-competenza-mese
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Due lenti / Lente 1: indice su attivita_fatturabili(competenza_mese)
+        per le scansioni per mese delle viste vw_dash_competenza_*.
+        Additivo, IF NOT EXISTS, non-FK.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_attivita_fatturabili_competenza_mese
+                ON vendite.attivita_fatturabili (competenza_mese);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_attivita_fatturabili_competenza_mese;

@@ -38,7 +38,8 @@ WITH righe AS (
     sdo.codice_interno AS stato_codice_interno,
     sdo.codice AS stato_codice,
     sdo.fase,
-    s.ragione_sociale_completa AS cliente_display
+    s.ragione_sociale_completa AS cliente_display,
+    o.data AS data_riferimento
    FROM ((((vendite.ordini o
      JOIN config.stati_doc_ordini sdo ON ((sdo.id = o.stato_doc_ordine_id)))
      LEFT JOIN righe r ON ((r.ordine_id = o.id)))

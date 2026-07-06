@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Due lenti / Lente 2 Backlog — colonna data_riferimento sul resolver ORDINI
+# (brief-db-fatturazione-due-lenti §5.1). data_riferimento = o.data (data
+# documento). Colonna appesa IN CODA: contratto esistente invariato.
+# Corpo copiato dalla doc auto-gen (definizione viva post 20260703-59/-60).
+# Vedi 20260706-03 per il razionale completo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260706-04-update-vw-dash-fatturazione-ordini-data-riferimento-mctit.yaml
+
+  - changeSet:
+      id: 20260706-04-update-vw-dash-fatturazione-ordini-data-riferimento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Due lenti / Lente 2: appende data_riferimento (= o.data) al resolver
+        ordini per l'anzianita' del backlog. Colonna in coda, contratto
+        esistente invariato.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: '1'
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname   = 'vw_dash_fatturazione_ordini';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_ordini AS
+              WITH righe AS (
+                       SELECT orr.ordine_id,
+                          orr.id AS riga_id,
+                          ((orr.quantita * orr.prezzo_unitario) * ((1)::numeric - (COALESCE(orr.sconto_percentuale, (0)::numeric) / 100.0))) AS valore_riga,
+                          (EXISTS ( SELECT 1
+                                 FROM vendite.commesse_attivita ca
+                                WHERE (((ca.segment_key)::text = ((('ORD:'::text || (o2.uid)::text) || ':R:'::text) || (orr.id)::text)) AND ((ca.stato_emissione)::text = 'EMESSA'::text)))) AS transitata
+                         FROM (vendite.ordini_righe orr
+                           JOIN vendite.ordini o2 ON ((o2.id = orr.ordine_id)))
+                        WHERE (orr.attivo IS TRUE)
+                      )
+               SELECT 'ORDINI'::character varying AS area,
+                  (date_trunc('month'::text, (o.data)::timestamp with time zone))::date AS competenza_mese,
+                  o.id AS documento_id,
+                  (o.uid)::text AS documento_uid,
+                  (o.numero)::text AS codice,
+                  o.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  COALESCE(sum(r.valore_riga), (0)::numeric) AS valore_totale,
+                  COALESCE(sum(r.valore_riga) FILTER (WHERE r.transitata), (0)::numeric) AS valore_transitato,
+                  (count(r.riga_id))::integer AS unita_totali,
+                  (count(r.riga_id) FILTER (WHERE r.transitata))::integer AS unita_transitate,
+                  ((count(r.riga_id) > 0) AND (count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata))) AS is_transitato,
+                  COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) AS is_abortito,
+                  (
+                      CASE
+                          WHEN COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) THEN NULL::text
+                          WHEN ((count(r.riga_id) > 0) AND (count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata))) THEN NULL::text
+                          WHEN ((sdo.codice_interno)::text = 'DRAFT'::text) THEN 'DOC_BOZZA'::text
+                          WHEN (count(r.riga_id) FILTER (WHERE r.transitata) = 0) THEN 'PUSH_NON_ESEGUITO'::text
+                          ELSE 'PUSH_PARZIALE'::text
+                      END)::character varying AS motivo_fermo,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.codice AS stato_codice,
+                  sdo.fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  -- Lente 2 Backlog: anzianita' "fermo da..." = data documento (proxy v1).
+                  o.data AS data_riferimento
+                 FROM ((((vendite.ordini o
+                   JOIN config.stati_doc_ordini sdo ON ((sdo.id = o.stato_doc_ordine_id)))
+                   LEFT JOIN righe r ON ((r.ordine_id = o.id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = o.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                GROUP BY o.id, o.uid, o.numero, o.data, o.emittente_fiscale_id, sdo.codice_interno, sdo.codice, sdo.fase, sdo.esito, s.ragione_sociale_completa;
+
+              COMMENT ON COLUMN vendite.vw_dash_fatturazione_ordini.data_riferimento IS
+                'Anzianita'' backlog (due lenti): data documento dell''ordine ("fermo da...", proxy v1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la definizione precedente e' quella viva post
+              -- 20260703-59/-60 (vedi doc auto-gen). Per revertire, ri-applicarla.
+              SELECT 1;

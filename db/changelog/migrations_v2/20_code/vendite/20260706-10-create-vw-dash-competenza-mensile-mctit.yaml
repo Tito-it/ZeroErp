@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Lente 1 Competenza — aggregata mensile in FORMATO LUNGO (brief-db §4.2).
+#
+# Gli stati fattura sono DATI (config.stati_doc_fiscale), non colonne: il
+# breakdown 3a non puo' essere pivotato in colonne fisse senza rincorrere il
+# vocabolario. Formato lungo: una riga per (competenza_mese, stadio,
+# stato_fattura_codice_interno); il BE pivota. stato_fattura_codice_interno e'
+# NULL per gli stadi non fatturati e per le (rare) fatture senza stato.
+#
+# Il contratto regge tutti i blocchi 1->3a del design (DL-8, concentrico):
+# funnel (n/valore per stadio), breakdown stato fattura (righe FATTURATA),
+# recuperi tardivi (n_in_ritardo/valore_in_ritardo).
+# Scope emittente ereditato dalla vista di dettaglio (GUC fail-closed).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260706-10-create-vw-dash-competenza-mensile-mctit.yaml
+
+  - changeSet:
+      id: 20260706-10-create-vw-dash-competenza-mensile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Lente 1 Competenza: aggregata mensile in formato lungo
+        (competenza_mese x stadio x stato_fattura_codice_interno) su
+        vw_dash_competenza_attivita. Il BE pivota; contratto stabile per
+        tutti i 4 blocchi del design (DL-8).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: '1'
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname   = 'vw_dash_competenza_attivita';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_mensile
+              WITH (security_invoker = on) AS
+              SELECT
+                  competenza_mese,
+                  stadio,
+                  stato_fattura_codice_interno,
+                  COUNT(*)::integer                                   AS n_attivita,
+                  COALESCE(SUM(valore), 0)                            AS valore_tot,
+                  COALESCE(SUM(valore_fatturato), 0)                  AS valore_fatturato_tot,
+                  (COUNT(*) FILTER (WHERE emessa_in_ritardo))::integer AS n_in_ritardo,
+                  COALESCE(SUM(valore) FILTER (WHERE emessa_in_ritardo), 0)
+                                                                      AS valore_in_ritardo
+                FROM vendite.vw_dash_competenza_attivita
+               GROUP BY competenza_mese, stadio, stato_fattura_codice_interno;
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_mensile IS
+                'Lente 1 Competenza: aggregata mensile in FORMATO LUNGO (una riga per competenza_mese x stadio x stato_fattura_codice_interno; stato NULL per stadi non fatturati). Il BE pivota per comporre funnel (blocchi 1-2-3), breakdown per stato fattura (3a) e recuperi tardivi (n/valore_in_ritardo). Eredita dal dettaglio il predicato computabile e lo scope emittente GUC fail-closed. security_invoker=on.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_mensile;

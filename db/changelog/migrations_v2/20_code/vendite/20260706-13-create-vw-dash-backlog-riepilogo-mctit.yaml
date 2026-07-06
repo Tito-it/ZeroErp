@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Lente 2 Backlog — riepilogo per classe/area (brief-db §5.3): i contatori di
+# testata della pagina backlog (arancio n / blu n / rosso n; il verde
+# FISIOLOGICO e' gia' escluso a monte da vw_dash_backlog_documenti).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260706-13-create-vw-dash-backlog-riepilogo-mctit.yaml
+
+  - changeSet:
+      id: 20260706-13-create-vw-dash-backlog-riepilogo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Lente 2 Backlog: riepilogo contatori per classe x area su
+        vw_dash_backlog_documenti (n documenti, valore fermo, anzianita' max).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: '1'
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname   = 'vw_dash_backlog_documenti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_backlog_riepilogo
+              WITH (security_invoker = on) AS
+              SELECT
+                  classe,
+                  area,
+                  COUNT(*)::integer                 AS n_documenti,
+                  COALESCE(SUM(valore_fermo), 0)    AS valore_fermo_tot,
+                  COALESCE(SUM(unita_ferme), 0)::integer AS unita_ferme_tot,
+                  MAX(anzianita_giorni)             AS anzianita_max_giorni
+                FROM vendite.vw_dash_backlog_documenti
+               GROUP BY classe, area;
+
+              COMMENT ON VIEW vendite.vw_dash_backlog_riepilogo IS
+                'Lente 2 Backlog: contatori di testata per classe x area (RECUPERABILE/ANOMALIA/SOLLECITO_CLIENTE; il FISIOLOGICO e'' escluso a monte). n documenti, valore fermo totale (NULL-safe: 0 per aree a conteggi), unita'' ferme, anzianita'' massima in giorni. Scope ereditato. security_invoker=on.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_dash_backlog_riepilogo;
