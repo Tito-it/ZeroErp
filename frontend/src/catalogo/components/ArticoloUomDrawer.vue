@@ -26,6 +26,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import AttivoTag from '../../core/components/AttivoTag.vue'
+import { labelOrCode } from '../../core/utils/i18nLabel'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -234,7 +235,7 @@ function deleteUomTooltip(row) {
   if (!motivo) return t('common.delete')
   // Difensivo: motivo nuovo non mappato i18n -> label generica.
   const key = `catalogo.motivo_${motivo.toLowerCase()}`
-  return te(key) ? t(key) : t('common.delete')
+  return labelOrCode(t, te, key, t('common.delete'))
 }
 
 // Pattern master-detail inline (memo `feedback_master_detail_inline` +

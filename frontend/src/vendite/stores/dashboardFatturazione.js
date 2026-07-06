@@ -4,12 +4,13 @@
 // errori: i componenti le invocano dentro try/catch con extractApiError
 // (niente useApiHandler.execute su promise non-axios —
 // memoria feedback_useapihandler_solo_axios).
-// Guard di versione (useFetchVersion) su entrambe le fetch: cambi rapidi di
-// anno/area/pagina non lasciano che una risposta stantia sovrascriva lo stato.
+// Il drill-down fermi usa il BB usePagedDashFetch (guard di versione +
+// rientro pagina-oltre-l'ultima, estratto 2026-07-06 regola del 2);
+// la matrice ha il suo guard di versione dedicato.
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
-import { PAGINATION } from '../../core/constants'
+import { usePagedDashFetch } from '../../core/composables/usePagedDashFetch'
 import {
   getDashboardFatturazione,
   listDashboardFatturazioneFermi,
@@ -24,16 +25,16 @@ export const useDashboardFatturazioneStore = defineStore('vendite-dashboard-fatt
 
   // Matrice: array 12 mesi { competenza_mese, aree: [...] } dal BE (D-5).
   const mesi = ref([])
-
-  // Drill-down fermi (envelope paginato standard).
-  const fermi = ref([])
-  const fermiCount = ref(0)
-  const fermiPage = ref(1)
-  const fermiPageSize = ref(PAGINATION.DEFAULT_ROWS)
-  const fermiLoading = ref(false)
-
   const fvMatrice = useFetchVersion()
-  const fvFermi = useFetchVersion()
+
+  // Drill-down fermi: sezione paginata standard.
+  const fermiFetch = usePagedDashFetch((paging, competenzaMese) =>
+    listDashboardFatturazioneFermi({
+      competenza_mese: competenzaMese,
+      area: areaSelezionata.value,
+      ...paging,
+    })
+  )
 
   // Scopo: carica la matrice dell'anno corrente dello store. Il guard di
   // versione scarta la risposta se nel frattempo l'anno e' cambiato di nuovo
@@ -47,52 +48,28 @@ export const useDashboardFatturazioneStore = defineStore('vendite-dashboard-fatt
   }
 
   // Scopo: carica una pagina di fermi per (mese selezionato, area selezionata).
-  //        Guard di versione contro risposte stantie (cambio area/pagina
-  //        veloce); se la pagina corrente e' oltre l'ultima (lista ridotta da
-  //        altri utenti tra un refresh e l'altro) rientra sulla pagina 1.
+  //        Senza area attiva non parte nessuna fetch.
   async function fetchFermi(competenzaMese) {
     if (!areaSelezionata.value) return
-    const t = fvFermi.tag()
-    fermiLoading.value = true
-    try {
-      const res = await listDashboardFatturazioneFermi({
-        competenza_mese: competenzaMese,
-        area: areaSelezionata.value,
-        page: fermiPage.value,
-        page_size: fermiPageSize.value,
-      })
-      if (!fvFermi.isCurrent(t)) return
-      const payload = res.data?.data ?? {}
-      fermi.value = payload.results ?? []
-      fermiCount.value = payload.count ?? 0
-      // Pagina oltre l'ultima: torna alla prima e ricarica.
-      if (fermi.value.length === 0 && fermiCount.value > 0 && fermiPage.value > 1) {
-        fermiPage.value = 1
-        await fetchFermi(competenzaMese)
-      }
-    } finally {
-      if (fvFermi.isCurrent(t)) fermiLoading.value = false
-    }
+    await fermiFetch.fetch(competenzaMese)
   }
 
   // Scopo: azzera il drill-down (cambio mese/anno o deselezione card) e
   //        invalida le fetch fermi in volo.
   function resetFermi() {
-    fvFermi.invalidate()
     areaSelezionata.value = null
-    fermi.value = []
-    fermiCount.value = 0
-    fermiPage.value = 1
-    fermiLoading.value = false
+    fermiFetch.reset()
   }
 
-  // Scopo: reset per logout (plugin autoResetPlugin via userScoped).
+  // Scopo: reset per logout (plugin autoResetPlugin via userScoped) —
+  //        resetAll riporta anche la pageSize al default (stato utente).
   function clearUserState() {
     fvMatrice.invalidate()
     anno.value = new Date().getFullYear()
     meseIdx.value = new Date().getMonth()
     mesi.value = []
-    resetFermi()
+    areaSelezionata.value = null
+    fermiFetch.resetAll()
   }
 
   return {
@@ -100,11 +77,12 @@ export const useDashboardFatturazioneStore = defineStore('vendite-dashboard-fatt
     meseIdx,
     areaSelezionata,
     mesi,
-    fermi,
-    fermiCount,
-    fermiPage,
-    fermiPageSize,
-    fermiLoading,
+    fermi: fermiFetch.items,
+    fermiCount: fermiFetch.count,
+    fermiPage: fermiFetch.page,
+    fermiPageSize: fermiFetch.pageSize,
+    fermiLoading: fermiFetch.loading,
+    applyFermiPage: fermiFetch.applyPageEvent,
     fetchMatrice,
     fetchFermi,
     resetFermi,

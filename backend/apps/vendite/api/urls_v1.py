@@ -26,6 +26,15 @@ from apps.vendite.api.views_approvazioni_prezzo import (
     RifiutaPrezzoOffertaView,
     RifiutaPrezzoView,
 )
+from apps.vendite.api.views_dashboard_backlog import (
+    ApiDashboardBacklog,
+    ApiDashboardBacklogDocumenti,
+)
+from apps.vendite.api.views_dashboard_competenza import (
+    ApiDashboardCompetenza,
+    ApiDashboardCompetenzaAttivita,
+    ApiDashboardCompetenzaErrori,
+)
 from apps.vendite.api.views_dashboard_fatturazione import (
     ApiDashboardFatturazione,
     ApiDashboardFatturazioneFermi,
@@ -119,6 +128,35 @@ urlpatterns = [
         "dashboard-fatturazione/fermi/",
         ApiDashboardFatturazioneFermi.as_view(),
         name="vendite-dashboard-fatturazione-fermi",
+    ),
+    # Lente 1 Competenza — funnel commessa → fattura per mese di competenza
+    # (brief-design-fatturazione-due-lenti §4): aggregata + drill-down + errori.
+    path(
+        "dashboard-competenza/",
+        ApiDashboardCompetenza.as_view(),
+        name="vendite-dashboard-competenza",
+    ),
+    path(
+        "dashboard-competenza/attivita/",
+        ApiDashboardCompetenzaAttivita.as_view(),
+        name="vendite-dashboard-competenza-attivita",
+    ),
+    path(
+        "dashboard-competenza/errori/",
+        ApiDashboardCompetenzaErrori.as_view(),
+        name="vendite-dashboard-competenza-errori",
+    ),
+    # Lente 2 Backlog — non-collegati per anzianita' + classe azionabilita'
+    # (brief-design-fatturazione-due-lenti §5): contatori + lista.
+    path(
+        "dashboard-backlog/",
+        ApiDashboardBacklog.as_view(),
+        name="vendite-dashboard-backlog",
+    ),
+    path(
+        "dashboard-backlog/documenti/",
+        ApiDashboardBacklogDocumenti.as_view(),
+        name="vendite-dashboard-backlog-documenti",
     ),
     path("lotti/", ApiLottiList.as_view(), name="vendite-lotti-list"),
     path("pipeline/run/", ApiRunLottoPipeline.as_view(), name="vendite-run-lotto-pipeline"),

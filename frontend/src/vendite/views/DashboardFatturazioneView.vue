@@ -10,29 +10,30 @@ import { computed, nextTick, onActivated, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import DashMesiSidebar from '../../core/components/dash/DashMesiSidebar.vue'
+import DashMeseStepper from '../../core/components/dash/DashMeseStepper.vue'
 import DonutTransito from '../../core/components/charts/DonutTransito.vue'
+import { useDashMesiNav } from '../../core/composables/useDashMesiNav'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { formatCurrency } from '../../core/utils/format'
 import {
-  statoCommessaSeverity,
-  statoContrattoSeverity,
-  statoOffertaSeverity,
-  statoOrdineSeverity,
-  statoPreventiveSeverity,
-} from '../../core/utils/severity'
+  buildApriDocumentoAction,
+  DASH_AREA_CONFIG,
+  DASH_AREE,
+  dashAreaSeverity,
+} from '../dashboardAree'
 import { useDashboardFatturazioneStore } from '../stores/dashboardFatturazione'
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const notify = useNotify()
 const router = useRouter()
 
@@ -53,28 +54,22 @@ const {
   fermiLoading,
 } = storeToRefs(store)
 
-// Config UNICA per area (ordine funnel, allineata alla whitelist BE
-// DASH_FATTURAZIONE_AREE). kind: 'euro' = donut con importi (D-4),
-// 'count' = frazione n/n (D-2/D-3). route: lista FE per "apri documento"
-// (null = area senza view, riga consultiva — COMMESSE in v1).
-// severity: shortcut centralizzata in core/utils/severity.js per gli stati
-// documento nel drill-down (un solo punto di modifica dei colori).
-const AREE = [
-  { key: 'PREVENTIVI', kind: 'euro', route: '/vendite/preventivi', severity: statoPreventiveSeverity },
-  { key: 'ORDINI', kind: 'euro', route: '/vendite/ordini', severity: statoOrdineSeverity },
-  { key: 'OFFERTE', kind: 'count', route: '/vendite/offerte', severity: statoOffertaSeverity },
-  { key: 'CONTRATTI', kind: 'count', route: '/vendite/contratti', severity: statoContrattoSeverity },
-  { key: 'COMMESSE', kind: 'euro', route: null, severity: statoCommessaSeverity },
-]
-const AREA_BY_KEY = Object.fromEntries(AREE.map((a) => [a.key, a]))
+// Config per area (ordine funnel, route "apri documento", severity stato,
+// kind euro/count): BB condiviso con la Lente Backlog in
+// vendite/dashboardAree.js — un solo punto di modifica.
+const AREE = DASH_AREE.map((key) => ({ key, ...DASH_AREA_CONFIG[key] }))
+const AREA_BY_KEY = DASH_AREA_CONFIG
 
 const meseCorrente = computed(() => mesi.value[meseIdx.value] ?? null)
 
-// Nomi mese localizzati: un solo Intl.DateTimeFormat per (anno, locale),
-// array di 12 stringhe — evita di ricostruire il formatter a ogni render.
-const nomiMesi = computed(() => {
-  const fmt = new Intl.DateTimeFormat(locale.value, { month: 'long' })
-  return Array.from({ length: 12 }, (_, m) => fmt.format(new Date(anno.value, m, 1)))
+// Telaio anno/mesi condiviso (BB useDashMesiNav): nomi mese localizzati,
+// clamp anni sul range BE e competenzaCorrente derivata da (anno, mese) —
+// race-free sul cambio anno (mai da mesi[], che puo' essere stale).
+const { nomiMesi, competenzaCorrente, selezionaMese, cambiaAnno, stepMese } = useDashMesiNav({
+  anno,
+  meseIdx,
+  onMeseChange: () => store.resetFermi(),
+  onAnnoChange: loadMatrice,
 })
 
 // Scopo: semaforo del mese: 'ok' = ha dati e tutto transitato;
@@ -145,19 +140,14 @@ async function loadMatrice() {
   }
 }
 
-// Scopo: carica la pagina corrente di fermi (mese+area selezionati).
+// Scopo: carica la pagina corrente di fermi (mese+area selezionati);
+//        competenza derivata da anno/mese, race-free sul cambio anno.
 async function loadFermi() {
-  if (!meseCorrente.value) return
   try {
-    await store.fetchFermi(meseCorrente.value.competenza_mese)
+    await store.fetchFermi(competenzaCorrente.value)
   } catch (err) {
     notify.error(extractApiError(err, t('common.error')))
   }
-}
-
-function selezionaMese(idx) {
-  meseIdx.value = idx
-  store.resetFermi()
 }
 
 // Ref alla sezione fermi per l'auto-scroll post-selezione.
@@ -176,54 +166,28 @@ function selezionaArea(areaKey) {
   nextTick(() => fermiSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
 }
 
-function cambiaAnno(delta) {
-  anno.value += delta
-  store.resetFermi()
-  loadMatrice()
-}
-
-// Scopo: passo mese ±1 per lo stepper compatto (piccoli schermi),
-//        scavalcando l'anno ai bordi (dic ▶ = gennaio anno successivo).
-function stepMese(delta) {
-  let idx = meseIdx.value + delta
-  if (idx > 11) {
-    anno.value += 1
-    idx = 0
-    loadMatrice()
-  } else if (idx < 0) {
-    anno.value -= 1
-    idx = 11
-    loadMatrice()
-  }
-  selezionaMese(idx)
-}
-
 // Scopo: paginazione DataTable fermi (lazy, paginator top).
 function onFermiPage(event) {
-  fermiPageSize.value = event.rows
-  fermiPage.value = Math.floor(event.first / event.rows) + 1
+  store.applyFermiPage(event)
   loadFermi()
 }
 
-// Severity Tag per lo stato documento del drill-down: dispatch alla shortcut
-// centralizzata dell'area selezionata (colori single-source in severity.js).
+// Severity Tag per lo stato documento del drill-down: dispatch al BB
+// condiviso (colori single-source in severity.js via dashboardAree).
 function statoSeverity(codice) {
-  const fn = AREA_BY_KEY[areaSelezionata.value]?.severity
-  return fn ? fn(codice) : 'secondary'
+  return dashAreaSeverity(areaSelezionata.value, codice)
 }
 
-// Azioni riga drill-down: "apri documento" naviga alla lista area con
-// ?search=<codice> (pattern ricerca-universale). COMMESSE: consultiva (v1).
+// Azioni riga drill-down: "apri documento" via BB condiviso (naviga alla
+// lista area con ?search=). COMMESSE: consultiva (v1, route null).
 function buildRowActions(data) {
-  const route = AREA_BY_KEY[areaSelezionata.value]?.route
   return [
-    {
-      key: 'apri',
+    buildApriDocumentoAction({
+      area: areaSelezionata.value,
+      codice: data.codice,
       label: t('dashboard_fatturazione.apri_documento'),
-      icon: MANAGE_ICONS.LIST,
-      visible: Boolean(route && data.codice),
-      command: () => router.push({ path: route, query: { search: data.codice } }),
-    },
+      router,
+    }),
   ]
 }
 
@@ -265,38 +229,17 @@ onActivated(() => {
     </div>
 
     <div class="app-dash-layout">
-      <!-- Pannello laterale: anno libero + 12 mesi con semaforo (D-5). -->
-      <aside class="app-dash-mesi">
-        <div class="app-dash-anno">
-          <Button
-            icon="pi pi-chevron-left"
-            text
-            rounded
-            size="small"
-            :aria-label="t('dashboard_fatturazione.anno_precedente')"
-            v-tooltip.bottom="t('dashboard_fatturazione.anno_precedente')"
-            @click="cambiaAnno(-1)"
-          />
-          <span>{{ anno }}</span>
-          <Button
-            icon="pi pi-chevron-right"
-            text
-            rounded
-            size="small"
-            :aria-label="t('dashboard_fatturazione.anno_successivo')"
-            v-tooltip.bottom="t('dashboard_fatturazione.anno_successivo')"
-            @click="cambiaAnno(1)"
-          />
-        </div>
-        <button
-          v-for="(mese, idx) in mesi"
-          :key="mese.competenza_mese"
-          type="button"
-          class="app-dash-mese-btn"
-          :class="{ 'is-active': idx === meseIdx }"
-          @click="selezionaMese(idx)"
-        >
-          <span class="app-dash-mese-nome">{{ nomiMesi[idx] }}</span>
+      <!-- Pannello laterale anno + 12 mesi (BB condiviso); badge semaforo
+           di lente: ok / fermi con conteggio / vuoto (D-5). -->
+      <DashMesiSidebar
+        :anno="anno"
+        :mesi="mesi"
+        :mese-idx="meseIdx"
+        :nomi-mesi="nomiMesi"
+        @seleziona-mese="selezionaMese"
+        @cambia-anno="cambiaAnno"
+      >
+        <template #badge="{ idx }">
           <i
             v-if="statiMesi[idx].stato === 'ok'"
             class="pi pi-check app-dash-mese-ok"
@@ -314,39 +257,26 @@ onActivated(() => {
             class="pi pi-minus app-dash-mese-vuoto"
             v-tooltip.right="t('dashboard_fatturazione.mese_vuoto')"
           />
-        </button>
-      </aside>
+        </template>
+      </DashMesiSidebar>
 
       <!-- Colonna principale: competenza + card aree + totali + fermi. -->
       <div class="app-dash-main">
-        <!-- Stepper compatto anno/mese: visibile SOLO su piccoli schermi
-             (CSS-first, sostituisce il pannello 12 mesi). -->
-        <div class="app-dash-stepper">
-          <Button
-            icon="pi pi-chevron-left"
-            text
-            rounded
-            size="small"
-            :aria-label="t('dashboard_fatturazione.mese_precedente')"
-            @click="stepMese(-1)"
-          />
-          <span class="app-dash-stepper-label">
-            {{ nomiMesi[meseIdx] }} {{ anno }}
+        <!-- Stepper compatto anno/mese (BB condiviso): solo piccoli schermi. -->
+        <DashMeseStepper
+          :anno="anno"
+          :mese-idx="meseIdx"
+          :nomi-mesi="nomiMesi"
+          @step="stepMese"
+        >
+          <template #badge>
             <i v-if="statoMeseCorrente.stato === 'ok'" class="pi pi-check app-dash-mese-ok" />
             <span v-else-if="statoMeseCorrente.stato === 'fermi'" class="app-dash-mese-fermi">
               <i class="pi pi-exclamation-triangle" /> {{ statoMeseCorrente.fermi }}
             </span>
             <i v-else class="pi pi-minus app-dash-mese-vuoto" />
-          </span>
-          <Button
-            icon="pi pi-chevron-right"
-            text
-            rounded
-            size="small"
-            :aria-label="t('dashboard_fatturazione.mese_successivo')"
-            @click="stepMese(1)"
-          />
-        </div>
+          </template>
+        </DashMeseStepper>
 
         <div class="app-dash-header">
           <h3 style="margin: 0;">

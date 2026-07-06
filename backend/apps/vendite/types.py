@@ -574,3 +574,100 @@ class DashFatturazioneFermoRow(TypedDict):
     stato_codice_interno: str | None
     stato_codice: str | None
     fase: str | None
+
+
+class DashCompetenzaMensileRow(TypedDict):
+    # Riga aggregata Lente 1 Competenza (vw_dash_competenza_mensile, formato
+    # lungo mese × stadio × stato fattura — il pivot ai 4 blocchi e' del service).
+    # stato_fattura_* NULL per gli stadi non fatturati.
+    competenza_mese: str
+    stadio: str
+    stato_fattura_codice_interno: str | None
+    stato_fattura_codice: str | None
+    n_attivita: int
+    valore: str
+    valore_fatturato: str
+    n_in_ritardo: int
+    valore_in_ritardo: str
+
+
+class DashCompetenzaAttivitaRow(TypedDict):
+    # Riga drill-down attivita' Lente 1 (vw_dash_competenza_attivita + decode
+    # articolo via JOIN). Campi fattura NULL per gli stadi non fatturati;
+    # data_emissione/emessa_in_ritardo NULL se non emessa.
+    commessa_attivita_id: int
+    commessa_id: int
+    commessa_codice: str | None
+    cliente_display: str | None
+    articolo_id: str | None
+    articolo_codice: str | None
+    articolo_descrizione: str | None
+    data_attivita: str | None
+    quantita: str | None
+    stadio: str
+    stato_approvazione: str | None
+    stato_emissione: str | None
+    valore: str | None
+    data_emissione: str | None
+    emessa_in_ritardo: bool | None
+    sospesa: bool | None
+    posticipa_al: str | None
+    fattura_id: int | None
+    fattura_anno: int | None
+    fattura_serie: str | None
+    fattura_numero: int | None
+    stato_fattura_codice_interno: str | None
+    stato_fattura_codice: str | None
+    valore_fatturato: str | None
+    fattura_critical: bool
+
+
+class DashBacklogRiepilogoRow(TypedDict):
+    # Riga contatori Lente 2 Backlog (vw_dash_backlog_riepilogo, grana
+    # classe × area — il pivot per classe e' del service).
+    classe: str
+    area: str
+    n_documenti: int
+    valore_fermo_tot: str | None
+    unita_ferme_tot: int
+    anzianita_max_giorni: int | None
+
+
+class DashBacklogDocumentoRow(TypedDict):
+    # Riga lista Lente 2 Backlog (vw_dash_backlog_documenti): non-collegati
+    # non-verdi per anzianita'. valore_fermo NULL per le aree a conteggi;
+    # azione = hint operativo dalla lookup config.motivi_fermo.
+    area: str
+    competenza_mese: str | None
+    documento_id: int
+    documento_uid: str | None
+    codice: str | None
+    cliente_display: str | None
+    valore_fermo: str | None
+    unita_ferme: int | None
+    motivo_fermo: str
+    classe: str
+    azione: str | None
+    data_riferimento: str | None
+    anzianita_giorni: int | None
+    stato_codice_interno: str | None
+    stato_codice: str | None
+    fase: str | None
+
+
+class DashCompetenzaErroreRow(TypedDict):
+    # Riga blocco errori Lente 1 (vw_dash_competenza_errori): union
+    # TASK_ERRORE (campi fattura NULL) + FATTURA_CRITICA (task_code NULL).
+    tipo_evento: str
+    competenza_mese: str | None
+    lotto_id: int | None
+    lotto_codice: str | None
+    stato_lotto: str | None
+    fattura_id: int | None
+    fattura_anno: int | None
+    fattura_serie: str | None
+    fattura_numero: int | None
+    task_code: str | None
+    error_code: str | None
+    messaggio: str | None
+    data_evento: str | None

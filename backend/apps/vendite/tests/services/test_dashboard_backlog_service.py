@@ -1,0 +1,187 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test unitari service Lente 2 Backlog (mock repository).
+# ------------------------------------------------------------
+
+"""
+Indice test eseguiti:
+1) DashBacklogRiepilogoServiceTests.test_tre_classi_sempre_presenti_ordine_ui
+2) DashBacklogRiepilogoServiceTests.test_contratto_simmetrico_classi_vuote
+3) DashBacklogRiepilogoServiceTests.test_pivot_classe_somma_aree
+4) DashBacklogRiepilogoServiceTests.test_classe_sconosciuta_accodata_fail_visible
+5) DashBacklogDocumentiServiceTests.test_documenti_ok_envelope_paginato
+6) DashBacklogDocumentiServiceTests.test_documenti_classe_sconosciuta_passthrough
+7) DashBacklogDocumentiServiceTests.test_documenti_area_invalida
+8) DashBacklogDocumentiServiceTests.test_documenti_filtri_none_passthrough
+9) DashBacklogDocumentiServiceTests.test_documenti_page_invalida
+"""
+
+from unittest import TestCase
+from unittest.mock import patch
+
+from apps.core.services.service_errors import ServiceError
+from apps.vendite.services import vendite_service
+from apps.vendite.services.vendite_service import (
+    fn_dash_backlog_documenti,
+    fn_dash_backlog_riepilogo,
+)
+
+# Due aree della stessa classe + una classe a conteggi: esercitano insieme la
+# somma per classe (valore/unita'/anzianita' max) e il dettaglio aree.
+_ROWS_RIEPILOGO = [
+    {
+        "classe": "RECUPERABILE",
+        "area": "PREVENTIVI",
+        "n_documenti": 3,
+        "valore_fermo_tot": "1500.00",
+        "unita_ferme_tot": 5,
+        "anzianita_max_giorni": 40,
+    },
+    {
+        "classe": "RECUPERABILE",
+        "area": "ORDINI",
+        "n_documenti": 2,
+        "valore_fermo_tot": "500.50",
+        "unita_ferme_tot": 2,
+        "anzianita_max_giorni": 90,
+    },
+    {
+        "classe": "ANOMALIA",
+        "area": "OFFERTE",
+        "n_documenti": 1,
+        "valore_fermo_tot": None,
+        "unita_ferme_tot": 1,
+        "anzianita_max_giorni": 12,
+    },
+]
+
+
+class DashBacklogRiepilogoServiceTests(TestCase):
+    # Scopo: Le 3 classi sono sempre presenti nell'ordine UI del design
+    #        (recuperabile, sollecito cliente, anomalia) anche a repo vuoto.
+    @patch.object(vendite_service.VenditeRepository, "list_dash_backlog_riepilogo", return_value=[])
+    def test_tre_classi_sempre_presenti_ordine_ui(self, _mock_repo):
+        data = fn_dash_backlog_riepilogo()
+        ordine = [c["classe"] for c in data["classi"]]
+        self.assertEqual(ordine, ["RECUPERABILE", "SOLLECITO_CLIENTE", "ANOMALIA"])
+
+    # Scopo: Contratto simmetrico: classe vuota con zeri espliciti, aree [] e
+    #        anzianita' None (eta' sconosciuta != 0 giorni).
+    @patch.object(vendite_service.VenditeRepository, "list_dash_backlog_riepilogo", return_value=[])
+    def test_contratto_simmetrico_classi_vuote(self, _mock_repo):
+        data = fn_dash_backlog_riepilogo()
+        for classe in data["classi"]:
+            self.assertEqual(classe["n_documenti"], 0)
+            self.assertEqual(classe["valore_fermo_tot"], "0")
+            self.assertEqual(classe["unita_ferme_tot"], 0)
+            self.assertIsNone(classe["anzianita_max_giorni"])
+            self.assertEqual(classe["aree"], [])
+
+    # Scopo: Le righe area della stessa classe si sommano (valore Decimal,
+    #        unita', max anzianita') e restano nel dettaglio aree.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_backlog_riepilogo",
+        return_value=_ROWS_RIEPILOGO,
+    )
+    def test_pivot_classe_somma_aree(self, _mock_repo):
+        data = fn_dash_backlog_riepilogo()
+        classi = {c["classe"]: c for c in data["classi"]}
+        rec = classi["RECUPERABILE"]
+        self.assertEqual(rec["n_documenti"], 5)
+        self.assertEqual(rec["valore_fermo_tot"], "2000.50")
+        self.assertEqual(rec["unita_ferme_tot"], 7)
+        self.assertEqual(rec["anzianita_max_giorni"], 90)
+        self.assertEqual(len(rec["aree"]), 2)
+        self.assertEqual(rec["aree"][0]["area"], "PREVENTIVI")
+        # Classe con valore NULL (aree a conteggi): il totale resta "0".
+        anomalia = classi["ANOMALIA"]
+        self.assertEqual(anomalia["n_documenti"], 1)
+        self.assertEqual(anomalia["valore_fermo_tot"], "0")
+        # Classe senza righe resta a zero.
+        self.assertEqual(classi["SOLLECITO_CLIENTE"]["n_documenti"], 0)
+
+    # Scopo: Una classe emessa dalla vista ma fuori whitelist NON viene persa:
+    #        accodata dopo le 3 note (fail-visible).
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_backlog_riepilogo",
+        return_value=[
+            {
+                "classe": "NUOVA_CLASSE",
+                "area": "ORDINI",
+                "n_documenti": 1,
+                "valore_fermo_tot": "10.00",
+                "unita_ferme_tot": 1,
+                "anzianita_max_giorni": 3,
+            }
+        ],
+    )
+    def test_classe_sconosciuta_accodata_fail_visible(self, _mock_repo):
+        data = fn_dash_backlog_riepilogo()
+        ordine = [c["classe"] for c in data["classi"]]
+        self.assertEqual(
+            ordine,
+            ["RECUPERABILE", "SOLLECITO_CLIENTE", "ANOMALIA", "NUOVA_CLASSE"],
+        )
+        self.assertEqual(data["classi"][3]["n_documenti"], 1)
+
+
+class DashBacklogDocumentiServiceTests(TestCase):
+    # Scopo: Envelope paginato standard con i risultati del repository.
+    #        Nessun auth_user_id: lo scope e' interamente DB-side.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_backlog_documenti",
+        return_value=([{"documento_id": 1}], 1),
+    )
+    def test_documenti_ok_envelope_paginato(self, mock_repo):
+        data = fn_dash_backlog_documenti(classe="RECUPERABILE", area="PREVENTIVI")
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["page"], 1)
+        self.assertEqual(data["total_pages"], 1)
+        self.assertEqual(data["results"], [{"documento_id": 1}])
+        kwargs = mock_repo.call_args.kwargs
+        self.assertEqual(kwargs["classe"], "RECUPERABILE")
+        self.assertEqual(kwargs["area"], "PREVENTIVI")
+        self.assertNotIn("auth_user_id", kwargs)
+
+    # Scopo: Il filtro classe NON e' whitellistato (coerenza fail-visible col
+    #        riepilogo): una classe sconosciuta passa al repository e produce
+    #        lista vuota, mai 400 — cosi' le classi future restano drillabili.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_backlog_documenti",
+        return_value=([], 0),
+    )
+    def test_documenti_classe_sconosciuta_passthrough(self, mock_repo):
+        data = fn_dash_backlog_documenti(classe="NUOVA_CLASSE")
+        self.assertEqual(data["count"], 0)
+        kwargs = mock_repo.call_args.kwargs
+        self.assertEqual(kwargs["classe"], "NUOVA_CLASSE")
+
+    # Scopo: Area fuori whitelist -> E_VENDITE_VALIDATION.
+    def test_documenti_area_invalida(self):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_backlog_documenti(area="FATTURE")
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: Senza filtri il repository riceve None (tutte le classi/aree).
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_backlog_documenti",
+        return_value=([], 0),
+    )
+    def test_documenti_filtri_none_passthrough(self, mock_repo):
+        fn_dash_backlog_documenti()
+        kwargs = mock_repo.call_args.kwargs
+        self.assertIsNone(kwargs["classe"])
+        self.assertIsNone(kwargs["area"])
+
+    # Scopo: Paginazione invalida -> E_VENDITE_VALIDATION (validate_pagination).
+    def test_documenti_page_invalida(self):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_backlog_documenti(page=0)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")

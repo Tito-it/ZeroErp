@@ -1,0 +1,276 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2025 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test unitari API Lente 1 Competenza (aggregata + attivita' + errori).
+# ------------------------------------------------------------
+
+"""
+Indice test eseguiti:
+1) DashboardCompetenzaApiTests.test_mensile_ok
+2) DashboardCompetenzaApiTests.test_mensile_requires_jwt
+3) DashboardCompetenzaApiTests.test_mensile_anno_default_corrente
+4) DashboardCompetenzaApiTests.test_mensile_anno_non_numerico_400
+5) DashboardCompetenzaAttivitaApiTests.test_attivita_ok
+6) DashboardCompetenzaAttivitaApiTests.test_attivita_requires_jwt
+7) DashboardCompetenzaAttivitaApiTests.test_attivita_competenza_mese_obbligatoria
+8) DashboardCompetenzaAttivitaApiTests.test_attivita_competenza_malformata_400
+9) DashboardCompetenzaAttivitaApiTests.test_attivita_stadio_lowercase_normalizzato
+10) DashboardCompetenzaAttivitaApiTests.test_attivita_solo_ritardo_e_paginazione
+11) DashboardCompetenzaAttivitaApiTests.test_attivita_scope_db_side_no_auth_user
+12) DashboardCompetenzaErroriApiTests.test_errori_ok
+13) DashboardCompetenzaErroriApiTests.test_errori_requires_jwt
+14) DashboardCompetenzaErroriApiTests.test_errori_competenza_opzionale
+"""
+
+from datetime import date
+from unittest.mock import Mock, patch
+
+from django.core.cache import cache
+from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
+
+_MENSILE_RESPONSE = {
+    "anno": 2026,
+    "mesi": [
+        {
+            "competenza_mese": "2026-01-01",
+            "stadi": [
+                {
+                    "stadio": "FATTURATA",
+                    "n_attivita": 3,
+                    "valore": "1000.00",
+                    "valore_fatturato": "990.00",
+                    "n_in_ritardo": 1,
+                    "valore_in_ritardo": "100.00",
+                    "stati_fattura": [
+                        {
+                            "stato_fattura_codice_interno": "DRAFT",
+                            "stato_fattura_codice": "DRAFT",
+                            "n_attivita": 3,
+                            "valore": "1000.00",
+                            "valore_fatturato": "990.00",
+                            "n_in_ritardo": 1,
+                            "valore_in_ritardo": "100.00",
+                        }
+                    ],
+                }
+            ],
+            "n_errori": 1,
+        }
+    ],
+}
+
+_ATTIVITA_RESPONSE = {
+    "count": 1,
+    "page": 1,
+    "page_size": 50,
+    "total_pages": 1,
+    "results": [
+        {
+            "commessa_attivita_id": 7,
+            "commessa_codice": "CMS0000042",
+            "cliente_display": "Rossi Impianti SRL",
+            "articolo_codice": "ART-001",
+            "stadio": "FATTURATA",
+            "valore": "1000.00",
+            "valore_fatturato": "990.00",
+            "emessa_in_ritardo": True,
+            "stato_fattura_codice_interno": "DRAFT",
+        }
+    ],
+}
+
+_ERRORI_RESPONSE = {
+    "count": 1,
+    "page": 1,
+    "page_size": 50,
+    "total_pages": 1,
+    "results": [
+        {
+            "tipo_evento": "TASK_ERRORE",
+            "competenza_mese": "2026-05-01",
+            "lotto_codice": "LOT0000009",
+            "error_code": "E_PIPELINE_TASK",
+            "messaggio": "boom",
+        }
+    ],
+}
+
+
+class DashboardCompetenzaApiTests(JwtMockedApiTest):
+    # Scopo: Prepara il contesto comune del test.
+    def setUp(self) -> None:
+        super().setUp()
+        cache.clear()
+        self.client = Client()
+
+    _URL = "/api/v1/vendite/dashboard-competenza/"
+
+    # Scopo: Verifica il caso `test_mensile_ok`.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_dashboard_competenza.fn_dash_competenza_mensile")
+    def test_mensile_ok(self, mocked_fn, _mock_auth):
+        mocked_fn.return_value = _MENSILE_RESPONSE
+        response = self.client.get(f"{self._URL}?anno=2026")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["anno"], 2026)
+        mese = data["mesi"][0]
+        self.assertEqual(mese["competenza_mese"], "2026-01-01")
+        self.assertEqual(mese["n_errori"], 1)
+        # Passthrough dei campi FE-critici (breakdown 3a + misura DB-6).
+        fatturata = mese["stadi"][0]
+        self.assertEqual(fatturata["valore_fatturato"], "990.00")
+        self.assertEqual(
+            fatturata["stati_fattura"][0]["stato_fattura_codice_interno"], "DRAFT"
+        )
+        kwargs = mocked_fn.call_args.kwargs
+        self.assertEqual(kwargs["anno"], 2026)
+
+    # Scopo: Verifica il caso `test_mensile_requires_jwt`.
+    def test_mensile_requires_jwt(self):
+        response = self.client.get(self._URL)
+        self.assertEqual(response.status_code, 401)
+
+    # Scopo: Senza parametro anno il default e' l'anno corrente.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_dashboard_competenza.fn_dash_competenza_mensile")
+    def test_mensile_anno_default_corrente(self, mocked_fn, _mock_auth):
+        mocked_fn.return_value = _MENSILE_RESPONSE
+        self.client.get(self._URL)
+        kwargs = mocked_fn.call_args.kwargs
+        self.assertEqual(kwargs["anno"], date.today().year)
+
+    # Scopo: Anno non numerico -> 400 (qp_int_strict).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_mensile_anno_non_numerico_400(self, _mock_auth):
+        response = self.client.get(f"{self._URL}?anno=abc")
+        self.assertEqual(response.status_code, 400)
+
+
+class DashboardCompetenzaAttivitaApiTests(JwtMockedApiTest):
+    # Scopo: Prepara il contesto comune del test.
+    def setUp(self) -> None:
+        super().setUp()
+        cache.clear()
+        self.client = Client()
+
+    _URL = "/api/v1/vendite/dashboard-competenza/attivita/"
+
+    # Scopo: Verifica il caso `test_attivita_ok`.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_dashboard_competenza.fn_dash_competenza_attivita")
+    def test_attivita_ok(self, mocked_fn, _mock_auth):
+        mocked_fn.return_value = _ATTIVITA_RESPONSE
+        response = self.client.get(
+            f"{self._URL}?competenza_mese=2026-05-01&stadio=FATTURATA"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["count"], 1)
+        row = data["results"][0]
+        # Passthrough dei campi FE-critici del drill-down (cliente, articolo
+        # decodificato, misura fatturato DB-6, flag recupero tardivo).
+        self.assertEqual(row["cliente_display"], "Rossi Impianti SRL")
+        self.assertEqual(row["articolo_codice"], "ART-001")
+        self.assertEqual(row["valore_fatturato"], "990.00")
+        self.assertTrue(row["emessa_in_ritardo"])
+        kwargs = mocked_fn.call_args.kwargs
+        self.assertEqual(kwargs["competenza_mese"], date(2026, 5, 1))
+        self.assertEqual(kwargs["stadio"], "FATTURATA")
+        self.assertFalse(kwargs["solo_ritardo"])
+
+    # Scopo: Verifica il caso `test_attivita_requires_jwt`.
+    def test_attivita_requires_jwt(self):
+        response = self.client.get(self._URL)
+        self.assertEqual(response.status_code, 401)
+
+    # Scopo: competenza_mese mancante -> 400 E_VENDITE_VALIDATION.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_attivita_competenza_mese_obbligatoria(self, _mock_auth):
+        response = self.client.get(f"{self._URL}?stadio=FATTURATA")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"]["code"], "E_VENDITE_VALIDATION")
+
+    # Scopo: competenza_mese malformata -> 400 (qp_iso_date_optional).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_attivita_competenza_malformata_400(self, _mock_auth):
+        response = self.client.get(f"{self._URL}?competenza_mese=maggio")
+        self.assertEqual(response.status_code, 400)
+
+    # Scopo: stadio minuscolo viene normalizzato a maiuscolo prima del service.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_dashboard_competenza.fn_dash_competenza_attivita")
+    def test_attivita_stadio_lowercase_normalizzato(self, mocked_fn, _mock_auth):
+        mocked_fn.return_value = _ATTIVITA_RESPONSE
+        self.client.get(f"{self._URL}?competenza_mese=2026-05-01&stadio=da_emettere")
+        kwargs = mocked_fn.call_args.kwargs
+        self.assertEqual(kwargs["stadio"], "DA_EMETTERE")
+
+    # Scopo: solo_ritardo/page/page_size vengono inoltrati al service.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_dashboard_competenza.fn_dash_competenza_attivita")
+    def test_attivita_solo_ritardo_e_paginazione(self, mocked_fn, _mock_auth):
+        mocked_fn.return_value = _ATTIVITA_RESPONSE
+        self.client.get(
+            f"{self._URL}?competenza_mese=2026-05-01&solo_ritardo=true&page=2&page_size=10"
+        )
+        kwargs = mocked_fn.call_args.kwargs
+        self.assertTrue(kwargs["solo_ritardo"])
+        self.assertEqual(kwargs["page"], 2)
+        self.assertEqual(kwargs["page_size"], 10)
+
+    # Scopo: Lo scope emittente e' interamente DB-side (GUC fail-closed nella
+    #        vista): la view NON passa auth_user_id.
+    @patch("apps.core.api.permissions.ZeroERPPermission.has_permission", return_value=True)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    @patch("apps.vendite.api.views_dashboard_competenza.fn_dash_competenza_attivita")
+    def test_attivita_scope_db_side_no_auth_user(self, mocked_fn, mock_auth, _mock_perm):
+        user = Mock()
+        user.id = 42
+        user.is_superuser = False
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+        mocked_fn.return_value = _ATTIVITA_RESPONSE
+        self.client.get(f"{self._URL}?competenza_mese=2026-05-01")
+        kwargs = mocked_fn.call_args.kwargs
+        self.assertNotIn("auth_user_id", kwargs)
+
+
+class DashboardCompetenzaErroriApiTests(JwtMockedApiTest):
+    # Scopo: Prepara il contesto comune del test.
+    def setUp(self) -> None:
+        super().setUp()
+        cache.clear()
+        self.client = Client()
+
+    _URL = "/api/v1/vendite/dashboard-competenza/errori/"
+
+    # Scopo: Verifica il caso `test_errori_ok`.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_dashboard_competenza.fn_dash_competenza_errori")
+    def test_errori_ok(self, mocked_fn, _mock_auth):
+        mocked_fn.return_value = _ERRORI_RESPONSE
+        response = self.client.get(f"{self._URL}?competenza_mese=2026-05-01")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["results"][0]["tipo_evento"], "TASK_ERRORE")
+        kwargs = mocked_fn.call_args.kwargs
+        self.assertEqual(kwargs["competenza_mese"], date(2026, 5, 1))
+
+    # Scopo: Verifica il caso `test_errori_requires_jwt`.
+    def test_errori_requires_jwt(self):
+        response = self.client.get(self._URL)
+        self.assertEqual(response.status_code, 401)
+
+    # Scopo: Senza competenza_mese il service riceve None (tutti i mesi).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_dashboard_competenza.fn_dash_competenza_errori")
+    def test_errori_competenza_opzionale(self, mocked_fn, _mock_auth):
+        mocked_fn.return_value = _ERRORI_RESPONSE
+        self.client.get(self._URL)
+        kwargs = mocked_fn.call_args.kwargs
+        self.assertIsNone(kwargs["competenza_mese"])

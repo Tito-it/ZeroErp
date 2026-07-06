@@ -27,6 +27,8 @@ export const NAV_ICONS = Object.freeze({
   LISTINI: 'app-nav-icon app-nav-icon-listini',
   APPROVAZIONI_PREZZO: 'app-nav-icon app-nav-icon-approvazioni-prezzo',
   DASHBOARD_FATTURAZIONE: 'pi pi-chart-pie',
+  DASHBOARD_COMPETENZA: 'pi pi-chart-bar',
+  DASHBOARD_BACKLOG: 'pi pi-inbox',
   PROMO_ARTICOLI: 'app-nav-icon app-nav-icon-promo-articoli',
   PERSONALIZZAZIONI_LISTE: 'pi pi-th-large',
   HOME: 'pi pi-home',
@@ -158,6 +160,8 @@ export const DOMAIN_MENUS = {
   ],
   'vendite': [
     { key: 'dashboard-fatturazione', icon: NAV_ICONS.DASHBOARD_FATTURAZIONE, to: '/vendite/dashboard-fatturazione' },
+    { key: 'dashboard-competenza', icon: NAV_ICONS.DASHBOARD_COMPETENZA, to: '/vendite/dashboard-competenza' },
+    { key: 'dashboard-backlog', icon: NAV_ICONS.DASHBOARD_BACKLOG, to: '/vendite/dashboard-backlog' },
     { key: 'preventivi', icon: NAV_ICONS.PREVENTIVI, to: '/vendite/preventivi' },
     { key: 'offerte', icon: NAV_ICONS.OFFERTE, to: '/vendite/offerte' },
     { key: 'ordini', icon: NAV_ICONS.ORDINI, to: '/vendite/ordini' },

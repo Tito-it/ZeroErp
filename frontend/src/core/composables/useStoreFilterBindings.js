@@ -23,14 +23,21 @@
 // `solo_attiva` string-cast, `scadenza_mese` YYYY-MM) e ingabbiarla qui
 // sarebbe un config piu' lungo del codice che sostituisce.
 
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { parseIsoDate, toDateString } from '../utils/date'
 
 export function useStoreFilterBindings(store, applyFilters) {
   // Filtro select/valore semplice: ref inizializzato dallo store, onChange
-  // riscrive lo store e rilancia la fetch.
+  // riscrive lo store e rilancia la fetch. Il watch store→ref tiene la
+  // toolbar allineata anche quando il filtro viene cambiato FUORI dal
+  // widget (es. useSearchTable che azzera i default data su ricerca
+  // esterna): l'operatore deve sempre vedere il valore che limita la lista.
+  // Nessun loop: onChange scatta solo da evento utente, mai dal watch.
   function bindSelect(storeKey, { defaultValue = null } = {}) {
     const value = ref(store.filters[storeKey] ?? defaultValue)
+    watch(() => store.filters[storeKey], (nuovo) => {
+      value.value = nuovo ?? defaultValue
+    })
     function onChange() {
       store.filters[storeKey] = value.value
       applyFilters()
@@ -41,8 +48,13 @@ export function useStoreFilterBindings(store, applyFilters) {
   // Filtro data: ref Date local-safe dallo store (ISO 'YYYY-MM-DD'), onChange
   // serializza con `toDateString`. `clearTo` (opzionale) ripristina un floor
   // quando l'utente cancella (es. contratti: anno-1, la lista vuole un floor).
+  // Stesso sync store→ref di bindSelect (vale solo per i cambi esterni:
+  // il floor clearTo resta legato al gesto utente di svuotamento).
   function bindDate(storeKey, { clearTo = null } = {}) {
     const value = ref(parseIsoDate(store.filters[storeKey]))
+    watch(() => store.filters[storeKey], (nuovo) => {
+      value.value = parseIsoDate(nuovo)
+    })
     function onChange() {
       if (!value.value && clearTo) {
         const fallback = clearTo()

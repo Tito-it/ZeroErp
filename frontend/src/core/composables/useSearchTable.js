@@ -45,6 +45,20 @@ export function useSearchTable(store, options = {}) {
     store.filters.order_dir = defaultSortOrder
   }
 
+  // Scopo: una ricerca ESTERNA (deep-link `?search=` da "apri documento",
+  // ricerca universale, AI) deve trovare il documento OVUNQUE nel tempo:
+  // azzera i default temporali UX (`data_da`/`data_a`) se la lista li usa.
+  // Senza questo, i documenti piu' vecchi del default anno-1 risultano
+  // "non trovati" proprio quando qualcuno li cerca per codice (es. il
+  // backlog fatturazione, ordinato per anzianita'). Il default e' una
+  // scelta UX, non una regola dati: l'operatore lo vede azzerato nei
+  // DatePicker (sync store→ref in useStoreFilterBindings) e puo' rimetterlo.
+  // Le ricerche DIGITATE in pagina non toccano i filtri data scelti.
+  function clearDateDefaultsForExternalSearch() {
+    if ('data_da' in store.filters) store.filters.data_da = null
+    if ('data_a' in store.filters) store.filters.data_a = null
+  }
+
   // Risolve termine ricerca iniziale: route query > context > vuoto
   const resolvedSearch = route.query.search || ctx.searchTerm || ''
   const searchText = ref(resolvedSearch)
@@ -55,6 +69,7 @@ export function useSearchTable(store, options = {}) {
   let lastConsumedSearch = route.query.search || null
   if (resolvedSearch) {
     store.filters.search = resolvedSearch
+    clearDateDefaultsForExternalSearch()
   }
   let searchTimeout = null
   let skipNextDebounce = false
@@ -69,6 +84,7 @@ export function useSearchTable(store, options = {}) {
       searchText.value = term
       store.filters.search = term
       store.filters.offset = 0
+      if (term) clearDateDefaultsForExternalSearch()
       store.fetchList()
     }
   })
@@ -146,6 +162,7 @@ export function useSearchTable(store, options = {}) {
       searchText.value = qs
       store.filters.search = qs
       store.filters.offset = 0
+      clearDateDefaultsForExternalSearch()
       store.fetchList()
     }
   })
