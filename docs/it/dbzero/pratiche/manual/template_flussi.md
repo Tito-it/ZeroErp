@@ -36,6 +36,12 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
   l'esito e quale classe di esito e' ammessa al completamento — invarianti config-time
   in [trgfn_template_flussi_guard_modalita_esito](trgfn_template_flussi_guard_modalita_esito.md),
   guard runtime in [trgfn_flussi_guard_esito_classe](trgfn_flussi_guard_esito_classe.md).
+* L'**avanzamento su esito proiettato** (GUIDA D4): un template step può dichiarare
+  `attende_sorgente_tipo_id` (il tipo documento il cui verdetto lo fa avanzare) e, insieme al
+  binding [template_flussi_avanzamento_proiezione](template_flussi_avanzamento_proiezione.md),
+  il milestone si completa **automaticamente** quando il documento proietta il verdetto
+  ([fn_reconcile_sorgente](fn_reconcile_sorgente.md)). Additivo: senza mappa/binding,
+  comportamento di oggi (nessun avanzamento automatico). Ammesso solo su step **non-DOMINIO**.
 * **Immutabilità strutturale «Leggera» (strategia C)**: se l'edizione di appartenenza è
   un **fork già emesso** (`emittente_fiscale_id` valorizzato, stato PUBBLICATA o RITIRATA)
   la struttura è protetta — `INSERT`/`UPDATE` di template e figli **vietati** (UPDATE del
@@ -64,6 +70,7 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
 | `modalita_esito` | VARCHAR(20) CHECK (MANUALE, AUTOMATICO, CONTESTUALE, DOMINIO) DEFAULT 'MANUALE'. Come lo step ottiene l'esito: MANUALE = form esito; AUTOMATICO = avvia+completa con `esito_default` (solo INTERNA); CONTESTUALE = default pre-selezionato confermato in un'unica azione; **DOMINIO** = esito calcolato da un BB di dominio (es. SMISTAMENTO → `vendite.completa_smistamento`), nessuna scelta operatore, al completamento solo esiti di ramo `is_verdetto=false` (guard 504). |
 | `esito_default` | VARCHAR(20) nullable, FK → `config.esiti_flussi_pratiche(codice_interno)`. Obbligatorio per AUTOMATICO/CONTESTUALE (Inv1, 494) e deve essere un verdetto (Inv4, 506); **vietato** con DOMINIO (Inv3, 505). |
 | `definizione_id` | INTEGER NOT NULL. Edizione di workflow di appartenenza ([workflow_definizioni](workflow_definizioni.md)); default automatico al preset del tipo. FK **composita** con `tipo_prestazione_id` → coerenza tipo per costruzione. |
+| `attende_sorgente_tipo_id` | BIGINT nullable, FK → [`config.sorgenti`](/dbzero/config/tabelle/sorgenti). GUIDA D4/G1: tipo documento il cui verdetto proiettato fa avanzare questo milestone ([fn_reconcile_sorgente](fn_reconcile_sorgente.md) + binding [template_flussi_avanzamento_proiezione](template_flussi_avanzamento_proiezione.md)). NULL = step non projection-driven (comportamento di oggi). Copiato da `fn_copia_definizione`. |
 
 ---
 

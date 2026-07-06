@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GUIDA (D4) — G3b pilota: aggancio del trigger generico a vendite.preventivi.
+# Brief: brief-db-guida-avanza-esito-proiettato.md §G3b (pilota PREVENTIVI).
+#
+# Aggancia la trigger-function generica pratiche.trgfn_documento_reconcile_proiezione
+# alla tabella-documento vendite.preventivi, AFTER UPDATE della colonna-stato
+# (stato_doc_preventivo_id). Argomenti ESPLICITI (D-B9):
+#   TG_ARGV[0]='2'  -> config.sorgenti.id del tipo PREVENTIVO
+#   TG_ARGV[1]='uid'-> colonna chiave nativa (config.sorgenti.key_selector='uid')
+#
+# DORMIENTE e sicuro finche' non esiste un binding G2 (avanzamento_proiezione)
+# sullo step: fn_reconcile_sorgente non trova candidati -> RETURN 0 (no-op).
+# L'attivazione effettiva (cutover dell'inversione: disattiva l'handler
+# accetta_preventivo + G1/G2 sullo step APPROVAZIONE_CLIENTE) e' un changeset
+# separato, GATED sulla validazione E2E del BE (brief §7/§10).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260706-23-create-trg-preventivi-reconcile-proiezione-mctit.yaml
+
+  - changeSet:
+      id: 20260706-23-create-trg-preventivi-reconcile-proiezione
+      author: mctit
+      runOnChange: false
+      comment: >
+        Aggancia il trigger generico di avanzamento su proiezione (GUIDA D4/G3b)
+        a vendite.preventivi (AFTER UPDATE OF stato_doc_preventivo_id, args '2'/'uid').
+        Dormiente finche' non esiste un binding G2 sullo step.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE proname = 'trgfn_documento_reconcile_proiezione'
+                 AND pronamespace = 'pratiche'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_z90_reconcile_proiezione_upd
+                ON vendite.preventivi;
+
+              CREATE TRIGGER trg_preventivi_z90_reconcile_proiezione_upd
+                AFTER UPDATE OF stato_doc_preventivo_id
+                ON vendite.preventivi
+                FOR EACH ROW
+                WHEN (OLD.stato_doc_preventivo_id IS DISTINCT FROM NEW.stato_doc_preventivo_id)
+                EXECUTE FUNCTION pratiche.trgfn_documento_reconcile_proiezione('2', 'uid');
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_z90_reconcile_proiezione_upd
+                ON vendite.preventivi;

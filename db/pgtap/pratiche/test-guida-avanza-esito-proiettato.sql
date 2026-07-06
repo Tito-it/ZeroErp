@@ -1,0 +1,398 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: GUIDA (D4) — avanzamento milestone su esito proiettato
+--       (brief-db-guida-avanza-esito-proiettato.md)
+--       G1 colonna attende_sorgente_tipo_id + G2 binding avanzamento +
+--       G3a fn_reconcile_sorgente + G3b trigger generico + G5 osservabilita' +
+--       guard config-time (non-DOMINIO / mutua esclusione) + copia edizione.
+-- ------------------------------------------------------------
+-- Indice test (1..16; 18 asserzioni: 10 e 12 ne hanno due, a/b):
+--  1) Struttura: template_flussi.attende_sorgente_tipo_id presente (G1)
+--  2) Struttura: tabella template_flussi_avanzamento_proiezione presente (G2)
+--  3) Struttura: tabella reconcile_errori presente (G5)
+--  4) Struttura: trigger reconcile su vendite.preventivi presente (G3b pilota)
+--  5) CHECK: binding con esito non-verdetto respinto (chk_tfap_esito_verdetto)
+--  6) Guard: binding su step DOMINIO respinto (D-B3, 517)
+--  7) Guard: binding su step con handler COMPLETATO attivo respinto (D-B10, 518)
+--  8) Guard simmetrico: handler COMPLETATO su step con binding respinto (518)
+--  9) Standalone -> avanza (E2E via trigger): preventivo ad ACCETTATO ->
+--     milestone COMPLETATO con esito POSITIVO (due-salti, D-B2)
+-- 10) Nessun verdetto -> no-op: preventivo EMESSO -> milestone resta DA_ESEGUIRE
+-- 11) Additivita': step senza attende/binding -> nessun avanzamento
+-- 12) Idempotenza: reconcile ripetuto sul terminale -> 0, milestone resta COMPLETATO (D-B11)
+-- 13) Tie-break (D-B5): 2 candidati con flusso_id NULL -> nessun avanzamento
+-- 14) Osservabilita' (D-B7): il tie-break ambiguo lascia una riga in reconcile_errori
+-- 15) Copia edizione: fn_copia_definizione propaga attende_sorgente_tipo_id (G1)
+-- 16) Copia edizione: fn_copia_definizione propaga il binding G2
+-- ------------------------------------------------------------
+
+BEGIN;
+SELECT plan(18);
+
+-- Provisioning stati flusso (idempotente).
+INSERT INTO config.stati_flussi_pratiche (codice, codice_interno, descrizione, attivo)
+VALUES ('DA_ESEGUIRE', 'DA_ESEGUIRE', 'Da eseguire', true),
+       ('IN_CORSO',    'IN_CORSO',    'In corso',    true),
+       ('COMPLETATO',  'COMPLETATO',  'Completato',  true)
+ON CONFLICT (codice_interno) DO NOTHING;
+
+-- ============================================================
+-- Riferimenti minimi (pattern test-proiezione-stato-sorgente)
+-- ============================================================
+CREATE TEMP TABLE tmp_g_refs AS
+SELECT
+  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
+  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS utility_id,
+  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
+  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
+    ORDER BY ef.id LIMIT 1) AS emittente_id,
+  (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1) AS soggetto_id,
+  (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'APERTA') AS st_aperta,
+  (SELECT id FROM config.priorita_pratiche WHERE codice_interno = 'NORMALE') AS priorita_id,
+  (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'DA_ESEGUIRE') AS fl_da_eseguire,
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1) AS src_preventivo,
+  (SELECT sd.id FROM config.stati_doc_preventivi sd WHERE sd.codice_interno = 'EMESSO' LIMIT 1) AS stato_emesso_id,
+  (SELECT sd.id FROM config.stati_doc_preventivi sd WHERE sd.codice_interno = 'ACCETTATO' LIMIT 1) AS stato_accettato_id,
+  (SELECT id FROM pratiche.template_flussi_handler_eventi WHERE evento = 'COMPLETATO' LIMIT 1) AS any_handler_evento_id;
+
+-- Un handler_id valido per costruire un binding handler_eventi di fixture.
+CREATE TEMP TABLE tmp_g_hid AS
+SELECT (SELECT handler_id FROM pratiche.template_flussi_handler_eventi
+         WHERE evento = 'COMPLETATO' AND handler_id IS NOT NULL LIMIT 1) AS handler_id;
+
+-- ============================================================
+-- Tipo prestazione + step di fixture
+-- ============================================================
+CREATE TEMP TABLE tmp_g_tp AS
+WITH ins AS (
+  INSERT INTO pratiche.tipi_prestazione (codice, codice_interno, descrizione, attivo)
+  VALUES ('TEST_GUIDA', 'TEST_GUIDA', 'Tipo test GUIDA D4', true)
+  ON CONFLICT (codice_interno) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  RETURNING id
+) SELECT id AS tp_id FROM ins;
+
+-- MILESTONE: step non-DOMINIO che attende il PREVENTIVO.
+CREATE TEMP TABLE tmp_g_ms AS
+WITH ins AS (
+  INSERT INTO pratiche.template_flussi
+    (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo,
+     ripetibilita, modalita_esito, attende_sorgente_tipo_id)
+  VALUES ((SELECT tp_id FROM tmp_g_tp), 'MS_PREV', 'Milestone attende preventivo',
+          10, false, true, 'SEMPRE', 'MANUALE', (SELECT src_preventivo FROM tmp_g_refs))
+  RETURNING id, definizione_id
+) SELECT id AS tf_id, definizione_id FROM ins;
+
+-- MILESTONE2: secondo step che attende il PREVENTIVO (per il tie-break).
+CREATE TEMP TABLE tmp_g_ms2 AS
+WITH ins AS (
+  INSERT INTO pratiche.template_flussi
+    (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo,
+     ripetibilita, modalita_esito, attende_sorgente_tipo_id)
+  VALUES ((SELECT tp_id FROM tmp_g_tp), 'MS_PREV_2', 'Milestone 2 attende preventivo',
+          20, false, true, 'SEMPRE', 'MANUALE', (SELECT src_preventivo FROM tmp_g_refs))
+  RETURNING id
+) SELECT id AS tf_id FROM ins;
+
+-- NOOP: step senza attende (additivita').
+CREATE TEMP TABLE tmp_g_noop AS
+WITH ins AS (
+  INSERT INTO pratiche.template_flussi
+    (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo, ripetibilita, modalita_esito)
+  VALUES ((SELECT tp_id FROM tmp_g_tp), 'MS_NOOP', 'Milestone senza proiezione',
+          30, false, true, 'SEMPRE', 'MANUALE')
+  RETURNING id
+) SELECT id AS tf_id FROM ins;
+
+-- DOMINIO: step a esito di ramo (per il guard 6).
+CREATE TEMP TABLE tmp_g_dom AS
+WITH ins AS (
+  INSERT INTO pratiche.template_flussi
+    (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo, ripetibilita, modalita_esito, esito_default)
+  VALUES ((SELECT tp_id FROM tmp_g_tp), 'MS_DOMINIO', 'Milestone dominio',
+          40, false, true, 'SEMPRE', 'DOMINIO', NULL)
+  RETURNING id
+) SELECT id AS tf_id FROM ins;
+
+-- HANDLER: step con un handler_eventi COMPLETATO attivo (per il guard 7).
+CREATE TEMP TABLE tmp_g_hstep AS
+WITH ins AS (
+  INSERT INTO pratiche.template_flussi
+    (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo, ripetibilita, modalita_esito)
+  VALUES ((SELECT tp_id FROM tmp_g_tp), 'MS_HANDLER', 'Milestone con handler',
+          50, false, true, 'SEMPRE', 'MANUALE')
+  RETURNING id
+) SELECT id AS tf_id FROM ins;
+
+INSERT INTO pratiche.template_flussi_handler_eventi
+  (template_flusso_id, evento, esito_richiesto, handler_id, attivo)
+VALUES ((SELECT tf_id FROM tmp_g_hstep), 'COMPLETATO', 'POSITIVO', (SELECT handler_id FROM tmp_g_hid), true);
+
+-- Binding G2 attivo sui due milestone che proiettano.
+INSERT INTO pratiche.template_flussi_avanzamento_proiezione (template_flusso_id, esito_richiesto)
+VALUES ((SELECT tf_id FROM tmp_g_ms),  'POSITIVO'),
+       ((SELECT tf_id FROM tmp_g_ms2), 'POSITIVO');
+
+-- ============================================================
+-- 1..4) Struttura
+-- ============================================================
+SELECT has_column('pratiche', 'template_flussi', 'attende_sorgente_tipo_id',
+  '1. template_flussi.attende_sorgente_tipo_id presente (G1)');
+
+SELECT has_table('pratiche', 'template_flussi_avanzamento_proiezione',
+  '2. tabella template_flussi_avanzamento_proiezione presente (G2)');
+
+SELECT has_table('pratiche', 'reconcile_errori',
+  '3. tabella reconcile_errori presente (G5)');
+
+SELECT has_trigger('vendite', 'preventivi', 'trg_preventivi_z90_reconcile_proiezione_upd',
+  '4. trigger reconcile su vendite.preventivi presente (G3b pilota)');
+
+-- ============================================================
+-- 5..8) Guard config-time del binding
+-- ============================================================
+SELECT throws_ok(
+  $$INSERT INTO pratiche.template_flussi_avanzamento_proiezione (template_flusso_id, esito_richiesto)
+    VALUES ((SELECT tf_id FROM tmp_g_noop), 'MERCE_PRESENTE')$$,
+  NULL, NULL,
+  '5. binding con esito non-verdetto respinto (CHECK chk_tfap_esito_verdetto)');
+
+SELECT throws_like(
+  $$INSERT INTO pratiche.template_flussi_avanzamento_proiezione (template_flusso_id, esito_richiesto)
+    VALUES ((SELECT tf_id FROM tmp_g_dom), 'POSITIVO')$$,
+  '%DOMINIO%',
+  '6. binding su step DOMINIO respinto (D-B3, 517)');
+
+SELECT throws_like(
+  $$INSERT INTO pratiche.template_flussi_avanzamento_proiezione (template_flusso_id, esito_richiesto)
+    VALUES ((SELECT tf_id FROM tmp_g_hstep), 'POSITIVO')$$,
+  '%onflitto%',
+  '7. binding su step con handler COMPLETATO attivo respinto (D-B10, 518)');
+
+SELECT throws_like(
+  $$INSERT INTO pratiche.template_flussi_handler_eventi
+      (template_flusso_id, evento, esito_richiesto, handler_id, attivo)
+    VALUES ((SELECT tf_id FROM tmp_g_ms), 'COMPLETATO', 'POSITIVO',
+            (SELECT handler_id FROM tmp_g_hid), true)$$,
+  '%onflitto%',
+  '8. handler COMPLETATO su step con binding respinto (D-B10 lato simmetrico, 518)');
+
+-- ============================================================
+-- Fixture pratiche/flussi/preventivi
+-- ============================================================
+-- Preventivi: 3 EMESSO (adv, noop-milestone, additivita') + 1 ACCETTATO (tie-break).
+CREATE TEMP TABLE tmp_g_prev AS
+WITH ins AS (
+  INSERT INTO vendite.preventivi
+    (numero, rev, istanza_utility_id, utility_id, validita_dal, validita_al, valuta_id,
+     stato_doc_preventivo_id, data, fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
+  SELECT
+    'PGTAP-GUIDA-' || x.suffisso || '-' || substr(md5(clock_timestamp()::text || x.suffisso), 1, 8),
+    0, r.istanza_utility_id, r.utility_id, DATE '2026-07-01', DATE '2026-07-31', r.valuta_id,
+    x.stato_id, DATE '2026-07-01', false, false,
+    '{"test_scope":"pgtap_guida"}'::jsonb, r.emittente_id
+  FROM tmp_g_refs r
+  CROSS JOIN (
+    SELECT 'ADV'   AS suffisso, (SELECT stato_emesso_id    FROM tmp_g_refs) AS stato_id
+    UNION ALL SELECT 'NOV',     (SELECT stato_emesso_id    FROM tmp_g_refs)
+    UNION ALL SELECT 'ADD',     (SELECT stato_emesso_id    FROM tmp_g_refs)
+    UNION ALL SELECT 'AMB',     (SELECT stato_accettato_id FROM tmp_g_refs)
+  ) x
+  RETURNING id, (uid)::text AS uid, stato_doc_preventivo_id
+)
+SELECT i.id, i.uid,
+       CASE
+         WHEN i.stato_doc_preventivo_id = (SELECT stato_accettato_id FROM tmp_g_refs) THEN 'AMB'
+         ELSE row_number() OVER (ORDER BY i.id)::text
+       END AS tag_raw,
+       i.stato_doc_preventivo_id
+FROM ins i;
+
+-- Etichettatura stabile per suffisso nel numero (ADV/NOV/ADD/AMB).
+CREATE TEMP TABLE tmp_g_prev_lbl AS
+SELECT p.id, p.uid,
+       split_part(v.numero, '-', 3) AS tag
+FROM tmp_g_prev p
+JOIN vendite.preventivi v ON v.id = p.id;
+
+-- 3 pratiche (adv, nov, add) + 1 pratica tie-break (amb).
+CREATE TEMP TABLE tmp_g_prat AS
+WITH ins AS (
+  INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id, priorita_id)
+  SELECT (SELECT emittente_id FROM tmp_g_refs), (SELECT tp_id FROM tmp_g_tp),
+         (SELECT soggetto_id FROM tmp_g_refs), (SELECT st_aperta FROM tmp_g_refs),
+         (SELECT priorita_id FROM tmp_g_refs)
+  FROM generate_series(1, 4) g
+  RETURNING id
+)
+SELECT id, row_number() OVER (ORDER BY id) AS n FROM ins;
+
+-- Flussi: adv(MS su pratica1), add(NOOP su pratica3), amb1(MS)/amb2(MS2) su pratica4.
+CREATE TEMP TABLE tmp_g_fl_adv AS
+WITH ins AS (
+  INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
+  VALUES ((SELECT id FROM tmp_g_prat WHERE n = 1), (SELECT tf_id FROM tmp_g_ms),
+          (SELECT fl_da_eseguire FROM tmp_g_refs))
+  RETURNING id
+) SELECT id AS flusso_id FROM ins;
+
+CREATE TEMP TABLE tmp_g_fl_nov AS
+WITH ins AS (
+  INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
+  VALUES ((SELECT id FROM tmp_g_prat WHERE n = 2), (SELECT tf_id FROM tmp_g_ms),
+          (SELECT fl_da_eseguire FROM tmp_g_refs))
+  RETURNING id
+) SELECT id AS flusso_id FROM ins;
+
+CREATE TEMP TABLE tmp_g_fl_add AS
+WITH ins AS (
+  INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
+  VALUES ((SELECT id FROM tmp_g_prat WHERE n = 3), (SELECT tf_id FROM tmp_g_noop),
+          (SELECT fl_da_eseguire FROM tmp_g_refs))
+  RETURNING id
+) SELECT id AS flusso_id FROM ins;
+
+CREATE TEMP TABLE tmp_g_fl_amb AS
+WITH ins AS (
+  INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
+  VALUES ((SELECT id FROM tmp_g_prat WHERE n = 4), (SELECT tf_id FROM tmp_g_ms),
+          (SELECT fl_da_eseguire FROM tmp_g_refs)),
+         ((SELECT id FROM tmp_g_prat WHERE n = 4), (SELECT tf_id FROM tmp_g_ms2),
+          (SELECT fl_da_eseguire FROM tmp_g_refs))
+  RETURNING id
+) SELECT id AS flusso_id FROM ins;
+
+-- Aggancio documento->pratica.
+INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
+VALUES
+  -- ADV: ROOT col flusso_id esplicito (tie-break non ambiguo).
+  ((SELECT id FROM tmp_g_prat WHERE n = 1), (SELECT src_preventivo FROM tmp_g_refs),
+   (SELECT uid FROM tmp_g_prev_lbl WHERE tag = 'ADV'), 'ROOT', (SELECT flusso_id FROM tmp_g_fl_adv)),
+  -- NOV: ROOT col flusso_id esplicito.
+  ((SELECT id FROM tmp_g_prat WHERE n = 2), (SELECT src_preventivo FROM tmp_g_refs),
+   (SELECT uid FROM tmp_g_prev_lbl WHERE tag = 'NOV'), 'ROOT', (SELECT flusso_id FROM tmp_g_fl_nov)),
+  -- ADD: ROOT col flusso_id esplicito (step NOOP).
+  ((SELECT id FROM tmp_g_prat WHERE n = 3), (SELECT src_preventivo FROM tmp_g_refs),
+   (SELECT uid FROM tmp_g_prev_lbl WHERE tag = 'ADD'), 'ROOT', (SELECT flusso_id FROM tmp_g_fl_add)),
+  -- AMB: COLLEGATO con flusso_id NULL -> 2 candidati -> ambiguo.
+  ((SELECT id FROM tmp_g_prat WHERE n = 4), (SELECT src_preventivo FROM tmp_g_refs),
+   (SELECT uid FROM tmp_g_prev_lbl WHERE tag = 'AMB'), 'COLLEGATO', NULL);
+
+-- ============================================================
+-- 9) Standalone -> avanza (E2E via trigger G3b + due-salti)
+-- ============================================================
+UPDATE vendite.preventivi
+   SET stato_doc_preventivo_id = (SELECT stato_accettato_id FROM tmp_g_refs)
+ WHERE id = (SELECT id FROM tmp_g_prev_lbl WHERE tag = 'ADV');
+
+SELECT results_eq(
+  $$SELECT s.codice_interno, f.esito
+      FROM pratiche.flussi f
+      JOIN config.stati_flussi_pratiche s ON s.id = f.stato_id
+     WHERE f.id = (SELECT flusso_id FROM tmp_g_fl_adv)$$,
+  $$VALUES ('COMPLETATO'::varchar, 'POSITIVO'::varchar)$$,
+  '9. Standalone: preventivo ACCETTATO -> milestone COMPLETATO/POSITIVO (due-salti)');
+
+-- ============================================================
+-- 10) Nessun verdetto -> no-op (preventivo EMESSO)
+-- ============================================================
+SELECT is(
+  pratiche.fn_reconcile_sorgente(
+    (SELECT src_preventivo FROM tmp_g_refs),
+    (SELECT uid FROM tmp_g_prev_lbl WHERE tag = 'NOV')),
+  0,
+  '10a. reconcile su preventivo EMESSO (esito NULL) -> 0 avanzamenti');
+
+SELECT is(
+  (SELECT s.codice_interno FROM pratiche.flussi f
+     JOIN config.stati_flussi_pratiche s ON s.id = f.stato_id
+    WHERE f.id = (SELECT flusso_id FROM tmp_g_fl_nov)),
+  'DA_ESEGUIRE'::varchar,
+  '10b. milestone del preventivo EMESSO resta DA_ESEGUIRE');
+
+-- ============================================================
+-- 11) Additivita': step senza attende/binding -> nessun avanzamento
+-- ============================================================
+UPDATE vendite.preventivi
+   SET stato_doc_preventivo_id = (SELECT stato_accettato_id FROM tmp_g_refs)
+ WHERE id = (SELECT id FROM tmp_g_prev_lbl WHERE tag = 'ADD');
+
+SELECT is(
+  (SELECT s.codice_interno FROM pratiche.flussi f
+     JOIN config.stati_flussi_pratiche s ON s.id = f.stato_id
+    WHERE f.id = (SELECT flusso_id FROM tmp_g_fl_add)),
+  'DA_ESEGUIRE'::varchar,
+  '11. step senza attende_sorgente -> milestone resta DA_ESEGUIRE (additivita'')');
+
+-- ============================================================
+-- 12) Idempotenza: reconcile ripetuto sul terminale -> 0, resta COMPLETATO
+-- ============================================================
+SELECT is(
+  pratiche.fn_reconcile_sorgente(
+    (SELECT src_preventivo FROM tmp_g_refs),
+    (SELECT uid FROM tmp_g_prev_lbl WHERE tag = 'ADV')),
+  0,
+  '12a. reconcile ripetuto sul milestone gia'' COMPLETATO -> 0 (idempotenza, D-B11)');
+
+SELECT is(
+  (SELECT s.codice_interno FROM pratiche.flussi f
+     JOIN config.stati_flussi_pratiche s ON s.id = f.stato_id
+    WHERE f.id = (SELECT flusso_id FROM tmp_g_fl_adv)),
+  'COMPLETATO'::varchar,
+  '12b. il milestone resta COMPLETATO (nessun doppio avanzamento)');
+
+-- ============================================================
+-- 13-14) Tie-break ambiguo + osservabilita'
+-- ============================================================
+SELECT is(
+  pratiche.fn_reconcile_sorgente(
+    (SELECT src_preventivo FROM tmp_g_refs),
+    (SELECT uid FROM tmp_g_prev_lbl WHERE tag = 'AMB')),
+  0,
+  '13. tie-break: 2 candidati con flusso_id NULL -> 0 avanzamenti (D-B5)');
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pratiche.reconcile_errori re
+     WHERE re.sorgente_tipo_id = (SELECT src_preventivo FROM tmp_g_refs)
+       AND re.sorgente_uid = (SELECT uid FROM tmp_g_prev_lbl WHERE tag = 'AMB')
+       AND re.errcode = 'E_RECONCILE_AMBIGUO'
+  ),
+  '14. il tie-break ambiguo lascia una riga in reconcile_errori (osservabilita'', D-B7)');
+
+-- ============================================================
+-- 15-16) Copia edizione: fn_copia_definizione propaga G1 + G2
+-- ============================================================
+-- Copia verso l'emittente di test (scope (tipo, emittente) nuovo: nessun
+-- conflitto con la BOZZA/preset dello scope (tipo, NULL)).
+CREATE TEMP TABLE tmp_g_copia AS
+SELECT pratiche.fn_copia_definizione(
+         (SELECT definizione_id FROM tmp_g_ms)::integer,
+         (SELECT emittente_id FROM tmp_g_refs)::bigint,
+         false) AS new_def_id;
+
+SELECT is(
+  (SELECT nt.attende_sorgente_tipo_id
+     FROM pratiche.template_flussi nt
+    WHERE nt.definizione_id = (SELECT new_def_id FROM tmp_g_copia)
+      AND nt.codice = 'MS_PREV'),
+  (SELECT src_preventivo FROM tmp_g_refs),
+  '15. fn_copia_definizione propaga attende_sorgente_tipo_id alla nuova edizione (G1)');
+
+SELECT ok(
+  EXISTS (
+    SELECT 1
+      FROM pratiche.template_flussi_avanzamento_proiezione b
+      JOIN pratiche.template_flussi nt ON nt.id = b.template_flusso_id
+     WHERE nt.definizione_id = (SELECT new_def_id FROM tmp_g_copia)
+       AND nt.codice = 'MS_PREV'
+       AND b.esito_richiesto = 'POSITIVO'
+  ),
+  '16. fn_copia_definizione propaga il binding G2 alla nuova edizione');
+
+SELECT * FROM finish();
+ROLLBACK;

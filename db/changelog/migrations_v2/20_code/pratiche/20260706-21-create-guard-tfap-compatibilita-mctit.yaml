@@ -1,0 +1,172 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GUIDA (D4) — G2-guard: compatibilita' del binding di avanzamento (config-time).
+# Brief: brief-db-guida-avanza-esito-proiettato.md §G2 / decisioni D-B3, D-B10.
+#
+# Due guard speculari, difesa in profondita' a config-time:
+#   1) trgfn_tfap_guard_compatibilita (su template_flussi_avanzamento_proiezione):
+#      - lo step deve essere NON-DOMINIO (D-B3): la proiezione produce VERDETTI
+#        (is_verdetto=true) e uno step DOMINIO, che vuole esiti di ramo, li
+#        rifiuterebbe a runtime via trgfn_flussi_guard_esito_classe (504) dentro
+#        il best-effort -> il milestone non avanzerebbe MAI in silenzio.
+#      - mutua esclusione (D-B10): lo step NON deve avere un handler_eventi
+#        COMPLETATO. Altrimenti l'avanzamento standalone (DB) completa il flusso
+#        ma SALTA l'handler Python -> azione di dominio persa in silenzio (la
+#        divergenza che GUIDA elimina). Uno step o e' projection-driven o e'
+#        handler-driven sul COMPLETATO, mai entrambi.
+#   2) trgfn_tfhe_guard_no_proiezione (su template_flussi_handler_eventi):
+#      lato simmetrico -> non si puo' aggiungere un handler_eventi COMPLETATO
+#      a uno step che ha gia' un binding di avanzamento su proiezione.
+#
+# Codici errore (append a config.messaggi_errore.csv, id 517/518):
+#   TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO     (517)
+#   TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER(518)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260706-21-create-guard-tfap-compatibilita-mctit.yaml
+
+  - changeSet:
+      id: 20260706-21-create-guard-tfap-compatibilita
+      author: mctit
+      runOnChange: false
+      comment: >
+        Guard config-time del binding di avanzamento su proiezione (GUIDA D4/G2):
+        ammesso solo su step non-DOMINIO (D-B3) e mutuamente esclusivo con
+        handler_eventi COMPLETATO (D-B10). Due trigger speculari.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: template_flussi_avanzamento_proiezione
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- (1) Guard sul binding di avanzamento su proiezione.
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_tfap_guard_compatibilita()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: config-time, un binding di avanzamento su proiezione e'
+              --   ammesso solo su step non-DOMINIO (D-B3) e non deve coesistere con
+              --   un handler_eventi COMPLETATO sullo stesso step (D-B10).
+              DECLARE
+                v_modalita pratiche.template_flussi.modalita_esito%TYPE;
+                v_codice   pratiche.template_flussi.codice%TYPE;
+              BEGIN
+                SELECT tf.modalita_esito, tf.codice
+                  INTO v_modalita, v_codice
+                  FROM pratiche.template_flussi tf
+                 WHERE tf.id = NEW.template_flusso_id;
+
+                -- Step DOMINIO: la proiezione produce verdetti -> non ammesso.
+                IF v_modalita = 'DOMINIO' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche','pratiche.trgfn_tfap_guard_compatibilita',
+                    'TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO',
+                    jsonb_build_object('template_flusso_id', NEW.template_flusso_id,
+                                       'template_codice', v_codice,
+                                       'modalita_esito', v_modalita),
+                    dbops.fn_get_or_create_session_tx_id(),
+                    COALESCE(v_codice, NEW.template_flusso_id::text));
+                END IF;
+
+                -- Mutua esclusione con handler_eventi COMPLETATO ATTIVO: il
+                -- conflitto e' fra binding entrambi attivi (un handler disattivato
+                -- non dispatcha -> il cutover puo' disattivarlo, non serve DELETE).
+                IF NEW.attivo AND EXISTS (
+                  SELECT 1 FROM pratiche.template_flussi_handler_eventi e
+                   WHERE e.template_flusso_id = NEW.template_flusso_id
+                     AND e.evento = 'COMPLETATO'
+                     AND e.attivo
+                ) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche','pratiche.trgfn_tfap_guard_compatibilita',
+                    'TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER',
+                    jsonb_build_object('template_flusso_id', NEW.template_flusso_id,
+                                       'template_codice', v_codice,
+                                       'lato', 'binding_proiezione'),
+                    dbops.fn_get_or_create_session_tx_id(),
+                    COALESCE(v_codice, NEW.template_flusso_id::text));
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_tfap_guard_compatibilita()
+                IS 'BEFORE INSERT OR UPDATE su pratiche.template_flussi_avanzamento_proiezione (GUIDA D4/G2): il binding di avanzamento su proiezione e'' ammesso solo su step non-DOMINIO (D-B3, TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO 517) e non puo'' coesistere con un handler_eventi COMPLETATO sullo stesso step (D-B10, TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER 518).';
+
+              DROP TRIGGER IF EXISTS trg_tfap_a10_guard_compatibilita_ins_upd
+                ON pratiche.template_flussi_avanzamento_proiezione;
+
+              CREATE TRIGGER trg_tfap_a10_guard_compatibilita_ins_upd
+                BEFORE INSERT OR UPDATE
+                ON pratiche.template_flussi_avanzamento_proiezione
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_tfap_guard_compatibilita();
+
+              -- (2) Guard simmetrico sul lato handler_eventi.
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_tfhe_guard_no_proiezione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: config-time, non si puo' aggiungere un handler_eventi
+              --   COMPLETATO a uno step che ha gia' un binding di avanzamento su
+              --   proiezione (mutua esclusione, D-B10, lato simmetrico).
+              DECLARE
+                v_codice pratiche.template_flussi.codice%TYPE;
+              BEGIN
+                IF NEW.evento = 'COMPLETATO' AND NEW.attivo AND EXISTS (
+                  SELECT 1 FROM pratiche.template_flussi_avanzamento_proiezione b
+                   WHERE b.template_flusso_id = NEW.template_flusso_id
+                     AND b.attivo
+                ) THEN
+                  SELECT tf.codice INTO v_codice
+                    FROM pratiche.template_flussi tf
+                   WHERE tf.id = NEW.template_flusso_id;
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche','pratiche.trgfn_tfhe_guard_no_proiezione',
+                    'TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER',
+                    jsonb_build_object('template_flusso_id', NEW.template_flusso_id,
+                                       'template_codice', v_codice,
+                                       'lato', 'handler_eventi'),
+                    dbops.fn_get_or_create_session_tx_id(),
+                    COALESCE(v_codice, NEW.template_flusso_id::text));
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_tfhe_guard_no_proiezione()
+                IS 'BEFORE INSERT OR UPDATE su pratiche.template_flussi_handler_eventi (GUIDA D4/G2, D-B10 lato simmetrico): vieta un handler_eventi COMPLETATO su uno step che ha gia'' un binding di avanzamento su proiezione (TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER 518).';
+
+              DROP TRIGGER IF EXISTS trg_tfhe_a10_guard_no_proiezione_ins_upd
+                ON pratiche.template_flussi_handler_eventi;
+
+              CREATE TRIGGER trg_tfhe_a10_guard_no_proiezione_ins_upd
+                BEFORE INSERT OR UPDATE
+                ON pratiche.template_flussi_handler_eventi
+                FOR EACH ROW
+                EXECUTE FUNCTION pratiche.trgfn_tfhe_guard_no_proiezione();
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_tfhe_a10_guard_no_proiezione_ins_upd
+                ON pratiche.template_flussi_handler_eventi;
+              DROP FUNCTION IF EXISTS pratiche.trgfn_tfhe_guard_no_proiezione();
+              DROP TRIGGER IF EXISTS trg_tfap_a10_guard_compatibilita_ins_upd
+                ON pratiche.template_flussi_avanzamento_proiezione;
+              DROP FUNCTION IF EXISTS pratiche.trgfn_tfap_guard_compatibilita();

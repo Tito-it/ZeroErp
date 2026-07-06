@@ -28,6 +28,7 @@
 | esito_default | character varying | YES |  |
 | obsoleto_dal | date | YES |  |
 | definizione_id | integer | NO |  |
+| attende_sorgente_tipo_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -36,6 +37,7 @@
 | CHECK | chk_template_flussi_direzione |  |
 | CHECK | chk_template_flussi_modalita_esito |  |
 | CHECK | chk_template_flussi_ripetibilita |  |
+| FOREIGN KEY | fk_template_flussi_attende_sorgente | attende_sorgente_tipo_id |
 | FOREIGN KEY | fk_template_flussi_azione_ui | azione_ui_id |
 | FOREIGN KEY | fk_template_flussi_definizione | definizione_id, tipo_prestazione_id |
 | FOREIGN KEY | fk_template_flussi_esito_default | esito_default |

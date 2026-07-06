@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GUIDA (D4) — CUTOVER dominio PREVENTIVI: inversione handler -> proiezione.
+# Brief: brief-db-guida-avanza-esito-proiettato.md §3 (invarianti) / §4 (fuori scope BE).
+#
+# Attiva l'avanzamento su proiezione per lo step APPROVAZIONE_CLIENTE del tipo
+# prestazione live PREVENTIVI (tipo 9004, step 9011). Migrazione ATOMICA e
+# ordinata (il guard di mutua-esclusione richiede che l'handler sia gia'
+# disattivato prima di inserire il binding G2):
+#   1) disattiva il binding handler vendita.accetta_preventivo (handler_id 9002)
+#      su COMPLETATO dello step 9011 -> l'avanzamento non passa piu' dall'handler;
+#   2) G1: template_flussi(9011).attende_sorgente_tipo_id = 2 (PREVENTIVO);
+#   3) G2: binding di avanzamento (9011, POSITIVO) -> il milestone avanza quando
+#      il preventivo proietta il verdetto POSITIVO (ACCETTATO).
+#
+# Coordinamento BE (fuori scope DB, brief §7): «Accetta» in-pratica deve chiamare
+# il servizio standalone del preventivo (preventivi_service.cambia_stato ->
+# ACCETTATO) + il trigger G3b avanza il milestone per proiezione. Ritirare poi il
+# binding handler dedicato (qui solo disattivato, reversibile).
+#
+# Scelta esito_richiesto = POSITIVO (conservativa: replica l'handler POSITIVO-only).
+# Alternativa GUIDA-piena: NULL (qualsiasi verdetto) -> il milestone seguirebbe il
+# documento anche su RIFIUTATO/NEGATIVO, chiudendo la divergenza anche in negativo.
+# Tipi deprecati 9002/9003 (step 9003/9007) restano su handler: non toccati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260706-24-cutover-guida-preventivi-mctit.yaml
+
+  - changeSet:
+      id: 20260706-24-cutover-guida-preventivi
+      author: mctit
+      runOnChange: false
+      comment: >
+        Cutover GUIDA D4 su PREVENTIVI (tipo 9004, step 9011): disattiva il binding
+        handler accetta_preventivo su COMPLETATO, setta attende_sorgente_tipo_id=2
+        (G1) e inserisce il binding di avanzamento su proiezione (G2, POSITIVO).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: template_flussi_avanzamento_proiezione
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pratiche.template_flussi
+               WHERE id = 9011 AND codice = 'APPROVAZIONE_CLIENTE'
+                 AND tipo_prestazione_id = 9004 AND modalita_esito <> 'DOMINIO'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- (1) Disattiva il binding handler accetta_preventivo (COMPLETATO):
+              --     il guard di mutua-esclusione considera solo i binding ATTIVI,
+              --     quindi va disattivato PRIMA di inserire il binding G2.
+              UPDATE pratiche.template_flussi_handler_eventi
+                 SET attivo = false
+               WHERE template_flusso_id = 9011
+                 AND handler_id = 9002
+                 AND evento = 'COMPLETATO';
+
+              -- (2) G1: lo step milestone attende il verdetto del PREVENTIVO (tipo 2).
+              UPDATE pratiche.template_flussi
+                 SET attende_sorgente_tipo_id = 2
+               WHERE id = 9011;
+
+              -- (3) G2: avanza su verdetto POSITIVO proiettato (ACCETTATO).
+              INSERT INTO pratiche.template_flussi_avanzamento_proiezione
+                     (template_flusso_id, esito_richiesto)
+              VALUES (9011, 'POSITIVO')
+              ON CONFLICT ON CONSTRAINT uq_tfap_flusso_esito DO NOTHING;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DELETE FROM pratiche.template_flussi_avanzamento_proiezione
+               WHERE template_flusso_id = 9011 AND esito_richiesto = 'POSITIVO';
+
+              UPDATE pratiche.template_flussi
+                 SET attende_sorgente_tipo_id = NULL
+               WHERE id = 9011;
+
+              UPDATE pratiche.template_flussi_handler_eventi
+                 SET attivo = true
+               WHERE template_flusso_id = 9011
+                 AND handler_id = 9002
+                 AND evento = 'COMPLETATO';

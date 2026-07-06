@@ -36,12 +36,14 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_template_flussi_handler_eventi_a10_guard_immutabile_iud | BEFORE | DELETE | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile('template_flusso_id')` |
-| trg_template_flussi_handler_eventi_a10_guard_immutabile_iud | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile('template_flusso_id')` |
 | trg_template_flussi_handler_eventi_a10_guard_immutabile_iud | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile('template_flusso_id')` |
-| trg_template_flussi_handler_eventi_a10_handler_flussi_re_70890c | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'handler_flussi', 'attivo', 'handler_id', 'id')` |
+| trg_template_flussi_handler_eventi_a10_guard_immutabile_iud | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile('template_flusso_id')` |
 | trg_template_flussi_handler_eventi_a10_handler_flussi_re_70890c | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'handler_flussi', 'attivo', 'handler_id', 'id')` |
+| trg_template_flussi_handler_eventi_a10_handler_flussi_re_70890c | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'handler_flussi', 'attivo', 'handler_id', 'id')` |
 | trg_template_flussi_handler_eventi_a10_template_flussi_r_8a06d6 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_id', 'id')` |
 | trg_template_flussi_handler_eventi_a10_template_flussi_r_8a06d6 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('pratiche', 'template_flussi', 'attivo', 'template_flusso_id', 'id')` |
+| trg_tfhe_a10_guard_no_proiezione_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_tfhe_guard_no_proiezione()` |
+| trg_tfhe_a10_guard_no_proiezione_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_tfhe_guard_no_proiezione()` |
 
 ---
 {% include-markdown "signature-core.md" %}

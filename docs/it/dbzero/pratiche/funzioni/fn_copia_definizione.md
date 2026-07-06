@@ -59,15 +59,17 @@ BEGIN
   RETURNING id INTO v_new_id;
 
   -- 1) Template (codice preservato; definizione_id = nuova; id nuovo).
+  --    GUIDA D4/G1: attende_sorgente_tipo_id propagato (config di step).
   INSERT INTO pratiche.template_flussi
          (tipo_prestazione_id, handler_id, codice, descrizione, sequenza,
           obbligatorio, direzione, attivo, meta, handler_params, ripetibilita,
           chiude_pratica, azione_ui_id, modalita_esito, esito_default,
-          obsoleto_dal, definizione_id)
+          obsoleto_dal, attende_sorgente_tipo_id, definizione_id)
   SELECT tf.tipo_prestazione_id, tf.handler_id, tf.codice, tf.descrizione,
          tf.sequenza, tf.obbligatorio, tf.direzione, tf.attivo, tf.meta,
          tf.handler_params, tf.ripetibilita, tf.chiude_pratica, tf.azione_ui_id,
-         tf.modalita_esito, tf.esito_default, tf.obsoleto_dal, v_new_id
+         tf.modalita_esito, tf.esito_default, tf.obsoleto_dal,
+         tf.attende_sorgente_tipo_id, v_new_id
     FROM pratiche.template_flussi tf
    WHERE tf.definizione_id = p_sorgente_id;
 
@@ -149,12 +151,22 @@ BEGIN
     JOIN pratiche.template_flussi no
          ON no.definizione_id = v_new_id AND no.codice = oo.codice;
 
+  -- 8) Binding avanzamento su proiezione (GUIDA D4/G2; remap per codice).
+  INSERT INTO pratiche.template_flussi_avanzamento_proiezione
+         (template_flusso_id, esito_richiesto, attivo, meta)
+  SELECT nt.id, b.esito_richiesto, b.attivo, b.meta
+    FROM pratiche.template_flussi_avanzamento_proiezione b
+    JOIN pratiche.template_flussi ot
+         ON ot.id = b.template_flusso_id AND ot.definizione_id = p_sorgente_id
+    JOIN pratiche.template_flussi nt
+         ON nt.definizione_id = v_new_id AND nt.codice = ot.codice;
+
   RETURN v_new_id;
 END;
 $function$
 
 COMMENT ON FUNCTION pratiche.fn_copia_definizione(p_sorgente_id integer, p_emittente_dest bigint, p_provenance boolean)
-IS 'Motore di copia di un''edizione di workflow: header + template + 6 figli (canali, handler_eventi, competenze, prerequisiti, formule_tempo, regole_generazione) in una nuova edizione BOZZA, con remap dei template per codice. Unico punto del set di copia (C6). p_provenance=true valorizza preset_origine_id/versione_origine (fork). Usato da fn_fork_definizione e fn_nuova_versione_definizione.';
+IS 'Motore di copia di un''edizione di workflow: header + template (incl. attende_sorgente_tipo_id, GUIDA D4/G1) + 7 figli (canali, handler_eventi, competenze, prerequisiti, formule_tempo, regole_generazione, avanzamento_proiezione) in una nuova edizione BOZZA, con remap dei template per codice. Unico punto del set di copia (C6). p_provenance=true valorizza preset_origine_id/versione_origine (fork). Usato da fn_fork_definizione e fn_nuova_versione_definizione.';
 ```
 
 ---
