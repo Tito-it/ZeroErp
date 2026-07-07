@@ -5,6 +5,8 @@
 # Scopo: API views per preventivi vendita (lista, dettaglio, righe, stato, integrazione).
 # ------------------------------------------------------------
 
+from datetime import date
+
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -297,6 +299,23 @@ class ApiPreventivoDetail(DomainAPIView):
 # ── Cambio stato ──
 
 
+# Scopo: parsing condiviso del payload cambio-stato preventivo (EMESSO→ACCETTATO,
+#        *→ANNULLATO/RIFIUTATO, ...). `fatturazione_immediata`: None ("non passato",
+#        ignora il gate accettazione) ≠ False esplicito (richiede competenza) →
+#        `optional_bool(default=False)` non distingue, quindi lookup raw. Estratto
+#        (regola del 2) da ApiPreventivoStato + ApiPreventivoStatoDaPratica.
+def _parse_cambio_stato_payload(
+    payload: dict[str, object],
+) -> tuple[str, bool | None, date | None]:
+    nuovo_stato = str(payload.get("nuovo_stato", ""))
+    raw_fi = payload.get("fatturazione_immediata")
+    fatturazione_immediata = (
+        None if raw_fi is None else optional_bool(payload, "fatturazione_immediata")
+    )
+    competenza_mese = optional_iso_date(payload, "competenza_mese")
+    return nuovo_stato, fatturazione_immediata, competenza_mese
+
+
 class ApiPreventivoStato(DomainAPIView):
     area_funzionale = "vendite"
     post_permission = "cambia_stato_preventivi"
@@ -325,24 +344,57 @@ class ApiPreventivoStato(DomainAPIView):
     # Scopo: Cambia stato preventivo via POST.
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
-            nuovo_stato = str(payload.get("nuovo_stato", ""))
-            # fatturazione_immediata: distinguere "non passato" (None → ignora
-            # gate accettazione) da "False esplicito" (richiede competenza).
-            # optional_bool(default=False) non distingue: usiamo lookup raw.
-            raw_fi = payload.get("fatturazione_immediata")
-            if raw_fi is None:
-                fatturazione_immediata = None
-            else:
-                fatturazione_immediata = optional_bool(
-                    payload, "fatturazione_immediata",
-                )
-            competenza_mese = optional_iso_date(payload, "competenza_mese")
+            nuovo_stato, fatturazione_immediata, competenza_mese = (
+                _parse_cambio_stato_payload(payload)
+            )
             return preventivi_service.cambia_stato(
                 preventivo_id, nuovo_stato,
                 fatturazione_immediata=fatturazione_immediata,
                 competenza_mese=competenza_mese,
                 # user serve al hook atomico EMESSO per scope emittente +
                 # audit `generato_da_user_id` su documenti_generati.
+                user=request.user,
+            )
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiPreventivoStatoDaPratica(DomainAPIView):
+    """GUIDA (D4): «Accetta/Rifiuta» in-pratica → cambio stato del preventivo ROOT
+    della pratica (inversione handler→proiezione). Il documento e' sovrano; il
+    milestone avanza da solo via trigger DB `fn_reconcile_sorgente`. Stesso payload
+    di `ApiPreventivoStato`, ma la view risolve il preventivo dal `pratica_id`."""
+
+    area_funzionale = "vendite"
+    post_permission = "cambia_stato_preventivi"
+
+    @extend_schema(
+        request=inline_serializer(
+            name="PreventivoStatoDaPraticaRequest",
+            fields={
+                "nuovo_stato": serializers.CharField(),
+                "fatturazione_immediata": serializers.BooleanField(
+                    required=False, allow_null=True,
+                ),
+                "competenza_mese": serializers.DateField(
+                    required=False, allow_null=True,
+                ),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="PreventivoStatoDaPraticaResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Cambia stato del preventivo ROOT della pratica via POST.
+    def post(self, request: Request, pratica_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            nuovo_stato, fatturazione_immediata, competenza_mese = (
+                _parse_cambio_stato_payload(payload)
+            )
+            return preventivi_service.cambia_stato_da_pratica(
+                pratica_id, nuovo_stato,
+                fatturazione_immediata=fatturazione_immediata,
+                competenza_mese=competenza_mese,
                 user=request.user,
             )
         return handle_post_json(request, handler=_handler)

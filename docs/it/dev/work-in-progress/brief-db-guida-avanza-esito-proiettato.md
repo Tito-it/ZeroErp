@@ -273,5 +273,67 @@ reconcile falliti (inghiottiti dal best-effort di G3b), così un avanzamento man
 
 ---
 
+## 5. Follow-up DB richiesto — inversione PIENA sul rifiuto (owner, 2026-07-07)
+
+**Deciso (owner)**: inversione **piena** anche sul percorso non-positivo. Il cutover
+`20260706-24` ha shippato il binding G2 su `esito_richiesto='POSITIVO'` (conservativo → solo
+l'accettazione auto-avanza il milestone). Il BE/FE dell'inversione cabla anche il **Rifiuta**
+(→ preventivo `RIFIUTATO`, verdetto proiettato NEGATIVO), ma con G2 POSITIVO-only il milestone
+**non** avanza sul rifiuto.
+
+**Richiesta**: cambiare il binding di avanzamento dello step **9011** da `esito_richiesto='POSITIVO'`
+a **`NULL`** (qualsiasi verdetto), così il milestone auto-avanza sia su ACCETTATO (POSITIVO) sia
+su RIFIUTATO (NEGATIVO) — chiudendo la divergenza in entrambe le direzioni (obiettivo GUIDA).
+Changeset dati (una riga): `UPDATE pratiche.template_flussi_avanzamento_proiezione SET
+esito_richiesto=NULL WHERE template_flusso_id=9011;` (+ rollback inverso). **Verificare** che
+il completamento con esito NEGATIVO su step non-DOMINIO sia ammesso dalla classe esito
+(`trgfn_flussi_guard_esito_classe`: NEGATIVO è verdetto → OK).
+
+## 6. Stato BE/FE dell'inversione (2026-07-07) — ✅ FATTO (dev), committato dal team
+
+- **BE**: `preventivi_service.cambia_stato_da_pratica(pratica_id, nuovo_stato, …)` (risolve il
+  ROOT via `get_preventivo_id_by_pratica_root`, delega a `cambia_stato`) + endpoint
+  `POST /vendite/preventivi/da-pratica/<pratica_id>/stato/` (`ApiPreventivoStatoDaPratica`,
+  `post_permission=cambia_stato_preventivi`). Flag **`template_attende_sorgente_tipo_id`**
+  esposto sul flusso (SELECT dettaglio + percorso) = discriminante projection-driven.
+- **FE**: `flussoCompletionRegistry.APPROVAZIONE_CLIENTE` guadagna `esitoToStato` +`docAction`
+  (lazy); `FlussoDrawer` instrada «Accetta/Rifiuta» sul DOCUMENTO **solo** se
+  `template_attende_sorgente_tipo_id != null` (gate sul flag, non sul codice → i tipi deprecati
+  9002/9003 e le altre edizioni del 9004 restano legacy/handler). Dialog fatturazione condiviso
+  col percorso standalone (Lente 1 alimentata).
+- **Handler**: `vendita.accetta_preventivo` lasciato **registrato ma dormiente** (binding DB
+  disattivato dal cutover → mai dispatchato); rimozione file/test = cleanup separato.
+- **Nota permessi**: l'operatore che accetta in-pratica ora esegue un'azione vendite diretta →
+  serve `cambia_stato_preventivi` (prima la faceva il sistema via handler). Verificare i profili
+  degli operatori-pratica.
+
+## 7. 🔴 Finding smoke E2E (2026-07-07) — GRANT mancante su `reconcile_errori`
+
+Lo smoke E2E sul **percorso HTTP reale** (ruolo app `zeroerp_app`, non owner) ha scoperto un
+bug **invisibile al pgTAP** (che gira come owner con tutti i privilegi):
+
+- **`pratiche.reconcile_errori` non ha ALCUN grant** (`role_table_grants` = vuoto) → il ruolo
+  app **non può fare INSERT**. Quando il reconcile (INVOKER, gira come `zeroerp_app`) entra nel
+  blocco best-effort e tenta di loggare l'errore, l'`INSERT INTO reconcile_errori` fallisce con
+  **`permission denied`**; l'eccezione **non è catturata** e **propaga** → **rollback del
+  cambio-stato del documento**. **Viola l'invariante "documento sovrano/best-effort" (D-B4/D-B7)**:
+  un errore di reconcile NON deve annullare l'accettazione del preventivo.
+- **Sintomo E2E**: `POST da-pratica ACCETTATO` → HTTP 400 `E_DATABASE` (`permission denied per
+  la tabella reconcile_errori`), il preventivo resta EMESSO e il milestone 9011 non avanza.
+- **Fix richiesto (DB)**: `GRANT INSERT ON pratiche.reconcile_errori TO zeroerp_app;` (+ `SELECT`
+  per la vista di consultazione se serve). Verificare che il changeSet G5 includa i GRANT come
+  le altre tabelle scrivibili dal ruolo app. In più: il blocco best-effort dovrebbe reggere
+  **anche** un fallimento del proprio log (es. logging via helper `SECURITY DEFINER`, o log
+  "a prova di permesso"), così l'invariante regge davvero.
+- **Errore sottostante mascherato**: il reconcile body ha sollevato *qualcosa* (per questo è
+  entrato nel blocco best-effort); il log rotto lo nasconde. Dopo il fix del GRANT va ri-eseguito
+  lo smoke per far emergere e diagnosticare l'errore originale (potenziale 2° bug del reconcile
+  sul percorso app/INVOKER).
+- **Smoke**: `backend/scripts/tests/smoke-test-guida-inversione-preventivi.sh` (direct-insert su
+  9011 reale + catena prereq 9009→9010 + accept HTTP + assert milestone). Oggi **2 OK / 3 FAIL**
+  (cattura il bug); atteso **5/0** dopo il fix GRANT (+ eventuale fix reconcile).
+
+---
+
 *A chiusura: aggiornare §11/§8-D4 del design-of-record e la nota GUIDA in
 [brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md).*
