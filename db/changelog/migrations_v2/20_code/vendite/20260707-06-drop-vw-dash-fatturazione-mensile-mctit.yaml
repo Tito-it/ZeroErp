@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Situazione aperta (Fase 3 due lenti) — SA-3: DROP vw_dash_fatturazione_mensile.
+#
+# L'aggregata area x competenza_mese era il cuore dell'impianto mensile della
+# 5-card: l'asse "competenza" per proxy e' il pezzo semanticamente sbagliato
+# (design due-lenti §1) ed e' l'unico artefatto dismesso davvero dalla
+# trasformazione in "Situazione aperta" (sostituita da vw_dash_aperto_riepilogo,
+# 20260707-05, senza asse temporale).
+#
+# Verificato (2026-07-07): NESSUN oggetto DB dipende dalla vista (pg_depend);
+# consumer solo BE (VenditeRepository.list_dash_fatturazione_mensile + types),
+# che si adegua DOPO il DB (decisione Tid 2026-07-07: niente produzione,
+# nessuna fase di compatibilita' — il BE 5-card e' in ritiro).
+# DROP senza CASCADE: se comparisse una dipendenza inattesa, fallisce (SA-3
+# criterio 9 "drop pulito, nessuna dipendenza orfana").
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260707-06-drop-vw-dash-fatturazione-mensile-mctit.yaml
+
+  - changeSet:
+      id: 20260707-06-drop-vw-dash-fatturazione-mensile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Situazione aperta SA-3: drop di vw_dash_fatturazione_mensile (asse
+        mensile per proxy dismesso; sostituita da vw_dash_aperto_riepilogo).
+        DROP senza CASCADE = fail-fast su dipendenze inattese. Il BE ritira
+        il consumer a valle (niente produzione, nessun cutover coordinato).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: '1'
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname   = 'vw_dash_fatturazione_mensile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW vendite.vw_dash_fatturazione_mensile;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: per ripristinare, ri-applicare 20260703-57
+              -- (definizione mai cambiata da allora: aggrega colonne nominate
+              -- della union, indipendente da data_riferimento).
+              SELECT 1;

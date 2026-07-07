@@ -12,7 +12,7 @@ Approfondimento tabelle e viste:
 Union e aggregata:
 >
 [vw_dash_fatturazione_documenti](vw_dash_fatturazione_documenti.md)
-> [vw_dash_fatturazione_mensile](vw_dash_fatturazione_mensile.md)
+> [vw_dash_aperto_documenti](vw_dash_aperto_documenti.md)
 
 ---
 ### 🎯 Scopo Principale
@@ -52,7 +52,7 @@ WHERE competenza_mese = DATE '2026-05-01'
 ### Note operative
 
 * **Non interrogarla dal BE**: il backend passa da
-  `vw_dash_fatturazione_documenti` / `vw_dash_fatturazione_mensile` (layering).
+  `vw_dash_fatturazione_documenti` / `vw_dash_aperto_*` (layering).
 * Un preventivo `ACCETTATO` può avere transito **parziale** e restare fermo con
   `RIGA_RESIDUA`: lo stato di testata da solo non basta (residuo bi-ramo, gate EVASO).
 * RLS emittente applicata automaticamente (vista invoker su `vendite.preventivi`).
