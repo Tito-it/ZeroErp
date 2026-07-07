@@ -43,6 +43,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoRigaSuggerisciPrezzo,
     ApiPreventivoRigheList,
     ApiPreventivoStato,
+    ApiPreventivoStatoDaPratica,
     ApiPreventivoCompletaSmistamento,
     ApiPreventivoSmistamento,
 )
@@ -89,6 +90,14 @@ urlpatterns = [
         "<int:preventivo_id>/stato/",
         ApiPreventivoStato.as_view(),
         name="vendite-preventivi-stato",
+    ),
+    # GUIDA (D4): cambio stato del preventivo ROOT risolto dalla pratica —
+    # «Accetta/Rifiuta» in-pratica (inversione handler→proiezione). Segmento
+    # testuale "da-pratica" (no conflitto col converter <int>).
+    path(
+        "da-pratica/<int:pratica_id>/stato/",
+        ApiPreventivoStatoDaPratica.as_view(),
+        name="vendite-preventivi-stato-da-pratica",
     ),
     # Emissione BOZZA->EMESSO (multipart): orchestra stato + genera doc +
     # allegati in transazione atomica. Mirror di vendite-offerta-emetti.

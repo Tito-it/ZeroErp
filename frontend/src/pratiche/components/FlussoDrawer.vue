@@ -44,6 +44,14 @@ const emit = defineEmits(['update:visible', 'saved', 'open-attivita'])
 const esito = ref(null)
 const noteEsito = ref('')
 
+// GUIDA (D4): step PROJECTION-DRIVEN = attende il verdetto di un documento
+// (`template_attende_sorgente_tipo_id` non-null, esposto dal BE). Per questi
+// «Accetta/Rifiuta» agisce sul DOCUMENTO e il milestone avanza da solo via
+// trigger DB. Distingue i tipi già invertiti (cutover) da quelli con lo STESSO
+// codice step ma ancora su handler (es. tipi deprecati): lì il flag è NULL →
+// comportamento legacy (completamento flusso).
+const projectionDriven = computed(() => props.flusso?.template_attende_sorgente_tipo_id != null)
+
 // Flag modalita' tecnica (super-admin): default false = vista operatore. Fornito
 // da PraticheDashboard (provideTechnicalMode, toggle gateato su auth.isSuperAdmin);
 // qui riespone il "plumbing" (codice template).
@@ -61,11 +69,20 @@ const { items: esitiCatalogo, load: loadEsiti, loading: esitiLoading } = useGlob
   'config.esiti_flussi_pratiche',
   () => lookupCodici('config.esiti_flussi_pratiche'),
 )
-const esitiOptions = computed(() =>
-  esitiCatalogo.value
+const esitiOptions = computed(() => {
+  const base = esitiCatalogo.value
     .filter(e => e.selezionabile_operatore)
-    .map(e => ({ value: e.codice_interno, label: e.descrizione })),
-)
+    .map(e => ({ value: e.codice_interno, label: e.descrizione }))
+  // GUIDA (D4): per uno step PROJECTION-DRIVEN l'esito pilota una transizione del
+  // DOCUMENTO (registry `esitoToStato`) → offri solo gli esiti mappati (es.
+  // POSITIVO=Accetta / NEGATIVO=Rifiuta), non tutti i verdetti.
+  const def = getCompletionDialog(props.flusso?.template_flusso_codice)
+  if (projectionDriven.value && def?.docAction && def.esitoToStato) {
+    const allowed = new Set(Object.keys(def.esitoToStato))
+    return base.filter(o => allowed.has(o.value))
+  }
+  return base
+})
 
 const stato = computed(() => props.flusso?.stato_codice_interno || '')
 // Descrizione umana dello stato (display field BE `stato_descrizione`): mostrata nel Tag.
@@ -293,11 +310,24 @@ async function _doComplete(meta = null) {
   if (result !== null) { emit('saved'); emit('update:visible', false) }
 }
 
+// GUIDA (D4): step PROJECTION-DRIVEN → l'azione va sul DOCUMENTO (registry
+// `docAction`), NON completa il flusso: il milestone avanza da solo via trigger
+// DB. Idempotente/coerente col percorso standalone (stesso endpoint del drawer
+// preventivo). `meta` = dati di processo del dialog (es. billing su accettazione).
+async function _doDocAction(meta = null) {
+  const def = completionDialogDef.value
+  const result = await execute(
+    () => def.docAction({ praticaId: props.praticaId, esito: esito.value, meta }),
+    { successMessage: t('pratiche.flusso_completato') },
+  )
+  if (result !== null) { emit('saved'); emit('update:visible', false) }
+}
+
 async function onCompleta() {
   if (!esito.value) return
-  // Se lo step ha una dialog di completamento per l'esito scelto, raccoglie i
-  // dati di processo PRIMA di completare (il payload diventa `meta`).
   const def = completionDialogDef.value
+  // Se l'esito richiede dati di processo (dialog registry) → raccoglili PRIMA
+  // (vale sia per il completamento flusso legacy sia per l'azione documento).
   if (def && esito.value === def.esitoRichiesto) {
     if (!completionDialogComponent.value) {
       const mod = await def.loadComponent()
@@ -306,13 +336,19 @@ async function onCompleta() {
     completionDialogVisible.value = true
     return
   }
-  await _doComplete(null)
+  // Step projection-driven senza dialog per questo esito (es. rifiuto) → azione
+  // documento diretta. Altrimenti completamento flusso generico.
+  if (projectionDriven.value && def?.docAction) await _doDocAction(null)
+  else await _doComplete(null)
 }
 
-// Conferma della dialog di completamento → completa con il payload come meta.
+// Conferma della dialog: projection-driven → azione documento; legacy → meta del
+// completamento flusso.
 async function onCompletionConfirm(meta) {
   completionDialogVisible.value = false
-  await _doComplete(meta)
+  const def = completionDialogDef.value
+  if (projectionDriven.value && def?.docAction) await _doDocAction(meta)
+  else await _doComplete(meta)
 }
 
 // Completamento di DOMINIO: delega alla voce di registry (es. SMISTAMENTO →

@@ -391,6 +391,10 @@ class PraticheRepository:
         -- avvio+esito in un'unica azione (esito_default pre-selezionato).
         tf.modalita_esito AS template_modalita_esito,
         tf.esito_default AS template_esito_default,
+        -- GUIDA (D4): sorgente-documento attesa dal milestone (G1). NON NULL =
+        -- step PROJECTION-DRIVEN → il FE instrada «Accetta/Rifiuta» sul DOCUMENTO
+        -- (non completa il flusso; il milestone avanza da solo via trigger DB).
+        tf.attende_sorgente_tipo_id AS template_attende_sorgente_tipo_id,
         -- Attività UI data-driven (catalogo pratiche.azioni_ui): chiave risolta
         -- dal registry FE → drawer di dominio da aprire dal flusso. NULL = nessuna.
         au.azione_ui_key AS template_azione_ui_key,
@@ -566,6 +570,8 @@ class PraticheRepository:
                 tf.obbligatorio,
                 tf.direzione,
                 (tf.handler_id IS NOT NULL) AS has_handler,
+                -- GUIDA (D4): flag PROJECTION-DRIVEN (vedi SELECT dettaglio flusso).
+                tf.attende_sorgente_tipo_id AS template_attende_sorgente_tipo_id,
                 au.azione_ui_key AS template_azione_ui_key,
                 f.id AS flusso_id,
                 sf.codice_interno AS stato_codice_interno,

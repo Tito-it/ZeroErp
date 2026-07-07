@@ -10,6 +10,17 @@
 // Il dialog deve: accettare v-model:visible, emettere `confirm` con un payload
 // gia' BE-ready, che l'host inoltra come `meta` del completamento flusso.
 
+import { STATO_PREVENTIVO } from '../core/constants'
+
+// GUIDA (D4): mappa esito operatore → transizione del DOCUMENTO (preventivo).
+// Const di modulo (niente auto-riferimento fragile al registry): usata sia da
+// `esitoToStato` (restrizione picker) sia da `docAction` (chiamata). Stati dal
+// catalogo `STATO_PREVENTIVO` (no literal hardcoded).
+const APPROVAZIONE_ESITO_STATO = {
+  POSITIVO: STATO_PREVENTIVO.ACCETTATO,
+  NEGATIVO: STATO_PREVENTIVO.RIFIUTATO,
+}
+
 export const FLUSSO_COMPLETION_REGISTRY = {
   APPROVAZIONE_CLIENTE: {
     // Mostra la dialog solo se l'operatore sceglie questo esito (l'accettazione
@@ -18,6 +29,21 @@ export const FLUSSO_COMPLETION_REGISTRY = {
     // Import dinamico del dialog di dominio (no accoppiamento statico pratiche→vendite).
     loadComponent: () =>
       import('../vendite/preventivi/components/dialogs/PreventivoAccettazioneDialog.vue'),
+    // GUIDA (D4): step PROJECTION-DRIVEN. L'azione non completa il flusso: agisce
+    // sul DOCUMENTO (preventivo standalone) e il milestone avanza da solo via
+    // trigger DB `fn_reconcile_sorgente`. `esitoToStato` mappa l'esito operatore
+    // alla transizione del preventivo; `docAction` esegue la chiamata (import
+    // LAZY per non accoppiare staticamente pratiche→vendite). Restituisce la
+    // Promise axios (compatibile con useApiHandler.execute).
+    esitoToStato: APPROVAZIONE_ESITO_STATO,
+    docAction: async ({ praticaId, esito, meta }) => {
+      const nuovoStato = APPROVAZIONE_ESITO_STATO[esito]
+      if (!nuovoStato) return null
+      const { cambiaStatoPreventivoDaPratica } = await import(
+        '../vendite/preventivi/api/preventiviApi'
+      )
+      return cambiaStatoPreventivoDaPratica(praticaId, { nuovo_stato: nuovoStato, ...(meta || {}) })
+    },
   },
   // OFFERTA/CONTRATTO: aggiungere qui quando i loro flussi di accettazione
   // richiederanno dati di processo. Stessa forma.
