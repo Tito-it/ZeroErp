@@ -1,0 +1,245 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/anagrafiche/20260707-11-create-fn-update-cliente-mctit.yaml
+
+    - changeSet:
+          id: 20260707-11-create-fn-update-cliente
+          author: mctit
+
+          # ------------------------------------------------------------
+          # Scopo
+          # ------------------------------------------------------------
+          # Funzione madre atomica per l'aggiornamento di un cliente.
+          #
+          # Contesto (piano analisi-fix-transazioni, Classe A, finding #1):
+          #   Il service Python anagrafiche.clienti_service.update_cliente
+          #   eseguiva DUE scritture separate senza transazione unica:
+          #     1) UPDATE billing_account.categoria_cliente_id
+          #     2) UPDATE clienti (campi editabili)
+          #   In autocommit, il fallimento della 2a lasciava la 1a committata
+          #   (stato parziale su due entita' reali). Questa funzione fonde le
+          #   due scritture in una singola statement SQL: o vanno a buon fine
+          #   entrambe, o rollback totale (atomicita' per costruzione).
+          #
+          # Parametri:
+          #   p_cliente_id               (clienti.id%TYPE)  obbligatorio.
+          #   p_ba_categoria_cliente_id  (billing_account.categoria_cliente_id%TYPE)
+          #                              opzionale: categoria da scrivere sul BA
+          #                              del cliente. Se NULL la categoria non
+          #                              viene toccata. Mai impostata a NULL
+          #                              (colonna NOT NULL sul BA).
+          #   p_cliente_fields           (jsonb) delta dei campi editabili del
+          #                              cliente. Solo le chiavi PRESENTI vengono
+          #                              aggiornate (delta con NULL significativo:
+          #                              chiave presente con valore null => colonna
+          #                              azzerata; chiave assente => invariata).
+          #                              Le chiavi non whitelisted sono ignorate.
+          #
+          # Ritorno (RETURNS TABLE, 1 riga):
+          #   cliente_id            (clienti.id%TYPE)  echo dell'id aggiornato.
+          #   categoria_aggiornata  (boolean)          TRUE se la categoria BA e'
+          #                                            stata scritta.
+          #   campi_aggiornati      (boolean)          TRUE se almeno un campo
+          #                                            cliente e' stato scritto.
+          #   Il caller ricava "modificato = categoria_aggiornata OR
+          #   campi_aggiornati"; se entrambi FALSE decide se sollevare un errore
+          #   di validazione "nessun campo modificato".
+          #
+          # Cliente inesistente => E_CLIENTE_NON_TROVATO (id 206).
+          #
+          # Whitelist campi editabili clienti (delta):
+          #   iva_id, modalita_pagamento_id, termine_pagamento_id,
+          #   tipo_gg_scadenza_ft, nr_giorni_scadenza, cliente_pa, split_payment,
+          #   codice_cig, codice_cup, codice_commessa, servizio_da_fatturare,
+          #   garanzia_tipo, garanzia_importo.
+          #
+          # NOTE tecniche:
+          #   - Tipi ancorati alle colonne con %TYPE (parametri, DECLARE, RETURNS
+          #     TABLE, COMMENT): la firma resta sincronizzata con lo schema.
+          #   - SECURITY INVOKER (esplicito): gira come il ruolo chiamante, quindi
+          #     RLS e scope emittente su billing_account restano valutati come oggi
+          #     dal Python (vincolo invariante analisi-fix-transazioni §2-bis).
+          #   - Nessuna gestione manuale di audit/tx_id/storico: i trigger
+          #     trg_clienti_audit_data_user_upd / trg_clienti_gen_tx_id_ins_upd /
+          #     trg_clienti_z90_storico_upd_dlt (e simmetrici su billing_account)
+          #     li gestiscono automaticamente.
+          #   - Presenza chiave via jsonb_exists() (funzione, non operatore ?):
+          #     evita l'escaping Liquibase del punto interrogativo.
+          #   - VOLATILE (default): esegue DML, NON marcata STABLE/PARALLEL SAFE.
+          #   - DROP prima del CREATE: CREATE OR REPLACE non puo' cambiare la
+          #     struttura di RETURNS TABLE (ri-applicabilita' locale in sviluppo).
+          # ------------------------------------------------------------
+
+          preConditions:
+              - onFail: HALT
+              - onError: HALT
+              - tableExists:
+                    schemaName: anagrafiche
+                    tableName: clienti
+              - tableExists:
+                    schemaName: anagrafiche
+                    tableName: billing_account
+
+          changes:
+              - sql:
+                    splitStatements: FALSE
+                    stripComments: false
+                    endDelimiter: ";"
+
+                    sql: |
+
+                        DROP FUNCTION IF EXISTS anagrafiche.fn_update_cliente(
+                            anagrafiche.clienti.id%TYPE,
+                            anagrafiche.billing_account.categoria_cliente_id%TYPE,
+                            jsonb
+                        );
+
+                        CREATE OR REPLACE FUNCTION anagrafiche.fn_update_cliente(
+                            p_cliente_id              anagrafiche.clienti.id%TYPE,
+                            p_ba_categoria_cliente_id anagrafiche.billing_account.categoria_cliente_id%TYPE DEFAULT NULL,
+                            p_cliente_fields          jsonb DEFAULT '{}'::jsonb
+                        )
+                        RETURNS TABLE (
+                            cliente_id           anagrafiche.clienti.id%TYPE,
+                            categoria_aggiornata boolean,
+                            campi_aggiornati     boolean
+                        )
+                        LANGUAGE plpgsql
+                        SECURITY INVOKER
+                        AS
+                        $BODY$
+                        DECLARE
+                            v_ba_id           anagrafiche.clienti.billing_account_id%TYPE;
+                            v_fields          jsonb   := COALESCE(p_cliente_fields, '{}'::jsonb);
+                            v_has_fields      boolean;
+                            v_ba_changed      boolean := false;
+                            v_cliente_changed boolean := false;
+                        BEGIN
+                            -- ----------------------------------------------------
+                            -- 1) Esistenza cliente + risoluzione del suo BA.
+                            --    (La FK clienti.billing_account_id garantisce che il
+                            --     BA esista; lo risolviamo per la scrittura categoria.)
+                            -- ----------------------------------------------------
+                            SELECT c.billing_account_id
+                              INTO v_ba_id
+                              FROM anagrafiche.clienti c
+                             WHERE c.id = p_cliente_id;
+
+                            IF NOT FOUND THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'anagrafiche.fn_update_cliente',
+                                    'E_CLIENTE_NON_TROVATO',
+                                    jsonb_build_object('cliente_id', p_cliente_id),
+                                    NULL::uuid,
+                                    VARIADIC ARRAY[p_cliente_id::text]
+                                );
+                            END IF;
+
+                            -- ----------------------------------------------------
+                            -- 2) Categoria sul BA (solo se fornita; mai a NULL).
+                            -- ----------------------------------------------------
+                            IF p_ba_categoria_cliente_id IS NOT NULL THEN
+                                UPDATE anagrafiche.billing_account ba
+                                   SET categoria_cliente_id = p_ba_categoria_cliente_id
+                                 WHERE ba.id = v_ba_id;
+                                v_ba_changed := true;
+                            END IF;
+
+                            -- ----------------------------------------------------
+                            -- 3) Campi editabili del cliente (delta whitelisted).
+                            --    Aggiorniamo solo se almeno una chiave whitelisted
+                            --    e' presente, per non generare UPDATE/storico a vuoto.
+                            -- ----------------------------------------------------
+                            SELECT count(*) > 0
+                              INTO v_has_fields
+                              FROM jsonb_object_keys(v_fields) AS k
+                             WHERE k IN (
+                                       'iva_id', 'modalita_pagamento_id', 'termine_pagamento_id',
+                                       'tipo_gg_scadenza_ft', 'nr_giorni_scadenza',
+                                       'cliente_pa', 'split_payment',
+                                       'codice_cig', 'codice_cup', 'codice_commessa',
+                                       'servizio_da_fatturare',
+                                       'garanzia_tipo', 'garanzia_importo'
+                                   );
+
+                            IF v_has_fields THEN
+                                UPDATE anagrafiche.clienti c
+                                   SET iva_id = CASE WHEN jsonb_exists(v_fields, 'iva_id')
+                                                     THEN (v_fields->>'iva_id')::integer
+                                                     ELSE c.iva_id END,
+                                       modalita_pagamento_id = CASE WHEN jsonb_exists(v_fields, 'modalita_pagamento_id')
+                                                     THEN (v_fields->>'modalita_pagamento_id')::integer
+                                                     ELSE c.modalita_pagamento_id END,
+                                       termine_pagamento_id = CASE WHEN jsonb_exists(v_fields, 'termine_pagamento_id')
+                                                     THEN (v_fields->>'termine_pagamento_id')::bigint
+                                                     ELSE c.termine_pagamento_id END,
+                                       tipo_gg_scadenza_ft = CASE WHEN jsonb_exists(v_fields, 'tipo_gg_scadenza_ft')
+                                                     THEN (v_fields->>'tipo_gg_scadenza_ft')
+                                                     ELSE c.tipo_gg_scadenza_ft END,
+                                       nr_giorni_scadenza = CASE WHEN jsonb_exists(v_fields, 'nr_giorni_scadenza')
+                                                     THEN (v_fields->>'nr_giorni_scadenza')::integer
+                                                     ELSE c.nr_giorni_scadenza END,
+                                       cliente_pa = CASE WHEN jsonb_exists(v_fields, 'cliente_pa')
+                                                     THEN (v_fields->>'cliente_pa')
+                                                     ELSE c.cliente_pa END,
+                                       split_payment = CASE WHEN jsonb_exists(v_fields, 'split_payment')
+                                                     THEN (v_fields->>'split_payment')
+                                                     ELSE c.split_payment END,
+                                       codice_cig = CASE WHEN jsonb_exists(v_fields, 'codice_cig')
+                                                     THEN (v_fields->>'codice_cig')
+                                                     ELSE c.codice_cig END,
+                                       codice_cup = CASE WHEN jsonb_exists(v_fields, 'codice_cup')
+                                                     THEN (v_fields->>'codice_cup')
+                                                     ELSE c.codice_cup END,
+                                       codice_commessa = CASE WHEN jsonb_exists(v_fields, 'codice_commessa')
+                                                     THEN (v_fields->>'codice_commessa')
+                                                     ELSE c.codice_commessa END,
+                                       servizio_da_fatturare = CASE WHEN jsonb_exists(v_fields, 'servizio_da_fatturare')
+                                                     THEN (v_fields->>'servizio_da_fatturare')::boolean
+                                                     ELSE c.servizio_da_fatturare END,
+                                       garanzia_tipo = CASE WHEN jsonb_exists(v_fields, 'garanzia_tipo')
+                                                     THEN (v_fields->>'garanzia_tipo')
+                                                     ELSE c.garanzia_tipo END,
+                                       garanzia_importo = CASE WHEN jsonb_exists(v_fields, 'garanzia_importo')
+                                                     THEN (v_fields->>'garanzia_importo')::numeric
+                                                     ELSE c.garanzia_importo END
+                                 WHERE c.id = p_cliente_id;
+
+                                v_cliente_changed := true;
+                            END IF;
+
+                            RETURN QUERY
+                            SELECT p_cliente_id, v_ba_changed, v_cliente_changed;
+                        END;
+                        $BODY$;
+
+                        COMMENT ON FUNCTION anagrafiche.fn_update_cliente(
+                            anagrafiche.clienti.id%TYPE,
+                            anagrafiche.billing_account.categoria_cliente_id%TYPE,
+                            jsonb
+                        ) IS
+                        'Funzione madre atomica: aggiorna la categoria cliente sul '
+                        'billing_account e/o i campi editabili del cliente in un''unica '
+                        'statement (o tutto o rollback). SECURITY INVOKER: RLS e scope '
+                        'emittente restano applicati. Ritorna (cliente_id, '
+                        'categoria_aggiornata, campi_aggiornati). Cliente inesistente '
+                        '=> E_CLIENTE_NON_TROVATO. Piano: analisi-fix-transazioni '
+                        'Classe A #1.';
+
+          rollback:
+              - sql:
+                    sql: |
+                        DROP FUNCTION IF EXISTS anagrafiche.fn_update_cliente(
+                            anagrafiche.clienti.id%TYPE,
+                            anagrafiche.billing_account.categoria_cliente_id%TYPE,
+                            jsonb
+                        );
