@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GUIDA (D4) — inversione PIENA su PREVENTIVI (follow-up owner 2026-07-07).
+# Brief: brief-db-guida-avanza-esito-proiettato.md §5.
+#
+# Il cutover 20260706-24 ha shippato il binding G2 dello step APPROVAZIONE_CLIENTE
+# (9011, tipo PREVENTIVI 9004) con esito_richiesto='POSITIVO' (conservativo: solo
+# l'accettazione auto-avanza il milestone). Con POSITIVO-only, un preventivo
+# RIFIUTATO/SCADUTO/ANNULLATO lascia l'obbligatorio APPROVAZIONE_CLIENTE APERTO per
+# sempre -> la pratica resta appesa (nessuna risoluzione automatica).
+#
+# Decisione owner: inversione PIENA. Si porta il binding a esito_richiesto=NULL
+# (qualsiasi verdetto) cosi' il milestone auto-avanza sia su ACCETTATO (POSITIVO)
+# sia su ogni stato terminale-negativo (RIFIUTATO/SCADUTO/ANNULLATO = NEGATIVO),
+# chiudendo la divergenza in ENTRAMBE le direzioni.
+#
+# Sicuro per costruzione:
+#  - NEGATIVO e' un verdetto (is_verdetto=true) su step non-DOMINIO (9011 CONTESTUALE)
+#    -> trgfn_flussi_guard_esito_classe lo ammette;
+#  - i passi a valle sono gated esito-aware: SMISTAMENTO (9012) richiede
+#    APPROVAZIONE_CLIENTE=POSITIVO (template_flussi_prerequisiti) -> con NEGATIVO
+#    diventano RAMO MORTO (non bloccano la chiusura) -> la pratica si auto-chiude;
+#  - nessuna regola_generazione NEGATIVO attiva su 9011 -> nessuna generazione spuria.
+#
+# NB: changeset SEPARATO (il 24 e' gia' applicato) — non si edita un changeset
+# applicato (checksum). Il guard di mutua-esclusione passa sull'UPDATE: 9011 e'
+# non-DOMINIO e l'handler accetta_preventivo e' gia' disattivato dal 24.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260707-01-guida-preventivi-inversione-piena-nullbinding-mctit.yaml
+
+  - changeSet:
+      id: 20260707-01-guida-preventivi-inversione-piena-nullbinding
+      author: mctit
+      runOnChange: false
+      comment: >
+        Inversione piena GUIDA su PREVENTIVI: binding di avanzamento dello step
+        APPROVAZIONE_CLIENTE (9011) da esito_richiesto='POSITIVO' a NULL (qualsiasi
+        verdetto) -> il milestone auto-avanza sia su accettazione sia su rifiuto/
+        scadenza/annullamento (chiude la divergenza in entrambe le direzioni).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pratiche.template_flussi
+               WHERE id = 9011 AND codice = 'APPROVAZIONE_CLIENTE'
+                 AND tipo_prestazione_id = 9004 AND modalita_esito <> 'DOMINIO'
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pratiche.template_flussi_avanzamento_proiezione
+               WHERE template_flusso_id = 9011 AND esito_richiesto = 'POSITIVO'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- POSITIVO -> NULL (qualsiasi verdetto). Il guard su UPDATE passa
+              -- (9011 non-DOMINIO, handler accetta_preventivo gia' disattivato dal 24).
+              UPDATE pratiche.template_flussi_avanzamento_proiezione
+                 SET esito_richiesto = NULL
+               WHERE template_flusso_id = 9011
+                 AND esito_richiesto = 'POSITIVO';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              UPDATE pratiche.template_flussi_avanzamento_proiezione
+                 SET esito_richiesto = 'POSITIVO'
+               WHERE template_flusso_id = 9011
+                 AND esito_richiesto IS NULL;

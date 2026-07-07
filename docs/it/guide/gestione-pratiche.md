@@ -657,6 +657,16 @@ dominio). Il primo caso reale è il **ritiro** di `vendita.accetta_preventivo`: 
 «Accetta» in pratica chiama il servizio standalone del preventivo e il milestone avanza per
 proiezione.
 
+**Inversione piena (accetta *e* rifiuta)**: sul preventivo il binding è configurato su
+«qualsiasi verdetto» (non solo POSITIVO), così il milestone `APPROVAZIONE_CLIENTE` si completa
+sia sull'accettazione (POSITIVO) sia su ogni esito terminale-negativo — rifiutato / scaduto /
+annullato (tutti NEGATIVO). Nel caso negativo il completamento non "fa proseguire" la pratica:
+i passi a valle (es. SMISTAMENTO) hanno prerequisiti **esito-aware** che richiedono
+`APPROVAZIONE_CLIENTE = POSITIVO`, quindi con NEGATIVO diventano **ramo morto** (non bloccano)
+e la pratica **si chiude pulita**. Prima, con l'avanzamento solo su POSITIVO, un preventivo
+rifiutato lasciava il milestone aperto e la pratica appesa: l'inversione piena chiude la
+divergenza in **entrambe** le direzioni.
+
 ---
 
 ## Handler Django (registry pattern)
