@@ -5,7 +5,7 @@
 > + tutti i punti aperti chiusi (B/C/D/Lente 1 → decisioni DL-1..8). Prossimo: mini-brief DB
 > timestamp (§7) in parallelo + Fase 1 Lente Competenza. Ridisegna
 > la dashboard pre-fatturazione a 5 card (design-of-record
-> [brief-design-dashboard-fatturazione.md](brief-design-dashboard-fatturazione.md),
+> [brief-design-dashboard-fatturazione.md](../work-done/brief-design-dashboard-fatturazione.md),
 > Fasi 1-3 fatte e committate `50347da0c`, **non pushate**) sostituendola con **due
 > lenti** semanticamente omogenee.
 >
@@ -17,7 +17,7 @@
 > pulito), **percorso unico** con disegno unitario in testa e consegna in due fasi.
 >
 > **Documenti collegati**:
-> [brief-design-dashboard-fatturazione.md](brief-design-dashboard-fatturazione.md) (la
+> [brief-design-dashboard-fatturazione.md](../work-done/brief-design-dashboard-fatturazione.md) (la
 > pre-fatturazione attuale, che questo brief decompone) ·
 > [analisi-dash-pre-fatturazione.md](../work-done/analisi-dash-pre-fatturazione.md) (Domande A-E) ·
 > [Guida fatturazione](../../guide/fatturazione.md) ·
@@ -212,70 +212,45 @@ Non si "refactora in place": si **ripartisce**. Cosa migra e cosa si dismette:
 provvisoria) e **non riceve altri investimenti**, finché le due lenti non ne coprono il
 perimetro. Non si butta oggi, non si rifinisce: si sostituisce.
 
-## 6-bis. Fase 3 ridefinita — da *dismissione* a *trasformazione* in "Situazione aperta" (2026-07-07)
+## 6-bis. Fase 3 ridefinita — trasformazione in "Situazione aperta" (2026-07-07, Tid)
 
 Con le Lenti 1-2 mergiate (PR #932), la Fase 3 non butta la 5-card: la **trasforma**
-nella vista **"Situazione aperta"** — lo **stock dei documenti aperti** (4 aree documento,
-no Commesse) raggruppato per **`fase` normalizzata**, **senza asse temporale**. L'unico
-artefatto dismesso davvero è l'aggregata mensile (l'asse proxy). Brief operativo DB:
-[brief-db-situazione-aperta.md](brief-db-situazione-aperta.md).
-
-| # | Decisione | Scelta |
-|---|---|---|
-| DL-9 | Fase 3 | **Trasformazione** della 5-card in "Situazione aperta" (stock per fase), non dismissione secca |
-| DL-10 | Asse delle card | **`fase` normalizzata** (già esposta dalla union via `config.stati_doc_*`) — zero lavoro DB |
-| DL-11 | Misura | Conferma D-2/D-3/D-4: € per Preventivi/Ordini, **conteggi** (valori `NULL`, mai 0) per Offerte/Contratti |
-| DL-12 | Contratti | Resolver **de-esploso** (1 riga per contratto vivo, niente mese) con **giudizio di transito sospeso** (`is_transitato`/`motivo_fermo` NULL) finché non esiste il push ricorrente |
-| DL-13 | Perimetro fasi | Lo stock include **tutte le fasi** (anche CHIUSO, che cresce nel tempo): vista DB neutra, **il FE decide quali card mostrare**. Abortiti (esito NEGATIVO) esclusi in vista (`NOT is_abortito` — i resolver non-contratti li marcano soltanto) |
-
-DB atterrato con `20260707-03..06` (`vw_dash_aperto_{documenti,riepilogo}`, resolver
-contratti de-esploso, drop mensile) — dettagli e criteri nel brief DB.
-## 6-bis. Situazione aperta — terza vista (deciso 2026-07-07, Tid)
-
-**Domanda**: qual è lo **stock di documenti aperti** in pipeline, e in che stato — **a
-prescindere dal periodo**? È una terza domanda, diversa da entrambe le lenti: la Lente 1
-guarda il mese di competenza (solo commesse→fattura), la Lente 2 il lavoro da sbloccare
-ora (solo non-verde 🟠🔴🔵, filtro `classe <> FISIOLOGICO` **dentro** la vista
+nella vista **"Situazione aperta"** — lo **stock dei documenti aperti** (Preventivi,
+Ordini, Offerte, Contratti; **no Commesse**, coperte dalla Lente 1) raggruppato per
+**`fase` normalizzata**, **senza asse temporale**. È una **terza domanda**, diversa da
+entrambe le lenti: la Lente 1 guarda il mese di competenza, la Lente 2 il lavoro da
+sbloccare ora (solo non-verde 🟠🔴🔵, filtro `classe <> FISIOLOGICO` dentro
 `vw_dash_backlog_documenti`). Qui si fotografa **tutto** l'aperto, inclusi i fisiologici
-🟢 (bozze, offerte da convertire, contratti in essere) che la dismissione secca della
-5-card avrebbe reso invisibili — revisione della "perdita voluta" registrata a valle
-della Fase 2. Radici mai collegate prima: la proiezione stato dominio
-(`script.vw_stato_sorgente`, `fase` uniforme per le 4 aree documento) e il recap §2
+🟢 (bozze, offerte da convertire, contratti in essere) che la dismissione secca avrebbe
+reso invisibili — revisione della "perdita voluta" registrata a valle della Fase 2.
+Radici mai collegate prima: la proiezione stato dominio (`script.vw_stato_sorgente`,
+`fase` uniforme per le 4 aree documento) e il recap §2
 dell'[analisi-dash-pre-fatturazione](../work-done/analisi-dash-pre-fatturazione.md)
 (valido nel contenuto, invalido solo nell'asse mensile).
 
-Decisioni (DL-9..12, tabella §10):
+**Decisioni DL-9..13**: registro in §10. Punti di design chiave:
 
-* **Collocazione (DL-9)** — pagina autonoma: la 5-card **non si rimuove, si trasforma**
-  sulla stessa rotta. Via l'asse dei 12 mesi, dentro lo stock per area. Tre cruscotti,
-  una domanda ciascuno.
-* **Aree** — Preventivi, Ordini, Offerte, Contratti. **Niente Commesse** (coperte dalla
-  Lente 1); coerente col perimetro dei 4 resolver della proiezione stato dominio.
-* **Raggruppamento (DL-10)** — card e filtri sulla **`fase` normalizzata**
-  (APERTO/IN_CORSO/IN_ATTESA/CHIUSO — **già esposta** dalla union via
-  `config.stati_doc_*`, verificato 2026-07-07: nessun lavoro DB); stato nativo +
-  `motivo_fermo` restano come dettaglio parlante nel drill-down.
-* **Misura (DL-11)** — mista, conferma D-2/D-3/D-4 della 5-card: imponibile € su
-  Preventivi/Ordini, conteggi su Offerte/Contratti. Il contratto dati prevede entrambe
-  le colonne: se un domani arrivano i valori di offerte/contratti, le card si accendono
-  senza ristrutturare.
-* **Contratti (DL-12)** — **consistenza pura**: stock per fase **senza** giudizio
-  fermo/transitato finché manca il push ricorrente (giudizio *sospeso*, non
-  falso-allarme perenne). Predisposto: quando il push esisterà, "attivo senza canone
-  corrente" diventa ritardo vero → la card guadagna lo spicchio transito e i contratti
-  entrano anche in Lente 2.
-* **Popolazione** — documenti **vivi** (esito ≠ NEGATIVO, regola D-6) dalla union
-  `vw_dash_fatturazione_documenti`, che sopravvive con tutti i resolver. Drill-down =
-  non completamente transitati, **tutte le classi, 🟢 incluso** (ordinati per stato,
-  non per anzianità — quella è Lente 2).
+* **Perimetro unico** — vista dettaglio `vw_dash_aperto_documenti` (union 4 aree,
+  `NOT is_abortito`, **tutte le fasi** — DL-13: vista DB neutra, il FE decide quali
+  card mostrare) + aggregata gemella `vw_dash_aperto_riepilogo` (`area × fase`) per le
+  card; il BE non replica filtri. ⚠️ Correzione al claim D-6 del primo brief BE: i
+  resolver non-contratti **marcano** gli abortiti (`is_abortito`), non li escludono —
+  l'esclusione vive nella vista stock.
+* **Contratti de-esplosi (DL-12)** — 1 riga per contratto vivo (sparisce il rumore che
+  li aveva esclusi dal backlog), giudizio di transito **sospeso**
+  (`is_transitato`/`motivo_fermo` NULL) finché non esiste il push ricorrente;
+  predisposto ad accendersi dopo — e a quel punto i contratti entrano anche in Lente 2.
+* **Misura (DL-11)** — € imponibile Preventivi/Ordini, conteggi (`NULL`, mai 0) per
+  Offerte/Contratti; il contratto dati prevede entrambe le colonne (accensione futura
+  senza ristrutturare).
 * **Riuso** — `DonutTransito`, `dashboardAree.js`, store/BB FE, vocabolario i18n
-  `motivo_fermo` (da ricollocare in gruppo condiviso, caveat già noto). **Si dismette
-  davvero**: `vw_dash_fatturazione_mensile` + pannello 12 mesi/semaforo/stepper mese.
-* **Prerequisiti DB** → mini-brief
-  [brief-db-dash-situazione-aperta.md](brief-db-dash-situazione-aperta.md): resolver
-  contratti **de-esploso** (oggi 1 riga per contratto × mese coperto; in uno stock senza
-  periodo un contratto è 1 riga — e sparisce il rumore che aveva escluso i contratti dal
-  backlog), vista riepilogo `area × fase` per le card, drop coordinato della mensile.
+  `motivo_fermo` (da ricollocare in gruppo condiviso, caveat noto). **Dismessa
+  davvero**: solo `vw_dash_fatturazione_mensile` + pannello 12 mesi/semaforo/stepper.
+
+Brief operativo DB: [brief-db-situazione-aperta.md](../work-done/brief-db-situazione-aperta.md) —
+atterrato con `20260707-03..06` (resolver de-esploso, `vw_dash_aperto_{documenti,riepilogo}`,
+drop mensile), pgTAP verdi. ✅ Rework `security_invoker` sul resolver contratti (perso dal
+`CREATE OR REPLACE` del `-03`) **eseguito dal team DB e verificato** (2026-07-07, brief DB §5).
 
 ## 7. Prerequisito DB — timestamp di transito (Domanda C) ✅ deciso
 
@@ -308,7 +283,7 @@ dentro il transitato, **"fatto in tempo"** da **"recuperato in ritardo"** (anali
 * **Non bloccante**: Lente 1 v1 (senza recuperi tardivi) e Lente 2 v1 (anzianità-proxy)
   partono senza attendere la validazione DB.
 * ✅ **Validazione eseguita (2026-07-06)** — vedi
-  [brief-db-fatturazione-due-lenti.md](brief-db-fatturazione-due-lenti.md) §2:
+  [brief-db-fatturazione-due-lenti.md](../work-done/brief-db-fatturazione-due-lenti.md) §2:
   `data_insert` confermata affidabile (reset lotto = solo UPDATE, nessuna re-emissione
   possibile, colonna mai aggiornata); unico caveat latente C1 (collisione `segment_key`
   nel ramo UPDATE di `fn_emit`) documentato con test-sentinella. Nessun campo nuovo.
@@ -337,7 +312,7 @@ dentro il transitato, **"fatto in tempo"** da **"recuperato in ritardo"** (anali
 * Valore € di Offerte/Contratti (resta come da D-2/D-3 del brief pre-fatturazione: v2).
 * Push ricorrente dei contratti: fuori scope (ne dipende solo la lettura `CANONE_NON_GENERATO`).
 
-## 10. Decisioni prese (Tid — DL-1..8: 2026-07-04 · DL-9..12: 2026-07-07)
+## 10. Decisioni prese (Tid — DL-1..8: 2026-07-04 · DL-9..13: 2026-07-07)
 
 | # | Decisione | Scelta |
 |---|---|---|
@@ -352,7 +327,8 @@ dentro il transitato, **"fatto in tempo"** da **"recuperato in ritardo"** (anali
 | DL-9 | Situazione aperta — collocazione | **Terza vista autonoma** sulla rotta della 5-card: Fase 3 = **trasformazione**, non dismissione secca (§6-bis) |
 | DL-10 | Situazione aperta — raggruppamento | **`fase` normalizzata** su card/filtri (già in union, zero DB); stato nativo + `motivo_fermo` come dettaglio nel drill-down |
 | DL-11 | Situazione aperta — misura | **Mista** (conferma D-2/D-3/D-4): imponibile € Preventivi/Ordini, conteggi Offerte/Contratti |
-| DL-12 | Situazione aperta — contratti | **Consistenza pura**: stock per fase, giudizio transito **sospeso** fino al push ricorrente; contratto dati predisposto ad accendersi dopo |
+| DL-12 | Situazione aperta — contratti | **Consistenza pura**: stock per fase, giudizio transito **sospeso** fino al push ricorrente; contratto dati predisposto ad accendersi dopo; resolver **de-esploso** (1 riga per contratto vivo) |
+| DL-13 | Situazione aperta — perimetro fasi | Lo stock include **tutte le fasi** (anche CHIUSO, che cresce nel tempo): vista DB neutra, **il FE decide quali card mostrare**; abortiti esclusi in vista (`NOT is_abortito`) + vista dettaglio gemella `vw_dash_aperto_documenti` come **perimetro unico** di card e drill-down |
 
 ## 11. Piano di sviluppo
 
@@ -360,9 +336,8 @@ dentro il transitato, **"fatto in tempo"** da **"recuperato in ritardo"** (anali
 |---|---|---|---|
 | 0 — Disegno unitario | questo brief | due lenti + decomposizione + punti aperti B/C/D | ✅ 2026-07-04 |
 | 0-bis — Chiusura punti aperti | con Tid | decisioni **B, C, D, Lente 1** (DL-6/7/8 + C) | ✅ 2026-07-04 |
-| DB — Timestamp transito | `dev/db-tid` (brief al team) | **validare** `attivita_fatturabili.data_insert` come data-emissione (casi reset/re-emissione); eventuale vista di comodo (§7) | 🟢 **FATTO** ([brief-db-fatturazione-due-lenti.md](brief-db-fatturazione-due-lenti.md), 2026-07-06): validazione ✅ `data_insert` affidabile (nessun campo nuovo) e **substrato DB di ENTRAMBE le lenti applicato+testato** — migrations `20260706-01..15` EXECUTED, pgTAP competenza (15) + backlog (14) verdi; lookup classi `config.motivi_fermo` (DL-6), viste `vw_dash_competenza_*` (Lente 1, 4 blocchi), `vw_dash_backlog_*` (Lente 2) e fix `-15` security_invoker famiglia 5-card (V-1: bypassava la RLS emittente, ora chiuso). Non committato |
+| DB — Timestamp transito | `dev/db-tid` (brief al team) | **validare** `attivita_fatturabili.data_insert` come data-emissione (casi reset/re-emissione); eventuale vista di comodo (§7) | 🟢 **FATTO** ([brief-db-fatturazione-due-lenti.md](../work-done/brief-db-fatturazione-due-lenti.md), 2026-07-06): validazione ✅ `data_insert` affidabile (nessun campo nuovo) e **substrato DB di ENTRAMBE le lenti applicato+testato** — migrations `20260706-01..15` EXECUTED, pgTAP competenza (15) + backlog (14) verdi; lookup classi `config.motivi_fermo` (DL-6), viste `vw_dash_competenza_*` (Lente 1, 4 blocchi), `vw_dash_backlog_*` (Lente 2) e fix `-15` security_invoker famiglia 5-card (V-1: bypassava la RLS emittente, ora chiuso). Non committato |
 | 1 — Lente Competenza | `dev/backend-tid` | resolver a valle (commessa→fattura per competenza), **4 blocchi predisposti** (§4) + BE + FE; riusa resolver Commesse | 🟢 **FATTO + REVIEW** (2026-07-06, non committato): BE 3 endpoint GET `dashboard-competenza/{,attivita/,errori/}` (pivot 4 stadi + breakdown 3a + errori) + 32 test; FE `DashboardCompetenzaView` (12 mesi semaforo, card stadi, donut copertura, pannello errori, drill-down attività + filtro ritardi), rotta/nav/i18n; doc `api_dashboard_competenza.md`. **Review multi-agent (8 finder) + fix applicati**: DB-6 single-source BE-side (`valore_display` per cella + blocco `totali` per mese: il FE rende, non sceglie la misura); pannello errori pilotato da (mese, aggregata) non dal conteggio (bug: mesi consecutivi con pari n_errori → pannello vuoto); competenza drill-down derivata da (anno, mese) e non da `mesi[]` stale (bug: fetch anno sbagliato su stepper/reload a cavallo d'anno); `date_trunc` su bucket errori (lotti senza CHECK primo-del-mese); stadi fuori whitelist accodati fail-visible; clamp anno 2000-2100; fallback i18n a codice grezzo; semaforo con badge ⚠/✖ indipendenti; pivot su accumulatore Decimal tipizzato. **Estrazione BB (ok Tid 2026-07-06)**: `usePagedDashFetch` (fetch paginata cruscotti: guard versione + rientro pagina-oltre-l'ultima; adottato da fermi/attivita'/errori nei 2 store) + `useDashMesiNav` / `DashMesiSidebar` / `DashMeseStepper` (telaio anno/12-mesi/stepper condiviso, i18n `dash_mesi.*`; adottato da ENTRAMBE le view — la 5-card eredita cosi' anche i fix clamp-anno e competenza race-free su cambio anno). `COUNT(*) OVER()` sulla lista errori (una sola valutazione della union per pagina, fallback count solo su pagina-oltre-l'ultima). Rinviato con motivazione: `scrollable/scroll-height` sulle DataTable interne — 8/10 tabelle interne del repo non lo usano; applicarlo a 2 sole creerebbe una terza variante (standard: "il miglioramento si applica a tutte le schermate, mai a una sola") → eventuale allineamento globale come task dedicato. Catalogo BB FE aggiornato. 1016 test verdi + build FE ok. Da validare in-app |
 | 2 — Lente Backlog | `dev/backend-tid` | lista non-collegati per anzianità + `motivo_fermo` + azionabilità; v1 anzianità-proxy | 🟢 **FATTO** (2026-07-06, non committato): BE 2 endpoint GET `dashboard-backlog/{,documenti/}` (contatori 3 classi sempre presenti in ordine UI 🟠🔵🔴, classi extra accodate fail-visible; lista ordinata BE-side per anzianità DESC, filtri classe/area whitelist, `COUNT(*) OVER()`) + 17 test; FE `DashboardBacklogView` (card classi = filtro toggle, filtro area, tabella con motivo decodificato/azione suggerita dalla lookup/fermo-da-gg/stato per area, apri documento via `?search=`), store su `usePagedDashFetch`, severity `classeBacklogSeverity`, rotta/nav/i18n it+en (vocabolario `motivo_fermo` e label aree riusati dalla 5-card); doc `api_dashboard_backlog.md` + api.md + catalogo BB. **Review multi-agent (8 finder) + fix applicati**: filtro `classe` de-whitellistato (era fail-closed mentre il riepilogo è fail-visible: una 4ª classe futura dava card non drillabile → 400; ora classe sconosciuta = lista vuota, area resta whitellistata perché strutturale); empty-state onesto (`loaded` in `usePagedDashFetch`: il verde "backlog vuoto" solo dopo fetch riuscita, mai su errore/pre-caricamento); `resetAll()` nel BB (la pageSize non sopravvive più al logout, fix su tutti e 3 gli store); clamp `GREATEST(anzianità,0)` (niente "fermo da -N gg" su date future) + `anzianita_max` null quando l'età è sconosciuta (≠ 0 gg); ORDER BY su `data_riferimento` (colonna base, ordine identico); unità ferme rese in card; stili inline morti rimossi. **Regola del 2 APPLICATA (ok Tid 2026-07-06)**: `vendite/dashboardAree.js` (config aree route+severity+kind + `buildApriDocumentoAction`, adottata da 5-card e Backlog), `applyPageEvent` in `usePagedDashFetch` (uccide le 4 copie del handler paginator), `labelOrCode` in core/utils (decodifica i18n fail-visible, adottata in 8 siti: dashboard+pratiche+catalogo), `validate_enum_param` in core list_helpers (unifica 5 blocchi whitelist nei service vendite). **"Apri documento" CORRETTO (ok Tid)**: una ricerca ESTERNA (deep-link `?search=`, ricerca universale, AI) ora azzera i default temporali `data_da`/`data_a` della lista target in `useSearchTable` — i documenti più vecchi di anno-1 (i più urgenti del backlog) sono trovabili; le ricerche digitate in pagina non toccano i filtri data; toolbar allineata via sync store→ref in `useStoreFilterBindings` (bindSelect/bindDate ora osservano lo store). Cataloghi BB BE+FE aggiornati. 1635 test verdi (vendite+core) + build FE ok |
-| 3 — Trasformazione in "Situazione aperta" (§6-bis) | DB: `dev/db-tid` · BE/FE: `dev/backend-tid` | DB: resolver contratti de-esploso + `vw_dash_aperto_*` + drop mensile ([brief-db-situazione-aperta.md](brief-db-situazione-aperta.md)) · BE/FE: ritiro endpoint 5-card + restyle pagina | 🟢 **DB FATTO 2026-07-07**: migrations `20260707-03..06` EXECUTED, pgTAP verdi (28+10+14+15, regressione lenti zero); BE/FE ⬜ a valle |
-| 3 — Situazione aperta (ex dismissione) | `dev/db-tid` (brief) poi `dev/backend-tid` | **trasformazione** della 5-card nella vista stock "Situazione aperta" (§6-bis, DL-9..12): prerequisiti DB da mini-brief [brief-db-dash-situazione-aperta.md](brief-db-dash-situazione-aperta.md) (contratti de-esplosi + riepilogo `area × fase` + drop mensile coordinato) → poi BE/FE (2 endpoint stock, restyle view; ricollocare i18n `motivo_fermo`/`area_*` in gruppo condiviso) | 🟡 brief DB scritto 2026-07-07 — **ATTENDE team DB** |
+| 3 — Trasformazione in "Situazione aperta" (§6-bis) | DB: `dev/db-tid` · BE/FE: `dev/backend-tid` | DB: resolver contratti de-esploso + `vw_dash_aperto_*` + drop mensile ([brief-db-situazione-aperta.md](../work-done/brief-db-situazione-aperta.md)) · BE/FE: ritiro endpoint 5-card + restyle pagina + ricollocare i18n in gruppo condiviso | 🟢 **DB FATTO 2026-07-07** (migrations `20260707-03..06` EXECUTED, pgTAP verdi 28+10+14+15, regressione lenti zero, PR #936; rework `security_invoker` resolver contratti ✅ eseguito e verificato, brief DB §5). 🟢 **BE+FE FATTI 2026-07-07** (non committati): BE 2 endpoint GET `dashboard-aperto/{,documenti/}` (riepilogo 4 aree × 4 fasi sempre presenti fail-visible + drill-down con filtri area whitelist/fase passthrough/`solo_aperti` default true) + 21 test, ritirati endpoint/service/repo/test/doc 5-card; FE `SituazioneApertaView` (card area con DonutTransito + chip fasi = filtro, lista per "in essere da", toggle solo-aperti), store `dashboardAperto` su `usePagedDashFetch`, severity `faseDocumentoSeverity`, **rotta rinominata `/vendite/situazione-aperta`** (menu "Situazione aperta"; deroga alla lettera di DL-9 "stessa rotta": l'URL `dashboard-fatturazione` sarebbe stato fuorviante — la dashboard di fatturazione vera ora è la Lente 1); i18n `motivo_fermo`/`area_*`/`fase_*` ricollocati nel gruppo condiviso `dash_comune` (Backlog aggiornato). Doc `api_dashboard_aperto.md` + api.md + cataloghi BB. 1629 test verdi vendite+core, build FE ok. **Da validare in-app** |
 | 4 — Guida | docs | sezione "Cruscotti fatturazione" (linguaggio non tecnico) | ⬜ |

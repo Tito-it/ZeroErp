@@ -10,7 +10,7 @@
 // guard di versione dedicato.
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { useFetchVersion } from '../../core/composables/useFetchVersion'
+import { useDashRiepilogo } from '../../core/composables/useDashRiepilogo'
 import { usePagedDashFetch } from '../../core/composables/usePagedDashFetch'
 import { PAGINATION } from '../../core/constants'
 import {
@@ -28,9 +28,17 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
   // Filtro recuperi tardivi del drill-down (solo attivita' emesse in ritardo).
   const soloRitardo = ref(false)
 
-  // Aggregata: array 12 mesi { competenza_mese, stadi, totali, n_errori } dal BE.
+  // Aggregata: array 12 mesi { competenza_mese, stadi, totali, n_errori }
+  // dal BE. Fetch guardata anti-race via BB useDashRiepilogo: scarta la
+  // risposta se nel frattempo l'anno e' cambiato di nuovo (vince l'ultima
+  // richiesta, non l'ultima risposta arrivata).
   const mesi = ref([])
-  const fvMensile = useFetchVersion()
+  const aggregata = useDashRiepilogo(
+    () => getDashboardCompetenza(anno.value),
+    (data) => {
+      mesi.value = data.mesi ?? []
+    }
+  )
 
   // Drill-down attivita' + pannello errori: sezioni paginate standard.
   const attivitaFetch = usePagedDashFetch((paging, competenzaMese) =>
@@ -49,16 +57,6 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
       }),
     { defaultPageSize: PAGINATION.COMPACT_ROWS }
   )
-
-  // Scopo: carica l'aggregata dell'anno corrente dello store. Il guard di
-  // versione scarta la risposta se nel frattempo l'anno e' cambiato di nuovo
-  // (vince l'ultima richiesta, non l'ultima risposta arrivata).
-  async function fetchMensile() {
-    const t = fvMensile.tag()
-    const res = await getDashboardCompetenza(anno.value)
-    if (!fvMensile.isCurrent(t)) return
-    mesi.value = res.data?.data?.mesi ?? []
-  }
 
   // Scopo: carica una pagina di attivita' per (mese, stadio selezionato,
   //        filtro ritardo). Senza stadio attivo non parte nessuna fetch.
@@ -88,7 +86,7 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
   // Scopo: reset per logout (plugin autoResetPlugin via userScoped) —
   //        resetAll riporta anche le pageSize al default (stato utente).
   function clearUserState() {
-    fvMensile.invalidate()
+    aggregata.invalidate()
     anno.value = new Date().getFullYear()
     meseIdx.value = new Date().getMonth()
     mesi.value = []
@@ -116,7 +114,7 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     erroriPageSize: erroriFetch.pageSize,
     erroriLoading: erroriFetch.loading,
     applyErroriPage: erroriFetch.applyPageEvent,
-    fetchMensile,
+    fetchMensile: aggregata.fetchRiepilogo,
     fetchAttivita,
     fetchErrori,
     resetAttivita,

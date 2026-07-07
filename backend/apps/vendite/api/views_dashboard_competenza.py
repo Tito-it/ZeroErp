@@ -27,7 +27,7 @@ from apps.core.api.payload_validators import (
     qp_bool_optional,
     qp_int_strict,
     qp_iso_date_optional,
-    qp_str,
+    qp_str_upper,
 )
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
@@ -160,8 +160,7 @@ class ApiDashboardCompetenzaAttivita(DomainAPIView):
             function_name="vendite.api.views_dashboard_competenza.attivita",
         )
         assert competenza_mese is not None
-        stadio_raw = qp_str(qp.get("stadio"))
-        stadio = stadio_raw.upper() if stadio_raw else None
+        stadio = qp_str_upper(qp.get("stadio"))
         solo_ritardo = qp_bool_optional(qp.get("solo_ritardo"), "solo_ritardo")
         page = qp_int_strict(qp.get("page"), "page", 1)
         page_size = qp_int_strict(qp.get("page_size"), "page_size", 50)

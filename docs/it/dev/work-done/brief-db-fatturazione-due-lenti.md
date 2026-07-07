@@ -1,7 +1,7 @@
 # Brief DB — Fatturazione a due lenti: substrato dati (timestamp §7, lookup classi, viste Lente 1 e Lente 2)
 
 > **Per**: team DB (`dev/db-tid`). · **Da**: design-of-record
-> [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md) (decisioni
+> [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md) (decisioni
 > DL-1..8, Tid 2026-07-04). · **Data**: 2026-07-06 · **Stato**: 🟢 **DB APPLICATO +
 > pgTAP VERDI (2026-07-06)** — migrations `20260706-01..15` **EXECUTED** sul DB di
 > sviluppo (lookup+seed, data_riferimento su resolver/union, 3 viste Lente 1, 2 viste
@@ -9,7 +9,7 @@
 > — verificato: reloptions `{security_invoker=on}` su tutte); pgTAP
 > `test-vw-dash-competenza-v1.sql` (plan 15) e `test-vw-dash-backlog-v1.sql` (plan 14)
 > **verdi** (eseguiti da Tid). Doc manuale scritta; doc auto-gen da rigenerare (lato
-> Tid). **NON committato.** Prossimo: commit, poi Fasi 1-2 BE/FE su `dev/backend-tid`.
+> Tid). Committato e mergiato (PR #929; Fasi 1-2 BE/FE mergiate con PR #932). **CHIUSO** — spostato in work-done 2026-07-07.
 > **Perimetro**: SOLO DB. Copre in un unico piano i tre deliverable DB del disegno a due
 > lenti: (A) validazione del timestamp di transito (§7 del design, deciso DL-5),
 > (B) lookup `motivo_fermo → classe` (DL-6), (C) viste per Lente 1 Competenza e
@@ -17,7 +17,7 @@
 > del design.
 > **Correlato**: [brief-design-dashboard-fatturazione.md](brief-design-dashboard-fatturazione.md)
 > (famiglia `vw_dash_fatturazione_*` esistente, congelata) ·
-> [analisi-dash-pre-fatturazione.md](../work-done/analisi-dash-pre-fatturazione.md) ·
+> [analisi-dash-pre-fatturazione.md](analisi-dash-pre-fatturazione.md) ·
 > viste `vendite.vw_dash_fatturazione_{preventivi,ordini,offerte,contratti,commesse,documenti,mensile}` ·
 > tabelle `vendite.attivita_fatturabili`, `vendite.commesse_attivita`, `vendite.fatture`,
 > `vendite.fatturazione_lotti(_fatture|_task_runs)`, `vendite.fatture_log`.

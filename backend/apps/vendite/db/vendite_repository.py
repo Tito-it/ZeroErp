@@ -14,12 +14,13 @@ from typing import Any
 from django.db import connection
 
 from apps.vendite.types import (
+    DashApertoDocumentoRow,
+    DashApertoRiepilogoRow,
     DashBacklogDocumentoRow,
     DashBacklogRiepilogoRow,
     DashCompetenzaAttivitaRow,
     DashCompetenzaErroreRow,
     DashCompetenzaMensileRow,
-    DashFatturazioneFermoRow,
     LottoFattureRow,
     LottoListRow,
 )
@@ -31,9 +32,10 @@ _SORT_COLUMNS: dict[str, str] = {
     "totale_doc": "f.totale_doc",
 }
 
-# Aree della dashboard fatturazione, nell'ordine del funnel (brief
+# Aree della famiglia dash fatturazione, nell'ordine del funnel (brief
 # brief-design-dashboard-fatturazione §4). Allineate al discriminante `area`
-# della union vendite.vw_dash_fatturazione_documenti.
+# della union vendite.vw_dash_fatturazione_documenti. Usate dalla Lente 2
+# Backlog (che include COMMESSE).
 DASH_FATTURAZIONE_AREE: tuple[str, ...] = (
     "PREVENTIVI",
     "ORDINI",
@@ -43,9 +45,31 @@ DASH_FATTURAZIONE_AREE: tuple[str, ...] = (
 )
 
 # Aree con valore monetario (imponibile, decisione D-4). OFFERTE e CONTRATTI
-# restano a conteggi in v1 (decisioni D-2/D-3): valore_* = NULL.
+# restano a conteggi (decisioni D-2/D-3 confermate da DL-11): valore_* = NULL.
 DASH_FATTURAZIONE_AREE_EURO: frozenset[str] = frozenset(
     {"PREVENTIVI", "ORDINI", "COMMESSE"}
+)
+
+# Aree della Situazione aperta (stock documenti, §6-bis design due-lenti):
+# le 4 aree documento nell'ordine del funnel — NIENTE COMMESSE (coperte
+# dalla Lente 1). Allineate al WHERE di vendite.vw_dash_aperto_documenti.
+DASH_APERTO_AREE: tuple[str, ...] = (
+    "PREVENTIVI",
+    "ORDINI",
+    "OFFERTE",
+    "CONTRATTI",
+)
+
+# Fasi normalizzate della proiezione stato dominio (config.stati_doc_*.fase),
+# nell'ordine del ciclo di vita documento (DL-10): in lavorazione interna →
+# palla al cliente → avanzato → concluso. Non tutte le aree emettono tutte
+# le fasi (es. ORDINI non ha IN_ATTESA): il pivot le espone comunque tutte
+# (griglia simmetrica, il FE decide quali card mostrare — DL-13).
+DASH_APERTO_FASI: tuple[str, ...] = (
+    "APERTO",
+    "IN_ATTESA",
+    "IN_CORSO",
+    "CHIUSO",
 )
 
 # Stadi del funnel Lente 1 Competenza, nell'ordine commessa → fattura (brief
@@ -70,6 +94,54 @@ DASH_BACKLOG_CLASSI: tuple[str, ...] = (
 
 
 class VenditeRepository:
+
+    # Scopo: Esegue una query paginata su vista/union costosa in UNA SOLA
+    #        valutazione: CTE materializzata + COUNT(*) OVER() + OFFSET
+    #        clampato all'ultima pagina direttamente in SQL. Il rientro da
+    #        una pagina stantia (lista ridotta da altri utenti) non costa
+    #        piu' 2-3 valutazioni della union (data vuota + count fallback +
+    #        refetch FE): il BE serve subito l'ultima pagina reale e il
+    #        service dichiara la pagina effettiva nell'envelope. Estratto
+    #        2026-07-07 (regola del 2 alla 3ª occorrenza + fix efficienza,
+    #        ok Tid): unifica il pattern di aperto/backlog/errori.
+    #        `select_sql` = SELECT...FROM...WHERE gia' parametrizzato, SENZA
+    #        ORDER/LIMIT; `order_by` = clausola ORDER BY completa su NOMI
+    #        COLONNA DI OUTPUT della SELECT (whitelist a carico del
+    #        chiamante, MAI input utente). Ritorna (rows, total_count):
+    #        total_count e' SEMPRE l'ultima colonna delle righe.
+    def _query_paged_view(
+        self,
+        *,
+        select_sql: str,
+        order_by: str,
+        params: list[Any],
+        limit: int,
+        offset: int,
+    ) -> tuple[list[tuple], int]:
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+        # MATERIALIZED esplicito: la CTE e' referenziata due volte (righe +
+        # count del clamp) e deve essere valutata una volta sola.
+        sql = f"""
+            WITH righe AS MATERIALIZED (
+                {select_sql}
+            )
+            SELECT r.*, COUNT(*) OVER () AS total_count
+            FROM righe r
+            {order_by}
+            LIMIT %s
+            OFFSET LEAST(
+                %s,
+                (SELECT GREATEST(COUNT(*) - 1, 0) / %s * %s FROM righe)
+            )
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(
+                sql, params + [safe_limit, safe_offset, safe_limit, safe_limit]
+            )
+            rows = cursor.fetchall()
+        total_count = int(rows[0][-1]) if rows else 0
+        return list(rows), total_count
 
     # Scopo: Aggiunge la condizione WHERE per scope emittente DB-first.
     # La funzione SQL risolve ruolo, whitelist e mappatura soggetto_ruolo.
@@ -215,130 +287,131 @@ class VenditeRepository:
             )
         return result, total_count
 
-    # Scopo: Restituisce le righe non vuote (area × mese) dell'aggregata
-    #        dashboard fatturazione per un anno. Il completamento a griglia
-    #        12 mesi × 5 aree (contratto D-5: mesi/aree vuoti = zeri) è a carico
-    #        del service — qui NON si duplica, si legge solo ciò che esiste.
-    # Perimetro: sola lettura su vw_dash_fatturazione_mensile (invoker → la RLS
-    #        emittente su preventivi/ordini/offerte/contratti filtra da sola).
-    # Risultato: lista piatta delle sole (area, mese) con almeno un documento
-    #        (≤ 60 righe).
-    def list_dash_fatturazione_mensile(self, *, anno: int) -> list[dict[str, Any]]:
+    # Scopo: Restituisce le celle non vuote (area × fase) dello stock
+    #        Situazione aperta. Il completamento a griglia 4 aree × 4 fasi
+    #        (celle vuote = zeri, DL-13) e' a carico del service — qui NON si
+    #        duplica, si legge solo cio' che esiste.
+    # Perimetro: sola lettura su vw_dash_aperto_riepilogo (security_invoker →
+    #        la RLS emittente sulle 4 aree documento filtra da sola).
+    # Risultato: lista piatta DashApertoRiepilogoRow (≤ 16 righe).
+    def list_dash_aperto_riepilogo(self) -> list[DashApertoRiepilogoRow]:
         sql = """
             SELECT
-                competenza_mese,
                 area,
-                valore_totale,
-                valore_transitato,
+                fase,
                 n_documenti,
-                n_transitati,
-                n_fermi,
-                n_abortiti
-            FROM vendite.vw_dash_fatturazione_mensile
-            WHERE competenza_mese >= make_date(%s, 1, 1)
-              AND competenza_mese <  (make_date(%s, 1, 1) + interval '1 year')
-            ORDER BY competenza_mese, area
+                n_aperti,
+                valore_totale,
+                valore_transitato
+            FROM vendite.vw_dash_aperto_riepilogo
+            ORDER BY area, fase
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [anno, anno])
+            cursor.execute(sql)
             rows = cursor.fetchall()
 
-        result: list[dict[str, Any]] = []
+        result: list[DashApertoRiepilogoRow] = []
         for row in rows:
             result.append(
                 {
-                    "competenza_mese": row[0].isoformat(),
-                    "area": str(row[1]),
-                    "valore_totale": str(row[2]) if row[2] is not None else None,
-                    "valore_transitato": str(row[3]) if row[3] is not None else None,
-                    "n_documenti": int(row[4]),
-                    "n_transitati": int(row[5]),
-                    "n_fermi": int(row[6]),
-                    "n_abortiti": int(row[7]),
+                    "area": str(row[0]),
+                    "fase": str(row[1]),
+                    "n_documenti": int(row[2]),
+                    "n_aperti": int(row[3]),
+                    "valore_totale": str(row[4]) if row[4] is not None else None,
+                    "valore_transitato": str(row[5]) if row[5] is not None else None,
                 }
             )
         return result
 
-    # Scopo: Restituisce il drill-down paginato degli elementi FERMI di
-    #        un'area in un mese di competenza (vw_dash_fatturazione_documenti,
-    #        predicato NOT is_transitato AND NOT is_abortito).
-    # Perimetro: sola lettura; lo scope emittente e' interamente DB-side —
-    #        RLS invoker per le 4 aree documento, filtro nel resolver
-    #        vw_dash_fatturazione_commesse via GUC app.current_user_id per le
-    #        COMMESSE (migration 20260703-60). Nessun filtro applicativo qui.
-    # Risultato: tuple (lista DashFatturazioneFermoRow, conteggio totale).
-    def list_dash_fatturazione_fermi(
+    # Scopo: Restituisce il drill-down paginato dello stock Situazione aperta
+    #        (vw_dash_aperto_documenti: 4 aree documento, NOT is_abortito,
+    #        tutte le fasi), con filtri opzionali area/fase e solo_aperti
+    #        (is_aperto: il giudizio sospeso dei contratti conta aperto).
+    #        Ordinamento BE-side per contratto (le viste non garantiscono
+    #        ORDER): "in essere da" piu' vecchio prima, poi valore.
+    # Perimetro: sola lettura; scope emittente interamente DB-side (RLS
+    #        invoker sulle 4 aree documento). Una sola valutazione della
+    #        union + clamp offset via _query_paged_view.
+    # Risultato: tuple (lista DashApertoDocumentoRow, conteggio totale).
+    def list_dash_aperto_documenti(
         self,
         *,
-        area: str,
-        competenza_mese: date,
+        area: str | None,
+        fase: str | None,
+        solo_aperti: bool,
         limit: int,
         offset: int,
-    ) -> tuple[list[DashFatturazioneFermoRow], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
+    ) -> tuple[list[DashApertoDocumentoRow], int]:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if area is not None:
+            conditions.append("d.area = %s")
+            params.append(area)
+        if fase is not None:
+            conditions.append("d.fase = %s")
+            params.append(fase)
+        if solo_aperti:
+            conditions.append("d.is_aperto")
 
-        conditions: list[str] = [
-            "d.area = %s",
-            "d.competenza_mese = %s",
-            "NOT d.is_transitato",
-            "NOT d.is_abortito",
-        ]
-        params: list[Any] = [area, competenza_mese]
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        where_clause = "WHERE " + " AND ".join(conditions)
-
-        count_sql = f"""
-            SELECT COUNT(*)
-            FROM vendite.vw_dash_fatturazione_documenti d
-            {where_clause}
-        """
-
-        data_sql = f"""
+        select_sql = f"""
             SELECT
+                d.area,
                 d.documento_id,
                 d.documento_uid,
                 d.codice,
                 d.cliente_display,
+                d.fase,
+                d.stato_codice_interno,
+                d.stato_codice,
                 d.valore_totale,
                 d.valore_transitato,
                 d.unita_totali,
                 d.unita_transitate,
+                d.is_transitato,
+                d.is_aperto,
                 d.motivo_fermo,
-                d.stato_codice_interno,
-                d.stato_codice,
-                d.fase
-            FROM vendite.vw_dash_fatturazione_documenti d
+                d.data_riferimento
+            FROM vendite.vw_dash_aperto_documenti d
             {where_clause}
-            ORDER BY d.valore_totale DESC NULLS LAST, d.codice ASC, d.documento_id ASC
-            LIMIT %s OFFSET %s
         """
 
-        with connection.cursor() as cursor:
-            cursor.execute(count_sql, params)
-            row = cursor.fetchone()
-            assert row is not None
-            total_count = int(row[0])
+        rows, total_count = self._query_paged_view(
+            select_sql=select_sql,
+            order_by="""
+            ORDER BY data_riferimento ASC NULLS LAST,
+                     valore_totale DESC NULLS LAST,
+                     area ASC, documento_id ASC
+            """,
+            params=params,
+            limit=limit,
+            offset=offset,
+        )
 
-            cursor.execute(data_sql, params + [safe_limit, safe_offset])
-            rows = cursor.fetchall()
-
-        result: list[DashFatturazioneFermoRow] = []
+        result: list[DashApertoDocumentoRow] = []
         for row in rows:
             result.append(
                 {
-                    "documento_id": int(row[0]),
-                    "documento_uid": None if row[1] is None else str(row[1]),
-                    "codice": None if row[2] is None else str(row[2]),
-                    "cliente_display": None if row[3] is None else str(row[3]),
-                    "valore_totale": str(row[4]) if row[4] is not None else None,
-                    "valore_transitato": str(row[5]) if row[5] is not None else None,
-                    "unita_totali": None if row[6] is None else int(row[6]),
-                    "unita_transitate": None if row[7] is None else int(row[7]),
-                    "motivo_fermo": None if row[8] is None else str(row[8]),
-                    "stato_codice_interno": None if row[9] is None else str(row[9]),
-                    "stato_codice": None if row[10] is None else str(row[10]),
-                    "fase": None if row[11] is None else str(row[11]),
+                    "area": str(row[0]),
+                    "documento_id": int(row[1]),
+                    "documento_uid": None if row[2] is None else str(row[2]),
+                    "codice": None if row[3] is None else str(row[3]),
+                    "cliente_display": None if row[4] is None else str(row[4]),
+                    "fase": None if row[5] is None else str(row[5]),
+                    "stato_codice_interno": None if row[6] is None else str(row[6]),
+                    "stato_codice": None if row[7] is None else str(row[7]),
+                    "valore_totale": str(row[8]) if row[8] is not None else None,
+                    "valore_transitato": str(row[9]) if row[9] is not None else None,
+                    "unita_totali": None if row[10] is None else int(row[10]),
+                    "unita_transitate": None if row[11] is None else int(row[11]),
+                    "is_transitato": None if row[12] is None else bool(row[12]),
+                    "is_aperto": bool(row[13]),
+                    "motivo_fermo": None if row[14] is None else str(row[14]),
+                    "data_riferimento": (
+                        row[15].isoformat() if row[15] is not None else None
+                    ),
                 }
             )
         return result, total_count
@@ -540,9 +613,6 @@ class VenditeRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[DashCompetenzaErroreRow], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
-
         conditions: list[str] = []
         params: list[Any] = []
         if competenza_mese is not None:
@@ -554,10 +624,10 @@ class VenditeRepository:
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         # La union (anti-join task_runs + LATERAL fatture_log) e' la query piu'
-        # costosa della pagina: COUNT(*) OVER() nella stessa query evita di
-        # valutarla due volte. La union non ha una PK: tiebreaker deterministico
+        # costosa della pagina: una sola valutazione + clamp offset via
+        # _query_paged_view. La union non ha una PK: tiebreaker deterministico
         # su tutte le chiavi naturali (evento, lotto, fattura, task).
-        data_sql = f"""
+        select_sql = f"""
             SELECT
                 e.tipo_evento,
                 e.competenza_mese,
@@ -571,37 +641,22 @@ class VenditeRepository:
                 e.task_code,
                 e.error_code,
                 e.messaggio,
-                e.data_evento,
-                COUNT(*) OVER () AS total_count
-            FROM vendite.vw_dash_competenza_errori e
-            {where_clause}
-            ORDER BY e.data_evento DESC NULLS LAST, e.tipo_evento ASC,
-                     e.lotto_id ASC NULLS LAST, e.fattura_id ASC NULLS LAST,
-                     e.task_code ASC NULLS LAST
-            LIMIT %s OFFSET %s
-        """
-
-        # Fallback COUNT separato SOLO per offset oltre l'ultima pagina (zero
-        # righe ma popolazione non vuota): serve al FE per il rientro in
-        # pagina 1 (usePagedDashFetch controlla count > 0).
-        count_sql = f"""
-            SELECT COUNT(*)
+                e.data_evento
             FROM vendite.vw_dash_competenza_errori e
             {where_clause}
         """
 
-        with connection.cursor() as cursor:
-            cursor.execute(data_sql, params + [safe_limit, safe_offset])
-            rows = cursor.fetchall()
-            if rows:
-                total_count = int(rows[0][13])
-            elif safe_offset > 0:
-                cursor.execute(count_sql, params)
-                row = cursor.fetchone()
-                assert row is not None
-                total_count = int(row[0])
-            else:
-                total_count = 0
+        rows, total_count = self._query_paged_view(
+            select_sql=select_sql,
+            order_by="""
+            ORDER BY data_evento DESC NULLS LAST, tipo_evento ASC,
+                     lotto_id ASC NULLS LAST, fattura_id ASC NULLS LAST,
+                     task_code ASC NULLS LAST
+            """,
+            params=params,
+            limit=limit,
+            offset=offset,
+        )
 
         result: list[DashCompetenzaErroreRow] = []
         for row in rows:
@@ -673,8 +728,8 @@ class VenditeRepository:
     #        (una classe futura del CHECK resta drillabile; sconosciuta =>
     #        lista vuota, mai 400).
     # Perimetro: sola lettura su vw_dash_backlog_documenti (union resolver:
-    #        RLS invoker + scope GUC commesse). COUNT(*) OVER() nella stessa
-    #        query: la union e' la parte costosa, si valuta una volta sola.
+    #        RLS invoker + scope GUC commesse). Una sola valutazione della
+    #        union + clamp offset via _query_paged_view.
     # Risultato: tuple (lista DashBacklogDocumentoRow, conteggio totale).
     def list_dash_backlog_documenti(
         self,
@@ -684,9 +739,6 @@ class VenditeRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[DashBacklogDocumentoRow], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
-
         conditions: list[str] = []
         params: list[Any] = []
         if classe is not None:
@@ -698,7 +750,7 @@ class VenditeRepository:
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        data_sql = f"""
+        select_sql = f"""
             SELECT
                 d.area,
                 d.competenza_mese,
@@ -715,37 +767,22 @@ class VenditeRepository:
                 GREATEST(d.anzianita_giorni, 0) AS anzianita_giorni,
                 d.stato_codice_interno,
                 d.stato_codice,
-                d.fase,
-                COUNT(*) OVER () AS total_count
-            FROM vendite.vw_dash_backlog_documenti d
-            {where_clause}
-            ORDER BY d.data_riferimento ASC NULLS LAST,
-                     d.valore_fermo DESC NULLS LAST,
-                     d.area ASC, d.documento_id ASC
-            LIMIT %s OFFSET %s
-        """
-
-        # Fallback COUNT separato SOLO per offset oltre l'ultima pagina (zero
-        # righe ma popolazione non vuota): serve al FE per il rientro in
-        # pagina 1 (usePagedDashFetch controlla count > 0).
-        count_sql = f"""
-            SELECT COUNT(*)
+                d.fase
             FROM vendite.vw_dash_backlog_documenti d
             {where_clause}
         """
 
-        with connection.cursor() as cursor:
-            cursor.execute(data_sql, params + [safe_limit, safe_offset])
-            rows = cursor.fetchall()
-            if rows:
-                total_count = int(rows[0][16])
-            elif safe_offset > 0:
-                cursor.execute(count_sql, params)
-                row = cursor.fetchone()
-                assert row is not None
-                total_count = int(row[0])
-            else:
-                total_count = 0
+        rows, total_count = self._query_paged_view(
+            select_sql=select_sql,
+            order_by="""
+            ORDER BY data_riferimento ASC NULLS LAST,
+                     valore_fermo DESC NULLS LAST,
+                     area ASC, documento_id ASC
+            """,
+            params=params,
+            limit=limit,
+            offset=offset,
+        )
 
         result: list[DashBacklogDocumentoRow] = []
         for row in rows:

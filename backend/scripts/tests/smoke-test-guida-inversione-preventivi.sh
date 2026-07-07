@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 # ------------------------------------------------------------
 # Smoke test E2E — GUIDA (D4): inversione handler→proiezione su PREVENTIVI.
-# Valida sul percorso HTTP REALE che «Accetta» in-pratica (endpoint da-pratica)
-# porti il preventivo ad ACCETTATO e faccia AUTO-AVANZARE il milestone
-# APPROVAZIONE_CLIENTE (step 9011) via il trigger DB `fn_reconcile_sorgente`.
+# Valida sul percorso HTTP REALE che «Accetta»/«Rifiuta» in-pratica (endpoint
+# da-pratica) cambino lo stato del preventivo e facciano AUTO-AVANZARE il
+# milestone APPROVAZIONE_CLIENTE (step 9011) via il trigger `fn_reconcile_sorgente`.
+# Copre entrambi i verdetti (binding G2 = NULL, inversione piena):
+#   - Accetta → preventivo ACCETTATO → milestone COMPLETATO/POSITIVO
+#   - Rifiuta → preventivo RIFIUTATO → milestone COMPLETATO/NEGATIVO
 #
 # Perché serve oltre al pgTAP: il pgTAP gira come ruolo OWNER (tutti i privilegi)
 # in transazione rollbackata; questo smoke gira come ruolo APP reale sul percorso
-# HTTP → cattura problemi di GRANT/permessi invisibili al pgTAP.
+# HTTP → cattura problemi di GRANT/permessi invisibili al pgTAP (es. i grant
+# mancanti su reconcile_errori / template_flussi_avanzamento_proiezione, 2026-07-07).
 #
 # Setup/cleanup: direct-insert controllato (modello pgTAP) sullo step 9011 reale
 # (tipo 9004, def 7), con la catena prerequisiti 9009→9010 completata a due-salti.
-# Idempotente: marker 'SMOKE_GUIDA' + cleanup all'inizio e alla fine.
+# Idempotente: marker 'SMOKE_GUIDA' + cleanup all'inizio e via trap EXIT.
 #
 # Uso:  ./scripts/tests/smoke-test-guida-inversione-preventivi.sh [password]
 #   oppure  SMOKE_TOKEN=<jwt> ./...   (salta il login)
@@ -30,7 +34,6 @@ log_ok()   { PASS=$((PASS+1)); echo -e "  ${GREEN}OK${NC}  $1"; }
 log_fail() { FAIL=$((FAIL+1)); echo -e "  ${RED}FAIL${NC} $1"; }
 log_info() { echo -e "  ${YELLOW}---${NC} $1"; }
 
-# Env DB per manage.py (gunicorn systemd li ha in .env.systemd).
 set -a; . "$BACKEND_DIR/.env.systemd" 2>/dev/null || true; set +a
 
 echo ""; echo "========================================="
@@ -38,7 +41,7 @@ echo " Smoke E2E — GUIDA inversione PREVENTIVI (step 9011)"
 echo " Base: $BASE_URL"
 echo "========================================="
 
-# --- GUC operatore condiviso da tutti gli heredoc Python (RLS) ---
+# GUC operatore condiviso dagli heredoc Python (RLS: senza, le pratiche sono nascoste).
 read -r -d '' GUC_PY <<'PY' || true
 from django.db import connection
 def _guc(c):
@@ -65,7 +68,7 @@ else
     log_ok "Login JWT"
 fi
 
-# --- Cleanup helper (inizio + fine) ---
+# --- Cleanup (inizio + trap) ---
 cleanup() {
     "${MANAGE[@]}" >/dev/null 2>&1 <<PY
 $GUC_PY
@@ -82,11 +85,13 @@ PY
 trap cleanup EXIT
 cleanup  # sweep residui pre-run
 
-# --- 1. Seed: pratica 9004 + preventivo EMESSO + flusso 9011 aperto + link ROOT ---
-echo ""; echo "-- 1. Setup scenario (direct-insert su 9011) --"
-SETUP_JSON="$("${MANAGE[@]}" 2>/dev/null <<PY | grep '^SETUP ' | sed 's/^SETUP //'
+# seed → stampa "SEED <pratica_id> <preventivo_id> <flusso9011_id>". Crea pratica
+# 9004 + preventivo EMESSO + catena prereq 9009→9010 completata + flusso 9011 aperto
+# + link ROOT (flusso_id=9011). Ogni chiamata = uno scenario indipendente.
+seed() {
+    "${MANAGE[@]}" 2>/dev/null <<PY | grep '^SEED ' | sed 's/^SEED //'
 $GUC_PY
-import json, uuid
+import uuid
 with connection.cursor() as c:
     _guc(c)
     c.execute("SELECT id FROM config.stati_doc_preventivi WHERE codice_interno='EMESSO'"); emesso=c.fetchone()[0]
@@ -120,48 +125,50 @@ with connection.cursor() as c:
     flusso_id=c.fetchone()[0]
     c.execute("""INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
                  VALUES (%s,%s,%s,'ROOT',%s)""", [prat_id, src, prev_uid, flusso_id])
-    print("SETUP " + json.dumps({"pratica_id": prat_id, "preventivo_id": prev_id, "flusso_id": flusso_id}))
+    print(f"SEED {prat_id} {prev_id} {flusso_id}")
 PY
-)"
-[[ -z "$SETUP_JSON" ]] && { log_fail "setup fallito (nessun SETUP output)"; exit 1; }
-PRAT_ID="$(echo "$SETUP_JSON" | "$PY" -c "import sys,json;print(json.load(sys.stdin)['pratica_id'])")"
-PREV_ID="$(echo "$SETUP_JSON" | "$PY" -c "import sys,json;print(json.load(sys.stdin)['preventivo_id'])")"
-FLUSSO_ID="$(echo "$SETUP_JSON" | "$PY" -c "import sys,json;print(json.load(sys.stdin)['flusso_id'])")"
-log_ok "scenario creato (pratica=$PRAT_ID preventivo=$PREV_ID flusso9011=$FLUSSO_ID)"
+}
 
-# --- 2. Accetta in-pratica via HTTP (endpoint dell'inversione) ---
-echo ""; echo "-- 2. Accetta in-pratica (da-pratica) --"
-HTTP="$(curl -s -o /tmp/guida_accept.json -w "%{http_code}" -X POST \
-    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-    -d '{"nuovo_stato":"ACCETTATO","fatturazione_immediata":true}' \
-    "${BASE_URL}/api/v1/vendite/preventivi/da-pratica/${PRAT_ID}/stato/")"
-if [[ "$HTTP" == "200" ]]; then log_ok "POST da-pratica ACCETTATO (HTTP 200)"
-else log_fail "POST da-pratica — atteso 200, ricevuto $HTTP: $(head -c 300 /tmp/guida_accept.json)"; fi
-
-# --- 3. Asserzioni E2E: preventivo ACCETTATO + milestone auto-avanzato ---
-echo ""; echo "-- 3. Verifica proiezione --"
-RES="$("${MANAGE[@]}" 2>/dev/null <<PY | grep '^RES '
+# stato(prev_id, flusso_id) → "STATO_PREV STATO_FLUSSO ESITO_FLUSSO"
+stato() {
+    "${MANAGE[@]}" 2>/dev/null <<PY | grep '^STATO ' | sed 's/^STATO //'
 $GUC_PY
-import json
 with connection.cursor() as c:
     _guc(c)
-    c.execute("SELECT sd.codice_interno FROM vendite.preventivi pr JOIN config.stati_doc_preventivi sd ON sd.id=pr.stato_doc_preventivo_id WHERE pr.id=$PREV_ID")
-    sp=c.fetchone(); c.execute("SELECT sf.codice_interno, f.esito FROM pratiche.flussi f JOIN config.stati_flussi_pratiche sf ON sf.id=f.stato_id WHERE f.id=$FLUSSO_ID")
-    sf=c.fetchone()
-    print("RES " + json.dumps({"preventivo": sp and sp[0], "flusso": sf and sf[0], "esito": sf and sf[1]}))
+    c.execute("SELECT sd.codice_interno FROM vendite.preventivi pr JOIN config.stati_doc_preventivi sd ON sd.id=pr.stato_doc_preventivo_id WHERE pr.id=$1")
+    sp=(c.fetchone() or ['?'])[0]
+    c.execute("SELECT sf.codice_interno, COALESCE(f.esito,'-') FROM pratiche.flussi f JOIN config.stati_flussi_pratiche sf ON sf.id=f.stato_id WHERE f.id=$2")
+    sf=c.fetchone() or ['?','-']
+    print(f"STATO {sp} {sf[0]} {sf[1]}")
 PY
-)"
-RES="${RES#RES }"
-STATO_PREV="$(echo "$RES" | "$PY" -c "import sys,json;print(json.load(sys.stdin)['preventivo'])" 2>/dev/null)"
-STATO_FL="$(echo "$RES" | "$PY" -c "import sys,json;print(json.load(sys.stdin)['flusso'])" 2>/dev/null)"
-ESITO_FL="$(echo "$RES" | "$PY" -c "import sys,json;print(json.load(sys.stdin)['esito'])" 2>/dev/null)"
-log_info "preventivo=$STATO_PREV · flusso9011=$STATO_FL/$ESITO_FL"
-[[ "$STATO_PREV" == "ACCETTATO" ]] && log_ok "preventivo ACCETTATO (documento sovrano)" || log_fail "preventivo atteso ACCETTATO, e' $STATO_PREV"
-[[ "$STATO_FL" == "COMPLETATO" && "$ESITO_FL" == "POSITIVO" ]] \
-    && log_ok "milestone 9011 auto-avanzato a COMPLETATO/POSITIVO (proiezione)" \
-    || log_fail "milestone 9011 atteso COMPLETATO/POSITIVO, e' $STATO_FL/$ESITO_FL"
+}
 
-# --- Riepilogo ---
+# scenario LABEL NUOVO_STATO PAYLOAD_EXTRA_JSON EXP_PREV EXP_ESITO
+scenario() {
+    local label="$1" nuovo="$2" extra="$3" exp_prev="$4" exp_esito="$5"
+    echo ""; echo "-- $label (da-pratica → $nuovo) --"
+    read -r prat prev flusso < <(seed)
+    [[ -z "${prat:-}" ]] && { log_fail "$label: seed fallito"; return; }
+    log_info "scenario: pratica=$prat preventivo=$prev flusso9011=$flusso"
+    local http
+    http="$(curl -s -o /tmp/guida_$label.json -w '%{http_code}' -X POST \
+        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+        -d "{\"nuovo_stato\":\"$nuovo\"$extra}" \
+        "${BASE_URL}/api/v1/vendite/preventivi/da-pratica/${prat}/stato/")"
+    [[ "$http" == "200" ]] && log_ok "$label: POST da-pratica (HTTP 200)" \
+        || log_fail "$label: POST da-pratica — atteso 200, ricevuto $http: $(head -c 250 /tmp/guida_$label.json)"
+    read -r sp sf se < <(stato "$prev" "$flusso")
+    log_info "$label: preventivo=$sp · flusso9011=$sf/$se"
+    [[ "$sp" == "$exp_prev" ]] && log_ok "$label: preventivo $exp_prev (documento sovrano)" \
+        || log_fail "$label: preventivo atteso $exp_prev, e' $sp"
+    [[ "$sf" == "COMPLETATO" && "$se" == "$exp_esito" ]] \
+        && log_ok "$label: milestone 9011 auto-avanzato COMPLETATO/$exp_esito (proiezione)" \
+        || log_fail "$label: milestone atteso COMPLETATO/$exp_esito, e' $sf/$se"
+}
+
+scenario "Accetta" "ACCETTATO" ',"fatturazione_immediata":true' "ACCETTATO" "POSITIVO"
+scenario "Rifiuta" "RIFIUTATO" "" "RIFIUTATO" "NEGATIVO"
+
 echo ""; echo "========================================="
 echo -e " Risultato: ${GREEN}$PASS OK${NC} / ${RED}$FAIL FAIL${NC}"
 echo "========================================="

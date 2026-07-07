@@ -1,14 +1,19 @@
 # Brief Design — GUIDA (D4): avanzamento milestone su esito proiettato
 
 > **Tipo**: brief di design autorevole (modello + deliverable DB → team + piano BE) · **Data**: 2026-07-06
-> **Owner**: Tid · **Stato**: 🟡 **DESIGN** — l'**implementazione è gated** su "MOSTRA validato E2E in-app su PREVENTIVI" (§10). Il design può procedere ora.
+> **Owner**: Tid · **Stato**: 🟢 **PILOTA PREVENTIVI IMPLEMENTATO + E2E VERDE (2026-07-07)**.
+> DB (G1-G5 + trigger + reconcile + grant/resilienza), BE/FE (inversione handler→proiezione,
+> cutover step 9011), binding G2 = **NULL** (inversione piena: accept **e** reject auto-avanzano
+> il milestone). Smoke E2E `backend/scripts/tests/smoke-test-guida-inversione-preventivi.sh`
+> **7/7 verde** (Accetta→POSITIVO, Rifiuta→NEGATIVO). Residui: cleanup handler dormiente,
+> roll-out altri domini. Vedi §12.
 > **Origine**: §6 (le due direzioni) e §8-**D4** di
-> [brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md)
+> [brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md)
 > (MOSTRA già implementato: Fase 0 DB ✅ · Fase 1 BE ✅ · Fase 2 FE ✅). Salda il
 > **debito §5.3** di [gestione-pratiche-come-procedere.md](gestione-pratiche-come-procedere.md)
 > (handler accetta/push oggi per-pratica PREVENTIVI → generalizzare prima del 2° dominio).
 > **Correlati**: editor definizioni versionate (config di questi binding) —
-> [brief-fe-fase3-editor-definizioni-workflow.md](brief-fe-fase3-editor-definizioni-workflow.md) (FE-3.3 handler-eventi).
+> [brief-fe-fase3-editor-definizioni-workflow.md](../work-in-progress/brief-fe-fase3-editor-definizioni-workflow.md) (FE-3.3 handler-eventi).
 
 ---
 
@@ -213,8 +218,29 @@ PREVENTIVI (oggi aperta nel brief proiezione). Il **design** (questo documento) 
 DB → **BE** (reconcile + ritiro handler + frammento condiviso) → **smoke E2E** (standalone +
 in-pratica) → **roll-out domini** (offerta/ordine/contratto).
 
+## 12. Consuntivo pilota PREVENTIVI (2026-07-07) — ✅ CHIUSO
+
+- **DB** (team, committato): G1 colonna `attende_sorgente_tipo_id` · G2 tabella
+  `template_flussi_avanzamento_proiezione` · G3 `fn_reconcile_sorgente` + trigger generico
+  best-effort su `vendite.preventivi` · G5 `reconcile_errori` · cutover step 9011 · binding
+  **NULL** (inversione piena) · fix GRANT (`reconcile_errori` + `template_flussi_avanzamento_proiezione`)
+  + log best-effort resiliente (nested-guard). pgTAP `test-guida-avanza-esito-proiettato.sql`.
+- **BE** (committato): `preventivi_service.cambia_stato_da_pratica` + endpoint
+  `POST /vendite/preventivi/da-pratica/<pratica_id>/stato/` + flag `template_attende_sorgente_tipo_id`
+  sul flusso. Handler `vendita.accetta_preventivo` **dormiente** (binding off).
+- **FE** (committato): `flussoCompletionRegistry.APPROVAZIONE_CLIENTE` (`esitoToStato` + `docAction`
+  lazy) + gate `FlussoDrawer` su `template_attende_sorgente_tipo_id != null` (discrimina i tipi
+  ancora su handler: deprecati 9002/9003 + altre edizioni 9004).
+- **Smoke E2E**: `backend/scripts/tests/smoke-test-guida-inversione-preventivi.sh` — **7/7**
+  (Accetta→ACCETTATO/POSITIVO, Rifiuta→RIFIUTATO/NEGATIVO), idempotente. Ha scoperto i 2 GRANT
+  mancanti (invisibili al pgTAP, che gira come owner).
+- **Residui**: (a) cleanup file/test handler `accetta_preventivo`; (b) verificare `cambia_stato_preventivi`
+  sui profili operatori-pratica; (c) **roll-out** offerta/ordine/contratto (binding G1/G2 +
+  trigger reconcile + indice `((uid::text))` + voce registry + endpoint da-pratica; motore già
+  generico).
+
 ---
 
 *Brief vivo: a chiusura aggiornare §8-D4 e la nota GUIDA in
-[brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md) e la riga
-V10 di [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md).*
+[brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md) e la riga
+V10 di [analisi-pratiche-valutazione-stato.md](../work-in-progress/analisi-pratiche-valutazione-stato.md).*

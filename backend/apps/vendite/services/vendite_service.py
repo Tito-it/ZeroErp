@@ -16,6 +16,8 @@ from decimal import Decimal
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_enum_param, validate_pagination
 from apps.vendite.db.vendite_repository import (
+    DASH_APERTO_AREE,
+    DASH_APERTO_FASI,
     DASH_BACKLOG_CLASSI,
     DASH_COMPETENZA_STADI,
     DASH_FATTURAZIONE_AREE,
@@ -23,11 +25,11 @@ from apps.vendite.db.vendite_repository import (
     VenditeRepository,
 )
 from apps.vendite.types import (
+    DashApertoDocumentoRow,
+    DashApertoRiepilogoRow,
     DashBacklogDocumentoRow,
     DashCompetenzaAttivitaRow,
     DashCompetenzaErroreRow,
-    DashFatturazioneAreaRow,
-    DashFatturazioneFermoRow,
     LottoFattureRow,
     LottoListRow,
 )
@@ -82,6 +84,17 @@ def _build_list_response(
         "total_pages": total_pages,
         "results": results,
     }
+
+
+# Scopo: Pagina effettivamente servita dopo il clamp SQL dell'offset
+#        all'ultima pagina (_query_paged_view, rientro da pagina stantia in
+#        una sola valutazione della union): l'envelope deve dichiarare la
+#        pagina reale, che il FE adotta (usePagedDashFetch sincronizza
+#        page dalla risposta).
+def _pagina_effettiva(page: int, page_size: int, total_count: int) -> int:
+    if total_count <= 0 or page_size <= 0:
+        return 1
+    return min(page, math.ceil(total_count / page_size))
 
 
 # Scopo: Restituisce elenco lotti paginato con decodifica e filtri opzionali.
@@ -164,94 +177,144 @@ def fn_list_lotto_fatture(
     return _build_list_response(results, total_count, page, page_size)
 
 
-# Range anni ammesso per la dashboard fatturazione (brief §6: anno libero
+# Range anni ammesso per i cruscotti fatturazione (Lente 1: anno libero
 # validato con range sensato).
 _DASH_ANNO_MIN = 2000
 _DASH_ANNO_MAX = 2100
 
 
-# Scopo: Restituisce la matrice della dashboard fatturazione per un anno:
-#        12 mesi SEMPRE presenti (D-5), ognuno con le 5 aree del funnel in
-#        ordine fisso. I mesi/aree senza dati arrivano con zeri; per le aree
-#        in euro il valore assente e' "0", per le aree a conteggi resta None
-#        (D-2/D-3: OFFERTE e CONTRATTI senza valore monetario in v1).
-# Perimetro: sola lettura; la RLS emittente filtra via vista invoker.
-# Risultato: dict {anno, mesi: [{competenza_mese, aree: [...] x5}] x12}.
-def fn_dash_fatturazione_mensile(
-    *,
-    anno: int,
+@dataclass
+class _CellaAperto:
+    # Scopo: Accumulatore tipizzato del pivot Situazione aperta per
+    #        (area, fase): somme native su Decimal/int, serializzazione a
+    #        stringa UNA volta in uscita.
+    n_documenti: int = 0
+    n_aperti: int = 0
+    valore_totale: Decimal = Decimal(0)
+    valore_transitato: Decimal = Decimal(0)
+
+
+# Scopo: Serializza i campi condivisi di una cella della Situazione aperta.
+#        UNICO punto di serializzazione, usato sia per le celle area×fase sia
+#        per i totali di area: il contratto resta simmetrico per costruzione.
+#        Per le aree con valori il valore assente e' "0" (il FE non distingue
+#        "cella vuota" da "totale zero"); per le aree a conteggi resta None
+#        (DL-11).
+def _cella_aperto_fields(
+    cella: _CellaAperto, *, con_valori: bool
 ) -> dict[str, object]:
-    ErrorManager.require(
-        _DASH_ANNO_MIN <= anno <= _DASH_ANNO_MAX,
-        code="E_VENDITE_VALIDATION",
-        message="Parametro anno fuori range.",
-        detail=f"Valori ammessi: {_DASH_ANNO_MIN}-{_DASH_ANNO_MAX}",
-        context={"anno": anno},
-        function_name="vendite.vendite_service.fn_dash_fatturazione_mensile",
-    )
+    return {
+        "n_documenti": cella.n_documenti,
+        "n_aperti": cella.n_aperti,
+        "valore_totale": str(cella.valore_totale) if con_valori else None,
+        "valore_transitato": str(cella.valore_transitato) if con_valori else None,
+    }
+
+
+# Scopo: Restituisce il riepilogo della Situazione aperta (stock documenti
+#        senza asse temporale, §6-bis design due-lenti): le 4 aree documento
+#        SEMPRE presenti nell'ordine del funnel, ognuna con totali di area e
+#        griglia per fase normalizzata (4 fasi SEMPRE presenti nell'ordine del
+#        ciclo di vita — DL-13: la vista e' neutra, il FE decide quali card
+#        mostrare), piu' il vocabolario `fasi` top-level (alimenta i filtri FE
+#        senza contrabbandarlo dalla griglia di un'area). Aree o fasi NON in
+#        whitelist emesse dalla vista vengono accodate dopo le note, MAI perse
+#        in silenzio (fail-visible); un'area extra che porta VALORI li espone
+#        (decisione data-driven, non la whitelist euro statica: niente euro
+#        persi in silenzio).
+# Perimetro: sola lettura; scope emittente DB-side (RLS invoker).
+# Risultato: dict {aree: [{area, n_documenti, n_aperti, valore_totale,
+#        valore_transitato, fasi: [...]}] x4+, fasi: [...] x4+}.
+def fn_dash_aperto_riepilogo() -> dict[str, object]:
     repository = VenditeRepository()
-    rows = repository.list_dash_fatturazione_mensile(anno=anno)
-    by_key = {(r["competenza_mese"], r["area"]): r for r in rows}
+    rows: list[DashApertoRiepilogoRow] = repository.list_dash_aperto_riepilogo()
 
-    mesi: list[dict[str, object]] = []
-    for mese_num in range(1, 13):
-        competenza = date(anno, mese_num, 1).isoformat()
-        aree: list[DashFatturazioneAreaRow] = []
-        for area in DASH_FATTURAZIONE_AREE:
-            r = by_key.get((competenza, area))
-            is_euro = area in DASH_FATTURAZIONE_AREE_EURO
-            valore_totale = r["valore_totale"] if r else None
-            valore_transitato = r["valore_transitato"] if r else None
-            aree.append(
-                {
-                    "area": area,
-                    # Aree euro: zero esplicito quando il mese e' vuoto, cosi'
-                    # il FE non distingue "mese vuoto" da "totale zero".
-                    "valore_totale": (valore_totale or "0") if is_euro else None,
-                    "valore_transitato": (valore_transitato or "0") if is_euro else None,
-                    "n_documenti": r["n_documenti"] if r else 0,
-                    "n_transitati": r["n_transitati"] if r else 0,
-                    "n_fermi": r["n_fermi"] if r else 0,
-                    "n_abortiti": r["n_abortiti"] if r else 0,
-                }
-            )
-        mesi.append({"competenza_mese": competenza, "aree": aree})
-    return {"anno": anno, "mesi": mesi}
+    celle: dict[tuple[str, str], _CellaAperto] = {}
+    aree_extra: list[str] = []
+    fasi_extra: list[str] = []
+    aree_con_valori: set[str] = set()
+    for r in rows:
+        cella = celle.setdefault((r["area"], r["fase"]), _CellaAperto())
+        cella.n_documenti += r["n_documenti"]
+        cella.n_aperti += r["n_aperti"]
+        if r["valore_totale"] is not None:
+            cella.valore_totale += Decimal(r["valore_totale"])
+            aree_con_valori.add(r["area"])
+        if r["valore_transitato"] is not None:
+            cella.valore_transitato += Decimal(r["valore_transitato"])
+            aree_con_valori.add(r["area"])
+        if r["area"] not in DASH_APERTO_AREE and r["area"] not in aree_extra:
+            aree_extra.append(r["area"])
+        if r["fase"] not in DASH_APERTO_FASI and r["fase"] not in fasi_extra:
+            fasi_extra.append(r["fase"])
+
+    fasi_tutte = list(DASH_APERTO_FASI) + fasi_extra
+    aree: list[dict[str, object]] = []
+    for area in list(DASH_APERTO_AREE) + aree_extra:
+        # Aree euro note sempre con valori (zero esplicito anche a vuoto);
+        # un'area extra li espone se la vista li fornisce.
+        con_valori = area in DASH_FATTURAZIONE_AREE_EURO or area in aree_con_valori
+        celle_area = [
+            (fase, celle.get((area, fase), _CellaAperto())) for fase in fasi_tutte
+        ]
+        totale = _CellaAperto()
+        for _, c in celle_area:
+            totale.n_documenti += c.n_documenti
+            totale.n_aperti += c.n_aperti
+            totale.valore_totale += c.valore_totale
+            totale.valore_transitato += c.valore_transitato
+        aree.append(
+            {
+                "area": area,
+                **_cella_aperto_fields(totale, con_valori=con_valori),
+                "fasi": [
+                    {"fase": f, **_cella_aperto_fields(c, con_valori=con_valori)}
+                    for f, c in celle_area
+                ],
+            }
+        )
+    return {"aree": aree, "fasi": fasi_tutte}
 
 
-# Scopo: Restituisce il drill-down paginato degli elementi fermi di un'area
-#        in un mese di competenza (dashboard fatturazione). La competenza
-#        viene normalizzata al 1° del mese (bucket mensile).
-# Perimetro: sola lettura; lo scope emittente e' interamente DB-side (RLS per
-#        le aree documento, filtro GUC nel resolver commesse dal 20260703-60):
-#        nessun parametro scope applicativo.
+# Scopo: Restituisce il drill-down paginato della Situazione aperta: stock
+#        dei documenti vivi delle 4 aree, ordinati per "in essere da" (i piu'
+#        vecchi prima), con filtri opzionali area/fase e solo_aperti (default
+#        True: la pagina e' la "Situazione aperta" — il giudizio sospeso dei
+#        contratti conta aperto; False = fotografia completa, CHIUSO
+#        transitati inclusi). NESSUNO dei due filtri e' whitellistato, di
+#        proposito (coerenza fail-visible col riepilogo, che accoda aree e
+#        fasi fuori whitelist E le rende cliccabili come card FE): un'area o
+#        fase futura resta drillabile senza toccare il BE; un valore
+#        sconosciuto — o COMMESSE, esclusa dal WHERE della vista — da' lista
+#        vuota, mai 400.
+# Perimetro: sola lettura; scope emittente DB-side (RLS invoker).
 # Risultato: dict con count, page, page_size, total_pages, results.
-def fn_dash_fatturazione_fermi(
+def fn_dash_aperto_documenti(
     *,
-    competenza_mese: date,
-    area: str,
+    area: str | None = None,
+    fase: str | None = None,
+    solo_aperti: bool | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> dict[str, object]:
-    _validate_enum(
-        area,
-        allowed=DASH_FATTURAZIONE_AREE,
-        param_name="area",
-        function_name="vendite.vendite_service.fn_dash_fatturazione_fermi",
-        nullable=False,
-    )
+    # UNICA definizione del default di pagina (None = parametro omesso):
+    # la view passa il raw, il FE manda sempre un valore esplicito.
+    solo_aperti = True if solo_aperti is None else solo_aperti
     offset = _validate_pagination(
-        page, page_size, "vendite.vendite_service.fn_dash_fatturazione_fermi"
+        page, page_size, "vendite.vendite_service.fn_dash_aperto_documenti"
     )
     repository = VenditeRepository()
-    results: list[DashFatturazioneFermoRow]
-    results, total_count = repository.list_dash_fatturazione_fermi(
+    results: list[DashApertoDocumentoRow]
+    results, total_count = repository.list_dash_aperto_documenti(
         area=area,
-        competenza_mese=competenza_mese.replace(day=1),
+        fase=fase,
+        solo_aperti=solo_aperti,
         limit=page_size,
         offset=offset,
     )
-    return _build_list_response(results, total_count, page, page_size)
+    return _build_list_response(
+        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    )
 
 
 @dataclass
@@ -521,7 +584,9 @@ def fn_dash_backlog_documenti(
         limit=page_size,
         offset=offset,
     )
-    return _build_list_response(results, total_count, page, page_size)
+    return _build_list_response(
+        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    )
 
 
 # Scopo: Restituisce la lista paginata degli errori vivi della fatturazione
@@ -548,4 +613,6 @@ def fn_dash_competenza_errori(
         limit=page_size,
         offset=offset,
     )
-    return _build_list_response(results, total_count, page, page_size)
+    return _build_list_response(
+        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    )

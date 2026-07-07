@@ -12,7 +12,7 @@ errori vivi di fatturazione (blocco 4).
 Fase 1 BE del brief
 [brief-design-fatturazione-due-lenti](../../../dev/work-in-progress/brief-design-fatturazione-due-lenti.md)
 (substrato DB in
-[brief-db-fatturazione-due-lenti](../../../dev/work-in-progress/brief-db-fatturazione-due-lenti.md),
+[brief-db-fatturazione-due-lenti](../../../dev/work-done/brief-db-fatturazione-due-lenti.md),
 migrations `20260706-01..15`): tre endpoint GET **sottili** sopra le proiezioni
 read-only `vendite.vw_dash_competenza_mensile` (aggregata formato lungo),
 `vendite.vw_dash_competenza_attivita` (grana attività) e

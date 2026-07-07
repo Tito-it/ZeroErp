@@ -27,12 +27,13 @@ class VenditeConfig(AppConfig):
         # Lazy qui (non a livello modulo) per non creare la dipendenza di import
         # pratiche→vendite: e' vendite a registrarsi su pratiche al boot.
         from apps.pratiche.services.handler_registry import register_handler
-        from apps.vendite.handlers.accetta_preventivo_handler import AccettaPreventivoHandler
         from apps.vendite.handlers.post_smistamento_handler import PostSmistamentoHandler
 
-        # Handler di completamento (template_flussi_handler_eventi): accetta il
-        # preventivo collegato al COMPLETATO+POSITIVO di APPROVAZIONE_CLIENTE.
-        register_handler("vendita.accetta_preventivo", AccettaPreventivoHandler)
+        # NB: l'handler `vendita.accetta_preventivo` e' stato RITIRATO (GUIDA D4,
+        # inversione handler->proiezione): «Accetta/Rifiuta» in-pratica agisce sul
+        # documento standalone (`preventivi_service.cambia_stato_da_pratica`) e il
+        # milestone avanza da solo via trigger DB `pratiche.fn_reconcile_sorgente`.
+        # Nessun binding handler-eventi da registrare per l'accettazione preventivo.
         # Handler di completamento SMISTAMENTO (COMPLETATO + esito MERCE_PRESENTE,
         # bivio-per-esito rev.3): merce-only, aggancia l'ordine merce alla pratica
         # come sorgente COLLEGATO. NON crea flussi a valle: 9013/9014 sono

@@ -5,8 +5,9 @@
 //        (anno, meseIdx) — MAI dall'array dati (che durante un cambio anno
 //        contiene ancora l'anno vecchio): le fetch di drill-down restano
 //        agganciate al mese che l'utente vede (race-free).
-//        Estratto 2026-07-06 (regola del 2, ok Tid): unifica il telaio di
-//        DashboardFatturazioneView e DashboardCompetenzaView.
+//        Estratto 2026-07-06 (regola del 2, ok Tid) dal telaio comune di
+//        DashboardFatturazioneView (ritirata, Fase 3) e
+//        DashboardCompetenzaView — oggi unico consumer.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
