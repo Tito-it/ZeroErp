@@ -1,11 +1,14 @@
-// Scopo: Sezione paginata dei cruscotti (drill-down fermi/attivita'/errori):
-//        fetch con guard di versione anti-race, unwrap dell'envelope paginato
-//        standard, rientro automatico in pagina 1 quando la pagina corrente
-//        e' oltre l'ultima (lista ridotta da altri utenti tra un refresh e
-//        l'altro) e flag loading corretto anche su risposte scartate.
-//        Estratto 2026-07-06 (regola del 2, ok Tid): unifica fetchFermi
-//        (dashboardFatturazione) + fetchAttivita/fetchErrori
-//        (dashboardCompetenza). Costruito sopra useFetchVersion.
+// Scopo: Sezione paginata dei cruscotti (drill-down attivita'/errori/
+//        documenti): fetch con guard di versione anti-race, unwrap
+//        dell'envelope paginato standard, adozione della PAGINA EFFETTIVA
+//        dichiarata dal BE (dal 2026-07-07 gli endpoint dash clampano
+//        l'offset all'ultima pagina in UNA sola valutazione della union:
+//        il rientro da pagina stantia non costa piu' un secondo giro),
+//        fallback di rientro in pagina 1 per endpoint senza clamp, e flag
+//        loading corretto anche su risposte scartate. Estratto 2026-07-06
+//        (regola del 2, ok Tid). Consumer: store dashboardCompetenza
+//        (attivita'/errori), dashboardBacklog e dashboardAperto (documenti).
+//        Costruito sopra useFetchVersion.
 import { ref } from 'vue'
 import { useFetchVersion } from './useFetchVersion'
 import { PAGINATION } from '../constants'
@@ -43,8 +46,13 @@ export function usePagedDashFetch(fetchPage, { defaultPageSize = PAGINATION.DEFA
       const payload = res.data?.data ?? {}
       items.value = payload.results ?? []
       count.value = payload.count ?? 0
+      // Adotta la pagina EFFETTIVA dichiarata dal BE: sugli endpoint dash il
+      // clamp SQL serve direttamente l'ultima pagina reale quando quella
+      // richiesta e' oltre la fine (envelope page != richiesta).
+      page.value = payload.page ?? page.value
       loaded.value = true
-      // Pagina oltre l'ultima: torna alla prima e ricarica.
+      // Fallback per endpoint senza clamp BE: pagina oltre l'ultima, torna
+      // alla prima e ricarica.
       if (items.value.length === 0 && count.value > 0 && page.value > 1) {
         page.value = 1
         await fetch(...args)

@@ -8,7 +8,7 @@
 // pagina-oltre-l'ultima); il riepilogo ha il suo guard dedicato.
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { useFetchVersion } from '../../core/composables/useFetchVersion'
+import { useDashRiepilogo } from '../../core/composables/useDashRiepilogo'
 import { usePagedDashFetch } from '../../core/composables/usePagedDashFetch'
 import {
   getDashboardBacklog,
@@ -20,9 +20,12 @@ export const useDashboardBacklogStore = defineStore('vendite-dashboard-backlog',
   const classeSelezionata = ref(null)
   const areaSelezionata = ref(null)
 
-  // Contatori di testata: array classi (3 sempre presenti) dal BE.
+  // Contatori di testata: array classi (3 sempre presenti) dal BE. Fetch
+  // guardata anti-race via BB useDashRiepilogo.
   const classi = ref([])
-  const fvRiepilogo = useFetchVersion()
+  const riepilogo = useDashRiepilogo(getDashboardBacklog, (data) => {
+    classi.value = data.classi ?? []
+  })
 
   // Lista documenti: sezione paginata standard (axios omette da solo i
   // params null: nessuna coalescenza necessaria).
@@ -33,15 +36,6 @@ export const useDashboardBacklogStore = defineStore('vendite-dashboard-backlog',
       ...paging,
     })
   )
-
-  // Scopo: carica i contatori per classe. Il guard di versione scarta la
-  // risposta se nel frattempo e' partito un refresh piu' nuovo.
-  async function fetchRiepilogo() {
-    const t = fvRiepilogo.tag()
-    const res = await getDashboardBacklog()
-    if (!fvRiepilogo.isCurrent(t)) return
-    classi.value = res.data?.data?.classi ?? []
-  }
 
   // Scopo: carica una pagina della lista coi filtri correnti.
   async function fetchDocumenti() {
@@ -56,7 +50,7 @@ export const useDashboardBacklogStore = defineStore('vendite-dashboard-backlog',
   // Scopo: reset per logout (plugin autoResetPlugin via userScoped) —
   //        resetAll riporta anche la pageSize al default (stato utente).
   function clearUserState() {
-    fvRiepilogo.invalidate()
+    riepilogo.invalidate()
     classeSelezionata.value = null
     areaSelezionata.value = null
     classi.value = []
@@ -74,7 +68,7 @@ export const useDashboardBacklogStore = defineStore('vendite-dashboard-backlog',
     documentiLoading: documentiFetch.loading,
     documentiLoaded: documentiFetch.loaded,
     applyDocumentiPage: documentiFetch.applyPageEvent,
-    fetchRiepilogo,
+    fetchRiepilogo: riepilogo.fetchRiepilogo,
     fetchDocumenti,
     resetDocumenti,
     clearUserState,

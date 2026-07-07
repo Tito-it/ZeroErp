@@ -336,4 +336,4 @@ bug **invisibile al pgTAP** (che gira come owner con tutti i privilegi):
 ---
 
 *A chiusura: aggiornare §11/§8-D4 del design-of-record e la nota GUIDA in
-[brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md).*
+[brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md).*

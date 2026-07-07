@@ -10,8 +10,12 @@
 > ADESSO e sui FATTI finché `doc_terminale=false`; BB `faseSorgenteSeverity` in
 > `core/utils/severity.js`; plumbing raw in modalità tecnica). Doc API aggiornata
 > (`api_percorso/api_coda_lavoro/api_pratica_detail`).
-> **Restano**: validazione E2E in-app su PREVENTIVI → roll-out offerte/ordini/contratti
-> (brief DB per dominio) → Fase 3 GUIDA (D4).
+> **Fase 3 GUIDA (D4) ✅ pilota PREVENTIVI IMPLEMENTATO + E2E verde (2026-07-07)** — inversione
+> handler→proiezione, binding NULL (accept+reject auto-avanzano il milestone); design-of-record
+> [brief-design-guida-avanza-esito-proiettato](../work-done/brief-design-guida-avanza-esito-proiettato.md)
+> + [brief-db-guida-avanza-esito-proiettato](../work-done/brief-db-guida-avanza-esito-proiettato.md) (chiusi).
+> **Restano**: validazione E2E in-app di MOSTRA su PREVENTIVI → roll-out MOSTRA+GUIDA agli altri
+> domini (offerte/ordini/contratti, brief DB per dominio) → §10.3 azioni nel descrittore.
 >
 > **Note per il roll-out** (review critica 2026-07-02): **(a)** i resolver espongono
 > `sorgente_uid` castando la chiave nativa (`preventivi.uid::text`) — il predicato pushdown

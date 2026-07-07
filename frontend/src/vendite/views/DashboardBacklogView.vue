@@ -15,6 +15,7 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import DashEmptyState from '../../core/components/DashEmptyState.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
@@ -29,7 +30,9 @@ import { classeBacklogSeverity } from '../../core/utils/severity'
 import {
   buildApriDocumentoAction,
   DASH_AREE,
+  dashAreaLabel,
   dashAreaSeverity,
+  dashMotivoLabel,
 } from '../dashboardAree'
 import { useDashboardBacklogStore } from '../stores/dashboardBacklog'
 
@@ -55,19 +58,15 @@ const {
 } = storeToRefs(store)
 
 // Scopo: decodifiche i18n con fallback al codice grezzo (fail-visible per
-//        classi/motivi/aree future introdotte DB-side). Il vocabolario
-//        motivo_fermo e le label area sono condivisi con la dashboard 5-card.
+//        classi/motivi/aree future introdotte DB-side). Motivi e aree dai BB
+//        condivisi di dashboardAree (gruppo dash_comune, riusato dalla
+//        Situazione aperta); la classe e' vocabolario solo-Backlog.
 function classeLabel(classe) {
   return labelOrCode(t, te, `dashboard_backlog.classe_${String(classe).toLowerCase()}`, classe)
 }
 
-function motivoLabel(motivo) {
-  return labelOrCode(t, te, `dashboard_fatturazione.motivo_fermo.${motivo}`, motivo)
-}
-
-function areaLabel(area) {
-  return labelOrCode(t, te, `dashboard_fatturazione.area_${String(area).toLowerCase()}`, area)
-}
+const motivoLabel = (motivo) => dashMotivoLabel(t, te, motivo)
+const areaLabel = (area) => dashAreaLabel(t, te, area)
 
 // Card contatori: iterazione diretta di classi dal BE (3 sempre presenti,
 // eventuali classi future accodate fail-visible).
@@ -312,17 +311,12 @@ onActivated(() => {
             </template>
           </Column>
         </DataTable>
-        <!-- Empty-state onesto: il verde "backlog vuoto" SOLO dopo una fetch
-             riuscita; prima del caricamento (o dopo un errore) placeholder
-             neutro — mai un all-clear su dati mai arrivati. -->
-        <div v-else-if="documentiLoaded" class="app-empty-state">
-          <i class="pi pi-check-circle" />
-          <p>{{ t('dashboard_backlog.nessun_documento') }}</p>
-        </div>
-        <div v-else class="app-empty-state">
-          <i class="pi pi-inbox" />
-          <p>{{ t('dashboard_backlog.non_caricato') }}</p>
-        </div>
+        <DashEmptyState
+          v-else
+          :loaded="documentiLoaded"
+          :empty-text="t('dashboard_backlog.nessun_documento')"
+          :placeholder-text="t('dashboard_backlog.non_caricato')"
+        />
       </div>
     </div>
   </div>

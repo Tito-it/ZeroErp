@@ -35,9 +35,9 @@ from apps.vendite.api.views_dashboard_competenza import (
     ApiDashboardCompetenzaAttivita,
     ApiDashboardCompetenzaErrori,
 )
-from apps.vendite.api.views_dashboard_fatturazione import (
-    ApiDashboardFatturazione,
-    ApiDashboardFatturazioneFermi,
+from apps.vendite.api.views_dashboard_aperto import (
+    ApiDashboardAperto,
+    ApiDashboardApertoDocumenti,
 )
 from apps.vendite.api.views_lookups import (
     ApiAmbitiContrattoLookup,
@@ -117,17 +117,18 @@ urlpatterns = [
     # candidata come tabella config lookup (semantica temporale).
     path("promo-articoli/", PromoArticoliView.as_view(), name="vendite-promo-articoli-list"),
     path("promo-articoli/<int:record_id>/", PromoArticoliDetailView.as_view(), name="vendite-promo-articoli-detail"),
-    # Dashboard fatturazione — controllo del transito per competenza
-    # (brief-design-dashboard-fatturazione §6): matrice mensile + fermi.
+    # Situazione aperta — stock documenti per fase, senza asse temporale
+    # (brief-design-fatturazione-due-lenti §6-bis): riepilogo + drill-down.
+    # Sostituisce la dashboard fatturazione 5-card (Fase 3, trasformazione).
     path(
-        "dashboard-fatturazione/",
-        ApiDashboardFatturazione.as_view(),
-        name="vendite-dashboard-fatturazione",
+        "dashboard-aperto/",
+        ApiDashboardAperto.as_view(),
+        name="vendite-dashboard-aperto",
     ),
     path(
-        "dashboard-fatturazione/fermi/",
-        ApiDashboardFatturazioneFermi.as_view(),
-        name="vendite-dashboard-fatturazione-fermi",
+        "dashboard-aperto/documenti/",
+        ApiDashboardApertoDocumenti.as_view(),
+        name="vendite-dashboard-aperto-documenti",
     ),
     # Lente 1 Competenza — funnel commessa → fattura per mese di competenza
     # (brief-design-fatturazione-due-lenti §4): aggregata + drill-down + errori.

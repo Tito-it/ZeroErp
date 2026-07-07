@@ -1568,6 +1568,19 @@ a {
   font-size: var(--app-font-size-base);
 }
 
+/* Situazione aperta: riga chip per fase dentro la card area (fasi con
+ * documenti aperti). Wrap per card strette, gap compatto. */
+.app-dash-fasi-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.3rem;
+}
+
+.app-dash-fasi-chips .p-tag {
+  font-size: 0.68rem;
+}
+
 /* Modalita' 'fraction' di DonutTransito (aree a conteggi, D-2/D-3): frazione
  * n/n al posto del grafico. L'altezza arriva dalla prop `size` inline (stessa
  * del plot donut) per allineare le card euro e count senza numeri magici. */

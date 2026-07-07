@@ -97,6 +97,17 @@ def qp_str(raw: str | None) -> str | None:
     return cleaned or None
 
 
+# Scopo: Normalizza parametro enum da query string: strip + UPPER, None se
+#        assente/vuoto. Per i filtri a vocabolario maiuscolo (area, fase,
+#        classe, stadio) di liste e dashboard. Estratto 2026-07-07 (regola
+#        del 2, ok Tid): unifica 5 copie del pattern
+#        `raw = qp_str(...); v = raw.upper() if raw else None` nelle view
+#        dashboard vendite.
+def qp_str_upper(raw: str | None) -> str | None:
+    cleaned = qp_str(raw)
+    return cleaned.upper() if cleaned else None
+
+
 # ------------------------------------------------------------------
 # Helper query-params per endpoint lista paginata
 # ------------------------------------------------------------------

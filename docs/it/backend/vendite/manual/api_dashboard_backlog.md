@@ -11,7 +11,7 @@ ordinata per anzianità (i più vecchi prima).
 Fase 2 BE del brief
 [brief-design-fatturazione-due-lenti](../../../dev/work-in-progress/brief-design-fatturazione-due-lenti.md)
 §5 (substrato DB in
-[brief-db-fatturazione-due-lenti](../../../dev/work-in-progress/brief-db-fatturazione-due-lenti.md)
+[brief-db-fatturazione-due-lenti](../../../dev/work-done/brief-db-fatturazione-due-lenti.md)
 §5, migrations `20260706-01..15`): due endpoint GET **sottili** sopra le
 proiezioni read-only `vendite.vw_dash_backlog_riepilogo` (contatori
 classe × area) e `vendite.vw_dash_backlog_documenti` (union dei 5 resolver
@@ -110,9 +110,11 @@ classe ha una data nota (età sconosciuta ≠ 0 giorni).
 - **Scope emittente — interamente DB-side**: RLS invoker sulle 4 aree
   documentali (post fix V-1 `20260706-15`) + filtro GUC nel resolver commesse.
   Il BE **non** passa alcun `auth_user_id`.
-- `COUNT(*) OVER()` nella query dati (la union dei resolver è la parte
-  costosa: una sola valutazione per pagina); COUNT separato solo come fallback
-  per offset oltre l'ultima pagina.
+- Una **sola valutazione della union** per pagina (`_query_paged_view`: CTE
+  materializzata + `COUNT(*) OVER()` + **offset clampato all'ultima pagina in
+  SQL**). Il rientro da una pagina stantia (lista ridotta da altri utenti) non
+  costa più un secondo giro: il BE serve subito l'ultima pagina reale e
+  l'envelope dichiara la **pagina effettiva**, che `usePagedDashFetch` adotta.
 - GET-only, nessun side-effect, nessuna Idempotency-Key.
 
 ## Dipendenze DB

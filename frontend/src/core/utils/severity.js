@@ -355,3 +355,17 @@ export const CLASSE_BACKLOG_MAP = {
 export function classeBacklogSeverity(codice) {
   return resolveSeverity(CLASSE_BACKLOG_MAP, codice)
 }
+
+// Fasi normalizzate della proiezione stato dominio (config.stati_doc_*.fase,
+// vocabolario uniforme delle 4 aree documento — Situazione aperta):
+// APERTO=grigio (in lavorazione interna), IN_ATTESA=azzurro (palla al
+// cliente), IN_CORSO=arancio (avanzato, non concluso), CHIUSO=verde.
+export const FASE_DOCUMENTO_MAP = {
+  APERTO: 'secondary',
+  IN_ATTESA: 'info',
+  IN_CORSO: 'warn',
+  CHIUSO: 'success',
+}
+export function faseDocumentoSeverity(codice) {
+  return resolveSeverity(FASE_DOCUMENTO_MAP, codice)
+}

@@ -21,7 +21,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.payload_validators import qp_int_strict, qp_str
+from apps.core.api.payload_validators import qp_int_strict, qp_str_upper
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.vendite_service import (
     fn_dash_backlog_documenti,
@@ -128,10 +128,8 @@ class ApiDashboardBacklogDocumenti(DomainAPIView):
     #        anzianita' (i piu' vecchi prima), con filtri classe/area.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
-        classe_raw = qp_str(qp.get("classe"))
-        classe = classe_raw.upper() if classe_raw else None
-        area_raw = qp_str(qp.get("area"))
-        area = area_raw.upper() if area_raw else None
+        classe = qp_str_upper(qp.get("classe"))
+        area = qp_str_upper(qp.get("area"))
         page = qp_int_strict(qp.get("page"), "page", 1)
         page_size = qp_int_strict(qp.get("page_size"), "page_size", 50)
 

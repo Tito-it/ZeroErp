@@ -1,13 +1,13 @@
 # Brief DB — Situazione aperta (Fase 3 due-lenti): stock documenti senza asse mese
 
 > **Tipo**: brief DB (spec dal BE al team DB, ramo `dev/db-tid`) · **Data**: 2026-07-07 · **Owner**: Tid
-> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
+> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md)
 > §6-bis (decisioni DL-9..13). **Contesto**: Fase 1 (Competenza) + Fase 2 (Backlog) BE+FE
 > mergiate (PR #932); questa è la **Fase 3**, ridefinita da *dismissione* a *trasformazione*
 > della dashboard 5-card nella vista **"Situazione aperta"**. Non in produzione: breaking
 > change ammessi, nessuna fase di compatibilità.
 >
-> ## Stato: 🟢 DB APPLICATO + pgTAP VERDI (2026-07-07) — migrations `20260707-03..06` EXECUTED (applicate da Tid); test verdi: v1 rimaneggiato 28/28, aperto 10/10 (incluso scope RLS funzionale via FORCE), backlog 14/14 (regressione zero), competenza 15/15. NON committato. Prossimo: BE/FE (§4)
+> ## Stato: 🟢 DB APPLICATO + pgTAP VERDI, mergiato PR #936 (2026-07-07) — migrations `20260707-03..06` EXECUTED; test verdi: v1 rimaneggiato 28/28, aperto 10/10 (scope RLS funzionale via FORCE), backlog 14/14 (regressione zero), competenza 15/15. ✅ **Rework §5 ESEGUITO** (team DB, 2026-07-07): `security_invoker` ripristinato sul resolver contratti — verificato su DB vivo (reloptions ok su tutte e 13 le viste `vw_dash_*`; connessione senza GUC = 0 righe su TUTTE le aree, asimmetria contratti chiusa). BE/FE (§4) fatti su `dev/backend-tid`
 >
 > Esito analisi critica DB (2026-07-07, verificata su DB vivo) — 3 correzioni al brief BE:
 >
@@ -138,6 +138,40 @@ Coperti da `test-vw-dash-fatturazione-v1.sql` (rework, plan 28) e
 
 ---
 
-*A chiusura: aggiornato §6-bis/§11-Fase 3 del design-of-record;
-[brief-design-dashboard-fatturazione.md](brief-design-dashboard-fatturazione.md) si sposta
-in `work-done` a trasformazione BE/FE avvenuta.*
+## 5. Follow-up DB — ripristino `security_invoker` sul resolver contratti (2026-07-07, verifica BE post-merge) — ✅ ESEGUITO (team DB, applicato al DB di test e verificato)
+
+⚠️ **Regressione V-1 riaperta sull'area CONTRATTI.** Il changeset `20260707-03` rifà il
+resolver con `CREATE OR REPLACE VIEW` **senza** `WITH (security_invoker = on)`: in
+PostgreSQL il REPLACE **rimpiazza** le reloptions con quelle dichiarate nel nuovo
+statement (gotcha noto, lo stesso di `security_barrier`) → l'opzione posata da
+`20260706-15` (fix V-1) è stata cancellata in silenzio. **Verificato sul DB vivo**
+(2026-07-07): `pg_class.reloptions` è `NULL` per `vw_dash_fatturazione_contratti`,
+`security_invoker=on` per le altre 12 viste della famiglia `vw_dash_*`.
+
+**Effetto**: il resolver legge `vendite.contratti` (tabella con RLS operatori) coi
+privilegi dell'**owner** della vista → scope emittente **bypassato** ovunque i contratti
+compaiono — union `vw_dash_fatturazione_documenti` e soprattutto le nuove
+`vw_dash_aperto_{documenti,riepilogo}` (lo stock include i contratti). Backlog non
+affetto (contratti esclusi da `motivo_fermo IS NULL`).
+
+**Perché il pgTAP non l'ha visto**: il test aperto forza la RLS in-transazione
+(`FORCE ROW LEVEL SECURITY`), che assoggetta alla policy **anche l'owner** → il
+percorso definer supera il test, ma in esercizio (senza FORCE) l'owner bypassa.
+
+**Richiesta**:
+
+1. Changeset (una riga, come `20260706-15`):
+   `ALTER VIEW vendite.vw_dash_fatturazione_contratti SET (security_invoker = on);`
+   (+ rollback `RESET`).
+2. **Guard strutturale in pgTAP**: assert diretto su `pg_class.reloptions`
+   (`security_invoker=on`) per **tutta** la famiglia `vw_dash_*` — così un futuro
+   `CREATE OR REPLACE` senza `WITH (...)` fa fallire il test a prescindere dal FORCE.
+   ✅ **ESEGUITO e verde** (team DB, conferma Tid 2026-07-07).
+3. Regola per i prossimi changeset della famiglia: ogni ricreazione va fatta
+   `CREATE OR REPLACE VIEW ... WITH (security_invoker = on)` (come `-04`/`-05`).
+
+---
+
+*Chiuso 2026-07-07: §6-bis/§11-Fase 3 del design-of-record aggiornati; questo brief e
+[brief-design-dashboard-fatturazione.md](brief-design-dashboard-fatturazione.md) spostati
+in `work-done` (trasformazione BE/FE eseguita, rework §5 e guard pgTAP verdi).*

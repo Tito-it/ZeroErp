@@ -547,33 +547,38 @@ class OffertaPushResult(TypedDict):
     sorgente_uid: str
 
 
-class DashFatturazioneAreaRow(TypedDict):
-    # Cella area × mese della dashboard fatturazione (vw_dash_fatturazione_mensile).
-    # valore_* NULL per le aree a conteggi (OFFERTE/CONTRATTI in v1, decisioni D-2/D-3).
+class DashApertoRiepilogoRow(TypedDict):
+    # Cella area × fase della Situazione aperta (vw_dash_aperto_riepilogo,
+    # stock senza asse temporale — il pivot area/fasi e' del service).
+    # valore_* NULL per le aree a conteggi (OFFERTE/CONTRATTI, DL-11).
     area: str
+    fase: str
+    n_documenti: int
+    n_aperti: int
     valore_totale: str | None
     valore_transitato: str | None
-    n_documenti: int
-    n_transitati: int
-    n_fermi: int
-    n_abortiti: int
 
 
-class DashFatturazioneFermoRow(TypedDict):
-    # Riga drill-down fermi (vw_dash_fatturazione_documenti, NOT is_transitato
-    # AND NOT is_abortito). valore_* NULL per le aree a conteggi.
+class DashApertoDocumentoRow(TypedDict):
+    # Riga drill-down Situazione aperta (vw_dash_aperto_documenti: 4 aree
+    # documento, NOT is_abortito, tutte le fasi — DL-13). is_transitato NULL =
+    # giudizio sospeso (contratti fino al push ricorrente) e conta aperto.
+    area: str
     documento_id: int
     documento_uid: str | None
     codice: str | None
     cliente_display: str | None
+    fase: str | None
+    stato_codice_interno: str | None
+    stato_codice: str | None
     valore_totale: str | None
     valore_transitato: str | None
     unita_totali: int | None
     unita_transitate: int | None
+    is_transitato: bool | None
+    is_aperto: bool
     motivo_fermo: str | None
-    stato_codice_interno: str | None
-    stato_codice: str | None
-    fase: str | None
+    data_riferimento: str | None
 
 
 class DashCompetenzaMensileRow(TypedDict):
