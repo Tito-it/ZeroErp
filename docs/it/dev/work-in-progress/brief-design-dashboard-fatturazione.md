@@ -5,8 +5,13 @@
 > [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md): la metà
 > "transitato" confluisce nella **Lente Competenza** (a valle), la metà "fermo" nella **Lente
 > Backlog** (a monte). L'artefatto qui descritto (5 viste + BE/FE, commit `50347da0c`) resta
-> **VIVO e congelato** — spec ancora valida finché non arriva la dismissione (Fase 3 del nuovo
-> brief). Questo documento si sposterà in `work-done` a dismissione avvenuta.
+> **VIVO e congelato** — spec ancora valida finché non arriva la Fase 3 del nuovo brief.
+> **Aggiornamento 2026-07-07 (DL-9..12)**: la Fase 3 non è più una dismissione secca ma una
+> **trasformazione** — la pagina/rotta diventa la vista **Situazione aperta** (stock per
+> stato, senza asse mese; design §6-bis del nuovo brief, prerequisiti DB in
+> [brief-db-dash-situazione-aperta.md](brief-db-dash-situazione-aperta.md)). Si dismettono
+> l'aggregata `vw_dash_fatturazione_mensile` e l'impianto UI a 12 mesi; sopravvivono i 5
+> resolver e la union. Questo documento si sposterà in `work-done` a trasformazione avvenuta.
 >
 > **Tipo**: brief di design autorevole (modello + piano DB/BE/FE) · **Data**: 2026-07-02
 > **Owner**: Tid · **Stato**: 🟢 **Fasi 1-2-3 COMPLETE (2026-07-04)** —

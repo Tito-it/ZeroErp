@@ -622,6 +622,40 @@ def cambia_stato(
     return result
 
 
+# Scopo: GUIDA (D4) — «Accetta/Rifiuta» in-pratica → azione sul DOCUMENTO
+#        standalone. Risolve il preventivo ROOT della pratica e ne cambia lo
+#        stato via `cambia_stato`. Sostituisce l'handler
+#        `vendita.accetta_preventivo` (inversione handler→proiezione): il
+#        documento e' sovrano, il milestone della pratica avanza da solo via
+#        trigger DB `pratiche.fn_reconcile_sorgente` (binding
+#        template_flussi_avanzamento_proiezione). Nessun completamento di flusso
+#        qui: la pratica NON e' toccata dal BE.
+def cambia_stato_da_pratica(
+    pratica_id: int,
+    nuovo_stato: str,
+    *,
+    fatturazione_immediata: bool | None = None,
+    competenza_mese: date | None = None,
+    user: AbstractBaseUser | AnonymousUser | None = None,
+) -> dict[str, Any]:
+    preventivo_id = PreventiviRepository().get_preventivo_id_by_pratica_root(pratica_id)
+    ErrorManager.require(
+        preventivo_id is not None,
+        code="E_VENDITA_PREVENTIVO_NON_COLLEGATO",
+        message="Nessun preventivo ROOT collegato alla pratica.",
+        detail=f"pratica_id={pratica_id}",
+        function_name=f"{_FN}.cambia_stato_da_pratica",
+    )
+    assert preventivo_id is not None
+    return cambia_stato(
+        preventivo_id,
+        nuovo_stato,
+        fatturazione_immediata=fatturazione_immediata,
+        competenza_mese=competenza_mese,
+        user=user,
+    )
+
+
 # Scopo: BOZZA -> EMESSO (transizione di stato). Solo la transizione: la view
 #        multipart `ApiPreventivoEmetti` incapsula questa chiamata insieme a
 #        `DocumentGenerationService.genera_documento(allegati=...)` in
