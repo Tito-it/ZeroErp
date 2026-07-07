@@ -7,7 +7,7 @@
 --       G3a fn_reconcile_sorgente + G3b trigger generico + G5 osservabilita' +
 --       guard config-time (non-DOMINIO / mutua esclusione) + copia edizione.
 -- ------------------------------------------------------------
--- Indice test (1..16; 18 asserzioni: 10 e 12 ne hanno due, a/b):
+-- Indice test (1..18; 21 asserzioni: 10/12/17 ne hanno due, a/b):
 --  1) Struttura: template_flussi.attende_sorgente_tipo_id presente (G1)
 --  2) Struttura: tabella template_flussi_avanzamento_proiezione presente (G2)
 --  3) Struttura: tabella reconcile_errori presente (G5)
@@ -25,10 +25,14 @@
 -- 14) Osservabilita' (D-B7): il tie-break ambiguo lascia una riga in reconcile_errori
 -- 15) Copia edizione: fn_copia_definizione propaga attende_sorgente_tipo_id (G1)
 -- 16) Copia edizione: fn_copia_definizione propaga il binding G2
+-- 17) Inversione piena: binding NULL + preventivo RIFIUTATO -> milestone
+--     COMPLETATO con esito NEGATIVO (follow-up owner §5)
+-- 18) Ramo morto: con APPROVAZIONE NEGATIVO il prerequisito POSITIVO del passo a
+--     valle NON e' soddisfatto (la pratica puo' chiudersi, niente smistamento)
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(18);
+SELECT plan(21);
 
 -- Provisioning stati flusso (idempotente).
 INSERT INTO config.stati_flussi_pratiche (codice, codice_interno, descrizione, attivo)
@@ -393,6 +397,98 @@ SELECT ok(
        AND b.esito_richiesto = 'POSITIVO'
   ),
   '16. fn_copia_definizione propaga il binding G2 alla nuova edizione');
+
+-- ============================================================
+-- 17-18) Inversione piena (binding NULL) + ramo morto sul rifiuto
+-- ============================================================
+-- Step con binding NULL (qualsiasi verdetto) + passo a valle gated su POSITIVO.
+CREATE TEMP TABLE tmp_g_neg AS
+WITH ins AS (
+  INSERT INTO pratiche.template_flussi
+    (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo,
+     ripetibilita, modalita_esito, attende_sorgente_tipo_id)
+  VALUES ((SELECT tp_id FROM tmp_g_tp), 'MS_NEG', 'Milestone binding NULL',
+          60, false, true, 'SEMPRE', 'MANUALE', (SELECT src_preventivo FROM tmp_g_refs))
+  RETURNING id
+) SELECT id AS tf_id FROM ins;
+
+CREATE TEMP TABLE tmp_g_down AS
+WITH ins AS (
+  INSERT INTO pratiche.template_flussi
+    (tipo_prestazione_id, codice, descrizione, sequenza, obbligatorio, attivo, ripetibilita, modalita_esito)
+  VALUES ((SELECT tp_id FROM tmp_g_tp), 'MS_DOWN', 'Passo a valle gated su POSITIVO',
+          70, true, true, 'SEMPRE', 'MANUALE')
+  RETURNING id
+) SELECT id AS tf_id FROM ins;
+
+-- Prerequisito esito-aware: MS_DOWN richiede MS_NEG = POSITIVO.
+INSERT INTO pratiche.template_flussi_prerequisiti (template_flusso_id, prerequisito_id, esito_richiesto)
+VALUES ((SELECT tf_id FROM tmp_g_down), (SELECT tf_id FROM tmp_g_neg), 'POSITIVO');
+
+-- Binding NULL = qualsiasi verdetto.
+INSERT INTO pratiche.template_flussi_avanzamento_proiezione (template_flusso_id, esito_richiesto)
+VALUES ((SELECT tf_id FROM tmp_g_neg), NULL);
+
+-- Preventivo RIFIUTATO (proietta verdetto NEGATIVO).
+CREATE TEMP TABLE tmp_g_prev_rif AS
+WITH ins AS (
+  INSERT INTO vendite.preventivi
+    (numero, rev, istanza_utility_id, utility_id, validita_dal, validita_al, valuta_id,
+     stato_doc_preventivo_id, data, fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
+  SELECT 'PGTAP-GUIDA-RIF-' || substr(md5(clock_timestamp()::text), 1, 8), 0,
+         r.istanza_utility_id, r.utility_id, DATE '2026-07-01', DATE '2026-07-31', r.valuta_id,
+         (SELECT id FROM config.stati_doc_preventivi WHERE codice_interno = 'RIFIUTATO'),
+         DATE '2026-07-01', false, false, '{"test_scope":"pgtap_guida"}'::jsonb, r.emittente_id
+  FROM tmp_g_refs r
+  RETURNING id, (uid)::text AS uid
+) SELECT id, uid FROM ins;
+
+-- Pratica NEG + flusso MS_NEG (DA_ESEGUIRE) + link ROOT col flusso_id.
+CREATE TEMP TABLE tmp_g_prat_neg AS
+WITH ins AS (
+  INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id, priorita_id)
+  VALUES ((SELECT emittente_id FROM tmp_g_refs), (SELECT tp_id FROM tmp_g_tp),
+          (SELECT soggetto_id FROM tmp_g_refs), (SELECT st_aperta FROM tmp_g_refs),
+          (SELECT priorita_id FROM tmp_g_refs))
+  RETURNING id
+) SELECT id AS pratica_id FROM ins;
+
+CREATE TEMP TABLE tmp_g_fl_neg AS
+WITH ins AS (
+  INSERT INTO pratiche.flussi (pratica_id, template_flusso_id, stato_id)
+  VALUES ((SELECT pratica_id FROM tmp_g_prat_neg), (SELECT tf_id FROM tmp_g_neg),
+          (SELECT fl_da_eseguire FROM tmp_g_refs))
+  RETURNING id
+) SELECT id AS flusso_id FROM ins;
+
+INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
+VALUES ((SELECT pratica_id FROM tmp_g_prat_neg), (SELECT src_preventivo FROM tmp_g_refs),
+        (SELECT uid FROM tmp_g_prev_rif), 'ROOT', (SELECT flusso_id FROM tmp_g_fl_neg));
+
+SELECT is(
+  pratiche.fn_reconcile_sorgente(
+    (SELECT src_preventivo FROM tmp_g_refs),
+    (SELECT uid FROM tmp_g_prev_rif)),
+  1,
+  '17a. binding NULL: reconcile su preventivo RIFIUTATO avanza 1 milestone');
+
+SELECT results_eq(
+  $$SELECT s.codice_interno, f.esito
+      FROM pratiche.flussi f
+      JOIN config.stati_flussi_pratiche s ON s.id = f.stato_id
+     WHERE f.id = (SELECT flusso_id FROM tmp_g_fl_neg)$$,
+  $$VALUES ('COMPLETATO'::varchar, 'NEGATIVO'::varchar)$$,
+  '17b. binding NULL: milestone COMPLETATO con esito NEGATIVO (inversione piena)');
+
+SELECT ok(
+  EXISTS (
+    SELECT 1
+      FROM pratiche.fn_check_prerequisiti_flusso(
+             (SELECT pratica_id FROM tmp_g_prat_neg),
+             (SELECT tf_id FROM tmp_g_down)) p
+     WHERE NOT p.soddisfatto
+  ),
+  '18. ramo morto: con APPROVAZIONE NEGATIVO il prerequisito POSITIVO del passo a valle NON e'' soddisfatto');
 
 SELECT * FROM finish();
 ROLLBACK;

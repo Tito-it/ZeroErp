@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GUIDA (D4) — binding di avanzamento su proiezione: seed DECLARATIVO (CSV).
+# Brief: brief-db-guida-avanza-esito-proiettato.md §G2 / follow-up §5.
+#
+# Porta la configurazione del binding sotto il CSV (loadUpdateData runOnChange),
+# cosi' il DB resta SEMPRE allineato al CSV: cambiare l'esito atteso = editare la
+# cella, il changeset ripesca il valore (nessun nuovo file). Sostituisce, come
+# fonte di verita' go-forward, l'INSERT imperativo del cutover 20260706-24 e la
+# UPDATE 20260707-01 (che restano come storia della migrazione; questo loader e'
+# idempotente sul loro stato finale).
+#
+# Stato seedato: step APPROVAZIONE_CLIENTE (9011, tipo PREVENTIVI 9004) avanza su
+# esito_richiesto = NULL (QUALSIASI verdetto) -> inversione piena (accetta + rifiuta/
+# scaduto/annullato). NULL via sentinel letterale "NULL" (feedback CSV NULL sentinel).
+#
+# Merge key = template_flusso_id (NON id): il binding ha id surrogato auto-generato
+# dall'INSERT del 24, e esito_richiesto=NULL romperebbe il match `= NULL`. Un solo
+# binding per lo step 9011 -> il merge su template_flusso_id e' univoco.
+#
+# ORDINE/guard: la disattivazione dell'handler accetta_preventivo e' ora
+# DECLARATIVA nel CSV template_flussi_handler_eventi.csv (riga 9003 attivo=f,
+# loader 20260615-09, dichiarato PRIMA di questo) -> quando questo loader fa
+# l'UPDATE del binding, il guard di mutua-esclusione (che guarda solo gli handler
+# ATTIVI) non lo rifiuta. Questo chiude anche una divergenza latente: il 24
+# disattivava l'handler in modo imperativo mentre il CSV lo teneva attivo=t, e un
+# reload del CSV lo avrebbe RI-attivato facendo poi fallire l'apply.
+#
+# NB: attende_sorgente_tipo_id (9011->PREVENTIVO) resta come impostato dal 24: e'
+# un FK per-id a config.sorgenti (catalogo) e un CSV a id fisso violerebbe la
+# regola chiave-naturale (linee-guida-sql §6b); non e' soggetto a drift (nessun
+# loader lo resetta), quindi resta allineato senza CSV dedicato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260707-02-seed-template-flussi-avanzamento-proiezione-mctit.yaml
+
+  - changeSet:
+      id: 20260707-02-seed-template-flussi-avanzamento-proiezione
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed declarativo (loadUpdateData runOnChange) del binding di avanzamento su
+        proiezione: step 9011 (APPROVAZIONE_CLIENTE, PREVENTIVI) -> esito NULL
+        (qualsiasi verdetto, inversione piena). Merge su template_flusso_id.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: pratiche
+                tableName: template_flussi_avanzamento_proiezione
+            - columnExists:
+                schemaName: pratiche
+                tableName: template_flussi
+                columnName: attende_sorgente_tipo_id
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/template_flussi_avanzamento_proiezione.csv
+            tableName: template_flussi_avanzamento_proiezione
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            # Sentinel letterale NULL (non cella vuota): esito_richiesto NULL =
+            # "qualsiasi verdetto".
+            nullValue: "NULL"
+            # Merge sul template step (NON sull'id surrogato): unico binding per step.
+            primaryKey: "template_flusso_id"
+            columns:
+              - column: { name: template_flusso_id, type: NUMERIC }
+              - column: { name: esito_richiesto,    type: STRING }
+              - column: { name: attivo,             type: BOOLEAN }
