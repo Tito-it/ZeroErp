@@ -12,7 +12,7 @@ Resolver di area (rami della union):
 >
 Aggregata e brief:
 >
-[vw_dash_fatturazione_mensile](vw_dash_fatturazione_mensile.md)
+[vw_dash_aperto_documenti](vw_dash_aperto_documenti.md)
 > Brief autorevole: `docs/it/dev/work-in-progress/brief-design-dashboard-fatturazione.md`
 
 ---

@@ -12,7 +12,7 @@ Approfondimento tabelle e funzioni:
 Union e aggregata:
 >
 [vw_dash_fatturazione_documenti](vw_dash_fatturazione_documenti.md)
-> [vw_dash_fatturazione_mensile](vw_dash_fatturazione_mensile.md)
+> [vw_dash_aperto_documenti](vw_dash_aperto_documenti.md)
 
 ---
 ### 🎯 Scopo Principale
@@ -55,7 +55,7 @@ ORDER BY valore_fermo DESC;
 ### Note operative
 
 * **Non interrogarla dal BE**: il backend passa da
-  `vw_dash_fatturazione_documenti` / `vw_dash_fatturazione_mensile` (layering).
+  `vw_dash_fatturazione_documenti` / `vw_dash_aperto_*` (layering).
 * Il drill-down mostra il secondo livello (fatturata =
   `attivita_fatturabili.fattura_riga_id IS NOT NULL`) solo come informazione: il
   transito dell'area è l'**emissione** in `attivita_fatturabili`.

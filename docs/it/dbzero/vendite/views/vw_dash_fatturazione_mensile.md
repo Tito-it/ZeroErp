@@ -1,4 +1,3 @@
-{% include-markdown "it/dbzero/vendite/manual/vw_dash_fatturazione_mensile.md" %}
 # 🔍 View `vw_dash_fatturazione_mensile`
 
 ```sql

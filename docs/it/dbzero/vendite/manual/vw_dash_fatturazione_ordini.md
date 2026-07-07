@@ -13,7 +13,7 @@ Approfondimento tabelle e funzioni:
 Union e aggregata:
 >
 [vw_dash_fatturazione_documenti](vw_dash_fatturazione_documenti.md)
-> [vw_dash_fatturazione_mensile](vw_dash_fatturazione_mensile.md)
+> [vw_dash_aperto_documenti](vw_dash_aperto_documenti.md)
 
 ---
 ### 🎯 Scopo Principale
@@ -53,7 +53,7 @@ WHERE competenza_mese = DATE '2026-05-01'
 ### Note operative
 
 * **Non interrogarla dal BE**: il backend passa da
-  `vw_dash_fatturazione_documenti` / `vw_dash_fatturazione_mensile` (layering).
+  `vw_dash_fatturazione_documenti` / `vw_dash_aperto_*` (layering).
 * L'`EXISTS` su `segment_key` è assistito da `ix_commesse_attivita_segment_key`
   (90_end `20260703-58`): l'UNIQUE esistente ha `commessa_id` in testa e non serve
   il lookup puntuale.

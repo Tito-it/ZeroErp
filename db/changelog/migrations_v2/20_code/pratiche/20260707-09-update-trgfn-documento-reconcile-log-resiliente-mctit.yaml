@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GUIDA (D4) — trgfn_documento_reconcile_proiezione: best-effort A PROVA DI LOG-FAIL.
+# Brief: brief-db-guida-avanza-esito-proiettato.md §7.
+#
+# Il finding smoke E2E ha mostrato che l'invariante "documento sovrano" reggeva solo
+# finche' il LOG dell'errore riusciva: l'INSERT su reconcile_errori nell'handler
+# EXCEPTION, se falliva (permission denied), NON era catturato e PROPAGAVA ->
+# rollback del cambio-stato del documento. "L'handler d'errore non deve poter
+# fallire": l'INSERT del log e' ora avvolto in un proprio BEGIN..EXCEPTION con
+# fallback RAISE WARNING (server log, permission-free). Cosi' NESSUN fallimento del
+# log puo' far rollback del documento, nemmeno oltre il fix del GRANT (20260707-07).
+# L'errore ORIGINALE del reconcile e' catturato in variabili prima del log e
+# riportato nel WARNING (non piu' mascherato).
+#
+# Corpo preso dall'oggetto vivo (pg_get_functiondef). CREATE OR REPLACE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260707-09-update-trgfn-documento-reconcile-log-resiliente-mctit.yaml
+
+  - changeSet:
+      id: 20260707-09-update-trgfn-documento-reconcile-log-resiliente
+      author: mctit
+      runOnChange: false
+      comment: >
+        trgfn_documento_reconcile_proiezione: l'INSERT del log best-effort su
+        reconcile_errori e' reso a prova di fallimento (nested BEGIN..EXCEPTION +
+        RAISE WARNING con errore originale). Il documento resta sovrano anche se il
+        log fallisce. GUIDA D4 finding §7.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_documento_reconcile_proiezione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: innesco generico dell'avanzamento su esito proiettato (GUIDA D4/G3b).
+              --   Da agganciare AFTER UPDATE OF <colonna_stato> alle tabelle-documento.
+              --   Parametri dal seed: TG_ARGV[0]=sorgente_tipo_id, TG_ARGV[1]=colonna
+              --   chiave ('id'|'uid'). Best-effort: documento sovrano.
+              DECLARE
+                v_tipo   config.sorgenti.id%TYPE := TG_ARGV[0]::bigint;
+                v_keycol text := TG_ARGV[1];  -- nome colonna: nessun mirror di tabella
+                v_uid    pratiche.pratiche_sorgenti.sorgente_uid%TYPE;
+              BEGIN
+                -- UID del documento dalla colonna-chiave indicata dal seed, senza
+                -- SQL dinamico: estrazione per nome dal record via jsonb.
+                v_uid := to_jsonb(NEW) ->> v_keycol;
+
+                IF v_uid IS NULL THEN
+                  RETURN NULL;
+                END IF;
+
+                -- Sovranita' del documento (D-B7): un errore lato pratiche viene
+                -- inghiottito e loggato, MAI propagato (niente rollback del cambio-stato).
+                BEGIN
+                  PERFORM pratiche.fn_reconcile_sorgente(v_tipo, v_uid);
+                EXCEPTION WHEN OTHERS THEN
+                  -- Cattura l'errore ORIGINALE prima di tentare il log (dentro il
+                  -- nested handler SQLSTATE/SQLERRM cambierebbero all'errore del log).
+                  DECLARE
+                    v_err_state text := SQLSTATE;
+                    v_err_msg   text := SQLERRM;
+                  BEGIN
+                    -- Il LOG stesso non deve poter propagare (es. permission denied
+                    -- sul log): nested guard + fallback WARNING (server log).
+                    BEGIN
+                      INSERT INTO pratiche.reconcile_errori
+                             (sorgente_tipo_id, sorgente_uid, errcode, messaggio, tx_id)
+                      VALUES (v_tipo, v_uid, v_err_state, v_err_msg,
+                              dbops.fn_get_or_create_session_tx_id());
+                    EXCEPTION WHEN OTHERS THEN
+                      RAISE WARNING 'reconcile best-effort: log fallito per (tipo %, uid %). Originale [%] %; log [%] %',
+                        v_tipo, v_uid, v_err_state, v_err_msg, SQLSTATE, SQLERRM;
+                    END;
+                  END;
+                END;
+
+                RETURN NULL;  -- AFTER trigger: valore di ritorno ignorato.
+              END;
+              $function$;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina il corpo pre-09 (log best-effort senza nested guard).
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_documento_reconcile_proiezione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_tipo   config.sorgenti.id%TYPE := TG_ARGV[0]::bigint;
+                v_keycol text := TG_ARGV[1];
+                v_uid    pratiche.pratiche_sorgenti.sorgente_uid%TYPE;
+              BEGIN
+                v_uid := to_jsonb(NEW) ->> v_keycol;
+                IF v_uid IS NULL THEN
+                  RETURN NULL;
+                END IF;
+                BEGIN
+                  PERFORM pratiche.fn_reconcile_sorgente(v_tipo, v_uid);
+                EXCEPTION WHEN OTHERS THEN
+                  INSERT INTO pratiche.reconcile_errori
+                         (sorgente_tipo_id, sorgente_uid, errcode, messaggio, tx_id)
+                  VALUES (v_tipo, v_uid, SQLSTATE, SQLERRM,
+                          dbops.fn_get_or_create_session_tx_id());
+                END;
+                RETURN NULL;
+              END;
+              $function$;

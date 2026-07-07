@@ -12,7 +12,7 @@ Approfondimento tabelle:
 Union e aggregata:
 >
 [vw_dash_fatturazione_documenti](vw_dash_fatturazione_documenti.md)
-> [vw_dash_fatturazione_mensile](vw_dash_fatturazione_mensile.md)
+> [vw_dash_aperto_documenti](vw_dash_aperto_documenti.md)
 
 ---
 ### 🎯 Scopo Principale
@@ -56,7 +56,7 @@ WHERE motivo_fermo = 'FIGLIO_ABORTITO';
 ### Note operative
 
 * **Non interrogarla dal BE**: il backend passa da
-  `vw_dash_fatturazione_documenti` / `vw_dash_fatturazione_mensile` (layering).
+  `vw_dash_fatturazione_documenti` / `vw_dash_aperto_*` (layering).
 * **`FIGLIO_ABORTITO` ≠ `SENZA_FIGLIO`**: la XOR contratto/ordine è permanente
   anche se il figlio viene annullato (capability spente) — non è rimediabile con
   un nuovo push, serve una **revisione** dell'offerta (brief §8.1).

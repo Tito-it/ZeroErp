@@ -34,10 +34,24 @@ BEGIN
   BEGIN
     PERFORM pratiche.fn_reconcile_sorgente(v_tipo, v_uid);
   EXCEPTION WHEN OTHERS THEN
-    INSERT INTO pratiche.reconcile_errori
-           (sorgente_tipo_id, sorgente_uid, errcode, messaggio, tx_id)
-    VALUES (v_tipo, v_uid, SQLSTATE, SQLERRM,
-            dbops.fn_get_or_create_session_tx_id());
+    -- Cattura l'errore ORIGINALE prima di tentare il log (dentro il
+    -- nested handler SQLSTATE/SQLERRM cambierebbero all'errore del log).
+    DECLARE
+      v_err_state text := SQLSTATE;
+      v_err_msg   text := SQLERRM;
+    BEGIN
+      -- Il LOG stesso non deve poter propagare (es. permission denied
+      -- sul log): nested guard + fallback WARNING (server log).
+      BEGIN
+        INSERT INTO pratiche.reconcile_errori
+               (sorgente_tipo_id, sorgente_uid, errcode, messaggio, tx_id)
+        VALUES (v_tipo, v_uid, v_err_state, v_err_msg,
+                dbops.fn_get_or_create_session_tx_id());
+      EXCEPTION WHEN OTHERS THEN
+        RAISE WARNING 'reconcile best-effort: log fallito per (tipo %, uid %). Originale [%] %; log [%] %',
+          v_tipo, v_uid, v_err_state, v_err_msg, SQLSTATE, SQLERRM;
+      END;
+    END;
   END;
 
   RETURN NULL;  -- AFTER trigger: valore di ritorno ignorato.

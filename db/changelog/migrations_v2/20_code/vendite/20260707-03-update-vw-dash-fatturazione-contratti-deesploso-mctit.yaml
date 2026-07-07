@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Situazione aperta (Fase 3 due lenti) — SA-1: resolver contratti DE-ESPLOSO
+# (brief-db-situazione-aperta §2 SA-1; decisione DL-12 "consistenza pura,
+# giudizio di transito sospeso", Tid 2026-07-07).
+#
+# PRIMA: una riga per contratto x MESE coperto (CROSS JOIN LATERAL
+# generate_series(valido_dal..LEAST(valido_al, mese corrente)) + EXISTS canone
+# per mese). L'asse mensile serviva alla 5-card, che perde l'impianto mensile:
+# nella vista stock un contratto deve comparire UNA volta sola.
+#
+# DOPO (giudizio sospeso finche' non esiste il push ricorrente):
+#   - competenza_mese = NULL                (senza periodo non ha significato)
+#   - data_riferimento = valido_dal         ("in essere da")
+#   - unita_totali = 1; unita_transitate/is_transitato = NULL (sospeso, non
+#     falso: senza push ricorrente ogni contratto risulterebbe fermo in eterno)
+#   - motivo_fermo = NULL (CANONE_NON_GENERATO/DOC_BOZZA spariscono dal
+#     resolver; la bozza resta leggibile da fase/stato_codice_interno).
+#     Il seed config.motivi_fermo NON cambia: CANONE_NON_GENERATO resta per la
+#     riaccensione futura, DOC_BOZZA e' usato dalle altre aree.
+#   - resto invariato: filtro esito IS DISTINCT FROM NEGATIVO (D-6, qui gia'
+#     alla fonte), fase/stato, cliente_display, valori NULL (area a conteggi).
+#
+# IMPATTI A VALLE:
+#   - union vw_dash_fatturazione_documenti: NON va ricreata (stesse colonne,
+#     cambiano solo i valori; NULL tipizzati sotto).
+#   - Lente 2 Backlog: regressione ZERO — i contratti gia' oggi non vi
+#     compaiono (entrambi i motivi FISIOLOGICO); con motivo_fermo NULL restano
+#     esclusi dal filtro motivo_fermo IS NOT NULL.
+#   - vw_dash_fatturazione_mensile (aggregava l'esplosione): DISMESSA in
+#     20260707-06 nello stesso giro (niente produzione, nessun cutover).
+#   - JOIN config.sorgenti rimosso (serviva solo all'EXISTS canone).
+#
+# PREDISPOSIZIONE FUTURA (non ora): col push ricorrente il predicato "canone
+# del mese corrente generato" torna su is_transitato/motivo_fermo e i
+# contratti entrano in Lente 2 — contratto colonne identico, si riempie.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260707-03-update-vw-dash-fatturazione-contratti-deesploso-mctit.yaml
+
+  - changeSet:
+      id: 20260707-03-update-vw-dash-fatturazione-contratti-deesploso
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Situazione aperta SA-1: resolver contratti de-esploso (1 riga per
+        contratto vivo, niente asse mese) con giudizio di transito SOSPESO
+        (is_transitato/unita_transitate/motivo_fermo NULL) finche' non esiste
+        il push ricorrente. data_riferimento = valido_dal.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: '1'
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname   = 'vw_dash_fatturazione_contratti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_contratti AS
+              SELECT
+                  'CONTRATTI'::character varying          AS area,
+                  NULL::date                              AS competenza_mese,
+                  c.id                                    AS documento_id,
+                  (c.uid)::text                           AS documento_uid,
+                  (c.numero)::text                        AS codice,
+                  c.emittente_fiscale_id,
+                  NULL::bigint                            AS emittente_soggetto_ruolo_id,
+                  NULL::numeric                           AS valore_totale,
+                  NULL::numeric                           AS valore_transitato,
+                  1                                       AS unita_totali,
+                  -- Giudizio di transito SOSPESO (DL-12): non true, non false.
+                  NULL::integer                           AS unita_transitate,
+                  NULL::boolean                           AS is_transitato,
+                  false                                   AS is_abortito,
+                  NULL::character varying                 AS motivo_fermo,
+                  sdc.codice_interno                      AS stato_codice_interno,
+                  sdc.codice                              AS stato_codice,
+                  sdc.fase,
+                  sog.ragione_sociale_completa            AS cliente_display,
+                  -- Stock: "in essere da" (prima: mese esploso).
+                  c.valido_dal                            AS data_riferimento
+                FROM vendite.contratti c
+                -- D-6 alla fonte: esclusi i contratti con esito NEGATIVO.
+                JOIN config.stati_doc_contratti sdc
+                  ON sdc.id = c.stato_doc_contratto_id
+                 AND (sdc.esito)::text IS DISTINCT FROM 'NEGATIVO'
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+                LEFT JOIN anagrafiche.soggetti_ruoli sr  ON sr.id = ba.soggetto_ruolo_id
+                LEFT JOIN anagrafiche.soggetti sog       ON sog.id = sr.soggetto_id;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_contratti IS
+                'Resolver area CONTRATTI (famiglia dash fatturazione / situazione aperta): 1 riga per contratto vivo (esito <> NEGATIVO), DE-ESPLOSO (niente asse mese, DL-12). Giudizio di transito SOSPESO finche'' non esiste il push ricorrente: is_transitato/unita_transitate/motivo_fermo = NULL (non "fermo": senza push ogni contratto sarebbe un falso-allarme perenne). data_riferimento = valido_dal ("in essere da"). Area a conteggi: valore_* NULL. Consumata da vw_dash_fatturazione_documenti (union) e da vw_dash_aperto_*; il Backlog non la vede (motivo_fermo NULL).';
+
+              COMMENT ON COLUMN vendite.vw_dash_fatturazione_contratti.data_riferimento IS
+                'Stock (situazione aperta): valido_dal = "in essere da". Anzianita'' backlog non applicabile (contratti fuori dal backlog finche'' il giudizio canone e'' sospeso).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la definizione precedente (esplosa per mese) e'
+              -- 20260706-06. Per revertire, ri-applicare quel changeset.
+              SELECT 1;

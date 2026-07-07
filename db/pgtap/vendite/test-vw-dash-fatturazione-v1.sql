@@ -2,19 +2,20 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: viste dashboard fatturazione (20260703-51..57):
---       5 resolver di area (vw_dash_fatturazione_{preventivi,ordini,
---       offerte,contratti,commesse}) + union (vw_dash_fatturazione_documenti)
---       + aggregata (vw_dash_fatturazione_mensile).
---       Brief: brief-design-dashboard-fatturazione.md §5.
+-- Test: viste dashboard fatturazione (20260703-51..57, agg. 20260707-03/06
+--       "Situazione aperta"): 5 resolver di area + union
+--       (vw_dash_fatturazione_documenti). La mensile e' DISMESSA (20260707-06)
+--       e il resolver contratti e' DE-ESPLOSO con giudizio sospeso (DL-12).
+--       Brief: brief-design-dashboard-fatturazione.md §5 +
+--       brief-db-situazione-aperta.md §2-3.
 --       Fixture: preventivo ACCETTATO misto (merce a ordine, servizio
 --       EMESSO in commessa, servizio residuo); ordine da push; 4 offerte
 --       (BOZZA / ACCETTATA senza figlio / con figlio vivo / con figlio
---       abortito); contratto ATTIVO con e senza canone del mese.
+--       abortito); contratto ATTIVO multi-mese (de-esplosione).
 --
 -- Indice test (0..18):
 --   0)  Precondizioni (refs: BA, articoli, stati, sorgenti, listino)
---   1)  Le 7 viste esistono
+--   1)  Le 6 viste esistono (mensile dismessa)
 --   2)  PREVENTIVI: riga documento, competenza da validita_dal, unita 3/2
 --   3)  PREVENTIVI: valore totale 140, transitato 110 (imponibile)
 --   4)  PREVENTIVI: fermo con motivo RIGA_RESIDUA, stato ACCETTATO
@@ -25,16 +26,17 @@
 --   9)  OFFERTE: ACCETTATA senza figlio -> SENZA_FIGLIO
 --   10) OFFERTE: ACCETTATA con contratto figlio vivo -> transitata
 --   11) OFFERTE: ACCETTATA con figlio ANNULLATO -> FIGLIO_ABORTITO
---   12) CONTRATTI: ATTIVO senza canone mese corrente -> CANONE_NON_GENERATO
---   13) CONTRATTI: canone del mese EMESSO in commessa -> transitato
+--   12) CONTRATTI: DE-ESPLOSO -> 1 riga (multi-mese), giudizio SOSPESO
+--       (is_transitato/motivo NULL), competenza NULL, data_rif = valido_dal
+--   13) CONTRATTI: canone EMESSO in commessa -> giudizio RESTA sospeso (DL-12)
 --   14) CONTRATTI: contratto ANNULLATO (abortito) escluso dal resolver
 --   15) COMMESSE: valori 90/60, motivo ATTIVITA_NON_APPROVATA
 --   16) COMMESSE: attivita APPROVATA ma non emessa -> ATTIVITA_NON_EMESSA
---   17) MENSILE: PREVENTIVI 2080-01 -> 1 doc, 1 fermo, 140/110
---   18) MENSILE: OFFERTE 2080-03 -> 4 docs, 1 transitata, 3 ferme, 0 abortite
+--   17) UNION: preventivo 2080-01 -> 140/110, fase valorizzata
+--   18) UNION: OFFERTE 2080-03 -> 4 docs, 1 transitata, 3 ferme non abortite
 --   14b) Setup: operatore OPERATORE non-super trovato (scope commesse)
 --   19) SCOPE: operatore A vede commessa A, non commessa B (emittente diverso)
---   20) COERENZA: mese di sola commessa B vuoto in mensile E in documenti (op. A)
+--   20) COERENZA: mese di sola commessa B assente da documenti (op. A)
 --   21) cliente_display non-null preventivo (path istanza->soggetti)
 --   22) cliente_display non-null contratto (path BA->soggetto_ruolo->soggetti)
 --   23) cliente_display non-null commessa (path BA->soggetto_ruolo->soggetti)
@@ -122,7 +124,7 @@ SELECT ok(
 );
 
 -- ============================================================
--- 1) Le 7 viste esistono
+-- 1) Le 6 viste esistono (la mensile e' dismessa, 20260707-06)
 -- ============================================================
 SELECT is(
   (SELECT count(*)::integer FROM pg_views
@@ -132,10 +134,12 @@ SELECT is(
                        'vw_dash_fatturazione_offerte',
                        'vw_dash_fatturazione_contratti',
                        'vw_dash_fatturazione_commesse',
-                       'vw_dash_fatturazione_documenti',
-                       'vw_dash_fatturazione_mensile')),
-  7,
-  '1. Le 7 viste dashboard fatturazione esistono'
+                       'vw_dash_fatturazione_documenti'))
+  - (SELECT count(*)::integer FROM pg_views
+      WHERE schemaname = 'vendite'
+        AND viewname = 'vw_dash_fatturazione_mensile'),
+  6,
+  '1. Le 6 viste della famiglia esistono e la mensile e'' stata dismessa'
 );
 
 -- ============================================================
@@ -442,7 +446,8 @@ SELECT ok(
 );
 
 -- ============================================================
--- Fixture CONTRATTI: ATTIVO dal 1o del mese corrente, aperto.
+-- Fixture CONTRATTI: ATTIVO da 2 mesi fa, aperto -> multi-mese: prima della
+-- de-esplosione (20260707-03) avrebbe prodotto 3 righe-mese, ora 1 sola.
 -- ============================================================
 CREATE TEMP TABLE tmp_df_contratto AS
 WITH ins AS (
@@ -452,8 +457,8 @@ WITH ins AS (
     emittente_fiscale_id, meta)
   SELECT 'PGTAP-DF-CT-' || substr(md5(clock_timestamp()::text), 1, 8),
          r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         date_trunc('month', CURRENT_DATE)::date, NULL,
-         r.contr_attivo_id, date_trunc('month', CURRENT_DATE)::date,
+         (date_trunc('month', CURRENT_DATE) - interval '2 months')::date, NULL,
+         r.contr_attivo_id, (date_trunc('month', CURRENT_DATE) - interval '2 months')::date,
          COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
                   r.emittente_fiscale_id),
          jsonb_build_object('test_scope','pgtap_dash_fatturazione')
@@ -462,19 +467,24 @@ WITH ins AS (
 SELECT * FROM ins;
 
 -- ============================================================
--- 12-14) Area CONTRATTI
+-- 12-14) Area CONTRATTI (de-esplosa, giudizio sospeso — DL-12)
 -- ============================================================
 SELECT ok(
   (SELECT count(*) = 1
-      AND bool_and(v.motivo_fermo = 'CANONE_NON_GENERATO')
-      AND bool_and(v.is_transitato = false)
-      AND bool_and(v.competenza_mese = date_trunc('month', CURRENT_DATE)::date)
+      AND bool_and(v.is_transitato IS NULL)
+      AND bool_and(v.unita_transitate IS NULL)
+      AND bool_and(v.motivo_fermo IS NULL)
+      AND bool_and(v.unita_totali = 1)
+      AND bool_and(v.competenza_mese IS NULL)
+      AND bool_and(v.data_riferimento = (date_trunc('month', CURRENT_DATE) - interval '2 months')::date)
      FROM vendite.vw_dash_fatturazione_contratti v
     WHERE v.documento_id = (SELECT id FROM tmp_df_contratto)),
-  '12. Contratto ATTIVO dal mese corrente: 1 riga-mese, motivo CANONE_NON_GENERATO'
+  '12. Contratto ATTIVO multi-mese: 1 SOLA riga (de-esploso), giudizio sospeso (transito/motivo NULL), data_riferimento = valido_dal'
 );
 
--- Canone del mese generato: attivita EMESSA con sorgente CONTRATTO.
+-- Canone del mese generato: attivita EMESSA con sorgente CONTRATTO. Con la
+-- de-esplosione (DL-12) il giudizio di transito resta SOSPESO anche in
+-- presenza del canone: si riaccendera' col push ricorrente.
 INSERT INTO vendite.commesse_attivita (
   commessa_id, segment_key,
   articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
@@ -496,10 +506,11 @@ SELECT
 FROM tmp_df_refs r;
 
 SELECT ok(
-  (SELECT bool_and(v.is_transitato = true) AND bool_and(v.motivo_fermo IS NULL)
+  (SELECT count(*) = 1 AND bool_and(v.is_transitato IS NULL)
+      AND bool_and(v.motivo_fermo IS NULL)
      FROM vendite.vw_dash_fatturazione_contratti v
     WHERE v.documento_id = (SELECT id FROM tmp_df_contratto)),
-  '13. Contratto con canone del mese EMESSO in commessa: transitato'
+  '13. Contratto con canone EMESSO in commessa: giudizio RESTA sospeso (DL-12), sempre 1 riga'
 );
 
 SELECT is(
@@ -579,24 +590,27 @@ SELECT is(
 );
 
 -- ============================================================
--- 17-18) Aggregata MENSILE
+-- 17-18) UNION (la mensile e' dismessa: stesse coperture dal drill-down)
 -- ============================================================
 SELECT ok(
-  (SELECT m.n_documenti = 1 AND m.n_fermi = 1 AND m.n_transitati = 0
-      AND m.n_abortiti = 0
-      AND m.valore_totale = 140 AND m.valore_transitato = 110
-     FROM vendite.vw_dash_fatturazione_mensile m
-    WHERE m.area = 'PREVENTIVI' AND m.competenza_mese = DATE '2080-01-01'),
-  '17. Mensile PREVENTIVI 2080-01: 1 documento fermo, 140/110'
+  (SELECT d.valore_totale = 140 AND d.valore_transitato = 110
+      AND d.is_transitato = false AND d.is_abortito = false
+      AND d.fase IS NOT NULL
+     FROM vendite.vw_dash_fatturazione_documenti d
+    WHERE d.area = 'PREVENTIVI'
+      AND d.documento_id = (SELECT id FROM tmp_df_prev)),
+  '17. Union PREVENTIVI: il documento 2080-01 espone 140/110, fermo, fase valorizzata'
 );
 
 SELECT ok(
-  (SELECT m.n_documenti = 4 AND m.n_transitati = 1 AND m.n_fermi = 3
-      AND m.n_abortiti = 0
-      AND m.valore_totale IS NULL AND m.valore_transitato IS NULL
-     FROM vendite.vw_dash_fatturazione_mensile m
-    WHERE m.area = 'OFFERTE' AND m.competenza_mese = DATE '2080-03-01'),
-  '18. Mensile OFFERTE 2080-03: 4 documenti, 1 transitata, 3 ferme, valori NULL (area a conteggi)'
+  (SELECT count(*) = 4
+      AND count(*) FILTER (WHERE d.is_transitato) = 1
+      AND count(*) FILTER (WHERE NOT d.is_transitato AND NOT d.is_abortito) = 3
+      AND bool_and(d.valore_totale IS NULL AND d.valore_transitato IS NULL)
+     FROM vendite.vw_dash_fatturazione_documenti d
+    WHERE d.area = 'OFFERTE' AND d.competenza_mese = DATE '2080-03-01'
+      AND d.documento_id IN (SELECT offerta_id FROM tmp_df_offerte)),
+  '18. Union OFFERTE 2080-03: 4 documenti, 1 transitata, 3 ferme, valori NULL (area a conteggi)'
 );
 
 -- ============================================================
@@ -649,17 +663,15 @@ SELECT CASE WHEN (SELECT ef_b_sr FROM tmp_df_refs) IS NULL
   )
 END;
 
--- 20) Coerenza card (mensile) vs drill-down (documenti) sul mese di B: per
---     l'operatore A entrambi NON contano la commessa B (stesso perimetro).
+-- 20) Coerenza scope sul mese di B: per l'operatore A la union non contiene
+--     la commessa B (la mensile e' dismessa: resta il perimetro documenti).
 SELECT CASE WHEN (SELECT ef_b_sr FROM tmp_df_refs) IS NULL
-  THEN pass('20. [skip] seed con un solo emittente: coerenza card/drill-down non testabile')
+  THEN pass('20. [skip] seed con un solo emittente: coerenza scope non testabile')
   ELSE ok(
-    (SELECT COALESCE((SELECT m.n_documenti FROM vendite.vw_dash_fatturazione_mensile m
-                       WHERE m.area = 'COMMESSE' AND m.competenza_mese = DATE '2080-05-01'), 0) = 0
-        AND NOT EXISTS (
+    (SELECT NOT EXISTS (
               SELECT 1 FROM vendite.vw_dash_fatturazione_documenti d
                WHERE d.area = 'COMMESSE' AND d.competenza_mese = DATE '2080-05-01')),
-    '20. Coerenza card/drill-down: mese 2080-05 (solo commessa B) vuoto in mensile E in documenti per l''operatore A'
+    '20. Scope: mese 2080-05 (solo commessa B) assente da documenti per l''operatore A'
   )
 END;
 

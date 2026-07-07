@@ -80,14 +80,21 @@ BEGIN
                 AND (b.esito_richiesto IS NULL OR b.esito_richiesto = v_esito));
 
     -- Ambiguo: piu' candidati senza link per-flusso -> non indovinare (D-B5).
+    -- Il log e' a prova di fallimento: un errore nello scrivere il log NON
+    -- deve propagare (best-effort) -> fallback RAISE WARNING (server log).
     IF r_ps.flusso_id IS NULL AND v_cand_count > 1 THEN
-      INSERT INTO pratiche.reconcile_errori
-             (sorgente_tipo_id, sorgente_uid, pratica_id, errcode, messaggio, tx_id)
-      VALUES (p_sorgente_tipo_id, p_sorgente_uid, r_ps.pratica_id,
-              'E_RECONCILE_AMBIGUO',
-              format('%s milestone candidati per tipo %s senza flusso_id esplicito: skip',
-                     v_cand_count, p_sorgente_tipo_id),
-              dbops.fn_get_or_create_session_tx_id());
+      BEGIN
+        INSERT INTO pratiche.reconcile_errori
+               (sorgente_tipo_id, sorgente_uid, pratica_id, errcode, messaggio, tx_id)
+        VALUES (p_sorgente_tipo_id, p_sorgente_uid, r_ps.pratica_id,
+                'E_RECONCILE_AMBIGUO',
+                format('%s milestone candidati per tipo %s senza flusso_id esplicito: skip',
+                       v_cand_count, p_sorgente_tipo_id),
+                dbops.fn_get_or_create_session_tx_id());
+      EXCEPTION WHEN OTHERS THEN
+        RAISE WARNING 'reconcile_errori log (ambiguo) fallito per (tipo %, uid %): [%] %',
+          p_sorgente_tipo_id, p_sorgente_uid, SQLSTATE, SQLERRM;
+      END;
       CONTINUE;
     END IF;
 
