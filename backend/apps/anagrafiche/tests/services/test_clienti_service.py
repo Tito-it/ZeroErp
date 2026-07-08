@@ -371,18 +371,22 @@ class TestUpdateCliente(TestCase):
 
     @patch(CLI_REPO)
     def test_update_cliente_ok(self, mock_repo):
-        """Aggiorna campi editabili — happy path."""
+        """Aggiorna campi editabili — happy path (una sola fn madre atomica)."""
         repo = mock_repo.return_value
         repo.get_cliente.return_value = {"id": 1, "utility_id": 10}
-        repo.update_cliente.return_value = True
+        repo.update_cliente_atomico.return_value = {
+            "categoria_aggiornata": False, "campi_aggiornati": True,
+        }
         from apps.anagrafiche.services.clienti_service import ClientiService
         result = ClientiService().update_cliente(1, {
             "iva_id": 5, "cliente_pa": "S", "garanzia_importo": 500,
         })
         self.assertTrue(result["updated"])
-        repo.update_cliente.assert_called_once_with(1, {
-            "iva_id": 5, "cliente_pa": "S", "garanzia_importo": 500,
-        })
+        repo.update_cliente_atomico.assert_called_once_with(
+            1,
+            ba_categoria_cliente_id=None,
+            cliente_fields={"iva_id": 5, "cliente_pa": "S", "garanzia_importo": 500},
+        )
 
     @patch(CLI_REPO)
     def test_update_cliente_not_found(self, mock_repo):
@@ -395,10 +399,12 @@ class TestUpdateCliente(TestCase):
 
     @patch(CLI_REPO)
     def test_update_cliente_no_fields(self, mock_repo):
-        """Nessun campo valido → E_ANAG_NOT_FOUND (nessuna riga aggiornata)."""
+        """Nessun campo valido → E_ANAG_NOT_FOUND (la fn madre non tocca nulla)."""
         repo = mock_repo.return_value
         repo.get_cliente.return_value = {"id": 1, "utility_id": 10}
-        repo.update_cliente.return_value = False
+        repo.update_cliente_atomico.return_value = {
+            "categoria_aggiornata": False, "campi_aggiornati": False,
+        }
         from apps.anagrafiche.services.clienti_service import ClientiService
         with self.assertRaises(ServiceError) as ctx:
             ClientiService().update_cliente(1, {"campo_ignoto": "valore"})
@@ -447,34 +453,38 @@ class TestBaCategoriaF2BE04(TestCase):
 
     @patch(CLI_REPO)
     def test_update_cliente_solo_categoria(self, mock_repo):
-        """PATCH con solo ba_categoria_cliente_id -> update BA, nessun update cliente."""
+        """PATCH con solo ba_categoria_cliente_id -> fn madre con categoria, campi vuoti."""
         repo = mock_repo.return_value
         repo.get_cliente.return_value = {"id": 1, "billing_account_id": 200}
-        repo.update_ba_categoria.return_value = True
+        repo.update_cliente_atomico.return_value = {
+            "categoria_aggiornata": True, "campi_aggiornati": False,
+        }
         from apps.anagrafiche.services.clienti_service import ClientiService
         result = ClientiService().update_cliente(1, {"ba_categoria_cliente_id": 9})
         self.assertTrue(result["updated"])
-        repo.update_ba_categoria.assert_called_once_with(200, 9)
-        repo.update_cliente.assert_not_called()
+        repo.update_cliente_atomico.assert_called_once_with(
+            1, ba_categoria_cliente_id=9, cliente_fields={},
+        )
 
     @patch(CLI_REPO)
     def test_update_cliente_categoria_e_campi(self, mock_repo):
-        """PATCH misto: categoria su BA + campi su cliente entrambi eseguiti."""
+        """PATCH misto: categoria BA + campi cliente in un'unica fn madre atomica."""
         repo = mock_repo.return_value
         repo.get_cliente.return_value = {"id": 1, "billing_account_id": 200}
-        repo.update_ba_categoria.return_value = True
-        repo.update_cliente.return_value = True
+        repo.update_cliente_atomico.return_value = {
+            "categoria_aggiornata": True, "campi_aggiornati": True,
+        }
         from apps.anagrafiche.services.clienti_service import ClientiService
         ClientiService().update_cliente(1, {
             "ba_categoria_cliente_id": 9,
             "iva_id": 5,
         })
-        repo.update_ba_categoria.assert_called_once_with(200, 9)
-        repo.update_cliente.assert_called_once()
-        # ba_categoria_cliente_id NON deve finire nel payload passato a update_cliente.
-        passed_payload = repo.update_cliente.call_args.args[1]
-        self.assertNotIn("ba_categoria_cliente_id", passed_payload)
-        self.assertEqual(passed_payload["iva_id"], 5)
+        repo.update_cliente_atomico.assert_called_once()
+        kwargs = repo.update_cliente_atomico.call_args.kwargs
+        self.assertEqual(kwargs["ba_categoria_cliente_id"], 9)
+        # ba_categoria_cliente_id NON deve finire tra i campi cliente.
+        self.assertNotIn("ba_categoria_cliente_id", kwargs["cliente_fields"])
+        self.assertEqual(kwargs["cliente_fields"]["iva_id"], 5)
 
     @patch(CLI_REPO)
     def test_update_cliente_categoria_invalida_zero(self, mock_repo):
