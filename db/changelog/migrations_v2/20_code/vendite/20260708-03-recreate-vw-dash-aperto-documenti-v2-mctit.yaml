@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Situazione aperta v2 — SERBATOIO PRE-COMMESSA (brief-db-situazione-aperta-v2
+# §2 SA2-1; design-of-record brief-design-fatturazione-due-lenti §6-ter,
+# DL-14/15). Ridefinizione della vista dettaglio dello stock: da "tutte le fasi
+# + misura transitato" a "solo aperti-non-conclusi, senza il concetto transito".
+#
+# PERIMETRO NUOVO (entrambi i predicati — DL-15; nessuno dei due basta da solo):
+#   - area <> 'COMMESSE'  (coperte dalla Lente 1 Competenza)   [invariato]
+#   - NOT is_abortito     (esito NEGATIVO fuori dallo stock)   [invariato]
+#   - is_transitato IS DISTINCT FROM true  -> toglie i TRANSITATI-non-chiusi
+#     (es. preventivo ACCETTATO gia' completamente smistato, resta IN_CORSO:
+#     fase<>CHIUSO non lo prenderebbe);
+#   - fase <> 'CHIUSO'  -> toglie i CHIUSI-non-transitati
+#     (es. preventivo EVASO con riga residua: esito POSITIVO -> NOT is_abortito
+#     non lo prende, is_transitato e' false -> is_aperto non lo prende).
+#   NB: l'esempio "offerta SUPERATA" del brief NON e' un chiuso-non-transitato:
+#   SUPERATA ha esito=NEGATIVO -> is_abortito=true, gia' escluso da NOT is_abortito.
+#
+# COLONNE RIMOSSE (costanti/prive di senso nel nuovo perimetro): is_transitato
+# (resta solo nel WHERE, dalla union), is_aperto (ora sempre true),
+# valore_transitato, unita_transitate. Restano: valore_totale, unita_totali,
+# motivo_fermo (hint informativo di riga, DL/decisione: TENUTO), data_riferimento.
+#
+# ⚠️ DROP + CREATE (non CREATE OR REPLACE): PostgreSQL non consente di RIMUOVERE
+# colonne da una vista con CREATE OR REPLACE (solo aggiunte in coda). Siccome
+# vw_dash_aperto_riepilogo dipende da questa vista, va DROPpato PRIMA (ordine di
+# dipendenza; niente CASCADE — fail-fast). Il riepilogo v2 e' ricreato dal
+# changeset successivo (20260708-04).
+# security_invoker=on: da RIPORTARE nel CREATE (il DROP azzera le reloptions);
+# guard strutturale test-vw-dash-security-invoker.sql lo verifica sull'intera
+# famiglia vw_dash_*.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260708-03-recreate-vw-dash-aperto-documenti-v2-mctit.yaml
+
+  - changeSet:
+      id: 20260708-03-recreate-vw-dash-aperto-documenti-v2
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Situazione aperta v2: vista dettaglio ristretta al serbatoio
+        aperti-non-conclusi (is_aperto AND fase<>CHIUSO) e snellita (via colonne
+        transitato/is_aperto). DROP+CREATE (rimozione colonne): droppa prima il
+        riepilogo dipendente, poi ricrea la dettaglio con security_invoker=on.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: '1'
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname   = 'vw_dash_fatturazione_documenti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Sciogliamo la dipendenza a mano (no CASCADE): il riepilogo va
+              -- droppato prima perche' legge FROM vw_dash_aperto_documenti.
+              DROP VIEW IF EXISTS vendite.vw_dash_aperto_riepilogo;
+              DROP VIEW IF EXISTS vendite.vw_dash_aperto_documenti;
+
+              CREATE VIEW vendite.vw_dash_aperto_documenti
+              WITH (security_invoker = on) AS
+              SELECT
+                  d.area,
+                  d.documento_id,
+                  d.documento_uid,
+                  d.codice,
+                  d.emittente_fiscale_id,
+                  d.emittente_soggetto_ruolo_id,
+                  d.cliente_display,
+                  d.fase,
+                  d.stato_codice_interno,
+                  d.stato_codice,
+                  d.valore_totale,
+                  d.unita_totali,
+                  d.motivo_fermo,
+                  d.data_riferimento
+                FROM vendite.vw_dash_fatturazione_documenti d
+               WHERE d.area <> 'COMMESSE'
+                 -- D-6: niente abortiti (i resolver non-contratti li marcano soltanto).
+                 AND NOT d.is_abortito
+                 -- DL-15 (1): solo aperti — esclude i transitati-non-chiusi
+                 -- (giudizio sospeso contratti = is_transitato NULL = aperto).
+                 AND d.is_transitato IS DISTINCT FROM true
+                 -- DL-15 (2): solo non-conclusi — esclude i chiusi-non-transitati.
+                 AND d.fase <> 'CHIUSO';
+
+              COMMENT ON VIEW vendite.vw_dash_aperto_documenti IS
+                'Situazione aperta v2 (serbatoio pre-commessa): stock dei documenti APERTI E NON CONCLUSI delle 4 aree (PREVENTIVI/ORDINI/OFFERTE/CONTRATTI — no COMMESSE, coperte dalla Lente 1), SENZA asse temporale. Perimetro (DL-15): area<>COMMESSE AND NOT is_abortito AND is_transitato IS DISTINCT FROM true AND fase<>CHIUSO. Eliminato il concetto "transitato" (DL-14): via is_transitato/is_aperto(col)/valore_transitato/unita_transitate dalla proiezione. Perimetro unico per vw_dash_aperto_riepilogo e per il drill-down BE (il filtro "aperti da oltre N giorni" e'' BE-side su data_riferimento). security_invoker=on (scope emittente RLS).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Non-in-produzione (breaking change ammessi): rollback best-effort
+              -- (non ripristina la forma v1). Il riepilogo lo rifa' il -04.
+              DROP VIEW IF EXISTS vendite.vw_dash_aperto_documenti;

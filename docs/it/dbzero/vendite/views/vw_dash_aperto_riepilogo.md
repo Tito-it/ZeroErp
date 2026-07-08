@@ -6,9 +6,7 @@ CREATE OR REPLACE VIEW vendite.vw_dash_aperto_riepilogo AS
 SELECT area,
     fase,
     (count(*))::integer AS n_documenti,
-    (count(*) FILTER (WHERE is_aperto))::integer AS n_aperti,
-    sum(valore_totale) AS valore_totale,
-    sum(valore_transitato) AS valore_transitato
+    sum(valore_totale) AS valore_totale
    FROM vendite.vw_dash_aperto_documenti
   GROUP BY area, fase;
 ```

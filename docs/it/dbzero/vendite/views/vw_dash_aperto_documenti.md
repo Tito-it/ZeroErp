@@ -14,15 +14,11 @@ SELECT area,
     stato_codice_interno,
     stato_codice,
     valore_totale,
-    valore_transitato,
     unita_totali,
-    unita_transitate,
-    is_transitato,
-    (is_transitato IS DISTINCT FROM true) AS is_aperto,
     motivo_fermo,
     data_riferimento
    FROM vendite.vw_dash_fatturazione_documenti d
-  WHERE (((area)::text <> 'COMMESSE'::text) AND (NOT is_abortito));
+  WHERE (((area)::text <> 'COMMESSE'::text) AND (NOT is_abortito) AND (is_transitato IS DISTINCT FROM true) AND ((fase)::text <> 'CHIUSO'::text));
 ```
 
 
