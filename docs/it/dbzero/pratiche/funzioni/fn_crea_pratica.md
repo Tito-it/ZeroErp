@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/fn_crea_pratica.md" %}
 # ⚙️ Funzione `fn_crea_pratica`
 
 ```sql

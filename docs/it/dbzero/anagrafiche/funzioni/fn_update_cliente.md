@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_update_cliente.md" %}
 # ⚙️ Funzione `fn_update_cliente`
 
 ```sql

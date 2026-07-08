@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_create_contratto.md" %}
 # ⚙️ Funzione `fn_create_contratto`
 
 ```sql

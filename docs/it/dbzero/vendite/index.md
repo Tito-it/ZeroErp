@@ -98,7 +98,7 @@
 - [fn_contratto_sovrapposto](funzioni/fn_contratto_sovrapposto.md) — `vendite.fn_contratto_sovrapposto(...)` risponde a una sola domanda, **senza modificare nulla**: *«per questo cliente/utility e in questo periodo esiste già un contratto attivo?»*. È il **rilevamento** del meccanismo generico di successione contratti (il "chiudi il vecchio e apri il nuovo").
 - [fn_crea_revisione_offerta](funzioni/fn_crea_revisione_offerta.md) — (rev 2026-05-25)
 - [fn_crea_revisione_preventivo](funzioni/fn_crea_revisione_preventivo.md) — (latest review 15-05-2026) `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione** di un preventivo vendita: copia testata, righe attive, componenti BoM e indirizzi. L'attivazione della revisione non e' piu' gestita qui: il flag `is_revision_attiva` e' stato rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendite.vw_preventivi`.
-- [fn_create_contratto](funzioni/fn_create_contratto.md)
+- [fn_create_contratto](funzioni/fn_create_contratto.md) — (latest review 08-07-2026)
 - [fn_create_fatturazione_lotto](funzioni/fn_create_fatturazione_lotto.md) — (latest review 27-01-2026) La funzione **`vendite.fn_create_fatturazione_lotto()`** crea un lotto di fatturazione con parametri coerenti (competenza, utility, tipo documento, BA) e inizializza lo stato documento a **DRAFT**.
 - [fn_ddt_riga_componenti_init](funzioni/fn_ddt_riga_componenti_init.md)
 - [fn_ddt_riga_componenti_preview](funzioni/fn_ddt_riga_componenti_preview.md)
@@ -106,7 +106,7 @@
 - [fn_espandi_listino_versione](funzioni/fn_espandi_listino_versione.md)
 - [fn_fail_lotto_task_run](funzioni/fn_fail_lotto_task_run.md) — Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.
 - [fn_genera_fondi_fattura_source](funzioni/fn_genera_fondi_fattura_source.md) — (latest review 12-02-2026)   La funzione **`vendite.fn_genera_fondi_fattura_source()`** genera record in `fatture_fondi_fattura_source` per fatture con `minimo = true`, e mantiene allineata la source in base al saldo documento.
-- [fn_genera_pratica_da_preventivo](funzioni/fn_genera_pratica_da_preventivo.md)
+- [fn_genera_pratica_da_preventivo](funzioni/fn_genera_pratica_da_preventivo.md) — (latest review 08-07-2026)
 - [fn_generate_fatture_righe](funzioni/fn_generate_fatture_righe.md) — (latest review 07-02-2026)   (Deprecate-trasferite in django)   La funzione **`vendite.fn_generate_fatture_righe()`** genera le righe fattura partendo dalle `attivita_fatturabili` lockate sul lotto.
 - [fn_get_anno_registro](funzioni/fn_get_anno_registro.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_anno_registro`** calcola l’anno di riferimento per la numerazione dei registri con `reset_policy = ANNUALE`.
 - [fn_get_arrotondamento_scope](funzioni/fn_get_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_arrotondamento_scope()`** restituisce il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione (BA, utility, tipo documento, emittente, valuta). Se l'ambito non esiste, ritorna `0`.
@@ -153,7 +153,7 @@
 - [fn_preventivo_riga_componenti_init](funzioni/fn_preventivo_riga_componenti_init.md)
 - [fn_preventivo_riga_componenti_preview](funzioni/fn_preventivo_riga_componenti_preview.md)
 - [fn_push_offerta_a_contratto](funzioni/fn_push_offerta_a_contratto.md) — (rev6 2026-06-08 — guard **mutua esclusività** offerta→contratto/ordine; rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
-- [fn_push_preventivo_a_ordine](funzioni/fn_push_preventivo_a_ordine.md)
+- [fn_push_preventivo_a_ordine](funzioni/fn_push_preventivo_a_ordine.md) — (latest review 08-07-2026)
 - [fn_reset_fondi_fattura](funzioni/fn_reset_fondi_fattura.md) — La funzione **`vendite.fn_reset_fondi_fattura()`** ripristina i fondi fattura applicati ad una **fattura figlia**:
 - [fn_reset_lotto_draft](funzioni/fn_reset_lotto_draft.md) — (latest review 09-02-2026)   La funzione **`vendite.fn_reset_lotto_draft()`** effettua il **rollback tecnico** di un lotto **MASSIVO** in stato **DRAFT**, eliminando i documenti generati dal draft e ripristinando le righe di `attivita_fatturabili`.
 - [fn_reset_lotto_fattura_draft](funzioni/fn_reset_lotto_fattura_draft.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_reset_lotto_fattura_draft()`** effettua il reset tecnico di **una singola fattura** appartenente a un lotto **MASSIVO** in stato **DRAFT**, senza annullare il lotto.

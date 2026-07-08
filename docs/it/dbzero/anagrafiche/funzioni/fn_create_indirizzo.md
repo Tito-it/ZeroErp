@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_create_indirizzo.md" %}
 # ⚙️ Funzione `fn_create_indirizzo`
 
 ```sql

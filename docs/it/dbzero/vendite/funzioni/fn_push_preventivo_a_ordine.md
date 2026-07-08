@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_push_preventivo_a_ordine.md" %}
 # ⚙️ Funzione `fn_push_preventivo_a_ordine`
 
 ```sql
