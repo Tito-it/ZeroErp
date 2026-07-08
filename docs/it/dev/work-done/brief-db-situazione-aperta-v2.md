@@ -1,7 +1,7 @@
 # Brief DB — Situazione aperta v2: serbatoio pre-commessa (viste ridotte agli aperti-non-chiusi)
 
 > **Tipo**: brief DB (spec per il team DB, ramo `dev/db-tid`) · **Data**: 2026-07-08 · **Owner**: Tid
-> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
+> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md)
 > §6-ter (decisioni DL-14..18, 2026-07-08). **Contesto**: la Situazione aperta v1
 > (`20260707-03..06`, PR #938) è mergiata e validata in-app; alla validazione Tid ne ha
 > ridefinito la semantica. Questo brief modifica **solo le 2 viste** `vw_dash_aperto_*`.
@@ -158,9 +158,11 @@ transitati. Casi asseriti:
 - [x] **Applicazione DB** (owner/Tid, 2026-07-08): `-03`→`-04` applicate; pgTAP
       `test-vw-dash-aperto-v1.sql` **verde**.
 - [x] **Non-regressione** (2026-07-08): suite `vw_dash_*` **verde** (union/backlog non toccate).
-- [ ] **Rigen doc auto-gen** dbzero (Tid) sulle 2 viste.
-- [ ] **Chiusura**: spostare questo brief in `work-done`; sbloccare il gate BE/FE
-      (`brief-be-fe-situazione-aperta-v2.md`, `feedback_be_fe_attende_prerequisiti_db`).
+- [x] **Rigen doc auto-gen** dbzero (2026-07-08, commit `42cc530bb`): `views/vw_dash_aperto_{documenti,riepilogo}.md` rigenerate a colonne v2.
+- [x] **Chiusura** (2026-07-08): DB pushato (changeset `20260708-03/04`, commit
+      `42cc530bb`), brief spostato in `work-done`; gate BE/FE sbloccato
+      (`brief-be-fe-situazione-aperta-v2.md` è già in `work-done`). Residuo non
+      bloccante: rigen doc auto-gen dbzero (Tid).
 
 ---
 

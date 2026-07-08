@@ -36,6 +36,12 @@ const props = defineProps({
   fractionText: { type: String, default: null },
   // Diametro del donut / altezza della frazione, in px.
   size: { type: Number, default: 132 },
+  // Rende `centerText` come didascalia SOTTO il donut invece che sovrapposto al
+  // centro. Serve per i totali lunghi (euro/conteggi di DonutFasi): un numero
+  // che sborda dal buco finirebbe sull'anello, illeggibile (testo scuro su
+  // colore fase, es. APERTO grigio). DonutTransito lascia default (% corta,
+  // sta nel buco → centro classico).
+  centerBelow: { type: Boolean, default: false },
 })
 
 const ui = useUiStore()
