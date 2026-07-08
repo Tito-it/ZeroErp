@@ -10,7 +10,7 @@
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 >
 > WIP:
-> [Analisi e piano di fix — gestione transazioni backend](/dev/work-in-progress/analisi-fix-transazioni) (Classe A)
+> [Analisi e piano di fix — gestione transazioni backend](/dev/work-done/analisi-fix-transazioni) (Classe A)
 
 ### 🎯 Scopo Principale
 

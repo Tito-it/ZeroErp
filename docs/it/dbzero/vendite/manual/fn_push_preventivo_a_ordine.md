@@ -12,7 +12,7 @@
 > [vendite.fn_preventivo_ha_residuo_commessa](/dbzero/vendite/funzioni/fn_preventivo_ha_residuo_commessa)
 >
 > WIP:
-> [Analisi e piano di fix — gestione transazioni backend](/dev/work-in-progress/analisi-fix-transazioni) (Classe A, finding #10)
+> [Analisi e piano di fix — gestione transazioni backend](/dev/work-done/analisi-fix-transazioni) (Classe A, finding #10)
 > [Roll-out multi-dominio GUIDA](/dev/work-in-progress/brief-design-guida-rollout-multidominio) (decisione D-B, `flusso_id`)
 
 ### 🎯 Scopo Principale

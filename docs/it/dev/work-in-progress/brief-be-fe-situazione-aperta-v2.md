@@ -121,7 +121,9 @@ Segmenti = le fasi con `n_documenti > 0` dell'area; valore = `valore_totale` per
 - Suite `apps.vendite.tests` + `apps.core.tests` verde; build FE ok; `kill -HUP` gunicorn
   ([[project_backend_gunicorn_reload]]).
 - Validazione in-app Tid: donut per fase leggibile, filtro "oltre N giorni" sulla sola lista,
-  contratti ATTIVO presenti in IN_CORSO, un'offerta superata / un accettato-smistato **assenti**.
+  contratti ATTIVO presenti in IN_CORSO, un preventivo EVASO-con-riga-residua (chiuso-non-
+  transitato) / un accettato-smistato (transitato-non-chiuso) **assenti** — vedi correzione
+  §2 del brief DB v2 (l'"offerta superata" è NEGATIVO=abortita, esclusa a monte).
 
 ---
 

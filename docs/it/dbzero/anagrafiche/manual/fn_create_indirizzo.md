@@ -11,7 +11,7 @@
 > [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/funzioni/fn_get_or_create_indirizzo_dettaglio) (figlia)
 >
 > WIP:
-> [Analisi e piano di fix — gestione transazioni backend](/dev/work-in-progress/analisi-fix-transazioni) (Classe D, finding #13)
+> [Analisi e piano di fix — gestione transazioni backend](/dev/work-done/analisi-fix-transazioni) (Classe D, finding #13)
 
 ### 🎯 Scopo Principale
 

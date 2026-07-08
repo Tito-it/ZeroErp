@@ -534,7 +534,7 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 
 * **Pratiche**: [api_pratiche_list.md](/backend/pratiche/manual/api_pratiche_list) | [api_pratiche_generate.md](/backend/pratiche/manual/api_pratiche_generate) | [api_pratiche_note.md](/backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati.md](/backend/pratiche/manual/api_pratiche_allegati) | [api_flusso_assegnazione.md](/backend/pratiche/manual/api_flusso_assegnazione) | [api_operatori_reparto.md](/backend/pratiche/manual/api_operatori_reparto) | [api_prendi_in_carico.md](/backend/pratiche/manual/api_prendi_in_carico) | [api_coda_lavoro.md](/backend/pratiche/manual/api_coda_lavoro)
 * **Amm. Software**: [api_amm_software.md](../backend/amm-software/manual/api_amm_software.md)
-* **Anagrafiche**: [api_soggetti.md](../backend/anagrafiche/manual/api_soggetti.md) | [api_indirizzi.md](../backend/anagrafiche/manual/api_indirizzi.md) | [api_geo_config.md](../backend/anagrafiche/manual/api_geo_config.md) | [api_fornitori.md](../backend/anagrafiche/manual/api_fornitori.md)
+* **Anagrafiche**: [api_soggetti.md](../backend/anagrafiche/manual/api_soggetti.md) | [api_clienti.md](../backend/anagrafiche/manual/api_clienti.md) | [api_indirizzi.md](../backend/anagrafiche/manual/api_indirizzi.md) | [api_geo_config.md](../backend/anagrafiche/manual/api_geo_config.md) | [api_fornitori.md](../backend/anagrafiche/manual/api_fornitori.md)
 * **Auth**: [api_multi_veste_token.md](/backend/core/manual/api_multi_veste_token) | [auth_views_audit.md](/backend/core/manual/auth_views_audit) | [api_user_profile.md](/backend/core/manual/api_user_profile) | [api_token_cambio_password.md](/backend/core/manual/api_token_cambio_password) | [api_password_reset.md](/backend/core/manual/api_password_reset) | [api_invito_operatore.md](/backend/core/manual/api_invito_operatore) | [api_invito_portale_shop.md](/backend/core/manual/api_invito_portale_shop) | [api_logout.md](/backend/core/manual/api_logout)
 * **Email**: [api_email.md](/backend/core/manual/api_email)
 * **Parametri**: [api_parameter_settings.md](../backend/core/manual/api_parameter_settings.md)
@@ -722,9 +722,17 @@ side-effect **deve** avvolgerle in un solo `transaction.atomic()` **oppure** del
 funzione madre DB. Domini con natura mista (es. pratiche): le operazioni pure-dato → madre DB
 (`pratiche.fn_crea_pratica`); il motore-flussi-con-handler → `transaction.atomic()`.
 
+**Enforcement CI.** Un test AST — `apps/core/tests/test_transaction_atomicity_guardrail.py` (gira
+senza DB) — fallisce se un metodo compone 2+ scritture non tutte in un `transaction.atomic()`.
+Copertura **v1 = livello repository** (`cursor.execute` di scrittura, con `ALLOWLIST` motivata per i
+casi deliberati come il protocollo idempotency); il livello service (2+ chiamate a metodi-write del
+repo) è un **follow-up v2** (richiede euristiche receiver-aware per non generare falsi positivi). La
+regola sopra vale comunque per intero: il check automatico ne presidia oggi il sottoinsieme più
+verificabile, non sostituisce la disciplina in review.
+
 > Faccia DB della stessa regola (come scrivere la funzione madre): [linee-guida-sql §5b](/linee-guida-sql).
 > Caso di studio, criterio esteso e catalogo dei finding:
-> [analisi-fix-transazioni](/dev/work-in-progress/analisi-fix-transazioni).
+> [analisi-fix-transazioni](/dev/work-done/analisi-fix-transazioni).
 
 ### Tassonomia errori
 

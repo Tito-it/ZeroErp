@@ -531,6 +531,14 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   d'aggancio del ramo servizi: l'handler `post_smistamento` è **merce-only**, quindi
   la commessa-servizi non passa da lì. No-op per i push standalone (preventivo non
   in pratica).
+- **Semantica transazionale (fix analisi-fix-transazioni #5, 2026-07-08)**: push +
+  transizione EVASO + aggancio commessa-servizi alla pratica avvengono in un **unico**
+  `transaction.atomic()`. Un fallimento dell'**aggancio-pratica** rolla l'**intero
+  push** (commesse + ponte emittibilità): non resta mai una commessa-servizi orfana
+  senza link pratica (prima l'aggancio era una scrittura separata post-push). Il push
+  è idempotente/ri-eseguibile (advisory lock + dedup `segment_key`) → retry sicuro. La
+  sola **transizione EVASO** resta best-effort, isolata su un **savepoint dedicato** (un
+  suo fallimento logga e prosegue, senza rollbackare push+aggancio).
 - Output `200`: report orchestrator `{ stato, push_log_id, durata_ms, handlers,
   commesse_ids, righe_pushable, fatturazione_immediata }`
 - Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400)
