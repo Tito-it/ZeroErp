@@ -9,12 +9,14 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 07-07-2026)
-Vista dettaglio della **Situazione aperta** (Fase 3 due lenti, trasformazione
-della dashboard 5-card): lo **stock dei documenti vivi** delle 4 aree documento
-(PREVENTIVI, ORDINI, OFFERTE, CONTRATTI), **senza asse temporale** — è la vista
-di consistenza della pipeline, 🟢 fisiologici **inclusi** (a differenza del
-Backlog che tiene solo il non-verde).
+(latest review 08-07-2026 — v2 serbatoio pre-commessa, DL-14..18)
+Vista dettaglio della **Situazione aperta v2 — serbatoio pre-commessa**: lo
+**stock dei documenti aperti e non conclusi** delle 4 aree documento
+(PREVENTIVI, ORDINI, OFFERTE, CONTRATTI), **senza asse temporale**. Risponde a:
+*"quali documenti aperti, se conclusi, andrebbero in commessa/fatturazione ma
+non ci sono ancora arrivati, e in che fase sono?"*. Il concetto **"transitato"**
+è **eliminato** (DL-14): in una vista senza asse temporale totalizzava *dalla
+notte dei tempi* documenti già passati avanti, informazione non azionabile.
 
 ---
 
@@ -22,21 +24,26 @@ Backlog che tiene solo il non-verde).
 
 | Aspetto | Regola |
 |---------|--------|
-| **Perimetro** | union `WHERE area <> 'COMMESSE' AND NOT is_abortito`. Le COMMESSE sono coperte dalla Lente 1 Competenza. Gli abortiti (esito NEGATIVO) si escludono **qui**: i resolver preventivi/ordini/offerte non li escludono alla fonte, li marcano soltanto (`is_abortito`) |
-| **Tutte le fasi (DL-13)** | Anche `CHIUSO` è nello stock (cresce nel tempo): la vista è consultazione neutra, **il FE decide quali card mostrare** |
-| `is_aperto` | `is_transitato IS DISTINCT FROM true` — include il **giudizio sospeso** dei contratti (`is_transitato NULL`, DL-12) |
-| Valori | Da resolver: € per PREVENTIVI/ORDINI, `NULL` per OFFERTE/CONTRATTI (aree a conteggi) |
+| **Perimetro (DL-15 — 4 predicati)** | `area <> 'COMMESSE' AND NOT is_abortito AND is_transitato IS DISTINCT FROM true AND fase <> 'CHIUSO'`. Le COMMESSE sono coperte dalla Lente 1; gli abortiti (esito NEGATIVO) sono marcati dai resolver ed esclusi qui |
+| **I due filtri servono entrambi** | `is_transitato IS DISTINCT FROM true` toglie i **transitati-non-chiusi** (es. preventivo ACCETTATO già completamente smistato, resta IN_CORSO); `fase <> 'CHIUSO'` toglie i **chiusi-non-transitati** (es. preventivo EVASO con riga residua: POSITIVO → non abortito, non transitato). ⚠️ Un'offerta SUPERATA **non** è un chiuso-non-transitato: SUPERATA ha esito NEGATIVO → è già abortita |
+| **Contratti (DL-18)** | Giudizio sospeso (`is_transitato NULL` → aperto): compaiono DRAFT + ATTIVO; CESSATO escono con `fase<>CHIUSO`, ANNULLATO sono abortiti. Un ATTIVO figura come IN_CORSO (astrazione fase normalizzata, accettata) |
+| Valori | Da resolver: € per PREVENTIVI/ORDINI, `NULL` per OFFERTE/CONTRATTI (aree a conteggi, DL-11) |
 | Scope | `security_invoker = on` → RLS emittente delle 4 aree sul chiamante |
+
+Colonne **rimosse** rispetto alla v1 (DL-14): `is_transitato`, `is_aperto`,
+`valore_transitato`, `unita_transitate` (`is_transitato` resta usato solo nel
+WHERE, dalla union). `motivo_fermo` **tenuto** come hint informativo di riga.
 
 ---
 
 ### Esempio d'uso
 
 ```sql
--- Drill-down di una card: i preventivi aperti in fase IN_ATTESA.
+-- Drill-down di una card: i preventivi aperti in fase IN_ATTESA. Il filtro
+-- "aperti da oltre N giorni" è BE-side su data_riferimento (solo sulla lista).
 SELECT codice, cliente_display, stato_codice, motivo_fermo, data_riferimento
 FROM vendite.vw_dash_aperto_documenti
-WHERE area = 'PREVENTIVI' AND fase = 'IN_ATTESA' AND is_aperto;
+WHERE area = 'PREVENTIVI' AND fase = 'IN_ATTESA';
 ```
 
 ---
@@ -44,9 +51,10 @@ WHERE area = 'PREVENTIVI' AND fase = 'IN_ATTESA' AND is_aperto;
 ### Note operative
 
 * È il **perimetro unico** di card (`vw_dash_aperto_riepilogo`) e drill-down:
-  il BE non deve replicare filtri.
-* Sostituisce (con la gemella riepilogo) l'impianto mensile della 5-card:
-  `vw_dash_fatturazione_mensile` è stata **dismessa** (`20260707-06`).
+  il BE non deve replicare filtri (aggiunge solo il ritardo su `data_riferimento`).
+* Ricreata con **DROP + CREATE** (`20260708-03`): rimuovere colonne da una vista
+  non è possibile con `CREATE OR REPLACE`; il riepilogo dipendente è droppato
+  prima (ordine di dipendenza, no CASCADE) e ricreato dal `20260708-04`.
 * `fase` è sempre valorizzata sulle 4 aree (join `config.stati_doc_*`).
 * Test: `db/pgtap/vendite/test-vw-dash-aperto-v1.sql`.
 
