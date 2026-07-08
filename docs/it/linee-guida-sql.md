@@ -203,7 +203,7 @@ delle scritture precedenti sopravviva). Il pgTAP gira come owner: attenzione ai 
 scope che nel percorso applicativo reale (`zeroerp_app`, INVOKER) potrebbero mancare.
 
 > Caso di studio completo, catalogo dei finding e criterio esteso (madre DB *vs* `transaction.atomic()`
-> *vs* outbox): [analisi-fix-transazioni](/dev/work-in-progress/analisi-fix-transazioni).
+> *vs* outbox): [analisi-fix-transazioni](/dev/work-done/analisi-fix-transazioni).
 
 ---
 

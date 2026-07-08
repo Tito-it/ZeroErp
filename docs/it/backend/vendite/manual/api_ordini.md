@@ -262,6 +262,14 @@ merce: completandolo (nessun altro flusso aperto, obbligatori fatti) la pratica
 `pratiche_service.completa_step_pratica` (idempotente, no-op fuori-pratica); gated
 su push `COMPLETATO` (PARZIALE/ERRORE non completano lo step). `user` JWT propagato.
 
+**Semantica transazionale (fix analisi-fix-transazioni #4, 2026-07-08)**: push +
+transizione CONFERMATO→EVASO + chiusura step `INVIO_COMMESSA` avvengono in un **unico**
+`transaction.atomic()`. Un fallimento della **chiusura-step pratica** rolla l'**intero
+push** (commesse + ponte emittibilità): la pratica non resta mai non-riconciliata con
+commesse committate (prima la chiusura-step era una scrittura separata post-push). Il
+push è idempotente/ri-eseguibile → retry sicuro. La sola **transizione EVASO** resta
+best-effort su un **savepoint dedicato** (fallimento loggato, non rollbacka push+step).
+
 La response espone `commesse_ids` (commesse toccate dal push), oltre a
 `stato`/`push_log_id`/`handlers`/`righe_pushable`/`fatturazione_trigger`.
 

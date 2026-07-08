@@ -291,7 +291,7 @@ figlie in sequenza → si fondono in una funzione madre.
 | ~~5~~ → B | *(riclassificato Classe B — orchestratore Python; il `flusso_id` D-B sul link commessa-servizi si gestisce nel wrap BE)* | — |
 | 10 🟦 | `vendite.fn_push_preventivo_a_ordine(...)` estesa a 5 param — **DB ESEGUITO** (migr. `20260708-01` applicata, pgTAP 9/9; BE pendente) | +sezione EVASO atomica (bi-ramo) + `p_flusso_id` sul link COLLEGATO (D-B) |
 
-> ⚠️ **Coordinamento con [brief-design-guida-rollout-multidominio](brief-design-guida-rollout-multidominio.md)
+> ⚠️ **Coordinamento con [brief-design-guida-rollout-multidominio](../work-in-progress/brief-design-guida-rollout-multidominio.md)
 > (decisione D-B / G-est.2).** I finding **#4, #5, #10** generano un documento a valle e creano il link
 > `pratiche_sorgenti` con `ruolo_link='COLLEGATO'`. Oggi quell'INSERT **non valorizza `flusso_id`**
 > (`fn_push_preventivo_a_ordine` inserisce `(pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)` e

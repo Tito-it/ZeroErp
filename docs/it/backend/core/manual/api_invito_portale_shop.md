@@ -47,7 +47,16 @@ area `anagrafiche` ≥ `LETTURA`.
 ```
 
 `reinvio=true`: invalida i token portale precedenti per quell'auth_user
-prima di generare il nuovo invito.
+e genera il nuovo invito.
+
+**Semantica transazionale del reinvio (fix analisi-fix-transazioni #17, 2026-07-08).**
+L'invalidazione dei token precedenti e la ri-emissione identita/token avvengono nella
+**stessa** transazione (`transaction.atomic()`): se la ri-emissione fallisce, anche
+l'invalidazione rolla → l'utente **conserva i token vecchi** e non resta mai senza
+alcun token valido (prima l'invalidazione era una scrittura separata committata prima).
+L'invio email resta **fuori** dalla transazione, best-effort. Vale su **tutte e tre le
+vesti** — CLIENTE_PORTALE, FORNITORE_PORTALE e **SHOP_CUSTOMER** (simmetria ripristinata:
+lo shop aveva ancora l'invalidazione fuori-atomic).
 
 **Response**:
 

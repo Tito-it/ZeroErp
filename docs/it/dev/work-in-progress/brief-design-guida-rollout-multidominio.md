@@ -165,7 +165,7 @@ che vale per tutti i domini presenti e futuri.
   innocuo sugli altri. ⚠️ **Non è un changeset a sé**: l'INSERT del link COLLEGATO vive dentro le funzioni
   di push (`fn_push_preventivo_a_ordine` oggi inserisce `(pratica_id, sorgente_tipo_id, sorgente_uid,
   ruolo_link)` **senza** `flusso_id`) — le stesse funzioni che
-  [analisi-fix-transazioni](analisi-fix-transazioni.md) rifonde in **funzioni madre** (finding #4/#5/#10).
+  [analisi-fix-transazioni](../work-done/analisi-fix-transazioni.md) rifonde in **funzioni madre** (finding #4/#5/#10).
   G-est.2 va **incorporato in quelle madri**, non scritto in parallelo (vedi §9-R1).
 
 Entrambe **additive** e non regressive sul pilota PREVENTIVI (che continua a bindare su `esito` NULL con
@@ -249,7 +249,7 @@ sotto riguardano il *framing* e il *coordinamento con altre attività*, non erro
 
 - **R1 — Coordinamento con la fix-transazioni (stesso branch, stesse funzioni).** G-est.2 (`flusso_id` sul
   COLLEGATO) va **dentro le funzioni madre** dei finding **#4/#5/#10** di
-  [analisi-fix-transazioni](analisi-fix-transazioni.md) — che *già* riscrivono l'INSERT su
+  [analisi-fix-transazioni](../work-done/analisi-fix-transazioni.md) — che *già* riscrivono l'INSERT su
   `pratiche_sorgenti`. Progettare **da subito** la firma della madre per ricevere/risolvere il `flusso_id`
   (oggi `fn_push_preventivo_a_ordine` riceve `p_pratica_id` ma non il flusso): aggiungerlo dopo = seconda
   modifica di firma → `DROP FUNCTION` (regola `RETURNS TABLE`). **#3 escluso** (link ROOT: `flusso_id` già
