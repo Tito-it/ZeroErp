@@ -1371,26 +1371,37 @@ class PreventiviRepository(ComponentiRepositoryMixin):
             cursor.execute(sql, [preventivo_id])
             return row_to_dict(cursor)
 
-    # Scopo: Inserisce link preventivo → pratica in pratiche_sorgenti.
-    def link_pratica(
+    # Scopo: Generazione atomica della pratica da preventivo via funzione madre DB.
+    #        Obiettivo: fondere in UNA sola statement (vendite.fn_genera_pratica_da_preventivo)
+    #        la creazione della pratica (figlia condivisa pratiche.fn_crea_pratica) e
+    #        l'INSERT del link ROOT su pratiche_sorgenti.
+    #        Perimetro: o entrambe o rollback totale — niente piu' pratica orfana
+    #        senza link se l'INSERT sorgente fallisce (fix analisi-fix-transazioni
+    #        Classe A, finding #3; prima crea_pratica (@atomic a se') + link_pratica
+    #        erano due unita' autocommit separate).
+    #        La fn risolve internamente il contesto anagrafico (emittente PK +
+    #        soggetto/ruolo + istanza dal BA del preventivo) e il tipo sorgente
+    #        PREVENTIVO; e' SECURITY INVOKER (RLS/scope emittente invariati, §2-bis).
+    #        Ritorna l'id della pratica creata.
+    def genera_pratica_da_preventivo(
         self,
         *,
-        pratica_id: int,
-        sorgente_tipo_id: int,
-        sorgente_uid: str,
-        ruolo_link: str = "ROOT",
-    ) -> dict[str, Any]:
-        sql = """
-            INSERT INTO pratiche.pratiche_sorgenti (
-                pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link
-            ) VALUES (%s, %s, %s, %s)
-            RETURNING id
-        """
+        preventivo_id: int,
+        tipo_prestazione_id: int,
+        priorita_id: int | None = None,
+        descrizione: str | None = None,
+    ) -> int:
         with connection.cursor() as cursor:
-            cursor.execute(sql, [pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link])
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
+            cursor.execute(
+                """
+                SELECT pratica_id
+                  FROM vendite.fn_genera_pratica_da_preventivo(%s, %s, %s, %s)
+                """,
+                [preventivo_id, tipo_prestazione_id, priorita_id, descrizione],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            return int(row[0])
 
     # Scopo: Restituisce pratiche collegate al preventivo via vista DB.
     # La vista filtra gia' per sorgente_tipo codice = 'PREVENTIVO'.
@@ -1422,14 +1433,3 @@ class PreventiviRepository(ComponentiRepositoryMixin):
             row = cursor.fetchone()
             return row[0] if row else None
 
-    # Scopo: Restituisce l'id del tipo sorgente PREVENTIVO da config.sorgenti.
-    def get_sorgente_tipo_preventivo_id(self) -> int | None:
-        sql = """
-            SELECT id FROM config.sorgenti
-            WHERE codice_interno = 'PREVENTIVO' AND attivo = true
-            LIMIT 1
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql)
-            row = cursor.fetchone()
-            return row[0] if row else None
