@@ -4,9 +4,16 @@
 > Spiega *cosa* è rotto e *perché*, con una proposta di correzione; il *come*
 > definitivo (forma SQL, changeset, numerazione) è scelta del team DB.
 >
-> **Data**: 2026-07-08 · **Stato**: 🟥 DA FARE — bug logico del modello,
-> riproducibile su dbdev (pratica `PRA-0000802`). Nessun dato di produzione:
-> i dati di test sono rigenerabili, non serve backfill/sblocco.
+> **Data**: 2026-07-08 · **Stato**: 🟢 **FATTO** (DB, 2026-07-08) — changeset
+> `20260708-05-update-fn-reconcile-sorgente-tie-break-origine` applicato; pgTAP
+> `db/pgtap/pratiche/test-reconcile-tie-break-flusso-origine.sql` **verde** (`plan(16)`,
+> criteri §5.1-6) + regressione `test-guida-avanza-esito-proiettato.sql` verde.
+> **Decisione DB**: `v_link_usabile` = *"il flusso linkato attende esso stesso il tipo"*
+> (**attende-only**, non "candidato-non-terminale": il non-terminale romperebbe
+> l'idempotenza D-B11 — un re-reconcile dopo il completamento del milestone linkato
+> avanzerebbe per errore un fratello in attesa). Guardia d'ambiguità allineata
+> (`NOT v_link_usabile AND count>1`) + messaggio `E_RECONCILE_AMBIGUO` aggiornato.
+> Nessun dato di produzione: i dati di test sono rigenerabili, non serve backfill/sblocco.
 >
 > **Origine del difetto**: interazione tra
 > [brief-db-aggancio-documento-flusso.md](../work-done/brief-db-aggancio-documento-flusso.md)

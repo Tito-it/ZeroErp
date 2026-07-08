@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# FIX derivazione is_attiva — allineamento impl<->spec (gestione-preventivi §4.3).
+#
+# PROBLEMA: vw_preventivi.is_attiva = "non esiste rev superiore non-abortita".
+# La regola guarda SOLO verso l'alto, mai lo stato PROPRIO. Quando la revisione
+# abortita (ANNULLATO) e' in CIMA alla catena (nessuna rev superiore), essa
+# risulta is_attiva=TRUE pur essendo annullata -> is_attiva NON e' piu' unico:
+# per "rev0 EMESSO + rev1 ANNULLATO" sia rev0 sia rev1 risultano attive.
+# La guida §4.3 documenta l'opposto ("rev N+1 ANNULLATO -> attiva? no") e il
+# commento del create originale (20260515-03) affermava "esattamente una rev
+# attiva per numero": garanzia falsa nel caso abortita-in-cima. Emerso da
+# test-vw-dash-preventivi-revisione-attiva.sql scenario B.
+#
+# FIX: aggiungere il termine sul proprio stato. Una rev e' attiva se
+#   (il suo stato NON e' abortito) AND (nessuna rev superiore non-abortita).
+# Ripristina l'unicita' (una sola rev attiva per numero) e l'allineamento alla
+# guida. L'unico stato con is_abortito=TRUE e' ANNULLATO: RIFIUTATO/SCADUTO
+# (verdetti, is_abortito=FALSE) restano invariati come rev attiva del numero.
+#
+# CONSEGUENZA DI DOMINIO: un preventivo ANNULLATO singola-rev, oggi
+# is_attiva=TRUE (visibile in lista "solo attive"), diventa is_attiva=FALSE
+# (visibile solo con "mostra storico"). Comportamento piu' corretto:
+# annullato = non attivo.
+#
+# EFFETTO SUL DASHBOARD: nessuna regressione. Scenario A (rev attiva RIFIUTATO)
+# invariato; scenario abortita-in-cima ora mostra la sola rev viva nel resolver
+# WHERE is_attiva (20260708-06). Casi reali del brief (38/61/65) invariati:
+# hanno una rev viva in cima che gia' oscurava le precedenti.
+#
+# FOLLOW-UP BE (dev/backend-tid, FUORI da questo changelog): il filtro lista in
+# apps/vendite/db/preventivi_repository.py replica la stessa subquery NOT EXISTS
+# (brief-db-preventivi-revisione-attiva-derivata §5). Va allineato allo stesso
+# self-term, o meglio consumare direttamente is_attiva da vw_preventivi per non
+# duplicare la logica.
+#
+# security_invoker=on esplicitato (era gia' attivo via 20260601-26). Corpo dal
+# create 20260515-03 (stile p.*), unica differenza il self-term. Nuovo file, mai
+# modificare i changelog gia' pushati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260708-07-update-vw-preventivi-is-attiva-self-abortito-mctit.yaml
+
+  - changeSet:
+      id: 20260708-07-update-vw-preventivi-is-attiva-self-abortito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Fix is_attiva: una rev e' attiva se il suo stato NON e' abortito E non
+        esiste rev superiore non-abortita. Ripristina l'unicita' (una sola rev
+        attiva per numero) e l'allineamento a gestione-preventivi §4.3. Un
+        annullato singola-rev diventa non-attivo (visibile solo in storico).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: preventivi
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'config'
+                   AND table_name   = 'stati_doc_preventivi'
+                   AND column_name  = 'is_abortito'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi
+              WITH (security_invoker = on) AS
+              SELECT
+                  p.*,
+                  -- is_attiva: la rev e' quella viva del numero se
+                  --   (a) il suo stato NON e' abortito, e
+                  --   (b) non esiste una rev superiore non-abortita.
+                  -- Il termine (a) rende is_attiva unico anche quando l'abortita
+                  -- (ANNULLATO) e' in cima: senza (a) l'annullato-in-cima si
+                  -- auto-dichiarava attivo (guardando solo verso l'alto).
+                  (
+                      NOT EXISTS (
+                          SELECT 1
+                            FROM config.stati_doc_preventivi s0
+                           WHERE s0.id = p.stato_doc_preventivo_id
+                             AND s0.is_abortito IS TRUE
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1
+                            FROM vendite.preventivi p2
+                            JOIN config.stati_doc_preventivi s2
+                              ON s2.id = p2.stato_doc_preventivo_id
+                           WHERE p2.numero = p.numero
+                             AND p2.rev    > p.rev
+                             AND s2.is_abortito IS FALSE
+                      )
+                  ) AS is_attiva
+                FROM vendite.preventivi p;
+
+              COMMENT ON VIEW vendite.vw_preventivi IS
+                  'Wrapper di vendite.preventivi con is_attiva derivata: TRUE se lo '
+                  'stato proprio non e'' abortito E non esiste rev superiore '
+                  'non-abortita per lo stesso numero. Esattamente una rev attiva per '
+                  'numero (unicita'' ripristinata dal self-term, rev 2026-07-08). '
+                  'Sostituisce is_revision_attiva (flag persistito). Il BE usa questa '
+                  'vista per list/detail preventivi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristina la derivazione senza self-term (definizione viva
+              -- pre-fix, con security_invoker=on).
+              CREATE OR REPLACE VIEW vendite.vw_preventivi
+              WITH (security_invoker = on) AS
+              SELECT
+                  p.*,
+                  NOT EXISTS (
+                      SELECT 1
+                        FROM vendite.preventivi p2
+                        JOIN config.stati_doc_preventivi s2
+                          ON s2.id = p2.stato_doc_preventivo_id
+                       WHERE p2.numero = p.numero
+                         AND p2.rev    > p.rev
+                         AND s2.is_abortito IS FALSE
+                  ) AS is_attiva
+                FROM vendite.preventivi p;

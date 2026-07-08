@@ -269,6 +269,30 @@ che il frontend usa per avvisare l'operatore che sta guardando una versione
 sostituita. La lista mostra di default solo le offerte attive; un toggle permette
 di vedere anche lo storico.
 
+### 4.3 Differenza col modello preventivi
+
+Offerte e preventivi gestiscono le revisioni in **due modi diversi**. Vale la
+pena conoscerli perché il comportamento visibile cambia.
+
+| Aspetto | **Offerte** | **Preventivi** |
+|---|---|---|
+| Cosa succede alla versione precedente quando nasce la revisione | passa **subito a SUPERATA** (stato chiuso e definitivo, imposto in automatico) | **resta EMESSA/viva**; il sistema calcola "qual è la versione valida" senza chiudere la precedente |
+| Se abbandono/annullo la revisione appena iniziata | la precedente **resta chiusa** (SUPERATA): non torna indietro. Per riprovare si fa una nuova revisione | la precedente **torna automaticamente la versione valida**: si può accettarla o revisionarla di nuovo |
+| Come nasce il concetto di "versione valida" | dallo **stato** (SUPERATA/ANNULLATA = non valida) | da un **calcolo** (`is_attiva`), non da uno stato dedicato |
+
+Il motivo della differenza: un'offerta è un **documento a sé** per ogni revisione
+(OFC-… diversi in catena), quindi chiudere la precedente non crea problemi —
+se serve si emette una nuova offerta. Un preventivo invece **è lo stesso
+documento** (stesso numero, più revisioni), e il flusso previsto è *"comincio una
+revisione, ci ripenso, la versione emessa di prima resta valida"*: per questo la
+precedente **non** viene chiusa. Introdurre uno stato "SUPERATO" sui preventivi
+romperebbe proprio questo ritorno. Dettaglio nella
+[guida preventivi §4.5](gestione-preventivi.md).
+
+Sui cruscotti entrambi i modelli sono corretti: le offerte escludono la SUPERATA
+(è un esito negativo), i preventivi escludono le revisioni non valide tramite
+`is_attiva`.
+
 ---
 
 ## 5. Articoli compositi e BoM

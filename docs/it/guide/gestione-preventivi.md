@@ -287,8 +287,13 @@ generato per la rev precedente (il nuovo rev mantiene lo stesso `numero`).
 ZeroERP non mantiene un flag persistito "questa è la rev attiva": il predicato
 è **calcolato dalla view `vw_preventivi`** come:
 
-> "è la rev viva del numero" = "non esiste una rev superiore non-abortita per
-> lo stesso numero"
+> "è la rev viva del numero" = "il suo stato **non è abortito** **e** non esiste
+> una rev superiore non-abortita per lo stesso numero"
+
+Il termine sul proprio stato (aggiunto 2026-07-08) garantisce che una revisione
+**annullata in cima** alla catena non si dichiari attiva "guardando solo verso
+l'alto": senza di esso `is_attiva` non sarebbe univoco (due rev attive per lo
+stesso numero) nel caso "rev0 EMESSO + rev1 ANNULLATO".
 
 Conseguenza pratica nei casi limite:
 
@@ -309,6 +314,33 @@ La lista preventivi mostra di default solo le rev attive (una per numero).
 Esiste un toggle "Mostra storico revisioni" che espone tutte le righe,
 incluse quelle annullate o superseded. Il filtro lato API è il parametro
 `solo_attiva` (default `true`).
+
+### 4.5 Differenza col modello offerte
+
+Preventivi e offerte gestiscono le revisioni in **due modi diversi**, per una
+ragione precisa.
+
+| Aspetto | **Preventivi** | **Offerte** |
+|---|---|---|
+| Cosa succede alla versione precedente quando nasce la revisione | **resta EMESSA/viva**; il sistema calcola "qual è la versione valida" senza chiudere la precedente | passa **subito a SUPERATA** (stato chiuso e definitivo, imposto in automatico) |
+| Se abbandono/annullo la revisione appena iniziata | la precedente **torna automaticamente la versione valida**: si può accettarla o revisionarla di nuovo | la precedente **resta chiusa** (SUPERATA): non torna indietro. Per riprovare si fa una nuova revisione |
+| Come nasce il concetto di "versione valida" | da un **calcolo** (`is_attiva`), non da uno stato dedicato | dallo **stato** (SUPERATA/ANNULLATA = non valida) |
+
+Il preventivo **è lo stesso documento** (stesso numero, più revisioni) e il flusso
+previsto è *"comincio una revisione, ci ripenso, la versione emessa di prima resta
+valida"*. Per questo la precedente **non** viene mai chiusa: se annullo la bozza
+di revisione, la versione emessa torna da sola quella valida (vedi la tabella dei
+casi limite in §4.3). **Non** esiste uno stato "SUPERATO" sui preventivi proprio
+perché chiuderebbe la precedente e romperebbe questo ritorno.
+
+L'offerta invece è un **documento a sé** per ogni revisione (OFC-… diversi in
+catena): chiudere la precedente non crea problemi, perché se serve si emette una
+nuova offerta. Dettaglio nella
+[guida offerte §4.3](gestione-offerte-commerciali.md).
+
+Sui cruscotti entrambi i modelli sono corretti: i preventivi escludono le
+revisioni non valide tramite `is_attiva`, le offerte escludono la SUPERATA
+(è un esito negativo).
 
 ---
 
