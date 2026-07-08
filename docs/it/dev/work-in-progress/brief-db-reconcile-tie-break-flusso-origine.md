@@ -4,9 +4,10 @@
 > Spiega *cosa* è rotto e *perché*, con una proposta di correzione; il *come*
 > definitivo (forma SQL, changeset, numerazione) è scelta del team DB.
 >
-> **Data**: 2026-07-08 · **Stato**: 🟥 DA FARE — bug logico del modello,
-> riproducibile su dbdev (pratica `PRA-0000802`). Nessun dato di produzione:
-> i dati di test sono rigenerabili, non serve backfill/sblocco.
+> **Data**: 2026-07-08 · **Stato**: 🟩 APPLICATO su dbdev (2026-07-08) — **non
+> ancora mergiato** nel repo (nessun changeset YAML in `db/changelog`): il team DB
+> ha applicato la correzione direttamente sul DB. Vedi §9. Nessun dato di
+> produzione: i dati di test sono rigenerabili, non serve backfill/sblocco.
 >
 > **Origine del difetto**: interazione tra
 > [brief-db-aggancio-documento-flusso.md](../work-done/brief-db-aggancio-documento-flusso.md)
@@ -39,7 +40,7 @@ Preventivo ROOT collegato = `PRV0000181` (id 500), uid
 `019f3e1a-1e97-7a8a-a138-cdec78b07f80`, tipo sorgente PREVENTIVO = **2**.
 
 | Milestone (`pratiche.flussi`) | template | stato | esito | `attende_sorgente_tipo_id` |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | 1195 | `RICHIESTA_CLIENTE` | COMPLETATO | POSITIVO | — |
 | 1196 | `PREVENTIVAZIONE` | COMPLETATO | POSITIVO | NULL |
 | **1197** | **`APPROVAZIONE_CLIENTE`** | **DA_ESEGUIRE** | — | **2 (PREVENTIVO)** |
@@ -197,5 +198,29 @@ separatamente:
   `flusso.stato = IN_CORSO`, senza guardare lo stato **del documento**
   (`doc_stato_codice_interno`). Col fix DB il milestone diventa terminale e il picker
   sparisce; un guard aggiuntivo su documento già a verdetto sarebbe cintura+bretelle.
-</content>
-</invoke>
+
+## 9. Stato esecuzione (2026-07-08)
+
+**Applicato dal team DB su dbdev** (correzione a `pratiche.fn_reconcile_sorgente`),
+**non ancora mergiato** nel repo — nessun changeset YAML in `db/changelog`. Da
+formalizzare in un changeset `runOnChange` con numerazione successiva prima del
+merge, più il pgTAP di §6.
+
+Decisioni/rifiniture del team DB:
+
+- Tie-break e guardia di ambiguità allineati come da §4 (il restringimento su
+  `flusso_id` si applica solo quando il flusso linkato è un candidato-attesa).
+- **Messaggio `E_RECONCILE_AMBIGUO` aggiornato**: da «senza flusso_id esplicito» a
+  «senza flusso_id usabile come tie-break (link d'origine o assente)» — coerente col
+  fatto che ora la guardia scatta anche con `flusso_id` valorizzato ma d'origine, per
+  cui «esplicito» era fuorviante.
+
+**Verifica (2026-07-08)**: eseguito `pratiche.fn_reconcile_sorgente(2, uid)` sul
+preventivo di `PRA-0000802` (già ACCETTATO). Con la funzione corretta il candidato
+`APPROVAZIONE_CLIENTE` (1197) **viene ora selezionato** e la funzione procede
+all'avanzamento (raggiunge l'`UPDATE pratiche.flussi ... IN_CORSO`) — dove pre-fix
+usciva a 0 candidati senza mai entrare nel loop. Prova eseguita col ruolo batch
+BYPASSRLS (sola lettura RLS): l'`UPDATE` finale è bloccato dal GRANT — il ruolo
+`zeroerp_batch_fatturazione` non scrive su `pratiche.flussi` (atteso, estraneo al
+fix). Conferma end-to-end completa: nuovo giro in-app (nuova pratica preventivo →
+accettazione → `APPROVAZIONE_CLIENTE` che auto-completa, niente loop `E_DATABASE`).
