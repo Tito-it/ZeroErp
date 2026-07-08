@@ -16,7 +16,8 @@ Indice test eseguiti:
 6) DashboardApertoDocumentiApiTests.test_documenti_filtri_assenti_default
 7) DashboardApertoDocumentiApiTests.test_documenti_ritardo_giorni
 8) DashboardApertoDocumentiApiTests.test_documenti_paginazione_parametri
-9) DashboardApertoDocumentiApiTests.test_documenti_scope_db_side_no_auth_user
+9) DashboardApertoDocumentiApiTests.test_documenti_ordinamento_parametri
+10) DashboardApertoDocumentiApiTests.test_documenti_scope_db_side_no_auth_user
 """
 
 from unittest.mock import Mock, patch
@@ -171,6 +172,18 @@ class DashboardApertoDocumentiApiTests(JwtMockedApiTest):
         kwargs = mocked_fn.call_args.kwargs
         self.assertEqual(kwargs["page"], 3)
         self.assertEqual(kwargs["page_size"], 10)
+
+    # Scopo: order_by/order_dir (ordinamento colonne, convenzione standard)
+    #        inoltrati al service; la whitelist/validazione e' definizione unica
+    #        del service.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_dashboard_aperto.fn_dash_aperto_documenti")
+    def test_documenti_ordinamento_parametri(self, mocked_fn, _mock_auth):
+        mocked_fn.return_value = _DOCUMENTI_RESPONSE
+        self.client.get(f"{self._URL}?order_by=cliente_display&order_dir=asc")
+        kwargs = mocked_fn.call_args.kwargs
+        self.assertEqual(kwargs["order_by"], "cliente_display")
+        self.assertEqual(kwargs["order_dir"], "asc")
 
     # Scopo: Lo scope emittente e' interamente DB-side (RLS invoker): la view
     #        NON passa auth_user_id.

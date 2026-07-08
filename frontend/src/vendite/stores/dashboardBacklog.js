@@ -20,6 +20,12 @@ export const useDashboardBacklogStore = defineStore('vendite-dashboard-backlog',
   const classeSelezionata = ref(null)
   const areaSelezionata = ref(null)
 
+  // Ordinamento lista (convenzione order_by/order_dir come le liste standard):
+  // default "fermo da" DESC = i piu' anziani prima. Lista lazy (paginata
+  // server-side) -> ordinamento server-side, corretto su TUTTE le pagine.
+  const orderBy = ref('anzianita_giorni')
+  const orderDir = ref('desc')
+
   // Contatori di testata: array classi (3 sempre presenti) dal BE. Fetch
   // guardata anti-race via BB useDashRiepilogo.
   const classi = ref([])
@@ -33,6 +39,8 @@ export const useDashboardBacklogStore = defineStore('vendite-dashboard-backlog',
     listDashboardBacklogDocumenti({
       classe: classeSelezionata.value,
       area: areaSelezionata.value,
+      order_by: orderBy.value,
+      order_dir: orderDir.value,
       ...paging,
     })
   )
@@ -40,6 +48,15 @@ export const useDashboardBacklogStore = defineStore('vendite-dashboard-backlog',
   // Scopo: carica una pagina della lista coi filtri correnti.
   async function fetchDocumenti() {
     await documentiFetch.fetch()
+  }
+
+  // Scopo: applica un evento @sort del DataTable allo stato ordinamento
+  //        (sortOrder 1 = asc, -1/altro = desc). Sort rimosso (sortField null)
+  //        -> torna al default "fermo da" DESC. Solo stato: la ricarica
+  //        (pagina 1) resta al caller, come per i cambi filtro.
+  function applyDocumentiSort(event) {
+    orderBy.value = event.sortField || 'anzianita_giorni'
+    orderDir.value = event.sortField && event.sortOrder === 1 ? 'asc' : 'desc'
   }
 
   // Scopo: azzera la lista (cambio filtri) e invalida le fetch in volo.
@@ -53,6 +70,8 @@ export const useDashboardBacklogStore = defineStore('vendite-dashboard-backlog',
     riepilogo.invalidate()
     classeSelezionata.value = null
     areaSelezionata.value = null
+    orderBy.value = 'anzianita_giorni'
+    orderDir.value = 'desc'
     classi.value = []
     documentiFetch.resetAll()
   }
@@ -60,6 +79,8 @@ export const useDashboardBacklogStore = defineStore('vendite-dashboard-backlog',
   return {
     classeSelezionata,
     areaSelezionata,
+    orderBy,
+    orderDir,
     classi,
     documenti: documentiFetch.items,
     documentiCount: documentiFetch.count,
@@ -68,6 +89,7 @@ export const useDashboardBacklogStore = defineStore('vendite-dashboard-backlog',
     documentiLoading: documentiFetch.loading,
     documentiLoaded: documentiFetch.loaded,
     applyDocumentiPage: documentiFetch.applyPageEvent,
+    applyDocumentiSort,
     fetchRiepilogo: riepilogo.fetchRiepilogo,
     fetchDocumenti,
     resetDocumenti,

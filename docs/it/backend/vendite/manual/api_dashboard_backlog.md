@@ -46,6 +46,14 @@ Nessun parametro.
   escluso a monte dalla vista) dà lista vuota, mai 400.
 - `area` (opzionale): `PREVENTIVI | ORDINI | OFFERTE | CONTRATTI | COMMESSE`
   (case-insensitive; fuori whitelist → `E_VENDITE_VALIDATION`; assente = tutte).
+- `order_by` / `order_dir` (opzionali): **ordinamento colonne server-side**
+  (convenzione delle liste standard). `order_by` in whitelist —
+  `anzianita_giorni` (default, "fermo da") | `area` | `codice` |
+  `cliente_display` | `valore_fermo` | `stato_codice`; `order_dir` = `asc` |
+  `desc` (default `desc` su `anzianita_giorni`: i più vecchi prima). Server-side
+  perché la lista è paginata: ordine corretto su **tutte** le pagine, non solo
+  su quella visibile. Colonna fuori whitelist o direzione ≠ asc/desc → 400
+  (`E_VENDITE_VALIDATION`). Tiebreak stabile `(area, documento_id)`.
 - `page` / `page_size` (opzionali): paginazione standard (default 1/50, max 200).
 
 ## Output
@@ -86,10 +94,13 @@ riga: `area`, `competenza_mese` (proxy, può essere NULL), chiavi documento
 `config.motivi_fermo`, decodifica i18n lato FE), `classe`, `azione` (hint
 operativo dalla lookup), `data_riferimento` ("fermo da…", v1 proxy data
 documento), `anzianita_giorni`, `stato_codice_interno`, `stato_codice`, `fase`.
-**Ordinamento BE-side** (le viste non garantiscono ORDER):
+**Ordinamento BE-side** (le viste non garantiscono ORDER): default
 `data_riferimento ASC NULLS LAST` (colonna base, ordine identico ad
 anzianità DESC ma più amichevole per il planner), poi `valore_fermo DESC
-NULLS LAST, area, documento_id`. `anzianita_giorni` è clampata a `>= 0`
+NULLS LAST, area, documento_id`; con `order_by`/`order_dir` (vedi Input)
+l'ORDER BY diventa `<colonna whitelist> <asc|desc> NULLS LAST` + tiebreak
+`area, documento_id` — colonna e direzione **whitelistate** (mai input grezzo).
+`anzianita_giorni` è clampata a `>= 0`
 (`GREATEST`): una `data_riferimento` futura non produce "fermo da -N gg".
 Nel riepilogo `anzianita_max_giorni` è `null` quando nessuna riga della
 classe ha una data nota (età sconosciuta ≠ 0 giorni).

@@ -22,6 +22,9 @@ Indice test eseguiti:
 11) DashCompetenzaAttivitaServiceTests.test_attivita_competenza_normalizzata_al_primo
 12) DashCompetenzaAttivitaServiceTests.test_attivita_solo_ritardo_passthrough
 13) DashCompetenzaAttivitaServiceTests.test_attivita_page_invalida
+13a) DashCompetenzaAttivitaServiceTests.test_attivita_ordinamento_inoltrato
+13b) DashCompetenzaAttivitaServiceTests.test_attivita_order_by_non_valido
+13c) DashCompetenzaAttivitaServiceTests.test_attivita_order_dir_non_valido
 14) DashCompetenzaErroriServiceTests.test_errori_ok_envelope_paginato
 15) DashCompetenzaErroriServiceTests.test_errori_competenza_opzionale_none
 16) DashCompetenzaErroriServiceTests.test_errori_competenza_normalizzata_al_primo
@@ -307,6 +310,41 @@ class DashCompetenzaAttivitaServiceTests(TestCase):
     def test_attivita_page_invalida(self):
         with self.assertRaises(ServiceError) as ctx:
             fn_dash_competenza_attivita(competenza_mese=date(2026, 5, 1), page=0)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: order_by/order_dir (whitelist) inoltrati al repository per
+    #        l'ordinamento server-side su tutte le pagine.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_attivita",
+        return_value=([], 0),
+    )
+    def test_attivita_ordinamento_inoltrato(self, mock_repo):
+        fn_dash_competenza_attivita(
+            competenza_mese=date(2026, 5, 1),
+            order_by="data_attivita",
+            order_dir="asc",
+        )
+        kwargs = mock_repo.call_args.kwargs
+        self.assertEqual(kwargs["order_by"], "data_attivita")
+        self.assertEqual(kwargs["order_dir"], "asc")
+
+    # Scopo: order_by fuori whitelist -> E_VENDITE_VALIDATION (fail-fast 400).
+    def test_attivita_order_by_non_valido(self):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_competenza_attivita(
+                competenza_mese=date(2026, 5, 1), order_by="quantita; DROP"
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: order_dir diverso da asc/desc -> E_VENDITE_VALIDATION.
+    def test_attivita_order_dir_non_valido(self):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_competenza_attivita(
+                competenza_mese=date(2026, 5, 1),
+                order_by="valore",
+                order_dir="up",
+            )
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
 

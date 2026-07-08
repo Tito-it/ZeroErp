@@ -14,7 +14,7 @@ opzionale **"aperti da oltre N giorni"** sul solo drill-down.
 Fase 3 BE del brief
 [brief-design-fatturazione-due-lenti](../../../dev/work-in-progress/brief-design-fatturazione-due-lenti.md)
 **§6-ter (DL-14..18)** (substrato DB v2 in
-[brief-db-situazione-aperta-v2](../../../dev/work-in-progress/brief-db-situazione-aperta-v2.md),
+[brief-db-situazione-aperta-v2](../../../dev/work-done/brief-db-situazione-aperta-v2.md),
 changeset `20260708-03/04`, PR #944): due endpoint GET **sottili** sopra le
 proiezioni read-only `vendite.vw_dash_aperto_riepilogo` (celle `area × fase`)
 e `vendite.vw_dash_aperto_documenti` (union dei resolver, 4 aree documento).
@@ -59,6 +59,15 @@ Nessun parametro.
   fotografia completa. **Strict**: non numerico → 400 (`qp_int_optional`);
   intero `<= 0` → 400 (`E_VENDITE_VALIDATION`, niente normalizzazione
   silenziosa).
+- `order_by` / `order_dir` (opzionali): **ordinamento colonne server-side**
+  (convenzione delle liste standard, es. clienti/soggetti). `order_by` in
+  whitelist — `anzianita_giorni` (default, "aperto da") | `codice` |
+  `cliente_display` | `valore_totale`; `order_dir` = `asc` | `desc` (default
+  `desc` su `anzianita_giorni`: i più "in essere da" prima). Server-side perché
+  la lista è paginata: l'ordine è corretto su **tutte** le pagine, non solo su
+  quella visibile. Colonna fuori whitelist o direzione ≠ asc/desc → 400
+  (`E_VENDITE_VALIDATION`, whitelist definita una volta nel service). Tiebreak
+  stabile `(area, documento_id)` per paginazione deterministica.
 - `page` / `page_size` (opzionali): paginazione standard (default 1/50, max 200).
 
 ## Output
@@ -104,8 +113,11 @@ gemello Backlog — alimenta la colonna "aperto da N gg" e allinea la lettura al
 filtro `ritardo_giorni`), `motivo_fermo` (può essere NULL: qui è un hint, non il
 criterio di popolazione), `data_riferimento` ("in essere da": data documento,
 `valido_dal` per i contratti). **Ordinamento BE-side** (le viste non
-garantiscono ORDER): `data_riferimento ASC NULLS LAST`, poi `valore_totale DESC
-NULLS LAST, area, documento_id`.
+garantiscono ORDER): default per `data_riferimento ASC NULLS LAST`, poi
+`valore_totale DESC NULLS LAST, area, documento_id`; con `order_by`/`order_dir`
+(vedi Input) l'ORDER BY diventa `<colonna whitelist> <asc|desc> NULLS LAST` +
+tiebreak `area, documento_id`. Colonna e direzione **whitelistate** (mai input
+grezzo nell'ORDER BY).
 
 ## Regole
 

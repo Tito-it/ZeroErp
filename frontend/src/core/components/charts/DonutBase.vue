@@ -36,7 +36,29 @@ const props = defineProps({
   fractionText: { type: String, default: null },
   // Diametro del donut / altezza della frazione, in px.
   size: { type: Number, default: 132 },
+  // Rende `centerText` come didascalia SOTTO il donut invece che sovrapposto al
+  // centro. Serve per i totali lunghi (euro/conteggi di DonutFasi): un numero
+  // che sborda dal buco finirebbe sull'anello, illeggibile (testo scuro su
+  // colore fase, es. APERTO grigio). DonutTransito lascia default (% corta,
+  // sta nel buco → centro classico).
+  centerBelow: { type: Boolean, default: false },
+  // Legenda interattiva: ogni riga diventa cliccabile ed emette `segment-click`
+  // con l'indice del segmento (drill-down per fase in DonutFasi). DonutTransito
+  // lascia default → legenda statica.
+  interactiveLegend: { type: Boolean, default: false },
 })
+
+const emit = defineEmits(['segment-click'])
+
+// Scopo: click (o Invio) su una riga di legenda, solo se interattiva: ferma la
+//        propagazione — evita di attivare un contenitore cliccabile a monte,
+//        es. la card-area della Situazione aperta — ed emette l'indice del
+//        segmento, che la facciata mappa sul proprio dominio (la fase).
+function onLegendClick(i, ev) {
+  if (!props.interactiveLegend) return
+  ev?.stopPropagation()
+  emit('segment-click', i)
+}
 
 const ui = useUiStore()
 
@@ -160,8 +182,9 @@ const chartOptions = {
         :height="size"
       />
       <!-- Centro: lettura primaria non-colore (— se vuoto, altrimenti il testo
-           deciso dalla facciata). -->
-      <div class="app-donut-center">
+           deciso dalla facciata). Nascosto in modalità centerBelow: il totale
+           va sotto il donut per non sbordare sull'anello. -->
+      <div v-if="!centerBelow" class="app-donut-center">
         <span v-if="isEmpty" class="app-donut-center-value app-donut-center-value--empty">—</span>
         <span v-else-if="centerText !== null" class="app-donut-center-value">{{ centerText }}</span>
       </div>
@@ -176,9 +199,26 @@ const chartOptions = {
       {{ fractionText ?? '—' }}
     </div>
 
-    <!-- Mini-legenda: dot colore + etichetta + valore per ogni segmento. -->
+    <!-- Totale SOTTO il donut (centerBelow): lettura primaria non-colore che non
+         può sovrapporsi all'anello → leggibile su qualsiasi colore fase. -->
+    <div v-if="mode === 'donut' && centerBelow" class="app-donut-total">
+      <span v-if="isEmpty" class="app-donut-total-value app-donut-total-value--empty">—</span>
+      <span v-else-if="centerText !== null" class="app-donut-total-value">{{ centerText }}</span>
+    </div>
+
+    <!-- Mini-legenda: dot colore + etichetta + valore per ogni segmento.
+         Se interattiva, ogni riga e' un pulsante (drill-down per fase). -->
     <div class="app-donut-legend">
-      <div v-for="row in legendRows" :key="row.key" class="app-donut-legend-row">
+      <div
+        v-for="(row, i) in legendRows"
+        :key="row.key"
+        class="app-donut-legend-row"
+        :class="{ 'app-donut-legend-row--clickable': interactiveLegend }"
+        :role="interactiveLegend ? 'button' : undefined"
+        :tabindex="interactiveLegend ? 0 : undefined"
+        @click="onLegendClick(i, $event)"
+        @keydown.enter="onLegendClick(i, $event)"
+      >
         <span class="app-donut-dot" :style="{ background: row.color }" />
         <span class="app-donut-label">{{ row.label }}</span>
         <span class="app-donut-value">{{ row.value }}</span>
