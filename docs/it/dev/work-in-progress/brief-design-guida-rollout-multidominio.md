@@ -116,10 +116,17 @@ proiezione per-flusso (MOSTRA) coerente anche sui passi a valle.
   click-verdetto; `CESSATO` è terminale data-driven. Il modello «avanza-su-**esito**» ci calza a metà:
   bisogna **decidere quale transizione è il milestone** e se il suo avanzamento è un *esito* (POSITIVO su
   attivazione?) o una *transizione temporale*. Verosimilmente **Forma S**, ma con semantica da definire.
-- **ORDINE** — due grane: (a) **niente verdetto-cliente** — un ordine nasce *già* da un'accettazione a
+- **ORDINE** — tre grane: (a) **niente verdetto-cliente** — un ordine nasce *già* da un'accettazione a
   monte; i suoi "esiti" utili sono **fulfillment** (`EVASO`/`FATTURATO` = POSITIVO terminale, `ANNULLATO` =
   NEGATIVO); (b) oggi è **COLLEGATO senza `flusso_id`** nella catena PREVENTIVI → **Forma C** con il nodo
-  del §4 da sciogliere. Da affrontare **dopo** la decisione sull'àncora.
+  del §4 da sciogliere. Da affrontare **dopo** la decisione sull'àncora; (c) ⚠️ **il milestone ORDINE
+  avanza già oggi in modo imperativo** — `ordini_service._completa_flusso_ordine_pratica`
+  ([ordini_service.py:262](../../../../backend/apps/vendite/services/ordini_service.py)) completa
+  `CONFERMA_ORDINE`/`INVIO_COMMESSA` (POSITIVO) all'azione standalone. Quindi per ORDINE la reconcile
+  dichiarativa **non riempie un vuoto: converte imperativo→dichiarativo** (il valore aggiunto è coprire i
+  versi mancanti — `ANNULLATO`=NEGATIVO — e i cambi-stato standalone non passati dall'azione-pratica). Serve
+  un **cutover esplicito** (vedi §9-R2): il guard di mutua esclusione D-B10 **non** intercetta la spinta
+  imperativa (è codice BE, non un `handler_eventi COMPLETATO`), perciò non protegge dal doppio scatto.
 
 ## 6. Decisioni adottate (owner, 2026-07-07)
 
@@ -155,12 +162,19 @@ che vale per tutti i domini presenti e futuri.
   descrittore, non solo `esito_richiesto`). Retro-compatibile col binding esito del pilota.
 - **G-est.2 (da D-B)** — valorizzare `pratiche_sorgenti.flusso_id` sui link **COLLEGATO** al momento della
   generazione a valle (lo step generatore conosce il proprio `flusso_id`). Serve a ORDINE ma è additivo e
-  innocuo sugli altri.
+  innocuo sugli altri. ⚠️ **Non è un changeset a sé**: l'INSERT del link COLLEGATO vive dentro le funzioni
+  di push (`fn_push_preventivo_a_ordine` oggi inserisce `(pratica_id, sorgente_tipo_id, sorgente_uid,
+  ruolo_link)` **senza** `flusso_id`) — le stesse funzioni che
+  [analisi-fix-transazioni](analisi-fix-transazioni.md) rifonde in **funzioni madre** (finding #4/#5/#10).
+  G-est.2 va **incorporato in quelle madri**, non scritto in parallelo (vedi §9-R1).
 
 Entrambe **additive** e non regressive sul pilota PREVENTIVI (che continua a bindare su `esito` NULL con
 àncora ROOT).
 
-**Passo N — per ogni dominio** (ordine D-D: OFFERTA → CONTRATTO → ORDINE), una volta pronta la base:
+**Passo N — per ogni dominio** (ordine D-D: OFFERTA → CONTRATTO → ORDINE). ⚠️ **OFFERTA non dipende dal
+Passo 0** (Forma S, binding `esito` NULL come il pilota: non usa né G-est.1 né G-est.2) → può partire **in
+parallelo** alla base. Il Passo 0 è prerequisito solo per **CONTRATTO** (primo utente di avanza-su-fase) e
+**ORDINE** (avanza-su-fase + `flusso_id`). Per ogni dominio:
 
 1. **Design/seed pratica** (Forma S): `tipi_prestazione` + `template_flussi` con lo step-milestone. → è
    lavoro di **definizione workflow** (cantiere edizioni versionate / editor): può nascere da seed
@@ -189,6 +203,70 @@ Entrambe **additive** e non regressive sul pilota PREVENTIVI (che continua a bin
 - **Non** è questo brief a definire i *contenuti* dei workflow di offerta/ordine/contratto (quali step,
   SLA, prerequisiti): quello è il cantiere edizioni versionate. Qui si definisce **dove** e **come** GUIDA
   si aggancia una volta che la pratica esiste.
+
+---
+
+## 9. Analisi critica e correzioni operative (verifica codice, 2026-07-07)
+
+Verifica delle affermazioni del brief contro il **codice vivo** (doc auto-gen dbzero, funzioni, trigger,
+seed) e contro i documenti padre/pilota. Esito: la ricognizione §2 **regge in ogni cella**; le correzioni
+sotto riguardano il *framing* e il *coordinamento con altre attività*, non errori di merito.
+
+### Cosa è confermato ✓
+
+- **§2 accurata**: `config.sorgenti` id 2/14/6/4, `key_selector` PREV+OFF=`uid` / ORD+CON=`id`;
+  `vw_stato_sorgente` ha **4 rami reali**; normalizzazione D1 (`fase`/`esito`/`terminale`) presente su
+  **tutti e 4** i `stati_doc_*`; flag asimmetrici esatti (`is_abortito` solo PREV+CON, `is_bozza` solo CON).
+- **Nodo Forma C (§4) esatto**: `fn_reconcile_sorgente` usa `flusso_id` come filtro di restrizione
+  (`r_ps.flusso_id IS NULL OR f.id = r_ps.flusso_id`) e, con più candidati COLLEGATO senza `flusso_id`,
+  **logga `E_RECONCILE_AMBIGUO` e fa `CONTINUE` (skip)** — resiliente (il log fallito degrada a `WARNING`).
+- **«Nota di correzione al brief-padre» giustificata**: il livello di lettura DB è davvero generico e
+  completo sui 4 domini (refuta il «MOSTRA solo su PREVENTIVI» del padre).
+
+### Correzioni di framing
+
+- **F1 — «solo definizione+wiring» sottostima il Passo 0.** Verificato:
+  `template_flussi_avanzamento_proiezione` ha **solo** `esito_richiesto`, **nessuna** colonna
+  `fase`/`terminale`; `fn_reconcile` matcha solo su verdetto. Quindi **D-C (avanza-su-fase) è una modifica
+  di schema+logica al motore condiviso** — CONTRATTO e ORDINE la richiedono *prima* di poter essere
+  cablati. Il §1/§6 lo ammette a valle («avanza-su-descrittore»), ma va detto nell'incipit: **due domini su
+  tre non sono «solo cablaggio»**.
+- **F2 — D-B inverte la proposta del pilota (tracciabilità).** Il pilota
+  [brief-design-guida-avanza-esito-proiettato](../work-done/brief-design-guida-avanza-esito-proiettato.md)
+  §6(b) proponeva **l'opposto** («NON forzare `flusso_id` sui COLLEGATO; usare la mappa step→sorgente»).
+  D-B sceglie il forcing — legittimo e **compatibile col motore attuale** (che già legge `flusso_id` come
+  restrizione, quindi *nessuna* modifica al motore per D-B) — ma è un ribaltamento da annotare.
+- **F3 — CONTRATTO ha un predecessore aperto.** D-C generalizza il *motore*, ma **non decide quale
+  transizione contratto è il milestone** (attivazione? cessazione?) né se è esito o temporale (§5 lo
+  ammette). Lo stato «DECISO» vale per le 4 decisioni trasversali, **non** per la prontezza di CONTRATTO: il
+  suo brief-DB ha una decisione-di-dominio a monte.
+- **F4 — MOSTRA display fuori scope, da verificare.** Il livello di *lettura DB* è generico, ma
+  l'esposizione BE nei payload e il consumo FE del descrittore per offerta/ordine/contratto potrebbero
+  essere ancora preventivi-only. GUIDA senza MOSTRA-display = l'operatore «guida» un documento di cui non
+  vede lo stato. Verificare per dominio.
+
+### Correzioni operative (da recepire prima dei brief-DB per dominio)
+
+- **R1 — Coordinamento con la fix-transazioni (stesso branch, stesse funzioni).** G-est.2 (`flusso_id` sul
+  COLLEGATO) va **dentro le funzioni madre** dei finding **#4/#5/#10** di
+  [analisi-fix-transazioni](analisi-fix-transazioni.md) — che *già* riscrivono l'INSERT su
+  `pratiche_sorgenti`. Progettare **da subito** la firma della madre per ricevere/risolvere il `flusso_id`
+  (oggi `fn_push_preventivo_a_ordine` riceve `p_pratica_id` ma non il flusso): aggiungerlo dopo = seconda
+  modifica di firma → `DROP FUNCTION` (regola `RETURNS TABLE`). **#3 escluso** (link ROOT: `flusso_id` già
+  gestito). Invarianti già allineati (`SECURITY INVOKER` + GRANT-a-`zeroerp_app` + documento-sovrano).
+- **R2 — ORDINE: cutover esplicito imperativo→dichiarativo.** Aggiungere alla checklist Passo N per ORDINE
+  un passo «**neutralizza `_completa_flusso_ordine_pratica`**» (mirror del pilota che ha disattivato
+  l'handler `accetta_preventivo`). Senza, binding G2 e spinta imperativa scattano entrambi su 9013/9014
+  (idempotente, ma ridondante) e il guard D-B10 **non** intercetta la spinta BE. Nel pilota preventivi le
+  due vie coesistono solo perché colpiscono step *diversi*; per ORDINE colpiscono lo **stesso** step.
+- **R3 — Sequenza: OFFERTA parte subito.** Recepito in §7: OFFERTA non dipende dal Passo 0 → in parallelo;
+  il Passo 0 gate solo CONTRATTO/ORDINE.
+
+### Note minori
+
+- **`9009→9014` vs `9011`**: non è contraddizione — `9009→9014` è la *campata* della catena, `9011` è il
+  milestone APPROVAZIONE_CLIENTE (binding del pilota), `9013/9014` sono gli step che generano i COLLEGATO.
+- **`is_verdetto`**: non esiste in nessuno `stati_doc_*` (il brief non lo cita — corretto).
 
 ---
 

@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260707-14-create-fn-genera-pratica-da-preventivo-mctit.yaml
+
+    - changeSet:
+          id: 20260707-14-create-fn-genera-pratica-da-preventivo
+          author: mctit
+
+          # ------------------------------------------------------------
+          # Scopo
+          # ------------------------------------------------------------
+          # Funzione madre atomica: genera una pratica a partire da un preventivo
+          # e la collega come ROOT in pratiche.pratiche_sorgenti.
+          #
+          # Contesto (piano analisi-fix-transazioni, Classe A, finding #3):
+          #   Il service Python vendite.preventivi_service.genera_pratica
+          #   eseguiva DUE scritture separate senza transazione unica:
+          #     1) crea_pratica()   -> INSERT pratiche.pratiche (committa a se')
+          #     2) link_pratica()   -> INSERT pratiche.pratiche_sorgenti
+          #   In autocommit, se il link (2) falliva (FK/unique/guard), la pratica
+          #   (1) restava committata: pratica ORFANA mai collegata al preventivo.
+          #   Questa funzione fonde risoluzione contesto + creazione pratica +
+          #   link in un'unica statement: o tutto o rollback totale.
+          #
+          # Composizione (vedi risposta "come scalare l'atomicita' su N sorgenti"):
+          #   - la creazione pratica e' delegata alla figlia CONDIVISA
+          #     pratiche.fn_crea_pratica (riusata anche da ordini #4/#5 e futuri);
+          #   - questa madre fa solo la parte SPECIFICA del dominio preventivo:
+          #     risolve emittente/soggetto/uid dal preventivo e inserisce il link.
+          #
+          # Parametri:
+          #   p_preventivo_id       (preventivi.id%TYPE) obbligatorio.
+          #   p_tipo_prestazione_id (tipo prestazione della pratica) obbligatorio.
+          #   p_priorita_id         opzionale (default NORMALE risolto dalla figlia).
+          #   p_descrizione         opzionale.
+          #
+          # Ritorno (RETURNS TABLE, 1 riga): pratica_id.
+          #
+          # Errori:
+          #   E_PREV_NOT_FOUND    preventivo inesistente.
+          #   E_PREV_VALIDAZIONE  preventivo senza billing_account (contesto non
+          #                       derivabile).
+          #   E_CONFIG_MANCANTE   tipo sorgente PREVENTIVO non in config.sorgenti.
+          #
+          # SCOPO / boundary:
+          #   Il check di dominio "preventivo in stato ACCETTATO" NON e' replicato
+          #   qui: resta un pre-check applicativo (read-only) del service, non
+          #   attiene all'atomicita' (la causa del finding). La madre risolve solo
+          #   le proprie precondizioni per operare.
+          #
+          # NOTA sorgente attivo: la madre risolve il tipo sorgente per
+          #   codice_interno SENZA filtrare `attivo` — l'attivita' e' imposta dal
+          #   trigger trg_pratiche_sorgenti_a10_sorgenti_require_attivo sul link
+          #   (unica autorita', niente logica duplicata).
+          #
+          # NOTE tecniche:
+          #   - Tipi ancorati con %TYPE. SECURITY INVOKER: RLS + scope come dal
+          #     Python (vincolo invariante §2-bis).
+          #   - Link ROOT con flusso_id NULL (la decisione D-B su flusso_id vale
+          #     per i link COLLEGATO di #4/#5/#10, non per il ROOT di #3 — vedi
+          #     brief-design-guida-rollout-multidominio).
+          #   - DROP prima del CREATE: CREATE OR REPLACE non cambia RETURNS TABLE.
+          # ------------------------------------------------------------
+
+          preConditions:
+              - onFail: HALT
+              - onError: HALT
+              - tableExists:
+                    schemaName: vendite
+                    tableName: preventivi
+              - tableExists:
+                    schemaName: pratiche
+                    tableName: pratiche_sorgenti
+
+          changes:
+              - sql:
+                    splitStatements: FALSE
+                    stripComments: false
+                    endDelimiter: ";"
+
+                    sql: |
+
+                        DROP FUNCTION IF EXISTS vendite.fn_genera_pratica_da_preventivo(
+                            vendite.preventivi.id%TYPE,
+                            pratiche.pratiche.tipo_prestazione_id%TYPE,
+                            pratiche.pratiche.priorita_id%TYPE,
+                            pratiche.pratiche.descrizione%TYPE
+                        );
+
+                        CREATE OR REPLACE FUNCTION vendite.fn_genera_pratica_da_preventivo(
+                            p_preventivo_id       vendite.preventivi.id%TYPE,
+                            p_tipo_prestazione_id pratiche.pratiche.tipo_prestazione_id%TYPE,
+                            p_priorita_id         pratiche.pratiche.priorita_id%TYPE DEFAULT NULL,
+                            p_descrizione         pratiche.pratiche.descrizione%TYPE DEFAULT NULL
+                        )
+                        RETURNS TABLE (
+                            pratica_id pratiche.pratiche.id%TYPE
+                        )
+                        LANGUAGE plpgsql
+                        SECURITY INVOKER
+                        AS
+                        $BODY$
+                        DECLARE
+                            v_uid            vendite.preventivi.uid%TYPE;
+                            v_billing_id     vendite.preventivi.billing_account_id%TYPE;
+                            v_istanza_id     vendite.preventivi.istanza_utility_id%TYPE;
+                            v_emittente_id   anagrafiche.emittenti_fiscali.id%TYPE;
+                            v_soggetto_id    anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+                            v_soggetto_ruolo anagrafiche.billing_account.soggetto_ruolo_id%TYPE;
+                            v_sorgente_tipo  config.sorgenti.id%TYPE;
+                            v_pratica_id     pratiche.pratiche.id%TYPE;
+                        BEGIN
+                            -- Contesto dal preventivo (esistenza + uid + BA + istanza).
+                            SELECT p.uid, p.billing_account_id, p.istanza_utility_id
+                              INTO v_uid, v_billing_id, v_istanza_id
+                              FROM vendite.preventivi p
+                             WHERE p.id = p_preventivo_id;
+                            IF NOT FOUND THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database', 'vendite.fn_genera_pratica_da_preventivo',
+                                    'E_PREV_NOT_FOUND',
+                                    jsonb_build_object('preventivo_id', p_preventivo_id),
+                                    NULL::uuid, VARIADIC ARRAY[p_preventivo_id::text]);
+                            END IF;
+
+                            IF v_billing_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database', 'vendite.fn_genera_pratica_da_preventivo',
+                                    'E_PREV_VALIDAZIONE',
+                                    jsonb_build_object('preventivo_id', p_preventivo_id),
+                                    NULL::uuid, VARIADIC ARRAY[p_preventivo_id::text]);
+                            END IF;
+
+                            -- Emittente (PK) + soggetto/ruolo dal billing account.
+                            v_emittente_id := anagrafiche.fn_get_emittente_fiscale_pk(v_billing_id);
+                            SELECT sr.soggetto_id, ba.soggetto_ruolo_id
+                              INTO v_soggetto_id, v_soggetto_ruolo
+                              FROM anagrafiche.billing_account ba
+                              JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                             WHERE ba.id = v_billing_id;
+
+                            -- Tipo sorgente PREVENTIVO (attivo imposto dal trigger sul link).
+                            SELECT s.id INTO v_sorgente_tipo
+                              FROM config.sorgenti s
+                             WHERE s.codice_interno = 'PREVENTIVO';
+                            IF NOT FOUND THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database', 'vendite.fn_genera_pratica_da_preventivo',
+                                    'E_CONFIG_MANCANTE',
+                                    jsonb_build_object('config', 'config.sorgenti.PREVENTIVO'),
+                                    NULL::uuid,
+                                    VARIADIC ARRAY['tipo sorgente PREVENTIVO (config.sorgenti)']);
+                            END IF;
+
+                            -- 1) Crea la pratica (figlia condivisa).
+                            v_pratica_id := pratiche.fn_crea_pratica(
+                                p_emittente_fiscale_id := v_emittente_id,
+                                p_tipo_prestazione_id  := p_tipo_prestazione_id,
+                                p_soggetto_id          := v_soggetto_id,
+                                p_soggetto_ruolo_id    := v_soggetto_ruolo,
+                                p_istanza_utility_id   := v_istanza_id,
+                                p_priorita_id          := p_priorita_id,
+                                p_descrizione          := p_descrizione
+                            );
+
+                            -- 2) Link ROOT preventivo -> pratica.
+                            INSERT INTO pratiche.pratiche_sorgenti (
+                                pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link
+                            ) VALUES (
+                                v_pratica_id, v_sorgente_tipo, v_uid::text, 'ROOT'
+                            );
+
+                            RETURN QUERY SELECT v_pratica_id;
+                        END;
+                        $BODY$;
+
+                        COMMENT ON FUNCTION vendite.fn_genera_pratica_da_preventivo(
+                            vendite.preventivi.id%TYPE,
+                            pratiche.pratiche.tipo_prestazione_id%TYPE,
+                            pratiche.pratiche.priorita_id%TYPE,
+                            pratiche.pratiche.descrizione%TYPE
+                        ) IS
+                        'Funzione madre atomica: crea la pratica (via figlia '
+                        'pratiche.fn_crea_pratica) e il link ROOT preventivo->pratica '
+                        'in un''unica statement (o tutto o rollback). SECURITY INVOKER. '
+                        'Ritorna pratica_id. Il check stato ACCETTATO resta pre-check '
+                        'del service. Piano: analisi-fix-transazioni Classe A #3.';
+
+          rollback:
+              - sql:
+                    sql: |
+                        DROP FUNCTION IF EXISTS vendite.fn_genera_pratica_da_preventivo(
+                            vendite.preventivi.id%TYPE,
+                            pratiche.pratiche.tipo_prestazione_id%TYPE,
+                            pratiche.pratiche.priorita_id%TYPE,
+                            pratiche.pratiche.descrizione%TYPE
+                        );

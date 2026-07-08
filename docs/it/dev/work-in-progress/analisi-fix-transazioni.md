@@ -1,9 +1,40 @@
 # Analisi e piano di fix — gestione transazioni backend
 
-> Stato: **analisi + piano** (nessun codice ancora scritto)
+> Stato: **in esecuzione** — Classe A avviata (#1 completato DB+BE)
 > Data: 2026-07-07
 > Ambito: `backend/apps/*` (service + repository + view) e `db/changelog` per le funzioni madre
 > Branch coinvolti: `dev/db-tid` (funzioni DB + pgTAP), `dev/backend-tid` (semplificazione service)
+>
+> **Avanzamento fix:**
+> - ✅ **#1 `update_cliente`** — FATTO (DB + BE). DB: `anagrafiche.fn_update_cliente`
+>   (`20_code/anagrafiche/20260707-11-create-fn-update-cliente-mctit.yaml`) + pgTAP
+>   `db/pgtap/anagrafiche/test-fn-update-cliente-v1.sql` (20/20 verdi, incl. test di atomicità).
+> - 🟦 **#2 `create_contratto`** — DB ESEGUITO (migrato + pgTAP 9/9 verdi; BE pendente). DB: `vendite.fn_create_contratto`
+>   (`20_code/vendite/20260707-12-create-fn-create-contratto-mctit.yaml`) + pgTAP
+>   `db/pgtap/vendite/test-fn-create-contratto-v1.sql` (9/9 verdi, incl. atomicità = niente
+>   contratto orfano). Nota: il numero viene da una **sequence** (`fn_generate_codice`), che non
+>   fa rollback → un fallimento lascia un gap di numerazione innocuo; il fix elimina l'orfano, non
+>   il gap (che c'era già).
+> - 🟦 **#10 `crea_ordine_da_preventivo`** — DB ESEGUITO (migrato + pgTAP 9/9 verdi; BE pendente).
+>   DB: estesa `vendite.fn_push_preventivo_a_ordine`
+>   (`20_code/vendite/20260708-01-...`, DROP+CREATE a 5 param): **+sezione EVASO atomica** (gate
+>   bi-ramo dentro la fn, il finding) **+ `p_flusso_id`** sul link COLLEGATO (D-B). pgTAP esistente
+>   `test-fn-push-preventivo-a-ordine-v1.sql` aggiornato (firma 5 param + EVASO + atomicità).
+>   *Follow-up BE*: rimuovere la chiamata separata `transiziona_a_evaso_se_smistato` dal percorso
+>   ordine-standalone (ora ridondante — la fn transita già; il re-push è bloccato dal guard stato,
+>   non più da "nessuna riga"). `p_flusso_id` DEFAULT NULL → chiamanti attuali invariati.
+> - 🟦 **#13 `create_indirizzo`** — DB FATTO (pgTAP 6/6 verdi in transazione; BE pendente; da migrare).
+>   DB: `anagrafiche.fn_create_indirizzo` (`20_code/anagrafiche/20260708-02-...`) — upsert stradario ×2
+>   + `fn_get_or_create_indirizzo_dettaglio`, atomici. **#14/#15**: nessun lavoro DB → BE one-liner
+>   (spostare `_resolve_conto_bancario` dentro l'atomic già presente, §2-ter).
+> - 🟦 **#3 `genera_pratica`** — DB ESEGUITO (migrato + pgTAP 7/7 verdi; BE pendente).
+>   DB: figlia **condivisa** `pratiche.fn_crea_pratica`
+>   (`20_code/pratiche/20260707-13-...`) + madre `vendite.fn_genera_pratica_da_preventivo`
+>   (`20_code/vendite/20260707-14-...`) + 2 codici errore appesi a `messaggi_errore.csv`
+>   (E_PREV_NOT_FOUND 519, E_PREV_VALIDAZIONE 520; loader runOnChange). pgTAP
+>   `db/pgtap/vendite/test-fn-genera-pratica-da-preventivo-v1.sql` (atomicità = link fallito ⇒
+>   niente pratica orfana). La figlia `fn_crea_pratica` è il **building block riusabile** da
+>   #4/#5/#10 e futuri domini (vedi §"scalare su N sorgenti").
 
 ---
 
@@ -119,6 +150,45 @@ pgTAP anche il caso "connessione senza GUC → 0 righe / write negata" (fail-clo
 
 ---
 
+## 2-ter. Criterio di scelta: funzione madre DB *vs* `transaction.atomic()` Django
+
+L'atomicità non è "sempre in DB" né "sempre in Django": si decide **per-operazione**, non
+per-dominio. La domanda unica da porsi:
+
+> **L'operazione compone SOLO scritture/funzioni DB, senza un passo che è per-forza Python?**
+> (advisory lock, dispatch a handler Python, invio email/chiamata esterna, control-flow
+> applicativo complesso)
+
+| Risposta | Meccanismo | Perché |
+|---|---|---|
+| **SÌ** — tutto pure-DB componibile | **Funzione madre DB** (una `SELECT fn_()`) | Atomicità *per costruzione*, garantita a qualunque chiamante, DB-first pura. Immune alla disciplina del BE. Es. #1/#2/#3/#10. |
+| **NO** — serve orchestrazione Python | **`with transaction.atomic()`** nel service | L'orchestrazione Python resta dov'è; l'atomic lega i pezzi DB + Python. Es. #4/#5, Classe B. |
+| C'è un **side-effect esterno** (SMTP) | **Outbox/saga**, mai atomic | Una transazione DB non contiene un invio email. Es. #16/#17. |
+
+**Il lato Django NON è un ripiego — tre punti:**
+
+1. **L'architettura lo prevede.** [api.md](../api.md) assegna al *service layer* «orchestrazione,
+   **transazioni**, regole Python». Il coordinamento transazionale è di casa in Django; la madre DB
+   è un *rafforzamento* per i casi pure-DB, non l'unico posto legittimo.
+2. **Non viola il DB-first.** DB-first riguarda *dove vivono le regole* (vincoli, macchine a stati,
+   guard → DB); il *confine transazionale* è coordinamento di caso d'uso. Il DB possiede le regole,
+   Django dichiara l'unità di lavoro. Convivono.
+3. **`transaction.atomic()` esplicito è SICURO** (a differenza di `ATOMIC_REQUESTS`, §2). Il rollback
+   avviene al confine del blocco `atomic` (nel suo `__exit__`), *prima* che `handle_post_json`
+   catturi l'eccezione → immune alla trappola dell'error-contract. È un attrezzo di prima classe.
+
+**Domini con entrambe le nature (es. pratiche):** le operazioni pure-dato (crea pratica, link
+sorgente, chiudi flusso singolo) → **madre DB** (`pratiche.fn_crea_pratica`); il *motore flussi* con
+**dispatch a handler** ([[reference_binding_handler_flusso_attivo_false]]), advisory lock e
+control-flow di step → **`transaction.atomic()` Django** (un handler Python non è chiamabile da una
+fn DB: lì la transazione DEVE spanare il BE). I due meccanismi convivono nello stesso dominio.
+
+**Il guardrail (§2) è agnostico rispetto al meccanismo:** *"una azione = una unità atomica"*, che
+l'unità sia una `SELECT fn_madre()` o un `with transaction.atomic()`. È lì che si previene il
+prossimo bug, non nella scelta DB-vs-Django.
+
+---
+
 ## 3. Lista dei problemi trovati
 
 Criterio di finding: **un singolo metodo Python** che esegue **2+ scritture con side-effect**
@@ -134,7 +204,7 @@ amm_software` sono puliti.
 
 | # | Metodo | Scenario di dati sporchi |
 |---|---|---|
-| 1 | `anagrafiche/services/clienti_service.py:99` `update_cliente` | categoria BA committata, poi UPDATE cliente fallisce → 2 entità disallineate |
+| 1 ✅ | `anagrafiche/services/clienti_service.py:99` `update_cliente` | categoria BA committata, poi UPDATE cliente fallisce → 2 entità disallineate — **RISOLTO** (fn madre + BE) |
 | 2 | `vendite/services/contratti_service.py:650` `create_contratto` | contratto committato + numero consumato, poi `create_utility` fallisce → contratto orfano |
 | 3 | `vendite/services/preventivi_service.py:2004` `genera_pratica` | `crea_pratica` committa (è `@atomic` a sé), poi `link_pratica` fallisce → pratica orfana |
 | 4 | `vendite/services/ordini_service.py:992` `push_a_commessa` | commesse committate + ordine EVASO, poi step pratica non chiuso → pratica non riconciliabile |
@@ -185,19 +255,48 @@ Quattro classi di fix. Per ogni classe, gli step **DB** e gli step **BE** sono s
 
 ### Classe A — Funzione madre DB (una `SELECT`)
 
-Finding: **#1, #2, #3, #4, #5, #10**. Orchestrazioni cross-dominio che già chiamano `fn_`
+Finding: **#1, #2, #3, #10**. Orchestrazioni cross-dominio che già chiamano `fn_`
 figlie in sequenza → si fondono in una funzione madre.
+
+> **Riclassifica #4/#5 → Classe B (2026-07-07, analisi in corso).** All'implementazione è emerso
+> che #4 (`push_a_commessa` ordini) e #5 (`push_a_commessa` preventivi) **non** hanno un confine
+> madre-DB pulito: il push è l'orchestratore Python `pr_run_commesse_push_one` (già atomico —
+> advisory lock, handler, log, ponte emittibilità) e la chiusura-step è anch'essa orchestrazione
+> Python. Una madre DB dovrebbe **reimplementare due orchestratori in PL/pgSQL** (alto rischio +
+> divergenza), e comunque non coprirebbe il push. Fix corretto = **`transaction.atomic()` in Python**
+> attorno a push + post-write (l'atomic interno del push diventa savepoint). Spostati in Classe B.
+> Nota: #4 **non crea** un link `pratiche_sorgenti` COLLEGATO (usa `commesse_sorgenti` + risolve un
+> link esistente) → la decisione D-B su `flusso_id` **non** lo riguarda; riguarda #5 (link
+> commessa-servizi) e #10 (link ordine).
 
 **Step lato DB (`dev/db-tid`)**
 
 | # | Funzione madre proposta | Assorbe |
 |---|---|---|
-| 1 | `anagrafiche.fn_update_cliente(cliente_id, ba_categoria_id, campi_cliente)` | UPDATE billing_account + UPDATE clienti |
-| 2 | `vendite.fn_create_contratto(testata, utility?)` | numero (`fn_generate_codice`) + INSERT contratto + INSERT utility opzionale |
-| 3 | `vendite.fn_genera_pratica_da_preventivo(...)` | fn figlia `crea_pratica` + INSERT `pratiche_sorgenti` (link) |
-| 4 | `vendite.fn_push_ordine_a_commessa(...)` | `pr_run_commesse_push_one` + `update_stato EVASO` + chiusura step pratica |
-| 5 | `vendite.fn_push_preventivo_a_commessa(...)` | push + transizione EVASO + aggancio pratica-servizi |
-| 10 | estendere `vendite.fn_push_preventivo_a_ordine` | inglobare la transizione preventivo→EVASO (oggi separata in Python) |
+| 1 ✅ | `anagrafiche.fn_update_cliente(p_cliente_id, p_ba_categoria_cliente_id, p_cliente_fields jsonb) RETURNS TABLE` — **FATTO** (migr. `20260707-11`, pgTAP 20/20) | UPDATE billing_account + UPDATE clienti (delta JSONB, SECURITY INVOKER) |
+| 2 🟦 | `vendite.fn_create_contratto(p_testata jsonb, p_utility jsonb) RETURNS TABLE(contratto_id, numero)` — **DB ESEGUITO** (migr. `20260707-12` applicata, pgTAP 9/9; BE pendente) | numero (`fn_generate_codice`) + INSERT contratto + INSERT utility opzionale (dinamici, SECURITY INVOKER) |
+| 3 🟦 | `vendite.fn_genera_pratica_da_preventivo(...) RETURNS TABLE(pratica_id)` — **DB ESEGUITO** (migr. `20260707-13/14` applicate, pgTAP 7/7; BE pendente) | figlia **condivisa** `pratiche.fn_crea_pratica` + INSERT `pratiche_sorgenti` ROOT (SECURITY INVOKER) |
+| ~~4~~ → B | *(riclassificato Classe B — orchestratore Python, vedi nota sopra)* | — |
+| ~~5~~ → B | *(riclassificato Classe B — orchestratore Python; il `flusso_id` D-B sul link commessa-servizi si gestisce nel wrap BE)* | — |
+| 10 🟦 | `vendite.fn_push_preventivo_a_ordine(...)` estesa a 5 param — **DB ESEGUITO** (migr. `20260708-01` applicata, pgTAP 9/9; BE pendente) | +sezione EVASO atomica (bi-ramo) + `p_flusso_id` sul link COLLEGATO (D-B) |
+
+> ⚠️ **Coordinamento con [brief-design-guida-rollout-multidominio](brief-design-guida-rollout-multidominio.md)
+> (decisione D-B / G-est.2).** I finding **#4, #5, #10** generano un documento a valle e creano il link
+> `pratiche_sorgenti` con `ruolo_link='COLLEGATO'`. Oggi quell'INSERT **non valorizza `flusso_id`**
+> (`fn_push_preventivo_a_ordine` inserisce `(pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)` e
+> basta). Il roll-out multi-dominio ha deciso (D-B) di **valorizzare `flusso_id` sul COLLEGATO alla
+> generazione**. Poiché queste madri riscrivono *proprio* quell'INSERT, il `flusso_id` va aggiunto **qui,
+> contestualmente**, non con un changeset separato pochi giorni dopo. Conseguenze pratiche mentre si
+> sviluppa **#10** (madre DB) e **#5** (wrap BE):
+>
+> - **Progettare la firma della madre per ricevere/risolvere il `flusso_id`** (il flusso dello step
+>   generatore — es. `CONFERMA_ORDINE` per #10). Oggi le push ricevono `p_pratica_id` ma non il
+>   flusso: aggiungerlo dopo = seconda modifica di firma → `DROP FUNCTION` obbligatorio (regola
+>   `RETURNS TABLE`). Farla giusta ora.
+> - **#3 e #4 esclusi**: #3 crea il link **ROOT** (`flusso_id` già gestito dal pilota GUIDA); #4 **non
+>   crea** alcun link `pratiche_sorgenti` (ne risolve uno esistente). Non applicare D-B lì.
+> - **Invarianti già allineati**: entrambi i piani impongono `SECURITY INVOKER` (§2-bis) e la lezione
+>   GRANT-a-`zeroerp_app` + documento-sovrano del pilota. Nessuna divergenza da sanare.
 
 Per ogni funzione madre:
 1. Scrivere il changeSet Liquibase in `db/changelog/.../20_code/<schema>/` (naming `fn_*`,
@@ -213,9 +312,18 @@ Per ogni funzione madre:
 2. Rimuovere l'eventuale logica di orchestrazione Python ora spostata nel DB.
 3. Aggiornare/creare i test service (mock repository) e lo smoke-test curl.
 
-### Classe B — Riposiziona l'atomic (nessuna fn nuova)
+### Classe B — Riposiziona/avvolgi l'atomic in Python (nessuna fn nuova)
 
-Finding: **#6, #7, #8, #9** (cluster gate pricing L3 in contratti/offerte).
+Finding: **#4, #5** (push a commessa, orchestratore Python) + **#6, #7, #8, #9** (cluster gate
+pricing L3 in contratti/offerte).
+
+**#4/#5 — wrap `transaction.atomic()` attorno a push + post-write.** Il push
+(`pr_run_commesse_push_one`) è già atomico; avvolgere push + `update_stato(EVASO)` +
+chiusura-step (e, per #5, l'aggancio pratica-servizi con `flusso_id` D-B) in **un solo**
+`transaction.atomic()` in `push_a_commessa`: l'atomic interno del push diventa savepoint, le parti
+diventano un'unità. Togliere il `try/except` best-effort attorno a `update_stato`.
+
+**#6/#7/#8/#9 — cluster gate pricing L3 in contratti/offerte.**
 
 Il gate che crea la pratica di approvazione oggi è invocato **prima** del `transaction.atomic()`
 che avvolge il CRUD. In **preventivi** lo stesso gate è già *dentro* l'atomic → è il modello
@@ -259,9 +367,14 @@ Finding: **#11, #12** (batch commesse), **#13, #14, #15** (registro get-or-creat
 
 - #11/#12: avvolgere loop commesse + upsert attività + log in un `atomic()` per-run, oppure
   rendere il batch idempotente/ripartibile.
-- #13/#14/#15: `atomic()` leggero sul metodo. *In alternativa* (lato DB) assorbire il
-  `get_or_create` registro dentro la fn figlia. L'orfano è una riga di dedup riutilizzabile,
-  non corruzione → priorità bassa.
+- **#13 → DB FATTO (madre).** `anagrafiche.fn_create_indirizzo`
+  (`20_code/anagrafiche/20260708-02-...`) fonde upsert stradario (×2) + `fn_get_or_create_indirizzo_dettaglio`
+  in un'unica statement atomica; pgTAP `db/pgtap/anagrafiche/test-fn-create-indirizzo-v1.sql`
+  (6/6, incl. atomicità = niente stradario orfano). BE: `geo_service.create_indirizzo` chiama la fn.
+- **#14/#15 → BE one-liner (NESSUN lavoro DB, §2-ter).** In `conti_bancari_service` il metodo ha
+  **già** un `with transaction.atomic()` attorno al legame: basta spostare
+  `_resolve_conto_bancario(payload)` (il get_or_create IBAN) **dentro** quell'atomic. Fabbricare una
+  madre DB qui sarebbe over-engineering.
 
 ### Igiene (non-bug)
 
