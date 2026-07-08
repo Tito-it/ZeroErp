@@ -174,6 +174,15 @@ const router = createRouter({
           meta: { domain: 'amm-software', menuKey: 'definizioni-workflow' }
         },
         {
+          // Editor/ispettore di una singola edizione (rotta dedicata: il dettaglio
+          // strutturale e' troppo ricco per un drawer). menuKey = parent, per tenere
+          // evidenziata la voce "Definizioni workflow" nella sidebar.
+          path: 'amm-software/definizioni-workflow/:id',
+          name: 'amm-software-definizione-editor',
+          component: () => import('../amministrazione/views/DefinizioneEditorView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'definizioni-workflow' }
+        },
+        {
           path: 'amm-software/matrice-categorie-listini',
           name: 'amm-software-matrice-categorie-listini',
           component: () => import('../amministrazione/views/CategorieClientiListiniListView.vue'),
@@ -290,10 +299,22 @@ const router = createRouter({
 
         // --- Vendite ---
         {
-          path: 'vendite/dashboard-fatturazione',
-          name: 'vendite-dashboard-fatturazione',
-          component: () => import('../vendite/views/DashboardFatturazioneView.vue'),
-          meta: { domain: 'vendite', menuKey: 'dashboard-fatturazione' }
+          path: 'vendite/situazione-aperta',
+          name: 'vendite-situazione-aperta',
+          component: () => import('../vendite/views/SituazioneApertaView.vue'),
+          meta: { domain: 'vendite', menuKey: 'situazione-aperta' }
+        },
+        {
+          path: 'vendite/dashboard-competenza',
+          name: 'vendite-dashboard-competenza',
+          component: () => import('../vendite/views/DashboardCompetenzaView.vue'),
+          meta: { domain: 'vendite', menuKey: 'dashboard-competenza' }
+        },
+        {
+          path: 'vendite/dashboard-backlog',
+          name: 'vendite-dashboard-backlog',
+          component: () => import('../vendite/views/DashboardBacklogView.vue'),
+          meta: { domain: 'vendite', menuKey: 'dashboard-backlog' }
         },
         {
           path: 'vendite/preventivi',

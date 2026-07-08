@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Situazione aperta (Fase 3 due lenti) — vista dettaglio dello STOCK documenti
+# (brief-db-situazione-aperta §2 SA-2; decisioni DL-9..13).
+#
+# Perimetro (un punto solo, cosi' riepilogo e drill-down leggono la stessa
+# popolazione e il BE non replica filtri):
+#   - 4 aree documento (NO COMMESSE: coperte dalla Lente 1 Competenza);
+#   - NOT is_abortito — CORREZIONE al claim del brief BE: i resolver
+#     preventivi/ordini/offerte NON escludono l'esito NEGATIVO alla fonte
+#     (verificato sul DB 2026-07-07: 18 righe abortite in union, tutte fase
+#     CHIUSO); l'esclusione D-6 avviene qui, come faceva la mensile con
+#     FILTER (WHERE NOT is_abortito);
+#   - TUTTE le fasi incluse (DL-13, deciso Tid 2026-07-07): anche CHIUSO —
+#     la vista e' consultazione neutra dello stock, il FE decide quali card
+#     mostrare. NESSUN asse temporale.
+#
+# is_aperto = is_transitato IS DISTINCT FROM true: per i contratti (giudizio
+# sospeso, is_transitato NULL) coincide col totale — voluto (DL-12).
+# security_invoker=on: lo scope emittente RLS delle 4 aree filtra il chiamante.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260707-04-create-vw-dash-aperto-documenti-mctit.yaml
+
+  - changeSet:
+      id: 20260707-04-create-vw-dash-aperto-documenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Situazione aperta: vista dettaglio stock documenti (4 aree, no
+        COMMESSE, no abortiti, tutte le fasi) sopra la union. Perimetro unico
+        per card e drill-down; is_aperto = transito non-true (sospeso incluso).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: '1'
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname   = 'vw_dash_fatturazione_documenti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_aperto_documenti
+              WITH (security_invoker = on) AS
+              SELECT
+                  d.area,
+                  d.documento_id,
+                  d.documento_uid,
+                  d.codice,
+                  d.emittente_fiscale_id,
+                  d.emittente_soggetto_ruolo_id,
+                  d.cliente_display,
+                  d.fase,
+                  d.stato_codice_interno,
+                  d.stato_codice,
+                  d.valore_totale,
+                  d.valore_transitato,
+                  d.unita_totali,
+                  d.unita_transitate,
+                  d.is_transitato,
+                  -- Aperto = non compiutamente transitato (il giudizio sospeso
+                  -- dei contratti conta come aperto, DL-12).
+                  (d.is_transitato IS DISTINCT FROM true) AS is_aperto,
+                  d.motivo_fermo,
+                  d.data_riferimento
+                FROM vendite.vw_dash_fatturazione_documenti d
+               WHERE d.area <> 'COMMESSE'
+                 -- D-6 applicata QUI (i resolver non-contratti non la applicano
+                 -- alla fonte): niente annullati/rifiutati/scaduti nello stock.
+                 AND NOT d.is_abortito;
+
+              COMMENT ON VIEW vendite.vw_dash_aperto_documenti IS
+                'Situazione aperta (Fase 3 due lenti): stock dei documenti vivi delle 4 aree (PREVENTIVI/ORDINI/OFFERTE/CONTRATTI — no COMMESSE, coperte dalla Lente 1), SENZA asse temporale. Esclude gli abortiti (D-6, qui perche'' i resolver non-contratti li marcano soltanto); include TUTTE le fasi (DL-13: il FE decide quali card mostrare — lo stock CHIUSO cresce nel tempo). is_aperto = is_transitato IS DISTINCT FROM true (giudizio sospeso contratti = aperto). Perimetro unico per vw_dash_aperto_riepilogo e per il drill-down BE. security_invoker=on (scope emittente RLS).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_dash_aperto_documenti;

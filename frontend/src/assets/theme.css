@@ -90,6 +90,9 @@
   --app-chart-transitato: var(--p-green-600);
   --app-chart-fermo: var(--p-orange-600);
   --app-chart-track: var(--p-surface-700);
+  /* Errori vivi fatturazione (Lente Competenza, blocco 4): red-600 stessa
+   * logica della coppia sopra, nessun override light necessario. */
+  --app-chart-errore: var(--p-red-600);
 
   /* ===== Lookup dropdown multi-riga ===== */
   /* Usato da BillingAccountLookup e futuri lookup ricchi (ClienteLookup, ecc.).

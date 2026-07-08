@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RIPRISTINO FIX V-1 su vw_dash_fatturazione_contratti — security_invoker=on.
+#
+# COSA E' SUCCESSO: il 20260706-15 aveva messo `security_invoker = on` su tutte
+# e 7 le viste della famiglia vw_dash_fatturazione_* (fix V-1: senza, girano
+# come owner = owner delle tabelle documentali, esente da RLS non-forced, e lo
+# scope emittente RLS delle 4 aree veniva bypassato). Il 20260707-03 (SA-1,
+# resolver contratti de-esploso) ha rifatto la vista con `CREATE OR REPLACE
+# VIEW ... AS` SENZA riportare `WITH (security_invoker = on)`: in PostgreSQL il
+# REPLACE sostituisce le reloptions con quelle dichiarate (cioe' NESSUNA), quindi
+# ha AZZERATO il flag SOLO su vw_dash_fatturazione_contratti. Verificato sul DB
+# vivo (2026-07-07): reloptions = NULL su contratti, le altre 12 viste della
+# famiglia vw_dash_* hanno security_invoker=on. Il buco RLS emittente si era
+# riaperto su una sola vista.
+#
+# FIX: ALTER VIEW ... SET (security_invoker = on) — non cambia la definizione
+# (nessun impatto sul contratto colonne), ri-arma solo lo scope invoker.
+#
+# ORDINE DI APPLICAZIONE: -15 (SET su tutte) -> -03 (REPLACE contratti, azzera)
+# -> -10 (questo, ri-SET contratti): corretto sia su DB gia' allineato sia in
+# applicazione da zero.
+#
+# ANTI-REGRESSIONE: test-vw-dash-security-invoker.sql (nuovo) assert diretto su
+# pg_class.reloptions per TUTTA la famiglia vw_dash_* — un futuro CREATE OR
+# REPLACE senza WITH (...) fa fallire il test (quello con FORCE RLS non se ne
+# accorge, perche' verifica il comportamento, non la reloption).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260707-10-alter-vw-dash-fatturazione-contratti-security-invoker-mctit.yaml
+
+  - changeSet:
+      id: 20260707-10-alter-vw-dash-fatturazione-contratti-security-invoker
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ripristino fix V-1 su vw_dash_fatturazione_contratti: il CREATE OR
+        REPLACE VIEW del 20260707-03 (de-esplosione) ha azzerato le reloptions,
+        cancellando il security_invoker=on messo dal 20260706-15. Senza,
+        la vista gira come owner (esente da RLS non-forced) e lo scope emittente
+        RLS torna bypassato su questa sola vista.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: '1'
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname   = 'vw_dash_fatturazione_contratti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER VIEW vendite.vw_dash_fatturazione_contratti SET (security_invoker = on);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER VIEW vendite.vw_dash_fatturazione_contratti RESET (security_invoker);

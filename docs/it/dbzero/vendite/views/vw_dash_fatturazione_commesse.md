@@ -26,7 +26,8 @@ SELECT 'COMMESSE'::character varying AS area,
     sc.codice_interno AS stato_codice_interno,
     sc.codice AS stato_codice,
     NULL::character varying AS fase,
-    s.ragione_sociale_completa AS cliente_display
+    s.ragione_sociale_completa AS cliente_display,
+    ca.competenza_mese AS data_riferimento
    FROM ((((((vendite.commesse co
      JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
      JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))

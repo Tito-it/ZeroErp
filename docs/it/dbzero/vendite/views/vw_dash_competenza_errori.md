@@ -1,0 +1,107 @@
+{% include-markdown "it/dbzero/vendite/manual/vw_dash_competenza_errori.md" %}
+# 🔍 View `vw_dash_competenza_errori`
+
+```sql
+CREATE OR REPLACE VIEW vendite.vw_dash_competenza_errori AS
+WITH escope AS (
+         SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids
+        ), task_err AS (
+         SELECT tr.lotto_id,
+            tr.task_code,
+            tr.tentativo,
+            tr.error_code,
+            tr.error_message,
+            tr.started_at
+           FROM vendite.fatturazione_lotti_task_runs tr
+          WHERE (((tr.task_stato)::text = 'ERRORE'::text) AND (tr.attivo IS TRUE) AND (NOT (EXISTS ( SELECT 1
+                   FROM vendite.fatturazione_lotti_task_runs tr2
+                  WHERE ((tr2.lotto_id = tr.lotto_id) AND (NOT (tr2.stato_doc_fiscale_id IS DISTINCT FROM tr.stato_doc_fiscale_id)) AND ((tr2.task_code)::text = (tr.task_code)::text) AND (tr2.tentativo > tr.tentativo) AND ((tr2.task_stato)::text = 'COMPLETATO'::text) AND (tr2.attivo IS TRUE))))))
+        ), fatture_critiche AS (
+         SELECT f.id,
+            f.anno,
+            f.serie,
+            f.numero,
+            f.data,
+            f.emittente_soggetto_ruolo_id,
+            ll.messaggio,
+            ll.data_ora
+           FROM (vendite.fatture f
+             LEFT JOIN LATERAL ( SELECT fl.messaggio,
+                    fl.data_ora
+                   FROM vendite.fatture_log fl
+                  WHERE ((fl.fattura_id = f.id) AND (fl.disabilitato IS FALSE))
+                  ORDER BY fl.data_ora DESC
+                 LIMIT 1) ll ON (true))
+          WHERE (f.critical IS TRUE)
+        ), fatture_competenze AS (
+         SELECT fc.id AS fattura_id,
+            l.competenza_mese,
+            lf.lotto_id
+           FROM ((fatture_critiche fc
+             JOIN vendite.fatturazione_lotti_fatture lf ON ((lf.fattura_id = fc.id)))
+             JOIN vendite.fatturazione_lotti l ON ((l.id = lf.lotto_id)))
+        UNION
+         SELECT fc.id,
+            af.competenza_mese,
+            NULL::bigint AS int8
+           FROM ((fatture_critiche fc
+             JOIN vendite.fatture_righe fr ON ((fr.fattura_id = fc.id)))
+             JOIN vendite.attivita_fatturabili af ON ((af.fattura_riga_id = fr.id)))
+          WHERE (NOT (EXISTS ( SELECT 1
+                   FROM vendite.fatturazione_lotti_fatture lf2
+                  WHERE (lf2.fattura_id = fc.id))))
+        UNION
+         SELECT fc.id,
+            (date_trunc('month'::text, (fc.data)::timestamp with time zone))::date AS date_trunc,
+            NULL::bigint AS int8
+           FROM fatture_critiche fc
+          WHERE ((NOT (EXISTS ( SELECT 1
+                   FROM vendite.fatturazione_lotti_fatture lf3
+                  WHERE (lf3.fattura_id = fc.id)))) AND (NOT (EXISTS ( SELECT 1
+                   FROM (vendite.fatture_righe fr2
+                     JOIN vendite.attivita_fatturabili af2 ON ((af2.fattura_riga_id = fr2.id)))
+                  WHERE (fr2.fattura_id = fc.id)))))
+        )
+ SELECT 'TASK_ERRORE'::character varying AS tipo_evento,
+    l.competenza_mese,
+    l.id AS lotto_id,
+    l.codice AS lotto_codice,
+    l.stato_lotto,
+    NULL::bigint AS fattura_id,
+    NULL::smallint AS fattura_anno,
+    NULL::character varying AS fattura_serie,
+    NULL::bigint AS fattura_numero,
+    te.task_code,
+    te.error_code,
+    te.error_message AS messaggio,
+    te.started_at AS data_evento,
+    l.emittente_soggetto_ruolo_id
+   FROM ((task_err te
+     JOIN vendite.fatturazione_lotti l ON ((l.id = te.lotto_id)))
+     CROSS JOIN escope)
+  WHERE ((escope.sr_ids IS NULL) OR (l.emittente_soggetto_ruolo_id = ANY (escope.sr_ids)))
+UNION ALL
+ SELECT 'FATTURA_CRITICA'::character varying AS tipo_evento,
+    fk.competenza_mese,
+    fk.lotto_id,
+    l2.codice AS lotto_codice,
+    l2.stato_lotto,
+    fc.id AS fattura_id,
+    fc.anno AS fattura_anno,
+    fc.serie AS fattura_serie,
+    fc.numero AS fattura_numero,
+    NULL::character varying AS task_code,
+    NULL::character varying AS error_code,
+    fc.messaggio,
+    fc.data_ora AS data_evento,
+    fc.emittente_soggetto_ruolo_id
+   FROM (((fatture_critiche fc
+     JOIN fatture_competenze fk ON ((fk.fattura_id = fc.id)))
+     LEFT JOIN vendite.fatturazione_lotti l2 ON ((l2.id = fk.lotto_id)))
+     CROSS JOIN escope)
+  WHERE ((escope.sr_ids IS NULL) OR (fc.emittente_soggetto_ruolo_id = ANY (escope.sr_ids)));
+```
+
+
+---
+{% include-markdown "signature-core.md" %}

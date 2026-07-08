@@ -53,6 +53,36 @@ def validate_order_params(
     return order_by, order_dir
 
 
+# Scopo: Valida un parametro enum contro la whitelist del chiamante (aree,
+#        stadi, sort key, ...). `None` e' ammesso quando `nullable` (filtro
+#        opzionale assente). `allowed` come sequenza ORDINATA: l'ordine entra
+#        nel messaggio `detail` (stabile per test e utenti). Estratto
+#        2026-07-06 (regola del 2, ok Tid): unifica i blocchi
+#        "ErrorManager.require(x in WHITELIST)" duplicati nei service vendite
+#        (area fermi, stadio competenza, area backlog, sort_by/sort_dir lotto
+#        fatture). Speculare a validate_order_params/validate_pagination.
+def validate_enum_param(
+    value: str | None,
+    *,
+    allowed: tuple[str, ...],
+    param_name: str,
+    error_code: str,
+    function_name: str,
+    nullable: bool = True,
+    log_to_db: bool = False,
+) -> str | None:
+    ErrorManager.require(
+        (value is None and nullable) or value in allowed,
+        code=error_code,
+        message=f"Parametro {param_name} non valido.",
+        detail=f"Valori ammessi: {', '.join(allowed)}",
+        context={param_name: value},
+        function_name=function_name,
+        log_to_db=log_to_db,
+    )
+    return value
+
+
 # Scopo: Valida i parametri di paginazione page-based (page >= 1,
 #        1 <= page_size <= 200) e ritorna l'offset calcolato `(page-1)*page_size`.
 #        `error_code`/`function_name` parametrici. Speculare a `validate_order_params`.

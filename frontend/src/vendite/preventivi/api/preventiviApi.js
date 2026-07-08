@@ -46,6 +46,14 @@ export function cambiaStatoPreventivo(id, payload) {
   return api.post(`${BASE}/${id}/stato/`, payload)
 }
 
+// GUIDA (D4): cambia stato del preventivo ROOT risolto dalla pratica — «Accetta/
+// Rifiuta» in-pratica (inversione handler→proiezione). Il BE risolve il preventivo
+// dal pratica_id; il milestone avanza da solo via trigger DB. Stesso payload di
+// cambiaStatoPreventivo ({nuovo_stato, fatturazione_immediata?, competenza_mese?}).
+export function cambiaStatoPreventivoDaPratica(praticaId, payload) {
+  return api.post(`${BASE}/da-pratica/${praticaId}/stato/`, payload)
+}
+
 // BOZZA -> EMESSO. L'endpoint (multipart) cambia stato + genera documento +
 // persiste eventuali allegati in transazione atomica lato BE (mirror del
 // flusso offerta). NB: la transizione *->EMESSO NON passa piu' da

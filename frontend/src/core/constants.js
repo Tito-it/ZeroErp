@@ -222,6 +222,26 @@ export const STATO_DEFINIZIONE = {
   RITIRATA: 'RITIRATA',
 }
 
+// Enum degli step di workflow (CHECK DB `pratiche.template_flussi`). Il FE li usa
+// per popolare i Select del form step; il DB resta l'autorita' (CHECK + guard di
+// coerenza `trgfn_template_flussi_guard_modalita_esito`).
+export const STEP_DIREZIONE = ['ENTRATA', 'USCITA', 'INTERNA']
+export const STEP_MODALITA_ESITO = ['MANUALE', 'AUTOMATICO', 'CONTESTUALE', 'DOMINIO']
+// modalita_esito che ESIGONO un esito_default (Inv1) e ammettono solo verdetti
+// (Inv4). Su DOMINIO l'esito_default e' VIETATO (Inv3) → campo nascosto.
+export const STEP_MODALITA_CON_ESITO_DEFAULT = ['AUTOMATICO', 'CONTESTUALE']
+
+// Enum figli step (CHECK DB). `evento` (template_flussi_handler_eventi) e
+// `esito_richiesto` (vocabolario fisso `chk_flussi_esito`, condiviso con i
+// prerequisiti). NB: distinto dal catalogo config.esiti_flussi_pratiche
+// (codice_interno) usato da step.esito_default.
+export const STEP_HANDLER_EVENTO = ['IN_CORSO', 'COMPLETATO']
+export const ESITO_RICHIESTO = ['POSITIVO', 'NEGATIVO', 'PARZIALE', 'NON_APPLICABILE']
+// Enum esito_richiesto delle REGOLE di generazione (CHECK diverso: POSITIVO,
+// NEGATIVO, QUALSIASI; NULL = qualsiasi esito). NON confondere con ESITO_RICHIESTO
+// (4 valori) usato da prerequisiti/handler-eventi.
+export const ESITO_REGOLA = ['POSITIVO', 'NEGATIVO', 'QUALSIASI']
+
 // Stato del ramo nel percorso pratica (workflow v2 D4, campo `ramo` del
 // GET /pratiche/<id>/percorso/ — vedi api_percorso.md).
 export const RAMO_STEP = {
@@ -315,6 +335,9 @@ export const MANAGE_ICONS = {
   // (FlussoDrawer) e "prendi in carico" dalla coda lavoro (PraticheCodaLavoro).
   // Centralizzata: era hardcoded inline come `pi pi-user-plus` nei due punti.
   ASSIGN: 'pi pi-user-plus',
+  // Ispezione read-only (apre un dettaglio in sola lettura). Distinta da EDIT
+  // (modifica) — usata dalle azioni "Ispeziona" quando l'entita' non e' editabile.
+  INSPECT: 'pi pi-eye',
 }
 
 // Scope readonly — area (schema DB) passata come primo arg a useReadonlyMode.

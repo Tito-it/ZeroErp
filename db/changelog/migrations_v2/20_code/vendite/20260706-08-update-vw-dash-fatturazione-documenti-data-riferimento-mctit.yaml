@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Due lenti / Lente 2 Backlog — propaga data_riferimento nella union
+# vw_dash_fatturazione_documenti (brief-db-fatturazione-due-lenti §5.1).
+# Richiede 20260706-03..07 (colonna presente su tutti e 5 i resolver).
+# Colonna appesa IN CODA: contratto verso il BE esistente invariato.
+# vw_dash_fatturazione_mensile NON cambia (aggrega colonne nominate).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260706-08-update-vw-dash-fatturazione-documenti-data-riferimento-mctit.yaml
+
+  - changeSet:
+      id: 20260706-08-update-vw-dash-fatturazione-documenti-data-riferimento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Due lenti / Lente 2: propaga data_riferimento nella union
+        vw_dash_fatturazione_documenti (colonna in coda). Prerequisito per
+        vw_dash_backlog_documenti.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: '5'
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'vendite'
+                 AND table_name IN ('vw_dash_fatturazione_preventivi',
+                                    'vw_dash_fatturazione_ordini',
+                                    'vw_dash_fatturazione_offerte',
+                                    'vw_dash_fatturazione_contratti',
+                                    'vw_dash_fatturazione_commesse')
+                 AND column_name = 'data_riferimento';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_documenti AS
+              SELECT p.area, p.competenza_mese, p.documento_id, p.documento_uid,
+                     p.codice, p.emittente_fiscale_id, p.emittente_soggetto_ruolo_id,
+                     p.valore_totale, p.valore_transitato,
+                     p.unita_totali, p.unita_transitate,
+                     p.is_transitato, p.is_abortito, p.motivo_fermo,
+                     p.stato_codice_interno, p.stato_codice, p.fase,
+                     p.cliente_display, p.data_riferimento
+                FROM vendite.vw_dash_fatturazione_preventivi p
+              UNION ALL
+              SELECT o.area, o.competenza_mese, o.documento_id, o.documento_uid,
+                     o.codice, o.emittente_fiscale_id, o.emittente_soggetto_ruolo_id,
+                     o.valore_totale, o.valore_transitato,
+                     o.unita_totali, o.unita_transitate,
+                     o.is_transitato, o.is_abortito, o.motivo_fermo,
+                     o.stato_codice_interno, o.stato_codice, o.fase,
+                     o.cliente_display, o.data_riferimento
+                FROM vendite.vw_dash_fatturazione_ordini o
+              UNION ALL
+              SELECT f.area, f.competenza_mese, f.documento_id, f.documento_uid,
+                     f.codice, f.emittente_fiscale_id, f.emittente_soggetto_ruolo_id,
+                     f.valore_totale, f.valore_transitato,
+                     f.unita_totali, f.unita_transitate,
+                     f.is_transitato, f.is_abortito, f.motivo_fermo,
+                     f.stato_codice_interno, f.stato_codice, f.fase,
+                     f.cliente_display, f.data_riferimento
+                FROM vendite.vw_dash_fatturazione_offerte f
+              UNION ALL
+              SELECT c.area, c.competenza_mese, c.documento_id, c.documento_uid,
+                     c.codice, c.emittente_fiscale_id, c.emittente_soggetto_ruolo_id,
+                     c.valore_totale, c.valore_transitato,
+                     c.unita_totali, c.unita_transitate,
+                     c.is_transitato, c.is_abortito, c.motivo_fermo,
+                     c.stato_codice_interno, c.stato_codice, c.fase,
+                     c.cliente_display, c.data_riferimento
+                FROM vendite.vw_dash_fatturazione_contratti c
+              UNION ALL
+              SELECT m.area, m.competenza_mese, m.documento_id, m.documento_uid,
+                     m.codice, m.emittente_fiscale_id, m.emittente_soggetto_ruolo_id,
+                     m.valore_totale, m.valore_transitato,
+                     m.unita_totali, m.unita_transitate,
+                     m.is_transitato, m.is_abortito, m.motivo_fermo,
+                     m.stato_codice_interno, m.stato_codice, m.fase,
+                     m.cliente_display, m.data_riferimento
+                FROM vendite.vw_dash_fatturazione_commesse m;
+
+              COMMENT ON COLUMN vendite.vw_dash_fatturazione_documenti.data_riferimento IS
+                'Anzianita'' backlog (due lenti): data "fermo da..." per area (preventivi/ordini: data documento; offerte: emissione con fallback; contratti/commesse: mese della riga).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la definizione precedente e' quella viva post
+              -- 20260703-60 (vedi doc auto-gen). Per revertire, ri-applicarla.
+              SELECT 1;

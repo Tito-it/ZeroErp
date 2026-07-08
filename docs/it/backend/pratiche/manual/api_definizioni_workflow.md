@@ -160,6 +160,58 @@ atomica su `(id, definizione_id)`. **Output**: `{ "step_id": <id> }`.
 Hard delete (una BOZZA non ha pratiche pinnate). Ownership su `(id, definizione_id)`.
 **Output**: `{ "deleted": true }`.
 
+## Figli per-nodo di uno step (Slice 2 anello 4)
+
+CRUD dei figli di uno step, con `<kind>` ∈ `canali | handler-eventi | competenze`:
+
+```text
+POST   /definizioni/<id>/steps/<step_id>/<kind>/
+PATCH  /definizioni/<id>/steps/<step_id>/<kind>/<row_id>/
+DELETE /definizioni/<id>/steps/<step_id>/<kind>/<row_id>/
+```
+
+Ownership doppia **riga → step → definizione** (via JOIN); l'immutabilità delle
+edizioni emesse è enforce dai guard DB (stesso `TEMPLATE_DEFINIZIONE_CONGELATA`). Campi
+scrivibili e obbligatori per kind (gli altri hanno DEFAULT/validazione DB):
+
+| `<kind>` | Campi scrivibili | Obbligatori |
+|---|---|---|
+| `canali` | `canale_id`, `attivo` | `canale_id` |
+| `handler-eventi` | `evento`, `esito_richiesto`, `handler_id`, `sequenza`, `attivo` | `evento`, `handler_id` |
+| `competenze` | `unita_organizzativa_id`, `risorsa_umana_id`, `attivo` | `unita_organizzativa_id`, `risorsa_umana_id` |
+
+`template_flusso_id` è impostato dal BE (dallo `step_id` in URL), mai dal client. FK/enum/UNIQUE
+sono validati dai constraint DB. **Output**: `{ "id": <row_id> }` (POST/PATCH),
+`{ "deleted": true }` (DELETE). **404** `E_DEFINIZIONE_NOT_FOUND` se lo step non è nella
+definizione o la riga non è nello step.
+
+## Archi del grafo (Slice 2 anello 5)
+
+Gli archi collegano due step e vivono al **livello edizione**, con `<kind>` ∈
+`prerequisiti | formule-tempo | regole-generazione`:
+
+```text
+POST   /definizioni/<id>/archi/<kind>/
+PATCH  /definizioni/<id>/archi/<kind>/<row_id>/
+DELETE /definizioni/<id>/archi/<kind>/<row_id>/
+```
+
+Ownership via lo step "ancora" dell'arco → definizione (JOIN); immutabilità dai guard DB.
+Gli step-endpoint indicati con **✔ in-def** devono appartenere alla definizione (404
+altrimenti); il `tipo_prestazione_id` di `formule-tempo` è **auto-impostato dal BE** = tipo
+della definizione (non dal client).
+
+| `<kind>` | Campi scrivibili | Obbligatori | Endpoint validati in-def |
+|---|---|---|---|
+| `prerequisiti` | `template_flusso_id`, `prerequisito_id`, `esito_richiesto` | `template_flusso_id`, `prerequisito_id` | entrambi ✔ |
+| `formule-tempo` | `template_flusso_da_id`, `template_flusso_a_id`, `giorni_esecuzione`, `giorni_warning`, `giorni_critico`, `attivo`, `descrizione` | i 2 step + i 3 `giorni` | `da`, `a` ✔ |
+| `regole-generazione` | `template_flusso_origine_id`, `template_flusso_dest_id`, `tipo_prestazione_dest_id`, `esito_richiesto`, `auto`, `attivo`, `descrizione` | `template_flusso_origine_id`, `tipo_prestazione_dest_id` | solo `origine` ✔ (il `dest` può essere cross-edizione) |
+
+**Output**: `{ "id": <row_id> }` / `{ "deleted": true }`. **Nota**: i CHECK di dominio (es.
+`formule-tempo`: `giorni_critico < giorni_warning < giorni_esecuzione`, tutti > 0) sono
+enforce dal DB; una violazione torna oggi `E_DATABASE` generico — il form FE dovrebbe
+mirrorare la regola d'ordine per un feedback immediato.
+
 ---
 
 ## Immutabilità e scope

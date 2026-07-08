@@ -7,6 +7,7 @@
 // passi col ruolo web (brief-db-accesso-be-definizioni-workflow §P1).
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
@@ -29,6 +30,7 @@ import {
 import { useDefinizioniWorkflowStore } from '../stores/definizioniWorkflow'
 
 const { t } = useI18n()
+const router = useRouter()
 const store = useDefinizioniWorkflowStore()
 const { isReadonly } = useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 const { execute } = useApiHandler()
@@ -107,10 +109,31 @@ function onPubblica(data) {
   })
 }
 
+// Apre l'editor/ispettore dell'edizione (rotta dedicata). La sola-lettura è
+// derivata nella vista dallo stato (solo BOZZA editabile) + livello area.
+function openEditor(data) {
+  router.push({ name: 'amm-software-definizione-editor', params: { id: data.id } })
+}
+
 // Azioni riga contestualizzate allo stato dell'edizione.
 function buildRowActions(data) {
-  if (isReadonly.value) return []
+  // Ispezione/modifica sempre disponibile (naviga a un dettaglio; la scrittura
+  // è comunque gated dallo stato+area nell'editor). BOZZA editabile → "Modifica
+  // struttura"; edizioni emesse o area in sola lettura → "Ispeziona".
+  const canEdit = data.stato === STATO_DEFINIZIONE.BOZZA && !isReadonly.value
+  const actions = [
+    {
+      key: 'apri-editor',
+      label: canEdit
+        ? t('definizioni_workflow.azione_modifica_struttura')
+        : t('definizioni_workflow.azione_ispeziona'),
+      icon: canEdit ? MANAGE_ICONS.EDIT : MANAGE_ICONS.INSPECT,
+      command: () => openEditor(data),
+    },
+  ]
+  if (isReadonly.value) return actions
   return [
+    ...actions,
     {
       key: 'fork',
       label: t('definizioni_workflow.azione_fork'),

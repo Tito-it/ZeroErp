@@ -11,7 +11,7 @@
 # ------------------------------------------------------------
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NamedTuple
 
 from django.db import connection
 
@@ -22,6 +22,87 @@ STEP_CORE_FIELDS: tuple[str, ...] = (
     "codice", "descrizione", "sequenza", "obbligatorio",
     "direzione", "modalita_esito", "esito_default",
 )
+
+
+class ChildSpec(NamedTuple):
+    """Descrittore di un tipo di figlio per-nodo di uno step (Slice 2 anello 4).
+    `table` = tabella; `writable` = colonne scrivibili dal client (oltre a
+    template_flusso_id, imposto dal BE); `required` = sottoinsieme obbligatorio
+    (per un 400 parlante prima del NOT NULL DB)."""
+    table: str
+    writable: tuple[str, ...]
+    required: tuple[str, ...]
+
+
+# Registro dei figli per-nodo editabili — UNICA fonte condivisa repo↔service. La
+# chiave (child_kind) arriva SEMPRE dalla urlconf (allowlist fissa), mai da input
+# utente → i nomi tabella/colonna nella SQL dinamica sono sicuri. Enum/FK/NOT NULL
+# restano validati dai constraint DB, non duplicati qui.
+CHILD_SPECS: dict[str, ChildSpec] = {
+    "canali": ChildSpec(
+        "pratiche.template_flussi_canali",
+        ("canale_id", "attivo"),
+        ("canale_id",),
+    ),
+    "handler_eventi": ChildSpec(
+        "pratiche.template_flussi_handler_eventi",
+        ("evento", "esito_richiesto", "handler_id", "sequenza", "attivo"),
+        ("evento", "handler_id"),
+    ),
+    "competenze": ChildSpec(
+        "pratiche.competenze_flussi",
+        ("unita_organizzativa_id", "risorsa_umana_id", "attivo"),
+        ("unita_organizzativa_id", "risorsa_umana_id"),
+    ),
+}
+
+
+class EdgeSpec(NamedTuple):
+    """Descrittore di un arco del grafo (Slice 2 anello 5). Gli archi collegano
+    due step. `anchor_col` = FK allo step "proprietario", usata per lo scoping
+    ownership alla definizione (join a template_flussi). `in_def_cols` = FK che
+    DEVONO puntare a step della stessa definizione (validate in create).
+    `tipo_col` = colonna NOT NULL impostata dal BE = tipo della definizione."""
+    table: str
+    writable: tuple[str, ...]
+    required: tuple[str, ...]
+    anchor_col: str
+    in_def_cols: tuple[str, ...]
+    tipo_col: str | None
+
+
+# Registro archi editabili — UNICA fonte condivisa repo↔service. `edge_kind` dalla
+# urlconf (allowlist fissa) → SQL dinamica sicura. `regole_generazione` ha il dest
+# potenzialmente cross-edizione: solo l'origine è validata in-definizione.
+EDGE_SPECS: dict[str, EdgeSpec] = {
+    "prerequisiti": EdgeSpec(
+        "pratiche.template_flussi_prerequisiti",
+        ("template_flusso_id", "prerequisito_id", "esito_richiesto"),
+        ("template_flusso_id", "prerequisito_id"),
+        "template_flusso_id",
+        ("template_flusso_id", "prerequisito_id"),
+        None,
+    ),
+    "formule_tempo": EdgeSpec(
+        "pratiche.formule_tempo",
+        ("template_flusso_da_id", "template_flusso_a_id", "giorni_esecuzione",
+         "giorni_warning", "giorni_critico", "attivo", "descrizione"),
+        ("template_flusso_da_id", "template_flusso_a_id",
+         "giorni_esecuzione", "giorni_warning", "giorni_critico"),
+        "template_flusso_da_id",
+        ("template_flusso_da_id", "template_flusso_a_id"),
+        "tipo_prestazione_id",
+    ),
+    "regole_generazione": EdgeSpec(
+        "pratiche.regole_generazione",
+        ("template_flusso_origine_id", "template_flusso_dest_id",
+         "tipo_prestazione_dest_id", "esito_richiesto", "auto", "attivo", "descrizione"),
+        ("template_flusso_origine_id", "tipo_prestazione_dest_id"),
+        "template_flusso_origine_id",
+        ("template_flusso_origine_id",),
+        None,
+    ),
+}
 
 
 class DefinizioniRepository:
@@ -277,6 +358,135 @@ class DefinizioniRepository:
                 "WHERE id = %(id)s AND definizione_id = %(definizione_id)s",
                 {"id": step_id, "definizione_id": definizione_id},
             )
+            return cursor.rowcount
+
+    # --- Write figli per-nodo su BOZZA (Slice 2 anello 4) ---------------------
+    # CRUD generico dei figli (canali/handler_eventi/competenze) parametrizzato da
+    # CHILD_SPECS. Ownership doppia riga→step→definizione via JOIN a template_flussi;
+    # l'immutabilità (edizione emessa) è enforce dal guard figli DB (514).
+
+    # Scopo: True se lo step appartiene alla definizione (ownership pre-insert).
+    def step_in_definizione(self, definizione_id: int, step_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM pratiche.template_flussi "
+                "WHERE id = %s AND definizione_id = %s",
+                [step_id, definizione_id],
+            )
+            return cursor.fetchone() is not None
+
+    # Scopo: crea un figlio sotto lo step. template_flusso_id imposto dal BE.
+    def create_child(self, child_kind: str, step_id: int, data: dict[str, Any]) -> int:
+        spec = CHILD_SPECS[child_kind]
+        cols = ["template_flusso_id"] + [c for c in spec.writable if c in data]
+        vals: dict[str, Any] = {"template_flusso_id": step_id}
+        vals.update({c: data[c] for c in spec.writable if c in data})
+        placeholders = ", ".join(f"%({c})s" for c in cols)
+        sql = (
+            f"INSERT INTO {spec.table} ({', '.join(cols)}) "
+            f"VALUES ({placeholders}) RETURNING id"
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(sql, vals)
+            return int(cursor.fetchone()[0])
+
+    # Scopo: aggiorna un figlio, scoping (row, step, definizione) via JOIN. Ritorna
+    # le righe toccate (0 = fuori scope → 404 lato service).
+    def update_child(
+        self, child_kind: str, definizione_id: int, step_id: int, row_id: int,
+        data: dict[str, Any],
+    ) -> int:
+        spec = CHILD_SPECS[child_kind]
+        sets = [f"{c} = %({c})s" for c in spec.writable if c in data]
+        if not sets:
+            raise ValueError("update_child richiede almeno un campo scrivibile in `data`")
+        vals: dict[str, Any] = {c: data[c] for c in spec.writable if c in data}
+        vals.update({"row_id": row_id, "step_id": step_id, "definizione_id": definizione_id})
+        sql = f"""
+            UPDATE {spec.table} AS c SET {', '.join(sets)}
+            FROM pratiche.template_flussi tf
+            WHERE c.id = %(row_id)s
+              AND c.template_flusso_id = %(step_id)s
+              AND tf.id = c.template_flusso_id
+              AND tf.definizione_id = %(definizione_id)s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, vals)
+            return cursor.rowcount
+
+    # Scopo: hard DELETE di un figlio, scoping (row, step, definizione) via JOIN.
+    def delete_child(
+        self, child_kind: str, definizione_id: int, step_id: int, row_id: int,
+    ) -> int:
+        spec = CHILD_SPECS[child_kind]
+        sql = f"""
+            DELETE FROM {spec.table} AS c
+            USING pratiche.template_flussi tf
+            WHERE c.id = %(row_id)s
+              AND c.template_flusso_id = %(step_id)s
+              AND tf.id = c.template_flusso_id
+              AND tf.definizione_id = %(definizione_id)s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, {
+                "row_id": row_id, "step_id": step_id, "definizione_id": definizione_id,
+            })
+            return cursor.rowcount
+
+    # --- Write archi del grafo su BOZZA (Slice 2 anello 5) --------------------
+    # CRUD generico degli archi (prerequisiti/formule_tempo/regole_generazione)
+    # parametrizzato da EDGE_SPECS. Ownership via anchor_col→definizione (JOIN);
+    # immutabilità enforce dal guard figli DB (514). Le colonne inserite/aggiornate
+    # provengono SEMPRE dall'allowlist dello spec (mai da input utente).
+
+    # Scopo: crea un arco. `data` è già curato dal service (writable + tipo auto-set).
+    def create_edge(self, edge_kind: str, data: dict[str, Any]) -> int:
+        spec = EDGE_SPECS[edge_kind]
+        allowed = spec.writable + ((spec.tipo_col,) if spec.tipo_col else ())
+        cols = [c for c in allowed if c in data]
+        vals = {c: data[c] for c in cols}
+        placeholders = ", ".join(f"%({c})s" for c in cols)
+        sql = (
+            f"INSERT INTO {spec.table} ({', '.join(cols)}) "
+            f"VALUES ({placeholders}) RETURNING id"
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(sql, vals)
+            return int(cursor.fetchone()[0])
+
+    # Scopo: aggiorna un arco (solo colonne writable), scoping anchor→definizione.
+    def update_edge(
+        self, edge_kind: str, definizione_id: int, row_id: int, data: dict[str, Any],
+    ) -> int:
+        spec = EDGE_SPECS[edge_kind]
+        sets = [f"{c} = %({c})s" for c in spec.writable if c in data]
+        if not sets:
+            raise ValueError("update_edge richiede almeno un campo writable in `data`")
+        vals: dict[str, Any] = {c: data[c] for c in spec.writable if c in data}
+        vals.update({"row_id": row_id, "definizione_id": definizione_id})
+        sql = f"""
+            UPDATE {spec.table} AS e SET {', '.join(sets)}
+            FROM pratiche.template_flussi tf
+            WHERE e.id = %(row_id)s
+              AND tf.id = e.{spec.anchor_col}
+              AND tf.definizione_id = %(definizione_id)s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, vals)
+            return cursor.rowcount
+
+    # Scopo: hard DELETE di un arco, scoping anchor→definizione.
+    def delete_edge(self, edge_kind: str, definizione_id: int, row_id: int) -> int:
+        spec = EDGE_SPECS[edge_kind]
+        sql = f"""
+            DELETE FROM {spec.table} AS e
+            USING pratiche.template_flussi tf
+            WHERE e.id = %(row_id)s
+              AND tf.id = e.{spec.anchor_col}
+              AND tf.definizione_id = %(definizione_id)s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, {"row_id": row_id, "definizione_id": definizione_id})
             return cursor.rowcount
 
     # --- Azioni ciclo di vita (Slice 1b) --------------------------------------

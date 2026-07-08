@@ -612,6 +612,63 @@ Se l'esito fosse stato NEGATIVO, la regola non si sarebbe attivata (`esito_richi
 
 ---
 
+## Avanzamento su esito proiettato (GUIDA)
+
+Alcuni milestone di una pratica non sono decisi dall'operatore *dentro* la pratica, ma
+**seguono lo stato di un documento** (un preventivo, un'offerta…). Esempio classico:
+l'`APPROVAZIONE_CLIENTE` di una pratica commerciale è "completa" quando il **preventivo
+collegato viene accettato** — indipendentemente da *dove* è avvenuta l'accettazione.
+
+Il modello **GUIDA** rende questo avanzamento **automatico e uniforme**: quando il documento
+raggiunge un **verdetto** (POSITIVO/NEGATIVO/PARZIALE/NON_APPLICABILE, la "proiezione" del suo
+stato), il milestone che lo attende passa a **COMPLETATO** con quel verdetto. Vale su
+**qualsiasi** percorso: dall'interno della pratica **oppure** dal drawer standalone del
+documento (prima, in quest'ultimo caso, il milestone restava aperto e le due macchine
+divergevano).
+
+**Come si configura** (additivo — senza questi due elementi, nessun avanzamento automatico):
+
+1. Sul template step si dichiara **quale tipo documento** attende:
+   [`template_flussi.attende_sorgente_tipo_id`](/dbzero/pratiche/tabelle/template_flussi) →
+   [`config.sorgenti`](/dbzero/config/tabelle/sorgenti).
+2. Si aggiunge un **binding di avanzamento**
+   ([`template_flussi_avanzamento_proiezione`](/dbzero/pratiche/tabelle/template_flussi_avanzamento_proiezione)):
+   «avanza con esito X» (o «qualsiasi verdetto»).
+
+**Come funziona** (tutto DB-side):
+
+* Un **trigger** sulla tabella-documento
+  ([`trgfn_documento_reconcile_proiezione`](/dbzero/pratiche/funzioni/trgfn_documento_reconcile_proiezione))
+  scatta ad ogni cambio-stato e chiama il motore
+  [`fn_reconcile_sorgente`](/dbzero/pratiche/funzioni/fn_reconcile_sorgente), che completa i
+  milestone in attesa (facendo poi scattare la generazione a valle come un completamento
+  manuale).
+* Il **documento è sovrano**: se la riconciliazione fallisce, il cambio-stato del documento
+  **non** viene annullato; l'errore è tracciato in
+  [`reconcile_errori`](/dbzero/pratiche/tabelle/reconcile_errori) (osservabilità).
+* È **idempotente** (un milestone già completato non riavanza) e ignora gli step **DOMINIO**
+  (l'esito lì è di ramo, calcolato dal dominio — vedi asse esito).
+
+**Projection-driven vs handler-driven**: uno step o **segue la proiezione** del documento
+(GUIDA) **o** esegue un handler server-side al COMPLETATO
+([handler-eventi](#handler-django-registry-pattern)), **mai entrambi** — un guard config-time
+lo impedisce (altrimenti l'avanzamento automatico salterebbe l'handler, perdendo l'azione di
+dominio). Il primo caso reale è il **ritiro** di `vendita.accetta_preventivo`: il pulsante
+«Accetta» in pratica chiama il servizio standalone del preventivo e il milestone avanza per
+proiezione.
+
+**Inversione piena (accetta *e* rifiuta)**: sul preventivo il binding è configurato su
+«qualsiasi verdetto» (non solo POSITIVO), così il milestone `APPROVAZIONE_CLIENTE` si completa
+sia sull'accettazione (POSITIVO) sia su ogni esito terminale-negativo — rifiutato / scaduto /
+annullato (tutti NEGATIVO). Nel caso negativo il completamento non "fa proseguire" la pratica:
+i passi a valle (es. SMISTAMENTO) hanno prerequisiti **esito-aware** che richiedono
+`APPROVAZIONE_CLIENTE = POSITIVO`, quindi con NEGATIVO diventano **ramo morto** (non bloccano)
+e la pratica **si chiude pulita**. Prima, con l'avanzamento solo su POSITIVO, un preventivo
+rifiutato lasciava il milestone aperto e la pratica appesa: l'inversione piena chiude la
+divergenza in **entrambe** le direzioni.
+
+---
+
 ## Handler Django (registry pattern)
 
 > Vedi anche: [Messaggi di Errore e Generazione Log](./Messaggi-di-Errore-e-Generazione-Log) per il sistema di error handling usato dagli handler

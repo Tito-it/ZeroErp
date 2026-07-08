@@ -749,6 +749,63 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Edizione di workflow o step non trovato.",
         ),
+        # Guard di dominio delle edizioni di workflow versionate: marker DB SENZA
+        # prefisso E_ (substring stabili del catalogo, mappati in
+        # pratiche_service._KNOWN_DB_ERROR_MARKERS). Senza policy esplicita il
+        # fallback E_* non li copre → cadrebbero sul 500 generico invece del
+        # banner 4xx parlante atteso dall'editor (api.md §Errori).
+        "DEFINIZIONE_NON_TROVATA": ErrorPolicy(
+            code="DEFINIZIONE_NON_TROVATA",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Nessuna definizione di workflow pubblicata per questo tipo.",
+        ),
+        "FLUSSI_TEMPLATE_FUORI_DEFINIZIONE": ErrorPolicy(
+            code="FLUSSI_TEMPLATE_FUORI_DEFINIZIONE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Lo step non appartiene alla definizione della pratica.",
+        ),
+        "DEFINIZIONE_NON_PUBBLICABILE": ErrorPolicy(
+            code="DEFINIZIONE_NON_PUBBLICABILE",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message="La bozza non e' pubblicabile: servono almeno uno step "
+                         "attivo e nessun ciclo di prerequisiti.",
+        ),
+        "DEFINIZIONE_PUBBLICATA_IMMUTABILE": ErrorPolicy(
+            code="DEFINIZIONE_PUBBLICATA_IMMUTABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Edizione non modificabile nello stato corrente.",
+        ),
+        "DEFINIZIONE_TRANSIZIONE_NON_AMMESSA": ErrorPolicy(
+            code="DEFINIZIONE_TRANSIZIONE_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Transizione di stato dell'edizione non ammessa.",
+        ),
+        "DEFINIZIONE_BOZZA_ESISTENTE": ErrorPolicy(
+            code="DEFINIZIONE_BOZZA_ESISTENTE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Esiste gia' una bozza di edizione per questo scope "
+                         "(tipo prestazione + emittente).",
+        ),
+        "DEFINIZIONE_NO_PUBBLICATA": ErrorPolicy(
+            code="DEFINIZIONE_NO_PUBBLICATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Nuova versione non ammessa: manca un'edizione "
+                         "pubblicata da cui derivare.",
+        ),
+        "TEMPLATE_DEFINIZIONE_CONGELATA": ErrorPolicy(
+            code="TEMPLATE_DEFINIZIONE_CONGELATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Edizione per-emittente gia' emessa: la struttura non e' "
+                         "piu' modificabile (solo la descrizione e' correggibile).",
+        ),
         # Sospensioni con data manuale (catalogo DB id 498/499):
         # EXCLUDE ex_sospensioni_no_overlap (23P01) e guard a10 data non futura.
         "E_SOSPENSIONE_OVERLAP": ErrorPolicy(

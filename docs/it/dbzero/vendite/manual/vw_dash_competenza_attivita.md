@@ -1,0 +1,79 @@
+## 📘 Documentazione Concettuale – Vista `vendite.vw_dash_competenza_attivita`
+
+> 👀 **Vedi anche**
+>
+Approfondimento tabelle e funzioni:
+>
+[vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)
+> [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)
+> [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)
+> [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa)
+>
+Famiglia due lenti:
+>
+[vw_dash_competenza_mensile](vw_dash_competenza_mensile.md)
+> [vw_dash_competenza_errori](vw_dash_competenza_errori.md)
+> [vw_dash_backlog_documenti](vw_dash_backlog_documenti.md)
+
+---
+### 🎯 Scopo Principale
+(latest review 06-07-2026)
+Vista di dettaglio della **Lente 1 Competenza** (cruscotti fatturazione a due
+lenti, brief `brief-db-fatturazione-due-lenti` §4): una riga per **attività di
+commessa computabile**, con la sua posizione nel funnel a valle
+(commessa → attività fatturabile → riga fattura → stato fiscale) e la
+dimensione dei **recuperi tardivi**. L'asse è la competenza **vera**
+(`commesse_attivita.competenza_mese`, NOT NULL) — nessun proxy.
+
+---
+
+### Semantica
+
+| Aspetto | Regola |
+|---------|--------|
+| **`stadio`** | `DA_APPROVARE` (BOZZA, non emessa) · `DA_EMETTERE` (approvata, non emessa) · `EMESSA_NON_FATTURATA` (riga AF con `fattura_riga_id` NULL) · `FATTURATA` (agganciata a riga fattura, con `stato_fattura_codice_interno` per il breakdown) |
+| **Misura (DB-6)** | `valore = prezzo_snapshot × quantita` su **tutti** gli stadi (stessa misura del resolver commesse: funnel omogeneo); `valore_fatturato = fatture_righe.imponibile_riga` è la **riconciliazione** col fatturato reale |
+| **`data_emissione` (DL-5)** | = `attivita_fatturabili.data_insert`. Validata 2026-07-06: la riga AF nasce una volta sola all'emissione, mai DELETE in produzione, il reset lotto fa solo UPDATE (la data non si sposta), nessuna re-emissione possibile |
+| **`emessa_in_ritardo`** | `mese(data_emissione) > competenza_mese` — competenza M lavorata dopo M. NULL per attività non ancora emesse |
+| **Perimetro (computabile)** | Esclude commesse `ANNULLATE` (testata) e attività void (predicato `20260703-61`: `stato_emissione <> 'ANNULLATA' AND (stato_approvazione <> 'RIFIUTATA' OR stato_emissione = 'EMESSA')`) |
+| **Scope emittente** | In-vista via `script.fn_get_emittenti_scope_sr_ids(app.current_user_id)` da GUC: `NULL`=tutto · `'{}'`=niente · array=whitelist. `security_invoker = on` |
+| `cliente_display` | Intestatario BA (`billing_account → soggetto_ruolo → soggetti`) |
+
+---
+
+### Esempio d'uso
+
+```sql
+-- Il mese M e' completo? Cosa manca, e cosa e' stato recuperato in ritardo.
+SELECT stadio, count(*), sum(valore),
+       count(*) FILTER (WHERE emessa_in_ritardo) AS recuperi_tardivi
+FROM vendite.vw_dash_competenza_attivita
+WHERE competenza_mese = DATE '2026-05-01'
+GROUP BY stadio;
+```
+
+---
+
+### Note operative
+
+* **Il BE aggrega da `vw_dash_competenza_mensile`** e usa questa vista per il
+  drill-down (layering come la famiglia `vw_dash_fatturazione_*`).
+* ⚠️ **Caveat C1 (`data_insert`)**: il ramo UPDATE di idempotenza di
+  `fn_emit_attivita_fatturabili_da_commessa` cerca la riga AF per
+  `(sorgente_tipo_id, sorgente_uid)` **senza** filtrare per commessa: una
+  collisione di `segment_key` fra attività diverse farebbe ereditare un
+  `data_insert` **più vecchio**. Nessun percorso di produzione lo genera oggi;
+  direzione benigna (il flag ritardo può solo **sotto-stimare**, mai falso
+  positivo). Sentinella pgTAP sul reset in `test-vw-dash-competenza-v1.sql`.
+* ⚠️ **Fail-closed dello scope**: senza GUC operatore (`app.current_user_id`)
+  la vista restituisce **0 righe** (vale per superuser/psql/batch ad-hoc, il
+  filtro-in-vista non è aggirato da `BYPASSRLS`). Per interrogare a mano:
+  impostare la GUC. Il pgTAP la imposta esplicitamente.
+* Un'attività `EMESSA` senza riga AF (solo manutenzioni fuori flusso) cade in
+  `EMESSA_NON_FATTURATA` con `data_emissione` NULL: classificazione corretta,
+  ritardo non calcolabile.
+* Test: `db/pgtap/vendite/test-vw-dash-competenza-v1.sql`.
+
+---
+
+{% include-markdown "signature-core.md" %}

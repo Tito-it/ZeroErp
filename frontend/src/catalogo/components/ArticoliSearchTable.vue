@@ -20,6 +20,7 @@ import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { buildBoolOptions } from '../../core/utils/options'
+import { labelOrCode } from '../../core/utils/i18nLabel'
 
 const emit = defineEmits(['new', 'row-click', 'manage-uom', 'manage-bom', 'manage-note'])
 const { t, te } = useI18n()
@@ -81,7 +82,7 @@ function manageBomTooltip(data) {
   // Difensivo: se il DB introduce un nuovo motivo non mappato i18n,
   // fallback alla label generica invece di mostrare la chiave raw.
   const key = `catalogo.motivo_${motivo.toLowerCase()}`
-  return te(key) ? t(key) : t('catalogo.gestisci_bom')
+  return labelOrCode(t, te, key, t('catalogo.gestisci_bom'))
 }
 
 function buildRowActions(data) {

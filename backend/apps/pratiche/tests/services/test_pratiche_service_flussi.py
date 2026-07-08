@@ -258,13 +258,13 @@ class PraticheServiceFlussiTests(SimpleTestCase):
         repo.get_handler_eventi.assert_called_once_with(10, "COMPLETATO", "POSITIVO")
 
     # Scopo: completamento con binding evento COMPLETATO → l'handler di dominio
-    # (es. accetta_preventivo) viene eseguito nella stessa transazione.
+    # (es. post_smistamento) viene eseguito nella stessa transazione.
     @patch("apps.pratiche.services.handler_registry.get_handler")
     @patch(f"{_SVC}.PraticheRepository")
     def test_completa_flusso_dispatch_evento_completato(self, MockRepo, mock_get_handler):
         repo = MockRepo.return_value
         repo.get_flusso.return_value = _mock_flusso_row(1, template_flusso_id=9003)
-        repo.get_handler_eventi.return_value = [("vendita.accetta_preventivo", {"k": "v"})]
+        repo.get_handler_eventi.return_value = [("vendita.post_smistamento", {"k": "v"})]
         handler_instance = MagicMock()
         mock_get_handler.return_value = MagicMock(return_value=handler_instance)
 

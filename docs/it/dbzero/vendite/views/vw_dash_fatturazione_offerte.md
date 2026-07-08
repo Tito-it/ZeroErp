@@ -31,7 +31,8 @@ SELECT 'OFFERTE'::character varying AS area,
     sdo.codice_interno AS stato_codice_interno,
     sdo.codice AS stato_codice,
     sdo.fase,
-    s.ragione_sociale_completa AS cliente_display
+    s.ragione_sociale_completa AS cliente_display,
+    COALESCE((o.data_emissione)::date, o.validita_dal, (o.data_insert)::date) AS data_riferimento
    FROM (((((vendite.offerte_commerciali o
      JOIN config.stati_doc_offerte sdo ON ((sdo.id = o.stato_doc_offerta_id)))
      LEFT JOIN vendite.contratti ct ON ((ct.offerta_id = o.id)))

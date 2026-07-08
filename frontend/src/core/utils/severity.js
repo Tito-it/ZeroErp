@@ -326,3 +326,46 @@ export const STATO_COMMESSA_MAP = {
 export function statoCommessaSeverity(codice) {
   return resolveSeverity(STATO_COMMESSA_MAP, codice)
 }
+
+// Stati documento fiscale (fatture): DRAFT=grigio (bozza), EMESSA/INVIATA=
+// azzurro (in pipeline), REGISTRATA/DEFINITIVA=verde (consolidata),
+// ANNULLATA=rosso. Allineato a config.stati_doc_fiscale.codice_interno.
+export const STATO_DOC_FISCALE_MAP = {
+  DRAFT: 'secondary',
+  EMESSA: 'info',
+  INVIATA: 'info',
+  REGISTRATA: 'success',
+  DEFINITIVA: 'success',
+  ANNULLATA: 'danger',
+}
+export function statoDocFiscaleSeverity(codice) {
+  return resolveSeverity(STATO_DOC_FISCALE_MAP, codice)
+}
+
+// Classi di azionabilita' backlog fatturazione (Lente 2, DL-6/7):
+// RECUPERABILE=arancio (lavoro interno da fare), SOLLECITO_CLIENTE=azzurro
+// (attesa esterna), ANOMALIA=rosso (da rivedere). Il FISIOLOGICO non arriva
+// mai al FE (escluso a monte dalla vista). Allineato al CHECK di
+// config.motivi_fermo.classe.
+export const CLASSE_BACKLOG_MAP = {
+  RECUPERABILE: 'warn',
+  SOLLECITO_CLIENTE: 'info',
+  ANOMALIA: 'danger',
+}
+export function classeBacklogSeverity(codice) {
+  return resolveSeverity(CLASSE_BACKLOG_MAP, codice)
+}
+
+// Fasi normalizzate della proiezione stato dominio (config.stati_doc_*.fase,
+// vocabolario uniforme delle 4 aree documento — Situazione aperta):
+// APERTO=grigio (in lavorazione interna), IN_ATTESA=azzurro (palla al
+// cliente), IN_CORSO=arancio (avanzato, non concluso), CHIUSO=verde.
+export const FASE_DOCUMENTO_MAP = {
+  APERTO: 'secondary',
+  IN_ATTESA: 'info',
+  IN_CORSO: 'warn',
+  CHIUSO: 'success',
+}
+export function faseDocumentoSeverity(codice) {
+  return resolveSeverity(FASE_DOCUMENTO_MAP, codice)
+}

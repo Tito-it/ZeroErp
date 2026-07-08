@@ -481,7 +481,7 @@ class ApiPraticaFlussoStato(DomainAPIView):
                         esito=str(payload["esito"]),
                         note_esito=payload.get("note_esito"),
                         # user acting (p_user): inoltrato agli handler di completamento
-                        # (es. accetta_preventivo) per audit nelle fn DB di dominio.
+                        # (es. post_smistamento) per audit nelle fn DB di dominio.
                         user=acting_user,
                         meta=meta,
                     )

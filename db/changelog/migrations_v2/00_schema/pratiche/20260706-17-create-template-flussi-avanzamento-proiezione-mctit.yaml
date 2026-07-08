@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GUIDA (D4) — G2: binding di avanzamento su esito proiettato.
+# Brief: brief-db-guida-avanza-esito-proiettato.md §G2 / decisione §9.2.
+#
+# Tabella DEDICATA e leggera (separata da template_flussi_handler_eventi:
+# semantica diversa "avanza-su-proiezione" vs "handler server-side su evento
+# di flusso" -> non si sovraccarica chk_tfhe_evento). Dichiara QUANDO il
+# milestone avanza sul verdetto proiettato:
+#   - (template_flusso_id, esito_richiesto)
+#   - esito_richiesto NULL = "qualsiasi verdetto"
+#   - esito_richiesto valorizzato deve essere uno dei 4 VERDETTI (CHECK),
+#     coerente con la classe dell'esito proiettato (is_verdetto=true).
+# L'esito di COMPLETAMENTO del milestone = il verdetto proiettato (mappatura
+# 1:1: i vocabolari coincidono, nessun remap).
+#
+# Additiva: senza binding, nessun avanzamento automatico. La regola
+# "solo su step non-DOMINIO" e la mutua-esclusione con handler_eventi
+# COMPLETATO sono enforced dal guard config-time (20_code 20260706-21).
+# La copia per fork/nuova-versione e' nel motore fn_copia_definizione
+# (20_code 20260706-22).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260706-17-create-template-flussi-avanzamento-proiezione-mctit.yaml
+
+  - changeSet:
+      id: 20260706-17-create-template-flussi-avanzamento-proiezione
+      author: mctit
+      comment: >
+        Crea pratiche.template_flussi_avanzamento_proiezione: binding dedicato
+        "avanza il milestone quando il documento atteso proietta il verdetto"
+        (GUIDA D4/G2). esito_richiesto NULL = qualsiasi verdetto; se valorizzato
+        ristretto ai 4 verdetti (CHECK).
+      changes:
+        - createTable:
+            schemaName: pratiche
+            tableName: template_flussi_avanzamento_proiezione
+            remarks: "GUIDA D4/G2: binding di avanzamento milestone su esito proiettato (dedicato, additivo)."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_template_flussi_avanzamento_proiezione
+                    nullable: false
+              - column:
+                  name: template_flusso_id
+                  type: integer
+                  remarks: "Milestone (template step) che avanza sulla proiezione. Deve essere uno step non-DOMINIO (guard config-time)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: esito_richiesto
+                  type: character varying(50)
+                  remarks: "Verdetto richiesto per avanzare. NULL = qualsiasi verdetto. Se valorizzato: uno dei 4 verdetti (CHECK). L'esito di completamento del milestone = il verdetto proiettato."
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            constraintName: fk_tfap_template_flusso
+            baseTableSchemaName: pratiche
+            baseTableName: template_flussi_avanzamento_proiezione
+            baseColumnNames: template_flusso_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: template_flussi
+            referencedColumnNames: id
+            onDelete: CASCADE
+            onUpdate: NO ACTION
+
+        - addForeignKeyConstraint:
+            constraintName: fk_tfap_esito
+            baseTableSchemaName: pratiche
+            baseTableName: template_flussi_avanzamento_proiezione
+            baseColumnNames: esito_richiesto
+            referencedTableSchemaName: config
+            referencedTableName: esiti_flussi_pratiche
+            referencedColumnNames: codice
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- I 4 verdetti sono un contratto di dominio stabile (come le 4 classi
+              -- di config.motivi_fermo): whitelist chiusa via CHECK. La classe
+              -- (is_verdetto=true) e' garantita a runtime dalla proiezione e dal
+              -- guard trgfn_flussi_guard_esito_classe sul completamento.
+              ALTER TABLE pratiche.template_flussi_avanzamento_proiezione
+                ADD CONSTRAINT chk_tfap_esito_verdetto CHECK
+                  (esito_richiesto IS NULL
+                   OR esito_richiesto IN ('POSITIVO','NEGATIVO','PARZIALE','NON_APPLICABILE'));
+
+              -- Niente binding duplicati per lo stesso (step, esito). NULLS NOT
+              -- DISTINCT: due righe "qualsiasi verdetto" (NULL) sono un duplicato.
+              ALTER TABLE pratiche.template_flussi_avanzamento_proiezione
+                ADD CONSTRAINT uq_tfap_flusso_esito
+                  UNIQUE NULLS NOT DISTINCT (template_flusso_id, esito_richiesto);
+
+              COMMENT ON TABLE pratiche.template_flussi_avanzamento_proiezione IS
+                'GUIDA D4/G2: binding "avanza-su-proiezione". Una riga = "il milestone template_flusso_id avanza quando il documento atteso (template_flussi.attende_sorgente_tipo_id) proietta esito_richiesto (NULL=qualsiasi verdetto)". Il milestone si completa con il verdetto proiettato (mappatura 1:1). Ammesso solo su step non-DOMINIO e mutuamente esclusivo con handler_eventi COMPLETATO (guard config-time). Consumato da pratiche.fn_reconcile_sorgente; copiato da fn_copia_definizione.';
+
+      rollback:
+        - dropTable:
+            schemaName: pratiche
+            tableName: template_flussi_avanzamento_proiezione
