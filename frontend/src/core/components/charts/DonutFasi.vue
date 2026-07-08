@@ -61,8 +61,29 @@ const totale = computed(() => segments.value.reduce((acc, s) => acc + s.value, 0
 const centerText = computed(() =>
   totale.value <= 0 ? null : formatValue(totale.value)
 )
+
+const emit = defineEmits(['fase-click'])
+
+// Scopo: la legenda emette l'indice del segmento; qui lo si rimappa sulla fase
+//        d'origine (stesso ordine di `props.fasi`) e si rilancia `fase-click`
+//        col codice fase — il caller filtra la lista per area + fase.
+function onSegmentClick(i) {
+  const f = props.fasi[i]
+  if (f) emit('fase-click', f.fase)
+}
 </script>
 
 <template>
-  <DonutBase :segments="segments" :center-text="centerText" :size="size" />
+  <!-- center-below: il totale (euro/conteggi, spesso lungo) va SOTTO il donut,
+       così non sborda sull'anello coprendo la cifra (es. fase APERTO grigio).
+       interactive-legend: le voci di legenda (per fase) sono cliccabili → filtro
+       area+fase sulla lista. -->
+  <DonutBase
+    :segments="segments"
+    :center-text="centerText"
+    :size="size"
+    center-below
+    interactive-legend
+    @segment-click="onSegmentClick"
+  />
 </template>

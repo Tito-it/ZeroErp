@@ -28,6 +28,13 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
   // Filtro recuperi tardivi del drill-down (solo attivita' emesse in ritardo).
   const soloRitardo = ref(false)
 
+  // Ordinamento del drill-down attivita' (convenzione order_by/order_dir come
+  // le liste standard): default "data attivita'" DESC. Lista lazy (paginata
+  // server-side) -> ordinamento server-side, corretto su TUTTE le pagine.
+  // Ordina per la COLONNA data, non per la stringa gg/mm/aaaa mostrata.
+  const attivitaOrderBy = ref('data_attivita')
+  const attivitaOrderDir = ref('desc')
+
   // Aggregata: array 12 mesi { competenza_mese, stadi, totali, n_errori }
   // dal BE. Fetch guardata anti-race via BB useDashRiepilogo: scarta la
   // risposta se nel frattempo l'anno e' cambiato di nuovo (vince l'ultima
@@ -46,9 +53,21 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
       competenza_mese: competenzaMese,
       stadio: stadioSelezionato.value,
       solo_ritardo: soloRitardo.value,
+      order_by: attivitaOrderBy.value,
+      order_dir: attivitaOrderDir.value,
       ...paging,
     })
   )
+
+  // Scopo: applica un evento @sort del DataTable attivita' allo stato
+  //        ordinamento (sortOrder 1 = asc, -1/altro = desc). Sort rimosso
+  //        (sortField null) -> torna al default "data attivita'" DESC. Solo
+  //        stato: la ricarica (pagina 1) resta al caller.
+  function applyAttivitaSort(event) {
+    attivitaOrderBy.value = event.sortField || 'data_attivita'
+    attivitaOrderDir.value =
+      event.sortField && event.sortOrder === 1 ? 'asc' : 'desc'
+  }
   const erroriFetch = usePagedDashFetch(
     (paging, competenzaMese) =>
       listDashboardCompetenzaErrori({
@@ -92,6 +111,8 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     mesi.value = []
     stadioSelezionato.value = null
     soloRitardo.value = false
+    attivitaOrderBy.value = 'data_attivita'
+    attivitaOrderDir.value = 'desc'
     attivitaFetch.resetAll()
     erroriFetch.resetAll()
   }
@@ -101,6 +122,8 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     meseIdx,
     stadioSelezionato,
     soloRitardo,
+    attivitaOrderBy,
+    attivitaOrderDir,
     mesi,
     attivita: attivitaFetch.items,
     attivitaCount: attivitaFetch.count,
@@ -108,6 +131,7 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     attivitaPageSize: attivitaFetch.pageSize,
     attivitaLoading: attivitaFetch.loading,
     applyAttivitaPage: attivitaFetch.applyPageEvent,
+    applyAttivitaSort,
     errori: erroriFetch.items,
     erroriCount: erroriFetch.count,
     erroriPage: erroriFetch.page,

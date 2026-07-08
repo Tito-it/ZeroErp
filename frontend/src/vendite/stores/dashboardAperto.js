@@ -24,6 +24,14 @@ export const useDashboardApertoStore = defineStore('vendite-dashboard-aperto', (
   const faseSelezionata = ref(null)
   const ritardoGiorni = ref(null)
 
+  // Ordinamento lista (convenzione order_by/order_dir come le liste standard,
+  // es. clienti/soggetti): default "aperto da" DESC = i piu' in essere da
+  // prima. La lista e' lazy (paginata server-side) -> l'ordinamento DEVE essere
+  // server-side per essere corretto su TUTTE le pagine, non solo su quella
+  // visibile.
+  const orderBy = ref('anzianita_giorni')
+  const orderDir = ref('desc')
+
   // Riepilogo: array aree (4 sempre presenti, ordine funnel) + vocabolario
   // fasi top-level (alimenta il filtro della lista) dal BE. Fetch guardata
   // anti-race via BB useDashRiepilogo.
@@ -41,9 +49,21 @@ export const useDashboardApertoStore = defineStore('vendite-dashboard-aperto', (
       area: areaSelezionata.value,
       fase: faseSelezionata.value,
       ritardo_giorni: ritardoGiorni.value,
+      order_by: orderBy.value,
+      order_dir: orderDir.value,
       ...paging,
     })
   )
+
+  // Scopo: applica un evento @sort del DataTable allo stato ordinamento
+  //        (convenzione standard: sortOrder 1 = asc, -1/altro = desc). Sort
+  //        rimosso (sortField null) -> torna al default "aperto da" DESC, cosi'
+  //        la lista ha sempre un ordine definito. Solo stato: la ricarica
+  //        (pagina 1) resta al caller, come per i cambi filtro.
+  function applyDocumentiSort(event) {
+    orderBy.value = event.sortField || 'anzianita_giorni'
+    orderDir.value = event.sortField && event.sortOrder === 1 ? 'asc' : 'desc'
+  }
 
   // Scopo: carica una pagina della lista coi filtri correnti.
   async function fetchDocumenti() {
@@ -62,6 +82,8 @@ export const useDashboardApertoStore = defineStore('vendite-dashboard-aperto', (
     areaSelezionata.value = null
     faseSelezionata.value = null
     ritardoGiorni.value = null
+    orderBy.value = 'anzianita_giorni'
+    orderDir.value = 'desc'
     aree.value = []
     fasi.value = []
     documentiFetch.resetAll()
@@ -71,6 +93,8 @@ export const useDashboardApertoStore = defineStore('vendite-dashboard-aperto', (
     areaSelezionata,
     faseSelezionata,
     ritardoGiorni,
+    orderBy,
+    orderDir,
     aree,
     fasi,
     documenti: documentiFetch.items,
@@ -80,6 +104,7 @@ export const useDashboardApertoStore = defineStore('vendite-dashboard-aperto', (
     documentiLoading: documentiFetch.loading,
     documentiLoaded: documentiFetch.loaded,
     applyDocumentiPage: documentiFetch.applyPageEvent,
+    applyDocumentiSort,
     fetchRiepilogo: riepilogo.fetchRiepilogo,
     fetchDocumenti,
     resetDocumenti,

@@ -53,6 +53,8 @@ const {
   areaSelezionata,
   faseSelezionata,
   ritardoGiorni,
+  orderBy,
+  orderDir,
   aree,
   fasi,
   documenti,
@@ -62,6 +64,10 @@ const {
   documentiLoading,
   documentiLoaded,
 } = storeToRefs(store)
+
+// Ordinamento colonne per il DataTable (controllato): il campo dallo store,
+// la direzione tradotta nella convenzione PrimeVue (1 asc, -1 desc).
+const documentiSortOrder = computed(() => (orderDir.value === 'desc' ? -1 : 1))
 
 // Scopo: decodifiche i18n fail-visible dai BB condivisi di dashboardAree
 //        (gruppo dash_comune, riusato dal Backlog): alias locali per tenere
@@ -136,9 +142,26 @@ function onFiltriChange() {
   loadDocumenti()
 }
 
-// Scopo: click su card area = toggle del filtro area.
+// Scopo: click sul corpo della card = livello AREA (nessuna fase). Se su
+//        quest'area c'e' gia' una fase attiva (drill-down da legenda), il click
+//        la rimuove tornando a "tutta l'area"; altrimenti toggle classico
+//        dell'area. In ogni caso la fase viene azzerata (vista d'area).
 function selezionaArea(area) {
-  areaSelezionata.value = areaSelezionata.value === area ? null : area
+  if (areaSelezionata.value === area && faseSelezionata.value !== null) {
+    faseSelezionata.value = null
+  } else {
+    areaSelezionata.value = areaSelezionata.value === area ? null : area
+    faseSelezionata.value = null
+  }
+  onFiltriChange()
+}
+
+// Scopo: click su una voce di legenda del donut (una fase specifica): filtra la
+//        lista per AREA + FASE e valorizza i filtri (la card si evidenzia,
+//        il Select fase mostra la fase). Set esplicito, non toggle.
+function selezionaAreaFase(area, fase) {
+  areaSelezionata.value = area
+  faseSelezionata.value = fase
   onFiltriChange()
 }
 
@@ -146,6 +169,15 @@ function selezionaArea(area) {
 //        pagina nel BB usePagedDashFetch).
 function onDocumentiPage(event) {
   store.applyDocumentiPage(event)
+  loadDocumenti()
+}
+
+// Scopo: ordinamento colonne (server-side, lista lazy): aggiorna lo stato sort
+//        e ricarica dalla PAGINA 1 — riordinare riparte dall'inizio, come i
+//        cambi filtro. Corretto su tutte le pagine (non solo quella visibile).
+function onDocumentiSort(event) {
+  store.applyDocumentiSort(event)
+  store.resetDocumenti()
   loadDocumenti()
 }
 
@@ -218,7 +250,12 @@ onActivated(() => {
           @keydown.enter="selezionaArea(card.area)"
         >
           <span class="app-dash-card-title">{{ areaLabel(card.area) }}</span>
-          <DonutFasi :fasi="card.fasi" :format="card.format" :size="110" />
+          <DonutFasi
+            :fasi="card.fasi"
+            :format="card.format"
+            :size="110"
+            @fase-click="(fase) => selezionaAreaFase(card.area, fase)"
+          />
         </div>
       </div>
 
@@ -266,11 +303,14 @@ onActivated(() => {
           paginator-position="top"
           lazy
           :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
+          :sort-field="orderBy"
+          :sort-order="documentiSortOrder"
           class="app-datatable app-datatable--inner"
           striped-rows
           @page="onDocumentiPage"
+          @sort="onDocumentiSort"
         >
-          <Column field="anzianita_giorni" :header="t('situazione_aperta.col_aperto_da')" style="width: 130px;">
+          <Column field="anzianita_giorni" :header="t('situazione_aperta.col_aperto_da')" sortable style="width: 130px;">
             <template #body="{ data }">
               <span
                 class="app-dash-ritardo"
@@ -287,12 +327,12 @@ onActivated(() => {
               {{ areaLabel(data.area) }}
             </template>
           </Column>
-          <Column field="codice" :header="t('situazione_aperta.col_codice')" style="width: 130px;">
+          <Column field="codice" :header="t('situazione_aperta.col_codice')" sortable style="width: 130px;">
             <template #body="{ data }">
               {{ data.codice ?? '—' }}
             </template>
           </Column>
-          <Column field="cliente_display" :header="t('situazione_aperta.col_cliente')">
+          <Column field="cliente_display" :header="t('situazione_aperta.col_cliente')" sortable>
             <template #body="{ data }">
               {{ data.cliente_display ?? '—' }}
             </template>
@@ -312,7 +352,7 @@ onActivated(() => {
               <Tag :value="data.stato_codice ?? '—'" :severity="statoSeverity(data)" />
             </template>
           </Column>
-          <Column field="valore_totale" :header="t('situazione_aperta.col_valore')" style="width: 120px;">
+          <Column field="valore_totale" :header="t('situazione_aperta.col_valore')" sortable style="width: 120px;">
             <template #body="{ data }">
               {{ data.valore_totale !== null ? formatCurrency(data.valore_totale) : '—' }}
             </template>

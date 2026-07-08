@@ -16,6 +16,9 @@ Indice test eseguiti:
 7) DashBacklogDocumentiServiceTests.test_documenti_area_invalida
 8) DashBacklogDocumentiServiceTests.test_documenti_filtri_none_passthrough
 9) DashBacklogDocumentiServiceTests.test_documenti_page_invalida
+10) DashBacklogDocumentiServiceTests.test_documenti_ordinamento_inoltrato
+11) DashBacklogDocumentiServiceTests.test_documenti_order_by_non_valido
+12) DashBacklogDocumentiServiceTests.test_documenti_order_dir_non_valido
 """
 
 from unittest import TestCase
@@ -184,4 +187,29 @@ class DashBacklogDocumentiServiceTests(TestCase):
     def test_documenti_page_invalida(self):
         with self.assertRaises(ServiceError) as ctx:
             fn_dash_backlog_documenti(page=0)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: order_by/order_dir (whitelist) inoltrati al repository per
+    #        l'ordinamento server-side su tutte le pagine.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_backlog_documenti",
+        return_value=([], 0),
+    )
+    def test_documenti_ordinamento_inoltrato(self, mock_repo):
+        fn_dash_backlog_documenti(order_by="stato_codice", order_dir="asc")
+        kwargs = mock_repo.call_args.kwargs
+        self.assertEqual(kwargs["order_by"], "stato_codice")
+        self.assertEqual(kwargs["order_dir"], "asc")
+
+    # Scopo: order_by fuori whitelist -> E_VENDITE_VALIDATION (fail-fast 400).
+    def test_documenti_order_by_non_valido(self):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_backlog_documenti(order_by="motivo_fermo; DROP")
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: order_dir diverso da asc/desc -> E_VENDITE_VALIDATION.
+    def test_documenti_order_dir_non_valido(self):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_backlog_documenti(order_by="codice", order_dir="random")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")

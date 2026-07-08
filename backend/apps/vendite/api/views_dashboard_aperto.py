@@ -25,6 +25,7 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.payload_validators import (
     qp_int_optional,
     qp_int_strict,
+    qp_str,
     qp_str_upper,
 )
 from apps.core.api.success_responses import success_response
@@ -114,6 +115,29 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
                 ),
             ),
             OpenApiParameter(
+                name="order_by",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Colonna di ordinamento (whitelist): anzianita_giorni "
+                    "(default, \"aperto da\") | codice | cliente_display | "
+                    "valore_totale. Ordinamento server-side su tutte le pagine. "
+                    "Colonna non ammessa -> 400 (E_VENDITE_VALIDATION)."
+                ),
+            ),
+            OpenApiParameter(
+                name="order_dir",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Direzione ordinamento: asc | desc (default desc per "
+                    "anzianita_giorni: i piu' \"in essere da\" prima). Valore "
+                    "diverso -> 400 (E_VENDITE_VALIDATION)."
+                ),
+            ),
+            OpenApiParameter(
                 name="page",
                 type=int,
                 location=OpenApiParameter.QUERY,
@@ -158,6 +182,10 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
         # nessuna soglia. La guardia intero > 0 (E_VENDITE_VALIDATION) e' nel
         # service, unica definizione.
         ritardo_giorni = qp_int_optional(qp.get("ritardo_giorni"), "ritardo_giorni")
+        # Ordinamento (convenzione order_by/order_dir): whitelist + direzione
+        # validate nel service (unica definizione, fail-fast 400).
+        order_by = qp_str(qp.get("order_by"))
+        order_dir = qp_str(qp.get("order_dir"))
         page = qp_int_strict(qp.get("page"), "page", 1)
         page_size = qp_int_strict(qp.get("page_size"), "page_size", 50)
 
@@ -167,6 +195,8 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
             area=area,
             fase=fase,
             ritardo_giorni=ritardo_giorni,
+            order_by=order_by,
+            order_dir=order_dir,
             page=page,
             page_size=page_size,
         )

@@ -331,12 +331,26 @@ class VenditeRepository:
     #        invoker sulle 4 aree documento). Una sola valutazione della
     #        union + clamp offset via _query_paged_view.
     # Risultato: tuple (lista DashApertoDocumentoRow, conteggio totale).
+    # Colonne ordinabili del drill-down Situazione aperta: chiave esposta al FE
+    # (allineata al `field` della colonna DataTable) -> colonna della CTE
+    # `righe`. Whitelist: nell'ORDER BY entrano solo chiavi note + direzione
+    # ASC/DESC, mai input utente grezzo (no SQL injection). Convenzione
+    # order_by/order_dir come le liste standard (fn_search_soggetti_universale).
+    DASH_APERTO_SORT_COLUMNS = {
+        "anzianita_giorni": "anzianita_giorni",
+        "codice": "codice",
+        "cliente_display": "cliente_display",
+        "valore_totale": "valore_totale",
+    }
+
     def list_dash_aperto_documenti(
         self,
         *,
         area: str | None,
         fase: str | None,
         ritardo_giorni: int | None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[DashApertoDocumentoRow], int]:
@@ -378,13 +392,28 @@ class VenditeRepository:
             {where_clause}
         """
 
-        rows, total_count = self._query_paged_view(
-            select_sql=select_sql,
-            order_by="""
+        # ORDER BY server-side (corretto su TUTTE le pagine, non solo quella
+        # visibile): colonna dalla whitelist DASH_APERTO_SORT_COLUMNS + direzione
+        # ASC/DESC, con tiebreak stabile (area, documento_id) per paginazione
+        # deterministica. order_by assente/non ammesso -> ordine storico
+        # "in essere da" (i piu' vecchi prima).
+        sort_col = self.DASH_APERTO_SORT_COLUMNS.get(order_by or "")
+        if sort_col is not None:
+            direction = "DESC" if (order_dir or "").lower() == "desc" else "ASC"
+            order_clause = (
+                f"ORDER BY {sort_col} {direction} NULLS LAST, "
+                "area ASC, documento_id ASC"
+            )
+        else:
+            order_clause = """
             ORDER BY data_riferimento ASC NULLS LAST,
                      valore_totale DESC NULLS LAST,
                      area ASC, documento_id ASC
-            """,
+            """
+
+        rows, total_count = self._query_paged_view(
+            select_sql=select_sql,
+            order_by=order_clause,
             params=params,
             limit=limit,
             offset=offset,
@@ -492,12 +521,27 @@ class VenditeRepository:
     # Perimetro: sola lettura su vw_dash_competenza_attivita (scope GUC
     #        fail-closed in vista); decode articolo via JOIN (display field).
     # Risultato: tuple (lista DashCompetenzaAttivitaRow, conteggio totale).
+    # Colonne ordinabili del drill-down attivita' Lente 1 Competenza: chiave FE
+    # (field colonna DataTable) -> espressione SQL. Note: la cella "articolo"
+    # mostra la descrizione (fallback codice) -> si ordina per il valore
+    # mostrato; la data si ordina per la COLONNA data (non la stringa gg/mm/aaaa
+    # del FE). Whitelist: nell'ORDER BY solo chiavi note + ASC/DESC (no injection).
+    DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS = {
+        "commessa_codice": "a.commessa_codice",
+        "cliente_display": "a.cliente_display",
+        "articolo_codice": "COALESCE(art.descrizione, art.codice)",
+        "data_attivita": "a.data_attivita",
+        "valore": "a.valore",
+    }
+
     def list_dash_competenza_attivita(
         self,
         *,
         competenza_mese: date,
         stadio: str | None,
         solo_ritardo: bool,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[DashCompetenzaAttivitaRow], int]:
@@ -513,6 +557,23 @@ class VenditeRepository:
             conditions.append("a.emessa_in_ritardo IS TRUE")
 
         where_clause = "WHERE " + " AND ".join(conditions)
+
+        # ORDER BY server-side (corretto su TUTTE le pagine): colonna dalla
+        # whitelist + direzione ASC/DESC, tiebreak stabile (commessa,
+        # commessa_attivita_id). order_by assente/non ammesso -> default storico
+        # (valore DESC).
+        sort_col = self.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS.get(order_by or "")
+        if sort_col is not None:
+            direction = "DESC" if (order_dir or "").lower() == "desc" else "ASC"
+            order_clause = (
+                f"ORDER BY {sort_col} {direction} NULLS LAST, "
+                "a.commessa_codice ASC, a.commessa_attivita_id ASC"
+            )
+        else:
+            order_clause = (
+                "ORDER BY a.valore DESC NULLS LAST, a.commessa_codice ASC, "
+                "a.commessa_attivita_id ASC"
+            )
 
         count_sql = f"""
             SELECT COUNT(*)
@@ -551,8 +612,7 @@ class VenditeRepository:
             LEFT JOIN catalogo.articoli art
                 ON art.id = a.articolo_id
             {where_clause}
-            ORDER BY a.valore DESC NULLS LAST, a.commessa_codice ASC,
-                     a.commessa_attivita_id ASC
+            {order_clause}
             LIMIT %s OFFSET %s
         """
 
@@ -728,11 +788,26 @@ class VenditeRepository:
     #        RLS invoker + scope GUC commesse). Una sola valutazione della
     #        union + clamp offset via _query_paged_view.
     # Risultato: tuple (lista DashBacklogDocumentoRow, conteggio totale).
+    # Colonne ordinabili del backlog fatturazione: chiave FE (field della colonna
+    # DataTable) -> colonna della CTE `righe`. Whitelist: nell'ORDER BY entrano
+    # solo chiavi note + direzione ASC/DESC (no SQL injection). Convenzione
+    # order_by/order_dir come le liste standard, gemella di DASH_APERTO_SORT_COLUMNS.
+    DASH_BACKLOG_SORT_COLUMNS = {
+        "anzianita_giorni": "anzianita_giorni",
+        "area": "area",
+        "codice": "codice",
+        "cliente_display": "cliente_display",
+        "valore_fermo": "valore_fermo",
+        "stato_codice": "stato_codice",
+    }
+
     def list_dash_backlog_documenti(
         self,
         *,
         classe: str | None,
         area: str | None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[DashBacklogDocumentoRow], int]:
@@ -769,13 +844,27 @@ class VenditeRepository:
             {where_clause}
         """
 
-        rows, total_count = self._query_paged_view(
-            select_sql=select_sql,
-            order_by="""
+        # ORDER BY server-side (corretto su TUTTE le pagine): colonna dalla
+        # whitelist DASH_BACKLOG_SORT_COLUMNS + direzione ASC/DESC, tiebreak
+        # stabile (area, documento_id). order_by assente/non ammesso -> ordine
+        # storico "fermo da" (i piu' vecchi prima).
+        sort_col = self.DASH_BACKLOG_SORT_COLUMNS.get(order_by or "")
+        if sort_col is not None:
+            direction = "DESC" if (order_dir or "").lower() == "desc" else "ASC"
+            order_clause = (
+                f"ORDER BY {sort_col} {direction} NULLS LAST, "
+                "area ASC, documento_id ASC"
+            )
+        else:
+            order_clause = """
             ORDER BY data_riferimento ASC NULLS LAST,
                      valore_fermo DESC NULLS LAST,
                      area ASC, documento_id ASC
-            """,
+            """
+
+        rows, total_count = self._query_paged_view(
+            select_sql=select_sql,
+            order_by=order_clause,
             params=params,
             limit=limit,
             offset=offset,

@@ -17,6 +17,7 @@ Indice test eseguiti:
 8) DashboardCompetenzaAttivitaApiTests.test_attivita_competenza_malformata_400
 9) DashboardCompetenzaAttivitaApiTests.test_attivita_stadio_lowercase_normalizzato
 10) DashboardCompetenzaAttivitaApiTests.test_attivita_solo_ritardo_e_paginazione
+10a) DashboardCompetenzaAttivitaApiTests.test_attivita_ordinamento_parametri
 11) DashboardCompetenzaAttivitaApiTests.test_attivita_scope_db_side_no_auth_user
 12) DashboardCompetenzaErroriApiTests.test_errori_ok
 13) DashboardCompetenzaErroriApiTests.test_errori_requires_jwt
@@ -221,6 +222,19 @@ class DashboardCompetenzaAttivitaApiTests(JwtMockedApiTest):
         self.assertTrue(kwargs["solo_ritardo"])
         self.assertEqual(kwargs["page"], 2)
         self.assertEqual(kwargs["page_size"], 10)
+
+    # Scopo: order_by/order_dir (ordinamento colonne) inoltrati al service;
+    #        whitelist/validazione = definizione unica del service.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_dashboard_competenza.fn_dash_competenza_attivita")
+    def test_attivita_ordinamento_parametri(self, mocked_fn, _mock_auth):
+        mocked_fn.return_value = _ATTIVITA_RESPONSE
+        self.client.get(
+            f"{self._URL}?competenza_mese=2026-05-01&order_by=data_attivita&order_dir=desc"
+        )
+        kwargs = mocked_fn.call_args.kwargs
+        self.assertEqual(kwargs["order_by"], "data_attivita")
+        self.assertEqual(kwargs["order_dir"], "desc")
 
     # Scopo: Lo scope emittente e' interamente DB-side (GUC fail-closed nella
     #        vista): la view NON passa auth_user_id.

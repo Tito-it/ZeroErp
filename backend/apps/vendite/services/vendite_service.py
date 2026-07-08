@@ -283,6 +283,8 @@ def fn_dash_aperto_documenti(
     area: str | None = None,
     fase: str | None = None,
     ritardo_giorni: int | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> dict[str, object]:
@@ -297,6 +299,29 @@ def fn_dash_aperto_documenti(
         context={"ritardo_giorni": ritardo_giorni},
         function_name="vendite.vendite_service.fn_dash_aperto_documenti",
     )
+    # Ordinamento server-side (convenzione order_by/order_dir come le liste
+    # standard): whitelist della lista + direzione asc/desc, fail-fast 400 —
+    # nessun input grezzo entra nell'ORDER BY. Assenti -> ordine di default
+    # (i piu' "in essere da" prima) deciso dal repository.
+    ErrorManager.require(
+        order_by is None or order_by in VenditeRepository.DASH_APERTO_SORT_COLUMNS,
+        code="E_VENDITE_VALIDATION",
+        message="Colonna di ordinamento non valida.",
+        detail=(
+            f"order_by='{order_by}' non ammesso. Valori: "
+            f"{', '.join(sorted(VenditeRepository.DASH_APERTO_SORT_COLUMNS))}."
+        ),
+        context={"order_by": order_by},
+        function_name="vendite.vendite_service.fn_dash_aperto_documenti",
+    )
+    ErrorManager.require(
+        order_dir is None or order_dir.lower() in ("asc", "desc"),
+        code="E_VENDITE_VALIDATION",
+        message="Direzione di ordinamento non valida.",
+        detail="order_dir deve essere 'asc' o 'desc'.",
+        context={"order_dir": order_dir},
+        function_name="vendite.vendite_service.fn_dash_aperto_documenti",
+    )
     offset = _validate_pagination(
         page, page_size, "vendite.vendite_service.fn_dash_aperto_documenti"
     )
@@ -306,6 +331,8 @@ def fn_dash_aperto_documenti(
         area=area,
         fase=fase,
         ritardo_giorni=ritardo_giorni,
+        order_by=order_by,
+        order_dir=order_dir,
         limit=page_size,
         offset=offset,
     )
@@ -452,6 +479,8 @@ def fn_dash_competenza_attivita(
     competenza_mese: date,
     stadio: str | None = None,
     solo_ritardo: bool = False,
+    order_by: str | None = None,
+    order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> dict[str, object]:
@@ -459,6 +488,29 @@ def fn_dash_competenza_attivita(
         stadio,
         allowed=DASH_COMPETENZA_STADI,
         param_name="stadio",
+        function_name="vendite.vendite_service.fn_dash_competenza_attivita",
+    )
+    # Ordinamento server-side (convenzione order_by/order_dir come le liste
+    # standard): whitelist della lista + direzione asc/desc, fail-fast 400 —
+    # nessun input grezzo entra nell'ORDER BY. Assenti -> default repository.
+    ErrorManager.require(
+        order_by is None
+        or order_by in VenditeRepository.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS,
+        code="E_VENDITE_VALIDATION",
+        message="Colonna di ordinamento non valida.",
+        detail=(
+            f"order_by='{order_by}' non ammesso. Valori: "
+            f"{', '.join(sorted(VenditeRepository.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS))}."
+        ),
+        context={"order_by": order_by},
+        function_name="vendite.vendite_service.fn_dash_competenza_attivita",
+    )
+    ErrorManager.require(
+        order_dir is None or order_dir.lower() in ("asc", "desc"),
+        code="E_VENDITE_VALIDATION",
+        message="Direzione di ordinamento non valida.",
+        detail="order_dir deve essere 'asc' o 'desc'.",
+        context={"order_dir": order_dir},
         function_name="vendite.vendite_service.fn_dash_competenza_attivita",
     )
     offset = _validate_pagination(
@@ -470,6 +522,8 @@ def fn_dash_competenza_attivita(
         competenza_mese=competenza_mese.replace(day=1),
         stadio=stadio,
         solo_ritardo=solo_ritardo,
+        order_by=order_by,
+        order_dir=order_dir,
         limit=page_size,
         offset=offset,
     )
@@ -561,6 +615,8 @@ def fn_dash_backlog_documenti(
     *,
     classe: str | None = None,
     area: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> dict[str, object]:
@@ -568,6 +624,29 @@ def fn_dash_backlog_documenti(
         area,
         allowed=DASH_FATTURAZIONE_AREE,
         param_name="area",
+        function_name="vendite.vendite_service.fn_dash_backlog_documenti",
+    )
+    # Ordinamento server-side (convenzione order_by/order_dir come le liste
+    # standard): whitelist della lista + direzione asc/desc, fail-fast 400 —
+    # nessun input grezzo entra nell'ORDER BY. Assenti -> default repository
+    # (i piu' "fermo da" prima).
+    ErrorManager.require(
+        order_by is None or order_by in VenditeRepository.DASH_BACKLOG_SORT_COLUMNS,
+        code="E_VENDITE_VALIDATION",
+        message="Colonna di ordinamento non valida.",
+        detail=(
+            f"order_by='{order_by}' non ammesso. Valori: "
+            f"{', '.join(sorted(VenditeRepository.DASH_BACKLOG_SORT_COLUMNS))}."
+        ),
+        context={"order_by": order_by},
+        function_name="vendite.vendite_service.fn_dash_backlog_documenti",
+    )
+    ErrorManager.require(
+        order_dir is None or order_dir.lower() in ("asc", "desc"),
+        code="E_VENDITE_VALIDATION",
+        message="Direzione di ordinamento non valida.",
+        detail="order_dir deve essere 'asc' o 'desc'.",
+        context={"order_dir": order_dir},
         function_name="vendite.vendite_service.fn_dash_backlog_documenti",
     )
     offset = _validate_pagination(
@@ -578,6 +657,8 @@ def fn_dash_backlog_documenti(
     results, total_count = repository.list_dash_backlog_documenti(
         classe=classe,
         area=area,
+        order_by=order_by,
+        order_dir=order_dir,
         limit=page_size,
         offset=offset,
     )
