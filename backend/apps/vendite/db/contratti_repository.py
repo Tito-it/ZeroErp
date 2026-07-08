@@ -641,58 +641,6 @@ class ContrattiRepository(ComponentiRepositoryMixin):
                 counts[tipo] = int(n)
             return counts
 
-    # Scopo: Inserisce un contratto. `numero` gia' generato dal service.
-    #        Colonne whitelisted. Trigger DB impostera' `validita` da
-    #        valido_dal/al e validera' coerenza modalita' via CHECK.
-    def create_contratto(self, data: dict[str, Any]) -> int:
-        write_cols = (
-            "numero",
-            "billing_account_id",
-            # emittente_fiscale_id: se il payload lo specifica DEVE finire nell'INSERT
-            # (il trigger trgfn_contratti_default_emittente lo deriva solo se NULL).
-            # Senza, un operatore senza emittente assegnato non puo' creare contratti
-            # nemmeno passandolo esplicitamente (asimmetria service-accetta/repo-scarta).
-            "emittente_fiscale_id",
-            "istanza_utility_id",
-            "utility_id",
-            "ambito",
-            "valido_dal",
-            "valido_al",
-            "parent_contratto_id",
-            "stato_doc_contratto_id",
-            "data",
-            "listino_id",
-            "tipo_variazione_globale",
-            "valore_variazione_globale",
-            "categoria_cliente_id_snapshot",
-            # Snapshot valuta fissato al CREATE, opzionale: se non passato,
-            # il trigger DB `_a*_set_valuta_default_ins` risolve via
-            # `vendite.fn_get_valuta_id` (catena BA → emittente → gestore,
-            # brief work-done 2026-05-29). NON in update_contratto whitelist:
-            # snapshot immutabile post-CREATE (simmetrico a preventivi).
-            "valuta_id",
-            "meta",
-        )
-        cols: list[str] = []
-        vals: list[Any] = []
-        placeholders: list[str] = []
-        for col in write_cols:
-            if col in data:
-                ph, val = _ph_and_val(col, data[col])
-                cols.append(col)
-                placeholders.append(ph)
-                vals.append(val)
-        sql = f"""
-            INSERT INTO vendite.contratti ({", ".join(cols)})
-            VALUES ({", ".join(placeholders)})
-            RETURNING id
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, vals)
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
-
     # Scopo: Creazione atomica del contratto via funzione madre DB.
     #        Obiettivo: fondere in UNA sola statement (vendite.fn_create_contratto)
     #        la generazione del numero (`fn_generate_codice`), l'INSERT testata
@@ -1234,20 +1182,6 @@ class ContrattiRepository(ComponentiRepositoryMixin):
     # =================================================================
     # Lookup tecnici usati dal service
     # =================================================================
-
-    # Codice tipo usato in config.sistema_codici (prefix=CNT, len=7).
-    _NUMERO_CODICE_TIPO = "contratto"
-
-    # Scopo: Genera il numero contratto via script.fn_generate_codice.
-    def generate_numero(self) -> str:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT script.fn_generate_codice(%s)",
-                [self._NUMERO_CODICE_TIPO],
-            )
-            row = cursor.fetchone()
-            assert row is not None and row[0] is not None
-            return str(row[0])
 
     # Scopo: Risolve stato DRAFT (o lo stato richiesto) dal codice_interno.
     #        Usato in create per impostare stato iniziale standard.

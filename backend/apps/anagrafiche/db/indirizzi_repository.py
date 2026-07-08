@@ -12,7 +12,7 @@ from typing import Any
 
 from apps.core.db._helpers import dynamic_update, row_to_dict, rows_to_list
 
-from django.db import connection
+from django.db import connection, transaction
 
 from apps.anagrafiche.db._helpers import extract_paginated
 
@@ -191,7 +191,9 @@ class IndirizziRepository:
     ) -> int:
         descrizione_via = descrizione_via.strip()
 
-        with connection.cursor() as cursor:
+        # Guardrail atomicità (review 2026-07-08): 2 upsert sequenziali (stradario_generale
+        # + stradario) resi self-atomici. Prima protetti solo dal caller; nested=savepoint.
+        with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute("""
                 INSERT INTO config.stradario_generale (toponomastica_id, descrizione, descrizione_breve)
                 VALUES (%s, %s, %s)
@@ -213,6 +215,45 @@ class IndirizziRepository:
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])
+
+    # Scopo: Creazione atomica dell'indirizzo via funzione madre DB.
+    #        Obiettivo: fondere in UNA sola statement (anagrafiche.fn_create_indirizzo)
+    #        l'upsert dello stradario (generale + locale, solo per "via nuova" con
+    #        p_stradario_id NULL) e il get_or_create del dettaglio civico.
+    #        Perimetro: o tutto o rollback totale — niente piu' righe stradario di
+    #        registro orfane se il dettaglio fallisce (fix analisi-fix-transazioni
+    #        Classe D, finding #13; prima get_or_create_stradario +
+    #        create_indirizzo_dettaglio erano due scritture autocommit separate).
+    #        La fn e' SECURITY INVOKER. Ritorna l'id del dettaglio indirizzo.
+    #        Se p_stradario_id e' valorizzato la fn salta l'upsert e usa quello.
+    def create_indirizzo_atomico(
+        self, *,
+        stradario_id: int | None = None,
+        toponomastica_id: int | None = None,
+        descrizione_via: str | None = None,
+        comune_id: int | None = None,
+        codice_postale_id: int | None = None,
+        civico: int | None = None,
+        estensione_civico: str | None = None,
+        palazzina: str | None = None,
+        scala: str | None = None,
+        piano: str | None = None,
+        interno: str | None = None,
+    ) -> int:
+        sql = """
+            SELECT anagrafiche.fn_create_indirizzo(
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                stradario_id, toponomastica_id, descrizione_via,
+                comune_id, codice_postale_id, civico, estensione_civico,
+                palazzina, scala, piano, interno,
+            ])
+            row = cursor.fetchone()
+            assert row is not None and row[0] is not None
+        return int(row[0])
 
     # =================================================================
     # Codici postali

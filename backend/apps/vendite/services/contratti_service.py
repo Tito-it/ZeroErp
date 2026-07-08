@@ -485,8 +485,13 @@ class ContrattiService:
     # Scopo: Context manager che normalizza errori DB sollevati dentro il
     #        blocco in `ServiceError` applicativi. Concentra in un unico
     #        posto la catena try/except duplicata per tutti i mutatori.
+    #        ATTENZIONE (igiene analisi-fix-transazioni): questo NON e' un
+    #        confine transazionale — non apre alcun `transaction.atomic()`, e'
+    #        solo un mapper di eccezioni. Per l'atomicita' di 2+ scritture serve
+    #        un `with transaction.atomic()` esplicito ATTORNO (vedi create/update
+    #        riga). Rinominato da `_db_errors` per non trarre in inganno il lettore.
     @contextmanager
-    def _db_errors(
+    def _map_db_errors(
         self,
         context: dict[str, Any],
         *,
@@ -674,7 +679,7 @@ class ContrattiService:
         # in UNA sola statement atomica (fn madre), non piu' generate_numero + 2
         # INSERT separati in autocommit. O tutto o rollback (numero incluso):
         # niente contratto orfano ne' numero consumato a vuoto.
-        with self._db_errors({"billing_account_id": data.get("billing_account_id")}):
+        with self._map_db_errors({"billing_account_id": data.get("billing_account_id")}):
             new_id = self._repo.create_contratto_atomico(
                 testata=data, utility=utility_data,
             )
@@ -842,7 +847,7 @@ class ContrattiService:
                     },
                 )
 
-        with self._db_errors({"contratto_id": contratto_id}):
+        with self._map_db_errors({"contratto_id": contratto_id}):
             updated = self._repo.update_contratto(contratto_id, data)
 
         ErrorManager.require(
@@ -982,7 +987,7 @@ class ContrattiService:
             if valido_al > date.today():
                 cessazione_programmata = True
 
-        with self._db_errors(
+        with self._map_db_errors(
             {"contratto_id": contratto_id, "codice_interno": codice_norm},
             fallback_message="Violazione vincolo DB su cambio stato.",
         ):
@@ -1044,7 +1049,7 @@ class ContrattiService:
             message="Stato 'ATTIVO' non configurato.",
         )
         assert target_stato_id is not None
-        with self._db_errors(
+        with self._map_db_errors(
             {"contratto_id": contratto_id, "codice_interno": "ATTIVO"},
             fallback_message="Violazione vincolo DB su attivazione contratto.",
         ):
@@ -1248,10 +1253,14 @@ class ContrattiService:
         # non promuovibile a funzione madre DB. Senza atomic, inoltre, una riga
         # padre composito potrebbe restare senza componenti se la fn DB
         # `fn_contratto_riga_componenti_init` solleva (es. BoM scaduta).
-        with transaction.atomic(), self._db_errors(
+        # Ordine dei CM: mapper ESTERNO, atomic INTERNO (allineato a offerte).
+        # Su errore trigger (DatabaseError) l'atomic rolla PRIMA, poi il mapper
+        # traduce + logga su connessione pulita — altrimenti il log-to-db girerebbe
+        # sulla transazione avvelenata e verrebbe perso (review 2026-07-08).
+        with self._map_db_errors(
             {"contratto_id": contratto_id},
             fallback_message="Violazione vincolo DB su riga contratto.",
-        ):
+        ), transaction.atomic():
             if tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE:
                 pratica_id_l3, testata_gate = self._apply_pricing_gate_riga(
                     contratto_id=contratto_id,
@@ -1521,14 +1530,16 @@ class ContrattiService:
         # Fix analisi-fix-transazioni #6 (Classe B): gate L3 (crea + linka inline
         # la pratica di approvazione) e UPDATE riga in UN solo transaction.atomic().
         # Prima il gate era fuori da qualsiasi atomic — l'UPDATE stava solo in
-        # `_db_errors`, che NON e' un atomic — quindi la pratica creata dal gate
+        # `_map_db_errors`, che NON e' un atomic — quindi la pratica creata dal gate
         # restava orfana se l'UPDATE riga falliva. Il gate fa permission-check
         # L1/L2 in Python (azioni di processo): resta orchestrazione BE, non
         # promuovibile a funzione madre DB.
-        with transaction.atomic(), self._db_errors(
+        # Ordine dei CM: mapper ESTERNO, atomic INTERNO (vedi create_riga): il
+        # rollback su errore trigger avviene prima del log-to-db del mapper.
+        with self._map_db_errors(
             {"riga_id": riga_id},
             fallback_message="Violazione vincolo DB su riga contratto.",
-        ):
+        ), transaction.atomic():
             if (
                 "prezzo_unitario" in data
                 and tipo_existing in _TIPI_ECCEZIONE_CON_GATE
@@ -1566,7 +1577,7 @@ class ContrattiService:
     def delete_riga(self, riga_id: int) -> None:
         self._v.guard_positive_int(riga_id, field="riga_id")
         self._assert_contratto_draft_from_riga(riga_id, op_label="Eliminazione riga contratto")
-        with self._db_errors(
+        with self._map_db_errors(
             {"riga_id": riga_id},
             fallback_message="Impossibile eliminare la riga (dipendenze).",
         ):
@@ -1740,7 +1751,7 @@ class ContrattiService:
             componente_id=componente_id,
             function_name="contratti_service.update_componente_riga",
         )
-        with self._db_errors(
+        with self._map_db_errors(
             {"componente_id": componente_id, "riga_id": riga_id},
             fallback_message="Violazione vincolo DB su componente riga contratto.",
         ):
@@ -1769,7 +1780,7 @@ class ContrattiService:
             componente_id=componente_id,
             function_name="contratti_service.delete_componente_riga",
         )
-        with self._db_errors(
+        with self._map_db_errors(
             {"componente_id": componente_id, "riga_id": riga_id},
             fallback_message="Impossibile eliminare il componente (dipendenze).",
         ):
@@ -1818,7 +1829,7 @@ class ContrattiService:
             for_create=True,
         )
 
-        with self._db_errors(
+        with self._map_db_errors(
             {"contratto_id": contratto_id},
             fallback_message="Violazione vincolo DB su utility contratto.",
         ):
@@ -1864,7 +1875,7 @@ class ContrattiService:
             context={"allowed_keys": sorted(_UTILITY_UPDATE_KEYS)},
         )
 
-        with self._db_errors(
+        with self._map_db_errors(
             {"contratto_id": contratto_id},
             fallback_message="Violazione vincolo DB su utility contratto.",
         ):
