@@ -698,6 +698,34 @@ Separazione logica, non fisica. Nei repository:
 Non creare sottodirectory `commands/` e `queries/`. La separazione
 nei commenti e nelle sezioni del file e' sufficiente.
 
+### Atomicità e composizione di scritture
+
+Un endpoint che modifica stato è **un'unità di lavoro atomica**. Quando l'operazione compone
+**più scritture** (INSERT/UPDATE o `SELECT fn_...` di mutazione), decidere **dove** vive la
+transazione — non lasciarle in autocommit una dietro l'altra (se la 2ª fallisce, la 1ª resta
+committata → stato parziale / orfani).
+
+| L'operazione... | Meccanismo |
+| --- | --- |
+| compone **solo** scritture/fn DB | **una sola `SELECT fn_madre(...)`** nel repository — atomica per costruzione (preferito, DB-first) |
+| richiede orchestrazione **Python** (lock, dispatch handler, control-flow) | **`with transaction.atomic()`** esplicito nel service |
+| ha un **side-effect esterno** (email/SMTP) | pattern **outbox/saga**, mai dentro la transazione |
+
+> ⚠️ **Non affidarsi a `ATOMIC_REQUESTS`.** Sarebbe inefficace qui: `handle_post_json` **cattura**
+> l'eccezione e restituisce una `Response`, quindi non esce mai dalla view → il rollback a livello
+> di request non scatta e il parziale viene committato (e su `IntegrityError` il 4xx diventa 500).
+> **`with transaction.atomic()` esplicito è invece sicuro**: fa rollback al confine del blocco (nel
+> suo `__exit__`), *prima* che `handle_post_json` catturi l'eccezione. È l'attrezzo corretto.
+
+**Guardrail: «una azione = una unità atomica».** Un metodo service che compone 2+ scritture con
+side-effect **deve** avvolgerle in un solo `transaction.atomic()` **oppure** delegare a una singola
+funzione madre DB. Domini con natura mista (es. pratiche): le operazioni pure-dato → madre DB
+(`pratiche.fn_crea_pratica`); il motore-flussi-con-handler → `transaction.atomic()`.
+
+> Faccia DB della stessa regola (come scrivere la funzione madre): [linee-guida-sql §5b](/linee-guida-sql).
+> Caso di studio, criterio esteso e catalogo dei finding:
+> [analisi-fix-transazioni](/dev/work-in-progress/analisi-fix-transazioni).
+
 ### Tassonomia errori
 
 Tutti i codici errore seguono `E_{MODULO}_{TIPO}` e DEVONO essere registrati
