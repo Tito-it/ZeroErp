@@ -162,7 +162,6 @@ class TestPreventiviService(unittest.TestCase):
 
         # Default: lookup config
         self.mock_repo.get_stato_bozza_id.return_value = 1
-        self.mock_repo.get_sorgente_tipo_preventivo_id.return_value = 10
         # Default: capabilities vuote per i test che non si interessano del blob
         # (Fase 1 refactor frontend vendite: get_preventivo invoca la fn DB).
         self.mock_repo.get_capabilities.return_value = {}
@@ -1501,40 +1500,28 @@ class TestPreventiviService(unittest.TestCase):
 
     # ── Genera pratica ──
 
-    # Scopo: Verifica generazione pratica da preventivo ACCETTATO via BB crea_pratica.
-    @patch("apps.pratiche.services.pratiche_service.crea_pratica", return_value=42)
-    def test_genera_pratica_ok(self, mock_crea_pratica):
+    # Scopo: Verifica generazione pratica da preventivo ACCETTATO via fn madre
+    #        atomica vendite.fn_genera_pratica_da_preventivo (fix #3). Il BE guarda
+    #        stato/billing e delega crea-pratica + link ROOT alla fn (una statement).
+    def test_genera_pratica_ok(self):
         from apps.vendite.services.preventivi_service import genera_pratica
 
         self.mock_repo.get_preventivo.return_value = {
             "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc-uid",
             "billing_account_id": 10, "istanza_utility_id": 5,
         }
-        self.mock_repo.resolve_contesto_pratica.return_value = {
-            "emittente_fiscale_id": 100,
-            "soggetto_id": "sogg-uuid",
-            "soggetto_ruolo_id": 20,
-        }
-        self.mock_repo.link_pratica.return_value = {"id": 1}
+        self.mock_repo.genera_pratica_da_preventivo.return_value = 42
 
         result = genera_pratica(1, tipo_prestazione_id=3, priorita_id=1)
         self.assertEqual(result["pratica_id"], 42)
         self.assertEqual(result["preventivo_id"], 1)
-        # Verifica che crea_pratica BB sia stato chiamato con contesto corretto
-        mock_crea_pratica.assert_called_once_with(
-            emittente_fiscale_id=100,
+        # Contesto anagrafico + link ROOT sono risolti DENTRO la fn madre: il BE
+        # passa solo preventivo + tipo prestazione + priorita + descrizione.
+        self.mock_repo.genera_pratica_da_preventivo.assert_called_once_with(
+            preventivo_id=1,
             tipo_prestazione_id=3,
-            soggetto_id="sogg-uuid",
-            soggetto_ruolo_id=20,
-            istanza_utility_id=5,
             priorita_id=1,
             descrizione=None,
-        )
-        # Verifica link pratica_sorgenti
-        self.mock_repo.link_pratica.assert_called_once_with(
-            pratica_id=42,
-            sorgente_tipo_id=10,
-            sorgente_uid="abc-uid",
         )
 
     # Scopo: Verifica guard su stato non ACCETTATO.

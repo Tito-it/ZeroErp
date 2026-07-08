@@ -1005,19 +1005,23 @@ class OfferteService:
         # `testata_gate` riusato dal ramo composito sotto (1 round-trip in meno).
         pratica_id_l3: int | None = None
         testata_gate: dict[str, Any] | None = None
-        if tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE and not is_composito:
-            pratica_id_l3, testata_gate = self._apply_pricing_gate_eccezione(
-                offerta_id=offerta_id,
-                articolo_id=articolo_id,
-                uom_id=payload.get("uom_operativa_id"),
-                payload=payload,
-                auth_user_id=auth_user_id,
-                richiesta_approvazione=richiesta_approvazione,
-                riga_id_for_link=None,  # eccezione_id non noto qui
-            )
-
+        # Fix analisi-fix-transazioni #8 (Classe B): il gate L3 (crea la pratica
+        # di approvazione) vive DENTRO transaction.atomic() insieme alla create
+        # eccezione. Prima era invocato PRIMA dell'atomic → pratica orfana se la
+        # create eccezione rollava. Il gate fa permission-check L1/L2 in Python
+        # (azioni di processo): resta orchestrazione BE, non funzione madre DB.
         with self._db_errors({"offerta_id": offerta_id}):
             with transaction.atomic():
+                if tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE and not is_composito:
+                    pratica_id_l3, testata_gate = self._apply_pricing_gate_eccezione(
+                        offerta_id=offerta_id,
+                        articolo_id=articolo_id,
+                        uom_id=payload.get("uom_operativa_id"),
+                        payload=payload,
+                        auth_user_id=auth_user_id,
+                        richiesta_approvazione=richiesta_approvazione,
+                        riga_id_for_link=None,  # eccezione_id non noto qui
+                    )
                 eccezione_id = self._repo.create_eccezione(offerta_id, payload)
                 # Link riga<->pratica L3: post-create, eccezione_id ora noto.
                 if pratica_id_l3 is not None:
@@ -1084,25 +1088,30 @@ class OfferteService:
         # nessun gate (i componenti hanno il proprio workflow). `articolo_id` e
         # `tipo_eccezione` sono immutabili → letti dalla riga esistente.
         tipo_existing = existing.get("tipo_eccezione")
-        if (
-            tipo_existing in _TIPI_ECCEZIONE_CON_GATE
-            and not bool(existing.get("is_composito"))
-            and "prezzo_unitario" in payload
-        ):
-            self._apply_pricing_gate_eccezione(
-                offerta_id=offerta_id,
-                articolo_id=existing.get("articolo_id"),
-                uom_id=payload.get("uom_operativa_id") or existing.get("uom_operativa_id"),
-                payload=payload,
-                auth_user_id=auth_user_id,
-                richiesta_approvazione=richiesta_approvazione,
-                riga_id_for_link=eccezione_id,  # noto: link inline
-                # Preserva il meta persistito dell'eccezione (audit/altre chiavi):
-                # senza, l'UPDATE prezzo lo sovrascriverebbe col solo audit nuovo.
-                fallback_meta=existing.get("meta"),
-            )
+        # Fix analisi-fix-transazioni #9 (Classe B): il gate L3 (crea + linka
+        # inline la pratica di approvazione) vive DENTRO transaction.atomic()
+        # insieme all'UPDATE eccezione. Prima era invocato PRIMA dell'atomic →
+        # pratica orfana se l'UPDATE rollava. Il gate fa permission-check L1/L2
+        # in Python (azioni di processo): resta orchestrazione BE, non fn madre DB.
         with self._db_errors({"eccezione_id": eccezione_id}):
             with transaction.atomic():
+                if (
+                    tipo_existing in _TIPI_ECCEZIONE_CON_GATE
+                    and not bool(existing.get("is_composito"))
+                    and "prezzo_unitario" in payload
+                ):
+                    self._apply_pricing_gate_eccezione(
+                        offerta_id=offerta_id,
+                        articolo_id=existing.get("articolo_id"),
+                        uom_id=payload.get("uom_operativa_id") or existing.get("uom_operativa_id"),
+                        payload=payload,
+                        auth_user_id=auth_user_id,
+                        richiesta_approvazione=richiesta_approvazione,
+                        riga_id_for_link=eccezione_id,  # noto: link inline
+                        # Preserva il meta persistito (audit/altre chiavi): senza,
+                        # l'UPDATE prezzo lo sovrascriverebbe col solo audit nuovo.
+                        fallback_meta=existing.get("meta"),
+                    )
                 self._repo.update_eccezione(eccezione_id, payload)
         row = self._repo.get_eccezione(eccezione_id)
         assert row is not None

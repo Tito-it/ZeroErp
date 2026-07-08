@@ -182,6 +182,15 @@ CONTRATTO_ID="$EXTRACTED"
 do_curl GET "/api/v1/vendite/contratti/${CONTRATTO_ID}/"
 CONTRATTO_UID=$(json_get "$LAST_BODY" "data.uid")
 log_info "contratto_id=$CONTRATTO_ID uid=$CONTRATTO_UID"
+# Fix analisi-fix-transazioni #2: numero + INSERT testata (+utility) sono ora una
+# sola fn madre atomica (vendite.fn_create_contratto). Il numero e' generato DENTRO
+# la fn (fn_generate_codice): se e' valorizzato, il percorso atomico ha funzionato.
+CONTRATTO_NUMERO=$(json_get "$LAST_BODY" "data.numero")
+if [[ -n "$CONTRATTO_NUMERO" && "$CONTRATTO_NUMERO" != "None" && "$CONTRATTO_NUMERO" != "null" ]]; then
+    log_ok "Numero generato dalla fn madre atomica: $CONTRATTO_NUMERO (fix #2)"
+else
+    log_fail "Numero contratto non valorizzato (atteso da fn_create_contratto)"
+fi
 
 # --- 3. Riga addebito standard (AGGIUNTA, UNA_TANTUM / FISSA) ---
 # Contratto SENZA listino → ogni riga è tipo_eccezione=AGGIUNTA (prezzo proprio).

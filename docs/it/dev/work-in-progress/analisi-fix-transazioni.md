@@ -410,3 +410,50 @@ Finding: **#11, #12** (batch commesse), **#13, #14, #15** (registro get-or-creat
 > Nota workflow: le funzioni madre + pgTAP sono lavoro DB su `dev/db-tid`; le semplificazioni
 > service su `dev/backend-tid`. È un intervento a due branch. Nessuna modifica/commit senza
 > "procedi" esplicito.
+
+---
+
+## 6. Appendice — note fuori-scope emerse durante l'implementazione
+
+Osservazioni raccolte mentre si eseguivano i fix, da **affrontare in workstream separati**
+(non sono difetti del fix transazionale, non bloccano il piano).
+
+### 6.1 🔴 Canoni RICORRENTI: nessuna serie mensile nel push commesse (da valutare)
+
+Emerso il **2026-07-08** durante lo smoke E2E del **#2** (`smoke-test-contratti-addebito-standard.sh`).
+`vendite.fn_list_contratti_da_pushare` seleziona il contratto **solo nel mese di inizio**:
+
+```sql
+AND (p_competenza_mese IS NULL
+     OR date_trunc('month', COALESCE(c.valido_dal, c.data))::date = p_competenza_mese)
+```
+
+Non c'è alcun `generate_series` sui mesi di validità. Conseguenza:
+
+- **ADDEBITO STANDARD una-tantum** → 1 sola attività: **corretto**.
+- **RICORRENTE / canone periodico** (gas-energia-acqua, canoni) → servirebbe **1 attività per
+  ogni mese di competenza** da `valido_dal` a `valido_al`. Oggi un contratto a canone di 12 mesi
+  genera **una sola** attività di fatturazione (nel mese di inizio): **gap funzionale reale**.
+
+Stato: **deliberatamente rinviato** (già annotato come "sviluppo rinviato, §3a" nell'header dello
+smoke). È **lavoro DB** (estendere `fn_list_contratti_da_pushare` con l'espansione mensile) →
+parte da un **brief al team DB** su `dev/db-tid`, non dall'agent. Ortogonale ai fix transazionali.
+
+### 6.3 🟡 TODO in-scope — smoke E2E #3 `genera_pratica` da scrivere
+
+Il BE del **#3** è fatto e coperto da unit test + pgTAP DB (7/7, incl. atomicità), ma **manca
+uno smoke curl E2E**: nessuno smoke esistente esercita `POST /vendite/preventivi/{id}/genera-pratica/`.
+Serve una fixture "preventivo **ACCETTATO**" (giro flusso pratica event-driven, cfr.
+`smoke-test-pratica-preventivi-conferma.sh` che porta il preventivo ROOT ad ACCETTATO). Da
+aggiungere: una tappa `genera-pratica` dopo che il preventivo è ACCETTATO, con verifica che la
+pratica sia creata **e** linkata (ROOT su `pratiche_sorgenti`) — la prova E2E che la fn madre ha
+fuso le due scritture. **Aperto al 2026-07-08.**
+
+### 6.2 🟡 Smoke contratti non idempotente sull'attivazione (igiene test)
+
+Lo stesso smoke, al ri-run, fallisce l'`/emetti/` con `E_VENDITE_CONTRATTO_OVERLAP`: un run
+precedente lascia un contratto **ATTIVO** sovrapposto (stesso BA+istanza+ambito+periodo) e il
+guard anti-overlap blocca l'attivazione del nuovo. La **creazione** (percorso #2) passa; è solo la
+transizione DRAFT→ATTIVO a incrociare il residuo. Fix igiene: periodo/BA fresco per run o cleanup
+proattivo dei contratti attivi di test (memoria `feedback_smoke_test_idempotenti`). Non è una
+regressione del #2.

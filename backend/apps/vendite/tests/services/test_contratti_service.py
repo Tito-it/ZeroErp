@@ -363,9 +363,7 @@ class ContrattiServiceTests(TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.generate_numero.return_value = "CNT0000001"
-        repo.get_stato_id_by_codice.return_value = 1
-        repo.create_contratto.return_value = 1
+        repo.create_contratto_atomico.return_value = 1
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
@@ -384,19 +382,18 @@ class ContrattiServiceTests(TestCase):
         })
 
         self.assertEqual(result["id"], 1)
-        args = repo.create_contratto.call_args.args[0]
-        self.assertEqual(args["numero"], "CNT0000001")
-        self.assertEqual(args["stato_doc_contratto_id"], 1)
-        self.assertEqual(args["tipo_variazione_globale"], "PERCENTUALE")
+        testata = repo.create_contratto_atomico.call_args.kwargs["testata"]
+        self.assertEqual(testata["tipo_variazione_globale"], "PERCENTUALE")
+        # numero e stato DRAFT sono risolti dalla fn madre: il BE non li passa.
+        self.assertNotIn("numero", testata)
+        self.assertNotIn("stato_doc_contratto_id", testata)
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_contratto_modalita_C_ok(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.generate_numero.return_value = "CNT0000002"
-        repo.get_stato_id_by_codice.return_value = 1
-        repo.create_contratto.return_value = 2
+        repo.create_contratto_atomico.return_value = 2
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
@@ -408,9 +405,9 @@ class ContrattiServiceTests(TestCase):
             "valido_dal": "2026-01-01",
         })
 
-        args = repo.create_contratto.call_args.args[0]
-        self.assertNotIn("listino_id", args)
-        self.assertNotIn("tipo_variazione_globale", args)
+        testata = repo.create_contratto_atomico.call_args.kwargs["testata"]
+        self.assertNotIn("listino_id", testata)
+        self.assertNotIn("tipo_variazione_globale", testata)
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_contratto_senza_listino_con_variazione_ok(self, repo_cls):
@@ -423,9 +420,7 @@ class ContrattiServiceTests(TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.generate_numero.return_value = "CNT0000003"
-        repo.get_stato_id_by_codice.return_value = 1
-        repo.create_contratto.return_value = 3
+        repo.create_contratto_atomico.return_value = 3
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
@@ -439,9 +434,9 @@ class ContrattiServiceTests(TestCase):
             "valore_variazione_globale": "5",
         })
 
-        args = repo.create_contratto.call_args.args[0]
-        self.assertEqual(args["tipo_variazione_globale"], "PERCENTUALE")
-        self.assertNotIn("listino_id", args)
+        testata = repo.create_contratto_atomico.call_args.kwargs["testata"]
+        self.assertEqual(testata["tipo_variazione_globale"], "PERCENTUALE")
+        self.assertNotIn("listino_id", testata)
 
     @patch("apps.vendite.services.contratti_service.ListiniRepository")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
@@ -486,12 +481,11 @@ class ContrattiServiceTests(TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.generate_numero.return_value = "CNT0000003"
-        repo.get_stato_id_by_codice.return_value = 1
         # Scopo: PG18 temporal UNIQUE (WITHOUT OVERLAPS) sulla colonna `validita`
         #        STORED generated → messaggio standard "unique constraint",
-        #        nome `uq_contratti_no_overlap` (migration 20260514-10).
-        repo.create_contratto.side_effect = IntegrityError(
+        #        nome `uq_contratti_no_overlap` (migration 20260514-10). Ora
+        #        l'IntegrityError arriva dalla fn madre create_contratto_atomico.
+        repo.create_contratto_atomico.side_effect = IntegrityError(
             "duplicate key value violates unique constraint \"uq_contratti_no_overlap\""
         )
 
@@ -509,14 +503,12 @@ class ContrattiServiceTests(TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.generate_numero.return_value = "CNT0000004"
-        repo.get_stato_id_by_codice.return_value = 1
         # Scopo: post 2026-05-21 (migrations 20260521-01..03) il constraint
         #        diventa EXCLUDE gist parziale `ex_contratti_no_overlap`
         #        (WHERE NOT is_abortito_snapshot). Messaggio PG ha tipo
         #        "exclusion constraint" e nome cambiato. Entrambi i nomi
         #        sono mappati nei `_UNIQUE_CONSTRAINTS` per resilienza.
-        repo.create_contratto.side_effect = IntegrityError(
+        repo.create_contratto_atomico.side_effect = IntegrityError(
             "conflicting key value violates exclusion constraint \"ex_contratti_no_overlap\""
         )
 
@@ -530,13 +522,14 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_CONTRATTO_OVERLAP")
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_create_contratto_genera_numero_e_stato_draft(self, repo_cls):
+    def test_create_contratto_delega_numero_e_stato_alla_fn_madre(self, repo_cls):
+        # Fix analisi-fix-transazioni #2: numero e stato DRAFT sono risolti
+        # DENTRO vendite.fn_create_contratto. Il BE non li genera piu' ne' li
+        # passa nella testata, e non c'e' utility -> utility=None.
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.generate_numero.return_value = "CNT0000077"
-        repo.get_stato_id_by_codice.return_value = 42
-        repo.create_contratto.return_value = 7
+        repo.create_contratto_atomico.return_value = 7
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
@@ -548,11 +541,40 @@ class ContrattiServiceTests(TestCase):
             "valido_dal": "2026-01-01",
         })
 
-        repo.generate_numero.assert_called_once_with()
-        repo.get_stato_id_by_codice.assert_called_once_with("DRAFT")
-        args = repo.create_contratto.call_args.args[0]
-        self.assertEqual(args["numero"], "CNT0000077")
-        self.assertEqual(args["stato_doc_contratto_id"], 42)
+        repo.generate_numero.assert_not_called()
+        kwargs = repo.create_contratto_atomico.call_args.kwargs
+        self.assertNotIn("numero", kwargs["testata"])
+        self.assertNotIn("stato_doc_contratto_id", kwargs["testata"])
+        self.assertIsNone(kwargs["utility"])
+
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_contratto_con_utility_passa_alla_fn_madre(self, repo_cls):
+        # Fix #2: testata + riga utility 1:1 fuse in un'unica fn madre atomica.
+        # Il BE costruisce entrambi i dict e li passa insieme; nessun INSERT
+        # utility separato (repo.create_utility, usato solo dal percorso update).
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.create_contratto_atomico.return_value = 5
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+
+        ContrattiService().create_contratto({
+            "billing_account_id": 10,
+            "istanza_utility_id": 20,
+            "utility_id": 3,
+            "valido_dal": "2026-01-01",
+            "utility": {"tipo_utenza_id": 2, "classe_utenza_id": 7},
+        })
+
+        util = repo.create_contratto_atomico.call_args.kwargs["utility"]
+        self.assertIsNotNone(util)
+        # istanza/utility derivati dalla testata, non dal payload utility.
+        self.assertEqual(util["istanza_utility_id"], 20)
+        self.assertEqual(util["utility_id"], 3)
+        self.assertEqual(util["tipo_utenza_id"], 2)
+        repo.create_utility.assert_not_called()
 
     # --- update contratto ---------------------------------------------
 

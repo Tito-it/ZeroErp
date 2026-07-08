@@ -17,7 +17,7 @@ from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
-from django.db import transaction
+from django.db import DatabaseError, transaction
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.anagrafiche.db.istanze_utility_repository import IstanzeUtilityRepository
@@ -1800,36 +1800,54 @@ def push_a_commessa(
     # preventivi_repository in altri punti).
     from apps.vendite.services.commesse_service import pr_run_commesse_push_one
 
-    report = pr_run_commesse_push_one(
-        sorgente_codice="PREVENTIVO",
-        sorgente_uid=preventivo_id,
-        righe_ids=righe_ids,
-    )
-
-    # Transizione automatica ACCETTATO → EVASO se push completato.
-    # La transizione e' seedata in `config.transizioni_stati_preventivi`
-    # con `meta.manuale=false` (vedi brief DB
-    # docs/it/dev/work-in-progress/brief-db-stato-preventivo-evaso.md).
-    # Se PARZIALE/ERRORE/SKIPPED il preventivo resta ACCETTATO:
-    # serve un ri-push per completare prima di poter evadere.
-    #
-    # Gate EVASO bi-ramo nel BB condiviso (_smistamento_gate_helpers): il check
-    # residuo commessa non e' ridondante col report COMPLETATO — con `righe_ids`
-    # (push selettivo) COMPLETATO si riferisce al solo sottoinsieme scelto.
-    # swallow_db_error=True: il push e' gia' avvenuto, su rifiuto della
-    # transizione la richiesta utente non fallisce.
-    if report["stato"] == "COMPLETATO":
-        transiziona_a_evaso_se_smistato(
-            repo, preventivo_id,
-            user="django_api", swallow_db_error=True,
-            log_label="preventivi.push",
+    # Fix analisi-fix-transazioni #5 (Classe B): push + transizione EVASO +
+    # aggancio commessa-servizi alla pratica in UN solo transaction.atomic().
+    # Prima erano scritture autocommit separate: se `_aggancia_commessa_servizi_a_pratica`
+    # falliva DOPO il push, le commesse (+ ponte emittibilita') restavano committate
+    # ma il ramo servizi non agganciato alla pratica (orfano). Ora un fallimento
+    # dell'aggancio rolla TUTTO il push, che e' idempotente/ri-eseguibile (advisory
+    # lock + dedup segment_key → retry sicuro). L'atomic interno di
+    # `pr_run_commesse_push_one` diventa un savepoint annidato.
+    with transaction.atomic():
+        report = pr_run_commesse_push_one(
+            sorgente_codice="PREVENTIVO",
+            sorgente_uid=preventivo_id,
+            righe_ids=righe_ids,
         )
-        # Aggancio del RAMO SERVIZI dello split (rev.3 bivio-per-esito): lo split
-        # standalone e' il punto d'aggancio di ENTRAMBI i rami. post_smistamento
-        # e' merce-only (retro-aggancio ordine), quindi la commessa-servizi la
-        # lega qui — senza, sul ramo SOLO_SERVIZI la pratica resterebbe priva del
-        # link commessa. No-op se il preventivo non nasce da una pratica.
-        _aggancia_commessa_servizi_a_pratica(preventivo_id, str(testata["uid"]))
+
+        # Transizione automatica ACCETTATO → EVASO se push completato.
+        # La transizione e' seedata in `config.transizioni_stati_preventivi`
+        # con `meta.manuale=false`. Se PARZIALE/ERRORE/SKIPPED il preventivo resta
+        # ACCETTATO: serve un ri-push. Il gate EVASO bi-ramo (residuo commessa) non
+        # e' ridondante col report COMPLETATO — con `righe_ids` (push selettivo)
+        # COMPLETATO si riferisce al solo sottoinsieme scelto.
+        if report["stato"] == "COMPLETATO":
+            # EVASO best-effort su SAVEPOINT dedicato: swalloware il DatabaseError
+            # direttamente nell'atomic esterno lo corromperebbe (needs_rollback →
+            # ogni query successiva TransactionManagementError). Chiamiamo l'helper
+            # con swallow_db_error=False cosi' l'errore PROPAGA al savepoint (che lo
+            # rolla) e viene catturato QUI: la transizione fallita non impedisce il
+            # commit di push+aggancio.
+            try:
+                with transaction.atomic():
+                    transiziona_a_evaso_se_smistato(
+                        repo, preventivo_id,
+                        user="django_api", swallow_db_error=False,
+                        log_label="preventivi.push",
+                    )
+            except DatabaseError as exc:
+                logging.getLogger(__name__).warning(
+                    "preventivi.push.transizione_evaso_skipped preventivo_id=%s reason=%s",
+                    preventivo_id, str(exc),
+                )
+
+            # Aggancio del RAMO SERVIZI dello split (rev.3 bivio-per-esito): lo
+            # split standalone e' il punto d'aggancio di ENTRAMBI i rami.
+            # post_smistamento e' merce-only (retro-aggancio ordine), quindi la
+            # commessa-servizi la lega qui — senza, sul ramo SOLO_SERVIZI la pratica
+            # resterebbe priva del link commessa. No-op se il preventivo non nasce da
+            # una pratica. NON best-effort: un fallimento qui rolla l'intero push.
+            _aggancia_commessa_servizi_a_pratica(preventivo_id, str(testata["uid"]))
 
     return {
         "preventivo_id": preventivo_id,
@@ -1998,9 +2016,13 @@ def completa_smistamento(preventivo_id: int, *, user: str | None = None) -> dict
 
 
 # Scopo: Genera pratica esecutiva da preventivo accettato.
-# Obiettivo: guard stato, creazione pratica via BB pratiche_service.crea_pratica,
-#   link via pratiche_sorgenti. Risolve contesto anagrafico dal preventivo/BA.
+# Obiettivo: guard stato preventivo, poi creazione pratica + link ROOT in UNA
+#   sola funzione madre atomica (vendite.fn_genera_pratica_da_preventivo).
 # Perimetro: crea pratica + link; non gestisce flussi (quelli si scelgono in UI pratica).
+#   Fix analisi-fix-transazioni #3 (Classe A): prima crea_pratica (@atomic a se')
+#   e link_pratica erano due scritture autocommit separate → pratica orfana se il
+#   link falliva. Ora la fn madre risolve contesto (emittente/soggetto/ruolo/
+#   istanza) e tipo sorgente PREVENTIVO internamente e fonde le due scritture.
 def genera_pratica(
     preventivo_id: int,
     tipo_prestazione_id: int,
@@ -2009,6 +2031,10 @@ def genera_pratica(
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
     testata = repo.get_preventivo(preventivo_id)
+    # Guard "a buon mercato" sulla testata gia' letta (esistenza, stato, billing):
+    # errori applicativi anticipati e chiari. La fn madre ri-guarda esistenza e
+    # billing come difesa-in-profondita' (E_PREV_NOT_FOUND / E_PREV_VALIDAZIONE),
+    # ma NON il guard di stato → resta qui.
     ErrorManager.require(
         testata is not None,
         code="E_PREV_NOT_FOUND",
@@ -2030,43 +2056,12 @@ def genera_pratica(
         function_name=f"{_FN}.genera_pratica",
     )
 
-    sorgente_tipo_id = repo.get_sorgente_tipo_preventivo_id()
-    ErrorManager.require(
-        sorgente_tipo_id is not None,
-        code="E_CONFIG_MANCANTE",
-        message="Tipo sorgente PREVENTIVO non configurato in config.sorgenti.",
-        function_name=f"{_FN}.genera_pratica",
-    )
-    assert sorgente_tipo_id is not None
-
-    # Risolve contesto anagrafico dal preventivo → BA → soggetto
-    contesto = repo.resolve_contesto_pratica(preventivo_id)
-    ErrorManager.require(
-        contesto is not None,
-        code="E_PREV_PRATICA_STATO",
-        message="Impossibile derivare contesto anagrafico dal preventivo.",
-        detail=f"preventivo_id={preventivo_id}",
-        function_name=f"{_FN}.genera_pratica",
-    )
-    assert contesto is not None
-
-    # Creazione pratica via building block pratiche_service.crea_pratica
-    from apps.pratiche.services.pratiche_service import crea_pratica
-    pratica_id = crea_pratica(
-        emittente_fiscale_id=contesto["emittente_fiscale_id"],
+    # Una sola SELECT fn_madre(): crea pratica + link ROOT in atomica.
+    pratica_id = repo.genera_pratica_da_preventivo(
+        preventivo_id=preventivo_id,
         tipo_prestazione_id=tipo_prestazione_id,
-        soggetto_id=contesto["soggetto_id"],
-        soggetto_ruolo_id=contesto["soggetto_ruolo_id"],
-        istanza_utility_id=testata["istanza_utility_id"],
         priorita_id=priorita_id,
         descrizione=descrizione,
-    )
-
-    # Link pratica → preventivo via pratiche_sorgenti
-    repo.link_pratica(
-        pratica_id=pratica_id,
-        sorgente_tipo_id=sorgente_tipo_id,
-        sorgente_uid=testata["uid"],
     )
 
     return {

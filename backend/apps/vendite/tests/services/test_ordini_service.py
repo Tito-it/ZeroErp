@@ -304,7 +304,11 @@ _SVC = "apps.vendite.services.ordini_service"
 
 class OrdiniConversioneUpstreamTests(SimpleTestCase):
     """crea_ordine_da_preventivo (modello split D8): delega solo-merce alla
-    primitiva DB + ritorno numero. Stato/righe sono validati dalla fn DB."""
+    primitiva DB + ritorno numero. Stato/righe sono validati dalla fn DB.
+    Fix analisi-fix-transazioni #10: la transizione EVASO vive ora DENTRO
+    vendite.fn_push_preventivo_a_ordine (atomica con la creazione ordine), non
+    piu' come chiamata BE separata → il gate/atomicita' EVASO e' coperto dal
+    pgTAP DB, non piu' mockabile qui."""
 
     @patch(_REPO)
     @patch(_PREV_REPO)
@@ -336,55 +340,13 @@ class OrdiniConversioneUpstreamTests(SimpleTestCase):
             99, righe_ids=[11, 12], pratica_id=None,
         )
 
-    @patch(_REPO)
-    @patch(_PREV_REPO)
-    def test_crea_ordine_da_preventivo_evade_senza_residui(self, prev_cls, ord_cls) -> None:
-        # Gate EVASO bi-ramo (§5b brief smistamento): smistata l'ultima merce e
-        # senza residuo servizi, il ramo ordine porta il preventivo a EVASO
-        # (prima lo faceva solo il push commessa: solo-merce restava ACCETTATO).
-        prev = prev_cls.return_value
-        prev.push_a_ordine.return_value = 7
-        prev.preventivo_ha_residuo_ordine.return_value = False
-        prev.preventivo_ha_residuo_commessa.return_value = False
-        ord_cls.return_value.get_ordine.return_value = {"id": 7, "numero": "ORD7"}
-
-        ordini_service.crea_ordine_da_preventivo(99)
-
-        prev.cambia_stato.assert_called_once_with(99, "EVASO", "django_api")
-
-    @patch(_REPO)
-    @patch(_PREV_REPO)
-    def test_crea_ordine_da_preventivo_non_evade_con_residuo_commessa(self, prev_cls, ord_cls) -> None:
-        # Preventivo misto smistato solo sul ramo merce: restano servizi da
-        # pushare → niente EVASO, resta ACCETTATO.
-        prev = prev_cls.return_value
-        prev.push_a_ordine.return_value = 7
-        prev.preventivo_ha_residuo_ordine.return_value = False
-        prev.preventivo_ha_residuo_commessa.return_value = True
-        ord_cls.return_value.get_ordine.return_value = {"id": 7, "numero": "ORD7"}
-
-        ordini_service.crea_ordine_da_preventivo(99)
-
-        prev.cambia_stato.assert_not_called()
-
-    @patch(_REPO)
-    @patch(_PREV_REPO)
-    def test_crea_ordine_da_preventivo_evaso_db_error_non_solleva(self, prev_cls, ord_cls) -> None:
-        # Robustezza al deploy parziale (stesso pattern di push_a_commessa):
-        # se la fn DB rifiuta la transizione, l'ordine e' gia' creato → warning
-        # loggato, la richiesta utente NON fallisce.
-        from django.db import DatabaseError
-
-        prev = prev_cls.return_value
-        prev.push_a_ordine.return_value = 7
-        prev.preventivo_ha_residuo_ordine.return_value = False
-        prev.preventivo_ha_residuo_commessa.return_value = False
-        prev.cambia_stato.side_effect = DatabaseError("transizione non ammessa")
-        ord_cls.return_value.get_ordine.return_value = {"id": 7, "numero": "ORD7"}
-
-        out = ordini_service.crea_ordine_da_preventivo(99)
-
-        self.assertEqual(out["ordine_id"], 7)
+    # Nota: i test che verificavano la transizione EVASO lato BE
+    # (test_..._evade_senza_residui / _non_evade_con_residuo_commessa /
+    # _evaso_db_error_non_solleva) sono stati rimossi col fix #10: la transizione
+    # e il suo gate bi-ramo vivono ora DENTRO fn_push_preventivo_a_ordine e non
+    # sono piu' osservabili via mock del repo. La correttezza (evade a residuo
+    # nullo, non evade con residuo, atomicita' su errore) e' coperta dal pgTAP
+    # db/pgtap/vendite/test-fn-push-preventivo-a-ordine-v1.sql.
 
 
 class OrdiniConversioneOffertaTests(SimpleTestCase):
@@ -524,9 +486,20 @@ class OrdiniConversioneOffertaTests(SimpleTestCase):
 
 
 class OrdiniPushCommessaTests(SimpleTestCase):
-    """push_a_commessa: transizione automatica CONFERMATO→EVASO (invio unico)."""
+    """push_a_commessa: transizione automatica CONFERMATO→EVASO (invio unico).
+    Fix analisi-fix-transazioni #4: push + EVASO + chiusura step pratica in un
+    transaction.atomic() (EVASO su savepoint dedicato). Qui l'atomic e' mockato
+    a no-op (SimpleTestCase senza DB): un DatabaseError sull'EVASO resta
+    catturato dal try/except attorno al savepoint, esattamente come a runtime."""
 
     _PUSH_ONE = "apps.vendite.services.commesse_service.pr_run_commesse_push_one"
+
+    def setUp(self) -> None:
+        # transaction.atomic() (esterno + savepoint EVASO) a no-op per i test
+        # mock-only. Lo stesso nullcontext e' riusabile su piu' `with` (stateless).
+        patcher = patch(_ATOMIC, return_value=nullcontext())
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     @patch(_COMPLETA_STEP)
     @patch(_PUSH_ONE)
