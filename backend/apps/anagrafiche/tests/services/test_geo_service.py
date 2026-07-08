@@ -200,21 +200,26 @@ class TestIndirizziService(TestCase):
     @patch(GEO_REPO)
     @patch(IND_REPO)
     def test_create_indirizzo_via_esistente(self, mock_ind, mock_geo):
-        """Con stradario_id → chiama create_indirizzo_dettaglio + get_indirizzo_dettaglio."""
-        mock_ind.return_value.create_indirizzo_dettaglio.return_value = 42
+        """Con stradario_id → una sola fn madre create_indirizzo_atomico (fix #13);
+        l'upsert stradario e' saltato dalla fn (stradario_id valorizzato)."""
+        mock_ind.return_value.create_indirizzo_atomico.return_value = 42
         mock_ind.return_value.get_indirizzo_dettaglio.return_value = {"indirizzo_dettaglio_id": 42, "indirizzo_normalizzato": "Via Roma 1"}
         from apps.anagrafiche.services.geo_service import GeoService
         result = GeoService().create_indirizzo({"stradario_id": 10, "civico": 1})
         self.assertEqual(result["indirizzo_dettaglio_id"], 42)
-        mock_ind.return_value.create_indirizzo_dettaglio.assert_called_once()
+        kwargs = mock_ind.return_value.create_indirizzo_atomico.call_args.kwargs
+        self.assertEqual(kwargs["stradario_id"], 10)
+        self.assertEqual(kwargs["civico"], 1)
+        # I metodi separati non sono piu' invocati: la composizione e' nella fn.
         mock_ind.return_value.get_or_create_stradario.assert_not_called()
+        mock_ind.return_value.create_indirizzo_dettaglio.assert_not_called()
 
     @patch(GEO_REPO)
     @patch(IND_REPO)
     def test_create_indirizzo_via_nuova(self, mock_ind, mock_geo):
-        """Senza stradario_id → chiama get_or_create_stradario + create_indirizzo_dettaglio."""
-        mock_ind.return_value.get_or_create_stradario.return_value = 100
-        mock_ind.return_value.create_indirizzo_dettaglio.return_value = 42
+        """Senza stradario_id → una sola fn madre create_indirizzo_atomico coi
+        campi 'via nuova' (upsert stradario ×2 + dettaglio, atomici nel DB)."""
+        mock_ind.return_value.create_indirizzo_atomico.return_value = 42
         mock_ind.return_value.get_indirizzo_dettaglio.return_value = {"indirizzo_dettaglio_id": 42}
         from apps.anagrafiche.services.geo_service import GeoService
         result = GeoService().create_indirizzo({
@@ -222,10 +227,14 @@ class TestIndirizziService(TestCase):
             "comune_id": 10, "codice_postale_id": 20, "civico": 15,
         })
         self.assertEqual(result["indirizzo_dettaglio_id"], 42)
-        mock_ind.return_value.get_or_create_stradario.assert_called_once_with(
-            toponomastica_id=1, descrizione_via="Roma", comune_id=10, codice_postale_id=20,
-        )
-        mock_ind.return_value.create_indirizzo_dettaglio.assert_called_once()
+        kwargs = mock_ind.return_value.create_indirizzo_atomico.call_args.kwargs
+        self.assertIsNone(kwargs["stradario_id"])
+        self.assertEqual(kwargs["toponomastica_id"], 1)
+        self.assertEqual(kwargs["descrizione_via"], "Roma")
+        self.assertEqual(kwargs["comune_id"], 10)
+        self.assertEqual(kwargs["codice_postale_id"], 20)
+        self.assertEqual(kwargs["civico"], 15)
+        mock_ind.return_value.get_or_create_stradario.assert_not_called()
 
     @patch(GEO_REPO)
     @patch(IND_REPO)

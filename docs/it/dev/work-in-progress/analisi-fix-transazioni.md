@@ -1,40 +1,51 @@
 # Analisi e piano di fix — gestione transazioni backend
 
-> Stato: **in esecuzione** — Classe A avviata (#1 completato DB+BE)
-> Data: 2026-07-07
+> Stato: **BE completo + guardrail attivo** — Classi A/B/C/D + rete di prevenzione (2026-07-08).
+> Residui: riconciliazione outbox #16 (follow-up), smoke E2E #3 (§6.3), guardrail v2 service-level (§7).
+> Data: 2026-07-07 (piano) · aggiornato 2026-07-08 (BE)
 > Ambito: `backend/apps/*` (service + repository + view) e `db/changelog` per le funzioni madre
 > Branch coinvolti: `dev/db-tid` (funzioni DB + pgTAP), `dev/backend-tid` (semplificazione service)
 >
-> **Avanzamento fix:**
-> - ✅ **#1 `update_cliente`** — FATTO (DB + BE). DB: `anagrafiche.fn_update_cliente`
->   (`20_code/anagrafiche/20260707-11-create-fn-update-cliente-mctit.yaml`) + pgTAP
->   `db/pgtap/anagrafiche/test-fn-update-cliente-v1.sql` (20/20 verdi, incl. test di atomicità).
-> - 🟦 **#2 `create_contratto`** — DB ESEGUITO (migrato + pgTAP 9/9 verdi; BE pendente). DB: `vendite.fn_create_contratto`
->   (`20_code/vendite/20260707-12-create-fn-create-contratto-mctit.yaml`) + pgTAP
->   `db/pgtap/vendite/test-fn-create-contratto-v1.sql` (9/9 verdi, incl. atomicità = niente
->   contratto orfano). Nota: il numero viene da una **sequence** (`fn_generate_codice`), che non
->   fa rollback → un fallimento lascia un gap di numerazione innocuo; il fix elimina l'orfano, non
->   il gap (che c'era già).
-> - 🟦 **#10 `crea_ordine_da_preventivo`** — DB ESEGUITO (migrato + pgTAP 9/9 verdi; BE pendente).
->   DB: estesa `vendite.fn_push_preventivo_a_ordine`
->   (`20_code/vendite/20260708-01-...`, DROP+CREATE a 5 param): **+sezione EVASO atomica** (gate
->   bi-ramo dentro la fn, il finding) **+ `p_flusso_id`** sul link COLLEGATO (D-B). pgTAP esistente
->   `test-fn-push-preventivo-a-ordine-v1.sql` aggiornato (firma 5 param + EVASO + atomicità).
->   *Follow-up BE*: rimuovere la chiamata separata `transiziona_a_evaso_se_smistato` dal percorso
->   ordine-standalone (ora ridondante — la fn transita già; il re-push è bloccato dal guard stato,
->   non più da "nessuna riga"). `p_flusso_id` DEFAULT NULL → chiamanti attuali invariati.
-> - 🟦 **#13 `create_indirizzo`** — DB FATTO (pgTAP 6/6 verdi in transazione; BE pendente; da migrare).
->   DB: `anagrafiche.fn_create_indirizzo` (`20_code/anagrafiche/20260708-02-...`) — upsert stradario ×2
->   + `fn_get_or_create_indirizzo_dettaglio`, atomici. **#14/#15**: nessun lavoro DB → BE one-liner
->   (spostare `_resolve_conto_bancario` dentro l'atomic già presente, §2-ter).
-> - 🟦 **#3 `genera_pratica`** — DB ESEGUITO (migrato + pgTAP 7/7 verdi; BE pendente).
->   DB: figlia **condivisa** `pratiche.fn_crea_pratica`
->   (`20_code/pratiche/20260707-13-...`) + madre `vendite.fn_genera_pratica_da_preventivo`
->   (`20_code/vendite/20260707-14-...`) + 2 codici errore appesi a `messaggi_errore.csv`
->   (E_PREV_NOT_FOUND 519, E_PREV_VALIDAZIONE 520; loader runOnChange). pgTAP
->   `db/pgtap/vendite/test-fn-genera-pratica-da-preventivo-v1.sql` (atomicità = link fallito ⇒
->   niente pratica orfana). La figlia `fn_crea_pratica` è il **building block riusabile** da
->   #4/#5/#10 e futuri domini (vedi §"scalare su N sorgenti").
+> **Avanzamento fix — stato al 2026-07-08 (BE non ancora committato su `dev/backend-tid`):**
+>
+> | # | Metodo | Classe | DB | BE | Smoke E2E |
+> |---|---|---|---|---|---|
+> | 1 | `update_cliente` | A | ✅ | ✅ | ✅ `smoke-test-clienti.sh` (0..12) |
+> | 2 | `create_contratto` | A | ✅ | ✅ | ✅ `smoke-test-contratti-addebito-standard.sh` (numero da fn) |
+> | 3 | `genera_pratica` | A | ✅ | ✅ | ⬜ TODO §6.3 (serve fixture preventivo ACCETTATO) |
+> | 10 | `crea_ordine_da_preventivo` | A | ✅ | ✅ | ✅ `smoke-test-preventivi-smistamento-ordine.sh` |
+> | 4 | `push_a_commessa` (ordini) | B | — | ✅ | (happy-path coperto; atomicità = reasoning) |
+> | 5 | `push_a_commessa` (preventivi) | B | — | ✅ | (idem) |
+> | 6 | `update_riga` L3 (contratti) | B | — | ✅ | — |
+> | 7 | `create_riga` L3 (contratti) | B | — | ✅ | — |
+> | 8 | `crea_eccezione` L3 (offerte) | B | — | ✅ | — |
+> | 9 | `aggiorna_eccezione` L3 (offerte) | B | — | ✅ | — |
+> | 13 | `create_indirizzo` (geo) | D | ✅ | ✅ | — |
+> | 14 | `create_conto_soggetto` | D | — | ✅ | — |
+> | 15 | `create_conto_ruolo` | D | — | ✅ | — |
+> | 11 | `_process_rows` (batch) | D | — | ⏸️ già mitigato | — |
+> | 12 | `_run_locked` (batch) | D | — | ⏸️ già mitigato | — |
+> | 16 | `confirm_and_send` (outbox) | C | — | ✅ (core) | riconciliazione = follow-up |
+> | 17 | `reinvia_invito_*` (saga, cliente+fornitore+**shop**) | C | — | ✅ | — |
+> | igiene | `_db_errors`→`_map_db_errors` + `upsert_bundle_componenti` atomic | — | — | ✅ | — |
+> | guardrail | test AST anti-regressione (§7) + 4 hardening repo | — | — | ✅ | gira senza DB (CI) |
+>
+> **Dettagli DB (funzioni madre create):** `anagrafiche.fn_update_cliente` (`20260707-11`),
+> `vendite.fn_create_contratto` (`20260707-12`, ritorna `contratto_id`+`numero`),
+> `pratiche.fn_crea_pratica` (`20260707-13`, figlia condivisa) + `vendite.fn_genera_pratica_da_preventivo`
+> (`20260707-14`), `vendite.fn_push_preventivo_a_ordine` estesa a 5 param con sezione EVASO + `p_flusso_id`
+> (`20260708-01`), `anagrafiche.fn_create_indirizzo` (`20260708-02`). pgTAP: 20/20, 9/9, 7/7, 9/9, 6/6.
+>
+> **Note BE chiave:**
+> - **#2**: il numero viene da `fn_generate_codice` (sequence, non fa rollback) → un fallimento lascia
+>   un gap di numerazione innocuo; il fix elimina l'orfano, non il gap (che c'era già).
+> - **#4/#5** (decisione Tid 2026-07-08): **rollback totale** — un fallimento dell'aggancio-pratica
+>   rolla l'intero push (idempotente/ri-eseguibile). La transizione EVASO resta best-effort ma su
+>   **savepoint dedicato** (swallow di `DatabaseError` dentro l'atomic esterno lo corromperebbe).
+> - **#10**: `p_flusso_id` resta dormiente — `push_a_ordine` ha un solo caller (standalone,
+>   `pratica_id=None`); nessun caller pratica-driven da valorizzare oggi.
+> - **#16**: fix core = 3 write post-invio in un atomic; la **riconciliazione** dei READY fantasma
+>   è follow-up e va progettata per NON ri-inviare (idempotente, non re-send).
 
 ---
 
@@ -457,3 +468,65 @@ guard anti-overlap blocca l'attivazione del nuovo. La **creazione** (percorso #2
 transizione DRAFT→ATTIVO a incrociare il residuo. Fix igiene: periodo/BA fresco per run o cleanup
 proattivo dei contratti attivi di test (memoria `feedback_smoke_test_idempotenti`). Non è una
 regressione del #2.
+
+---
+
+## 7. Rete di prevenzione — guardrail-test (FATTO 2026-07-08)
+
+Implementata la rete anti-regressione della §4 ("una azione = una unità atomica").
+
+### 7.1 Il test
+
+`backend/apps/core/tests/test_transaction_atomicity_guardrail.py` — **analisi statica AST**
+(nessun DB, gira in CI): fallisce se un metodo compone **2+ scritture DB non tutte dentro un
+`transaction.atomic()`**.
+
+- **Regola v1 (conservativa, zero-rumore):** rileva SOLO `cursor.execute(...)` con SQL di
+  scrittura (`INSERT/UPDATE/DELETE` o `SELECT fn_` di mutazione). Immune ai falsi positivi da
+  `dict.update()` / `create_*()` su variabili locali (che nelle prime iterazioni davano 35→23 hit
+  spuri). Copre la composizione a livello **repository**.
+- **Conteggio compositional:** rami `if/else` → **max** (mutuamente esclusivi, non somma →
+  elimina il falso positivo `_set_super_admin_binding`); sequenziale → somma; `with ...atomic()` →
+  scritture nel body protette; `_map_db_errors`/`_db_errors` **non** contano come atomic.
+- **Due test:** (a) nessuna violazione fuori `ALLOWLIST`; (b) nessuna voce `ALLOWLIST` stantia
+  (una voce che non è più violazione va rimossa → evita suppressioni morte).
+- **`ALLOWLIST`:** 1 sola voce — `IdempotencyStore.claim_or_replay` (protocollo idempotency: il
+  claim atomico è garantito dall'`INSERT ... ON CONFLICT DO NOTHING` a livello statement; un
+  `atomic()` non aggiungerebbe garanzie).
+
+### 7.2 4 fragilità reali scoperte e hardenate
+
+Applicato al codebase, il guardrail ha trovato — oltre a `claim_or_replay` (allowlist) — **4
+metodi repository con 2+ scritture sequenziali senza atomic** (la categoria "8 mitigate dal
+caller" della §3). Resi **self-atomici** (`with transaction.atomic(), connection.cursor()`;
+nested = savepoint se il caller ha già un atomic):
+
+| Metodo | Scritture fuse |
+|---|---|
+| `anagrafiche/db/indirizzi_repository.get_or_create_stradario` | 2 upsert stradario |
+| `vendite/db/commesse_repository.update_attivita_prezzo` | 2 UPDATE (era "caller gestisce transazione") |
+| `vendite/db/listini_repository.clone_versione` | INSERT testata + INSERT righe |
+| `vendite/db/listini_repository.delete_versione` | 3 DELETE a cascata |
+
+### 7.3 Follow-up v2 (documentato)
+
+Il v1 copre il livello **repository** (`cursor.execute`). La composizione a livello **service**
+(2+ chiamate a metodi-write del repo senza atomic — es. il vecchio `update_cliente`) richiede
+euristiche *receiver-aware* (quali attributi sono repository) per non generare rumore da
+`self._build_*`/`self._validate_*`. È il naturale v2.
+
+### 7.4 Fix da review critica (2026-07-08)
+
+Controllo adversariale su tutte le modifiche della sessione (4 review parallele). Nucleo
+transazionale confermato corretto; 4 finding corretti:
+
+- **#17 asimmetria SHOP_CUSTOMER** (reale): `reinvia_invito_shop_customer` invalidava i token
+  **fuori** dall'atomic — la stessa vulnerabilità sanata per cliente/fornitore, dimenticata sullo
+  shop. Ora simmetrica su tutte e tre le vesti (regola simmetria-modello).
+- **Contratti CM order**: in `create_riga`/`update_riga` invertito `transaction.atomic(), _map_db_errors`
+  → `_map_db_errors, transaction.atomic()` (allineato a offerte): il rollback su errore trigger
+  avviene prima del log-to-db, che altrimenti girava su connessione avvelenata e andava perso.
+- **clienti "no fields"**: `E_ANAG_NOT_FOUND` (404) → `E_ANAG_VALIDAZIONE` (400) — l'esistenza è
+  già provata da `get_cliente`, quindi "niente da aggiornare" è validazione, non not-found.
+- **dead code**: rimossi `contratti_repository.create_contratto` + `generate_numero` (superati da
+  `create_contratto_atomico`) + test obsoleti.

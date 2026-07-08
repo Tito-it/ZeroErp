@@ -1689,52 +1689,39 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(args[1]["valore_variazione_globale"], Decimal("7"))
 
 
-# Scopo: REGRESSIONE review — il repository usa `%s::jsonb` per la colonna meta
-#        (non `%s`) cosi' che driver senza auto-adattamento dict->jsonb non falliscano.
+# Scopo: REGRESSIONE — la creazione contratto passa `meta` (dict) come oggetto
+#        JSON annidato dentro il jsonb `p_testata` della fn madre create_contratto_atomico.
 class ContrattiRepositoryJsonbTests(TestCase):
     @patch("apps.vendite.db.contratti_repository.connection")
-    def test_repository_create_contratto_usa_cast_jsonb_per_meta(self, mock_connection):
+    def test_create_contratto_atomico_serializza_meta_nel_testata_jsonb(self, mock_connection):
+        import json
+
         from apps.vendite.db.contratti_repository import ContrattiRepository
 
         cursor = MagicMock()
-        cursor.fetchone.return_value = (1,)
+        cursor.fetchone.return_value = (1, "CNT0000001")
         mock_connection.cursor.return_value.__enter__.return_value = cursor
 
-        ContrattiRepository().create_contratto({
-            "numero": "CNT0000001",
-            "billing_account_id": 10,
-            "istanza_utility_id": 20,
-            "utility_id": 3,
-            "valido_dal": date(2026, 1, 1),
-            "stato_doc_contratto_id": 1,
-            "meta": {"note": "test"},
-        })
+        ContrattiRepository().create_contratto_atomico(
+            testata={
+                "billing_account_id": 10,
+                "istanza_utility_id": 20,
+                "utility_id": 3,
+                "valido_dal": date(2026, 1, 1),
+                "meta": {"note": "test"},
+            },
+            utility=None,
+        )
 
         sql = cursor.execute.call_args[0][0]
-        self.assertIn("%s::jsonb", sql)
+        self.assertIn("fn_create_contratto(%s::jsonb, %s::jsonb)", sql)
         params = cursor.execute.call_args[0][1]
-        # meta serializzato a JSON string (non dict).
-        meta_param = next(p for p in params if isinstance(p, str) and p.startswith("{"))
-        self.assertEqual(meta_param, '{"note": "test"}')
-
-
-# Scopo: smoke che il repository genera il numero tramite fn_generate_codice
-#        (verifica solo l'SQL parametrico — la DB call e' mockata).
-class ContrattiRepositoryNumberTests(TestCase):
-    @patch("apps.vendite.db.contratti_repository.connection")
-    def test_generate_numero_calls_fn_generate_codice(self, mock_connection):
-        from apps.vendite.db.contratti_repository import ContrattiRepository
-
-        cursor = MagicMock()
-        cursor.fetchone.return_value = ("CNT0000001",)
-        mock_connection.cursor.return_value.__enter__.return_value = cursor
-
-        result = ContrattiRepository().generate_numero()
-
-        self.assertEqual(result, "CNT0000001")
-        cursor.execute.assert_called_once_with(
-            "SELECT script.fn_generate_codice(%s)", ["contratto"]
-        )
+        # p_testata: JSON string con date→ISO e meta come oggetto annidato.
+        testata = json.loads(params[0])
+        self.assertEqual(testata["meta"], {"note": "test"})
+        self.assertEqual(testata["valido_dal"], "2026-01-01")
+        # p_utility None → nessuna riga utility.
+        self.assertIsNone(params[1])
 
 
 # ══════════════════════════════════════════════════════════════════════

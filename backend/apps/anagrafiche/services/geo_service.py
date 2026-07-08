@@ -296,40 +296,40 @@ class GeoService:
         assert result is not None
         return result
 
-    # Scopo: Crea indirizzo. Orchestrazione: risolve stradario (esistente o nuovo),
-    # poi chiama fn_get_or_create_indirizzo_dettaglio, poi ritorna dettaglio completo.
+    # Scopo: Crea indirizzo. Le validazioni "via nuova" restano lato service; la
+    # composizione (upsert stradario ×2 + get_or_create dettaglio) vive in una
+    # sola funzione madre atomica anagrafiche.fn_create_indirizzo (fix #13).
     def create_indirizzo(self, payload: dict) -> dict[str, Any]:
         stradario_id = optional_int(payload, "stradario_id")
+        toponomastica_id = optional_int(payload, "toponomastica_id")
+        descrizione_via = (payload.get("descrizione_via") or "").strip() or None
+        comune_id = optional_int(payload, "comune_id")
+        codice_postale_id = optional_int(payload, "codice_postale_id")
 
         if stradario_id is None:
-            # Via nuova: creare stradario_generale + stradario
-            toponomastica_id = optional_int(payload, "toponomastica_id")
-            descrizione_via = (payload.get("descrizione_via") or "").strip()
-            comune_id = optional_int(payload, "comune_id")
-            codice_postale_id = optional_int(payload, "codice_postale_id")
-
+            # Via nuova: i campi stradario sono obbligatori (la fn li usa per
+            # l'upsert stradario_generale + stradario).
             ErrorManager.require(toponomastica_id is not None and toponomastica_id > 0,
                                  code=E_ANAG_VALIDAZIONE, message="Tipo strada obbligatorio per via nuova.")
-            assert toponomastica_id is not None
             ErrorManager.require(bool(descrizione_via),
                                  code=E_ANAG_VALIDAZIONE, message="Nome via obbligatorio.")
             ErrorManager.require(comune_id is not None and comune_id > 0,
                                  code=E_ANAG_VALIDAZIONE, message="Comune obbligatorio per via nuova.")
-            assert comune_id is not None
             ErrorManager.require(codice_postale_id is not None and codice_postale_id > 0,
                                  code=E_ANAG_VALIDAZIONE, message="CAP obbligatorio per via nuova.")
-            assert codice_postale_id is not None
-
-            stradario_id = self._ind.get_or_create_stradario(
-                toponomastica_id=toponomastica_id, descrizione_via=descrizione_via,
-                comune_id=comune_id, codice_postale_id=codice_postale_id,
-            )
         else:
             ErrorManager.require(stradario_id > 0, code=E_ANAG_VALIDAZIONE, message="stradario_id non valido.")
-        assert stradario_id is not None
 
-        indirizzo_id = self._ind.create_indirizzo_dettaglio(
+        # Fix analisi-fix-transazioni #13 (Classe D): upsert stradario (×2, solo
+        # via nuova) + get_or_create del dettaglio in UNA sola fn madre atomica.
+        # Prima erano get_or_create_stradario + create_indirizzo_dettaglio
+        # separati → righe stradario di registro orfane se il dettaglio falliva.
+        indirizzo_id = self._ind.create_indirizzo_atomico(
             stradario_id=stradario_id,
+            toponomastica_id=toponomastica_id,
+            descrizione_via=descrizione_via,
+            comune_id=comune_id,
+            codice_postale_id=codice_postale_id,
             civico=optional_int(payload, "civico"),
             estensione_civico=(payload.get("estensione_civico") or "").strip() or None,
             palazzina=(payload.get("palazzina") or "").strip() or None,

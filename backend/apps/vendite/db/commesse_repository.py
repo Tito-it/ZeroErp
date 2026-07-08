@@ -11,7 +11,7 @@ from decimal import Decimal
 import json
 from typing import Any
 
-from django.db import connection
+from django.db import connection, transaction
 
 from apps.core.db._helpers import call_jsonb_fn
 from apps.core.services.error_manager import ErrorManager
@@ -1141,7 +1141,10 @@ class CommesseRepository:
         prezzo_bloccato: bool,
         meta: dict[str, Any] | None,
     ) -> None:
-        with connection.cursor() as cursor:
+        # Guardrail atomicità (review 2026-07-08): 2 UPDATE sequenziali (commesse_attivita
+        # + attivita_fatturabili) resi self-atomici. Il docstring dichiarava "caller gestisce
+        # transazione": ora e' self-safe (nested=savepoint se il caller ha gia' un atomic).
+        with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(
                 """
                 UPDATE vendite.commesse_attivita

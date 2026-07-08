@@ -399,7 +399,8 @@ class TestUpdateCliente(TestCase):
 
     @patch(CLI_REPO)
     def test_update_cliente_no_fields(self, mock_repo):
-        """Nessun campo valido → E_ANAG_NOT_FOUND (la fn madre non tocca nulla)."""
+        """Nessun campo valido → E_ANAG_VALIDAZIONE (400): il cliente esiste (guard
+        get_cliente), quindi 'niente da aggiornare' e' validazione, non not-found."""
         repo = mock_repo.return_value
         repo.get_cliente.return_value = {"id": 1, "utility_id": 10}
         repo.update_cliente_atomico.return_value = {
@@ -408,7 +409,7 @@ class TestUpdateCliente(TestCase):
         from apps.anagrafiche.services.clienti_service import ClientiService
         with self.assertRaises(ServiceError) as ctx:
             ClientiService().update_cliente(1, {"campo_ignoto": "valore"})
-        self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
 
 # =================================================================
