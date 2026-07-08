@@ -96,18 +96,21 @@ class ClientiService:
         return require_found(self._repo.get_cliente(cliente_id), "Cliente non trovato.")
 
     # Scopo: Aggiorna campi editabili di un cliente (pagamento, PA, garanzia, servizio).
+    #        La categoria cliente vive sul BA (pricing v5 STADIO 2), i campi
+    #        editabili sul cliente: entrambe le scritture vengono fuse in una
+    #        sola statement atomica dalla funzione madre anagrafiche.fn_update_cliente
+    #        (fix analisi-fix-transazioni Classe A, finding #1). Prima erano due
+    #        UPDATE separati in autocommit: il fallimento del secondo lasciava la
+    #        categoria BA committata su uno stato parziale.
     def update_cliente(self, cliente_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-        # Verifica che il cliente esista.
-        cliente = self.get_cliente(cliente_id)
+        # Guard esistenza + scope (RLS): 404 pulito E_ANAG_NOT_FOUND se il
+        # cliente non esiste o e' fuori dallo scope emittente dell'operatore.
+        self.get_cliente(cliente_id)
 
-        # Pricing v5 STADIO 2: la categoria vive sul BA, non sul cliente.
-        # Se presente nel payload, la estrae e la scrive separatamente sul BA
-        # prima di passare i restanti campi al repo cliente. FK validata dal DB.
-        #
-        # Importante (B2 review 2026-04-15): estraiamo senza mutare il dict
-        # del caller; il view/chiamante potrebbe usarlo per audit/logging.
+        # Estrae la categoria BA dal payload senza mutare il dict del caller
+        # (il view/chiamante potrebbe usarlo per audit/logging). Validazione
+        # fail-fast: intero positivo (la FK e' comunque validata dal DB).
         ba_categoria = payload.get("ba_categoria_cliente_id") if isinstance(payload, dict) else None
-        ba_categoria_changed = False
         if ba_categoria is not None:
             ErrorManager.require(
                 isinstance(ba_categoria, int)
@@ -117,21 +120,28 @@ class ClientiService:
                 message="ba_categoria_cliente_id deve essere un intero positivo.",
                 context={"ba_categoria_cliente_id": ba_categoria},
             )
-            ba_id = cliente["billing_account_id"]
-            self._repo.update_ba_categoria(ba_id, ba_categoria)
-            ba_categoria_changed = True
 
-        # Costruisce payload filtrato per il repo cliente (no mutation sul caller).
-        cliente_payload = (
+        # Campi editabili del cliente = payload meno la categoria BA (che ha un
+        # canale dedicato). La whitelist effettiva e' applicata dal repository.
+        cliente_fields = (
             {k: v for k, v in payload.items() if k != "ba_categoria_cliente_id"}
             if isinstance(payload, dict)
-            else payload
+            else {}
         )
-        updated = self._repo.update_cliente(cliente_id, cliente_payload) if cliente_payload else False
+
+        # Una sola SELECT fn_madre(): categoria BA + campi cliente in atomica.
+        result = self._repo.update_cliente_atomico(
+            cliente_id,
+            ba_categoria_cliente_id=ba_categoria,
+            cliente_fields=cliente_fields,
+        )
+        # L'esistenza e' gia' garantita dal guard get_cliente sopra: se entrambi
+        # i flag sono False il cliente c'e' ma il payload non conteneva nessun
+        # campo editabile ne' la categoria (niente da aggiornare).
         ErrorManager.require(
-            updated or ba_categoria_changed,
+            result["categoria_aggiornata"] or result["campi_aggiornati"],
             code=E_ANAG_NOT_FOUND,
-            message="Cliente non trovato o nessun campo modificato.",
+            message="Nessun campo da aggiornare.",
         )
         return {"updated": True}
 

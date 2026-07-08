@@ -4,7 +4,7 @@
 # Uso: ./scripts/tests/smoke-test-clienti.sh [password]
 # Prerequisiti: almeno un soggetto nel DB (lo smoke-test-soggetti.sh ne crea uno)
 # ------------------------------------------------------------
-# Indice test (0..8):
+# Indice test (0..12):
 #  0) Autenticazione JWT
 #  1) Lookup utility ammesse per creazione manuale
 #  2) Lista clienti (paginata, vuota o con dati)
@@ -14,6 +14,11 @@
 #  6) Dettaglio cliente creato
 #  7) Crea cliente manuale — utility GAS bloccata (atteso errore)
 #  8) Crea cliente manuale — duplicato istanza (atteso errore)
+#  --- Fix #1 analisi-fix-transazioni: update via fn madre atomica ---
+#  9) Update campi cliente (fn madre) + verifica persistenza su dettaglio
+# 10) Update ATOMICO categoria BA + campo cliente in una sola fn + verifica
+# 11) Update campo numerico nullable con "" -> NULL (no crash cast, regressione)
+# 12) Update senza campi -> 404 E_ANAG_NOT_FOUND (guard "nessun campo")
 # ------------------------------------------------------------
 set -euo pipefail
 
@@ -202,8 +207,19 @@ elif [[ "$LAST_STATUS" == "409" ]]; then
     else
         log_fail "Crea cliente — errore inatteso: $ERRCODE"
     fi
+elif [[ "$LAST_STATUS" == "403" ]]; then
+    ERRCODE=$(json_get "$LAST_BODY" ".error.code")
+    if [[ "$ERRCODE" == "E_BA_ADMIN_GLOBALE_VIETATO" ]]; then
+        # Guard operatore-emittenti: admin globale non crea BA con emittenti
+        # presenti. Atteso in ambienti con emittenti fiscali seed. I test di
+        # update (9-12) usano un cliente esistente della lista come fallback.
+        log_info "Creazione BA vietata ad admin globale (guard OK, si usa cliente esistente)"
+        ((PASS++)) || true
+    else
+        log_fail "Crea cliente — errore 403 inatteso: $ERRCODE"
+    fi
 else
-    log_fail "Crea cliente — atteso HTTP 200 o 409, ricevuto $LAST_STATUS"
+    log_fail "Crea cliente — atteso HTTP 200/409/403, ricevuto $LAST_STATUS"
     echo "       Body: $(echo "$LAST_BODY" | head -c 300)"
 fi
 
@@ -234,15 +250,15 @@ if [[ -n "$GAS_UTIL_ID" && "$GAS_UTIL_ID" != "" ]]; then
             \"soggetto_id\": \"${SOGG_ID}\",
             \"utility_id\": ${GAS_UTIL_ID}
         }"
-    if [[ "$LAST_STATUS" == "400" ]]; then
-        ERRCODE=$(json_get "$LAST_BODY" ".error.code")
-        if [[ "$ERRCODE" == "E_ANAG_VALIDAZIONE" ]]; then
-            log_ok "Utility GAS bloccata per creazione manuale (HTTP 400, $ERRCODE)"
-        else
-            log_fail "Errore inatteso: $ERRCODE"
-        fi
+    ERRCODE=$(json_get "$LAST_BODY" ".error.code")
+    if [[ "$LAST_STATUS" == "400" && "$ERRCODE" == "E_ANAG_VALIDAZIONE" ]]; then
+        log_ok "Utility GAS bloccata per creazione manuale (HTTP 400, $ERRCODE)"
+    elif [[ "$LAST_STATUS" == "403" && "$ERRCODE" == "E_BA_ADMIN_GLOBALE_VIETATO" ]]; then
+        # In ambienti con emittenti fiscali il guard operatore-emittenti (403)
+        # scatta prima del check PDP (400): la creazione resta comunque bloccata.
+        log_ok "Utility GAS bloccata a monte dal guard emittenti (HTTP 403, $ERRCODE)"
     else
-        log_fail "Utility GAS — atteso HTTP 400, ricevuto $LAST_STATUS"
+        log_fail "Utility GAS — atteso 400/E_ANAG_VALIDAZIONE o 403/E_BA_ADMIN_GLOBALE_VIETATO, ricevuto $LAST_STATUS/$ERRCODE"
     fi
 else
     log_info "Skipped — utility GAS non trovata nel DB"
@@ -266,6 +282,104 @@ if [[ -n "$NEW_CLI_ID" && "$NEW_CLI_ID" != "" ]]; then
     fi
 else
     log_info "Skipped — test 5 non ha creato un nuovo cliente"
+fi
+
+# ================================================================
+# Fix #1 (analisi-fix-transazioni, Classe A): update cliente via funzione
+# madre atomica anagrafiche.fn_update_cliente. Serve un cliente su cui agire:
+# riusa quello creato al test 5, altrimenti il primo della lista.
+# ================================================================
+echo ""
+echo "-- Prerequisito update: individua cliente bersaglio --"
+TARGET_CLI_ID="$NEW_CLI_ID"
+if [[ -z "$TARGET_CLI_ID" || "$TARGET_CLI_ID" == "" ]]; then
+    do_curl GET "/api/v1/anagrafiche/clienti/?limit=1"
+    TARGET_CLI_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
+fi
+
+if [[ -z "$TARGET_CLI_ID" || "$TARGET_CLI_ID" == "" ]]; then
+    log_info "Skipped test 9-12 — nessun cliente disponibile da aggiornare"
+else
+    log_info "Cliente bersaglio update: id=$TARGET_CLI_ID"
+    # Categoria valida da riusare nell'update combinato: leggo quella corrente
+    # dal dettaglio (BA.categoria_cliente_id e' NOT NULL => sempre presente).
+    do_curl GET "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/"
+    CAT_ID=$(json_get "$LAST_BODY" ".data.ba_categoria_cliente_id")
+    log_info "Categoria BA corrente: $CAT_ID"
+
+    # --- 9. Update campi cliente (fn madre) + verifica persistenza ---
+    # NB dominio: trg_clienti_normalize_giorni_scadenza impone le combinazioni
+    # valide (tipo_gg_scadenza_ft, nr_giorni_scadenza): ('G'|'F', >0) oppure
+    # ('N'|'M', NULL). Per far persistere nr_giorni=30 il tipo DEVE essere 'G'/'F'.
+    echo ""
+    echo "-- 9. Update campi cliente (fn madre atomica) --"
+    do_curl PATCH "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/" \
+        '{"codice_commessa": "SMOKE-FIX1", "tipo_gg_scadenza_ft": "G", "nr_giorni_scadenza": 30}'
+    if check "PATCH update campi" "200"; then
+        do_curl GET "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/"
+        GOT_COMM=$(json_get "$LAST_BODY" ".data.codice_commessa")
+        GOT_TIPO=$(json_get "$LAST_BODY" ".data.tipo_gg_scadenza_ft")
+        GOT_GG=$(json_get "$LAST_BODY" ".data.nr_giorni_scadenza")
+        if [[ "$GOT_COMM" == "SMOKE-FIX1" && "$GOT_TIPO" == "G" && "$GOT_GG" == "30" ]]; then
+            log_ok "Persistenza verificata (codice_commessa=$GOT_COMM, tipo=$GOT_TIPO, nr_giorni=$GOT_GG)"
+        else
+            log_fail "Persistenza KO (codice_commessa=$GOT_COMM, tipo=$GOT_TIPO, nr_giorni=$GOT_GG)"
+        fi
+    fi
+
+    # --- 10. Update ATOMICO categoria BA + campo cliente ---
+    echo ""
+    echo "-- 10. Update atomico categoria BA + campo cliente --"
+    if [[ -n "$CAT_ID" && "$CAT_ID" != "" && "$CAT_ID" != "None" ]]; then
+        do_curl PATCH "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/" \
+            "{\"ba_categoria_cliente_id\": ${CAT_ID}, \"codice_commessa\": \"SMOKE-FIX1-COMBO\"}"
+        if check "PATCH categoria+campo (una sola fn madre)" "200"; then
+            do_curl GET "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/"
+            GOT_COMM=$(json_get "$LAST_BODY" ".data.codice_commessa")
+            GOT_CAT=$(json_get "$LAST_BODY" ".data.ba_categoria_cliente_id")
+            if [[ "$GOT_COMM" == "SMOKE-FIX1-COMBO" && "$GOT_CAT" == "$CAT_ID" ]]; then
+                log_ok "Scrittura atomica verificata (categoria=$GOT_CAT, codice_commessa=$GOT_COMM)"
+            else
+                log_fail "Scrittura atomica KO (categoria=$GOT_CAT, codice_commessa=$GOT_COMM)"
+            fi
+        fi
+    else
+        log_info "Skipped — categoria BA corrente non risolta"
+    fi
+
+    # --- 11. Regressione: campo numerico nullable "" -> NULL (no crash cast) ---
+    # Prima del fix, "" arrivava alla fn e faceva crashare (''::integer). Ora il
+    # BE lo normalizza a NULL. Passiamo anche tipo='N' per rispettare la coppia
+    # (con tipo 'N' nr_giorni DEVE essere NULL): cosi' l'unico esito possibile e'
+    # 200 con nr_giorni azzerato, e un eventuale crash del cast risalta.
+    echo ""
+    echo "-- 11. Update nr_giorni_scadenza=\"\" -> NULL (normalizzazione BE) --"
+    do_curl PATCH "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/" \
+        '{"tipo_gg_scadenza_ft": "N", "nr_giorni_scadenza": ""}'
+    if check "PATCH stringa vuota su numerico nullable" "200"; then
+        do_curl GET "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/"
+        GOT_GG=$(json_get "$LAST_BODY" ".data.nr_giorni_scadenza")
+        if [[ -z "$GOT_GG" || "$GOT_GG" == "None" ]]; then
+            log_ok "Campo azzerato a NULL (nr_giorni_scadenza vuoto)"
+        else
+            log_fail "Atteso NULL, ricevuto nr_giorni_scadenza=$GOT_GG"
+        fi
+    fi
+
+    # --- 12. Update senza campi -> guard "nessun campo" ---
+    echo ""
+    echo "-- 12. Update senza campi (atteso 404 E_ANAG_NOT_FOUND) --"
+    do_curl PATCH "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/" '{}'
+    if [[ "$LAST_STATUS" == "404" ]]; then
+        ERRCODE=$(json_get "$LAST_BODY" ".error.code")
+        if [[ "$ERRCODE" == "E_ANAG_NOT_FOUND" ]]; then
+            log_ok "Guard nessun campo (HTTP 404, $ERRCODE)"
+        else
+            log_fail "Codice inatteso: $ERRCODE"
+        fi
+    else
+        log_fail "Update vuoto — atteso HTTP 404, ricevuto $LAST_STATUS"
+    fi
 fi
 
 # ================================================================

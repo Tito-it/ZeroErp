@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from django.db import connection
@@ -408,6 +409,11 @@ class ClientiRepository:
             return row_to_dict(cursor)
 
     # Campi editabili sul cliente (pagamento, PA, garanzia, servizio).
+    # ATTENZIONE: questo set DEVE restare allineato alla whitelist interna della
+    # funzione madre anagrafiche.fn_update_cliente (autorita' finale: ignora le
+    # chiavi non whitelisted). Qui e' difesa-in-profondita' + igiene payload (non
+    # spedire chiavi ignote nel jsonb), coerente coi repo fratelli
+    # (fornitori/emittenti). Aggiungere un campo editabile => aggiornare ENTRAMBI.
     _UPDATE_ALLOWED = {
         "iva_id", "modalita_pagamento_id", "termine_pagamento_id",
         "tipo_gg_scadenza_ft", "nr_giorni_scadenza",
@@ -416,43 +422,61 @@ class ClientiRepository:
         "servizio_da_fatturare",
         "garanzia_tipo", "garanzia_importo",
     }
-    _UPDATE_NULLABLE = {
-        "iva_id", "modalita_pagamento_id", "termine_pagamento_id",
-        "codice_cig", "codice_cup", "codice_commessa",
-    }
 
-    # Scopo: Aggiorna la categoria cliente sul BA indicato.
-    #        Pricing v5 STADIO 2: la colonna e' NOT NULL, il service deve
-    #        sempre passare un id valido. La FK e' validata dal DB
-    #        (fk_billing_account_categoria_cliente). Ritorna True se la
-    #        riga aggiornata esiste.
-    def update_ba_categoria(
-        self, billing_account_id: int, categoria_cliente_id: int
-    ) -> bool:
+    # Scopo: Aggiornamento atomico del cliente via funzione madre DB.
+    #        Obiettivo: fondere in UNA sola statement SQL
+    #        (anagrafiche.fn_update_cliente) la scrittura della categoria
+    #        cliente sul billing_account e i campi editabili del cliente.
+    #        Perimetro: o vanno a buon fine entrambe o rollback totale — niente
+    #        piu' stato parziale con la categoria BA committata e l'UPDATE
+    #        cliente fallito (fix analisi-fix-transazioni Classe A, finding #1;
+    #        prima erano due UPDATE separati in autocommit).
+    #        Risultato: dict {categoria_aggiornata, campi_aggiornati}; il service
+    #        decide se sollevare "nessun campo modificato" quando entrambi False.
+    #        La fn e' SECURITY INVOKER: RLS e scope emittente su billing_account
+    #        restano valutati come dal Python (vincolo invariante §2-bis).
+    #
+    #        Input:
+    #          - ba_categoria_cliente_id: categoria da scrivere sul BA del
+    #            cliente; None = categoria non toccata (colonna NOT NULL, mai a NULL).
+    #          - cliente_fields: delta dei campi editabili. Solo le chiavi
+    #            whitelisted (_UPDATE_ALLOWED) sono passate alla fn; le stringhe
+    #            vuote/whitespace sono normalizzate a NULL (la fn DB non
+    #            normalizza: la disciplina null-vs-empty resta lato BE).
+    def update_cliente_atomico(
+        self, cliente_id: int, *,
+        ba_categoria_cliente_id: int | None,
+        cliente_fields: dict[str, Any],
+    ) -> dict[str, bool]:
+        # Whitelist + normalizzazione stringa-vuota -> None prima di serializzare
+        # il delta in jsonb per la fn madre.
+        # Empty -> NULL applicata a TUTTI i campi editabili: nessuno memorizza
+        # legittimamente '' (interi, numerici, enum-char, codici opzionali), quindi
+        # svuotare = azzerare. Evita una lista di colonne nullable da tenere in
+        # sync col DB e protegge i cast tipati della fn (::integer/::numeric) dal
+        # crash su '': i campi nullable si azzerano, i NOT NULL restano rifiutati
+        # dal vincolo (input FE invalido, mai inviato dalle select).
+        clean: dict[str, Any] = {}
+        for k, v in cliente_fields.items():
+            if k not in self._UPDATE_ALLOWED:
+                continue
+            if isinstance(v, str) and not v.strip():
+                v = None
+            clean[k] = v
         with connection.cursor() as cursor:
+            # Cast espliciti ai tipi dichiarati dalla fn: fn_update_cliente(
+            # bigint, smallint, jsonb). psycopg invia gli int Python come int4;
+            # int4->bigint e' implicito, ma int4->smallint (categoria_cliente_id)
+            # e' un restringimento NON implicito -> senza ::smallint la
+            # risoluzione dell'overload fallisce ("funzione non esiste") quando
+            # la categoria e' un intero concreto (con NULL il tipo unknown si adatta).
             cursor.execute(
                 """
-                UPDATE anagrafiche.billing_account
-                   SET categoria_cliente_id = %s
-                 WHERE id = %s
+                SELECT categoria_aggiornata, campi_aggiornati
+                  FROM anagrafiche.fn_update_cliente(%s::bigint, %s::smallint, %s::jsonb)
                 """,
-                [categoria_cliente_id, billing_account_id],
+                [cliente_id, ba_categoria_cliente_id, json.dumps(clean, default=str)],
             )
-            return cursor.rowcount > 0
-
-    # Scopo: Aggiorna campi editabili di un cliente (delta update).
-    def update_cliente(self, cliente_id: int, data: dict[str, Any]) -> bool:
-        # Normalizza stringhe vuote a None per campi nullable
-        for k in self._UPDATE_NULLABLE:
-            if k in data and isinstance(data[k], str) and not data[k].strip():
-                data[k] = None
-        fields = [(k, v) for k, v in data.items() if k in self._UPDATE_ALLOWED]
-        if not fields:
-            return False
-        set_clause = ", ".join(f"{f[0]} = %s" for f in fields)
-        values: list[Any] = [f[1] for f in fields]
-        values.append(cliente_id)
-        sql = f"UPDATE anagrafiche.clienti SET {set_clause} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, values)
-            return cursor.rowcount > 0
+            row = cursor.fetchone()
+            assert row is not None
+        return {"categoria_aggiornata": bool(row[0]), "campi_aggiornati": bool(row[1])}
