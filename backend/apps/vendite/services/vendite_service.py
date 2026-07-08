@@ -185,13 +185,11 @@ _DASH_ANNO_MAX = 2100
 
 @dataclass
 class _CellaAperto:
-    # Scopo: Accumulatore tipizzato del pivot Situazione aperta per
+    # Scopo: Accumulatore tipizzato del pivot serbatoio pre-commessa per
     #        (area, fase): somme native su Decimal/int, serializzazione a
     #        stringa UNA volta in uscita.
     n_documenti: int = 0
-    n_aperti: int = 0
     valore_totale: Decimal = Decimal(0)
-    valore_transitato: Decimal = Decimal(0)
 
 
 # Scopo: Serializza i campi condivisi di una cella della Situazione aperta.
@@ -205,26 +203,24 @@ def _cella_aperto_fields(
 ) -> dict[str, object]:
     return {
         "n_documenti": cella.n_documenti,
-        "n_aperti": cella.n_aperti,
         "valore_totale": str(cella.valore_totale) if con_valori else None,
-        "valore_transitato": str(cella.valore_transitato) if con_valori else None,
     }
 
 
-# Scopo: Restituisce il riepilogo della Situazione aperta (stock documenti
-#        senza asse temporale, §6-bis design due-lenti): le 4 aree documento
-#        SEMPRE presenti nell'ordine del funnel, ognuna con totali di area e
-#        griglia per fase normalizzata (4 fasi SEMPRE presenti nell'ordine del
-#        ciclo di vita — DL-13: la vista e' neutra, il FE decide quali card
-#        mostrare), piu' il vocabolario `fasi` top-level (alimenta i filtri FE
-#        senza contrabbandarlo dalla griglia di un'area). Aree o fasi NON in
-#        whitelist emesse dalla vista vengono accodate dopo le note, MAI perse
-#        in silenzio (fail-visible); un'area extra che porta VALORI li espone
-#        (decisione data-driven, non la whitelist euro statica: niente euro
-#        persi in silenzio).
+# Scopo: Restituisce il riepilogo del serbatoio pre-commessa (stock documenti
+#        aperti-non-chiusi senza asse temporale, §6-ter design due-lenti): le 4
+#        aree documento SEMPRE presenti nell'ordine del funnel, ognuna con
+#        totali di area e griglia per fase normalizzata (3 fasi vive SEMPRE
+#        presenti nell'ordine del ciclo di vita — DL-13: la vista e' neutra, il
+#        FE decide quali card mostrare), piu' il vocabolario `fasi` top-level
+#        (alimenta i filtri FE senza contrabbandarlo dalla griglia di un'area).
+#        Aree o fasi NON in whitelist emesse dalla vista vengono accodate dopo
+#        le note, MAI perse in silenzio (fail-visible); un'area extra che porta
+#        VALORI li espone (decisione data-driven, non la whitelist euro statica:
+#        niente euro persi in silenzio).
 # Perimetro: sola lettura; scope emittente DB-side (RLS invoker).
-# Risultato: dict {aree: [{area, n_documenti, n_aperti, valore_totale,
-#        valore_transitato, fasi: [...]}] x4+, fasi: [...] x4+}.
+# Risultato: dict {aree: [{area, n_documenti, valore_totale, fasi: [...]}] x4+,
+#        fasi: [...] x3+}.
 def fn_dash_aperto_riepilogo() -> dict[str, object]:
     repository = VenditeRepository()
     rows: list[DashApertoRiepilogoRow] = repository.list_dash_aperto_riepilogo()
@@ -236,12 +232,8 @@ def fn_dash_aperto_riepilogo() -> dict[str, object]:
     for r in rows:
         cella = celle.setdefault((r["area"], r["fase"]), _CellaAperto())
         cella.n_documenti += r["n_documenti"]
-        cella.n_aperti += r["n_aperti"]
         if r["valore_totale"] is not None:
             cella.valore_totale += Decimal(r["valore_totale"])
-            aree_con_valori.add(r["area"])
-        if r["valore_transitato"] is not None:
-            cella.valore_transitato += Decimal(r["valore_transitato"])
             aree_con_valori.add(r["area"])
         if r["area"] not in DASH_APERTO_AREE and r["area"] not in aree_extra:
             aree_extra.append(r["area"])
@@ -260,9 +252,7 @@ def fn_dash_aperto_riepilogo() -> dict[str, object]:
         totale = _CellaAperto()
         for _, c in celle_area:
             totale.n_documenti += c.n_documenti
-            totale.n_aperti += c.n_aperti
             totale.valore_totale += c.valore_totale
-            totale.valore_transitato += c.valore_transitato
         aree.append(
             {
                 "area": area,
@@ -276,30 +266,37 @@ def fn_dash_aperto_riepilogo() -> dict[str, object]:
     return {"aree": aree, "fasi": fasi_tutte}
 
 
-# Scopo: Restituisce il drill-down paginato della Situazione aperta: stock
-#        dei documenti vivi delle 4 aree, ordinati per "in essere da" (i piu'
-#        vecchi prima), con filtri opzionali area/fase e solo_aperti (default
-#        True: la pagina e' la "Situazione aperta" — il giudizio sospeso dei
-#        contratti conta aperto; False = fotografia completa, CHIUSO
-#        transitati inclusi). NESSUNO dei due filtri e' whitellistato, di
-#        proposito (coerenza fail-visible col riepilogo, che accoda aree e
-#        fasi fuori whitelist E le rende cliccabili come card FE): un'area o
-#        fase futura resta drillabile senza toccare il BE; un valore
-#        sconosciuto — o COMMESSE, esclusa dal WHERE della vista — da' lista
-#        vuota, mai 400.
+# Scopo: Restituisce il drill-down paginato del serbatoio pre-commessa: stock
+#        dei documenti aperti-non-chiusi delle 4 aree, ordinati per "in essere
+#        da" (i piu' vecchi prima), con filtri opzionali area/fase e
+#        ritardo_giorni ("aperti da oltre N giorni" su data documento — DL-17,
+#        soglia SOLO sul drill-down: le card del riepilogo restano la
+#        fotografia completa). NESSUNO dei filtri area/fase e' whitellistato, di
+#        proposito (coerenza fail-visible col riepilogo, che accoda aree e fasi
+#        fuori whitelist E le rende cliccabili come card FE): un'area o fase
+#        futura resta drillabile senza toccare il BE; un valore sconosciuto — o
+#        COMMESSE, esclusa dal WHERE della vista — da' lista vuota, mai 400.
 # Perimetro: sola lettura; scope emittente DB-side (RLS invoker).
 # Risultato: dict con count, page, page_size, total_pages, results.
 def fn_dash_aperto_documenti(
     *,
     area: str | None = None,
     fase: str | None = None,
-    solo_aperti: bool | None = None,
+    ritardo_giorni: int | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> dict[str, object]:
-    # UNICA definizione del default di pagina (None = parametro omesso):
-    # la view passa il raw, il FE manda sempre un valore esplicito.
-    solo_aperti = True if solo_aperti is None else solo_aperti
+    # Filtro ritardo opzionale: se presente deve essere un intero > 0 (una
+    # soglia di giorni non-positiva non ha senso; niente normalizzazione
+    # silenziosa — DL-17).
+    ErrorManager.require(
+        ritardo_giorni is None or ritardo_giorni > 0,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro ritardo_giorni non valido.",
+        detail="Deve essere un intero maggiore di zero.",
+        context={"ritardo_giorni": ritardo_giorni},
+        function_name="vendite.vendite_service.fn_dash_aperto_documenti",
+    )
     offset = _validate_pagination(
         page, page_size, "vendite.vendite_service.fn_dash_aperto_documenti"
     )
@@ -308,7 +305,7 @@ def fn_dash_aperto_documenti(
     results, total_count = repository.list_dash_aperto_documenti(
         area=area,
         fase=fase,
-        solo_aperti=solo_aperti,
+        ritardo_giorni=ritardo_giorni,
         limit=page_size,
         offset=offset,
     )

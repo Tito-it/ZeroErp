@@ -60,16 +60,15 @@ DASH_APERTO_AREE: tuple[str, ...] = (
     "CONTRATTI",
 )
 
-# Fasi normalizzate della proiezione stato dominio (config.stati_doc_*.fase),
-# nell'ordine del ciclo di vita documento (DL-10): in lavorazione interna →
-# palla al cliente → avanzato → concluso. Non tutte le aree emettono tutte
-# le fasi (es. ORDINI non ha IN_ATTESA): il pivot le espone comunque tutte
-# (griglia simmetrica, il FE decide quali card mostrare — DL-13).
+# Fasi VIVE del serbatoio pre-commessa (v2, DL-15/16): solo aperti-non-chiusi
+# → niente CHIUSO. Ordine = maturita' verso la commessa (DL-10): bozza interna
+# → palla al cliente → da lavorare. Non tutte le aree emettono tutte le fasi
+# (es. ORDINI non ha IN_ATTESA): il pivot le espone comunque tutte (griglia
+# simmetrica, il FE decide quali card mostrare — DL-13).
 DASH_APERTO_FASI: tuple[str, ...] = (
     "APERTO",
     "IN_ATTESA",
     "IN_CORSO",
-    "CHIUSO",
 )
 
 # Stadi del funnel Lente 1 Competenza, nell'ordine commessa → fattura (brief
@@ -287,22 +286,21 @@ class VenditeRepository:
             )
         return result, total_count
 
-    # Scopo: Restituisce le celle non vuote (area × fase) dello stock
-    #        Situazione aperta. Il completamento a griglia 4 aree × 4 fasi
+    # Scopo: Restituisce le celle non vuote (area × fase) del serbatoio
+    #        pre-commessa. Il completamento a griglia 4 aree × 3 fasi
     #        (celle vuote = zeri, DL-13) e' a carico del service — qui NON si
     #        duplica, si legge solo cio' che esiste.
-    # Perimetro: sola lettura su vw_dash_aperto_riepilogo (security_invoker →
-    #        la RLS emittente sulle 4 aree documento filtra da sola).
-    # Risultato: lista piatta DashApertoRiepilogoRow (≤ 16 righe).
+    # Perimetro: sola lettura su vw_dash_aperto_riepilogo v2 (security_invoker →
+    #        la RLS emittente sulle 4 aree documento filtra da sola; perimetro
+    #        aperti-non-chiusi gia' nella vista, DL-15).
+    # Risultato: lista piatta DashApertoRiepilogoRow (≤ 12 righe).
     def list_dash_aperto_riepilogo(self) -> list[DashApertoRiepilogoRow]:
         sql = """
             SELECT
                 area,
                 fase,
                 n_documenti,
-                n_aperti,
-                valore_totale,
-                valore_transitato
+                valore_totale
             FROM vendite.vw_dash_aperto_riepilogo
             ORDER BY area, fase
         """
@@ -317,19 +315,18 @@ class VenditeRepository:
                     "area": str(row[0]),
                     "fase": str(row[1]),
                     "n_documenti": int(row[2]),
-                    "n_aperti": int(row[3]),
-                    "valore_totale": str(row[4]) if row[4] is not None else None,
-                    "valore_transitato": str(row[5]) if row[5] is not None else None,
+                    "valore_totale": str(row[3]) if row[3] is not None else None,
                 }
             )
         return result
 
-    # Scopo: Restituisce il drill-down paginato dello stock Situazione aperta
-    #        (vw_dash_aperto_documenti: 4 aree documento, NOT is_abortito,
-    #        tutte le fasi), con filtri opzionali area/fase e solo_aperti
-    #        (is_aperto: il giudizio sospeso dei contratti conta aperto).
-    #        Ordinamento BE-side per contratto (le viste non garantiscono
-    #        ORDER): "in essere da" piu' vecchio prima, poi valore.
+    # Scopo: Restituisce il drill-down paginato del serbatoio pre-commessa
+    #        (vw_dash_aperto_documenti v2: 4 aree documento, perimetro
+    #        aperti-non-chiusi lato vista), con filtri opzionali area/fase e
+    #        ritardo_giorni ("aperti da oltre N giorni" su data_riferimento,
+    #        DL-17). anzianita_giorni derivata in SELECT (GREATEST). Ordinamento
+    #        BE-side (le viste non garantiscono ORDER): piu' vecchio prima, poi
+    #        valore.
     # Perimetro: sola lettura; scope emittente interamente DB-side (RLS
     #        invoker sulle 4 aree documento). Una sola valutazione della
     #        union + clamp offset via _query_paged_view.
@@ -339,7 +336,7 @@ class VenditeRepository:
         *,
         area: str | None,
         fase: str | None,
-        solo_aperti: bool,
+        ritardo_giorni: int | None,
         limit: int,
         offset: int,
     ) -> tuple[list[DashApertoDocumentoRow], int]:
@@ -351,8 +348,14 @@ class VenditeRepository:
         if fase is not None:
             conditions.append("d.fase = %s")
             params.append(fase)
-        if solo_aperti:
-            conditions.append("d.is_aperto")
+        # Filtro "aperti da oltre N giorni" su data documento (DL-17): soglia
+        # solo sul drill-down (le card restano la fotografia completa). Costo
+        # DB zero — nessuna funzione temporale sul totale delle card.
+        if ritardo_giorni is not None:
+            conditions.append(
+                "d.data_riferimento <= current_date - make_interval(days => %s)"
+            )
+            params.append(ritardo_giorni)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -367,11 +370,8 @@ class VenditeRepository:
                 d.stato_codice_interno,
                 d.stato_codice,
                 d.valore_totale,
-                d.valore_transitato,
                 d.unita_totali,
-                d.unita_transitate,
-                d.is_transitato,
-                d.is_aperto,
+                GREATEST((current_date - d.data_riferimento), 0) AS anzianita_giorni,
                 d.motivo_fermo,
                 d.data_riferimento
             FROM vendite.vw_dash_aperto_documenti d
@@ -403,14 +403,11 @@ class VenditeRepository:
                     "stato_codice_interno": None if row[6] is None else str(row[6]),
                     "stato_codice": None if row[7] is None else str(row[7]),
                     "valore_totale": str(row[8]) if row[8] is not None else None,
-                    "valore_transitato": str(row[9]) if row[9] is not None else None,
-                    "unita_totali": None if row[10] is None else int(row[10]),
-                    "unita_transitate": None if row[11] is None else int(row[11]),
-                    "is_transitato": None if row[12] is None else bool(row[12]),
-                    "is_aperto": bool(row[13]),
-                    "motivo_fermo": None if row[14] is None else str(row[14]),
+                    "unita_totali": None if row[9] is None else int(row[9]),
+                    "anzianita_giorni": int(row[10]),
+                    "motivo_fermo": None if row[11] is None else str(row[11]),
                     "data_riferimento": (
-                        row[15].isoformat() if row[15] is not None else None
+                        row[12].isoformat() if row[12] is not None else None
                     ),
                 }
             )

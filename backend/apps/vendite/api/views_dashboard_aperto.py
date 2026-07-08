@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2025 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: API read-only Situazione aperta (stock documenti per fase, senza
-#        asse temporale) — terza vista dei cruscotti fatturazione (§6-bis).
+# Scopo: API read-only serbatoio pre-commessa (stock documenti aperti-non-
+#        chiusi per fase, senza asse temporale) — terza vista dei cruscotti
+#        fatturazione (§6-ter).
 # ------------------------------------------------------------
 
-# Due endpoint GET sottili sopra le viste vendite.vw_dash_aperto_*
-# (design brief-design-fatturazione-due-lenti §6-bis, DB in
-# brief-db-situazione-aperta). Livello LETTURA sufficiente; lo scope
+# Due endpoint GET sottili sopra le viste vendite.vw_dash_aperto_* v2
+# (design brief-design-fatturazione-due-lenti §6-ter, DB in
+# brief-db-situazione-aperta-v2). Livello LETTURA sufficiente; lo scope
 # emittente e' interamente DB-side (RLS invoker sulle 4 aree documento).
 
 from django.http import JsonResponse
@@ -22,7 +23,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.payload_validators import (
-    qp_bool_optional,
+    qp_int_optional,
     qp_int_strict,
     qp_str_upper,
 )
@@ -94,22 +95,22 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
                 required=False,
                 description=(
                     "Filtro fase normalizzata (vocabolario config.stati_doc_*: "
-                    "APERTO | IN_ATTESA | IN_CORSO | CHIUSO; default: tutte). "
-                    "Non whitellistato: una fase sconosciuta da' lista vuota "
+                    "APERTO | IN_ATTESA | IN_CORSO; default: tutte). Non "
+                    "whitellistato: una fase sconosciuta da' lista vuota "
                     "(coerenza fail-visible col riepilogo)."
                 ),
             ),
             OpenApiParameter(
-                name="solo_aperti",
-                type=bool,
+                name="ritardo_giorni",
+                type=int,
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description=(
-                    "Default true: solo documenti non completamente transitati "
-                    "(is_aperto; il giudizio sospeso dei contratti conta "
-                    "aperto). false = fotografia completa dello stock. "
-                    "Strict: un token non riconosciuto da' 400 (niente "
-                    "coercion silenziosa a true)."
+                    "Soglia \"aperti da oltre N giorni\" su data documento "
+                    "(DL-17): tiene solo i documenti con data_riferimento <= "
+                    "oggi - N. Filtro del SOLO drill-down (le card del "
+                    "riepilogo restano la fotografia completa). Strict: non "
+                    "numerico -> 400; intero <= 0 -> 400 (E_VENDITE_VALIDATION)."
                 ),
             ),
             OpenApiParameter(
@@ -148,15 +149,15 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
     )
     # Scopo: Restituisce via GET la lista paginata dello stock aperto
     #        ordinata per "in essere da" (i piu' vecchi prima), con filtri
-    #        area/fase/solo_aperti.
+    #        area/fase/ritardo_giorni.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         area = qp_str_upper(qp.get("area"))
         fase = qp_str_upper(qp.get("fase"))
-        # Strict (niente coercion silenziosa a True su token sconosciuti);
-        # assente/vuoto -> None -> il default di pagina (True) lo applica il
+        # Strict (presente-ma-non-numerico -> 400); assente/vuoto -> None ->
+        # nessuna soglia. La guardia intero > 0 (E_VENDITE_VALIDATION) e' nel
         # service, unica definizione.
-        solo_aperti = qp_bool_optional(qp.get("solo_aperti"), "solo_aperti")
+        ritardo_giorni = qp_int_optional(qp.get("ritardo_giorni"), "ritardo_giorni")
         page = qp_int_strict(qp.get("page"), "page", 1)
         page_size = qp_int_strict(qp.get("page_size"), "page_size", 50)
 
@@ -165,7 +166,7 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
         data = fn_dash_aperto_documenti(
             area=area,
             fase=fase,
-            solo_aperti=solo_aperti,
+            ritardo_giorni=ritardo_giorni,
             page=page,
             page_size=page_size,
         )
