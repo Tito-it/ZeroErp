@@ -2,38 +2,49 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: vendite.fn_push_preventivo_a_ordine (20260609-06) — ramo ORDINE dello
---       split preventivo (brief-preventivi-ordini.md D8). Copia le righe di
---       natura MERCE (destinazione ORDINE) verso un nuovo ordine DRAFT con
---       documento_origine=(PREVENTIVO, id), snapshot prezzi, idempotenza di
---       riga via ordini_righe.preventivo_riga_id.
+-- Test: vendite.fn_push_preventivo_a_ordine — ramo ORDINE dello split preventivo
+--       (brief-preventivi-ordini.md D8). Copia le righe MERCE verso un nuovo
+--       ordine DRAFT con documento_origine=(PREVENTIVO, id), snapshot prezzi.
 --
--- Scope test: righe NON composite (il ramo BoM compositi via
--- fn_ordine_riga_componenti_init e' coperto altrove).
+-- Aggiornato 2026-07-08 (analisi-fix-transazioni #10, migr. 20260708-01):
+--   la funzione ora (sezione 8) transita ATOMICAMENTE il preventivo ACCETTATO
+--   -> EVASO se non resta residuo su nessun ramo (gate bi-ramo), e accetta un 5°
+--   parametro p_flusso_id (D-B, flusso_id sul link COLLEGATO). Prima la
+--   transizione EVASO era una chiamata separata (non atomica) del service.
 --
--- Indice test (1..6):
---   1) la funzione esiste con 4 parametri
+-- Scope test: righe NON composite (ramo BoM compositi coperto altrove).
+--
+-- Indice test (1..8):
+--   1) la funzione esiste con 5 parametri (era 4 + p_flusso_id)
 --   2) push preventivo ACCETTATO -> ammesso (lives)
 --   3) creato un ordine con documento_origine=(PREVENTIVO, id)
 --   4) la riga ordine e' collegata alla riga preventivo (preventivo_riga_id)
---   5) idempotenza: secondo push stesse righe -> E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE
---   6) preventivo non ACCETTATO (DRAFT) -> E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO
+--   5) il preventivo e' transitato ad EVASO nella STESSA chiamata (fix #10)
+--   6) re-push (preventivo ora EVASO) -> E_..._PUSH_STATO_NON_AMMESSO
+--   7) preventivo DRAFT -> E_..._PUSH_STATO_NON_AMMESSO
+--   8) ATOMICITA': se la transizione EVASO fallisce, l'ordine NON resta creato
+--
+-- Nota flusso_id (D-B): la valorizzazione di pratiche_sorgenti.flusso_id sul
+-- link COLLEGATO (ramo p_pratica_id NOT NULL) e' presidiata dal guard
+-- trgfn_pratiche_sorgenti_guard_coerenza_flusso e verificata end-to-end
+-- nell'integrazione BE (richiede un contesto pratica+flusso valido, oneroso da
+-- riprodurre in isolamento per via dei guard su pratiche.flussi).
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(6);
+SELECT plan(9);
 
 -- ============================================================
--- 1) Firma funzione: 4 parametri
+-- 1) Firma funzione: 5 parametri
 -- ============================================================
 SELECT ok(
-  (SELECT p.pronargs = 4
+  (SELECT p.pronargs = 5
      FROM pg_proc p
      JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'vendite'
       AND p.proname = 'fn_push_preventivo_a_ordine'
     LIMIT 1),
-  '1) vendite.fn_push_preventivo_a_ordine esiste con 4 parametri'
+  '1) vendite.fn_push_preventivo_a_ordine esiste con 5 parametri (+ p_flusso_id)'
 );
 
 -- ============================================================
@@ -60,6 +71,8 @@ SELECT
     WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_accettato_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice = 'DRAFT' AND s.attivo IS TRUE LIMIT 1) AS stato_draft_id,
+  (SELECT s.id FROM config.stati_doc_preventivi s
+    WHERE s.codice_interno = 'EVASO' AND s.attivo IS TRUE LIMIT 1) AS stato_evaso_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
     ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
@@ -70,7 +83,7 @@ SELECT
 UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_merce_id FROM tmp_refs)
  WHERE id = (SELECT articolo_id FROM tmp_refs);
 
--- Preventivo ACCETTATO + 1 riga MERCE.
+-- Preventivo ACCETTATO + 1 riga MERCE (percorso happy).
 CREATE TEMP TABLE tmp_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -97,7 +110,7 @@ WITH ins AS (
 )
 SELECT * FROM ins;
 
--- Preventivo DRAFT (per test 6).
+-- Preventivo DRAFT (per test 7).
 CREATE TEMP TABLE tmp_prev_draft AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -112,6 +125,28 @@ WITH ins AS (
   RETURNING id
 )
 SELECT * FROM ins;
+
+-- Preventivo ACCETTATO + riga MERCE dedicato al test di atomicita' (8).
+CREATE TEMP TABLE tmp_prev_atom AS
+WITH ins AS (
+  INSERT INTO vendite.preventivi (
+    numero, rev, billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
+  SELECT 'PGTAP-PUSHORD-ATOM', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+         DATE '2080-01-01', false, false,
+         jsonb_build_object('test_scope','pgtap_push_ordine_atom'), r.emittente_fiscale_id
+    FROM tmp_refs r
+  RETURNING id
+)
+SELECT * FROM ins;
+
+INSERT INTO vendite.preventivi_righe (
+    preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo, meta)
+SELECT p.id, r.articolo_id, 2.000000, 10.000000, r.iva_id, true,
+       jsonb_build_object('test_scope','pgtap_push_ordine_atom')
+  FROM tmp_prev_atom p, tmp_refs r;
 
 -- ============================================================
 -- 2) Push preventivo ACCETTATO -> ammesso
@@ -143,23 +178,64 @@ SELECT is(
 );
 
 -- ============================================================
--- 5) Idempotenza: secondo push -> nessuna riga residua
+-- 5) Il preventivo e' transitato ad EVASO nella STESSA chiamata (fix #10)
+-- ============================================================
+SELECT is(
+  (SELECT stato_doc_preventivo_id FROM vendite.preventivi WHERE id = (SELECT id FROM tmp_prev)),
+  (SELECT stato_evaso_id FROM tmp_refs),
+  '5) preventivo transitato ad EVASO atomicamente (gate bi-ramo, nessun residuo)'
+);
+
+-- ============================================================
+-- 6) Re-push (preventivo ora EVASO) -> stato non ammesso
 -- ============================================================
 SELECT throws_like(
   format('SELECT vendite.fn_push_preventivo_a_ordine(%s)',
          (SELECT id FROM tmp_prev)),
-  '%nessuna riga merce%',
-  '5) secondo push (righe gia'' allocate) -> E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE'
+  '%ACCETTATO%',
+  '6) re-push su preventivo EVASO -> E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO'
 );
 
 -- ============================================================
--- 6) Preventivo non ACCETTATO (DRAFT) -> stato non ammesso
+-- 7) Preventivo non ACCETTATO (DRAFT) -> stato non ammesso
 -- ============================================================
 SELECT throws_like(
   format('SELECT vendite.fn_push_preventivo_a_ordine(%s)',
          (SELECT id FROM tmp_prev_draft)),
   '%ACCETTATO%',
-  '6) preventivo DRAFT -> E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO'
+  '7) preventivo DRAFT -> E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO'
+);
+
+-- ============================================================
+-- 8) ATOMICITA': la transizione EVASO fallisce (trigger iniettato sull'UPDATE
+--    preventivi) => l'ordine appena creato NON deve restare (rollback totale).
+-- ============================================================
+CREATE FUNCTION pg_temp.pgtap_fail_evaso() RETURNS trigger
+    LANGUAGE plpgsql AS $f$
+BEGIN
+    RAISE EXCEPTION 'pgtap: fallimento iniettato sulla transizione EVASO';
+END;
+$f$;
+
+CREATE TRIGGER zzz_pgtap_fail_evaso
+    BEFORE UPDATE ON vendite.preventivi
+    FOR EACH ROW EXECUTE FUNCTION pg_temp.pgtap_fail_evaso();
+
+SELECT throws_ok(
+  format('SELECT vendite.fn_push_preventivo_a_ordine(%s)',
+         (SELECT id FROM tmp_prev_atom)),
+  NULL::text, NULL::text,
+  '8a) la transizione EVASO fallita fa fallire l''intera chiamata'
+);
+
+DROP TRIGGER zzz_pgtap_fail_evaso ON vendite.preventivi;
+
+SELECT is(
+  (SELECT count(*) FROM vendite.ordini o
+    WHERE o.documento_origine_tipo = 'PREVENTIVO'
+      AND o.documento_origine_id = (SELECT id FROM tmp_prev_atom)),
+  0::bigint,
+  '8b) nessun ordine orfano: la creazione e'' stata annullata con la transizione'
 );
 
 SELECT * FROM finish();

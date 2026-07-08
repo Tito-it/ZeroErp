@@ -28,7 +28,7 @@ certifi==2026.6.17
     # via
     #   httpcore
     #   httpx
-cffi==2.0.0
+cffi==2.1.0
     # via
     #   cryptography
     #   weasyprint
@@ -38,7 +38,7 @@ cssselect2==0.9.0
     # via weasyprint
 distro==1.9.0
     # via anthropic
-django==6.0.6
+django==6.0.7
     # via
     #   -r ../requirements.in
     #   django-redis
@@ -56,7 +56,7 @@ djangorestframework-simplejwt==5.5.1
     # via -r ../requirements.in
 docstring-parser==0.18.0
     # via anthropic
-drf-spectacular==0.29.0
+drf-spectacular==0.30.0
     # via -r ../requirements.in
 et-xmlfile==2.0.0
     # via openpyxl

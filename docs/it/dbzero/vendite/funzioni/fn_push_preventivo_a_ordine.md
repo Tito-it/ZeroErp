@@ -1,19 +1,21 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_push_preventivo_a_ordine.md" %}
 # ⚙️ Funzione `fn_push_preventivo_a_ordine`
 
 ```sql
-CREATE FUNCTION fn_push_preventivo_a_ordine(p_preventivo_id bigint, p_righe_ids bigint[], p_pratica_id bigint, p_fatturazione_trigger character varying)
+CREATE FUNCTION fn_push_preventivo_a_ordine(p_preventivo_id bigint, p_righe_ids bigint[], p_pratica_id bigint, p_fatturazione_trigger character varying, p_flusso_id bigint)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_push_preventivo_a_ordine(p_preventivo_id bigint, p_righe_ids bigint[] DEFAULT NULL::bigint[], p_pratica_id bigint DEFAULT NULL::bigint, p_fatturazione_trigger character varying DEFAULT NULL::character varying)
+CREATE OR REPLACE FUNCTION vendite.fn_push_preventivo_a_ordine(p_preventivo_id bigint, p_righe_ids bigint[] DEFAULT NULL::bigint[], p_pratica_id bigint DEFAULT NULL::bigint, p_fatturazione_trigger character varying DEFAULT NULL::character varying, p_flusso_id bigint DEFAULT NULL::bigint)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
 DECLARE
     v_stato_accettato_id   config.stati_doc_preventivi.id%TYPE;
     v_stato_draft_ord_id   config.stati_doc_ordini.id%TYPE;
+    v_stato_evaso_id       config.stati_doc_preventivi.id%TYPE;
     v_ba_id                vendite.preventivi.billing_account_id%TYPE;
     v_utility_id           vendite.preventivi.utility_id%TYPE;
     v_emittente_fiscale_id vendite.preventivi.emittente_fiscale_id%TYPE;
@@ -159,6 +161,8 @@ BEGIN
 
     -- 7) Aggancio pratica (D4, solo se la pratica esiste):
     --    preventivo ROOT + ordine COLLEGATO. Idempotente.
+    --    D-B: il link COLLEGATO valorizza flusso_id (p_flusso_id) =
+    --    flusso dello step generatore; NULL retro-compatibile.
     IF p_pratica_id IS NOT NULL THEN
         SELECT id INTO v_sorg_prev_id FROM config.sorgenti
          WHERE codice_interno = 'PREVENTIVO';
@@ -172,18 +176,40 @@ BEGIN
         DO NOTHING;
 
         INSERT INTO pratiche.pratiche_sorgenti (
-            pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
-        VALUES (p_pratica_id, v_sorg_ord_id, v_ordine_id::text, 'COLLEGATO')
+            pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
+        VALUES (p_pratica_id, v_sorg_ord_id, v_ordine_id::text, 'COLLEGATO', p_flusso_id)
         ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_tipo_uid_ruolo
         DO NOTHING;
+    END IF;
+
+    -- 8) Gate EVASO bi-ramo (atomico con la creazione ordine, finding #10):
+    --    se non resta residuo smistabile su NESSUN ramo (merce->ordine +
+    --    servizi->commessa, predicati DB simmetrici) il preventivo ACCETTATO
+    --    transita a EVASO. Sostituisce la chiamata separata (non atomica)
+    --    transiziona_a_evaso_se_smistato del service: la transizione ora
+    --    rolla insieme all'ordine se qualcosa fallisce.
+    IF NOT vendite.fn_preventivo_ha_residuo_ordine(p_preventivo_id)
+       AND NOT vendite.fn_preventivo_ha_residuo_commessa(p_preventivo_id) THEN
+        SELECT id INTO v_stato_evaso_id
+          FROM config.stati_doc_preventivi
+         WHERE codice_interno = 'EVASO' AND attivo IS TRUE;
+        IF NOT FOUND THEN
+            PERFORM script.fn_log_and_raise_error(
+                'vendite', 'fn_push_preventivo_a_ordine', 'E_CONFIG_MANCANTE',
+                jsonb_build_object('config', 'config.stati_doc_preventivi.EVASO'),
+                NULL::uuid, 'stato EVASO (config.stati_doc_preventivi)');
+        END IF;
+        UPDATE vendite.preventivi
+           SET stato_doc_preventivo_id = v_stato_evaso_id
+         WHERE id = p_preventivo_id;
     END IF;
 
     RETURN v_ordine_id;
 END;
 $function$
 
-COMMENT ON FUNCTION vendite.fn_push_preventivo_a_ordine(p_preventivo_id bigint, p_righe_ids bigint[], p_pratica_id bigint, p_fatturazione_trigger character varying)
-IS 'Ramo ORDINE dello split preventivo (brief-preventivi-ordini.md D8). Copia il sottoinsieme di righe con natura destinazione_tipo=ORDINE verso un nuovo ordine DRAFT (documento_origine=PREVENTIVO), snapshot prezzi + BoM via fn_ordine_riga_componenti_init, idempotenza di riga via ordini_righe.preventivo_riga_id. Predicato righe smistabili dalla vista unica vw_preventivi_righe_smistabili_ordine. p_pratica_id opzionale (pratiche_sorgenti ROOT+COLLEGATO). EVASO non gestito qui.';
+COMMENT ON FUNCTION vendite.fn_push_preventivo_a_ordine(p_preventivo_id bigint, p_righe_ids bigint[], p_pratica_id bigint, p_fatturazione_trigger character varying, p_flusso_id bigint)
+IS 'Push preventivo ACCETTATO -> ordine DRAFT (testata + righe + BoM). Aggancio pratica opzionale (ROOT preventivo + COLLEGATO ordine con flusso_id, D-B). Sezione 8: gate EVASO bi-ramo atomico (finding #10 analisi-fix-transazioni): niente piu'' ordine creato + preventivo bloccato in ACCETTATO. p_flusso_id DEFAULT NULL retro-compatibile.';
 ```
 
 ---

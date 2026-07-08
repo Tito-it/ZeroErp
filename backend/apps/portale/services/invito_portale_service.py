@@ -170,6 +170,7 @@ class InvitoPortaleService:
         cliente_id: int,
         email: str,
         invitato_da_user_id: int,
+        invalidate_existing: bool = False,
     ) -> dict[str, Any]:
         email_clean = self._clean_email(email)
         info = self._repo.get_cliente_info(cliente_id)
@@ -186,6 +187,7 @@ class InvitoPortaleService:
             nome_destinatario=self._build_display_name(info),
             entita_label=f"Cliente {info.get('ba_codice') or cliente_id}",
             invitato_da_user_id=invitato_da_user_id,
+            invalidate_existing=invalidate_existing,
         )
 
     # Scopo: Invia invito portale fornitore. Simmetrico a invia_invito_cliente
@@ -197,6 +199,7 @@ class InvitoPortaleService:
         fornitore_id: int,
         email: str,
         invitato_da_user_id: int,
+        invalidate_existing: bool = False,
     ) -> dict[str, Any]:
         email_clean = self._clean_email(email)
         info = self._repo.get_fornitore_info(fornitore_id)
@@ -213,6 +216,7 @@ class InvitoPortaleService:
             nome_destinatario=self._build_display_name(info),
             entita_label=f"Fornitore {fornitore_id}",
             invitato_da_user_id=invitato_da_user_id,
+            invalidate_existing=invalidate_existing,
         )
 
     # Scopo: Reinvia invito portale invalidando token precedenti per
@@ -225,20 +229,15 @@ class InvitoPortaleService:
         email: str,
         invitato_da_user_id: int,
     ) -> dict[str, Any]:
-        info = self._repo.get_cliente_info(cliente_id)
-        ErrorManager.require(
-            info is not None,
-            code=E_INVITO_PORTALE,
-            message=f"Cliente {cliente_id} non trovato.",
-        )
-        assert info is not None
-        self._invalidate_existing_token(
-            int(info["soggetto_ruolo_id"]), RUOLO_APPLICATIVO_CLIENTE_PORTALE
-        )
+        # Fix analisi-fix-transazioni #17: l'invalidazione dei token precedenti
+        # avviene ora DENTRO l'atomic di ri-emissione (invalidate_existing=True),
+        # non piu' come scrittura separata prima: invalidate + re-emit sono atomici,
+        # l'utente non resta mai senza token validi se la ri-emissione fallisce.
         return self.invia_invito_cliente(
             cliente_id=cliente_id,
             email=email,
             invitato_da_user_id=invitato_da_user_id,
+            invalidate_existing=True,
         )
 
     # Scopo: Reinvia invito portale fornitore invalidando token precedenti.
@@ -249,20 +248,13 @@ class InvitoPortaleService:
         email: str,
         invitato_da_user_id: int,
     ) -> dict[str, Any]:
-        info = self._repo.get_fornitore_info(fornitore_id)
-        ErrorManager.require(
-            info is not None,
-            code=E_INVITO_PORTALE,
-            message=f"Fornitore {fornitore_id} non trovato.",
-        )
-        assert info is not None
-        self._invalidate_existing_token(
-            int(info["soggetto_ruolo_id"]), RUOLO_APPLICATIVO_FORNITORE_PORTALE
-        )
+        # Fix analisi-fix-transazioni #17: invalidate token precedenti + re-emit
+        # nella stessa transazione (invalidate_existing=True), vedi reinvia_invito_cliente.
         return self.invia_invito_fornitore(
             fornitore_id=fornitore_id,
             email=email,
             invitato_da_user_id=invitato_da_user_id,
+            invalidate_existing=True,
         )
 
     # ── Stato + disattivazione veste (§6.2.4 + §6.2.6) ────────────────
@@ -415,6 +407,7 @@ class InvitoPortaleService:
         cliente_id: int,
         email: str,
         invitato_da_user_id: int,
+        invalidate_existing: bool = False,
     ) -> dict[str, Any]:
         email_clean = self._clean_email(email)
         info = self._repo.get_cliente_info(cliente_id)
@@ -431,6 +424,7 @@ class InvitoPortaleService:
             nome_destinatario=self._build_display_name(info),
             entita_label=f"Shop customer {info.get('ba_codice') or cliente_id}",
             invitato_da_user_id=invitato_da_user_id,
+            invalidate_existing=invalidate_existing,
         )
 
     # Scopo: Reinvia invito shop customer invalidando token precedenti.
@@ -441,20 +435,14 @@ class InvitoPortaleService:
         email: str,
         invitato_da_user_id: int,
     ) -> dict[str, Any]:
-        info = self._repo.get_cliente_info(cliente_id)
-        ErrorManager.require(
-            info is not None,
-            code=E_INVITO_PORTALE,
-            message=f"Cliente {cliente_id} non trovato.",
-        )
-        assert info is not None
-        self._invalidate_existing_token(
-            int(info["soggetto_ruolo_id"]), RUOLO_APPLICATIVO_SHOP_CUSTOMER
-        )
+        # Fix analisi-fix-transazioni #17 (simmetria con cliente/fornitore):
+        # invalidate token precedenti + re-emit nella STESSA transazione
+        # (invalidate_existing=True), non piu' invalidate autocommit separato prima.
         return self.invia_invito_shop_customer(
             cliente_id=cliente_id,
             email=email,
             invitato_da_user_id=invitato_da_user_id,
+            invalidate_existing=True,
         )
 
     # Scopo: Flusso comune invito (cliente+fornitore). Post modello 1:N
@@ -485,6 +473,7 @@ class InvitoPortaleService:
         nome_destinatario: str,
         entita_label: str,
         invitato_da_user_id: int,
+        invalidate_existing: bool = False,
     ) -> dict[str, Any]:
         ErrorManager.require(
             "@" in email,
@@ -504,6 +493,15 @@ class InvitoPortaleService:
         assert cfg is not None
 
         with transaction.atomic():
+            # Fix analisi-fix-transazioni #17 (Classe C — saga): sul reinvio,
+            # l'invalidazione dei token precedenti e la ri-emissione identita/token
+            # vivono nella STESSA transazione. Prima l'invalidate era una scrittura
+            # autocommit separata PRIMA di questo blocco: se la ri-emissione falliva,
+            # l'utente restava senza token validi. Ora o entrambe o rollback totale
+            # (l'utente conserva i token vecchi). L'invio email resta FUORI dall'atomic,
+            # best-effort (side-effect esterno non contenibile in una tx DB).
+            if invalidate_existing:
+                self._invalidate_existing_token(soggetto_ruolo_id, ruolo_applicativo)
             auth_user_id, was_created = self._ensure_auth_user(
                 email=email, nome_destinatario=nome_destinatario
             )

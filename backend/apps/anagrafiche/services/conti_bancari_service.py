@@ -77,11 +77,16 @@ class ContiBancariService:
         from django.db import transaction
 
         self._require_soggetto_exists(soggetto_id)
-        conto_bancario_id = self._resolve_conto_bancario(payload)
         legame_payload = self._extract_legame_payload(payload)
         self._guard_predefinito_bloccato(legame_payload)
 
+        # Fix analisi-fix-transazioni #14 (Classe D): il get_or_create del registro
+        # IBAN (_resolve_conto_bancario, una scrittura) e la create del legame in UN
+        # solo transaction.atomic(). Prima il resolve era FUORI dall'atomic → una
+        # riga IBAN di registro restava orfana se la create del legame falliva
+        # (dedup riutilizzabile, non corruzione, ma comunque scrittura sospesa).
         with transaction.atomic():
+            conto_bancario_id = self._resolve_conto_bancario(payload)
             result = create_with_dedup(
                 lambda: self._repo.create_conto_soggetto(
                     soggetto_id,
@@ -173,7 +178,6 @@ class ContiBancariService:
     ) -> dict[str, Any]:
         from django.db import transaction
 
-        conto_bancario_id = self._resolve_conto_bancario(payload)
         legame_payload = self._extract_legame_payload(payload)
         self._guard_predefinito_bloccato(legame_payload)
         # istanza_utility_id opzionale (NULL = generico ruolo)
@@ -181,7 +185,11 @@ class ContiBancariService:
         if istanza_utility_id is not None:
             legame_payload["istanza_utility_id"] = istanza_utility_id
 
+        # Fix analisi-fix-transazioni #15 (Classe D): get_or_create IBAN + create
+        # legame in UN solo transaction.atomic() (vedi #14). Prima il resolve era
+        # fuori → riga IBAN registro orfana se la create legame falliva.
         with transaction.atomic():
+            conto_bancario_id = self._resolve_conto_bancario(payload)
             result = create_with_dedup(
                 lambda: self._repo.create_conto_ruolo(
                     soggetto_ruolo_id,

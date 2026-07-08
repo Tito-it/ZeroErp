@@ -448,24 +448,17 @@ def crea_ordine_da_preventivo(
     # (entrambi in apps.vendite) e qualunque rischio di import circolare.
     from apps.vendite.db.preventivi_repository import PreventiviRepository
 
-    from apps.vendite.services._smistamento_gate_helpers import (
-        transiziona_a_evaso_se_smistato,
-    )
-
     prev_repo = PreventiviRepository()
+    # Fix analisi-fix-transazioni #10 (Classe A): la fn madre estesa
+    # vendite.fn_push_preventivo_a_ordine crea l'ordine E transita il preventivo a
+    # EVASO — se nessun residuo ordine/commessa, stessa condizione del vecchio gate
+    # Python — in UN'UNICA statement atomica. Prima la transizione EVASO era una
+    # chiamata separata best-effort (swallow_db_error): su errore l'ordine restava
+    # creato ma il preventivo ACCETTATO (stato parziale, merce gia' su ordine). Ora
+    # e' tutto-o-niente: niente piu' transiziona_a_evaso_se_smistato qui (il gate
+    # bi-ramo vive dentro la fn). L'helper resta usato dal push a commessa (#5).
     ordine_id = prev_repo.push_a_ordine(
         preventivo_id, righe_ids=righe_ids, pratica_id=None,
-    )
-
-    # Gate EVASO bi-ramo nel BB condiviso (_smistamento_gate_helpers): anche
-    # il ramo ordine valuta l'evasione — prima la valutava solo il push
-    # commessa, quindi un preventivo solo-merce (o con la merce smistata per
-    # ultima) restava ACCETTATO per sempre. swallow_db_error=True: l'ordine e'
-    # gia' creato, su rifiuto della transizione si logga e si prosegue.
-    transiziona_a_evaso_se_smistato(
-        prev_repo, preventivo_id,
-        user="django_api", swallow_db_error=True,
-        log_label="ordini.genera_da_preventivo",
     )
 
     # Numero ordine per il messaggio FE (lettura leggera post-creazione).
@@ -1010,45 +1003,58 @@ def push_a_commessa(ordine_id: int, *, user: str | None = None) -> dict[str, Any
     # Import locale per evitare cicli.
     from apps.vendite.services.commesse_service import pr_run_commesse_push_one
 
-    report = pr_run_commesse_push_one(
-        sorgente_codice="ORDINE_VENDITA",
-        sorgente_uid=ordine_id,
-    )
-
-    # Transizione automatica CONFERMATO → EVASO se il push è COMPLETATO (specchio
-    # 1:1 di preventivi_service.push_a_commessa). Rende l'invio a commessa UNICO:
-    # EVASO è terminale, il guard _STATI_PUSHABILI={CONFERMATO} blocca il re-push
-    # (E_ORD_STATO_TRANSIZIONE) e la capability nasconde il bottone (reason
-    # ORDINE_GIA_EVASO). La transizione è seedata con meta.manuale=false in
-    # config.transizioni_stati_ordini → non compare in available_actions.
-    # Se PARZIALE/ERRORE/SKIPPED l'ordine resta CONFERMATO: serve un ri-push per
-    # completare prima di evadere. Robustezza al deploy parziale: se il seed EVASO
-    # non è ancora atterrato, logga warning e prosegue — il push è già avvenuto,
-    # lo stato si allineerà al run successivo.
-    if report["stato"] == "COMPLETATO":
-        try:
-            stato_evaso_id = repo.get_stato_id_by_codice("EVASO")
-            if stato_evaso_id is not None:
-                repo.update_stato(ordine_id, int(stato_evaso_id))
-            else:
-                logging.getLogger(__name__).warning(
-                    "ordini.push.transizione_evaso_skipped ordine_id=%s "
-                    "reason=stato_evaso_assente", ordine_id,
-                )
-        except DatabaseError as exc:
-            logging.getLogger(__name__).warning(
-                "ordini.push.transizione_evaso_skipped ordine_id=%s reason=%s",
-                ordine_id, str(exc),
-            )
-
-        # Percorso pratica: il push a commessa E' il successo dello step
-        # INVIO_COMMESSA → lo completa POSITIVO. E' lo step TERMINALE del ramo
-        # merce: completandolo (nessun altro flusso aperto, obbligatori fatti) la
-        # pratica si chiude (auto-chiusura data-driven del motore). No-op se
-        # l'ordine non nasce da una pratica.
-        _completa_flusso_ordine_pratica(
-            ordine_id, codice_flusso=_CODICE_INVIO_COMMESSA, user=user,
+    # Fix analisi-fix-transazioni #4 (Classe B): push + transizione EVASO +
+    # chiusura step pratica in UN solo transaction.atomic(). Prima erano scritture
+    # autocommit separate: se `_completa_flusso_ordine_pratica` falliva DOPO il
+    # push, le commesse (+ ponte emittibilita') restavano committate ma la pratica
+    # non riconciliata (orfano). Ora un fallimento della chiusura-step rolla TUTTO
+    # il push, che e' idempotente/ri-eseguibile (advisory lock + dedup segment_key
+    # → retry sicuro). L'atomic interno di `pr_run_commesse_push_one` diventa un
+    # savepoint annidato.
+    with transaction.atomic():
+        report = pr_run_commesse_push_one(
+            sorgente_codice="ORDINE_VENDITA",
+            sorgente_uid=ordine_id,
         )
+
+        # Transizione automatica CONFERMATO → EVASO se il push è COMPLETATO
+        # (specchio 1:1 di preventivi_service.push_a_commessa). Rende l'invio a
+        # commessa UNICO: EVASO è terminale, il guard _STATI_PUSHABILI={CONFERMATO}
+        # blocca il re-push (E_ORD_STATO_TRANSIZIONE) e la capability nasconde il
+        # bottone (reason ORDINE_GIA_EVASO). Se PARZIALE/ERRORE/SKIPPED l'ordine
+        # resta CONFERMATO: serve un ri-push per completare prima di evadere.
+        if report["stato"] == "COMPLETATO":
+            # Transizione EVASO best-effort su SAVEPOINT dedicato: swalloware un
+            # DatabaseError direttamente nell'atomic esterno lo corromperebbe
+            # (needs_rollback → ogni query successiva TransactionManagementError).
+            # Isolandola, un suo fallimento (o seed EVASO non ancora atterrato,
+            # robustezza al deploy parziale) rolla solo se stessa: push+chiusura
+            # proseguono e lo stato si allineerà al run successivo.
+            try:
+                with transaction.atomic():
+                    stato_evaso_id = repo.get_stato_id_by_codice("EVASO")
+                    if stato_evaso_id is not None:
+                        repo.update_stato(ordine_id, int(stato_evaso_id))
+                    else:
+                        logging.getLogger(__name__).warning(
+                            "ordini.push.transizione_evaso_skipped ordine_id=%s "
+                            "reason=stato_evaso_assente", ordine_id,
+                        )
+            except DatabaseError as exc:
+                logging.getLogger(__name__).warning(
+                    "ordini.push.transizione_evaso_skipped ordine_id=%s reason=%s",
+                    ordine_id, str(exc),
+                )
+
+            # Percorso pratica: il push a commessa E' il successo dello step
+            # INVIO_COMMESSA → lo completa POSITIVO. E' lo step TERMINALE del ramo
+            # merce: completandolo (nessun altro flusso aperto, obbligatori fatti)
+            # la pratica si chiude (auto-chiusura data-driven del motore). No-op se
+            # l'ordine non nasce da una pratica. NON best-effort: un fallimento qui
+            # rolla l'intero push (vedi atomic sopra).
+            _completa_flusso_ordine_pratica(
+                ordine_id, codice_flusso=_CODICE_INVIO_COMMESSA, user=user,
+            )
 
     return {
         "ordine_id": ordine_id,

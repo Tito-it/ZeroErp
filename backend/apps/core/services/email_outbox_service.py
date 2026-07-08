@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from django.conf import settings
+from django.db import transaction
 
 from apps.core.db.email_repository import EmailRepository
 from apps.core.services.email_service import E_EMAIL, EmailDispatchService
@@ -155,17 +156,27 @@ class EmailOutboxService:
             contesto_json=outbox.get("contesto_json"),
         )
 
-        # Collega outbox↔log e copia allegati
-        self._repo.update_log_outbox_link(log_id, outbox_id)
-        self._repo.copy_allegati_to_log(outbox_id, log_id)
-
-        # Aggiorna outbox in base all'esito reale dell'invio
+        # Fix analisi-fix-transazioni #16 (Classe C — saga/outbox). Lo stato READY
+        # e' gia' committato PRIMA dello SMTP (autocommit sopra): l'invio esterno
+        # sta fuori da qualunque transazione DB. I tre write POST-invio (link
+        # outbox↔log + copia allegati + stato finale) vanno pero' fusi in UNA
+        # transazione: prima erano autocommit separati, quindi un fallimento di
+        # `copy_allegati_to_log` lasciava outbox READY + log linkato + allegati
+        # mancanti (stato parziale). Ora o tutti e tre o nessuno: se il blocco
+        # fallisce l'outbox resta READY "pulito". La riconciliazione dei READY
+        # fantasma residui e' un follow-up (§Classe C, step 4): va progettata per
+        # NON ri-inviare (lo SMTP e' gia' partito) — recupero idempotente, non
+        # re-send. NB: l'email_log e' creato da send_raw (side-effect gia'
+        # avvenuto) e non fa parte di questa tx.
         now = datetime.now(timezone.utc).isoformat()
-        if success:
-            self._repo.update_outbox_stato(outbox_id, "SENT", email_log_id=log_id, inviato_at=now)
-        else:
-            # Torna a DRAFT per permettere all'operatore di riprovare
-            self._repo.update_outbox_stato(outbox_id, "DRAFT", email_log_id=log_id)
+        with transaction.atomic():
+            self._repo.update_log_outbox_link(log_id, outbox_id)
+            self._repo.copy_allegati_to_log(outbox_id, log_id)
+            if success:
+                self._repo.update_outbox_stato(outbox_id, "SENT", email_log_id=log_id, inviato_at=now)
+            else:
+                # Torna a DRAFT per permettere all'operatore di riprovare
+                self._repo.update_outbox_stato(outbox_id, "DRAFT", email_log_id=log_id)
 
         return self._repo.get_outbox(outbox_id) or {}
 

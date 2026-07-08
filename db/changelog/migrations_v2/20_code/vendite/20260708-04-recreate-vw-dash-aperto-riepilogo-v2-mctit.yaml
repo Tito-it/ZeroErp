@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Situazione aperta v2 — SA2-2: riepilogo area x fase snellito
+# (brief-db-situazione-aperta-v2 §2 SA2-2; DL-14/15/16).
+#
+# Grana invariata: area x fase (fase normalizzata, mai NULL sulle 4 aree). Ma:
+#   - RIMOSSA n_aperti: nel perimetro v2 tutti i documenti sono aperti, quindi
+#     n_aperti coinciderebbe con n_documenti (ridondante);
+#   - RIMOSSA valore_transitato: il concetto transito e' eliminato (DL-14).
+#   Restano: n_documenti, valore_totale (SUM senza COALESCE -> NULL per le aree
+#   a conteggi OFFERTE/CONTRATTI, DL-11). Le fasi presenti sono solo
+#   APERTO/IN_ATTESA/IN_CORSO (CHIUSO escluso a monte dalla dettaglio).
+#
+# Prerequisito: vw_dash_aperto_documenti (v2) gia' ricreata dal 20260708-03
+# (che ha droppato questo riepilogo per sciogliere la dipendenza). Qui lo si
+# ricrea nella forma v2. security_invoker=on da riportare nel CREATE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260708-04-recreate-vw-dash-aperto-riepilogo-v2-mctit.yaml
+
+  - changeSet:
+      id: 20260708-04-recreate-vw-dash-aperto-riepilogo-v2
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Situazione aperta v2 SA2-2: aggregata area x fase snellita su
+        vw_dash_aperto_documenti v2 (n_documenti, valore_totale; via n_aperti e
+        valore_transitato). Alimenta le card senza aggregazione BE-side.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: '1'
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname   = 'vw_dash_aperto_documenti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- IF EXISTS difensivo: il -03 lo ha gia' droppato, ma cosi' il
+              -- changeset e' rieseguibile in isolamento senza errori.
+              DROP VIEW IF EXISTS vendite.vw_dash_aperto_riepilogo;
+
+              CREATE VIEW vendite.vw_dash_aperto_riepilogo
+              WITH (security_invoker = on) AS
+              SELECT
+                  area,
+                  fase,
+                  COUNT(*)::integer   AS n_documenti,
+                  -- NIENTE COALESCE: NULL per le aree a conteggi (DL-11).
+                  SUM(valore_totale)  AS valore_totale
+                FROM vendite.vw_dash_aperto_documenti
+               GROUP BY area, fase;
+
+              COMMENT ON VIEW vendite.vw_dash_aperto_riepilogo IS
+                'Situazione aperta v2: card area x fase sullo stock aperti-non-conclusi (vw_dash_aperto_documenti v2). n_documenti = tutti aperti della cella; valore_totale NULL per OFFERTE/CONTRATTI (aree a conteggi, DL-11). Via n_aperti (=n_documenti nel perimetro v2) e valore_transitato (concetto transito eliminato, DL-14). Fasi presenti: APERTO/IN_ATTESA/IN_CORSO (CHIUSO escluso a monte). Nessun asse temporale. security_invoker=on.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_dash_aperto_riepilogo;

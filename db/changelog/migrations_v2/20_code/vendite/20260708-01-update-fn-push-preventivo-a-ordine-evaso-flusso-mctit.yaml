@@ -1,0 +1,304 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260708-01-update-fn-push-preventivo-a-ordine-evaso-flusso-mctit.yaml
+
+    - changeSet:
+          id: 20260708-01-update-fn-push-preventivo-a-ordine-evaso-flusso
+          author: mctit
+
+          # ------------------------------------------------------------
+          # Scopo
+          # ------------------------------------------------------------
+          # Estende vendite.fn_push_preventivo_a_ordine (piano
+          # analisi-fix-transazioni, Classe A, finding #10) su DUE assi:
+          #
+          # 1) ATOMICITA' della transizione EVASO (il finding).
+          #    Il service crea_ordine_da_preventivo faceva:
+          #      a) push_a_ordine() -> fn_push_preventivo_a_ordine (crea ordine,
+          #         committa a se')
+          #      b) transiziona_a_evaso_se_smistato() -> UPDATE preventivo EVASO
+          #         (transazione separata, swallow_db_error)
+          #    In autocommit, se (b) veniva saltata (errore NON-DatabaseError che
+          #    sfugge allo swallow) l'ordine restava creato ma il preventivo
+          #    bloccato in ACCETTATO benche' la merce fosse gia' su un ordine.
+          #    Ora la transizione EVASO e' DENTRO la fn (nuova sezione 8): stesso
+          #    gate bi-ramo (predicati DB fn_preventivo_ha_residuo_ordine +
+          #    fn_preventivo_ha_residuo_commessa), atomico con la creazione ordine.
+          #    Conseguenza BE (follow-up): rimuovere la chiamata separata
+          #    transiziona_a_evaso_se_smistato dal percorso ordine-standalone.
+          #
+          # 2) `flusso_id` sul link COLLEGATO (decisione D-B, coordinamento con
+          #    brief-design-guida-rollout-multidominio §4). Nuovo parametro
+          #    p_flusso_id (DEFAULT NULL, retro-compatibile): valorizza
+          #    pratiche_sorgenti.flusso_id sul link ORDINE COLLEGATO alla
+          #    generazione (lo step generatore conosce il proprio flusso). Il
+          #    guard trgfn_pratiche_sorgenti_guard_coerenza_flusso verifica che il
+          #    flusso appartenga alla pratica. Aggiunto ORA (non con un changeset
+          #    separato) perche' cambiare la firma dopo = secondo DROP FUNCTION.
+          #
+          # Firma: aggiunto p_flusso_id come ULTIMO parametro con DEFAULT NULL, i
+          # chiamanti esistenti (3-4 argomenti posizionali) restano validi. DROP
+          # della vecchia signature a 4 parametri + CREATE della nuova a 5
+          # (aggiungere un parametro cambia la firma: CREATE OR REPLACE non basta).
+          #
+          # Tutti i tipi ancorati con %TYPE (p_righe_ids resta bigint[] esplicito:
+          # PostgreSQL non ammette colonna%TYPE[]). SECURITY INVOKER implicito
+          # (come l'originale): RLS/scope invariati (§2-bis).
+          # ------------------------------------------------------------
+
+          preConditions:
+              - onFail: HALT
+              - onError: HALT
+              - tableExists:
+                    schemaName: vendite
+                    tableName: preventivi
+              - tableExists:
+                    schemaName: pratiche
+                    tableName: pratiche_sorgenti
+
+          changes:
+              - sql:
+                    splitStatements: FALSE
+                    stripComments: false
+                    endDelimiter: ";"
+
+                    sql: |
+
+                        DROP FUNCTION IF EXISTS vendite.fn_push_preventivo_a_ordine(
+                            bigint, bigint[], bigint, character varying);
+
+                        CREATE OR REPLACE FUNCTION vendite.fn_push_preventivo_a_ordine(
+                            p_preventivo_id        vendite.preventivi.id%TYPE,
+                            p_righe_ids            bigint[] DEFAULT NULL,
+                            p_pratica_id           pratiche.pratiche.id%TYPE DEFAULT NULL,
+                            p_fatturazione_trigger vendite.ordini.fatturazione_trigger%TYPE DEFAULT NULL,
+                            p_flusso_id            pratiche.pratiche_sorgenti.flusso_id%TYPE DEFAULT NULL
+                        )
+                        RETURNS vendite.ordini.id%TYPE
+                        LANGUAGE plpgsql
+                        AS
+                        $function$
+                        DECLARE
+                            v_stato_accettato_id   config.stati_doc_preventivi.id%TYPE;
+                            v_stato_draft_ord_id   config.stati_doc_ordini.id%TYPE;
+                            v_stato_evaso_id       config.stati_doc_preventivi.id%TYPE;
+                            v_ba_id                vendite.preventivi.billing_account_id%TYPE;
+                            v_utility_id           vendite.preventivi.utility_id%TYPE;
+                            v_emittente_fiscale_id vendite.preventivi.emittente_fiscale_id%TYPE;
+                            v_valuta_id            vendite.preventivi.valuta_id%TYPE;
+                            v_termine_pag_id       vendite.preventivi.termine_pagamento_id%TYPE;
+                            v_preventivo_uid       vendite.preventivi.uid%TYPE;
+                            v_soggetto_ruolo_id    vendite.ordini.soggetto_ruolo_id%TYPE;
+                            v_emittente_sr_id      anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                            v_fatt_trigger         vendite.ordini.fatturazione_trigger%TYPE;
+                            v_data                 date := CURRENT_DATE;
+                            v_n_residue            integer;
+                            v_ordine_id            vendite.ordini.id%TYPE;
+                            v_new_riga_id          vendite.ordini_righe.id%TYPE;
+                            v_overrides            jsonb;
+                            v_sorg_prev_id         config.sorgenti.id%TYPE;
+                            v_sorg_ord_id          config.sorgenti.id%TYPE;
+                            v_riga                 RECORD;
+                        BEGIN
+                            -- 1) Guard input.
+                            IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_push_preventivo_a_ordine', 'E_VALIDAZIONE',
+                                    jsonb_build_object('p_preventivo_id', p_preventivo_id),
+                                    NULL::uuid, 'p_preventivo_id deve essere > 0');
+                            END IF;
+
+                            -- 2) Stato ACCETTATO obbligatorio + lettura testata preventivo.
+                            SELECT id INTO v_stato_accettato_id
+                              FROM config.stati_doc_preventivi
+                             WHERE codice_interno = 'ACCETTATO' AND attivo IS TRUE;
+
+                            SELECT p.billing_account_id, p.utility_id, p.emittente_fiscale_id,
+                                   p.valuta_id, p.termine_pagamento_id, p.uid
+                              INTO v_ba_id, v_utility_id, v_emittente_fiscale_id,
+                                   v_valuta_id, v_termine_pag_id, v_preventivo_uid
+                              FROM vendite.preventivi p
+                             WHERE p.id = p_preventivo_id
+                               AND p.stato_doc_preventivo_id = v_stato_accettato_id;
+
+                            IF NOT FOUND THEN
+                                -- Preventivo inesistente o non ACCETTATO: stesso errore parlante.
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_push_preventivo_a_ordine',
+                                    'E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO',
+                                    jsonb_build_object('preventivo_id', p_preventivo_id),
+                                    NULL::uuid, p_preventivo_id::text);
+                            END IF;
+
+                            -- Cliente (soggetto_ruolo) dal billing_account; emittente soggetto_ruolo
+                            -- per l'init componenti BoM.
+                            SELECT soggetto_ruolo_id INTO v_soggetto_ruolo_id
+                              FROM anagrafiche.billing_account WHERE id = v_ba_id;
+                            SELECT soggetto_ruolo_id INTO v_emittente_sr_id
+                              FROM anagrafiche.emittenti_fiscali WHERE id = v_emittente_fiscale_id;
+
+                            SELECT id INTO v_stato_draft_ord_id
+                              FROM config.stati_doc_ordini
+                             WHERE codice_interno = 'DRAFT' AND attivo IS TRUE;
+
+                            v_fatt_trigger := COALESCE(p_fatturazione_trigger, 'CONFERMATO');
+
+                            -- 3) Conta le righe RESIDUE da smistare a ORDINE leggendo la
+                            --    vista-predicato unica (MERCE + ATTIVA + non gia' allocata),
+                            --    ristretta al sottoinsieme richiesto (D5 idempotenza di riga).
+                            SELECT count(*) INTO v_n_residue
+                              FROM vendite.vw_preventivi_righe_smistabili_ordine v
+                             WHERE v.preventivo_id = p_preventivo_id
+                               AND (p_righe_ids IS NULL OR v.id = ANY(p_righe_ids));
+
+                            IF v_n_residue = 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_push_preventivo_a_ordine',
+                                    'E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE',
+                                    jsonb_build_object('preventivo_id', p_preventivo_id,
+                                                       'righe_ids', to_jsonb(p_righe_ids)),
+                                    NULL::uuid, p_preventivo_id::text);
+                            END IF;
+
+                            -- 4) Testata ordine: DRAFT, documento_origine = (PREVENTIVO, id).
+                            --    numero/serie/anno li genera il trigger trgfn_ordini_gen_codice.
+                            INSERT INTO vendite.ordini (
+                                soggetto_ruolo_id, billing_account_id, utility_id, valuta_id,
+                                termine_pagamento_id, emittente_fiscale_id, data,
+                                stato_doc_ordine_id, fatturazione_trigger,
+                                documento_origine_tipo, documento_origine_id)
+                            VALUES (
+                                v_soggetto_ruolo_id, v_ba_id, v_utility_id, v_valuta_id,
+                                v_termine_pag_id, v_emittente_fiscale_id, v_data,
+                                v_stato_draft_ord_id, v_fatt_trigger,
+                                'PREVENTIVO', p_preventivo_id)
+                            RETURNING id INTO v_ordine_id;
+
+                            -- 5) Copia le righe residue (snapshot prezzi) dalla vista-predicato.
+                            --    La INNER JOIN a catalogo.articoli e' PROIEZIONE: serve
+                            --    is_composito e, come oggi, scarta righe senza articolo.
+                            --    riga_nr progressivo; quantita derivata dal trigger
+                            --    qta_from_operativa; link di riga preventivo_riga_id (idempotenza).
+                            FOR v_riga IN
+                                SELECT v.id AS riga_id, v.articolo_id, v.descrizione,
+                                       v.prezzo_unitario, v.sconto_percentuale, v.iva_id,
+                                       v.qta_operativa, v.uom_operativa_id, v.factor_to_base,
+                                       a.is_composito,
+                                       row_number() OVER (ORDER BY v.ordine NULLS LAST, v.id) AS rn
+                                  FROM vendite.vw_preventivi_righe_smistabili_ordine v
+                                  JOIN catalogo.articoli a ON a.id = v.articolo_id
+                                 WHERE v.preventivo_id = p_preventivo_id
+                                   AND (p_righe_ids IS NULL OR v.id = ANY(p_righe_ids))
+                                 ORDER BY rn
+                            LOOP
+                                INSERT INTO vendite.ordini_righe (
+                                    ordine_id, riga_nr, articolo_id, descrizione,
+                                    prezzo_unitario, sconto_percentuale, iva_id,
+                                    qta_operativa, uom_operativa_id, factor_to_base,
+                                    stato_doc_ordine_id, preventivo_riga_id)
+                                VALUES (
+                                    v_ordine_id, v_riga.rn::integer, v_riga.articolo_id,
+                                    COALESCE(v_riga.descrizione,
+                                             (SELECT descrizione FROM catalogo.articoli
+                                               WHERE id = v_riga.articolo_id)),
+                                    -- Padre composito: 0 placeholder, il prezzo lo ricalcola
+                                    -- il trigger dai componenti inizializzati sotto.
+                                    CASE WHEN v_riga.is_composito THEN 0 ELSE v_riga.prezzo_unitario END,
+                                    COALESCE(v_riga.sconto_percentuale, 0), v_riga.iva_id,
+                                    v_riga.qta_operativa, v_riga.uom_operativa_id,
+                                    COALESCE(v_riga.factor_to_base, 1),
+                                    v_stato_draft_ord_id, v_riga.riga_id)
+                                RETURNING id INTO v_new_riga_id;
+
+                                -- 6) BoM CASO A: prezzi snapshot del preventivo come override
+                                --    (no ri-prezzatura). Stesso pattern del push offerta->ordine.
+                                IF v_riga.is_composito THEN
+                                    SELECT jsonb_object_agg(prc.componente_id::text, prc.prezzo_unitario)
+                                      INTO v_overrides
+                                      FROM vendite.preventivi_righe_componenti prc
+                                     WHERE prc.riga_preventivo_id = v_riga.riga_id
+                                       AND COALESCE(prc.attivo, TRUE) IS TRUE
+                                       AND prc.prezzo_unitario <> 0;
+
+                                    PERFORM vendite.fn_ordine_riga_componenti_init(
+                                        v_new_riga_id, v_emittente_sr_id, v_data, v_overrides);
+                                END IF;
+                            END LOOP;
+
+                            -- 7) Aggancio pratica (D4, solo se la pratica esiste):
+                            --    preventivo ROOT + ordine COLLEGATO. Idempotente.
+                            --    D-B: il link COLLEGATO valorizza flusso_id (p_flusso_id) =
+                            --    flusso dello step generatore; NULL retro-compatibile.
+                            IF p_pratica_id IS NOT NULL THEN
+                                SELECT id INTO v_sorg_prev_id FROM config.sorgenti
+                                 WHERE codice_interno = 'PREVENTIVO';
+                                SELECT id INTO v_sorg_ord_id FROM config.sorgenti
+                                 WHERE codice_interno = 'ORDINE_VENDITA';
+
+                                INSERT INTO pratiche.pratiche_sorgenti (
+                                    pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
+                                VALUES (p_pratica_id, v_sorg_prev_id, v_preventivo_uid::text, 'ROOT')
+                                ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_tipo_uid_ruolo
+                                DO NOTHING;
+
+                                INSERT INTO pratiche.pratiche_sorgenti (
+                                    pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
+                                VALUES (p_pratica_id, v_sorg_ord_id, v_ordine_id::text, 'COLLEGATO', p_flusso_id)
+                                ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_tipo_uid_ruolo
+                                DO NOTHING;
+                            END IF;
+
+                            -- 8) Gate EVASO bi-ramo (atomico con la creazione ordine, finding #10):
+                            --    se non resta residuo smistabile su NESSUN ramo (merce->ordine +
+                            --    servizi->commessa, predicati DB simmetrici) il preventivo ACCETTATO
+                            --    transita a EVASO. Sostituisce la chiamata separata (non atomica)
+                            --    transiziona_a_evaso_se_smistato del service: la transizione ora
+                            --    rolla insieme all'ordine se qualcosa fallisce.
+                            IF NOT vendite.fn_preventivo_ha_residuo_ordine(p_preventivo_id)
+                               AND NOT vendite.fn_preventivo_ha_residuo_commessa(p_preventivo_id) THEN
+                                SELECT id INTO v_stato_evaso_id
+                                  FROM config.stati_doc_preventivi
+                                 WHERE codice_interno = 'EVASO' AND attivo IS TRUE;
+                                IF NOT FOUND THEN
+                                    PERFORM script.fn_log_and_raise_error(
+                                        'vendite', 'fn_push_preventivo_a_ordine', 'E_CONFIG_MANCANTE',
+                                        jsonb_build_object('config', 'config.stati_doc_preventivi.EVASO'),
+                                        NULL::uuid, 'stato EVASO (config.stati_doc_preventivi)');
+                                END IF;
+                                UPDATE vendite.preventivi
+                                   SET stato_doc_preventivo_id = v_stato_evaso_id
+                                 WHERE id = p_preventivo_id;
+                            END IF;
+
+                            RETURN v_ordine_id;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_push_preventivo_a_ordine(
+                            vendite.preventivi.id%TYPE, bigint[], pratiche.pratiche.id%TYPE,
+                            vendite.ordini.fatturazione_trigger%TYPE,
+                            pratiche.pratiche_sorgenti.flusso_id%TYPE
+                        ) IS
+                        'Push preventivo ACCETTATO -> ordine DRAFT (testata + righe + BoM). '
+                        'Aggancio pratica opzionale (ROOT preventivo + COLLEGATO ordine con '
+                        'flusso_id, D-B). Sezione 8: gate EVASO bi-ramo atomico (finding #10 '
+                        'analisi-fix-transazioni): niente piu'' ordine creato + preventivo '
+                        'bloccato in ACCETTATO. p_flusso_id DEFAULT NULL retro-compatibile.';
+
+          rollback:
+              - sql:
+                    sql: |
+                        -- Rollback: ripristinare la versione precedente della funzione
+                        -- (4 parametri, senza EVASO/flusso_id) dal changeset originale.
+                        DROP FUNCTION IF EXISTS vendite.fn_push_preventivo_a_ordine(
+                            vendite.preventivi.id%TYPE, bigint[], pratiche.pratiche.id%TYPE,
+                            vendite.ordini.fatturazione_trigger%TYPE,
+                            pratiche.pratiche_sorgenti.flusso_id%TYPE);

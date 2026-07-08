@@ -356,10 +356,8 @@ _MESSAGE = "Payload contratto non valido."
 _MESSAGE_RIGA = "Payload riga contratto non valido."
 _MESSAGE_UTILITY = "Payload utility contratto non valido."
 
-# Codice stato iniziale (FK config.stati_doc_contratti.codice_interno). Deve
-# esistere a seed (migrations_v2/80_data). La costante esplicita evita il
-# magic string in create_contratto.
-_STATO_INIZIALE_CODICE = "DRAFT"
+# Nota: lo stato iniziale DRAFT (config.stati_doc_contratti) e' ora risolto
+# DENTRO la funzione madre vendite.fn_create_contratto (fix #2), non piu' dal BE.
 
 
 # Mapping UNIQUE/EXCLUDE/FK -> codici errore applicativi.
@@ -487,8 +485,13 @@ class ContrattiService:
     # Scopo: Context manager che normalizza errori DB sollevati dentro il
     #        blocco in `ServiceError` applicativi. Concentra in un unico
     #        posto la catena try/except duplicata per tutti i mutatori.
+    #        ATTENZIONE (igiene analisi-fix-transazioni): questo NON e' un
+    #        confine transazionale — non apre alcun `transaction.atomic()`, e'
+    #        solo un mapper di eccezioni. Per l'atomicita' di 2+ scritture serve
+    #        un `with transaction.atomic()` esplicito ATTORNO (vedi create/update
+    #        riga). Rinominato da `_db_errors` per non trarre in inganno il lettore.
     @contextmanager
-    def _db_errors(
+    def _map_db_errors(
         self,
         context: dict[str, Any],
         *,
@@ -661,31 +664,25 @@ class ContrattiService:
 
         data = self._build_create_data_testata(payload)
         utility_payload = payload.get("utility")
+        utility_data: dict[str, Any] | None = None
         if utility_payload is not None:
             self._validate_utility_payload_shape(utility_payload, for_create=True)
+            utility_data = self._build_utility_data(
+                utility_payload,
+                istanza_utility_id=data["istanza_utility_id"],
+                utility_id=data["utility_id"],
+                for_create=True,
+            )
 
-        # Numero + stato iniziale risolti prima dell'INSERT.
-        data["numero"] = self._repo.generate_numero()
-        stato_draft_id = self._repo.get_stato_id_by_codice(_STATO_INIZIALE_CODICE)
-        ErrorManager.require(
-            stato_draft_id is not None,
-            code=E_VENDITE_VALIDATION,
-            message=f"Stato iniziale {_STATO_INIZIALE_CODICE} non configurato in config.stati_doc_contratti.",
-            context={"codice_interno": _STATO_INIZIALE_CODICE},
-        )
-        assert stato_draft_id is not None
-        data["stato_doc_contratto_id"] = stato_draft_id
-
-        with self._db_errors({"numero": data.get("numero")}):
-            new_id = self._repo.create_contratto(data)
-            if utility_payload is not None:
-                utility_data = self._build_utility_data(
-                    utility_payload,
-                    istanza_utility_id=data["istanza_utility_id"],
-                    utility_id=data["utility_id"],
-                    for_create=True,
-                )
-                self._repo.create_utility(new_id, utility_data)
+        # Fix analisi-fix-transazioni #2 (Classe A): numero (`fn_generate_codice`)
+        # + INSERT testata (stato DRAFT risolto dalla fn) + INSERT utility opzionale
+        # in UNA sola statement atomica (fn madre), non piu' generate_numero + 2
+        # INSERT separati in autocommit. O tutto o rollback (numero incluso):
+        # niente contratto orfano ne' numero consumato a vuoto.
+        with self._map_db_errors({"billing_account_id": data.get("billing_account_id")}):
+            new_id = self._repo.create_contratto_atomico(
+                testata=data, utility=utility_data,
+            )
 
         return self.get_contratto(new_id)
 
@@ -850,7 +847,7 @@ class ContrattiService:
                     },
                 )
 
-        with self._db_errors({"contratto_id": contratto_id}):
+        with self._map_db_errors({"contratto_id": contratto_id}):
             updated = self._repo.update_contratto(contratto_id, data)
 
         ErrorManager.require(
@@ -990,7 +987,7 @@ class ContrattiService:
             if valido_al > date.today():
                 cessazione_programmata = True
 
-        with self._db_errors(
+        with self._map_db_errors(
             {"contratto_id": contratto_id, "codice_interno": codice_norm},
             fallback_message="Violazione vincolo DB su cambio stato.",
         ):
@@ -1052,7 +1049,7 @@ class ContrattiService:
             message="Stato 'ATTIVO' non configurato.",
         )
         assert target_stato_id is not None
-        with self._db_errors(
+        with self._map_db_errors(
             {"contratto_id": contratto_id, "codice_interno": "ATTIVO"},
             fallback_message="Violazione vincolo DB su attivazione contratto.",
         ):
@@ -1245,26 +1242,36 @@ class ContrattiService:
         # DB risparmiato).
         pratica_id_l3: int | None = None
         testata_gate: dict[str, Any] | None = None
-        if tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE:
-            pratica_id_l3, testata_gate = self._apply_pricing_gate_riga(
-                contratto_id=contratto_id,
-                articolo_id=articolo_id,
-                uom_id=data.get("uom_operativa_id"),
-                data=data,
-                auth_user_id=auth_user_id,
-                richiesta_approvazione=richiesta_approvazione,
-                riga_id_for_link=None,  # riga_id non noto qui
-                function_name="contratti_service.create_riga",
-            )
-
-        # Transazione atomica: create_riga + (se composito) auto-init
-        # componenti. Stesso pattern di preventivi_service. Senza atomic, una
-        # riga padre composito potrebbe restare senza componenti se la fn DB
+        # Transazione atomica: gate L3 (crea la pratica di approvazione) +
+        # create_riga + (se composito) auto-init componenti.
+        # Fix analisi-fix-transazioni #7 (Classe B): il gate era invocato PRIMA
+        # dell'atomic → la pratica di approvazione creata dal gate restava orfana
+        # se la create_riga rollava. Ora il gate vive DENTRO l'atomic (il suo
+        # atomic interno diventa un savepoint), come gia' in preventivi_service
+        # (modello corretto). Nota gate-vs-fn-DB: il gate fa permission-check
+        # L1/L2 in Python (azioni di processo), quindi resta orchestrazione BE,
+        # non promuovibile a funzione madre DB. Senza atomic, inoltre, una riga
+        # padre composito potrebbe restare senza componenti se la fn DB
         # `fn_contratto_riga_componenti_init` solleva (es. BoM scaduta).
-        with transaction.atomic(), self._db_errors(
+        # Ordine dei CM: mapper ESTERNO, atomic INTERNO (allineato a offerte).
+        # Su errore trigger (DatabaseError) l'atomic rolla PRIMA, poi il mapper
+        # traduce + logga su connessione pulita — altrimenti il log-to-db girerebbe
+        # sulla transazione avvelenata e verrebbe perso (review 2026-07-08).
+        with self._map_db_errors(
             {"contratto_id": contratto_id},
             fallback_message="Violazione vincolo DB su riga contratto.",
-        ):
+        ), transaction.atomic():
+            if tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE:
+                pratica_id_l3, testata_gate = self._apply_pricing_gate_riga(
+                    contratto_id=contratto_id,
+                    articolo_id=articolo_id,
+                    uom_id=data.get("uom_operativa_id"),
+                    data=data,
+                    auth_user_id=auth_user_id,
+                    richiesta_approvazione=richiesta_approvazione,
+                    riga_id_for_link=None,  # riga_id non noto qui
+                    function_name="contratti_service.create_riga",
+                )
             new_id = self._repo.create_riga(contratto_id, data)
 
             # Link riga<->pratica L3: post-create_riga, riga_id ora noto.
@@ -1520,31 +1527,39 @@ class ContrattiService:
         # la coerenza prezzo NULL e' gia' garantita dal check sopra; nessun
         # gate ulteriore. Riusiamo `existing_riga` per evitare double-fetch.
         # riga_id noto subito: link inline alla pratica (no post-INSERT).
-        if (
-            "prezzo_unitario" in data
-            and tipo_existing in _TIPI_ECCEZIONE_CON_GATE
-        ):
-            assert existing_riga is not None
-            self._apply_pricing_gate_riga(
-                contratto_id=int(existing_riga["contratto_id"]),
-                articolo_id=existing_riga.get("articolo_id"),
-                uom_id=(
-                    data.get("uom_operativa_id")
-                    if "uom_operativa_id" in data
-                    else existing_riga.get("uom_operativa_id")
-                ),
-                data=data,
-                auth_user_id=auth_user_id,
-                richiesta_approvazione=richiesta_approvazione,
-                riga_id_for_link=riga_id,
-                function_name="contratti_service.update_riga",
-                fallback_meta=existing_riga.get("meta"),
-            )
-
-        with self._db_errors(
+        # Fix analisi-fix-transazioni #6 (Classe B): gate L3 (crea + linka inline
+        # la pratica di approvazione) e UPDATE riga in UN solo transaction.atomic().
+        # Prima il gate era fuori da qualsiasi atomic — l'UPDATE stava solo in
+        # `_map_db_errors`, che NON e' un atomic — quindi la pratica creata dal gate
+        # restava orfana se l'UPDATE riga falliva. Il gate fa permission-check
+        # L1/L2 in Python (azioni di processo): resta orchestrazione BE, non
+        # promuovibile a funzione madre DB.
+        # Ordine dei CM: mapper ESTERNO, atomic INTERNO (vedi create_riga): il
+        # rollback su errore trigger avviene prima del log-to-db del mapper.
+        with self._map_db_errors(
             {"riga_id": riga_id},
             fallback_message="Violazione vincolo DB su riga contratto.",
-        ):
+        ), transaction.atomic():
+            if (
+                "prezzo_unitario" in data
+                and tipo_existing in _TIPI_ECCEZIONE_CON_GATE
+            ):
+                assert existing_riga is not None
+                self._apply_pricing_gate_riga(
+                    contratto_id=int(existing_riga["contratto_id"]),
+                    articolo_id=existing_riga.get("articolo_id"),
+                    uom_id=(
+                        data.get("uom_operativa_id")
+                        if "uom_operativa_id" in data
+                        else existing_riga.get("uom_operativa_id")
+                    ),
+                    data=data,
+                    auth_user_id=auth_user_id,
+                    richiesta_approvazione=richiesta_approvazione,
+                    riga_id_for_link=riga_id,
+                    function_name="contratti_service.update_riga",
+                    fallback_meta=existing_riga.get("meta"),
+                )
             updated = self._repo.update_riga(riga_id, data)
 
         ErrorManager.require(
@@ -1562,7 +1577,7 @@ class ContrattiService:
     def delete_riga(self, riga_id: int) -> None:
         self._v.guard_positive_int(riga_id, field="riga_id")
         self._assert_contratto_draft_from_riga(riga_id, op_label="Eliminazione riga contratto")
-        with self._db_errors(
+        with self._map_db_errors(
             {"riga_id": riga_id},
             fallback_message="Impossibile eliminare la riga (dipendenze).",
         ):
@@ -1736,7 +1751,7 @@ class ContrattiService:
             componente_id=componente_id,
             function_name="contratti_service.update_componente_riga",
         )
-        with self._db_errors(
+        with self._map_db_errors(
             {"componente_id": componente_id, "riga_id": riga_id},
             fallback_message="Violazione vincolo DB su componente riga contratto.",
         ):
@@ -1765,7 +1780,7 @@ class ContrattiService:
             componente_id=componente_id,
             function_name="contratti_service.delete_componente_riga",
         )
-        with self._db_errors(
+        with self._map_db_errors(
             {"componente_id": componente_id, "riga_id": riga_id},
             fallback_message="Impossibile eliminare il componente (dipendenze).",
         ):
@@ -1814,7 +1829,7 @@ class ContrattiService:
             for_create=True,
         )
 
-        with self._db_errors(
+        with self._map_db_errors(
             {"contratto_id": contratto_id},
             fallback_message="Violazione vincolo DB su utility contratto.",
         ):
@@ -1860,7 +1875,7 @@ class ContrattiService:
             context={"allowed_keys": sorted(_UTILITY_UPDATE_KEYS)},
         )
 
-        with self._db_errors(
+        with self._map_db_errors(
             {"contratto_id": contratto_id},
             fallback_message="Violazione vincolo DB su utility contratto.",
         ):

@@ -13,7 +13,7 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from django.db import connection
+from django.db import connection, transaction
 
 from apps.core.db._helpers import row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
@@ -550,7 +550,9 @@ class ListiniRepository:
             column_types=target_columns,
         )
 
-        with connection.cursor() as cursor:
+        # Guardrail atomicità (review 2026-07-08): INSERT testata + INSERT righe clonate
+        # resi self-atomici (o versione+righe complete o rollback). Nested=savepoint.
+        with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(
                 f"""
                 INSERT INTO vendite.listini_versioni ({", ".join(column_names)}, stato)
@@ -661,7 +663,9 @@ class ListiniRepository:
     #          - `listini_righe` (standalone)
     #          - `listini_righe_componenti` (compositi, modello unificato 2026-05-13)
     def delete_versione(self, listino_id: int, versione_id: int) -> bool:
-        with connection.cursor() as cursor:
+        # Guardrail atomicità (review 2026-07-08): 3 DELETE a cascata (componenti +
+        # righe + versione) resi self-atomici. Nested=savepoint se caller ha atomic.
+        with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(
                 "DELETE FROM vendite.listini_righe_componenti "
                 "WHERE listino_versione_id = %s",
@@ -1373,7 +1377,12 @@ class ListiniRepository:
         # Esempio: versione listino valida `[2026-04-07, infinity]`, BoM del
         # componente valida `[2026-05-13, infinity]` → riga bundle salvata
         # con valido_dal = `2026-05-13`, valido_al = NULL (la BoM e' il limite).
-        with connection.cursor() as cursor:
+        # Igiene analisi-fix-transazioni: `transaction.atomic()` ESPLICITO qui —
+        # prima il commento dichiarava "in una transazione atomica" ma il metodo
+        # (soft-delete + N insert su due statement) NON ne apriva alcuna, era
+        # protetto solo dal caller. Ora e' self-atomico: o tabula rasa + reinsert
+        # completi o rollback (nested = savepoint se il caller avvolge gia').
+        with transaction.atomic(), connection.cursor() as cursor:
             # Soft-delete riga attive correnti per la coppia (versione, padre).
             cursor.execute(
                 """
