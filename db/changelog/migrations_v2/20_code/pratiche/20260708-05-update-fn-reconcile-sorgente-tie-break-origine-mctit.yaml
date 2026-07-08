@@ -1,0 +1,203 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GUIDA (D4) — fn_reconcile_sorgente: il tie-break `flusso_id` non deve piu'
+# ESCLUDERE il milestone in attesa quando il link punta al flusso d'ORIGINE.
+# Brief: brief-db-reconcile-tie-break-flusso-origine.md.
+#
+# BUG: pratiche_sorgenti.flusso_id ha due anime — (1) ancora d'ORIGINE (il
+# flusso che ha generato il documento, es. PREVENTIVAZIONE) e (2) tie-break
+# della riconciliazione (D-B5, disambiguazione multi-istanza dello stesso step).
+# Il predicato `(flusso_id IS NULL OR f.id = flusso_id)` le confondeva: con un
+# link ancorato all'origine (PREVENTIVAZIONE, che NON attende il documento) il
+# `f.id = flusso_id` svuotava l'insieme dei candidati e il milestone in attesa
+# (APPROVAZIONE_CLIENTE) non avanzava mai. L'E2E "verde" del pilota usava
+# template dove lo STESSO step genera e attende -> mascherava il difetto.
+#
+# FIX (minimale, retro-compatibile): il tie-break si applica SOLO se il flusso
+# linkato e' esso stesso un candidato-attesa, cioe' il suo template attende
+# questo tipo di sorgente. Booleano `v_link_usabile` calcolato una volta per
+# aggancio (r_ps) e riusato:
+#   - nel predicato dei candidati (conteggio + loop di avanzamento), IDENTICO:
+#       (r_ps.flusso_id IS NULL OR NOT v_link_usabile OR f.id = r_ps.flusso_id)
+#   - nella guardia di ambiguita': `NOT v_link_usabile AND v_cand_count > 1`
+#     (subsume il vecchio `flusso_id IS NULL`, e ora intercetta anche il link
+#     d'origine con >1 candidati in attesa -> nessun avanzamento "a indovinare").
+#
+# Scelta `v_link_usabile` = "attende-only" (il flusso linkato attende questo
+# tipo), NON "candidato-non-terminale": aggiungere il non-terminale romperebbe
+# l'idempotenza (un re-reconcile dopo il completamento del milestone linkato
+# potrebbe far avanzare per errore un milestone FRATELLO ancora in attesa).
+# Con "attende-only" un link a milestone gia' completato resta usabile ->
+# restringe a quello -> 0 avanzamenti (D-B11 idempotente preservato).
+#
+# Corpo preso dall'oggetto vivo (doc auto-gen = changeset 20260707-08).
+# CREATE OR REPLACE, firma invariata (RETURNS integer) -> nessun DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260708-05-update-fn-reconcile-sorgente-tie-break-origine-mctit.yaml
+
+  - changeSet:
+      id: 20260708-05-update-fn-reconcile-sorgente-tie-break-origine
+      author: mctit
+      runOnChange: false
+      comment: >
+        fn_reconcile_sorgente: il tie-break flusso_id si applica solo se il
+        flusso linkato attende questo tipo (v_link_usabile). Un link d'origine
+        (es. PREVENTIVAZIONE) non svuota piu' i candidati -> il milestone in
+        attesa (APPROVAZIONE_CLIENTE) avanza. Guardia ambiguita' allineata.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.fn_reconcile_sorgente(
+                p_sorgente_tipo_id pratiche.pratiche_sorgenti.sorgente_tipo_id%TYPE,
+                p_sorgente_uid     pratiche.pratiche_sorgenti.sorgente_uid%TYPE
+              )
+              RETURNS integer
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: motore di avanzamento milestone su esito proiettato (GUIDA D4/G3a).
+              --   Consuma il descrittore normalizzato (fn_stato_sorgente) e completa i
+              --   milestone che attendono quel verdetto, per QUALSIASI percorso di
+              --   scrittura del documento (standalone incluso). Ritorna il numero di
+              --   milestone avanzati.
+              DECLARE
+                v_esito         pratiche.flussi.esito%TYPE;
+                v_stato_incorso config.stati_flussi_pratiche.id%TYPE;
+                v_stato_compl   config.stati_flussi_pratiche.id%TYPE;
+                v_avanzati      integer := 0;
+                r_ps            record;
+                r_f             record;
+                v_cand_count    integer;
+                v_link_usabile  boolean;
+              BEGIN
+                -- Guard parametri ID: errore esplicito, no normalizzazione silenziosa.
+                IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche','pratiche.fn_reconcile_sorgente','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('param','p_sorgente_tipo_id','valore',p_sorgente_tipo_id),
+                    NULL::uuid,'p_sorgente_tipo_id obbligatorio e > 0');
+                END IF;
+                IF p_sorgente_uid IS NULL OR btrim(p_sorgente_uid) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'pratiche','pratiche.fn_reconcile_sorgente','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('param','p_sorgente_uid'),
+                    NULL::uuid,'p_sorgente_uid obbligatorio');
+                END IF;
+
+                -- Descrittore normalizzato: esito e' SEMPRE un verdetto o NULL.
+                SELECT d.esito INTO v_esito
+                  FROM pratiche.fn_stato_sorgente(p_sorgente_tipo_id, p_sorgente_uid) d;
+
+                -- Nessun verdetto (es. EMESSO) -> nessun avanzamento automatico.
+                IF v_esito IS NULL THEN
+                  RETURN 0;
+                END IF;
+
+                -- Stati destinazione, risolti una volta.
+                SELECT id INTO v_stato_incorso
+                  FROM config.stati_flussi_pratiche WHERE codice_interno = 'IN_CORSO';
+                SELECT id INTO v_stato_compl
+                  FROM config.stati_flussi_pratiche WHERE codice_interno = 'COMPLETATO';
+
+                -- Ogni aggancio pratica<->documento su (tipo, uid).
+                FOR r_ps IN
+                  SELECT ps.pratica_id, ps.flusso_id
+                    FROM pratiche.pratiche_sorgenti ps
+                   WHERE ps.sorgente_tipo_id = p_sorgente_tipo_id
+                     AND ps.sorgente_uid = p_sorgente_uid
+                LOOP
+                  -- Il link e' usabile come TIE-BREAK (D-B5) SOLO se il flusso
+                  -- linkato attende esso stesso questo tipo di sorgente (milestone
+                  -- IN ATTESA). Se punta al flusso d'ORIGINE (PREVENTIVAZIONE, che
+                  -- NON attende), il tie-break non si applica: si riconciliano i
+                  -- milestone in attesa (fix del caso origine != attesa).
+                  -- "attende-only" per non rompere l'idempotenza (vedi header).
+                  v_link_usabile := (r_ps.flusso_id IS NOT NULL) AND EXISTS (
+                    SELECT 1
+                      FROM pratiche.flussi fl
+                      JOIN pratiche.template_flussi tfl ON tfl.id = fl.template_flusso_id
+                     WHERE fl.id = r_ps.flusso_id
+                       AND tfl.attende_sorgente_tipo_id = p_sorgente_tipo_id
+                  );
+
+                  -- Milestone candidati nella pratica: template che attende questo tipo,
+                  -- con binding G2 attivo che matcha il verdetto, NON terminali; il
+                  -- tie-break per-flusso (D-B5) si applica SOLO se il link e' usabile.
+                  SELECT count(*) INTO v_cand_count
+                    FROM pratiche.flussi f
+                    JOIN pratiche.template_flussi tf ON tf.id = f.template_flusso_id
+                    JOIN config.stati_flussi_pratiche s ON s.id = f.stato_id
+                   WHERE f.pratica_id = r_ps.pratica_id
+                     AND tf.attende_sorgente_tipo_id = p_sorgente_tipo_id
+                     AND s.codice_interno NOT IN ('COMPLETATO','ANNULLATO')
+                     AND (r_ps.flusso_id IS NULL OR NOT v_link_usabile OR f.id = r_ps.flusso_id)
+                     AND EXISTS (
+                           SELECT 1 FROM pratiche.template_flussi_avanzamento_proiezione b
+                            WHERE b.template_flusso_id = tf.id
+                              AND b.attivo
+                              AND (b.esito_richiesto IS NULL OR b.esito_richiesto = v_esito));
+
+                  -- Ambiguo: piu' candidati senza un link USABILE come tie-break
+                  -- (link assente o ancorato all'origine) -> non indovinare (D-B5).
+                  -- Il log e' a prova di fallimento: un errore nello scrivere il log NON
+                  -- deve propagare (best-effort) -> fallback RAISE WARNING (server log).
+                  IF NOT v_link_usabile AND v_cand_count > 1 THEN
+                    BEGIN
+                      INSERT INTO pratiche.reconcile_errori
+                             (sorgente_tipo_id, sorgente_uid, pratica_id, errcode, messaggio, tx_id)
+                      VALUES (p_sorgente_tipo_id, p_sorgente_uid, r_ps.pratica_id,
+                              'E_RECONCILE_AMBIGUO',
+                              format('%s milestone candidati per tipo %s senza flusso_id usabile come tie-break (link d''origine o assente): skip',
+                                     v_cand_count, p_sorgente_tipo_id),
+                              dbops.fn_get_or_create_session_tx_id());
+                    EXCEPTION WHEN OTHERS THEN
+                      RAISE WARNING 'reconcile_errori log (ambiguo) fallito per (tipo %, uid %): [%] %',
+                        p_sorgente_tipo_id, p_sorgente_uid, SQLSTATE, SQLERRM;
+                    END;
+                    CONTINUE;
+                  END IF;
+
+                  -- Avanzamento dei candidati (a due salti dove serve).
+                  FOR r_f IN
+                    SELECT f.id, s.codice_interno AS stato
+                      FROM pratiche.flussi f
+                      JOIN pratiche.template_flussi tf ON tf.id = f.template_flusso_id
+                      JOIN config.stati_flussi_pratiche s ON s.id = f.stato_id
+                     WHERE f.pratica_id = r_ps.pratica_id
+                       AND tf.attende_sorgente_tipo_id = p_sorgente_tipo_id
+                       AND s.codice_interno NOT IN ('COMPLETATO','ANNULLATO')
+                       AND (r_ps.flusso_id IS NULL OR NOT v_link_usabile OR f.id = r_ps.flusso_id)
+                       AND EXISTS (
+                             SELECT 1 FROM pratiche.template_flussi_avanzamento_proiezione b
+                              WHERE b.template_flusso_id = tf.id
+                                AND b.attivo
+                                AND (b.esito_richiesto IS NULL OR b.esito_richiesto = v_esito))
+                  LOOP
+                    -- D-B2: la matrice non ha DA_ESEGUIRE->COMPLETATO diretta.
+                    IF r_f.stato = 'DA_ESEGUIRE' THEN
+                      UPDATE pratiche.flussi SET stato_id = v_stato_incorso WHERE id = r_f.id;
+                    END IF;
+                    -- Completamento con il verdetto proiettato -> scatta la generazione a valle.
+                    UPDATE pratiche.flussi
+                       SET stato_id = v_stato_compl, esito = v_esito
+                     WHERE id = r_f.id;
+                    v_avanzati := v_avanzati + 1;
+                  END LOOP;
+                END LOOP;
+
+                RETURN v_avanzati;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION pratiche.fn_reconcile_sorgente(pratiche.pratiche_sorgenti.sorgente_tipo_id%TYPE, pratiche.pratiche_sorgenti.sorgente_uid%TYPE)
+              IS 'GUIDA D4/G3a: motore di avanzamento milestone su esito proiettato. Se il documento (tipo, uid) proietta un verdetto (fn_stato_sorgente.esito), completa i milestone in attesa (template_flussi.attende_sorgente_tipo_id + binding template_flussi_avanzamento_proiezione), a due salti (D-B2), idempotente sui non-terminali (D-B11). Tie-break multi-istanza via pratiche_sorgenti.flusso_id (D-B5) applicato SOLO se il flusso linkato attende esso stesso il tipo (v_link_usabile): un link ancorato al flusso d''ORIGINE non esclude piu'' il milestone in attesa. INVOKER (D-B4). Ritorna il numero di milestone avanzati.';
