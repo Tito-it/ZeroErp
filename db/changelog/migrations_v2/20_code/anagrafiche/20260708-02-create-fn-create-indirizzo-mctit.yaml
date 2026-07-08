@@ -1,0 +1,171 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/anagrafiche/20260708-02-create-fn-create-indirizzo-mctit.yaml
+
+    - changeSet:
+          id: 20260708-02-create-fn-create-indirizzo
+          author: mctit
+
+          # ------------------------------------------------------------
+          # Scopo
+          # ------------------------------------------------------------
+          # Funzione madre atomica per la creazione di un indirizzo di dettaglio.
+          #
+          # Contesto (piano analisi-fix-transazioni, Classe D, finding #13):
+          #   Il service Python anagrafiche.geo_service.create_indirizzo, nel ramo
+          #   "via nuova", eseguiva SENZA transazione unica:
+          #     1) get_or_create_stradario() -> 2 upsert (config.stradario_generale
+          #        + config.stradario)
+          #     2) create_indirizzo_dettaglio() -> fn_get_or_create_indirizzo_dettaglio
+          #   In autocommit, se (2) falliva le righe stradario (1) restavano
+          #   committate (orfane nel registro). Impatto contenuto (dedup
+          #   riutilizzabile, non corruzione), ma il ramo non aveva alcun atomic.
+          #   Questa funzione fonde upsert stradario + risoluzione dettaglio in
+          #   un'unica statement: o tutto o rollback.
+          #
+          # Parametri:
+          #   p_stradario_id  (config.stradario.id%TYPE) se fornito, si usa questo
+          #                   e i parametri "via nuova" sono ignorati.
+          #   Ramo "via nuova" (usato solo se p_stradario_id IS NULL):
+          #     p_toponomastica_id, p_descrizione_via, p_comune_id,
+          #     p_codice_postale_id.
+          #   Dettaglio civico: p_civico, p_estensione_civico, p_palazzina,
+          #     p_scala, p_piano, p_interno.
+          #
+          # Ritorno: id dell'indirizzo di dettaglio (bigint, passthrough di
+          #          fn_get_or_create_indirizzo_dettaglio).
+          #
+          # SCOPO / boundary: le validazioni di input del ramo via-nuova
+          #   (toponomastica/via/comune/CAP obbligatori) restano pre-check
+          #   applicativi (read-only) del service — non attengono all'atomicita'.
+          #   La funzione assume input valido; input NULL su colonne NOT NULL
+          #   fallisce comunque atomicamente.
+          #
+          # NOTE tecniche:
+          #   - Tipi ancorati con %TYPE (parametri/DECLARE); il ritorno e' il
+          #     bigint di fn_get_or_create_indirizzo_dettaglio.
+          #   - SECURITY INVOKER: RLS/scope invariati (§2-bis). zeroerp_app ha
+          #     INSERT su config.stradario_generale/stradario + EXECUTE (PUBLIC).
+          #   - Upsert idempotenti (ON CONFLICT), come il repository Python.
+          #   - VOLATILE (default): esegue DML.
+          # ------------------------------------------------------------
+
+          preConditions:
+              - onFail: HALT
+              - onError: HALT
+              - tableExists:
+                    schemaName: config
+                    tableName: stradario
+              - tableExists:
+                    schemaName: config
+                    tableName: stradario_generale
+
+          changes:
+              - sql:
+                    splitStatements: FALSE
+                    stripComments: false
+                    endDelimiter: ";"
+
+                    sql: |
+
+                        DROP FUNCTION IF EXISTS anagrafiche.fn_create_indirizzo(
+                            config.stradario.id%TYPE,
+                            config.stradario_generale.toponomastica_id%TYPE,
+                            config.stradario_generale.descrizione%TYPE,
+                            config.stradario.comune_id%TYPE,
+                            config.stradario.codice_postale_id%TYPE,
+                            integer, character varying, character varying,
+                            character varying, character varying, character varying);
+
+                        CREATE OR REPLACE FUNCTION anagrafiche.fn_create_indirizzo(
+                            p_stradario_id       config.stradario.id%TYPE DEFAULT NULL,
+                            p_toponomastica_id   config.stradario_generale.toponomastica_id%TYPE DEFAULT NULL,
+                            p_descrizione_via    config.stradario_generale.descrizione%TYPE DEFAULT NULL,
+                            p_comune_id          config.stradario.comune_id%TYPE DEFAULT NULL,
+                            p_codice_postale_id  config.stradario.codice_postale_id%TYPE DEFAULT NULL,
+                            p_civico             integer DEFAULT NULL,
+                            p_estensione_civico  character varying DEFAULT NULL,
+                            p_palazzina          character varying DEFAULT NULL,
+                            p_scala              character varying DEFAULT NULL,
+                            p_piano              character varying DEFAULT NULL,
+                            p_interno            character varying DEFAULT NULL
+                        )
+                        RETURNS bigint
+                        LANGUAGE plpgsql
+                        SECURITY INVOKER
+                        AS
+                        $BODY$
+                        DECLARE
+                            v_stradario_gen_id config.stradario_generale.id%TYPE;
+                            v_stradario_id     config.stradario.id%TYPE := p_stradario_id;
+                            v_descrizione_via  config.stradario_generale.descrizione%TYPE;
+                            v_indirizzo_id     bigint;
+                        BEGIN
+                            -- ----------------------------------------------------
+                            -- 1) Ramo "via nuova": upsert stradario_generale + stradario
+                            --    (idempotenti), solo se non e' stato passato uno
+                            --    stradario_id gia' risolto.
+                            -- ----------------------------------------------------
+                            IF v_stradario_id IS NULL THEN
+                                v_descrizione_via := btrim(p_descrizione_via);
+
+                                INSERT INTO config.stradario_generale (
+                                    toponomastica_id, descrizione, descrizione_breve)
+                                VALUES (p_toponomastica_id, v_descrizione_via, v_descrizione_via)
+                                ON CONFLICT (toponomastica_id, descrizione) DO UPDATE
+                                   SET descrizione = EXCLUDED.descrizione
+                                RETURNING id INTO v_stradario_gen_id;
+
+                                INSERT INTO config.stradario (
+                                    stradario_generale_id, comune_id, codice_postale_id)
+                                VALUES (v_stradario_gen_id, p_comune_id, p_codice_postale_id)
+                                ON CONFLICT (comune_id, stradario_generale_id, codice_postale_id) DO UPDATE
+                                   SET comune_id = EXCLUDED.comune_id
+                                RETURNING id INTO v_stradario_id;
+                            END IF;
+
+                            -- ----------------------------------------------------
+                            -- 2) Dettaglio civico (figlia DB idempotente).
+                            -- ----------------------------------------------------
+                            v_indirizzo_id := anagrafiche.fn_get_or_create_indirizzo_dettaglio(
+                                v_stradario_id, p_civico, p_estensione_civico,
+                                p_palazzina, p_scala, p_piano, p_interno);
+
+                            RETURN v_indirizzo_id;
+                        END;
+                        $BODY$;
+
+                        COMMENT ON FUNCTION anagrafiche.fn_create_indirizzo(
+                            config.stradario.id%TYPE,
+                            config.stradario_generale.toponomastica_id%TYPE,
+                            config.stradario_generale.descrizione%TYPE,
+                            config.stradario.comune_id%TYPE,
+                            config.stradario.codice_postale_id%TYPE,
+                            integer, character varying, character varying,
+                            character varying, character varying, character varying
+                        ) IS
+                        'Funzione madre atomica: risolve/crea lo stradario (upsert '
+                        'generale + civico-strada) e l''indirizzo di dettaglio in '
+                        'un''unica statement (o tutto o rollback). SECURITY INVOKER. '
+                        'Le validazioni via-nuova restano pre-check del service. '
+                        'Piano: analisi-fix-transazioni Classe D #13.';
+
+          rollback:
+              - sql:
+                    sql: |
+                        DROP FUNCTION IF EXISTS anagrafiche.fn_create_indirizzo(
+                            config.stradario.id%TYPE,
+                            config.stradario_generale.toponomastica_id%TYPE,
+                            config.stradario_generale.descrizione%TYPE,
+                            config.stradario.comune_id%TYPE,
+                            config.stradario.codice_postale_id%TYPE,
+                            integer, character varying, character varying,
+                            character varying, character varying, character varying);
