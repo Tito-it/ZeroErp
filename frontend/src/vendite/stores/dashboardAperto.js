@@ -1,6 +1,6 @@
-// Store Pinia Situazione aperta (brief-design-fatturazione-due-lenti §6-bis):
-// riepilogo stock area × fase + lista documenti aperti con filtri
-// area/fase/solo_aperti.
+// Store Pinia Situazione aperta v2 — serbatoio pre-commessa
+// (brief-design-fatturazione-due-lenti §6-ter): riepilogo stock area × fase +
+// lista documenti aperti-non-chiusi con filtri area/fase/ritardo_giorni.
 // Le action fanno la chiamata axios internamente e lasciano propagare gli
 // errori: i componenti le invocano dentro try/catch con extractApiError
 // (memoria feedback_useapihandler_solo_axios).
@@ -17,11 +17,12 @@ import {
 
 export const useDashboardApertoStore = defineStore('vendite-dashboard-aperto', () => {
   // Filtri lista: area documento (null = tutte) e fase normalizzata
-  // (null = tutte). solo_aperti default true: la pagina e' lo stock APERTO;
-  // false = fotografia completa (inclusi i transitati/chiusi).
+  // (null = tutte). ritardo_giorni (null = nessuna soglia): filtro "aperti da
+  // oltre N giorni" su data documento (DL-17), solo sulla lista — le card del
+  // riepilogo restano la fotografia completa.
   const areaSelezionata = ref(null)
   const faseSelezionata = ref(null)
-  const soloAperti = ref(true)
+  const ritardoGiorni = ref(null)
 
   // Riepilogo: array aree (4 sempre presenti, ordine funnel) + vocabolario
   // fasi top-level (alimenta il filtro della lista) dal BE. Fetch guardata
@@ -39,7 +40,7 @@ export const useDashboardApertoStore = defineStore('vendite-dashboard-aperto', (
     listDashboardApertoDocumenti({
       area: areaSelezionata.value,
       fase: faseSelezionata.value,
-      solo_aperti: soloAperti.value,
+      ritardo_giorni: ritardoGiorni.value,
       ...paging,
     })
   )
@@ -60,7 +61,7 @@ export const useDashboardApertoStore = defineStore('vendite-dashboard-aperto', (
     riepilogo.invalidate()
     areaSelezionata.value = null
     faseSelezionata.value = null
-    soloAperti.value = true
+    ritardoGiorni.value = null
     aree.value = []
     fasi.value = []
     documentiFetch.resetAll()
@@ -69,7 +70,7 @@ export const useDashboardApertoStore = defineStore('vendite-dashboard-aperto', (
   return {
     areaSelezionata,
     faseSelezionata,
-    soloAperti,
+    ritardoGiorni,
     aree,
     fasi,
     documenti: documentiFetch.items,

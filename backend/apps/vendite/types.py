@@ -548,21 +548,22 @@ class OffertaPushResult(TypedDict):
 
 
 class DashApertoRiepilogoRow(TypedDict):
-    # Cella area × fase della Situazione aperta (vw_dash_aperto_riepilogo,
-    # stock senza asse temporale — il pivot area/fasi e' del service).
-    # valore_* NULL per le aree a conteggi (OFFERTE/CONTRATTI, DL-11).
+    # Cella area × fase del serbatoio pre-commessa (vw_dash_aperto_riepilogo v2,
+    # stock senza asse temporale — il pivot area/fasi e' del service). Perimetro
+    # aperti-non-chiusi lato vista (DL-15): via n_aperti/valore_transitato.
+    # valore_totale NULL per le aree a conteggi (OFFERTE/CONTRATTI, DL-11).
     area: str
     fase: str
     n_documenti: int
-    n_aperti: int
     valore_totale: str | None
-    valore_transitato: str | None
 
 
 class DashApertoDocumentoRow(TypedDict):
-    # Riga drill-down Situazione aperta (vw_dash_aperto_documenti: 4 aree
-    # documento, NOT is_abortito, tutte le fasi — DL-13). is_transitato NULL =
-    # giudizio sospeso (contratti fino al push ricorrente) e conta aperto.
+    # Riga drill-down del serbatoio pre-commessa (vw_dash_aperto_documenti v2:
+    # 4 aree documento, perimetro aperti-non-chiusi — is_transitato IS DISTINCT
+    # FROM true AND fase<>CHIUSO, DL-14/15). anzianita_giorni derivata in SELECT
+    # (GREATEST(current_date - data_riferimento, 0)) come il gemello Backlog,
+    # allinea la lettura al filtro "aperti da oltre N giorni" (DL-17).
     area: str
     documento_id: int
     documento_uid: str | None
@@ -572,11 +573,8 @@ class DashApertoDocumentoRow(TypedDict):
     stato_codice_interno: str | None
     stato_codice: str | None
     valore_totale: str | None
-    valore_transitato: str | None
     unita_totali: int | None
-    unita_transitate: int | None
-    is_transitato: bool | None
-    is_aperto: bool
+    anzianita_giorni: int
     motivo_fermo: str | None
     data_riferimento: str | None
 

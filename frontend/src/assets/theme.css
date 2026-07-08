@@ -93,6 +93,17 @@
   /* Errori vivi fatturazione (Lente Competenza, blocco 4): red-600 stessa
    * logica della coppia sopra, nessun override light necessario. */
   --app-chart-errore: var(--p-red-600);
+  /* Palette per-fase dei donut serbatoio pre-commessa (Situazione aperta v2,
+   * DL-16): un colore per fase, allineato a faseDocumentoSeverity (APERTO
+   * grigio, IN_ATTESA azzurro, IN_CORSO arancio, CHIUSO verde). Valori fissi
+   * come la coppia transitato/fermo: leggibili su entrambe le superfici,
+   * nessun override light. Default = neutro per le fasi extra accodate
+   * fail-visible. */
+  --app-chart-fase-aperto: var(--p-surface-500);
+  --app-chart-fase-in-attesa: var(--p-blue-600);
+  --app-chart-fase-in-corso: var(--p-orange-600);
+  --app-chart-fase-chiuso: var(--p-green-600);
+  --app-chart-fase-default: var(--p-surface-400);
 
   /* ===== Lookup dropdown multi-riga ===== */
   /* Usato da BillingAccountLookup e futuri lookup ricchi (ClienteLookup, ecc.).

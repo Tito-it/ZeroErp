@@ -66,16 +66,30 @@ concetto transitato e il toggle solo_aperti.
 
 ### FE-1 — Grafico: donut per fase (il pezzo più grosso)
 
-`DonutTransito` è a **2 spicchi** (transitato vs fermo, con percentuale centrale). La v2 serve
-un donut a **N spicchi = fasi** (2-3), con la palette `faseDocumentoSeverity`. Due strade
-(decisione in implementazione, regola del 2):
+`DonutTransito` è a **2 spicchi** (transitato vs fermo, con percentuale centrale) ed è cablato
+sulla semantica binaria in ogni punto (props scalari `transitato`/`fermo`, palette a 2 var
+`--app-chart-transitato/-fermo`, centro `pctTransitato`, `mode="fraction"` n/n). Ha un **secondo
+consumatore vivo**: [DashboardCompetenzaView.vue](../../../../frontend/src/vendite/views/DashboardCompetenzaView.vue)
+(Lente 1, copertura mese). La v2 serve invece un donut a **N spicchi = fasi** (2-3) con palette
+`faseDocumentoSeverity` e **nessun rapporto a due vie** al centro (il centro % di DonutTransito non
+si applica alle fasi).
 
-- **(a)** Estendere `DonutTransito` ad accettare un array di segmenti `{label, value, severity}`
-  mantenendo la modalità `fraction` per le aree a conteggi — rischia di gonfiare il componente.
-- **(b)** Nuovo `DonutFasi.vue` in `core/components/charts/` gemello di `DonutTransito` (stessa
-  palette theme.css, stessa cache getComputedStyle, chart.js via PrimeVue `<Chart>`), specializzato
-  sui segmenti-fase. **Preferita**: `DonutTransito` resta semanticamente "transitato vs fermo"
-  (magari lo usa ancora la Lente 1 per la copertura mese), non lo si snatura.
+**Decisione (regola del 2, dichiarata e approvata da Tid — strada (c)):** i due donut non
+condividono la *semantica* ma il *substrato*, quindi si **estrae il substrato**, non si fondono i
+significati (scartata (a): forka i rami + rischio Lente 1 in-place; scartata (b): copincolla ~30
+righe della macchina palette/tema, la parte col footgun `<Chart>` destroy+reinit).
+
+- **`DonutBase.vue`** (`core/components/charts/`) — possiede SOLO il substrato riusabile: wrapper
+  chart.js via PrimeVue `<Chart>` doughnut, cache-palette module-level + `getComputedStyle`
+  per-tema + watch dark/light, anello neutro "nessun dato", mini-legenda (dot+label+valore),
+  **options statiche** (solo `data` reattivo → niente destroy+reinit). API: `segments:[{label,
+  color, value, formatted}]`, `size`, slot `center`. Scopo strettamente su ciò che transitato+fasi
+  già richiedono (no knob speculativi, no YAGNI).
+- **`DonutTransito.vue`** — riscritto come skin sottile su `DonutBase` (2 segmenti + `%` al centro
+  via slot). **API pubblica invariata 1:1** → i due caller (SituazioneAperta, Competenza) non
+  cambiano una riga; ri-validare a video la card Competenza.
+- **`DonutFasi.vue`** — skin su `DonutBase`: N segmenti-fase, colore da `faseDocumentoSeverity`,
+  centro = totale (o vuoto).
 
 Segmenti = le fasi con `n_documenti > 0` dell'area; valore = `valore_totale` per aree euro,
 `n_documenti` per aree a conteggi (DL-11/16). Legenda con label fase (`dashFaseLabel`) + valore.
