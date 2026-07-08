@@ -155,6 +155,58 @@ Mescolare i nomi a caso:
 
 ---
 
+### 5b. Atomicità delle operazioni multi-scrittura — funzione "madre"
+
+**Il problema (trappola ricorrente).** Quando un'operazione di dominio compone **più scritture**
+(INSERT/UPDATE/DELETE o `SELECT fn_...` di mutazione), farle in sequenza dal layer applicativo in
+autocommit è una trappola: se la 2ª fallisce, la 1ª resta committata → **stato parziale / righe
+orfane** impossibili da riconciliare.
+
+**La regola DB-first.** Un'operazione di dominio che compone **solo** scritture/funzioni DB va
+incapsulata in **un'unica funzione "madre"** (`fn_*`), invocata con **una sola `SELECT`**. Una
+singola statement su connessione autocommit è **atomica per costruzione**: PostgreSQL la avvolge in
+una transazione implicita e **qualsiasi eccezione non gestita annulla l'intero effetto** — non
+serve scrivere `BEGIN/EXCEPTION` per l'all-or-nothing (i blocchi `EXCEPTION` servono solo a
+*catturare/tradurre* un errore).
+
+**Dove mettere la transazione — criterio di scelta:**
+
+| L'operazione... | Meccanismo |
+| --- | --- |
+| compone **solo** scritture/fn DB | **funzione madre DB** (una `SELECT fn_()`) — preferito |
+| richiede orchestrazione **Python** (advisory lock, dispatch a handler, control-flow applicativo) | `transaction.atomic()` nel service Django (esplicito, non `ATOMIC_REQUESTS`) |
+| ha un **side-effect esterno** (email/SMTP) | pattern **outbox/saga**, mai dentro una transazione |
+
+**Convenzioni della funzione madre:**
+
+* **`SECURITY INVOKER`** (esplicito): gira come il ruolo chiamante → RLS e scope emittente restano
+  applicati identici. Mai `SECURITY DEFINER` senza motivazione documentata.
+* **Tipi ancorati con `%TYPE`** (parametri, DECLARE, RETURNS / RETURNS TABLE, COMMENT); array
+  `bigint[]` espliciti (`colonna%TYPE[]` non esiste in PostgreSQL).
+* **Delega ai trigger** esistenti audit (`data_update`/`user_update`), `tx_id`, storico,
+  `gen_codice`: la madre fa solo le scritture di dominio.
+* **Riusa le figlie** invece di duplicare: una fn condivisa (es. `pratiche.fn_crea_pratica`) usata
+  da più madri di dominio; un nuovo dominio = un madre sottile che compone le figlie condivise.
+* **Delta parziale** via JSONB (`jsonb_exists()` per la presenza chiave, `jsonb_populate_record`
+  per l'INSERT dinamico): aggiorna solo le chiavi presenti e rispetta i default/trigger DB.
+* **Errori** con `script.fn_log_and_raise_error` e codici **registrati** (mai `E_GENERICO`).
+* **Cosa NON spostare in DB**: le validazioni read-only di input restano pre-check del service —
+  non attengono all'atomicità (la causa del problema).
+
+> ⚠️ **Le sequence non fanno rollback.** Un numero/codice da `nextval` (es. via
+> `script.fn_generate_codice`) consumato resta un **gap** anche se la transazione rolla: è normale e
+> innocuo. La madre elimina la **riga orfana**, non il gap di numerazione (che c'era già).
+
+**pgTAP obbligatorio.** Testare sia il caso felice sia il **rollback totale** su fallimento di uno
+step (pattern: trigger temporaneo che fa fallire l'ultima scrittura → verificare che nessun effetto
+delle scritture precedenti sopravviva). Il pgTAP gira come owner: attenzione ai **GRANT** e agli
+scope che nel percorso applicativo reale (`zeroerp_app`, INVOKER) potrebbero mancare.
+
+> Caso di studio completo, catalogo dei finding e criterio esteso (madre DB *vs* `transaction.atomic()`
+> *vs* outbox): [analisi-fix-transazioni](/dev/work-in-progress/analisi-fix-transazioni).
+
+---
+
 ### 6. Viste (Views)
 
 * **Applicative**: `vw_<descrittivo>` in schema `script`, es. `vw_clienti_attivi`
