@@ -47,7 +47,7 @@
 - [fn_crea_risorsa_umana_v2](funzioni/fn_crea_risorsa_umana_v2.md)
 - [fn_crea_soggetto_pf](funzioni/fn_crea_soggetto_pf.md) — (latest review 13-03-2026) Building block atomico per la creazione di un soggetto Persona Fisica (natura PR = Privato) con contatto default obbligatorio.
 - [fn_crea_soggetto_pg](funzioni/fn_crea_soggetto_pg.md) — (latest review 14-03-2026) Building block atomico per la creazione di un soggetto Persona Giuridica con contatto default obbligatorio e dati societari (condizionali alla `dati_societari_policy` del tipo soggetto).
-- [fn_create_indirizzo](funzioni/fn_create_indirizzo.md)
+- [fn_create_indirizzo](funzioni/fn_create_indirizzo.md) — (latest review 08-07-2026)
 - [fn_get_emittente_fiscale_id](funzioni/fn_get_emittente_fiscale_id.md) — (last review 07-04-2026)
 - [fn_get_emittente_fiscale_pk](funzioni/fn_get_emittente_fiscale_pk.md) — (creata 07-04-2026)
 - [fn_get_evento_stato_corrente_cliente](funzioni/fn_get_evento_stato_corrente_cliente.md) — (latest review 28-04-2026)
@@ -59,7 +59,7 @@
 - [fn_search_indirizzi_dettaglio](funzioni/fn_search_indirizzi_dettaglio.md) — (latest review 28-11-25) La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
 - [fn_sync_auth_user_expired](funzioni/fn_sync_auth_user_expired.md) — (latest review 18-04-2026)
 - [fn_sync_auth_user_is_active](funzioni/fn_sync_auth_user_is_active.md) — (latest review 20-04-2026 — semantica OR multi-veste)
-- [fn_update_cliente](funzioni/fn_update_cliente.md)
+- [fn_update_cliente](funzioni/fn_update_cliente.md) — (latest review 08-07-2026)
 - [trgfn_bank_guard_ruolo_bank_branches](funzioni/trgfn_bank_guard_ruolo_bank_branches.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “bank_branches”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_billing_account_gen_codice](funzioni/trgfn_billing_account_gen_codice.md)
 - [trgfn_billing_account_guard_admin_globale](funzioni/trgfn_billing_account_guard_admin_globale.md)

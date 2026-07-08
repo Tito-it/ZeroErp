@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_genera_pratica_da_preventivo.md" %}
 # ⚙️ Funzione `fn_genera_pratica_da_preventivo`
 
 ```sql
