@@ -36,12 +36,19 @@ Riferimento: [refactor-contratti-modalita.md](/dev/work-done/refactor-contratti-
 
 ## Contesto
 
-- Il **numero contratto** e' generato lato service via
-  `script.fn_generate_codice('contratto')` (prefix `CNT`, len 7,
-  config in `config.sistema_codici`). NON e' accettato in payload (lock
-  via trigger `trgfn_lock_columns('numero', 'CODICE_NON_MODIFICABILE')`).
-- Lo **stato iniziale** di ogni contratto e' `DRAFT` (risolto dal service
-  via `config.stati_doc_contratti.codice_interno`).
+- Il **numero contratto** e' generato via `script.fn_generate_codice('contratto')`
+  (prefix `CNT`, len 7, config in `config.sistema_codici`) **dentro la funzione madre**
+  `vendite.fn_create_contratto` (fix analisi-fix-transazioni #2, 2026-07-08 — prima
+  lato service, prima dell'INSERT). NON e' accettato in payload (lock via trigger
+  `trgfn_lock_columns('numero', 'CODICE_NON_MODIFICABILE')`).
+- Lo **stato iniziale** di ogni contratto e' `DRAFT` (risolto **dentro** la fn madre
+  da `config.stati_doc_contratti.codice_interno`).
+- **Atomicità creazione (#2):** generazione numero + INSERT testata + INSERT utility 1:1
+  opzionale avvengono in **un'unica** `SELECT vendite.fn_create_contratto(...)`, atomica
+  per costruzione: o tutto o rollback (contatore numero incluso). Prima erano
+  `generate_numero()` + 2 INSERT separati in autocommit → un fallimento dell'INSERT
+  utility lasciava un contratto orfano. NB: il numero viene da una **sequence** e un
+  rollback lascia comunque un **gap** di numerazione (innocuo, gia' cosi' in precedenza).
 - Le coerenze cross-table (tipo/classe utenza per ambito utility, no-overlap,
   coerenza tipo_eccezione/prezzo) sono enforced dai trigger DB e dal
   temporal UNIQUE PG18:

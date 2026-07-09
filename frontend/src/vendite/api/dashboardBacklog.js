@@ -9,8 +9,9 @@ export function getDashboardBacklog() {
   return api.get('/vendite/dashboard-backlog/')
 }
 
-// GET /vendite/dashboard-backlog/documenti/?classe=&area=&page=&page_size=
-// Lista paginata per anzianita' (i piu' vecchi prima), filtri opzionali.
+// GET /vendite/dashboard-backlog/documenti/?classe=&area=&order_by=&order_dir=&page=&page_size=
+// Lista paginata; ordinamento server-side (order_by/order_dir, whitelist BE),
+// default "fermo da" DESC (i piu' vecchi prima).
 export function listDashboardBacklogDocumenti(params = {}) {
   return api.get('/vendite/dashboard-backlog/documenti/', { params })
 }

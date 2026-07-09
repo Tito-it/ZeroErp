@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2025 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Test unitari API Situazione aperta (riepilogo area×fase + documenti).
+# Scopo: Test unitari API serbatoio pre-commessa (Situazione aperta v2:
+#        riepilogo area×fase + documenti).
 # ------------------------------------------------------------
 
 """
@@ -13,9 +14,10 @@ Indice test eseguiti:
 4) DashboardApertoDocumentiApiTests.test_documenti_requires_jwt
 5) DashboardApertoDocumentiApiTests.test_documenti_filtri_lowercase_normalizzati
 6) DashboardApertoDocumentiApiTests.test_documenti_filtri_assenti_default
-7) DashboardApertoDocumentiApiTests.test_documenti_solo_aperti_false
+7) DashboardApertoDocumentiApiTests.test_documenti_ritardo_giorni
 8) DashboardApertoDocumentiApiTests.test_documenti_paginazione_parametri
-9) DashboardApertoDocumentiApiTests.test_documenti_scope_db_side_no_auth_user
+9) DashboardApertoDocumentiApiTests.test_documenti_ordinamento_parametri
+10) DashboardApertoDocumentiApiTests.test_documenti_scope_db_side_no_auth_user
 """
 
 from unittest.mock import Mock, patch
@@ -25,19 +27,20 @@ from django.test import Client
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
+# v2: perimetro aperti-non-chiusi lato vista -> niente n_aperti/valore_transitato.
 _RIEPILOGO_RESPONSE = {
     "aree": [
         {
             "area": "PREVENTIVI",
             "n_documenti": 5,
-            "n_aperti": 4,
             "valore_totale": "2000.50",
-            "valore_transitato": "300.00",
-            "fasi": [{"fase": "APERTO", "n_documenti": 3, "n_aperti": 3}],
+            "fasi": [{"fase": "APERTO", "n_documenti": 3, "valore_totale": "1500.00"}],
         }
-    ]
+    ],
+    "fasi": ["APERTO", "IN_ATTESA", "IN_CORSO"],
 }
 
+# v2: via i campi transitato/is_aperto; dentro anzianita_giorni (derivata BE).
 _DOCUMENTI_RESPONSE = {
     "count": 1,
     "page": 1,
@@ -53,11 +56,8 @@ _DOCUMENTI_RESPONSE = {
             "stato_codice_interno": "ACCETTATO",
             "stato_codice": "ACC",
             "valore_totale": "1450.00",
-            "valore_transitato": "0",
             "unita_totali": 2,
-            "unita_transitate": 0,
-            "is_transitato": False,
-            "is_aperto": True,
+            "anzianita_giorni": 57,
             "motivo_fermo": "RIGA_RESIDUA",
             "data_riferimento": "2026-05-12",
         }
@@ -85,7 +85,7 @@ class DashboardApertoApiTests(JwtMockedApiTest):
         area = data["aree"][0]
         # Passthrough dei campi FE-critici delle card (totali + griglia fasi).
         self.assertEqual(area["area"], "PREVENTIVI")
-        self.assertEqual(area["n_aperti"], 4)
+        self.assertEqual(area["n_documenti"], 5)
         self.assertEqual(area["valore_totale"], "2000.50")
         self.assertEqual(area["fasi"][0]["fase"], "APERTO")
 
@@ -115,10 +115,11 @@ class DashboardApertoDocumentiApiTests(JwtMockedApiTest):
         self.assertEqual(data["count"], 1)
         row = data["results"][0]
         # Passthrough dei campi FE-critici della lista (fase/stato alimentano
-        # tag e raggruppamento; is_aperto la resa; data_riferimento l'ordine).
+        # tag e raggruppamento; anzianita_giorni la colonna "aperto da N gg";
+        # data_riferimento l'ordine e il tooltip).
         self.assertEqual(row["fase"], "IN_CORSO")
         self.assertEqual(row["stato_codice_interno"], "ACCETTATO")
-        self.assertTrue(row["is_aperto"])
+        self.assertEqual(row["anzianita_giorni"], 57)
         self.assertEqual(row["data_riferimento"], "2026-05-12")
         kwargs = mocked_fn.call_args.kwargs
         self.assertEqual(kwargs["area"], "PREVENTIVI")
@@ -134,14 +135,14 @@ class DashboardApertoDocumentiApiTests(JwtMockedApiTest):
     @patch("apps.vendite.api.views_dashboard_aperto.fn_dash_aperto_documenti")
     def test_documenti_filtri_lowercase_normalizzati(self, mocked_fn, _mock_auth):
         mocked_fn.return_value = _DOCUMENTI_RESPONSE
-        self.client.get(f"{self._URL}?area=offerte&fase=chiuso")
+        self.client.get(f"{self._URL}?area=offerte&fase=in_corso")
         kwargs = mocked_fn.call_args.kwargs
         self.assertEqual(kwargs["area"], "OFFERTE")
-        self.assertEqual(kwargs["fase"], "CHIUSO")
+        self.assertEqual(kwargs["fase"], "IN_CORSO")
 
     # Scopo: Filtri assenti -> None al service (tutte le aree/fasi); anche
-    #        solo_aperti passa None: il default di pagina (True) e' UNICA
-    #        definizione nel service, la view non lo duplica.
+    #        ritardo_giorni assente passa None: nessuna soglia, drill-down
+    #        completo coerente con le card fotografia (DL-17).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views_dashboard_aperto.fn_dash_aperto_documenti")
     def test_documenti_filtri_assenti_default(self, mocked_fn, _mock_auth):
@@ -150,16 +151,17 @@ class DashboardApertoDocumentiApiTests(JwtMockedApiTest):
         kwargs = mocked_fn.call_args.kwargs
         self.assertIsNone(kwargs["area"])
         self.assertIsNone(kwargs["fase"])
-        self.assertIsNone(kwargs["solo_aperti"])
+        self.assertIsNone(kwargs["ritardo_giorni"])
 
-    # Scopo: solo_aperti=false (fotografia completa) inoltrato al service.
+    # Scopo: ritardo_giorni ("aperti da oltre N giorni", DL-17) inoltrato al
+    #        service (filtro del SOLO drill-down).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views_dashboard_aperto.fn_dash_aperto_documenti")
-    def test_documenti_solo_aperti_false(self, mocked_fn, _mock_auth):
+    def test_documenti_ritardo_giorni(self, mocked_fn, _mock_auth):
         mocked_fn.return_value = _DOCUMENTI_RESPONSE
-        self.client.get(f"{self._URL}?solo_aperti=false")
+        self.client.get(f"{self._URL}?ritardo_giorni=60")
         kwargs = mocked_fn.call_args.kwargs
-        self.assertFalse(kwargs["solo_aperti"])
+        self.assertEqual(kwargs["ritardo_giorni"], 60)
 
     # Scopo: page/page_size vengono inoltrati al service.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -170,6 +172,18 @@ class DashboardApertoDocumentiApiTests(JwtMockedApiTest):
         kwargs = mocked_fn.call_args.kwargs
         self.assertEqual(kwargs["page"], 3)
         self.assertEqual(kwargs["page_size"], 10)
+
+    # Scopo: order_by/order_dir (ordinamento colonne, convenzione standard)
+    #        inoltrati al service; la whitelist/validazione e' definizione unica
+    #        del service.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_dashboard_aperto.fn_dash_aperto_documenti")
+    def test_documenti_ordinamento_parametri(self, mocked_fn, _mock_auth):
+        mocked_fn.return_value = _DOCUMENTI_RESPONSE
+        self.client.get(f"{self._URL}?order_by=cliente_display&order_dir=asc")
+        kwargs = mocked_fn.call_args.kwargs
+        self.assertEqual(kwargs["order_by"], "cliente_display")
+        self.assertEqual(kwargs["order_dir"], "asc")
 
     # Scopo: Lo scope emittente e' interamente DB-side (RLS invoker): la view
     #        NON passa auth_user_id.

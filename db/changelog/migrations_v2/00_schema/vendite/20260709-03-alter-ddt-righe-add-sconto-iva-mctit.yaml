@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C8 — Snapshot A-2 completo su ddt_righe
+#   (brief-db-ddt-vendita-evasione-e-stati §3 / §4.4).
+#
+# vendite.ordini_righe porta sconto_percentuale e iva_id a livello di riga;
+# vendite.ddt_righe NO. La fn di evasione fn_genera_ddt_da_ordine (A-2) copia
+# lo snapshot della riga ordine: senza queste colonne lo sconto e l'IVA di riga
+# andrebbero persi. Si allineano le due colonne a ddt_righe cosi' la copia A-2
+# e' 1:1 anche su questi campi (i componenti CASO A erano gia' 1:1).
+#
+# Tipi allineati a ordini_righe/*_componenti: sconto_percentuale numeric,
+# iva_id INTEGER (FK -> config.iva.id, come fk_ddtrighe_comp_iva). Entrambe
+# nullable (righe senza sconto / IVA derivata a valle dal push commessa).
+#
+# Progetto non in produzione: nessun backfill necessario (nessuna riga DDT
+# reale ancora esistente). L'indice FK lo gestisce dbops.apply_fk_index_policy
+# (90_end), non manuale.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260709-03-alter-ddt-righe-add-sconto-iva-mctit.yaml
+
+  - changeSet:
+      id: 20260709-03-alter-ddt-righe-add-sconto-iva
+      author: mctit
+      comment: >
+        C8: aggiunge vendite.ddt_righe.sconto_percentuale (numeric) e
+        vendite.ddt_righe.iva_id (integer, FK config.iva) per rendere la copia
+        snapshot A-2 da ordine 1:1 anche su sconto e IVA di riga. Entrambe
+        nullable, nessun backfill (nessun DDT reale ancora).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ddt_righe
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: ddt_righe
+                    columnName: iva_id
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: ddt_righe
+            columns:
+              - column:
+                  name: sconto_percentuale
+                  type: numeric
+                  remarks: >-
+                    Sconto percentuale di riga (snapshot copiato dalla riga
+                    ordine, A-2). NULL/0 = nessuno sconto.
+              - column:
+                  name: iva_id
+                  type: integer
+                  remarks: >-
+                    IVA di riga (snapshot copiato dalla riga ordine, A-2).
+                    FK -> config.iva.id. Aliquota derivata da config.iva.
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ddt_righe
+            baseColumnNames: iva_id
+            constraintName: fk_ddt_vendita_r_iva
+            referencedTableSchemaName: config
+            referencedTableName: iva
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN vendite.ddt_righe.sconto_percentuale IS
+                'Sconto percentuale di riga (snapshot A-2 da ordini_righe). rev 2026-07-09.';
+              COMMENT ON COLUMN vendite.ddt_righe.iva_id IS
+                'IVA di riga (snapshot A-2 da ordini_righe; FK config.iva). rev 2026-07-09.';
+
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: ddt_righe
+            constraintName: fk_ddt_vendita_r_iva
+        - dropColumn:
+            schemaName: vendite
+            tableName: ddt_righe
+            columnName: iva_id
+        - dropColumn:
+            schemaName: vendite
+            tableName: ddt_righe
+            columnName: sconto_percentuale

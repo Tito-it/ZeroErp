@@ -1361,8 +1361,9 @@ a {
  * solo variabili tema, nessun colore hardcoded.
  * =================================================================== */
 
-/* --- DonutTransito (core/components/charts) --- */
-.app-donut-transito {
+/* --- Donut dashboard (DonutBase + skin DonutTransito/DonutFasi,
+ *     core/components/charts) --- */
+.app-donut {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1370,13 +1371,13 @@ a {
   width: 100%;
 }
 
-.app-donut-transito-plot {
+.app-donut-plot {
   position: relative;
   flex: none;
 }
 
 /* Percentuale al centro del donut (overlay HTML, non canvas). */
-.app-donut-transito-center {
+.app-donut-center {
   position: absolute;
   inset: 0;
   display: flex;
@@ -1385,44 +1386,86 @@ a {
   pointer-events: none;
 }
 
-.app-donut-transito-pct {
+.app-donut-center-value {
   font-size: 1.3rem;
   font-weight: 700;
   color: var(--app-text-color);
   font-variant-numeric: tabular-nums;
 }
 
-.app-donut-transito-pct-empty {
+.app-donut-center-value--empty {
   color: var(--app-text-muted);
   font-weight: 400;
 }
 
-.app-donut-transito-legend {
+/* Totale sotto il donut (centerBelow): didascalia headline, mai sovrapposta
+   all'anello — leggibile su qualsiasi colore fase. */
+.app-donut-total {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.app-donut-total-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--app-text-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-donut-total-value--empty {
+  color: var(--app-text-muted);
+  font-weight: 400;
+}
+
+.app-donut-legend {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
   width: 100%;
 }
 
-.app-donut-transito-legend-row {
+.app-donut-legend-row {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   font-size: var(--app-font-size-sm);
 }
 
-.app-donut-transito-dot {
+/* Legenda interattiva (drill-down per fase): la riga e' un target cliccabile —
+   cursore, sfondo hover, focus visibile da tastiera, label sottolineata. */
+.app-donut-legend-row--clickable {
+  cursor: pointer;
+  padding: 0.1rem 0.3rem;
+  margin: 0 -0.3rem;
+  border-radius: var(--app-border-radius, 6px);
+}
+
+.app-donut-legend-row--clickable:hover {
+  background: var(--app-table-hover-bg);
+}
+
+.app-donut-legend-row--clickable:hover .app-donut-label {
+  text-decoration: underline;
+}
+
+.app-donut-legend-row--clickable:focus-visible {
+  outline: 2px solid var(--app-primary-color, #2563eb);
+  outline-offset: -2px;
+}
+
+.app-donut-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   flex: none;
 }
 
-.app-donut-transito-label {
+.app-donut-label {
   color: var(--app-text-muted);
 }
 
-.app-donut-transito-value {
+.app-donut-value {
   margin-left: auto;
   color: var(--app-text-color);
   font-variant-numeric: tabular-nums;
@@ -1584,7 +1627,7 @@ a {
 /* Modalita' 'fraction' di DonutTransito (aree a conteggi, D-2/D-3): frazione
  * n/n al posto del grafico. L'altezza arriva dalla prop `size` inline (stessa
  * del plot donut) per allineare le card euro e count senza numeri magici. */
-.app-donut-transito-fraction {
+.app-donut-fraction {
   display: flex;
   align-items: center;
   justify-content: center;

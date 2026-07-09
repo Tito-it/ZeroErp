@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Gate emissione DDT — funzione + wiring trigger  (brief §6).
+#
+# NB (discrepanza capitolato): l'analisi §2.1 dava la fn
+# vendite.trgfn_ddt_guard_transizione_approvazione come "definita ma non
+# agganciata". Sul DB reale la funzione NON esiste (mai creata da una migration
+# / DB di lavoro ricostruito). Quindi questo changeSet la CREA (corpo dalla doc
+# auto-gen) e la aggancia. CREATE OR REPLACE idempotente: se in futuro esistesse
+# gia', la riallinea senza rompere.
+#
+# La fn blocca la transizione a EMESSO se esistono componenti BoM CASO A con
+# stato_approvazione_prezzo=PENDING (E_COMPONENTE_PREZZO_PENDENTE) o
+# prezzo_unitario NULL (E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE). Si auto-gatta a
+# EMESSO (RETURN NEW se stato != EMESSO). Trigger BEFORE UPDATE OF stato_doc_ddt_id.
+# Simmetrico al guard testata del preventivo e al guard approvazione ordini.
+#
+# Convivenza: trigger DISTINTO da trg_ddt_a10_guard_transizione_upd (20260709-04,
+# grafo transizioni). Entrambi _a10_ BEFORE UPDATE OF stato_doc_ddt_id: concern
+# diversi, nessuna sovrapposizione di regola. Codici errore gia' registrati
+# (usati dai guard preventivo/ordine).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260709-05-wire-trgfn-ddt-guard-approvazione-mctit.yaml
+
+  - changeSet:
+      id: 20260709-05-wire-trgfn-ddt-guard-approvazione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea vendite.trgfn_ddt_guard_transizione_approvazione (assente sul DB
+        malgrado l'analisi §2.1) e la aggancia via trg_ddt_a10_guard_approvazione_upd
+        (BEFORE UPDATE OF stato_doc_ddt_id). Gate emissione BoM CASO A (§6).
+        Convive col guard grafo transizioni (20260709-04).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ddt
+            - tableExists:
+                schemaName: vendite
+                tableName: ddt_righe_componenti
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_transizione_approvazione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: blocca la transizione a EMESSO di un DDT con componenti
+              --   BoM CASO A in workflow approvazione prezzo (PENDING) o con
+              --   prezzo_unitario IS NULL (pending valorizzazione).
+              DECLARE
+                  v_stato_codice config.stati_doc_ddt.codice_interno%TYPE;
+              BEGIN
+                  SELECT sdd.codice_interno INTO v_stato_codice
+                    FROM config.stati_doc_ddt sdd
+                   WHERE sdd.id = NEW.stato_doc_ddt_id;
+
+                  IF v_stato_codice IS DISTINCT FROM 'EMESSO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Check 1: componenti BoM CASO A con prezzo PENDING approvazione
+                  IF EXISTS (
+                      SELECT 1 FROM vendite.ddt_righe dr
+                        JOIN vendite.ddt_righe_componenti drc
+                          ON drc.riga_ddt_id = dr.id
+                       WHERE dr.ddt_id = NEW.id
+                         AND drc.stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_COMPONENTE_PREZZO_PENDENTE',
+                          jsonb_build_object('ddt_id', NEW.id,
+                              'hint', 'Componente BoM CASO A in attesa di approvazione prezzo. '
+                                   || 'Attendi esito su tutti i componenti prima di emettere.'),
+                          NULL::uuid, NEW.id::text
+                      );
+                  END IF;
+
+                  -- Check 2: componenti BoM CASO A con prezzo NULL (pending valorizzazione)
+                  IF EXISTS (
+                      SELECT 1 FROM vendite.ddt_righe dr
+                        JOIN vendite.ddt_righe_componenti drc
+                          ON drc.riga_ddt_id = dr.id
+                       WHERE dr.ddt_id = NEW.id
+                         AND drc.attivo = TRUE
+                         AND drc.prezzo_unitario IS NULL
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE',
+                          jsonb_build_object('ddt_id', NEW.id,
+                              'hint', 'Uno o piu'' componenti BoM CASO A hanno prezzo non valorizzato. '
+                                   || 'Valorizzare tutti i prezzi prima di emettere il DDT.'),
+                          NULL::uuid, NEW.id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_guard_transizione_approvazione()
+              IS 'Trigger function: blocca transizione DDT a EMESSO se componenti BoM CASO A hanno stato PENDING approvazione (E_COMPONENTE_PREZZO_PENDENTE) o prezzo NULL (E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE). Creata+agganciata 2026-07-09 (assente sul DB).';
+
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_approvazione_upd
+                  ON vendite.ddt;
+
+              CREATE TRIGGER trg_ddt_a10_guard_approvazione_upd
+                  BEFORE UPDATE OF stato_doc_ddt_id
+                  ON vendite.ddt
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_ddt_guard_transizione_approvazione();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_approvazione_upd
+                  ON vendite.ddt;
+              DROP FUNCTION IF EXISTS vendite.trgfn_ddt_guard_transizione_approvazione();

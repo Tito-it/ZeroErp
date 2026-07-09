@@ -24,6 +24,8 @@
 | factor_to_base | numeric | NO | 1 |
 | attivo | boolean | NO | true |
 | prezzo_unitario | numeric | YES |  |
+| sconto_percentuale | numeric | YES |  |
+| iva_id | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -31,6 +33,7 @@
 | CHECK | k_ddt_righe_qta_operativa_pos |  |
 | CHECK | k_ddt_righe_qta_pos |  |
 | FOREIGN KEY | fk_ddt_vendita_r_articolo | articolo_id |
+| FOREIGN KEY | fk_ddt_vendita_r_iva | iva_id |
 | FOREIGN KEY | fk_ddt_vendita_r_testata | ddt_id |
 | FOREIGN KEY | fk_ddt_vendita_r_uom_operativa | uom_operativa_id |
 | PRIMARY KEY | pk_ddtvr | id |

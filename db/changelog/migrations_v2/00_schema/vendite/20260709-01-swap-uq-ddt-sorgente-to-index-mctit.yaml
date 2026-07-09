@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# A-1 Multi-DDT per ordine (brief-db-ddt-vendita-evasione-e-stati §3).
+#
+# Oggi vendite.ddt ha UNIQUE uq_ddt_v_sorgente_fk su
+#   (sorgente_tipo_id, sorgente_uid) WHERE sorgente_tipo_id IS NOT NULL
+# -> un solo DDT per ordine sorgente. Le consegne parziali richiedono
+# N DDT per ordine: si rimuove l'unicita' sulla testata e la si sostituisce
+# con un indice NON-unique (stesse colonne, stesso predicato parziale) per
+# preservare la performance dei lookup DDT-per-ordine e della MV mv_ddt_ordini.
+#
+# L'unicita' del legame resta garantita a valle dal fulfillment riga-riga
+# (uq_ordini_r_ful_v_pair su ordini_righe_fulfillment) e dagli altri invarianti
+# di testata (uq_ddt_v_anno_serie_numero, uq_ddt_vendita_uid) che NON si toccano.
+#
+# Progetto non in produzione: breaking change ammesso (nessuna fase di
+# compatibilita'). Vedi analisi-ddt-vendita-stato-e-sviluppi §3.1 (A-1).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260709-01-swap-uq-ddt-sorgente-to-index-mctit.yaml
+
+  - changeSet:
+      id: 20260709-01-swap-uq-ddt-sorgente-to-index
+      author: mctit
+      comment: >
+        A-1 multi-DDT: rimuove l'indice UNIQUE parziale uq_ddt_v_sorgente_fk su
+        vendite.ddt(sorgente_tipo_id, sorgente_uid) e lo sostituisce con l'indice
+        NON-unique ix_ddt_v_sorgente (stesse colonne, stesso predicato). Abilita
+        N DDT per ordine sorgente; unicita' del legame garantita dal fulfillment
+        riga-riga.
+      preConditions:
+        # Solo la tabella e' prerequisito: il changeSet e' idempotente
+        # (DROP INDEX IF EXISTS + CREATE INDEX IF NOT EXISTS), quindi funziona
+        # sia che uq_ddt_v_sorgente_fk esista ancora sia che sia gia' stato
+        # sostituito. NB: indexExists non era schema-qualificato -> cercava
+        # nello schema di default e falliva (l'indice e' in vendite).
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: ddt
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rimuove l'unicita' "un DDT per sorgente" (A-1).
+              DROP INDEX IF EXISTS vendite.uq_ddt_v_sorgente_fk;
+
+              -- Indice non-unique per il lookup DDT-per-ordine e la MV.
+              CREATE INDEX IF NOT EXISTS ix_ddt_v_sorgente
+                  ON vendite.ddt (sorgente_tipo_id, sorgente_uid)
+                  WHERE sorgente_tipo_id IS NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_ddt_v_sorgente;
+              CREATE UNIQUE INDEX uq_ddt_v_sorgente_fk
+                  ON vendite.ddt (sorgente_tipo_id, sorgente_uid)
+                  WHERE sorgente_tipo_id IS NOT NULL;

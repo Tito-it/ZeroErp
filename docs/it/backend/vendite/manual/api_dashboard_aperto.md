@@ -1,26 +1,28 @@
-# API Situazione aperta (Django)
+# API Situazione aperta — serbatoio pre-commessa (Django)
 
 ## Scopo
 
-Espone la Situazione aperta dei cruscotti fatturazione: riepilogo dello stock
-di documenti per `area × fase` normalizzata (senza asse temporale) e lista
-paginata dei documenti, ordinata per "in essere da" (i più vecchi prima).
+Espone la **Situazione aperta v2** (serbatoio pre-commessa) dei cruscotti
+fatturazione: i documenti **aperti-non-chiusi** che, se conclusi, andrebbero
+in commessa/fatturazione ma non ci sono ancora arrivati. Riepilogo dello stock
+per `area × fase` normalizzata (senza asse temporale) e lista paginata dei
+documenti, ordinata per "in essere da" (i più vecchi prima), con soglia
+opzionale **"aperti da oltre N giorni"** sul solo drill-down.
 
 ## Contesto
 
 Fase 3 BE del brief
 [brief-design-fatturazione-due-lenti](../../../dev/work-in-progress/brief-design-fatturazione-due-lenti.md)
-§6-bis (substrato DB in
-[brief-db-situazione-aperta](../../../dev/work-done/brief-db-situazione-aperta.md),
-migrations `20260707-03..06`): due endpoint GET **sottili** sopra le
+**§6-ter (DL-14..18)** (substrato DB v2 in
+[brief-db-situazione-aperta-v2](../../../dev/work-done/brief-db-situazione-aperta-v2.md),
+changeset `20260708-03/04`, PR #944): due endpoint GET **sottili** sopra le
 proiezioni read-only `vendite.vw_dash_aperto_riepilogo` (celle `area × fase`)
-e `vendite.vw_dash_aperto_documenti` (union dei resolver, 4 aree documento,
-`NOT is_abortito`, **tutte le fasi** — DL-13: perimetro unico di card e
-drill-down, il BE non replica filtri). Sostituisce i 2 endpoint
-`dashboard-fatturazione/{,fermi/}` della 5-card (asse mensile dismesso).
-Nessuna logica di dominio in Python: popolazione, `fase` (da
-`config.stati_doc_*`), `is_aperto` (`is_transitato IS DISTINCT FROM true`: il
-giudizio **sospeso** dei contratti conta aperto, DL-12) vivono nelle viste.
+e `vendite.vw_dash_aperto_documenti` (union dei resolver, 4 aree documento).
+**Perimetro serbatoio interamente DB-side** (DL-15): la vista v2 filtra
+`is_transitato IS DISTINCT FROM true AND fase <> 'CHIUSO'` — perimetro unico di
+card e drill-down, il BE **non** replica filtri (via il vecchio toggle
+`solo_aperti`). Nessuna logica di dominio in Python: popolazione, `fase` (da
+`config.stati_doc_*`), esclusione transitati/chiusi vivono nelle viste.
 Livello area `LETTURA` sufficiente; nessuna azione di processo.
 
 ```text
@@ -47,14 +49,25 @@ Nessun parametro.
   un'area sconosciuta — o `COMMESSE`, esclusa dal WHERE della vista (coperta
   dalla Lente 1) — dà lista vuota, mai 400.
 - `fase` (opzionale, case-insensitive; assente = tutte): vocabolario
-  `config.stati_doc_*.fase` (`APERTO | IN_ATTESA | IN_CORSO | CHIUSO`).
-  **Non whitellistato di proposito** (coerenza fail-visible col riepilogo, che
-  accoda le fasi fuori whitelist): una fase futura resta drillabile senza
+  `config.stati_doc_*.fase` — **3 fasi vive** `APERTO | IN_ATTESA | IN_CORSO`
+  (via `CHIUSO`: fuori perimetro serbatoio). **Non whitellistato di proposito**
+  (coerenza fail-visible col riepilogo): una fase futura resta drillabile senza
   toccare il BE; una fase sconosciuta dà lista vuota, mai 400.
-- `solo_aperti` (opzionale, default `true`): solo documenti non completamente
-  transitati (`is_aperto`). `false` = fotografia completa dello stock
-  (inclusi i transitati/chiusi). **Strict**: un token non riconosciuto dà 400
-  (`qp_bool_optional`, niente coercion silenziosa a true).
+- `ritardo_giorni` (opzionale, intero > 0; assente = nessuna soglia): filtro
+  **"aperti da oltre N giorni"** su data documento (`data_riferimento <= oggi −
+  N`, DL-17). Soglia del **solo drill-down**: le card del riepilogo restano la
+  fotografia completa. **Strict**: non numerico → 400 (`qp_int_optional`);
+  intero `<= 0` → 400 (`E_VENDITE_VALIDATION`, niente normalizzazione
+  silenziosa).
+- `order_by` / `order_dir` (opzionali): **ordinamento colonne server-side**
+  (convenzione delle liste standard, es. clienti/soggetti). `order_by` in
+  whitelist — `anzianita_giorni` (default, "aperto da") | `codice` |
+  `cliente_display` | `valore_totale`; `order_dir` = `asc` | `desc` (default
+  `desc` su `anzianita_giorni`: i più "in essere da" prima). Server-side perché
+  la lista è paginata: l'ordine è corretto su **tutte** le pagine, non solo su
+  quella visibile. Colonna fuori whitelist o direzione ≠ asc/desc → 400
+  (`E_VENDITE_VALIDATION`, whitelist definita una volta nel service). Tiebreak
+  stabile `(area, documento_id)` per paginazione deterministica.
 - `page` / `page_size` (opzionali): paginazione standard (default 1/50, max 200).
 
 ## Output
@@ -65,68 +78,69 @@ Nessun parametro.
 {
   "data": {
     "aree": [
-      { "area": "PREVENTIVI", "n_documenti": 5, "n_aperti": 4,
-        "valore_totale": "2000.50", "valore_transitato": "300.00",
+      { "area": "PREVENTIVI", "n_documenti": 5, "valore_totale": "2000.50",
         "fasi": [
-          { "fase": "APERTO", "n_documenti": 3, "n_aperti": 3,
-            "valore_totale": "1500.00", "valore_transitato": "0" }
+          { "fase": "APERTO", "n_documenti": 3, "valore_totale": "1500.00" }
         ] }
     ],
-    "fasi": ["APERTO", "IN_ATTESA", "IN_CORSO", "CHIUSO"]
+    "fasi": ["APERTO", "IN_ATTESA", "IN_CORSO"]
   }
 }
 ```
 
 - **4 aree sempre presenti** nell'ordine del funnel (`PREVENTIVI, ORDINI,
-  OFFERTE, CONTRATTI`), ognuna con la **griglia delle 4 fasi sempre presenti**
-  nell'ordine del ciclo di vita (`APERTO, IN_ATTESA, IN_CORSO, CHIUSO`) e zeri
-  espliciti — DL-13: la griglia è neutra, il FE decide quali card mostrare.
-  Aree o fasi **fuori whitelist** emesse dalla vista vengono **accodate dopo le
-  note**, mai perse in silenzio; il vocabolario `fasi` top-level alimenta i
-  filtri FE (nessuna copia FE, nessun contrabbando dalla griglia di un'area);
-  un'area extra che porta **valori** li espone (decisione data-driven, non la
-  whitelist euro statica).
-- Totali per area = somma delle fasi (su Decimal). Misura mista (DL-11,
-  conferma D-2/D-3/D-4): aree euro (`PREVENTIVI`/`ORDINI`) con
-  `valore_totale`/`valore_transitato` come stringa (`"0"` se vuote); aree a
-  conteggi (`OFFERTE`/`CONTRATTI`) con valori `null`. Il valore residuo aperto
-  è `valore_totale − valore_transitato` (i documenti completamente transitati
-  contribuiscono 0).
+  OFFERTE, CONTRATTI`), ognuna con la **griglia delle 3 fasi vive sempre
+  presenti** nell'ordine della maturità verso la commessa (`APERTO, IN_ATTESA,
+  IN_CORSO`) e zeri espliciti — DL-13: la griglia è neutra, il FE decide quali
+  card mostrare. Aree o fasi **fuori whitelist** emesse dalla vista vengono
+  **accodate dopo le note**, mai perse in silenzio; il vocabolario `fasi`
+  top-level alimenta i filtri FE (nessuna copia FE, nessun contrabbando dalla
+  griglia di un'area); un'area extra che porta **valori** li espone (decisione
+  data-driven, non la whitelist euro statica).
+- Totali per area = somma delle fasi (su Decimal). Misura mista (DL-11/16,
+  conferma D-2/D-3/D-4): aree euro (`PREVENTIVI`/`ORDINI`) con `valore_totale`
+  come stringa (`"0"` se vuote); aree a conteggi (`OFFERTE`/`CONTRATTI`) con
+  `valore_totale` `null` (il FE le legge da `valore_totale !== null`).
 
 ### Lista documenti
 
 Envelope paginato standard (`count/page/page_size/total_pages/results`); ogni
 riga: `area`, chiavi documento (`documento_id`, `documento_uid`, `codice`),
 `cliente_display`, `fase`, `stato_codice_interno`, `stato_codice`,
-`valore_totale`/`valore_transitato` (NULL per aree a conteggi),
-`unita_totali`/`unita_transitate`, `is_transitato` (**NULL = giudizio
-sospeso**, contratti fino al push ricorrente), `is_aperto`, `motivo_fermo`
-(può essere NULL: qui è un hint, non il criterio di popolazione),
-`data_riferimento` ("in essere da": data documento, `valido_dal` per i
-contratti). **Ordinamento BE-side** (le viste non garantiscono ORDER):
-`data_riferimento ASC NULLS LAST`, poi `valore_totale DESC NULLS LAST, area,
-documento_id`.
+`valore_totale` (NULL per aree a conteggi), `unita_totali`, **`anzianita_giorni`**
+(derivata BE in SELECT: `GREATEST(current_date − data_riferimento, 0)`, come il
+gemello Backlog — alimenta la colonna "aperto da N gg" e allinea la lettura al
+filtro `ritardo_giorni`), `motivo_fermo` (può essere NULL: qui è un hint, non il
+criterio di popolazione), `data_riferimento` ("in essere da": data documento,
+`valido_dal` per i contratti). **Ordinamento BE-side** (le viste non
+garantiscono ORDER): default per `data_riferimento ASC NULLS LAST`, poi
+`valore_totale DESC NULLS LAST, area, documento_id`; con `order_by`/`order_dir`
+(vedi Input) l'ORDER BY diventa `<colonna whitelist> <asc|desc> NULLS LAST` +
+tiebreak `area, documento_id`. Colonna e direzione **whitelistate** (mai input
+grezzo nell'ORDER BY).
 
 ## Regole
 
-- **Popolazione = stock documenti vivi** (§6-bis): union 4 aree documento,
-  esclusi gli abortiti (`NOT is_abortito` — l'esclusione D-6 vive nella vista
-  stock: i resolver non-contratti *marcano* soltanto), **tutte le fasi**
-  incluse le 🟢 fisiologiche che il Backlog esclude. Complementare alle due
-  lenti: Lente 1 = mese di competenza, Lente 2 = lavoro da sbloccare,
-  Situazione aperta = fotografia della pipeline.
-- **Contratti = consistenza pura** (DL-12): resolver de-esploso (1 riga per
-  contratto vivo), giudizio di transito sospeso (`is_transitato`/`motivo_fermo`
-  NULL) finché non esiste il push ricorrente — un contratto conta sempre
-  aperto, mai "fermo" (falso-allarme perenne evitato).
+- **Popolazione = serbatoio pre-commessa** (§6-ter, DL-14/15): union 4 aree
+  documento con perimetro **aperti-non-chiusi** — `is_transitato IS DISTINCT
+  FROM true` (esce l'accettato-già-smistato, transitato-non-chiuso) **AND**
+  `fase <> 'CHIUSO'` (esce il preventivo EVASO-con-riga-residua,
+  chiuso-non-transitato); abortiti esclusi a monte (`NOT is_abortito`). È il
+  pezzo **a monte** della Lente 1 Competenza (che parte dalla commessa); resta
+  distinto dalla Lente 2 Backlog (stesso insieme, tagli diversi: Backlog = cosa
+  sbloccare ora; Situazione aperta = dove sono tutti gli aperti, per fase).
+- **Card = fotografia completa; filtro solo-lista** (DL-17): il riepilogo NON è
+  toccato da `ritardo_giorni` (le card fotografano tutto il serbatoio); la
+  soglia "aperti da oltre N giorni" agisce solo sul drill-down.
+- **Contratti** (DL-18): giudizio di transito sospeso → restano sempre aperti
+  (`DRAFT` + `ATTIVO`; `CESSATO` esce con `fase <> CHIUSO`). `ATTIVO` figura
+  come `IN_CORSO` (astrazione fase normalizzata).
 - **Anti-drift fail-visible**: fasi/aree sconosciute accodate nel riepilogo e
   **passthrough su entrambi i filtri** `area`/`fase` del drill-down (mai 400,
   mai perse: la card accodata resta drillabile).
-- **Scope emittente — interamente DB-side**: RLS invoker sulle 4 aree
-  documento (fix V-1 `20260706-15`; il `security_invoker` perso dal resolver
-  contratti col `20260707-03` è stato **ripristinato e verificato** — brief DB
-  §5, con guard pgTAP su `pg_class.reloptions`). Il BE **non** passa alcun
-  `auth_user_id`.
+- **Scope emittente — interamente DB-side**: RLS invoker sulle 4 aree documento
+  (`security_invoker=on` su entrambe le viste v2, verificato con guard pgTAP su
+  `pg_class.reloptions`). Il BE **non** passa alcun `auth_user_id`.
 - Una **sola valutazione della union** per pagina (`_query_paged_view`: CTE
   materializzata + `COUNT(*) OVER()` + **offset clampato all'ultima pagina in
   SQL**). Il rientro da una pagina stantia (lista ridotta da altri utenti) non
@@ -136,26 +150,26 @@ documento_id`.
 
 ## Dipendenze DB
 
-- `vendite.vw_dash_aperto_documenti` — doc:
+- `vendite.vw_dash_aperto_documenti` (v2) — doc:
   `docs/it/dbzero/vendite/manual/vw_dash_aperto_documenti.md`
-- `vendite.vw_dash_aperto_riepilogo` — doc:
+- `vendite.vw_dash_aperto_riepilogo` (v2) — doc:
   `docs/it/dbzero/vendite/manual/vw_dash_aperto_riepilogo.md`
-- `vendite.vw_dash_fatturazione_contratti` de-esploso (migration `20260707-03`)
-- `vendite.vw_dash_fatturazione_mensile` **dismessa** (migration `20260707-06`)
 
 ## Note di migrazione
 
-- Sostituisce `api_dashboard_fatturazione.md` (endpoint
-  `dashboard-fatturazione/{,fermi/}` ritirati insieme a
-  `views_dashboard_fatturazione.py`, `fn_dash_fatturazione_*`,
-  `list_dash_fatturazione_*` e relativi test).
-- Substrato DB applicato con migrations `20260707-03..06` (pgTAP
-  `test-vw-dash-aperto-v1.sql` plan 10 + `test-vw-dash-fatturazione-v1.sql`
-  rimaneggiato plan 28, verdi).
+- **v2 (serbatoio pre-commessa)** su v1: eliminato il concetto *transitato*
+  (in una vista senza asse temporale totalizzava dalla notte dei tempi roba
+  già passata, non azionabile). Rimossi dagli endpoint il toggle `solo_aperti`
+  e i campi `n_aperti`/`valore_transitato`/`unita_transitate`/`is_transitato`/
+  `is_aperto`; aggiunti il filtro `ritardo_giorni` e il campo `anzianita_giorni`.
+- Substrato DB v2 applicato con changeset `20260708-03/04` (PR #944): viste
+  ristrette agli aperti-non-chiusi + drop colonne transitato (DROP+CREATE
+  ordinato, non `CREATE OR REPLACE`), pgTAP `test-vw-dash-security-invoker.sql`
+  (plan 14, verdi).
 - Test: `apps/vendite/tests/api/test_dashboard_aperto_api.py` (9 casi) +
-  `apps/vendite/tests/services/test_dashboard_aperto_service.py` (12 casi),
+  `apps/vendite/tests/services/test_dashboard_aperto_service.py` (16 casi),
   tutti con mock (CI-safe).
 - FE (Fase 3): rotta `/vendite/situazione-aperta` (`SituazioneApertaView.vue`,
-  store `dashboardAperto.js`, severity `faseDocumentoSeverity`); vocabolari
-  i18n `motivo_fermo`/`area_*`/`fase_*` ricollocati nel gruppo condiviso
+  store `dashboardAperto.js`, severity `faseDocumentoSeverity`, donut per fase
+  `DonutFasi` su `DonutBase`); vocabolari i18n nel gruppo condiviso
   `dash_comune` (riusato dal Backlog).

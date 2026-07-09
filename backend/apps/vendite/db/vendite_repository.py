@@ -60,16 +60,15 @@ DASH_APERTO_AREE: tuple[str, ...] = (
     "CONTRATTI",
 )
 
-# Fasi normalizzate della proiezione stato dominio (config.stati_doc_*.fase),
-# nell'ordine del ciclo di vita documento (DL-10): in lavorazione interna →
-# palla al cliente → avanzato → concluso. Non tutte le aree emettono tutte
-# le fasi (es. ORDINI non ha IN_ATTESA): il pivot le espone comunque tutte
-# (griglia simmetrica, il FE decide quali card mostrare — DL-13).
+# Fasi VIVE del serbatoio pre-commessa (v2, DL-15/16): solo aperti-non-chiusi
+# → niente CHIUSO. Ordine = maturita' verso la commessa (DL-10): bozza interna
+# → palla al cliente → da lavorare. Non tutte le aree emettono tutte le fasi
+# (es. ORDINI non ha IN_ATTESA): il pivot le espone comunque tutte (griglia
+# simmetrica, il FE decide quali card mostrare — DL-13).
 DASH_APERTO_FASI: tuple[str, ...] = (
     "APERTO",
     "IN_ATTESA",
     "IN_CORSO",
-    "CHIUSO",
 )
 
 # Stadi del funnel Lente 1 Competenza, nell'ordine commessa → fattura (brief
@@ -287,22 +286,21 @@ class VenditeRepository:
             )
         return result, total_count
 
-    # Scopo: Restituisce le celle non vuote (area × fase) dello stock
-    #        Situazione aperta. Il completamento a griglia 4 aree × 4 fasi
+    # Scopo: Restituisce le celle non vuote (area × fase) del serbatoio
+    #        pre-commessa. Il completamento a griglia 4 aree × 3 fasi
     #        (celle vuote = zeri, DL-13) e' a carico del service — qui NON si
     #        duplica, si legge solo cio' che esiste.
-    # Perimetro: sola lettura su vw_dash_aperto_riepilogo (security_invoker →
-    #        la RLS emittente sulle 4 aree documento filtra da sola).
-    # Risultato: lista piatta DashApertoRiepilogoRow (≤ 16 righe).
+    # Perimetro: sola lettura su vw_dash_aperto_riepilogo v2 (security_invoker →
+    #        la RLS emittente sulle 4 aree documento filtra da sola; perimetro
+    #        aperti-non-chiusi gia' nella vista, DL-15).
+    # Risultato: lista piatta DashApertoRiepilogoRow (≤ 12 righe).
     def list_dash_aperto_riepilogo(self) -> list[DashApertoRiepilogoRow]:
         sql = """
             SELECT
                 area,
                 fase,
                 n_documenti,
-                n_aperti,
-                valore_totale,
-                valore_transitato
+                valore_totale
             FROM vendite.vw_dash_aperto_riepilogo
             ORDER BY area, fase
         """
@@ -317,29 +315,42 @@ class VenditeRepository:
                     "area": str(row[0]),
                     "fase": str(row[1]),
                     "n_documenti": int(row[2]),
-                    "n_aperti": int(row[3]),
-                    "valore_totale": str(row[4]) if row[4] is not None else None,
-                    "valore_transitato": str(row[5]) if row[5] is not None else None,
+                    "valore_totale": str(row[3]) if row[3] is not None else None,
                 }
             )
         return result
 
-    # Scopo: Restituisce il drill-down paginato dello stock Situazione aperta
-    #        (vw_dash_aperto_documenti: 4 aree documento, NOT is_abortito,
-    #        tutte le fasi), con filtri opzionali area/fase e solo_aperti
-    #        (is_aperto: il giudizio sospeso dei contratti conta aperto).
-    #        Ordinamento BE-side per contratto (le viste non garantiscono
-    #        ORDER): "in essere da" piu' vecchio prima, poi valore.
+    # Scopo: Restituisce il drill-down paginato del serbatoio pre-commessa
+    #        (vw_dash_aperto_documenti v2: 4 aree documento, perimetro
+    #        aperti-non-chiusi lato vista), con filtri opzionali area/fase e
+    #        ritardo_giorni ("aperti da oltre N giorni" su data_riferimento,
+    #        DL-17). anzianita_giorni derivata in SELECT (GREATEST). Ordinamento
+    #        BE-side (le viste non garantiscono ORDER): piu' vecchio prima, poi
+    #        valore.
     # Perimetro: sola lettura; scope emittente interamente DB-side (RLS
     #        invoker sulle 4 aree documento). Una sola valutazione della
     #        union + clamp offset via _query_paged_view.
     # Risultato: tuple (lista DashApertoDocumentoRow, conteggio totale).
+    # Colonne ordinabili del drill-down Situazione aperta: chiave esposta al FE
+    # (allineata al `field` della colonna DataTable) -> colonna della CTE
+    # `righe`. Whitelist: nell'ORDER BY entrano solo chiavi note + direzione
+    # ASC/DESC, mai input utente grezzo (no SQL injection). Convenzione
+    # order_by/order_dir come le liste standard (fn_search_soggetti_universale).
+    DASH_APERTO_SORT_COLUMNS = {
+        "anzianita_giorni": "anzianita_giorni",
+        "codice": "codice",
+        "cliente_display": "cliente_display",
+        "valore_totale": "valore_totale",
+    }
+
     def list_dash_aperto_documenti(
         self,
         *,
         area: str | None,
         fase: str | None,
-        solo_aperti: bool,
+        ritardo_giorni: int | None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[DashApertoDocumentoRow], int]:
@@ -351,8 +362,14 @@ class VenditeRepository:
         if fase is not None:
             conditions.append("d.fase = %s")
             params.append(fase)
-        if solo_aperti:
-            conditions.append("d.is_aperto")
+        # Filtro "aperti da oltre N giorni" su data documento (DL-17): soglia
+        # solo sul drill-down (le card restano la fotografia completa). Costo
+        # DB zero — nessuna funzione temporale sul totale delle card.
+        if ritardo_giorni is not None:
+            conditions.append(
+                "d.data_riferimento <= current_date - make_interval(days => %s)"
+            )
+            params.append(ritardo_giorni)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -367,24 +384,36 @@ class VenditeRepository:
                 d.stato_codice_interno,
                 d.stato_codice,
                 d.valore_totale,
-                d.valore_transitato,
                 d.unita_totali,
-                d.unita_transitate,
-                d.is_transitato,
-                d.is_aperto,
+                GREATEST((current_date - d.data_riferimento), 0) AS anzianita_giorni,
                 d.motivo_fermo,
                 d.data_riferimento
             FROM vendite.vw_dash_aperto_documenti d
             {where_clause}
         """
 
-        rows, total_count = self._query_paged_view(
-            select_sql=select_sql,
-            order_by="""
+        # ORDER BY server-side (corretto su TUTTE le pagine, non solo quella
+        # visibile): colonna dalla whitelist DASH_APERTO_SORT_COLUMNS + direzione
+        # ASC/DESC, con tiebreak stabile (area, documento_id) per paginazione
+        # deterministica. order_by assente/non ammesso -> ordine storico
+        # "in essere da" (i piu' vecchi prima).
+        sort_col = self.DASH_APERTO_SORT_COLUMNS.get(order_by or "")
+        if sort_col is not None:
+            direction = "DESC" if (order_dir or "").lower() == "desc" else "ASC"
+            order_clause = (
+                f"ORDER BY {sort_col} {direction} NULLS LAST, "
+                "area ASC, documento_id ASC"
+            )
+        else:
+            order_clause = """
             ORDER BY data_riferimento ASC NULLS LAST,
                      valore_totale DESC NULLS LAST,
                      area ASC, documento_id ASC
-            """,
+            """
+
+        rows, total_count = self._query_paged_view(
+            select_sql=select_sql,
+            order_by=order_clause,
             params=params,
             limit=limit,
             offset=offset,
@@ -403,14 +432,11 @@ class VenditeRepository:
                     "stato_codice_interno": None if row[6] is None else str(row[6]),
                     "stato_codice": None if row[7] is None else str(row[7]),
                     "valore_totale": str(row[8]) if row[8] is not None else None,
-                    "valore_transitato": str(row[9]) if row[9] is not None else None,
-                    "unita_totali": None if row[10] is None else int(row[10]),
-                    "unita_transitate": None if row[11] is None else int(row[11]),
-                    "is_transitato": None if row[12] is None else bool(row[12]),
-                    "is_aperto": bool(row[13]),
-                    "motivo_fermo": None if row[14] is None else str(row[14]),
+                    "unita_totali": None if row[9] is None else int(row[9]),
+                    "anzianita_giorni": int(row[10]),
+                    "motivo_fermo": None if row[11] is None else str(row[11]),
                     "data_riferimento": (
-                        row[15].isoformat() if row[15] is not None else None
+                        row[12].isoformat() if row[12] is not None else None
                     ),
                 }
             )
@@ -495,12 +521,27 @@ class VenditeRepository:
     # Perimetro: sola lettura su vw_dash_competenza_attivita (scope GUC
     #        fail-closed in vista); decode articolo via JOIN (display field).
     # Risultato: tuple (lista DashCompetenzaAttivitaRow, conteggio totale).
+    # Colonne ordinabili del drill-down attivita' Lente 1 Competenza: chiave FE
+    # (field colonna DataTable) -> espressione SQL. Note: la cella "articolo"
+    # mostra la descrizione (fallback codice) -> si ordina per il valore
+    # mostrato; la data si ordina per la COLONNA data (non la stringa gg/mm/aaaa
+    # del FE). Whitelist: nell'ORDER BY solo chiavi note + ASC/DESC (no injection).
+    DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS = {
+        "commessa_codice": "a.commessa_codice",
+        "cliente_display": "a.cliente_display",
+        "articolo_codice": "COALESCE(art.descrizione, art.codice)",
+        "data_attivita": "a.data_attivita",
+        "valore": "a.valore",
+    }
+
     def list_dash_competenza_attivita(
         self,
         *,
         competenza_mese: date,
         stadio: str | None,
         solo_ritardo: bool,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[DashCompetenzaAttivitaRow], int]:
@@ -516,6 +557,23 @@ class VenditeRepository:
             conditions.append("a.emessa_in_ritardo IS TRUE")
 
         where_clause = "WHERE " + " AND ".join(conditions)
+
+        # ORDER BY server-side (corretto su TUTTE le pagine): colonna dalla
+        # whitelist + direzione ASC/DESC, tiebreak stabile (commessa,
+        # commessa_attivita_id). order_by assente/non ammesso -> default storico
+        # (valore DESC).
+        sort_col = self.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS.get(order_by or "")
+        if sort_col is not None:
+            direction = "DESC" if (order_dir or "").lower() == "desc" else "ASC"
+            order_clause = (
+                f"ORDER BY {sort_col} {direction} NULLS LAST, "
+                "a.commessa_codice ASC, a.commessa_attivita_id ASC"
+            )
+        else:
+            order_clause = (
+                "ORDER BY a.valore DESC NULLS LAST, a.commessa_codice ASC, "
+                "a.commessa_attivita_id ASC"
+            )
 
         count_sql = f"""
             SELECT COUNT(*)
@@ -554,8 +612,7 @@ class VenditeRepository:
             LEFT JOIN catalogo.articoli art
                 ON art.id = a.articolo_id
             {where_clause}
-            ORDER BY a.valore DESC NULLS LAST, a.commessa_codice ASC,
-                     a.commessa_attivita_id ASC
+            {order_clause}
             LIMIT %s OFFSET %s
         """
 
@@ -731,11 +788,26 @@ class VenditeRepository:
     #        RLS invoker + scope GUC commesse). Una sola valutazione della
     #        union + clamp offset via _query_paged_view.
     # Risultato: tuple (lista DashBacklogDocumentoRow, conteggio totale).
+    # Colonne ordinabili del backlog fatturazione: chiave FE (field della colonna
+    # DataTable) -> colonna della CTE `righe`. Whitelist: nell'ORDER BY entrano
+    # solo chiavi note + direzione ASC/DESC (no SQL injection). Convenzione
+    # order_by/order_dir come le liste standard, gemella di DASH_APERTO_SORT_COLUMNS.
+    DASH_BACKLOG_SORT_COLUMNS = {
+        "anzianita_giorni": "anzianita_giorni",
+        "area": "area",
+        "codice": "codice",
+        "cliente_display": "cliente_display",
+        "valore_fermo": "valore_fermo",
+        "stato_codice": "stato_codice",
+    }
+
     def list_dash_backlog_documenti(
         self,
         *,
         classe: str | None,
         area: str | None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[DashBacklogDocumentoRow], int]:
@@ -772,13 +844,27 @@ class VenditeRepository:
             {where_clause}
         """
 
-        rows, total_count = self._query_paged_view(
-            select_sql=select_sql,
-            order_by="""
+        # ORDER BY server-side (corretto su TUTTE le pagine): colonna dalla
+        # whitelist DASH_BACKLOG_SORT_COLUMNS + direzione ASC/DESC, tiebreak
+        # stabile (area, documento_id). order_by assente/non ammesso -> ordine
+        # storico "fermo da" (i piu' vecchi prima).
+        sort_col = self.DASH_BACKLOG_SORT_COLUMNS.get(order_by or "")
+        if sort_col is not None:
+            direction = "DESC" if (order_dir or "").lower() == "desc" else "ASC"
+            order_clause = (
+                f"ORDER BY {sort_col} {direction} NULLS LAST, "
+                "area ASC, documento_id ASC"
+            )
+        else:
+            order_clause = """
             ORDER BY data_riferimento ASC NULLS LAST,
                      valore_fermo DESC NULLS LAST,
                      area ASC, documento_id ASC
-            """,
+            """
+
+        rows, total_count = self._query_paged_view(
+            select_sql=select_sql,
+            order_by=order_clause,
             params=params,
             limit=limit,
             offset=offset,

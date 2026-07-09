@@ -48,6 +48,8 @@ const store = useDashboardBacklogStore()
 const {
   classeSelezionata,
   areaSelezionata,
+  orderBy,
+  orderDir,
   classi,
   documenti,
   documentiCount,
@@ -56,6 +58,10 @@ const {
   documentiLoading,
   documentiLoaded,
 } = storeToRefs(store)
+
+// Ordinamento colonne per il DataTable (controllato): campo dallo store,
+// direzione nella convenzione PrimeVue (1 asc, -1 desc).
+const documentiSortOrder = computed(() => (orderDir.value === 'desc' ? -1 : 1))
 
 // Scopo: decodifiche i18n con fallback al codice grezzo (fail-visible per
 //        classi/motivi/aree future introdotte DB-side). Motivi e aree dai BB
@@ -123,6 +129,15 @@ function onAreaChange() {
 //        pagina nel BB usePagedDashFetch).
 function onDocumentiPage(event) {
   store.applyDocumentiPage(event)
+  loadDocumenti()
+}
+
+// Scopo: ordinamento colonne (server-side, lista lazy): aggiorna lo stato sort
+//        e ricarica dalla PAGINA 1 (come i cambi filtro). Corretto su tutte le
+//        pagine, non solo su quella visibile.
+function onDocumentiSort(event) {
+  store.applyDocumentiSort(event)
+  store.resetDocumenti()
   loadDocumenti()
 }
 
@@ -244,11 +259,14 @@ onActivated(() => {
           paginator-position="top"
           lazy
           :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
+          :sort-field="orderBy"
+          :sort-order="documentiSortOrder"
           class="app-datatable app-datatable--inner"
           striped-rows
           @page="onDocumentiPage"
+          @sort="onDocumentiSort"
         >
-          <Column field="anzianita_giorni" :header="t('dashboard_backlog.col_fermo_da')" style="width: 110px;">
+          <Column field="anzianita_giorni" :header="t('dashboard_backlog.col_fermo_da')" sortable style="width: 110px;">
             <template #body="{ data }">
               <span
                 class="app-dash-ritardo"
@@ -265,22 +283,22 @@ onActivated(() => {
               <Tag :value="classeLabel(data.classe)" :severity="classeBacklogSeverity(data.classe)" />
             </template>
           </Column>
-          <Column field="area" :header="t('dashboard_backlog.col_area')" style="width: 110px;">
+          <Column field="area" :header="t('dashboard_backlog.col_area')" sortable style="width: 110px;">
             <template #body="{ data }">
               {{ areaLabel(data.area) }}
             </template>
           </Column>
-          <Column field="codice" :header="t('dashboard_backlog.col_codice')" style="width: 130px;">
+          <Column field="codice" :header="t('dashboard_backlog.col_codice')" sortable style="width: 130px;">
             <template #body="{ data }">
               {{ data.codice ?? '—' }}
             </template>
           </Column>
-          <Column field="cliente_display" :header="t('dashboard_backlog.col_cliente')">
+          <Column field="cliente_display" :header="t('dashboard_backlog.col_cliente')" sortable>
             <template #body="{ data }">
               {{ data.cliente_display ?? '—' }}
             </template>
           </Column>
-          <Column field="valore_fermo" :header="t('dashboard_backlog.col_valore')" style="width: 120px;">
+          <Column field="valore_fermo" :header="t('dashboard_backlog.col_valore')" sortable style="width: 120px;">
             <template #body="{ data }">
               {{ data.valore_fermo !== null ? formatCurrency(data.valore_fermo) : '—' }}
             </template>
@@ -300,7 +318,7 @@ onActivated(() => {
               {{ data.azione ?? '—' }}
             </template>
           </Column>
-          <Column field="stato_codice" :header="t('dashboard_backlog.col_stato')" style="width: 120px;">
+          <Column field="stato_codice" :header="t('dashboard_backlog.col_stato')" sortable style="width: 120px;">
             <template #body="{ data }">
               <Tag :value="data.stato_codice ?? '—'" :severity="statoSeverity(data)" />
             </template>

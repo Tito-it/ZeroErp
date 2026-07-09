@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CREATE vendite.trgfn_ddt_guard_transizione (+ trigger)  — C7 / A-3
+#   (brief-db-ddt-vendita-evasione-e-stati §5).
+#
+# Enforcement DB-first del grafo transizioni stato DDT, letto da
+# config.transizioni_stati_ddt (matrice 20260709-02, seed 20260709-10).
+# Mirror di vendite.trgfn_ordini_guard_transizione (20260605-10) — senza la
+# precondizione "almeno una riga" (specifica di DRAFT->CONFERMATO ordini).
+#
+# Regola (BEFORE UPDATE OF stato_doc_ddt_id):
+#   transizione ammessa <=> riga (stato_da, stato_a) presente e attiva in
+#   config.transizioni_stati_ddt. Altrimenti E_STATO_DDT_TRANSIZIONE_NON_VALIDA.
+#   No-op se lo stato non cambia (UPDATE su altre colonne).
+#
+# Convivenza: trigger DISTINTO dal guard emissione
+#   trg_ddt_a10_guard_approvazione_upd (20260709-05), che copre un concern
+#   diverso (componenti BoM CASO A PENDING/prezzo NULL su EMESSO). Entrambi
+#   BEFORE UPDATE OF stato_doc_ddt_id, fase _a10_ — come sugli ordini.
+#
+# Codice errore registrato in 80_data/changelog messaggi_errore (20260709-15
+# append CSV). Dipendenze: vendite.ddt, config.stati_doc_ddt,
+# config.transizioni_stati_ddt, script.fn_log_and_raise_error.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260709-04-create-trgfn-ddt-guard-transizione-mctit.yaml
+
+  - changeSet:
+      id: 20260709-04-create-trgfn-ddt-guard-transizione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea vendite.trgfn_ddt_guard_transizione + trigger
+        trg_ddt_a10_guard_transizione_upd (BEFORE UPDATE OF stato_doc_ddt_id).
+        Valida il grafo transizioni leggendo config.transizioni_stati_ddt
+        (E_STATO_DDT_TRANSIZIONE_NON_VALIDA). Mirror del guard ordini. Convive
+        col guard approvazione (20260709-05).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: transizioni_stati_ddt
+            - tableExists:
+                schemaName: vendite
+                tableName: ddt
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_transizione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: enforcement DB-first del grafo transizioni stato DDT.
+              --   La transizione (OLD.stato -> NEW.stato) e' ammessa solo se
+              --   presente e attiva in config.transizioni_stati_ddt.
+              --   Letto dalla matrice (no grafo hardcodato). Mirror del guard
+              --   ordini (trgfn_ordini_guard_transizione).
+              DECLARE
+                  v_codice_da config.stati_doc_ddt.codice_interno%TYPE;
+                  v_codice_a  config.stati_doc_ddt.codice_interno%TYPE;
+                  v_ammessa   boolean := false;
+              BEGIN
+                  -- No-op se lo stato non cambia davvero (UPDATE su altre colonne).
+                  IF NEW.stato_doc_ddt_id IS NOT DISTINCT FROM OLD.stato_doc_ddt_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT
+                      max(CASE WHEN id = OLD.stato_doc_ddt_id THEN codice_interno END),
+                      max(CASE WHEN id = NEW.stato_doc_ddt_id THEN codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM config.stati_doc_ddt
+                   WHERE id IN (OLD.stato_doc_ddt_id, NEW.stato_doc_ddt_id);
+
+                  -- La transizione deve esistere ed essere attiva in matrice.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.transizioni_stati_ddt t
+                       WHERE t.stato_da_id = OLD.stato_doc_ddt_id
+                         AND t.stato_a_id  = NEW.stato_doc_ddt_id
+                         AND t.attivo IS TRUE
+                  ) INTO v_ammessa;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_STATO_DDT_TRANSIZIONE_NON_VALIDA',
+                          jsonb_build_object(
+                              'ddt_id',   NEW.id,
+                              'numero',   NEW.numero,
+                              'stato_da', v_codice_da,
+                              'stato_a',  v_codice_a
+                          ),
+                          NEW.tx_id,
+                          NEW.id::text,
+                          coalesce(v_codice_da, 'NULL'),
+                          coalesce(v_codice_a,  'NULL')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_guard_transizione()
+              IS 'Trigger function: enforcement grafo transizioni stato DDT letto '
+                 'da config.transizioni_stati_ddt (E_STATO_DDT_TRANSIZIONE_NON_VALIDA). '
+                 'Mirror di trgfn_ordini_guard_transizione. Convive col guard '
+                 'approvazione emissione (20260709-05). rev 2026-07-09.';
+
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_transizione_upd
+                  ON vendite.ddt;
+
+              CREATE TRIGGER trg_ddt_a10_guard_transizione_upd
+                  BEFORE UPDATE OF stato_doc_ddt_id
+                  ON vendite.ddt
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_ddt_guard_transizione();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_transizione_upd
+                  ON vendite.ddt;
+              DROP FUNCTION IF EXISTS vendite.trgfn_ddt_guard_transizione();

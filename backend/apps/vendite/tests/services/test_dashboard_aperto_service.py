@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2025 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Test unitari service Situazione aperta (mock repository).
+# Scopo: Test unitari service serbatoio pre-commessa (Situazione aperta v2,
+#        mock repository).
 # ------------------------------------------------------------
 
 """
@@ -17,9 +18,15 @@ Indice test eseguiti:
 8) DashApertoDocumentiServiceTests.test_documenti_ok_envelope_paginato
 9) DashApertoDocumentiServiceTests.test_documenti_fase_sconosciuta_passthrough
 10) DashApertoDocumentiServiceTests.test_documenti_area_sconosciuta_passthrough
-11) DashApertoDocumentiServiceTests.test_documenti_default_solo_aperti
-12) DashApertoDocumentiServiceTests.test_documenti_page_invalida
-13) DashApertoDocumentiServiceTests.test_documenti_pagina_stantia_clampata
+11) DashApertoDocumentiServiceTests.test_documenti_ritardo_giorni_inoltrato
+12) DashApertoDocumentiServiceTests.test_documenti_ritardo_giorni_default_none
+13) DashApertoDocumentiServiceTests.test_documenti_ritardo_giorni_non_positivo
+14) DashApertoDocumentiServiceTests.test_documenti_anzianita_giorni_passthrough
+15) DashApertoDocumentiServiceTests.test_documenti_page_invalida
+16) DashApertoDocumentiServiceTests.test_documenti_pagina_stantia_clampata
+17) DashApertoDocumentiServiceTests.test_documenti_ordinamento_inoltrato
+18) DashApertoDocumentiServiceTests.test_documenti_order_by_non_valido
+19) DashApertoDocumentiServiceTests.test_documenti_order_dir_non_valido
 """
 
 from unittest import TestCase
@@ -34,41 +41,22 @@ from apps.vendite.services.vendite_service import (
 
 # Un'area euro con due fasi + un'area a conteggi: esercitano insieme i totali
 # di area (somma Decimal sulle fasi) e la serializzazione per tipo misura.
+# v2: perimetro aperti-non-chiusi lato vista -> niente n_aperti/valore_transitato.
 _ROWS_RIEPILOGO = [
-    {
-        "area": "PREVENTIVI",
-        "fase": "APERTO",
-        "n_documenti": 3,
-        "n_aperti": 3,
-        "valore_totale": "1500.00",
-        "valore_transitato": "0",
-    },
-    {
-        "area": "PREVENTIVI",
-        "fase": "IN_CORSO",
-        "n_documenti": 2,
-        "n_aperti": 1,
-        "valore_totale": "500.50",
-        "valore_transitato": "300.00",
-    },
-    {
-        "area": "CONTRATTI",
-        "fase": "IN_CORSO",
-        "n_documenti": 4,
-        "n_aperti": 4,
-        "valore_totale": None,
-        "valore_transitato": None,
-    },
+    {"area": "PREVENTIVI", "fase": "APERTO", "n_documenti": 3, "valore_totale": "1500.00"},
+    {"area": "PREVENTIVI", "fase": "IN_CORSO", "n_documenti": 2, "valore_totale": "500.50"},
+    {"area": "CONTRATTI", "fase": "IN_CORSO", "n_documenti": 4, "valore_totale": None},
 ]
 
-_ORDINE_FASI = ["APERTO", "IN_ATTESA", "IN_CORSO", "CHIUSO"]
+# 3 fasi vive del serbatoio (via CHIUSO, DL-15/16).
+_ORDINE_FASI = ["APERTO", "IN_ATTESA", "IN_CORSO"]
 
 
 class DashApertoRiepilogoServiceTests(TestCase):
     # Scopo: Le 4 aree documento sono sempre presenti nell'ordine del funnel
     #        anche a repo vuoto (NIENTE COMMESSE: coperte dalla Lente 1), e il
-    #        vocabolario `fasi` top-level e' sempre esposto (alimenta i filtri
-    #        FE senza dipendere dalla griglia di un'area).
+    #        vocabolario `fasi` top-level (3 fasi vive) e' sempre esposto
+    #        (alimenta i filtri FE senza dipendere dalla griglia di un'area).
     @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_riepilogo", return_value=[])
     def test_quattro_aree_sempre_presenti_ordine_funnel(self, _mock_repo):
         data = fn_dash_aperto_riepilogo()
@@ -76,7 +64,7 @@ class DashApertoRiepilogoServiceTests(TestCase):
         self.assertEqual(ordine, ["PREVENTIVI", "ORDINI", "OFFERTE", "CONTRATTI"])
         self.assertEqual(data["fasi"], _ORDINE_FASI)
 
-    # Scopo: Contratto simmetrico: ogni area espone SEMPRE la griglia delle 4
+    # Scopo: Contratto simmetrico: ogni area espone SEMPRE la griglia delle 3
     #        fasi nell'ordine del ciclo di vita, con zeri espliciti (aree euro
     #        a "0", aree a conteggi a None) — DL-13: il FE decide cosa rendere.
     @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_riepilogo", return_value=[])
@@ -85,7 +73,6 @@ class DashApertoRiepilogoServiceTests(TestCase):
         for area in data["aree"]:
             self.assertEqual([f["fase"] for f in area["fasi"]], _ORDINE_FASI)
             self.assertEqual(area["n_documenti"], 0)
-            self.assertEqual(area["n_aperti"], 0)
         preventivi = data["aree"][0]
         self.assertEqual(preventivi["valore_totale"], "0")
         offerte = data["aree"][2]
@@ -103,16 +90,14 @@ class DashApertoRiepilogoServiceTests(TestCase):
         aree = {a["area"]: a for a in data["aree"]}
         prev = aree["PREVENTIVI"]
         self.assertEqual(prev["n_documenti"], 5)
-        self.assertEqual(prev["n_aperti"], 4)
         self.assertEqual(prev["valore_totale"], "2000.50")
-        self.assertEqual(prev["valore_transitato"], "300.00")
         fasi = {f["fase"]: f for f in prev["fasi"]}
         self.assertEqual(fasi["APERTO"]["n_documenti"], 3)
         self.assertEqual(fasi["IN_CORSO"]["valore_totale"], "500.50")
         self.assertEqual(fasi["IN_ATTESA"]["n_documenti"], 0)
 
     # Scopo: Le aree a conteggi (OFFERTE/CONTRATTI, DL-11) espongono
-    #        valore_* None anche quando popolate.
+    #        valore_totale None anche quando popolate.
     @patch.object(
         vendite_service.VenditeRepository,
         "list_dash_aperto_riepilogo",
@@ -124,23 +109,16 @@ class DashApertoRiepilogoServiceTests(TestCase):
         self.assertEqual(contratti["n_documenti"], 4)
         self.assertIsNone(contratti["valore_totale"])
         fase_in_corso = next(f for f in contratti["fasi"] if f["fase"] == "IN_CORSO")
-        self.assertEqual(fase_in_corso["n_aperti"], 4)
+        self.assertEqual(fase_in_corso["n_documenti"], 4)
         self.assertIsNone(fase_in_corso["valore_totale"])
 
     # Scopo: Una fase emessa dalla vista ma fuori whitelist NON viene persa:
-    #        accodata dopo le 4 note su TUTTE le aree (griglia simmetrica).
+    #        accodata dopo le 3 note su TUTTE le aree (griglia simmetrica).
     @patch.object(
         vendite_service.VenditeRepository,
         "list_dash_aperto_riepilogo",
         return_value=[
-            {
-                "area": "ORDINI",
-                "fase": "NUOVA_FASE",
-                "n_documenti": 1,
-                "n_aperti": 1,
-                "valore_totale": "10.00",
-                "valore_transitato": "0",
-            }
+            {"area": "ORDINI", "fase": "NUOVA_FASE", "n_documenti": 1, "valore_totale": "10.00"}
         ],
     )
     def test_fase_sconosciuta_accodata_fail_visible(self, _mock_repo):
@@ -150,9 +128,9 @@ class DashApertoRiepilogoServiceTests(TestCase):
         self.assertEqual(
             [f["fase"] for f in ordini["fasi"]], _ORDINE_FASI + ["NUOVA_FASE"]
         )
-        self.assertEqual(ordini["fasi"][4]["n_documenti"], 1)
+        self.assertEqual(ordini["fasi"][3]["n_documenti"], 1)
         preventivi = data["aree"][0]
-        self.assertEqual(len(preventivi["fasi"]), 5)
+        self.assertEqual(len(preventivi["fasi"]), 4)
 
     # Scopo: Un'area emessa dalla vista ma fuori whitelist NON viene persa:
     #        accodata dopo le 4 note (fail-visible).
@@ -160,14 +138,7 @@ class DashApertoRiepilogoServiceTests(TestCase):
         vendite_service.VenditeRepository,
         "list_dash_aperto_riepilogo",
         return_value=[
-            {
-                "area": "NUOVA_AREA",
-                "fase": "APERTO",
-                "n_documenti": 2,
-                "n_aperti": 2,
-                "valore_totale": None,
-                "valore_transitato": None,
-            }
+            {"area": "NUOVA_AREA", "fase": "APERTO", "n_documenti": 2, "valore_totale": None}
         ],
     )
     def test_area_sconosciuta_accodata_fail_visible(self, _mock_repo):
@@ -184,21 +155,13 @@ class DashApertoRiepilogoServiceTests(TestCase):
         vendite_service.VenditeRepository,
         "list_dash_aperto_riepilogo",
         return_value=[
-            {
-                "area": "DDT",
-                "fase": "APERTO",
-                "n_documenti": 2,
-                "n_aperti": 2,
-                "valore_totale": "750.00",
-                "valore_transitato": "250.00",
-            }
+            {"area": "DDT", "fase": "APERTO", "n_documenti": 2, "valore_totale": "750.00"}
         ],
     )
     def test_area_extra_con_valori_non_li_perde(self, _mock_repo):
         data = fn_dash_aperto_riepilogo()
         ddt = next(a for a in data["aree"] if a["area"] == "DDT")
         self.assertEqual(ddt["valore_totale"], "750.00")
-        self.assertEqual(ddt["valore_transitato"], "250.00")
         fase_aperto = next(f for f in ddt["fasi"] if f["fase"] == "APERTO")
         self.assertEqual(fase_aperto["valore_totale"], "750.00")
 
@@ -251,21 +214,51 @@ class DashApertoDocumentiServiceTests(TestCase):
         kwargs = mock_repo.call_args.kwargs
         self.assertEqual(kwargs["area"], "COMMESSE")
 
-    # Scopo: Default solo_aperti: la pagina e' la "Situazione aperta" — il
-    #        service normalizza None (parametro omesso) a True in un punto
-    #        SOLO (la view passa il raw); senza filtri area/fase il
-    #        repository riceve None.
+    # Scopo: Il filtro ritardo_giorni ("aperti da oltre N giorni", DL-17) e'
+    #        inoltrato al repository (soglia del SOLO drill-down).
     @patch.object(
         vendite_service.VenditeRepository,
         "list_dash_aperto_documenti",
         return_value=([], 0),
     )
-    def test_documenti_default_solo_aperti(self, mock_repo):
-        fn_dash_aperto_documenti(solo_aperti=None)
+    def test_documenti_ritardo_giorni_inoltrato(self, mock_repo):
+        fn_dash_aperto_documenti(ritardo_giorni=60)
+        kwargs = mock_repo.call_args.kwargs
+        self.assertEqual(kwargs["ritardo_giorni"], 60)
+
+    # Scopo: ritardo_giorni omesso -> None al repository (nessuna soglia:
+    #        drill-down completo, coerente con le card fotografia). Senza
+    #        filtri area/fase il repository li riceve None.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_aperto_documenti",
+        return_value=([], 0),
+    )
+    def test_documenti_ritardo_giorni_default_none(self, mock_repo):
+        fn_dash_aperto_documenti()
         kwargs = mock_repo.call_args.kwargs
         self.assertIsNone(kwargs["area"])
         self.assertIsNone(kwargs["fase"])
-        self.assertTrue(kwargs["solo_aperti"])
+        self.assertIsNone(kwargs["ritardo_giorni"])
+
+    # Scopo: ritardo_giorni non-positivo -> E_VENDITE_VALIDATION (niente
+    #        normalizzazione silenziosa di una soglia priva di senso).
+    def test_documenti_ritardo_giorni_non_positivo(self):
+        for valore in (0, -5):
+            with self.assertRaises(ServiceError) as ctx:
+                fn_dash_aperto_documenti(ritardo_giorni=valore)
+            self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: anzianita_giorni (derivata dal repo in SELECT) transita
+    #        nell'envelope senza rielaborazione lato service.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_aperto_documenti",
+        return_value=([{"documento_id": 1, "anzianita_giorni": 42}], 1),
+    )
+    def test_documenti_anzianita_giorni_passthrough(self, _mock_repo):
+        data = fn_dash_aperto_documenti(area="PREVENTIVI")
+        self.assertEqual(data["results"][0]["anzianita_giorni"], 42)
 
     # Scopo: Paginazione invalida -> E_VENDITE_VALIDATION (validate_pagination).
     def test_documenti_page_invalida(self):
@@ -286,3 +279,29 @@ class DashApertoDocumentiServiceTests(TestCase):
         self.assertEqual(data["count"], 10)
         self.assertEqual(data["page"], 1)
         self.assertEqual(data["total_pages"], 1)
+
+    # Scopo: order_by/order_dir (whitelist) inoltrati al repository per
+    #        l'ordinamento server-side su tutte le pagine.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_aperto_documenti",
+        return_value=([], 0),
+    )
+    def test_documenti_ordinamento_inoltrato(self, mock_repo):
+        fn_dash_aperto_documenti(order_by="valore_totale", order_dir="asc")
+        kwargs = mock_repo.call_args.kwargs
+        self.assertEqual(kwargs["order_by"], "valore_totale")
+        self.assertEqual(kwargs["order_dir"], "asc")
+
+    # Scopo: order_by fuori whitelist -> E_VENDITE_VALIDATION (fail-fast 400,
+    #        nessun input grezzo nell'ORDER BY).
+    def test_documenti_order_by_non_valido(self):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_aperto_documenti(order_by="stato_codice; DROP")
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: order_dir diverso da asc/desc -> E_VENDITE_VALIDATION.
+    def test_documenti_order_dir_non_valido(self):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_aperto_documenti(order_by="codice", order_dir="sideways")
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")

@@ -1,0 +1,152 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# FIX bug di vista — la vecchia revisione EMESSO riemerge come "documento
+# aperto" nei cruscotti (brief-db-preventivi-revisione-attiva-dashboard §2/§6-A).
+#
+# PROBLEMA: vw_dash_fatturazione_preventivi legge vendite.preventivi GREZZO,
+# quindi per un numero multi-rev emette una riga per OGNI revisione. La sua
+# unica esclusione interna e' sdp.esito='NEGATIVO': cattura la rev attiva
+# RIFIUTATA ma LASCIA PASSARE la rev precedente EMESSO (esito NULL) ->
+# "documento aperto" fantasma. Es. PRV0000038 (0:EMESSO, 1:RIFIUTATO): la rev
+# attiva e' RIFIUTATA (0 righe attese) ma la rev0 EMESSO superata compariva in
+# Backlog/Situazione aperta. PRV0000061 emetteva 4 righe per un solo preventivo.
+#
+# CAUSA: la "revisione attiva" e' definita canonicamente da vendite.vw_preventivi
+# (colonna derivata is_attiva = "non esiste rev superiore non-abortita per lo
+# stesso numero", refactor 2026-05-15 brief-db-preventivi-revisione-attiva-
+# derivata). Nel 2026-05-15 TUTTI i consumatori furono migrati a vw_preventivi/
+# is_attiva (vw_preventivi_lista, filtro lista BE, document context builder). I
+# resolver dashboard, scritti dopo (2026-07), leggono ancora la tabella grezza:
+# hanno saltato l'adozione della derivazione canonica.
+#
+# FIX (di merito, non tattico): la sorgente diventa vendite.vw_preventivi con
+# predicato WHERE p.is_attiva -> il resolver consuma la stessa derivazione
+# canonica di ogni altra lista, eliminando la duplicazione di logica. NON si
+# introduce uno stato SUPERATO (Opzione B del brief) perche' regredirebbe il
+# flusso VOLUTO "revisione annullata rifluisce al predecessore" (rev0 EMESSO +
+# rev1 ANNULLATO -> rev0 torna attiva senza interventi manuali; gestione-
+# preventivi §4.3), che era esattamente il bug 1.1 chiuso dal refactor 2026-05-15.
+#
+# RLS: vw_preventivi e' security_invoker=on (20260601-26), quindi legge
+# preventivi come CHIAMANTE -> lo scope emittente RLS (fix V-1, 20260706-15)
+# resta preservato. La CREATE OR REPLACE mantiene le reloptions esistenti; qui
+# si esplicita comunque WITH (security_invoker = on) per robustezza/leggibilita'.
+#
+# CONTRATTO COLONNE INVARIATO: stesse colonne/ordine della definizione viva
+# (data_riferimento in coda, post 20260706-03). Cambia solo la SORGENTE e si
+# aggiunge il predicato is_attiva -> la union vw_dash_fatturazione_documenti e i
+# consumatori Backlog/Situazione aperta ereditano il fix senza modifiche.
+#
+# Corpo copiato dalla doc auto-gen (docs/it/dbzero/vendite/views/
+# vw_dash_fatturazione_preventivi.md, definizione viva post 20260706-03);
+# uniche differenze: sorgente vw_preventivi, WHERE is_attiva, WITH invoker.
+# Nuovo file, mai modificare i changelog gia' pushati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260708-06-update-vw-dash-fatturazione-preventivi-solo-rev-attiva-mctit.yaml
+
+  - changeSet:
+      id: 20260708-06-update-vw-dash-fatturazione-preventivi-solo-rev-attiva
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Fix bug di vista: vw_dash_fatturazione_preventivi legge
+        vendite.vw_preventivi WHERE is_attiva (derivazione canonica revisione
+        attiva) invece di vendite.preventivi grezzo. Elimina le righe fantasma
+        delle revisioni superate rimaste in EMESSO nei cruscotti Backlog /
+        Situazione aperta. Contratto colonne invariato.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: '1'
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views
+               WHERE schemaname = 'vendite'
+                 AND viewname   = 'vw_dash_fatturazione_preventivi';
+        # La derivazione canonica deve esistere ed esporre is_attiva.
+        - sqlCheck:
+            expectedResult: '1'
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_views v
+               WHERE v.schemaname = 'vendite'
+                 AND v.viewname   = 'vw_preventivi'
+                 AND EXISTS (
+                       SELECT 1 FROM information_schema.columns c
+                        WHERE c.table_schema = 'vendite'
+                          AND c.table_name   = 'vw_preventivi'
+                          AND c.column_name  = 'is_attiva');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_preventivi
+              WITH (security_invoker = on) AS
+              WITH righe AS (
+                       SELECT sr.preventivo_id,
+                          sr.riga_id,
+                          ((COALESCE(sr.quantita, (0)::numeric) * sr.prezzo_unitario) * ((1)::numeric - (COALESCE(pr.sconto_percentuale, (0)::numeric) / 100.0))) AS valore_riga,
+                          (sr.stato_smistamento <> 'RESIDUA'::text) AS transitata
+                         FROM (vendite.vw_preventivi_smistamento_righe sr
+                           JOIN vendite.preventivi_righe pr ON ((pr.id = sr.riga_id)))
+                      )
+               SELECT 'PREVENTIVI'::character varying AS area,
+                  COALESCE(p.competenza_mese, (date_trunc('month'::text, (p.validita_dal)::timestamp with time zone))::date, (date_trunc('month'::text, (p.data)::timestamp with time zone))::date) AS competenza_mese,
+                  p.id AS documento_id,
+                  (p.uid)::text AS documento_uid,
+                  (p.numero)::text AS codice,
+                  p.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  COALESCE(sum(r.valore_riga), (0)::numeric) AS valore_totale,
+                  COALESCE(sum(r.valore_riga) FILTER (WHERE r.transitata), (0)::numeric) AS valore_transitato,
+                  (count(r.riga_id))::integer AS unita_totali,
+                  (count(r.riga_id) FILTER (WHERE r.transitata))::integer AS unita_transitate,
+                  ((count(r.riga_id) > 0) AND (count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata))) AS is_transitato,
+                  COALESCE(((sdp.esito)::text = 'NEGATIVO'::text), false) AS is_abortito,
+                  (
+                      CASE
+                          WHEN COALESCE(((sdp.esito)::text = 'NEGATIVO'::text), false) THEN NULL::text
+                          WHEN ((count(r.riga_id) > 0) AND (count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata))) THEN NULL::text
+                          WHEN ((sdp.codice_interno)::text = 'DRAFT'::text) THEN 'DOC_BOZZA'::text
+                          WHEN ((sdp.codice_interno)::text = 'EMESSO'::text) THEN 'IN_ATTESA_ACCETTAZIONE'::text
+                          ELSE 'RIGA_RESIDUA'::text
+                      END)::character varying AS motivo_fermo,
+                  sdp.codice_interno AS stato_codice_interno,
+                  sdp.codice AS stato_codice,
+                  sdp.fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  -- Lente 2 Backlog: anzianita' "fermo da..." = data documento (proxy v1).
+                  p.data AS data_riferimento
+                 FROM ((((vendite.vw_preventivi p
+                   JOIN config.stati_doc_preventivi sdp ON ((sdp.id = p.stato_doc_preventivo_id)))
+                   LEFT JOIN righe r ON ((r.preventivo_id = p.id)))
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = p.istanza_utility_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)))
+                -- Solo la revisione attiva del numero (derivazione canonica
+                -- vw_preventivi.is_attiva): esclude le rev superate rimaste in
+                -- EMESSO che altrimenti comparirebbero come documenti fantasma.
+                WHERE p.is_attiva
+                GROUP BY p.id, p.uid, p.numero, p.competenza_mese, p.validita_dal, p.data, p.emittente_fiscale_id, sdp.codice_interno, sdp.codice, sdp.fase, sdp.esito, s.ragione_sociale_completa;
+
+              COMMENT ON COLUMN vendite.vw_dash_fatturazione_preventivi.data_riferimento IS
+                'Anzianita'' backlog (due lenti): data documento del preventivo ("fermo da...", proxy v1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la definizione precedente (sorgente preventivi
+              -- grezzo, senza filtro is_attiva) e' quella viva post 20260706-03
+              -- + 20260706-15 (vedi doc auto-gen). Per revertire, ri-applicarla.
+              SELECT 1;

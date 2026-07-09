@@ -9,8 +9,10 @@ export function getDashboardCompetenza(anno) {
   return api.get('/vendite/dashboard-competenza/', { params: { anno } })
 }
 
-// GET /vendite/dashboard-competenza/attivita/?competenza_mese=&stadio=&solo_ritardo=&page=&page_size=
-// Drill-down paginato delle attivita' del mese (filtro stadio/ritardo opzionale).
+// GET /vendite/dashboard-competenza/attivita/?competenza_mese=&stadio=&solo_ritardo=&order_by=&order_dir=&page=&page_size=
+// Drill-down paginato delle attivita' del mese (filtro stadio/ritardo opzionale);
+// ordinamento server-side (order_by/order_dir, whitelist BE), default
+// "data attivita'" DESC.
 export function listDashboardCompetenzaAttivita(params = {}) {
   return api.get('/vendite/dashboard-competenza/attivita/', { params })
 }

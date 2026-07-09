@@ -37,11 +37,12 @@ WITH righe AS (
     sdp.fase,
     s.ragione_sociale_completa AS cliente_display,
     p.data AS data_riferimento
-   FROM ((((vendite.preventivi p
+   FROM ((((vendite.vw_preventivi p
      JOIN config.stati_doc_preventivi sdp ON ((sdp.id = p.stato_doc_preventivo_id)))
      LEFT JOIN righe r ON ((r.preventivo_id = p.id)))
      LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = p.istanza_utility_id)))
      LEFT JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)))
+  WHERE p.is_attiva
   GROUP BY p.id, p.uid, p.numero, p.competenza_mese, p.validita_dal, p.data, p.emittente_fiscale_id, sdp.codice_interno, sdp.codice, sdp.fase, sdp.esito, s.ragione_sociale_completa;
 ```
 

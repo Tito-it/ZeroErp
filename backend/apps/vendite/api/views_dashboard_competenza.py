@@ -27,6 +27,7 @@ from apps.core.api.payload_validators import (
     qp_bool_optional,
     qp_int_strict,
     qp_iso_date_optional,
+    qp_str,
     qp_str_upper,
 )
 from apps.core.api.success_responses import success_response
@@ -115,6 +116,28 @@ class ApiDashboardCompetenzaAttivita(DomainAPIView):
                 description="Se true, solo attivita' emesse in ritardo (recuperi tardivi).",
             ),
             OpenApiParameter(
+                name="order_by",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Colonna di ordinamento (whitelist): commessa_codice | "
+                    "cliente_display | articolo_codice (ordina per la descrizione "
+                    "mostrata) | data_attivita (default) | valore. Ordinamento "
+                    "server-side su tutte le pagine. Colonna non ammessa -> 400."
+                ),
+            ),
+            OpenApiParameter(
+                name="order_dir",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Direzione ordinamento: asc | desc. Valore diverso -> 400 "
+                    "(E_VENDITE_VALIDATION)."
+                ),
+            ),
+            OpenApiParameter(
                 name="page",
                 type=int,
                 location=OpenApiParameter.QUERY,
@@ -162,6 +185,10 @@ class ApiDashboardCompetenzaAttivita(DomainAPIView):
         assert competenza_mese is not None
         stadio = qp_str_upper(qp.get("stadio"))
         solo_ritardo = qp_bool_optional(qp.get("solo_ritardo"), "solo_ritardo")
+        # Ordinamento (convenzione order_by/order_dir): whitelist + direzione
+        # validate nel service (unica definizione, fail-fast 400).
+        order_by = qp_str(qp.get("order_by"))
+        order_dir = qp_str(qp.get("order_dir"))
         page = qp_int_strict(qp.get("page"), "page", 1)
         page_size = qp_int_strict(qp.get("page_size"), "page_size", 50)
 
@@ -171,6 +198,8 @@ class ApiDashboardCompetenzaAttivita(DomainAPIView):
             competenza_mese=competenza_mese,
             stadio=stadio,
             solo_ritardo=bool(solo_ritardo),
+            order_by=order_by,
+            order_dir=order_dir,
             page=page,
             page_size=page_size,
         )

@@ -49,6 +49,8 @@ const {
   attivitaPage,
   attivitaPageSize,
   attivitaLoading,
+  attivitaOrderBy,
+  attivitaOrderDir,
   errori,
   erroriCount,
   erroriPage,
@@ -197,6 +199,19 @@ function onSoloRitardoChange() {
 //        pagina nel BB usePagedDashFetch).
 function onAttivitaPage(event) {
   store.applyAttivitaPage(event)
+  loadAttivita()
+}
+
+// Ordinamento colonne attivita' per il DataTable (controllato): campo dallo
+// store, direzione nella convenzione PrimeVue (1 asc, -1 desc).
+const attivitaSortOrder = computed(() => (attivitaOrderDir.value === 'desc' ? -1 : 1))
+
+// Scopo: ordinamento colonne attivita' (server-side, lista lazy): aggiorna lo
+//        stato sort e ricarica dalla PAGINA 1 senza deselezionare lo stadio
+//        (come il filtro recuperi tardivi). Corretto su tutte le pagine.
+function onAttivitaSort(event) {
+  store.applyAttivitaSort(event)
+  attivitaPage.value = 1
   loadAttivita()
 }
 
@@ -466,32 +481,35 @@ onActivated(() => {
               paginator-position="top"
               lazy
               :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
+              :sort-field="attivitaOrderBy"
+              :sort-order="attivitaSortOrder"
               class="app-datatable app-datatable--inner"
               striped-rows
               data-key="commessa_attivita_id"
               @page="onAttivitaPage"
+              @sort="onAttivitaSort"
             >
-              <Column field="commessa_codice" :header="t('dashboard_competenza.col_commessa')" style="width: 130px;">
+              <Column field="commessa_codice" :header="t('dashboard_competenza.col_commessa')" sortable style="width: 130px;">
                 <template #body="{ data }">
                   {{ data.commessa_codice ?? '—' }}
                 </template>
               </Column>
-              <Column field="cliente_display" :header="t('dashboard_competenza.col_cliente')">
+              <Column field="cliente_display" :header="t('dashboard_competenza.col_cliente')" sortable>
                 <template #body="{ data }">
                   {{ data.cliente_display ?? '—' }}
                 </template>
               </Column>
-              <Column field="articolo_codice" :header="t('dashboard_competenza.col_articolo')">
+              <Column field="articolo_codice" :header="t('dashboard_competenza.col_articolo')" sortable>
                 <template #body="{ data }">
                   {{ data.articolo_descrizione ?? data.articolo_codice ?? '—' }}
                 </template>
               </Column>
-              <Column field="data_attivita" :header="t('dashboard_competenza.col_data_attivita')" style="width: 110px;">
+              <Column field="data_attivita" :header="t('dashboard_competenza.col_data_attivita')" sortable style="width: 110px;">
                 <template #body="{ data }">
                   {{ data.data_attivita ? displayDate(data.data_attivita) : '—' }}
                 </template>
               </Column>
-              <Column field="valore" :header="t('dashboard_competenza.col_valore')" style="width: 120px;">
+              <Column field="valore" :header="t('dashboard_competenza.col_valore')" sortable style="width: 120px;">
                 <template #body="{ data }">
                   {{ data.valore !== null ? formatCurrency(data.valore) : '—' }}
                 </template>

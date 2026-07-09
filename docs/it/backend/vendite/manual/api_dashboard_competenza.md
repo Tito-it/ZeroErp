@@ -49,6 +49,15 @@ Catena: view (`views_dashboard_competenza.py`) →
   assente = tutti gli stadi).
 - `solo_ritardo` (opzionale, bool): se `true` solo le attività emesse in ritardo
   (`emessa_in_ritardo IS TRUE` — recuperi tardivi, §7 del design).
+- `order_by` / `order_dir` (opzionali): **ordinamento colonne server-side**
+  (convenzione delle liste standard). `order_by` in whitelist —
+  `commessa_codice` | `cliente_display` | `articolo_codice` (ordina per la
+  descrizione **mostrata**, `COALESCE(art.descrizione, art.codice)`) |
+  `data_attivita` (default; ordina per la **colonna data**, non per la stringa
+  gg/mm/aaaa del FE) | `valore`; `order_dir` = `asc` | `desc`. Server-side
+  perché la lista è paginata: ordine corretto su **tutte** le pagine. Colonna
+  fuori whitelist o direzione ≠ asc/desc → 400 (`E_VENDITE_VALIDATION`). Tiebreak
+  stabile `(commessa_codice, commessa_attivita_id)`.
 - `page` / `page_size` (opzionali): paginazione standard (default 1/50, max 200).
 
 ### `GET /dashboard-competenza/errori/`
@@ -118,7 +127,10 @@ assi grezzi (`stato_approvazione`, `stato_emissione`), `valore`,
 (NULL se non emessa), flag AF (`sospesa`, `posticipa_al`), aggancio fattura
 (`fattura_id/anno/serie/numero`, `stato_fattura_codice_interno/codice`,
 `valore_fatturato`, `fattura_critical`).
-Ordinamento: `valore DESC NULLS LAST, commessa_codice, commessa_attivita_id`.
+Ordinamento: default `valore DESC NULLS LAST, commessa_codice,
+commessa_attivita_id`; con `order_by`/`order_dir` (vedi Input) l'ORDER BY diventa
+`<colonna whitelist> <asc|desc> NULLS LAST` + tiebreak `commessa_codice,
+commessa_attivita_id` — colonna e direzione **whitelistate** (mai input grezzo).
 
 ### Errori vivi
 

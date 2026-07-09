@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C5 — Predicato residuo evasione ordine
+#   (brief-db-ddt-vendita-evasione-e-stati §4 "Sync stato ordine").
+#
+# vendite.fn_ordine_ha_residuo_evasione(p_ordine_id) -> boolean
+#   TRUE se almeno una riga ordine ha residuo di evasione > 0.
+#   Gemello di fn_preventivo_ha_residuo_ordine, sul fulfillment riga-riga.
+#
+# Usato da fn_genera_ddt_da_ordine (20260709-09) per proiettare lo stato
+# ordine: residuo pieno -> CONFERMATO, 0<residuo<pieno -> PARZIALMENTE_EVASO,
+# residuo 0 -> EVASO (atomico, specchio §8 di fn_push_preventivo_a_ordine).
+#
+# Formula RESO-AWARE per costruzione (brief §12):
+#   residuo = ordini_righe.quantita - SUM(qta_evasa) [ + SUM(qta_resa_per_riconsegna) ]
+# L'addendo reso NON e' ancora presente (nessun modello resi): la slice resi
+# estendera' questa fn (CREATE OR REPLACE) aggiungendo il termine di rientro,
+# senza toccare i gate di stato che la consumano.
+#
+# Unita': tutto in quantita BASE (ordini_righe.quantita e
+# ordini_righe_fulfillment.qta_evasa sono entrambe base) — coerente col guard
+# trgfn_ordini_ful_guard_consistenza. STABLE, SECURITY INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260709-08-create-fn-ordine-ha-residuo-evasione-mctit.yaml
+
+  - changeSet:
+      id: 20260709-08-create-fn-ordine-ha-residuo-evasione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea vendite.fn_ordine_ha_residuo_evasione(bigint) -> boolean: TRUE se
+        almeno una riga ordine ha residuo (quantita - SUM qta_evasa) > 0.
+        Gemello di fn_preventivo_ha_residuo_ordine; gate stato ordine per la fn
+        di evasione (C5). Formula reso-aware (addendo resi = 0 finche' non
+        esiste il modello resi, brief §12).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ordini_righe
+            - tableExists:
+                schemaName: vendite
+                tableName: ordini_righe_fulfillment
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ordine_ha_residuo_evasione(
+                  p_ordine_id bigint
+              ) RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: TRUE se l'ordine ha ancora quantita da evadere su almeno
+              --   una riga (residuo = quantita - SUM qta_evasa > 0). Gate per la
+              --   proiezione stato ordine (CONFERMATO/PARZIALMENTE_EVASO/EVASO)
+              --   in fn_genera_ddt_da_ordine. Reso-aware per costruzione (§12).
+              DECLARE
+                  v_ha_residuo boolean;
+              BEGIN
+                  -- Guard input: id numerico valido (linee-guida-sql §DDL).
+                  IF p_ordine_id IS NULL OR p_ordine_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_ordine_ha_residuo_evasione', 'E_VALIDAZIONE',
+                          jsonb_build_object('p_ordine_id', p_ordine_id),
+                          NULL::uuid, 'p_ordine_id deve essere > 0');
+                  END IF;
+
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.ordini_righe orr
+                       WHERE orr.ordine_id = p_ordine_id
+                         AND orr.attivo IS TRUE
+                         AND orr.quantita
+                             - COALESCE((
+                                 SELECT SUM(f.qta_evasa)
+                                   FROM vendite.ordini_righe_fulfillment f
+                                  WHERE f.ordine_riga_id = orr.id
+                               ), 0)
+                             > 0
+                  ) INTO v_ha_residuo;
+
+                  RETURN v_ha_residuo;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ordine_ha_residuo_evasione(bigint)
+              IS 'TRUE se l''ordine ha residuo di evasione su almeno una riga '
+                 '(quantita - SUM qta_evasa > 0, unita base). Gemello di '
+                 'fn_preventivo_ha_residuo_ordine; gate stato ordine per '
+                 'fn_genera_ddt_da_ordine (C5). Reso-aware: la slice resi '
+                 'aggiungera'' SUM(qta_resa_per_riconsegna) al residuo (brief §12). '
+                 'rev 2026-07-09.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_ordine_ha_residuo_evasione(bigint);

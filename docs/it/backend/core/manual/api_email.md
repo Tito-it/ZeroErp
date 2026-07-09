@@ -369,6 +369,16 @@ dalla bozza (non dal template originale). Copia allegati su `email_log_id`.
 Lo stato SMTP e' nel log (`SENT` o `FAILED`); lo stato outbox riflette se l'operatore
 deve agire (DRAFT = da riprovare, SENT = completato).
 
+**Semantica saga/outbox (fix analisi-fix-transazioni #16, 2026-07-08).** Lo stato
+`READY` e' committato **prima** dell'invio SMTP (l'invio esterno sta fuori da ogni
+transazione DB). I **tre write post-invio** (link outbox↔log + copia allegati + stato
+finale `SENT`/`DRAFT`) sono ora fusi in **un solo** `transaction.atomic()`: o tutti o
+nessuno. Se quel blocco fallisce, l'outbox resta `READY` **coerente** (non parziale):
+nessun stato ibrido con log linkato e allegati mancanti. Un outbox rimasto `READY`
+(bozza fantasma) e' recuperabile da un job di riconciliazione — **follow-up** da
+progettare per NON ri-inviare (lo SMTP e' gia' partito): recupero idempotente, non
+re-send.
+
 ### Annulla bozza
 
 ```http
