@@ -1,0 +1,160 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C6 — Numero DDT assegnato a EMESSO (no buchi fiscali)
+#   (brief-db-ddt-vendita-evasione-e-stati §4.3 / §6).
+#
+# Decisione Tid 2026-07-09: il numero del DDT (documento di trasporto, fiscale)
+# NON deve avere buchi da bozze scartate -> si assegna alla transizione a EMESSO,
+# non all'INSERT in DRAFT. Diverge dalla convenzione degli altri documenti
+# vendite (numero all'insert), come gia' fa `vendite.fatture` (numero a emissione,
+# lock framework disabilitato in automation_lock_columns).
+#
+# Ostacolo risolto: il lock su ddt.numero e' auto-provisionato dal framework
+# dbops.automation_lock_columns come trigger PIATTO (trgfn_lock_columns) che
+# blocca QUALSIASI cambio, incluso NULL->valore (la prima assegnazione a EMESSO).
+# Soluzione (mirror fatture):
+#   1) Disabilita la riga automation_lock_columns per vendite.ddt.numero
+#      (enabled=f, CSV 80_data) -> il create-runner non riprovisiona il lock
+#      piatto; il drop-runner rimuove trg_ddt_a10_lock_columns_upd.
+#   2) DROP esplicito del trigger piatto (idempotente, per i DB gia' provisionati).
+#   3) Trigger BESPOKE CONDIZIONALE trgfn_v_ddt_protect_num: blocca il cambio di
+#      numero solo QUANDO gia' assegnato (OLD.numero NON NULL) -> consente la
+#      prima valorizzazione a EMESSO, rende immutabile dopo. Nome distinto dal
+#      template del drop-runner (trg_ddt_a10_lock_columns_upd) -> non clobberato.
+#   4) gen_codice assegna il numero SOLO se lo stato e' EMESSO.
+#
+# trg_ddt_a10_v_protect_num_upd e' BEFORE UPDATE OF numero: NON scatta sull'UPDATE
+# di solo stato (numero non nel SET), quindi la prima assegnazione via gen_codice
+# passa. Fase _a10_ e ordinamento alfabetico: gen_codice (trg_ddt_a10_gen_codice)
+# gira prima dei guard stato — nessuna interferenza.
+#
+# Companion: disabilitazione riga in 80_data (edit automation_lock_columns.csv,
+# loader runOnChange 20260110-15 riapplica). Codice errore CODICE_NON_MODIFICABILE
+# gia' registrato (usato dal framework lock).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260709-07-ddt-numero-a-emesso-mctit.yaml
+
+  - changeSet:
+      id: 20260709-07-ddt-numero-a-emesso
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        C6: numero DDT assegnato a EMESSO (no buchi fiscali). Sostituisce il lock
+        piatto framework su ddt.numero con un protect bespoke condizionale
+        (trgfn_v_ddt_protect_num: immutabile solo dopo la prima assegnazione) e
+        rende gen_codice condizionale allo stato EMESSO. Mirror di vendite.fatture.
+        Companion: disabilitazione riga automation_lock_columns (80_data).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ddt
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_ddt
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) Rimuove il lock PIATTO framework (blocca anche NULL->valore).
+              --    Idempotente: su DB non ancora provisionati e' un no-op.
+              DROP TRIGGER IF EXISTS trg_ddt_a10_lock_columns_upd ON vendite.ddt;
+
+              -- 2) Protect BESPOKE condizionale: numero immutabile solo DOPO la
+              --    prima assegnazione (a EMESSO). Consente NULL->valore.
+              CREATE OR REPLACE FUNCTION vendite.trgfn_v_ddt_protect_num()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: rende ddt.numero immutabile UNA VOLTA assegnato (a EMESSO),
+              --   ma consente la prima valorizzazione (NULL->valore). Eccezione al
+              --   lock framework (disabilitato per vendite.ddt.numero) necessaria
+              --   perche' il numero si assegna a EMESSO, non in DRAFT (C6).
+              BEGIN
+                  IF OLD.numero IS NOT NULL
+                     AND NEW.numero IS DISTINCT FROM OLD.numero THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'CODICE_NON_MODIFICABILE',
+                          jsonb_build_object(
+                              'column',    'numero',
+                              'old_value', OLD.numero,
+                              'new_value', NEW.numero
+                          ),
+                          NEW.tx_id,
+                          'numero'
+                      );
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_v_ddt_protect_num()
+              IS 'Protect condizionale ddt.numero: immutabile dopo la prima '
+                 'assegnazione (a EMESSO), consente NULL->valore. Sostituisce il '
+                 'lock piatto framework (disabilitato in automation_lock_columns) '
+                 'perche'' il numero DDT si assegna a EMESSO, non in DRAFT (C6). '
+                 'rev 2026-07-09.';
+
+              DROP TRIGGER IF EXISTS trg_ddt_a10_v_protect_num_upd ON vendite.ddt;
+              CREATE TRIGGER trg_ddt_a10_v_protect_num_upd
+                  BEFORE UPDATE OF numero
+                  ON vendite.ddt
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_v_ddt_protect_num();
+
+              -- 3) gen_codice: assegna il numero SOLO alla transizione a EMESSO
+              --    (no buchi fiscali da bozze DRAFT scartate). In DRAFT numero
+              --    resta NULL.
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_gen_codice()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_stato_codice config.stati_doc_ddt.codice_interno%TYPE;
+              BEGIN
+                  IF (NEW.numero IS NULL OR btrim(NEW.numero::text) = '') THEN
+                      SELECT sdd.codice_interno INTO v_stato_codice
+                        FROM config.stati_doc_ddt sdd
+                       WHERE sdd.id = NEW.stato_doc_ddt_id;
+                      IF v_stato_codice = 'EMESSO' THEN
+                          NEW.numero := script.fn_generate_codice('ddt');
+                      END IF;
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_gen_codice()
+              IS 'Genera ddt.numero solo alla transizione a EMESSO (no buchi '
+                 'fiscali da bozze DRAFT scartate). In DRAFT numero resta NULL. '
+                 'Immutabilita'' post-assegnazione: trgfn_v_ddt_protect_num. C6, '
+                 'rev 2026-07-09.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a10_v_protect_num_upd ON vendite.ddt;
+              DROP FUNCTION IF EXISTS vendite.trgfn_v_ddt_protect_num();
+              -- Ripristina gen_codice all'assegnazione su INSERT (pre-C6).
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_gen_codice()
+              RETURNS trigger LANGUAGE plpgsql AS $function$
+              BEGIN
+                IF (NEW.numero IS NULL OR btrim(NEW.numero::text) = '') THEN
+                  NEW.numero := script.fn_generate_codice('ddt');
+                END IF;
+                RETURN NEW;
+              END; $function$;
+              -- Nota: il lock piatto framework si riprovisiona ri-abilitando la
+              -- riga automation_lock_columns (companion 80_data) + db-ci-apply.

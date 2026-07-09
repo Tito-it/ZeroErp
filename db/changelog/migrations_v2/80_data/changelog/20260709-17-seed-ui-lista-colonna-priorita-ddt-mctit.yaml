@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Read-side DDT (brief §13) — priorita (peso ritiro dinamico) per le colonne
+# della lista vendite.ddt (lista_id risolto da codice 'vendite.ddt').
+#
+# Stesso meccanismo dei seed ordini/preventivi/offerte (20260603-15/07/08): la
+# colonna priorita NON vive nel CSV lista_colonna.csv (il loader 20260507-07 non
+# la espone), nasce con DEFAULT 50 (20260602-13) e qui si impostano i pesi di
+# dominio. Il re-run del loader NON tocca priorita.
+#
+# Definizione lista + colonne: append a
+#   80_data/sql/ui/lista_definizione.csv (riga 8 vendite.ddt -> vw_ddt_lista) e
+#   80_data/sql/ui/lista_colonna.csv (colonne id 128..146), ripescati dai loader
+#   runOnChange esistenti (20260507-06/07).
+#
+# Asse priorita (piu' alto = resiste di piu' al ritiro responsive):
+#   numero/azioni (100), destinatario (95), stato (90), causale (70), ordine di
+#   origine (65), data (60), id_fiscale (55), tracking (50), colli (40), vettore
+#   (35), ba_codice (30), aspetto (25), peso_lordo (20), valuta (15), mittente
+#   (12), anno/serie/peso_netto (10), audit (5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260709-17-seed-ui-lista-colonna-priorita-ddt-mctit.yaml
+
+  - changeSet:
+      id: 20260709-17-seed-ui-lista-colonna-priorita-ddt
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Imposta priorita (peso ritiro dinamico) per le colonne della lista
+        vendite.ddt (brief §13). Mirror del seed priorita ordini (20260603-15).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists:
+              schemaName: ui
+              tableName: lista_colonna
+              columnName: priorita
+          - sqlCheck:
+              expectedResult: "1"
+              sql: SELECT COUNT(*) FROM ui.lista_definizione WHERE codice = 'vendite.ddt'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE ui.lista_colonna lc
+                 SET priorita = v.priorita
+                FROM (
+                  VALUES
+                    ('numero',                     100),
+                    ('destinatario_denominazione',  95),
+                    ('stato',                        90),
+                    ('causale_trasporto',            70),
+                    ('ordine_origine_numero',        65),
+                    ('data',                         60),
+                    ('id_fiscale',                   55),
+                    ('tracking_code',                50),
+                    ('num_colli',                    40),
+                    ('vettore_denominazione',        35),
+                    ('ba_codice',                    30),
+                    ('aspetto_bene',                 25),
+                    ('peso_lordo',                   20),
+                    ('valuta',                       15),
+                    ('mittente_denominazione',       12),
+                    ('anno',                         10),
+                    ('serie',                        10),
+                    ('peso_netto',                   10),
+                    ('data_insert',                   5),
+                    ('azioni',                      100)
+                ) AS v(codice, priorita)
+               WHERE lc.codice = v.codice
+                 AND lc.lista_id = (
+                       SELECT id FROM ui.lista_definizione WHERE codice = 'vendite.ddt'
+                     );

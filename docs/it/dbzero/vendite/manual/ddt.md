@@ -15,7 +15,7 @@ La tabella **`vendite.ddt`** rappresenta la **testata** dei Documenti di Traspor
 
 * Traccia i **metadati di spedizione** (data, mittente/destinatario, causale, vettore).
 * Collega le **righe** in `vendite.ddt_righe`.
-* Espone lo **stato** operativo tramite `config.stati_doc_ddt` (es. *EMESSO → IN_TRANSITO → CONSEGNATO → RESO* – nomenclatura da confermare).
+* Espone lo **stato** operativo tramite `config.stati_doc_ddt` (*DRAFT → EMESSO → SPEDITO → CONSEGNATO → RESO*, + *ANNULLATO*), con transizioni data-driven in `config.transizioni_stati_ddt`.
 * Partecipa alle ricostruzioni **ordine↔ddt** via fulfillment (riga↔riga) e alla derivazione **ddt↔ordine** (testata↔testata) tramite `mv_ddt_ordini`.
 
 > ℹ️ **Nota**: la definizione SQL della tabella è generata automaticamente dal progetto; qui si documentano struttura concettuale, vincoli e flussi.
@@ -36,14 +36,17 @@ La tabella **`vendite.ddt`** rappresenta la **testata** dei Documenti di Traspor
 
 ###  Stati del DDT
 
-Gli stati sono definiti in **`config.stati_doc_ddt`**. Mappatura tipica del ciclo:
+Gli stati sono definiti in **`config.stati_doc_ddt`**; le **transizioni ammesse** vivono in **`config.transizioni_stati_ddt`** (matrice data-driven, mirror di `transizioni_stati_ordini`). Ciclo:
 
 ```
-EMESSO → IN_TRANSITO → CONSEGNATO → (RESO opz.)
+DRAFT → EMESSO → SPEDITO → CONSEGNATO → RESO   (+ ANNULLATO; RESO anche da SPEDITO)
 ```
 
-* Gli **stati** sono valori **enum** del dominio; per policy non si effettuano cancellazioni fisiche (no hard delete).
-* La logica di avanzamento può dipendere da eventi applicativi (es. conferma vettore, POD, consegna).
+* **Enforcement**: il trigger `vendite.trgfn_ddt_guard_transizione` (fase `_a10_`, `BEFORE UPDATE OF stato_doc_ddt_id`) valida la coppia `(vecchio, nuovo)` contro la matrice attiva (`E_STATO_DDT_TRANSIZIONE_NON_VALIDA`).
+* **Gate emissione**: alla transizione a **EMESSO**, `vendite.trgfn_ddt_guard_transizione_approvazione` blocca se esistono componenti BoM CASO A in `PENDING` (`E_COMPONENTE_PREZZO_PENDENTE`) o con prezzo NULL (`E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE`).
+* **Azioni UI data-driven**: il `meta.ui` di ogni transizione (label/icona/severity) è esposto da `script.fn_available_actions_ddt` → il FE non hardcoda i pulsanti.
+* **Numerazione a EMESSO**: il `numero` si assegna alla transizione a EMESSO (no buchi da bozze scartate) via `vendite.trgfn_ddt_gen_numero_emesso` — fuori dal framework `sistema_codici` (mirror fatture); immutabile dopo l'assegnazione (`vendite.trgfn_v_ddt_protect_num`).
+* No hard delete: annullo/storno, mai DELETE fisica.
 
 >  La funzione di sync degli **stati ordine** legge anche lo stato del DDT per determinare le quantità **consegnate**.
 
@@ -55,9 +58,9 @@ EMESSO → IN_TRANSITO → CONSEGNATO → (RESO opz.)
 * **UQ consigliate**: `anno+serie+numero` (o progressivo per gestore)
 * **Indici operativi**:
 
-  * `ix_ddt_data_documento (data_documento)`
-  * `ix_ddt_stato (stato_doc_ddt_id)`
-  * `ix_ddt_destinatario (soggetto_destinatario_id)`
+  * `ix_ddt_vendita_dest_stato_data (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, data)`
+  * `ix_vendite_ddt_stato_doc_ddt_id (stato_doc_ddt_id)`
+  * `ix_ddt_v_sorgente (sorgente_tipo_id, sorgente_uid)` — lookup DDT-per-ordine (multi-DDT, A-1)
 
 > ℹ️ Gli indici reali possono variare in base ai volumi e all’uso (reporting vs operativo).
 
@@ -65,10 +68,19 @@ EMESSO → IN_TRANSITO → CONSEGNATO → (RESO opz.)
 
 ### Flussi di processo collegati
 
-1. **Evasione da Ordine**
+1. **Evasione da Ordine** (`vendite.fn_genera_ddt_da_ordine`)
 
-   * Inserimento in `ordini_righe_fulfillment` genera il collegamento riga Ordine ↔ riga DDT.
-   * La **MV** `mv_ddt_ordini` riflette le coppie testata↔testata.
+   * Funzione madre atomica: da un ordine (CONFERMATO / PARZIALMENTE_EVASO) crea testata DDT
+     (DRAFT, `sorgente_tipo_id = ORDINE_VENDITA`, `sorgente_uid = ordini.uid`), copia lo
+     **snapshot** delle righe (prezzo/sconto/iva) e dei componenti CASO A (A-2), e inserisce il
+     **fulfillment** riga↔riga (`qta_evasa`).
+   * **Multi-DDT** (A-1): un ordine può generare più DDT (consegne parziali). L'over-shipping è
+     bloccato dal guard `trgfn_ordini_ful_guard_consistenza` (`E_QTA_SUPERA_RESIDUO`); l'unicità del
+     legame è sul fulfillment `(ordine_riga_id, ddt_riga_id)`, non più sulla testata.
+   * **Proiezione stato ordine** (atomica): residuo pieno → `CONFERMATO`, `0 < residuo < pieno` →
+     `PARZIALMENTE_EVASO`, residuo 0 → `EVASO` (predicato `fn_ordine_ha_residuo_evasione`).
+   * La **MV** `mv_ddt_ordini` riflette le coppie testata↔testata (refresh via
+     `dbops.fn_refresh_mv_ddt_ordini`, non nella fn).
 
 2. **Consegna**
 
@@ -100,9 +112,9 @@ EMESSO → IN_TRANSITO → CONSEGNATO → (RESO opz.)
   ```sql
   SELECT d.*
     FROM vendite.ddt d
-   WHERE d.data_documento BETWEEN :dal AND :al
+   WHERE d.data BETWEEN :dal AND :al
      AND d.stato_doc_ddt_id = :stato_id
-   ORDER BY d.data_documento DESC, d.id DESC;
+   ORDER BY d.data DESC, d.id DESC;
   ```
 * **Ordini collegati a un DDT (via MV)**
 
@@ -146,6 +158,18 @@ EMESSO → IN_TRANSITO → CONSEGNATO → (RESO opz.)
 * [ ] Trigger di blocco DELETE attivi su `ddt_righe`
 * [ ] MV `mv_ddt_ordini` presente e indicizzata (UNIQUE)
 * [ ] Procedure di **storno/annullo** definite nei flussi applicativi
+
+---
+
+### Read-side (lista / dettaglio) e seed trasporto
+
+* **`vendite.vw_ddt_lista`** — vista canonica denormalizzata (stato, destinatario/mittente/vettore,
+  trasporto, ordine di origine via `sorgente_uid`) per `<ListaConfigurabile>` (`security_invoker=on`).
+  Definizione lista/colonne in `ui.lista_definizione` / `ui.lista_colonna` (`codice = vendite.ddt`).
+* **`script.fn_available_actions_ddt`** — capabilities per il drawer (azioni data-driven dalla
+  matrice, `can_edit_*`, `push_commessa` via `fn_list_ddt_da_pushare`).
+* **Seed trasporto**: `config.causali_trasporto` e `config.aspetti_beni` (valori standard IT) —
+  valorizzabili in testata, base per il PDF accompagnatorio.
 
 ---
 

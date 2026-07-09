@@ -1,0 +1,201 @@
+# ⚙️ Funzione `fn_genera_ddt_da_ordine`
+
+```sql
+CREATE FUNCTION fn_genera_ddt_da_ordine(p_ordine_id bigint, p_righe jsonb, p_data date)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_genera_ddt_da_ordine(p_ordine_id bigint, p_righe jsonb DEFAULT NULL::jsonb, p_data date DEFAULT CURRENT_DATE)
+ RETURNS bigint
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_sorg_ord_id     config.sorgenti.id%TYPE;
+    v_stato_draft_id  config.stati_doc_ddt.id%TYPE;
+    v_stato_ord       config.stati_doc_ordini.codice_interno%TYPE;
+    v_stato_target_id config.stati_doc_ordini.id%TYPE;
+    v_ordine_uid      vendite.ordini.uid%TYPE;
+    v_dest_ruolo_id   vendite.ordini.soggetto_ruolo_id%TYPE;
+    v_ddt_id          vendite.ddt.id%TYPE;
+    v_new_riga_id     vendite.ddt_righe.id%TYPE;
+    v_qta_base        vendite.ddt_righe.quantita%TYPE;
+    v_riga            RECORD;
+    v_residuo_base    numeric;
+    v_qta_op          numeric;
+    v_riga_nr         integer := 0;
+    v_n_evase         integer := 0;
+BEGIN
+    -- 1) Guard input.
+    IF p_ordine_id IS NULL OR p_ordine_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite','fn_genera_ddt_da_ordine','E_VALIDAZIONE',
+            jsonb_build_object('p_ordine_id', p_ordine_id),
+            NULL::uuid, 'p_ordine_id deve essere > 0');
+    END IF;
+
+    -- 2) Ordine esiste + stato evadibile.
+    SELECT o.uid, o.soggetto_ruolo_id, sdo.codice_interno
+      INTO v_ordine_uid, v_dest_ruolo_id, v_stato_ord
+      FROM vendite.ordini o
+      JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
+     WHERE o.id = p_ordine_id;
+
+    IF NOT FOUND THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite','fn_genera_ddt_da_ordine','E_DDT_ORDINE_NOT_FOUND',
+            jsonb_build_object('ordine_id', p_ordine_id),
+            NULL::uuid, p_ordine_id::text);
+    END IF;
+
+    IF v_stato_ord NOT IN ('CONFERMATO','PARZIALMENTE_EVASO') THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite','fn_genera_ddt_da_ordine','E_DDT_ORDINE_STATO_NON_EVADIBILE',
+            jsonb_build_object('ordine_id', p_ordine_id, 'stato', v_stato_ord),
+            NULL::uuid, p_ordine_id::text, v_stato_ord);
+    END IF;
+
+    -- 3) Sorgente ORDINE_VENDITA (C1) + stato DRAFT DDT (per codice_interno).
+    SELECT id INTO v_sorg_ord_id FROM config.sorgenti
+     WHERE codice_interno = 'ORDINE_VENDITA' AND attivo IS TRUE;
+    SELECT id INTO v_stato_draft_id FROM config.stati_doc_ddt
+     WHERE codice_interno = 'DRAFT' AND attivo IS TRUE;
+
+    -- 4) Testata DDT DRAFT. Billing/utility/valuta via trgfn_ddt_normalize.
+    INSERT INTO vendite.ddt (
+        data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
+        sorgente_tipo_id, sorgente_uid)
+    VALUES (
+        COALESCE(p_data, CURRENT_DATE), v_stato_draft_id, v_dest_ruolo_id,
+        v_sorg_ord_id, v_ordine_uid)
+    RETURNING id INTO v_ddt_id;
+
+    -- 5) Righe: copia snapshot A-2 + componenti + fulfillment.
+    FOR v_riga IN
+        SELECT orr.id AS ordine_riga_id, orr.articolo_id, orr.descrizione,
+               orr.prezzo_unitario, orr.sconto_percentuale, orr.iva_id,
+               orr.uom_operativa_id, orr.factor_to_base,
+               orr.quantita AS qta_ord_base,
+               COALESCE(orr.factor_to_base, 1) AS factor,
+               COALESCE((
+                   SELECT SUM(f.qta_evasa)
+                     FROM vendite.ordini_righe_fulfillment f
+                    WHERE f.ordine_riga_id = orr.id
+               ), 0) AS qta_evasa_prec,
+               a.is_composito,
+               (SELECT (elem->>'qta_da_evadere')::numeric
+                  FROM jsonb_array_elements(COALESCE(p_righe,'[]'::jsonb)) elem
+                 WHERE (elem->>'ordine_riga_id')::bigint = orr.id
+                 LIMIT 1) AS qta_richiesta_op
+          FROM vendite.ordini_righe orr
+          JOIN catalogo.articoli a ON a.id = orr.articolo_id
+         WHERE orr.ordine_id = p_ordine_id
+           AND orr.attivo IS TRUE
+           AND (p_righe IS NULL OR orr.id IN (
+                 SELECT (elem->>'ordine_riga_id')::bigint
+                   FROM jsonb_array_elements(p_righe) elem))
+         ORDER BY orr.riga_nr, orr.id
+    LOOP
+        v_residuo_base := v_riga.qta_ord_base - v_riga.qta_evasa_prec;
+        IF v_residuo_base <= 0 THEN
+            CONTINUE;  -- riga gia' evasa
+        END IF;
+
+        -- Qta da evadere in OPERATIVA: esplicito -> richiesto,
+        -- implicito -> tutto il residuo (residuo_base / factor).
+        IF p_righe IS NOT NULL THEN
+            v_qta_op := COALESCE(v_riga.qta_richiesta_op, 0);
+        ELSE
+            v_qta_op := v_residuo_base / v_riga.factor;
+        END IF;
+
+        IF v_qta_op IS NULL OR v_qta_op <= 0 THEN
+            CONTINUE;
+        END IF;
+        -- NB: over-shipping (v_qta_op*factor > residuo_base) e'
+        -- bloccato dal guard fulfillment (E_QTA_SUPERA_RESIDUO, C2).
+
+        v_riga_nr := v_riga_nr + 1;
+
+        -- Riga DDT (snapshot A-2). Padre composito: prezzo 0
+        -- placeholder (ricalcolato dai componenti). qta_operativa
+        -- valorizzata: il trigger qta_from_operativa deriva quantita.
+        INSERT INTO vendite.ddt_righe (
+            ddt_id, riga_nr, articolo_id, descrizione,
+            prezzo_unitario, sconto_percentuale, iva_id,
+            qta_operativa, uom_operativa_id, factor_to_base)
+        VALUES (
+            v_ddt_id, v_riga_nr, v_riga.articolo_id, v_riga.descrizione,
+            CASE WHEN v_riga.is_composito THEN 0 ELSE v_riga.prezzo_unitario END,
+            v_riga.sconto_percentuale, v_riga.iva_id,
+            v_qta_op, v_riga.uom_operativa_id, v_riga.factor_to_base)
+        RETURNING id, quantita INTO v_new_riga_id, v_qta_base;
+
+        -- Componenti CASO A (A-2): copia 1:1 (no resolver). La qta
+        -- del componente la scala m50_calcola_quantita (coeff*qta_padre);
+        -- il prezzo padre lo ricalcola z90_ricalcola_padre.
+        IF v_riga.is_composito THEN
+            INSERT INTO vendite.ddt_righe_componenti (
+                riga_ddt_id, articolo_componente_id, componente_id,
+                coeff_qta_snapshot, uom_operativa_id, factor_to_base,
+                qta_operativa, prezzo_unitario, iva_id, origine_prezzo,
+                prezzo_resolver_context, stato_approvazione_prezzo,
+                pratica_approvazione_prezzo_id, meta, ordine)
+            SELECT
+                v_new_riga_id, orc.articolo_componente_id, orc.componente_id,
+                orc.coeff_qta_snapshot, orc.uom_operativa_id, orc.factor_to_base,
+                orc.qta_operativa, orc.prezzo_unitario, orc.iva_id, orc.origine_prezzo,
+                orc.prezzo_resolver_context, orc.stato_approvazione_prezzo,
+                orc.pratica_approvazione_prezzo_id, orc.meta, orc.ordine
+              FROM vendite.ordini_righe_componenti orc
+             WHERE orc.riga_ordine_id = v_riga.ordine_riga_id
+               AND COALESCE(orc.attivo, TRUE) IS TRUE;
+        END IF;
+
+        -- Fulfillment: collega DDT<->ordine e alimenta mv_ddt_ordini.
+        -- qta_evasa = quantita base della riga DDT (derivata dal trigger).
+        -- Il guard fulfillment valida articolo/uom/residuo (C2).
+        INSERT INTO vendite.ordini_righe_fulfillment (
+            ordine_riga_id, ddt_riga_id, qta_evasa)
+        VALUES (
+            v_riga.ordine_riga_id, v_new_riga_id, v_qta_base);
+
+        v_n_evase := v_n_evase + 1;
+    END LOOP;
+
+    -- 6) Idempotenza/completezza: se nulla da evadere -> errore
+    --    (rollback della testata orfana, atomico).
+    IF v_n_evase = 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite','fn_genera_ddt_da_ordine','E_DDT_NIENTE_DA_EVADERE',
+            jsonb_build_object('ordine_id', p_ordine_id, 'righe', p_righe),
+            NULL::uuid, p_ordine_id::text);
+    END IF;
+
+    -- 7) Proiezione stato ordine (C5), atomica. residuo 0 -> EVASO,
+    --    altrimenti PARZIALMENTE_EVASO. La transizione passa per
+    --    trgfn_ordini_guard_transizione (matrice).
+    IF NOT vendite.fn_ordine_ha_residuo_evasione(p_ordine_id) THEN
+        SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
+         WHERE codice_interno = 'EVASO' AND attivo IS TRUE;
+    ELSE
+        SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
+         WHERE codice_interno = 'PARZIALMENTE_EVASO' AND attivo IS TRUE;
+    END IF;
+
+    UPDATE vendite.ordini
+       SET stato_doc_ordine_id = v_stato_target_id
+     WHERE id = p_ordine_id
+       AND stato_doc_ordine_id IS DISTINCT FROM v_stato_target_id;
+
+    RETURN v_ddt_id;
+END;
+$function$
+
+COMMENT ON FUNCTION vendite.fn_genera_ddt_da_ordine(p_ordine_id bigint, p_righe jsonb, p_data date)
+IS 'Madre evasione ordine->DDT (DRAFT): multi-DDT (A-1), copia snapshot prezzi/componenti (A-2), fulfillment riga-riga (over-shipping via guard, C2), proiezione stato ordine CONFERMATO/PARZIALMENTE_EVASO/EVASO (C5). sorgente=ORDINE_VENDITA (C1). p_righe [{ordine_riga_id, qta_da_evadere(operativa)}] NULL=tutto il residuo. Pattern fn_push_preventivo_a_ordine. rev 2026-07-09.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

@@ -1,0 +1,148 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C6 (versione definitiva) — numero DDT a EMESSO, FUORI dal framework
+#   sistema_codici. Mirror dello spirito delle FATTURE.
+#
+# CONTESTO / perche' il tentativo precedente (07 + 13) non regge:
+#   Il framework config.sistema_codici possiede riga -> funzione
+#   (trgfn_ddt_gen_codice) -> trigger (trg_ddt_a10_gen_codice_ins_upd), tutto
+#   RIGENERATO ad ogni sync, con template fisso "assegna il numero all'INSERT se
+#   vuoto". Il CREATE OR REPLACE della funzione (07) veniva sovrascritto ad ogni
+#   rigenerazione del framework; e fn_generate_codice restituisce NULL se
+#   usa_sequenza!=TRUE. Le FATTURE risolvono lo stesso problema (numero fiscale a
+#   emissione) stando FUORI dal framework: non sono in sistema_codici e numerano
+#   con una funzione dedicata (fn_numera_fattura_opz_emessa).
+#
+# SOLUZIONE (mirror fatture):
+#   1) usa_sequenza=false sulla riga 'ddt' di sistema_codici (companion CSV
+#      80_data): il sync del framework (righe 123-140 di 20260525-03) DROPPA da
+#      solo la sua funzione+trigger per il DDT e NON tocca la sequenza. Il DDT
+#      esce dal framework di numerazione automatica.
+#   2) Sequenza vendite.ddt_numero_seq garantita (CREATE IF NOT EXISTS): su fresh
+#      apply il framework non la creerebbe (ramo CREATE SEQUENCE solo per
+#      usa_sequenza=true).
+#   3) Funzione BESPOKE trgfn_ddt_gen_numero_emesso (nome DISTINTO -> il framework
+#      non la possiede/droppa): assegna il numero SOLO alla transizione a EMESSO,
+#      leggendo il formato (prefisso/separatore/lunghezza) dalla riga
+#      sistema_codici 'ddt' (che resta, solo usa_sequenza=false) + la sequenza.
+#   4) Trigger bespoke BEFORE INSERT OR UPDATE OF stato_doc_ddt_id.
+#   5) Rimuove il trigger superato trg_ddt_a10_gen_codice_emesso_upd (20260709-13,
+#      che puntava alla funzione posseduta dal framework) PRIMA che il sync droppi
+#      quella funzione -> niente errore di dipendenza.
+#
+# Immutabilita' post-assegnazione: resta trgfn_v_ddt_protect_num (20260709-07).
+# Lock framework: resta disabilitato (automation_lock_columns, 20260709-07).
+# La funzione trgfn_ddt_gen_codice (override di 07) viene droppata dal sync del
+# framework quando usa_sequenza passa a false: atteso e corretto.
+#
+# Ordine: 14 (20_code) gira PRIMA del companion CSV (80_data), cosi' droppa il
+# trigger 13 prima che il sync del framework rimuova trgfn_ddt_gen_codice.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260709-14-ddt-numero-emesso-bespoke-mctit.yaml
+
+  - changeSet:
+      id: 20260709-14-ddt-numero-emesso-bespoke
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        C6 definitivo: numero DDT a EMESSO fuori dal framework sistema_codici
+        (mirror fatture). Sequenza garantita + funzione/trigger bespoke
+        trgfn_ddt_gen_numero_emesso (nome distinto). Rimuove il trigger 13
+        superato. Companion 80_data: usa_sequenza=false sulla riga 'ddt'.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ddt
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_ddt
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) Sequenza garantita (fresh apply: il framework non la crea con
+              --    usa_sequenza=false).
+              CREATE SEQUENCE IF NOT EXISTS vendite.ddt_numero_seq;
+
+              -- 2) Rimuove il trigger 20260709-13 (puntava a trgfn_ddt_gen_codice,
+              --    posseduta dal framework): va tolto PRIMA che il sync droppi
+              --    quella funzione (companion CSV), per non avere dipendenze.
+              DROP TRIGGER IF EXISTS trg_ddt_a10_gen_codice_emesso_upd ON vendite.ddt;
+
+              -- 3) Funzione BESPOKE (nome distinto dal framework): numero solo a
+              --    EMESSO, formato letto dalla riga sistema_codici 'ddt' + sequenza.
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_gen_numero_emesso()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: assegna ddt.numero alla transizione a EMESSO (C6), fuori dal
+              --   framework sistema_codici (che numera all'INSERT). Mirror spirito
+              --   fatture: numerazione bespoke a emissione.
+              DECLARE
+                  v_stato  config.stati_doc_ddt.codice_interno%TYPE;
+                  v_prefix config.sistema_codici.prefisso%TYPE;
+                  v_sep    config.sistema_codici.separatore%TYPE;
+                  v_len    config.sistema_codici.lunghezza_numero%TYPE;
+                  v_seq    bigint;
+              BEGIN
+                  -- Gia' numerato -> no-op (immutabilita' da trgfn_v_ddt_protect_num).
+                  IF NEW.numero IS NOT NULL AND btrim(NEW.numero::text) <> '' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Numero solo a EMESSO (no buchi da bozze DRAFT scartate).
+                  SELECT sdd.codice_interno INTO v_stato
+                    FROM config.stati_doc_ddt sdd
+                   WHERE sdd.id = NEW.stato_doc_ddt_id;
+                  IF v_stato IS DISTINCT FROM 'EMESSO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Formato data-driven dalla riga sistema_codici (usa_sequenza=false,
+                  -- ma prefisso/separatore/lunghezza restano validi).
+                  SELECT prefisso, separatore, lunghezza_numero
+                    INTO v_prefix, v_sep, v_len
+                    FROM config.sistema_codici
+                   WHERE codice_interno = 'ddt';
+
+                  v_seq := nextval('vendite.ddt_numero_seq');
+                  NEW.numero := COALESCE(v_prefix, 'DDT')
+                             || COALESCE(v_sep, '')
+                             || lpad(v_seq::text, COALESCE(v_len, 7), '0');
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_gen_numero_emesso()
+              IS 'Assegna ddt.numero alla transizione a EMESSO (C6), fuori dal '
+                 'framework sistema_codici (mirror fatture). Formato da '
+                 'config.sistema_codici riga ddt (usa_sequenza=false) + sequenza '
+                 'vendite.ddt_numero_seq. Immutabilita'': trgfn_v_ddt_protect_num. '
+                 'rev 2026-07-09.';
+
+              -- 4) Trigger bespoke.
+              DROP TRIGGER IF EXISTS trg_ddt_a10_gen_numero_emesso_upd ON vendite.ddt;
+              CREATE TRIGGER trg_ddt_a10_gen_numero_emesso_upd
+                  BEFORE INSERT OR UPDATE OF stato_doc_ddt_id
+                  ON vendite.ddt
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_ddt_gen_numero_emesso();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a10_gen_numero_emesso_upd ON vendite.ddt;
+              DROP FUNCTION IF EXISTS vendite.trgfn_ddt_gen_numero_emesso();

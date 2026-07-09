@@ -21,6 +21,7 @@ BEGIN
   --   1. Imposta anno/data se numero presente e valori mancanti (INSERT).
   --   2. Eredita billing_account_id, utility_id, valuta_id dall'ordine
   --      sorgente (via sorgente_uid) se non gia` valorizzati (INSERT).
+  --      Sorgente risolta per codice_interno (immutabile) — rev 2026-07-09.
   -- =========================================================
 
   ----------------------------------------------------------------
@@ -45,9 +46,10 @@ BEGIN
           OR NEW.valuta_id IS NULL)
   THEN
     -- Verifica che la sorgente sia ORDINE_VENDITA e eredita i campi mancanti.
+    -- Lookup per codice_interno (immutabile), non per codice.
     IF EXISTS (
       SELECT 1 FROM config.sorgenti
-      WHERE id = NEW.sorgente_tipo_id AND codice = 'ORDINE_VENDITA'
+      WHERE id = NEW.sorgente_tipo_id AND codice_interno = 'ORDINE_VENDITA'
     ) THEN
       SELECT
         COALESCE(NEW.billing_account_id, o.billing_account_id),
@@ -70,7 +72,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_normalize()
-IS 'Normalize: imposta anno/data se numero presente. Eredita billing_account_id, utility_id, valuta_id da ordine sorgente (ORDINE_VENDITA) su INSERT se non gia` valorizzati.';
+IS 'Normalize: imposta anno/data se numero presente. Eredita billing_account_id, utility_id, valuta_id da ordine sorgente (ORDINE_VENDITA, lookup per codice_interno) su INSERT se non gia` valorizzati. rev 2026-07-09.';
 ```
 
 ---

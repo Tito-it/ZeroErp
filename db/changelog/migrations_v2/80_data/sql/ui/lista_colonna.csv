@@ -126,3 +126,22 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 125,7,documento_origine,Origine,Documento commerciale di origine (preventivo/offerta),documento_origine_codice,informazione,string,,160,240,left,Origine,10,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_documento_origine
 126,7,agente,Agente,Agente o venditore dell ordine,agente_denominazione,informazione,string,,180,250,left,Commerciale,9,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_agente
 127,7,data_insert,Creazione,Data di inserimento dell ordine,data_insert,informazione,datetime,datetime_short,150,260,center,Audit,11,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_data_insert
+128,8,numero,Numero,Numero del DDT,numero,identificatore,string,,130,10,left,Identificazione,1,t,t,t,t,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_numero
+129,8,data,Data,Data del DDT,data,informazione,date,date_short,110,20,center,Identificazione,1,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_data
+130,8,destinatario_denominazione,Destinatario,Ragione sociale del destinatario,destinatario_denominazione,informazione,string,,200,30,left,Destinatario,2,t,t,t,t,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_destinatario
+131,8,id_fiscale,Id. Fiscale,Identificativo fiscale del destinatario,id_fiscale_univoco_cf_piva,informazione,string,,140,40,left,Destinatario,2,t,t,t,t,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_id_fiscale
+132,8,ba_codice,Cd. Account,Codice del billing account,ba_codice,informazione,string,,120,50,left,Destinatario,2,t,t,t,t,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_ba_codice
+133,8,stato,Stato,Stato corrente del DDT,stato_descrizione,informazione,string,,130,60,center,Stato,3,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_stato
+134,8,causale_trasporto,Causale,Causale del trasporto,causale_trasporto_descrizione,informazione,string,,150,70,left,Trasporto,4,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_causale
+135,8,aspetto_bene,Aspetto beni,Aspetto esteriore dei beni,aspetto_bene_descrizione,informazione,string,,140,80,left,Trasporto,4,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_aspetto
+136,8,vettore_denominazione,Vettore,Vettore del trasporto,vettore_denominazione,informazione,string,,180,90,left,Trasporto,4,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_vettore
+137,8,mittente_denominazione,Mittente,Ragione sociale del mittente,mittente_denominazione,informazione,string,,180,100,left,Trasporto,4,f,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_mittente
+138,8,num_colli,Colli,Numero colli,num_colli,informazione,numeric,,90,110,right,Logistica,5,f,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_num_colli
+139,8,peso_lordo,Peso lordo,Peso lordo della spedizione,peso_lordo,informazione,numeric,,110,120,right,Logistica,5,f,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_peso_lordo
+140,8,peso_netto,Peso netto,Peso netto della spedizione,peso_netto,informazione,numeric,,110,130,right,Logistica,5,f,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_peso_netto
+141,8,tracking_code,Tracking,Codice tracking spedizione,tracking_code,informazione,string,,140,140,left,Logistica,5,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_tracking
+142,8,ordine_origine_numero,Ordine,Numero dell ordine di origine,ordine_origine_numero,informazione,string,,130,150,left,Origine,6,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_ordine_origine
+143,8,valuta,Valuta,Codice valuta del DDT,valuta_codice,informazione,string,,90,160,left,Importi,7,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_valuta
+144,8,anno,Anno,Anno del DDT,anno,informazione,numeric,,80,170,center,Identificazione,1,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_anno
+145,8,serie,Serie,Serie del DDT,serie,informazione,string,,90,180,left,Identificazione,1,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_serie
+146,8,data_insert,Creazione,Data di inserimento del DDT,data_insert,informazione,datetime,datetime_short,150,190,center,Audit,8,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_data_insert

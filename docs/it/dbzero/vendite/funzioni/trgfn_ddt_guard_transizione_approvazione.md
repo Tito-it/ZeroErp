@@ -65,7 +65,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_transizione_approvazione()
-IS 'Trigger function: blocca transizione DDT a EMESSO se componenti BoM CASO A hanno stato PENDING approvazione (E_COMPONENTE_PREZZO_PENDENTE) o prezzo NULL (E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE).';
+IS 'Trigger function: blocca transizione DDT a EMESSO se componenti BoM CASO A hanno stato PENDING approvazione (E_COMPONENTE_PREZZO_PENDENTE) o prezzo NULL (E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE). Creata+agganciata 2026-07-09 (assente sul DB).';
 ```
 
 ---
