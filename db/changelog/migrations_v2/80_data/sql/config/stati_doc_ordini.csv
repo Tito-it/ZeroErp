@@ -7,3 +7,4 @@ id,codice_interno,codice,descrizione,attivo,ordine,meta,fase,terminale
 7,FATTURATO,FATTURATO,Fatturato,t,70,{},CHIUSO,t
 1,DRAFT,DRAFT,Bozza,t,10,{},APERTO,f
 8,EVASO,EVASO,Evaso,t,25,{},CHIUSO,t
+9,PARZIALMENTE_EVASO,PARZIALMENTE_EVASO,Parzialmente evaso,t,22,{},IN_CORSO,f

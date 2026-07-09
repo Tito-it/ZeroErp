@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# C6 (completamento) — trigger gen_codice DDT sull'emissione.
+#
+# PROBLEMA: il framework sistema_codici
+# (script.trgfn_config_sistema_codici_sync_gen_codice) provisiona il trigger
+# trg_ddt_a10_gen_codice_ins_upd come "BEFORE INSERT OR UPDATE OF numero"
+# (nome_colonna='numero' nella riga config.sistema_codici del DDT). Fira solo se
+# `numero` e' nel SET dell'UPDATE -> NON scatta sulla transizione a EMESSO
+# (UPDATE di solo stato_doc_ddt_id). Risultato: la fn trgfn_ddt_gen_codice
+# (gia' resa EMESSO-gated in 20260709-07) non veniva mai eseguita all'emissione
+# -> numero mai assegnato (pgTAP test 15/16 rossi).
+#
+# Non si puo' rimuovere il DDT dal framework: script.fn_generate_codice('ddt')
+# legge quella stessa riga per prefisso/separatore/sequenza. E il trigger
+# framework si ri-provisiona da solo (non modificabile per-tabella).
+#
+# SOLUZIONE (additiva, no conflitto col framework): la fn e' gia' EMESSO-gated,
+# quindi il trigger framework su INSERT non assegna nulla in DRAFT (corretto).
+# Si aggiunge un trigger BESPOKE su UPDATE OF stato_doc_ddt_id, con nome DISTINTO
+# (trg_ddt_a10_gen_codice_emesso_upd, non il template del framework), che chiama
+# la stessa fn -> assegna il numero alla transizione a EMESSO. Idempotente:
+# entrambi i trigger chiamano trgfn_ddt_gen_codice, che no-op se numero gia' set
+# o stato != EMESSO.
+#
+# Ordine: 'emesso' < 'ins' alfabetico -> il bespoke fira prima; il framework
+# (UPDATE OF numero) non fira comunque sull'UPDATE di solo stato. Il protect
+# (trg_ddt_a10_v_protect_num_upd, UPDATE OF numero) non fira sull'UPDATE di solo
+# stato -> la prima assegnazione passa.
+#
+# Dipendenze: vendite.trgfn_ddt_gen_codice (20260709-07). Fresh apply: 07 + 13
+# insieme danno lo stato corretto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260709-13-add-trigger-ddt-gen-codice-emesso-mctit.yaml
+
+  - changeSet:
+      id: 20260709-13-add-trigger-ddt-gen-codice-emesso
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Aggiunge trg_ddt_a10_gen_codice_emesso_upd (BEFORE UPDATE OF
+        stato_doc_ddt_id) che esegue trgfn_ddt_gen_codice: assegna il numero DDT
+        alla transizione a EMESSO (C6). Necessario perche' il trigger del
+        framework sistema_codici e' UPDATE OF numero e non scatta sul cambio di
+        stato. Trigger bespoke (nome distinto) -> non gestito/sovrascritto dal
+        framework.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ddt
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname='vendite' AND p.proname='trgfn_ddt_gen_codice';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a10_gen_codice_emesso_upd ON vendite.ddt;
+              CREATE TRIGGER trg_ddt_a10_gen_codice_emesso_upd
+                  BEFORE UPDATE OF stato_doc_ddt_id
+                  ON vendite.ddt
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_ddt_gen_codice();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a10_gen_codice_emesso_upd ON vendite.ddt;

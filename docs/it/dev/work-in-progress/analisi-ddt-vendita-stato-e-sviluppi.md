@@ -91,9 +91,14 @@ nessuna azione "genera DDT" nel drawer ordine.
 
 ### 3.1 Ordine ↔ DDT — tre livelli (nessuna FK diretta DDT→ordine)
 
-1. **Testata (soft):** `ddt.sorgente_tipo_id`=8 + `ddt.sorgente_uid = ordini.uid`
-   (UNIQUE `(sorgente_tipo_id, sorgente_uid)` → **un DDT per ordine sorgente**).
-   Usato da `trgfn_ddt_normalize` per ereditare `billing_account`/`utility`/`valuta`.
+1. **Testata (soft):** `ddt.sorgente_tipo_id` = **ORDINE_VENDITA** (id 6, la sorgente *a monte*
+   del DDT) + `ddt.sorgente_uid = ordini.uid`. È questo il valore letto da `trgfn_ddt_normalize`
+   per ereditare `billing_account`/`utility`/`valuta` (la fn richiede `codice = 'ORDINE_VENDITA'`).
+   ⚠️ **Non** `DDT_VENDITA` (id 8): quello è il tipo-sorgente *a valle*, usato quando il DDT
+   pusha in commessa (`fn_list_ddt_da_pushare`, §2.1), non la sorgente della testata. Con id 8
+   l'eredità billing non scatterebbe (bug silenzioso). La UNIQUE storica
+   `(sorgente_tipo_id, sorgente_uid)` "un DDT per ordine" viene **rimossa** da A-1 (multi-DDT):
+   l'unicità resta sul fulfillment riga↔riga.
 2. **Riga ↔ riga (fonte di verità) = l'evasione:**
    `vendite.ordini_righe_fulfillment(ordine_riga_id, ddt_riga_id, qta_evasa)`,
    UNIQUE `(ordine_riga_id, ddt_riga_id)`, FK `ON DELETE RESTRICT`, guard

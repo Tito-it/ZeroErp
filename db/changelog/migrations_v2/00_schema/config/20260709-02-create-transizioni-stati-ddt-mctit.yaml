@@ -1,0 +1,192 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# A-3 Macchina a stati DDT data-driven
+#   (brief-db-ddt-vendita-evasione-e-stati §5).
+#
+# Crea config.transizioni_stati_ddt: matrice delle transizioni ammesse tra
+# stati del DDT di vendita. Mirror 1:1 di config.transizioni_stati_ordini
+# (20260605-08): stessa forma (id, stato_da_id, stato_a_id, attivo, meta jsonb,
+# audit), UNIQUE(stato_da_id, stato_a_id), CHECK da<>a, CHECK meta_ui, FK verso
+# config.stati_doc_ddt su entrambi i lati.
+#
+# Enforcement: il grafo e' validato a runtime dal trigger
+#   vendite.trgfn_ddt_guard_transizione (20260709-04), che legge questa matrice.
+# Seed matrice (DRAFT->EMESSO->SPEDITO->CONSEGNATO->RESO + ANNULLATO) in
+#   80_data/changelog/20260709-10.
+#
+# Dipendenza: config.stati_doc_ddt (gia' esistente).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260709-02-create-transizioni-stati-ddt-mctit.yaml
+
+  - changeSet:
+      id: 20260709-02-create-transizioni-stati-ddt
+      author: mctit
+      comment: >
+        Crea config.transizioni_stati_ddt: matrice transizioni stato DDT di
+        vendita (A-3). Mirror di config.transizioni_stati_ordini. Lettura/UI
+        via meta.ui (label/icona/severity); enforcement grafo via
+        vendite.trgfn_ddt_guard_transizione (20260709-04). Seed in 20260709-10.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - tableExists:
+                    schemaName: config
+                    tableName: transizioni_stati_ddt
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_ddt
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: transizioni_stati_ddt
+            remarks: >-
+              Matrice delle transizioni ammesse tra stati DDT di vendita.
+              Fonte metadati UI (meta.ui) per le azioni data-driven e grafo
+              per vendite.trgfn_ddt_guard_transizione (enforcement). Pattern
+              identico a config.transizioni_stati_ordini.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_transizioni_stati_ddt
+                    nullable: false
+
+              - column:
+                  name: stato_da_id
+                  type: bigint
+                  remarks: "FK -> config.stati_doc_ddt.id (stato origine)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: stato_a_id
+                  type: bigint
+                  remarks: "FK -> config.stati_doc_ddt.id (stato destinazione)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: >-
+                    Se true, la transizione e' ammessa dal guard ed esposta
+                    tra le azioni disponibili. Se false, riga documentale
+                    (grafo) ma transizione bloccata.
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: >-
+                    Metadati UI (action_key, label_key, severity, icon,
+                    requires_confirm, outlined, manuale). manuale=false per
+                    transizioni automatiche/di processo (escluse dai pulsanti).
+                    Per le manuali action_key+label_key sono obbligatori
+                    (vedi ck_transizioni_stati_ddt_meta_ui).
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: transizioni_stati_ddt
+            columnNames: stato_da_id, stato_a_id
+            constraintName: uq_transizioni_stati_ddt
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: transizioni_stati_ddt
+            baseColumnNames: stato_da_id
+            constraintName: fk_tsd_da
+            referencedTableSchemaName: config
+            referencedTableName: stati_doc_ddt
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: transizioni_stati_ddt
+            baseColumnNames: stato_a_id
+            constraintName: fk_tsd_a
+            referencedTableSchemaName: config
+            referencedTableName: stati_doc_ddt
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.transizioni_stati_ddt
+                ADD CONSTRAINT ck_transizioni_stati_ddt_da_diverso_a
+                CHECK (stato_da_id <> stato_a_id);
+
+              -- Defense-in-depth: ogni transizione manuale deve avere i metadati
+              -- minimi per renderizzare il pulsante (action_key + label_key).
+              -- Le automatiche (manuale=false) ne sono esonerate. Simmetrico a
+              -- config.transizioni_stati_ordini.
+              ALTER TABLE config.transizioni_stati_ddt
+                ADD CONSTRAINT ck_transizioni_stati_ddt_meta_ui
+                CHECK (
+                    COALESCE((meta->>'manuale')::boolean, true) = false
+                    OR (meta ?? 'action_key' AND meta ?? 'label_key')
+                );
+
+              COMMENT ON TABLE config.transizioni_stati_ddt IS
+                  'Matrice transizioni ammesse tra stati DDT di vendita (A-3). '
+                  'Fonte metadati UI per le azioni data-driven e grafo per '
+                  'vendite.trgfn_ddt_guard_transizione. Mirror di '
+                  'config.transizioni_stati_ordini. Seed matrice in 20260709-10. '
+                  'rev 2026-07-09.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: transizioni_stati_ddt
