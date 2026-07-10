@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_genera_ddt_da_ordine.md" %}
 # ⚙️ Funzione `fn_genera_ddt_da_ordine`
 
 ```sql

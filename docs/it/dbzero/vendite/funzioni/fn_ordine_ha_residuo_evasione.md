@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_ordine_ha_residuo_evasione.md" %}
 # ⚙️ Funzione `fn_ordine_ha_residuo_evasione`
 
 ```sql
