@@ -19,24 +19,28 @@ data-driven, **generazione DDT da ordine** (evasione) e **push a commessa**
 `fn_list_ddt_da_pushare` **esistono già** (`commesse_source_handlers.py:708`,
 `commesse_repository.py:35`): non si tocca, si alimenta.
 
-## 2. Prerequisiti DB (verificare "applicati" prima di partire)
+## 2. Prerequisiti DB — ✅ TUTTI APPLICATI (verificato 2026-07-10)
 
-| Oggetto DB | Stato | Fonte |
+Slice DB atterrata su `dev/db-tid` (consuntivo brief DB §14). Verificato contro la doc
+del DB vivo:
+
+| Oggetto DB | Stato | Firma/nota reale |
 |---|---|---|
-| `vendite.fn_genera_ddt_da_ordine(...)` | da creare | brief DB §4 |
-| `config.transizioni_stati_ddt` + guard `trgfn_ddt_guard_transizione` | da creare | brief DB §5 |
-| `config.stati_doc_ordini.PARZIALMENTE_EVASO` + matrice | da creare | brief DB §4 |
-| `ddt_righe.sconto_percentuale` + `iva_id` (C8) | da creare | brief DB §3 |
-| Rimozione UNIQUE `uq_ddt_v_sorgente_fk` (multi-DDT) | da creare | brief DB §3 |
-| **`vendite.vw_ddt_lista`** (view canonica lista, gemella `vw_ordini_lista`) | ⚠️ **DA AGGIUNGERE al brief DB** | vedi §9 |
-| **`script.fn_available_actions_ddt(ddt_id)`** (capabilities data-driven) | ⚠️ **DA AGGIUNGERE al brief DB** | vedi §9 |
-| `vendite.note_ddt` (partizione + view) | presente | catalogo BB |
-| `fn_list_ddt_da_pushare`, `fn_ddt_riga_componenti_init/preview` | presenti | doc DB |
+| `vendite.fn_genera_ddt_da_ordine` | ✅ | **`(p_ordine_id bigint, p_righe jsonb DEFAULT NULL, p_data date DEFAULT CURRENT_DATE) → bigint`** — 3 param (no `p_emittente_sr_id`); `p_righe=[{ordine_riga_id, qta_da_evadere}]` in **unità operativa** |
+| `config.transizioni_stati_ddt` + `trgfn_ddt_guard_transizione` | ✅ | matrice seedata (payload `meta.ui`: `action_key/label_key/severity/icon/requires_confirm/outlined/manuale`) |
+| `config.stati_doc_ordini.PARZIALMENTE_EVASO` (id 9) + matrice | ✅ | fase IN_CORSO, terminale=f; `EVASO` invariato |
+| `ddt_righe.sconto_percentuale` + `iva_id` (FK `fk_ddt_vendita_r_iva`) | ✅ | C8 |
+| Rimozione UNIQUE `uq_ddt_v_sorgente_fk` → indice `ix_ddt_v_sorgente` | ✅ | multi-DDT A-1 |
+| **numero a EMESSO**: `trgfn_ddt_gen_numero_emesso` (BEFORE INS/UPD), DDT fuori da `sistema_codici` | ✅ | il `numero` è NULL in DRAFT, assegnato alla transizione stato→EMESSO |
+| **`vendite.vw_ddt_lista`** (view lista/dettaglio, `security_invoker=on`) | ✅ | colonne §5.1 |
+| **`script.fn_available_actions_ddt(p_ddt_id) → jsonb`** | ✅ | output §4-capabilities |
+| Seed `ui.lista_definizione`/`lista_colonna` `codice='vendite.ddt'` (id 8, 19 col) | ✅ | i18n `vendite.ddt.col_*` |
+| `config.messaggi_errore` `E_DDT_*`/`E_STATO_DDT_*` (521-524) + `E_QTA_SUPERA_RESIDUO` (85) | ✅ | testo RAISE lato DB |
+| `vendite.note_ddt`, `fn_list_ddt_da_pushare`, `fn_ddt_riga_componenti_init/preview` | ✅ | pre-esistenti |
+| Seed `config.causali_trasporto` (8) + `config.aspetti_beni` (10) | ✅ | PDF-ready |
 
-> ⚠️ **Gap da segnalare al team DB**: il brief DB Fase 1 copre evasione+stati ma
-> **non** la read-side per il BE lista/dettaglio. Servono `vw_ddt_lista` e
-> `script.fn_available_actions_ddt` (mirror esatti di `vw_ordini_lista` /
-> `script.fn_available_actions_ordine`). Aggiungerli al brief DB o a un companion.
+**Gate superato**: BE può partire. (Auto-gen dbzero di `vw_ddt_lista`/`fn_available_actions_ddt`
+non ancora rigenerata — usare i `manual/*.md`, che riflettono il DB vivo.)
 
 ## 3. Struttura file — clonare da ordini
 
@@ -113,9 +117,11 @@ Oggi `DdtRepository(ComponentiRepositoryMixin)` legge solo `ddt_righe_componenti
   `numero` lo mette il trigger solo a EMESSO — C6), `update_ddt`, `delete_ddt`,
   `update_stato` (transizione validata dal trigger), righe `next_riga_nr`/`create_riga`/
   `update_riga`/`delete_riga`.
-- **fn DB**: `push_da_ordine(ordine_id, righe)` → `SELECT vendite.fn_genera_ddt_da_ordine(%s,%s::jsonb,%s,%s)`;
-  `init_componenti_riga`/`preview_componenti_riga` (fn `fn_ddt_riga_componenti_*`);
-  `count_righe_pushable(ddt_id)` → `fn_list_ddt_da_pushare(NULL,NULL,NULL,%s)`.
+- **fn DB**: `push_da_ordine(ordine_id, righe, data=None)` → `SELECT vendite.fn_genera_ddt_da_ordine(%s, %s::jsonb, COALESCE(%s, CURRENT_DATE))`
+  (**3 param**; `righe` in **unità operativa**); `init_componenti_riga`/`preview_componenti_riga`
+  (fn `fn_ddt_riga_componenti_*`); `count_righe_pushable(ddt_id)` → `fn_list_ddt_da_pushare(NULL,NULL,NULL,%s)`.
+- **numero a EMESSO (C6)**: `emetti` = `update_stato(ddt_id, EMESSO_id)`; il numero lo assegna
+  il trigger `trgfn_ddt_gen_numero_emesso` (BEFORE UPDATE) — il service non passa il numero.
 
 ## 6. Endpoint
 

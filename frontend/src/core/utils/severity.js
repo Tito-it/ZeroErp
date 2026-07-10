@@ -300,6 +300,7 @@ export function statoOffertaSeverity(codice) {
 export const STATO_ORDINE_MAP = {
   DRAFT: 'secondary',
   CONFERMATO: 'info',
+  PARZIALMENTE_EVASO: 'info',
   EVASO: 'info',
   ALLOCATO: 'info',
   SPEDITO: 'info',
@@ -309,6 +310,22 @@ export const STATO_ORDINE_MAP = {
 }
 export function statoOrdineSeverity(codice) {
   return resolveSeverity(STATO_ORDINE_MAP, codice)
+}
+
+// --- Mappa stati DDT di vendita ---
+// DRAFT=grigio (bozza, numero non ancora assegnato), EMESSO/SPEDITO=azzurro
+// (ciclo logistico in corso), CONSEGNATO=verde (concluso), RESO=arancio
+// (reso merce), ANNULLATO=rosso. Allineato a config.stati_doc_ddt.codice_interno.
+export const STATO_DDT_MAP = {
+  DRAFT: 'secondary',
+  EMESSO: 'info',
+  SPEDITO: 'info',
+  CONSEGNATO: 'success',
+  RESO: 'warn',
+  ANNULLATO: 'danger',
+}
+export function statoDdtSeverity(codice) {
+  return resolveSeverity(STATO_DDT_MAP, codice)
 }
 
 // --- Mappa stati commessa ---

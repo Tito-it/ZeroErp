@@ -86,6 +86,17 @@ export function pushOrdineACommessa(id) {
   return api.post(`${BASE}/${id}/push/`, {})
 }
 
+// Evasione: genera un DDT (DRAFT) dall'ordine. L'endpoint vive nel dominio
+// SORGENTE (ordine), la logica sta in ddt_service (gemello di
+// "genera ordine da preventivo"). `righe` = [{ordine_riga_id, qta_da_evadere}]
+// in unita' operativa; se null/omesso il BE evade TUTTO il residuo. La fn DB
+// madre e' atomica (testata+righe+componenti+fulfillment+proiezione stato
+// ordine). Ritorna { ddt_id, numero(null in DRAFT), ordine_id }.
+export function generaDdtFromOrdine(ordineId, righe = null) {
+  const body = righe && righe.length ? { righe } : {}
+  return api.post(`${BASE}/${ordineId}/genera-ddt/`, body)
+}
+
 // Risolve l'ordine COLLEGATO a una pratica (agganciato dallo smistamento). Usato
 // dagli step pratica a valle (CONFERMA_ORDINE / INVIO_COMMESSA) per aprire
 // l'OrdiniDrawer sull'ordine giusto. Ritorna { ordine_id: <id|null> }.

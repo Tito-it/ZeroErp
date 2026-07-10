@@ -413,4 +413,30 @@ Slice DB realizzata e applicata su `dev/db-tid`, **non committata** (attendere "
   soluzione robusta (14) è il **mirror fatture**: DDT fuori da `sistema_codici` (`usa_sequenza=false`)
   + numerazione bespoke a EMESSO + protect condizionale. I passi 07 (override funzione) e 13 sono
   **superati** da 14 (changelog forward-only).
+
+## 15. Addendum SCOPE — RLS e emittente su DDT (rilievo BE, 2026-07-10) ⚠️ DA FARE
+
+> **Rilievo emerso in verifica pre-sviluppo BE.** La lista DDT ha un **buco di scope
+> emittente**: `vendite.ddt` **non ha policy RLS** e `vw_ddt_lista` **non espone
+> `emittente_fiscale_id`**. Con `security_invoker=on` ma **senza RLS sulla tabella base**,
+> la vista non filtra nulla → **ogni operatore vedrebbe i DDT di tutti gli emittenti**.
+> Regressione rispetto a ordini/preventivi/contratti (RLS su tabella base **+** colonna
+> `emittente_fiscale_id` in vista per il defense-in-depth applicativo, api.md §"Enforcement RLS").
+
+**Il DDT non memorizza l'emittente** (lo risolve a runtime da `billing_account` via
+`anagrafiche.fn_get_emittente_fiscale_id`). Due interventi DB, mirror del pattern ordini:
+
+1. **RLS su `vendite.ddt`** — abilitare Row Level Security e policy di scope emittente
+   coerente con `vendite.ordini` (l'emittente del DDT = emittente risolto dal suo
+   `billing_account_id`; per i DDT senza billing — bozze standalone pre-cliente — definire
+   la regola, es. visibili al creatore/istanza). Ruoli `BYPASSRLS` (batch/migrazioni) esenti.
+2. **Esporre `emittente_fiscale_id` in `vw_ddt_lista`** (risolto da `billing_account`), come
+   `vw_ordini_lista`, così il repository BE può sommare il filtro applicativo
+   `script.fn_get_emittenti_scope_pk_ids(auth_user_id)` (defense-in-depth) — senza la colonna
+   il BE non può filtrare e resta appeso alla sola RLS.
+
+**Impatto BE**: finché l'addendum non atterra, `DdtRepository.list_ddt` **non** applica il
+filtro applicativo emittente (la colonna non esiste). Il metodo va scritto come mirror di
+`OrdiniRepository.list_ddt` e il filtro `v.emittente_fiscale_id = ANY(...)` va **attivato**
+appena la colonna è disponibile. pgTAP: caso "operatore vede solo i DDT dei propri emittenti".
 </content>

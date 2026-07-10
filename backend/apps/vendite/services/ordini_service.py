@@ -942,7 +942,10 @@ def update_componente(
         message="Componenti modificabili solo su ordine in bozza.",
         function_name=f"{_FN}.update_componente",
     )
-    allowed = {"prezzo_unitario", "attivo", "esposto_in_fattura", "meta"}
+    # NB: `esposto_in_fattura` NON e' aggiornabile qui — e' un flag della BoM di
+    # catalogo (articoli_componenti, JOIN a lettura), non una colonna di
+    # ordini_righe_componenti: il mixin lo scarterebbe in silenzio.
+    allowed = {"prezzo_unitario", "attivo", "meta"}
     data = {k: empty_to_none(v) for k, v in payload.items() if k in allowed}
     with _db_errors("update_componente"):
         repo.update_componente(componente_id, **data)

@@ -221,7 +221,11 @@ class OrdiniRepository(ComponentiRepositoryMixin):
 
     # Scopo: Righe attive dell'ordine con decodifiche articolo/uom/iva e flag
     #        `is_composito_caso_a` (per il chevron expander FE). Importo riga
-    #        calcolato (quantita * prezzo * (1 - sconto%)).
+    #        calcolato (quantita * prezzo * (1 - sconto%)). Espone anche
+    #        l'avanzamento evasione per riga (fulfillment multi-DDT): qta evasa
+    #        e residuo in UNITA' OPERATIVA (fulfillment.qta_evasa e' in base;
+    #        quantita = qta_operativa * factor_to_base, ROUND 6 come
+    #        trgfn_qta_from_operativa). Alimenta il pannello "Genera DDT".
     def list_righe(self, ordine_id: int) -> list[dict[str, Any]]:
         sql = """
             SELECT
@@ -249,6 +253,18 @@ class OrdiniRepository(ComponentiRepositoryMixin):
                     (1::numeric - COALESCE(r.sconto_percentuale, 0::numeric) / 100::numeric),
                     2
                 ) AS importo_riga,
+                ROUND(
+                    COALESCE(ful.qta_evasa_base, 0::numeric)
+                    / NULLIF(r.factor_to_base, 0::numeric),
+                    6
+                ) AS qta_evasa_operativa,
+                ROUND(
+                    GREATEST(
+                        r.quantita - COALESCE(ful.qta_evasa_base, 0::numeric),
+                        0::numeric
+                    ) / NULLIF(r.factor_to_base, 0::numeric),
+                    6
+                ) AS qta_residua_operativa,
                 r.meta,
                 r.data_insert,
                 r.data_update,
@@ -262,6 +278,11 @@ class OrdiniRepository(ComponentiRepositoryMixin):
               LEFT JOIN catalogo.articoli a    ON a.id   = r.articolo_id
               LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_operativa_id
               LEFT JOIN config.iva iva         ON iva.id = r.iva_id
+              LEFT JOIN LATERAL (
+                  SELECT SUM(f.qta_evasa) AS qta_evasa_base
+                    FROM vendite.ordini_righe_fulfillment f
+                   WHERE f.ordine_riga_id = r.id
+              ) ful ON TRUE
              WHERE r.ordine_id = %s
                AND r.attivo IS TRUE
              ORDER BY r.riga_nr, r.id

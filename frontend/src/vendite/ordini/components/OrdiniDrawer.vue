@@ -24,6 +24,7 @@ import {
   STATO_ORDINE,
   STATI_ORDINE_ANTEPRIMA_PDF,
   STATI_ORDINE_CON_DOCUMENTO,
+  STATI_ORDINE_EVADIBILI,
 } from '../constants'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
@@ -42,6 +43,7 @@ import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
 import OrdiniForm from './OrdiniForm.vue'
 import OrdiniRigheTable from './OrdiniRigheTable.vue'
 import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
+import OrdineEvasionePanel from './OrdineEvasionePanel.vue'
 import OrdineEmissioneDialog from './dialogs/OrdineEmissioneDialog.vue'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
@@ -119,6 +121,28 @@ const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 // PreventiviDrawer (che blocca billing_account_id post-create). Cambiare cliente
 // = nuovo ordine, non una modifica della testata.
 const nonEditableFields = computed(() => (hasDetail.value ? ['billing_account_id'] : []))
+
+// Readonly PURO (permesso LETTURA / split / readonly forzato) — SENZA il
+// lock-di-stato post-DRAFT: l'evasione e' un'azione di processo legittima su un
+// ordine CONFERMATO (stato post-DRAFT), come lo smistamento sui preventivi
+// ACCETTATI. Serve al pannello evasione per restare interattivo sotto il
+// lock-di-stato (app-escape), consuntivo solo in readonly puro.
+const isReadonlyPuro = computed(() => props.readonly || parentReadonly.value)
+
+// Pannello evasione (genera DDT) visibile quando l'ordine ha residuo da evadere
+// (CONFERMATO o PARZIALMENTE_EVASO). Trigger fatturazione differita
+// (SPEDITO/CONSEGNATO) resta lato DB; qui la vista e' data-driven sullo stato.
+const showEvasione = computed(
+  () => hasDetail.value
+    && STATI_ORDINE_EVADIBILI.includes(detail.value?.stato_codice_interno),
+)
+
+// Scopo: callback @evaso del pannello — generato un DDT dall'ordine: ricarica il
+// detail (lo stato ordine viene proiettato dal BE: CONFERMATO/PARZIALMENTE_EVASO/
+// EVASO) e le capability. Il pannello ha gia' notificato il tab DDT.
+async function onEvaso() {
+  await loadDetail()
+}
 
 // Default emittente fiscale: operatore → id profilo; admin globale → null
 // (sceglie via EmittenteFiscaleField in modalita' Select).
@@ -438,9 +462,16 @@ async function eseguiCambioStato(action) {
 // con preventivi/contratti); in readonly puro (LETTURA/split) sono nascoste.
 const drawerActions = computed(() => {
   if (!hasDetail.value) return []
-  const readonlyPuro = props.readonly || parentReadonly.value
+  const readonlyPuro = isReadonlyPuro.value
+  // `genera_ddt` (evasione) vive nel pannello OrdineEvasionePanel nel contenuto
+  // del drawer (selezione righe + quantita'): un bottone header duplicherebbe il
+  // percorso — filtrato a monte (come i preventivi con genera_ordine). Difensivo:
+  // la fn ordini non espone ancora quest'azione, ma il filtro previene doppioni
+  // quando arrivera' data-driven.
+  const availableActionsHeader = (availableActions.value || [])
+    .filter(a => a.key !== 'genera_ddt')
   const stateActions = mapAvailableActionsToDrawerActions({
-    availableActions: availableActions.value,
+    availableActions: availableActionsHeader,
     t,
     onAction,
     readonly: readonlyPuro,
@@ -546,6 +577,21 @@ const drawerActions = computed(() => {
           <Divider />
           <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
         </template>
+      </template>
+
+      <!-- Pannello evasione "Genera DDT": visibile quando l'ordine ha residuo
+           (CONFERMATO / PARZIALMENTE_EVASO). In stato post-DRAFT il contenuto e'
+           `app-readonly` (lock-di-stato) ma l'evasione e' un'azione di processo
+           legittima → `app-escape` la mantiene cliccabile. In readonly PURO
+           (LETTURA/split/forzato) il pannello e' consuntivo (niente azioni). -->
+      <template v-if="contentReady && showEvasione">
+        <Divider />
+        <div class="app-escape">
+          <OrdineEvasionePanel
+            :ordine-id="effectiveOrdineId"
+            :readonly="isReadonlyPuro"
+            @evaso="onEvaso" />
+        </div>
       </template>
 
       <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto"
