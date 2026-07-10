@@ -4,6 +4,7 @@
 - [fn_audit_summary](manual/fn_audit_summary.md)
 - [fn_available_actions_commessa](manual/fn_available_actions_commessa.md) — (latest review 16-06-2026) Espone le **capability del ciclo di vita di una commessa** per il detail/stato API: quali azioni di stato l'utente può eseguire e cosa può modificare. Mirror del pattern `fn_available_actions_ordine` / `_offerta` / `_contratto` / `_preventivo`, **senza azioni applicative** (il push è *verso* la commessa, non un'azione della commessa).
 - [fn_available_actions_contratto](manual/fn_available_actions_contratto.md)
+- [fn_available_actions_ddt](manual/fn_available_actions_ddt.md) — (rev 2026-07-09)
 - [fn_available_actions_offerta](manual/fn_available_actions_offerta.md)
 - [fn_available_actions_ordine](manual/fn_available_actions_ordine.md)
 - [fn_available_actions_preventivo](manual/fn_available_actions_preventivo.md)

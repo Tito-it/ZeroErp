@@ -105,6 +105,7 @@
 - [fn_emit_attivita_fatturabili_da_commessa](manual/fn_emit_attivita_fatturabili_da_commessa.md) — (latest review 16-06-2026) Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
 - [fn_espandi_listino_versione](manual/fn_espandi_listino_versione.md)
 - [fn_fail_lotto_task_run](manual/fn_fail_lotto_task_run.md) — Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.
+- [fn_genera_ddt_da_ordine](manual/fn_genera_ddt_da_ordine.md) — (rev 2026-07-09)
 - [fn_genera_fondi_fattura_source](manual/fn_genera_fondi_fattura_source.md) — (latest review 12-02-2026)   La funzione **`vendite.fn_genera_fondi_fattura_source()`** genera record in `fatture_fondi_fattura_source` per fatture con `minimo = true`, e mantiene allineata la source in base al saldo documento.
 - [fn_genera_pratica_da_preventivo](manual/fn_genera_pratica_da_preventivo.md) — (latest review 08-07-2026)
 - [fn_generate_fatture_righe](manual/fn_generate_fatture_righe.md) — (latest review 07-02-2026)   (Deprecate-trasferite in django)   La funzione **`vendite.fn_generate_fatture_righe()`** genera le righe fattura partendo dalle `attivita_fatturabili` lockate sul lotto.
@@ -143,6 +144,7 @@
 - [fn_offerta_eccezione_componenti_init](manual/fn_offerta_eccezione_componenti_init.md)
 - [fn_offerta_eccezione_componenti_preview](manual/fn_offerta_eccezione_componenti_preview.md)
 - [fn_offerta_righe_espanse](manual/fn_offerta_righe_espanse.md)
+- [fn_ordine_ha_residuo_evasione](manual/fn_ordine_ha_residuo_evasione.md) — (rev 2026-07-09)
 - [fn_ordine_riga_componenti_init](manual/fn_ordine_riga_componenti_init.md)
 - [fn_ordine_riga_componenti_preview](manual/fn_ordine_riga_componenti_preview.md)
 - [fn_prepare_sdi_payload](manual/fn_prepare_sdi_payload.md) — (latest review 16-02-2026)   Preparare il payload SDI di un lotto:
@@ -203,6 +205,9 @@
 - [trgfn_contratti_righe_lock_post_attivazione](manual/trgfn_contratti_righe_lock_post_attivazione.md) — Le eccezioni di un contratto attivo (OVERRIDE, ESCLUSIONE, AGGIUNTA) sono **immutabili post-attivazione** (§3-bis-A). Questo enforcement avviene a livello DB per garantire il blocco anche da psql diretto, script di manutenzione o chiamate API non validate. Il lock è simmetrico a quello sulla testata (`trgfn_contratti_lock_post_attivazione`).
 - [trgfn_contratti_snapshot_precontrattuali](manual/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 20/01/26) La funzione `vendite.trgfn_contratti_snapshot_precontrattuali()` crea lo **snapshot** dei dati precontrattuali **solo alla creazione del contratto**.   La scelta progettuale e` deliberata: il contratto diventa la **fonte stabile** per i dati tecnici/commerciali e le eventuali correzioni richiedono **un nuovo contratto**.
 - [trgfn_ddt_gen_codice](manual/trgfn_ddt_gen_codice.md) — La trigger function `vendite.trgfn_ddt_gen_codice()` genera automaticamente `numero` DDT quando il valore non viene fornito in inserimento.
+- [trgfn_ddt_gen_numero_emesso](manual/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-07-09)
+- [trgfn_ddt_guard_transizione](manual/trgfn_ddt_guard_transizione.md) — (rev 2026-07-09)
+- [trgfn_ddt_guard_transizione_approvazione](manual/trgfn_ddt_guard_transizione_approvazione.md) — (rev 2026-07-09)
 - [trgfn_ddt_normalize](manual/trgfn_ddt_normalize.md) — La trigger function `vendite.trgfn_ddt_normalize()` completa i campi temporali minimi del DDT quando il numero documento e` presente.
 - [trgfn_ddt_righe_componenti_guard_pending](manual/trgfn_ddt_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente di una riga DDT ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta proposta. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura. Se `ddt_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 - [trgfn_dlt_block_ordrig_ddtrig](manual/trgfn_dlt_block_ordrig_ddtrig.md) — La trigger function `vendite.trgfn_dlt_block_ordrig_ddtrig()` blocca la cancellazione fisica di righe ordine/DDT per preservare la coerenza del fulfillment e la tracciabilità operativa.
@@ -243,6 +248,7 @@
 - [trgfn_preventivi_righe_guard_pending](manual/trgfn_preventivi_righe_guard_pending.md) — (latest revision 22-04-2026, Sprint E listini v5 §14.6)
 - [trgfn_preventivi_righe_ricalcola_totali](manual/trgfn_preventivi_righe_ricalcola_totali.md) — (latest review 03-04-2026) `vendite.trgfn_preventivi_righe_ricalcola_totali()` e' la trigger function **STATEMENT-level** che mantiene i totali testata preventivo sempre coerenti con le righe. Invoca `vendite.fn_ricalcola_totali_preventivo()` **una sola volta per ogni preventivo_id coinvolto**, anche in caso di operazioni bulk (es. copia righe in revisione).
 - [trgfn_promo_articoli_guard_data_driven](manual/trgfn_promo_articoli_guard_data_driven.md) — (latest review 27-04-2026)
+- [trgfn_v_ddt_protect_num](manual/trgfn_v_ddt_protect_num.md) — (rev 2026-07-09)
 
 ## 🔍 Views (manuale)
 - [vw_dash_aperto_documenti](manual/vw_dash_aperto_documenti.md) — (latest review 08-07-2026 — v2 serbatoio pre-commessa, DL-14..18) Vista dettaglio della **Situazione aperta v2 — serbatoio pre-commessa**: lo **stock dei documenti aperti e non conclusi** delle 4 aree documento (PREVENTIVI, ORDINI, OFFERTE, CONTRATTI), **senza asse temporale**. Risponde a: *"quali documenti aperti, se conclusi, andrebbero in commessa/fatturazione ma non ci sono ancora arrivati, e in che fase sono?"*. Il concetto **"transitato"** è **eliminato** (DL-14): in una vista senza asse temporale totalizzava *dalla notte dei tempi* documenti già passati avanti, informazione non azionabile.
@@ -258,6 +264,7 @@
 - [vw_dash_fatturazione_offerte](manual/vw_dash_fatturazione_offerte.md) — (latest review 03-07-2026) Resolver dell'area **OFFERTE** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per offerta, **a conteggi** (decisione D-2: niente valore in euro in v1 — le righe offerta sono eccezioni al listino, non hanno totale di testata). `valore_* = NULL`, `unita_totali = 1`, `unita_transitate = 0/1`.
 - [vw_dash_fatturazione_ordini](manual/vw_dash_fatturazione_ordini.md) — (latest review 03-07-2026) Resolver dell'area **ORDINI** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per ordine con valore **imponibile** totale vs **transitato a commessa** e il motivo del fermo. Read-time, nessun mirror.
 - [vw_dash_fatturazione_preventivi](manual/vw_dash_fatturazione_preventivi.md) — (latest review 03-07-2026) Resolver dell'area **PREVENTIVI** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per preventivo con valore **imponibile** totale vs **transitato** (decisione D-4: senza IVA) e il motivo del fermo. Read-time, nessun mirror.
+- [vw_ddt_lista](manual/vw_ddt_lista.md) — (rev 2026-07-09)
 - [vw_offerte_commerciali_lista](manual/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_lista](manual/vw_ordini_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_riepilogo_iva_dettaglio](manual/vw_ordini_riepilogo_iva_dettaglio.md) — (latest review 05-06-2026)

@@ -31,23 +31,23 @@ ordine) è coperto dallo stesso modello (testata con `billing_account` proprio, 
 
 ## 2. Decisioni recepite (dal design-of-record)
 
-| # | Decisione | Impatto DB |
-|---|---|---|
-| A-1 | **Multi-DDT per ordine** (consegne parziali) | Rimuovere l'unicità `un DDT per sorgente` sulla testata (§3) |
-| A-2 | **Copia snapshot ordine** (no ri-risoluzione resolver) | `fn_genera_ddt_da_ordine` copia prezzi/componenti dall'ordine (§4) |
-| A-3 | **Stati con RESO** | `config.transizioni_stati_ddt` con `DRAFT→EMESSO→SPEDITO→CONSEGNATO→RESO` (+`ANNULLATO`) (§5) |
+| #   | Decisione                                              | Impatto DB                                                                                    |
+| --- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| A-1 | **Multi-DDT per ordine** (consegne parziali)           | Rimuovere l'unicità `un DDT per sorgente` sulla testata (§3)                                  |
+| A-2 | **Copia snapshot ordine** (no ri-risoluzione resolver) | `fn_genera_ddt_da_ordine` copia prezzi/componenti dall'ordine (§4)                            |
+| A-3 | **Stati con RESO**                                     | `config.transizioni_stati_ddt` con `DRAFT→EMESSO→SPEDITO→CONSEGNATO→RESO` (+`ANNULLATO`) (§5) |
 
 **Decisioni DB (Tid, 2026-07-09)** — rifiniture emerse dall'analisi critica sul codice vivo,
 recepite nelle sezioni sotto:
 
-| # | Decisione | Impatto DB |
-|---|---|---|
-| C1 | Testata DDT: sorgente = **ORDINE_VENDITA** (id 6), non DDT_VENDITA | §4.3 — condizione perché `trgfn_ddt_normalize` erediti il billing |
-| C2 | Enforcement residuo = **guard esistente** (`E_QTA_SUPERA_RESIDUO`), no nuovo codice | §4.2 — niente logica duplicata |
-| C3 | Idempotenza = **predicato residuo + lock del guard**, nessun token | §4.7 |
-| C5 | `PARZIALMENTE_EVASO` nuovo + `EVASO` invariato + formula reso-aware | §4 (sync stato) + §12 |
-| C6 | Numero DDT assegnato a **EMESSO** (no buchi fiscali), non in DRAFT | §4.3 + §6 |
-| C8 | Snapshot A-2 completo: aggiungere `sconto_percentuale` + `iva_id` a `ddt_righe` | §3 + §4.4 |
+| #   | Decisione                                                                           | Impatto DB                                                        |
+| --- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| C1  | Testata DDT: sorgente = **ORDINE_VENDITA** (id 6), non DDT_VENDITA                  | §4.3 — condizione perché `trgfn_ddt_normalize` erediti il billing |
+| C2  | Enforcement residuo = **guard esistente** (`E_QTA_SUPERA_RESIDUO`), no nuovo codice | §4.2 — niente logica duplicata                                    |
+| C3  | Idempotenza = **predicato residuo + lock del guard**, nessun token                  | §4.7                                                              |
+| C5  | `PARZIALMENTE_EVASO` nuovo + `EVASO` invariato + formula reso-aware                 | §4 (sync stato) + §12                                             |
+| C6  | Numero DDT assegnato a **EMESSO** (no buchi fiscali), non in DRAFT                  | §4.3 + §6                                                         |
+| C8  | Snapshot A-2 completo: aggiungere `sconto_percentuale` + `iva_id` a `ddt_righe`     | §3 + §4.4                                                         |
 
 ## 3. Modifica modello — abilitare multi-DDT
 
@@ -171,16 +171,16 @@ colonne `id, stato_da_id, stato_a_id, attivo, meta jsonb, audit`; UNIQUE
 
 **Seed matrice** (stati da [stati_doc_ddt.csv](../../db/changelog/migrations_v2/80_data/sql/config/stati_doc_ddt.csv): DRAFT=1, EMESSO=2, SPEDITO=4, CONSEGNATO=5, RESO=7, ANNULLATO=6):
 
-| stato_da | stato_a | note |
-|---|---|---|
-| DRAFT | EMESSO | emissione (gate componenti, §6) |
-| DRAFT | ANNULLATO | |
-| EMESSO | SPEDITO | |
-| EMESSO | ANNULLATO | |
-| SPEDITO | CONSEGNATO | |
-| SPEDITO | RESO | reso da spedito |
-| CONSEGNATO | RESO | reso da consegnato |
-| CONSEGNATO | ANNULLATO | (valutare: annullo post-consegna) |
+| stato_da   | stato_a    | note                              |
+| ---------- | ---------- | --------------------------------- |
+| DRAFT      | EMESSO     | emissione (gate componenti, §6)   |
+| DRAFT      | ANNULLATO  |                                   |
+| EMESSO     | SPEDITO    |                                   |
+| EMESSO     | ANNULLATO  |                                   |
+| SPEDITO    | CONSEGNATO |                                   |
+| SPEDITO    | RESO       | reso da spedito                   |
+| CONSEGNATO | RESO       | reso da consegnato                |
+| CONSEGNATO | ANNULLATO  | (valutare: annullo post-consegna) |
 
 `meta.ui` per label/icona/severity delle azioni (data-driven, come
 `available_actions` di ordini — così il FE non hardcoda i pulsanti).
@@ -362,24 +362,24 @@ Slice DB realizzata e applicata su `dev/db-tid`, **non committata** (attendere "
 
 ### ChangeSet (17, `20260709-01..17`)
 
-| # | Oggetto | Fase |
-|---|---|---|
-| 01 | swap UNIQUE→indice `ix_ddt_v_sorgente` (multi-DDT, A-1) | `00_schema/vendite` |
-| 02 | `config.transizioni_stati_ddt` (matrice, A-3) | `00_schema/config` |
-| 03 | `ddt_righe` +`sconto_percentuale`/`iva_id` (C8) | `00_schema/vendite` |
-| 04 | `trgfn_ddt_guard_transizione` + trigger (C7) | `20_code/vendite` |
-| 05 | crea+aggancia `trgfn_ddt_guard_transizione_approvazione` (§6) | `20_code/vendite` |
-| 06 | `trgfn_ddt_normalize` per `codice_interno` (C1/§7) | `20_code/vendite` |
-| 07 | protect bespoke `trgfn_v_ddt_protect_num` + disable lock framework (C6) | `20_code/vendite` |
-| 08 | `fn_ordine_ha_residuo_evasione` (C5) | `20_code/vendite` |
-| 09 | **`fn_genera_ddt_da_ordine`** (madre: A-1/A-2/C2/C3/C5) | `20_code/vendite` |
-| 10 | seed matrice `transizioni_stati_ddt` (+CSV) | `80_data` |
-| 11-12 | seed `causali_trasporto` + `aspetti_beni` (+CSV) | `80_data` |
-| 13 | *(superato da 14)* trigger gen_codice su stato | `20_code/vendite` |
-| 14 | **numero a EMESSO bespoke** `trgfn_ddt_gen_numero_emesso` + `usa_sequenza=false` (mirror fatture) | `20_code/vendite` + CSV |
-| 15 | `vw_ddt_lista` (read-side §13) | `20_code/vendite` |
-| 16 | `fn_available_actions_ddt` (read-side §13) | `20_code/script` |
-| 17 | seed priorità colonne lista `ui` DDT (+CSV) | `80_data` |
+| #     | Oggetto                                                                                           | Fase                    |
+| ----- | ------------------------------------------------------------------------------------------------- | ----------------------- |
+| 01    | swap UNIQUE→indice `ix_ddt_v_sorgente` (multi-DDT, A-1)                                           | `00_schema/vendite`     |
+| 02    | `config.transizioni_stati_ddt` (matrice, A-3)                                                     | `00_schema/config`      |
+| 03    | `ddt_righe` +`sconto_percentuale`/`iva_id` (C8)                                                   | `00_schema/vendite`     |
+| 04    | `trgfn_ddt_guard_transizione` + trigger (C7)                                                      | `20_code/vendite`       |
+| 05    | crea+aggancia `trgfn_ddt_guard_transizione_approvazione` (§6)                                     | `20_code/vendite`       |
+| 06    | `trgfn_ddt_normalize` per `codice_interno` (C1/§7)                                                | `20_code/vendite`       |
+| 07    | protect bespoke `trgfn_v_ddt_protect_num` + disable lock framework (C6)                           | `20_code/vendite`       |
+| 08    | `fn_ordine_ha_residuo_evasione` (C5)                                                              | `20_code/vendite`       |
+| 09    | **`fn_genera_ddt_da_ordine`** (madre: A-1/A-2/C2/C3/C5)                                           | `20_code/vendite`       |
+| 10    | seed matrice `transizioni_stati_ddt` (+CSV)                                                       | `80_data`               |
+| 11-12 | seed `causali_trasporto` + `aspetti_beni` (+CSV)                                                  | `80_data`               |
+| 13    | *(superato da 14)* trigger gen_codice su stato                                                    | `20_code/vendite`       |
+| 14    | **numero a EMESSO bespoke** `trgfn_ddt_gen_numero_emesso` + `usa_sequenza=false` (mirror fatture) | `20_code/vendite` + CSV |
+| 15    | `vw_ddt_lista` (read-side §13)                                                                    | `20_code/vendite`       |
+| 16    | `fn_available_actions_ddt` (read-side §13)                                                        | `20_code/script`        |
+| 17    | seed priorità colonne lista `ui` DDT (+CSV)                                                       | `80_data`               |
 
 **Append CSV** (loader runOnChange): `stati_doc_ordini` (+`PARZIALMENTE_EVASO`), `transizioni_stati_ordini`
 (+5 righe, incl. rientri reso predisposti), `messaggi_errore` (521-524: `E_DDT_ORDINE_NOT_FOUND`,
@@ -413,6 +413,49 @@ Slice DB realizzata e applicata su `dev/db-tid`, **non committata** (attendere "
   soluzione robusta (14) è il **mirror fatture**: DDT fuori da `sistema_codici` (`usa_sequenza=false`)
   + numerazione bespoke a EMESSO + protect condizionale. I passi 07 (override funzione) e 13 sono
   **superati** da 14 (changelog forward-only).
+
+## 15. Addendum SCOPE — RLS e emittente su DDT (rilievo BE, 2026-07-10) ⚠️ DA FARE
+
+> **Rilievo emerso in verifica pre-sviluppo BE — VALIDO.** La lista DDT ha un **buco di scope
+> emittente**: `vendite.ddt` **non ha RLS** (ha saltato l'Ondata 2 perché dormiente) e
+> `vw_ddt_lista` **non espone `emittente_fiscale_id`**. Con `security_invoker=on` ma **senza RLS
+> sulla tabella base** la vista non filtra nulla → **ogni operatore vedrebbe i DDT di tutti gli
+> emittenti**. Regressione rispetto a ordini/preventivi/contratti.
+
+**Correzione di rotta rispetto alla proposta iniziale.** La proposta BE risolveva l'emittente **a
+runtime** dal `billing_account` (in RLS e in vista). È sub-ottimale: (a) una policy con
+`fn_get_emittente_fiscale_id(...)` **per riga** non è indicizzabile come il filtro di ordini su
+colonna stored; (b) diverge dal pattern — ordini/preventivi **memorizzano** l'emittente
+(`emittente_fiscale_id` NOT NULL, FK, indice, guard scope, RLS); (c) copre solo la lettura, non il
+**guard di scope in scrittura**. **Si allinea al pattern: memorizzare l'emittente sul DDT.**
+
+**Interventi DB (slice di follow-up, mirror ordini):**
+
+1. **`ALTER vendite.ddt ADD emittente_fiscale_id`** (FK `anagrafiche.emittenti_fiscali`, indice via
+   FK-policy). Il DDT nasce da un ordine che **ha già** l'emittente.
+2. **Estendere `trgfn_ddt_normalize`**: eredita `emittente_fiscale_id` dall'**ordine sorgente**
+   (accanto a billing/utility/valuta già ereditati); per lo standalone lo risolve dal
+   `billing_account` via `anagrafiche.fn_get_emittente_fiscale_id`.
+3. **RLS su `vendite.ddt`** che filtra sulla colonna **stored** — mirror esatto di `rls_ordini` +
+   ef-whitelist (`20260601-37`/`20260603-18`), indicizzato. Ruoli `BYPASSRLS` esenti.
+4. **`trgfn_guard_emittente_scope`** in scrittura (mirror ordini/preventivi): un operatore non può
+   creare un DDT per un emittente fuori dal suo scope.
+5. **`vw_ddt_lista` espone `emittente_fiscale_id` (+ `emittente_fiscale_codice`)** — banale, come
+   `vw_ordini_lista` → il repository BE somma `v.emittente_fiscale_id = ANY(script.fn_get_emittenti_scope_pk_ids(auth_user_id))`.
+
+**Decisione aperta**: lo **standalone senza billing** (bozza pre-cliente) — `emittente_fiscale_id`
+NOT NULL con risoluzione obbligatoria, oppure nullable con regola di visibilità (creatore/istanza).
+Chiudere prima di implementare.
+
+**pgTAP**: "operatore vede solo i DDT dei propri emittenti" (RLS SELECT) + "creazione DDT per
+emittente fuori scope bloccata" (guard scrittura).
+
+**Impatto BE**: finché l'addendum non atterra, `DdtRepository.list_ddt` **non** applica il filtro
+applicativo emittente (la colonna non esiste); va scritto come mirror di `OrdiniRepository` e il
+filtro attivato appena la colonna è disponibile.
+
+> ⚠️ **Non incluso** nei changeSet `20260709-01..17` (write-side + read-side base): è una slice
+> aggiuntiva. È **prerequisito** perché la lista DDT sia scope-safe lato BE.
 
 ## 15. Addendum SCOPE — RLS e emittente su DDT (rilievo BE, 2026-07-10) ⚠️ DA FARE
 

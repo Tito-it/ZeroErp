@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_ddt_gen_numero_emesso.md" %}
 # ⚙️ Funzione `trgfn_ddt_gen_numero_emesso`
 
 ```sql

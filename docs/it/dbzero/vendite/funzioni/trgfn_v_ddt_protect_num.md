@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_v_ddt_protect_num.md" %}
 # ⚙️ Funzione `trgfn_v_ddt_protect_num`
 
 ```sql
