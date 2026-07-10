@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/transizioni_stati_ddt.md" %}
 # 📚 Tabella `transizioni_stati_ddt`
 
 ## 🗂️ Campi principali

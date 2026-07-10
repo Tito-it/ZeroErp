@@ -14,18 +14,15 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_normalize()
 AS $function$
 BEGIN
   -- =========================================================
-  -- Scopo:
-  --   Normalizzazione campi DDT su INSERT e UPDATE.
-  --
-  -- Regole:
-  --   1. Imposta anno/data se numero presente e valori mancanti (INSERT).
-  --   2. Eredita billing_account_id, utility_id, valuta_id dall'ordine
-  --      sorgente (via sorgente_uid) se non gia` valorizzati (INSERT).
-  --      Sorgente risolta per codice_interno (immutabile) — rev 2026-07-09.
+  -- Scopo: normalizzazione DDT su INSERT/UPDATE.
+  --   1. anno/data se numero presente (INSERT).
+  --   2. eredita billing/utility/valuta/emittente dall'ordine
+  --      sorgente (ORDINE_VENDITA, lookup per codice_interno) su
+  --      INSERT se non gia' valorizzati.
+  --   3. fallback emittente da billing_account (standalone).
   -- =========================================================
 
-  ----------------------------------------------------------------
-  -- 1. Imposta anno/data se numero e' presente e anno/data mancanti
+  -- 1. anno/data
   IF TG_OP = 'INSERT' AND (NEW.numero IS NOT NULL AND btrim(NEW.numero) <> '') THEN
     IF NEW.anno IS NULL OR NEW.anno = 0 THEN
       NEW.anno := EXTRACT(YEAR FROM CURRENT_DATE)::smallint;
@@ -35,18 +32,15 @@ BEGIN
     END IF;
   END IF;
 
-  ----------------------------------------------------------------
-  -- 2. Eredita billing fields da ordine sorgente (se DDT creato da ordine)
-  --    sorgente_tipo_id punta a config.sorgenti; sorgente_uid = ordini.uid
+  -- 2. eredita billing/utility/valuta/emittente da ordine sorgente
   IF TG_OP = 'INSERT'
      AND NEW.sorgente_tipo_id IS NOT NULL
      AND NEW.sorgente_uid IS NOT NULL
      AND (NEW.billing_account_id IS NULL
           OR NEW.utility_id IS NULL
-          OR NEW.valuta_id IS NULL)
+          OR NEW.valuta_id IS NULL
+          OR NEW.emittente_fiscale_id IS NULL)
   THEN
-    -- Verifica che la sorgente sia ORDINE_VENDITA e eredita i campi mancanti.
-    -- Lookup per codice_interno (immutabile), non per codice.
     IF EXISTS (
       SELECT 1 FROM config.sorgenti
       WHERE id = NEW.sorgente_tipo_id AND codice_interno = 'ORDINE_VENDITA'
@@ -54,11 +48,13 @@ BEGIN
       SELECT
         COALESCE(NEW.billing_account_id, o.billing_account_id),
         COALESCE(NEW.utility_id, ba.utility_id),
-        COALESCE(NEW.valuta_id, o.valuta_id)
+        COALESCE(NEW.valuta_id, o.valuta_id),
+        COALESCE(NEW.emittente_fiscale_id, o.emittente_fiscale_id)
       INTO
         NEW.billing_account_id,
         NEW.utility_id,
-        NEW.valuta_id
+        NEW.valuta_id,
+        NEW.emittente_fiscale_id
       FROM vendite.ordini o
       LEFT JOIN anagrafiche.billing_account ba
         ON ba.id = o.billing_account_id
@@ -67,12 +63,21 @@ BEGIN
     END IF;
   END IF;
 
+  -- 3. fallback standalone: emittente da billing_account (convenzione PK).
+  IF TG_OP = 'INSERT'
+     AND NEW.emittente_fiscale_id IS NULL
+     AND NEW.billing_account_id IS NOT NULL
+  THEN
+    NEW.emittente_fiscale_id :=
+      anagrafiche.fn_get_emittente_fiscale_pk(NEW.billing_account_id);
+  END IF;
+
   RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_normalize()
-IS 'Normalize: imposta anno/data se numero presente. Eredita billing_account_id, utility_id, valuta_id da ordine sorgente (ORDINE_VENDITA, lookup per codice_interno) su INSERT se non gia` valorizzati. rev 2026-07-09.';
+IS 'Normalize DDT: anno/data; eredita billing/utility/valuta/emittente da ordine sorgente (ORDINE_VENDITA, per codice_interno) su INSERT; fallback emittente da billing_account (fn_get_emittente_fiscale_pk). rev 2026-07-10 (§15 emittente).';
 ```
 
 ---

@@ -173,6 +173,23 @@ DRAFT → EMESSO → SPEDITO → CONSEGNATO → RESO   (+ ANNULLATO; RESO anche 
 
 ---
 
+### Scope emittente e RLS (§15)
+
+Il DDT **memorizza** l'emittente fiscale (`emittente_fiscale_id`, `NOT NULL`, FK) — allineato a
+ordini/preventivi — come chiave di scope multi-emittente.
+
+* **Valorizzazione**: `trgfn_ddt_normalize` eredita l'emittente dall'ordine sorgente; per lo
+  standalone lo risolve dal `billing_account` (`anagrafiche.fn_get_emittente_fiscale_pk`).
+* **Guard scrittura** (defense-in-depth): `trg_ddt_a10_guard_emittente_scope_ins_upd`
+  (`script.trgfn_guard_emittente_scope('fiscale','emittente_fiscale_id')`) blocca INSERT/UPDATE
+  se l'operatore non ha scope sull'emittente; skippa se `app.current_user_id` non e` settato (batch).
+* **RLS**: policy `rls_ddt_ef_whitelist` (`FOR ALL`, `script.fn_scope_ef_whitelist`, gate
+  `OPERATORE`). Stato a parita` con ordini/preventivi/fatture: **`ENABLE` senza `FORCE`** →
+  l'owner-app la bypassa finche` non arriva il `FORCE` (ondata coordinata). Protezione **attiva**
+  oggi = filtro applicativo BE su `vw_ddt_lista.emittente_fiscale_id`.
+
+---
+
 ### 📘 Note finali
 
 * Questo documento descrive il **comportamento atteso** della tabella `vendite.ddt` nel contesto Zero ERP.
