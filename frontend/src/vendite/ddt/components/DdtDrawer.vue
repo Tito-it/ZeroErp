@@ -20,12 +20,20 @@ import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
+import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { statoDdtSeverity } from '../../../core/utils/severity'
-import { STATO_DDT } from '../constants'
+import {
+  STATO_DDT,
+  STATI_DDT_ANTEPRIMA_PDF,
+  STATI_DDT_CON_DOCUMENTO,
+} from '../constants'
+import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
+import { SORGENTE_CODES } from '../../../documenti/constants'
 import { displayDate, toDateString } from '../../../core/utils/date'
 import { createDdt } from '../api/ddtApi'
+import { getDdtFormDefaults } from '../../api/formDefaults'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
 import { getBillingAccountLookupById } from '../../../core/apiCore'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
@@ -110,6 +118,13 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 function defaultForm() {
   return {
+    // Emittente fiscale: display-only. La testata DDT lo MEMORIZZA (addendum §15,
+    // NOT NULL + scope RLS) ma è risolto dal trigger DB (da BA o ordine), non
+    // scelto dall'operatore: in create parte VUOTO (nessuna anteprima "a
+    // indovinare" col default operatore — potrebbe divergere dall'EF del BA) e
+    // si valorizza dal detail dopo l'auto-save bozza, quando il trigger l'ha
+    // risolto. NON entra nel payload (whitelist BE lo esclude).
+    emittente_fiscale_id: null,
     utility_id: utilityDefaultId.value ?? null,
     billing_account_id: null,
     // _obj per BillingAccountLookup (pattern restore lookup ricco).
@@ -147,6 +162,9 @@ async function loadDetail(id = null) {
   if (!data) return
   detail.value = data
   form.value = {
+    // Emittente fiscale memorizzato (denormalizzato dalla vista: codice via
+    // EmittenteFiscaleField :record); display-only, non aggiornabile.
+    emittente_fiscale_id: data.emittente_fiscale_id ?? null,
     utility_id: data.utility_id ?? null,
     billing_account_id: data.billing_account_id ?? null,
     billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
@@ -193,11 +211,28 @@ watch(() => props.visible, async (v) => {
     loadDetail()
   } else {
     // CREATE: risolve la utility di default (parameter DEFAULT_UTILITY) PRIMA di
-    // resetForm, così defaultForm() la legge.
+    // resetForm, così defaultForm() la legge. Poi pre-popola la valuta dalla
+    // catena EF (resolve_valuta_default lato BE), come ordini/preventivi.
     await loadUtilityDefault()
     resetForm()
+    try {
+      const res = await getDdtFormDefaults(null)
+      const data = res?.data?.data
+      if (data && form.value.valuta_id == null && data.valuta_id != null) {
+        form.value.valuta_id = data.valuta_id
+      }
+    } catch {
+      // Best-effort: se l'API e' giu' il drawer si apre comunque (valuta vuota).
+    }
   }
 })
+
+// Al cambio BA in CREATE applica la valuta BA-derived (BA-wins) via BB
+// condiviso useBaFormDefaults (guard latest-wins anti-race, come preventivi/
+// offerte). Il DDT non ha termini/modalita di pagamento in testata: nessun
+// `apply` extra. Se la risposta arriva dopo l'auto-save bozza, il trigger DB
+// ha comunque gia' risolto la valuta sul record (fn_get_valuta_id).
+useBaFormDefaults({ form, isEdit, fetchDefaults: getDdtFormDefaults })
 
 // Costruisce il payload testata (create/update). Numeri e stringhe vuote → null:
 // il BE normalizza empty→NULL (empty_to_none). billing_account_id/data solo in
@@ -281,7 +316,8 @@ async function handleSave() {
 // --- Azioni stato ---
 
 // Dialog emissione DDT: aperto quando l'azione 'emetti' porta a EMESSO
-// (assegna numero, gate componenti). Sola conferma (niente PDF/allegati).
+// (assegna numero, gate componenti). Anteprima PDF accompagnatorio + allegati
+// via BB DocumentoEmissioneDialog (mirror ordini).
 const emissioneDialogVisible = ref(false)
 const emissioneLoading = ref(false)
 
@@ -289,10 +325,14 @@ function onEmetti() {
   emissioneDialogVisible.value = true
 }
 
-async function handleEmissioneConferma() {
+// Scopo: callback @confirm di DdtEmissioneDialog. Riceve i file staged
+// dall'utente e chiama store.emetti (POST multipart /emetti/). Se la
+// generazione del documento fallisce il BE annulla l'emissione (stato resta
+// DRAFT, numero non consumato).
+async function handleEmissioneConferma({ files }) {
   emissioneLoading.value = true
   const result = await execute(
-    () => store.emetti(effectiveDdtId.value),
+    () => store.emetti(effectiveDdtId.value, { allegati: files || [] }),
     { successMessage: t('vendite.ddt.ddt_emesso') },
   )
   emissioneLoading.value = false
@@ -434,7 +474,23 @@ const drawerActions = computed(() => {
           </template>
         </DrawerEntityHeader>
 
-        <DrawerActionsBar :actions="drawerActions" />
+        <DrawerActionsBar :actions="drawerActions">
+          <template #suffix>
+            <!-- Stampa DDT accompagnatorio: anteprima in bozza, gestione
+                 documenti generati post-emissione. BB EntityPdfButton 1:1. -->
+            <EntityPdfButton
+              :sorgente-code="SORGENTE_CODES.DDT"
+              :entity-id="effectiveDdtId"
+              :stato-codice="detail.stato_codice_interno"
+              :stati-preview="STATI_DDT_ANTEPRIMA_PDF"
+              :stati-con-documento="STATI_DDT_CON_DOCUMENTO"
+              i18n-prefix="vendite.ddt.pdf"
+              :dialog-title="detail.numero
+                ? t('vendite.ddt.pdf.dialog_title', { numero: detail.numero })
+                : ''"
+            />
+          </template>
+        </DrawerActionsBar>
       </template>
 
       <Divider v-if="hasDetail" />
@@ -443,6 +499,7 @@ const drawerActions = computed(() => {
       <DdtForm v-if="contentReady"
         :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
         :non-editable-fields="nonEditableFields"
+        :record="detail"
         :is-edit="isEdit || createdId !== null" />
 
       <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->

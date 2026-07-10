@@ -1709,6 +1709,7 @@
       "origine_chip": "Origin: order {numero}",
       "origine_chip_tooltip": "Sales order the DDT originates from (fulfilment).",
       "field_destinatario": "Recipient",
+      "field_emittente_fiscale": "Fiscal issuer",
       "field_billing_account": "Customer",
       "field_billing_account_placeholder": "Search customer by name, code, tax id...",
       "field_utility": "Utility",
@@ -1762,8 +1763,17 @@
       "abbandono_bozza_conferma": "Delete draft",
       "emissione_titolo": "Issue DDT",
       "emissione_conferma": "Issue",
-      "emissione_messaggio": "Issuing the DDT assigns the number and the lines will no longer be editable.",
+      "emissione_messaggio": "Issuing the DDT generates the delivery note document and the lines will no longer be editable. You can attach files to the document.",
       "emissione_numero_hint": "The DDT number is assigned upon issue.",
+      "pdf": {
+        "label_anteprima": "PDF preview",
+        "tooltip_anteprima": "Preview of the delivery note (draft, not saved)",
+        "label_scarica": "PDF documents",
+        "tooltip_scarica": "Documents generated for the DDT",
+        "tooltip_lista": "Open the documents generated for the DDT",
+        "tooltip_lista_disabilitato": "Available after the DDT is issued",
+        "dialog_title": "DDT {numero} — Documents"
+      },
       "azione_emetti": "Issue DDT",
       "azione_spedisci": "Mark shipped",
       "azione_consegna": "Mark delivered",
@@ -3149,7 +3159,8 @@
       "PREVENTIVO": "Quote",
       "CONTRATTO": "Contract",
       "OFFERTA_COMMERCIALE": "Commercial offer",
-      "ORDINE_VENDITA": "Sales order"
+      "ORDINE_VENDITA": "Sales order",
+      "DDT_VENDITA": "Sales delivery note (DDT)"
     },
     "genera_pdf": {
       "label": "Generate PDF",

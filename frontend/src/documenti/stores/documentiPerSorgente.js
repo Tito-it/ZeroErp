@@ -19,6 +19,7 @@ import { ref } from 'vue'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import {
   contrattoDocumenti,
+  ddtDocumenti,
   offertaDocumenti,
   ordineDocumenti,
   preventivoDocumenti,
@@ -37,6 +38,7 @@ const SORGENTE_CLIENT_MAP = {
   [SORGENTE_CODES.CONTRATTO]: contrattoDocumenti,
   [SORGENTE_CODES.OFFERTA_COMMERCIALE]: offertaDocumenti,
   [SORGENTE_CODES.ORDINE_VENDITA]: ordineDocumenti,
+  [SORGENTE_CODES.DDT]: ddtDocumenti,
 }
 
 export const useDocumentiPerSorgenteStore = defineStore(STORE_NAME, () => {

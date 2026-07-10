@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <title>DDT {{ ddt.numero or ddt.id }}</title>
+</head>
+<body>
+  <main class="document">
+    <header class="header">
+      <div class="brand">
+        <div class="brand-mark">ZE</div>
+        <div class="brand-name">Emittente fiscale {{ ddt.emittente.codice or "demo" }}</div>
+        <div class="brand-meta">Dati emittente/asset da collegare nelle prossime iterazioni</div>
+      </div>
+
+      <div class="doc-title">
+        <h1>DOCUMENTO DI TRASPORTO</h1>
+        <div class="doc-number">
+          {% if ddt.numero %}
+            N. {{ ddt.numero }}
+            {% if ddt.serie %} / Serie {{ ddt.serie }}{% endif %}
+            {% if ddt.anno %} / {{ ddt.anno }}{% endif %}
+          {% else %}
+            BOZZA (ID {{ ddt.id }}) — numero assegnato all'emissione
+          {% endif %}
+        </div>
+        <div class="status-pill">
+          {{ ddt.stato.descrizione or ddt.stato.codice_interno or "stato non indicato" }}
+        </div>
+      </div>
+    </header>
+
+    <section class="section two-columns">
+      <div class="column">
+        <div class="label">Destinatario</div>
+        <div class="box">
+          <div class="box-strong">{{ destinatario.denominazione or "Destinatario non indicato" }}</div>
+          {% if destinatario.id_fiscale %}
+            <div class="muted">ID fiscale: {{ destinatario.id_fiscale }}</div>
+          {% endif %}
+          {% if destinatario.ba_codice or destinatario.billing_account_id %}
+            <div class="muted">
+              Billing account:
+              {{ destinatario.ba_codice or ("ID " ~ destinatario.billing_account_id) }}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="column">
+        <div class="label">Dati trasporto</div>
+        <div class="box">
+          <table class="facts">
+            <tbody>
+              <tr>
+                <th>Data DDT</th>
+                <td>{{ ddt.data or "-" }}</td>
+              </tr>
+              <tr>
+                <th>Causale trasporto</th>
+                <td>{{ trasporto.causale.descrizione or trasporto.causale.codice or "-" }}</td>
+              </tr>
+              <tr>
+                <th>Aspetto dei beni</th>
+                <td>{{ trasporto.aspetto_beni.descrizione or trasporto.aspetto_beni.codice or "-" }}</td>
+              </tr>
+              <tr>
+                <th>Porto</th>
+                <td>{{ trasporto.porto_codice or "-" }}</td>
+              </tr>
+              {% if ddt.origine.ordine_numero %}
+                <tr>
+                  <th>Ordine di origine</th>
+                  <td>{{ ddt.origine.ordine_numero }}</td>
+                </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section two-columns">
+      <div class="column">
+        <div class="label">Mittente / luogo di partenza</div>
+        <div class="box">
+          <div class="box-strong">{{ trasporto.mittente_denominazione or "Sede emittente" }}</div>
+          {% if trasporto.data_ora_partenza %}
+            <div class="muted">Partenza: {{ trasporto.data_ora_partenza }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="column">
+        <div class="label">Vettore</div>
+        <div class="box">
+          <div class="box-strong">{{ trasporto.vettore_denominazione or "Mezzo proprio" }}</div>
+          {% if trasporto.targa %}
+            <div class="muted">Targa: {{ trasporto.targa }}</div>
+          {% endif %}
+          {% if trasporto.autista %}
+            <div class="muted">Autista: {{ trasporto.autista }}</div>
+          {% endif %}
+          {% if trasporto.tracking_code %}
+            <div class="muted">Tracking: {{ trasporto.tracking_code }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="table-title">Merce trasportata</div>
+      <table class="lines">
+        <thead>
+          <tr>
+            <th style="width: 6%;">#</th>
+            <th style="width: 16%;">Articolo</th>
+            <th>Descrizione</th>
+            <th class="num" style="width: 12%;">Q.ta</th>
+            <th style="width: 10%;">UoM</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in righe %}
+            <tr>
+              <td>{{ r.get("riga_nr") or loop.index }}</td>
+              <td>{{ r.get("articolo_codice") or "-" }}</td>
+              <td>
+                <div class="row-description">
+                  {{ r.get("descrizione") or r.get("articolo_descrizione") or "Riga DDT" }}
+                </div>
+              </td>
+              {# `is not none` esplicito: una quantita' 0 e' un dato reale, non
+                 un assente — con `or` renderebbe "-" (falsy-zero). #}
+              <td class="num">
+                {%- if r.get("qta_operativa") is not none -%}
+                  {{ r.get("qta_operativa") }}
+                {%- elif r.get("quantita") is not none -%}
+                  {{ r.get("quantita") }}
+                {%- else -%}
+                  -
+                {%- endif -%}
+              </td>
+              <td>{{ r.get("uom_codice") or "-" }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="5" class="muted">Nessuna riga disponibile nel context.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <div class="table-title">Riepilogo colli e pesi</div>
+      <table class="lines">
+        <thead>
+          <tr>
+            <th class="num" style="width: 20%;">N. colli</th>
+            <th class="num" style="width: 20%;">Peso lordo (kg)</th>
+            <th class="num" style="width: 20%;">Peso netto (kg)</th>
+            <th class="num" style="width: 20%;">Volume (m³)</th>
+            <th style="width: 20%;">Consegna prevista</th>
+          </tr>
+        </thead>
+        <tbody>
+          {# `is not none` esplicito sui numerici: 0 colli / 0 kg sono dati
+             reali da stampare, non assenti (falsy-zero con `or`). #}
+          <tr>
+            <td class="num">{{ trasporto.num_colli if trasporto.num_colli is not none else "-" }}</td>
+            <td class="num">{{ trasporto.peso_lordo if trasporto.peso_lordo is not none else "-" }}</td>
+            <td class="num">{{ trasporto.peso_netto if trasporto.peso_netto is not none else "-" }}</td>
+            <td class="num">{{ trasporto.volume if trasporto.volume is not none else "-" }}</td>
+            <td>{{ trasporto.data_ora_consegna_prev or "-" }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section signatures">
+      <div class="signature-cell">
+        <div class="label">Firma conducente</div>
+        <div class="signature-line"></div>
+      </div>
+      <div class="signature-cell">
+        <div class="label">Firma vettore</div>
+        <div class="signature-line"></div>
+      </div>
+      <div class="signature-cell">
+        <div class="label">Firma destinatario</div>
+        <div class="signature-line"></div>
+      </div>
+    </section>
+
+    <section class="conditions">
+      <strong>Documento di trasporto</strong> emesso ai sensi del D.P.R. 472/96.
+      Il presente documento non costituisce fattura. Template HTML basato sul
+      document context DDT_VENDITA: nessuna query o chiamata esterna.
+    </section>
+  </main>
+</body>
+</html>

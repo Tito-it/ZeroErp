@@ -3,12 +3,14 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: API views per vendite.ddt (CRUD testata + righe + componenti BoM,
-#        emissione, cambio stato data-driven, push singolo a commessa). Clone
+#        cambio stato data-driven, push singolo a commessa). Clone
 #        strutturale di views_ordini: la transizione di stato e' enforced dal
 #        trigger DB trgfn_ddt_guard_transizione; il service traduce gli errori
 #        P0001 in ServiceError -> envelope uniforme. Nessun post_permission
 #        (solo area_funzionale, come ordini). Numero assegnato a EMESSO dal
-#        trigger DB (non passato dal client).
+#        trigger DB (non passato dal client). L'EMISSIONE (DRAFT->EMESSO +
+#        genera PDF, multipart) vive in `ddt_documenti_views.ApiDdtEmetti`
+#        (mirror ordini).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -117,16 +119,6 @@ class ApiDdtDetail(DomainAPIView):
     # Scopo: Hard-delete DDT (abbandono bozza, solo DRAFT + 0 righe).
     def delete(self, request: Request, ddt_id: int) -> JsonResponse:
         return success_response(ddt_service.elimina_ddt(int(ddt_id)))
-
-
-class ApiDdtEmetti(DomainAPIView):
-    """POST /api/v1/vendite/ddt/<ddt_id>/emetti/ (DRAFT->EMESSO, assegna numero)."""
-
-    area_funzionale = "vendite"
-
-    # Scopo: Emette il DDT (DRAFT->EMESSO): il trigger DB assegna il numero.
-    def post(self, request: Request, ddt_id: int) -> JsonResponse:
-        return success_response(ddt_service.emetti(int(ddt_id)))
 
 
 class ApiDdtCambiaStato(DomainAPIView):

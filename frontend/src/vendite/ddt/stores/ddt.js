@@ -115,10 +115,11 @@ export const useDdtStore = defineStore('vendite-ddt', () => {
 
   // --- Transizioni / integrazione ---
 
-  // DRAFT -> EMESSO: assegna il numero (trigger DB) + gate approvazione
-  // componenti. Ritorna il dettaglio ricaricato (numero valorizzato).
-  async function emetti(id) {
-    const res = await emettiDdt(id)
+  // DRAFT -> EMESSO (multipart): assegna il numero (trigger DB) + gate
+  // approvazione componenti + genera il documento accompagnatorio (+ allegati
+  // opzionali) in transazione atomica lato BE. Mirror di ordini.emetti.
+  async function emetti(id, { allegati = [], templateId = null } = {}) {
+    const res = await emettiDdt(id, { allegati, templateId })
     emitDataChanged(TAB_ENTITIES.DDT, id)
     return res.data.data
   }

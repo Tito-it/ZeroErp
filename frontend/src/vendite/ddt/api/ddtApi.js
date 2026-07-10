@@ -10,7 +10,9 @@
 // identico ai domini gemelli) — regola del 2, nessuna implementazione nuova.
 //
 // Fuori scope di questa slice (nessun endpoint BE): export lista, riepilogo IVA,
-// PDF, indirizzi. Non mappati qui a bella posta.
+// indirizzi. Non mappati qui a bella posta. I documenti PDF (anteprima/genera/
+// lista/download) passano dal client condiviso `ddtDocumenti`
+// (documenti/api/documentiPerSorgente.js), non da qui.
 
 import api from '../../../core/api'
 import { makeComponentiBomApi } from '../../../core/api/componentiBom'
@@ -50,12 +52,19 @@ export function deleteDdt(id) {
 
 // --- Transizioni / integrazione ---
 
-// DRAFT -> EMESSO. Alla transizione il DB assegna il `numero` (C6) e scatta il
-// guard approvazione componenti BoM. Nessun payload (a differenza di ordini: il
-// DDT non genera documento/allegati in questa slice). Ritorna il dettaglio
-// ricaricato (numero valorizzato + capability aggiornate).
-export function emettiDdt(id) {
-  return api.post(`${BASE}/${id}/emetti/`, {})
+// DRAFT -> EMESSO (multipart). L'endpoint `/emetti/` orchestra emissione (il
+// trigger DB assegna il `numero` + gate componenti BoM) + genera documento
+// accompagnatorio + persiste eventuali allegati in transazione atomica lato BE
+// (ApiDdtEmetti in ddt_documenti_views, mirror di emettiOrdine). L'emissione da
+// UI passa da qui via DdtEmissioneDialog; se la generazione fallisce il BE
+// annulla l'emissione (stato resta DRAFT, numero non consumato).
+export function emettiDdt(id, { allegati = [], templateId = null } = {}) {
+  const formData = new FormData()
+  if (templateId != null) formData.append('template_documento_id', templateId)
+  for (const file of allegati) formData.append('allegati', file)
+  return api.post(`${BASE}/${id}/emetti/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 }
 
 // Transizione di stato generica data-driven (SPEDITO / CONSEGNATO / RESO /

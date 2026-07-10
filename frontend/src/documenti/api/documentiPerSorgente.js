@@ -100,3 +100,11 @@ export const offertaDocumenti = buildSorgenteClient(
 export const ordineDocumenti = buildSorgenteClient(
   (ordineId) => `/vendite/ordini/${ordineId}/documenti`,
 )
+
+// Client per documenti di un DDT_VENDITA (DDT accompagnatorio). Path coerente
+// con `apps/vendite/api/urls_ddt.py`. La GENERAZIONE definitiva avviene
+// all'emissione (`emetti/` multipart, DRAFT->EMESSO + PDF atomico, mirror
+// ordine); qui restano anteprima (bozza)/genera (ristampa)/lista/download.
+export const ddtDocumenti = buildSorgenteClient(
+  (ddtId) => `/vendite/ddt/${ddtId}/documenti`,
+)

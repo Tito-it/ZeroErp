@@ -18,6 +18,7 @@ class VenditeConfig(AppConfig):
         # registrazione, non per l'uso del simbolo.
         from apps.vendite.services import (  # noqa: F401
             contratto_document_context_builder,
+            ddt_document_context_builder,
             offerta_document_context_builder,
             ordine_document_context_builder,
             preventivo_document_context_builder,

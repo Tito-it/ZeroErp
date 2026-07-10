@@ -1,0 +1,288 @@
+@page {
+  size: A4;
+  margin: 18mm 16mm 18mm 16mm;
+
+  @bottom-left {
+    content: "Zero ERP";
+    color: #6b7280;
+    font-size: 8pt;
+  }
+
+  @bottom-right {
+    content: "Pagina " counter(page) " di " counter(pages);
+    color: #6b7280;
+    font-size: 8pt;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: #1f2937;
+  font-family: "DejaVu Sans", Arial, sans-serif;
+  font-size: 10pt;
+  line-height: 1.45;
+}
+
+.document {
+  width: 100%;
+}
+
+.header {
+  display: table;
+  width: 100%;
+  padding-bottom: 14px;
+  border-bottom: 2px solid #111827;
+}
+
+.brand,
+.doc-title {
+  display: table-cell;
+  vertical-align: top;
+}
+
+.brand {
+  width: 52%;
+}
+
+.brand-mark {
+  display: inline-block;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 8px 10px;
+  background: #111827;
+  color: #ffffff;
+  font-size: 15pt;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.brand-name {
+  margin-top: 8px;
+  font-size: 12pt;
+  font-weight: 700;
+}
+
+.brand-meta {
+  margin-top: 2px;
+  color: #6b7280;
+  font-size: 8.5pt;
+}
+
+.doc-title {
+  width: 48%;
+  text-align: right;
+}
+
+h1 {
+  margin: 0;
+  color: #111827;
+  font-size: 22pt;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.doc-number {
+  margin-top: 6px;
+  font-size: 11pt;
+  font-weight: 700;
+}
+
+.status-pill {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 3px 8px;
+  border: 1px solid #9ca3af;
+  border-radius: 999px;
+  color: #374151;
+  font-size: 8pt;
+  text-transform: uppercase;
+}
+
+.section {
+  margin-top: 18px;
+}
+
+.two-columns {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.column {
+  display: table-cell;
+  width: 50%;
+  vertical-align: top;
+}
+
+.column + .column {
+  padding-left: 18px;
+}
+
+.label {
+  margin-bottom: 4px;
+  color: #6b7280;
+  font-size: 8pt;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.box {
+  min-height: 62px;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.box-strong {
+  font-size: 11pt;
+  font-weight: 700;
+}
+
+.muted {
+  color: #6b7280;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead {
+  display: table-header-group;
+}
+
+tr {
+  page-break-inside: avoid;
+  page-break-after: auto;
+}
+
+th,
+td {
+  padding: 7px 6px;
+  border-bottom: 1px solid #e5e7eb;
+  vertical-align: top;
+}
+
+th {
+  background: #f3f4f6;
+  color: #374151;
+  font-size: 8pt;
+  font-weight: 700;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.facts th,
+.facts td {
+  padding: 5px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.facts th {
+  width: 42%;
+  background: transparent;
+  color: #6b7280;
+  font-size: 8.5pt;
+}
+
+.facts td {
+  text-align: right;
+}
+
+.table-title {
+  margin: 22px 0 8px;
+  color: #111827;
+  font-size: 11pt;
+  font-weight: 700;
+}
+
+.lines {
+  page-break-inside: auto;
+}
+
+.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.row-description {
+  font-weight: 700;
+}
+
+.row-note {
+  margin-top: 2px;
+  color: #6b7280;
+  font-size: 8.5pt;
+}
+
+.totals {
+  width: 42%;
+  margin-top: 18px;
+  margin-left: auto;
+}
+
+.totals th,
+.totals td {
+  padding: 6px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.totals th {
+  background: transparent;
+  color: #374151;
+  font-weight: 700;
+  text-align: left;
+  text-transform: none;
+}
+
+.totals td {
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.grand-total th,
+.grand-total td {
+  padding-top: 10px;
+  border-bottom: 2px solid #111827;
+  color: #111827;
+  font-size: 13pt;
+}
+
+.conditions {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid #d1d5db;
+  color: #4b5563;
+  font-size: 8.5pt;
+}
+
+/* Blocco firme DDT (conducente / vettore / destinatario) */
+.signatures {
+  display: table;
+  width: 100%;
+  margin-top: 28px;
+  table-layout: fixed;
+  page-break-inside: avoid;
+}
+
+.signature-cell {
+  display: table-cell;
+  width: 33.33%;
+  vertical-align: bottom;
+}
+
+.signature-cell + .signature-cell {
+  padding-left: 18px;
+}
+
+.signature-line {
+  height: 34px;
+  border-bottom: 1px solid #374151;
+}

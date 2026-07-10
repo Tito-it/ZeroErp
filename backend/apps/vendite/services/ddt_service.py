@@ -15,14 +15,13 @@
 # data-driven, numero assegnato a EMESSO dal trigger DB, cliente/destinatario
 # immutabile post-creazione).
 #
-# NOTA sull'emittente componenti/pricing: a differenza di `vendite.ordini`, la
-# testata DDT NON denormalizza `emittente_fiscale_id`. Per pricing/componenti
-# delle righe manuali l'emittente si risolve a runtime dal billing_account del
-# DDT via `anagrafiche.fn_get_emittente_fiscale_pk` (catena specifico ->
-# gestore globale default; BB BillingAccountRepository). Senza billing_account
-# (bozza standalone pre-cliente) la risoluzione fallisce con errore parlante.
-# Il flusso PRINCIPALE (genera DDT da ordine) non passa di qui: lo snapshot
-# prezzi + componenti e' fatto atomico in DB dalla fn madre.
+# NOTA emittente (addendum §15, 2026-07-10): `vendite.ddt.emittente_fiscale_id`
+# e' MEMORIZZATO (NOT NULL, scope RLS `rls_ddt_ef_whitelist`), risolto in
+# scrittura da `trgfn_ddt_normalize` (ereditato dall'ordine sorgente, o dal
+# billing_account per lo standalone). Il service quindi lo LEGGE dalla testata
+# (mirror ordini) e non lo risolve a runtime: il billing_account e' richiesto
+# alla creazione perche' senza di esso il trigger non puo' valorizzare
+# l'emittente (NOT NULL a DB).
 
 import logging
 import re
@@ -34,7 +33,6 @@ from typing import Any
 
 from django.db import DatabaseError, IntegrityError, transaction
 
-from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import map_integrity_error
 from apps.core.services.value_normalizer import empty_to_none
@@ -66,6 +64,7 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "fk_ddt_v_billing_account": (E_VENDITE_FK, "Cliente (billing account) non valido."),
     "fk_ddt_vendita_destinatario_ruolo": (E_VENDITE_FK, "Destinatario non valido."),
     "fk_ddt_vendita_r_iva": (E_VENDITE_FK, "Aliquota IVA non valida."),
+    "fk_ddt_v_emittente_fiscale": (E_VENDITE_FK, "Emittente fiscale non valido."),
 }
 
 # ── Costanti di dominio ──
@@ -184,14 +183,28 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
     data = {k: empty_to_none(v) for k, v in payload.items() if k in _CREATE_KEYS_DDT}
 
     billing_account_id = data.get("billing_account_id")
+    # Cliente obbligatorio: `trgfn_ddt_normalize` risolve da qui
+    # l'emittente_fiscale_id (NOT NULL, scope RLS) del DDT standalone. Senza BA
+    # l'INSERT fallirebbe a DB con un errore non parlante.
+    ErrorManager.require(
+        billing_account_id is not None,
+        code="E_DDT_VALIDAZIONE",
+        message=(
+            "Cliente (billing_account_id) obbligatorio: risolve l'emittente "
+            "fiscale del DDT."
+        ),
+        function_name=f"{_FN}.crea_ddt",
+    )
+    assert billing_account_id is not None
     destinatario_id = data.get("destinatario_soggetto_ruolo_id")
-    if destinatario_id is None and billing_account_id is not None:
+    if destinatario_id is None:
+        # BA garantito non-None dal guard sopra: derivazione sempre tentabile.
         destinatario_id = repo.get_soggetto_ruolo_id_by_ba(int(billing_account_id))
     ErrorManager.require(
         destinatario_id is not None,
         code="E_DDT_VALIDAZIONE",
-        message="Destinatario obbligatorio (billing_account_id o "
-                "destinatario_soggetto_ruolo_id).",
+        message="Destinatario non risolvibile dal billing_account: indicare "
+                "destinatario_soggetto_ruolo_id esplicito.",
         function_name=f"{_FN}.crea_ddt",
     )
     assert destinatario_id is not None
@@ -363,11 +376,14 @@ def cambia_stato(ddt_id: int, stato_codice: str) -> dict[str, Any]:
 
 # Scopo: Emette il DDT (DRAFT -> EMESSO). Alla transizione il DB assegna il
 #        `numero` (C6, trgfn_ddt_gen_numero_emesso) e scatta il guard
-#        approvazione componenti BoM (brief DB §6). Ritorna il dettaglio
-#        ricaricato (con il numero valorizzato + capability aggiornate).
-def emetti(ddt_id: int) -> dict[str, object]:
-    cambia_stato(ddt_id, _STATO_EMESSO)
-    return get_ddt(ddt_id)
+#        approvazione componenti BoM (brief DB §6). Ritorna il risultato LIGHT
+#        della transizione ({ddt_id, stato_precedente, stato}), parita' con
+#        `ordini_service.conferma`: la view emissione documentale chiama emetti
+#        dentro `transaction.atomic()` e il detail pesante (vista + capability
+#        + count righe) non va materializzato nella sezione critica — il FE
+#        ricarica comunque il detail dopo l'emissione.
+def emetti(ddt_id: int) -> dict[str, Any]:
+    return cambia_stato(ddt_id, _STATO_EMESSO)
 
 
 # ══════════════════════════════════════════════════════════
@@ -759,35 +775,22 @@ def _assert_stato(
 
 
 # Scopo: Risolve il soggetto_ruolo_id dell'emittente per i componenti/pricing
-#        delle righe manuali. La testata DDT non denormalizza
-#        `emittente_fiscale_id` (a differenza di ordini): si risolve dal
-#        billing_account del DDT via `anagrafiche.fn_get_emittente_fiscale_pk`
-#        (catena emittente specifico -> gestore globale default, BB
-#        BillingAccountRepository), poi PK -> soggetto_ruolo_id (memoria
-#        feedback_emittente_pk_vs_soggetto_ruolo). Senza billing_account (bozza
-#        standalone pre-cliente) fail-fast parlante. L'evasione da ordine
-#        (snapshot atomico in DB) NON passa di qui.
+#        delle righe manuali. L'emittente e' MEMORIZZATO sulla testata
+#        (`emittente_fiscale_id` NOT NULL, addendum §15: ereditato dall'ordine
+#        sorgente o risolto dal billing_account da `trgfn_ddt_normalize`): qui
+#        si converte solo la PK nel soggetto_ruolo_id atteso dalle fn
+#        componenti/pricing (memoria feedback_emittente_pk_vs_soggetto_ruolo),
+#        mirror del pattern ordini. L'evasione da ordine (snapshot atomico in
+#        DB) NON passa di qui.
 def _resolve_emittente_sr_id(repo: DdtRepository, testata: dict[str, Any]) -> int:
-    billing_account_id = testata.get("billing_account_id")
-    ErrorManager.require(
-        billing_account_id is not None,
-        code="E_DDT_VALIDAZIONE",
-        message=(
-            "DDT senza cliente (billing account): impossibile risolvere "
-            "l'emittente per prezzi/componenti. Valorizzare il cliente oppure "
-            "indicare il prezzo unitario esplicitamente."
-        ),
-        function_name=f"{_FN}._resolve_emittente_sr_id",
-    )
-    assert billing_account_id is not None
-    fiscale_id = BillingAccountRepository().get_emittente_fiscale_id(
-        int(billing_account_id),
-    )
+    fiscale_id = testata.get("emittente_fiscale_id")
     ErrorManager.require(
         fiscale_id is not None,
         code="E_DDT_VALIDAZIONE",
-        message="Emittente fiscale non risolvibile dal cliente del DDT.",
-        detail=f"billing_account_id={billing_account_id}",
+        message=(
+            "DDT senza emittente fiscale (testata anomala: il trigger "
+            "normalize lo garantisce NOT NULL alla creazione)."
+        ),
         function_name=f"{_FN}._resolve_emittente_sr_id",
     )
     assert fiscale_id is not None

@@ -39,8 +39,24 @@ del DB vivo:
 | `vendite.note_ddt`, `fn_list_ddt_da_pushare`, `fn_ddt_riga_componenti_init/preview` | ✅ | pre-esistenti |
 | Seed `config.causali_trasporto` (8) + `config.aspetti_beni` (10) | ✅ | PDF-ready |
 
-**Gate superato**: BE può partire. (Auto-gen dbzero di `vw_ddt_lista`/`fn_available_actions_ddt`
-non ancora rigenerata — usare i `manual/*.md`, che riflettono il DB vivo.)
+**Addendum SCOPE §15 — ✅ APPLICATO (2026-07-10, `dev/db-tid` 114185433).** Il DB ha
+scelto l'opzione migliorativa "emittente memorizzato" (mirror ordini/preventivi):
+
+| Oggetto DB (addendum) | Stato | Nota |
+|---|---|---|
+| `vendite.ddt.emittente_fiscale_id` (bigint **NOT NULL**, FK `fk_ddt_v_emittente_fiscale`) | ✅ | risolto in scrittura da `trgfn_ddt_normalize`: ereditato dall'ordine sorgente, o dal `billing_account` per lo standalone (`fn_get_emittente_fiscale_pk`) |
+| RLS su `vendite.ddt`: policy `rls_ddt_ef_whitelist` (FOR ALL, enabled non forced) + guard scrittura `trgfn_guard_emittente_scope` | ✅ | scope via `script.fn_scope_ef_whitelist` sui GUC operatore, parità con ordini/preventivi/fatture |
+| `vw_ddt_lista` + `emittente_fiscale_id` / `emittente_fiscale_codice` | ✅ | abilita il filtro applicativo BE (defense-in-depth) |
+| pgTAP `test-rls-ddt-ef-whitelist-write.sql` | ✅ | |
+
+**Conseguenze BE (recepite nel codice 2026-07-10):** filtro applicativo emittente
+**attivato** in `DdtRepository.list_ddt` (mirror ordini); `_resolve_emittente_sr_id`
+legge la colonna memorizzata (niente risoluzione runtime BA→emittente);
+`crea_ddt` richiede `billing_account_id` (senza, il trigger non può valorizzare
+l'emittente NOT NULL → guard parlante); FK `fk_ddt_v_emittente_fiscale` mappata
+in `_FK_CONSTRAINTS`.
+
+**Gate superato**: prerequisiti DB completi (slice principale + addendum scope).
 
 ## 3. Struttura file — clonare da ordini
 
@@ -168,13 +184,12 @@ guard fulfillment lo solleva in evasione — brief DB C2, over-shipping) se non 
 I codici sollevati dai trigger DB (`E_STATO_DDT_*`, `E_COMPONENTE_PREZZO_PENDENTE`)
 arrivano via regex `_db_errors`: comunque registrarne la policy per la UI.
 
-## 9. Riepilogo dipendenze DB da confermare col team DB
+## 9. Riepilogo dipendenze DB — ✅ TUTTE CONSEGNATE
 
-Oltre agli oggetti del brief DB Fase 1, il BE ha bisogno di **`vw_ddt_lista`** (read
-lista/dettaglio) e **`script.fn_available_actions_ddt`** (capabilities data-driven).
-Sono mirror 1:1 di `vw_ordini_lista` e `script.fn_available_actions_ordine` sulla
-matrice `config.transizioni_stati_ddt`. **Vanno aggiunti al capitolato DB** (li segnalo
-in cima a §2): senza, la lista e le azioni di stato non funzionano.
+Storico: il capitolato Fase 1 non copriva la read-side; segnalati al team DB
+`vw_ddt_lista` + `script.fn_available_actions_ddt` (consegnati col consuntivo §14
+del brief DB) e poi l'addendum scope §15 (colonna emittente + RLS + vista,
+consegnato 2026-07-10). Nessuna dipendenza DB residua per questa slice.
 
 ## 10. Test (mirror ordini)
 
@@ -186,15 +201,55 @@ in cima a §2): senza, la lista e le azioni di stato non funzionano.
 - Smoke E2E (`backend/scripts/tests/`): ordine CONFERMATO (trigger SPEDITO) → genera-ddt →
   emetti → SPEDITO → push commessa → attività fatturabile (giro completo differito).
 
-## 11. Punti aperti (decisione)
+## 11. Punti aperti — CHIUSI in implementazione (2026-07-10)
 
-- **`post_permission`**: ordini non li dichiara (solo `area_funzionale`), preventivi sì
-  (`cambia_stato_preventivi`, `push_commessa_preventivi`). **Scelta**: DDT segue ordini
-  (nessun `post_permission`) o introduce `emetti_ddt`/`push_commessa_ddt`? *(consiglio:
-  come ordini, salvo esigenza di granularità permessi.)*
-- **Indirizzi DDT** (`ddt_indirizzi`): non hanno gemello negli ordini (testata ordine
-  senza indirizzi). Per la slice **da-ordine** gli indirizzi possono essere snapshot
-  ereditati (mittente=emittente, destinatario=cliente): CRUD indirizzi dedicato →
-  rimandabile alla slice **standalone/PDF**. Confermare.
-- **`types.py`**: dict grezzo (come ordini) o TypedDict `DdtRow`/`DdtRigaRow`?
+- **`post_permission`**: DDT segue il pattern-ordini — nessun `post_permission`,
+  solo `area_funzionale="vendite"`.
+- **Indirizzi DDT** (`ddt_indirizzi`): rimandati alla slice **standalone/PDF**
+  (nessun CRUD in questa slice; snapshot ereditati quando servirà la stampa).
+- **`types.py`**: dict grezzo (come ordini), nessun TypedDict.
+- **Cliente obbligatorio in create** (conseguenza addendum §15): `crea_ddt`
+  richiede `billing_account_id` — l'emittente NOT NULL è risolto dal trigger a
+  partire dal BA.
+
+## 12. Consuntivo realizzazione (2026-07-10) — ✅ REALIZZATO
+
+Slice BE completa sul working tree `dev/backend-tid` (**non committato**, il commit
+lo fa Tid). `manage.py check` pulito; **84 test verdi** (35 DDT + 49 ordini, no
+regressione). Ambiente sandbox senza Postgres reale: la suite completa ha fallimenti
+pre-esistenti/ambientali (connection refused) su commesse/pricing — non DDT.
+
+### File creati
+- `services/ddt_service.py` — funzioni libere (clone `ordini_service`): CRUD testata/righe,
+  emissione (→EMESSO, numero dal trigger), `cambia_stato` data-driven, componenti BoM,
+  `crea_ddt_da_ordine` (evasione, delega a `fn_genera_ddt_da_ordine`), `push_a_commessa`
+  (sorgente `DDT_VENDITA`), `_db_errors`.
+- `api/views_ddt.py` + `api/urls_ddt.py` (montato in `urls_v1.py`).
+- `tests/services/test_ddt_service.py` (24) + `tests/api/test_ddt_api.py` (10, +1 dopo review = 35).
+
+### File modificati
+- `db/ddt_repository.py` — esteso da minimale a completo (letture `vw_ddt_lista`, scritture,
+  `push_da_ordine`, capabilities, componenti, **filtro scope emittente attivo**, `count_righe`).
+- `api/views_ordini.py` + `urls_ordini.py` — `ApiOrdineGeneraDdt` (`POST /ordini/<id>/genera-ddt/`).
+- `api/note_views.py` — cablaggio note DDT (`make_note_views`).
+- `core/services/error_policies.py` — famiglia `E_DDT_*` + `E_STATO_DDT_*`, `E_QTA_SUPERA_RESIDUO`,
+  `E_COMPONENTE_PREZZO_PENDENTE`, `E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE`.
+
+### Addendum scope §15 recepito (colonna emittente memorizzata)
+`list_ddt` filtra su `emittente_fiscale_id` (mirror ordini); `_resolve_emittente_sr_id`
+legge la colonna memorizzata; `crea_ddt` richiede `billing_account_id`; FK
+`fk_ddt_v_emittente_fiscale` in `_FK_CONSTRAINTS`.
+
+### Fix da code-review high (10 finding, applicati)
+Vedi anche il diff. Sintesi: **residuo evasione** (repo `list_righe` espone
+`qta_evasa/residua_operativa`; il pannello FE usa il residuo), **`esposto_in_fattura`**
+rimosso dalla allowed-set (ddt+ordini, era no-op silenzioso), **policy errore emissione**
+registrate, **letture pesanti** ridotte (guard leggeri `get_stato_codice`, `count_righe`,
+no re-read numero), **codice morto** rimosso (`list_ddt` wrapper, param inerte),
+convenzioni (`# Scopo:`, `assert` post-`require`). REFUTED: `int()`→500 (framework
+mappa 400) e `@extend_schema` mancanti (parità ordini).
+
+### Fuori scope (predisposto, slice successive)
+PDF DDT, editing `ddt_indirizzi`, riepilogo IVA, export lista, colonna "Emittente" in
+lista (aggiunta seed `ui.lista_colonna` DB-side). Slice **resi** documentata nel brief DB §12.
 </content>

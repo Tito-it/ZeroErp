@@ -32,6 +32,18 @@ export function getOrdineFormDefaults(billingAccountId = null) {
   return api.get('/vendite/ordini/form-defaults/', { params })
 }
 
+// Scopo: Defaults form DDT di vendita. Senza BA ritorna valuta_id dalla catena
+//        EF utente → gestore (BB resolve_valuta_default); con BA aggiunge utility
+//        BA-derived + valuta del cliente. Il DDT è un documento di trasporto:
+//        niente termini/modalita di pagamento in testata. La utility di default
+//        globale (DEFAULT_UTILITY) la risolve il FE via useUtilityDefaultId, come
+//        negli altri drawer. L'emittente NON è qui: lo risolve il trigger DB
+//        (memorizzato sulla testata) e il FE lo mostra read-only dal detail.
+export function getDdtFormDefaults(billingAccountId = null) {
+  const params = billingAccountId ? { billing_account_id: billingAccountId } : {}
+  return api.get('/vendite/ddt/form-defaults/', { params })
+}
+
 // Scopo: Defaults form offerta commerciale. Se billingAccountId presente,
 //        popola categoria_cliente_id_snapshot + utility/istanza + valuta_id
 //        dal BA. Senza BA, la valuta arriva comunque dalla catena
