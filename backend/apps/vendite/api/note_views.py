@@ -117,3 +117,30 @@ ApiOrdineNoteList, ApiOrdineNoteDetail = make_note_views(
     target_tipo="ORDINE",
     model_permission=("vendite", "ordine"),
 )
+
+
+# Scopo: Factory dei service note DDT di vendita. Partizione 'DDT'
+#        (target_tipo varchar(16): 'DDT' = 3 char, ok). Il child_table
+#        `vendite.ddt_righe` collega le note di RIGA via FK `ddt_id`
+#        (note_ddt.target_riga_id -> ddt_righe.id).
+_DDT_REPO = PartitionedNoteRepository(
+    partition_table="vendite.note_ddt",
+    target_tipo="DDT",
+    parent_table="vendite.ddt",
+    parent_pk="id",
+    child_table="vendite.ddt_righe",
+    child_parent_fk="ddt_id",
+)
+
+
+def _ddt_service_factory() -> PartitionedNoteService:
+    return PartitionedNoteService(repo=_DDT_REPO)
+
+
+ApiDdtNoteList, ApiDdtNoteDetail = make_note_views(
+    area_funzionale="vendite",
+    parent_path_param="ddt_id",
+    service_factory=_ddt_service_factory,
+    target_tipo="DDT",
+    model_permission=("vendite", "ddt"),
+)

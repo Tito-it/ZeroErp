@@ -53,6 +53,44 @@ def _extract_list_filters(qp) -> dict[str, Any]:
     }
 
 
+# Scopo: normalizza le `righe` da evadere dal body di genera-ddt. Assente/null =
+#        tutto il residuo dell'ordine (None). Lista vuota = errore esplicito: NON
+#        deve degradare silenziosamente a "tutto" (un client che intende "nessuna
+#        riga" otterrebbe l'evasione completa). Ogni voce =
+#        {ordine_riga_id, qta_da_evadere} in unita' operativa (qta passata
+#        intatta alla fn DB fn_genera_ddt_da_ordine).
+def _parse_righe_evasione(
+    payload: dict[str, object],
+) -> list[dict[str, Any]] | None:
+    righe = payload.get("righe")
+    if righe is None:
+        return None
+    ErrorManager.require(
+        isinstance(righe, list) and len(righe) > 0,
+        code="E_DDT_VALIDAZIONE",
+        message="righe non valido: lista non vuota di {ordine_riga_id, "
+                "qta_da_evadere}, oppure omettere il campo per evadere tutto "
+                "il residuo.",
+        detail=f"righe={righe!r}",
+        function_name="apps.vendite.api.views_ordini._parse_righe_evasione",
+    )
+    out: list[dict[str, Any]] = []
+    for r in righe:
+        ErrorManager.require(
+            isinstance(r, dict) and r.get("ordine_riga_id") is not None,
+            code="E_DDT_VALIDAZIONE",
+            message="Ogni riga richiede ordine_riga_id.",
+            detail=f"riga={r!r}",
+            function_name="apps.vendite.api.views_ordini._parse_righe_evasione",
+        )
+        assert isinstance(r, dict)
+        out.append({
+            "ordine_riga_id": int(r["ordine_riga_id"]),
+            "qta_da_evadere": r.get("qta_da_evadere"),
+        })
+    return out
+
+
 class ApiOrdiniList(DomainAPIView):
     """GET/POST /api/v1/vendite/ordini/ — lista paginata + create BOZZA."""
 
@@ -386,3 +424,33 @@ class ApiOrdineRigaComponenteDetail(DomainAPIView):
                 int(ordine_id), int(riga_id), int(componente_id),
             ),
         )
+
+
+class ApiOrdineGeneraDdt(DomainAPIView):
+    """`POST /api/v1/vendite/ordini/<ordine_id>/genera-ddt/` — evasione: genera
+    un DDT (DRAFT) dall'ordine copiando lo snapshot righe/componenti + il
+    fulfillment riga<->riga e proiettando lo stato ordine (CONFERMATO /
+    PARZIALMENTE_EVASO / EVASO). L'endpoint vive nel dominio SORGENTE (ordine),
+    la logica sta in `ddt_service` (stesso app vendite, come genera-ordine sta
+    nei preventivi). Body opzionale `{righe: [{ordine_riga_id, qta_da_evadere}]}`
+    (unita' operativa) per l'evasione parziale/selettiva; assente = tutto il
+    residuo."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="OrdineGeneraDdtResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Genera un DDT da evasione dell'ordine. Delega a ddt_service (import
+    #        locale per evitare cicli). Ritorna {ddt_id, numero, ordine_id}.
+    def post(self, request: Request, ordine_id: int) -> JsonResponse:
+        from apps.vendite.services import ddt_service
+
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
+            return ddt_service.crea_ddt_da_ordine(
+                int(ordine_id), _parse_righe_evasione(payload),
+            )
+        return handle_post_json(request, handler=_handler)

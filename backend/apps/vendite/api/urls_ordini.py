@@ -22,6 +22,7 @@ from apps.vendite.api.views_ordini import (
     ApiOrdineCambiaStato,
     ApiOrdineConferma,
     ApiOrdineDetail,
+    ApiOrdineGeneraDdt,
     ApiOrdinePerPratica,
     ApiOrdinePush,
     ApiOrdineRiepilogoIva,
@@ -68,6 +69,11 @@ urlpatterns = [
          name="vendite-ordine-cambia-stato"),
     path("<int:ordine_id>/push/", ApiOrdinePush.as_view(),
          name="vendite-ordine-push"),
+
+    # Evasione: genera un DDT (DRAFT) dall'ordine (dominio sorgente, come
+    # genera-ordine sta nei preventivi). Logica in ddt_service.
+    path("<int:ordine_id>/genera-ddt/", ApiOrdineGeneraDdt.as_view(),
+         name="vendite-ordine-genera-ddt"),
 
     # Righe
     path("<int:ordine_id>/righe/", ApiOrdineRighe.as_view(),

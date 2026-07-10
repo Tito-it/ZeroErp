@@ -165,6 +165,7 @@ export const DOMAIN_MENUS = {
     { key: 'preventivi', icon: NAV_ICONS.PREVENTIVI, to: '/vendite/preventivi' },
     { key: 'offerte', icon: NAV_ICONS.OFFERTE, to: '/vendite/offerte' },
     { key: 'ordini', icon: NAV_ICONS.ORDINI, to: '/vendite/ordini' },
+    { key: 'ddt', icon: NAV_ICONS.DDT, to: '/vendite/ddt' },
     { key: 'contratti', icon: NAV_ICONS.CONTRATTI, to: '/vendite/contratti' },
     { key: 'listini', icon: NAV_ICONS.LISTINI, to: '/vendite/listini' },
     { key: 'promo-articoli', icon: NAV_ICONS.PROMO_ARTICOLI, to: '/vendite/promo-articoli' },

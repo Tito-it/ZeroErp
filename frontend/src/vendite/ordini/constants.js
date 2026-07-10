@@ -7,6 +7,10 @@
 export const STATO_ORDINE = Object.freeze({
   DRAFT: 'DRAFT',
   CONFERMATO: 'CONFERMATO',
+  // Ordine parzialmente evaso: almeno un DDT generato ma con residuo aperto
+  // (config.stati_doc_ordini id 9, fase IN_CORSO, non terminale). Aggiunto con
+  // la slice evasione DDT: l'ordine resta evadibile finche' resta residuo.
+  PARZIALMENTE_EVASO: 'PARZIALMENTE_EVASO',
   EVASO: 'EVASO',
   ALLOCATO: 'ALLOCATO',
   SPEDITO: 'SPEDITO',
@@ -14,6 +18,14 @@ export const STATO_ORDINE = Object.freeze({
   ANNULLATO: 'ANNULLATO',
   FATTURATO: 'FATTURATO',
 })
+
+// Stati dell'ordine dai quali e' possibile generare un DDT di evasione: c'e'
+// residuo da evadere (CONFERMATO = tutto aperto, PARZIALMENTE_EVASO = residuo
+// parziale). Guida il montaggio dell'OrdineEvasionePanel nel drawer ordine.
+export const STATI_ORDINE_EVADIBILI = Object.freeze([
+  STATO_ORDINE.CONFERMATO,
+  STATO_ORDINE.PARZIALMENTE_EVASO,
+])
 
 // Trigger di fatturazione (asse OdV-specifico): governa *quando* l'ordine pusha
 // a commessa. Ereditato da `billing_account.fatturazione_ordini`, sovrascrivibile

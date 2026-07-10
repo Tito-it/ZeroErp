@@ -1804,6 +1804,111 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Un ordine è già stato generato da questa offerta.",
         ),
+        # DDT di vendita (CRUD + emissione + macchina a stati + evasione da
+        # ordine + push singolo). Famiglia speculare a E_ORD_*. I codici trigger
+        # DB (E_STATO_DDT_*, E_COMPONENTE_PREZZO_PENDENTE, E_QTA_SUPERA_RESIDUO)
+        # passano invece via regex in ddt_service._db_errors: registrati qui per
+        # fissare lo status/ui_action lato FE.
+        "E_DDT_NOT_FOUND": ErrorPolicy(
+            code="E_DDT_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="DDT non trovato.",
+        ),
+        "E_DDT_VALIDAZIONE": ErrorPolicy(
+            code="E_DDT_VALIDAZIONE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri DDT non validi.",
+        ),
+        # Cliente (billing_account_id/destinatario) immutabile post-create:
+        # cambiare cliente = nuovo DDT (mirror E_ORD_CLIENTE_IMMUTABILE).
+        "E_DDT_CLIENTE_IMMUTABILE": ErrorPolicy(
+            code="E_DDT_CLIENTE_IMMUTABILE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message=(
+                "Cliente immutabile dopo la creazione: per cambiare cliente "
+                "crea un nuovo DDT."
+            ),
+        ),
+        "E_DDT_STATO_TRANSIZIONE": ErrorPolicy(
+            code="E_DDT_STATO_TRANSIZIONE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Operazione non ammessa nello stato corrente del DDT.",
+        ),
+        "E_DDT_NESSUNA_RIGA": ErrorPolicy(
+            code="E_DDT_NESSUNA_RIGA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il DDT non ha righe eleggibili per l'operazione.",
+        ),
+        # Evasione da ordine (fn_genera_ddt_da_ordine): l'ordine sorgente non
+        # esiste, non e' in uno stato evadibile, o non ha residuo da evadere.
+        "E_DDT_ORDINE_NOT_FOUND": ErrorPolicy(
+            code="E_DDT_ORDINE_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Ordine di origine non trovato.",
+        ),
+        "E_DDT_ORDINE_STATO_NON_EVADIBILE": ErrorPolicy(
+            code="E_DDT_ORDINE_STATO_NON_EVADIBILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "L'ordine non e' in uno stato che consente l'evasione (genera DDT)."
+            ),
+        ),
+        "E_DDT_NIENTE_DA_EVADERE": ErrorPolicy(
+            code="E_DDT_NIENTE_DA_EVADERE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Nessuna quantita' residua da evadere sull'ordine.",
+        ),
+        # Codice sollevato dal trigger guard transizioni DDT
+        # (trgfn_ddt_guard_transizione): la coppia (stato_attuale, stato_target)
+        # non e' nella matrice config.transizioni_stati_ddt.
+        "E_STATO_DDT_TRANSIZIONE_NON_VALIDA": ErrorPolicy(
+            code="E_STATO_DDT_TRANSIZIONE_NON_VALIDA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Transizione di stato non ammessa per il DDT.",
+        ),
+        # Over-shipping: la quantita' da evadere supera il residuo dell'ordine.
+        # Sollevato dal guard fulfillment DB (trgfn_ordini_ful_guard_consistenza)
+        # in evasione multi-DDT (brief DB C2).
+        "E_QTA_SUPERA_RESIDUO": ErrorPolicy(
+            code="E_QTA_SUPERA_RESIDUO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La quantita' da evadere supera il residuo disponibile "
+                "sull'ordine."
+            ),
+        ),
+        # Gate emissione documento (trigger guard approvazione componenti BoM,
+        # trgfn_*_guard_transizione_approvazione — DDT/ordini/preventivi):
+        # transizione a EMESSO/CONFERMATO bloccata da componenti CASO A con
+        # approvazione prezzo PENDING o prezzo non valorizzato. Conflitto di
+        # stato → 409 (coerente con E_STATO_DDT_TRANSIZIONE_NON_VALIDA).
+        "E_COMPONENTE_PREZZO_PENDENTE": ErrorPolicy(
+            code="E_COMPONENTE_PREZZO_PENDENTE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Impossibile emettere: componenti con approvazione prezzo "
+                "in corso (PENDING)."
+            ),
+        ),
+        "E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE": ErrorPolicy(
+            code="E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Impossibile emettere: componenti senza prezzo valorizzato."
+            ),
+        ),
         # Mutua esclusività offerta → (contratto XOR ordine): la stessa offerta si
         # materializza in UNA sola forma. Famiglia "già materializzato" = conflitto
         # di stato → 409 uniforme (coerente con E_ORD_OFFERTA_GIA_CONVERTITA sopra).
