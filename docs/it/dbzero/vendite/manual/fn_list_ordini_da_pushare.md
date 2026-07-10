@@ -22,7 +22,11 @@ delegati a `fn_list_ddt_da_pushare`.
 
 ### Regole principali
 
-* considera ordini in stato documento `CONFERMATO`;
+* **stato documento libero sull'asse spedizione** *(rev 2026-07-10)*: esclusi solo
+  `DRAFT`, `ANNULLATO` (documento commercialmente inesistente) e `FATTURATO`
+  (cintura). Un ordine `PARZIALMENTE_EVASO`/`EVASO` resta eleggibile: per il
+  trigger CONFERMATO la fatturazione è ortogonale alla spedizione (fix «orfano
+  da push», piano `piano-db-fix-orfano-push-ordine-confermato.md`);
 * **`fatturazione_trigger = ‘CONFERMATO’`** (esclusione reciproca con DDT);
 * include solo righe attive con quantita` e prezzo validi;
 * esclude segmenti gia` emessi in `commesse_attivita` (idempotenza batch);

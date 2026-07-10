@@ -19,24 +19,25 @@ AS $function$
 --   _offerta / _contratto: legge le transizioni manuali disponibili
 --   da config.transizioni_stati_ordini (matrice 20260605-08).
 --
---   Grafo transizioni (enforcement: trgfn_ordini_guard_transizione):
---     DRAFT      -> CONFERMATO (conferma, manuale)   attivo=true
---     DRAFT      -> ANNULLATO  (annulla,  manuale)   attivo=true
---     CONFERMATO -> ANNULLATO  (annulla,  manuale)   attivo=FALSE (non esposta)
---     CONFERMATO -> EVASO      (automatica, manuale=false) attivo=true
---       -> NON esposta in available_actions (filtro manuale + action_key):
---          e' un effetto automatico invocato dal BE dopo il push commessa.
---     EVASO: stato terminale (nessuna transizione in uscita).
---     Stati a valle (ALLOCATO/SPEDITO/...) fuori matrice (no driver).
---
---   push_commessa: azione applicativa (NON transizione di stato:
---     l'ordine resta CONFERMATO). Appesa a mano come push_commessa
---     dei preventivi. Eleggibile se stato=CONFERMATO e almeno una
---     riga risulta pushabile (riuso fn_list_ordini_da_pushare).
+--   push_commessa (rev 2026-07-10, decoupling fatturazione/spedizione,
+--   piano-db-fix-orfano-push-ordine-confermato):
+--     azione applicativa (NON transizione di stato). Eleggibile se
+--     l'ordine ha almeno una riga pushabile secondo
+--     fn_list_ordini_da_pushare (fonte unica di verita': trigger
+--     CONFERMATO + stato non DRAFT/ANNULLATO/FATTURATO + righe non
+--     ancora EMESSA). Vale anche in PARZIALMENTE_EVASO/EVASO: la
+--     spedizione e' ortogonale alla fatturazione-su-conferma
+--     (recupero dell'ordine "orfano" evaso prima del push).
 --     Quando off, valorizza can_push_commessa_reason/_reason_key:
---       CONFERMATO senza righe -> ORDINE_NESSUNA_RIGA_PUSHABILE
---       EVASO (gia' pushato)   -> ORDINE_GIA_EVASO
---       altri stati            -> ORDINE_NON_CONFERMATO
+--       DRAFT/ANNULLATO            -> ORDINE_NON_CONFERMATO
+--       trigger != CONFERMATO      -> ORDINE_FATTURA_DA_DDT
+--                                     (pusha il DDT, non l'ordine)
+--       tutte le righe gia' EMESSA -> ORDINE_GIA_FATTURATO
+--       altrimenti                 -> ORDINE_NESSUNA_RIGA_PUSHABILE
+--     NB: il vecchio reason ORDINE_GIA_EVASO e' rimosso — asseriva
+--     "EVASO = gia' fatturato", in collisione con "EVASO =
+--     spedizione completa" del flusso DDT. La verita' di billing
+--     e' commesse_attivita.stato_emissione='EMESSA'.
 --
 --   Editabilita':
 --     DRAFT: testata + righe (can_edit_*=true). non_editable solo
@@ -49,6 +50,8 @@ AS $function$
 DECLARE
     v_stato_id   vendite.ordini.stato_doc_ordine_id%TYPE;
     v_stato_cod  config.stati_doc_ordini.codice_interno%TYPE;
+    v_uid        vendite.ordini.uid%TYPE;
+    v_fatt_trg   vendite.ordini.fatturazione_trigger%TYPE;
     v_actions    jsonb;
     v_can_change boolean := false;
     v_push_ok    boolean := false;
@@ -65,9 +68,11 @@ DECLARE
         '"valuta_id","modalita_pagamento_id","termine_pagamento_id",'
         '"fatturazione_trigger","agente_soggetto_ruolo_id","data","meta"]'::jsonb;
 BEGIN
-    -- Stato corrente.
-    SELECT o.stato_doc_ordine_id, sdo.codice_interno
-      INTO v_stato_id, v_stato_cod
+    -- Stato corrente + trigger di fatturazione + uid (per il
+    -- predicato "gia' fatturato" su segment_key).
+    SELECT o.stato_doc_ordine_id, sdo.codice_interno,
+           o.uid, o.fatturazione_trigger
+      INTO v_stato_id, v_stato_cod, v_uid, v_fatt_trg
       FROM vendite.ordini o
       JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
      WHERE o.id = p_ordine_id;
@@ -79,8 +84,6 @@ BEGIN
     -- Transizioni manuali disponibili per lo stato corrente.
     -- Pattern identico a fn_available_actions_preventivo/offerta/contratto.
     -- Filtri: attivo, manuale (default true se assente), guard meta keys.
-    -- La transizione automatica CONFERMATO->EVASO (manuale=false, senza
-    -- action_key) e' esclusa da questi filtri: non diventa bottone.
     SELECT COALESCE(
         jsonb_agg(
             jsonb_build_object(
@@ -107,29 +110,37 @@ BEGIN
 
     -- can_change_state riflette le SOLE transizioni di stato
     -- (calcolato prima di appendere push_commessa, che non e' una
-    -- transizione: l'ordine resta CONFERMATO).
+    -- transizione).
     v_can_change := jsonb_array_length(v_actions) > 0;
 
     -- push_commessa: azione applicativa (non transizione).
-    -- Eleggibile solo da CONFERMATO con almeno una riga pushabile.
-    -- Riuso della fn canonica per non duplicare la logica pushable.
-    IF v_stato_cod = 'CONFERMATO' THEN
-        IF EXISTS (SELECT 1
-                     FROM vendite.fn_list_ordini_da_pushare(p_ordine_id := p_ordine_id)) THEN
-            v_push_ok := true;
-        ELSE
-            v_push_reason     := 'ORDINE_NESSUNA_RIGA_PUSHABILE';
-            v_push_reason_key := 'ordini.push_commessa_reason.nessuna_riga_pushabile';
-        END IF;
-    ELSIF v_stato_cod = 'EVASO' THEN
-        -- Ordine gia' propagato a commessa (stato terminale): il push
-        -- non si ripete. Reason dedicato (piu' preciso del generico
-        -- ORDINE_NON_CONFERMATO) per tooltip/diagnostica FE.
-        v_push_reason     := 'ORDINE_GIA_EVASO';
-        v_push_reason_key := 'ordini.push_commessa_reason.gia_evaso';
-    ELSE
+    -- Fonte unica di eleggibilita': fn_list_ordini_da_pushare
+    -- (capability mostrata == eleggibilita' reale, no duplicazione).
+    IF v_stato_cod IN ('DRAFT', 'ANNULLATO') THEN
         v_push_reason     := 'ORDINE_NON_CONFERMATO';
         v_push_reason_key := 'ordini.push_commessa_reason.non_confermato';
+    ELSIF v_fatt_trg IS DISTINCT FROM 'CONFERMATO' THEN
+        -- Trigger SPEDITO/CONSEGNATO: la fatturazione la fa il DDT
+        -- (fn_list_ddt_da_pushare), l'ordine non pusha mai (XOR §8).
+        v_push_reason     := 'ORDINE_FATTURA_DA_DDT';
+        v_push_reason_key := 'ordini.push_commessa_reason.fattura_da_ddt';
+    ELSIF EXISTS (SELECT 1
+                    FROM vendite.fn_list_ordini_da_pushare(p_ordine_id := p_ordine_id)) THEN
+        v_push_ok := true;
+    ELSIF EXISTS (SELECT 1
+                    FROM vendite.ordini_righe r
+                    JOIN vendite.commesse_attivita ca
+                      ON ca.segment_key = ('ORD:' || v_uid::text || ':R:' || r.id::text)
+                     AND ca.stato_emissione = 'EMESSA'
+                   WHERE r.ordine_id = p_ordine_id) THEN
+        -- Nessuna riga pushabile E almeno un segmento gia' emesso:
+        -- l'ordine e' gia' fatturato (verita' da commesse_attivita,
+        -- non dallo stato documento).
+        v_push_reason     := 'ORDINE_GIA_FATTURATO';
+        v_push_reason_key := 'ordini.push_commessa_reason.gia_fatturato';
+    ELSE
+        v_push_reason     := 'ORDINE_NESSUNA_RIGA_PUSHABILE';
+        v_push_reason_key := 'ordini.push_commessa_reason.nessuna_riga_pushabile';
     END IF;
 
     IF v_push_ok THEN
@@ -163,7 +174,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint)
-IS 'Capability ordine di vendita per detail API: available_actions (da config.transizioni_stati_ordini, pattern data-driven) + push_commessa (azione applicativa hardcoded, riuso fn_list_ordini_da_pushare), can_change_state, can_edit_testata/righe, can_push_commessa(+reason/_reason_key: ORDINE_NESSUNA_RIGA_PUSHABILE / ORDINE_GIA_EVASO / ORDINE_NON_CONFERMATO), non_editable_fields, stato_codice. Sostituisce il calcolo hardcoded in ordini_service.py. rev 2026-06-08 (reason EVASO).';
+IS 'Capability ordine di vendita per detail API: available_actions (da config.transizioni_stati_ordini, pattern data-driven) + push_commessa (azione applicativa, riuso fn_list_ordini_da_pushare come fonte unica), can_change_state, can_edit_testata/righe, can_push_commessa(+reason/_reason_key: ORDINE_NON_CONFERMATO / ORDINE_FATTURA_DA_DDT / ORDINE_GIA_FATTURATO / ORDINE_NESSUNA_RIGA_PUSHABILE), non_editable_fields, stato_codice. rev 2026-07-10: decoupling fatturazione/spedizione — push eleggibile anche in PARZIALMENTE_EVASO/EVASO (fix orfano), rimosso ORDINE_GIA_EVASO.';
 ```
 
 ---
