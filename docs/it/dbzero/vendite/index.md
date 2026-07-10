@@ -220,7 +220,7 @@
 - [trgfn_ddt_gen_numero_emesso](funzioni/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-07-09)
 - [trgfn_ddt_guard_transizione](funzioni/trgfn_ddt_guard_transizione.md) — (rev 2026-07-09)
 - [trgfn_ddt_guard_transizione_approvazione](funzioni/trgfn_ddt_guard_transizione_approvazione.md) — (rev 2026-07-09)
-- [trgfn_ddt_normalize](funzioni/trgfn_ddt_normalize.md) — La trigger function `vendite.trgfn_ddt_normalize()` completa i campi temporali minimi del DDT quando il numero documento e` presente.
+- [trgfn_ddt_normalize](funzioni/trgfn_ddt_normalize.md) — La trigger function `vendite.trgfn_ddt_normalize()` normalizza la testata del DDT su `INSERT`: completa i campi temporali minimi ed **eredita billing/utility/valuta/ emittente dall'ordine sorgente**.
 - [trgfn_ddt_righe_componenti_guard_pending](funzioni/trgfn_ddt_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente di una riga DDT ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta proposta. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura. Se `ddt_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 - [trgfn_dlt_block_ordrig_ddtrig](funzioni/trgfn_dlt_block_ordrig_ddtrig.md) — La trigger function `vendite.trgfn_dlt_block_ordrig_ddtrig()` blocca la cancellazione fisica di righe ordine/DDT per preservare la coerenza del fulfillment e la tracciabilità operativa.
 - [trgfn_documenti_sync_canali](funzioni/trgfn_documenti_sync_canali.md) — (latest review 24-02-2026)   La funzione trigger `vendite.trgfn_documenti_sync_canali()` mantiene allineato il registro `documenti_fatturazione_canali` sugli eventi principali dei documenti commerciali.

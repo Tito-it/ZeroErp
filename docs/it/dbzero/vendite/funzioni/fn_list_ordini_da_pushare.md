@@ -15,10 +15,16 @@ AS $function$
 DECLARE
   v_sorgente_tipo_id    config.sorgenti.id%TYPE;
   v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
-  v_stato_confermato_id config.stati_doc_ordini.id%TYPE;
 BEGIN
   -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente/stato
   -- risolti per codice_interno (immutabile), non per codice (mutabile).
+  -- rev 2026-07-10 (fix orfano, piano-db-fix-orfano-push-ordine-confermato §4.1):
+  -- l'eleggibilita' push NON dipende piu' dallo stato di spedizione
+  -- (CONFERMATO/PARZIALMENTE_EVASO/EVASO/...): per trigger CONFERMATO
+  -- si fattura l'ordine confermato, la spedizione e' ortogonale.
+  -- Esclusi solo DRAFT/ANNULLATO (doc commercialmente inesistente)
+  -- e FATTURATO (cintura). L'anti doppia fatturazione resta il
+  -- NOT EXISTS su commesse_attivita EMESSA (verita' di billing).
   IF p_ordine_id IS NOT NULL AND p_ordine_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_list_ordini_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
@@ -40,10 +46,6 @@ BEGIN
       NULL::uuid, 'ORDINE_VENDITA', 'config.sorgenti'
     );
   END IF;
-
-  SELECT s.id INTO v_stato_confermato_id
-  FROM config.stati_doc_ordini s
-  WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE LIMIT 1;
 
   RETURN QUERY
   SELECT
@@ -82,6 +84,11 @@ BEGIN
     v_tipo_doc_fiscale_id
   FROM vendite.ordini o
   JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+  -- rev 2026-07-10: join stato solo per ESCLUDERE i non eleggibili
+  -- (state-agnostic sull'asse spedizione, no whitelist fragile).
+  JOIN config.stati_doc_ordini sdo
+    ON sdo.id = o.stato_doc_ordine_id
+   AND sdo.codice_interno NOT IN ('DRAFT', 'ANNULLATO', 'FATTURATO')
   JOIN vendite.ordini_righe or_r
     ON or_r.ordine_id = o.id
    AND or_r.attivo IS TRUE
@@ -89,7 +96,6 @@ BEGIN
    AND or_r.prezzo_unitario >= 0
   JOIN catalogo.articoli a ON a.id = or_r.articolo_id
   WHERE o.billing_account_id IS NOT NULL
-    AND (v_stato_confermato_id IS NULL OR o.stato_doc_ordine_id = v_stato_confermato_id)
     AND o.fatturazione_trigger = 'CONFERMATO'
     AND (p_competenza_mese IS NULL OR date_trunc('month', o.data)::date = p_competenza_mese)
     AND (p_billing_account_id IS NULL OR o.billing_account_id = p_billing_account_id)
@@ -105,7 +111,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ordini_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ordine_id bigint)
-IS 'Lista righe ordine eligible al push su commessa (stato CONFERMATO, fatturazione_trigger CONFERMATO). uom_id da catalogo.articoli (canonica). p_ordine_id opzionale: NULL=batch globale, NOT NULL=singolo ordine. Filtri in AND. Esclude EMESSA via NOT EXISTS. rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a).';
+IS 'Lista righe ordine eligible al push su commessa (fatturazione_trigger CONFERMATO; stato documento libero sull''asse spedizione, esclusi DRAFT/ANNULLATO/FATTURATO). uom_id da catalogo.articoli (canonica). p_ordine_id opzionale: NULL=batch globale, NOT NULL=singolo ordine. Filtri in AND. Esclude EMESSA via NOT EXISTS. rev 2026-07-10: fix orfano trigger CONFERMATO evaso (decoupling fatturazione/spedizione, piano-db-fix-orfano-push-ordine-confermato).';
 ```
 
 ---
