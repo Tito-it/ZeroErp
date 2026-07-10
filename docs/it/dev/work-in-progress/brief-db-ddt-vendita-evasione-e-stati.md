@@ -15,9 +15,12 @@
 > (pattern doc→doc di riferimento) ·
 > [config.transizioni_stati_ordini](/dbzero/config/tabelle/transizioni_stati_ordini) (mirror).
 >
-> **✅ STATO: REALIZZATO (2026-07-09)** — write-side + read-side applicati su `dev/db-tid`,
-> pgTAP verdi, doc manual generata. **Consuntivo completo in §14.** NON committato (attendere
-> "procedi"). Le sezioni §1-§13 restano il capitolato; §14 è ciò che è stato effettivamente fatto.
+> **✅ STATO: CHIUSO — REALIZZATO E COMMITTATO** — slice principale (write-side + read-side,
+> 2026-07-09) **+ addendum scope §15** (colonna emittente memorizzata + RLS `rls_ddt_ef_whitelist`
+> + vista, 2026-07-10) applicati e **committati** su `dev/db-tid` (`114185433`), pgTAP verdi, doc
+> manual/auto-gen rigenerata. Consuntivo §14; addendum realizzato §15. Le sezioni §1-§13 sono il
+> capitolato; §14/§15 sono ciò che è stato effettivamente fatto. **Unico residuo = slice RESI
+> (§12), FUTURA e separata** (predisposizione già in essere, non parte di questa slice).
 
 ---
 
@@ -231,6 +234,10 @@ l'unica sorgente per quel perimetro. È l'invariante più delicata dell'intero g
 > `fn_list_ddt_da_pushare` è già l'unica sorgente per SPEDITO/CONSEGNATO. L'XOR è quindi
 > **già presidiato**: nessun intervento sulle fn, serve solo il **test pgTAP di regressione**
 > (§10 caso 6) per congelarlo.
+>
+> ⚠️ **Incompleto (2026-07-10):** questa verifica copriva solo la direzione «no *doppia*
+> fatturazione». Manca la direzione «no fatturazione *persa*»: un ordine `trigger=CONFERMATO`
+> evaso in DDT prima del push resta **orfano** (né ordine né DDT eleggibili). Fix in **§16**.
 
 ## 9. Predisposizione PDF (D-3) — garantire ora
 
@@ -414,6 +421,129 @@ Slice DB realizzata e applicata su `dev/db-tid`, **non committata** (attendere "
   + numerazione bespoke a EMESSO + protect condizionale. I passi 07 (override funzione) e 13 sono
   **superati** da 14 (changelog forward-only).
 
+## 15. Addendum SCOPE — RLS e emittente su DDT (rilievo BE, 2026-07-10) — ✅ REALIZZATO
+
+> **Rilievo emerso in verifica pre-sviluppo BE.** La lista DDT aveva un **buco di scope
+> emittente**: `vendite.ddt` **senza RLS** (saltò l'Ondata 2 perché dormiente) e `vw_ddt_lista`
+> **senza `emittente_fiscale_id`** → con `security_invoker=on` ma senza RLS sulla base, ogni
+> operatore avrebbe visto i DDT di tutti gli emittenti. Regressione rispetto a ordini/preventivi.
+
+**Soluzione realizzata (opzione migliorativa "emittente MEMORIZZATO", mirror ordini/preventivi)**,
+committata su `dev/db-tid` `114185433`:
+
+1. **`ALTER vendite.ddt ADD emittente_fiscale_id`** (bigint **NOT NULL**, FK
+   `fk_ddt_v_emittente_fiscale`, indice via FK-policy).
+2. **`trgfn_ddt_normalize` esteso**: eredita `emittente_fiscale_id` dall'**ordine sorgente**
+   (accanto a billing/utility/valuta); per lo **standalone** lo risolve dal `billing_account` via
+   `anagrafiche.fn_get_emittente_fiscale_pk`.
+3. **RLS `rls_ddt_ef_whitelist`** su `vendite.ddt` (FOR ALL, scope `script.fn_scope_ef_whitelist`
+   sui GUC operatore, enabled non forced — parità ordini/preventivi/fatture) + guard scrittura.
+4. **`vw_ddt_lista` + `emittente_fiscale_id`/`emittente_fiscale_codice`** (filtro applicativo BE).
+5. **pgTAP** `test-rls-ddt-ef-whitelist-write.sql`.
+
+**Recepito lato BE (2026-07-10):** filtro applicativo emittente attivo in `DdtRepository.list_ddt`;
+`_resolve_emittente_sr_id` legge la colonna memorizzata; `crea_ddt` richiede `billing_account_id`
+(condizione perché il trigger valorizzi l'emittente NOT NULL). Vedi brief BE §2/§12.
+
+## 16. Addendum FIX — «orfano da push» su ordine trigger CONFERMATO evaso (rilievo 2026-07-10) — ⏳ DA REALIZZARE (team DB)
+
+> **Rilievo emerso in verifica in-app (giro preventivo→ordine→DDT).** Un ordine con
+> `fatturazione_trigger = CONFERMATO` **evaso in DDT prima di essere pushato** resta
+> **orfano**: né l'ordine né il DDT sono eleggibili al push → documento **non fatturabile**,
+> non raccolto da alcun batch. È una falla dell'invariante XOR (§8): §8 presidiava la
+> direzione «no doppia fatturazione», **non** la direzione «no fatturazione persa».
+
+**Repro (dati reali, 2026-07-10).** `ORD0000163` (id 174, `trigger=CONFERMATO`) → `genera-ddt` →
+`DDT0000031` (id 55, da ordine). Dopo l'evasione:
+
+- ordine → **EVASO** → `fn_list_ordini_da_pushare(174)` = **0 righe** (richiede stato CONFERMATO);
+- `DDT0000031` (SPEDITO, ordine-sourced, `src_trigger=CONFERMATO`) → `fn_list_ddt_da_pushare(55)` =
+  **0 righe** (la fn esclude `src_fatturazione_trigger = 'CONFERMATO'`);
+- `commesse_attivita` per ORD e DDT = **0** (mai pushato).
+
+→ **Nessuna delle due sorgenti può pushare. Documento bloccato.** (Verificato anche via
+`script.fn_available_actions_ordine(174)` → `can_push_commessa=false`, e `fn_available_actions_ddt(55)`
+→ azioni `consegna`/`reso`, niente `push_commessa`.)
+
+**Causa radice.** Per `trigger=CONFERMATO` la sorgente di fatturazione è **l'ordine** (il DDT è
+escluso by design da `fn_list_ddt_da_pushare`). Ma l'eleggibilità dell'ordine è vincolata allo stato
+**CONFERMATO**, e l'evasione (`fn_genera_ddt_da_ordine`, §4 proiezione stato) lo porta a
+**PARZIALMENTE_EVASO/EVASO** → chiude la finestra di push. Spedizione (evasione) e
+fatturazione-su-conferma sono ortogonali, ma il modello oggi le accoppia.
+
+### Fix C — l'eleggibilità push dell'ordine sopravvive all'evasione (solo trigger CONFERMATO)
+
+1. **`vendite.fn_list_ordini_da_pushare`** — rilassare il solo vincolo di stato: ammettere
+   `stato_doc_ordine.codice_interno ∈ {CONFERMATO, PARZIALMENTE_EVASO, EVASO}` (risolti **per
+   `codice_interno`**, convenzione 2026-06-28, mai id hardcoded) **al posto** del solo
+   `= CONFERMATO` (oggi `v_stato_confermato_id`). Invariato tutto il resto: filtro
+   `fatturazione_trigger='CONFERMATO'`, `NOT EXISTS (... stato_emissione='EMESSA')`, guard righe
+   attive/qta/prezzo.
+2. **`script.fn_available_actions_ordine`** (capability read-side) — allineare
+   `can_push_commessa` / azione `push_commessa` alla **stessa** condizione, così il drawer ordine
+   mostra il pulsante anche in PARZIALMENTE_EVASO/EVASO finché l'ordine non è pushato. Le due fn
+   devono restare **coerenti** (eleggibilità reale == capability mostrata).
+
+**Perché è SICURO (XOR preservato, nessuna doppia fatturazione).** Il rilassamento tocca **solo**
+gli ordini con `fatturazione_trigger='CONFERMATO'` (già filtrati dalla fn). Per quel trigger il DDT
+ordine-sourced è **già escluso** da `fn_list_ddt_da_pushare` (`!= 'CONFERMATO'`): l'ordine resta
+l'**unica** sorgente del perimetro, nessun rischio che ordine e DDT pushino lo stesso segmento. Il
+`NOT EXISTS ... EMESSA` continua a impedire il re-push. Gli ordini `trigger ∈ {SPEDITO,CONSEGNATO}`
+non sono toccati (il filtro trigger li esclude comunque): per loro pusha il DDT, come oggi.
+
+**Perimetro di fatturazione.** Per `trigger=CONFERMATO` si fattura l'**ordine confermato** (righe/qta
+ordinate), indipendentemente dallo stato di spedizione — coerente con «fattura su conferma». Il DDT
+resta puro documento di trasporto (anche in PARZIALMENTE_EVASO il push fattura l'intero ordine).
+
+**Precondizioni da verificare.** Esistenza dei `codice_interno` `PARZIALMENTE_EVASO` / `EVASO` in
+`config.stati_doc_ordini`.
+
+### pgTAP di regressione (estende §10, casi 7-9)
+
+- **Caso 7 — recupero orfano**: ordine `trigger=CONFERMATO` → `fn_genera_ddt_da_ordine` (evasione
+  piena) → ordine EVASO → `fn_list_ordini_da_pushare(ordine_id)` ritorna **≥1**; dopo push
+  (`stato_emissione='EMESSA'`) la re-list ritorna **0** (idempotenza / no doppione).
+- **Caso 8 — XOR preservato**: lo stesso DDT ordine-sourced (`src_trigger=CONFERMATO`) **non**
+  compare in `fn_list_ddt_da_pushare` (resta escluso: unica sorgente = ordine).
+- **Caso 9 — non-regressione SPEDITO**: ordine `trigger=SPEDITO` evaso → `fn_list_ordini_da_pushare`
+  = 0 (filtro trigger), DDT eleggibile a SPEDITO — invariato.
+
+### Recepimento a valle
+
+Nessuna modifica BE/FE necessaria: `OrdiniDrawer`/`DdtDrawer` leggono già `available_actions`
+data-driven. Risolto il read-side (punto 2), il pulsante «Push a commessa» ricompare sull'ordine.
+Verifica in-app su `ORD0000163` (id 174): dopo il fix deve tornare eleggibile.
+
+> ↩︎ **Rettifica a §8**: l'XOR era presidiato solo contro la *doppia* fatturazione; questa slice
+> chiude la direzione «orfano» (fatturazione *persa*) mancante in quella verifica.
+
+## 17. Addendum SEED — stampa DDT accompagnatorio (slice PDF, 2026-07-10) — ⏳ DA REALIZZARE (team DB)
+
+> **Contesto.** La slice PDF DDT (predisposta in §9) è stata sviluppata lato BE+FE il 2026-07-10:
+> quinto dominio del motore `documenti` (context builder `DDT_VENDITA` registrato, endpoint
+> `emetti/` multipart + `documenti/` genera/anteprima/lista/allegati/file sotto
+> `/api/v1/vendite/ddt/<id>/`, mirror ordini). Manca **un solo prerequisito DB**.
+
+**Richiesta (1 riga di seed).** `documenti.tipi_documento_output`: aggiungere la riga
+
+| id | codice      | codice_interno | descrizione | attivo |
+|----|-------------|----------------|-------------|--------|
+| 5  | DDT_VENDITA | DDT_VENDITA    | DDT vendita | true   |
+
+via CSV `80_data/sql/documenti/tipi_documento_output.csv` + changelog (stesso pattern della riga 4
+ORDINE_VENDITA, 2026-06-04). Senza questa riga non si può creare il template DDT nell'admin
+(FK `tipo_documento_output_id`) e l'emissione DDT fallisce nella risoluzione template.
+
+**Nessun altro oggetto DB richiesto**: `config.sorgenti.DDT_VENDITA` esiste già; il corpo del
+template è dato runtime (admin UI → Template documentali, come per gli altri domini) — bozza
+paste-ready in `docs/it/dev/work-in-progress/template-ddt-vendita.html` + `.css` (layout
+accompagnatorio: destinatario/trasporto/merce senza prezzi/colli-pesi/firme; A4 PORTRAIT,
+margini standard famiglia).
+
+**Post-seed (a carico Tid/BE, non team DB):** creare il template nell'admin — testata (sorgente
+DDT_VENDITA, `context_builder_code=DDT_VENDITA`, `is_default=true`, emittente 32 come i fratelli)
+e versione 1 con l'HTML/CSS della bozza → **PUBBLICATA**. Poi verifica in-app: anteprima in bozza
+→ emissione con PDF → ristampa da archivio.
 ## 15. Addendum SCOPE — RLS e emittente su DDT (rilievo BE, 2026-07-10) ⚠️ DA FARE
 
 > **Rilievo emerso in verifica pre-sviluppo BE — VALIDO.** La lista DDT ha un **buco di scope

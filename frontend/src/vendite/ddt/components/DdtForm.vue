@@ -1,10 +1,12 @@
 <script setup>
-// Scopo: Form testata DDT di vendita — cliente (BA), utility, data, valuta +
-// sezione TRASPORTO (causale, aspetto beni, modalita addebito, vettore,
-// mittente, colli/pesi/volume, targa, autista, tracking). Usato dentro
-// DdtDrawer. A differenza di ordini: niente emittente fiscale (la testata DDT non
-// lo denormalizza), niente modalita/termine pagamento, niente fatturazione_trigger;
-// in piu' i campi logistici del documento di trasporto. Clone adattato di
+// Scopo: Form testata DDT di vendita — emittente fiscale (display-only), cliente
+// (BA), utility, data, valuta + sezione TRASPORTO (causale, aspetto beni,
+// modalita addebito, vettore, mittente, colli/pesi/volume, targa, autista,
+// tracking). Usato dentro DdtDrawer. L'emittente è MEMORIZZATO sulla testata
+// (addendum §15) ma risolto dal trigger DB (da BA o ordine): si visualizza
+// read-only come ordini/preventivi, senza entrare nel payload. A differenza di
+// ordini: niente modalita/termine pagamento, niente fatturazione_trigger; in
+// piu' i campi logistici del documento di trasporto. Clone adattato di
 // OrdiniForm (§D-4).
 //
 // Granularita' disabilitazione: isModificabile (stato form, legato a
@@ -16,6 +18,7 @@ import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelec
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 import BillingAccountLookup from '../../../core/components/BillingAccountLookup.vue'
 import SoggettoRuoloLookup from '../../../core/components/SoggettoRuoloLookup.vue'
+import EmittenteFiscaleField from '../../../core/components/EmittenteFiscaleField.vue'
 import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -29,6 +32,10 @@ const props = defineProps({
   isModificabile: { type: Boolean, default: true },
   nonEditableFields: { type: Array, default: () => [] },
   isEdit: { type: Boolean, default: false },
+  // Detail testata per il display denormalizzato dell'emittente
+  // (emittente_fiscale_codice via EmittenteFiscaleField :record). null in create
+  // pre-bozza (l'emittente compare dopo l'auto-save, risolto dal trigger).
+  record: { type: Object, default: null },
 })
 
 const lockedFields = computed(() => new Set(props.nonEditableFields))
@@ -82,15 +89,18 @@ function onVettoreClear() {
   <div class="form-grid">
     <!-- ── Testata ── -->
     <div class="form-grid-2col">
+      <!-- Emittente fiscale: MEMORIZZATO sulla testata (addendum §15) ma risolto
+           dal trigger DB (da BA o ordine), non scelto dall'operatore → sempre
+           `disabled` (a differenza di ordini, dove l'admin può sceglierlo). In
+           create mostra l'anteprima operatore (default), in edit l'EF effettivo
+           denormalizzato dal record. Mirror ordini/preventivi. -->
       <div class="form-field">
-        <label>{{ t('vendite.ddt.field_billing_account') }} <span v-if="!isEdit">*</span></label>
-        <BillingAccountLookup
-          :model-value="form.billing_account_obj"
-          :utility-id="form.utility_id"
-          :disabled="isLocked('billing_account_id')"
-          :placeholder="t('vendite.ddt.field_billing_account_placeholder')"
-          @select="onBaSelected"
-          @clear="onBaClear" />
+        <label>{{ t('vendite.ddt.field_emittente_fiscale') }}</label>
+        <EmittenteFiscaleField
+          v-model="form.emittente_fiscale_id"
+          :record="record"
+          :is-edit="isEdit"
+          disabled />
       </div>
       <div class="form-field">
         <label>{{ t('vendite.ddt.field_utility') }}</label>
@@ -102,10 +112,23 @@ function onVettoreClear() {
 
     <div class="form-grid-2col">
       <div class="form-field">
+        <label>{{ t('vendite.ddt.field_billing_account') }} <span v-if="!isEdit">*</span></label>
+        <BillingAccountLookup
+          :model-value="form.billing_account_obj"
+          :utility-id="form.utility_id"
+          :disabled="isLocked('billing_account_id')"
+          :placeholder="t('vendite.ddt.field_billing_account_placeholder')"
+          @select="onBaSelected"
+          @clear="onBaClear" />
+      </div>
+      <div class="form-field">
         <label>{{ t('vendite.ddt.field_data') }}</label>
         <DatePicker v-model="form.data" :date-format="DATE_FORMAT"
           show-icon show-button-bar :disabled="isLocked('data')" />
       </div>
+    </div>
+
+    <div class="form-grid-2col">
       <div class="form-field">
         <label>{{ t('vendite.ddt.field_valuta') }}</label>
         <LookupSelect v-model="form.valuta_id" rel="config.valute"

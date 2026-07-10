@@ -14,7 +14,7 @@ Indice test eseguiti:
  1) test_list_richiede_jwt        — 401 senza Authorization header
  2) test_list_ok_envelope         — 200 envelope paginato (mock service)
  3) test_create_ok                — 200 create DDT BOZZA (mock service)
- 4) test_emetti_ok                — 200 emetti DRAFT->EMESSO (mock service)
+ 4) test_emetti_ok                — 200 emetti multipart DRAFT->EMESSO + genera PDF (mock)
  5) test_cambia_stato_ok          — 200 transizione generica (mock service)
  6) test_push_ok                  — 200 push singolo a commessa (mock service)
  7) test_patch_ddt_ok             — 200 PATCH testata (mock service)
@@ -31,6 +31,14 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _SVC = "apps.vendite.services.ddt_service"
+
+# Patch path del flusso emissione documentale (mirror test_ordini_api): la view
+# emetti/ vive in ddt_documenti_views (multipart, emetti + genera PDF atomico).
+_DOC_VIEW_SVC = "apps.vendite.api.ddt_documenti_views.ddt_service"
+_DOC_GEN_SVC = "apps.vendite.api.ddt_documenti_views.DocumentGenerationService"
+_DOC_REPO = "apps.documenti.api.contesto_helpers.DocumentiRepository"
+_DDT_REPO = "apps.vendite.api.ddt_documenti_views.DdtRepository"
+_VIEW_ATOMIC = "apps.vendite.api.ddt_documenti_views.transaction.atomic"
 
 _BASE = "/api/v1/vendite/ddt/"
 _ORD_BASE = "/api/v1/vendite/ordini/"
@@ -75,16 +83,43 @@ class TestDdtApi(JwtMockedApiTest):
         mock_crea.assert_called_once()
 
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(f"{_SVC}.emetti")
-    def test_emetti_ok(self, mock_emetti, _auth) -> None:
-        mock_emetti.return_value = {"id": 7, "numero": "DDT0007",
-                                    "stato_codice": "EMESSO"}
-        resp = self.client.post(
-            f"{_BASE}7/emetti/", content_type="application/json",
-        )
+    @patch(_VIEW_ATOMIC)
+    @patch(_DOC_GEN_SVC)
+    @patch(_DOC_REPO)
+    @patch(_DDT_REPO)
+    @patch(_DOC_VIEW_SVC)
+    def test_emetti_ok(
+        self, svc_mod, repo_cls, doc_repo_cls, doc_svc_cls, _atomic, _auth,
+    ) -> None:
+        # Emissione documentale multipart (mirror ordini): la view orchestra
+        # ddt_service.emetti (assegna numero) + genera_documento in atomico.
+        # `emetti` ritorna il risultato LIGHT della transizione (parita'
+        # ordini_service.conferma): niente detail pesante nella sezione atomica.
+        svc_mod.emetti.return_value = {
+            "ddt_id": 7, "stato_precedente": "DRAFT", "stato": "EMESSO",
+        }
+        repo_cls.return_value.get_for_documento_generation.return_value = {
+            "id": 7,
+            "uid": "0190b000-0000-0000-0000-000000000007",
+            "emittente_fiscale_id": 11,
+        }
+        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
+            "id": 5, "codice": "DDT_VENDITA", "attivo": True,
+        }
+        doc_svc_cls.return_value.genera_documento.return_value = {
+            "id": 100, "uid": "doc-uid-100", "nome_file": "ddt.pdf",
+        }
+        resp = self.client.post(f"{_BASE}7/emetti/", data={})
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["data"]["stato_codice"], "EMESSO")
-        mock_emetti.assert_called_once_with(7)
+        body = resp.json()["data"]
+        self.assertEqual(body["ddt"]["stato"], "EMESSO")
+        self.assertEqual(body["documento"]["id"], 100)
+        svc_mod.emetti.assert_called_once_with(7)
+        # genera_documento riceve emittente + sorgente risolti dal contesto.
+        doc_svc_cls.return_value.genera_documento.assert_called_once()
+        kwargs = doc_svc_cls.return_value.genera_documento.call_args.kwargs
+        self.assertEqual(kwargs["emittente_fiscale_id"], 11)
+        self.assertEqual(kwargs["sorgente_tipo_id"], 5)
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.cambia_stato")

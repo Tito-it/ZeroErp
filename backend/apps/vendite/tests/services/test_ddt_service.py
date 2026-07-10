@@ -17,7 +17,7 @@ Indice test eseguiti (classe :: metodo):
 
 DdtServiceGuardsTests
  1) test_get_ddt_not_found                 — E_DDT_NOT_FOUND se testata None
- 2) test_cambia_stato_ddt_not_found        — E_DDT_NOT_FOUND se testata None
+ 2) test_cambia_stato_ddt_not_found        — E_DDT_NOT_FOUND se stato None (guard leggero)
  3) test_aggiorna_ddt_stato_non_draft      — E_DDT_STATO_TRANSIZIONE se != DRAFT
  4) test_gestisci_riga_stato_non_draft     — E_DDT_STATO_TRANSIZIONE se != DRAFT
  5) test_elimina_riga_stato_non_draft      — E_DDT_STATO_TRANSIZIONE se != DRAFT
@@ -26,6 +26,7 @@ DdtCreaTests
  6) test_crea_ddt_deriva_destinatario_da_ba — deriva destinatario dal BA + DRAFT
  7) test_crea_ddt_destinatario_esplicito    — destinatario passato: no lookup BA
  8) test_crea_ddt_senza_destinatario_ne_ba  — E_DDT_VALIDAZIONE
+ 8b) test_crea_ddt_senza_ba_rifiutato       — E_DDT_VALIDAZIONE (BA obbligatorio: risolve emittente NOT NULL)
 
 DdtAggiornaTests
  9) test_aggiorna_ddt_cambio_ba_rifiutato   — E_DDT_CLIENTE_IMMUTABILE
@@ -40,7 +41,7 @@ DdtCambiaStatoTests
 14) test_cambia_stato_ok                    — risolve id + update_stato
 15) test_cambia_stato_codice_vuoto          — E_DDT_VALIDAZIONE
 16) test_cambia_stato_codice_inesistente    — E_DDT_VALIDAZIONE
-17) test_emetti_transita_a_emesso_e_ricarica — cambia_stato(EMESSO) + get_ddt
+17) test_emetti_transita_a_emesso_light      — cambia_stato(EMESSO), ritorno light (no reload)
 
 DdtCreaDaOrdineTests
 18) test_crea_ddt_da_ordine_delega_e_ritorna — push_da_ordine + ritorno mappato
@@ -170,6 +171,17 @@ class DdtCreaTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
         repo.create_ddt.assert_not_called()
 
+    @patch(_REPO)
+    def test_crea_ddt_senza_ba_rifiutato(self, repo_cls) -> None:
+        # Cliente obbligatorio anche con destinatario esplicito: senza BA il
+        # trigger normalize non puo' risolvere emittente_fiscale_id (NOT NULL,
+        # scope RLS addendum §15) -> guard parlante prima dell'INSERT.
+        repo = repo_cls.return_value
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.crea_ddt({"destinatario_soggetto_ruolo_id": 777})
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        repo.create_ddt.assert_not_called()
+
 
 class DdtAggiornaTests(SimpleTestCase):
     """aggiorna_ddt: cliente immutabile post-creazione."""
@@ -274,26 +286,25 @@ class DdtCambiaStatoTests(SimpleTestCase):
         repo.update_stato.assert_not_called()
 
     @patch(_REPO)
-    def test_emetti_transita_a_emesso_e_ricarica(self, repo_cls) -> None:
-        # emetti = cambia_stato(EMESSO, guard leggero get_stato_codice) +
-        # get_ddt ricaricato UNA volta (numero valorizzato dal trigger DB
-        # all'emissione); capabilities/righe_count risolte dal reload.
+    def test_emetti_transita_a_emesso_light(self, repo_cls) -> None:
+        # emetti = cambia_stato(EMESSO, guard leggero get_stato_codice) con
+        # ritorno LIGHT {ddt_id, stato_precedente, stato} — parita' con
+        # ordini_service.conferma: NIENTE reload del detail pesante (vista +
+        # capabilities + count) dentro la sezione atomica dell'emissione
+        # documentale; il FE ricarica il detail dopo.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.get_ddt.return_value = {
-            "stato_codice_interno": "EMESSO", "numero": "DDT0001",
-        }
         repo.get_stato_id_by_codice.return_value = 2
-        repo.count_righe.return_value = 0
-        repo.get_capabilities.return_value = {"stato_codice": "EMESSO"}
 
         out = ddt_service.emetti(7)
 
         repo.get_stato_id_by_codice.assert_called_once_with("EMESSO")
         repo.update_stato.assert_called_once_with(7, 2)
-        repo.get_ddt.assert_called_once_with(7)
-        self.assertEqual(out["numero"], "DDT0001")
-        self.assertEqual(out["stato_codice"], "EMESSO")
+        repo.get_ddt.assert_not_called()
+        repo.get_capabilities.assert_not_called()
+        self.assertEqual(out["ddt_id"], 7)
+        self.assertEqual(out["stato_precedente"], "DRAFT")
+        self.assertEqual(out["stato"], "EMESSO")
 
 
 class DdtCreaDaOrdineTests(SimpleTestCase):

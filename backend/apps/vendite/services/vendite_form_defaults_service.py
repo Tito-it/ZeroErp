@@ -349,6 +349,70 @@ def fn_get_ordine_form_defaults(
 
 
 # ══════════════════════════════════════════════════════════
+#  DDT form-defaults
+# ══════════════════════════════════════════════════════════
+
+
+# Scopo: Defaults per il form DDT di vendita. Allinea il DDT alla famiglia
+#        (ordini/preventivi/offerte propongono i default all'apertura del
+#        drawer): senza BA ritorna la `valuta_id` dalla catena EF utente →
+#        gestore globale (BB centralizzato `resolve_valuta_default`); con BA
+#        aggiunge i campi utility BA-derived + la valuta del cliente. Il DDT è
+#        un documento di trasporto: NON ha termini/modalita di pagamento in
+#        testata, quindi il payload si limita a utility + valuta (calco ridotto
+#        di fn_get_ordine_form_defaults). La utility di default "globale"
+#        (parameter DEFAULT_UTILITY) la risolve il FE via useUtilityDefaultId.
+def fn_get_ddt_form_defaults(
+    *,
+    billing_account_id: int | None,
+    auth_user_id: int | None = None,
+) -> dict[str, Any]:
+    function_name = f"{_FN}.fn_get_ddt_form_defaults"
+    payload: dict[str, Any] = {
+        "billing_account_id": None,
+        "utility_id": None,
+        "istanza_utility_id": None,
+        "utility_codice": None,
+        "utility_descrizione": None,
+        "valuta_id": None,
+        "valuta_codice": None,
+        "valuta_descrizione": None,
+    }
+
+    ba: dict[str, Any] | None = None
+    ba_id: int | None = None
+    if billing_account_id is not None:
+        ba_id = _require_positive_int(
+            billing_account_id, field="billing_account_id", function_name=function_name,
+        )
+        ba = BillingAccountRepository().get_lookup_by_id(ba_id)
+        ErrorManager.require(
+            ba is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Billing account non trovato.",
+            detail=f"billing_account_id={ba_id}",
+            function_name=function_name,
+        )
+        assert ba is not None
+        payload.update({
+            "billing_account_id": ba_id,
+            "utility_id": ba.get("utility_id"),
+            "istanza_utility_id": ba.get("istanza_utility_id"),
+            "utility_codice": ba.get("utility_codice"),
+            "utility_descrizione": ba.get("utility_descrizione"),
+        })
+
+    valuta = resolve_valuta_default(
+        billing_account_id=ba_id,
+        ba_obj=ba,
+        auth_user_id=auth_user_id,
+    )
+    if valuta:
+        payload.update(valuta)
+    return payload
+
+
+# ══════════════════════════════════════════════════════════
 #  2.B4 — Preventivi form-defaults
 # ══════════════════════════════════════════════════════════
 

@@ -143,11 +143,47 @@ Blocco `vendite.ddt.*` gemello di `vendite.ordini.*`: `titolo/ddt/nuovo_ddt`,
 4. `OrdineEvasionePanel` (genera DDT da ordine) + azioni stato data-driven.
 5. Indirizzi + PDF: slice successiva (predisposti header/`EntityPdfButton`/`SORGENTE_CODES.DDT`).
 
-## 10. Punti aperti
+## 10. Punti aperti — chiusi in realizzazione
 
-- **Config lista `vendite.ddt`** (`ui.lista_definizione` + colonne): serve il seed della
-  definizione lista lato DB/config perché `<ListaConfigurabile codice="vendite.ddt">`
-  renda le colonne. Coordinare col team DB/UI (gemello `vendite.ordini`).
-- **`DdtIndirizziPanel`**: editing pieno vs snapshot read-only nella prima slice (vedi BE §11).
-- **PDF**: componenti header (`EntityPdfButton`) montati ma nascosti finché la fase PDF non è attiva (D-3).
+- **Config lista `vendite.ddt`** — ✅ seedata dal DB (`ui.lista_definizione` id 8 + 19 colonne).
+- **`DdtIndirizziPanel`** — rimandato alla slice standalone/PDF (non realizzato ora).
+- **PDF** — `SORGENTE_CODES.DDT` predisposto; nessun `EntityPdfButton`/anteprima in questa slice.
+
+## 11. Consuntivo realizzazione (2026-07-10) — ✅ REALIZZATO
+
+Dominio FE completo sul working tree `dev/backend-tid` (**non committato**, il commit lo fa
+Tid). **Build Vite verde** (warning chunk-size pre-esistente non correlato).
+
+### File creati — `frontend/src/vendite/ddt/`
+`views/DdtView.vue`, `stores/ddt.js` (userScoped, `data_da` anno-1, `useListaEmptyStateFetch`),
+`api/ddtApi.js` (`makeComponentiBomApi`), `constants.js` (`STATO_DDT`), `components/`:
+`DdtSearchTable`, `DdtDrawer`, `DdtForm` (+sezione trasporto), `DdtRigheTable`, `DdtRigaForm`,
+`DdtRigaComponentiPanel`, `DdtNoteDrawer`, `dialogs/DdtEmissioneDialog` (sola conferma, no PDF).
+
+### File creati/modificati — dominio ordine (evasione)
+`components/OrdineEvasionePanel.vue` (nuovo, clone smistamento; mostra Ordinata/Evasa/Residuo,
+default = residuo, "tutto il residuo"→`null`); `api/ordiniApi.js` (`generaDdtFromOrdine`);
+`OrdiniDrawer.vue` (filtro azione `genera_ddt` + montaggio pannello su CONFERMATO/PARZIALMENTE_EVASO);
+`ordini/constants.js` (`STATO_ORDINE.PARZIALMENTE_EVASO` + `STATI_ORDINE_EVADIBILI`).
+
+### Core modificati
+`navigation.js` (voce `ddt`), `router/index.js` (rotta `vendite/ddt`), `core/constants.js`
+(`TAB_ENTITIES.DDT`, `READONLY_MODELS.DDT`), `core/utils/severity.js` (`statoDdtSeverity`),
+`documenti/constants.js` (`SORGENTE_CODES.DDT`), `locales/it.json`+`en.json` (blocco `vendite.ddt.*`
+19 `col_*` + `nav_menu.vendite.ddt` + chiavi evasione).
+
+### BB riusati (nessuna duplicazione, review reuse = 0 finding)
+`ListaConfigurabile`, `useListaConfigurabilePage`, `useStoreFilterBindings`,
+`useListaEmptyStateFetch`, `RigheMasterDetailTable`, `useRigaArticoloComposito`,
+`_shared/componenti/*`, `makeComponentiBomApi`, `_shared/note/VenditeNoteDrawer`,
+`useEntityCapabilities`, `mapAvailableActionsToDrawerActions`, `DrawerActionsBar`,
+`DrawerEntityHeader`, `FormFooter`, `useDrawerAutosaveBozza`, lookup `BillingAccountLookup`/
+`SoggettoRuoloLookup`/`LookupSelect`/`UtilityPerRuoloSelect`.
+
+### Fix da code-review (FE)
+Residuo per riga nel pannello evasione (colonne + `:max`=residuo, preselezione righe evadibili);
+rimossi `defineExpose` irraggiungibile, `STATI_DDT_CON_DOCUMENTO` orfana, `isReadonlyPuro`
+duplicato; toast "DDT generato" senza numero fantasma.
+
+### Fuori scope (predisposto): PDF, `ddt_indirizzi` editing, riepilogo IVA, export lista.
 </content>

@@ -21,6 +21,7 @@ export const SORGENTE_CODES = Object.freeze({
   CONTRATTO: 'CONTRATTO',
   OFFERTA_COMMERCIALE: 'OFFERTA_COMMERCIALE',
   ORDINE_VENDITA: 'ORDINE_VENDITA',
-  // DDT di vendita: sorgente PDF predisposta (fase PDF non ancora attiva).
+  // DDT di vendita (DDT accompagnatorio): quinto dominio del motore
+  // documentale, context builder DDT_VENDITA registrato lato BE.
   DDT: 'DDT_VENDITA',
 })

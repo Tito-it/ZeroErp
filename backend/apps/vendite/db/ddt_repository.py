@@ -64,14 +64,9 @@ class DdtRepository(ComponentiRepositoryMixin):
 
     # Scopo: Elenco DDT paginato dalla vista canonica `vendite.vw_ddt_lista`.
     #        Espone i nomi CANONICI (destinatario_denominazione,
-    #        id_fiscale_univoco_cf_piva, ba_codice) e `stato_codice_interno`
-    #        per la severity del Tag FE.
-    # ⚠️ SCOPE EMITTENTE (brief DB §15, addendum 2026-07-10): `vw_ddt_lista` NON
-    #        espone `emittente_fiscale_id` e `vendite.ddt` NON ha ancora policy
-    #        RLS. Il DDT risolve l'emittente a runtime dal billing_account. Finché
-    #        l'addendum DB non atterra (RLS su vendite.ddt + colonna emittente in
-    #        vista) il filtro applicativo NON e' attivabile: attivarlo appena la
-    #        colonna esiste, come in OrdiniRepository.list_ordini.
+    #        id_fiscale_univoco_cf_piva, ba_codice), `stato_codice_interno` per
+    #        la severity del Tag FE e `emittente_fiscale_id` per lo scope
+    #        operatore (addendum §15 applicato 2026-07-10).
     # Risultato: tuple (lista righe, conteggio totale).
     def list_ddt(
         self,
@@ -122,6 +117,20 @@ class DdtRepository(ComponentiRepositoryMixin):
             like = f"%{search}%"
             params.extend([like, like, like, like])
 
+        # Scope emittente (defense-in-depth applicativa, mirror ordini). La
+        # vista `vw_ddt_lista` e' `security_invoker=on` e `vendite.ddt` ha la
+        # policy RLS `rls_ddt_ef_whitelist` (addendum §15): la RLS filtra gia'
+        # per emittente in scope; questo filtro si somma (api.md §"Scope
+        # emittente"). `fn_get_emittenti_scope_pk_ids` mappa su PK reale
+        # `emittenti_fiscali.id` (memoria feedback_emittente_pk_vs_soggetto_ruolo).
+        if auth_user_id is not None:
+            conditions.append(
+                "(script.fn_get_emittenti_scope_pk_ids(%s) IS NULL "
+                "OR v.emittente_fiscale_id = ANY("
+                "script.fn_get_emittenti_scope_pk_ids(%s)))"
+            )
+            params.extend([auth_user_id, auth_user_id])
+
         where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
         count_sql = f"SELECT COUNT(*) FROM vendite.vw_ddt_lista v {where}"  # noqa: S608
@@ -169,6 +178,28 @@ class DdtRepository(ComponentiRepositoryMixin):
     #        {} se la fn ritorna NULL (DDT inesistente — caller verifica a monte).
     def get_capabilities(self, ddt_id: int) -> dict[str, Any]:
         return call_jsonb_fn("script.fn_available_actions_ddt", ddt_id)
+
+    # Scopo: Contesto minimo per la generazione documento (stampa PDF). Mirror
+    #        di `OrdiniRepository.get_for_documento_generation`: ritorna
+    #        id + uid + emittente_fiscale_id, i campi che
+    #        `resolve_contesto_documentale` usa per il guard NOT_FOUND/emittente
+    #        e l'orchestrator per scope/snapshot. None se id inesistente.
+    #        `emittente_fiscale_id` e' NOT NULL a modello (addendum §15): il
+    #        guard emittente dell'helper resta come defense-in-depth.
+    def get_for_documento_generation(
+        self, ddt_id: int,
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT
+                id,
+                uid::text AS uid,
+                emittente_fiscale_id
+              FROM vendite.ddt
+             WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(ddt_id)])
+            return row_to_dict(cursor)
 
     # Scopo: Stato corrente (codice_interno) del DDT. Guard pre-operazione del
     #        service (es. modifica ammessa solo in DRAFT).
@@ -316,10 +347,11 @@ class DdtRepository(ComponentiRepositoryMixin):
 
     # Scopo: Inserisce un nuovo DDT (standalone) e restituisce id, uid, numero.
     #        `numero` NON si passa: e' NULL in DRAFT e valorizzato dal trigger
-    #        `trgfn_ddt_gen_numero_emesso` alla transizione a EMESSO. Billing/
-    #        utility/valuta ereditati da `trgfn_ddt_normalize` solo per DDT da
-    #        ordine (qui, standalone, si valorizzano espliciti). `destinatario_
-    #        soggetto_ruolo_id` e `stato_doc_ddt_id` (DRAFT) obbligatori.
+    #        `trgfn_ddt_gen_numero_emesso` alla transizione a EMESSO.
+    #        `emittente_fiscale_id` (NOT NULL, scope RLS) NON si passa: lo
+    #        risolve `trgfn_ddt_normalize` dal billing_account (o dall'ordine
+    #        sorgente per i DDT da evasione). `destinatario_soggetto_ruolo_id`
+    #        e `stato_doc_ddt_id` (DRAFT) obbligatori.
     def create_ddt(
         self,
         *,

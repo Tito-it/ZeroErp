@@ -1709,6 +1709,7 @@
       "origine_chip": "Origine: ordine {numero}",
       "origine_chip_tooltip": "Ordine di vendita da cui nasce il DDT (evasione).",
       "field_destinatario": "Destinatario",
+      "field_emittente_fiscale": "Emittente fiscale",
       "field_billing_account": "Cliente",
       "field_billing_account_placeholder": "Cerca cliente per ragione sociale, codice, P.IVA...",
       "field_utility": "Utility",
@@ -1762,8 +1763,17 @@
       "abbandono_bozza_conferma": "Elimina bozza",
       "emissione_titolo": "Emetti DDT",
       "emissione_conferma": "Emetti",
-      "emissione_messaggio": "Emettendo il DDT viene assegnato il numero e le righe non saranno più modificabili.",
+      "emissione_messaggio": "Emettendo il DDT viene generato il documento accompagnatorio e le righe non saranno più modificabili. Puoi allegare file al documento.",
       "emissione_numero_hint": "Il numero del DDT viene assegnato al momento dell'emissione.",
+      "pdf": {
+        "label_anteprima": "Anteprima PDF",
+        "tooltip_anteprima": "Anteprima del DDT accompagnatorio (bozza, non salvata)",
+        "label_scarica": "Documenti PDF",
+        "tooltip_scarica": "Documenti generati per il DDT",
+        "tooltip_lista": "Apri i documenti generati per il DDT",
+        "tooltip_lista_disabilitato": "Disponibile dopo l'emissione del DDT",
+        "dialog_title": "DDT {numero} — Documenti"
+      },
       "azione_emetti": "Emetti DDT",
       "azione_spedisci": "Segna spedito",
       "azione_consegna": "Segna consegnato",
@@ -3149,7 +3159,8 @@
       "PREVENTIVO": "Preventivo",
       "CONTRATTO": "Contratto",
       "OFFERTA_COMMERCIALE": "Offerta commerciale",
-      "ORDINE_VENDITA": "Ordine di vendita"
+      "ORDINE_VENDITA": "Ordine di vendita",
+      "DDT_VENDITA": "DDT di vendita"
     },
     "genera_pdf": {
       "label": "Genera PDF",

@@ -13,3 +13,21 @@ export const STATO_DDT = Object.freeze({
   RESO: 'RESO',
   ANNULLATO: 'ANNULLATO',
 })
+
+// Stampa DDT accompagnatorio (motore `documenti`, sorgente DDT_VENDITA).
+// Flusso allineato alla famiglia vendite (mirror ordini): in DRAFT solo
+// anteprima on-demand; il documento definitivo si genera all'EMISSIONE
+// (DRAFT→EMESSO via /emetti/ multipart, DdtEmissioneDialog) e dagli stati
+// post-bozza `EntityPdfButton`/lista aprono la gestione documentale (PDF gia'
+// archiviati). ANNULLATO escluso: niente gestione documenti su un DDT
+// annullato. Detta gli stati il modello `config.stati_doc_ddt` (data-driven).
+export const STATI_DDT_ANTEPRIMA_PDF = Object.freeze([
+  STATO_DDT.DRAFT,
+])
+
+export const STATI_DDT_CON_DOCUMENTO = Object.freeze([
+  STATO_DDT.EMESSO,
+  STATO_DDT.SPEDITO,
+  STATO_DDT.CONSEGNATO,
+  STATO_DDT.RESO,
+])
