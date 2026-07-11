@@ -18,11 +18,14 @@
 | fase | character varying | NO |  |
 | esito | character varying | YES |  |
 | terminale | boolean | NO | false |
+| pdf_mode | character varying | NO |  |
+| pdf_allow_allegati | boolean | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_stati_doc_offerte_fase |  |
+| CHECK | chk_stati_doc_offerte_pdf_mode |  |
 | CHECK | chk_stati_doc_offerte_terminale_chiuso |  |
 | FOREIGN KEY | fk_stati_doc_offerte_esito | esito |
 | PRIMARY KEY | pk_stati_doc_offerte | id |

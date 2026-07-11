@@ -13,31 +13,32 @@ CREATE OR REPLACE FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
  LANGUAGE plpgsql
  STABLE
 AS $function$
--- Scopo: capability DDT per il detail API. Pattern data-driven
---   (config.transizioni_stati_ddt) allineato a
---   fn_available_actions_ordine. push_commessa appesa a mano
---   (azione applicativa, non transizione), riuso fn_list_ddt_da_pushare.
+-- Scopo: capability DDT per il detail API (data-driven,
+--   config.transizioni_stati_ddt). Mirror di fn_available_actions_ordine.
+--   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+--   config.stati_doc_ddt (bottone PDF data-driven via capabilities).
 DECLARE
     v_stato_id   vendite.ddt.stato_doc_ddt_id%TYPE;
     v_stato_cod  config.stati_doc_ddt.codice_interno%TYPE;
+    v_pdf_mode   config.stati_doc_ddt.pdf_mode%TYPE;
+    v_pdf_allow  config.stati_doc_ddt.pdf_allow_allegati%TYPE;
     v_actions    jsonb;
     v_can_change boolean := false;
     v_push_ok    boolean := false;
     v_push_reason     text := NULL;
     v_push_reason_key text := NULL;
-    -- Campi ereditati/sorgente immutabili anche in DRAFT.
     c_non_edit_draft CONSTANT jsonb :=
         '["numero","sorgente_tipo_id","sorgente_uid","billing_account_id"]'::jsonb;
-    -- Fuori DRAFT: tutta la testata bloccata.
     c_non_edit_tutti CONSTANT jsonb :=
         '["numero","sorgente_tipo_id","sorgente_uid","billing_account_id",'
         '"destinatario_soggetto_ruolo_id","mittente_soggetto_ruolo_id",'
         '"vettore_soggetto_ruolo_id","causale_trasporto_id","aspetto_bene_id",'
         '"modalita_addebito_trasporto_id","valuta_id","utility_id","data","meta"]'::jsonb;
 BEGIN
-    -- Stato corrente.
-    SELECT d.stato_doc_ddt_id, sdd.codice_interno
-      INTO v_stato_id, v_stato_cod
+    -- Stato corrente + capability PDF (pdf_mode/allow_allegati).
+    SELECT d.stato_doc_ddt_id, sdd.codice_interno,
+           sdd.pdf_mode, sdd.pdf_allow_allegati
+      INTO v_stato_id, v_stato_cod, v_pdf_mode, v_pdf_allow
       FROM vendite.ddt d
       JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
      WHERE d.id = p_ddt_id;
@@ -46,8 +47,6 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    -- Transizioni manuali disponibili per lo stato corrente
-    -- (attive, manuale=true di default, con action_key+label_key).
     SELECT COALESCE(
         jsonb_agg(
             jsonb_build_object(
@@ -74,8 +73,6 @@ BEGIN
 
     v_can_change := jsonb_array_length(v_actions) > 0;
 
-    -- push_commessa: eleggibile se il DDT ha righe pushabili
-    -- (fn_list_ddt_da_pushare: tipicamente SPEDITO/CONSEGNATO).
     IF EXISTS (SELECT 1
                  FROM vendite.fn_list_ddt_da_pushare(p_ddt_id := p_ddt_id)) THEN
         v_push_ok := true;
@@ -109,13 +106,14 @@ BEGIN
         'non_editable_fields',          CASE WHEN v_stato_cod = 'DRAFT'
                                              THEN c_non_edit_draft
                                              ELSE c_non_edit_tutti END,
+        'pdf',                          jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
         'stato_codice',                 v_stato_cod
     );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
-IS 'Capability DDT per detail API: available_actions (da config.transizioni_stati_ddt, data-driven) + push_commessa (riuso fn_list_ddt_da_pushare) + can_change_state + can_edit_testata/righe + can_push_commessa(+reason) + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-09.';
+IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ddt (bottone PDF data-driven via capabilities).';
 ```
 
 ---
