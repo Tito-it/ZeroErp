@@ -13,6 +13,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.types import (
     DashApertoDocumentoRow,
     DashApertoRiepilogoRow,
@@ -142,8 +143,10 @@ class VenditeRepository:
         total_count = int(rows[0][-1]) if rows else 0
         return list(rows), total_count
 
-    # Scopo: Aggiunge la condizione WHERE per scope emittente DB-first.
-    # La funzione SQL risolve ruolo, whitelist e mappatura soggetto_ruolo.
+    # Scopo: Aggiunge la condizione WHERE per scope emittente (convenzione SR:
+    #        colonne <ruolo>_soggetto_ruolo_id). Delega al BB condiviso
+    #        `add_emittente_scope_condition` (array risolto UNA volta in
+    #        Python, non per riga — estrazione regola-del-2 dai 5 repo).
     @staticmethod
     def _add_scope_emittente(
         auth_user_id: int | None,
@@ -151,13 +154,12 @@ class VenditeRepository:
         conditions: list[str],
         params: list[Any],
     ) -> None:
-        if auth_user_id is not None:
-            conditions.append(
-                f"(script.fn_get_emittenti_scope_sr_ids(%s) IS NULL "
-                f"OR {field} = ANY("
-                f"script.fn_get_emittenti_scope_sr_ids(%s)))"
-            )
-            params.extend([auth_user_id, auth_user_id])
+        add_emittente_scope_condition(
+            conditions, params,
+            auth_user_id=auth_user_id,
+            column=field,
+            convention="sr",
+        )
 
     # Scopo: Restituisce elenco lotti paginato con JOIN decodifica e filtri opzionali.
     # Obiettivo: lista generica fatturazione_lotti con decodifiche config.

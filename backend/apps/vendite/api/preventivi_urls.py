@@ -16,6 +16,7 @@ from apps.vendite.api.preventivi_documenti_views import (
     ApiPreventivoDocumentoAllegati,
     ApiPreventivoDocumentoAnteprima,
     ApiPreventivoDocumentoFile,
+    ApiPreventivoDocumentoFileDownload,
     ApiPreventivoDocumentoGenera,
     ApiPreventivoEmetti,
 )
@@ -102,7 +103,7 @@ urlpatterns = [
     # Emissione BOZZA->EMESSO (multipart): orchestra stato + genera doc +
     # allegati in transazione atomica. Mirror di vendite-offerta-emetti.
     path(
-        "<int:preventivo_id>/emetti/",
+        "<int:sorgente_id>/emetti/",
         ApiPreventivoEmetti.as_view(),
         name="vendite-preventivi-emetti",
     ),
@@ -222,22 +223,22 @@ urlpatterns = [
     ),
     # Documenti generati (Tranche K motore documentale parametrico)
     path(
-        "<int:preventivo_id>/documenti/",
+        "<int:sorgente_id>/documenti/",
         ApiPreventivoDocumentiList.as_view(),
         name="vendite-preventivi-documenti-list",
     ),
     path(
-        "<int:preventivo_id>/documenti/genera/",
+        "<int:sorgente_id>/documenti/genera/",
         ApiPreventivoDocumentoGenera.as_view(),
         name="vendite-preventivi-documenti-genera",
     ),
     path(
-        "<int:preventivo_id>/documenti/anteprima/",
+        "<int:sorgente_id>/documenti/anteprima/",
         ApiPreventivoDocumentoAnteprima.as_view(),
         name="vendite-preventivi-documenti-anteprima",
     ),
     path(
-        "<int:preventivo_id>/documenti/<int:documento_id>/file/",
+        "<int:sorgente_id>/documenti/<int:documento_id>/file/",
         ApiPreventivoDocumentoFile.as_view(),
         name="vendite-preventivi-documenti-file",
     ),
@@ -245,9 +246,17 @@ urlpatterns = [
     # + allegati). Mirror di vendite-offerta-documento-allegati: usato dal
     # row-expand di DocumentiGeneratiSorgenteList per popolare filesPerDoc.
     path(
-        "<int:preventivo_id>/documenti/<int:documento_id>/allegati/",
+        "<int:sorgente_id>/documenti/<int:documento_id>/allegati/",
         ApiPreventivoDocumentoAllegati.as_view(),
         name="vendite-preventivi-documenti-allegati",
+    ),
+    # Download di uno specifico file (principale o allegato) per id. Colma il
+    # gap latente della famiglia: il row-expand di DocumentiGeneratiSorgenteList
+    # chiama downloadFile(file_id) per QUALSIASI sorgente (prima 404).
+    path(
+        "<int:sorgente_id>/documenti/<int:documento_id>/file/<int:file_id>/",
+        ApiPreventivoDocumentoFileDownload.as_view(),
+        name="vendite-preventivi-documenti-file-download",
     ),
     # Note partizionate (vendite.note_preventivo) — testata o riga.
     # GET ?target_riga_id=<rid> per filtrare le note della singola riga.

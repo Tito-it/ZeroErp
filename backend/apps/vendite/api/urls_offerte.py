@@ -68,7 +68,7 @@ urlpatterns = [
     ),
     # Transizioni di stato manuali.
     path(
-        "<int:offerta_id>/emetti/",
+        "<int:sorgente_id>/emetti/",
         ApiOffertaEmetti.as_view(),
         name="vendite-offerta-emetti",
     ),
@@ -167,27 +167,27 @@ urlpatterns = [
     # anteprima (BOZZA), lista, download principale, lista/append allegati,
     # download file per id.
     path(
-        "<int:offerta_id>/documenti/anteprima/",
+        "<int:sorgente_id>/documenti/anteprima/",
         ApiOffertaDocumentoAnteprima.as_view(),
         name="vendite-offerta-documento-anteprima",
     ),
     path(
-        "<int:offerta_id>/documenti/",
+        "<int:sorgente_id>/documenti/",
         ApiOffertaDocumentiList.as_view(),
         name="vendite-offerta-documenti-list",
     ),
     path(
-        "<int:offerta_id>/documenti/<int:documento_id>/file/",
+        "<int:sorgente_id>/documenti/<int:documento_id>/file/",
         ApiOffertaDocumentoFile.as_view(),
         name="vendite-offerta-documento-file",
     ),
     path(
-        "<int:offerta_id>/documenti/<int:documento_id>/allegati/",
+        "<int:sorgente_id>/documenti/<int:documento_id>/allegati/",
         ApiOffertaDocumentoAllegati.as_view(),
         name="vendite-offerta-documento-allegati",
     ),
     path(
-        "<int:offerta_id>/documenti/<int:documento_id>/file/<int:file_id>/",
+        "<int:sorgente_id>/documenti/<int:documento_id>/file/<int:file_id>/",
         ApiOffertaDocumentoFileDownload.as_view(),
         name="vendite-offerta-documento-file-download",
     ),

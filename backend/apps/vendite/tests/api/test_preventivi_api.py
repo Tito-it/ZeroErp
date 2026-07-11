@@ -46,7 +46,7 @@ _PREV_SVC = "apps.vendite.api.preventivi_documenti_views.preventivi_service"
 _DOC_GEN_SVC = "apps.vendite.api.preventivi_documenti_views.DocumentGenerationService"
 _DOC_REPO = "apps.documenti.api.contesto_helpers.DocumentiRepository"
 _PREV_REPO = "apps.vendite.api.preventivi_documenti_views.PreventiviRepository"
-_VIEW_ATOMIC = "apps.vendite.api.preventivi_documenti_views.transaction.atomic"
+_VIEW_ATOMIC = "apps.documenti.api.sorgente_documenti_views.transaction.atomic"
 _BASE = "/api/v1/vendite/preventivi/"
 
 

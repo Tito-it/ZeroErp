@@ -12,6 +12,7 @@ from apps.vendite.api.contratti_documenti_views import (
     ApiContrattoDocumentoAllegati,
     ApiContrattoDocumentoAnteprima,
     ApiContrattoDocumentoFile,
+    ApiContrattoDocumentoFileDownload,
     ApiContrattoDocumentoGenera,
     ApiContrattoEmetti,
 )
@@ -57,7 +58,7 @@ urlpatterns = [
     # allegati in transazione atomica. Mirror di vendite-offerta-emetti e
     # vendite-preventivi-emetti.
     path(
-        "<int:contratto_id>/emetti/",
+        "<int:sorgente_id>/emetti/",
         ApiContrattoEmetti.as_view(),
         name="vendite-contratto-emetti",
     ),
@@ -104,22 +105,22 @@ urlpatterns = [
     ),
     # Documenti generati dal contratto.
     path(
-        "<int:contratto_id>/documenti/",
+        "<int:sorgente_id>/documenti/",
         ApiContrattoDocumentiList.as_view(),
         name="vendite-contratti-documenti-list",
     ),
     path(
-        "<int:contratto_id>/documenti/genera/",
+        "<int:sorgente_id>/documenti/genera/",
         ApiContrattoDocumentoGenera.as_view(),
         name="vendite-contratti-documenti-genera",
     ),
     path(
-        "<int:contratto_id>/documenti/anteprima/",
+        "<int:sorgente_id>/documenti/anteprima/",
         ApiContrattoDocumentoAnteprima.as_view(),
         name="vendite-contratti-documenti-anteprima",
     ),
     path(
-        "<int:contratto_id>/documenti/<int:documento_id>/file/",
+        "<int:sorgente_id>/documenti/<int:documento_id>/file/",
         ApiContrattoDocumentoFile.as_view(),
         name="vendite-contratti-documenti-file",
     ),
@@ -127,9 +128,17 @@ urlpatterns = [
     # (principale + allegati). Usato dal row-expand di
     # DocumentiGeneratiSorgenteList per popolare filesPerDoc.
     path(
-        "<int:contratto_id>/documenti/<int:documento_id>/allegati/",
+        "<int:sorgente_id>/documenti/<int:documento_id>/allegati/",
         ApiContrattoDocumentoAllegati.as_view(),
         name="vendite-contratti-documenti-allegati",
+    ),
+    # Download di uno specifico file (principale o allegato) per id. Colma il
+    # gap latente della famiglia: il row-expand di DocumentiGeneratiSorgenteList
+    # chiama downloadFile(file_id) per QUALSIASI sorgente (prima 404).
+    path(
+        "<int:sorgente_id>/documenti/<int:documento_id>/file/<int:file_id>/",
+        ApiContrattoDocumentoFileDownload.as_view(),
+        name="vendite-contratti-documenti-file-download",
     ),
     # Note partizionate (vendite.note_contratto) — testata o riga.
     # GET ?target_riga_id=<rid> per filtrare le note della singola riga.

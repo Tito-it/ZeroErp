@@ -54,7 +54,7 @@ _SVC_VIEW_DOC = "apps.vendite.api.contratti_documenti_views.ContrattiService"
 _DOC_SVC = "apps.vendite.api.contratti_documenti_views.DocumentGenerationService"
 # transaction.atomic patch path per la view emetti (refactor 2026-05-28):
 # l'integration test non apre una vera transazione DB (SimpleTestCase).
-_VIEW_ATOMIC = "apps.vendite.api.contratti_documenti_views.transaction.atomic"
+_VIEW_ATOMIC = "apps.documenti.api.sorgente_documenti_views.transaction.atomic"
 # DocumentiRepository ora vive solo nel helper condiviso `contesto_helpers`
 # (refactor 2026-05-28): il patch deve puntare lì per mockare la risoluzione
 # del sorgente_tipo. ContrattiRepository resta importato in
