@@ -27,6 +27,7 @@ from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import preventivi_service
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=5). Usato
@@ -953,8 +954,15 @@ class ApiPreventivoRigaSuggerisciPrezzo(DomainAPIView):
 # ── Riepilogo IVA aggregato (regola fiscale art. 21 DPR 633/72) ──
 
 
-class ApiPreventivoRiepilogoIva(DomainAPIView):
-    """GET /api/v1/vendite/preventivi/<id>/riepilogo-iva/
+# View dal factory condiviso `build_riepilogo_iva_view` (estrazione
+# regola-del-2 dei cloni preventivi/ordini/ddt). La closure legge il global
+# di modulo a call-time: i patch dei test sul service restano validi.
+ApiPreventivoRiepilogoIva = build_riepilogo_iva_view(
+    schema_prefix="Preventivo",
+    url_kwarg="preventivo_id",
+    list_call=lambda preventivo_id: preventivi_service.list_riepilogo_iva(
+        preventivo_id),
+    doc="""GET /api/v1/vendite/preventivi/<id>/riepilogo-iva/
 
     Restituisce il riepilogo IVA del preventivo: una riga per gruppo
     (iva_id, natura, esigibilita, split_payment) con imponibile e imposta
@@ -965,20 +973,8 @@ class ApiPreventivoRiepilogoIva(DomainAPIView):
     preventivi_righe via fn_ricalcola_riepilogo_iva_preventivo.
 
     Area `vendite` livello LETTURA sufficiente.
-    """
-
-    area_funzionale = "vendite"
-
-    @extend_schema(
-        responses={200: inline_serializer(
-            name="PreventivoRiepilogoIvaResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
-    )
-    # Scopo: Restituisce via GET il riepilogo IVA aggregato del preventivo.
-    def get(self, request: Request, preventivo_id: int) -> JsonResponse:
-        data = preventivi_service.list_riepilogo_iva(preventivo_id)
-        return success_response(data)
+    """,
+)
 
 
 # ── Contesto pricing ──

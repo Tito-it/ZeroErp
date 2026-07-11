@@ -32,6 +32,7 @@ from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ordini_service
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=7). Usato
@@ -297,8 +298,14 @@ class ApiOrdineCambiaStato(DomainAPIView):
         )
 
 
-class ApiOrdineRiepilogoIva(DomainAPIView):
-    """GET /api/v1/vendite/ordini/<id>/riepilogo-iva/
+# View dal factory condiviso `build_riepilogo_iva_view` (estrazione
+# regola-del-2 dei cloni preventivi/ordini/ddt). La closure legge il global
+# di modulo a call-time: i patch dei test sul service restano validi.
+ApiOrdineRiepilogoIva = build_riepilogo_iva_view(
+    schema_prefix="Ordine",
+    url_kwarg="ordine_id",
+    list_call=lambda ordine_id: ordini_service.list_riepilogo_iva(ordine_id),
+    doc="""GET /api/v1/vendite/ordini/<id>/riepilogo-iva/
 
     Restituisce il riepilogo IVA dell'ordine: una riga per gruppo aliquota
     (natura/esigibilita/split sempre NULL) con imponibile e imposta aggregati
@@ -309,20 +316,8 @@ class ApiOrdineRiepilogoIva(DomainAPIView):
     via fn_ricalcola_totali_ordine.
 
     Area `vendite` livello LETTURA sufficiente.
-    """
-
-    area_funzionale = "vendite"
-
-    @extend_schema(
-        responses={200: inline_serializer(
-            name="OrdineRiepilogoIvaResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
-    )
-    # Scopo: Restituisce via GET il riepilogo IVA aggregato dell'ordine.
-    def get(self, request: Request, ordine_id: int) -> JsonResponse:
-        data = ordini_service.list_riepilogo_iva(int(ordine_id))
-        return success_response(data)
+    """,
+)
 
 
 class ApiOrdineRighe(DomainAPIView):

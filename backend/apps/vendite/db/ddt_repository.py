@@ -24,6 +24,7 @@ from django.db import connection
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
+from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
 
 
 # Scopo: Whitelist colonne ORDER BY per la lista DDT (SQL injection safe). Le
@@ -44,7 +45,7 @@ _ORDER_COLS_DDT: dict[str, str] = {
 }
 
 
-class DdtRepository(ComponentiRepositoryMixin):
+class DdtRepository(ComponentiRepositoryMixin, RiepilogoIvaRepositoryMixin):
     """Repository DDT di vendita.
 
     Eredita da `ComponentiRepositoryMixin` per il CRUD componenti BoM modello
@@ -52,12 +53,19 @@ class DdtRepository(ComponentiRepositoryMixin):
     `init_componenti_riga` (chiama `fn_ddt_riga_componenti_init`) e
     `preview_componenti_riga` (chiama `fn_ddt_riga_componenti_preview`) sono
     definiti localmente. Usato anche dal push commessa (HandlerDdt) che legge i
-    componenti negoziati della riga sorgente.
+    componenti negoziati della riga sorgente. Eredita da
+    `RiepilogoIvaRepositoryMixin` la lettura del riepilogo IVA (vista derivata
+    on-the-fly dalle righe attive valorizzate: le righe con prezzo NULL — DDT
+    solo di trasporto — restano fuori dal riepilogo per filtro in vista).
     """
 
     # Configurazione mixin componenti (tabella + FK riga padre).
     _componenti_table_name = "vendite.ddt_righe_componenti"
     _componenti_fk_riga = "riga_ddt_id"
+
+    # Configurazione mixin riepilogo IVA.
+    _riepilogo_iva_vista = "vendite.vw_ddt_riepilogo_iva_dettaglio"
+    _riepilogo_iva_fk_documento = "ddt_id"
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_ddt_lista)

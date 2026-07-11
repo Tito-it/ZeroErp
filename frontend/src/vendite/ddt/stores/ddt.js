@@ -25,6 +25,7 @@ import {
   deleteRiga,
   emettiDdt,
   getDdt,
+  getRiepilogoIva,
   listDdt,
   listRighe,
   pushDdtACommessa,
@@ -139,6 +140,14 @@ export const useDdtStore = defineStore('vendite-ddt', () => {
     return res.data.data
   }
 
+  // Scopo: Carica il riepilogo IVA aggregato del DDT (una entry per aliquota,
+  //        regola fiscale DPR 633/72 art. 21). Calcolo derivato lato DB dalle
+  //        righe attive valorizzate: il FE legge solo lo stato corrente.
+  async function loadRiepilogoIva(ddtId) {
+    const res = await getRiepilogoIva(ddtId)
+    return res.data.data
+  }
+
   // --- Righe ---
 
   async function loadRighe(ddtId) {
@@ -171,6 +180,8 @@ export const useDdtStore = defineStore('vendite-ddt', () => {
     fetchList, fetchDetail, create, update, elimina,
     // transizioni
     emetti, cambiaStato, push,
+    // riepilogo IVA
+    loadRiepilogoIva,
     // righe
     loadRighe, addRiga, aggiornaRiga, eliminaRiga,
   }

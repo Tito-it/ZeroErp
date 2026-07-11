@@ -24,6 +24,7 @@ from apps.vendite.api.views_ddt import (
     ApiDdtExportView,
     ApiDdtList,
     ApiDdtPush,
+    ApiDdtRiepilogoIva,
     ApiDdtRigaComponenteDetail,
     ApiDdtRigaComponentiList,
     ApiDdtRigaDetail,
@@ -42,6 +43,8 @@ urlpatterns = [
     path("form-defaults/", ApiDdtFormDefaults.as_view(),
          name="vendite-ddt-form-defaults"),
     path("<int:ddt_id>/", ApiDdtDetail.as_view(), name="vendite-ddt-detail"),
+    path("<int:ddt_id>/riepilogo-iva/", ApiDdtRiepilogoIva.as_view(),
+         name="vendite-ddt-riepilogo-iva"),
 
     # Transizioni / integrazione. `emetti/` e' il flusso documentale multipart
     # (DRAFT->EMESSO + genera PDF + allegati, atomico — factory condiviso in
