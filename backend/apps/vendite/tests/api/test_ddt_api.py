@@ -71,6 +71,24 @@ class TestDdtApi(JwtMockedApiTest):
         self.assertEqual(body["results"][0]["numero"], "DDT0001")
 
     @patch(_AUTH, return_value=(Mock(), None))
+    def test_export_formato_invalido(self, _auth) -> None:
+        resp = self.client.get(f"{_BASE}export/?formato=pdf")
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(
+            resp.json()["error"]["code"], "E_UI_EXPORT_FORMAT_INVALID",
+        )
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.list_ddt_rows")
+    def test_export_overflow_cap(self, mock_list, _auth) -> None:
+        mock_list.return_value = ([], 50_000)
+        resp = self.client.get(f"{_BASE}export/?formato=csv")
+        self.assertEqual(resp.status_code, 422)
+        self.assertEqual(
+            resp.json()["error"]["code"], "E_UI_EXPORT_LIMIT_EXCEEDED",
+        )
+
+    @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.crea_ddt")
     def test_create_ok(self, mock_crea, _auth) -> None:
         mock_crea.return_value = {"id": 7, "uid": "u-7", "numero": None}

@@ -1,6 +1,7 @@
 # Brief DB — Bottone PDF data-driven via capabilities (5 domini vendite)
 
 > **Tipo**: brief DB (target `dev/db-tid`) · **Data**: 2026-07-10 · **Owner**: Tid
+> **Stato**: ✅ CHIUSO — raffinato ed eseguito dal piano [piano-db-pdf-mode-capabilities-5-domini](piano-db-pdf-mode-capabilities-5-domini.md) (DB + FE realizzati). Spostato in `work-done`.
 > **Origine**: finding di code-review sulla slice stampa DDT (altitude): la mappa
 > stato→modalità-PDF è oggi **hardcoded nel FE** per 5 domini, mentre il commento
 > la dichiara "data-driven da config" — contraddizione. Il meccanismo giusto

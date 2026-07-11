@@ -43,28 +43,7 @@ export const STATI_OFFERTA_SEGNALA_SCADENZA = Object.freeze([
   STATO_OFFERTA.EMESSA,
 ])
 
-// Stati con documento PDF gia' generato (post-emissione): il PDF e'
-// cristallizzato, si scarica dalla lista archiviata. Usato da
-// `EntityPdfButton` come `stati-con-documento`. EMESSA incluso: il BE
-// genera il PDF alla transizione BOZZA->EMESSA.
-export const STATI_OFFERTA_CON_DOCUMENTO = Object.freeze([
-  STATO_OFFERTA.EMESSA,
-  STATO_OFFERTA.ACCETTATA,
-  STATO_OFFERTA.RIFIUTATA,
-  STATO_OFFERTA.SUPERATA,
-  STATO_OFFERTA.ANNULLATA,
-])
-
-// Stati in cui e' consentito l'append di allegati al documento gia'
-// generato (regola dominio: "fino a EMESSA compresa", da ACCETTATA in
-// poi il documento e' chiuso). Usato da `EntityPdfButton` come
-// `stati-append-allegati`.
-export const STATI_OFFERTA_APPEND_ALLEGATI = Object.freeze([
-  STATO_OFFERTA.EMESSA,
-])
-
-// Stati in cui mostrare l'azione "Anteprima PDF" (preview on-the-fly,
-// no persist). Usato da `EntityPdfButton` come `stati-preview`.
-export const STATI_OFFERTA_ANTEPRIMA_PDF = Object.freeze([
-  STATO_OFFERTA.BOZZA,
-])
+// Mappa stato→modalita'-PDF (anteprima bozza / archivio post-emissione /
+// append allegati) ora DATA-DRIVEN via capability `pdf` di
+// `fn_available_actions_offerta` (`config.stati_doc_offerte.pdf_mode` +
+// `pdf_allow_allegati`), consumata da `EntityPdfButton`.

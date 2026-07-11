@@ -25,7 +25,7 @@
 > Riferimenti:
 > * [docs/it/dbzero/vendite/tabelle/listini.md] — schema listini
 > * [docs/it/dev/work-done/gestione-articoli.md] — dominio catalogo (completato)
-> * [docs/it/dev/work-in-progress/gestione-commesse-v2.md] — integrazione commessa
+> * [docs/it/dev/work-done/gestione-commesse-v2.md] — integrazione commessa
 > * [docs/it/dev/api.md] — linee guida API
 
 ---

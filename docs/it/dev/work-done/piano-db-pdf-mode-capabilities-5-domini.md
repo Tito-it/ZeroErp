@@ -1,6 +1,7 @@
 # Piano DB — Bottone PDF data-driven via capabilities (`pdf_mode` + `pdf_allow_allegati`, 5 domini vendite)
 
 > **Tipo**: piano di sviluppo (slice DB su `dev/db-tid` + handoff FE) · **Data**: 2026-07-10 · **Owner**: Tid
+> **Stato**: ✅ CHIUSO (DB applicato+committato 5 domini + lista Ordini; FE recepito §10) — spostato in `work-done`.
 > **Origine**: brief «Bottone PDF data-driven via capabilities» + analisi critica 2026-07-10.
 > **Design-of-record**: questo documento (rifinisce il brief: seed verbatim, non la sua tabella
 > indicativa; secondo asse `pdf_allow_allegati`; `NOT NULL` senza default).
@@ -141,8 +142,8 @@ il valore modalità `'scarica'` per l'archivio → mappare `ARCHIVE → 'scarica
 - [x] Fase B — 5 CSV `80_data` aggiornati (verbatim + orfano `PARZIALMENTE_EVASO`→ARCHIVE) + **2 colonne pdf aggiunte alla lista colonne dei loader esistenti** (`runOnChange`, ri-applicano): `20250917-01` (preventivi), `20260524-04` (offerte), `20260520-08` (contratti), `20250912-02` (ordini), `20250915-01` (ddt)
 - [x] Fase C — 5 fn `20_code/script` `20260711-07..11` (blocco `pdf {mode, allow_allegati}`, ribasate su versioni correnti incl. decoupling ordine)
 - [x] Fase D — pgTAP: `config/test-stati-doc-pdf-mode-v1.sql` (plan 22: NOT NULL + no-default + CHECK + guard §3 + seed ×5) e `script/test-fn-available-actions-pdf-v1.sql` (plan 5: pilota DDT DRAFT→PREVIEW / EMESSO→ARCHIVE)
-- [ ] Applicazione DB Tid + pgTAP verdi — **attendere «procedi»** (NON applicato, NON committato)
-- [ ] Slice FE (handoff §7)
+- [x] Applicazione DB Tid + pgTAP verdi — **✅ applicato e committato** (5 domini) + brief lista Ordini eseguito ([[brief-db-pdf-mode-lista-ordini]], `vw_ordini_lista.pdf_mode`)
+- [x] Slice FE (handoff §7) — **✅ realizzata** (vedi §10)
 
 ### Consuntivo scrittura (2026-07-11)
 
@@ -162,3 +163,21 @@ Deliverable DB scritti su `dev/db-tid`, **non applicati né committati**. Change
 - **Verifica boolean**: `pdf_allow_allegati` seedato con `t`/`f` (stile `attivo`) + `type: BOOLEAN`
   nel loader.
 - **Doc auto-gen dbzero**: la rigenera Tid dopo l'applicazione (le 5 fn + 5 tabelle cambiano).
+
+## 10. Consuntivo FE (2026-07-11) — ✅ REALIZZATO
+
+Recepimento FE della capability su `dev/backend-tid` (**non committato**). Build Vite verde,
+eslint pulito. **Zero modifiche BE**: il blob `pdf` è spread `**capabilities` nei 5 service e
+`pdf_mode` viaggia in lista via `SELECT v.*` + `DictField()`.
+
+- **`EntityPdfButton`** (BB `documenti/components`): da `statoCodice` + 3 array `STATI_*` a
+  un'unica prop `pdf` = `{mode, allow_allegati}`; enum **`PDF_MODE`** centralizzato in
+  `documenti/constants.js` (single source dei literal, consumato anche dalla lista).
+- **5 drawer** (Ordini/Ddt/Offerta/Contratto/Preventivi): `:pdf="detail.pdf"`, rimossi
+  `:stato-codice`/`:stati-*` e import.
+- **Lista Ordini** (`OrdiniSearchTable`): `row.pdf_mode === PDF_MODE.ARCHIVE` (colonna
+  `vw_ordini_lista.pdf_mode`, brief lista [[brief-db-pdf-mode-lista-ordini]] eseguito).
+- **5 `constants.js`**: eliminate tutte le famiglie `STATI_*_{ANTEPRIMA_PDF, CON_DOCUMENTO,
+  APPEND_ALLEGATI}` → nessuna mappa stato→PDF hardcoded residua.
+- **Cambio comportamento cosciente**: in lista Ordini `PARZIALMENTE_EVASO` ora ha PDF abilitato
+  (`pdf_mode=ARCHIVE`); prima era escluso → disabled.

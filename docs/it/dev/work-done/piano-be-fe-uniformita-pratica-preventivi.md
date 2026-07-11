@@ -3,13 +3,13 @@
 > **Tipo**: piano operativo (BE/FE) · **Data**: 2026-06-30 · **Stato**: ✅ **COMPLETO** (2026-07-02) —
 > Fasi 0-4 implementate + ultimo residuo (ritiro handler monolitico) chiuso BE+DB. Ex-blocco auto-chiusura a SMISTAMENTO **RISOLTO** con la regola
 > di chiusura "nessun lavoro pendente" (**bivio-per-esito**, motore DB + BE):
-> [brief-db-chiusura-pratica-nessun-lavoro-pendente.md](../work-done/brief-db-chiusura-pratica-nessun-lavoro-pendente.md)
+> [brief-db-chiusura-pratica-nessun-lavoro-pendente.md](brief-db-chiusura-pratica-nessun-lavoro-pendente.md)
 > (✅ **DB applicato + pgTAP verde**, ✅ **BE fatto + 1764 test verdi** — brief §11.6, chiuso in work-done).
 > 9013/9014 `obbligatorio=true` percorribili solo sul ramo merce via esito `MERCE_PRESENTE` di
 > SMISTAMENTO (niente creazione on-demand / chaining). ✅ **Smoke E2E BE verde** (2026-07-01,
 > `smoke-test-pratica-preventivi-bivio.sh`, rami MERCE + SOLO_SERVIZI). ✅ **FE fatto**;
 > ultimo residuo (handler monolitico `vendita.push_preventivo`) **chiuso BE+DB** (2026-07-02).
-> **Analisi (il perché)**: [analisi-uniformita-pratica-preventivi.md](../work-done/analisi-uniformita-pratica-preventivi.md)
+> **Analisi (il perché)**: [analisi-uniformita-pratica-preventivi.md](analisi-uniformita-pratica-preventivi.md)
 > **Prerequisiti DB**: ✅ tutti applicati (catalogo `PREVENTIVI` 9004 + flussi 9009-9014,
 > `obsoleto_dal` + lookup/guard) — brief in `work-done`.
 >
@@ -98,7 +98,7 @@ sul preventivo; nessun `E_VENDITA_COMPETENZA_RICHIESTA` a valle. (Bug §3.1.2 ch
 > (il pannello preseleziona già le residue). Test BE 960 + lint/build verdi.
 > 🔴 **B1 (in attesa binding DB)**: handler `vendita.post_smistamento` su SMISTAMENTO COMPLETATO
 > → aggancia l'ordine alla pratica + crea on-demand 9013/9014 se c'è ordine merce. Brief:
-> [brief-db-binding-smistamento-handler.md](../work-done/brief-db-binding-smistamento-handler.md). L'handler BE
+> [brief-db-binding-smistamento-handler.md](brief-db-binding-smistamento-handler.md). L'handler BE
 > si implementa quando il binding è seedato.
 
 Il flusso SMISTAMENTO (40) apre il **Pannello Smistamento** standalone; lo split usa gli
@@ -155,7 +155,7 @@ fermo in DRAFT). (Bug §3.1.1 chiuso.) Verifica DB: catena preventivo EVASO → 
 > dispatchato da alcun flusso → rimuovere (codice + eventuale binding residuo).
 > **✅ BE fatto (2026-07-02)**: classe + registrazione + test rimossi (63 test verdi,
 > `manage.py check` ok). Lato DB **✅ FATTO (pgTAP verdi)**: unbind + `handler_flussi.attivo=false`
-> + `obsoleto_dal` + B8 → [brief-db-ritiro-handler-monolitico-push-preventivo.md](../work-done/brief-db-ritiro-handler-monolitico-push-preventivo.md).
+> + `obsoleto_dal` + B8 → [brief-db-ritiro-handler-monolitico-push-preventivo.md](brief-db-ritiro-handler-monolitico-push-preventivo.md).
 > **Residuo CHIUSO: Fase 3 completa.**
 > `fn_push_preventivo_a_ordine` **resta** (usata da SMISTAMENTO).
 

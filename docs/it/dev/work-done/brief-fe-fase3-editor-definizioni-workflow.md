@@ -11,11 +11,13 @@
 > in `work-done/`); `brief-be-fe-step-dominio-e-definizioni-versionate.md` (companion, §FE-2.4
 > banner drift); tracker `analisi-pratiche-valutazione-stato.md` **V4**.
 >
-> **Stato (2026-07-04): ✅ FE-3.1 → FE-3.5 IMPLEMENTATI** (editor completo: ispettore
-> read-only + editing step/figli/archi + drift/allinea) + controllo qualità (estrazione
-> shell `CollectionEditorPanel` + composable `useEditableCollection`/`useStepOptions`,
-> fix watch edit→edit, rimozione codice morto). Verificato lint + compilazione Vite; **non
-> committato** (working tree). Dettaglio sotto nella tabella §4.
+> **Stato: ✅ CHIUSO — REALIZZATO E COMMITTATO** (FE-3.1 → FE-3.5 + QA, commit
+> `35b90521a`). Editor completo: ispettore read-only + editing step/figli/archi +
+> drift/allinea + controllo qualità (estrazione shell `CollectionEditorPanel` + composable
+> `useEditableCollection`/`useStepOptions`, fix watch edit→edit, rimozione codice morto).
+> Lint + compilazione Vite verdi. Dettaglio §4. **Residui = solo fuori-scope §6** (campi
+> step avanzati → anelli BE, «Scarta BOZZA» → mini-brief BE, merge intelligente strada B
+> §5.4, graph-canvas V5, catalogo preset V3) + 2 osservazioni di modello non bloccanti (§4).
 
 ---
 

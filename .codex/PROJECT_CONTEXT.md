@@ -223,6 +223,6 @@ make db-setup         # entrambi
 - Convenzioni SQL: `docs/it/linee-guida-sql.md`
 - Convenzioni trigger: `docs/it/linee-guida-trigger.md`
 - Guida fatturazione: `docs/it/guide/fatturazione.md`
-- WIP pipeline: `docs/it/dev/work-in-progress/fatturazione-attivita-progetto.md`
+- WIP pipeline: `docs/it/dev/work-done/fatturazione-attivita-progetto.md`
 - WIP domini engine: `docs/it/dev/work-in-progress/pipeline-domini-engine.md`
 - Template doc backend: `docs/it/backend/_templates/manual-standard.md`

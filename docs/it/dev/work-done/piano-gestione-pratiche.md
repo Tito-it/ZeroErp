@@ -2,7 +2,7 @@
 
 > **STATO: COMPLETATO (v1 — DB+BE)** — Spostato in work-done.
 > Il completamento del modulo (frontend, collegamento ruolo/istanza, note, allegati)
-> e' nel piano v2: `work-in-progress/gestione-pratiche-v2.md`
+> e' nel piano v2: `work-done/gestione-pratiche-v2.md`
 >
 > Riferimento tecnico: [sviluppo-gestione-pratiche.md](sviluppo-gestione-pratiche.md)
 >

@@ -8,10 +8,10 @@
 // id.fiscale=`id_fiscale_univoco_cf_piva`, ba_codice, causale/aspetto/vettore/
 // mittente, ordine_origine_numero. Clone di OrdiniSearchTable (§D-4).
 //
-// Scostamento vs ordini: NIENTE export (nessun endpoint BE /vendite/ddt/export/,
-// export fuori scope in questa slice) → azione 'export' filtrata da pageActions
-// e ExportDialog non montato. NIENTE azione PDF di riga (PDF fuori scope).
-import { computed, onMounted, ref } from 'vue'
+// Export lista CSV/XLSX operativo (endpoint BE `/vendite/ddt/export/`, DEF-1),
+// gemello ordini. Scostamento vs ordini: NIENTE azione PDF di riga (la lista DDT
+// non offre gestione documenti per-riga).
+import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import DatePicker from 'primevue/datepicker'
@@ -25,6 +25,7 @@ import ReadonlyBadge from '../../../core/components/ReadonlyBadge.vue'
 import RowActionsMenu from '../../../core/components/RowActionsMenu.vue'
 import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
 import ListaConfigurabile from '../../../core/components/ListaConfigurabile.vue'
+import ExportDialog from '../../../core/components/ExportDialog.vue'
 import DdtNoteDrawer from './DdtNoteDrawer.vue'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../../core/composables/useListaConfigurabilePage'
@@ -32,6 +33,7 @@ import { useStoreFilterBindings } from '../../../core/composables/useStoreFilter
 import { useTabFreshness } from '../../../core/composables/useTabFreshness'
 import { DATE_FORMAT, MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
 import { statoDdtSeverity } from '../../../core/utils/severity'
+import { exportDdt } from '../api/ddtApi'
 import { useDdtStore } from '../stores/ddt'
 
 const emit = defineEmits(['new', 'row-click'])
@@ -42,17 +44,14 @@ const isBlocked = useInjectBlocked()
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty,
-  onConfigLoaded, pageActions: pageActionsRaw,
+  exportDialogVisible, exportLoading, onExportConfirm, onConfigLoaded, pageActions,
 } = useListaConfigurabilePage(store, {
-  // Nessun exportFn: l'export DDT e' fuori scope (nessun endpoint BE).
+  exportFn: exportDdt,
+  getExportParams: (fmt) => buildExportParams(fmt),
   newTooltipKey: 'vendite.ddt.nuovo_ddt',
   onNew: () => emit('new'),
   searchTableOptions: { defaultSortField: 'data', defaultSortOrder: 'desc' },
 })
-
-// Toglie l'azione 'export' dalla toolbar: senza endpoint BE il pulsante sarebbe
-// un vicolo cieco. Le restanti utility (reload/personalizza) + new restano.
-const pageActions = computed(() => pageActionsRaw.value.filter(a => a.key !== 'export'))
 
 // --- Filtri custom (toolbar caller) — binding store via BB ---
 const { bindSelect, bindDate } = useStoreFilterBindings(store, applyFilters)
@@ -60,6 +59,23 @@ const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato_codice
 const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
 const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
 const { value: dataAlFilter, onChange: onDataAlChange } = bindDate('data_a')
+
+// Params export: i filtri vivono in store.filters; `search` dal ref immediato.
+// I filtri data BE sono data_da/data_a (sul campo `data` della testata).
+function buildExportParams(format) {
+  const p = { formato: format }
+  if (searchText.value?.trim()) p.search = searchText.value.trim()
+  if (store.filters.stato_codice_interno != null) p.stato_codice_interno = store.filters.stato_codice_interno
+  if (store.filters.utility_id != null) p.utility_id = store.filters.utility_id
+  if (store.filters.billing_account_id != null) p.billing_account_id = store.filters.billing_account_id
+  if (store.filters.data_da) p.data_da = store.filters.data_da
+  if (store.filters.data_a) p.data_a = store.filters.data_a
+  if (store.filters.order_by) {
+    p.order_by = store.filters.order_by
+    p.order_dir = store.filters.order_dir || 'desc'
+  }
+  return p
+}
 
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }
@@ -166,6 +182,12 @@ onMounted(() => store.fetchList())
         </template>
       </ListaConfigurabile>
     </template>
+
+    <ExportDialog
+      v-model:visible="exportDialogVisible"
+      :loading="exportLoading"
+      @export="onExportConfirm"
+    />
 
     <DdtNoteDrawer
       v-if="noteDrawerDdt?.id"

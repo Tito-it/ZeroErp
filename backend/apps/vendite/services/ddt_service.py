@@ -139,6 +139,33 @@ def list_ddt_rows(
     )
 
 
+# Scopo: Etichette leggibili dei filtri applicati per il metadato del file
+#        export (DEF-1). Gemello resolve_filtri_export_label ordini.
+def resolve_filtri_export_label(
+    *,
+    search: str | None = None,
+    stato_codice: str | None = None,
+    billing_account_id: int | None = None,
+    utility_id: int | None = None,
+    data_da: date | None = None,
+    data_al: date | None = None,
+) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    if search:
+        out["Ricerca"] = search
+    if stato_codice:
+        out["Stato"] = stato_codice
+    if billing_account_id is not None:
+        out["Cliente BA (id)"] = billing_account_id
+    if utility_id is not None:
+        out["Utility (id)"] = utility_id
+    if data_da is not None:
+        out["Dal"] = str(data_da)
+    if data_al is not None:
+        out["Al"] = str(data_al)
+    return out
+
+
 # Scopo: Dettaglio testata DDT + capability (righe lette a parte via /righe/).
 def get_ddt(ddt_id: int) -> dict[str, object]:
     repo = DdtRepository()

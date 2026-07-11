@@ -9,9 +9,9 @@
 // Componenti BoM via building block condiviso `makeComponentiBomApi` (schema URL
 // identico ai domini gemelli) — regola del 2, nessuna implementazione nuova.
 //
-// Fuori scope di questa slice (nessun endpoint BE): export lista, riepilogo IVA,
-// indirizzi. Non mappati qui a bella posta. I documenti PDF (anteprima/genera/
-// lista/download) passano dal client condiviso `ddtDocumenti`
+// Fuori scope di questa slice (nessun endpoint BE): riepilogo IVA, indirizzi.
+// Non mappati qui a bella posta. I documenti PDF (anteprima/genera/lista/download)
+// passano dal client condiviso `ddtDocumenti`
 // (documenti/api/documentiPerSorgente.js), non da qui.
 
 import api from '../../../core/api'
@@ -23,6 +23,12 @@ const BASE = '/vendite/ddt'
 
 export function listDdt(params = {}) {
   return api.get(`${BASE}/`, { params })
+}
+
+// Export CSV/XLSX della lista (DEF-1). `params.formato` = 'csv'|'xlsx' + gli
+// stessi filtri della lista. responseType blob (download gestito dal caller).
+export function exportDdt(params = {}) {
+  return api.get(`${BASE}/export/`, { params, responseType: 'blob' })
 }
 
 export function getDdt(id) {

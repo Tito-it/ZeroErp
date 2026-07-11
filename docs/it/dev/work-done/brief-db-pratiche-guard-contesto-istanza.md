@@ -16,7 +16,7 @@
 > prospect puro (soggetto con istanza ma senza alcun ruolo) — che nel mondo
 > utilities è il caso **normale**, non l'eccezione. Prerequisito del cantiere
 > FE "selezione contesto pratica a 3 livelli" (residuo §4.3 di
-> [gestione-pratiche-v2.md](../work-in-progress/gestione-pratiche-v2.md)).
+> [gestione-pratiche-v2.md](gestione-pratiche-v2.md)).
 
 ## 1. Il bug di modello (verificato)
 

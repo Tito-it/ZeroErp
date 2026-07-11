@@ -24,11 +24,7 @@ import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { statoDdtSeverity } from '../../../core/utils/severity'
-import {
-  STATO_DDT,
-  STATI_DDT_ANTEPRIMA_PDF,
-  STATI_DDT_CON_DOCUMENTO,
-} from '../constants'
+import { STATO_DDT } from '../constants'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 import { displayDate, toDateString } from '../../../core/utils/date'
@@ -481,9 +477,7 @@ const drawerActions = computed(() => {
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.DDT"
               :entity-id="effectiveDdtId"
-              :stato-codice="detail.stato_codice_interno"
-              :stati-preview="STATI_DDT_ANTEPRIMA_PDF"
-              :stati-con-documento="STATI_DDT_CON_DOCUMENTO"
+              :pdf="detail.pdf"
               i18n-prefix="vendite.ddt.pdf"
               :dialog-title="detail.numero
                 ? t('vendite.ddt.pdf.dialog_title', { numero: detail.numero })
