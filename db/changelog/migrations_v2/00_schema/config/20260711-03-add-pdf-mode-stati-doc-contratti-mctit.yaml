@@ -1,0 +1,43 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Bottone PDF data-driven via capabilities (piano
+# piano-db-pdf-mode-capabilities-5-domini.md §3).
+# Aggiunge a config.stati_doc_contratti: pdf_mode + pdf_allow_allegati.
+# NOT NULL senza default (default transitorio per backfill, poi DROP).
+# Seed reale (verbatim costanti FE) in 80_data.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260711-03-add-pdf-mode-stati-doc-contratti-mctit.yaml
+
+  - changeSet:
+      id: 20260711-03-add-pdf-mode-stati-doc-contratti
+      author: mctit
+      failOnError: true
+      comment: >
+        stati_doc_contratti: +pdf_mode (CHECK PREVIEW/ARCHIVE/NONE) +pdf_allow_allegati,
+        NOT NULL senza default (default transitorio per backfill, poi DROP DEFAULT).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_contratti
+                ADD COLUMN IF NOT EXISTS pdf_mode varchar NOT NULL DEFAULT 'NONE'
+                  CONSTRAINT chk_stati_doc_contratti_pdf_mode
+                  CHECK (pdf_mode IN ('PREVIEW','ARCHIVE','NONE')),
+                ADD COLUMN IF NOT EXISTS pdf_allow_allegati boolean NOT NULL DEFAULT false;
+              ALTER TABLE config.stati_doc_contratti
+                ALTER COLUMN pdf_mode DROP DEFAULT,
+                ALTER COLUMN pdf_allow_allegati DROP DEFAULT;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE config.stati_doc_contratti
+                DROP COLUMN IF EXISTS pdf_mode,
+                DROP COLUMN IF EXISTS pdf_allow_allegati;

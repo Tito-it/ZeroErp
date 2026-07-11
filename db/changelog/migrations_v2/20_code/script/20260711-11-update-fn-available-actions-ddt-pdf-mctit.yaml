@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Bottone PDF data-driven via capabilities (piano
+# piano-db-pdf-mode-capabilities-5-domini.md §5). Dominio PILOTA pgTAP.
+# Estende fn_available_actions_ddt con il blocco pdf
+# {mode, allow_allegati} da config.stati_doc_ddt.
+# Corpo base: doc auto-gen dbzero (rev 2026-07-09).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260711-11-update-fn-available-actions-ddt-pdf-mctit.yaml
+
+  - changeSet:
+      id: 20260711-11-update-fn-available-actions-ddt-pdf
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_available_actions_ddt: aggiunge blocco pdf (mode/allow_allegati)
+        da config.stati_doc_ddt.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: capability DDT per il detail API (data-driven,
+              --   config.transizioni_stati_ddt). Mirror di fn_available_actions_ordine.
+              --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+              --   config.stati_doc_ddt (bottone PDF data-driven via capabilities).
+              DECLARE
+                  v_stato_id   vendite.ddt.stato_doc_ddt_id%TYPE;
+                  v_stato_cod  config.stati_doc_ddt.codice_interno%TYPE;
+                  v_pdf_mode   config.stati_doc_ddt.pdf_mode%TYPE;
+                  v_pdf_allow  config.stati_doc_ddt.pdf_allow_allegati%TYPE;
+                  v_actions    jsonb;
+                  v_can_change boolean := false;
+                  v_push_ok    boolean := false;
+                  v_push_reason     text := NULL;
+                  v_push_reason_key text := NULL;
+                  c_non_edit_draft CONSTANT jsonb :=
+                      '["numero","sorgente_tipo_id","sorgente_uid","billing_account_id"]'::jsonb;
+                  c_non_edit_tutti CONSTANT jsonb :=
+                      '["numero","sorgente_tipo_id","sorgente_uid","billing_account_id",'
+                      '"destinatario_soggetto_ruolo_id","mittente_soggetto_ruolo_id",'
+                      '"vettore_soggetto_ruolo_id","causale_trasporto_id","aspetto_bene_id",'
+                      '"modalita_addebito_trasporto_id","valuta_id","utility_id","data","meta"]'::jsonb;
+              BEGIN
+                  -- Stato corrente + capability PDF (pdf_mode/allow_allegati).
+                  SELECT d.stato_doc_ddt_id, sdd.codice_interno,
+                         sdd.pdf_mode, sdd.pdf_allow_allegati
+                    INTO v_stato_id, v_stato_cod, v_pdf_mode, v_pdf_allow
+                    FROM vendite.ddt d
+                    JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                   WHERE d.id = p_ddt_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',              t.meta->>'action_key',
+                              'target_state',     sa.codice_interno,
+                              'label_key',        t.meta->>'label_key',
+                              'severity',         t.meta->>'severity',
+                              'icon',             t.meta->>'icon',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              'outlined',         COALESCE((t.meta->>'outlined')::boolean, false)
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  FROM config.transizioni_stati_ddt t
+                  JOIN config.stati_doc_ddt sa ON sa.id = t.stato_a_id
+                  WHERE t.stato_da_id = v_stato_id
+                    AND t.attivo IS TRUE
+                    AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
+                    AND t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
+
+                  v_can_change := jsonb_array_length(v_actions) > 0;
+
+                  IF EXISTS (SELECT 1
+                               FROM vendite.fn_list_ddt_da_pushare(p_ddt_id := p_ddt_id)) THEN
+                      v_push_ok := true;
+                  ELSE
+                      v_push_reason     := 'DDT_NON_PUSHABILE';
+                      v_push_reason_key := 'vendite.ddt.push_commessa_reason.non_pushabile';
+                  END IF;
+
+                  IF v_push_ok THEN
+                      v_actions := v_actions || jsonb_build_array(
+                          jsonb_build_object(
+                              'key',              'push_commessa',
+                              'target_state',     NULL,
+                              'label_key',        'vendite.ddt.azione_push_commessa',
+                              'severity',         'success',
+                              'icon',             'pi pi-arrow-right',
+                              'requires_confirm', true,
+                              'outlined',         false
+                          )
+                      );
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'available_actions',            v_actions,
+                      'can_change_state',             v_can_change,
+                      'can_edit_testata',             (v_stato_cod = 'DRAFT'),
+                      'can_edit_righe',               (v_stato_cod = 'DRAFT'),
+                      'can_push_commessa',            v_push_ok,
+                      'can_push_commessa_reason',     v_push_reason,
+                      'can_push_commessa_reason_key', v_push_reason_key,
+                      'non_editable_fields',          CASE WHEN v_stato_cod = 'DRAFT'
+                                                           THEN c_non_edit_draft
+                                                           ELSE c_non_edit_tutti END,
+                      'pdf',                          jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+                      'stato_codice',                 v_stato_cod
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
+              IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ddt (bottone PDF data-driven via capabilities).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: ri-applicare la definizione autogen antecedente (senza blocco pdf).
+              SELECT 1;
