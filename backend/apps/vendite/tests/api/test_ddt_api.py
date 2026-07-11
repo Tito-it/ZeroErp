@@ -21,6 +21,7 @@ Indice test eseguiti:
  8) test_patch_riga_ok            — 200 PATCH riga (mock service)
  9) test_genera_ddt_da_ordine_ok  — 200 POST /ordini/<id>/genera-ddt/ (mock service)
 10) test_genera_ddt_righe_selettive — righe evasione parziale propagate al service
+11) test_riepilogo_iva_ok         — 200 riepilogo IVA aggregato (mock service)
 """
 
 from unittest.mock import ANY, Mock, patch
@@ -160,6 +161,21 @@ class TestDdtApi(JwtMockedApiTest):
         self.assertEqual(resp.json()["data"]["stato"], "COMPLETATO")
         # user propagato dal JWT (username dell'utente autenticato).
         mock_push.assert_called_once_with(7, user=ANY)
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.list_riepilogo_iva")
+    def test_riepilogo_iva_ok(self, mock_riep, _auth) -> None:
+        mock_riep.return_value = [
+            {"ddt_id": 7, "iva_id": 1, "iva_codice": "22",
+             "iva_aliquota": "22.00", "imponibile": "100.00",
+             "imposta": "22.00", "totale_riga": "122.00"},
+        ]
+        resp = self.client.get(f"{_BASE}7/riepilogo-iva/")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()["data"]
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["iva_aliquota"], "22.00")
+        mock_riep.assert_called_once_with(7)
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.aggiorna_ddt")

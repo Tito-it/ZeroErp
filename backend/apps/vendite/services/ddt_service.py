@@ -197,6 +197,16 @@ def list_righe(ddt_id: int) -> list[dict[str, Any]]:
     return DdtRepository().list_righe(ddt_id)
 
 
+# Scopo: Riepilogo IVA aggregato del DDT (una riga per aliquota). Calcolo
+#        fiscalmente corretto gia' applicato in DB via la vista derivata
+#        vw_ddt_riepilogo_iva_dettaglio (stessa formula di preventivi/ordini;
+#        righe con prezzo NULL escluse in vista): il service legge, nessun
+#        ricalcolo Python. Usato dal FE per il pannello "Riepilogo IVA" del
+#        drawer DDT e (futuro) dal context builder della stampa.
+def list_riepilogo_iva(ddt_id: int) -> list[dict[str, Any]]:
+    return DdtRepository().list_riepilogo_iva(ddt_id)
+
+
 # ══════════════════════════════════════════════════════════
 #  SCRITTURE — Testata
 # ══════════════════════════════════════════════════════════

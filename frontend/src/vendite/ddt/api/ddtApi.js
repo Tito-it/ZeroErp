@@ -9,8 +9,8 @@
 // Componenti BoM via building block condiviso `makeComponentiBomApi` (schema URL
 // identico ai domini gemelli) — regola del 2, nessuna implementazione nuova.
 //
-// Fuori scope di questa slice (nessun endpoint BE): riepilogo IVA, indirizzi.
-// Non mappati qui a bella posta. I documenti PDF (anteprima/genera/lista/download)
+// Fuori scope di questa slice (nessun endpoint BE): indirizzi (in attesa del
+// brief DB). I documenti PDF (anteprima/genera/lista/download)
 // passano dal client condiviso `ddtDocumenti`
 // (documenti/api/documentiPerSorgente.js), non da qui.
 
@@ -87,6 +87,16 @@ export function cambiaStatoDdt(id, statoCodice) {
 // gemello ordini/preventivi/offerte.
 export function pushDdtACommessa(id) {
   return api.post(`${BASE}/${id}/push/`, {})
+}
+
+// Scopo: Riepilogo IVA aggregato del DDT (una entry per aliquota, regola
+// fiscale DPR 633/72 art. 21). Calcolo gia' eseguito in DB dalla vista
+// derivata vw_ddt_riepilogo_iva_dettaglio (stessa formula di preventivi e
+// ordini; righe con prezzo NULL escluse in vista: DDT solo di trasporto ->
+// riepilogo vuoto). Risposta: array di { iva_id, iva_codice, iva_descrizione,
+//   iva_aliquota, imponibile, imposta, arrotondamento, totale_riga }.
+export function getRiepilogoIva(ddtId) {
+  return api.get(`${BASE}/${ddtId}/riepilogo-iva/`)
 }
 
 // --- Righe ---

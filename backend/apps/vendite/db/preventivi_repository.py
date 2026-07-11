@@ -18,6 +18,7 @@ from django.db import connection
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
+from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
 from apps.vendite.types import (
     PreventivoDetailRow,
     PreventivoIndirizzoRow,
@@ -78,19 +79,27 @@ _ROOT_PREVENTIVO_ATTIVO_FROM = """
 """
 
 
-class PreventiviRepository(ComponentiRepositoryMixin):
+class PreventiviRepository(ComponentiRepositoryMixin, RiepilogoIvaRepositoryMixin):
     """Repository preventivi.
 
     Eredita da `ComponentiRepositoryMixin` per il CRUD componenti BoM
     modello unificato (`preventivi_righe_componenti`). I metodi specifici
     `init_componenti_riga` (chiama `fn_preventivo_riga_componenti_init`)
     e `preview_componenti_riga` (chiama `fn_preventivo_riga_componenti_preview`)
-    sono definiti localmente.
+    sono definiti localmente. Eredita da `RiepilogoIvaRepositoryMixin` la
+    lettura del riepilogo IVA (vista mantenuta dal trigger AFTER su
+    preventivi_righe via fn_ricalcola_riepilogo_iva_preventivo).
     """
 
     # Configurazione mixin componenti.
     _componenti_table_name = "vendite.preventivi_righe_componenti"
     _componenti_fk_riga = "riga_preventivo_id"
+
+    # Configurazione mixin riepilogo IVA (unica vista con `id` tecnico:
+    # righe fisiche di preventivi_riepiloghi_iva, non derivate on-the-fly).
+    _riepilogo_iva_vista = "vendite.vw_preventivi_riepilogo_iva_dettaglio"
+    _riepilogo_iva_fk_documento = "preventivo_id"
+    _riepilogo_iva_con_id = True
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_preventivi_lista)
@@ -438,29 +447,6 @@ class PreventiviRepository(ComponentiRepositoryMixin):
         with connection.cursor() as cursor:
             cursor.execute(sql, [riga_id])
             return row_to_dict(cursor)
-
-    # Scopo: Restituisce il riepilogo IVA aggregato del preventivo dalla view
-    #        denormalizzata. Una riga per gruppo (iva_id, natura, esigibilita,
-    #        split_payment) — sui preventivi natura/esigibilita/split sono
-    #        sempre NULL (struttura allineata a fatture_riepiloghi_iva per
-    #        coerenza). Imponibile e imposta sono ROUND 2 sull'aggregato per
-    #        aliquota (regola fiscale: DPR 633/72 art. 21 + DM 24/12/93).
-    #        Popolata dal trigger AFTER su preventivi_righe via
-    #        fn_ricalcola_riepilogo_iva_preventivo: il chiamante non orchestra
-    #        il ricalcolo, legge solo lo stato corrente.
-    def list_riepilogo_iva(self, preventivo_id: int) -> list[dict[str, Any]]:
-        sql = """
-            SELECT id, preventivo_id, iva_id, iva_codice, iva_descrizione,
-                   iva_aliquota, natura_id, natura_codice,
-                   esigibilita, split_payment,
-                   imponibile, imposta, arrotondamento, totale_riga
-              FROM vendite.vw_preventivi_riepilogo_iva_dettaglio
-             WHERE preventivo_id = %s
-             ORDER BY iva_aliquota NULLS LAST, iva_id NULLS LAST
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [preventivo_id])
-            return rows_to_list(cursor)
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Indirizzi

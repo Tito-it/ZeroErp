@@ -35,6 +35,7 @@ from apps.core.api.payload_validators import (
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ddt_service
 
 # Codice lista (ui.lista_definizione) usato dall'export per risolvere
@@ -218,6 +219,28 @@ class ApiDdtPush(DomainAPIView):
     def post(self, request: Request, ddt_id: int) -> JsonResponse:
         user = getattr(request.user, "username", None) or None
         return success_response(ddt_service.push_a_commessa(int(ddt_id), user=user))
+
+
+# View dal factory condiviso `build_riepilogo_iva_view` (estrazione
+# regola-del-2 dei cloni preventivi/ordini/ddt). La closure legge il global
+# di modulo a call-time: i patch dei test sul service restano validi.
+ApiDdtRiepilogoIva = build_riepilogo_iva_view(
+    schema_prefix="Ddt",
+    url_kwarg="ddt_id",
+    list_call=lambda ddt_id: ddt_service.list_riepilogo_iva(ddt_id),
+    doc="""GET /api/v1/vendite/ddt/<id>/riepilogo-iva/
+
+    Restituisce il riepilogo IVA del DDT: una riga per gruppo aliquota
+    (natura/esigibilita/split sempre NULL) con imponibile e imposta aggregati
+    e arrotondati a 2 decimali sull'aggregato per aliquota (regola fiscale:
+    DPR 633/72 art. 21 + DM 24/12/93, identica a preventivi/ordini). Lettura
+    pura dalla view derivata `vendite.vw_ddt_riepilogo_iva_dettaglio`, nessun
+    side-effect; le righe con prezzo NULL (DDT solo di trasporto) sono escluse
+    in vista: DDT non valorizzato -> riepilogo vuoto.
+
+    Area `vendite` livello LETTURA sufficiente.
+    """,
+)
 
 
 class ApiDdtRighe(DomainAPIView):

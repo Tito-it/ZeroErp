@@ -22,6 +22,7 @@ from django.db import connection
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
+from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
 
 
 # Scopo: Whitelist colonne ORDER BY per la lista ordini (SQL injection safe).
@@ -45,19 +46,25 @@ _ORDER_COLS_ORDINI: dict[str, str] = {
 }
 
 
-class OrdiniRepository(ComponentiRepositoryMixin):
+class OrdiniRepository(ComponentiRepositoryMixin, RiepilogoIvaRepositoryMixin):
     """Repository ordini di vendita.
 
     Eredita da `ComponentiRepositoryMixin` per il CRUD componenti BoM
     modello unificato (`ordini_righe_componenti`). I metodi specifici
     `init_componenti_riga` (chiama `fn_ordine_riga_componenti_init`) e
     `preview_componenti_riga` (chiama `fn_ordine_riga_componenti_preview`)
-    sono definiti localmente.
+    sono definiti localmente. Eredita da `RiepilogoIvaRepositoryMixin` la
+    lettura del riepilogo IVA (vista derivata on-the-fly dalle righe attive,
+    nessun trigger: a differenza dei preventivi non espone `id` tecnico).
     """
 
     # Configurazione mixin componenti (tabella + FK riga padre).
     _componenti_table_name = "vendite.ordini_righe_componenti"
     _componenti_fk_riga = "riga_ordine_id"
+
+    # Configurazione mixin riepilogo IVA.
+    _riepilogo_iva_vista = "vendite.vw_ordini_riepilogo_iva_dettaglio"
+    _riepilogo_iva_fk_documento = "ordine_id"
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_ordini_lista)
@@ -329,30 +336,6 @@ class OrdiniRepository(ComponentiRepositoryMixin):
         with connection.cursor() as cursor:
             cursor.execute(sql, [riga_id])
             return row_to_dict(cursor)
-
-    # Scopo: Restituisce il riepilogo IVA aggregato dell'ordine dalla view
-    #        derivata `vendite.vw_ordini_riepilogo_iva_dettaglio`. Una riga per
-    #        gruppo aliquota; natura/esigibilita/split sono sempre NULL (shape
-    #        allineata a vw_preventivi_riepilogo_iva_dettaglio). Imponibile e
-    #        imposta sono ROUND 2 sull'aggregato per aliquota (regola fiscale
-    #        DPR 633/72 art. 21 + DM 24/12/93, identica ai preventivi). La view
-    #        ricalcola dalle righe attive: il chiamante legge solo lo stato
-    #        corrente, non orchestra alcun ricalcolo. A differenza dei
-    #        preventivi la view ordini non espone un `id` tecnico (chiave logica
-    #        ordine_id + iva_id).
-    def list_riepilogo_iva(self, ordine_id: int) -> list[dict[str, Any]]:
-        sql = """
-            SELECT ordine_id, iva_id, iva_codice, iva_descrizione,
-                   iva_aliquota, natura_id, natura_codice,
-                   esigibilita, split_payment,
-                   imponibile, imposta, arrotondamento, totale_riga
-              FROM vendite.vw_ordini_riepilogo_iva_dettaglio
-             WHERE ordine_id = %s
-             ORDER BY iva_aliquota NULLS LAST, iva_id NULLS LAST
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [ordine_id])
-            return rows_to_list(cursor)
 
     # Scopo: Load atomico di un componente con scope completo (componente →
     #        riga → ordine) in un'unica query JOIN, per i guard del service.

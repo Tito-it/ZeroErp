@@ -38,6 +38,7 @@ import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
+import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
 import DdtForm from './DdtForm.vue'
 import DdtRigheTable from './DdtRigheTable.vue'
 import DdtNoteDrawer from './DdtNoteDrawer.vue'
@@ -65,6 +66,17 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
 const detail = ref(null)
+
+// Riepilogo IVA aggregato per aliquota (lettura da `vw_ddt_riepilogo_iva_dettaglio`).
+// Auto-popolato a ogni loadDetail e ogni `@changed` delle righe: la vista DB
+// e' la single source (regola fiscale DPR 633/72 art. 21). Le righe con prezzo
+// NULL (DDT solo di trasporto) sono escluse in vista: riepilogo vuoto -> nascosto.
+const riepilogoIva = ref([])
+// Pannello visibile quando c'e' almeno una riga aggregata. Il footer della
+// RiepilogoIvaTable mostra gia' totale imponibile + imposta + totale documento.
+const showRiepilogoIva = computed(
+  () => Array.isArray(riepilogoIva.value) && riepilogoIva.value.length > 0,
+)
 const noteDrawerVisible = ref(false)
 
 // Auto-save bozza: in CREATE, appena il cliente (BA) e' valorizzato, il drawer
@@ -198,6 +210,21 @@ async function loadDetail(id = null) {
     } catch {
       // Resto: l'autocomplete parte vuoto, l'operatore puo' ri-selezionare.
     }
+  }
+  // Riepilogo IVA: la vista DB ricalcola dalle righe attive valorizzate a ogni
+  // mutazione; qui leggiamo lo stato corrente (best-effort).
+  await loadRiepilogoIva(targetId)
+}
+
+// Scopo: Carica il riepilogo IVA aggregato (best-effort: in caso di errore il
+//        pannello resta vuoto/nascosto, il resto del drawer non e' impattato).
+async function loadRiepilogoIva(targetId = null) {
+  const id = targetId ?? effectiveDdtId.value
+  if (!id) return
+  try {
+    riepilogoIva.value = await store.loadRiepilogoIva(id)
+  } catch {
+    riepilogoIva.value = []
   }
 }
 
@@ -504,6 +531,15 @@ const drawerActions = computed(() => {
           :is-modificabile="canEditRighe && !isReadonly"
           @changed="loadDetail()"
           @form-aperto="(v) => { formRigaAperto = v }" />
+
+        <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21).
+             Visibile con almeno una riga valorizzata (righe prezzo NULL escluse
+             in vista: DDT solo di trasporto -> pannello nascosto). Componente
+             riusabile cross-dominio condiviso con preventivi/ordini. -->
+        <template v-if="showRiepilogoIva">
+          <Divider />
+          <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
+        </template>
       </template>
 
       <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto"
