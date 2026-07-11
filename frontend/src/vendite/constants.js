@@ -64,33 +64,10 @@ export const STATO_CONTRATTO = Object.freeze({
   CESSATO: 'CESSATO',
 })
 
-// Stati contratto con documento PDF generato (post-attivazione): usato da
-// `EntityPdfButton` come `stati-con-documento`.
-export const STATI_CONTRATTO_CON_DOCUMENTO = Object.freeze([
-  STATO_CONTRATTO.ATTIVO,
-  STATO_CONTRATTO.CESSATO,
-])
-
-// Stati contratto con anteprima PDF disponibile (DRAFT): usato da
-// `EntityPdfButton` come `stati-preview`.
-export const STATI_CONTRATTO_ANTEPRIMA_PDF = Object.freeze([
-  STATO_CONTRATTO.DRAFT,
-])
-
-// Stati preventivo con documento PDF generato (post-emissione).
-export const STATI_PREVENTIVO_CON_DOCUMENTO = Object.freeze([
-  STATO_PREVENTIVO.EMESSO,
-  STATO_PREVENTIVO.ACCETTATO,
-  STATO_PREVENTIVO.EVASO,
-  STATO_PREVENTIVO.RIFIUTATO,
-  STATO_PREVENTIVO.SCADUTO,
-  STATO_PREVENTIVO.ANNULLATO,
-])
-
-// Stati preventivo con anteprima PDF disponibile.
-export const STATI_PREVENTIVO_ANTEPRIMA_PDF = Object.freeze([
-  STATO_PREVENTIVO.DRAFT,
-])
+// Mappa stato→modalita'-PDF di contratti e preventivi ora DATA-DRIVEN via
+// capability `pdf` di `fn_available_actions_{contratto,preventivo}`
+// (`config.stati_doc_{contratti,preventivi}.pdf_mode`), consumata da
+// `EntityPdfButton`: niente piu' liste di stati hardcoded qui.
 
 // Chiave nel meta della pratica APPROVAZIONE_PREZZO che linka la riga
 // preventivo target. Coerente col BE

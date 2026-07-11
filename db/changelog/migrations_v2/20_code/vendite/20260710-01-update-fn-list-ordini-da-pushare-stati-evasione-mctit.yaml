@@ -1,0 +1,189 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Fix «orfano da push» su ordine trigger CONFERMATO evaso (piano
+# piano-db-fix-orfano-push-ordine-confermato.md §4.1, decoupling
+# fatturazione <-> spedizione — decisione Tid 2026-07-10).
+#
+# PRIMA: eleggibilita' push vincolata a stato documento = CONFERMATO
+#        -> l'evasione in DDT (PARZIALMENTE_EVASO/EVASO) chiudeva la
+#        finestra di push e l'ordine restava non fatturabile (orfano:
+#        il DDT ordine-sourced con src_trigger=CONFERMATO e' escluso
+#        by design da fn_list_ddt_da_pushare).
+# DOPO:  predicato state-agnostic sull'asse spedizione: esclusi solo
+#        DRAFT/ANNULLATO (documento commercialmente inesistente) +
+#        FATTURATO (cintura). Invariati: filtro
+#        fatturazione_trigger='CONFERMATO' (XOR con DDT preservato),
+#        NOT EXISTS ... EMESSA (anti doppia fatturazione), guard
+#        righe attive/qta/prezzo, firma.
+# CREATE OR REPLACE (firma invariata). Corpo base: doc auto-gen
+# (rev 20260628-13, lookup per codice_interno).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260710-01-update-fn-list-ordini-da-pushare-stati-evasione-mctit.yaml
+
+  - changeSet:
+      id: 20260710-01-update-fn-list-ordini-da-pushare-stati-evasione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_list_ordini_da_pushare: eleggibilita' push sganciata dallo stato di
+        spedizione (fix orfano trigger CONFERMATO evaso). Esclusi solo
+        DRAFT/ANNULLATO/FATTURATO; XOR con DDT e NOT EXISTS EMESSA invariati.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_list_ordini_da_pushare(
+                  p_competenza_mese    date                                DEFAULT NULL::date,
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE  DEFAULT NULL::bigint,
+                  p_limit              integer                             DEFAULT NULL::integer,
+                  p_ordine_id          vendite.ordini.id%TYPE              DEFAULT NULL::bigint)
+               RETURNS TABLE(
+                  ordine_id                   vendite.ordini.id%TYPE,
+                  ordine_uid                  vendite.ordini.uid%TYPE,
+                  riga_id                     vendite.ordini_righe.id%TYPE,
+                  billing_account_id          vendite.ordini.billing_account_id%TYPE,
+                  utility_id                  anagrafiche.billing_account.utility_id%TYPE,
+                  emittente_soggetto_ruolo_id bigint,
+                  competenza_dal              date,
+                  competenza_al               date,
+                  fatturazione_immediata      boolean,
+                  sorgente_tipo_id            config.sorgenti.id%TYPE,
+                  sorgente_uid                text,
+                  segment_key                 character varying,
+                  articolo_id                 vendite.ordini_righe.articolo_id%TYPE,
+                  istanza_utility_id          anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  data_attivita               date,
+                  uom_id                      catalogo.articoli.uom_id%TYPE,
+                  quantita                    vendite.ordini_righe.quantita%TYPE,
+                  qta_operativa               vendite.ordini_righe.qta_operativa%TYPE,
+                  uom_operativa_id            vendite.ordini_righe.uom_operativa_id%TYPE,
+                  factor_to_base              vendite.ordini_righe.factor_to_base%TYPE,
+                  competenza_mese             date,
+                  prezzo_snapshot             vendite.ordini_righe.prezzo_unitario%TYPE,
+                  prezzo_bloccato             boolean,
+                  pricing_mode                character varying,
+                  tipo_movimento              character varying,
+                  tipo_consumo                character varying,
+                  valuta_id                   vendite.ordini.valuta_id%TYPE,
+                  meta                        jsonb,
+                  tipo_doc_fiscale_id         config.sorgenti.tipo_doc_fiscale_id%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+                v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
+              BEGIN
+                -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente/stato
+                -- risolti per codice_interno (immutabile), non per codice (mutabile).
+                -- rev 2026-07-10 (fix orfano, piano-db-fix-orfano-push-ordine-confermato §4.1):
+                -- l'eleggibilita' push NON dipende piu' dallo stato di spedizione
+                -- (CONFERMATO/PARZIALMENTE_EVASO/EVASO/...): per trigger CONFERMATO
+                -- si fattura l'ordine confermato, la spedizione e' ortogonale.
+                -- Esclusi solo DRAFT/ANNULLATO (doc commercialmente inesistente)
+                -- e FATTURATO (cintura). L'anti doppia fatturazione resta il
+                -- NOT EXISTS su commesse_attivita EMESSA (verita' di billing).
+                IF p_ordine_id IS NOT NULL AND p_ordine_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_ordini_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
+                    jsonb_build_object('parametro', 'p_ordine_id', 'valore', p_ordine_id),
+                    NULL::uuid,
+                    'p_ordine_id', p_ordine_id::text
+                  );
+                END IF;
+
+                SELECT s.id, s.tipo_doc_fiscale_id
+                  INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
+                FROM config.sorgenti s
+                WHERE s.codice_interno = 'ORDINE_VENDITA' AND s.attivo IS TRUE LIMIT 1;
+
+                IF v_sorgente_tipo_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_ordini_da_pushare', 'E_CODICE',
+                    jsonb_build_object('codice', 'ORDINE_VENDITA'),
+                    NULL::uuid, 'ORDINE_VENDITA', 'config.sorgenti'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  o.id, o.uid, or_r.id,
+                  o.billing_account_id,
+                  ba.utility_id,
+                  anagrafiche.fn_get_emittente_fiscale_id(o.billing_account_id),
+                  o.data, o.data,
+                  FALSE,
+                  v_sorgente_tipo_id,
+                  o.uid::text,
+                  ('ORD:' || o.uid::text || ':R:' || or_r.id::text)::varchar,
+                  or_r.articolo_id,
+                  ba.istanza_utility_id,
+                  o.data,
+                  -- uom_id canonica da catalogo.articoli (fix bug proiezione NULL)
+                  a.uom_id,
+                  or_r.quantita,
+                  or_r.qta_operativa,
+                  or_r.uom_operativa_id,
+                  COALESCE(or_r.factor_to_base, 1::numeric),
+                  date_trunc('month', o.data)::date,
+                  or_r.prezzo_unitario,
+                  TRUE,
+                  'FIXED'::varchar,
+                  'NORMALE'::varchar,
+                  'CONGUAGLIO'::varchar,
+                  o.valuta_id,
+                  jsonb_build_object(
+                    'ordine_numero',       o.numero,
+                    'ordine_anno',         o.anno,
+                    'ordine_serie',        o.serie,
+                    'tipo_commessa',       'AUTO',
+                    'policy_fatturazione', 'DA_DOCUMENTO'
+                  ),
+                  v_tipo_doc_fiscale_id
+                FROM vendite.ordini o
+                JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                -- rev 2026-07-10: join stato solo per ESCLUDERE i non eleggibili
+                -- (state-agnostic sull'asse spedizione, no whitelist fragile).
+                JOIN config.stati_doc_ordini sdo
+                  ON sdo.id = o.stato_doc_ordine_id
+                 AND sdo.codice_interno NOT IN ('DRAFT', 'ANNULLATO', 'FATTURATO')
+                JOIN vendite.ordini_righe or_r
+                  ON or_r.ordine_id = o.id
+                 AND or_r.attivo IS TRUE
+                 AND or_r.quantita > 0
+                 AND or_r.prezzo_unitario >= 0
+                JOIN catalogo.articoli a ON a.id = or_r.articolo_id
+                WHERE o.billing_account_id IS NOT NULL
+                  AND o.fatturazione_trigger = 'CONFERMATO'
+                  AND (p_competenza_mese IS NULL OR date_trunc('month', o.data)::date = p_competenza_mese)
+                  AND (p_billing_account_id IS NULL OR o.billing_account_id = p_billing_account_id)
+                  AND (p_ordine_id IS NULL OR o.id = p_ordine_id)
+                  AND NOT EXISTS (
+                    SELECT 1 FROM vendite.commesse_attivita ca
+                    WHERE ca.segment_key = 'ORD:' || o.uid::text || ':R:' || or_r.id::text
+                      AND ca.stato_emissione = 'EMESSA'
+                  )
+                ORDER BY o.id, or_r.id
+                LIMIT p_limit;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_ordini_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ordine_id bigint)
+              IS 'Lista righe ordine eligible al push su commessa (fatturazione_trigger CONFERMATO; stato documento libero sull''asse spedizione, esclusi DRAFT/ANNULLATO/FATTURATO). uom_id da catalogo.articoli (canonica). p_ordine_id opzionale: NULL=batch globale, NOT NULL=singolo ordine. Filtri in AND. Esclude EMESSA via NOT EXISTS. rev 2026-07-10: fix orfano trigger CONFERMATO evaso (decoupling fatturazione/spedizione, piano-db-fix-orfano-push-ordine-confermato).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: ri-applicare la definizione della rev 20260628-13
+              -- (vincolo stato = CONFERMATO). Non duplicata qui per brevita'.
+              SELECT 1;

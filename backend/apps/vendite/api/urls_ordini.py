@@ -22,6 +22,7 @@ from apps.vendite.api.views_ordini import (
     ApiOrdineCambiaStato,
     ApiOrdineConferma,
     ApiOrdineDetail,
+    ApiOrdineGeneraDdt,
     ApiOrdinePerPratica,
     ApiOrdinePush,
     ApiOrdineRiepilogoIva,
@@ -60,7 +61,7 @@ urlpatterns = [
     # allegati, multipart, atomica). Flusso target della famiglia vendite
     # (§6 brief-ordini-stampa.md). `/conferma/` resta come API di servizio
     # (sola transizione, riusata internamente da `emetti`).
-    path("<int:ordine_id>/emetti/", ApiOrdineEmetti.as_view(),
+    path("<int:sorgente_id>/emetti/", ApiOrdineEmetti.as_view(),
          name="vendite-ordine-emetti"),
     path("<int:ordine_id>/conferma/", ApiOrdineConferma.as_view(),
          name="vendite-ordine-conferma"),
@@ -68,6 +69,11 @@ urlpatterns = [
          name="vendite-ordine-cambia-stato"),
     path("<int:ordine_id>/push/", ApiOrdinePush.as_view(),
          name="vendite-ordine-push"),
+
+    # Evasione: genera un DDT (DRAFT) dall'ordine (dominio sorgente, come
+    # genera-ordine sta nei preventivi). Logica in ddt_service.
+    path("<int:ordine_id>/genera-ddt/", ApiOrdineGeneraDdt.as_view(),
+         name="vendite-ordine-genera-ddt"),
 
     # Righe
     path("<int:ordine_id>/righe/", ApiOrdineRighe.as_view(),
@@ -88,19 +94,19 @@ urlpatterns = [
 
     # Documenti generati (stampa PDF) — motore `documenti`, sorgente
     # ORDINE_VENDITA. Clone della catena preventivi/offerte. §12 analisi.
-    path("<int:ordine_id>/documenti/", ApiOrdineDocumentiList.as_view(),
+    path("<int:sorgente_id>/documenti/", ApiOrdineDocumentiList.as_view(),
          name="vendite-ordine-documenti-list"),
-    path("<int:ordine_id>/documenti/genera/", ApiOrdineDocumentoGenera.as_view(),
+    path("<int:sorgente_id>/documenti/genera/", ApiOrdineDocumentoGenera.as_view(),
          name="vendite-ordine-documenti-genera"),
-    path("<int:ordine_id>/documenti/anteprima/", ApiOrdineDocumentoAnteprima.as_view(),
+    path("<int:sorgente_id>/documenti/anteprima/", ApiOrdineDocumentoAnteprima.as_view(),
          name="vendite-ordine-documenti-anteprima"),
-    path("<int:ordine_id>/documenti/<int:documento_id>/file/",
+    path("<int:sorgente_id>/documenti/<int:documento_id>/file/",
          ApiOrdineDocumentoFile.as_view(),
          name="vendite-ordine-documenti-file"),
-    path("<int:ordine_id>/documenti/<int:documento_id>/allegati/",
+    path("<int:sorgente_id>/documenti/<int:documento_id>/allegati/",
          ApiOrdineDocumentoAllegati.as_view(),
          name="vendite-ordine-documenti-allegati"),
-    path("<int:ordine_id>/documenti/<int:documento_id>/file/<int:file_id>/",
+    path("<int:sorgente_id>/documenti/<int:documento_id>/file/<int:file_id>/",
          ApiOrdineDocumentoFileDownload.as_view(),
          name="vendite-ordine-documenti-file-download"),
 

@@ -16,7 +16,7 @@
 >
 > **Origine**: riverifica dell'analisi iniziale
 > ([analisi-pratiche-domini-anello3](../work-in-progress/analisi-pratiche-domini-anello3.md),
-> [gestione-pratiche-v2](../work-in-progress/gestione-pratiche-v2.md),
+> [gestione-pratiche-v2](gestione-pratiche-v2.md),
 > [crm-ticketing-pratiche](../work-in-progress/crm-ticketing-pratiche.md)) rispetto a 5 esigenze
 > emerse il 2026-06-11, dopo la validazione runtime del giro pratica
 > PREVENTIVI. Scopo delle pratiche: **concentrare il più possibile le attività

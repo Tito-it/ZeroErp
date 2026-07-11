@@ -29,7 +29,7 @@
 > MOSTRA/GUIDA), [analisi-pratiche-valutazione-stato](analisi-pratiche-valutazione-stato.md) (V10 + Problema 2
 > «variazione per azienda»), [brief-design-workflow-definizioni-versionate](../work-done/brief-design-workflow-definizioni-versionate.md)
 > (edizioni versionate — lo strumento con cui si *definiscono* le pratiche), il cantiere editor
-> [brief-fe-fase3-editor-definizioni-workflow](brief-fe-fase3-editor-definizioni-workflow.md).
+> [brief-fe-fase3-editor-definizioni-workflow](../work-done/brief-fe-fase3-editor-definizioni-workflow.md).
 
 ---
 

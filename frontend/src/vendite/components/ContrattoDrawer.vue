@@ -43,10 +43,6 @@ import ContrattoEmissioneDialog from './dialogs/ContrattoEmissioneDialog.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
 import EntityPdfButton from '../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../documenti/constants'
-import {
-  STATI_CONTRATTO_ANTEPRIMA_PDF,
-  STATI_CONTRATTO_CON_DOCUMENTO,
-} from '../constants'
 import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
 import AmbitoContrattoSelect from './AmbitoContrattoSelect.vue'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
@@ -717,9 +713,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.CONTRATTO"
               :entity-id="props.contrattoId"
-              :stato-codice="detail.stato_codice_interno"
-              :stati-preview="STATI_CONTRATTO_ANTEPRIMA_PDF"
-              :stati-con-documento="STATI_CONTRATTO_CON_DOCUMENTO"
+              :pdf="detail.pdf"
               i18n-prefix="contratti.pdf"
               :dialog-title="detail.numero
                 ? t('contratti.pdf.dialog_title', { numero: detail.numero })

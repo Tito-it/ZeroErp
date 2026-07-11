@@ -19,7 +19,7 @@
 > Riferimenti:
 >
 > * [../work-done/sviluppo-preventivi.md](../work-done/sviluppo-preventivi.md) — preventivo vendita completato (pattern documentale di riferimento: stati, revisioni, note, indirizzi snapshot, integrazione pratiche)
-> * [gestione-commesse-v2.md](gestione-commesse-v2.md) — architettura commesse e pipeline
+> * [gestione-commesse-v2.md](../work-done/gestione-commesse-v2.md) — architettura commesse e pipeline
 > * [docs/it/dev/api.md](../api.md) — linee guida API
 > * [docs/it/dev/frontend/frontend-standards.md](../frontend/frontend-standards.md) — standard frontend
 

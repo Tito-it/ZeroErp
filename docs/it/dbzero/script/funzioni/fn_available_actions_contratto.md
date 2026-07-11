@@ -13,13 +13,16 @@ CREATE OR REPLACE FUNCTION script.fn_available_actions_contratto(p_contratto_id 
  LANGUAGE plpgsql
  STABLE
 AS $function$
--- Scopo: capability del contratto per il detail API (pattern data-driven,
---   come fn_available_actions_preventivo/offerta). Vedi storico 20260528-05.
+-- Scopo: capability del contratto per il detail API (pattern data-driven).
+--   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+--   config.stati_doc_contratti (bottone PDF data-driven via capabilities).
 DECLARE
     v_stato_id     vendite.contratti.stato_doc_contratto_id%TYPE;
     v_stato_cod    config.stati_doc_contratti.codice_interno%TYPE;
     v_stato_codice config.stati_doc_contratti.codice%TYPE;
     v_valido_dal   vendite.contratti.valido_dal%TYPE;
+    v_pdf_mode     config.stati_doc_contratti.pdf_mode%TYPE;
+    v_pdf_allow    config.stati_doc_contratti.pdf_allow_allegati%TYPE;
     v_actions      jsonb;
     v_can_edit     boolean;
     v_can_righe    boolean;
@@ -35,9 +38,11 @@ DECLARE
         '"tipo_variazione_globale","valore_variazione_globale",'
         '"categoria_cliente_id_snapshot","meta"]'::jsonb;
 BEGIN
-    -- Stato corrente: codice_interno (logica) + codice (display) + valido_dal.
-    SELECT c.stato_doc_contratto_id, sdc.codice_interno, sdc.codice, c.valido_dal
-      INTO v_stato_id, v_stato_cod, v_stato_codice, v_valido_dal
+    -- Stato corrente: codice_interno + codice + valido_dal + capability PDF.
+    SELECT c.stato_doc_contratto_id, sdc.codice_interno, sdc.codice, c.valido_dal,
+           sdc.pdf_mode, sdc.pdf_allow_allegati
+      INTO v_stato_id, v_stato_cod, v_stato_codice, v_valido_dal,
+           v_pdf_mode, v_pdf_allow
       FROM vendite.contratti c
       JOIN config.stati_doc_contratti sdc ON sdc.id = c.stato_doc_contratto_id
      WHERE c.id = p_contratto_id;
@@ -85,7 +90,6 @@ BEGIN
         FROM jsonb_array_elements(v_actions) AS elem;
     END IF;
 
-    -- Editabilita': la logica usa v_stato_cod = codice_interno (immutabile).
     v_can_edit  := (v_stato_cod IN ('DRAFT', 'ATTIVO'));
     v_can_righe := (v_stato_cod = 'DRAFT');
     v_non_edit  := CASE v_stato_cod
@@ -100,6 +104,7 @@ BEGIN
         'can_edit_testata',    v_can_edit,
         'can_edit_righe',      v_can_righe,
         'non_editable_fields', v_non_edit,
+        'pdf',                 jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
         'stato_codice_interno', v_stato_cod,
         'stato_codice',         v_stato_codice
     );
@@ -107,7 +112,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_contratto(p_contratto_id bigint)
-IS 'Capability contratto per detail API: available_actions (da config.transizioni_stati_contratti), can_change_state, can_edit_testata/righe, non_editable_fields. Espone stato_codice_interno (codice_interno, logica) e stato_codice (codice, display). DRAFT espone attiva+annulla; arricchimento date per requires_date (cessa). rev 2026-06-28 (naming stato).';
+IS 'Capability contratto per detail API: available_actions + can_change_state + can_edit_testata/righe + non_editable_fields + stato_codice_interno + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_contratti (bottone PDF data-driven via capabilities).';
 ```
 
 ---

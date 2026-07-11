@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Addendum SCOPE §15 — policy RLS su vendite.ddt (DRY-RUN, scope emittente).
+#
+# Mirror ESATTO dello stato attuale di vendite.ordini: la policy ef-whitelist
+# esiste ma la RLS **non e' attivata** (in 20260601-39 ordini/preventivi vengono
+# ENABLE poi subito DISABLE -> stato permanente DISABLED). L'attivazione
+# (ENABLE + FORCE) e' una scelta di **ondata coordinata** cross-tabella, non
+# per-tabella, per non rompere batch/pgTAP (owner soggetto a FORCE) e branch
+# portale/shop. Qui si crea SOLO la policy.
+#
+# Con RLS disabilitata la protezione attiva della lista e' il **filtro
+# applicativo BE** (colonna emittente_fiscale_id in vw_ddt_lista, 20260709-20:
+#   v.emittente_fiscale_id = ANY(script.fn_get_emittenti_scope_pk_ids(auth_user_id)) )
+# La policy e' il futuro layer di difesa-in-profondita' DB (dry-run finche' ENABLE).
+#
+# policy PERMISSIVE FOR ALL rls_ddt_ef_whitelist: operatore vede/scrive solo DDT
+# con emittente in whitelist (script.fn_scope_ef_whitelist, adapter PK). Gate
+# OPERATORE fail-closed; additiva (OR) a eventuali future policy portale/shop.
+# Verifica funzionale: db/pgtap/rls/test-rls-ddt-ef-whitelist-write.sql
+# (attiva ENABLE+FORCE locale alla tx).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/vendite/20260709-21-enable-rls-ddt-ef-whitelist-mctit.yaml
+
+    - changeSet:
+          id: 20260709-21-create-policy-rls-ddt-ef-whitelist
+          author: mctit
+          runOnChange: true
+
+          validCheckSums:
+              - ANY
+          comment: >
+              Policy rls_ddt_ef_whitelist su vendite.ddt (FOR ALL, scope emittente
+              operatore via fn_scope_ef_whitelist) + ENABLE ROW LEVEL SECURITY (NO
+              FORCE), a parita' con ordini/preventivi/fatture (enabled=t, forced=f).
+              Owner bypassa finche' non arriva il FORCE (ondata). Addendum §15.
+          preConditions:
+              - onFail: HALT
+              - and:
+                    - columnExists:
+                          schemaName: vendite
+                          tableName: ddt
+                          columnName: emittente_fiscale_id
+                    - sqlCheck:
+                          expectedResult: 1
+                          sql: |
+                              SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                               WHERE n.nspname='script' AND p.proname='fn_scope_ef_whitelist';
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        DROP POLICY IF EXISTS rls_ddt_ef_whitelist ON vendite.ddt;
+                        CREATE POLICY rls_ddt_ef_whitelist ON vendite.ddt
+                            AS PERMISSIVE
+                            FOR ALL
+                            USING (
+                                current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                                AND script.fn_scope_ef_whitelist(
+                                    NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                    emittente_fiscale_id
+                                )
+                            )
+                            WITH CHECK (
+                                current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                                AND script.fn_scope_ef_whitelist(
+                                    NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                    emittente_fiscale_id
+                                )
+                            );
+
+                        COMMENT ON POLICY rls_ddt_ef_whitelist ON vendite.ddt IS
+                            'RLS: operatore vede/scrive solo DDT con emittente in whitelist '
+                            '(adapter PK fn_scope_ef_whitelist), gate OPERATORE fail-closed. '
+                            'Mirror rls_ordini_ef_whitelist. §15, rev 2026-07-10.';
+
+                        -- Parita' con ordini/preventivi/fatture (relrowsecurity=t,
+                        -- relforcerowsecurity=f): RLS abilitata ma NON forzata -> l'owner
+                        -- (zeroerp_app) la bypassa finche' non arriva il FORCE (ondata
+                        -- coordinata). Senza FORCE l'owner del pgTAP bypassa: test invariati.
+                        ALTER TABLE vendite.ddt ENABLE ROW LEVEL SECURITY;
+          rollback:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    sql: |
+                        ALTER TABLE vendite.ddt DISABLE ROW LEVEL SECURITY;
+                        DROP POLICY IF EXISTS rls_ddt_ef_whitelist ON vendite.ddt;

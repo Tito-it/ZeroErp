@@ -18,7 +18,7 @@
 >
 > Riferimenti:
 >
-> * [gestione-commesse-v2.md](../work-in-progress/gestione-commesse-v2.md) — architettura commesse e pipeline fatturazione
+> * [gestione-commesse-v2.md](gestione-commesse-v2.md) — architettura commesse e pipeline fatturazione
 > * [../work-done/gestione-articoli.md](gestione-articoli.md) — dominio catalogo completato (articoli, UoM, BoM, note)
 > * [docs/it/guide/gestione-commesse.md](../../guide/gestione-commesse.md) — API commesse DB layer
 > * [docs/it/guide/fatturazione.md](../../guide/fatturazione.md) — pipeline fatturazione

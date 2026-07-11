@@ -1,8 +1,9 @@
 # Brief FE — DDT vendita: lista, drawer, evasione da ordine (gemello ordini)
 
 > **Tipo**: brief frontend (target `dev/backend-tid`) · **Data**: 2026-07-09 · **Owner**: Tid
+> **Stato**: 🟡 APERTO — slice principale + PDF realizzati (§11–§12), ma **backlog residuo aperto** (§13): `DdtIndirizziPanel`, riepilogo IVA, export lista. Resta in `work-in-progress`.
 > **Design-of-record**: [analisi-ddt-vendita-stato-e-sviluppi.md](analisi-ddt-vendita-stato-e-sviluppi.md)
-> · **Prerequisiti**: [brief DB](brief-db-ddt-vendita-evasione-e-stati.md) + [brief BE](brief-be-ddt-vendita.md) applicati.
+> · **Prerequisiti**: [brief DB](../work-done/brief-db-ddt-vendita-evasione-e-stati.md) + [brief BE](brief-be-ddt-vendita.md) applicati.
 > **Principio guida (D-4)**: **clonare `frontend/src/vendite/ordini/`** — il
 > sotto-dominio più moderno e auto-contenuto; stessa impronta, logica DDT diversa.
 > Riuso massimo dei BB, mai varianti locali ([[feedback_lista_pattern_standard]],
@@ -143,11 +144,102 @@ Blocco `vendite.ddt.*` gemello di `vendite.ordini.*`: `titolo/ddt/nuovo_ddt`,
 4. `OrdineEvasionePanel` (genera DDT da ordine) + azioni stato data-driven.
 5. Indirizzi + PDF: slice successiva (predisposti header/`EntityPdfButton`/`SORGENTE_CODES.DDT`).
 
-## 10. Punti aperti
+## 10. Punti aperti — chiusi in realizzazione
 
-- **Config lista `vendite.ddt`** (`ui.lista_definizione` + colonne): serve il seed della
-  definizione lista lato DB/config perché `<ListaConfigurabile codice="vendite.ddt">`
-  renda le colonne. Coordinare col team DB/UI (gemello `vendite.ordini`).
-- **`DdtIndirizziPanel`**: editing pieno vs snapshot read-only nella prima slice (vedi BE §11).
-- **PDF**: componenti header (`EntityPdfButton`) montati ma nascosti finché la fase PDF non è attiva (D-3).
+- **Config lista `vendite.ddt`** — ✅ seedata dal DB (`ui.lista_definizione` id 8 + 19 colonne).
+- **`DdtIndirizziPanel`** — rimandato alla slice standalone/PDF (non realizzato ora).
+- **PDF** — ✅ **fatto** (2026-07-11, slice successiva): `EntityPdfButton` attivo nel `DdtDrawer`, stampa PDF DDT operativa (5° dominio documenti).
+
+## 11. Consuntivo realizzazione (2026-07-10) — ✅ REALIZZATO
+
+Dominio FE completo sul working tree `dev/backend-tid` (**non committato**, il commit lo fa
+Tid). **Build Vite verde** (warning chunk-size pre-esistente non correlato).
+
+### File creati — `frontend/src/vendite/ddt/`
+`views/DdtView.vue`, `stores/ddt.js` (userScoped, `data_da` anno-1, `useListaEmptyStateFetch`),
+`api/ddtApi.js` (`makeComponentiBomApi`), `constants.js` (`STATO_DDT`), `components/`:
+`DdtSearchTable`, `DdtDrawer`, `DdtForm` (+sezione trasporto), `DdtRigheTable`, `DdtRigaForm`,
+`DdtRigaComponentiPanel`, `DdtNoteDrawer`, `dialogs/DdtEmissioneDialog` (sola conferma, no PDF).
+
+### File creati/modificati — dominio ordine (evasione)
+`components/OrdineEvasionePanel.vue` (nuovo, clone smistamento; mostra Ordinata/Evasa/Residuo,
+default = residuo, "tutto il residuo"→`null`); `api/ordiniApi.js` (`generaDdtFromOrdine`);
+`OrdiniDrawer.vue` (filtro azione `genera_ddt` + montaggio pannello su CONFERMATO/PARZIALMENTE_EVASO);
+`ordini/constants.js` (`STATO_ORDINE.PARZIALMENTE_EVASO` + `STATI_ORDINE_EVADIBILI`).
+
+### Core modificati
+`navigation.js` (voce `ddt`), `router/index.js` (rotta `vendite/ddt`), `core/constants.js`
+(`TAB_ENTITIES.DDT`, `READONLY_MODELS.DDT`), `core/utils/severity.js` (`statoDdtSeverity`),
+`documenti/constants.js` (`SORGENTE_CODES.DDT`), `locales/it.json`+`en.json` (blocco `vendite.ddt.*`
+19 `col_*` + `nav_menu.vendite.ddt` + chiavi evasione).
+
+### BB riusati (nessuna duplicazione, review reuse = 0 finding)
+`ListaConfigurabile`, `useListaConfigurabilePage`, `useStoreFilterBindings`,
+`useListaEmptyStateFetch`, `RigheMasterDetailTable`, `useRigaArticoloComposito`,
+`_shared/componenti/*`, `makeComponentiBomApi`, `_shared/note/VenditeNoteDrawer`,
+`useEntityCapabilities`, `mapAvailableActionsToDrawerActions`, `DrawerActionsBar`,
+`DrawerEntityHeader`, `FormFooter`, `useDrawerAutosaveBozza`, lookup `BillingAccountLookup`/
+`SoggettoRuoloLookup`/`LookupSelect`/`UtilityPerRuoloSelect`.
+
+### Fix da code-review (FE)
+Residuo per riga nel pannello evasione (colonne + `:max`=residuo, preselezione righe evadibili);
+rimossi `defineExpose` irraggiungibile, `STATI_DDT_CON_DOCUMENTO` orfana, `isReadonlyPuro`
+duplicato; toast "DDT generato" senza numero fantasma.
+
+### Fuori scope (predisposto): `ddt_indirizzi` editing, riepilogo IVA, export lista. PDF ✅ fatto (2026-07-11).
+
+## 12. Consuntivo slice 2026-07-11 (valuta + emittente + STAMPA PDF + PDF data-driven) — ✅ REALIZZATO
+
+Estensione FE su `dev/backend-tid` (**non committato**). Build Vite verde; eslint pulito.
+Dettaglio in [[handoff_20260711_ddt_stampa_orfano_refactor]].
+
+### Valuta default + emittente sul `DdtDrawer`
+
+- **Valuta**: `getDdtFormDefaults` (client) + BB condiviso `useBaFormDefaults` (non hand-rolled)
+  → la valuta parte prefillata come su ordini/preventivi (prima era vuota).
+- **Emittente fiscale display-only**: riuso `EmittenteFiscaleField` (`:record`/`:is-edit`/`disabled`);
+  parte VUOTO in create (no preview col default operatore, divergerebbe dall'EF risolto dal trigger
+  dal BA), si valorizza dal detail post-save. FE-only (il detail espone già `emittente_fiscale_id/_codice`).
+
+### STAMPA DDT (PDF) — `EntityPdfButton` attivo nel drawer
+
+`DdtEmissioneDialog` su BB `DocumentoEmissioneDialog` + `EntityPdfButton` nel `DdtDrawer` + client
+`ddtDocumenti` + costanti/i18n. L'emissione DRAFT→EMESSO è multipart (genera PDF + allegati). 5°
+dominio del motore documenti a parità con ordini/preventivi/offerte/contratti.
+
+### PDF data-driven via capabilities — mappa stato→modalità-PDF fuori dal FE
+
+Recepita la slice cross-dominio `pdf {mode, allow_allegati}`
+([piano](../work-done/piano-db-pdf-mode-capabilities-5-domini.md)):
+
+- **`EntityPdfButton`** (BB): interfaccia da `statoCodice` + 3 array `STATI_*` a **un'unica prop
+  `pdf`** = `{mode, allow_allegati}`; enum `PDF_MODE` centralizzato in `documenti/constants.js`
+  (`PREVIEW→anteprima`, `ARCHIVE→'scarica'`, `NONE→disabled`; `allow_allegati` data-driven).
+- **5 drawer** (Ordini/Ddt/Offerta/Contratto/Preventivi): `:pdf="detail.pdf"`, rimossi i passaggi
+  `:stato-codice`/`:stati-*` e gli import.
+- **Lista Ordini** (`OrdiniSearchTable`): `row.pdf_mode === PDF_MODE.ARCHIVE` (colonna
+  `vw_ordini_lista.pdf_mode`), zero BE.
+- **5 `constants.js`**: eliminate tutte le famiglie `STATI_*_{ANTEPRIMA_PDF, CON_DOCUMENTO,
+  APPEND_ALLEGATI}` → nessuna mappa stato→PDF hardcoded residua in vendite.
+
+## 13. Ancora da fare (backlog aperto — brief NON chiuso)
+
+Aree dichiarate "predisposte/fuori scope" nelle slice precedenti (§4, §10–§11) ma **non
+realizzate**. Verificato nel codice 2026-07-11.
+
+- **`DdtIndirizziPanel` (§4) — NON esiste** (nessun file). Sezione indirizzi
+  spedizione/destinatario/vettore con snapshot nel `DdtDrawer`. È il pezzo funzionale più
+  corposo rimasto. **Dipende da BE**: serve CRUD/lettura `ddt_indirizzi` (oggi assente).
+- **Riepilogo IVA (§4) — NON montato**: `RiepilogoIvaTable` non è nel `DdtDrawer`.
+  **Dipende da BE**: manca l'endpoint `GET /vendite/ddt/<id>/riepilogo-iva/` (non presente in
+  `urls_ddt.py`) e il metodo client. Il §4 lo dava predisposto ma non è realizzato né lato BE.
+- **Export lista — ✅ REALIZZATO (2026-07-11)**: `exportDdt` in `ddtApi.js` + wiring
+  `exportFn`/`getExportParams`/`buildExportParams` in `DdtSearchTable` (mirror ordini),
+  `ExportDialog` montato, rimosso il filtro dell'azione `export` dalla toolbar. BE: endpoint
+  `/vendite/ddt/export/` (`ApiDdtExportView`) + `resolve_filtri_export_label` (brief BE §14).
+
+> ⚠️ **Simmetria BE**: i due residui (riepilogo IVA, indirizzi) richiedono prima lavoro
+> **backend** → coordinare con [brief BE §14](brief-be-ddt-vendita.md).
+> Restano fuori scope (tracker §avanzamento): colonna "Emittente" in lista (seed
+> `ui.lista_colonna`) e **slice RESI**.
 </content>

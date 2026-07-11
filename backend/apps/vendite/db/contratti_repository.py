@@ -23,6 +23,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
+from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 
@@ -360,17 +361,16 @@ class ContrattiRepository(ComponentiRepositoryMixin):
         # `vw_contratti_lista` e' `security_invoker=on`: la RLS della tabella
         # base `vendite.contratti` filtra gia' per emittente in scope a
         # livello DB. Questo filtro applicativo si somma (api.md §"Scope
-        # emittente"). `fn_get_emittenti_scope_pk_ids` mappa su PK reale
+        # emittente"). Array risolto UNA volta in Python dal BB condiviso; convenzione PK su
         # `emittenti_fiscali.id` (NON `_sr_ids` = soggetto_ruolo_id);
         # `v.emittente_fiscale_id` e' la PK (memoria
         # `feedback_emittente_pk_vs_soggetto_ruolo`).
-        if auth_user_id is not None:
-            conditions.append(
-                "(script.fn_get_emittenti_scope_pk_ids(%s) IS NULL "
-                "OR v.emittente_fiscale_id = ANY("
-                "script.fn_get_emittenti_scope_pk_ids(%s)))"
-            )
-            params.extend([auth_user_id, auth_user_id])
+        add_emittente_scope_condition(
+            conditions, params,
+            auth_user_id=auth_user_id,
+            column="v.emittente_fiscale_id",
+            convention="pk",
+        )
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

@@ -14,11 +14,7 @@ import { useEntityCapabilities } from '../../../core/composables/useEntityCapabi
 import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { useRevisioniTab } from '../../../core/composables/useRevisioniTab'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
-import {
-  STATI_PREVENTIVO_ANTEPRIMA_PDF,
-  STATI_PREVENTIVO_CON_DOCUMENTO,
-  STATO_PREVENTIVO,
-} from '../../constants'
+import { STATO_PREVENTIVO } from '../../constants'
 import { addDaysToToday, displayDate, toDateString } from '../../../core/utils/date'
 import { formatCurrency } from '../../../core/utils/format'
 import { paramBool, paramInt } from '../../../core/utils/parameterCast'
@@ -880,9 +876,7 @@ const drawerActions = computed(() => {
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.PREVENTIVO"
               :entity-id="effectivePreventivoId"
-              :stato-codice="detail.stato_codice_interno"
-              :stati-preview="STATI_PREVENTIVO_ANTEPRIMA_PDF"
-              :stati-con-documento="STATI_PREVENTIVO_CON_DOCUMENTO"
+              :pdf="detail.pdf"
               i18n-prefix="preventivi.pdf"
             />
           </template>

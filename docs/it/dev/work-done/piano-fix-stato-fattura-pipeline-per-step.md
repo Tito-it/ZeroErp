@@ -77,7 +77,7 @@ Risultato:
 
 > Commit BE: **`8824cafc7`** su `dev/backend-tid` (insieme alla discovery lane a 4 assi e ai
 > fix uuid/grant del workstream batch). Doc orchestrazione aggiornata in
-> `work-in-progress/fatturazione-attivita-progetto.md` (sez. *"Allineamento stato fattura ↔
+> `work-done/fatturazione-attivita-progetto.md` (sez. *"Allineamento stato fattura ↔
 > stato step"*).
 >
 > ⚠️ **Osservazione su DB-2 (reset EMESSA→DRAFT) — da chiarire col team DB.** La fn viva

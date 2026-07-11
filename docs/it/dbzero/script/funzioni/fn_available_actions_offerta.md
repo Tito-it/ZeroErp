@@ -13,59 +13,37 @@ CREATE OR REPLACE FUNCTION script.fn_available_actions_offerta(p_offerta_id bigi
  LANGUAGE plpgsql
  STABLE
 AS $function$
--- Scopo:
---   Capability dell'offerta commerciale per il detail API (pattern
---   data-driven capability layer, specchio di fn_available_actions_preventivo).
---   Calcola le transizioni manuali disponibili leggendo la matrice
---   config.stati_doc_offerte_transizioni (campo meta) e aggiunge hardcoded
---   le azioni speciali non-cambio-stato:
---     - crea_revisione (solo EMESSA): produce rev.N+1 in BOZZA.
---     - push_contratto / genera_ordine (solo ACCETTATA, MUTUAMENTE
---       ESCLUSIVE): un'offerta ACCETTATA genera al massimo UNO tra
---       contratto e ordine. Stessa condizione di abilitazione per
---       entrambe (ACCETTATA + nessun contratto + nessun ordine);
---       la prima generazione disabilita anche l'altra capability.
---       Check cross-dominio su vendite.contratti.offerta_id e
---       vendite.ordini.documento_origine_*. "Esiste" = qualsiasi
---       stato (anche ANNULLATA): l'esclusivita' e' permanente.
---   Fallback sicuro: NULL se l'offerta non esiste (gestito BE come 404).
+-- Scopo: capability offerta commerciale per detail API (data-driven,
+--   specchio di fn_available_actions_preventivo). push_contratto e
+--   genera_ordine mutuamente esclusive (ACCETTATA).
+--   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+--   config.stati_doc_offerte (bottone PDF data-driven via capabilities).
 DECLARE
     v_stato_id    vendite.offerte_commerciali.stato_doc_offerta_id%TYPE;
     v_stato_cod   config.stati_doc_offerte.codice_interno%TYPE;
+    v_pdf_mode    config.stati_doc_offerte.pdf_mode%TYPE;
+    v_pdf_allow   config.stati_doc_offerte.pdf_allow_allegati%TYPE;
     v_actions     jsonb;
     v_can_edit    boolean;
     v_can_rev     boolean;
-    -- Mutua esclusivita' contratto/ordine: presenza dei due documenti
-    -- + flag di abilitazione condiviso dalle due capability.
     v_has_contratto boolean;
     v_has_ordine    boolean;
     v_enabled       boolean;
-    -- push_contratto: capability + reason machine-readable + chiave i18n.
     v_can_push    boolean;
     v_push_reason     text;
     v_push_reason_key text;
-    -- genera_ordine: capability + reason machine-readable + chiave i18n.
     v_can_ordine        boolean;
     v_ordine_reason     text;
     v_ordine_reason_key text;
-
-    -- Campi sempre immutabili: gestiti dal trigger di transizione stato.
-    -- Includono i timestamp valorizzati automaticamente e i campi identita'.
     c_sempre_non_edit CONSTANT jsonb :=
         '["codice","uid","revisione_numero","revisione_padre_id",'
         '"stato_doc_offerta_id","data_emissione","data_accettazione",'
         '"data_rifiuto","data_annullamento","motivazione_rifiuto"]'::jsonb;
-
-    -- Campi bloccati fuori BOZZA (whitelist testata editabile solo in BOZZA).
     c_non_edit_extra CONSTANT jsonb :=
         '["emittente_fiscale_id","billing_account_id","istanza_utility_id",'
         '"utility_id","listino_id","listino_versione_id",'
         '"valore_variazione_globale","tipo_variazione_globale",'
         '"validita_dal","validita_al","meta"]'::jsonb;
-
-    -- Azione speciale hardcoded: crea_revisione (EMESSA).
-    -- Non e' una transizione di stato: produce rev.N+1 in BOZZA
-    -- e marca la rev.N corrente SUPERATA via trigger z90.
     c_action_crea_revisione CONSTANT jsonb := jsonb_build_object(
         'key',                'crea_revisione',
         'target_state',       NULL,
@@ -75,10 +53,6 @@ DECLARE
         'requires_confirm',   true,
         'requires_motivazione', false
     );
-
-    -- Azione speciale hardcoded: push_contratto (ACCETTATA, esclusiva).
-    -- Non e' una transizione di stato: genera un contratto DRAFT
-    -- tramite vendite.fn_push_offerta_a_contratto (1:1 eccezioni + utility).
     c_action_push_contratto CONSTANT jsonb := jsonb_build_object(
         'key',                'push_contratto',
         'target_state',       NULL,
@@ -88,10 +62,6 @@ DECLARE
         'requires_confirm',   true,
         'requires_motivazione', false
     );
-
-    -- Azione speciale hardcoded: genera_ordine (ACCETTATA, esclusiva).
-    -- Non e' una transizione di stato: genera un ordine da questa offerta
-    -- (1:1, brief univocita offerta->ordine). L'offerta resta ACCETTATA.
     c_action_genera_ordine CONSTANT jsonb := jsonb_build_object(
         'key',                'genera_ordine',
         'target_state',       NULL,
@@ -101,11 +71,11 @@ DECLARE
         'requires_confirm',   true,
         'requires_motivazione', false
     );
-
 BEGIN
-    -- Recupera stato corrente dell'offerta.
-    SELECT o.stato_doc_offerta_id, sdo.codice_interno
-      INTO v_stato_id, v_stato_cod
+    -- Stato corrente + capability PDF (pdf_mode/allow_allegati).
+    SELECT o.stato_doc_offerta_id, sdo.codice_interno,
+           sdo.pdf_mode, sdo.pdf_allow_allegati
+      INTO v_stato_id, v_stato_cod, v_pdf_mode, v_pdf_allow
       FROM vendite.offerte_commerciali o
       JOIN config.stati_doc_offerte sdo ON sdo.id = o.stato_doc_offerta_id
      WHERE o.id = p_offerta_id;
@@ -114,11 +84,6 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    -- Transizioni manuali disponibili per lo stato corrente.
-    -- COALESCE su meta.manuale: se assente si assume manuale = true.
-    -- COALESCE su requires_confirm / requires_motivazione: default false.
-    -- Filtro defense-in-depth: esclude righe con action_key o label_key
-    --   mancanti.
     SELECT COALESCE(
         jsonb_agg(
             jsonb_build_object(
@@ -143,18 +108,11 @@ BEGIN
       AND t.meta ? 'action_key'
       AND t.meta ? 'label_key';
 
-    -- Aggiunge crea_revisione hardcoded: solo in EMESSA (addendum A2).
     v_can_rev := (v_stato_cod = 'EMESSA');
     IF v_can_rev THEN
         v_actions := v_actions || jsonb_build_array(c_action_crea_revisione);
     END IF;
 
-    -- MUTUA ESCLUSIVITA' contratto/ordine.
-    -- Presenza dei due documenti generati dall'offerta (qualsiasi stato:
-    -- l'esclusivita' e' permanente). Check cross-dominio:
-    --   - vendite.contratti.offerta_id (UNIQUE idempotenza pattern A)
-    --   - vendite.ordini.documento_origine_* (UNIQUE parziale
-    --     uq_ordini_v_documento_origine_offerta).
     SELECT EXISTS (
         SELECT 1 FROM vendite.contratti WHERE offerta_id = p_offerta_id
     ) INTO v_has_contratto;
@@ -165,20 +123,14 @@ BEGIN
            AND documento_origine_id   = p_offerta_id
     ) INTO v_has_ordine;
 
-    -- Condizione di abilitazione CONDIVISA dalle due capability:
-    -- ACCETTATA + nessun contratto + nessun ordine. "both-or-neither":
-    -- finche' nulla e' stato generato entrambe sono esposte; generato
-    -- uno dei due, entrambe spariscono.
     v_enabled := (v_stato_cod = 'ACCETTATA'
                   AND NOT v_has_contratto
                   AND NOT v_has_ordine);
 
-    -- can_push_contratto: reason own-doc first -> contratto > ordine > non accettata.
     v_can_push := v_enabled;
     IF v_enabled THEN
         v_push_reason     := NULL;
         v_push_reason_key := NULL;
-        -- push_contratto appare in available_actions solo quando abilitato.
         v_actions := v_actions || jsonb_build_array(c_action_push_contratto);
     ELSIF v_has_contratto THEN
         v_push_reason     := 'OFFERTA_CONTRATTO_GIA_GENERATO';
@@ -191,7 +143,6 @@ BEGIN
         v_push_reason_key := 'offerte.push_reason.non_accettata';
     END IF;
 
-    -- can_genera_ordine: speculare. reason own-doc first -> ordine > contratto > non accettata.
     v_can_ordine := v_enabled;
     IF v_enabled THEN
         v_ordine_reason     := NULL;
@@ -208,7 +159,6 @@ BEGIN
         v_ordine_reason_key := 'offerte.push_reason.non_accettata';
     END IF;
 
-    -- Editabilita': solo in BOZZA.
     v_can_edit := (v_stato_cod = 'BOZZA');
 
     RETURN jsonb_build_object(
@@ -227,13 +177,14 @@ BEGIN
         'non_editable_fields',           CASE WHEN v_can_edit
                                              THEN c_sempre_non_edit
                                              ELSE c_sempre_non_edit || c_non_edit_extra END,
+        'pdf',                           jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
         'stato_codice',                  v_stato_cod
     );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_offerta(p_offerta_id bigint)
-IS 'Capability offerta commerciale per detail API: available_actions (da matrice transizioni + azioni speciali hardcoded crea_revisione/push_contratto/genera_ordine), can_edit_*, can_push_contratto, can_genera_ordine, can_create_revisione, non_editable_fields. push_contratto e genera_ordine sono MUTUAMENTE ESCLUSIVE (un''offerta ACCETTATA genera al massimo uno tra contratto e ordine). Pattern data-driven capability layer. rev 2026-06-08 (mutua esclusivita, supersede 20260607-08).';
+IS 'Capability offerta commerciale per detail API: available_actions + can_edit_* + push_contratto/genera_ordine (mutuamente esclusive) + create_revisione + non_editable_fields. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_offerte (bottone PDF data-driven via capabilities).';
 ```
 
 ---

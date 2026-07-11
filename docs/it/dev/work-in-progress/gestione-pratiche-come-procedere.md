@@ -11,7 +11,7 @@
 >
 > **Documenti collegati**: [analisi-pratiche-domini-anello3.md](analisi-pratiche-domini-anello3.md)
 > (visione integrazione domini), [analisi-pratiche-workflow-v2.md](../work-done/analisi-pratiche-workflow-v2.md)
-> (motore workflow), [gestione-pratiche-v2.md](gestione-pratiche-v2.md) (piano v1→v2,
+> (motore workflow), [gestione-pratiche-v2.md](../work-done/gestione-pratiche-v2.md) (piano v1→v2,
 > ormai storico), brief PREVENTIVI in `work-done/` (db/be/fe).
 
 ---

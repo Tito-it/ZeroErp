@@ -1,6 +1,6 @@
 # Sviluppo fatturazione — Note operative
 
-> Documento di lavoro in continua evoluzione. Raccoglie promemoria, decisioni aperte e analisi parziali sul modulo fatturazione di ZeroErp. Si integra con [gestione-commesse-v2.md](gestione-commesse-v2.md) (motore commesse → attivita_fatturabili) e con la guida operativa [fatturazione.md](../../guide/fatturazione.md) (quando esistera).
+> Documento di lavoro in continua evoluzione. Raccoglie promemoria, decisioni aperte e analisi parziali sul modulo fatturazione di ZeroErp. Si integra con [gestione-commesse-v2.md](../work-done/gestione-commesse-v2.md) (motore commesse → attivita_fatturabili) e con la guida operativa [fatturazione.md](../../guide/fatturazione.md) (quando esistera).
 
 ---
 
@@ -22,4 +22,4 @@ Il dato esiste nel motore (`fn_list_contratti_da_pushare` produce un payload per
 - L'analisi opzione B su `vendite.contratti_righe` (esporre `fonte_quantita_attesa` in UI, decidere se mostrare/nascondere `quantita` sul drawer riga) sarebbe semplificata dalla presenza di una preview fatturazione: oggi il drawer riga e' l'unico punto in cui l'utente vede la `quantita`, e quindi la domanda "mostrarla o no" pesa di piu'.
 - Con una preview fatturazione disponibile, il drawer riga potrebbe limitarsi a esporre le "regole" senza dover comunicare il "totale periodico".
 
-**Quando affrontarlo**: da decidere. Probabilmente dopo aver chiuso il modulo motore commesse (vedi [gestione-commesse-v2.md](gestione-commesse-v2.md) — `HandlerContratti` ancora scheletro vuoto).
+**Quando affrontarlo**: da decidere. Probabilmente dopo aver chiuso il modulo motore commesse (vedi [gestione-commesse-v2.md](../work-done/gestione-commesse-v2.md) — `HandlerContratti` ancora scheletro vuoto).

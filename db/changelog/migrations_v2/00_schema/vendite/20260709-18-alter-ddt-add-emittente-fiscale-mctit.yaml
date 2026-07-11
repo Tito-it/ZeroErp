@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Addendum SCOPE §15 — colonna emittente_fiscale_id su vendite.ddt (Opzione A).
+#
+# Il DDT non memorizzava l'emittente (buco di scope RLS della lista). Si allinea
+# al pattern ordini/preventivi: emittente MEMORIZZATO (NOT NULL, FK, indice via
+# FK-policy), risolto in scrittura da trgfn_ddt_normalize (eredita dall'ordine
+# sorgente; per lo standalone lo risolve dal billing_account). Prerequisito per
+# RLS su colonna stored (indicizzata) + colonna in vw_ddt_lista per il filtro
+# applicativo BE (defense-in-depth).
+#
+# NOT NULL diretto: la tabella e' vuota (DDT dormiente, pgTAP in rollback), e
+# trgfn_ddt_normalize (20260709-19) valorizza l'emittente su ogni INSERT prima
+# del check NOT NULL (BEFORE trigger). L'indice FK lo gestisce
+# dbops.apply_fk_index_policy (90_end). Il trigger require_attivo su
+# emittenti_fiscali e' auto-provisionato dall'automazione (come le altre FK).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260709-18-alter-ddt-add-emittente-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20260709-18-alter-ddt-add-emittente-fiscale
+      author: mctit
+      comment: >
+        Aggiunge vendite.ddt.emittente_fiscale_id (bigint NOT NULL, FK
+        anagrafiche.emittenti_fiscali) per lo scope emittente (RLS + filtro BE,
+        addendum §15 Opzione A). Mirror ordini/preventivi. Valorizzato da
+        trgfn_ddt_normalize (20260709-19).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ddt
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: ddt
+                    columnName: emittente_fiscale_id
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: ddt
+            columns:
+              - column:
+                  name: emittente_fiscale_id
+                  type: bigint
+                  remarks: >-
+                    Emittente fiscale del DDT (scope RLS + filtro applicativo).
+                    Snapshot ereditato dall'ordine sorgente (o risolto dal
+                    billing_account) via trgfn_ddt_normalize. Mirror ordini.
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_ddt_v_emittente_fiscale
+                    references: anagrafiche.emittenti_fiscali(id)
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN vendite.ddt.emittente_fiscale_id IS
+                'Emittente fiscale del DDT (scope RLS + filtro BE). Snapshot da '
+                'ordine sorgente o risolto da billing_account (trgfn_ddt_normalize). '
+                'Addendum §15, rev 2026-07-10.';
+      rollback:
+        - dropColumn:
+            schemaName: vendite
+            tableName: ddt
+            columnName: emittente_fiscale_id

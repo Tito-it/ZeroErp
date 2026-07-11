@@ -16,6 +16,9 @@ Indice test eseguiti:
  6) test_preventivo_con_ba_termini_da_cliente — termine_pagamento_id da clienti
  7) test_preventivo_valuta_da_emittente_se_ba_null — fallback emittente del BA
  8) test_preventivo_no_ba_valuta_da_user_ef        — fallback EF utente loggato
+ 8a) test_ddt_no_ba_no_user_payload_vuoto     — utility/valuta None (no BA/user)
+ 8b) test_ddt_con_ba_popola_utility_e_valuta  — utility+valuta dal BA, no pagamento
+ 8c) test_ddt_ba_inesistente_404              — E_VENDITE_NOT_FOUND
  9) test_versione_new_defaults                — payload + existing_drafts
  9) test_versione_clone_codice_con_suffisso   — suffisso da parameter
 10) test_versione_close_default_oggi_se_no_chiusura — default oggi+lead_gg
@@ -31,6 +34,7 @@ from unittest.mock import MagicMock, patch
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.vendite_form_defaults_service import (
     fn_get_contratto_form_defaults,
+    fn_get_ddt_form_defaults,
     fn_get_offerta_form_defaults,
     fn_get_ordine_form_defaults,
     fn_get_preventivo_form_defaults,
@@ -247,6 +251,53 @@ class TestOrdineFormDefaults(TestCase):
         mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             fn_get_ordine_form_defaults(billing_account_id=999)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+
+# ──────────────────────────────────────────────────────────
+# DDT form-defaults
+# ──────────────────────────────────────────────────────────
+
+
+class TestDdtFormDefaults(TestCase):
+
+    @patch(_RESOLVER_CONN)
+    def test_ddt_no_ba_no_user_payload_vuoto(self, mock_resolver_conn):
+        # Scopo: nessun BA + nessun user + nessun gestore -> payload con
+        #        utility/valuta a None (utility globale la risolve il FE).
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        mock_resolver_conn.cursor.return_value.__enter__.return_value = cur
+        result = fn_get_ddt_form_defaults(billing_account_id=None)
+        self.assertEqual(result["billing_account_id"], None)
+        self.assertEqual(result["valuta_id"], None)
+        self.assertEqual(result["utility_id"], None)
+
+    @patch(_BA_REPO)
+    def test_ddt_con_ba_popola_utility_e_valuta(self, mock_ba_repo_cls):
+        # Scopo: BA con valuta -> popola utility/istanza + valuta (resolver L1).
+        #        Il DDT NON ha termini/modalita di pagamento in testata: non li
+        #        chiede al cliente (nessun get_cliente_defaults).
+        mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = _ba_lookup_row(
+            ba_id=10, categoria_id=7, valuta_id=1,
+        )
+        result = fn_get_ddt_form_defaults(billing_account_id=10)
+        self.assertEqual(result["billing_account_id"], 10)
+        self.assertEqual(result["utility_id"], 1)
+        self.assertEqual(result["istanza_utility_id"], 100)
+        self.assertEqual(result["valuta_id"], 1)
+        self.assertEqual(result["valuta_codice"], "EUR")
+        # Il DDT non ha pagamento in testata: nessuna chiave termine/modalita.
+        self.assertNotIn("termine_pagamento_id", result)
+        self.assertNotIn("modalita_pagamento_id", result)
+        mock_ba_repo_cls.return_value.get_cliente_defaults.assert_not_called()
+
+    @patch(_BA_REPO)
+    def test_ddt_ba_inesistente_404(self, mock_ba_repo_cls):
+        # Scopo: BA non trovato -> E_VENDITE_NOT_FOUND.
+        mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            fn_get_ddt_form_defaults(billing_account_id=999)
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
 
 

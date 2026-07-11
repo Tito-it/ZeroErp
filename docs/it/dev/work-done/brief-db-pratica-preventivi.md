@@ -16,7 +16,7 @@
 >
 > **Sorgente**: Brief Fase B — Pratica PREVENTIVI (questo turno) +
 > [analisi-pratiche-domini-anello3.md](../work-in-progress/analisi-pratiche-domini-anello3.md) §11 +
-> [gestione-pratiche-v2.md](../work-in-progress/gestione-pratiche-v2.md) +
+> [gestione-pratiche-v2.md](gestione-pratiche-v2.md) +
 > [sviluppo-push-singolo-preventivo.md](sviluppo-push-singolo-preventivo.md)
 >
 > **Decisione di prodotto (Tid, 2026-06-06)**: la politica immediata/differita

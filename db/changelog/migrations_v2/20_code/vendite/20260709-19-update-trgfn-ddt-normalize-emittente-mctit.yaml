@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Addendum SCOPE §15 — eredita emittente_fiscale_id + guard scope in scrittura.
+#
+# 1) trgfn_ddt_normalize: oltre a billing/utility/valuta, valorizza
+#    emittente_fiscale_id su INSERT — eredita dall'ordine sorgente
+#    (ORDINE_VENDITA); fallback standalone: lo risolve dal billing_account via
+#    anagrafiche.fn_get_emittente_fiscale_pk. Corpo preso dalla doc auto-gen viva
+#    (rev 20260709-06, lookup per codice_interno) + aggiunta emittente.
+# 2) Guard scope in scrittura (defense-in-depth, mirror ordini/preventivi):
+#    trigger trg_ddt_a10_guard_emittente_scope_ins_upd che esegue
+#    script.trgfn_guard_emittente_scope('fiscale','emittente_fiscale_id') —
+#    blocca INSERT/UPDATE se l'operatore non ha scope sull'emittente. Skippa se
+#    app.current_user_id non e' settato (batch/pgTAP): nessun impatto sui test.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260709-19-update-trgfn-ddt-normalize-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260709-19-update-trgfn-ddt-normalize-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        trgfn_ddt_normalize eredita anche emittente_fiscale_id (da ordine
+        sorgente; fallback da billing via fn_get_emittente_fiscale_pk) + guard
+        scope emittente in scrittura (trgfn_guard_emittente_scope 'fiscale').
+        Addendum §15.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: ddt
+                columnName: emittente_fiscale_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                   WHERE n.nspname='script' AND p.proname='trgfn_guard_emittente_scope';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_normalize()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo: normalizzazione DDT su INSERT/UPDATE.
+                --   1. anno/data se numero presente (INSERT).
+                --   2. eredita billing/utility/valuta/emittente dall'ordine
+                --      sorgente (ORDINE_VENDITA, lookup per codice_interno) su
+                --      INSERT se non gia' valorizzati.
+                --   3. fallback emittente da billing_account (standalone).
+                -- =========================================================
+
+                -- 1. anno/data
+                IF TG_OP = 'INSERT' AND (NEW.numero IS NOT NULL AND btrim(NEW.numero) <> '') THEN
+                  IF NEW.anno IS NULL OR NEW.anno = 0 THEN
+                    NEW.anno := EXTRACT(YEAR FROM CURRENT_DATE)::smallint;
+                  END IF;
+                  IF NEW.data IS NULL THEN
+                    NEW.data := CURRENT_DATE;
+                  END IF;
+                END IF;
+
+                -- 2. eredita billing/utility/valuta/emittente da ordine sorgente
+                IF TG_OP = 'INSERT'
+                   AND NEW.sorgente_tipo_id IS NOT NULL
+                   AND NEW.sorgente_uid IS NOT NULL
+                   AND (NEW.billing_account_id IS NULL
+                        OR NEW.utility_id IS NULL
+                        OR NEW.valuta_id IS NULL
+                        OR NEW.emittente_fiscale_id IS NULL)
+                THEN
+                  IF EXISTS (
+                    SELECT 1 FROM config.sorgenti
+                    WHERE id = NEW.sorgente_tipo_id AND codice_interno = 'ORDINE_VENDITA'
+                  ) THEN
+                    SELECT
+                      COALESCE(NEW.billing_account_id, o.billing_account_id),
+                      COALESCE(NEW.utility_id, ba.utility_id),
+                      COALESCE(NEW.valuta_id, o.valuta_id),
+                      COALESCE(NEW.emittente_fiscale_id, o.emittente_fiscale_id)
+                    INTO
+                      NEW.billing_account_id,
+                      NEW.utility_id,
+                      NEW.valuta_id,
+                      NEW.emittente_fiscale_id
+                    FROM vendite.ordini o
+                    LEFT JOIN anagrafiche.billing_account ba
+                      ON ba.id = o.billing_account_id
+                    WHERE o.uid = NEW.sorgente_uid
+                    LIMIT 1;
+                  END IF;
+                END IF;
+
+                -- 3. fallback standalone: emittente da billing_account (convenzione PK).
+                IF TG_OP = 'INSERT'
+                   AND NEW.emittente_fiscale_id IS NULL
+                   AND NEW.billing_account_id IS NOT NULL
+                THEN
+                  NEW.emittente_fiscale_id :=
+                    anagrafiche.fn_get_emittente_fiscale_pk(NEW.billing_account_id);
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_normalize()
+              IS 'Normalize DDT: anno/data; eredita billing/utility/valuta/emittente da ordine sorgente (ORDINE_VENDITA, per codice_interno) su INSERT; fallback emittente da billing_account (fn_get_emittente_fiscale_pk). rev 2026-07-10 (§15 emittente).';
+
+              -- Guard scope emittente in scrittura (defense-in-depth, mirror ordini).
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_emittente_scope_ins_upd ON vendite.ddt;
+              CREATE TRIGGER trg_ddt_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.ddt
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id');
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_emittente_scope_ins_upd ON vendite.ddt;

@@ -1,0 +1,48 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: vendite.vw_ordini_lista — colonna pdf_mode (azione PDF per-riga)
+-- ------------------------------------------------------------
+-- Indice test (1..4):
+--  1) la vista espone la colonna pdf_mode
+--  2) pdf_mode e' character varying (tipo dello stato)
+--  3) security_invoker=on preservato (nessun buco di scope RLS)
+--  4) coerenza col seed: per OGNI riga v.pdf_mode == pdf_mode dello stato
+--     corrispondente (wiring JOIN corretto) — fixture-free
+-- ------------------------------------------------------------
+
+BEGIN;
+SELECT plan(4);
+
+-- 1) colonna presente
+SELECT has_column('vendite', 'vw_ordini_lista', 'pdf_mode',
+  '1) vw_ordini_lista espone pdf_mode');
+
+-- 2) tipo = character varying
+SELECT is(
+  (SELECT data_type FROM information_schema.columns
+    WHERE table_schema='vendite' AND table_name='vw_ordini_lista' AND column_name='pdf_mode'),
+  'character varying',
+  '2) pdf_mode e'' character varying');
+
+-- 3) security_invoker=on preservato dal CREATE OR REPLACE
+SELECT ok(
+  (SELECT array_to_string(c.reloptions, ',') LIKE '%security_invoker=on%'
+       OR array_to_string(c.reloptions, ',') LIKE '%security_invoker=true%'
+     FROM pg_class c
+     JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname='vendite' AND c.relname='vw_ordini_lista'),
+  '3) security_invoker=on preservato (no regressione scope RLS)');
+
+-- 4) coerenza col seed: nessuna riga con pdf_mode diverso da quello dello
+--    stato (JOIN per codice_interno, 1:1). Vista vuota -> 0 mismatch -> pass.
+SELECT is(
+  (SELECT count(*)::int
+     FROM vendite.vw_ordini_lista v
+     JOIN config.stati_doc_ordini sd ON sd.codice_interno = v.stato_codice_interno
+    WHERE v.pdf_mode IS DISTINCT FROM sd.pdf_mode),
+  0,
+  '4) v.pdf_mode coerente con stati_doc_ordini.pdf_mode per ogni riga');
+
+SELECT * FROM finish();
+ROLLBACK;

@@ -68,3 +68,6 @@ databaseChangeLog:
                   type: STRING
                   defaultValue: "NOW()"
               - column: { name: user_update, type: STRING }
+              # 2026-07-11: bottone PDF data-driven via capabilities
+              - column: { name: pdf_mode, type: STRING }
+              - column: { name: pdf_allow_allegati, type: BOOLEAN }

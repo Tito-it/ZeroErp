@@ -13,7 +13,7 @@
 > **debito §5.3** di [gestione-pratiche-come-procedere.md](gestione-pratiche-come-procedere.md)
 > (handler accetta/push oggi per-pratica PREVENTIVI → generalizzare prima del 2° dominio).
 > **Correlati**: editor definizioni versionate (config di questi binding) —
-> [brief-fe-fase3-editor-definizioni-workflow.md](../work-in-progress/brief-fe-fase3-editor-definizioni-workflow.md) (FE-3.3 handler-eventi).
+> [brief-fe-fase3-editor-definizioni-workflow.md](brief-fe-fase3-editor-definizioni-workflow.md) (FE-3.3 handler-eventi).
 
 ---
 

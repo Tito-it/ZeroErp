@@ -13,61 +13,37 @@ CREATE OR REPLACE FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint
  LANGUAGE plpgsql
  STABLE
 AS $function$
--- Scopo:
---   Capability dell'ordine di vendita per il detail API. Allineato
---   al pattern data-driven di fn_available_actions_preventivo /
---   _offerta / _contratto: legge le transizioni manuali disponibili
---   da config.transizioni_stati_ordini (matrice 20260605-08).
---
---   Grafo transizioni (enforcement: trgfn_ordini_guard_transizione):
---     DRAFT      -> CONFERMATO (conferma, manuale)   attivo=true
---     DRAFT      -> ANNULLATO  (annulla,  manuale)   attivo=true
---     CONFERMATO -> ANNULLATO  (annulla,  manuale)   attivo=FALSE (non esposta)
---     CONFERMATO -> EVASO      (automatica, manuale=false) attivo=true
---       -> NON esposta in available_actions (filtro manuale + action_key):
---          e' un effetto automatico invocato dal BE dopo il push commessa.
---     EVASO: stato terminale (nessuna transizione in uscita).
---     Stati a valle (ALLOCATO/SPEDITO/...) fuori matrice (no driver).
---
---   push_commessa: azione applicativa (NON transizione di stato:
---     l'ordine resta CONFERMATO). Appesa a mano come push_commessa
---     dei preventivi. Eleggibile se stato=CONFERMATO e almeno una
---     riga risulta pushabile (riuso fn_list_ordini_da_pushare).
---     Quando off, valorizza can_push_commessa_reason/_reason_key:
---       CONFERMATO senza righe -> ORDINE_NESSUNA_RIGA_PUSHABILE
---       EVASO (gia' pushato)   -> ORDINE_GIA_EVASO
---       altri stati            -> ORDINE_NON_CONFERMATO
---
---   Editabilita':
---     DRAFT: testata + righe (can_edit_*=true). non_editable solo
---            cliente (billing_account_id, soggetto_ruolo_id: lock
---            columns, immutabili anche in bozza).
---     CONFERMATO/terminali: nulla (can_edit_*=false), tutta la
---            testata bloccata.
---
---   Fallback sicuro: NULL se l'ordine non esiste.
+-- Scopo: capability ordine di vendita per detail API (data-driven).
+--   push_commessa: decoupling fatturazione/spedizione (rev 2026-07-10,
+--   fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO /
+--   ORDINE_FATTURA_DA_DDT / ORDINE_GIA_FATTURATO / ORDINE_NESSUNA_RIGA_PUSHABILE).
+--   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+--   config.stati_doc_ordini (bottone PDF data-driven via capabilities).
 DECLARE
     v_stato_id   vendite.ordini.stato_doc_ordine_id%TYPE;
     v_stato_cod  config.stati_doc_ordini.codice_interno%TYPE;
+    v_uid        vendite.ordini.uid%TYPE;
+    v_fatt_trg   vendite.ordini.fatturazione_trigger%TYPE;
+    v_pdf_mode   config.stati_doc_ordini.pdf_mode%TYPE;
+    v_pdf_allow  config.stati_doc_ordini.pdf_allow_allegati%TYPE;
     v_actions    jsonb;
     v_can_change boolean := false;
     v_push_ok    boolean := false;
     v_push_reason     text := NULL;
     v_push_reason_key text := NULL;
-    -- Cliente immutabile anche in DRAFT (script.trgfn_lock_columns,
-    -- E_ORD_CLIENTE_IMMUTABILE). Allineato a _CREATE/_UPDATE_KEYS_ORDINE.
     c_non_edit_cliente CONSTANT jsonb :=
         '["billing_account_id","soggetto_ruolo_id"]'::jsonb;
-    -- Tutti i campi testata aggiornabili (oltre al cliente) bloccati
-    -- fuori da DRAFT. Allineato a _UPDATE_KEYS_ORDINE (ordini_service.py).
     c_non_edit_tutti CONSTANT jsonb :=
         '["billing_account_id","soggetto_ruolo_id","utility_id",'
         '"valuta_id","modalita_pagamento_id","termine_pagamento_id",'
         '"fatturazione_trigger","agente_soggetto_ruolo_id","data","meta"]'::jsonb;
 BEGIN
-    -- Stato corrente.
-    SELECT o.stato_doc_ordine_id, sdo.codice_interno
-      INTO v_stato_id, v_stato_cod
+    -- Stato corrente + trigger + uid + capability PDF.
+    SELECT o.stato_doc_ordine_id, sdo.codice_interno,
+           o.uid, o.fatturazione_trigger,
+           sdo.pdf_mode, sdo.pdf_allow_allegati
+      INTO v_stato_id, v_stato_cod, v_uid, v_fatt_trg,
+           v_pdf_mode, v_pdf_allow
       FROM vendite.ordini o
       JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
      WHERE o.id = p_ordine_id;
@@ -76,11 +52,6 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    -- Transizioni manuali disponibili per lo stato corrente.
-    -- Pattern identico a fn_available_actions_preventivo/offerta/contratto.
-    -- Filtri: attivo, manuale (default true se assente), guard meta keys.
-    -- La transizione automatica CONFERMATO->EVASO (manuale=false, senza
-    -- action_key) e' esclusa da questi filtri: non diventa bottone.
     SELECT COALESCE(
         jsonb_agg(
             jsonb_build_object(
@@ -105,31 +76,29 @@ BEGIN
       AND t.meta ? 'action_key'
       AND t.meta ? 'label_key';
 
-    -- can_change_state riflette le SOLE transizioni di stato
-    -- (calcolato prima di appendere push_commessa, che non e' una
-    -- transizione: l'ordine resta CONFERMATO).
     v_can_change := jsonb_array_length(v_actions) > 0;
 
-    -- push_commessa: azione applicativa (non transizione).
-    -- Eleggibile solo da CONFERMATO con almeno una riga pushabile.
-    -- Riuso della fn canonica per non duplicare la logica pushable.
-    IF v_stato_cod = 'CONFERMATO' THEN
-        IF EXISTS (SELECT 1
-                     FROM vendite.fn_list_ordini_da_pushare(p_ordine_id := p_ordine_id)) THEN
-            v_push_ok := true;
-        ELSE
-            v_push_reason     := 'ORDINE_NESSUNA_RIGA_PUSHABILE';
-            v_push_reason_key := 'ordini.push_commessa_reason.nessuna_riga_pushabile';
-        END IF;
-    ELSIF v_stato_cod = 'EVASO' THEN
-        -- Ordine gia' propagato a commessa (stato terminale): il push
-        -- non si ripete. Reason dedicato (piu' preciso del generico
-        -- ORDINE_NON_CONFERMATO) per tooltip/diagnostica FE.
-        v_push_reason     := 'ORDINE_GIA_EVASO';
-        v_push_reason_key := 'ordini.push_commessa_reason.gia_evaso';
-    ELSE
+    -- push_commessa: fonte unica fn_list_ordini_da_pushare (decoupling).
+    IF v_stato_cod IN ('DRAFT', 'ANNULLATO') THEN
         v_push_reason     := 'ORDINE_NON_CONFERMATO';
         v_push_reason_key := 'ordini.push_commessa_reason.non_confermato';
+    ELSIF v_fatt_trg IS DISTINCT FROM 'CONFERMATO' THEN
+        v_push_reason     := 'ORDINE_FATTURA_DA_DDT';
+        v_push_reason_key := 'ordini.push_commessa_reason.fattura_da_ddt';
+    ELSIF EXISTS (SELECT 1
+                    FROM vendite.fn_list_ordini_da_pushare(p_ordine_id := p_ordine_id)) THEN
+        v_push_ok := true;
+    ELSIF EXISTS (SELECT 1
+                    FROM vendite.ordini_righe r
+                    JOIN vendite.commesse_attivita ca
+                      ON ca.segment_key = ('ORD:' || v_uid::text || ':R:' || r.id::text)
+                     AND ca.stato_emissione = 'EMESSA'
+                   WHERE r.ordine_id = p_ordine_id) THEN
+        v_push_reason     := 'ORDINE_GIA_FATTURATO';
+        v_push_reason_key := 'ordini.push_commessa_reason.gia_fatturato';
+    ELSE
+        v_push_reason     := 'ORDINE_NESSUNA_RIGA_PUSHABILE';
+        v_push_reason_key := 'ordini.push_commessa_reason.nessuna_riga_pushabile';
     END IF;
 
     IF v_push_ok THEN
@@ -157,13 +126,14 @@ BEGIN
         'non_editable_fields',         CASE WHEN v_stato_cod = 'DRAFT'
                                             THEN c_non_edit_cliente
                                             ELSE c_non_edit_tutti END,
+        'pdf',                         jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
         'stato_codice',                v_stato_cod
     );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint)
-IS 'Capability ordine di vendita per detail API: available_actions (da config.transizioni_stati_ordini, pattern data-driven) + push_commessa (azione applicativa hardcoded, riuso fn_list_ordini_da_pushare), can_change_state, can_edit_testata/righe, can_push_commessa(+reason/_reason_key: ORDINE_NESSUNA_RIGA_PUSHABILE / ORDINE_GIA_EVASO / ORDINE_NON_CONFERMATO), non_editable_fields, stato_codice. Sostituisce il calcolo hardcoded in ordini_service.py. rev 2026-06-08 (reason EVASO).';
+IS 'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini.';
 ```
 
 ---
