@@ -6,7 +6,7 @@
 > **Riferimenti**:
 >
 > - [Guida Gestione Pratiche](/guide/gestione-pratiche)
-> - [Gestione Pratiche v2](gestione-pratiche-v2.md) (WIP)
+> - [Gestione Pratiche v2](../work-done/gestione-pratiche-v2.md) (WIP)
 > - Integrazione CRM & Ticketing (bozza ago 2025) — doc `Analisi_varie/Progetti-idee-sviluppo/integrazione-con-crm-e-ticketing.md`
 > - [Mappa Concentrica](/mappa-concentrica)
 
@@ -426,7 +426,7 @@ FATTURAZIONE richiede ESECUZIONE_LAVORO (obbligatorio)
 
 ### Prerequisito: Pratiche v2 completate
 
-Prima di sviluppare il ticketing, le fasi 2-5 di [gestione-pratiche-v2.md](gestione-pratiche-v2.md)
+Prima di sviluppare il ticketing, le fasi 2-5 di [gestione-pratiche-v2.md](../work-done/gestione-pratiche-v2.md)
 devono essere completate. In particolare:
 
 - G4-G6: Backend con display fields e nuovi campi (soggetto_ruolo_id, istanza_utility_id)

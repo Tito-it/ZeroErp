@@ -14,7 +14,7 @@
 Riprendere il dominio `attivita_fatturabili` allineandolo al livello raggiunto dalla pipeline lotto, partendo prima dai refactor trasversali dei punti 20 e 21 del documento WIP.
 
 Riferimento base:
-- `docs/it/dev/work-in-progress/fatturazione-attivita-progetto.md`
+- `docs/it/dev/work-done/fatturazione-attivita-progetto.md`
 
 ## 2) Stato reale sintetico (oggi)
 

@@ -249,7 +249,7 @@ Non e' un processo di business specifico (come vendite o acquisti). E' l'**infra
 | FE: tab giornale               | FATTO | Timeline audit con icone/severity per tipo azione                                 |
 | Test totali                    | 115   | 105 Django (mock CI) + 25 smoke test bash                                         |
 
-Documentazione: `docs/it/dev/work-in-progress/gestione-pratiche-v2.md` | API: [api_pratiche_list](backend/pratiche/manual/api_pratiche_list) | [api_pratiche_note](backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati](backend/pratiche/manual/api_pratiche_allegati)
+Documentazione: `docs/it/dev/work-done/gestione-pratiche-v2.md` | API: [api_pratiche_list](backend/pratiche/manual/api_pratiche_list) | [api_pratiche_note](backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati](backend/pratiche/manual/api_pratiche_allegati)
 
 Piano v1 (storico): `docs/it/dev/work-done/piano-gestione-pratiche.md`
 

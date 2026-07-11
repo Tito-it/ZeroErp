@@ -33,7 +33,7 @@
 > - [mappa-concentrica.md](../../mappa-concentrica.md) — §Anello 2: pratiche è
 >   *predisposta, in attesa di validazione*. §Caso di studio: pratiche prima di
 >   vendite
-> - [gestione-pratiche-v2.md](gestione-pratiche-v2.md) — modello operativo
+> - [gestione-pratiche-v2.md](../work-done/gestione-pratiche-v2.md) — modello operativo
 >   pratiche v2 (fasi 1-7 DB+BE+FE)
 > - [Guida Gestione Pratiche](../../guide/gestione-pratiche.md) — semantica
 >   tipi_prestazione, template_flussi, handler, generazione cross-pratica
@@ -1348,7 +1348,7 @@ fase F il motore si può promuovere a contratto stabile.
 - [Guida Gestione Pratiche](../../guide/gestione-pratiche.md)
 - [Guida Gestione Preventivi](../../guide/gestione-preventivi.md)
 - [Manuale vendite.ordini](../../dbzero/vendite/manual/ordini.md)
-- [gestione-pratiche-v2.md](gestione-pratiche-v2.md)
+- [gestione-pratiche-v2.md](../work-done/gestione-pratiche-v2.md)
 - [crm-ticketing-pratiche.md](crm-ticketing-pratiche.md)
 - [analisi-offerta-commerciale.md](../work-done/analisi-offerta-commerciale.md)
 - [pratiche_sorgenti manual](../../dbzero/pratiche/manual/pratiche_sorgenti.md)

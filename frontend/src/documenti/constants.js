@@ -25,3 +25,17 @@ export const SORGENTE_CODES = Object.freeze({
   // documentale, context builder DDT_VENDITA registrato lato BE.
   DDT: 'DDT_VENDITA',
 })
+
+// Modalita' PDF di uno stato documento, capability `pdf.mode` esposta da
+// `script.fn_available_actions_*` (colonna `config.stati_doc_*.pdf_mode`,
+// CHECK IN ('PREVIEW','ARCHIVE','NONE')). Single source dei literal lato FE:
+// consumati da `EntityPdfButton` (drawer) e dalla lista Ordini
+// (`OrdiniSearchTable`, `row.pdf_mode === PDF_MODE.ARCHIVE`).
+//   - PREVIEW: anteprima on-the-fly bozza (non persistita);
+//   - ARCHIVE: PDF gia' generato all'emissione (gestione documenti);
+//   - NONE:    nessuna gestione PDF (es. ANNULLATO).
+export const PDF_MODE = Object.freeze({
+  PREVIEW: 'PREVIEW',
+  ARCHIVE: 'ARCHIVE',
+  NONE: 'NONE',
+})

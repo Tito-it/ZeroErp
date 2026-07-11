@@ -24,7 +24,7 @@
 >
 > * [docs/it/dbzero/vendite/tabelle/listini.md](../../dbzero/vendite/tabelle/listini.md) — schema listini
 > * [docs/it/dev/work-done/gestione-articoli.md](../work-done/gestione-articoli.md) — dominio catalogo (completato)
-> * [docs/it/dev/work-in-progress/gestione-commesse-v2.md](../work-in-progress/gestione-commesse-v2.md) — integrazione commessa
+> * [docs/it/dev/work-done/gestione-commesse-v2.md](gestione-commesse-v2.md) — integrazione commessa
 > * [docs/it/dev/api.md](../api.md) — linee guida API
 
 ---

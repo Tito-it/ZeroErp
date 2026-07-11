@@ -22,8 +22,6 @@ import { mapAvailableActionsToDrawerActions } from '../../../core/composables/us
 import { statoOrdineSeverity } from '../../../core/utils/severity'
 import {
   STATO_ORDINE,
-  STATI_ORDINE_ANTEPRIMA_PDF,
-  STATI_ORDINE_CON_DOCUMENTO,
   STATI_ORDINE_EVADIBILI,
 } from '../constants'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
@@ -539,9 +537,7 @@ const drawerActions = computed(() => {
             <EntityPdfButton
               :sorgente-code="SORGENTE_CODES.ORDINE_VENDITA"
               :entity-id="effectiveOrdineId"
-              :stato-codice="detail.stato_codice_interno"
-              :stati-preview="STATI_ORDINE_ANTEPRIMA_PDF"
-              :stati-con-documento="STATI_ORDINE_CON_DOCUMENTO"
+              :pdf="detail.pdf"
               i18n-prefix="vendite.ordini.pdf"
               :dialog-title="detail.numero
                 ? t('vendite.ordini.pdf.dialog_title', { numero: detail.numero })

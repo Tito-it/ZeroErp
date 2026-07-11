@@ -14,24 +14,9 @@ export const STATO_DDT = Object.freeze({
   ANNULLATO: 'ANNULLATO',
 })
 
-// Stampa DDT accompagnatorio (motore `documenti`, sorgente DDT_VENDITA).
-// Flusso allineato alla famiglia vendite (mirror ordini): in DRAFT solo
-// anteprima on-demand; il documento definitivo si genera all'EMISSIONE
-// (DRAFT→EMESSO via /emetti/ multipart, DdtEmissioneDialog) e dagli stati
-// post-bozza `EntityPdfButton`/lista aprono la gestione documentale (PDF gia'
-// archiviati). ANNULLATO escluso: niente gestione documenti su un DDT annullato.
-// ⚠️ TRANSITORIO: mappa stato→modalita' PDF HARDCODED lato FE (come nei domini
-// gemelli). Un nuovo stato in `config.stati_doc_ddt` non riflesso qui degrada
-// il bottone a disabled. Fix data-driven pianificato: capability `pdf.mode` da
-// `fn_available_actions_ddt` — brief `brief-db-pdf-capabilities-data-driven.md`;
-// a valle queste costanti si eliminano.
-export const STATI_DDT_ANTEPRIMA_PDF = Object.freeze([
-  STATO_DDT.DRAFT,
-])
-
-export const STATI_DDT_CON_DOCUMENTO = Object.freeze([
-  STATO_DDT.EMESSO,
-  STATO_DDT.SPEDITO,
-  STATO_DDT.CONSEGNATO,
-  STATO_DDT.RESO,
-])
+// Stampa DDT accompagnatorio (motore `documenti`, sorgente DDT_VENDITA): in
+// DRAFT solo anteprima on-demand; il documento definitivo si genera
+// all'EMISSIONE (DRAFT→EMESSO via /emetti/ multipart, DdtEmissioneDialog).
+// La mappa stato→modalita'-PDF e' ora DATA-DRIVEN via capability `pdf` di
+// `fn_available_actions_ddt` (colonna `config.stati_doc_ddt.pdf_mode`),
+// consumata da `EntityPdfButton`: niente piu' liste di stati hardcoded qui.

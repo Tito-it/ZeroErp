@@ -62,9 +62,6 @@ import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { lookupListiniSelezionabiliContratto } from '../../api/lookup'
 import TipoVariazioneSelect from '../../components/TipoVariazioneSelect.vue'
 import {
-  STATI_OFFERTA_ANTEPRIMA_PDF,
-  STATI_OFFERTA_APPEND_ALLEGATI,
-  STATI_OFFERTA_CON_DOCUMENTO,
   STATI_OFFERTA_SEGNALA_SCADENZA,
   STATI_OFFERTA_TERMINALI,
 } from '../constants'
@@ -818,10 +815,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
               <EntityPdfButton
                 :sorgente-code="SORGENTE_CODES.OFFERTA_COMMERCIALE"
                 :entity-id="props.offertaId"
-                :stato-codice="detail.stato_codice_interno"
-                :stati-preview="STATI_OFFERTA_ANTEPRIMA_PDF"
-                :stati-con-documento="STATI_OFFERTA_CON_DOCUMENTO"
-                :stati-append-allegati="STATI_OFFERTA_APPEND_ALLEGATI"
+                :pdf="detail.pdf"
                 i18n-prefix="vendite.offerte.pdf"
                 :dialog-title="detail.codice
                   ? t('vendite.offerte.pdf.dialog_title', { codice: detail.codice })

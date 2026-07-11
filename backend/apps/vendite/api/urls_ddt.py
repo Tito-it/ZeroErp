@@ -21,6 +21,7 @@ from apps.vendite.api.note_views import ApiDdtNoteDetail, ApiDdtNoteList
 from apps.vendite.api.views_ddt import (
     ApiDdtCambiaStato,
     ApiDdtDetail,
+    ApiDdtExportView,
     ApiDdtList,
     ApiDdtPush,
     ApiDdtRigaComponenteDetail,
@@ -34,6 +35,9 @@ from apps.vendite.api.views_form_defaults import ApiDdtFormDefaults
 urlpatterns = [
     # Lista + create (standalone)
     path("", ApiDdtList.as_view(), name="vendite-ddt-list"),
+    # Export CSV/XLSX (DEF-1, `?formato=`). Prima di `<int:ddt_id>/` per non
+    # collidere con il path del dettaglio.
+    path("export/", ApiDdtExportView.as_view(), name="vendite-ddt-export"),
     # Form-defaults BA-aware (valuta/utility). Famiglia ordini/preventivi.
     path("form-defaults/", ApiDdtFormDefaults.as_view(),
          name="vendite-ddt-form-defaults"),

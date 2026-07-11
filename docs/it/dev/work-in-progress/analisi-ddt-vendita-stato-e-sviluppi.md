@@ -15,6 +15,25 @@
 
 ---
 
+> ## ⏱️ Stato avanzamento (aggiornato 2026-07-11)
+>
+> Le tabelle §2 sono la **fotografia iniziale** (pre-sviluppo). Avanzamento reale sulle fasi del §6:
+>
+> | Fase | Stato | Rif. |
+> |---|---|---|
+> | **1 — DB** (evasione + stati + gap + predisposizione PDF) | ✅ FATTO | [brief DB](../work-done/brief-db-ddt-vendita-evasione-e-stati.md) |
+> | **2 — BE** (service/repo/endpoint + evasione + push + note) | 🟢 slice principale FATTA · backlog ⬜ | [brief BE](brief-be-ddt-vendita.md) §12–14 |
+> | **3 — FE** (lista + drawer + evasione + navigazione) | 🟢 slice principale FATTA · backlog ⬜ | [brief FE](brief-fe-ddt-vendita.md) §11–13 |
+> | **3-bis — Standalone** (DDT senza sorgente, billing proprio) | ✅ FATTO | incluso in BE/FE |
+> | **5 — PDF** (stampa DDT + valuta/emittente drawer + PDF data-driven capabilities) | ✅ FATTO (2026-07-11) | [[handoff_20260711_ddt_stampa_orfano_refactor]] |
+> | **4 — Lineage** (accensione nodo DDT in `vw_documento_lineage`) | ⬜ APERTO | segue brief lineage esistente |
+>
+> **Slice minori aperte (predisposte, non fatte)**: editing `ddt_indirizzi`, riepilogo IVA DDT,
+> colonna "Emittente" in lista (seed `ui.lista_colonna`), **slice RESI** (brief DB §12).
+> (Export lista DDT — ✅ fatto 2026-07-11.)
+> **Verifica visiva in-app** del drawer DDT (valuta/emittente/PDF) ancora da fare.
+> Tutto il lavoro FE/BE è su `dev/backend-tid` **non committato** (commit → Tid).
+
 ## 1. Scopo e perimetro
 
 Attivare il **ciclo DDT di vendita**, oggi presente a livello DB ma dormiente lato

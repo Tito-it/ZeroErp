@@ -33,7 +33,7 @@ import { useTabFreshness } from '../../../core/composables/useTabFreshness'
 import { DATE_FORMAT, MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
 import { statoOrdineSeverity } from '../../../core/utils/severity'
 import { exportOrdini } from '../api/ordiniApi'
-import { STATI_ORDINE_CON_DOCUMENTO } from '../constants'
+import { PDF_MODE } from '../../../documenti/constants'
 import { useOrdiniStore } from '../stores/ordini'
 
 const emit = defineEmits(['new', 'row-click'])
@@ -87,11 +87,13 @@ const noteDrawerVisible = ref(false)
 const noteDrawerOrdine = ref(null)
 
 // Flusso allineato a preventivi/contratti/offerte (§6 brief-ordini-stampa.md):
-// dalla lista NON si fa anteprima/download diretto. In DRAFT l'azione e'
-// disabilitata (anteprima solo dal drawer); dagli stati post-bozza apre
-// `PdfDocumentiSorgenteDialog` con i documenti gia' generati alla conferma.
+// dalla lista NON si fa anteprima/download diretto. In DRAFT (pdf_mode PREVIEW)
+// l'azione e' disabilitata (anteprima solo dal drawer); dagli stati con PDF
+// archiviato (pdf_mode ARCHIVE) apre `PdfDocumentiSorgenteDialog` con i
+// documenti gia' generati alla conferma. La capability `pdf_mode` arriva
+// data-driven dalla vista (`vw_ordini_lista`, colonna da config.stati_doc_ordini).
 function onPdfClick(row) {
-  if (!row?.id || !STATI_ORDINE_CON_DOCUMENTO.includes(row.stato_codice_interno)) return
+  if (!row?.id || row.pdf_mode !== PDF_MODE.ARCHIVE) return
   pdfDialogOrdine.value = row
   pdfDialogVisible.value = true
 }
@@ -106,7 +108,7 @@ function onNoteClick(row) {
 // Conferma/push vivono nel drawer (dove sono caricate le capability), non in
 // lista: la lista resta consultazione + gestione documenti generati + note.
 function buildRowActions(data) {
-  const conDocumento = STATI_ORDINE_CON_DOCUMENTO.includes(data.stato_codice_interno)
+  const conDocumento = data.pdf_mode === PDF_MODE.ARCHIVE
   return [
     {
       key: 'documenti-pdf',

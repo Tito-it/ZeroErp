@@ -12,9 +12,9 @@
 > come riferimento storico.
 >
 > **➡️ Riferimenti correnti** (superano questo piano): per la **visione integrazione
-> domini** [analisi-pratiche-domini-anello3.md](analisi-pratiche-domini-anello3.md);
+> domini** [analisi-pratiche-domini-anello3.md](../work-in-progress/analisi-pratiche-domini-anello3.md);
 > per il **motore workflow** [analisi-pratiche-workflow-v2.md](../work-done/analisi-pratiche-workflow-v2.md);
-> per i **prossimi passi operativi** [gestione-pratiche-come-procedere.md](gestione-pratiche-come-procedere.md).
+> per i **prossimi passi operativi** [gestione-pratiche-come-procedere.md](../work-in-progress/gestione-pratiche-come-procedere.md).
 >
 > ⚠️ **Punti stale noti (2026-06-20)**: la `config.modalita_fatturazione` descritta
 > in §6.2/§6.5 **NON è stata creata** (decisione modeling: la politica
@@ -1071,7 +1071,7 @@ Fase E (test)
 >
 > **Vedi anche**:
 >
-> * [Analisi Pratiche / Domini Anello 3](analisi-pratiche-domini-anello3.md) — §4 (4 livelli di configurabilità), §6.5 (soglia `meta` → `ext`), §6.8 (chiavi `meta`), §6.9 (idempotenza), §2.2 (Pattern B handler)
+> * [Analisi Pratiche / Domini Anello 3](../work-in-progress/analisi-pratiche-domini-anello3.md) — §4 (4 livelli di configurabilità), §6.5 (soglia `meta` → `ext`), §6.8 (chiavi `meta`), §6.9 (idempotenza), §2.2 (Pattern B handler)
 > * [Gestione Pratiche v2](gestione-pratiche-v2.md) — motore Anello 2
 > * [Guida Gestione Pratiche](../guide/gestione-pratiche.md) — Contratto handler
 > * [sviluppo-concentrico.md](../sviluppo-concentrico.md) — §7 (l'astrazione si decanta dal dominio, non si decide a priori)
@@ -1157,7 +1157,7 @@ Due sotto-casi:
 > **`ext_*` non duplica mai un'entità di dominio che vive già altrove.** Un
 > preventivo è `vendite.preventivi`, non `pratiche.ext_preventivo`: la pratica
 > lo cita con `pratiche_sorgenti` (Pattern A). Vedi
-> [analisi-anello3 §2.3](analisi-pratiche-domini-anello3.md).
+> [analisi-anello3 §2.3](../work-in-progress/analisi-pratiche-domini-anello3.md).
 
 ### Tabella riassuntiva
 
@@ -1262,7 +1262,7 @@ accada nel sistema lascia una traccia coerente e cercabile, e ne configuri di
 nuove senza chiamare lo sviluppatore"*. La disciplina sulle chiavi `meta` è ciò
 che trasforma la varietà da problema in feature.
 
-**Limite onesto** (coerente con [analisi-anello3 §3.4](analisi-pratiche-domini-anello3.md)):
+**Limite onesto** (coerente con [analisi-anello3 §3.4](../work-in-progress/analisi-pratiche-domini-anello3.md)):
 il giornale è backbone delle attività **nate dentro pratica**. È una proprietà
 condizionata alla configurazione menù dell'azienda, non intrinseca. Va
 dichiarata nella documentazione utente, non nascosta.

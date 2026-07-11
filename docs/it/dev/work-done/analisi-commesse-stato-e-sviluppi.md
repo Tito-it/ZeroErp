@@ -14,8 +14,8 @@
 >
 > **Vedi anche**:
 > * [Guida tecnica API Commesse (DB layer)](/guide/gestione-commesse) — datata, da aggiornare (vedi §3)
-> * [gestione-commesse-v2.md](../work-in-progress/gestione-commesse-v2.md) — piano v2 (feb 2026), in larga parte implementato ma fermo a febbraio
-> * [sviluppo-fatturazione.md](../work-in-progress/sviluppo-fatturazione.md), [fatturazione-roadmap.md](../work-in-progress/fatturazione-roadmap.md), [fatturazione-attivita-progetto.md](../work-in-progress/fatturazione-attivita-progetto.md)
+> * [gestione-commesse-v2.md](gestione-commesse-v2.md) — piano v2 (feb 2026), in larga parte implementato ma fermo a febbraio
+> * [sviluppo-fatturazione.md](../work-in-progress/sviluppo-fatturazione.md), [fatturazione-roadmap.md](../work-in-progress/fatturazione-roadmap.md), [fatturazione-attivita-progetto.md](fatturazione-attivita-progetto.md)
 > * brief work-done: `brief-db-commesse-transizioni-stati.md`, `brief-db-commesse-multi-sorgente.md`, `brief-db-drop-uq-commesse-attivita-src-uid-partial.md`
 
 ---
@@ -412,7 +412,7 @@ Quando servirà un flusso REALE con gate operativi/produzione, l'innesto è pron
 8. **🟢 BASSA — Allineare la documentazione** (§3): ✅ **FATTO (2026-06-16)** — guida
    [gestione-commesse.md](/guide/gestione-commesse) allineata (transizioni, ROOT/COLLEGATO,
    step pipeline reali, BoM snapshot, audit end-to-end); banner storico su
-   [gestione-commesse-v2.md](../work-in-progress/gestione-commesse-v2.md); naming codice errore (§4.3 #6) corretto.
+   [gestione-commesse-v2.md](gestione-commesse-v2.md); naming codice errore (§4.3 #6) corretto.
 9. **⏸️ RINVIATO (porta aperta) — UI gestione commesse** (§4.2, §7.4-7.5): non ora;
    utile per flussi con produzione. Eventuale **monitor lotti/anomalie** minimo potrà
    servire al driver §7.4 per hold/sblocco delle segnalazioni critical.

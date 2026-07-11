@@ -42,27 +42,12 @@ export const FATTURAZIONE_TRIGGER_CODES = Object.freeze([
   FATTURAZIONE_TRIGGER.CONSEGNATO,
 ])
 
-// Stampa conferma d'ordine (motore `documenti`, sorgente ORDINE_VENDITA).
-// Flusso allineato alla famiglia vendite (§6 brief-ordini-stampa.md, rettifica
-// 2026-06-05): in DRAFT solo anteprima on-demand; il documento definitivo si
-// genera alla CONFERMA (DRAFT→CONFERMATO via /emetti/, OrdineEmissioneDialog) e
-// dagli stati post-bozza `EntityPdfButton`/lista aprono la gestione documentale
-// (PDF gia' archiviati). ANNULLATO escluso: niente gestione documenti su un
-// ordine annullato.
-// ⚠️ TRANSITORIO: mappa stato→modalita' PDF HARDCODED lato FE (tutta la
-// famiglia). Un nuovo stato in `config.stati_doc_ordini` non riflesso qui
-// degrada il bottone a disabled. Fix data-driven pianificato: capability
-// `pdf.mode` da `fn_available_actions_ordine` — brief
-// `brief-db-pdf-capabilities-data-driven.md`; a valle queste costanti si eliminano.
-export const STATI_ORDINE_ANTEPRIMA_PDF = Object.freeze([
-  STATO_ORDINE.DRAFT,
-])
-
-export const STATI_ORDINE_CON_DOCUMENTO = Object.freeze([
-  STATO_ORDINE.CONFERMATO,
-  STATO_ORDINE.EVASO,
-  STATO_ORDINE.ALLOCATO,
-  STATO_ORDINE.SPEDITO,
-  STATO_ORDINE.CONSEGNATO,
-  STATO_ORDINE.FATTURATO,
-])
+// Stampa conferma d'ordine (motore `documenti`, sorgente ORDINE_VENDITA):
+// in DRAFT solo anteprima on-demand; il documento definitivo si genera alla
+// CONFERMA (DRAFT→CONFERMATO via /emetti/, OrdineEmissioneDialog).
+//
+// La mappa stato→modalita'-PDF e' interamente DATA-DRIVEN via `pdf_mode`
+// (`config.stati_doc_ordini.pdf_mode`): il DRAWER la legge dalla capability
+// `pdf` di `fn_available_actions_ordine` (`EntityPdfButton`); la LISTA la legge
+// dalla colonna `pdf_mode` di `vendite.vw_ordini_lista` (`OrdiniSearchTable`,
+// `row.pdf_mode === PDF_MODE.ARCHIVE`). Nessuna lista di stati hardcoded qui.

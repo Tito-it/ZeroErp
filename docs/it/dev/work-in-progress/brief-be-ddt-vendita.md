@@ -1,8 +1,9 @@
 # Brief BE — DDT vendita: service, repository, endpoint (gemello ordini)
 
 > **Tipo**: brief backend (target `dev/backend-tid`) · **Data**: 2026-07-09 · **Owner**: Tid
+> **Stato**: 🟡 APERTO — slice principale + PDF realizzati (§12–§13), ma **backlog residuo aperto** (§14): endpoint export + riepilogo-iva, CRUD `ddt_indirizzi`. Resta in `work-in-progress`.
 > **Design-of-record**: [analisi-ddt-vendita-stato-e-sviluppi.md](analisi-ddt-vendita-stato-e-sviluppi.md)
-> · **Prerequisito DB**: [brief-db-ddt-vendita-evasione-e-stati.md](brief-db-ddt-vendita-evasione-e-stati.md)
+> · **Prerequisito DB**: [brief-db-ddt-vendita-evasione-e-stati.md](../work-done/brief-db-ddt-vendita-evasione-e-stati.md)
 > **Gate**: parte a oggetti DB applicati ([[feedback_be_fe_attende_prerequisiti_db]]).
 > **Principio guida (D-4)**: **clonare il dominio ORDINI**, che è l'esempio più
 > pulito e moderno; stessa impronta, logica DDT diversa. Non duplicare BB
@@ -250,6 +251,70 @@ convenzioni (`# Scopo:`, `assert` post-`require`). REFUTED: `int()`→500 (frame
 mappa 400) e `@extend_schema` mancanti (parità ordini).
 
 ### Fuori scope (predisposto, slice successive)
-PDF DDT, editing `ddt_indirizzi`, riepilogo IVA, export lista, colonna "Emittente" in
+Editing `ddt_indirizzi`, riepilogo IVA, export lista, colonna "Emittente" in
 lista (aggiunta seed `ui.lista_colonna` DB-side). Slice **resi** documentata nel brief DB §12.
+PDF DDT — ✅ **realizzato** (§13). Lineage (Fase 4) — aperto (tracker §6).
+
+## 13. Consuntivo slice 2026-07-11 (valuta + emittente + STAMPA PDF + orfano + refactor) — ✅ REALIZZATO
+
+Estensione BE su `dev/backend-tid` (**non committato**). 1304 test BE verdi; verificato LIVE
+(gunicorn, token operatore). Dettaglio in [[handoff_20260711_ddt_stampa_orfano_refactor]].
+
+### Valuta default sul drawer DDT
+
+`fn_get_ddt_form_defaults` (service, variante DDT del BB form-defaults condiviso) +
+`ApiDdtFormDefaults` (view) + route `GET /vendite/ddt/form-defaults/`. La valuta era vuota
+in create (vs ordini/preventivi); ora prefillata dai default del BA/operatore.
+
+### STAMPA DDT (PDF) — 5° dominio del motore `documenti`, operativa E2E
+
+- `services/ddt_document_context_builder.py` (CODE=`DDT_VENDITA`, shape
+  ddt/destinatario/trasporto/righe; registrato in `apps/vendite/apps.py`).
+- `POST /vendite/ddt/<id>/emetti/` reso **multipart e ATOMICO**: transizione DRAFT→EMESSO +
+  genera PDF + allegati in una transazione; se il render fallisce → rollback, numero non
+  consumato. `emetti()` ritorna LIGHT (parità `ordini_service.conferma`).
+- View di dominio generate via la **factory** (vedi refactor sotto). Template DDT →
+  DB template 76 / versione 46 PUBBLICATA.
+
+### Fix ORFANO push ordine (bug trovato da Tid)
+
+Ordine `fatturazione_trigger=CONFERMATO` evaso in DDT restava non-pushabile né come ordine né
+come DDT. Fix DB #962; recepito BE: `_STATI_PUSHABILI` esteso a
+`{CONFERMATO, PARZIALMENTE_EVASO, EVASO}` in `ordini_service` (+2 test). **Lezione**: il guard
+applicativo duplicava `fn_list_ordini_da_pushare` → fonte unica = fn DB
+([[handoff_20260711_ddt_stampa_orfano_refactor]], nota metodo).
+
+### 2 refactor BB (regola del 2, da code-review high)
+
+- **Factory `build_documenti_sorgente_views`** (`apps/documenti/api/sorgente_documenti_views.py`):
+  genera le 7 view per dominio; i 5 domini (ordini/preventivi/offerte/contratti/ddt) ora ~80
+  righe di delta ciascuno. Bonus: aggiunte route `file/<file_id>/` mancanti a preventivi+contratti.
+- **Scope emittente** (`apps/core/db/emittente_scope_helpers.py`,
+  `add_emittente_scope_condition`): risolve l'array scope UNA volta in Python (era 2×/query in 5 repo).
+
+### PDF data-driven via capabilities (`pdf_mode`/`pdf_allow_allegati`) — recepimento BE = ZERO
+
+Le 5 `fn_available_actions_*` ora espongono il blocco `pdf {mode, allow_allegati}`: il blob
+capabilities è spread `**capabilities` nei service → arriva al FE **senza modifiche BE**. Per la
+lista Ordini, `vw_ordini_lista.pdf_mode` viaggia via `SELECT v.*` + response `DictField()`.
+Dettaglio DB+FE: [piano-db-pdf-mode-capabilities-5-domini](../work-done/piano-db-pdf-mode-capabilities-5-domini.md).
+
+## 14. Ancora da fare (backlog aperto — brief NON chiuso)
+
+Aree pianificate in §6 ma **non realizzate** (il consuntivo §12 le aveva dichiarate "fuori
+scope"). Verificato nel codice 2026-07-11: `urls_ddt.py` non le espone.
+
+- **Endpoint export lista — ✅ REALIZZATO (2026-07-11)**: `ApiDdtExportView` +
+  rotta `/vendite/ddt/export/` (`?formato=csv|xlsx`) + `ddt_service.resolve_filtri_export_label`.
+  Riuso `build_export_response`/`EXPORT_MAX_ROWS` + `_LISTA_CODICE_DDT='vendite.ddt'` (config lista
+  già seedata), mirror `ApiOrdiniExportView` ([[feedback_export_lista_rispetta_preferenza]]).
+  +2 test api (formato invalido 400, overflow cap 422). Recepito FE (brief FE §13).
+- **Endpoint riepilogo IVA — assente**: nessuna rotta `/vendite/ddt/<id>/riepilogo-iva/`
+  (il §6 la elencava). Serve al `RiepilogoIvaTable` FE.
+- **CRUD `ddt_indirizzi` — assente**: nessun endpoint/service per indirizzi
+  spedizione/destinatario/vettore (serve al `DdtIndirizziPanel` FE). Modello DB predisposto
+  (`vendite.ddt_indirizzi` con snapshot), ma nessuna scrittura/lettura applicativa.
+
+> Fuori scope anche qui: colonna "Emittente" in lista (seed `ui.lista_colonna` DB-side) e
+> **slice RESI** (brief DB §12). Coordinare la ripresa con il [brief FE §13](brief-fe-ddt-vendita.md).
 </content>

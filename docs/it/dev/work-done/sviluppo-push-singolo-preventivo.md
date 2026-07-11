@@ -39,7 +39,7 @@ sorgenti alle righe commessa (gia' fatto da `BoMComponentExpander`/
 `HandlerPreventivi` esistenti) ma **non scatena** l'emit immediato verso
 `attivita_fatturabili`. Per quel pezzo (Fase 3 puntuale, "servizio
 emissione immediata" elencato come "sviluppo necessario minimo" in
-[fatturazione-attivita-progetto.md §"Emissione immediata"](../work-in-progress/fatturazione-attivita-progetto.md))
+[fatturazione-attivita-progetto.md §"Emissione immediata"](fatturazione-attivita-progetto.md))
 seguira' una **PR2** dedicata, che scrivera' lotto giornaliero APERTO,
 emit puntuale, log su `fatturazione_lotti_log`. Vedi §9 in coda.
 
@@ -325,7 +325,7 @@ Dopo il deploy DB+BE+FE, riabilitare lo scenario §3.4 in
   brief al team DB.
 * Guida: [fatturazione.md §Fase 1](../../guide/fatturazione.md#fase-1---push-sorgenti-su-commesse).
 * Guida: [gestione-commesse.md §Flusso push](../../guide/gestione-commesse.md).
-* WIP architetturale: [gestione-commesse-v2.md §6.3](../work-in-progress/gestione-commesse-v2.md).
+* WIP architetturale: [gestione-commesse-v2.md §6.3](gestione-commesse-v2.md).
 
 ## 9) Prossimo step — PR2: servizio "emissione immediata" (Fase 3 puntuale)
 
@@ -337,7 +337,7 @@ correttamente il flag, ma nessuno scatena l'emit verso AF al di fuori del
 batch pipeline lotto. PR2 chiude il gap.
 
 **Componenti da realizzare** (sintesi da
-[fatturazione-attivita-progetto.md §"Sviluppi necessari (minimo)"](../work-in-progress/fatturazione-attivita-progetto.md)):
+[fatturazione-attivita-progetto.md §"Sviluppi necessari (minimo)"](fatturazione-attivita-progetto.md)):
 
 * Servizio Django `emissione_immediata_service.emetti_da_commessa(commessa_id)`:
   * risolve/crea lotto giornaliero APERTO per emittente e data corrente;
