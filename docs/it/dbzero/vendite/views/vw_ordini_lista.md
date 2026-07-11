@@ -48,7 +48,8 @@ SELECT o.id,
     o.data_insert,
     o.user_insert,
     o.data_update,
-    o.user_update
+    o.user_update,
+    sd.pdf_mode
    FROM (((((((((((((vendite.ordini o
      JOIN config.stati_doc_ordini sd ON ((sd.id = o.stato_doc_ordine_id)))
      JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = o.soggetto_ruolo_id)))

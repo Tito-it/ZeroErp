@@ -6,6 +6,34 @@
 
 ---
 
+## Stato implementazione (2026-07-11) — DB SCRITTO su `dev/db-tid`, non ancora applicato
+
+Migrations `20260711-15..31` + pgTAP + doc manuali scritti (attendere applicazione Tid).
+Decisioni operative chiuse (Q1–Q6) e **correzioni all'analisi del brief**:
+
+- **§3/§4 — `fn_snapshot_indirizzo` NON è usata dal push.** Il push copia lo snapshot
+  **1:1 già congelato** (freeze + una-tantum). La funzione (`script.fn_snapshot_indirizzo`,
+  `RETURNS TABLE(snapshot, origine_soggetto_ruolo_id)`) serve **solo all'endpoint BE**.
+- **§4 — cascata solo sulle 3 funzioni madre esistenti**: `fn_push_preventivo_a_ordine`,
+  `fn_genera_ddt_da_ordine`, `fn_push_offerta_a_contratto`. `offerta→ordine` e
+  `ordine→contratto` **non esistono** come funzione: nessun punto dove agganciare la copia.
+- **§2 — bug latente CHECK**: `chk_tipi_indirizzi_ambito` aveva il typo `'PREVENTVI'`
+  (seed `PREVENTIVI` sarebbe stato rifiutato). Corretto + esteso a OFFERTE/CONTRATTI/ACQUISTI_DDT.
+- **§5 — fallback trigger rimosso** del tutto (Q3): whitelist = solo config, fail-closed.
+- **obbligatori (Q4): DDT-only ora.** Guard `CON` obbligatorio all'emissione DDT
+  (`trg_ddt_a10_guard_indirizzi_obbligatori_upd` + helper `script.fn_indirizzi_obbligatori_mancanti`).
+  `FATT@FATTURE` seedato come metadato ma **guard NON agganciato**: nessun percorso popola
+  ancora `fatture_indirizzi` (cascata fattura = cantiere fatturazione) → bloccherebbe la
+  pipeline di fatturazione. Si accende con quella cascata.
+- **acquisti (Q5): convergenza piena ora.** `acquisti.ddt_indirizzi` portata al modello
+  vendite (+`origine_*`, +`tx_id`, tipo `integer`) + funzione whitelist condivisa,
+  ambito dedicato **`ACQUISTI_DDT`** (CON, FORNITURA). Ritirata la funzione dedicata acquisti.
+- pgTAP: nuovo `test-indirizzi-documenti-simmetria-v1.sql`; adeguati i test DDT che
+  emettono via UPDATE→EMESSO (seed di un CON). Asserzioni di copia sulla catena documentale
+  (fixture pesanti) da estendere lato DB vivo.
+
+---
+
 ## Contesto
 
 Le tabelle `vendite.{preventivi,ordini,fatture,ddt}_indirizzi` esistono e sono identiche

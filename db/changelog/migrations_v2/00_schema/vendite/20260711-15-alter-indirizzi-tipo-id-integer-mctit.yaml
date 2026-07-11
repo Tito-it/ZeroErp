@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Allineamento tipo colonna: vendite.{preventivi,ordini,fatture,ddt}_indirizzi
+# hanno tipo_indirizzo_id BIGINT, mentre la PK referenziata
+# config.tipi_indirizzi.id e' INTEGER (come tutto il modello config).
+# Si allinea a INTEGER. Tabelle di sviluppo vuote o quasi: nessuna
+# migrazione dati.
+#
+# NB: PostgreSQL rifiuta ALTER TYPE su una colonna citata in
+# `UPDATE OF tipo_indirizzo_id` di un trigger. Su DB esistenti il trigger
+# a10 (whitelist) esiste gia' -> va DROPpato prima dell'ALTER e
+# RI-AGGANCIATO dopo. Il ri-aggancio vive in fase 20_code (20260711-32),
+# perche' la funzione trgfn_tipi_indirizzi_only_allowed vive li' e su un
+# build pulito non esiste ancora durante la fase 00_schema. Qui: solo
+# DROP (idempotente) + ALTER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260711-15-alter-indirizzi-tipo-id-integer-mctit.yaml
+
+  - changeSet:
+      id: 20260711-15-alter-indirizzi-tipo-id-integer
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- Drop dei trigger a10 (UPDATE OF tipo_indirizzo_id) che bloccano
+              -- l'ALTER TYPE. Ri-agganciati in 20260711-32 (fase 20_code).
+              DROP TRIGGER IF EXISTS trg_preventivi_indirizzi_a10_only_allowed_tipi_ins_upd
+                ON vendite.preventivi_indirizzi;
+              DROP TRIGGER IF EXISTS trg_ordini_indirizzi_a10_only_allowed_tipi_ins_upd
+                ON vendite.ordini_indirizzi;
+              DROP TRIGGER IF EXISTS trg_fatture_indirizzi_a10_only_allowed_tipi_ins_upd
+                ON vendite.fatture_indirizzi;
+              DROP TRIGGER IF EXISTS trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd
+                ON vendite.ddt_indirizzi;
+
+              ALTER TABLE vendite.preventivi_indirizzi
+                ALTER COLUMN tipo_indirizzo_id TYPE integer
+                USING tipo_indirizzo_id::integer;
+
+              ALTER TABLE vendite.ordini_indirizzi
+                ALTER COLUMN tipo_indirizzo_id TYPE integer
+                USING tipo_indirizzo_id::integer;
+
+              ALTER TABLE vendite.fatture_indirizzi
+                ALTER COLUMN tipo_indirizzo_id TYPE integer
+                USING tipo_indirizzo_id::integer;
+
+              ALTER TABLE vendite.ddt_indirizzi
+                ALTER COLUMN tipo_indirizzo_id TYPE integer
+                USING tipo_indirizzo_id::integer;
+      rollback:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              ALTER TABLE vendite.preventivi_indirizzi
+                ALTER COLUMN tipo_indirizzo_id TYPE bigint USING tipo_indirizzo_id::bigint;
+              ALTER TABLE vendite.ordini_indirizzi
+                ALTER COLUMN tipo_indirizzo_id TYPE bigint USING tipo_indirizzo_id::bigint;
+              ALTER TABLE vendite.fatture_indirizzi
+                ALTER COLUMN tipo_indirizzo_id TYPE bigint USING tipo_indirizzo_id::bigint;
+              ALTER TABLE vendite.ddt_indirizzi
+                ALTER COLUMN tipo_indirizzo_id TYPE bigint USING tipo_indirizzo_id::bigint;

@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Convergenza piena (Q5): acquisti.ddt_indirizzi allineata al modello
+# vendite.*_indirizzi. Aggiunge origine_indirizzo_id / origine_soggetto_ruolo_id
+# (FK soft SET NULL) + tx_id (uuid, trigger auto via automation) e allinea
+# tipo_indirizzo_id a INTEGER. Il trigger whitelist condiviso viene
+# agganciato in fase 20_code (20260711-29) con ambito 'ACQUISTI_DDT'.
+# DB di sviluppo senza dati: nessuna migrazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/acquisti/20260711-28-alter-acquisti-ddt-indirizzi-converge-mctit.yaml
+
+  - changeSet:
+      id: 20260711-28-alter-acquisti-ddt-indirizzi-converge
+      author: mctit
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              -- Il trigger a10 (UPDATE OF tipo_indirizzo_id) bloccherebbe l'ALTER
+              -- TYPE: lo si droppa qui e lo si ri-crea (condiviso) in 20260711-29.
+              DROP TRIGGER IF EXISTS trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd
+                ON acquisti.ddt_indirizzi;
+
+              ALTER TABLE acquisti.ddt_indirizzi
+                ALTER COLUMN tipo_indirizzo_id TYPE integer
+                USING tipo_indirizzo_id::integer;
+
+        - addColumn:
+            schemaName: acquisti
+            tableName: ddt_indirizzi
+            columns:
+              - column:
+                  name: origine_indirizzo_id
+                  type: BIGINT
+                  remarks: "Riferimento (soft) all'indirizzo anagrafico usato per lo snapshot"
+              - column:
+                  name: origine_soggetto_ruolo_id
+                  type: BIGINT
+                  remarks: "Soggetto/Ruolo origine dello snapshot (audit/provenienza)"
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction id correlazione audit (popolato da trgfn_tx_id_managed via automation)."
+
+        - addForeignKeyConstraint:
+            constraintName: fk_acquisti_ddt_indirizzi_origine_indirizzo
+            baseTableSchemaName: acquisti
+            baseTableName: ddt_indirizzi
+            baseColumnNames: origine_indirizzo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: indirizzi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: SET NULL
+
+        - addForeignKeyConstraint:
+            constraintName: fk_acquisti_ddt_indirizzi_origine_sog_ruolo
+            baseTableSchemaName: acquisti
+            baseTableName: ddt_indirizzi
+            baseColumnNames: origine_soggetto_ruolo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: SET NULL
+
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_acquisti_ddt_indirizzi_origine_indirizzo
+                ON acquisti.ddt_indirizzi USING btree (origine_indirizzo_id ASC NULLS LAST);
+
+              CREATE INDEX IF NOT EXISTS ix_acquisti_ddt_indirizzi_origine_sog_ruolo
+                ON acquisti.ddt_indirizzi USING btree (origine_soggetto_ruolo_id ASC NULLS LAST);
+      rollback:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              DROP INDEX IF EXISTS acquisti.ix_acquisti_ddt_indirizzi_origine_indirizzo;
+              DROP INDEX IF EXISTS acquisti.ix_acquisti_ddt_indirizzi_origine_sog_ruolo;
+              ALTER TABLE acquisti.ddt_indirizzi
+                DROP CONSTRAINT IF EXISTS fk_acquisti_ddt_indirizzi_origine_indirizzo,
+                DROP CONSTRAINT IF EXISTS fk_acquisti_ddt_indirizzi_origine_sog_ruolo,
+                DROP COLUMN IF EXISTS origine_indirizzo_id,
+                DROP COLUMN IF EXISTS origine_soggetto_ruolo_id,
+                DROP COLUMN IF EXISTS tx_id;

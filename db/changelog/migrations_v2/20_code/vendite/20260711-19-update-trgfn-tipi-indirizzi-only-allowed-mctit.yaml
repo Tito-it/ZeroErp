@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Riscrittura di vendite.trgfn_tipi_indirizzi_only_allowed:
+#   - PAYLOAD D'ERRORE DINAMICO: usa TG_TABLE_SCHEMA/TG_TABLE_NAME e la
+#     riga NEW generica (to_jsonb(NEW) meno lo snapshot). Prima era
+#     hardcoded su 'vendite.fatture_indirizzi' + NEW.fattura_id, con due
+#     bug: (a) log sempre etichettato "Fatture" anche su altri ambiti;
+#     (b) su preventivi/ordini/ddt il ramo d'errore riferiva NEW.fattura_id
+#     -> colonna inesistente -> "record new has no field fattura_id"
+#     invece di E_TIPO_INDIRIZZO.
+#   - NIENTE FALLBACK HARDCODED (Q3): la whitelist e' letta solo da
+#     config.tipi_indirizzi_allowed, ora sempre seedata (20260711-18).
+#     Comportamento fail-closed: se un ambito non ha righe attive, nessun
+#     tipo e' ammesso (era pericoloso il vecchio ELSE che ammetteva SPED).
+#   - Rimosso TG_ARGV[1] (custom CSV): non piu' necessario senza fallback.
+#     I trigger a10 lo invocano gia' solo con TG_ARGV[0]=ambito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260711-19-update-trgfn-tipi-indirizzi-only-allowed-mctit.yaml
+
+  - changeSet:
+      id: 20260711-19-update-trgfn-tipi-indirizzi-only-allowed
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+                 CREATE OR REPLACE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed()
+                  RETURNS trigger
+                  LANGUAGE plpgsql
+                  AS $$
+                  DECLARE
+                    v_ambito         text := COALESCE(TG_ARGV[0], 'FATTURE'); -- 'FATTURE'|'DDT'|'ORDINI'|'PREVENTIVI'|'OFFERTE'|'CONTRATTI'|'ACQUISTI_DDT'
+                    v_codice         text;
+                    v_allowed_ids    integer[];
+                    v_allowed_codes  text[];
+                    v_tabella        text := TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME;
+                  BEGIN
+                    -- Codice interno del tipo richiesto (per log).
+                    SELECT t.codice_interno INTO v_codice
+                    FROM config.tipi_indirizzi t
+                    WHERE t.id = NEW.tipo_indirizzo_id;
+
+                    -- Whitelist dei tipi ammessi per l'ambito: UNICA fonte = config.
+                    -- Nessun fallback hardcoded (fail-closed se ambito non configurato).
+                    SELECT array_agg(a.tipo_indirizzo_id),
+                           array_agg(t.codice_interno)
+                      INTO v_allowed_ids, v_allowed_codes
+                    FROM config.tipi_indirizzi_allowed a
+                    JOIN config.tipi_indirizzi t ON t.id = a.tipo_indirizzo_id
+                    WHERE a.ambito = v_ambito
+                      AND a.attivo = true;
+
+                    -- Validazione: tipo esistente E incluso nella whitelist dell'ambito.
+                    IF v_codice IS NULL
+                       OR v_allowed_ids IS NULL
+                       OR NOT (NEW.tipo_indirizzo_id = ANY(v_allowed_ids)) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                        'database', TG_NAME, 'E_TIPO_INDIRIZZO',
+                        jsonb_build_object(
+                          'table', v_tabella,
+                          'ambito', v_ambito,
+                          'new_row', (to_jsonb(NEW) - 'snapshot'),
+                          'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+                          'codice_interno', v_codice,
+                          'allowed_codes', v_allowed_codes
+                        ),
+                        NULL::uuid,
+                        NEW.tipo_indirizzo_id::text,
+                        v_codice,
+                        v_ambito,
+                        array_to_string(COALESCE(v_allowed_codes, ARRAY[]::text[]), ', ')
+                      );
+                    END IF;
+
+                    RETURN NEW;
+                  END
+                  $$;
