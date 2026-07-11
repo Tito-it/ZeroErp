@@ -46,6 +46,9 @@ databaseChangeLog:
                   # se il CSV ha valore vuoto, usa {} come JSON valido
                   defaultValue: "{}"
               - column: { name: codice_interno,    type: STRING }
+              # 2026-07-11: bottone PDF data-driven via capabilities
+              - column: { name: pdf_mode,           type: STRING }
+              - column: { name: pdf_allow_allegati, type: BOOLEAN }
               #- column: { name: data_insert,  type: STRING }
               #- column: { name: user_insert,  type: STRING }
               #- column:

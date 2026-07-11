@@ -1,7 +1,7 @@
-id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update,fase,terminale
-1,BOZZA,BOZZA,Bozza,t,10,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,APERTO,f
-2,EMESSA,EMESSA,Emessa,t,20,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,IN_ATTESA,f
-3,ACCETTATA,ACCETTATA,Accettata,t,30,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,IN_CORSO,f
-4,RIFIUTATA,RIFIUTATA,Rifiutata,t,40,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t
-5,SUPERATA,SUPERATA,Superata,t,50,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t
-6,ANNULLATA,ANNULLATA,Annullata,t,60,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t
+id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update,fase,terminale,pdf_mode,pdf_allow_allegati
+1,BOZZA,BOZZA,Bozza,t,10,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,APERTO,f,PREVIEW,f
+2,EMESSA,EMESSA,Emessa,t,20,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,IN_ATTESA,f,ARCHIVE,t
+3,ACCETTATA,ACCETTATA,Accettata,t,30,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,IN_CORSO,f,ARCHIVE,f
+4,RIFIUTATA,RIFIUTATA,Rifiutata,t,40,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t,ARCHIVE,f
+5,SUPERATA,SUPERATA,Superata,t,50,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t,ARCHIVE,f
+6,ANNULLATA,ANNULLATA,Annullata,t,60,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,CHIUSO,t,ARCHIVE,f
