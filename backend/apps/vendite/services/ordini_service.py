@@ -72,7 +72,14 @@ _STATO_BOZZA = "DRAFT"
 _STATO_CONFERMATO = "CONFERMATO"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 _STATI_RIGHE_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
-_STATI_PUSHABILI: frozenset[str] = frozenset({"CONFERMATO"})
+# Stati che ammettono il push a commessa (fix orfano 2026-07-10, brief DB §16:
+# decoupling fatturazione/spedizione). Per trigger CONFERMATO l'eleggibilita'
+# sopravvive all'evasione in DDT (PARZIALMENTE_EVASO/EVASO): la FONTE UNICA e'
+# `fn_list_ordini_da_pushare` (trigger + righe + anti-doppione EMESSA), questo
+# guard e' solo il fail-fast parlante per gli stati mai pushabili (DRAFT/ANNULLATO).
+_STATI_PUSHABILI: frozenset[str] = frozenset(
+    {"CONFERMATO", "PARZIALMENTE_EVASO", "EVASO"},
+)
 
 # Whitelist campi testata accettati in create/update (null_vs_empty → None).
 _CREATE_KEYS_ORDINE: frozenset[str] = frozenset({
@@ -981,17 +988,22 @@ def delete_componente(
 #  INTEGRAZIONE — Push singolo a commessa (chiusura giro)
 # ══════════════════════════════════════════════════════════
 
-# Scopo: Push singolo dell'ordine CONFERMATO a commessa (chiusura giro). Riusa
+# Scopo: Push singolo dell'ordine a commessa (chiusura giro). Riusa
 #        l'orchestratore commesse esistente con sorgente ORDINE_VENDITA →
 #        attivita_fatturabili → pipeline lotto → fattura. Pattern push singolo
-#        gemello preventivi/offerte (decisione §8.3).
+#        gemello preventivi/offerte (decisione §8.3). Ammesso da CONFERMATO e
+#        — fix orfano 2026-07-10 — anche da PARZIALMENTE_EVASO/EVASO (per
+#        trigger CONFERMATO l'evasione in DDT non consuma la fatturazione).
 def push_a_commessa(ordine_id: int, *, user: str | None = None) -> dict[str, Any]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="push_a_commessa")
     ErrorManager.require(
         testata["stato_codice_interno"] in _STATI_PUSHABILI,
         code="E_ORD_STATO_TRANSIZIONE",
-        message="Solo ordini confermati possono essere inviati a commessa.",
+        message=(
+            "Ordine non inviabile a commessa in questo stato (ammessi: "
+            "confermato o evaso in attesa di fatturazione)."
+        ),
         detail=f"stato={testata['stato_codice_interno']}",
         function_name=f"{_FN}.push_a_commessa",
     )
@@ -1020,12 +1032,14 @@ def push_a_commessa(ordine_id: int, *, user: str | None = None) -> dict[str, Any
             sorgente_uid=ordine_id,
         )
 
-        # Transizione automatica CONFERMATO → EVASO se il push è COMPLETATO
-        # (specchio 1:1 di preventivi_service.push_a_commessa). Rende l'invio a
-        # commessa UNICO: EVASO è terminale, il guard _STATI_PUSHABILI={CONFERMATO}
-        # blocca il re-push (E_ORD_STATO_TRANSIZIONE) e la capability nasconde il
-        # bottone (reason ORDINE_GIA_EVASO). Se PARZIALE/ERRORE/SKIPPED l'ordine
-        # resta CONFERMATO: serve un ri-push per completare prima di evadere.
+        # Transizione automatica → EVASO se il push è COMPLETATO (specchio di
+        # preventivi_service.push_a_commessa). L'anti-doppione NON è più il
+        # guard di stato (fix orfano: EVASO resta pushabile) ma è data-driven:
+        # `fn_list_ordini_da_pushare` esclude le righe con attività già EMESSA
+        # (capability reason ORDINE_GIA_FATTURATO) e il dedup per segment_key
+        # dell'orchestratore rende comunque idempotente un re-push. Se l'ordine
+        # è già EVASO la transizione fallisce nel savepoint best-effort (no-op).
+        # Se PARZIALE/ERRORE/SKIPPED lo stato resta invariato: serve un ri-push.
         if report["stato"] == "COMPLETATO":
             # Transizione EVASO best-effort su SAVEPOINT dedicato: swalloware un
             # DatabaseError direttamente nell'atomic esterno lo corromperebbe

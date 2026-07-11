@@ -40,9 +40,10 @@ urlpatterns = [
     path("<int:ddt_id>/", ApiDdtDetail.as_view(), name="vendite-ddt-detail"),
 
     # Transizioni / integrazione. `emetti/` e' il flusso documentale multipart
-    # (DRAFT->EMESSO + genera PDF + allegati, atomico — ddt_documenti_views);
-    # `cambia-stato/` resta la transizione pura (riusata internamente).
-    path("<int:ddt_id>/emetti/", ApiDdtEmetti.as_view(),
+    # (DRAFT->EMESSO + genera PDF + allegati, atomico — factory condiviso in
+    # apps/documenti/api, converter `sorgente_id`); `cambia-stato/` resta la
+    # transizione pura (riusata internamente).
+    path("<int:sorgente_id>/emetti/", ApiDdtEmetti.as_view(),
          name="vendite-ddt-emetti"),
     path("<int:ddt_id>/cambia-stato/", ApiDdtCambiaStato.as_view(),
          name="vendite-ddt-cambia-stato"),
@@ -50,20 +51,21 @@ urlpatterns = [
          name="vendite-ddt-push"),
 
     # Documenti generati (stampa PDF) — motore `documenti`, sorgente
-    # DDT_VENDITA (quinto dominio della famiglia).
-    path("<int:ddt_id>/documenti/", ApiDdtDocumentiList.as_view(),
+    # DDT_VENDITA (quinto dominio della famiglia, view dal factory condiviso:
+    # converter uniforme `sorgente_id`).
+    path("<int:sorgente_id>/documenti/", ApiDdtDocumentiList.as_view(),
          name="vendite-ddt-documenti-list"),
-    path("<int:ddt_id>/documenti/genera/", ApiDdtDocumentoGenera.as_view(),
+    path("<int:sorgente_id>/documenti/genera/", ApiDdtDocumentoGenera.as_view(),
          name="vendite-ddt-documenti-genera"),
-    path("<int:ddt_id>/documenti/anteprima/", ApiDdtDocumentoAnteprima.as_view(),
+    path("<int:sorgente_id>/documenti/anteprima/", ApiDdtDocumentoAnteprima.as_view(),
          name="vendite-ddt-documenti-anteprima"),
-    path("<int:ddt_id>/documenti/<int:documento_id>/file/",
+    path("<int:sorgente_id>/documenti/<int:documento_id>/file/",
          ApiDdtDocumentoFile.as_view(),
          name="vendite-ddt-documenti-file"),
-    path("<int:ddt_id>/documenti/<int:documento_id>/allegati/",
+    path("<int:sorgente_id>/documenti/<int:documento_id>/allegati/",
          ApiDdtDocumentoAllegati.as_view(),
          name="vendite-ddt-documenti-allegati"),
-    path("<int:ddt_id>/documenti/<int:documento_id>/file/<int:file_id>/",
+    path("<int:sorgente_id>/documenti/<int:documento_id>/file/<int:file_id>/",
          ApiDdtDocumentoFileDownload.as_view(),
          name="vendite-ddt-documenti-file-download"),
 

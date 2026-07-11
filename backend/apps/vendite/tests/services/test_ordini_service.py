@@ -517,6 +517,35 @@ class OrdiniPushCommessaTests(SimpleTestCase):
         repo.get_stato_id_by_codice.assert_called_once_with("EVASO")
         repo.update_stato.assert_called_once_with(55, 8)
 
+    @patch(_COMPLETA_STEP)
+    @patch(_PUSH_ONE)
+    @patch(_REPO)
+    def test_push_ammesso_da_evaso_fix_orfano(self, ord_cls, mock_push_one, _mock_step) -> None:
+        # Fix orfano (brief DB §16, 2026-07-10): per trigger CONFERMATO
+        # l'eleggibilita' al push sopravvive all'evasione in DDT — il guard
+        # ammette anche PARZIALMENTE_EVASO/EVASO. La fonte unica resta
+        # fn_list_ordini_da_pushare (count_righe_pushable).
+        repo = ord_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "EVASO"}
+        repo.count_righe_pushable.return_value = 1
+        repo.get_stato_id_by_codice.return_value = 8
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO", "push_log_id": 9, "durata_ms": 5, "handlers": [],
+        }
+        out = ordini_service.push_a_commessa(174)
+        self.assertEqual(out["stato"], "COMPLETATO")
+
+    @patch(_PUSH_ONE)
+    @patch(_REPO)
+    def test_push_rifiutato_da_draft(self, ord_cls, mock_push_one) -> None:
+        # DRAFT resta mai pushabile: fail-fast parlante E_ORD_STATO_TRANSIZIONE.
+        repo = ord_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.push_a_commessa(55)
+        self.assertEqual(cm.exception.code, "E_ORD_STATO_TRANSIZIONE")
+        mock_push_one.assert_not_called()
+
     @patch(_PUSH_ONE)
     @patch(_REPO)
     def test_push_parziale_non_transita(self, ord_cls, mock_push_one) -> None:

@@ -19,8 +19,12 @@ export const STATO_DDT = Object.freeze({
 // anteprima on-demand; il documento definitivo si genera all'EMISSIONE
 // (DRAFT→EMESSO via /emetti/ multipart, DdtEmissioneDialog) e dagli stati
 // post-bozza `EntityPdfButton`/lista aprono la gestione documentale (PDF gia'
-// archiviati). ANNULLATO escluso: niente gestione documenti su un DDT
-// annullato. Detta gli stati il modello `config.stati_doc_ddt` (data-driven).
+// archiviati). ANNULLATO escluso: niente gestione documenti su un DDT annullato.
+// ⚠️ TRANSITORIO: mappa stato→modalita' PDF HARDCODED lato FE (come nei domini
+// gemelli). Un nuovo stato in `config.stati_doc_ddt` non riflesso qui degrada
+// il bottone a disabled. Fix data-driven pianificato: capability `pdf.mode` da
+// `fn_available_actions_ddt` — brief `brief-db-pdf-capabilities-data-driven.md`;
+// a valle queste costanti si eliminano.
 export const STATI_DDT_ANTEPRIMA_PDF = Object.freeze([
   STATO_DDT.DRAFT,
 ])

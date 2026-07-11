@@ -48,8 +48,12 @@ export const FATTURAZIONE_TRIGGER_CODES = Object.freeze([
 // genera alla CONFERMA (DRAFT→CONFERMATO via /emetti/, OrdineEmissioneDialog) e
 // dagli stati post-bozza `EntityPdfButton`/lista aprono la gestione documentale
 // (PDF gia' archiviati). ANNULLATO escluso: niente gestione documenti su un
-// ordine annullato. Detta gli stati il modello `config.stati_doc_ordini`
-// (data-driven), non valori hardcodati a casaccio (feedback_no_hardcoded_ids).
+// ordine annullato.
+// ⚠️ TRANSITORIO: mappa stato→modalita' PDF HARDCODED lato FE (tutta la
+// famiglia). Un nuovo stato in `config.stati_doc_ordini` non riflesso qui
+// degrada il bottone a disabled. Fix data-driven pianificato: capability
+// `pdf.mode` da `fn_available_actions_ordine` — brief
+// `brief-db-pdf-capabilities-data-driven.md`; a valle queste costanti si eliminano.
 export const STATI_ORDINE_ANTEPRIMA_PDF = Object.freeze([
   STATO_ORDINE.DRAFT,
 ])

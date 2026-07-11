@@ -38,7 +38,7 @@ _DOC_VIEW_SVC = "apps.vendite.api.ddt_documenti_views.ddt_service"
 _DOC_GEN_SVC = "apps.vendite.api.ddt_documenti_views.DocumentGenerationService"
 _DOC_REPO = "apps.documenti.api.contesto_helpers.DocumentiRepository"
 _DDT_REPO = "apps.vendite.api.ddt_documenti_views.DdtRepository"
-_VIEW_ATOMIC = "apps.vendite.api.ddt_documenti_views.transaction.atomic"
+_VIEW_ATOMIC = "apps.documenti.api.sorgente_documenti_views.transaction.atomic"
 
 _BASE = "/api/v1/vendite/ddt/"
 _ORD_BASE = "/api/v1/vendite/ordini/"

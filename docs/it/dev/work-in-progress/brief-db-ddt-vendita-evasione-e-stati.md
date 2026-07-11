@@ -445,7 +445,15 @@ committata su `dev/db-tid` `114185433`:
 `_resolve_emittente_sr_id` legge la colonna memorizzata; `crea_ddt` richiede `billing_account_id`
 (condizione perché il trigger valorizzi l'emittente NOT NULL). Vedi brief BE §2/§12.
 
-## 16. Addendum FIX — «orfano da push» su ordine trigger CONFERMATO evaso (rilievo 2026-07-10) — ⏳ DA REALIZZARE (team DB)
+## 16. Addendum FIX — «orfano da push» su ordine trigger CONFERMATO evaso (rilievo 2026-07-10) — ✅ REALIZZATO
+
+> ✅ **Applicato dal team DB (2026-07-10, `piano-db-fix-orfano-push-ordine-confermato.md`,
+> merge #962)**: `fn_list_ordini_da_pushare` estesa (stati CONFERMATO/PARZIALMENTE_EVASO/EVASO
+> per trigger CONFERMATO) + `fn_available_actions_ordine` v2 (riusa la fn lista come fonte
+> unica; reason `ORDINE_GIA_EVASO` rimosso, nuovi `ORDINE_FATTURA_DA_DDT`/`ORDINE_GIA_FATTURATO`)
+> + pgTAP v2/v3. **Recepito BE (2026-07-10)**: `_STATI_PUSHABILI` esteso in `ordini_service`
+> (guard applicativo allineato, +2 unit test). **Verificato live**: ORD0000163 recuperato —
+> push COMPLETATO → commessa 191 PRONTA_FATTURAZIONE (3 attività).
 
 > **Rilievo emerso in verifica in-app (giro preventivo→ordine→DDT).** Un ordine con
 > `fatturazione_trigger = CONFERMATO` **evaso in DDT prima di essere pushato** resta
@@ -517,12 +525,21 @@ Verifica in-app su `ORD0000163` (id 174): dopo il fix deve tornare eleggibile.
 > ↩︎ **Rettifica a §8**: l'XOR era presidiato solo contro la *doppia* fatturazione; questa slice
 > chiude la direzione «orfano» (fatturazione *persa*) mancante in quella verifica.
 
-## 17. Addendum SEED — stampa DDT accompagnatorio (slice PDF, 2026-07-10) — ⏳ DA REALIZZARE (team DB)
+## 17. Addendum SEED — stampa DDT accompagnatorio (slice PDF, 2026-07-10) — ✅ REALIZZATO
 
-> **Contesto.** La slice PDF DDT (predisposta in §9) è stata sviluppata lato BE+FE il 2026-07-10:
-> quinto dominio del motore `documenti` (context builder `DDT_VENDITA` registrato, endpoint
-> `emetti/` multipart + `documenti/` genera/anteprima/lista/allegati/file sotto
-> `/api/v1/vendite/ddt/<id>/`, mirror ordini). Manca **un solo prerequisito DB**.
+> ✅ **Applicato dal team DB (2026-07-10, `piano-db-seed-tipo-documento-output-ddt.md`,
+> merge #962)**: riga 5 `DDT_VENDITA` in `documenti.tipi_documento_output` (CSV 80_data).
+> **Post-seed completato (BE, 2026-07-10)**: template **76** «DDT vendita» (sorgente
+> DDT_VENDITA, default, emittente 32) + versione **46 PUBBLICATA** con la bozza
+> `template-ddt-vendita.html`/`.css`, creati via API admin. **Verificato live E2E**:
+> anteprima PDF su DDT esistente (16,9 KB) e giro pieno DDT 61 → riga → emissione
+> multipart (DRAFT→EMESSO + documento 124 atomici) → numero `DDT0000034` dal trigger →
+> download PDF archiviato (17,2 KB). La catena stampa DDT è OPERATIVA.
+
+**Contesto.** La slice PDF DDT (predisposta in §9) è stata sviluppata lato BE+FE il 2026-07-10:
+quinto dominio del motore `documenti` (context builder `DDT_VENDITA` registrato, endpoint
+`emetti/` multipart + `documenti/` genera/anteprima/lista/allegati/file sotto
+`/api/v1/vendite/ddt/<id>/`, mirror ordini). Il capitolato sotto era la richiesta originaria.
 
 **Richiesta (1 riga di seed).** `documenti.tipi_documento_output`: aggiungere la riga
 

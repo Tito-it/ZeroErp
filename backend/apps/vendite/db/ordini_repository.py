@@ -20,6 +20,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
+from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 
 
@@ -120,15 +121,14 @@ class OrdiniRepository(ComponentiRepositoryMixin):
         # Scope emittente (defense-in-depth applicativa). La vista
         # `vw_ordini_lista` e' `security_invoker=on`: la RLS della tabella base
         # filtra gia' per emittente in scope; questo filtro si somma (api.md
-        # §"Scope emittente"). `fn_get_emittenti_scope_pk_ids` mappa su PK reale
+        # §"Scope emittente"). Array risolto UNA volta in Python dal BB condiviso; convenzione PK su
         # `emittenti_fiscali.id` (memoria feedback_emittente_pk_vs_soggetto_ruolo).
-        if auth_user_id is not None:
-            conditions.append(
-                "(script.fn_get_emittenti_scope_pk_ids(%s) IS NULL "
-                "OR v.emittente_fiscale_id = ANY("
-                "script.fn_get_emittenti_scope_pk_ids(%s)))"
-            )
-            params.extend([auth_user_id, auth_user_id])
+        add_emittente_scope_condition(
+            conditions, params,
+            auth_user_id=auth_user_id,
+            column="v.emittente_fiscale_id",
+            convention="pk",
+        )
 
         where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
