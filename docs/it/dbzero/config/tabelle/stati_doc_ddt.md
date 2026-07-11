@@ -15,10 +15,13 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
+| pdf_mode | character varying | NO |  |
+| pdf_allow_allegati | boolean | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_doc_ddt_pdf_mode |  |
 | PRIMARY KEY | pk_stati_doc_ddt | id |
 | UNIQUE | uq_stati_doc_ddt_codice | codice |
 | UNIQUE | uq_stati_doc_ddt_codice_interno | codice_interno |

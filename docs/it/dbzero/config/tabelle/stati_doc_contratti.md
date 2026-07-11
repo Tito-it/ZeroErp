@@ -20,11 +20,14 @@
 | fase | character varying | NO |  |
 | esito | character varying | YES |  |
 | terminale | boolean | NO | false |
+| pdf_mode | character varying | NO |  |
+| pdf_allow_allegati | boolean | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_stati_doc_contratti_fase |  |
+| CHECK | chk_stati_doc_contratti_pdf_mode |  |
 | CHECK | chk_stati_doc_contratti_terminale_chiuso |  |
 | FOREIGN KEY | fk_stati_doc_contratti_esito | esito |
 | PRIMARY KEY | pk_stati_doc_contratti | id |

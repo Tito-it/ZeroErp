@@ -14,11 +14,14 @@
 | fase | character varying | NO |  |
 | esito | character varying | YES |  |
 | terminale | boolean | NO | false |
+| pdf_mode | character varying | NO |  |
+| pdf_allow_allegati | boolean | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_stati_doc_ordini_fase |  |
+| CHECK | chk_stati_doc_ordini_pdf_mode |  |
 | CHECK | chk_stati_doc_ordini_terminale_chiuso |  |
 | FOREIGN KEY | fk_stati_doc_ordini_esito | esito |
 | PRIMARY KEY | pk_stati_doc_ordini | id |
