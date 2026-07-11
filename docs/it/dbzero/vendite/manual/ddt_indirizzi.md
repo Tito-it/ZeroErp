@@ -13,8 +13,24 @@ Approfondimento funzioni:
 >
 •[`vendite.trgfn_tipi_indirizzi_only_allowed`](/dbzero/vendite/funzioni/trgfn_tipi_indirizzi_only_allowed)
 >
+> **Aggiornamento 2026-07-11 (brief indirizzi simmetria/cascata).**
+> - Sul DDT **serve solo la destinazione merce**: il tipo ammesso è **`CON`**
+>   (consegna, "dove va la merce"). Il vecchio codice `SPED` è **ritirato** dagli
+>   ambiti documento (l'unico codice "dove va la merce" è ora `CON`). Mittente
+>   (= emittente fiscale) e dati di trasporto/vettore stanno **nella testata DDT**,
+>   non qui.
+> - La whitelist non è più hardcoded nel trigger: è letta da
+>   `config.tipi_indirizzi_allowed` (ambito `DDT` → `CON`), seedata e autoritativa.
+> - **`CON` è obbligatorio all'emissione**: il guard
+>   `trg_ddt_a10_guard_indirizzi_obbligatori_upd` blocca la transizione a `EMESSO`
+>   se manca (errore `E_INDIRIZZO_DOC_OBBLIGATORIO`).
+> - Alla generazione da ordine (`fn_genera_ddt_da_ordine`) la destinazione
+>   **arriva già copiata 1:1** dagli indirizzi dell'ordine (cascata), filtrata
+>   sull'ambito DDT.
+> - `tipo_indirizzo_id` è ora **`integer`** (allineato a `config.tipi_indirizzi.id`).
+
 ### 🎯 Scopo Principale
-vendite.ddt_indirizzi gestisce gli indirizzi associati alla testata DDT tramite snapshot JSON al momento dell’emissione (o conferma logistica). Per ogni DDT è ammesso al più un indirizzo per tipo (es. spedizione, fornitura, residenza), garantito dall’univocità (ddt_id, tipo_indirizzo_id).
+vendite.ddt_indirizzi gestisce gli indirizzi associati alla testata DDT tramite snapshot JSON al momento dell’emissione (o conferma logistica). Per ogni DDT è ammesso al più un indirizzo per tipo — nella pratica la **consegna (`CON`)** — garantito dall’univocità (ddt_id, tipo_indirizzo_id).
 
 Lo snapshot consente di cristallizzare dati variabili (via/numero, CAP, città, provincia, nazione, contatti, e-mail, note di resa, etc.) senza dipendere dalle future modifiche anagrafiche.
 

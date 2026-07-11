@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Simmetria piena (D-3): vendite.contratti_indirizzi con struttura
+# identica alle *_indirizzi esistenti. Trigger whitelist a10
+# (ambito 'CONTRATTI') agganciato in 20_code (20260711-23).
+# tipo_indirizzo_id INTEGER; tx_id presente (automation registra i trigger).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260711-21-create-vendite-contratti-indirizzi-mctit.yaml
+
+  - changeSet:
+      id: 20260711-21-create-vendite-contratti-indirizzi
+      author: mctit
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: contratti_indirizzi
+            remarks: "Snapshot indirizzi collegati al contratto; uno per tipo (fatturazione, consegna, fornitura). Includere nello snapshot la mail."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_contratti_indirizzi
+                    nullable: false
+              - column: { name: contratto_id,      type: BIGINT,  constraints: { nullable: false } }
+              - column: { name: tipo_indirizzo_id, type: INTEGER, constraints: { nullable: false } }
+              - column:
+                  name: snapshot
+                  type: JSONB
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints: { nullable: false }
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: "now()"
+                  constraints: { nullable: false }
+              - column:
+                  name: user_insert
+                  type: VARCHAR(80)
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints: { nullable: false }
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: "now()"
+                  constraints: { nullable: false }
+              - column:
+                  name: user_update
+                  type: VARCHAR(80)
+                  defaultValueComputed: "CURRENT_USER"
+              - column: { name: origine_indirizzo_id,       type: BIGINT }
+              - column: { name: origine_soggetto_ruolo_id,  type: BIGINT }
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction id correlazione audit (popolato da trgfn_tx_id_managed via automation)."
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: contratti_indirizzi
+            columnNames: contratto_id, tipo_indirizzo_id
+            constraintName: uq_contratti_indirizzi_uno_per_tipo
+
+        - addForeignKeyConstraint:
+            constraintName: fk_contratti_indir_contratto
+            baseTableSchemaName: vendite
+            baseTableName: contratti_indirizzi
+            baseColumnNames: contratto_id
+            referencedTableSchemaName: vendite
+            referencedTableName: contratti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            constraintName: fk_contratti_indir_tipo
+            baseTableSchemaName: vendite
+            baseTableName: contratti_indirizzi
+            baseColumnNames: tipo_indirizzo_id
+            referencedTableSchemaName: config
+            referencedTableName: tipi_indirizzi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            constraintName: fk_contratti_indir_origine_indirizzo
+            baseTableSchemaName: vendite
+            baseTableName: contratti_indirizzi
+            baseColumnNames: origine_indirizzo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: indirizzi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: SET NULL
+
+        - addForeignKeyConstraint:
+            constraintName: fk_contratti_indir_origine_sog_ruolo
+            baseTableSchemaName: vendite
+            baseTableName: contratti_indirizzi
+            baseColumnNames: origine_soggetto_ruolo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: SET NULL
+
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_contratti_indir_contratto
+                ON vendite.contratti_indirizzi USING btree (contratto_id ASC NULLS LAST);
+
+              CREATE INDEX IF NOT EXISTS ix_contratti_indir_origine_indirizzo
+                ON vendite.contratti_indirizzi USING btree (origine_indirizzo_id ASC NULLS LAST);
+
+              CREATE INDEX IF NOT EXISTS ix_contratti_indir_origine_sog_ruolo
+                ON vendite.contratti_indirizzi USING btree (origine_soggetto_ruolo_id ASC NULLS LAST);
+      rollback:
+        - dropTable:
+            schemaName: vendite
+            tableName: contratti_indirizzi

@@ -189,6 +189,14 @@ SELECT is(
   'EVASO', '13) sync stato ordine: full evaso -> EVASO (C5)');
 
 -- 14) emissione DRAFT->EMESSO consentita
+-- Setup guard indirizzi obbligatori (DDT): CON obbligatorio all'emissione
+-- (trg_ddt_a10_guard_indirizzi_obbligatori_upd).
+INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+SELECT (SELECT ddt_id FROM tmp_ddt_a),
+       (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON'),
+       '{"display":"CON test"}'::jsonb
+ON CONFLICT DO NOTHING;
+
 SELECT lives_ok(
   format($q$UPDATE vendite.ddt SET stato_doc_ddt_id =
              (SELECT stato_ddt_emesso_id FROM tmp_refs) WHERE id = %s$q$,

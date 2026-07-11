@@ -1,0 +1,128 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Crea vendite.vw_ddt_righe_iva_base: clone 1:1 di
+# vendite.vw_ordini_righe_iva_base (20260605-16) con sostituzioni
+# ordini_righe->ddt_righe, ordini->ddt, ordine_id->ddt_id.
+#
+# Unica differenza dal clone ordini: su ddt_righe prezzo_unitario e iva_id
+# sono NULLABLE (DDT anche solo "di trasporto", non valorizzato). Il CASE su
+# iva_id e' gia' presente nell'omologa ordini (iva_id nullable anche li') e va
+# tenuto: evita di chiamare fn_get_aliquota_iva con p_iva_id NULL
+# (solleverebbe E_PARAMETRO_INVALIDO). Si aggiunge invece
+# `AND r.prezzo_unitario IS NOT NULL` al WHERE: le righe non valorizzate
+# restano fuori dal riepilogo (DDT interamente non valorizzato -> riepilogo
+# vuoto). Scelta del filtro (non COALESCE(prezzo,0)) per non generare gruppi
+# di riepilogo spuri con imponibile NULL nella derivata.
+#
+# Lettura pura: nessuna testata da mantenere (i DDT non hanno totali di
+# testata, a differenza degli ordini). Nessun trigger/ricalcolo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260711-13-create-vw-ddt-righe-iva-base-mctit.yaml
+
+  - changeSet:
+      id: 20260711-13-create-vw-ddt-righe-iva-base
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea vendite.vw_ddt_righe_iva_base (clone di vw_ordini_righe_iva_base):
+        righe DDT attive con quantita > 0 e prezzo_unitario valorizzato,
+        aliquota effettiva via config.fn_get_aliquota_iva (override stato
+        emittente). Lettura pura, nessun trigger.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: ddt_righe
+          - columnExists:
+              schemaName: vendite
+              tableName: ddt_righe
+              columnName: prezzo_unitario
+          - columnExists:
+              schemaName: vendite
+              tableName: ddt_righe
+              columnName: iva_id
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'config'
+                   AND p.proname = 'fn_get_aliquota_iva';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_ddt_righe_iva_base;
+
+              CREATE VIEW vendite.vw_ddt_righe_iva_base
+              WITH (security_invoker = on) AS
+              SELECT
+                  r.ddt_id,
+                  r.id                                                AS riga_id,
+                  r.riga_nr,
+                  o.emittente_fiscale_id,
+                  s.stato_id                                          AS stato_emittente_id,
+                  r.iva_id,
+                  CASE
+                    WHEN r.iva_id IS NOT NULL
+                    THEN config.fn_get_aliquota_iva(r.iva_id, s.stato_id)
+                    ELSE NULL::numeric
+                  END                                                 AS aliquota_effettiva,
+                  r.quantita,
+                  r.prezzo_unitario,
+                  r.sconto_percentuale,
+                  (r.quantita * r.prezzo_unitario)                    AS imponibile_lordo_full,
+                  (
+                    r.quantita * r.prezzo_unitario
+                    * COALESCE(r.sconto_percentuale, 0) / 100
+                  )                                                   AS sconto_riga_full,
+                  (
+                    r.quantita * r.prezzo_unitario
+                    * (1 - COALESCE(r.sconto_percentuale, 0) / 100)
+                  )                                                   AS imponibile_riga_full,
+                  r.attivo,
+                  r.data_insert,
+                  r.data_update
+              FROM vendite.ddt_righe r
+              JOIN vendite.ddt o
+                ON o.id = r.ddt_id
+              LEFT JOIN anagrafiche.emittenti_fiscali ef
+                ON ef.id = o.emittente_fiscale_id
+              LEFT JOIN anagrafiche.soggetti_ruoli sr
+                ON sr.id = ef.soggetto_ruolo_id
+              LEFT JOIN anagrafiche.soggetti s
+                ON s.id = sr.soggetto_id
+              WHERE r.attivo IS TRUE
+                AND r.quantita > 0
+                AND r.prezzo_unitario IS NOT NULL;
+
+              COMMENT ON VIEW vendite.vw_ddt_righe_iva_base IS
+                'Vista base righe IVA DDT vendita. Espone righe DDT attive con '
+                'quantita > 0 e prezzo_unitario valorizzato (le righe non '
+                'valorizzate, DDT di solo trasporto, restano fuori dal riepilogo), '
+                'imponibile lordo/sconto/imponibile netto a precisione piena e '
+                'aliquota effettiva via config.fn_get_aliquota_iva (override stato '
+                'emittente). Non somma direttamente i componenti BoM: il prezzo dei '
+                'componenti confluisce nella riga padre tramite trigger, evitando '
+                'doppio conteggio nel riepilogo IVA. Clone di '
+                'vw_ordini_righe_iva_base.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_ddt_righe_iva_base;

@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Guard indirizzi obbligatori all'emissione DDT (Q4, DDT-only). Alla
+# transizione a EMESSO, se manca un tipo indirizzo marcato obbligatorio
+# per l'ambito DDT (oggi: CON) solleva E_INDIRIZZO_DOC_OBBLIGATORIO.
+# Delega la regola al helper puro script.fn_indirizzi_obbligatori_mancanti.
+# Fascia a10 (guard), coerente con gli altri guard DDT; fires solo su
+# UPDATE OF stato_doc_ddt_id e short-circuita per stati != EMESSO.
+#
+# Nota: l'analogo guard su FATTURE NON viene agganciato ora: nessun
+# percorso popola ancora fatture_indirizzi (cascata fattura = cantiere
+# fatturazione). Il metadato obbligatorio=true su FATT@FATTURE resta
+# seedato; il guard fattura si accendera' insieme a quella cascata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260711-31-create-trg-ddt-guard-indirizzi-obbligatori-mctit.yaml
+
+  - changeSet:
+      id: 20260711-31-create-trg-ddt-guard-indirizzi-obbligatori
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_indirizzi_obbligatori()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: bloccare l'emissione (EMESSO) di un DDT privo degli
+              --   indirizzi marcati obbligatori per l'ambito DDT.
+              DECLARE
+                  v_stato_codice config.stati_doc_ddt.codice_interno%TYPE;
+                  v_presenti     integer[];
+                  v_mancanti     text[];
+              BEGIN
+                  SELECT sdd.codice_interno INTO v_stato_codice
+                    FROM config.stati_doc_ddt sdd
+                   WHERE sdd.id = NEW.stato_doc_ddt_id;
+
+                  IF v_stato_codice IS DISTINCT FROM 'EMESSO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Tipi indirizzo gia' presenti sulla testata DDT.
+                  SELECT array_agg(di.tipo_indirizzo_id) INTO v_presenti
+                    FROM vendite.ddt_indirizzi di
+                   WHERE di.ddt_id = NEW.id;
+
+                  v_mancanti := script.fn_indirizzi_obbligatori_mancanti('DDT', v_presenti);
+
+                  IF array_length(v_mancanti, 1) IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_INDIRIZZO_DOC_OBBLIGATORIO',
+                          jsonb_build_object(
+                              'ddt_id',   NEW.id,
+                              'numero',   NEW.numero,
+                              'ambito',   'DDT',
+                              'mancanti', v_mancanti),
+                          NEW.tx_id,
+                          'DDT',
+                          NEW.id::text,
+                          array_to_string(v_mancanti, ', ')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_indirizzi_obbligatori_upd
+                ON vendite.ddt;
+
+              CREATE TRIGGER trg_ddt_a10_guard_indirizzi_obbligatori_upd
+                BEFORE UPDATE OF stato_doc_ddt_id
+                ON vendite.ddt
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_ddt_guard_indirizzi_obbligatori();

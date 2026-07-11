@@ -135,6 +135,12 @@ SELECT ok(
 
 -- 4) caso 8 — XOR preservato: il DDT ordine-sourced (src_trigger=CONFERMATO)
 --    portato a SPEDITO NON diventa una seconda sorgente di push
+-- Setup guard indirizzi obbligatori (DDT): CON obbligatorio all'emissione.
+INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+SELECT (SELECT ddt_id FROM tmp_ddt_a3),
+       (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON'),
+       '{"display":"CON test"}'::jsonb
+ON CONFLICT DO NOTHING;
 UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_emesso_id FROM tmp_refs_v3)
  WHERE id = (SELECT ddt_id FROM tmp_ddt_a3);
 UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_spedito_id FROM tmp_refs_v3)
@@ -304,6 +310,12 @@ SELECT ok(
 );
 
 -- 8) caso 9b — per il trigger SPEDITO pusha il DDT (invariato)
+-- Setup guard indirizzi obbligatori (DDT): CON obbligatorio all'emissione.
+INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+SELECT (SELECT ddt_id FROM tmp_ddt_c3),
+       (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON'),
+       '{"display":"CON test"}'::jsonb
+ON CONFLICT DO NOTHING;
 UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_emesso_id FROM tmp_refs_v3)
  WHERE id = (SELECT ddt_id FROM tmp_ddt_c3);
 UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_spedito_id FROM tmp_refs_v3)
