@@ -853,6 +853,12 @@ Solo in BOZZA. `istanza_utility_id` e `utility_id` immutabili (cambio =
 DELETE offerta + creazione nuova). Payload `{}` rifiutato. Anti-tampering:
 verifica `utility.id == <utility_id>` e `utility.offerta_id == <id>`.
 
+### Indirizzi documento `GET/POST /<id>/indirizzi/` + `DELETE /<id>/indirizzi/<iid>/`
+
+BB condiviso sui 5 domini vendite (ambito OFFERTE (FATT, CON, FORNITURA, RES); editabile solo BOZZA):
+contratto completo in [api_indirizzi_documento.md](api_indirizzi_documento.md).
+
+
 ## Output
 
 Tutte le risposte usano l'envelope `success_response`:

@@ -1697,6 +1697,37 @@
     }
   },
   "vendite": {
+    "indirizzi": {
+      "da_soggetto": "from subject",
+      "tt_slot": "{tipo} address set on this document",
+      "tt_da_soggetto": "Derived from the subject's registry addresses (no role address available)",
+      "tt_una_tantum": "Free address, applies to this document only",
+      "tt_da_tipo": "Set from the customer's {tipo} address",
+      "da_tipo": "from {tipo}",
+      "usa_questo": "Use this address on the document",
+      "usa_come": "Use as",
+      "usa_come_tipo": "Address type",
+      "impostati_titolo": "Set on this document",
+      "altri_count": "+{n} more",
+      "mancante_obbligatorio": "Delivery address missing — required for issuing.",
+      "non_impostato": "No address set.",
+      "titolo": "Addresses",
+      "una_tantum": "one-off",
+      "indirizzo_libero": "Free address (one-off)",
+      "rimuovi": "Remove address",
+      "salvato": "Address saved",
+      "rimosso": "Address removed",
+      "conferma_rimozione": "Remove the address from the document?",
+      "field_intestazione": "Heading",
+      "field_via": "Street and number",
+      "field_cap": "ZIP",
+      "field_citta": "City",
+      "field_prov": "Province",
+      "field_stato": "Country (ISO2)",
+      "field_email": "Email",
+      "field_telefono": "Phone",
+      "field_note": "Notes"
+    },
     "ddt": {
       "titolo": "Sales delivery notes",
       "ddt": "Sales delivery note",
@@ -1809,7 +1840,8 @@
       "col_valuta": "Currency",
       "col_anno": "Year",
       "col_serie": "Series",
-      "col_data_insert": "Created"
+      "col_data_insert": "Created",
+      "col_emittente": "Issuer"
     },
     "ordini": {
       "pdf": {
@@ -2723,6 +2755,8 @@
     "codice_sdi": "SDI recipient code"
   },
   "indirizzo_soggetto": {
+    "usa": "Use",
+    "usa_questo": "Use this address on the document",
     "tipo_indirizzo": "Address type",
     "select_tipo_indirizzo": "Select address type...",
     "modalita_libera": "Foreign / free-form address",

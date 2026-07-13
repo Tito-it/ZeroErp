@@ -43,6 +43,13 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import DatabaseError, IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._indirizzi_documento_helpers import (
+    IndirizziDocumentoConfig,
+    auto_assegna_indirizzo_default,
+    delete_indirizzo_documento,
+    list_indirizzi_documento,
+    upsert_indirizzo_documento,
+)
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
@@ -684,6 +691,9 @@ class ContrattiService:
                 testata=data, utility=utility_data,
             )
 
+        # UX v2: auto-assegnazione best-effort dell'indirizzo default
+        # (indirizzo di ruolo CON del cliente, fallback FATT). Mai bloccante.
+        auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(new_id))
         return self.get_contratto(new_id)
 
     # =================================================================
@@ -2814,3 +2824,45 @@ def _orchestrate_l3_request_contratto(
             sorgente=SORGENTE_CONTRATTO,
         )
     return pratica_id
+
+
+# ══════════════════════════════════════════════════════════
+#  Indirizzi documento (BB condiviso _indirizzi_documento_helpers)
+# ══════════════════════════════════════════════════════════
+
+_INDIRIZZI_CFG = IndirizziDocumentoConfig(
+    # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
+    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    repo_factory=lambda: ContrattiRepository(),
+    stati_modificabili=frozenset({"DRAFT"}),
+    not_found_code=E_VENDITE_NOT_FOUND,
+    stato_error_code="E_CONTRATTO_NON_MODIFICABILE",
+    error_code=E_VENDITE_VALIDATION,
+    fn_prefix="vendite.contratti_service",
+)
+
+
+# Scopo: Pannello indirizzi del contratto (ambito CONTRATTI). Guard,
+#        ownership e traduzione errori DB nel BB condiviso.
+def list_indirizzi(contratto_id: int) -> dict[str, Any]:
+    return list_indirizzi_documento(_INDIRIZZI_CFG, contratto_id)
+
+
+# Scopo: Upsert slot indirizzo (uno-per-tipo, solo DRAFT: post-attivazione
+#        lo snapshot e' congelato col documento).
+def upsert_indirizzo(contratto_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    return upsert_indirizzo_documento(_INDIRIZZI_CFG, contratto_id, payload)
+
+
+# Scopo: Rimozione slot indirizzo (solo DRAFT).
+def delete_indirizzo(contratto_id: int, indirizzo_id: int) -> dict[str, Any]:
+    return delete_indirizzo_documento(_INDIRIZZI_CFG, contratto_id, indirizzo_id)
+
+
+# Scopo: Auto-assegnazione best-effort dell'indirizzo default sul contratto,
+#        esposta per i flussi che creano contratti FUORI da questo service
+#        (push offerta→contratto in offerte_service): la cascata DB copia gli
+#        indirizzi dell'offerta, questo e' il fallback dall'anagrafica di
+#        ruolo quando la sorgente non aveva slot compatibili. Mai bloccante.
+def auto_assegna_indirizzo_default_contratto(contratto_id: int) -> None:
+    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(contratto_id))

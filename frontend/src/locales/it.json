@@ -1697,6 +1697,37 @@
     }
   },
   "vendite": {
+    "indirizzi": {
+      "da_soggetto": "da soggetto",
+      "tt_slot": "Indirizzo di {tipo} impostato su questo documento",
+      "tt_da_soggetto": "Derivato dagli indirizzi anagrafici del soggetto (nessun indirizzo di ruolo disponibile)",
+      "tt_una_tantum": "Indirizzo libero, vale solo per questo documento",
+      "tt_da_tipo": "Impostato dall'indirizzo di {tipo} del cliente",
+      "da_tipo": "da {tipo}",
+      "usa_questo": "Usa questo indirizzo sul documento",
+      "usa_come": "Usa come",
+      "usa_come_tipo": "Tipo indirizzo",
+      "impostati_titolo": "Impostati su questo documento",
+      "altri_count": "+{n} altri",
+      "mancante_obbligatorio": "Indirizzo di consegna mancante — obbligatorio per l'emissione.",
+      "non_impostato": "Nessun indirizzo impostato.",
+      "titolo": "Indirizzi",
+      "una_tantum": "una tantum",
+      "indirizzo_libero": "Indirizzo libero (una tantum)",
+      "rimuovi": "Rimuovi indirizzo",
+      "salvato": "Indirizzo salvato",
+      "rimosso": "Indirizzo rimosso",
+      "conferma_rimozione": "Rimuovere l'indirizzo dal documento?",
+      "field_intestazione": "Intestazione",
+      "field_via": "Via e civico",
+      "field_cap": "CAP",
+      "field_citta": "Citt\u00e0",
+      "field_prov": "Provincia",
+      "field_stato": "Stato (ISO2)",
+      "field_email": "Email",
+      "field_telefono": "Telefono",
+      "field_note": "Note"
+    },
     "ddt": {
       "titolo": "DDT di vendita",
       "ddt": "DDT di vendita",
@@ -1809,7 +1840,8 @@
       "col_valuta": "Valuta",
       "col_anno": "Anno",
       "col_serie": "Serie",
-      "col_data_insert": "Creazione"
+      "col_data_insert": "Creazione",
+      "col_emittente": "Emittente"
     },
     "ordini": {
       "pdf": {
@@ -2723,6 +2755,8 @@
     "codice_sdi": "Codice destinatario SDI"
   },
   "indirizzo_soggetto": {
+    "usa": "Usa",
+    "usa_questo": "Usa questo indirizzo sul documento",
     "tipo_indirizzo": "Tipo indirizzo",
     "select_tipo_indirizzo": "Seleziona tipo indirizzo...",
     "modalita_libera": "Indirizzo estero / formato libero",

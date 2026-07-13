@@ -27,6 +27,9 @@ from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api.indirizzi_documento_views import (
+    build_indirizzi_documento_views,
+)
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import preventivi_service
 
@@ -1027,42 +1030,19 @@ class ApiPreventivoContestoPricing(DomainAPIView):
 # ── Indirizzi ──
 
 
-class ApiPreventivoIndirizzi(DomainAPIView):
-    area_funzionale = "vendite"
-
-    @extend_schema(
-        responses={200: inline_serializer(
-            name="PreventivoIndirizziListResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
-    )
-    # Scopo: Restituisce via GET gli indirizzi del preventivo.
-    def get(self, request: Request, preventivo_id: int) -> JsonResponse:
-        data = preventivi_service.list_indirizzi(preventivo_id)
-        return success_response(data)
-
-    @extend_schema(
-        request=inline_serializer(
-            name="PreventivoIndirizzoUpsertRequest",
-            fields={
-                "tipo_indirizzo_id": serializers.IntegerField(),
-                "snapshot": serializers.DictField(),
-                "origine_indirizzo_id": serializers.IntegerField(required=False, allow_null=True),
-                "origine_soggetto_ruolo_id": serializers.IntegerField(required=False, allow_null=True),
-            },
-        ),
-        responses={200: inline_serializer(
-            name="PreventivoIndirizzoUpsertResponse",
-            fields={"data": inline_serializer(name="PreventivoIndirizzoUpsertData", fields={
-                "id": serializers.IntegerField(),
-            })},
-        )},
-    )
-    # Scopo: Upsert indirizzo preventivo via POST.
-    def post(self, request: Request, preventivo_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
-            return preventivi_service.upsert_indirizzo(preventivo_id, payload)
-        return handle_post_json(request, handler=_handler)
+# View dal factory condiviso `build_indirizzi_documento_views` (pannello
+# indirizzi slot-per-tipo, design brief-design-indirizzi-documenti-vendita).
+_indirizzi_views = build_indirizzi_documento_views(
+    schema_prefix="Preventivo",
+    url_kwarg="preventivo_id",
+    list_call=lambda preventivo_id: preventivi_service.list_indirizzi(preventivo_id),
+    upsert_call=lambda preventivo_id, payload: preventivi_service.upsert_indirizzo(
+        preventivo_id, payload),
+    delete_call=lambda preventivo_id, indirizzo_id: preventivi_service.delete_indirizzo(
+        preventivo_id, indirizzo_id),
+)
+ApiPreventivoIndirizzi = _indirizzi_views.lista
+ApiPreventivoIndirizzoDetail = _indirizzi_views.detail
 
 
 # ── Integrazione: push commessa ──

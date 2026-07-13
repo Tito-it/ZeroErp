@@ -21,13 +21,17 @@
 #           + `mittente`/`vettore` denormalizzati dalla vista;
 #         - provenienza upstream = ordine di vendita (`ordine_origine_*`).
 #
-#        Confine v1 (allineato alla famiglia):
+#        Confine (allineato alla famiglia):
 #         - il builder NON applica scope/permessi: responsabilita' del
 #           caller (orchestrator + view di dominio con permessi `vendite_*`);
 #         - il builder NON conosce il template HTML: fornisce solo dati
-#           strutturati formattabili lato Jinja;
-#         - indirizzi da snapshot `ddt_indirizzi`: NON in questa v1 (slice
-#           editing indirizzi); il template usa le denominazioni della vista.
+#           strutturati formattabili lato Jinja.
+#
+#        v2 (2026-07-12): blocco `indirizzi.consegna` dallo snapshot
+#        congelato `ddt_indirizzi` (slot CON — unico tipo ammesso in ambito
+#        DDT). All'emissione il CON e' garantito dal guard DB
+#        (`E_INDIRIZZO_DOC_OBBLIGATORIO`); in anteprima DRAFT puo' mancare
+#        -> `consegna = None`, il template degrada senza blocco indirizzo.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -45,6 +49,9 @@ from apps.documenti.services.context_builders.base import (
 )
 from apps.documenti.services.context_builders.registry import register_builder
 from apps.vendite.db.ddt_repository import DdtRepository
+from apps.vendite.services._indirizzi_documento_helpers import (
+    SNAPSHOT_KEYS_ORDERED,
+)
 
 E_VALIDATION = "E_DOCUMENTI_VALIDATION"
 E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
@@ -91,6 +98,7 @@ class DdtDocumentContextBuilder(DocumentContextBuilder):
         return {
             "ddt": self._shape_ddt(testata),
             "destinatario": self._shape_destinatario(testata),
+            "indirizzi": self._shape_indirizzi(sorgente_id),
             "trasporto": self._shape_trasporto(testata),
             "righe": righe,
             # `_meta`: parametri di rendering stabili a parita' di chiamata
@@ -101,7 +109,7 @@ class DdtDocumentContextBuilder(DocumentContextBuilder):
             "_meta": {
                 "locale": locale,
                 "auth_user_id": auth_user_id,
-                "context_version": 1,
+                "context_version": 2,
                 "context_code": self.CODE,
             },
         }
@@ -162,6 +170,45 @@ class DdtDocumentContextBuilder(DocumentContextBuilder):
             "billing_account_id": testata.get("billing_account_id"),
             "ba_codice": testata.get("ba_codice"),
         }
+
+    # Chiavi stabili del blocco consegna nel context: il render Jinja usa
+    # StrictUndefined, quindi il builder garantisce SEMPRE l'intero set
+    # (None per gli assenti) — il template non deve difendersi chiave per
+    # chiave. Fonte unica: la whitelist snapshot del BB indirizzi (una
+    # chiave aggiunta li' arriva automaticamente anche al context PDF).
+    _CONSEGNA_KEYS: tuple[str, ...] = SNAPSHOT_KEYS_ORDERED
+
+    # Scopo: Sotto-dict "indirizzi" dallo snapshot congelato `ddt_indirizzi`.
+    #        `consegna` = slot CON (unico tipo ammesso in ambito DDT), chiavi
+    #        fisse `_CONSEGNA_KEYS` + `display_compatto` pre-composto (mirror
+    #        del FE `formatSnapshotDisplay`). None se lo slot manca (anteprima
+    #        in DRAFT): il template omette il blocco. Ordine deterministico
+    #        garantito da `list_indirizzi` (ORDER BY tipo_indirizzo_id) ->
+    #        context_hash stabile.
+    def _shape_indirizzi(self, ddt_id: int) -> dict[str, Any]:
+        rows = self._repo.list_indirizzi(ddt_id)
+        consegna: dict[str, Any] | None = None
+        for r in rows:
+            if r.get("tipo_indirizzo_codice") == "CON":
+                snapshot = r.get("snapshot") or {}
+                consegna = {k: snapshot.get(k) for k in self._CONSEGNA_KEYS}
+                consegna["display_compatto"] = self._snapshot_display(snapshot)
+                break
+        return {"consegna": consegna}
+
+    # Scopo: Display compatto dello snapshot ("intestazione — via, cap citta,
+    #        prov"), mirror del FE `formatSnapshotDisplay` per il fallback
+    #        one-line nel template.
+    @staticmethod
+    def _snapshot_display(s: dict[str, Any]) -> str:
+        geo = s.get("display") or ", ".join(
+            p for p in (
+                s.get("via"),
+                " ".join(x for x in (s.get("cap"), s.get("citta")) if x),
+                s.get("prov"),
+            ) if p
+        )
+        return " — ".join(p for p in (s.get("intestazione"), geo) if p)
 
     # Scopo: Sotto-dict "trasporto": il cuore dell'accompagnatorio. Causale,
     #        aspetto beni, porto (modalita addebito), logistica (colli, pesi,

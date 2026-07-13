@@ -18,7 +18,7 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
 > [analisi-ordini-vendita.md](../../../dev/work-in-progress/analisi-ordini-vendita.md)
 > §5) + stampa PDF (§Documenti) + **conversione preventivo/offerta→ordine**
 > (2026-06-04, endpoint `genera-ordine` sui domini upstream — valorizza
-> `documento_origine` A1). Fuori scope per ora: fulfillment/DDT, indirizzi.
+> `documento_origine` A1). Fulfillment/DDT: vedi [api_ddt.md](api_ddt.md) (evasione `genera-ddt`). Indirizzi documento: vedi [api_indirizzi_documento.md](api_indirizzi_documento.md).
 
 ### Modello
 
@@ -154,6 +154,11 @@ mantenuti coerenti dal trigger `fn_ricalcola_totali_ordine`. Ordinamento
 `iva_aliquota NULLS LAST, iva_id NULLS LAST`. Scope/visibilità via
 `security_invoker=on` + RLS su `vendite.ordini` (ordine fuori perimetro → lista
 vuota). Usato dal pannello "Riepilogo IVA" del drawer e dal context builder PDF.
+
+### Indirizzi documento `GET/POST /<id>/indirizzi/` + `DELETE /<id>/indirizzi/<iid>/`
+
+BB condiviso sui 5 domini vendite (ambito `ORDINI`: CON, FATT; editabile solo
+DRAFT): contratto completo in [api_indirizzi_documento.md](api_indirizzi_documento.md).
 
 ### Update testata `PATCH /api/v1/vendite/ordini/<id>/`
 

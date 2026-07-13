@@ -30,6 +30,7 @@ from apps.catalogo.db.catalogo_repository import CatalogoRepository
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
+from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 
 
 # Mappa colonna -> tipo speciale (jsonb). Le altre colonne usano '%s'.
@@ -156,6 +157,9 @@ _SELECT_COLS_OFFERTA = """
     COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
                         AS emittente_fiscale_descrizione,
     o.billing_account_id,
+    -- soggetto_ruolo del cliente (BA): serve al FE per la gestione
+    -- indirizzi documento (elenco anagrafico cascata).
+    ba.soggetto_ruolo_id,
     ba.codice                AS ba_codice,
     srd.ragione_sociale_completa AS billing_account_display,
     -- ID fiscale univoco del soggetto del BA (CF persona fisica o P.IVA).
@@ -319,7 +323,7 @@ _FROM_JOINS_UTILITY = """
 """
 
 
-class OfferteRepository(ComponentiRepositoryMixin):
+class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryMixin):
     """Accesso DB a `vendite.offerte_commerciali` + eccezioni + utility 1:1.
 
     Specchio di `ContrattiRepository` per la testata, le eccezioni
@@ -335,6 +339,12 @@ class OfferteRepository(ComponentiRepositoryMixin):
 
     _componenti_table_name = "vendite.offerte_commerciali_eccezioni_componenti"
     _componenti_fk_riga = "eccezione_offerta_id"
+
+    # Configurazione mixin indirizzi documento.
+    _indirizzi_table = "vendite.offerte_commerciali_indirizzi"
+    _indirizzi_fk_documento = "offerta_id"
+    _indirizzi_ambito = "OFFERTE"
+    _indirizzi_documento_table = "vendite.offerte_commerciali"
 
     # =================================================================
     # Lista e dettaglio testata

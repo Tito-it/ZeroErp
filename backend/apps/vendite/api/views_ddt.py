@@ -35,6 +35,9 @@ from apps.core.api.payload_validators import (
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api.indirizzi_documento_views import (
+    build_indirizzi_documento_views,
+)
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ddt_service
 
@@ -219,6 +222,21 @@ class ApiDdtPush(DomainAPIView):
     def post(self, request: Request, ddt_id: int) -> JsonResponse:
         user = getattr(request.user, "username", None) or None
         return success_response(ddt_service.push_a_commessa(int(ddt_id), user=user))
+
+
+# View dal factory condiviso `build_indirizzi_documento_views` (pannello
+# indirizzi slot-per-tipo, design brief-design-indirizzi-documenti-vendita).
+# Closure sul modulo: i patch dei test su ddt_service.* restano validi.
+_indirizzi_views = build_indirizzi_documento_views(
+    schema_prefix="Ddt",
+    url_kwarg="ddt_id",
+    list_call=lambda ddt_id: ddt_service.list_indirizzi(ddt_id),
+    upsert_call=lambda ddt_id, payload: ddt_service.upsert_indirizzo(ddt_id, payload),
+    delete_call=lambda ddt_id, indirizzo_id: ddt_service.delete_indirizzo(
+        ddt_id, indirizzo_id),
+)
+ApiDdtIndirizzi = _indirizzi_views.lista
+ApiDdtIndirizzoDetail = _indirizzi_views.detail
 
 
 # View dal factory condiviso `build_riepilogo_iva_view` (estrazione

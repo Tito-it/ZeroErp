@@ -49,6 +49,15 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
 
     CODE = "PREVENTIVO"
 
+    # Chiavi degli indirizzi documento nel context (shape v1 pre-mixin):
+    # solo dati del documento/snapshot congelato, niente decodifiche
+    # live-JOIN del drawer FE (vedi commento in build_context).
+    _INDIRIZZI_CONTEXT_KEYS: tuple[str, ...] = (
+        "id", "preventivo_id", "tipo_indirizzo_id",
+        "tipo_indirizzo_descrizione", "snapshot",
+        "origine_indirizzo_id", "origine_soggetto_ruolo_id",
+    )
+
     # Scopo: Iniezione opzionale del repository per testabilita' (mock).
     #        In runtime il default va benissimo: l'istanza e' singleton di
     #        processo (registry).
@@ -82,7 +91,17 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
 
         righe = self._repo.list_righe(sorgente_id)
         riepilogo_iva = self._repo.list_riepilogo_iva(sorgente_id)
-        indirizzi = self._repo.list_indirizzi(sorgente_id)
+        # Proiezione STABILE degli indirizzi documento: il mixin condiviso
+        # aggiunge chiavi per il drawer FE (tipo_indirizzo_codice,
+        # origine_tipo_indirizzo_*) derivate da JOIN LIVE su dati mutabili
+        # (anagrafiche.indirizzi, FK SET NULL) — fuori dal context PDF, che
+        # dipende solo dallo snapshot congelato. La whitelist replica la
+        # shape v1 pre-mixin: il context_hash resta stabile per i documenti
+        # gia' generati.
+        indirizzi = [
+            {k: r.get(k) for k in self._INDIRIZZI_CONTEXT_KEYS}
+            for r in self._repo.list_indirizzi(sorgente_id)
+        ]
 
         return {
             "preventivo": self._shape_preventivo(testata),

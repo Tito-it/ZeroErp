@@ -24,6 +24,8 @@ from apps.vendite.api.views_ordini import (
     ApiOrdineDetail,
     ApiOrdineGeneraDdt,
     ApiOrdinePerPratica,
+    ApiOrdineIndirizzi,
+    ApiOrdineIndirizzoDetail,
     ApiOrdinePush,
     ApiOrdineRiepilogoIva,
     ApiOrdineRigaComponenteDetail,
@@ -55,6 +57,13 @@ urlpatterns = [
     # Riepilogo IVA aggregato (regola fiscale art. 21 DPR 633/72) — view derivata
     path("<int:ordine_id>/riepilogo-iva/", ApiOrdineRiepilogoIva.as_view(),
          name="vendite-ordine-riepilogo-iva"),
+
+    # Indirizzi documento (pannello slot-per-tipo, factory condiviso)
+    path("<int:ordine_id>/indirizzi/", ApiOrdineIndirizzi.as_view(),
+         name="vendite-ordine-indirizzi"),
+    path("<int:ordine_id>/indirizzi/<int:indirizzo_id>/",
+         ApiOrdineIndirizzoDetail.as_view(),
+         name="vendite-ordine-indirizzo-detail"),
 
     # Transizioni / integrazione
     # Emissione = conferma documentale (DRAFT->CONFERMATO + genera PDF +

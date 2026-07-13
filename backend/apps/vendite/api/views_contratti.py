@@ -31,6 +31,10 @@ from apps.core.api.request_parsers import parse_iso_date
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api.indirizzi_documento_views import (
+    build_indirizzi_documento_views,
+)
+from apps.vendite.services import contratti_service
 from apps.vendite.services.contratti_service import ContrattiService
 
 # Codice lista configurabile (ui.lista_definizione) per contratti.
@@ -771,3 +775,18 @@ class ApiContrattoRigaComponenteDetail(DomainAPIView):
                 contratto_id, riga_id, componente_id,
             )
         )
+
+
+# View dal factory condiviso `build_indirizzi_documento_views` (pannello
+# indirizzi slot-per-tipo, design brief-design-indirizzi-documenti-vendita).
+_indirizzi_views = build_indirizzi_documento_views(
+    schema_prefix="Contratto",
+    url_kwarg="contratto_id",
+    list_call=lambda contratto_id: contratti_service.list_indirizzi(contratto_id),
+    upsert_call=lambda contratto_id, payload: contratti_service.upsert_indirizzo(
+        contratto_id, payload),
+    delete_call=lambda contratto_id, indirizzo_id: contratti_service.delete_indirizzo(
+        contratto_id, indirizzo_id),
+)
+ApiContrattoIndirizzi = _indirizzi_views.lista
+ApiContrattoIndirizzoDetail = _indirizzi_views.detail

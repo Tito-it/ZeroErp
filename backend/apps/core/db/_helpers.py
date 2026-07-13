@@ -28,6 +28,21 @@ def rows_to_list(cursor) -> list[dict[str, Any]]:
     return [dict(zip(cols, row)) for row in cursor.fetchall()]
 
 
+def coerce_jsonb_dict(value: Any) -> dict[str, Any]:
+    """Coercion difensiva jsonb -> dict (il driver puo' restituire jsonb come str).
+
+    Promozione regola-del-2 del clone nato in pratiche_repository (2026-06-11)
+    e replicato in ui_admin/vendite: JSON malformato o non-oggetto -> {} (mai
+    raise: i chiamanti sono path di lettura/display, non validazione input).
+    """
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return {}
+    return value if isinstance(value, dict) else {}
+
+
 def escape_ilike(value: str) -> str:
     """Escapa i metacaratteri ILIKE (`%`, `_`, `\\`) nel termine di ricerca.
 

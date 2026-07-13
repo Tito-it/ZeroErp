@@ -41,6 +41,13 @@ from apps.vendite.services._componenti_service_helpers import (
     resolve_emittente_sr_id_safe,
     resolve_emittente_sr_id_for_testata,
 )
+from apps.vendite.services._indirizzi_documento_helpers import (
+    IndirizziDocumentoConfig,
+    auto_assegna_indirizzo_default,
+    delete_indirizzo_documento,
+    list_indirizzi_documento,
+    upsert_indirizzo_documento,
+)
 from apps.vendite.db.preventivi_repository import PreventiviRepository
 from apps.vendite.services._approvazioni_prezzo_constants import (
     STATO_APPROVAZIONE_APPROVED,
@@ -296,31 +303,35 @@ def get_contesto_pricing(preventivo_id: int) -> dict[str, Any] | None:
     return repo.resolve_contesto_pricing(preventivo_id)
 
 
-# Scopo: Lista indirizzi di un preventivo.
-def list_indirizzi(preventivo_id: int) -> list[dict[str, Any]]:
-    repo = PreventiviRepository()
-    return repo.list_indirizzi(preventivo_id)
+# ── Indirizzi documento (BB condiviso _indirizzi_documento_helpers) ──
+
+_INDIRIZZI_CFG = IndirizziDocumentoConfig(
+    # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
+    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    repo_factory=lambda: PreventiviRepository(),
+    stati_modificabili=_STATI_MODIFICABILI,
+    not_found_code="E_PREV_NOT_FOUND",
+    stato_error_code="E_PREV_STATO_NON_MODIFICABILE",
+    error_code="E_PREV_VALIDAZIONE",
+    fn_prefix=_FN,
+)
 
 
-# Scopo: Upsert indirizzo preventivo (uno per tipo).
+# Scopo: Pannello indirizzi del preventivo (ambito PREVENTIVI). Guard,
+#        ownership e traduzione errori DB nel BB condiviso.
+def list_indirizzi(preventivo_id: int) -> dict[str, Any]:
+    return list_indirizzi_documento(_INDIRIZZI_CFG, preventivo_id)
+
+
+# Scopo: Upsert slot indirizzo (uno-per-tipo, solo BOZZA: post-emissione lo
+#        snapshot e' congelato; la revisione lo copia 1:1).
 def upsert_indirizzo(preventivo_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-    repo = PreventiviRepository()
+    return upsert_indirizzo_documento(_INDIRIZZI_CFG, preventivo_id, payload)
 
-    tipo_indirizzo_id = payload.get("tipo_indirizzo_id")
-    ErrorManager.require(
-        tipo_indirizzo_id is not None,
-        code="E_PREV_VALIDAZIONE",
-        message="tipo_indirizzo_id obbligatorio.",
-        function_name=f"{_FN}.upsert_indirizzo",
-    )
 
-    return repo.upsert_indirizzo(
-        preventivo_id=preventivo_id,
-        tipo_indirizzo_id=int(tipo_indirizzo_id),
-        snapshot=dict(payload.get("snapshot", {})),
-        origine_indirizzo_id=payload.get("origine_indirizzo_id"),
-        origine_soggetto_ruolo_id=payload.get("origine_soggetto_ruolo_id"),
-    )
+# Scopo: Rimozione slot indirizzo (solo BOZZA).
+def delete_indirizzo(preventivo_id: int, indirizzo_id: int) -> dict[str, Any]:
+    return delete_indirizzo_documento(_INDIRIZZI_CFG, preventivo_id, indirizzo_id)
 
 
 # ══════════════════════════════════════════════════════════
@@ -423,6 +434,9 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
         stato_doc_preventivo_id=stato_bozza_id,
         meta=payload.get("meta"),
     )
+    # UX v2: auto-assegnazione best-effort dell'indirizzo default (indirizzo
+    # di ruolo CON del cliente, fallback FATT). Mai bloccante.
+    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(result["id"]))
     return result
 
 

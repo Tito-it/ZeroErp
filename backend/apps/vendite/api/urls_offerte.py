@@ -25,6 +25,8 @@ from apps.vendite.api.offerte_documenti_views import (
 )
 from apps.vendite.api.views_form_defaults import ApiOffertaFormDefaults
 from apps.vendite.api.views_offerte import (
+    ApiOffertaIndirizzi,
+    ApiOffertaIndirizzoDetail,
     ApiOffertaAnnulla,
     ApiOffertaContrattoSovrapposto,
     ApiOffertaCreaRevisione,
@@ -71,6 +73,16 @@ urlpatterns = [
         "<int:sorgente_id>/emetti/",
         ApiOffertaEmetti.as_view(),
         name="vendite-offerta-emetti",
+    ),
+    path(
+        "<int:offerta_id>/indirizzi/",
+        ApiOffertaIndirizzi.as_view(),
+        name="vendite-offerta-indirizzi",
+    ),
+    path(
+        "<int:offerta_id>/indirizzi/<int:indirizzo_id>/",
+        ApiOffertaIndirizzoDetail.as_view(),
+        name="vendite-offerta-indirizzo-detail",
     ),
     path(
         "<int:offerta_id>/registra-esito/",

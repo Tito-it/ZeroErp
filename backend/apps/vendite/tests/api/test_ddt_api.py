@@ -22,6 +22,9 @@ Indice test eseguiti:
  9) test_genera_ddt_da_ordine_ok  — 200 POST /ordini/<id>/genera-ddt/ (mock service)
 10) test_genera_ddt_righe_selettive — righe evasione parziale propagate al service
 11) test_riepilogo_iva_ok         — 200 riepilogo IVA aggregato (mock service)
+12) test_indirizzi_get_ok         — 200 pannello indirizzi tipi+slot (mock service)
+13) test_indirizzi_upsert_ok      — 200 upsert slot indirizzo, payload propagato (mock)
+14) test_indirizzi_delete_ok      — 200 delete slot indirizzo (mock service)
 """
 
 from unittest.mock import ANY, Mock, patch
@@ -176,6 +179,44 @@ class TestDdtApi(JwtMockedApiTest):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["iva_aliquota"], "22.00")
         mock_riep.assert_called_once_with(7)
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.list_indirizzi")
+    def test_indirizzi_get_ok(self, mock_list, _auth) -> None:
+        mock_list.return_value = {
+            "tipi_ammessi": [{"tipo_indirizzo_id": 10,
+                              "tipo_indirizzo_codice": "CON",
+                              "obbligatorio": True}],
+            "indirizzi": [],
+        }
+        resp = self.client.get(f"{_BASE}7/indirizzi/")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()["data"]
+        self.assertEqual(data["tipi_ammessi"][0]["tipo_indirizzo_codice"], "CON")
+        mock_list.assert_called_once_with(7)
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.upsert_indirizzo")
+    def test_indirizzi_upsert_ok(self, mock_ups, _auth) -> None:
+        mock_ups.return_value = {"id": 3, "ddt_id": 7, "tipo_indirizzo_id": 10}
+        resp = self.client.post(
+            f"{_BASE}7/indirizzi/",
+            data={"tipo_indirizzo_id": 10, "origine_indirizzo_id": 55},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["data"]["id"], 3)
+        mock_ups.assert_called_once_with(
+            7, {"tipo_indirizzo_id": 10, "origine_indirizzo_id": 55})
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.delete_indirizzo")
+    def test_indirizzi_delete_ok(self, mock_del, _auth) -> None:
+        mock_del.return_value = {"deleted": True, "id": 3}
+        resp = self.client.delete(f"{_BASE}7/indirizzi/3/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["data"]["deleted"])
+        mock_del.assert_called_once_with(7, 3)
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.aggiorna_ddt")

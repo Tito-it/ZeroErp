@@ -208,6 +208,7 @@ class PreventivoDetailRow(TypedDict):
     stato_codice: str
     stato_descrizione: str
     billing_account_id: int | None
+    soggetto_ruolo_id: int | None
     cliente_denominazione: str | None
     utility_id: int
     utility_descrizione: str | None
@@ -336,16 +337,6 @@ class ContrattoRigaComponenteRow(TypedDict):
     esposto_in_fattura: bool
 
 
-class PreventivoIndirizzoRow(TypedDict):
-    id: int
-    preventivo_id: int
-    tipo_indirizzo_id: int
-    tipo_indirizzo_descrizione: str | None
-    snapshot: dict[str, Any]
-    origine_indirizzo_id: int | None
-    origine_soggetto_ruolo_id: int | None
-
-
 # Aggregato smistamento per ramo (vw_preventivi_smistamento, sostituisce la
 # vecchia vw_preventivi_stato_fatturazione — rename DB 2026-06-12,
 # brief-db-smistamento-preventivi.md B). `righe_in_commessa` ora conta solo
@@ -385,6 +376,7 @@ class OffertaRow(TypedDict):
     codice: str
     emittente_fiscale_id: int
     billing_account_id: int
+    soggetto_ruolo_id: int
     istanza_utility_id: int
     utility_id: int
     listino_id: int

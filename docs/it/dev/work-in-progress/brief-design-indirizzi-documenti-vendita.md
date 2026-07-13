@@ -1,9 +1,11 @@
 # Brief design — Indirizzi documento generici (pannello, tipologie, cascata)
 
-> **Tipo**: design-of-record · **Data**: 2026-07-11 · **Owner**: Tid · **Stato**: 🟢 DECISO
+> **Tipo**: design-of-record · **Data**: 2026-07-11 · **Owner**: Tid
+> **Stato**: 🟢 IN CORSO — DB ✅ + BE 5 domini ✅ + FE pilota DDT ✅ + review/hardening ✅ (2026-07-12).
+> Aperti: montaggio pannello sugli altri 4 drawer, PDF context builder, form una-tantum evoluto.
 > **Origine**: residuo "DdtIndirizziPanel" di [brief-fe-ddt-vendita.md](brief-fe-ddt-vendita.md) §10,
 > allargato a building block generico per tutti i documenti vendita.
-> **Prerequisito bloccante**: [brief-db-indirizzi-documenti-simmetria-e-cascata.md](brief-db-indirizzi-documenti-simmetria-e-cascata.md)
+> **Prerequisito bloccante**: [brief-db-indirizzi-documenti-simmetria-e-cascata.md](../work-done/brief-db-indirizzi-documenti-simmetria-e-cascata.md)
 > (team DB su `dev/db-tid`). BE/FE partono solo a DB consegnato.
 
 ---
@@ -52,7 +54,7 @@ whitelist per ambito). Ma sopra il DB non c'è quasi nulla:
 ## 4. Spacchettamento
 
 ### DB (brief separato, bloccante)
-Vedi [brief-db-indirizzi-documenti-simmetria-e-cascata.md](brief-db-indirizzi-documenti-simmetria-e-cascata.md):
+Vedi [brief-db-indirizzi-documenti-simmetria-e-cascata.md](../work-done/brief-db-indirizzi-documenti-simmetria-e-cascata.md):
 simmetria offerte/contratti, unificazione CON + seed `tipi_indirizzi_allowed`,
 `fn_snapshot_indirizzo`, derivazione nelle funzioni di push, fix trigger e tipi colonna, pgTAP.
 
@@ -79,15 +81,151 @@ simmetria offerte/contratti, unificazione CON + seed `tipi_indirizzi_allowed`,
 
 ## 5. Ordine di lavoro
 
-1. **Brief DB** → team DB su `dev/db-tid` (bloccante).
-2. BE generico + allineamento preventivi (a DB pronto).
-3. FE pannello su **DDT** (pilota: chiude il residuo del brief FE DDT) → poi montaggio
-   sugli altri 4 drawer.
-4. PDF: verifica che i context builder leggano gli snapshot (DDT in primis).
+1. **Brief DB** → team DB su `dev/db-tid` (bloccante). ✅ consegnato e applicato
+   (migrations `20260711-15..32`, note team recepite nel brief DB).
+2. BE generico + allineamento preventivi (a DB pronto). ✅ 2026-07-12: BB
+   `_indirizzi_repo_mixin` + `_indirizzi_documento_helpers` + factory
+   `build_indirizzi_documento_views`; endpoint su **tutti e 5 i domini**
+   (preventivi riallineati: snapshot ora server-side); guard stato per dominio;
+   smoke E2E su DDT (picker/una-tantum/whitelist/guard emissione) + 1092 test.
+3. FE pannello su **DDT** (pilota). ✅ 2026-07-12: `_shared/indirizzi/`
+   (`DocumentoIndirizziPanel` + `DocumentoIndirizziDrawer` +
+   `makeIndirizziDocumentoApi`), agganciato come azione "Indirizzi" nella
+   DrawerActionsBar del DdtDrawer (sub-drawer, pattern note), i18n
+   `vendite.indirizzi.*`. → resta il montaggio sugli altri 4 drawer
+   (a valle della validazione in-app del pilota). **UX superseded da §7**
+   (sezione inline + drawer gestione su elenco anagrafico).
+4. Review critica + hardening. ✅ 2026-07-12 (8 finder, 18 finding corretti):
+   **guard ownership** picker (indirizzo di altro cliente rifiutato), guard
+   esistenza/stato centralizzati in `IndirizziDocumentoConfig` (404 su
+   documento fantasma, NOT_FOUND su delete), traduzione errori DB uniforme
+   sui 5 domini, POST via `handle_post_json`, whitelist valori scalari nello
+   snapshot, `coerce_jsonb_dict` promosso in core, AppDialog/`--app-*`/
+   `useInjectReadonly` nel pannello, cascata istanza nel picker
+   (`istanza_utility_id`), legacy preventivi rimosso. Doc:
+   `api_indirizzi_documento.md` + `api_ddt.md` + cataloghi BB aggiornati.
+5. PDF: verifica che i context builder leggano gli snapshot (DDT in primis) — **aperto**.
+
+Note aperte:
+
+- Layer **soggetto**: gli indirizzi ereditati non hanno riga in
+  `anagrafiche.indirizzi` → "usa questo" su una riga fonte=soggetto li imposta
+  come snapshot senza `origine_*` (gestito in §7-F2); l'aggancio pieno
+  richiederebbe la promozione a indirizzo di ruolo (eventuale evoluzione).
+- Form una-tantum: oggi campi liberi (InputText); evoluzione possibile con
+  `useIndirizzoBase` (autocomplete comune/stradario, CAP validato) se si vuole
+  qualita' postale anche sugli indirizzi occasionali.
 
 ## 6. Fuori scope
 
 - Indirizzi su commesse/fatturazione batch (le fatture ereditano via pipeline: la
   derivazione ordine/DDT→fattura si affronta nel cantiere fatturazione).
-- Editing degli indirizzi **anagrafici** dal documento (si fa dal drawer cliente).
+- Editing degli indirizzi **anagrafici** dal documento (si fa dal drawer cliente
+  — ma vedi §7-F1: l'aggiunta di un NUOVO indirizzo di ruolo e' ammessa dal
+  drawer di gestione, riusando il form anagrafico esistente).
 - Geocoding/validazione postale dello snapshot una-tantum.
+
+## 7. Piano di sviluppo — UX v2 (decisa con Tid 2026-07-12)
+
+Ripensamento dell'esperienza rispetto al pilota slot-per-tipo (§5.3): il drawer
+di gestione diventa un **elenco degli indirizzi del cliente** (mirror di
+`IndirizziSoggettoDrawer` sul drawer ruolo) con selezione, e nel drawer
+documento compare una **sezione inline col solo indirizzo di default**.
+**Nessuna azione DB né BE**: si riusano gli endpoint esistenti.
+
+Decisioni UX (chiuse):
+
+- **Selezione → tipo**: "usa questo" imposta il tipo di default **CON**
+  (Consegna, standard cross-dominio), fallback **FATT** se CON non ammesso.
+  Se il dominio ammette **piu' tipi**, alla selezione compare la scelta
+  *"Usa come: Consegna (default) / Fatturazione / …"* (soli tipi ammessi);
+  con un solo tipo (DDT) nessuna domanda.
+- **Sezione inline nel drawer documento**: mostra SOLO il default (CON, o FATT
+  dove CON non e' ammesso); se mancante → avviso "indirizzo obbligatorio per
+  l'emissione" e da li' scatta l'obbligo di scelta. Gli altri tipi impostati
+  NON compaiono come righe: solo un contatore discreto "+N altri" (si vedono
+  nel drawer di gestione). Pulsante "Indirizzi" DENTRO la sezione (via
+  l'azione dalla DrawerActionsBar).
+- **Emissione**: nessun disable client-side del pulsante Emetti — l'avviso in
+  sezione previene, il guard DB (`E_INDIRIZZO_DOC_OBBLIGATORIO`) resta la
+  fonte di verita'.
+
+Fasi FE:
+
+- ✅ **F1 — `IndirizziSoggettoDrawer` selezionabile** (riuso, regola del 2): prop
+  `selectable` + evento `select(riga)` con azione per riga "usa questo";
+  aggiunta indirizzo di ruolo gia' esistente nel componente (scrive in
+  anagrafica → l'indirizzo diventa riusabile). Nessun impatto sui consumatori
+  attuali (ClienteDrawer/SoggettoDrawer: prop default false).
+- ✅ **F2 — `DocumentoIndirizziDrawer` v2** (orchestratore): ospita l'elenco F1
+  (context ruolo, cascata istanza→ruolo→soggetto con badge fonte) + riepilogo
+  degli indirizzi gia' impostati sul documento (con rimozione) + pulsante
+  "Indirizzo libero" (dialog una-tantum attuale). Alla selezione: scelta
+  "usa come" se serve → POST picker (`origine_indirizzo_id`) per righe
+  ruolo/istanza; per righe fonte=soggetto (senza riga in
+  `anagrafiche.indirizzi`) → POST snapshot dai dati mostrati (una-tantum,
+  origine assente — documentato).
+- ✅ **F3 — `DocumentoIndirizziSection`** (sezione inline): default compatto +
+  "+N altri" + avviso mancante + pulsante "Indirizzi" che apre F2.
+- ✅ **F4 — DdtDrawer**: monta la sezione F3 nel corpo (dopo il form testata),
+  rimuove l'azione "Indirizzi" dalla barra azioni.
+- ✅ **F5 — pulizia**: `DocumentoIndirizziPanel` slot-per-tipo superseded
+  (dialog una-tantum riusato in F2); aggiornare catalogo BB FE + doc API
+  (riferimenti FE).
+- ✅ **F7 — rifiniture dal primo giro in-app (2026-07-12)**: "Usa" come
+  colonna ESTERNA ai box (i box soggetto restano opachi/readonly ma
+  selezionabili); auto-assegnazione best-effort dello slot default alla
+  creazione (`auto_assegna_indirizzo_default`: indirizzo di ruolo CON →
+  fallback FATT; DDT standalone + evasione); avviso "indirizzo mancante" nel
+  dialog di emissione con **Conferma disabilitata** (l'emissione genera la
+  stampa: senza indirizzo il PDF sarebbe scorretto; il guard DB gia' bloccava
+  — verificato: nessun DDT era stato emesso senza indirizzo — ma il toast non
+  era abbastanza visibile); provenienza tracciata: tag "Soggetto" (layer
+  soggetto via origine_soggetto_ruolo_id, validato anti-tampering) distinto da
+  "una tantum" (digitato) e "da <tipo>" (ruolo con tipo diverso dallo slot).
+- ✅ **F8 — fix dal secondo giro in-app (2026-07-12)**: (a) default prop
+  `tipoRuoloCodice` corretto da literal `'CLIENTE'` a `TIPO_RUOLO.CLIENTE`
+  (`'CL'`) in sezione+drawer — il literal errato faceva fallire in silenzio la
+  matrice tipi dell'"aggiungi indirizzo" (form vuoto); (b) cascata anagrafica a
+  3 livelli completa: il detail DDT espone `istanza_utility_id` del BA (JOIN
+  repository) e il DdtDrawer la passa alla sezione — senza, gli indirizzi di
+  livello istanza (es. aggiunti dal ClienteDrawer/BA) restavano invisibili.
+- ✅ **F9 — rollout sugli altri 4 drawer (2026-07-12)**: montata
+  `DocumentoIndirizziSection` su PreventiviDrawer/OrdiniDrawer (dopo il form
+  testata, con autosave-bozza: visibile a `hasDetail`) e
+  OffertaDrawer/ContrattoDrawer (solo EDIT, niente autosave). Detail BE dei 4
+  domini estesi con `soggetto_ruolo_id` (+ `istanza_utility_id` per ordini).
+  Auto-assegnazione estesa: `crea_preventivo`, `crea_ordine` (copre anche la
+  conversione da offerta) + fallback post `fn_push_preventivo_a_ordine`,
+  `crea_offerta`, `create_contratto` + fallback post
+  `fn_push_offerta_a_contratto` (wrapper pubblico
+  `auto_assegna_indirizzo_default_contratto`). Dove la cascata DB copia dalla
+  sorgente, l'helper e' solo fallback (salta se lo slot default e' pieno).
+- ✅ **F10 — PDF DDT con indirizzo di consegna (2026-07-12)**:
+  `DdtDocumentContextBuilder` v2 legge `ddt_indirizzi` → blocco
+  `indirizzi.consegna` (slot CON, chiavi fisse per StrictUndefined +
+  `display_compatto`); template 76 **versione 2 PUBBLICATA** con blocco
+  "Luogo di consegna" nel box destinatario (la fn DB di pubblicazione
+  auto-chiude la v1 → OBSOLETA). Verificato live: anteprima con CON stampa
+  l'indirizzo, senza CON degrada (blocco omesso, niente errori). Gli altri
+  4 builder restano v1 (rollout futuro, tipo per ambito da decidere).
+- ✅ **F6 — verifica (2026-07-13)**: validazione in-app di Tid completata su
+  DDT + i 4 drawer del rollout F9 — tutto ok. Piano UX v2 CHIUSO.
+- ✅ **F11 — seconda review critica (2026-07-13, 8 finder + verifica, 10 fix)**:
+  (1) ancora ownership/auto-default per dominio nel mixin
+  (`_indirizzi_doc_sr_column`: DDT=destinatario, ordini=sr nativo, LEFT JOIN
+  fallback BA — fixa ordine prospect BA NULL e DDT consegna-a-terzi);
+  (2) snapshot picker fonte=soggetto ora include `stato` (paese, parita' col
+  BE); (3) prefill "indirizzo libero" solo su veri una-tantum (non
+  riclassifica piu' le righe "da soggetto"); (4) ripristinato emittente VUOTO
+  in create DDT (invariante PR #970); (5) context PDF preventivi: proiezione
+  stabile indirizzi (fuori le chiavi live-JOIN del drawer, hash invariato);
+  (6) `E_TIPO_INDIRIZZO`+`E_INDIRIZZO_DOC_OBBLIGATORIO` registrati in
+  error_policies; (7) schema OpenAPI POST factory completato
+  (origine_soggetto_ruolo_id); (8) `pickTipoDefault` +
+  `IndirizzoProvenienzaTags` condivisi sezione/drawer; (9) `_CONSEGNA_KEYS`
+  derivata da `SNAPSHOT_KEYS_ORDERED` (fonte unica); (10) clone
+  `coerce_jsonb_dict` di pratiche migrato al BB core. Rimandati (annotati):
+  doppia GET sezione/drawer (refactor ownership fetch), registry
+  auto-assegnazione per-dominio, semantica istanza BA-vs-documento su
+  ordini/DDT (servirebbe colonna DB).

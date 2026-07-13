@@ -44,6 +44,26 @@
               {{ destinatario.ba_codice or ("ID " ~ destinatario.billing_account_id) }}
             </div>
           {% endif %}
+          {% if indirizzi.consegna %}
+            <div class="muted">Luogo di consegna:</div>
+            {% if indirizzi.consegna.intestazione %}
+              <div>{{ indirizzi.consegna.intestazione }}</div>
+            {% endif %}
+            {% if indirizzi.consegna.via %}
+              <div>{{ indirizzi.consegna.via }}</div>
+            {% elif indirizzi.consegna.display %}
+              <div>{{ indirizzi.consegna.display }}</div>
+            {% endif %}
+            {% if indirizzi.consegna.cap or indirizzi.consegna.citta or indirizzi.consegna.prov %}
+              <div>
+                {{ [indirizzi.consegna.cap, indirizzi.consegna.citta] | select | join(" ") }}
+                {%- if indirizzi.consegna.prov %} ({{ indirizzi.consegna.prov }}){% endif %}
+              </div>
+            {% endif %}
+            {% if indirizzi.consegna.stato %}
+              <div>{{ indirizzi.consegna.stato }}</div>
+            {% endif %}
+          {% endif %}
         </div>
       </div>
 
