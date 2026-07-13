@@ -50,6 +50,14 @@ databaseChangeLog:
                  AND sda.codice_interno = 'SPEDITO'
                  AND sa.codice_interno  = 'RESO';
 
+              -- La sequenza IDENTITY non e' avanzata dai seed con id espliciti
+              -- (1..8) -> l'id generato dall'INSERT sotto collide con la PK
+              -- (duplicate key id=1) su una CI fresca. Riallinearla a MAX(id).
+              SELECT setval(
+                  pg_get_serial_sequence('config.transizioni_stati_ddt','id'),
+                  (SELECT COALESCE(MAX(id), 1) FROM config.transizioni_stati_ddt),
+                  true);
+
               -- RESO->CONSEGNATO: rientro automatico su annullo reso (nuova).
               INSERT INTO config.transizioni_stati_ddt (stato_da_id, stato_a_id, attivo, meta)
               SELECT sda.id, sa.id, true, '{"manuale": false}'::jsonb
