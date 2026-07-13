@@ -261,6 +261,25 @@ ApiDdtRiepilogoIva = build_riepilogo_iva_view(
 )
 
 
+class ApiDdtRighePerReso(DomainAPIView):
+    """GET /api/v1/vendite/ddt/<ddt_id>/righe-per-reso/.
+
+    Righe del DDT con gia'-reso cumulato e residuo rendibile: alimenta il
+    pannello "crea reso" del drawer DDT (slice resi). Vive nel dominio
+    sorgente (DDT) ma delega a `resi_service` (import locale, come
+    `ApiOrdineGeneraDdt` fa con ddt_service — evita cicli).
+    """
+
+    area_funzionale = "vendite"
+
+    # Scopo: Righe DDT + qta_gia_resa/qta_resa_residua per il pannello reso.
+    def get(self, request: Request, ddt_id: int) -> JsonResponse:
+        from apps.vendite.services import resi_service
+        return success_response(
+            resi_service.list_righe_ddt_per_reso(int(ddt_id)),
+        )
+
+
 class ApiDdtRighe(DomainAPIView):
     """GET/POST /api/v1/vendite/ddt/<ddt_id>/righe/."""
 

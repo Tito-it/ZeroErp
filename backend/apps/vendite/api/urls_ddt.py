@@ -32,6 +32,7 @@ from apps.vendite.api.views_ddt import (
     ApiDdtRigaDetail,
     ApiDdtRigaPreviewComponenti,
     ApiDdtRighe,
+    ApiDdtRighePerReso,
 )
 from apps.vendite.api.views_form_defaults import ApiDdtFormDefaults
 
@@ -86,6 +87,9 @@ urlpatterns = [
     # Righe
     path("<int:ddt_id>/righe/", ApiDdtRighe.as_view(),
          name="vendite-ddt-righe-list"),
+    # Righe con residuo rendibile per il pannello "crea reso" (slice resi).
+    path("<int:ddt_id>/righe-per-reso/", ApiDdtRighePerReso.as_view(),
+         name="vendite-ddt-righe-per-reso"),
     path("<int:ddt_id>/righe/preview-componenti/",
          ApiDdtRigaPreviewComponenti.as_view(),
          name="vendite-ddt-righe-preview-componenti"),
