@@ -48,7 +48,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 47,4,stato,Stato,Stato corrente del contratto,stato_descrizione,informazione,string,,120,120,center,Stato,6,t,t,t,f,f,t,2026-06-02 00:00:00,mctit,contratti.col_stato
 48,4,azioni,Azioni,,,azione,string,,60,999,center,,99,f,f,f,f,f,t,2026-06-02 00:00:00,mctit,common.col_azioni
 49,4,stato_codice,Cod. Stato,Codice interno dello stato per la severita del Tag FE,stato_codice,informazione,string,,80,130,left,Stato,6,f,f,f,f,f,t,2026-06-02 00:00:00,mctit,
-50,4,emittente_fiscale_codice,Emittente,Codice dell emittente fiscale,emittente_fiscale_codice,informazione,string,,120,140,left,Emittente,7,t,t,t,f,f,t,2026-06-02 00:00:00,mctit,contratti.col_emittente
+50,4,emittente_fiscale_codice,Emittente,Ragione sociale dell emittente fiscale,emittente_fiscale_descrizione,informazione,string,,120,140,left,Emittente,7,t,t,t,f,f,t,2026-06-02 00:00:00,mctit,contratti.col_emittente
 51,4,listino_versione,Versione listino,Codice della versione di listino,listino_versione_codice,informazione,string,,120,150,left,Pricing,4,t,t,t,f,f,t,2026-06-02 00:00:00,mctit,contratti.col_listino_versione
 52,4,tipo_variazione_globale,Tipo var.,Tipo di variazione globale del prezzo,tipo_variazione_globale,informazione,string,,130,160,left,Pricing,4,t,t,t,f,f,t,2026-06-02 00:00:00,mctit,contratti.col_tipo_variazione
 53,4,valore_variazione_globale,Valore var.,Valore della variazione globale del prezzo,valore_variazione_globale,informazione,numeric,,110,170,right,Pricing,4,f,t,t,f,f,t,2026-06-02 00:00:00,mctit,contratti.col_valore_variazione
@@ -74,7 +74,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 73,5,totale_imponibile,Imponibile,Totale imponibile,totale_imponibile,informazione,numeric,currency_eur,120,150,right,Importi,4,f,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_totale_imponibile
 74,5,totale_iva,IVA,Totale IVA,totale_iva,informazione,numeric,currency_eur,120,160,right,Importi,4,f,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_totale_iva
 75,5,valuta,Valuta,Codice valuta del preventivo,valuta_codice,informazione,string,,90,170,left,Importi,4,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_valuta
-76,5,emittente_fiscale_codice,Emittente,Codice dell emittente fiscale,emittente_fiscale_codice,informazione,string,,120,180,left,Emittente,7,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_emittente
+76,5,emittente_fiscale_codice,Emittente,Ragione sociale dell emittente fiscale,emittente_fiscale_descrizione,informazione,string,,120,180,left,Emittente,7,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_emittente
 77,5,competenza_mese,Competenza,Mese di competenza,competenza_mese,informazione,date,date_short,120,190,center,Validita,5,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_competenza_mese
 78,5,data_insert,Creazione,Data di inserimento del preventivo,data_insert,informazione,datetime,datetime_short,150,200,center,Audit,8,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,preventivi.col_data_insert
 79,6,codice,Codice,Codice dell offerta,codice,identificatore,string,,130,10,left,Identificazione,1,t,t,t,t,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_codice
@@ -97,7 +97,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 96,6,tipo_variazione_globale,Tipo var.,Tipo di variazione globale del prezzo,tipo_variazione_globale,informazione,string,,130,180,left,Pricing,4,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_tipo_variazione
 97,6,valore_variazione_globale,Valore var.,Valore della variazione globale del prezzo,valore_variazione_globale,informazione,numeric,,110,190,right,Pricing,4,f,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_valore_variazione
 98,6,valuta,Valuta,Codice valuta dell offerta,valuta_codice,informazione,string,,90,200,left,Pricing,4,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_valuta
-99,6,emittente_fiscale_codice,Emittente,Codice dell emittente fiscale,emittente_fiscale_codice,informazione,string,,120,210,left,Emittente,8,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_emittente
+99,6,emittente_fiscale_codice,Emittente,Ragione sociale dell emittente fiscale,emittente_fiscale_descrizione,informazione,string,,120,210,left,Emittente,8,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_emittente
 100,6,data_accettazione,Accettata,Data di accettazione,data_accettazione,informazione,date,date_short,110,220,center,Ciclo vita,6,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_data_accettazione
 101,6,data_rifiuto,Rifiutata,Data di rifiuto,data_rifiuto,informazione,date,date_short,110,230,center,Ciclo vita,6,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_data_rifiuto
 102,6,data_annullamento,Annullata,Data di annullamento,data_annullamento,informazione,date,date_short,110,240,center,Ciclo vita,6,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.offerte.col_data_annullamento
@@ -120,7 +120,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 119,7,modalita_pagamento,Mod. pagamento,Modalita di pagamento,modalita_pagamento_codice,informazione,string,,150,180,left,Pagamento,5,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_modalita_pagamento
 120,7,termine_pagamento,Termine pag.,Termine di pagamento,termine_pagamento_codice,informazione,string,,150,190,left,Pagamento,5,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_termine_pagamento
 121,7,valuta,Valuta,Codice valuta dell ordine,valuta_codice,informazione,string,,90,200,left,Importi,4,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_valuta
-122,7,emittente_fiscale_codice,Emittente,Codice dell emittente fiscale,emittente_fiscale_codice,informazione,string,,120,210,left,Emittente,8,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_emittente
+122,7,emittente_fiscale_codice,Emittente,Ragione sociale dell emittente fiscale,emittente_fiscale_descrizione,informazione,string,,120,210,left,Emittente,8,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_emittente
 123,7,anno,Anno,Anno dell ordine,anno,informazione,numeric,,80,220,center,Identificazione,1,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_anno
 124,7,serie,Serie,Serie dell ordine,serie,informazione,string,,90,230,left,Identificazione,1,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_serie
 125,7,documento_origine,Origine,Documento commerciale di origine (preventivo/offerta),documento_origine_codice,informazione,string,,160,240,left,Origine,10,t,t,t,f,f,t,2026-06-03 00:00:00,mctit,vendite.ordini.col_documento_origine
@@ -145,4 +145,4 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 144,8,anno,Anno,Anno del DDT,anno,informazione,numeric,,80,170,center,Identificazione,1,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_anno
 145,8,serie,Serie,Serie del DDT,serie,informazione,string,,90,180,left,Identificazione,1,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_serie
 146,8,data_insert,Creazione,Data di inserimento del DDT,data_insert,informazione,datetime,datetime_short,150,190,center,Audit,8,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_data_insert
-147,8,emittente_fiscale_codice,Emittente,Codice dell emittente fiscale,emittente_fiscale_codice,informazione,string,,120,200,left,Emittente,9,t,t,t,f,f,t,2026-07-12 00:00:00,mctit,vendite.ddt.col_emittente
+147,8,emittente_fiscale_codice,Emittente,Ragione sociale dell emittente fiscale,emittente_fiscale_descrizione,informazione,string,,120,200,left,Emittente,9,t,t,t,f,f,t,2026-07-12 00:00:00,mctit,vendite.ddt.col_emittente

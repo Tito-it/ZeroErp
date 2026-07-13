@@ -1,0 +1,84 @@
+{% include-markdown "it/dbzero/script/manual/fn_snapshot_indirizzo.md" %}
+# ⚙️ Funzione `fn_snapshot_indirizzo`
+
+```sql
+CREATE FUNCTION fn_snapshot_indirizzo(p_indirizzo_id bigint)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.fn_snapshot_indirizzo(p_indirizzo_id bigint)
+ RETURNS TABLE(snapshot jsonb, origine_soggetto_ruolo_id bigint)
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+DECLARE
+    v_r        record;
+    v_via      text;
+BEGIN
+    -- Guard input (ID: errore se NULL o <= 0).
+    IF p_indirizzo_id IS NULL OR p_indirizzo_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'script', 'fn_snapshot_indirizzo', 'E_VALIDAZIONE',
+            jsonb_build_object('p_indirizzo_id', p_indirizzo_id),
+            NULL::uuid, 'p_indirizzo_id deve essere > 0');
+    END IF;
+
+    -- Risoluzione dell'indirizzo di ruolo + intestazione soggetto.
+    SELECT r.soggetto_ruolo_id,
+           r.soggetto_id,
+           r.is_normalizzato,
+           r.via_norm,
+           r.civico,
+           r.cap,
+           r.comune_descrizione,
+           r.provincia_sigla,
+           r.stato_iso2,
+           r.indirizzo_display,
+           r.indirizzo_libero,
+           s.ragione_sociale_completa
+      INTO v_r
+      FROM anagrafiche.vw_indirizzi_resolved_ruolo r
+      LEFT JOIN anagrafiche.soggetti s ON s.id = r.soggetto_id
+     WHERE r.indirizzo_id = p_indirizzo_id;
+
+    IF NOT FOUND THEN
+        PERFORM script.fn_log_and_raise_error(
+            'script', 'fn_snapshot_indirizzo',
+            'E_INDIRIZZO_SNAPSHOT_NOT_FOUND',
+            jsonb_build_object('indirizzo_id', p_indirizzo_id),
+            NULL::uuid, p_indirizzo_id::text);
+    END IF;
+
+    -- Componente "via": normalizzato -> via_norm + civico;
+    -- libero -> indirizzo_libero.
+    v_via := CASE
+               WHEN v_r.is_normalizzato
+                 THEN NULLIF(trim(both ' ' FROM
+                        COALESCE(v_r.via_norm::text, '') || ' ' ||
+                        COALESCE(v_r.civico::text, '')), '')
+               ELSE v_r.indirizzo_libero
+             END;
+
+    -- Shape canonico (Q1): etichette umane + display.
+    -- jsonb_strip_nulls: le chiavi nulle non compaiono.
+    snapshot := jsonb_strip_nulls(jsonb_build_object(
+        'intestazione', v_r.ragione_sociale_completa,
+        'via',          v_via,
+        'cap',          v_r.cap,
+        'citta',        v_r.comune_descrizione,
+        'prov',         v_r.provincia_sigla,
+        'stato',        v_r.stato_iso2,
+        'display',      v_r.indirizzo_display
+    ));
+
+    origine_soggetto_ruolo_id := v_r.soggetto_ruolo_id;
+
+    RETURN NEXT;
+END;
+$function$
+```
+
+---
+{% include-markdown "signature-core.md" %}

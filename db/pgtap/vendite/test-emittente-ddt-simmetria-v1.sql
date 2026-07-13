@@ -1,0 +1,60 @@
+-- ============================================================
+-- test-emittente-ddt-simmetria-v1.sql
+-- Copertura: brief-db emittente DDT legato allo user + etichetta soggetto
+-- ------------------------------------------------------------
+-- Indice test (1..12):
+--  1-5) le 5 viste lista espongono emittente_fiscale_descrizione
+--  6) trigger trg_ddt_a10_default_emittente_ins presente su vendite.ddt
+--  7) trigger trg_ddt_z10_guard_emittente_ba_ins_upd presente su vendite.ddt
+--  8) trigger guard_emittente_ba presente su vendite.preventivi
+--  9) trigger guard_emittente_ba presente su vendite.offerte_commerciali
+-- 10) firing order: default_emittente PRIMA di normalize (nome ordina prima)
+-- 11) firing order: guard_emittente_ba DOPO normalize (nome ordina dopo)
+-- 12) seed: le 5 colonne "Emittente" bindano campo_sorgente=emittente_fiscale_descrizione
+-- ============================================================
+BEGIN;
+SELECT plan(12);
+
+-- 1-5) colonna emittente_fiscale_descrizione nelle 5 viste lista.
+SELECT has_column('vendite', 'vw_ddt_lista',                 'emittente_fiscale_descrizione', '1) vw_ddt_lista.emittente_fiscale_descrizione');
+SELECT has_column('vendite', 'vw_ordini_lista',              'emittente_fiscale_descrizione', '2) vw_ordini_lista.emittente_fiscale_descrizione');
+SELECT has_column('vendite', 'vw_preventivi_lista',          'emittente_fiscale_descrizione', '3) vw_preventivi_lista.emittente_fiscale_descrizione');
+SELECT has_column('vendite', 'vw_offerte_commerciali_lista', 'emittente_fiscale_descrizione', '4) vw_offerte_commerciali_lista.emittente_fiscale_descrizione');
+SELECT has_column('vendite', 'vw_contratti_lista',           'emittente_fiscale_descrizione', '5) vw_contratti_lista.emittente_fiscale_descrizione');
+
+-- 6-9) trigger presenti.
+SELECT has_trigger('vendite', 'ddt',                 'trg_ddt_a10_default_emittente_ins',                     '6) trg_ddt_a10_default_emittente_ins');
+SELECT has_trigger('vendite', 'ddt',                 'trg_ddt_z10_guard_emittente_ba_ins_upd',                '7) trg_ddt_z10_guard_emittente_ba_ins_upd');
+SELECT has_trigger('vendite', 'preventivi',          'trg_preventivi_a10_guard_emittente_ba_ins_upd',         '8) trg_preventivi_a10_guard_emittente_ba_ins_upd');
+SELECT has_trigger('vendite', 'offerte_commerciali', 'trg_offerte_commerciali_a10_guard_emittente_ba_ins_upd', '9) trg_offerte_commerciali_a10_guard_emittente_ba_ins_upd');
+
+-- 10) Firing order: PostgreSQL esegue i trigger stesso timing/evento in
+--     ordine alfabetico di nome. default_emittente deve firare PRIMA di
+--     normalize (per non sovrascrivere l'ereditarieta'/fallback del normalize).
+SELECT ok(
+  'trg_ddt_a10_default_emittente_ins' < 'trg_ddt_normalize_ins_upd',
+  '10) default_emittente ordina prima di normalize'
+);
+
+-- 11) guard_emittente_ba deve firare DOPO normalize (controlla i valori
+--     finali di BA/emittente risolti dal normalize).
+SELECT ok(
+  'trg_ddt_z10_guard_emittente_ba_ins_upd' > 'trg_ddt_normalize_ins_upd',
+  '11) guard_emittente_ba ordina dopo normalize'
+);
+
+-- 12) Seed: le 5 colonne "Emittente" (una per lista documento) ora bindano
+--     la descrizione, non il codice tecnico.
+SELECT is(
+  (SELECT count(*)::int
+     FROM ui.lista_colonna
+    WHERE etichetta_i18n_key IN (
+            'contratti.col_emittente','preventivi.col_emittente',
+            'vendite.offerte.col_emittente','vendite.ordini.col_emittente',
+            'vendite.ddt.col_emittente')
+      AND campo_sorgente = 'emittente_fiscale_descrizione'),
+  5, '12) le 5 colonne Emittente bindano emittente_fiscale_descrizione'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

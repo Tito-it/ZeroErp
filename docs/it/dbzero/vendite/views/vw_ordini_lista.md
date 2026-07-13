@@ -49,13 +49,16 @@ SELECT o.id,
     o.user_insert,
     o.data_update,
     o.user_update,
-    sd.pdf_mode
-   FROM (((((((((((((vendite.ordini o
+    sd.pdf_mode,
+    COALESCE(s_ef.ragione_sociale_completa, (ef.descrizione)::text) AS emittente_fiscale_descrizione
+   FROM (((((((((((((((vendite.ordini o
      JOIN config.stati_doc_ordini sd ON ((sd.id = o.stato_doc_ordine_id)))
      JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = o.soggetto_ruolo_id)))
      JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
      LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = o.billing_account_id)))
      LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = o.emittente_fiscale_id)))
+     LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = ef.soggetto_ruolo_id)))
+     LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
      LEFT JOIN config.utilities u ON ((u.id = o.utility_id)))
      LEFT JOIN config.modalita_pagamento mp ON ((mp.id = o.modalita_pagamento_id)))
      LEFT JOIN config.termini_pagamento tp ON ((tp.id = o.termine_pagamento_id)))

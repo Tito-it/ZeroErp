@@ -32,13 +32,16 @@ SELECT p.id,
     p.validita_dal,
     p.validita_al,
     p.competenza_mese,
-    p.data_insert
-   FROM (((((((vendite.vw_preventivi p
+    p.data_insert,
+    COALESCE(s_ef.ragione_sociale_completa, (ef.descrizione)::text) AS emittente_fiscale_descrizione
+   FROM (((((((((vendite.vw_preventivi p
      JOIN config.stati_doc_preventivi sdp ON ((sdp.id = p.stato_doc_preventivo_id)))
      LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = p.istanza_utility_id)))
      LEFT JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)))
      LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = p.billing_account_id)))
      LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = p.emittente_fiscale_id)))
+     LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = ef.soggetto_ruolo_id)))
+     LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
      LEFT JOIN config.utilities u ON ((u.id = p.utility_id)))
      LEFT JOIN config.valute v_val ON ((v_val.id = p.valuta_id)));
 ```

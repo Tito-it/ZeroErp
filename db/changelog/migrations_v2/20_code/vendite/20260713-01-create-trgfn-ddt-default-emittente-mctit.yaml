@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Simmetria emittente su vendite.ddt (decisione Tid 2026-07-13):
+# trgfn_ddt_default_emittente, mirror di trgfn_ordini_default_emittente
+# con DUE softenature DDT-specifiche:
+#   1) SKIP DDT da evasione (sorgente_tipo_id/sorgente_uid valorizzati):
+#      l'emittente si eredita dall'ordine sorgente in trgfn_ddt_normalize
+#      (ereditarieta' da preservare).
+#   2) NO-RAISE se la GUC non risolve (contesto non-API o admin globale):
+#      si lascia emittente_fiscale_id NULL e agisce il fallback-da-BA
+#      gia' presente in trgfn_ddt_normalize (comportamento standalone attuale).
+#
+# Firing: trg_ddt_a10_default_emittente_ins ordina PRIMA di
+# trg_ddt_normalize_ins_upd (che non ha token di fase -> fira dopo gli a10)
+# e prima del guard di scope emittente (a10, 'default' < 'guard').
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260713-01-create-trgfn-ddt-default-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260713-01-create-trgfn-ddt-default-emittente
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_default_emittente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_user_id_text text;
+                v_user_id      integer;
+              BEGIN
+                -- 1) Skip se gia' valorizzato esplicitamente nel payload.
+                IF NEW.emittente_fiscale_id IS NOT NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 2) Skip DDT da evasione: sorgente valorizzata -> l'emittente
+                --    si eredita dall'ordine sorgente in trgfn_ddt_normalize.
+                IF NEW.sorgente_tipo_id IS NOT NULL AND NEW.sorgente_uid IS NOT NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 3) GUC operatore (missing_ok). Se assente: NON sollevare,
+                --    lasciare NULL -> fallback-da-BA in trgfn_ddt_normalize.
+                v_user_id_text := current_setting('app.current_user_id', true);
+                IF v_user_id_text IS NULL OR btrim(v_user_id_text) = '' THEN
+                  RETURN NEW;
+                END IF;
+
+                v_user_id := v_user_id_text::integer;
+
+                -- 4) Resolver operatore -> emittente. NULL (admin globale)
+                --    -> lasciare NULL (no raise): decide il fallback normalize.
+                NEW.emittente_fiscale_id := script.fn_resolve_emittente_for_user(v_user_id);
+
+                RETURN NEW;
+              END
+              $function$;
+
+              DROP TRIGGER IF EXISTS trg_ddt_a10_default_emittente_ins ON vendite.ddt;
+              CREATE TRIGGER trg_ddt_a10_default_emittente_ins
+                BEFORE INSERT ON vendite.ddt
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_ddt_default_emittente();
