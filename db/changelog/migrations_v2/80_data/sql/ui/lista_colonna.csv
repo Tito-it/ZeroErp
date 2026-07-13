@@ -145,3 +145,4 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 144,8,anno,Anno,Anno del DDT,anno,informazione,numeric,,80,170,center,Identificazione,1,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_anno
 145,8,serie,Serie,Serie del DDT,serie,informazione,string,,90,180,left,Identificazione,1,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_serie
 146,8,data_insert,Creazione,Data di inserimento del DDT,data_insert,informazione,datetime,datetime_short,150,190,center,Audit,8,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_data_insert
+147,8,emittente_fiscale_codice,Emittente,Codice dell emittente fiscale,emittente_fiscale_codice,informazione,string,,120,200,left,Emittente,9,t,t,t,f,f,t,2026-07-12 00:00:00,mctit,vendite.ddt.col_emittente
