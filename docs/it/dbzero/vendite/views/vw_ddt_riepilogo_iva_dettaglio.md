@@ -1,7 +1,10 @@
 # 🔍 View `vw_ddt_riepilogo_iva_dettaglio`
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW vendite.vw_ddt_riepilogo_iva_dettaglio AS
+CREATE OR REPLACE VIEW vendite.vw_ddt_riepilogo_iva_dettaglio
+WITH (security_invoker=on) AS
 WITH imponibili AS (
          SELECT b.ddt_id,
             b.iva_id,

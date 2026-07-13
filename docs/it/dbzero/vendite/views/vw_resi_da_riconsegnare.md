@@ -1,0 +1,49 @@
+# 🔍 View `vw_resi_da_riconsegnare`
+
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
+```sql
+CREATE OR REPLACE VIEW vendite.vw_resi_da_riconsegnare
+WITH (security_invoker=on) AS
+SELECT rr.id AS resi_riga_id,
+    r.id AS reso_id,
+    r.uid AS reso_uid,
+    r.numero AS reso_numero,
+    r.data,
+    r.emittente_fiscale_id,
+    r.billing_account_id,
+    r.destinatario_soggetto_ruolo_id,
+    s_dest.ragione_sociale_completa AS destinatario_denominazione,
+    rr.articolo_id,
+    rr.descrizione,
+    rr.uom_operativa_id,
+    rr.quantita AS qta_resa,
+    COALESCE(ric.tot, (0)::numeric) AS qta_riconsegnata,
+    (rr.quantita - COALESCE(ric.tot, (0)::numeric)) AS qta_residua,
+        CASE
+            WHEN (COALESCE(ric.tot, (0)::numeric) = (0)::numeric) THEN 'DA_RICONSEGNARE'::text
+            WHEN (COALESCE(ric.tot, (0)::numeric) < rr.quantita) THEN 'PARZIALE'::text
+            ELSE 'COMPLETATA'::text
+        END AS stato_riconsegna,
+    rr.ddt_riga_id,
+    dr.ddt_id,
+    d.numero AS ddt_numero,
+    rr.ordine_riga_id
+   FROM ((((((((vendite.resi_righe rr
+     JOIN vendite.resi r ON ((r.id = rr.reso_id)))
+     JOIN config.stati_doc_reso sr ON ((sr.id = r.stato_doc_reso_id)))
+     JOIN config.tipi_reso tr ON ((tr.id = rr.tipo_reso_id)))
+     JOIN vendite.ddt_righe dr ON ((dr.id = rr.ddt_riga_id)))
+     JOIN vendite.ddt d ON ((d.id = dr.ddt_id)))
+     JOIN anagrafiche.soggetti_ruoli sr_dest ON ((sr_dest.id = r.destinatario_soggetto_ruolo_id)))
+     JOIN anagrafiche.soggetti s_dest ON ((s_dest.id = sr_dest.soggetto_id)))
+     LEFT JOIN ( SELECT resi_righe_riconsegne.resi_riga_id,
+            sum(resi_righe_riconsegne.qta) AS tot
+           FROM vendite.resi_righe_riconsegne
+          GROUP BY resi_righe_riconsegne.resi_riga_id) ric ON ((ric.resi_riga_id = rr.id)))
+  WHERE (((sr.codice_interno)::text = 'CONFERMATO'::text) AND (tr.riapre_residuo = true) AND (rr.attivo IS TRUE) AND ((rr.quantita - COALESCE(ric.tot, (0)::numeric)) > (0)::numeric));
+```
+
+
+---
+{% include-markdown "signature-core.md" %}

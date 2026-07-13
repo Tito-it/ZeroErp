@@ -1,0 +1,206 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — madre fn_genera_ddt_riconsegna (brief §5b).
+#
+# Genera il DDT di ri-spedizione per un reso CONFERMATO e chiude l'aggancio duro:
+#   - nuovo DDT DRAFT: denormalizzati dal DDT origine; sorgente ORDINE_VENDITA
+#     (+ ordine.uid) se order-backed (normalize + fulfillment lavorano),
+#     standalone (sorgente NULL) altrimenti;
+#   - per ogni riga reso ri-consegna con copertura residua (qta_resa - Sigma
+#     riconsegne): crea la ddt_riga (copia articolo/UoM/qta) e inserisce il ponte
+#     resi_righe_riconsegne -> chiude la voce di coda;
+#   - se la riga reso ha ordine_riga_id (order-backed): inserisce anche il
+#     ordini_righe_fulfillment -> il residuo riaperto si richiude (guard
+#     fulfillment reso-aware, 20260713-30) e lo stato ordine torna coerente.
+# p_righe = [{resi_riga_id, qta}] per ri-spedizione parziale; NULL = tutta la
+#   copertura residua.
+#
+# Pattern: fn_genera_ddt_da_ordine. Idempotenza per copertura; concorrenza dal
+#   lock del guard ponte.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260713-32-create-fn-genera-ddt-riconsegna-mctit.yaml
+
+  - changeSet:
+      id: 20260713-32-create-fn-genera-ddt-riconsegna
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_genera_ddt_riconsegna(
+                  p_reso_id vendite.resi.id%TYPE,
+                  p_righe   jsonb DEFAULT NULL,
+                  p_data    date  DEFAULT CURRENT_DATE)
+               RETURNS bigint
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_stato          config.stati_doc_reso.codice_interno%TYPE;
+                  v_stato_draft_id config.stati_doc_ddt.id%TYPE;
+                  v_sorg_ord_id    config.sorgenti.id%TYPE;
+                  v_ordine_uid     vendite.ordini.uid%TYPE;
+                  v_new_ddt_id     vendite.ddt.id%TYPE;
+                  v_new_riga_id    vendite.ddt_righe.id%TYPE;
+                  v_qta_base       vendite.ddt_righe.quantita%TYPE;
+                  v_orig           RECORD;
+                  v_riga           RECORD;
+                  v_residuo_ric    numeric;
+                  v_qta_ric        numeric;
+                  v_qta_op         numeric;
+                  v_riga_nr        integer := 0;
+                  v_n              integer := 0;
+              BEGIN
+                  -- 1) Guard input.
+                  IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_genera_ddt_riconsegna','E_VALIDAZIONE',
+                          jsonb_build_object('p_reso_id', p_reso_id),
+                          NULL::uuid, 'p_reso_id deve essere > 0');
+                  END IF;
+
+                  -- 2) Reso CONFERMATO + testata origine (DDT sorgente).
+                  SELECT sdr.codice_interno AS stato,
+                         d.destinatario_soggetto_ruolo_id, d.billing_account_id,
+                         d.utility_id, d.valuta_id, d.emittente_fiscale_id
+                    INTO v_orig
+                    FROM vendite.resi r
+                    JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id
+                    LEFT JOIN vendite.ddt d ON d.uid = r.sorgente_uid
+                   WHERE r.id = p_reso_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_genera_ddt_riconsegna','E_RESO_NOT_FOUND',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  IF v_orig.stato IS DISTINCT FROM 'CONFERMATO' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_genera_ddt_riconsegna','E_RESO_NON_CONFERMATO',
+                          jsonb_build_object('reso_id', p_reso_id, 'stato', v_orig.stato),
+                          NULL::uuid, p_reso_id::text, v_orig.stato);
+                  END IF;
+
+                  -- 3) Order-backing: ordine di provenienza (righe ri-consegna
+                  --    condividono lo stesso ordine, o nessuno se standalone).
+                  SELECT o.uid INTO v_ordine_uid
+                    FROM vendite.resi_righe rr
+                    JOIN vendite.ordini_righe orr ON orr.id = rr.ordine_riga_id
+                    JOIN vendite.ordini o         ON o.id = orr.ordine_id
+                   WHERE rr.reso_id = p_reso_id
+                     AND rr.ordine_riga_id IS NOT NULL
+                   LIMIT 1;
+
+                  IF v_ordine_uid IS NOT NULL THEN
+                      SELECT id INTO v_sorg_ord_id FROM config.sorgenti
+                       WHERE codice_interno = 'ORDINE_VENDITA' AND attivo IS TRUE;
+                  END IF;
+
+                  SELECT id INTO v_stato_draft_id FROM config.stati_doc_ddt
+                   WHERE codice_interno = 'DRAFT' AND attivo IS TRUE;
+
+                  -- 4) Nuovo DDT DRAFT. Denormalizzati dal DDT origine (normalize
+                  --    COALESCE li preserva). Order-backed -> sorgente ORDINE_VENDITA.
+                  INSERT INTO vendite.ddt (
+                      data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
+                      sorgente_tipo_id, sorgente_uid, billing_account_id,
+                      utility_id, valuta_id, emittente_fiscale_id)
+                  VALUES (
+                      COALESCE(p_data, CURRENT_DATE), v_stato_draft_id,
+                      v_orig.destinatario_soggetto_ruolo_id,
+                      v_sorg_ord_id, v_ordine_uid, v_orig.billing_account_id,
+                      v_orig.utility_id, v_orig.valuta_id, v_orig.emittente_fiscale_id)
+                  RETURNING id INTO v_new_ddt_id;
+
+                  -- 5) Righe ri-consegna con copertura residua.
+                  FOR v_riga IN
+                      SELECT rr.id AS resi_riga_id, rr.articolo_id, rr.descrizione,
+                             rr.uom_operativa_id, COALESCE(rr.factor_to_base, 1) AS factor,
+                             rr.quantita AS qta_resa, rr.ordine_riga_id,
+                             COALESCE((
+                                 SELECT SUM(x.qta) FROM vendite.resi_righe_riconsegne x
+                                  WHERE x.resi_riga_id = rr.id), 0) AS gia_ric,
+                             (SELECT (e->>'qta')::numeric
+                                FROM jsonb_array_elements(COALESCE(p_righe,'[]'::jsonb)) e
+                               WHERE (e->>'resi_riga_id')::bigint = rr.id
+                               LIMIT 1) AS qta_richiesta
+                        FROM vendite.resi_righe rr
+                        JOIN config.tipi_reso tr ON tr.id = rr.tipo_reso_id
+                       WHERE rr.reso_id = p_reso_id
+                         AND rr.attivo IS TRUE
+                         AND tr.riapre_residuo IS TRUE
+                         AND (p_righe IS NULL OR rr.id IN (
+                               SELECT (e->>'resi_riga_id')::bigint
+                                 FROM jsonb_array_elements(p_righe) e))
+                       ORDER BY rr.riga_nr, rr.id
+                  LOOP
+                      v_residuo_ric := v_riga.qta_resa - v_riga.gia_ric;   -- base
+                      IF v_residuo_ric <= 0 THEN
+                          CONTINUE;  -- gia' ri-consegnata
+                      END IF;
+
+                      IF p_righe IS NOT NULL THEN
+                          v_qta_ric := LEAST(COALESCE(v_riga.qta_richiesta, 0), v_residuo_ric);
+                      ELSE
+                          v_qta_ric := v_residuo_ric;
+                      END IF;
+                      IF v_qta_ric IS NULL OR v_qta_ric <= 0 THEN
+                          CONTINUE;
+                      END IF;
+
+                      v_qta_op := v_qta_ric / v_riga.factor;
+                      v_riga_nr := v_riga_nr + 1;
+
+                      -- Riga DDT (qta_operativa -> quantita via qta_from_operativa).
+                      INSERT INTO vendite.ddt_righe (
+                          ddt_id, riga_nr, articolo_id, descrizione,
+                          qta_operativa, uom_operativa_id, factor_to_base)
+                      VALUES (
+                          v_new_ddt_id, v_riga_nr, v_riga.articolo_id, v_riga.descrizione,
+                          v_qta_op, v_riga.uom_operativa_id, v_riga.factor)
+                      RETURNING id, quantita INTO v_new_riga_id, v_qta_base;
+
+                      -- Aggancio duro: ponte reso -> riga DDT (chiude la coda).
+                      INSERT INTO vendite.resi_righe_riconsegne (
+                          resi_riga_id, ddt_riga_id, qta)
+                      VALUES (v_riga.resi_riga_id, v_new_riga_id, v_qta_base);
+
+                      -- Order-backed: fulfillment -> chiude il residuo ordine
+                      --   (guard reso-aware). Standalone -> nessun fulfillment.
+                      IF v_riga.ordine_riga_id IS NOT NULL THEN
+                          INSERT INTO vendite.ordini_righe_fulfillment (
+                              ordine_riga_id, ddt_riga_id, qta_evasa)
+                          VALUES (v_riga.ordine_riga_id, v_new_riga_id, v_qta_base);
+                      END IF;
+
+                      v_n := v_n + 1;
+                  END LOOP;
+
+                  -- 6) Nessuna ri-consegna pendente -> errore (rollback testata orfana).
+                  IF v_n = 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_genera_ddt_riconsegna','E_RESO_NESSUNA_RICONSEGNA_PENDENTE',
+                          jsonb_build_object('reso_id', p_reso_id, 'righe', p_righe),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  RETURN v_new_ddt_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_genera_ddt_riconsegna(p_reso_id bigint, p_righe jsonb, p_data date)
+              IS 'Madre ri-spedizione reso: nuovo DDT DRAFT (order-backed ORDINE_VENDITA o standalone), popola il ponte resi_righe_riconsegne (aggancio duro) e, se order-backed, il fulfillment che richiude il residuo. p_righe [{resi_riga_id, qta}] NULL=copertura residua. brief §5b. rev 2026-07-13.';

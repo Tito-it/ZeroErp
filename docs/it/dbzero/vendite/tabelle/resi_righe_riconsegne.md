@@ -1,0 +1,41 @@
+# 📚 Tabella `resi_righe_riconsegne`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO |  |
+| resi_riga_id | bigint | NO |  |
+| ddt_riga_id | bigint | NO |  |
+| qta | numeric | NO |  |
+| note | character varying | YES |  |
+| meta | jsonb | NO | '{}'::jsonb |
+| storicizza | boolean | NO | true |
+| tx_id | uuid | YES |  |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | YES | CURRENT_USER |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | k_resi_riconsegne_qta_pos |  |
+| FOREIGN KEY | fk_resi_riconsegne_ddt_riga | ddt_riga_id |
+| FOREIGN KEY | fk_resi_riconsegne_resi_riga | resi_riga_id |
+| PRIMARY KEY | pk_resi_riconsegne | id |
+| UNIQUE | uq_resi_riconsegne_pair | resi_riga_id, ddt_riga_id |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| pk_resi_riconsegne | `CREATE UNIQUE INDEX pk_resi_riconsegne ON vendite.resi_righe_riconsegne USING btree (id)` |
+| uq_resi_riconsegne_pair | `CREATE UNIQUE INDEX uq_resi_riconsegne_pair ON vendite.resi_righe_riconsegne USING btree (resi_riga_id, ddt_riga_id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_resi_riconsegne_a10_guard_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_resi_riconsegne_guard()` |
+| trg_resi_riconsegne_a10_guard_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_resi_riconsegne_guard()` |
+
+---
+{% include-markdown "signature-core.md" %}

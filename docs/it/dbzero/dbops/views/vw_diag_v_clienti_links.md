@@ -1,8 +1,11 @@
 {% include-markdown "it/dbzero/dbops/manual/vw_diag_v_clienti_links.md" %}
 # 🔍 View `vw_diag_v_clienti_links`
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW dbops.vw_diag_v_clienti_links AS
+CREATE OR REPLACE VIEW dbops.vw_diag_v_clienti_links
+WITH (security_invoker=on) AS
 SELECT c.id AS cliente_id,
     c.soggetto_ruolo_id AS cliente_soggetto_ruolo_id,
     c.istanza_utility_id AS cliente_istanza_utility_id,

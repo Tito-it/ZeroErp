@@ -1,0 +1,34 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — attach script.trgfn_qta_from_operativa su resi_righe.
+#
+# Come su vendite.ddt_righe: calcola quantita (base) = qta_operativa *
+# factor_to_base. Trigger generico riusato (nessun nuovo codice). Fase a10 ->
+# la quantita base e' disponibile per il guard quantita (fase a20, 20260713-24).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260713-23-attach-resi-righe-qta-from-operativa-mctit.yaml
+
+  - changeSet:
+      id: 20260713-23-attach-resi-righe-qta-from-operativa
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_resi_righe_a10_qta_from_operativa_ins_upd ON vendite.resi_righe;
+              CREATE TRIGGER trg_resi_righe_a10_qta_from_operativa_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.resi_righe
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'false');

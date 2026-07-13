@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — allineamento matrice DDT al motore resi (brief §5.3, §0.2/0.3).
+#
+# Il flip DDT->RESO ora e' AUTOMATICO (guidato da fn_conferma_reso, solo reso
+# totale), non piu' un pulsante manuale:
+#   - CONSEGNATO->RESO: meta.manuale -> false (sparisce da fn_available_actions_ddt);
+#   - SPEDITO->RESO: disattivata (la sorgente reso e' il DDT in CONSEGNATO);
+#   - RESO->CONSEGNATO: NUOVA transizione (manuale:false) per il ri-flip su annullo
+#     reso (fn_annulla_reso).
+#
+# Idempotente (UPDATE/UPSERT per codice_interno). NON modifica il seed committato
+# 20260709-10 (regola: mai toccare changelog gia' pushati): nuovo file forward-only.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260713-38-update-matrice-transizioni-ddt-reso-mctit.yaml
+
+  - changeSet:
+      id: 20260713-38-update-matrice-transizioni-ddt-reso
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- CONSEGNATO->RESO: flip automatico (non piu' pulsante manuale).
+              UPDATE config.transizioni_stati_ddt t
+                 SET meta = t.meta || '{"manuale": false}'::jsonb
+                FROM config.stati_doc_ddt sda, config.stati_doc_ddt sa
+               WHERE t.stato_da_id = sda.id AND t.stato_a_id = sa.id
+                 AND sda.codice_interno = 'CONSEGNATO'
+                 AND sa.codice_interno  = 'RESO';
+
+              -- SPEDITO->RESO: disattivata (sorgente reso = DDT in CONSEGNATO).
+              UPDATE config.transizioni_stati_ddt t
+                 SET attivo = false
+                FROM config.stati_doc_ddt sda, config.stati_doc_ddt sa
+               WHERE t.stato_da_id = sda.id AND t.stato_a_id = sa.id
+                 AND sda.codice_interno = 'SPEDITO'
+                 AND sa.codice_interno  = 'RESO';
+
+              -- RESO->CONSEGNATO: rientro automatico su annullo reso (nuova).
+              INSERT INTO config.transizioni_stati_ddt (stato_da_id, stato_a_id, attivo, meta)
+              SELECT sda.id, sa.id, true, '{"manuale": false}'::jsonb
+                FROM config.stati_doc_ddt sda, config.stati_doc_ddt sa
+               WHERE sda.codice_interno = 'RESO'
+                 AND sa.codice_interno  = 'CONSEGNATO'
+              ON CONFLICT (stato_da_id, stato_a_id)
+              DO UPDATE SET attivo = true, meta = EXCLUDED.meta;

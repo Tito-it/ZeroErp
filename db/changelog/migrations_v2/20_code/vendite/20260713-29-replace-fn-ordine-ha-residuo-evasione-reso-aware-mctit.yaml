@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — fn_ordine_ha_residuo_evasione RESO-AWARE (brief §0.1/§5.1).
+#
+# La versione precedente (20260709-08) calcolava residuo = quantita - Sigma
+# qta_evasa: l'addendo reso viveva SOLO nel commento (non nel corpo). Qui la
+# funzione diventa realmente reso-aware:
+#   residuo = quantita - Sigma qta_evasa + fn_ordine_riga_qta_riconsegna(riga)
+# L'addendo e' preso dall'helper unico (20260713-28), condiviso col guard
+# fulfillment (coerenza formula). Forward-only (CREATE OR REPLACE, nuovo file).
+#
+# Precondizione: tabelle resi + helper gia' creati (Fase A + 20260713-28).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260713-29-replace-fn-ordine-ha-residuo-evasione-reso-aware-mctit.yaml
+
+  - changeSet:
+      id: 20260713-29-replace-fn-ordine-ha-residuo-evasione-reso-aware
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ordine_ha_residuo_evasione(p_ordine_id vendite.ordini.id%TYPE)
+               RETURNS boolean
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: TRUE se l'ordine ha ancora quantita da evadere su almeno
+              --   una riga. RESO-AWARE:
+              --     residuo = quantita - Sigma qta_evasa
+              --               + fn_ordine_riga_qta_riconsegna(riga)
+              --   L'addendo reso (helper unico 20260713-28) e' 0 se non ci sono
+              --   resi per ri-consegna confermati. Gate per la proiezione stato
+              --   ordine in fn_genera_ddt_da_ordine / fn_conferma_reso.
+              DECLARE
+                  v_ha_residuo boolean;
+              BEGIN
+                  IF p_ordine_id IS NULL OR p_ordine_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_ordine_ha_residuo_evasione', 'E_VALIDAZIONE',
+                          jsonb_build_object('p_ordine_id', p_ordine_id),
+                          NULL::uuid, 'p_ordine_id deve essere > 0');
+                  END IF;
+
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.ordini_righe orr
+                       WHERE orr.ordine_id = p_ordine_id
+                         AND orr.attivo IS TRUE
+                         AND orr.quantita
+                             - COALESCE((
+                                 SELECT SUM(f.qta_evasa)
+                                   FROM vendite.ordini_righe_fulfillment f
+                                  WHERE f.ordine_riga_id = orr.id
+                               ), 0)
+                             + vendite.fn_ordine_riga_qta_riconsegna(orr.id)
+                             > 0
+                  ) INTO v_ha_residuo;
+
+                  RETURN v_ha_residuo;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ordine_ha_residuo_evasione(p_ordine_id bigint)
+              IS 'TRUE se l''ordine ha residuo di evasione su almeno una riga (quantita - SUM qta_evasa + addendo reso via fn_ordine_riga_qta_riconsegna, unita base). Reso-aware. Gate stato ordine per fn_genera_ddt_da_ordine e fn_conferma_reso. rev 2026-07-13.';

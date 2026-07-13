@@ -26,6 +26,9 @@ AS $function$
     --   Guardia di consistenza su INSERT/UPDATE di
     --   ordini_righe_fulfillment: verifica articolo, UOM
     --   operativa, quantita residua e over-fulfillment.
+    --   RESO-AWARE (rev 2026-07-13): il residuo include l'addendo
+    --   ri-consegna (helper unico fn_ordine_riga_qta_riconsegna),
+    --   coerente con fn_ordine_ha_residuo_evasione.
     -- =========================================================
 
     -- 0) Guardia quantita > 0
@@ -101,14 +104,16 @@ AS $function$
       );
     END IF;
 
-    -- 6) Residuo = quantita ordine - sum(evasa esistente, esclusa riga corrente in UPDATE)
+    -- 6) Residuo = quantita ordine - sum(evasa esistente, esclusa
+    --    riga corrente in UPDATE) + addendo reso (ri-consegna).
     SELECT COALESCE(SUM(q.qta_evasa), 0)
       INTO v_qta_evasa
       FROM vendite.ordini_righe_fulfillment q
     WHERE q.ordine_riga_id = NEW.ordine_riga_id
       AND (TG_OP <> 'UPDATE' OR q.id <> NEW.id);
 
-    v_residuo := v_qta_ordine - v_qta_evasa;
+    v_residuo := v_qta_ordine - v_qta_evasa
+               + vendite.fn_ordine_riga_qta_riconsegna(NEW.ordine_riga_id);
 
     IF NEW.qta_evasa > v_residuo THEN
       PERFORM script.fn_log_and_raise_error(
@@ -130,6 +135,9 @@ AS $function$
     RETURN NEW;
   END;
   $function$
+
+COMMENT ON FUNCTION vendite.trgfn_ordini_ful_guard_consistenza()
+IS 'Guard consistenza fulfillment: articolo/uom/residuo + over-fulfillment (E_QTA_SUPERA_RESIDUO). RESO-AWARE: residuo include addendo ri-consegna (fn_ordine_riga_qta_riconsegna), coerente con fn_ordine_ha_residuo_evasione. rev 2026-07-13.';
 ```
 
 ---

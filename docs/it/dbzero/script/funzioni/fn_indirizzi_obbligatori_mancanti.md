@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_indirizzi_obbligatori_mancanti.md" %}
 # ⚙️ Funzione `fn_indirizzi_obbligatori_mancanti`
 
 ```sql
