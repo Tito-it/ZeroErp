@@ -8,9 +8,11 @@
 // id.fiscale=`id_fiscale_univoco_cf_piva`, ba_codice, causale/aspetto/vettore/
 // mittente, ordine_origine_numero. Clone di OrdiniSearchTable (§D-4).
 //
-// Export lista CSV/XLSX operativo (endpoint BE `/vendite/ddt/export/`, DEF-1),
-// gemello ordini. Scostamento vs ordini: NIENTE azione PDF di riga (la lista DDT
-// non offre gestione documenti per-riga).
+// Export lista CSV/XLSX operativo (endpoint BE `/vendite/ddt/export/`, DEF-1) e
+// azioni di riga "Documenti PDF" + "Gestisci note" (gemelli offerte/contratti/
+// ordini): la lista replica le gestioni del drawer. Il PDF di riga apre il
+// building block `PdfDocumentiSorgenteDialog` (documenti generati all'emissione);
+// disabilitato in DRAFT (documento generato solo dall'emissione DRAFT→EMESSO).
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
@@ -26,6 +28,7 @@ import RowActionsMenu from '../../../core/components/RowActionsMenu.vue'
 import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
 import ListaConfigurabile from '../../../core/components/ListaConfigurabile.vue'
 import ExportDialog from '../../../core/components/ExportDialog.vue'
+import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import DdtNoteDrawer from './DdtNoteDrawer.vue'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../../core/composables/useListaConfigurabilePage'
@@ -33,7 +36,9 @@ import { useStoreFilterBindings } from '../../../core/composables/useStoreFilter
 import { useTabFreshness } from '../../../core/composables/useTabFreshness'
 import { DATE_FORMAT, MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
 import { statoDdtSeverity } from '../../../core/utils/severity'
+import { SORGENTE_CODES } from '../../../documenti/constants'
 import { exportDdt } from '../api/ddtApi'
+import { STATO_DDT } from '../constants'
 import { useDdtStore } from '../stores/ddt'
 
 const emit = defineEmits(['new', 'row-click'])
@@ -80,10 +85,19 @@ function buildExportParams(format) {
 // `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
 function onRowClick(data) { emit('row-click', data) }
 
-// ── Drawer note (azione di riga) ──
+// ── Sub-dialog PDF + drawer note (azioni di riga) ──
+const pdfDialogVisible = ref(false)
+const pdfDialogDdt = ref(null)
 const noteDrawerVisible = ref(false)
 const noteDrawerDdt = ref(null)
 
+function onPdfClick(row) {
+  // Documenti PDF disponibili solo dopo l'emissione (il documento definitivo si
+  // genera alla transizione DRAFT→EMESSO). In DRAFT l'azione e' disabled.
+  if (!row || row.stato_codice_interno === STATO_DDT.DRAFT) return
+  pdfDialogDdt.value = row
+  pdfDialogVisible.value = true
+}
 function onNoteClick(row) {
   if (!row?.id) return
   noteDrawerDdt.value = row
@@ -92,9 +106,22 @@ function onNoteClick(row) {
 
 // Scopo: azioni contestuali di riga. Modifica = click riga. Emissione/cambio
 // stato/push vivono nel drawer (dove sono caricate le capability), non in lista:
-// la lista resta consultazione + gestione note.
+// la lista resta consultazione + gestione documenti generati + note (gemelli
+// offerte/contratti/ordini).
 function buildRowActions(data) {
+  const isBozza = data.stato_codice_interno === STATO_DDT.DRAFT
   return [
+    {
+      key: 'documenti-pdf',
+      label: t('vendite.ddt.pdf.label_scarica'),
+      icon: MANAGE_ICONS.PDF,
+      severity: 'primary',
+      disabled: isBozza,
+      tooltip: isBozza
+        ? t('vendite.ddt.pdf.tooltip_lista_disabilitato')
+        : t('vendite.ddt.pdf.tooltip_lista'),
+      command: () => onPdfClick(data),
+    },
     {
       key: 'gestisci-note',
       label: t('vendite.ddt.gestisci_note'),
@@ -187,6 +214,17 @@ onMounted(() => store.fetchList())
       v-model:visible="exportDialogVisible"
       :loading="exportLoading"
       @export="onExportConfirm"
+    />
+
+    <!-- Dialog lista PDF documenti generati per il DDT selezionato. Riusa il
+         building block `PdfDocumentiSorgenteDialog` (come ordini/offerte). -->
+    <PdfDocumentiSorgenteDialog
+      v-model:visible="pdfDialogVisible"
+      :sorgente-code="SORGENTE_CODES.DDT"
+      :sorgente-id="pdfDialogDdt?.id ?? null"
+      :title="pdfDialogDdt
+        ? t('vendite.ddt.pdf.dialog_title', { numero: pdfDialogDdt.numero })
+        : ''"
     />
 
     <DdtNoteDrawer
