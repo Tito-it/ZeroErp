@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — guard "DDT CONSEGNATO" su vendite.resi (brief §3).
+#
+# "Non si rende cio' che non e' stato consegnato": il reso e' ammesso solo se il
+# DDT sorgente (risolto per sorgente_uid) e' in stato CONSEGNATO. Data-driven:
+# si applica solo alla sorgente DDT_VENDITA (l'unica di questa slice; una futura
+# FATTURA salta il guard). Errore E_RESO_DDT_NON_CONSEGNATO.
+#
+# Rilievo emerso scrivendo il pgTAP RLS: la parte "sorgente=DDT_VENDITA" c'era,
+# ma il vincolo sullo stato del DDT mancava (si poteva aprire un reso da un DDT
+# in DRAFT/EMESSO/SPEDITO). Guard additivo, fase a10 su INSERT.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260713-42-create-trgfn-resi-guard-ddt-consegnato-mctit.yaml
+
+  - changeSet:
+      id: 20260713-42-create-trgfn-resi-guard-ddt-consegnato
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_guard_ddt_consegnato()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: il reso e' ammesso solo se il DDT sorgente e' CONSEGNATO
+              --   (non si rende cio' che non e' stato consegnato). Solo per
+              --   sorgente DDT_VENDITA (data-driven).
+              DECLARE
+                  v_is_ddt boolean;
+                  v_stato  config.stati_doc_ddt.codice_interno%TYPE;
+              BEGIN
+                  -- Applica solo alla sorgente DDT_VENDITA.
+                  SELECT EXISTS (
+                      SELECT 1 FROM config.sorgenti
+                       WHERE id = NEW.sorgente_tipo_id
+                         AND codice_interno = 'DDT_VENDITA'
+                  ) INTO v_is_ddt;
+
+                  IF NOT v_is_ddt THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT sdd.codice_interno INTO v_stato
+                    FROM vendite.ddt d
+                    JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                   WHERE d.uid = NEW.sorgente_uid;
+
+                  IF v_stato IS DISTINCT FROM 'CONSEGNATO' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','trgfn_resi_guard_ddt_consegnato','E_RESO_DDT_NON_CONSEGNATO',
+                          jsonb_build_object('sorgente_uid', NEW.sorgente_uid, 'stato_ddt', v_stato),
+                          NULL::uuid, COALESCE(v_stato, 'NULL'));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_guard_ddt_consegnato()
+              IS 'Guard: reso ammesso solo se il DDT sorgente (DDT_VENDITA, per sorgente_uid) e in stato CONSEGNATO (E_RESO_DDT_NON_CONSEGNATO). brief §3. rev 2026-07-13.';
+
+              DROP TRIGGER IF EXISTS trg_resi_a10_guard_ddt_consegnato_ins ON vendite.resi;
+              CREATE TRIGGER trg_resi_a10_guard_ddt_consegnato_ins
+                BEFORE INSERT ON vendite.resi
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_resi_guard_ddt_consegnato();

@@ -147,3 +147,15 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 146,8,data_insert,Creazione,Data di inserimento del DDT,data_insert,informazione,datetime,datetime_short,150,190,center,Audit,8,t,t,t,f,f,t,2026-07-09 00:00:00,mctit,vendite.ddt.col_data_insert
 147,8,emittente_fiscale_codice,Emittente,Ragione sociale dell emittente fiscale,emittente_fiscale_descrizione,informazione,string,,120,200,left,Emittente,9,t,t,t,f,f,t,2026-07-12 00:00:00,mctit,vendite.ddt.col_emittente
 148,8,azioni,Azioni,,,azione,string,,60,999,center,,99,f,f,f,f,f,t,2026-07-11 00:00:00,mctit,common.col_azioni
+149,9,numero,Numero,Numero del reso,numero,identificatore,string,,130,10,left,Identificazione,1,t,t,t,t,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_numero
+150,9,data,Data,Data del reso,data,informazione,date,date_short,110,20,center,Identificazione,1,t,t,t,f,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_data
+151,9,anno,Anno,Anno del reso,anno,informazione,numeric,,80,30,center,Identificazione,1,t,t,t,f,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_anno
+152,9,destinatario_denominazione,Destinatario,Ragione sociale del destinatario,destinatario_denominazione,informazione,string,,200,40,left,Destinatario,2,t,t,t,t,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_destinatario
+153,9,id_fiscale,Id. Fiscale,Identificativo fiscale del destinatario,id_fiscale_univoco_cf_piva,informazione,string,,140,50,left,Destinatario,2,t,t,t,t,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_id_fiscale
+154,9,ba_codice,Cd. Account,Codice del billing account,ba_codice,informazione,string,,120,60,left,Destinatario,2,t,t,t,t,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_ba_codice
+155,9,stato,Stato,Stato corrente del reso,stato_descrizione,informazione,string,,130,70,center,Stato,3,t,t,t,f,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_stato
+156,9,ddt_origine_numero,DDT origine,Numero del DDT di origine,ddt_origine_numero,informazione,string,,130,80,left,Origine,4,t,t,t,f,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_ddt_origine
+157,9,valuta,Valuta,Codice valuta del reso,valuta_codice,informazione,string,,90,90,left,Importi,5,t,t,t,f,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_valuta
+158,9,emittente_fiscale_codice,Emittente,Ragione sociale dell emittente fiscale,emittente_fiscale_descrizione,informazione,string,,120,100,left,Emittente,6,t,t,t,f,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_emittente
+159,9,data_insert,Creazione,Data di inserimento del reso,data_insert,informazione,datetime,datetime_short,150,110,center,Audit,7,t,t,t,f,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_data_insert
+160,9,azioni,Azioni,,,azione,string,,60,999,center,,99,f,f,f,f,f,t,2026-07-13 00:00:00,mctit,common.col_azioni

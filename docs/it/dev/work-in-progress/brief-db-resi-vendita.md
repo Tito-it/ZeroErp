@@ -511,8 +511,9 @@ reso. Coerente con [[feedback_soluzione_migliore_non_istantanea]] e [[feedback_a
 | 29a | Append `config.sistema_codici` riga `'reso'` | C `80_data` CSV | append (loader runOnChange) | ✍️ |
 | 29b | Opt-out lock `resi.numero` (`automation_lock_columns` `enabled=f`, mirror ddt/fatture) | C `80_data` CSV | append (loader runOnChange) | ✍️ |
 | 30 | Append `messaggi_errore` (12 codici 530-541) | C `80_data` CSV | append (loader runOnChange) | ✍️ |
-| 31 | Seed lista `ui` resi (opzionale/companion) | C `80_data` | — | ☐ |
-| T | pgTAP (write-side + read-side + RLS) | test | `db/pgtap/vendite`+`rls` | ☐ |
+| 31 | Seed lista `ui` resi (`lista_definizione` id 9 + colonne 149-160) | C `80_data` CSV | append (loader runOnChange) | ✍️ |
+| T1 | pgTAP motore resi (25 casi: guard, ciclo conferma/ri-consegna, flip, annullo, numerazione, read-side) | test | `db/pgtap/vendite/test-resi-motore-v1.sql` | ✅ 25/25 |
+| T2 | pgTAP RLS scope emittente (in/off-scope/no-ruolo) | test | `db/pgtap/rls/test-rls-resi-ef-whitelist-write.sql` | ✅ 3/3 |
 
 > **Nota applicazione/commit**: nessun changeSet va applicato o committato senza
 > "procedi" esplicito ([[feedback_no_commit_autonomo]]). Il tracker riflette lo stato
