@@ -72,6 +72,22 @@ BEGIN
         v_sorg_ord_id, v_ordine_uid)
     RETURNING id INTO v_ddt_id;
 
+    -- 4-bis) Cascata indirizzi (D-1): copia 1:1 gli snapshot dell'ordine
+    --   filtrati sui tipi ammessi in ambito DDT (di fatto solo CON).
+    --   origine_* propagati; idempotente (uno-per-tipo).
+    INSERT INTO vendite.ddt_indirizzi (
+        ddt_id, tipo_indirizzo_id, snapshot,
+        origine_indirizzo_id, origine_soggetto_ruolo_id)
+    SELECT v_ddt_id, oi.tipo_indirizzo_id, oi.snapshot,
+           oi.origine_indirizzo_id, oi.origine_soggetto_ruolo_id
+      FROM vendite.ordini_indirizzi oi
+      JOIN config.tipi_indirizzi_allowed a
+        ON a.tipo_indirizzo_id = oi.tipo_indirizzo_id
+       AND a.ambito = 'DDT'
+       AND a.attivo IS TRUE
+     WHERE oi.ordine_id = p_ordine_id
+    ON CONFLICT (ddt_id, tipo_indirizzo_id) DO NOTHING;
+
     -- 5) Righe: copia snapshot A-2 + componenti + fulfillment.
     FOR v_riga IN
         SELECT orr.id AS ordine_riga_id, orr.articolo_id, orr.descrizione,

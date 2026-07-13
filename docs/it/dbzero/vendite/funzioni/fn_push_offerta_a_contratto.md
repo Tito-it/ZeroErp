@@ -12,41 +12,6 @@ CREATE OR REPLACE FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigi
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
--- Scopo:
---   Generare un contratto DRAFT da un'offerta commerciale in stato
---   ACCETTATA, copiando 1:1 eccezioni (con componenti BoM) e utility.
---   Idempotente: doppia invocazione fallisce con errore semantico.
---   Consumatore del meccanismo generico di successione contratti:
---   su overlap mostra/risolve il conflitto invece di lasciar trapelare
---   l'errore grezzo GiST (brief §3.3/§3.4).
---
--- Parametri:
---   p_offerta_id : ID offerta commerciale ACCETTATA da trasformare.
---   p_pratica_id : ID pratica da collegare (opzionale — NULL ammesso).
---   p_chiudi_contratto_esistente : se true e c'e' overlap, chiude il
---       contratto esistente per successione (accorcia valido_al) e poi
---       genera il nuovo; se false (default) su overlap solleva
---       E_CONTRATTO_OVERLAP_ESISTENTE senza creare nulla.
---
--- Regole:
---   - stato ACCETTATA obbligatorio; qualsiasi altro -> errore.
---   - nessun contratto con offerta_id = p_offerta_id deve esistere.
---   - MUTUA ESCLUSIVITA' (rev6, 2026-06-08): nessun ordine generato
---     dall'offerta deve esistere (documento_origine ('OFFERTA', id)).
---     Contratto e ordine sono alternativi: l'offerta ne genera al
---     massimo uno. Specchio del guard lato capability
---     script.fn_available_actions_offerta.
---   - contratto creato in DRAFT; auto-attivazione NON prevista.
---   - emittente_fiscale_id copiato 1:1 dall'offerta.
---   - eccezioni: loop per-eccezione (mapping eccezione.id->riga.id),
---     componenti copiati dopo ogni INSERT riga.
---   - stato_approvazione_prezzo / pratica_approvazione_prezzo_id:
---     trasportati 1:1 dall'offerta sia sulla RIGA (rev5, 2026-06-01)
---     sia sui COMPONENTI (rev3). L'approvazione L3 ottenuta in offerta
---     non va riapprovata sul contratto.
---   - utility: UPSERT per gestire trigger snapshot_precontrattuali.
---   - overlap: advisory lock + rilevamento + routing + backstop
---     (vedi header del changelog 20260531-04).
 DECLARE
     v_offerta               vendite.offerte_commerciali%ROWTYPE;
     v_stato_cod             config.stati_doc_offerte.codice_interno%TYPE;
@@ -59,9 +24,6 @@ DECLARE
     v_riga_id               vendite.contratti_righe.id%TYPE;
     v_overlap_id            vendite.contratti.id%TYPE;
     v_overlap_numero        vendite.contratti.numero%TYPE;
-    -- ambito assunto dal nuovo contratto: l'INSERT non valorizza la
-    -- colonna, che assume il DEFAULT 'COMMODITY'. INVARIANTE da
-    -- mantenere allineata al rilevamento.
     c_ambito        CONSTANT vendite.contratti.ambito%TYPE := 'COMMODITY';
 BEGIN
     -- Guard: parametro obbligatorio e valido.
@@ -126,10 +88,6 @@ BEGIN
     END IF;
 
     -- Guard mutua esclusivita': ordine gia' generato per questa offerta?
-    -- Contratto e ordine sono ALTERNATIVI: un'offerta ne genera al
-    -- massimo uno. Check cross-dominio su vendite.ordini.documento_origine_*
-    -- ('OFFERTA', id). Specchio del guard lato capability
-    -- script.fn_available_actions_offerta (20260608-12).
     IF EXISTS (
         SELECT 1 FROM vendite.ordini
          WHERE documento_origine_tipo = 'OFFERTA'
@@ -177,9 +135,6 @@ BEGIN
     -- =====================================================
     -- Successione su overlap (meccanismo generico, brief §3.4)
     -- =====================================================
-    -- 1) Advisory lock sulla quintupla: serializza push concorrenti
-    --    sullo stesso (BA, istanza, utility, ambito). Non blocca
-    --    l'intera tabella; rilascio automatico a fine transazione.
     PERFORM pg_advisory_xact_lock(
         hashtext('vendite.contratti.overlap:'
                  || v_offerta.billing_account_id::text || ':'
@@ -188,7 +143,6 @@ BEGIN
                  || c_ambito)
     );
 
-    -- 2) Rilevamento overlap (read-only).
     v_overlap_id := vendite.fn_contratto_sovrapposto(
         v_offerta.billing_account_id,
         v_offerta.istanza_utility_id,
@@ -198,13 +152,11 @@ BEGIN
         v_offerta.validita_al
     );
 
-    -- 3) Routing.
     IF v_overlap_id IS NOT NULL THEN
         SELECT numero INTO v_overlap_numero
           FROM vendite.contratti WHERE id = v_overlap_id;
 
         IF NOT COALESCE(p_chiudi_contratto_esistente, false) THEN
-            -- Caso B: overlap senza conferma -> errore parlante, nessun INSERT.
             PERFORM script.fn_log_and_raise_error(
                 'vendite', 'fn_push_offerta_a_contratto',
                 'E_CONTRATTO_OVERLAP_ESISTENTE',
@@ -219,17 +171,13 @@ BEGIN
                 COALESCE(v_overlap_numero, v_overlap_id::text)
             );
         ELSE
-            -- Caso C: conferma esplicita -> chiusura per successione.
             PERFORM vendite.fn_chiudi_contratto_per_successione(
                 v_overlap_id, v_offerta.validita_dal
             );
         END IF;
     END IF;
-    -- Caso A (v_overlap_id IS NULL): nessuna azione, prosegue l'INSERT.
 
     -- INSERT contratto in DRAFT — copia campi business 1:1 dall'offerta.
-    -- Backstop: cattura un eventuale exclusion_violation residuo
-    -- (ex_contratti_no_overlap) e lo ritraduce in errore parlante.
     BEGIN
         INSERT INTO vendite.contratti (
             billing_account_id,
@@ -268,8 +216,6 @@ BEGIN
         RETURNING id, uid INTO v_contratto_id, v_contratto_uid;
     EXCEPTION
         WHEN exclusion_violation THEN
-            -- Conflitto residuo (gara sfuggita al lock, percorso senza
-            -- lock, o multi-overlap non risolto dalla singola chiusura).
             v_overlap_id := vendite.fn_contratto_sovrapposto(
                 v_offerta.billing_account_id,
                 v_offerta.istanza_utility_id,
@@ -295,9 +241,23 @@ BEGIN
             );
     END;
 
-    -- Copia eccezioni offerta → contratti_righe (loop per-eccezione).
-    -- Loop necessario per preservare il mapping eccezione.id →
-    -- riga_contratto.id e copiare i componenti associati.
+    -- Cascata indirizzi (D-1): copia 1:1 gli snapshot dell'offerta
+    -- filtrati sui tipi ammessi in ambito CONTRATTI. origine_*
+    -- propagati; idempotente (uno-per-tipo).
+    INSERT INTO vendite.contratti_indirizzi (
+        contratto_id, tipo_indirizzo_id, snapshot,
+        origine_indirizzo_id, origine_soggetto_ruolo_id)
+    SELECT v_contratto_id, oi.tipo_indirizzo_id, oi.snapshot,
+           oi.origine_indirizzo_id, oi.origine_soggetto_ruolo_id
+      FROM vendite.offerte_commerciali_indirizzi oi
+      JOIN config.tipi_indirizzi_allowed a
+        ON a.tipo_indirizzo_id = oi.tipo_indirizzo_id
+       AND a.ambito = 'CONTRATTI'
+       AND a.attivo IS TRUE
+     WHERE oi.offerta_id = p_offerta_id
+    ON CONFLICT (contratto_id, tipo_indirizzo_id) DO NOTHING;
+
+    -- Copia eccezioni offerta -> contratti_righe (loop per-eccezione).
     FOR v_eccezione IN
         SELECT *
           FROM vendite.offerte_commerciali_eccezioni
@@ -346,7 +306,7 @@ BEGIN
         )
         RETURNING id INTO v_riga_id;
 
-        -- Copia componenti dell'eccezione → contratti_righe_componenti.
+        -- Copia componenti dell'eccezione -> contratti_righe_componenti.
         INSERT INTO vendite.contratti_righe_componenti (
             riga_contratto_id,
             articolo_componente_id,
@@ -388,9 +348,7 @@ BEGIN
         WHERE occ.eccezione_offerta_id = v_eccezione.id;
     END LOOP;
 
-    -- Copia utility offerta → contratti_utilities (1:1).
-    -- UPSERT: il trigger trg_contratti_z90_snapshot_precontrattuali_ins
-    -- si attiva AFTER INSERT su contratti e puo' aver gia' creato un record.
+    -- Copia utility offerta -> contratti_utilities (1:1).
     INSERT INTO vendite.contratti_utilities (
         contratto_id,
         istanza_utility_id,

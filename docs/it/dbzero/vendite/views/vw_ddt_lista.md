@@ -54,8 +54,9 @@ SELECT d.id,
     d.data_insert,
     d.user_insert,
     d.data_update,
-    d.user_update
-   FROM ((((((((((((((((vendite.ddt d
+    d.user_update,
+    COALESCE(s_ef.ragione_sociale_completa, (ef.descrizione)::text) AS emittente_fiscale_descrizione
+   FROM ((((((((((((((((((vendite.ddt d
      JOIN config.stati_doc_ddt sd ON ((sd.id = d.stato_doc_ddt_id)))
      JOIN anagrafiche.soggetti_ruoli sr_dest ON ((sr_dest.id = d.destinatario_soggetto_ruolo_id)))
      JOIN anagrafiche.soggetti s_dest ON ((s_dest.id = sr_dest.soggetto_id)))
@@ -65,6 +66,8 @@ SELECT d.id,
      LEFT JOIN anagrafiche.soggetti s_vett ON ((s_vett.id = sr_vett.soggetto_id)))
      LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = d.billing_account_id)))
      LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = d.emittente_fiscale_id)))
+     LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = ef.soggetto_ruolo_id)))
+     LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
      LEFT JOIN config.utilities u ON ((u.id = d.utility_id)))
      LEFT JOIN config.valute v_val ON ((v_val.id = d.valuta_id)))
      LEFT JOIN config.causali_trasporto ct ON ((ct.id = d.causale_trasporto_id)))
