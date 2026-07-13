@@ -20,6 +20,9 @@ databaseChangeLog:
   - changeSet:
       id: 20260711-28-alter-acquisti-ddt-indirizzi-converge
       author: mctit
+
+      validCheckSums:
+        - ANY
       changes:
         - sql:
             splitStatements: true
@@ -27,7 +30,12 @@ databaseChangeLog:
             sql: |
               -- Il trigger a10 (UPDATE OF tipo_indirizzo_id) bloccherebbe l'ALTER
               -- TYPE: lo si droppa qui e lo si ri-crea (condiviso) in 20260711-29.
+              -- Su acquisti il trigger ha il nome ORIGINALE (..._ins_upd_only_allowed_tipi):
+              -- il rename 20251119-31 tocco' solo il gemello vendite. Si droppano
+              -- entrambi i nomi per robustezza (DROP IF EXISTS, no-op se assente).
               DROP TRIGGER IF EXISTS trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd
+                ON acquisti.ddt_indirizzi;
+              DROP TRIGGER IF EXISTS trg_ddt_indirizzi_a10_ins_upd_only_allowed_tipi
                 ON acquisti.ddt_indirizzi;
 
               ALTER TABLE acquisti.ddt_indirizzi

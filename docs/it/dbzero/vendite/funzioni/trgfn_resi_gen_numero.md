@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_resi_gen_numero.md" %}
 # ⚙️ Funzione `trgfn_resi_gen_numero`
 
 ```sql

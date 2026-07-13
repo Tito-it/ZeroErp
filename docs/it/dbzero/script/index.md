@@ -10,7 +10,7 @@
 - [fn_available_actions_offerta](funzioni/fn_available_actions_offerta.md)
 - [fn_available_actions_ordine](funzioni/fn_available_actions_ordine.md)
 - [fn_available_actions_preventivo](funzioni/fn_available_actions_preventivo.md)
-- [fn_available_actions_reso](funzioni/fn_available_actions_reso.md)
+- [fn_available_actions_reso](funzioni/fn_available_actions_reso.md) — (rev 2026-07-13)
 - [fn_capability_promo_articolo](funzioni/fn_capability_promo_articolo.md)
 - [fn_change_user_emittenti_scope](funzioni/fn_change_user_emittenti_scope.md)
 - [fn_check_almeno_un_super_admin_attivo](funzioni/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)

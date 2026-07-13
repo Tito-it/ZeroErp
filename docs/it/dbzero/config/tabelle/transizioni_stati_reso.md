@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/transizioni_stati_reso.md" %}
 # 📚 Tabella `transizioni_stati_reso`
 
 ## 🗂️ Campi principali
@@ -28,6 +29,16 @@
 |------|-------------|
 | pk_transizioni_stati_reso | `CREATE UNIQUE INDEX pk_transizioni_stati_reso ON config.transizioni_stati_reso USING btree (id)` |
 | uq_transizioni_stati_reso | `CREATE UNIQUE INDEX uq_transizioni_stati_reso ON config.transizioni_stati_reso USING btree (stato_da_id, stato_a_id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_transizioni_stati_reso_a10_stati_doc_reso_require_at_28f28d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_reso', 'attivo', 'stato_da_id', 'id')` |
+| trg_transizioni_stati_reso_a10_stati_doc_reso_require_at_28f28d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_reso', 'attivo', 'stato_da_id', 'id')` |
+| trg_transizioni_stati_reso_a10_stati_doc_reso_require_at_de454c | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_reso', 'attivo', 'stato_a_id', 'id')` |
+| trg_transizioni_stati_reso_a10_stati_doc_reso_require_at_de454c | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_reso', 'attivo', 'stato_a_id', 'id')` |
+| trg_transizioni_stati_reso_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_transizioni_stati_reso_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

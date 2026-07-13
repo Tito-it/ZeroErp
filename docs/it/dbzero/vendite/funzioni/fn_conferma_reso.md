@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_conferma_reso.md" %}
 # ⚙️ Funzione `fn_conferma_reso`
 
 ```sql

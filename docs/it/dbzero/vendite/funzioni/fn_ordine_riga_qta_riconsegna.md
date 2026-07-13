@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_ordine_riga_qta_riconsegna.md" %}
 # ⚙️ Funzione `fn_ordine_riga_qta_riconsegna`
 
 ```sql

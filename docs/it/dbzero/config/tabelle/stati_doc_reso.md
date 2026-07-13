@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/stati_doc_reso.md" %}
 # 📚 Tabella `stati_doc_reso`
 
 ## 🗂️ Campi principali
@@ -30,6 +31,14 @@
 | pk_stati_doc_reso | `CREATE UNIQUE INDEX pk_stati_doc_reso ON config.stati_doc_reso USING btree (id)` |
 | uq_stati_doc_reso_codice | `CREATE UNIQUE INDEX uq_stati_doc_reso_codice ON config.stati_doc_reso USING btree (codice)` |
 | uq_stati_doc_reso_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_reso_codice_interno ON config.stati_doc_reso USING btree (codice_interno)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_stati_doc_reso_a10_resi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'resi', 'stato_doc_reso_id', 'id', 'attivo')` |
+| trg_stati_doc_reso_a10_transizioni_stati_reso_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_reso', 'stato_a_id', 'id', 'attivo')` |
+| trg_stati_doc_reso_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_stati_doc_reso_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

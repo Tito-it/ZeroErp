@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_resi_guard_emittente_ba.md" %}
 # ⚙️ Funzione `trgfn_resi_guard_emittente_ba`
 
 ```sql
