@@ -218,7 +218,14 @@ Fasi FE:
   (2) snapshot picker fonte=soggetto ora include `stato` (paese, parita' col
   BE); (3) prefill "indirizzo libero" solo su veri una-tantum (non
   riclassifica piu' le righe "da soggetto"); (4) ripristinato emittente VUOTO
-  in create DDT (invariante PR #970); (5) context PDF preventivi: proiezione
+  in create DDT ~~(invariante PR #970)~~ — **SUPERATO 2026-07-13**: il
+  riferimento a PR #970 era errato (quella PR e' il riepilogo IVA; la regola
+  veniva dall'addendum §15 del brief DB DDT) e Tid ha deciso l'uniformazione
+  al modello degli altri domini: **emittente legato allo USER** (prefill FE
+  dal profilo + payload create, fallback DB dal BA in `trgfn_ddt_normalize`
+  come rete di sicurezza). Vedi
+  `brief-db-ddt-emittente-user-e-etichetta-soggetto.md`; (5) context PDF
+  preventivi: proiezione
   stabile indirizzi (fuori le chiavi live-JOIN del drawer, hash invariato);
   (6) `E_TIPO_INDIRIZZO`+`E_INDIRIZZO_DOC_OBBLIGATORIO` registrati in
   error_policies; (7) schema OpenAPI POST factory completato

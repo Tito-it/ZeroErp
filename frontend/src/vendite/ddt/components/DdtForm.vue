@@ -1,13 +1,14 @@
 <script setup>
-// Scopo: Form testata DDT di vendita — emittente fiscale (display-only), cliente
-// (BA), utility, data, valuta + sezione TRASPORTO (causale, aspetto beni,
-// modalita addebito, vettore, mittente, colli/pesi/volume, targa, autista,
-// tracking). Usato dentro DdtDrawer. L'emittente è MEMORIZZATO sulla testata
-// (addendum §15) ma risolto dal trigger DB (da BA o ordine): si visualizza
-// read-only come ordini/preventivi, senza entrare nel payload. A differenza di
-// ordini: niente modalita/termine pagamento, niente fatturazione_trigger; in
-// piu' i campi logistici del documento di trasporto. Clone adattato di
-// OrdiniForm (§D-4).
+// Scopo: Form testata DDT di vendita — emittente fiscale (legato allo user,
+// mirror ordini), cliente (BA), utility, data, valuta + sezione TRASPORTO
+// (causale, aspetto beni, modalita addebito, vettore, mittente,
+// colli/pesi/volume, targa, autista, tracking). Usato dentro DdtDrawer.
+// L'emittente è MEMORIZZATO sulla testata (addendum §15): in create e'
+// prefillato dal profilo operatore (admin globale: Select) ed entra nel
+// payload; il trigger DB resta fallback (da BA o ordine sorgente). A
+// differenza di ordini: niente modalita/termine pagamento, niente
+// fatturazione_trigger; in piu' i campi logistici del documento di trasporto.
+// Clone adattato di OrdiniForm (§D-4).
 //
 // Granularita' disabilitazione: isModificabile (stato form, legato a
 // can_edit_testata + readonly) OPPURE campo in nonEditableFields (per-campo BE).
@@ -32,9 +33,9 @@ const props = defineProps({
   isModificabile: { type: Boolean, default: true },
   nonEditableFields: { type: Array, default: () => [] },
   isEdit: { type: Boolean, default: false },
-  // Detail testata per il display denormalizzato dell'emittente
-  // (emittente_fiscale_codice via EmittenteFiscaleField :record). null in create
-  // pre-bozza (l'emittente compare dopo l'auto-save, risolto dal trigger).
+  // Detail testata per il display denormalizzato dell'emittente in EDIT
+  // (emittente_fiscale_descrizione/codice via EmittenteFiscaleField :record).
+  // null in create: il campo mostra l'emittente del profilo operatore.
   record: { type: Object, default: null },
 })
 
@@ -89,18 +90,17 @@ function onVettoreClear() {
   <div class="form-grid">
     <!-- ── Testata ── -->
     <div class="form-grid-2col">
-      <!-- Emittente fiscale: MEMORIZZATO sulla testata (addendum §15) ma risolto
-           dal trigger DB (da BA o ordine), non scelto dall'operatore → sempre
-           `disabled` (a differenza di ordini, dove l'admin può sceglierlo). In
-           create mostra l'anteprima operatore (default), in edit l'EF effettivo
-           denormalizzato dal record. Mirror ordini/preventivi. -->
+      <!-- Emittente fiscale: operatore con EF assegnato → read-only auto;
+           admin globale → Select sugli EF disponibili. In edit mostra ragione
+           sociale + codice denormalizzati dal record. Mirror OrdiniForm
+           (uniformazione 2026-07-13: emittente legato allo user). -->
       <div class="form-field">
-        <label>{{ t('vendite.ddt.field_emittente_fiscale') }}</label>
+        <label>{{ t('vendite.ddt.field_emittente_fiscale') }} <span v-if="!isEdit">*</span></label>
         <EmittenteFiscaleField
           v-model="form.emittente_fiscale_id"
           :record="record"
           :is-edit="isEdit"
-          disabled />
+          :disabled="isLocked('emittente_fiscale_id')" />
       </div>
       <div class="form-field">
         <label>{{ t('vendite.ddt.field_utility') }}</label>
