@@ -20,13 +20,21 @@ databaseChangeLog:
   - changeSet:
       id: 20260711-29-converge-trg-acquisti-ddt-indirizzi-only-allowed
       author: mctit
+
+      validCheckSums:
+        - ANY
       changes:
         - sql:
             splitStatements: false
             stripComments: false
             sql: |
               -- Rimuove il trigger dedicato e la sua funzione hardcoded.
+              -- Entrambi i nomi possibili (originale ..._ins_upd_only_allowed_tipi e
+              -- rinominato ..._only_allowed_tipi_ins_upd): DROP IF EXISTS, no-op se
+              -- assente. Serve droppare quello REALE prima del DROP FUNCTION (dipendenza).
               DROP TRIGGER IF EXISTS trg_ddt_indirizzi_a10_only_allowed_tipi_ins_upd
+                ON acquisti.ddt_indirizzi;
+              DROP TRIGGER IF EXISTS trg_ddt_indirizzi_a10_ins_upd_only_allowed_tipi
                 ON acquisti.ddt_indirizzi;
 
               DROP FUNCTION IF EXISTS acquisti.trgfn_ddt_indirizzi_only_allowed_tipi();
