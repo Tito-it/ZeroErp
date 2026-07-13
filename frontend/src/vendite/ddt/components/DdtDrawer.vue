@@ -19,6 +19,7 @@ import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
+import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
@@ -121,6 +122,12 @@ const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 // (E_DDT_CLIENTE_IMMUTABILE lato service). Cambiare cliente = nuovo DDT.
 const nonEditableFields = computed(() => (hasDetail.value ? ['billing_account_id'] : []))
 
+// Default emittente fiscale: operatore → id profilo; admin globale → null
+// (sceglie via EmittenteFiscaleField in modalita' Select). Uniformato a
+// ordini/preventivi (decisione Tid 2026-07-13): l'emittente e' legato allo
+// USER; il fallback dal BA in trgfn_ddt_normalize resta rete di sicurezza.
+const { defaultEmittenteId } = useEmittenteFiscaleField()
+
 // Default utility globale (parameter DEFAULT_UTILITY): proposto in CREATE.
 const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
 
@@ -130,14 +137,7 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 function defaultForm() {
   return {
-    // Emittente fiscale: display-only. In create parte VUOTO (nessuna
-    // anteprima "a indovinare" col default operatore: per il DDT il trigger
-    // lo risolve dal BILLING ACCOUNT o dall'ordine sorgente, non
-    // dall'operatore come nei preventivi — potrebbe divergere) e si
-    // valorizza dal detail dopo l'auto-save bozza. Invariante del fix
-    // PR #970: non uniformare a ordini/preventivi. NON entra nel payload
-    // (whitelist BE lo esclude).
-    emittente_fiscale_id: null,
+    emittente_fiscale_id: defaultEmittenteId.value ?? null,
     utility_id: utilityDefaultId.value ?? null,
     billing_account_id: null,
     // _obj per BillingAccountLookup (pattern restore lookup ricco).
@@ -175,8 +175,9 @@ async function loadDetail(id = null) {
   if (!data) return
   detail.value = data
   form.value = {
-    // Emittente fiscale memorizzato (denormalizzato dalla vista: codice via
-    // EmittenteFiscaleField :record); display-only, non aggiornabile.
+    // Emittente fiscale memorizzato (denormalizzato dal detail BE: ragione
+    // sociale soggetto + codice via EmittenteFiscaleField :record).
+    // Immutabile post-create (whitelist BE update lo esclude).
     emittente_fiscale_id: data.emittente_fiscale_id ?? null,
     utility_id: data.utility_id ?? null,
     billing_account_id: data.billing_account_id ?? null,
@@ -263,8 +264,9 @@ watch(() => props.visible, async (v) => {
 useBaFormDefaults({ form, isEdit, fetchDefaults: getDdtFormDefaults })
 
 // Costruisce il payload testata (create/update). Numeri e stringhe vuote → null:
-// il BE normalizza empty→NULL (empty_to_none). billing_account_id/data solo in
-// create (immutabili/whitelist BE); qui componiamo la whitelist comune.
+// il BE normalizza empty→NULL (empty_to_none). billing_account_id/
+// emittente_fiscale_id/data solo in create (immutabili/whitelist BE); qui
+// componiamo la whitelist comune.
 function buildTestataPayload({ includeBa = false } = {}) {
   const f = form.value
   const payload = {
@@ -284,7 +286,12 @@ function buildTestataPayload({ includeBa = false } = {}) {
     autista: f.autista || null,
     tracking_code: f.tracking_code || null,
   }
-  if (includeBa) payload.billing_account_id = f.billing_account_id || null
+  if (includeBa) {
+    payload.billing_account_id = f.billing_account_id || null
+    // Opzionale per BE: se omesso (es. admin globale che non sceglie) il
+    // trigger DB fa fallback dal billing_account.
+    payload.emittente_fiscale_id = f.emittente_fiscale_id || null
+  }
   return payload
 }
 

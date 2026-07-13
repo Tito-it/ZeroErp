@@ -15,13 +15,15 @@
 # data-driven, numero assegnato a EMESSO dal trigger DB, cliente/destinatario
 # immutabile post-creazione).
 #
-# NOTA emittente (addendum §15, 2026-07-10): `vendite.ddt.emittente_fiscale_id`
-# e' MEMORIZZATO (NOT NULL, scope RLS `rls_ddt_ef_whitelist`), risolto in
-# scrittura da `trgfn_ddt_normalize` (ereditato dall'ordine sorgente, o dal
-# billing_account per lo standalone). Il service quindi lo LEGGE dalla testata
-# (mirror ordini) e non lo risolve a runtime: il billing_account e' richiesto
-# alla creazione perche' senza di esso il trigger non puo' valorizzare
-# l'emittente (NOT NULL a DB).
+# NOTA emittente (addendum §15 + uniformazione 2026-07-13): l'emittente del
+# DDT e' legato allo USER, come ordini/preventivi/contratti. Il FE prefilla
+# `emittente_fiscale_id` dal profilo operatore (admin globale: Select) e il
+# create lo accetta nel payload (whitelist). La colonna resta MEMORIZZATA
+# (NOT NULL, scope RLS `rls_ddt_ef_whitelist`) con reti di sicurezza DB in
+# `trgfn_ddt_normalize`: eredita dall'ordine sorgente (evasione) o, se il
+# payload non lo porta, fallback dal billing_account. Il service LEGGE la
+# colonna dalla testata e non la risolve a runtime; il billing_account resta
+# richiesto alla creazione (deriva il destinatario e ancora il fallback).
 
 import logging
 import re
@@ -86,6 +88,7 @@ _STATI_RIGHE_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 # billing_account se assente (cliente=BA, come ordini).
 _CREATE_KEYS_DDT: frozenset[str] = frozenset({
     "billing_account_id", "destinatario_soggetto_ruolo_id", "utility_id",
+    "emittente_fiscale_id",
     "valuta_id", "mittente_soggetto_ruolo_id", "vettore_soggetto_ruolo_id",
     "causale_trasporto_id", "aspetto_bene_id", "modalita_addebito_trasporto_id",
     "num_colli", "peso_lordo", "peso_netto", "volume", "targa", "autista",
@@ -262,9 +265,9 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
     data = {k: empty_to_none(v) for k, v in payload.items() if k in _CREATE_KEYS_DDT}
 
     billing_account_id = data.get("billing_account_id")
-    # Cliente obbligatorio: `trgfn_ddt_normalize` risolve da qui
-    # l'emittente_fiscale_id (NOT NULL, scope RLS) del DDT standalone. Senza BA
-    # l'INSERT fallirebbe a DB con un errore non parlante.
+    # Cliente obbligatorio: deriva il destinatario e ancora il fallback DB
+    # dell'emittente (`trgfn_ddt_normalize`) quando il payload non lo porta.
+    # Senza BA l'INSERT fallirebbe a DB con un errore non parlante.
     ErrorManager.require(
         billing_account_id is not None,
         code="E_DDT_VALIDAZIONE",
@@ -303,6 +306,9 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
             destinatario_soggetto_ruolo_id=int(destinatario_id),
             stato_doc_ddt_id=int(stato_bozza_id),
             billing_account_id=int(billing_account_id) if billing_account_id is not None else None,
+            # Emittente dallo user (prefill FE dal profilo, mirror ordini).
+            # Se None: fallback DB dal BA in trgfn_ddt_normalize.
+            emittente_fiscale_id=data.get("emittente_fiscale_id"),
             utility_id=data.get("utility_id"),
             valuta_id=data.get("valuta_id"),
             mittente_soggetto_ruolo_id=data.get("mittente_soggetto_ruolo_id"),

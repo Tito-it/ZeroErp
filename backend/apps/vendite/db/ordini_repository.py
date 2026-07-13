@@ -177,7 +177,10 @@ class OrdiniRepository(
     #        tutte le decodifiche + agente + documento di origine) e aggiunge
     #        i campi non esposti in lista: `meta`, `storicizza`,
     #        `istanza_utility_id` del BA (serve al FE per la cascata indirizzi
-    #        a 3 livelli nel drawer indirizzi documento).
+    #        a 3 livelli nel drawer indirizzi documento) e
+    #        `emittente_fiscale_descrizione` (ragione sociale del SOGGETTO
+    #        emittente — convenzione preventivi, consumata da
+    #        EmittenteFiscaleField nel drawer EDIT).
     #        Ritorna None se id inesistente.
     def get_ordine(self, ordine_id: int) -> dict[str, Any] | None:
         sql = """
@@ -185,11 +188,19 @@ class OrdiniRepository(
                 v.*,
                 o.meta,
                 o.storicizza,
-                ba.istanza_utility_id
+                ba.istanza_utility_id,
+                COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
+                    AS emittente_fiscale_descrizione
               FROM vendite.vw_ordini_lista v
               JOIN vendite.ordini o ON o.id = v.id
               LEFT JOIN anagrafiche.billing_account ba
                 ON ba.id = v.billing_account_id
+              LEFT JOIN anagrafiche.emittenti_fiscali ef
+                ON ef.id = v.emittente_fiscale_id
+              LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                ON sr_ef.id = ef.soggetto_ruolo_id
+              LEFT JOIN anagrafiche.soggetti s_ef
+                ON s_ef.id = sr_ef.soggetto_id
              WHERE v.id = %s
         """
         with connection.cursor() as cursor:

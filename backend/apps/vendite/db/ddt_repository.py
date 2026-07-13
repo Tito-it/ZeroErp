@@ -180,7 +180,10 @@ class DdtRepository(
     #        provenienza ordine) e aggiunge i campi non esposti in lista:
     #        `meta`, `storicizza`, `istanza_utility_id` del BA (serve al FE
     #        per la cascata indirizzi a 3 livelli: senza istanza il livello
-    #        'istanza' resta invisibile nel drawer indirizzi documento).
+    #        'istanza' resta invisibile nel drawer indirizzi documento) e
+    #        `emittente_fiscale_descrizione` (ragione sociale del SOGGETTO
+    #        emittente, mai il codice tecnico — convenzione preventivi:
+    #        COALESCE su ef.descrizione; consumata da EmittenteFiscaleField).
     #        None se id inesistente.
     def get_ddt(self, ddt_id: int) -> dict[str, Any] | None:
         sql = """
@@ -188,11 +191,19 @@ class DdtRepository(
                 v.*,
                 d.meta,
                 d.storicizza,
-                ba.istanza_utility_id
+                ba.istanza_utility_id,
+                COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
+                    AS emittente_fiscale_descrizione
               FROM vendite.vw_ddt_lista v
               JOIN vendite.ddt d ON d.id = v.id
               LEFT JOIN anagrafiche.billing_account ba
                 ON ba.id = v.billing_account_id
+              LEFT JOIN anagrafiche.emittenti_fiscali ef
+                ON ef.id = v.emittente_fiscale_id
+              LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                ON sr_ef.id = ef.soggetto_ruolo_id
+              LEFT JOIN anagrafiche.soggetti s_ef
+                ON s_ef.id = sr_ef.soggetto_id
              WHERE v.id = %s
         """
         with connection.cursor() as cursor:
@@ -378,16 +389,19 @@ class DdtRepository(
     # Scopo: Inserisce un nuovo DDT (standalone) e restituisce id, uid, numero.
     #        `numero` NON si passa: e' NULL in DRAFT e valorizzato dal trigger
     #        `trgfn_ddt_gen_numero_emesso` alla transizione a EMESSO.
-    #        `emittente_fiscale_id` (NOT NULL, scope RLS) NON si passa: lo
-    #        risolve `trgfn_ddt_normalize` dal billing_account (o dall'ordine
-    #        sorgente per i DDT da evasione). `destinatario_soggetto_ruolo_id`
-    #        e `stato_doc_ddt_id` (DRAFT) obbligatori.
+    #        `emittente_fiscale_id` (NOT NULL, scope RLS) arriva dallo user
+    #        (prefill FE dal profilo, mirror ordini — uniformazione 2026-07-13);
+    #        se None lo risolve `trgfn_ddt_normalize` dal billing_account (o
+    #        dall'ordine sorgente per i DDT da evasione).
+    #        `destinatario_soggetto_ruolo_id` e `stato_doc_ddt_id` (DRAFT)
+    #        obbligatori.
     def create_ddt(
         self,
         *,
         destinatario_soggetto_ruolo_id: int,
         stato_doc_ddt_id: int,
         billing_account_id: int | None = None,
+        emittente_fiscale_id: int | None = None,
         utility_id: int | None = None,
         valuta_id: int | None = None,
         mittente_soggetto_ruolo_id: int | None = None,
@@ -410,6 +424,7 @@ class DdtRepository(
         # Colonne opzionali: omesse se None così i DEFAULT del DB restano attivi.
         optional: dict[str, Any] = {
             "billing_account_id": billing_account_id,
+            "emittente_fiscale_id": emittente_fiscale_id,
             "utility_id": utility_id,
             "valuta_id": valuta_id,
             "mittente_soggetto_ruolo_id": mittente_soggetto_ruolo_id,

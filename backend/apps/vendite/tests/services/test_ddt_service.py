@@ -26,7 +26,9 @@ DdtCreaTests
  6) test_crea_ddt_deriva_destinatario_da_ba — deriva destinatario dal BA + DRAFT
  7) test_crea_ddt_destinatario_esplicito    — destinatario passato: no lookup BA
  8) test_crea_ddt_senza_destinatario_ne_ba  — E_DDT_VALIDAZIONE
- 8b) test_crea_ddt_senza_ba_rifiutato       — E_DDT_VALIDAZIONE (BA obbligatorio: risolve emittente NOT NULL)
+ 8b) test_crea_ddt_senza_ba_rifiutato       — E_DDT_VALIDAZIONE (BA obbligatorio: destinatario + fallback emittente)
+ 8c) test_crea_ddt_passa_emittente_payload  — emittente dallo user (payload) → repo kwargs
+ 8d) test_crea_ddt_emittente_omesso_none    — emittente assente → None (fallback DB dal BA)
 
 DdtAggiornaTests
  9) test_aggiorna_ddt_cambio_ba_rifiutato   — E_DDT_CLIENTE_IMMUTABILE
@@ -173,14 +175,42 @@ class DdtCreaTests(SimpleTestCase):
 
     @patch(_REPO)
     def test_crea_ddt_senza_ba_rifiutato(self, repo_cls) -> None:
-        # Cliente obbligatorio anche con destinatario esplicito: senza BA il
-        # trigger normalize non puo' risolvere emittente_fiscale_id (NOT NULL,
-        # scope RLS addendum §15) -> guard parlante prima dell'INSERT.
+        # Cliente obbligatorio anche con destinatario esplicito: il BA deriva
+        # il destinatario e ancora il fallback DB dell'emittente
+        # (trgfn_ddt_normalize) -> guard parlante prima dell'INSERT.
         repo = repo_cls.return_value
         with self.assertRaises(ServiceError) as cm:
             ddt_service.crea_ddt({"destinatario_soggetto_ruolo_id": 777})
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
         repo.create_ddt.assert_not_called()
+
+    @patch(_REPO)
+    def test_crea_ddt_passa_emittente_payload(self, repo_cls) -> None:
+        # Emittente dallo USER (uniformazione 2026-07-13, mirror ordini): il
+        # payload create lo porta (prefill FE dal profilo) e arriva al repo.
+        repo = repo_cls.return_value
+        repo.get_soggetto_ruolo_id_by_ba.return_value = 555
+        repo.get_stato_id_by_codice.return_value = 1
+        repo.create_ddt.return_value = {"id": 9, "uid": "u", "numero": None}
+
+        ddt_service.crea_ddt({"billing_account_id": 3, "emittente_fiscale_id": 32})
+        self.assertEqual(
+            repo.create_ddt.call_args.kwargs["emittente_fiscale_id"], 32,
+        )
+
+    @patch(_REPO)
+    def test_crea_ddt_emittente_omesso_none(self, repo_cls) -> None:
+        # Emittente assente dal payload (es. admin globale che non sceglie):
+        # None al repo, che omette la colonna -> fallback dal BA nel trigger.
+        repo = repo_cls.return_value
+        repo.get_soggetto_ruolo_id_by_ba.return_value = 555
+        repo.get_stato_id_by_codice.return_value = 1
+        repo.create_ddt.return_value = {"id": 10, "uid": "u", "numero": None}
+
+        ddt_service.crea_ddt({"billing_account_id": 3})
+        self.assertIsNone(
+            repo.create_ddt.call_args.kwargs["emittente_fiscale_id"],
+        )
 
 
 class DdtAggiornaTests(SimpleTestCase):
