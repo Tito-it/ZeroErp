@@ -65,7 +65,7 @@ Mirror strutturale della testata DDT dove ha senso:
   `trgfn_ddt_normalize`): `billing_account_id`, `destinatario_soggetto_ruolo_id`,
   `utility_id`, `valuta_id`.
 - **`emittente_fiscale_id` NOT NULL**: stesso modello deciso il 2026-07-13
-  per il DDT (vedi `brief-db-ddt-emittente-user-e-etichetta-soggetto.md`) —
+  per il DDT (vedi `work-done/brief-db-ddt-emittente-user-e-etichetta-soggetto.md`, CHIUSO) —
   ereditato dal DDT sorgente; trigger `default_emittente` da GUC user come
   fallback + `guard_emittente_ba`; RLS `rls_resi_ef_whitelist` +
   `trgfn_guard_emittente_scope` in scrittura, mirror DDT.

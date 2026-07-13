@@ -1,5 +1,18 @@
 # Brief DB — Emittente DDT legato allo user + etichetta emittente dal soggetto
 
+> **Stato: ✅ CHIUSO (2026-07-13)** — realizzato dal team DB su `dev/db-tid` e
+> verificato sul DB di sviluppo: trigger `default_emittente` su DDT (soft:
+> niente raise, fallback-da-BA preservato; skip evasione) + `guard_emittente_ba`
+> su DDT (fase z10, post-normalize) e guard esteso anche a preventivi/offerte;
+> `emittente_fiscale_descrizione` esposta dalle 5 viste lista; 5 seed colonna
+> "Emittente" ribinati a `campo_sorgente=emittente_fiscale_descrizione`
+> (codice colonna invariato: nessun impatto preset/preferenze). Recepito lato
+> BE (stesso giorno): JOIN ridondanti rimossi dai detail DDT/ordini; codici
+> `E_{ORDINE,CONTRATTO,DDT,PREV,OFFERTA}_EMITTENTE_BA_INCOERENTE` registrati
+> in `error_policies.py` (409, highlight campi — ordini/contratti erano un
+> gap preesistente). Il fix dati suggerito al §4 NON è stato applicato
+> (decisione DB team: le viste mostrano comunque la ragione sociale).
+>
 > **Tipo**: brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-13 · **Owner**: Tid
 > **Contesto**: decisione Tid 2026-07-13 — l'emittente fiscale è SEMPRE legato
 > allo user (modello 1-a-1 operatore→emittente), su tutti i domini documento;

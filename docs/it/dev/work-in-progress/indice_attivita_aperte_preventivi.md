@@ -20,6 +20,8 @@
 
 ## Importanza MEDIA
 
+
+NOta su acquisti ora non è in previsione di fare sviluppo dominio acquisti.
 ### 2. [sviluppo-preventivi-acquisti.md](sviluppo-preventivi-acquisti.md)
 
 **Descrizione**: specifica di sviluppo (scorporata il 2026-06-03) della direzione **acquisto** (RFQ, `acquisti.preventivi`): tabelle DB, macchina a stati, flusso verso ordine fornitore, backend e frontend. Feature greenfield interamente da avviare (la direzione vendita è completata e archiviata).

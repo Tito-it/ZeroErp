@@ -2132,6 +2132,52 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Utility non coerente con l'istanza selezionata.",
         ),
+        # ── Guard coerenza emittente↔billing account (trigger DB, 5 domini) ──
+        # Sollevati da trgfn_<dominio>_guard_emittente_ba quando
+        # emittente_fiscale_id diverge da fn_get_emittente_fiscale_pk(BA)
+        # (skip se BA NULL). Ordini/contratti esistevano gia' (mai registrati:
+        # gap sanato); DDT/preventivi/offerte aggiunti dal DB team 2026-07-13
+        # (brief emittente-user-e-etichetta-soggetto).
+        "E_ORDINE_EMITTENTE_BA_INCOERENTE": ErrorPolicy(
+            code="E_ORDINE_EMITTENTE_BA_INCOERENTE",
+            http_status=409,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Emittente fiscale non coerente col cliente selezionato."
+            ),
+        ),
+        "E_CONTRATTO_EMITTENTE_BA_INCOERENTE": ErrorPolicy(
+            code="E_CONTRATTO_EMITTENTE_BA_INCOERENTE",
+            http_status=409,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Emittente fiscale non coerente col cliente selezionato."
+            ),
+        ),
+        "E_DDT_EMITTENTE_BA_INCOERENTE": ErrorPolicy(
+            code="E_DDT_EMITTENTE_BA_INCOERENTE",
+            http_status=409,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Emittente fiscale non coerente col cliente selezionato."
+            ),
+        ),
+        "E_PREV_EMITTENTE_BA_INCOERENTE": ErrorPolicy(
+            code="E_PREV_EMITTENTE_BA_INCOERENTE",
+            http_status=409,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Emittente fiscale non coerente col cliente selezionato."
+            ),
+        ),
+        "E_OFFERTA_EMITTENTE_BA_INCOERENTE": ErrorPolicy(
+            code="E_OFFERTA_EMITTENTE_BA_INCOERENTE",
+            http_status=409,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Emittente fiscale non coerente col cliente selezionato."
+            ),
+        ),
         "E_ISTANZA_UTILITY_SENZA_UTILITY": ErrorPolicy(
             code="E_ISTANZA_UTILITY_SENZA_UTILITY",
             http_status=409,

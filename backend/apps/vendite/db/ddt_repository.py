@@ -180,30 +180,22 @@ class DdtRepository(
     #        provenienza ordine) e aggiunge i campi non esposti in lista:
     #        `meta`, `storicizza`, `istanza_utility_id` del BA (serve al FE
     #        per la cascata indirizzi a 3 livelli: senza istanza il livello
-    #        'istanza' resta invisibile nel drawer indirizzi documento) e
+    #        'istanza' resta invisibile nel drawer indirizzi documento).
     #        `emittente_fiscale_descrizione` (ragione sociale del SOGGETTO
-    #        emittente, mai il codice tecnico — convenzione preventivi:
-    #        COALESCE su ef.descrizione; consumata da EmittenteFiscaleField).
-    #        None se id inesistente.
+    #        emittente, consumata da EmittenteFiscaleField) arriva dalla
+    #        vista (esposta dal DB team il 2026-07-13, brief
+    #        emittente-user-e-etichetta-soggetto). None se id inesistente.
     def get_ddt(self, ddt_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT
                 v.*,
                 d.meta,
                 d.storicizza,
-                ba.istanza_utility_id,
-                COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
-                    AS emittente_fiscale_descrizione
+                ba.istanza_utility_id
               FROM vendite.vw_ddt_lista v
               JOIN vendite.ddt d ON d.id = v.id
               LEFT JOIN anagrafiche.billing_account ba
                 ON ba.id = v.billing_account_id
-              LEFT JOIN anagrafiche.emittenti_fiscali ef
-                ON ef.id = v.emittente_fiscale_id
-              LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
-                ON sr_ef.id = ef.soggetto_ruolo_id
-              LEFT JOIN anagrafiche.soggetti s_ef
-                ON s_ef.id = sr_ef.soggetto_id
              WHERE v.id = %s
         """
         with connection.cursor() as cursor:
