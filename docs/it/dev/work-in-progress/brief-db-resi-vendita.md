@@ -14,17 +14,6 @@
 > DB del progetto (viste `security_invoker`+RLS, numerazione fiscale bespoke, guard
 > data-driven, ordinamento trigger, forward-only Liquibase) sono applicate ovunque,
 > non solo dove il capitolato le nominava.
-> (invarianti: fulfillment append-only; transizioni di rientro stato ordine già
-> seedate). Decisione Tid 2026-07-09: il reso è un **ibrido** — a credito oppure
-> per ri-consegna.
->
-> **Nota di revisione (2026-07-13, analisi critica DB).** Questo brief è stato
-> rivisto contro gli oggetti DDT **vivi** (doc auto-gen, non gli YAML). La revisione
-> ha corretto **premesse errate** e **omissioni strutturali** rispetto alla stesura
-> iniziale: le correzioni sono raccolte in **§0** e recepite nelle sezioni. Le regole
-> DB del progetto (viste `security_invoker`+RLS, numerazione fiscale bespoke, guard
-> data-driven, ordinamento trigger, forward-only Liquibase) sono applicate ovunque,
-> non solo dove il capitolato le nominava.
 >
 > **Decisioni di design (Tid, 2026-07-13):**
 >
@@ -151,10 +140,10 @@ codice, `codice_interno` lockato/immutabile, descrizione, `riapre_residuo boolea
 NOT NULL`, attivo, audit `data_insert/user_insert/data_update/user_update`, `tx_id`).
 Seed (CSV `80_data`, loader runOnChange):
 
-| codice_interno        | descrizione                      | riapre_residuo |
-| --------------------- | -------------------------------- | -------------- |
-| `RESO_A_CREDITO`      | Reso a credito (nota di credito) | `false`        |
-| `RESO_PER_RICONSEGNA` | Reso per ri-consegna             | `true`         |
+| codice_interno | descrizione | riapre_residuo |
+| --- | --- | --- |
+| `RESO_A_CREDITO` | Reso a credito (nota di credito) | `false` |
+| `RESO_PER_RICONSEGNA` | Reso per ri-consegna | `true` |
 
 Nessun `IF` hardcoded nel motore: si legge il flag `riapre_residuo` (§12 del brief DDT).
 Whitelist lookup generico (`core/lookup/codici`) da estendere lato BE.
@@ -203,21 +192,32 @@ assegnato alla **CONFERMA** (NULL in DRAFT, niente buchi fiscali da bozze scarta
 
 Mirror strutturale della testata DDT dove ha senso:
 
-- id BIGINT, uid uuidv7, numero/anno (a conferma), data, meta, audit, tx_id.
-- **`sorgente_tipo_id` + `sorgente_uid`** (FK `config.sorgenti`): guard
-  data-driven che in questa slice ammette solo `DDT_VENDITA` e richiede il
-  DDT in stato `CONSEGNATO` (non si rende ciò che non è stato consegnato).
-  N.B. servirà la riga `DDT_VENDITA` in `config.sorgenti` se non già presente
-  come sorgente "in ingresso".
-- Denormalizzati ereditati dal DDT sorgente via trigger normalize (mirror
-  `trgfn_ddt_normalize`): `billing_account_id`, `destinatario_soggetto_ruolo_id`,
-  `utility_id`, `valuta_id`.
-- **`emittente_fiscale_id` NOT NULL**: stesso modello deciso il 2026-07-13
-  per il DDT (vedi `work-done/brief-db-ddt-emittente-user-e-etichetta-soggetto.md`, CHIUSO) —
-  ereditato dal DDT sorgente; trigger `default_emittente` da GUC user come
-  fallback + `guard_emittente_ba`; RLS `rls_resi_ef_whitelist` +
-  `trgfn_guard_emittente_scope` in scrittura, mirror DDT.
-- `stato_doc_reso_id` FK.
+- `id BIGINT`, `uid uuidv7()`, `numero`/`anno` (a conferma, §2.2), `data`, `meta jsonb`,
+  audit, `tx_id`, `storicizza`.
+- **`sorgente_tipo_id` + `sorgente_uid` NOT NULL** (0.12), FK `config.sorgenti`
+  (**riuso riga esistente `DDT_VENDITA` id 8**, 0.5): guard data-driven che in questa
+  slice ammette solo `DDT_VENDITA` e richiede il DDT in stato **CONSEGNATO** (non si
+  rende ciò che non è stato consegnato). La risoluzione del DDT di provenienza avviene
+  per **`uid`** (`sorgente_uid` = `ddt.uid`), non per `key_selector` (che resta `'id'`
+  per l'uso push-a-commessa).
+- **Denormalizzati ereditati dal DDT sorgente** via `trgfn_resi_normalize`
+  (mirror **nella forma** di `trgfn_ddt_normalize`, ma **JOIN su `vendite.ddt`** con
+  condizione `sorgente=DDT_VENDITA` — 0.6): `billing_account_id`,
+  `destinatario_soggetto_ruolo_id`, `utility_id`, `valuta_id`, `emittente_fiscale_id`.
+- **`emittente_fiscale_id` NOT NULL**: modello deciso il 2026-07-13 per il DDT
+  (`brief-db-ddt-emittente-user-e-etichetta-soggetto.md`). Ereditato dal DDT sorgente
+  in `resi_normalize`; `trgfn_resi_default_emittente` (mirror DDT, da GUC user) resta
+  come predisposizione ma **salta le sorgenti valorizzate** → inerte in questa slice
+  (0.7). Guard scrittura: `trgfn_resi_guard_emittente_ba` (mirror
+  `trgfn_ordini_guard_emittente_ba`) su fase **`z10`** — dopo `resi_normalize` (0.7);
+  guard scope: **riuso** del generico `script.trgfn_guard_emittente_scope('fiscale',
+  'emittente_fiscale_id')` (lo stesso del DDT, non un bespoke).
+- **RLS `rls_resi_ef_whitelist`** su `vendite.resi` (`FOR ALL`, scope
+  `script.fn_scope_ef_whitelist` sui GUC operatore, `ENABLE` non `FORCE` — parità
+  DDT/ordini/preventivi/fatture).
+- `stato_doc_reso_id` FK `config.stati_doc_reso`.
+- Guardie `child_requires_active_parent` sui lookup attivo (sorgenti, stati, emittente,
+  billing) come sul DDT.
 
 ## 4. Righe `vendite.resi_righe`
 
@@ -435,3 +435,140 @@ i trigger `_a10_` sul DDT modificato (matrice).
 - Stampa PDF resi (`stati_doc_reso` senza colonne pdf, read-side senza blocco pdf).
 - BE/FE: partono a DB pronto con brief dedicato (endpoint CRUD+conferma,
   drawer reso da DDT, colonna/lista resi).
+
+## 9. Decisioni di dettaglio sull'aggancio ri-consegna (Tid, 2026-07-13)
+
+Due scelte di modello chiuse in fase di brief per non lasciarle "in stesura" — toccano
+lo scheletro dati, quindi decise ora con razionale.
+
+**R1 — Stato ri-consegna: DERIVATO, nessun lookup, nessuna colonna fisica.**
+Lo stato (`DA_RICONSEGNARE/PARZIALE/COMPLETATA`) è una **pura funzione** della copertura
+(`qta_resa` vs `Σ resi_righe_riconsegne.qta`) → si calcola nella vista (§6). Una colonna
+`stato_riconsegna_id` o un lookup `config.stati_riconsegna` sarebbero una **seconda
+verità da sincronizzare** con la copertura: violano "niente logica duplicata". Un lookup
+si ripaga solo se gli stati guidano transizioni/meta UI configurabili o crescono con
+semantica propria — nulla di ciò qui. Promozione a stato reale rimandata all'eventuale
+2° bisogno (breaking ammesso, [[project_no_produzione_solo_sviluppo]]).
+
+**R2 — Aggancio ri-consegna: TABELLA-PONTE, non singolo FK all-or-nothing.**
+Il problema "una quantità soddisfatta da N DDT nel tempo" è **già risolto nel progetto**
+da `ordini_righe_fulfillment`; la ri-consegna ha la stessa forma. Un singolo FK
+`resi_righe.ddt_riconsegna_riga_id` sarebbe un pattern **nuovo e più debole** per un
+problema noto (incoerenza) e vieterebbe la **ri-spedizione parziale/multipla** (rendo 5,
+riparo e ri-spedisco 3 ora + 2 poi) — caso reale che richiederebbe altrimenti un rework
+(migrazione a ponte + riscrittura fn/vista/guard). Costo del ponte ora ≈ nullo perché è
+**copia del pattern fulfillment** (§4b). Doppio binario per i resi order-backed
+(`ordini_righe_fulfillment` per lo stato ordine + `resi_righe_riconsegne` per
+l'attribuzione per-reso): chiavi diverse, non duplicazione; lo standalone ha solo il ponte
+reso. Coerente con [[feedback_soluzione_migliore_non_istantanea]] e [[feedback_atomicita_madre_db]].
+
+## 10. Avanzamento lavori
+
+> Tracker degli step di sviluppo DB. Aggiornare la colonna **Stato** man mano.
+> **Legenda**: ☐ da fare · ✍️ file scritto (non applicato) · ✅ applicato+pgTAP verde ·
+> 🚀 committato · ⚙️ auto-provisioning `dbops` (nessun changeSet manuale — storico,
+> audit, tx_id, require_attivo, indici FK si generano con `make db-ci-apply`).
+> Numerazione changeSet: sequenza globale per data, si parte da
+> `20260713-10`. **Promemoria funzioni** (Fase B): `SECURITY INVOKER` esplicito, `%TYPE`
+> su parametri firma / `DECLARE` / `RETURNS TABLE` / `COMMENT`, array `bigint[]` espliciti,
+> definizioni prese SEMPRE dalla doc auto-gen (non dagli YAML).
+
+| # | Oggetto | Fase | changeSet | Stato |
+| --- | --- | --- | --- | --- |
+| 1 | `config.tipi_reso` (tabella) | A `00_schema/config` | `20260713-10` | ✅ |
+| 2 | `config.stati_doc_reso` (tabella) | A `00_schema/config` | `20260713-11` | ✅ |
+| 3 | `config.transizioni_stati_reso` (tabella) | A `00_schema/config` | `20260713-12` | ✅ |
+| 4 | `vendite.resi` (tabella) | A `00_schema/vendite` | `20260713-13` | ✍️ |
+| 5 | `vendite.resi_righe` (tabella) | A `00_schema/vendite` | `20260713-14` | ✍️ |
+| 6 | `vendite.resi_righe_riconsegne` (ponte) | A `00_schema/vendite` | `20260713-15` | ✍️ |
+| 7 | Sequenza `vendite.resi_numero_seq` | A `00_schema/vendite` | `20260713-16` | ✍️ |
+| 8 | RLS `rls_resi_ef_whitelist` | A `00_schema/vendite` | `20260713-17` | ✍️ |
+| 9 | Storico `resi`/`resi_righe`/`resi_righe_riconsegne` | **AUTO** dbops | — (auto-provision) | ⚙️ |
+| 10 | `trgfn_resi_normalize` + trigger | B `20_code/vendite` | `20260713-19` | ✍️ |
+| 11 | ~~`trgfn_resi_default_emittente`~~ **N/A** (sorgente NOT NULL → codice morto; emittente da normalize) | — | — | ⊘ |
+| 12 | `trgfn_resi_guard_emittente_ba` + trigger (`z10`) | B `20_code/vendite` | `20260713-21` | ✍️ |
+| 13 | `trgfn_resi_guard_transizione` + trigger (`_a10_`) | B `20_code/vendite` | `20260713-22` | ✍️ |
+| 14a | Attach `qta_from_operativa` su `resi_righe` | B `20_code/vendite` | `20260713-23` | ✍️ |
+| 14b | `trgfn_resi_righe_guard_quantita` (a20) | B `20_code/vendite` | `20260713-24` | ✍️ |
+| 14c | Editabilità solo-DRAFT righe | **BE** (`can_edit_righe`) | — (no trigger DB) | ⊘ |
+| 15 | `trgfn_resi_riconsegne_guard` (ponte) | B `20_code/vendite` | `20260713-25` | ✍️ |
+| 16 | `trgfn_resi_gen_numero` + `trgfn_v_resi_protect_num` | B `20_code/vendite` | `20260713-26/27` | ✍️ |
+| 17 | Trigger storico/audit/tx_id/require_attivo su resi* | **AUTO** dbops | — (auto-provision) | ⚙️ |
+| 18a | `fn_ordine_riga_qta_riconsegna` (helper addendo, single source) | B `20_code/vendite` | `20260713-28` | ✍️ |
+| 18b | `fn_ordine_ha_residuo_evasione` v2 (reso-aware) | B `20_code/vendite` | `20260713-29` | ✍️ |
+| 18c | `trgfn_ordini_ful_guard_consistenza` v2 (reso-aware) ⚠️ tocca guard DDT-slice | B `20_code/vendite` | `20260713-30` | ✍️ |
+| 19 | `fn_conferma_reso` (madre) | B `20_code/vendite` | `20260713-31` | ✍️ |
+| 20 | `fn_genera_ddt_riconsegna` (madre) | B `20_code/vendite` | `20260713-32` | ✍️ |
+| 21 | `vw_resi_lista` | B `20_code/vendite` | `20260713-33` | ✍️ |
+| 22 | `vw_resi_da_accreditare` | B `20_code/vendite` | `20260713-34` | ✍️ |
+| 23 | `vw_resi_da_riconsegnare` | B `20_code/vendite` | `20260713-35` | ✍️ |
+| 24 | `script.fn_available_actions_reso` | B `20_code/script` | `20260713-36` | ✍️ |
+| 24b | `fn_annulla_reso` (madre, storno annullo — §2/§5) | B `20_code/vendite` | `20260713-37` | ✍️ |
+| 25 | Update matrice DDT (`transizioni_stati_ddt`) | B `80_data` | `20260713-38` | ✍️ |
+| 26 | Seed `config.tipi_reso` | C `80_data` | `20260713-39` | ✍️ |
+| 27 | Seed `config.stati_doc_reso` | C `80_data` | `20260713-40` | ✍️ |
+| 28 | Seed `config.transizioni_stati_reso` | C `80_data` | `20260713-41` | ✍️ |
+| 29a | Append `config.sistema_codici` riga `'reso'` | C `80_data` CSV | append (loader runOnChange) | ✍️ |
+| 29b | Opt-out lock `resi.numero` (`automation_lock_columns` `enabled=f`, mirror ddt/fatture) | C `80_data` CSV | append (loader runOnChange) | ✍️ |
+| 30 | Append `messaggi_errore` (12 codici 530-541) | C `80_data` CSV | append (loader runOnChange) | ✍️ |
+| 31 | Seed lista `ui` resi (opzionale/companion) | C `80_data` | — | ☐ |
+| T | pgTAP (write-side + read-side + RLS) | test | `db/pgtap/vendite`+`rls` | ☐ |
+
+> **Nota applicazione/commit**: nessun changeSet va applicato o committato senza
+> "procedi" esplicito ([[feedback_no_commit_autonomo]]). Il tracker riflette lo stato
+> dei **file**; l'applicazione Tid la annota separatamente.
+
+## 11. Consuntivo realizzazione (2026-07-13)
+
+Slice DB **realizzata** e **committata** su `dev/db-tid`. Applicata batch-per-batch
+durante lo sviluppo (Fase A → B → C). **Gate BE**: il team BE può partire a oggetti DB
+applicati (endpoint CRUD/conferma/annullo/ri-consegna + drawer, brief BE dedicato).
+**Residuo DB**: pgTAP (riga «T» del tracker) — in corso subito dopo il commit.
+
+### ChangeSet realizzati (`20260713-10..41`)
+
+- **Fase A — schema**: `config.tipi_reso` (10), `config.stati_doc_reso` (11, senza pdf),
+  `config.transizioni_stati_reso` (12); `vendite.resi` (13), `resi_righe` (14),
+  **tabella-ponte `resi_righe_riconsegne`** (15, mirror `ordini_righe_fulfillment`);
+  sequenza `resi_numero_seq` (16); RLS `rls_resi_ef_whitelist` (17).
+  Storico/audit/tx_id/require_attivo/indici-FK **auto-provisioning** `dbops`
+  (`make db-ci-apply`) — nessun changeSet manuale.
+- **Fase B — codice**: trigger dominio `trgfn_resi_normalize` (19, eredità dal **DDT**),
+  `guard_emittente_ba` (21, `z10`), `guard_transizione` (22, `a10`); attach
+  `qta_from_operativa` (23) + guard quantità `a20` (24); guard ponte (25); numero a
+  CONFERMATO + `protect_num` (26/27). **Residuo reso-aware**: helper unico
+  `fn_ordine_riga_qta_riconsegna` (28) usato da `fn_ordine_ha_residuo_evasione` v2 (29)
+  **e** dal guard fulfillment v2 (30, forward-only sul DDT-slice). Madri
+  `fn_conferma_reso` (31), `fn_genera_ddt_riconsegna` (32), `fn_annulla_reso` (37, storno).
+  Read-side: `vw_resi_lista` (33), `vw_resi_da_accreditare` (34),
+  `vw_resi_da_riconsegnare` (35, `stato_riconsegna` derivato), `fn_available_actions_reso`
+  (36); update matrice DDT (38).
+- **Fase C — dati**: seed `tipi_reso` (39), `stati_doc_reso` (40),
+  `transizioni_stati_reso` (41); append `sistema_codici` `'reso'` +
+  `automation_lock_columns` `resi.numero enabled=f` + `messaggi_errore` 530-541.
+
+### Scostamenti dal capitolato (emersi in realizzazione)
+
+- **§0.1 confermato**: `fn_ordine_ha_residuo_evasione` NON era reso-aware; riscritta.
+  L'addendo è stato **estratto in helper unico** (`fn_ordine_riga_qta_riconsegna`) e
+  applicato **anche al guard fulfillment** (30) — altrimenti la ri-spedizione veniva
+  bloccata da `E_QTA_SUPERA_RESIDUO` (coerenza formula in due consumatori).
+- **`fn_annulla_reso` aggiunta** (non nel capitolato): la matrice ammette
+  `CONFERMATO→ANNULLATO`, che senza storno lasciava stato ordine e DDT incoerenti.
+  Guard: annullo bloccato se il reso è già ri-spedito (`E_RESO_ANNULLO_CON_RICONSEGNE`).
+- **`trgfn_resi_default_emittente` NON creato**: `sorgente NOT NULL` in questa slice
+  → codice morto (emittente sempre da `normalize`). Da aggiungere col reso standalone.
+- **Editabilità solo-DRAFT**: nessun trigger DB (come sul DDT) → BE via `can_edit_righe`.
+- **Aggancio ri-consegna = tabella-ponte** (non singolo FK): decisione R2 (§9), supporta
+  ri-spedizione parziale/multipla; **stato ri-consegna DERIVATO** (R1), nessuna colonna.
+
+### Handoff BE (brief BE dedicato)
+
+- Endpoint: CRUD reso da DDT, `conferma` (`fn_conferma_reso`), `annulla`
+  (`fn_annulla_reso`), `genera-ddt-riconsegna` (`fn_genera_ddt_riconsegna`, con `p_righe`
+  per il parziale). Azioni data-driven da `script.fn_available_actions_reso`.
+- Liste: `vw_resi_lista` (filtro applicativo emittente su `emittente_fiscale_id`), code
+  `vw_resi_da_accreditare` / `vw_resi_da_riconsegnare`.
+- `error_policies.py`: registrare i codici 530-541 (mapping HTTP/azione UI).
+- Payload create reso: `sorgente_uid` = uid del DDT (CONSEGNATO); l'emittente si eredita
+  (non nel payload). Righe: `tipo_reso_id` per riga, `qta_operativa` + `uom_operativa_id`.
