@@ -224,7 +224,8 @@ Fasi FE:
   al modello degli altri domini: **emittente legato allo USER** (prefill FE
   dal profilo + payload create, fallback DB dal BA in `trgfn_ddt_normalize`
   come rete di sicurezza). Vedi
-  `brief-db-ddt-emittente-user-e-etichetta-soggetto.md`; (5) context PDF
+  `work-done/brief-db-ddt-emittente-user-e-etichetta-soggetto.md`
+  (CHIUSO: DB realizzato + BE recepito lo stesso giorno); (5) context PDF
   preventivi: proiezione
   stabile indirizzi (fuori le chiavi live-JOIN del drawer, hash invariato);
   (6) `E_TIPO_INDIRIZZO`+`E_INDIRIZZO_DOC_OBBLIGATORIO` registrati in
