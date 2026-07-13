@@ -28,10 +28,15 @@
 > | **5 — PDF** (stampa DDT + valuta/emittente drawer + PDF data-driven capabilities) | ✅ FATTO (2026-07-11) | [[handoff_20260711_ddt_stampa_orfano_refactor]] |
 > | **4 — Lineage** (accensione nodo DDT in `vw_documento_lineage`) | ⬜ APERTO | segue brief lineage esistente |
 >
-> **Slice minori aperte (predisposte, non fatte)**: editing `ddt_indirizzi`, riepilogo IVA DDT,
-> colonna "Emittente" in lista (seed `ui.lista_colonna`), **slice RESI** (brief DB §12).
-> (Export lista DDT — ✅ fatto 2026-07-11.)
-> **Verifica visiva in-app** del drawer DDT (valuta/emittente/PDF) ancora da fare.
+> **Slice minori** — chiuse: editing `ddt_indirizzi` (✅ UX v2 pilota DDT + rollout
+> 5 domini, 2026-07-12, brief design indirizzi §7), riepilogo IVA DDT (✅ 2026-07-12,
+> brief dedicato CHIUSO), export lista DDT (✅ 2026-07-11), colonna "Emittente"
+> a catalogo (✅ 2026-07-12, seed DB applicato — opt-in, mai nei preset, brief
+> [brief-db-ddt-colonna-emittente-catalogo](brief-db-ddt-colonna-emittente-catalogo.md)),
+> PDF DDT con indirizzo di consegna (✅ 2026-07-12, builder v2 + template v2
+> PUBBLICATA, brief design indirizzi §7-F10). Aperta: **slice RESI** (brief DB §12).
+> **Verifica visiva in-app** ✅ fatta da Tid (2026-07-13): drawer DDT + 4 drawer
+> rollout indirizzi, tutto ok.
 > Tutto il lavoro FE/BE è su `dev/backend-tid` **non committato** (commit → Tid).
 
 ## 1. Scopo e perimetro

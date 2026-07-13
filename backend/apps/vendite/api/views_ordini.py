@@ -32,6 +32,9 @@ from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api.indirizzi_documento_views import (
+    build_indirizzi_documento_views,
+)
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ordini_service
 
@@ -296,6 +299,21 @@ class ApiOrdineCambiaStato(DomainAPIView):
                 int(ordine_id), payload.get("stato_codice"),
             ),
         )
+
+
+# View dal factory condiviso `build_indirizzi_documento_views` (pannello
+# indirizzi slot-per-tipo, design brief-design-indirizzi-documenti-vendita).
+_indirizzi_views = build_indirizzi_documento_views(
+    schema_prefix="Ordine",
+    url_kwarg="ordine_id",
+    list_call=lambda ordine_id: ordini_service.list_indirizzi(ordine_id),
+    upsert_call=lambda ordine_id, payload: ordini_service.upsert_indirizzo(
+        ordine_id, payload),
+    delete_call=lambda ordine_id, indirizzo_id: ordini_service.delete_indirizzo(
+        ordine_id, indirizzo_id),
+)
+ApiOrdineIndirizzi = _indirizzi_views.lista
+ApiOrdineIndirizzoDetail = _indirizzi_views.detail
 
 
 # View dal factory condiviso `build_riepilogo_iva_view` (estrazione

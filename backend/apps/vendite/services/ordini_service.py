@@ -34,6 +34,13 @@ from apps.vendite.db.ordini_repository import OrdiniRepository
 from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_overrides,
 )
+from apps.vendite.services._indirizzi_documento_helpers import (
+    IndirizziDocumentoConfig,
+    auto_assegna_indirizzo_default,
+    delete_indirizzo_documento,
+    list_indirizzi_documento,
+    upsert_indirizzo_documento,
+)
 from apps.vendite.services._pricing_gate_helpers import (
     validate_componenti_overrides_authorization,
 )
@@ -294,6 +301,36 @@ def list_riepilogo_iva(ordine_id: int) -> list[dict[str, Any]]:
     return OrdiniRepository().list_riepilogo_iva(ordine_id)
 
 
+# ── Indirizzi documento (BB condiviso _indirizzi_documento_helpers) ──
+
+_INDIRIZZI_CFG = IndirizziDocumentoConfig(
+    # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
+    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    repo_factory=lambda: OrdiniRepository(),
+    stati_modificabili=_STATI_MODIFICABILI,
+    not_found_code="E_ORD_NOT_FOUND",
+    stato_error_code="E_ORD_STATO_TRANSIZIONE",
+    error_code="E_ORD_VALIDAZIONE",
+    fn_prefix=_FN,
+)
+
+
+# Scopo: Pannello indirizzi dell'ordine (ambito ORDINI). Guard, ownership e
+#        traduzione errori DB nel BB condiviso.
+def list_indirizzi(ordine_id: int) -> dict[str, Any]:
+    return list_indirizzi_documento(_INDIRIZZI_CFG, ordine_id)
+
+
+# Scopo: Upsert slot indirizzo (uno-per-tipo, solo DRAFT).
+def upsert_indirizzo(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    return upsert_indirizzo_documento(_INDIRIZZI_CFG, ordine_id, payload)
+
+
+# Scopo: Rimozione slot indirizzo (solo DRAFT).
+def delete_indirizzo(ordine_id: int, indirizzo_id: int) -> dict[str, Any]:
+    return delete_indirizzo_documento(_INDIRIZZI_CFG, ordine_id, indirizzo_id)
+
+
 # ══════════════════════════════════════════════════════════
 #  SCRITTURE — Testata
 # ══════════════════════════════════════════════════════════
@@ -326,7 +363,7 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
     assert stato_bozza_id is not None
 
     with _db_errors("crea_ordine"):
-        return repo.create_ordine(
+        creato = repo.create_ordine(
             soggetto_ruolo_id=int(soggetto_ruolo_id),
             billing_account_id=int(billing_account_id) if billing_account_id is not None else None,
             utility_id=data.get("utility_id"),
@@ -340,6 +377,11 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
             stato_doc_ordine_id=int(stato_bozza_id),
             meta=data.get("meta") if isinstance(data.get("meta"), dict) else None,
         )
+    # UX v2: auto-assegnazione best-effort dell'indirizzo default (indirizzo
+    # di ruolo CON del cliente, fallback FATT). Mai bloccante. Copre anche le
+    # conversioni da offerta (passano da _crea_testata_ordine_da_origine).
+    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(creato["id"]))
+    return creato
 
 
 # Scopo: Aggiorna testata ordine (solo in DRAFT).
@@ -467,6 +509,10 @@ def crea_ordine_da_preventivo(
     ordine_id = prev_repo.push_a_ordine(
         preventivo_id, righe_ids=righe_ids, pratica_id=None,
     )
+    # UX v2: la cascata DB copia gli indirizzi del preventivo; se il
+    # preventivo non aveva slot compatibili, fallback best-effort
+    # dall'anagrafica di ruolo (l'helper salta se il default e' valorizzato).
+    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(ordine_id))
 
     # Numero ordine per il messaggio FE (lettura leggera post-creazione).
     testata = OrdiniRepository().get_ordine(ordine_id)

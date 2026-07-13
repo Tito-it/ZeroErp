@@ -41,6 +41,13 @@ from apps.core.services.payload_helpers import (
 )
 from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.db.offerte_repository import OfferteRepository
+from apps.vendite.services._indirizzi_documento_helpers import (
+    IndirizziDocumentoConfig,
+    auto_assegna_indirizzo_default,
+    delete_indirizzo_documento,
+    list_indirizzi_documento,
+    upsert_indirizzo_documento,
+)
 from apps.vendite.services._approvazioni_prezzo_constants import (
     SORGENTE_OFFERTA,
     STATO_APPROVAZIONE_PENDING,
@@ -565,6 +572,9 @@ class OfferteService:
                     self._add_utility_inline(
                         offerta_id, payload, utility_payload,
                     )
+        # UX v2: auto-assegnazione best-effort dell'indirizzo default
+        # (indirizzo di ruolo CON del cliente, fallback FATT). Mai bloccante.
+        auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(offerta_id))
         return self.get_offerta(offerta_id)
 
     # Scopo: Crea il record utility 1:1 contestualmente alla testata. Riusa
@@ -843,6 +853,13 @@ class OfferteService:
                 contratto_id = self._repo.push_a_contratto(
                     offerta_id, pratica_id, chiudi_esistente,
                 )
+        # UX v2: la cascata DB copia gli indirizzi dell'offerta sul contratto;
+        # fallback best-effort dall'anagrafica di ruolo se la sorgente non
+        # aveva slot compatibili. Import locale per evitare cicli fra service.
+        from apps.vendite.services.contratti_service import (
+            auto_assegna_indirizzo_default_contratto,
+        )
+        auto_assegna_indirizzo_default_contratto(int(contratto_id))
         contratto = self._repo.get_contratto_minimal(contratto_id)
         ErrorManager.require(
             contratto is not None,
@@ -1739,3 +1756,35 @@ def _orchestrate_l3_request_offerta(
             sorgente=SORGENTE_OFFERTA,
         )
     return pratica_id
+
+
+# ══════════════════════════════════════════════════════════
+#  Indirizzi documento (BB condiviso _indirizzi_documento_helpers)
+# ══════════════════════════════════════════════════════════
+
+_INDIRIZZI_CFG = IndirizziDocumentoConfig(
+    # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
+    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    repo_factory=lambda: OfferteRepository(),
+    stati_modificabili=_STATI_EDITABILI,
+    not_found_code=E_VENDITE_NOT_FOUND,
+    stato_error_code=E_VENDITE_VALIDATION,
+    error_code=E_VENDITE_VALIDATION,
+    fn_prefix="vendite.offerte_service",
+)
+
+
+# Scopo: Pannello indirizzi dell'offerta (ambito OFFERTE). Guard, ownership e
+#        traduzione errori DB nel BB condiviso.
+def list_indirizzi(offerta_id: int) -> dict[str, Any]:
+    return list_indirizzi_documento(_INDIRIZZI_CFG, offerta_id)
+
+
+# Scopo: Upsert slot indirizzo (uno-per-tipo, solo BOZZA).
+def upsert_indirizzo(offerta_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    return upsert_indirizzo_documento(_INDIRIZZI_CFG, offerta_id, payload)
+
+
+# Scopo: Rimozione slot indirizzo (solo BOZZA).
+def delete_indirizzo(offerta_id: int, indirizzo_id: int) -> dict[str, Any]:
+    return delete_indirizzo_documento(_INDIRIZZI_CFG, offerta_id, indirizzo_id)

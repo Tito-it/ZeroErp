@@ -150,14 +150,8 @@ export const updateRigaComponente = _componentiApi.updateRigaComponente
 export const deleteRigaComponente = _componentiApi.deleteRigaComponente
 
 // --- Indirizzi ---
-
-export function listIndirizzi(preventivoId) {
-  return api.get(`${BASE}/${preventivoId}/indirizzi/`)
-}
-
-export function upsertIndirizzo(preventivoId, payload) {
-  return api.post(`${BASE}/${preventivoId}/indirizzi/`, payload)
-}
+// Gestiti dal BB condiviso `makeIndirizziDocumentoApi` (_shared/indirizzi):
+// nessun client dedicato qui (schema REST identico sui 5 domini).
 
 // --- Integrazione ---
 

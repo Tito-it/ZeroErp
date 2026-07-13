@@ -4,6 +4,10 @@
 > **Contesto**: chiusura del residuo "riepilogo IVA" del DDT
 > ([brief-fe-ddt-vendita.md](brief-fe-ddt-vendita.md) §4/§11 "fuori scope predisposto").
 > Richiesta piccola e autonoma: **2 viste**, clone 1:1 delle omologhe ordini.
+> **Stato: ✅ CHIUSO (2026-07-12)** — viste applicate dal team DB (note recepite:
+> clone dalla -16, security_invoker esplicito, filtro `prezzo_unitario IS NOT NULL`,
+> pgTAP `test-ddt-riepilogo-iva.sql` + equivalenza cross-doc); BE/FE consegnati
+> (mixin+factory riepilogo IVA, pannello nel DdtDrawer, doc `api_ddt.md`).
 
 ---
 

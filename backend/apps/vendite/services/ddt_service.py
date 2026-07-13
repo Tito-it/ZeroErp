@@ -40,6 +40,13 @@ from apps.vendite.db.ddt_repository import DdtRepository
 from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_overrides,
 )
+from apps.vendite.services._indirizzi_documento_helpers import (
+    IndirizziDocumentoConfig,
+    auto_assegna_indirizzo_default,
+    delete_indirizzo_documento,
+    list_indirizzi_documento,
+    upsert_indirizzo_documento,
+)
 from apps.vendite.services._pricing_gate_helpers import (
     validate_componenti_overrides_authorization,
 )
@@ -197,6 +204,41 @@ def list_righe(ddt_id: int) -> list[dict[str, Any]]:
     return DdtRepository().list_righe(ddt_id)
 
 
+# ── Indirizzi documento (BB condiviso _indirizzi_documento_helpers) ──
+
+# Configurazione unica del BB per il dominio DDT: guard esistenza/stato,
+# ownership picker e traduzione errori DB vivono nel helper condiviso.
+_INDIRIZZI_CFG = IndirizziDocumentoConfig(
+    # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
+    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    repo_factory=lambda: DdtRepository(),
+    stati_modificabili=_STATI_MODIFICABILI,
+    not_found_code="E_DDT_NOT_FOUND",
+    stato_error_code="E_DDT_STATO_TRANSIZIONE",
+    error_code="E_DDT_VALIDAZIONE",
+    fn_prefix=_FN,
+)
+
+
+# Scopo: Pannello indirizzi del DDT: tipi ammessi per l'ambito DDT + slot
+#        correnti (snapshot congelati + origine soft).
+def list_indirizzi(ddt_id: int) -> dict[str, Any]:
+    return list_indirizzi_documento(_INDIRIZZI_CFG, ddt_id)
+
+
+# Scopo: Upsert slot indirizzo (uno-per-tipo, solo DRAFT: dopo l'emissione lo
+#        snapshot e' congelato col documento). Picker: snapshot server-side da
+#        fn_snapshot_indirizzo + guard ownership; una-tantum: dal payload.
+def upsert_indirizzo(ddt_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    return upsert_indirizzo_documento(_INDIRIZZI_CFG, ddt_id, payload)
+
+
+# Scopo: Rimozione slot indirizzo (solo DRAFT). L'obbligatorieta' di CON e'
+#        verificata dal guard DB all'emissione, non qui.
+def delete_indirizzo(ddt_id: int, indirizzo_id: int) -> dict[str, Any]:
+    return delete_indirizzo_documento(_INDIRIZZI_CFG, ddt_id, indirizzo_id)
+
+
 # Scopo: Riepilogo IVA aggregato del DDT (una riga per aliquota). Calcolo
 #        fiscalmente corretto gia' applicato in DB via la vista derivata
 #        vw_ddt_riepilogo_iva_dettaglio (stessa formula di preventivi/ordini;
@@ -257,7 +299,7 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
 
     meta = data.get("meta")
     with _db_errors("crea_ddt"):
-        return repo.create_ddt(
+        creato = repo.create_ddt(
             destinatario_soggetto_ruolo_id=int(destinatario_id),
             stato_doc_ddt_id=int(stato_bozza_id),
             billing_account_id=int(billing_account_id) if billing_account_id is not None else None,
@@ -278,6 +320,10 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
             data=data.get("data"),
             meta=meta if isinstance(meta, dict) else None,
         )
+    # UX v2: auto-assegnazione best-effort dell'indirizzo di consegna default
+    # (indirizzo di ruolo CON del cliente, fallback FATT). Mai bloccante.
+    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(creato["id"]))
+    return creato
 
 
 # Scopo: Aggiorna testata DDT (solo in DRAFT).
@@ -683,6 +729,10 @@ def crea_ddt_da_ordine(
     # E_QTA_SUPERA_RESIDUO) sollevati dalla fn DB -> tradotti da _db_errors.
     with _db_errors("crea_ddt_da_ordine"):
         ddt_id = repo.push_da_ordine(int(ordine_id), righe)
+    # UX v2: la cascata DB copia gli indirizzi dell'ordine; se l'ordine non
+    # aveva la consegna, fallback best-effort dall'anagrafica di ruolo
+    # (l'helper salta se lo slot default e' gia' valorizzato).
+    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(ddt_id))
     # Il DDT nasce sempre in DRAFT: il `numero` e' assegnato solo a EMESSO dal
     # trigger DB -> qui e' deterministicamente None (nessun re-read).
     return {"ddt_id": ddt_id, "numero": None, "ordine_id": int(ordine_id)}

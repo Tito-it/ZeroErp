@@ -22,6 +22,7 @@ from django.db import connection
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
+from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
 
 
@@ -46,7 +47,11 @@ _ORDER_COLS_ORDINI: dict[str, str] = {
 }
 
 
-class OrdiniRepository(ComponentiRepositoryMixin, RiepilogoIvaRepositoryMixin):
+class OrdiniRepository(
+    ComponentiRepositoryMixin,
+    RiepilogoIvaRepositoryMixin,
+    IndirizziDocumentoRepositoryMixin,
+):
     """Repository ordini di vendita.
 
     Eredita da `ComponentiRepositoryMixin` per il CRUD componenti BoM
@@ -65,6 +70,15 @@ class OrdiniRepository(ComponentiRepositoryMixin, RiepilogoIvaRepositoryMixin):
     # Configurazione mixin riepilogo IVA.
     _riepilogo_iva_vista = "vendite.vw_ordini_riepilogo_iva_dettaglio"
     _riepilogo_iva_fk_documento = "ordine_id"
+
+    # Configurazione mixin indirizzi documento.
+    _indirizzi_table = "vendite.ordini_indirizzi"
+    _indirizzi_fk_documento = "ordine_id"
+    _indirizzi_ambito = "ORDINI"
+    _indirizzi_documento_table = "vendite.ordini"
+    # Ancora ownership/auto-default = soggetto_ruolo NATIVO della testata
+    # (NOT NULL): regge anche l'ordine prospect con billing_account NULL.
+    _indirizzi_doc_sr_column = "soggetto_ruolo_id"
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_ordini_lista)
@@ -162,15 +176,20 @@ class OrdiniRepository(ComponentiRepositoryMixin, RiepilogoIvaRepositoryMixin):
     # Scopo: Dettaglio singolo ordine. Riusa la vista canonica (che ha gia'
     #        tutte le decodifiche + agente + documento di origine) e aggiunge
     #        i campi non esposti in lista: `meta`, `storicizza`,
-    #        `documento_origine_id`. Ritorna None se id inesistente.
+    #        `istanza_utility_id` del BA (serve al FE per la cascata indirizzi
+    #        a 3 livelli nel drawer indirizzi documento).
+    #        Ritorna None se id inesistente.
     def get_ordine(self, ordine_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT
                 v.*,
                 o.meta,
-                o.storicizza
+                o.storicizza,
+                ba.istanza_utility_id
               FROM vendite.vw_ordini_lista v
               JOIN vendite.ordini o ON o.id = v.id
+              LEFT JOIN anagrafiche.billing_account ba
+                ON ba.id = v.billing_account_id
              WHERE v.id = %s
         """
         with connection.cursor() as cursor:

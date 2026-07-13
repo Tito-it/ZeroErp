@@ -7,8 +7,8 @@
 //   spedisci, consegna, reso, annulla, push commessa).
 // Macchina a stati DRAFT → EMESSO → SPEDITO → CONSEGNATO (→ RESO) + ANNULLATO,
 // data-driven (available_actions dal BE). Numero assegnato a EMESSO dal trigger.
-// Clone adattato di OrdiniDrawer (§D-4). Fuori scope in questa slice: riepilogo
-// IVA, PDF, indirizzi.
+// Clone adattato di OrdiniDrawer (§D-4) + riepilogo IVA, PDF (EntityPdfButton)
+// e sezione indirizzi (BB condiviso _shared/indirizzi, UX v2).
 import { ref, watch, computed, nextTick, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDdtStore } from '../stores/ddt'
@@ -39,6 +39,7 @@ import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
+import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
 import DdtForm from './DdtForm.vue'
 import DdtRigheTable from './DdtRigheTable.vue'
 import DdtNoteDrawer from './DdtNoteDrawer.vue'
@@ -78,6 +79,9 @@ const showRiepilogoIva = computed(
   () => Array.isArray(riepilogoIva.value) && riepilogoIva.value.length > 0,
 )
 const noteDrawerVisible = ref(false)
+// Avviso emissione: true quando manca l'indirizzo obbligatorio (CON) —
+// alimentato dalla sezione indirizzi, mostrato nel dialog di emissione.
+const indirizzoObbligatorioMancante = ref(false)
 
 // Auto-save bozza: in CREATE, appena il cliente (BA) e' valorizzato, il drawer
 // crea il DDT in BOZZA e si comporta da "edit-evolved" (righe + azioni stato).
@@ -126,12 +130,13 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 function defaultForm() {
   return {
-    // Emittente fiscale: display-only. La testata DDT lo MEMORIZZA (addendum §15,
-    // NOT NULL + scope RLS) ma è risolto dal trigger DB (da BA o ordine), non
-    // scelto dall'operatore: in create parte VUOTO (nessuna anteprima "a
-    // indovinare" col default operatore — potrebbe divergere dall'EF del BA) e
-    // si valorizza dal detail dopo l'auto-save bozza, quando il trigger l'ha
-    // risolto. NON entra nel payload (whitelist BE lo esclude).
+    // Emittente fiscale: display-only. In create parte VUOTO (nessuna
+    // anteprima "a indovinare" col default operatore: per il DDT il trigger
+    // lo risolve dal BILLING ACCOUNT o dall'ordine sorgente, non
+    // dall'operatore come nei preventivi — potrebbe divergere) e si
+    // valorizza dal detail dopo l'auto-save bozza. Invariante del fix
+    // PR #970: non uniformare a ordini/preventivi. NON entra nel payload
+    // (whitelist BE lo esclude).
     emittente_fiscale_id: null,
     utility_id: utilityDefaultId.value ?? null,
     billing_account_id: null,
@@ -525,6 +530,17 @@ const drawerActions = computed(() => {
 
       <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
       <template v-if="contentReady && hasDetail">
+        <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default CON,
+             avviso se mancante (obbligatorio all'emissione, guard DB),
+             pulsante "Indirizzi" che apre il drawer di gestione. -->
+        <DocumentoIndirizziSection
+          dominio="ddt"
+          :doc-id="effectiveDdtId"
+          :soggetto-ruolo-id="detail?.destinatario_soggetto_ruolo_id ?? null"
+          :istanza-utility-id="detail?.istanza_utility_id ?? null"
+          :readonly="!(canEditTestataEffective && !isReadonly)"
+          @state="(s) => { indirizzoObbligatorioMancante = s.obbligatorioMancante }" />
+
         <Divider />
         <DdtRigheTable
           :ddt-id="effectiveDdtId"
@@ -540,6 +556,7 @@ const drawerActions = computed(() => {
           <Divider />
           <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
         </template>
+
       </template>
 
       <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto"
@@ -562,5 +579,6 @@ const drawerActions = computed(() => {
     :ddt="detail"
     :loading="emissioneLoading"
     @confirm="handleEmissioneConferma"
+    :indirizzo-mancante="indirizzoObbligatorioMancante"
   />
 </template>

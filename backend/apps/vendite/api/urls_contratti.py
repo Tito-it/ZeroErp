@@ -21,6 +21,8 @@ from apps.vendite.api.note_views import (
     ApiContrattoNoteList,
 )
 from apps.vendite.api.views_contratti import (
+    ApiContrattoIndirizzi,
+    ApiContrattoIndirizzoDetail,
     ApiContrattiExportView,
     ApiContrattiList,
     ApiContrattoCambiaStato,
@@ -49,6 +51,11 @@ urlpatterns = [
     # Export CSV/Excel (DEF-1) — colonne coerenti con la lista configurabile.
     path("export/", ApiContrattiExportView.as_view(), name="vendite-contratti-export"),
     path("<int:contratto_id>/", ApiContrattoDetail.as_view(), name="vendite-contratto-detail"),
+    path("<int:contratto_id>/indirizzi/", ApiContrattoIndirizzi.as_view(),
+         name="vendite-contratto-indirizzi"),
+    path("<int:contratto_id>/indirizzi/<int:indirizzo_id>/",
+         ApiContrattoIndirizzoDetail.as_view(),
+         name="vendite-contratto-indirizzo-detail"),
     path(
         "<int:contratto_id>/cambia-stato/",
         ApiContrattoCambiaStato.as_view(),

@@ -26,6 +26,7 @@ from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
+from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 
 
 # Mappa colonna -> tipo, usata per placeholder/cast jsonb e adattamento param.
@@ -90,6 +91,9 @@ _SELECT_COLS_CONTRATTO = """
     COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
                         AS emittente_fiscale_descrizione,
     c.billing_account_id,
+    -- soggetto_ruolo del cliente (BA): serve al FE per la gestione
+    -- indirizzi documento (elenco anagrafico cascata).
+    ba.soggetto_ruolo_id,
     srd.ragione_sociale_completa AS ba_ragione_sociale,
     ba.codice AS ba_codice,
     -- ID fiscale univoco del soggetto del BA (CF persona fisica o P.IVA).
@@ -259,7 +263,7 @@ _FROM_JOINS_UTILITY = """
 """
 
 
-class ContrattiRepository(ComponentiRepositoryMixin):
+class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryMixin):
     """Accesso DB a `vendite.contratti` + righe + utility 1:1.
 
     Eredita da `ComponentiRepositoryMixin` per il CRUD componenti BoM
@@ -272,6 +276,12 @@ class ContrattiRepository(ComponentiRepositoryMixin):
     # Configurazione mixin componenti.
     _componenti_table_name = "vendite.contratti_righe_componenti"
     _componenti_fk_riga = "riga_contratto_id"
+
+    # Configurazione mixin indirizzi documento.
+    _indirizzi_table = "vendite.contratti_indirizzi"
+    _indirizzi_fk_documento = "contratto_id"
+    _indirizzi_ambito = "CONTRATTI"
+    _indirizzi_documento_table = "vendite.contratti"
 
     # =================================================================
     # Lista e dettaglio testata

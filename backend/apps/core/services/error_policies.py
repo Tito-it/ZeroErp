@@ -1821,6 +1821,41 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Parametri DDT non validi.",
         ),
+        # Indirizzi documento (BB _indirizzi_documento_helpers, 5 domini):
+        # sollevato da script.fn_snapshot_indirizzo (flusso picker) quando
+        # origine_indirizzo_id non esiste piu' in anagrafiche.indirizzi.
+        "E_INDIRIZZO_SNAPSHOT_NOT_FOUND": ErrorPolicy(
+            code="E_INDIRIZZO_SNAPSHOT_NOT_FOUND",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message=(
+                "Indirizzo anagrafico non trovato: ricaricare gli indirizzi "
+                "del cliente."
+            ),
+        ),
+        # Trigger whitelist tipi indirizzo per ambito documento
+        # (trgfn_tipi_indirizzi_only_allowed, fail-closed): ri-sollevato da
+        # _db_errors del BB col codice originale del RAISE.
+        "E_TIPO_INDIRIZZO": ErrorPolicy(
+            code="E_TIPO_INDIRIZZO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message=(
+                "Tipo indirizzo non ammesso per questo documento."
+            ),
+        ),
+        # Guard DB all'emissione DDT (tipi obbligatori dell'ambito mancanti):
+        # il FE previene (Conferma disabilitata), il trigger resta la fonte
+        # di verita'.
+        "E_INDIRIZZO_DOC_OBBLIGATORIO": ErrorPolicy(
+            code="E_INDIRIZZO_DOC_OBBLIGATORIO",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message=(
+                "Indirizzo obbligatorio mancante: impostare l'indirizzo di "
+                "consegna prima dell'emissione."
+            ),
+        ),
         # Cliente (billing_account_id/destinatario) immutabile post-create:
         # cambiare cliente = nuovo DDT (mirror E_ORD_CLIENTE_IMMUTABILE).
         "E_DDT_CLIENTE_IMMUTABILE": ErrorPolicy(

@@ -24,6 +24,7 @@ from django.db import connection
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
+from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
 
 
@@ -45,7 +46,11 @@ _ORDER_COLS_DDT: dict[str, str] = {
 }
 
 
-class DdtRepository(ComponentiRepositoryMixin, RiepilogoIvaRepositoryMixin):
+class DdtRepository(
+    ComponentiRepositoryMixin,
+    RiepilogoIvaRepositoryMixin,
+    IndirizziDocumentoRepositoryMixin,
+):
     """Repository DDT di vendita.
 
     Eredita da `ComponentiRepositoryMixin` per il CRUD componenti BoM modello
@@ -66,6 +71,17 @@ class DdtRepository(ComponentiRepositoryMixin, RiepilogoIvaRepositoryMixin):
     # Configurazione mixin riepilogo IVA.
     _riepilogo_iva_vista = "vendite.vw_ddt_riepilogo_iva_dettaglio"
     _riepilogo_iva_fk_documento = "ddt_id"
+
+    # Configurazione mixin indirizzi documento (whitelist ambito DDT: CON
+    # obbligatorio all'emissione, guard trigger a DB).
+    _indirizzi_table = "vendite.ddt_indirizzi"
+    _indirizzi_fk_documento = "ddt_id"
+    _indirizzi_ambito = "DDT"
+    _indirizzi_documento_table = "vendite.ddt"
+    # Ancora ownership/auto-default = DESTINATARIO (chi riceve la merce),
+    # NOT NULL in testata: coerente col picker FE e regge BA NULL
+    # (DDT da evasione di ordine prospect).
+    _indirizzi_doc_sr_column = "destinatario_soggetto_ruolo_id"
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_ddt_lista)
@@ -162,15 +178,21 @@ class DdtRepository(ComponentiRepositoryMixin, RiepilogoIvaRepositoryMixin):
 
     # Scopo: Dettaglio singolo DDT. Riusa la vista canonica (decodifiche +
     #        provenienza ordine) e aggiunge i campi non esposti in lista:
-    #        `meta`, `storicizza`. None se id inesistente.
+    #        `meta`, `storicizza`, `istanza_utility_id` del BA (serve al FE
+    #        per la cascata indirizzi a 3 livelli: senza istanza il livello
+    #        'istanza' resta invisibile nel drawer indirizzi documento).
+    #        None se id inesistente.
     def get_ddt(self, ddt_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT
                 v.*,
                 d.meta,
-                d.storicizza
+                d.storicizza,
+                ba.istanza_utility_id
               FROM vendite.vw_ddt_lista v
               JOIN vendite.ddt d ON d.id = v.id
+              LEFT JOIN anagrafiche.billing_account ba
+                ON ba.id = v.billing_account_id
              WHERE v.id = %s
         """
         with connection.cursor() as cursor:

@@ -18,10 +18,10 @@ from django.db import connection
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
+from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
 from apps.vendite.types import (
     PreventivoDetailRow,
-    PreventivoIndirizzoRow,
     PreventivoListRow,
     PreventivoPraticaRow,
     PreventivoRigaRow,
@@ -79,7 +79,11 @@ _ROOT_PREVENTIVO_ATTIVO_FROM = """
 """
 
 
-class PreventiviRepository(ComponentiRepositoryMixin, RiepilogoIvaRepositoryMixin):
+class PreventiviRepository(
+    ComponentiRepositoryMixin,
+    RiepilogoIvaRepositoryMixin,
+    IndirizziDocumentoRepositoryMixin,
+):
     """Repository preventivi.
 
     Eredita da `ComponentiRepositoryMixin` per il CRUD componenti BoM
@@ -100,6 +104,12 @@ class PreventiviRepository(ComponentiRepositoryMixin, RiepilogoIvaRepositoryMixi
     _riepilogo_iva_vista = "vendite.vw_preventivi_riepilogo_iva_dettaglio"
     _riepilogo_iva_fk_documento = "preventivo_id"
     _riepilogo_iva_con_id = True
+
+    # Configurazione mixin indirizzi documento.
+    _indirizzi_table = "vendite.preventivi_indirizzi"
+    _indirizzi_fk_documento = "preventivo_id"
+    _indirizzi_ambito = "PREVENTIVI"
+    _indirizzi_documento_table = "vendite.preventivi"
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_preventivi_lista)
@@ -237,6 +247,9 @@ class PreventiviRepository(ComponentiRepositoryMixin, RiepilogoIvaRepositoryMixi
                 sdp.codice AS stato_codice,
                 sdp.descrizione AS stato_descrizione,
                 p.billing_account_id,
+                -- soggetto_ruolo del cliente (BA): serve al FE per la
+                -- gestione indirizzi documento (elenco anagrafico cascata).
+                ba.soggetto_ruolo_id,
                 s.ragione_sociale_completa AS cliente_denominazione,
                 p.utility_id,
                 u.descrizione AS utility_descrizione,
@@ -448,29 +461,24 @@ class PreventiviRepository(ComponentiRepositoryMixin, RiepilogoIvaRepositoryMixi
             cursor.execute(sql, [riga_id])
             return row_to_dict(cursor)
 
-    # ══════════════════════════════════════════════════════════
-    #  LETTURE — Indirizzi
-    # ══════════════════════════════════════════════════════════
-
-    # Scopo: Restituisce indirizzi preventivo con tipo.
-    def list_indirizzi(self, preventivo_id: int) -> list[PreventivoIndirizzoRow]:
+    # Scopo: Stato corrente (codice_interno) del preventivo. Guard leggero
+    #        pre-operazione (mirror ddt/ordini): mai il detail completo per
+    #        leggere un solo campo.
+    def get_stato_codice(self, preventivo_id: int) -> str | None:
         sql = """
-            SELECT
-                pi.id,
-                pi.preventivo_id,
-                pi.tipo_indirizzo_id,
-                ti.descrizione AS tipo_indirizzo_descrizione,
-                pi.snapshot,
-                pi.origine_indirizzo_id,
-                pi.origine_soggetto_ruolo_id
-            FROM vendite.preventivi_indirizzi pi
-            LEFT JOIN config.tipi_indirizzi ti ON ti.id = pi.tipo_indirizzo_id
-            WHERE pi.preventivo_id = %s
-            ORDER BY pi.tipo_indirizzo_id
+            SELECT sdp.codice_interno
+              FROM vendite.preventivi p
+              JOIN config.stati_doc_preventivi sdp
+                ON sdp.id = p.stato_doc_preventivo_id
+             WHERE p.id = %s
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
-            return rows_to_list(cursor)
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    # CRUD indirizzi documento (list/upsert/delete + tipi ammessi) ereditato
+    # da `IndirizziDocumentoRepositoryMixin`. Vedi `_indirizzi_repo_mixin.py`.
 
     # Scopo: Capability del preventivo per il detail API (Fase 1 refactor
     #        frontend vendite). Wrapper su `script.fn_available_actions_preventivo`
@@ -1011,41 +1019,6 @@ class PreventiviRepository(ComponentiRepositoryMixin, RiepilogoIvaRepositoryMixi
 
     # CRUD componenti (list/get/update/delete/purge) ereditato da
     # `ComponentiRepositoryMixin`. Vedi `_componenti_repo_mixin.py`.
-
-    # ══════════════════════════════════════════════════════════
-    #  SCRITTURE — Indirizzi
-    # ══════════════════════════════════════════════════════════
-
-    # Scopo: Upsert indirizzo preventivo (uno per tipo).
-    def upsert_indirizzo(
-        self,
-        *,
-        preventivo_id: int,
-        tipo_indirizzo_id: int,
-        snapshot: dict[str, Any],
-        origine_indirizzo_id: int | None = None,
-        origine_soggetto_ruolo_id: int | None = None,
-    ) -> dict[str, Any]:
-        sql = """
-            INSERT INTO vendite.preventivi_indirizzi (
-                preventivo_id, tipo_indirizzo_id, snapshot,
-                origine_indirizzo_id, origine_soggetto_ruolo_id
-            ) VALUES (%s, %s, %s::jsonb, %s, %s)
-            ON CONFLICT ON CONSTRAINT uq_preventivi_indirizzi_uno_per_tipo_
-            DO UPDATE SET
-                snapshot = EXCLUDED.snapshot,
-                origine_indirizzo_id = EXCLUDED.origine_indirizzo_id,
-                origine_soggetto_ruolo_id = EXCLUDED.origine_soggetto_ruolo_id
-            RETURNING id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                preventivo_id, tipo_indirizzo_id, json.dumps(snapshot),
-                origine_indirizzo_id, origine_soggetto_ruolo_id,
-            ])
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
 
     # ══════════════════════════════════════════════════════════
     #  INTEGRAZIONE — Commesse / Fatturazione

@@ -482,24 +482,18 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 
 ---
 
-### 11. Lista indirizzi
+### 11. Indirizzi documento (BB condiviso, contratto 2026-07-12)
 
-- Metodo: `GET`
-- Path: `/api/v1/vendite/preventivi/{id}/indirizzi/`
-- Output `200`: lista indirizzi con tipo e snapshot JSONB
-
----
-
-### 12. Upsert indirizzo
-
-- Metodo: `POST`
-- Path: `/api/v1/vendite/preventivi/{id}/indirizzi/`
-- Body JSON:
-  - `tipo_indirizzo_id` (int, **obbligatorio**)
-  - `snapshot` (object, **obbligatorio**)
-  - `origine_indirizzo_id` (int, opzionale)
-  - `origine_soggetto_ruolo_id` (int, opzionale)
-- Regole: upsert ON CONFLICT su constraint `uq_preventivi_indirizzi_uno_per_tipo_`
+- `GET /api/v1/vendite/preventivi/{id}/indirizzi/` → `{tipi_ammessi[], indirizzi[]}`
+- `POST /api/v1/vendite/preventivi/{id}/indirizzi/` — upsert uno-per-tipo:
+  flusso PICKER `{tipo_indirizzo_id, origine_indirizzo_id}` (snapshot composto
+  server-side + guard ownership cliente) o UNA-TANTUM `{tipo_indirizzo_id, snapshot}`.
+  Solo stato BOZZA. **Breaking vs contratto pre-refactor**: lo `snapshot`
+  geografico non è più accettato dal client nel flusso picker e
+  `origine_soggetto_ruolo_id` non è più nel payload (derivato dal BE).
+- `DELETE /api/v1/vendite/preventivi/{id}/indirizzi/{indirizzo_id}/` — rimozione slot (solo BOZZA).
+- Dettagli completi (shape, errori, whitelist ambito PREVENTIVI):
+  [api_indirizzi_documento.md](api_indirizzi_documento.md)
 
 ---
 

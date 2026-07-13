@@ -12,24 +12,18 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    coerce_jsonb_dict,
     resolve_config_id_by_codice_interno,
     row_to_dict,
     rows_to_list,
 )
 from apps.core.services.error_manager import ErrorManager
 
-
-# Scopo: Coercion difensiva jsonb -> dict. psycopg puo' restituire un jsonb
-# come str (nessun adapter automatico): senza coerce, un isinstance(dict)
-# scarterebbe SILENZIOSAMENTE la configurazione (bug handler_params={} sul
-# dispatch CONFERMA, trovato dallo smoke pratica 2026-06-11).
-def coerce_jsonb_dict(value: Any) -> dict[str, Any]:
-    if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except ValueError:
-            return {}
-    return value if isinstance(value, dict) else {}
+# coerce_jsonb_dict: promosso in apps.core.db._helpers (regola del 2,
+# 2026-07-12) — qui resta il re-export storico per i caller esistenti
+# (pratiche_service, test). Origine: bug handler_params={} sul dispatch
+# CONFERMA, smoke pratica 2026-06-11.
+__all__ = ["PraticheRepository", "coerce_jsonb_dict"]
 
 
 _PRATICHE_ORDER_COLS = {

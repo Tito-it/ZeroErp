@@ -38,6 +38,7 @@ import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
+import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
 import OrdiniForm from './OrdiniForm.vue'
 import OrdiniRigheTable from './OrdiniRigheTable.vue'
 import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
@@ -558,6 +559,16 @@ const drawerActions = computed(() => {
 
       <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
       <template v-if="contentReady && hasDetail">
+        <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default CON,
+             contatore "+N altri", pulsante "Indirizzi" che apre il drawer
+             di gestione. -->
+        <DocumentoIndirizziSection
+          dominio="ordini"
+          :doc-id="effectiveOrdineId"
+          :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
+          :istanza-utility-id="detail?.istanza_utility_id ?? null"
+          :readonly="!(canEditTestataEffective && !isReadonly)" />
+
         <Divider />
         <OrdiniRigheTable
           :ordine-id="effectiveOrdineId"

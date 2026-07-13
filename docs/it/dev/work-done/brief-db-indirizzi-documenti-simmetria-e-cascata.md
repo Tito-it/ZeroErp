@@ -1,12 +1,18 @@
 # Brief DB — Indirizzi documento: simmetria, codici unificati, snapshot fn, cascata al push
 
 > **Tipo**: brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-11 · **Owner**: Tid
-> **Design-of-record**: [brief-design-indirizzi-documenti-vendita.md](brief-design-indirizzi-documenti-vendita.md)
+> **Design-of-record**: [brief-design-indirizzi-documenti-vendita.md](../work-in-progress/brief-design-indirizzi-documenti-vendita.md)
 > (decisioni D-1…D-5 chiuse). Non in produzione: breaking change ammessi, niente compatibilità.
 
 ---
 
-## Stato implementazione (2026-07-11) — DB SCRITTO su `dev/db-tid`, non ancora applicato
+## Stato: ✅ CHIUSO (2026-07-12) — DB applicato, BE/FE consegnati
+
+Migrations applicate al DB di test; BE endpoint su 5 domini + FE pannello pilota
+DDT consegnati e sottoposti a review critica (18 finding corretti, incl. guard
+ownership picker). Doc API: `docs/it/backend/vendite/manual/api_indirizzi_documento.md`.
+
+### Note storiche implementazione DB (2026-07-11)
 
 Migrations `20260711-15..31` + pgTAP + doc manuali scritti (attendere applicazione Tid).
 Decisioni operative chiuse (Q1–Q6) e **correzioni all'analisi del brief**:
