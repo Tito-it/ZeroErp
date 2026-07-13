@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — tabella-ponte vendite.resi_righe_riconsegne (brief §4b/§9 R2).
+#
+# Aggancio DURO riga-reso <-> DDT di ri-spedizione, mirror strutturale di
+# vendite.ordini_righe_fulfillment (stesso problema: una quantita soddisfatta da
+# N DDT nel tempo -> supporta la ri-spedizione parziale/multipla). Lo STATO
+# ri-consegna e' DERIVATO dalla copertura (Sigma qta vs quantita della riga
+# reso), calcolato nella vista: nessuna colonna di stato (brief §9 R1).
+#
+# Popolata solo da vendite.fn_genera_ddt_riconsegna (20260713-30). Guard
+# consistenza (Sigma qta <= quantita reso, tipo riapre_residuo=true, FOR UPDATE)
+# in 20_code (20260713-24), mirror trgfn_ordini_ful_guard_consistenza.
+#
+# Auto-provisioning dbops: storico, audit, tx_id, require_attivo, indici FK.
+#
+# Dipendenze: vendite.resi_righe (20260713-14), vendite.ddt_righe.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260713-15-create-resi-righe-riconsegne-mctit.yaml
+
+  - changeSet:
+      id: 20260713-15-create-resi-righe-riconsegne
+      author: mctit
+      comment: >
+        Crea vendite.resi_righe_riconsegne: tabella-ponte riga-reso <-> DDT di
+        ri-spedizione (mirror ordini_righe_fulfillment). Supporta ri-consegna
+        parziale/multipla; stato derivato dalla copertura.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - tableExists:
+                    schemaName: vendite
+                    tableName: resi_righe_riconsegne
+            - tableExists:
+                schemaName: vendite
+                tableName: resi_righe
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: resi_righe_riconsegne
+            remarks: >-
+              Ponte riga-reso <-> riga-DDT di ri-spedizione (mirror
+              ordini_righe_fulfillment). Ogni riga = una quota ri-spedita di una
+              riga reso di tipo ri-consegna. brief-db-resi-vendita §4b.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { primaryKey: true, primaryKeyName: pk_resi_riconsegne, nullable: false }
+
+              - column: { name: resi_riga_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> vendite.resi_righe.id (riga reso ri-consegna)." }
+              - column: { name: ddt_riga_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> vendite.ddt_righe.id (riga del DDT di ri-spedizione)." }
+              - column: { name: qta, type: numeric, constraints: { nullable: false }, remarks: "Quantita ri-spedita (unita' base)." }
+              - column: { name: note, type: VARCHAR(255) }
+
+              - column: { name: meta, type: jsonb, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+              - column: { name: storicizza, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: tx_id, type: uuid }
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER" }
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: resi_righe_riconsegne
+            columnNames: resi_riga_id, ddt_riga_id
+            constraintName: uq_resi_riconsegne_pair
+
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi_righe_riconsegne, baseColumnNames: resi_riga_id, constraintName: fk_resi_riconsegne_resi_riga, referencedTableSchemaName: vendite, referencedTableName: resi_righe, referencedColumnNames: id, onUpdate: CASCADE, onDelete: CASCADE }
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi_righe_riconsegne, baseColumnNames: ddt_riga_id, constraintName: fk_resi_riconsegne_ddt_riga, referencedTableSchemaName: vendite, referencedTableName: ddt_righe, referencedColumnNames: id, onUpdate: CASCADE, onDelete: NO ACTION }
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.resi_righe_riconsegne
+                ADD CONSTRAINT k_resi_riconsegne_qta_pos CHECK (qta > 0);
+
+              COMMENT ON TABLE vendite.resi_righe_riconsegne IS
+                'Ponte riga-reso <-> riga-DDT di ri-spedizione (brief §4b, mirror '
+                'ordini_righe_fulfillment). Supporta ri-consegna parziale/multipla; '
+                'lo stato ri-consegna e derivato dalla copertura. rev 2026-07-13.';
+
+      rollback:
+        - dropTable:
+            schemaName: vendite
+            tableName: resi_righe_riconsegne

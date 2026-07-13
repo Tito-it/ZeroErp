@@ -1,8 +1,11 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_fatturazione_ordini.md" %}
 # 🔍 View `vw_dash_fatturazione_ordini`
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_ordini AS
+CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_ordini
+WITH (security_invoker=on) AS
 WITH righe AS (
          SELECT orr.ordine_id,
             orr.id AS riga_id,

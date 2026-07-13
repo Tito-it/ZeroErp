@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — helper addendo reso del residuo (brief §5.1).
+#
+# SINGLE SOURCE dell'addendo "ri-consegna" del residuo evasione ordine: Sigma
+# resi_righe.quantita (base) per la riga ordine, sui resi CONFERMATI di tipo
+# riapre_residuo=true. Serve a DUE consumatori che devono restare coerenti:
+#   - vendite.fn_ordine_ha_residuo_evasione (gate stato ordine, 20260713-29);
+#   - vendite.trgfn_ordini_ful_guard_consistenza (enforcement fulfillment,
+#     20260713-30): senza l'addendo il guard bloccherebbe la ri-spedizione
+#     (E_QTA_SUPERA_RESIDUO) perche' il residuo si e' riaperto per il reso.
+# Estratto qui per non duplicare la formula (linee-guida-sql, no logica duplicata).
+#
+# Dipendenze: vendite.resi, vendite.resi_righe, config.stati_doc_reso,
+#   config.tipi_reso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260713-28-create-fn-ordine-riga-qta-riconsegna-mctit.yaml
+
+  - changeSet:
+      id: 20260713-28-create-fn-ordine-riga-qta-riconsegna
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ordine_riga_qta_riconsegna(p_ordine_riga_id vendite.ordini_righe.id%TYPE)
+               RETURNS numeric
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: addendo reso del residuo per una riga ordine. Sigma
+              --   resi_righe.quantita (base) sui resi CONFERMATI di tipo
+              --   riapre_residuo=true collegati a quella riga ordine. Single
+              --   source per fn_ordine_ha_residuo_evasione e per il guard
+              --   fulfillment (coerenza formula residuo).
+              DECLARE
+                  v_qta numeric;
+              BEGIN
+                  IF p_ordine_riga_id IS NULL OR p_ordine_riga_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_ordine_riga_qta_riconsegna','E_VALIDAZIONE',
+                          jsonb_build_object('p_ordine_riga_id', p_ordine_riga_id),
+                          NULL::uuid, 'p_ordine_riga_id deve essere > 0');
+                  END IF;
+
+                  SELECT COALESCE(SUM(rr.quantita), 0)
+                    INTO v_qta
+                    FROM vendite.resi_righe rr
+                    JOIN vendite.resi r          ON r.id = rr.reso_id
+                    JOIN config.stati_doc_reso s ON s.id = r.stato_doc_reso_id
+                    JOIN config.tipi_reso tr     ON tr.id = rr.tipo_reso_id
+                   WHERE rr.ordine_riga_id = p_ordine_riga_id
+                     AND s.codice_interno = 'CONFERMATO'
+                     AND tr.riapre_residuo IS TRUE;
+
+                  RETURN v_qta;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ordine_riga_qta_riconsegna(p_ordine_riga_id bigint)
+              IS 'Addendo reso del residuo per riga ordine: Sigma resi_righe.quantita (reso CONFERMATO, tipo riapre_residuo). Single source per fn_ordine_ha_residuo_evasione e trgfn_ordini_ful_guard_consistenza (coerenza formula). rev 2026-07-13.';

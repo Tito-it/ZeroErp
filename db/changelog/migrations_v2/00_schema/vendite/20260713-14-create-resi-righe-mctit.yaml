@@ -1,0 +1,128 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — righe vendite.resi_righe (brief-db-resi-vendita §4).
+#
+# Riga reso: linka la riga DDT sorgente (ddt_riga_id NOT NULL) e, se il DDT era
+# order-backed, la ordine_riga_id (nullable) per alimentare l'addendo residuo.
+# Articolo/UoM derivati dalla riga DDT (immutabili). Unita' operativa mirror
+# ddt_righe: qta_operativa/uom_operativa_id/factor_to_base -> quantita (base)
+# calcolata dal trigger script.trgfn_qta_from_operativa (attach in 20_code).
+# tipo_reso_id per riga (RESO_A_CREDITO | RESO_PER_RICONSEGNA).
+#
+# Guard righe (20_code, hand-written): quantita (Sigma quantita <= consegnato,
+#   FOR UPDATE), editabilita' solo con testata DRAFT. L'aggancio ri-consegna e'
+#   la tabella-ponte vendite.resi_righe_riconsegne (20260713-15), NON una colonna
+#   qui (stato derivato dalla copertura, brief §4b/§9 R1-R2).
+#
+# Auto-provisioning dbops: storico, audit, tx_id, require_attivo, indici FK.
+#
+# Dipendenze: vendite.resi (20260713-13), vendite.ddt_righe, vendite.ordini_righe,
+#   catalogo.{articoli,unita_misura}, config.tipi_reso (20260713-10).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260713-14-create-resi-righe-mctit.yaml
+
+  - changeSet:
+      id: 20260713-14-create-resi-righe
+      author: mctit
+      comment: >
+        Crea vendite.resi_righe: righe reso (riga DDT sorgente NOT NULL,
+        ordine_riga nullable, unita' operativa mirror ddt_righe, tipo_reso per
+        riga). Aggancio ri-consegna via ponte separato (20260713-15).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - tableExists:
+                    schemaName: vendite
+                    tableName: resi_righe
+            - tableExists:
+                schemaName: vendite
+                tableName: resi
+            - tableExists:
+                schemaName: config
+                tableName: tipi_reso
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: resi_righe
+            remarks: >-
+              Righe del documento reso di vendita. Snapshot articolo/UoM dalla
+              riga DDT sorgente; quantita in unita' base (da qta_operativa via
+              trgfn_qta_from_operativa). tipo_reso per riga. brief §4.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { primaryKey: true, primaryKeyName: pk_resi_righe, nullable: false }
+
+              - column: { name: reso_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> vendite.resi.id (testata)." }
+              - column: { name: riga_nr, type: integer, constraints: { nullable: false }, remarks: "Numero riga progressivo nel reso." }
+
+              - column: { name: ddt_riga_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> vendite.ddt_righe.id (riga sorgente consegnata)." }
+              - column: { name: ordine_riga_id, type: bigint, remarks: "FK -> vendite.ordini_righe.id (nullable: DDT standalone). Alimenta l'addendo residuo." }
+
+              - column: { name: articolo_id, type: uuid, constraints: { nullable: false }, remarks: "FK -> catalogo.articoli.id (derivato dalla riga DDT)." }
+              - column: { name: descrizione, type: VARCHAR(255), constraints: { nullable: false }, remarks: "Descrizione (snapshot dalla riga DDT)." }
+
+              - column: { name: quantita, type: numeric, constraints: { nullable: false }, remarks: "Quantita resa in unita' base (calcolata da qta_operativa)." }
+              - column: { name: qta_operativa, type: numeric, remarks: "Quantita resa in unita' operativa (input)." }
+              - column: { name: uom_operativa_id, type: bigint, remarks: "FK -> catalogo.unita_misura.id (unita' operativa)." }
+              - column: { name: factor_to_base, type: numeric, defaultValueNumeric: 1, constraints: { nullable: false }, remarks: "Fattore conversione operativa -> base." }
+
+              - column: { name: tipo_reso_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> config.tipi_reso.id (credito | ri-consegna, per riga)." }
+              - column: { name: motivo, type: VARCHAR(255), remarks: "Motivo reso (testo libero)." }
+
+              - column: { name: attivo, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: meta, type: jsonb, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+              - column: { name: storicizza, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: tx_id, type: uuid }
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER" }
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: resi_righe
+            columnNames: reso_id, riga_nr
+            constraintName: uq_resi_righe_riga_nr
+
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi_righe, baseColumnNames: reso_id, constraintName: fk_resi_righe_testata, referencedTableSchemaName: vendite, referencedTableName: resi, referencedColumnNames: id, onUpdate: CASCADE, onDelete: CASCADE }
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi_righe, baseColumnNames: ddt_riga_id, constraintName: fk_resi_righe_ddt_riga, referencedTableSchemaName: vendite, referencedTableName: ddt_righe, referencedColumnNames: id, onUpdate: CASCADE, onDelete: NO ACTION }
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi_righe, baseColumnNames: ordine_riga_id, constraintName: fk_resi_righe_ordine_riga, referencedTableSchemaName: vendite, referencedTableName: ordini_righe, referencedColumnNames: id, onUpdate: CASCADE, onDelete: NO ACTION }
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi_righe, baseColumnNames: articolo_id, constraintName: fk_resi_righe_articolo, referencedTableSchemaName: catalogo, referencedTableName: articoli, referencedColumnNames: id, onUpdate: CASCADE, onDelete: NO ACTION }
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi_righe, baseColumnNames: uom_operativa_id, constraintName: fk_resi_righe_uom_operativa, referencedTableSchemaName: catalogo, referencedTableName: unita_misura, referencedColumnNames: id, onUpdate: CASCADE, onDelete: NO ACTION }
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi_righe, baseColumnNames: tipo_reso_id, constraintName: fk_resi_righe_tipo_reso, referencedTableSchemaName: config, referencedTableName: tipi_reso, referencedColumnNames: id, onUpdate: CASCADE, onDelete: NO ACTION }
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.resi_righe
+                ADD CONSTRAINT k_resi_righe_qta_pos CHECK (quantita > 0);
+              ALTER TABLE vendite.resi_righe
+                ADD CONSTRAINT k_resi_righe_qta_operativa_pos
+                CHECK (qta_operativa IS NULL OR qta_operativa > 0);
+
+              COMMENT ON TABLE vendite.resi_righe IS
+                'Righe documento reso di vendita (brief-db-resi-vendita §4). '
+                'Riga DDT sorgente NOT NULL, ordine_riga nullable (standalone), '
+                'unita operativa mirror ddt_righe, tipo_reso per riga. Aggancio '
+                'ri-consegna via ponte resi_righe_riconsegne. rev 2026-07-13.';
+
+      rollback:
+        - dropTable:
+            schemaName: vendite
+            tableName: resi_righe

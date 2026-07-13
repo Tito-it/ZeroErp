@@ -1,0 +1,4 @@
+id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update
+1,DRAFT,DRAFT,Bozza,true,10,{},2026-07-13 00:00:00+02,SEED,2026-07-13 00:00:00+02,SEED
+2,CONFERMATO,CONFERMATO,Confermato,true,20,{},2026-07-13 00:00:00+02,SEED,2026-07-13 00:00:00+02,SEED
+3,ANNULLATO,ANNULLATO,Annullato,true,30,{},2026-07-13 00:00:00+02,SEED,2026-07-13 00:00:00+02,SEED

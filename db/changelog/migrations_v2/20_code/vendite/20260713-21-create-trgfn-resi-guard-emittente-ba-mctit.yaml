@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — trgfn_resi_guard_emittente_ba (brief §3, §0.7).
+#
+# Mirror di vendite.trgfn_ddt_guard_emittente_ba: skip se BA NULL, errore
+# E_RESO_EMITTENTE_BA_INCOERENTE se emittente diverge dall'emittente atteso per
+# il BA. Difesa-in-profondita': su INSERT il reso eredita emittente/BA dallo
+# stesso DDT (coerenti per costruzione -> pass); il guard protegge UPDATE che
+# facciano divergere emittente o BA.
+#
+# Firing z10: DOPO trg_resi_normalize (che risolve BA/emittente dal DDT) e prima
+# di z90 -> controlla i valori FINALI. Come sul DDT.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260713-21-create-trgfn-resi-guard-emittente-ba-mctit.yaml
+
+  - changeSet:
+      id: 20260713-21-create-trgfn-resi-guard-emittente-ba
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_guard_emittente_ba()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_ef_atteso_id anagrafiche.emittenti_fiscali.id%TYPE;
+              BEGIN
+                -- Skip: nessun BA su cui ancorare la coerenza.
+                IF NEW.billing_account_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Emittente atteso per il BA del reso.
+                v_ef_atteso_id := anagrafiche.fn_get_emittente_fiscale_pk(NEW.billing_account_id);
+
+                IF NEW.emittente_fiscale_id IS DISTINCT FROM v_ef_atteso_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'trgfn_resi_guard_emittente_ba',
+                    'E_RESO_EMITTENTE_BA_INCOERENTE',
+                    jsonb_build_object(
+                      'billing_account_id',   NEW.billing_account_id,
+                      'emittente_fiscale_id', NEW.emittente_fiscale_id,
+                      'emittente_atteso_id',  v_ef_atteso_id,
+                      'numero_reso',          NEW.numero
+                    ),
+                    NULL::uuid,
+                    concat('ba=', NEW.billing_account_id,
+                           ', ef=', NEW.emittente_fiscale_id,
+                           ', ef_atteso=', v_ef_atteso_id)
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_guard_emittente_ba()
+              IS 'Guard coerenza emittente<->BA su vendite.resi (E_RESO_EMITTENTE_BA_INCOERENTE). Mirror trgfn_ddt_guard_emittente_ba; firing z10 dopo il normalize. rev 2026-07-13.';
+
+              DROP TRIGGER IF EXISTS trg_resi_z10_guard_emittente_ba_ins_upd ON vendite.resi;
+              CREATE TRIGGER trg_resi_z10_guard_emittente_ba_ins_upd
+                BEFORE INSERT OR UPDATE OF billing_account_id, emittente_fiscale_id
+                ON vendite.resi
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_resi_guard_emittente_ba();

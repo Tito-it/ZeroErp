@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — policy RLS su vendite.resi (scope emittente).
+#
+# Mirror ESATTO di rls_ddt_ef_whitelist (20260709-21): policy PERMISSIVE FOR ALL
+# rls_resi_ef_whitelist (operatore vede/scrive solo resi con emittente in
+# whitelist, script.fn_scope_ef_whitelist adapter PK) + ENABLE ROW LEVEL
+# SECURITY (NO FORCE), a parita' con ddt/ordini/preventivi/fatture (enabled=t,
+# forced=f). L'owner (zeroerp_app) bypassa finche' non arriva il FORCE (ondata
+# coordinata). Difesa-in-profondita' DB; la protezione attiva della lista e' il
+# filtro applicativo BE (emittente_fiscale_id in vw_resi_lista).
+#
+# Verifica: db/pgtap/rls/test-rls-resi-ef-whitelist-write.sql (ENABLE+FORCE
+# locale alla tx).
+# Dipendenze: vendite.resi (col. emittente_fiscale_id), script.fn_scope_ef_whitelist.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260713-17-enable-rls-resi-ef-whitelist-mctit.yaml
+
+  - changeSet:
+      id: 20260713-17-create-policy-rls-resi-ef-whitelist
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Policy rls_resi_ef_whitelist su vendite.resi (FOR ALL, scope emittente
+        operatore via fn_scope_ef_whitelist) + ENABLE ROW LEVEL SECURITY (NO
+        FORCE), a parita' con ddt/ordini/preventivi/fatture. Mirror
+        rls_ddt_ef_whitelist.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: resi
+                columnName: emittente_fiscale_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                   WHERE n.nspname='script' AND p.proname='fn_scope_ef_whitelist';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_resi_ef_whitelist ON vendite.resi;
+              CREATE POLICY rls_resi_ef_whitelist ON vendite.resi
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          emittente_fiscale_id
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          emittente_fiscale_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_resi_ef_whitelist ON vendite.resi IS
+                  'RLS: operatore vede/scrive solo resi con emittente in whitelist '
+                  '(adapter PK fn_scope_ef_whitelist), gate OPERATORE fail-closed. '
+                  'Mirror rls_ddt_ef_whitelist. rev 2026-07-13.';
+
+              -- Parita' con ddt/ordini/preventivi/fatture (relrowsecurity=t,
+              -- relforcerowsecurity=f): RLS abilitata ma NON forzata -> l'owner
+              -- (zeroerp_app) la bypassa finche' non arriva il FORCE (ondata).
+              ALTER TABLE vendite.resi ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.resi DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_resi_ef_whitelist ON vendite.resi;

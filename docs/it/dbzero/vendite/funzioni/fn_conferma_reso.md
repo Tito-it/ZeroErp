@@ -1,0 +1,132 @@
+# ⚙️ Funzione `fn_conferma_reso`
+
+```sql
+CREATE FUNCTION fn_conferma_reso(p_reso_id bigint)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_conferma_reso(p_reso_id bigint)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_stato             config.stati_doc_reso.codice_interno%TYPE;
+    v_stato_conf_id     config.stati_doc_reso.id%TYPE;
+    v_ddt_uid           vendite.resi.sorgente_uid%TYPE;
+    v_ddt_id            vendite.ddt.id%TYPE;
+    v_ddt_stato         config.stati_doc_ddt.codice_interno%TYPE;
+    v_stato_reso_ddt_id config.stati_doc_ddt.id%TYPE;
+    v_stato_target_id   config.stati_doc_ordini.id%TYPE;
+    v_tutto_reso        boolean;
+    v_ord               RECORD;
+BEGIN
+    -- 1) Guard input + reso in DRAFT + almeno una riga.
+    IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite','fn_conferma_reso','E_VALIDAZIONE',
+            jsonb_build_object('p_reso_id', p_reso_id),
+            NULL::uuid, 'p_reso_id deve essere > 0');
+    END IF;
+
+    SELECT sdr.codice_interno, r.sorgente_uid
+      INTO v_stato, v_ddt_uid
+      FROM vendite.resi r
+      JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id
+     WHERE r.id = p_reso_id;
+
+    IF NOT FOUND THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite','fn_conferma_reso','E_RESO_NOT_FOUND',
+            jsonb_build_object('reso_id', p_reso_id),
+            NULL::uuid, p_reso_id::text);
+    END IF;
+
+    IF v_stato IS DISTINCT FROM 'DRAFT' THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite','fn_conferma_reso','E_RESO_STATO_NON_CONFERMABILE',
+            jsonb_build_object('reso_id', p_reso_id, 'stato', v_stato),
+            NULL::uuid, p_reso_id::text, v_stato);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM vendite.resi_righe
+                    WHERE reso_id = p_reso_id AND attivo IS TRUE) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite','fn_conferma_reso','E_RESO_SENZA_RIGHE',
+            jsonb_build_object('reso_id', p_reso_id),
+            NULL::uuid, p_reso_id::text);
+    END IF;
+
+    -- 2) Transizione a CONFERMATO (gen_numero + guard_transizione).
+    SELECT id INTO v_stato_conf_id FROM config.stati_doc_reso
+     WHERE codice_interno = 'CONFERMATO' AND attivo IS TRUE;
+    UPDATE vendite.resi
+       SET stato_doc_reso_id = v_stato_conf_id
+     WHERE id = p_reso_id;
+
+    -- 3) Proiezione stato ordine per ogni ordine coinvolto (solo
+    --    righe ri-consegna: quelle che riaprono il residuo).
+    FOR v_ord IN
+        SELECT DISTINCT orr.ordine_id
+          FROM vendite.resi_righe rr
+          JOIN vendite.ordini_righe orr ON orr.id = rr.ordine_riga_id
+          JOIN config.tipi_reso tr      ON tr.id = rr.tipo_reso_id
+         WHERE rr.reso_id = p_reso_id
+           AND tr.riapre_residuo IS TRUE
+    LOOP
+        IF vendite.fn_ordine_ha_residuo_evasione(v_ord.ordine_id) THEN
+            SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
+             WHERE codice_interno = 'PARZIALMENTE_EVASO' AND attivo IS TRUE;
+        ELSE
+            SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
+             WHERE codice_interno = 'EVASO' AND attivo IS TRUE;
+        END IF;
+
+        UPDATE vendite.ordini
+           SET stato_doc_ordine_id = v_stato_target_id
+         WHERE id = v_ord.ordine_id
+           AND stato_doc_ordine_id IS DISTINCT FROM v_stato_target_id;
+    END LOOP;
+
+    -- 4) Flip DDT origine -> RESO se reso TOTALE (tutte le qta
+    --    consegnate del DDT rese, resi non-ANNULLATI). Solo se il
+    --    DDT e' CONSEGNATO (matrice CONSEGNATO->RESO).
+    SELECT d.id, sdd.codice_interno
+      INTO v_ddt_id, v_ddt_stato
+      FROM vendite.ddt d
+      JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+     WHERE d.uid = v_ddt_uid;
+
+    IF v_ddt_id IS NOT NULL AND v_ddt_stato = 'CONSEGNATO' THEN
+        SELECT bool_and(COALESCE(reso_riga.tot, 0) >= dr.quantita)
+          INTO v_tutto_reso
+          FROM vendite.ddt_righe dr
+          LEFT JOIN (
+              SELECT rr.ddt_riga_id, SUM(rr.quantita) AS tot
+                FROM vendite.resi_righe rr
+                JOIN vendite.resi r          ON r.id = rr.reso_id
+                JOIN config.stati_doc_reso s ON s.id = r.stato_doc_reso_id
+               WHERE s.codice_interno <> 'ANNULLATO'
+               GROUP BY rr.ddt_riga_id
+          ) reso_riga ON reso_riga.ddt_riga_id = dr.id
+         WHERE dr.ddt_id = v_ddt_id
+           AND dr.attivo IS TRUE;
+
+        IF COALESCE(v_tutto_reso, false) THEN
+            SELECT id INTO v_stato_reso_ddt_id FROM config.stati_doc_ddt
+             WHERE codice_interno = 'RESO' AND attivo IS TRUE;
+            UPDATE vendite.ddt
+               SET stato_doc_ddt_id = v_stato_reso_ddt_id
+             WHERE id = v_ddt_id;
+        END IF;
+    END IF;
+END;
+$function$
+
+COMMENT ON FUNCTION vendite.fn_conferma_reso(p_reso_id bigint)
+IS 'Madre conferma reso: DRAFT->CONFERMATO (numero+guard), proiezione stato ordine (residuo reso-aware -> PARZIALMENTE_EVASO/EVASO), flip DDT origine CONSEGNATO->RESO se reso totale. brief §5. rev 2026-07-13.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

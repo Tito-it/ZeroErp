@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_ddt_default_emittente.md" %}
 # ⚙️ Funzione `trgfn_ddt_default_emittente`
 
 ```sql

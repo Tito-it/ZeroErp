@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_ddt_guard_indirizzi_obbligatori.md" %}
 # ⚙️ Funzione `trgfn_ddt_guard_indirizzi_obbligatori`
 
 ```sql

@@ -1,7 +1,10 @@
 # 🔍 View `vw_contratti_lista`
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW vendite.vw_contratti_lista AS
+CREATE OR REPLACE VIEW vendite.vw_contratti_lista
+WITH (security_invoker=on) AS
 SELECT c.id,
     c.uid,
     c.numero,

@@ -1,8 +1,11 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_backlog_riepilogo.md" %}
 # 🔍 View `vw_dash_backlog_riepilogo`
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW vendite.vw_dash_backlog_riepilogo AS
+CREATE OR REPLACE VIEW vendite.vw_dash_backlog_riepilogo
+WITH (security_invoker=on) AS
 SELECT classe,
     area,
     (count(*))::integer AS n_documenti,

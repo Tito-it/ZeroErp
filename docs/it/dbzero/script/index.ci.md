@@ -64,6 +64,7 @@
 - [fn_guard_soggetto_ruolo](manual/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
 - [fn_guard_utility_tipo_ruolo](manual/fn_guard_utility_tipo_ruolo.md) — (latest review 16-02-2026) `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:
 - [fn_has_identita_attiva](manual/fn_has_identita_attiva.md) — (latest review 19-04-2026)
+- [fn_indirizzi_obbligatori_mancanti](manual/fn_indirizzi_obbligatori_mancanti.md) — (rev 2026-07-11)
 - [fn_is_super_admin](manual/fn_is_super_admin.md) — (latest review 20-04-2026 — filtro OPERATORE)
 - [fn_job_run_end](manual/fn_job_run_end.md) — (latest review 18-06-2026 — registrazione run job headless)
 - [fn_job_run_start](manual/fn_job_run_start.md) — (latest review 18-06-2026 — registrazione run job headless)

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_tipi_indirizzi_only_allowed.md" %}
 # ⚙️ Funzione `trgfn_tipi_indirizzi_only_allowed`
 
 ```sql

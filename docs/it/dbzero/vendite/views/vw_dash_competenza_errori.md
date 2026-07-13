@@ -1,8 +1,11 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_dash_competenza_errori.md" %}
 # 🔍 View `vw_dash_competenza_errori`
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW vendite.vw_dash_competenza_errori AS
+CREATE OR REPLACE VIEW vendite.vw_dash_competenza_errori
+WITH (security_invoker=on) AS
 WITH escope AS (
          SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids
         ), task_err AS (

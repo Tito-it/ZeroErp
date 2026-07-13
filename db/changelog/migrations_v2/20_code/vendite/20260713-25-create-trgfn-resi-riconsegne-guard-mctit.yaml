@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — guard consistenza sul ponte resi_righe_riconsegne
+#   (brief §4b). Mirror di trgfn_ordini_ful_guard_consistenza.
+#
+# Regole:
+#   - la riga reso referenziata deve essere di tipo ri-consegna
+#     (tipi_reso.riapre_residuo = true) -> E_RESO_RICONSEGNA_TIPO_NON_VALIDO;
+#   - non si ri-spedisce piu' di quanto reso: Sigma qta sulla stessa resi_riga
+#     <= resi_righe.quantita -> E_RESO_RICONSEGNA_SUPERA_RESO;
+#   - lock FOR UPDATE serializzante (riga reso + gruppo riconsegne).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260713-25-create-trgfn-resi-riconsegne-guard-mctit.yaml
+
+  - changeSet:
+      id: 20260713-25-create-trgfn-resi-riconsegne-guard
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_riconsegne_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: consistenza ponte ri-consegna. Tipo ri-consegna
+              --   obbligatorio; Sigma qta <= qta_resa; lock anti-concorrenza.
+              DECLARE
+                  v_qta_resa vendite.resi_righe.quantita%TYPE;
+                  v_riapre   config.tipi_reso.riapre_residuo%TYPE;
+                  v_gia_ric  numeric;
+                  v_residuo  numeric;
+              BEGIN
+                  -- 0) qta > 0 (difesa oltre al CHECK).
+                  IF NEW.qta IS NULL OR NEW.qta <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_riconsegne_guard','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('qta', NEW.qta), NEW.tx_id, NEW.qta::text);
+                  END IF;
+
+                  -- 1) Lock riga reso + gruppo riconsegne (serializza).
+                  PERFORM 1 FROM vendite.resi_righe WHERE id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_riconsegne q
+                    WHERE q.resi_riga_id = NEW.resi_riga_id FOR UPDATE;
+
+                  -- 2) Riga reso: qta_resa + tipo ri-consegna.
+                  SELECT rr.quantita, tr.riapre_residuo
+                    INTO v_qta_resa, v_riapre
+                    FROM vendite.resi_righe rr
+                    JOIN config.tipi_reso tr ON tr.id = rr.tipo_reso_id
+                   WHERE rr.id = NEW.resi_riga_id;
+
+                  IF v_riapre IS DISTINCT FROM true THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_riconsegne_guard','E_RESO_RICONSEGNA_TIPO_NON_VALIDO',
+                      jsonb_build_object('resi_riga_id', NEW.resi_riga_id),
+                      NEW.tx_id, NEW.resi_riga_id::text);
+                  END IF;
+
+                  -- 3) Copertura residua = qta_resa - Sigma qta (escl. riga corrente in UPDATE).
+                  SELECT COALESCE(SUM(q.qta), 0)
+                    INTO v_gia_ric
+                    FROM vendite.resi_righe_riconsegne q
+                   WHERE q.resi_riga_id = NEW.resi_riga_id
+                     AND (TG_OP <> 'UPDATE' OR q.id <> NEW.id);
+
+                  v_residuo := v_qta_resa - v_gia_ric;
+
+                  IF NEW.qta > v_residuo THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_riconsegne_guard','E_RESO_RICONSEGNA_SUPERA_RESO',
+                      jsonb_build_object('resi_riga_id', NEW.resi_riga_id,
+                                         'qta_resa', v_qta_resa,
+                                         'gia_riconsegnato', v_gia_ric,
+                                         'qta_nuova', NEW.qta,
+                                         'residuo', v_residuo),
+                      NEW.tx_id,
+                      NEW.resi_riga_id::text, v_qta_resa::text,
+                      v_gia_ric::text, NEW.qta::text, v_residuo::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_riconsegne_guard()
+              IS 'Guard ponte ri-consegna: tipo riapre_residuo obbligatorio (E_RESO_RICONSEGNA_TIPO_NON_VALIDO) + Sigma qta <= qta_resa (E_RESO_RICONSEGNA_SUPERA_RESO), lock FOR UPDATE. Mirror trgfn_ordini_ful_guard_consistenza. rev 2026-07-13.';
+
+              DROP TRIGGER IF EXISTS trg_resi_riconsegne_a10_guard_ins_upd ON vendite.resi_righe_riconsegne;
+              CREATE TRIGGER trg_resi_riconsegne_a10_guard_ins_upd
+                BEFORE INSERT OR UPDATE OF qta, resi_riga_id
+                ON vendite.resi_righe_riconsegne
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_resi_riconsegne_guard();
