@@ -1944,6 +1944,125 @@ class ErrorPolicyRegistry:
                 "Impossibile emettere: componenti senza prezzo valorizzato."
             ),
         ),
+        # Resi di vendita (motore resi su DDT: CRUD + conferma/annullo +
+        # ri-consegna). Famiglia speculare a E_DDT_*. I codici dei guard/fn DB
+        # (messaggi_errore 530-541) passano via regex in
+        # resi_service._db_errors: registrati qui per fissare status/ui_action
+        # lato FE (il messaggio parlante DB vince su user_message).
+        "E_RESO_NOT_FOUND": ErrorPolicy(
+            code="E_RESO_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Reso non trovato.",
+        ),
+        "E_RESO_VALIDAZIONE": ErrorPolicy(
+            code="E_RESO_VALIDAZIONE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri reso non validi.",
+        ),
+        "E_RESO_STATO_TRANSIZIONE": ErrorPolicy(
+            code="E_RESO_STATO_TRANSIZIONE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Operazione non ammessa nello stato corrente del reso.",
+        ),
+        # Guard trigger transizioni reso (trgfn_resi_guard_transizione): la
+        # coppia di stati non e' nella matrice config.transizioni_stati_reso.
+        "E_STATO_RESO_TRANSIZIONE_NON_VALIDA": ErrorPolicy(
+            code="E_STATO_RESO_TRANSIZIONE_NON_VALIDA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Transizione di stato non ammessa per il reso.",
+        ),
+        # Over-return: Σ qta rese (resi non annullati) sulla stessa riga DDT
+        # supererebbe il consegnato (trgfn_resi_righe_guard_quantita, lock).
+        "E_RESO_QTA_SUPERA_CONSEGNATO": ErrorPolicy(
+            code="E_RESO_QTA_SUPERA_CONSEGNATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La quantita' resa supera la quantita' consegnata residua "
+                "della riga DDT."
+            ),
+        ),
+        # Guard ponte ri-consegna (trgfn_resi_riconsegne_guard): aggancio
+        # ammesso solo su righe con tipo_reso.riapre_residuo = true.
+        "E_RESO_RICONSEGNA_TIPO_NON_VALIDO": ErrorPolicy(
+            code="E_RESO_RICONSEGNA_TIPO_NON_VALIDO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Ri-spedizione ammessa solo su righe reso di tipo ri-consegna."
+            ),
+        ),
+        # Over-ri-spedizione: Σ qta ri-spedite sulla riga reso supererebbe la
+        # quantita' resa (guard ponte, lock FOR UPDATE).
+        "E_RESO_RICONSEGNA_SUPERA_RESO": ErrorPolicy(
+            code="E_RESO_RICONSEGNA_SUPERA_RESO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La quantita' ri-spedita supera la quantita' resa da "
+                "ri-consegnare."
+            ),
+        ),
+        # fn_conferma_reso: conferma ammessa solo da DRAFT / con righe attive.
+        "E_RESO_STATO_NON_CONFERMABILE": ErrorPolicy(
+            code="E_RESO_STATO_NON_CONFERMABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il reso non e' in bozza: non e' confermabile.",
+        ),
+        "E_RESO_SENZA_RIGHE": ErrorPolicy(
+            code="E_RESO_SENZA_RIGHE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il reso non ha righe: aggiungere almeno una riga "
+                         "prima della conferma.",
+        ),
+        # fn_genera_ddt_riconsegna: reso non CONFERMATO / nessuna copertura
+        # residua da ri-spedire.
+        "E_RESO_NON_CONFERMATO": ErrorPolicy(
+            code="E_RESO_NON_CONFERMATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Confermare il reso prima di generare la ri-spedizione."
+            ),
+        ),
+        "E_RESO_NESSUNA_RICONSEGNA_PENDENTE": ErrorPolicy(
+            code="E_RESO_NESSUNA_RICONSEGNA_PENDENTE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Nessuna riga di ri-consegna pendente da ri-spedire per "
+                "questo reso."
+            ),
+        ),
+        # fn_annulla_reso: annullo ammesso da DRAFT/CONFERMATO; bloccato se il
+        # reso e' gia' stato ri-spedito (storno ri-spedizione fuori perimetro).
+        "E_RESO_STATO_NON_ANNULLABILE": ErrorPolicy(
+            code="E_RESO_STATO_NON_ANNULLABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il reso non e' in uno stato che ammette l'annullo.",
+        ),
+        "E_RESO_ANNULLO_CON_RICONSEGNE": ErrorPolicy(
+            code="E_RESO_ANNULLO_CON_RICONSEGNE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il reso e' gia' stato ri-spedito: non e' annullabile.",
+        ),
+        # Guard emittente<->BA sul reso (trgfn_resi_guard_emittente_ba, z10).
+        "E_RESO_EMITTENTE_BA_INCOERENTE": ErrorPolicy(
+            code="E_RESO_EMITTENTE_BA_INCOERENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message=(
+                "Emittente fiscale non coerente col cliente del reso."
+            ),
+        ),
         # Mutua esclusività offerta → (contratto XOR ordine): la stessa offerta si
         # materializza in UNA sola forma. Famiglia "già materializzato" = conflitto
         # di stato → 409 uniforme (coerente con E_ORD_OFFERTA_GIA_CONVERTITA sopra).

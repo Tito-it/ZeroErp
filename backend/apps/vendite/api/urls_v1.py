@@ -62,6 +62,7 @@ urlpatterns = [
     path("offerte/", include("apps.vendite.api.urls_offerte")),
     path("ordini/", include("apps.vendite.api.urls_ordini")),
     path("ddt/", include("apps.vendite.api.urls_ddt")),
+    path("resi/", include("apps.vendite.api.urls_resi")),
     # Pricing v5 diagnostico: resolver 3 stadi (PROMO/CONTRATTO/CATEGORIA).
     path("pricing/resolve/", PricingResolveView.as_view(), name="vendite-pricing-resolve"),
     # Diagnostica configurazione asset pricing (BA, contratto, matrice, promo)
