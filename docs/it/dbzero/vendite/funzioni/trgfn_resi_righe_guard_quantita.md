@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_resi_righe_guard_quantita.md" %}
 # ⚙️ Funzione `trgfn_resi_righe_guard_quantita`
 
 ```sql

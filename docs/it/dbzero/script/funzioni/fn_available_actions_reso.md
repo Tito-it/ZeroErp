@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_available_actions_reso.md" %}
 # ⚙️ Funzione `fn_available_actions_reso`
 
 ```sql

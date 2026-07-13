@@ -62,7 +62,7 @@
 - [stati_doc_offerte_transizioni](tabelle/stati_doc_offerte_transizioni.md) — (latest review 2026-05-24)
 - [stati_doc_ordini](tabelle/stati_doc_ordini.md) — (latest review 29-03-2026) `config.stati_doc_ordini` definisce gli **stati documento** del ciclo ordine di vendita. Raccoglie in un catalogo unico le fasi di avanzamento commerciale e operativo dell'ordine, dalla bozza fino all'evasione o chiusura.
 - [stati_doc_preventivi](tabelle/stati_doc_preventivi.md) — (latest review 29-03-2026) `config.stati_doc_preventivi` definisce gli **stati documento** del ciclo dei preventivi commerciali. Serve a governare il passaggio dalla proposta iniziale alla sua accettazione, revisione o chiusura operativa.
-- [stati_doc_reso](tabelle/stati_doc_reso.md)
+- [stati_doc_reso](tabelle/stati_doc_reso.md) — (rev 2026-07-13)
 - [stati_flussi_pratiche](tabelle/stati_flussi_pratiche.md) — La tabella `config.stati_flussi_pratiche` definisce i possibili **stati di un flusso operativo** all'interno di una pratica. Ogni flusso ha esattamente uno stato che ne indica l'avanzamento nel workflow.
 - [stati_fornitore](tabelle/stati_fornitore.md) — (latest review 29-03-2026) `config.stati_fornitore` definisce gli **stati operativi** dei fornitori. Il catalogo non serve solo a classificare il fornitore, ma anche a governare se il soggetto puo` essere usato normalmente nei processi di acquisto.
 - [stati_pdp](tabelle/stati_pdp.md) — * **Dominio degli stati tecnici del PDP**   Fornisce il catalogo centralizzato degli stati tecnici ammessi per i punti di prelievo, utilizzato da `anagrafiche.pdp.stato_pdp_id`.
@@ -81,7 +81,7 @@
 - [tipi_indirizzi](tabelle/tipi_indirizzi.md) — La tabella **`config.tipi_indirizzi`** centralizza i **tipi di indirizzo** utilizzabili in Zero ERP, come ad esempio Residenza, Domicilio Fiscale, Sede Legale, Sede Operativa, Corrispondenza Postale, Indirizzo di Fornitura, ecc. 
 - [tipi_indirizzi_allowed](tabelle/tipi_indirizzi_allowed.md) — (Ultima review 19-12-25)
 - [tipi_nota](tabelle/tipi_nota.md) — La tabella `config.tipi_nota` definisce la **tipologia** delle note associabili a pratiche e flussi. Consente di classificare le note per finalita' (interna, per il cliente, tecnica, ecc.).
-- [tipi_reso](tabelle/tipi_reso.md)
+- [tipi_reso](tabelle/tipi_reso.md) — (rev 2026-07-13)
 - [tipi_ruoli](tabelle/tipi_ruoli.md) — * **Distinzione dei ruoli**: consente di assegnare a ogni record della tabella `soggetti` uno o più ruoli funzionali (es. cliente, fornitore, gestore). * **Flessibilità operativa**: un soggetto può assumere ruoli differenti in contesti diversi (ad esempio un fornitore che può diventare cliente in altre transazioni). * **Ruolo "gestore"**: l’azienda stessa che utilizza il software viene registrata in `soggetti` e associata al ruolo interno “gestore” per identificare i dati dell’utente principale o amministratore del sistema.
 - [tipi_ruoli_nature_ammesse](tabelle/tipi_ruoli_nature_ammesse.md) — (latest review 28-02-26) La tabella **`config.tipi_ruoli_nature_ammesse`** rappresenta la **matrice di configurazione** che definisce:
 - [tipi_ruolo_tipi_indirizzo](tabelle/tipi_ruolo_tipi_indirizzo.md) — (latest review 19-12-25) La tabella **`config.tipi_ruolo_tipi_indirizzo`** rappresenta la **matrice di configurazione** che definisce:
@@ -100,7 +100,7 @@
 - [transizioni_stati_ordini](tabelle/transizioni_stati_ordini.md) — (rev 2026-06-05)
 - [transizioni_stati_pratiche](tabelle/transizioni_stati_pratiche.md) — `config.transizioni_stati_pratiche` definisce la **matrice delle transizioni ammesse** tra stati delle pratiche. Il trigger guard `trgfn_pratiche_guard_transizione` consulta questa tabella per bloccare qualsiasi transizione non configurata.
 - [transizioni_stati_preventivi](tabelle/transizioni_stati_preventivi.md) — (latest review 03-04-2026) `config.transizioni_stati_preventivi` definisce la **matrice delle transizioni ammesse** tra gli stati del preventivo vendita. Pattern identico a `config.transizioni_stati_pratiche`.
-- [transizioni_stati_reso](tabelle/transizioni_stati_reso.md)
+- [transizioni_stati_reso](tabelle/transizioni_stati_reso.md) — (rev 2026-07-13)
 - [unita_organizzative](tabelle/unita_organizzative.md) — (latest review 07-01-26) La tabella **`config.unita_organizzative`** definisce il catalogo dei reparti/uffici utilizzabili nell'anagrafica (es. Amministrazione, Tecnico, Commerciale). Nasce per separare in modo netto il concetto di **unita organizzativa** dai **tipi di contatto**, riducendo ambiguita semantiche.
 - [user_emittenti_fiscali](tabelle/user_emittenti_fiscali.md) — * Legare in modo univoco un operatore al proprio emittente fiscale. * Discriminare gli **admin globali** (utenti senza riga, ruolo `ADMIN`) dagli **admin di emittente** (utenti con 1 riga, ruolo `ADMIN`) e dagli **operatori standard** (utenti con 1 riga, ruolo `OPERATIVO`). * Fornire il dato per il **filtering queryset** (`EmittenteFiscaleScopeMixin`) e per il **defense‑in‑depth** DB (trigger guard su `billing_account`, fatture, ordini, pagamenti).
 - [user_override_aree](tabelle/user_override_aree.md) — * Gestire **eccezioni individuali** al profilo ereditato dal reparto. * Supportare **deleghe temporanee** tramite validità temporale (`valido_dal` / `valido_al`). * Documentare la **motivazione** dell'override per audit e governance.

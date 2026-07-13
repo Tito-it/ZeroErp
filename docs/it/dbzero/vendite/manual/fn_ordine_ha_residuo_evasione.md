@@ -5,31 +5,39 @@
 > Tabelle:
 > [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)
 > [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment)
+> [vendite.resi_righe](/dbzero/vendite/tabelle/resi_righe)
 >
 > Funzioni:
+> [vendite.fn_ordine_riga_qta_riconsegna](/dbzero/vendite/funzioni/fn_ordine_riga_qta_riconsegna) (helper addendo)
 > [vendite.fn_genera_ddt_da_ordine](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine)
-> [vendite.fn_preventivo_ha_residuo_ordine](/dbzero/vendite/funzioni/fn_preventivo_ha_residuo_ordine) (gemella)
+> [vendite.fn_conferma_reso](/dbzero/vendite/funzioni/fn_conferma_reso)
 
 ---
 
 ### 🎯 Scopo Principale
 
-(rev 2026-07-09)
+(rev 2026-07-13 — **reso-aware**)
 
 **`vendite.fn_ordine_ha_residuo_evasione(p_ordine_id) → boolean`** ritorna `TRUE` se l'ordine ha
-ancora quantità da evadere su **almeno una** riga. È il gemello di
-`fn_preventivo_ha_residuo_ordine`, applicato all'asse fulfillment (DDT), ed è il **gate** con cui
-`fn_genera_ddt_da_ordine` proietta lo stato ordine (`CONFERMATO` / `PARZIALMENTE_EVASO` / `EVASO`).
+ancora quantità da evadere su **almeno una** riga. È il **gate** con cui `fn_genera_ddt_da_ordine`,
+`fn_conferma_reso` e `fn_genera_ddt_riconsegna` proiettano lo stato ordine
+(`CONFERMATO` / `PARZIALMENTE_EVASO` / `EVASO`).
 
 `STABLE`, `SECURITY INVOKER`. Guard input: errore se `p_ordine_id` `NULL` o `<= 0`.
 
-### Formula (reso-aware per costruzione)
+### Formula (reso-aware)
 
 ```
-residuo(riga) = ordini_righe.quantita − Σ qta_evasa  [ + Σ qta_resa_per_riconsegna ]
+residuo(riga) = ordini_righe.quantita − Σ qta_evasa + Σ qta_riconsegna
 ```
 
-Tutto in **unità base** (coerente con il guard `trgfn_ordini_ful_guard_consistenza`). L'addendo
-dei resi **non è ancora presente** (nessun modello resi): la slice resi estenderà questa funzione
-aggiungendo il termine di rientro, **senza toccare** i gate di stato che la consumano
-(vedi brief §12).
+Tutto in **unità base**. L'addendo `Σ qta_riconsegna` è calcolato dall'**helper unico**
+[`fn_ordine_riga_qta_riconsegna`](/dbzero/vendite/funzioni/fn_ordine_riga_qta_riconsegna)
+(somma delle righe reso di tipo *ri-consegna* su resi **CONFERMATI**). Lo stesso helper alimenta
+il guard `trgfn_ordini_ful_guard_consistenza`, così gate ed enforcement usano **la stessa formula**.
+
+### Ciclo che converge
+
+Evaso 10 → reso per ri-consegna 3 (residuo riaperto = 3 → ordine `PARZIALMENTE_EVASO`) →
+ri-spedizione 3 (nuovo fulfillment: Σqta_evasa=13 → residuo = 10−13+3 = 0 → ordine `EVASO`).
+La ri-spedizione **chiude** ciò che il reso ha riaperto.

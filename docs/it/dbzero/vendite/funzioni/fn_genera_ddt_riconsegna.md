@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_genera_ddt_riconsegna.md" %}
 # ⚙️ Funzione `fn_genera_ddt_riconsegna`
 
 ```sql
@@ -21,6 +22,8 @@ DECLARE
     v_qta_base       vendite.ddt_righe.quantita%TYPE;
     v_orig           RECORD;
     v_riga           RECORD;
+    v_ord            RECORD;
+    v_stato_target_id config.stati_doc_ordini.id%TYPE;
     v_residuo_ric    numeric;
     v_qta_ric        numeric;
     v_qta_op         numeric;
@@ -161,6 +164,29 @@ BEGIN
             jsonb_build_object('reso_id', p_reso_id, 'righe', p_righe),
             NULL::uuid, p_reso_id::text);
     END IF;
+
+    -- 7) Ri-proiezione stato ordine per gli ordini coinvolti: il
+    --    fulfillment appena creato ha chiuso (in tutto o in parte)
+    --    il residuo riaperto dal reso -> allinea lo stato ordine.
+    FOR v_ord IN
+        SELECT DISTINCT orr.ordine_id
+          FROM vendite.resi_righe rr
+          JOIN vendite.ordini_righe orr ON orr.id = rr.ordine_riga_id
+         WHERE rr.reso_id = p_reso_id
+           AND rr.ordine_riga_id IS NOT NULL
+    LOOP
+        IF vendite.fn_ordine_ha_residuo_evasione(v_ord.ordine_id) THEN
+            SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
+             WHERE codice_interno = 'PARZIALMENTE_EVASO' AND attivo IS TRUE;
+        ELSE
+            SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
+             WHERE codice_interno = 'EVASO' AND attivo IS TRUE;
+        END IF;
+        UPDATE vendite.ordini
+           SET stato_doc_ordine_id = v_stato_target_id
+         WHERE id = v_ord.ordine_id
+           AND stato_doc_ordine_id IS DISTINCT FROM v_stato_target_id;
+    END LOOP;
 
     RETURN v_new_ddt_id;
 END;

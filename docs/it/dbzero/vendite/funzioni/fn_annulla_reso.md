@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_annulla_reso.md" %}
 # ⚙️ Funzione `fn_annulla_reso`
 
 ```sql
