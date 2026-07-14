@@ -542,6 +542,7 @@ class ContrattiService:
         offset: int = 0,
         order_by: str = "data",
         order_dir: str = "desc",
+        max_limit: int = 200,
     ) -> tuple[list[dict[str, Any]], int]:
         self._v.validate_order_by(order_by, allowed=_ORDER_BY_CONTRATTI)
         if ambito is not None:
@@ -577,6 +578,7 @@ class ContrattiService:
             offset=offset,
             order_by=order_by,
             order_dir=order_dir,
+            max_limit=max_limit,
         )
 
     # Scopo: Etichette leggibili dei filtri attivi, incluse come metadato nel

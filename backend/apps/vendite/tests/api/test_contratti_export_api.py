@@ -104,3 +104,9 @@ class TestContrattiExportApi(JwtMockedApiTest):
         self.assertIn("text/csv", resp["Content-Type"])
         self.assertIn("contratti.csv", resp["Content-Disposition"])
         self.assertEqual(resp.content, b"numero\nCNT0001\n")
+        # Regressione bug cap-200: l'export deve alzare il cap oltre 200
+        # (max_limit), altrimenti il file uscirebbe troncato in silenzio.
+        self.assertGreater(
+            mock_svc_cls.return_value.list_contratti.call_args.kwargs["max_limit"],
+            200,
+        )

@@ -117,6 +117,7 @@ def list_resi_rows(
     offset: int,
     order_by: str = "data",
     order_dir: str = "desc",
+    max_limit: int = 200,
 ) -> tuple[list[Any], int]:
     repo = ResiRepository()
     return repo.list_resi(
@@ -130,7 +131,33 @@ def list_resi_rows(
         offset=offset,
         order_by=order_by,
         order_dir=order_dir,
+        max_limit=max_limit,
     )
+
+
+# Scopo: Etichette leggibili dei filtri applicati per il metadato del file
+#        export della lista resi (DEF-1). La lista ha lo stato (a differenza
+#        delle code), niente utility. Gemello ddt_service.resolve_filtri_export_label.
+def resolve_filtri_export_label(
+    *,
+    search: str | None = None,
+    stato_codice: str | None = None,
+    billing_account_id: int | None = None,
+    data_da: date | None = None,
+    data_al: date | None = None,
+) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    if search:
+        out["Ricerca"] = search
+    if stato_codice:
+        out["Stato"] = stato_codice
+    if billing_account_id is not None:
+        out["Cliente BA (id)"] = billing_account_id
+    if data_da is not None:
+        out["Dal"] = str(data_da)
+    if data_al is not None:
+        out["Al"] = str(data_al)
+    return out
 
 
 # Scopo: Dettaglio testata reso + capability data-driven (righe a parte via
@@ -187,17 +214,25 @@ def list_da_accreditare(
     billing_account_id: int | None = None,
     data_da: date | None = None,
     data_al: date | None = None,
+    search: str | None = None,
     auth_user_id: int | None = None,
     limit: int,
     offset: int,
+    order_by: str = "data",
+    order_dir: str = "desc",
+    max_limit: int = 200,
 ) -> tuple[list[Any], int]:
     return ResiRepository().list_da_accreditare(
         billing_account_id=billing_account_id,
         data_da=data_da,
         data_al=data_al,
+        search=search,
         auth_user_id=auth_user_id,
         limit=limit,
         offset=offset,
+        order_by=order_by,
+        order_dir=order_dir,
+        max_limit=max_limit,
     )
 
 
@@ -208,18 +243,49 @@ def list_da_riconsegnare(
     billing_account_id: int | None = None,
     data_da: date | None = None,
     data_al: date | None = None,
+    search: str | None = None,
     auth_user_id: int | None = None,
     limit: int,
     offset: int,
+    order_by: str = "data",
+    order_dir: str = "desc",
+    max_limit: int = 200,
 ) -> tuple[list[Any], int]:
     return ResiRepository().list_da_riconsegnare(
         billing_account_id=billing_account_id,
         data_da=data_da,
         data_al=data_al,
+        search=search,
         auth_user_id=auth_user_id,
         limit=limit,
         offset=offset,
+        order_by=order_by,
+        order_dir=order_dir,
+        max_limit=max_limit,
     )
+
+
+# Scopo: Etichette leggibili dei filtri applicati per il metadato del file
+#        export delle code (DEF-1). Variante ridotta di
+#        ddt_service.resolve_filtri_export_label: le code non hanno stato
+#        (auto-limitate a CONFERMATO dalla vista) ne' utility.
+def resolve_filtri_coda_export_label(
+    *,
+    search: str | None = None,
+    billing_account_id: int | None = None,
+    data_da: date | None = None,
+    data_al: date | None = None,
+) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    if search:
+        out["Ricerca"] = search
+    if billing_account_id is not None:
+        out["Cliente BA (id)"] = billing_account_id
+    if data_da is not None:
+        out["Dal"] = str(data_da)
+    if data_al is not None:
+        out["Al"] = str(data_al)
+    return out
 
 
 # ══════════════════════════════════════════════════════════

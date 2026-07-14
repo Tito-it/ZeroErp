@@ -173,7 +173,26 @@ colonna → click riga apre il reso. Su entrambe le code. Paginatore in alto (gi
 | # | Step | Stato |
 |---|---|---|
 | 0 | Paginatore code → top | ✅ (FE, fuori-brief) |
-| 1 | DB: 2 liste config (brief companion) | ☐ blocca 2-3 |
-| 2 | BE: sort/search code + 2 export + urls + test | ☐ |
-| 3 | FE: store coda + `ResiCodaTable`→`ListaConfigurabile` + export + i18n | ☐ |
-| 4 | Verifica in-app + review | ☐ |
+| 1 | DB: 2 liste config (brief companion) | ✅ applicato dev (`vendite.resi_da_accreditare`/`_riconsegnare`, id 10/11, 12 col.) |
+| 2 | BE: sort/search code + 2 export + urls + test | ✅ `_list_coda` order-whitelist+search+max_limit; 2 export view + label helper; 8/8 test export verdi + 54 suite resi; rotte risolvono; SQL reale ok su DB dev |
+| 3 | FE: store coda + `ResiCodaTable`→`ListaConfigurabile` + export + i18n | ✅ store factory `resiCoda.js` (2 store userScoped) + `ResiCodaTable` a `ListaConfigurabile` (dataKey `resi_riga_id`, slot qty/Tag/actions) + export blob + i18n IT/EN; build Vite + eslint verdi |
+| 4 | Verifica in-app + review | ◐ BE live (gunicorn HUP); giro con DATI (reso CONFERMATO con credito/ri-consegna pendente) da fare in-app |
+| 5 | Review blocco (5 findings, 2 applicati: #1 slot `#empty` in ListaConfigurabile, #4 asserzioni sort/search test lista) | ✅ |
+| 6 | Export lista resi principale abilitato (era rimandato): `ApiResiExport` + `/vendite/resi/export/` + max_limit + FE ExportDialog + 4 test | ✅ |
+| 7 | Doc API `api_resi.md` creata (prima assente) | ✅ |
+
+## 5. Note implementative
+
+- **Store factory** (`resi/stores/resiCoda.js`): due store da UNA factory domain-local
+  (non copia-incolla), interfaccia useSearchTable-compatibile. Semantica coda:
+  `alwaysFetch:true`, **nessun default `data_da`** (non nasconde l'arretrato pendente).
+- **Bug cap-200 export — SCOPERTO E FIXATO (audit esteso a tutti i domini)**:
+  gli export che passano `min(limit,200)` nel repo troncavano il file a 200 righe
+  in silenzio (il guard `total<=EXPORT_MAX_ROWS` usa la COUNT reale, non le righe
+  fetchate). `parse_list_params` cappa già la lista a 200, quindi il cap repo era
+  ridondante per la lista ma rompeva l'export.
+  - **Bacati (fixati)**: DDT, Ordini, Preventivi, Contratti — applicato lo stesso
+    pattern `max_limit` (default 200, export passa `EXPORT_MAX_ROWS+1`) su
+    repo+service+view + asserzione di regressione nei rispettivi test export.
+  - **Già corretti (nessun cap)**: Clienti, Fornitori, Soggetti, Offerte, Resi.
+  - Verifica: 63 test verdi (incluse le 4 nuove asserzioni `max_limit>200`).

@@ -220,6 +220,7 @@ class ApiPreventiviExportView(DomainAPIView):
             offset=0,
             order_by=qp_str(qp.get("order_by")) or "data",
             order_dir=qp_str(qp.get("order_dir")) or "desc",
+            max_limit=EXPORT_MAX_ROWS + 1,
         )
         filtri_applicati = preventivi_service.resolve_filtri_export_label(
             search=search,

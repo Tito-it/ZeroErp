@@ -108,10 +108,15 @@ class DdtRepository(
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
+        max_limit: int = 200,
     ) -> tuple[list[dict[str, Any]], int]:
         order_column = _ORDER_COLS_DDT.get(order_by, _ORDER_COLS_DDT["data"])
         direction = "DESC" if order_dir and order_dir.lower() == "desc" else "ASC"
-        safe_limit = max(1, min(int(limit), 200))
+        # `max_limit`: la lista pagina (cap 200, gia' imposto da
+        # parse_list_params), l'export chiede fino a EXPORT_MAX_ROWS+1 per
+        # intercettare l'overflow SENZA troncare in silenzio (il guard di
+        # build_export_response usa la COUNT reale).
+        safe_limit = max(1, min(int(limit), max_limit))
         safe_offset = max(0, int(offset))
 
         conditions: list[str] = []

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -28,8 +28,16 @@ from apps.core.api.payload_validators import (
     parse_list_params,
 )
 from apps.core.api.success_responses import success_response
+from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.api._list_filters_helpers import extract_doc_list_filters
 from apps.vendite.services import resi_service
+
+# Codici lista config (ui.lista_definizione) delle liste resi: guidano la
+# risoluzione colonne visibili/ordine/permessi dell'export (DEF-1).
+_LISTA_CODICE_RESI = "vendite.resi"
+_LISTA_CODICE_DA_ACCREDITARE = "vendite.resi_da_accreditare"
+_LISTA_CODICE_DA_RICONSEGNARE = "vendite.resi_da_riconsegnare"
 
 
 # Scopo: Estrae i filtri delle due code: gli stessi della lista (BB
@@ -92,6 +100,69 @@ class ApiResiList(DomainAPIView):
         return handle_post_json(request, handler=resi_service.crea_reso)
 
 
+class ApiResiExport(DomainAPIView):
+    """GET /api/v1/vendite/resi/export/?formato=csv|xlsx (DEF-1).
+
+    Export CSV/XLSX della lista resi. Filtri/sort identici al list; colonne
+    visibili/ordine/permessi dalla config lista `vendite.resi`. NB: parametro
+    `formato` (italiano), NON `format` (magic param DRF).
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="vendite_resi_export",
+        parameters=[
+            OpenApiParameter(name="formato", type=str, required=False,
+                             description="csv (default) | xlsx"),
+            OpenApiParameter(name="search", type=str, required=False),
+            OpenApiParameter(name="stato_codice_interno", type=str, required=False),
+            OpenApiParameter(name="billing_account_id", type=int, required=False),
+            OpenApiParameter(name="data_da", type=str, required=False),
+            OpenApiParameter(name="data_a", type=str, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: Export della lista resi. Fetcha fino a EXPORT_MAX_ROWS+1 (max_limit)
+    #        per intercettare l'overflow senza troncare in silenzio.
+    def get(self, request: Request) -> HttpResponse:
+        qp = request.query_params
+        fmt = parse_export_format(request)
+        p = parse_list_params(qp, default_order="data")
+        f = extract_doc_list_filters(qp)
+        results, total = resi_service.list_resi_rows(
+            search=p["search"],
+            auth_user_id=get_scope_user_id(request),
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            max_limit=EXPORT_MAX_ROWS + 1,
+            **f,
+        )
+        filtri_applicati = resi_service.resolve_filtri_export_label(
+            search=p["search"],
+            stato_codice=f["stato_codice"],
+            billing_account_id=f["billing_account_id"],
+            data_da=f["data_da"],
+            data_al=f["data_al"],
+        )
+        return build_export_response(
+            request,
+            lista_codice=_LISTA_CODICE_RESI,
+            results=results,
+            total=total,
+            filtri_applicati=filtri_applicati,
+            fmt=fmt,
+        )
+
+
 class ApiResiDaAccreditare(DomainAPIView):
     """GET /api/v1/vendite/resi/da-accreditare/ — coda righe reso CONFERMATE a
     credito (vista vw_resi_da_accreditare). Predisposizione slice nota di
@@ -103,11 +174,18 @@ class ApiResiDaAccreditare(DomainAPIView):
     @extend_schema(
         operation_id="vendite_resi_da_accreditare",
         parameters=[
+            OpenApiParameter(name="search", type=str, required=False),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False,
+                             description="campo_sorgente catalogo "
+                                         "'vendite.resi_da_accreditare' "
+                                         "(reso_numero | data | destinatario_denominazione | "
+                                         "descrizione | ddt_numero | qta_operativa | ...)."),
+            OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={200: inline_serializer(
             name="VenditeResiDaAccreditareResp",
@@ -119,12 +197,76 @@ class ApiResiDaAccreditare(DomainAPIView):
         qp = request.query_params
         p = parse_list_params(qp, default_order="data")
         results, total = resi_service.list_da_accreditare(
+            search=p["search"],
             auth_user_id=get_scope_user_id(request),
             limit=p["limit"],
             offset=p["offset"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
             **_extract_coda_filters(qp),
         )
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+
+
+class ApiResiDaAccreditareExport(DomainAPIView):
+    """GET /api/v1/vendite/resi/da-accreditare/export/?formato=csv|xlsx (DEF-1).
+
+    Export CSV/XLSX della coda "da accreditare". Filtri/sort identici al list;
+    colonne visibili/ordine/permessi dalla config lista `vendite.resi_da_accreditare`.
+    NB: parametro `formato` (italiano), NON `format` (magic param DRF).
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="vendite_resi_da_accreditare_export",
+        parameters=[
+            OpenApiParameter(name="formato", type=str, required=False,
+                             description="csv (default) | xlsx"),
+            OpenApiParameter(name="search", type=str, required=False),
+            OpenApiParameter(name="billing_account_id", type=int, required=False),
+            OpenApiParameter(name="data_da", type=str, required=False),
+            OpenApiParameter(name="data_a", type=str, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: Export della coda "da accreditare". Fetcha fino a EXPORT_MAX_ROWS+1
+    #        (max_limit) per intercettare l'overflow senza troncare in silenzio.
+    def get(self, request: Request) -> HttpResponse:
+        qp = request.query_params
+        fmt = parse_export_format(request)
+        p = parse_list_params(qp, default_order="data")
+        f = _extract_coda_filters(qp)
+        results, total = resi_service.list_da_accreditare(
+            search=p["search"],
+            auth_user_id=get_scope_user_id(request),
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            max_limit=EXPORT_MAX_ROWS + 1,
+            **f,
+        )
+        filtri_applicati = resi_service.resolve_filtri_coda_export_label(
+            search=p["search"],
+            billing_account_id=f["billing_account_id"],
+            data_da=f["data_da"],
+            data_al=f["data_al"],
+        )
+        return build_export_response(
+            request,
+            lista_codice=_LISTA_CODICE_DA_ACCREDITARE,
+            results=results,
+            total=total,
+            filtri_applicati=filtri_applicati,
+            fmt=fmt,
+        )
 
 
 class ApiResiDaRiconsegnare(DomainAPIView):
@@ -138,11 +280,19 @@ class ApiResiDaRiconsegnare(DomainAPIView):
     @extend_schema(
         operation_id="vendite_resi_da_riconsegnare",
         parameters=[
+            OpenApiParameter(name="search", type=str, required=False),
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False,
+                             description="campo_sorgente catalogo "
+                                         "'vendite.resi_da_riconsegnare' "
+                                         "(reso_numero | data | destinatario_denominazione | "
+                                         "descrizione | ddt_numero | qta_resa | "
+                                         "qta_riconsegnata | qta_residua | stato_riconsegna)."),
+            OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={200: inline_serializer(
             name="VenditeResiDaRiconsegnareResp",
@@ -154,12 +304,75 @@ class ApiResiDaRiconsegnare(DomainAPIView):
         qp = request.query_params
         p = parse_list_params(qp, default_order="data")
         results, total = resi_service.list_da_riconsegnare(
+            search=p["search"],
             auth_user_id=get_scope_user_id(request),
             limit=p["limit"],
             offset=p["offset"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
             **_extract_coda_filters(qp),
         )
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+
+
+class ApiResiDaRiconsegnareExport(DomainAPIView):
+    """GET /api/v1/vendite/resi/da-riconsegnare/export/?formato=csv|xlsx (DEF-1).
+
+    Export CSV/XLSX della coda "da ri-consegnare". Filtri/sort identici al list;
+    colonne visibili/ordine/permessi dalla config lista `vendite.resi_da_riconsegnare`.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="vendite_resi_da_riconsegnare_export",
+        parameters=[
+            OpenApiParameter(name="formato", type=str, required=False,
+                             description="csv (default) | xlsx"),
+            OpenApiParameter(name="search", type=str, required=False),
+            OpenApiParameter(name="billing_account_id", type=int, required=False),
+            OpenApiParameter(name="data_da", type=str, required=False),
+            OpenApiParameter(name="data_a", type=str, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: Export della coda "da ri-consegnare". Fetcha fino a EXPORT_MAX_ROWS+1
+    #        (max_limit) per intercettare l'overflow senza troncare in silenzio.
+    def get(self, request: Request) -> HttpResponse:
+        qp = request.query_params
+        fmt = parse_export_format(request)
+        p = parse_list_params(qp, default_order="data")
+        f = _extract_coda_filters(qp)
+        results, total = resi_service.list_da_riconsegnare(
+            search=p["search"],
+            auth_user_id=get_scope_user_id(request),
+            limit=EXPORT_MAX_ROWS + 1,
+            offset=0,
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            max_limit=EXPORT_MAX_ROWS + 1,
+            **f,
+        )
+        filtri_applicati = resi_service.resolve_filtri_coda_export_label(
+            search=p["search"],
+            billing_account_id=f["billing_account_id"],
+            data_da=f["data_da"],
+            data_al=f["data_al"],
+        )
+        return build_export_response(
+            request,
+            lista_codice=_LISTA_CODICE_DA_RICONSEGNARE,
+            results=results,
+            total=total,
+            filtri_applicati=filtri_applicati,
+            fmt=fmt,
+        )
 
 
 class ApiResoDetail(DomainAPIView):

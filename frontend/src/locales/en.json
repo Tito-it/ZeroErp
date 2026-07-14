@@ -1921,7 +1921,10 @@
       "crea_conferma": "Create a draft return with {righe} lines?",
       "reso_creato": "Draft return created: refine and confirm it from the Returns tab",
       "crea_qta_nulla": "No quantity to return in the selected lines",
-      "crea_nessuna_riga": "No line with returnable remainder"
+      "crea_nessuna_riga": "No line with returnable remainder",
+      "coda_apri_reso": "Open return",
+      "coda_search_accreditare": "Search (return no., recipient, item, DDT, account)",
+      "coda_search_riconsegnare": "Search (return no., recipient, item, DDT)"
     },
     "reso": {
       "azione_conferma": "Confirm return",
@@ -2308,6 +2311,28 @@
       "successione_validita_attuale": "Current validity",
       "successione_senza_fine": "no end date",
       "successione_effetto": "On confirmation, the existing contract will be closed on {data} and the new draft contract will be generated."
+    },
+    "resi_da_accreditare": {
+      "col_numero": "Number",
+      "col_data": "Date",
+      "col_destinatario": "Recipient",
+      "col_descrizione": "Item",
+      "col_ddt_origine": "Source DDT",
+      "col_qta_operativa": "Quantity",
+      "col_motivo": "Reason",
+      "col_ba_codice": "Account code",
+      "col_quantita": "Base quantity"
+    },
+    "resi_da_riconsegnare": {
+      "col_numero": "Number",
+      "col_data": "Date",
+      "col_destinatario": "Recipient",
+      "col_descrizione": "Item",
+      "col_ddt_origine": "Source DDT",
+      "col_qta_resa": "Returned qty",
+      "col_qta_riconsegnata": "Redelivered qty",
+      "col_qta_residua": "Remaining qty",
+      "col_stato_riconsegna": "Status"
     }
   },
   "listini": {

@@ -128,6 +128,7 @@ def list_ddt_rows(
     offset: int,
     order_by: str = "data",
     order_dir: str = "desc",
+    max_limit: int = 200,
 ) -> tuple[list[Any], int]:
     repo = DdtRepository()
     return repo.list_ddt(
@@ -142,6 +143,7 @@ def list_ddt_rows(
         offset=offset,
         order_by=order_by,
         order_dir=order_dir,
+        max_limit=max_limit,
     )
 
 
