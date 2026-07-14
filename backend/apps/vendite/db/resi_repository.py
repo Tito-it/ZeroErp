@@ -161,6 +161,22 @@ class ResiRepository:
     def get_capabilities(self, reso_id: int) -> dict[str, Any]:
         return call_jsonb_fn("script.fn_available_actions_reso", reso_id)
 
+    # Scopo: Lettura LEGGERA per i guard delle righe: stato corrente + id del
+    #        DDT di origine (via uid sorgente), senza materializzare la vista
+    #        lista con le decodifiche. None se il reso non esiste.
+    def get_stato_e_ddt_origine(self, reso_id: int) -> dict[str, Any] | None:
+        sql = """
+            SELECT sdr.codice_interno AS stato_codice_interno,
+                   d.id               AS ddt_origine_id
+              FROM vendite.resi r
+              JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id
+              LEFT JOIN vendite.ddt d ON d.uid = r.sorgente_uid
+             WHERE r.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [reso_id])
+            return row_to_dict(cursor)
+
     # Scopo: Stato corrente (codice_interno) del reso. Guard pre-operazione del
     #        service (es. righe modificabili solo in DRAFT).
     def get_stato_codice(self, reso_id: int) -> str | None:
@@ -469,10 +485,10 @@ class ResiRepository:
             assert result is not None
             return result
 
-    # Scopo: Aggiorna campi modificabili della testata reso (data/meta: il
-    #        resto e' ereditato dal DDT sorgente e immutabile — vedi
-    #        non_editable_fields della fn capabilities). Meta ::jsonb.
-    def update_reso(self, reso_id: int, **kwargs: Any) -> bool:
+    # Scopo: UPDATE dinamico condiviso testata/righe: costruisce SET dai
+    #        kwargs (dict -> ::jsonb, stringhe strip) e aggiorna per id.
+    #        `table` arriva SOLO dai due wrapper (statico, no input utente).
+    def _update_by_id(self, table: str, row_id: int, kwargs: dict[str, Any]) -> bool:
         fields: list[str] = []
         params: list[Any] = []
         for col, val in kwargs.items():
@@ -486,11 +502,17 @@ class ResiRepository:
                 params.append(val)
         if not fields:
             return False
-        params.append(reso_id)
-        sql = f"UPDATE vendite.resi SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
+        params.append(row_id)
+        sql = f"UPDATE {table} SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.rowcount > 0
+
+    # Scopo: Aggiorna campi modificabili della testata reso (data/meta: il
+    #        resto e' ereditato dal DDT sorgente e immutabile — vedi
+    #        non_editable_fields della fn capabilities). Meta ::jsonb.
+    def update_reso(self, reso_id: int, **kwargs: Any) -> bool:
+        return self._update_by_id("vendite.resi", reso_id, kwargs)
 
     # Scopo: Hard-delete reso (flusso abbandono bozza orfana). Guard di dominio
     #        (stato DRAFT, 0 righe) applicati nel service.
@@ -517,8 +539,9 @@ class ResiRepository:
 
     # Scopo: Inserisce una nuova riga reso. Lo snapshot articolo/descrizione/
     #        UoM/factor/ordine_riga_id arriva dal service (copiato dalla riga
-    #        DDT: il reso non inventa articoli). `quantita` (base) puo' essere
-    #        omessa se si passa `qta_operativa` (trigger qta_from_operativa).
+    #        DDT: il reso non inventa articoli). `quantita` (base) NON si
+    #        passa: la calcola SEMPRE il trigger `qta_from_operativa` da
+    #        `qta_operativa` (obbligatoria, E_QTA_MISSING se assente).
     def create_riga(
         self,
         *,
@@ -529,8 +552,7 @@ class ResiRepository:
         articolo_id: str,
         descrizione: str,
         tipo_reso_id: int,
-        quantita: str | None = None,
-        qta_operativa: str | None = None,
+        qta_operativa: str,
         uom_operativa_id: int | None = None,
         factor_to_base: str | None = None,
         motivo: str | None = None,
@@ -540,10 +562,10 @@ class ResiRepository:
             INSERT INTO vendite.resi_righe (
                 reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
                 articolo_id, descrizione, tipo_reso_id,
-                quantita, qta_operativa, uom_operativa_id, factor_to_base,
+                qta_operativa, uom_operativa_id, factor_to_base,
                 motivo, meta
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
             )
             RETURNING id
         """
@@ -551,7 +573,7 @@ class ResiRepository:
             cursor.execute(sql, [
                 reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
                 articolo_id, descrizione, tipo_reso_id,
-                quantita, qta_operativa, uom_operativa_id, factor_to_base,
+                qta_operativa, uom_operativa_id, factor_to_base,
                 motivo, json.dumps(meta or {}),
             ])
             result = row_to_dict(cursor)
@@ -560,24 +582,7 @@ class ResiRepository:
 
     # Scopo: Aggiorna una riga reso esistente (qta/tipo/motivo/meta). Meta ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(riga_id)
-        sql = f"UPDATE vendite.resi_righe SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        return self._update_by_id("vendite.resi_righe", riga_id, kwargs)
 
     # Scopo: Elimina una riga reso (HARD DELETE, solo con testata DRAFT — guard
     #        nel service; il ponte ri-consegna esiste solo post-conferma).
@@ -635,8 +640,9 @@ class ResiRepository:
     # ══════════════════════════════════════════════════════════
 
     # Scopo: DDT sorgente per la creazione reso: uid + stato corrente in una
-    #        lettura (guard applicativo "solo DDT CONSEGNATO" nel service — il
-    #        DB non ha un guard di stato sorgente sull'INSERT del reso).
+    #        lettura (guard applicativo parlante "solo DDT CONSEGNATO" nel
+    #        service; il trigger DB trgfn_resi_guard_ddt_consegnato e' la
+    #        fonte di verita' sull'INSERT).
     def get_ddt_sorgente(self, ddt_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT d.id,
@@ -652,10 +658,10 @@ class ResiRepository:
             return row_to_dict(cursor)
 
     # Scopo: Snapshot della riga DDT per la creazione riga reso: articolo/
-    #        descrizione/UoM/factor + `ordine_riga_id` dal fulfillment (NULL per
-    #        DDT standalone). Il service copia questi campi (il reso non inventa
-    #        articoli); LIMIT 1 sul fulfillment: una riga DDT da evasione ha un
-    #        solo aggancio riga-ordine.
+    #        descrizione/UoM/factor + `ordine_riga_id` dal fulfillment (NULL
+    #        per DDT standalone) + `fulfillment_count` (il modello resi assume
+    #        1:1 riga-DDT<->riga-ordine: il service rifiuta il caso teorico
+    #        1..n invece di attribuire il reso a una riga ordine arbitraria).
     def get_ddt_riga_snapshot(self, ddt_riga_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT
@@ -673,7 +679,12 @@ class ResiRepository:
                      WHERE f.ddt_riga_id = dr.id
                      ORDER BY f.id
                      LIMIT 1
-                ) AS ordine_riga_id
+                ) AS ordine_riga_id,
+                (
+                    SELECT COUNT(*)
+                      FROM vendite.ordini_righe_fulfillment f
+                     WHERE f.ddt_riga_id = dr.id
+                ) AS fulfillment_count
               FROM vendite.ddt_righe dr
              WHERE dr.id = %s
         """

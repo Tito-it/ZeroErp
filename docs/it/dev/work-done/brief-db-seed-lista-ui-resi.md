@@ -1,6 +1,10 @@
 # Brief DB — Seed lista UI `vendite.resi` (companion slice RESI)
 
 > **Tipo**: mini-brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-13 · **Owner**: Tid
+> **Stato**: ✅ REALIZZATO (2026-07-13 sera, commit `53a679900` PR #978) — seed applicato
+> come proposto (id 9 / colonne 149-160, inclusa `azioni`); verificato live sul DB dev.
+> Nello stesso commit il team DB ha chiuso anche il guard `trgfn_resi_guard_ddt_consegnato`
+> (E_RESO_DDT_NON_CONSEGNATO 542) e i pgTAP resi (riga T, §3).
 > **Contesto**: residuo della slice RESI ([brief-db-resi-vendita.md](brief-db-resi-vendita.md),
 > tracker §10 riga 31 — unico ☐ oltre a pgTAP). Sblocca la lista FE
 > (`<ListaConfigurabile codice="vendite.resi">`) del
@@ -74,6 +78,6 @@ Resta aperta la riga **T** del tracker slice RESI: **pgTAP** write-side/read-sid
 
 | # | Step | Stato |
 |---|---|---|
-| 1 | Append `lista_definizione.csv` (id 9) | ☐ |
-| 2 | Append `lista_colonna.csv` (149-160) | ☐ |
-| 3 | Apply + verifica runtime (`GET /api/v1/ui/liste/...` risolve `vendite.resi`) | ☐ |
+| 1 | Append `lista_definizione.csv` (id 9) | ✅ `53a679900` |
+| 2 | Append `lista_colonna.csv` (149-160) | ✅ `53a679900` |
+| 3 | Apply + verifica runtime | ✅ verificato live: `ui.lista_definizione` id 9 + 12 colonne |

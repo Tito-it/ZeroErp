@@ -7,6 +7,15 @@
 > ([[feedback_be_fe_attende_prerequisiti_db]]).
 > **Natura**: **additivo, sola lettura** — nessun cambio al modello dati dei
 > documenti (proiezione read-only, come i cruscotti fatturazione).
+>
+> **Aggiornamento nodo DDT (2026-07-13).** Alla stesura (09/07) il DDT era solo
+> *predisposto*. Dal 10/07 la **slice DDT evasione è live**: esiste ora un **arco
+> reale `Ordine → DDT`** (evasione ordine→DDT, multi-DDT). Va incluso alla
+> costruzione della vista. Sorgente dell'arco: `vendite.ddt.sorgente_tipo_id`
+> (= `ORDINE_VENDITA`) + `sorgente_uid` (= `ordini.uid`), indice
+> `ix_ddt_v_sorgente`. Resta *predisposto/non attivo* solo l'arco **uscente**
+> `DDT → Fattura differita` (la fattura differita da DDT non esiste ancora).
+> Recepito nella tabella §2 (riga DDT) e nella nota §4 «DDT predisposto».
 
 ---
 
@@ -34,7 +43,8 @@ Archi (tutti già ricostruibili dal modello, nessun dato nuovo):
 | E | Ordine → Commessa | 1:1 | `vendite.commesse_sorgenti` (sorgente 6=ORDINE_VENDITA) |
 | F | Contratto → Commessa | **1:N** | `vendite.commesse_sorgenti` (sorgente 4=CONTRATTO) |
 | G | Commessa → Att. fatturabili → Fattura | 1:N | `commesse_attivita`/`attivita_fatturabili`/`fatture` |
-| (P) | **DDT_VENDITA → …** | *predisposto* | slot pronto (sorgente 8), **non attivo** (fattura differita futura) |
+| H | **Ordine → DDT** | **1:N** | `vendite.ddt.sorgente_tipo_id='ORDINE_VENDITA'/sorgente_uid` — **LIVE dal 10/07** (evasione, multi-DDT) |
+| (P) | DDT → Fattura differita | *predisposto* | slot pronto (sorgente 8 come nodo), arco **uscente non attivo** (fattura differita da DDT futura) |
 
 Vocabolario tipi: `config.sorgenti` (2 PREVENTIVO, 6 ORDINE_VENDITA, 4 CONTRATTO,
 14 OFFERTA_COMMERCIALE, 13 COMMESSA, **8 DDT_VENDITA**). Chiave nodo consigliata:
@@ -93,9 +103,11 @@ timeline/albero.
 - **Fase normalizzata**: riusare `config.stati_doc_*.fase` — **stessa scala** della
   Situazione aperta (⚪APERTO/🔵IN_ATTESA/🟠IN_CORSO/🟢CHIUSO). Per commessa/attività
   mappare a una fase coerente.
-- **DDT predisposto** (G-4): includere `DDT_VENDITA` come tipo-nodo previsto ma
-  **senza archi attivi** finché la fattura differita non esiste (nessun errore se
-  0 DDT).
+- **DDT nodo con arco entrante attivo** (G-4, agg. 2026-07-13): includere
+  `DDT_VENDITA` come tipo-nodo **con l'arco reale `Ordine → DDT`** (evasione live
+  dal 10/07, riga H §2). Resta senza arco **uscente** finché la fattura differita
+  da DDT non esiste (nessun errore se 0 DDT). Un ordine può avere N DDT
+  (evasione parziale/multipla): l'arco è 1:N, come Contratto→Commessa.
 - **Scope emittente**: `security_invoker=on` sulle viste, come la famiglia
   `vw_dash_*` (RLS invoker; il BE non passa `auth_user_id`).
 

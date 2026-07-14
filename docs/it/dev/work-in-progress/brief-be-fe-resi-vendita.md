@@ -45,13 +45,17 @@ credito è slice successiva): righe = articolo/qta/tipo_reso/motivo.
 | `config.messaggi_errore` 530-541 | famiglia `E_RESO_*` + `E_STATO_RESO_TRANSIZIONE_NON_VALIDA` (§6) |
 | Seed `tipi_reso` / `stati_doc_reso` / `transizioni_stati_reso` + `sistema_codici 'reso'` | `RESO_A_CREDITO` (riapre_residuo=f) / `RESO_PER_RICONSEGNA` (t); stati `DRAFT/CONFERMATO/ANNULLATO` |
 
-### ⚠️ Residui DB (brief DB, tracker §10)
+### Residui DB — ✅ TUTTI CHIUSI (2026-07-13 sera, commit `53a679900` PR #978)
 
-1. **Seed lista UI `vendite.resi`** (`ui.lista_definizione` + `lista_colonna`, riga 31 — ☐ MAI
-   FATTO). **Blocca la lista FE** (`ListaConfigurabile codice="vendite.resi"`). → Brief DB
-   companion al team DB (mirror seed lista DDT id 8, colonne da `vw_resi_lista`, i18n
-   `vendite.resi.col_*`, `priorita` responsive). Il resto di BE/FE non dipende da questo.
-2. **pgTAP** (riga T — ☐): non blocca BE/FE.
+1. **Seed lista UI `vendite.resi`** — ✅ applicato come da
+   [brief companion](../work-done/brief-db-seed-lista-ui-resi.md): `lista_definizione`
+   id 9 + colonne 149-160 (inclusa `azioni`). Verificato live: lista 9 con 12 colonne.
+2. **pgTAP** (riga T) — ✅ `db/pgtap/vendite/test-resi-motore-v1.sql` +
+   `db/pgtap/rls/test-rls-resi-ef-whitelist-write.sql`.
+3. **Guard sorgente CONSEGNATO** (scostamento §18) — ✅ chiuso:
+   `trgfn_resi_guard_ddt_consegnato` (a10 INSERT, `E_RESO_DDT_NON_CONSEGNATO` 542,
+   registrato in error_policies). In più: `fn_genera_ddt_riconsegna` v2 ri-proietta
+   lo stato ordine dopo la ri-spedizione.
 
 ## 3. BE — Struttura file (clonare da DDT)
 
@@ -310,7 +314,7 @@ Mirror ridotto `DdtDrawer`:
 
 | # | Step | Stato |
 |---|---|---|
-| 1 | Brief DB seed lista UI resi | ✍️ brief scritto ([brief-db-seed-lista-ui-resi.md](brief-db-seed-lista-ui-resi.md)), attesa apply team DB |
+| 1 | Brief DB seed lista UI resi | ✅ applicato dal team DB (`53a679900`, [brief in work-done](../work-done/brief-db-seed-lista-ui-resi.md)) |
 | 2 | BE letture/CRUD (service+repo+view+policies+lookup) | ✅ 2026-07-13 |
 | 3 | BE azioni conferma/annulla/riconsegna + righe-per-reso | ✅ 2026-07-13 |
 | 4 | Test BE (service+api) | ✅ 41 test (27 service + 14 api); suite vendite 1137 verdi |
@@ -347,10 +351,11 @@ code funzionanti.
 - `core/db/dbops_repository.py` — whitelist lookup `config.stati_doc_reso` +
   `config.tipi_reso`.
 
-### ⚠️ Scostamento dal brief DB rilevato (segnalato a Tid)
-Il brief DB §3 prometteva un guard data-driven "sorgente solo DDT_VENDITA in
-CONSEGNATO", ma la slice DB realizzata NON lo include: `trgfn_resi_normalize`
-eredita e basta, nessun trigger verifica lo stato del DDT sorgente all'INSERT
-del reso. Enforcement oggi **solo BE** (`crea_reso` → `E_RESO_VALIDAZIONE`).
-Da valutare col team DB se aggiungere il guard trigger (difesa in profondità,
-scritture non-BE).
+### Scostamento dal brief DB — ✅ CHIUSO (2026-07-13 sera)
+
+Segnalato: mancava il guard DB "sorgente solo DDT in CONSEGNATO" (brief DB §3).
+Chiuso dal team DB con `trgfn_resi_guard_ddt_consegnato` (a10 INSERT,
+`E_RESO_DDT_NON_CONSEGNATO` 542) — commit `53a679900`. Recepito BE: policy 409
+registrata, commenti service/repo/test allineati (il guard applicativo di
+`crea_reso` resta come 4xx parlante pre-INSERT; il trigger è la fonte di
+verità). Verificato live: trigger attivo su `vendite.resi`.

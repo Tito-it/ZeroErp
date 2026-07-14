@@ -45,14 +45,13 @@ def _extract_list_filters(qp) -> dict[str, Any]:
     }
 
 
-# Scopo: Estrae i filtri delle due code (BA + data, senza stato: le viste si
-#        auto-limitano ai resi CONFERMATI pertinenti).
+# Scopo: Estrae i filtri delle due code: gli stessi della lista SENZA lo
+#        stato (le viste coda si auto-limitano ai resi CONFERMATI pertinenti).
+#        Derivato — non copiato — cosi' un filtro comune nuovo vale ovunque.
 def _extract_coda_filters(qp) -> dict[str, Any]:
-    return {
-        "billing_account_id": qp_int_optional(qp.get("billing_account_id"), "billing_account_id"),
-        "data_da": qp_iso_date_optional(qp.get("data_da"), "data_da"),
-        "data_al": qp_iso_date_optional(qp.get("data_a"), "data_a"),
-    }
+    filters = _extract_list_filters(qp)
+    filters.pop("stato_codice")
+    return filters
 
 
 class ApiResiList(DomainAPIView):
@@ -229,17 +228,18 @@ class ApiResoGeneraDdtRiconsegna(DomainAPIView):
     """POST /api/v1/vendite/resi/<reso_id>/genera-ddt-riconsegna/ — genera il
     DDT di ri-spedizione via fn madre `fn_genera_ddt_riconsegna`. Body:
     `{righe?: [{resi_riga_id, qta}], data?}` — `qta` in UNITA' BASE; righe
-    assente/null = tutta la copertura residua."""
+    assente/null = tutta la copertura residua. `righe` degeneri (non-lista,
+    lista vuota, elementi malformati) = 400, NON "ri-spedisci tutto":
+    validazione nel service (_parse_righe_riconsegna)."""
 
     area_funzionale = "vendite"
 
     # Scopo: Genera il DDT di ri-consegna (parziale/multiplo) dal reso.
     def post(self, request: Request, reso_id: int) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> dict[str, object]:
-            righe = payload.get("righe")
             return resi_service.genera_ddt_riconsegna(
                 int(reso_id),
-                righe if isinstance(righe, list) else None,
+                payload.get("righe"),
                 optional_iso_date(payload, "data"),
             )
 

@@ -2054,6 +2054,17 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Il reso e' gia' stato ri-spedito: non e' annullabile.",
         ),
+        # Guard DB sorgente reso (trgfn_resi_guard_ddt_consegnato, a10 INSERT):
+        # il reso richiede il DDT sorgente in CONSEGNATO. Il service ha il
+        # guard gemello parlante (crea_reso); questo copre le scritture non-BE.
+        "E_RESO_DDT_NON_CONSEGNATO": ErrorPolicy(
+            code="E_RESO_DDT_NON_CONSEGNATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il DDT sorgente non e' in stato CONSEGNATO: reso non ammesso."
+            ),
+        ),
         # Guard emittente<->BA sul reso (trgfn_resi_guard_emittente_ba, z10).
         "E_RESO_EMITTENTE_BA_INCOERENTE": ErrorPolicy(
             code="E_RESO_EMITTENTE_BA_INCOERENTE",

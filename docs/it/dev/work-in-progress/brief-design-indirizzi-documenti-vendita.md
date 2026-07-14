@@ -3,7 +3,7 @@
 > **Tipo**: design-of-record · **Data**: 2026-07-11 · **Owner**: Tid
 > **Stato**: 🟢 IN CORSO — DB ✅ + BE 5 domini ✅ + FE pilota DDT ✅ + review/hardening ✅ (2026-07-12).
 > Aperti: montaggio pannello sugli altri 4 drawer, PDF context builder, form una-tantum evoluto.
-> **Origine**: residuo "DdtIndirizziPanel" di [brief-fe-ddt-vendita.md](brief-fe-ddt-vendita.md) §10,
+> **Origine**: residuo "DdtIndirizziPanel" di [brief-fe-ddt-vendita.md](../work-done/brief-fe-ddt-vendita.md) §10,
 > allargato a building block generico per tutti i documenti vendita.
 > **Prerequisito bloccante**: [brief-db-indirizzi-documenti-simmetria-e-cascata.md](../work-done/brief-db-indirizzi-documenti-simmetria-e-cascata.md)
 > (team DB su `dev/db-tid`). BE/FE partono solo a DB consegnato.
