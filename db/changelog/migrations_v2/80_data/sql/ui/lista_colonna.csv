@@ -159,3 +159,27 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 158,9,emittente_fiscale_codice,Emittente,Ragione sociale dell emittente fiscale,emittente_fiscale_descrizione,informazione,string,,120,100,left,Emittente,6,t,t,t,f,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_emittente
 159,9,data_insert,Creazione,Data di inserimento del reso,data_insert,informazione,datetime,datetime_short,150,110,center,Audit,7,t,t,t,f,f,t,2026-07-13 00:00:00,mctit,vendite.resi.col_data_insert
 160,9,azioni,Azioni,,,azione,string,,60,999,center,,99,f,f,f,f,f,t,2026-07-13 00:00:00,mctit,common.col_azioni
+161,10,reso_numero,Numero,Numero del reso,reso_numero,identificatore,string,,130,10,left,Identificazione,1,t,t,t,t,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_accreditare.col_numero
+162,10,data,Data,Data del reso,data,informazione,date,date_short,110,20,center,Identificazione,1,t,t,t,f,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_accreditare.col_data
+163,10,destinatario_denominazione,Destinatario,Ragione sociale del destinatario,destinatario_denominazione,informazione,string,,200,30,left,Destinatario,2,t,t,t,t,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_accreditare.col_destinatario
+164,10,descrizione,Articolo,Descrizione della riga di reso,descrizione,informazione,string,,220,40,left,Riga,3,t,t,t,t,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_accreditare.col_descrizione
+165,10,ddt_numero,DDT origine,Numero del DDT di origine,ddt_numero,informazione,string,,130,50,left,Origine,4,t,t,t,t,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_accreditare.col_ddt_origine
+166,10,qta_operativa,Quantità,Quantità resa in unità operativa,qta_operativa,informazione,numeric,,110,60,right,Riga,3,f,t,t,f,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_accreditare.col_qta_operativa
+167,10,motivo,Motivo,Motivo del reso,motivo,informazione,string,,180,70,left,Riga,3,t,t,t,f,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_accreditare.col_motivo
+168,10,ba_codice,Cd. Account,Codice del billing account,ba_codice,informazione,string,,120,80,left,Destinatario,2,t,t,t,t,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_accreditare.col_ba_codice
+169,10,quantita,Quantità base,Quantità nella unità di misura base,quantita,informazione,numeric,,110,90,right,Riga,3,f,t,t,f,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_accreditare.col_quantita
+170,10,reso_id,,,reso_id,informazione,string,,,900,left,,98,f,f,f,f,f,t,2026-07-14 00:00:00,mctit,
+171,10,resi_riga_id,,,resi_riga_id,informazione,string,,,901,left,,98,f,f,f,f,f,t,2026-07-14 00:00:00,mctit,
+172,10,azioni,Azioni,,,azione,string,,60,999,center,,99,f,f,f,f,f,t,2026-07-14 00:00:00,mctit,common.col_azioni
+173,11,reso_numero,Numero,Numero del reso,reso_numero,identificatore,string,,130,10,left,Identificazione,1,t,t,t,t,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_riconsegnare.col_numero
+174,11,data,Data,Data del reso,data,informazione,date,date_short,110,20,center,Identificazione,1,t,t,t,f,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_riconsegnare.col_data
+175,11,destinatario_denominazione,Destinatario,Ragione sociale del destinatario,destinatario_denominazione,informazione,string,,200,30,left,Destinatario,2,t,t,t,t,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_riconsegnare.col_destinatario
+176,11,descrizione,Articolo,Descrizione della riga di reso,descrizione,informazione,string,,220,40,left,Riga,3,t,t,t,t,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_riconsegnare.col_descrizione
+177,11,ddt_numero,DDT origine,Numero del DDT di origine,ddt_numero,informazione,string,,130,50,left,Origine,4,t,t,t,t,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_riconsegnare.col_ddt_origine
+178,11,qta_resa,Q.tà resa,Quantità resa,qta_resa,informazione,numeric,,110,60,right,Ri-consegna,3,f,t,t,f,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_riconsegnare.col_qta_resa
+179,11,qta_riconsegnata,Q.tà ri-consegnata,Quantità già ri-consegnata,qta_riconsegnata,informazione,numeric,,130,70,right,Ri-consegna,3,f,t,t,f,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_riconsegnare.col_qta_riconsegnata
+180,11,qta_residua,Q.tà residua,Copertura residua da ri-consegnare,qta_residua,informazione,numeric,,110,80,right,Ri-consegna,3,f,t,t,f,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_riconsegnare.col_qta_residua
+181,11,stato_riconsegna,Stato,Stato ri-consegna (DA_RICONSEGNARE/PARZIALE/COMPLETATA),stato_riconsegna,informazione,string,,140,90,center,Ri-consegna,3,t,t,t,f,f,t,2026-07-14 00:00:00,mctit,vendite.resi_da_riconsegnare.col_stato_riconsegna
+182,11,reso_id,,,reso_id,informazione,string,,,900,left,,98,f,f,f,f,f,t,2026-07-14 00:00:00,mctit,
+183,11,resi_riga_id,,,resi_riga_id,informazione,string,,,901,left,,98,f,f,f,f,f,t,2026-07-14 00:00:00,mctit,
+184,11,azioni,Azioni,,,azione,string,,60,999,center,,99,f,f,f,f,f,t,2026-07-14 00:00:00,mctit,common.col_azioni
