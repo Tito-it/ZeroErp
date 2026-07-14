@@ -17,6 +17,7 @@ from django.db import connection
 
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
@@ -551,24 +552,7 @@ class PreventiviRepository(
         preventivo_id: int,
         **kwargs: Any,
     ) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(preventivo_id)
-        sql = f"UPDATE vendite.preventivi SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        return execute_dynamic_update("vendite.preventivi", preventivo_id, kwargs)
 
     # Scopo: Risolve l'id del preventivo agganciato come ROOT a una pratica
     #        (pratiche_sorgenti, sorgente PREVENTIVO). Unica fonte di verita' del
@@ -814,24 +798,7 @@ class PreventiviRepository(
     # Scopo: Aggiorna una riga preventivo esistente.
     # Campi jsonb (meta) vengono serializzati con json.dumps e cast ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(riga_id)
-        sql = f"UPDATE vendite.preventivi_righe SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        return execute_dynamic_update("vendite.preventivi_righe", riga_id, kwargs)
 
     # Scopo: Elimina una riga preventivo (HARD DELETE).
     # Pattern simmetrico a `contratti_repository.delete_riga`: l'eliminazione

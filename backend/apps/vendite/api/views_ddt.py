@@ -28,13 +28,11 @@ from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
     qp_bool,
-    qp_int_optional,
-    qp_iso_date_optional,
-    qp_str,
 )
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api._list_filters_helpers import extract_doc_list_filters
 from apps.vendite.api.indirizzi_documento_views import (
     build_indirizzi_documento_views,
 )
@@ -44,19 +42,6 @@ from apps.vendite.services import ddt_service
 # Codice lista (ui.lista_definizione) usato dall'export per risolvere
 # colonne visibili/ordine/permessi dell'utente.
 _LISTA_CODICE_DDT = "vendite.ddt"
-
-
-# Scopo: Estrae i filtri lista comuni dalla query string. NESSUN default
-#        temporale backend: il default `data_da` (anno-1) lo applica la UI
-#        (allineato a ordini/preventivi; evita non-determinismo `date.today()`).
-def _extract_list_filters(qp) -> dict[str, Any]:
-    return {
-        "stato_codice": qp_str(qp.get("stato_codice_interno")),
-        "billing_account_id": qp_int_optional(qp.get("billing_account_id"), "billing_account_id"),
-        "utility_id": qp_int_optional(qp.get("utility_id"), "utility_id"),
-        "data_da": qp_iso_date_optional(qp.get("data_da"), "data_da"),
-        "data_al": qp_iso_date_optional(qp.get("data_a"), "data_a"),
-    }
 
 
 class ApiDdtList(DomainAPIView):
@@ -93,7 +78,7 @@ class ApiDdtList(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp, default_order="data")
-        f = _extract_list_filters(qp)
+        f = extract_doc_list_filters(qp, with_utility=True)
         results, total = ddt_service.list_ddt_rows(
             search=p["search"],
             auth_user_id=get_scope_user_id(request),
@@ -145,7 +130,7 @@ class ApiDdtExportView(DomainAPIView):
         qp = request.query_params
         fmt = parse_export_format(request)
         p = parse_list_params(qp, default_order="data")
-        f = _extract_list_filters(qp)
+        f = extract_doc_list_filters(qp, with_utility=True)
         results, total = ddt_service.list_ddt_rows(
             search=p["search"],
             auth_user_id=get_scope_user_id(request),

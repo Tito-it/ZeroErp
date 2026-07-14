@@ -123,6 +123,41 @@ Nella creazione immediata (utility con `richiede_pdp = false`) non c'e fase prec
 
 **Perche e importante:** il sistema usa `istanza_utility_id` come differenziatore su indirizzi, conti bancari e contatti a livello ruolo (cascata istanza → generico ruolo → soggetto). In qualsiasi fase del ciclo di vita dell'istanza, la utility deve essere reperibile per la UI e per le funzioni di risoluzione. Se `istanze_dati_precontrattuali` non viene popolato nella fase precontrattuale, la utility resta ignota fino alla creazione del BA.
 
+### Istanza e billing account: relazione 1:1 per utility (invariante)
+
+> **Invariante fondamentale — da tenere a mente ogni volta che si ragiona su
+> "quale istanza usa un documento".** Per una data utility, **un'istanza ha un
+> solo billing account e un billing account ha una sola istanza**: la relazione
+> BA ↔ istanza e' **1:1**.
+
+Da cosa discende, a livello di modello:
+
+* `billing_account.istanza_utility_id` e' una **FK singola NOT NULL** → ogni BA
+  punta a **esattamente una** istanza.
+* `billing_account` ha `UNIQUE (istanza_utility_id, utility_id)`
+  (`uq_billing_instance_utility`) → per una data coppia (istanza, utility)
+  esiste **al massimo un** BA.
+* Sommato a "1 istanza = 1 utility" (i tre UNIQUE dei satelliti, sezione
+  Utility), il risultato e' che **dato il BA, l'istanza e' univoca**: non c'e'
+  nulla da "scegliere".
+
+**Conseguenza pratica (il punto che ricapita spesso).** Un BA **non** puo' avere
+piu' istanze sulla stessa utility, quindi un documento che ha gia' un
+billing_account **non deve** — e non puo' utilmente — "scegliere" o memorizzare
+una propria istanza: la ricava in modo univoco dal BA. Questo spiega
+l'asimmetria voluta fra i documenti di vendita:
+
+| Documenti | Hanno `istanza_utility_id` sulla testata? | Perche' |
+| --- | --- | --- |
+| **Precontrattuali** (preventivi, offerte, contratti) | **Si'** | L'istanza si **sceglie direttamente** (senza filtro utility, eventualmente **prima** che esista un BA): va congelata sul documento |
+| **Esecutivi** (ordini, DDT, fatture) | **No** | Hanno **sempre** un BA (obbligatorio) → l'istanza e' gia' univoca: si legge da `ba.istanza_utility_id`, non si duplica sulla testata |
+
+**Regola operativa**: se il documento ha (o richiede) un billing_account,
+l'istanza **viene dal BA** — non aggiungere colonne istanza a documenti
+BA-backed (duplicherebbero un dato gia' univoco, creando solo occasioni di
+disallineamento). Se invece il documento vive **prima** del BA
+(precontrattuale), l'istanza e' una scelta e va memorizzata sulla sua testata.
+
 ### PDP (opzionale)
 
 L'istanza puo essere collegata a un punto di prelievo gia esistente:

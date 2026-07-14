@@ -21,6 +21,7 @@ from django.db import connection
 
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
@@ -502,24 +503,7 @@ class OrdiniRepository(
     # Scopo: Aggiorna campi modificabili della testata ordine. Accetta None per
     #        azzerare campi nullable. Campi jsonb (meta) serializzati ::jsonb.
     def update_ordine(self, ordine_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(ordine_id)
-        sql = f"UPDATE vendite.ordini SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        return execute_dynamic_update("vendite.ordini", ordine_id, kwargs)
 
     # Scopo: Hard-delete ordine (flusso abbandono bozza). Guard di dominio
     #        (stato DRAFT, no DDT/fatture collegate) applicati nel service +
@@ -609,24 +593,7 @@ class OrdiniRepository(
 
     # Scopo: Aggiorna una riga ordine esistente. Campi jsonb (meta) ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(riga_id)
-        sql = f"UPDATE vendite.ordini_righe SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        return execute_dynamic_update("vendite.ordini_righe", riga_id, kwargs)
 
     # Scopo: Elimina una riga ordine (HARD DELETE). La FK
     #        ordini_righe_componenti.riga_ordine_id ha ON DELETE CASCADE.

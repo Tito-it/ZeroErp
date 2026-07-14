@@ -16,6 +16,7 @@ import { ref } from 'vue'
 
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { useListaEmptyStateFetch } from '../../../core/composables/useListaEmptyStateFetch'
+import { buildDocListParams, hasDocListActiveFilters } from '../../_shared/listaDocumenti'
 import { TAB_ENTITIES } from '../../../core/constants'
 import {
   cambiaStatoDdt,
@@ -60,27 +61,8 @@ export const useDdtStore = defineStore('vendite-ddt', () => {
   // la lista si popola al mount. Il DDT usa limit/offset (non page/page_size).
   const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
     filters,
-    hasActiveFilters: (f) => f.stato_codice_interno != null
-      || f.billing_account_id != null
-      || f.utility_id != null
-      || f.data_a != null
-      || f.data_da != null,
-    buildParams: (f, searchTerm) => {
-      const params = {}
-      if (searchTerm.length >= 3) params.search = searchTerm
-      if (f.stato_codice_interno != null) params.stato_codice_interno = f.stato_codice_interno
-      if (f.billing_account_id != null) params.billing_account_id = f.billing_account_id
-      if (f.utility_id != null) params.utility_id = f.utility_id
-      if (f.data_da) params.data_da = f.data_da
-      if (f.data_a) params.data_a = f.data_a
-      params.limit = f.limit || 25
-      params.offset = f.offset || 0
-      if (f.order_by) {
-        params.order_by = f.order_by
-        params.order_dir = f.order_dir || 'desc'
-      }
-      return params
-    },
+    hasActiveFilters: (f) => hasDocListActiveFilters(f, { withUtility: true }),
+    buildParams: (f, searchTerm) => buildDocListParams(f, searchTerm, { withUtility: true }),
     fetchPage: listDdt,
   })
 

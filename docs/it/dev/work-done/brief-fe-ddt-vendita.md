@@ -1,7 +1,7 @@
 # Brief FE — DDT vendita: lista, drawer, evasione da ordine (gemello ordini)
 
 > **Tipo**: brief frontend (target `dev/backend-tid`) · **Data**: 2026-07-09 · **Owner**: Tid
-> **Stato**: 🟡 APERTO — slice principale + PDF realizzati (§11–§12), ma **backlog residuo aperto** (§13): `DdtIndirizziPanel`, riepilogo IVA, export lista. Resta in `work-in-progress`.
+> **Stato**: ✅ **CHIUSO (2026-07-13)** — tutto lo scope del brief realizzato: slice principale + PDF (§11–§12), export lista, riepilogo IVA (`RiepilogoIvaTable`), sezione indirizzi (BB condiviso `DocumentoIndirizziSection`, non il `DdtIndirizziPanel` ipotizzato), uniformazione emittente (§13). Fuori scope (brief propri): **slice RESI** e **Lineage Fase 4**.
 > **Design-of-record**: [analisi-ddt-vendita-stato-e-sviluppi.md](analisi-ddt-vendita-stato-e-sviluppi.md)
 > · **Prerequisiti**: [brief DB](../work-done/brief-db-ddt-vendita-evasione-e-stati.md) + [brief BE](brief-be-ddt-vendita.md) applicati.
 > **Principio guida (D-4)**: **clonare `frontend/src/vendite/ordini/`** — il
@@ -222,24 +222,34 @@ Recepita la slice cross-dominio `pdf {mode, allow_allegati}`
 - **5 `constants.js`**: eliminate tutte le famiglie `STATI_*_{ANTEPRIMA_PDF, CON_DOCUMENTO,
   APPEND_ALLEGATI}` → nessuna mappa stato→PDF hardcoded residua in vendite.
 
-## 13. Ancora da fare (backlog aperto — brief NON chiuso)
+## 13. Backlog residuo — ✅ CHIUSO (2026-07-13)
 
-Aree dichiarate "predisposte/fuori scope" nelle slice precedenti (§4, §10–§11) ma **non
-realizzate**. Verificato nel codice 2026-07-11.
+Aree dichiarate "predisposte/fuori scope" nelle slice precedenti (§4, §10–§11) e realizzate nelle
+slice 12-13/07. Storicizzato qui per tracciabilità (verifica originaria del codice 2026-07-11).
 
-- **`DdtIndirizziPanel` (§4) — NON esiste** (nessun file). Sezione indirizzi
-  spedizione/destinatario/vettore con snapshot nel `DdtDrawer`. È il pezzo funzionale più
-  corposo rimasto. **Dipende da BE**: serve CRUD/lettura `ddt_indirizzi` (oggi assente).
-- **Riepilogo IVA (§4) — NON montato**: `RiepilogoIvaTable` non è nel `DdtDrawer`.
-  **Dipende da BE**: manca l'endpoint `GET /vendite/ddt/<id>/riepilogo-iva/` (non presente in
-  `urls_ddt.py`) e il metodo client. Il §4 lo dava predisposto ma non è realizzato né lato BE.
+- **Sezione indirizzi documento — ✅ REALIZZATA (slice indirizzi UX v2, 12-13/07)**: NON il
+  `DdtIndirizziPanel` ipotizzato in §4, ma il BB cross-dominio `DocumentoIndirizziSection`
+  (`_shared/indirizzi`) montato nel `DdtDrawer` (visibile a `hasDetail`, dopo l'auto-save bozza):
+  slot default CON + contatore "+N altri" + drawer di gestione. Auto-assegnazione default lato BE;
+  PDF DDT con blocco "Luogo di consegna". Stesso BB dei 4 drawer preventivi/ordini/offerte/contratti.
+- **Riepilogo IVA — ✅ MONTATO (slice riepilogo IVA)**: `RiepilogoIvaTable` nel `DdtDrawer`
+  (visibile con ≥1 riga valorizzata), caricato da `store.loadRiepilogoIva` →
+  `GET /vendite/ddt/<id>/riepilogo-iva/` (endpoint BE ora presente, brief BE §14). Componente
+  cross-dominio condiviso con preventivi/ordini.
 - **Export lista — ✅ REALIZZATO (2026-07-11)**: `exportDdt` in `ddtApi.js` + wiring
   `exportFn`/`getExportParams`/`buildExportParams` in `DdtSearchTable` (mirror ordini),
   `ExportDialog` montato, rimosso il filtro dell'azione `export` dalla toolbar. BE: endpoint
   `/vendite/ddt/export/` (`ApiDdtExportView`) + `resolve_filtri_export_label` (brief BE §14).
 
-> ⚠️ **Simmetria BE**: i due residui (riepilogo IVA, indirizzi) richiedono prima lavoro
-> **backend** → coordinare con [brief BE §14](brief-be-ddt-vendita.md).
-> Restano fuori scope (tracker §avanzamento): colonna "Emittente" in lista (seed
-> `ui.lista_colonna`) e **slice RESI**.
+### Consuntivo emittente (uniformazione 2026-07-13)
+
+`DdtForm` allineato a `OrdiniForm`: campo `EmittenteFiscaleField` non più `disabled` fisso — read-only
+auto per l'operatore (emittente del profilo, prefill `defaultEmittenteId` in `defaultForm`), Select per
+l'admin globale. L'emittente entra nel payload create (`buildTestataPayload includeBa`); in edit resta
+immutabile. L'etichetta mostrata è sempre la **ragione sociale del soggetto** (`emittente_fiscale_descrizione`
+dal detail/vista), mai il codice tecnico. Dettaglio:
+[work-done/brief-db-ddt-emittente-user-e-etichetta-soggetto.md](../work-done/brief-db-ddt-emittente-user-e-etichetta-soggetto.md).
+
+> Fuori scope residuo: **slice RESI** (brief `work-in-progress/brief-db-resi-vendita.md`, in corso
+> lato DB). Colonna "Emittente" in lista: ✅ seedata (opt-in) e ora mostra la ragione sociale.
 </content>

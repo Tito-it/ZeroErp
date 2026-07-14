@@ -1,7 +1,9 @@
 # Brief BE+FE — Slice RESI vendita (motore resi su DDT)
 
 > **Tipo**: brief backend + frontend (target `dev/backend-tid`) · **Data**: 2026-07-13 · **Owner**: Tid
-> **Stato**: 🔴 DA INIZIARE
+> **Stato**: 🟡 BE ✅ (2026-07-13, committato `5176eb608` + review 8-finder con 9 fix e 3 BB
+> estratti, non committati) · FE ✅ (2026-07-14, non committato) — resta SOLO lo step 9:
+> smoke E2E + validazione in-app (tracker §17; consuntivi §18 BE / §19 FE)
 > **Design-of-record**: [brief-db-resi-vendita.md](brief-db-resi-vendita.md) (decisioni §0/§9, handoff BE §11)
 > · **Prerequisito DB**: slice DB **applicata e committata** (`54ff31598`, merge PR #976) — gate BE aperto.
 > **Principio guida**: **clonare il dominio DDT** (`ddt_service`/`DdtRepository`/`views_ddt` +
@@ -45,13 +47,17 @@ credito è slice successiva): righe = articolo/qta/tipo_reso/motivo.
 | `config.messaggi_errore` 530-541 | famiglia `E_RESO_*` + `E_STATO_RESO_TRANSIZIONE_NON_VALIDA` (§6) |
 | Seed `tipi_reso` / `stati_doc_reso` / `transizioni_stati_reso` + `sistema_codici 'reso'` | `RESO_A_CREDITO` (riapre_residuo=f) / `RESO_PER_RICONSEGNA` (t); stati `DRAFT/CONFERMATO/ANNULLATO` |
 
-### ⚠️ Residui DB (brief DB, tracker §10)
+### Residui DB — ✅ TUTTI CHIUSI (2026-07-13 sera, commit `53a679900` PR #978)
 
-1. **Seed lista UI `vendite.resi`** (`ui.lista_definizione` + `lista_colonna`, riga 31 — ☐ MAI
-   FATTO). **Blocca la lista FE** (`ListaConfigurabile codice="vendite.resi"`). → Brief DB
-   companion al team DB (mirror seed lista DDT id 8, colonne da `vw_resi_lista`, i18n
-   `vendite.resi.col_*`, `priorita` responsive). Il resto di BE/FE non dipende da questo.
-2. **pgTAP** (riga T — ☐): non blocca BE/FE.
+1. **Seed lista UI `vendite.resi`** — ✅ applicato come da
+   [brief companion](../work-done/brief-db-seed-lista-ui-resi.md): `lista_definizione`
+   id 9 + colonne 149-160 (inclusa `azioni`). Verificato live: lista 9 con 12 colonne.
+2. **pgTAP** (riga T) — ✅ `db/pgtap/vendite/test-resi-motore-v1.sql` +
+   `db/pgtap/rls/test-rls-resi-ef-whitelist-write.sql`.
+3. **Guard sorgente CONSEGNATO** (scostamento §18) — ✅ chiuso:
+   `trgfn_resi_guard_ddt_consegnato` (a10 INSERT, `E_RESO_DDT_NON_CONSEGNATO` 542,
+   registrato in error_policies). In più: `fn_genera_ddt_riconsegna` v2 ri-proietta
+   lo stato ordine dopo la ri-spedizione.
 
 ## 3. BE — Struttura file (clonare da DDT)
 
@@ -310,23 +316,104 @@ Mirror ridotto `DdtDrawer`:
 
 | # | Step | Stato |
 |---|---|---|
-| 1 | Brief DB seed lista UI resi | ✍️ brief scritto ([brief-db-seed-lista-ui-resi.md](brief-db-seed-lista-ui-resi.md)), attesa apply team DB |
+| 1 | Brief DB seed lista UI resi | ✅ applicato dal team DB (`53a679900`, [brief in work-done](../work-done/brief-db-seed-lista-ui-resi.md)) |
 | 2 | BE letture/CRUD (service+repo+view+policies+lookup) | ✅ 2026-07-13 |
 | 3 | BE azioni conferma/annulla/riconsegna + righe-per-reso | ✅ 2026-07-13 |
 | 4 | Test BE (service+api) | ✅ 41 test (27 service + 14 api); suite vendite 1137 verdi |
-| 5 | FE core + lista + code | ☐ |
-| 6 | FE ResoDrawer + righe | ☐ |
-| 7 | FE ResoDaDdtPanel (drawer DDT) + cleanup case `reso` | ☐ |
-| 8 | FE ResoRiconsegnaPanel | ☐ |
+| 5 | FE core + lista + code | ✅ 2026-07-14 |
+| 6 | FE ResoDrawer + righe | ✅ 2026-07-14 |
+| 7 | FE DdtResoPanel (drawer DDT; nessun case `reso` morto da ripulire: il dispatch DDT era già generico) | ✅ 2026-07-14 |
+| 8 | FE ResoRiconsegnaPanel | ✅ 2026-07-14 |
 | 9 | Smoke E2E + validazione in-app | ☐ (serve un giro ordine→DDT→CONSEGNATO: nessun DDT CONSEGNATO nei dati dev) |
+
+## 19. Consuntivo FE (2026-07-14) — ✅ REALIZZATO (non committato)
+
+Dominio FE resi completo su `dev/backend-tid`. **Build Vite verde** (warning
+chunk-size pre-esistente), **eslint pulito**.
+
+### File creati — `frontend/src/vendite/resi/`
+
+`views/ResiView.vue` (3 tab: lista + coda accrediti + coda ri-consegne, host
+`ResoDrawer`), `stores/resi.js` (userScoped, `data_da` anno-1,
+`useListaEmptyStateFetch`; azioni `conferma`/`annulla`/`generaRiconsegna` con
+notifica cross-tab DDT/ordini), `api/resiApi.js`, `constants.js`
+(`STATO_RESO`/`STATO_RICONSEGNA`/`TIPO_RESO`), `components/`:
+`ResiSearchTable` (ListaConfigurabile `vendite.resi`, senza New/Export),
+`ResiCodaTable` (2 varianti sulle viste-coda BE), `ResoDrawer` (edit-only,
+azioni data-driven → endpoint dedicati), `ResoForm` (testata quasi tutta
+display: ereditata dal DDT), `ResoRigheTable`+`ResoRigaForm` (master-detail su
+BB; create con Select righe DDT rendibili + residuo hint), `ResoRiconsegnaPanel`
+(clone evasione: selezione + qta BASE, "tutto" → righe null race-proof).
+
+### File creati/modificati — dominio DDT
+
+`components/DdtResoPanel.vue` (nuovo, clone `OrdineEvasionePanel`: consegnata/
+già-resa/residuo per riga + qta OPERATIVA + tipo reso + motivo → `POST
+/vendite/resi/` con righe in transazione); `DdtDrawer.vue` (montaggio pannello
+su stato CONSEGNATO — il pannello È il percorso, l'azione manuale «Reso» non
+arriva più dalla matrice).
+
+### Core modificati
+
+`navigation.js` (voce `resi`, `NAV_ICONS.RESI`), `router/index.js` (rotta
+`vendite/resi`), `core/constants.js` (`TAB_ENTITIES.RESO`,
+`READONLY_MODELS.RESO`), `core/utils/severity.js` (`statoResoSeverity` +
+`statoRiconsegnaSeverity`), `core/config-tables.js` (`config.stati_doc_reso`
++ `config.tipi_reso`), `locales/it.json`+`en.json` (blocco `vendite.resi.*`
+~85 chiavi + `vendite.reso.azione_*` — namespace delle label della matrice
+DB — + `nav_menu.vendite.resi`).
+
+### BB riusati (nessuna duplicazione)
+
+`ListaConfigurabile`, `useListaConfigurabilePage` (azioni new/export filtrate),
+`useStoreFilterBindings`, `useListaEmptyStateFetch`, `RigheMasterDetailTable`,
+`useEntityCapabilities`, `mapAvailableActionsToDrawerActions`,
+`DrawerActionsBar`/`DrawerEntityHeader`/`DrawerTitle`/`FormFooter`,
+`useDrawerContentReady`/`useDrawerClose`/`useDrawerDetailLoad`,
+`EmittenteFiscaleField`, `LookupSelect`, `useGlobalLookup` (tipi reso),
+`useTabFreshness`, `useConfirmAction` (destructured, `onAccept`).
+
+### Review critica FE (2026-07-14) — 9 fix applicati
+
+Bug BLOCCANTI (2): `DdtResoPanel` e `ResoRiconsegnaPanel` erano montati dentro
+`.app-readonly` (lock-di-stato CONSEGNATO/CONFERMATO → `pointer-events:none`):
+pannelli visibili ma inerti — impossibile creare un reso o ri-spedire dalla UI.
+Fix: wrapper `app-escape` (mirror pannello evasione ordini). Altri fix:
+dispatch azioni con mappa esplicita (un'azione futura della matrice NON
+degrada più su `annulla` silenzioso; chiave ignota → warn), fallback
+`tipoDefaultId` (fail-soft su rename seed), `Tabs lazy` (via 2 fetch inutili
+al mount), `Promise.all` lookup+righe, empty-state onesto (`loaded`) nella
+coda, etichette "(base)" sulle colonne ri-consegna (asimmetria unità
+esplicitata), rimossi ref morto + 4 chiavi i18n orfane. Verificato: copertura
+i18n completa, colonna `azioni` senza slot gestita dal BB. Build+lint verdi.
+**Estrazioni regola-del-2 COMPLETATE (2026-07-14, ok Tid)**: BB
+`useRigheSelezioneQta` (vendite/_shared/righe) adottato dai 3 pannelli
+selezione-righe-quantità (OrdineEvasionePanel riscritto incluso); BB
+`buildDocListParams`/`hasDocListActiveFilters` (vendite/_shared/listaDocumenti)
+adottato dagli store ordini/ddt/resi; `ResiCodaTable` migrata su
+`usePagedDashFetch` (guard anti-race + `loaded` dal BB, adapter
+page→limit/offset — nessuna estensione del BB necessaria; metodi coda rimossi
+dallo store). Catalogo BB FE aggiornato. Build+lint verdi.
 
 ## 18. Consuntivo BE (2026-07-13) — ✅ REALIZZATO (non committato)
 
-Slice BE completa sul working tree `dev/backend-tid` (commit di Tid).
-`manage.py check` pulito; **41 test resi verdi** + suite `apps.vendite.tests`
-completa **1137 verdi** (no regressioni DDT/ordini). Letture repository
-validate LIVE sul DB (shell + GUC operatore): sorgente/stati risolti, lista e
-code funzionanti.
+Slice BE completa (committata in `5176eb608`, PR #979) + **review critica
+8-finder con 9 fix applicati** (2026-07-13 sera, non committati): validazione
+`righe` ri-consegna (body degenere ≠ "ri-spedisci tutto"), `qta_operativa`
+obbligatoria (il trigger DB calcola sempre la base dall'operativa),
+guard fulfillment multipli (modello 1:1 difeso con errore parlante), parse
+ISO di `data`, codice guard CONSEGNATO allineato al trigger, stato
+conferma/annullo riletto dal DB (non hardcoded), N+1 riga_nr eliminato,
+lettura leggera in gestisci_riga, dedup interni (`_update_by_id`,
+`PayloadValidator`). **3 BB estratti** (ok Tid, catalogo aggiornato):
+`translate_db_errors`/`make_db_errors_translator` (core payload_helpers —
+unifica i 5 `_db_errors` di resi/ddt/ordini/offerte/indirizzi);
+`execute_dynamic_update` (core sql_write_helpers — unifica 8+ builder UPDATE
+di ddt/ordini/preventivi/resi/componenti/email, e assorbe il vecchio
+`dynamic_update` di _helpers come delegatore `skip_none=True`);
+`extract_doc_list_filters` (vendite/api/_list_filters_helpers — unifica gli
+`_extract_list_filters` di ordini/ddt/resi). `manage.py check` pulito;
+**suite backend COMPLETA 3083 test verdi**. Letture validate LIVE sul DB.
 
 ### File creati
 - `db/resi_repository.py` — letture `vw_resi_lista`/code, scritture
@@ -347,10 +434,11 @@ code funzionanti.
 - `core/db/dbops_repository.py` — whitelist lookup `config.stati_doc_reso` +
   `config.tipi_reso`.
 
-### ⚠️ Scostamento dal brief DB rilevato (segnalato a Tid)
-Il brief DB §3 prometteva un guard data-driven "sorgente solo DDT_VENDITA in
-CONSEGNATO", ma la slice DB realizzata NON lo include: `trgfn_resi_normalize`
-eredita e basta, nessun trigger verifica lo stato del DDT sorgente all'INSERT
-del reso. Enforcement oggi **solo BE** (`crea_reso` → `E_RESO_VALIDAZIONE`).
-Da valutare col team DB se aggiungere il guard trigger (difesa in profondità,
-scritture non-BE).
+### Scostamento dal brief DB — ✅ CHIUSO (2026-07-13 sera)
+
+Segnalato: mancava il guard DB "sorgente solo DDT in CONSEGNATO" (brief DB §3).
+Chiuso dal team DB con `trgfn_resi_guard_ddt_consegnato` (a10 INSERT,
+`E_RESO_DDT_NON_CONSEGNATO` 542) — commit `53a679900`. Recepito BE: policy 409
+registrata, commenti service/repo/test allineati (il guard applicativo di
+`crea_reso` resta come 4xx parlante pre-INSERT; il trigger è la fonte di
+verità). Verificato live: trigger attivo su `vendite.resi`.

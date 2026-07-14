@@ -23,6 +23,7 @@ from django.db import connection
 
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
@@ -454,24 +455,7 @@ class DdtRepository(
     # Scopo: Aggiorna campi modificabili della testata DDT. Accetta None per
     #        azzerare campi nullable. Campi jsonb (meta) serializzati ::jsonb.
     def update_ddt(self, ddt_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(ddt_id)
-        sql = f"UPDATE vendite.ddt SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        return execute_dynamic_update("vendite.ddt", ddt_id, kwargs)
 
     # Scopo: Hard-delete DDT (flusso abbandono bozza). Guard di dominio (stato
     #        DRAFT, no righe/fulfillment collegati) applicati nel service +
@@ -557,24 +541,7 @@ class DdtRepository(
 
     # Scopo: Aggiorna una riga DDT esistente. Campi jsonb (meta) ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(riga_id)
-        sql = f"UPDATE vendite.ddt_righe SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        return execute_dynamic_update("vendite.ddt_righe", riga_id, kwargs)
 
     # Scopo: Elimina una riga DDT (HARD DELETE). La FK
     #        ddt_righe_componenti.riga_ddt_id ha ON DELETE CASCADE. Il trigger DB

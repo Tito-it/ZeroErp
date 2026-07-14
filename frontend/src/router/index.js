@@ -341,6 +341,12 @@ const router = createRouter({
           meta: { domain: 'vendite', menuKey: 'ddt' }
         },
         {
+          path: 'vendite/resi',
+          name: 'vendite-resi',
+          component: () => import('../vendite/resi/views/ResiView.vue'),
+          meta: { domain: 'vendite', menuKey: 'resi' }
+        },
+        {
           path: 'vendite/listini',
           name: 'vendite-listini',
           component: () => import('../vendite/views/ListiniView.vue'),

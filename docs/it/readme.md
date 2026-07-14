@@ -9,7 +9,7 @@ L'obiettivo e` ridurre la complessita` superflua mantenendo rigore su dati, rego
 
 ## Stato progetto
 
-> **Sviluppo attivo — DB, backend e frontend operativi sui domini core, anagrafiche, catalogo, vendite (preventivi, offerte, contratti, ordini), pratiche e documenti. Non ancora rilasciato per produzione.**
+> **Sviluppo attivo — DB, backend e frontend operativi sui domini core, anagrafiche, catalogo, vendite (preventivi, offerte, contratti, ordini, DDT), pratiche e documenti. Non ancora rilasciato per produzione.**
 >
 > La fotografia dettagliata, lo stato per componente e la roadmap sono mantenuti in
 > un'unica fonte: la [Mappa Concentrica](./mappa-concentrica.md) (stato per anello +
@@ -145,7 +145,7 @@ datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
 - **Database core**: operativo (14 schemi, 200+ tabelle, trigger/funzioni/viste, `daterange` nativo + PG18)
 - **API backend**: operativo sui domini core, anagrafiche, catalogo, vendite e pratiche
 - **Motore pratiche**: operativo e **validato dal primo consumatore reale** (pratica PREVENTIVI)
-- **Vendite**: preventivi, offerte commerciali, contratti (modello unificato) e ordini sviluppati DB+BE+FE
+- **Vendite**: preventivi, offerte commerciali, contratti (modello unificato), ordini e DDT (documento di trasporto: evasione ordine→DDT, stampa PDF, indirizzi documento UX v2) sviluppati DB+BE+FE
 - **Permessi**: operativi a 2 livelli (area funzionale + azioni di processo)
 - **Autenticazione**: completa (JWT, email, token monouso, reset/invito/cambio pw); RLS operatori attiva
 - **Frontend Vue**: operativo sui domini core, anagrafiche, catalogo, vendite, pratiche, documenti

@@ -125,6 +125,8 @@ async function onChanged() {
       :istanza-utility-id="istanzaUtilityId"
       :tipo-ruolo-codice="tipoRuoloCodice"
       :readonly="isReadonlyEffective"
+      :tipi-ammessi="tipiAmmessi"
+      :indirizzi="indirizzi"
       @changed="onChanged" />
   </div>
 </template>

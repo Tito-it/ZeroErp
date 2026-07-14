@@ -14,7 +14,7 @@
 //        Righe fonte=soggetto: nessuna riga in `anagrafiche.indirizzi` →
 //        impostate come snapshot dai dati mostrati (origine_* assente).
 
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
@@ -42,6 +42,12 @@ const props = defineProps({
   // Tipo ruolo per la matrice tipi dell'"aggiungi indirizzo" anagrafico.
   tipoRuoloCodice: { type: String, default: TIPO_RUOLO.CLIENTE },
   readonly: { type: Boolean, default: false },
+  // Stato documento posseduto dalla SEZIONE contenitrice (single source):
+  // tipi ammessi + slot impostati. Passati per props → il drawer NON rifetcha
+  // (era la doppia GET sezione+drawer). Dopo un save/remove il drawer emette
+  // `changed`: la sezione rifetcha e ripassa i props aggiornati.
+  tipiAmmessi: { type: Array, default: () => [] },
+  indirizzi: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['update:visible', 'changed'])
 
@@ -55,27 +61,15 @@ const isReadonlyEffective = computed(() => props.readonly || parentReadonly.valu
 
 const apiClient = makeIndirizziDocumentoApi(`/vendite/${props.dominio}`)
 
-// ── Stato documento: tipi ammessi + slot impostati ──
-const tipiAmmessi = ref([])
-const indirizziDoc = ref([])
-
-async function loadDoc() {
-  if (!props.docId || !props.visible) return
-  const res = await execute(() => apiClient.list(props.docId))
-  tipiAmmessi.value = res?.tipi_ammessi ?? []
-  indirizziDoc.value = res?.indirizzi ?? []
-}
-
-watch([() => props.docId, () => props.visible], loadDoc, { immediate: true })
-
-// Tipo di default: regola condivisa sezione/drawer (pickTipoDefault).
-const tipoDefault = computed(() => pickTipoDefault(tipiAmmessi.value))
+// Tipo di default: regola condivisa sezione/drawer (pickTipoDefault). Legge
+// dai props (stato posseduto dalla sezione), non da una fetch locale.
+const tipoDefault = computed(() => pickTipoDefault(props.tipiAmmessi))
 
 async function saveSlot(payload) {
   const res = await execute(() => apiClient.upsert(props.docId, payload))
   if (res !== null) {
     notify.success(t('vendite.indirizzi.salvato'))
-    await loadDoc()
+    // Refresh via parent: `changed` → la sezione rifetcha e ripassa i props.
     emit('changed')
   }
   return res !== null
@@ -89,7 +83,7 @@ const rigaSelezionata = ref(null)
 function onSelect(riga) {
   if (!tipoDefault.value) return
   rigaSelezionata.value = riga
-  if (tipiAmmessi.value.length > 1) {
+  if (props.tipiAmmessi.length > 1) {
     // Piu' tipi ammessi: scelta "usa come" con default preselezionato.
     usaComeTipoId.value = tipoDefault.value.tipo_indirizzo_id
     usaComeVisible.value = true
@@ -144,7 +138,7 @@ function openLibero() {
   // soggetto" (origine_soggetto_ruolo_id valorizzato) restano fuori —
   // prefillarle e risalvare senza origine le riclassificherebbe
   // silenziosamente in una-tantum perdendo la provenienza anagrafica.
-  const row = indirizziDoc.value.find(
+  const row = props.indirizzi.find(
     (r) => r.tipo_indirizzo_id === tipoDefault.value.tipo_indirizzo_id
       && !r.origine_indirizzo_id && !r.origine_soggetto_ruolo_id)
   const s = row?.snapshot ?? {}
@@ -179,7 +173,7 @@ function removeSlot(row) {
       const res = await execute(() => apiClient.remove(props.docId, row.id))
       if (res !== null) {
         notify.success(t('vendite.indirizzi.rimosso'))
-        await loadDoc()
+        // Refresh via parent (come saveSlot): niente GET locale.
         emit('changed')
       }
     },
@@ -197,21 +191,20 @@ function removeSlot(row) {
     :tipo-ruolo-codice="tipoRuoloCodice"
     selectable
     :select-tooltip="t('vendite.indirizzi.usa_questo')"
-    @saved="loadDoc"
     @select="onSelect">
     <!-- Riepilogo: indirizzi GIA' impostati su questo documento. -->
     <template #pre-list>
       <div class="app-drawer-section indirizzi-doc-summary">
         <h4>{{ t('vendite.indirizzi.impostati_titolo') }}</h4>
         <Message
-          v-if="!indirizziDoc.length"
+          v-if="!indirizzi.length"
           :severity="tipoDefault?.obbligatorio ? 'warn' : 'info'"
           :closable="false">
           {{ tipoDefault?.obbligatorio
             ? t('vendite.indirizzi.mancante_obbligatorio')
             : t('vendite.indirizzi.non_impostato') }}
         </Message>
-        <div v-for="row in indirizziDoc" :key="row.id" class="indirizzi-doc-row">
+        <div v-for="row in indirizzi" :key="row.id" class="indirizzi-doc-row">
           <Tag :value="row.tipo_indirizzo_descrizione" severity="info" />
           <span class="indirizzi-doc-display">{{ formatSnapshotDisplay(row) }}</span>
           <!-- Provenienza: BB condiviso con la sezione inline. -->

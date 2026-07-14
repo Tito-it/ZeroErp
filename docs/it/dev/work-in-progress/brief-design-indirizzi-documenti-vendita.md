@@ -3,7 +3,7 @@
 > **Tipo**: design-of-record · **Data**: 2026-07-11 · **Owner**: Tid
 > **Stato**: 🟢 IN CORSO — DB ✅ + BE 5 domini ✅ + FE pilota DDT ✅ + review/hardening ✅ (2026-07-12).
 > Aperti: montaggio pannello sugli altri 4 drawer, PDF context builder, form una-tantum evoluto.
-> **Origine**: residuo "DdtIndirizziPanel" di [brief-fe-ddt-vendita.md](brief-fe-ddt-vendita.md) §10,
+> **Origine**: residuo "DdtIndirizziPanel" di [brief-fe-ddt-vendita.md](../work-done/brief-fe-ddt-vendita.md) §10,
 > allargato a building block generico per tutti i documenti vendita.
 > **Prerequisito bloccante**: [brief-db-indirizzi-documenti-simmetria-e-cascata.md](../work-done/brief-db-indirizzi-documenti-simmetria-e-cascata.md)
 > (team DB su `dev/db-tid`). BE/FE partono solo a DB consegnato.
@@ -233,7 +233,47 @@ Fasi FE:
   (origine_soggetto_ruolo_id); (8) `pickTipoDefault` +
   `IndirizzoProvenienzaTags` condivisi sezione/drawer; (9) `_CONSEGNA_KEYS`
   derivata da `SNAPSHOT_KEYS_ORDERED` (fonte unica); (10) clone
-  `coerce_jsonb_dict` di pratiche migrato al BB core. Rimandati (annotati):
-  doppia GET sezione/drawer (refactor ownership fetch), registry
-  auto-assegnazione per-dominio, semantica istanza BA-vs-documento su
-  ordini/DDT (servirebbe colonna DB).
+  `coerce_jsonb_dict` di pratiche migrato al BB core.
+
+- **F12 — smaltimento rimandati F11 (2026-07-13)**:
+  1. **Doppia GET sezione/drawer — ✅ RISOLTA.** `DocumentoIndirizziDrawer`
+     non fa più la sua `GET /indirizzi/`: lo stato (`tipiAmmessi` +
+     `indirizzi`) è posseduto dalla `DocumentoIndirizziSection` (single
+     source), passato per props; dopo save/remove il drawer emette `changed`
+     e la sezione rifetcha una volta e ripassa i props. Prima: 2 GET
+     all'apertura + 2 GET per ogni modifica → ora 1 e 1. Fix nel BB condiviso
+     `_shared/indirizzi` → vale per tutti e 5 i domini. Comportamento
+     invariato, build Vite verde.
+  2. **Registry auto-assegnazione per-dominio — ⛔ SCARTATO (astrazione
+     prematura).** Motivo: i test service dei 5 domini fanno
+     `@patch("apps.vendite.services.<dominio>_service.<Repo>")` e la
+     `IndirizziDocumentoConfig` usa apposta `repo_factory=lambda: <Repo>()`
+     per risolvere il nome **nel namespace del service** e restare
+     patchabile. Un registry centrale sposterebbe la risoluzione in un altro
+     modulo → i `@patch` non intercetterebbero più il ramo auto-assegnazione
+     (copertura persa su tutti e 5 i domini) e servirebbe riscrivere i target
+     di patch in 5 file di test. Il dispatch generico cross-dominio che il
+     registry abiliterebbe **non ha oggi alcun consumer**. Costo/rischio alti,
+     valore nullo nel presente: il codice attuale (BB estratto + config
+     per-dominio locale + wrapper sottili, ognuno usa correttamente la propria
+     config) è già la forma corretta. **Non ripescare senza un consumer reale
+     del dispatch per-dominio.**
+  3. **Semantica istanza BA-vs-documento su ordini/DDT — ✅ CHIUSO: non
+     necessario (asimmetria by-design, verificato 2026-07-14).** Il rimandato
+     nasceva da un equivoco (ipotizzava un BA con più istanze fra cui il
+     documento sceglie). Il modello vivo lo esclude: `billing_account`
+     ha **una sola** istanza — `istanza_utility_id` è FK singola NOT NULL con
+     `UNIQUE (istanza_utility_id, utility_id)` (`uq_billing_instance_utility`).
+     Quindi **un'istanza è unica per (billing_account, utility)**. Ordini e DDT
+     hanno **sempre** un BA (obbligatorio in create) → la loro istanza è
+     univocamente quella del BA: nessuna colonna sulla testata, la si legge da
+     `ba.istanza_utility_id` (detail ordini/DDT). L'asimmetria con
+     preventivi/offerte/contratti — che **hanno** `istanza_utility_id` sulla
+     testata — è voluta: nei **precontrattuali** l'istanza si sceglie
+     direttamente (senza filtro utility, eventualmente prima che esista un BA),
+     quindi va memorizzata; negli **esecutivi** (ordini/DDT) è già determinata
+     dal BA. Aggiungere la colonna a ordini/DDT duplicherebbe un dato già
+     univoco → si sarebbe introdotto un disallineamento potenziale, non una
+     feature. Invariante documentata in
+     [gestione-delle-istanze-utility](../../guide/gestione-delle-istanze-utility.md)
+     e [generazione-cliente](../../guide/generazione-cliente.md).

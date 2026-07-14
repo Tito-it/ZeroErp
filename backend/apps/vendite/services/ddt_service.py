@@ -26,17 +26,14 @@
 # richiesto alla creazione (deriva il destinatario e ancora il fallback).
 
 import logging
-import re
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.db import DatabaseError, IntegrityError, transaction
+from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.payload_helpers import map_integrity_error
+from apps.core.services.payload_helpers import make_db_errors_translator
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.ddt_repository import DdtRepository
 from apps.vendite.services._componenti_service_helpers import (
@@ -61,7 +58,6 @@ logger = logging.getLogger(__name__)
 E_VENDITE_VALIDATION = "E_VENDITE_VALIDATION"
 E_VENDITE_DUPLICATO = "E_VENDITE_DUPLICATO"
 E_VENDITE_FK = "E_VENDITE_FK"
-_DB_ERROR_CODE_RE = re.compile(r"\b(E_[A-Z][A-Z0-9_]+)\b")
 
 # Mappe vincolo DB -> (codice, messaggio) per map_integrity_error (frammento
 # nome vincolo). Minime: i casi non mappati cadono su E_VENDITE_VALIDATION.
@@ -795,36 +791,18 @@ def push_a_commessa(ddt_id: int, *, user: str | None = None) -> dict[str, Any]:
 #  Helper privati
 # ══════════════════════════════════════════════════════════
 
-# Scopo: Context manager per normalizzare errori DB in ServiceError parlanti.
-#        Gemello _db_errors di ordini_service: IntegrityError (unique/fk) via
-#        map_integrity_error + mappe vincolo; DatabaseError (trigger P0001) via
-#        estrazione regex del codice E_* dal MESSAGE del RAISE, cosi' il FE puo'
-#        fare routing UI specifico. Fallback E_VENDITE_VALIDATION.
-@contextmanager
-def _db_errors(op: str) -> Iterator[None]:
-    context = {"op": f"{_FN}.{op}"}
-    try:
-        yield
-    except IntegrityError as exc:
-        map_integrity_error(
-            exc,
-            unique_constraints=_UNIQUE_CONSTRAINTS,
-            fk_constraints=_FK_CONSTRAINTS,
-            fallback_code=E_VENDITE_VALIDATION,
-            fallback_message="Violazione vincolo DB su DDT.",
-            context=context,
-        )
-    except DatabaseError as exc:
-        exc_text = str(exc)
-        match = _DB_ERROR_CODE_RE.search(exc_text)
-        code = match.group(1) if match else E_VENDITE_VALIDATION
-        ErrorManager.raise_error(
-            code=code,
-            message=exc_text.split("\n", maxsplit=1)[0].strip()
-            or "Violazione vincolo DB su DDT.",
-            detail=exc_text,
-            context=context,
-        )
+# Traduzione errori DB -> ServiceError parlanti via BB condiviso
+# `make_db_errors_translator` (core payload_helpers, estratto 2026-07-13 —
+# regola del 2 alla 5a copia): IntegrityError con le mappe vincolo del
+# dominio; DatabaseError (trigger P0001) con estrazione del codice E_* per
+# il routing UI del FE.
+_db_errors = make_db_errors_translator(
+    fn_prefix=_FN,
+    fallback_code=E_VENDITE_VALIDATION,
+    fallback_message="Violazione vincolo DB su DDT.",
+    unique_constraints=_UNIQUE_CONSTRAINTS,
+    fk_constraints=_FK_CONSTRAINTS,
+)
 
 
 # Scopo: Carica la testata DDT o solleva E_DDT_NOT_FOUND (guard condiviso).
