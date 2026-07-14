@@ -63,7 +63,7 @@ onMounted(fetch)
         v-tooltip.bottom="t('common.reload_list')" @click="fetch" />
     </div>
 
-    <DataTable :value="items" lazy paginator
+    <DataTable :value="items" lazy paginator paginator-position="top"
       :rows="pageSize" :total-records="count" :first="(page - 1) * pageSize"
       :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
       :loading="loading" striped-rows size="small" class="app-datatable"

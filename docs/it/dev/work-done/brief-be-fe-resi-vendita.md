@@ -1,9 +1,10 @@
 # Brief BE+FE — Slice RESI vendita (motore resi su DDT)
 
 > **Tipo**: brief backend + frontend (target `dev/backend-tid`) · **Data**: 2026-07-13 · **Owner**: Tid
-> **Stato**: 🟡 BE ✅ (2026-07-13, committato `5176eb608` + review 8-finder con 9 fix e 3 BB
-> estratti, non committati) · FE ✅ (2026-07-14, non committato) — resta SOLO lo step 9:
-> smoke E2E + validazione in-app (tracker §17; consuntivi §18 BE / §19 FE)
+> **Stato**: ✅ **COMPLETO** (2026-07-14) — BE ✅ (`5176eb608` + review 8-finder 9 fix e 3 BB) ·
+> FE ✅ (+ review FE 9 fix, 2 bloccanti app-escape, e 3 BB) · smoke E2E ✅ (47/47 verde,
+> §20). Resta solo la validazione in-app via browser (build Vite verde). Tracker §17;
+> consuntivi §18 BE / §19 FE / §20 smoke.
 > **Design-of-record**: [brief-db-resi-vendita.md](brief-db-resi-vendita.md) (decisioni §0/§9, handoff BE §11)
 > · **Prerequisito DB**: slice DB **applicata e committata** (`54ff31598`, merge PR #976) — gate BE aperto.
 > **Principio guida**: **clonare il dominio DDT** (`ddt_service`/`DdtRepository`/`views_ddt` +
@@ -50,7 +51,7 @@ credito è slice successiva): righe = articolo/qta/tipo_reso/motivo.
 ### Residui DB — ✅ TUTTI CHIUSI (2026-07-13 sera, commit `53a679900` PR #978)
 
 1. **Seed lista UI `vendite.resi`** — ✅ applicato come da
-   [brief companion](../work-done/brief-db-seed-lista-ui-resi.md): `lista_definizione`
+   [brief companion](brief-db-seed-lista-ui-resi.md): `lista_definizione`
    id 9 + colonne 149-160 (inclusa `azioni`). Verificato live: lista 9 con 12 colonne.
 2. **pgTAP** (riga T) — ✅ `db/pgtap/vendite/test-resi-motore-v1.sql` +
    `db/pgtap/rls/test-rls-resi-ef-whitelist-write.sql`.
@@ -316,7 +317,7 @@ Mirror ridotto `DdtDrawer`:
 
 | # | Step | Stato |
 |---|---|---|
-| 1 | Brief DB seed lista UI resi | ✅ applicato dal team DB (`53a679900`, [brief in work-done](../work-done/brief-db-seed-lista-ui-resi.md)) |
+| 1 | Brief DB seed lista UI resi | ✅ applicato dal team DB (`53a679900`, [brief in work-done](brief-db-seed-lista-ui-resi.md)) |
 | 2 | BE letture/CRUD (service+repo+view+policies+lookup) | ✅ 2026-07-13 |
 | 3 | BE azioni conferma/annulla/riconsegna + righe-per-reso | ✅ 2026-07-13 |
 | 4 | Test BE (service+api) | ✅ 41 test (27 service + 14 api); suite vendite 1137 verdi |
@@ -324,7 +325,7 @@ Mirror ridotto `DdtDrawer`:
 | 6 | FE ResoDrawer + righe | ✅ 2026-07-14 |
 | 7 | FE DdtResoPanel (drawer DDT; nessun case `reso` morto da ripulire: il dispatch DDT era già generico) | ✅ 2026-07-14 |
 | 8 | FE ResoRiconsegnaPanel | ✅ 2026-07-14 |
-| 9 | Smoke E2E + validazione in-app | ☐ (serve un giro ordine→DDT→CONSEGNATO: nessun DDT CONSEGNATO nei dati dev) |
+| 9 | Smoke E2E + validazione in-app | ✅ smoke E2E 2026-07-14 (47/47 verde, §20). Resta la validazione in-app via browser (build Vite verde) |
 
 ## 19. Consuntivo FE (2026-07-14) — ✅ REALIZZATO (non committato)
 
@@ -442,3 +443,46 @@ Chiuso dal team DB con `trgfn_resi_guard_ddt_consegnato` (a10 INSERT,
 registrata, commenti service/repo/test allineati (il guard applicativo di
 `crea_reso` resta come 4xx parlante pre-INSERT; il trigger è la fonte di
 verità). Verificato live: trigger attivo su `vendite.resi`.
+
+## 20. Consuntivo smoke E2E (2026-07-14) — ✅ 47/47 VERDE
+
+Smoke E2E `backend/scripts/tests/smoke-test-resi-vendita.sh` (idempotente per
+costruzione: ogni run crea documenti nuovi, nessuna collisione) eseguito **due
+volte** contro DB+API reali su `dev/backend-tid`: **47 OK, 0 FAIL, 0 SKIP**.
+Chiude lo step 9 lato macchina; resta solo la validazione visiva in-app.
+
+**Auth**: lo script accetta `TOKEN` da env **oppure** password (`arg1` /
+`SMOKE_PASSWORD`, login `admin/token/` standard). In assenza di password il
+token JWT completo si minta via Django shell (serve il claim `identita_id`
+multi-face + veste `OPERATORE`, altrimenti 401 `JwtSenzaIdentita`):
+`RefreshToken.for_user` + `sid` + `identita_id`/`ruolo_applicativo` risolti da
+`AuthRepository.find_identita_attiva_for_ruoli`.
+
+**Copertura** (§9):
+
+- **A) ordine→DDT→CONSEGNATO** — crea ordine (`fatturazione_trigger=CONSEGNATO`),
+  righe, conferma, `genera-ddt` (evasione con fulfillment), poi
+  `DRAFT→EMESSO→SPEDITO→CONSEGNATO` via `cambia-stato` (la macchina a stati DDT
+  ammette EMESSO da DRAFT: `emetti()` è `cambia_stato(id,"EMESSO")`; numero DDT
+  assegnato dal trigger a EMESSO). **Produce il DDT CONSEGNATO che nei dati dev
+  non esisteva** e rivalida l'evasione ordine→DDT (pannello riscritto sul BB).
+- **B) reso misto + conferma + code** — reso da DDT con 1 riga a credito
+  (`tipo_reso_id=1`) + 1 per ri-consegna (`tipo_reso_id=2`); DRAFT
+  (`can_edit_righe=true`, 2 righe) → conferma → CONFERMATO con numero. Verificati
+  live: **ordine riaperto → PARZIALMENTE_EVASO**, coda `da-accreditare` con la
+  riga a credito, coda `da-riconsegnare` con `stato_riconsegna=DA_RICONSEGNARE`.
+- **C) ri-consegna + guard annullo** — ri-consegna parziale (qta **base**) →
+  `PARZIALE`; ri-consegna residua (`righe:null`=tutta la copertura) → coda
+  **auto-svuotata** (COMPLETATA); annullo del reso già ri-spedito → **409
+  `E_RESO_ANNULLO_CON_RICONSEGNE`**.
+- **D) reso totale → flip + storno** — reso totale a credito su altro DDT →
+  **flip DDT→RESO**; annullo → reso ANNULLATO + **storno flip DDT→CONSEGNATO**.
+
+**Bonus verificati live**: matrice azioni data-driven del reso CONFERMATO
+(`available_actions` = solo `annulla`, `label_key: vendite.reso.azione_annulla`
+— namespace i18n corretto), `non_editable_fields` popolato, `can_edit_righe`
+true solo in DRAFT.
+
+**Residui dev** (accettati): il giro lascia artefatti reali (ordini
+PARZIALMENTE_EVASO, DDT di ri-consegna DRAFT, reso misto CONFERMATO). Il reso
+con ri-consegne **non è annullabile per design** → teardown best-effort.

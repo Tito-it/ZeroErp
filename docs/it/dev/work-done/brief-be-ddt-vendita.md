@@ -1,7 +1,7 @@
 # Brief BE — DDT vendita: service, repository, endpoint (gemello ordini)
 
 > **Tipo**: brief backend (target `dev/backend-tid`) · **Data**: 2026-07-09 · **Owner**: Tid
-> **Stato**: ✅ **CHIUSO (2026-07-13)** — tutto lo scope del brief realizzato: slice principale + PDF (§12–§13), export lista, endpoint riepilogo-iva, CRUD `ddt_indirizzi`, uniformazione emittente (§14). Fuori scope (brief propri): **slice RESI** (`work-in-progress/brief-db-resi-vendita.md`) e **Lineage Fase 4** (`work-in-progress/brief-db-lineage-documenti-vendite.md` + tracker `analisi-ddt §6`).
+> **Stato**: ✅ **CHIUSO (2026-07-13)** — tutto lo scope del brief realizzato: slice principale + PDF (§12–§13), export lista, endpoint riepilogo-iva, CRUD `ddt_indirizzi`, uniformazione emittente (§14). Fuori scope (brief propri): **slice RESI** (`work-done/brief-db-resi-vendita.md`) e **Lineage Fase 4** (`work-in-progress/brief-db-lineage-documenti-vendite.md` + tracker `analisi-ddt §6`).
 > **Design-of-record**: [analisi-ddt-vendita-stato-e-sviluppi.md](analisi-ddt-vendita-stato-e-sviluppi.md)
 > · **Prerequisito DB**: [brief-db-ddt-vendita-evasione-e-stati.md](../work-done/brief-db-ddt-vendita-evasione-e-stati.md)
 > **Gate**: parte a oggetti DB applicati ([[feedback_be_fe_attende_prerequisiti_db]]).
@@ -332,6 +332,6 @@ codici `E_*_EMITTENTE_BA_INCOERENTE` registrati in `error_policies.py`. Dettagli
 [work-done/brief-db-ddt-emittente-user-e-etichetta-soggetto.md](../work-done/brief-db-ddt-emittente-user-e-etichetta-soggetto.md)
 (CHIUSO).
 
-> Fuori scope residuo: **slice RESI** (brief `work-in-progress/brief-db-resi-vendita.md`, in corso
+> Fuori scope residuo: **slice RESI** (brief `work-done/brief-db-resi-vendita.md`, in corso
 > lato DB). Colonna "Emittente" in lista: ✅ seedata (opt-in) e ora bind alla ragione sociale.
 </content>

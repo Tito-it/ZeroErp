@@ -317,14 +317,17 @@ class ApiDdtRigaPreviewComponenti(DomainAPIView):
     # Scopo: Preview read-only dei componenti BoM (nessuna persistenza: il gate
     #        L1 sugli override e' applicato al salvataggio riga).
     def post(self, request: Request, ddt_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            righe = ddt_service.preview_componenti_riga(
+        # Ritorna la LISTA nuda dei componenti (contratto condiviso col
+        # ComponentiDialog FE: `response.data.data` = array). NON avvolgere in
+        # {"componenti": ...} — il dialog fa `for...of` sull'array (mirror
+        # contratti/preventivi).
+        def _handler(payload: dict[str, Any]) -> list[dict[str, Any]]:
+            return ddt_service.preview_componenti_riga(
                 int(ddt_id),
                 articolo_id=str(payload.get("articolo_id")),
                 uom_operativa_id=payload.get("uom_operativa_id"),
                 quantita=payload.get("quantita"),
             )
-            return {"componenti": righe}
 
         return handle_post_json(request, handler=_handler)
 

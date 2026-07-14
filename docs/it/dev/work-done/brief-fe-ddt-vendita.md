@@ -250,6 +250,6 @@ immutabile. L'etichetta mostrata è sempre la **ragione sociale del soggetto** (
 dal detail/vista), mai il codice tecnico. Dettaglio:
 [work-done/brief-db-ddt-emittente-user-e-etichetta-soggetto.md](../work-done/brief-db-ddt-emittente-user-e-etichetta-soggetto.md).
 
-> Fuori scope residuo: **slice RESI** (brief `work-in-progress/brief-db-resi-vendita.md`, in corso
+> Fuori scope residuo: **slice RESI** (brief `work-done/brief-db-resi-vendita.md`, in corso
 > lato DB). Colonna "Emittente" in lista: ✅ seedata (opt-in) e ora mostra la ragione sociale.
 </content>
