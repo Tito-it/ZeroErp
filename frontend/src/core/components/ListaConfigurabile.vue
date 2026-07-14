@@ -449,6 +449,13 @@ defineExpose({
         </template>
       </Column>
 
+      <!-- Empty-state opzionale del caller: passthrough dello slot `#empty` di
+           PrimeVue. Registrato SOLO quando il caller lo fornisce, cosi' le
+           liste che non lo passano mantengono il default PrimeVue invariato. -->
+      <template v-if="$slots.empty" #empty>
+        <slot name="empty" />
+      </template>
+
       <!-- Riga di espansione con le colonne ritirate dinamicamente. Riusa gli
            slot custom `cell-{codice}` del caller (es. Tag stato), cosi' la
            resa e' identica a quella a video. -->

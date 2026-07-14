@@ -95,6 +95,7 @@ def list_preventivi_rows(
     offset: int,
     order_by: str = "data",
     order_dir: str = "desc",
+    max_limit: int = 200,
 ) -> tuple[list[Any], int]:
     repo = PreventiviRepository()
     return repo.list_preventivi(
@@ -110,6 +111,7 @@ def list_preventivi_rows(
         offset=offset,
         order_by=order_by,
         order_dir=order_dir,
+        max_limit=max_limit,
     )
 
 

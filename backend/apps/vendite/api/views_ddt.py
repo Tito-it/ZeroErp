@@ -138,6 +138,7 @@ class ApiDdtExportView(DomainAPIView):
             offset=0,
             order_by=p["order_by"],
             order_dir=p["order_dir"],
+            max_limit=EXPORT_MAX_ROWS + 1,
             **f,
         )
         filtri_applicati = ddt_service.resolve_filtri_export_label(

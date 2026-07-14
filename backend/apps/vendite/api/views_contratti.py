@@ -162,6 +162,7 @@ class ApiContrattiExportView(DomainAPIView):
             offset=0,
             order_by=p["order_by"],
             order_dir=p["order_dir"],
+            max_limit=EXPORT_MAX_ROWS + 1,
         )
         filtri_applicati = svc.resolve_filtri_export_label(
             search=p["search"],

@@ -311,10 +311,13 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         offset: int = 0,
         order_by: str = "data",
         order_dir: str = "desc",
+        max_limit: int = 200,
     ) -> tuple[list[dict[str, Any]], int]:
         order_column = _ORDER_COLS_CONTRATTI.get(order_by, _ORDER_COLS_CONTRATTI["data"])
         direction = "DESC" if order_dir and order_dir.lower() == "desc" else "ASC"
-        safe_limit = max(1, min(int(limit), 200))
+        # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
+        # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
+        safe_limit = max(1, min(int(limit), max_limit))
         safe_offset = max(0, int(offset))
 
         conditions: list[str] = []

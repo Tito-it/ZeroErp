@@ -1,8 +1,10 @@
 # Brief DB — Liste configurabili per le due code resi (da accreditare / da ri-consegnare)
 
 > **Tipo**: mini-brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-14 · **Owner**: Tid
-> **Stato**: 🟡 SEED SCRITTO (2026-07-14) — righe appese ai 2 CSV `ui` (liste id 10/11,
-> colonne 161-184); **apply sul DB dev + comunicazione `codice` a BE/FE ancora da fare** (§5).
+> **Stato**: ✅ CHIUSO (2026-07-15) — seed applicato al DB dev (verificato:
+> `ui.lista_definizione` contiene `vendite.resi_da_accreditare`/`_riconsegnare` con 12
+> colonne ciascuna); `codice` comunicati e consumati da BE/FE
+> ([brief-be-fe-resi-code-configurabili.md](../work-done/brief-be-fe-resi-code-configurabili.md)).
 > **Contesto**: le tab "da accreditare" e "da ri-consegnare" della vista Resi
 > ([ResiView](../../../../frontend/src/vendite/resi/views/ResiView.vue)) oggi sono
 > `DataTable` raw a colonne fisse: non hanno personalizzazione colonne né export, a
@@ -160,4 +162,4 @@ Le colonne nascoste `reso_id`/`resi_riga_id`: `filtrabile/ordinabile/esportabile
 |---|---|---|
 | 1 | Lista config coda "da accreditare" (sorgente `vw_resi_da_accreditare`) | ✅ CSV: def id 10 + colonne 161-172 |
 | 2 | Lista config coda "da ri-consegnare" (sorgente `vw_resi_da_riconsegnare`) | ✅ CSV: def id 11 + colonne 173-184 |
-| 3 | Apply + comunicazione `codice` lista al BE/FE | ☐ apply loader `ui` sul DB dev (Tid) + verifica runtime |
+| 3 | Apply + comunicazione `codice` lista al BE/FE | ✅ loader `ui` applicato sul DB dev, verificato runtime (config risolve); BE/FE consumano i `codice` |

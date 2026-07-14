@@ -107,3 +107,8 @@ class TestPreventiviExportApi(JwtMockedApiTest):
         self.assertIn("text/csv", resp["Content-Type"])
         self.assertIn("preventivi.csv", resp["Content-Disposition"])
         self.assertEqual(resp.content, b"numero\nPRV0001\n")
+        # Regressione bug cap-200: l'export deve alzare il cap oltre 200
+        # (max_limit), altrimenti il file uscirebbe troncato in silenzio.
+        self.assertGreater(
+            mock_svc.list_preventivi_rows.call_args.kwargs["max_limit"], 200,
+        )

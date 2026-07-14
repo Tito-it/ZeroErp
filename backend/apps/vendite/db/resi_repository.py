@@ -43,6 +43,51 @@ _ORDER_COLS_RESI: dict[str, str] = {
     "data_insert": "v.data_insert",
 }
 
+# Scopo: Config ORDER BY + search per le due code (viste dedicate), indicizzata
+#        per nome vista. `order_cols`: whitelist SQL-safe sortField -> colonna
+#        reale (le chiavi sono i `campo_sorgente` `ordinabile=t` del catalogo
+#        liste `vendite.resi_da_accreditare` / `..._riconsegnare`, id 10/11).
+#        `search_cols`: colonne `ricercabile_full=t` per la search ILIKE. Le due
+#        code hanno colonne diverse (accreditare espone motivo/qta_operativa/
+#        ba_codice; riconsegnare la copertura resa/riconsegnata/residua +
+#        stato_riconsegna), quindi due mappe distinte, non una condivisa.
+_CODA_META: dict[str, dict[str, Any]] = {
+    "vendite.vw_resi_da_accreditare": {
+        "order_cols": {
+            "reso_numero": "v.reso_numero",
+            "data": "v.data",
+            "destinatario_denominazione": "v.destinatario_denominazione",
+            "descrizione": "v.descrizione",
+            "ddt_numero": "v.ddt_numero",
+            "qta_operativa": "v.qta_operativa",
+            "motivo": "v.motivo",
+            "ba_codice": "v.ba_codice",
+            "quantita": "v.quantita",
+        },
+        "search_cols": [
+            "v.reso_numero", "v.destinatario_denominazione",
+            "v.descrizione", "v.ddt_numero", "v.ba_codice",
+        ],
+    },
+    "vendite.vw_resi_da_riconsegnare": {
+        "order_cols": {
+            "reso_numero": "v.reso_numero",
+            "data": "v.data",
+            "destinatario_denominazione": "v.destinatario_denominazione",
+            "descrizione": "v.descrizione",
+            "ddt_numero": "v.ddt_numero",
+            "qta_resa": "v.qta_resa",
+            "qta_riconsegnata": "v.qta_riconsegnata",
+            "qta_residua": "v.qta_residua",
+            "stato_riconsegna": "v.stato_riconsegna",
+        },
+        "search_cols": [
+            "v.reso_numero", "v.destinatario_denominazione",
+            "v.descrizione", "v.ddt_numero",
+        ],
+    },
+}
+
 
 class ResiRepository:
     """Repository resi di vendita (motore resi su DDT)."""
@@ -70,10 +115,13 @@ class ResiRepository:
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
+        max_limit: int = 200,
     ) -> tuple[list[dict[str, Any]], int]:
         order_column = _ORDER_COLS_RESI.get(order_by, _ORDER_COLS_RESI["data"])
         direction = "DESC" if order_dir and order_dir.lower() == "desc" else "ASC"
-        safe_limit = max(1, min(int(limit), 200))
+        # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
+        # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
+        safe_limit = max(1, min(int(limit), max_limit))
         safe_offset = max(0, int(offset))
 
         conditions: list[str] = []
@@ -356,18 +404,26 @@ class ResiRepository:
         billing_account_id: int | None = None,
         data_da: date | None = None,
         data_al: date | None = None,
+        search: str | None = None,
         auth_user_id: int | None = None,
         limit: int,
         offset: int,
+        order_by: str = "data",
+        order_dir: str = "desc",
+        max_limit: int = 200,
     ) -> tuple[list[dict[str, Any]], int]:
         return self._list_coda(
             "vendite.vw_resi_da_accreditare",
             billing_account_id=billing_account_id,
             data_da=data_da,
             data_al=data_al,
+            search=search,
             auth_user_id=auth_user_id,
             limit=limit,
             offset=offset,
+            order_by=order_by,
+            order_dir=order_dir,
+            max_limit=max_limit,
         )
 
     # Scopo: Coda "da ri-consegnare" (righe reso CONFERMATE per ri-consegna con
@@ -380,18 +436,26 @@ class ResiRepository:
         billing_account_id: int | None = None,
         data_da: date | None = None,
         data_al: date | None = None,
+        search: str | None = None,
         auth_user_id: int | None = None,
         limit: int,
         offset: int,
+        order_by: str = "data",
+        order_dir: str = "desc",
+        max_limit: int = 200,
     ) -> tuple[list[dict[str, Any]], int]:
         return self._list_coda(
             "vendite.vw_resi_da_riconsegnare",
             billing_account_id=billing_account_id,
             data_da=data_da,
             data_al=data_al,
+            search=search,
             auth_user_id=auth_user_id,
             limit=limit,
             offset=offset,
+            order_by=order_by,
+            order_dir=order_dir,
+            max_limit=max_limit,
         )
 
     # Scopo: Lettura condivisa delle due code (stesse colonne di filtro:
@@ -404,11 +468,22 @@ class ResiRepository:
         billing_account_id: int | None,
         data_da: date | None,
         data_al: date | None,
+        search: str | None = None,
         auth_user_id: int | None,
         limit: int,
         offset: int,
+        order_by: str = "data",
+        order_dir: str = "desc",
+        max_limit: int = 200,
     ) -> tuple[list[dict[str, Any]], int]:
-        safe_limit = max(1, min(int(limit), 200))
+        # `max_limit` distingue le due chiamate: la lista pagina (cap 200,
+        # il paginator manda al piu' 100), l'export chiede fino a
+        # EXPORT_MAX_ROWS+1 per intercettare l'overflow SENZA troncare in
+        # silenzio (il guard di build_export_response usa la COUNT reale).
+        meta = _CODA_META[vista]
+        order_column = meta["order_cols"].get(order_by) or "v.data"
+        direction = "DESC" if not order_dir or order_dir.lower() == "desc" else "ASC"
+        safe_limit = max(1, min(int(limit), max_limit))
         safe_offset = max(0, int(offset))
 
         conditions: list[str] = []
@@ -422,6 +497,13 @@ class ResiRepository:
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
+        if search and len(search) >= 3:
+            # Ricerca estesa sulle colonne `ricercabile_full=t` della coda
+            # (numero reso + destinatario + articolo + DDT [+ ba_codice]).
+            cols = meta["search_cols"]
+            conditions.append("(" + " OR ".join(f"{c} ILIKE %s" for c in cols) + ")")
+            like = f"%{search}%"
+            params.extend([like] * len(cols))
         add_emittente_scope_condition(
             conditions, params,
             auth_user_id=auth_user_id,
@@ -431,10 +513,12 @@ class ResiRepository:
         where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
         count_sql = f"SELECT COUNT(*) FROM {vista} v {where}"  # noqa: S608
+        # Tie-breaker stabile (reso_id, resi_riga_id) appeso all'order utente
+        # per paginazione deterministica anche su colonne non univoche.
         data_sql = f"""
             SELECT v.* FROM {vista} v
             {where}
-            ORDER BY v.data DESC, v.reso_id DESC, v.resi_riga_id ASC
+            ORDER BY {order_column} {direction}, v.reso_id DESC, v.resi_riga_id ASC
             LIMIT %s OFFSET %s
         """  # noqa: S608
 
