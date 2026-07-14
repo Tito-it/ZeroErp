@@ -1,26 +1,21 @@
 <script setup>
-// Scopo: Pannello "Genera DDT" (evasione) dentro il drawer ORDINE. Gemello di
-// "genera ordine da preventivo" (PreventiviSmistamentoPanel): tabella righe
-// ordine con selezione multipla + quantita' da evadere per riga + azione unica
-// "Genera DDT". L'evasione instrada verso il DDT (DRAFT); lo stato ordine viene
-// proiettato dal BE (CONFERMATO / PARZIALMENTE_EVASO / EVASO). Nessun
-// router-push: il DDT nasce DRAFT e si apre dal suo tab (emitDataChanged).
-//
-// Residuo per riga: il BE espone `qta_evasa_operativa` e
-// `qta_residua_operativa` su GET /righe/ (fulfillment multi-DDT aggregato,
-// unita' operative). La tabella mostra ordinata/evasa/residuo e il default di
-// "qta da evadere" e' il RESIDUO (mai l'ordinato: su un ordine gia'
-// parzialmente evaso l'ordinato supererebbe il residuo). Quando la selezione
-// copre tutte le righe evadibili con quantita' intatte si invia `null` (il BE
-// evade il residuo effettivo: race-proof su evasioni concorrenti); altrimenti
-// l'array esplicito. L'over-shipping resta comunque rifiutato dal guard DB
-// (E_QTA_SUPERA_RESIDUO).
-import { ref, watch, computed } from 'vue'
+// Scopo: Pannello "Genera DDT" (evasione) dentro il drawer ORDINE. Macchina
+// selezione/quantità via BB `useRigheSelezioneQta` (estratto 2026-07-14,
+// regola del 2 alla 3ª copia, ok Tid — condiviso con crea-reso DDT e
+// ri-spedizione reso). Tabella righe ordine con residuo per riga
+// (`qta_residua_operativa` dal fulfillment multi-DDT aggregato, unità
+// OPERATIVE), selezione multipla + quantità da evadere (default = RESIDUO) e
+// azione unica "Genera DDT". Selezione completa e intatta ⇒ righe null (il BE
+// evade il residuo effettivo: race-proof su evasioni concorrenti).
+// L'over-shipping resta rifiutato dal guard DB (E_QTA_SUPERA_RESIDUO).
+// Nessun router-push: il DDT nasce DRAFT e si apre dal suo tab.
+import { watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useNotify } from '../../../core/composables/useNotify'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
+import { useRigheSelezioneQta } from '../../_shared/righe/useRigheSelezioneQta'
 import { useOrdiniStore } from '../stores/ordini'
 import { generaDdtFromOrdine } from '../api/ordiniApi'
 import { TAB_ENTITIES } from '../../../core/constants'
@@ -47,51 +42,29 @@ const props = defineProps({
 // detail (lo stato ordine e' proiettato dal BE) e propaga il DDT id.
 const emit = defineEmits(['evaso'])
 
-const righe = ref([])
-const loadingRighe = ref(false)
-const selected = ref([])
-// Quantita' da evadere per riga (keyed per riga id), default = RESIDUO.
-const qtaMap = ref({})
-
 // Scopo: residuo operativo della riga (0 se campo assente/riga gia' evasa).
 function residuoDi(r) {
   return Number(r.qta_residua_operativa) || 0
 }
 
-// Righe con residuo > 0: le uniche selezionabili/evadibili. Le righe gia'
-// completamente evase restano visibili come consuntivo (ordinata/evasa).
-const righeEvadibili = computed(() => righe.value.filter(r => residuoDi(r) > 0))
-
-// Scopo: carica le righe dell'ordine e preseleziona le evadibili (evadi-tutto
-// il residuo di default). Ogni riga parte con qta_da_evadere = residuo.
-async function loadRighe() {
-  if (!props.ordineId) return
-  loadingRighe.value = true
-  try {
-    const rows = await store.loadRighe(props.ordineId)
-    righe.value = rows || []
-    const map = {}
-    for (const r of righe.value) map[r.id] = residuoDi(r)
-    qtaMap.value = map
-    selected.value = props.readonly ? [] : righe.value.filter(r => residuoDi(r) > 0)
-  } finally {
-    loadingRighe.value = false
-  }
-}
+// Macchina selezione/quantità (BB): le righe gia' completamente evase restano
+// visibili come consuntivo (ordinata/evasa), le evadibili sono preselezionate
+// con qta = residuo.
+const {
+  righe, loadingRighe, selected, qtaMap,
+  righeSelezionabili: righeEvadibili,
+  coversAllResiduo: evadeTuttoResiduo,
+  loadRighe, buildPayloadRighe,
+} = useRigheSelezioneQta({
+  fetchRighe: async () => {
+    if (!props.ordineId) return []
+    return (await store.loadRighe(props.ordineId)) || []
+  },
+  residuoDi,
+  readonly: () => props.readonly,
+})
 
 watch(() => props.ordineId, loadRighe, { immediate: true })
-
-// Tutte le righe EVADIBILI selezionate E nessuna quantita' ritoccata rispetto
-// al residuo → si delega al BE l'evasione del residuo (null, race-proof).
-const evadeTuttoResiduo = computed(() => {
-  const evadibili = righeEvadibili.value
-  if (evadibili.length === 0) return false
-  const selIds = new Set(selected.value.map(r => r.id))
-  if (selIds.size !== evadibili.length) return false
-  return evadibili.every(
-    r => selIds.has(r.id) && Number(qtaMap.value[r.id]) === residuoDi(r),
-  )
-})
 
 // Etichetta azione: "tutto il residuo" quando la selezione e' completa e
 // intatta; altrimenti "selezione".
@@ -104,16 +77,13 @@ const generaLabel = computed(() =>
 // Scopo: genera il DDT dalle righe selezionate. Se evade tutto il residuo invia
 // null (il BE risolve il residuo dal fulfillment); altrimenti invia l'array
 // esplicito {ordine_riga_id, qta_da_evadere}. A valle: toast + emit al padre +
-// notifica il tab DDT (refresh) + reload righe.
+// notifica il tab DDT (refresh) + reload residui.
 function onGenera() {
-  const sel = selected.value
-  if (!sel.length) return
+  if (!selected.value.length) return
   const usaResiduo = evadeTuttoResiduo.value
   const payloadRighe = usaResiduo
     ? null
-    : sel
-        .map(r => ({ ordine_riga_id: r.id, qta_da_evadere: Number(qtaMap.value[r.id]) || 0 }))
-        .filter(r => r.qta_da_evadere > 0)
+    : buildPayloadRighe((r, qta) => ({ ordine_riga_id: r.id, qta_da_evadere: qta }))
 
   if (!usaResiduo && !payloadRighe.length) {
     notify.warn(t('vendite.ordini.evasione_qta_nulla'))

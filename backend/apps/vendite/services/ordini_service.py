@@ -17,22 +17,26 @@
 
 import json
 import logging
-import re
-from collections.abc import Iterator
 from decimal import Decimal, InvalidOperation
-from contextlib import contextmanager
 from datetime import date
 from typing import Any
 
-from django.db import DatabaseError, IntegrityError, transaction
+from django.db import DatabaseError, transaction
 
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.payload_helpers import map_integrity_error
+from apps.core.services.payload_helpers import make_db_errors_translator
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.ordini_repository import OrdiniRepository
 from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_overrides,
+)
+from apps.vendite.services._indirizzi_documento_helpers import (
+    IndirizziDocumentoConfig,
+    auto_assegna_indirizzo_default,
+    delete_indirizzo_documento,
+    list_indirizzi_documento,
+    upsert_indirizzo_documento,
 )
 from apps.vendite.services._pricing_gate_helpers import (
     validate_componenti_overrides_authorization,
@@ -45,7 +49,6 @@ logger = logging.getLogger(__name__)
 E_VENDITE_VALIDATION = "E_VENDITE_VALIDATION"
 E_VENDITE_DUPLICATO = "E_VENDITE_DUPLICATO"
 E_VENDITE_FK = "E_VENDITE_FK"
-_DB_ERROR_CODE_RE = re.compile(r"\b(E_[A-Z][A-Z0-9_]+)\b")
 
 # Mappe vincolo DB -> (codice, messaggio) per map_integrity_error (frammento
 # nome vincolo). Minime: i casi non mappati cadono su E_VENDITE_VALIDATION.
@@ -294,6 +297,36 @@ def list_riepilogo_iva(ordine_id: int) -> list[dict[str, Any]]:
     return OrdiniRepository().list_riepilogo_iva(ordine_id)
 
 
+# ── Indirizzi documento (BB condiviso _indirizzi_documento_helpers) ──
+
+_INDIRIZZI_CFG = IndirizziDocumentoConfig(
+    # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
+    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    repo_factory=lambda: OrdiniRepository(),
+    stati_modificabili=_STATI_MODIFICABILI,
+    not_found_code="E_ORD_NOT_FOUND",
+    stato_error_code="E_ORD_STATO_TRANSIZIONE",
+    error_code="E_ORD_VALIDAZIONE",
+    fn_prefix=_FN,
+)
+
+
+# Scopo: Pannello indirizzi dell'ordine (ambito ORDINI). Guard, ownership e
+#        traduzione errori DB nel BB condiviso.
+def list_indirizzi(ordine_id: int) -> dict[str, Any]:
+    return list_indirizzi_documento(_INDIRIZZI_CFG, ordine_id)
+
+
+# Scopo: Upsert slot indirizzo (uno-per-tipo, solo DRAFT).
+def upsert_indirizzo(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    return upsert_indirizzo_documento(_INDIRIZZI_CFG, ordine_id, payload)
+
+
+# Scopo: Rimozione slot indirizzo (solo DRAFT).
+def delete_indirizzo(ordine_id: int, indirizzo_id: int) -> dict[str, Any]:
+    return delete_indirizzo_documento(_INDIRIZZI_CFG, ordine_id, indirizzo_id)
+
+
 # ══════════════════════════════════════════════════════════
 #  SCRITTURE — Testata
 # ══════════════════════════════════════════════════════════
@@ -326,7 +359,7 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
     assert stato_bozza_id is not None
 
     with _db_errors("crea_ordine"):
-        return repo.create_ordine(
+        creato = repo.create_ordine(
             soggetto_ruolo_id=int(soggetto_ruolo_id),
             billing_account_id=int(billing_account_id) if billing_account_id is not None else None,
             utility_id=data.get("utility_id"),
@@ -340,6 +373,11 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
             stato_doc_ordine_id=int(stato_bozza_id),
             meta=data.get("meta") if isinstance(data.get("meta"), dict) else None,
         )
+    # UX v2: auto-assegnazione best-effort dell'indirizzo default (indirizzo
+    # di ruolo CON del cliente, fallback FATT). Mai bloccante. Copre anche le
+    # conversioni da offerta (passano da _crea_testata_ordine_da_origine).
+    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(creato["id"]))
+    return creato
 
 
 # Scopo: Aggiorna testata ordine (solo in DRAFT).
@@ -467,6 +505,10 @@ def crea_ordine_da_preventivo(
     ordine_id = prev_repo.push_a_ordine(
         preventivo_id, righe_ids=righe_ids, pratica_id=None,
     )
+    # UX v2: la cascata DB copia gli indirizzi del preventivo; se il
+    # preventivo non aveva slot compatibili, fallback best-effort
+    # dall'anagrafica di ruolo (l'helper salta se il default e' valorizzato).
+    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(ordine_id))
 
     # Numero ordine per il messaggio FE (lettura leggera post-creazione).
     testata = OrdiniRepository().get_ordine(ordine_id)
@@ -1091,36 +1133,18 @@ def push_a_commessa(ordine_id: int, *, user: str | None = None) -> dict[str, Any
 #  Helper privati
 # ══════════════════════════════════════════════════════════
 
-# Scopo: Context manager per normalizzare errori DB in ServiceError parlanti.
-#        Gemello _db_errors di offerte_service: IntegrityError (unique/fk) via
-#        map_integrity_error + mappe vincolo; DatabaseError (trigger P0001) via
-#        estrazione regex del codice E_* dal MESSAGE del RAISE, cosi' il FE puo'
-#        fare routing UI specifico. Fallback E_VENDITE_VALIDATION.
-@contextmanager
-def _db_errors(op: str) -> Iterator[None]:
-    context = {"op": f"{_FN}.{op}"}
-    try:
-        yield
-    except IntegrityError as exc:
-        map_integrity_error(
-            exc,
-            unique_constraints=_UNIQUE_CONSTRAINTS,
-            fk_constraints=_FK_CONSTRAINTS,
-            fallback_code=E_VENDITE_VALIDATION,
-            fallback_message="Violazione vincolo DB su ordine.",
-            context=context,
-        )
-    except DatabaseError as exc:
-        exc_text = str(exc)
-        match = _DB_ERROR_CODE_RE.search(exc_text)
-        code = match.group(1) if match else E_VENDITE_VALIDATION
-        ErrorManager.raise_error(
-            code=code,
-            message=exc_text.split("\n", maxsplit=1)[0].strip()
-            or "Violazione vincolo DB su ordine.",
-            detail=exc_text,
-            context=context,
-        )
+# Traduzione errori DB -> ServiceError parlanti via BB condiviso
+# `make_db_errors_translator` (core payload_helpers, estratto 2026-07-13 —
+# regola del 2 alla 5a copia): IntegrityError con le mappe vincolo del
+# dominio; DatabaseError (trigger P0001) con estrazione del codice E_* per
+# il routing UI del FE.
+_db_errors = make_db_errors_translator(
+    fn_prefix=_FN,
+    fallback_code=E_VENDITE_VALIDATION,
+    fallback_message="Violazione vincolo DB su ordine.",
+    unique_constraints=_UNIQUE_CONSTRAINTS,
+    fk_constraints=_FK_CONSTRAINTS,
+)
 
 
 def _get_testata_or_raise(

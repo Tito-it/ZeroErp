@@ -41,11 +41,17 @@ const props = defineProps({
   context: { type: String, default: 'soggetto' },
   istanzaUtilityId: { type: Number, default: null },
   tipoRuoloCodice: { type: String, default: null },
+  // Modalita' SELEZIONE (drawer gestione indirizzi documento): aggiunge per
+  // riga l'azione "usa questo" che emette `select(riga)`. I flussi anagrafici
+  // esistenti (aggiungi/cambia/elimina) restano invariati. Default off:
+  // nessun impatto sui consumatori attuali (ClienteDrawer/SoggettoDrawer).
+  selectable: { type: Boolean, default: false },
+  selectTooltip: { type: String, default: '' },
 })
 
 const isRuolo = computed(() => props.context === 'ruolo')
 
-const emit = defineEmits(['update:visible', 'saved'])
+const emit = defineEmits(['update:visible', 'saved', 'select'])
 
 // Lista indirizzi esistenti
 const indirizziList = ref([])
@@ -317,13 +323,17 @@ const onClose = useDrawerClose(emit)
 
       <!-- Lista indirizzi esistenti (sempre visibile) -->
       <template v-if="!listLoading">
+        <!-- Contenuto del caller sopra la lista (es. indirizzi gia' impostati
+             sul documento in modalita' selezione). -->
+        <slot name="pre-list" />
         <div v-if="indirizziList.length === 0 && !formMode" class="app-empty-state">
           <i class="pi pi-map-marker" />
           <p>{{ t('indirizzo_soggetto.nessun_indirizzo') }}</p>
         </div>
 
         <div v-else-if="indirizziList.length > 0" class="indirizzi-list">
-          <div v-for="ind in indirizziList" :key="ind.id"
+          <div v-for="ind in indirizziList" :key="ind.id" class="indirizzo-select-row">
+          <div
             class="indirizzo-card" :class="{ 'indirizzo-card-soggetto': ind.fonte === 'soggetto', 'indirizzo-card-ruolo': ind.fonte === 'ruolo' || ind.fonte === 'istanza' }">
             <div class="indirizzo-card-content">
               <div class="indirizzo-card-nome">
@@ -360,6 +370,19 @@ const onClose = useDrawerClose(emit)
                 class="app-delete-btn" :title="t('common.delete')" @click="onDeleteRuolo(ind)" />
             </div>
           </div>
+          <!-- Colonna ESTERNA "Usa" (modalita' selezione documento): fuori
+               dalla card per non ereditare l'opacita' dei box soggetto. -->
+          <Button
+            v-if="selectable && !formMode && !isReadonly"
+            icon="pi pi-check"
+            :label="t('indirizzo_soggetto.usa')"
+            outlined
+            size="small"
+            class="app-action-btn indirizzo-card-usa"
+            :title="selectTooltip || t('indirizzo_soggetto.usa_questo')"
+            @click="emit('select', ind)"
+          />
+          </div>
         </div>
 
         <!-- Warning tipi mancanti -->
@@ -378,6 +401,9 @@ const onClose = useDrawerClose(emit)
             class="app-action-btn"
             @click="onStartNew"
           />
+          <!-- Azioni extra del caller accanto ad "aggiungi" (es. indirizzo
+               libero una-tantum in modalita' selezione documento). -->
+          <slot name="extra-actions" />
         </div>
       </template>
 
@@ -498,5 +524,17 @@ const onClose = useDrawerClose(emit)
   border-radius: var(--p-border-radius-sm, 4px);
   font-size: 0.8rem;
   color: var(--p-yellow-700);
+}
+.indirizzo-select-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.indirizzo-select-row .indirizzo-card {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.indirizzo-card-usa {
+  flex: 0 0 auto;
 }
 </style>

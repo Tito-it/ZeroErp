@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Simmetria piena (D-3): vendite.offerte_commerciali_indirizzi con
+# struttura identica alle 4 tabelle *_indirizzi esistenti. Il trigger
+# whitelist a10 (ambito 'OFFERTE') e' agganciato in fase 20_code
+# (20260711-22), perche' la funzione trgfn_tipi_indirizzi_only_allowed
+# vive li'. tipo_indirizzo_id nasce gia' INTEGER (allineato a config).
+# La colonna tx_id (uuid) e' presente: il framework dbops.fn_run_automations
+# registra da solo trgfn_tx_id_managed + audit generico al primo run.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260711-20-create-vendite-offerte-commerciali-indirizzi-mctit.yaml
+
+  - changeSet:
+      id: 20260711-20-create-vendite-offerte-commerciali-indirizzi
+      author: mctit
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: offerte_commerciali_indirizzi
+            remarks: "Snapshot indirizzi collegati all'offerta commerciale; uno per tipo (fatturazione, consegna, fornitura, residenza). Includere nello snapshot la mail."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_offerte_commerciali_indirizzi
+                    nullable: false
+              - column: { name: offerta_id,        type: BIGINT,  constraints: { nullable: false } }
+              - column: { name: tipo_indirizzo_id, type: INTEGER, constraints: { nullable: false } }
+              - column:
+                  name: snapshot
+                  type: JSONB
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints: { nullable: false }
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: "now()"
+                  constraints: { nullable: false }
+              - column:
+                  name: user_insert
+                  type: VARCHAR(80)
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints: { nullable: false }
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: "now()"
+                  constraints: { nullable: false }
+              - column:
+                  name: user_update
+                  type: VARCHAR(80)
+                  defaultValueComputed: "CURRENT_USER"
+              - column: { name: origine_indirizzo_id,       type: BIGINT }
+              - column: { name: origine_soggetto_ruolo_id,  type: BIGINT }
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction id correlazione audit (popolato da trgfn_tx_id_managed via automation)."
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: offerte_commerciali_indirizzi
+            columnNames: offerta_id, tipo_indirizzo_id
+            constraintName: uq_offerte_commerciali_indirizzi_uno_per_tipo
+
+        - addForeignKeyConstraint:
+            constraintName: fk_offerte_commerciali_indir_offerta
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali_indirizzi
+            baseColumnNames: offerta_id
+            referencedTableSchemaName: vendite
+            referencedTableName: offerte_commerciali
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            constraintName: fk_offerte_commerciali_indir_tipo
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali_indirizzi
+            baseColumnNames: tipo_indirizzo_id
+            referencedTableSchemaName: config
+            referencedTableName: tipi_indirizzi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            constraintName: fk_offerte_commerciali_indir_origine_indirizzo
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali_indirizzi
+            baseColumnNames: origine_indirizzo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: indirizzi
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: SET NULL
+
+        - addForeignKeyConstraint:
+            constraintName: fk_offerte_commerciali_indir_origine_sog_ruolo
+            baseTableSchemaName: vendite
+            baseTableName: offerte_commerciali_indirizzi
+            baseColumnNames: origine_soggetto_ruolo_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: SET NULL
+
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_offerte_commerciali_indir_offerta
+                ON vendite.offerte_commerciali_indirizzi USING btree (offerta_id ASC NULLS LAST);
+
+              CREATE INDEX IF NOT EXISTS ix_offerte_commerciali_indir_origine_indirizzo
+                ON vendite.offerte_commerciali_indirizzi USING btree (origine_indirizzo_id ASC NULLS LAST);
+
+              CREATE INDEX IF NOT EXISTS ix_offerte_commerciali_indir_origine_sog_ruolo
+                ON vendite.offerte_commerciali_indirizzi USING btree (origine_soggetto_ruolo_id ASC NULLS LAST);
+      rollback:
+        - dropTable:
+            schemaName: vendite
+            tableName: offerte_commerciali_indirizzi

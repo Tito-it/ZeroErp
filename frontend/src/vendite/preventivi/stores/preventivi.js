@@ -6,7 +6,6 @@ import {
   listPreventivi, getPreventivo, createPreventivo, updatePreventivo, deletePreventivo,
   cambiaStatoPreventivo, emettiPreventivo, creaRevisione, listRevisioni,
   listRighe, createRiga, updateRiga, deleteRiga, getRiepilogoIva,
-  listIndirizzi, upsertIndirizzo,
   pushCommessa, getSmistamento, generaPratica, listPratiche,
 } from '../api/preventiviApi'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
@@ -171,22 +170,9 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     return res.data.data
   }
 
-  // --- Indirizzi ---
-
-  // Scopo: Carica indirizzi del preventivo.
-  async function loadIndirizzi(preventivoId) {
-    const res = await listIndirizzi(preventivoId)
-    return res.data.data
-  }
-
-  // Scopo: Upsert indirizzo preventivo.
-  async function salvaIndirizzo(preventivoId, payload) {
-    const res = await upsertIndirizzo(preventivoId, payload)
-    emitDataChanged(TAB_ENTITIES.PREVENTIVO, preventivoId)
-    return res.data.data
-  }
-
   // --- Integrazione ---
+  // NB indirizzi: gestiti dal BB condiviso _shared/indirizzi
+  // (DocumentoIndirizziPanel + makeIndirizziDocumentoApi), non dallo store.
 
   // Scopo: Push preventivo in commessa per fatturazione. `righeIds` opzionale:
   //        sottoinsieme righe servizio (smistamento selettivo); null = tutte.
@@ -221,7 +207,6 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     fetchList, fetchDetail, create, update, elimina,
     cambiaStato, emetti, nuovaRevisione, loadRevisioni,
     loadRighe, addRiga, aggiornaRiga, eliminaRiga, loadRiepilogoIva,
-    loadIndirizzi, salvaIndirizzo,
     inviaACommessa, loadSmistamento,
     creaPratica, loadPratiche,
   }

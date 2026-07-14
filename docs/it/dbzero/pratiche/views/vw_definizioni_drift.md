@@ -1,8 +1,11 @@
 {% include-markdown "it/dbzero/pratiche/manual/vw_definizioni_drift.md" %}
 # 🔍 View `vw_definizioni_drift`
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW pratiche.vw_definizioni_drift AS
+CREATE OR REPLACE VIEW pratiche.vw_definizioni_drift
+WITH (security_invoker=true) AS
 SELECT f.id AS definizione_id,
     f.tipo_prestazione_id,
     f.emittente_fiscale_id,

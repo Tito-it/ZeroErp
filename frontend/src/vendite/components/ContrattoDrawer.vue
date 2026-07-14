@@ -30,6 +30,7 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
+import DocumentoIndirizziSection from '../_shared/indirizzi/DocumentoIndirizziSection.vue'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
@@ -948,6 +949,17 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
             :disabled="isEdit && detail?.stato_codice_interno !== 'DRAFT'" />
         </div>
       </div>
+
+      <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default,
+           contatore "+N altri", pulsante "Indirizzi" che apre il drawer
+           di gestione. Solo in EDIT (documento persistito). -->
+      <DocumentoIndirizziSection
+        v-if="isEdit && detail"
+        dominio="contratti"
+        :doc-id="contrattoId"
+        :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
+        :istanza-utility-id="detail?.istanza_utility_id ?? null"
+        :readonly="isReadonly" />
 
       <template v-if="isEdit && detail && detail.stato_codice_interno !== 'DRAFT'">
         <h4 class="mt-3">{{ t('contratti.pdf.section_documenti') }}</h4>

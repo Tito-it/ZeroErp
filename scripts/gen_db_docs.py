@@ -222,9 +222,39 @@ def gen_view_md(schema, view, cur):
     if not row:
         return ""
     definition = row['definition']
+
+    # Reloptions della vista (security_invoker / security_barrier) NON compaiono
+    # in pg_get_viewdef / pg_views.definition: sono opzioni dell'oggetto,
+    # memorizzate in pg_class.reloptions. Le estraiamo e le ripristiniamo sia
+    # nella clausola WITH (...) del CREATE sia in una nota, cosi' la doc non
+    # nasconde piu' il fatto che la vista gira in security_invoker (RLS).
+    cur.execute(
+        """
+        SELECT c.reloptions
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = %s AND c.relname = %s AND c.relkind IN ('v', 'm')
+        """,
+        (schema, view)
+    )
+    opt_row = cur.fetchone()
+    reloptions = (opt_row['reloptions'] if opt_row else None) or []
+    sec_opts = [
+        o for o in reloptions
+        if o.startswith('security_invoker') or o.startswith('security_barrier')
+    ]
+    with_clause = f"\nWITH ({', '.join(sec_opts)})" if sec_opts else ""
+
     lines = [f"# 🔍 View `{view}`\n"]
+    if sec_opts:
+        lines.append(
+            f"> 🔒 **Opzioni di sicurezza**: `{', '.join(sec_opts)}` — "
+            "reloption non visibile in `pg_get_viewdef`, riportata qui "
+            "esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE "
+            "VIEW`, altrimenti PostgreSQL la azzera.\n"
+        )
     lines.append("```sql")
-    lines.append(f"CREATE OR REPLACE VIEW {schema}.{view} AS")
+    lines.append(f"CREATE OR REPLACE VIEW {schema}.{view}{with_clause} AS")
     lines.append(definition.strip())
     lines.append("```\n")
     # include manual se esiste

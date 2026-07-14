@@ -7,8 +7,8 @@
 //   spedisci, consegna, reso, annulla, push commessa).
 // Macchina a stati DRAFT → EMESSO → SPEDITO → CONSEGNATO (→ RESO) + ANNULLATO,
 // data-driven (available_actions dal BE). Numero assegnato a EMESSO dal trigger.
-// Clone adattato di OrdiniDrawer (§D-4). Fuori scope in questa slice: riepilogo
-// IVA, PDF, indirizzi.
+// Clone adattato di OrdiniDrawer (§D-4) + riepilogo IVA, PDF (EntityPdfButton)
+// e sezione indirizzi (BB condiviso _shared/indirizzi, UX v2).
 import { ref, watch, computed, nextTick, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDdtStore } from '../stores/ddt'
@@ -19,6 +19,7 @@ import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
+import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
@@ -38,9 +39,12 @@ import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
+import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
+import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
 import DdtForm from './DdtForm.vue'
 import DdtRigheTable from './DdtRigheTable.vue'
 import DdtNoteDrawer from './DdtNoteDrawer.vue'
+import DdtResoPanel from './DdtResoPanel.vue'
 import DdtEmissioneDialog from './dialogs/DdtEmissioneDialog.vue'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
@@ -65,7 +69,21 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
 const detail = ref(null)
+
+// Riepilogo IVA aggregato per aliquota (lettura da `vw_ddt_riepilogo_iva_dettaglio`).
+// Auto-popolato a ogni loadDetail e ogni `@changed` delle righe: la vista DB
+// e' la single source (regola fiscale DPR 633/72 art. 21). Le righe con prezzo
+// NULL (DDT solo di trasporto) sono escluse in vista: riepilogo vuoto -> nascosto.
+const riepilogoIva = ref([])
+// Pannello visibile quando c'e' almeno una riga aggregata. Il footer della
+// RiepilogoIvaTable mostra gia' totale imponibile + imposta + totale documento.
+const showRiepilogoIva = computed(
+  () => Array.isArray(riepilogoIva.value) && riepilogoIva.value.length > 0,
+)
 const noteDrawerVisible = ref(false)
+// Avviso emissione: true quando manca l'indirizzo obbligatorio (CON) —
+// alimentato dalla sezione indirizzi, mostrato nel dialog di emissione.
+const indirizzoObbligatorioMancante = ref(false)
 
 // Auto-save bozza: in CREATE, appena il cliente (BA) e' valorizzato, il drawer
 // crea il DDT in BOZZA e si comporta da "edit-evolved" (righe + azioni stato).
@@ -90,6 +108,13 @@ const isReadonly = computed(
 )
 provide(READONLY_KEY, isReadonly)
 
+// Pannello "Crea reso": solo su DDT CONSEGNATO (l'azione manuale «Reso» e'
+// stata rimossa dalla matrice — il flip a RESO e' automatico alla conferma di
+// un reso totale; questo pannello e' il percorso per aprire il reso).
+const showResoPanel = computed(
+  () => detail.value?.stato_codice_interno === STATO_DDT.CONSEGNATO,
+)
+
 // Capability data-driven dal detail BE (script.fn_available_actions_ddt):
 // availableActions + can_edit_testata + non_editable_fields. Composable
 // centralizzato, uniforme a Ordini/Preventivi/Contratti.
@@ -105,6 +130,12 @@ const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 // (E_DDT_CLIENTE_IMMUTABILE lato service). Cambiare cliente = nuovo DDT.
 const nonEditableFields = computed(() => (hasDetail.value ? ['billing_account_id'] : []))
 
+// Default emittente fiscale: operatore → id profilo; admin globale → null
+// (sceglie via EmittenteFiscaleField in modalita' Select). Uniformato a
+// ordini/preventivi (decisione Tid 2026-07-13): l'emittente e' legato allo
+// USER; il fallback dal BA in trgfn_ddt_normalize resta rete di sicurezza.
+const { defaultEmittenteId } = useEmittenteFiscaleField()
+
 // Default utility globale (parameter DEFAULT_UTILITY): proposto in CREATE.
 const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
 
@@ -114,13 +145,7 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 function defaultForm() {
   return {
-    // Emittente fiscale: display-only. La testata DDT lo MEMORIZZA (addendum §15,
-    // NOT NULL + scope RLS) ma è risolto dal trigger DB (da BA o ordine), non
-    // scelto dall'operatore: in create parte VUOTO (nessuna anteprima "a
-    // indovinare" col default operatore — potrebbe divergere dall'EF del BA) e
-    // si valorizza dal detail dopo l'auto-save bozza, quando il trigger l'ha
-    // risolto. NON entra nel payload (whitelist BE lo esclude).
-    emittente_fiscale_id: null,
+    emittente_fiscale_id: defaultEmittenteId.value ?? null,
     utility_id: utilityDefaultId.value ?? null,
     billing_account_id: null,
     // _obj per BillingAccountLookup (pattern restore lookup ricco).
@@ -158,8 +183,9 @@ async function loadDetail(id = null) {
   if (!data) return
   detail.value = data
   form.value = {
-    // Emittente fiscale memorizzato (denormalizzato dalla vista: codice via
-    // EmittenteFiscaleField :record); display-only, non aggiornabile.
+    // Emittente fiscale memorizzato (denormalizzato dal detail BE: ragione
+    // sociale soggetto + codice via EmittenteFiscaleField :record).
+    // Immutabile post-create (whitelist BE update lo esclude).
     emittente_fiscale_id: data.emittente_fiscale_id ?? null,
     utility_id: data.utility_id ?? null,
     billing_account_id: data.billing_account_id ?? null,
@@ -199,6 +225,21 @@ async function loadDetail(id = null) {
       // Resto: l'autocomplete parte vuoto, l'operatore puo' ri-selezionare.
     }
   }
+  // Riepilogo IVA: la vista DB ricalcola dalle righe attive valorizzate a ogni
+  // mutazione; qui leggiamo lo stato corrente (best-effort).
+  await loadRiepilogoIva(targetId)
+}
+
+// Scopo: Carica il riepilogo IVA aggregato (best-effort: in caso di errore il
+//        pannello resta vuoto/nascosto, il resto del drawer non e' impattato).
+async function loadRiepilogoIva(targetId = null) {
+  const id = targetId ?? effectiveDdtId.value
+  if (!id) return
+  try {
+    riepilogoIva.value = await store.loadRiepilogoIva(id)
+  } catch {
+    riepilogoIva.value = []
+  }
 }
 
 watch(() => props.visible, async (v) => {
@@ -231,8 +272,9 @@ watch(() => props.visible, async (v) => {
 useBaFormDefaults({ form, isEdit, fetchDefaults: getDdtFormDefaults })
 
 // Costruisce il payload testata (create/update). Numeri e stringhe vuote → null:
-// il BE normalizza empty→NULL (empty_to_none). billing_account_id/data solo in
-// create (immutabili/whitelist BE); qui componiamo la whitelist comune.
+// il BE normalizza empty→NULL (empty_to_none). billing_account_id/
+// emittente_fiscale_id/data solo in create (immutabili/whitelist BE); qui
+// componiamo la whitelist comune.
 function buildTestataPayload({ includeBa = false } = {}) {
   const f = form.value
   const payload = {
@@ -252,7 +294,12 @@ function buildTestataPayload({ includeBa = false } = {}) {
     autista: f.autista || null,
     tracking_code: f.tracking_code || null,
   }
-  if (includeBa) payload.billing_account_id = f.billing_account_id || null
+  if (includeBa) {
+    payload.billing_account_id = f.billing_account_id || null
+    // Opzionale per BE: se omesso (es. admin globale che non sceglie) il
+    // trigger DB fa fallback dal billing_account.
+    payload.emittente_fiscale_id = f.emittente_fiscale_id || null
+  }
   return payload
 }
 
@@ -498,12 +545,50 @@ const drawerActions = computed(() => {
 
       <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
       <template v-if="contentReady && hasDetail">
+        <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default CON,
+             avviso se mancante (obbligatorio all'emissione, guard DB),
+             pulsante "Indirizzi" che apre il drawer di gestione. -->
+        <DocumentoIndirizziSection
+          dominio="ddt"
+          :doc-id="effectiveDdtId"
+          :soggetto-ruolo-id="detail?.destinatario_soggetto_ruolo_id ?? null"
+          :istanza-utility-id="detail?.istanza_utility_id ?? null"
+          :readonly="!(canEditTestataEffective && !isReadonly)"
+          @state="(s) => { indirizzoObbligatorioMancante = s.obbligatorioMancante }" />
+
         <Divider />
         <DdtRigheTable
           :ddt-id="effectiveDdtId"
           :is-modificabile="canEditRighe && !isReadonly"
           @changed="loadDetail()"
           @form-aperto="(v) => { formRigaAperto = v }" />
+
+        <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21).
+             Visibile con almeno una riga valorizzata (righe prezzo NULL escluse
+             in vista: DDT solo di trasporto -> pannello nascosto). Componente
+             riusabile cross-dominio condiviso con preventivi/ordini. -->
+        <template v-if="showRiepilogoIva">
+          <Divider />
+          <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
+        </template>
+
+        <!-- Crea reso (slice resi): righe consegnate con residuo rendibile.
+             Il reso nasce DRAFT nel tab Resi; alla sua CONFERMA il BE riapre
+             il residuo ordine e, se reso totale, flippa questo DDT a RESO.
+             In CONSEGNATO il contenuto e' `app-readonly` (lock-di-stato) ma la
+             creazione reso e' un'azione di processo legittima → `app-escape`
+             la mantiene cliccabile (mirror pannello evasione ordini). In
+             readonly PURO il pannello e' consuntivo (niente azioni). -->
+        <template v-if="showResoPanel">
+          <Divider />
+          <div class="app-escape">
+            <DdtResoPanel
+              :ddt-id="effectiveDdtId"
+              :readonly="props.readonly || parentReadonly"
+              @reso-creato="loadDetail()" />
+          </div>
+        </template>
+
       </template>
 
       <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto"
@@ -526,5 +611,6 @@ const drawerActions = computed(() => {
     :ddt="detail"
     :loading="emissioneLoading"
     @confirm="handleEmissioneConferma"
+    :indirizzo-mancante="indirizzoObbligatorioMancante"
   />
 </template>

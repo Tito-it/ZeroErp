@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — immutabilita' resi.numero (brief §2.2).
+#
+# Mirror di vendite.trgfn_v_ddt_protect_num: numero immutabile UNA VOLTA
+# assegnato (a CONFERMATO), ma consente la prima valorizzazione (NULL->valore).
+# Sostituisce il lock piatto framework, necessario perche' il numero si assegna
+# a CONFERMATO e non all'INSERT.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260713-27-create-trgfn-v-resi-protect-num-mctit.yaml
+
+  - changeSet:
+      id: 20260713-27-create-trgfn-v-resi-protect-num
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_v_resi_protect_num()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: rende resi.numero immutabile UNA VOLTA assegnato (a
+              --   CONFERMATO), ma consente la prima valorizzazione (NULL->valore).
+              BEGIN
+                  IF OLD.numero IS NOT NULL
+                     AND NEW.numero IS DISTINCT FROM OLD.numero THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'CODICE_NON_MODIFICABILE',
+                          jsonb_build_object(
+                              'column',    'numero',
+                              'old_value', OLD.numero,
+                              'new_value', NEW.numero
+                          ),
+                          NEW.tx_id,
+                          'numero'
+                      );
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_v_resi_protect_num()
+              IS 'Protect condizionale resi.numero: immutabile dopo la prima assegnazione (a CONFERMATO), consente NULL->valore. Mirror trgfn_v_ddt_protect_num. rev 2026-07-13.';
+
+              DROP TRIGGER IF EXISTS trg_resi_a10_v_protect_num_upd ON vendite.resi;
+              CREATE TRIGGER trg_resi_a10_v_protect_num_upd
+                BEFORE UPDATE ON vendite.resi
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_v_resi_protect_num();

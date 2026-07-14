@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_tipi_indirizzi_only_allowed.md" %}
 # ⚙️ Funzione `trgfn_tipi_indirizzi_only_allowed`
 
 ```sql
@@ -12,67 +13,37 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed()
  LANGUAGE plpgsql
 AS $function$
  DECLARE
-   v_ambito         text := COALESCE(TG_ARGV[0], 'FATTURE'); -- 'FATTURE' | 'DDT' | 'ORDINI' | 'PREVENTIVI' | ...
-   v_custom_csv     text := NULLIF(TG_ARGV[1], '');               -- es. 'FATT,SPED,RES'
+   v_ambito         text := COALESCE(TG_ARGV[0], 'FATTURE'); -- 'FATTURE'|'DDT'|'ORDINI'|'PREVENTIVI'|'OFFERTE'|'CONTRATTI'|'ACQUISTI_DDT'
    v_codice         text;
    v_allowed_ids    integer[];
    v_allowed_codes  text[];
-   v_has_cfg        boolean;
-   v_fallback_codes text[];
+   v_tabella        text := TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME;
  BEGIN
-   -- codice interno del tipo richiesto (per log)
+   -- Codice interno del tipo richiesto (per log).
    SELECT t.codice_interno INTO v_codice
    FROM config.tipi_indirizzi t
    WHERE t.id = NEW.tipo_indirizzo_id;
 
-   -- 0) Fallback codes by ambito (se non c'è tabella config o non attiva)
-   IF v_custom_csv IS NOT NULL THEN
-     v_fallback_codes := string_to_array(v_custom_csv, ',');
-   ELSE
-     v_fallback_codes :=
-       CASE upper(v_ambito)
-         WHEN 'FATTURE' THEN ARRAY['FATT','SPED','FORNITURA','RES']
-         WHEN 'PREVENTIVI'   THEN ARRAY['FATT','SPED','FORNITURA','RES']
-         WHEN 'DDT'          THEN ARRAY['CON','SPED']
-         WHEN 'ORDINI'       THEN ARRAY['CON','FATT']
-         ELSE ARRAY['FATT','SPED','FORNITURA','RES'] -- default generico
-       END;
-   END IF;
+   -- Whitelist dei tipi ammessi per l'ambito: UNICA fonte = config.
+   -- Nessun fallback hardcoded (fail-closed se ambito non configurato).
+   SELECT array_agg(a.tipo_indirizzo_id),
+          array_agg(t.codice_interno)
+     INTO v_allowed_ids, v_allowed_codes
+   FROM config.tipi_indirizzi_allowed a
+   JOIN config.tipi_indirizzi t ON t.id = a.tipo_indirizzo_id
+   WHERE a.ambito = v_ambito
+     AND a.attivo = true;
 
-   -- 1) Esistono regole attive per l'ambito?
-   SELECT EXISTS (
-           SELECT 1
-           FROM config.tipi_indirizzi_allowed a
-           WHERE a.ambito = v_ambito
-             AND a.attivo = true
-         )
-     INTO v_has_cfg;
-
-   -- 2) Costruisci allowed (preferisci config; se assente usa fallback)
-   IF v_has_cfg THEN
-     SELECT array_agg(a.tipo_indirizzo_id) AS ids,
-           array_agg(t.codice_interno)    AS codes
-       INTO v_allowed_ids, v_allowed_codes
-     FROM config.tipi_indirizzi_allowed a
-     JOIN config.tipi_indirizzi t ON t.id = a.tipo_indirizzo_id
-     WHERE a.ambito = v_ambito
-       AND a.attivo = true;
-   ELSE
-     SELECT array_agg(t.id) AS ids,
-           array_agg(t.codice_interno) AS codes
-       INTO v_allowed_ids, v_allowed_codes
-     FROM config.tipi_indirizzi t
-     WHERE t.codice_interno = ANY(v_fallback_codes);
-   END IF;
-
-   -- 3) Validazione
-   IF v_codice IS NULL OR NOT (NEW.tipo_indirizzo_id = ANY(v_allowed_ids)) THEN
+   -- Validazione: tipo esistente E incluso nella whitelist dell'ambito.
+   IF v_codice IS NULL
+      OR v_allowed_ids IS NULL
+      OR NOT (NEW.tipo_indirizzo_id = ANY(v_allowed_ids)) THEN
      PERFORM script.fn_log_and_raise_error(
        'database', TG_NAME, 'E_TIPO_INDIRIZZO',
        jsonb_build_object(
-         'table','vendite.fatture_indirizzi',
+         'table', v_tabella,
          'ambito', v_ambito,
-         'fattura_id', NEW.fattura_id,
+         'new_row', (to_jsonb(NEW) - 'snapshot'),
          'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
          'codice_interno', v_codice,
          'allowed_codes', v_allowed_codes
@@ -80,8 +51,8 @@ AS $function$
        NULL::uuid,
        NEW.tipo_indirizzo_id::text,
        v_codice,
-       'Fatture',
-       array_to_string(v_allowed_codes, ', ')
+       v_ambito,
+       array_to_string(COALESCE(v_allowed_codes, ARRAY[]::text[]), ', ')
      );
    END IF;
 

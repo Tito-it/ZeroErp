@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Crea vendite.vw_ddt_riepilogo_iva_dettaglio: clone 1:1 di
+# vendite.vw_ordini_riepilogo_iva_dettaglio (20260605-16) con sostituzioni
+# ordine_id->ddt_id e sorgente vw_ddt_righe_iva_base (20260711-13).
+#
+# Stessa formula fiscale: ROUND(2) sull'aggregato per aliquota (DPR 633/72
+# art. 21 + DM 24/12/93). Shape allineato: natura_*/esigibilita/split_payment
+# NULL, niente id tecnico, chiave logica (ddt_id, iva_id, aliquota effettiva).
+#
+# Dipende dalla base 20260711-13: la preCondition ne verifica l'esistenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260711-14-create-vw-ddt-riepilogo-iva-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260711-14-create-vw-ddt-riepilogo-iva-dettaglio
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea vendite.vw_ddt_riepilogo_iva_dettaglio (clone di
+        vw_ordini_riepilogo_iva_dettaglio): aggrega vw_ddt_righe_iva_base per
+        ddt_id, iva_id e aliquota effettiva; ROUND dell'imponibile dopo la SUM,
+        imposta sull'imponibile aggregato arrotondato.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - viewExists:
+              schemaName: vendite
+              viewName: vw_ddt_righe_iva_base
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_ddt_riepilogo_iva_dettaglio;
+
+              CREATE VIEW vendite.vw_ddt_riepilogo_iva_dettaglio
+              WITH (security_invoker = on) AS
+              WITH imponibili AS (
+                SELECT
+                  b.ddt_id,
+                  b.iva_id,
+                  b.aliquota_effettiva,
+                  SUM(b.imponibile_riga_full) AS imponibile_full
+                FROM vendite.vw_ddt_righe_iva_base b
+                GROUP BY
+                  b.ddt_id,
+                  b.iva_id,
+                  b.aliquota_effettiva
+              ),
+              aggregati AS (
+                SELECT
+                  i.ddt_id,
+                  i.iva_id,
+                  i.aliquota_effettiva,
+                  ROUND(i.imponibile_full, 2) AS imponibile,
+                  (
+                    i.imponibile_full
+                    - ROUND(i.imponibile_full, 2)
+                  ) AS arrotondamento
+                FROM imponibili i
+              ),
+              riepilogo AS (
+                SELECT
+                  a.ddt_id,
+                  a.iva_id,
+                  a.aliquota_effettiva,
+                  a.imponibile,
+                  ROUND(
+                    a.imponibile * COALESCE(a.aliquota_effettiva, 0) / 100,
+                    2
+                  ) AS imposta,
+                  a.arrotondamento
+                FROM aggregati a
+              )
+              SELECT
+                r.ddt_id,
+                r.iva_id,
+                iva.codice                       AS iva_codice,
+                iva.descrizione                  AS iva_descrizione,
+                r.aliquota_effettiva             AS iva_aliquota,
+                NULL::integer                    AS natura_id,
+                NULL::text                       AS natura_codice,
+                NULL::char(1)                    AS esigibilita,
+                NULL::boolean                    AS split_payment,
+                r.imponibile,
+                r.imposta,
+                r.arrotondamento,
+                r.imponibile + r.imposta         AS totale_riga
+              FROM riepilogo r
+              LEFT JOIN config.iva iva
+                ON iva.id = r.iva_id;
+
+              COMMENT ON VIEW vendite.vw_ddt_riepilogo_iva_dettaglio IS
+                'Riepilogo IVA per DDT vendita derivato dalle righe DDT attive e '
+                'valorizzate. Aggrega per ddt_id, iva_id e aliquota effettiva; '
+                'arrotonda l''imponibile dopo la SUM e calcola l''imposta '
+                'sull''imponibile aggregato arrotondato. Natura, esigibilita e '
+                'split_payment sono NULL per DDT finche'' non esiste uno snapshot '
+                'dedicato. Clone di vw_ordini_riepilogo_iva_dettaglio.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_ddt_riepilogo_iva_dettaglio;

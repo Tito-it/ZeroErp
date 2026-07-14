@@ -6,7 +6,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | ordine_id | bigint | NO |  |
-| tipo_indirizzo_id | bigint | NO |  |
+| tipo_indirizzo_id | integer | NO |  |
 | snapshot | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |

@@ -1,0 +1,134 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — testata vendite.resi (brief-db-resi-vendita §3).
+#
+# Entita' autonoma con sorgente data-driven (sorgente_tipo_id + sorgente_uid,
+# NOT NULL in questa slice: ogni reso ha sempre un DDT origine). Denormalizzati
+# (billing/destinatario/utility/valuta/emittente) ereditati dal DDT sorgente in
+# vendite.trgfn_resi_normalize (20260713-19). emittente_fiscale_id NOT NULL.
+# numero assegnato alla CONFERMA (20260713-25), NULL in DRAFT.
+#
+# Auto-provisioning dbops (make db-ci-apply): tabella storico + trigger storico,
+#   audit (data_update/user_update), tx_id, require_attivo sui lookup, indici FK.
+#   Qui NON si scrivono a mano (guida storicizzazione + automazione-db).
+#
+# Trigger di dominio (hand-written) in 20_code: normalize, default_emittente,
+#   guard_emittente_ba (z10), guard_transizione (a10), gen_numero + protect_num,
+#   guard_emittente_scope (attach). RLS rls_resi_ef_whitelist in 20260713-17.
+#
+# Dipendenze: config.stati_doc_reso (20260713-11), config.sorgenti,
+#   anagrafiche.{soggetti_ruoli,billing_account,emittenti_fiscali},
+#   config.{utilities,valute}.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260713-13-create-resi-mctit.yaml
+
+  - changeSet:
+      id: 20260713-13-create-resi
+      author: mctit
+      comment: >
+        Crea vendite.resi: testata documento reso (sorgente DDT_VENDITA
+        data-driven, denormalizzati ereditati, emittente NOT NULL). Mirror
+        strutturale della testata DDT dove ha senso.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - tableExists:
+                    schemaName: vendite
+                    tableName: resi
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_reso
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: resi
+            remarks: >-
+              Testata documento reso di vendita. Entita' autonoma con sorgente
+              data-driven (DDT_VENDITA in questa slice). Macchina a stati
+              data-driven (config.stati_doc_reso). brief-db-resi-vendita §3.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata tecnica."
+                  constraints: { primaryKey: true, primaryKeyName: pk_resi, nullable: false }
+
+              - column: { name: uid, type: uuid, defaultValueComputed: "uuidv7()", constraints: { nullable: false }, remarks: "UID pubblico stabile." }
+              - column: { name: anno, type: smallint, remarks: "Anno fiscale (valorizzato alla conferma)." }
+              - column: { name: numero, type: VARCHAR(32), remarks: "Numero reso (assegnato alla CONFERMA, NULL in DRAFT)." }
+              - column: { name: data, type: date, defaultValueComputed: "CURRENT_DATE", constraints: { nullable: false }, remarks: "Data documento reso." }
+
+              - column: { name: stato_doc_reso_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> config.stati_doc_reso.id." }
+
+              # Sorgente data-driven (NOT NULL: ogni reso ha un DDT origine in questa slice)
+              - column: { name: sorgente_tipo_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> config.sorgenti.id (DDT_VENDITA)." }
+              - column: { name: sorgente_uid, type: uuid, constraints: { nullable: false }, remarks: "UID del DDT di provenienza (vendite.ddt.uid)." }
+
+              # Denormalizzati ereditati dal DDT sorgente (trgfn_resi_normalize)
+              - column: { name: destinatario_soggetto_ruolo_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> anagrafiche.soggetti_ruoli.id (cliente). Ereditato dal DDT." }
+              - column: { name: billing_account_id, type: bigint, remarks: "FK -> anagrafiche.billing_account.id. Ereditato dal DDT." }
+              - column: { name: utility_id, type: integer, remarks: "FK -> config.utilities.id. Ereditato dal DDT." }
+              - column: { name: valuta_id, type: integer, remarks: "FK -> config.valute.id. Ereditato dal DDT." }
+              - column: { name: emittente_fiscale_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> anagrafiche.emittenti_fiscali.id. Ereditato dal DDT (NOT NULL)." }
+
+              - column: { name: meta, type: jsonb, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+              - column: { name: storicizza, type: boolean, defaultValueBoolean: true, constraints: { nullable: false }, remarks: "Flag storicizzazione (auto-provisioning storico)." }
+              - column: { name: tx_id, type: uuid, remarks: "Transaction ID (trgfn_tx_id_managed)." }
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER" }
+
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: resi
+            columnNames: uid
+            constraintName: uq_resi_uid
+
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi, baseColumnNames: stato_doc_reso_id, constraintName: fk_resi_stato, referencedTableSchemaName: config, referencedTableName: stati_doc_reso, referencedColumnNames: id, onUpdate: CASCADE, onDelete: NO ACTION }
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi, baseColumnNames: sorgente_tipo_id, constraintName: fk_resi_sorgente_tipo, referencedTableSchemaName: config, referencedTableName: sorgenti, referencedColumnNames: id, onUpdate: CASCADE, onDelete: NO ACTION }
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi, baseColumnNames: destinatario_soggetto_ruolo_id, constraintName: fk_resi_destinatario_ruolo, referencedTableSchemaName: anagrafiche, referencedTableName: soggetti_ruoli, referencedColumnNames: id, onUpdate: CASCADE, onDelete: NO ACTION }
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi, baseColumnNames: billing_account_id, constraintName: fk_resi_billing_account, referencedTableSchemaName: anagrafiche, referencedTableName: billing_account, referencedColumnNames: id, onUpdate: CASCADE, onDelete: NO ACTION }
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi, baseColumnNames: utility_id, constraintName: fk_resi_utility, referencedTableSchemaName: config, referencedTableName: utilities, referencedColumnNames: id, onUpdate: CASCADE, onDelete: NO ACTION }
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi, baseColumnNames: valuta_id, constraintName: fk_resi_valuta, referencedTableSchemaName: config, referencedTableName: valute, referencedColumnNames: id, onUpdate: CASCADE, onDelete: NO ACTION }
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi, baseColumnNames: emittente_fiscale_id, constraintName: fk_resi_emittente_fiscale, referencedTableSchemaName: anagrafiche, referencedTableName: emittenti_fiscali, referencedColumnNames: id, onUpdate: CASCADE, onDelete: NO ACTION }
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Numero univoco (sequenza globale vendite.resi_numero_seq, a CONFERMA).
+              -- anno e numero entrambi valorizzati quando numero presente -> nessun
+              -- problema di NULL-distinct.
+              CREATE UNIQUE INDEX uq_resi_anno_numero
+                ON vendite.resi (anno, numero) WHERE numero IS NOT NULL;
+
+              -- Lookup DDT-per-reso via sorgente (mirror ix_ddt_v_sorgente).
+              CREATE INDEX ix_resi_sorgente
+                ON vendite.resi (sorgente_tipo_id, sorgente_uid);
+
+              CREATE INDEX ix_resi_stato ON vendite.resi (stato_doc_reso_id);
+
+              COMMENT ON TABLE vendite.resi IS
+                'Testata documento reso di vendita (brief-db-resi-vendita §3). '
+                'Sorgente data-driven DDT_VENDITA; denormalizzati ereditati dal DDT '
+                'origine (trgfn_resi_normalize); emittente NOT NULL; numero a '
+                'CONFERMA. rev 2026-07-13.';
+
+      rollback:
+        - dropTable:
+            schemaName: vendite
+            tableName: resi

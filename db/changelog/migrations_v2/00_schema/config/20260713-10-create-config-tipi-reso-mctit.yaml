@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — vocabolario config.tipi_reso (brief-db-resi-vendita §1).
+#
+# Dominio tipo reso PER RIGA con flag riapre_residuo:
+#   - RESO_A_CREDITO       (riapre_residuo=false) -> alimenta la coda accrediti
+#   - RESO_PER_RICONSEGNA  (riapre_residuo=true)  -> riapre il residuo ordine +
+#                          coda ri-consegna (aggancio duro via tabella-ponte)
+# Nessun IF hardcoded nel motore: la logica legge il flag riapre_residuo.
+#
+# codice_interno immutabile: il lock si auto-provisiona dalla sola presenza
+#   della colonna (dbops.fn_run_automations_lock_columns, linee-guida-sql §6b).
+# Seed valori in 80_data (20260713-36).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260713-10-create-config-tipi-reso-mctit.yaml
+
+  - changeSet:
+      id: 20260713-10-create-config-tipi-reso
+      author: mctit
+      comment: >
+        Crea config.tipi_reso: vocabolario tipo reso per riga con flag
+        riapre_residuo (data-driven, nessun IF hardcoded). Seed in 20260713-36.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists:
+                schemaName: config
+                tableName: tipi_reso
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: tipi_reso
+            remarks: >-
+              Dominio tipo reso (per riga): RESO_A_CREDITO / RESO_PER_RICONSEGNA.
+              Il flag riapre_residuo pilota il motore (nessun IF hardcoded).
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_tipi_reso
+                    nullable: false
+
+              - column: { name: codice_interno, type: VARCHAR(32), constraints: { nullable: false }, remarks: "Codice interno immutabile (chiave logica motore)." }
+              - column: { name: codice, type: VARCHAR(32), constraints: { nullable: false }, remarks: "Codice stabile (display)." }
+              - column: { name: descrizione, type: VARCHAR(120), remarks: "Descrizione (IT)." }
+
+              - column:
+                  name: riapre_residuo
+                  type: boolean
+                  constraints:
+                    nullable: false
+                  remarks: >-
+                    true = reso per ri-consegna (riapre il residuo evasione
+                    ordine + coda ri-consegna); false = reso a credito.
+
+              - column: { name: attivo, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: ordine, type: smallint, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: meta, type: jsonb, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: tipi_reso
+            columnNames: codice_interno
+            constraintName: uq_tipi_reso_codice_interno
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: tipi_reso
+            columnNames: codice
+            constraintName: uq_tipi_reso_codice
+
+        - createIndex: { schemaName: config, tableName: tipi_reso, indexName: ix_tipi_reso_attivo, columns: [ { name: attivo } ] }
+        - createIndex: { schemaName: config, tableName: tipi_reso, indexName: ix_tipi_reso_ordine, columns: [ { name: ordine } ] }
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON TABLE config.tipi_reso IS
+                'Dominio tipo reso per riga (brief-db-resi-vendita §1). Il flag '
+                'riapre_residuo pilota il motore (RESO_A_CREDITO=false, '
+                'RESO_PER_RICONSEGNA=true), nessun IF hardcoded. rev 2026-07-13.';
+              COMMENT ON COLUMN config.tipi_reso.codice_interno IS 'Codice interno immutabile (chiave logica).';
+              COMMENT ON COLUMN config.tipi_reso.riapre_residuo IS 'true = ri-consegna (riapre residuo + coda), false = credito.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: tipi_reso

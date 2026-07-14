@@ -28,31 +28,20 @@ from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
     qp_bool,
-    qp_int_optional,
-    qp_iso_date_optional,
-    qp_str,
 )
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api._list_filters_helpers import extract_doc_list_filters
+from apps.vendite.api.indirizzi_documento_views import (
+    build_indirizzi_documento_views,
+)
+from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ddt_service
 
 # Codice lista (ui.lista_definizione) usato dall'export per risolvere
 # colonne visibili/ordine/permessi dell'utente.
 _LISTA_CODICE_DDT = "vendite.ddt"
-
-
-# Scopo: Estrae i filtri lista comuni dalla query string. NESSUN default
-#        temporale backend: il default `data_da` (anno-1) lo applica la UI
-#        (allineato a ordini/preventivi; evita non-determinismo `date.today()`).
-def _extract_list_filters(qp) -> dict[str, Any]:
-    return {
-        "stato_codice": qp_str(qp.get("stato_codice_interno")),
-        "billing_account_id": qp_int_optional(qp.get("billing_account_id"), "billing_account_id"),
-        "utility_id": qp_int_optional(qp.get("utility_id"), "utility_id"),
-        "data_da": qp_iso_date_optional(qp.get("data_da"), "data_da"),
-        "data_al": qp_iso_date_optional(qp.get("data_a"), "data_a"),
-    }
 
 
 class ApiDdtList(DomainAPIView):
@@ -89,7 +78,7 @@ class ApiDdtList(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp, default_order="data")
-        f = _extract_list_filters(qp)
+        f = extract_doc_list_filters(qp, with_utility=True)
         results, total = ddt_service.list_ddt_rows(
             search=p["search"],
             auth_user_id=get_scope_user_id(request),
@@ -141,7 +130,7 @@ class ApiDdtExportView(DomainAPIView):
         qp = request.query_params
         fmt = parse_export_format(request)
         p = parse_list_params(qp, default_order="data")
-        f = _extract_list_filters(qp)
+        f = extract_doc_list_filters(qp, with_utility=True)
         results, total = ddt_service.list_ddt_rows(
             search=p["search"],
             auth_user_id=get_scope_user_id(request),
@@ -218,6 +207,62 @@ class ApiDdtPush(DomainAPIView):
     def post(self, request: Request, ddt_id: int) -> JsonResponse:
         user = getattr(request.user, "username", None) or None
         return success_response(ddt_service.push_a_commessa(int(ddt_id), user=user))
+
+
+# View dal factory condiviso `build_indirizzi_documento_views` (pannello
+# indirizzi slot-per-tipo, design brief-design-indirizzi-documenti-vendita).
+# Closure sul modulo: i patch dei test su ddt_service.* restano validi.
+_indirizzi_views = build_indirizzi_documento_views(
+    schema_prefix="Ddt",
+    url_kwarg="ddt_id",
+    list_call=lambda ddt_id: ddt_service.list_indirizzi(ddt_id),
+    upsert_call=lambda ddt_id, payload: ddt_service.upsert_indirizzo(ddt_id, payload),
+    delete_call=lambda ddt_id, indirizzo_id: ddt_service.delete_indirizzo(
+        ddt_id, indirizzo_id),
+)
+ApiDdtIndirizzi = _indirizzi_views.lista
+ApiDdtIndirizzoDetail = _indirizzi_views.detail
+
+
+# View dal factory condiviso `build_riepilogo_iva_view` (estrazione
+# regola-del-2 dei cloni preventivi/ordini/ddt). La closure legge il global
+# di modulo a call-time: i patch dei test sul service restano validi.
+ApiDdtRiepilogoIva = build_riepilogo_iva_view(
+    schema_prefix="Ddt",
+    url_kwarg="ddt_id",
+    list_call=lambda ddt_id: ddt_service.list_riepilogo_iva(ddt_id),
+    doc="""GET /api/v1/vendite/ddt/<id>/riepilogo-iva/
+
+    Restituisce il riepilogo IVA del DDT: una riga per gruppo aliquota
+    (natura/esigibilita/split sempre NULL) con imponibile e imposta aggregati
+    e arrotondati a 2 decimali sull'aggregato per aliquota (regola fiscale:
+    DPR 633/72 art. 21 + DM 24/12/93, identica a preventivi/ordini). Lettura
+    pura dalla view derivata `vendite.vw_ddt_riepilogo_iva_dettaglio`, nessun
+    side-effect; le righe con prezzo NULL (DDT solo di trasporto) sono escluse
+    in vista: DDT non valorizzato -> riepilogo vuoto.
+
+    Area `vendite` livello LETTURA sufficiente.
+    """,
+)
+
+
+class ApiDdtRighePerReso(DomainAPIView):
+    """GET /api/v1/vendite/ddt/<ddt_id>/righe-per-reso/.
+
+    Righe del DDT con gia'-reso cumulato e residuo rendibile: alimenta il
+    pannello "crea reso" del drawer DDT (slice resi). Vive nel dominio
+    sorgente (DDT) ma delega a `resi_service` (import locale, come
+    `ApiOrdineGeneraDdt` fa con ddt_service — evita cicli).
+    """
+
+    area_funzionale = "vendite"
+
+    # Scopo: Righe DDT + qta_gia_resa/qta_resa_residua per il pannello reso.
+    def get(self, request: Request, ddt_id: int) -> JsonResponse:
+        from apps.vendite.services import resi_service
+        return success_response(
+            resi_service.list_righe_ddt_per_reso(int(ddt_id)),
+        )
 
 
 class ApiDdtRighe(DomainAPIView):

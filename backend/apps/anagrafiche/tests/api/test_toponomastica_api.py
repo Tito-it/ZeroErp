@@ -113,7 +113,7 @@ class TestToponomasticaRepository(TestCase):
         # Il repository riceve sempre una stringa pulita.
         pass
 
-    @patch("apps.core.db._helpers.connection")
+    @patch("apps.core.db.sql_write_helpers.connection")
     def test_update_toponomastica(self, mock_conn):
         """Modifica tipo strada OK."""
         mock_cursor = MagicMock()
@@ -130,7 +130,7 @@ class TestToponomasticaRepository(TestCase):
         sql = mock_cursor.execute.call_args[0][0]
         self.assertIn("UPDATE config.toponomastica", sql)
 
-    @patch("apps.anagrafiche.db.geo_repository.connection")
+    @patch("apps.core.db.sql_write_helpers.connection")
     def test_update_toponomastica_not_found(self, mock_conn):
         """ID non esistente — rowcount 0."""
         mock_cursor = MagicMock()

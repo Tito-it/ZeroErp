@@ -108,6 +108,22 @@ BEGIN
         'PREVENTIVO', p_preventivo_id)
     RETURNING id INTO v_ordine_id;
 
+    -- 4-bis) Cascata indirizzi (D-1): copia 1:1 gli snapshot del
+    --   preventivo filtrati sui tipi ammessi in ambito ORDINI.
+    --   origine_* propagati; idempotente (uno-per-tipo).
+    INSERT INTO vendite.ordini_indirizzi (
+        ordine_id, tipo_indirizzo_id, snapshot,
+        origine_indirizzo_id, origine_soggetto_ruolo_id)
+    SELECT v_ordine_id, pi.tipo_indirizzo_id, pi.snapshot,
+           pi.origine_indirizzo_id, pi.origine_soggetto_ruolo_id
+      FROM vendite.preventivi_indirizzi pi
+      JOIN config.tipi_indirizzi_allowed a
+        ON a.tipo_indirizzo_id = pi.tipo_indirizzo_id
+       AND a.ambito = 'ORDINI'
+       AND a.attivo IS TRUE
+     WHERE pi.preventivo_id = p_preventivo_id
+    ON CONFLICT (ordine_id, tipo_indirizzo_id) DO NOTHING;
+
     -- 5) Copia le righe residue (snapshot prezzi) dalla vista-predicato.
     --    La INNER JOIN a catalogo.articoli e' PROIEZIONE: serve
     --    is_composito e, come oggi, scarta righe senza articolo.

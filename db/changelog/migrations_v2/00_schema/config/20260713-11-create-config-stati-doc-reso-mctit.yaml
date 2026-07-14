@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — config.stati_doc_reso (brief-db-resi-vendita §2.1).
+#
+# Macchina a stati del documento reso, mirror di config.stati_doc_ddt MA senza
+# le colonne pdf_mode/pdf_allow_allegati: i resi sono fuori dal motore stampa in
+# questa slice (brief §0.9 / §8). La "fase" per le dashboard (APERTO/CHIUSO)
+# vive in meta.fase (data-driven, nessuna colonna dedicata).
+#
+# Stati minimi: DRAFT (fase APERTO) -> CONFERMATO (fase CHIUSO) + ANNULLATO
+# (terminale). ACCREDITATO arrivera' con la slice NC (solo seed, non rework).
+# Seed valori in 80_data (20260713-37). Matrice transizioni in 20260713-12.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260713-11-create-config-stati-doc-reso-mctit.yaml
+
+  - changeSet:
+      id: 20260713-11-create-config-stati-doc-reso
+      author: mctit
+      comment: >
+        Crea config.stati_doc_reso: stati documento reso (mirror stati_doc_ddt
+        senza colonne pdf). fase in meta.fase. Seed in 20260713-37.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_reso
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: stati_doc_reso
+            remarks: >-
+              Stati del documento reso di vendita (DRAFT/CONFERMATO/ANNULLATO).
+              Mirror di config.stati_doc_ddt senza le colonne pdf (resi fuori
+              dal motore stampa in questa slice). fase dashboard in meta.fase.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_stati_doc_reso
+                    nullable: false
+
+              - column: { name: codice_interno, type: VARCHAR(32), constraints: { nullable: false }, remarks: "Codice interno immutabile (state-machine)." }
+              - column: { name: codice, type: VARCHAR(32), constraints: { nullable: false }, remarks: "Codice stabile (display)." }
+              - column: { name: descrizione, type: VARCHAR(120), remarks: "Descrizione (IT)." }
+
+              - column: { name: attivo, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: ordine, type: smallint, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati (es. fase: APERTO/CHIUSO per le dashboard)."
+                  constraints:
+                    nullable: false
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: stati_doc_reso
+            columnNames: codice_interno
+            constraintName: uq_stati_doc_reso_codice_interno
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: stati_doc_reso
+            columnNames: codice
+            constraintName: uq_stati_doc_reso_codice
+
+        - createIndex: { schemaName: config, tableName: stati_doc_reso, indexName: ix_stati_doc_reso_attivo, columns: [ { name: attivo } ] }
+        - createIndex: { schemaName: config, tableName: stati_doc_reso, indexName: ix_stati_doc_reso_ordine, columns: [ { name: ordine } ] }
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON TABLE config.stati_doc_reso IS
+                'Stati documento reso di vendita (brief-db-resi-vendita §2.1). '
+                'Mirror di config.stati_doc_ddt senza colonne pdf. fase in '
+                'meta.fase. Seed in 20260713-37. rev 2026-07-13.';
+              COMMENT ON COLUMN config.stati_doc_reso.codice_interno IS 'Codice interno immutabile (state-machine).';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: stati_doc_reso

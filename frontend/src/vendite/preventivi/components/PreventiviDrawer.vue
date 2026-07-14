@@ -39,6 +39,7 @@ import PreventiviForm from './PreventiviForm.vue'
 import PreventiviRigheTable from './PreventiviRigheTable.vue'
 import PreventiviSmistamentoPanel from './PreventiviSmistamentoPanel.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
+import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 import DocumentiGeneratiSorgenteList from '../../../documenti/components/DocumentiGeneratiSorgenteList.vue'
@@ -941,6 +942,16 @@ const drawerActions = computed(() => {
 
             <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
             <template v-if="contentReady && hasDetail">
+              <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default,
+                   contatore "+N altri", pulsante "Indirizzi" che apre il
+                   drawer di gestione. -->
+              <DocumentoIndirizziSection
+                dominio="preventivi"
+                :doc-id="effectivePreventivoId"
+                :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
+                :istanza-utility-id="detail?.istanza_utility_id ?? null"
+                :readonly="!(canEditTestataEffective && !isReadonly)" />
+
               <Divider />
               <PreventiviRigheTable
                 :preventivo-id="effectivePreventivoId"

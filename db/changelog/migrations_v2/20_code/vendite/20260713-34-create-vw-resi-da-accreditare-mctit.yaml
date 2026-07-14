@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Slice RESI vendita — coda "da accreditare" vw_resi_da_accreditare (brief §5.4).
+#
+# Righe reso di tipo credito (tipi_reso.riapre_residuo = false, data-driven —
+# non si hardcoda il codice) su resi CONFERMATI: coda di lavoro per la futura
+# pipeline nota di credito. Grana = riga reso + riferimenti DDT/BA/emittente.
+# security_invoker=on + RLS sulla base (espone emittente_fiscale_id per il filtro
+# applicativo BE). Nessuna generazione NC in questa slice.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260713-34-create-vw-resi-da-accreditare-mctit.yaml
+
+  - changeSet:
+      id: 20260713-34-create-vw-resi-da-accreditare
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_resi_da_accreditare
+              WITH (security_invoker=on) AS
+              SELECT rr.id AS resi_riga_id,
+                  r.id     AS reso_id,
+                  r.uid    AS reso_uid,
+                  r.numero AS reso_numero,
+                  r.data,
+                  r.emittente_fiscale_id,
+                  r.billing_account_id,
+                  ba.codice AS ba_codice,
+                  r.destinatario_soggetto_ruolo_id,
+                  s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                  rr.articolo_id,
+                  rr.descrizione,
+                  rr.quantita,
+                  rr.qta_operativa,
+                  rr.uom_operativa_id,
+                  rr.motivo,
+                  rr.ddt_riga_id,
+                  dr.ddt_id,
+                  d.numero AS ddt_numero,
+                  rr.ordine_riga_id
+                 FROM vendite.resi_righe rr
+                   JOIN vendite.resi r                 ON r.id = rr.reso_id
+                   JOIN config.stati_doc_reso sr       ON sr.id = r.stato_doc_reso_id
+                   JOIN config.tipi_reso tr            ON tr.id = rr.tipo_reso_id
+                   JOIN vendite.ddt_righe dr           ON dr.id = rr.ddt_riga_id
+                   JOIN vendite.ddt d                  ON d.id = dr.ddt_id
+                   JOIN anagrafiche.soggetti_ruoli sr_dest ON sr_dest.id = r.destinatario_soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s_dest    ON s_dest.id = sr_dest.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = r.billing_account_id
+                WHERE sr.codice_interno = 'CONFERMATO'
+                  AND tr.riapre_residuo = false          -- credito (data-driven)
+                  AND rr.attivo IS TRUE;
+
+              COMMENT ON VIEW vendite.vw_resi_da_accreditare IS
+                'Coda righe reso a credito (riapre_residuo=false) confermate, per la futura pipeline NC. security_invoker=on + RLS su base. rev 2026-07-13.';

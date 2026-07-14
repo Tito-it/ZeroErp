@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Routing API resi di vendita (CRUD testata + righe, conferma/annullo,
+#        DDT di ri-consegna, code di lavoro). Clone ridotto di urls_ddt.
+# ------------------------------------------------------------
+
+from django.urls import path
+
+from apps.vendite.api.views_resi import (
+    ApiResiDaAccreditare,
+    ApiResiDaRiconsegnare,
+    ApiResiList,
+    ApiResoAnnulla,
+    ApiResoConferma,
+    ApiResoDetail,
+    ApiResoGeneraDdtRiconsegna,
+    ApiResoRigaDetail,
+    ApiResoRighe,
+)
+
+urlpatterns = [
+    # Lista + create (reso da DDT)
+    path("", ApiResiList.as_view(), name="vendite-resi-list"),
+
+    # Code di lavoro (viste dedicate). Prima di `<int:reso_id>/` per non
+    # collidere con il path del dettaglio.
+    path("da-accreditare/", ApiResiDaAccreditare.as_view(),
+         name="vendite-resi-da-accreditare"),
+    path("da-riconsegnare/", ApiResiDaRiconsegnare.as_view(),
+         name="vendite-resi-da-riconsegnare"),
+
+    path("<int:reso_id>/", ApiResoDetail.as_view(), name="vendite-resi-detail"),
+
+    # Azioni di dominio (fn madri DB): niente cambia-stato generico — conferma
+    # e annullo hanno effetti (residuo/proiezioni/flip DDT).
+    path("<int:reso_id>/conferma/", ApiResoConferma.as_view(),
+         name="vendite-resi-conferma"),
+    path("<int:reso_id>/annulla/", ApiResoAnnulla.as_view(),
+         name="vendite-resi-annulla"),
+    path("<int:reso_id>/genera-ddt-riconsegna/",
+         ApiResoGeneraDdtRiconsegna.as_view(),
+         name="vendite-resi-genera-ddt-riconsegna"),
+
+    # Righe
+    path("<int:reso_id>/righe/", ApiResoRighe.as_view(),
+         name="vendite-resi-righe-list"),
+    path("<int:reso_id>/righe/<int:riga_id>/", ApiResoRigaDetail.as_view(),
+         name="vendite-resi-riga-detail"),
+]

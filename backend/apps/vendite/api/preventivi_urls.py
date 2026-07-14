@@ -30,6 +30,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoRigheSmistabiliOrdine,
     ApiPreventivoGeneraPratica,
     ApiPreventivoIndirizzi,
+    ApiPreventivoIndirizzoDetail,
     ApiPreventivoPratiche,
     ApiPreventivoPushCommessa,
     ApiPreventivoRevisione,
@@ -190,6 +191,11 @@ urlpatterns = [
         "<int:preventivo_id>/indirizzi/",
         ApiPreventivoIndirizzi.as_view(),
         name="vendite-preventivi-indirizzi",
+    ),
+    path(
+        "<int:preventivo_id>/indirizzi/<int:indirizzo_id>/",
+        ApiPreventivoIndirizzoDetail.as_view(),
+        name="vendite-preventivi-indirizzo-detail",
     ),
     # Integrazione: push commessa
     path(

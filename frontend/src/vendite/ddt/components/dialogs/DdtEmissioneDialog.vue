@@ -11,11 +11,17 @@ import { useI18n } from 'vue-i18n'
 import DocumentoEmissioneDialog from '../../../../documenti/components/DocumentoEmissioneDialog.vue'
 import { SORGENTE_CODES } from '../../../../documenti/constants'
 import { displayDate } from '../../../../core/utils/date'
+import Message from 'primevue/message'
 
 const props = defineProps({
   visible: Boolean,
   ddt: { type: Object, default: null },
   loading: Boolean,
+  // True quando manca l'indirizzo obbligatorio (CON): avviso nel riepilogo +
+  // Conferma DISABILITATA (l'emissione genera la stampa: senza indirizzo il
+  // PDF sarebbe scorretto). Il guard DB (E_INDIRIZZO_DOC_OBBLIGATORIO) resta
+  // la fonte di verita' server-side.
+  indirizzoMancante: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:visible', 'confirm'])
 
@@ -31,10 +37,14 @@ const { t } = useI18n()
     :header="t('vendite.ddt.emissione_titolo')"
     :confirm-label="t('vendite.ddt.emissione_conferma')"
     :loading="props.loading"
+    :confirm-disabled="props.indirizzoMancante"
     @update:visible="(val) => emit('update:visible', val)"
     @confirm="(payload) => emit('confirm', payload)"
   >
     <template #riepilogo>
+      <Message v-if="props.indirizzoMancante" severity="warn" :closable="false">
+        {{ t('vendite.indirizzi.mancante_obbligatorio') }}
+      </Message>
       <p>{{ t('vendite.ddt.emissione_messaggio') }}</p>
 
       <div

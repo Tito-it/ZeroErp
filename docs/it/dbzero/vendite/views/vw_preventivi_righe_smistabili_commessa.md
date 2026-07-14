@@ -1,8 +1,11 @@
 {% include-markdown "it/dbzero/vendite/manual/vw_preventivi_righe_smistabili_commessa.md" %}
 # 🔍 View `vw_preventivi_righe_smistabili_commessa`
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_smistabili_commessa AS
+CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_smistabili_commessa
+WITH (security_invoker=on) AS
 SELECT pr.preventivo_id,
     pr.id,
     p.uid AS preventivo_uid,

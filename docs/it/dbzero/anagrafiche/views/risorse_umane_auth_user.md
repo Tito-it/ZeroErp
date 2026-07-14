@@ -1,8 +1,11 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/risorse_umane_auth_user.md" %}
 # 🔍 View `risorse_umane_auth_user`
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW anagrafiche.risorse_umane_auth_user AS
+CREATE OR REPLACE VIEW anagrafiche.risorse_umane_auth_user
+WITH (security_invoker=true) AS
 SELECT id.id,
     ru.id AS risorsa_umana_id,
     id.auth_user_id,

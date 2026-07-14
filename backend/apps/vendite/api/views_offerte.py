@@ -34,6 +34,10 @@ from apps.core.api.payload_validators import (
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api.indirizzi_documento_views import (
+    build_indirizzi_documento_views,
+)
+from apps.vendite.services import offerte_service
 from apps.vendite.services.offerte_service import OfferteService
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=6). Usato
@@ -925,3 +929,18 @@ class ApiOffertaUtilityDetail(DomainAPIView):
                 offerta_id, utility_id, request.data or {}
             )
         )
+
+
+# View dal factory condiviso `build_indirizzi_documento_views` (pannello
+# indirizzi slot-per-tipo, design brief-design-indirizzi-documenti-vendita).
+_indirizzi_views = build_indirizzi_documento_views(
+    schema_prefix="Offerta",
+    url_kwarg="offerta_id",
+    list_call=lambda offerta_id: offerte_service.list_indirizzi(offerta_id),
+    upsert_call=lambda offerta_id, payload: offerte_service.upsert_indirizzo(
+        offerta_id, payload),
+    delete_call=lambda offerta_id, indirizzo_id: offerte_service.delete_indirizzo(
+        offerta_id, indirizzo_id),
+)
+ApiOffertaIndirizzi = _indirizzi_views.lista
+ApiOffertaIndirizzoDetail = _indirizzi_views.detail

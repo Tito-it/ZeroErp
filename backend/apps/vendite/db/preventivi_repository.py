@@ -17,10 +17,12 @@ from django.db import connection
 
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
+from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
+from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
 from apps.vendite.types import (
     PreventivoDetailRow,
-    PreventivoIndirizzoRow,
     PreventivoListRow,
     PreventivoPraticaRow,
     PreventivoRigaRow,
@@ -78,19 +80,37 @@ _ROOT_PREVENTIVO_ATTIVO_FROM = """
 """
 
 
-class PreventiviRepository(ComponentiRepositoryMixin):
+class PreventiviRepository(
+    ComponentiRepositoryMixin,
+    RiepilogoIvaRepositoryMixin,
+    IndirizziDocumentoRepositoryMixin,
+):
     """Repository preventivi.
 
     Eredita da `ComponentiRepositoryMixin` per il CRUD componenti BoM
     modello unificato (`preventivi_righe_componenti`). I metodi specifici
     `init_componenti_riga` (chiama `fn_preventivo_riga_componenti_init`)
     e `preview_componenti_riga` (chiama `fn_preventivo_riga_componenti_preview`)
-    sono definiti localmente.
+    sono definiti localmente. Eredita da `RiepilogoIvaRepositoryMixin` la
+    lettura del riepilogo IVA (vista mantenuta dal trigger AFTER su
+    preventivi_righe via fn_ricalcola_riepilogo_iva_preventivo).
     """
 
     # Configurazione mixin componenti.
     _componenti_table_name = "vendite.preventivi_righe_componenti"
     _componenti_fk_riga = "riga_preventivo_id"
+
+    # Configurazione mixin riepilogo IVA (unica vista con `id` tecnico:
+    # righe fisiche di preventivi_riepiloghi_iva, non derivate on-the-fly).
+    _riepilogo_iva_vista = "vendite.vw_preventivi_riepilogo_iva_dettaglio"
+    _riepilogo_iva_fk_documento = "preventivo_id"
+    _riepilogo_iva_con_id = True
+
+    # Configurazione mixin indirizzi documento.
+    _indirizzi_table = "vendite.preventivi_indirizzi"
+    _indirizzi_fk_documento = "preventivo_id"
+    _indirizzi_ambito = "PREVENTIVI"
+    _indirizzi_documento_table = "vendite.preventivi"
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_preventivi_lista)
@@ -228,6 +248,9 @@ class PreventiviRepository(ComponentiRepositoryMixin):
                 sdp.codice AS stato_codice,
                 sdp.descrizione AS stato_descrizione,
                 p.billing_account_id,
+                -- soggetto_ruolo del cliente (BA): serve al FE per la
+                -- gestione indirizzi documento (elenco anagrafico cascata).
+                ba.soggetto_ruolo_id,
                 s.ragione_sociale_completa AS cliente_denominazione,
                 p.utility_id,
                 u.descrizione AS utility_descrizione,
@@ -439,52 +462,24 @@ class PreventiviRepository(ComponentiRepositoryMixin):
             cursor.execute(sql, [riga_id])
             return row_to_dict(cursor)
 
-    # Scopo: Restituisce il riepilogo IVA aggregato del preventivo dalla view
-    #        denormalizzata. Una riga per gruppo (iva_id, natura, esigibilita,
-    #        split_payment) — sui preventivi natura/esigibilita/split sono
-    #        sempre NULL (struttura allineata a fatture_riepiloghi_iva per
-    #        coerenza). Imponibile e imposta sono ROUND 2 sull'aggregato per
-    #        aliquota (regola fiscale: DPR 633/72 art. 21 + DM 24/12/93).
-    #        Popolata dal trigger AFTER su preventivi_righe via
-    #        fn_ricalcola_riepilogo_iva_preventivo: il chiamante non orchestra
-    #        il ricalcolo, legge solo lo stato corrente.
-    def list_riepilogo_iva(self, preventivo_id: int) -> list[dict[str, Any]]:
+    # Scopo: Stato corrente (codice_interno) del preventivo. Guard leggero
+    #        pre-operazione (mirror ddt/ordini): mai il detail completo per
+    #        leggere un solo campo.
+    def get_stato_codice(self, preventivo_id: int) -> str | None:
         sql = """
-            SELECT id, preventivo_id, iva_id, iva_codice, iva_descrizione,
-                   iva_aliquota, natura_id, natura_codice,
-                   esigibilita, split_payment,
-                   imponibile, imposta, arrotondamento, totale_riga
-              FROM vendite.vw_preventivi_riepilogo_iva_dettaglio
-             WHERE preventivo_id = %s
-             ORDER BY iva_aliquota NULLS LAST, iva_id NULLS LAST
+            SELECT sdp.codice_interno
+              FROM vendite.preventivi p
+              JOIN config.stati_doc_preventivi sdp
+                ON sdp.id = p.stato_doc_preventivo_id
+             WHERE p.id = %s
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
-            return rows_to_list(cursor)
+            row = cursor.fetchone()
+            return row[0] if row else None
 
-    # ══════════════════════════════════════════════════════════
-    #  LETTURE — Indirizzi
-    # ══════════════════════════════════════════════════════════
-
-    # Scopo: Restituisce indirizzi preventivo con tipo.
-    def list_indirizzi(self, preventivo_id: int) -> list[PreventivoIndirizzoRow]:
-        sql = """
-            SELECT
-                pi.id,
-                pi.preventivo_id,
-                pi.tipo_indirizzo_id,
-                ti.descrizione AS tipo_indirizzo_descrizione,
-                pi.snapshot,
-                pi.origine_indirizzo_id,
-                pi.origine_soggetto_ruolo_id
-            FROM vendite.preventivi_indirizzi pi
-            LEFT JOIN config.tipi_indirizzi ti ON ti.id = pi.tipo_indirizzo_id
-            WHERE pi.preventivo_id = %s
-            ORDER BY pi.tipo_indirizzo_id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [preventivo_id])
-            return rows_to_list(cursor)
+    # CRUD indirizzi documento (list/upsert/delete + tipi ammessi) ereditato
+    # da `IndirizziDocumentoRepositoryMixin`. Vedi `_indirizzi_repo_mixin.py`.
 
     # Scopo: Capability del preventivo per il detail API (Fase 1 refactor
     #        frontend vendite). Wrapper su `script.fn_available_actions_preventivo`
@@ -557,24 +552,7 @@ class PreventiviRepository(ComponentiRepositoryMixin):
         preventivo_id: int,
         **kwargs: Any,
     ) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(preventivo_id)
-        sql = f"UPDATE vendite.preventivi SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        return execute_dynamic_update("vendite.preventivi", preventivo_id, kwargs)
 
     # Scopo: Risolve l'id del preventivo agganciato come ROOT a una pratica
     #        (pratiche_sorgenti, sorgente PREVENTIVO). Unica fonte di verita' del
@@ -820,24 +798,7 @@ class PreventiviRepository(ComponentiRepositoryMixin):
     # Scopo: Aggiorna una riga preventivo esistente.
     # Campi jsonb (meta) vengono serializzati con json.dumps e cast ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(riga_id)
-        sql = f"UPDATE vendite.preventivi_righe SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        return execute_dynamic_update("vendite.preventivi_righe", riga_id, kwargs)
 
     # Scopo: Elimina una riga preventivo (HARD DELETE).
     # Pattern simmetrico a `contratti_repository.delete_riga`: l'eliminazione
@@ -1025,41 +986,6 @@ class PreventiviRepository(ComponentiRepositoryMixin):
 
     # CRUD componenti (list/get/update/delete/purge) ereditato da
     # `ComponentiRepositoryMixin`. Vedi `_componenti_repo_mixin.py`.
-
-    # ══════════════════════════════════════════════════════════
-    #  SCRITTURE — Indirizzi
-    # ══════════════════════════════════════════════════════════
-
-    # Scopo: Upsert indirizzo preventivo (uno per tipo).
-    def upsert_indirizzo(
-        self,
-        *,
-        preventivo_id: int,
-        tipo_indirizzo_id: int,
-        snapshot: dict[str, Any],
-        origine_indirizzo_id: int | None = None,
-        origine_soggetto_ruolo_id: int | None = None,
-    ) -> dict[str, Any]:
-        sql = """
-            INSERT INTO vendite.preventivi_indirizzi (
-                preventivo_id, tipo_indirizzo_id, snapshot,
-                origine_indirizzo_id, origine_soggetto_ruolo_id
-            ) VALUES (%s, %s, %s::jsonb, %s, %s)
-            ON CONFLICT ON CONSTRAINT uq_preventivi_indirizzi_uno_per_tipo_
-            DO UPDATE SET
-                snapshot = EXCLUDED.snapshot,
-                origine_indirizzo_id = EXCLUDED.origine_indirizzo_id,
-                origine_soggetto_ruolo_id = EXCLUDED.origine_soggetto_ruolo_id
-            RETURNING id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                preventivo_id, tipo_indirizzo_id, json.dumps(snapshot),
-                origine_indirizzo_id, origine_soggetto_ruolo_id,
-            ])
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
 
     # ══════════════════════════════════════════════════════════
     #  INTEGRAZIONE — Commesse / Fatturazione

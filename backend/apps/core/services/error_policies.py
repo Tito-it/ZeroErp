@@ -1821,6 +1821,41 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Parametri DDT non validi.",
         ),
+        # Indirizzi documento (BB _indirizzi_documento_helpers, 5 domini):
+        # sollevato da script.fn_snapshot_indirizzo (flusso picker) quando
+        # origine_indirizzo_id non esiste piu' in anagrafiche.indirizzi.
+        "E_INDIRIZZO_SNAPSHOT_NOT_FOUND": ErrorPolicy(
+            code="E_INDIRIZZO_SNAPSHOT_NOT_FOUND",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message=(
+                "Indirizzo anagrafico non trovato: ricaricare gli indirizzi "
+                "del cliente."
+            ),
+        ),
+        # Trigger whitelist tipi indirizzo per ambito documento
+        # (trgfn_tipi_indirizzi_only_allowed, fail-closed): ri-sollevato da
+        # _db_errors del BB col codice originale del RAISE.
+        "E_TIPO_INDIRIZZO": ErrorPolicy(
+            code="E_TIPO_INDIRIZZO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message=(
+                "Tipo indirizzo non ammesso per questo documento."
+            ),
+        ),
+        # Guard DB all'emissione DDT (tipi obbligatori dell'ambito mancanti):
+        # il FE previene (Conferma disabilitata), il trigger resta la fonte
+        # di verita'.
+        "E_INDIRIZZO_DOC_OBBLIGATORIO": ErrorPolicy(
+            code="E_INDIRIZZO_DOC_OBBLIGATORIO",
+            http_status=422,
+            ui_action="show_error_banner",
+            user_message=(
+                "Indirizzo obbligatorio mancante: impostare l'indirizzo di "
+                "consegna prima dell'emissione."
+            ),
+        ),
         # Cliente (billing_account_id/destinatario) immutabile post-create:
         # cambiare cliente = nuovo DDT (mirror E_ORD_CLIENTE_IMMUTABILE).
         "E_DDT_CLIENTE_IMMUTABILE": ErrorPolicy(
@@ -1907,6 +1942,136 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message=(
                 "Impossibile emettere: componenti senza prezzo valorizzato."
+            ),
+        ),
+        # Resi di vendita (motore resi su DDT: CRUD + conferma/annullo +
+        # ri-consegna). Famiglia speculare a E_DDT_*. I codici dei guard/fn DB
+        # (messaggi_errore 530-541) passano via regex in
+        # resi_service._db_errors: registrati qui per fissare status/ui_action
+        # lato FE (il messaggio parlante DB vince su user_message).
+        "E_RESO_NOT_FOUND": ErrorPolicy(
+            code="E_RESO_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Reso non trovato.",
+        ),
+        "E_RESO_VALIDAZIONE": ErrorPolicy(
+            code="E_RESO_VALIDAZIONE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri reso non validi.",
+        ),
+        "E_RESO_STATO_TRANSIZIONE": ErrorPolicy(
+            code="E_RESO_STATO_TRANSIZIONE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Operazione non ammessa nello stato corrente del reso.",
+        ),
+        # Guard trigger transizioni reso (trgfn_resi_guard_transizione): la
+        # coppia di stati non e' nella matrice config.transizioni_stati_reso.
+        "E_STATO_RESO_TRANSIZIONE_NON_VALIDA": ErrorPolicy(
+            code="E_STATO_RESO_TRANSIZIONE_NON_VALIDA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Transizione di stato non ammessa per il reso.",
+        ),
+        # Over-return: Σ qta rese (resi non annullati) sulla stessa riga DDT
+        # supererebbe il consegnato (trgfn_resi_righe_guard_quantita, lock).
+        "E_RESO_QTA_SUPERA_CONSEGNATO": ErrorPolicy(
+            code="E_RESO_QTA_SUPERA_CONSEGNATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La quantita' resa supera la quantita' consegnata residua "
+                "della riga DDT."
+            ),
+        ),
+        # Guard ponte ri-consegna (trgfn_resi_riconsegne_guard): aggancio
+        # ammesso solo su righe con tipo_reso.riapre_residuo = true.
+        "E_RESO_RICONSEGNA_TIPO_NON_VALIDO": ErrorPolicy(
+            code="E_RESO_RICONSEGNA_TIPO_NON_VALIDO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Ri-spedizione ammessa solo su righe reso di tipo ri-consegna."
+            ),
+        ),
+        # Over-ri-spedizione: Σ qta ri-spedite sulla riga reso supererebbe la
+        # quantita' resa (guard ponte, lock FOR UPDATE).
+        "E_RESO_RICONSEGNA_SUPERA_RESO": ErrorPolicy(
+            code="E_RESO_RICONSEGNA_SUPERA_RESO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La quantita' ri-spedita supera la quantita' resa da "
+                "ri-consegnare."
+            ),
+        ),
+        # fn_conferma_reso: conferma ammessa solo da DRAFT / con righe attive.
+        "E_RESO_STATO_NON_CONFERMABILE": ErrorPolicy(
+            code="E_RESO_STATO_NON_CONFERMABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il reso non e' in bozza: non e' confermabile.",
+        ),
+        "E_RESO_SENZA_RIGHE": ErrorPolicy(
+            code="E_RESO_SENZA_RIGHE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il reso non ha righe: aggiungere almeno una riga "
+                         "prima della conferma.",
+        ),
+        # fn_genera_ddt_riconsegna: reso non CONFERMATO / nessuna copertura
+        # residua da ri-spedire.
+        "E_RESO_NON_CONFERMATO": ErrorPolicy(
+            code="E_RESO_NON_CONFERMATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Confermare il reso prima di generare la ri-spedizione."
+            ),
+        ),
+        "E_RESO_NESSUNA_RICONSEGNA_PENDENTE": ErrorPolicy(
+            code="E_RESO_NESSUNA_RICONSEGNA_PENDENTE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Nessuna riga di ri-consegna pendente da ri-spedire per "
+                "questo reso."
+            ),
+        ),
+        # fn_annulla_reso: annullo ammesso da DRAFT/CONFERMATO; bloccato se il
+        # reso e' gia' stato ri-spedito (storno ri-spedizione fuori perimetro).
+        "E_RESO_STATO_NON_ANNULLABILE": ErrorPolicy(
+            code="E_RESO_STATO_NON_ANNULLABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il reso non e' in uno stato che ammette l'annullo.",
+        ),
+        "E_RESO_ANNULLO_CON_RICONSEGNE": ErrorPolicy(
+            code="E_RESO_ANNULLO_CON_RICONSEGNE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il reso e' gia' stato ri-spedito: non e' annullabile.",
+        ),
+        # Guard DB sorgente reso (trgfn_resi_guard_ddt_consegnato, a10 INSERT):
+        # il reso richiede il DDT sorgente in CONSEGNATO. Il service ha il
+        # guard gemello parlante (crea_reso); questo copre le scritture non-BE.
+        "E_RESO_DDT_NON_CONSEGNATO": ErrorPolicy(
+            code="E_RESO_DDT_NON_CONSEGNATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il DDT sorgente non e' in stato CONSEGNATO: reso non ammesso."
+            ),
+        ),
+        # Guard emittente<->BA sul reso (trgfn_resi_guard_emittente_ba, z10).
+        "E_RESO_EMITTENTE_BA_INCOERENTE": ErrorPolicy(
+            code="E_RESO_EMITTENTE_BA_INCOERENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message=(
+                "Emittente fiscale non coerente col cliente del reso."
             ),
         ),
         # Mutua esclusività offerta → (contratto XOR ordine): la stessa offerta si
@@ -2096,6 +2261,52 @@ class ErrorPolicyRegistry:
             http_status=409,
             ui_action="highlight_form_fields",
             user_message="Utility non coerente con l'istanza selezionata.",
+        ),
+        # ── Guard coerenza emittente↔billing account (trigger DB, 5 domini) ──
+        # Sollevati da trgfn_<dominio>_guard_emittente_ba quando
+        # emittente_fiscale_id diverge da fn_get_emittente_fiscale_pk(BA)
+        # (skip se BA NULL). Ordini/contratti esistevano gia' (mai registrati:
+        # gap sanato); DDT/preventivi/offerte aggiunti dal DB team 2026-07-13
+        # (brief emittente-user-e-etichetta-soggetto).
+        "E_ORDINE_EMITTENTE_BA_INCOERENTE": ErrorPolicy(
+            code="E_ORDINE_EMITTENTE_BA_INCOERENTE",
+            http_status=409,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Emittente fiscale non coerente col cliente selezionato."
+            ),
+        ),
+        "E_CONTRATTO_EMITTENTE_BA_INCOERENTE": ErrorPolicy(
+            code="E_CONTRATTO_EMITTENTE_BA_INCOERENTE",
+            http_status=409,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Emittente fiscale non coerente col cliente selezionato."
+            ),
+        ),
+        "E_DDT_EMITTENTE_BA_INCOERENTE": ErrorPolicy(
+            code="E_DDT_EMITTENTE_BA_INCOERENTE",
+            http_status=409,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Emittente fiscale non coerente col cliente selezionato."
+            ),
+        ),
+        "E_PREV_EMITTENTE_BA_INCOERENTE": ErrorPolicy(
+            code="E_PREV_EMITTENTE_BA_INCOERENTE",
+            http_status=409,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Emittente fiscale non coerente col cliente selezionato."
+            ),
+        ),
+        "E_OFFERTA_EMITTENTE_BA_INCOERENTE": ErrorPolicy(
+            code="E_OFFERTA_EMITTENTE_BA_INCOERENTE",
+            http_status=409,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Emittente fiscale non coerente col cliente selezionato."
+            ),
         ),
         "E_ISTANZA_UTILITY_SENZA_UTILITY": ErrorPolicy(
             code="E_ISTANZA_UTILITY_SENZA_UTILITY",

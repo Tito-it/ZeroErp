@@ -37,17 +37,15 @@ _LOOKUP_WHERE = """
           )
       AND (
             %s::bigint[] IS NULL
-         OR EXISTS (
-              SELECT 1
-                FROM anagrafiche.emittenti_fiscali_billing_account efba
-               WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
-                 AND (
-                       efba.billing_account_id = ba.id
-                    OR efba.is_default = true
-                     )
-            )
+         OR script.fn_check_ba_visible_for_emittenti(ba.id, %s::bigint[])
           )
 """
+# Scope emittente (ultimo AND sopra): delega alla fn canonica (mapping
+# specifico, oppure gestore default SOLO se il BA non ha alcun mapping).
+# La vecchia subquery inline era piu' lasca (`... OR efba.is_default = true`
+# senza il guard "BA non mappato"): col gestore default in scope mostrava
+# anche BA mappati ad altri emittenti (fix 2026-07-13; la RLS, che usa la
+# stessa fn, gia' filtrava correttamente — qui e' defense-in-depth).
 
 # Scopo: JOIN comuni a count e data del lookup BA.
 _LOOKUP_FROM = """

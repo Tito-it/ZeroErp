@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# emittente_fiscale_descrizione su vw_preventivi_lista (2026-07-13).
+# Colonna in coda (dopo data_insert) + join sr_ef/s_ef.
+# security_invoker=on preservato. Base = vendite.vw_preventivi (vista).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260713-07-update-vw-preventivi-lista-emittente-descrizione-mctit.yaml
+
+  - changeSet:
+      id: 20260713-07-update-vw-preventivi-lista-emittente-descrizione
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_lista
+              WITH (security_invoker = on) AS
+              SELECT p.id,
+                  p.uid,
+                  p.numero,
+                  p.rev,
+                  p.is_attiva,
+                  p.data,
+                  p.stato_doc_preventivo_id,
+                  sdp.codice_interno AS stato_codice_interno,
+                  sdp.descrizione AS stato_descrizione,
+                  p.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  p.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  p.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  p.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  p.totale_imponibile,
+                  p.totale_iva,
+                  p.totale_documento,
+                  p.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  p.validita_dal,
+                  p.validita_al,
+                  p.competenza_mese,
+                  p.data_insert,
+                  COALESCE(s_ef.ragione_sociale_completa, ef.descrizione) AS emittente_fiscale_descrizione
+              FROM vendite.vw_preventivi p
+                JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = p.istanza_utility_id
+                LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = p.billing_account_id
+                LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = p.emittente_fiscale_id
+                LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                LEFT JOIN config.utilities u ON u.id = p.utility_id
+                LEFT JOIN config.valute v_val ON v_val.id = p.valuta_id;

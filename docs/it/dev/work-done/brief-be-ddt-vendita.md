@@ -1,7 +1,7 @@
 # Brief BE — DDT vendita: service, repository, endpoint (gemello ordini)
 
 > **Tipo**: brief backend (target `dev/backend-tid`) · **Data**: 2026-07-09 · **Owner**: Tid
-> **Stato**: 🟡 APERTO — slice principale + PDF realizzati (§12–§13), ma **backlog residuo aperto** (§14): endpoint export + riepilogo-iva, CRUD `ddt_indirizzi`. Resta in `work-in-progress`.
+> **Stato**: ✅ **CHIUSO (2026-07-13)** — tutto lo scope del brief realizzato: slice principale + PDF (§12–§13), export lista, endpoint riepilogo-iva, CRUD `ddt_indirizzi`, uniformazione emittente (§14). Fuori scope (brief propri): **slice RESI** (`work-in-progress/brief-db-resi-vendita.md`) e **Lineage Fase 4** (`work-in-progress/brief-db-lineage-documenti-vendite.md` + tracker `analisi-ddt §6`).
 > **Design-of-record**: [analisi-ddt-vendita-stato-e-sviluppi.md](analisi-ddt-vendita-stato-e-sviluppi.md)
 > · **Prerequisito DB**: [brief-db-ddt-vendita-evasione-e-stati.md](../work-done/brief-db-ddt-vendita-evasione-e-stati.md)
 > **Gate**: parte a oggetti DB applicati ([[feedback_be_fe_attende_prerequisiti_db]]).
@@ -299,22 +299,39 @@ capabilities è spread `**capabilities` nei service → arriva al FE **senza mod
 lista Ordini, `vw_ordini_lista.pdf_mode` viaggia via `SELECT v.*` + response `DictField()`.
 Dettaglio DB+FE: [piano-db-pdf-mode-capabilities-5-domini](../work-done/piano-db-pdf-mode-capabilities-5-domini.md).
 
-## 14. Ancora da fare (backlog aperto — brief NON chiuso)
+## 14. Backlog residuo — ✅ CHIUSO (2026-07-13)
 
-Aree pianificate in §6 ma **non realizzate** (il consuntivo §12 le aveva dichiarate "fuori
-scope"). Verificato nel codice 2026-07-11: `urls_ddt.py` non le espone.
+Aree pianificate in §6, dichiarate "fuori scope" nel consuntivo §12 e realizzate nelle slice
+11-13/07. Storicizzato qui per tracciabilità (verifica originaria del codice 2026-07-11).
 
 - **Endpoint export lista — ✅ REALIZZATO (2026-07-11)**: `ApiDdtExportView` +
   rotta `/vendite/ddt/export/` (`?formato=csv|xlsx`) + `ddt_service.resolve_filtri_export_label`.
   Riuso `build_export_response`/`EXPORT_MAX_ROWS` + `_LISTA_CODICE_DDT='vendite.ddt'` (config lista
   già seedata), mirror `ApiOrdiniExportView` ([[feedback_export_lista_rispetta_preferenza]]).
   +2 test api (formato invalido 400, overflow cap 422). Recepito FE (brief FE §13).
-- **Endpoint riepilogo IVA — assente**: nessuna rotta `/vendite/ddt/<id>/riepilogo-iva/`
-  (il §6 la elencava). Serve al `RiepilogoIvaTable` FE.
-- **CRUD `ddt_indirizzi` — assente**: nessun endpoint/service per indirizzi
-  spedizione/destinatario/vettore (serve al `DdtIndirizziPanel` FE). Modello DB predisposto
-  (`vendite.ddt_indirizzi` con snapshot), ma nessuna scrittura/lettura applicativa.
+- **Endpoint riepilogo IVA — ✅ REALIZZATO (slice riepilogo IVA, 11-13/07)**:
+  `ApiDdtRiepilogoIva` + rotta `/vendite/ddt/<id>/riepilogo-iva/`; il service legge la vista DB
+  `vw_ddt_riepilogo_iva_dettaglio` (una riga per aliquota, formula fiscale in DB, righe prezzo
+  NULL escluse) senza ricalcolo Python. Consumato dal `RiepilogoIvaTable` FE (brief FE §13).
+- **CRUD `ddt_indirizzi` — ✅ REALIZZATO (slice indirizzi documento UX v2, 12-13/07)**:
+  endpoint `ApiDdtIndirizzi` + `ApiDdtIndirizzoDetail` (`/vendite/ddt/<id>/indirizzi/[<id>/]`)
+  via factory indirizzi documento condivisa (`_shared/indirizzi`, 5 domini). Il FE monta la
+  `DocumentoIndirizziSection` (BB condiviso) nel `DdtDrawer` — NON il `DdtIndirizziPanel`
+  originariamente ipotizzato in §4 (superato dal BB cross-dominio). Snapshot slot CON +
+  auto-assegnazione default; PDF DDT con blocco consegna (builder v2 + template 76/v2).
 
-> Fuori scope anche qui: colonna "Emittente" in lista (seed `ui.lista_colonna` DB-side) e
-> **slice RESI** (brief DB §12). Coordinare la ripresa con il [brief FE §13](brief-fe-ddt-vendita.md).
+### Consuntivo emittente (uniformazione 2026-07-13)
+
+Il create DDT ora accetta `emittente_fiscale_id` nel payload (whitelist `_CREATE_KEYS_DDT`,
+prefill FE dal profilo operatore, mirror ordini): l'emittente è legato allo USER, non "risolto a
+sorpresa" dal BA. Reti di sicurezza DB invariate (default-da-GUC soft + fallback-da-BA in
+`trgfn_ddt_normalize`, guard coerenza `trg_ddt_z10_guard_emittente_ba`). I detail DDT/ordini NON
+calcolano più `emittente_fiscale_descrizione` con JOIN proprio: arriva dalla vista (`SELECT v.*`),
+ora che le 5 viste lista la espongono (ragione sociale del soggetto, non il codice tecnico). I 5
+codici `E_*_EMITTENTE_BA_INCOERENTE` registrati in `error_policies.py`. Dettaglio:
+[work-done/brief-db-ddt-emittente-user-e-etichetta-soggetto.md](../work-done/brief-db-ddt-emittente-user-e-etichetta-soggetto.md)
+(CHIUSO).
+
+> Fuori scope residuo: **slice RESI** (brief `work-in-progress/brief-db-resi-vendita.md`, in corso
+> lato DB). Colonna "Emittente" in lista: ✅ seedata (opt-in) e ora bind alla ragione sociale.
 </content>

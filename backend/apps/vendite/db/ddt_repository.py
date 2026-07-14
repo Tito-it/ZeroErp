@@ -23,7 +23,10 @@ from django.db import connection
 
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
+from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
+from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
 
 
 # Scopo: Whitelist colonne ORDER BY per la lista DDT (SQL injection safe). Le
@@ -44,7 +47,11 @@ _ORDER_COLS_DDT: dict[str, str] = {
 }
 
 
-class DdtRepository(ComponentiRepositoryMixin):
+class DdtRepository(
+    ComponentiRepositoryMixin,
+    RiepilogoIvaRepositoryMixin,
+    IndirizziDocumentoRepositoryMixin,
+):
     """Repository DDT di vendita.
 
     Eredita da `ComponentiRepositoryMixin` per il CRUD componenti BoM modello
@@ -52,12 +59,30 @@ class DdtRepository(ComponentiRepositoryMixin):
     `init_componenti_riga` (chiama `fn_ddt_riga_componenti_init`) e
     `preview_componenti_riga` (chiama `fn_ddt_riga_componenti_preview`) sono
     definiti localmente. Usato anche dal push commessa (HandlerDdt) che legge i
-    componenti negoziati della riga sorgente.
+    componenti negoziati della riga sorgente. Eredita da
+    `RiepilogoIvaRepositoryMixin` la lettura del riepilogo IVA (vista derivata
+    on-the-fly dalle righe attive valorizzate: le righe con prezzo NULL — DDT
+    solo di trasporto — restano fuori dal riepilogo per filtro in vista).
     """
 
     # Configurazione mixin componenti (tabella + FK riga padre).
     _componenti_table_name = "vendite.ddt_righe_componenti"
     _componenti_fk_riga = "riga_ddt_id"
+
+    # Configurazione mixin riepilogo IVA.
+    _riepilogo_iva_vista = "vendite.vw_ddt_riepilogo_iva_dettaglio"
+    _riepilogo_iva_fk_documento = "ddt_id"
+
+    # Configurazione mixin indirizzi documento (whitelist ambito DDT: CON
+    # obbligatorio all'emissione, guard trigger a DB).
+    _indirizzi_table = "vendite.ddt_indirizzi"
+    _indirizzi_fk_documento = "ddt_id"
+    _indirizzi_ambito = "DDT"
+    _indirizzi_documento_table = "vendite.ddt"
+    # Ancora ownership/auto-default = DESTINATARIO (chi riceve la merce),
+    # NOT NULL in testata: coerente col picker FE e regge BA NULL
+    # (DDT da evasione di ordine prospect).
+    _indirizzi_doc_sr_column = "destinatario_soggetto_ruolo_id"
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_ddt_lista)
@@ -154,15 +179,24 @@ class DdtRepository(ComponentiRepositoryMixin):
 
     # Scopo: Dettaglio singolo DDT. Riusa la vista canonica (decodifiche +
     #        provenienza ordine) e aggiunge i campi non esposti in lista:
-    #        `meta`, `storicizza`. None se id inesistente.
+    #        `meta`, `storicizza`, `istanza_utility_id` del BA (serve al FE
+    #        per la cascata indirizzi a 3 livelli: senza istanza il livello
+    #        'istanza' resta invisibile nel drawer indirizzi documento).
+    #        `emittente_fiscale_descrizione` (ragione sociale del SOGGETTO
+    #        emittente, consumata da EmittenteFiscaleField) arriva dalla
+    #        vista (esposta dal DB team il 2026-07-13, brief
+    #        emittente-user-e-etichetta-soggetto). None se id inesistente.
     def get_ddt(self, ddt_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT
                 v.*,
                 d.meta,
-                d.storicizza
+                d.storicizza,
+                ba.istanza_utility_id
               FROM vendite.vw_ddt_lista v
               JOIN vendite.ddt d ON d.id = v.id
+              LEFT JOIN anagrafiche.billing_account ba
+                ON ba.id = v.billing_account_id
              WHERE v.id = %s
         """
         with connection.cursor() as cursor:
@@ -348,16 +382,19 @@ class DdtRepository(ComponentiRepositoryMixin):
     # Scopo: Inserisce un nuovo DDT (standalone) e restituisce id, uid, numero.
     #        `numero` NON si passa: e' NULL in DRAFT e valorizzato dal trigger
     #        `trgfn_ddt_gen_numero_emesso` alla transizione a EMESSO.
-    #        `emittente_fiscale_id` (NOT NULL, scope RLS) NON si passa: lo
-    #        risolve `trgfn_ddt_normalize` dal billing_account (o dall'ordine
-    #        sorgente per i DDT da evasione). `destinatario_soggetto_ruolo_id`
-    #        e `stato_doc_ddt_id` (DRAFT) obbligatori.
+    #        `emittente_fiscale_id` (NOT NULL, scope RLS) arriva dallo user
+    #        (prefill FE dal profilo, mirror ordini — uniformazione 2026-07-13);
+    #        se None lo risolve `trgfn_ddt_normalize` dal billing_account (o
+    #        dall'ordine sorgente per i DDT da evasione).
+    #        `destinatario_soggetto_ruolo_id` e `stato_doc_ddt_id` (DRAFT)
+    #        obbligatori.
     def create_ddt(
         self,
         *,
         destinatario_soggetto_ruolo_id: int,
         stato_doc_ddt_id: int,
         billing_account_id: int | None = None,
+        emittente_fiscale_id: int | None = None,
         utility_id: int | None = None,
         valuta_id: int | None = None,
         mittente_soggetto_ruolo_id: int | None = None,
@@ -380,6 +417,7 @@ class DdtRepository(ComponentiRepositoryMixin):
         # Colonne opzionali: omesse se None così i DEFAULT del DB restano attivi.
         optional: dict[str, Any] = {
             "billing_account_id": billing_account_id,
+            "emittente_fiscale_id": emittente_fiscale_id,
             "utility_id": utility_id,
             "valuta_id": valuta_id,
             "mittente_soggetto_ruolo_id": mittente_soggetto_ruolo_id,
@@ -417,24 +455,7 @@ class DdtRepository(ComponentiRepositoryMixin):
     # Scopo: Aggiorna campi modificabili della testata DDT. Accetta None per
     #        azzerare campi nullable. Campi jsonb (meta) serializzati ::jsonb.
     def update_ddt(self, ddt_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(ddt_id)
-        sql = f"UPDATE vendite.ddt SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        return execute_dynamic_update("vendite.ddt", ddt_id, kwargs)
 
     # Scopo: Hard-delete DDT (flusso abbandono bozza). Guard di dominio (stato
     #        DRAFT, no righe/fulfillment collegati) applicati nel service +
@@ -520,24 +541,7 @@ class DdtRepository(ComponentiRepositoryMixin):
 
     # Scopo: Aggiorna una riga DDT esistente. Campi jsonb (meta) ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(riga_id)
-        sql = f"UPDATE vendite.ddt_righe SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        return execute_dynamic_update("vendite.ddt_righe", riga_id, kwargs)
 
     # Scopo: Elimina una riga DDT (HARD DELETE). La FK
     #        ddt_righe_componenti.riga_ddt_id ha ON DELETE CASCADE. Il trigger DB

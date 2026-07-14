@@ -14,13 +14,15 @@ CREATE OR REPLACE FUNCTION vendite.fn_ordine_ha_residuo_evasione(p_ordine_id big
  STABLE
 AS $function$
 -- Scopo: TRUE se l'ordine ha ancora quantita da evadere su almeno
---   una riga (residuo = quantita - SUM qta_evasa > 0). Gate per la
---   proiezione stato ordine (CONFERMATO/PARZIALMENTE_EVASO/EVASO)
---   in fn_genera_ddt_da_ordine. Reso-aware per costruzione (§12).
+--   una riga. RESO-AWARE:
+--     residuo = quantita - Sigma qta_evasa
+--               + fn_ordine_riga_qta_riconsegna(riga)
+--   L'addendo reso (helper unico 20260713-28) e' 0 se non ci sono
+--   resi per ri-consegna confermati. Gate per la proiezione stato
+--   ordine in fn_genera_ddt_da_ordine / fn_conferma_reso.
 DECLARE
     v_ha_residuo boolean;
 BEGIN
-    -- Guard input: id numerico valido (linee-guida-sql §DDL).
     IF p_ordine_id IS NULL OR p_ordine_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', 'fn_ordine_ha_residuo_evasione', 'E_VALIDAZIONE',
@@ -39,6 +41,7 @@ BEGIN
                      FROM vendite.ordini_righe_fulfillment f
                     WHERE f.ordine_riga_id = orr.id
                  ), 0)
+               + vendite.fn_ordine_riga_qta_riconsegna(orr.id)
                > 0
     ) INTO v_ha_residuo;
 
@@ -47,7 +50,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ordine_ha_residuo_evasione(p_ordine_id bigint)
-IS 'TRUE se l''ordine ha residuo di evasione su almeno una riga (quantita - SUM qta_evasa > 0, unita base). Gemello di fn_preventivo_ha_residuo_ordine; gate stato ordine per fn_genera_ddt_da_ordine (C5). Reso-aware: la slice resi aggiungera'' SUM(qta_resa_per_riconsegna) al residuo (brief §12). rev 2026-07-09.';
+IS 'TRUE se l''ordine ha residuo di evasione su almeno una riga (quantita - SUM qta_evasa + addendo reso via fn_ordine_riga_qta_riconsegna, unita base). Reso-aware. Gate stato ordine per fn_genera_ddt_da_ordine e fn_conferma_reso. rev 2026-07-13.';
 ```
 
 ---

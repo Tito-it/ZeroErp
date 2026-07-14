@@ -21,7 +21,10 @@ from django.db import connection
 
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
+from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
+from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
 
 
 # Scopo: Whitelist colonne ORDER BY per la lista ordini (SQL injection safe).
@@ -45,19 +48,38 @@ _ORDER_COLS_ORDINI: dict[str, str] = {
 }
 
 
-class OrdiniRepository(ComponentiRepositoryMixin):
+class OrdiniRepository(
+    ComponentiRepositoryMixin,
+    RiepilogoIvaRepositoryMixin,
+    IndirizziDocumentoRepositoryMixin,
+):
     """Repository ordini di vendita.
 
     Eredita da `ComponentiRepositoryMixin` per il CRUD componenti BoM
     modello unificato (`ordini_righe_componenti`). I metodi specifici
     `init_componenti_riga` (chiama `fn_ordine_riga_componenti_init`) e
     `preview_componenti_riga` (chiama `fn_ordine_riga_componenti_preview`)
-    sono definiti localmente.
+    sono definiti localmente. Eredita da `RiepilogoIvaRepositoryMixin` la
+    lettura del riepilogo IVA (vista derivata on-the-fly dalle righe attive,
+    nessun trigger: a differenza dei preventivi non espone `id` tecnico).
     """
 
     # Configurazione mixin componenti (tabella + FK riga padre).
     _componenti_table_name = "vendite.ordini_righe_componenti"
     _componenti_fk_riga = "riga_ordine_id"
+
+    # Configurazione mixin riepilogo IVA.
+    _riepilogo_iva_vista = "vendite.vw_ordini_riepilogo_iva_dettaglio"
+    _riepilogo_iva_fk_documento = "ordine_id"
+
+    # Configurazione mixin indirizzi documento.
+    _indirizzi_table = "vendite.ordini_indirizzi"
+    _indirizzi_fk_documento = "ordine_id"
+    _indirizzi_ambito = "ORDINI"
+    _indirizzi_documento_table = "vendite.ordini"
+    # Ancora ownership/auto-default = soggetto_ruolo NATIVO della testata
+    # (NOT NULL): regge anche l'ordine prospect con billing_account NULL.
+    _indirizzi_doc_sr_column = "soggetto_ruolo_id"
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_ordini_lista)
@@ -155,15 +177,23 @@ class OrdiniRepository(ComponentiRepositoryMixin):
     # Scopo: Dettaglio singolo ordine. Riusa la vista canonica (che ha gia'
     #        tutte le decodifiche + agente + documento di origine) e aggiunge
     #        i campi non esposti in lista: `meta`, `storicizza`,
-    #        `documento_origine_id`. Ritorna None se id inesistente.
+    #        `istanza_utility_id` del BA (serve al FE per la cascata indirizzi
+    #        a 3 livelli nel drawer indirizzi documento).
+    #        `emittente_fiscale_descrizione` (ragione sociale del SOGGETTO
+    #        emittente, consumata da EmittenteFiscaleField nel drawer EDIT)
+    #        arriva dalla vista (esposta dal DB team il 2026-07-13).
+    #        Ritorna None se id inesistente.
     def get_ordine(self, ordine_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT
                 v.*,
                 o.meta,
-                o.storicizza
+                o.storicizza,
+                ba.istanza_utility_id
               FROM vendite.vw_ordini_lista v
               JOIN vendite.ordini o ON o.id = v.id
+              LEFT JOIN anagrafiche.billing_account ba
+                ON ba.id = v.billing_account_id
              WHERE v.id = %s
         """
         with connection.cursor() as cursor:
@@ -330,30 +360,6 @@ class OrdiniRepository(ComponentiRepositoryMixin):
             cursor.execute(sql, [riga_id])
             return row_to_dict(cursor)
 
-    # Scopo: Restituisce il riepilogo IVA aggregato dell'ordine dalla view
-    #        derivata `vendite.vw_ordini_riepilogo_iva_dettaglio`. Una riga per
-    #        gruppo aliquota; natura/esigibilita/split sono sempre NULL (shape
-    #        allineata a vw_preventivi_riepilogo_iva_dettaglio). Imponibile e
-    #        imposta sono ROUND 2 sull'aggregato per aliquota (regola fiscale
-    #        DPR 633/72 art. 21 + DM 24/12/93, identica ai preventivi). La view
-    #        ricalcola dalle righe attive: il chiamante legge solo lo stato
-    #        corrente, non orchestra alcun ricalcolo. A differenza dei
-    #        preventivi la view ordini non espone un `id` tecnico (chiave logica
-    #        ordine_id + iva_id).
-    def list_riepilogo_iva(self, ordine_id: int) -> list[dict[str, Any]]:
-        sql = """
-            SELECT ordine_id, iva_id, iva_codice, iva_descrizione,
-                   iva_aliquota, natura_id, natura_codice,
-                   esigibilita, split_payment,
-                   imponibile, imposta, arrotondamento, totale_riga
-              FROM vendite.vw_ordini_riepilogo_iva_dettaglio
-             WHERE ordine_id = %s
-             ORDER BY iva_aliquota NULLS LAST, iva_id NULLS LAST
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [ordine_id])
-            return rows_to_list(cursor)
-
     # Scopo: Load atomico di un componente con scope completo (componente →
     #        riga → ordine) in un'unica query JOIN, per i guard del service.
     def load_componente_with_scope(
@@ -497,24 +503,7 @@ class OrdiniRepository(ComponentiRepositoryMixin):
     # Scopo: Aggiorna campi modificabili della testata ordine. Accetta None per
     #        azzerare campi nullable. Campi jsonb (meta) serializzati ::jsonb.
     def update_ordine(self, ordine_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(ordine_id)
-        sql = f"UPDATE vendite.ordini SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        return execute_dynamic_update("vendite.ordini", ordine_id, kwargs)
 
     # Scopo: Hard-delete ordine (flusso abbandono bozza). Guard di dominio
     #        (stato DRAFT, no DDT/fatture collegate) applicati nel service +
@@ -604,24 +593,7 @@ class OrdiniRepository(ComponentiRepositoryMixin):
 
     # Scopo: Aggiorna una riga ordine esistente. Campi jsonb (meta) ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(riga_id)
-        sql = f"UPDATE vendite.ordini_righe SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        return execute_dynamic_update("vendite.ordini_righe", riga_id, kwargs)
 
     # Scopo: Elimina una riga ordine (HARD DELETE). La FK
     #        ordini_righe_componenti.riga_ordine_id ha ON DELETE CASCADE.

@@ -43,6 +43,7 @@
 > * [Gestione Preventivi](/guide/gestione-preventivi) — la sorgente principale dell'ordine (split per natura)
 > * [Gestione Offerte commerciali](/guide/gestione-offerte-commerciali) — l'altra sorgente (1:1, XOR contratto)
 > * [Gestione Contratti](/guide/gestione-contratti) — il "gemello ricorrente": l'offerta genera contratto **oppure** ordine, mai entrambi
+> * [Gestione DDT](/guide/gestione-ddt) — il documento di consegna: l'ordine confermato si **evade** in uno o più DDT (residuo per riga)
 > * [Gestione Commesse](/guide/gestione-commesse) — la destinazione del push (attività fatturabili)
 > * [Fatturazione end-to-end](/guide/fatturazione) — il push a commessa avvia la pipeline di fatturazione
 > * [Documenti e stampe](/guide/documenti-e-stampe) — generazione del PDF di conferma d'ordine
@@ -205,10 +206,10 @@ inserisce a mano. La composizione (quali componenti, in quali proporzioni) è
 L'ordine supporta le **note partizionate** (di testata o di singola riga), con lo
 stesso comportamento di preventivi, offerte e contratti.
 
-> **Nota sull'ambito attuale.** Le tabelle `ordini_righe_fulfillment` e
-> `ordini_indirizzi` esistono in previsione di magazzino/DDT e indirizzi dedicati,
-> ma **non sono ancora gestite** dal flusso applicativo: oggi l'ordine si ferma alla
-> conferma e al push a commessa.
+> **Nota sull'ambito attuale.** Entrambe le tabelle sono ora **gestite**:
+> `ordini_indirizzi` alimenta la sezione indirizzi del documento (UX v2), e
+> `ordini_righe_fulfillment` registra l'**evasione** dell'ordine in uno o più
+> **DDT** (residuo per riga, append-only). Vedi [Gestione DDT](/guide/gestione-ddt).
 
 ---
 

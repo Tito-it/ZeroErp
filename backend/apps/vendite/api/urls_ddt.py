@@ -22,13 +22,17 @@ from apps.vendite.api.views_ddt import (
     ApiDdtCambiaStato,
     ApiDdtDetail,
     ApiDdtExportView,
+    ApiDdtIndirizzi,
+    ApiDdtIndirizzoDetail,
     ApiDdtList,
     ApiDdtPush,
+    ApiDdtRiepilogoIva,
     ApiDdtRigaComponenteDetail,
     ApiDdtRigaComponentiList,
     ApiDdtRigaDetail,
     ApiDdtRigaPreviewComponenti,
     ApiDdtRighe,
+    ApiDdtRighePerReso,
 )
 from apps.vendite.api.views_form_defaults import ApiDdtFormDefaults
 
@@ -42,6 +46,13 @@ urlpatterns = [
     path("form-defaults/", ApiDdtFormDefaults.as_view(),
          name="vendite-ddt-form-defaults"),
     path("<int:ddt_id>/", ApiDdtDetail.as_view(), name="vendite-ddt-detail"),
+    path("<int:ddt_id>/riepilogo-iva/", ApiDdtRiepilogoIva.as_view(),
+         name="vendite-ddt-riepilogo-iva"),
+    path("<int:ddt_id>/indirizzi/", ApiDdtIndirizzi.as_view(),
+         name="vendite-ddt-indirizzi"),
+    path("<int:ddt_id>/indirizzi/<int:indirizzo_id>/",
+         ApiDdtIndirizzoDetail.as_view(),
+         name="vendite-ddt-indirizzo-detail"),
 
     # Transizioni / integrazione. `emetti/` e' il flusso documentale multipart
     # (DRAFT->EMESSO + genera PDF + allegati, atomico — factory condiviso in
@@ -76,6 +87,9 @@ urlpatterns = [
     # Righe
     path("<int:ddt_id>/righe/", ApiDdtRighe.as_view(),
          name="vendite-ddt-righe-list"),
+    # Righe con residuo rendibile per il pannello "crea reso" (slice resi).
+    path("<int:ddt_id>/righe-per-reso/", ApiDdtRighePerReso.as_view(),
+         name="vendite-ddt-righe-per-reso"),
     path("<int:ddt_id>/righe/preview-componenti/",
          ApiDdtRigaPreviewComponenti.as_view(),
          name="vendite-ddt-righe-preview-componenti"),

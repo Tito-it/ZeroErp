@@ -28,6 +28,21 @@ def rows_to_list(cursor) -> list[dict[str, Any]]:
     return [dict(zip(cols, row)) for row in cursor.fetchall()]
 
 
+def coerce_jsonb_dict(value: Any) -> dict[str, Any]:
+    """Coercion difensiva jsonb -> dict (il driver puo' restituire jsonb come str).
+
+    Promozione regola-del-2 del clone nato in pratiche_repository (2026-06-11)
+    e replicato in ui_admin/vendite: JSON malformato o non-oggetto -> {} (mai
+    raise: i chiamanti sono path di lettura/display, non validazione input).
+    """
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return {}
+    return value if isinstance(value, dict) else {}
+
+
 def escape_ilike(value: str) -> str:
     """Escapa i metacaratteri ILIKE (`%`, `_`, `\\`) nel termine di ricerca.
 
@@ -134,23 +149,12 @@ def resolve_config_id_by_codice_interno(
 
 
 def dynamic_update(table: str, pk: int, **kwargs: Any) -> bool:
-    """UPDATE dinamico generico: costruisce SET da kwargs non-None, strip stringhe.
+    """UPDATE dinamico "kwargs espliciti": SET dai soli kwargs non-None.
 
-    Pre-processare i valori prima della chiamata per trasformazioni extra
-    (es. upper()). Restituisce True se almeno una riga aggiornata.
+    Delegatore di `sql_write_helpers.execute_dynamic_update(skip_none=True)`
+    (unificazione 2026-07-13): None = "non toccare" — per AZZERARE campi
+    nullable (PATCH whitelisted) usare il BB direttamente con skip_none=False.
     """
-    fields: list[str] = []
-    params: list[Any] = []
-    for col, val in kwargs.items():
-        if val is not None:
-            if isinstance(val, str):
-                val = val.strip()
-            fields.append(f"{col} = %s")
-            params.append(val)
-    if not fields:
-        return False
-    params.append(pk)
-    sql = f"UPDATE {table} SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-    with connection.cursor() as cursor:
-        cursor.execute(sql, params)
-        return cursor.rowcount > 0
+    from apps.core.db.sql_write_helpers import execute_dynamic_update
+
+    return execute_dynamic_update(table, pk, kwargs, skip_none=True)

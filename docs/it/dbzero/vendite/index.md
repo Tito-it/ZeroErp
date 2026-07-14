@@ -17,11 +17,12 @@
 - [commesse_push_log](tabelle/commesse_push_log.md) — `vendite.commesse_push_log` traccia ogni esecuzione dell'orchestratore di push sorgenti verso commesse/attivita` con un audit minimale ma operativo.
 - [commesse_sorgenti](tabelle/commesse_sorgenti.md) — La tabella `vendite.commesse_sorgenti` traccia la sorgente ROOT della commessa e garantisce idempotenza sorgente a livello commessa.
 - [contratti](tabelle/contratti.md) — (Initial version - 19-01-26) `vendite.contratti` rappresenta la **testata del contratto commerciale**: l’accordo che lega un **billing account** a una **istanza/utility** e ne definisce **ambito**, **periodo di validita** e **stato**. E` la base di aggregazione delle righe (`vendite.contratti_righe`) e il punto di riferimento per la generazione di **attivita fatturabili**.
+- [contratti_indirizzi](tabelle/contratti_indirizzi.md) — Snapshot degli indirizzi collegati alla testata di un **contratto**, uno per tipo (univocità `contratto_id, tipo_indirizzo_id`). Struttura **identica** alle altre tabelle `*_indirizzi` documento (snapshot JSONB congelato + `origine_indirizzo_id` / `origine_soggetto_ruolo_id` soft FK `SET NULL`, `tx_id`).
 - [contratti_righe](tabelle/contratti_righe.md) — (Initial version - 19-01-26) `vendite.contratti_righe` contiene il **dettaglio economico e operativo** del contratto: ogni riga rappresenta un **articolo/servizio** con le proprie regole di erogazione (canone, consumo, una‑tantum), periodicita e parametri di quantita/prezzo.
 - [contratti_righe_componenti](tabelle/contratti_righe_componenti.md) — `vendite.contratti_righe_componenti` modella il **prezzo negoziabile per singolo componente** di un articolo composito CASO A nell'ambito di un contratto. Stesso pattern delle altre 3 tabelle (preventivi, ordini, ddt).
 - [contratti_utilities](tabelle/contratti_utilities.md) — (latest review 20/01/26) `vendite.contratti_utilities` conserva lo **snapshot** dei dati pre‑contrattuali al **momento della creazione del contratto**.   L’obiettivo e` rendere il contratto **autonomo e stabile**: i dati tecnici/commerciali che lo qualificano non vengono piu` aggiornati dopo la creazione.
 - [ddt](tabelle/ddt.md) — La tabella **`vendite.ddt`** rappresenta la **testata** dei Documenti di Trasporto. È il fulcro del ciclo logistico tra **Ordini** (evasione/spedizione) e **Fatture** (conto vendita / accompagnatoria).
-- [ddt_indirizzi](tabelle/ddt_indirizzi.md) — vendite.ddt_indirizzi gestisce gli indirizzi associati alla testata DDT tramite snapshot JSON al momento dell’emissione (o conferma logistica). Per ogni DDT è ammesso al più un indirizzo per tipo (es. spedizione, fornitura, residenza), garantito dall’univocità (ddt_id, tipo_indirizzo_id).
+- [ddt_indirizzi](tabelle/ddt_indirizzi.md) — vendite.ddt_indirizzi gestisce gli indirizzi associati alla testata DDT tramite snapshot JSON al momento dell’emissione (o conferma logistica). Per ogni DDT è ammesso al più un indirizzo per tipo — nella pratica la **consegna (`CON`)** — garantito dall’univocità (ddt_id, tipo_indirizzo_id).
 - [ddt_righe](tabelle/ddt_righe.md) — `vendite.ddt_righe` rappresenta le **righe dei Documenti di Trasporto di vendita**. Ogni record corrisponde a una **voce di spedizione** associata a una testata DDT (`vendite.ddt`), identificando articolo, quantità, unità di misura e dettagli di tracciabilità (lotto, seriale).
 - [ddt_righe_componenti](tabelle/ddt_righe_componenti.md) — `vendite.ddt_righe_componenti` modella il **prezzo negoziabile per singolo componente** di un articolo composito CASO A nell'ambito di un DDT: almeno un componente della BoM ha `esposto_in_fattura = TRUE`.
 - [documenti_fatturazione_canali](tabelle/documenti_fatturazione_canali.md) — (latest review 24-02-2026) `vendite.documenti_fatturazione_canali` e` il registro tecnico unico dei canali fatturabili per documento sorgente (`sorgente_tipo_id + sorgente_uid`), usato per uniformare le regole su contratti, preventivi, ordini e DDT.
@@ -60,6 +61,7 @@
 - [offerte_commerciali](tabelle/offerte_commerciali.md) — (rev 2026-05-24)
 - [offerte_commerciali_eccezioni](tabelle/offerte_commerciali_eccezioni.md) — (rev 2026-05-24)
 - [offerte_commerciali_eccezioni_componenti](tabelle/offerte_commerciali_eccezioni_componenti.md) — (rev 2026-05-26)
+- [offerte_commerciali_indirizzi](tabelle/offerte_commerciali_indirizzi.md) — Snapshot degli indirizzi collegati alla testata di un'**offerta commerciale**, uno per tipo (univocità `offerta_id, tipo_indirizzo_id`). Struttura **identica** alle altre tabelle `*_indirizzi` documento (snapshot JSONB congelato + `origine_indirizzo_id` / `origine_soggetto_ruolo_id` soft FK `SET NULL`, `tx_id`).
 - [offerte_commerciali_utilities](tabelle/offerte_commerciali_utilities.md) — (rev 2026-05-24)
 - [ordini](tabelle/ordini.md) — La tabella **`vendite.ordini`** rappresenta la **testata dell’ordine di vendita**, documento commerciale preliminare che raccoglie le condizioni di vendita, spedizione e pagamento concordate con il cliente.   È il punto di partenza del ciclo attivo, destinato a generare documenti successivi (DDT, fatture, contratti di fornitura).
 - [ordini_indirizzi](tabelle/ordini_indirizzi.md) — `vendite.ordini_indirizzi` memorizza gli **indirizzi associati alla testata ordine** come **snapshot JSON** al momento dell’inserimento/conferma. Per ciascun ordine è ammesso **al massimo un indirizzo per tipo** (es. *spedizione*, *fornitura*, *residenza*), garantito da `UNIQUE(ordine_id, tipo_indirizzo_id)`.
@@ -74,12 +76,16 @@
 - [promo_articoli](tabelle/promo_articoli.md) — (latest review 14-04-26)
 - [registri_fatturazione](tabelle/registri_fatturazione.md) — (latest review 26-01-2026) `vendite.registri_fatturazione` definisce i **registri fiscali di emissione**: serie, regole di reset e collegamento all’emittente fiscale. Ogni fattura si aggancia a un registro, che governa numerazione e perimetro fiscale.
 - [registri_fatturazione_progressivi](tabelle/registri_fatturazione_progressivi.md) — (latest review 26-01-2026) `vendite.registri_fatturazione_progressivi` memorizza i **progressivi di numerazione** per ciascun registro, anno, mese e serie. E` la base per l’assegnazione del numero documento in fase di emissione.
+- [resi](tabelle/resi.md) — (rev 2026-07-13)
+- [resi_righe](tabelle/resi_righe.md) — (rev 2026-07-13)
+- [resi_righe_riconsegne](tabelle/resi_righe_riconsegne.md) — (rev 2026-07-13)
 - [stati_commessa](tabelle/stati_commessa.md) — (latest review 26-02-2026)   `vendite.stati_commessa` e` la lookup centrale degli stati lifecycle della commessa.
 - [tipi_doc_fiscale_registri](tabelle/tipi_doc_fiscale_registri.md) — (latest review 27-01-2026) La tabella **`vendite.tipi_doc_fiscale_registri`** definisce il mapping **tipo documento fiscale → registro di fatturazione**, necessario per la numerazione e la contabilizzazione dei documenti.
 - [tipi_fondi_fattura](tabelle/tipi_fondi_fattura.md) — (latest review 10-02-2026)   `vendite.tipi_fondi_fattura` definisce il **catalogo delle tipologie di fondo fattura** (addebiti/accrediti fatture precedenti, canone RAI, ecc.). Serve a normalizzare i motivi di addebito/accredito extra rispetto alle righe standard.
 - [transizioni_stati_commessa](tabelle/transizioni_stati_commessa.md) — (rev 2026-06-07) `vendite.transizioni_stati_commessa` definisce la **matrice delle transizioni ammesse** tra gli stati della commessa. Pattern identico a `config.transizioni_stati_ordini` / `config.transizioni_stati_preventivi`, ma collocato in schema `vendite` perché lì vive la tabella stati di riferimento `vendite.stati_commessa` (a differenza di preventivi/ordini, i cui stati sono in `config.stati_doc_*`).
 
 ## ⚙️ Funzioni
+- [fn_annulla_reso](funzioni/fn_annulla_reso.md) — (rev 2026-07-13)
 - [fn_applica_fondi_fattura](funzioni/fn_applica_fondi_fattura.md) — La funzione **`vendite.fn_applica_fondi_fattura()`** applica i fondi fattura in stato `DISPONIBILE` ad una **fattura figlia**, creando le righe in `vendite.fatture_fondi_fattura` e aggiornando la `source` a stato `ASSEGNATO`.
 - [fn_approva_commessa_attivita](funzioni/fn_approva_commessa_attivita.md) — (rev 2026-06-07) `vendite.fn_approva_commessa_attivita(p_commessa_id, p_righe_ids, p_user)` porta le righe `commesse_attivita` da `stato_approvazione = 'BOZZA'` a `'APPROVATA'`.
 - [fn_assign_numero_fattura](funzioni/fn_assign_numero_fattura.md) — (latest review 09-02-2026) La funzione **`vendite.fn_assign_numero_fattura()`** assegna il progressivo in base al registro e aggiorna `anno`, `serie` e `numero` sulla testata fattura.
@@ -92,6 +98,7 @@
 - [fn_cleanup_fatture_by_ids](funzioni/fn_cleanup_fatture_by_ids.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_cleanup_fatture_by_ids()`** centralizza il cleanup di fatture e righe correlate, ripristinando le righe di `attivita_fatturabili`.
 - [fn_close_giornaliero_lotto](funzioni/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
 - [fn_complete_lotto_task_run](funzioni/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
+- [fn_conferma_reso](funzioni/fn_conferma_reso.md) — (rev 2026-07-13)
 - [fn_contratto_riga_componenti_init](funzioni/fn_contratto_riga_componenti_init.md)
 - [fn_contratto_riga_componenti_preview](funzioni/fn_contratto_riga_componenti_preview.md)
 - [fn_contratto_righe_preview](funzioni/fn_contratto_righe_preview.md)
@@ -106,6 +113,7 @@
 - [fn_espandi_listino_versione](funzioni/fn_espandi_listino_versione.md)
 - [fn_fail_lotto_task_run](funzioni/fn_fail_lotto_task_run.md) — Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.
 - [fn_genera_ddt_da_ordine](funzioni/fn_genera_ddt_da_ordine.md) — (rev 2026-07-09)
+- [fn_genera_ddt_riconsegna](funzioni/fn_genera_ddt_riconsegna.md) — (rev 2026-07-13)
 - [fn_genera_fondi_fattura_source](funzioni/fn_genera_fondi_fattura_source.md) — (latest review 12-02-2026)   La funzione **`vendite.fn_genera_fondi_fattura_source()`** genera record in `fatture_fondi_fattura_source` per fatture con `minimo = true`, e mantiene allineata la source in base al saldo documento.
 - [fn_genera_pratica_da_preventivo](funzioni/fn_genera_pratica_da_preventivo.md) — (latest review 08-07-2026)
 - [fn_generate_fatture_righe](funzioni/fn_generate_fatture_righe.md) — (latest review 07-02-2026)   (Deprecate-trasferite in django)   La funzione **`vendite.fn_generate_fatture_righe()`** genera le righe fattura partendo dalle `attivita_fatturabili` lockate sul lotto.
@@ -146,9 +154,10 @@
 - [fn_offerta_eccezione_componenti_init](funzioni/fn_offerta_eccezione_componenti_init.md)
 - [fn_offerta_eccezione_componenti_preview](funzioni/fn_offerta_eccezione_componenti_preview.md)
 - [fn_offerta_righe_espanse](funzioni/fn_offerta_righe_espanse.md)
-- [fn_ordine_ha_residuo_evasione](funzioni/fn_ordine_ha_residuo_evasione.md) — (rev 2026-07-09)
+- [fn_ordine_ha_residuo_evasione](funzioni/fn_ordine_ha_residuo_evasione.md) — (rev 2026-07-13 — **reso-aware**)
 - [fn_ordine_riga_componenti_init](funzioni/fn_ordine_riga_componenti_init.md)
 - [fn_ordine_riga_componenti_preview](funzioni/fn_ordine_riga_componenti_preview.md)
+- [fn_ordine_riga_qta_riconsegna](funzioni/fn_ordine_riga_qta_riconsegna.md) — (rev 2026-07-13)
 - [fn_prepare_sdi_payload](funzioni/fn_prepare_sdi_payload.md) — (latest review 16-02-2026)   Preparare il payload SDI di un lotto:
 - [fn_preventivo_ha_residuo_commessa](funzioni/fn_preventivo_ha_residuo_commessa.md) — `TRUE` se il **push commessa avrebbe effetto** sul preventivo: esistono righe eleggibili (vista predicato unico) **e** la testata e' completa. E' la meta' "servizi" della coppia simmetrica di capability del modello split-per-natura.
 - [fn_preventivo_ha_residuo_ordine](funzioni/fn_preventivo_ha_residuo_ordine.md) — `TRUE` se il preventivo ha righe natura **ORDINE** (merce) non ancora allocate a un ordine: il push ordine avrebbe effetto. E' la meta' "merce" della coppia simmetrica di capability del modello split-per-natura (brief-preventivi-ordini.md D6/D8).
@@ -216,8 +225,11 @@
 - [trgfn_contratti_snapshot_precontrattuali](funzioni/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 20/01/26) La funzione `vendite.trgfn_contratti_snapshot_precontrattuali()` crea lo **snapshot** dei dati precontrattuali **solo alla creazione del contratto**.   La scelta progettuale e` deliberata: il contratto diventa la **fonte stabile** per i dati tecnici/commerciali e le eventuali correzioni richiedono **un nuovo contratto**.
 - [trgfn_contratti_sync_is_abortito_snapshot](funzioni/trgfn_contratti_sync_is_abortito_snapshot.md)
 - [trgfn_contratti_utilities_guard_tipo_classe](funzioni/trgfn_contratti_utilities_guard_tipo_classe.md)
+- [trgfn_ddt_default_emittente](funzioni/trgfn_ddt_default_emittente.md) — (rev 2026-07-13)
 - [trgfn_ddt_gen_codice](funzioni/trgfn_ddt_gen_codice.md) — La trigger function `vendite.trgfn_ddt_gen_codice()` genera automaticamente `numero` DDT quando il valore non viene fornito in inserimento.
 - [trgfn_ddt_gen_numero_emesso](funzioni/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-07-09)
+- [trgfn_ddt_guard_emittente_ba](funzioni/trgfn_ddt_guard_emittente_ba.md) — (rev 2026-07-13)
+- [trgfn_ddt_guard_indirizzi_obbligatori](funzioni/trgfn_ddt_guard_indirizzi_obbligatori.md) — (rev 2026-07-11)
 - [trgfn_ddt_guard_transizione](funzioni/trgfn_ddt_guard_transizione.md) — (rev 2026-07-09)
 - [trgfn_ddt_guard_transizione_approvazione](funzioni/trgfn_ddt_guard_transizione_approvazione.md) — (rev 2026-07-09)
 - [trgfn_ddt_normalize](funzioni/trgfn_ddt_normalize.md) — La trigger function `vendite.trgfn_ddt_normalize()` normalizza la testata del DDT su `INSERT`: completa i campi temporali minimi ed **eredita billing/utility/valuta/ emittente dall'ordine sorgente**.
@@ -245,6 +257,7 @@
 - [trgfn_note_validate_generic](funzioni/trgfn_note_validate_generic.md) — La trigger function `vendite.trgfn_note_validate_generic()` valida la coerenza delle note ancorate a una riga documento (`anchor_tipo = 'RIGA'`), verificando che `target_riga_id` appartenga davvero alla testata indicata da `target_id`.
 - [trgfn_offerte_commerciali_default_valuta](funzioni/trgfn_offerte_commerciali_default_valuta.md)
 - [trgfn_offerte_commerciali_gen_codice](funzioni/trgfn_offerte_commerciali_gen_codice.md)
+- [trgfn_offerte_commerciali_guard_emittente_ba](funzioni/trgfn_offerte_commerciali_guard_emittente_ba.md) — (rev 2026-07-13)
 - [trgfn_offerte_commerciali_guard_transizione](funzioni/trgfn_offerte_commerciali_guard_transizione.md)
 - [trgfn_offerte_commerciali_revisione](funzioni/trgfn_offerte_commerciali_revisione.md) — (rev 2026-05-24)
 - [trgfn_ordini_default_emittente](funzioni/trgfn_ordini_default_emittente.md) — (rev 2026-06-01)
@@ -260,6 +273,7 @@
 - [trgfn_preventivi_default_emittente](funzioni/trgfn_preventivi_default_emittente.md)
 - [trgfn_preventivi_default_valuta](funzioni/trgfn_preventivi_default_valuta.md)
 - [trgfn_preventivi_gen_codice](funzioni/trgfn_preventivi_gen_codice.md) — La trigger function `vendite.trgfn_preventivi_gen_codice()` genera automaticamente `numero` preventivo quando il campo non viene valorizzato.
+- [trgfn_preventivi_guard_emittente_ba](funzioni/trgfn_preventivi_guard_emittente_ba.md) — (rev 2026-07-13)
 - [trgfn_preventivi_guard_transizione_approvazione](funzioni/trgfn_preventivi_guard_transizione_approvazione.md) — (latest revision 12-05-2026b — form atomic: rimosso Check 3 prezzo NULL; Sprint E listini v5 §14.6)
 - [trgfn_preventivi_guard_utility_istanza_coerenza](funzioni/trgfn_preventivi_guard_utility_istanza_coerenza.md)
 - [trgfn_preventivi_normalize](funzioni/trgfn_preventivi_normalize.md) — La trigger function `vendite.trgfn_preventivi_normalize()` completa i dati minimi di data documento in insert quando il numero preventivo e` gia` presente.
@@ -268,8 +282,16 @@
 - [trgfn_preventivi_righe_ricalcola_totali](funzioni/trgfn_preventivi_righe_ricalcola_totali.md) — (latest review 03-04-2026) `vendite.trgfn_preventivi_righe_ricalcola_totali()` e' la trigger function **STATEMENT-level** che mantiene i totali testata preventivo sempre coerenti con le righe. Invoca `vendite.fn_ricalcola_totali_preventivo()` **una sola volta per ogni preventivo_id coinvolto**, anche in caso di operazioni bulk (es. copia righe in revisione).
 - [trgfn_preventivi_righe_set_natura_vendita](funzioni/trgfn_preventivi_righe_set_natura_vendita.md)
 - [trgfn_promo_articoli_guard_data_driven](funzioni/trgfn_promo_articoli_guard_data_driven.md) — (latest review 27-04-2026)
-- [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md)
+- [trgfn_resi_gen_numero](funzioni/trgfn_resi_gen_numero.md) — (rev 2026-07-13)
+- [trgfn_resi_guard_ddt_consegnato](funzioni/trgfn_resi_guard_ddt_consegnato.md) — (rev 2026-07-13)
+- [trgfn_resi_guard_emittente_ba](funzioni/trgfn_resi_guard_emittente_ba.md) — (rev 2026-07-13)
+- [trgfn_resi_guard_transizione](funzioni/trgfn_resi_guard_transizione.md) — (rev 2026-07-13)
+- [trgfn_resi_normalize](funzioni/trgfn_resi_normalize.md) — (rev 2026-07-13)
+- [trgfn_resi_riconsegne_guard](funzioni/trgfn_resi_riconsegne_guard.md) — (rev 2026-07-13)
+- [trgfn_resi_righe_guard_quantita](funzioni/trgfn_resi_righe_guard_quantita.md) — (rev 2026-07-13)
+- [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md) — (rev 2026-07-11)
 - [trgfn_v_ddt_protect_num](funzioni/trgfn_v_ddt_protect_num.md) — (rev 2026-07-09)
+- [trgfn_v_resi_protect_num](funzioni/trgfn_v_resi_protect_num.md) — (rev 2026-07-13)
 
 ## 🔍 Views
 - [vw_contratti_lista](views/vw_contratti_lista.md)
@@ -288,6 +310,8 @@
 - [vw_dash_fatturazione_ordini](views/vw_dash_fatturazione_ordini.md) — (latest review 03-07-2026) Resolver dell'area **ORDINI** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per ordine con valore **imponibile** totale vs **transitato a commessa** e il motivo del fermo. Read-time, nessun mirror.
 - [vw_dash_fatturazione_preventivi](views/vw_dash_fatturazione_preventivi.md) — (latest review 03-07-2026) Resolver dell'area **PREVENTIVI** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per preventivo con valore **imponibile** totale vs **transitato** (decisione D-4: senza IVA) e il motivo del fermo. Read-time, nessun mirror.
 - [vw_ddt_lista](views/vw_ddt_lista.md) — (rev 2026-07-09)
+- [vw_ddt_riepilogo_iva_dettaglio](views/vw_ddt_riepilogo_iva_dettaglio.md)
+- [vw_ddt_righe_iva_base](views/vw_ddt_righe_iva_base.md)
 - [vw_offerte_commerciali_lista](views/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_lista](views/vw_ordini_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_riepilogo_iva_dettaglio](views/vw_ordini_riepilogo_iva_dettaglio.md) — (latest review 05-06-2026)
@@ -303,6 +327,9 @@
 - [vw_preventivi_smistamento_righe](views/vw_preventivi_smistamento_righe.md) — Fonte dati del **Pannello Smistamento** (brief-db-smistamento-preventivi.md, B): una riga per ogni riga **attiva** del preventivo, con natura, destinazione e lo **stato di smistamento autorevole** per la UI. Sostituisce `vw_preventivi_stato_fatturazione_righe` (rename + rework natura-aware, 2026-06-12): i flag booleani `in_commessa`/`emessa_af`/`fatturata` sono stati **rimossi** — `stato_smistamento` e' l'unica verita'.
 - [vw_preventivi_stato_fatturazione](views/vw_preventivi_stato_fatturazione.md)
 - [vw_preventivi_stato_fatturazione_righe](views/vw_preventivi_stato_fatturazione_righe.md)
+- [vw_resi_da_accreditare](views/vw_resi_da_accreditare.md) — (rev 2026-07-13)
+- [vw_resi_da_riconsegnare](views/vw_resi_da_riconsegnare.md) — (rev 2026-07-13)
+- [vw_resi_lista](views/vw_resi_lista.md) — (rev 2026-07-13)
 - [vw_stato_sorgente_contratto](views/vw_stato_sorgente_contratto.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_contratto` è il **resolver del dominio CONTRATTO** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni contratto — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_contratti` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
 - [vw_stato_sorgente_offerta](views/vw_stato_sorgente_offerta.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_offerta` è il **resolver del dominio OFFERTA** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni offerta commerciale — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_offerte` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
 - [vw_stato_sorgente_ordine](views/vw_stato_sorgente_ordine.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_ordine` è il **resolver del dominio ORDINE (di vendita)** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni ordine di vendita — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_ordini` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.

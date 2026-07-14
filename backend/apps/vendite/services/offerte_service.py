@@ -24,23 +24,29 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.db import DatabaseError, IntegrityError, transaction
+from django.db import DatabaseError, transaction
 from django.utils import timezone
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import (
     PayloadValidator,
-    map_integrity_error,
+    translate_db_errors,
 )
 from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.db.offerte_repository import OfferteRepository
+from apps.vendite.services._indirizzi_documento_helpers import (
+    IndirizziDocumentoConfig,
+    auto_assegna_indirizzo_default,
+    delete_indirizzo_documento,
+    list_indirizzi_documento,
+    upsert_indirizzo_documento,
+)
 from apps.vendite.services._approvazioni_prezzo_constants import (
     SORGENTE_OFFERTA,
     STATO_APPROVAZIONE_PENDING,
@@ -73,7 +79,6 @@ E_VENDITE_FK = "E_VENDITE_FK"
 # Pattern per estrarre il codice errore applicativo dal MESSAGE dei trigger
 # DB. Convenzione progetto: `RAISE EXCEPTION USING MESSAGE='E_OFFERTA_XXX'`.
 # Il primo token con underscore in maiuscolo che inizia per E_ e' il codice.
-_DB_ERROR_CODE_RE = re.compile(r"\b(E_[A-Z][A-Z0-9_]+)\b")
 
 
 # Codici stato documento (chiavi naturali `codice_interno` in
@@ -329,10 +334,10 @@ class OfferteService:
     # =================================================================
 
     # Scopo: Normalizza errori DB (IntegrityError + DatabaseError P0001 dei
-    #        trigger guard) in ServiceError. Il trigger
-    #        trgfn_offerte_commerciali_guard_transizione solleva con codici
-    #        applicativi gia' parlanti (E_OFFERTA_*), che il middleware
-    #        propaga al client come 422.
+    #        trigger guard, codici E_OFFERTA_* parlanti) in ServiceError.
+    #        Delega al BB condiviso `translate_db_errors` (core
+    #        payload_helpers, estratto 2026-07-13 — regola del 2 alla 5a
+    #        copia); resta la firma context-based per i call site del service.
     @contextmanager
     def _db_errors(
         self,
@@ -340,34 +345,14 @@ class OfferteService:
         *,
         fallback_message: str = "Violazione vincolo DB su offerta.",
     ) -> Iterator[None]:
-        try:
+        with translate_db_errors(
+            context=context,
+            fallback_code=E_VENDITE_VALIDATION,
+            fallback_message=fallback_message,
+            unique_constraints=_UNIQUE_CONSTRAINTS,
+            fk_constraints=_FK_CONSTRAINTS,
+        ):
             yield
-        except IntegrityError as exc:
-            map_integrity_error(
-                exc,
-                unique_constraints=_UNIQUE_CONSTRAINTS,
-                fk_constraints=_FK_CONSTRAINTS,
-                fallback_code=E_VENDITE_VALIDATION,
-                fallback_message=fallback_message,
-                context=context,
-            )
-        except DatabaseError as exc:
-            # I trigger guard sollevano con codici E_OFFERTA_* parlanti come
-            # MESSAGE del RAISE EXCEPTION. Li estraiamo dal messaggio dell'
-            # eccezione cosi' che il FE possa fare routing UI specifico
-            # (es. mostrare dialog "versione listino non ATTIVA" diverso da
-            # "transizione non ammessa"). Se non troviamo il codice (es.
-            # errore tecnico non dei nostri trigger) cade su E_VENDITE_VALIDATION.
-            exc_text = str(exc)
-            match = _DB_ERROR_CODE_RE.search(exc_text)
-            code = match.group(1) if match else E_VENDITE_VALIDATION
-            ErrorManager.raise_error(
-                code=code,
-                message=exc_text.split("\n", maxsplit=1)[0].strip()
-                or fallback_message,
-                detail=exc_text,
-                context=context,
-            )
 
     # =================================================================
     # Lista e dettaglio
@@ -565,6 +550,9 @@ class OfferteService:
                     self._add_utility_inline(
                         offerta_id, payload, utility_payload,
                     )
+        # UX v2: auto-assegnazione best-effort dell'indirizzo default
+        # (indirizzo di ruolo CON del cliente, fallback FATT). Mai bloccante.
+        auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(offerta_id))
         return self.get_offerta(offerta_id)
 
     # Scopo: Crea il record utility 1:1 contestualmente alla testata. Riusa
@@ -843,6 +831,13 @@ class OfferteService:
                 contratto_id = self._repo.push_a_contratto(
                     offerta_id, pratica_id, chiudi_esistente,
                 )
+        # UX v2: la cascata DB copia gli indirizzi dell'offerta sul contratto;
+        # fallback best-effort dall'anagrafica di ruolo se la sorgente non
+        # aveva slot compatibili. Import locale per evitare cicli fra service.
+        from apps.vendite.services.contratti_service import (
+            auto_assegna_indirizzo_default_contratto,
+        )
+        auto_assegna_indirizzo_default_contratto(int(contratto_id))
         contratto = self._repo.get_contratto_minimal(contratto_id)
         ErrorManager.require(
             contratto is not None,
@@ -1739,3 +1734,35 @@ def _orchestrate_l3_request_offerta(
             sorgente=SORGENTE_OFFERTA,
         )
     return pratica_id
+
+
+# ══════════════════════════════════════════════════════════
+#  Indirizzi documento (BB condiviso _indirizzi_documento_helpers)
+# ══════════════════════════════════════════════════════════
+
+_INDIRIZZI_CFG = IndirizziDocumentoConfig(
+    # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
+    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    repo_factory=lambda: OfferteRepository(),
+    stati_modificabili=_STATI_EDITABILI,
+    not_found_code=E_VENDITE_NOT_FOUND,
+    stato_error_code=E_VENDITE_VALIDATION,
+    error_code=E_VENDITE_VALIDATION,
+    fn_prefix="vendite.offerte_service",
+)
+
+
+# Scopo: Pannello indirizzi dell'offerta (ambito OFFERTE). Guard, ownership e
+#        traduzione errori DB nel BB condiviso.
+def list_indirizzi(offerta_id: int) -> dict[str, Any]:
+    return list_indirizzi_documento(_INDIRIZZI_CFG, offerta_id)
+
+
+# Scopo: Upsert slot indirizzo (uno-per-tipo, solo BOZZA).
+def upsert_indirizzo(offerta_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    return upsert_indirizzo_documento(_INDIRIZZI_CFG, offerta_id, payload)
+
+
+# Scopo: Rimozione slot indirizzo (solo BOZZA).
+def delete_indirizzo(offerta_id: int, indirizzo_id: int) -> dict[str, Any]:
+    return delete_indirizzo_documento(_INDIRIZZI_CFG, offerta_id, indirizzo_id)

@@ -1,7 +1,10 @@
 # 🔍 View `vw_contratti_lista`
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW vendite.vw_contratti_lista AS
+CREATE OR REPLACE VIEW vendite.vw_contratti_lista
+WITH (security_invoker=on) AS
 SELECT c.id,
     c.uid,
     c.numero,
@@ -39,14 +42,17 @@ SELECT c.id,
     c.data_insert,
     c.user_insert,
     c.data_update,
-    c.user_update
-   FROM ((((((((((vendite.contratti c
+    c.user_update,
+    COALESCE(s_ef.ragione_sociale_completa, (ef.descrizione)::text) AS emittente_fiscale_descrizione
+   FROM ((((((((((((vendite.contratti c
      JOIN anagrafiche.billing_account ba ON ((ba.id = c.billing_account_id)))
      JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
      JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
      JOIN config.utilities u ON ((u.id = c.utility_id)))
      JOIN config.stati_doc_contratti sd ON ((sd.id = c.stato_doc_contratto_id)))
      LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = c.emittente_fiscale_id)))
+     LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = ef.soggetto_ruolo_id)))
+     LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
      LEFT JOIN vendite.listini l ON ((l.id = c.listino_id)))
      LEFT JOIN vendite.listini_versioni lv ON ((lv.id = c.listino_versione_id)))
      LEFT JOIN anagrafiche.categorie_clienti cc_snap ON ((cc_snap.id = c.categoria_cliente_id_snapshot)))

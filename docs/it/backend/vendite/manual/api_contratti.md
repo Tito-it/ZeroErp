@@ -779,6 +779,12 @@ tipo_documento_output_id)`. Il context builder backend e'
 - La generazione richiede un `emittente_fiscale_id` sul contratto e almeno una
   versione `PUBBLICATA` attiva del template applicabile alla data corrente.
 
+### Indirizzi documento `GET/POST /<id>/indirizzi/` + `DELETE /<id>/indirizzi/<iid>/`
+
+BB condiviso sui 5 domini vendite (ambito CONTRATTI (FATT, CON, FORNITURA); editabile solo DRAFT):
+contratto completo in [api_indirizzi_documento.md](api_indirizzi_documento.md).
+
+
 ## Output
 
 Tutte le risposte usano l'envelope `success_response`:

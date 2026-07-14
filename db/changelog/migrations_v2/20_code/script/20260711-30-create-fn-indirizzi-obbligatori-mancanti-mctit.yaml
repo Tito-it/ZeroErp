@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Helper puro (no raise) per l'enforcement degli indirizzi obbligatori
+# (Q4). Dato un ambito e i tipi indirizzo gia' presenti su un documento,
+# ritorna i codici_interni dei tipi marcati obbligatorio=true in
+# config.tipi_indirizzi_allowed che MANCANO. Riusabile da ogni dominio
+# documento (oggi DDT; domani FATTURE quando la cascata verso fattura
+# popolera' fatture_indirizzi). Il raise vive nel trigger di dominio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260711-30-create-fn-indirizzi-obbligatori-mancanti-mctit.yaml
+
+  - changeSet:
+      id: 20260711-30-create-fn-indirizzi-obbligatori-mancanti
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_indirizzi_obbligatori_mancanti(text, integer[]);
+
+              CREATE OR REPLACE FUNCTION script.fn_indirizzi_obbligatori_mancanti(
+                  p_ambito         text,
+                  p_tipi_presenti  integer[]
+              )
+              RETURNS text[]
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                -- Codici obbligatori dell'ambito non presenti tra i tipi passati.
+                SELECT COALESCE(
+                         array_agg(t.codice_interno ORDER BY t.codice_interno),
+                         ARRAY[]::text[])
+                  FROM config.tipi_indirizzi_allowed a
+                  JOIN config.tipi_indirizzi t ON t.id = a.tipo_indirizzo_id
+                 WHERE a.ambito = p_ambito
+                   AND a.attivo IS TRUE
+                   AND a.obbligatorio IS TRUE
+                   AND NOT (a.tipo_indirizzo_id = ANY(COALESCE(p_tipi_presenti, ARRAY[]::integer[])));
+              $function$;

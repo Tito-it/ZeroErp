@@ -15,6 +15,8 @@
 #   3. build_context_id_non_valido_raises_validation
 #   4. build_context_ddt_inesistente_raises_not_found
 #   5. registry_contiene_ddt_vendita_dopo_import_modulo
+#   6. build_context_consegna_da_snapshot_con
+#   7. build_context_consegna_none_senza_slot_con
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -90,6 +92,7 @@ class BuildContextDdtTests(SimpleTestCase):
         repo = MagicMock()
         repo.get_ddt.return_value = _testata_row()
         repo.list_righe.return_value = []
+        repo.list_indirizzi.return_value = []
 
         ctx = DdtDocumentContextBuilder(repo=repo).build_context(
             54, auth_user_id=9,
@@ -97,7 +100,7 @@ class BuildContextDdtTests(SimpleTestCase):
 
         self.assertEqual(
             set(ctx.keys()),
-            {"ddt", "destinatario", "trasporto", "righe", "_meta"},
+            {"ddt", "destinatario", "indirizzi", "trasporto", "righe", "_meta"},
         )
         ddt = ctx["ddt"]
         self.assertEqual(ddt["numero"], "DDT0000030")
@@ -134,7 +137,7 @@ class BuildContextDdtTests(SimpleTestCase):
         self.assertEqual(trasporto["tracking_code"], "TRK-001")
 
         self.assertEqual(ctx["_meta"]["context_code"], "DDT_VENDITA")
-        self.assertEqual(ctx["_meta"]["context_version"], 1)
+        self.assertEqual(ctx["_meta"]["context_version"], 2)
         self.assertEqual(ctx["_meta"]["auth_user_id"], 9)
         self.assertEqual(ctx["_meta"]["locale"], "it-IT")
 
@@ -142,6 +145,7 @@ class BuildContextDdtTests(SimpleTestCase):
     def test_build_context_righe_propagate(self) -> None:
         repo = MagicMock()
         repo.get_ddt.return_value = _testata_row()
+        repo.list_indirizzi.return_value = []
         repo.list_righe.return_value = [
             {"id": 1, "articolo_descrizione": "Art A", "qta_operativa": "2"},
             {"id": 2, "articolo_descrizione": "Art B", "qta_operativa": "1"},
@@ -165,11 +169,55 @@ class BuildContextDdtTests(SimpleTestCase):
         })
         repo.get_ddt.return_value = testata
         repo.list_righe.return_value = []
+        repo.list_indirizzi.return_value = []
 
         ctx = DdtDocumentContextBuilder(repo=repo).build_context(54)
 
         self.assertIsNone(ctx["ddt"]["numero"])
         self.assertEqual(ctx["ddt"]["stato"]["codice_interno"], "DRAFT")
+
+    # 6. Slot CON presente -> `indirizzi.consegna` = snapshot congelato +
+    #    display_compatto pre-composto (mirror FE formatSnapshotDisplay).
+    def test_build_context_consegna_da_snapshot_con(self) -> None:
+        repo = MagicMock()
+        repo.get_ddt.return_value = _testata_row()
+        repo.list_righe.return_value = []
+        repo.list_indirizzi.return_value = [
+            {
+                "id": 7,
+                "tipo_indirizzo_codice": "CON",
+                "tipo_indirizzo_descrizione": "Consegna",
+                "snapshot": {
+                    "via": "Via Roma 1",
+                    "cap": "20100",
+                    "citta": "Milano",
+                    "prov": "MI",
+                },
+                "origine_indirizzo_id": 33,
+            },
+        ]
+
+        ctx = DdtDocumentContextBuilder(repo=repo).build_context(54)
+
+        consegna = ctx["indirizzi"]["consegna"]
+        self.assertIsNotNone(consegna)
+        self.assertEqual(consegna["via"], "Via Roma 1")
+        self.assertEqual(
+            consegna["display_compatto"], "Via Roma 1, 20100 Milano, MI",
+        )
+        repo.list_indirizzi.assert_called_once_with(54)
+
+    # 7. Nessuno slot CON (anteprima in DRAFT) -> consegna None: il template
+    #    omette il blocco indirizzo, nessun errore.
+    def test_build_context_consegna_none_senza_slot_con(self) -> None:
+        repo = MagicMock()
+        repo.get_ddt.return_value = _testata_row()
+        repo.list_righe.return_value = []
+        repo.list_indirizzi.return_value = []
+
+        ctx = DdtDocumentContextBuilder(repo=repo).build_context(54)
+
+        self.assertIsNone(ctx["indirizzi"]["consegna"])
 
 
 class BuildContextDdtGuardTests(SimpleTestCase):

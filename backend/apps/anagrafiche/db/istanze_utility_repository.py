@@ -34,8 +34,13 @@ from apps.core.db._helpers import escape_ilike, row_to_dict, rows_to_list
 # - soggetto_ruolo_id: solo le istanze legate a quel ruolo via clienti
 #   (combo ristretta alle forniture del cliente/BA selezionato — evita
 #   l'aggancio errato a istanze del soggetto estranee al rapporto cliente)
-# - scope emittente: catena via BA della stessa istanza. Le istanze totalmente
-#   orfane (no BA) sono visibili solo ad admin globale / superuser.
+# - scope emittente: catena via BA della stessa istanza, con visibilita' del
+#   singolo BA delegata alla fn canonica script.fn_check_ba_visible_for_emittenti
+#   (mapping specifico, oppure gestore default SOLO se il BA non ha alcun
+#   mapping — fix 2026-07-13: il vecchio JOIN inline `... OR is_default=true`
+#   era piu' lasco e col gestore default in scope mostrava anche istanze di BA
+#   mappati ad altri emittenti). Le istanze totalmente orfane (no BA) restano
+#   visibili solo ad admin globale / superuser.
 _LOOKUP_WHERE = """
     WHERE (
             iu.codice ILIKE %s
@@ -61,13 +66,9 @@ _LOOKUP_WHERE = """
          OR EXISTS (
               SELECT 1
                 FROM anagrafiche.billing_account ba_s
-                JOIN anagrafiche.emittenti_fiscali_billing_account efba
-                  ON (
-                       efba.billing_account_id = ba_s.id
-                    OR efba.is_default = true
-                     )
                WHERE ba_s.istanza_utility_id = iu.id
-                 AND efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
+                 AND script.fn_check_ba_visible_for_emittenti(
+                       ba_s.id, %s::bigint[])
             )
           )
 """

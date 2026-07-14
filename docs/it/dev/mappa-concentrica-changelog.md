@@ -10,6 +10,71 @@
 
 ---
 
+## 12 luglio 2026
+
+**Anello 3 (vendite) — Indirizzi documento UX v2 (building block cross-dominio).**
+Nuovo BB condiviso per gli indirizzi dei documenti di vendita: una sezione inline
+(mostra l'indirizzo di **consegna** di default + contatore "+N altri") e un drawer
+di gestione (scelta dall'anagrafica del cliente "usa questo" o indirizzo libero
+una-tantum), con **snapshot congelato** all'emissione. Lato BE, factory indirizzi
+documento parametrica su una `IndirizziDocumentoConfig` per dominio + endpoint
+CRUD (`/<dominio>/<id>/indirizzi/`) su **tutti e 5 i domini**
+(preventivi/offerte/contratti/ordini/DDT) e **auto-assegnazione** dell'indirizzo
+di default (indirizzo di ruolo `CON`, fallback `FATT`) in create + fallback
+post-push. Pilota sul DDT, poi rollout ai 4 drawer. Vedi
+[brief-design-indirizzi-documenti-vendita.md](work-in-progress/brief-design-indirizzi-documenti-vendita.md).
+
+**Anello 3 (vendite) — Riepilogo IVA DDT + colonna Emittente lista.** Vista
+derivata `vw_ddt_riepilogo_iva_dettaglio` (una riga per aliquota, righe con prezzo
+NULL escluse: un DDT di solo trasporto non ha riepilogo) esposta dal drawer via
+`RiepilogoIvaTable` (componente cross-dominio). Seed opt-in della colonna
+"Emittente" nel catalogo lista DDT (parità con le altre 4 liste documento). Vedi
+[brief-db-ddt-riepilogo-iva.md](work-done/brief-db-ddt-riepilogo-iva.md),
+[brief-db-ddt-colonna-emittente-catalogo.md](work-done/brief-db-ddt-colonna-emittente-catalogo.md).
+
+## 11 luglio 2026
+
+**Anello 2 (documenti) — Stampa PDF DDT: quinto dominio del motore documentale.**
+Il DDT diventa il 5° consumatore del motore documenti parametrico: template
+`DDT_VENDITA` pubblicato + builder del contesto documentale del DDT (testata,
+trasporto, righe, totali, note). L'anteprima in bozza e il documento definitivo
+all'emissione seguono il pattern degli altri domini (`pdf_mode` data-driven da
+`stati_doc_ddt`). Export lista DDT (CSV/XLSX) allineato agli ordini.
+
+**Anello 3 (vendite) — 2 refactor BB (regola del 2).** (1) Factory
+`build_documenti_sorgente_views` per generare le 7 view "documenti per sorgente"
+di ogni dominio (~80 righe/dominio); (2) `add_emittente_scope_condition`
+(`apps/core/db/emittente_scope_helpers`) che risolve l'array di scope emittente
+**una volta** in Python (era 2×/query in 5 repository). Vedi
+[brief-be-ddt-vendita.md](work-done/brief-be-ddt-vendita.md) §13.
+
+## 10 luglio 2026
+
+**Anello 3 (vendite) — DDT di vendita (DB + BE + FE).** Nuovo documento del ciclo
+attivo: il documento di trasporto. Testata (dati di trasporto: causale, aspetto
+beni, vettore, mittente, colli/pesi/volume, targa, autista, tracking) + righe
+(prezzo/IVA **opzionali** → DDT di solo trasporto) + componenti BoM condivisi.
+Nascita per **evasione** di un ordine confermato — legame **1:N** con **residuo
+per riga** (`ordini_righe_fulfillment` append-only: l'evasione aggiunge la
+quantità evasa, non la sottrae) — oppure **standalone** manuale. Stati
+**data-driven** `DRAFT → EMESSO → SPEDITO → CONSEGNATO` (+ `RESO`/`ANNULLATO`) via
+matrice `config.transizioni_stati_ddt` + `fn_available_actions_ddt`. **Numero
+assegnato all'emissione** (non alla nascita, `trgfn_ddt_gen_numero_emesso`) e poi
+immutabile. Cliente/destinatario immutabili post-creazione. Push a commessa
+(sorgente `DDT_VENDITA`) per la fatturazione. Componenti BoM estesi al 5° dominio.
+Guida operativa: [gestione-ddt.md](../guide/gestione-ddt.md). Vedi
+[brief-db-ddt-vendita-evasione-e-stati.md](work-done/brief-db-ddt-vendita-evasione-e-stati.md),
+[brief-be-ddt-vendita.md](work-done/brief-be-ddt-vendita.md),
+[brief-fe-ddt-vendita.md](work-done/brief-fe-ddt-vendita.md).
+
+**Addendum SCOPE §15 — emittente memorizzato + RLS su DDT.** Colonna
+`vendite.ddt.emittente_fiscale_id` (NOT NULL) memorizzata sul documento (mirror
+ordini/preventivi), ereditata dall'ordine sorgente in evasione o risolta dal
+billing account per lo standalone (`trgfn_ddt_normalize`), con policy RLS
+`rls_ddt_ef_whitelist` e guard di scope in scrittura: un operatore non emette DDT
+fuori dal proprio scope emittente. `vw_ddt_lista` espone `emittente_fiscale_id`
+per il filtro applicativo (mirror `vw_ordini_lista`).
+
 ## 28 giugno 2026
 
 **Qualità di modello — convenzione `codice_interno` / `codice` (cross-anello).** Bonifica

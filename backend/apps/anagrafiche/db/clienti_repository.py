@@ -201,9 +201,10 @@ class ClientiRepository:
     #        agli emittenti autorizzati per l'utente chiamante (refactor
     #        operatore-emittenti, follow-up BE-3.5). `emittente_ids=None`
     #        bypassa il filtro (superuser, admin globale, "0 emittenti");
-    #        lista vuota ⇒ nessun risultato. Allineato al pattern del
-    #        lookup BA: subquery EXISTS su `emittenti_fiscali_billing_account`
-    #        con `is_default = true` come fallback (gestore globale).
+    #        lista vuota ⇒ nessun risultato. Semantica identica alla fn
+    #        canonica `script.fn_check_ba_visible_for_emittenti` (mapping
+    #        specifico, oppure gestore default SOLO se il BA non ha alcun
+    #        mapping), qui inline per lasciare al planner il semi-join.
     def list_clienti(
         self, *, search: str | None = None,
         utility_id: int | None = None,

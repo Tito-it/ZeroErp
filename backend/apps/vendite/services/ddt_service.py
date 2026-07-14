@@ -15,30 +15,36 @@
 # data-driven, numero assegnato a EMESSO dal trigger DB, cliente/destinatario
 # immutabile post-creazione).
 #
-# NOTA emittente (addendum §15, 2026-07-10): `vendite.ddt.emittente_fiscale_id`
-# e' MEMORIZZATO (NOT NULL, scope RLS `rls_ddt_ef_whitelist`), risolto in
-# scrittura da `trgfn_ddt_normalize` (ereditato dall'ordine sorgente, o dal
-# billing_account per lo standalone). Il service quindi lo LEGGE dalla testata
-# (mirror ordini) e non lo risolve a runtime: il billing_account e' richiesto
-# alla creazione perche' senza di esso il trigger non puo' valorizzare
-# l'emittente (NOT NULL a DB).
+# NOTA emittente (addendum §15 + uniformazione 2026-07-13): l'emittente del
+# DDT e' legato allo USER, come ordini/preventivi/contratti. Il FE prefilla
+# `emittente_fiscale_id` dal profilo operatore (admin globale: Select) e il
+# create lo accetta nel payload (whitelist). La colonna resta MEMORIZZATA
+# (NOT NULL, scope RLS `rls_ddt_ef_whitelist`) con reti di sicurezza DB in
+# `trgfn_ddt_normalize`: eredita dall'ordine sorgente (evasione) o, se il
+# payload non lo porta, fallback dal billing_account. Il service LEGGE la
+# colonna dalla testata e non la risolve a runtime; il billing_account resta
+# richiesto alla creazione (deriva il destinatario e ancora il fallback).
 
 import logging
-import re
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.db import DatabaseError, IntegrityError, transaction
+from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.payload_helpers import map_integrity_error
+from apps.core.services.payload_helpers import make_db_errors_translator
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.ddt_repository import DdtRepository
 from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_overrides,
+)
+from apps.vendite.services._indirizzi_documento_helpers import (
+    IndirizziDocumentoConfig,
+    auto_assegna_indirizzo_default,
+    delete_indirizzo_documento,
+    list_indirizzi_documento,
+    upsert_indirizzo_documento,
 )
 from apps.vendite.services._pricing_gate_helpers import (
     validate_componenti_overrides_authorization,
@@ -52,7 +58,6 @@ logger = logging.getLogger(__name__)
 E_VENDITE_VALIDATION = "E_VENDITE_VALIDATION"
 E_VENDITE_DUPLICATO = "E_VENDITE_DUPLICATO"
 E_VENDITE_FK = "E_VENDITE_FK"
-_DB_ERROR_CODE_RE = re.compile(r"\b(E_[A-Z][A-Z0-9_]+)\b")
 
 # Mappe vincolo DB -> (codice, messaggio) per map_integrity_error (frammento
 # nome vincolo). Minime: i casi non mappati cadono su E_VENDITE_VALIDATION.
@@ -79,6 +84,7 @@ _STATI_RIGHE_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 # billing_account se assente (cliente=BA, come ordini).
 _CREATE_KEYS_DDT: frozenset[str] = frozenset({
     "billing_account_id", "destinatario_soggetto_ruolo_id", "utility_id",
+    "emittente_fiscale_id",
     "valuta_id", "mittente_soggetto_ruolo_id", "vettore_soggetto_ruolo_id",
     "causale_trasporto_id", "aspetto_bene_id", "modalita_addebito_trasporto_id",
     "num_colli", "peso_lordo", "peso_netto", "volume", "targa", "autista",
@@ -197,6 +203,51 @@ def list_righe(ddt_id: int) -> list[dict[str, Any]]:
     return DdtRepository().list_righe(ddt_id)
 
 
+# ── Indirizzi documento (BB condiviso _indirizzi_documento_helpers) ──
+
+# Configurazione unica del BB per il dominio DDT: guard esistenza/stato,
+# ownership picker e traduzione errori DB vivono nel helper condiviso.
+_INDIRIZZI_CFG = IndirizziDocumentoConfig(
+    # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
+    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    repo_factory=lambda: DdtRepository(),
+    stati_modificabili=_STATI_MODIFICABILI,
+    not_found_code="E_DDT_NOT_FOUND",
+    stato_error_code="E_DDT_STATO_TRANSIZIONE",
+    error_code="E_DDT_VALIDAZIONE",
+    fn_prefix=_FN,
+)
+
+
+# Scopo: Pannello indirizzi del DDT: tipi ammessi per l'ambito DDT + slot
+#        correnti (snapshot congelati + origine soft).
+def list_indirizzi(ddt_id: int) -> dict[str, Any]:
+    return list_indirizzi_documento(_INDIRIZZI_CFG, ddt_id)
+
+
+# Scopo: Upsert slot indirizzo (uno-per-tipo, solo DRAFT: dopo l'emissione lo
+#        snapshot e' congelato col documento). Picker: snapshot server-side da
+#        fn_snapshot_indirizzo + guard ownership; una-tantum: dal payload.
+def upsert_indirizzo(ddt_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    return upsert_indirizzo_documento(_INDIRIZZI_CFG, ddt_id, payload)
+
+
+# Scopo: Rimozione slot indirizzo (solo DRAFT). L'obbligatorieta' di CON e'
+#        verificata dal guard DB all'emissione, non qui.
+def delete_indirizzo(ddt_id: int, indirizzo_id: int) -> dict[str, Any]:
+    return delete_indirizzo_documento(_INDIRIZZI_CFG, ddt_id, indirizzo_id)
+
+
+# Scopo: Riepilogo IVA aggregato del DDT (una riga per aliquota). Calcolo
+#        fiscalmente corretto gia' applicato in DB via la vista derivata
+#        vw_ddt_riepilogo_iva_dettaglio (stessa formula di preventivi/ordini;
+#        righe con prezzo NULL escluse in vista): il service legge, nessun
+#        ricalcolo Python. Usato dal FE per il pannello "Riepilogo IVA" del
+#        drawer DDT e (futuro) dal context builder della stampa.
+def list_riepilogo_iva(ddt_id: int) -> list[dict[str, Any]]:
+    return DdtRepository().list_riepilogo_iva(ddt_id)
+
+
 # ══════════════════════════════════════════════════════════
 #  SCRITTURE — Testata
 # ══════════════════════════════════════════════════════════
@@ -210,9 +261,9 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
     data = {k: empty_to_none(v) for k, v in payload.items() if k in _CREATE_KEYS_DDT}
 
     billing_account_id = data.get("billing_account_id")
-    # Cliente obbligatorio: `trgfn_ddt_normalize` risolve da qui
-    # l'emittente_fiscale_id (NOT NULL, scope RLS) del DDT standalone. Senza BA
-    # l'INSERT fallirebbe a DB con un errore non parlante.
+    # Cliente obbligatorio: deriva il destinatario e ancora il fallback DB
+    # dell'emittente (`trgfn_ddt_normalize`) quando il payload non lo porta.
+    # Senza BA l'INSERT fallirebbe a DB con un errore non parlante.
     ErrorManager.require(
         billing_account_id is not None,
         code="E_DDT_VALIDAZIONE",
@@ -247,10 +298,13 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
 
     meta = data.get("meta")
     with _db_errors("crea_ddt"):
-        return repo.create_ddt(
+        creato = repo.create_ddt(
             destinatario_soggetto_ruolo_id=int(destinatario_id),
             stato_doc_ddt_id=int(stato_bozza_id),
             billing_account_id=int(billing_account_id) if billing_account_id is not None else None,
+            # Emittente dallo user (prefill FE dal profilo, mirror ordini).
+            # Se None: fallback DB dal BA in trgfn_ddt_normalize.
+            emittente_fiscale_id=data.get("emittente_fiscale_id"),
             utility_id=data.get("utility_id"),
             valuta_id=data.get("valuta_id"),
             mittente_soggetto_ruolo_id=data.get("mittente_soggetto_ruolo_id"),
@@ -268,6 +322,10 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
             data=data.get("data"),
             meta=meta if isinstance(meta, dict) else None,
         )
+    # UX v2: auto-assegnazione best-effort dell'indirizzo di consegna default
+    # (indirizzo di ruolo CON del cliente, fallback FATT). Mai bloccante.
+    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(creato["id"]))
+    return creato
 
 
 # Scopo: Aggiorna testata DDT (solo in DRAFT).
@@ -673,6 +731,10 @@ def crea_ddt_da_ordine(
     # E_QTA_SUPERA_RESIDUO) sollevati dalla fn DB -> tradotti da _db_errors.
     with _db_errors("crea_ddt_da_ordine"):
         ddt_id = repo.push_da_ordine(int(ordine_id), righe)
+    # UX v2: la cascata DB copia gli indirizzi dell'ordine; se l'ordine non
+    # aveva la consegna, fallback best-effort dall'anagrafica di ruolo
+    # (l'helper salta se lo slot default e' gia' valorizzato).
+    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(ddt_id))
     # Il DDT nasce sempre in DRAFT: il `numero` e' assegnato solo a EMESSO dal
     # trigger DB -> qui e' deterministicamente None (nessun re-read).
     return {"ddt_id": ddt_id, "numero": None, "ordine_id": int(ordine_id)}
@@ -729,36 +791,18 @@ def push_a_commessa(ddt_id: int, *, user: str | None = None) -> dict[str, Any]:
 #  Helper privati
 # ══════════════════════════════════════════════════════════
 
-# Scopo: Context manager per normalizzare errori DB in ServiceError parlanti.
-#        Gemello _db_errors di ordini_service: IntegrityError (unique/fk) via
-#        map_integrity_error + mappe vincolo; DatabaseError (trigger P0001) via
-#        estrazione regex del codice E_* dal MESSAGE del RAISE, cosi' il FE puo'
-#        fare routing UI specifico. Fallback E_VENDITE_VALIDATION.
-@contextmanager
-def _db_errors(op: str) -> Iterator[None]:
-    context = {"op": f"{_FN}.{op}"}
-    try:
-        yield
-    except IntegrityError as exc:
-        map_integrity_error(
-            exc,
-            unique_constraints=_UNIQUE_CONSTRAINTS,
-            fk_constraints=_FK_CONSTRAINTS,
-            fallback_code=E_VENDITE_VALIDATION,
-            fallback_message="Violazione vincolo DB su DDT.",
-            context=context,
-        )
-    except DatabaseError as exc:
-        exc_text = str(exc)
-        match = _DB_ERROR_CODE_RE.search(exc_text)
-        code = match.group(1) if match else E_VENDITE_VALIDATION
-        ErrorManager.raise_error(
-            code=code,
-            message=exc_text.split("\n", maxsplit=1)[0].strip()
-            or "Violazione vincolo DB su DDT.",
-            detail=exc_text,
-            context=context,
-        )
+# Traduzione errori DB -> ServiceError parlanti via BB condiviso
+# `make_db_errors_translator` (core payload_helpers, estratto 2026-07-13 —
+# regola del 2 alla 5a copia): IntegrityError con le mappe vincolo del
+# dominio; DatabaseError (trigger P0001) con estrazione del codice E_* per
+# il routing UI del FE.
+_db_errors = make_db_errors_translator(
+    fn_prefix=_FN,
+    fallback_code=E_VENDITE_VALIDATION,
+    fallback_message="Violazione vincolo DB su DDT.",
+    unique_constraints=_UNIQUE_CONSTRAINTS,
+    fk_constraints=_FK_CONSTRAINTS,
+)
 
 
 # Scopo: Carica la testata DDT o solleva E_DDT_NOT_FOUND (guard condiviso).
