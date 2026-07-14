@@ -373,15 +373,18 @@ class ApiOrdineRigaPreviewComponenti(DomainAPIView):
     def post(self, request: Request, ordine_id: int) -> JsonResponse:
         auth_user_id = get_scope_user_id(request)
 
-        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            righe = ordini_service.preview_componenti_riga(
+        # Ritorna la LISTA nuda dei componenti (contratto condiviso col
+        # ComponentiDialog FE: `response.data.data` = array). NON avvolgere in
+        # {"componenti": ...} — il dialog fa `for...of` sull'array (mirror
+        # contratti/preventivi).
+        def _handler(payload: dict[str, Any]) -> list[dict[str, Any]]:
+            return ordini_service.preview_componenti_riga(
                 int(ordine_id),
                 articolo_id=str(payload.get("articolo_id")),
                 uom_operativa_id=payload.get("uom_operativa_id"),
                 quantita=payload.get("quantita"),
                 auth_user_id=auth_user_id,
             )
-            return {"componenti": righe}
 
         return handle_post_json(request, handler=_handler)
 

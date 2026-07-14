@@ -194,7 +194,7 @@ Il catalogo `config.stati_doc_ddt` prevede sei stati:
 | `EMESSO` | Documento emesso: numero assegnato, PDF prodotto | No | No | ✅ |
 | `SPEDITO` | Merce partita (vettore/tracking) | No | No | ✅ |
 | `CONSEGNATO` | Merce consegnata al destinatario | No | No | ✅ |
-| `RESO` | Merce resa (totale) | No | — | 🔄 motore **resi** (slice in corso) |
+| `RESO` | Merce resa (totale): flip automatico alla conferma di un reso totale | No | — | ✅ motore **resi** (2026-07-14) |
 | `ANNULLATO` | Bozza/emesso annullato | No | Sì | ✅ |
 
 ### 4.2 Transizioni ammesse
@@ -217,10 +217,9 @@ DRAFT ──(emetti)──▶ EMESSO ──(spedisci)──▶ SPEDITO ──(co
 - **DRAFT → ANNULLATO** ed **EMESSO → ANNULLATO** (*annulla*): consentiti.
 - **CONSEGNATO → RESO** e **RESO → CONSEGNATO**: **automatiche**, guidate dal
   **motore resi** (non pulsanti manuali). Il vecchio "Reso" manuale e la
-  transizione `SPEDITO → RESO` sono **disabilitati**. Il reso — parziale/totale,
-  a credito o per ri-consegna — è materia della **slice RESI** (in corso): il
-  DDT entra in `RESO` solo per effetto del motore, su reso **totale**. Vedi la
-  guida/brief resi.
+  transizione `SPEDITO → RESO` sono **disabilitati**. Il DDT entra in `RESO`
+  solo per effetto del motore, su reso **totale** (l'annullo del reso lo
+  riporta a `CONSEGNATO`). Vedi §11-bis.
 
 ### 4.3 La doppia difesa
 
@@ -403,6 +402,38 @@ quelle attive, con quantità positiva, non ancora inviate a una commessa
 
 ---
 
+## 11-bis. Reso della merce
+
+Da un DDT **CONSEGNATO** si può registrare un **reso** — realizzato dal **motore
+resi** (2026-07-14). Il reso è un documento **autonomo** (`vendite.resi`), non un
+semplice cambio di stato del DDT: porta **quantità** (reso parziale: se ne
+rendono 3 di 10) e **intento** per riga.
+
+Come funziona, dal punto di vista del DDT:
+
+- dal drawer del DDT consegnato, il pannello **"Crea reso"** apre un reso legato
+  a quel DDT (righe con quantità ≤ consegnato, guard DB);
+- ogni riga di reso ha un **tipo** (`config.tipi_reso`): **a credito**
+  (`RESO_A_CREDITO`) o **per ri-consegna** (`RESO_PER_RICONSEGNA`, flag
+  `riapre_residuo`);
+- il reso ha una sua macchina a stati (`DRAFT → CONFERMATO` + `ANNULLATO`,
+  numero alla conferma): gli **effetti scattano alla CONFERMA**, non in bozza;
+- alla conferma di un reso **totale** (rese tutte le quantità consegnate) il DDT
+  passa **automaticamente** a `RESO`; su reso parziale il DDT resta `CONSEGNATO`
+  (la verità fine sta nelle righe di reso). L'annullo del reso ripristina lo
+  stato del DDT;
+- **reso per ri-consegna** → riapre il **residuo** dell'ordine (l'addendo
+  `qta_resa_per_riconsegna`, §2.1): l'ordine torna evadibile e si genera un nuovo
+  DDT di ri-consegna (`fn_genera_ddt_riconsegna`);
+- **reso a credito** → alimenta la coda "da accreditare" (vista
+  `vw_resi_da_accreditare`) per la futura nota di credito.
+
+> Il modello completo del reso (entità, guard, ri-consegna, note di credito) è
+> nei brief `work-done/brief-db-resi-vendita.md` e
+> `work-done/brief-be-fe-resi-vendita.md`.
+
+---
+
 ## 12. Lista DDT
 
 La lista DDT è una **lista configurabile**. Mostra di norma numero, data,
@@ -522,7 +553,8 @@ per dare messaggi chiari prima del giro al database.
 [documentazione API DDT](/backend/vendite/manual/api_ddt). Le decisioni di
 modello sono raccolte negli addendum di sviluppo
 (`dev/work-done/brief-db-ddt-vendita-evasione-e-stati.md`,
-`brief-db-ddt-emittente-user-e-etichetta-soggetto.md`) e, per il reso, nel brief
-della slice resi (`dev/work-in-progress/brief-db-resi-vendita.md`).*
+`brief-db-ddt-emittente-user-e-etichetta-soggetto.md`) e, per il reso, nei brief
+della slice resi (`dev/work-done/brief-db-resi-vendita.md`,
+`dev/work-done/brief-be-fe-resi-vendita.md`).*
 
 {% include-markdown "signature-core.md" %}

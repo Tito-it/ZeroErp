@@ -282,10 +282,39 @@ Contesto RLS operatore (`SET app.ruolo_applicativo='OPERATORE'; SET app.current_
   drawer ordine + navigazione/rotta/store.
 - **Lineage**: il nodo DDT_VENDITA si accende nella `vw_documento_lineage` già progettata.
 
-## 12. Slice futura — Resi (DOCUMENTATA, fuori da questa slice)
+## 12. Slice Resi — ✅ REALIZZATA (2026-07-14)
 
-> **Stato**: NON implementata in questa slice. Qui si fissa solo la **predisposizione**
-> (invarianti dati) perché la slice resi si riprenda senza rework né strati da rimuovere.
+> **Stato**: la slice resi qui predisposta è stata **realizzata e committata**
+> (DB+BE+FE) il 2026-07-14. Questa sezione era la **predisposizione** (invarianti
+> dati) perché la slice si riprendesse senza rework: le invarianti **1**
+> (fulfillment append-only) e **3** (transizioni di rientro seedate) hanno retto
+> come previsto; l'invariante **2** era una *promessa nel commento* — la formula
+> reso-aware `+ Σ qta_resa_per_riconsegna` viveva solo nel COMMENT di
+> `fn_ordine_ha_residuo_evasione`, non nel corpo (rilievo brief resi §0.1): la
+> slice l'ha **implementata davvero** riscrivendo la funzione. Brief operativi
+> (tutti in `work-done`):
+> [brief-db-resi-vendita.md](brief-db-resi-vendita.md) (✅ completo, changeSet
+> `20260713-10..41`, pgTAP T1 25/25 + T2 3/3),
+> [brief-be-fe-resi-vendita.md](brief-be-fe-resi-vendita.md) (✅ BE+FE, smoke
+> E2E 47/47), [brief-db-seed-lista-ui-resi.md](brief-db-seed-lista-ui-resi.md).
+> Guida operativa: [gestione-ddt.md §4/§11](../../guide/gestione-ddt.md).
+>
+> **Cosa è stato costruito** (mirror del "da costruire" sotto): entità autonoma
+> `vendite.resi`/`resi_righe`/`resi_righe_riconsegne` (sorgente data-driven, oggi
+> `DDT_VENDITA`), `config.tipi_reso` (`RESO_A_CREDITO`/`RESO_PER_RICONSEGNA`, flag
+> `riapre_residuo`), stati data-driven `config.stati_doc_reso` +
+> `transizioni_stati_reso` + `fn_available_actions_reso`, numero a CONFERMATO
+> (`trgfn_resi_gen_numero` + `trgfn_v_resi_protect_num`), guard
+> (`trgfn_resi_guard_ddt_consegnato` err 542, `_guard_transizione`,
+> `_guard_emittente_ba`, `_righe_guard_quantita`, `_riconsegne_guard`),
+> `fn_conferma_reso`/`fn_annulla_reso`, ri-consegna con `fn_genera_ddt_riconsegna`
+> (v2, ri-proietta lo stato ordine), viste `vw_resi_lista`/`vw_resi_da_accreditare`/
+> `vw_resi_da_riconsegnare`. **Flip DDT→RESO reso automatico** (matrice DDT
+> aggiornata: `CONSEGNATO→RESO` `manuale:false`, `SPEDITO→RESO` disabilitata,
+> `RESO→CONSEGNATO` aggiunta), pannello `DdtResoPanel` FE.
+>
+> **Sotto** resta il capitolato originale di predisposizione (storico).
+>
 > Decisione Tid 2026-07-09: il reso è un **ibrido** — non solo nota di credito, ma anche
 > "reso per ri-consegna" (es. merce difettosa da ri-preparare e ri-spedire).
 
