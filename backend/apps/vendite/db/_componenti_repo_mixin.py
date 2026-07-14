@@ -28,6 +28,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 
 # Whitelist colonne UPDATE su `*_righe_componenti`. Campi struttura immutabili
 # (`componente_id`, `articolo_componente_id`, `coeff_qta_snapshot`, FK riga)
@@ -171,29 +172,10 @@ class ComponentiRepositoryMixin:
     # Whitelist colonne anti-injection (`COMPONENTE_UPDATE_ALLOWED`).
     # Campi struttura immutabili silenziosamente ignorati (defense-in-depth).
     def update_componente(self, componente_id: int, **kwargs: Any) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if col not in COMPONENTE_UPDATE_ALLOWED:
-                continue  # silenzioso defense-in-depth (whitelist)
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(componente_id)
-        sql = (  # noqa: S608 — colonne whitelisted, parametri bound
-            f"UPDATE {self._componenti_table_name} "
-            f"SET {', '.join(fields)} WHERE id = %s"
+        return execute_dynamic_update(
+            self._componenti_table_name, componente_id, kwargs,
+            allowed=COMPONENTE_UPDATE_ALLOWED,
         )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
 
     # Scopo: Soft delete componente (`attivo=FALSE`). Il trigger DB di
     # ricalcolo padre lo esclude dalla SUM (filtro `attivo`). Idempotente:

@@ -328,6 +328,30 @@ export function statoDdtSeverity(codice) {
   return resolveSeverity(STATO_DDT_MAP, codice)
 }
 
+// --- Mappa stati reso (vendite.resi) ---
+// DRAFT=grigio (bozza), CONFERMATO=verde (effetti applicati: residuo riaperto,
+// eventuale flip DDT), ANNULLATO=rosso. Allineato a
+// config.stati_doc_reso.codice_interno.
+export const STATO_RESO_MAP = {
+  DRAFT: 'secondary',
+  CONFERMATO: 'success',
+  ANNULLATO: 'danger',
+}
+export function statoResoSeverity(codice) {
+  return resolveSeverity(STATO_RESO_MAP, codice)
+}
+
+// --- Mappa stato ri-consegna riga reso (DERIVATO dalla copertura del ponte
+// resi_righe_riconsegne, vw_resi_da_riconsegnare / list_righe BE) ---
+export const STATO_RICONSEGNA_MAP = {
+  DA_RICONSEGNARE: 'warn',
+  PARZIALE: 'info',
+  COMPLETATA: 'success',
+}
+export function statoRiconsegnaSeverity(codice) {
+  return resolveSeverity(STATO_RICONSEGNA_MAP, codice)
+}
+
 // --- Mappa stati commessa ---
 // BOZZA=grigio, APERTA/IN_ESECUZIONE/PRONTA_FATTURAZIONE=azzurro (ciclo in corso),
 // CHIUSA=verde (concluso), ANNULLATA=rosso.

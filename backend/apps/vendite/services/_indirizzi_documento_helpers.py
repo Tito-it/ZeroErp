@@ -24,16 +24,13 @@
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
-from django.db import DatabaseError, IntegrityError
-
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.payload_helpers import map_integrity_error
+from apps.core.services.payload_helpers import translate_db_errors
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +49,6 @@ _CONTACT_KEYS: frozenset[str] = frozenset({"email", "telefono", "note"})
 # Almeno una di queste chiavi deve essere valorizzata in un una-tantum.
 _SUBSTANTIVE_KEYS: frozenset[str] = frozenset({"via", "citta", "display"})
 
-# Estrazione codice applicativo E_* dai RAISE P0001 dei trigger/fn DB
-# (stesso pattern dei `_db_errors` di dominio).
-_DB_ERROR_CODE_RE = re.compile(r"\b(E_[A-Z0-9_]+)\b")
-
-
 # Scopo: Configurazione per-dominio del BB. Dichiarata una volta a livello di
 #        modulo nel service del dominio (vedi ddt_service._INDIRIZZI_CFG).
 #        `get_stato` legge il solo codice stato (query leggera, mai il detail
@@ -74,28 +66,17 @@ class IndirizziDocumentoConfig:
 
 # Scopo: Traduzione uniforme degli errori DB del flusso indirizzi (trigger
 #        whitelist E_TIPO_INDIRIZZO, fn E_INDIRIZZO_SNAPSHOT_NOT_FOUND, FK):
-#        stessa envelope su tutti i domini, nessun 500 grezzo.
+#        stessa envelope su tutti i domini, nessun 500 grezzo. Delega al BB
+#        condiviso `translate_db_errors` (core payload_helpers) col fallback
+#        code della cfg di dominio.
 @contextmanager
 def _db_errors(cfg: IndirizziDocumentoConfig, op: str) -> Iterator[None]:
-    context = {"op": f"{cfg.fn_prefix}.{op}"}
-    try:
+    with translate_db_errors(
+        context={"op": f"{cfg.fn_prefix}.{op}"},
+        fallback_code=cfg.error_code,
+        fallback_message="Violazione vincolo DB sugli indirizzi documento.",
+    ):
         yield
-    except IntegrityError as exc:
-        map_integrity_error(
-            exc,
-            fallback_code=cfg.error_code,
-            fallback_message="Violazione vincolo DB sugli indirizzi documento.",
-            context=context,
-        )
-    except DatabaseError as exc:
-        exc_text = str(exc)
-        match = _DB_ERROR_CODE_RE.search(exc_text)
-        ErrorManager.raise_error(
-            code=match.group(1) if match else cfg.error_code,
-            message=exc_text.split("\n", maxsplit=1)[0].strip()
-            or "Violazione vincolo DB sugli indirizzi documento.",
-            context=context,
-        )
 
 
 # Scopo: Guard condiviso esistenza (+ opzionale editabilita') del documento.

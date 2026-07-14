@@ -25,6 +25,7 @@ def _parse_jsonb_field(row: dict[str, Any], field: str) -> None:
             pass
 
 from apps.core.db._helpers import fetchone_scalar, row_to_dict, rows_to_list
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.core.services import crypto_service
 
 
@@ -353,34 +354,14 @@ class EmailRepository:
         "variabili_disponibili", "attivo",
     })
 
-    # Scopo: Aggiorna un template email.
+    # Scopo: Aggiorna un template email. `variabili_disponibili` (lista) va a
+    #        ::jsonb via il BB (niente pre-dump manuale); whitelist colonne.
     def update_template(self, template_id: int, **kwargs: Any) -> bool:
-        # Serializza variabili_disponibili se presente
-        if "variabili_disponibili" in kwargs and kwargs["variabili_disponibili"] is not None:
-            kwargs["variabili_disponibili"] = json.dumps(kwargs["variabili_disponibili"])
-
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if col not in self._TEMPLATE_UPDATE_COLS:
-                continue
-            if isinstance(val, str):
-                val = val.strip()
-            if col == "variabili_disponibili":
-                fields.append(f"{col} = %s::jsonb")
-            else:
-                fields.append(f"{col} = %s")
-            params.append(val)
-
-        if not fields:
-            return False
-
-        fields.append("data_update = now()")
-        params.append(template_id)
-        sql = f"UPDATE config.email_template SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        return execute_dynamic_update(
+            "config.email_template", template_id, kwargs,
+            allowed=self._TEMPLATE_UPDATE_COLS,
+            extra_set="data_update = now()",
+        )
 
     # Scopo: Elimina un template email per ID.
     def delete_template(self, template_id: int) -> bool:

@@ -44,6 +44,7 @@ import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizz
 import DdtForm from './DdtForm.vue'
 import DdtRigheTable from './DdtRigheTable.vue'
 import DdtNoteDrawer from './DdtNoteDrawer.vue'
+import DdtResoPanel from './DdtResoPanel.vue'
 import DdtEmissioneDialog from './dialogs/DdtEmissioneDialog.vue'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
@@ -106,6 +107,13 @@ const isReadonly = computed(
         && detail.value.stato_codice_interno !== STATO_DDT.DRAFT),
 )
 provide(READONLY_KEY, isReadonly)
+
+// Pannello "Crea reso": solo su DDT CONSEGNATO (l'azione manuale «Reso» e'
+// stata rimossa dalla matrice — il flip a RESO e' automatico alla conferma di
+// un reso totale; questo pannello e' il percorso per aprire il reso).
+const showResoPanel = computed(
+  () => detail.value?.stato_codice_interno === STATO_DDT.CONSEGNATO,
+)
 
 // Capability data-driven dal detail BE (script.fn_available_actions_ddt):
 // availableActions + can_edit_testata + non_editable_fields. Composable
@@ -562,6 +570,23 @@ const drawerActions = computed(() => {
         <template v-if="showRiepilogoIva">
           <Divider />
           <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
+        </template>
+
+        <!-- Crea reso (slice resi): righe consegnate con residuo rendibile.
+             Il reso nasce DRAFT nel tab Resi; alla sua CONFERMA il BE riapre
+             il residuo ordine e, se reso totale, flippa questo DDT a RESO.
+             In CONSEGNATO il contenuto e' `app-readonly` (lock-di-stato) ma la
+             creazione reso e' un'azione di processo legittima → `app-escape`
+             la mantiene cliccabile (mirror pannello evasione ordini). In
+             readonly PURO il pannello e' consuntivo (niente azioni). -->
+        <template v-if="showResoPanel">
+          <Divider />
+          <div class="app-escape">
+            <DdtResoPanel
+              :ddt-id="effectiveDdtId"
+              :readonly="props.readonly || parentReadonly"
+              @reso-creato="loadDetail()" />
+          </div>
         </template>
 
       </template>

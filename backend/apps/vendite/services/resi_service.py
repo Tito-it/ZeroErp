@@ -26,16 +26,16 @@
 #   trigger di editabilita', item 14c del brief DB — parita' DDT).
 
 import logging
-import re
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import date
 from typing import Any
 
-from django.db import DatabaseError, IntegrityError, transaction
+from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.payload_helpers import PayloadValidator, map_integrity_error
+from apps.core.services.payload_helpers import (
+    PayloadValidator,
+    make_db_errors_translator,
+)
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.resi_repository import ResiRepository
 
@@ -46,11 +46,10 @@ logger = logging.getLogger(__name__)
 _PAYLOAD = PayloadValidator(validation_code="E_RESO_VALIDAZIONE")
 
 # Codici errore vendite (registrati in error_policies.py) usati come fallback
-# nella traduzione errori DB. I codici trigger/fn E_RESO_* / E_STATO_RESO_*
-# sollevati dai guard DB sono estratti via regex dal MESSAGE del RAISE.
+# nella traduzione errori DB (BB translate_db_errors: i codici E_RESO_* /
+# E_STATO_RESO_* dei guard DB sono estratti dal testo del RAISE).
 E_VENDITE_VALIDATION = "E_VENDITE_VALIDATION"
 E_VENDITE_FK = "E_VENDITE_FK"
-_DB_ERROR_CODE_RE = re.compile(r"\b(E_[A-Z][A-Z0-9_]+)\b")
 
 # Mappe vincolo DB -> (codice, messaggio) per map_integrity_error (frammento
 # nome vincolo). `vendite.resi`/`resi_righe` non hanno UNIQUE di dominio
@@ -670,37 +669,17 @@ def _parse_righe_riconsegna(righe_raw: Any) -> list[dict[str, Any]] | None:
     return parsed
 
 
-# Scopo: Context manager per normalizzare errori DB in ServiceError parlanti.
-#        Gemello _db_errors di ddt_service: IntegrityError (fk) via
-#        map_integrity_error + mappe vincolo; DatabaseError (RAISE P0001 delle
-#        fn madri / trigger guard) via estrazione regex del codice E_* dal
-#        MESSAGE, cosi' il FE fa routing UI specifico (policy famiglia E_RESO_*).
-#        Fallback E_VENDITE_VALIDATION.
-@contextmanager
-def _db_errors(op: str) -> Iterator[None]:
-    context = {"op": f"{_FN}.{op}"}
-    try:
-        yield
-    except IntegrityError as exc:
-        map_integrity_error(
-            exc,
-            unique_constraints=_UNIQUE_CONSTRAINTS,
-            fk_constraints=_FK_CONSTRAINTS,
-            fallback_code=E_VENDITE_VALIDATION,
-            fallback_message="Violazione vincolo DB su reso.",
-            context=context,
-        )
-    except DatabaseError as exc:
-        exc_text = str(exc)
-        match = _DB_ERROR_CODE_RE.search(exc_text)
-        code = match.group(1) if match else E_VENDITE_VALIDATION
-        ErrorManager.raise_error(
-            code=code,
-            message=exc_text.split("\n", maxsplit=1)[0].strip()
-            or "Violazione vincolo DB su reso.",
-            detail=exc_text,
-            context=context,
-        )
+# Traduzione errori DB -> ServiceError parlanti via BB condiviso
+# `make_db_errors_translator` (core payload_helpers): IntegrityError (fk) con
+# le mappe vincolo del dominio; DatabaseError (RAISE P0001 di trigger/fn
+# madri) con estrazione del codice E_RESO_* per il routing UI del FE.
+_db_errors = make_db_errors_translator(
+    fn_prefix=_FN,
+    fallback_code=E_VENDITE_VALIDATION,
+    fallback_message="Violazione vincolo DB su reso.",
+    unique_constraints=_UNIQUE_CONSTRAINTS,
+    fk_constraints=_FK_CONSTRAINTS,
+)
 
 
 # Scopo: Guard di stato leggero (solo codice_interno): E_RESO_NOT_FOUND se il

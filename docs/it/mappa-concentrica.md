@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 28 giugno 2026 — **Qualità di modello cross-anello**: bonifica completa della convenzione `codice_interno`/`codice` (immutabile per la logica, mutabile per il display) — sweep del mislabel-alias e correzione degli hardcode contro la colonna mutabile (DB+BE+FE, pipeline commesse→push→fatturazione). Anello 3 (vendite): gate **EVASO ramo commessa** allineato al ramo ordine (bug logico). Anello 2 (pratiche): **sospensioni anti-overlap + guard data manuale**. Sicurezza AI/agenti: revisione + piano di allineamento. Dettaglio datato e completo nel [changelog della mappa](dev/mappa-concentrica-changelog.md).*
+*Ultimo aggiornamento: 12 luglio 2026 — **Anello 3 (vendite): DDT di vendita completo** (DB+BE+FE). Nuovo documento del ciclo attivo — il documento di trasporto — con nascita per **evasione** dell'ordine (1:N, residuo per riga append-only) o standalone, stati data-driven `DRAFT→EMESSO→SPEDITO→CONSEGNATO` (+RESO/ANNULLATO), **numero all'emissione**, push a commessa, emittente memorizzato + RLS (addendum §15). **Stampa PDF DDT** = 5° dominio del motore documentale, **riepilogo IVA** DDT e **indirizzi documento UX v2** (building block cross-dominio sui 5 domini vendite: sezione + drawer + snapshot indirizzo di consegna). Guida operativa [gestione-ddt.md](guide/gestione-ddt.md). Dettaglio datato e completo nel [changelog della mappa](dev/mappa-concentrica-changelog.md).*
 >
 > *Aggiornamenti precedenti: vedi [changelog della mappa](dev/mappa-concentrica-changelog.md).*
 
@@ -307,6 +307,8 @@ I processi **massivi** (lotto fatturazione, import batch) mantengono la propria 
 | Commesse (push, orchestrator, handlers) | Operativo — multi-sorgente (1 ROOT + N COLLEGATO), push idempotente, snapshot pricing v5 nel push, capability azioni stato, pull→`attivita_fatturabili` agganciata agli step DRAFT |
 | Guard `tipo_doc_fiscale` emittibile     | Operativo — normalize all'upsert (default da `config.sorgenti`) + guard di riga `APPROVATA+NON_EMESSA ⇒ tipo_doc NOT NULL` (cod. 497) + CHECK backstop: niente "fatturato perso in silenzio" (giugno 2026) |
 | Ordini di vendita                       | Operativo — CRUD, lista DEF-8, conferma, EVASO automatico, stampa PDF, conversione preventivo/offerta→ordine, lock cliente (giugno 2026) |
+| DDT di vendita                          | Operativo — documento di trasporto: evasione ordine→DDT (1:N, residuo per riga append-only) o standalone, stati data-driven `DRAFT→EMESSO→SPEDITO→CONSEGNATO` (+RESO/ANNULLATO), numero all'emissione, righe con prezzo opzionale (solo-trasporto), push a commessa (sorgente `DDT_VENDITA`), emittente memorizzato + RLS (§15), stampa PDF (5° dominio documenti), riepilogo IVA, export lista (luglio 2026) |
+| Indirizzi documento (UX v2)             | Operativo — building block cross-dominio sui 5 domini vendite (preventivi/offerte/contratti/ordini/DDT): sezione inline + drawer gestione, snapshot indirizzo di consegna congelato all'emissione, auto-assegnazione default (luglio 2026) |
 | Pratica PREVENTIVI (integrazione pratiche) | Operativo — handler `CONFERMA_VENDITA`, split per natura merce→ordine / servizi→commessa, smistamento riga-per-riga, gate EVASO (giugno 2026) |
 | Listini v3 (N2/N5/N6/N7/N8a)            | Operativo — Sprint B-v3 completato (aprile 2026)                              |
 | Pricing commesse (N5/N7/N7-sblocco)     | Operativo — riallineamento, variazione, sblocco                               |
@@ -482,4 +484,4 @@ Riferimento implementazione: `docs/it/dev/work-done/automazione-chiusure-scadenz
 
 ---
 
-*Mappa Concentrica — ZeroERP (20 giugno 2026)*
+*Mappa Concentrica — ZeroERP (12 luglio 2026)*

@@ -25,13 +25,12 @@ from apps.core.api.payload_validators import (
     parse_list_params,
     qp_bool,
     qp_int_optional,
-    qp_iso_date_optional,
-    qp_str,
 )
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api._list_filters_helpers import extract_doc_list_filters
 from apps.vendite.api.indirizzi_documento_views import (
     build_indirizzi_documento_views,
 )
@@ -41,20 +40,6 @@ from apps.vendite.services import ordini_service
 # Codice lista configurabile (catalogo ui.lista_definizione id=7). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
 _LISTA_CODICE_ORDINI = "vendite.ordini"
-
-
-# Scopo: Estrae i filtri lista comuni (list + export) dalla query string. NESSUN
-#        default temporale backend: il default `data_da` (anno-1) lo applica la UI
-#        (allineato a preventivi/offerte; evita non-determinismo `date.today()`
-#        lato API).
-def _extract_list_filters(qp) -> dict[str, Any]:
-    return {
-        "stato_codice": qp_str(qp.get("stato_codice_interno")),
-        "billing_account_id": qp_int_optional(qp.get("billing_account_id"), "billing_account_id"),
-        "utility_id": qp_int_optional(qp.get("utility_id"), "utility_id"),
-        "data_da": qp_iso_date_optional(qp.get("data_da"), "data_da"),
-        "data_al": qp_iso_date_optional(qp.get("data_a"), "data_a"),
-    }
 
 
 # Scopo: normalizza le `righe` da evadere dal body di genera-ddt. Assente/null =
@@ -130,7 +115,7 @@ class ApiOrdiniList(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp, default_order="data")
-        f = _extract_list_filters(qp)
+        f = extract_doc_list_filters(qp, with_utility=True)
         results, total = ordini_service.list_ordini_rows(
             search=p["search"],
             auth_user_id=get_scope_user_id(request),
@@ -182,7 +167,7 @@ class ApiOrdiniExportView(DomainAPIView):
         qp = request.query_params
         fmt = parse_export_format(request)
         p = parse_list_params(qp, default_order="data")
-        f = _extract_list_filters(qp)
+        f = extract_doc_list_filters(qp, with_utility=True)
         results, total = ordini_service.list_ordini_rows(
             search=p["search"],
             auth_user_id=get_scope_user_id(request),

@@ -24,20 +24,19 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.db import DatabaseError, IntegrityError, transaction
+from django.db import DatabaseError, transaction
 from django.utils import timezone
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import (
     PayloadValidator,
-    map_integrity_error,
+    translate_db_errors,
 )
 from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.db.offerte_repository import OfferteRepository
@@ -80,7 +79,6 @@ E_VENDITE_FK = "E_VENDITE_FK"
 # Pattern per estrarre il codice errore applicativo dal MESSAGE dei trigger
 # DB. Convenzione progetto: `RAISE EXCEPTION USING MESSAGE='E_OFFERTA_XXX'`.
 # Il primo token con underscore in maiuscolo che inizia per E_ e' il codice.
-_DB_ERROR_CODE_RE = re.compile(r"\b(E_[A-Z][A-Z0-9_]+)\b")
 
 
 # Codici stato documento (chiavi naturali `codice_interno` in
@@ -336,10 +334,10 @@ class OfferteService:
     # =================================================================
 
     # Scopo: Normalizza errori DB (IntegrityError + DatabaseError P0001 dei
-    #        trigger guard) in ServiceError. Il trigger
-    #        trgfn_offerte_commerciali_guard_transizione solleva con codici
-    #        applicativi gia' parlanti (E_OFFERTA_*), che il middleware
-    #        propaga al client come 422.
+    #        trigger guard, codici E_OFFERTA_* parlanti) in ServiceError.
+    #        Delega al BB condiviso `translate_db_errors` (core
+    #        payload_helpers, estratto 2026-07-13 — regola del 2 alla 5a
+    #        copia); resta la firma context-based per i call site del service.
     @contextmanager
     def _db_errors(
         self,
@@ -347,34 +345,14 @@ class OfferteService:
         *,
         fallback_message: str = "Violazione vincolo DB su offerta.",
     ) -> Iterator[None]:
-        try:
+        with translate_db_errors(
+            context=context,
+            fallback_code=E_VENDITE_VALIDATION,
+            fallback_message=fallback_message,
+            unique_constraints=_UNIQUE_CONSTRAINTS,
+            fk_constraints=_FK_CONSTRAINTS,
+        ):
             yield
-        except IntegrityError as exc:
-            map_integrity_error(
-                exc,
-                unique_constraints=_UNIQUE_CONSTRAINTS,
-                fk_constraints=_FK_CONSTRAINTS,
-                fallback_code=E_VENDITE_VALIDATION,
-                fallback_message=fallback_message,
-                context=context,
-            )
-        except DatabaseError as exc:
-            # I trigger guard sollevano con codici E_OFFERTA_* parlanti come
-            # MESSAGE del RAISE EXCEPTION. Li estraiamo dal messaggio dell'
-            # eccezione cosi' che il FE possa fare routing UI specifico
-            # (es. mostrare dialog "versione listino non ATTIVA" diverso da
-            # "transizione non ammessa"). Se non troviamo il codice (es.
-            # errore tecnico non dei nostri trigger) cade su E_VENDITE_VALIDATION.
-            exc_text = str(exc)
-            match = _DB_ERROR_CODE_RE.search(exc_text)
-            code = match.group(1) if match else E_VENDITE_VALIDATION
-            ErrorManager.raise_error(
-                code=code,
-                message=exc_text.split("\n", maxsplit=1)[0].strip()
-                or fallback_message,
-                detail=exc_text,
-                context=context,
-            )
 
     # =================================================================
     # Lista e dettaglio

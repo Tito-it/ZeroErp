@@ -77,6 +77,16 @@ E l'account di fatturazione. Identifica **a chi fatturare** e **con quale codice
 
 Il BA supporta una gerarchia padre/figlio per aggregare la fatturazione di piu utenze sullo stesso intestatario. Vedi la [documentazione dedicata](/dbzero/anagrafiche/manual/billing_account) per i dettagli.
 
+> **Invariante BA ↔ istanza (1:1 per utility).** Per una data utility, un
+> billing account ha **una sola** istanza e un'istanza ha **un solo** BA
+> (`billing_account.istanza_utility_id` FK NOT NULL + UNIQUE
+> `(istanza_utility_id, utility_id)`). Quindi **dato il BA, l'istanza e'
+> univoca**: i documenti che hanno gia' un BA (ordini, DDT, fatture) ricavano
+> l'istanza dal BA e non la memorizzano; solo i precontrattuali
+> (preventivi/offerte/contratti), che scelgono l'istanza prima che esista un
+> BA, la portano sulla propria testata. Dettaglio:
+> [Gestione Istanze Utility — Istanza e billing account](/guide/gestione-delle-istanze-utility#istanza-e-billing-account-relazione-11-per-utility-invariante).
+
 ### Cliente
 
 E la specializzazione commerciale dell'istanza. Nasce quando il soggetto firma il contratto e lega insieme:

@@ -161,7 +161,7 @@ class TestCreateIndirizzoDettaglio(TestCase):
 class TestUpdateIndirizzoDettaglio(TestCase):
     """Test IndirizziRepository.update_indirizzo_dettaglio()."""
 
-    @patch("apps.core.db._helpers.connection")
+    @patch("apps.core.db.sql_write_helpers.connection")
     def test_update_indirizzo_dettaglio(self, mock_conn):
         """UPDATE dinamico con campi forniti."""
         mc = _mock_cursor(rowcount=1)

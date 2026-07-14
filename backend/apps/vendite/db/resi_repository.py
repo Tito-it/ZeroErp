@@ -24,6 +24,7 @@ from django.db import connection
 
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 
 # Scopo: Whitelist colonne ORDER BY per la lista resi (SQL injection safe). Le
 #        chiavi sono i `campo_sorgente` del catalogo liste ('vendite.resi') che
@@ -485,34 +486,11 @@ class ResiRepository:
             assert result is not None
             return result
 
-    # Scopo: UPDATE dinamico condiviso testata/righe: costruisce SET dai
-    #        kwargs (dict -> ::jsonb, stringhe strip) e aggiorna per id.
-    #        `table` arriva SOLO dai due wrapper (statico, no input utente).
-    def _update_by_id(self, table: str, row_id: int, kwargs: dict[str, Any]) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if isinstance(val, dict):
-                fields.append(f"{col} = %s::jsonb")
-                params.append(json.dumps(val))
-            else:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        if not fields:
-            return False
-        params.append(row_id)
-        sql = f"UPDATE {table} SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
-
     # Scopo: Aggiorna campi modificabili della testata reso (data/meta: il
     #        resto e' ereditato dal DDT sorgente e immutabile — vedi
-    #        non_editable_fields della fn capabilities). Meta ::jsonb.
+    #        non_editable_fields della fn capabilities). Meta ::jsonb via BB.
     def update_reso(self, reso_id: int, **kwargs: Any) -> bool:
-        return self._update_by_id("vendite.resi", reso_id, kwargs)
+        return execute_dynamic_update("vendite.resi", reso_id, kwargs)
 
     # Scopo: Hard-delete reso (flusso abbandono bozza orfana). Guard di dominio
     #        (stato DRAFT, 0 righe) applicati nel service.
@@ -582,7 +560,7 @@ class ResiRepository:
 
     # Scopo: Aggiorna una riga reso esistente (qta/tipo/motivo/meta). Meta ::jsonb.
     def update_riga(self, riga_id: int, **kwargs: Any) -> bool:
-        return self._update_by_id("vendite.resi_righe", riga_id, kwargs)
+        return execute_dynamic_update("vendite.resi_righe", riga_id, kwargs)
 
     # Scopo: Elimina una riga reso (HARD DELETE, solo con testata DRAFT — guard
     #        nel service; il ponte ri-consegna esiste solo post-conferma).

@@ -21,11 +21,13 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date
 from typing import Any, NoReturn
 from uuid import UUID
 
-from django.db import IntegrityError
+from django.db import DatabaseError, IntegrityError
 
 from apps.core.services.error_manager import ErrorManager
 
@@ -833,3 +835,85 @@ def map_integrity_error(
         context=ctx,
         cause=exc,
     )
+
+
+# Scopo: Regex di estrazione del codice errore strutturato E_* dal testo di
+#        un'eccezione DB. I guard/fn DB sollevano via
+#        script.fn_log_and_raise_error: il codice arriva nella stringa
+#        dell'eccezione (MESSAGE o CONTEXT PL/pgSQL con l'istruzione SQL che
+#        contiene il literal del codice).
+DB_ERROR_CODE_RE = re.compile(r"\b(E_[A-Z][A-Z0-9_]+)\b")
+
+
+# Scopo: Context manager condiviso che normalizza gli errori DB in
+#        ServiceError parlanti (BB estratto 2026-07-13, regola del 2 — era la
+#        5a copia identica in resi/ddt/ordini/offerte/_indirizzi_documento):
+#        - IntegrityError (unique/fk/check) -> map_integrity_error con le
+#          mappe vincolo del dominio;
+#        - DatabaseError (RAISE P0001 di trigger/fn madri) -> estrazione
+#          regex del codice E_* dal testo, cosi' il FE fa routing UI
+#          specifico via error_policies; fallback sul codice di dominio.
+#        NB: IntegrityError e' sottoclasse di DatabaseError — l'ordine degli
+#        except e' vincolante.
+@contextmanager
+def translate_db_errors(
+    *,
+    context: dict[str, Any],
+    fallback_code: str,
+    fallback_message: str,
+    unique_constraints: dict[str, tuple[str, str]] | None = None,
+    fk_constraints: dict[str, tuple[str, str]] | None = None,
+    check_constraints: dict[str, tuple[str, str]] | None = None,
+) -> Iterator[None]:
+    try:
+        yield
+    except IntegrityError as exc:
+        map_integrity_error(
+            exc,
+            unique_constraints=unique_constraints,
+            fk_constraints=fk_constraints,
+            check_constraints=check_constraints,
+            fallback_code=fallback_code,
+            fallback_message=fallback_message,
+            context=context,
+        )
+    except DatabaseError as exc:
+        exc_text = str(exc)
+        match = DB_ERROR_CODE_RE.search(exc_text)
+        code = match.group(1) if match else fallback_code
+        ErrorManager.raise_error(
+            code=code,
+            message=exc_text.split("\n", maxsplit=1)[0].strip()
+            or fallback_message,
+            detail=exc_text,
+            context=context,
+        )
+
+
+# Scopo: Factory per i service di dominio "stile op": fissa una volta
+#        fn_prefix + mappe vincolo + fallback e ritorna un context manager
+#        `_db_errors(op)` con context {"op": "<fn_prefix>.<op>"} — i call
+#        site dei domini restano `with _db_errors("crea_x"):`.
+def make_db_errors_translator(
+    *,
+    fn_prefix: str,
+    fallback_code: str,
+    fallback_message: str,
+    unique_constraints: dict[str, tuple[str, str]] | None = None,
+    fk_constraints: dict[str, tuple[str, str]] | None = None,
+    check_constraints: dict[str, tuple[str, str]] | None = None,
+) -> Any:
+    @contextmanager
+    # Scopo: Traduttore errori DB del dominio per l'operazione `op`.
+    def _translator(op: str) -> Iterator[None]:
+        with translate_db_errors(
+            context={"op": f"{fn_prefix}.{op}"},
+            fallback_code=fallback_code,
+            fallback_message=fallback_message,
+            unique_constraints=unique_constraints,
+            fk_constraints=fk_constraints,
+            check_constraints=check_constraints,
+        ):
+            yield
+
+    return _translator
