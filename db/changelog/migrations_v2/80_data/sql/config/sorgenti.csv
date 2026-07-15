@@ -8,3 +8,4 @@ id,codice_interno,codice,categoria,descrizione,attivo,meta,data_insert,user_inse
 12,ATTIVITA_CONSUMI,ATTIVITA_CONSUMI,DOCUMENTO,Attivita' consumi (testata),t,{},2026-01-24 00:00:00+01,titodb,2026-02-25 19:48:49.292264+01,postgres,vendite.attivita_consumi,id,1,PUSH_COMMESSA
 2,PREVENTIVO,PREVENTIVO,DOCUMENTO,Preventivo (testata),t,{},2025-09-05 15:40:46.774113+02,postgres,2026-02-25 19:49:23.346053+01,postgres,vendite.preventivi,uid,2,PUSH_COMMESSA
 14,OFFERTA_COMMERCIALE,OFFERTA_COMMERCIALE,DOCUMENTO,Offerta commerciale (testata),t,{},2026-05-24 00:00:00+02,titodb,2026-05-24 00:00:00+02,titodb,vendite.offerte_commerciali,uid,1,PUSH_CONTRATTO
+15,RESO_VENDITA,RESO_VENDITA,DOCUMENTO,Reso vendita (testata),t,{},2026-07-14 00:00:00+02,titodb,2026-07-14 00:00:00+02,titodb,vendite.resi,id,1,REVERSE_FLOW

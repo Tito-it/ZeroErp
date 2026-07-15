@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Lineage documenti vendite — Step 2/3. vw_documento_lineage_nodi: DIMENSIONE
+# NODO condivisa del grafo genealogia. Una riga per documento (le 8 testate
+# nodo), con chiave NATIVA polimorfa e stato/fase normalizzati.
+#
+# Perche' una vista dedicata (regola del 2/estrai-BB): la stessa union alimenta
+# TRE consumatori — vw_documento_lineage_archi (decorazione target), Step 3
+# vw_documento_lineage (base + fase propria + frontiera), Step 4
+# fn_documento_lineage (attributi nodo). Estraendola qui si evita la triplice
+# duplicazione della union.
+#
+# CHIAVE NODO (brief §0 Q1, [[reference_sorgente_polimorfa_key_selector]]):
+# (tipo_id, uid::text) con tipo_id risolto per JOIN a config.sorgenti su
+# codice_interno (chiave stabile, §6b/§6d — MAI id hardcoded) e uid secondo
+# key_selector:
+#   uid::text -> PREVENTIVO, OFFERTA_COMMERCIALE
+#   id::text  -> ORDINE_VENDITA, CONTRATTO, DDT_VENDITA, FATTURA, COMMESSA, RESO_VENDITA
+#
+# `codice` = etichetta display del documento (preventivi/ordini/contratti/ddt/resi
+# .numero; offerte/commesse .codice; fatture .numero::text). Stato esposto con
+# alias FEDELI (§6c): stato_codice_interno (logica), stato_codice (display),
+# stato_descrizione; + fase/is_abortito (Step 1). LEFT JOIN allo stato: difensivo
+# su fatture (stato_doc_fiscale_id nullable).
+#
+# `pipeline_rank` = posizione del tipo nel flusso verso la fattura (crescente =
+# piu' a valle). Usato dalla frontiera di vw_documento_lineage come tie-break tra
+# rami attivi allo stesso livello (preferisci il piu' vicino alla fattura). Reso =
+# 0 (ramo inverso, mai frontiera forward).
+#   1 preventivo/offerta · 2 contratto/ordine · 3 ddt · 4 commessa · 5 fattura
+#
+# security_invoker=on: RLS emittente del chiamante sulle basi. Reloption NON
+# visibile in pg_get_viewdef -> RI-SPECIFICARLA a ogni CREATE OR REPLACE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260714-08-create-vw-documento-lineage-nodi-mctit.yaml
+
+  - changeSet:
+      id: 20260714-08-create-vw-documento-lineage-nodi
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage_nodi
+              WITH (security_invoker=on) AS
+              SELECT s.id AS tipo_id, (p.uid)::text AS uid, p.numero AS codice,
+                     st.codice_interno AS stato_codice_interno,
+                     st.codice          AS stato_codice,
+                     st.descrizione     AS stato_descrizione,
+                     st.fase, st.is_abortito,
+                     1::smallint AS pipeline_rank
+                FROM vendite.preventivi p
+                JOIN config.sorgenti s ON s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_preventivi st ON st.id = p.stato_doc_preventivo_id
+              UNION ALL
+              SELECT s.id, (oc.uid)::text, oc.codice,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     1::smallint
+                FROM vendite.offerte_commerciali oc
+                JOIN config.sorgenti s ON s.codice_interno = 'OFFERTA_COMMERCIALE' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_offerte st ON st.id = oc.stato_doc_offerta_id
+              UNION ALL
+              SELECT s.id, (o.id)::text, o.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     2::smallint
+                FROM vendite.ordini o
+                JOIN config.sorgenti s ON s.codice_interno = 'ORDINE_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_ordini st ON st.id = o.stato_doc_ordine_id
+              UNION ALL
+              SELECT s.id, (c.id)::text, c.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     2::smallint
+                FROM vendite.contratti c
+                JOIN config.sorgenti s ON s.codice_interno = 'CONTRATTO' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_contratti st ON st.id = c.stato_doc_contratto_id
+              UNION ALL
+              SELECT s.id, (d.id)::text, d.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     3::smallint
+                FROM vendite.ddt d
+                JOIN config.sorgenti s ON s.codice_interno = 'DDT_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_ddt st ON st.id = d.stato_doc_ddt_id
+              UNION ALL
+              SELECT s.id, (f.id)::text, (f.numero)::text,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     5::smallint
+                FROM vendite.fatture f
+                JOIN config.sorgenti s ON s.codice_interno = 'FATTURA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_fiscale st ON st.id = f.stato_doc_fiscale_id
+              UNION ALL
+              SELECT s.id, (cm.id)::text, cm.codice,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     4::smallint
+                FROM vendite.commesse cm
+                JOIN config.sorgenti s ON s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE
+                LEFT JOIN vendite.stati_commessa st ON st.id = cm.stato_commessa_id
+              UNION ALL
+              SELECT s.id, (r.id)::text, r.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     0::smallint
+                FROM vendite.resi r
+                JOIN config.sorgenti s ON s.codice_interno = 'RESO_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_reso st ON st.id = r.stato_doc_reso_id;
+
+              COMMENT ON VIEW vendite.vw_documento_lineage_nodi IS
+                  'Lineage documenti vendite: dimensione nodo condivisa (una riga per '
+                  'documento nodo, chiave polimorfa tipo_id+uid::text per key_selector, '
+                  'stato/fase/is_abortito normalizzati, pipeline_rank per il tie-break '
+                  'frontiera). Base di vw_documento_lineage_archi, vw_documento_lineage e '
+                  'fn_documento_lineage. security_invoker=on.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_documento_lineage_nodi;

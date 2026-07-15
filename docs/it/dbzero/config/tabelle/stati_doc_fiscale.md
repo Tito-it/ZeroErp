@@ -14,10 +14,13 @@
 | applica_lotto | boolean | NO | false |
 | applica_fattura | boolean | NO | true |
 | chiude_lotto | boolean | NO | false |
+| fase | character varying | NO |  |
+| is_abortito | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_doc_fiscale_fase |  |
 | PRIMARY KEY | pk_stati_doc_fiscale | id |
 | UNIQUE | uq_stati_doc_fiscale_codice | codice |
 | UNIQUE | uq_stati_doc_fiscale_codice_interno | codice_interno |

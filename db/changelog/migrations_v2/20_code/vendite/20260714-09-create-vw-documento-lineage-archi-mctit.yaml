@@ -1,0 +1,161 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Lineage documenti vendite — Step 2. vw_documento_lineage_archi: grafo archi
+# NORMALIZZATO (una riga per arco), base di summary (Step 3) e traversal (Step 4).
+# brief-db-lineage-documenti-vendite §3.1.
+#
+# Rev: il nodo (chiave, codice, stato/fase target) e' ora risolto dalla vista
+# condivisa vendite.vw_documento_lineage_nodi (20260714-08), non piu' da una CTE
+# inline (no duplicazione della union). Dipendenza: la vista nodi deve esistere
+# (file 08 < 09 nell'ordine di include).
+#
+# ARCHI (§2). Le colonne tipizzate dirette si traducono con un join alla tabella
+# target (regola Q1, [[reference_sorgente_polimorfa_key_selector]]):
+#   A Preventivo->Ordine   ordini.documento_origine_tipo='PREVENTIVO'/_id (enum CHECK)
+#   B Preventivo->Commessa commesse_sorgenti (sorgente PREVENTIVO), ruolo=ruolo_link
+#   C Offerta->Contratto   contratti.offerta_id
+#   D Offerta->Ordine      ordini.documento_origine_tipo='OFFERTA'/_id
+#   E Ordine->Commessa     commesse_sorgenti (sorgente ORDINE_VENDITA)
+#   F Contratto->Commessa  commesse_sorgenti (sorgente CONTRATTO) — 1:N
+#   G Commessa->Fattura    attivita_fatturabili.fattura_riga_id -> fatture_righe -> fatture — 1:N
+#   H Ordine->DDT          ddt.sorgente_uid(uuid)=ordini.uid (tradotto a ordini.id) — 1:N
+#   R DDT->Reso            resi.sorgente_uid(uuid)=ddt.uid (tradotto a ddt.id) — 1:N, ramo INVERSO
+#
+# security_invoker=on: RLS emittente del chiamante. Reloption NON visibile in
+# pg_get_viewdef -> RI-SPECIFICARLA. Alias FEDELI (§6c).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260714-09-create-vw-documento-lineage-archi-mctit.yaml
+
+  - changeSet:
+      id: 20260714-09-create-vw-documento-lineage-archi
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage_archi
+              WITH (security_invoker=on) AS
+              WITH archi AS (
+                  -- A — Preventivo -> Ordine (origine documentale, enum CHECK)
+                  SELECT s_from.id AS from_tipo_id, (p.uid)::text AS from_uid,
+                         s_to.id   AS to_tipo_id,   (o.id)::text  AS to_uid,
+                         NULL::varchar AS ruolo, 'A'::text AS arco
+                    FROM vendite.ordini o
+                    JOIN vendite.preventivi p ON p.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'PREVENTIVO'     AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'ORDINE_VENDITA' AND s_to.attivo   IS TRUE
+                   WHERE o.documento_origine_tipo = 'PREVENTIVO'
+                  UNION ALL
+                  -- B — Preventivo -> Commessa (sorgente polimorfa; ruolo ROOT/COLLEGATO)
+                  SELECT s_from.id, cs.sorgente_uid,
+                         s_to.id, (cs.commessa_id)::text,
+                         cs.ruolo_link, 'B'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'PREVENTIVO'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- C — Offerta -> Contratto (contratti.offerta_id)
+                  SELECT s_from.id, (oc.uid)::text,
+                         s_to.id, (c.id)::text,
+                         NULL::varchar, 'C'::text
+                    FROM vendite.contratti c
+                    JOIN vendite.offerte_commerciali oc ON oc.id = c.offerta_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'CONTRATTO'           AND s_to.attivo   IS TRUE
+                   WHERE c.offerta_id IS NOT NULL
+                  UNION ALL
+                  -- D — Offerta -> Ordine (origine documentale, enum CHECK)
+                  SELECT s_from.id, (oc.uid)::text,
+                         s_to.id, (o.id)::text,
+                         NULL::varchar, 'D'::text
+                    FROM vendite.ordini o
+                    JOIN vendite.offerte_commerciali oc ON oc.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'ORDINE_VENDITA'      AND s_to.attivo   IS TRUE
+                   WHERE o.documento_origine_tipo = 'OFFERTA'
+                  UNION ALL
+                  -- E — Ordine -> Commessa (sorgente polimorfa)
+                  SELECT s_from.id, cs.sorgente_uid,
+                         s_to.id, (cs.commessa_id)::text,
+                         cs.ruolo_link, 'E'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- F — Contratto -> Commessa (sorgente polimorfa; 1:N)
+                  SELECT s_from.id, cs.sorgente_uid,
+                         s_to.id, (cs.commessa_id)::text,
+                         cs.ruolo_link, 'F'::text
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'CONTRATTO'
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- G — Commessa -> Fattura (via attivita fatturabili gia' fatturate; 1:N)
+                  SELECT DISTINCT
+                         s_from.id, (af.commessa_id)::text,
+                         s_to.id, (f.id)::text,
+                         NULL::varchar, 'G'::text
+                    FROM vendite.attivita_fatturabili af
+                    JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                    JOIN vendite.fatture f ON f.id = fr.fattura_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'COMMESSA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to   ON s_to.codice_interno   = 'FATTURA'  AND s_to.attivo   IS TRUE
+                   WHERE af.fattura_riga_id IS NOT NULL
+                  UNION ALL
+                  -- H — Ordine -> DDT (colonna diretta uuid ddt.sorgente_uid -> ordini.uid; 1:N)
+                  SELECT s_from.id, (o.id)::text,
+                         s_to.id, (d.id)::text,
+                         NULL::varchar, 'H'::text
+                    FROM vendite.ddt d
+                    JOIN config.sorgenti s_from ON s_from.id = d.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN vendite.ordini o ON o.uid = d.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'DDT_VENDITA' AND s_to.attivo IS TRUE
+                  UNION ALL
+                  -- R — DDT -> Reso (ramo INVERSO; colonna diretta uuid resi.sorgente_uid -> ddt.uid; 1:N)
+                  SELECT s_from.id, (d.id)::text,
+                         s_to.id, (r.id)::text,
+                         NULL::varchar, 'R'::text
+                    FROM vendite.resi r
+                    JOIN config.sorgenti s_from ON s_from.id = r.sorgente_tipo_id AND s_from.codice_interno = 'DDT_VENDITA'
+                    JOIN vendite.ddt d ON d.uid = r.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'RESO_VENDITA' AND s_to.attivo IS TRUE
+              )
+              SELECT a.from_tipo_id,
+                     a.from_uid,
+                     nf.codice AS from_codice,
+                     a.to_tipo_id,
+                     a.to_uid,
+                     nt.codice AS to_codice,
+                     nt.stato_codice_interno AS to_stato_codice_interno,
+                     nt.fase                 AS to_fase,
+                     nt.is_abortito          AS to_is_abortito,
+                     a.ruolo,
+                     a.arco
+                FROM archi a
+                LEFT JOIN vendite.vw_documento_lineage_nodi nf ON nf.tipo_id = a.from_tipo_id AND nf.uid = a.from_uid
+                LEFT JOIN vendite.vw_documento_lineage_nodi nt ON nt.tipo_id = a.to_tipo_id   AND nt.uid = a.to_uid;
+
+              COMMENT ON VIEW vendite.vw_documento_lineage_archi IS
+                  'Lineage documenti vendite (Step 2): grafo archi normalizzato A-H + R '
+                  '(inverso). Chiave nodo polimorfa (tipo_id, uid::text). Nodo target '
+                  'decorato via vw_documento_lineage_nodi. security_invoker=on. Base di '
+                  'vw_documento_lineage e fn_documento_lineage.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_documento_lineage_archi;

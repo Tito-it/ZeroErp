@@ -14,10 +14,13 @@
 | chiude_commessa | boolean | NO | false |
 | emittibile | boolean | NO | false |
 | modificabile | boolean | NO | true |
+| fase | character varying | NO |  |
+| is_abortito | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_commessa_fase |  |
 | PRIMARY KEY | pk_stati_commessa | id |
 | UNIQUE | uq_stati_commessa_codice | codice |
 | UNIQUE | uq_stati_commessa_codice_interno | codice_interno |
