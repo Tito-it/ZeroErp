@@ -12,7 +12,7 @@ anyio==4.14.2
     # via
     #   anthropic
     #   httpx
-asgiref==3.11.1
+asgiref==3.12.1
     # via
     #   -r ../requirements.in
     #   django
