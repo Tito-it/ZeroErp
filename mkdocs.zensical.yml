@@ -151,6 +151,8 @@ nav:
                   - Configurazione e gestione parametri: it/guide/configurazione-e-gestione-parametri.md
                   - Configurazione e responsività delle liste: it/guide/configurazione-liste.md
                   - Automazione DB: it/guide/automazione-db.md
+                  - Sorgente polimorfa: it/guide/sorgente-polimorfa.md
+                  - Contatto GUC APP: it/guide/contratto-guc-app.md
                   - Mandare in pensione una voce di catalogo (obsoleto_dal): it/guide/uso-di-obsoleto.md
                   - Processi-pgagent: it/guide/processi-pgagent-funzionali.md
                   - Log:
