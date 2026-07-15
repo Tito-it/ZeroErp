@@ -30,7 +30,9 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
+import Divider from 'primevue/divider'
 import DocumentoIndirizziSection from '../_shared/indirizzi/DocumentoIndirizziSection.vue'
+import LineagePassaggiPanel from '../_shared/lineage/LineagePassaggiPanel.vue'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
@@ -970,6 +972,16 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
           :sorgente-id="props.contrattoId"
           hide-header-when-empty
         />
+      </template>
+
+      <!-- Genealogia/lineage (pannello "Passaggi", BB condiviso lazy: fetch
+           al primo expand; app-escape interno per la consultazione in
+           readonly di stato). Solo in EDIT. -->
+      <template v-if="isEdit && detail">
+        <Divider />
+        <LineagePassaggiPanel
+          base-path="/vendite/contratti"
+          :doc-id="contrattoId" />
       </template>
 
       <!-- Footer Salva/Annulla solo se editabile. La regola di dominio e':

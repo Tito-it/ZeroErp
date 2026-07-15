@@ -9,7 +9,7 @@
 > [Gestione Commesse](/guide/gestione-commesse) ·
 > [Fatturazione end-to-end](/guide/fatturazione) ·
 > [Genealogia & transiti vendite](/dev/work-in-progress/brief-design-genealogia-transiti-vendite) ·
-> [Lineage documenti vendite (brief DB)](/dev/work-in-progress/brief-db-lineage-documenti-vendite) ·
+> [Lineage documenti vendite (brief DB)](/dev/work-done/brief-db-lineage-documenti-vendite) ·
 > [Analisi ordini vendita](/dev/work-done/analisi-ordini-vendita) ·
 > [Analisi commesse — stato e sviluppi](/dev/work-done/analisi-commesse-stato-e-sviluppi)
 
@@ -254,7 +254,7 @@ il capitolato del `brief-db-ddt-vendita-evasione-e-stati.md`:
 - Guide: [gestione-ordini §Fatturazione: ordine vs DDT](/guide/gestione-ordini),
   [gestione-commesse](/guide/gestione-commesse), [fatturazione](/guide/fatturazione).
 - Design transiti: [genealogia](/dev/work-in-progress/brief-design-genealogia-transiti-vendite),
-  [lineage DB](/dev/work-in-progress/brief-db-lineage-documenti-vendite).
+  [lineage DB](/dev/work-done/brief-db-lineage-documenti-vendite).
 - Codice: `backend/apps/vendite/services/commesse_source_handlers.py` (`HandlerDdt`),
   `backend/apps/vendite/db/ddt_repository.py` (minimale),
   `backend/apps/vendite/api/note_views.py` (note DDT da cablare).

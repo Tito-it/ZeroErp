@@ -71,6 +71,13 @@ filtro stato).
   righe con copertura incompleta + `stato_riconsegna` derivato
   (DA_RICONSEGNARE/PARZIALE/COMPLETATA), config `vendite.resi_da_riconsegnare`.
 
+### Lineage / genealogia (brief-be-fe-lineage, 2026-07-15)
+
+- **Passaggi** `GET /api/v1/vendite/resi/<id>/passaggi/` — genealogia del
+  reso; catena significativa = **Origine** (reso ← DDT ← ordine ← …, arco R
+  ramo inverso). Contratto: [api_lineage_passaggi.md](api_lineage_passaggi.md).
+  Nessuna colonna lineage sulla lista resi (fuori perimetro Fase B).
+
 ## Codici errore principali
 
 `E_RESO_NOT_FOUND` (404), `E_RESO_DDT_NON_CONSEGNATO` (create su DDT non

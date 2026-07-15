@@ -11,6 +11,7 @@
 
 from django.urls import path
 
+from apps.vendite.api.lineage_views import ApiOffertaPassaggi
 from apps.vendite.api.note_views import (
     ApiOffertaNoteDetail,
     ApiOffertaNoteList,
@@ -67,6 +68,12 @@ urlpatterns = [
         "<int:offerta_id>/",
         ApiOffertaDetail.as_view(),
         name="vendite-offerta-detail",
+    ),
+    # Genealogia/lineage (pannello "Passaggi", brief-be-fe-lineage).
+    path(
+        "<int:offerta_id>/passaggi/",
+        ApiOffertaPassaggi.as_view(),
+        name="vendite-offerta-passaggi",
     ),
     # Transizioni di stato manuali.
     path(

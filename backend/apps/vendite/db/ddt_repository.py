@@ -44,6 +44,9 @@ _ORDER_COLS_DDT: dict[str, str] = {
     "causale_trasporto_descrizione": "v.causale_trasporto_descrizione",
     "ordine_origine_numero": "v.ordine_origine_numero",
     "data_insert": "v.data_insert",
+    # Colonne lineage (Fase B): pratica + fase ordinabili (frontiera no).
+    "pratica_numero": "v.pratica_numero",
+    "fase": "v.fase",
 }
 
 
@@ -166,7 +169,9 @@ class DdtRepository(
         count_sql = f"SELECT COUNT(*) FROM vendite.vw_ddt_lista v {where}"  # noqa: S608
         # Tiebreaker v.id per paginazione deterministica.
         data_sql = f"""
-            SELECT v.* FROM vendite.vw_ddt_lista v
+            SELECT v.*, s.codice_interno AS frontiera_tipo_codice
+            FROM vendite.vw_ddt_lista v
+            LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
             {where}
             ORDER BY {order_column} {direction}, v.id ASC
             LIMIT %s OFFSET %s

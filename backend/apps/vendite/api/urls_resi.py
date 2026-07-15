@@ -8,6 +8,7 @@
 
 from django.urls import path
 
+from apps.vendite.api.lineage_views import ApiResoPassaggi
 from apps.vendite.api.views_resi import (
     ApiResiDaAccreditare,
     ApiResiDaAccreditareExport,
@@ -42,6 +43,10 @@ urlpatterns = [
          name="vendite-resi-da-riconsegnare-export"),
 
     path("<int:reso_id>/", ApiResoDetail.as_view(), name="vendite-resi-detail"),
+    # Genealogia/lineage (pannello "Passaggi", brief-be-fe-lineage): per il
+    # reso la catena significativa e' l'origine (reso <- DDT <- ordine <- ...).
+    path("<int:reso_id>/passaggi/", ApiResoPassaggi.as_view(),
+         name="vendite-resi-passaggi"),
 
     # Azioni di dominio (fn madri DB): niente cambia-stato generico — conferma
     # e annullo hanno effetti (residuo/proiezioni/flip DDT).

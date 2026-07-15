@@ -2726,6 +2726,28 @@
     "col_azione": "Suggested action",
     "col_stato": "Status"
   },
+  "lineage": {
+    "titolo": "Lineage",
+    "pratica": "Case",
+    "frontiera": "In progress",
+    "origine": "Origin",
+    "destinazioni": "Destinations",
+    "nessun_transito": "Not yet transited",
+    "nessuna_origine": "No upstream document",
+    "ramo_inverso": "return branch",
+    "commessa_titolo": "Job lineage",
+    "apri_documento": "Open document",
+    "altre_pratiche": "+{n} more",
+    "altre_attive": "+{n} more active",
+    "tipo_preventivo": "Quote",
+    "tipo_offerta_commerciale": "Offer",
+    "tipo_ordine_vendita": "Order",
+    "tipo_contratto": "Contract",
+    "tipo_ddt_vendita": "Delivery note",
+    "tipo_fattura": "Invoice",
+    "tipo_commessa": "Job",
+    "tipo_reso_vendita": "Return"
+  },
   "dash_comune": {
     "area_preventivi": "Quotes",
     "area_ordini": "Orders",
@@ -3457,6 +3479,11 @@
         "col_size": "Size"
       }
     }
+  },
+  "lista": {
+    "col_pratica": "Case",
+    "col_fase": "Phase",
+    "col_transito": "Transit"
   },
   "lista_config": {
     "modal_title": "Customize columns",

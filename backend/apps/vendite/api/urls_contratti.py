@@ -16,6 +16,7 @@ from apps.vendite.api.contratti_documenti_views import (
     ApiContrattoDocumentoGenera,
     ApiContrattoEmetti,
 )
+from apps.vendite.api.lineage_views import ApiContrattoPassaggi
 from apps.vendite.api.note_views import (
     ApiContrattoNoteDetail,
     ApiContrattoNoteList,
@@ -51,6 +52,9 @@ urlpatterns = [
     # Export CSV/Excel (DEF-1) — colonne coerenti con la lista configurabile.
     path("export/", ApiContrattiExportView.as_view(), name="vendite-contratti-export"),
     path("<int:contratto_id>/", ApiContrattoDetail.as_view(), name="vendite-contratto-detail"),
+    # Genealogia/lineage (pannello "Passaggi", brief-be-fe-lineage).
+    path("<int:contratto_id>/passaggi/", ApiContrattoPassaggi.as_view(),
+         name="vendite-contratto-passaggi"),
     path("<int:contratto_id>/indirizzi/", ApiContrattoIndirizzi.as_view(),
          name="vendite-contratto-indirizzi"),
     path("<int:contratto_id>/indirizzi/<int:indirizzo_id>/",

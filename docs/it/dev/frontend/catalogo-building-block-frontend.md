@@ -535,6 +535,21 @@ Famiglia di 3 building block riusabili dalle 4 sorgenti documento composito (pre
 
 ---
 
+## Lineage documenti / pannello "Passaggi" (`src/vendite/_shared/lineage/`)
+
+BB condiviso per la genealogia/lineage dei documenti vendite (gemello BE
+`build_passaggi_view` + `get_documento_passaggi`, doc api_lineage_passaggi.md).
+Montato nei 6 drawer documento (preventivi, offerte, ordini, contratti, ddt,
+resi) come sezione in coda al contenuto (Fase A brief lineage, 2026-07-15).
+
+| Building Block | File | Descrizione |
+| --- | --- | --- |
+| `LineagePassaggiPanel` | [LineagePassaggiPanel.vue](../../../../frontend/src/vendite/_shared/lineage/LineagePassaggiPanel.vue) | Pannello "Passaggi": pratica collegata (numero cliccabile → `PraticaDrawer`), frontiera (Tag tipo + codice + Tag fase `faseDocumentoSeverity`), catena Origine (indietro) + Destinazioni (avanti) come timeline indentata per `livello`; arco R (`is_ramo_inverso`, DDT→Reso) reso come "ramo di ritorno" attenuato. Le tappe apribili (`*_doc_id` valorizzato + tipo con drawer) aprono il **dettaglio impilato** via `LineageDocumentoDrawerHost` — uniforme al link pratica (fatture/commesse: nodi terminali consultivi). **Lazy per costruzione**: PrimeVue Panel toggleable chiuso di default, fetch a OGNI expand (freshness fra riaperture del drawer padre; errori via `useApiHandler`, guard anti-race `useFetchVersion` sui cambi docId). Root `app-escape`: consultazione legittima nei drawer `.app-readonly` post-DRAFT. Props: `basePath`, `docId`. |
+| `LineageDocumentoDrawerHost` + `lineageDrawers.js` | [LineageDocumentoDrawerHost.vue](../../../../frontend/src/vendite/_shared/lineage/LineageDocumentoDrawerHost.vue) | Host cross-dominio che apre "a comando" il drawer di dettaglio del documento (tipo sorgente + id) impilato, come `PraticaDrawer`. `lineageDrawers.js` mappa i **7 tipi** (6 documenti + COMMESSA, Fase C) → drawer con **`defineAsyncComponent`** (import dinamico): rompe il ciclo di import (i drawer importano `LineagePassaggiPanel`) e code-splitta i drawer. Gestisce prop id a nome variabile per dominio + `mode='edit'` (ResoDrawer/CommessaDrawer senza `mode`). Props: `visible` (v-model), `tipoCodice`, `docId`. |
+| `CommessaDrawer` (lineage) | [CommessaDrawer.vue](../../../../frontend/src/vendite/_shared/lineage/CommessaDrawer.vue) | **Drawer leggero SOLA LETTURA della commessa (Fase C, genealogia inversa).** La commessa non ha lista/CRUD propria: qui si consulta solo la sua genealogia (Origine = sorgenti che l'hanno generata, Destinazioni = fatture a valle) riusando `LineagePassaggiPanel` con `start-open`. Header (codice + stato `statoCommessaSeverity`) dal payload passaggi già caricato (evento `@loaded`, niente seconda fetch). Aperto dalle tappe COMMESSA dei pannelli "Passaggi" dei documenti (via l'host). Props: `visible` (v-model), `commessaId`. |
+| `getPassaggi` | [lineageApi.js](../../../../frontend/src/vendite/_shared/lineage/lineageApi.js) | Client `GET {base}/{id}/passaggi/` bindato al basePath del dominio (il BE traduce il pk nella chiave nodo polimorfa: FE ignaro di `key_selector`, P-1). |
+| `LineagePraticaCell` / `LineageFaseTag` / `LineageFrontieraChip` | [LineagePraticaCell.vue](../../../../frontend/src/vendite/_shared/lineage/LineagePraticaCell.vue) · [LineageFaseTag.vue](../../../../frontend/src/vendite/_shared/lineage/LineageFaseTag.vue) · [LineageFrontieraChip.vue](../../../../frontend/src/vendite/_shared/lineage/LineageFrontieraChip.vue) | **Celle lineage delle liste documento (Fase B).** Slot `#cell-pratica`/`#cell-fase`/`#cell-transito` di `<ListaConfigurabile>` sulle 5 liste (preventivi/offerte/ordini/contratti/ddt). `LineagePraticaCell`: numero pratica cliccabile (`@click.stop` → `PraticaDrawer` impilato, montato solo su apertura) + badge `+N` (n_pratiche>1). `LineageFaseTag`: Tag `faseDocumentoSeverity` + `dashFaseLabel` (riuso Situazione aperta). `LineageFrontieraChip`: chip `→ <tipo> CODICE · fase` in sola lettura, suffisso `+N attive` sul fan-out (G-9), "—" se non transitato. Colonne servite dalle `vw_*_lista` estese dal DB (`frontiera_tipo_id` decodificato a `frontiera_tipo_codice` nei repo lista). |
+
 ## Indirizzi documento (`src/vendite/_shared/indirizzi/`)
 
 BB condiviso per gli indirizzi dei documenti vendite (gemello BE

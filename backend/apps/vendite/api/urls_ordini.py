@@ -7,6 +7,7 @@
 
 from django.urls import path
 
+from apps.vendite.api.lineage_views import ApiOrdinePassaggi
 from apps.vendite.api.note_views import ApiOrdineNoteDetail, ApiOrdineNoteList
 from apps.vendite.api.ordini_documenti_views import (
     ApiOrdineDocumentiList,
@@ -57,6 +58,9 @@ urlpatterns = [
     # Riepilogo IVA aggregato (regola fiscale art. 21 DPR 633/72) — view derivata
     path("<int:ordine_id>/riepilogo-iva/", ApiOrdineRiepilogoIva.as_view(),
          name="vendite-ordine-riepilogo-iva"),
+    # Genealogia/lineage (pannello "Passaggi", brief-be-fe-lineage).
+    path("<int:ordine_id>/passaggi/", ApiOrdinePassaggi.as_view(),
+         name="vendite-ordine-passaggi"),
 
     # Indirizzi documento (pannello slot-per-tipo, factory condiviso)
     path("<int:ordine_id>/indirizzi/", ApiOrdineIndirizzi.as_view(),

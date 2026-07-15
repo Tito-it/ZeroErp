@@ -45,6 +45,9 @@ _ORDER_COLS_ORDINI: dict[str, str] = {
     "stato_descrizione": "v.stato_descrizione",
     "stato_codice_interno": "v.stato_codice_interno",
     "data_insert": "v.data_insert",
+    # Colonne lineage (Fase B): pratica + fase ordinabili (frontiera no).
+    "pratica_numero": "v.pratica_numero",
+    "fase": "v.fase",
 }
 
 
@@ -161,7 +164,9 @@ class OrdiniRepository(
         # Tiebreaker v.id obbligatorio per paginazione deterministica
         # (frontend-standards "Paginazione deterministica").
         data_sql = f"""
-            SELECT v.* FROM vendite.vw_ordini_lista v
+            SELECT v.*, s.codice_interno AS frontiera_tipo_codice
+            FROM vendite.vw_ordini_lista v
+            LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
             {where}
             ORDER BY {order_column} {direction}, v.id ASC
             LIMIT %s OFFSET %s
