@@ -40,6 +40,7 @@ import PreventiviRigheTable from './PreventiviRigheTable.vue'
 import PreventiviSmistamentoPanel from './PreventiviSmistamentoPanel.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
 import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
+import LineagePassaggiPanel from '../../_shared/lineage/LineagePassaggiPanel.vue'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 import DocumentiGeneratiSorgenteList from '../../../documenti/components/DocumentiGeneratiSorgenteList.vue'
@@ -1009,6 +1010,16 @@ const drawerActions = computed(() => {
                 sorgente-code="PREVENTIVO"
                 :sorgente-id="effectivePreventivoId"
               />
+            </template>
+
+            <!-- Genealogia/lineage (pannello "Passaggi", BB condiviso lazy:
+                 fetch al primo expand; app-escape interno per la
+                 consultazione in readonly di stato). -->
+            <template v-if="contentReady && hasDetail">
+              <Divider />
+              <LineagePassaggiPanel
+                base-path="/vendite/preventivi"
+                :doc-id="effectivePreventivoId" />
             </template>
           </TabPanel>
 

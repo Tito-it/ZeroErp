@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Lineage documenti vendite — Step 1 (Fondamenta). config.stati_doc_ordini ha
+# gia' la colonna fase (proiezione 20260702-03); manca solo is_abortito. La si
+# aggiunge per rendere UNIFORME l'asse "abortito" su tutti i cataloghi stato del
+# grafo (preventivi/contratti gia' l'hanno) e per la regola frontiera
+# (fase<>CHIUSO AND NOT is_abortito).
+#
+# Solo lo stato ANNULLATO e' abortito (FATTURATO/EVASO sono chiusure legittime,
+# is_abortito=false — coerente con preventivi dove RIFIUTATO/SCADUTO/EVASO NON
+# sono abortiti).
+#
+# SEED: backfill keyed su codice_interno (DB vivo); fresh DB soddisfatto dalla
+# CSV stati_doc_ordini.csv estesa con is_abortito (80_data, loader runOnChange).
+# DEFAULT false copre tutti gli altri stati senza backfill esplicito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260714-04-alter-stati-doc-ordini-add-is-abortito-mctit.yaml
+
+  - changeSet:
+      id: 20260714-04-alter-stati-doc-ordini-add-is-abortito
+      author: mctit
+      comment: >
+        Lineage Step 1: aggiunge is_abortito (NOT NULL DEFAULT false) a
+        config.stati_doc_ordini e marca ANNULLATO come abortito.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: stati_doc_ordini
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_ordini
+                ADD COLUMN is_abortito BOOLEAN NOT NULL DEFAULT false;
+
+              UPDATE config.stati_doc_ordini
+                 SET is_abortito = true
+               WHERE codice_interno = 'ANNULLATO';
+
+              COMMENT ON COLUMN config.stati_doc_ordini.is_abortito IS
+                  'true = stato di annullamento (ANNULLATO). Asse uniforme cross-catalogo '
+                  'per la frontiera del lineage (esclude fase=CHIUSO oppure is_abortito=true).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_ordini
+                DROP COLUMN IF EXISTS is_abortito;

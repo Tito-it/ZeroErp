@@ -694,3 +694,138 @@ def fn_dash_competenza_errori(
     return _build_list_response(
         results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
     )
+
+
+# Tipi documento con endpoint /passaggi/ (nodo lineage con vista di dominio).
+# COMMESSA aggiunta nella Fase C (genealogia inversa, design §7.3): non ha una
+# lista/CRUD propria, ma il suo nodo lineage è consultabile via drawer leggero
+# (sorgenti che l'hanno generata + fatture a valle). FATTURA resta nodo
+# terminale senza endpoint (Q4: capolinea, nessuna superficie propria).
+LINEAGE_TIPI_DOCUMENTO: tuple[str, ...] = (
+    "PREVENTIVO",
+    "OFFERTA_COMMERCIALE",
+    "ORDINE_VENDITA",
+    "CONTRATTO",
+    "DDT_VENDITA",
+    "RESO_VENDITA",
+    "COMMESSA",
+)
+
+
+# Scopo: Orchestrazione del pannello "Passaggi" (genealogia documento):
+#        valida il tipo, traduce il doc_id di dominio nella chiave nodo
+#        polimorfa (key_selector da config.sorgenti), legge la summary
+#        lineage (nodo + pratica + frontiera) e il traversal in ENTRAMBE
+#        le direzioni (origine + destinazioni, decisione P-2 del brief).
+# Perimetro: sola lettura; RLS emittente applicata dalle viste invoker.
+# Risultato: dict {nodo, pratica|None, frontiera|None, avanti[], indietro[]}.
+def get_documento_passaggi(
+    tipo_codice: str, documento_id: int
+) -> dict[str, object]:
+    _validate_enum(
+        tipo_codice,
+        allowed=LINEAGE_TIPI_DOCUMENTO,
+        param_name="tipo_codice",
+        function_name="get_documento_passaggi",
+        nullable=False,
+    )
+    ErrorManager.require(
+        isinstance(documento_id, int) and documento_id > 0,
+        code="E_VENDITE_VALIDATION",
+        message="Identificativo documento non valido.",
+        detail=f"documento_id={documento_id!r}",
+        function_name="get_documento_passaggi",
+        log_to_db=False,
+    )
+
+    repo = VenditeRepository()
+
+    # Sorgente dal vocabolario (id + key_selector + target_table): assenza =
+    # seed config incoerente, non input utente.
+    sorgente = repo.get_lineage_sorgente(tipo_codice)
+    ErrorManager.require(
+        sorgente is not None,
+        code="E_VENDITE_VALIDATION",
+        message="Tipo documento non configurato in config.sorgenti.",
+        detail=f"tipo_codice={tipo_codice}",
+        function_name="get_documento_passaggi",
+    )
+    assert sorgente is not None
+
+    # Chiave nodo nativa polimorfa: id::text oppure uid dalla tabella target.
+    node_uid = repo.resolve_lineage_node_uid(
+        target_table=sorgente["target_table"],
+        key_selector=sorgente["key_selector"],
+        doc_id=documento_id,
+    )
+    ErrorManager.require(
+        node_uid is not None,
+        code="E_VENDITE_NOT_FOUND",
+        message="Documento non trovato.",
+        detail=f"tipo_codice={tipo_codice} documento_id={documento_id}",
+        function_name="get_documento_passaggi",
+        log_to_db=False,
+    )
+    assert node_uid is not None
+
+    nodo = repo.get_lineage_nodo(tipo_id=sorgente["id"], node_uid=node_uid)
+    ErrorManager.require(
+        nodo is not None,
+        code="E_VENDITE_NOT_FOUND",
+        message="Documento non trovato.",
+        detail=f"tipo_codice={tipo_codice} documento_id={documento_id}",
+        function_name="get_documento_passaggi",
+        log_to_db=False,
+    )
+    assert nodo is not None
+
+    # Pratica difensiva (Q5): oggetto solo se collegata.
+    pratica: dict[str, object] | None = None
+    if nodo["pratica_id"] is not None:
+        pratica = {
+            "pratica_id": nodo["pratica_id"],
+            "pratica_numero": nodo["pratica_numero"],
+            "n_pratiche": nodo["n_pratiche"],
+        }
+
+    # Frontiera normalizzata: la summary, per costruzione, per un nodo senza
+    # discendenti indica il nodo stesso -> per il FE e' "non transitato" (None).
+    frontiera: dict[str, object] | None = None
+    is_self = (
+        nodo["frontiera_tipo_id"] == nodo["tipo_id"]
+        and nodo["frontiera_uid"] == nodo["uid"]
+    )
+    if nodo["is_transitato"] and nodo["frontiera_tipo_id"] is not None and not is_self:
+        frontiera = {
+            "tipo_codice": nodo["frontiera_tipo_codice"],
+            "codice": nodo["frontiera_codice"],
+            "stato_codice_interno": nodo["frontiera_stato_codice_interno"],
+            "fase": nodo["frontiera_fase"],
+            "n_discendenti_attivi": nodo["n_discendenti_attivi"],
+        }
+
+    avanti = repo.list_lineage_passaggi(
+        tipo_id=sorgente["id"], node_uid=node_uid, direzione="avanti"
+    )
+    indietro = repo.list_lineage_passaggi(
+        tipo_id=sorgente["id"], node_uid=node_uid, direzione="indietro"
+    )
+
+    return {
+        "nodo": {
+            "tipo_codice": nodo["tipo_codice"],
+            "codice": nodo["codice"],
+            "stato_codice_interno": nodo["stato_codice_interno"],
+            "stato_descrizione": nodo["stato_descrizione"],
+            "fase": nodo["fase"],
+            "is_abortito": nodo["is_abortito"],
+            "is_transitato": nodo["is_transitato"],
+            "n_discendenti_diretti": nodo["n_discendenti_diretti"],
+            "n_discendenti_attivi": nodo["n_discendenti_attivi"],
+            "n_sorgenti": nodo["n_sorgenti"],
+        },
+        "pratica": pratica,
+        "frontiera": frontiera,
+        "avanti": avanti,
+        "indietro": indietro,
+    }

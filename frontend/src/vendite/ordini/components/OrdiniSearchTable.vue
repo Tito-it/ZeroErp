@@ -22,6 +22,9 @@ import ReadonlyBadge from '../../../core/components/ReadonlyBadge.vue'
 import RowActionsMenu from '../../../core/components/RowActionsMenu.vue'
 import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
 import ListaConfigurabile from '../../../core/components/ListaConfigurabile.vue'
+import LineagePraticaCell from '../../_shared/lineage/LineagePraticaCell.vue'
+import LineageFaseTag from '../../_shared/lineage/LineageFaseTag.vue'
+import LineageFrontieraChip from '../../_shared/lineage/LineageFrontieraChip.vue'
 import ExportDialog from '../../../core/components/ExportDialog.vue'
 import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
 import PdfDocumentiSorgenteDialog from '../../../documenti/components/PdfDocumentiSorgenteDialog.vue'
@@ -196,6 +199,19 @@ onMounted(() => store.fetchList())
         <!-- Stato: Tag severity (niente badge "scaduta": concetto offerta-specifico). -->
         <template #cell-stato="{ data }">
           <Tag :value="data.stato_descrizione" :severity="statoOrdineSeverity(data.stato_codice_interno)" />
+        </template>
+
+        <!-- Colonne lineage (Fase B): pratica cliccabile, fase, chip transito. -->
+        <template #cell-pratica="{ data }">
+          <LineagePraticaCell :pratica-id="data.pratica_id" :pratica-numero="data.pratica_numero" :n-pratiche="data.n_pratiche" />
+        </template>
+        <template #cell-fase="{ data }">
+          <LineageFaseTag :fase="data.fase" />
+        </template>
+        <template #cell-transito="{ data }">
+          <LineageFrontieraChip :is-transitato="data.is_transitato" :tipo-codice="data.frontiera_tipo_codice"
+            :codice="data.frontiera_codice" :stato="data.frontiera_stato_codice_interno"
+            :fase="data.frontiera_fase" :n-attivi="data.n_discendenti_attivi" />
         </template>
 
         <template #actions="{ data, compact }">

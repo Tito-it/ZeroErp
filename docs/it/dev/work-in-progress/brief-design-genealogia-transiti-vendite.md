@@ -186,6 +186,16 @@ gratis (G-11).
 
 ## 10. Piano di sviluppo (concentrico)
 
+> **✅ STATO (2026-07-15): design IMPLEMENTATO end-to-end.** Il piano sotto è
+> superseded dal brief operativo
+> [brief-be-fe-lineage-documenti-vendite.md](brief-be-fe-lineage-documenti-vendite.md)
+> (Fasi A+B+C complete; DB in work-done:
+> [core](../work-done/brief-db-lineage-documenti-vendite.md) ·
+> [colonne liste](../work-done/brief-db-liste-lineage-colonne.md)).
+> Delta vs il piano originale: liste 4→5 (+DDT), resi come ramo inverso, e la
+> "lista commesse" (punto 5) risolta come **drawer commessa leggero** (nessuna
+> lista commesse esiste: dominio UI futuro separato).
+
 1. **DB** — `vw_documento_lineage` (grafo + frontiera + link pratica), su
    `vw_stato_sorgente_*` + link. Prerequisito, → team DB (brief DB dedicato).
 2. **BE** — endpoint sottili: colonna lista (arricchimento delle 4 liste con

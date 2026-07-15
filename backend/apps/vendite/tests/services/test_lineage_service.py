@@ -1,0 +1,278 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test unitari del service lineage/genealogia documenti
+#        (get_documento_passaggi, mock repository).
+# ------------------------------------------------------------
+
+"""
+Indice test eseguiti:
+1) LineagePassaggiServiceTests.test_tipo_fuori_whitelist
+2) LineagePassaggiServiceTests.test_documento_id_non_valido
+3) LineagePassaggiServiceTests.test_sorgente_non_configurata
+4) LineagePassaggiServiceTests.test_documento_uid_non_risolto
+5) LineagePassaggiServiceTests.test_nodo_non_trovato
+6) LineagePassaggiServiceTests.test_shape_risposta_e_direzioni
+7) LineagePassaggiServiceTests.test_key_selector_id_niente_query_uid
+8) LineagePassaggiServiceTests.test_key_selector_uid_risolto_da_target_table
+9) LineagePassaggiServiceTests.test_pratica_none_se_non_collegata
+10) LineagePassaggiServiceTests.test_frontiera_none_se_non_transitato
+11) LineagePassaggiServiceTests.test_frontiera_none_se_self
+12) LineagePassaggiServiceTests.test_frontiera_valorizzata
+13) LineagePassaggiServiceTests.test_is_ramo_inverso_passthrough
+"""
+
+from unittest import TestCase
+from unittest.mock import patch
+
+from apps.core.services.service_errors import ServiceError
+from apps.vendite.services import vendite_service
+from apps.vendite.services.vendite_service import get_documento_passaggi
+
+_SORGENTE_ORDINE = {
+    "id": 6,
+    "key_selector": "id",
+    "target_table": "vendite.ordini",
+}
+
+_SORGENTE_PREVENTIVO = {
+    "id": 2,
+    "key_selector": "uid",
+    "target_table": "vendite.preventivi",
+}
+
+
+# Scopo: Riga summary di base (nodo transitato, con pratica e frontiera).
+def _nodo(**overrides):
+    base = {
+        "tipo_id": 6,
+        "tipo_codice": "ORDINE_VENDITA",
+        "uid": "163",
+        "codice": "ORD0000163",
+        "stato_codice_interno": "CONFERMATO",
+        "stato_codice": "CONF",
+        "stato_descrizione": "Confermato",
+        "fase": "IN_CORSO",
+        "is_abortito": False,
+        "pratica_id": 818,
+        "pratica_numero": "PRA-0000818",
+        "n_pratiche": 1,
+        "frontiera_tipo_id": 8,
+        "frontiera_tipo_codice": "DDT_VENDITA",
+        "frontiera_uid": "31",
+        "frontiera_codice": "DDT0000031",
+        "frontiera_stato_codice_interno": "SPEDITO",
+        "frontiera_fase": "IN_CORSO",
+        "n_discendenti_diretti": 1,
+        "n_discendenti_attivi": 1,
+        "is_transitato": True,
+        "n_sorgenti": 1,
+        "root_codice": "PRV0000185",
+    }
+    base.update(overrides)
+    return base
+
+
+def _passaggio(**overrides):
+    base = {
+        "livello": 1,
+        "ordine": 1,
+        "arco": "H",
+        "ruolo": None,
+        "from_tipo_id": 6,
+        "from_tipo_codice": "ORDINE_VENDITA",
+        "from_uid": "163",
+        "from_codice": "ORD0000163",
+        "from_stato_codice_interno": "CONFERMATO",
+        "from_fase": "IN_CORSO",
+        "from_doc_id": 163,
+        "to_tipo_id": 8,
+        "to_tipo_codice": "DDT_VENDITA",
+        "to_uid": "31",
+        "to_codice": "DDT0000031",
+        "to_stato_codice_interno": "SPEDITO",
+        "to_fase": "IN_CORSO",
+        "to_is_abortito": False,
+        "to_doc_id": 31,
+        "is_ramo_inverso": False,
+    }
+    base.update(overrides)
+    return base
+
+
+class LineagePassaggiServiceTests(TestCase):
+    # Scopo: Tipo documento fuori whitelist -> E_VENDITE_VALIDATION.
+    def test_tipo_fuori_whitelist(self):
+        with self.assertRaises(ServiceError) as ctx:
+            get_documento_passaggi("FATTURA", 1)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: documento_id nullo/negativo/non-int -> E_VENDITE_VALIDATION.
+    def test_documento_id_non_valido(self):
+        for bad in (0, -3, "42"):
+            with self.assertRaises(ServiceError) as ctx:
+                get_documento_passaggi("ORDINE_VENDITA", bad)  # type: ignore[arg-type]
+            self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: Sorgente assente in config.sorgenti (seed incoerente) ->
+    #        E_VENDITE_VALIDATION.
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_sorgente", return_value=None)
+    def test_sorgente_non_configurata(self, _mock):
+        with self.assertRaises(ServiceError) as ctx:
+            get_documento_passaggi("ORDINE_VENDITA", 163)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: uid non risolto (doc inesistente o fuori scope RLS) ->
+    #        E_VENDITE_NOT_FOUND.
+    @patch.object(vendite_service.VenditeRepository, "resolve_lineage_node_uid", return_value=None)
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_sorgente", return_value=_SORGENTE_PREVENTIVO)
+    def test_documento_uid_non_risolto(self, _mock_sorg, _mock_uid):
+        with self.assertRaises(ServiceError) as ctx:
+            get_documento_passaggi("PREVENTIVO", 999999)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+    # Scopo: Nodo assente dalla summary -> E_VENDITE_NOT_FOUND.
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_nodo", return_value=None)
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_sorgente", return_value=_SORGENTE_ORDINE)
+    def test_nodo_non_trovato(self, _mock_sorg, _mock_nodo):
+        with self.assertRaises(ServiceError) as ctx:
+            get_documento_passaggi("ORDINE_VENDITA", 999999)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+    # Scopo: Shape della risposta (nodo/pratica/frontiera/avanti/indietro) e
+    #        traversal invocato in ENTRAMBE le direzioni con la chiave nodo.
+    @patch.object(vendite_service.VenditeRepository, "list_lineage_passaggi")
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_nodo", return_value=_nodo())
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_sorgente", return_value=_SORGENTE_ORDINE)
+    def test_shape_risposta_e_direzioni(self, _mock_sorg, _mock_nodo, mock_passaggi):
+        mock_passaggi.return_value = [_passaggio()]
+        data = get_documento_passaggi("ORDINE_VENDITA", 163)
+        self.assertEqual(data["nodo"]["tipo_codice"], "ORDINE_VENDITA")
+        self.assertEqual(data["nodo"]["codice"], "ORD0000163")
+        self.assertEqual(data["pratica"]["pratica_numero"], "PRA-0000818")
+        self.assertEqual(data["frontiera"]["codice"], "DDT0000031")
+        self.assertEqual(len(data["avanti"]), 1)
+        self.assertEqual(len(data["indietro"]), 1)
+        direzioni = [c.kwargs["direzione"] for c in mock_passaggi.call_args_list]
+        self.assertEqual(direzioni, ["avanti", "indietro"])
+        for c in mock_passaggi.call_args_list:
+            self.assertEqual(c.kwargs["tipo_id"], 6)
+            self.assertEqual(c.kwargs["node_uid"], "163")
+
+    # Scopo: key_selector='id' -> chiave nodo = str(doc_id) senza query uid.
+    @patch.object(vendite_service.VenditeRepository, "list_lineage_passaggi", return_value=[])
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_nodo", return_value=_nodo())
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_sorgente", return_value=_SORGENTE_ORDINE)
+    def test_key_selector_id_niente_query_uid(self, _mock_sorg, mock_nodo, _mock_p):
+        get_documento_passaggi("ORDINE_VENDITA", 163)
+        self.assertEqual(mock_nodo.call_args.kwargs["node_uid"], "163")
+
+    # Scopo: key_selector='uid' -> chiave nodo risolta dalla tabella target
+    #        (convenzione chiave sorgente polimorfa).
+    @patch.object(vendite_service.VenditeRepository, "list_lineage_passaggi", return_value=[])
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "get_lineage_nodo",
+        return_value=_nodo(tipo_id=2, tipo_codice="PREVENTIVO", uid="abc-uuid"),
+    )
+    @patch.object(vendite_service.VenditeRepository, "resolve_lineage_node_uid", return_value="abc-uuid")
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_sorgente", return_value=_SORGENTE_PREVENTIVO)
+    def test_key_selector_uid_risolto_da_target_table(
+        self, _mock_sorg, mock_uid, mock_nodo, _mock_p
+    ):
+        get_documento_passaggi("PREVENTIVO", 185)
+        self.assertEqual(mock_uid.call_args.kwargs["target_table"], "vendite.preventivi")
+        self.assertEqual(mock_uid.call_args.kwargs["key_selector"], "uid")
+        self.assertEqual(mock_uid.call_args.kwargs["doc_id"], 185)
+        self.assertEqual(mock_nodo.call_args.kwargs["node_uid"], "abc-uuid")
+
+    # Scopo: Documento senza pratica -> pratica=None (non oggetto vuoto).
+    @patch.object(vendite_service.VenditeRepository, "list_lineage_passaggi", return_value=[])
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "get_lineage_nodo",
+        return_value=_nodo(pratica_id=None, pratica_numero=None, n_pratiche=0),
+    )
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_sorgente", return_value=_SORGENTE_ORDINE)
+    def test_pratica_none_se_non_collegata(self, _mock_sorg, _mock_nodo, _mock_p):
+        data = get_documento_passaggi("ORDINE_VENDITA", 163)
+        self.assertIsNone(data["pratica"])
+
+    # Scopo: Documento non transitato -> frontiera=None.
+    @patch.object(vendite_service.VenditeRepository, "list_lineage_passaggi", return_value=[])
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "get_lineage_nodo",
+        return_value=_nodo(
+            is_transitato=False,
+            n_discendenti_diretti=0,
+            n_discendenti_attivi=0,
+        ),
+    )
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_sorgente", return_value=_SORGENTE_ORDINE)
+    def test_frontiera_none_se_non_transitato(self, _mock_sorg, _mock_nodo, _mock_p):
+        data = get_documento_passaggi("ORDINE_VENDITA", 163)
+        self.assertIsNone(data["frontiera"])
+
+    # Scopo: La summary per un nodo senza discendenti attivi puo' indicare il
+    #        nodo stesso come frontiera -> normalizzata a None.
+    @patch.object(vendite_service.VenditeRepository, "list_lineage_passaggi", return_value=[])
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "get_lineage_nodo",
+        return_value=_nodo(
+            frontiera_tipo_id=6,
+            frontiera_tipo_codice="ORDINE_VENDITA",
+            frontiera_uid="163",
+            frontiera_codice="ORD0000163",
+        ),
+    )
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_sorgente", return_value=_SORGENTE_ORDINE)
+    def test_frontiera_none_se_self(self, _mock_sorg, _mock_nodo, _mock_p):
+        data = get_documento_passaggi("ORDINE_VENDITA", 163)
+        self.assertIsNone(data["frontiera"])
+
+    # Scopo: Frontiera valorizzata con i campi FE-critici (chip transito).
+    @patch.object(vendite_service.VenditeRepository, "list_lineage_passaggi", return_value=[])
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_nodo", return_value=_nodo())
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_sorgente", return_value=_SORGENTE_ORDINE)
+    def test_frontiera_valorizzata(self, _mock_sorg, _mock_nodo, _mock_p):
+        data = get_documento_passaggi("ORDINE_VENDITA", 163)
+        self.assertEqual(
+            data["frontiera"],
+            {
+                "tipo_codice": "DDT_VENDITA",
+                "codice": "DDT0000031",
+                "stato_codice_interno": "SPEDITO",
+                "fase": "IN_CORSO",
+                "n_discendenti_attivi": 1,
+            },
+        )
+
+    # Scopo: COMMESSA è nella whitelist passaggi (Fase C, genealogia inversa
+    #        via drawer leggero); FATTURA resta esclusa (nodo terminale senza
+    #        superficie propria, Q4).
+    def test_commessa_in_whitelist_fattura_esclusa(self):
+        from apps.vendite.services.vendite_service import LINEAGE_TIPI_DOCUMENTO
+        self.assertIn("COMMESSA", LINEAGE_TIPI_DOCUMENTO)
+        self.assertNotIn("FATTURA", LINEAGE_TIPI_DOCUMENTO)
+
+    # Scopo: L'arco R (DDT->Reso) arriva al FE con is_ramo_inverso=true.
+    @patch.object(vendite_service.VenditeRepository, "list_lineage_passaggi")
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_nodo", return_value=_nodo())
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_sorgente", return_value=_SORGENTE_ORDINE)
+    def test_is_ramo_inverso_passthrough(self, _mock_sorg, _mock_nodo, mock_passaggi):
+        mock_passaggi.return_value = [
+            _passaggio(),
+            _passaggio(
+                ordine=2,
+                arco="R",
+                to_tipo_codice="RESO_VENDITA",
+                to_codice="RES0000004",
+                is_ramo_inverso=True,
+            ),
+        ]
+        data = get_documento_passaggi("ORDINE_VENDITA", 163)
+        self.assertFalse(data["avanti"][0]["is_ramo_inverso"])
+        self.assertTrue(data["avanti"][1]["is_ramo_inverso"])

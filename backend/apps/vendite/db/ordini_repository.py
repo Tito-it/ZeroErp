@@ -45,6 +45,9 @@ _ORDER_COLS_ORDINI: dict[str, str] = {
     "stato_descrizione": "v.stato_descrizione",
     "stato_codice_interno": "v.stato_codice_interno",
     "data_insert": "v.data_insert",
+    # Colonne lineage (Fase B): pratica + fase ordinabili (frontiera no).
+    "pratica_numero": "v.pratica_numero",
+    "fase": "v.fase",
 }
 
 
@@ -105,10 +108,13 @@ class OrdiniRepository(
         offset: int,
         order_by: str = "data",
         order_dir: str = "desc",
+        max_limit: int = 200,
     ) -> tuple[list[dict[str, Any]], int]:
         order_column = _ORDER_COLS_ORDINI.get(order_by, _ORDER_COLS_ORDINI["data"])
         direction = "DESC" if order_dir and order_dir.lower() == "desc" else "ASC"
-        safe_limit = max(1, min(int(limit), 200))
+        # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
+        # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
+        safe_limit = max(1, min(int(limit), max_limit))
         safe_offset = max(0, int(offset))
 
         conditions: list[str] = []
@@ -158,7 +164,9 @@ class OrdiniRepository(
         # Tiebreaker v.id obbligatorio per paginazione deterministica
         # (frontend-standards "Paginazione deterministica").
         data_sql = f"""
-            SELECT v.* FROM vendite.vw_ordini_lista v
+            SELECT v.*, s.codice_interno AS frontiera_tipo_codice
+            FROM vendite.vw_ordini_lista v
+            LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
             {where}
             ORDER BY {order_column} {direction}, v.id ASC
             LIMIT %s OFFSET %s

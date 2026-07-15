@@ -201,12 +201,19 @@ class TestResiApi(JwtMockedApiTest):
               "quantita": "3"}],
             1,
         )
-        resp = self.client.get(f"{_BASE}da-accreditare/?billing_account_id=3")
+        resp = self.client.get(
+            f"{_BASE}da-accreditare/"
+            "?billing_account_id=3&search=rossi&order_by=descrizione&order_dir=asc",
+        )
         self.assertEqual(resp.status_code, 200)
         body = resp.json()["data"]
         self.assertEqual(body["count"], 1)
-        # Filtro BA propagato al service.
-        self.assertEqual(mock_coda.call_args.kwargs["billing_account_id"], 3)
+        # Filtro BA + search + sort propagati al service (path LIST).
+        kwargs = mock_coda.call_args.kwargs
+        self.assertEqual(kwargs["billing_account_id"], 3)
+        self.assertEqual(kwargs["search"], "rossi")
+        self.assertEqual(kwargs["order_by"], "descrizione")
+        self.assertEqual(kwargs["order_dir"], "asc")
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.list_da_riconsegnare")
@@ -217,10 +224,17 @@ class TestResiApi(JwtMockedApiTest):
               "stato_riconsegna": "PARZIALE"}],
             1,
         )
-        resp = self.client.get(f"{_BASE}da-riconsegnare/")
+        resp = self.client.get(
+            f"{_BASE}da-riconsegnare/?search=acme&order_by=qta_residua&order_dir=desc",
+        )
         self.assertEqual(resp.status_code, 200)
         body = resp.json()["data"]
         self.assertEqual(body["results"][0]["stato_riconsegna"], "PARZIALE")
+        # search + sort propagati al service (path LIST).
+        kwargs = mock_coda.call_args.kwargs
+        self.assertEqual(kwargs["search"], "acme")
+        self.assertEqual(kwargs["order_by"], "qta_residua")
+        self.assertEqual(kwargs["order_dir"], "desc")
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.list_righe_ddt_per_reso")

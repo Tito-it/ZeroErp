@@ -53,8 +53,18 @@ SELECT o.id,
     o.data_update,
     o.user_update,
     sd.pdf_mode,
-    COALESCE(s_ef.ragione_sociale_completa, (ef.descrizione)::text) AS emittente_fiscale_descrizione
-   FROM (((((((((((((((vendite.ordini o
+    COALESCE(s_ef.ragione_sociale_completa, (ef.descrizione)::text) AS emittente_fiscale_descrizione,
+    sd.fase,
+    lin.pratica_id,
+    lin.pratica_numero,
+    lin.n_pratiche,
+    lin.frontiera_tipo_id,
+    lin.frontiera_codice,
+    lin.frontiera_stato_codice_interno,
+    lin.frontiera_fase,
+    lin.n_discendenti_attivi,
+    lin.is_transitato
+   FROM ((((((((((((((((vendite.ordini o
      JOIN config.stati_doc_ordini sd ON ((sd.id = o.stato_doc_ordine_id)))
      JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = o.soggetto_ruolo_id)))
      JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
@@ -69,7 +79,10 @@ SELECT o.id,
      LEFT JOIN anagrafiche.soggetti_ruoli sr_ag ON ((sr_ag.id = o.agente_soggetto_ruolo_id)))
      LEFT JOIN anagrafiche.soggetti s_ag ON ((s_ag.id = sr_ag.soggetto_id)))
      LEFT JOIN vendite.preventivi pv ON (((pv.id = o.documento_origine_id) AND ((o.documento_origine_tipo)::text = 'PREVENTIVO'::text))))
-     LEFT JOIN vendite.offerte_commerciali oc ON (((oc.id = o.documento_origine_id) AND ((o.documento_origine_tipo)::text = 'OFFERTA'::text))));
+     LEFT JOIN vendite.offerte_commerciali oc ON (((oc.id = o.documento_origine_id) AND ((o.documento_origine_tipo)::text = 'OFFERTA'::text))))
+     LEFT JOIN vendite.vw_documento_lineage lin ON (((lin.tipo_id = ( SELECT sorgenti.id
+           FROM config.sorgenti
+          WHERE (((sorgenti.codice_interno)::text = 'ORDINE_VENDITA'::text) AND (sorgenti.attivo IS TRUE)))) AND (lin.uid = (o.id)::text))));
 ```
 
 

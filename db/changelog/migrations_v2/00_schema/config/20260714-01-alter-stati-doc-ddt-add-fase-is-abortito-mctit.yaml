@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Lineage documenti vendite — Step 1 (Fondamenta). Aggiunge a
+# config.stati_doc_ddt le due colonne che il grafo di genealogia legge dal
+# catalogo stati (brief-db-lineage-documenti-vendite §0 Q2/Q3):
+#   fase        varchar NOT NULL — APERTO | IN_ATTESA | IN_CORSO | CHIUSO
+#                                  (stessa scala di preventivi/ordini/offerte;
+#                                  vocabolario normalizzato per frontiera+display)
+#   is_abortito boolean NOT NULL DEFAULT false — flag "annullato" sul catalogo
+#                                  (regola frontiera: fase<>CHIUSO AND NOT is_abortito).
+#                                  Solo lo stato ANNULLATO e' abortito (come
+#                                  preventivi: RIFIUTATO/SCADUTO NON lo sono).
+#
+# Additivo, nessun cambio al modello documenti. NON aggiunge esito/terminale:
+# quelli appartengono alla proiezione-stato-dominio (D4, playbook 20260702-*) e
+# richiedono la mappa verdetti per-dominio, fuori scope del lineage.
+#
+# MAPPA fase (copre il 100% del seed stati_doc_ddt.csv — CONSEGNATO/RESO sono il
+# capolinea del ciclo DDT: non esiste stato post-consegna nel catalogo DDT):
+#   DRAFT      -> APERTO    false
+#   EMESSO     -> IN_CORSO  false
+#   SPEDITO    -> IN_CORSO  false
+#   CONSEGNATO -> CHIUSO    false
+#   RESO       -> CHIUSO    false
+#   ANNULLATO  -> CHIUSO    true
+#
+# SEED (playbook 20260702-02): DB vivo -> backfill UPDATE qui sotto keyed su
+# codice_interno, poi SET NOT NULL su fase (fail-fast su stati non mappati).
+# Fresh DB -> tabella vuota, backfill no-op; il NOT NULL e' soddisfatto dalla
+# CSV stati_doc_ddt.csv estesa con fase/is_abortito (80_data, loader runOnChange).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260714-01-alter-stati-doc-ddt-add-fase-is-abortito-mctit.yaml
+
+  - changeSet:
+      id: 20260714-01-alter-stati-doc-ddt-add-fase-is-abortito
+      author: mctit
+      comment: >
+        Lineage Step 1: aggiunge fase (NOT NULL, CHECK 4 valori) e is_abortito
+        (NOT NULL DEFAULT false) a config.stati_doc_ddt, con backfill della mappa
+        per i 6 stati DDT.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: stati_doc_ddt
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_ddt
+                ADD COLUMN fase        VARCHAR(20),
+                ADD COLUMN is_abortito BOOLEAN NOT NULL DEFAULT false;
+
+              -- Backfill mappa dichiarata dal dominio (DB vivo; no-op su fresh DB
+              -- dove il seed arriva da 80_data). Keyed su codice_interno.
+              UPDATE config.stati_doc_ddt s
+                 SET fase        = m.fase,
+                     is_abortito = m.is_abortito
+                FROM (VALUES
+                        ('DRAFT',      'APERTO',   false),
+                        ('EMESSO',     'IN_CORSO', false),
+                        ('SPEDITO',    'IN_CORSO', false),
+                        ('CONSEGNATO', 'CHIUSO',   false),
+                        ('RESO',       'CHIUSO',   false),
+                        ('ANNULLATO',  'CHIUSO',   true)
+                     ) AS m(codice_interno, fase, is_abortito)
+               WHERE s.codice_interno = m.codice_interno;
+
+              -- Fail-fast voluto: uno stato non mappato blocca qui la migration.
+              ALTER TABLE config.stati_doc_ddt
+                ALTER COLUMN fase SET NOT NULL;
+
+              ALTER TABLE config.stati_doc_ddt
+                ADD CONSTRAINT chk_stati_doc_ddt_fase
+                CHECK (fase IN ('APERTO', 'IN_ATTESA', 'IN_CORSO', 'CHIUSO'));
+
+              COMMENT ON COLUMN config.stati_doc_ddt.fase IS
+                  'Fase normalizzata del ciclo DDT (lineage/genealogia documenti): '
+                  'APERTO | IN_ATTESA | IN_CORSO | CHIUSO. Stessa scala di '
+                  'stati_doc_preventivi/ordini/offerte. Usata per frontiera e display.';
+              COMMENT ON COLUMN config.stati_doc_ddt.is_abortito IS
+                  'true = stato di annullamento (ANNULLATO). La frontiera del lineage '
+                  'esclude i nodi con fase=CHIUSO oppure is_abortito=true.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_ddt
+                DROP CONSTRAINT IF EXISTS chk_stati_doc_ddt_fase;
+              ALTER TABLE config.stati_doc_ddt
+                DROP COLUMN IF EXISTS is_abortito,
+                DROP COLUMN IF EXISTS fase;

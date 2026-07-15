@@ -91,6 +91,9 @@ class TestDdtApi(JwtMockedApiTest):
         self.assertEqual(
             resp.json()["error"]["code"], "E_UI_EXPORT_LIMIT_EXCEEDED",
         )
+        # Regressione bug cap-200: l'export deve alzare il cap oltre 200
+        # (max_limit), altrimenti il file uscirebbe troncato in silenzio.
+        self.assertGreater(mock_list.call_args.kwargs["max_limit"], 200)
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.crea_ddt")

@@ -22,6 +22,12 @@ export function getReso(id) {
   return api.get(`${BASE}/${id}/`)
 }
 
+// Export CSV/XLSX della lista resi (DEF-1): stessi filtri/sort della lista.
+// responseType blob (download gestito dal caller via useFileDownload).
+export function exportResi(params = {}) {
+  return api.get(`${BASE}/export/`, { params, responseType: 'blob' })
+}
+
 // Crea reso da DDT (DRAFT). Payload: { ddt_id, data?, righe? } — le righe
 // opzionali ({ddt_riga_id, tipo_reso_id, qta_operativa, motivo}) vengono
 // create in transazione con la testata (pannello "crea reso" del drawer DDT).
@@ -94,6 +100,16 @@ export function listDaAccreditare(params = {}) {
 
 export function listDaRiconsegnare(params = {}) {
   return api.get(`${BASE}/da-riconsegnare/`, { params })
+}
+
+// Export CSV/XLSX delle due code (DEF-1): stessi filtri/sort della lista.
+// responseType blob (download gestito dal caller via useFileDownload).
+export function exportDaAccreditare(params = {}) {
+  return api.get(`${BASE}/da-accreditare/export/`, { params, responseType: 'blob' })
+}
+
+export function exportDaRiconsegnare(params = {}) {
+  return api.get(`${BASE}/da-riconsegnare/export/`, { params, responseType: 'blob' })
 }
 
 // --- Dominio DDT (sorgente): righe con residuo rendibile ---

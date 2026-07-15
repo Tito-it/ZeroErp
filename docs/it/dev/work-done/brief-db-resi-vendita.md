@@ -1,6 +1,13 @@
 # Brief DB — Slice RESI vendita (motore resi su DDT)
 
 > **Tipo**: brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-13 · **Owner**: Tid
+> **Stato**: ✅ **COMPLETO E COMMITTATO** — slice DB realizzata+committata (`54ff31598`
+> PR #976) + chiusura residui post-review (`53a679900` PR #978: guard sorgente
+> CONSEGNATO `trgfn_resi_guard_ddt_consegnato` err 542, seed lista UI, pgTAP,
+> `fn_genera_ddt_riconsegna` v2 con ri-proiezione stato ordine). pgTAP T1 25/25 +
+> T2 3/3 ✅. Motore **validato E2E live** dallo smoke resi (BE-FE brief §20, 47/47).
+> Il tracker §10 riflette lo stato al primo consuntivo; tutti i changeSet
+> `20260713-10..41` sono applicati e committati (vedi §11 + nota di chiusura).
 > **Contesto**: unica slice di sviluppo DDT rimasta. Riprende la predisposizione
 > fissata in `work-done/brief-db-ddt-vendita-evasione-e-stati.md` **§12**
 > (invarianti: fulfillment append-only; transizioni di rientro stato ordine già
@@ -573,3 +580,27 @@ applicati (endpoint CRUD/conferma/annullo/ri-consegna + drawer, brief BE dedicat
 - `error_policies.py`: registrare i codici 530-541 (mapping HTTP/azione UI).
 - Payload create reso: `sorgente_uid` = uid del DDT (CONSEGNATO); l'emittente si eredita
   (non nel payload). Righe: `tipo_reso_id` per riga, `qta_operativa` + `uom_operativa_id`.
+
+### Chiusura residui post-review (2026-07-13 sera → 2026-07-14) — commit `53a679900` (PR #978)
+
+Dopo il consuntivo §11, la review BE ha fatto emergere uno **scostamento dal
+capitolato** (§3): mancava il guard DB "sorgente solo DDT in **CONSEGNATO**". Chiuso
+dal team DB:
+
+- **`trgfn_resi_guard_ddt_consegnato`** (trigger `a10` INSERT su `vendite.resi`):
+  reso ammesso solo da DDT in stato CONSEGNATO → `E_RESO_DDT_NON_CONSEGNATO` (**542**,
+  registrato in `error_policies`). Il guard applicativo di `crea_reso` resta come 4xx
+  parlante pre-INSERT; il trigger è la fonte di verità.
+- **`fn_genera_ddt_riconsegna` v2**: ri-proietta lo stato ordine anche dopo la
+  ri-spedizione (coerenza residuo↔stato ordine end-to-end).
+- **Seed lista UI `vendite.resi`** (`lista_definizione` id 9 + colonne 149-160,
+  inclusa `azioni`) applicato (brief companion `brief-db-seed-lista-ui-resi.md`).
+- **pgTAP** T1 (`db/pgtap/vendite/test-resi-motore-v1.sql`, 25/25) + T2
+  (`db/pgtap/rls/test-rls-resi-ef-whitelist-write.sql`, 3/3) verdi.
+
+**Validazione E2E live (2026-07-14).** Lo smoke `smoke-test-resi-vendita.sh`
+(BE-FE brief §20, **47/47 verde**) ha esercitato l'intero motore DB contro DB reale:
+`fn_conferma_reso` (riapertura residuo + proiezione stato ordine + flip DDT),
+`fn_genera_ddt_riconsegna` parziale/totale (con auto-svuotamento coda), `fn_annulla_reso`
+(storno + guard `E_RESO_ANNULLO_CON_RICONSEGNE`), guard sorgente CONSEGNATO, numerazione
+bespoke a CONFERMATO, viste read-side e `stato_riconsegna` derivato. **Nessuna anomalia.**

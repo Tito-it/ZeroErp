@@ -1,0 +1,131 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Lineage documenti vendite — Step 1 (Fondamenta). Aggiunge a
+# config.stati_doc_fiscale fase + is_abortito (vedi 20260714-01 per il razionale).
+# La Fattura e' NODO terminale del grafo (brief §0 Q4).
+#
+# ⚠️ DIVERSO da 20260714-01/03/06: stati_doc_fiscale ha un trigger AFTER
+# (trg_stati_doc_fiscale_chiude_lotto_guard_iud). Un UPDATE seguito da ALTER TABLE
+# nella STESSA transazione fallisce con "ha eventi trigger in sospeso" (PG non
+# consente ALTER TABLE mentre esistono eventi AFTER-trigger accodati). Percio' il
+# backfill DML e le ALTER finali (SET NOT NULL / ADD CHECK) sono in CHANGESET
+# SEPARATI (= transazioni separate: la coda trigger si svuota al commit). Le altre
+# tabelle del lineage hanno solo trigger BEFORE e restano a changeset singolo.
+#
+# MAPPA fase (copre il 100% del seed stati_doc_fiscale.csv):
+#   DRAFT      -> APERTO     false
+#   EMESSA     -> IN_CORSO   false
+#   DEFINITIVA -> IN_CORSO   false
+#   INVIATA    -> IN_ATTESA  false   (inviata allo SdI, attende ricevuta)
+#   REGISTRATA -> CHIUSO     false   (registrata in contabilita' = terminale)
+#   ANNULLATA  -> CHIUSO     true
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260714-02-alter-stati-doc-fiscale-add-fase-is-abortito-mctit.yaml
+
+  # 1/3 — DDL: aggiunta colonne (nessuna DML, nessun evento trigger accodato).
+  - changeSet:
+      id: 20260714-02-alter-stati-doc-fiscale-add-columns
+      author: mctit
+      comment: >
+        Lineage Step 1 (1/3): aggiunge le colonne fase (nullable, riempita al
+        passo 2) e is_abortito (NOT NULL DEFAULT false) a config.stati_doc_fiscale.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: stati_doc_fiscale
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_fiscale
+                ADD COLUMN fase        VARCHAR(20),
+                ADD COLUMN is_abortito BOOLEAN NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN config.stati_doc_fiscale.fase IS
+                  'Fase normalizzata del ciclo fattura (lineage/genealogia documenti): '
+                  'APERTO | IN_ATTESA | IN_CORSO | CHIUSO. Nodo terminale del grafo.';
+              COMMENT ON COLUMN config.stati_doc_fiscale.is_abortito IS
+                  'true = stato di annullamento (ANNULLATA). La frontiera del lineage '
+                  'esclude i nodi con fase=CHIUSO oppure is_abortito=true.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_fiscale
+                DROP COLUMN IF EXISTS is_abortito,
+                DROP COLUMN IF EXISTS fase;
+
+  # 2/3 — DML: backfill mappa dominio (transazione dedicata; svuota la coda
+  # trigger AFTER al commit, cosi' le ALTER del passo 3 non trovano eventi pendenti).
+  - changeSet:
+      id: 20260714-02-backfill-stati-doc-fiscale-fase
+      author: mctit
+      comment: >
+        Lineage Step 1 (2/3): backfill fase/is_abortito su config.stati_doc_fiscale
+        keyed su codice_interno (DB vivo; no-op su fresh DB dove il seed arriva da
+        80_data).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE config.stati_doc_fiscale s
+                 SET fase        = m.fase,
+                     is_abortito = m.is_abortito
+                FROM (VALUES
+                        ('DRAFT',      'APERTO',    false),
+                        ('EMESSA',     'IN_CORSO',  false),
+                        ('DEFINITIVA', 'IN_CORSO',  false),
+                        ('INVIATA',    'IN_ATTESA', false),
+                        ('REGISTRATA', 'CHIUSO',    false),
+                        ('ANNULLATA',  'CHIUSO',    true)
+                     ) AS m(codice_interno, fase, is_abortito)
+               WHERE s.codice_interno = m.codice_interno;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              UPDATE config.stati_doc_fiscale SET fase = NULL, is_abortito = false;
+
+  # 3/3 — DDL: vincoli (SET NOT NULL fail-fast su stati non mappati + CHECK 4 valori).
+  - changeSet:
+      id: 20260714-02-alter-stati-doc-fiscale-fase-constraints
+      author: mctit
+      comment: >
+        Lineage Step 1 (3/3): fase SET NOT NULL (fail-fast su stati non mappati) e
+        CHECK dei 4 valori ammessi su config.stati_doc_fiscale.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_fiscale
+                ALTER COLUMN fase SET NOT NULL;
+
+              ALTER TABLE config.stati_doc_fiscale
+                ADD CONSTRAINT chk_stati_doc_fiscale_fase
+                CHECK (fase IN ('APERTO', 'IN_ATTESA', 'IN_CORSO', 'CHIUSO'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_fiscale
+                DROP CONSTRAINT IF EXISTS chk_stati_doc_fiscale_fase;
+              ALTER TABLE config.stati_doc_fiscale
+                ALTER COLUMN fase DROP NOT NULL;

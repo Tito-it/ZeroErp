@@ -30,6 +30,7 @@ import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
+import LineagePassaggiPanel from '../../_shared/lineage/LineagePassaggiPanel.vue'
 import { STATO_RESO } from '../constants'
 import ResoForm from './ResoForm.vue'
 import ResoRigheTable from './ResoRigheTable.vue'
@@ -260,6 +261,15 @@ async function onRiconsegnaGenerata() {
               @generato="onRiconsegnaGenerata" />
           </div>
         </template>
+
+        <!-- Genealogia/lineage (pannello "Passaggi", BB condiviso lazy: per
+             il reso la catena significativa e' l'Origine: reso <- DDT <-
+             ordine <- ... app-escape interno per la consultazione in
+             readonly di stato). -->
+        <Divider />
+        <LineagePassaggiPanel
+          base-path="/vendite/resi"
+          :doc-id="props.resoId" />
       </template>
 
       <FormFooter v-if="canEditTestata && !isReadonly && !formRigaAperto"

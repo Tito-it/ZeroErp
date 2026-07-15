@@ -110,6 +110,56 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
 
 ---
 
+### 🔑 Convenzione chiave sorgente (`id` vs `uid`) — mappa e trappole
+
+> **Leggere prima di costruire qualsiasi grafo/join tra documenti** (lineage,
+> genealogia, proiezione stato). Questa convenzione è **voluta e portante**: non
+> va "ripulita".
+>
+> 📖 Per il **funzionamento completo** del meccanismo (a cosa serve, come si usa, il
+> guard, e le query per lo **stato d'uso vivo**) vedi la guida
+> [Sorgente polimorfa](/guide/sorgente-polimorfa). Questa sezione ne è la mappa-chiave.
+
+**Mappa attuale `key_selector` per tipo** (verificata sul seed):
+
+| Sorgente | `key_selector` |
+|---|---|
+| `PREVENTIVO`, `OFFERTA_COMMERCIALE` | **`uid`** (UUID) |
+| `ORDINE_VENDITA`, `CONTRATTO`, `DDT_VENDITA`, `FATTURA`, `COMMESSA`, `ATTIVITA`, `ATTIVITA_CONSUMI` | **`id`** (bigint, `::text`) |
+
+Cioè: nelle tabelle di collegamento polimorfe (`pratiche.pratiche_sorgenti`,
+`vendite.commesse_sorgenti`) e nelle viste `vw_stato_sorgente_*`, la colonna
+`sorgente_uid` (di tipo `text`) contiene **l'uid per preventivo/offerta** e
+**l'id (::text) per gli altri**. È esattamente ciò che validano
+`script.trgfn_guard_sorgente_polimorfa` e su cui sono costruite le
+`vw_stato_sorgente_*`.
+
+**⚠️ Due meccanismi diversi — non confonderli:**
+
+1. **Sorgente polimorfa** (questa tabella + `pratiche_sorgenti` /
+   `commesse_sorgenti` / `vw_stato_sorgente_*`): chiave nodo =
+   `(sorgente_tipo_id, sorgente_uid)`, con `sorgente_uid` **secondo
+   `key_selector`**. Guard attivo: `trgfn_guard_sorgente_polimorfa`.
+2. **Colonne tipizzate dirette** (fuori dal meccanismo polimorfo): es.
+   `vendite.ddt.sorgente_uid` e `vendite.resi.sorgente_uid` sono **`uuid`** (puntano
+   a `ordini.uid` / `ddt.uid`); `vendite.ordini.documento_origine_id` e
+   `vendite.contratti.offerta_id` sono **`bigint`** (puntano per `id`). Ognuna è
+   corretta per sé, ma **non** passa per `key_selector`.
+
+**Regola pratica per chi unisce documenti (es. lineage):** usare la **chiave
+nativa polimorfa** `(sorgente_tipo_id, sorgente_uid)` come identità del nodo (per
+la commessa → `id::text`, coerente con `key_selector='id'`). Le colonne tipizzate
+dirette del punto 2 vanno **tradotte** su quella chiave con un join alla tabella
+target (es. `ddt.sorgente_uid` uuid → `ordini.id::text`). **Non** standardizzare i
+due meccanismi a un'unica chiave "al volo": è un refactor del motore polimorfo
+(guard + resolver + `vw_stato_sorgente_*` + writer), non un ritocco.
+
+> Nota storica: le tabelle **più vecchie** referenziano per `id`, quelle **più
+> recenti** (ddt, resi) per `uid`. La disomogeneità è incapsulata da `key_selector`
+> e dai tipi di colonna; si vede solo unendo tutto in un grafo unico.
+
+---
+
 ### Relazioni
 
 `config.sorgenti` è una tabella **di dominio/i18n logico** usata tipicamente da:

@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Lineage documenti vendite — Step 1. Estende config.sorgenti.scope con il valore
+# REVERSE_FLOW, richiesto dal nuovo tipo-sorgente RESO_VENDITA (id 15, seed in
+# 80_data). Il reso e' un documento del FLUSSO INVERSO (la merce torna indietro):
+# non alimenta commesse (NON PUSH_COMMESSA, che il backend valida contro
+# _SORGENTE_FN_MAP in commesse_repository.py) e non e' un inserimento diretto
+# generico. REVERSE_FLOW e' la classificazione semanticamente corretta.
+#
+# Il CHECK chk_sorgenti_scope (ultima rev 20260524-01) elencava:
+#   PUSH_COMMESSA, PIPELINE_MARKER, ROW_VALIDATOR, POST_INVOICE, DIRECT_ENTRY,
+#   PUSH_CONTRATTO
+#
+# ORDINE: 00_schema gira prima di 80_data, quindi il CHECK ammette gia'
+# REVERSE_FLOW quando la riga RESO_VENDITA viene caricata dal seed.
+# Strategia: DROP + ADD CONSTRAINT (PostgreSQL non supporta ALTER CHECK inline).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260714-07-alter-sorgenti-scope-add-reverse-flow-mctit.yaml
+
+  - changeSet:
+      id: 20260714-07-alter-sorgenti-scope-add-reverse-flow
+      author: mctit
+      comment: >
+        Estende chk_sorgenti_scope con REVERSE_FLOW per il tipo-sorgente
+        RESO_VENDITA (ramo inverso del lineage documenti vendite).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: sorgenti
+            - columnExists:
+                schemaName: config
+                tableName: sorgenti
+                columnName: scope
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rimozione vincolo esistente (DROP obbligatorio: PG non supporta ALTER CHECK).
+              ALTER TABLE config.sorgenti
+                  DROP CONSTRAINT chk_sorgenti_scope;
+
+              -- Ricreazione con l'aggiunta di REVERSE_FLOW.
+              -- REVERSE_FLOW: sorgente documento del flusso inverso (la merce/valore
+              --   torna indietro rispetto al flusso di vendita), es. reso vendita.
+              ALTER TABLE config.sorgenti
+                  ADD CONSTRAINT chk_sorgenti_scope
+                  CHECK (scope IN (
+                      'PUSH_COMMESSA',
+                      'PIPELINE_MARKER',
+                      'ROW_VALIDATOR',
+                      'POST_INVOICE',
+                      'DIRECT_ENTRY',
+                      'PUSH_CONTRATTO',
+                      'REVERSE_FLOW'
+                  ));
+
+              COMMENT ON COLUMN config.sorgenti.scope IS
+                  'Classificazione funzionale della sorgente: '
+                  'PUSH_COMMESSA   — documenti business che alimentano commesse (preventivo, contratto, ordine, ddt); '
+                  'PIPELINE_MARKER — marcatori interni pipeline attivita'' fatturabili; '
+                  'ROW_VALIDATOR   — validazione polimorfa riga (legacy); '
+                  'POST_INVOICE    — riconciliazione post-fattura; '
+                  'DIRECT_ENTRY   — inserimento diretto (futuro); '
+                  'PUSH_CONTRATTO  — documenti che generano un contratto DRAFT tramite push 1:1 (offerta_commerciale); '
+                  'REVERSE_FLOW    — documenti del flusso inverso, merce/valore che torna indietro (reso vendita).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.sorgenti
+                  DROP CONSTRAINT IF EXISTS chk_sorgenti_scope;
+
+              ALTER TABLE config.sorgenti
+                  ADD CONSTRAINT chk_sorgenti_scope
+                  CHECK (scope IN (
+                      'PUSH_COMMESSA',
+                      'PIPELINE_MARKER',
+                      'ROW_VALIDATOR',
+                      'POST_INVOICE',
+                      'DIRECT_ENTRY',
+                      'PUSH_CONTRATTO'
+                  ));
