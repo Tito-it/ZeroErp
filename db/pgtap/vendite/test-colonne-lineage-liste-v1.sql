@@ -21,10 +21,13 @@
 --     23)  invariante: pratica_numero NULL -> n_pratiche = 0 (preventivi)
 --     24)  §5 (skip-able): PRV0000185 -> pratica 'PRA-0000818', frontiera
 --          'DDT0000031', fase 'CHIUSO'
+--     25)  §7 follow-up: preset default liste 4..8 hanno pratica/fase/transito
+--          con visibile=true (15 righe lista_preset_colonna, DDT incluso)
+--     26)  §7 follow-up: preset ddt_default (lista 8) creato e is_default
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(24);
+SELECT plan(26);
 
 -- ---- 1..15: colonne nuove presenti sulle 5 viste ------------------------
 SELECT has_column('vendite', 'vw_preventivi_lista',          'pratica_numero',  'preventivi: pratica_numero');
@@ -95,6 +98,22 @@ SELECT CASE
             '§5 PRV0000185: pratica + frontiera + fase in lista')
     ELSE skip('PRV0000185 non presente nei dati', 1)
 END;
+
+-- ---- 25..26: §7 follow-up — visibilita' di default sui preset 4..8 -------
+SELECT is(
+    (SELECT count(*)::int
+       FROM ui.lista_preset_colonna pc
+       JOIN ui.lista_colonna lc ON lc.id = pc.colonna_id
+       JOIN ui.lista_preset pr ON pr.id = pc.preset_id AND pr.is_default IS TRUE
+      WHERE pc.preset_id IN (4,5,6,7,8)
+        AND lc.codice IN ('pratica','fase','transito')
+        AND pc.visibile IS TRUE),
+    15, 'preset default (5 liste): 15 colonne lineage visibili');
+
+SELECT ok(
+    EXISTS (SELECT 1 FROM ui.lista_preset
+             WHERE lista_id = 8 AND codice = 'ddt_default' AND is_default IS TRUE AND attivo),
+    'preset ddt_default creato e is_default');
 
 SELECT * FROM finish();
 ROLLBACK;
