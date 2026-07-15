@@ -12,6 +12,7 @@ import { computed, nextTick, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import DatePicker from 'primevue/datepicker'
+import Divider from 'primevue/divider'
 import AppDialog from '../../../core/components/AppDialog.vue'
 import Drawer from 'primevue/drawer'
 import InputNumber from 'primevue/inputnumber'
@@ -31,6 +32,7 @@ import BillingAccountLookup from '../../../core/components/BillingAccountLookup.
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
+import LineagePassaggiPanel from '../../_shared/lineage/LineagePassaggiPanel.vue'
 import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import EmittenteFiscaleField from '../../../core/components/EmittenteFiscaleField.vue'
@@ -1079,6 +1081,15 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                 <Message severity="warn" :closable="false" size="small">
                   {{ detail.motivazione_rifiuto }}
                 </Message>
+              </template>
+
+              <!-- Genealogia/lineage (pannello "Passaggi", BB condiviso
+                   lazy: fetch al primo expand). Solo in EDIT. -->
+              <template v-if="isEdit && detail">
+                <Divider />
+                <LineagePassaggiPanel
+                  base-path="/vendite/offerte"
+                  :doc-id="offertaId" />
               </template>
 
             </TabPanel>

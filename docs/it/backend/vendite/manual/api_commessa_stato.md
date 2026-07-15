@@ -19,6 +19,13 @@ Sulla risorsa `stato` di una commessa:
 
 View: `ApiCommessaStato` (`apps.vendite.api.views`) — `def get` + `def post` sulla stessa URL.
 
+> **Vedi anche — genealogia commessa (Fase C lineage, 2026-07-15):**
+> `GET /api/v1/vendite/commesse/<id>/passaggi/` espone la genealogia della
+> commessa (sorgenti che l'hanno generata, ROOT/COLLEGATO, + fatture a valle).
+> Contratto nel manuale del BB condiviso:
+> [api_lineage_passaggi.md](api_lineage_passaggi.md). Consumer FE:
+> `CommessaDrawer` leggero aperto dalle tappe COMMESSA dei pannelli "Passaggi".
+
 ## Input
 
 - Metodo: `GET`

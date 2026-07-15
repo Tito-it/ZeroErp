@@ -8,6 +8,7 @@
 # Contiene operazioni generiche sullo schema vendite che non appartengono
 # a nessun sottodominio specifico (pipeline, reset, ecc.).
 
+import re
 from datetime import date
 from typing import Any
 
@@ -22,6 +23,9 @@ from apps.vendite.types import (
     DashCompetenzaAttivitaRow,
     DashCompetenzaErroreRow,
     DashCompetenzaMensileRow,
+    LineageNodoRow,
+    LineagePassaggioRow,
+    LineageSorgenteRow,
     LottoFattureRow,
     LottoListRow,
 )
@@ -1020,3 +1024,203 @@ class VenditeRepository:
                 }
             )
         return result, total_count
+
+    # ------------------------------------------------------------------
+    # Lineage documenti (genealogia/transiti — brief-be-fe-lineage)
+    # Letture generiche sulla famiglia vw_documento_lineage* +
+    # fn_documento_lineage. Tutte security_invoker/SECURITY INVOKER: la
+    # RLS emittente del chiamante si applica da sola (niente auth_user_id).
+    # ------------------------------------------------------------------
+
+    # Scopo: Risolve una sorgente lineage da config.sorgenti per
+    #        codice_interno (chiave stabile): id, key_selector e tabella
+    #        target per la traduzione doc_id -> chiave nodo polimorfa.
+    def get_lineage_sorgente(self, codice_interno: str) -> LineageSorgenteRow | None:
+        sql = """
+            SELECT s.id, s.key_selector, s.target_table::text
+            FROM config.sorgenti s
+            WHERE s.codice_interno = %s
+              AND s.attivo IS TRUE
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [codice_interno])
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": int(row[0]),
+            "key_selector": str(row[1]),
+            "target_table": str(row[2]),
+        }
+
+    # Scopo: Traduce il doc_id di dominio nella chiave nodo lineage secondo
+    #        la convenzione key_selector (config manual sorgenti): 'id' ->
+    #        id::text senza round-trip; 'uid' -> SELECT uid dalla tabella
+    #        target. Ritorna None se il documento non esiste (o e' fuori
+    #        scope RLS: indistinguibile per design).
+    def resolve_lineage_node_uid(
+        self, *, target_table: str, key_selector: str, doc_id: int
+    ) -> str | None:
+        if key_selector == "id":
+            return str(doc_id)
+        # Guardia identifier: target_table viene da config.sorgenti
+        # (regclass seedata), mai da input utente — la regex intercetta
+        # solo dati sporchi da refactor (stesso pattern del repo note).
+        if not re.fullmatch(r"[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?", target_table):
+            raise ValueError(f"target_table non valida: {target_table!r}")
+        sql = f"SELECT uid::text FROM {target_table} WHERE id = %s"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [doc_id])
+            row = cursor.fetchone()
+        return None if not row else str(row[0])
+
+    # Scopo: Riga summary lineage di un documento (nodo + pratica +
+    #        frontiera + contatori) da vw_documento_lineage, con decodifica
+    #        dei tipi in codice_interno via JOIN a config.sorgenti (mai id
+    #        numerici verso il FE). None se il nodo non esiste.
+    def get_lineage_nodo(self, *, tipo_id: int, node_uid: str) -> LineageNodoRow | None:
+        sql = """
+            SELECT
+                l.tipo_id,
+                s.codice_interno            AS tipo_codice,
+                l.uid,
+                l.codice,
+                l.stato_codice_interno,
+                l.stato_codice,
+                l.stato_descrizione,
+                l.fase,
+                l.is_abortito,
+                l.pratica_id,
+                l.pratica_numero,
+                l.n_pratiche,
+                l.frontiera_tipo_id,
+                sf.codice_interno           AS frontiera_tipo_codice,
+                l.frontiera_uid,
+                l.frontiera_codice,
+                l.frontiera_stato_codice_interno,
+                l.frontiera_fase,
+                l.n_discendenti_diretti,
+                l.n_discendenti_attivi,
+                l.is_transitato,
+                l.n_sorgenti,
+                l.root_codice
+            FROM vendite.vw_documento_lineage l
+            JOIN config.sorgenti s ON s.id = l.tipo_id
+            LEFT JOIN config.sorgenti sf ON sf.id = l.frontiera_tipo_id
+            WHERE l.tipo_id = %s
+              AND l.uid = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [tipo_id, node_uid])
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "tipo_id": int(row[0]),
+            "tipo_codice": str(row[1]),
+            "uid": str(row[2]),
+            "codice": row[3],
+            "stato_codice_interno": row[4],
+            "stato_codice": row[5],
+            "stato_descrizione": row[6],
+            "fase": row[7],
+            "is_abortito": bool(row[8]),
+            "pratica_id": None if row[9] is None else int(row[9]),
+            "pratica_numero": row[10],
+            "n_pratiche": int(row[11]),
+            "frontiera_tipo_id": None if row[12] is None else int(row[12]),
+            "frontiera_tipo_codice": row[13],
+            "frontiera_uid": row[14],
+            "frontiera_codice": row[15],
+            "frontiera_stato_codice_interno": row[16],
+            "frontiera_fase": row[17],
+            "n_discendenti_diretti": int(row[18]),
+            "n_discendenti_attivi": int(row[19]),
+            "is_transitato": bool(row[20]),
+            "n_sorgenti": int(row[21]),
+            "root_codice": row[22],
+        }
+
+    # Scopo: Catena dei passaggi di un documento via
+    #        fn_documento_lineage(tipo, uid, direzione), decodificando i
+    #        tipi degli estremi in codice_interno (JOIN config.sorgenti).
+    #        Ordine stabile per il rendering timeline (colonna `ordine`).
+    def list_lineage_passaggi(
+        self, *, tipo_id: int, node_uid: str, direzione: str
+    ) -> list[LineagePassaggioRow]:
+        sql = """
+            SELECT
+                p.livello,
+                p.ordine,
+                p.arco,
+                p.ruolo,
+                p.from_tipo_id,
+                sf.codice_interno           AS from_tipo_codice,
+                p.from_uid,
+                p.from_codice,
+                nf.stato_codice_interno     AS from_stato_codice_interno,
+                nf.fase                     AS from_fase,
+                -- Id numerico apribile nel drawer di dettaglio: uid::bigint
+                -- per i tipi id-keyed; traduzione uuid->id per preventivo/
+                -- offerta (unici key_selector='uid'). NULL = fuori scope RLS
+                -- o nodo senza drawer (fattura/commessa) -> FE non apre.
+                COALESCE(pfrom.id, ofrom.id,
+                    CASE WHEN sf.key_selector = 'id'
+                         THEN NULLIF(p.from_uid, '')::bigint END) AS from_doc_id,
+                p.to_tipo_id,
+                st.codice_interno           AS to_tipo_codice,
+                p.to_uid,
+                p.to_codice,
+                p.to_stato_codice_interno,
+                p.to_fase,
+                p.to_is_abortito,
+                COALESCE(pto.id, oto.id,
+                    CASE WHEN st.key_selector = 'id'
+                         THEN NULLIF(p.to_uid, '')::bigint END) AS to_doc_id,
+                p.is_ramo_inverso
+            FROM vendite.fn_documento_lineage(%s, %s, %s) p
+            LEFT JOIN config.sorgenti sf ON sf.id = p.from_tipo_id
+            LEFT JOIN config.sorgenti st ON st.id = p.to_tipo_id
+            LEFT JOIN vendite.vw_documento_lineage_nodi nf
+                   ON nf.tipo_id = p.from_tipo_id AND nf.uid = p.from_uid
+            LEFT JOIN vendite.preventivi pfrom
+                   ON sf.codice_interno = 'PREVENTIVO' AND pfrom.uid::text = p.from_uid
+            LEFT JOIN vendite.offerte_commerciali ofrom
+                   ON sf.codice_interno = 'OFFERTA_COMMERCIALE' AND ofrom.uid::text = p.from_uid
+            LEFT JOIN vendite.preventivi pto
+                   ON st.codice_interno = 'PREVENTIVO' AND pto.uid::text = p.to_uid
+            LEFT JOIN vendite.offerte_commerciali oto
+                   ON st.codice_interno = 'OFFERTA_COMMERCIALE' AND oto.uid::text = p.to_uid
+            ORDER BY p.ordine
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [tipo_id, node_uid, direzione])
+            rows = cursor.fetchall()
+
+        result: list[LineagePassaggioRow] = []
+        for row in rows:
+            result.append(
+                {
+                    "livello": int(row[0]),
+                    "ordine": int(row[1]),
+                    "arco": str(row[2]),
+                    "ruolo": row[3],
+                    "from_tipo_id": int(row[4]),
+                    "from_tipo_codice": row[5],
+                    "from_uid": str(row[6]),
+                    "from_codice": row[7],
+                    "from_stato_codice_interno": row[8],
+                    "from_fase": row[9],
+                    "from_doc_id": None if row[10] is None else int(row[10]),
+                    "to_tipo_id": int(row[11]),
+                    "to_tipo_codice": row[12],
+                    "to_uid": str(row[13]),
+                    "to_codice": row[14],
+                    "to_stato_codice_interno": row[15],
+                    "to_fase": row[16],
+                    "to_is_abortito": bool(row[17]),
+                    "to_doc_id": None if row[18] is None else int(row[18]),
+                    "is_ramo_inverso": bool(row[19]),
+                }
+            )
+        return result

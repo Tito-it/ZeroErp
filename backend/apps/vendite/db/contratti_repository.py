@@ -74,6 +74,9 @@ _ORDER_COLS_CONTRATTI: dict[str, str] = {
     "categoria_cliente_snapshot_codice": "v.categoria_cliente_snapshot_codice",
     "data_insert": "v.data_insert",
     "data_update": "v.data_update",
+    # Colonne lineage (Fase B): pratica + fase ordinabili (frontiera no).
+    "pratica_numero": "v.pratica_numero",
+    "fase": "v.fase",
 }
 
 
@@ -402,8 +405,9 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
 
             cursor.execute(
                 f"""
-                SELECT v.*
+                SELECT v.*, s.codice_interno AS frontiera_tipo_codice
                   FROM vendite.vw_contratti_lista v
+                  LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
                 {where_clause}
                  ORDER BY {order_column} {direction}, v.id ASC
                  LIMIT %s OFFSET %s

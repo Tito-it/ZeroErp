@@ -39,6 +39,7 @@ import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
 import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
+import LineagePassaggiPanel from '../../_shared/lineage/LineagePassaggiPanel.vue'
 import OrdiniForm from './OrdiniForm.vue'
 import OrdiniRigheTable from './OrdiniRigheTable.vue'
 import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
@@ -599,6 +600,16 @@ const drawerActions = computed(() => {
             :readonly="isReadonlyPuro"
             @evaso="onEvaso" />
         </div>
+      </template>
+
+      <!-- Genealogia/lineage (pannello "Passaggi", BB condiviso lazy: fetch
+           al primo expand; app-escape interno per la consultazione in
+           readonly di stato). -->
+      <template v-if="contentReady && hasDetail">
+        <Divider />
+        <LineagePassaggiPanel
+          base-path="/vendite/ordini"
+          :doc-id="effectiveOrdineId" />
       </template>
 
       <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto"

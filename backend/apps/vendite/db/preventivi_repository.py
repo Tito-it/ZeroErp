@@ -57,6 +57,10 @@ _ORDER_COLS_PREVENTIVI: dict[str, str] = {
     "emittente_fiscale_codice": "v.emittente_fiscale_codice",
     "competenza_mese": "v.competenza_mese",
     "data_insert": "v.data_insert",
+    # Colonne lineage (Fase B brief-be-fe-lineage): pratica + fase ordinabili
+    # (frontiera NON ordinabile, seed ui.lista_colonna transito.ordinabile=false).
+    "pratica_numero": "v.pratica_numero",
+    "fase": "v.fase",
 }
 
 # Risoluzione "rev attiva" del legame ROOT preventivo↔pratica/flusso
@@ -206,8 +210,12 @@ class PreventiviRepository(
         # (frontend-standards "REGOLA CRITICA: Paginazione deterministica").
         # Senza id, righe con stessa data/numero (es. revisioni) possono
         # comparire duplicate o sparire fra pagine consecutive.
+        # Decodifica frontiera_tipo_id -> codice_interno per il chip transito FE
+        # (mai id numerici verso il FE, memoria feedback_no_hardcoded_ids).
         data_sql = f"""
-            SELECT v.* FROM vendite.vw_preventivi_lista v
+            SELECT v.*, s.codice_interno AS frontiera_tipo_codice
+            FROM vendite.vw_preventivi_lista v
+            LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
             {where}
             ORDER BY {order_column} {direction}, v.id ASC
             LIMIT %s OFFSET %s

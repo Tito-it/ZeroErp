@@ -472,6 +472,22 @@ fiscale (ROUND 2 per aliquota, DPR 633/72 art. 21) vive nelle viste DB
 |---|---|---|
 | `extract_doc_list_filters` | [_list_filters_helpers.py](../../../../backend/apps/vendite/api/_list_filters_helpers.py) | Estrae dalla query string i filtri lista comuni dei documenti vendita (list + export): `stato_codice_interno` → kwarg `stato_codice`, `billing_account_id`, `data_da`/`data_a` → `data_al`, e `utility_id` con `with_utility=True`. NESSUN default temporale backend (il default `data_da` anno-1 lo applica la UI). Estratto 2026-07-13 (regola del 2 alla 3ª copia, ok Tid): unifica gli `_extract_list_filters` di views_ordini/views_ddt/views_resi (ordini/ddt con utility, resi senza; le code resi derivano rimuovendo `stato_codice`). |
 
+## Vendite — Lineage documenti / pannello "Passaggi" (`apps/vendite/`)
+
+Genealogia/transiti dei documenti vendite (brief-be-fe-lineage-documenti-vendite,
+Fase A 2026-07-15). Tutta la logica di grafo vive nel DB
+(`vw_documento_lineage*` + `fn_documento_lineage`, RLS invoker): qui letture
+sottili + un endpoint per dominio. Gemello FE: `src/vendite/_shared/lineage/`.
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `VenditeRepository.get_lineage_sorgente` | [vendite_repository.py](../../../../backend/apps/vendite/db/vendite_repository.py) | Risolve `(id, key_selector, target_table)` da `config.sorgenti` per `codice_interno` — base della traduzione doc_id → chiave nodo polimorfa (convenzione `config.manual/sorgenti.md`). |
+| `VenditeRepository.resolve_lineage_node_uid` | [vendite_repository.py](../../../../backend/apps/vendite/db/vendite_repository.py) | Traduce il pk di dominio nella chiave nodo: `id::text` senza round-trip, oppure `SELECT uid FROM <target_table>` (regex guard sull'identifier, pattern repo note). `None` = inesistente/fuori scope RLS. |
+| `VenditeRepository.get_lineage_nodo` | [vendite_repository.py](../../../../backend/apps/vendite/db/vendite_repository.py) | Riga summary di `vw_documento_lineage` (nodo + pratica + frontiera + contatori), tipi decodificati in `codice_interno` via JOIN `config.sorgenti` (mai id numerici verso il FE). |
+| `VenditeRepository.list_lineage_passaggi` | [vendite_repository.py](../../../../backend/apps/vendite/db/vendite_repository.py) | Catena `fn_documento_lineage(tipo, uid, direzione)` ordinata per `ordine`; decodifica tipi da/a + decorazione stato/fase del lato FROM (per la direzione `indietro`). |
+| `vendite_service.get_documento_passaggi` | [vendite_service.py](../../../../backend/apps/vendite/services/vendite_service.py) | Orchestrazione pannello "Passaggi": whitelist tipo (`LINEAGE_TIPI_DOCUMENTO`), traduzione chiave nodo, summary + traversal in ENTRAMBE le direzioni (P-2); frontiera normalizzata (`= nodo stesso` → `None`), pratica difensiva con `n_pratiche` (Q5). |
+| `build_passaggi_view` | [lineage_views.py](../../../../backend/apps/vendite/api/lineage_views.py) | Factory della view `GET /<dominio>/<id>/passaggi/` (stessa architettura di `build_riepilogo_iva_view`); le 7 view di dominio (6 documenti + commessa, Fase C) sono istanziate nello stesso modulo (il delta è solo `tipo_codice`/kwarg). Doc: [api_lineage_passaggi.md](../../backend/vendite/manual/api_lineage_passaggi.md). |
+
 ## Vendite — Indirizzi documento (`apps/vendite/`)
 
 BB per gli indirizzi documento (snapshot congelato + origine soft) sui 5 domini

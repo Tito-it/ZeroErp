@@ -2726,6 +2726,28 @@
     "col_azione": "Azione suggerita",
     "col_stato": "Stato"
   },
+  "lineage": {
+    "titolo": "Passaggi",
+    "pratica": "Pratica",
+    "frontiera": "In esecuzione",
+    "origine": "Origine",
+    "destinazioni": "Destinazioni",
+    "nessun_transito": "Non ancora transitato",
+    "nessuna_origine": "Nessun documento a monte",
+    "ramo_inverso": "ramo di ritorno",
+    "commessa_titolo": "Genealogia commessa",
+    "apri_documento": "Apri documento",
+    "altre_pratiche": "+{n} altre",
+    "altre_attive": "+{n} altre attive",
+    "tipo_preventivo": "Preventivo",
+    "tipo_offerta_commerciale": "Offerta",
+    "tipo_ordine_vendita": "Ordine",
+    "tipo_contratto": "Contratto",
+    "tipo_ddt_vendita": "DDT",
+    "tipo_fattura": "Fattura",
+    "tipo_commessa": "Commessa",
+    "tipo_reso_vendita": "Reso"
+  },
   "dash_comune": {
     "area_preventivi": "Preventivi",
     "area_ordini": "Ordini",
@@ -3457,6 +3479,11 @@
         "col_size": "Dimensione"
       }
     }
+  },
+  "lista": {
+    "col_pratica": "Pratica",
+    "col_fase": "Fase",
+    "col_transito": "Transito"
   },
   "lista_config": {
     "modal_title": "Personalizza colonne",

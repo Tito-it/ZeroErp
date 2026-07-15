@@ -17,6 +17,7 @@ from apps.vendite.api.ddt_documenti_views import (
     ApiDdtDocumentoGenera,
     ApiDdtEmetti,
 )
+from apps.vendite.api.lineage_views import ApiDdtPassaggi
 from apps.vendite.api.note_views import ApiDdtNoteDetail, ApiDdtNoteList
 from apps.vendite.api.views_ddt import (
     ApiDdtCambiaStato,
@@ -48,6 +49,9 @@ urlpatterns = [
     path("<int:ddt_id>/", ApiDdtDetail.as_view(), name="vendite-ddt-detail"),
     path("<int:ddt_id>/riepilogo-iva/", ApiDdtRiepilogoIva.as_view(),
          name="vendite-ddt-riepilogo-iva"),
+    # Genealogia/lineage (pannello "Passaggi", brief-be-fe-lineage).
+    path("<int:ddt_id>/passaggi/", ApiDdtPassaggi.as_view(),
+         name="vendite-ddt-passaggi"),
     path("<int:ddt_id>/indirizzi/", ApiDdtIndirizzi.as_view(),
          name="vendite-ddt-indirizzi"),
     path("<int:ddt_id>/indirizzi/<int:indirizzo_id>/",

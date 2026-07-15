@@ -7,6 +7,7 @@
 
 from django.urls import path
 
+from apps.vendite.api.lineage_views import ApiPreventivoPassaggi
 from apps.vendite.api.note_views import (
     ApiPreventivoNoteDetail,
     ApiPreventivoNoteList,
@@ -86,6 +87,12 @@ urlpatterns = [
         "<int:preventivo_id>/",
         ApiPreventivoDetail.as_view(),
         name="vendite-preventivi-detail",
+    ),
+    # Genealogia/lineage (pannello "Passaggi", brief-be-fe-lineage).
+    path(
+        "<int:preventivo_id>/passaggi/",
+        ApiPreventivoPassaggi.as_view(),
+        name="vendite-preventivi-passaggi",
     ),
     # Cambio stato
     path(

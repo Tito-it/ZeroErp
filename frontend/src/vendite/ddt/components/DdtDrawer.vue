@@ -41,6 +41,7 @@ import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
 import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
+import LineagePassaggiPanel from '../../_shared/lineage/LineagePassaggiPanel.vue'
 import DdtForm from './DdtForm.vue'
 import DdtRigheTable from './DdtRigheTable.vue'
 import DdtNoteDrawer from './DdtNoteDrawer.vue'
@@ -588,6 +589,14 @@ const drawerActions = computed(() => {
               @reso-creato="loadDetail()" />
           </div>
         </template>
+
+        <!-- Genealogia/lineage (pannello "Passaggi", BB condiviso lazy:
+             fetch al primo expand; app-escape interno per la consultazione
+             in readonly di stato). -->
+        <Divider />
+        <LineagePassaggiPanel
+          base-path="/vendite/ddt"
+          :doc-id="effectiveDdtId" />
 
       </template>
 

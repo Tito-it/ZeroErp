@@ -130,6 +130,9 @@ _ORDER_COLS_OFFERTE: dict[str, str] = {
     # nel detail. Mappato a data_insert come fallback safe per backward compat
     # di eventuali order_by sortando data_update.
     "data_update": "v.data_insert",
+    # Colonne lineage (Fase B): pratica + fase ordinabili (frontiera no).
+    "pratica_numero": "v.pratica_numero",
+    "fase": "v.fase",
 }
 
 
@@ -432,9 +435,11 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             search=search,
             solo_attiva=solo_attiva,
         )
+        # frontiera_tipo_codice decodificato per il chip transito FE.
         sql = f"""
-            SELECT v.*
+            SELECT v.*, s.codice_interno AS frontiera_tipo_codice
               {_FROM_LISTA_OFFERTE}
+              LEFT JOIN config.sorgenti s ON s.id = v.frontiera_tipo_id
               {where_clause}
              ORDER BY {order_col} {order_dir_safe}, v.id DESC
              LIMIT %s OFFSET %s

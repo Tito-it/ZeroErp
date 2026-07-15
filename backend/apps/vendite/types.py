@@ -666,3 +666,65 @@ class DashCompetenzaErroreRow(TypedDict):
     error_code: str | None
     messaggio: str | None
     data_evento: str | None
+
+
+class LineageSorgenteRow(TypedDict):
+    # Riga di config.sorgenti per la risoluzione della chiave nodo lineage
+    # (convenzione chiave sorgente: docs/it/dbzero/config/manual/sorgenti.md).
+    id: int
+    key_selector: str
+    target_table: str
+
+
+class LineageNodoRow(TypedDict):
+    # Riga summary di vendite.vw_documento_lineage per un documento:
+    # nodo + pratica collegata + frontiera forward + contatori genealogia.
+    tipo_id: int
+    tipo_codice: str
+    uid: str
+    codice: str | None
+    stato_codice_interno: str | None
+    stato_codice: str | None
+    stato_descrizione: str | None
+    fase: str | None
+    is_abortito: bool
+    pratica_id: int | None
+    pratica_numero: str | None
+    n_pratiche: int
+    frontiera_tipo_id: int | None
+    frontiera_tipo_codice: str | None
+    frontiera_uid: str | None
+    frontiera_codice: str | None
+    frontiera_stato_codice_interno: str | None
+    frontiera_fase: str | None
+    n_discendenti_diretti: int
+    n_discendenti_attivi: int
+    is_transitato: bool
+    n_sorgenti: int
+    root_codice: str | None
+
+
+class LineagePassaggioRow(TypedDict):
+    # Riga del traversal vendite.fn_documento_lineage (pannello "Passaggi"):
+    # un arco della catena, con stato/fase del nodo target e flag ramo
+    # inverso (arco R DDT->Reso, merce che torna).
+    livello: int
+    ordine: int
+    arco: str
+    ruolo: str | None
+    from_tipo_id: int
+    from_tipo_codice: str | None
+    from_uid: str
+    from_codice: str | None
+    from_stato_codice_interno: str | None
+    from_fase: str | None
+    from_doc_id: int | None
+    to_tipo_id: int
+    to_tipo_codice: str | None
+    to_uid: str
+    to_codice: str | None
+    to_stato_codice_interno: str | None
+    to_fase: str | None
+    to_is_abortito: bool
+    to_doc_id: int | None
+    is_ramo_inverso: bool

@@ -766,6 +766,22 @@ Errori comuni di tutta la sezione: `E_DOCUMENTI_VALIDATION` (400/422), `E_DOCUME
 | `config.sorgenti` | Dizionario tipi sorgente |
 | `pratiche_service.crea_pratica` | BB creazione pratica |
 
+### Lineage / genealogia (brief-be-fe-lineage, 2026-07-15)
+
+- **Colonne lineage in lista** (Fase B): la lista espone anche `fase`
+  (proiezione normalizzata dallo stato), `pratica_id`/`pratica_numero`/
+  `n_pratiche` (pratica collegata), `frontiera_tipo_id` +
+  `frontiera_tipo_codice` (decodificato dal repo via `config.sorgenti`),
+  `frontiera_codice`/`frontiera_stato_codice_interno`/`frontiera_fase`,
+  `n_discendenti_attivi`, `is_transitato` — dalla vista canonica estesa
+  (LEFT JOIN `vendite.vw_documento_lineage`). Colonne configurabili
+  `pratica`/`fase`/`transito` visibili di default (seed preset). `order_by`
+  accetta anche `pratica_numero` e `fase` (la frontiera NON e' ordinabile).
+- **Passaggi** `GET /api/v1/vendite/preventivi/<id>/passaggi/` — genealogia del
+  documento: pratica + frontiera + catena transiti in entrambe le direzioni.
+  Contratto completo nel manuale del BB condiviso:
+  [api_lineage_passaggi.md](api_lineage_passaggi.md).
+
 ## Codici errore
 
 | Codice | HTTP | Descrizione |

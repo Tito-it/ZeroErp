@@ -17,6 +17,7 @@ from apps.vendite.api.views import (
     ApiRunLottoPipeline,
     ApiRunLottoPipelineUntilDone,
 )
+from apps.vendite.api.lineage_views import ApiCommessaPassaggi
 from apps.vendite.api.views_approvazioni_prezzo import (
     ApprovaPrezzoContrattoView,
     ApprovaPrezzoOffertaView,
@@ -208,6 +209,14 @@ urlpatterns = [
         "commesse/<int:commessa_id>/stato/",
         ApiCommessaStato.as_view(),
         name="vendite-commessa-stato",
+    ),
+    # Genealogia/lineage commessa (Fase C): sorgenti che l'hanno generata
+    # (indietro) + fatture a valle (avanti). Consumato dal drawer leggero
+    # aperto dalle tappe COMMESSA dei pannelli "Passaggi" dei documenti.
+    path(
+        "commesse/<int:commessa_id>/passaggi/",
+        ApiCommessaPassaggi.as_view(),
+        name="vendite-commessa-passaggi",
     ),
     path(
         "commesse/<int:commessa_id>/attivita/<int:att_id>/riallinea-prezzo/",
