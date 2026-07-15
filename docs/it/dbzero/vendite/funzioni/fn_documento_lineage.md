@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_documento_lineage.md" %}
 # ⚙️ Funzione `fn_documento_lineage`
 
 ```sql

@@ -183,3 +183,18 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 182,11,reso_id,,,reso_id,informazione,string,,,900,left,,98,f,f,f,f,f,t,2026-07-14 00:00:00,mctit,
 183,11,resi_riga_id,,,resi_riga_id,informazione,string,,,901,left,,98,f,f,f,f,f,t,2026-07-14 00:00:00,mctit,
 184,11,azioni,Azioni,,,azione,string,,60,999,center,,99,f,f,f,f,f,t,2026-07-14 00:00:00,mctit,common.col_azioni
+185,4,pratica,Pratica,Pratica collegata al documento,pratica_numero,informazione,string,,120,200,left,Genealogia,20,t,t,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_pratica
+186,4,fase,Fase,Fase normalizzata del documento,fase,informazione,string,,110,210,center,Genealogia,20,t,t,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_fase
+187,4,transito,Transito,Documento piu a valle in esecuzione (frontiera),frontiera_codice,informazione,string,,140,220,left,Genealogia,20,f,f,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_transito
+188,5,pratica,Pratica,Pratica collegata al documento,pratica_numero,informazione,string,,120,200,left,Genealogia,20,t,t,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_pratica
+189,5,fase,Fase,Fase normalizzata del documento,fase,informazione,string,,110,210,center,Genealogia,20,t,t,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_fase
+190,5,transito,Transito,Documento piu a valle in esecuzione (frontiera),frontiera_codice,informazione,string,,140,220,left,Genealogia,20,f,f,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_transito
+191,6,pratica,Pratica,Pratica collegata al documento,pratica_numero,informazione,string,,120,200,left,Genealogia,20,t,t,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_pratica
+192,6,fase,Fase,Fase normalizzata del documento,fase,informazione,string,,110,210,center,Genealogia,20,t,t,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_fase
+193,6,transito,Transito,Documento piu a valle in esecuzione (frontiera),frontiera_codice,informazione,string,,140,220,left,Genealogia,20,f,f,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_transito
+194,7,pratica,Pratica,Pratica collegata al documento,pratica_numero,informazione,string,,120,200,left,Genealogia,20,t,t,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_pratica
+195,7,fase,Fase,Fase normalizzata del documento,fase,informazione,string,,110,210,center,Genealogia,20,t,t,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_fase
+196,7,transito,Transito,Documento piu a valle in esecuzione (frontiera),frontiera_codice,informazione,string,,140,220,left,Genealogia,20,f,f,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_transito
+197,8,pratica,Pratica,Pratica collegata al documento,pratica_numero,informazione,string,,120,200,left,Genealogia,20,t,t,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_pratica
+198,8,fase,Fase,Fase normalizzata del documento,fase,informazione,string,,110,210,center,Genealogia,20,t,t,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_fase
+199,8,transito,Transito,Documento piu a valle in esecuzione (frontiera),frontiera_codice,informazione,string,,140,220,left,Genealogia,20,f,f,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_transito

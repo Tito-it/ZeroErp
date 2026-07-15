@@ -58,8 +58,18 @@ SELECT d.id,
     d.user_insert,
     d.data_update,
     d.user_update,
-    COALESCE(s_ef.ragione_sociale_completa, (ef.descrizione)::text) AS emittente_fiscale_descrizione
-   FROM ((((((((((((((((((vendite.ddt d
+    COALESCE(s_ef.ragione_sociale_completa, (ef.descrizione)::text) AS emittente_fiscale_descrizione,
+    sd.fase,
+    lin.pratica_id,
+    lin.pratica_numero,
+    lin.n_pratiche,
+    lin.frontiera_tipo_id,
+    lin.frontiera_codice,
+    lin.frontiera_stato_codice_interno,
+    lin.frontiera_fase,
+    lin.n_discendenti_attivi,
+    lin.is_transitato
+   FROM (((((((((((((((((((vendite.ddt d
      JOIN config.stati_doc_ddt sd ON ((sd.id = d.stato_doc_ddt_id)))
      JOIN anagrafiche.soggetti_ruoli sr_dest ON ((sr_dest.id = d.destinatario_soggetto_ruolo_id)))
      JOIN anagrafiche.soggetti s_dest ON ((s_dest.id = sr_dest.soggetto_id)))
@@ -77,7 +87,10 @@ SELECT d.id,
      LEFT JOIN config.aspetti_beni ab ON ((ab.id = d.aspetto_bene_id)))
      LEFT JOIN config.modalita_addebito_trasporto mat ON ((mat.id = d.modalita_addebito_trasporto_id)))
      LEFT JOIN config.sorgenti src ON ((src.id = d.sorgente_tipo_id)))
-     LEFT JOIN vendite.ordini o_src ON ((o_src.uid = d.sorgente_uid)));
+     LEFT JOIN vendite.ordini o_src ON ((o_src.uid = d.sorgente_uid)))
+     LEFT JOIN vendite.vw_documento_lineage lin ON (((lin.tipo_id = ( SELECT sorgenti.id
+           FROM config.sorgenti
+          WHERE (((sorgenti.codice_interno)::text = 'DDT_VENDITA'::text) AND (sorgenti.attivo IS TRUE)))) AND (lin.uid = (d.id)::text))));
 ```
 
 

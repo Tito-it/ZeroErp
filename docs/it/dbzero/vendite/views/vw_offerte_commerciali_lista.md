@@ -47,8 +47,18 @@ SELECT o.id,
     o.data_annullamento,
     o.data_insert,
     o.user_insert,
-    COALESCE(s_ef.ragione_sociale_completa, (ef.descrizione)::text) AS emittente_fiscale_descrizione
-   FROM (((((((((((vendite.offerte_commerciali o
+    COALESCE(s_ef.ragione_sociale_completa, (ef.descrizione)::text) AS emittente_fiscale_descrizione,
+    sdo.fase,
+    lin.pratica_id,
+    lin.pratica_numero,
+    lin.n_pratiche,
+    lin.frontiera_tipo_id,
+    lin.frontiera_codice,
+    lin.frontiera_stato_codice_interno,
+    lin.frontiera_fase,
+    lin.n_discendenti_attivi,
+    lin.is_transitato
+   FROM ((((((((((((vendite.offerte_commerciali o
      JOIN config.stati_doc_offerte sdo ON ((sdo.id = o.stato_doc_offerta_id)))
      LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = o.istanza_utility_id)))
      LEFT JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)))
@@ -59,7 +69,10 @@ SELECT o.id,
      LEFT JOIN config.utilities u ON ((u.id = o.utility_id)))
      LEFT JOIN vendite.listini l ON ((l.id = o.listino_id)))
      LEFT JOIN vendite.listini_versioni lv ON ((lv.id = o.listino_versione_id)))
-     LEFT JOIN config.valute v_val ON ((v_val.id = o.valuta_id)));
+     LEFT JOIN config.valute v_val ON ((v_val.id = o.valuta_id)))
+     LEFT JOIN vendite.vw_documento_lineage lin ON (((lin.tipo_id = ( SELECT sorgenti.id
+           FROM config.sorgenti
+          WHERE (((sorgenti.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (sorgenti.attivo IS TRUE)))) AND (lin.uid = (o.uid)::text))));
 ```
 
 
