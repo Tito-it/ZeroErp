@@ -109,6 +109,7 @@
 - [fn_create_fatturazione_lotto](manual/fn_create_fatturazione_lotto.md) — (latest review 27-01-2026) La funzione **`vendite.fn_create_fatturazione_lotto()`** crea un lotto di fatturazione con parametri coerenti (competenza, utility, tipo documento, BA) e inizializza lo stato documento a **DRAFT**.
 - [fn_ddt_riga_componenti_init](manual/fn_ddt_riga_componenti_init.md)
 - [fn_ddt_riga_componenti_preview](manual/fn_ddt_riga_componenti_preview.md)
+- [fn_documento_lineage](manual/fn_documento_lineage.md) — `vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo** del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento: ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e `livello`/`ordine` per il rendering a timeline/albero.
 - [fn_emit_attivita_fatturabili_da_commessa](manual/fn_emit_attivita_fatturabili_da_commessa.md) — (latest review 16-06-2026) Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
 - [fn_espandi_listino_versione](manual/fn_espandi_listino_versione.md)
 - [fn_fail_lotto_task_run](manual/fn_fail_lotto_task_run.md) — Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.
@@ -288,6 +289,9 @@
 - [vw_dash_fatturazione_ordini](manual/vw_dash_fatturazione_ordini.md) — (latest review 03-07-2026) Resolver dell'area **ORDINI** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per ordine con valore **imponibile** totale vs **transitato a commessa** e il motivo del fermo. Read-time, nessun mirror.
 - [vw_dash_fatturazione_preventivi](manual/vw_dash_fatturazione_preventivi.md) — (latest review 03-07-2026) Resolver dell'area **PREVENTIVI** per la Dashboard Fatturazione (brief-design-dashboard-fatturazione §5, Fase 1): una riga per preventivo con valore **imponibile** totale vs **transitato** (decisione D-4: senza IVA) e il motivo del fermo. Read-time, nessun mirror.
 - [vw_ddt_lista](manual/vw_ddt_lista.md) — (rev 2026-07-09)
+- [vw_documento_lineage](manual/vw_documento_lineage.md) — `vendite.vw_documento_lineage` è la vista **summary** (una riga per documento) pensata per **arricchire le liste vendite** con un solo JOIN. Risponde a due domande dalle liste:
+- [vw_documento_lineage_archi](manual/vw_documento_lineage_archi.md) — `vendite.vw_documento_lineage_archi` è il **grafo di genealogia/transito** dei documenti vendite in forma **normalizzata**: **una riga per arco** (relazione padre→figlio tra due documenti). È la base da cui derivano sia la summary `vw_documento_lineage` sia il traversal `fn_documento_lineage`.
+- [vw_documento_lineage_nodi](manual/vw_documento_lineage_nodi.md) — `vendite.vw_documento_lineage_nodi` è la **dimensione nodo** del grafo di genealogia dei documenti vendite (brief-db-lineage-documenti-vendite): **una riga per documento** delle 8 testate-nodo (preventivo, offerta, ordine, contratto, DDT, fattura, commessa, reso), con la **chiave nativa polimorfa** e lo **stato/fase normalizzati**.
 - [vw_offerte_commerciali_lista](manual/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_lista](manual/vw_ordini_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_riepilogo_iva_dettaglio](manual/vw_ordini_riepilogo_iva_dettaglio.md) — (latest review 05-06-2026)

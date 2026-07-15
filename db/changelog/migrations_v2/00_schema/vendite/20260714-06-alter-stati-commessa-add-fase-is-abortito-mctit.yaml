@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Lineage documenti vendite — Step 1 (Fondamenta). Aggiunge a
+# vendite.stati_commessa fase + is_abortito (vedi 20260714-01 per il razionale).
+# La commessa e' NODO del grafo (arco B/E/F -> commessa, arco G commessa ->
+# fattura); non ha uid (chiave nativa id::text, [[reference_sorgente_polimorfa_key_selector]]).
+#
+# MAPPA fase (copre il 100% del seed stati_commessa.csv; allineata al flag
+# chiude_commessa = t su CHIUSA/ANNULLATA):
+#   BOZZA               -> APERTO     false
+#   APERTA              -> IN_ATTESA  false   (aperta, non ancora in esecuzione)
+#   IN_ESECUZIONE       -> IN_CORSO   false
+#   PRONTA_FATTURAZIONE -> IN_CORSO   false   (attiva, in attesa di fatturazione)
+#   CHIUSA              -> CHIUSO     false
+#   ANNULLATA           -> CHIUSO     true
+#
+# SEED: playbook identico a 20260714-01 (backfill keyed su codice_interno + SET
+# NOT NULL fail-fast; fresh DB soddisfatto dalla CSV estesa in 80_data).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260714-06-alter-stati-commessa-add-fase-is-abortito-mctit.yaml
+
+  - changeSet:
+      id: 20260714-06-alter-stati-commessa-add-fase-is-abortito
+      author: mctit
+      comment: >
+        Lineage Step 1: aggiunge fase (NOT NULL, CHECK 4 valori) e is_abortito
+        (NOT NULL DEFAULT false) a vendite.stati_commessa, con backfill della
+        mappa per i 6 stati commessa.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: stati_commessa
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.stati_commessa
+                ADD COLUMN fase        VARCHAR(20),
+                ADD COLUMN is_abortito BOOLEAN NOT NULL DEFAULT false;
+
+              UPDATE vendite.stati_commessa s
+                 SET fase        = m.fase,
+                     is_abortito = m.is_abortito
+                FROM (VALUES
+                        ('BOZZA',               'APERTO',    false),
+                        ('APERTA',              'IN_ATTESA', false),
+                        ('IN_ESECUZIONE',       'IN_CORSO',  false),
+                        ('PRONTA_FATTURAZIONE', 'IN_CORSO',  false),
+                        ('CHIUSA',              'CHIUSO',    false),
+                        ('ANNULLATA',           'CHIUSO',    true)
+                     ) AS m(codice_interno, fase, is_abortito)
+               WHERE s.codice_interno = m.codice_interno;
+
+              ALTER TABLE vendite.stati_commessa
+                ALTER COLUMN fase SET NOT NULL;
+
+              ALTER TABLE vendite.stati_commessa
+                ADD CONSTRAINT chk_stati_commessa_fase
+                CHECK (fase IN ('APERTO', 'IN_ATTESA', 'IN_CORSO', 'CHIUSO'));
+
+              COMMENT ON COLUMN vendite.stati_commessa.fase IS
+                  'Fase normalizzata del ciclo commessa (lineage/genealogia documenti): '
+                  'APERTO | IN_ATTESA | IN_CORSO | CHIUSO. Stessa scala dei cataloghi '
+                  'stati_doc_*. Usata per frontiera e display.';
+              COMMENT ON COLUMN vendite.stati_commessa.is_abortito IS
+                  'true = stato di annullamento (ANNULLATA). La frontiera del lineage '
+                  'esclude i nodi con fase=CHIUSO oppure is_abortito=true.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.stati_commessa
+                DROP CONSTRAINT IF EXISTS chk_stati_commessa_fase;
+              ALTER TABLE vendite.stati_commessa
+                DROP COLUMN IF EXISTS is_abortito,
+                DROP COLUMN IF EXISTS fase;

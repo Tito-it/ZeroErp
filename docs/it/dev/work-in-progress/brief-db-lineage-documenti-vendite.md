@@ -19,6 +19,72 @@
 
 ---
 
+## ✅ STATO — DB COMPLETO (2026-07-15)
+
+Il braccio **DB è chiuso, applicato e testato** su `dev/db-tid`. Deliverable:
+
+- **Step 1 — Fondamenta** (`00_schema` `20260714-01..07`): colonne+seed `fase`/`is_abortito`
+  su `stati_doc_ddt`/`stati_doc_fiscale`/`stati_doc_reso`/`stati_commessa` (`is_abortito`
+  anche su `stati_doc_ordini`/`stati_doc_offerte`); scope `REVERSE_FLOW` + seed
+  `config.sorgenti` `RESO_VENDITA(15)`.
+- **Step 2–4 — Oggetti** (`20_code/vendite` `20260714-08..11`):
+  `vw_documento_lineage_nodi` (dimensione nodo condivisa), `vw_documento_lineage_archi`
+  (grafo archi A–H + R), `vw_documento_lineage` (summary: pratica + fase + frontiera
+  forward con tie-break `pipeline_rank`), `fn_documento_lineage(tipo, uid, direzione)`
+  (traversal avanti/indietro). Tutte `security_invoker=on`.
+- **Step 5 — pgTAP**: `db/pgtap/vendite/test-documento-lineage-v1.sql` (`plan(26)`, verde).
+- **Step 6 — Doc**: manuali concettuali dei 4 oggetti in `dbzero/vendite/manual/`.
+
+Casi §5 validati sui dati reali (frontiera che segue la catena fino al nodo attivo più
+profondo; genealogia inversa commessa → ROOT+COLLEGATO). **Downstream aperto**: BE/FE
+(§7) — arricchimento liste + pannello "Passaggi".
+
+---
+
+## 0. Decisioni chiuse in analisi critica (2026-07-13)
+
+Chiuse con Tid prima dello sviluppo; recepite nel piano §8.
+
+- **Q1 — chiave nodo = chiave NATIVA polimorfa** (rivisto 2026-07-13). NON si
+  "canonicalizza a uid": si usa la chiave che il sistema già parla,
+  `(sorgente_tipo_id, sorgente_uid)` con `sorgente_uid` **secondo `config.sorgenti.key_selector`**
+  (`uid` per preventivo/offerta, `id::text` per ordine/contratto/ddt/fattura/commessa/attività).
+  È la stessa chiave di `pratiche_sorgenti`, `commesse_sorgenti`, `vw_stato_sorgente_*`
+  → il grafo ci si aggancia senza tradurre e **senza toccare il modello**. Le sole
+  **colonne tipizzate dirette** (`ddt.sorgente_uid`/`resi.sorgente_uid` uuid,
+  `ordini.documento_origine_id`, `contratti.offerta_id`) si traducono su quella chiave
+  con un join alla tabella target. **`key_selector` NON è un errore**: è portante
+  (guard `trgfn_guard_sorgente_polimorfa` + resolver `vw_stato_sorgente_*`) — non
+  ripulire. Convenzione + mappa + trappole: **`config.manual/sorgenti.md` §"Convenzione
+  chiave sorgente"** (fonte di verità; leggere prima di ogni join tra documenti).
+- **Q2 — colonna `fase` mancante**: `config.stati_doc_ddt`, `stati_doc_fiscale`,
+  `stati_doc_reso` e `stati_commessa` **non hanno** la colonna `fase` (presente
+  invece su preventivi/ordini/offerte/contratti). Si **aggiunge e si seeda** con la
+  stessa scala ⚪APERTO/🔵IN_ATTESA/🟠IN_CORSO/🟢CHIUSO. → il brief non è più "solo
+  vista": include un **seed fase** su questi cataloghi (comunque additivo).
+- **Q3 — "attivo/abortito"**: non è un campo sul documento; è il flag `is_abortito`
+  **sul catalogo stati**. La regola frontiera (fase ≠ CHIUSO ∧ ¬abortito) si legge
+  da lì. Va garantita la presenza di `is_abortito` sui cataloghi attraversati
+  (ddt/fiscale/reso/commessa): aggiungere+seed dove manca.
+- **Q4 — Fattura è NODO** terminale del grafo (capolinea arco G): la frontiera può
+  indicare «→ Fatturato / FT-xxxx». Non ha lista propria (nessuna colonna-lista).
+- **Q5 — pratica 1:1 non garantita dal DB** (`pratiche_sorgenti` ammette più righe):
+  default difensivo — si prende la pratica unica/attiva **+ si espone `n_pratiche`**
+  (conteggio). *(default adottato; confermare in fase di build.)*
+- **Resi = nodo "ramo inverso"** (2026-07-13, flusso LIVE): arco **`R` DDT → Reso
+  (1:N)** — `vendite.resi.sorgente_tipo_id`(=DDT_VENDITA)/`sorgente_uid`(=`ddt.uid`),
+  indice `ix_resi_sorgente`. Il reso **compare** nella genealogia (pannello
+  "Passaggi") e nella sua lista (id 9), ma è **escluso dal calcolo della frontiera
+  forward** (merce che torna, non avanzamento verso la fattura). Prerequisiti: seed
+  `config.sorgenti` `RESO_VENDITA` (oggi assente) + `fase` su `config.stati_doc_reso`.
+  Eventuali archi *uscenti* dal reso (riconsegna `resi_righe_riconsegne`, reso →
+  nota di credito) si aggiungeranno poi con lo stesso meccanismo.
+- **Liste che ricevono la colonna lineage**: **5** (preventivi, offerte, ordini,
+  contratti, **DDT**) + follow-on lista commesse (§7.3); Fattura e Commessa restano
+  **nodi** del grafo senza colonna-lista propria.
+
+---
+
 ## 1. Scopo
 
 Esporre il **grafo di genealogia/transito** dei documenti vendite come proiezione
@@ -44,7 +110,12 @@ Archi (tutti già ricostruibili dal modello, nessun dato nuovo):
 | F | Contratto → Commessa | **1:N** | `vendite.commesse_sorgenti` (sorgente 4=CONTRATTO) |
 | G | Commessa → Att. fatturabili → Fattura | 1:N | `commesse_attivita`/`attivita_fatturabili`/`fatture` |
 | H | **Ordine → DDT** | **1:N** | `vendite.ddt.sorgente_tipo_id='ORDINE_VENDITA'/sorgente_uid` — **LIVE dal 10/07** (evasione, multi-DDT) |
+| **R** | **DDT → Reso** (ramo **inverso**) | **1:N** | `vendite.resi.sorgente_tipo_id='DDT_VENDITA'/sorgente_uid` — **LIVE** (merce che torna). Nodo Reso incluso; **escluso dalla frontiera forward** (vedi §0). Prereq: seed `config.sorgenti` RESO_VENDITA + `fase` su `stati_doc_reso` |
 | (P) | DDT → Fattura differita | *predisposto* | slot pronto (sorgente 8 come nodo), arco **uscente non attivo** (fattura differita da DDT futura) |
+
+> **Nodo Fattura (Q4)**: la Fattura è nodo **terminale** del grafo (capolinea arco G,
+> commessa → att. fatturabili → fattura). Ha `uid`; la sua `fase` arriva dal seed di
+> Q2 su `stati_doc_fiscale`. La frontiera forward può quindi attestarsi su una fattura.
 
 Vocabolario tipi: `config.sorgenti` (2 PREVENTIVO, 6 ORDINE_VENDITA, 4 CONTRATTO,
 14 OFFERTA_COMMERCIALE, 13 COMMESSA, **8 DDT_VENDITA**). Chiave nodo consigliata:

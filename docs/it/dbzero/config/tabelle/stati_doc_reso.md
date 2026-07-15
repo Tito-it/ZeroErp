@@ -15,10 +15,13 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| fase | character varying | NO |  |
+| is_abortito | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_doc_reso_fase |  |
 | PRIMARY KEY | pk_stati_doc_reso | id |
 | UNIQUE | uq_stati_doc_reso_codice | codice |
 | UNIQUE | uq_stati_doc_reso_codice_interno | codice_interno |

@@ -43,8 +43,18 @@ SELECT c.id,
     c.user_insert,
     c.data_update,
     c.user_update,
-    COALESCE(s_ef.ragione_sociale_completa, (ef.descrizione)::text) AS emittente_fiscale_descrizione
-   FROM ((((((((((((vendite.contratti c
+    COALESCE(s_ef.ragione_sociale_completa, (ef.descrizione)::text) AS emittente_fiscale_descrizione,
+    sd.fase,
+    lin.pratica_id,
+    lin.pratica_numero,
+    lin.n_pratiche,
+    lin.frontiera_tipo_id,
+    lin.frontiera_codice,
+    lin.frontiera_stato_codice_interno,
+    lin.frontiera_fase,
+    lin.n_discendenti_attivi,
+    lin.is_transitato
+   FROM (((((((((((((vendite.contratti c
      JOIN anagrafiche.billing_account ba ON ((ba.id = c.billing_account_id)))
      JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
      JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
@@ -56,7 +66,10 @@ SELECT c.id,
      LEFT JOIN vendite.listini l ON ((l.id = c.listino_id)))
      LEFT JOIN vendite.listini_versioni lv ON ((lv.id = c.listino_versione_id)))
      LEFT JOIN anagrafiche.categorie_clienti cc_snap ON ((cc_snap.id = c.categoria_cliente_id_snapshot)))
-     LEFT JOIN config.valute v_val ON ((v_val.id = c.valuta_id)));
+     LEFT JOIN config.valute v_val ON ((v_val.id = c.valuta_id)))
+     LEFT JOIN vendite.vw_documento_lineage lin ON (((lin.tipo_id = ( SELECT sorgenti.id
+           FROM config.sorgenti
+          WHERE (((sorgenti.codice_interno)::text = 'CONTRATTO'::text) AND (sorgenti.attivo IS TRUE)))) AND (lin.uid = (c.id)::text))));
 ```
 
 

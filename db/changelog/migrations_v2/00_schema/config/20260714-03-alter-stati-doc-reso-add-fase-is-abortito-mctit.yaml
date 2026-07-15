@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Lineage documenti vendite — Step 1 (Fondamenta). Aggiunge a
+# config.stati_doc_reso fase + is_abortito (vedi 20260714-01 per il razionale).
+# Il Reso e' nodo "ramo inverso" (arco R DDT->Reso): compare nella genealogia ma
+# e' ESCLUSO dalla frontiera forward (brief §0). fase serve al display del nodo.
+#
+# MAPPA fase (copre il 100% del seed stati_doc_reso.csv):
+#   DRAFT      -> APERTO    false
+#   CONFERMATO -> IN_CORSO  false   (reso confermato = in gestione; la chiusura
+#                                    reale avverra' con gli archi uscenti futuri
+#                                    riconsegna / nota di credito, oggi non modellati)
+#   ANNULLATO  -> CHIUSO    true
+#
+# SEED: playbook identico a 20260714-01.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260714-03-alter-stati-doc-reso-add-fase-is-abortito-mctit.yaml
+
+  - changeSet:
+      id: 20260714-03-alter-stati-doc-reso-add-fase-is-abortito
+      author: mctit
+      comment: >
+        Lineage Step 1: aggiunge fase (NOT NULL, CHECK 4 valori) e is_abortito
+        (NOT NULL DEFAULT false) a config.stati_doc_reso, con backfill della mappa
+        per i 3 stati reso.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: stati_doc_reso
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_reso
+                ADD COLUMN fase        VARCHAR(20),
+                ADD COLUMN is_abortito BOOLEAN NOT NULL DEFAULT false;
+
+              UPDATE config.stati_doc_reso s
+                 SET fase        = m.fase,
+                     is_abortito = m.is_abortito
+                FROM (VALUES
+                        ('DRAFT',      'APERTO',   false),
+                        ('CONFERMATO', 'IN_CORSO', false),
+                        ('ANNULLATO',  'CHIUSO',   true)
+                     ) AS m(codice_interno, fase, is_abortito)
+               WHERE s.codice_interno = m.codice_interno;
+
+              ALTER TABLE config.stati_doc_reso
+                ALTER COLUMN fase SET NOT NULL;
+
+              ALTER TABLE config.stati_doc_reso
+                ADD CONSTRAINT chk_stati_doc_reso_fase
+                CHECK (fase IN ('APERTO', 'IN_ATTESA', 'IN_CORSO', 'CHIUSO'));
+
+              COMMENT ON COLUMN config.stati_doc_reso.fase IS
+                  'Fase normalizzata del ciclo reso (lineage/genealogia documenti): '
+                  'APERTO | IN_ATTESA | IN_CORSO | CHIUSO. Nodo ramo inverso, escluso '
+                  'dalla frontiera forward.';
+              COMMENT ON COLUMN config.stati_doc_reso.is_abortito IS
+                  'true = stato di annullamento (ANNULLATO). Coerenza con gli altri '
+                  'cataloghi stato del grafo lineage.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_reso
+                DROP CONSTRAINT IF EXISTS chk_stati_doc_reso_fase;
+              ALTER TABLE config.stati_doc_reso
+                DROP COLUMN IF EXISTS is_abortito,
+                DROP COLUMN IF EXISTS fase;

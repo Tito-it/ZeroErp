@@ -17,10 +17,13 @@
 | user_update | text | YES | CURRENT_USER |
 | pdf_mode | character varying | NO |  |
 | pdf_allow_allegati | boolean | NO |  |
+| fase | character varying | NO |  |
+| is_abortito | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_doc_ddt_fase |  |
 | CHECK | chk_stati_doc_ddt_pdf_mode |  |
 | PRIMARY KEY | pk_stati_doc_ddt | id |
 | UNIQUE | uq_stati_doc_ddt_codice | codice |

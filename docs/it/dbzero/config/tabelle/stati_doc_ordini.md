@@ -16,6 +16,7 @@
 | terminale | boolean | NO | false |
 | pdf_mode | character varying | NO |  |
 | pdf_allow_allegati | boolean | NO |  |
+| is_abortito | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
