@@ -1174,19 +1174,3 @@ class ApiPreventivoGeneraPratica(DomainAPIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
-# ── Integrazione: pratiche collegate ──
-
-
-class ApiPreventivoPratiche(DomainAPIView):
-    area_funzionale = "vendite"
-
-    @extend_schema(
-        responses={200: inline_serializer(
-            name="PreventivoPraticheResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
-    )
-    # Scopo: Restituisce via GET le pratiche collegate al preventivo.
-    def get(self, request: Request, preventivo_id: int) -> JsonResponse:
-        data = preventivi_service.list_pratiche(preventivo_id)
-        return success_response(data)

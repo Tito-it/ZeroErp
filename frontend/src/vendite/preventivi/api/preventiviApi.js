@@ -203,10 +203,6 @@ export function generaPratica(preventivoId, payload) {
   )
 }
 
-export function listPratiche(preventivoId) {
-  return api.get(`${BASE}/${preventivoId}/pratiche/`)
-}
-
 // PREVENTIVAZIONE (percorso pratica-first): aggancia il preventivo come ROOT a
 // una pratica. Idempotente. Fonte di verita' del legame preventivo↔pratica.
 export function collegaPratica(preventivoId, payload) {

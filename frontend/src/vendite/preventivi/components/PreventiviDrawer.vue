@@ -43,7 +43,6 @@ import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizz
 import LineagePassaggiPanel from '../../_shared/lineage/LineagePassaggiPanel.vue'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
-import DocumentiGeneratiSorgenteList from '../../../documenti/components/DocumentiGeneratiSorgenteList.vue'
 import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
 import PreventivoEmissioneDialog from './dialogs/PreventivoEmissioneDialog.vue'
 import PreventivoAccettazioneDialog from './dialogs/PreventivoAccettazioneDialog.vue'
@@ -880,6 +879,9 @@ const drawerActions = computed(() => {
               :entity-id="effectivePreventivoId"
               :pdf="detail.pdf"
               i18n-prefix="preventivi.pdf"
+              :dialog-title="detail.numero
+                ? t('preventivi.pdf.dialog_title', { numero: detail.numero })
+                : ''"
             />
           </template>
         </DrawerActionsBar>
@@ -993,24 +995,10 @@ const drawerActions = computed(() => {
               </div>
             </template>
 
-            <!-- Documenti generati per il preventivo (Tranche M motore documentale).
-                 Building block riusabile da qualsiasi sorgente.
-                 Visibilita': nascosta in DRAFT (= bozza) — l'anteprima PDF e'
-                 inline e non persistita, quindi la lista sarebbe sempre vuota e
-                 il messaggio "lista vuota" e' rumore visivo. Mostrata da EMESSO
-                 in poi (stato in cui esiste almeno una versione PDF persistita,
-                 regola di dominio "EMESSO == almeno una versione PDF" gia'
-                 applicata atomica BE).
-                 NB: il codice_interno e' `DRAFT` (vedi seed
-                 config/stati_doc_preventivi.csv); 'Bozza' e' solo la descrizione
-                 localizzata. -->
-            <template v-if="contentReady && hasDetail && detail.uid && detail.stato_codice_interno !== STATO_PREVENTIVO.DRAFT">
-              <Divider />
-              <DocumentiGeneratiSorgenteList
-                sorgente-code="PREVENTIVO"
-                :sorgente-id="effectivePreventivoId"
-              />
-            </template>
+            <!-- L'area inline "Documenti generati" e' stata rimossa 2026-07-16
+                 (doppione): l'archivio PDF si consulta dal pulsante PDF in
+                 testata (EntityPdfButton -> PdfDocumentiSorgenteDialog, stesso
+                 BB con in piu' expand automatico e append allegati). -->
 
             <!-- Genealogia/lineage (pannello "Passaggi", BB condiviso lazy:
                  fetch al primo expand; app-escape interno per la

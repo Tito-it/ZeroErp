@@ -11,6 +11,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
+import Checkbox from 'primevue/checkbox'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
@@ -71,6 +72,7 @@ function residuoDi(r) {
 const {
   righe, loadingRighe, selected, qtaMap, righeSelezionabili,
   loadRighe, buildPayloadRighe,
+  isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected,
 } = useRigheSelezioneQta({
   fetchRighe: async () => {
     if (!props.ddtId) return []
@@ -141,10 +143,22 @@ function onCrea() {
       {{ t('vendite.resi.crea_intro') }}
     </p>
 
-    <DataTable v-if="righe.length" :value="righe" v-model:selection="selected"
+    <DataTable v-if="righe.length" :value="righe"
       data-key="ddt_riga_id" striped-rows size="small" class="app-datatable"
       :loading="loadingRighe" scrollable scrollHeight="280px">
-      <Column v-if="!readonly" selectionMode="multiple" headerStyle="width: 3rem" />
+      <!-- Checkbox custom (no selectionMode: PrimeVue 4 renderebbe spuntabili
+           anche le righe con residuo esaurito): disabled per riga da
+           isSelectable, colonna nascosta quando non resta nulla da rendere. -->
+      <Column v-if="!readonly && righeSelezionabili.length" headerStyle="width: 3rem">
+        <template #header>
+          <Checkbox :model-value="allSelected" binary
+            :indeterminate="anySelected" @update:model-value="toggleAll" />
+        </template>
+        <template #body="{ data }">
+          <Checkbox :model-value="isSelected(data)" binary
+            :disabled="!isSelectable(data)" @update:model-value="toggleRow(data)" />
+        </template>
+      </Column>
       <Column :header="t('vendite.resi.riga_articolo')">
         <template #body="{ data }">
           {{ data.articolo_codice }} — {{ data.descrizione }}

@@ -153,6 +153,10 @@ const terminaleReadonly = computed(() =>
 const effectiveReadonly = computed(() => isReadonly.value || terminaleReadonly.value)
 provide(READONLY_KEY, effectiveReadonly)
 
+// `immediate`: robustezza al mount già-visibile (caller che monta il drawer
+// on-demand con `visible` true dal primo render — es. celle lineage): senza,
+// il watch non scatterebbe mai e il drawer resterebbe vuoto. Montato nascosto
+// (caso normale) il guard `!val` rende la chiamata immediate un no-op.
 watch(() => props.visible, async (val) => {
   if (!val) return
   if (isEdit.value && props.praticaId) {
@@ -164,7 +168,7 @@ watch(() => props.visible, async (val) => {
     await preselectTipoPreset()
     await preselectPrioritaDefault()
   }
-})
+}, { immediate: true })
 
 // Scopo: preset tipo dal contesto del caller (filtro lista attivo): default
 // visibile, non un lock — il Select resta editabile. Validato contro le

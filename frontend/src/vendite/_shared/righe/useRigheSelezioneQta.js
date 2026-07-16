@@ -22,6 +22,7 @@
 // - onLoaded: (rows) => void opzionale — seed di mappe extra del caller
 //   (es. tipo/motivo per riga nel crea-reso).
 import { computed, ref } from 'vue'
+import { useSelezioneToggle } from './useSelezioneToggle'
 
 export function useRigheSelezioneQta({
   fetchRighe,
@@ -41,6 +42,11 @@ export function useRigheSelezioneQta({
   const righeSelezionabili = computed(
     () => righe.value.filter(r => residuoDi(r) > 0),
   )
+
+  // Macchina toggle (BB): checkbox custom nei template (:disabled da
+  // isSelectable) + guard che tiene fuori dalla selezione le righe esaurite.
+  const { isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected } =
+    useSelezioneToggle({ selected, selezionabili: righeSelezionabili, rowKey })
 
   // Scopo: carica le righe, seeda qtaMap col residuo (0 per le esaurite) e
   //        preseleziona le selezionabili (lavora-tutto di default).
@@ -96,5 +102,12 @@ export function useRigheSelezioneQta({
     coversAllResiduo,
     loadRighe,
     buildPayloadRighe,
+    // Toggle API per la Column checkbox custom dei template.
+    isSelectable,
+    isSelected,
+    toggleRow,
+    toggleAll,
+    allSelected,
+    anySelected,
   }
 }

@@ -163,7 +163,9 @@ const praticaDrawerVisible = ref(false)
       <ProgressBar v-if="loading" mode="indeterminate" style="height: 4px" />
 
       <template v-if="loaded && data">
-        <!-- Pratica collegata (1:1 di design, conteggio difensivo n_pratiche) -->
+        <!-- Pratica collegata (1:1 di design, conteggio difensivo n_pratiche).
+             Senza pratica: messaggio testuale al posto del "—" (il documento
+             puo' legittimamente nascere fuori dal percorso pratica). -->
         <div class="lineage-row">
           <span class="lineage-label">{{ t('lineage.pratica') }}</span>
           <template v-if="pratica">
@@ -176,7 +178,7 @@ const praticaDrawerVisible = ref(false)
               {{ t('lineage.altre_pratiche', { n: pratica.n_pratiche - 1 }) }}
             </span>
           </template>
-          <span v-else class="lineage-muted">—</span>
+          <span v-else class="lineage-muted">{{ t('lineage.nessuna_pratica') }}</span>
         </div>
 
         <!-- Frontiera: documento piu' prossimo in esecuzione (G-6/G-9/G-10) -->

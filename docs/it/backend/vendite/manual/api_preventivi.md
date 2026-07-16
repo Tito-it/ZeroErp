@@ -640,12 +640,13 @@ di chiusura template-based lo legge subito.
 
 ---
 
-### 16. Pratiche collegate
+### 16. Pratiche collegate — RIMOSSO (2026-07-15)
 
-- Metodo: `GET`
-- Path: `/api/v1/vendite/preventivi/{id}/pratiche/`
-- Output `200`: lista pratiche con codice, descrizione, stato, ruolo_link
-- Regole: filtrata per `sorgente_tipo = 'PREVENTIVO_VENDITA'` per evitare match spuri
+L'endpoint `GET /{id}/pratiche/` è stato rimosso: la pratica collegata vive nel
+pannello Passaggi (lineage, `GET /{id}/passaggi/` — vedi
+[api_lineage_passaggi.md](api_lineage_passaggi.md)), che espone il link
+cliccabile al `PraticaDrawer`. Il vincolo "zero pratiche collegate" del
+hard-delete resta (guard nel service via `repo.list_pratiche`).
 
 ---
 

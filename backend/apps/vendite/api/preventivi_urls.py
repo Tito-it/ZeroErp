@@ -32,7 +32,6 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoGeneraPratica,
     ApiPreventivoIndirizzi,
     ApiPreventivoIndirizzoDetail,
-    ApiPreventivoPratiche,
     ApiPreventivoPushCommessa,
     ApiPreventivoRevisione,
     ApiPreventivoRevisioniList,
@@ -227,12 +226,6 @@ urlpatterns = [
         "<int:preventivo_id>/genera-pratica/",
         ApiPreventivoGeneraPratica.as_view(),
         name="vendite-preventivi-genera-pratica",
-    ),
-    # Integrazione: pratiche collegate
-    path(
-        "<int:preventivo_id>/pratiche/",
-        ApiPreventivoPratiche.as_view(),
-        name="vendite-preventivi-pratiche",
     ),
     # Documenti generati (Tranche K motore documentale parametrico)
     path(
