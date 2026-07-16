@@ -3,7 +3,7 @@ id,codice_interno,codice,descrizione,attivo,ordine,meta,fase,terminale,pdf_mode,
 3,ALLOCATO,ALLOCATO,Allocato a magazzino,t,30,{},IN_CORSO,f,ARCHIVE,f,f
 4,SPEDITO,SPEDITO,Spedito,t,40,{},IN_CORSO,f,ARCHIVE,f,f
 5,CONSEGNATO,CONSEGNATO,Consegnato,t,50,{},IN_CORSO,f,ARCHIVE,f,f
-6,ANNULLATO,ANNULLATO,Annullato,t,60,{},CHIUSO,t,NONE,f,t
+6,ANNULLATO,ANNULLATO,Annullato,t,60,{},CHIUSO,t,ARCHIVE,f,t
 7,FATTURATO,FATTURATO,Fatturato,t,70,{},CHIUSO,t,ARCHIVE,f,f
 1,DRAFT,DRAFT,Bozza,t,10,{},APERTO,f,PREVIEW,f,f
 8,EVASO,EVASO,Evaso,t,25,{},CHIUSO,t,ARCHIVE,f,f
