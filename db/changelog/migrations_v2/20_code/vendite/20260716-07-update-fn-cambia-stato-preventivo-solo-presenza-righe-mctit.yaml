@@ -1,0 +1,234 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Emissione documento: SOLO presenza di righe (decisione Tid 2026-07-16).
+#
+# REGOLA DI DOMINIO: per emettere/avanzare un documento basta che ABBIA
+# RIGHE. Un totale pari a zero NON blocca l'emissione (prezzo 0 e' un caso
+# legittimo: omaggio, promo, riga di solo trasporto...). Vale per tutti i
+# documenti: preventivi, offerte, ordini, DDT, contratti.
+#
+# Il preventivo era l'UNICO dominio a violarla, con due vincoli di troppo
+# sul guard DRAFT->EMESSO:
+#   1) PREV_TOTALE_NON_POSITIVO (totale_documento > 0) -> RIMOSSO.
+#      Era l'unico guard sul totale in tutti i domini (verificato su
+#      config.messaggi_errore: nessun equivalente per offerte/ordini/ddt/
+#      contratti). Bloccava un preventivo tutto a prezzo 0.
+#   2) filtro quantita > 0 sul conteggio righe -> RIMOSSO.
+#      Una riga a qta 0 contribuisce 0 al totale: escluderla e' la stessa
+#      regola "totale > 0" mascherata da conteggio. Ora conta la sola
+#      presenza: almeno una riga attiva.
+#
+# Resta PREV_NESSUNA_RIGA_ATTIVA (0 righe attive = documento vuoto), che
+# e' esattamente il vincolo voluto, e il guard verso ANNULLATO (invariato).
+#
+# NB: il codice PREV_TOTALE_NON_POSITIVO (353) resta registrato in
+# config.messaggi_errore ma non e' piu' sollevato da nessuno. Non lo
+# rimuovo dal CSV: e' una lookup con storia (fn_log_and_raise_error puo'
+# averlo scritto in passato) e cancellarlo non porta nulla.
+# Nessun pgTAP e nessun modulo BE lo referenziava (verificato).
+#
+# Allineamento capability: fn_available_actions_preventivo (20260716-03)
+# specchia questo predicato (riga attiva, senza quantita > 0).
+#
+# Base: doc auto-gen vendite/funzioni/fn_cambia_stato_preventivo.md
+# (rev 2026-06-28). Signature RETURNS TABLE invariata -> CREATE OR REPLACE ok.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260716-07-update-fn-cambia-stato-preventivo-solo-presenza-righe-mctit.yaml
+
+  - changeSet:
+      id: 20260716-07-update-fn-cambia-stato-preventivo-solo-presenza-righe
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_cambia_stato_preventivo: emissione richiede SOLO la presenza di righe
+        attive. Rimossi il guard PREV_TOTALE_NON_POSITIVO e il filtro quantita>0
+        (totale zero deve poter essere emesso).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: preventivi_righe
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
+               RETURNS TABLE(preventivo_id bigint, stato_precedente character varying, stato_nuovo character varying)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_stato_corrente_id   vendite.preventivi.stato_doc_preventivo_id%TYPE;
+                v_stato_corrente_cod  config.stati_doc_preventivi.codice_interno%TYPE;
+                v_nuovo_stato_id      config.stati_doc_preventivi.id%TYPE;
+                v_transizione_ok      boolean;
+                v_count_righe         bigint;
+                v_has_commessa        boolean;
+                v_numero              vendite.preventivi.numero%TYPE;
+                v_uid                 vendite.preventivi.uid%TYPE;
+              BEGIN
+                -- ==========================================================
+                -- Scopo:
+                --   Eseguire la transizione di stato di un preventivo vendita,
+                --   validando la transizione tramite la matrice configurabile
+                --   config.transizioni_stati_preventivi.
+                --
+                -- Regole:
+                --   - La transizione deve essere presente e attiva nella matrice
+                --   - DRAFT → EMESSO: richiede almeno una riga attiva
+                --     (SOLO presenza: un totale pari a zero non blocca)
+                --   - Verso ANNULLATO: blocco duro se il preventivo ha righe
+                --     gia' inviate in commessa (stato_emissione EMESSA)
+                --
+                -- Parametri:
+                --   p_preventivo_id : ID del preventivo
+                --   p_nuovo_stato   : codice_interno dello stato destinazione
+                --   p_user          : utente che esegue la transizione
+                --
+                -- Ritorna:
+                --   preventivo_id, stato_precedente (codice_interno), stato_nuovo (codice_interno)
+                --
+                -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a #1):
+                --   stato corrente e destinazione risolti per codice_interno
+                --   (immutabile), non per codice (mutabile). Literali DRAFT/EMESSO/
+                --   ANNULLATO sono codice_interno.
+                --
+                -- NOTE rev 2026-07-16 (solo presenza righe):
+                --   rimossi il guard PREV_TOTALE_NON_POSITIVO e il filtro
+                --   quantita > 0. Per emettere basta che il documento ABBIA
+                --   righe: prezzo/totale 0 e' un caso legittimo. Regola valida
+                --   per tutti i domini documentali.
+                -- ==========================================================
+
+                -- Guard: parametri obbligatori
+                IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('param', 'p_preventivo_id', 'value', p_preventivo_id),
+                    NULL::uuid,
+                    'p_preventivo_id = ' || COALESCE(p_preventivo_id::text, 'NULL')
+                  );
+                END IF;
+
+                -- Recupera stato corrente, numero e uid in una sola query
+                SELECT p.stato_doc_preventivo_id, sdp.codice_interno, p.numero, p.uid
+                  INTO v_stato_corrente_id, v_stato_corrente_cod, v_numero, v_uid
+                  FROM vendite.preventivi p
+                  JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                 WHERE p.id = p_preventivo_id;
+
+                IF v_stato_corrente_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'PREV_STATO_CORRENTE_NON_TROVATO',
+                    jsonb_build_object('preventivo_id', p_preventivo_id),
+                    NULL::uuid,
+                    p_preventivo_id::text
+                  );
+                END IF;
+
+                -- Recupera ID dello stato destinazione
+                SELECT id INTO v_nuovo_stato_id
+                  FROM config.stati_doc_preventivi
+                 WHERE codice_interno = p_nuovo_stato AND attivo IS TRUE;
+
+                IF v_nuovo_stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'E_STATO_SCONOSCIUTO',
+                    jsonb_build_object('codice', p_nuovo_stato),
+                    NULL::uuid,
+                    p_nuovo_stato
+                  );
+                END IF;
+
+                -- Valida transizione via matrice config
+                SELECT EXISTS(
+                  SELECT 1
+                    FROM config.transizioni_stati_preventivi t
+                   WHERE t.stato_da_id = v_stato_corrente_id
+                     AND t.stato_a_id  = v_nuovo_stato_id
+                     AND t.attivo IS TRUE
+                ) INTO v_transizione_ok;
+
+                IF NOT v_transizione_ok THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_cambia_stato_preventivo',
+                    'PREV_TRANSIZIONE_NON_AMMESSA',
+                    jsonb_build_object(
+                      'preventivo_id', p_preventivo_id,
+                      'stato_da', v_stato_corrente_cod,
+                      'stato_a', p_nuovo_stato
+                    ),
+                    NULL::uuid,
+                    v_stato_corrente_cod, p_nuovo_stato
+                  );
+                END IF;
+
+                -- Guard DRAFT → EMESSO: SOLO presenza di righe attive.
+                -- Nessun vincolo su quantita/prezzo/totale: un documento
+                -- a totale zero deve poter essere emesso (rev 2026-07-16).
+                IF v_stato_corrente_cod = 'DRAFT' AND p_nuovo_stato = 'EMESSO' THEN
+                  SELECT COUNT(*)
+                    INTO v_count_righe
+                    FROM vendite.preventivi_righe pr
+                   WHERE pr.preventivo_id = p_preventivo_id
+                     AND pr.attivo IS TRUE;
+
+                  IF v_count_righe = 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_cambia_stato_preventivo',
+                      'PREV_NESSUNA_RIGA_ATTIVA',
+                      jsonb_build_object('preventivo_id', p_preventivo_id),
+                      NULL::uuid,
+                      v_numero
+                    );
+                  END IF;
+                END IF;
+
+                -- Guard verso ANNULLATO: blocco se righe in commessa attive.
+                -- Usa v_uid gia' caricato e starts_with() (PG 18, index-friendly).
+                IF p_nuovo_stato = 'ANNULLATO' THEN
+                  SELECT EXISTS(
+                    SELECT 1
+                      FROM vendite.commesse_attivita ca
+                     WHERE starts_with(ca.segment_key, 'PREV:' || v_uid::text || ':R:')
+                       AND ca.stato_emissione = 'EMESSA'
+                  ) INTO v_has_commessa;
+
+                  IF v_has_commessa THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'fn_cambia_stato_preventivo',
+                      'PREV_ANNULLAMENTO_COMMESSA_ATTIVA',
+                      jsonb_build_object('preventivo_id', p_preventivo_id),
+                      NULL::uuid,
+                      v_numero
+                    );
+                  END IF;
+                END IF;
+
+                -- Esecuzione: aggiorna stato
+                UPDATE vendite.preventivi
+                   SET stato_doc_preventivo_id = v_nuovo_stato_id,
+                       user_update = COALESCE(p_user, CURRENT_USER)
+                 WHERE id = p_preventivo_id;
+
+                -- Ritorna risultato
+                RETURN QUERY
+                SELECT p_preventivo_id, v_stato_corrente_cod, p_nuovo_stato;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
+              IS 'Transizione di stato preventivo validata dalla matrice config.transizioni_stati_preventivi. Guard DRAFT->EMESSO: SOLO presenza di righe attive (PREV_NESSUNA_RIGA_ATTIVA); guard verso ANNULLATO (no commessa EMESSA). Stato corrente/destinazione e RETURNS per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #1. rev 2026-07-16: rimossi guard PREV_TOTALE_NON_POSITIVO e filtro quantita>0 — un documento a totale zero deve poter essere emesso (regola valida per tutti i domini).';

@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Asimmetria ordini risolta (decisione Tid 2026-07-16).
+#
+# La Regola 2 del guard ordini (DRAFT->CONFERMATO richiede almeno una riga)
+# contava le righe SENZA filtro su attivo, unico dominio a farlo:
+#   preventivi -> pr.attivo IS TRUE
+#   resi       -> rr.attivo IS TRUE
+#   ddt        -> r.attivo IS TRUE  (20260716-01)
+#   contratti  -> cr.attivo = TRUE
+#   ordini     -> nessun filtro     <-- l'anomalia
+#
+# Conseguenza: un ordine con SOLE righe disattivate (attivo=false, cioe'
+# logicamente cancellate) risultava confermabile pur essendo vuoto.
+# Ora conta solo le righe attive, come tutti gli altri domini.
+#
+# Allineamento capability: fn_available_actions_ordine (20260716-02)
+# specchia questo predicato (r.attivo IS TRUE).
+#
+# Base: doc auto-gen vendite/funzioni/trgfn_ordini_guard_transizione.md
+# (rev 2026-06-05) + filtro attivo sulla Regola 2. Regola 1 invariata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260716-08-update-trgfn-ordini-guard-transizione-righe-attive-mctit.yaml
+
+  - changeSet:
+      id: 20260716-08-update-trgfn-ordini-guard-transizione-righe-attive
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        trgfn_ordini_guard_transizione: la Regola 2 conta solo le righe attive
+        (simmetria con preventivi/resi/ddt/contratti). Un ordine con sole righe
+        disattivate non e' piu' confermabile.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ordini_righe
+            - columnExists:
+                schemaName: vendite
+                tableName: ordini_righe
+                columnName: attivo
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: enforcement DB-first del grafo transizioni stato ordine.
+              --   La transizione (OLD.stato -> NEW.stato) e' ammessa solo se
+              --   presente e attiva in config.transizioni_stati_ordini. In piu',
+              --   DRAFT->CONFERMATO richiede almeno una riga ordine ATTIVA.
+              --   Letto dalla matrice (no grafo hardcodato): SSOT col lato lettura
+              --   fn_available_actions_ordine.
+              --   rev 2026-07-16: Regola 2 filtra attivo IS TRUE (simmetria con
+              --   gli altri domini); la capability specchia lo stesso predicato.
+              DECLARE
+                  v_codice_da config.stati_doc_ordini.codice_interno%TYPE;
+                  v_codice_a  config.stati_doc_ordini.codice_interno%TYPE;
+                  v_ammessa   boolean := false;
+              BEGIN
+                  -- No-op se lo stato non cambia davvero (UPDATE su altre colonne).
+                  IF NEW.stato_doc_ordine_id IS NOT DISTINCT FROM OLD.stato_doc_ordine_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT
+                      max(CASE WHEN id = OLD.stato_doc_ordine_id THEN codice_interno END),
+                      max(CASE WHEN id = NEW.stato_doc_ordine_id THEN codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM config.stati_doc_ordini
+                   WHERE id IN (OLD.stato_doc_ordine_id, NEW.stato_doc_ordine_id);
+
+                  -- Regola 1: la transizione deve esistere ed essere attiva in matrice.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.transizioni_stati_ordini t
+                       WHERE t.stato_da_id = OLD.stato_doc_ordine_id
+                         AND t.stato_a_id  = NEW.stato_doc_ordine_id
+                         AND t.attivo IS TRUE
+                  ) INTO v_ammessa;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_ORDINE_TRANSIZIONE_NON_AMMESSA',
+                          jsonb_build_object(
+                              'ordine_id', NEW.id,
+                              'numero',    NEW.numero,
+                              'stato_da',  v_codice_da,
+                              'stato_a',   v_codice_a
+                          ),
+                          NEW.tx_id,
+                          NEW.id::text,
+                          coalesce(v_codice_da, 'NULL'),
+                          coalesce(v_codice_a,  'NULL')
+                      );
+                  END IF;
+
+                  -- Regola 2: DRAFT->CONFERMATO richiede almeno una riga ATTIVA.
+                  -- Spostata da ordini_service.py (E_ORD_NESSUNA_RIGA inline) per
+                  -- DB-first: vale per ogni chiamante, non solo conferma().
+                  -- rev 2026-07-16: + filtro attivo IS TRUE (simmetria con
+                  -- preventivi/resi/ddt/contratti). Una riga disattivata e'
+                  -- logicamente cancellata: un ordine con sole righe inattive
+                  -- e' vuoto e non va confermato.
+                  -- Nessun vincolo su quantita/prezzo/totale: conta la sola
+                  -- presenza (un ordine a totale zero deve poter avanzare).
+                  IF v_codice_da = 'DRAFT' AND v_codice_a = 'CONFERMATO' THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM vendite.ordini_righe r
+                           WHERE r.ordine_id = NEW.id
+                             AND r.attivo IS TRUE
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_ORDINE_CONFERMA_SENZA_RIGHE',
+                              jsonb_build_object(
+                                  'ordine_id', NEW.id,
+                                  'numero',    NEW.numero
+                              ),
+                              NEW.tx_id,
+                              NEW.id::text,
+                              coalesce(NEW.numero, 'NULL')
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ordini_guard_transizione()
+              IS 'Trigger function: enforcement grafo transizioni stato ordine letto da config.transizioni_stati_ordini (E_ORDINE_TRANSIZIONE_NON_AMMESSA). Precondizione DRAFT->CONFERMATO: almeno una riga attiva (E_ORDINE_CONFERMA_SENZA_RIGHE, ex E_ORD_NESSUNA_RIGA Python). Convive col guard approvazione BoM (20260512-20). rev 2026-06-05. rev 2026-07-16: Regola 2 filtra r.attivo IS TRUE (simmetria con preventivi/resi/ddt/contratti).';

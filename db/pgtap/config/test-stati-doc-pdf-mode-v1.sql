@@ -11,8 +11,14 @@
 -- 11-12)  pdf_allow_allegati NOT NULL + senza default (ddt campione)
 -- 13)     CHECK pdf_mode rifiuta valore fuori dominio (23514)
 -- 14)     guard NOT NULL: INSERT stato senza pdf_mode -> 23502
--- 15-22)  seed verbatim spot-check (incl. orfano PARZIALMENTE_EVASO e
---         quirk preventivi ANNULLATO=ARCHIVE, offerta EMESSA allegati)
+-- 15-22)  seed spot-check (incl. orfano PARZIALMENTE_EVASO, regola
+--         ANNULLATO=ARCHIVE su tutti i domini, offerta EMESSA allegati)
+--
+-- 2026-07-16 — Normalizzazione ANNULLATO -> ARCHIVE (contratti/ordini/ddt).
+-- Prima erano NONE «verbatim» dalle costanti FE; ora la regola e' unica su
+-- tutti e 5 i domini: annullare non cancella la storia, l'archivio PDF di un
+-- documento annullato resta consultabile (gia' vero per preventivi/offerte).
+-- Test 17/19/22 aggiornati di conseguenza; il 21 non e' piu' un «quirk».
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -76,9 +82,9 @@ SELECT throws_ok(
   '14) INSERT stato senza pdf_mode -> NOT NULL violation (no degrado silenzioso)');
 
 -- ============================================================
--- 15-22) Seed verbatim spot-check
+-- 15-22) Seed spot-check
 -- ============================================================
--- DDT (pilota): DRAFT=PREVIEW, EMESSO=ARCHIVE, ANNULLATO=NONE
+-- DDT (pilota): DRAFT=PREVIEW, EMESSO=ARCHIVE, ANNULLATO=ARCHIVE
 SELECT is(
   (SELECT pdf_mode FROM config.stati_doc_ddt WHERE codice_interno='DRAFT'),
   'PREVIEW', '15) ddt DRAFT -> PREVIEW');
@@ -87,7 +93,7 @@ SELECT is(
   'ARCHIVE', '16) ddt EMESSO -> ARCHIVE');
 SELECT is(
   (SELECT pdf_mode FROM config.stati_doc_ddt WHERE codice_interno='ANNULLATO'),
-  'NONE', '17) ddt ANNULLATO -> NONE');
+  'ARCHIVE', '17) ddt ANNULLATO -> ARCHIVE (archivio consultabile su annullato)');
 
 -- ORDINI: orfano PARZIALMENTE_EVASO classificato ARCHIVE (non NONE)
 SELECT is(
@@ -95,7 +101,7 @@ SELECT is(
   'ARCHIVE', '18) ordini PARZIALMENTE_EVASO -> ARCHIVE (orfano classificato, non NONE)');
 SELECT is(
   (SELECT pdf_mode FROM config.stati_doc_ordini WHERE codice_interno='ANNULLATO'),
-  'NONE', '19) ordini ANNULLATO -> NONE');
+  'ARCHIVE', '19) ordini ANNULLATO -> ARCHIVE (archivio consultabile su annullato)');
 
 -- OFFERTE: EMESSA archive + allow_allegati=true (unico allegati vivo)
 SELECT ok(
@@ -103,17 +109,17 @@ SELECT ok(
      FROM config.stati_doc_offerte WHERE codice_interno='EMESSA'),
   '20) offerte EMESSA -> ARCHIVE + allow_allegati=true');
 
--- PREVENTIVI: quirk verbatim ANNULLATO=ARCHIVE (non NONE)
+-- PREVENTIVI: ANNULLATO=ARCHIVE (dal 2026-07-16 e' la regola, non piu' un quirk)
 SELECT is(
   (SELECT pdf_mode FROM config.stati_doc_preventivi WHERE codice_interno='ANNULLATO'),
-  'ARCHIVE', '21) preventivi ANNULLATO -> ARCHIVE (verbatim costante FE)');
+  'ARCHIVE', '21) preventivi ANNULLATO -> ARCHIVE');
 
--- CONTRATTI: DRAFT=PREVIEW, ATTIVO=ARCHIVE, ANNULLATO=NONE
+-- CONTRATTI: DRAFT=PREVIEW, ATTIVO=ARCHIVE, ANNULLATO=ARCHIVE
 SELECT ok(
   (SELECT pdf_mode FROM config.stati_doc_contratti WHERE codice_interno='DRAFT')='PREVIEW'
   AND (SELECT pdf_mode FROM config.stati_doc_contratti WHERE codice_interno='ATTIVO')='ARCHIVE'
-  AND (SELECT pdf_mode FROM config.stati_doc_contratti WHERE codice_interno='ANNULLATO')='NONE',
-  '22) contratti DRAFT/ATTIVO/ANNULLATO -> PREVIEW/ARCHIVE/NONE');
+  AND (SELECT pdf_mode FROM config.stati_doc_contratti WHERE codice_interno='ANNULLATO')='ARCHIVE',
+  '22) contratti DRAFT/ATTIVO/ANNULLATO -> PREVIEW/ARCHIVE/ARCHIVE');
 
 SELECT * FROM finish();
 ROLLBACK;
