@@ -190,8 +190,8 @@ gratis (G-11).
 > superseded dal brief operativo
 > [brief-be-fe-lineage-documenti-vendite.md](brief-be-fe-lineage-documenti-vendite.md)
 > (Fasi A+B+C complete; DB in work-done:
-> [core](../work-done/brief-db-lineage-documenti-vendite.md) ·
-> [colonne liste](../work-done/brief-db-liste-lineage-colonne.md)).
+> [core](brief-db-lineage-documenti-vendite.md) ·
+> [colonne liste](brief-db-liste-lineage-colonne.md)).
 > Delta vs il piano originale: liste 4→5 (+DDT), resi come ramo inverso, e la
 > "lista commesse" (punto 5) risolta come **drawer commessa leggero** (nessuna
 > lista commesse esiste: dominio UI futuro separato).
