@@ -164,6 +164,42 @@ Deliverable DB scritti su `dev/db-tid`, **non applicati né committati**. Change
   nel loader.
 - **Doc auto-gen dbzero**: la rigenera Tid dopo l'applicazione (le 5 fn + 5 tabelle cambiano).
 
+### Revisione 2026-07-16 — normalizzazione `ANNULLATO → ARCHIVE` (supera il verbatim)
+
+Origine: [[brief-db-pdf-mode-contratti-annullato-archive]] (regressione FE — rimosse le aree
+inline "Documenti generati" dai drawer Preventivi/Contratti: un annullato con PDF generati
+perdeva l'accesso all'archivio).
+
+**Il brief chiedeva il solo flip contratti** sul presupposto "asimmetria contratti-vs-preventivi
+= svista". L'analisi ha mostrato che il presupposto era errato: `NONE` sull'annullato era un
+**pattern su 3 domini** (contratti, ordini, DDT) contro 2 (preventivi, offerte) — nessuno dei
+due deciso nel merito, entrambi **verbatim** dalle costanti FE (§2 rilievo #1). Fare il solo
+contratti avrebbe lasciato la stessa regressione latente su ordini/DDT.
+
+**Decisione Tid**: regola unica su tutti e 5 i domini — *annullare non cancella la storia,
+l'archivio PDF di un documento annullato resta consultabile* (già vero per preventivi/offerte).
+`contratti/ordini/ddt.ANNULLATO`: `NONE → ARCHIVE`, `pdf_allow_allegati` invariato (`f`).
+Scostamento cosciente dal verbatim, come già fatto per `PARZIALMENTE_EVASO` (§4 warning:
+«decidere consapevolmente, NON copiare il bug»).
+
+> ⚠️ **Conseguenza sulla giustificazione della colonna (§2).** Il razionale «la colonna è
+> giustificata perché non derivabile da `fase`/`terminale` (`EVASO` e `ANNULLATO` entrambi
+> terminali ma ARCHIVE vs NONE)» poggiava **esattamente** su queste 3 celle: erano le uniche
+> non-derivabili del modello (preventivi e offerte erano già 100% derivabili). Dopo la
+> normalizzazione `pdf_mode ≡ (fase = 'APERTO' ? PREVIEW : ARCHIVE)` su tutti e 5 i domini,
+> e `NONE` non è più usato da nessuno stato (resta valido nel CHECK).
+> **Non ritirata**: resta come asse di **policy/configurazione** (parametrizzazione consapevole
+> ≠ logica duplicata) — è la tesi originale del piano: data-driven, nessun degrado silenzioso,
+> un nuovo stato può dichiarare un comportamento PDF diverso senza toccare il codice.
+> Da **rivalutare** se resta derivabile a lungo: in tal caso la colonna diventerebbe
+> duplicazione di `fase` e andrebbe ritirata (impatto: 5 tabelle, 5 `fn_available_actions_*`,
+> pgTAP plan 22, consumatori FE). Decisione rinviata al 2° segnale.
+
+Deliverable: 3 CSV (`stati_doc_{contratti,ordini,ddt}.csv`) — nessun loader nuovo, nessun
+changeSet (loader `runOnChange` esistenti ri-applicano). pgTAP `test-stati-doc-pdf-mode-v1.sql`
+test **17/19/22** aggiornati a `ARCHIVE`; il **21** non è più etichettato «quirk». `plan(22)`
+invariato.
+
 ## 10. Consuntivo FE (2026-07-11) — ✅ REALIZZATO
 
 Recepimento FE della capability su `dev/backend-tid` (**non committato**). Build Vite verde,
