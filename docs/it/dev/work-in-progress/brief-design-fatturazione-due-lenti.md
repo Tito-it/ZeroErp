@@ -1,9 +1,13 @@
 # Brief Design — Cruscotti fatturazione a due lenti (Competenza a valle + Backlog a monte)
 
 > **Tipo**: brief di design autorevole (modello + piano di ridisegno) · **Data**: 2026-07-04
-> **Owner**: Tid · **Stato**: 🟢 **Fase 0 + 0-bis COMPLETE (2026-07-04)** — disegno unitario
-> + tutti i punti aperti chiusi (B/C/D/Lente 1 → decisioni DL-1..8). Prossimo: mini-brief DB
-> timestamp (§7) in parallelo + Fase 1 Lente Competenza. Ridisegna
+> · **Ultimo aggiornamento**: 2026-07-16
+> **Owner**: Tid · **Stato**: 🟢 **Le tre viste sono in piedi e committate** (Lente 1
+> Competenza, Lente 2 Backlog, Situazione aperta v2). **Prossimo**: §6-quater — far entrare
+> **DDT e resi** nelle due lenti a monte, insieme ai due bug di fatturazione che l'analisi
+> ha fatto emergere (DL-19..26,
+> [brief-db-fatturazione-ddt-resi.md](brief-db-fatturazione-ddt-resi.md)). Poi Fase 4 guida.
+> Ridisegna
 > la dashboard pre-fatturazione a 5 card (design-of-record
 > [brief-design-dashboard-fatturazione.md](../work-done/brief-design-dashboard-fatturazione.md),
 > Fasi 1-3 fatte e committate `50347da0c`, **non pushate**) sostituendola con **due
@@ -311,9 +315,79 @@ una riga-residua sta in entrambe con due letture diverse. Nessuna collisione.
   sono abortiti). Un contratto ATTIVO figura come IN_CORSO — la fase normalizzata astrae
   "attivo/in essere", limite noto della normalizzazione, accettato.
 
-**Brief operativi v2** (spec, non ancora eseguiti — sequenza DB → BE/FE):
-[brief-db-situazione-aperta-v2.md](../work-done/brief-db-situazione-aperta-v2.md) (viste) →
-[brief-be-fe-situazione-aperta-v2.md](brief-be-fe-situazione-aperta-v2.md) (endpoint + FE).
+**Brief operativi v2** — ✅ **ESEGUITI E COMMITTATI** (verificato nel codice 2026-07-16):
+[brief-db-situazione-aperta-v2.md](../work-done/brief-db-situazione-aperta-v2.md) (viste, PR #944) →
+[brief-be-fe-situazione-aperta-v2.md](../work-done/brief-be-fe-situazione-aperta-v2.md)
+(endpoint + FE, commit `6daf0a65d`; poi `8887f4113` ha aggiunto l'ordinamento alle liste delle
+tre dashboard). Riscontri: `solo_aperti` non esiste più in nessun file, `ritardo_giorni` è in
+BE/FE/store/test, `DonutBase.vue` + `DonutFasi.vue` sono in `core/components/charts/`.
+
+## 6-quater. DDT e resi nelle lenti (2026-07-16, Tid) — DL-19..26
+
+**Origine**: Tid ha interrotto questo brief accorgendosi che **mancava un'area intera — il
+DDT** — e che nel frattempo era arrivata anche la slice **resi**. Le due lenti a monte sono
+state disegnate quando quelle aree non esistevano, e non le conoscono. La Lente 1
+(Competenza) **non si tocca**: parte dalla commessa ed è sorgente-agnostica, il DDT che pusha
+ci entra da solo (decisione Tid, confermata dall'analisi).
+
+**Il punto di innesto era già pronto**: entrambe le lenti pescano dalla union
+`vw_dash_fatturazione_documenti`, quindi **un solo resolver DDT** aggiunto lì le alimenta
+entrambe, e `fase`/`motivo_fermo` fanno da soli la ripartizione fra serbatoio e backlog. Il
+costo è quasi tutto DB.
+
+**L'analisi ha però fatto emergere quattro rilievi, due dei quali sono bug di fatturazione**
+che le lenti non possono vedere (mostrerebbero la doppia fatturazione come transito
+legittimo). Sintesi — dettaglio e numeri in
+[brief-db-fatturazione-ddt-resi.md](brief-db-fatturazione-ddt-resi.md) §1:
+
+* **Buco cieco** — con `trigger = CONSEGNATO`, l'ordine evaso va a `fase = CHIUSO` ed esce dal
+  serbatoio mentre il DDT non ha ancora pushato: quel valore **non è in nessuna delle tre
+  viste**.
+* **Falso positivo già vivo** — il resolver ordini non conosce `fatturazione_trigger` e marca
+  `PUSH_NON_ESEGUITO` 🟠 su ordini che non pusheranno mai (XOR ordine/DDT): azione impossibile
+  suggerita all'utente.
+* **La ri-consegna fattura due volte** — il DDT generato da `fn_genera_ddt_riconsegna` è
+  pushabile: 13 pz fatturati su un ordine da 10. La reso-awareness del 13/07 è stata applicata
+  ai consumatori *logistici* e non a `fn_list_ddt_da_pushare`, il consumatore *di billing*.
+* **NC su merce mai fatturata** — `vw_resi_da_accreditare` filtra sul **tipo** di reso e non
+  verifica se la merce sia stata fatturata.
+
+**Il rilievo di radice**, da cui discendono gli ultimi due: `tipi_reso.riapre_residuo` è un
+flag **logistico** che oggi decide anche cosa succede ai **soldi**. La domanda che governa i
+soldi è un'altra — *«quella merce l'avevamo già fatturata?»* — ed è un **fatto** nel DB, non
+una scelta. Nessuno lo guarda.
+
+**Decisioni DL-19..26**: registro in §10. Punti di design chiave:
+
+* **Resi = REVERSE_FLOW, non serbatoio (DL-24)** — lo dice il DB stesso:
+  `config.sorgenti.RESO_VENDITA` ha `scope = REVERSE_FLOW`, mentre tutto il serbatoio è
+  `PUSH_COMMESSA`/`PUSH_CONTRATTO`. In più sarebbe **doppio conteggio**: `fn_conferma_reso`
+  riapre il residuo e riproietta l'ordine a PARZIALMENTE_EVASO, quindi **l'ordine rientra da
+  solo** nel serbatoio. I resi vanno **solo nel Backlog**, spaccati in due dal flag che già
+  c'è: `RICONSEGNA_NON_ESEGUITA` 🟠 (l'azione esiste e la sua mancata esecuzione blocca la
+  fatturazione) e `NC_DOVUTA` 🟢 (stessa forma di `CANONE_NON_GENERATO`: si accende 🟠 con la
+  slice NC cambiando una riga di seed).
+* **Ordine al residuo (DL-23)** — nel serbatoio l'ordine porta il valore **ancora da spedire**,
+  non quello pieno: altrimenti la merce già in viaggio è contata due volte (ordine 1.000 +
+  DDT 500 = 1.500 per un valore che farà fattura di 1.000). Chiude anche il buco cieco: la
+  staffetta ordine→DDT tiene la somma a 1.000 in ogni istante. Costo accettato: Ordini diventa
+  l'unica area con misura **netta**.
+* **Il principio (DL-26)** — *si fattura la merce che il cliente tiene in mano alla fine*.
+  Invariante per riga: `fatturato − accreditato = merce tenuta`. Il fatto "già fatturata?" non
+  decide **se** correggere (sempre) ma **come**: prima della fattura si sottrae, dopo si
+  accredita.
+* **La scelta umana è una sola e vive sulla coda (DL-26)** — esiste in **una** delle quattro
+  combinazioni (merce già fatturata + reso per ri-consegna): *«emetto la nota di credito?»*.
+  Accreditare e rifatturare sono la stessa decisione vista dai due lati → all'utente si chiede
+  una cosa sola, il resto si deriva. Non è un campo da congelare alla creazione del reso (la
+  decisione può arrivare dopo, se il cliente la chiede): è un'azione sulla coda accrediti,
+  esercitabile **fino alla ri-spedizione**.
+* **Un brief solo, non due (2026-07-16)** — motore e read-side erano stati separati per
+  sequenza ("prima i fix, sennò il backlog mostra numeri sbagliati"); Tid ha rimosso quel
+  criterio (**non siamo in produzione**: i numeri temporaneamente sbagliati non sono un costo
+  di progetto). Senza quel motivo il taglio non regge: i due pezzi **riscrivono la stessa
+  funzione** (`fn_list_ddt_da_pushare`) e condividono la regola di eleggibilità, che deve
+  avere **una fonte sola** e un proprietario chiaro.
 
 ## 7. Prerequisito DB — timestamp di transito (Domanda C) ✅ deciso
 
@@ -375,7 +449,7 @@ dentro il transitato, **"fatto in tempo"** da **"recuperato in ritardo"** (anali
 * Valore € di Offerte/Contratti (resta come da D-2/D-3 del brief pre-fatturazione: v2).
 * Push ricorrente dei contratti: fuori scope (ne dipende solo la lettura `CANONE_NON_GENERATO`).
 
-## 10. Decisioni prese (Tid — DL-1..8: 2026-07-04 · DL-9..13: 2026-07-07 · DL-14..18: 2026-07-08)
+## 10. Decisioni prese (Tid — DL-1..8: 2026-07-04 · DL-9..13: 2026-07-07 · DL-14..18: 2026-07-08 · DL-19..26: 2026-07-16)
 
 | # | Decisione | Scelta |
 |---|---|---|
@@ -397,6 +471,14 @@ dentro il transitato, **"fatto in tempo"** da **"recuperato in ritardo"** (anali
 | DL-16 | Situazione aperta v2 — grafico | **Donut a spicchi per fase** (3 fasi vive APERTO/IN_ATTESA/IN_CORSO, palette `faseDocumentoSeverity`) = composizione/maturità degli aperti; misura mista invariata (DL-11) |
 | DL-17 | Situazione aperta v2 — filtro ritardo | Soglia **"aperti da oltre N giorni"** su **data documento** (`data_riferimento`, costo DB zero); applicato **solo alla lista** (card = fotografia completa) |
 | DL-18 | Situazione aperta v2 — contratti | Restano (giudizio sospeso → sempre aperti): compaiono DRAFT + ATTIVO; CESSATO escono con `fase<>CHIUSO`. ATTIVO figura come IN_CORSO (astrazione fase normalizzata, accettata) |
+| DL-19 | **Bug orfano push DDT** (§6-quater) | `fn_list_ddt_da_pushare` order-backed usa l'**uguaglianza stretta** `stato = trigger`: un DDT che supera lo stato-trigger esce per sempre dall'eleggibilità e **non viene mai fatturato, senza segnalazione**. Stesso bug corretto sugli ordini il 2026-07-10; il ramo standalone della stessa fn ha già la logica giusta (`IN (...)`) → è un'asimmetria, non una scelta. **Si corregge**: eleggibile **dallo** stato-trigger **in poi** |
+| DL-20 | **Ordini XOR nel backlog** | Il resolver ordini diventa **trigger-aware**: con `trigger ∈ {SPEDITO, CONSEGNATO}` non è l'ordine a pushare → nuovo motivo **`IN_ATTESA_DDT` = 🟢 FISIOLOGICO**. L'ordine **resta** nel serbatoio (è aperto e pre-commessa) e **sparisce** dal backlog (non c'è nulla da fare su di lui). Nessun caso speciale FE: la regola di classe DL-6/DL-7 fa tutto |
+| DL-21 | **DDT nelle lenti** | **Un solo resolver** `vw_dash_fatturazione_ddt` nella union `vw_dash_fatturazione_documenti` → alimenta **entrambe** le lenti; `fase`/`motivo_fermo` ripartiscono da soli. `motivo_fermo` trigger-aware: prima del trigger = 🟢 `IN_TRANSITO` (in viaggio), dal trigger in poi e non pushato = 🟠 `PUSH_NON_ESEGUITO`/`PUSH_PARZIALE` (codici riusati). Il predicato "il push è dovuto?" ha **fonte unica** condivisa con la fn di push, mai ricopiato |
+| DL-22 | **Fase DDT** | **Invariata**: `CONSEGNATO`/`RESO` restano `fase = CHIUSO`. Conseguenza voluta: un DDT **dovuto e non pushato** compare nel **Backlog** e non nel serbatoio — corretto per costruzione (non sta aspettando: è in ritardo) |
+| DL-23 | **Ordine al residuo nel serbatoio** | L'ordine porta il valore **ancora da spedire** (`ordinato − evaso`), non il pieno: altrimenti la merce in viaggio è contata due volte (1.000 + 500 = 1.500 per un valore da 1.000). Card **sommabili** + staffetta ordine→DDT che chiude il buco cieco. Residuo **da spedire** (fulfillment), NON "non transitato" (per trigger CONSEGNATO il transitato è sempre 0). **Formula già esistente e reso-aware** (`fn_ordine_ha_residuo_evasione` v2 + `fn_ordine_riga_qta_riconsegna`): riusarla. Accettato: Ordini unica area con misura **netta** |
+| DL-24 | **Resi — dove** | **NO serbatoio** (tre argomenti convergenti: `sorgenti.RESO_VENDITA` = `REVERSE_FLOW` per dichiarazione del DB; sarebbe **doppio conteggio** perché `fn_conferma_reso` riapre il residuo e **l'ordine rientra da solo**; violerebbe la semantica DL-14). **SÌ Backlog**, ramo dedicato (fuori dalla union documenti, che è il funnel pre-commessa), spaccato dal flag esistente `tipi_reso.riapre_residuo`: `RICONSEGNA_NON_ESEGUITA` 🟠 (azione esiste, la mancata esecuzione **blocca la fatturazione**) · `NC_DOVUTA` 🟢 oggi (forma `CANONE_NON_GENERATO`: 🟠 con la slice NC = una riga di seed). NC **facoltative** = opzione, non arretrato → fuori. Misura a **conteggi** (i resi non hanno importi), precedente DL-11 |
+| DL-25 | **Perimetro serbatoio** | **Nessuna azione**: `area <> 'COMMESSE'` resta. Con i resi fuori dalla union (DL-24) non è più una blacklist da manutenere ma una frase stabile — *«escludi il punto di arrivo»*: la commessa non è un'eccezione da ricordare, è il traguardo. Filtrare per `sorgenti.scope` sarebbe lavoro a comportamento invariato; il criterio resta disponibile se servisse |
+| DL-26 | **Fatturazione dei resi (il principio)** | **Si fattura la merce che il cliente tiene in mano alla fine** — invariante per riga `fatturato − accreditato = merce tenuta`. Radice del guasto: `riapre_residuo` è un flag **logistico** che oggi decide anche i **soldi**; la domanda economica è *«era già fatturata?»*, un **fatto** nel DB che nessuno guarda. Il fatto non decide **se** correggere (sempre) ma **come**: non ancora fatturata → **sottrai** al push · già fatturata → **accredita**. La ri-consegna rifattura **solo** se la merce non è coperta. **La scelta umana** (*«emetto NC?»*) esiste in **una** sola combinazione (già fatturata + per ri-consegna), è **una sola** (accredito ⇔ rifatturo: il resto si deriva, il conto torna comunque) e **non si congela alla creazione del reso**: è un'azione sulla coda accrediti esercitabile **fino alla ri-spedizione** |
 
 ## 11. Piano di sviluppo
 
@@ -408,5 +490,6 @@ dentro il transitato, **"fatto in tempo"** da **"recuperato in ritardo"** (anali
 | 1 — Lente Competenza | `dev/backend-tid` | resolver a valle (commessa→fattura per competenza), **4 blocchi predisposti** (§4) + BE + FE; riusa resolver Commesse | 🟢 **FATTO + REVIEW** (2026-07-06, non committato): BE 3 endpoint GET `dashboard-competenza/{,attivita/,errori/}` (pivot 4 stadi + breakdown 3a + errori) + 32 test; FE `DashboardCompetenzaView` (12 mesi semaforo, card stadi, donut copertura, pannello errori, drill-down attività + filtro ritardi), rotta/nav/i18n; doc `api_dashboard_competenza.md`. **Review multi-agent (8 finder) + fix applicati**: DB-6 single-source BE-side (`valore_display` per cella + blocco `totali` per mese: il FE rende, non sceglie la misura); pannello errori pilotato da (mese, aggregata) non dal conteggio (bug: mesi consecutivi con pari n_errori → pannello vuoto); competenza drill-down derivata da (anno, mese) e non da `mesi[]` stale (bug: fetch anno sbagliato su stepper/reload a cavallo d'anno); `date_trunc` su bucket errori (lotti senza CHECK primo-del-mese); stadi fuori whitelist accodati fail-visible; clamp anno 2000-2100; fallback i18n a codice grezzo; semaforo con badge ⚠/✖ indipendenti; pivot su accumulatore Decimal tipizzato. **Estrazione BB (ok Tid 2026-07-06)**: `usePagedDashFetch` (fetch paginata cruscotti: guard versione + rientro pagina-oltre-l'ultima; adottato da fermi/attivita'/errori nei 2 store) + `useDashMesiNav` / `DashMesiSidebar` / `DashMeseStepper` (telaio anno/12-mesi/stepper condiviso, i18n `dash_mesi.*`; adottato da ENTRAMBE le view — la 5-card eredita cosi' anche i fix clamp-anno e competenza race-free su cambio anno). `COUNT(*) OVER()` sulla lista errori (una sola valutazione della union per pagina, fallback count solo su pagina-oltre-l'ultima). Rinviato con motivazione: `scrollable/scroll-height` sulle DataTable interne — 8/10 tabelle interne del repo non lo usano; applicarlo a 2 sole creerebbe una terza variante (standard: "il miglioramento si applica a tutte le schermate, mai a una sola") → eventuale allineamento globale come task dedicato. Catalogo BB FE aggiornato. 1016 test verdi + build FE ok. Da validare in-app |
 | 2 — Lente Backlog | `dev/backend-tid` | lista non-collegati per anzianità + `motivo_fermo` + azionabilità; v1 anzianità-proxy | 🟢 **FATTO** (2026-07-06, non committato): BE 2 endpoint GET `dashboard-backlog/{,documenti/}` (contatori 3 classi sempre presenti in ordine UI 🟠🔵🔴, classi extra accodate fail-visible; lista ordinata BE-side per anzianità DESC, filtri classe/area whitelist, `COUNT(*) OVER()`) + 17 test; FE `DashboardBacklogView` (card classi = filtro toggle, filtro area, tabella con motivo decodificato/azione suggerita dalla lookup/fermo-da-gg/stato per area, apri documento via `?search=`), store su `usePagedDashFetch`, severity `classeBacklogSeverity`, rotta/nav/i18n it+en (vocabolario `motivo_fermo` e label aree riusati dalla 5-card); doc `api_dashboard_backlog.md` + api.md + catalogo BB. **Review multi-agent (8 finder) + fix applicati**: filtro `classe` de-whitellistato (era fail-closed mentre il riepilogo è fail-visible: una 4ª classe futura dava card non drillabile → 400; ora classe sconosciuta = lista vuota, area resta whitellistata perché strutturale); empty-state onesto (`loaded` in `usePagedDashFetch`: il verde "backlog vuoto" solo dopo fetch riuscita, mai su errore/pre-caricamento); `resetAll()` nel BB (la pageSize non sopravvive più al logout, fix su tutti e 3 gli store); clamp `GREATEST(anzianità,0)` (niente "fermo da -N gg" su date future) + `anzianita_max` null quando l'età è sconosciuta (≠ 0 gg); ORDER BY su `data_riferimento` (colonna base, ordine identico); unità ferme rese in card; stili inline morti rimossi. **Regola del 2 APPLICATA (ok Tid 2026-07-06)**: `vendite/dashboardAree.js` (config aree route+severity+kind + `buildApriDocumentoAction`, adottata da 5-card e Backlog), `applyPageEvent` in `usePagedDashFetch` (uccide le 4 copie del handler paginator), `labelOrCode` in core/utils (decodifica i18n fail-visible, adottata in 8 siti: dashboard+pratiche+catalogo), `validate_enum_param` in core list_helpers (unifica 5 blocchi whitelist nei service vendite). **"Apri documento" CORRETTO (ok Tid)**: una ricerca ESTERNA (deep-link `?search=`, ricerca universale, AI) ora azzera i default temporali `data_da`/`data_a` della lista target in `useSearchTable` — i documenti più vecchi di anno-1 (i più urgenti del backlog) sono trovabili; le ricerche digitate in pagina non toccano i filtri data; toolbar allineata via sync store→ref in `useStoreFilterBindings` (bindSelect/bindDate ora osservano lo store). Cataloghi BB BE+FE aggiornati. 1635 test verdi (vendite+core) + build FE ok |
 | 3 — Trasformazione in "Situazione aperta" (§6-bis) | DB: `dev/db-tid` · BE/FE: `dev/backend-tid` | DB: resolver contratti de-esploso + `vw_dash_aperto_*` + drop mensile ([brief-db-situazione-aperta.md](../work-done/brief-db-situazione-aperta.md)) · BE/FE: ritiro endpoint 5-card + restyle pagina + ricollocare i18n in gruppo condiviso | 🟢 **DB FATTO 2026-07-07** (migrations `20260707-03..06` EXECUTED, pgTAP verdi 28+10+14+15, regressione lenti zero, PR #936; rework `security_invoker` resolver contratti ✅ eseguito e verificato, brief DB §5). 🟢 **BE+FE FATTI 2026-07-07** (non committati): BE 2 endpoint GET `dashboard-aperto/{,documenti/}` (riepilogo 4 aree × 4 fasi sempre presenti fail-visible + drill-down con filtri area whitelist/fase passthrough/`solo_aperti` default true) + 21 test, ritirati endpoint/service/repo/test/doc 5-card; FE `SituazioneApertaView` (card area con DonutTransito + chip fasi = filtro, lista per "in essere da", toggle solo-aperti), store `dashboardAperto` su `usePagedDashFetch`, severity `faseDocumentoSeverity`, **rotta rinominata `/vendite/situazione-aperta`** (menu "Situazione aperta"; deroga alla lettera di DL-9 "stessa rotta": l'URL `dashboard-fatturazione` sarebbe stato fuorviante — la dashboard di fatturazione vera ora è la Lente 1); i18n `motivo_fermo`/`area_*`/`fase_*` ricollocati nel gruppo condiviso `dash_comune` (Backlog aggiornato). Doc `api_dashboard_aperto.md` + api.md + cataloghi BB. **Review critica 2026-07-07 (8 finder, 10 fix applicati)**: filtro `area` passthrough fail-visible (card accodate drillabili, mai 400), valori € delle aree extra non più persi (decisione data-driven), donut card senza la fase CHIUSO (fotografa la pipeline viva), vocabolario `fasi` top-level nel riepilogo (alimenta il filtro FE), `solo_aperti` strict con default single-source nel service, misura euro/count letta dal payload (via la copia FE `kind`), + 5 estrazioni regola del 2 ok Tid (`qp_str_upper`, `_query_paged_view` — che risolve anche il rientro da pagina stantia in UNA valutazione della union con clamp SQL + pagina effettiva nell'envelope adottata da `usePagedDashFetch` —, `dashAreaLabel`/`dashFaseLabel`/`dashMotivoLabel`, `useDashRiepilogo`, `DashEmptyState`). 1630 test verdi vendite+core, build FE ok, mergiato **PR #938**. **Da validare in-app** |
-| 3-bis — Situazione aperta **v2** (§6-ter) | DB: `dev/db-tid` (brief) → BE/FE: `dev/backend-tid` | DB: viste ridotte al serbatoio-aperti-non-chiusi + drop colonne transitato ([brief-db-situazione-aperta-v2.md](../work-done/brief-db-situazione-aperta-v2.md)) · BE/FE: donut per fase, filtro "oltre N giorni" solo-lista, via toggle solo_aperti ([brief-be-fe-situazione-aperta-v2.md](brief-be-fe-situazione-aperta-v2.md)) | 🟡 brief scritti 2026-07-08 — **ATTENDE team DB**, poi BE/FE |
-| 4 — Guida | docs | sezione "Cruscotti fatturazione" (linguaggio non tecnico) | ⬜ (dopo v2) |
+| 3-bis — Situazione aperta **v2** (§6-ter) | DB: `dev/db-tid` → BE/FE: `dev/backend-tid` | DB: viste ridotte al serbatoio-aperti-non-chiusi + drop colonne transitato ([brief-db-situazione-aperta-v2.md](../work-done/brief-db-situazione-aperta-v2.md)) · BE/FE: donut per fase, filtro "oltre N giorni" solo-lista, via toggle solo_aperti ([brief-be-fe-situazione-aperta-v2.md](../work-done/brief-be-fe-situazione-aperta-v2.md)) | ✅ **FATTO E COMMITTATO** — DB PR #944; BE/FE `6daf0a65d`, poi `8887f4113` (ordinamento liste sulle 3 dashboard). Verificato nel codice 2026-07-16 |
+| 3-ter — **DDT e resi nelle lenti** (§6-quater) | DB: `dev/db-tid` (brief) → BE/FE: `dev/backend-tid` | DB: fonte unica eleggibilità + push reso-aware + coda accrediti sui fatti + fix orfano + resolver DDT + ordini trigger-aware + ordine al residuo + ramo resi backlog + 4 motivi ([brief-db-fatturazione-ddt-resi.md](brief-db-fatturazione-ddt-resi.md)) · BE/FE: brief a valle, da scrivere | 🟡 brief DB scritto 2026-07-16 — **ATTENDE team DB**. 2 domande aperte per Tid (§4c ordine trigger CONFERMATO può generare DDT? · §4d grana backlog resi) |
+| 4 — Guida | docs | sezione "Cruscotti fatturazione" (linguaggio non tecnico) | ⬜ (dopo 3-ter) |

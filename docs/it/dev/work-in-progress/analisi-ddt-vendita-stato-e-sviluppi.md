@@ -8,7 +8,7 @@
 > [Gestione Ordini](/guide/gestione-ordini) ·
 > [Gestione Commesse](/guide/gestione-commesse) ·
 > [Fatturazione end-to-end](/guide/fatturazione) ·
-> [Genealogia & transiti vendite](/dev/work-in-progress/brief-design-genealogia-transiti-vendite) ·
+> [Genealogia & transiti vendite](/dev/work-done/brief-design-genealogia-transiti-vendite) ·
 > [Lineage documenti vendite (brief DB)](/dev/work-done/brief-db-lineage-documenti-vendite) ·
 > [Analisi ordini vendita](/dev/work-done/analisi-ordini-vendita) ·
 > [Analisi commesse — stato e sviluppi](/dev/work-done/analisi-commesse-stato-e-sviluppi)
@@ -156,7 +156,7 @@ registrato, manca solo che esista un DDT reale da pushare.
 
 ### 3.4 Lineage — il nodo DDT si "accende"
 
-Il grafo dei transiti ([genealogia](/dev/work-in-progress/brief-design-genealogia-transiti-vendite))
+Il grafo dei transiti ([genealogia](/dev/work-done/brief-design-genealogia-transiti-vendite))
 prevede già il nodo **DDT_VENDITA** come slot predisposto. Attivare i DDT lo riempie:
 la `vw_documento_lineage` mostrerà `Ordine → DDT → Commessa → Att.fatt. → Fattura`.
 **È qui che "si collega tutto" visivamente** nelle liste vendite.
@@ -253,7 +253,7 @@ il capitolato del `brief-db-ddt-vendita-evasione-e-stati.md`:
   `config.modalita_addebito_trasporto`, `config.causali_trasporto` (vuoto).
 - Guide: [gestione-ordini §Fatturazione: ordine vs DDT](/guide/gestione-ordini),
   [gestione-commesse](/guide/gestione-commesse), [fatturazione](/guide/fatturazione).
-- Design transiti: [genealogia](/dev/work-in-progress/brief-design-genealogia-transiti-vendite),
+- Design transiti: [genealogia](/dev/work-done/brief-design-genealogia-transiti-vendite),
   [lineage DB](/dev/work-done/brief-db-lineage-documenti-vendite).
 - Codice: `backend/apps/vendite/services/commesse_source_handlers.py` (`HandlerDdt`),
   `backend/apps/vendite/db/ddt_repository.py` (minimale),
