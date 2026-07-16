@@ -8,7 +8,7 @@
 // documento) — il click sul numero pratica NON deve aprire il documento.
 // PraticaDrawer montato solo su apertura (v-if): zero drawer per le righe
 // non cliccate.
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import PraticaDrawer from '../../../pratiche/components/PraticaDrawer.vue'
@@ -28,7 +28,11 @@ const everOpened = ref(false)
 function open() {
   if (!props.praticaId) return
   everOpened.value = true
-  drawerVisible.value = true
+  // Apertura al tick successivo (pattern LineageDocumentoDrawerHost): il
+  // drawer monta NASCOSTO e riceve visible false->true, così parte lo
+  // slide-in PrimeVue (after-show -> contentReady). Il fetch e' comunque
+  // garantito anche a mount gia'-visibile (watch immediate nel PraticaDrawer).
+  nextTick(() => { drawerVisible.value = true })
 }
 </script>
 
