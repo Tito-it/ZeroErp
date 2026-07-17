@@ -18,7 +18,6 @@ DECLARE
   v_nuovo_stato_id      config.stati_doc_preventivi.id%TYPE;
   v_transizione_ok      boolean;
   v_count_righe         bigint;
-  v_totale_doc          vendite.preventivi.totale_documento%TYPE;
   v_has_commessa        boolean;
   v_numero              vendite.preventivi.numero%TYPE;
   v_uid                 vendite.preventivi.uid%TYPE;
@@ -31,8 +30,8 @@ BEGIN
   --
   -- Regole:
   --   - La transizione deve essere presente e attiva nella matrice
-  --   - DRAFT → EMESSO: richiede almeno una riga attiva con qta > 0
-  --     e totale_documento > 0
+  --   - DRAFT → EMESSO: richiede almeno una riga attiva
+  --     (SOLO presenza: un totale pari a zero non blocca)
   --   - Verso ANNULLATO: blocco duro se il preventivo ha righe
   --     gia' inviate in commessa (stato_emissione EMESSA)
   --
@@ -48,6 +47,12 @@ BEGIN
   --   stato corrente e destinazione risolti per codice_interno
   --   (immutabile), non per codice (mutabile). Literali DRAFT/EMESSO/
   --   ANNULLATO sono codice_interno.
+  --
+  -- NOTE rev 2026-07-16 (solo presenza righe):
+  --   rimossi il guard PREV_TOTALE_NON_POSITIVO e il filtro
+  --   quantita > 0. Per emettere basta che il documento ABBIA
+  --   righe: prezzo/totale 0 e' un caso legittimo. Regola valida
+  --   per tutti i domini documentali.
   -- ==========================================================
 
   -- Guard: parametri obbligatori
@@ -116,14 +121,15 @@ BEGIN
     );
   END IF;
 
-  -- Guard DRAFT → EMESSO: almeno una riga attiva con quantita > 0
+  -- Guard DRAFT → EMESSO: SOLO presenza di righe attive.
+  -- Nessun vincolo su quantita/prezzo/totale: un documento
+  -- a totale zero deve poter essere emesso (rev 2026-07-16).
   IF v_stato_corrente_cod = 'DRAFT' AND p_nuovo_stato = 'EMESSO' THEN
     SELECT COUNT(*)
       INTO v_count_righe
       FROM vendite.preventivi_righe pr
      WHERE pr.preventivo_id = p_preventivo_id
-       AND pr.attivo IS TRUE
-       AND pr.quantita > 0;
+       AND pr.attivo IS TRUE;
 
     IF v_count_righe = 0 THEN
       PERFORM script.fn_log_and_raise_error(
@@ -132,25 +138,6 @@ BEGIN
         jsonb_build_object('preventivo_id', p_preventivo_id),
         NULL::uuid,
         v_numero
-      );
-    END IF;
-
-    -- Guard: totale_documento > 0
-    SELECT p.totale_documento
-      INTO v_totale_doc
-      FROM vendite.preventivi p
-     WHERE p.id = p_preventivo_id;
-
-    IF COALESCE(v_totale_doc, 0) <= 0 THEN
-      PERFORM script.fn_log_and_raise_error(
-        'vendite', 'fn_cambia_stato_preventivo',
-        'PREV_TOTALE_NON_POSITIVO',
-        jsonb_build_object(
-          'preventivo_id', p_preventivo_id,
-          'totale_documento', v_totale_doc
-        ),
-        NULL::uuid,
-        v_numero, COALESCE(v_totale_doc, 0)::text
       );
     END IF;
   END IF;
@@ -189,7 +176,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
-IS 'Transizione di stato preventivo validata dalla matrice config.transizioni_stati_preventivi. Guard DRAFT->EMESSO (righe+totale) e verso ANNULLATO (no commessa EMESSA). Stato corrente/destinazione e RETURNS per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #1.';
+IS 'Transizione di stato preventivo validata dalla matrice config.transizioni_stati_preventivi. Guard DRAFT->EMESSO: SOLO presenza di righe attive (PREV_NESSUNA_RIGA_ATTIVA); guard verso ANNULLATO (no commessa EMESSA). Stato corrente/destinazione e RETURNS per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #1. rev 2026-07-16: rimossi guard PREV_TOTALE_NON_POSITIVO e filtro quantita>0 — un documento a totale zero deve poter essere emesso (regola valida per tutti i domini).';
 ```
 
 ---

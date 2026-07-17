@@ -16,14 +16,19 @@ AS $function$
 -- Scopo: capability del contratto per il detail API (pattern data-driven).
 --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
 --   config.stati_doc_contratti (bottone PDF data-driven via capabilities).
+--   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+--   (documento vuoto non avanza di stato). "Vuoto" per il contratto:
+--   negoziato puro (listino_id NULL) senza AGGIUNTA attiva con prezzo.
 DECLARE
     v_stato_id     vendite.contratti.stato_doc_contratto_id%TYPE;
     v_stato_cod    config.stati_doc_contratti.codice_interno%TYPE;
     v_stato_codice config.stati_doc_contratti.codice%TYPE;
     v_valido_dal   vendite.contratti.valido_dal%TYPE;
+    v_listino_id   vendite.contratti.listino_id%TYPE;
     v_pdf_mode     config.stati_doc_contratti.pdf_mode%TYPE;
     v_pdf_allow    config.stati_doc_contratti.pdf_allow_allegati%TYPE;
     v_actions      jsonb;
+    v_ha_righe     boolean := false;
     v_can_edit     boolean;
     v_can_righe    boolean;
     v_non_edit     jsonb;
@@ -38,11 +43,11 @@ DECLARE
         '"tipo_variazione_globale","valore_variazione_globale",'
         '"categoria_cliente_id_snapshot","meta"]'::jsonb;
 BEGIN
-    -- Stato corrente: codice_interno + codice + valido_dal + capability PDF.
+    -- Stato corrente: codice_interno + codice + valido_dal + listino + capability PDF.
     SELECT c.stato_doc_contratto_id, sdc.codice_interno, sdc.codice, c.valido_dal,
-           sdc.pdf_mode, sdc.pdf_allow_allegati
+           c.listino_id, sdc.pdf_mode, sdc.pdf_allow_allegati
       INTO v_stato_id, v_stato_cod, v_stato_codice, v_valido_dal,
-           v_pdf_mode, v_pdf_allow
+           v_listino_id, v_pdf_mode, v_pdf_allow
       FROM vendite.contratti c
       JOIN config.stati_doc_contratti sdc ON sdc.id = c.stato_doc_contratto_id
      WHERE c.id = p_contratto_id;
@@ -50,6 +55,23 @@ BEGIN
     IF NOT FOUND THEN
         RETURN NULL;
     END IF;
+
+    -- Precondizione "documento non vuoto" per le transizioni che la
+    -- esigono (meta.requires_righe). Per il contratto NON e' un
+    -- semplice conteggio: con listino non e' mai vuoto di sostanza
+    -- (le righe arrivano dal listino); negoziato puro (listino_id
+    -- NULL) e' vuoto senza almeno una AGGIUNTA attiva con prezzo.
+    -- Specchia trgfn_contratti_freeze_listino_versione
+    -- (E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE).
+    v_ha_righe := (v_listino_id IS NOT NULL)
+        OR EXISTS (
+            SELECT 1
+              FROM vendite.contratti_righe cr
+             WHERE cr.contratto_id = p_contratto_id
+               AND cr.tipo_eccezione = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
+               AND cr.prezzo_unitario IS NOT NULL
+               AND cr.attivo = TRUE
+        );
 
     SELECT COALESCE(
         jsonb_agg(
@@ -61,7 +83,15 @@ BEGIN
                 'icon',            t.meta->>'icon',
                 'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
                 'requires_date',   COALESCE((t.meta->>'requires_date')::boolean, false),
-                'outlined',        COALESCE((t.meta->>'outlined')::boolean, false)
+                'outlined',        COALESCE((t.meta->>'outlined')::boolean, false),
+                'enabled',         NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                        AND NOT v_ha_righe),
+                'reason',          CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                             AND NOT v_ha_righe
+                                        THEN 'DOCUMENTO_SENZA_RIGHE' END,
+                'reason_key',      CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                             AND NOT v_ha_righe
+                                        THEN 'common.azione_reason.senza_righe' END
             )
             ORDER BY sa.ordine
         ),
@@ -112,7 +142,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_contratto(p_contratto_id bigint)
-IS 'Capability contratto per detail API: available_actions + can_change_state + can_edit_testata/righe + non_editable_fields + stato_codice_interno + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_contratti (bottone PDF data-driven via capabilities).';
+IS 'Capability contratto per detail API: available_actions + can_change_state + can_edit_testata/righe + non_editable_fields + stato_codice_interno + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_contratti. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il contratto e'' vuoto -> enabled=false + reason DOCUMENTO_SENZA_RIGHE. Vuoto per il contratto = negoziato puro (listino_id NULL) senza AGGIUNTA attiva con prezzo; con listino mai vuoto (predicato specchiato da trgfn_contratti_freeze_listino_versione).';
 ```
 
 ---
