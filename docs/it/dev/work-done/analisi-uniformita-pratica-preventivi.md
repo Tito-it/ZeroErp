@@ -167,10 +167,17 @@ Riferimenti: [brief-db-pratica-preventivi-tipo-unico-flussi.md](brief-db-pratica
   entry-point. Nessuna nuova struttura, nessun trigger; risoluzione a read-time in
   vendite. JSONB finché non emerge il 2° consumatore.
 
-🟡 **Punto da confermare col DB**: i prerequisiti sono `50 ← 40` **e** `60 ← 40`
-(entrambi da SMISTAMENTO). Logicamente INVIO_COMMESSA(60) richiede l'ordine
-CONFERMATO, output di CONFERMA_ORDINE(50) → atteso **`60 ← 50`**. Mitigato dalla
-creazione on-demand BE, ma da raddrizzare per pulizia di modello.
+✅ **RISOLTO — verificato in DB il 2026-07-16**: il DB ha raddrizzato il prerequisito.
+`60 ← 40` **non esiste più**: in `pratiche.template_flussi_prerequisiti` la catena
+9009-9014 è ora lineare — `20←10`, `30←20`, `40←30`, `50←40`, **`60←50`**. L'attesa
+logica formulata qui sotto è stata recepita: INVIO_COMMESSA(60) dipende ora davvero da
+CONFERMA_ORDINE(50) e non più da SMISTAMENTO(40). Nessun residuo di modello.
+Testo originale del 2026-07-02, conservato come storico:
+
+> 🟡 *Punto da confermare col DB: i prerequisiti sono `50 ← 40` e `60 ← 40`
+> (entrambi da SMISTAMENTO). Logicamente INVIO_COMMESSA(60) richiede l'ordine
+> CONFERMATO, output di CONFERMA_ORDINE(50) → atteso `60 ← 50`. Mitigato dalla
+> creazione on-demand BE, ma da raddrizzare per pulizia di modello.*
 
 ### 7.2 Filtro `obsoleto_dal` — ✅ DB FATTO (2026-06-30, commit `2f8d4f092`)
 

@@ -1,7 +1,14 @@
 # Brief Design — Proiezione generica dello stato di dominio nelle pratiche
 
 > **Tipo**: brief di design autorevole (modello + piano DB/BE, FE di consumo) · **Data**: 2026-07-01
-> **Owner**: Tid · **Stato**: 🟢 **fase MOSTRA implementata su PREVENTIVI (2026-07-02)** —
+> **Owner**: Tid · **Stato**: 🟢 **fase MOSTRA: livello di lettura DB GENERICO su 4 domini;
+> BE/FE pilotati e smoke-verdi su PREVENTIVI** (agg. 2026-07-16) —
+> ⚠️ *rettifica della dicitura precedente «MOSTRA implementata **su PREVENTIVI**», che sottostimava
+> il perimetro*: `script.vw_stato_sorgente` **unisce già 4 domini**
+> (`vendite.vw_stato_sorgente_preventivo` / `_offerta` / `_ordine` / `_contratto`), e la Fase 1 BE
+> legge quella union tramite il frammento condiviso `_doc_sorgente_lateral` → il livello di lettura
+> **non è più solo-preventivi**. Ciò che resta specifico di PREVENTIVI è il **pilota** (validazione
+> E2E in-app) e il roll-out di consumo agli altri domini, non la capacità di leggerne lo stato.
 > Fase 0 DB ✅ (D1-D3 consegnate dal team DB, [brief chiuso](../work-done/brief-db-proiezione-stato-dominio.md));
 > Fase 1 BE ✅ (display fields `doc_*` nei payload **percorso/coda/dettaglio+lista** via
 > frammento condiviso `_doc_sorgente_lateral` su `script.vw_stato_sorgente`, ancore
@@ -17,15 +24,30 @@
 > **Restano**: validazione E2E in-app di MOSTRA su PREVENTIVI → roll-out MOSTRA+GUIDA agli altri
 > domini (offerte/ordini/contratti, brief DB per dominio) → §10.3 azioni nel descrittore.
 >
-> **Note per il roll-out** (review critica 2026-07-02): **(a)** i resolver espongono
+> **Note per il roll-out** (review critica 2026-07-02 · **stato verificato in DB il 2026-07-16**):
+> **(a)** 🟡 **parzialmente fatta** — i resolver espongono
 > `sorgente_uid` castando la chiave nativa (`preventivi.uid::text`) — il predicato pushdown
 > della LATERAL non usa l'indice btree su `uid`: al crescere dei volumi serve un **indice a
-> espressione** `((uid::text))` per dominio (voce per il brief DB di roll-out). **(b)** i link
-> **COLLEGATO** (ordine/commessa da post-smistamento) nascono **senza `flusso_id`** per
-> decisione documentata ("non nascono da un flusso"): quando arriveranno i resolver
-> ordine/commessa, gli step CONFERMA_ORDINE/INVIO_COMMESSA non proietteranno nulla con
-> l'ancora per-flusso attuale — decidere allora se valorizzare `flusso_id` sui COLLEGATO o
-> dare alla LATERAL del percorso un fallback pratica-level. **(c)** la **regola dell'ancora**
+> espressione** `((uid::text))` per dominio (voce per il brief DB di roll-out).
+> ➡️ **Verifica 2026-07-16**: l'indice **esiste già per 2 domini su 4** —
+> `ix_preventivi_uid_text` e `ix_offerte_commerciali_uid_text`. **Mancano `ordini` e `contratti`**:
+> restano voce viva per il brief DB di roll-out di quei due domini.
+> **(b)** 🔴 **la premessa è cambiata, la decisione no — CAPABILITY DORMIENTE.** La nota diceva
+> che i link **COLLEGATO** nascono **senza `flusso_id`** per decisione documentata ("non nascono da
+> un flusso"), rimandando la scelta a quando arriveranno i resolver ordine/commessa: se valorizzare
+> `flusso_id` sui COLLEGATO oppure dare alla LATERAL del percorso un fallback pratica-level.
+> ➡️ **Verifica 2026-07-16**: lato **DB la strada A è già stata costruita** —
+> `fn_push_preventivo_a_ordine` ha `p_flusso_id bigint DEFAULT NULL` in firma e il corpo lo scrive
+> sul link COLLEGATO. **Ma nessun chiamante lo passa**: `push_a_ordine`
+> (`vendite/db/preventivi_repository.py`) non ha proprio l'argomento e invoca la fn con **4
+> parametri su 5** → `p_flusso_id` cade sempre sul DEFAULT NULL. **Riscontro sui dati**:
+> `pratiche.pratiche_sorgenti` ha **39 COLLEGATO, 0 con `flusso_id`** (i ROOT: 13/45).
+> **Conseguenza**: la decisione (b) è di fatto **già presa a metà** — l'infrastruttura DB esiste ma
+> è inefficace end-to-end. Al roll-out ordine/commessa **non è più una scelta A-vs-B a tavolino**:
+> o si cabla il BE perché passi il `flusso_id` (il repository sa già risolverlo:
+> `get_flusso_id_by_preventivo_root`), o si prende consapevolmente il fallback pratica-level e si
+> **ritira** il parametro dormiente per non lasciare in DB una firma che mente sulle sue capacità.
+> **(c)** la **regola dell'ancora**
 > (ROOT preferito, poi link più recente) oggi vive solo nel frammento Python
 > `_doc_sorgente_lateral`: la fase GUIDA (D4) dovrà risolvere la STESSA ancora a livello
 > motore → promuoverla a vista DB condivisa (es. `vw_pratica_doc_sorgente`) in quel cantiere.

@@ -1,5 +1,40 @@
 # Brief DB — Preventivi: la vecchia revisione EMESSO riemerge come documento aperto nei cruscotti
 
+> ## ✅ CHIUSO — 2026-07-16 (spostato in `work-done/`)
+>
+> **Fix applicato: Opzione A** (§6-A) — migration `20260708-06-update-vw-dash-fatturazione-preventivi-solo-rev-attiva`:
+> `vw_dash_fatturazione_preventivi` legge ora `FROM vendite.vw_preventivi … WHERE p.is_attiva`.
+> Test §7 **verificato in DB il 2026-07-16**: PRV0000038 → 0 righe, PRV0000061 → 1 (era 4),
+> PRV0000065 → 1 (era 2). pgTAP di non-regressione: `db/pgtap/vendite/test-vw-dash-preventivi-revisione-attiva.sql`
+> (13 test). Committati in `fd89c25d8`.
+>
+> **⚠️ L'Opzione B (§6-B) è stata SCARTATA di proposito, non rinviata.** La raccomandazione di
+> questo brief è **superata**: sui preventivi **non deve esistere** uno stato `SUPERATO`, perché
+> chiuderebbe la rev precedente e romperebbe il ritorno voluto *"annullo la bozza di revisione → la
+> rev emessa torna da sola quella valida"*. L'asimmetria con le offerte (`SUPERATA`) è **corretta**:
+> l'offerta è un documento a sé per revisione, il preventivo versiona lo stesso `numero`.
+> Razionale definitivo in [gestione-preventivi §4.3](../../guide/gestione-preventivi.md).
+> Di conseguenza il **backfill** dei 3 casi (§6-B.3) è **decaduto**.
+>
+> **Altri item chiusi**: `vw_dash_competenza_*` (§3) **non affetta** — legge `vendite.commesse` /
+> `attivita_fatturabili`, non i preventivi. L'«incoerenza semantica *abortito*» (§6-Nota) non era
+> tale: `is_abortito` (solo ANNULLATO = abbandono, la rev rifluisce al predecessore) ed
+> `esito='NEGATIVO'` (verdetto: RIFIUTATO/SCADUTO/ANNULLATO) sono **due concetti distinti e
+> legittimi**, che post-fix compongono correttamente.
+>
+> **Bonus — 2° bug trovato dal pgTAP (scenario B) e chiuso**: migration
+> `20260708-07-update-vw-preventivi-is-attiva-self-abortito`. `is_attiva` guardava solo verso l'alto
+> → una rev ANNULLATA **in cima** si dichiarava attiva e il predicato non era univoco. Aggiunto il
+> termine sul proprio stato: attiva = *(stato non abortito)* AND *(nessuna rev superiore
+> non-abortita)*. Conseguenza: un ANNULLATO singola-rev è ora non-attivo (solo in «mostra storico»).
+> Il follow-up BE indicato da quel changelog è anch'esso chiuso: `preventivi_repository.py` consuma
+> `v.is_attiva` dalla vista invece di duplicare la subquery.
+>
+> Il corpo che segue è il brief **originale del 2026-07-08**, conservato come storico: la sua
+> raccomandazione (Opzione B) **non riflette la decisione finale**.
+
+---
+
 > **Tipo**: brief DB (target `dev/db-tid`) · **Data**: 2026-07-08 · **Owner**: Tid
 > **Ambito**: viste cruscotti fatturazione (`vendite.vw_dash_fatturazione_preventivi`
 > → backlog + situazione aperta). **Origine**: segnalazione Tid — PRV0000038 appare in

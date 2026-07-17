@@ -1,5 +1,8 @@
 {
   "common": {
+    "azione_reason": {
+      "senza_righe": "The document has no rows: add at least one to proceed."
+    },
     "save": "Save",
     "cancel": "Cancel",
     "back": "Back",

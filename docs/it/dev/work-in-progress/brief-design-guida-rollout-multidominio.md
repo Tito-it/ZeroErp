@@ -247,13 +247,31 @@ sotto riguardano il *framing* e il *coordinamento con altre attività*, non erro
 
 ### Correzioni operative (da recepire prima dei brief-DB per dominio)
 
-- **R1 — Coordinamento con la fix-transazioni (stesso branch, stesse funzioni).** G-est.2 (`flusso_id` sul
+- **R1 — Coordinamento con la fix-transazioni (stesso branch, stesse funzioni).** ✅ **RECEPITO sul lato
+  firma — verificato in DB il 2026-07-16.** G-est.2 (`flusso_id` sul
   COLLEGATO) va **dentro le funzioni madre** dei finding **#4/#5/#10** di
   [analisi-fix-transazioni](../work-done/analisi-fix-transazioni.md) — che *già* riscrivono l'INSERT su
   `pratiche_sorgenti`. Progettare **da subito** la firma della madre per ricevere/risolvere il `flusso_id`
   (oggi `fn_push_preventivo_a_ordine` riceve `p_pratica_id` ma non il flusso): aggiungerlo dopo = seconda
   modifica di firma → `DROP FUNCTION` (regola `RETURNS TABLE`). **#3 escluso** (link ROOT: `flusso_id` già
   gestito). Invarianti già allineati (`SECURITY INVOKER` + GRANT-a-`zeroerp_app` + documento-sovrano).
+
+  ➡️ **Stato 2026-07-16 — il rischio strutturale che motivava R1 è scongiurato**: la parentesi «oggi
+  `fn_push_preventivo_a_ordine` … non riceve il flusso» **non è più vera**. La firma viva è
+  `fn_push_preventivo_a_ordine(p_preventivo_id, p_righe_ids, p_pratica_id, p_fatturazione_trigger,
+  p_flusso_id bigint DEFAULT NULL)` e il corpo scrive il parametro sul link COLLEGATO
+  (`INSERT INTO pratiche.pratiche_sorgenti (…, ruolo_link, flusso_id) VALUES (…, 'COLLEGATO', p_flusso_id)`).
+  **Nessun secondo `DROP FUNCTION` sarà necessario**: R1, come formulata, è chiusa.
+
+  ⚠️ **Ma G-est.2 NON è operativo — è una capability dormiente, e va saputo prima dei brief-DB per
+  dominio.** **Nessun chiamante passa il parametro**: `push_a_ordine` in
+  `vendite/db/preventivi_repository.py` non ha l'argomento e invoca la fn con **4 parametri su 5**, quindi
+  `p_flusso_id` cade sempre sul DEFAULT NULL. **Riscontro sui dati**: `pratiche.pratiche_sorgenti` ha **39
+  link COLLEGATO, 0 con `flusso_id`**. Il roll-out di OFFERTA/ORDINE/CONTRATTO **non deve dare per
+  scontato che il COLLEGATO porti il flusso**: oggi non lo porta mai. O si cabla il BE (il repository sa
+  già risolverlo: `get_flusso_id_by_preventivo_root`), o si sceglie il fallback pratica-level e si ritira
+  il parametro. Decisione da prendere **prima** di scrivere i brief-DB per dominio — vedi nota **(b)** del
+  [brief-padre proiezione-stato-dominio](brief-design-proiezione-stato-dominio.md).
 - **R2 — ORDINE: cutover esplicito imperativo→dichiarativo.** Aggiungere alla checklist Passo N per ORDINE
   un passo «**neutralizza `_completa_flusso_ordine_pratica`**» (mirror del pilota che ha disattivato
   l'handler `accetta_preventivo`). Senza, binding G2 e spinta imperativa scattano entrambi su 9013/9014

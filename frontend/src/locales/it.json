@@ -1,5 +1,8 @@
 {
   "common": {
+    "azione_reason": {
+      "senza_righe": "Il documento non ha righe: aggiungine almeno una per procedere."
+    },
     "save": "Salva",
     "cancel": "Annulla",
     "back": "Indietro",

@@ -23,10 +23,16 @@
 
 - **DB pronto**: tipo 9004, flussi 9009-9014, `obsoleto_dal`, `fn_get_lookup_codici`
   (`p_includi_obsoleti DEFAULT true`), guard `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`.
-- 🟡 **Da confermare col DB prima della Fase 3**: prerequisito flusso **`60 ← 50`**
-  (INVIO_COMMESSA dopo CONFERMA_ORDINE); oggi è `60 ← 40`. Se il DB lo raddrizza, la Fase 3
-  non cambia; se resta `60 ← 40`, la sequenzialità la garantisce comunque la creazione
-  on-demand (Fase 2) + lo stato ordine.
+- ✅ **RISOLTO — verificato in DB il 2026-07-16**: il prerequisito **`60 ← 50`** (INVIO_COMMESSA
+  dopo CONFERMA_ORDINE) **è stato raddrizzato dal DB**; non è più `60 ← 40`. In
+  `pratiche.template_flussi_prerequisiti` la catena 9009-9014 è ora lineare:
+  `20←10`, `30←20`, `40←30`, `50←40`, **`60←50`**. Si è avverata l'ipotesi buona prevista qui
+  sotto ("se il DB lo raddrizza, la Fase 3 non cambia") → **nessun residuo**, la Fase 3 resta
+  valida com'è. Testo originale del 2026-07-02, conservato come storico:
+  > 🟡 *Da confermare col DB prima della Fase 3: prerequisito flusso `60 ← 50`
+  > (INVIO_COMMESSA dopo CONFERMA_ORDINE); oggi è `60 ← 40`. Se il DB lo raddrizza, la Fase 3
+  > non cambia; se resta `60 ← 40`, la sequenzialità la garantisce comunque la creazione
+  > on-demand (Fase 2) + lo stato ordine.*
 - **Componenti standalone riusabili già esistenti** (mappati): `PreventiviDrawer.vue`,
   `PreventiviSmistamentoPanel.vue`, dialog accettazione, azioni ordine (Emetti / push commessa),
   service accettazione + `crea_revisione` + `push_a_ordine`/`push_a_commessa`.

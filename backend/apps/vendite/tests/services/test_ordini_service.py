@@ -66,12 +66,23 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
             ordini_service.conferma(7)
         self.assertEqual(cm.exception.code, "E_ORD_NESSUNA_RIGA")
 
+    @patch(_REPO)
+    def test_conferma_solo_righe_disattivate(self, repo_cls) -> None:
+        # Allineamento al guard DB (Regola 2 rev 2026-07-16): le righe
+        # disattivate non contano — sole righe attivo=False -> rifiuto.
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.list_righe.return_value = [{"id": 1, "attivo": False}]
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.conferma(7)
+        self.assertEqual(cm.exception.code, "E_ORD_NESSUNA_RIGA")
+
     @patch(_COMPLETA_STEP)
     @patch(_REPO)
     def test_conferma_ok_deriva_stato(self, repo_cls, _mock_step) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = [{"id": 1}]
+        repo.list_righe.return_value = [{"id": 1, "attivo": True}]
         repo.get_stato_id_by_codice.return_value = 2
         out = ordini_service.conferma(7)
         self.assertEqual(out["stato"], "CONFERMATO")
@@ -613,7 +624,7 @@ class OrdiniStepPraticaTests(SimpleTestCase):
     def test_conferma_completa_step_conferma_ordine(self, ord_cls, MockPrat, mock_step) -> None:
         repo = ord_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = [{"id": 1}]
+        repo.list_righe.return_value = [{"id": 1, "attivo": True}]
         repo.get_stato_id_by_codice.return_value = 2
         MockPrat.return_value.get_pratica_id_by_sorgente.return_value = 290
 
@@ -630,7 +641,7 @@ class OrdiniStepPraticaTests(SimpleTestCase):
     def test_conferma_senza_pratica_noop(self, ord_cls, MockPrat, mock_step) -> None:
         repo = ord_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.list_righe.return_value = [{"id": 1}]
+        repo.list_righe.return_value = [{"id": 1, "attivo": True}]
         repo.get_stato_id_by_codice.return_value = 2
         MockPrat.return_value.get_pratica_id_by_sorgente.return_value = None
 

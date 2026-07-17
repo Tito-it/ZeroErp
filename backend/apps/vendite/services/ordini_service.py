@@ -733,11 +733,16 @@ def elimina_ordine(ordine_id: int) -> dict[str, Any]:
 def conferma(ordine_id: int, *, user: str | None = None) -> dict[str, Any]:
     repo = OrdiniRepository()
     stato = _assert_stato(repo, ordine_id, _STATI_MODIFICABILI, op="conferma")
+    # Fail-fast allineato al guard DB (trgfn_ordini_guard_transizione, Regola
+    # 2 rev 2026-07-16): contano solo le righe ATTIVE — un ordine con sole
+    # righe disattivate non e' confermabile. Il guard autorevole resta il
+    # trigger (E_ORDINE_CONFERMA_SENZA_RIGHE); qui si evita solo il round-trip.
     righe = repo.list_righe(ordine_id)
+    righe_attive = [r for r in righe if r.get("attivo")]
     ErrorManager.require(
-        len(righe) > 0,
+        len(righe_attive) > 0,
         code="E_ORD_NESSUNA_RIGA",
-        message="Impossibile confermare un ordine senza righe.",
+        message="Impossibile confermare un ordine senza righe attive.",
         detail=f"ordine_id={ordine_id}",
         function_name=f"{_FN}.conferma",
     )
