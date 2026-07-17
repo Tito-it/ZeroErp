@@ -437,16 +437,50 @@ un rerun esplicito.
 | DRAFT  | `select_attivita`, `generate_fatture_righe`              | `[]` (nessuno)       |
 | EMESSA | `genera_fondi`, `applica_fondi`, `ricalcola_iva`         | `reset_lotto_draft`  |
 
-In questo caso, se un lotto MASSIVO in stato EMESSA deve tornare a DRAFT,
-il sistema esegue il task `reset_lotto_draft` che pulisce fondi, righe IVA
-e totali generati dallo step forward.
+In questo caso, se un lotto MASSIVO in stato EMESSA deve tornare a DRAFT, il sistema
+esegue il task `reset_lotto_draft`, che ripristina i fondi delle fatture sorgente,
+cancella le righe IVA e i totali generati dallo step forward — **e poi cancella le
+fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
+
+> ⚠️ **`reset_lotto_draft` non riporta il lotto a DRAFT: lo ANNULLA.**
+> Il nome inganna. Cosa fa davvero, nell'ordine:
+>
+> 1. **pretende il lotto già in DRAFT** (guard *«rollback solo se DRAFT»*): il ritorno
+>    EMESSA→DRAFT lo fa il rerun dello step, *prima*; il task non lo esegue.
+> 2. **ripristina i fondi** delle fatture sorgente (`fn_reset_fondi_fattura`) — vedi
+>    il caveat sotto.
+> 3. **cancella fisicamente** riepiloghi IVA, righe, log, note e **le fatture stesse**.
+> 4. **sblocca le righe** di `attivita_fatturabili` (`fattura_riga_id` → NULL,
+>    `fatturato` → false, lock rimosso): sopravvivono e restano pronte.
+> 5. **chiude il lotto**: `stato_doc_fiscale` = ANNULLATA, `stato_operativo` = CHIUSO,
+>    `stato_lotto` = COMPLETATO.
+>
+> **Quel lotto è morto.** Per rifatturare serve un **lotto nuovo**, che ripescherà le
+> stesse righe `attivita_fatturabili` rimaste libere. Non si "riapre e si corregge" il
+> lotto: si demolisce e si rifà.
+>
+> ⚠️ **E il ripristino dei fondi non è integrale.** Un fondo già **postato su una
+> contabile CHIUSA** non viene ripristinato: `fn_reset_fondi_fattura` non lo tocca,
+> scrive un warning in `vendite.fatture_log` (*«Minimo non ripristinabile: gia postato
+> (fattura X del Y)»*) e marca la riga source come ANNULLATO. Il reset **riesce
+> comunque**: controllare il log, non darlo per pulito.
 
 **Vincoli:**
 
-* Il rollback e` ammesso solo per lotti MASSIVO in stati pre-fiscali (tipicamente DRAFT ed EMESSA).
-* Dopo la DEFINITIVA (numerazione fiscale) il rollback globale non e` piu` possibile;
+* Il rollback è ammesso solo per lotti **MASSIVO** e solo se il lotto è già in **DRAFT**;
+  le **fatture** del lotto possono essere DRAFT o EMESSA (pre-fiscali), altrimenti la fn
+  rifiuta.
+* Dopo la DEFINITIVA (numerazione fiscale) il rollback globale non è più possibile;
   il sistema usa resume per fattura.
-* Se `rollback` e` `[]` (array vuoto), lo step non prevede operazioni di pulizia.
+* Le **fatture non tornano mai a DRAFT**: nella matrice `config.stati_doc_fiscale_transizioni`
+  la transizione EMESSA→DRAFT ha `solo_lotto = true`, quindi vale per il **lotto**, non per
+  il documento. Una fattura EMESSA si può solo **cancellare** (dal reset), mai retrocedere.
+* L'auto-rollback **esclude** questo task: il `PipelineStepExecutor` non lo esegue mai in
+  auto-run, proprio perché distruttivo. Serve una richiesta esplicita
+  (`POST /lotti/<id>/reset-draft/`).
+* Per una singola fattura esiste l'alternativa che **non** annulla il lotto:
+  `fn_reset_lotto_fattura_draft` (richiede la fattura **strettamente DRAFT**).
+* Se `rollback` è `[]` (array vuoto), lo step non prevede operazioni di pulizia.
 
 ### Regole operative del modello lotti
 
