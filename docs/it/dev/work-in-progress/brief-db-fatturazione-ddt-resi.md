@@ -8,7 +8,7 @@
 > la doppia fatturazione come transito legittimo. Si chiudono insieme — stessa funzione, stesso
 > apply.
 > **Design-of-record**: [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
-> §6-quater, decisioni **DL-19..26**.
+> §6-quater, decisioni **DL-19..28** (DL-27 = il contatore · DL-28 = solo trasporto via causale; DL-23/24/26 emendati 2026-07-17).
 > **Non si tocca la Lente 1 (Competenza)**: parte dalla commessa ed è sorgente-agnostica — il
 > DDT che pusha ci entra da solo. Decisione Tid.
 > **Contesto**: non siamo in produzione ([[project_no_produzione_solo_sviluppo]]) → **breaking
@@ -59,11 +59,16 @@ SPEDITO). **La correttezza dipende dal trigger e dal tempismo del batch, non dai
 
 ### 1c. Bug orfano del push DDT
 
-`fn_list_ddt_da_pushare`, ramo order-backed:
+`fn_list_ddt_da_pushare`, ramo order-backed (citazione **completa** — rev 2026-07-17):
 
 ```sql
-AND sdd.codice_interno = src.src_fatturazione_trigger   -- uguaglianza STRETTA
+(src.src_fatturazione_trigger IS NOT NULL
+ AND src.src_fatturazione_trigger != 'CONFERMATO'        -- cintura XOR: NON toccarla (§3e.1)
+ AND sdd.codice_interno = src.src_fatturazione_trigger)  -- ← uguaglianza STRETTA: il bug è QUI
 ```
+
+Il bug è la **terza riga** (l'uguaglianza stretta); la **seconda** è la cintura
+anti-doppia-fatturazione e **sopravvive al fix** — dettagli §3e.
 
 Un DDT con `trigger = SPEDITO` che passa a `CONSEGNATO` prima che il batch giri **non è più
 eleggibile: non verrà mai fatturato, e nulla lo segnala.**
@@ -95,11 +100,15 @@ suggerita all'utente.** Precede il DDT (bastava un billing account con
 
 Invariante per riga: `fatturato − accreditato = merce tenuta dal cliente`.
 
-Il fatto *"già fatturata?"* non decide **se** correggere — va corretto sempre — decide solo
-**come**: se la merce non è ancora impegnata in fatturazione si **toglie** prima del push; se
-lo è, si **accredita**.
+Il **come** lo decide un conto, non una regola (rev 2026-07-17, DL-26 precisato + DL-27): per
+ogni partita di merce si confrontano **tenuti** e **fatturati**, e **il segno della differenza
+decide** — positiva si fattura, negativa si accredita, zero niente. «Togliere prima del push» e
+«accreditare dopo» non sono due regole da coordinare: sono le **due letture dello stesso conto**
+(il §3 è la forma operativa; il §3f spiega perché la formulazione a due regole non reggeva).
 
-Le quattro combinazioni, con 10 pz consegnati e 3 resi:
+Le quattro combinazioni, con 10 pz consegnati e 3 resi — **lettura narrativa**; il capitolato
+operativo sono le **dieci righe della tabella §3a**, che includono anche i casi di tempismo
+(reso prima/dopo il push) che questa griglia non distingue:
 
 | | Merce **non** fatturata | Merce **già** fatturata |
 |---|---|---|
@@ -108,83 +117,449 @@ Le quattro combinazioni, con 10 pz consegnati e 3 resi:
 
 ## 3. Cosa serve — il motore (NON come)
 
-I pezzi 3b/3c/3d sono **tre facce della stessa regola**, non alternative. Verificate le sei
-combinazioni reali (incluse quelle di reso totale col flip a RESO): con tutti e tre tornano
-tutte; togliendone uno se ne rompe almeno una.
+> **Rev 2026-07-16 — §3 riscritto.** La stesura precedente esprimeva l'invariante DL-26 con
+> **tre predicati booleani** (sottrai / accredita / non-rifatturare) coordinati fra loro.
+> Verificata contro il DB vivo, quella forma **non regge**: due dei tre si sommano e
+> producono una doppia correzione, e il predicato *«era già fatturata?»* cerca la risposta
+> solo sul segmento DDT — perdendola sulla configurazione di default. Dettaglio dei rilievi
+> in fondo alla sezione (§3f). Qui c'è la forma che li chiude tutti **con una regola sola**.
 
-### 3a. La regola di eleggibilità — fonte unica (**farlo per primo**)
+### Il punto di partenza è il §1a di questo brief
 
-*«Il push è dovuto per questa riga DDT?»* ha **due consumatori**: la fn di push e il resolver
-DDT delle dashboard (§4a). Deve avere **una fonte sola** condivisa, non due copie che
-divergono ([[feedback_regola_del_2_estrai_bb]]). Precedente in casa:
-`fn_available_actions_ddt` già riusa `fn_list_ddt_da_pushare` come predicato — ma **per riga**,
-inservibile su una vista di dashboard che ne valuta migliaia. Serve una forma **set-based**;
-quale, lo scegliete voi.
+Il §1a dice la cosa giusta: la reso-awareness del 13/07 è stata data ai consumatori
+**logistici** e non al consumatore **di billing**. Ma vale la pena guardare *cosa* è stato dato
+ai consumatori logistici:
 
-È il primo step perché tutto il resto ci si appoggia.
+```text
+residuo da spedire = ordinato − Σ spedito + Σ reso_per_riconsegna
+```
 
-### 3b. Prima della fattura, **sottrai**
+Un **conto**. Una formula sola (`fn_ordine_ha_residuo_evasione` v2 + l'helper
+`fn_ordine_riga_qta_riconsegna`), letta da tutti quelli che devono saperlo — la fn di
+generazione DDT, il guard fulfillment, la proiezione stato ordine.
 
-Quando una riga DDT va in fatturazione, la quantità va ridotta di **tutta la merce tornata
-indietro** da resi CONFERMATI su quella riga DDT, **di qualunque tipo**. Se si azzera, la riga
-non pusha.
+Alla fatturazione non manca un semaforo: **manca il suo contatore**. È la stessa simmetria,
+sull'altro asse:
 
-⚠️ **L'helper esistente `fn_ordine_riga_qta_riconsegna` NON è riusabile tal quale**: conta solo
-i resi con `riapre_residuo = true` (nasce per la logistica) ed è aggregato per
-`ordine_riga_id`. Qui serve la somma per `ddt_riga_id`, **tutti i tipi**. È il rilievo del §0
-un livello più in basso: un filtro logistico dentro una domanda economica.
-
-**Il confine**: la sottrazione è possibile solo finché la merce non è **già impegnata in
-fatturazione** (esiste attività EMESSA per il `segment_key` di quella riga DDT). Da lì in poi
-la correzione è un accredito (§3c), non una sottrazione.
-
-### 3c. Dopo la fattura, **accredita** (la coda guarda i fatti)
-
-`vw_resi_da_accreditare` deve smettere di chiedere *"che tipo di reso è?"* e chiedere *"questa
-merce è già impegnata in fatturazione?"*. Nuova popolazione: righe reso CONFERMATE la cui merce
-ha un'attività EMESSA, **qualunque tipo di reso**. Chi non ce l'ha **esce** dalla coda (chiude
-1b). Breaking secco: la forma vecchia sparisce.
-
-La coda deve **distinguere due popolazioni** (serve a §3d, al backlog §4d e alla slice NC):
-
-| Popolazione | Quando | Natura |
+| | Domanda | Formula |
 |---|---|---|
-| NC **dovuta** | tipo *a credito*: la merce non torna più | obbligo — è lavoro arretrato |
+| **Logistica** (esiste dal 13/07) | quanti pezzi devo ancora **spedire**? | `ordinato − Σ spedito + Σ riconsegnato` |
+| **Fatturazione** (non esiste) | quanti pezzi devo ancora **fatturare**? | `tenuti − fatturati` |
+
+### 3a. Il contatore — fonte unica, set-based (**farlo per primo**)
+
+Per ogni **partita di merce**, due numeri:
+
+- **tenuti** = `Σ consegnati − Σ resi + Σ ri-consegnati` → i pezzi che il cliente ha **in mano
+  adesso** (§3b);
+- **fatturati** = i pezzi che gli sono già stati **messi in fattura** (§3c).
+
+E **una regola sola**:
+
+> **La differenza decide.**
+> `tenuti − fatturati > 0` → **fattura** la differenza.
+> `tenuti − fatturati < 0` → **accredita** la differenza.
+> `= 0` → **niente da fare**.
+
+Non c'è più un *prima* e un *dopo* la fattura, quindi non c'è un **confine** da definire né un
+momento in cui la regola cambia: c'è una sottrazione, e il **segno** dice da che parte si sta.
+È l'invariante DL-26 (`fatturato − accreditato = merce tenuta`) scritto **come si calcola**
+invece che come si spera.
+
+**Consumatori** (la fonte dev'essere una — [[feedback_regola_del_2_estrai_bb]]):
+
+| Consumatore | Legge |
+|---|---|
+| `fn_list_ddt_da_pushare` | la differenza **positiva** = quanto pushare |
+| `vw_resi_da_accreditare` (§3c) | la differenza **negativa** = quanto accreditare |
+| resolver `vw_dash_fatturazione_ddt` (§4a) | il **segno** = `motivo_fermo` |
+| `fn_available_actions_ddt` · `ddt_repository.count_righe_pushable` | il segno, per riga/documento |
+
+Quattro consumatori, un numero. Forma **set-based** (una vista, presumibilmente); quale,
+lo sceglie il team. È il primo step perché tutto il resto ci si appoggia.
+
+⚠️ **`fn_list_ddt_da_pushare` proietta oggi `dr.quantita` grezza**: con il contatore proietta
+la differenza. Non è un filtro in più sul WHERE, è la **quantità** che cambia.
+
+**La verifica — dieci righe, sono il capitolato dei pgTAP** (ordine 10 pz, il cliente ne rende 3):
+
+| # | Situazione | Tenuti | Fatturati | Diff. | Esito atteso |
+|---|---|---|---|---|---|
+| 1 | a credito, reso **prima** del push | 7 | 0 | +7 | fattura 7 |
+| 2 | …e subito dopo | 7 | 7 | 0 | **niente** (doppia correzione impossibile) |
+| 3 | a credito, reso **dopo** la fattura | 7 | 10 | −3 | accredita 3 |
+| 4 | reso **totale** a credito prima del push (flip a RESO) | 0 | 0 | 0 | niente (chiude **1b**) |
+| 5 | per ri-consegna, non fatturata | 7 | 0 | +7 | fattura 7 |
+| 6 | …poi ri-spedisce i 3 | 10 | 7 | +3 | fattura 3 → **totale 10** |
+| 7 | per ri-consegna, **già** fatturata | 7 | 10 | −3 | accredito in attesa |
+| 8 | …poi ri-spedisce i 3 | 10 | 10 | 0 | **niente** → totale 10 (chiude **1a**) |
+| 9 | …oppure emette la NC e **poi** ri-spedisce ⁽*⁾ | 10 | 7 | +3 | fattura 3 → totale 10 |
+| 10 | **trigger CONFERMATO** (default), reso a credito | 7 | 10 (sull'**ordine**) | −3 | accredita 3 |
+
+Le righe **2** e **8** sono quelle che la stesura precedente sbagliava; la **10** è quella che
+perdeva del tutto. La **8** merita una nota: *è il §3d*, e non è scritto da nessuna parte —
+**viene fuori da solo**. La ri-consegna non rifattura perché il conto è già a zero, non perché
+una regola glielo vieti.
+
+⁽*⁾ La riga **9** è **condizionale**: vale solo se la futura NC rispetta il contratto del §7
+(attribuibile alla merce, con quantità). In questa slice non è testabile — le altre nove sì.
+
+### 3b. «Tenuti» — quanta merce ha il cliente in mano
+
+```text
+tenuti = Σ consegnati − Σ resi (CONFERMATI, attivi, QUALUNQUE tipo) + Σ ri-consegnati
+```
+
+⚠️ **L'unità di conto è la PARTITA DI MERCE, non la riga DDT.** I 3 pezzi resi e poi
+ri-spediti **non sono merce nuova**: sono gli stessi pezzi che escono di nuovo, e vanno
+attribuiti alla stessa partita. Questo è ciò che rende la riga 8 uno zero invece di un +3.
+
+**Le catene esistono già tutte — nessuna tabella nuova**:
+
+| Anello | Oggetto |
+|---|---|
+| ordine ↔ DDT | `ordini_righe_fulfillment` |
+| DDT ↔ reso | `resi_righe.ddt_riga_id` (**NOT NULL**) |
+| reso ↔ DDT di ri-consegna | `resi_righe_riconsegne` (il ponte, brief resi §4b) |
+
+**✅ DECISO (Tid, 2026-07-16) — la chiave della partita**: **`ordine_riga_id` quando c'è
+l'ordine** (`resi_righe.ordine_riga_id` è nullable apposta), **catena DDT + ponte per lo
+standalone**. È lo stesso **doppio binario** che la slice resi ha già scelto e motivato (brief
+resi §9 R2: *«chiavi diverse, non duplicazione; lo standalone ha solo il ponte»*).
+
+**Perché NON la sorgente polimorfa** (domanda posta e chiusa in fase di brief — si registra il
+razionale perché non si riapra):
+
+1. **Servono archi pesati, non identità di nodo.** La
+   [guida sorgente polimorfa](../../guide/sorgente-polimorfa.md) §6 prescrive la chiave
+   `(sorgente_tipo_id, sorgente_uid)` come **«identità del nodo»**, e il guard
+   `trgfn_guard_sorgente_polimorfa` produce una risposta **booleana** (*«quel documento esiste
+   davvero?»*). Il contatore non deve sapere *«questa riga è quel documento»*: deve sapere
+   ***«3 dei 10 pezzi»***. Nella macchina **non c'è dove mettere il numero** — e appena ce lo
+   aggiungi hai ricostruito il ponte, col polimorfismo sopra come strato inutile. I due ponti
+   portano `qta_evasa` / `qta`: **è quella colonna il senso dell'oggetto**.
+2. **È un altro strato, non un'alternativa.** La guida §4 nomina **due** meccanismi (polimorfo
+   *vs* colonne tipizzate dirette tipo `ddt.sorgente_uid`/`resi.sorgente_uid`, «uuid a sé»), e
+   il §6 elenca le seconde fra le cose **«fuori dal meccanismo»**, da tradurre sulla chiave
+   polimorfa *solo per costruire grafi tra documenti*. `ordini_righe_fulfillment` e
+   `resi_righe_riconsegne` **non sono né le une né le altre**: sono FK concrete a grana riga con
+   un peso. Terzo strato. La guida governa i **grafi tra documenti**; il contatore è un **libro
+   mastro tra righe**. Si sfiorano, non si sovrappongono.
+3. **L'integrità.** Il link polimorfo **non ha FK** (`resi.sorgente_uid` non ne ha: è per
+   costruzione). Costo accettato dove il bersaglio varia su dieci sorgenti; qui i bersagli sono
+   **due tabelle note**, e il manufatto è il **libro mastro dei soldi**: link rotto = fattura
+   sbagliata. Barattare l'integrità referenziale per uniformità cosmetica, sul percorso del
+   denaro, è un cattivo affare.
+4. **Il precedente: a grana riga è già stato provato e ritirato.** `config.sorgenti` contiene
+   `PREVENTIVO_RIGA` (3), `CONTRATTO_RIGA` (5), `ORDINE_VENDITA_RIGA` (7), `DDT_VENDITA_RIGA`
+   (9), `FATTURA_RIGA` (11) — `scope = ROW_VALIDATOR`, tutti **archiviati**
+   (`attivo=false`, `meta.archived=true`), con `db/pgtap/config/test-sorgenti-scope-pulizia-v1.sql`
+   a presidiare la decisione (5 archiviati, 0 attivi). Nulla lo vietava *tecnicamente*
+   (`target_table` può puntare a `ordini_righe`): quella strada è stata percorsa **potendo**, e
+   si è tornati indietro. ⚠️ **Da riconfermare con la Query 2 della guida §5** prima
+   dell'apply: la guida avverte che l'elenco dei tipi **non si legge da una lista scritta a
+   mano** ma dal DB, e il CSV di seed è `loadUpdateData` (non cancella → non è autoritativo
+   sulle righe assenti). Gli altri tre argomenti reggono comunque.
+
+⚠️ **`fn_ordine_riga_qta_riconsegna` NON è riusabile tal quale** (il rilievo resta valido dalla
+stesura precedente): filtra `riapre_residuo = true` — un filtro **logistico** dentro una domanda
+**economica**. Qui servono **tutti i tipi**. È il rilievo del §0 un livello più in basso.
+
+⚠️ **Esistono già TRE definizioni divergenti di «quanta merce è tornata indietro»** — ed è qui,
+non sull'eleggibilità, che la regola del 2 è più urgente:
+
+| Oggetto | Stato reso | `rr.attivo` | Tipi |
+|---|---|---|---|
+| `vw_resi_da_accreditare` / `vw_resi_da_riconsegnare` | `= CONFERMATO` | **sì** | filtrato |
+| `fn_ordine_riga_qta_riconsegna` | `= CONFERMATO` | **no** | solo `riapre_residuo` |
+| `fn_conferma_reso` / `fn_annulla_reso` (calcolo flip a RESO) | `<> ANNULLATO` (**include i DRAFT**) | **no** | tutti |
+
+La definizione canonica del contatore è **CONFERMATI + attivi + tutti i tipi**. Le tre di sopra
+vanno ricondotte a un helper solo, ciascuna col suo filtro-tipo applicato **sopra**, non dentro.
+
+**✅ DECISO (Tid, 2026-07-16) — i resi in DRAFT nel flip a RESO sono un DIFETTO: si corregge in
+questa slice.** `fn_conferma_reso` e la gemella `fn_annulla_reso` contano i resi
+`<> 'ANNULLATO'` — cioè **CONFERMATO + le bozze** — per decidere se il DDT è tutto reso.
+
+**Il danno** (DDT 10 pz: una bozza altrui da 6 + il tuo reso confermato da 4 → somma 10 → flip a
+`RESO`, ma il cliente ne tiene 6):
+
+1. il DDT **dichiara il falso** e va in sola lettura;
+2. **si perdono i soldi**: un DDT in `RESO` non è più eleggibile al push (lo stato non combacia
+   più col trigger) → **i 6 pezzi che il cliente tiene non si fatturano mai, senza segnalazione**.
+   È la famiglia del §1b;
+3. **si auto-ripara solo in un caso su tre** — il ricalcolo gira **solo** dentro le due madri:
+
+   | Cosa succede alla bozza | DDT torna `CONSEGNATO`? |
+   |---|---|
+   | annullata | ✅ `fn_annulla_reso` ricalcola |
+   | corretta (6 → 2) | ❌ nessuna funzione gira → resta `RESO` per sempre |
+   | lasciata in bozza | ❌ idem |
+
+**Perché è un difetto e non una scelta** — tre riscontri, il terzo dirimente:
+
+1. **contraddice il principio che la slice resi ha scritto per sé** (brief resi §2.1: *«gli
+   effetti scattano alla CONFERMA, non in bozza»*) — e questo è l'effetto più pesante di tutti:
+   cambia lo stato di un altro documento e ne blocca la fatturazione;
+2. **è l'unico dei quattro consumatori che conta le bozze**: coda accrediti, coda ri-consegne e
+   `fn_ordine_riga_qta_riconsegna` filtrano tutti `= CONFERMATO`;
+3. **`<> ANNULLATO` non compra nulla.** Verificato l'ordine dei passi: il **passo 2** fa
+   `UPDATE resi SET stato = CONFERMATO`, il **passo 4** conta. Quando si conta, **il reso che si
+   sta confermando è già CONFERMATO** → `= 'CONFERMATO'` lo includerebbe comunque. L'unico
+   effetto reale del filtro attuale è **contare in più le bozze degli altri**. Nessuna ragione
+   tecnica: è un `<> ANNULLATO` scritto pensando alla coppia CONFERMATO/ANNULLATO, dimenticando
+   che `DRAFT` esiste.
+
+**Il fix**: `<> 'ANNULLATO'` → `= 'CONFERMATO'` in **entrambe** le madri (`fn_conferma_reso`,
+`fn_annulla_reso`), assorbito dall'helper unico. ⚠️ **Nessun test esistente si rompe**: il flip
+è coperto dal solo test **20** di `db/pgtap/vendite/test-resi-motore-v1.sql`, che usa un reso
+**singolo confermato** → passa identico. Il caso-bozza **non è coperto da nulla**: va aggiunto,
+ed è il test che dimostra il fix ([[feedback_guard_breaks_existing_tests]]).
+
+### 3c. «Fatturati» — e la coda accrediti sui fatti
+
+```text
+fatturati = Σ quantità sulle attività EMESSA dei segmenti della partita
+```
+
+⚠️ **I segmenti possibili sono DUE, non uno**:
+
+```text
+ORD:<ordine.uid>:R:<ordine_riga.id>     ← quando fattura l'ordine  (trigger CONFERMATO)
+DDT:<ddt.uid>:R:<ddt_riga.id>           ← quando fattura il DDT    (trigger SPEDITO/CONSEGNATO)
+```
+
+**Lo XOR garantisce che ne esista al massimo uno** → si guardano **entrambi** e si somma, senza
+leggere il trigger e senza replicarne la logica. Chi non c'è vale zero.
+
+Questo chiude un buco che la stesura precedente apriva: `anagrafiche.billing_account.fatturazione_ordini`
+ha **default `'CONFERMATO'`**, quindi sul cliente standard la merce è fatturata sotto `ORD:…`.
+Cercandola solo sotto `DDT:…` la si dichiara *«mai fatturata»* → la riga **esce** dalla coda →
+**nessuna NC, nessun segnale**, sulla configurazione più diffusa. Oggi quella riga si vede
+(per fortuna, non per progetto).
+
+**La coda `vw_resi_da_accreditare` — nuova forma.** Smette di chiedere *«che tipo di reso è?»* e
+espone l'**accredito dovuto** = `fatturati − tenuti` (se `> 0`). Chi ha differenza `≤ 0`
+**esce** (chiude **1b**, e chiude anche il caso 2 della tabella: dopo una sottrazione al push il
+conto è a zero, quindi non c'è nulla da accreditare). Breaking secco: la forma vecchia sparisce.
+
+Le **due popolazioni** restano — ma sono un'**etichetta** sul tipo di reso, non il criterio di
+popolamento (che ora è il conto):
+
+| Popolazione | Etichetta quando | Natura |
+|---|---|---|
+| NC **dovuta** | tipo *a credito*: la merce non torna più | obbligo — è lavoro arretrato (§4d) |
 | NC **facoltativa** | tipo *per ri-consegna*: la merce tornerà fuori | opzione — vedi §5 |
 
-### 3d. La ri-consegna rifattura solo se la merce non è coperta
+⚠️ **`security_invoker=on` va RI-specificato** nel `CREATE OR REPLACE VIEW` della coda: la
+reloption non è visibile in `pg_get_viewdef` e PostgreSQL la azzera silenziosamente. È la
+regressione **V-1** già capitata una volta (resolver contratti, `20260707-03`) e già costata un
+rework. `vw_resi_da_accreditare` legge `resi` sotto scope emittente (brief resi 0.10):
+perderla = **bypass della RLS**. `test-vw-dash-security-invoker.sql` copre la famiglia dash,
+**non** le viste resi → il pgTAP va esteso.
 
-Una riga di un DDT di ri-consegna fattura **solo se** la merce originale non è coperta da una
-fattura viva: **se non era stata fatturata**, oppure **se è stata accreditata**.
+**✅ DECISO (Tid, 2026-07-16) — la frontiera è l'EMISSIONE.** *«Lo stato EMESSA serve una nota
+di credito»* (Tid): la frontiera **è** quella definizione. Tre ragioni, in ordine di peso:
 
-Oggi la nota di credito non esiste → la seconda condizione è sempre falsa → la regola
-operativa da costruire ora è: **la ri-consegna non fattura se la merce originale era già
-impegnata in fatturazione**. Quando la slice NC arriverà si aggiunge *«…o è stata accreditata»*
-senza rework ([[feedback_concentrico_no_yagni]]).
+1. **qualunque frontiera più in là pretende un push che il sistema rifiuta**: nella finestra
+   emessa-non-fatturata (uno **stadio dichiarato** della Lente 1, lungo quanto il batch dei
+   lotti) il contatore direbbe «fattura 7» ma il lister esclude per costruzione le righe con
+   attività EMESSA → falso positivo garantito, il §1d ricreato;
+2. **è già la frontiera del sistema**: il `NOT EXISTS ... stato_emissione = 'EMESSA'` è in
+   entrambi i lister, e il commento vivo di `fn_list_ordini_da_pushare` la battezza *«verità
+   di billing»*. Sceglierne un'altra = due frontiere = la violazione di fonte unica che questa
+   slice esiste per chiudere;
+3. **è l'ultimo atto deliberato** (una persona emette; la fattura la fa il batch): oltre, il
+   *come* correggere dipenderebbe dal calendario — il difetto che il §1b condanna.
 
-Come esprimere *"questa riga DDT non fattura"* è vostro: una colonna esplicita sulla riga DDT
-(ispezionabile, ma è stato nuovo) oppure un predicato dentro l'eleggibilità (§3a) che risale il
-ponte `resi_righe_riconsegne` (nessuno stato nuovo, ma richiede la risalita). Purché sia una
-fonte sola.
+**La misura, semplificata dai fatti (verifica 2026-07-16/17)**: la riga di
+`attivita_fatturabili` **esiste se e solo se** la commessa_attivita è EMESSA — la crea
+l'emissione, niente la cancella mai (il reset-lotto fa solo UPDATE: sblocca, non elimina).
+Quindi:
+
+```text
+fatturati = Σ attivita_fatturabili.quantita  delle righe AF della partita
+            (la loro sola esistenza È la frontiera EMESSA)
+```
+
+- ⚠️ Il collegamento AF↔CA si fa via **`commessa_attivita_id`** (FK NOT NULL + UNIQUE), **non**
+  via l'hash `md5(segment_key)` di `sorgente_uid` (dove vive il caveat di collisione C1 già
+  documentato).
+- ⚠️ Il predicato è **`= 'EMESSA'`** (whitelist), mai `<> 'NON_EMESSA'`: il dominio contiene
+  anche `ANNULLATA` — è lo stesso errore del flip a RESO corretto allo step 2b.
+- ⚠️ **Nota a DL-5** (*«nessuna re-emissione possibile»*): quella frase e l'uscita di sicurezza
+  di Tid (lotto EMESSA→DRAFT, demolizione e rifacimento — guida fatturazione, riquadro
+  `reset_lotto_draft`) **convivono**: DL-5 dice che la **riga AF** non viene mai ricreata
+  (stabilità di `data_insert`); il reset demolisce le **fatture**, non le AF. Due letture della
+  parola «emissione», entrambe vere — registrarlo evita che la prossima persona legga DL-5 come
+  «il reset non esiste».
+- Con [brief-db-immutabilita-quantita-e-porta-oneri.md](brief-db-immutabilita-quantita-e-porta-oneri.md)
+  vale inoltre **AF.quantita = CA.quantita sempre** → la misura è stabile per costruzione, e le
+  righe manuali (segmenti `MAN:`, `tipo_movimento` non-NORMALE) non entrano mai nel conto.
+
+### 3d. La ri-consegna — **derivata, niente da costruire**
+
+Non serve nessuna regola dedicata e **nessuna colonna nuova** sulla riga DDT: la ri-consegna
+alza i **tenuti** (§3b), e il conto fa il resto — righe 6, 8 e 9 della tabella. Se la merce era
+già fatturata il conto torna a zero e la ri-consegna **non rifattura** (riga 8); se non lo era,
+la ri-consegna **rifattura** (riga 6). Nessuna delle due è una regola: sono lo stesso conto.
+
+**Quando arriverà la slice NC** — e qui la forma va detta come **requisito**, non come
+previsione, perché le NC **non sono ancora definite** (Tid, 2026-07-16): *se* la nota di
+credito **abbassa i fatturati** della merce che accredita, allora la differenza torna positiva
+e la ri-consegna rifattura da sé (riga 9), la scelta umana del §5 funziona senza codice
+dedicato, **zero rework** ([[feedback_concentrico_no_yagni]]). Il *se* è il contratto che
+questa slice pone alla prossima — formalizzato nel §7. Se la NC nascesse invece come puro
+legame documento↔documento (la forma dell'attuale `fatture_rettifiche`), **il contatore non la
+vedrebbe mai** e la riga 9 non varrebbe.
+
+⚠️ **Il nodo pratico da sciogliere**: quando i tenuti **risalgono** su una partita la cui
+attività è **già EMESSA** (riga 6: pushati 7, poi ri-spedisco 3), i 3 pezzi in più **non**
+possono andare sull'attività esistente — il lister esclude per costruzione le righe con
+attività EMESSA, e l'upsert è per `segment_key`. Vanno sul segmento del **DDT nuovo** (`DDT:<ddt₂.uid>:R:<riga₂.id>`),
+che è un segmento vergine. La catena regge — i **fatturati** sommano su tutti i segmenti della
+partita, quindi 7 + 3 = 10 — ma il punto va scritto: **il contatore è per partita, il push è per
+segmento**.
 
 ### 3e. Fix orfano push DDT (§1c)
 
 L'eleggibilità order-backed deve valere **dallo stato-trigger in poi**, non solo **a** quello
 stato — allineandosi a quanto già fatto sugli ordini il 2026-07-10 e al ramo standalone della
-stessa funzione. `RESO`/`ANNULLATO` restano fuori (verificare: con §3b un DDT flippato a RESO
-ha comunque quantità azzerata, quindi l'esclusione è ridondante — ma va **confermata**, non
-dedotta).
+stessa funzione. Tre precisazioni **verificate**, tutte e tre load-bearing:
+
+⚠️ **1. La citazione del §1c è incompleta.** Il WHERE vivo non è
+`AND sdd.codice_interno = src.src_fatturazione_trigger` ma:
+
+```sql
+(src.src_fatturazione_trigger IS NOT NULL
+ AND src.src_fatturazione_trigger != 'CONFERMATO'      -- ← la cintura XOR
+ AND sdd.codice_interno = src.src_fatturazione_trigger)
+```
+
+Quel `!= 'CONFERMATO'` **è ciò che impedisce al DDT di un ordine trigger CONFERMATO di
+fatturare merce già fatturata alla conferma**. Chi riscrive partendo dalla citazione del §1c la
+perde → doppia fatturazione su **tutti** gli ordini in configurazione di default. **Va
+preservata**, ed è il motivo per cui esiste il §3f.2.
+
+⚠️ **2. NON un confronto di rank puro.** `config.stati_doc_ddt` ha già la colonna `ordine`, ma
+il seed vivo è:
+
+| stato | `ordine` | `fase` | `is_abortito` |
+|---|---|---|---|
+| DRAFT | 10 | APERTO | f |
+| EMESSO | 20 | IN_CORSO | f |
+| SPEDITO | 40 | IN_CORSO | f |
+| CONSEGNATO | 50 | CHIUSO | f |
+| RESO | 60 | CHIUSO | f |
+| **ANNULLATO** | **70** | CHIUSO | **t** |
+
+`ordine >= ordine(trigger)` rende **ANNULLATO (70) ≥ SPEDITO (40)**: un DDT annullato diventa
+eleggibile e **viene fatturato**. L'argomento *«tanto con la sottrazione la quantità è
+azzerata»* vale solo per RESO (che nasce da un reso totale): **un DDT ANNULLATO non ha resi, i
+tenuti non si azzerano, e pusha**. La risposta al *«va confermata, non dedotta»* della stesura
+precedente è quindi: **l'esclusione NON è ridondante**.
+
+Forma corretta: `ordine >= ordine(trigger)` **AND `NOT sdd.is_abortito`** AND esclusione
+esplicita di `RESO`. Il `NOT is_abortito` sostituisce l'hardcode di ANNULLATO ed è data-driven —
+il DB *dichiara già* che quel documento è morto.
+
+⚠️ **3. Il vocabolario del trigger non è un sottoinsieme degli stati DDT.**
+`ordini.fatturazione_trigger` ∈ {`CONFERMATO`, `SPEDITO`, `CONSEGNATO`} (varchar + CHECK,
+nessuna lookup): **`CONFERMATO` è uno stato *ordine***, non esiste in `stati_doc_ddt`. *«Dallo
+stato-trigger in poi»* è quindi **indefinito** proprio nel caso di default — ed è esattamente il
+perché della clausola al punto 1.
+
+### 3f. Perché la stesura precedente non reggeva (per il verbale)
+
+Tre rilievi verificati contro il DB vivo. Si registrano qui perché il §2 e il §9 li citano.
+
+**3f.1 — §3b e §3c si sommavano.** Erano lo **stesso `EXISTS`** valutato in due momenti su uno
+stato che cambia. Sequenza ordinaria, trigger CONSEGNATO: DDT 10 pz CONSEGNATO, batch non ancora
+girato → reso 3 a credito → §3b sottrae, pusha 7 → l'attività va EMESSA a 7 → **fattura 7** ✅ →
+**ma ora §3c interroga la coda**: la merce di quella riga reso *ha* un'attività EMESSA → entra in
+coda come NC dovuta 3 → **7 − 3 = 4** ❌. L'`EXISTS` non distingue *«l'attività emessa include
+quella merce»* da *«ne è già stata depurata»*. Il §3 affermava *«verificate le sei combinazioni:
+con tutti e tre tornano tutte»*: la verifica non teneva conto del **tempo relativo fra reso e
+push** — cioè della variabile che il §1b stesso condanna (*«la correttezza dipende dal tempismo
+del batch, non dai fatti»*). **Il rimedio reintroduceva il difetto che diagnostica.**
+Aggravante: il push è un **upsert** su `(commessa_id, segment_key)` e il lister esclude solo le
+attività già EMESSA → una riga pushata-ma-non-emessa **viene aggiornata** da un ri-push. Quindi
+lo **stesso identico stato di fatto** dava 7 o 4 a seconda che il batch fosse girato o no.
+
+**3f.2 — §3c perdeva la configurazione di default.** Vedi §3c: il predicato cercava l'attività
+EMESSA solo sul segmento DDT, mentre col default `CONFERMATO` la merce è fatturata sotto `ORD:…`
+→ riga fuori dalla coda → nessuna NC su merce realmente fatturata. **Regressione secca e
+silenziosa rispetto a oggi.**
+
+**3f.3 — la radice comune.** L'invariante DL-26 è **quantitativa**; §3b/§3c/§3d la
+implementavano con **booleani**. Con resi parziali, push parziali e ri-push, i booleani perdono
+informazione. Il §0 dice che *«è un fatto già scritto nel DB»*: vero — ma il fatto è
+**quantitativo** e raggiungibile **solo** risalendo il percorso di billing, e la stesura
+precedente non modellava né l'una né l'altra cosa.
 
 ## 4. Cosa serve — le lenti (NON come)
 
-### 4a. Resolver DDT — sesta area della union (DL-21)
+### 4a. Resolver DDT — sesta area della union (DL-21, emendato 2026-07-17)
 
 Nuovo resolver `vw_dash_fatturazione_ddt`, stessa forma dei cinque gemelli, unito in
 `vw_dash_fatturazione_documenti`. Da lì **entrambe** le lenti lo prendono da sole: il serbatoio
 filtra `fase <> CHIUSO`, il backlog filtra `classe <> FISIOLOGICO`. Il FE è già fail-visible
 sulle aree extra (le accoda, non dà 400).
 
-Punti di attenzione emersi dall'analisi:
+**✅ DECISO (Tid, 2026-07-17) — la popolazione: solo i DDT con un ruolo di fatturazione.**
+
+| DDT | Nel resolver? | Perché |
+|---|---|---|
+| da ordine con trigger **CONFERMATO** | **NO — si segue l'ordine** | non fatturerà mai lui (XOR: ha fatturato l'ordine alla conferma); l'ordine porta già il valore **pieno** (DL-23 emendato) |
+| con causale di trasporto **non fatturabile** | **NO — solo trasporto** | la merce viaggia ma non c'è una vendita (vedi decisione qui sotto) |
+| da ordine con trigger **SPEDITO/CONSEGNATO** | SÌ | è lui il veicolo di fatturazione |
+| **standalone** (senza ordine), causale fatturabile | SÌ | fattura in proprio a SPEDITO/CONSEGNATO |
+
+L'esclusione chiude **due** difetti con zero meccanismi:
+
+1. **il falso positivo**: un DDT di ordine CONFERMATO non ha uno stato-trigger confrontabile
+   (`CONFERMATO` è uno stato *ordine*) → sarebbe scivolato su 🟠 `PUSH_NON_ESEGUITO` **per
+   sempre**, con l'azione che il DB stesso rifiuta (`DDT_NON_PUSHABILE`) — il §1d ricreato sul
+   DDT, sulla configurazione di default;
+2. **il doppio conteggio speculare**: con DL-23 emendato l'ordine CONFERMATO sta nel serbatoio
+   a valore **pieno** (1.000 €) — il suo DDT con il valore spedito (500 €) avrebbe fatto
+   1.500 € per una fattura da 1.000. Escluso il documento, escluso il valore: niente motivo
+   dedicato, niente azzeramenti.
+
+Il criterio di popolazione è **lo stesso discriminatore del lister** (la cintura XOR
+`src_fatturazione_trigger != 'CONFERMATO'`, §3e): la card mostra la stessa popolazione che il
+motore di push considera sua — fonte unica anche qui. ⚠️ Nota pratica: oggi un DDT nasce da
+**un solo ordine** (`fn_genera_ddt_da_ordine` è per-ordine) → il trigger si legge dalla
+sorgente di testata, nessun caso misto. Costo dichiarato: il DDT di un ordine CONFERMATO è
+invisibile nei cruscotti di *fatturazione* (resta in lista DDT, drawer, lineage) — coerente
+con DL-14 («documenti che se conclusi vanno in commessa»: lui non ci andrà mai).
+
+**✅ DECISO (Tid, 2026-07-17) — DDT di solo trasporto: l'intento si dichiara con la CAUSALE
+(DL-28).** Il DDT ammette righe senza prezzo per design (*«solo trasporto»*, guida DDT §3.2/§8.1),
+ma `fn_list_ddt_da_pushare` **non le esclude** (il gemello ordini sì): uno standalone senza
+prezzi a SPEDITO risulterebbe «da fatturare» con prezzo vuoto → push di attività senza prezzo +
+🟠 perpetuo nei cruscotti. Invece di *inferire* l'intento dall'assenza di prezzo (ambiguo:
+dimenticanza o scelta?), l'intento si **dichiara a monte** col campo che l'operatore già
+compila — la **causale di trasporto**:
+
+1. **Nuova colonna `fatturabile boolean NOT NULL` su `config.causali_trasporto`** + seed:
+   `VENDITA = true`; `CONTO_VISIONE / RESO / RIPARAZIONE / CAMPIONATURA / TRASFERIMENTO /
+   CONTO_LAVORO / OMAGGIO = false`. Pattern `tipi_reso.riapre_residuo`: il vocabolario guida,
+   zero IF hardcoded. I casi ambigui (OMAGGIO: c'è chi lo fattura a sconto 100%) sono **una
+   cella di seed**, non codice.
+2. **Gate all'emissione** (mirror di `trgfn_ddt_guard_indirizzi_obbligatori`, stesso
+   posizionamento): causale **fatturabile** → ogni riga attiva deve avere un prezzo
+   **risolvibile** (proprio, o dalla riga ordine via fulfillment — le righe da evasione senza
+   prezzo restano legittime); altrimenti blocco parlante (nuovo codice errore, append CSV —
+   [[feedback_messaggi_errore_no_new_loader]]). Causale **non fatturabile** → prezzi
+   irrilevanti. Il prezzo dimenticato diventa un **errore all'emissione**, non un documento
+   silenziosamente mal classificato.
+3. **Causale obbligatoria all'emissione** (oggi `ddt.causale_trasporto_id` è nullable):
+   dettaglio del gate — come trattare i NULL lo fissa il team (raccomandato: obbligatoria
+   all'emissione, come l'indirizzo).
+4. **Lister e resolver escludono i non fatturabili**: `fn_list_ddt_da_pushare` guadagna il
+   predicato sulla causale (cintura: quei DDT non sono mai eleggibili) e la popolazione del
+   resolver resta a criterio unico — *dentro chi fattura, fuori chi no*.
 
 - **Valore**: il DDT **non ha importi in testata**. Le righe da evasione possono avere
   `prezzo_unitario` **NULL** ed ereditarlo dalla riga ordine → serve la stessa
@@ -202,6 +577,43 @@ Punti di attenzione emersi dall'analisi:
   | stato **prima** del trigger | `IN_TRANSITO` (**nuovo**) | 🟢 FISIOLOGICO |
   | stato **dal trigger in poi**, non pushato | `PUSH_NON_ESEGUITO` (esistente) | 🟠 RECUPERABILE |
   | idem, push parziale | `PUSH_PARZIALE` (esistente) | 🟠 RECUPERABILE |
+
+- ⚠️ **La `fase` si legge dal catalogo, non da `vw_stato_sorgente`.** Verificato: i cinque
+  resolver gemelli fanno tutti `JOIN config.stati_doc_<tipo>` e leggono `fase`/`esito` da lì —
+  **nessuno** passa da `script.vw_stato_sorgente`. Il resolver DDT segue lo stesso pattern
+  (`JOIN config.stati_doc_ddt`, che ha già `fase` e `is_abortito` NOT NULL). Nessuna dipendenza
+  nuova. Ma vedi il ❓ qui sotto: è proprio questa autonomia a lasciare scoperto l'altro
+  consumatore.
+
+**✅ DECISO (Tid, 2026-07-17) — il quinto ramo si fa, dentro la slice.** Il DDT manca da
+`script.vw_stato_sorgente` **solo perché è uno sviluppo recente** (Tid) — non c'è mai stata una
+scelta contraria: va aggiunto come gli altri. Il contesto, per chi implementa:
+
+- la proiezione di dominio ha **4 rami** (`vw_stato_sorgente_{preventivo, offerta, ordine,
+  contratto}`); oggi `pratiche.fn_stato_sorgente` su un DDT cade nella **sentinella** e risponde
+  `stato='UNKNOWN'`, `risolto=false`, **`fase='APERTO'`** — mentre `config.stati_doc_ddt`
+  dichiara che `CONSEGNATO` è **`fase=CHIUSO`**. Il dato di mappatura esiste (fase/`is_abortito`
+  atterrati con la slice lineage `20260714-01`) e non è mai proiettato;
+- l'aggancio pratica→DDT è **già possibile oggi** (sorgente `DDT_VENDITA` registrata, il guard
+  polimorfo la accetta): il buco è esercitabile, non teorico;
+- la [guida sorgente polimorfa](../../guide/sorgente-polimorfa.md) usa **proprio il DDT** come
+  esempio della promessa della macchina (§3) e il §6 enumera i mattoni pronti — quattro. Col
+  quinto ramo la promessa torna vera.
+
+**Forma**: `vendite.vw_stato_sorgente_ddt` a specchio dei quattro + aggiunta del ramo nella
+union `script.vw_stato_sorgente` (⚠️ `CREATE OR REPLACE` della union: la vista **non** ha
+`security_invoker` — verificato — ma controllare i pgTAP della proiezione prima,
+[[feedback_guard_breaks_existing_tests]]). Dettaglio da sciogliere in scrittura: le gemelle
+espongono `esito`, che sul catalogo DDT non esiste come colonna → derivarlo (es.
+ANNULLATO→NEGATIVO) o lasciarlo NULL — scelta al team, purché documentata nel manuale della
+vista.
+
+**✅ DECISO (Tid, 2026-07-17) — anche il ramo RESO, insieme, in posizione naturale.** Il reso è
+nella stessa condizione (sorgente `RESO_VENDITA` registrata, nessun ramo) e la mappa esiste già
+anche per lui (`config.stati_doc_reso` ha `fase`: DRAFT=APERTO, CONFERMATO=CHIUSO — brief resi
+§2.1). **Non si rinvia**: quinto e sesto ramo (`vw_stato_sorgente_ddt` + `vw_stato_sorgente_reso`)
+si scrivono **insieme, nello stesso step**, così il traduttore copre tutti i tipi documento
+registrati e lo sviluppo resta coerente — niente code da ricordare per la prossima slice.
 
 ### 4b. Ordini trigger-aware (DL-20)
 
@@ -228,8 +640,38 @@ istante la somma fa 1.000. Chiude anche il buco cieco del §1d.
 - ⚠️ **La formula esiste già ed è reso-aware**: `fn_ordine_ha_residuo_evasione` v2 +
   `fn_ordine_riga_qta_riconsegna` (`quantita − Σ qta_evasa + Σ qta_riconsegna`). **Riusarla,
   non riscriverla.**
-- ❓ **Da confermare, non da dedurre**: un ordine con `trigger = CONFERMATO` può generare DDT?
-  Se non può, per lui residuo ≡ totale e la sua card non cambia. Se può, cambia anche per lui.
+- ✅ **VERIFICATO (2026-07-16) — un ordine `trigger = CONFERMATO` PUÒ generare DDT.** Nessun
+  vincolo lo impedisce: `fn_genera_ddt_da_ordine` **non legge mai** `fatturazione_trigger` (il
+  suo unico guard è sullo stato ordine, `CONFERMATO|PARZIALMENTE_EVASO` — omonimia da non
+  confondere), e nessun trigger su `ddt`/`ddt_righe`/`ordini_righe_fulfillment` lo referenzia.
+  È **deliberato e documentato** (`vendite/manual/ordini.md`, `manual/ddt.md`): il DDT è un
+  documento **logistico**, disaccoppiato dalla fatturazione; il cancello anti-doppia-fattura
+  vive nel **lister** (`src_fatturazione_trigger != 'CONFERMATO'`, §3e), non nella generazione.
+- 🔴 **La conseguenza ribalta la decisione — DL-23 va condizionato al trigger.** La stesura
+  precedente presentava le due risposte come equivalenti (*«se può, cambia anche per lui»*):
+  **non lo sono, quella è un bug.** Un ordine `trigger = CONFERMATO` **fattura il pieno alla
+  conferma**, indipendentemente dalla spedizione. Con la misura netta, un ordine da 1.000 €
+  interamente spedito ma non ancora pushato mostrerebbe **0 €** — e il DDT **non compensa**,
+  perché non pusherà mai. **Nuovo buco cieco, creato dalla misura che doveva chiuderne uno**, e
+  per giunta sulla configurazione di **default** (`billing_account.fatturazione_ordini` ha
+  default `'CONFERMATO'`).
+
+  **Regola corretta**: la misura netta vale **solo quando è il DDT il veicolo di billing**
+  (`trigger ∈ {SPEDITO, CONSEGNATO}`); con `trigger = CONFERMATO` l'ordine resta al **valore
+  pieno** — non c'è doppio conteggio da evitare, perché il DDT non conta nulla. È lo stesso
+  lavoro di DL-20 (rendere il resolver ordini trigger-aware), non un secondo.
+
+  ❓ **Emendamento a DL-23 — serve la parola di Tid**: è una decisione registrata nel §10 del
+  [brief di design](brief-design-fatturazione-due-lenti.md), non correggibile da qui.
+- ⚠️ **La giustificazione *«in ogni istante la somma fa 1.000»* NON regge** — e va tolta, perché
+  lo step 11 chiedeva un pgTAP proprio su quella proprietà. Seed verificato:
+  `fase(CONSEGNATO) = CHIUSO`, e DL-15 filtra `fase <> 'CHIUSO'` → quando il DDT arriva a
+  CONSEGNATO **esce dal serbatoio** mentre l'ordine è già a 0: somma **0** per un valore che
+  farà fattura di 1.000. Il buco cieco è chiuso **solo nella finestra EMESSO/SPEDITO**; a
+  CONSEGNATO il valore vive nel **Backlog** — che è esattamente ciò che DL-22 dichiara e
+  accetta. Le due affermazioni si contraddicono a una pagina di distanza. **L'argomento vero e
+  sufficiente per DL-23 resta l'altro**: il doppio conteggio ordine-pieno + DDT
+  (1.000 + 500 = 1.500).
 - Accettato: l'area Ordini diventa l'unica con misura **netta**, le altre restano lorde.
 
 ### 4d. Ramo resi sul Backlog (DL-24)
@@ -242,20 +684,45 @@ Backlog**, con un ramo dedicato:
 | Popolazione | Fonte | Motivo (nuovo) | Classe |
 |---|---|---|---|
 | Riga reso per ri-consegna, copertura incompleta | `vw_resi_da_riconsegnare` | `RICONSEGNA_NON_ESEGUITA` — azione *«Genera il DDT di ri-consegna»* | 🟠 RECUPERABILE |
-| Riga reso la cui NC è **dovuta** | `vw_resi_da_accreditare` (forma **§3c**) | `NC_DOVUTA` | 🟢 FISIOLOGICO **oggi** |
+| Riga reso con **accredito dovuto** (differenza negativa) | `vw_resi_da_accreditare` (forma **§3c**) | `MERCE_RESA_GIA_FATTURATA` | 🟢 FISIOLOGICO **oggi** |
 
 - `RICONSEGNA_NON_ESEGUITA` è 🟠 a pieno titolo: l'azione esiste (`fn_genera_ddt_riconsegna`) e
   la sua **mancata esecuzione blocca la fatturazione** (il residuo dell'ordine resta riaperto
   per sempre).
-- `NC_DOVUTA` è 🟢 finché il ramo NC non esiste — stessa forma di `CANONE_NON_GENERATO`. Con la
-  slice NC diventa 🟠 cambiando **una riga di seed**, nessun rework.
+- **`MERCE_RESA_GIA_FATTURATA`** (rinominato dalla stesura precedente, che lo chiamava
+  `NC_DOVUTA`): il motivo nomina **il fatto**, non il rimedio — perché le NC **non sono ancora
+  definite** (Tid, 2026-07-16) e il rimedio non è univoco: quando la slice NC esisterà sarà la
+  nota di credito, e la coda espone comunque *cosa è successo* («fatturata per 10, tenuta 7»),
+  non *cosa fare*. Un motivo chiamato `NC_DOVUTA` pre-deciderebbe la risposta e mentirebbe se
+  il rimedio scelto fosse un altro.
+- È 🟢 oggi con una motivazione **verificata**: non esiste alcuna azione che un operatore possa
+  compiere — la NC non c'è, e la correzione manuale della quantità è **vietata dal principio di
+  immutabilità** ([brief-db-immutabilita-quantita-e-porta-oneri.md](brief-db-immutabilita-quantita-e-porta-oneri.md)).
+  Con la slice NC diventa 🟠 cambiando **una riga di seed**. ⚠️ Il precedente citato dalla
+  stesura precedente (*«stessa forma di `CANONE_NON_GENERATO`»*) è **falso**: verificato,
+  `CANONE_NON_GENERATO` non è emesso da nessuna vista (`vw_dash_fatturazione_contratti` ha
+  `motivo_fermo` hardcoded NULL) — è seed morto, cambiarne la classe non produrrebbe nulla. La
+  tesi qui regge per un motivo diverso: **questo ramo il §4d lo costruisce davvero**, quindi il
+  motivo è emesso e la classe è viva.
+- ⚠️ **Forma della vista Backlog**: oggi `vw_dash_backlog_documenti` è costruita **sopra** la
+  union (`FROM vw_dash_fatturazione_documenti`). «Resi fuori dalla union ma dentro il Backlog»
+  significa che il **Backlog stesso diventa una union** (documenti + ramo resi): fattibile e
+  piccolo, ma è un cambio di forma della vista, va dichiarato — non è «un ramo in più» gratis.
 - ⚠️ Le NC **facoltative** (§3c/§5) **non** sono arretrato: sono un'opzione dell'operatore →
   **fuori dal backlog**.
 - **Misura a conteggi** (i resi non hanno importi): `valore_fermo` NULL — mai 0 — e
   `unita_ferme` = righe. Precedente DL-11 (Offerte/Contratti).
-- ❓ **Grana, da confermare**: il backlog è per documento, ma `tipo_reso` è **per riga** → un
-  reso misto contribuisce a entrambi i motivi. Raccomandazione: **una riga backlog per
-  (reso × motivo)**.
+- **✅ DECISO (Tid, 2026-07-17) — grana: una riga di backlog per (reso × motivo).** Il tipo di
+  reso è **per riga per costruzione** (`tipi_reso` agganciato a `resi_righe.tipo_reso_id`, non
+  alla testata) → esiste il **reso misto** (3 pz da ri-spedire + 2 a credito), che ha davvero
+  due cose in corso: a grana documento qualunque motivo scelto mentirebbe; a grana riga il
+  backlog diventerebbe rumore (10 righe per la stessa azione). Con (reso × motivo): ogni riga
+  di backlog ha la **sua azione e la sua classe** (il filtro 🟠 mostra solo la parte da
+  lavorare), i conteggi tornano senza doppi (ogni riga reso ha un tipo solo → un motivo solo),
+  ed è la grana **più vicina alle fonti** (le due code sono già per riga reso: aggregare a
+  (reso × motivo) è un gradino, a documento sarebbero due, perdendo la distinzione per cui i
+  motivi esistono). **Deroga dichiarata**: unica area dove un documento può comparire due
+  volte in lista — motivata dal modello, limitata ai resi misti.
 
 ### 4e. Seed `config.motivi_fermo` — quattro nuovi
 
@@ -264,7 +731,7 @@ Backlog**, con un ramo dedicato:
 | `IN_ATTESA_DDT` | FISIOLOGICO | — (fattura il DDT, non l'ordine) |
 | `IN_TRANSITO` | FISIOLOGICO | — (merce in viaggio, push non ancora dovuto) |
 | `RICONSEGNA_NON_ESEGUITA` | RECUPERABILE | Genera il DDT di ri-consegna |
-| `NC_DOVUTA` | FISIOLOGICO | — (ramo NC non ancora costruito) |
+| `MERCE_RESA_GIA_FATTURATA` | FISIOLOGICO | — (nessuna azione esiste oggi; 🟠 con la slice NC) |
 
 ## 5. La scelta umana — dove vive (DL-26, Tid)
 
@@ -283,8 +750,14 @@ coda accrediti**, esercitabile **fino alla ri-spedizione**: da lì in poi quella
 sistemata, e un eventuale credito successivo è un reso nuovo.
 
 **In questa slice non c'è nulla da costruire** per la scelta (l'NC non esiste): serve solo che
-il modello non la impedisca — cioè la coda distingue dovuta/facoltativa (§3c) e §3d legge un
-fatto che oggi è sempre falso.
+il modello non la impedisca — cioè la coda etichetta dovuta/facoltativa (§3c).
+
+> **Nota alla rev del §3 (2026-07-16).** Col contatore la scelta non va nemmeno *protetta*:
+> l'emissione della NC **abbassa i fatturati**, la differenza torna positiva e la ri-consegna
+> rifattura da sé (riga 9 della tabella §3a). Non c'è nessun *«fatto che oggi è sempre falso»*
+> da predisporre, e nessun ramo da aggiungere alla slice NC: **zero rework**. Che una decisione
+> di dominio decisa a tavolino funzioni senza codice dedicato è la conferma che la forma del
+> §3 è quella giusta.
 
 ## 6. Cosa NON serve (deciso, per chiudere le domande)
 
@@ -301,22 +774,51 @@ fatto che oggi è sempre falso.
 ## 7. Fuori perimetro
 
 - **Emissione della nota di credito** (slice NC): qui solo la coda che la alimenta, resa
-  veritiera.
-- **Valorizzazione economica dei resi**: i resi non hanno prezzi (asimmetria voluta dalla
-  slice); l'importo si ricava da `ddt_righe.prezzo_unitario` (COALESCE con la riga ordine). È
-  della slice NC.
+  veritiera. **Ma questa slice le pone un CONTRATTO** — le NC non sono ancora definite (Tid,
+  2026-07-16), quindi va scritto ora, prima che vengano disegnate:
+
+  > **La nota di credito deve essere attribuibile alla merce e portare una quantità.**
+  > Un puro legame documento↔documento (la forma dell'attuale `fatture_rettifiche`, tabella-ponte
+  > senza quantità né importi) **non basta**: il contatore chiude il cerchio solo se sa *quanti
+  > pezzi* di *quale merce* sono stati accreditati. Una NC che non abbassa i «fatturati» della
+  > partita è invisibile al contatore → la coda accrediti continuerebbe a chiedere l'accredito
+  > **per sempre, anche a NC emessa**. (E la riga 9 della tabella §3a resterebbe una promessa.)
+
+- **Valorizzazione economica dei resi**: rinviata alla slice NC, che è la **proprietaria delle
+  regole di valorizzazione** (sconti, IVA, arrotondamenti). L'importo si ricaverà da
+  `ddt_righe.prezzo_unitario` (COALESCE con la riga ordine) — il meccanismo è lo stesso che il
+  §4a costruisce, quindi *si potrebbe*; non si fa perché la valorizzazione è una decisione di
+  quella slice, non perché manchi il dato.
 - Movimenti di magazzino.
+- **Quantità immutabili + porta oneri** — emersa verificando la frontiera del §3c: la
+  correzione della quantità post-emissione non deve esistere come UPDATE (né su CA né su AF) —
+  le correzioni sono **righe nuove** attraverso porte dedicate, e le correzioni di **merce**
+  restano interamente su questo brief (reso → contatore → NC). **La misura del contatore non ne
+  dipende** (misura AF in ogni caso, e con l'immutabilità AF = CA sempre) → brief a sé:
+  [brief-db-immutabilita-quantita-e-porta-oneri.md](brief-db-immutabilita-quantita-e-porta-oneri.md).
+- **Segnalazione collaterale (fix a parte, non di questa slice)**: i trigger anti-disattivazione
+  `dbops.trgfn_prevent_deactivate_if_children` su `config.causali_trasporto` **e** su
+  `config.stati_doc_ddt` proteggono solo i figli in **`acquisti`** (`acquisti.ddt/ordini`), non
+  `vendite.ddt` — una causale o uno stato usati solo da DDT di vendita risultano disattivabili.
+  Emerso verificando §4a/DL-28; da sanare con un changeset dedicato alla famiglia.
 
 ## 8. Cosa comunicare indietro a BE/FE
 
-- La forma scelta per *"questa riga DDT non fattura"* (§3d): se è una colonna, il BE la espone.
-- La nuova forma di `vw_resi_da_accreditare` (colonne + popolazione + distinguo
+- ~~La forma scelta per *"questa riga DDT non fattura"*: se è una colonna, il BE la espone.~~
+  **Superato dalla rev del §3**: nessuna colonna, nessuno stato nuovo — la ri-consegna è
+  **derivata** dal contatore (§3d). **Niente da esporre**: il BE non tocca nulla su questo.
+- La nuova forma di `vw_resi_da_accreditare` (colonne + popolazione + etichetta
   dovuta/facoltativa): il BE ha già `GET /vendite/resi/da-accreditare/` e il FE ha la coda a
-  tab → vanno adeguati. **Breaking secco**, nessuna compat.
+  tab → vanno adeguati. **Breaking secco**, nessuna compat. ⚠️ La coda ora espone una
+  **quantità** (l'accredito dovuto = `fatturati − tenuti`), non solo l'elenco delle righe: è
+  una colonna in più nel contratto, e la slice NC ci si appoggerà.
 - **Due aree nuove** (`DDT`, `RESI`): il FE le accoda da solo (fail-visible), ma servono label
   i18n e la rotta *apri documento* in `vendite/dashboardAree.js`.
 - Il **ramo resi ha misura a conteggi** (`valore_fermo` NULL) → card come Offerte/Contratti.
 - **Quattro motivi nuovi** → i18n (`dash_comune`).
+- **`causali_trasporto.fatturabile`** (DL-28): il BE la espone dove serve (lookup causali già in
+  whitelist), e il **nuovo errore del gate emissione** («righe senza prezzo su causale
+  fatturabile») va gestito nel drawer DDT → i18n + mapping in `error_policies.py`.
 - La **card Ordini del serbatoio cambia significato**: da "valore dell'aperto" a "valore ancora
   da spedire" (§4c) → etichetta e guida da rivedere.
 - Eventuali nuovi codici errore.
@@ -325,18 +827,39 @@ fatto che oggi è sempre falso.
 
 | # | Step | Stato |
 |---|---|---|
-| 1 | Regola di eleggibilità a **fonte unica**, set-based (§3a) — primo, ci si appoggia il resto | ☐ |
-| 2 | Push reso-aware: sottrai la merce tornata (tutti i tipi, per `ddt_riga_id`, fino all'attività EMESSA) (§3b) | ☐ |
-| 3 | `vw_resi_da_accreditare` sui fatti + distinguo dovuta/facoltativa (§3c, breaking) | ☐ |
-| 4 | La ri-consegna non fattura se la merce era già impegnata in fatturazione (§3d) | ☐ |
-| 5 | Fix orfano push DDT: eleggibilità dallo stato-trigger in poi (§3e) | ☐ |
-| 6 | Resolver `vw_dash_fatturazione_ddt` + union (§4a) | ☐ |
+| 0 | **Cancelli di correttezza: TUTTI CHIUSI** (§3b chiave partita ✅ · §3b resi DRAFT ✅ · §3c frontiera EMESSA ✅ · §4c ordine CONFERMATO ✅) — gli step 1-8 sono scrivibili | ✅ |
+| 1 | **Il contatore** — `tenuti − fatturati` per partita, set-based, fonte unica (§3a) — primo, ci si appoggia il resto | ☐ |
+| 2 | Helper unico «merce tornata indietro» (CONFERMATI + attivi + tutti i tipi) e riconduzione delle **tre** definizioni divergenti (§3b) | ☐ |
+| 2b | **Fix flip a RESO**: `<> 'ANNULLATO'` → `= 'CONFERMATO'` in `fn_conferma_reso` **e** `fn_annulla_reso` (§3b, deciso) — assorbito dall'helper dello step 2. **Buco sui soldi già vivo oggi**, indipendente dal contatore | ☐ |
+| 3 | `fn_list_ddt_da_pushare` legge la differenza **positiva** (quantità, non filtro) + **`security_invoker`** ri-specificato ovunque si tocchi una vista (§3a/§3c) | ☐ |
+| 4 | `vw_resi_da_accreditare` = differenza **negativa**, segmenti `ORD:`+`DDT:` entrambi, etichetta dovuta/facoltativa (§3c, breaking) | ☐ |
+| 5 | Fix orfano push DDT: `ordine >= trigger` **AND `NOT is_abortito`** AND no `RESO`, preservando `!= 'CONFERMATO'` (§3e) | ☐ |
+| 5b | **Solo trasporto via causale** (§4a, DL-28): colonna `fatturabile` su `config.causali_trasporto` + seed · gate emissione prezzi-risolvibili (mirror gate indirizzi, nuovo codice errore) · causale obbligatoria all'emissione · esclusione dal lister | ☐ |
+| 6 | Resolver `vw_dash_fatturazione_ddt` + union (§4a) — **popolazione = solo DDT con ruolo di fatturazione** (esclusi gli order-backed trigger CONFERMATO, deciso); `motivo_fermo` = **segno del contatore**, mai un predicato ricopiato | ☐ |
+| 6b | **Quinto e sesto ramo** `vw_stato_sorgente_ddt` + `vw_stato_sorgente_reso` + aggiunta alla union `script.vw_stato_sorgente` (§4a, deciso: insieme, posizione naturale) — indipendente dagli altri step | ☐ |
 | 7 | Resolver ordini trigger-aware → `IN_ATTESA_DDT` (§4b) | ☐ |
-| 8 | Ordine al residuo da spedire nel serbatoio (§4c, riusare la formula esistente) | ☐ |
-| 9 | Ramo resi sul backlog (§4d) — dopo lo step 3 | ☐ |
-| 10 | Seed 4 motivi (§4e) | ☐ |
-| 11 | pgTAP: le sei combinazioni del §2 + caso orfano + flip a RESO + buco cieco chiuso + falso positivo ordini sparito + somma serbatoio coerente + resi solo nel backlog | ☐ |
-| 12 | Apply dev + comunicazione a BE/FE (§8) | ☐ |
+| 8 | Ordine al residuo da spedire nel serbatoio (§4c, riusare la formula esistente) — ⚠️ **solo per trigger SPEDITO/CONSEGNATO**, vedi §4c | ☐ |
+| 9 | Ramo resi sul backlog (§4d) — dopo lo step 4 | ☐ |
+| 10 | Seed motivi (§4e) | ☐ |
+| 11 | pgTAP **nuovi**: le **dieci righe della tabella §3a** + caso orfano + DDT annullato **non** fatturato + **caso-bozza del flip** (bozza 6 + confermato 4 su DDT da 10 → il DDT **resta** `CONSEGNATO` e i 6 pz **restano fatturabili** — oggi non lo copre nulla, §3b) + buco cieco + falso positivo ordini sparito + resi solo nel backlog + **solo trasporto** (causale non fatturabile mai eleggibile/mai nei cruscotti · emissione VENDITA con riga senza prezzo risolvibile **bloccata** · evasione con prezzo ereditato **passa**) + `security_invoker` sulle viste resi | ☐ |
+| 12 | pgTAP **esistenti da aggiornare** (censire prima di scrivere — [[feedback_guard_breaks_existing_tests]]): `test-fn-list-ddt-da-pushare-v1/-v2`, `test-resi-motore-v1`, `test-vw-dash-fatturazione-v1`, `test-vw-dash-backlog-v1`, `test-vw-dash-aperto-v1`, `test-vw-dash-security-invoker` | ☐ |
+| 13 | Apply dev + comunicazione a BE/FE (§8) | ☐ |
 
-> **Due domande aperte per Tid** (marcate ❓ nel testo): §4c — un ordine `trigger = CONFERMATO`
-> può generare DDT? · §4d — grana del backlog resi: una riga per (reso × motivo)?
+> **Decisioni — stato.** Le ❓ ancora aperte sono marcate nel testo.
+>
+> | § | Domanda | Stato |
+> |---|---|---|
+> | §3b | Chiave della **partita di merce** | ✅ **CHIUSA** (Tid, 2026-07-16): `ordine_riga_id` + catena DDT/ponte. **NO sorgente polimorfa** — razionale in §3b (archi pesati vs identità di nodo, guida §6) |
+> | §4c | Un ordine `trigger = CONFERMATO` può generare DDT? | ✅ **VERIFICATO: SÌ**, per progetto documentato. Ne discendono §3e, §4a e l'emendamento a DL-23 (§4c) |
+> | §4a | Il DDT di un ordine trigger CONFERMATO nei cruscotti? | ✅ **CHIUSA** (proposta Tid, 2026-07-17): **escluso dalla popolazione** — «si segue l'ordine». Chiude falso positivo + doppio conteggio senza motivi dedicati (DL-21 emendato). Razionale in §4a |
+> | §3b | `fn_conferma_reso` conta i resi in **DRAFT** per il flip a RESO — difetto o scelta? | ✅ **CHIUSA** (Tid, 2026-07-16): **difetto**, si corregge in questa slice (step 2b). Razionale in §3b — decisivo: al passo 4 il reso è già CONFERMATO, quindi `<> ANNULLATO` conta **solo** le bozze altrui |
+> | §3c | La frontiera è `stato_emissione = 'EMESSA'` (e non `fattura_riga_id IS NOT NULL`)? | ✅ **CHIUSA** (Tid, 2026-07-16): **EMISSIONE** — *«lo stato EMESSA serve una nota di credito»*. Misura: Σ `attivita_fatturabili.quantita` via `commessa_attivita_id` (l'esistenza della riga AF **è** la frontiera). Razionale e nota a DL-5 in §3c |
+> | §4a | Quinto ramo `vw_stato_sorgente_ddt`: dentro la slice o §7 motivato? | ✅ **CHIUSA** (Tid, 2026-07-17): **dentro la slice** (step 6b) — mancava solo perché sviluppo recente. **E anche il ramo RESO, insieme** (Tid: non rinviare, posizione naturale, sviluppo coerente): il traduttore copre tutti i tipi registrati |
+> | §4d | Grana del backlog resi: una riga per (reso × motivo)? | ✅ **CHIUSA** (Tid, 2026-07-17): **(reso × motivo)** — il tipo è per riga per costruzione; il reso misto ha davvero due cose in corso. Razionale e deroga dichiarata in §4d |
+> | §4a | DDT di **solo trasporto** (righe senza prezzo)? | ✅ **CHIUSA** (Tid, 2026-07-17, DL-28): l'intento si dichiara con la **causale di trasporto** — flag `fatturabile` sul vocabolario (opzione B, scelta Tid), gate all'emissione, esclusione da lister e popolazione. Razionale in §4a |
+>
+> ⚠️ **Da riconfermare prima dell'apply** (§3b, punto 4): la **Query 2** della
+> [guida sorgente polimorfa](../../guide/sorgente-polimorfa.md) §5 su `config.sorgenti`, per
+> verificare sul **DB vivo** che i tipi `ROW_VALIDATOR` siano ancora archiviati — la guida
+> avverte che l'elenco non si legge da liste scritte a mano, e il CSV di seed non è
+> autoritativo sulle righe assenti.
