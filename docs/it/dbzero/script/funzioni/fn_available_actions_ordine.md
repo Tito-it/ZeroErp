@@ -19,6 +19,8 @@ AS $function$
 --   ORDINE_FATTURA_DA_DDT / ORDINE_GIA_FATTURATO / ORDINE_NESSUNA_RIGA_PUSHABILE).
 --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
 --   config.stati_doc_ordini (bottone PDF data-driven via capabilities).
+--   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+--   (documento vuoto non avanza di stato).
 DECLARE
     v_stato_id   vendite.ordini.stato_doc_ordine_id%TYPE;
     v_stato_cod  config.stati_doc_ordini.codice_interno%TYPE;
@@ -28,6 +30,7 @@ DECLARE
     v_pdf_allow  config.stati_doc_ordini.pdf_allow_allegati%TYPE;
     v_actions    jsonb;
     v_can_change boolean := false;
+    v_ha_righe   boolean := false;
     v_push_ok    boolean := false;
     v_push_reason     text := NULL;
     v_push_reason_key text := NULL;
@@ -52,6 +55,17 @@ BEGIN
         RETURN NULL;
     END IF;
 
+    -- Precondizione "documento non vuoto" per le transizioni che la
+    -- esigono (meta.requires_righe). La fn sa solo COME contare le
+    -- proprie righe: specchia il guard (trgfn_ordini_guard_transizione
+    -- Regola 2, rev 2026-07-16): riga attiva, nessun vincolo su
+    -- quantita/prezzo (un ordine a totale zero deve poter avanzare).
+    v_ha_righe := EXISTS (
+        SELECT 1 FROM vendite.ordini_righe r
+         WHERE r.ordine_id = p_ordine_id
+           AND r.attivo IS TRUE
+    );
+
     SELECT COALESCE(
         jsonb_agg(
             jsonb_build_object(
@@ -61,7 +75,15 @@ BEGIN
                 'severity',         t.meta->>'severity',
                 'icon',             t.meta->>'icon',
                 'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
-                'outlined',         COALESCE((t.meta->>'outlined')::boolean, false)
+                'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
+                'enabled',          NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                         AND NOT v_ha_righe),
+                'reason',           CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                              AND NOT v_ha_righe
+                                         THEN 'DOCUMENTO_SENZA_RIGHE' END,
+                'reason_key',       CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                              AND NOT v_ha_righe
+                                         THEN 'common.azione_reason.senza_righe' END
             )
             ORDER BY sa.ordine
         ),
@@ -76,6 +98,8 @@ BEGIN
       AND t.meta ? 'action_key'
       AND t.meta ? 'label_key';
 
+    -- Conta anche le azioni disabilitate: la barra azioni deve
+    -- comparire proprio per mostrare il pulsante grigio + tooltip.
     v_can_change := jsonb_array_length(v_actions) > 0;
 
     -- push_commessa: fonte unica fn_list_ordini_da_pushare (decoupling).
@@ -110,7 +134,10 @@ BEGIN
                 'severity',         'success',
                 'icon',             'pi pi-arrow-right',
                 'requires_confirm', true,
-                'outlined',         false
+                'outlined',         false,
+                'enabled',          true,
+                'reason',           NULL,
+                'reason_key',       NULL
             )
         );
     END IF;
@@ -133,7 +160,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint)
-IS 'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini.';
+IS 'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e l''ordine non ha righe -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard Regola 2, che non filtra su attivo).';
 ```
 
 ---
