@@ -12,13 +12,13 @@ dal factory condiviso `build_passaggi_view`
 `vendite_service.get_documento_passaggi`.
 
 Design-of-record:
-[brief-design-genealogia-transiti-vendite.md](../../../dev/work-in-progress/brief-design-genealogia-transiti-vendite.md)
+[brief-design-genealogia-transiti-vendite.md](../../../dev/work-done/brief-design-genealogia-transiti-vendite.md)
 (decisioni G-1..G-11). Modello DB:
 [brief-db-lineage-documenti-vendite.md](../../../dev/work-done/brief-db-lineage-documenti-vendite.md)
 — viste `vendite.vw_documento_lineage{_nodi,_archi,}` +
 `vendite.fn_documento_lineage` (tutte `security_invoker`: RLS emittente del
 chiamante, il BE non passa `auth_user_id`). Piano operativo:
-[brief-be-fe-lineage-documenti-vendite.md](../../../dev/work-in-progress/brief-be-fe-lineage-documenti-vendite.md).
+[brief-be-fe-lineage-documenti-vendite.md](../../../dev/work-done/brief-be-fe-lineage-documenti-vendite.md).
 
 | Dominio | Endpoint | Tipo sorgente |
 |---|---|---|
@@ -71,9 +71,13 @@ chiamante, il BE non passa `auth_user_id`). Piano operativo:
   `indietro` la tappa da mostrare è il nodo FROM.
 - `from_doc_id` / `to_doc_id` (bigint | null): **id numerico di dominio** del
   nodo, per aprire il drawer di dettaglio dal FE. `uid::bigint` per i tipi
-  `key_selector='id'`; per preventivo/offerta (`key_selector='uid'`) è la
-  traduzione UUID→id (LEFT JOIN a `preventivi`/`offerte_commerciali`).
-  `null` = fuori scope RLS o nodo terminale senza drawer (fattura/commessa).
+  `key_selector='id'` (ordine/contratto/ddt/reso/commessa/fattura); per
+  preventivo/offerta (`key_selector='uid'`) è la traduzione UUID→id (LEFT JOIN
+  a `preventivi`/`offerte_commerciali`). `null` **solo** se il nodo è fuori
+  scope RLS (traduzione UUID→id senza match). NB: `doc_id` valorizzato **non**
+  implica apribile — è il FE a decidere in base ai tipi con drawer
+  (`LINEAGE_DRAWER_TIPI`: i 6 documenti + commessa; la fattura ha `doc_id` ma
+  nessun drawer, resta tappa consultiva).
 
 ### Esempio di risposta (caso reale: `GET /vendite/preventivi/524/passaggi/` — PRV0000185)
 

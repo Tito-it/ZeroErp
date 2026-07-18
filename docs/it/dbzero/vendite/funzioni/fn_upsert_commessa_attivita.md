@@ -19,7 +19,7 @@ DECLARE
   v_modificabile             vendite.stati_commessa.modificabile%TYPE;
   v_competenza_mese          vendite.commesse_attivita.competenza_mese%TYPE;
   v_tipo_doc_fiscale_id      vendite.commesse_attivita.tipo_doc_fiscale_id%TYPE;
-  v_tipo_movimento           varchar(32);
+  v_tipo_movimento           vendite.commesse_attivita.tipo_movimento%TYPE;
   v_tipo_consumo             varchar(32);
   v_meta_effective           jsonb;
 BEGIN
@@ -103,9 +103,14 @@ BEGIN
     );
   END IF;
 
-  -- Normalizzazione tipo_movimento e tipo_consumo (salvati in meta).
+  -- Normalizzazione tipo_movimento (COLONNA dal 2026-07-17) e
+  -- tipo_consumo (resta in meta).
+  -- Dominio tipo_movimento: NORMALE (push, specchio dell'origine) |
+  -- ONERE (porta voce manuale, qta=1) | RETTIFICA (riservato ai
+  -- conguagli/rettifiche future). Il CHECK
+  -- chk_commesse_attivita_tipo_movimento e' la difesa finale.
   v_tipo_movimento := upper(COALESCE(NULLIF(btrim(p_tipo_movimento), ''), 'NORMALE'));
-  IF v_tipo_movimento NOT IN ('NORMALE', 'RETTIFICA') THEN
+  IF v_tipo_movimento NOT IN ('NORMALE', 'RETTIFICA', 'ONERE') THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite','fn_upsert_commessa_attivita','E_PARAMETRO_INVALIDO',
       jsonb_build_object('parametro','tipo_movimento','valore',v_tipo_movimento),
@@ -123,9 +128,10 @@ BEGIN
   END IF;
 
   v_competenza_mese := date_trunc('month', p_competenza_mese)::date;
+  -- tipo_movimento NON entra piu' in meta: vive sulla colonna
+  -- (una casa sola). tipo_consumo resta qui.
   v_meta_effective  := COALESCE(p_meta, '{}'::jsonb) || jsonb_build_object(
-    'tipo_movimento', v_tipo_movimento,
-    'tipo_consumo',   v_tipo_consumo
+    'tipo_consumo', v_tipo_consumo
   );
 
   -- Normalize tipo_doc_fiscale_id (NO derivazione di business).
@@ -199,7 +205,8 @@ BEGIN
     competenza_mese, competenza_dal, competenza_al, posticipa_al,
     tipo_doc_fiscale_id, valuta_id, area_geografica_id, listino_versione_id,
     prezzo_snapshot, prezzo_bloccato, pricing_mode, prezzo_da_riallineare,
-    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid, meta,
+    stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid,
+    tipo_movimento, meta,
     -- Snapshot pricing v5
     prezzo_base_snapshot, origine_prezzo,
     tipo_variazione_applicata, valore_variazione_applicata,
@@ -212,7 +219,8 @@ BEGIN
     v_competenza_mese, p_competenza_dal, p_competenza_al, p_posticipa_al,
     v_tipo_doc_fiscale_id, p_valuta_id, p_area_geografica_id, p_listino_versione_id,
     p_prezzo_snapshot, COALESCE(p_prezzo_bloccato, false), COALESCE(p_pricing_mode, 'FIXED'::varchar), COALESCE(p_prezzo_da_riallineare, false),
-    COALESCE(p_stato_approvazione, 'BOZZA'::varchar), COALESCE(p_stato_emissione, 'NON_EMESSA'::varchar), p_sorgente_tipo_id, NULLIF(btrim(p_sorgente_uid), ''), v_meta_effective,
+    COALESCE(p_stato_approvazione, 'BOZZA'::varchar), COALESCE(p_stato_emissione, 'NON_EMESSA'::varchar), p_sorgente_tipo_id, NULLIF(btrim(p_sorgente_uid), ''),
+    v_tipo_movimento, v_meta_effective,
     p_prezzo_base_snapshot, p_origine_prezzo,
     p_tipo_variazione_applicata, p_valore_variazione_applicata,
     p_promo_id, p_contratto_id,
@@ -245,6 +253,11 @@ BEGIN
       stato_emissione                = EXCLUDED.stato_emissione,
       sorgente_tipo_id               = EXCLUDED.sorgente_tipo_id,
       sorgente_uid                   = EXCLUDED.sorgente_uid,
+      -- Il registro della riga lo dichiara il chiamante (mai NULL:
+      -- normalizzato a NORMALE). I segment_key non si incrociano fra
+      -- push (ORD:/DDT:/...) e porta manuale (MAN:), quindi un push
+      -- non puo' declassare una riga ONERE.
+      tipo_movimento                 = EXCLUDED.tipo_movimento,
       meta                           = COALESCE(vendite.commesse_attivita.meta, '{}'::jsonb) || COALESCE(EXCLUDED.meta, '{}'::jsonb),
       -- Snapshot pricing v5: sovrascrive sempre (rappresenta
       -- lo snapshot del calcolo corrente).
@@ -263,7 +276,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_upsert_commessa_attivita(p_commessa_id bigint, p_segment_key character varying, p_articolo_id uuid, p_istanza_utility_id bigint, p_data_attivita date, p_uom_id bigint, p_quantita numeric, p_competenza_mese date, p_competenza_dal date, p_competenza_al date, p_prezzo_snapshot numeric, p_prezzo_base_snapshot numeric, p_origine_prezzo character varying, p_tipo_variazione_applicata character varying, p_valore_variazione_applicata numeric, p_promo_id bigint, p_contratto_id bigint, p_categoria_cliente_id_snapshot smallint, p_classe_utenza_id_snapshot integer, p_qta_operativa numeric, p_uom_operativa_id bigint, p_factor_to_base numeric, p_posticipa_al date, p_tipo_doc_fiscale_id bigint, p_valuta_id integer, p_area_geografica_id bigint, p_listino_versione_id bigint, p_prezzo_bloccato boolean, p_pricing_mode character varying, p_prezzo_da_riallineare boolean, p_stato_approvazione character varying, p_stato_emissione character varying, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_tipo_movimento character varying, p_tipo_consumo character varying, p_meta jsonb)
-IS 'Upsert commesse_attivita (pricing v5). Restituisce (attivita_id, is_new). Snapshot pricing v5 obbligatorio in firma; passare NULL esplicito per dimensioni non applicabili (es. classe_utenza per utility commercio). tipo_doc_fiscale_id: normalize da config.sorgenti se param NULL (default opzionale, no derivazione di business) + no-regressione COALESCE su ON CONFLICT. rev 2026-06-19.';
+IS 'Upsert commesse_attivita (pricing v5). Restituisce (attivita_id, is_new). Snapshot pricing v5 obbligatorio in firma; passare NULL esplicito per dimensioni non applicabili (es. classe_utenza per utility commercio). tipo_doc_fiscale_id: normalize da config.sorgenti se param NULL (default opzionale, no derivazione di business) + no-regressione COALESCE su ON CONFLICT. tipo_movimento: COLONNA (non piu'' meta) con dominio NORMALE|RETTIFICA|ONERE; tipo_consumo resta in meta. rev 2026-07-17.';
 ```
 
 ---

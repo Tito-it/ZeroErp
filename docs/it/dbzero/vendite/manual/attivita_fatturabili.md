@@ -171,3 +171,22 @@ Le 8 colonne snapshot pricing presenti su [`vendite.commesse_attivita`](/dbzero/
 | `classe_utenza_id_snapshot`      | integer       | FK a `config.classi_utenze`                                                             |
 
 CHECK sui domini di `origine_prezzo` e `tipo_variazione_applicata`. Indice dedicato su `origine_prezzo` per filtri dashboard.
+
+---
+
+### Registro della riga: `tipo_movimento` (17-07-2026)
+
+Insieme alle 8 colonne dello snapshot pricing, l'emissione propaga 1:1 anche
+`tipo_movimento` — il **registro** della riga: `NORMALE` (merce/servizio che rispecchia il
+documento d'origine), `ONERE` (voce di valore caricata dalla porta dedicata, quantita' 1
+fissa), `RETTIFICA` (riservato ai conguagli futuri). CHECK sul dominio, come per
+`origine_prezzo`.
+
+Serve qui, e non solo sulla commessa, perche' **il conto della merce si fa su questa
+tabella**: il contatore della fatturazione (`tenuti − fatturati`) somma le quantita' delle
+sole righe `NORMALE`, e l'esistenza stessa della riga di attivita' fatturabile e' la prova
+che quella merce e' stata emessa. Se il registro vivesse solo sulla commessa, il contatore
+dovrebbe risalire la catena per sapere se sta guardando merce o un onere.
+
+Semantica e razionale completi: [`vendite.commesse_attivita`](/dbzero/vendite/tabelle/commesse_attivita),
+sezione "Registro della riga".

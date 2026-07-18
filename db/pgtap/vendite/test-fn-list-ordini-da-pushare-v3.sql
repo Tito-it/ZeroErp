@@ -64,7 +64,11 @@ SELECT
   (SELECT s.id FROM config.stati_doc_ddt s
     WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE LIMIT 1)     AS stato_ddt_emesso_id,
   (SELECT s.id FROM config.stati_doc_ddt s
-    WHERE s.codice_interno = 'SPEDITO' AND s.attivo IS TRUE LIMIT 1)    AS stato_ddt_spedito_id;
+    WHERE s.codice_interno = 'SPEDITO' AND s.attivo IS TRUE LIMIT 1)    AS stato_ddt_spedito_id,
+  -- Dal 2026-07-18 (step 5b / DL-28) la causale di trasporto e' obbligatoria
+  -- all'emissione del DDT: VENDITA e' l'unica causale fatturabile, quindi
+  -- l'unica che tiene il DDT eleggibile al push.
+  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1) AS causale_vendita_id;
 
 SELECT ok(
   (SELECT push_ba_id IS NOT NULL
@@ -141,6 +145,9 @@ SELECT (SELECT ddt_id FROM tmp_ddt_a3),
        (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON'),
        '{"display":"CON test"}'::jsonb
 ON CONFLICT DO NOTHING;
+-- Causale obbligatoria all'emissione (guard causale_emissione, 2026-07-18).
+UPDATE vendite.ddt SET causale_trasporto_id = (SELECT causale_vendita_id FROM tmp_refs_v3)
+ WHERE id = (SELECT ddt_id FROM tmp_ddt_a3);
 UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_emesso_id FROM tmp_refs_v3)
  WHERE id = (SELECT ddt_id FROM tmp_ddt_a3);
 UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_spedito_id FROM tmp_refs_v3)
@@ -316,6 +323,9 @@ SELECT (SELECT ddt_id FROM tmp_ddt_c3),
        (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON'),
        '{"display":"CON test"}'::jsonb
 ON CONFLICT DO NOTHING;
+-- Causale obbligatoria all'emissione (guard causale_emissione, 2026-07-18).
+UPDATE vendite.ddt SET causale_trasporto_id = (SELECT causale_vendita_id FROM tmp_refs_v3)
+ WHERE id = (SELECT ddt_id FROM tmp_ddt_c3);
 UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_emesso_id FROM tmp_refs_v3)
  WHERE id = (SELECT ddt_id FROM tmp_ddt_c3);
 UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_spedito_id FROM tmp_refs_v3)

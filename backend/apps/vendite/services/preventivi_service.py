@@ -2086,8 +2086,3 @@ def genera_pratica(
     }
 
 
-# Scopo: Lista pratiche collegate al preventivo.
-# Usa la vista vw_preventivi_pratiche (filtra per preventivo_id).
-def list_pratiche(preventivo_id: int) -> list[dict[str, Any]]:
-    repo = PreventiviRepository()
-    return repo.list_pratiche(preventivo_id)

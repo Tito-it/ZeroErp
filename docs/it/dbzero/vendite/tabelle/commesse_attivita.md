@@ -47,6 +47,7 @@
 | contratto_id | bigint | YES |  |
 | categoria_cliente_id_snapshot | smallint | YES |  |
 | classe_utenza_id_snapshot | integer | YES |  |
+| tipo_movimento | character varying | NO | 'NORMALE'::character varying |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -62,6 +63,7 @@
 | CHECK | chk_commesse_attivita_stato_approvazione |  |
 | CHECK | chk_commesse_attivita_stato_emissione |  |
 | CHECK | chk_commesse_attivita_tipo_doc_emittibile |  |
+| CHECK | chk_commesse_attivita_tipo_movimento |  |
 | CHECK | chk_commesse_attivita_tipo_variazione_applicata |  |
 | FOREIGN KEY | commesse_attivita_listino_riga_id_fkey | listino_riga_id |
 | FOREIGN KEY | fk_commesse_attivita_area_geo | area_geografica_id |

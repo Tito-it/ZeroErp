@@ -91,7 +91,7 @@ BEGIN
     END LOOP;
 
     -- 4) Flip DDT origine -> RESO se reso TOTALE (tutte le qta
-    --    consegnate del DDT rese, resi non-ANNULLATI). Solo se il
+    --    consegnate del DDT rese da resi EFFETTIVI). Solo se il
     --    DDT e' CONSEGNATO (matrice CONSEGNATO->RESO).
     SELECT d.id, sdd.codice_interno
       INTO v_ddt_id, v_ddt_stato
@@ -104,12 +104,13 @@ BEGIN
           INTO v_tutto_reso
           FROM vendite.ddt_righe dr
           LEFT JOIN (
-              SELECT rr.ddt_riga_id, SUM(rr.quantita) AS tot
-                FROM vendite.resi_righe rr
-                JOIN vendite.resi r          ON r.id = rr.reso_id
-                JOIN config.stati_doc_reso s ON s.id = r.stato_doc_reso_id
-               WHERE s.codice_interno <> 'ANNULLATO'
-               GROUP BY rr.ddt_riga_id
+              -- rev 2026-07-17 (step 2): fonte unica
+              -- vw_resi_righe_effettive (CONFERMATE + attive, tutti
+              -- i tipi). Il flip non filtra il tipo: conta tutta la
+              -- merce tornata indietro su ogni riga DDT.
+              SELECT e.ddt_riga_id, SUM(e.quantita) AS tot
+                FROM vendite.vw_resi_righe_effettive e
+               GROUP BY e.ddt_riga_id
           ) reso_riga ON reso_riga.ddt_riga_id = dr.id
          WHERE dr.ddt_id = v_ddt_id
            AND dr.attivo IS TRUE;
@@ -126,7 +127,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_conferma_reso(p_reso_id bigint)
-IS 'Madre conferma reso: DRAFT->CONFERMATO (numero+guard), proiezione stato ordine (residuo reso-aware -> PARZIALMENTE_EVASO/EVASO), flip DDT origine CONSEGNATO->RESO se reso totale. brief §5. rev 2026-07-13.';
+IS 'Madre conferma reso: DRAFT->CONFERMATO (numero+guard), proiezione stato ordine (residuo reso-aware -> PARZIALMENTE_EVASO/EVASO), flip DDT origine CONSEGNATO->RESO se reso totale. brief §5. rev 2026-07-13. rev 2026-07-17 (step 2b): il flip conta solo i resi CONFERMATI. rev 2026-07-17 (step 2): il flip legge l helper unico vw_resi_righe_effettive (CONFERMATE+attive, tutti i tipi).';
 ```
 
 ---

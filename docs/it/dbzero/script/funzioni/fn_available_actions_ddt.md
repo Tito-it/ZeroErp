@@ -17,6 +17,8 @@ AS $function$
 --   config.transizioni_stati_ddt). Mirror di fn_available_actions_ordine.
 --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
 --   config.stati_doc_ddt (bottone PDF data-driven via capabilities).
+--   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+--   (documento vuoto non avanza di stato).
 DECLARE
     v_stato_id   vendite.ddt.stato_doc_ddt_id%TYPE;
     v_stato_cod  config.stati_doc_ddt.codice_interno%TYPE;
@@ -24,6 +26,7 @@ DECLARE
     v_pdf_allow  config.stati_doc_ddt.pdf_allow_allegati%TYPE;
     v_actions    jsonb;
     v_can_change boolean := false;
+    v_ha_righe   boolean := false;
     v_push_ok    boolean := false;
     v_push_reason     text := NULL;
     v_push_reason_key text := NULL;
@@ -47,6 +50,16 @@ BEGIN
         RETURN NULL;
     END IF;
 
+    -- Precondizione "documento non vuoto" per le transizioni che la
+    -- esigono (meta.requires_righe). La fn sa solo COME contare le
+    -- proprie righe: specchia la Regola 2 del guard
+    -- (trgfn_ddt_guard_transizione, 20260716-01): riga attiva.
+    v_ha_righe := EXISTS (
+        SELECT 1 FROM vendite.ddt_righe r
+         WHERE r.ddt_id = p_ddt_id
+           AND r.attivo IS TRUE
+    );
+
     SELECT COALESCE(
         jsonb_agg(
             jsonb_build_object(
@@ -56,7 +69,15 @@ BEGIN
                 'severity',         t.meta->>'severity',
                 'icon',             t.meta->>'icon',
                 'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
-                'outlined',         COALESCE((t.meta->>'outlined')::boolean, false)
+                'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
+                'enabled',          NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                         AND NOT v_ha_righe),
+                'reason',           CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                              AND NOT v_ha_righe
+                                         THEN 'DOCUMENTO_SENZA_RIGHE' END,
+                'reason_key',       CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                              AND NOT v_ha_righe
+                                         THEN 'common.azione_reason.senza_righe' END
             )
             ORDER BY sa.ordine
         ),
@@ -71,6 +92,8 @@ BEGIN
       AND t.meta ? 'action_key'
       AND t.meta ? 'label_key';
 
+    -- Conta anche le azioni disabilitate: la barra azioni deve
+    -- comparire proprio per mostrare il pulsante grigio + tooltip.
     v_can_change := jsonb_array_length(v_actions) > 0;
 
     IF EXISTS (SELECT 1
@@ -90,7 +113,10 @@ BEGIN
                 'severity',         'success',
                 'icon',             'pi pi-arrow-right',
                 'requires_confirm', true,
-                'outlined',         false
+                'outlined',         false,
+                'enabled',          true,
+                'reason',           NULL,
+                'reason_key',       NULL
             )
         );
     END IF;
@@ -113,7 +139,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
-IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ddt (bottone PDF data-driven via capabilities).';
+IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ddt. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il DDT non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dalla Regola 2 del guard, 20260716-01).';
 ```
 
 ---

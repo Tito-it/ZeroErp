@@ -40,7 +40,6 @@ import { lookupListiniSelezionabiliContratto } from '../api/lookup'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
-import DocumentiGeneratiSorgenteList from '../../documenti/components/DocumentiGeneratiSorgenteList.vue'
 import ContrattoNoteDrawer from './ContrattoNoteDrawer.vue'
 import ContrattoEmissioneDialog from './dialogs/ContrattoEmissioneDialog.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
@@ -963,16 +962,12 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
         :istanza-utility-id="detail?.istanza_utility_id ?? null"
         :readonly="isReadonly" />
 
-      <template v-if="isEdit && detail && detail.stato_codice_interno !== 'DRAFT'">
-        <h4 class="mt-3">{{ t('contratti.pdf.section_documenti') }}</h4>
-        <!-- L'escape dal contenuto `app-readonly` e' ora applicato dal BB
-             stesso alla sua radice (azioni di sola lettura). -->
-        <DocumentiGeneratiSorgenteList
-          sorgente-code="CONTRATTO"
-          :sorgente-id="props.contrattoId"
-          hide-header-when-empty
-        />
-      </template>
+      <!-- L'area inline "Documenti generati" e' stata rimossa 2026-07-16
+           (doppione): l'archivio PDF si consulta dal pulsante PDF in testata
+           (EntityPdfButton -> PdfDocumentiSorgenteDialog, stesso BB con in
+           piu' expand automatico e append allegati). Il seed pdf_mode
+           ANNULLATO=ARCHIVE (regola unica 5 domini: annullare non cancella
+           la storia) tiene il pulsante consultabile anche sugli annullati. -->
 
       <!-- Genealogia/lineage (pannello "Passaggi", BB condiviso lazy: fetch
            al primo expand; app-escape interno per la consultazione in

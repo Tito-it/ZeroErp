@@ -6,12 +6,12 @@
 > (`10e8f22ee` + `9a2f59d0a`, PR #988/#989 → Tito-dev). Verificato:
 > `fn_resolve_lista_config` ritorna `pratica/fase/transito` `visibile=true`
 > sulle 5 liste; validato in-app da Tid (ordini + ddt).
-> **Design-of-record**: [brief-design-genealogia-transiti-vendite.md](../work-in-progress/brief-design-genealogia-transiti-vendite.md)
+> **Design-of-record**: [brief-design-genealogia-transiti-vendite.md](brief-design-genealogia-transiti-vendite.md)
 > **Prerequisito consegnato**: [brief-db-lineage-documenti-vendite.md](brief-db-lineage-documenti-vendite.md)
 > — ✅ COMPLETO 2026-07-15 (`vw_documento_lineage_nodi/archi`, `vw_documento_lineage`,
 > `fn_documento_lineage`, seed `fase`/`is_abortito`, `RESO_VENDITA(15)`; verificato vivo sul DB dev).
 > **Gate downstream**: questo brief sblocca la **Fase B** di
-> [brief-be-fe-lineage-documenti-vendite.md](../work-in-progress/brief-be-fe-lineage-documenti-vendite.md)
+> [brief-be-fe-lineage-documenti-vendite.md](brief-be-fe-lineage-documenti-vendite.md)
 > (colonne in lista). La Fase A (pannello "Passaggi") NON dipende da questo brief.
 
 ---

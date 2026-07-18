@@ -16,6 +16,8 @@ AS $function$
 -- Scopo: capability preventivo per detail API (pattern data-driven).
 --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
 --   config.stati_doc_preventivi (bottone PDF data-driven via capabilities).
+--   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+--   (documento vuoto non avanza di stato).
 DECLARE
     v_stato_id          vendite.preventivi.stato_doc_preventivo_id%TYPE;
     v_stato_cod         config.stati_doc_preventivi.codice_interno%TYPE;
@@ -24,6 +26,7 @@ DECLARE
     v_pdf_mode          config.stati_doc_preventivi.pdf_mode%TYPE;
     v_pdf_allow         config.stati_doc_preventivi.pdf_allow_allegati%TYPE;
     v_actions           jsonb;
+    v_ha_righe          boolean := false;
     v_can_edit          boolean;
     v_can_push          boolean;
     v_can_rev           boolean;
@@ -41,7 +44,10 @@ DECLARE
         'severity',             'info',
         'icon',                 'pi pi-clone',
         'requires_confirm',     true,
-        'requires_motivazione', false
+        'requires_motivazione', false,
+        'enabled',              true,
+        'reason',               NULL,
+        'reason_key',           NULL
     );
     c_action_push_commessa CONSTANT jsonb := jsonb_build_object(
         'key',                  'push_commessa',
@@ -50,7 +56,10 @@ DECLARE
         'severity',             'info',
         'icon',                 'pi pi-arrow-right',
         'requires_motivazione', false,
-        'requires_confirm',     true
+        'requires_confirm',     true,
+        'enabled',              true,
+        'reason',               NULL,
+        'reason_key',           NULL
     );
     c_action_genera_ordine CONSTANT jsonb := jsonb_build_object(
         'key',                  'genera_ordine',
@@ -59,7 +68,10 @@ DECLARE
         'severity',             'info',
         'icon',                 'pi pi-shopping-cart',
         'requires_confirm',     true,
-        'requires_motivazione', false
+        'requires_motivazione', false,
+        'enabled',              true,
+        'reason',               NULL,
+        'reason_key',           NULL
     );
 BEGIN
     -- Stato corrente + testata + capability PDF (pdf_mode/allow_allegati).
@@ -76,6 +88,17 @@ BEGIN
         RETURN NULL;
     END IF;
 
+    -- Precondizione "documento non vuoto" per le transizioni che la
+    -- esigono (meta.requires_righe). La fn sa solo COME contare le
+    -- proprie righe: specchia il guard di fn_cambia_stato_preventivo
+    -- (PREV_NESSUNA_RIGA_ATTIVA, rev 2026-07-16): SOLO presenza di
+    -- riga attiva, nessun vincolo su quantita/prezzo/totale.
+    v_ha_righe := EXISTS (
+        SELECT 1 FROM vendite.preventivi_righe pr
+         WHERE pr.preventivo_id = p_preventivo_id
+           AND pr.attivo IS TRUE
+    );
+
     SELECT COALESCE(
         jsonb_agg(
             jsonb_build_object(
@@ -84,7 +107,15 @@ BEGIN
                 'label_key',        t.meta->>'label_key',
                 'severity',         t.meta->>'severity',
                 'icon',             t.meta->>'icon',
-                'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false)
+                'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                'enabled',          NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                         AND NOT v_ha_righe),
+                'reason',           CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                              AND NOT v_ha_righe
+                                         THEN 'DOCUMENTO_SENZA_RIGHE' END,
+                'reason_key',       CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                              AND NOT v_ha_righe
+                                         THEN 'common.azione_reason.senza_righe' END
             )
             ORDER BY sa.ordine
         ),
@@ -166,7 +197,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_preventivo(p_preventivo_id bigint)
-IS 'Capability preventivo per detail API: available_actions + can_edit_* + push_commessa + genera_ordine + create_revisione + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_preventivi (bottone PDF data-driven via capabilities).';
+IS 'Capability preventivo per detail API: available_actions + can_edit_* + push_commessa + genera_ordine + create_revisione + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_preventivi (bottone PDF data-driven via capabilities). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il preventivo non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard PREV_NESSUNA_RIGA_ATTIVA: SOLO presenza, nessun vincolo su quantita/prezzo/totale).';
 ```
 
 ---

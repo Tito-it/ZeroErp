@@ -41,12 +41,25 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_refs_ddt AS
 SELECT
+  -- BA vincolato a emittente fiscale risolvibile: dal lavoro emittente
+  -- (2026-07-13) trgfn_ordini_default_emittente pretende un emittente esplicito
+  -- nel payload quando la GUC app.current_user_id non risolve (contesto pgTAP).
   (SELECT ba.id
      FROM anagrafiche.billing_account ba
     WHERE ba.utility_id IS NOT NULL
       AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
     ORDER BY ba.id LIMIT 1
   ) AS billing_account_id,
+  -- NB: fn_get_emittente_fiscale_pk (PK), non _id: e' la funzione con cui
+  -- trgfn_ordini_guard_emittente_ba verifica la coerenza emittente<->BA.
+  (SELECT anagrafiche.fn_get_emittente_fiscale_pk(ba.id)
+     FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL
+      AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1
+  ) AS emittente_fiscale_id,
   (SELECT sr.id
      FROM anagrafiche.soggetti_ruoli sr
     ORDER BY sr.id LIMIT 1
@@ -82,6 +95,14 @@ SELECT
     WHERE s.codice = 'EMESSO' AND s.attivo IS TRUE
     LIMIT 1
   ) AS stato_ddt_emesso_id,
+  -- Causale di trasporto: dal 2026-07-18 (step 5b, DL-28) il lister fa un INNER
+  -- JOIN su config.causali_trasporto con fatturabile IS TRUE, e VENDITA e' la
+  -- sola fatturabile. Senza causale il DDT non e' piu' eleggibile al push.
+  (SELECT c.id
+     FROM config.causali_trasporto c
+    WHERE c.codice = 'VENDITA'
+    LIMIT 1
+  ) AS causale_vendita_id,
   -- Sorgenti
   (SELECT s.id
      FROM config.sorgenti s
@@ -117,11 +138,12 @@ WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id,
     stato_doc_ordine_id, valuta_id, data,
-    storicizza, meta
+    emittente_fiscale_id, storicizza, meta
   )
   SELECT
     r.soggetto_ruolo_id, r.billing_account_id,
     r.stato_ordine_confermato_id, r.valuta_id, DATE '2026-07-01',
+    r.emittente_fiscale_id,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt')
   FROM tmp_refs_ddt r
   RETURNING id, uid, billing_account_id
@@ -158,13 +180,14 @@ WITH ins AS (
     destinatario_soggetto_ruolo_id,
     stato_doc_ddt_id, data,
     sorgente_tipo_id, sorgente_uid,
-    storicizza, meta
+    causale_trasporto_id, storicizza, meta
   )
   SELECT
     r.soggetto_ruolo_id,
     r.stato_ddt_spedito_id, DATE '2026-07-05',
     r.sorgente_ordine_tipo_id,
     (SELECT uid FROM tmp_ordine_a),
+    r.causale_vendita_id,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt')
   FROM tmp_refs_ddt r
   RETURNING id, uid, billing_account_id
@@ -252,11 +275,12 @@ WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id,
     stato_doc_ordine_id, valuta_id, data,
-    storicizza, meta
+    emittente_fiscale_id, storicizza, meta
   )
   SELECT
     r.soggetto_ruolo_id, r.billing_account_id,
     r.stato_ordine_confermato_id, r.valuta_id, DATE '2026-07-01',
+    r.emittente_fiscale_id,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'conf')
   FROM tmp_refs_ddt r
   RETURNING id, uid
@@ -286,13 +310,14 @@ WITH ins AS (
     destinatario_soggetto_ruolo_id,
     stato_doc_ddt_id, data,
     sorgente_tipo_id, sorgente_uid,
-    storicizza, meta
+    causale_trasporto_id, storicizza, meta
   )
   SELECT
     r.soggetto_ruolo_id,
     r.stato_ddt_spedito_id, DATE '2026-07-10',
     r.sorgente_ordine_tipo_id,
     (SELECT uid FROM tmp_ordine_conf),
+    r.causale_vendita_id,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'conf')
   FROM tmp_refs_ddt r
   RETURNING id, uid
@@ -346,12 +371,13 @@ WITH ins AS (
     destinatario_soggetto_ruolo_id,
     stato_doc_ddt_id, data,
     billing_account_id, valuta_id,
-    storicizza, meta
+    causale_trasporto_id, storicizza, meta
   )
   SELECT
     r.soggetto_ruolo_id,
     r.stato_ddt_spedito_id, DATE '2026-07-15',
     r.billing_account_id, r.valuta_id,
+    r.causale_vendita_id,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'autonomo')
   FROM tmp_refs_ddt r
   RETURNING id, uid
@@ -407,11 +433,18 @@ WITH ins AS (
   INSERT INTO vendite.ddt (
     destinatario_soggetto_ruolo_id,
     stato_doc_ddt_id, data,
-    storicizza, meta
+    emittente_fiscale_id, causale_trasporto_id, storicizza, meta
   )
   SELECT
     r.soggetto_ruolo_id,
     r.stato_ddt_spedito_id, DATE '2026-07-20',
+    -- Senza BA il default emittente non ha nulla da cui derivare (e il guard
+    -- emittente<->BA salta): va passato esplicito, la colonna e' NOT NULL.
+    r.emittente_fiscale_id,
+    -- causale valorizzata anche qui: questo DDT resta escluso perche' non ha
+    -- billing_account (caso 9), non per la causale — l'asserzione deve
+    -- continuare a misurare cio' che dice di misurare
+    r.causale_vendita_id,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'no_ba')
   FROM tmp_refs_ddt r
   RETURNING id, uid

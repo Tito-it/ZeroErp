@@ -21,6 +21,7 @@ import { generaDdtFromOrdine } from '../api/ordiniApi'
 import { TAB_ENTITIES } from '../../../core/constants'
 import { formatNumber } from '../../../core/utils/format'
 import Button from 'primevue/button'
+import Checkbox from 'primevue/checkbox'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
@@ -55,6 +56,7 @@ const {
   righeSelezionabili: righeEvadibili,
   coversAllResiduo: evadeTuttoResiduo,
   loadRighe, buildPayloadRighe,
+  isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected,
 } = useRigheSelezioneQta({
   fetchRighe: async () => {
     if (!props.ordineId) return []
@@ -119,10 +121,22 @@ function onGenera() {
       {{ t('vendite.ordini.evasione_intro') }}
     </p>
 
-    <DataTable v-if="righe.length" :value="righe" v-model:selection="selected"
+    <DataTable v-if="righe.length" :value="righe"
       data-key="id" striped-rows size="small" class="app-datatable"
       :loading="loadingRighe" scrollable scrollHeight="240px">
-      <Column v-if="!readonly" selectionMode="multiple" headerStyle="width: 3rem" />
+      <!-- Checkbox custom (no selectionMode: PrimeVue 4 renderebbe spuntabili
+           anche le righe già evase): disabled per riga da isSelectable, colonna
+           nascosta quando non resta nulla da evadere (solo consuntivo). -->
+      <Column v-if="!readonly && righeEvadibili.length" headerStyle="width: 3rem">
+        <template #header>
+          <Checkbox :model-value="allSelected" binary
+            :indeterminate="anySelected" @update:model-value="toggleAll" />
+        </template>
+        <template #body="{ data }">
+          <Checkbox :model-value="isSelected(data)" binary
+            :disabled="!isSelectable(data)" @update:model-value="toggleRow(data)" />
+        </template>
+      </Column>
       <Column :header="t('vendite.ordini.riga_articolo')">
         <template #body="{ data }">
           {{ data.articolo_codice }} — {{ data.descrizione }}

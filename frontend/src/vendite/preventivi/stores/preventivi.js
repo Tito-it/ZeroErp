@@ -6,7 +6,7 @@ import {
   listPreventivi, getPreventivo, createPreventivo, updatePreventivo, deletePreventivo,
   cambiaStatoPreventivo, emettiPreventivo, creaRevisione, listRevisioni,
   listRighe, createRiga, updateRiga, deleteRiga, getRiepilogoIva,
-  pushCommessa, getSmistamento, generaPratica, listPratiche,
+  pushCommessa, getSmistamento, generaPratica,
 } from '../api/preventiviApi'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { useListaEmptyStateFetch } from '../../../core/composables/useListaEmptyStateFetch'
@@ -196,19 +196,13 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     return res.data.data
   }
 
-  // Scopo: Carica pratiche collegate al preventivo.
-  async function loadPratiche(preventivoId) {
-    const res = await listPratiche(preventivoId)
-    return res.data.data
-  }
-
   return {
     items, totalRecords, loading, hasSearched, filters,
     fetchList, fetchDetail, create, update, elimina,
     cambiaStato, emetti, nuovaRevisione, loadRevisioni,
     loadRighe, addRiga, aggiornaRiga, eliminaRiga, loadRiepilogoIva,
     inviaACommessa, loadSmistamento,
-    creaPratica, loadPratiche,
+    creaPratica,
   }
 }, {
   // Reset automatico al logout (autoResetPlugin): items + filters dell'utente

@@ -1,0 +1,139 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Documento vuoto non avanza di stato — §1a (capability righe-aware).
+# Vedi 20260716-02 (ordine) per il razionale completo della forma scelta.
+#
+# MIRROR DEL GUARD: il predicato specchia ESATTAMENTE fn_conferma_reso
+# (E_RESO_SENZA_RIGHE): almeno una riga con attivo IS TRUE.
+#
+# Base: doc auto-gen script/funzioni/fn_available_actions_reso.md
+# (rev 2026-07-13) + blocco requires_righe.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260716-05-update-fn-available-actions-reso-requires-righe-mctit.yaml
+
+  - changeSet:
+      id: 20260716-05-update-fn-available-actions-reso-requires-righe
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_available_actions_reso: azioni con enabled/reason/reason_key da
+        meta.requires_righe (documento vuoto non avanza). Predicato specchiato
+        dal guard E_RESO_SENZA_RIGHE (fn_conferma_reso).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: resi_righe
+            - columnExists:
+                schemaName: vendite
+                tableName: resi_righe
+                columnName: attivo
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_reso(p_reso_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: capability reso per il detail API (data-driven,
+              --   config.transizioni_stati_reso). Mirror ridotto di
+              --   fn_available_actions_ddt (no push_commessa, no pdf).
+              --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+              --   (documento vuoto non avanza di stato).
+              DECLARE
+                  v_stato_id   vendite.resi.stato_doc_reso_id%TYPE;
+                  v_stato_cod  config.stati_doc_reso.codice_interno%TYPE;
+                  v_actions    jsonb;
+                  v_can_change boolean := false;
+                  v_ha_righe   boolean := false;
+                  c_non_edit_draft CONSTANT jsonb :=
+                      '["numero","sorgente_tipo_id","sorgente_uid","billing_account_id","emittente_fiscale_id"]'::jsonb;
+                  c_non_edit_tutti CONSTANT jsonb :=
+                      '["numero","sorgente_tipo_id","sorgente_uid","billing_account_id","emittente_fiscale_id",'
+                      '"destinatario_soggetto_ruolo_id","valuta_id","utility_id","data","meta"]'::jsonb;
+              BEGIN
+                  SELECT r.stato_doc_reso_id, sdr.codice_interno
+                    INTO v_stato_id, v_stato_cod
+                    FROM vendite.resi r
+                    JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id
+                   WHERE r.id = p_reso_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Precondizione "documento non vuoto" per le transizioni che la
+                  -- esigono (meta.requires_righe). La fn sa solo COME contare le
+                  -- proprie righe: specchia il guard di fn_conferma_reso
+                  -- (E_RESO_SENZA_RIGHE): riga attiva.
+                  v_ha_righe := EXISTS (
+                      SELECT 1 FROM vendite.resi_righe rr
+                       WHERE rr.reso_id = p_reso_id
+                         AND rr.attivo IS TRUE
+                  );
+
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',              t.meta->>'action_key',
+                              'target_state',     sa.codice_interno,
+                              'label_key',        t.meta->>'label_key',
+                              'severity',         t.meta->>'severity',
+                              'icon',             t.meta->>'icon',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
+                              'enabled',          NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                       AND NOT v_ha_righe),
+                              'reason',           CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                            AND NOT v_ha_righe
+                                                       THEN 'DOCUMENTO_SENZA_RIGHE' END,
+                              'reason_key',       CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                            AND NOT v_ha_righe
+                                                       THEN 'common.azione_reason.senza_righe' END
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  FROM config.transizioni_stati_reso t
+                  JOIN config.stati_doc_reso sa ON sa.id = t.stato_a_id
+                  WHERE t.stato_da_id = v_stato_id
+                    AND t.attivo IS TRUE
+                    AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
+                    AND t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
+
+                  -- Conta anche le azioni disabilitate: la barra azioni deve
+                  -- comparire proprio per mostrare il pulsante grigio + tooltip.
+                  v_can_change := jsonb_array_length(v_actions) > 0;
+
+                  RETURN jsonb_build_object(
+                      'available_actions',   v_actions,
+                      'can_change_state',    v_can_change,
+                      'can_edit_testata',    (v_stato_cod = 'DRAFT'),
+                      'can_edit_righe',      (v_stato_cod = 'DRAFT'),
+                      'non_editable_fields', CASE WHEN v_stato_cod = 'DRAFT'
+                                                  THEN c_non_edit_draft
+                                                  ELSE c_non_edit_tutti END,
+                      'stato_codice',        v_stato_cod
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_available_actions_reso(p_reso_id bigint)
+              IS 'Capability reso per detail API: available_actions (matrice transizioni_stati_reso, filtro manuale) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror ridotto di fn_available_actions_ddt (no push/pdf). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il reso non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard E_RESO_SENZA_RIGHE).';

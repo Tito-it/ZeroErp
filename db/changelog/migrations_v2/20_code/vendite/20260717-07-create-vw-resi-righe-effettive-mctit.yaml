@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# HELPER UNICO «merce tornata indietro» — vw_resi_righe_effettive
+#   (brief-db-fatturazione-ddt-resi §3b, step 2).
+#
+# IL RILIEVO: la stessa aggregazione `Σ resi_righe.quantita` compare oggi in
+# QUATTRO posti, con la catena di JOIN (resi_righe → resi → stati_doc_reso) e il
+# filtro di stato ripetuti ovunque, e con DEFINIZIONI DIVERGENTI di "quale reso
+# conta" (§3b):
+#   - vw_resi_da_accreditare / vw_resi_da_riconsegnare : CONFERMATO + attivo + tipo
+#   - fn_ordine_riga_qta_riconsegna                    : CONFERMATO, NO attivo, solo riapre_residuo
+#   - flip a RESO (fn_conferma_reso / fn_annulla_reso) : CONFERMATO (post 2b), NO attivo, tutti i tipi
+#   - trgfn_resi_righe_guard_quantita (guard)          : <> ANNULLATO (include le bozze) — RESTA COSI'
+#     (semantica diversa: prenotazione anti-over-return, §3b promemoria — NON assorbire qui)
+#
+# LA DEFINIZIONE CANONICA (decisione Tid, §3b): CONFERMATI + attivi + TUTTI i tipi.
+# Questa vista la incarna UNA volta ed espone le chiavi + `riapre_residuo`, cosi'
+# ogni consumatore applica il proprio filtro-tipo **sopra** (non dentro):
+#   - fn_ordine_riga_qta_riconsegna  -> WHERE ordine_riga_id = X AND riapre_residuo
+#   - flip                           -> GROUP BY ddt_riga_id (tutti i tipi)
+#   - contatore (step 1)             -> il lato «resi» di `tenuti − fatturati`, per partita
+#
+# GRANA: riga di reso (resi_righe). Espone `ordine_riga_id` (nullable: standalone)
+#   E `ddt_riga_id` (NOT NULL) — le due chiavi di partita del §3b (ordine quando
+#   c'e', catena DDT per lo standalone). `quantita` e' la BASE (come ddt_righe.quantita
+#   e come i quattro consumatori: il confronto del flip e la formula residuo sono in base).
+#
+# security_invoker=on: `resi` e' sotto RLS emittente (brief resi §0.10). Ri-specificato
+#   qui — la reloption NON e' visibile in pg_get_viewdef e PostgreSQL la azzera al
+#   CREATE OR REPLACE se omessa (regressione V-1, gia' costata un rework). I consumatori
+#   ereditano lo scope: nessun cambio rispetto a come leggono `resi` oggi.
+#
+# Dipendenze: vendite.resi_righe, vendite.resi, config.stati_doc_reso, config.tipi_reso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260717-07-create-vw-resi-righe-effettive-mctit.yaml
+
+  - changeSet:
+      id: 20260717-07-create-vw-resi-righe-effettive
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      comment: >
+        Helper unico «merce tornata indietro» (step 2): vw_resi_righe_effettive =
+        righe reso CONFERMATE + attive, tutti i tipi, con le due chiavi di partita
+        (ordine_riga_id / ddt_riga_id) + riapre_residuo. Fonte unica per
+        fn_ordine_riga_qta_riconsegna, flip a RESO e contatore. security_invoker=on.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: resi_righe
+            - tableExists:
+                schemaName: config
+                tableName: tipi_reso
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_resi_righe_effettive
+              WITH (security_invoker=on) AS
+              SELECT rr.id             AS resi_riga_id,
+                     rr.reso_id,
+                     rr.ddt_riga_id,
+                     rr.ordine_riga_id,
+                     rr.tipo_reso_id,
+                     tr.riapre_residuo,
+                     rr.quantita
+                FROM vendite.resi_righe rr
+                JOIN vendite.resi r           ON r.id  = rr.reso_id
+                JOIN config.stati_doc_reso sr ON sr.id = r.stato_doc_reso_id
+                JOIN config.tipi_reso tr      ON tr.id = rr.tipo_reso_id
+               WHERE sr.codice_interno = 'CONFERMATO'
+                 AND rr.attivo IS TRUE;
+
+              COMMENT ON VIEW vendite.vw_resi_righe_effettive IS
+                'Helper unico «merce tornata indietro» (brief-db-fatturazione-ddt-resi §3b, step 2): '
+                'righe reso EFFETTIVE = stato reso CONFERMATO + resi_righe.attivo, tutti i tipi. '
+                'Espone le due chiavi di partita (ordine_riga_id nullable / ddt_riga_id) + riapre_residuo, '
+                'cosi'' ogni consumatore applica il proprio filtro-tipo SOPRA. quantita = base. '
+                'Fonte unica per fn_ordine_riga_qta_riconsegna, flip a RESO e contatore tenuti-fatturati. '
+                'NON copre il guard over-return (trgfn_resi_righe_guard_quantita), che conta anche le bozze '
+                'di proposito (prenotazione). security_invoker=on + RLS su resi. rev 2026-07-17.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_resi_righe_effettive;

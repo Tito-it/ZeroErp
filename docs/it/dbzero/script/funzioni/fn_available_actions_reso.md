@@ -16,11 +16,14 @@ AS $function$
 -- Scopo: capability reso per il detail API (data-driven,
 --   config.transizioni_stati_reso). Mirror ridotto di
 --   fn_available_actions_ddt (no push_commessa, no pdf).
+--   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+--   (documento vuoto non avanza di stato).
 DECLARE
     v_stato_id   vendite.resi.stato_doc_reso_id%TYPE;
     v_stato_cod  config.stati_doc_reso.codice_interno%TYPE;
     v_actions    jsonb;
     v_can_change boolean := false;
+    v_ha_righe   boolean := false;
     c_non_edit_draft CONSTANT jsonb :=
         '["numero","sorgente_tipo_id","sorgente_uid","billing_account_id","emittente_fiscale_id"]'::jsonb;
     c_non_edit_tutti CONSTANT jsonb :=
@@ -37,6 +40,16 @@ BEGIN
         RETURN NULL;
     END IF;
 
+    -- Precondizione "documento non vuoto" per le transizioni che la
+    -- esigono (meta.requires_righe). La fn sa solo COME contare le
+    -- proprie righe: specchia il guard di fn_conferma_reso
+    -- (E_RESO_SENZA_RIGHE): riga attiva.
+    v_ha_righe := EXISTS (
+        SELECT 1 FROM vendite.resi_righe rr
+         WHERE rr.reso_id = p_reso_id
+           AND rr.attivo IS TRUE
+    );
+
     SELECT COALESCE(
         jsonb_agg(
             jsonb_build_object(
@@ -46,7 +59,15 @@ BEGIN
                 'severity',         t.meta->>'severity',
                 'icon',             t.meta->>'icon',
                 'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
-                'outlined',         COALESCE((t.meta->>'outlined')::boolean, false)
+                'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
+                'enabled',          NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                         AND NOT v_ha_righe),
+                'reason',           CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                              AND NOT v_ha_righe
+                                         THEN 'DOCUMENTO_SENZA_RIGHE' END,
+                'reason_key',       CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                              AND NOT v_ha_righe
+                                         THEN 'common.azione_reason.senza_righe' END
             )
             ORDER BY sa.ordine
         ),
@@ -61,6 +82,8 @@ BEGIN
       AND t.meta ? 'action_key'
       AND t.meta ? 'label_key';
 
+    -- Conta anche le azioni disabilitate: la barra azioni deve
+    -- comparire proprio per mostrare il pulsante grigio + tooltip.
     v_can_change := jsonb_array_length(v_actions) > 0;
 
     RETURN jsonb_build_object(
@@ -77,7 +100,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_reso(p_reso_id bigint)
-IS 'Capability reso per detail API: available_actions (matrice transizioni_stati_reso, filtro manuale) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror ridotto di fn_available_actions_ddt (no push/pdf). rev 2026-07-13.';
+IS 'Capability reso per detail API: available_actions (matrice transizioni_stati_reso, filtro manuale) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror ridotto di fn_available_actions_ddt (no push/pdf). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il reso non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard E_RESO_SENZA_RIGHE).';
 ```
 
 ---

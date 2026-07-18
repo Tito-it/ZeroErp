@@ -1,0 +1,219 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# FIX vendite.fn_conferma_reso — il flip a RESO non conta piu' le BOZZE
+#   (brief-db-fatturazione-ddt-resi §3b, step 2b — decisione Tid 2026-07-16:
+#    e' un DIFETTO, non una scelta).
+#
+# UNA PAROLA, UN BUCO SUI SOLDI GIA' VIVO. Il calcolo "il DDT e' tutto reso?"
+# somma le righe dei resi con stato `<> 'ANNULLATO'` — cioe' CONFERMATO **piu' le
+# bozze**. Su un DDT da 10 pz, una bozza altrui da 6 + il tuo reso confermato da 4
+# fanno 10 -> il DDT viene dichiarato RESO, ma il cliente ne tiene 6.
+#
+# Il danno e' triplo:
+#   1. il DDT dichiara il falso e va in sola lettura;
+#   2. **si perdono i soldi**: un DDT in RESO non e' piu' eleggibile al push (lo
+#      stato non combacia col trigger) -> i 6 pz che il cliente tiene non si
+#      fatturano mai, senza segnalazione;
+#   3. si auto-ripara solo in 1 caso su 3: il ricalcolo gira solo dentro le due
+#      madri, quindi se la bozza viene corretta (6->2) o lasciata li', il DDT
+#      resta RESO per sempre.
+#
+# PERCHE' E' UN DIFETTO E NON UNA SCELTA (§3b, il terzo e' dirimente):
+#   1. contraddice il principio che la slice resi ha scritto per se' (brief resi
+#      §2.1: "gli effetti scattano alla CONFERMA, non in bozza") — e questo e'
+#      l'effetto piu' pesante di tutti: cambia lo stato di un altro documento;
+#   2. e' l'unico dei quattro consumatori che conta le bozze (coda accrediti,
+#      coda ri-consegne e fn_ordine_riga_qta_riconsegna filtrano `= CONFERMATO`);
+#   3. `<> ANNULLATO` **non compra nulla**: verificato l'ordine dei passi — il
+#      passo 2 fa `UPDATE resi SET stato = CONFERMATO`, il passo 4 conta. Quando
+#      si conta, il reso che si sta confermando E' GIA' CONFERMATO, quindi
+#      `= 'CONFERMATO'` lo include comunque. L'unico effetto reale del filtro
+#      attuale e' contare in piu' le bozze degli altri.
+#
+# PERIMETRO: solo l'asse STATO, come deciso. Le altre due divergenze delle "tre
+#   definizioni di merce tornata indietro" (§3b) — il filtro `rr.attivo` e il
+#   filtro sui tipi — le riconduce l'helper unico dello **step 2**, che assorbira'
+#   questo calcolo. Qui non si allarga lo scope: si toglie il buco vivo.
+#
+# Nessun test esistente si rompe: il flip e' coperto dal solo test 20 di
+#   test-resi-motore-v1.sql, che usa un reso singolo confermato -> passa identico.
+#   Il caso-bozza non era coperto da nulla: aggiunto (test 25-26) — e' il test che
+#   dimostra il fix ([[feedback_guard_breaks_existing_tests]]).
+#
+# Origine: corpo dalla doc auto-gen (oggetto vivo, rev 2026-07-13); **firma e
+#   `SECURITY INVOKER` dallo YAML vivo 20260713-31**: l'auto-gen scioglie i `%TYPE`
+#   e non rende SECURITY INVOKER (e' il default) — copiando la firma da li' si
+#   perderebbero entrambi in silenzio.
+# Gemella: 20260717-06 (fn_annulla_reso, stesso calcolo speculare).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260717-05-fix-fn-conferma-reso-flip-solo-confermati-mctit.yaml
+
+  - changeSet:
+      id: 20260717-05-fix-fn-conferma-reso-flip-solo-confermati
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      comment: >
+        Flip DDT->RESO: conta solo i resi CONFERMATI (`= 'CONFERMATO'`), non piu'
+        `<> 'ANNULLATO'` che includeva le bozze. Chiude un buco vivo di
+        fatturazione (DDT dichiarato reso da una bozza altrui -> merce tenuta mai
+        fatturata). Firma e comportamento invariati.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: resi
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_reso
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_conferma_reso(p_reso_id vendite.resi.id%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_stato             config.stati_doc_reso.codice_interno%TYPE;
+                  v_stato_conf_id     config.stati_doc_reso.id%TYPE;
+                  v_ddt_uid           vendite.resi.sorgente_uid%TYPE;
+                  v_ddt_id            vendite.ddt.id%TYPE;
+                  v_ddt_stato         config.stati_doc_ddt.codice_interno%TYPE;
+                  v_stato_reso_ddt_id config.stati_doc_ddt.id%TYPE;
+                  v_stato_target_id   config.stati_doc_ordini.id%TYPE;
+                  v_tutto_reso        boolean;
+                  v_ord               RECORD;
+              BEGIN
+                  -- 1) Guard input + reso in DRAFT + almeno una riga.
+                  IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_conferma_reso','E_VALIDAZIONE',
+                          jsonb_build_object('p_reso_id', p_reso_id),
+                          NULL::uuid, 'p_reso_id deve essere > 0');
+                  END IF;
+
+                  SELECT sdr.codice_interno, r.sorgente_uid
+                    INTO v_stato, v_ddt_uid
+                    FROM vendite.resi r
+                    JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id
+                   WHERE r.id = p_reso_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_conferma_reso','E_RESO_NOT_FOUND',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  IF v_stato IS DISTINCT FROM 'DRAFT' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_conferma_reso','E_RESO_STATO_NON_CONFERMABILE',
+                          jsonb_build_object('reso_id', p_reso_id, 'stato', v_stato),
+                          NULL::uuid, p_reso_id::text, v_stato);
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM vendite.resi_righe
+                                  WHERE reso_id = p_reso_id AND attivo IS TRUE) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_conferma_reso','E_RESO_SENZA_RIGHE',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  -- 2) Transizione a CONFERMATO (gen_numero + guard_transizione).
+                  SELECT id INTO v_stato_conf_id FROM config.stati_doc_reso
+                   WHERE codice_interno = 'CONFERMATO' AND attivo IS TRUE;
+                  UPDATE vendite.resi
+                     SET stato_doc_reso_id = v_stato_conf_id
+                   WHERE id = p_reso_id;
+
+                  -- 3) Proiezione stato ordine per ogni ordine coinvolto (solo
+                  --    righe ri-consegna: quelle che riaprono il residuo).
+                  FOR v_ord IN
+                      SELECT DISTINCT orr.ordine_id
+                        FROM vendite.resi_righe rr
+                        JOIN vendite.ordini_righe orr ON orr.id = rr.ordine_riga_id
+                        JOIN config.tipi_reso tr      ON tr.id = rr.tipo_reso_id
+                       WHERE rr.reso_id = p_reso_id
+                         AND tr.riapre_residuo IS TRUE
+                  LOOP
+                      IF vendite.fn_ordine_ha_residuo_evasione(v_ord.ordine_id) THEN
+                          SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
+                           WHERE codice_interno = 'PARZIALMENTE_EVASO' AND attivo IS TRUE;
+                      ELSE
+                          SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
+                           WHERE codice_interno = 'EVASO' AND attivo IS TRUE;
+                      END IF;
+
+                      UPDATE vendite.ordini
+                         SET stato_doc_ordine_id = v_stato_target_id
+                       WHERE id = v_ord.ordine_id
+                         AND stato_doc_ordine_id IS DISTINCT FROM v_stato_target_id;
+                  END LOOP;
+
+                  -- 4) Flip DDT origine -> RESO se reso TOTALE (tutte le qta
+                  --    consegnate del DDT rese da resi CONFERMATI). Solo se il
+                  --    DDT e' CONSEGNATO (matrice CONSEGNATO->RESO).
+                  SELECT d.id, sdd.codice_interno
+                    INTO v_ddt_id, v_ddt_stato
+                    FROM vendite.ddt d
+                    JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                   WHERE d.uid = v_ddt_uid;
+
+                  IF v_ddt_id IS NOT NULL AND v_ddt_stato = 'CONSEGNATO' THEN
+                      SELECT bool_and(COALESCE(reso_riga.tot, 0) >= dr.quantita)
+                        INTO v_tutto_reso
+                        FROM vendite.ddt_righe dr
+                        LEFT JOIN (
+                            -- rev 2026-07-17 (step 2b): SOLO i resi CONFERMATI.
+                            -- Era `<> 'ANNULLATO'`, che includeva le BOZZE: una
+                            -- bozza altrui poteva far dichiarare RESO un DDT che
+                            -- il cliente tiene ancora -> merce mai fatturata.
+                            -- Il reso in corso di conferma e' gia' CONFERMATO al
+                            -- passo 2, quindi rientra comunque nella somma.
+                            SELECT rr.ddt_riga_id, SUM(rr.quantita) AS tot
+                              FROM vendite.resi_righe rr
+                              JOIN vendite.resi r          ON r.id = rr.reso_id
+                              JOIN config.stati_doc_reso s ON s.id = r.stato_doc_reso_id
+                             WHERE s.codice_interno = 'CONFERMATO'
+                             GROUP BY rr.ddt_riga_id
+                        ) reso_riga ON reso_riga.ddt_riga_id = dr.id
+                       WHERE dr.ddt_id = v_ddt_id
+                         AND dr.attivo IS TRUE;
+
+                      IF COALESCE(v_tutto_reso, false) THEN
+                          SELECT id INTO v_stato_reso_ddt_id FROM config.stati_doc_ddt
+                           WHERE codice_interno = 'RESO' AND attivo IS TRUE;
+                          UPDATE vendite.ddt
+                             SET stato_doc_ddt_id = v_stato_reso_ddt_id
+                           WHERE id = v_ddt_id;
+                      END IF;
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_conferma_reso(p_reso_id bigint)
+              IS 'Madre conferma reso: DRAFT->CONFERMATO (numero+guard), proiezione stato ordine (residuo reso-aware -> PARZIALMENTE_EVASO/EVASO), flip DDT origine CONSEGNATO->RESO se reso totale. brief §5. rev 2026-07-13. rev 2026-07-17 (step 2b): il flip conta SOLO i resi CONFERMATI (era <> ANNULLATO, includeva le bozze -> DDT falsamente RESO e merce mai fatturata).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: ripristino non automatizzato (CREATE OR REPLACE).
+              -- Riapplicare 20260713-31 per tornare alla versione che conta
+              -- anche le bozze (ATTENZIONE: reintroduce il buco di fatturazione).
+              SELECT 1;

@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# STEP 5b — parte 4: bonifica dei DDT emessi PRIMA che la causale diventasse
+#   obbligatoria (§4a, DL-28 punto 3).
+#
+# PERCHE' SERVE: il gate 20260718-04 pretende la causale dall'emissione in poi,
+# ma i DDT gia' oltre DRAFT sono nati quando la colonna era nullable e la
+# maggior parte non ce l'ha. Senza bonifica:
+#   - il lister (20260718-05, INNER JOIN sulla causale) li farebbe sparire TUTTI
+#     dalla coda di push -> la fatturazione DDT si fermerebbe;
+#   - qualunque loro cambio di stato futuro sbatterebbe contro il gate.
+#
+# PERCHE' VENDITA: e' la scelta CONSERVATIVA, non una classificazione. Prima di
+# oggi il lister non guardava la causale, quindi quei documenti erano di fatto
+# tutti trattati come fatturabili: assegnare VENDITA lascia il comportamento
+# ESATTAMENTE com'era. Qualunque altra scelta cambierebbe in silenzio il destino
+# di documenti storici.
+#
+# ⚠️ IN PRODUZIONE VA RIVISTA: se fra i DDT storici ce ne sono di solo trasporto
+#   (campionature, trasferimenti, conto lavoro), questa bonifica li dichiara
+#   vendite e li rende eleggibili al push. Su questo DB sono dati di test e la
+#   cosa e' irrilevante (Tid, 2026-07-18); su un'installazione con storico vero
+#   conviene prima censire per aspetto/descrizione e assegnare a mano le causali
+#   giuste, poi lasciare a questo changeset solo il residuo.
+#
+# PERIMETRO: solo `stato <> DRAFT`. In bozza il NULL resta legittimo — la
+#   causale si compila prima di emettere, come l'indirizzo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260718-06-backfill-ddt-causale-trasporto-mctit.yaml
+
+  - changeSet:
+      id: 20260718-06-backfill-ddt-causale-trasporto
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        Assegna la causale VENDITA ai DDT gia' oltre DRAFT rimasti senza causale
+        (nati prima dell'obbligo DL-28). Scelta conservativa: prima il lister non
+        guardava la causale, quindi erano tutti di fatto fatturabili.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: causali_trasporto
+                columnName: fatturabile
+            - sqlCheck:
+                expectedResult: "1"
+                sql: SELECT COUNT(*) FROM config.causali_trasporto WHERE codice = 'VENDITA'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              UPDATE vendite.ddt d
+                 SET causale_trasporto_id = (
+                       SELECT ct.id FROM config.causali_trasporto ct
+                        WHERE ct.codice = 'VENDITA' LIMIT 1)
+               WHERE d.causale_trasporto_id IS NULL
+                 AND EXISTS (
+                       SELECT 1 FROM config.stati_doc_ddt sdd
+                        WHERE sdd.id = d.stato_doc_ddt_id
+                          AND sdd.codice_interno <> 'DRAFT');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Non reversibile in modo fedele: dopo il backfill non e' piu'
+              -- distinguibile chi aveva VENDITA per scelta da chi l'ha ricevuta
+              -- qui. Rimettere NULL su tutti cancellerebbe dati legittimi.
+              SELECT 1;

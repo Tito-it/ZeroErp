@@ -2,7 +2,7 @@
 
 > **Tipo**: brief DB (target `dev/db-tid`) · **Data**: 2026-07-09 · **Owner**: Tid
 > **Design-of-record**:
-> [brief-design-genealogia-transiti-vendite.md](../work-in-progress/brief-design-genealogia-transiti-vendite.md)
+> [brief-design-genealogia-transiti-vendite.md](brief-design-genealogia-transiti-vendite.md)
 > (nodi, archi, decisioni G-1..G-11). **Gate**: BE/FE partono a viste applicate
 > ([[feedback_be_fe_attende_prerequisiti_db]]).
 > **Natura**: **additivo, sola lettura** — nessun cambio al modello dati dei

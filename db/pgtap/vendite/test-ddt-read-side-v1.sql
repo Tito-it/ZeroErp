@@ -69,7 +69,9 @@ SELECT
   (SELECT s.id FROM config.stati_doc_ordini s
     WHERE s.codice_interno='CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS stato_ord_conf_id,
   (SELECT s.id FROM config.stati_doc_ddt s
-    WHERE s.codice_interno='EMESSO' AND s.attivo IS TRUE LIMIT 1) AS stato_ddt_emesso_id;
+    WHERE s.codice_interno='EMESSO' AND s.attivo IS TRUE LIMIT 1) AS stato_ddt_emesso_id,
+  (SELECT ct.id FROM config.causali_trasporto ct
+    WHERE ct.codice='VENDITA' LIMIT 1) AS causale_vendita_id;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND soggetto_ruolo_id IS NOT NULL
@@ -150,6 +152,14 @@ SELECT (SELECT ddt_id FROM tmp_ddt),
        (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON'),
        '{"display":"CON test"}'::jsonb
 ON CONFLICT DO NOTHING;
+
+-- Setup guard causale emissione (dal 2026-07-18, step 5b / DL-28):
+-- la causale di trasporto e' obbligatoria all'emissione e, se fatturabile
+-- (VENDITA), ogni riga attiva deve avere un prezzo risolvibile
+-- (trg_ddt_a10_guard_causale_emissione_upd). Qui la riga d'ordine ha
+-- prezzo 25, quindi il DDT lo eredita via fulfillment.
+UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs)
+ WHERE id=(SELECT ddt_id FROM tmp_ddt);
 
 SELECT lives_ok(
   format($q$UPDATE vendite.ddt SET stato_doc_ddt_id=

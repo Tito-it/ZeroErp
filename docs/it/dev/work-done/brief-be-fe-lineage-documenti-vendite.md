@@ -4,11 +4,11 @@
 > **Design-of-record**: [brief-design-genealogia-transiti-vendite.md](brief-design-genealogia-transiti-vendite.md)
 > (G-1..G-11) — **sostituisce il piano §10 del design** (steso prima dell'estensione
 > del perimetro a DDT e resi).
-> **Prerequisito DB core**: [brief-db-lineage-documenti-vendite.md](../work-done/brief-db-lineage-documenti-vendite.md)
+> **Prerequisito DB core**: [brief-db-lineage-documenti-vendite.md](brief-db-lineage-documenti-vendite.md)
 > — ✅ **ESEGUITO** (commit `0cb1f9061`): `vw_documento_lineage_nodi/archi`,
 > `vw_documento_lineage`, `fn_documento_lineage`, `security_invoker=on`, pgTAP
 > verde, casi §5 validati (PRV0000183/184/185, commessa 186 inversa, PRA-0000818).
-> **Prerequisito DB Fase B**: [brief-db-liste-lineage-colonne.md](../work-done/brief-db-liste-lineage-colonne.md)
+> **Prerequisito DB Fase B**: [brief-db-liste-lineage-colonne.md](brief-db-liste-lineage-colonne.md)
 > — ✅ **ESEGUITO incl. §7 preset** (`10e8f22ee` + `9a2f59d0a`).
 > Entrambi spostati in **work-done** (2026-07-15); lato DB tutto pushato e
 > mergiato in `Tito-dev` (PR #988/#989).
@@ -39,8 +39,8 @@ Verifica attività a consuntivo (dettaglio per fase nelle sezioni sotto):
    `brief-db-lineage-documenti-vendite.md` è stato spostato qui in work-done
    con il contenuto finale di db-tid: al merge, sul file può comparire un
    conflitto rename-vs-modify banale (tenere la versione work-done).
-2. **Validazione visiva in-app della Fase C** (drawer commessa da una tappa
-   dei "Passaggi") — il BE/dati sono verificati, manca solo l'occhio di Tid.
+2. ~~Validazione visiva in-app della Fase C~~ → ✅ **fatta da Tid (2026-07-15,
+   test UI completi su tutte le fasi, tutto ok)**.
 3. **Follow-on futuri fuori perimetro** (§3): dominio commesse UI completo
    (serve `vw_commesse_lista`, progetto separato); archi DB futuri reso→nota
    di credito e DDT→fattura differita (il pannello li renderà da solo);
@@ -222,7 +222,7 @@ Parte a viste+seed applicati (`brief-db-liste-lineage-colonne.md`).
 > build Vite verde.
 > ~~⚠️ GAP visibilità~~ → **RISOLTO**: il primo seed rendeva le colonne opt-in
 > (`visibile=false`); il follow-up
-> [brief-db-liste-lineage-colonne.md §7](../work-done/brief-db-liste-lineage-colonne.md)
+> [brief-db-liste-lineage-colonne.md §7](brief-db-liste-lineage-colonne.md)
 > (seed del preset di default `ui.lista_preset_colonna`) è stato **eseguito dal
 > team DB** (`10e8f22ee`): verificato `fn_resolve_lista_config` →
 > `pratica/fase/transito` `visibile=true` su tutte e 5 le liste; validato
@@ -275,6 +275,7 @@ Slot `#cell-pratica`, `#cell-fase`, `#cell-transito` in `PreventiviList`,
 > SQL-only, solo dashboard). La "lista commesse" del design §7.3 non ha una casa.
 > Deciso con Tid (2026-07-15) di NON costruire il dominio commesse completo, ma
 > una **slice minima** che riusa l'infrastruttura lineage:
+>
 > - **BE**: `COMMESSA` aggiunta a `LINEAGE_TIPI_DOCUMENTO`; route
 >   `GET /vendite/commesse/<id>/passaggi/` (`ApiCommessaPassaggi`, stessa factory).
 > - **FE**: `CommessaDrawer.vue` leggero read-only (header stato + `LineagePassaggiPanel`
