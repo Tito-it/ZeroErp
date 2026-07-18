@@ -198,3 +198,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 197,8,pratica,Pratica,Pratica collegata al documento,pratica_numero,informazione,string,,120,200,left,Genealogia,20,t,t,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_pratica
 198,8,fase,Fase,Fase normalizzata del documento,fase,informazione,string,,110,210,center,Genealogia,20,t,t,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_fase
 199,8,transito,Transito,Documento piu a valle in esecuzione (frontiera),frontiera_codice,informazione,string,,140,220,left,Genealogia,20,f,f,t,f,f,t,2026-07-15 00:00:00,mctit,lista.col_transito
+200,10,accredito_dovuto,Da accreditare,Quantità da accreditare (fatturata meno tenuta),accredito_dovuto,informazione,numeric,,140,45,right,Accredito,5,f,t,t,f,f,t,2026-07-18 00:00:00,mctit,vendite.resi_da_accreditare.col_accredito_dovuto
+201,10,etichetta,Tipo accredito,Accredito dovuto o facoltativo secondo il conto della partita,etichetta,informazione,string,,130,46,center,Accredito,5,t,t,t,f,f,t,2026-07-18 00:00:00,mctit,vendite.resi_da_accreditare.col_etichetta
+202,10,tenuti,Tenuti,Pezzi tenuti dal cliente sulla partita,tenuti,informazione,numeric,,110,95,right,Accredito,5,f,t,t,f,f,t,2026-07-18 00:00:00,mctit,vendite.resi_da_accreditare.col_tenuti
+203,10,fatturati,Fatturati,Pezzi fatturati sulla partita,fatturati,informazione,numeric,,110,96,right,Accredito,5,f,t,t,f,f,t,2026-07-18 00:00:00,mctit,vendite.resi_da_accreditare.col_fatturati

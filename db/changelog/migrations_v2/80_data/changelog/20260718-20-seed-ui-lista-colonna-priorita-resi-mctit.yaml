@@ -1,0 +1,161 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Priorita (peso ritiro dinamico colonne) per la FAMIGLIA RESI — le tre liste
+# nate il 2026-07-14 e finora rimaste tutte al DEFAULT 50:
+#   lista 9  vendite.resi                  (elenco resi di vendita)
+#   lista 10 vendite.resi_da_accreditare   (coda accrediti, forma contatore)
+#   lista 11 vendite.resi_da_riconsegnare  (coda ri-consegne)
+#
+# PERCHE' ORA: emerso durante il seed delle colonne contatore della lista 10
+# (accredito_dovuto/etichetta/tenuti/fatturati). Dare un peso solo alle 4 colonne
+# nuove avrebbe creato una gerarchia PARZIALE (4 pesate contro 12 a 50), peggio
+# del tutto-uguale: o si pesa la famiglia intera o non si pesa. Qui si pesa
+# l'intera famiglia, in un colpo solo.
+#
+# Stesso meccanismo dei seed contratti/preventivi/offerte/ordini/DDT
+# (20260602-16, 20260603-07/08/15, 20260709-17): la colonna priorita NON vive in
+# lista_colonna.csv (il loader 20260507-07 non la espone), nasce con DEFAULT 50
+# (20260602-13) e qui si impostano i pesi di dominio. Il re-run del loader NON
+# tocca priorita. Un UPDATE per lista: i codici colonna si ripetono tra liste
+# (data, descrizione, azioni, reso_numero...), quindi il filtro su lista_id e'
+# obbligatorio.
+#
+# ASSE (piu' alto = resiste di piu' al ritiro responsive):
+#   100 identificatore e azioni — non si ritirano mai
+#    90+ il numero che rende utile la coda (accredito_dovuto, qta_residua) e
+#        l'interlocutore (destinatario)
+#    55-80 contesto della riga (descrizione, origine, data, motivo, stato)
+#    15-30 dettagli e addendi del conto (ba_codice, quantita, tenuti/fatturati)
+#     5  tecniche non renderizzate (reso_id, resi_riga_id) e audit
+#
+# ⚠️ Nota lista 10: `tenuti`/`fatturati` sono ADDENDI (il conto della partita),
+#   `accredito_dovuto` e' il RISULTATO. Peso basso agli addendi e altissimo al
+#   risultato: restringendo lo schermo si perde il "come", mai il "quanto".
+#
+# Consumatore: ui.fn_resolve_lista_config espone gia' priorita nel payload
+# (step 5, letta fresca da ui.lista_colonna); il composable FE
+# useResponsiveColumns che la consuma non e' ancora scritto — questo seed e'
+# preparazione, oggi nessun effetto visibile.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260718-20-seed-ui-lista-colonna-priorita-resi-mctit.yaml
+
+  - changeSet:
+      id: 20260718-20-seed-ui-lista-colonna-priorita-resi
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Imposta priorita (peso ritiro dinamico) per le colonne delle tre liste
+        della famiglia resi (vendite.resi, vendite.resi_da_accreditare,
+        vendite.resi_da_riconsegnare), finora tutte al default 50. Mirror del
+        seed priorita DDT (20260709-17).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - columnExists:
+              schemaName: ui
+              tableName: lista_colonna
+              columnName: priorita
+          - sqlCheck:
+              expectedResult: "3"
+              sql: >-
+                SELECT COUNT(*) FROM ui.lista_definizione
+                 WHERE codice IN ('vendite.resi', 'vendite.resi_da_accreditare',
+                                  'vendite.resi_da_riconsegnare')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Lista 9 — vendite.resi: elenco documentale, stessa scala del DDT
+              -- (numero/azioni 100, destinatario 95, stato 90, origine 65, data 60).
+              UPDATE ui.lista_colonna lc
+                 SET priorita = v.priorita
+                FROM (
+                  VALUES
+                    ('numero',                     100),
+                    ('azioni',                     100),
+                    ('destinatario_denominazione',  95),
+                    ('stato',                       90),
+                    ('ddt_origine_numero',          65),
+                    ('data',                        60),
+                    ('id_fiscale',                  55),
+                    ('ba_codice',                   30),
+                    ('valuta',                      15),
+                    ('emittente_fiscale_codice',    12),
+                    ('anno',                        10),
+                    ('data_insert',                  5)
+                ) AS v(codice, priorita)
+               WHERE lc.codice = v.codice
+                 AND lc.lista_id = (
+                       SELECT id FROM ui.lista_definizione WHERE codice = 'vendite.resi'
+                     );
+
+              -- Lista 10 — vendite.resi_da_accreditare: e' una CODA, non un
+              -- elenco. accredito_dovuto (98) e' il motivo per cui la riga sta
+              -- li': cede solo a identificatore e azioni. etichetta (92) dice
+              -- se e' dovuta o facoltativa. tenuti/fatturati (15) sono gli
+              -- addendi: si ritirano presto, il risultato resta.
+              UPDATE ui.lista_colonna lc
+                 SET priorita = v.priorita
+                FROM (
+                  VALUES
+                    ('reso_numero',                100),
+                    ('azioni',                     100),
+                    ('accredito_dovuto',            98),
+                    ('destinatario_denominazione',  95),
+                    ('etichetta',                   92),
+                    ('descrizione',                 80),
+                    ('ddt_numero',                  65),
+                    ('data',                        60),
+                    ('motivo',                      55),
+                    ('ba_codice',                   30),
+                    ('qta_operativa',               25),
+                    ('quantita',                    20),
+                    ('tenuti',                      15),
+                    ('fatturati',                   15),
+                    ('reso_id',                      5),
+                    ('resi_riga_id',                 5)
+                ) AS v(codice, priorita)
+               WHERE lc.codice = v.codice
+                 AND lc.lista_id = (
+                       SELECT id FROM ui.lista_definizione
+                        WHERE codice = 'vendite.resi_da_accreditare'
+                     );
+
+              -- Lista 11 — vendite.resi_da_riconsegnare: stessa logica di coda,
+              -- il numero che conta e' qta_residua (92, quanto resta da
+              -- ri-consegnare); resa/riconsegnata sono gli addendi (25).
+              UPDATE ui.lista_colonna lc
+                 SET priorita = v.priorita
+                FROM (
+                  VALUES
+                    ('reso_numero',                100),
+                    ('azioni',                     100),
+                    ('destinatario_denominazione',  95),
+                    ('qta_residua',                 92),
+                    ('stato_riconsegna',            90),
+                    ('descrizione',                 80),
+                    ('ddt_numero',                  65),
+                    ('data',                        60),
+                    ('qta_resa',                    25),
+                    ('qta_riconsegnata',            25),
+                    ('reso_id',                      5),
+                    ('resi_riga_id',                 5)
+                ) AS v(codice, priorita)
+               WHERE lc.codice = v.codice
+                 AND lc.lista_id = (
+                       SELECT id FROM ui.lista_definizione
+                        WHERE codice = 'vendite.resi_da_riconsegnare'
+                     );
