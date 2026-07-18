@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RICONDUZIONE 1/3 (step 2) — fn_ordine_riga_qta_riconsegna legge l'helper unico
+#   vw_resi_righe_effettive (20260717-07) invece di ripetere la catena di JOIN e
+#   il filtro di stato (brief-db-fatturazione-ddt-resi §3b).
+#
+# Il corpo diventa: `Σ quantita` sulla vista helper, col filtro-tipo applicato
+# SOPRA (`riapre_residuo IS TRUE`) — esattamente ciò che il §3b chiede
+# («ciascuna col suo filtro-tipo applicato sopra, non dentro»). La catena
+# resi_righe→resi→stati_doc_reso e il predicato CONFERMATO ora vivono una volta
+# sola nella vista.
+#
+# ⚠️ UN CAMBIO DI COMPORTAMENTO, VOLUTO E CANONICO: la vista filtra anche
+#   `rr.attivo IS TRUE`; la versione precedente NON lo faceva. La definizione
+#   canonica (§3b) e' "CONFERMATI + ATTIVI + tutti i tipi", quindi allinearla e'
+#   il senso stesso dello step 2. In pratica e' un no-op — le righe di un reso
+#   CONFERMATO non vengono disattivate — ma ora e' corretto per costruzione, non
+#   per coincidenza. Nessun consumatore (fn_ordine_ha_residuo_evasione,
+#   trgfn_ordini_ful_guard_consistenza) vede un cambio: chiamano il wrapper, la
+#   cui firma e semantica "quanto reso riapre il residuo" restano identiche.
+#
+# Firma / RETURNS / clausole (STABLE, SECURITY INVOKER) invariati e ripresi dallo
+#   YAML vivo 20260713-28 (l'auto-gen scioglie %TYPE e non rende SECURITY INVOKER).
+# Dipendenze: vendite.vw_resi_righe_effettive (20260717-07).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260717-08-update-fn-ordine-riga-qta-riconsegna-helper-mctit.yaml
+
+  - changeSet:
+      id: 20260717-08-update-fn-ordine-riga-qta-riconsegna-helper
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      comment: >
+        fn_ordine_riga_qta_riconsegna legge vw_resi_righe_effettive (filtro-tipo
+        riapre_residuo applicato sopra). Allinea alla definizione canonica
+        CONFERMATI+attivi. Firma e semantica invariate.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: vendite
+            viewName: vw_resi_righe_effettive
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ordine_riga_qta_riconsegna(p_ordine_riga_id vendite.ordini_righe.id%TYPE)
+               RETURNS numeric
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: addendo reso del residuo per una riga ordine. Sigma
+              --   quantita (base) delle righe reso EFFETTIVE (vw_resi_righe_effettive:
+              --   CONFERMATE + attive) di tipo riapre_residuo=true collegate a quella
+              --   riga ordine. Single source per fn_ordine_ha_residuo_evasione e per
+              --   il guard fulfillment (coerenza formula residuo).
+              -- rev 2026-07-17 (step 2): legge l'helper unico invece di ripetere
+              --   la catena JOIN + filtro CONFERMATO; il filtro-tipo (riapre_residuo)
+              --   resta qui, "sopra" la vista (brief §3b).
+              DECLARE
+                  v_qta numeric;
+              BEGIN
+                  IF p_ordine_riga_id IS NULL OR p_ordine_riga_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_ordine_riga_qta_riconsegna','E_VALIDAZIONE',
+                          jsonb_build_object('p_ordine_riga_id', p_ordine_riga_id),
+                          NULL::uuid, 'p_ordine_riga_id deve essere > 0');
+                  END IF;
+
+                  SELECT COALESCE(SUM(e.quantita), 0)
+                    INTO v_qta
+                    FROM vendite.vw_resi_righe_effettive e
+                   WHERE e.ordine_riga_id = p_ordine_riga_id
+                     AND e.riapre_residuo IS TRUE;
+
+                  RETURN v_qta;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ordine_riga_qta_riconsegna(p_ordine_riga_id bigint)
+              IS 'Addendo reso del residuo per riga ordine: Sigma quantita (base) delle righe reso EFFETTIVE (vw_resi_righe_effettive) di tipo riapre_residuo. Single source per fn_ordine_ha_residuo_evasione e trgfn_ordini_ful_guard_consistenza (coerenza formula). rev 2026-07-13. rev 2026-07-17 (step 2): legge l helper unico; ora filtra anche resi_righe.attivo (canonico CONFERMATI+attivi).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: ripristino non automatizzato (CREATE OR REPLACE).
+              -- Riapplicare 20260713-28 per tornare alla versione con la catena
+              -- JOIN inline (senza filtro attivo).
+              SELECT 1;

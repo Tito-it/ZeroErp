@@ -1,0 +1,229 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# STEP 4 — vw_resi_da_accreditare passa alla differenza NEGATIVA del contatore
+#   (brief-db-fatturazione-ddt-resi §3c/§9-4). BREAKING SECCO, nessuna compat.
+#
+# IL PUNTO (§3c): la coda smette di chiedere "che tipo di reso e'?" ed espone
+# l'ACCREDITO DOVUTO = fatturati − tenuti (se > 0). Il tipo di reso non popola
+# piu': e' solo un'ETICHETTA (dovuta/facoltativa). Chiude 1b e il caso 2 della
+# tabella §3a: dopo una sottrazione al push il conto e' a zero -> niente da
+# accreditare -> la riga ESCE, mentre oggi resterebbe in coda per sempre.
+#
+# COSA CAMBIA nella popolazione (le due direzioni, entrambe volute):
+#   ESCONO  righe a credito con conto gia' pareggiato (merce resa MAI fatturata:
+#           il push l'aveva gia' sottratta) -> oggi sono falsi positivi eterni.
+#   ENTRANO righe PER RICONSEGNA su merce gia' fatturata -> oggi invisibili
+#           (tr.riapre_residuo = false le tagliava), ma l'accredito e' dovuto
+#           lo stesso finche' la merce non riesce. Etichetta FACOLTATIVA (§5).
+#
+# I DUE SEGMENTI (§3c): il conto arriva dal contatore, che somma GIA' i segmenti
+# ORD: e DDT: insieme. Non si legge il trigger e non se ne replica la logica.
+# E' il buco che la stesura precedente apriva: billing_account.fatturazione_ordini
+# ha default 'CONFERMATO', quindi sul cliente standard la merce e' fatturata
+# sotto ORD: — cercandola solo sotto DDT: la si dichiarerebbe "mai fatturata".
+#
+# LA GRANA — riga di reso, accredito distribuito (deciso con Tid, 2026-07-18):
+# il conto vive sulla PARTITA (riga d'ordine), la coda sulla RIGA DI RESO (§7:
+# "riga reso con accredito dovuto", ed e' la grana su cui il BE ordina oggi).
+# Quando una partita ha piu' righe di reso, l'accredito si distribuisce greedy
+# oldest-first (ORDER BY resi_riga_id), cappato alla quantita della singola riga;
+# chi riceve 0 esce. Stesso pattern dello step 3 sul lister, stessa convergenza.
+# Caso comune = UNA riga di reso per partita -> prende tutto l'accredito.
+#
+# VERIFICA a mente sul capitolato (§3a):
+#   #1 reso prima del push:  fatt 0, tenuti 7  -> accredito 0   -> ESCE (era falso positivo)
+#   #3 reso dopo la fattura: fatt 10, tenuti 7 -> accredito 3   -> in coda, DOVUTA
+#   #8 ri-consegna gia' fatt.: tenuti risaliti -> accredito 0   -> ESCE da se'
+#
+# PERIMETRO ereditato dal contatore (order-backed non composito): le righe di
+#   reso senza ordine_riga_id (standalone, ponte) NON entrano — oggi entravano.
+#   E' la stessa frontiera degli step 1-3, non una scelta nuova di questo step;
+#   lo standalone e' gated dallo step 5b, i compositi sono follow-up a se'.
+#
+# ⚠️ security_invoker=on RI-SPECIFICATO (§3c): la reloption non e' visibile in
+#   pg_get_viewdef e un CREATE OR REPLACE senza WITH la azzera in silenzio. E' la
+#   regressione V-1 gia' costata un rework (resolver contratti, 20260707-03).
+#   Questa vista legge vendite.resi sotto scope emittente: perderla = bypass RLS.
+#
+# Origine: forma vecchia dal DB vivo (pg_get_viewdef); helper e contatore dagli
+#   step 2/1 di questa slice. Le colonne su cui il BE ordina/cerca sono TUTTE
+#   preservate (resi_repository._CODA_META, catalogo liste id 10) -> il breaking
+#   e' in AGGIUNTA (accredito_dovuto, etichetta, fatturati, tenuti) + popolazione.
+# Dipendenze: vendite.vw_contatore_merce (20260717-11),
+#   vendite.vw_resi_righe_effettive (20260717-07).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260718-01-update-vw-resi-da-accreditare-contatore-mctit.yaml
+
+  - changeSet:
+      id: 20260718-01-update-vw-resi-da-accreditare-contatore
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_resi_da_accreditare passa alla differenza negativa del contatore:
+        popolazione = accredito dovuto (fatturati − tenuti > 0) distribuito per
+        riga di reso, tipo reso degradato a etichetta dovuta/facoltativa.
+        Breaking secco. security_invoker=on ri-specificato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_contatore_merce
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_resi_righe_effettive
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- DROP obbligatorio: cambiano tipo e numero delle colonne, e
+              -- CREATE OR REPLACE VIEW non lo consente.
+              DROP VIEW IF EXISTS vendite.vw_resi_da_accreditare;
+
+              CREATE VIEW vendite.vw_resi_da_accreditare
+              WITH (security_invoker=on) AS
+              WITH
+              acc AS (
+                  -- L'accredito dovuto della partita = differenza negativa
+                  -- ribaltata di segno. Le partite in pari o in credito escono.
+                  SELECT ct.ordine_riga_id,
+                         ct.tenuti,
+                         ct.fatturati,
+                         -ct.differenza AS accredito_partita
+                    FROM vendite.vw_contatore_merce ct
+                   WHERE ct.differenza < 0
+              ),
+              dist AS (
+                  -- Distribuzione greedy oldest-first tra le righe di reso della
+                  -- stessa partita, cappata alla quantita della singola riga.
+                  -- La window sottrae le righe GIA' servite (esclude la corrente:
+                  -- ROWS ... 1 PRECEDING), quindi l'ultima puo' restare a 0.
+                  SELECT e.resi_riga_id,
+                         e.reso_id,
+                         e.ddt_riga_id,
+                         e.ordine_riga_id,
+                         e.riapre_residuo,
+                         e.quantita AS qta_resa,
+                         a.tenuti,
+                         a.fatturati,
+                         GREATEST(0::numeric, LEAST(
+                             e.quantita,
+                             a.accredito_partita
+                             - COALESCE(SUM(e.quantita) OVER (
+                                   PARTITION BY e.ordine_riga_id
+                                   ORDER BY e.resi_riga_id
+                                   ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0)
+                         )) AS accredito_dovuto
+                    FROM vendite.vw_resi_righe_effettive e
+                    JOIN acc a ON a.ordine_riga_id = e.ordine_riga_id
+              )
+              SELECT x.resi_riga_id,
+                     r.id                              AS reso_id,
+                     r.uid                             AS reso_uid,
+                     r.numero                          AS reso_numero,
+                     r.data,
+                     r.emittente_fiscale_id,
+                     r.billing_account_id,
+                     ba.codice                         AS ba_codice,
+                     r.destinatario_soggetto_ruolo_id,
+                     s_dest.ragione_sociale_completa   AS destinatario_denominazione,
+                     rr.articolo_id,
+                     rr.descrizione,
+                     rr.quantita,
+                     rr.qta_operativa,
+                     rr.uom_operativa_id,
+                     rr.motivo,
+                     x.ddt_riga_id,
+                     dr.ddt_id,
+                     d.numero                          AS ddt_numero,
+                     x.ordine_riga_id,
+                     -- Il conto, esposto: la coda dice COSA E' SUCCESSO
+                     -- ("fatturata per 10, tenuta 7"), non cosa fare (§7).
+                     x.tenuti,
+                     x.fatturati,
+                     x.accredito_dovuto,
+                     -- Etichetta, non criterio di popolamento (§3c):
+                     -- a credito = la merce non torna piu'  -> obbligo
+                     -- per ri-consegna = la merce tornera'  -> opzione (§5)
+                     CASE WHEN x.riapre_residuo THEN 'FACOLTATIVA'
+                          ELSE 'DOVUTA' END::varchar     AS etichetta
+                FROM dist x
+                JOIN vendite.resi_righe rr        ON rr.id = x.resi_riga_id
+                JOIN vendite.resi r               ON r.id  = x.reso_id
+                JOIN anagrafiche.soggetti_ruoli sr_dest ON sr_dest.id = r.destinatario_soggetto_ruolo_id
+                JOIN anagrafiche.soggetti s_dest  ON s_dest.id = sr_dest.soggetto_id
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = r.billing_account_id
+                LEFT JOIN vendite.ddt_righe dr    ON dr.id = x.ddt_riga_id
+                LEFT JOIN vendite.ddt d           ON d.id  = dr.ddt_id
+               WHERE x.accredito_dovuto > 0;
+
+              COMMENT ON VIEW vendite.vw_resi_da_accreditare IS
+                'Coda accrediti (brief-db-fatturazione-ddt-resi §3c, step 4): popolata dalla differenza '
+                'NEGATIVA di vw_contatore_merce (accredito_dovuto = fatturati − tenuti > 0), NON piu'' dal '
+                'tipo di reso — che resta solo come etichetta DOVUTA (a credito) / FACOLTATIVA (per '
+                'ri-consegna, §5). Grana = riga di reso; l''accredito della partita si distribuisce greedy '
+                'oldest-first tra le sue righe, cappato alla quantita della riga (chi riceve 0 esce). '
+                'Il contatore somma GIA'' i segmenti ORD: e DDT: insieme: qui non si legge il trigger. '
+                'Chiude 1b (falsi positivi eterni su merce resa mai fatturata) e fa entrare le ri-consegne '
+                'su merce gia'' fatturata, oggi invisibili. Perimetro ORDER-BACKED non composito ereditato '
+                'dal contatore: le righe reso senza ordine_riga_id non entrano (standalone gated 5b). '
+                'BREAKING vs la forma precedente (CONFERMATO + riapre_residuo=false). security_invoker=on '
+                '+ RLS scope emittente. rev 2026-07-18.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ripristino della forma precedente (popolazione per tipo di reso).
+              -- ATTENZIONE: reintroduce 1b (righe a credito gia' pareggiate che
+              -- restano in coda per sempre) e rende di nuovo invisibili le
+              -- ri-consegne su merce gia' fatturata.
+              DROP VIEW IF EXISTS vendite.vw_resi_da_accreditare;
+
+              CREATE VIEW vendite.vw_resi_da_accreditare
+              WITH (security_invoker=on) AS
+              SELECT rr.id AS resi_riga_id,
+                     r.id AS reso_id,
+                     r.uid AS reso_uid,
+                     r.numero AS reso_numero,
+                     r.data,
+                     r.emittente_fiscale_id,
+                     r.billing_account_id,
+                     ba.codice AS ba_codice,
+                     r.destinatario_soggetto_ruolo_id,
+                     s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                     rr.articolo_id,
+                     rr.descrizione,
+                     rr.quantita,
+                     rr.qta_operativa,
+                     rr.uom_operativa_id,
+                     rr.motivo,
+                     rr.ddt_riga_id,
+                     dr.ddt_id,
+                     d.numero AS ddt_numero,
+                     rr.ordine_riga_id
+                FROM vendite.resi_righe rr
+                JOIN vendite.resi r ON r.id = rr.reso_id
+                JOIN config.stati_doc_reso sr ON sr.id = r.stato_doc_reso_id
+                JOIN config.tipi_reso tr ON tr.id = rr.tipo_reso_id
+                JOIN vendite.ddt_righe dr ON dr.id = rr.ddt_riga_id
+                JOIN vendite.ddt d ON d.id = dr.ddt_id
+                JOIN anagrafiche.soggetti_ruoli sr_dest ON sr_dest.id = r.destinatario_soggetto_ruolo_id
+                JOIN anagrafiche.soggetti s_dest ON s_dest.id = sr_dest.soggetto_id
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = r.billing_account_id
+               WHERE sr.codice_interno::text = 'CONFERMATO'::text
+                 AND tr.riapre_residuo = false
+                 AND rr.attivo IS TRUE;

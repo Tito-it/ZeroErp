@@ -1,0 +1,145 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# STEP 6b — quinto e sesto ramo della proiezione di stato: DDT e RESO
+#   (brief-db-fatturazione-ddt-resi §4a, deciso Tid 2026-07-17).
+#
+# PERCHE' INSIEME: DDT e reso sono nella stessa condizione — sorgente registrata
+# (DDT_VENDITA, RESO_VENDITA), catalogo stati con `fase`, nessun ramo nella
+# proiezione. Mancavano solo perche' sono sviluppi recenti, non per una scelta
+# contraria (Tid). Scritti insieme, il traduttore copre tutti i tipi documento
+# registrati e non resta una coda da ricordare alla prossima slice.
+#
+# 🔑 CHIAVE: `id::text`, NON l'uid. Verificato sul seed vivo —
+# config.sorgenti.key_selector = 'id' sia per DDT_VENDITA sia per RESO_VENDITA
+# (solo PREVENTIVO e OFFERTA_COMMERCIALE usano 'uid'). E' la convenzione
+# polimorfa portante, validata da script.trgfn_guard_sorgente_polimorfa e
+# documentata in config/manual/sorgenti.md §Convenzione chiave sorgente.
+# ⚠️ NON confondere con vendite.resi.sorgente_uid, che e' una colonna TIPIZZATA
+#   DIRETTA (uuid, punta al DDT di origine): meccanismo diverso, fuori dal
+#   polimorfo. Sbagliare chiave qui = ramo che non aggancia nulla, in silenzio.
+#
+# ESITO E TERMINALE — derivati, perche' i due cataloghi non li espongono
+# (stati_doc_ddt e stati_doc_reso hanno `fase` e `is_abortito`, non `esito`/
+# `terminale`). Regola MECCANICA scelta con Tid (2026-07-18), zero casi speciali:
+#     is_abortito           -> 'NEGATIVO'
+#     fase CHIUSO, non abortito -> 'POSITIVO'
+#     altrimenti            -> NULL
+#     terminale             = (fase = 'CHIUSO')
+# Coerente con le gemelle, dove l'esito e' valorizzato solo sugli stati terminali.
+# ⚠️ Conseguenza dichiarata: il DDT in stato RESO risulta POSITIVO/terminale.
+#   E' voluto: il catalogo dichiara `is_abortito = false` su RESO — il progetto
+#   ha deliberatamente distinto "merce tornata" da "documento annullato", e la
+#   vista non introduce una terza interpretazione. Se un domani il reso totale
+#   dovesse valere NEGATIVO, la sede giusta e' il CATALOGO (una colonna che lo
+#   dichiari), non un CASE in questa vista.
+#
+# Nessun security_invoker: la famiglia vw_stato_sorgente_* non ne ha (verificato
+#   sul vivo), e queste due seguono le gemelle. Il ramo si unisce alla union in
+#   20260718-10.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260718-09-create-vw-stato-sorgente-ddt-reso-mctit.yaml
+
+  - changeSet:
+      id: 20260718-09-create-vw-stato-sorgente-ddt-reso
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        Rami DDT e RESO della proiezione di stato (vw_stato_sorgente_ddt /
+        _reso), a specchio dei quattro esistenti. Chiave id::text (key_selector
+        vivo). esito/terminale derivati da fase + is_abortito.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: stati_doc_ddt
+                columnName: is_abortito
+            - columnExists:
+                schemaName: config
+                tableName: stati_doc_reso
+                columnName: is_abortito
+            - sqlCheck:
+                expectedResult: "2"
+                sql: >
+                  SELECT COUNT(*) FROM config.sorgenti
+                   WHERE codice_interno IN ('DDT_VENDITA','RESO_VENDITA')
+                     AND key_selector = 'id' AND attivo IS TRUE
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_ddt AS
+              SELECT s.id                       AS sorgente_tipo_id,
+                     d.id::text                 AS sorgente_uid,
+                     sdd.codice_interno         AS stato_codice_interno,
+                     sdd.codice                 AS stato_codice,
+                     sdd.descrizione            AS stato_descrizione,
+                     sdd.fase,
+                     CASE
+                         WHEN sdd.is_abortito              THEN 'NEGATIVO'
+                         WHEN sdd.fase::text = 'CHIUSO'    THEN 'POSITIVO'
+                         ELSE NULL
+                     END::character varying     AS esito,
+                     (sdd.fase::text = 'CHIUSO') AS terminale
+                FROM vendite.ddt d
+                JOIN config.sorgenti s
+                  ON s.codice_interno = 'DDT_VENDITA' AND s.attivo IS TRUE
+                JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id;
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_ddt IS
+                'Quinto ramo della proiezione di stato (brief-db-fatturazione-ddt-resi §4a, step 6b): '
+                'traduce lo stato del DDT nel vocabolario comune della sorgente polimorfa. Chiave = '
+                'ddt.id::text, come dichiara config.sorgenti.key_selector per DDT_VENDITA (NON l''uid: '
+                'quello e'' la colonna tipizzata diretta resi.sorgente_uid, meccanismo diverso). esito e '
+                'terminale sono DERIVATI, perche'' config.stati_doc_ddt non li espone: is_abortito -> '
+                'NEGATIVO, fase CHIUSO non abortito -> POSITIVO, altrimenti NULL; terminale = fase CHIUSO. '
+                'Conseguenza voluta: lo stato RESO risulta POSITIVO/terminale, perche'' il catalogo lo '
+                'dichiara non abortito (merce tornata != documento annullato). Cambiare quella semantica '
+                'e'' materia di CATALOGO, non di questa vista. rev 2026-07-18.';
+
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_reso AS
+              SELECT s.id                       AS sorgente_tipo_id,
+                     r.id::text                 AS sorgente_uid,
+                     sdr.codice_interno         AS stato_codice_interno,
+                     sdr.codice                 AS stato_codice,
+                     sdr.descrizione            AS stato_descrizione,
+                     sdr.fase,
+                     CASE
+                         WHEN sdr.is_abortito              THEN 'NEGATIVO'
+                         WHEN sdr.fase::text = 'CHIUSO'    THEN 'POSITIVO'
+                         ELSE NULL
+                     END::character varying     AS esito,
+                     (sdr.fase::text = 'CHIUSO') AS terminale
+                FROM vendite.resi r
+                JOIN config.sorgenti s
+                  ON s.codice_interno = 'RESO_VENDITA' AND s.attivo IS TRUE
+                JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id;
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_reso IS
+                'Sesto ramo della proiezione di stato (brief-db-fatturazione-ddt-resi §4a, step 6b): '
+                'traduce lo stato del reso nel vocabolario comune della sorgente polimorfa. Chiave = '
+                'resi.id::text (config.sorgenti.key_selector = id per RESO_VENDITA). esito/terminale '
+                'derivati come nel ramo DDT: is_abortito -> NEGATIVO (ANNULLATO), fase CHIUSO non abortito '
+                '-> POSITIVO, altrimenti NULL. Nota: nel seed vivo CONFERMATO ha fase IN_CORSO, quindi un '
+                'reso confermato non e'' terminale — se la semantica desiderata fosse "concluso", si '
+                'corregge la fase nel catalogo, non qui. rev 2026-07-18.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_stato_sorgente_reso;
+              DROP VIEW IF EXISTS vendite.vw_stato_sorgente_ddt;

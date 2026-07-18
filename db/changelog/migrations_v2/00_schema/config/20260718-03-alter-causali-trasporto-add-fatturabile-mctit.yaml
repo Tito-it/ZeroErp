@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# STEP 5b — DDT di solo trasporto: l'intento si dichiara con la CAUSALE
+#   (brief-db-fatturazione-ddt-resi §4a, DL-28). Parte 1: il vocabolario.
+#
+# IL PUNTO (DL-28): il DDT ammette righe senza prezzo per progetto ("solo
+# trasporto", guida DDT §3.2/§8.1), ma il lister non le esclude -> uno
+# standalone senza prezzi a SPEDITO risulterebbe "da fatturare" con prezzo
+# vuoto. Invece di INFERIRE l'intento dall'assenza di prezzo (ambiguo:
+# dimenticanza o scelta?), lo si DICHIARA a monte con il campo che l'operatore
+# gia' compila — la causale di trasporto.
+#
+# Pattern `tipi_reso.riapre_residuo`: il vocabolario guida, zero IF hardcoded.
+# I casi ambigui (OMAGGIO: c'e' chi lo fattura a sconto 100%) diventano una
+# CELLA DI SEED, non codice — si cambiano senza toccare una riga di SQL.
+#
+# DEFAULT false deliberato: una causale nuova nasce NON fatturabile. Se qualcuno
+#   aggiunge una voce al vocabolario senza pensarci, il peggio che accade e' che
+#   i suoi DDT non entrano nella coda di push (visibile, recuperabile), non che
+#   fatturino per sbaglio (silenzioso, con soldi in mezzo). Il valore vivo delle
+#   otto causali di seed lo assegna il CSV (loader runOnChange 20260709-11).
+#
+# NB: la tabella espone `codice`, NON `codice_interno` (caso linee-guida §6d):
+#   il seed referenzia per `id` come gia' fa il CSV esistente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260718-03-alter-causali-trasporto-add-fatturabile-mctit.yaml
+
+  - changeSet:
+      id: 20260718-03-alter-causali-trasporto-add-fatturabile
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        config.causali_trasporto: colonna fatturabile (NOT NULL, default false)
+        per dichiarare l'intento del DDT di solo trasporto (DL-28). Il valore
+        delle otto causali di seed arriva dal CSV.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: config
+                tableName: causali_trasporto
+                columnName: fatturabile
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.causali_trasporto
+                ADD COLUMN fatturabile boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN config.causali_trasporto.fatturabile IS
+                'Dichiara se la merce che viaggia con questa causale genera una VENDITA da fatturare '
+                '(brief-db-fatturazione-ddt-resi §4a, DL-28). true = il DDT entra nella coda di push e '
+                'all''emissione ogni riga attiva deve avere un prezzo risolvibile (proprio o ereditato '
+                'dalla riga ordine via fulfillment); false = solo trasporto, prezzi irrilevanti, mai '
+                'eleggibile al push ne'' nei cruscotti di fatturazione. Default false: una causale nuova '
+                'nasce non fatturabile — se non ci si pensa, i suoi DDT restano fuori dalla coda (visibile '
+                'e recuperabile) invece di fatturare per sbaglio. Pattern tipi_reso.riapre_residuo: il '
+                'vocabolario guida, zero IF hardcoded; i casi ambigui (OMAGGIO) sono una cella di seed.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.causali_trasporto DROP COLUMN IF EXISTS fatturabile;

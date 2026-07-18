@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# tipo_movimento a COLONNA su vendite.attivita_fatturabili — gemella di
+#   20260717-01 (brief-db-immutabilita-quantita-e-porta-oneri §4c.2: "promosso a
+#   colonna con CHECK su commesse_attivita (e propagato su AF)").
+#
+# PERCHE' ANCHE QUI, e non solo sulla commessa: il contatore della slice DDT/resi
+#   misura i «fatturati» come Sigma attivita_fatturabili.quantita (brief DDT/resi
+#   §3c: l'esistenza della riga AF E' la frontiera EMESSA). Il filtro
+#   tipo_movimento = 'NORMALE' e' una delle due cinture che tengono le righe
+#   della porta onere fuori dal libro mastro della merce (§5 brief immutabilita):
+#   se la colonna vivesse solo sulla CA, il contatore dovrebbe fare un JOIN per
+#   leggerla — o peggio fidarsi del jsonb. Qui l'AF resta autosufficiente.
+#
+# L'AF e' puro transito e non si tocca a mano: il valore arriva dalla CA via
+#   fn_emit_attivita_fatturabili_da_commessa (20260717-04, che lo propaga 1:1
+#   come gia' fa per le 8 colonne snapshot audit pricing v5).
+#
+# Backfill = DEFAULT 'NORMALE' + prova fail-fast: identica ragione e identica
+#   forma di 20260717-01. Il meta dell'AF e' una copia del meta della CA
+#   (l'emit fa meta = CA.meta || {scope, commessa_id, ...}), quindi porta la
+#   stessa chiave storica e la stessa prova la copre.
+#
+# Storico: nessun lavoro sullo specchio (snapshot JSONB, vedi 20260717-01).
+# Dipendenze: vendite.attivita_fatturabili.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260717-02-alter-attivita-fatturabili-add-tipo-movimento-mctit.yaml
+
+  - changeSet:
+      id: 20260717-02-alter-attivita-fatturabili-add-tipo-movimento
+      author: mctit
+      comment: >
+        Promuove tipo_movimento a colonna su vendite.attivita_fatturabili:
+        VARCHAR(32) NOT NULL DEFAULT 'NORMALE' + CHECK (NORMALE|RETTIFICA|ONERE).
+        Specchio della CA, letto dal contatore tenuti-fatturati. Backfill via
+        DEFAULT, previa prova fail-fast sul meta.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: attivita_fatturabili
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: attivita_fatturabili
+                    columnName: tipo_movimento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Stessa prova di 20260717-01, sull'altra meta' dello specchio.
+              DO $do$
+              DECLARE
+                  v_drift bigint;
+              BEGIN
+                  SELECT count(*)
+                    INTO v_drift
+                    FROM vendite.attivita_fatturabili af
+                   WHERE upper(btrim(COALESCE(af.meta ->> 'tipo_movimento', 'NORMALE')))
+                         <> 'NORMALE';
+
+                  IF v_drift > 0 THEN
+                      RAISE EXCEPTION
+                        'attivita_fatturabili: % righe hanno meta.tipo_movimento <> NORMALE; '
+                        'il backfill via DEFAULT le falserebbe. Backfillare dal meta prima '
+                        'di applicare (brief-db-immutabilita-quantita-e-porta-oneri §4c.2).',
+                        v_drift;
+                  END IF;
+              END
+              $do$;
+
+              ALTER TABLE vendite.attivita_fatturabili
+                ADD COLUMN tipo_movimento VARCHAR(32) NOT NULL DEFAULT 'NORMALE';
+
+              ALTER TABLE vendite.attivita_fatturabili
+                ADD CONSTRAINT chk_attivita_fatturabili_tipo_movimento
+                CHECK (tipo_movimento IN ('NORMALE', 'RETTIFICA', 'ONERE'));
+
+              COMMENT ON COLUMN vendite.attivita_fatturabili.tipo_movimento IS
+                  'Registro della riga, propagato 1:1 dalla commessa_attivita di origine '
+                  '(fn_emit_attivita_fatturabili_da_commessa): NORMALE | ONERE | RETTIFICA. '
+                  'Il contatore tenuti-fatturati somma le quantita delle sole righe '
+                  'NORMALE (brief-db-fatturazione-ddt-resi §3c). Colonna dal 2026-07-17 '
+                  '(brief-db-immutabilita-quantita-e-porta-oneri §4c.2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili
+                DROP CONSTRAINT IF EXISTS chk_attivita_fatturabili_tipo_movimento;
+              ALTER TABLE vendite.attivita_fatturabili
+                DROP COLUMN IF EXISTS tipo_movimento;

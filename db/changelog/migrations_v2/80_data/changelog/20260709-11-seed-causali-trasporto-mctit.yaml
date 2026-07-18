@@ -30,9 +30,16 @@ databaseChangeLog:
       failOnError: true
       preConditions:
         - onFail: HALT
-        - tableExists:
-            schemaName: config
-            tableName: causali_trasporto
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: causali_trasporto
+            # La colonna arriva da 20260718-03 (fase 00_schema, che gira prima di
+            # 80_data): senza, il loadUpdateData fallirebbe sulla colonna ignota.
+            - columnExists:
+                schemaName: config
+                tableName: causali_trasporto
+                columnName: fatturabile
       changes:
         - loadUpdateData:
             relativeToChangelogFile: true
@@ -47,6 +54,11 @@ databaseChangeLog:
               - column: { name: id, type: STRING }
               - column: { name: codice, type: STRING }
               - column: { name: descrizione, type: STRING }
+              # 2026-07-18 (step 5b, DL-28): dichiara se la merce che viaggia con
+              # questa causale e' una VENDITA da fatturare. Colonna aggiunta da
+              # 20260718-03; qui si carica il valore delle otto causali di seed.
+              # Il changeSet e' runOnChange -> ripesca il CSV da se'.
+              - column: { name: fatturabile, type: BOOLEAN }
               - column: { name: attivo, type: BOOLEAN }
               - column:
                   name: meta

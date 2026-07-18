@@ -1,0 +1,202 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# FIX vendite.fn_annulla_reso — il ri-flip RESO->CONSEGNATO non conta piu' le
+#   BOZZE. Gemella speculare di 20260717-05 (brief-db-fatturazione-ddt-resi §3b,
+#   step 2b — decisione Tid 2026-07-16).
+#
+# Le due madri condividono lo STESSO calcolo "il DDT e' tutto reso?", letto da due
+# lati opposti: la conferma flippa CONSEGNATO->RESO quando diventa vero, l'annullo
+# ri-flippa RESO->CONSEGNATO quando torna falso. Correggerne una sola lascerebbe
+# le due asimmetriche — e l'asimmetria su un calcolo condiviso e' esattamente il
+# tipo di difetto che questa slice esiste per chiudere (fonte unica).
+#
+# Qui il difetto morde al contrario: con `<> 'ANNULLATO'` una bozza altrui tiene
+# su la somma anche dopo l'annullo del reso vero, quindi il DDT **resta RESO** e
+# la merce che il cliente tiene resta non fatturabile. Col fix, annullato l'unico
+# reso confermato, la somma scende e il DDT torna CONSEGNATO — cioe' torna
+# fatturabile, che e' il punto.
+#
+# Anche qui `<> ANNULLATO` non compra nulla: il passo "Transizione -> ANNULLATO"
+# precede il conteggio, quindi il reso che si sta annullando e' gia' ANNULLATO ed
+# e' escluso da entrambe le forme del filtro. L'unico effetto reale del filtro
+# attuale e' contare in piu' le bozze degli altri.
+#
+# PERIMETRO: solo l'asse STATO (come 20260717-05). `rr.attivo` e il filtro tipi
+#   restano all'helper unico dello step 2, che assorbira' questo calcolo.
+#
+# Origine: corpo dalla doc auto-gen (oggetto vivo, rev 2026-07-13); **firma e
+#   `SECURITY INVOKER` dallo YAML vivo 20260713-37** (l'auto-gen scioglie i %TYPE
+#   e non rende SECURITY INVOKER, che e' il default).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260717-06-fix-fn-annulla-reso-flip-solo-confermati-mctit.yaml
+
+  - changeSet:
+      id: 20260717-06-fix-fn-annulla-reso-flip-solo-confermati
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      comment: >
+        Ri-flip DDT RESO->CONSEGNATO: conta solo i resi CONFERMATI, non piu'
+        `<> 'ANNULLATO'` (che includeva le bozze e teneva il DDT bloccato in RESO
+        anche dopo l'annullo). Speculare a 20260717-05. Firma invariata.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: resi
+            - tableExists:
+                schemaName: config
+                tableName: stati_doc_reso
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_annulla_reso(p_reso_id vendite.resi.id%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_stato            config.stati_doc_reso.codice_interno%TYPE;
+                  v_stato_ann_id     config.stati_doc_reso.id%TYPE;
+                  v_ddt_uid          vendite.resi.sorgente_uid%TYPE;
+                  v_ddt_id           vendite.ddt.id%TYPE;
+                  v_ddt_stato        config.stati_doc_ddt.codice_interno%TYPE;
+                  v_stato_target_id  config.stati_doc_ordini.id%TYPE;
+                  v_stato_cons_id    config.stati_doc_ddt.id%TYPE;
+                  v_tutto_reso       boolean;
+                  v_ord              RECORD;
+              BEGIN
+                  IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_VALIDAZIONE',
+                          jsonb_build_object('p_reso_id', p_reso_id),
+                          NULL::uuid, 'p_reso_id deve essere > 0');
+                  END IF;
+
+                  SELECT sdr.codice_interno, r.sorgente_uid
+                    INTO v_stato, v_ddt_uid
+                    FROM vendite.resi r
+                    JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id
+                   WHERE r.id = p_reso_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_RESO_NOT_FOUND',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  IF v_stato NOT IN ('DRAFT','CONFERMATO') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_RESO_STATO_NON_ANNULLABILE',
+                          jsonb_build_object('reso_id', p_reso_id, 'stato', v_stato),
+                          NULL::uuid, p_reso_id::text, v_stato);
+                  END IF;
+
+                  -- Reso gia' ri-spedito -> storno complesso fuori scope.
+                  IF EXISTS (
+                      SELECT 1
+                        FROM vendite.resi_righe_riconsegne rrr
+                        JOIN vendite.resi_righe rr ON rr.id = rrr.resi_riga_id
+                       WHERE rr.reso_id = p_reso_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_annulla_reso','E_RESO_ANNULLO_CON_RICONSEGNE',
+                          jsonb_build_object('reso_id', p_reso_id),
+                          NULL::uuid, p_reso_id::text);
+                  END IF;
+
+                  -- Transizione -> ANNULLATO.
+                  SELECT id INTO v_stato_ann_id FROM config.stati_doc_reso
+                   WHERE codice_interno = 'ANNULLATO' AND attivo IS TRUE;
+                  UPDATE vendite.resi
+                     SET stato_doc_reso_id = v_stato_ann_id
+                   WHERE id = p_reso_id;
+
+                  -- Storno effetti solo se era CONFERMATO.
+                  IF v_stato = 'CONFERMATO' THEN
+                      FOR v_ord IN
+                          SELECT DISTINCT orr.ordine_id
+                            FROM vendite.resi_righe rr
+                            JOIN vendite.ordini_righe orr ON orr.id = rr.ordine_riga_id
+                            JOIN config.tipi_reso tr      ON tr.id = rr.tipo_reso_id
+                           WHERE rr.reso_id = p_reso_id
+                             AND tr.riapre_residuo IS TRUE
+                      LOOP
+                          IF vendite.fn_ordine_ha_residuo_evasione(v_ord.ordine_id) THEN
+                              SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
+                               WHERE codice_interno = 'PARZIALMENTE_EVASO' AND attivo IS TRUE;
+                          ELSE
+                              SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
+                               WHERE codice_interno = 'EVASO' AND attivo IS TRUE;
+                          END IF;
+                          UPDATE vendite.ordini
+                             SET stato_doc_ordine_id = v_stato_target_id
+                           WHERE id = v_ord.ordine_id
+                             AND stato_doc_ordine_id IS DISTINCT FROM v_stato_target_id;
+                      END LOOP;
+
+                      -- Ri-flip DDT RESO->CONSEGNATO se non piu' reso totale.
+                      SELECT d.id, sdd.codice_interno
+                        INTO v_ddt_id, v_ddt_stato
+                        FROM vendite.ddt d
+                        JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                       WHERE d.uid = v_ddt_uid;
+
+                      IF v_ddt_id IS NOT NULL AND v_ddt_stato = 'RESO' THEN
+                          SELECT bool_and(COALESCE(reso_riga.tot, 0) >= dr.quantita)
+                            INTO v_tutto_reso
+                            FROM vendite.ddt_righe dr
+                            LEFT JOIN (
+                                -- rev 2026-07-17 (step 2b): SOLO i resi CONFERMATI.
+                                -- Era `<> 'ANNULLATO'`: una bozza altrui teneva su
+                                -- la somma anche dopo l'annullo del reso vero -> il
+                                -- DDT restava RESO e la merce tenuta dal cliente
+                                -- restava non fatturabile. Il reso in corso di
+                                -- annullo e' gia' ANNULLATO al passo precedente:
+                                -- escluso da entrambe le forme del filtro.
+                                SELECT rr.ddt_riga_id, SUM(rr.quantita) AS tot
+                                  FROM vendite.resi_righe rr
+                                  JOIN vendite.resi r          ON r.id = rr.reso_id
+                                  JOIN config.stati_doc_reso s ON s.id = r.stato_doc_reso_id
+                                 WHERE s.codice_interno = 'CONFERMATO'
+                                 GROUP BY rr.ddt_riga_id
+                            ) reso_riga ON reso_riga.ddt_riga_id = dr.id
+                           WHERE dr.ddt_id = v_ddt_id
+                             AND dr.attivo IS TRUE;
+
+                          IF NOT COALESCE(v_tutto_reso, false) THEN
+                              SELECT id INTO v_stato_cons_id FROM config.stati_doc_ddt
+                               WHERE codice_interno = 'CONSEGNATO' AND attivo IS TRUE;
+                              UPDATE vendite.ddt
+                                 SET stato_doc_ddt_id = v_stato_cons_id
+                               WHERE id = v_ddt_id;
+                          END IF;
+                      END IF;
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_annulla_reso(p_reso_id bigint)
+              IS 'Madre annullo reso con storno: -> ANNULLATO, ri-proiezione stato ordine, ri-flip DDT RESO->CONSEGNATO se non piu totale. Blocca l annullo di resi gia ri-spediti (E_RESO_ANNULLO_CON_RICONSEGNE). Simmetrica a fn_conferma_reso. brief §2/§5. rev 2026-07-13. rev 2026-07-17 (step 2b): il ri-flip conta SOLO i resi CONFERMATI (era <> ANNULLATO, includeva le bozze -> DDT bloccato in RESO e merce non fatturabile).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: ripristino non automatizzato (CREATE OR REPLACE).
+              -- Riapplicare 20260713-37 per tornare alla versione che conta
+              -- anche le bozze (ATTENZIONE: reintroduce il buco di fatturazione).
+              SELECT 1;

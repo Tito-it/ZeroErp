@@ -1,0 +1,146 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# STEP 7 — resolver ordini trigger-aware (brief-db-fatturazione-ddt-resi §4b,
+#   DL-20): nuovo motivo IN_ATTESA_DDT, classe FISIOLOGICO.
+#
+# IL PUNTO: con `fatturazione_trigger IN ('SPEDITO','CONSEGNATO')` NON e'
+# l'ordine a pushare — la fatturazione viaggia sui suoi DDT (segmenti DDT:*, non
+# ORD:*). Il resolver di oggi non lo sa: quell'ordine non avra' MAI attivita'
+# sui segmenti ORD:* e resterebbe 🟠 PUSH_NON_ESEGUITO per sempre, con
+# un'azione (push ordine) che il motore rifiuta — lo stesso falso positivo del
+# §1d, sul ramo ordini. E' il "falso positivo ordini" che lo step 11 chiede di
+# vedere sparito.
+#
+# EFFETTO (per costruzione, nessun caso speciale FE):
+#   - l'ordine RESTA nel serbatoio (giusto: e' aperto e pre-commessa; il valore
+#     al residuo e' lo step 8);
+#   - SPARISCE dal backlog: vw_dash_backlog_documenti filtra
+#     classe <> FISIOLOGICO, e IN_ATTESA_DDT e' FISIOLOGICO (seed CSV
+#     motivi_fermo id 12, loader runOnChange 20260706-02 lo ripesca).
+#     La regola di classe DL-6/DL-7 fa tutto da sola.
+#
+# ORDINE DEI CASI nel CASE (il posto conta):
+#   abortito -> NULL · tutto transitato -> NULL · DRAFT -> DOC_BOZZA ·
+#   trigger SPEDITO/CONSEGNATO -> IN_ATTESA_DDT ·          <-- NUOVO
+#   0 push -> PUSH_NON_ESEGUITO · else -> PUSH_PARZIALE
+#   Il ramo nuovo sta DOPO DOC_BOZZA (una bozza resta bozza qualunque sia il
+#   trigger) e PRIMA dei push: per questi ordini il push non e' dovuto, quindi
+#   i motivi di push non vanno mai raggiunti. Ordini a trigger CONFERMATO:
+#   comportamento IDENTICO a prima.
+#
+# ⚠️ security_invoker=on RI-SPECIFICATO (regressione V-1): la vista e' della
+#   famiglia dash sotto scope emittente; un REPLACE senza WITH la azzererebbe
+#   in silenzio.
+#
+# Origine: definizione viva da pg_get_viewdef (famiglia due-lenti 20260706-xx);
+#   riportata identica salvo il WHEN nuovo + o.fatturazione_trigger nel GROUP BY.
+# pgTAP esistenti verificati PRIMA ([[feedback_guard_breaks_existing_tests]]):
+#   test-vw-dash-fatturazione-v1 #6 e test-vw-dash-backlog-v1 #7 usano ordini a
+#   trigger CONFERMATO (default BA) -> asserzioni PUSH_NON_ESEGUITO intatte.
+# Dipendenze: config.motivi_fermo IN_ATTESA_DDT (append CSV, stesso giro).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260718-12-update-vw-dash-fatturazione-ordini-trigger-aware-mctit.yaml
+
+  - changeSet:
+      id: 20260718-12-update-vw-dash-fatturazione-ordini-trigger-aware
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_dash_fatturazione_ordini trigger-aware (DL-20): ordini con trigger
+        SPEDITO/CONSEGNATO -> motivo IN_ATTESA_DDT (FISIOLOGICO) invece del
+        falso positivo PUSH_NON_ESEGUITO perpetuo. Trigger CONFERMATO invariato.
+        security_invoker=on ri-specificato.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: vendite
+            viewName: vw_dash_fatturazione_ordini
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_ordini
+              WITH (security_invoker=on) AS
+              WITH righe AS (
+                  SELECT orr.ordine_id,
+                         orr.id AS riga_id,
+                         orr.quantita * orr.prezzo_unitario
+                           * (1::numeric - COALESCE(orr.sconto_percentuale, 0::numeric) / 100.0) AS valore_riga,
+                         (EXISTS ( SELECT 1
+                                FROM vendite.commesse_attivita ca
+                               WHERE ca.segment_key::text = ((('ORD:'::text || o2.uid::text) || ':R:'::text) || orr.id::text)
+                                 AND ca.stato_emissione::text = 'EMESSA'::text)) AS transitata
+                    FROM vendite.ordini_righe orr
+                    JOIN vendite.ordini o2 ON o2.id = orr.ordine_id
+                   WHERE orr.attivo IS TRUE
+              )
+              SELECT 'ORDINI'::character varying AS area,
+                     date_trunc('month'::text, o.data::timestamp with time zone)::date AS competenza_mese,
+                     o.id AS documento_id,
+                     o.uid::text AS documento_uid,
+                     o.numero::text AS codice,
+                     o.emittente_fiscale_id,
+                     NULL::bigint AS emittente_soggetto_ruolo_id,
+                     COALESCE(sum(r.valore_riga), 0::numeric) AS valore_totale,
+                     COALESCE(sum(r.valore_riga) FILTER (WHERE r.transitata), 0::numeric) AS valore_transitato,
+                     count(r.riga_id)::integer AS unita_totali,
+                     count(r.riga_id) FILTER (WHERE r.transitata)::integer AS unita_transitate,
+                     count(r.riga_id) > 0 AND count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata) AS is_transitato,
+                     COALESCE(sdo.esito::text = 'NEGATIVO'::text, false) AS is_abortito,
+                         CASE
+                             WHEN COALESCE(sdo.esito::text = 'NEGATIVO'::text, false) THEN NULL::text
+                             WHEN count(r.riga_id) > 0 AND count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata) THEN NULL::text
+                             WHEN sdo.codice_interno::text = 'DRAFT'::text THEN 'DOC_BOZZA'::text
+                             -- DL-20 (2026-07-18): con trigger SPEDITO/CONSEGNATO non e'
+                             -- l'ordine a pushare — il push spetta ai suoi DDT. Niente
+                             -- PUSH_NON_ESEGUITO/PARZIALE: sarebbe un'azione che il
+                             -- motore rifiuta (falso positivo §1d).
+                             WHEN o.fatturazione_trigger::text IN ('SPEDITO', 'CONSEGNATO') THEN 'IN_ATTESA_DDT'::text
+                             WHEN count(r.riga_id) FILTER (WHERE r.transitata) = 0 THEN 'PUSH_NON_ESEGUITO'::text
+                             ELSE 'PUSH_PARZIALE'::text
+                         END::character varying AS motivo_fermo,
+                     sdo.codice_interno AS stato_codice_interno,
+                     sdo.codice AS stato_codice,
+                     sdo.fase,
+                     s.ragione_sociale_completa AS cliente_display,
+                     o.data AS data_riferimento
+                FROM vendite.ordini o
+                  JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
+                  LEFT JOIN righe r ON r.ordine_id = o.id
+                  LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = o.soggetto_ruolo_id
+                  LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+               GROUP BY o.id, o.uid, o.numero, o.data, o.emittente_fiscale_id, o.fatturazione_trigger,
+                        sdo.codice_interno, sdo.codice, sdo.fase, sdo.esito, s.ragione_sociale_completa;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_ordini IS
+                'Resolver ordini per la dashboard fatturazione. rev 2026-07-18 (step 7, '
+                'brief-db-fatturazione-ddt-resi §4b, DL-20): TRIGGER-AWARE — con fatturazione_trigger '
+                'SPEDITO/CONSEGNATO il push spetta ai DDT dell''ordine (segmenti DDT:*), quindi il motivo e'' '
+                'IN_ATTESA_DDT (FISIOLOGICO: resta nel serbatoio, sparisce dal backlog per la regola di '
+                'classe) e mai PUSH_NON_ESEGUITO/PARZIALE, che sarebbero un falso positivo perpetuo con '
+                'azione rifiutata dal motore. Trigger CONFERMATO: comportamento invariato (DOC_BOZZA / '
+                'PUSH_NON_ESEGUITO / PUSH_PARZIALE su segmenti ORD:*). Valore pieno per riga: il valore al '
+                'residuo da spedire e'' lo step 8 (DL-23, viste serbatoio). security_invoker=on + RLS.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: ripristino non automatizzato (CREATE OR REPLACE).
+              -- Riapplicare il changeset due-lenti che definiva la vista
+              -- (ATTENZIONE: ri-specificare security_invoker=on; reintroduce il
+              -- falso positivo PUSH_NON_ESEGUITO sugli ordini a trigger DDT).
+              SELECT 1;

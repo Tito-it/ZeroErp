@@ -6,7 +6,7 @@
 --       residuo reso-aware, flip DDT, read-side.
 -- Brief: brief-db-resi-vendita §6
 -- ------------------------------------------------------------
--- Indice test (26 asserzioni: 1..24 + sub 8b/23a):
+-- Indice test (27 asserzioni: 1..26 + sub 8b/23a, meno la 21 rimossa):
 --  1) oggetti motore resi presenti
 --  2) riferimenti minimi disponibili
 --  3) reso DRAFT: emittente ereditato dal DDT (normalize)
@@ -27,14 +27,19 @@
 -- 18) ordine torna EVASO (residuo chiuso dalla ri-spedizione)
 -- 19) annullo bloccato se gia' ri-spedito -> E_RESO_ANNULLO_CON_RICONSEGNE
 -- 20) flip DDT: reso a credito TOTALE confermato -> DDT CONSEGNATO->RESO
--- 21) coda da_accreditare: riga credito confermata presente
+-- 21) RIMOSSA (step 4): la coda accrediti si popola dal conto, non dal tipo reso
+--     -> coperta da test-vw-resi-da-accreditare-contatore-v1
 -- 22) fn_available_actions_reso: reso CONFERMATO espone azione 'annulla'
 -- 23) annullo reso a credito (non ri-spedito) -> ANNULLATO
 -- 24) guard: reso da DDT non CONSEGNATO -> E_RESO_DDT_NON_CONSEGNATO
+-- 25) flip: bozza 6 + confermato 4 su DDT da 10 -> DDT resta CONSEGNATO
+--     (le BOZZE non contano: step 2b, brief-db-fatturazione-ddt-resi §3b)
+-- 26) confermata anche la bozza (6+4=10 confermati) -> DDT flippa a RESO
+--     (il flip funziona ancora: e' lo STATO a decidere, non l'esistenza)
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(26);
+SELECT plan(27);
 
 -- Contesto (le madri sono SECURITY INVOKER: il pgTAP gira come owner).
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
@@ -79,7 +84,10 @@ SELECT
   (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='ANNULLATO' AND s.attivo LIMIT 1) AS stato_reso_ann_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1)      AS tipo_credito_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id;
+  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id,
+  -- Dal 2026-07-18 (step 5b / DL-28) la causale di trasporto e' obbligatoria
+  -- all'emissione del DDT: VENDITA e' l'unica causale fatturabile.
+  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1) AS causale_vendita_id;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND articolo_id IS NOT NULL
@@ -117,6 +125,8 @@ SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_a)) AS ddt_id;
 INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
 SELECT (SELECT ddt_id FROM tmp_ddt_a), (SELECT tipo_ind_con_id FROM tmp_refs),
        '{"display":"CON test"}'::jsonb ON CONFLICT DO NOTHING;
+-- Causale obbligatoria all'emissione (guard causale_emissione, 2026-07-18).
+UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_ddt_a);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)    WHERE id=(SELECT ddt_id FROM tmp_ddt_a);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_refs)   WHERE id=(SELECT ddt_id FROM tmp_ddt_a);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_consegnato_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_ddt_a);
@@ -274,6 +284,8 @@ CREATE TEMP TABLE tmp_ddt_b AS
 SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_b)) AS ddt_id;
 INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
 SELECT (SELECT ddt_id FROM tmp_ddt_b), (SELECT tipo_ind_con_id FROM tmp_refs), '{"display":"CON"}'::jsonb ON CONFLICT DO NOTHING;
+-- Causale obbligatoria all'emissione (guard causale_emissione, 2026-07-18).
+UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_ddt_b);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)     WHERE id=(SELECT ddt_id FROM tmp_ddt_b);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_refs)    WHERE id=(SELECT ddt_id FROM tmp_ddt_b);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_consegnato_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_ddt_b);
@@ -307,10 +319,14 @@ SELECT is(
     WHERE d.id=(SELECT ddt_id FROM tmp_ddt_b)),
   'RESO', '20) reso a credito totale -> DDT CONSEGNATO->RESO (flip automatico)');
 
--- 21) coda da_accreditare
-SELECT ok(
-  EXISTS (SELECT 1 FROM vendite.vw_resi_da_accreditare WHERE resi_riga_id=(SELECT id FROM tmp_reso_b_riga)),
-  '21) coda da_accreditare: riga credito confermata presente');
+-- 21) RIMOSSA (2026-07-18, step 4): verificava "riga a credito confermata =>
+--     presente in coda", cioe' la popolazione PER TIPO DI RESO. Dal changeset
+--     20260718-01 vw_resi_da_accreditare si popola dal CONTO (differenza
+--     negativa del contatore): la fixture B rende 5 su 5 senza aver mai
+--     fatturato nulla, quindi non c'e' niente da accreditare e la vista
+--     giustamente la esclude. La coda ha ora il suo test dedicato,
+--     test-vw-resi-da-accreditare-contatore-v1 (plan(8)), che copre anche
+--     questo caso (P1). Qui resta il motore dei resi, che e' l'oggetto del file.
 
 -- 22) available_actions su reso CONFERMATO espone 'annulla'
 SELECT ok(
@@ -356,6 +372,102 @@ SELECT throws_ok(
          (SELECT stato_reso_draft_id FROM tmp_refs), (SELECT sorgente_ddt_id FROM tmp_refs),
          (SELECT ddt_id FROM tmp_ddt_c)),
   'P0001', NULL, '24) reso da DDT non CONSEGNATO -> E_RESO_DDT_NON_CONSEGNATO');
+
+-- ============================================================
+-- FIXTURE D: il caso-bozza del flip (step 2b — il test che dimostra il fix)
+--   DDT da 10 pz CONSEGNATO, due resi a credito sulla stessa riga:
+--     - reso D1: 6 pz, lasciato in BOZZA (il reso "di un altro operatore")
+--     - reso D2: 4 pz, CONFERMATO
+--   Somma dei NON-ANNULLATI = 10 = qta del DDT -> col vecchio calcolo
+--   (`<> 'ANNULLATO'`) il DDT veniva dichiarato RESO, ma il cliente tiene 6 pz
+--   e quei 6 pz non si sarebbero fatturati mai (DDT in RESO = non piu'
+--   eleggibile al push), senza nessuna segnalazione.
+--   Nota: il guard over-return conta anch'esso i non-annullati, quindi il reso
+--   D2 da 4 passa per un pelo (residuo 10-6=4, il guard blocca solo se >).
+-- ============================================================
+CREATE TEMP TABLE tmp_ord_d AS
+WITH ins AS (
+  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
+    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id,
+         r.valuta_id, DATE '2026-07-13', 'SPEDITO', r.emittente_fiscale_id, false,
+         jsonb_build_object('test_scope','pgtap_resi')
+  FROM tmp_refs r RETURNING id)
+SELECT * FROM ins;
+INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
+  qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+SELECT (SELECT id FROM tmp_ord_d), 1, r.articolo_id, 'Riga reso D', 10, 10, 25, r.iva_id, true, false,
+       jsonb_build_object('test_scope','pgtap_resi') FROM tmp_refs r;
+
+CREATE TEMP TABLE tmp_ddt_d AS
+SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_d)) AS ddt_id;
+INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+SELECT (SELECT ddt_id FROM tmp_ddt_d), (SELECT tipo_ind_con_id FROM tmp_refs),
+       '{"display":"CON"}'::jsonb ON CONFLICT DO NOTHING;
+-- Causale obbligatoria all'emissione (guard causale_emissione, 2026-07-18).
+UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_ddt_d);
+UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)     WHERE id=(SELECT ddt_id FROM tmp_ddt_d);
+UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_refs)    WHERE id=(SELECT ddt_id FROM tmp_ddt_d);
+UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_consegnato_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_ddt_d);
+
+CREATE TEMP TABLE tmp_ddt_d_riga AS
+SELECT dr.id, dr.articolo_id, dr.descrizione, dr.uom_operativa_id, dr.factor_to_base
+  FROM vendite.ddt_righe dr WHERE dr.ddt_id=(SELECT ddt_id FROM tmp_ddt_d) LIMIT 1;
+
+-- Reso D1: 6 pz, resta in BOZZA (mai confermato).
+CREATE TEMP TABLE tmp_reso_d1 AS
+WITH ins AS (
+  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
+  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id,
+         (SELECT d.uid FROM vendite.ddt d WHERE d.id=(SELECT ddt_id FROM tmp_ddt_d)),
+         false, jsonb_build_object('test_scope','pgtap_resi')
+  FROM tmp_refs r RETURNING id)
+SELECT * FROM ins;
+INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
+  articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
+SELECT (SELECT id FROM tmp_reso_d1), 1, dr.id,
+       (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f WHERE f.ddt_riga_id=dr.id LIMIT 1),
+       dr.articolo_id, dr.descrizione, 6, dr.uom_operativa_id, dr.factor_to_base,
+       (SELECT tipo_credito_id FROM tmp_refs), false
+FROM tmp_ddt_d_riga dr;
+
+-- Reso D2: 4 pz, confermato.
+CREATE TEMP TABLE tmp_reso_d2 AS
+WITH ins AS (
+  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
+  SELECT r.stato_reso_draft_id, r.sorgente_ddt_id,
+         (SELECT d.uid FROM vendite.ddt d WHERE d.id=(SELECT ddt_id FROM tmp_ddt_d)),
+         false, jsonb_build_object('test_scope','pgtap_resi')
+  FROM tmp_refs r RETURNING id)
+SELECT * FROM ins;
+INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
+  articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
+SELECT (SELECT id FROM tmp_reso_d2), 1, dr.id,
+       (SELECT f.ordine_riga_id FROM vendite.ordini_righe_fulfillment f WHERE f.ddt_riga_id=dr.id LIMIT 1),
+       dr.articolo_id, dr.descrizione, 4, dr.uom_operativa_id, dr.factor_to_base,
+       (SELECT tipo_credito_id FROM tmp_refs), false
+FROM tmp_ddt_d_riga dr;
+
+SELECT vendite.fn_conferma_reso((SELECT id FROM tmp_reso_d2));
+
+-- 25) IL FIX: la bozza da 6 non conta -> confermati 4 < 10 -> niente flip.
+--     Col vecchio `<> 'ANNULLATO'` qui il DDT sarebbe gia' RESO (6+4=10).
+SELECT is(
+  (SELECT sdd.codice_interno FROM vendite.ddt d
+     JOIN config.stati_doc_ddt sdd ON sdd.id=d.stato_doc_ddt_id
+    WHERE d.id=(SELECT ddt_id FROM tmp_ddt_d)),
+  'CONSEGNATO',
+  '25) bozza 6 + confermato 4 su DDT da 10 -> DDT resta CONSEGNATO (le bozze non contano)');
+
+-- 26) Confermata anche la bozza: 6+4=10 CONFERMATI -> il flip scatta.
+--     Prova che il fix non ha rotto il flip: e' lo stato a decidere.
+SELECT vendite.fn_conferma_reso((SELECT id FROM tmp_reso_d1));
+SELECT is(
+  (SELECT sdd.codice_interno FROM vendite.ddt d
+     JOIN config.stati_doc_ddt sdd ON sdd.id=d.stato_doc_ddt_id
+    WHERE d.id=(SELECT ddt_id FROM tmp_ddt_d)),
+  'RESO',
+  '26) confermata anche la bozza (6+4=10 confermati) -> DDT CONSEGNATO->RESO');
 
 SELECT * FROM finish();
 ROLLBACK;

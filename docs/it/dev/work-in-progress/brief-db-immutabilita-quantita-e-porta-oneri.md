@@ -122,6 +122,15 @@ Più un rilievo di modello: **`tipo_movimento` non è una colonna** — la fn lo
 in `meta` (jsonb). Come discriminatore portante (contatore, utility, dashboard filtrano su di
 esso) sepolto in un jsonb senza vincolo è fragile: un INSERT diretto lo bypassa.
 
+> ✅ **Chiuso (scritto 2026-07-17, non applicato)** — step 3 del §7, anticipato nella slice
+> DDT/resi: `20260717-01..04`. Ora è colonna su CA **e** AF con CHECK
+> (`NORMALE|RETTIFICA|ONERE`), scritta da `fn_upsert_commessa_attivita` e propagata dall'emit.
+> Il jsonb non ospita più il valore: **una casa sola**. Verificato prima di spostarlo che
+> nessuno leggesse `meta->>'tipo_movimento'` (solo writer) → nessun consumer rotto. Residuo
+> dichiarato: la chiave storica resta sulle righe già scritte, inerte e sempre `'NORMALE'`
+> (provato da un guard fail-fast nel changeset), perché ripulirla con un UPDATE di massa
+> costerebbe uno snapshot storico per riga e farebbe scattare i guard `require_attivo`.
+
 ## 4. Cosa serve
 
 ### 4a. Il guard di immutabilità — da accidente a regola
@@ -230,7 +239,7 @@ sempre** → la misura del contatore su AF è stabile per costruzione.
 | 0 | Decisioni: **TUTTE CHIUSE** (2026-07-17) — drift storico verificato: **zero righe** (query §6 eseguita da Tid). Unica coda operativa: le **voci concrete** del vocabolario causali (Tid, in fase di seed) | ✅ |
 | 1 | Guard immutabilità su `commesse_attivita.quantita` **e** `attivita_fatturabili.quantita`, bypass GUC di percorso (§4a, deciso) | ☐ |
 | 2 | Fix ponte approvazione: il push approva le proprie righe (`p_righe_ids`) (§4b) — **hardening raccomandato**, non più prerequisito | ☐ |
-| 3 | `tipo_movimento` a colonna + CHECK + backfill NORMALE (CA e AF) (§4c.2) | ☐ |
+| 3 | `tipo_movimento` a colonna + CHECK + backfill NORMALE (CA e AF) (§4c.2) | ✅ **SCRITTO, non applicato** — **anticipato nella slice DDT/resi** (step 0b del piano di ripartenza): changeset `20260717-01..04` + pgTAP `test-tipo-movimento-colonna-v1`. Motivo dell'anticipo: il contatore filtra `tipo_movimento = 'NORMALE'` (§5) e deve nascere sulla colonna vera, non riaprirsi dopo. Dettaglio in §4c.2 |
 | 4 | Vocabolario causali config + seed (§4c.3) | ☐ |
 | 5 | Sorgente `DIRECT_ENTRY` accesa + convenzione `segment_key` manuale (§4c.1/.6) | ☐ |
 | 6 | Madre/endpoint «aggiungi onere» (qta=1, causale, `post_permission`, riga nasce **APPROVATA** — niente endpoint approvazione, deciso §4c.5) | ☐ |

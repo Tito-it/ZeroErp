@@ -1,0 +1,165 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# STEP 5b — parte 2: il gate all'emissione (§4a, DL-28 punti 2 e 3).
+#
+# DUE REGOLE, un solo momento (l'emissione), quindi un solo trigger:
+#
+#   R1 — CAUSALE OBBLIGATORIA. Oggi ddt.causale_trasporto_id e' nullable: si puo'
+#        emettere un DDT senza dichiarare perche' la merce viaggia. Dall'emissione
+#        in poi non e' piu' ammesso (deciso con Tid, 2026-07-18: "se e' obbligatoria
+#        che senso ha controllare il NULL?"). In DRAFT il NULL resta legittimo —
+#        la causale si compila prima di emettere, come l'indirizzo.
+#        -> il lister non tratta il NULL in modo speciale: un DDT senza causale
+#           non arriva mai a uno stato in cui verrebbe listato.
+#
+#   R2 — PREZZO RISOLVIBILE SE FATTURABILE. Causale fatturabile (VENDITA) => ogni
+#        riga attiva deve avere un prezzo RISOLVIBILE: proprio, oppure ereditato
+#        dalla riga d'ordine via fulfillment. Le righe da evasione senza prezzo
+#        proprio restano legittime (e' la stessa COALESCE che fa il lister).
+#        Causale non fatturabile => prezzi irrilevanti, nessun controllo.
+#        Il prezzo dimenticato diventa un ERRORE ALL'EMISSIONE, non un documento
+#        silenziosamente mal classificato che pushera' attivita' senza prezzo.
+#
+# ⚠️ NON riusabile `vw_ddt_righe_iva_base` (§4a): filtra prezzo_unitario IS NOT
+#   NULL, quindi perderebbe proprio le righe che qui vanno esaminate.
+#
+# POSIZIONAMENTO: mirror esatto di trgfn_ddt_guard_indirizzi_obbligatori —
+#   BEFORE UPDATE OF stato_doc_ddt_id, fase a10, si attiva solo quando lo stato
+#   di destinazione e' EMESSO. Stesso scatto, stessa forma, stesso stile di
+#   errore parlante.
+#
+# Codici errore: 544 E_DDT_CAUSALE_OBBLIGATORIA, 545 E_DDT_PREZZO_NON_RISOLVIBILE
+#   (append al CSV messaggi_errore, ripescato dal loader runOnChange esistente —
+#   [[feedback_messaggi_errore_no_new_loader]]).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260718-04-create-trgfn-ddt-guard-causale-emissione-mctit.yaml
+
+  - changeSet:
+      id: 20260718-04-create-trgfn-ddt-guard-causale-emissione
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        Gate all'emissione DDT (DL-28): causale di trasporto obbligatoria e, se
+        fatturabile, prezzo risolvibile su ogni riga attiva. Mirror di
+        trgfn_ddt_guard_indirizzi_obbligatori (BEFORE UPDATE stato, fase a10).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: config
+            tableName: causali_trasporto
+            columnName: fatturabile
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_causale_emissione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: bloccare l'emissione (EMESSO) di un DDT che non dichiara
+              --   la causale, o che dichiara VENDITA ma ha righe senza prezzo
+              --   risolvibile (brief-db-fatturazione-ddt-resi §4a, DL-28).
+              DECLARE
+                  v_stato_codice  config.stati_doc_ddt.codice_interno%TYPE;
+                  v_fatturabile   boolean;
+                  v_riga_senza    vendite.ddt_righe.id%TYPE;
+              BEGIN
+                  SELECT sdd.codice_interno INTO v_stato_codice
+                    FROM config.stati_doc_ddt sdd
+                   WHERE sdd.id = NEW.stato_doc_ddt_id;
+
+                  IF v_stato_codice IS DISTINCT FROM 'EMESSO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- R1: la causale dichiara l'intento. Senza, il documento e'
+                  -- ambiguo per la fatturazione.
+                  IF NEW.causale_trasporto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_DDT_CAUSALE_OBBLIGATORIA',
+                          jsonb_build_object(
+                              'ddt_id', NEW.id,
+                              'numero', NEW.numero),
+                          NEW.tx_id,
+                          COALESCE(NEW.numero, NEW.id::text)
+                      );
+                  END IF;
+
+                  SELECT ct.fatturabile INTO v_fatturabile
+                    FROM config.causali_trasporto ct
+                   WHERE ct.id = NEW.causale_trasporto_id;
+
+                  -- Causale non fatturabile: solo trasporto, prezzi irrilevanti.
+                  IF NOT COALESCE(v_fatturabile, false) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- R2: prezzo risolvibile = proprio OPPURE ereditato dalla riga
+                  -- d'ordine via fulfillment (stessa COALESCE del lister).
+                  SELECT dr.id INTO v_riga_senza
+                    FROM vendite.ddt_righe dr
+                    LEFT JOIN LATERAL (
+                        SELECT or_r.prezzo_unitario
+                          FROM vendite.ordini_righe_fulfillment ful
+                          JOIN vendite.ordini_righe or_r ON or_r.id = ful.ordine_riga_id
+                         WHERE ful.ddt_riga_id = dr.id
+                         ORDER BY ful.id LIMIT 1
+                    ) src ON TRUE
+                   WHERE dr.ddt_id = NEW.id
+                     AND dr.attivo IS TRUE
+                     AND COALESCE(dr.prezzo_unitario, src.prezzo_unitario) IS NULL
+                   ORDER BY dr.id
+                   LIMIT 1;
+
+                  IF v_riga_senza IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_DDT_PREZZO_NON_RISOLVIBILE',
+                          jsonb_build_object(
+                              'ddt_id',   NEW.id,
+                              'numero',   NEW.numero,
+                              'riga_id',  v_riga_senza),
+                          NEW.tx_id,
+                          COALESCE(NEW.numero, NEW.id::text),
+                          v_riga_senza::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_guard_causale_emissione() IS
+                'Gate all''emissione DDT (brief-db-fatturazione-ddt-resi §4a, DL-28): (1) causale di '
+                'trasporto obbligatoria — in DRAFT il NULL resta legittimo, dall''emissione no, cosi'' il '
+                'lister non deve trattare il NULL in modo speciale; (2) se la causale e'' fatturabile, ogni '
+                'riga attiva deve avere un prezzo risolvibile (proprio o ereditato dalla riga ordine via '
+                'fulfillment — le righe da evasione senza prezzo proprio restano legittime). Causale non '
+                'fatturabile: prezzi irrilevanti. Mirror di trgfn_ddt_guard_indirizzi_obbligatori. '
+                'NB: vw_ddt_righe_iva_base NON e'' riusabile qui (filtra prezzo_unitario IS NOT NULL). '
+                'rev 2026-07-18.';
+
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_causale_emissione_upd ON vendite.ddt;
+              CREATE TRIGGER trg_ddt_a10_guard_causale_emissione_upd
+                  BEFORE UPDATE OF stato_doc_ddt_id ON vendite.ddt
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_ddt_guard_causale_emissione();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_causale_emissione_upd ON vendite.ddt;
+              DROP FUNCTION IF EXISTS vendite.trgfn_ddt_guard_causale_emissione();
