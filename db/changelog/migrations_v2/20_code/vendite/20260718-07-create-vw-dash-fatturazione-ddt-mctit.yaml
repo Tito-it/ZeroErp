@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# STEP 6 — resolver `vw_dash_fatturazione_ddt`, sesta area della union
+#   (brief-db-fatturazione-ddt-resi §4a, DL-21 emendato).
+#
+# Stessa forma dei cinque gemelli (stesse 19 colonne, stesso ordine): da
+# vw_dash_fatturazione_documenti ENTRAMBE le lenti lo prendono da sole — il
+# serbatoio filtra `fase <> CHIUSO`, il backlog filtra `classe <> FISIOLOGICO`.
+#
+# LA POPOLAZIONE — solo i DDT con un ruolo di fatturazione (deciso, §4a):
+#   ordine trigger CONFERMATO   -> FUORI: non fatturera' mai lui (XOR, ha
+#                                  fatturato l'ordine alla conferma) e l'ordine
+#                                  porta gia' il valore pieno (DL-23 emendato)
+#   causale non fatturabile     -> FUORI: solo trasporto, non c'e' vendita (DL-28)
+#   ordine trigger SPED/CONSEG  -> DENTRO: e' lui il veicolo di fatturazione
+#   standalone, causale fatt.   -> DENTRO: fattura in proprio
+#
+# L'esclusione del trigger CONFERMATO chiude DUE difetti con zero meccanismi:
+#   1. il FALSO POSITIVO: quel DDT non ha uno stato-trigger confrontabile
+#      (CONFERMATO e' uno stato *ordine*) -> scivolerebbe su PUSH_NON_ESEGUITO
+#      per sempre, con l'azione che il DB stesso rifiuta -> il §1d ricreato,
+#      sulla configurazione di DEFAULT;
+#   2. il DOPPIO CONTEGGIO: l'ordine CONFERMATO sta nel serbatoio a valore pieno
+#      (1.000) — il suo DDT col valore spedito (500) farebbe 1.500 per una
+#      fattura da 1.000. Escluso il documento, escluso il valore.
+#
+# ⚠️ Il criterio di popolazione e' LO STESSO discriminatore del lister (cintura
+#   XOR + causale fatturabile): la card mostra la stessa popolazione che il
+#   motore di push considera sua — fonte unica anche qui. Il trigger si legge
+#   via fulfillment, come nel lister, non da una seconda strada.
+#
+# motivo_fermo TRIGGER-AWARE (§4a) — deve distinguere "in viaggio" da "in
+#   ritardo", e il predicato "il push e' dovuto?" NON si ricopia:
+#     DRAFT                        -> DOC_BOZZA         (FISIOLOGICO, esistente)
+#     stato PRIMA del trigger      -> IN_TRANSITO       (FISIOLOGICO, NUOVO)
+#     dal trigger in poi, 0 push   -> PUSH_NON_ESEGUITO (RECUPERABILE, esistente)
+#     idem, push parziale          -> PUSH_PARZIALE     (RECUPERABILE, esistente)
+#   La soglia e' il RANK dello stato-trigger (config.stati_doc_ddt.ordine), la
+#   stessa dello step 5: per lo standalone, che non ha ordine, la soglia e'
+#   SPEDITO — il primo stato in cui il lister lo considera.
+#
+# VALORE: il DDT non ha importi in testata (§4a) -> si somma per riga, con la
+#   STESSA COALESCE(ddt_righe.prezzo_unitario, ordini_righe.prezzo_unitario) del
+#   lister e del gate. ⚠️ `vw_ddt_righe_iva_base` NON e' riusabile: filtra
+#   prezzo_unitario IS NOT NULL e perderebbe le righe da evasione.
+# data_riferimento = ddt.data (DL-17): non esiste una data di spedizione reale
+#   (`data_ora_consegna_prev` e' *prevista*).
+# fase/is_abortito dal CATALOGO (JOIN config.stati_doc_ddt), come tutti e cinque
+#   i gemelli: nessuno passa da script.vw_stato_sorgente (verificato, §4a).
+#
+# ⚠️ security_invoker=on: la famiglia dash e' sotto scope emittente. Perderla =
+#   bypass RLS (regressione V-1, gia' costata un rework).
+# Dipendenze: config.causali_trasporto.fatturabile (20260718-03),
+#   config.motivi_fermo IN_TRANSITO (append CSV, loader runOnChange 20260706-02).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260718-07-create-vw-dash-fatturazione-ddt-mctit.yaml
+
+  - changeSet:
+      id: 20260718-07-create-vw-dash-fatturazione-ddt
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        Resolver vw_dash_fatturazione_ddt (sesta area): popolazione = solo DDT
+        con ruolo di fatturazione (fuori trigger CONFERMATO e causali non
+        fatturabili), motivo_fermo trigger-aware con IN_TRANSITO nuovo.
+        security_invoker=on.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: causali_trasporto
+                columnName: fatturabile
+            - columnExists:
+                schemaName: config
+                tableName: stati_doc_ddt
+                columnName: is_abortito
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_ddt
+              WITH (security_invoker=on) AS
+              WITH righe AS (
+                  -- Valore per riga DDT + se la sua merce e' gia' transitata in
+                  -- fatturazione (attivita EMESSA sul segmento della riga).
+                  -- Il prezzo si risolve come nel lister: proprio o dall'ordine.
+                  SELECT dr.ddt_id,
+                         dr.id AS riga_id,
+                         dr.quantita
+                           * COALESCE(dr.prezzo_unitario, src.src_prezzo_unitario)
+                           * (1::numeric - COALESCE(dr.sconto_percentuale, 0::numeric) / 100.0)
+                             AS valore_riga,
+                         EXISTS (
+                             SELECT 1 FROM vendite.commesse_attivita ca
+                              WHERE ca.segment_key = 'DDT:' || d2.uid::text || ':R:' || dr.id::text
+                                AND ca.stato_emissione = 'EMESSA'
+                         ) AS transitata
+                    FROM vendite.ddt_righe dr
+                    JOIN vendite.ddt d2 ON d2.id = dr.ddt_id
+                    LEFT JOIN LATERAL (
+                        SELECT or_r.prezzo_unitario AS src_prezzo_unitario
+                          FROM vendite.ordini_righe_fulfillment ful
+                          JOIN vendite.ordini_righe or_r ON or_r.id = ful.ordine_riga_id
+                         WHERE ful.ddt_riga_id = dr.id
+                         ORDER BY ful.id LIMIT 1
+                    ) src ON TRUE
+                   WHERE dr.attivo IS TRUE
+              )
+              SELECT 'DDT'::character varying                                   AS area,
+                     date_trunc('month', d.data::timestamp with time zone)::date AS competenza_mese,
+                     d.id                                                       AS documento_id,
+                     d.uid::text                                                AS documento_uid,
+                     d.numero::text                                             AS codice,
+                     d.emittente_fiscale_id,
+                     NULL::bigint                                               AS emittente_soggetto_ruolo_id,
+                     COALESCE(sum(r.valore_riga), 0::numeric)                   AS valore_totale,
+                     COALESCE(sum(r.valore_riga) FILTER (WHERE r.transitata), 0::numeric) AS valore_transitato,
+                     count(r.riga_id)::integer                                  AS unita_totali,
+                     count(r.riga_id) FILTER (WHERE r.transitata)::integer      AS unita_transitate,
+                     count(r.riga_id) > 0
+                       AND count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata) AS is_transitato,
+                     sdd.is_abortito                                            AS is_abortito,
+                     CASE
+                         -- documento morto: niente da sollecitare
+                         WHEN sdd.is_abortito THEN NULL::text
+                         -- tutto gia' in fatturazione
+                         WHEN count(r.riga_id) > 0
+                          AND count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata) THEN NULL::text
+                         WHEN sdd.codice_interno = 'DRAFT' THEN 'DOC_BOZZA'::text
+                         -- non ha ancora raggiunto lo stato che fattura: viaggio
+                         -- in corso, non ritardo. Soglia = rank del trigger, o
+                         -- SPEDITO per lo standalone (primo stato utile).
+                         WHEN sdd.ordine < COALESCE(trg.ordine, sped.ordine) THEN 'IN_TRANSITO'::text
+                         WHEN count(r.riga_id) FILTER (WHERE r.transitata) = 0 THEN 'PUSH_NON_ESEGUITO'::text
+                         ELSE 'PUSH_PARZIALE'::text
+                     END::character varying                                     AS motivo_fermo,
+                     sdd.codice_interno                                         AS stato_codice_interno,
+                     sdd.codice                                                 AS stato_codice,
+                     sdd.fase,
+                     s.ragione_sociale_completa                                 AS cliente_display,
+                     d.data                                                     AS data_riferimento
+                FROM vendite.ddt d
+                JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                -- POPOLAZIONE 1: solo causali fatturabili (DL-28). INNER JOIN:
+                -- la causale e' obbligatoria dall'emissione, e un DDT in DRAFT
+                -- senza causale non e' ancora un documento su cui sollecitare.
+                JOIN config.causali_trasporto caus
+                  ON caus.id = d.causale_trasporto_id
+                 AND caus.fatturabile IS TRUE
+                -- Trigger dell'ordine sorgente, via fulfillment: stessa strada
+                -- del lister (fonte unica), non una seconda.
+                LEFT JOIN LATERAL (
+                    SELECT o_src.fatturazione_trigger
+                      FROM vendite.ordini_righe_fulfillment ful
+                      JOIN vendite.ordini_righe or_r ON or_r.id = ful.ordine_riga_id
+                      JOIN vendite.ordini o_src      ON o_src.id = or_r.ordine_id
+                      JOIN vendite.ddt_righe dr2     ON dr2.id = ful.ddt_riga_id
+                     WHERE dr2.ddt_id = d.id
+                     ORDER BY ful.id LIMIT 1
+                ) ord ON TRUE
+                LEFT JOIN config.stati_doc_ddt trg  ON trg.codice_interno = ord.fatturazione_trigger
+                LEFT JOIN config.stati_doc_ddt sped ON sped.codice_interno = 'SPEDITO'
+                LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = d.destinatario_soggetto_ruolo_id
+                LEFT JOIN anagrafiche.soggetti s         ON s.id = sr.soggetto_id
+                LEFT JOIN righe r ON r.ddt_id = d.id
+               -- POPOLAZIONE 2: fuori i DDT di ordini trigger CONFERMATO —
+               -- fattura l'ordine, non loro (XOR). Lo standalone (trigger NULL)
+               -- resta dentro.
+               WHERE COALESCE(ord.fatturazione_trigger, 'SPEDITO') <> 'CONFERMATO'
+               GROUP BY d.id, d.uid, d.numero, d.data, d.emittente_fiscale_id,
+                        sdd.codice_interno, sdd.codice, sdd.fase, sdd.is_abortito, sdd.ordine,
+                        trg.ordine, sped.ordine, s.ragione_sociale_completa;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_ddt IS
+                'Resolver DDT per la dashboard fatturazione (brief-db-fatturazione-ddt-resi §4a, step 6), '
+                'sesta area di vw_dash_fatturazione_documenti: stesse 19 colonne dei gemelli. POPOLAZIONE = '
+                'solo DDT con ruolo di fatturazione — fuori quelli di ordini con trigger CONFERMATO (fattura '
+                'l''ordine: XOR; evita falso positivo PUSH_NON_ESEGUITO perpetuo e doppio conteggio del '
+                'valore) e fuori le causali non fatturabili (solo trasporto, DL-28). Stesso discriminatore '
+                'del lister, letto per la stessa strada (fulfillment). motivo_fermo TRIGGER-AWARE: DOC_BOZZA '
+                'in DRAFT, IN_TRANSITO prima dello stato-trigger (viaggio in corso, non ritardo), '
+                'PUSH_NON_ESEGUITO / PUSH_PARZIALE dal trigger in poi; soglia = rank del trigger, SPEDITO per '
+                'lo standalone. Valore per riga con COALESCE(ddt_righe.prezzo_unitario, ordini_righe via '
+                'fulfillment) — vw_ddt_righe_iva_base NON riusabile (filtra prezzo NOT NULL). data_riferimento '
+                '= ddt.data (DL-17). fase/is_abortito dal catalogo. security_invoker=on + RLS. rev 2026-07-18.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_dash_fatturazione_ddt;

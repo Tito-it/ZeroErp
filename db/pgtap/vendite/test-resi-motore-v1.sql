@@ -6,7 +6,7 @@
 --       residuo reso-aware, flip DDT, read-side.
 -- Brief: brief-db-resi-vendita §6
 -- ------------------------------------------------------------
--- Indice test (26 asserzioni: 1..24 + sub 8b/23a):
+-- Indice test (27 asserzioni: 1..26 + sub 8b/23a, meno la 21 rimossa):
 --  1) oggetti motore resi presenti
 --  2) riferimenti minimi disponibili
 --  3) reso DRAFT: emittente ereditato dal DDT (normalize)
@@ -27,7 +27,8 @@
 -- 18) ordine torna EVASO (residuo chiuso dalla ri-spedizione)
 -- 19) annullo bloccato se gia' ri-spedito -> E_RESO_ANNULLO_CON_RICONSEGNE
 -- 20) flip DDT: reso a credito TOTALE confermato -> DDT CONSEGNATO->RESO
--- 21) coda da_accreditare: riga credito confermata presente
+-- 21) RIMOSSA (step 4): la coda accrediti si popola dal conto, non dal tipo reso
+--     -> coperta da test-vw-resi-da-accreditare-contatore-v1
 -- 22) fn_available_actions_reso: reso CONFERMATO espone azione 'annulla'
 -- 23) annullo reso a credito (non ri-spedito) -> ANNULLATO
 -- 24) guard: reso da DDT non CONSEGNATO -> E_RESO_DDT_NON_CONSEGNATO
@@ -38,7 +39,7 @@
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(28);
+SELECT plan(27);
 
 -- Contesto (le madri sono SECURITY INVOKER: il pgTAP gira come owner).
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
@@ -83,7 +84,10 @@ SELECT
   (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='ANNULLATO' AND s.attivo LIMIT 1) AS stato_reso_ann_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1)      AS tipo_credito_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id;
+  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id,
+  -- Dal 2026-07-18 (step 5b / DL-28) la causale di trasporto e' obbligatoria
+  -- all'emissione del DDT: VENDITA e' l'unica causale fatturabile.
+  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1) AS causale_vendita_id;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND articolo_id IS NOT NULL
@@ -121,6 +125,8 @@ SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_a)) AS ddt_id;
 INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
 SELECT (SELECT ddt_id FROM tmp_ddt_a), (SELECT tipo_ind_con_id FROM tmp_refs),
        '{"display":"CON test"}'::jsonb ON CONFLICT DO NOTHING;
+-- Causale obbligatoria all'emissione (guard causale_emissione, 2026-07-18).
+UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_ddt_a);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)    WHERE id=(SELECT ddt_id FROM tmp_ddt_a);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_refs)   WHERE id=(SELECT ddt_id FROM tmp_ddt_a);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_consegnato_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_ddt_a);
@@ -278,6 +284,8 @@ CREATE TEMP TABLE tmp_ddt_b AS
 SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_b)) AS ddt_id;
 INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
 SELECT (SELECT ddt_id FROM tmp_ddt_b), (SELECT tipo_ind_con_id FROM tmp_refs), '{"display":"CON"}'::jsonb ON CONFLICT DO NOTHING;
+-- Causale obbligatoria all'emissione (guard causale_emissione, 2026-07-18).
+UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_ddt_b);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)     WHERE id=(SELECT ddt_id FROM tmp_ddt_b);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_refs)    WHERE id=(SELECT ddt_id FROM tmp_ddt_b);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_consegnato_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_ddt_b);
@@ -311,10 +319,14 @@ SELECT is(
     WHERE d.id=(SELECT ddt_id FROM tmp_ddt_b)),
   'RESO', '20) reso a credito totale -> DDT CONSEGNATO->RESO (flip automatico)');
 
--- 21) coda da_accreditare
-SELECT ok(
-  EXISTS (SELECT 1 FROM vendite.vw_resi_da_accreditare WHERE resi_riga_id=(SELECT id FROM tmp_reso_b_riga)),
-  '21) coda da_accreditare: riga credito confermata presente');
+-- 21) RIMOSSA (2026-07-18, step 4): verificava "riga a credito confermata =>
+--     presente in coda", cioe' la popolazione PER TIPO DI RESO. Dal changeset
+--     20260718-01 vw_resi_da_accreditare si popola dal CONTO (differenza
+--     negativa del contatore): la fixture B rende 5 su 5 senza aver mai
+--     fatturato nulla, quindi non c'e' niente da accreditare e la vista
+--     giustamente la esclude. La coda ha ora il suo test dedicato,
+--     test-vw-resi-da-accreditare-contatore-v1 (plan(8)), che copre anche
+--     questo caso (P1). Qui resta il motore dei resi, che e' l'oggetto del file.
 
 -- 22) available_actions su reso CONFERMATO espone 'annulla'
 SELECT ok(
@@ -392,6 +404,8 @@ SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_d)) AS ddt_id;
 INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
 SELECT (SELECT ddt_id FROM tmp_ddt_d), (SELECT tipo_ind_con_id FROM tmp_refs),
        '{"display":"CON"}'::jsonb ON CONFLICT DO NOTHING;
+-- Causale obbligatoria all'emissione (guard causale_emissione, 2026-07-18).
+UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_ddt_d);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)     WHERE id=(SELECT ddt_id FROM tmp_ddt_d);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_refs)    WHERE id=(SELECT ddt_id FROM tmp_ddt_d);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_consegnato_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_ddt_d);

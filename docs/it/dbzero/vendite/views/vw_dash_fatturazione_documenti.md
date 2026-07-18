@@ -109,7 +109,28 @@ UNION ALL
     m.fase,
     m.cliente_display,
     m.data_riferimento
-   FROM vendite.vw_dash_fatturazione_commesse m;
+   FROM vendite.vw_dash_fatturazione_commesse m
+UNION ALL
+ SELECT t.area,
+    t.competenza_mese,
+    t.documento_id,
+    t.documento_uid,
+    t.codice,
+    t.emittente_fiscale_id,
+    t.emittente_soggetto_ruolo_id,
+    t.valore_totale,
+    t.valore_transitato,
+    t.unita_totali,
+    t.unita_transitate,
+    t.is_transitato,
+    t.is_abortito,
+    t.motivo_fermo,
+    t.stato_codice_interno,
+    t.stato_codice,
+    t.fase,
+    t.cliente_display,
+    t.data_riferimento
+   FROM vendite.vw_dash_fatturazione_ddt t;
 ```
 
 

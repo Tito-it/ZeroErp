@@ -1,0 +1,208 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# STEP 9 — ramo resi sul Backlog (brief-db-fatturazione-ddt-resi §4d, DL-24).
+#
+# I RESI NON ENTRANO nella union pre-commessa (vw_dash_fatturazione_documenti):
+# RESO_VENDITA e' REVERSE_FLOW, non PUSH_COMMESSA (motivato in 20260714-07).
+# Entrano SOLO nel Backlog. ⚠️ CAMBIO DI FORMA DICHIARATO (§4d): il Backlog
+# stesso diventa una UNION — ramo documenti (invariato) + due rami resi. Non e'
+# "un ramo in piu' gratis" sulla union esistente: e' la vista Backlog che cambia
+# struttura, come il brief impone di dichiarare.
+#
+# I DUE RAMI RESI (grana DECISA: una riga per RESO x MOTIVO — il tipo di reso e'
+# per riga per costruzione, il reso misto ha davvero due cose in corso; a grana
+# documento un motivo unico mentirebbe, a grana riga sarebbe rumore. Deroga
+# dichiarata: unica area dove un documento puo' comparire due volte in lista):
+#
+#   RICONSEGNA_NON_ESEGUITA (RECUPERABILE, azione "Genera il DDT di ri-consegna")
+#     <- vw_resi_da_riconsegnare (righe con copertura incompleta). 🟠 a pieno
+#     titolo: l'azione esiste (fn_genera_ddt_riconsegna) e la sua mancata
+#     esecuzione blocca la fatturazione (residuo ordine riaperto per sempre).
+#
+#   MERCE_RESA_GIA_FATTURATA (FISIOLOGICO oggi, azione NULL)
+#     <- vw_resi_da_accreditare, SOLO etichetta DOVUTA (§4d: le NC facoltative
+#     sono un'opzione dell'operatore, non arretrato -> fuori dal backlog).
+#     Il motivo nomina IL FATTO, non il rimedio (le NC non sono ancora definite:
+#     un motivo "NC_DOVUTA" pre-deciderebbe la risposta). E' FISIOLOGICO con
+#     motivazione verificata: oggi NESSUNA azione esiste (niente NC, correzione
+#     quantita' vietata dall'immutabilita') -> il filtro di classe lo tiene
+#     fuori dalla lista. Con la slice NC diventa 🟠 cambiando UNA CELLA di seed:
+#     il ramo e' costruito e il motivo e' emesso, quindi la classe e' VIVA
+#     (a differenza del finto precedente CANONE_NON_GENERATO, seed morto mai
+#     emesso da alcuna vista — §4d).
+#
+# MISURA A CONTEGGI (DL-11, precedente Offerte/Contratti): i resi non hanno
+# importi -> valore_fermo NULL (MAI 0: zero direbbe "valore nullo", NULL dice
+# "non misurabile in euro"), unita_ferme = numero righe reso del motivo.
+#
+# Forma: CTE base = UNION dei tre rami con motivo_fermo gia' assegnato; il JOIN
+# a config.motivi_fermo (classe/azione) e il filtro classe <> FISIOLOGICO si
+# applicano UNA volta sola, a valle, per tutti i rami — cosi' la promozione di
+# un motivo via seed cambia il backlog senza toccare la vista.
+# Colonne e ordine IDENTICI alla vista precedente (CREATE OR REPLACE).
+# vw_dash_backlog_riepilogo NON si tocca: legge da qui e aggrega per
+# classe/area — il ramo RESI vi appare da solo, con valore_fermo_tot 0
+# (COALESCE su NULL) e unita_ferme_tot a conteggi.
+#
+# ⚠️ security_invoker=on RI-SPECIFICATO (V-1): tutta la famiglia dash e' sotto
+#   scope emittente; le code resi leggono vendite.resi (RLS emittente).
+# Origine: ramo documenti da pg_get_viewdef del vivo, riportato identico.
+# Dipendenze: vw_resi_da_riconsegnare (20260713-35), vw_resi_da_accreditare
+#   forma §3c (20260718-01, step 4), seed motivi 13/14 (stesso giro, loader
+#   runOnChange 20260706-02).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260718-14-update-vw-dash-backlog-documenti-ramo-resi-mctit.yaml
+
+  - changeSet:
+      id: 20260718-14-update-vw-dash-backlog-documenti-ramo-resi
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_dash_backlog_documenti diventa union (DL-24): ramo documenti
+        invariato + rami resi a grana (reso x motivo) — RICONSEGNA_NON_ESEGUITA
+        da vw_resi_da_riconsegnare, MERCE_RESA_GIA_FATTURATA da
+        vw_resi_da_accreditare (solo DOVUTA). Misura a conteggi (valore_fermo
+        NULL). security_invoker=on ri-specificato.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_resi_da_riconsegnare
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_resi_da_accreditare
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_backlog_documenti
+              WITH (security_invoker=on) AS
+              WITH base AS (
+                  -- Ramo 1: DOCUMENTI (invariato — la union pre-commessa).
+                  SELECT d.area,
+                         d.competenza_mese,
+                         d.documento_id,
+                         d.documento_uid,
+                         d.codice,
+                         d.cliente_display,
+                         d.emittente_fiscale_id,
+                         d.emittente_soggetto_ruolo_id,
+                         d.valore_totale - d.valore_transitato AS valore_fermo,
+                         d.unita_totali - d.unita_transitate   AS unita_ferme,
+                         d.motivo_fermo,
+                         d.data_riferimento,
+                         d.stato_codice_interno,
+                         d.stato_codice,
+                         d.fase
+                    FROM vendite.vw_dash_fatturazione_documenti d
+                   WHERE d.motivo_fermo IS NOT NULL
+                  UNION ALL
+                  -- Ramo 2: RESI, ri-consegne mancanti (grana reso x motivo).
+                  -- La coda e' gia' filtrata (CONFERMATI, copertura incompleta).
+                  SELECT 'RESI'::character varying,
+                         date_trunc('month', q.data::timestamp with time zone)::date,
+                         q.reso_id,
+                         q.reso_uid::text,
+                         q.reso_numero::text,
+                         q.destinatario_denominazione,
+                         q.emittente_fiscale_id,
+                         NULL::bigint,
+                         NULL::numeric,                 -- misura a conteggi (DL-11): mai 0
+                         count(*)::integer,
+                         'RICONSEGNA_NON_ESEGUITA'::character varying,
+                         q.data,
+                         sdr.codice_interno,
+                         sdr.codice,
+                         sdr.fase
+                    FROM vendite.vw_resi_da_riconsegnare q
+                    JOIN vendite.resi r2              ON r2.id = q.reso_id
+                    JOIN config.stati_doc_reso sdr    ON sdr.id = r2.stato_doc_reso_id
+                   GROUP BY q.reso_id, q.reso_uid, q.reso_numero, q.data,
+                            q.destinatario_denominazione, q.emittente_fiscale_id,
+                            sdr.codice_interno, sdr.codice, sdr.fase
+                  UNION ALL
+                  -- Ramo 3: RESI, accrediti DOVUTI (le NC facoltative sono
+                  -- un'opzione, non arretrato -> fuori). Motivo FISIOLOGICO
+                  -- oggi: il filtro di classe a valle lo tiene fuori dalla
+                  -- lista finche' la slice NC non promuove il seed.
+                  SELECT 'RESI'::character varying,
+                         date_trunc('month', a.data::timestamp with time zone)::date,
+                         a.reso_id,
+                         a.reso_uid::text,
+                         a.reso_numero::text,
+                         a.destinatario_denominazione,
+                         a.emittente_fiscale_id,
+                         NULL::bigint,
+                         NULL::numeric,
+                         count(*)::integer,
+                         'MERCE_RESA_GIA_FATTURATA'::character varying,
+                         a.data,
+                         sdr.codice_interno,
+                         sdr.codice,
+                         sdr.fase
+                    FROM vendite.vw_resi_da_accreditare a
+                    JOIN vendite.resi r3              ON r3.id = a.reso_id
+                    JOIN config.stati_doc_reso sdr    ON sdr.id = r3.stato_doc_reso_id
+                   WHERE a.etichetta = 'DOVUTA'
+                   GROUP BY a.reso_id, a.reso_uid, a.reso_numero, a.data,
+                            a.destinatario_denominazione, a.emittente_fiscale_id,
+                            sdr.codice_interno, sdr.codice, sdr.fase
+              )
+              SELECT b.area,
+                     b.competenza_mese,
+                     b.documento_id,
+                     b.documento_uid,
+                     b.codice,
+                     b.cliente_display,
+                     b.emittente_fiscale_id,
+                     b.emittente_soggetto_ruolo_id,
+                     b.valore_fermo,
+                     b.unita_ferme,
+                     b.motivo_fermo,
+                     COALESCE(mf.classe, 'ANOMALIA'::character varying) AS classe,
+                     mf.azione,
+                     b.data_riferimento,
+                     CURRENT_DATE - b.data_riferimento AS anzianita_giorni,
+                     b.stato_codice_interno,
+                     b.stato_codice,
+                     b.fase
+                FROM base b
+                LEFT JOIN config.motivi_fermo mf
+                  ON mf.codice_interno::text = b.motivo_fermo::text AND mf.attivo IS TRUE
+               WHERE COALESCE(mf.classe, 'ANOMALIA'::character varying)::text <> 'FISIOLOGICO'::text;
+
+              COMMENT ON VIEW vendite.vw_dash_backlog_documenti IS
+                'Backlog fatturazione (lente 2). rev 2026-07-18 (step 9, DL-24): la vista E'' una UNION — '
+                'ramo documenti (da vw_dash_fatturazione_documenti, invariato) + DUE rami resi a grana '
+                '(reso x motivo): RICONSEGNA_NON_ESEGUITA (RECUPERABILE) da vw_resi_da_riconsegnare e '
+                'MERCE_RESA_GIA_FATTURATA (FISIOLOGICO oggi: nessuna azione esiste — niente NC, quantita'' '
+                'immutabile; diventa recuperabile promuovendo UNA cella di seed) da vw_resi_da_accreditare '
+                'con etichetta DOVUTA (le facoltative sono opzione, non arretrato). I resi NON stanno nella '
+                'union pre-commessa: REVERSE_FLOW. Misura a conteggi (DL-11): valore_fermo NULL, mai 0. '
+                'Classe/azione risolte UNA volta a valle su config.motivi_fermo, filtro classe <> '
+                'FISIOLOGICO per tutti i rami. Deroga dichiarata: unica area dove un documento (reso misto) '
+                'puo'' comparire due volte. security_invoker=on + RLS. rev 2026-07-06: forma originaria.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: ripristino non automatizzato (CREATE OR REPLACE).
+              -- Riapplicare il changeset due-lenti che definiva il backlog al
+              -- solo ramo documenti (ri-specificare security_invoker=on;
+              -- i resi spariscono dal backlog).
+              SELECT 1;

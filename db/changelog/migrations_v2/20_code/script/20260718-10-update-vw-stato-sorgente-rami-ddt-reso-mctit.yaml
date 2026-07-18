@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# STEP 6b — i rami DDT e RESO entrano nella union della proiezione di stato
+#   (brief-db-fatturazione-ddt-resi §4a).
+#
+# `script.vw_stato_sorgente` passa da QUATTRO a SEI rami: preventivo, offerta,
+# ordine, contratto + DDT e reso (20260718-09). Da qui il traduttore copre tutti
+# i tipi documento registrati in config.sorgenti con un ramo proprio.
+#
+# `risolto = true` su ogni ramo, come le gemelle: la riga esiste solo se il
+# documento esiste. Chi interroga un (tipo, chiave) senza ramo non trova nulla —
+# ed e' il modo in cui i consumatori distinguono "non risolto" da "risolto".
+#
+# ⚠️ NESSUN security_invoker: verificato sul vivo, questa famiglia non lo ha
+#   (a differenza della famiglia dash). Non si aggiunge qui: cambierebbe il
+#   comportamento RLS di una vista di sistema in un changeset che dichiara di
+#   aggiungere due rami. Se serve, e' una decisione a se'.
+#
+# I quattro rami preesistenti sono riportati IDENTICI (origine: pg_get_viewdef
+#   del vivo). Cambia solo l'aggiunta dei due nuovi.
+# Dipendenze: vendite.vw_stato_sorgente_ddt / _reso (20260718-09).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260718-10-update-vw-stato-sorgente-rami-ddt-reso-mctit.yaml
+
+  - changeSet:
+      id: 20260718-10-update-vw-stato-sorgente-rami-ddt-reso
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        script.vw_stato_sorgente passa a sei rami: aggiunti DDT e RESO. I quattro
+        preesistenti invariati. Nessun security_invoker (la famiglia non lo ha).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_stato_sorgente_ddt
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_stato_sorgente_reso
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW script.vw_stato_sorgente AS
+               SELECT r.sorgente_tipo_id, r.sorgente_uid, true AS risolto,
+                      r.stato_codice_interno::text AS stato_codice_interno,
+                      r.stato_codice::text         AS stato_codice,
+                      r.stato_descrizione::text    AS stato_descrizione,
+                      r.fase::text                 AS fase,
+                      r.esito::text                AS esito,
+                      r.terminale
+                 FROM vendite.vw_stato_sorgente_preventivo r
+              UNION ALL
+               SELECT r.sorgente_tipo_id, r.sorgente_uid, true AS risolto,
+                      r.stato_codice_interno::text, r.stato_codice::text,
+                      r.stato_descrizione::text, r.fase::text, r.esito::text, r.terminale
+                 FROM vendite.vw_stato_sorgente_offerta r
+              UNION ALL
+               SELECT r.sorgente_tipo_id, r.sorgente_uid, true AS risolto,
+                      r.stato_codice_interno::text, r.stato_codice::text,
+                      r.stato_descrizione::text, r.fase::text, r.esito::text, r.terminale
+                 FROM vendite.vw_stato_sorgente_ordine r
+              UNION ALL
+               SELECT r.sorgente_tipo_id, r.sorgente_uid, true AS risolto,
+                      r.stato_codice_interno::text, r.stato_codice::text,
+                      r.stato_descrizione::text, r.fase::text, r.esito::text, r.terminale
+                 FROM vendite.vw_stato_sorgente_contratto r
+              UNION ALL
+               -- Quinto ramo (step 6b, 2026-07-18): DDT.
+               SELECT r.sorgente_tipo_id, r.sorgente_uid, true AS risolto,
+                      r.stato_codice_interno::text, r.stato_codice::text,
+                      r.stato_descrizione::text, r.fase::text, r.esito::text, r.terminale
+                 FROM vendite.vw_stato_sorgente_ddt r
+              UNION ALL
+               -- Sesto ramo (step 6b, 2026-07-18): reso.
+               SELECT r.sorgente_tipo_id, r.sorgente_uid, true AS risolto,
+                      r.stato_codice_interno::text, r.stato_codice::text,
+                      r.stato_descrizione::text, r.fase::text, r.esito::text, r.terminale
+                 FROM vendite.vw_stato_sorgente_reso r;
+
+              COMMENT ON VIEW script.vw_stato_sorgente IS
+                'Traduttore di stato per la sorgente polimorfa: dato (sorgente_tipo_id, sorgente_uid) '
+                'restituisce lo stato del documento nel vocabolario comune (fase/esito/terminale). SEI rami '
+                'dal 2026-07-18 (step 6b, brief-db-fatturazione-ddt-resi §4a): preventivo, offerta, ordine, '
+                'contratto, DDT, reso — tutti i tipi documento registrati hanno ora un ramo. La chiave '
+                'sorgente_uid segue config.sorgenti.key_selector (uid per preventivo/offerta, id::text per '
+                'gli altri): vedi config/manual/sorgenti.md §Convenzione chiave sorgente. risolto = true '
+                'sempre: l''assenza di riga E'' il "non risolto".';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: ripristino non automatizzato (CREATE OR REPLACE).
+              -- Riapplicare il changeset che definiva la union a quattro rami.
+              SELECT 1;

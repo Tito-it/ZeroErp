@@ -41,7 +41,9 @@ SELECT
   (SELECT s.id FROM config.stati_doc_ordini s
     WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS stato_ord_conf_id,
   (SELECT s.id FROM config.stati_doc_ddt s
-    WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE LIMIT 1)     AS stato_ddt_emesso_id;
+    WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE LIMIT 1)     AS stato_ddt_emesso_id,
+  (SELECT ct.id FROM config.causali_trasporto ct
+    WHERE ct.codice = 'VENDITA' LIMIT 1)                               AS causale_vendita_id;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND articolo_id IS NOT NULL
@@ -96,6 +98,21 @@ SELECT ok(
   '4) blocco pdf presente con chiavi mode + allow_allegati');
 
 -- 5) DDT EMESSO -> pdf.mode = ARCHIVE (proiezione segue lo stato)
+-- Causale di trasporto obbligatoria all'emissione dal 2026-07-18
+-- (step 5b / DL-28, trg_ddt_a10_guard_causale_emissione_upd): con causale
+-- VENDITA (fatturabile) serve anche il prezzo risolvibile, garantito dalla
+-- riga d'ordine (prezzo 10) ereditata via fulfillment.
+UPDATE vendite.ddt SET causale_trasporto_id = (SELECT causale_vendita_id FROM tmp_refs_pdf)
+ WHERE id = (SELECT ddt_id FROM tmp_ddt_pdf);
+
+-- Guard indirizzi obbligatori (DDT): il CON e' obbligatorio all'emissione
+-- (trg_ddt_a10_guard_indirizzi_obbligatori_upd).
+INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+SELECT (SELECT ddt_id FROM tmp_ddt_pdf),
+       (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON'),
+       '{"display":"CON test"}'::jsonb
+ON CONFLICT DO NOTHING;
+
 UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_emesso_id FROM tmp_refs_pdf)
  WHERE id = (SELECT ddt_id FROM tmp_ddt_pdf);
 

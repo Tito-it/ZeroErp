@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Correzione catalogo (Tid, 2026-07-18): stati_doc_reso.CONFERMATO passa da
+# fase IN_CORSO a fase CHIUSO.
+#
+# IL PERCHE': per come funziona il motore resi, un reso confermato E' concluso —
+# non esiste un passo successivo del reso stesso (la ri-consegna genera un ALTRO
+# documento). Con IN_CORSO la proiezione di stato lo dava "non terminale" per
+# sempre: un'informazione sbagliata nel catalogo, che la vista si limitava a
+# rispecchiare. Emerso scrivendo vw_stato_sorgente_reso (step 6b slice
+# fatturazione): la vista deriva esito/terminale dalla fase, e la si corregge
+# nel CATALOGO, non con un caso speciale nella vista.
+#
+# DOVE STA IL DATO: la cella e' nel CSV stati_doc_reso.csv (fase: IN_CORSO ->
+# CHIUSO); il loader 20260713-40 e' runOnChange e la ripesca da se'. Questo
+# changeset NON tocca dati: aggiorna solo il COMMENT della vista, che dopo la
+# correzione affermerebbe il falso ("nel seed vivo CONFERMATO ha fase
+# IN_CORSO").
+#
+# CONSUMATORI CENSITI prima della correzione (2026-07-18):
+#   - vw_stato_sorgente_reso: l'effetto voluto — CONFERMATO diventa
+#     POSITIVO / terminale;
+#   - lineage (vw_documento_lineage_nodi): per il reso la fase e' SOLO display,
+#     l'arco R e' escluso per progetto dalla frontiera forward -> topologia
+#     invariata;
+#   - le altre viste resi e il BE usano codice_interno, mai fase.
+#
+# SFUMATURA DICHIARATA: la matrice ammette ancora CONFERMATO -> ANNULLATO
+# (guardato: non se esistono ri-consegne). "CHIUSO" e "terminale" descrivono la
+# conclusione commerciale, non un lucchetto: l'annullo resta come storno.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260718-11-comment-vw-stato-sorgente-reso-confermato-chiuso-mctit.yaml
+
+  - changeSet:
+      id: 20260718-11-comment-vw-stato-sorgente-reso-confermato-chiuso
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        Aggiorna il COMMENT di vw_stato_sorgente_reso dopo la correzione del
+        catalogo (CONFERMATO: fase IN_CORSO -> CHIUSO nel CSV, loader
+        runOnChange). Nessun cambio di definizione della vista.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: vendite
+            viewName: vw_stato_sorgente_reso
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON VIEW vendite.vw_stato_sorgente_reso IS
+                'Sesto ramo della proiezione di stato (brief-db-fatturazione-ddt-resi §4a, step 6b): '
+                'traduce lo stato del reso nel vocabolario comune della sorgente polimorfa. Chiave = '
+                'resi.id::text (config.sorgenti.key_selector = id per RESO_VENDITA). esito/terminale '
+                'derivati come nel ramo DDT: is_abortito -> NEGATIVO (ANNULLATO), fase CHIUSO non abortito '
+                '-> POSITIVO, altrimenti NULL. Dal 2026-07-18 il catalogo dichiara CONFERMATO fase CHIUSO '
+                '(correzione Tid: un reso confermato E'' concluso — la ri-consegna e'' un altro documento) '
+                '-> un reso confermato proietta POSITIVO/terminale. La matrice ammette ancora CONFERMATO->'
+                'ANNULLATO come storno guardato: terminale = conclusione commerciale, non lucchetto. '
+                'rev 2026-07-18.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Solo commento: il rollback semantico e' la cella CSV
+              -- (fase CHIUSO -> IN_CORSO) + ri-run del loader 20260713-40.
+              SELECT 1;

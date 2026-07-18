@@ -58,13 +58,21 @@ CREATE TEMP TABLE tmp_ap_refs AS
 SELECT
   (SELECT ba.id FROM anagrafiche.billing_account ba
     WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS billing_account_id,
+      AND ba.soggetto_ruolo_id IS NOT NULL
+      -- dal lavoro emittente (2026-07-13) i guard emittente<->BA pretendono
+      -- coerenza: il BA deve avere un emittente derivabile
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS billing_account_id,
   (SELECT ba.utility_id FROM anagrafiche.billing_account ba
     WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS utility_id,
+      AND ba.soggetto_ruolo_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS utility_id,
   (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
     WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
+      AND ba.soggetto_ruolo_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
   (SELECT a.id FROM catalogo.articoli a
     WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1) AS articolo_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
@@ -85,12 +93,38 @@ SELECT
     WHERE sc.attivo IS TRUE AND sc.codice_interno <> 'ANNULLATA'
     ORDER BY sc.id LIMIT 1) AS stato_commessa_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+  -- Emittente A = quello DERIVABILE dal BA principale (fn_get_emittente_fiscale_pk
+  -- e' la funzione con cui i guard emittente<->BA confrontano): un emittente
+  -- scelto a caso non passerebbe piu' i guard del 2026-07-13.
+  (SELECT anagrafiche.fn_get_emittente_fiscale_pk(ba.id)
+     FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND ba.soggetto_ruolo_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS emittente_fiscale_id,
   (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS ef_a_sr,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
-    ORDER BY ef.id OFFSET 1 LIMIT 1) AS ef_b_id;
+    WHERE ef.id = (SELECT anagrafiche.fn_get_emittente_fiscale_pk(ba.id)
+                     FROM anagrafiche.billing_account ba
+                    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+                      AND ba.soggetto_ruolo_id IS NOT NULL
+                      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+                    ORDER BY ba.id LIMIT 1)) AS ef_a_sr;
+
+-- Emittente B: serve un SECONDO BA il cui emittente derivabile sia diverso da
+-- quello di A (il guard vieta un emittente non coerente col BA: non basta piu'
+-- "il secondo EF della tabella"). Se non esiste, il test 13 fa skip come prima.
+CREATE TEMP TABLE tmp_ap_refs_b AS
+SELECT ba.id                                        AS ba_b_id,
+       ba.utility_id                                AS ba_b_utility_id,
+       ba.istanza_utility_id                        AS ba_b_istanza_id,
+       anagrafiche.fn_get_emittente_fiscale_pk(ba.id) AS ef_b_id
+  FROM anagrafiche.billing_account ba
+ WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+   AND ba.soggetto_ruolo_id IS NOT NULL
+   AND anagrafiche.fn_get_emittente_fiscale_pk(ba.id) IS NOT NULL
+   AND anagrafiche.fn_get_emittente_fiscale_pk(ba.id)
+       IS DISTINCT FROM (SELECT emittente_fiscale_id FROM tmp_ap_refs)
+ ORDER BY ba.id LIMIT 1;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND articolo_id IS NOT NULL
@@ -194,19 +228,20 @@ WITH ins AS (
   RETURNING id)
 SELECT * FROM ins;
 
--- Preventivo emittente B (per il test scope 13; solo se esiste un secondo EF).
+-- Preventivo emittente B (per il test scope 13; solo se esiste un secondo BA
+-- con emittente derivabile DIVERSO — il guard emittente<->BA del 2026-07-13
+-- vieta di appoggiare l'emittente B sul BA di A).
 CREATE TEMP TABLE tmp_ap_prev_b AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
     numero, rev, billing_account_id, istanza_utility_id, utility_id,
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-AP-PREVB', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
+  SELECT 'PGTAP-AP-PREVB', 0, b.ba_b_id, b.ba_b_istanza_id, b.ba_b_utility_id,
          DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.prev_accettato_id,
          DATE '2080-01-01', false, false,
-         jsonb_build_object('test_scope','pgtap_dash_aperto'), r.ef_b_id
-    FROM tmp_ap_refs r
-   WHERE r.ef_b_id IS NOT NULL
+         jsonb_build_object('test_scope','pgtap_dash_aperto'), b.ef_b_id
+    FROM tmp_ap_refs r, tmp_ap_refs_b b
   RETURNING id)
 SELECT * FROM ins;
 
@@ -421,8 +456,8 @@ SET CONSTRAINTS ALL IMMEDIATE;
 ALTER TABLE vendite.preventivi FORCE ROW LEVEL SECURITY;
 SELECT set_config('app.ruolo_applicativo', 'OPERATORE', true);
 
-SELECT CASE WHEN (SELECT ef_b_id FROM tmp_ap_refs) IS NULL
-  THEN pass('13. [skip] seed con un solo emittente: scope RLS non testabile')
+SELECT CASE WHEN (SELECT ef_b_id FROM tmp_ap_refs_b) IS NULL
+  THEN pass('13. [skip] nessun BA con secondo emittente derivabile: scope RLS non testabile')
   ELSE ok(
     (SELECT NOT EXISTS (
        SELECT 1 FROM vendite.vw_dash_aperto_documenti a

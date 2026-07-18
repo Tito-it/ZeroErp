@@ -61,7 +61,11 @@ SELECT
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
-  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id;
+  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id,
+  -- Dal 2026-07-18 (step 5b / DL-28) la causale di trasporto e' obbligatoria
+  -- all'emissione del DDT: VENDITA e' l'unica causale fatturabile, quindi
+  -- l'unica che tiene il DDT eleggibile al lister di push.
+  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1) AS causale_vendita_id;
 
 -- Ordine (qta 10, trigger CONSEGNATO) -> DDT -> CONSEGNATO (stato = trigger, cosi'
 -- il lister lo lista E il reso-guard passa).
@@ -100,6 +104,8 @@ BEGIN
   SELECT * INTO r FROM tmp_refs;
   INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
   VALUES (p_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
+  -- Causale obbligatoria all'emissione (guard causale_emissione, 2026-07-18).
+  UPDATE vendite.ddt SET causale_trasporto_id=r.causale_vendita_id  WHERE id=p_ddt;
   UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_emesso_id     WHERE id=p_ddt;
   UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_spedito_id    WHERE id=p_ddt;
   UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_consegnato_id WHERE id=p_ddt;
@@ -189,6 +195,8 @@ SELECT vendite.fn_genera_ddt_riconsegna((SELECT reso_id FROM tmp_d_reso)) AS ddt
 -- porta il DDT di ri-consegna a CONSEGNATO (per essere eleggibile al lister)
 INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
 SELECT (SELECT ddt_id FROM tmp_d_ric), (SELECT tipo_ind_con_id FROM tmp_refs), '{"display":"CON"}'::jsonb ON CONFLICT DO NOTHING;
+-- Causale obbligatoria all'emissione (guard causale_emissione, 2026-07-18).
+UPDATE vendite.ddt SET causale_trasporto_id=(SELECT causale_vendita_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_d_ric);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_emesso_id FROM tmp_refs)     WHERE id=(SELECT ddt_id FROM tmp_d_ric);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_spedito_id FROM tmp_refs)    WHERE id=(SELECT ddt_id FROM tmp_d_ric);
 UPDATE vendite.ddt SET stato_doc_ddt_id=(SELECT stato_ddt_consegnato_id FROM tmp_refs) WHERE id=(SELECT ddt_id FROM tmp_d_ric);

@@ -18,6 +18,8 @@ DECLARE
 BEGIN
   -- rev 2026-06-28: sorgente/stato DDT per codice_interno (immutabile).
   -- rev 2026-07-17 (step 3): proietta la differenza del contatore.
+  -- rev 2026-07-18 (step 5): eleggibilita' dallo stato-trigger IN POI.
+  -- rev 2026-07-18 (step 5b): esclude le causali non fatturabili.
   IF p_ddt_id IS NOT NULL AND p_ddt_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_list_ddt_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
@@ -39,8 +41,8 @@ BEGIN
 
   RETURN QUERY
   WITH cand AS (
-    -- Righe DDT eleggibili (stessi filtri di prima) + riga d'ordine
-    -- (via fulfillment) + differenza di partita dal contatore.
+    -- Righe DDT eleggibili + riga d'ordine (via fulfillment) +
+    -- differenza di partita dal contatore.
     SELECT
       d.id            AS d_id,
       d.uid           AS d_uid,
@@ -69,6 +71,14 @@ BEGIN
       ct.differenza   AS partita_diff
     FROM vendite.ddt d
     JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+    -- CINTURA solo-trasporto (DL-28): la causale dichiara se la
+    -- merce che viaggia e' una vendita. Vale per entrambi i rami:
+    -- descrive il viaggio, non la provenienza del documento.
+    -- INNER JOIN: la causale e' obbligatoria dall'emissione (gate
+    -- 20260718-04) e qui si guardano solo stati >= SPEDITO.
+    JOIN config.causali_trasporto caus
+      ON caus.id = d.causale_trasporto_id
+     AND caus.fatturabile IS TRUE
     JOIN vendite.ddt_righe dr
       ON dr.ddt_id = d.id
      AND dr.attivo IS TRUE
@@ -87,16 +97,28 @@ BEGIN
       WHERE ful.ddt_riga_id = dr.id
       ORDER BY ful.id LIMIT 1
     ) src ON TRUE
+    -- Rank dello stato-trigger dell'ordine, per chiave naturale
+    -- stabile. CONFERMATO non esiste fra gli stati DDT -> non
+    -- risolve -> il ramo order-backed e' falso (§3e.3).
+    LEFT JOIN config.stati_doc_ddt sdd_trg
+      ON sdd_trg.codice_interno = src.src_fatturazione_trigger
     JOIN anagrafiche.billing_account ba
       ON ba.id = COALESCE(d.billing_account_id, src.src_billing_account_id)
     LEFT JOIN vendite.vw_contatore_merce ct
       ON ct.ordine_riga_id = src.src_ordine_riga_id
     WHERE COALESCE(d.billing_account_id, src.src_billing_account_id) IS NOT NULL
       AND (
+        -- ORDER-BACKED: dallo stato-trigger IN POI (fix orfano §1c),
+        -- ma mai su un documento morto (ANNULLATO, via is_abortito)
+        -- ne' su merce tutta tornata indietro (RESO).
         (src.src_fatturazione_trigger IS NOT NULL
-         AND src.src_fatturazione_trigger != 'CONFERMATO'
-         AND sdd.codice_interno = src.src_fatturazione_trigger)
+         AND src.src_fatturazione_trigger != 'CONFERMATO'   -- cintura XOR: NON toccare
+         AND sdd_trg.ordine IS NOT NULL
+         AND sdd.ordine >= sdd_trg.ordine
+         AND NOT sdd.is_abortito
+         AND sdd.codice_interno <> 'RESO')
         OR
+        -- STANDALONE: invariato (gia' privo di RESO/ANNULLATO).
         (src.src_fatturazione_trigger IS NULL
          AND d.billing_account_id IS NOT NULL
          AND sdd.codice_interno IN ('SPEDITO', 'CONSEGNATO'))
@@ -177,7 +199,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ddt_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ddt_id bigint)
-IS 'Lista righe DDT eligible al push su commessa. rev 2026-07-17 (step 3): proietta come quantita la DIFFERENZA del contatore vw_contatore_merce (tenuti − fatturati) distribuita per riga DDT (greedy, cappata a dr.quantita), non piu'' dr.quantita grezza -> chiude la doppia fatturazione (bug 1a). qta_operativa scalata proporzionalmente. Standalone e compositi restano a dr.quantita grezza (fuori dal contatore, follow-up). Cintura XOR (!= CONFERMATO), frontiera EMESSA e filtri invariati. Filtra quantita_push > 0. uom_id da catalogo.articoli. rev 2026-06-28: sorgente/stato per codice_interno.';
+IS 'Lista righe DDT eligible al push su commessa. rev 2026-07-18 (step 5b): esclude i DDT con causale di trasporto NON fatturabile (config.causali_trasporto.fatturabile, DL-28) — cintura su entrambi i rami, la causale descrive il viaggio della merce non la provenienza del documento; INNER JOIN perche'' la causale e'' obbligatoria dall''emissione (gate trgfn_ddt_guard_causale_emissione). rev 2026-07-18 (step 5): eleggibilita'' order-backed DALLO stato-trigger IN POI (sdd.ordine >= rank del trigger) AND NOT is_abortito AND <> RESO, cintura XOR != CONFERMATO PRESERVATA. rev 2026-07-17 (step 3): proietta come quantita la DIFFERENZA del contatore vw_contatore_merce distribuita per riga DDT (greedy, cappata a dr.quantita); qta_operativa scalata; standalone e compositi a dr.quantita grezza; filtra quantita_push > 0. rev 2026-06-28: sorgente/stato per codice_interno.';
 ```
 
 ---

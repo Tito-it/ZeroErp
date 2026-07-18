@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# STEP 6 — il ramo DDT entra nella union (§4a, DL-21 emendato).
+#
+# Sesto ramo di vw_dash_fatturazione_documenti. Da qui ENTRAMBE le lenti lo
+# prendono da sole, senza toccarle:
+#   - serbatoio (vw_dash_aperto*)   filtra `fase <> CHIUSO`
+#   - backlog   (vw_dash_backlog*)  filtra `classe <> FISIOLOGICO`
+# Il FE e' gia' fail-visible sulle aree extra (le accoda, non da' 400), ma
+# servono la label i18n e la rotta "apri documento" per l'area DDT (§8).
+#
+# ⚠️ security_invoker=on RI-SPECIFICATO: la reloption non e' visibile in
+#   pg_get_viewdef e un CREATE OR REPLACE senza WITH la azzera in SILENZIO. E'
+#   la regressione V-1 (resolver contratti, 20260707-03) gia' costata un rework.
+#   Questa union alimenta tutta la famiglia dash sotto scope emittente.
+#
+# I cinque rami preesistenti sono riportati IDENTICI (origine: pg_get_viewdef
+#   del vivo). Cambia solo l'aggiunta del sesto.
+# Dipendenze: vendite.vw_dash_fatturazione_ddt (20260718-07).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260718-08-update-vw-dash-fatturazione-documenti-ramo-ddt-mctit.yaml
+
+  - changeSet:
+      id: 20260718-08-update-vw-dash-fatturazione-documenti-ramo-ddt
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_dash_fatturazione_documenti guadagna il sesto ramo (DDT). Le due lenti
+        lo ereditano senza modifiche. security_invoker=on ri-specificato.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: vendite
+            viewName: vw_dash_fatturazione_ddt
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_documenti
+              WITH (security_invoker=on) AS
+               SELECT p.area, p.competenza_mese, p.documento_id, p.documento_uid, p.codice,
+                      p.emittente_fiscale_id, p.emittente_soggetto_ruolo_id,
+                      p.valore_totale, p.valore_transitato, p.unita_totali, p.unita_transitate,
+                      p.is_transitato, p.is_abortito, p.motivo_fermo,
+                      p.stato_codice_interno, p.stato_codice, p.fase,
+                      p.cliente_display, p.data_riferimento
+                 FROM vendite.vw_dash_fatturazione_preventivi p
+              UNION ALL
+               SELECT o.area, o.competenza_mese, o.documento_id, o.documento_uid, o.codice,
+                      o.emittente_fiscale_id, o.emittente_soggetto_ruolo_id,
+                      o.valore_totale, o.valore_transitato, o.unita_totali, o.unita_transitate,
+                      o.is_transitato, o.is_abortito, o.motivo_fermo,
+                      o.stato_codice_interno, o.stato_codice, o.fase,
+                      o.cliente_display, o.data_riferimento
+                 FROM vendite.vw_dash_fatturazione_ordini o
+              UNION ALL
+               SELECT f.area, f.competenza_mese, f.documento_id, f.documento_uid, f.codice,
+                      f.emittente_fiscale_id, f.emittente_soggetto_ruolo_id,
+                      f.valore_totale, f.valore_transitato, f.unita_totali, f.unita_transitate,
+                      f.is_transitato, f.is_abortito, f.motivo_fermo,
+                      f.stato_codice_interno, f.stato_codice, f.fase,
+                      f.cliente_display, f.data_riferimento
+                 FROM vendite.vw_dash_fatturazione_offerte f
+              UNION ALL
+               SELECT c.area, c.competenza_mese, c.documento_id, c.documento_uid, c.codice,
+                      c.emittente_fiscale_id, c.emittente_soggetto_ruolo_id,
+                      c.valore_totale, c.valore_transitato, c.unita_totali, c.unita_transitate,
+                      c.is_transitato, c.is_abortito, c.motivo_fermo,
+                      c.stato_codice_interno, c.stato_codice, c.fase,
+                      c.cliente_display, c.data_riferimento
+                 FROM vendite.vw_dash_fatturazione_contratti c
+              UNION ALL
+               SELECT m.area, m.competenza_mese, m.documento_id, m.documento_uid, m.codice,
+                      m.emittente_fiscale_id, m.emittente_soggetto_ruolo_id,
+                      m.valore_totale, m.valore_transitato, m.unita_totali, m.unita_transitate,
+                      m.is_transitato, m.is_abortito, m.motivo_fermo,
+                      m.stato_codice_interno, m.stato_codice, m.fase,
+                      m.cliente_display, m.data_riferimento
+                 FROM vendite.vw_dash_fatturazione_commesse m
+              UNION ALL
+               -- Sesto ramo (step 6, 2026-07-18): i DDT con ruolo di fatturazione.
+               SELECT t.area, t.competenza_mese, t.documento_id, t.documento_uid, t.codice,
+                      t.emittente_fiscale_id, t.emittente_soggetto_ruolo_id,
+                      t.valore_totale, t.valore_transitato, t.unita_totali, t.unita_transitate,
+                      t.is_transitato, t.is_abortito, t.motivo_fermo,
+                      t.stato_codice_interno, t.stato_codice, t.fase,
+                      t.cliente_display, t.data_riferimento
+                 FROM vendite.vw_dash_fatturazione_ddt t;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_documenti IS
+                'Union dei resolver per la dashboard fatturazione: preventivi, ordini, offerte, contratti, '
+                'commesse e — dal 2026-07-18 (step 6, brief-db-fatturazione-ddt-resi §4a) — DDT. Le due lenti '
+                'derivano da qui senza modifiche: il serbatoio filtra fase <> CHIUSO, il backlog filtra '
+                'classe <> FISIOLOGICO. security_invoker=on (ri-specificato a ogni REPLACE: la reloption non '
+                'e'' visibile in pg_get_viewdef e verrebbe azzerata in silenzio -> bypass RLS).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: ripristino non automatizzato (CREATE OR REPLACE).
+              -- Riapplicare il changeset che definiva la union a cinque rami
+              -- (ATTENZIONE: ri-specificare security_invoker=on).
+              SELECT 1;
