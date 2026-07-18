@@ -875,22 +875,22 @@ a {
 }
 
 .app-nav-icon-preventivi::after {
-  content: "\e9bd";
+  content: "\e942"; /* pi-pencil — overlay-tipo: bozza/proposta */
   left: 0.74rem;
   top: -0.04rem;
   font-size: 0.5rem;
 }
 
 .app-nav-icon-contratti::before {
-  content: "\ea1b";
+  content: "\e958"; /* pi-file — base documento (famiglia vendite) */
   top: 0.02rem;
   left: 0.16rem;
   font-size: 0.92rem;
 }
 
 .app-nav-icon-contratti::after {
-  content: "\e9bd";
-  left: 0.75rem;
+  content: "\ea02"; /* pi-verified — overlay-tipo: accordo vincolante */
+  left: 0.74rem;
   top: -0.04rem;
   font-size: 0.5rem;
 }
@@ -907,6 +907,36 @@ a {
   left: 0.62rem;
   top: 0.45rem;
   font-size: 0.48rem;
+}
+
+/* Iconografia vendite (convenzione, vedi frontend-standards): base documento
+   (marcatore di famiglia/area) + overlay del TIPO (differenziatore), al posto
+   dell'euro condiviso. Ordini: badge carrello -> non collide col dominio
+   (carrello pieno). Resi: badge freccia-ritorno -> non e' piu' un refresh. */
+.app-nav-icon-ordini::before {
+  content: "\e958";
+  top: 0.02rem;
+  left: 0.12rem;
+  font-size: 0.86rem;
+}
+.app-nav-icon-ordini::after {
+  content: "\e980"; /* pi-shopping-cart */
+  left: 0.6rem;
+  top: 0.45rem;
+  font-size: 0.5rem;
+}
+
+.app-nav-icon-resi::before {
+  content: "\e958";
+  top: 0.02rem;
+  left: 0.12rem;
+  font-size: 0.86rem;
+}
+.app-nav-icon-resi::after {
+  content: "\e91f"; /* pi-arrow-circle-left */
+  left: 0.6rem;
+  top: 0.45rem;
+  font-size: 0.5rem;
 }
 
 .app-nav-icon-fatture::before {
@@ -937,20 +967,19 @@ a {
   font-size: 0.5rem;
 }
 
-/* Offerte commerciali = file con matita (pi-file-edit \e9f6) + euro
-   sovrapposto in alto a destra (pi-euro \e9bd). Allineata al pattern
-   preventivi/contratti/listini/fatture/approvazioni-prezzo che usano
-   l'overlay euro per le entita' vendite a valore. */
+/* Offerte = documento (base famiglia vendite, pi-file \e958) + overlay TIPO
+   tag (pi-tag \e95e): l'offerta commerciale. Vedi frontend-standards,
+   "Iconografia di dominio: base documento + overlay-tipo". */
 .app-nav-icon-offerte::before {
-  content: "\e9f6";
+  content: "\e958";
   top: 0.02rem;
   left: 0.16rem;
   font-size: 0.92rem;
 }
 
 .app-nav-icon-offerte::after {
-  content: "\e9bd";
-  left: 0.76rem;
+  content: "\e95e"; /* pi-tag */
+  left: 0.74rem;
   top: -0.04rem;
   font-size: 0.5rem;
 }

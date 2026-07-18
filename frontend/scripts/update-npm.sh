@@ -35,8 +35,14 @@ npx npm-check-updates || true
 echo ""
 
 # 2) Aggiorna package.json con patch + minor (no major/breaking)
-echo "--- Aggiornamento package.json (patch + minor) ---"
-npx npm-check-updates -u --target minor
+#    --peer: filtra gli aggiornamenti a quelli compatibili con i peerDependencies
+#    installati. Serve per le coppie in "lockstep" (es. oxlint +
+#    eslint-plugin-oxlint, che dichiara peer oxlint ~<stessa minor>): senza
+#    questo flag ncu alza il pacchetto principale anche quando il plugin
+#    abbinato non ha ancora pubblicato la minor corrispondente, e il successivo
+#    `npm install` fallisce con ERESOLVE.
+echo "--- Aggiornamento package.json (patch + minor, peer-compatible) ---"
+npx npm-check-updates -u --target minor --peer
 echo ""
 
 # 3) Installa e rigenera package-lock.json
