@@ -1,0 +1,211 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Brief-db-guard-sorgente-polimorfa §2c, D3 chiusa (Tid 2026-07-18): guard
+# MODELLO B — tabelle di collegamento polimorfe a chiave unica TESTUALE
+# (pratiche.pratiche_sorgenti, vendite.commesse_sorgenti).
+#
+# Convenzione (config/manual/sorgenti.md §Convenzione chiave sorgente):
+# sorgente_uid TEXT contiene la chiave nel formato dettato da
+# config.sorgenti.key_selector — id::text per i tipi 'id', uuid testuale per
+# i tipi 'uid'. sorgente_riga qui NON e' una chiave documento (grana di riga
+# del link, D1/D4: non validata in questo giro).
+#
+# Il guard valida:
+#   1. tipo censito e attivo in config.sorgenti     -> E_SORG_CONF
+#   2. sorgente_uid non vuota                       -> E_SORG_KEY_MISSING
+#   3. formato conforme al key_selector             -> E_SORG_FORMATO (546)
+#   4. esistenza della riga nella target_table      -> E_SORG_NOT_FOUND
+#
+# Sorella della _tipizzata (modello A, 20260718-16): due semantiche, due
+# nomi. L'aggancio alle due tabelle e' in 20260718-18 (pratiche) e
+# 20260718-19 (vendite). Difesa in profondita' col rubinetto normalizzante
+# fn_link_commessa_sorgente (20260718-15).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260718-17-create-trgfn-guard-sorgente-polimorfa-testuale-mctit.yaml
+
+  - changeSet:
+      id: 20260718-17-create-trgfn-guard-sorgente-polimorfa-testuale
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard polimorfo modello B (chiave unica testuale): valida
+        sorgente_uid TEXT secondo config.sorgenti.key_selector — formato
+        (E_SORG_FORMATO) ed esistenza nella target_table (E_SORG_NOT_FOUND).
+        Per pratiche_sorgenti e commesse_sorgenti; sorella della _tipizzata.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_guard_sorgente_polimorfa_testuale()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- =========================================================
+                -- Scopo:
+                --   Validare la sorgente polimorfa delle tabelle di
+                --   collegamento a chiave unica TESTUALE (MODELLO B:
+                --   pratiche_sorgenti, commesse_sorgenti): NEW.sorgente_uid
+                --   TEXT deve rispettare il formato dettato da
+                --   config.sorgenti.key_selector (id::text per 'id', uuid
+                --   testuale per 'uid') ed esistere nella target_table.
+                --   NEW.sorgente_riga qui NON e' una chiave documento e non
+                --   viene validata (grana di riga del link; D4 fase 2).
+                -- =========================================================
+                c_uuid_re  CONSTANT text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+                v_tbl      regclass;
+                v_selector text;
+                v_uid      text;
+                v_exists   boolean;
+              BEGIN
+                -- Se non e' valorizzata la sorgente, nessuna verifica
+                IF NEW.sorgente_tipo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Recupero configurazione sorgente attiva
+                SELECT s.target_table, s.key_selector
+                  INTO v_tbl, v_selector
+                  FROM config.sorgenti s
+                 WHERE s.id = NEW.sorgente_tipo_id
+                   AND s.attivo = true;
+
+                IF v_tbl IS NULL OR v_selector IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.trgfn_guard_sorgente_polimorfa_testuale',
+                    'E_SORG_CONF',
+                    jsonb_build_object(
+                      'detail','Configurazione sorgente mancante/errata',
+                      'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                      'target_table', COALESCE(v_tbl::text,'<NULL>'),
+                      'key_selector', COALESCE(v_selector,'<NULL>')
+                    ),
+                    NULL::uuid,
+                    concat(NEW.sorgente_tipo_id::text,
+                      ' target_table:', COALESCE(v_tbl::text,'<NULL>'),
+                      ' key_selector:', COALESCE(v_selector,'<NULL>'))
+                  );
+                END IF;
+
+                -- Chiave testuale obbligatoria
+                v_uid := btrim(NEW.sorgente_uid);
+                IF v_uid IS NULL OR v_uid = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.trgfn_guard_sorgente_polimorfa_testuale',
+                    'E_SORG_KEY_MISSING',
+                    jsonb_build_object(
+                      'detail','Chiave sorgente mancante: atteso sorgente_uid (text)',
+                      'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                      'key_selector', v_selector
+                    ),
+                    NULL::uuid,
+                    concat(NEW.sorgente_tipo_id::text, ' key_selector:', v_selector)
+                  );
+                END IF;
+
+                -- Formato + esistenza secondo key_selector
+                IF v_selector = 'id' THEN
+                  IF v_uid !~ '^[0-9]+$' THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'script.trgfn_guard_sorgente_polimorfa_testuale',
+                      'E_SORG_FORMATO',
+                      jsonb_build_object(
+                        'detail','Atteso id numerico in testo (convenzione id::text)',
+                        'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                        'key_selector', v_selector,
+                        'sorgente_uid', v_uid
+                      ),
+                      NULL::uuid,
+                      concat('atteso id::text, ricevuto ', v_uid)
+                    );
+                  END IF;
+
+                  EXECUTE format('SELECT true FROM %s WHERE id = $1', v_tbl::text)
+                    INTO v_exists
+                    USING v_uid::bigint;
+
+                ELSIF v_selector = 'uid' THEN
+                  IF v_uid !~ c_uuid_re THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'script.trgfn_guard_sorgente_polimorfa_testuale',
+                      'E_SORG_FORMATO',
+                      jsonb_build_object(
+                        'detail','Atteso uuid testuale',
+                        'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                        'key_selector', v_selector,
+                        'sorgente_uid', v_uid
+                      ),
+                      NULL::uuid,
+                      concat('atteso uuid, ricevuto ', v_uid)
+                    );
+                  END IF;
+
+                  EXECUTE format('SELECT true FROM %s WHERE uid = $1', v_tbl::text)
+                    INTO v_exists
+                    USING v_uid::uuid;
+
+                ELSE
+                  -- Valore non consentito: config.sorgenti dovrebbe impedirlo con CHECK
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.trgfn_guard_sorgente_polimorfa_testuale',
+                    'E_SORG_KEYSEL',
+                    jsonb_build_object(
+                      'detail','key_selector non supportato',
+                      'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                      'key_selector', v_selector
+                    ),
+                    NULL::uuid,
+                    concat(NEW.sorgente_tipo_id::text, ' key_selector:', v_selector)
+                  );
+                END IF;
+
+                IF NOT COALESCE(v_exists, false) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.trgfn_guard_sorgente_polimorfa_testuale',
+                    'E_SORG_NOT_FOUND',
+                    jsonb_build_object(
+                      'detail','Riferimento sorgente non trovato nella tabella target',
+                      'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                      'target_table', v_tbl::text,
+                      'key_selector', v_selector,
+                      'sorgente_uid', v_uid
+                    ),
+                    NULL::uuid,
+                    concat(NEW.sorgente_tipo_id::text,
+                      ' target_table ', v_tbl::text,
+                      ' key_selector ', v_selector,
+                      ' sorgente_uid ', v_uid)
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_guard_sorgente_polimorfa_testuale()
+              IS 'Guard polimorfo MODELLO B (tabelle di collegamento a chiave unica testuale: pratiche.pratiche_sorgenti, vendite.commesse_sorgenti): valida che NEW.sorgente_uid TEXT rispetti il formato dettato da config.sorgenti.key_selector (id::text per i tipi id, uuid testuale per i tipi uid — E_SORG_FORMATO) e che la riga esista nella target_table (E_SORG_NOT_FOUND). NON valida sorgente_riga (grana di riga del link, non chiave documento; D4 rinviata). Sorella di trgfn_guard_sorgente_polimorfa_tipizzata (modello A). Brief-db-guard-sorgente-polimorfa, 2026-07-18.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.trgfn_guard_sorgente_polimorfa_testuale();

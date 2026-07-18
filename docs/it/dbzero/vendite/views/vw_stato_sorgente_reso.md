@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/vw_stato_sorgente_reso.md" %}
 # 🔍 View `vw_stato_sorgente_reso`
 
 ```sql

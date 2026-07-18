@@ -8,8 +8,14 @@
 --       piu' ordini legittimi convergono dimensionalmente sulla stessa commessa.
 --       La fn DECIDE il ruolo (chiamante invariato).
 --
+-- NOTA 2026-07-18 (brief-db-guard-sorgente-polimorfa): le sorgenti fittizie
+-- 'A-xxx' PREVENTIVO non passano piu' — fn_link normalizza/valida la chiave e
+-- il guard testuale ne verifica l'esistenza. Le sorgenti ora sono COMMESSE
+-- REALI (tipo COMMESSA, key_selector='id', chiave canonica id::text): il
+-- test esercita la stessa meccanica ROOT/COLLEGATO con fixture leggere.
+--
 -- Indice test (1..8):
---   1) riferimenti minimi disponibili (BA + sorgente PREVENTIVO)
+--   1) riferimenti minimi disponibili (BA + sorgente COMMESSA)
 --   2) due commesse distinte create (p_force_new)
 --   3) sorgente A su commessa1 -> ROOT (prima sorgente)
 --   4) sorgente B diversa su commessa1 -> COLLEGATO (no E_COMMESSA_ROOT_CONFLITTO)
@@ -41,10 +47,7 @@ SELECT
     WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
       AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
     ORDER BY ba.id LIMIT 1) AS emittente_soggetto_ruolo_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice = 'PREVENTIVO' LIMIT 1) AS sorgente_tipo_id,
-  ('A-' || substr(md5(clock_timestamp()::text), 1, 14))::text AS uid_a,
-  ('B-' || substr(md5(clock_timestamp()::text || 'b'), 1, 14))::text AS uid_b,
-  ('C-' || substr(md5(clock_timestamp()::text || 'c'), 1, 14))::text AS uid_c;
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice = 'COMMESSA' LIMIT 1) AS sorgente_tipo_id;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL
@@ -52,8 +55,28 @@ SELECT ok(
       AND emittente_soggetto_ruolo_id IS NOT NULL
       AND sorgente_tipo_id IS NOT NULL
    FROM tmp_refs_link),
-  '1) riferimenti minimi disponibili (BA + sorgente PREVENTIVO)'
+  '1) riferimenti minimi disponibili (BA + sorgente COMMESSA)'
 );
+
+-- Sorgenti REALI: 4 commesse "documento sorgente" (A, B, C, D) — chiave
+-- canonica id::text, esistenza garantita (guard testuale soddisfatto).
+CREATE TEMP TABLE tmp_src_link AS
+SELECT
+  s.tag,
+  vendite.fn_get_or_create_commessa(
+    p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_link),
+    p_utility_id => (SELECT utility_id FROM tmp_refs_link),
+    p_tipo_commessa => 'AUTO',
+    p_policy_fatturazione => 'DA_DOCUMENTO',
+    p_fatturazione_immediata => false,
+    p_priorita_operativa => 'NORMALE',
+    p_emittente_soggetto_ruolo_id => (SELECT emittente_soggetto_ruolo_id FROM tmp_refs_link),
+    p_competenza_dal => DATE '2026-06-01',
+    p_competenza_al => DATE '2026-06-30',
+    p_meta => jsonb_build_object('test_scope', 'pgtap_link_multi_src_' || s.tag),
+    p_force_new => true
+  )::text AS src_uid
+FROM (VALUES ('A'), ('B'), ('C'), ('D')) AS s(tag);
 
 -- Due commesse DISTINTE (p_force_new): commessa2 serve solo al test 8.
 CREATE TEMP TABLE tmp_commesse_link AS
@@ -100,7 +123,7 @@ CREATE TEMP TABLE tmp_link_a AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa1_id FROM tmp_commesse_link),
   p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM tmp_refs_link),
-  p_sorgente_uid => (SELECT uid_a FROM tmp_refs_link),
+  p_sorgente_uid => (SELECT src_uid FROM tmp_src_link WHERE tag = 'A'),
   p_sorgente_riga => NULL,
   p_meta => jsonb_build_object('src', 'A')
 ) AS link_id;
@@ -119,7 +142,7 @@ CREATE TEMP TABLE tmp_link_b AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa1_id FROM tmp_commesse_link),
   p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM tmp_refs_link),
-  p_sorgente_uid => (SELECT uid_b FROM tmp_refs_link),
+  p_sorgente_uid => (SELECT src_uid FROM tmp_src_link WHERE tag = 'B'),
   p_sorgente_riga => NULL,
   p_meta => jsonb_build_object('src', 'B')
 ) AS link_id;
@@ -138,7 +161,7 @@ CREATE TEMP TABLE tmp_link_c AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa1_id FROM tmp_commesse_link),
   p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM tmp_refs_link),
-  p_sorgente_uid => (SELECT uid_c FROM tmp_refs_link),
+  p_sorgente_uid => (SELECT src_uid FROM tmp_src_link WHERE tag = 'C'),
   p_sorgente_riga => NULL,
   p_meta => jsonb_build_object('src', 'C')
 ) AS link_id;
@@ -158,7 +181,7 @@ SELECT is(
   vendite.fn_link_commessa_sorgente(
     p_commessa_id => (SELECT commessa1_id FROM tmp_commesse_link),
     p_sorgente_tipo_id => (SELECT sorgente_tipo_id FROM tmp_refs_link),
-    p_sorgente_uid => (SELECT uid_b FROM tmp_refs_link),
+    p_sorgente_uid => (SELECT src_uid FROM tmp_src_link WHERE tag = 'B'),
     p_sorgente_riga => NULL,
     p_meta => jsonb_build_object('rilink', true)
   ),
@@ -169,6 +192,7 @@ SELECT is(
 -- ============================================================
 -- 7) seconda ROOT esplicita su commessa1 (INSERT diretto) -> bloccata (23505)
 --    Enforcement a livello vincolo: unique parziale "una sola ROOT".
+--    La sorgente D e' reale e libera: passa il guard a10 e cade sul vincolo.
 -- ============================================================
 SELECT throws_ok(
   format(
@@ -176,7 +200,7 @@ SELECT throws_ok(
       VALUES (%s, %s, %L, 'ROOT')$$,
     (SELECT commessa1_id FROM tmp_commesse_link),
     (SELECT sorgente_tipo_id FROM tmp_refs_link),
-    'EXPLICIT-ROOT-2-' || substr(md5(clock_timestamp()::text), 1, 8)
+    (SELECT src_uid FROM tmp_src_link WHERE tag = 'D')
   ),
   '23505',
   NULL,
@@ -192,7 +216,7 @@ SELECT throws_ok(
     $$SELECT vendite.fn_link_commessa_sorgente(%s, %s, %L, NULL, '{}'::jsonb)$$,
     (SELECT commessa2_id FROM tmp_commesse_link),
     (SELECT sorgente_tipo_id FROM tmp_refs_link),
-    (SELECT uid_a FROM tmp_refs_link)
+    (SELECT src_uid FROM tmp_src_link WHERE tag = 'A')
   ),
   'P0001',
   NULL,
