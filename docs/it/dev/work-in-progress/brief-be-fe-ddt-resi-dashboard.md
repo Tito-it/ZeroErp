@@ -1,9 +1,13 @@
 # Brief BE/FE — DDT e resi nelle lenti + coda accrediti sui fatti
 
-> **Tipo**: brief operativo BE/FE · **Target**: `dev/backend-tid` · **Data**: 2026-07-16 · **Owner**: Tid
+> **Tipo**: brief operativo BE/FE · **Target**: `dev/backend-tid` · **Data**: 2026-07-16
+> · **Rev**: 2026-07-17 — allineato alla rifondazione a **contatore** del brief DB
+> (DL-27/28 + emendamenti DL-21/23/24/26): motivo rinominato, coda accrediti con quantità,
+> card Ordini mista, nuovo gate solo-trasporto, punto "riga non fatturabile" superato.
+> · **Owner**: Tid
 > **Stato**: ☐ DA REALIZZARE — **spec scritta a DB non ancora applicato**
 > **Design-of-record**: [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
-> §6-quater, decisioni **DL-19..26**.
+> §6-quater, decisioni **DL-19..28**.
 > **Prerequisito DB**: [brief-db-fatturazione-ddt-resi.md](brief-db-fatturazione-ddt-resi.md).
 > **Gate**: BE/FE partono a **oggetti DB applicati** ([[feedback_be_fe_attende_prerequisiti_db]]).
 > **Contesto**: non siamo in produzione ([[project_no_produzione_solo_sviluppo]]) → breaking
@@ -15,9 +19,9 @@
 
 ## 0. Scopo in una riga
 
-Far comparire **DDT** e **RESI** nelle due lenti a monte e adeguare la **coda accrediti** alla
-sua nuova popolazione (righe la cui merce è già fatturata, di qualunque tipo — non più "le
-righe a credito").
+Far comparire **DDT** e **RESI** nelle due lenti a monte, adeguare la **coda accrediti** alla
+sua nuova forma (popolazione = differenza negativa del contatore, con la **quantità**
+dell'accredito dovuto) e gestire il nuovo **gate solo-trasporto** nel drawer DDT (DL-28).
 
 ## 1. La buona notizia: quasi tutto è zero-touch
 
@@ -27,9 +31,14 @@ payload (`valore_* = null` → area a conteggi, DL-11) e il FE **legge, non ri-d
 si decodificano con `labelOrCode` (fallback al codice grezzo). Quindi **niente lavoro
 strutturale**: le card nuove comparirebbero da sole.
 
-Ma da sole comparirebbero **male**, e sono queste le uniche cose che vanno toccate davvero:
-fuori ordine di funnel, senza etichetta tradotta e — la sola vera rottura — **non
-drillabili**.
+Anche la **grana (reso × motivo)** del ramo resi (un reso misto = due righe di backlog,
+deroga dichiarata in DL-24/brief DB §4d) è zero-touch: verificato 2026-07-17, le DataTable di
+Backlog e Situazione aperta **non usano `dataKey`** proprio perché la union è cross-area
+(`documento_id` si ripete già tra aree — c'è il commento nel template). Righe duplicate per
+documento non rompono nulla.
+
+Ma da sole le card comparirebbero **male**, e sono queste le cose da toccare davvero: fuori
+ordine di funnel, senza etichetta tradotta e — la sola vera rottura — **non drillabili**.
 
 ## 2. Backend
 
@@ -42,7 +51,7 @@ de-whitellistato apposta il 2026-07-06 (nota Fase 2 del design doc). Verificato 
 riepilogo (fail-visible) ma il drill-down andrebbe in errore: **card che non si aprono**.
 
 | Costante | Oggi | Diventa |
-|---|---|---|
+| --- | --- | --- |
 | `DASH_FATTURAZIONE_AREE` | `PREVENTIVI, ORDINI, OFFERTE, CONTRATTI, COMMESSE` | **+ `DDT`, + `RESI`** (nell'ordine del funnel: DDT dopo ORDINI; RESI in coda) |
 | `DASH_FATTURAZIONE_AREE_EURO` | `PREVENTIVI, ORDINI, COMMESSE` | **+ `DDT`** (ha importi). **NO `RESI`** → conteggi, DL-24 |
 | `DASH_APERTO_AREE` | `PREVENTIVI, ORDINI, OFFERTE, CONTRATTI` | **+ `DDT`** (5 aree). **NO `RESI`** (DL-24: REVERSE_FLOW, non serbatoio) |
@@ -52,33 +61,53 @@ Lente 2 Backlog (che include COMMESSE)".
 
 ### BE-2 — Coda accrediti (`db/resi_repository.py`, `services/resi_service.py`)
 
-`vw_resi_da_accreditare` **cambia popolazione e forma** (brief DB §3c): non più
-`riapre_residuo = false` ma *«la merce è già impegnata in fatturazione»*, **qualunque tipo di
-reso**, con il distinguo **NC dovuta / NC facoltativa**. Breaking secco, nessun doppio binario.
+`vw_resi_da_accreditare` **cambia popolazione e forma** (brief DB §3c, DL-27). Breaking secco,
+nessun doppio binario:
 
+- **Popolazione** = differenza **negativa** del contatore (`fatturati − tenuti > 0`), qualunque
+  tipo di reso — non più il filtro `riapre_residuo = false`. Chi ha differenza ≤ 0 esce.
+- ⚠️ **La coda ora espone una QUANTITÀ** — l'accredito dovuto (`fatturati − tenuti`) — non solo
+  l'elenco delle righe. È una colonna in più nel contratto API, **e la slice NC ci si
+  appoggerà**: va esposta nel payload con nome stabile, non trattata come dettaglio di lista.
+- **Il tipo di reso resta come ETICHETTA** dovuta/facoltativa (a credito = dovuta, per
+  ri-consegna = facoltativa), non come criterio di popolamento.
 - Adeguare la SELECT e la config lista (`vendite.resi_da_accreditare`, id 10) alle colonne
-  nuove.
-- **Esporre il distinguo dovuta/facoltativa** — la forma esatta arriva dal team DB (brief DB
-  §8): se è una colonna, passthrough; se serve un filtro, aggiungerlo whitelisted.
-- ❓ **Da decidere quando il DB risponde**: il filtro dovuta/facoltativa è un query-param o si
-  rende solo come colonna? Raccomandazione: **colonna + filtro opzionale** (l'operatore lavora
-  le dovute, ma deve poter vedere le facoltative per esercitare la scelta DL-26).
-- Test: adeguare `test_resi_*`; la popolazione cambia → gli assert sulla vecchia regola per
-  tipo **vanno riscritti, non ritoccati**.
+  nuove (le colonne esatte arrivano dal team DB — §5).
+- ❓ **Filtro dovuta/facoltativa**: raccomandazione **colonna + filtro opzionale** whitelisted —
+  l'operatore lavora le dovute, ma deve poter vedere le facoltative per esercitare la scelta
+  DL-26 (che vive proprio su questa coda, fino alla ri-spedizione).
+- Test: la popolazione cambia → gli assert sulla vecchia regola per tipo **vanno riscritti,
+  non ritoccati**.
 
-### BE-3 — Cosa NON cambia (per non cercarlo)
+### BE-3 — Gate solo-trasporto (DL-28): `error_policies.py`
+
+Il DB introduce un **blocco all'emissione** del DDT: causale fatturabile + almeno una riga
+attiva senza prezzo **risolvibile** → errore parlante (codice nuovo, comunicato dal team DB).
+
+- Registrare la policy in `core/services/error_policies.py` (409, `show_error_banner` —
+  famiglia `E_DDT_*`).
+- **Lookup causali: niente da fare** — verificato 2026-07-17: `config.causali_trasporto` è già
+  nella whitelist lookup BE (`dbops_repository.py`) e già registrata in `core/config-tables.js`
+  FE. La colonna `fatturabile` viaggia da sola nel lookup generico.
+
+### BE-4 — Cosa NON cambia (per non cercarlo)
 
 - `dashboard-aperto` / `dashboard-backlog`: endpoint, envelope, paginazione, ordinamento,
   filtri classe/fase → **invariati**. Il resolver DDT entra dalla union, il BE è passthrough.
-- **Ordine al residuo (DL-23)**: lo fa la **vista**. Il BE non calcola nulla.
+- **Ordine al residuo (DL-23 emendato)** e **popolazione DDT (DL-21 emendato)**: li fanno le
+  **viste**. Il BE non calcola nulla e non filtra nulla.
+- **Nessuna esposizione "riga DDT non fatturabile"**: il punto è **superato** dalla
+  rifondazione a contatore (brief DB §8) — la ri-consegna è derivata, niente colonna, niente
+  da esporre.
 - Nessun endpoint nuovo.
 
-### BE-4 — Test
+### BE-5 — Test
 
 - `test_dashboard_backlog_*`: `?area=DDT` e `?area=RESI` **non danno più 400** e inoltrano al
   repo (è la regressione che BE-1 previene).
 - `test_dashboard_aperto_*`: `DDT` nel vocabolario aree del riepilogo, `RESI` **assente**.
 - Misura: `DDT` con `valore_totale` valorizzato, `RESI` con `valore_fermo` **null** (mai 0).
+- Coda accrediti: quantità accredito dovuto nel payload, etichetta dovuta/facoltativa.
 
 ## 3. Frontend
 
@@ -87,7 +116,7 @@ reso**, con il distinguo **NC dovuta / NC facoltativa**. Breaking secco, nessun 
 Estratto il 2026-07-06 proprio per evitare il drift su nuova area — **è qui che si aggiunge**,
 non nelle view:
 
-```
+```js
 DDT:   { route: '/vendite/ddt',   severity: statoDdtSeverity  }   // dopo ORDINI
 RESI:  { route: '/vendite/resi',  severity: statoResoSeverity }   // in coda
 ```
@@ -103,58 +132,92 @@ restare allineato a `DASH_FATTURAZIONE_AREE`** (lo dice il commento del file).
 
 - Aree: `area_ddt`, `area_resi`
 - Motivi (`motivo_fermo.*`): `IN_ATTESA_DDT`, `IN_TRANSITO`, `RICONSEGNA_NON_ESEGUITA`,
-  `NC_DOVUTA` + le rispettive azioni suggerite
+  **`MERCE_RESA_GIA_FATTURATA`** (⚠️ non `NC_DOVUTA`: rinominato in DL-24 emendato — il motivo
+  nomina il *fatto*, non il rimedio, perché le NC non sono ancora definite) + le rispettive
+  azioni suggerite
 - Senza queste chiavi non si rompe nulla (`labelOrCode` mostra il codice grezzo) — ma è
   esattamente il "comparire male" del §1.
 
-### FE-3 — Situazione aperta: la card Ordini cambia significato (DL-23)
+### FE-3 — Situazione aperta: la card Ordini diventa MISTA (DL-23 emendato)
 
-⚠️ Non è un ritocco di etichetta: **è un cambio di semantica**. La card Ordini passa da
-*"valore dell'aperto"* a **"valore ancora da spedire"**, ed è l'**unica area con misura
-netta** (le altre restano lorde). Va detto nell'etichetta/tooltip, altrimenti l'utente legge
-un numero più basso di ieri senza sapere perché. La guida (Fase 4) lo recepisce.
+⚠️ Non è un ritocco di etichetta, ed è **cambiato rispetto alla prima stesura di questo
+brief**: la misura netta ("valore ancora da spedire") vale **solo per gli ordini il cui
+veicolo di billing è il DDT** (`trigger ∈ {SPEDITO, CONSEGNATO}`); gli ordini con
+`trigger = CONFERMATO` — la configurazione di **default** — restano al **valore pieno**
+(fatturano alla conferma: non c'è doppio conteggio da evitare, e la misura netta li
+mostrerebbe a 0 € creando un nuovo buco cieco).
+
+Conseguenza FE: la card Ordini è una **somma mista** (pieno per i CONFERMATO + da-spedire per
+gli altri). Il calcolo è tutto DB-side; al FE resta l'onestà dell'etichetta/tooltip — non
+promettere né "valore dell'aperto" né "da spedire" secchi. Proposta: tooltip che spiega la
+regola in una riga («ordini a fatturazione su consegna: conta solo il non spedito»). La guida
+(Fase 4) lo recepisce.
+
+Nota parallela per la guida, nessun lavoro FE: la **card DDT** mostra solo i DDT **con ruolo
+di fatturazione** (DL-21 emendato — esclusi gli order-backed di ordini CONFERMATO e i
+solo-trasporto): un DDT visibile nella lista DDT può legittimamente non comparire nei
+cruscotti.
 
 Per il resto la view è zero-touch: la card DDT compare dal riepilogo, il donut per fase la
 disegna da sé.
 
 ### FE-4 — Coda accrediti (`vendite/resi/components/ResiCodaTable.vue`)
 
-Segue BE-2: colonne nuove e **distinzione visiva dovuta/facoltativa** (le facoltative non sono
-arretrato: sono un'opzione dell'operatore, DL-26). Il componente è già su
-`usePagedDashFetch` con `loaded`/empty-state onesto → si tocca solo il contenuto.
+Segue BE-2: colonne nuove, tra cui la **quantità dell'accredito dovuto** (è l'informazione
+centrale della coda: «fatturata per 10, tenuta 7» → accredito 3) e la **distinzione visiva
+dovuta/facoltativa** (le facoltative non sono arretrato: sono un'opzione dell'operatore,
+DL-26). Il componente è già su `usePagedDashFetch` con `loaded`/empty-state onesto → si tocca
+solo il contenuto.
 
 **Nessuna azione "emetti NC"**: non esiste il ramo NC. Non predisporre UI morta.
 
-### FE-5 — Backlog: zero-touch
+### FE-5 — Drawer DDT: gate solo-trasporto (DL-28)
+
+- Il **nuovo errore all'emissione** («righe senza prezzo su causale fatturabile») arriva dal
+  DB via `cambia-stato`/`emetti` → messaggio i18n mappato sulla policy di BE-3, resa standard
+  a banner. Nessuna logica FE che replichi il gate ([[feedback_bug_logici_modello]] non si
+  applica: la fonte è il DB, il FE mostra).
+- **Causale obbligatoria all'emissione**: se il team DB conferma l'obbligo (raccomandato nel
+  brief DB), segnare il campo causale nel `DdtForm` come richiesto-per-emissione (asterisco /
+  hint), senza guard FE duro — il fail-fast resta al DB.
+
+### FE-6 — Backlog: zero-touch
 
 Card, filtri classe/area, drill-down, kebab: tutto data-driven. Con FE-1 + FE-2 le due aree
-nuove funzionano.
+nuove funzionano. La grana (reso × motivo) non richiede nulla (§1).
 
 ## 4. Cosa aspetta risposte dal team DB (brief DB §8)
 
 Da chiudere prima di partire, non da indovinare:
 
-1. La forma di *"questa riga DDT non fattura"* (colonna vs predicato) — se è colonna, il BE la
-   espone nel dettaglio DDT.
-2. Le colonne finali di `vw_resi_da_accreditare` e **come** è espresso il distinguo
-   dovuta/facoltativa → BE-2, FE-4.
-3. Eventuali nuovi codici errore → `error_policies.py`.
+1. Le colonne finali di `vw_resi_da_accreditare` — in particolare **il nome della colonna
+   quantità** (accredito dovuto) e come è espressa l'etichetta dovuta/facoltativa → BE-2, FE-4.
+2. Il **codice del nuovo errore** del gate solo-trasporto + la conferma dell'obbligo causale
+   all'emissione → BE-3, FE-5.
+3. Eventuali altri codici errore → `error_policies.py`.
+
+~~La forma di "questa riga DDT non fattura"~~ — **superato** (brief DB §8): nessuna colonna,
+la ri-consegna è derivata dal contatore.
 
 ## 5. Fuori perimetro
 
 - **Lente 1 (Competenza)**: invariata (decisione Tid).
-- **Emissione nota di credito**: slice NC. Qui solo la coda che la alimenta.
-- **Guida utente**: Fase 4 del design doc (recepirà FE-3).
+- **Emissione nota di credito**: slice NC. Qui solo la coda che la alimenta (che però già
+  espone la quantità su cui la NC si appoggerà — BE-2).
+- **`vw_stato_sorgente_ddt`/`_reso`** (brief DB step 6b): proiezione DB consumata da
+  `pratiche.fn_stato_sorgente` — nessun lavoro BE/FE in questa slice.
+- **Guida utente**: Fase 4 del design doc (recepirà FE-3, card mista e popolazione DDT).
 
 ## 6. Avanzamento
 
 | # | Step | Stato |
-|---|---|---|
+| --- | --- | --- |
 | 1 | BE-1 — whitelist aree (`DASH_FATTURAZIONE_AREE` +DDT+RESI · `_EURO` +DDT · `DASH_APERTO_AREE` +DDT) + commenti | ☐ |
 | 2 | FE-1 — `dashboardAree.js`: DDT + RESI (severity già esistenti) | ☐ |
-| 3 | FE-2 — i18n `dash_comune`: 2 aree + 4 motivi, it+en | ☐ |
-| 4 | FE-3 — card Ordini: etichetta/tooltip "ancora da spedire" (misura netta) | ☐ |
-| 5 | BE-2 + FE-4 — coda accrediti alla nuova popolazione + distinguo dovuta/facoltativa | ☐ |
-| 6 | BE-4 — test (drill-down DDT/RESI senza 400, RESI fuori dal serbatoio, misura a conteggi) | ☐ |
-| 7 | Suite `apps.vendite` + `apps.core` verde, build FE, `kill -HUP` gunicorn ([[project_backend_gunicorn_reload]]) | ☐ |
-| 8 | Validazione in-app Tid | ☐ |
+| 3 | FE-2 — i18n `dash_comune`: 2 aree + 4 motivi (`MERCE_RESA_GIA_FATTURATA`, non `NC_DOVUTA`), it+en | ☐ |
+| 4 | FE-3 — card Ordini: etichetta/tooltip per la misura **mista** (netta solo su trigger S/C) | ☐ |
+| 5 | BE-2 + FE-4 — coda accrediti: nuova popolazione + **quantità accredito dovuto** + etichetta dovuta/facoltativa | ☐ |
+| 6 | BE-3 + FE-5 — gate solo-trasporto: policy errore + i18n + causale richiesta-per-emissione nel form | ☐ |
+| 7 | BE-5 — test (drill-down DDT/RESI senza 400, RESI fuori dal serbatoio, misura a conteggi, quantità in coda) | ☐ |
+| 8 | Suite `apps.vendite` + `apps.core` verde, build FE, `kill -HUP` gunicorn ([[project_backend_gunicorn_reload]]) | ☐ |
+| 9 | Validazione in-app Tid | ☐ |

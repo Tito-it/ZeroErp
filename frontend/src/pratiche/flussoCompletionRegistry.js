@@ -42,7 +42,7 @@ export const FLUSSO_COMPLETION_REGISTRY = {
       const { cambiaStatoPreventivoDaPratica } = await import(
         '../vendite/preventivi/api/preventiviApi'
       )
-      return cambiaStatoPreventivoDaPratica(praticaId, { nuovo_stato: nuovoStato, ...(meta || {}) })
+      return cambiaStatoPreventivoDaPratica(praticaId, { nuovo_stato: nuovoStato, ...meta })
     },
   },
   // OFFERTA/CONTRATTO: aggiungere qui quando i loro flussi di accettazione

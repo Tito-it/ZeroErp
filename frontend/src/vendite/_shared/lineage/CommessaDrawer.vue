@@ -16,7 +16,7 @@ import { DRAWER_WIDTH } from '../../../core/constants'
 import { statoCommessaSeverity } from '../../../core/utils/severity'
 import LineagePassaggiPanel from './LineagePassaggiPanel.vue'
 
-const props = defineProps({
+defineProps({
   visible: { type: Boolean, default: false },
   commessaId: { type: [Number, null], default: null },
 })
