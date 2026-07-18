@@ -5,7 +5,7 @@
 > **un solo pattern**, invece di una colonna dedicata per ogni tipo.
 >
 > **Vedi anche**: [config.sorgenti](/dbzero/config/tabelle/sorgenti) ·
-> [script.trgfn_guard_sorgente_polimorfa](/dbzero/script/funzioni/trgfn_guard_sorgente_polimorfa) ·
+> [script.trgfn_guard_sorgente_polimorfa_testuale](/dbzero/script/funzioni/trgfn_guard_sorgente_polimorfa_testuale) ·
 > [script.vw_stato_sorgente](/dbzero/script/views/vw_stato_sorgente)
 
 ---
@@ -28,10 +28,17 @@ La soluzione è un **aggancio universale**: invece del tunnel dedicato, si memor
 2. **Le colonne di aggancio** sulla tabella che collega:
    - `sorgente_tipo_id` = *che tipo è* (FK a `config.sorgenti`);
    - `sorgente_uid` = *quale in particolare* (il valore che identifica la riga).
-3. **Il guard** — `script.trgfn_guard_sorgente_polimorfa`. Su INSERT/UPDATE apre il
-   dizionario, va nella `target_table` giusta, cerca con la chiave giusta e verifica
-   che **quel documento esista davvero**; altrimenti **blocca** (niente collegamenti a
-   documenti fantasma, niente `key_selector` non gestiti).
+3. **Il guard** — `script.trgfn_guard_sorgente_polimorfa_testuale` (dal 2026-07-18,
+   attivo su `pratiche_sorgenti` e `commesse_sorgenti`). Su INSERT/UPDATE apre il
+   dizionario, controlla che la chiave sia **nel formato giusto** per il
+   `key_selector`, va nella `target_table` giusta e verifica che **quel documento
+   esista davvero**; altrimenti **blocca** (niente collegamenti a documenti
+   fantasma, niente chiavi nel formato sbagliato che poi «non risolvono» in
+   silenzio). Esiste anche la sorella `_tipizzata` per il modello a colonne
+   tipizzate (`sorgente_riga` BIGINT / `sorgente_uid` UUID), oggi non agganciata.
+   In più, `vendite.fn_link_commessa_sorgente` **normalizza** la chiave alla
+   scrittura (traduce l'uuid in `id::text` per i tipi a chiave `id`): i chiamanti
+   storici continuano a funzionare e scrivono canonico.
 
 > Analogia: un **adattatore universale**. Non serve una presa diversa per ogni Paese:
 > basta l'adattatore + l'indicazione di quale spina usare (`key_selector`).
@@ -76,7 +83,7 @@ FROM pg_trigger t
 JOIN pg_class c     ON c.oid = t.tgrelid
 JOIN pg_namespace n ON n.oid = c.relnamespace
 JOIN pg_proc p      ON p.oid = t.tgfoid
-WHERE p.proname = 'trgfn_guard_sorgente_polimorfa'
+WHERE p.proname LIKE 'trgfn_guard_sorgente_polimorfa%'
   AND NOT t.tgisinternal
 ORDER BY 1, 2;
 ```

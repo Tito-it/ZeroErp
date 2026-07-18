@@ -18,8 +18,16 @@
 # 🔑 CHIAVE: `id::text`, NON l'uid. Verificato sul seed vivo —
 # config.sorgenti.key_selector = 'id' sia per DDT_VENDITA sia per RESO_VENDITA
 # (solo PREVENTIVO e OFFERTA_COMMERCIALE usano 'uid'). E' la convenzione
-# polimorfa portante, validata da script.trgfn_guard_sorgente_polimorfa e
-# documentata in config/manual/sorgenti.md §Convenzione chiave sorgente.
+# polimorfa portante, validata da script.trgfn_guard_sorgente_polimorfa_testuale
+# e documentata in config/manual/sorgenti.md §Convenzione chiave sorgente.
+#
+# ⚠️ NIENTE preCondition sul seed di config.sorgenti (rimossa 2026-07-18 dopo
+#   fallimento CI su DB ricostruito): questa fase 20_code gira PRIMA di 80_data,
+#   quindi su DB nuovo config.sorgenti e' ancora vuota e una sqlCheck
+#   "COUNT(*) = 2" fallisce sempre (Expected '2' got '0' -> HALT). Le
+#   preCondition di 20_code possono interrogare solo il CATALOGO (pg_proc,
+#   pg_class, pg_trigger, columnExists), mai i dati seed. La coerenza del
+#   key_selector e' garantita dal seed stesso + dal guard, non da qui.
 # ⚠️ NON confondere con vendite.resi.sorgente_uid, che e' una colonna TIPIZZATA
 #   DIRETTA (uuid, punta al DDT di origine): meccanismo diverso, fuori dal
 #   polimorfo. Sbagliare chiave qui = ramo che non aggancia nulla, in silenzio.
@@ -69,12 +77,6 @@ databaseChangeLog:
                 schemaName: config
                 tableName: stati_doc_reso
                 columnName: is_abortito
-            - sqlCheck:
-                expectedResult: "2"
-                sql: >
-                  SELECT COUNT(*) FROM config.sorgenti
-                   WHERE codice_interno IN ('DDT_VENDITA','RESO_VENDITA')
-                     AND key_selector = 'id' AND attivo IS TRUE
       changes:
         - sql:
             dbms: postgresql

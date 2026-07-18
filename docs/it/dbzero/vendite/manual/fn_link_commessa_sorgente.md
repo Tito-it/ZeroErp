@@ -7,10 +7,24 @@ Collega la ROOT source a una commessa in modo idempotente e coerente.
 
 ### Regole applicate
 
-* Una commessa puo` avere una sola ROOT (`ruolo_link='ROOT'`).
-* Se ROOT gia` presente, deve coincidere con la sorgente in ingresso.
+* Una commessa puo` avere una sola ROOT (`ruolo_link='ROOT'`); le sorgenti
+  successive diventano COLLEGATO (multi-sorgente, la fn decide il ruolo).
+* Una sorgente (tipo + uid) appartiene a una sola commessa
+  (`uq_commesse_sorgenti_src_uid`); se gia` su altra commessa:
+  `E_COMMESSA_SORGENTE_ALTRA_COMMESSA`.
 * `sorgente_uid` obbligatoria e non vuota.
-* In caso di mismatch sulla ROOT esistente, la funzione alza errore bloccante.
+* **Normalizzazione della chiave** (2026-07-18, brief-db-guard-sorgente-polimorfa
+  §2a): prima di idempotenza e insert, la chiave viene portata alla forma
+  canonica dettata da `config.sorgenti.key_selector`:
+  * tipo a chiave `id` + valore numerico → stoccato com'e' (`id::text`);
+  * tipo a chiave `id` + valore uuid → **tradotto** in `id::text` via
+    `target_table.uid` (i chiamanti storici BE restano intatti); se il target
+    non ha colonna `uid` o l'uuid non risolve → `E_SORG_NORM_NON_RISOLTA` (547);
+  * formato non conforme al selector → `E_SORG_FORMATO` (546);
+  * tipo non censito/non attivo → `E_SORG_CONF`.
+* A valle, il guard `trgfn_guard_sorgente_polimorfa_testuale` sulla tabella
+  ri-valida formato ed esistenza (difesa in profondita' per i writer che
+  saltano la fn).
 
 ---
 

@@ -25,11 +25,28 @@ decisa dal dominio (decisione DL-6, Tid 2026-07-04), collocata qui DB-first.
 | `ANOMALIA` | 🔴 | Non un semplice ritardo: serve revisione | vedi colonna `azione` |
 | `SOLLECITO_CLIENTE` | 🔵 | Palla al cliente (non lavoro interno): filtro dedicato | sollecito |
 
-### Whitelist operativa (seed, 10 codici)
+### Whitelist operativa (seed, 14 codici)
 
 `RIGA_RESIDUA`, `PUSH_NON_ESEGUITO`, `PUSH_PARZIALE`, `ATTIVITA_NON_APPROVATA`,
-`ATTIVITA_NON_EMESSA` → 🟠 · `FIGLIO_ABORTITO` → 🔴 · `IN_ATTESA_ACCETTAZIONE`
-→ 🔵 · `DOC_BOZZA`, `CANONE_NON_GENERATO`, `SENZA_FIGLIO` → 🟢.
+`ATTIVITA_NON_EMESSA`, **`RICONSEGNA_NON_ESEGUITA`** → 🟠 · `FIGLIO_ABORTITO` → 🔴 ·
+`IN_ATTESA_ACCETTAZIONE` → 🔵 · `DOC_BOZZA`, `CANONE_NON_GENERATO`, `SENZA_FIGLIO`,
+**`IN_TRANSITO`**, **`IN_ATTESA_DDT`**, **`MERCE_RESA_GIA_FATTURATA`** → 🟢.
+
+#### I quattro codici aggiunti dalla slice DDT/resi (2026-07-18)
+
+| `codice_interno` | Classe | Emesso da | Perché quella classe |
+|---|---|---|---|
+| `IN_TRANSITO` | 🟢 | `vw_dash_fatturazione_ddt` | Merce spedita che non ha ancora raggiunto lo stato che fattura: **è in viaggio, non in ritardo** |
+| `IN_ATTESA_DDT` | 🟢 | `vw_dash_fatturazione_ordini` | Ordine con trigger `SPEDITO`/`CONSEGNATO`: **non è lui a pushare**, lo faranno i suoi DDT. Resta nel serbatoio, esce dal backlog |
+| `RICONSEGNA_NON_ESEGUITA` | 🟠 | ramo resi del backlog | L'azione **esiste** (`fn_genera_ddt_riconsegna`) e la sua mancata esecuzione **blocca la fatturazione**: il residuo dell'ordine resta riaperto |
+| `MERCE_RESA_GIA_FATTURATA` | 🟢 **oggi** | ramo resi del backlog | Merce resa che risulta già fatturata → accredito dovuto. Fisiologico **perché nessuna azione esiste**: la nota di credito non c'è ancora, e correggere la quantità a mano è vietato dall'immutabilità |
+
+> **`MERCE_RESA_GIA_FATTURATA` diventerà 🟠 cambiando questa sola cella di seed.**
+> Il ramo che lo emette è già costruito e la classe si risolve a valle della union:
+> quando esisterà la slice NC, il backlog si popolerà **senza toccare una vista né
+> rilasciare BE/FE**. Il nome nomina **il fatto** («fatturata per 10, tenuta 7»), non
+> il rimedio: un `NC_DOVUTA` pre-deciderebbe la risposta e mentirebbe se il rimedio
+> scelto fosse un altro.
 
 ---
 

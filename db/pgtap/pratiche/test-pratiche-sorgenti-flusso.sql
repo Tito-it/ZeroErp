@@ -45,17 +45,49 @@ SELECT
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'APERTA')     AS st_aperta,
   (SELECT id FROM config.priorita_pratiche WHERE codice_interno = 'NORMALE') AS priorita_id,
   (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'DA_ESEGUIRE') AS fl_da_eseguire,
-  (SELECT id FROM config.sorgenti WHERE codice_interno = 'PREVENTIVO')       AS src_preventivo,
-  (SELECT id FROM config.sorgenti WHERE codice_interno = 'COMMESSA')         AS src_commessa;
+  (SELECT id FROM config.sorgenti WHERE codice_interno = 'COMMESSA')         AS src_commessa,
+  (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS billing_account_id,
+  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS ba_utility_id,
+  (SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id) FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS ba_emittente_sr_id;
 
 SELECT ok(
   (SELECT emittente_id IS NOT NULL AND soggetto_id IS NOT NULL
       AND st_aperta IS NOT NULL AND priorita_id IS NOT NULL
       AND fl_da_eseguire IS NOT NULL
-      AND src_preventivo IS NOT NULL AND src_commessa IS NOT NULL
+      AND src_commessa IS NOT NULL AND billing_account_id IS NOT NULL
    FROM tmp_ps_refs),
   '0. Precondizioni soddisfatte'
 );
+
+-- NOTA 2026-07-18 (brief-db-guard-sorgente-polimorfa): il guard sorgente su
+-- pratiche_sorgenti valida formato ed esistenza della chiave, quindi le
+-- sorgenti fittizie 'prev-A1-001' non passano piu'. Le sorgenti sono ora
+-- COMMESSE REALI (tipo COMMESSA, key_selector='id', chiave id::text) create
+-- qui e rimosse nel cleanup (test 12): la meccanica flusso<->sorgente sotto
+-- test e' identica qualunque sia il tipo.
+CREATE TEMP TABLE tmp_ps_src AS
+WITH ins AS (
+  INSERT INTO vendite.commesse (
+    codice, billing_account_id, utility_id, emittente_soggetto_ruolo_id
+  )
+  SELECT
+    ('TPS_' || t.tag || '_' || substr(md5(clock_timestamp()::text || t.tag), 1, 10))::varchar(64),
+    r.billing_account_id, r.ba_utility_id, r.ba_emittente_sr_id
+  FROM (VALUES ('X1'), ('X2'), ('X3'), ('X4'), ('Y1'), ('Y2')) AS t(tag)
+  CROSS JOIN tmp_ps_refs r
+  RETURNING id, codice
+)
+SELECT substring(codice FROM 'TPS_([XY][0-9])_') AS tag, id::text AS src_uid, id
+FROM ins;
 
 -- =========================================================
 -- 1) Setup: tipo_prestazione + template (non obbligatorio, ripetibile) +
@@ -157,11 +189,11 @@ SELECT lives_ok(
     'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
      VALUES (%s, %s, %L, ''ROOT'', %s)',
     (SELECT pratica_id FROM tmp_ps_pa),
-    (SELECT src_preventivo FROM tmp_ps_refs),
-    'prev-A1-001',
+    (SELECT src_commessa FROM tmp_ps_refs),
+    (SELECT src_uid FROM tmp_ps_src WHERE tag = 'X1'),
     (SELECT flusso_id FROM tmp_ps_fa1)
   ),
-  '6. ROOT preventivo agganciato al flusso A1'
+  '6. ROOT (sorgente X1) agganciato al flusso A1'
 );
 
 -- =========================================================
@@ -172,8 +204,8 @@ SELECT throws_ok(
     'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
      VALUES (%s, %s, %L, ''ROOT'', %s)',
     (SELECT pratica_id FROM tmp_ps_pa),
-    (SELECT src_preventivo FROM tmp_ps_refs),
-    'prev-A1-002',
+    (SELECT src_commessa FROM tmp_ps_refs),
+    (SELECT src_uid FROM tmp_ps_src WHERE tag = 'X2'),
     (SELECT flusso_id FROM tmp_ps_fa1)
   ),
   NULL, NULL,
@@ -188,8 +220,8 @@ SELECT lives_ok(
     'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
      VALUES (%s, %s, %L, ''ROOT'', %s)',
     (SELECT pratica_id FROM tmp_ps_pa),
-    (SELECT src_preventivo FROM tmp_ps_refs),
-    'prev-A2-001',
+    (SELECT src_commessa FROM tmp_ps_refs),
+    (SELECT src_uid FROM tmp_ps_src WHERE tag = 'X3'),
     (SELECT flusso_id FROM tmp_ps_fa2)
   ),
   '8. ROOT su flusso diverso della stessa pratica consentito'
@@ -204,7 +236,7 @@ SELECT lives_ok(
      VALUES (%s, %s, %L, ''COLLEGATO'', NULL)',
     (SELECT pratica_id FROM tmp_ps_pa),
     (SELECT src_commessa FROM tmp_ps_refs),
-    'comm-A-001'
+    (SELECT src_uid FROM tmp_ps_src WHERE tag = 'Y1')
   ),
   '9. COLLEGATO con flusso_id NULL consentito'
 );
@@ -218,7 +250,7 @@ SELECT lives_ok(
      VALUES (%s, %s, %L, ''COLLEGATO'', NULL)',
     (SELECT pratica_id FROM tmp_ps_pa),
     (SELECT src_commessa FROM tmp_ps_refs),
-    'comm-A-002'
+    (SELECT src_uid FROM tmp_ps_src WHERE tag = 'Y2')
   ),
   '10. Secondo COLLEGATO con flusso_id NULL consentito'
 );
@@ -231,8 +263,8 @@ SELECT throws_ok(
     'INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
      VALUES (%s, %s, %L, ''ROOT'', %s)',
     (SELECT pratica_id FROM tmp_ps_pa),
-    (SELECT src_preventivo FROM tmp_ps_refs),
-    'prev-cross-001',
+    (SELECT src_commessa FROM tmp_ps_refs),
+    (SELECT src_uid FROM tmp_ps_src WHERE tag = 'X4'),
     (SELECT flusso_id FROM tmp_ps_fb1)
   ),
   NULL, NULL,
@@ -257,6 +289,9 @@ DELETE FROM pratiche.template_flussi
  WHERE tipo_prestazione_id = (SELECT tp_id FROM tmp_ps_tp);
 DELETE FROM pratiche.tipi_prestazione
  WHERE codice_interno = 'TEST_PS';
+-- Commesse-sorgente create per il guard (vedi nota fixture): rimosse.
+DELETE FROM vendite.commesse
+ WHERE id IN (SELECT id FROM tmp_ps_src);
 
 SELECT pass('12. Cleanup completato');
 
