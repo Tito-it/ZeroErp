@@ -265,17 +265,31 @@ razionale perché non si riapra):
 stesura precedente): filtra `riapre_residuo = true` — un filtro **logistico** dentro una domanda
 **economica**. Qui servono **tutti i tipi**. È il rilievo del §0 un livello più in basso.
 
-⚠️ **Esistono già TRE definizioni divergenti di «quanta merce è tornata indietro»** — ed è qui,
-non sull'eleggibilità, che la regola del 2 è più urgente:
+⚠️ **Esistono già QUATTRO definizioni divergenti di «quanta merce è tornata indietro»** — ed è
+qui, non sull'eleggibilità, che la regola del 2 è più urgente:
 
 | Oggetto | Stato reso | `rr.attivo` | Tipi |
 |---|---|---|---|
 | `vw_resi_da_accreditare` / `vw_resi_da_riconsegnare` | `= CONFERMATO` | **sì** | filtrato |
 | `fn_ordine_riga_qta_riconsegna` | `= CONFERMATO` | **no** | solo `riapre_residuo` |
-| `fn_conferma_reso` / `fn_annulla_reso` (calcolo flip a RESO) | `<> ANNULLATO` (**include i DRAFT**) | **no** | tutti |
+| `fn_conferma_reso` / `fn_annulla_reso` (calcolo flip a RESO) | ~~`<> ANNULLATO`~~ → **`= CONFERMATO`** (fix step 2b, `20260717-05/06`) | **no** | tutti |
+| `trgfn_resi_righe_guard_quantita` (guard over-return) | `<> ANNULLATO` (**include i DRAFT**) | — | — |
 
-La definizione canonica del contatore è **CONFERMATI + attivi + tutti i tipi**. Le tre di sopra
+La definizione canonica del contatore è **CONFERMATI + attivi + tutti i tipi**. Le prime tre
 vanno ricondotte a un helper solo, ciascuna col suo filtro-tipo applicato **sopra**, non dentro.
+
+> 🔔 **PROMEMORIA STEP 2 — il quarto `<> ANNULLATO` NON è un errore da correggere alla cieca.**
+> Il guard over-return (`trgfn_resi_righe_guard_quantita`, `20260713-24`) usa anche lui
+> `<> 'ANNULLATO'`, ma qui **contare le bozze è difendibile**: è una *prenotazione*, e serve a
+> impedire che due bozze di reso sovrapposte, sommate, rendano più merce di quella consegnata
+> (residuo = consegnato − Σ resi non-annullati, riga corrente esclusa). Non è la stessa domanda
+> delle altre tre — non risponde a *«quanta merce è tornata»* (fatto economico) ma a *«questa
+> nuova riga di reso ci sta nel consegnato?»* (vincolo di inserimento). Chi scrive l'helper
+> unico dello step 2 **non deve** assorbire questo guard nell'helper: va lasciato dov'è, con la
+> sua semantica. Se un domani lo si volesse allineare a `= CONFERMATO`, sarebbe una **decisione
+> a sé** (renderebbe più lasco il guard: due bozze potrebbero prenotare oltre il consegnato
+> finché non si confermano) — da valutare con Tid, non un refactoring meccanico. Registrato
+> perché emerso durante lo step 2b (2026-07-17) e facile da confondere con gli altri tre.
 
 **✅ DECISO (Tid, 2026-07-16) — i resi in DRAFT nel flip a RESO sono un DIFETTO: si corregge in
 questa slice.** `fn_conferma_reso` e la gemella `fn_annulla_reso` contano i resi
@@ -582,8 +596,8 @@ compila — la **causale di trasporto**:
   resolver gemelli fanno tutti `JOIN config.stati_doc_<tipo>` e leggono `fase`/`esito` da lì —
   **nessuno** passa da `script.vw_stato_sorgente`. Il resolver DDT segue lo stesso pattern
   (`JOIN config.stati_doc_ddt`, che ha già `fase` e `is_abortito` NOT NULL). Nessuna dipendenza
-  nuova. Ma vedi il ❓ qui sotto: è proprio questa autonomia a lasciare scoperto l'altro
-  consumatore.
+  nuova. Ma vedi la decisione qui sotto: è proprio questa autonomia a lasciare scoperto
+  l'altro consumatore.
 
 **✅ DECISO (Tid, 2026-07-17) — il quinto ramo si fa, dentro la slice.** Il DDT manca da
 `script.vw_stato_sorgente` **solo perché è uno sviluppo recente** (Tid) — non c'è mai stata una
@@ -661,8 +675,10 @@ istante la somma fa 1.000. Chiude anche il buco cieco del §1d.
   pieno** — non c'è doppio conteggio da evitare, perché il DDT non conta nulla. È lo stesso
   lavoro di DL-20 (rendere il resolver ordini trigger-aware), non un secondo.
 
-  ❓ **Emendamento a DL-23 — serve la parola di Tid**: è una decisione registrata nel §10 del
-  [brief di design](brief-design-fatturazione-due-lenti.md), non correggibile da qui.
+  ✅ **Emendamento a DL-23 — FATTO (Tid, 2026-07-17)**: registrato nel §10 del
+  [brief di design](brief-design-fatturazione-due-lenti.md) — misura netta **solo** per
+  `trigger ∈ {SPEDITO, CONSEGNATO}`, ordine CONFERMATO al valore pieno; barrata la
+  giustificazione «somma sempre 1.000». Lo step 8 del §9 lo recepisce già.
 - ⚠️ **La giustificazione *«in ogni istante la somma fa 1.000»* NON regge** — e va tolta, perché
   lo step 11 chiedeva un pgTAP proprio su quella proprietà. Seed verificato:
   `fase(CONSEGNATO) = CHIUSO`, e DL-15 filtra `fase <> 'CHIUSO'` → quando il DDT arriva a
@@ -812,6 +828,20 @@ il modello non la impedisca — cioè la coda etichetta dovuta/facoltativa (§3c
   tab → vanno adeguati. **Breaking secco**, nessuna compat. ⚠️ La coda ora espone una
   **quantità** (l'accredito dovuto = `fatturati − tenuti`), non solo l'elenco delle righe: è
   una colonna in più nel contratto, e la slice NC ci si appoggerà.
+  **Forma effettiva (`20260718-01`, applicata 2026-07-18)** — grana invariata (riga di reso,
+  `resi_riga_id` resta la chiave):
+  - **colonne nuove**: `accredito_dovuto` (la quantità da accreditare), `etichetta`
+    (`DOVUTA` | `FACOLTATIVA`), `tenuti`, `fatturati` (il conto, esposto perché la coda dica
+    *cosa è successo* — «fatturata per 10, tenuta 7»);
+  - **colonne preservate**: tutte quelle su cui `resi_repository._CODA_META` ordina e cerca
+    (`reso_numero`, `data`, `destinatario_denominazione`, `descrizione`, `ddt_numero`,
+    `qta_operativa`, `motivo`, `ba_codice`, `quantita`) → gli `order_cols` non si rompono;
+  - ⚠️ **`ddt_numero`/`ddt_id` ora possono essere NULL** (il join al DDT è diventato LEFT: la
+    partita si aggancia via `ordine_riga_id`, non più via `ddt_riga_id` obbligatorio);
+  - ⚠️ **la popolazione cambia in entrambe le direzioni**: spariscono righe che il FE mostra
+    oggi (a credito già pareggiate), ne compaiono di nuove mai viste (ri-consegne su merce
+    fatturata, etichetta `FACOLTATIVA`) → il conteggio del tab **cambierà a colpo d'occhio**,
+    va detto a chi lo usa prima del rilascio, o sembrerà una perdita di dati.
 - **Due aree nuove** (`DDT`, `RESI`): il FE le accoda da solo (fail-visible), ma servono label
   i18n e la rotta *apri documento* in `vendite/dashboardAree.js`.
 - Il **ramo resi ha misura a conteggi** (`valore_fermo` NULL) → card come Offerte/Contratti.
@@ -828,11 +858,11 @@ il modello non la impedisca — cioè la coda etichetta dovuta/facoltativa (§3c
 | # | Step | Stato |
 |---|---|---|
 | 0 | **Cancelli di correttezza: TUTTI CHIUSI** (§3b chiave partita ✅ · §3b resi DRAFT ✅ · §3c frontiera EMESSA ✅ · §4c ordine CONFERMATO ✅) — gli step 1-8 sono scrivibili | ✅ |
-| 1 | **Il contatore** — `tenuti − fatturati` per partita, set-based, fonte unica (§3a) — primo, ci si appoggia il resto | ☐ |
-| 2 | Helper unico «merce tornata indietro» (CONFERMATI + attivi + tutti i tipi) e riconduzione delle **tre** definizioni divergenti (§3b) | ☐ |
-| 2b | **Fix flip a RESO**: `<> 'ANNULLATO'` → `= 'CONFERMATO'` in `fn_conferma_reso` **e** `fn_annulla_reso` (§3b, deciso) — assorbito dall'helper dello step 2. **Buco sui soldi già vivo oggi**, indipendente dal contatore | ☐ |
-| 3 | `fn_list_ddt_da_pushare` legge la differenza **positiva** (quantità, non filtro) + **`security_invoker`** ri-specificato ovunque si tocchi una vista (§3a/§3c) | ☐ |
-| 4 | `vw_resi_da_accreditare` = differenza **negativa**, segmenti `ORD:`+`DDT:` entrambi, etichetta dovuta/facoltativa (§3c, breaking) | ☐ |
+| 1 | **Il contatore** — `tenuti − fatturati` per partita, set-based, fonte unica (§3a) — primo, ci si appoggia il resto | ✅ **APPLICATO + TESTATO** (scritto 2026-07-17, applicato 2026-07-18): vista `20260717-11` `vw_contatore_merce` (grana = riga d'ordine; `tenuti = Σ fulfillment.qta_evasa − Σ vw_resi_righe_effettive.quantita`, `fatturati = Σ AF NORMALE` sui segmenti `ORD:*:R:<ordine_riga>` + `DDT:*:R:<ddt_riga>` via fulfillment, `differenza`; `security_invoker=on`) + pgTAP `test-vw-contatore-merce-v1` (`plan(10)`, 7 dei 10 casi §3a — gli altri 3 sono varianti aritmetiche o richiedono la NC). ⚠️ **Perimetro ORDER-BACKED, deciso con Tid**: standalone (ponte + ri-consegne ricorsive, gated da 5b) e **compositi** (`is_composito`: AF `#CMP` in unità-componente vs fulfillment/resi in unità-padre) **esclusi** → follow-up flaggati. Nessun link strutturato AF→partita: si parsa il `segment_key` (robusto a `#CMP` via `substring ':R:([0-9]+)'`) |
+| 2 | Helper unico «merce tornata indietro» (CONFERMATI + attivi + tutti i tipi) e riconduzione delle **tre** definizioni divergenti (§3b) | ✅ **APPLICATO + TESTATO** (scritto 2026-07-17, applicato 2026-07-18): vista `20260717-07` `vw_resi_righe_effettive` (CONFERMATE+attive, tutti i tipi, chiavi `ordine_riga_id`/`ddt_riga_id` + `riapre_residuo`, `security_invoker=on`) + pgTAP dedicato `test-vw-resi-righe-effettive-v1` (`plan(9)`). Ricondotte **2 su 3**: `fn_ordine_riga_qta_riconsegna` (`20260717-08`, filtro `riapre_residuo` sopra) e la flip conferma/annullo (`20260717-09/-10`, tutti i tipi). ⚠️ Aggiunge il filtro `attivo` canonico (no-op in pratica); test 25/26 di `test-resi-motore` passano identici = riconduzione behavior-preserving. **Differite le code** (`vw_resi_da_accreditare`/`_riconsegnare`): le riscrive lo step 4/9 — adotteranno la vista lì, riconducirle ora sarebbe throwaway. La **quarta** (guard over-return) resta fuori di proposito (§3b promemoria) |
+| 2b | **Fix flip a RESO**: `<> 'ANNULLATO'` → `= 'CONFERMATO'` in `fn_conferma_reso` **e** `fn_annulla_reso` (§3b, deciso) — assorbito dall'helper dello step 2. **Buco sui soldi già vivo oggi**, indipendente dal contatore | ✅ **APPLICATO + TESTATO** (scritto 2026-07-17, applicato 2026-07-18): `20260717-05` (conferma) + `20260717-06` (annullo, speculare) + pgTAP 25-26 in `test-resi-motore-v1` (`plan(26)`→`plan(28)`): bozza 6 + confermato 4 su DDT da 10 → **resta CONSEGNATO**; confermata anche la bozza → flip a RESO (il flip non è rotto). Perimetro: **solo l'asse stato** — `rr.attivo` e filtro tipi restano allo step 2 |
+| 3 | `fn_list_ddt_da_pushare` legge la differenza **positiva** (quantità, non filtro) + **`security_invoker`** ri-specificato ovunque si tocchi una vista (§3a/§3c) | ✅ **APPLICATO + TESTATO** (scritto 2026-07-17, applicato 2026-07-18): `20260717-12` — proietta come `quantita` la **differenza del contatore** distribuita per riga DDT (greedy oldest-first, cappata a `dr.quantita`), non più `dr.quantita` grezza; `qta_operativa` scalata proporzionalmente; filtro `quantita_push > 0`. Cintura XOR + frontiera EMESSA **intatte** (il fix orfano §3e è lo step 5). Standalone + compositi → ramo ELSE `dr.quantita` grezza (fuori dal contatore, invariati). pgTAP `test-fn-list-ddt-da-pushare-contatore-v1` (`plan(7)`, verde): reso riduce il push (7 non 10), **caso 8 chiude la doppia fatturazione** (ri-consegna già fatturata → proietta 0), + **caso F** (2026-07-18) sulla distribuzione §3d: partita 10 spezzata in due DDT parziali (6+4) con reso 5 → il 1° assorbe 5 (cappato), al 2° resta 0. Legge `vw_contatore_merce` (security_invoker) → RLS preservata; la funzione resta INVOKER default (come il vivo). ⚠️ **Il greedy distribuisce solo in BATCH**: con `p_ddt_id` il filtro è dentro la CTE `cand`, quindi il DDT mirato è l'unico candidato e prende `min(sua quantità, differenza)` ignorando i fratelli di partita — corretto e convergente (la AF creata abbassa la differenza al giro dopo), ma push mirati e push batch danno **ordini di allocazione diversi** a parità di stato |
+| 4 | `vw_resi_da_accreditare` = differenza **negativa**, segmenti `ORD:`+`DDT:` entrambi, etichetta dovuta/facoltativa (§3c, breaking) | ✅ **APPLICATO + TESTATO** (2026-07-18): `20260718-01` — popolazione dalla differenza negativa del contatore (`accredito_dovuto = fatturati − tenuti > 0`), tipo reso degradato a **etichetta** `DOVUTA`/`FACOLTATIVA`; colonne del conto esposte (`tenuti`, `fatturati`). I due segmenti arrivano già sommati dal contatore: qui **non si legge il trigger**. **Grana = riga di reso** (decisa con Tid: §7 dice «riga reso», ed è la grana su cui il BE ordina) con accredito **distribuito greedy oldest-first** tra le righe della stessa partita, cappato alla quantità della riga; chi riceve 0 esce. `DROP`+`CREATE` (cambiano numero e tipo delle colonne) con **`security_invoker=on` ri-specificato** (regressione V-1). Le due direzioni volute: **escono** le righe a credito già pareggiate (chiude 1b), **entrano** le ri-consegne su merce già fatturata (oggi invisibili). Perimetro ORDER-BACKED ereditato dal contatore: le righe reso senza `ordine_riga_id` non entrano più (standalone gated 5b). pgTAP `test-vw-resi-da-accreditare-contatore-v1` (`plan(8)`, verde) |
 | 5 | Fix orfano push DDT: `ordine >= trigger` **AND `NOT is_abortito`** AND no `RESO`, preservando `!= 'CONFERMATO'` (§3e) | ☐ |
 | 5b | **Solo trasporto via causale** (§4a, DL-28): colonna `fatturabile` su `config.causali_trasporto` + seed · gate emissione prezzi-risolvibili (mirror gate indirizzi, nuovo codice errore) · causale obbligatoria all'emissione · esclusione dal lister | ☐ |
 | 6 | Resolver `vw_dash_fatturazione_ddt` + union (§4a) — **popolazione = solo DDT con ruolo di fatturazione** (esclusi gli order-backed trigger CONFERMATO, deciso); `motivo_fermo` = **segno del contatore**, mai un predicato ricopiato | ☐ |
@@ -842,10 +872,10 @@ il modello non la impedisca — cioè la coda etichetta dovuta/facoltativa (§3c
 | 9 | Ramo resi sul backlog (§4d) — dopo lo step 4 | ☐ |
 | 10 | Seed motivi (§4e) | ☐ |
 | 11 | pgTAP **nuovi**: le **dieci righe della tabella §3a** + caso orfano + DDT annullato **non** fatturato + **caso-bozza del flip** (bozza 6 + confermato 4 su DDT da 10 → il DDT **resta** `CONSEGNATO` e i 6 pz **restano fatturabili** — oggi non lo copre nulla, §3b) + buco cieco + falso positivo ordini sparito + resi solo nel backlog + **solo trasporto** (causale non fatturabile mai eleggibile/mai nei cruscotti · emissione VENDITA con riga senza prezzo risolvibile **bloccata** · evasione con prezzo ereditato **passa**) + `security_invoker` sulle viste resi | ☐ |
-| 12 | pgTAP **esistenti da aggiornare** (censire prima di scrivere — [[feedback_guard_breaks_existing_tests]]): `test-fn-list-ddt-da-pushare-v1/-v2`, `test-resi-motore-v1`, `test-vw-dash-fatturazione-v1`, `test-vw-dash-backlog-v1`, `test-vw-dash-aperto-v1`, `test-vw-dash-security-invoker` | ☐ |
+| 12 | pgTAP **esistenti da aggiornare** (censire prima di scrivere — [[feedback_guard_breaks_existing_tests]]): `test-fn-list-ddt-da-pushare-v1/-v2`, `test-resi-motore-v1`, `test-vw-dash-fatturazione-v1`, `test-vw-dash-backlog-v1`, `test-vw-dash-aperto-v1`, `test-vw-dash-security-invoker` | ☐ — ⚠️ nota 2026-07-18: `test-fn-list-ddt-da-pushare-v1` era **rotto prima di questa slice** (fallout del lavoro emittente `20260713-xx`: la fixture non passava `emittente_fiscale_id` e `trgfn_ordini_default_emittente` non lo risolve in contesto pgTAP). Riparato in corsa — BA vincolato a emittente risolvibile + emittente esplicito su ordini e sul DDT senza BA, usando **`fn_get_emittente_fiscale_pk`** (è la funzione con cui il guard confronta, non `_id`). Ora 12/12: copre anche i casi 7-8 standalone, cioè il ramo che lo step 3 dichiara invariato. **Resta da aggiornare per la slice** (la sua popolazione non è ancora stata riletta contro il contatore) |
 | 13 | Apply dev + comunicazione a BE/FE (§8) | ☐ |
 
-> **Decisioni — stato.** Le ❓ ancora aperte sono marcate nel testo.
+> **Decisioni — stato: TUTTE CHIUSE** (2026-07-17). Nessuna ❓ residua nel testo.
 >
 > | § | Domanda | Stato |
 > |---|---|---|

@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# tipo_movimento da jsonb a COLONNA su vendite.commesse_attivita
+#   (brief-db-immutabilita-quantita-e-porta-oneri §4c.2, anticipato: il contatore
+#   della slice DDT/resi filtra su tipo_movimento e deve nascere sulla colonna
+#   vera — vedi §5 di quel brief e §3a del brief DDT/resi).
+#
+# IL RILIEVO (brief immutabilita §3): fn_upsert_commessa_attivita valida
+# tipo_movimento e lo salva in meta (jsonb). Come discriminatore PORTANTE
+# (contatore, riconciliazione utility, dashboard filtrano su di esso) sepolto in
+# un jsonb senza vincolo e' fragile: un INSERT diretto lo bypassa. Qui diventa
+# colonna con CHECK — il DB smette di fidarsi del chiamante.
+#
+# DOMINIO ESTESO CON 'ONERE' (decisione Tid 2026-07-17, §4c.2): un onere non e'
+# una rettifica; RETTIFICA resta libero per i conguagli/rettifiche vere di
+# domani. La porta onere (step 6 del brief immutabilita) scrivera' ONERE.
+#
+# BACKFILL = DEFAULT 'NORMALE', PROVATO NON ASSUNTO.
+#   Nessun chiamante passa oggi un valore diverso da NORMALE: i sei lister
+#   proiettano 'NORMALE'::varchar come costante e il BE ha
+#   TIPO_MOVIMENTO_NORMALE come default (commesse_repository.py). Quindi il
+#   DEFAULT sulla ADD COLUMN riempie correttamente lo storico.
+#   Il DO block qui sotto NON assume: conta le righe il cui meta dichiara altro
+#   e fa fallire la migration se ne trova. Costa una SELECT e trasforma
+#   un'assunzione in un fatto verificato sul DB vivo (stesso spirito del
+#   fail-fast di 20260714-01).
+#   Scelto un guard read-only invece di un UPDATE di backfill perche' un UPDATE
+#   di massa su questa tabella farebbe scattare trgfn_storico_generic (uno
+#   snapshot per riga) e i trigger AFTER child_requires_active_parent (che
+#   fallirebbero su righe con articolo/uom nel frattempo disattivato): prezzo
+#   alto per riscrivere un valore che il DEFAULT ha gia' messo.
+#
+# RESIDUO DICHIARATO: la chiave meta.tipo_movimento resta sulle righe storiche
+#   (inerte: nessuno la legge — verificato con grep su db/, backend/, frontend/;
+#   e vale 'NORMALE', identica alla colonna). Da 20260717-03 la fn smette di
+#   scriverla: le righe nuove hanno solo la colonna. NON si ripulisce con un
+#   UPDATE per la stessa ragione di sopra. meta resta comunque la casa di
+#   tipo_consumo, che questo step non tocca.
+#
+# Storico: nessun lavoro sullo specchio storico.commesse_attivita — lo snapshot
+#   e' JSONB e assorbe l'evoluzione di schema per costruzione
+#   (guide/storicizzazione-tabelle.md).
+# Dipendenze: vendite.commesse_attivita.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260717-01-alter-commesse-attivita-add-tipo-movimento-mctit.yaml
+
+  - changeSet:
+      id: 20260717-01-alter-commesse-attivita-add-tipo-movimento
+      author: mctit
+      comment: >
+        Promuove tipo_movimento da meta (jsonb) a colonna su
+        vendite.commesse_attivita: VARCHAR(32) NOT NULL DEFAULT 'NORMALE' +
+        CHECK (NORMALE|RETTIFICA|ONERE, dominio esteso con ONERE). Backfill via
+        DEFAULT, previa prova fail-fast che nessuna riga dichiari altro in meta.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: commesse_attivita
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: commesse_attivita
+                    columnName: tipo_movimento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Prova (non assunzione): il DEFAULT 'NORMALE' e' il backfill
+              -- corretto solo se nessuna riga storica dichiara altro in meta.
+              -- Se ne trova, la migration si ferma qui e il valore va deciso.
+              DO $do$
+              DECLARE
+                  v_drift bigint;
+              BEGIN
+                  SELECT count(*)
+                    INTO v_drift
+                    FROM vendite.commesse_attivita ca
+                   WHERE upper(btrim(COALESCE(ca.meta ->> 'tipo_movimento', 'NORMALE')))
+                         <> 'NORMALE';
+
+                  IF v_drift > 0 THEN
+                      RAISE EXCEPTION
+                        'commesse_attivita: % righe hanno meta.tipo_movimento <> NORMALE; '
+                        'il backfill via DEFAULT le falserebbe. Backfillare dal meta prima '
+                        'di applicare (brief-db-immutabilita-quantita-e-porta-oneri §4c.2).',
+                        v_drift;
+                  END IF;
+              END
+              $do$;
+
+              ALTER TABLE vendite.commesse_attivita
+                ADD COLUMN tipo_movimento VARCHAR(32) NOT NULL DEFAULT 'NORMALE';
+
+              ALTER TABLE vendite.commesse_attivita
+                ADD CONSTRAINT chk_commesse_attivita_tipo_movimento
+                CHECK (tipo_movimento IN ('NORMALE', 'RETTIFICA', 'ONERE'));
+
+              COMMENT ON COLUMN vendite.commesse_attivita.tipo_movimento IS
+                  'Registro della riga: NORMALE (fatto nato dal push, specchio del '
+                  'documento d''origine) | ONERE (voce di valore caricata dalla porta '
+                  'dedicata, qta=1) | RETTIFICA (riservato a conguagli/rettifiche future). '
+                  'Discriminatore portante: il contatore tenuti-fatturati conta SOLO le '
+                  'righe NORMALE. Promossa da meta a colonna 2026-07-17 '
+                  '(brief-db-immutabilita-quantita-e-porta-oneri §4c.2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.commesse_attivita
+                DROP CONSTRAINT IF EXISTS chk_commesse_attivita_tipo_movimento;
+              ALTER TABLE vendite.commesse_attivita
+                DROP COLUMN IF EXISTS tipo_movimento;

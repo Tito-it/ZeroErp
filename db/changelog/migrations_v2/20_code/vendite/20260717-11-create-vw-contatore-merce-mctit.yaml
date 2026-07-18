@@ -1,0 +1,181 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CONTATORE — vw_contatore_merce (brief-db-fatturazione-ddt-resi §3a, step 1).
+#
+# La fonte unica di «quanto fatturare / accreditare» per partita di merce. Una
+# sottrazione, e il SEGNO decide (§3a):
+#   tenuti − fatturati > 0 -> fattura la differenza
+#   tenuti − fatturati < 0 -> accredita la differenza
+#   = 0                    -> niente
+# E' l'invariante DL-26 (fatturato − accreditato = merce tenuta) scritto COME si
+# calcola, non come si spera. Ci si appoggiano gli step 3 (lister DDT: differenza
+# positiva), 4 (coda accrediti: differenza negativa), 6 (resolver: il segno).
+#
+# GRANA = riga d'ordine (partita di merce order-backed). Perimetro deciso con Tid
+# (2026-07-17): SOLO order-backed, che copre l'INTERO capitolato dei 10 casi §3a
+# (tutti "ordine 10 pz"). Esclusi e rimandati:
+#   - STANDALONE (DDT senza ordine): chiave = catena DDT + ponte
+#     resi_righe_riconsegne, con ri-consegne RICORSIVE. Non nel capitolato, e
+#     comunque gated dietro lo step 5b (fatturazione DDT standalone via causale).
+#   - COMPOSITI (is_composito): i loro AF sono i COMPONENTI (segmenti `#CMP`, in
+#     unita'-componente = padre × coeff), mentre fulfillment e resi sono in
+#     unita'-PADRE -> mismatch di unita' che il contatore non puo' riconciliare
+#     senza la macchina BoM. Esclusi qui (WHERE NOT is_composito), follow-up a se'.
+#
+# TENUTI = merce in mano al cliente = Σ evaso − Σ reso.
+#   - evaso = Σ ordini_righe_fulfillment.qta_evasa. **La ri-consegna e' GIA' qui**:
+#     fn_genera_ddt_riconsegna, per l'order-backed, crea un nuovo fulfillment
+#     (verificato: righe 151-154 della fn) -> niente ponte, niente termine
+#     "+ ri-consegnati" separato. E' l'altra faccia della formula residuo
+#     (fn_ordine_ha_residuo_evasione: ordinato − evaso + riconsegna).
+#   - reso = Σ vw_resi_righe_effettive.quantita per ordine_riga (CONFERMATI +
+#     attivi, TUTTI i tipi — helper step 2, 20260717-07). Base, come le altre.
+#
+# FATTURATI = Σ attivita_fatturabili.quantita (tipo_movimento='NORMALE') delle AF
+#   della partita. **L'esistenza della riga AF E' la frontiera EMESSA** (§3c: la
+#   crea l'emissione, niente la cancella — il reset-lotto e' UPDATE): quindi
+#   basta JOINare AF, nessun filtro stato_emissione.
+#   L'aggancio AF->partita vive SOLO nel segment_key (nessuna colonna strutturata,
+#   verificato) e i segmenti sono DUE (§3c, lo XOR ne garantisce al piu' uno):
+#     ORD:<ordine.uid>:R:<ordine_riga.id>   (fattura l'ordine, trigger CONFERMATO)
+#     DDT:<ddt.uid>:R:<ddt_riga.id>          (fattura il DDT, trigger SPEDITO/CONSEGNATO)
+#   Si guardano ENTRAMBI e si somma (chi non c'e' vale 0), senza leggere il
+#   trigger. Il segmento DDT si attribuisce all'ordine_riga via il fulfillment
+#   (ddt_riga -> ordine_riga). Parsing robusto al suffisso BoM `#CMP` via
+#   substring(... from ':R:([0-9]+)') (si ferma alla prima non-cifra); il filtro
+#   tipo_movimento='NORMALE' e' la cintura §5 immutabilita' (le righe MAN degli
+#   oneri hanno comunque segmenti che non iniziano per ORD/DDT).
+#
+# NOTA sul segno in finestra confermato->spedito (trigger CONFERMATO): fra la
+#   conferma (fatturati>0) e la spedizione (tenuti sale) la differenza puo' essere
+#   negativa senza che ci sia un vero accredito da fare. La vista e' un contatore
+#   GREZZO: e' il consumatore coda-accrediti (step 4) — agganciato alle RIGHE
+#   reso — a non far mai emergere un accredito fantasma su merce non ancora
+#   spedita/non resa. Qui non si maschera nulla: si espone il conto.
+#
+# security_invoker=on: legge attivita_fatturabili/commesse_attivita/ordini_righe
+#   (RLS emittente) + vw_resi_righe_effettive (gia' invoker). Ri-specificato — la
+#   reloption non e' visibile in pg_get_viewdef, PG la azzera se omessa (V-1).
+#
+# Dipendenze: vendite.ordini_righe_fulfillment, vendite.vw_resi_righe_effettive
+#   (20260717-07), vendite.attivita_fatturabili + colonna tipo_movimento
+#   (20260717-02), vendite.commesse_attivita, vendite.ordini_righe,
+#   catalogo.articoli.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260717-11-create-vw-contatore-merce-mctit.yaml
+
+  - changeSet:
+      id: 20260717-11-create-vw-contatore-merce
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      comment: >
+        Il contatore (step 1): vw_contatore_merce = per riga d'ordine (partita
+        order-backed, non composita) tenuti (Σ evaso − Σ reso) e fatturati
+        (Σ AF NORMALE sui segmenti ORD+DDT), differenza = tenuti − fatturati.
+        Fonte unica per lister DDT / coda accrediti / resolver. security_invoker=on.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_resi_righe_effettive
+            - columnExists:
+                schemaName: vendite
+                tableName: attivita_fatturabili
+                columnName: tipo_movimento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_contatore_merce
+              WITH (security_invoker=on) AS
+              WITH
+              ful AS (
+                  -- Evaso per riga d'ordine. La ri-consegna order-backed e' gia'
+                  -- qui (fn_genera_ddt_riconsegna crea un nuovo fulfillment).
+                  SELECT f.ordine_riga_id, SUM(f.qta_evasa) AS evaso
+                    FROM vendite.ordini_righe_fulfillment f
+                   GROUP BY f.ordine_riga_id
+              ),
+              res AS (
+                  -- Reso per riga d'ordine (helper step 2: CONFERMATI+attivi,
+                  -- tutti i tipi). Solo le righe reso agganciate a un ordine.
+                  SELECT e.ordine_riga_id, SUM(e.quantita) AS reso
+                    FROM vendite.vw_resi_righe_effettive e
+                   WHERE e.ordine_riga_id IS NOT NULL
+                   GROUP BY e.ordine_riga_id
+              ),
+              af_seg AS (
+                  -- AF NORMALE con la riga sorgente estratta dal segment_key.
+                  -- substring(... :R:(cifre)) e' robusto al suffisso BoM `#CMP`.
+                  SELECT af.quantita,
+                         split_part(ca.segment_key, ':', 1)                      AS seg_tipo,
+                         (substring(ca.segment_key FROM ':R:([0-9]+)'))::bigint   AS seg_riga_id
+                    FROM vendite.attivita_fatturabili af
+                    JOIN vendite.commesse_attivita ca ON ca.id = af.commessa_attivita_id
+                   WHERE af.tipo_movimento = 'NORMALE'
+                     AND split_part(ca.segment_key, ':', 1) IN ('ORD', 'DDT')
+                     AND ca.segment_key ~ ':R:[0-9]+'
+              ),
+              fatt AS (
+                  -- Fatturati per riga d'ordine: segmenti ORD diretti + segmenti
+                  -- DDT attribuiti via fulfillment (ddt_riga -> ordine_riga).
+                  SELECT ordine_riga_id, SUM(quantita) AS fatturati
+                    FROM (
+                        SELECT s.seg_riga_id AS ordine_riga_id, s.quantita
+                          FROM af_seg s
+                         WHERE s.seg_tipo = 'ORD'
+                        UNION ALL
+                        SELECT f.ordine_riga_id, s.quantita
+                          FROM af_seg s
+                          JOIN vendite.ordini_righe_fulfillment f ON f.ddt_riga_id = s.seg_riga_id
+                         WHERE s.seg_tipo = 'DDT'
+                    ) x
+                   GROUP BY ordine_riga_id
+              ),
+              partite AS (
+                  -- Universo: righe d'ordine con movimento merce (evaso o reso).
+                  SELECT ful.ordine_riga_id FROM ful
+                  UNION
+                  SELECT res.ordine_riga_id FROM res
+              )
+              SELECT orr.id                                    AS ordine_riga_id,
+                     orr.ordine_id,
+                     orr.articolo_id,
+                     COALESCE(ful.evaso, 0) - COALESCE(res.reso, 0)                        AS tenuti,
+                     COALESCE(fatt.fatturati, 0)                                           AS fatturati,
+                     (COALESCE(ful.evaso, 0) - COALESCE(res.reso, 0)) - COALESCE(fatt.fatturati, 0) AS differenza
+                FROM partite p
+                JOIN vendite.ordini_righe orr ON orr.id = p.ordine_riga_id
+                JOIN catalogo.articoli art    ON art.id = orr.articolo_id
+                LEFT JOIN ful  ON ful.ordine_riga_id  = orr.id
+                LEFT JOIN res  ON res.ordine_riga_id  = orr.id
+                LEFT JOIN fatt ON fatt.ordine_riga_id = orr.id
+               WHERE NOT COALESCE(art.is_composito, false);
+
+              COMMENT ON VIEW vendite.vw_contatore_merce IS
+                'Il contatore (brief-db-fatturazione-ddt-resi §3a, step 1): per riga d''ordine '
+                '(partita di merce ORDER-BACKED, non composita) espone tenuti (Σ ordini_righe_fulfillment.qta_evasa '
+                '− Σ vw_resi_righe_effettive.quantita, tutti i tipi) e fatturati (Σ attivita_fatturabili.quantita '
+                'NORMALE sui segmenti ORD:*:R:<ordine_riga> + DDT:*:R:<ddt_riga> attribuiti via fulfillment; '
+                'l''esistenza della AF E'' la frontiera EMESSA). differenza = tenuti − fatturati: >0 fattura, '
+                '<0 accredita, =0 niente. Fonte unica per lister DDT / coda accrediti / resolver. STANDALONE e '
+                'COMPOSITI esclusi (follow-up). security_invoker=on + RLS. rev 2026-07-17.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_contatore_merce;

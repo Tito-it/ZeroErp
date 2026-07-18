@@ -55,6 +55,7 @@
 | contratto_id | bigint | YES |  |
 | categoria_cliente_id_snapshot | smallint | YES |  |
 | classe_utenza_id_snapshot | integer | YES |  |
+| tipo_movimento | character varying | NO | 'NORMALE'::character varying |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -63,6 +64,7 @@
 | CHECK | chk_attivita_competenza_mese_primo |  |
 | CHECK | chk_attivita_fatt_stato_esecuzione |  |
 | CHECK | chk_attivita_fatturabili_origine_prezzo |  |
+| CHECK | chk_attivita_fatturabili_tipo_movimento |  |
 | CHECK | chk_attivita_fatturabili_tipo_variazione_applicata |  |
 | FOREIGN KEY | attivita_fatturabili_listino_riga_id_fkey | listino_riga_id |
 | FOREIGN KEY | fk_attivita_fatturabili_area_geografica | area_geografica_id |

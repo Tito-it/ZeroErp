@@ -14,10 +14,14 @@ CREATE OR REPLACE FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_co
 AS $function$
 -- Scopo: emette righe da commesse_attivita verso attivita_fatturabili
 --        in modalita' idempotente (sorgente COMMESSA + segment_key).
---        Propaga lo snapshot audit pricing v5 (8 colonne) 1:1.
+--        Propaga lo snapshot audit pricing v5 (8 colonne) 1:1 e il
+--        registro tipo_movimento (colonna dal 2026-07-17).
 -- Sottosistema lotto rimosso (deprecato 20260227-16).
 -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente COMMESSA
 --        risolta per codice_interno (immutabile), non per codice.
+-- rev 2026-07-17: propaga tipo_movimento (brief immutabilita §4c.2);
+--        e' il filtro con cui il contatore tenuti-fatturati tiene
+--        fuori dal libro mastro della merce le righe non-NORMALE.
 DECLARE
     v_commessa              vendite.commesse%ROWTYPE;
     v_root_id               vendite.commesse_sorgenti.id%TYPE;
@@ -89,6 +93,7 @@ BEGIN
                ca.competenza_dal, ca.competenza_al, ca.posticipa_al,
                ca.tipo_doc_fiscale_id, ca.valuta_id, ca.area_geografica_id,
                ca.prezzo_snapshot, ca.prezzo_bloccato, ca.stato_approvazione, ca.meta,
+               ca.tipo_movimento,
                ca.sorgente_tipo_id AS ca_sorgente_tipo_id,
                -- Snapshot audit pricing v5 (propagati 1:1)
                ca.prezzo_base_snapshot, ca.origine_prezzo,
@@ -133,6 +138,7 @@ BEGIN
                 tipo_doc_fiscale_id, competenza_dal, competenza_al,
                 area_geografica_id, stato_esecuzione, prezzo_bloccato,
                 commessa_id, commessa_attivita_id, sorgente_origine_tipo_id,
+                tipo_movimento,
                 prezzo_base_snapshot, origine_prezzo, tipo_variazione_applicata,
                 valore_variazione_applicata, promo_id, contratto_id,
                 categoria_cliente_id_snapshot, classe_utenza_id_snapshot
@@ -151,6 +157,7 @@ BEGIN
                 v_row.tipo_doc_fiscale_id, v_row.competenza_dal, v_row.competenza_al,
                 v_row.area_geografica_id, 'PENDING', v_row.prezzo_bloccato,
                 p_commessa_id, v_row.id, v_row.ca_sorgente_tipo_id,
+                v_row.tipo_movimento,
                 v_row.prezzo_base_snapshot, v_row.origine_prezzo, v_row.tipo_variazione_applicata,
                 v_row.valore_variazione_applicata, v_row.promo_id, v_row.contratto_id,
                 v_row.categoria_cliente_id_snapshot, v_row.classe_utenza_id_snapshot
@@ -194,6 +201,9 @@ BEGIN
                    commessa_id = p_commessa_id,
                    commessa_attivita_id = v_row.id,
                    sorgente_origine_tipo_id = v_row.ca_sorgente_tipo_id,
+                   -- Registro della riga: lo specchio segue la CA
+                   -- (la riga gia' fatturata e' respinta sopra).
+                   tipo_movimento = v_row.tipo_movimento,
                    -- Refresh snapshot audit pricing v5 (riga non ancora fatturata)
                    prezzo_base_snapshot = v_row.prezzo_base_snapshot,
                    origine_prezzo = v_row.origine_prezzo,
@@ -215,7 +225,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean)
-IS 'Pull da commesse_attivita ad attivita_fatturabili con sorgente COMMESSA+segment_key (hash UUID) e idempotenza. Propaga lo snapshot audit pricing v5 (8 colonne) 1:1. Sottosistema lotto rimosso (deprecato 20260227-16). rev 2026-06-28: sorgente per codice_interno (analisi-hardcoded-codice §3a).';
+IS 'Pull da commesse_attivita ad attivita_fatturabili con sorgente COMMESSA+segment_key (hash UUID) e idempotenza. Propaga lo snapshot audit pricing v5 (8 colonne) 1:1 e tipo_movimento. Sottosistema lotto rimosso (deprecato 20260227-16). rev 2026-06-28: sorgente per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-17: propaga tipo_movimento (colonna, brief immutabilita §4c.2).';
 ```
 
 ---

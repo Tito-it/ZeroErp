@@ -41,12 +41,25 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_refs_ddt AS
 SELECT
+  -- BA vincolato a emittente fiscale risolvibile: dal lavoro emittente
+  -- (2026-07-13) trgfn_ordini_default_emittente pretende un emittente esplicito
+  -- nel payload quando la GUC app.current_user_id non risolve (contesto pgTAP).
   (SELECT ba.id
      FROM anagrafiche.billing_account ba
     WHERE ba.utility_id IS NOT NULL
       AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
     ORDER BY ba.id LIMIT 1
   ) AS billing_account_id,
+  -- NB: fn_get_emittente_fiscale_pk (PK), non _id: e' la funzione con cui
+  -- trgfn_ordini_guard_emittente_ba verifica la coerenza emittente<->BA.
+  (SELECT anagrafiche.fn_get_emittente_fiscale_pk(ba.id)
+     FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL
+      AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1
+  ) AS emittente_fiscale_id,
   (SELECT sr.id
      FROM anagrafiche.soggetti_ruoli sr
     ORDER BY sr.id LIMIT 1
@@ -117,11 +130,12 @@ WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id,
     stato_doc_ordine_id, valuta_id, data,
-    storicizza, meta
+    emittente_fiscale_id, storicizza, meta
   )
   SELECT
     r.soggetto_ruolo_id, r.billing_account_id,
     r.stato_ordine_confermato_id, r.valuta_id, DATE '2026-07-01',
+    r.emittente_fiscale_id,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt')
   FROM tmp_refs_ddt r
   RETURNING id, uid, billing_account_id
@@ -252,11 +266,12 @@ WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id,
     stato_doc_ordine_id, valuta_id, data,
-    storicizza, meta
+    emittente_fiscale_id, storicizza, meta
   )
   SELECT
     r.soggetto_ruolo_id, r.billing_account_id,
     r.stato_ordine_confermato_id, r.valuta_id, DATE '2026-07-01',
+    r.emittente_fiscale_id,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'conf')
   FROM tmp_refs_ddt r
   RETURNING id, uid
@@ -407,11 +422,14 @@ WITH ins AS (
   INSERT INTO vendite.ddt (
     destinatario_soggetto_ruolo_id,
     stato_doc_ddt_id, data,
-    storicizza, meta
+    emittente_fiscale_id, storicizza, meta
   )
   SELECT
     r.soggetto_ruolo_id,
     r.stato_ddt_spedito_id, DATE '2026-07-20',
+    -- Senza BA il default emittente non ha nulla da cui derivare (e il guard
+    -- emittente<->BA salta): va passato esplicito, la colonna e' NOT NULL.
+    r.emittente_fiscale_id,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'no_ba')
   FROM tmp_refs_ddt r
   RETURNING id, uid

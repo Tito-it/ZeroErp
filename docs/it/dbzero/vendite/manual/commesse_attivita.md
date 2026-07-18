@@ -35,6 +35,10 @@ segmentazione idempotente (`segment_key`) e stato approvazione/emissione.
   * `NON_EMESSA`
   * `EMESSA`
   * `ANNULLATA`
+* `tipo_movimento` (registro della riga, vedi sezione dedicata):
+  * `NORMALE`
+  * `ONERE`
+  * `RETTIFICA`
 
 ---
 
@@ -64,6 +68,42 @@ All'esecuzione del resolver prezzi v5, l'attivita' in commessa riceve uno snapsh
 Due CHECK presidiano il dominio di `origine_prezzo` e `tipo_variazione_applicata`. Il campo `meta` resta per dettagli non strutturati (es. deroghe, flag specifici): qui stanno solo le dimensioni che servono per query dirette e filtri dashboard.
 
 Le stesse 8 colonne vengono propagate su [`vendite.attivita_fatturabili`](/dbzero/vendite/tabelle/attivita_fatturabili), preservando la tracciabilita' fino al layer fatture.
+
+---
+
+### Registro della riga: `tipo_movimento` (17-07-2026)
+
+La commessa e' un **libro giornale**: una riga nata dal push e' un *fatto* — lo specchio della
+riga del documento d'origine al momento del push. I fatti non si modificano, si correggono
+aggiungendo altri fatti.
+
+Ne discende che righe di natura diversa convivono nella stessa tabella, e serve dire **di che
+natura e'** ciascuna. E' il compito di `tipo_movimento`:
+
+| Valore      | Chi la scrive                                      | Cos'e'                                                                                    |
+| ----------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `NORMALE`   | il push (default di `fn_upsert_commessa_attivita`) | merce/servizio che rispecchia il documento d'origine                                      |
+| `ONERE`     | la porta "aggiungi onere"                          | voce di **valore** senza contratto specifico: quantita' 1 fissa, il prezzo *e'* l'importo |
+| `RETTIFICA` | nessuno, oggi                                      | riservato ai conguagli/rettifiche futuri (il dominio lo prevede gia')                     |
+
+**Perche' e' portante.** Il contatore della fatturazione (`tenuti − fatturati`) somma le
+quantita' delle sole righe `NORMALE`: e' cosi' che una voce di valore caricata a mano non
+finisce per errore nel conto della merce. Il registro viaggia fino ad
+[`attivita_fatturabili`](/dbzero/vendite/tabelle/attivita_fatturabili), propagato 1:1
+dall'emissione come le 8 colonne dello snapshot pricing — il contatore misura li' e non deve
+risalire alla commessa per sapere che natura ha la riga.
+
+**Perche' e' una colonna e non una chiave di `meta`.** Fino al 17-07-2026 il valore viveva nel
+campo `meta` (jsonb), validato solo dalla funzione di upsert: un INSERT diretto lo aggirava, e
+un discriminatore su cui si fondano soldi e riconciliazioni non puo' dipendere dalla buona
+educazione del chiamante. Ora e' una colonna con un CHECK, e il campo `meta` non lo ospita
+piu'. Su `meta` resta `tipo_consumo` (`ACCONTO` | `CONGUAGLIO` | `STORNO`), non promosso.
+
+> Le righe scritte prima di questa data conservano in `meta` una chiave `tipo_movimento`
+> residua: vale sempre `NORMALE` (verificato all'applicazione della migrazione) e nessuno la
+> legge — la colonna e' l'unica fonte.
+
+Riferimento: `brief-db-immutabilita-quantita-e-porta-oneri` §4c.2.
 
 ---
 
