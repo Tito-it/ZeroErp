@@ -24,3 +24,5 @@ id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,us
 23,12,riattiva_pratica,Riattivazione pratica sospesa,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
 24,12,sospendi_flusso,Sospensione flusso pratica,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
 25,12,riattiva_flusso,Riattivazione flusso pratica sospeso,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
+26,2,approva_attivita_commessa,Approva attivita di commessa per la fatturazione,f,t,{},2026-07-20 00:00:00+02,postgres,2026-07-20 00:00:00+02,postgres
+27,2,numera_fatture_lotti,Numerazione fiscale fatture di lotto (irreversibile),t,t,{},2026-07-20 00:00:00+02,postgres,2026-07-20 00:00:00+02,postgres
