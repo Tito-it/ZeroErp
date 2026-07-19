@@ -289,7 +289,7 @@ async function handleSave() {
 
     const result = await execute(
       () => store.update(props.itemId, payload),
-      { successMessage: t('soggetti.soggetto_salvato') }
+      { successMessage: t('anagrafiche.soggetti.soggetto_salvato') }
     )
     if (result !== null) {
       emit('saved')
@@ -322,7 +322,7 @@ async function handleSave() {
 
     const result = await execute(
       () => store.create(payload),
-      { successMessage: t('soggetti.soggetto_creato') }
+      { successMessage: t('anagrafiche.soggetti.soggetto_creato') }
     )
     if (result !== null) {
       // result e' gia' unwrapped da useApiHandler (body.data)
@@ -353,7 +353,7 @@ async function handleSave() {
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
   >
     <template #header>
-      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('soggetti.soggetto')" :icon="NAV_ICONS.ANAGRAFICHE" />
+      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('anagrafiche.soggetti.soggetto')" :icon="NAV_ICONS.ANAGRAFICHE" />
     </template>
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Sezione: Dati soggetto -->
@@ -373,7 +373,7 @@ async function handleSave() {
       <!-- Sezione: Contatto inline (create) o riepilogo (edit) -->
       <template v-if="!isEdit">
         <div class="app-drawer-section">
-          <h4>{{ t('soggetti.section_contatto') }}</h4>
+          <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
         </div>
         <ContattoForm
           :form="contatto.form"
@@ -386,7 +386,7 @@ async function handleSave() {
       </template>
       <template v-else>
         <div class="app-drawer-section">
-          <h4>{{ t('soggetti.section_contatto') }}</h4>
+          <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
         </div>
         <div class="riepilogo-section">
           <div v-if="contattiRiepilogo.length > 0" class="riepilogo-list">
@@ -397,10 +397,10 @@ async function handleSave() {
             </div>
           </div>
           <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
-            {{ t('contatto.nessun_contatto') }}
+            {{ t('anagrafiche.contatto.nessun_contatto') }}
           </div>
           <Button
-            :label="t('contatto.gestisci_contatti')"
+            :label="t('anagrafiche.contatto.gestisci_contatti')"
             icon="pi pi-users"
             text
             size="small"
@@ -413,7 +413,7 @@ async function handleSave() {
       <!-- Separatore: Indirizzo (solo in create mode) -->
       <template v-if="!isEdit">
         <div class="app-drawer-section">
-          <h4>{{ t('soggetti.section_indirizzo') }}</h4>
+          <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
         </div>
         <IndirizzoSoggettoForm
           :form="indirizzo.form"
@@ -435,7 +435,7 @@ async function handleSave() {
       <!-- Sezione: Dati societari (condizionale) — subito dopo anagrafica/P.IVA -->
       <template v-if="soggetto.showDatiSocietari.value">
         <div class="app-drawer-section">
-          <h4>{{ t('soggetti.section_dati_societari') }}</h4>
+          <h4>{{ t('anagrafiche.soggetti.section_dati_societari') }}</h4>
         </div>
         <DatiSocietariForm
           :form="datiSocietari.form"
@@ -453,7 +453,7 @@ async function handleSave() {
       <!-- Sezione: Indirizzi riepilogo (edit mode) + pulsante Gestisci -->
       <template v-if="isEdit">
         <div class="app-drawer-section">
-          <h4>{{ t('soggetti.section_indirizzo') }}</h4>
+          <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
         </div>
         <div class="indirizzi-riepilogo">
           <div v-if="indirizziRiepilogo.length > 0" class="indirizzi-riepilogo-list">
@@ -463,10 +463,10 @@ async function handleSave() {
             </div>
           </div>
           <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
-            {{ t('indirizzo_soggetto.nessun_indirizzo') }}
+            {{ t('anagrafiche.indirizzo_soggetto.nessun_indirizzo') }}
           </div>
           <Button
-            :label="t('indirizzo_soggetto.gestisci_indirizzi')"
+            :label="t('anagrafiche.indirizzo_soggetto.gestisci_indirizzi')"
             icon="pi pi-map-marker"
             text
             size="small"
@@ -479,7 +479,7 @@ async function handleSave() {
       <!-- Sezione: Conti bancari riepilogo (edit mode) -->
       <template v-if="isEdit">
         <div class="app-drawer-section">
-          <h4>{{ t('conti_bancari.titolo') }}</h4>
+          <h4>{{ t('anagrafiche.conti_bancari.titolo') }}</h4>
         </div>
         <div class="riepilogo-section">
           <div v-if="contiBancariRiepilogo.length > 0" class="riepilogo-list">
@@ -490,10 +490,10 @@ async function handleSave() {
             </div>
           </div>
           <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
-            {{ t('conti_bancari.nessun_conto') }}
+            {{ t('anagrafiche.conti_bancari.nessun_conto') }}
           </div>
           <Button
-            :label="t('conti_bancari.gestisci_conti')"
+            :label="t('anagrafiche.conti_bancari.gestisci_conti')"
             icon="pi pi-wallet"
             text
             size="small"
@@ -506,14 +506,14 @@ async function handleSave() {
       <!-- Sezione: Ruoli (solo edit mode, readonly) -->
       <template v-if="isEdit">
         <div class="app-drawer-section">
-          <h4>{{ t('soggetti.section_ruoli') }}</h4>
+          <h4>{{ t('anagrafiche.soggetti.section_ruoli') }}</h4>
         </div>
         <div v-if="ruoliAssegnati.length > 0" class="ruoli-tags">
           <Tag v-for="r in ruoliAssegnati" :key="r.tipo_ruolo_id"
                :value="r.ruolo_descrizione" severity="info" />
         </div>
         <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
-          {{ t('soggetti.nessun_ruolo') }}
+          {{ t('anagrafiche.soggetti.nessun_ruolo') }}
         </div>
       </template>
 

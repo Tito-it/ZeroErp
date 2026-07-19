@@ -71,9 +71,9 @@ function onChange(event) {
 //   - altrimenti: placeholder custom o default
 function resolvedPlaceholder() {
   const uid = Number(props.utilityId)
-  if (!uid || uid <= 0) return t('listini.tipologia_utility_first')
+  if (!uid || uid <= 0) return t('vendite.listini.tipologia_utility_first')
   if (loading.value) return t('common.loading')
-  return props.placeholder || t('listini.tipologia_placeholder')
+  return props.placeholder || t('vendite.listini.tipologia_placeholder')
 }
 </script>
 

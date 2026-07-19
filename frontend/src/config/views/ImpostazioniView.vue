@@ -27,7 +27,7 @@ async function onRemoveOverride(parameter) {
   if (!parameter.user_override_id) return
   const result = await execute(
     () => store.removeOverride(parameter.user_override_id, parameter.code, PARAMETER_SCOPE.USER),
-    { successMessage: t('impostazioni.override_removed') }
+    { successMessage: t('config.impostazioni.override_removed') }
   )
   if (result !== null) await store.fetchList()
 }
@@ -36,7 +36,7 @@ async function onRemoveEmittenteOverride(parameter) {
   if (!parameter.emittente_override_id) return
   const result = await execute(
     () => store.removeOverride(parameter.emittente_override_id, parameter.code, PARAMETER_SCOPE.EMITTENTE),
-    { successMessage: t('impostazioni.override_removed') }
+    { successMessage: t('config.impostazioni.override_removed') }
   )
   if (result !== null) await store.fetchList()
 }

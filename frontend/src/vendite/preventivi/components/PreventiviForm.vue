@@ -105,7 +105,7 @@ function onIstanzaClear() {
            senza UI il backend non puo' derivarlo da GUC e l'INSERT fallisce).
            In edit mostra codice + ragione sociale denormalizzati dal record. -->
       <div class="form-field">
-        <label>{{ t('preventivi.field_emittente_fiscale') }} <span v-if="!isEdit">*</span></label>
+        <label>{{ t('vendite.preventivi.field_emittente_fiscale') }} <span v-if="!isEdit">*</span></label>
         <EmittenteFiscaleField
           v-model="form.emittente_fiscale_id"
           :record="record"
@@ -113,9 +113,9 @@ function onIstanzaClear() {
           :disabled="isLocked('emittente_fiscale_id')" />
       </div>
       <div class="form-field">
-        <label>{{ t('preventivi.field_utility') }} <span v-if="!isEdit">*</span></label>
+        <label>{{ t('vendite.preventivi.field_utility') }} <span v-if="!isEdit">*</span></label>
         <UtilityPerRuoloSelect v-model="form.utility_id"
-          :placeholder="t('preventivi.field_utility')"
+          :placeholder="t('vendite.preventivi.field_utility')"
           :disabled="isLocked('utility_id')" />
       </div>
     </div>
@@ -125,12 +125,12 @@ function onIstanzaClear() {
          su una riga separata. -->
     <div class="form-grid-2col">
       <div class="form-field">
-        <label>{{ t('preventivi.field_billing_account') }}</label>
+        <label>{{ t('vendite.preventivi.field_billing_account') }}</label>
         <BillingAccountLookup
           :model-value="form.billing_account_obj"
           :utility-id="form.utility_id"
           :disabled="isLocked('billing_account_id')"
-          :placeholder="t('preventivi.field_billing_account_placeholder')"
+          :placeholder="t('vendite.preventivi.field_billing_account_placeholder')"
           @select="onBaSelected"
           @clear="onBaClear" />
       </div>
@@ -140,30 +140,30 @@ function onIstanzaClear() {
            Se BA assente (preventivo prospect) il picker e' editabile e l'istanza
            deve essere selezionata esplicitamente prima di poter salvare. -->
       <div class="form-field">
-        <label>{{ t('preventivi.field_istanza_utility') }} <span v-if="!isEdit">*</span></label>
+        <label>{{ t('vendite.preventivi.field_istanza_utility') }} <span v-if="!isEdit">*</span></label>
         <IstanzaUtilityLookup
           v-if="!form.billing_account_id"
           :model-value="form.istanza_utility_obj"
           :utility-id="form.utility_id"
           :disabled="isLocked('istanza_utility_id')"
-          :placeholder="t('preventivi.field_istanza_utility_placeholder')"
+          :placeholder="t('vendite.preventivi.field_istanza_utility_placeholder')"
           @select="onIstanzaSelected"
           @clear="onIstanzaClear" />
         <div v-else class="app-field-hint">
           <i class="pi pi-link" style="margin-right: 0.4rem;"></i>
-          {{ t('preventivi.istanza_da_billing_account') }}
+          {{ t('vendite.preventivi.istanza_da_billing_account') }}
         </div>
       </div>
     </div>
 
     <div class="form-grid-2col">
       <div class="form-field">
-        <label>{{ t('preventivi.field_validita_dal') }}</label>
+        <label>{{ t('vendite.preventivi.field_validita_dal') }}</label>
         <DatePicker v-model="form.validita_dal" :date-format="DATE_FORMAT"
           show-icon show-button-bar :disabled="isLocked('validita_dal')" />
       </div>
       <div class="form-field">
-        <label>{{ t('preventivi.field_validita_al') }}</label>
+        <label>{{ t('vendite.preventivi.field_validita_al') }}</label>
         <DatePicker v-model="form.validita_al" :date-format="DATE_FORMAT"
           show-icon show-button-bar :disabled="isLocked('validita_al')" />
       </div>
@@ -176,15 +176,15 @@ function onIstanzaClear() {
          applicata BE). Vedi PreventiviDrawer dialog accettazione. -->
     <div class="form-grid-2col">
       <div class="form-field">
-        <label>{{ t('preventivi.field_valuta') }}</label>
+        <label>{{ t('vendite.preventivi.field_valuta') }}</label>
         <LookupSelect v-model="form.valuta_id" rel="config.valute"
-          :placeholder="t('preventivi.field_valuta')" :disabled="isLocked('valuta_id')"
+          :placeholder="t('vendite.preventivi.field_valuta')" :disabled="isLocked('valuta_id')"
           show-clear />
       </div>
       <div class="form-field">
-        <label>{{ t('preventivi.field_termini_pagamento') }}</label>
+        <label>{{ t('vendite.preventivi.field_termini_pagamento') }}</label>
         <LookupSelect v-model="form.termine_pagamento_id" rel="config.termini_pagamento"
-          :placeholder="t('preventivi.field_termini_pagamento')"
+          :placeholder="t('vendite.preventivi.field_termini_pagamento')"
           :disabled="isLocked('termine_pagamento_id')" show-clear />
       </div>
     </div>

@@ -414,7 +414,7 @@ function onPush() {
       } else if (stato === 'PARZIALE') {
         notify.warn(t('vendite.ddt.push_commessa_parziale', { righe, push_log_id: pushLogId }))
       } else if (stato === 'ERRORE') {
-        const firstError = result?.handlers?.[0]?.errors?.[0] || t('common.generic_error')
+        const firstError = result?.handlers?.[0]?.errors?.[0] || t('common.error_generic')
         notify.error(t('vendite.ddt.push_commessa_errore', { primo_errore: firstError }))
       } else if (stato === 'SKIPPED') {
         notify.warn(t('vendite.ddt.push_commessa_skipped'))

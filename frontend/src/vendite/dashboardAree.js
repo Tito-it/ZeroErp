@@ -35,7 +35,7 @@ export const DASH_AREA_CONFIG = {
   ORDINI: {
     route: '/vendite/ordini',
     severity: statoOrdineSeverity,
-    apertoHintKey: 'situazione_aperta.card_ordini_hint',
+    apertoHintKey: 'vendite.situazione_aperta.card_ordini_hint',
   },
   DDT: { route: '/vendite/ddt', severity: statoDdtSeverity },
   OFFERTE: { route: '/vendite/offerte', severity: statoOffertaSeverity },
@@ -59,15 +59,15 @@ export function dashAreaSeverity(area, statoCodiceInterno) {
 //        (regola del 2, ok Tid): erano duplicate in DashboardBacklogView e
 //        SituazioneApertaView. I caller passano (t, te) di useI18n.
 export function dashAreaLabel(t, te, area) {
-  return labelOrCode(t, te, `dash_comune.area_${String(area).toLowerCase()}`, area)
+  return labelOrCode(t, te, `vendite.dash_comune.area_${String(area).toLowerCase()}`, area)
 }
 
 export function dashFaseLabel(t, te, fase) {
-  return labelOrCode(t, te, `dash_comune.fase_${String(fase).toLowerCase()}`, fase)
+  return labelOrCode(t, te, `vendite.dash_comune.fase_${String(fase).toLowerCase()}`, fase)
 }
 
 export function dashMotivoLabel(t, te, motivo) {
-  return labelOrCode(t, te, `dash_comune.motivo_fermo.${motivo}`, motivo)
+  return labelOrCode(t, te, `vendite.dash_comune.motivo_fermo.${motivo}`, motivo)
 }
 
 // Scopo: azione riga "apri documento" dei drill-down dashboard: naviga alla

@@ -155,7 +155,7 @@ async function onSave() {
   if (isEdit.value) {
     const result = await execute(
       () => store.update(props.fornitoreId, buildEditablePayload()),
-      { successMessage: t('fornitori.fornitore_salvato') }
+      { successMessage: t('anagrafiche.fornitori.fornitore_salvato') }
     )
     if (result !== null) emit('saved', result)
   } else {
@@ -191,7 +191,7 @@ async function onSave() {
     }
     const result = await execute(
       () => store.create(payload),
-      { successMessage: t('fornitori.fornitore_creato') }
+      { successMessage: t('anagrafiche.fornitori.fornitore_creato') }
     )
     if (result !== null) emit('saved', result)
   }
@@ -213,7 +213,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('fornitori.fornitore')"
+        :title="t('anagrafiche.fornitori.fornitore')"
         :icon="NAV_ICONS.FORNITORI"
       />
     </template>
@@ -222,7 +222,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
       <div class="form-grid">
 
         <!-- === Soggetto === -->
-        <h4>{{ t('fornitori.section_soggetto') }}</h4>
+        <h4>{{ t('anagrafiche.fornitori.section_soggetto') }}</h4>
         <template v-if="!isEdit">
           <div v-if="soggettoSelezionato" class="mb-3">
             <SoggettoMessageBanner
@@ -246,15 +246,15 @@ const onClose = useDrawerClose(emit, 'cancelled')
 
         <!-- === Codice manuale (solo create, se non auto-generato) === -->
         <div v-if="!isEdit && codiceField.isEditable.value" class="form-field">
-          <label>{{ t('fornitori.col_codice') }}</label>
-          <InputText v-model="form.codice" class="w-full" :placeholder="t('fornitori.placeholder_codice')" />
+          <label>{{ t('anagrafiche.fornitori.col_codice') }}</label>
+          <InputText v-model="form.codice" class="w-full" :placeholder="t('anagrafiche.fornitori.placeholder_codice')" />
         </div>
 
         <!-- === Identificativo (solo edit) === -->
         <template v-if="isEdit && detail">
           <div class="form-grid-2col">
             <div class="form-field">
-              <label>{{ t('fornitori.col_codice') }}</label>
+              <label>{{ t('anagrafiche.fornitori.col_codice') }}</label>
               <InputText :model-value="detail.codice" disabled class="w-full" />
             </div>
             <div class="form-field" style="align-self: flex-end;">
@@ -263,7 +263,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
             </div>
           </div>
           <div class="form-field">
-            <label>{{ t('fornitori.field_stato') }}</label>
+            <label>{{ t('anagrafiche.fornitori.field_stato') }}</label>
             <LookupSelect v-model="form.stato_fornitore_id" rel="config.stati_fornitore" class="w-full" />
           </div>
         </template>
@@ -272,91 +272,91 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <template v-if="isEdit || soggettoSelezionato">
 
         <!-- === Pagamento === -->
-        <h4 class="mt-3">{{ t('fornitori.section_pagamento') }}</h4>
+        <h4 class="mt-3">{{ t('anagrafiche.fornitori.section_pagamento') }}</h4>
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('fornitori.field_modalita_pagamento') }}</label>
+            <label>{{ t('anagrafiche.fornitori.field_modalita_pagamento') }}</label>
             <LookupSelect v-model="form.modalita_pagamento_id" rel="config.modalita_pagamento" class="w-full"
-              :placeholder="t('fornitori.select_modalita')" show-clear />
+              :placeholder="t('anagrafiche.fornitori.select_modalita')" show-clear />
           </div>
           <div class="form-field">
-            <label>{{ t('fornitori.field_valuta') }}</label>
+            <label>{{ t('anagrafiche.fornitori.field_valuta') }}</label>
             <LookupSelect v-model="form.valuta_id" rel="config.valute" class="w-full"
-              :placeholder="t('fornitori.select_valuta')" show-clear />
+              :placeholder="t('anagrafiche.fornitori.select_valuta')" show-clear />
           </div>
         </div>
         <div class="form-grid-3col">
           <div class="form-field">
-            <label>{{ t('fornitori.field_termine_pagamento') }}</label>
+            <label>{{ t('anagrafiche.fornitori.field_termine_pagamento') }}</label>
             <LookupSelect v-model="form.termine_pagamento_id" rel="config.termini_pagamento" class="w-full"
-              :placeholder="t('fornitori.select_termine')" show-clear />
+              :placeholder="t('anagrafiche.fornitori.select_termine')" show-clear />
           </div>
           <div class="form-field">
-            <label>{{ t('fornitori.field_giorni_pagamento') }}</label>
+            <label>{{ t('anagrafiche.fornitori.field_giorni_pagamento') }}</label>
             <InputNumber v-model="form.giorni_pagamento" :min="0" :max="999" class="w-full" />
           </div>
           <div class="form-field">
-            <label>{{ t('fornitori.field_fine_mese') }}</label>
+            <label>{{ t('anagrafiche.fornitori.field_fine_mese') }}</label>
             <Checkbox v-model="form.fine_mese" :binary="true" input-id="fine_mese" />
           </div>
         </div>
 
         <!-- === Fiscale === -->
-        <h4 class="mt-3">{{ t('fornitori.section_fiscale') }}</h4>
+        <h4 class="mt-3">{{ t('anagrafiche.fornitori.section_fiscale') }}</h4>
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('fornitori.field_regime_fiscale') }}</label>
-            <InputText v-model="form.regime_fiscale" class="w-full" :placeholder="t('fornitori.placeholder_regime')" />
+            <label>{{ t('anagrafiche.fornitori.field_regime_fiscale') }}</label>
+            <InputText v-model="form.regime_fiscale" class="w-full" :placeholder="t('anagrafiche.fornitori.placeholder_regime')" />
           </div>
           <div class="form-field">
-            <label>{{ t('fornitori.field_split_payment') }}</label>
+            <label>{{ t('anagrafiche.fornitori.field_split_payment') }}</label>
             <Checkbox v-model="form.split_payment" :binary="true" input-id="split_payment" />
           </div>
         </div>
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('fornitori.field_bollo_esente') }}</label>
+            <label>{{ t('anagrafiche.fornitori.field_bollo_esente') }}</label>
             <Checkbox v-model="form.bollo_esente" :binary="true" input-id="bollo_esente" />
           </div>
           <div class="form-field">
-            <label>{{ t('fornitori.field_ritenuta_acconto') }}</label>
+            <label>{{ t('anagrafiche.fornitori.field_ritenuta_acconto') }}</label>
             <Checkbox v-model="form.ritenuta_acconto" :binary="true" input-id="ritenuta_acconto" />
           </div>
         </div>
         <div v-if="form.ritenuta_acconto" class="form-field">
-          <label>{{ t('fornitori.field_ritenuta_aliquota') }}</label>
+          <label>{{ t('anagrafiche.fornitori.field_ritenuta_aliquota') }}</label>
           <InputNumber v-model="form.ritenuta_aliquota" class="w-full" :min="0" :max="100"
             suffix="%" mode="decimal" :min-fraction-digits="2" />
         </div>
 
         <!-- === FE / SDI === -->
-        <h4 class="mt-3">{{ t('fornitori.section_fe_sdi') }}</h4>
+        <h4 class="mt-3">{{ t('anagrafiche.fornitori.section_fe_sdi') }}</h4>
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('fornitori.field_canale_fe') }}</label>
-            <InputText v-model="form.canale_fe" class="w-full" maxlength="7" :placeholder="t('fornitori.placeholder_canale_fe')" />
+            <label>{{ t('anagrafiche.fornitori.field_canale_fe') }}</label>
+            <InputText v-model="form.canale_fe" class="w-full" maxlength="7" :placeholder="t('anagrafiche.fornitori.placeholder_canale_fe')" />
           </div>
           <div class="form-field">
-            <label>{{ t('fornitori.field_pec_email') }}</label>
-            <InputText v-model="form.pec_email" class="w-full" :placeholder="t('fornitori.placeholder_pec')" />
+            <label>{{ t('anagrafiche.fornitori.field_pec_email') }}</label>
+            <InputText v-model="form.pec_email" class="w-full" :placeholder="t('anagrafiche.fornitori.placeholder_pec')" />
           </div>
         </div>
 
         <!-- === Rating === -->
-        <h4 class="mt-3">{{ t('fornitori.section_rating') }}</h4>
+        <h4 class="mt-3">{{ t('anagrafiche.fornitori.section_rating') }}</h4>
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('fornitori.field_rating') }}</label>
+            <label>{{ t('anagrafiche.fornitori.field_rating') }}</label>
             <InputNumber v-model="form.rating" class="w-full" :min="0" :max="100" />
           </div>
           <div class="form-field">
-            <label>{{ t('fornitori.field_qualifica_scadenza') }}</label>
+            <label>{{ t('anagrafiche.fornitori.field_qualifica_scadenza') }}</label>
             <DatePicker v-model="form.qualifica_scadenza" class="w-full" dateFormat="dd/mm/yy" show-icon />
           </div>
         </div>
 
         <!-- === Note === -->
-        <h4 class="mt-3">{{ t('fornitori.section_note') }}</h4>
+        <h4 class="mt-3">{{ t('anagrafiche.fornitori.section_note') }}</h4>
         <div class="form-field">
           <Textarea v-model="form.note" class="w-full" rows="3" auto-resize />
         </div>
@@ -364,7 +364,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <!-- === Contatto inline (solo creazione) === -->
         <template v-if="!isEdit">
           <div class="app-drawer-section">
-            <h4>{{ t('soggetti.section_contatto') }}</h4>
+            <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
           </div>
           <ContattoForm
             :form="contatto.form"
@@ -379,7 +379,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <!-- === Indirizzo inline (solo creazione) === -->
         <template v-if="!isEdit">
           <div class="app-drawer-section">
-            <h4>{{ t('soggetti.section_indirizzo') }}</h4>
+            <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
           </div>
           <IndirizzoSoggettoForm
             :form="indirizzo.form"

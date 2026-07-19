@@ -63,24 +63,24 @@ const drawerListaId = ref(null)
 // Enum statici DB - duplicati lato FE per Select. La FK enum garantisce
 // la guard finale; qui filtriamo presto per UX.
 const tipoColonnaOptions = computed(() => [
-  { label: t('ui_admin.tipo_colonna_identificatore'), value: 'identificatore' },
-  { label: t('ui_admin.tipo_colonna_informazione'), value: 'informazione' },
-  { label: t('ui_admin.tipo_colonna_azione'), value: 'azione' },
+  { label: t('ui.admin.tipo_colonna_identificatore'), value: 'identificatore' },
+  { label: t('ui.admin.tipo_colonna_informazione'), value: 'informazione' },
+  { label: t('ui.admin.tipo_colonna_azione'), value: 'azione' },
 ])
 
 const tipoDatoOptions = computed(() => [
-  { label: t('ui_admin.tipo_dato_string'), value: 'string' },
-  { label: t('ui_admin.tipo_dato_numeric'), value: 'numeric' },
-  { label: t('ui_admin.tipo_dato_date'), value: 'date' },
-  { label: t('ui_admin.tipo_dato_datetime'), value: 'datetime' },
-  { label: t('ui_admin.tipo_dato_boolean'), value: 'boolean' },
-  { label: t('ui_admin.tipo_dato_enum'), value: 'enum' },
+  { label: t('ui.admin.tipo_dato_string'), value: 'string' },
+  { label: t('ui.admin.tipo_dato_numeric'), value: 'numeric' },
+  { label: t('ui.admin.tipo_dato_date'), value: 'date' },
+  { label: t('ui.admin.tipo_dato_datetime'), value: 'datetime' },
+  { label: t('ui.admin.tipo_dato_boolean'), value: 'boolean' },
+  { label: t('ui.admin.tipo_dato_enum'), value: 'enum' },
 ])
 
 const allineamentoOptions = computed(() => [
-  { label: t('ui_admin.allineamento_left'), value: 'left' },
-  { label: t('ui_admin.allineamento_right'), value: 'right' },
-  { label: t('ui_admin.allineamento_center'), value: 'center' },
+  { label: t('ui.admin.allineamento_left'), value: 'left' },
+  { label: t('ui.admin.allineamento_right'), value: 'right' },
+  { label: t('ui.admin.allineamento_center'), value: 'center' },
 ])
 
 function defaultForm() {
@@ -230,7 +230,7 @@ function onCancel() {
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('ui_admin.colonna')"
+        :title="t('ui.admin.colonna')"
         icon="pi pi-table"
       />
     </template>
@@ -238,9 +238,9 @@ function onCancel() {
     <div class="app-drawer-content">
       <Tabs v-model:value="activeTab">
         <TabList>
-          <Tab value="generale">{{ t('ui_admin.colonna_tab_generale') }}</Tab>
-          <Tab value="comportamento">{{ t('ui_admin.colonna_tab_comportamento') }}</Tab>
-          <Tab value="layout">{{ t('ui_admin.colonna_tab_layout') }}</Tab>
+          <Tab value="generale">{{ t('ui.admin.colonna_tab_generale') }}</Tab>
+          <Tab value="comportamento">{{ t('ui.admin.colonna_tab_comportamento') }}</Tab>
+          <Tab value="layout">{{ t('ui.admin.colonna_tab_layout') }}</Tab>
         </TabList>
 
         <TabPanels>
@@ -248,11 +248,11 @@ function onCancel() {
             <div class="form-grid">
               <div class="form-grid-2col">
                 <div class="form-field">
-                  <label>{{ t('ui_admin.colonna_codice') }}</label>
+                  <label>{{ t('ui.admin.colonna_codice') }}</label>
                   <InputText v-model="form.codice" maxlength="80" />
                 </div>
                 <div class="form-field">
-                  <label>{{ t('ui_admin.colonna_campo_sorgente') }}</label>
+                  <label>{{ t('ui.admin.colonna_campo_sorgente') }}</label>
                   <InputText v-model="form.campo_sorgente" maxlength="80" />
                   <Message
                     severity="info"
@@ -260,18 +260,18 @@ function onCancel() {
                     size="small"
                     class="mt-025"
                   >
-                    {{ t('ui_admin.colonna_campo_sorgente_hint') }}
+                    {{ t('ui.admin.colonna_campo_sorgente_hint') }}
                   </Message>
                 </div>
               </div>
 
               <div class="form-grid-2col">
                 <div class="form-field">
-                  <label>{{ t('ui_admin.colonna_etichetta') }}</label>
+                  <label>{{ t('ui.admin.colonna_etichetta') }}</label>
                   <InputText v-model="form.etichetta" maxlength="120" />
                 </div>
                 <div class="form-field">
-                  <label>{{ t('ui_admin.colonna_etichetta_i18n_key') }}</label>
+                  <label>{{ t('ui.admin.colonna_etichetta_i18n_key') }}</label>
                   <InputText v-model="form.etichetta_i18n_key" maxlength="120" />
                   <Message
                     severity="info"
@@ -279,19 +279,19 @@ function onCancel() {
                     size="small"
                     class="mt-025"
                   >
-                    {{ t('ui_admin.colonna_etichetta_i18n_hint') }}
+                    {{ t('ui.admin.colonna_etichetta_i18n_hint') }}
                   </Message>
                 </div>
               </div>
 
               <div class="form-field">
-                <label>{{ t('ui_admin.colonna_etichetta_estesa') }}</label>
+                <label>{{ t('ui.admin.colonna_etichetta_estesa') }}</label>
                 <InputText v-model="form.etichetta_estesa" maxlength="200" />
               </div>
 
               <div class="form-grid-2col">
                 <div class="form-field">
-                  <label>{{ t('ui_admin.colonna_tipo_colonna') }}</label>
+                  <label>{{ t('ui.admin.colonna_tipo_colonna') }}</label>
                   <Select
                     v-model="form.tipo_colonna"
                     :options="tipoColonnaOptions"
@@ -300,7 +300,7 @@ function onCancel() {
                   />
                 </div>
                 <div class="form-field">
-                  <label>{{ t('ui_admin.colonna_tipo_dato') }}</label>
+                  <label>{{ t('ui.admin.colonna_tipo_dato') }}</label>
                   <Select
                     v-model="form.tipo_dato"
                     :options="tipoDatoOptions"
@@ -317,11 +317,11 @@ function onCancel() {
               <div class="form-grid-2col">
                 <div class="form-field form-field-inline">
                   <Checkbox v-model="form.filtrabile" binary input-id="ui-col-filtrabile" />
-                  <label for="ui-col-filtrabile">{{ t('ui_admin.colonna_filtrabile') }}</label>
+                  <label for="ui-col-filtrabile">{{ t('ui.admin.colonna_filtrabile') }}</label>
                 </div>
                 <div class="form-field form-field-inline">
                   <Checkbox v-model="form.ordinabile" binary input-id="ui-col-ordinabile" />
-                  <label for="ui-col-ordinabile">{{ t('ui_admin.colonna_ordinabile') }}</label>
+                  <label for="ui-col-ordinabile">{{ t('ui.admin.colonna_ordinabile') }}</label>
                 </div>
               </div>
 
@@ -333,11 +333,11 @@ function onCancel() {
                     input-id="ui-col-esportabile"
                     :disabled="isAzione"
                   />
-                  <label for="ui-col-esportabile">{{ t('ui_admin.colonna_esportabile') }}</label>
+                  <label for="ui-col-esportabile">{{ t('ui.admin.colonna_esportabile') }}</label>
                 </div>
                 <div class="form-field form-field-inline">
                   <Checkbox v-model="form.ricercabile_full" binary input-id="ui-col-ricercabile" />
-                  <label for="ui-col-ricercabile">{{ t('ui_admin.colonna_ricercabile_full') }}</label>
+                  <label for="ui-col-ricercabile">{{ t('ui.admin.colonna_ricercabile_full') }}</label>
                 </div>
               </div>
               <Message
@@ -346,13 +346,13 @@ function onCancel() {
                 :closable="false"
                 size="small"
               >
-                {{ t('ui_admin.colonna_azione_non_esportabile_hint') }}
+                {{ t('ui.admin.colonna_azione_non_esportabile_hint') }}
               </Message>
 
               <div class="form-grid-2col">
                 <div class="form-field form-field-inline">
                   <Checkbox v-model="form.sensibile" binary input-id="ui-col-sensibile" />
-                  <label for="ui-col-sensibile">{{ t('ui_admin.colonna_sensibile') }}</label>
+                  <label for="ui-col-sensibile">{{ t('ui.admin.colonna_sensibile') }}</label>
                 </div>
                 <div class="form-field form-field-inline">
                   <Checkbox v-model="form.attivo" binary input-id="ui-col-attivo" />
@@ -366,15 +366,15 @@ function onCancel() {
             <div class="form-grid">
               <div class="form-grid-3col">
                 <div class="form-field">
-                  <label>{{ t('ui_admin.colonna_ordine_default') }}</label>
+                  <label>{{ t('ui.admin.colonna_ordine_default') }}</label>
                   <InputNumber v-model="form.ordine_default" :min="1" :max="100000" show-buttons />
                 </div>
                 <div class="form-field">
-                  <label>{{ t('ui_admin.colonna_larghezza_default') }}</label>
+                  <label>{{ t('ui.admin.colonna_larghezza_default') }}</label>
                   <InputNumber v-model="form.larghezza_default" :min="1" :max="4000" show-buttons />
                 </div>
                 <div class="form-field">
-                  <label>{{ t('ui_admin.colonna_allineamento') }}</label>
+                  <label>{{ t('ui.admin.colonna_allineamento') }}</label>
                   <Select
                     v-model="form.allineamento"
                     :options="allineamentoOptions"
@@ -386,7 +386,7 @@ function onCancel() {
 
               <div class="form-grid-2col">
                 <div class="form-field">
-                  <label>{{ t('ui_admin.colonna_formato') }}</label>
+                  <label>{{ t('ui.admin.colonna_formato') }}</label>
                   <InputText v-model="form.formato" maxlength="60" />
                   <Message
                     severity="info"
@@ -394,17 +394,17 @@ function onCancel() {
                     size="small"
                     class="mt-025"
                   >
-                    {{ t('ui_admin.colonna_formato_hint') }}
+                    {{ t('ui.admin.colonna_formato_hint') }}
                   </Message>
                 </div>
                 <div class="form-field">
-                  <label>{{ t('ui_admin.colonna_gruppo_ordine') }}</label>
+                  <label>{{ t('ui.admin.colonna_gruppo_ordine') }}</label>
                   <InputNumber v-model="form.gruppo_ordine" :min="1" :max="100000" show-buttons />
                 </div>
               </div>
 
               <div class="form-field">
-                <label>{{ t('ui_admin.colonna_gruppo') }}</label>
+                <label>{{ t('ui.admin.colonna_gruppo') }}</label>
                 <InputText v-model="form.gruppo" maxlength="60" />
               </div>
             </div>

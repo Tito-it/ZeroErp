@@ -61,7 +61,7 @@ const pageActions = computed(() => [
     key: 'new',
     kind: 'primary',
     label: t('common.new'),
-    tooltip: t('amm.nuovo_operatore'),
+    tooltip: t('amministrazione.nuovo_operatore'),
     icon: MANAGE_ICONS.ADD,
     hideWhenReadonly: true,
     command: drawer.openCreate,
@@ -109,7 +109,7 @@ function buildRowActions(data) {
   return [
     {
       key: 'gestisci-permessi',
-      label: t('amm.gestisci_permessi'),
+      label: t('amministrazione.gestisci_permessi'),
       icon: MANAGE_ICONS.PERMISSIONS,
       command: () => permessiDrawer.editRow(data, 'auth_user_id'),
     },
@@ -131,22 +131,22 @@ function buildRowActions(data) {
       <div class="app-page-filters">
         <InputText
           v-model="searchText"
-          :placeholder="t('amm.search_placeholder')"
+          :placeholder="t('amministrazione.search_placeholder')"
         />
         <Select
           v-model="superAdminFilter"
           :options="superAdminOptions"
           option-label="label"
           option-value="value"
-          :placeholder="t('amm.filter_super_admin')"
+          :placeholder="t('amministrazione.filter_super_admin')"
           @change="applyExtraFilters"
         />
         <Select
           v-model="uoFilter"
-          :options="[{ descrizione: t('amm.reparto_all'), id: null }, ...unitaOrg.items.value]"
+          :options="[{ descrizione: t('amministrazione.reparto_all'), id: null }, ...unitaOrg.items.value]"
           option-label="descrizione"
           option-value="id"
-          :placeholder="t('amm.filter_reparto')"
+          :placeholder="t('amministrazione.filter_reparto')"
           @change="applyExtraFilters"
         />
         <Select
@@ -154,7 +154,7 @@ function buildRowActions(data) {
           :options="activeOptions"
           option-label="label"
           option-value="value"
-          :placeholder="t('amm.filter_stato')"
+          :placeholder="t('amministrazione.filter_stato')"
           @change="applyExtraFilters"
         />
       </div>
@@ -181,34 +181,34 @@ function buildRowActions(data) {
       selection-mode="single"
       data-key="auth_user_id"
     >
-      <Column field="soggetto_cognome" :header="t('amm.col_nome')" sortable>
+      <Column field="soggetto_cognome" :header="t('amministrazione.col_nome')" sortable>
         <template #body="{ data }">
           {{ data.soggetto_cognome }} {{ data.soggetto_nome }}
         </template>
       </Column>
-      <Column field="username" :header="t('amm.col_username')" sortable />
-      <Column field="unita_organizzativa_nome" :header="t('amm.col_reparto')" sortable />
-      <Column field="emittenti_descrizione" :header="t('amm.field_emittente')" />
-      <Column :header="t('amm.col_ruolo')">
+      <Column field="username" :header="t('amministrazione.col_username')" sortable />
+      <Column field="unita_organizzativa_nome" :header="t('amministrazione.col_reparto')" sortable />
+      <Column field="emittenti_descrizione" :header="t('amministrazione.field_emittente')" />
+      <Column :header="t('amministrazione.col_ruolo')">
         <template #body="{ data }">
           <div class="operatore-ruolo-badges">
             <Badge v-if="data.is_super_admin"
-              :value="t('amm.is_super_admin.badge')" severity="warn" />
+              :value="t('amministrazione.is_super_admin.badge')" severity="warn" />
             <Badge :value="ruoloAppLabel(data.ruolo_applicativo)"
               :severity="data.ruolo_applicativo === RUOLO_APPLICATIVO.DISABILITATO ? 'danger' : 'info'" />
           </div>
         </template>
       </Column>
-      <Column field="valido_dal" :header="t('amm.col_valido_dal')" sortable>
+      <Column field="valido_dal" :header="t('amministrazione.col_valido_dal')" sortable>
         <template #body="{ data }">{{ displayDate(data.valido_dal) }}</template>
       </Column>
-      <Column field="valido_al" :header="t('amm.col_valido_al')" sortable>
+      <Column field="valido_al" :header="t('amministrazione.col_valido_al')" sortable>
         <template #body="{ data }">{{ displayDate(data.valido_al) }}</template>
       </Column>
-      <Column field="is_active" :header="t('amm.col_stato')" sortable>
+      <Column field="is_active" :header="t('amministrazione.col_stato')" sortable>
         <template #body="{ data }">
           <Badge
-            :value="data.is_active ? t('amm.stato_attivo') : t('amm.stato_inattivo')"
+            :value="data.is_active ? t('amministrazione.stato_attivo') : t('amministrazione.stato_inattivo')"
             :severity="activeBadgeSeverity(data.is_active)"
           />
         </template>

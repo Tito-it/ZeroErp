@@ -138,7 +138,7 @@ async function handleSave() {
     }
     const result = await execute(
       () => store.update(props.listinoId, payload),
-      { successMessage: t('listini.listino_salvato') }
+      { successMessage: t('vendite.listini.listino_salvato') }
     )
     if (result !== null) { emit('saved', result); close() }
   } else {
@@ -154,7 +154,7 @@ async function handleSave() {
     }
     const result = await execute(
       () => store.create(payload),
-      { successMessage: t('listini.listino_creato') }
+      { successMessage: t('vendite.listini.listino_creato') }
     )
     if (result !== null) { emit('saved', result); close() }
   }
@@ -173,7 +173,7 @@ function close() {
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('listini.listino')"
+        :title="t('vendite.listini.listino')"
         :icon="NAV_ICONS.LISTINI"
       />
     </template>
@@ -182,31 +182,31 @@ function close() {
       <template v-if="contentReady">
         <!-- Banner refactor operatore-emittenti (solo creazione) -->
         <Message v-if="!isEdit && auth.isAdminGlobale" severity="warn" :closable="false" class="mb-05">
-          {{ t('listini.banner_admin_globale_no_create') }}
+          {{ t('vendite.listini.banner_admin_globale_no_create') }}
         </Message>
         <Message v-else-if="!isEdit && auth.emittenteCorrente" severity="info" :closable="false" class="mb-05">
-          {{ t('listini.banner_emittente_corrente', { nome: auth.emittenteCorrente.ragioneSociale }) }}
+          {{ t('vendite.listini.banner_emittente_corrente', { nome: auth.emittenteCorrente.ragioneSociale }) }}
         </Message>
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('listini.field_codice') }} *</label>
+            <label>{{ t('vendite.listini.field_codice') }} *</label>
             <InputText v-model="form.codice" :disabled="isEdit" />
           </div>
           <div class="form-field">
-            <label>{{ t('listini.field_utility') }} *</label>
+            <label>{{ t('vendite.listini.field_utility') }} *</label>
             <UtilityPerRuoloSelect v-model="form.utility_id"
-              :placeholder="t('listini.field_utility')" />
+              :placeholder="t('vendite.listini.field_utility')" />
           </div>
         </div>
 
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('listini.field_tipologia') }} *</label>
+            <label>{{ t('vendite.listini.field_tipologia') }} *</label>
             <TipologiaListinoSelect v-model="form.tipologia_id"
               :utility-id="form.utility_id" />
           </div>
           <div class="form-field">
-            <label>{{ t('listini.field_descrizione') }} *</label>
+            <label>{{ t('vendite.listini.field_descrizione') }} *</label>
             <InputText v-model="form.descrizione" />
           </div>
         </div>

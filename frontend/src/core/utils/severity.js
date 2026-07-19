@@ -249,13 +249,13 @@ export function pricingOrigineSeverity(codice) {
 // Quando il pattern verra' replicato sui 4 sorgenti futuri valutare lo
 // spostamento delle chiavi i18n in `common.pricing_origine_*`.
 export const PRICING_ORIGINE_LABEL_KEY = {
-  PROMO: 'preventivi.badge_origine_promo',
-  CONTRATTO: 'preventivi.badge_origine_contratto',
-  CONTRATTO_LISTINO: 'preventivi.badge_origine_contratto',
-  CONTRATTO_OVERRIDE: 'preventivi.badge_origine_contratto_override',
-  CATEGORIA: 'preventivi.badge_origine_categoria',
-  LISTINO_BUNDLE: 'preventivi.badge_origine_listino_bundle',
-  MANUALE: 'preventivi.badge_origine_manuale',
+  PROMO: 'vendite.preventivi.badge_origine_promo',
+  CONTRATTO: 'vendite.preventivi.badge_origine_contratto',
+  CONTRATTO_LISTINO: 'vendite.preventivi.badge_origine_contratto',
+  CONTRATTO_OVERRIDE: 'vendite.preventivi.badge_origine_contratto_override',
+  CATEGORIA: 'vendite.preventivi.badge_origine_categoria',
+  LISTINO_BUNDLE: 'vendite.preventivi.badge_origine_listino_bundle',
+  MANUALE: 'vendite.preventivi.badge_origine_manuale',
 }
 
 // Scopo: Ritorna la chiave i18n per il codice origine, o null se sconosciuto.

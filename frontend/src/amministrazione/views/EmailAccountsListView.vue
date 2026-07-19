@@ -33,7 +33,7 @@ const pageActions = computed(() => [
     key: 'new',
     kind: 'primary',
     label: t('common.new'),
-    tooltip: t('amm.email_new_account'),
+    tooltip: t('amministrazione.email_new_account'),
     icon: MANAGE_ICONS.ADD,
     hideWhenReadonly: true,
     command: () => drawer.openCreate(),
@@ -75,14 +75,14 @@ function onRowClick({ data }) {
       @sort="onSort"
       @row-click="onRowClick"
     >
-      <Column field="codice" :header="t('amm.email_codice')" sortable style="width: 120px;" />
-      <Column field="descrizione" :header="t('amm.email_descrizione')" sortable />
-      <Column field="smtp_host" :header="t('amm.email_smtp_host')" style="width: 180px;" />
-      <Column field="email_from" :header="t('amm.email_from')" style="width: 220px;" />
-      <Column field="unita_organizzativa_descrizione" :header="t('amm.email_uo')" style="width: 180px;" />
-      <Column field="attivo" :header="t('amm.email_attivo')" style="width: 80px;">
+      <Column field="codice" :header="t('amministrazione.email_codice')" sortable style="width: 120px;" />
+      <Column field="descrizione" :header="t('amministrazione.email_descrizione')" sortable />
+      <Column field="smtp_host" :header="t('amministrazione.email_smtp_host')" style="width: 180px;" />
+      <Column field="email_from" :header="t('amministrazione.email_from')" style="width: 220px;" />
+      <Column field="unita_organizzativa_descrizione" :header="t('amministrazione.email_uo')" style="width: 180px;" />
+      <Column field="attivo" :header="t('amministrazione.email_attivo')" style="width: 80px;">
         <template #body="{ data }">
-          <AttivoTag :active="data.attivo" :active-label="t('amm.email_attivo')" :inactive-label="t('amm.email_non_attivo')" />
+          <AttivoTag :active="data.attivo" :active-label="t('amministrazione.email_attivo')" :inactive-label="t('amministrazione.email_non_attivo')" />
         </template>
       </Column>
     </DataTable>

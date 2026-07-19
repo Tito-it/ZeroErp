@@ -97,7 +97,7 @@ async function handleSave() {
   // execute() restituisce gia' body.data unwrappato (vedi useApiHandler).
   const result = await execute(
     () => createVersione(props.listino.id, payload),
-    { successMessage: t('listini.versione_creata') }
+    { successMessage: t('vendite.listini.versione_creata') }
   )
   if (result !== null) {
     emit('saved', { listinoId: props.listino.id, versione: result })
@@ -114,29 +114,29 @@ function close() {
   <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
     position="right" :style="{ width: DRAWER_WIDTH.STANDARD }">
     <template #header>
-      <DrawerTitle :action="t('common.new')" :title="t('listini.nuova_versione')" :icon="NAV_ICONS.HISTORY" />
+      <DrawerTitle :action="t('common.new')" :title="t('vendite.listini.nuova_versione')" :icon="NAV_ICONS.HISTORY" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div v-if="listino" class="app-drawer-section">
-        <h4>{{ t('listini.listino') }}: {{ listino.codice }} — {{ listino.descrizione }}</h4>
+        <h4>{{ t('vendite.listini.listino') }}: {{ listino.codice }} — {{ listino.descrizione }}</h4>
       </div>
 
       <Message v-if="bozzeEsistenti.length > 0" severity="warn" :closable="false" class="mb-1">
-        {{ t('listini.warning_bozza_esistente', { codice: bozzeEsistenti.map(b => b.codice_versione).join(', ') }) }}
+        {{ t('vendite.listini.warning_bozza_esistente', { codice: bozzeEsistenti.map(b => b.codice_versione).join(', ') }) }}
       </Message>
 
       <div class="form-field">
-        <label>{{ t('listini.field_codice_versione') }} *</label>
+        <label>{{ t('vendite.listini.field_codice_versione') }} *</label>
         <InputText v-model="form.codice_versione" />
       </div>
       <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('listini.field_valido_dal') }} *</label>
+          <label>{{ t('vendite.listini.field_valido_dal') }} *</label>
           <DatePicker v-model="form.valido_dal" :dateFormat="DATE_FORMAT" showIcon />
         </div>
         <div class="form-field">
-          <label>{{ t('listini.field_valido_al') }}</label>
+          <label>{{ t('vendite.listini.field_valido_al') }}</label>
           <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar />
         </div>
       </div>

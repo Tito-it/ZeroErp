@@ -173,7 +173,7 @@ async function onSoggettoCreatoDaDrawer(data) {
     <template #header>
       <DrawerTitle
         :action="t('resolver.action_search')"
-        :title="t('soggetti.soggetto')"
+        :title="t('anagrafiche.soggetti.soggetto')"
         icon="pi pi-search"
       />
     </template>

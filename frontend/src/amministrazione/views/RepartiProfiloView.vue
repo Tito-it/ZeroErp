@@ -59,16 +59,16 @@ function profiloSeverity(count) {
       selection-mode="single"
       data-key="id"
     >
-      <Column field="descrizione" :header="t('amm.col_reparto')" />
-      <Column field="profilo_aree_count" :header="t('amm.col_profilo')">
+      <Column field="descrizione" :header="t('amministrazione.col_reparto')" />
+      <Column field="profilo_aree_count" :header="t('amministrazione.col_profilo')">
         <template #body="{ data }">
           <Badge
-            :value="data.profilo_aree_count > 0 ? t('amm.profilo_configurato') : t('amm.profilo_mancante')"
+            :value="data.profilo_aree_count > 0 ? t('amministrazione.profilo_configurato') : t('amministrazione.profilo_mancante')"
             :severity="profiloSeverity(data.profilo_aree_count)"
           />
         </template>
       </Column>
-      <Column field="operatori_count" :header="t('amm.col_operatori')" />
+      <Column field="operatori_count" :header="t('amministrazione.col_operatori')" />
     </DataTable>
 
     <RepartoProfiloEditor

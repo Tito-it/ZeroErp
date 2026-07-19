@@ -59,7 +59,7 @@ const pageActions = computed(() => [
     key: 'new',
     kind: 'primary',
     label: t('common.new'),
-    tooltip: t('ui_admin.colonna_nuova'),
+    tooltip: t('ui.admin.colonna_nuova'),
     icon: 'pi pi-plus',
     disabled: !listaSelezionata.value,
     command: drawer.openCreate,
@@ -88,8 +88,8 @@ function buildRowActions(data) {
 
 function onDelete(data) {
   confirmAction({
-    title: t('ui_admin.colonna_delete_titolo'),
-    message: t('ui_admin.colonna_delete_messaggio', { codice: data.codice }),
+    title: t('ui.admin.colonna_delete_titolo'),
+    message: t('ui.admin.colonna_delete_messaggio', { codice: data.codice }),
     danger: true,
     onAccept: async () => {
       const result = await execute(
@@ -129,7 +129,7 @@ function severityForTipoColonna(tipo) {
       size="small"
       class="mt-1"
     >
-      {{ t('ui_admin.lista_corrente_obbligatoria') }}
+      {{ t('ui.admin.lista_corrente_obbligatoria') }}
     </Message>
 
     <DataTable
@@ -143,22 +143,22 @@ function severityForTipoColonna(tipo) {
       striped-rows
       @row-click="(e) => drawer.editRow(e.data, 'id')"
     >
-      <Column field="ordine_default" :header="t('ui_admin.colonna_ordine')" style="width: 80px" sortable />
-      <Column field="codice" :header="t('ui_admin.colonna_codice')" sortable />
-      <Column field="etichetta" :header="t('ui_admin.colonna_etichetta')" sortable />
-      <Column field="tipo_colonna" :header="t('ui_admin.colonna_tipo_colonna')">
+      <Column field="ordine_default" :header="t('ui.admin.colonna_ordine')" style="width: 80px" sortable />
+      <Column field="codice" :header="t('ui.admin.colonna_codice')" sortable />
+      <Column field="etichetta" :header="t('ui.admin.colonna_etichetta')" sortable />
+      <Column field="tipo_colonna" :header="t('ui.admin.colonna_tipo_colonna')">
         <template #body="{ data }">
           <Tag :value="data.tipo_colonna" :severity="severityForTipoColonna(data.tipo_colonna)" />
         </template>
       </Column>
-      <Column field="tipo_dato" :header="t('ui_admin.colonna_tipo_dato')" />
-      <Column field="campo_sorgente" :header="t('ui_admin.colonna_campo_sorgente')">
+      <Column field="tipo_dato" :header="t('ui.admin.colonna_tipo_dato')" />
+      <Column field="campo_sorgente" :header="t('ui.admin.colonna_campo_sorgente')">
         <template #body="{ data }">
           <span v-if="data.campo_sorgente">{{ data.campo_sorgente }}</span>
           <span v-else class="muted">—</span>
         </template>
       </Column>
-      <Column field="gruppo" :header="t('ui_admin.colonna_gruppo')">
+      <Column field="gruppo" :header="t('ui.admin.colonna_gruppo')">
         <template #body="{ data }">
           <span v-if="data.gruppo">{{ data.gruppo }}</span>
           <span v-else class="muted">—</span>

@@ -50,7 +50,7 @@ const props = defineProps({
   // PREVIEW|ARCHIVE|NONE; `allow_allegati` boolean. null = detail non
   // caricato (create pre-save) -> bottone disabled.
   pdf: { type: [Object, null], default: null },
-  // Prefix i18n per le label/tooltip del bottone (es. 'contratti.pdf').
+  // Prefix i18n per le label/tooltip del bottone (es. 'vendite.contratti.pdf').
   i18nPrefix: { type: String, required: true },
   // Titolo del dialog "Scarica PDF" — gia' t-formattato dal caller
   // (i diversi domini usano parametri differenti: {numero} vs {codice}).

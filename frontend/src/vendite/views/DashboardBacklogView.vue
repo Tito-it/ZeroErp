@@ -68,7 +68,7 @@ const documentiSortOrder = computed(() => (orderDir.value === 'desc' ? -1 : 1))
 //        condivisi di dashboardAree (gruppo dash_comune, riusato dalla
 //        Situazione aperta); la classe e' vocabolario solo-Backlog.
 function classeLabel(classe) {
-  return labelOrCode(t, te, `dashboard_backlog.classe_${String(classe).toLowerCase()}`, classe)
+  return labelOrCode(t, te, `vendite.dashboard_backlog.classe_${String(classe).toLowerCase()}`, classe)
 }
 
 const motivoLabel = (motivo) => dashMotivoLabel(t, te, motivo)
@@ -90,7 +90,7 @@ const cards = computed(() =>
 // Opzioni filtro area (tutte + 5 aree funnel dal BB condiviso, label
 // condivise con la 5-card).
 const areaOptions = computed(() => [
-  { value: null, label: t('dashboard_backlog.filtro_area_tutte') },
+  { value: null, label: t('vendite.dashboard_backlog.filtro_area_tutte') },
   ...DASH_AREE.map((area) => ({ value: area, label: areaLabel(area) })),
 ])
 
@@ -154,7 +154,7 @@ function buildRowActions(data) {
     buildApriDocumentoAction({
       area: data.area,
       codice: data.codice,
-      label: t('dashboard_backlog.apri_documento'),
+      label: t('vendite.dashboard_backlog.apri_documento'),
       router,
     }),
   ]
@@ -186,8 +186,8 @@ onActivated(() => {
   <div class="app-page">
     <div class="app-page-toolbar">
       <div class="app-page-filters">
-        <h2 style="margin: 0;">{{ t('dashboard_backlog.page_title') }}</h2>
-        <small class="text-color-secondary">{{ t('dashboard_backlog.page_description') }}</small>
+        <h2 style="margin: 0;">{{ t('vendite.dashboard_backlog.page_title') }}</h2>
+        <small class="text-color-secondary">{{ t('vendite.dashboard_backlog.page_description') }}</small>
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
@@ -214,17 +214,17 @@ onActivated(() => {
             :severity="classeBacklogSeverity(card.classe)"
           />
           <span class="app-dash-stat-n">{{ card.nDocumenti }}</span>
-          <span class="app-dash-stat-sub">{{ t('dashboard_backlog.n_documenti') }}</span>
+          <span class="app-dash-stat-sub">{{ t('vendite.dashboard_backlog.n_documenti') }}</span>
           <span v-if="card.valoreFermo > 0" class="app-dash-stat-euro">
             {{ formatCurrency(card.valoreFermo) }}
           </span>
           <!-- Aree a conteggi (offerte/contratti): unita' al posto del valore. -->
           <span v-if="card.unitaFerme > 0" class="app-dash-stat-sub">
-            {{ t('dashboard_backlog.unita_ferme', { n: card.unitaFerme }) }}
+            {{ t('vendite.dashboard_backlog.unita_ferme', { n: card.unitaFerme }) }}
           </span>
           <span v-if="card.anzianitaMax > 0" class="app-dash-ritardo">
             <i class="pi pi-clock" />
-            {{ t('dashboard_backlog.anzianita_max', { n: card.anzianitaMax }) }}
+            {{ t('vendite.dashboard_backlog.anzianita_max', { n: card.anzianitaMax }) }}
           </span>
         </div>
       </div>
@@ -235,14 +235,14 @@ onActivated(() => {
       <div class="app-dash-fermi">
         <div class="app-page-toolbar">
           <h4 class="app-dash-fermi-title">
-            {{ t('dashboard_backlog.lista_titolo') }}
+            {{ t('vendite.dashboard_backlog.lista_titolo') }}
           </h4>
           <Select
             v-model="areaSelezionata"
             :options="areaOptions"
             option-label="label"
             option-value="value"
-            :placeholder="t('dashboard_backlog.filtro_area_tutte')"
+            :placeholder="t('vendite.dashboard_backlog.filtro_area_tutte')"
             size="small"
             style="width: 200px;"
             @change="onAreaChange"
@@ -266,59 +266,59 @@ onActivated(() => {
           @page="onDocumentiPage"
           @sort="onDocumentiSort"
         >
-          <Column field="anzianita_giorni" :header="t('dashboard_backlog.col_fermo_da')" sortable style="width: 110px;">
+          <Column field="anzianita_giorni" :header="t('vendite.dashboard_backlog.col_fermo_da')" sortable style="width: 110px;">
             <template #body="{ data }">
               <span
                 class="app-dash-ritardo"
                 v-tooltip.bottom="data.data_riferimento ? displayDate(data.data_riferimento) : ''"
               >
                 {{ data.anzianita_giorni !== null
-                  ? t('dashboard_backlog.fermo_da_giorni', { n: data.anzianita_giorni })
+                  ? t('vendite.dashboard_backlog.fermo_da_giorni', { n: data.anzianita_giorni })
                   : '—' }}
               </span>
             </template>
           </Column>
-          <Column field="classe" :header="t('dashboard_backlog.col_classe')" style="width: 140px;">
+          <Column field="classe" :header="t('vendite.dashboard_backlog.col_classe')" style="width: 140px;">
             <template #body="{ data }">
               <Tag :value="classeLabel(data.classe)" :severity="classeBacklogSeverity(data.classe)" />
             </template>
           </Column>
-          <Column field="area" :header="t('dashboard_backlog.col_area')" sortable style="width: 110px;">
+          <Column field="area" :header="t('vendite.dashboard_backlog.col_area')" sortable style="width: 110px;">
             <template #body="{ data }">
               {{ areaLabel(data.area) }}
             </template>
           </Column>
-          <Column field="codice" :header="t('dashboard_backlog.col_codice')" sortable style="width: 130px;">
+          <Column field="codice" :header="t('vendite.dashboard_backlog.col_codice')" sortable style="width: 130px;">
             <template #body="{ data }">
               {{ data.codice ?? '—' }}
             </template>
           </Column>
-          <Column field="cliente_display" :header="t('dashboard_backlog.col_cliente')" sortable>
+          <Column field="cliente_display" :header="t('vendite.dashboard_backlog.col_cliente')" sortable>
             <template #body="{ data }">
               {{ data.cliente_display ?? '—' }}
             </template>
           </Column>
-          <Column field="valore_fermo" :header="t('dashboard_backlog.col_valore')" sortable style="width: 120px;">
+          <Column field="valore_fermo" :header="t('vendite.dashboard_backlog.col_valore')" sortable style="width: 120px;">
             <template #body="{ data }">
               {{ data.valore_fermo !== null ? formatCurrency(data.valore_fermo) : '—' }}
             </template>
           </Column>
-          <Column field="unita_ferme" :header="t('dashboard_backlog.col_unita')" style="width: 90px;">
+          <Column field="unita_ferme" :header="t('vendite.dashboard_backlog.col_unita')" style="width: 90px;">
             <template #body="{ data }">
               {{ data.unita_ferme ?? '—' }}
             </template>
           </Column>
-          <Column field="motivo_fermo" :header="t('dashboard_backlog.col_motivo')">
+          <Column field="motivo_fermo" :header="t('vendite.dashboard_backlog.col_motivo')">
             <template #body="{ data }">
               {{ motivoLabel(data.motivo_fermo) }}
             </template>
           </Column>
-          <Column field="azione" :header="t('dashboard_backlog.col_azione')">
+          <Column field="azione" :header="t('vendite.dashboard_backlog.col_azione')">
             <template #body="{ data }">
               {{ data.azione ?? '—' }}
             </template>
           </Column>
-          <Column field="stato_codice" :header="t('dashboard_backlog.col_stato')" sortable style="width: 120px;">
+          <Column field="stato_codice" :header="t('vendite.dashboard_backlog.col_stato')" sortable style="width: 120px;">
             <template #body="{ data }">
               <Tag :value="data.stato_codice ?? '—'" :severity="statoSeverity(data)" />
             </template>
@@ -332,8 +332,8 @@ onActivated(() => {
         <DashEmptyState
           v-else
           :loaded="documentiLoaded"
-          :empty-text="t('dashboard_backlog.nessun_documento')"
-          :placeholder-text="t('dashboard_backlog.non_caricato')"
+          :empty-text="t('vendite.dashboard_backlog.nessun_documento')"
+          :placeholder-text="t('vendite.dashboard_backlog.non_caricato')"
         />
       </div>
     </div>

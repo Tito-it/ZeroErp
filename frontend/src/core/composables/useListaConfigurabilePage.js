@@ -15,7 +15,7 @@
 //   } = useListaConfigurabilePage(store, {
 //     exportFn: exportFornitori,
 //     getExportParams: (fmt) => buildExportParams(fmt),
-//     newTooltipKey: 'fornitori.nuovo_fornitore',
+//     newTooltipKey: 'anagrafiche.fornitori.nuovo_fornitore',
 //     onNew: () => emit('new'),
 //     searchTableOptions: { defaultSortField: 'ragione_sociale_completa' },
 //   })

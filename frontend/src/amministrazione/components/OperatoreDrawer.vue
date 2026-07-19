@@ -216,7 +216,7 @@ async function onSave() {
     }
     const result = await execute(
       () => store.create(payload),
-      { successMessage: t('amm.operatore_creato') }
+      { successMessage: t('amministrazione.operatore_creato') }
     )
     if (result !== null) {
       emit('saved')
@@ -248,8 +248,8 @@ const canSave = computed(() => isEdit.value ? canSaveEdit.value : canSaveCreate.
 function onInvita() {
   const isReinvio = hasBeenInvited.value
   confirmAction({
-    title: t('amm.invito_confirm_title'),
-    message: isReinvio ? t('amm.reinvio_confirm_msg') : t('amm.invito_confirm_msg'),
+    title: t('amministrazione.invito_confirm_title'),
+    message: isReinvio ? t('amministrazione.reinvio_confirm_msg') : t('amministrazione.invito_confirm_msg'),
     onAccept: async () => {
       invitaLoading.value = true
       try {
@@ -257,8 +257,8 @@ function onInvita() {
         const res = await apiFn(props.authUserId)
         const data = res.data?.data
         const msg = data?.email
-          ? t('amm.invito_inviato') + ` (${data.email})`
-          : t('amm.invito_inviato')
+          ? t('amministrazione.invito_inviato') + ` (${data.email})`
+          : t('amministrazione.invito_inviato')
         notify.success(msg)
         // Ricarica dettaglio per aggiornare invito_inviato_at
         await store.fetchDetail(props.authUserId)
@@ -283,14 +283,14 @@ const onClose = useDrawerClose(emit, 'cancelled')
     @update:visible="val => emit('update:visible', val)"
   >
     <template #header>
-      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('amm.operatore')" :icon="NAV_ICONS.OPERATORE" />
+      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('amministrazione.operatore')" :icon="NAV_ICONS.OPERATORE" />
     </template>
 
     <div :class="{ 'app-readonly': isReadonly }">
     <TabView :key="tabViewKey">
-      <TabPanel :header="t('amm.tab_dati')">
+      <TabPanel :header="t('amministrazione.tab_dati')">
         <!-- === Sezione Soggetto === -->
-        <h4>{{ t('amm.section_persona') }}</h4>
+        <h4>{{ t('amministrazione.section_persona') }}</h4>
 
         <!-- Modifica: banner soggetto sola lettura -->
         <div v-if="isEdit && form.soggetto_id" class="mb-3">
@@ -318,7 +318,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
 
         <!-- === Sezione Auth (solo creazione) === -->
         <template v-if="!isEdit">
-          <h4 class="mt-3">{{ t('amm.section_accesso') }}</h4>
+          <h4 class="mt-3">{{ t('amministrazione.section_accesso') }}</h4>
           <AuthUserForm
             :form="auth.form"
             :password-match="auth.passwordMatch.value"
@@ -326,7 +326,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         </template>
 
         <!-- === Sezione Dati anagrafici + Collocazione === -->
-        <h4 v-if="!isEdit" class="mt-3">{{ t('amm.section_collocazione') }}</h4>
+        <h4 v-if="!isEdit" class="mt-3">{{ t('amministrazione.section_collocazione') }}</h4>
         <div class="form-grid">
           <!-- Username + Emittente su stessa riga (solo modifica, sola lettura) -->
           <div v-if="isEdit" class="form-grid-2col">
@@ -335,7 +335,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
               <InputText :model-value="form.username" disabled class="w-full" />
             </div>
             <div class="form-field">
-              <label>{{ t('amm.field_emittente') }}</label>
+              <label>{{ t('amministrazione.field_emittente') }}</label>
               <InputText :model-value="form.emittenti_descrizione || '—'" disabled class="w-full" />
             </div>
           </div>
@@ -372,8 +372,8 @@ const onClose = useDrawerClose(emit, 'cancelled')
               <div class="operatore-toggle-row">
                 <ToggleSwitch v-model="form.is_super_admin" input-id="tg-super-admin" />
                 <label for="tg-super-admin" class="operatore-toggle-label">
-                  <span>{{ t('amm.is_super_admin.label') }}</span>
-                  <small class="operatore-toggle-help">{{ t('amm.is_super_admin.help') }}</small>
+                  <span>{{ t('amministrazione.is_super_admin.label') }}</span>
+                  <small class="operatore-toggle-help">{{ t('amministrazione.is_super_admin.help') }}</small>
                 </label>
               </div>
             </div>
@@ -381,8 +381,8 @@ const onClose = useDrawerClose(emit, 'cancelled')
               <div class="operatore-toggle-row">
                 <ToggleSwitch v-model="form.attivo" input-id="tg-attivo" />
                 <label for="tg-attivo" class="operatore-toggle-label">
-                  <span>{{ t('amm.accesso_attivo.label') }}</span>
-                  <small class="operatore-toggle-help">{{ t('amm.accesso_attivo.help') }}</small>
+                  <span>{{ t('amministrazione.accesso_attivo.label') }}</span>
+                  <small class="operatore-toggle-help">{{ t('amministrazione.accesso_attivo.help') }}</small>
                 </label>
               </div>
             </div>
@@ -393,39 +393,39 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <div class="operatore-toggle-row">
               <ToggleSwitch v-model="form.is_super_admin" input-id="tg-super-admin-new" />
               <label for="tg-super-admin-new" class="operatore-toggle-label">
-                <span>{{ t('amm.is_super_admin.label') }}</span>
-                <small class="operatore-toggle-help">{{ t('amm.is_super_admin.help') }}</small>
+                <span>{{ t('amministrazione.is_super_admin.label') }}</span>
+                <small class="operatore-toggle-help">{{ t('amministrazione.is_super_admin.help') }}</small>
               </label>
             </div>
           </div>
 
           <!-- Qualifica: solo creazione -->
           <div v-if="!isEdit" class="form-field">
-            <label>{{ t('amm.field_qualifica') }} *</label>
+            <label>{{ t('amministrazione.field_qualifica') }} *</label>
             <LookupSelect v-model="form.qualifica_id"
               rel="config.qualifiche"
-              class="w-full" :placeholder="t('amm.select_qualifica')" />
+              class="w-full" :placeholder="t('amministrazione.select_qualifica')" />
           </div>
 
           <div class="form-field">
-            <label>{{ t('amm.field_reparto') }}</label>
+            <label>{{ t('amministrazione.field_reparto') }}</label>
             <Select v-model="form.unita_organizzativa_id"
               :options="unitaOrg.items.value"
               :loading="unitaOrg.loading.value"
               option-label="descrizione" option-value="id"
-              class="w-full" :placeholder="t('amm.select_reparto')" />
+              class="w-full" :placeholder="t('amministrazione.select_reparto')" />
           </div>
 
           <!-- Validita' (solo modifica, sola lettura informativa) -->
           <template v-if="isEdit">
             <div class="form-grid-2col">
               <div class="form-field">
-                <label>{{ t('amm.field_valido_dal') }}</label>
+                <label>{{ t('amministrazione.field_valido_dal') }}</label>
                 <InputText :model-value="form.valido_dal ? displayDate(form.valido_dal) : '—'" disabled class="w-full" />
               </div>
               <div class="form-field">
-                <label>{{ t('amm.field_valido_al') }}</label>
-                <InputText :model-value="form.valido_al ? displayDate(form.valido_al) : t('amm.valido_al_illimitato')" disabled class="w-full" />
+                <label>{{ t('amministrazione.field_valido_al') }}</label>
+                <InputText :model-value="form.valido_al ? displayDate(form.valido_al) : t('amministrazione.valido_al_illimitato')" disabled class="w-full" />
               </div>
             </div>
           </template>
@@ -434,7 +434,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <!-- Invito operatore (solo modifica, mai loggato) -->
         <div v-if="canInvite" class="mt-3">
           <Button
-            :label="hasBeenInvited ? t('amm.reinvia_invito') : t('amm.invita_operatore')"
+            :label="hasBeenInvited ? t('amministrazione.reinvia_invito') : t('amministrazione.invita_operatore')"
             icon="pi pi-envelope"
             :loading="invitaLoading"
             outlined size="small"
@@ -448,7 +448,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
       </TabPanel>
 
       <!-- Tab Permessi: solo modifica -->
-      <TabPanel v-if="isEdit" :header="t('amm.tab_permessi')">
+      <TabPanel v-if="isEdit" :header="t('amministrazione.tab_permessi')">
         <OperatorePermessiTab :auth-user-id="props.authUserId" />
       </TabPanel>
     </TabView>

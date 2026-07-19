@@ -75,7 +75,7 @@ function onContiBancari(data) {
 function resolveCanCreateContratto(cliente) {
   const stato = (cliente?.stato_codice_interno || '').toUpperCase()
   if (stato === 'CESSATO' || stato === 'CHIUSO') {
-    return { canCreate: false, reason: t('clienti.ba_chiuso_no_contratti') }
+    return { canCreate: false, reason: t('anagrafiche.clienti.ba_chiuso_no_contratti') }
   }
   return { canCreate: true, reason: '' }
 }

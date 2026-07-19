@@ -45,9 +45,9 @@ const isCategoriaScope = computed(() => scope.value === PARAMETER_SCOPE.CATEGORI
 // Solo l'admin puo' scegliere lo scope; gli utenti normali restano fissi su USER.
 // Cascata visualizzata BE: user > categoria_cliente > group > emittente > default.
 const scopeOptions = computed(() => [
-  { value: PARAMETER_SCOPE.EMITTENTE, label: t('impostazioni.scope_emittente') },
-  { value: PARAMETER_SCOPE.CATEGORIA_CLIENTE, label: t('impostazioni.scope_categoria_cliente') },
-  { value: PARAMETER_SCOPE.USER, label: t('impostazioni.scope_user') }
+  { value: PARAMETER_SCOPE.EMITTENTE, label: t('config.impostazioni.scope_emittente') },
+  { value: PARAMETER_SCOPE.CATEGORIA_CLIENTE, label: t('config.impostazioni.scope_categoria_cliente') },
+  { value: PARAMETER_SCOPE.USER, label: t('config.impostazioni.scope_user') }
 ])
 
 // Edit attivo se per lo scope corrente esiste già un valore configurato.
@@ -97,9 +97,9 @@ const canSave = computed(() => {
 
 // Label dinamica del campo valore in base allo scope.
 const overrideLabel = computed(() => {
-  if (isEmittenteScope.value) return t('impostazioni.emittente_override')
-  if (isCategoriaScope.value) return t('impostazioni.categoria_cliente_override')
-  return t('impostazioni.your_override')
+  if (isEmittenteScope.value) return t('config.impostazioni.emittente_override')
+  if (isCategoriaScope.value) return t('config.impostazioni.categoria_cliente_override')
+  return t('config.impostazioni.your_override')
 })
 
 async function handleSave() {
@@ -111,7 +111,7 @@ async function handleSave() {
     () => store.saveOverride(
       props.parameter.code, overrideValue.value, scope.value, options,
     ),
-    { successMessage: t('impostazioni.override_saved') }
+    { successMessage: t('config.impostazioni.override_saved') }
   )
   if (result !== null) {
     emit('saved', result)
@@ -131,29 +131,29 @@ function close() {
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('impostazioni.override_title')"
+        :title="t('config.impostazioni.override_title')"
       />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }" v-if="parameter">
       <div class="form-grid">
         <div class="form-field">
-          <label>{{ t('impostazioni.col_code') }}</label>
+          <label>{{ t('config.impostazioni.col_code') }}</label>
           <InputText :model-value="parameter.code" disabled />
         </div>
 
         <div class="form-field" v-if="parameter.description">
-          <label>{{ t('impostazioni.col_description') }}</label>
+          <label>{{ t('config.impostazioni.col_description') }}</label>
           <div class="parameter-description">{{ parameter.description }}</div>
         </div>
 
         <div class="form-field">
-          <label>{{ t('impostazioni.fallback_chain') }}</label>
+          <label>{{ t('config.impostazioni.fallback_chain') }}</label>
           <ParameterFallback :parameter="parameter" />
         </div>
 
         <div v-if="auth.isAdmin" class="form-field">
-          <label>{{ t('impostazioni.scope_label') }}</label>
+          <label>{{ t('config.impostazioni.scope_label') }}</label>
           <Select v-model="scope" :options="scopeOptions"
             option-label="label" option-value="value"
             :disabled="isReadonly" />
@@ -164,17 +164,17 @@ function close() {
              `anagrafiche.categorie_clienti` come whitelist core. Senza
              selezione, canSave=false. -->
         <div v-if="isCategoriaScope" class="form-field">
-          <label>{{ t('impostazioni.field_categoria_cliente') }} *</label>
+          <label>{{ t('config.impostazioni.field_categoria_cliente') }} *</label>
           <LookupSelect v-model="categoriaClienteId"
             rel="anagrafiche.categorie_clienti"
-            :placeholder="t('impostazioni.select_categoria_cliente')"
+            :placeholder="t('config.impostazioni.select_categoria_cliente')"
             :disabled="isReadonly" show-code />
         </div>
 
         <div class="form-field">
           <label>{{ overrideLabel }}</label>
           <InputText v-model="overrideValue" :disabled="isReadonly"
-            :placeholder="t('impostazioni.override_placeholder')" />
+            :placeholder="t('config.impostazioni.override_placeholder')" />
         </div>
       </div>
 

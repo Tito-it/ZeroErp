@@ -40,9 +40,9 @@ useTabFreshness(store, TAB_ENTITIES.EMITTENTE_FISCALE)
 
 const attivoFilter = ref(null)
 const attivoOptions = [
-  { label: t('amm.stato_all'), value: null },
-  { label: t('amm.stato_attivo'), value: true },
-  { label: t('amm.stato_inattivo'), value: false }
+  { label: t('amministrazione.stato_all'), value: null },
+  { label: t('amministrazione.stato_attivo'), value: true },
+  { label: t('amministrazione.stato_inattivo'), value: false }
 ]
 const pageActions = computed(() => [
   {
@@ -56,7 +56,7 @@ const pageActions = computed(() => [
     key: 'new',
     kind: 'primary',
     label: t('common.new'),
-    tooltip: t('amm_emittenti_fiscali.new'),
+    tooltip: t('amministrazione.emittenti_fiscali.new'),
     icon: MANAGE_ICONS.ADD,
     hideWhenReadonly: true,
     command: openCreate,
@@ -88,13 +88,13 @@ function buildRowActions(data) {
   return [
     {
       key: 'ba',
-      label: t('amm_emittenti_fiscali.action_ba'),
+      label: t('amministrazione.emittenti_fiscali.action_ba'),
       icon: MANAGE_ICONS.BILLING_ACCOUNT,
       command: () => baDrawer.editRow(data, 'id'),
     },
     {
       key: 'utilities',
-      label: t('amm_emittenti_fiscali.action_utilities'),
+      label: t('amministrazione.emittenti_fiscali.action_utilities'),
       icon: MANAGE_ICONS.UTILITY,
       command: () => utDrawer.editRow(data, 'id'),
     },
@@ -111,14 +111,14 @@ function buildRowActions(data) {
       <div class="app-page-filters">
         <InputText
           v-model="searchText"
-          :placeholder="t('amm_emittenti_fiscali.search_placeholder')"
+          :placeholder="t('amministrazione.emittenti_fiscali.search_placeholder')"
         />
         <Select
           v-model="attivoFilter"
           :options="attivoOptions"
           option-label="label"
           option-value="value"
-          :placeholder="t('amm.filter_stato')"
+          :placeholder="t('amministrazione.filter_stato')"
           @change="applyExtraFilters"
         />
       </div>
@@ -145,14 +145,14 @@ function buildRowActions(data) {
       selection-mode="single"
       data-key="id"
     >
-      <Column field="codice" :header="t('amm_emittenti_fiscali.col_codice')" sortable style="width: 220px;" />
-      <Column field="descrizione" :header="t('amm_emittenti_fiscali.col_descrizione')" sortable />
-      <Column field="ragione_sociale_completa" :header="t('amm_emittenti_fiscali.col_ragione_sociale')" sortable />
-      <Column field="partita_iva" :header="t('amm_emittenti_fiscali.col_piva')" style="width: 160px;" />
-      <Column field="attivo" :header="t('amm_emittenti_fiscali.col_attivo')" sortable style="width: 110px;">
+      <Column field="codice" :header="t('amministrazione.emittenti_fiscali.col_codice')" sortable style="width: 220px;" />
+      <Column field="descrizione" :header="t('amministrazione.emittenti_fiscali.col_descrizione')" sortable />
+      <Column field="ragione_sociale_completa" :header="t('amministrazione.emittenti_fiscali.col_ragione_sociale')" sortable />
+      <Column field="partita_iva" :header="t('amministrazione.emittenti_fiscali.col_piva')" style="width: 160px;" />
+      <Column field="attivo" :header="t('amministrazione.emittenti_fiscali.col_attivo')" sortable style="width: 110px;">
         <template #body="{ data }">
           <Badge
-            :value="data.attivo ? t('amm.stato_attivo') : t('amm.stato_inattivo')"
+            :value="data.attivo ? t('amministrazione.stato_attivo') : t('amministrazione.stato_inattivo')"
             :severity="data.attivo ? 'success' : 'danger'"
           />
         </template>

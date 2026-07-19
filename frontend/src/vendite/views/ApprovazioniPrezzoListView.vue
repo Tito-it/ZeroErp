@@ -42,18 +42,18 @@ const dialogText = ref('')
 
 const dialogTitle = computed(() =>
   dialogMode.value === 'approva'
-    ? t('approvazioni_prezzo.approva_dialog_title')
-    : t('approvazioni_prezzo.rifiuta_dialog_title')
+    ? t('vendite.approvazioni_prezzo.approva_dialog_title')
+    : t('vendite.approvazioni_prezzo.rifiuta_dialog_title')
 )
 const dialogMessage = computed(() =>
   dialogMode.value === 'approva'
-    ? t('approvazioni_prezzo.approva_dialog_message')
-    : t('approvazioni_prezzo.rifiuta_dialog_message')
+    ? t('vendite.approvazioni_prezzo.approva_dialog_message')
+    : t('vendite.approvazioni_prezzo.rifiuta_dialog_message')
 )
 const dialogTextLabel = computed(() =>
   dialogMode.value === 'approva'
-    ? t('approvazioni_prezzo.approva_nota_label')
-    : t('approvazioni_prezzo.rifiuta_motivazione_label')
+    ? t('vendite.approvazioni_prezzo.approva_nota_label')
+    : t('vendite.approvazioni_prezzo.rifiuta_motivazione_label')
 )
 
 // Scopo: carica una pagina della coda approver. Lo scope emittente
@@ -68,7 +68,7 @@ async function fetchPage() {
     total.value = payload?.count ?? items.value.length
   } catch (err) {
     listError.value = err?.response?.status === 403
-      ? t('approvazioni_prezzo.accesso_negato')
+      ? t('vendite.approvazioni_prezzo.accesso_negato')
       : extractApiError(err, t('common.error'))
     items.value = []
     total.value = 0
@@ -138,7 +138,7 @@ async function confirmDialog() {
       '[approvazioni-prezzo] confirmDialog abort: riga_id non trovata nel meta della pratica',
       { pratica_id: pratica?.id, meta_raw: pratica?.meta },
     )
-    notify.error(t('approvazioni_prezzo.reason_riga_non_linkata'))
+    notify.error(t('vendite.approvazioni_prezzo.reason_riga_non_linkata'))
     return
   }
   const sorgente = sorgenteFromPratica(pratica)
@@ -146,10 +146,10 @@ async function confirmDialog() {
   try {
     if (dialogMode.value === 'approva') {
       await approvaPrezzoRiga(rigaId, { nota: dialogText.value || null }, sorgente)
-      notify.success(t('approvazioni_prezzo.approvazione_inviata'))
+      notify.success(t('vendite.approvazioni_prezzo.approvazione_inviata'))
     } else {
       await rifiutaPrezzoRiga(rigaId, { motivazione: dialogText.value || null }, sorgente)
-      notify.success(t('approvazioni_prezzo.rifiuto_inviato'))
+      notify.success(t('vendite.approvazioni_prezzo.rifiuto_inviato'))
     }
     dialogVisible.value = false
     await fetchPage()
@@ -170,8 +170,8 @@ function onPage(event) {
 // mappiamo qui in chiave i18n. Restituisce stringa vuota se non c'e' reason
 // (bottone abilitato): RowActionsMenu non mostra tooltip vuoto.
 const ACTION_REASON_KEYS = {
-  PERMESSO_MANCANTE: 'approvazioni_prezzo.reason_permesso_mancante',
-  RIGA_NON_LINKATA: 'approvazioni_prezzo.reason_riga_non_linkata',
+  PERMESSO_MANCANTE: 'vendite.approvazioni_prezzo.reason_permesso_mancante',
+  RIGA_NON_LINKATA: 'vendite.approvazioni_prezzo.reason_riga_non_linkata',
 }
 function actionReasonTooltip(item) {
   const code = item?.action_reason
@@ -188,7 +188,7 @@ function buildRowActions(data) {
   return [
     {
       key: 'approva',
-      label: t('approvazioni_prezzo.azione_approva'),
+      label: t('vendite.approvazioni_prezzo.azione_approva'),
       icon: MANAGE_ICONS.APPROVE,
       severity: 'primary',
       disabled: !data.can_approve,
@@ -197,7 +197,7 @@ function buildRowActions(data) {
     },
     {
       key: 'rifiuta',
-      label: t('approvazioni_prezzo.azione_rifiuta'),
+      label: t('vendite.approvazioni_prezzo.azione_rifiuta'),
       icon: MANAGE_ICONS.REJECT,
       severity: 'danger',
       disabled: !data.can_reject,
@@ -224,8 +224,8 @@ const pageActions = computed(() => [
   <div class="app-page">
     <div class="app-page-toolbar">
       <div class="app-page-filters">
-        <h2 style="margin: 0;">{{ t('approvazioni_prezzo.page_title') }}</h2>
-        <small class="text-color-secondary">{{ t('approvazioni_prezzo.page_description') }}</small>
+        <h2 style="margin: 0;">{{ t('vendite.approvazioni_prezzo.page_title') }}</h2>
+        <small class="text-color-secondary">{{ t('vendite.approvazioni_prezzo.page_description') }}</small>
       </div>
       <PageActionsBar :actions="pageActions" />
     </div>
@@ -255,18 +255,18 @@ const pageActions = computed(() => [
         </div>
         <div v-else class="app-empty-state">
           <i class="pi pi-check-circle" />
-          <p>{{ t('approvazioni_prezzo.nessuna_richiesta') }}</p>
+          <p>{{ t('vendite.approvazioni_prezzo.nessuna_richiesta') }}</p>
         </div>
       </template>
 
-      <Column field="id" :header="t('approvazioni_prezzo.col_pratica')" sortable style="width: 100px;" />
-      <Column field="data_insert" :header="t('approvazioni_prezzo.col_data')" sortable style="width: 160px;">
+      <Column field="id" :header="t('vendite.approvazioni_prezzo.col_pratica')" sortable style="width: 100px;" />
+      <Column field="data_insert" :header="t('vendite.approvazioni_prezzo.col_data')" sortable style="width: 160px;">
         <template #body="{ data }">
           {{ displayTimestamp(data.data_insert) || '—' }}
         </template>
       </Column>
-      <Column field="descrizione" :header="t('approvazioni_prezzo.col_descrizione')" sortable />
-      <Column field="priorita_codice" :header="t('approvazioni_prezzo.col_priorita')" sortable style="width: 110px;" />
+      <Column field="descrizione" :header="t('vendite.approvazioni_prezzo.col_descrizione')" sortable />
+      <Column field="priorita_codice" :header="t('vendite.approvazioni_prezzo.col_priorita')" sortable style="width: 110px;" />
       <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
         <template #body="{ data }">
           <RowActionsMenu :row="data" :actions="buildRowActions(data)" />

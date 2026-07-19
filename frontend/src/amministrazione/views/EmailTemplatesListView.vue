@@ -66,20 +66,20 @@ function onRowClick({ data }) {
       @sort="onSort"
       @row-click="onRowClick"
     >
-      <Column field="codice" :header="t('amm.email_codice')" sortable style="width: 180px;" />
-      <Column field="oggetto" :header="t('amm.email_oggetto')" sortable />
-      <Column field="lingua" :header="t('amm.email_lingua')" style="width: 80px;" />
-      <Column field="unita_organizzativa_descrizione" :header="t('amm.email_uo')" style="width: 180px;" />
-      <Column field="variabili_disponibili" :header="t('amm.email_variabili')" style="width: 200px;">
+      <Column field="codice" :header="t('amministrazione.email_codice')" sortable style="width: 180px;" />
+      <Column field="oggetto" :header="t('amministrazione.email_oggetto')" sortable />
+      <Column field="lingua" :header="t('amministrazione.email_lingua')" style="width: 80px;" />
+      <Column field="unita_organizzativa_descrizione" :header="t('amministrazione.email_uo')" style="width: 180px;" />
+      <Column field="variabili_disponibili" :header="t('amministrazione.email_variabili')" style="width: 200px;">
         <template #body="{ data }">
           <span v-if="data.variabili_disponibili">
             {{ data.variabili_disponibili.join(', ') }}
           </span>
         </template>
       </Column>
-      <Column field="attivo" :header="t('amm.email_attivo')" style="width: 80px;">
+      <Column field="attivo" :header="t('amministrazione.email_attivo')" style="width: 80px;">
         <template #body="{ data }">
-          <AttivoTag :active="data.attivo" :active-label="t('amm.email_attivo')" :inactive-label="t('amm.email_non_attivo')" />
+          <AttivoTag :active="data.attivo" :active-label="t('amministrazione.email_attivo')" :inactive-label="t('amministrazione.email_non_attivo')" />
         </template>
       </Column>
     </DataTable>

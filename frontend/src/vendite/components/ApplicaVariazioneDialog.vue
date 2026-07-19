@@ -75,7 +75,7 @@ async function applyVariazione() {
       arrotondamento_decimali: decimali.value,
       dry_run: false
     }),
-    { successMessage: t('listini.variazione_pct_successo', { count: previewCount.value }) }
+    { successMessage: t('vendite.listini.variazione_pct_successo', { count: previewCount.value }) }
   )
   if (res !== null) {
     emit('applied')
@@ -97,12 +97,12 @@ function backToInput() {
        nessun CSS duplicato. Non e' il pattern fisso Annulla/Salva, quindi
        lo slot override sostituisce il FormFooter di default. -->
   <AppDialog :visible="visible" @update:visible="onHide"
-    :header="t('listini.variazione_pct_titolo')" :width="dialogWidth">
+    :header="t('vendite.listini.variazione_pct_titolo')" :width="dialogWidth">
 
     <!-- Step 1: Input -->
     <template v-if="step === 'input'">
       <Message severity="info" :closable="false" class="mb-1">
-        {{ t('listini.variazione_pct_help') }}
+        {{ t('vendite.listini.variazione_pct_help') }}
       </Message>
 
       <!-- Griglia asimmetrica: la percentuale prende lo spazio, i decimali
@@ -112,12 +112,12 @@ function backToInput() {
            spingendo fuori i decimali → scrollbar orizzontale. -->
       <div class="variazione-grid">
         <div class="form-field">
-          <label>{{ t('listini.variazione_pct_campo') }} *</label>
+          <label>{{ t('vendite.listini.variazione_pct_campo') }} *</label>
           <InputNumber v-model="variazionePct" :minFractionDigits="1" :maxFractionDigits="4"
             suffix=" %" :min="-99" :max="1000" show-buttons />
         </div>
         <div class="form-field">
-          <label>{{ t('listini.variazione_pct_arrotondamento') }}</label>
+          <label>{{ t('vendite.listini.variazione_pct_arrotondamento') }}</label>
           <InputNumber v-model="decimali" :min="0" :max="10" show-buttons />
         </div>
       </div>
@@ -126,15 +126,15 @@ function backToInput() {
     <!-- Step 2: Preview + conferma -->
     <template v-if="step === 'preview'">
       <Message severity="warn" :closable="false" class="mb-1">
-        {{ t('listini.variazione_pct_righe_coinvolte', { count: previewCount }) }}
+        {{ t('vendite.listini.variazione_pct_righe_coinvolte', { count: previewCount }) }}
       </Message>
 
       <DataTable :value="preview" :loading="loading" striped-rows class="app-datatable"
         scrollable scroll-height="300px" data-key="riga_id">
-        <Column field="articolo_codice" :header="t('listini.col_articolo')" style="width: 130px;" />
+        <Column field="articolo_codice" :header="t('vendite.listini.col_articolo')" style="width: 130px;" />
         <Column field="articolo_descrizione" :header="t('catalogo.col_descrizione')" style="min-width: 180px;" />
-        <Column field="prezzo_attuale" :header="t('listini.variazione_pct_prezzo_attuale')" style="width: 130px;" />
-        <Column field="prezzo_calcolato" :header="t('listini.variazione_pct_prezzo_nuovo')" style="width: 130px;" />
+        <Column field="prezzo_attuale" :header="t('vendite.listini.variazione_pct_prezzo_attuale')" style="width: 130px;" />
+        <Column field="prezzo_calcolato" :header="t('vendite.listini.variazione_pct_prezzo_nuovo')" style="width: 130px;" />
       </DataTable>
     </template>
 
@@ -147,17 +147,17 @@ function backToInput() {
         <Button :label="t('common.cancel')" :icon="MANAGE_ICONS.CANCEL"
           severity="secondary" class="app-escape app-form-footer-btn"
           v-tooltip.top="t('common.cancel')" @click="onHide" />
-        <Button :label="t('listini.variazione_pct_preview')" icon="pi pi-eye"
-          class="app-form-footer-btn" v-tooltip.top="t('listini.variazione_pct_preview')"
+        <Button :label="t('vendite.listini.variazione_pct_preview')" icon="pi pi-eye"
+          class="app-form-footer-btn" v-tooltip.top="t('vendite.listini.variazione_pct_preview')"
           :disabled="!canPreview" :loading="loading" @click="loadPreview" />
       </div>
       <div v-else class="app-form-footer">
         <Button :label="t('common.back')" :icon="MANAGE_ICONS.BACK"
           severity="secondary" class="app-escape app-form-footer-btn"
           v-tooltip.top="t('common.back')" @click="backToInput" />
-        <Button :label="t('listini.variazione_pct_conferma')" :icon="MANAGE_ICONS.CONFIRM"
+        <Button :label="t('vendite.listini.variazione_pct_conferma')" :icon="MANAGE_ICONS.CONFIRM"
           class="app-form-footer-btn"
-          v-tooltip.top="t('listini.variazione_pct_conferma')"
+          v-tooltip.top="t('vendite.listini.variazione_pct_conferma')"
           :loading="loading" @click="applyVariazione" />
       </div>
     </template>

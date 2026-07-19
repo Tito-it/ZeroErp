@@ -19,9 +19,9 @@ defineProps({
     <template #icon>
       <i class="pi pi-exclamation-triangle" />
     </template>
-    <strong>{{ t('amm.banner_non_assegnati_title', { count }) }}</strong>
+    <strong>{{ t('amministrazione.banner_non_assegnati_title', { count }) }}</strong>
     <div class="app-banner-detail">
-      {{ t('amm.banner_non_assegnati_detail') }}
+      {{ t('amministrazione.banner_non_assegnati_detail') }}
     </div>
   </Message>
 </template>

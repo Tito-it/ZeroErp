@@ -44,10 +44,10 @@ const auditSourcesLookup = useGlobalLookup(
 )
 
 // Options Select: prepend voce 'Tutti' (filtro lista) + i codici dal BE.
-// `label_key` arriva come chiave i18n (es. 'amm.audit_tabella_identita') e
+// `label_key` arriva come chiave i18n (es. 'amministrazione.audit_tabella_identita') e
 // va risolto con t() per il display. `value` e' il `code` BE.
 const tabellaOptions = computed(() => [
-  { label: t('amm.audit_tabella_tutti'), value: null },
+  { label: t('amministrazione.audit_tabella_tutti'), value: null },
   ...auditSourcesLookup.items.value.map((s) => ({
     label: t(s.label_key),
     value: s.code,
@@ -138,7 +138,7 @@ function rowSummary(data) {
           :options="tabellaOptions"
           option-label="label"
           option-value="value"
-          :placeholder="t('amm.audit_col_tipo')"
+          :placeholder="t('amministrazione.audit_col_tipo')"
           @change="applyFilters"
         />
         <DatePicker
@@ -185,23 +185,23 @@ function rowSummary(data) {
       @page="onPage"
       @sort="onSort"
     >
-      <Column field="timestamp" :header="t('amm.audit_col_data')" sortable style="width: 12rem">
+      <Column field="timestamp" :header="t('amministrazione.audit_col_data')" sortable style="width: 12rem">
         <template #body="{ data }">
           {{ displayTimestamp(data.timestamp) }}
         </template>
       </Column>
-      <Column field="user_modifica" :header="t('amm.audit_col_chi')" sortable style="width: 10rem" />
-      <Column field="tabella" :header="t('amm.audit_col_tipo')" sortable style="width: 14rem">
+      <Column field="user_modifica" :header="t('amministrazione.audit_col_chi')" sortable style="width: 10rem" />
+      <Column field="tabella" :header="t('amministrazione.audit_col_tipo')" sortable style="width: 14rem">
         <template #body="{ data }">
           <Tag :value="data.tabella" severity="secondary" />
         </template>
       </Column>
-      <Column field="tipo_operazione" :header="t('amm.audit_col_operazione')" sortable style="width: 8rem">
+      <Column field="tipo_operazione" :header="t('amministrazione.audit_col_operazione')" sortable style="width: 8rem">
         <template #body="{ data }">
           <Tag :value="data.tipo_operazione" :severity="getAuditOpSeverity(data.tipo_operazione)" />
         </template>
       </Column>
-      <Column :header="t('amm.audit_col_dettaglio')">
+      <Column :header="t('amministrazione.audit_col_dettaglio')">
         <template #body="{ data }">
           <span class="text-sm">{{ rowSummary(data) }}</span>
         </template>

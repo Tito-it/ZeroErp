@@ -3,12 +3,18 @@
 > **Tipo**: mini-brief DB con **azione richiesta al FE** · **Target**: `dev/db-tid` (DB)
 > + `dev/backend-tid` (FE) · **Data**: 2026-07-19 · **Owner**: Tid
 > · **Priorità**: 🟡 MEDIA (nessun dato errato: sono messaggi che non compaiono)
-> **Stato**: ☐ DA REALIZZARE
+> **Stato**: ✅ **CHIUSO** (2026-07-19) — DB applicato e live, doc auto-gen
+> rigenerata, 7 traduzioni it/en aggiunte, guard verde sul fronte DB. In più,
+> **oltre il perimetro originale**: i drawer di offerte e preventivi sono stati
+> cablati per *mostrare* davvero le reason (la premessa del §3 «i messaggi si
+> accendono da soli» era falsa — `OffertaDrawer` non leggeva alcuna reason e il
+> ramo `genera_ordine` dei preventivi non era reso; senza il cablaggio 5 delle 7
+> traduzioni sarebbero rimaste mute). Vedi §7.
 > **Origine**: primo giro del guard `scripts/check_i18n_keys.py`, scritto durante
 > il fix delle reason ordini. Ha trovato **7 chiavi emesse dal DB che nei locales
 > non esistono**: l'utente vede un pulsante disabilitato senza alcuna spiegazione.
-> **Famiglia**: [brief-db-i18n-namespace-reason-ordini.md](brief-db-i18n-namespace-reason-ordini.md)
-> (stesso difetto, ordini) · [brief-i18n-radici-uniformi.md](brief-i18n-radici-uniformi.md)
+> **Famiglia**: [brief-db-i18n-namespace-reason-ordini.md](../work-in-progress/brief-db-i18n-namespace-reason-ordini.md)
+> (stesso difetto, ordini) · [brief-i18n-radici-uniformi.md](../work-in-progress/brief-i18n-radici-uniformi.md)
 > (convenzione generale) · `work-done/addendum-db-stati-doc-offerte-transizioni-label-key.md`
 > (stesso difetto, offerte, già riparato una volta a maggio).
 
@@ -84,7 +90,7 @@ data-driven, i messaggi si accendono da soli appena la chiave è risolvibile.
 ## 4. Perché i preventivi restano su radice piatta (e non è una svista)
 
 `preventivi.*` è una radice piatta che
-[brief-i18n-radici-uniformi.md](brief-i18n-radici-uniformi.md) prevede di
+[brief-i18n-radici-uniformi.md](../work-in-progress/brief-i18n-radici-uniformi.md) prevede di
 spostare sotto `vendite.preventivi.*` insieme alle altre 20. **Le 4 chiavi nuove
 vanno scritte sotto la radice attuale**, non sotto quella futura: la migrazione
 sposta l'intero sottoalbero con uno script, quindi nasceranno nel posto vecchio e
@@ -99,12 +105,35 @@ finale, quindi il fix DB di §2a è definitivo e non verrà ritoccato.
 
 | # | Step | Owner | Stato |
 | --- | --- | --- | --- |
-| 1 | 3 `reason_key` offerte → `vendite.offerte.push_reason.*` (6 assegnazioni) — changeset `20260719-13` | DB | ✅ scritto |
-| 2 | pgTAP test 19 (prefisso reason_key), `plan(18)` → `plan(19)` | DB | ✅ scritto |
-| 3 | Apply dev + rigen doc auto-gen | DB | ☐ **attende «procedi»** |
-| 4 | 3 traduzioni offerte it/en (§3) | FE | ☐ |
-| 5 | 4 traduzioni preventivi it/en (§3) | FE | ☐ |
-| 6 | Riesecuzione `python3 scripts/check_i18n_keys.py` → 0 chiavi DB irrisolvibili | FE | ☐ |
+| 1 | 3 `reason_key` offerte → `vendite.offerte.push_reason.*` (6 assegnazioni) — changeset `20260719-13` | DB | ✅ applicato |
+| 2 | pgTAP test 19 (prefisso reason_key), `plan(18)` → `plan(19)` | DB | ✅ applicato |
+| 3 | Apply dev + rigen doc auto-gen | DB | ✅ live, doc rigenerata |
+| 4 | 3 traduzioni offerte it/en (§3) | FE | ✅ |
+| 5 | 4 traduzioni preventivi it/en (§3) | FE | ✅ |
+| 6 | Riesecuzione `python3 scripts/check_i18n_keys.py` → 0 chiavi DB irrisolvibili | FE | ✅ verde |
+| 7 | **Extra (§7)**: cablaggio drawer offerte/preventivi per rendere le reason | FE | ✅ |
+
+## 7. Cablaggio drawer (extra, oltre il perimetro del brief)
+
+Il §3 assumeva che bastassero le traduzioni perché «i drawer leggono
+`can_*_reason_key` e sono già data-driven». **Falso, verificato in-app:**
+
+- `OffertaDrawer.vue` non leggeva **nessuna** reason: né `can_push_contratto_reason_key`
+  né `can_genera_ordine_reason_key`. Le 3 chiavi offerte sarebbero rimaste mute.
+- `PreventiviDrawer.vue` mostrava solo il ramo `push_commessa`; il ramo gemello
+  `genera_ordine` non era reso, quindi le 2 chiavi `genera_ordine_reason.*`
+  sarebbero rimaste mute.
+
+Solo le 2 `push_commessa_reason.*` dei preventivi avevano già un consumatore.
+Cablati entrambi i drawer col pattern già in uso in Ordini/DDT (banner `<Message
+severity="info">` sotto `DrawerActionsBar`, guardato da `te(key)`):
+
+- `OffertaDrawer.vue`: computed `pushReasons` che unisce i due rami disabilitati
+  con reason risolvibile, reso con `v-for`;
+- `PreventiviDrawer.vue`: aggiunto il banner del ramo `genera_ordine`, speculare
+  a quello `push_commessa` già presente.
+
+Verifica: build Vite verde; guard `check_i18n_keys.py` con 0 chiavi DB irrisolvibili.
 
 ## 6. Riferimenti
 

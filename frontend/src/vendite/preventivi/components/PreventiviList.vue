@@ -47,7 +47,7 @@ const {
 } = useListaConfigurabilePage(store, {
   exportFn: exportPreventivi,
   getExportParams: (fmt) => buildExportParams(fmt),
-  newTooltipKey: 'preventivi.nuovo_preventivo',
+  newTooltipKey: 'vendite.preventivi.nuovo_preventivo',
   onNew: () => emit('new'),
   searchTableOptions: { defaultSortField: 'data', defaultSortOrder: 'desc' },
 })
@@ -113,18 +113,18 @@ function buildRowActions(data) {
   return [
     {
       key: 'documenti-pdf',
-      label: t('preventivi.pdf.label_scarica'),
+      label: t('vendite.preventivi.pdf.label_scarica'),
       icon: MANAGE_ICONS.PDF,
       severity: 'primary',
       disabled: data.stato_codice_interno === 'DRAFT',
       tooltip: data.stato_codice_interno === 'DRAFT'
-        ? t('preventivi.pdf.tooltip_lista_disabilitato')
-        : t('preventivi.pdf.tooltip_lista'),
+        ? t('vendite.preventivi.pdf.tooltip_lista_disabilitato')
+        : t('vendite.preventivi.pdf.tooltip_lista'),
       command: () => onPdfClick(data),
     },
     {
       key: 'gestisci-note',
-      label: t('preventivi.gestisci_note'),
+      label: t('vendite.preventivi.gestisci_note'),
       icon: MANAGE_ICONS.NOTE,
       command: () => onNoteClick(data),
     },
@@ -149,13 +149,13 @@ onMounted(() => store.fetchList())
            PageActionsBar a destra. -->
       <div class="app-page-toolbar">
         <div class="app-page-filters">
-          <InputText v-model="searchText" :placeholder="t('preventivi.search_placeholder')" style="width: 260px;" />
+          <InputText v-model="searchText" :placeholder="t('vendite.preventivi.search_placeholder')" style="width: 260px;" />
           <LookupSelect v-model="statoFilter" rel="config.stati_doc_preventivi" value-field="codice_interno"
-            :placeholder="t('preventivi.filtro_stato')" show-clear @change="onStatoChange" style="width: 160px;" />
+            :placeholder="t('vendite.preventivi.filtro_stato')" show-clear @change="onStatoChange" style="width: 160px;" />
           <UtilityPerRuoloSelect
             v-model="utilityFilter"
             :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
-            :placeholder="t('preventivi.filtro_utility')"
+            :placeholder="t('vendite.preventivi.filtro_utility')"
             show-clear
             apply-default
             @change="onUtilityChange"
@@ -170,7 +170,7 @@ onMounted(() => store.fetchList())
             <ToggleSwitch v-model="mostraStorico" inputId="prev-mostra-storico"
               @change="onMostraStoricoChange" />
             <label for="prev-mostra-storico" style="font-size: 0.85rem; cursor: pointer;">
-              {{ t('preventivi.filtro_mostra_storico') }}
+              {{ t('vendite.preventivi.filtro_mostra_storico') }}
             </label>
           </div>
         </div>
@@ -234,7 +234,7 @@ onMounted(() => store.fetchList())
       sorgente-code="PREVENTIVO"
       :sorgente-id="pdfDialogPreventivo?.id ?? null"
       :title="pdfDialogPreventivo
-        ? t('preventivi.pdf.dialog_title', { numero: pdfDialogPreventivo.numero })
+        ? t('vendite.preventivi.pdf.dialog_title', { numero: pdfDialogPreventivo.numero })
         : ''"
     />
 
