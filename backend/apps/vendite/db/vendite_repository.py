@@ -14,7 +14,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import query_paged_view
+from apps.core.db._helpers import query_paged_view, sql_order_direction
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.types import (
     DashApertoDocumentoRow,
@@ -391,9 +391,9 @@ class VenditeRepository:
         # "in essere da" (i piu' vecchi prima).
         sort_col = self.DASH_APERTO_SORT_COLUMNS.get(order_by or "")
         if sort_col is not None:
-            direction = "DESC" if (order_dir or "").lower() == "desc" else "ASC"
+            direction = sql_order_direction(order_dir)
             order_clause = (
-                f"ORDER BY {sort_col} {direction} NULLS LAST, "
+                f"ORDER BY {sort_col} {direction}, "
                 "area ASC, documento_id ASC"
             )
         else:
@@ -556,9 +556,9 @@ class VenditeRepository:
         # (valore DESC).
         sort_col = self.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS.get(order_by or "")
         if sort_col is not None:
-            direction = "DESC" if (order_dir or "").lower() == "desc" else "ASC"
+            direction = sql_order_direction(order_dir)
             order_clause = (
-                f"ORDER BY {sort_col} {direction} NULLS LAST, "
+                f"ORDER BY {sort_col} {direction}, "
                 "a.commessa_codice ASC, a.commessa_attivita_id ASC"
             )
         else:
@@ -842,9 +842,9 @@ class VenditeRepository:
         # storico "fermo da" (i piu' vecchi prima).
         sort_col = self.DASH_BACKLOG_SORT_COLUMNS.get(order_by or "")
         if sort_col is not None:
-            direction = "DESC" if (order_dir or "").lower() == "desc" else "ASC"
+            direction = sql_order_direction(order_dir)
             order_clause = (
-                f"ORDER BY {sort_col} {direction} NULLS LAST, "
+                f"ORDER BY {sort_col} {direction}, "
                 "area ASC, documento_id ASC"
             )
         else:

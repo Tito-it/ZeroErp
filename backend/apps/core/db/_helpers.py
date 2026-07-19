@@ -148,6 +148,35 @@ def resolve_config_id_by_codice_interno(
     return int(row[0])
 
 
+def sql_order_direction(
+    order_dir: str | None,
+    *,
+    default_desc: bool = False,
+) -> str:
+    """Clausola di direzione ORDER BY con **NULL ordinato come valore MINIMO**.
+
+    Ritorna `'ASC NULLS FIRST'` oppure `'DESC NULLS LAST'`, da interpolare al
+    posto della sola direzione: `ORDER BY {col} {direction}, <tiebreak>`.
+
+    **Perche' i NULLS espliciti** (decisione Tid 2026-07-19): i default
+    PostgreSQL sono l'opposto (ASC -> NULLS LAST, DESC -> NULLS FIRST), quindi
+    un campo vuoto finiva **in cima** proprio ordinando dal piu' recente — il
+    caso della lista DDT, dove `numero` e' NULL su TUTTE le bozze (lo assegna
+    il trigger a EMESSO). Con questa regola il vuoto sta dove starebbe lo zero.
+
+    Regola del 2 (ok Tid): unifica **29 call-site** in 6 varianti sintattiche
+    della stessa espressione (`upper()`/`lower()`/`(order_dir or "")`), di cui
+    3 avevano un `NULLS LAST` fisso incollato al template — semantica diversa
+    ("il vuoto sempre in coda") che qui viene **uniformata**.
+
+    `default_desc=True` per le liste che ordinano dal piu' recente quando il
+    chiamante non specifica nulla.
+    """
+    fallback = "desc" if default_desc else "asc"
+    is_desc = (order_dir or fallback).strip().lower() == "desc"
+    return "DESC NULLS LAST" if is_desc else "ASC NULLS FIRST"
+
+
 def extract_paginated(cursor) -> tuple[list[dict[str, Any]], int]:
     """Estrae risultati paginati da query con COUNT(*) OVER() AS total_count.
 

@@ -21,7 +21,12 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    call_jsonb_fn,
+    row_to_dict,
+    rows_to_list,
+    sql_order_direction,
+)
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
@@ -114,7 +119,10 @@ class DdtRepository(
         max_limit: int = 200,
     ) -> tuple[list[dict[str, Any]], int]:
         order_column = _ORDER_COLS_DDT.get(order_by, _ORDER_COLS_DDT["data"])
-        direction = "DESC" if order_dir and order_dir.lower() == "desc" else "ASC"
+        # NULL = valore MINIMO (BB `sql_order_direction`): il `numero` e' NULL
+        # su tutte le bozze (lo assegna il trigger a EMESSO) e i default
+        # PostgreSQL le mandavano IN CIMA ordinando dal piu' recente.
+        direction = sql_order_direction(order_dir)
         # `max_limit`: la lista pagina (cap 200, gia' imposto da
         # parse_list_params), l'export chiede fino a EXPORT_MAX_ROWS+1 per
         # intercettare l'overflow SENZA troncare in silenzio (il guard di

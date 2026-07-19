@@ -27,6 +27,7 @@ from apps.core.db._helpers import (
     fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
+    sql_order_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import execute_dynamic_update
@@ -128,7 +129,7 @@ class ResiRepository:
         max_limit: int = 200,
     ) -> tuple[list[dict[str, Any]], int]:
         order_column = _ORDER_COLS_RESI.get(order_by, _ORDER_COLS_RESI["data"])
-        direction = "DESC" if order_dir and order_dir.lower() == "desc" else "ASC"
+        direction = sql_order_direction(order_dir)
         # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
         # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
         safe_limit = max(1, min(int(limit), max_limit))
@@ -511,7 +512,7 @@ class ResiRepository:
         # silenzio (il guard di build_export_response usa la COUNT reale).
         meta = _CODA_META[vista]
         order_column = meta["order_cols"].get(order_by) or "v.data"
-        direction = "DESC" if not order_dir or order_dir.lower() == "desc" else "ASC"
+        direction = sql_order_direction(order_dir, default_desc=True)
         safe_limit = max(1, min(int(limit), max_limit))
         safe_offset = max(0, int(offset))
 

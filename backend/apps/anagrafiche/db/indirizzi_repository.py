@@ -15,6 +15,7 @@ from apps.core.db._helpers import (
     extract_paginated,
     row_to_dict,
     rows_to_list,
+    sql_order_direction,
 )
 
 from django.db import connection, transaction
@@ -45,7 +46,7 @@ class IndirizziRepository:
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         order_col = order_by if order_by in _ORDER_COLS else "indirizzo_normalizzato"
-        direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
+        direction = sql_order_direction(order_dir)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
 
         sql = f"""
