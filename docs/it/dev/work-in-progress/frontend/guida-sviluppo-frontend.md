@@ -412,11 +412,13 @@ Pulsanti di consultazione (es. "Gestisci Contatti") usano classe `app-escape` pe
 > chiave non risolta non dà errore: dà **testo mancante**, quindi passa
 > inosservata. È già successo due volte (offerte, ordini).
 >
-> **Regola vigente**: `docs/it/dev/frontend/i18n-namespace-radici.md` — documento
-> unico su come si individua o si crea una radice. In sintesi: stringa di un
-> modulo che vive in `frontend/src/<area>/` → l'indirizzo parte dall'area
-> (`vendite.ordini.*`); vocabolario trasversale a più aree → resta in cima
-> (`common.*`, `errors.*`, `nav.*`).
+> **Regola vigente**: `docs/it/dev/frontend/frontend-standards.md` §Multilingua
+> «Struttura chiavi — radici dei namespace» (fonte canonica, lettura
+> obbligatoria). In sintesi: stringa di un modulo che vive in
+> `frontend/src/<area>/` → l'indirizzo parte dall'area (`vendite.ordini.*`);
+> vocabolario trasversale a più aree → resta in cima (`common.*`, `errors.*`,
+> `nav.*`). Procedura di classificazione di dettaglio in
+> `i18n-namespace-radici.md`.
 >
 > Vale anche per le chiavi **emesse dal database** (`label_key`, `reason_key`).
 

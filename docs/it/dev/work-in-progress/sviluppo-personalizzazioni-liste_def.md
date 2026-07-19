@@ -402,7 +402,15 @@ Estendere il pattern Blocco E (atterrato per `anagrafiche.clienti`) ad altre lis
 
 ### Decisioni operative aperte (per ogni lista)
 
-1. **Etichette i18n**: riusare chiavi i18n esistenti (es. `fornitori.col_*`) o crearne nuove `lista.{codice}.col_*`?
+1. **Etichette i18n** — ✅ **RISOLTA (2026-07-19)**: le etichette di colonna
+   seguono lo standard [frontend-standards.md §Multilingua](../frontend/frontend-standards.md) —
+   radice per **area**, mai piatta. Quindi si **riusano** le chiavi esistenti del
+   modulo che possiede la lista (es. `anagrafiche.fornitori.col_*`,
+   `vendite.contratti.col_*`) oppure, se ne servono di nuove, si creano **sotto
+   l'area** (`<area>.<modulo>.col_*`). La forma piatta `lista.{codice}.col_*` **è
+   vietata**: la radice `lista.*` è stata rimossa e il guard
+   `scripts/check_i18n_keys.py` segnalerebbe una sua reintroduzione come radice
+   di dominio in cima.
 2. **Preset di sistema**: quale set di colonne visibili di default (vedi pattern clienti)?
 3. **Backend espone tutti i campi necessari?**: alcuni campi calcolati (es. `id_fiscale_univoco_cf_piva` dei clienti) potrebbero richiedere modifica al SELECT del repository.
 
@@ -481,7 +489,7 @@ Pattern e regole emersi durante Blocco F + refactor toolbar 2026-05-08, da rispe
 
 3. **Catalogo eager**: `useListaConfig.load()` carica config + catalogo in parallelo. Senza catalogo le etichette/i18n/`campo_sorgente` non sono disponibili al primo render.
 
-4. **i18n etichette**: `etichetta_i18n_key` nel catalogo + risoluzione FE con `t() || etichetta || codice` (cascata fallback safe). Le keys vivono in `clienti.col_*`, `lista.{codice}.*`, `common.*` a seconda del contesto.
+4. **i18n etichette**: `etichetta_i18n_key` nel catalogo + risoluzione FE con `t() || etichetta || codice` (cascata fallback safe). Le keys vivono sotto la radice d'**area** del modulo che possiede la lista (`anagrafiche.clienti.col_*`, `vendite.contratti.col_*`) o `common.*` se trasversali — **mai** `lista.*` piatto (vedi decisione «Etichette i18n» sopra e [frontend-standards.md §Multilingua](../frontend/frontend-standards.md)).
 
 5. **Pattern responsive azioni**: tutte le azioni di lista (refresh, personalizza colonne, ecc.) vanno nel `PageActionsBar` con `kind: 'utility'`. Su touch/tablet vanno nel kebab compact automaticamente. Solo `kind: 'primary'` (es. "Nuovo") resta sempre visibile.
 

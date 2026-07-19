@@ -1513,27 +1513,50 @@ Testo sempre in italiano, chiaro e specifico — mai "Errore" o "OK".
 <!-- SI --> <Button :label="$t('common.save')" />
 ```
 
-### Struttura chiavi
+### Struttura chiavi — radici dei namespace
 
-> ⛔ **REGOLA SUPERATA — NON SEGUIRE (dal 2026-07-19).**
-> La tabella che stava qui elencava `soggetti.*`, `indirizzi.*`, `geo.*`, `amm.*`
-> come «etichette dominio-specifiche», sancendo di fatto **radici piatte per
-> modulo**, e non nominava `vendite.*` che è la radice più popolosa dell'archivio.
-> Seguirla produce chiavi che il frontend non risolve — e, siccome una chiave non
-> risolta non genera errore ma **testo mancante**, il difetto resta invisibile.
-> È già successo due volte (offerte, ordini).
->
-> **Regola vigente**: [i18n-namespace-radici.md](i18n-namespace-radici.md) —
-> documento unico su come si individua o si crea una radice. In sintesi: se la
-> stringa appartiene a un modulo che vive in una cartella d'area
-> (`frontend/src/<area>/`), l'indirizzo parte da quell'area
-> (`vendite.ordini.*`); se è vocabolario trasversale a più aree, resta in cima
-> (`common.*`, `errors.*`, `nav.*`).
->
-> Vale per **ogni livello che emette chiavi**, database compreso (`label_key` e
-> `reason_key` delle capability e dei seed `config.transizioni_stati_*`).
+**La chiave i18n è un contratto fra tre livelli, non una faccenda del solo
+frontend.** Il database *emette* l'indirizzo di una traduzione (`label_key`,
+`reason_key` nelle capability `script.fn_available_actions_*` e nel `meta` dei
+seed `config.transizioni_stati_*`), il backend lo trasporta senza interpretarlo,
+il frontend lo risolve. Se l'indirizzo non esiste il frontend **non segnala un
+errore: mostra testo mancante** — il difetto è silenzioso e si scopre solo
+guardando la schermata. È già costato due difetti in produzione-dev (offerte,
+ordini), entrambi da chiavi emesse in una radice inesistente.
 
-Ogni nuova stringa va aggiunta **in entrambi i file** (`it.json` e `en.json`) contemporaneamente.
+**La regola (una sola):**
+
+> Se una stringa appartiene a un modulo che vive in una **cartella d'area** di
+> `frontend/src/` (`vendite`, `anagrafiche`, `catalogo`, `amministrazione`,
+> `config`, `ui`, `portale`, `shop`, …), il suo indirizzo **parte da
+> quell'area**: `vendite.ordini.*`, `anagrafiche.clienti.*`,
+> `amministrazione.emittenti_fiscali.*`. Se è **vocabolario trasversale**,
+> riusato da più aree o che vive in `core/`, resta in cima: `common.*`,
+> `errors.*`, `validation.*`, `nav.*`, `search.*`, `confirm.*`.
+
+Corollari operativi:
+
+- **L'ancora è la cartella del codice, non lo schema DB**: `listini` sta in
+  `vendite/`, `clienti` in `anagrafiche/` — l'indirizzo segue il codice.
+- **La foglia non ripete l'area**: `amministrazione.emittenti_fiscali`, non
+  `amministrazione.amm_emittenti_fiscali`.
+- **Niente radici piatte di dominio in cima** (`preventivi.*`, `clienti.*`): sono
+  esattamente la forma che ha generato i difetti. Una radice nuova in cima si
+  crea solo per vocabolario d'interfaccia trasversale.
+- **Vale identica per le chiavi emesse dal DB**: una `reason_key` di un ordine
+  deve iniziare per `vendite.ordini.`, non `ordini.`.
+- Ogni stringa va aggiunta **in entrambi i file** (`it.json` **e** `en.json`)
+  contemporaneamente: la parità è verificata.
+
+**Controllo automatico (obbligatorio prima di toccare chiavi o namespace):**
+`python3 scripts/check_i18n_keys.py [--strict-roots]` — rende rumoroso l'errore
+silenzioso: chiavi citate ma assenti, chiavi emesse dal DB (capability + seed)
+non risolvibili, parità it/en, radici di dominio in cima. Va tenuto verde.
+
+**Procedura di classificazione e inventario** (come si decide dove va una radice
+esistente, soglia del 70%, casi «due indirizzi con lo stesso nome»):
+[i18n-namespace-radici.md](i18n-namespace-radici.md) — riferimento di dettaglio,
+subordinato a questa sezione.
 
 ---
 

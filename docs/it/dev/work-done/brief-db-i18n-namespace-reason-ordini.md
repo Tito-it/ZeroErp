@@ -3,11 +3,14 @@
 > **Tipo**: mini-brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-19
 > · **Owner**: Tid · **Priorità**: 🟡 MEDIA (difetto isolato, 5 stringhe; blocca
 > però un banner FE già scritto e pronto)
-> **Stato**: ✅ REALIZZATO (2026-07-19) — changeset `20260719-12` applicato su dev,
-> pgTAP `test-fn-available-actions-ordine-v2.sql` **9/9 verde**.
-> Residuo: rigenerazione doc auto-gen (§5) e commit.
+> **Stato**: ✅ **CHIUSO** (2026-07-19) — changeset `20260719-12` applicato su dev,
+> pgTAP `test-fn-available-actions-ordine-v2.sql` **9/9 verde**, doc auto-gen
+> rigenerata, guard verde sulle reason ordini. Questo mini-brief è stato il
+> primo caso della famiglia poi generalizzata in
+> [brief-i18n-radici-uniformi.md](brief-i18n-radici-uniformi.md) (migrazione
+> completa delle 21 radici), anch'esso chiuso.
 > **Origine**: emerso chiudendo lato FE il
-> [brief push commessa «già inviato»](brief-db-push-commessa-gia-inviato.md) §10a.
+> [brief push commessa «già inviato»](../work-in-progress/brief-db-push-commessa-gia-inviato.md) §10a.
 > Scritte le prime traduzioni per le reason del push ordini, si è scoperto che la
 > chiave i18n emessa dal DB non è risolvibile nel FE.
 
@@ -125,7 +128,7 @@ né su `requires_righe`, che era il rischio principale segnalato in §1.
 
 ## 6. Riferimenti
 
-> **Companion (2026-07-19)**: [brief-db-ddt-reason-push-catch-all.md](brief-db-ddt-reason-push-catch-all.md)
+> **Companion (2026-07-19)**: [brief-db-ddt-reason-push-catch-all.md](../work-in-progress/brief-db-ddt-reason-push-catch-all.md)
 > — stessa famiglia (reason del push commessa), **difetto opposto e
 > complementare**: lì le reason DDT hanno il namespace giusto e il messaggio si
 > vede, ma il ramo catch-all ne racconta una falsa (un DDT consegnato di ordine
@@ -136,7 +139,7 @@ né su `requires_righe`, che era il rischio principale segnalato in §1.
 > finiscono nello stesso giro, conviene rileggerli insieme: toccano entrambi il
 > vocabolario delle reason di push.
 
-- Brief d'origine: [brief-db-push-commessa-gia-inviato.md](brief-db-push-commessa-gia-inviato.md) §10a
+- Brief d'origine: [brief-db-push-commessa-gia-inviato.md](../work-in-progress/brief-db-push-commessa-gia-inviato.md) §10a
 - Definizione viva: `docs/it/dbzero/script/funzioni/fn_available_actions_ordine.md`
 - Gemella già corretta: `docs/it/dbzero/script/funzioni/fn_available_actions_ddt.md`
 - Consumatore FE: `frontend/src/vendite/ordini/components/OrdiniDrawer.vue`
