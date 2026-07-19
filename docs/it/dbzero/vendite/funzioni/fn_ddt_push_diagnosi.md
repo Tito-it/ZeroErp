@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_ddt_push_diagnosi.md" %}
 # ⚙️ Funzione `fn_ddt_push_diagnosi`
 
 ```sql

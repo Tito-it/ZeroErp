@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-processi-fatturazione-cockpit §3 (G1) — coda di stampa documenti.
+#
+# Outbox della stampa massiva fatture: il task pipeline `stampa_documenti_lotto`
+# ACCODA qui un work-item per fattura (non renderizza), lo step committa veloce
+# e rilascia il lock del registro fiscale; un worker (management command,
+# brief BE) drena la coda, garantisce la numerazione (backstop idempotente
+# fn_numera_fattura_opz_emessa) e delega il render a documenti.
+# DocumentGenerationService.
+#
+# Satellite di vendite.fatture: sorgente_id = fatture.id (colonne "a forma di"
+# genera_documento, promozione a documenti.* rinviata al 2 consumatore).
+#
+# RLS: NON abilitata qui. In G1 la tabella non ha superficie di lettura
+# operatore (nessun endpoint, coda vuota). L'attivazione RLS operatori (scope
+# emittente via fattura: script.fn_scope_ef_whitelist_via_fattura su sorgente_id)
+# segue il playbook della famiglia fatture (crea policy -> ENABLE) con changeSet
+# ondata separato, quando atterra il read-side operatore lato BE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260720-01-create-fatture-stampa-coda-mctit.yaml
+
+  - changeSet:
+      id: 20260720-01-create-fatture-stampa-coda
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea vendite.fatture_stampa_coda: outbox per la stampa massiva delle
+        fatture di un lotto. Un work-item per fattura, drenato da worker
+        esterno. Indice unico parziale anti doppio-accodamento sui work-item
+        vivi (PENDING/IN_CORSO).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: vendite, tableName: fatture }
+          - tableExists: { schemaName: vendite, tableName: fatturazione_lotti }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Coda (outbox) dei documenti-fattura da generare in stampa
+              --   massiva. Popolata dal task pipeline stampa_documenti_lotto
+              --   (accoda, non renderizza) e drenata da un worker esterno.
+              -- Regole:
+              --   - una riga = un documento da generare (granularita per-fattura);
+              --   - stato di lavorazione tecnico via CHECK (non lookup di dominio);
+              --   - un solo work-item "vivo" (PENDING/IN_CORSO) per fattura
+              --     (indice unico parziale) -> accodamento idempotente;
+              --   - satellite della fattura: sorgente_id = vendite.fatture.id.
+              -- =========================================================
+              CREATE TABLE vendite.fatture_stampa_coda (
+                  id                    bigint  GENERATED ALWAYS AS IDENTITY
+                                          CONSTRAINT pk_fatture_stampa_coda PRIMARY KEY,
+                  sorgente_tipo_id      bigint  NOT NULL,
+                  sorgente_id           bigint  NOT NULL,
+                  sorgente_uid          text    NOT NULL,
+                  lotto_id              bigint  NULL,
+                  template_documento_id bigint  NULL,
+                  stato                 text    NOT NULL DEFAULT 'PENDING',
+                  tentativi             integer NOT NULL DEFAULT 0,
+                  ultimo_errore         jsonb   NULL,
+                  documento_id          bigint  NULL,
+                  data_insert           timestamp with time zone NOT NULL DEFAULT now(),
+                  user_insert           text    NOT NULL DEFAULT CURRENT_USER,
+                  data_update           timestamp with time zone NOT NULL DEFAULT now(),
+                  user_update           text    NOT NULL DEFAULT CURRENT_USER,
+                  tx_id                 uuid    NULL,
+                  CONSTRAINT chk_fatture_stampa_coda_stato
+                      CHECK (stato IN ('PENDING', 'IN_CORSO', 'FATTO', 'ERRORE')),
+                  CONSTRAINT chk_fatture_stampa_coda_tentativi
+                      CHECK (tentativi >= 0),
+                  -- FK al singolo consumatore attuale (FATTURA). La promozione a
+                  -- coda generica (documenti.*) rimuovera questo vincolo.
+                  CONSTRAINT fk_fatture_stampa_coda_fattura
+                      FOREIGN KEY (sorgente_id)
+                      REFERENCES vendite.fatture (id) ON DELETE CASCADE,
+                  CONSTRAINT fk_fatture_stampa_coda_lotto
+                      FOREIGN KEY (lotto_id)
+                      REFERENCES vendite.fatturazione_lotti (id) ON DELETE SET NULL
+              );
+
+              -- Anti doppio-accodamento: un solo work-item vivo per fattura.
+              -- Parziale su PENDING/IN_CORSO -> consente il ri-accodamento dopo
+              -- FATTO/ERRORE (ristampa) senza violare l'unicita.
+              CREATE UNIQUE INDEX uq_fatture_stampa_coda_vivo
+                  ON vendite.fatture_stampa_coda (sorgente_tipo_id, sorgente_id)
+                  WHERE stato IN ('PENDING', 'IN_CORSO');
+
+              -- Polling del worker: FIFO sui soli da-lavorare.
+              CREATE INDEX ix_fatture_stampa_coda_da_lavorare
+                  ON vendite.fatture_stampa_coda (id)
+                  WHERE stato IN ('PENDING', 'IN_CORSO');
+
+              -- NB indici FK (sorgente_id, lotto_id): NON creati a mano ->
+              -- dbops.apply_fk_index_policy() in 90_end secondo policy.
+
+              COMMENT ON TABLE vendite.fatture_stampa_coda IS
+                  'Outbox della stampa massiva fatture: un work-item per fattura, accodato dal task pipeline stampa_documenti_lotto e drenato da worker esterno (backstop numerazione + render via documenti.DocumentGenerationService). Satellite di vendite.fatture.';
+              COMMENT ON COLUMN vendite.fatture_stampa_coda.sorgente_tipo_id IS
+                  'Tipo sorgente documentale (config.sorgenti.id); oggi sempre FATTURA. A forma di documenti.genera_documento.';
+              COMMENT ON COLUMN vendite.fatture_stampa_coda.sorgente_id IS
+                  'ID sorgente = vendite.fatture.id (FK). Chiave di delega RLS via fattura.';
+              COMMENT ON COLUMN vendite.fatture_stampa_coda.sorgente_uid IS
+                  'UID sorgente (convenzione key_selector FATTURA = id::text).';
+              COMMENT ON COLUMN vendite.fatture_stampa_coda.lotto_id IS
+                  'Lotto di provenienza (NULL per ristampa on-demand). ON DELETE SET NULL: il work-item sopravvive alla pulizia del lotto.';
+              COMMENT ON COLUMN vendite.fatture_stampa_coda.template_documento_id IS
+                  'Override opzionale del template documentale (NULL = default per sorgente/emittente/output).';
+              COMMENT ON COLUMN vendite.fatture_stampa_coda.stato IS
+                  'Stato di lavorazione: PENDING | IN_CORSO | FATTO | ERRORE.';
+              COMMENT ON COLUMN vendite.fatture_stampa_coda.tentativi IS
+                  'Numero tentativi di generazione gia effettuati dal worker.';
+              COMMENT ON COLUMN vendite.fatture_stampa_coda.ultimo_errore IS
+                  'Dettaglio ultimo errore di generazione (JSONB), NULL se mai fallito.';
+              COMMENT ON COLUMN vendite.fatture_stampa_coda.documento_id IS
+                  'Documento prodotto (esito) a stato FATTO; NULL finche non generato.';
