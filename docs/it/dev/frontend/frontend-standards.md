@@ -1515,16 +1515,23 @@ Testo sempre in italiano, chiaro e specifico — mai "Errore" o "OK".
 
 ### Struttura chiavi
 
-| Sezione                | Contenuto                                                        |
-| ---------------------- | ---------------------------------------------------------------- |
-| `common.*`             | Termini riutilizzabili (salva, annulla, cerca...)                |
-| `nav.*`                | Label domini L1                                                  |
-| `nav_menu.<dominio>.*` | Label voci L2                                                    |
-| `indirizzi.*`          | Etichette gestione geografica (indirizzi, toponomastica, comuni) |
-| `geo.*`                | Etichette province, regioni, stati                               |
-| `amm.*`                | Etichette amministrazione software                               |
-| `notifications.*`      | Messaggi toast                                                   |
-| `errors.*`             | Messaggi pagine errore                                           |
+> ⛔ **REGOLA SUPERATA — NON SEGUIRE (dal 2026-07-19).**
+> La tabella che stava qui elencava `soggetti.*`, `indirizzi.*`, `geo.*`, `amm.*`
+> come «etichette dominio-specifiche», sancendo di fatto **radici piatte per
+> modulo**, e non nominava `vendite.*` che è la radice più popolosa dell'archivio.
+> Seguirla produce chiavi che il frontend non risolve — e, siccome una chiave non
+> risolta non genera errore ma **testo mancante**, il difetto resta invisibile.
+> È già successo due volte (offerte, ordini).
+>
+> **Regola vigente**: [i18n-namespace-radici.md](i18n-namespace-radici.md) —
+> documento unico su come si individua o si crea una radice. In sintesi: se la
+> stringa appartiene a un modulo che vive in una cartella d'area
+> (`frontend/src/<area>/`), l'indirizzo parte da quell'area
+> (`vendite.ordini.*`); se è vocabolario trasversale a più aree, resta in cima
+> (`common.*`, `errors.*`, `nav.*`).
+>
+> Vale per **ogni livello che emette chiavi**, database compreso (`label_key` e
+> `reason_key` delle capability e dei seed `config.transizioni_stati_*`).
 
 Ogni nuova stringa va aggiunta **in entrambi i file** (`it.json` e `en.json`) contemporaneamente.
 

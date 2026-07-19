@@ -22,6 +22,9 @@ AS $function$
 --   (uniformita' 6 domini): verso EMESSA disabled se la versione
 --   listino manca o non e' ATTIVA — specchio del guard
 --   BOZZA->EMESSA (brief-db-guard-righe-avanzamento-stato §1a).
+--   rev 2026-07-19 (bis): le 3 push_reason passano al namespace
+--   i18n vendite.offerte.* (era offerte.*, radice inesistente nei
+--   locales FE) — brief-db-i18n-reason-mancanti-offerte-preventivi.
 DECLARE
     v_stato_id    vendite.offerte_commerciali.stato_doc_offerta_id%TYPE;
     v_stato_cod   config.stati_doc_offerte.codice_interno%TYPE;
@@ -179,13 +182,13 @@ BEGIN
         v_actions := v_actions || jsonb_build_array(c_action_push_contratto);
     ELSIF v_has_contratto THEN
         v_push_reason     := 'OFFERTA_CONTRATTO_GIA_GENERATO';
-        v_push_reason_key := 'offerte.push_reason.gia_generato';
+        v_push_reason_key := 'vendite.offerte.push_reason.gia_generato';
     ELSIF v_has_ordine THEN
         v_push_reason     := 'OFFERTA_ORDINE_GIA_GENERATO';
-        v_push_reason_key := 'offerte.push_reason.ordine_gia_generato';
+        v_push_reason_key := 'vendite.offerte.push_reason.ordine_gia_generato';
     ELSE
         v_push_reason     := 'OFFERTA_NON_ACCETTATA';
-        v_push_reason_key := 'offerte.push_reason.non_accettata';
+        v_push_reason_key := 'vendite.offerte.push_reason.non_accettata';
     END IF;
 
     v_can_ordine := v_enabled;
@@ -195,13 +198,13 @@ BEGIN
         v_actions := v_actions || jsonb_build_array(c_action_genera_ordine);
     ELSIF v_has_ordine THEN
         v_ordine_reason     := 'OFFERTA_ORDINE_GIA_GENERATO';
-        v_ordine_reason_key := 'offerte.push_reason.ordine_gia_generato';
+        v_ordine_reason_key := 'vendite.offerte.push_reason.ordine_gia_generato';
     ELSIF v_has_contratto THEN
         v_ordine_reason     := 'OFFERTA_CONTRATTO_GIA_GENERATO';
-        v_ordine_reason_key := 'offerte.push_reason.gia_generato';
+        v_ordine_reason_key := 'vendite.offerte.push_reason.gia_generato';
     ELSE
         v_ordine_reason     := 'OFFERTA_NON_ACCETTATA';
-        v_ordine_reason_key := 'offerte.push_reason.non_accettata';
+        v_ordine_reason_key := 'vendite.offerte.push_reason.non_accettata';
     END IF;
 
     v_can_edit := (v_stato_cod = 'BOZZA');
@@ -229,7 +232,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_offerta(p_offerta_id bigint)
-IS 'Capability offerta commerciale per detail API: available_actions + can_edit_* + push_contratto/genera_ordine (mutuamente esclusive) + create_revisione + non_editable_fields. rev 2026-07-11: + blocco pdf {mode, allow_allegati}. rev 2026-07-19: + enabled/reason/reason_key su ogni azione (uniformita'' 6 domini, brief-db-guard-righe-avanzamento-stato §1a) — la transizione verso EMESSA e'' disabled con reason LISTINO_VERSIONE_MANCANTE / LISTINO_VERSIONE_NON_ATTIVA, specchio del guard BOZZA->EMESSA (per le offerte il "vuoto" e'' la versione listino, non le righe: sono espanse dal listino).';
+IS 'Capability offerta commerciale per detail API: available_actions + can_edit_* + push_contratto/genera_ordine (mutuamente esclusive) + create_revisione + non_editable_fields. rev 2026-07-11: + blocco pdf {mode, allow_allegati}. rev 2026-07-19: + enabled/reason/reason_key su ogni azione (uniformita'' 6 domini, brief-db-guard-righe-avanzamento-stato §1a) — la transizione verso EMESSA e'' disabled con reason LISTINO_VERSIONE_MANCANTE / LISTINO_VERSIONE_NON_ATTIVA, specchio del guard BOZZA->EMESSA (per le offerte il "vuoto" e'' la versione listino, non le righe: sono espanse dal listino). rev 2026-07-19 (bis): le 3 push_reason (gia_generato / ordine_gia_generato / non_accettata, usate sia da can_push_contratto_reason_key sia da can_genera_ordine_reason_key) passano al namespace i18n vendite.offerte.* — erano sotto offerte.*, radice inesistente nei locales, quindi il motivo non compariva mai in interfaccia; brief-db-i18n-reason-mancanti-offerte-preventivi.';
 ```
 
 ---

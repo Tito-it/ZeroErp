@@ -27,10 +27,12 @@
 -- 16a/16b) BOZZA senza listino_versione_id: azione verso EMESSA enabled=false +
 --     reason='LISTINO_VERSIONE_MANCANTE' (rev 2026-07-19, uniformita' 6 domini)
 -- 17) BOZZA con versione ATTIVA: azione verso EMESSA enabled=true
+-- 19) Tutte le reason_key di push_contratto/genera_ordine iniziano per
+--     'vendite.offerte.' (guard namespace i18n, 20260719-13)
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(18);
+SELECT plan(19);
 
 -- ============================================================
 -- Setup fixture: contesti di riferimento
@@ -515,6 +517,32 @@ SELECT is(
       WHERE a ->> 'target_state' = 'EMESSA') -> 'enabled',
     'true'::jsonb,
     '17) BOZZA con versione ATTIVA: azione verso EMESSA enabled'
+);
+
+-- ============================================================
+-- TEST 19) Guard namespace i18n sulle reason_key (20260719-13).
+-- Gemello del test 10, che copre le label_key: qui si coprono le
+-- reason_key di push_contratto e genera_ordine, che erano emesse
+-- sotto `offerte.*` — radice inesistente nei locales FE. Una chiave
+-- non risolta non da' errore: da' testo mancante, quindi il motivo
+-- del pulsante grigio non compariva e nessuno se ne accorgeva.
+-- Convenzione: docs/it/dev/frontend/i18n-namespace-radici.md
+-- Brief: brief-db-i18n-reason-mancanti-offerte-preventivi §2a
+-- ============================================================
+SELECT ok(
+    COALESCE(
+        (SELECT bool_and(k LIKE 'vendite.offerte.%')
+           FROM (VALUES ('BOZZA'), ('EMESSA'), ('ACCT-1')) AS slots(slot)
+           JOIN tmp_aa_ids o USING (slot)
+           CROSS JOIN LATERAL (VALUES
+               (script.fn_available_actions_offerta(o.offerta_id)->>'can_push_contratto_reason_key'),
+               (script.fn_available_actions_offerta(o.offerta_id)->>'can_genera_ordine_reason_key')
+           ) AS chiavi(k)
+          WHERE k IS NOT NULL
+        ),
+        false
+    ),
+    '19) Tutte le reason_key di push/genera_ordine iniziano per vendite.offerte.'
 );
 
 SELECT * FROM finish();
