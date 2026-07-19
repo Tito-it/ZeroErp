@@ -9,14 +9,16 @@
 -- 2) Preventivo ACCETTATO (senza righe/BA) → 0 azioni (annulla solo da DRAFT;
 --    EVASO automatico escluso; push/genera gated dal residuo)
 -- 3) Preventivo DRAFT, azione ANNULLATO → key='annulla' valorizzato (regressione bug meta={})
--- 4) Preventivo DRAFT, azione ANNULLATO → label_key='preventivi.azione_annulla' valorizzato
+-- 4) Preventivo DRAFT, azione ANNULLATO → label_key='vendite.preventivi.azione_annulla' valorizzato
 -- 5) Preventivo ACCETTATO senza BA/righe → can_push_commessa=false, reason SENZA_BILLING_ACCOUNT
 -- 6) Preventivo DRAFT → 2 azioni manuali (emetti + annulla)
 -- 7) Preventivo DRAFT → tutte le azioni hanno key valorizzato (nessun null da meta={})
+-- 8) Guard namespace i18n: label_key (da seed) e reason_key (da capability)
+--    iniziano per 'vendite.preventivi.' (20260719-14 + seed)
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(7);
+SELECT plan(8);
 
 -- ============================================================
 -- Riferimenti minimi per creare preventivi in pgTAP
@@ -152,9 +154,9 @@ SELECT ok(
               script.fn_available_actions_preventivo(p.id)->'available_actions'
             ) AS elem
       WHERE elem->>'key' = 'annulla'
-        AND elem->>'label_key' = 'preventivi.azione_annulla'
+        AND elem->>'label_key' = 'vendite.preventivi.azione_annulla'
   )),
-  'fn_available_actions_preventivo DRAFT: label_key=''preventivi.azione_annulla'' valorizzato'
+  'fn_available_actions_preventivo DRAFT: label_key=''vendite.preventivi.azione_annulla'' valorizzato'
 );
 
 -- ============================================================
@@ -200,6 +202,36 @@ SELECT ok(
           ) AS elem
   ),
   'fn_available_actions_preventivo DRAFT: tutte le azioni hanno key valorizzato (no null da meta={})'
+);
+
+-- ============================================================
+-- TEST 8) Guard namespace i18n (20260719-14 + seed).
+-- La radice `preventivi.*` e' stata spostata sotto `vendite.preventivi.*`
+-- dal FE (brief-i18n-radici-uniformi). Una chiave rimasta piatta non da'
+-- errore: da' testo mancante. Qui si copre entrambe le sorgenti che il DB
+-- emette: la label_key (dal seed transizioni, via DRAFT) e la reason_key
+-- (dal corpo della capability, via ACCETTATO senza BA).
+-- ============================================================
+SELECT ok(
+  (SELECT bool_and(k LIKE 'vendite.preventivi.%')
+     FROM (
+       -- label_key da seed (azioni del DRAFT)
+       SELECT elem->>'label_key' AS k
+         FROM tmp_prev_aa_draft p,
+              jsonb_array_elements(
+                script.fn_available_actions_preventivo(p.id)->'available_actions'
+              ) AS elem
+        WHERE elem->>'label_key' IS NOT NULL
+       UNION ALL
+       -- reason_key da capability (push + genera_ordine, ACCETTATO senza BA)
+       SELECT script.fn_available_actions_preventivo(p.id)->>'can_push_commessa_reason_key'
+         FROM tmp_prev_aa_accettato p
+       UNION ALL
+       SELECT script.fn_available_actions_preventivo(p.id)->>'can_genera_ordine_reason_key'
+         FROM tmp_prev_aa_accettato p
+     ) q
+    WHERE k IS NOT NULL),
+  '8) label_key (seed) e reason_key (capability) sotto vendite.preventivi.*'
 );
 
 SELECT * FROM finish();
