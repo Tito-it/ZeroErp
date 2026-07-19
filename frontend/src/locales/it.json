@@ -1825,7 +1825,9 @@
       "push_commessa_errore": "Push fallito: {primo_errore}",
       "push_commessa_skipped": "Push già in corso per questo DDT.",
       "push_commessa_reason": {
-        "non_pushabile": "DDT non ancora inviabile a commessa: dev'essere spedito o consegnato."
+        "non_pushabile": "DDT non ancora inviabile a commessa: dev'essere spedito o consegnato.",
+        "gia_inviato": "DDT già inviato a commessa: le righe sono in attesa di fatturazione.",
+        "gia_fatturato": "DDT già inviato a commessa e fatturato."
       },
       "col_numero": "Numero",
       "col_data": "Data",
@@ -2024,6 +2026,13 @@
       "push_commessa_parziale": "Push parziale ({righe} righe, log #{push_log_id}).",
       "push_commessa_errore": "Push fallito: {primo_errore}",
       "push_commessa_skipped": "Push già in corso per questo ordine.",
+      "push_commessa_reason": {
+        "non_confermato": "L'invio a commessa sarà disponibile dopo la conferma dell'ordine.",
+        "fattura_da_ddt": "Questo ordine si fattura dal DDT: l'invio a commessa avviene alla spedizione o alla consegna.",
+        "gia_inviato": "Ordine già inviato a commessa: le righe sono in attesa di fatturazione.",
+        "gia_fatturato": "Ordine già inviato a commessa e fatturato.",
+        "nessuna_riga_pushabile": "Nessuna riga inviabile a commessa: verifica quantità e prezzi delle righe."
+      },
       "origine_chip": "Origine: {tipo} {codice}",
       "origine_chip_tooltip": "Documento commerciale da cui nasce l'ordine.",
       "evasione_titolo": "Genera DDT",

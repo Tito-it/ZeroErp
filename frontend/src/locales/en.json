@@ -1825,7 +1825,9 @@
       "push_commessa_errore": "Push failed: {primo_errore}",
       "push_commessa_skipped": "Push already in progress for this DDT.",
       "push_commessa_reason": {
-        "non_pushabile": "DDT not yet sendable to a job: it must be shipped or delivered."
+        "non_pushabile": "DDT not yet sendable to a job: it must be shipped or delivered.",
+        "gia_inviato": "DDT already sent to a job: its lines are awaiting invoicing.",
+        "gia_fatturato": "DDT already sent to a job and invoiced."
       },
       "col_numero": "Number",
       "col_data": "Date",
@@ -2024,6 +2026,13 @@
       "push_commessa_parziale": "Partial push ({righe} lines, log #{push_log_id}).",
       "push_commessa_errore": "Push failed: {primo_errore}",
       "push_commessa_skipped": "Push already in progress for this order.",
+      "push_commessa_reason": {
+        "non_confermato": "Sending to a job will be available once the order is confirmed.",
+        "fattura_da_ddt": "This order is invoiced from the DDT: it is sent to a job on shipping or delivery.",
+        "gia_inviato": "Order already sent to a job: its lines are awaiting invoicing.",
+        "gia_fatturato": "Order already sent to a job and invoiced.",
+        "nessuna_riga_pushabile": "No line can be sent to a job: check line quantities and prices."
+      },
       "origine_chip": "Origin: {tipo} {codice}",
       "origine_chip_tooltip": "Commercial document the order originates from.",
       "evasione_titolo": "Generate DDT",

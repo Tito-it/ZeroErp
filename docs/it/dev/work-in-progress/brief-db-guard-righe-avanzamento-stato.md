@@ -17,7 +17,12 @@
 > emerso che gli step 1 (5 domini su 6), 2 e 3 erano **già stati realizzati il
 > 2026-07-16** senza che il brief venisse aggiornato: il lavoro odierno chiude i
 > buchi residui (DDT multi-condizione, offerte senza enabled). Restano:
-> comunicazione §3 a BE/FE, rigen doc auto-gen, commit su «procedi».
+> rigen doc auto-gen, commit su «procedi».
+> · **BE/FE RECEPITO (2026-07-19, non committato)** — il formato §3 è stato
+> implementato lato client: mapper azioni multi-motivo + tooltip multi-riga +
+> 7 chiavi i18n `azione_reason`, con review critica (5 fix, incluso un bug
+> reale del tooltip). Dettaglio nel §5. **Nessun lavoro BE**: le capability
+> viaggiano in passthrough nel detail, i codici errore sono invariati.
 > **Origine**: rilievo in-app di Tid — su un preventivo VUOTO il pulsante "Emetti"
 > è visibile e cliccabile; il guard DB (`PREV_NESSUNA_RIGA_ATTIVA`) rifiuta
 > correttamente al click, ma l'azione non dovrebbe proprio essere offerta.
@@ -188,6 +193,11 @@ spuntare**.
 (543/544/545/471/`E_INDIRIZZO_DOC_OBBLIGATORIO`/componenti): il mapping FE
 esistente resta valido.
 
+> ✅ **RECEPITO lato FE (2026-07-19)** — contratto implementato integralmente,
+> vedi §5. Verificato: le **8 `reason_key`** emesse dal DB (grep su
+> `20260719-01..04` + doc auto-gen) combaciano **esattamente** con le chiavi
+> i18n create, zero typo.
+
 ## 4. Avanzamento
 
 | # | Step | Stato |
@@ -196,8 +206,49 @@ esistente resta valido.
 | 1 | Capability nelle 6 `fn_available_actions_*` — 5 domini già fatti il 2026-07-16 (`requires_righe`); **oggi**: DDT delega a `fn_check_ddt_emittibile` (`20260719-02`) e offerte ricevono `enabled/reason` sul listino (`20260719-04`) — **SVILUPPATO** | ☑ |
 | 2 | ~~Guard DDT: emissione con 0 righe~~ — **GIÀ FATTO** (543, slice DDT-resi) | ☑ |
 | 3 | ~~Guard ordini a DB~~ — **GIÀ FATTO** il 2026-07-16 (471, §1c) | ☑ |
-| 4 | Apply dev + pgTAP — **FATTO 2026-07-19** (migrate applicato, test verdi); resta la comunicazione §3 a BE/FE | ☑ |
+| 4 | Apply dev + pgTAP — **FATTO 2026-07-19** (migrate applicato, test verdi) | ☑ |
+| 5 | **Recepimento BE/FE del contratto §3** — **FATTO 2026-07-19** (non committato), §5 | ☑ |
 
 > **Nota di sequenza**: lo step 0 va prima dell'1 **solo per il DDT**. Gli altri
 > cinque domini hanno una condizione sola e non richiedono estrazione: la
 > capability interroga direttamente il proprio predicato (righe o listino).
+
+## 5. Consuntivo BE/FE (2026-07-19) — realizzato, non committato
+
+**BE: nessun lavoro, ed è la forma giusta.** Le capability arrivano già al FE in
+passthrough (`get_capabilities` → merge nel detail di ogni dominio) e i codici
+errore sono invariati e già mappati in `error_policies.py`: tutto il contratto
+nuovo viaggia nel jsonb che il DB emette. Nessun endpoint, nessun serializer.
+
+**FE — tre interventi:**
+
+| File | Cosa |
+|---|---|
+| `core/composables/useDrawerActions.js` | il mapper gestiva già `enabled:false → disabled+tooltip` (dal 2026-07-16). Aggiunto: supporto all'array **`reasons`** (tutti i motivi, non solo il primo) normalizzando motivo-singolo e lista a **un percorso solo**, con decodifica **fail-visible** via il BB `labelOrCode` (chiave i18n mancante → codice macchina, mai il path a video) |
+| `core/composables/useActionBar.js` + `assets/main.css` | tooltip **multi-riga**: forma oggetto con `class: 'app-tooltip-multiline'` + regola `white-space: pre-line` in main.css |
+| 6 drawer + `locales/it.json`/`en.json` | `te` iniettato al mapper (preventivi, offerte, ordini, contratti, DDT, resi) + le **7 chiavi i18n** `azione_reason` del §3, parità it/en verificata |
+
+**Review critica (8 finder, 5 fix applicati)** — un **bug reale** che build e
+lint non vedevano: la prima stesura passava lo stile del tooltip via `pt`, ma la
+**directive** tooltip di PrimeVue 4.5.5 legge dall'oggetto solo
+`value|disabled|escape|class|fitContent|id|showDelay|hideDelay|autoHide` —
+**`pt` è dei componenti, non della directive**: veniva ignorato in silenzio e i
+motivi multipli sarebbero comparsi collassati su una riga sola. Fix con `class`
+(supportata) + classe in main.css, che chiude anche la violazione «niente stili
+inline, classi `app-*` centralizzate». Altri fix: `resolveReason` duplicava
+`labelOrCode` → riuso del BB; due rami per la stessa resa → uno; guard `te`
+invertito nel merito (senza `te` traduceva a chiave cieca, cioè poteva mostrare
+il path i18n proprio nel caso che doveva proteggere) → default `() => false`,
+degrado al codice macchina.
+
+⚠️ **Nota per chi tocca le barre azioni**: `buttonTooltip` di `useActionBar` è
+condiviso anche da **`PageActionsBar`** (toolbar liste), non solo dai drawer. Il
+cambio è retro-compatibile (la forma oggetto scatta solo con `\n` nel testo, che
+oggi produce solo questa capability), ma il punto è comune alle due barre.
+
+**Verifiche**: lint pulito, build Vite verde, logica del mapper esercitata su 6
+casi (multi-motivo · singolo · senza `reason_key` · senza `te` · azione
+abilitata · `reasons` vuoto). **Non validato in-app**: nei dati dev non esistono
+DDT in DRAFT senza causale né preventivi vuoti (il backfill `20260718-06` ha
+valorizzato tutto) — il comportamento a video si vedrà alla prima bozza reale,
+con «Emetti» disabilitato e il tooltip che elenca **tutti** i motivi.
