@@ -24,7 +24,7 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'close'])
 
 const title = computed(() => {
-  const base = t('amm_emittenti_fiscali.ba_drawer_title')
+  const base = t('amministrazione.emittenti_fiscali.ba_drawer_title')
   const rs = props.emittenteRagioneSociale
   return rs ? `${base} — ${rs}` : base
 })

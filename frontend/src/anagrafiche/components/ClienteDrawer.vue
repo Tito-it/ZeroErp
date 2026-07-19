@@ -68,18 +68,18 @@ const utilities = useLookup(() => lookupUtilitiesPerEmittente(TIPO_RUOLO.CLIENTE
 
 // Opzioni statiche (label tramite i18n)
 const tipoGgOptions = computed(() => [
-  { value: 'N', label: t('clienti.opt_gg_nessuno') },
-  { value: 'G', label: t('clienti.opt_gg_giorni') },
-  { value: 'M', label: t('clienti.opt_gg_mese') },
-  { value: 'F', label: t('clienti.opt_gg_fine_mese') },
+  { value: 'N', label: t('anagrafiche.clienti.opt_gg_nessuno') },
+  { value: 'G', label: t('anagrafiche.clienti.opt_gg_giorni') },
+  { value: 'M', label: t('anagrafiche.clienti.opt_gg_mese') },
+  { value: 'F', label: t('anagrafiche.clienti.opt_gg_fine_mese') },
 ])
 const paOptions = computed(() => [
   { value: 'N', label: t('common.no') },
   { value: 'S', label: t('common.yes') },
 ])
 const garanziaTipoOptions = computed(() => [
-  { value: 'D', label: t('clienti.opt_garanzia_deposito') },
-  { value: 'F', label: t('clienti.opt_garanzia_fidejussione') },
+  { value: 'D', label: t('anagrafiche.clienti.opt_garanzia_deposito') },
+  { value: 'F', label: t('anagrafiche.clienti.opt_garanzia_fidejussione') },
 ])
 
 const props = defineProps({
@@ -299,7 +299,7 @@ async function onSave() {
     // Update: solo campi editabili
     const result = await execute(
       () => store.update(props.clienteId, buildEditablePayload()),
-      { successMessage: t('clienti.cliente_salvato') }
+      { successMessage: t('anagrafiche.clienti.cliente_salvato') }
     )
     if (result !== null) emit('saved', result)
   } else {
@@ -309,7 +309,7 @@ async function onSave() {
     if (contatto.isFilled()) {
       contattoErrors.value = contatto.validate()
       if (contattoErrors.value.length > 0) {
-        warn(t('clienti.contatto_campi_obbligatori'))
+        warn(t('anagrafiche.clienti.contatto_campi_obbligatori'))
         return
       }
     } else {
@@ -334,7 +334,7 @@ async function onSave() {
     }
     const result = await execute(
       () => store.create(payload),
-      { successMessage: t('clienti.cliente_creato') }
+      { successMessage: t('anagrafiche.clienti.cliente_creato') }
     )
     if (result !== null) emit('saved', result)
   }
@@ -357,8 +357,8 @@ const canSave = computed(() => {
 // riatt e ritorna data_evento_stato + tipo_evento_stato. Niente piu'
 // computed con sosp > riatt nel frontend.
 const EVENTO_LABEL_KEY = {
-  SOSPENSIONE: 'clienti.col_sospeso_il',
-  RIATTIVAZIONE: 'clienti.col_riattivato_il',
+  SOSPENSIONE: 'anagrafiche.clienti.col_sospeso_il',
+  RIATTIVAZIONE: 'anagrafiche.clienti.col_riattivato_il',
 }
 const eventoStatoDetail = computed(() => {
   if (!detail.value?.data_evento_stato || !detail.value?.tipo_evento_stato) return null
@@ -382,7 +382,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('clienti.cliente')"
+        :title="t('anagrafiche.clienti.cliente')"
         :icon="NAV_ICONS.CLIENTI"
       />
     </template>
@@ -393,7 +393,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
     <div v-show="ready" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
 
         <!-- === Soggetto === -->
-        <h4>{{ t('clienti.section_soggetto') }}</h4>
+        <h4>{{ t('anagrafiche.clienti.section_soggetto') }}</h4>
         <!-- Creazione: SoggettoResolver -->
         <template v-if="!isEdit">
           <div v-if="soggettoSelezionato" class="mb-3">
@@ -421,24 +421,24 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <template v-if="isEdit || soggettoSelezionato">
 
         <!-- === Servizio === -->
-        <h4 class="mt-3">{{ t('clienti.section_servizio') }}</h4>
+        <h4 class="mt-3">{{ t('anagrafiche.clienti.section_servizio') }}</h4>
         <!-- Banner refactor operatore-emittenti (solo creazione) -->
         <Message v-if="!isEdit && auth.isAdminGlobale" severity="warn" :closable="false" class="mt-05">
-          {{ t('clienti.banner_admin_globale_no_create') }}
+          {{ t('anagrafiche.clienti.banner_admin_globale_no_create') }}
         </Message>
         <Message v-else-if="!isEdit && auth.emittenteCorrente" severity="info" :closable="false" class="mt-05">
-          {{ t('clienti.banner_emittente_corrente', { nome: auth.emittenteCorrente.ragioneSociale }) }}
+          {{ t('anagrafiche.clienti.banner_emittente_corrente', { nome: auth.emittenteCorrente.ragioneSociale }) }}
         </Message>
         <!-- Riga: utility + servizio_da_fatturare + stato (edit) -->
         <div class="cliente-servizio-row">
           <div class="form-field" style="flex: 2;">
-            <label>{{ t('clienti.field_utility') }} <span v-if="!isEdit">*</span></label>
+            <label>{{ t('anagrafiche.clienti.field_utility') }} <span v-if="!isEdit">*</span></label>
             <Select v-model="form.utility_id" :options="utilityOptions" :loading="utilityLoading"
-              option-label="descrizione" option-value="id" class="w-full" :placeholder="t('clienti.select_utility')"
+              option-label="descrizione" option-value="id" class="w-full" :placeholder="t('anagrafiche.clienti.select_utility')"
               :disabled="isEdit" />
           </div>
           <div class="form-field" style="flex: 1;">
-            <label>{{ t('clienti.field_servizio_fatturare') }}</label>
+            <label>{{ t('anagrafiche.clienti.field_servizio_fatturare') }}</label>
             <Checkbox v-model="form.servizio_da_fatturare" :binary="true" />
           </div>
           <div v-if="isEdit && detail" class="form-field" style="flex: 1; align-self: flex-end;">
@@ -451,21 +451,21 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <template v-if="isEdit && detail">
           <div class="form-grid-2col">
             <div class="form-field">
-              <label>{{ t('clienti.field_ba_codice') }}</label>
+              <label>{{ t('anagrafiche.clienti.field_ba_codice') }}</label>
               <InputText :model-value="detail.ba_codice" disabled class="w-full" />
             </div>
             <div class="form-field">
-              <label>{{ t('clienti.field_istanza_codice') }}</label>
+              <label>{{ t('anagrafiche.clienti.field_istanza_codice') }}</label>
               <InputText :model-value="detail.istanza_codice" disabled class="w-full" />
             </div>
           </div>
           <div class="form-grid-2col">
             <div class="form-field">
-              <label>{{ t('clienti.col_data_attivazione') }}</label>
+              <label>{{ t('anagrafiche.clienti.col_data_attivazione') }}</label>
               <InputText :model-value="displayDate(detail.data_attivazione)" disabled class="w-full" />
             </div>
             <div v-if="detail.data_chiusura" class="form-field">
-              <label>{{ t('clienti.field_data_chiusura') }}</label>
+              <label>{{ t('anagrafiche.clienti.field_data_chiusura') }}</label>
               <InputText :model-value="displayDate(detail.data_chiusura)" disabled class="w-full" />
             </div>
           </div>
@@ -474,92 +474,92 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <InputText :model-value="displayDate(eventoStatoDetail.date)" disabled class="w-full" />
           </div>
           <div v-if="detail.pdp_id" class="form-field">
-            <label>{{ t('clienti.field_pdp') }}</label>
+            <label>{{ t('anagrafiche.clienti.field_pdp') }}</label>
             <InputText :model-value="detail.pdp_id" disabled class="w-full" />
           </div>
         </template>
 
         <!-- === Pagamento === -->
-        <h4 class="mt-3">{{ t('clienti.section_pagamento') }}</h4>
+        <h4 class="mt-3">{{ t('anagrafiche.clienti.section_pagamento') }}</h4>
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('clienti.field_iva') }}</label>
+            <label>{{ t('anagrafiche.clienti.field_iva') }}</label>
             <IvaSelect v-model="form.iva_id" />
           </div>
           <div class="form-field">
             <label>
-              {{ t('clienti.field_categoria_cliente') }}
+              {{ t('anagrafiche.clienti.field_categoria_cliente') }}
               <span v-if="!isEdit">*</span>
             </label>
             <LookupSelect v-model="form.ba_categoria_cliente_id"
               rel="anagrafiche.categorie_clienti" class="w-full"
-              :placeholder="t('clienti.select_categoria_cliente')"
+              :placeholder="t('anagrafiche.clienti.select_categoria_cliente')"
               :disabled="isEdit" />
           </div>
         </div>
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('clienti.field_modalita_pagamento') }}</label>
+            <label>{{ t('anagrafiche.clienti.field_modalita_pagamento') }}</label>
             <LookupSelect v-model="form.modalita_pagamento_id" rel="config.modalita_pagamento" class="w-full"
-              :placeholder="t('clienti.select_modalita')" show-clear />
+              :placeholder="t('anagrafiche.clienti.select_modalita')" show-clear />
           </div>
           <div class="form-field">
-            <label>{{ t('clienti.field_termine_pagamento') }}</label>
+            <label>{{ t('anagrafiche.clienti.field_termine_pagamento') }}</label>
             <LookupSelect v-model="form.termine_pagamento_id" rel="config.termini_pagamento" class="w-full"
-              :placeholder="t('clienti.select_termine')" show-clear />
+              :placeholder="t('anagrafiche.clienti.select_termine')" show-clear />
           </div>
         </div>
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('clienti.field_tipo_gg_scadenza') }}</label>
+            <label>{{ t('anagrafiche.clienti.field_tipo_gg_scadenza') }}</label>
             <Select v-model="form.tipo_gg_scadenza_ft" :options="tipoGgOptions"
               option-label="label" option-value="value" class="w-full" />
           </div>
           <div class="form-field">
-            <label>{{ t('clienti.field_nr_giorni') }}</label>
+            <label>{{ t('anagrafiche.clienti.field_nr_giorni') }}</label>
             <InputNumber v-model="form.nr_giorni_scadenza" class="w-full" :min="0" />
           </div>
         </div>
 
         <!-- === PA === -->
-        <h4 class="mt-3">{{ t('clienti.section_pa') }}</h4>
+        <h4 class="mt-3">{{ t('anagrafiche.clienti.section_pa') }}</h4>
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('clienti.field_cliente_pa') }}</label>
+            <label>{{ t('anagrafiche.clienti.field_cliente_pa') }}</label>
             <Select v-model="form.cliente_pa" :options="paOptions"
               option-label="label" option-value="value" class="w-full" />
           </div>
           <div class="form-field">
-            <label>{{ t('clienti.field_split_payment') }}</label>
+            <label>{{ t('anagrafiche.clienti.field_split_payment') }}</label>
             <Select v-model="form.split_payment" :options="paOptions"
               option-label="label" option-value="value" class="w-full" />
           </div>
         </div>
         <div v-if="form.cliente_pa === 'S'" class="form-grid-3col">
           <div class="form-field">
-            <label>{{ t('clienti.field_codice_cig') }}</label>
+            <label>{{ t('anagrafiche.clienti.field_codice_cig') }}</label>
             <InputText v-model="form.codice_cig" class="w-full" />
           </div>
           <div class="form-field">
-            <label>{{ t('clienti.field_codice_cup') }}</label>
+            <label>{{ t('anagrafiche.clienti.field_codice_cup') }}</label>
             <InputText v-model="form.codice_cup" class="w-full" />
           </div>
           <div class="form-field">
-            <label>{{ t('clienti.field_codice_commessa') }}</label>
+            <label>{{ t('anagrafiche.clienti.field_codice_commessa') }}</label>
             <InputText v-model="form.codice_commessa" class="w-full" />
           </div>
         </div>
 
         <!-- === Garanzia === -->
-        <h4 class="mt-3">{{ t('clienti.section_garanzia') }}</h4>
+        <h4 class="mt-3">{{ t('anagrafiche.clienti.section_garanzia') }}</h4>
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('clienti.field_garanzia_tipo') }}</label>
+            <label>{{ t('anagrafiche.clienti.field_garanzia_tipo') }}</label>
             <Select v-model="form.garanzia_tipo" :options="garanziaTipoOptions"
               option-label="label" option-value="value" class="w-full" />
           </div>
           <div class="form-field">
-            <label>{{ t('clienti.field_garanzia_importo') }}</label>
+            <label>{{ t('anagrafiche.clienti.field_garanzia_importo') }}</label>
             <InputNumber v-model="form.garanzia_importo" class="w-full" :min="0"
               mode="decimal" :min-fraction-digits="2" />
           </div>
@@ -568,7 +568,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <!-- === Contatto inline (solo creazione) === -->
         <template v-if="!isEdit">
           <div class="app-drawer-section">
-            <h4>{{ t('soggetti.section_contatto') }}</h4>
+            <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
           </div>
           <ContattoForm
             :form="contatto.form"
@@ -583,7 +583,7 @@ const onClose = useDrawerClose(emit, 'cancelled')
         <!-- === Indirizzo inline (solo creazione) === -->
         <template v-if="!isEdit">
           <div class="app-drawer-section">
-            <h4>{{ t('soggetti.section_indirizzo') }}</h4>
+            <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
           </div>
           <IndirizzoSoggettoForm
             :form="indirizzo.form"

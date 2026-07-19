@@ -9,7 +9,7 @@
 //        Contenuto:
 //         - header sezione "Componenti..." (i18n key parametrizzata via
 //           `sectionTitleKey`: i 3 domini usano label diverse —
-//           preventivi: `preventivi.componenti_section_title`;
+//           preventivi: `vendite.preventivi.componenti_section_title`;
 //           contratti/offerte: `vendite.componenti.panel.section_title`);
 //         - Message info con hint "Definisci i prezzi dei componenti...";
 //         - Bottone outlined "Modifica componenti" con icona BoM;

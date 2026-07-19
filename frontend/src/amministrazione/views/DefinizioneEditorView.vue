@@ -80,7 +80,7 @@ function statoSeverity(stato) {
 function emittenteLabel(def) {
   return def?.emittente_fiscale_id
     ? def.emittente_display
-    : t('definizioni_workflow.preset')
+    : t('amministrazione.definizioni_workflow.preset')
 }
 
 function tornaLista() {
@@ -97,13 +97,13 @@ function onAllinea() {
   const emittenteId = store.definizione?.emittente_fiscale_id
   if (!d?.preset_corrente_id || !emittenteId) return
   confirmAction({
-    message: t('definizioni_workflow.ed_allinea_conferma', { corrente: d.versione_preset_corrente }),
+    message: t('amministrazione.definizioni_workflow.ed_allinea_conferma', { corrente: d.versione_preset_corrente }),
     onAccept: async () => {
       allineaLoading.value = true
       try {
         const res = await execute(
           () => forkDefinizione(d.preset_corrente_id, emittenteId),
-          { successMessage: t('definizioni_workflow.ed_msg_allinea_ok') },
+          { successMessage: t('amministrazione.definizioni_workflow.ed_msg_allinea_ok') },
         )
         const nuovoId = res?.data?.data?.definizione_id
         if (res !== null && nuovoId) {
@@ -176,10 +176,10 @@ async function onFigliChanged() {
 
 function onDeleteStep(step) {
   confirmAction({
-    message: t('definizioni_workflow.ed_conferma_elimina_step', { codice: step.codice }),
+    message: t('amministrazione.definizioni_workflow.ed_conferma_elimina_step', { codice: step.codice }),
     onAccept: async () => {
       const res = await execute(() => deleteStep(defId.value, step.id), {
-        successMessage: t('definizioni_workflow.ed_msg_step_eliminato'),
+        successMessage: t('amministrazione.definizioni_workflow.ed_msg_step_eliminato'),
       })
       if (res === null) return
       if (stepInForm.value?.id === step.id) chiudiForm()
@@ -219,14 +219,14 @@ function buildStepActions(step) {
     { key: 'edit', label: t('common.edit'), icon: MANAGE_ICONS.EDIT, command: () => onEditStep(step) },
     {
       key: 'up',
-      label: t('definizioni_workflow.ed_step_su'),
+      label: t('amministrazione.definizioni_workflow.ed_step_su'),
       icon: MANAGE_ICONS.COLLAPSE,
       disabled: idx <= 0,
       command: () => onMoveStep(step, 'up'),
     },
     {
       key: 'down',
-      label: t('definizioni_workflow.ed_step_giu'),
+      label: t('amministrazione.definizioni_workflow.ed_step_giu'),
       icon: MANAGE_ICONS.EXPAND,
       disabled: idx >= ordered.length - 1,
       command: () => onMoveStep(step, 'down'),
@@ -250,7 +250,7 @@ watch(defId, loadDettaglio)
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <Button
-          :label="t('definizioni_workflow.ed_torna_lista')"
+          :label="t('amministrazione.definizioni_workflow.ed_torna_lista')"
           :icon="MANAGE_ICONS.BACK"
           text
           @click="tornaLista"
@@ -259,7 +259,7 @@ watch(defId, loadDettaglio)
     </div>
 
     <Message v-if="store.lastError" severity="error" :closable="false" class="mb-3">
-      {{ t('definizioni_workflow.ed_caricamento_errore') }}
+      {{ t('amministrazione.definizioni_workflow.ed_caricamento_errore') }}
     </Message>
 
     <template v-if="store.definizione">
@@ -273,11 +273,11 @@ watch(defId, loadDettaglio)
         </div>
         <div class="editor-header__meta">
           <span>
-            <strong>{{ t('definizioni_workflow.ed_lbl_emittente') }}:</strong>
+            <strong>{{ t('amministrazione.definizioni_workflow.ed_lbl_emittente') }}:</strong>
             {{ emittenteLabel(store.definizione) }}
           </span>
           <span>
-            <strong>{{ t('definizioni_workflow.ed_lbl_versione') }}:</strong>
+            <strong>{{ t('amministrazione.definizioni_workflow.ed_lbl_versione') }}:</strong>
             {{ store.definizione.versione }}
           </span>
         </div>
@@ -287,13 +287,13 @@ watch(defId, loadDettaglio)
       </div>
 
       <Message v-if="editorReadonly" severity="info" :closable="false" size="small" class="mb-2">
-        {{ t('definizioni_workflow.ed_readonly_hint') }}
+        {{ t('amministrazione.definizioni_workflow.ed_readonly_hint') }}
       </Message>
 
       <Message v-if="drift" severity="warn" :closable="false" class="mb-3">
         <div class="editor-drift">
           <span>
-            {{ t('definizioni_workflow.ed_drift_banner', {
+            {{ t('amministrazione.definizioni_workflow.ed_drift_banner', {
               n: drift.versioni_indietro,
               origine: store.definizione.versione_origine,
               corrente: drift.versione_preset_corrente,
@@ -301,7 +301,7 @@ watch(defId, loadDettaglio)
           </span>
           <Button
             v-if="!isReadonly"
-            :label="t('definizioni_workflow.ed_allinea')"
+            :label="t('amministrazione.definizioni_workflow.ed_allinea')"
             :icon="MANAGE_ICONS.CLONE"
             size="small"
             severity="warn"
@@ -313,10 +313,10 @@ watch(defId, loadDettaglio)
 
       <!-- Step del workflow -->
       <div class="editor-section-head">
-        <h2 class="editor-section-title">{{ t('definizioni_workflow.ed_sez_steps') }}</h2>
+        <h2 class="editor-section-title">{{ t('amministrazione.definizioni_workflow.ed_sez_steps') }}</h2>
         <Button
           v-if="!editorReadonly"
-          :label="t('definizioni_workflow.ed_nuovo_step')"
+          :label="t('amministrazione.definizioni_workflow.ed_nuovo_step')"
           :icon="MANAGE_ICONS.ADD"
           size="small"
           @click="onNuovoStep"
@@ -333,18 +333,18 @@ watch(defId, loadDettaglio)
         :sort-field="'sequenza'"
         :sort-order="1"
       >
-        <template #empty>{{ t('definizioni_workflow.ed_steps_vuoto') }}</template>
-        <Column field="sequenza" :header="t('definizioni_workflow.ed_col_sequenza')" sortable style="width: 70px;" />
-        <Column field="codice" :header="t('definizioni_workflow.ed_col_codice')" sortable style="min-width: 180px;" />
-        <Column field="descrizione" :header="t('definizioni_workflow.ed_col_descrizione')" style="min-width: 200px;" />
-        <Column :header="t('definizioni_workflow.ed_col_obbligatorio')" style="width: 70px;">
+        <template #empty>{{ t('amministrazione.definizioni_workflow.ed_steps_vuoto') }}</template>
+        <Column field="sequenza" :header="t('amministrazione.definizioni_workflow.ed_col_sequenza')" sortable style="width: 70px;" />
+        <Column field="codice" :header="t('amministrazione.definizioni_workflow.ed_col_codice')" sortable style="min-width: 180px;" />
+        <Column field="descrizione" :header="t('amministrazione.definizioni_workflow.ed_col_descrizione')" style="min-width: 200px;" />
+        <Column :header="t('amministrazione.definizioni_workflow.ed_col_obbligatorio')" style="width: 70px;">
           <template #body="{ data }">
             <i v-if="data.obbligatorio" class="pi pi-check editor-bool-yes" />
           </template>
         </Column>
-        <Column field="direzione" :header="t('definizioni_workflow.ed_col_direzione')" style="width: 110px;" />
-        <Column field="modalita_esito" :header="t('definizioni_workflow.ed_col_modalita_esito')" style="width: 130px;" />
-        <Column :header="t('definizioni_workflow.ed_col_attivo')" style="width: 70px;">
+        <Column field="direzione" :header="t('amministrazione.definizioni_workflow.ed_col_direzione')" style="width: 110px;" />
+        <Column field="modalita_esito" :header="t('amministrazione.definizioni_workflow.ed_col_modalita_esito')" style="width: 130px;" />
+        <Column :header="t('amministrazione.definizioni_workflow.ed_col_attivo')" style="width: 70px;">
           <template #body="{ data }">
             <i v-if="data.attivo" class="pi pi-check editor-bool-yes" />
           </template>
@@ -360,8 +360,8 @@ watch(defId, loadDettaglio)
       <div v-if="formMode" class="app-drawer-section editor-step-form">
         <h3 class="editor-section-title">
           {{ formMode === 'edit'
-            ? t('definizioni_workflow.ed_step_form_edit', { codice: stepInForm?.codice })
-            : t('definizioni_workflow.ed_step_form_new') }}
+            ? t('amministrazione.definizioni_workflow.ed_step_form_edit', { codice: stepInForm?.codice })
+            : t('amministrazione.definizioni_workflow.ed_step_form_new') }}
         </h3>
         <DefinizioneStepForm
           :definizione-id="defId"
@@ -375,14 +375,14 @@ watch(defId, loadDettaglio)
       <!-- Dettaglio dello step selezionato -->
       <template v-if="selectedStep">
         <h2 class="editor-section-title">
-          {{ t('definizioni_workflow.ed_step_dettaglio', { codice: selectedStep.codice }) }}
+          {{ t('amministrazione.definizioni_workflow.ed_step_dettaglio', { codice: selectedStep.codice }) }}
         </h2>
         <Tabs value="canali" class="mb-3">
           <TabList>
-            <Tab value="canali">{{ t('definizioni_workflow.ed_tab_canali') }}</Tab>
-            <Tab value="handler">{{ t('definizioni_workflow.ed_tab_handler_eventi') }}</Tab>
-            <Tab value="competenze">{{ t('definizioni_workflow.ed_tab_competenze') }}</Tab>
-            <Tab value="prerequisiti">{{ t('definizioni_workflow.ed_tab_prerequisiti') }}</Tab>
+            <Tab value="canali">{{ t('amministrazione.definizioni_workflow.ed_tab_canali') }}</Tab>
+            <Tab value="handler">{{ t('amministrazione.definizioni_workflow.ed_tab_handler_eventi') }}</Tab>
+            <Tab value="competenze">{{ t('amministrazione.definizioni_workflow.ed_tab_competenze') }}</Tab>
+            <Tab value="prerequisiti">{{ t('amministrazione.definizioni_workflow.ed_tab_prerequisiti') }}</Tab>
           </TabList>
           <TabPanels>
             <!-- :key = step selezionato → remount al cambio step: azzera il form
@@ -428,15 +428,15 @@ watch(defId, loadDettaglio)
         </Tabs>
       </template>
       <Message v-else severity="secondary" :closable="false" size="small" class="mb-3">
-        {{ t('definizioni_workflow.ed_step_seleziona') }}
+        {{ t('amministrazione.definizioni_workflow.ed_step_seleziona') }}
       </Message>
 
       <!-- Archi a livello edizione -->
-      <h2 class="editor-section-title">{{ t('definizioni_workflow.ed_sez_archi') }}</h2>
+      <h2 class="editor-section-title">{{ t('amministrazione.definizioni_workflow.ed_sez_archi') }}</h2>
       <Tabs value="formule">
         <TabList>
-          <Tab value="formule">{{ t('definizioni_workflow.ed_tab_formule_tempo') }}</Tab>
-          <Tab value="regole">{{ t('definizioni_workflow.ed_tab_regole_generazione') }}</Tab>
+          <Tab value="formule">{{ t('amministrazione.definizioni_workflow.ed_tab_formule_tempo') }}</Tab>
+          <Tab value="regole">{{ t('amministrazione.definizioni_workflow.ed_tab_regole_generazione') }}</Tab>
         </TabList>
         <TabPanels>
           <TabPanel value="formule">

@@ -15,9 +15,9 @@
            <DrawerContextHeader
              :tag-value="contrattoNumero"
              :items="[
-               { label: t('contratti.col_ba'),         value: contrattoCliente },
-               { label: t('contratti.col_valido_dal'), value: displayDate(contrattoValidoDal) },
-               { label: t('contratti.col_valido_al'),  value: contrattoValidoAl ? displayDate(contrattoValidoAl) : '—' },
+               { label: t('vendite.contratti.col_ba'),         value: contrattoCliente },
+               { label: t('vendite.contratti.col_valido_dal'), value: displayDate(contrattoValidoDal) },
+               { label: t('vendite.contratti.col_valido_al'),  value: contrattoValidoAl ? displayDate(contrattoValidoAl) : '—' },
              ]">
              <template #status>
                <Tag v-if="contrattoStatoCodice"

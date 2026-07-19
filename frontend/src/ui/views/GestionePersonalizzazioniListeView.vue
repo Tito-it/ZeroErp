@@ -70,15 +70,15 @@ onMounted(() => {
 
     <template v-else>
       <div class="ui-admin-header">
-        <h2 class="ui-admin-title">{{ t('ui_admin.titolo') }}</h2>
+        <h2 class="ui-admin-title">{{ t('ui.admin.titolo') }}</h2>
         <ListaCorrenteSelect />
       </div>
 
       <TabView v-if="canAccess" lazy :key="tabViewKey">
-        <TabPanel v-if="canManagePreset" :header="t('ui_admin.tab_preset')">
+        <TabPanel v-if="canManagePreset" :header="t('ui.admin.tab_preset')">
           <ListaPresetPanel />
         </TabPanel>
-        <TabPanel v-if="canManagePermesso" :header="t('ui_admin.tab_permessi')">
+        <TabPanel v-if="canManagePermesso" :header="t('ui.admin.tab_permessi')">
           <ListaColonnaPermessoPanel />
         </TabPanel>
       </TabView>

@@ -80,10 +80,11 @@ toccare curl, e ogni commessa è ispezionabile/governabile dal drawer.
 
 | # | Step | Dettaglio | Stato |
 | --- | --- | --- | --- |
+| C-0 | **BE — generazione documenti eseguibile in contesto sistema (chiude P-1)** | `DocumentGenerationService.genera_documento` usa `user` per **una sola** cosa autorizzazione-critica — calcolare lo scope emittente (`resolve_emittente_scope` → `get_emittenti_ids`); tutto il resto (`generato_da_user_id`, `evento.user_id`, `auth_user_id` nel context) è **audit e tollera già `None`**, e i context builder **non filtrano i dati per utente**. **Decisione (2026-07-19, vedi §4)**: separare *chi autorizza* da *cosa genera* — `genera_documento` accetta lo **scope emittente già risolto** oltre allo `user`. Path web invariato (deriva scope da `user`, i 5 domini non cambiano); path sistema (batch/pipeline) passa `emittente_scope=None` — vede tutto, gira già su canale `system_process_context` BYPASSRLS con emittente **autoritativo** dal lotto — e `audit_user_id=None` (l'attore è già in `app.jwt_user`). **Non-breaking, nessun DB** | ⬜ |
 | C-1 | **BE — estrazione core driver** | Da `run_fatturazione_batch` (management command) estrarre `fatturazione_driver_service` (nome indicativo): discovery coppie `(emittente, tipo_doc)` emittibili → lotto per coppia → pipeline per coppia, **best-effort** (una coppia in errore non blocca le altre) + esito strutturato. Nuovo parametro **`fino_a_stato`** (Python puro, nessun DB): il giro da UI e il massivo da cron si fermano a **EMESSA** (D-1). Il command diventa un **chiamante sottile** — comportamento invariato, coperto dai test esistenti | ⬜ |
 | C-2 | **BE — cablare la famiglia documentale su FATTURA** | La sorgente `FATTURA` esiste (`config.sorgenti` id 10, target `vendite.fatture`, `key_selector=id`) ma **non è istanziata** sulla factory `build_documenti_sorgente_views` (oggi: preventivi, offerte, contratti, ordini, DDT). Delta ~10 righe → `fatture_documenti_views.py` (genera / anteprima / lista / file / download) + template fattura. **Sblocca la stampa singola sincrona** (I-3) e la ristampa on-demand | ⬜ |
-| C-2b | **BE — processo stampa massivo** | Il pezzo che manca davvero (D-7 §5-bis, buco B-b): un processo che genera **N** documenti — input `(sorgente_tipo, ids[])`, output N documenti — eseguito **in background** (I-3) con `registered_job`, per-documento resiliente (un render fallito non ferma gli altri) e **idempotente**. **Stupido per contratto** (I-4): nessuna conoscenza di lotti, fatture o fatturazione; internamente cicla `DocumentGenerationService.genera_documento`. Riusabile da qualunque dominio | ⬜ |
-| C-2c | **BE — handler task `stampa_documenti_lotto_default`** | Registrato in `PipelineStepExecutor.handler_registry` (il seed DB lo dichiara). **È un adattatore, non un generatore**: risolve gli id delle fatture del lotto e li passa al processo C-2b. Nessuna logica di rendering nella pipeline (I-4). Ri-eseguibile con rerun del solo task. ⚠️ **P-1**: `genera_documento` pretende un `user` autenticato e da lì risolve lo scope emittente — in contesto batch/sistema non c'è request user. Da chiudere **prima** di C-2b/C-2c (variante che accetta lo scope già risolto, o attore di sistema): oggi la stampa funzionerebbe da UI e fallirebbe da cron | ⬜ |
+| C-2b | **BE — processo stampa massivo** | Il pezzo che manca davvero (D-7 §5-bis, buco B-b): un processo che genera **N** documenti — input `(sorgente_tipo, ids[])`, output N documenti — eseguito **in background** (I-3) con `registered_job`, per-documento resiliente (un render fallito non ferma gli altri) e **idempotente**. **Stupido per contratto** (I-4): nessuna conoscenza di lotti, fatture o fatturazione; internamente cicla `DocumentGenerationService.genera_documento` (che C-0 ha reso invocabile in contesto sistema). Riusabile da qualunque dominio | ⬜ |
+| C-2c | **BE — handler task `stampa_documenti_lotto_default`** | Registrato in `PipelineStepExecutor.handler_registry` (il seed DB lo dichiara). **È un adattatore, non un generatore**: risolve gli id delle fatture del lotto (dal lotto conosce già l'emittente autoritativo) e li passa al processo C-2b in contesto sistema. Nessuna logica di rendering nella pipeline (I-4). Ri-eseguibile con rerun del solo task | ⬜ |
 | C-3 | **BE — endpoint giro fatturazione** | `POST /vendite/fatturazione/run/` · body `{competenza_mese, fino_a_stato}` · corsia **differita**, perimetro `competenza ≤ M` (cumulativo come il batch), scope emittente dell'operatore via RLS. `post_permission = "genera_fatture_lotti"`, `Idempotency-Key`. **I-3**: multi-coppia → esecuzione in background con run registrato (`registered_job`), risposta = handle del run; la coppia singola resta sincrona | ⬜ |
 | C-4 | **BE — endpoint numerazione** | `POST /vendite/fatturazione/numera/` (o `lotti/<id>/numera/` per il singolo) → step DEFINITIVA sui lotti EMESSA del perimetro. `post_permission = "numera_fatture_lotti"`. **I-2**: esegue lo step, che contiene numerazione **e** stampa — l'endpoint non chiama la stampa per conto suo | ⬜ |
 | C-5 | **BE — esiti dei giri** | `GET /vendite/fatturazione/esiti/`: ultimi run per corsia da `maintenance.job_run_log` (quando, esito, coppie ok/errore, messaggio) — **I-4**, nessuna tabella nuova | ⬜ |
@@ -117,10 +118,57 @@ numerazione come atto separato e consapevole.
 
 | # | Punto | Quando |
 | --- | --- | --- |
-| P-1 | `genera_documento` in contesto batch/sistema (nessun request user, scope emittente risolto dall'utente) — vedi C-2c. **Oggi la stampa funzionerebbe da UI e fallirebbe da cron** | prima di C-2b/C-2c |
+| ~~P-1~~ | ✅ **RISOLTO in design (2026-07-19)** — `genera_documento` in contesto sistema: separare scope-authorization dal generatore. Diventa lo step **C-0**; analisi completa in §4 | — |
 | P-2 | Stampa best-effort vs bloccante sul fallimento render | risposta del team DB al §3.4 del brief DB |
 | P-3 | Template fattura: non esiste ancora (i template sono dato di configurazione, non seed). Senza, la stampa non ha cosa renderizzare | prima di C-2 in-app |
 | P-4 | Soglia oltre cui un'operazione «singola» diventa background (I-3): il criterio è la cardinalità, ma se il documento singolo risultasse lento va tarato sull'evidenza | in C-3, con numeri veri |
+
+---
+
+## 4. P-1 risolto — generazione documenti in contesto sistema (design)
+
+**Il problema.** `documenti.DocumentGenerationService.genera_documento` pretende un
+`user` autenticato (`guard_user_authenticated`) e ne deriva lo scope emittente
+(`resolve_emittente_scope` → `PermissionResolver.get_emittenti_ids`). In un ciclo web c'è il
+request user; in un **cron/batch/pipeline** no. Senza fix la stampa funzionerebbe da UI e
+**fallirebbe da cron** — proprio la modalità del massivo (D-1).
+
+**Cosa fa davvero `user` dentro `genera_documento`** (verifica sul codice 2026-07-19):
+
+| Uso | Natura | In contesto sistema |
+| --- | --- | --- |
+| `resolve_emittente_scope(user)` → whitelist emittenti | **autorizzazione** (l'unico critico) | l'emittente è **input autoritativo** del lotto; il canale è già BYPASSRLS |
+| `_resolve_template(user, scope=...)` | usa lo **scope** (già risolto); `user` solo per il path `template_documento_id` esplicito, che il batch non usa | scope=None → nessun filtro |
+| `_build_context_for_sorgente(user, ...)` → `auth_user_id` nel context | **audit**: i builder **non filtrano i dati per utente** | `None` accettato |
+| `generato_da_user_id`, `evento.user_id` | **audit** | `getattr(user, "id", None)` → `None` già tollerato |
+
+Conclusione: **l'unico concern autorizzazione è lo scope emittente**, e in contesto sistema
+lo scope non va *derivato* — l'emittente è già noto e il canale è di sistema.
+
+**La decisione.** Separare *chi autorizza* da *cosa genera* (coerente con D-7: la stampa è
+stupida, l'autorizzazione è del chiamante). `genera_documento` accetta lo **scope emittente
+già risolto** oltre allo `user`:
+
+* **path web** (i 5 domini esistenti + il nuovo FATTURA) — **invariato**: passa `user`, il
+  service deriva scope e audit come oggi. Nessuna regressione;
+* **path sistema** (batch, pipeline, cron) — passa `emittente_scope=None` (vede tutto — è
+  già sotto `system_process_context` su ruolo BYPASSRLS, con l'emittente autoritativo dal
+  lotto) e `audit_user_id=None` (l'attore di sistema è già in `app.jwt_user`, impostato dal
+  gateway `system_process_context`).
+
+**Perché questa e non le alternative:**
+
+* *Costruire un finto "system user" Django* (`is_authenticated=True`, scope tutto): fa
+  passare lo stesso oggetto per due scopi diversi (auth + audit) e reintroduce un utente
+  fittizio dove non serve. Scartata: nasconde il concern invece di separarlo.
+* *Un secondo metodo `genera_documento_sistema` clonato*: violerebbe I-1 (mai duplicare) e
+  D-7 (la logica di generazione deve restare una sola). Scartata.
+
+**Proprietà**: **non-breaking** (i chiamanti web non cambiano), **nessun DB**, **nessuna
+dipendenza dal team DB**. È interamente lavoro BE dello step **C-0**, prerequisito di
+C-2b/C-2c. Il guard di scope resta pieno sul path web (defense-in-depth invariata); sul path
+sistema l'autorizzazione è il canale stesso (`system_process_context` fail-loud se il ruolo
+non è BYPASSRLS).
 
 ---
 

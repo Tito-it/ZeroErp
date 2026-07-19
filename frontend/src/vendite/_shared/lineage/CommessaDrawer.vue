@@ -43,7 +43,7 @@ function onClose() {
     :style="{ width: DRAWER_WIDTH.STANDARD }"
     :dismissable="true">
     <template #header>
-      <DrawerTitle :title="t('lineage.commessa_titolo')" icon="pi pi-sitemap" />
+      <DrawerTitle :title="t('vendite.lineage.commessa_titolo')" icon="pi pi-sitemap" />
     </template>
 
     <div class="app-drawer-content">

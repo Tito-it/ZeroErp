@@ -22,7 +22,7 @@ const props = defineProps({
 })
 
 const resolvedLevel = computed(() => resolveParameterLevel(props.parameter))
-const levelLabel = computed(() => t(`impostazioni.level_${resolvedLevel.value}`))
+const levelLabel = computed(() => t(`config.impostazioni.level_${resolvedLevel.value}`))
 const levelSeverity = computed(() => parameterLevelSeverity(resolvedLevel.value))
 
 // Scopo: Costruisce la catena di valori per visualizzazione completa.
@@ -34,18 +34,18 @@ const levelSeverity = computed(() => parameterLevelSeverity(resolvedLevel.value)
 const levels = computed(() => {
   const p = props.parameter
   const rows = [
-    { key: 'default', value: p.default_value, label: t('impostazioni.level_default') },
-    { key: 'emittente', value: p.emittente_value, label: t('impostazioni.level_emittente') },
-    { key: 'group', value: p.group_value, label: t('impostazioni.level_group') },
+    { key: 'default', value: p.default_value, label: t('config.impostazioni.level_default') },
+    { key: 'emittente', value: p.emittente_value, label: t('config.impostazioni.level_emittente') },
+    { key: 'group', value: p.group_value, label: t('config.impostazioni.level_group') },
   ]
   if (p.categoria_cliente_value != null || p.categoria_cliente_override_id != null) {
     rows.push({
       key: 'categoria_cliente',
       value: p.categoria_cliente_value,
-      label: t('impostazioni.level_categoria_cliente'),
+      label: t('config.impostazioni.level_categoria_cliente'),
     })
   }
-  rows.push({ key: 'user', value: p.user_value, label: t('impostazioni.level_user') })
+  rows.push({ key: 'user', value: p.user_value, label: t('config.impostazioni.level_user') })
   return rows
 })
 </script>

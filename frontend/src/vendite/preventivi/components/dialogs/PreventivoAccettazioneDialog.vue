@@ -69,31 +69,31 @@ function onSave() {
   <AppDialog
     :visible="props.visible"
     :closable="false"
-    :header="t('preventivi.accetta_titolo')"
+    :header="t('vendite.preventivi.accetta_titolo')"
     width="sm"
     :readonly="props.readonly"
-    :save-label="t('preventivi.accetta_conferma')"
+    :save-label="t('vendite.preventivi.accetta_conferma')"
     :save-disabled="!form.fatturazione_immediata && !form.competenza_mese"
     @update:visible="(val) => emit('update:visible', val)"
     @save="onSave"
   >
     <p style="margin: 0 0 1rem 0; color: var(--text-color-secondary);">
-      {{ t('preventivi.accetta_descrizione') }}
+      {{ t('vendite.preventivi.accetta_descrizione') }}
     </p>
     <div class="form-grid">
       <div class="form-field" style="display: flex; align-items: center; gap: 0.75rem;">
         <ToggleSwitch v-model="form.fatturazione_immediata" inputId="accept-immediata" />
-        <label for="accept-immediata">{{ t('preventivi.accetta_fatturazione_immediata') }}</label>
+        <label for="accept-immediata">{{ t('vendite.preventivi.accetta_fatturazione_immediata') }}</label>
       </div>
       <div class="form-field">
-        <label>{{ t('preventivi.accetta_competenza') }}</label>
+        <label>{{ t('vendite.preventivi.accetta_competenza') }}</label>
         <DatePicker v-model="form.competenza_mese" :date-format="DATE_FORMAT"
           show-icon view="month" :disabled="competenzaDisabled" />
         <small v-if="competenzaDisabled" style="color: var(--text-color-secondary);">
-          {{ t('preventivi.accetta_competenza_hint_immediata') }}
+          {{ t('vendite.preventivi.accetta_competenza_hint_immediata') }}
         </small>
         <small v-else-if="!form.competenza_mese" class="app-field-error">
-          {{ t('preventivi.accetta_competenza_required') }}
+          {{ t('vendite.preventivi.accetta_competenza_required') }}
         </small>
       </div>
     </div>

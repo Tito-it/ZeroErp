@@ -233,7 +233,7 @@ async function onValidaPIVA() {
             :loading="cfLoading"
             :disabled="!canGeneraCF"
             @click="onGeneraCF"
-            :title="t('soggetti.genera_cf')"
+            :title="t('anagrafiche.soggetti.genera_cf')"
             text
             rounded
             size="small"

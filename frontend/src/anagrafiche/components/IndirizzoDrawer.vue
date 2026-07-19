@@ -227,7 +227,7 @@ async function handleSave() {
       </Message>
 
       <Message v-if="addressNotFound" severity="warn" size="small" class="mt-1">
-        {{ t('indirizzo_soggetto.replace_non_trovato') }}
+        {{ t('anagrafiche.indirizzo_soggetto.replace_non_trovato') }}
       </Message>
 
       <FormFooter

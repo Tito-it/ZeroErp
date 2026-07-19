@@ -16,7 +16,12 @@
 #                    di docs/it/dev/frontend/i18n-namespace-radici.md
 #   4) EMISSIONI DB - chiavi emesse dalle funzioni (label_key/reason_key)
 #                    e assenti dai locales: e' la classe di difetto che ha
-#                    colpito offerte e ordini, invisibile dal solo frontend
+#                    colpito offerte e ordini, invisibile dal solo frontend.
+#                    Due sorgenti, non una: il corpo delle funzioni nella doc
+#                    auto-gen E il `meta` jsonb dei seed transizioni_stati_*.
+#                    Il difetto offerte di maggio viveva per meta' nel CSV
+#                    (addendum-db-stati-doc-offerte-transizioni-label-key):
+#                    guardare solo le funzioni ne intercetterebbe una meta'.
 #
 # In Python e non in JS di proposito: gira ovunque ci sia Python, quindi
 # anche sul server DB dove non e' installato Node.
@@ -35,6 +40,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "frontend", "src")
 LOCALES = os.path.join(SRC, "locales")
 DBDOCS = os.path.join(ROOT, "docs", "it", "dbzero")
+# Seed delle transizioni di stato: il `meta` jsonb porta le label_key dei
+# pulsanti di cambio stato, che sono emesse verso l'utente esattamente come
+# quelle scritte nel corpo delle capability.
+SEED = os.path.join(ROOT, "db", "changelog", "migrations_v2", "80_data", "sql", "config")
 
 STRICT_ROOTS = "--strict-roots" in sys.argv
 
@@ -60,9 +69,15 @@ RE_KEYPROP = re.compile(
     r"""\b(?:label_key|reason_key|labelKey|reasonKey)\s*[:=]\s*(['"`])([\w.]+)\1""")
 # Chiave costruita dinamicamente: punto cieco, si segnala e non si valuta
 RE_DINAMICA = re.compile(r"""(?<![\w$])\$?t[em]?\(\s*(?:(['"])[\w.]*\1\s*\+|`[^`]*\$\{)""")
-# Chiavi emesse dal DB nelle doc auto-gen delle funzioni
-RE_DB_KEY = re.compile(r"""['"]((?:label_key|reason_key))['"]\s*,\s*'([\w.]+)'""")
-RE_DB_ASSIGN = re.compile(r"""_(?:reason|label)_key\s*:?=\s*'([\w.]+)'""")
+# Chiavi emesse dal DB nelle doc auto-gen delle funzioni.
+# Il valore DEVE contenere un punto e stare sulla stessa riga: senza questi due
+# vincoli il match scavalca il fine riga e aggancia la chiave jsonb successiva
+# (`'label_key', t.meta->>'label_key',` + a capo + `'severity',` -> "severity").
+RE_DB_KEY = re.compile(
+    r"""['"](?:label_key|reason_key)['"][^\S\n]*,[^\S\n]*'(\w+(?:\.\w+)+)'""")
+RE_DB_ASSIGN = re.compile(r"""_(?:reason|label)_key\s*:?=\s*'(\w+(?:\.\w+)+)'""")
+# Seed CSV: JSON dentro CSV, quindi virgolette raddoppiate.
+RE_SEED_KEY = re.compile(r'""(?:label_key|reason_key)""\s*:\s*""(\w+(?:\.\w+)+)""')
 
 
 def flatten(obj, prefisso="", out=None):
@@ -76,6 +91,28 @@ def flatten(obj, prefisso="", out=None):
         else:
             out.add(key)
     return out
+
+
+def spoglia_commenti(testo):
+    """Neutralizza le righe di solo commento, conservando gli offset.
+
+    I blocchi «Uso:» in testa ai componenti mostrano esempi di chiamata
+    (`t('dominio.col_azioni')`, `t('...')`): sono didascalie, non chiavi, e
+    segnalarle produce falsi positivi che a lungo andare fanno ignorare il
+    guard. Si azzerano SOLO le righe interamente di commento: dentro una riga
+    di codice un `//` puo' stare in una stringa (URL), e toglierlo li'
+    nasconderebbe chiavi vere.
+    Le righe sono sostituite da spazi di pari lunghezza cosi' i numeri di riga
+    calcolati sugli offset restano corretti.
+    """
+    fuori = []
+    for riga in testo.split("\n"):
+        nuda = riga.lstrip()
+        if nuda.startswith(("//", "*", "<!--", "#")):
+            fuori.append(" " * len(riga))
+        else:
+            fuori.append(riga)
+    return "\n".join(fuori)
 
 
 def walk_src():
@@ -99,7 +136,7 @@ def main():
     for path in walk_src():
         rel = os.path.relpath(path, ROOT)
         with open(path, encoding="utf-8") as fh:
-            testo = fh.read()
+            testo = spoglia_commenti(fh.read())
         for regex in (RE_T, RE_KEYPROP):
             for m in regex.finditer(testo):
                 chiave = m.group(2)
@@ -124,8 +161,22 @@ def main():
                 testo = fh.read()
             rel = os.path.relpath(path, ROOT)
             for m in RE_DB_KEY.finditer(testo):
-                db_keys.setdefault(m.group(2), set()).add(rel)
+                db_keys.setdefault(m.group(1), set()).add(rel)
             for m in RE_DB_ASSIGN.finditer(testo):
+                db_keys.setdefault(m.group(1), set()).add(rel)
+
+    # Seconda sorgente: i seed delle transizioni di stato. Le label_key vivono
+    # nel `meta` jsonb e finiscono all'utente come etichette dei pulsanti di
+    # cambio stato, quindi valgono quanto quelle scritte nelle funzioni.
+    if os.path.isdir(SEED):
+        for f in sorted(os.listdir(SEED)):
+            if not (f.startswith("transizioni_stati_") and f.endswith(".csv")):
+                continue
+            path = os.path.join(SEED, f)
+            with open(path, encoding="utf-8") as fh:
+                testo = fh.read()
+            rel = os.path.relpath(path, ROOT)
+            for m in RE_SEED_KEY.finditer(testo):
                 db_keys.setdefault(m.group(1), set()).add(rel)
 
     rotte = sorted((k, v) for k, v in citate.items() if k not in presenti)

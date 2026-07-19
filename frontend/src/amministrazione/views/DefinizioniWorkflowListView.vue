@@ -74,7 +74,7 @@ async function onForkSave() {
   try {
     const res = await execute(
       () => forkDefinizione(forkDefId.value, forkEmittenteId.value),
-      { successMessage: t('definizioni_workflow.msg_fork_ok') },
+      { successMessage: t('amministrazione.definizioni_workflow.msg_fork_ok') },
     )
     if (res !== null) { forkVisible.value = false; await store.load() }
   } finally {
@@ -85,11 +85,11 @@ async function onForkSave() {
 // --- Nuova versione / Pubblica: conferma semplice ---
 function onNuovaVersione(data) {
   confirmAction({
-    message: t('definizioni_workflow.conferma_nuova_versione'),
+    message: t('amministrazione.definizioni_workflow.conferma_nuova_versione'),
     onAccept: async () => {
       const res = await execute(
         () => nuovaVersioneDefinizione(data.id),
-        { successMessage: t('definizioni_workflow.msg_nuova_versione_ok') },
+        { successMessage: t('amministrazione.definizioni_workflow.msg_nuova_versione_ok') },
       )
       if (res !== null) await store.load()
     },
@@ -98,11 +98,11 @@ function onNuovaVersione(data) {
 
 function onPubblica(data) {
   confirmAction({
-    message: t('definizioni_workflow.conferma_pubblica'),
+    message: t('amministrazione.definizioni_workflow.conferma_pubblica'),
     onAccept: async () => {
       const res = await execute(
         () => pubblicaDefinizione(data.id),
-        { successMessage: t('definizioni_workflow.msg_pubblica_ok') },
+        { successMessage: t('amministrazione.definizioni_workflow.msg_pubblica_ok') },
       )
       if (res !== null) await store.load()
     },
@@ -125,8 +125,8 @@ function buildRowActions(data) {
     {
       key: 'apri-editor',
       label: canEdit
-        ? t('definizioni_workflow.azione_modifica_struttura')
-        : t('definizioni_workflow.azione_ispeziona'),
+        ? t('amministrazione.definizioni_workflow.azione_modifica_struttura')
+        : t('amministrazione.definizioni_workflow.azione_ispeziona'),
       icon: canEdit ? MANAGE_ICONS.EDIT : MANAGE_ICONS.INSPECT,
       command: () => openEditor(data),
     },
@@ -136,21 +136,21 @@ function buildRowActions(data) {
     ...actions,
     {
       key: 'fork',
-      label: t('definizioni_workflow.azione_fork'),
+      label: t('amministrazione.definizioni_workflow.azione_fork'),
       icon: MANAGE_ICONS.CLONE,
       visible: data.stato === STATO_DEFINIZIONE.PUBBLICATA,
       command: () => openFork(data),
     },
     {
       key: 'nuova-versione',
-      label: t('definizioni_workflow.azione_nuova_versione'),
+      label: t('amministrazione.definizioni_workflow.azione_nuova_versione'),
       icon: MANAGE_ICONS.ADD,
       visible: data.stato === STATO_DEFINIZIONE.PUBBLICATA,
       command: () => onNuovaVersione(data),
     },
     {
       key: 'pubblica',
-      label: t('definizioni_workflow.azione_pubblica'),
+      label: t('amministrazione.definizioni_workflow.azione_pubblica'),
       icon: 'pi pi-check',
       severity: 'primary',
       visible: data.stato === STATO_DEFINIZIONE.BOZZA,
@@ -169,7 +169,7 @@ onMounted(() => store.load())
         <LookupSelect
           v-model="store.filters.tipo_prestazione_id"
           rel="pratiche.tipi_prestazione"
-          :placeholder="t('definizioni_workflow.filtro_tipo')"
+          :placeholder="t('amministrazione.definizioni_workflow.filtro_tipo')"
           show-clear
           @change="onFiltroTipoChange"
         />
@@ -186,28 +186,28 @@ onMounted(() => store.load())
       class="app-datatable"
       data-key="id"
     >
-      <Column field="tipo_prestazione_descrizione" :header="t('definizioni_workflow.col_tipo')" sortable style="min-width: 220px;" />
-      <Column field="emittente_display" :header="t('definizioni_workflow.col_emittente')" sortable style="width: 200px;">
+      <Column field="tipo_prestazione_descrizione" :header="t('amministrazione.definizioni_workflow.col_tipo')" sortable style="min-width: 220px;" />
+      <Column field="emittente_display" :header="t('amministrazione.definizioni_workflow.col_emittente')" sortable style="width: 200px;">
         <template #body="{ data }">
-          {{ data.emittente_fiscale_id ? data.emittente_display : t('definizioni_workflow.preset') }}
+          {{ data.emittente_fiscale_id ? data.emittente_display : t('amministrazione.definizioni_workflow.preset') }}
         </template>
       </Column>
-      <Column field="versione" :header="t('definizioni_workflow.col_versione')" sortable style="width: 90px;" />
-      <Column field="stato" :header="t('definizioni_workflow.col_stato')" sortable style="width: 130px;">
+      <Column field="versione" :header="t('amministrazione.definizioni_workflow.col_versione')" sortable style="width: 90px;" />
+      <Column field="stato" :header="t('amministrazione.definizioni_workflow.col_stato')" sortable style="width: 130px;">
         <template #body="{ data }">
           <Tag :value="data.stato" :severity="statoSeverity(data.stato)" />
         </template>
       </Column>
-      <Column :header="t('definizioni_workflow.col_drift')" style="width: 180px;">
+      <Column :header="t('amministrazione.definizioni_workflow.col_drift')" style="width: 180px;">
         <template #body="{ data }">
           <Tag
             v-if="data.drift && data.drift.versioni_indietro > 0"
             severity="warn"
-            :value="t('definizioni_workflow.drift_badge', { n: data.drift.versioni_indietro })"
+            :value="t('amministrazione.definizioni_workflow.drift_badge', { n: data.drift.versioni_indietro })"
           />
         </template>
       </Column>
-      <Column field="descrizione" :header="t('definizioni_workflow.col_descrizione')" style="min-width: 220px;" />
+      <Column field="descrizione" :header="t('amministrazione.definizioni_workflow.col_descrizione')" style="min-width: 220px;" />
       <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
         <template #body="{ data }">
           <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
@@ -218,23 +218,23 @@ onMounted(() => store.load())
     <!-- Fork: scelta emittente per la nuova edizione BOZZA -->
     <AppDialog
       v-model:visible="forkVisible"
-      :header="t('definizioni_workflow.fork_dialog_title')"
+      :header="t('amministrazione.definizioni_workflow.fork_dialog_title')"
       width="sm"
       :loading="forkLoading"
       :save-disabled="!forkEmittenteId"
-      :save-label="t('definizioni_workflow.azione_fork')"
+      :save-label="t('amministrazione.definizioni_workflow.azione_fork')"
       @save="onForkSave"
       @cancel="forkVisible = false"
     >
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.fork_emittente_label') }}</label>
+        <label>{{ t('amministrazione.definizioni_workflow.fork_emittente_label') }}</label>
         <Select
           v-model="forkEmittenteId"
           :options="emittenti.items.value"
           option-label="ragione_sociale"
           option-value="id"
           :loading="emittenti.loading.value"
-          :placeholder="t('definizioni_workflow.fork_emittente_placeholder')"
+          :placeholder="t('amministrazione.definizioni_workflow.fork_emittente_placeholder')"
           filter
           show-clear
           class="w-full"

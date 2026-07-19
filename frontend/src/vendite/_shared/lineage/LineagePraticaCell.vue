@@ -44,7 +44,7 @@ function open() {
       :label="praticaNumero"
       @click.stop="open" />
     <span v-if="nPratiche > 1" class="lineage-cell-muted">
-      {{ t('lineage.altre_pratiche', { n: nPratiche - 1 }) }}
+      {{ t('vendite.lineage.altre_pratiche', { n: nPratiche - 1 }) }}
     </span>
     <PraticaDrawer
       v-if="everOpened"

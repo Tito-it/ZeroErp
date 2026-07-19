@@ -65,7 +65,7 @@ const {
 } = useArticoloUomOptions()
 
 function uomLabel(uom) {
-  const base = uom.is_base ? ` ${t('listini.uom_base_suffix')}` : ''
+  const base = uom.is_base ? ` ${t('vendite.listini.uom_base_suffix')}` : ''
   return `${uom.uom_codice} — ${uom.uom_descrizione}${base}`
 }
 
@@ -154,7 +154,7 @@ async function doTest() {
     const apiRes = await resolvePrezzoV5(payload)
     result.value = apiRes.data.data
   } catch (err) {
-    errorMsg.value = extractApiError(err) || t('listini.resolver_errore')
+    errorMsg.value = extractApiError(err) || t('vendite.listini.resolver_errore')
     // Su errore resolver, lancia anche la diagnostica per spiegare all'admin
     // cosa manca nella configurazione e quali azioni intraprendere. Best-effort:
     // se anche il diagnose fallisce, mostriamo solo l'errore originale.
@@ -185,15 +185,15 @@ function close() {
 
 <template>
   <AppDialog :visible="visible" @update:visible="v => emit('update:visible', v)"
-    :header="t('listini.test_prezzo')" width="lg" close-only @cancel="close">
+    :header="t('vendite.listini.test_prezzo')" width="lg" close-only @cancel="close">
 
     <div class="form-grid-2col">
       <div class="form-field">
-        <label>{{ t('listini.field_articolo') }} *</label>
+        <label>{{ t('vendite.listini.field_articolo') }} *</label>
         <ArticoloLookup v-model="form.articolo_obj" />
       </div>
       <div class="form-field">
-        <label>{{ t('listini.field_uom') }} *</label>
+        <label>{{ t('vendite.listini.field_uom') }} *</label>
         <Select
           v-model="form.uom_id"
           :options="uomOptions"
@@ -207,67 +207,67 @@ function close() {
         />
       </div>
       <div class="form-field">
-        <label>{{ t('listini.field_ba') }} *</label>
-        <BillingAccountLookup v-model="form.ba_obj" :placeholder="t('listini.select_ba')" />
+        <label>{{ t('vendite.listini.field_ba') }} *</label>
+        <BillingAccountLookup v-model="form.ba_obj" :placeholder="t('vendite.listini.select_ba')" />
       </div>
       <div class="form-field">
-        <label>{{ t('listini.field_utility') }} *</label>
+        <label>{{ t('vendite.listini.field_utility') }} *</label>
         <UtilityPerRuoloSelect
           v-model="form.utility_id"
-          :placeholder="t('listini.filtro_utility')"
+          :placeholder="t('vendite.listini.filtro_utility')"
           :disabled="utilityLockedByBa"
           apply-default
         />
         <small v-if="utilityLockedByBa" class="text-color-secondary">
-          {{ t('listini.field_utility_derived_from_ba') }}
+          {{ t('vendite.listini.field_utility_derived_from_ba') }}
         </small>
       </div>
       <div class="form-field">
-        <label>{{ t('listini.field_classe_utenza') }}</label>
+        <label>{{ t('vendite.listini.field_classe_utenza') }}</label>
         <LookupSelect
           v-model="form.classe_utenza_id"
           rel="config.classi_utenze"
-          :placeholder="t('listini.field_classe_utenza_placeholder')"
+          :placeholder="t('vendite.listini.field_classe_utenza_placeholder')"
           show-clear
         />
       </div>
       <div class="form-field">
-        <label>{{ t('listini.field_data_riferimento') }} *</label>
+        <label>{{ t('vendite.listini.field_data_riferimento') }} *</label>
         <DatePicker v-model="form.data_riferimento" :dateFormat="DATE_FORMAT" showIcon showButtonBar />
       </div>
       <div class="form-field" style="grid-column: 1 / -1;">
-        <label>{{ t('listini.field_articolo_padre_contesto') }}</label>
+        <label>{{ t('vendite.listini.field_articolo_padre_contesto') }}</label>
         <ArticoloLookup
           v-model="form.articolo_padre_obj"
           :filtri="{ compositi: 'solo' }"
         />
         <small class="text-color-secondary">
-          {{ t('listini.field_articolo_padre_contesto_hint') }}
+          {{ t('vendite.listini.field_articolo_padre_contesto_hint') }}
         </small>
       </div>
     </div>
 
     <div style="display: flex; justify-content: center; margin: 1rem 0;">
-      <Button :label="t('listini.esegui_test')" icon="pi pi-search" @click="doTest"
+      <Button :label="t('vendite.listini.esegui_test')" icon="pi pi-search" @click="doTest"
         :loading="loading" :disabled="!canTest" />
     </div>
 
     <div v-if="result" style="padding: 0.75rem; border: 1px solid var(--app-card-border); border-radius: 6px;">
       <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('listini.resolver_prezzo_finale') }}</label>
+          <label>{{ t('vendite.listini.resolver_prezzo_finale') }}</label>
           <strong style="font-size: 1.4rem;">{{ result.prezzo_finale }}</strong>
         </div>
         <div class="form-field">
-          <label>{{ t('listini.resolver_origine') }}</label>
+          <label>{{ t('vendite.listini.resolver_origine') }}</label>
           <Tag :value="result.origine" :severity="pricingOrigineSeverity(result.origine)" />
         </div>
         <div class="form-field" v-if="result.prezzo_base_snapshot != null">
-          <label>{{ t('listini.resolver_prezzo_base') }}</label>
+          <label>{{ t('vendite.listini.resolver_prezzo_base') }}</label>
           <span>{{ result.prezzo_base_snapshot }}</span>
         </div>
         <div class="form-field" v-if="result.tipo_variazione_applicata">
-          <label>{{ t('listini.resolver_variazione') }}</label>
+          <label>{{ t('vendite.listini.resolver_variazione') }}</label>
           <span>
             {{ result.tipo_variazione_applicata }}
             <strong v-if="result.valore_variazione_applicata != null">
@@ -276,7 +276,7 @@ function close() {
           </span>
         </div>
         <div class="form-field" v-if="result.listino_id">
-          <label>{{ t('listini.resolver_listino') }}</label>
+          <label>{{ t('vendite.listini.resolver_listino') }}</label>
           <span>
             <strong v-if="result.listino_codice">{{ result.listino_codice }}</strong>
             <span v-if="result.listino_descrizione"> — {{ result.listino_descrizione }}</span>
@@ -286,27 +286,27 @@ function close() {
           </span>
         </div>
         <div class="form-field" v-if="result.contratto_id">
-          <label>{{ t('listini.resolver_contratto') }}</label>
+          <label>{{ t('vendite.listini.resolver_contratto') }}</label>
           <span>
             <strong v-if="result.contratto_numero">{{ result.contratto_numero }}</strong>
           </span>
         </div>
         <div class="form-field" v-if="result.promo_id">
-          <label>{{ t('listini.resolver_promo') }}</label>
+          <label>{{ t('vendite.listini.resolver_promo') }}</label>
           <span>
             <strong v-if="result.promo_codice">{{ result.promo_codice }}</strong>
             <span v-if="result.promo_descrizione"> — {{ result.promo_descrizione }}</span>
           </span>
         </div>
         <div class="form-field" v-if="result.categoria_cliente_id_snapshot">
-          <label>{{ t('listini.resolver_categoria') }}</label>
+          <label>{{ t('vendite.listini.resolver_categoria') }}</label>
           <span>
             <strong v-if="result.categoria_cliente_codice">{{ result.categoria_cliente_codice }}</strong>
             <span v-if="result.categoria_cliente_descrizione"> — {{ result.categoria_cliente_descrizione }}</span>
           </span>
         </div>
         <div class="form-field" v-if="result.classe_utenza_id_snapshot">
-          <label>{{ t('listini.resolver_classe_utenza') }}</label>
+          <label>{{ t('vendite.listini.resolver_classe_utenza') }}</label>
           <span>
             <strong v-if="result.classe_utenza_descrizione">{{ result.classe_utenza_descrizione }}</strong>
           </span>
@@ -322,26 +322,26 @@ function close() {
          Mostra stato dei 3 stadi (PROMO/CONTRATTO/CATEGORIA) con icone ✓/✗
          e azioni operative suggerite per sbloccare la configurazione. -->
     <div v-if="diagnose" style="padding: 0.75rem; border: 1px solid var(--app-card-border); border-radius: 6px; margin-top: 0.5rem;">
-      <h4 style="margin: 0 0 0.5rem 0;">{{ t('listini.diagnose_titolo') }}</h4>
+      <h4 style="margin: 0 0 0.5rem 0;">{{ t('vendite.listini.diagnose_titolo') }}</h4>
 
       <!-- BA + categoria (radice) -->
       <div class="form-field" style="margin-bottom: 0.5rem;">
         <i class="pi pi-check-circle" style="color: var(--p-green-500); margin-right: 0.4rem;"></i>
-        <strong>{{ t('listini.diagnose_ba') }}</strong>:
+        <strong>{{ t('vendite.listini.diagnose_ba') }}</strong>:
         <span v-if="diagnose.ba.categoria_codice">
-          {{ t('listini.diagnose_categoria') }}
+          {{ t('vendite.listini.diagnose_categoria') }}
           <strong>{{ diagnose.ba.categoria_codice }}</strong>
           <span v-if="diagnose.ba.categoria_descrizione"> — {{ diagnose.ba.categoria_descrizione }}</span>
-          <Tag v-if="diagnose.ba.categoria_partecipa_promo" severity="info" :value="t('listini.diagnose_partecipa_promo')" style="margin-left: 0.4rem;" />
+          <Tag v-if="diagnose.ba.categoria_partecipa_promo" severity="info" :value="t('vendite.listini.diagnose_partecipa_promo')" style="margin-left: 0.4rem;" />
         </span>
-        <span v-else class="text-color-secondary">{{ t('listini.diagnose_no_categoria') }}</span>
+        <span v-else class="text-color-secondary">{{ t('vendite.listini.diagnose_no_categoria') }}</span>
       </div>
 
       <!-- Stadio 0 PROMO -->
       <div class="form-field" style="margin-bottom: 0.5rem;">
         <i :class="diagnose.stadio_0_promo.applicabile ? 'pi pi-check-circle' : 'pi pi-times-circle'"
           :style="`color: var(${diagnose.stadio_0_promo.applicabile ? '--p-green-500' : '--p-red-500'}); margin-right: 0.4rem;`"></i>
-        <strong>{{ t('listini.diagnose_stadio_0') }}</strong>
+        <strong>{{ t('vendite.listini.diagnose_stadio_0') }}</strong>
         <span v-if="diagnose.stadio_0_promo.applicabile">
           — <strong>{{ diagnose.stadio_0_promo.promo_codice }}</strong>
           <span v-if="diagnose.stadio_0_promo.promo_descrizione"> — {{ diagnose.stadio_0_promo.promo_descrizione }}</span>
@@ -353,10 +353,10 @@ function close() {
       <div class="form-field" style="margin-bottom: 0.5rem;">
         <i :class="diagnose.stadio_1_contratto.applicabile ? 'pi pi-check-circle' : 'pi pi-times-circle'"
           :style="`color: var(${diagnose.stadio_1_contratto.applicabile ? '--p-green-500' : '--p-red-500'}); margin-right: 0.4rem;`"></i>
-        <strong>{{ t('listini.diagnose_stadio_1') }}</strong>
+        <strong>{{ t('vendite.listini.diagnose_stadio_1') }}</strong>
         <span v-if="diagnose.stadio_1_contratto.contratto_attivo">
           — <strong>{{ diagnose.stadio_1_contratto.contratto_numero }}</strong>
-          <Tag :value="`${t('listini.diagnose_modalita')}: ${diagnose.stadio_1_contratto.modalita_pricing}`"
+          <Tag :value="`${t('vendite.listini.diagnose_modalita')}: ${diagnose.stadio_1_contratto.modalita_pricing}`"
             severity="info" style="margin-left: 0.4rem;" />
         </span>
         <small v-if="diagnose.stadio_1_contratto.motivo" class="text-color-secondary">
@@ -368,14 +368,14 @@ function close() {
       <div class="form-field" style="margin-bottom: 0.5rem;">
         <i :class="diagnose.stadio_2_categoria.applicabile ? 'pi pi-check-circle' : 'pi pi-times-circle'"
           :style="`color: var(${diagnose.stadio_2_categoria.applicabile ? '--p-green-500' : '--p-red-500'}); margin-right: 0.4rem;`"></i>
-        <strong>{{ t('listini.diagnose_stadio_2') }}</strong>
+        <strong>{{ t('vendite.listini.diagnose_stadio_2') }}</strong>
         <span v-if="diagnose.stadio_2_categoria.applicabile">
           — <strong>{{ diagnose.stadio_2_categoria.matrice_listino_codice }}</strong>
           <span v-if="diagnose.stadio_2_categoria.matrice_listino_descrizione">
             — {{ diagnose.stadio_2_categoria.matrice_listino_descrizione }}
           </span>
           <Tag v-if="diagnose.stadio_2_categoria.classe_match === 'FALLBACK_NULL'"
-            severity="warn" :value="t('listini.diagnose_fallback_classe')" style="margin-left: 0.4rem;" />
+            severity="warn" :value="t('vendite.listini.diagnose_fallback_classe')" style="margin-left: 0.4rem;" />
         </span>
         <small v-else class="text-color-secondary"> — {{ diagnose.stadio_2_categoria.motivo }}</small>
       </div>
@@ -383,7 +383,7 @@ function close() {
       <!-- Azioni suggerite (lista ordinata) -->
       <div v-if="diagnose.azioni_suggerite && diagnose.azioni_suggerite.length"
         style="margin-top: 0.75rem; padding: 0.5rem; background: var(--app-content-bg); border-radius: 4px;">
-        <strong>{{ t('listini.diagnose_azioni') }}</strong>
+        <strong>{{ t('vendite.listini.diagnose_azioni') }}</strong>
         <ul style="margin: 0.25rem 0 0 1.25rem; padding: 0;">
           <li v-for="(azione, idx) in diagnose.azioni_suggerite" :key="idx" style="margin-bottom: 0.25rem;">
             {{ azione }}

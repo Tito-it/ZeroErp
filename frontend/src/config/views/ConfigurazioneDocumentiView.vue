@@ -46,12 +46,12 @@ onMounted(() => {
       @action="router.push('/')"
     />
     <TabView v-else lazy :key="tabViewKey">
-      <TabPanel :header="t('config_documenti.tab_modelli')">
+      <TabPanel :header="t('config.documenti.tab_modelli')">
         <div class="app-tab-content">
           <ModelliDocumentiTemplatesView />
         </div>
       </TabPanel>
-      <TabPanel :header="t('config_documenti.tab_asset')">
+      <TabPanel :header="t('config.documenti.tab_asset')">
         <div class="app-tab-content">
           <ModelliDocumentiAssetView />
         </div>

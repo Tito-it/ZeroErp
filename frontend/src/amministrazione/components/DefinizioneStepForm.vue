@@ -68,10 +68,10 @@ watch(
 )
 
 const direzioneOptions = computed(() =>
-  STEP_DIREZIONE.map((v) => ({ value: v, label: t(`definizioni_workflow.ed_direzione_${v}`) })),
+  STEP_DIREZIONE.map((v) => ({ value: v, label: t(`amministrazione.definizioni_workflow.ed_direzione_${v}`) })),
 )
 const modalitaOptions = computed(() =>
-  STEP_MODALITA_ESITO.map((v) => ({ value: v, label: t(`definizioni_workflow.ed_modalita_${v}`) })),
+  STEP_MODALITA_ESITO.map((v) => ({ value: v, label: t(`amministrazione.definizioni_workflow.ed_modalita_${v}`) })),
 )
 
 // Catalogo esiti (config.esiti_flussi_pratiche): value = codice_interno.
@@ -127,7 +127,7 @@ async function handleSave() {
       ? () => updateStep(props.definizioneId, props.step.id, payload)
       : () => createStep(props.definizioneId, payload)
     const res = await execute(apiCall, {
-      successMessage: t(isEdit.value ? 'definizioni_workflow.ed_msg_step_salvato' : 'definizioni_workflow.ed_msg_step_creato'),
+      successMessage: t(isEdit.value ? 'amministrazione.definizioni_workflow.ed_msg_step_salvato' : 'amministrazione.definizioni_workflow.ed_msg_step_creato'),
     })
     if (res !== null) {
       const stepId = res.data?.data?.step_id ?? props.step?.id ?? null
@@ -143,12 +143,12 @@ async function handleSave() {
   <div class="step-form">
     <div class="step-form__grid">
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.ed_col_codice') }} *</label>
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_codice') }} *</label>
         <InputText v-model="form.codice" :disabled="isEdit" class="w-full" />
-        <small v-if="isEdit" class="step-form__hint">{{ t('definizioni_workflow.ed_codice_immutabile') }}</small>
+        <small v-if="isEdit" class="step-form__hint">{{ t('amministrazione.definizioni_workflow.ed_codice_immutabile') }}</small>
       </div>
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.ed_col_direzione') }}</label>
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_direzione') }}</label>
         <Select
           v-model="form.direzione"
           :options="direzioneOptions"
@@ -158,11 +158,11 @@ async function handleSave() {
         />
       </div>
       <div class="form-field step-form__full">
-        <label>{{ t('definizioni_workflow.ed_col_descrizione') }} *</label>
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_descrizione') }} *</label>
         <Textarea v-model="form.descrizione" rows="2" auto-resize class="w-full" />
       </div>
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.ed_col_modalita_esito') }}</label>
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_modalita_esito') }}</label>
         <Select
           v-model="form.modalita_esito"
           :options="modalitaOptions"
@@ -173,7 +173,7 @@ async function handleSave() {
       </div>
       <div v-if="mostraEsitoDefault" class="form-field">
         <label>
-          {{ t('definizioni_workflow.ed_esito_default') }}
+          {{ t('amministrazione.definizioni_workflow.ed_esito_default') }}
           <span v-if="esitoObbligatorio">*</span>
         </label>
         <Select
@@ -182,13 +182,13 @@ async function handleSave() {
           option-label="label"
           option-value="value"
           :loading="esiti.loading.value"
-          :placeholder="t('definizioni_workflow.ed_esito_default_placeholder')"
+          :placeholder="t('amministrazione.definizioni_workflow.ed_esito_default_placeholder')"
           :show-clear="!esitoObbligatorio"
           class="w-full"
         />
       </div>
       <div class="form-field step-form__toggle">
-        <label>{{ t('definizioni_workflow.ed_col_obbligatorio_full') }}</label>
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_obbligatorio_full') }}</label>
         <ToggleSwitch v-model="form.obbligatorio" />
       </div>
     </div>

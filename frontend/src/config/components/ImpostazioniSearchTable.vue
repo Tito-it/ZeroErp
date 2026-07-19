@@ -34,7 +34,7 @@ const pageActions = computed(() => [
 ])
 
 function levelLabel(level) {
-  return t(`impostazioni.level_${level}`)
+  return t(`config.impostazioni.level_${level}`)
 }
 
 // Scopo: click riga = modifica override (pattern standard liste).
@@ -50,7 +50,7 @@ function buildRowActions(data) {
   return [
     {
       key: 'remove-emittente-override',
-      label: t('impostazioni.remove_emittente_override'),
+      label: t('config.impostazioni.remove_emittente_override'),
       icon: MANAGE_ICONS.BUILDING,
       severity: 'danger',
       visible: auth.isAdmin && !!data.emittente_override_id,
@@ -58,7 +58,7 @@ function buildRowActions(data) {
     },
     {
       key: 'remove-override',
-      label: t('impostazioni.remove_override'),
+      label: t('config.impostazioni.remove_override'),
       icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       visible: !!data.user_override_id,
@@ -77,7 +77,7 @@ onMounted(() => store.fetchList())
     <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
-        <InputText v-model="store.searchText" :placeholder="t('impostazioni.search_placeholder')" />
+        <InputText v-model="store.searchText" :placeholder="t('config.impostazioni.search_placeholder')" />
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
@@ -96,27 +96,27 @@ onMounted(() => store.fetchList())
       selection-mode="single"
     >
       <template #empty>
-        <div class="app-empty-state">{{ t('impostazioni.empty_state') }}</div>
+        <div class="app-empty-state">{{ t('config.impostazioni.empty_state') }}</div>
       </template>
 
-      <Column field="code" :header="t('impostazioni.col_code')" sortable style="width: 220px;">
+      <Column field="code" :header="t('config.impostazioni.col_code')" sortable style="width: 220px;">
         <template #body="{ data }">
           <span class="font-mono">{{ data.code }}</span>
         </template>
       </Column>
-      <Column field="description" :header="t('impostazioni.col_description')" style="min-width: 250px;" />
-      <Column field="default_value" :header="t('impostazioni.col_default')" style="width: 130px;">
+      <Column field="description" :header="t('config.impostazioni.col_description')" style="min-width: 250px;" />
+      <Column field="default_value" :header="t('config.impostazioni.col_default')" style="width: 130px;">
         <template #body="{ data }">
           <span class="font-mono text-muted">{{ data.default_value ?? '—' }}</span>
         </template>
       </Column>
-      <Column field="emittente_value" :header="t('impostazioni.col_emittente')" style="width: 130px;">
+      <Column field="emittente_value" :header="t('config.impostazioni.col_emittente')" style="width: 130px;">
         <template #body="{ data }">
           <span v-if="data.emittente_value != null" class="font-mono">{{ data.emittente_value }}</span>
           <span v-else class="text-muted">—</span>
         </template>
       </Column>
-      <Column field="group_value" :header="t('impostazioni.col_group')" style="width: 130px;">
+      <Column field="group_value" :header="t('config.impostazioni.col_group')" style="width: 130px;">
         <template #body="{ data }">
           <span v-if="data.group_value != null" class="font-mono">{{ data.group_value }}</span>
           <span v-else class="text-muted">—</span>
@@ -126,19 +126,19 @@ onMounted(() => store.fetchList())
            (post brief DB 2026-05-19, migration 20260519-01). Compare con
            valore solo se la chiamata /settings/ ha passato categoria_cliente_id
            o billing_account_id; altrimenti '—'. -->
-      <Column field="categoria_cliente_value" :header="t('impostazioni.col_categoria_cliente')" style="width: 130px;">
+      <Column field="categoria_cliente_value" :header="t('config.impostazioni.col_categoria_cliente')" style="width: 130px;">
         <template #body="{ data }">
           <span v-if="data.categoria_cliente_value != null" class="font-mono">{{ data.categoria_cliente_value }}</span>
           <span v-else class="text-muted">—</span>
         </template>
       </Column>
-      <Column field="user_value" :header="t('impostazioni.col_user')" style="width: 130px;">
+      <Column field="user_value" :header="t('config.impostazioni.col_user')" style="width: 130px;">
         <template #body="{ data }">
           <span v-if="data.user_value != null" class="font-mono">{{ data.user_value }}</span>
           <span v-else class="text-muted">—</span>
         </template>
       </Column>
-      <Column field="resolved_value" :header="t('impostazioni.col_resolved')" style="width: 160px;">
+      <Column field="resolved_value" :header="t('config.impostazioni.col_resolved')" style="width: 160px;">
         <template #body="{ data }">
           <span class="parameter-resolved">
             <span class="font-mono font-bold">{{ data.resolved_value ?? '—' }}</span>

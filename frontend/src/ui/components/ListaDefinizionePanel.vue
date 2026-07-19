@@ -52,7 +52,7 @@ const pageActions = computed(() => [
     key: 'new',
     kind: 'primary',
     label: t('common.new'),
-    tooltip: t('ui_admin.definizione_nuova'),
+    tooltip: t('ui.admin.definizione_nuova'),
     icon: 'pi pi-plus',
     command: drawer.openCreate,
   },
@@ -80,8 +80,8 @@ function buildRowActions(data) {
 
 function onDelete(data) {
   confirmAction({
-    title: t('ui_admin.definizione_delete_titolo'),
-    message: t('ui_admin.definizione_delete_messaggio', { codice: data.codice }),
+    title: t('ui.admin.definizione_delete_titolo'),
+    message: t('ui.admin.definizione_delete_messaggio', { codice: data.codice }),
     danger: true,
     onAccept: async () => {
       const result = await execute(
@@ -120,10 +120,10 @@ async function onDrawerSaved() {
       striped-rows
       @row-click="(e) => drawer.editRow(e.data, 'id')"
     >
-      <Column field="codice" :header="t('ui_admin.definizione_codice')" sortable />
-      <Column field="descrizione" :header="t('ui_admin.definizione_descrizione')" sortable />
-      <Column field="schema_dati" :header="t('ui_admin.definizione_schema_dati')" sortable />
-      <Column field="vista_sql" :header="t('ui_admin.definizione_vista_sql')">
+      <Column field="codice" :header="t('ui.admin.definizione_codice')" sortable />
+      <Column field="descrizione" :header="t('ui.admin.definizione_descrizione')" sortable />
+      <Column field="schema_dati" :header="t('ui.admin.definizione_schema_dati')" sortable />
+      <Column field="vista_sql" :header="t('ui.admin.definizione_vista_sql')">
         <template #body="{ data }">
           <span v-if="data.vista_sql">{{ data.vista_sql }}</span>
           <span v-else class="muted">—</span>

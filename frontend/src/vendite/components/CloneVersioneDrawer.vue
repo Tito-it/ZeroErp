@@ -91,7 +91,7 @@ async function handleSave() {
   }
   const result = await execute(
     () => cloneVersione(props.listino.id, props.sourceVersione.id, payload),
-    { successMessage: t('listini.versione_clonata') }
+    { successMessage: t('vendite.listini.versione_clonata') }
   )
   if (result !== null) {
     emit('cloned', { listinoId: props.listino.id, versione: result })
@@ -108,36 +108,36 @@ function close() {
   <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
     position="right" :style="{ width: DRAWER_WIDTH.STANDARD }">
     <template #header>
-      <DrawerTitle :action="t('listini.clona')" :title="t('listini.clona_versione')" :icon="MANAGE_ICONS.CLONE" />
+      <DrawerTitle :action="t('vendite.listini.clona')" :title="t('vendite.listini.clona_versione')" :icon="MANAGE_ICONS.CLONE" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div v-if="sourceVersione" class="app-drawer-section">
         <h4>
-          {{ t('listini.versione_sorgente') }}:
+          {{ t('vendite.listini.versione_sorgente') }}:
           {{ sourceVersione.codice_versione }}
           ({{ displayDate(sourceVersione.valido_dal) }} → {{ displayDate(sourceVersione.valido_al) || '∞' }})
         </h4>
-        <p class="app-text-muted mt-025">{{ t('listini.clona_help') }}</p>
+        <p class="app-text-muted mt-025">{{ t('vendite.listini.clona_help') }}</p>
       </div>
 
       <div class="form-field">
-        <label>{{ t('listini.field_codice_versione') }} *</label>
+        <label>{{ t('vendite.listini.field_codice_versione') }} *</label>
         <InputText v-model="form.codice_versione" />
       </div>
       <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('listini.field_valido_dal') }} *</label>
+          <label>{{ t('vendite.listini.field_valido_dal') }} *</label>
           <DatePicker v-model="form.valido_dal" :dateFormat="DATE_FORMAT" showIcon />
         </div>
         <div class="form-field">
-          <label>{{ t('listini.field_valido_al') }}</label>
+          <label>{{ t('vendite.listini.field_valido_al') }}</label>
           <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar />
         </div>
       </div>
 
       <Message v-if="isRetroattivo" severity="warn" :closable="false" class="mt-1">
-        {{ t('listini.warning_retroattivo') }}
+        {{ t('vendite.listini.warning_retroattivo') }}
       </Message>
 
       <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />

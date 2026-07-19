@@ -67,7 +67,7 @@ const pageActions = computed(() => [
     key: 'new',
     kind: 'primary',
     label: t('common.new'),
-    tooltip: t('ui_admin.preset_nuovo'),
+    tooltip: t('ui.admin.preset_nuovo'),
     icon: 'pi pi-plus',
     hideWhenReadonly: true,
     disabled: !listaSelezionata.value,
@@ -79,7 +79,7 @@ function buildRowActions(data) {
   return [
     {
       key: 'colonne',
-      label: t('ui_admin.preset_gestisci_colonne'),
+      label: t('ui.admin.preset_gestisci_colonne'),
       icon: 'pi pi-table',
       command: () => openComposizione(data),
     },
@@ -100,8 +100,8 @@ function openComposizione(data) {
 
 function onDelete(data) {
   confirmAction({
-    title: t('ui_admin.preset_delete_titolo'),
-    message: t('ui_admin.preset_delete_messaggio', { codice: data.codice }),
+    title: t('ui.admin.preset_delete_titolo'),
+    message: t('ui.admin.preset_delete_messaggio', { codice: data.codice }),
     danger: true,
     onAccept: async () => {
       const result = await execute(
@@ -153,7 +153,7 @@ function severityForAmbito(ambito) {
         size="small"
         class="mt-1"
       >
-        {{ t('ui_admin.lista_corrente_obbligatoria') }}
+        {{ t('ui.admin.lista_corrente_obbligatoria') }}
       </Message>
 
       <DataTable
@@ -167,14 +167,14 @@ function severityForAmbito(ambito) {
         striped-rows
         @row-click="(e) => drawerTestata.editRow(e.data, 'id')"
       >
-        <Column field="codice" :header="t('ui_admin.preset_codice')" style="width: 180px" sortable />
-        <Column field="descrizione" :header="t('ui_admin.preset_descrizione')" />
-        <Column field="ambito" :header="t('ui_admin.preset_ambito')" style="width: 160px">
+        <Column field="codice" :header="t('ui.admin.preset_codice')" style="width: 180px" sortable />
+        <Column field="descrizione" :header="t('ui.admin.preset_descrizione')" />
+        <Column field="ambito" :header="t('ui.admin.preset_ambito')" style="width: 160px">
           <template #body="{ data }">
-            <Tag :value="t(`ui_admin.preset_ambito_${data.ambito}`)" :severity="severityForAmbito(data.ambito)" />
+            <Tag :value="t(`ui.admin.preset_ambito_${data.ambito}`)" :severity="severityForAmbito(data.ambito)" />
           </template>
         </Column>
-        <Column :header="t('ui_admin.preset_riferimento')" style="width: 220px">
+        <Column :header="t('ui.admin.preset_riferimento')" style="width: 220px">
           <template #body="{ data }">
             <span v-if="data.profilo_accesso_codice">
               {{ data.profilo_accesso_codice }}
@@ -185,10 +185,10 @@ function severityForAmbito(ambito) {
             <span v-else class="muted">—</span>
           </template>
         </Column>
-        <Column :header="t('ui_admin.preset_colonne_count')" style="width: 100px" class="text-right">
+        <Column :header="t('ui.admin.preset_colonne_count')" style="width: 100px" class="text-right">
           <template #body="{ data }">{{ data.colonne_count }}</template>
         </Column>
-        <Column :header="t('ui_admin.preset_default')" style="width: 90px" class="text-center">
+        <Column :header="t('ui.admin.preset_default')" style="width: 90px" class="text-center">
           <template #body="{ data }">
             <i v-if="data.is_default" class="pi pi-check" />
           </template>

@@ -78,7 +78,7 @@ const {
 } = useArticoloUomOptions()
 
 function uomLabel(uom) {
-  const base = uom.is_base ? ` ${t('listini.uom_base_suffix')}` : ''
+  const base = uom.is_base ? ` ${t('vendite.listini.uom_base_suffix')}` : ''
   return `${uom.uom_codice} — ${uom.uom_descrizione}${base}`
 }
 
@@ -141,8 +141,8 @@ const pageActions = computed(() => [
   {
     key: 'variazione',
     kind: 'utility',
-    label: t('listini.variazione_short'),
-    tooltip: t('listini.variazione_pct_titolo'),
+    label: t('vendite.listini.variazione_short'),
+    tooltip: t('vendite.listini.variazione_pct_titolo'),
     icon: 'pi pi-percentage',
     showLabel: true,
     class: 'app-page-action',
@@ -153,7 +153,7 @@ const pageActions = computed(() => [
     key: 'new',
     kind: 'primary',
     label: t('common.new'),
-    tooltip: t('listini.aggiungi_prezzo_hint'),
+    tooltip: t('vendite.listini.aggiungi_prezzo_hint'),
     icon: MANAGE_ICONS.ADD,
     visible: isBozza.value,
     disabled: formMode.value === 'create' || isReadonly.value,
@@ -298,7 +298,7 @@ async function onBundleConfirm({ overrides }) {
     () => saveBundleComponenti(
       props.listinoId, props.versione.id, bundlePadreCorrente.value.id, rows,
     ),
-    { successMessage: t('listini.bundle_salvato') },
+    { successMessage: t('vendite.listini.bundle_salvato') },
   )
   if (result !== null) {
     await loadBundleCompositi()
@@ -334,8 +334,8 @@ const canSave = computed(() => {
 })
 
 const formTitle = computed(() => {
-  if (formMode.value === 'create') return t('listini.nuova_riga')
-  if (formMode.value === 'edit') return t('listini.modifica_riga')
+  if (formMode.value === 'create') return t('vendite.listini.nuova_riga')
+  if (formMode.value === 'edit') return t('vendite.listini.modifica_riga')
   return ''
 })
 
@@ -350,7 +350,7 @@ async function onSave() {
     payload.uom_id = f.uom_id
     const result = await execute(
       () => createRiga(props.listinoId, props.versione.id, payload),
-      { successMessage: t('listini.riga_creata') }
+      { successMessage: t('vendite.listini.riga_creata') }
     )
     if (result !== null) {
       await store.fetchList()
@@ -359,7 +359,7 @@ async function onSave() {
   } else {
     const result = await execute(
       () => updateRiga(props.listinoId, props.versione.id, rigaEditId.value, payload),
-      { successMessage: t('listini.riga_salvata') }
+      { successMessage: t('vendite.listini.riga_salvata') }
     )
     if (result !== null) {
       await store.fetchList()
@@ -384,7 +384,7 @@ function onDelete(row) {
         () => deleteBundleComponenti(
           props.listinoId, props.versione.id, row.articolo_id,
         ),
-        { successMessage: t('listini.composito_eliminato') },
+        { successMessage: t('vendite.listini.composito_eliminato') },
       )
       if (result !== null) {
         await loadBundleCompositi()
@@ -393,7 +393,7 @@ function onDelete(row) {
     }
     const result = await execute(
       () => deleteRiga(props.listinoId, props.versione.id, row.id),
-      { successMessage: t('listini.riga_eliminata') },
+      { successMessage: t('vendite.listini.riga_eliminata') },
     )
     if (result !== null) {
       // Se stavo editando questa riga, chiudi il form.
@@ -468,7 +468,7 @@ const onClose = useDrawerClose(emit)
   <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
     position="right" :style="{ width: DRAWER_WIDTH_RIGHE_LISTINO }" :dismissable="!hasChildOpen">
     <template #header>
-      <DrawerTitle :title="t('listini.tab_righe')" :icon="MANAGE_ICONS.RIGHE" />
+      <DrawerTitle :title="t('vendite.listini.tab_righe')" :icon="MANAGE_ICONS.RIGHE" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -477,30 +477,30 @@ const onClose = useDrawerClose(emit)
       <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1rem; align-items: end;">
         <div class="form-grid-3col">
           <div class="form-field">
-            <label>{{ t('listini.field_codice') }}</label>
+            <label>{{ t('vendite.listini.field_codice') }}</label>
             <span>{{ listinoCodice || '—' }}</span>
           </div>
           <div class="form-field">
-            <label>{{ t('listini.field_descrizione') }}</label>
+            <label>{{ t('vendite.listini.field_descrizione') }}</label>
             <span>{{ listinoDescrizione || '—' }}</span>
           </div>
           <div class="form-field">
-            <label>{{ t('listini.versione') }}</label>
+            <label>{{ t('vendite.listini.versione') }}</label>
             <span>{{ versione?.codice_versione || `#${versione?.id}` }}</span>
           </div>
         </div>
         <div class="form-field">
-          <label>{{ t('listini.col_stato') }}</label>
+          <label>{{ t('vendite.listini.col_stato') }}</label>
           <Tag :value="statoVersioneVisibile(versione)" :severity="statoVersioneListinoSeverity(statoVersioneVisibile(versione))" />
         </div>
       </div>
       <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('listini.field_valido_dal') }}</label>
+          <label>{{ t('vendite.listini.field_valido_dal') }}</label>
           <span>{{ displayDate(versione?.valido_dal) }}</span>
         </div>
         <div class="form-field">
-          <label>{{ t('listini.field_valido_al') }}</label>
+          <label>{{ t('vendite.listini.field_valido_al') }}</label>
           <span>{{ displayDate(versione?.valido_al) || '—' }}</span>
         </div>
       </div>
@@ -508,7 +508,7 @@ const onClose = useDrawerClose(emit)
       <!-- === MASTER: toolbar + lista paginata (server-side lazy) === -->
       <div class="app-page-toolbar">
         <div class="app-page-filters">
-          <InputText v-model="searchText" :placeholder="t('listini.righe_cerca_articolo')"
+          <InputText v-model="searchText" :placeholder="t('vendite.listini.righe_cerca_articolo')"
             style="width: 240px;" />
         </div>
         <PageActionsBar :actions="pageActions" />
@@ -524,11 +524,11 @@ const onClose = useDrawerClose(emit)
         class="app-datatable" data-key="id"
         lazy v-bind="paginatorProps" @page="onPage" @sort="onSort" removable-sort
         v-model:selection="selectedRow" selection-mode="single" @row-select="onRowSelect">
-        <Column field="articolo_codice" :header="t('listini.col_articolo')" sortable style="width: 160px;">
+        <Column field="articolo_codice" :header="t('vendite.listini.col_articolo')" sortable style="width: 160px;">
           <template #body="{ data }">
             <span>{{ data.articolo_codice }}</span>
             <Tag v-if="data._isComposito"
-              :value="t('listini.tag_composito')"
+              :value="t('vendite.listini.tag_composito')"
               severity="info"
               style="margin-left: 0.4rem; font-size: 0.7rem;" />
           </template>
@@ -537,15 +537,15 @@ const onClose = useDrawerClose(emit)
         <Column field="uom_codice" :header="t('catalogo.col_uom')" style="width: 70px;">
           <template #body="{ data }">{{ data.uom_codice || '—' }}</template>
         </Column>
-        <Column field="prezzo" :header="t('listini.col_prezzo')" sortable style="width: 140px;">
+        <Column field="prezzo" :header="t('vendite.listini.col_prezzo')" sortable style="width: 140px;">
           <template #body="{ data }">
             <span v-if="data._isComposito" style="color: var(--app-text-muted); font-style: italic;">
-              {{ t('listini.composito_n_componenti', { n: data.n_componenti_bundle }) }}
+              {{ t('vendite.listini.composito_n_componenti', { n: data.n_componenti_bundle }) }}
             </span>
             <span v-else>{{ formatPrezzoListino(data.prezzo) }}</span>
           </template>
         </Column>
-        <Column field="iva_aliquota" :header="t('listini.col_iva')" style="width: 70px;">
+        <Column field="iva_aliquota" :header="t('vendite.listini.col_iva')" style="width: 70px;">
           <template #body="{ data }">{{ formatIvaLabel(data) }}</template>
         </Column>
         <Column v-if="isBozza" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
@@ -562,7 +562,7 @@ const onClose = useDrawerClose(emit)
         </div>
 
         <div class="form-field">
-          <label>{{ t('listini.field_articolo') }} *</label>
+          <label>{{ t('vendite.listini.field_articolo') }} *</label>
           <ArticoloLookup
             v-model="form.articolo_obj"
             @update:modelValue="onArticoloSelected"
@@ -573,19 +573,19 @@ const onClose = useDrawerClose(emit)
 
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('listini.field_uom') }} *</label>
+            <label>{{ t('vendite.listini.field_uom') }} *</label>
             <Select v-model="form.uom_id"
               :options="uomOptions"
               option-value="uom_id"
               :option-label="uomLabel"
-              :placeholder="form.articolo_id ? t('catalogo.select_uom') : t('listini.uom_select_articolo_first')"
+              :placeholder="form.articolo_id ? t('catalogo.select_uom') : t('vendite.listini.uom_select_articolo_first')"
               :disabled="!form.articolo_id || uomLoading"
               :loading="uomLoading"
-              :empty-message="t('listini.uom_no_operative')"
+              :empty-message="t('vendite.listini.uom_no_operative')"
               class="w-full" />
           </div>
           <div class="form-field">
-            <label>{{ t('listini.field_prezzo') }} *</label>
+            <label>{{ t('vendite.listini.field_prezzo') }} *</label>
             <InputNumber v-model="form.prezzo" class="w-full"
               :minFractionDigits="2" :maxFractionDigits="10" />
           </div>

@@ -39,7 +39,7 @@ const {
 } = useListaConfigurabilePage(store, {
   exportFn: exportSoggetti,
   getExportParams: (fmt) => buildExportParams(fmt),
-  newTooltipKey: 'soggetti.nuovo_soggetto',
+  newTooltipKey: 'anagrafiche.soggetti.nuovo_soggetto',
   onNew: () => emit('new'),
   searchTableOptions: { defaultSortField: 'ragione_sociale_completa' },
 })
@@ -70,19 +70,19 @@ function buildRowActions(data) {
   return [
     {
       key: 'contatti',
-      label: t('contatto.gestisci_contatti'),
+      label: t('anagrafiche.contatto.gestisci_contatti'),
       icon: MANAGE_ICONS.CONTATTI,
       command: () => emit('contatti', data),
     },
     {
       key: 'indirizzi',
-      label: t('indirizzo_soggetto.gestisci_indirizzi'),
+      label: t('anagrafiche.indirizzo_soggetto.gestisci_indirizzi'),
       icon: MANAGE_ICONS.INDIRIZZI,
       command: () => emit('indirizzi', data),
     },
     {
       key: 'conti-bancari',
-      label: t('conti_bancari.gestisci_conti'),
+      label: t('anagrafiche.conti_bancari.gestisci_conti'),
       icon: MANAGE_ICONS.CONTI_BANCARI,
       disabled: contiBlocked,
       command: () => emit('conti-bancari', data),
@@ -108,7 +108,7 @@ onMounted(() => {
         <div class="app-page-filters">
           <InputText
             v-model="searchText"
-            :placeholder="t('soggetti.search_placeholder')"
+            :placeholder="t('anagrafiche.soggetti.search_placeholder')"
           />
           <Select
             v-model="tipoFilter"
@@ -116,7 +116,7 @@ onMounted(() => {
             :loading="tipiSoggetto.loading.value"
             option-label="descrizione"
             option-value="id"
-            :placeholder="t('soggetti.filtro_tipo')"
+            :placeholder="t('anagrafiche.soggetti.filtro_tipo')"
             show-clear
             @change="onTipoChange"
           />

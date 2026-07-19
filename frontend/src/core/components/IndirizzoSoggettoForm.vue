@@ -79,7 +79,7 @@ const viaNoResultsGenerale = computed(() =>
           'indirizzo-tipo-tab--esistente': tipo.esistente,
         }"
         @click="!tipo.esistente && $emit('switchTipo', tipo.codice)"
-        :title="tipo.esistente ? t('indirizzo_soggetto.tipo_gia_creato') : (tipo.obbligatorio ? t('indirizzo_soggetto.obbligatorio') : '')"
+        :title="tipo.esistente ? t('anagrafiche.indirizzo_soggetto.tipo_gia_creato') : (tipo.obbligatorio ? t('anagrafiche.indirizzo_soggetto.obbligatorio') : '')"
       >
         <i v-if="tipo.compilato && !tipo.esistente" class="pi pi-check" style="font-size: 0.7rem;" />
         <i v-else-if="tipo.esistente" class="pi pi-lock" style="font-size: 0.65rem;" />
@@ -102,7 +102,7 @@ const viaNoResultsGenerale = computed(() =>
           input-id="auto-clone"
           :disabled="disabled"
         />
-        <label for="auto-clone" class="app-text-secondary">{{ t('indirizzo_soggetto.auto_clone') }}</label>
+        <label for="auto-clone" class="app-text-secondary">{{ t('anagrafiche.indirizzo_soggetto.auto_clone') }}</label>
       </div>
       <div style="display: flex; align-items: center; gap: 0.5rem;">
         <Checkbox
@@ -112,7 +112,7 @@ const viaNoResultsGenerale = computed(() =>
           input-id="indirizzo-libero"
           :disabled="disabled"
         />
-        <label for="indirizzo-libero">{{ t('indirizzo_soggetto.modalita_libera') }}</label>
+        <label for="indirizzo-libero">{{ t('anagrafiche.indirizzo_soggetto.modalita_libera') }}</label>
       </div>
       <div v-if="!isLibera" style="display: flex; align-items: center; gap: 0.5rem;">
         <Checkbox v-model="form.via_nuova" :binary="true" input-id="via-nuova-sogg" :disabled="disabled" />
@@ -216,11 +216,11 @@ const viaNoResultsGenerale = computed(() =>
     <!-- === MODALITA' LIBERA === -->
     <template v-else>
       <div class="form-field">
-        <label>{{ t('indirizzo_soggetto.indirizzo_libero') }} *</label>
+        <label>{{ t('anagrafiche.indirizzo_soggetto.indirizzo_libero') }} *</label>
         <InputText v-model="form.indirizzo_libero" :disabled="disabled" class="w-full" />
       </div>
       <div class="form-field" v-if="statiLookup">
-        <label>{{ t('indirizzo_soggetto.stato') }} *</label>
+        <label>{{ t('anagrafiche.indirizzo_soggetto.stato') }} *</label>
         <Select
           v-model="form.stato_id"
           :options="statiLookup.items.value"
@@ -234,7 +234,7 @@ const viaNoResultsGenerale = computed(() =>
         />
       </div>
       <div class="form-field">
-        <label>{{ t('indirizzo_soggetto.locality') }}</label>
+        <label>{{ t('anagrafiche.indirizzo_soggetto.locality') }}</label>
         <InputText v-model="form.locality" :disabled="disabled" class="w-full" />
       </div>
     </template>

@@ -49,14 +49,14 @@ defineProps({
   <div class="form-grid">
     <div class="form-grid-2col">
       <div class="form-field">
-        <label>{{ t('contatto.tipo_contatto') }} *</label>
+        <label>{{ t('anagrafiche.contatto.tipo_contatto') }} *</label>
         <Select
           v-model="form.tipo_contatto_id"
           :options="tipiContatto.items.value"
           :loading="tipiContatto.loading.value"
           option-label="descrizione"
           option-value="id"
-          :placeholder="t('contatto.select_tipo_contatto')"
+          :placeholder="t('anagrafiche.contatto.select_tipo_contatto')"
           :disabled="disabled || tipoDisabled"
           :invalid="errors.includes('tipo_contatto')"
           class="w-full"
@@ -66,14 +66,14 @@ defineProps({
         </small>
       </div>
       <div v-if="showUO && unitaOrganizzative" class="form-field">
-        <label>{{ t('contatto.unita_organizzativa') }}</label>
+        <label>{{ t('anagrafiche.contatto.unita_organizzativa') }}</label>
         <Select
           v-model="form.unita_organizzativa_id"
           :options="unitaOrganizzative.items.value"
           :loading="unitaOrganizzative.loading.value"
           option-label="descrizione"
           option-value="id"
-          :placeholder="t('contatto.select_unita_organizzativa')"
+          :placeholder="t('anagrafiche.contatto.select_unita_organizzativa')"
           :disabled="disabled"
           show-clear
           class="w-full"
@@ -82,7 +82,7 @@ defineProps({
     </div>
 
     <div class="form-field">
-      <label>{{ t('contatto.nominativo') }} *</label>
+      <label>{{ t('anagrafiche.contatto.nominativo') }} *</label>
       <InputText v-model="form.nominativo" :disabled="disabled" class="w-full"
         :invalid="errors.includes('nominativo')" />
       <small v-if="errors.includes('nominativo')" class="app-field-error">
@@ -117,13 +117,13 @@ defineProps({
         <InputText v-model="form.telefono" :disabled="disabled" class="w-full" />
       </div>
       <div class="form-field">
-        <label>{{ t('contatto.cellulare') }}</label>
+        <label>{{ t('anagrafiche.contatto.cellulare') }}</label>
         <InputText v-model="form.cellulare" :disabled="disabled" class="w-full" />
       </div>
     </div>
 
     <div class="form-field">
-      <label>{{ t('contatto.note') }}</label>
+      <label>{{ t('anagrafiche.contatto.note') }}</label>
       <Textarea v-model="form.note" :disabled="disabled" rows="2" class="w-full" />
     </div>
   </div>

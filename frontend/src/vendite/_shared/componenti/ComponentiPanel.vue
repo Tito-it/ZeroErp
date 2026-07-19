@@ -28,7 +28,7 @@
 //
 //        i18n: chiavi sotto `vendite.componenti.panel.*` (default).
 //        Caller puo' override `i18nPrefix` per varianti contestuali
-//        (es. preventivi mantiene le chiavi legacy `preventivi.componenti_*`
+//        (es. preventivi mantiene le chiavi legacy `vendite.preventivi.componenti_*`
 //        per non rompere consumer terzi; `localizedKey` fa fallback
 //        automatico al namespace base).
 //
@@ -98,7 +98,7 @@ const props = defineProps({
   // TAB_ENTITIES.CONTRATTO.
   tabEntity: { type: String, default: null },
   // Namespace i18n. Default `vendite.componenti.panel`. Override per
-  // caller con chiavi proprie (es. `preventivi.componenti` per backcompat).
+  // caller con chiavi proprie (es. `vendite.preventivi.componenti` per backcompat).
   // `localizedKey` fa fallback automatico al namespace base.
   i18nPrefix: { type: String, default: 'vendite.componenti.panel' },
 })

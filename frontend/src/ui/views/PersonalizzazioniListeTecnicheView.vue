@@ -67,15 +67,15 @@ async function onDefinizioneChanged() {
 
     <template v-else>
       <div class="ui-admin-tecnica-header">
-        <h2 class="ui-admin-tecnica-title">{{ t('ui_admin.tecnica_titolo') }}</h2>
+        <h2 class="ui-admin-tecnica-title">{{ t('ui.admin.tecnica_titolo') }}</h2>
         <ListaCorrenteSelect />
       </div>
 
       <TabView lazy :key="tabViewKey">
-        <TabPanel :header="t('ui_admin.tab_definizioni')">
+        <TabPanel :header="t('ui.admin.tab_definizioni')">
           <ListaDefinizionePanel @definizione-changed="onDefinizioneChanged" />
         </TabPanel>
-        <TabPanel :header="t('ui_admin.tab_catalogo_colonne')">
+        <TabPanel :header="t('ui.admin.tab_catalogo_colonne')">
           <ListaColonnaPanel />
         </TabPanel>
       </TabView>

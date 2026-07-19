@@ -82,9 +82,9 @@ const lastTestSeverity = computed(() => {
 })
 
 const lastTestLabel = computed(() => {
-  if (lastTestOutcome.value === 'SUCCESS') return t('amm.email_last_test_success')
-  if (lastTestOutcome.value === 'FAILED') return t('amm.email_last_test_failed')
-  return t('amm.email_last_test_never')
+  if (lastTestOutcome.value === 'SUCCESS') return t('amministrazione.email_last_test_success')
+  if (lastTestOutcome.value === 'FAILED') return t('amministrazione.email_last_test_failed')
+  return t('amministrazione.email_last_test_never')
 })
 
 // Formattazione timestamp ultimo test via BB centralizzato (DD/MM/YYYY, HH:mm:ss).
@@ -146,12 +146,12 @@ async function handleTest() {
     // una GET aggiuntiva.
     if (data) store.currentAccount = data
     if (data?.success) {
-      success(t('amm.email_test_success'))
+      success(t('amministrazione.email_test_success'))
     } else {
-      notifyError(data?.message || t('amm.email_test_failed'))
+      notifyError(data?.message || t('amministrazione.email_test_failed'))
     }
   } catch {
-    notifyError(t('amm.email_test_failed'))
+    notifyError(t('amministrazione.email_test_failed'))
   } finally {
     testLoading.value = false
   }
@@ -169,7 +169,7 @@ async function handleTest() {
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('amm.email_account_title')"
+        :title="t('amministrazione.email_account_title')"
         icon="pi pi-at"
       />
     </template>
@@ -178,62 +178,62 @@ async function handleTest() {
       <div class="form-grid">
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('amm.email_codice') }}</label>
+            <label>{{ t('amministrazione.email_codice') }}</label>
             <InputText v-model="form.codice" :disabled="isEdit || isReadonly" fluid />
           </div>
           <div class="form-field">
-            <label>{{ t('amm.email_attivo') }}</label>
+            <label>{{ t('amministrazione.email_attivo') }}</label>
             <ToggleSwitch v-model="form.attivo" :disabled="isReadonly" />
           </div>
         </div>
 
         <div class="form-field">
-          <label>{{ t('amm.email_descrizione') }}</label>
+          <label>{{ t('amministrazione.email_descrizione') }}</label>
           <InputText v-model="form.descrizione" :disabled="isReadonly" fluid />
         </div>
 
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('amm.email_smtp_host') }}</label>
+            <label>{{ t('amministrazione.email_smtp_host') }}</label>
             <InputText v-model="form.smtp_host" :disabled="isReadonly" fluid />
           </div>
           <div class="form-field">
-            <label>{{ t('amm.email_smtp_port') }}</label>
+            <label>{{ t('amministrazione.email_smtp_port') }}</label>
             <InputNumber v-model="form.smtp_port" :min="1" :max="65535" :disabled="isReadonly" fluid />
           </div>
         </div>
 
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('amm.email_smtp_tls') }}</label>
+            <label>{{ t('amministrazione.email_smtp_tls') }}</label>
             <ToggleSwitch v-model="form.smtp_use_tls" :disabled="isReadonly" />
           </div>
           <div class="form-field">
-            <label>{{ t('amm.email_smtp_ssl') }}</label>
+            <label>{{ t('amministrazione.email_smtp_ssl') }}</label>
             <ToggleSwitch v-model="form.smtp_use_ssl" :disabled="isReadonly" />
           </div>
         </div>
 
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('amm.email_smtp_username') }}</label>
+            <label>{{ t('amministrazione.email_smtp_username') }}</label>
             <InputText v-model="form.smtp_username" :disabled="isReadonly" fluid />
           </div>
           <div class="form-field">
-            <label>{{ t('amm.email_smtp_password') }}</label>
+            <label>{{ t('amministrazione.email_smtp_password') }}</label>
             <Password v-model="form.smtp_password" :feedback="false" toggleMask fluid
                      :disabled="isReadonly"
-                     :placeholder="isEdit ? t('amm.email_smtp_password_placeholder') : ''" />
+                     :placeholder="isEdit ? t('amministrazione.email_smtp_password_placeholder') : ''" />
           </div>
         </div>
 
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('amm.email_from') }}</label>
+            <label>{{ t('amministrazione.email_from') }}</label>
             <InputText v-model="form.email_from" :disabled="isReadonly" fluid />
           </div>
           <div class="form-field">
-            <label>{{ t('amm.email_reply_to') }}</label>
+            <label>{{ t('amministrazione.email_reply_to') }}</label>
             <InputText v-model="form.email_reply_to" :disabled="isReadonly" fluid />
           </div>
         </div>
@@ -241,7 +241,7 @@ async function handleTest() {
         <div v-if="isEdit && !isReadonly" class="email-test-row">
           <span v-tooltip.top="!canTest && testReasonKey ? t(testReasonKey) : null">
             <Button
-              :label="t('amm.email_test_connection')"
+              :label="t('amministrazione.email_test_connection')"
               icon="pi pi-wifi"
               :loading="testLoading"
               :disabled="!canTest"
@@ -251,7 +251,7 @@ async function handleTest() {
             />
           </span>
           <div class="email-last-test">
-            <span class="email-last-test-label">{{ t('amm.email_last_test_label') }}:</span>
+            <span class="email-last-test-label">{{ t('amministrazione.email_last_test_label') }}:</span>
             <Tag :value="lastTestLabel" :severity="lastTestSeverity" />
             <span v-if="lastTestAtFormatted" class="email-last-test-at">{{ lastTestAtFormatted }}</span>
           </div>

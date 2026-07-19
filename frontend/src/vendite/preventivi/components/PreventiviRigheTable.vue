@@ -45,9 +45,9 @@ function approvazioneSeverity(stato) {
 }
 
 function approvazioneLabel(stato) {
-  if (stato === STATO_APPROVAZIONE.APPROVED) return t('preventivi.badge_approvazione_approved')
-  if (stato === STATO_APPROVAZIONE.REJECTED) return t('preventivi.badge_approvazione_rejected')
-  return t('preventivi.badge_approvazione_pending')
+  if (stato === STATO_APPROVAZIONE.APPROVED) return t('vendite.preventivi.badge_approvazione_approved')
+  if (stato === STATO_APPROVAZIONE.REJECTED) return t('vendite.preventivi.badge_approvazione_rejected')
+  return t('vendite.preventivi.badge_approvazione_pending')
 }
 
 // Tooltip contestuale: per REJECTED legge la motivazione denormalizzata in
@@ -58,12 +58,12 @@ function approvazioneTooltip(data) {
     const meta = coerceJsonbToObject(data.meta)
     const rif = meta.approvazione_rifiuto || {}
     if (rif.motivazione) {
-      return t('preventivi.badge_approvazione_rejected_tooltip', { motivazione: rif.motivazione })
+      return t('vendite.preventivi.badge_approvazione_rejected_tooltip', { motivazione: rif.motivazione })
     }
-    return t('preventivi.badge_approvazione_rejected_no_motivo')
+    return t('vendite.preventivi.badge_approvazione_rejected_no_motivo')
   }
   if (data.stato_approvazione_prezzo === STATO_APPROVAZIONE.PENDING && data.pratica_approvazione_prezzo_id) {
-    return t('preventivi.badge_approvazione_pending_tooltip', {
+    return t('vendite.preventivi.badge_approvazione_pending_tooltip', {
       pratica_id: data.pratica_approvazione_prezzo_id,
     })
   }
@@ -79,24 +79,24 @@ function approvazioneTooltip(data) {
     :delete-action="(id, rigaId) => store.eliminaRiga(id, rigaId)"
     :is-modificabile="isModificabile"
     :delete-disabled="deleteDisabled"
-    title-key="preventivi.section_righe"
-    new-tooltip-key="preventivi.aggiungi_riga"
-    confirm-delete-key="preventivi.conferma_elimina_riga"
-    deleted-message-key="preventivi.riga_eliminata"
-    new-label-key="preventivi.nuova_riga"
-    edit-label-key="preventivi.modifica_riga"
+    title-key="vendite.preventivi.section_righe"
+    new-tooltip-key="vendite.preventivi.aggiungi_riga"
+    confirm-delete-key="vendite.preventivi.conferma_elimina_riga"
+    deleted-message-key="vendite.preventivi.riga_eliminata"
+    new-label-key="vendite.preventivi.nuova_riga"
+    edit-label-key="vendite.preventivi.modifica_riga"
     sort-field="descrizione"
     @changed="emit('changed')"
     @form-aperto="emit('form-aperto', $event)"
   >
     <template #columns>
-      <Column field="articolo_codice" :header="t('preventivi.riga_articolo')" sortable style="width: 120px;" />
-      <Column field="descrizione" :header="t('preventivi.riga_descrizione')" sortable />
-      <Column field="qta_operativa" :header="t('preventivi.riga_quantita')" sortable style="width: 90px;">
+      <Column field="articolo_codice" :header="t('vendite.preventivi.riga_articolo')" sortable style="width: 120px;" />
+      <Column field="descrizione" :header="t('vendite.preventivi.riga_descrizione')" sortable />
+      <Column field="qta_operativa" :header="t('vendite.preventivi.riga_quantita')" sortable style="width: 90px;">
         <template #body="{ data }">{{ formatNumber(data.qta_operativa) }}</template>
       </Column>
-      <Column field="uom_codice" :header="t('preventivi.riga_uom')" style="width: 70px;" />
-      <Column field="prezzo_unitario" :header="t('preventivi.riga_prezzo')" sortable style="width: 130px;">
+      <Column field="uom_codice" :header="t('vendite.preventivi.riga_uom')" style="width: 70px;" />
+      <Column field="prezzo_unitario" :header="t('vendite.preventivi.riga_prezzo')" sortable style="width: 130px;">
         <template #body="{ data }">
           <div style="display: flex; flex-direction: column; gap: 0.15rem; align-items: flex-start;">
             <span>{{ formatCurrency(data.prezzo_unitario, { minimumFractionDigits: 6, maximumFractionDigits: 6 }) }}</span>
@@ -109,13 +109,13 @@ function approvazioneTooltip(data) {
           </div>
         </template>
       </Column>
-      <Column field="sconto_percentuale" :header="t('preventivi.riga_sconto')" sortable style="width: 80px;">
+      <Column field="sconto_percentuale" :header="t('vendite.preventivi.riga_sconto')" sortable style="width: 80px;">
         <template #body="{ data }">{{ data.sconto_percentuale ? `${data.sconto_percentuale}%` : '' }}</template>
       </Column>
-      <Column field="importo_riga" :header="t('preventivi.riga_importo')" sortable style="width: 120px;">
+      <Column field="importo_riga" :header="t('vendite.preventivi.riga_importo')" sortable style="width: 120px;">
         <template #body="{ data }">{{ formatCurrency(data.importo_riga) }}</template>
       </Column>
-      <Column field="iva_descrizione" :header="t('preventivi.riga_iva')" sortable style="width: 80px;">
+      <Column field="iva_descrizione" :header="t('vendite.preventivi.riga_iva')" sortable style="width: 80px;">
         <template #body="{ data }">{{ data.iva_descrizione || data.iva_codice || '' }}</template>
       </Column>
     </template>

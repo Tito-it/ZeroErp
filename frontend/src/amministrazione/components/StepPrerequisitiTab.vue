@@ -28,12 +28,12 @@ const coll = useArchiCollection({
   definizioneId: () => props.definizioneId,
   kind: 'prerequisiti',
   messages: {
-    created: t('definizioni_workflow.ed_msg_figlio_creato'),
-    saved: t('definizioni_workflow.ed_msg_figlio_salvato'),
-    deleted: t('definizioni_workflow.ed_msg_figlio_eliminato'),
+    created: t('amministrazione.definizioni_workflow.ed_msg_figlio_creato'),
+    saved: t('amministrazione.definizioni_workflow.ed_msg_figlio_salvato'),
+    deleted: t('amministrazione.definizioni_workflow.ed_msg_figlio_eliminato'),
   },
   confirmDelete: (row) =>
-    t('definizioni_workflow.ed_conferma_elimina_figlio', { nome: stepCodice(row.prerequisito_id) }),
+    t('amministrazione.definizioni_workflow.ed_conferma_elimina_figlio', { nome: stepCodice(row.prerequisito_id) }),
   onChanged: () => emit('changed'),
 })
 
@@ -43,10 +43,10 @@ const prereqOptions = computed(() =>
   props.steps.filter((s) => s.id !== props.stepId).map((s) => ({ value: s.id, label: s.codice })),
 )
 const esitoOptions = computed(() =>
-  ESITO_RICHIESTO.map((v) => ({ value: v, label: t(`definizioni_workflow.ed_esito_${v}`) })),
+  ESITO_RICHIESTO.map((v) => ({ value: v, label: t(`amministrazione.definizioni_workflow.ed_esito_${v}`) })),
 )
 function esitoLabel(v) {
-  return v ? t(`definizioni_workflow.ed_esito_${v}`) : t('definizioni_workflow.ed_prereq_qualsiasi_esito')
+  return v ? t(`amministrazione.definizioni_workflow.ed_esito_${v}`) : t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')
 }
 
 const form = reactive({ prerequisito_id: null, esito_richiesto: null })
@@ -77,27 +77,27 @@ function onSave() {
     :coll="coll"
     :rows="rows"
     :readonly="readonly"
-    :add-label="t('definizioni_workflow.ed_aggiungi')"
-    :empty-label="t('definizioni_workflow.ed_prerequisiti_vuoto')"
+    :add-label="t('amministrazione.definizioni_workflow.ed_aggiungi')"
+    :empty-label="t('amministrazione.definizioni_workflow.ed_prerequisiti_vuoto')"
     :can-save="canSave"
     @save="onSave"
   >
     <template #columns>
-      <Column :header="t('definizioni_workflow.ed_col_prerequisito')" style="min-width: 180px;">
+      <Column :header="t('amministrazione.definizioni_workflow.ed_col_prerequisito')" style="min-width: 180px;">
         <template #body="{ data }">{{ stepCodice(data.prerequisito_id) }}</template>
       </Column>
-      <Column :header="t('definizioni_workflow.ed_col_esito_richiesto')" style="min-width: 150px;">
+      <Column :header="t('amministrazione.definizioni_workflow.ed_col_esito_richiesto')" style="min-width: 150px;">
         <template #body="{ data }">{{ esitoLabel(data.esito_richiesto) }}</template>
       </Column>
     </template>
     <template #form>
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.ed_col_prerequisito') }} *</label>
-        <Select v-model="form.prerequisito_id" :options="prereqOptions" option-label="label" option-value="value" filter :placeholder="t('definizioni_workflow.ed_ph_seleziona')" class="w-full" />
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_prerequisito') }} *</label>
+        <Select v-model="form.prerequisito_id" :options="prereqOptions" option-label="label" option-value="value" filter :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" class="w-full" />
       </div>
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.ed_col_esito_richiesto') }}</label>
-        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :placeholder="t('definizioni_workflow.ed_prereq_qualsiasi_esito')" class="w-full" />
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_esito_richiesto') }}</label>
+        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :placeholder="t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')" class="w-full" />
       </div>
     </template>
   </CollectionEditorPanel>

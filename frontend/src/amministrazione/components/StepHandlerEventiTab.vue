@@ -28,23 +28,23 @@ const coll = useStepFigliCollection({
   stepId: () => props.stepId,
   kind: 'handler-eventi',
   messages: {
-    created: t('definizioni_workflow.ed_msg_figlio_creato'),
-    saved: t('definizioni_workflow.ed_msg_figlio_salvato'),
-    deleted: t('definizioni_workflow.ed_msg_figlio_eliminato'),
+    created: t('amministrazione.definizioni_workflow.ed_msg_figlio_creato'),
+    saved: t('amministrazione.definizioni_workflow.ed_msg_figlio_salvato'),
+    deleted: t('amministrazione.definizioni_workflow.ed_msg_figlio_eliminato'),
   },
   confirmDelete: (row) =>
-    t('definizioni_workflow.ed_conferma_elimina_figlio', { nome: row.handler_key || row.evento }),
+    t('amministrazione.definizioni_workflow.ed_conferma_elimina_figlio', { nome: row.handler_key || row.evento }),
   onChanged: () => emit('changed'),
 })
 
 const eventoOptions = computed(() =>
-  STEP_HANDLER_EVENTO.map((v) => ({ value: v, label: t(`definizioni_workflow.ed_evento_${v}`) })),
+  STEP_HANDLER_EVENTO.map((v) => ({ value: v, label: t(`amministrazione.definizioni_workflow.ed_evento_${v}`) })),
 )
 const esitoOptions = computed(() =>
-  ESITO_RICHIESTO.map((v) => ({ value: v, label: t(`definizioni_workflow.ed_esito_${v}`) })),
+  ESITO_RICHIESTO.map((v) => ({ value: v, label: t(`amministrazione.definizioni_workflow.ed_esito_${v}`) })),
 )
 function esitoLabel(v) {
-  return v ? t(`definizioni_workflow.ed_esito_${v}`) : t('definizioni_workflow.ed_prereq_qualsiasi_esito')
+  return v ? t(`amministrazione.definizioni_workflow.ed_esito_${v}`) : t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')
 }
 
 const form = reactive({ evento: 'COMPLETATO', esito_richiesto: null, handler_id: null, sequenza: 0, attivo: true })
@@ -82,21 +82,21 @@ function onSave() {
     :coll="coll"
     :rows="rows"
     :readonly="readonly"
-    :add-label="t('definizioni_workflow.ed_aggiungi')"
-    :empty-label="t('definizioni_workflow.ed_handler_eventi_vuoto')"
+    :add-label="t('amministrazione.definizioni_workflow.ed_aggiungi')"
+    :empty-label="t('amministrazione.definizioni_workflow.ed_handler_eventi_vuoto')"
     :can-save="canSave"
     @save="onSave"
   >
     <template #columns>
-      <Column :header="t('definizioni_workflow.ed_col_evento')" style="width: 140px;">
-        <template #body="{ data }">{{ t(`definizioni_workflow.ed_evento_${data.evento}`) }}</template>
+      <Column :header="t('amministrazione.definizioni_workflow.ed_col_evento')" style="width: 140px;">
+        <template #body="{ data }">{{ t(`amministrazione.definizioni_workflow.ed_evento_${data.evento}`) }}</template>
       </Column>
-      <Column field="handler_key" :header="t('definizioni_workflow.ed_col_handler')" style="min-width: 180px;" />
-      <Column :header="t('definizioni_workflow.ed_col_esito_richiesto')" style="width: 150px;">
+      <Column field="handler_key" :header="t('amministrazione.definizioni_workflow.ed_col_handler')" style="min-width: 180px;" />
+      <Column :header="t('amministrazione.definizioni_workflow.ed_col_esito_richiesto')" style="width: 150px;">
         <template #body="{ data }">{{ esitoLabel(data.esito_richiesto) }}</template>
       </Column>
-      <Column field="sequenza" :header="t('definizioni_workflow.ed_col_sequenza')" style="width: 80px;" />
-      <Column :header="t('definizioni_workflow.ed_col_attivo')" style="width: 80px;">
+      <Column field="sequenza" :header="t('amministrazione.definizioni_workflow.ed_col_sequenza')" style="width: 80px;" />
+      <Column :header="t('amministrazione.definizioni_workflow.ed_col_attivo')" style="width: 80px;">
         <template #body="{ data }">
           <ToggleSwitch :model-value="data.attivo" :disabled="readonly" @update:model-value="coll.toggleAttivo(data)" />
         </template>
@@ -104,23 +104,23 @@ function onSave() {
     </template>
     <template #form>
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.ed_col_evento') }} *</label>
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_evento') }} *</label>
         <Select v-model="form.evento" :options="eventoOptions" option-label="label" option-value="value" class="w-full" />
       </div>
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.ed_col_handler') }} *</label>
-        <LookupSelect v-model="form.handler_id" rel="pratiche.handler_flussi" :placeholder="t('definizioni_workflow.ed_ph_seleziona')" show-code />
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_handler') }} *</label>
+        <LookupSelect v-model="form.handler_id" rel="pratiche.handler_flussi" :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" show-code />
       </div>
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.ed_col_esito_richiesto') }}</label>
-        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :placeholder="t('definizioni_workflow.ed_prereq_qualsiasi_esito')" class="w-full" />
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_esito_richiesto') }}</label>
+        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :placeholder="t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')" class="w-full" />
       </div>
       <div class="form-field form-field--num">
-        <label>{{ t('definizioni_workflow.ed_col_sequenza') }}</label>
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_sequenza') }}</label>
         <InputNumber v-model="form.sequenza" :min="0" show-buttons class="w-full" />
       </div>
       <div class="form-field form-field--toggle">
-        <label>{{ t('definizioni_workflow.ed_col_attivo') }}</label>
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_attivo') }}</label>
         <ToggleSwitch v-model="form.attivo" />
       </div>
     </template>

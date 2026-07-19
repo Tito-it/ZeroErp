@@ -112,7 +112,7 @@ function isRowValid(row) {
 // Errori reali sono gestiti dall'interceptor axios globale.
 async function saveRow(row) {
   if (!isRowValid(row)) {
-    notify.warn(t('amm_emittenti_fiscali.ut_validation_required'))
+    notify.warn(t('amministrazione.emittenti_fiscali.ut_validation_required'))
     return
   }
   const e = editing[row.utility_id]
@@ -126,11 +126,11 @@ async function saveRow(row) {
   try {
     if (isConfigured(row)) {
       await store.patchUtilityRecord(props.emittenteId, row.record_id, payload)
-      notify.success(t('amm_emittenti_fiscali.ut_saved'))
+      notify.success(t('amministrazione.emittenti_fiscali.ut_saved'))
     } else {
       payload.utility_id = row.utility_id
       await store.addUtilityRecord(props.emittenteId, payload)
-      notify.success(t('amm_emittenti_fiscali.ut_added'))
+      notify.success(t('amministrazione.emittenti_fiscali.ut_added'))
     }
     cancelEdit(row)
   } catch {
@@ -141,12 +141,12 @@ async function saveRow(row) {
 function removeConfig(row) {
   confirmAction({
     title: t('common.confirm'),
-    message: t('amm_emittenti_fiscali.ut_remove_config_confirm', { codice: row.utility_codice }),
+    message: t('amministrazione.emittenti_fiscali.ut_remove_config_confirm', { codice: row.utility_codice }),
     danger: true,
     onAccept: async () => {
       try {
         await store.removeUtilityRecord(props.emittenteId, row.record_id)
-        notify.success(t('amm_emittenti_fiscali.ut_removed'))
+        notify.success(t('amministrazione.emittenti_fiscali.ut_removed'))
       } catch {
         // Errore gia' notificato dall'interceptor axios globale.
       }
@@ -172,7 +172,7 @@ function buildRowActions(row) {
   return [
     {
       key: 'modifica',
-      label: t('amm_emittenti_fiscali.ut_action_modifica'),
+      label: t('amministrazione.emittenti_fiscali.ut_action_modifica'),
       icon: MANAGE_ICONS.EDIT,
       visible: canUpdate,
       allowWhenInactive: true,
@@ -180,7 +180,7 @@ function buildRowActions(row) {
     },
     {
       key: 'rimuovi',
-      label: t('amm_emittenti_fiscali.ut_action_rimuovi_config'),
+      label: t('amministrazione.emittenti_fiscali.ut_action_rimuovi_config'),
       icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       visible: canRemove,
@@ -188,7 +188,7 @@ function buildRowActions(row) {
     },
     {
       key: 'configura',
-      label: t('amm_emittenti_fiscali.ut_action_configura'),
+      label: t('amministrazione.emittenti_fiscali.ut_action_configura'),
       icon: MANAGE_ICONS.ADD,
       severity: 'primary',
       visible: canConfigure,
@@ -217,11 +217,11 @@ watch(() => props.emittenteId, async (id) => {
 <template>
   <div class="app-tab-content">
     <Message severity="info" :closable="false" class="mb-3">
-      {{ t('amm_emittenti_fiscali.ut_help_matrix') }}
+      {{ t('amministrazione.emittenti_fiscali.ut_help_matrix') }}
     </Message>
 
     <Message v-if="!emittenteAttivo" severity="warn" :closable="false" class="mb-3">
-      {{ t('amm_emittenti_fiscali.ut_parent_inactive_warn') }}
+      {{ t('amministrazione.emittenti_fiscali.ut_parent_inactive_warn') }}
     </Message>
 
     <DataTable
@@ -232,25 +232,25 @@ watch(() => props.emittenteId, async (id) => {
       data-key="utility_id"
       table-style="min-width: 1260px"
     >
-      <Column :header="t('amm_emittenti_fiscali.ut_col_stato')" style="width: 140px; min-width: 140px;">
+      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_stato')" style="width: 140px; min-width: 140px;">
         <template #body="{ data }">
           <Tag
             v-if="isConfigured(data)"
-            :value="t('amm_emittenti_fiscali.ut_stato_configurata')"
+            :value="t('amministrazione.emittenti_fiscali.ut_stato_configurata')"
             severity="success"
           />
           <Tag
             v-else
-            :value="t('amm_emittenti_fiscali.ut_stato_non_configurata')"
+            :value="t('amministrazione.emittenti_fiscali.ut_stato_non_configurata')"
             severity="secondary"
           />
         </template>
       </Column>
 
-      <Column field="utility_codice" :header="t('amm_emittenti_fiscali.ut_col_codice')" style="width: 100px; min-width: 100px;" />
-      <Column field="utility_descrizione" :header="t('amm_emittenti_fiscali.ut_col_descrizione')" style="min-width: 180px;" />
+      <Column field="utility_codice" :header="t('amministrazione.emittenti_fiscali.ut_col_codice')" style="width: 100px; min-width: 100px;" />
+      <Column field="utility_descrizione" :header="t('amministrazione.emittenti_fiscali.ut_col_descrizione')" style="min-width: 180px;" />
 
-      <Column :header="t('amm_emittenti_fiscali.ut_col_soglia_min')" style="width: 150px; min-width: 150px;">
+      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_soglia_min')" style="width: 150px; min-width: 150px;">
         <template #body="{ data }">
           <InputNumber
             v-if="isEditing(data)"
@@ -264,7 +264,7 @@ watch(() => props.emittenteId, async (id) => {
         </template>
       </Column>
 
-      <Column :header="t('amm_emittenti_fiscali.ut_col_soglia_max')" style="width: 150px; min-width: 150px;">
+      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_soglia_max')" style="width: 150px; min-width: 150px;">
         <template #body="{ data }">
           <InputNumber
             v-if="isEditing(data)"
@@ -278,7 +278,7 @@ watch(() => props.emittenteId, async (id) => {
         </template>
       </Column>
 
-      <Column :header="t('amm_emittenti_fiscali.ut_col_dec')" style="width: 120px; min-width: 120px;">
+      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_dec')" style="width: 120px; min-width: 120px;">
         <template #body="{ data }">
           <InputNumber
             v-if="isEditing(data)"
@@ -294,7 +294,7 @@ watch(() => props.emittenteId, async (id) => {
         </template>
       </Column>
 
-      <Column :header="t('amm_emittenti_fiscali.ut_col_metodo')" style="width: 170px; min-width: 170px;">
+      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_metodo')" style="width: 170px; min-width: 170px;">
         <template #body="{ data }">
           <EmittenteRoundingModeSelect
             v-if="isEditing(data)"
@@ -305,22 +305,22 @@ watch(() => props.emittenteId, async (id) => {
         </template>
       </Column>
 
-      <Column :header="t('amm_emittenti_fiscali.ut_col_attivo')" style="width: 90px; min-width: 90px;">
+      <Column :header="t('amministrazione.emittenti_fiscali.ut_col_attivo')" style="width: 90px; min-width: 90px;">
         <template #body="{ data }">
           <ToggleSwitch
             v-if="isEditing(data)"
             v-model="editing[data.utility_id].attivo"
             :disabled="!emittenteAttivo"
-            v-tooltip.bottom="!emittenteAttivo ? t('amm_emittenti_fiscali.ut_parent_inactive_tooltip') : null"
+            v-tooltip.bottom="!emittenteAttivo ? t('amministrazione.emittenti_fiscali.ut_parent_inactive_tooltip') : null"
           />
           <Tag
             v-else-if="data.record_attivo === true"
-            :value="t('amm.stato_attivo')"
+            :value="t('amministrazione.stato_attivo')"
             severity="success"
           />
           <Tag
             v-else-if="data.record_attivo === false"
-            :value="t('amm.stato_inattivo')"
+            :value="t('amministrazione.stato_inattivo')"
             severity="danger"
           />
           <span v-else>—</span>
@@ -344,14 +344,14 @@ watch(() => props.emittenteId, async (id) => {
               text rounded size="small"
               severity="success"
               :disabled="!isRowValid(data)"
-              v-tooltip.bottom="t('amm_emittenti_fiscali.ut_action_salva_riga')"
+              v-tooltip.bottom="t('amministrazione.emittenti_fiscali.ut_action_salva_riga')"
               @click="saveRow(data)"
             />
             <Button
               icon="pi pi-times"
               text rounded size="small"
               severity="secondary"
-              v-tooltip.bottom="t('amm_emittenti_fiscali.ut_action_annulla')"
+              v-tooltip.bottom="t('amministrazione.emittenti_fiscali.ut_action_annulla')"
               @click="cancelEdit(data)"
             />
           </template>
@@ -363,11 +363,11 @@ watch(() => props.emittenteId, async (id) => {
       <template #empty>
         <div class="app-empty ut-empty">
           <i class="pi pi-info-circle ut-empty-icon" />
-          <div class="ut-empty-msg">{{ t('amm_emittenti_fiscali.ut_empty_matrix') }}</div>
-          <div class="ut-empty-hint">{{ t('amm_emittenti_fiscali.ut_empty_matrix_hint') }}</div>
+          <div class="ut-empty-msg">{{ t('amministrazione.emittenti_fiscali.ut_empty_matrix') }}</div>
+          <div class="ut-empty-hint">{{ t('amministrazione.emittenti_fiscali.ut_empty_matrix_hint') }}</div>
           <Button
             v-if="!isReadonly"
-            :label="t('amm_emittenti_fiscali.ut_empty_matrix_cta')"
+            :label="t('amministrazione.emittenti_fiscali.ut_empty_matrix_cta')"
             icon="pi pi-external-link"
             text
             size="small"

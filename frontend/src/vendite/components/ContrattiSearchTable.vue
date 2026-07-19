@@ -47,7 +47,7 @@ const {
 } = useListaConfigurabilePage(store, {
   exportFn: exportContratti,
   getExportParams: (fmt) => buildExportParams(fmt),
-  newTooltipKey: 'contratti.nuovo_contratto',
+  newTooltipKey: 'vendite.contratti.nuovo_contratto',
   onNew: () => emit('new'),
   searchTableOptions: { defaultSortField: 'valido_dal' },
 })
@@ -69,8 +69,8 @@ const scadenzaMeseFilter = ref(null)
 
 const ambitoOptions = computed(() => [
   { value: null, label: t('common.all') },
-  { value: 'COMMODITY', label: t('contratti.ambito_commodity') },
-  { value: 'COMMERCIO', label: t('contratti.ambito_commercio') },
+  { value: 'COMMODITY', label: t('vendite.contratti.ambito_commodity') },
+  { value: 'COMMERCIO', label: t('vendite.contratti.ambito_commercio') },
 ])
 
 // Params export: i filtri vivono in store.filters (sincronizzati dagli handler
@@ -125,24 +125,24 @@ function buildRowActions(data) {
   return [
     {
       key: 'documenti-pdf',
-      label: t('contratti.pdf.label_scarica'),
+      label: t('vendite.contratti.pdf.label_scarica'),
       icon: MANAGE_ICONS.PDF,
       severity: 'primary',
       disabled: data.stato_codice_interno === 'DRAFT',
       tooltip: data.stato_codice_interno === 'DRAFT'
-        ? t('contratti.pdf.tooltip_lista_disabilitato')
-        : t('contratti.pdf.tooltip_lista'),
+        ? t('vendite.contratti.pdf.tooltip_lista_disabilitato')
+        : t('vendite.contratti.pdf.tooltip_lista'),
       command: () => onPdfClick(data),
     },
     {
       key: 'gestisci-righe',
-      label: t('contratti.gestisci_righe'),
+      label: t('vendite.contratti.gestisci_righe'),
       icon: MANAGE_ICONS.RIGHE,
       command: () => emit('open-righe', data),
     },
     {
       key: 'gestisci-note',
-      label: t('contratti.gestisci_note'),
+      label: t('vendite.contratti.gestisci_note'),
       icon: MANAGE_ICONS.NOTE,
       command: () => onNoteClick(data),
     },
@@ -165,18 +165,18 @@ onMounted(() => {
            PageActionsBar a destra. -->
       <div class="app-page-toolbar">
         <div class="app-page-filters">
-          <InputText v-model="searchText" :placeholder="t('contratti.search_placeholder')" style="width: 320px;" />
+          <InputText v-model="searchText" :placeholder="t('vendite.contratti.search_placeholder')" style="width: 320px;" />
           <LookupSelect
             v-model="statoFilter"
             rel="config.stati_doc_contratti"
-            :placeholder="t('contratti.filtro_stato')"
+            :placeholder="t('vendite.contratti.filtro_stato')"
             show-clear
             @change="onStatoChange"
           />
           <UtilityPerRuoloSelect
             v-model="utilityFilter"
             :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
-            :placeholder="t('contratti.filtro_utility')"
+            :placeholder="t('vendite.contratti.filtro_utility')"
             show-clear
             apply-default
             @change="onUtilityChange"
@@ -186,7 +186,7 @@ onMounted(() => {
             :options="ambitoOptions"
             option-label="label"
             option-value="value"
-            :placeholder="t('contratti.filtro_ambito')"
+            :placeholder="t('vendite.contratti.filtro_ambito')"
             @change="onAmbitoChange"
             style="min-width: 160px;"
           />
@@ -196,7 +196,7 @@ onMounted(() => {
           <DatePicker v-model="dataAFilter" :placeholder="t('common.data_a')"
             date-format="dd/mm/yy" show-icon show-button-bar style="width: 150px;"
             @update:modelValue="onDataAChange" />
-          <DatePicker v-model="scadenzaMeseFilter" :placeholder="t('contratti.filtro_scadenza_mese')"
+          <DatePicker v-model="scadenzaMeseFilter" :placeholder="t('vendite.contratti.filtro_scadenza_mese')"
             view="month" date-format="mm/yy" show-icon show-button-bar style="width: 160px;"
             :min-date="new Date()"
             @update:modelValue="onScadenzaMeseChange" />
@@ -259,7 +259,7 @@ onMounted(() => {
       sorgente-code="CONTRATTO"
       :sorgente-id="pdfDialogContratto?.id ?? null"
       :title="pdfDialogContratto
-        ? t('contratti.pdf.dialog_title', { numero: pdfDialogContratto.numero })
+        ? t('vendite.contratti.pdf.dialog_title', { numero: pdfDialogContratto.numero })
         : ''"
     />
 

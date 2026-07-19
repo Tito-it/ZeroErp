@@ -184,7 +184,7 @@ function onCancel() {
   >
     <template #header>
       <DrawerTitle
-        :title="`${t('ui_admin.preset_composizione')} — ${presetCodice}`"
+        :title="`${t('ui.admin.preset_composizione')} — ${presetCodice}`"
         icon="pi pi-table"
       />
     </template>
@@ -198,7 +198,7 @@ function onCancel() {
         severity="error"
         :closable="false"
       >
-        {{ t('ui_admin.composizione_load_error') }}
+        {{ t('ui.admin.composizione_load_error') }}
       </Message>
 
       <div class="composizione-toolbar">
@@ -207,7 +207,7 @@ function onCancel() {
           :options="catalogoDisponibile"
           option-label="etichetta"
           option-value="id"
-          :placeholder="t('ui_admin.composizione_seleziona_colonna')"
+          :placeholder="t('ui.admin.composizione_seleziona_colonna')"
           :disabled="isReadonlyEffective || fetching || catalogoDisponibile.length === 0"
           :filter="catalogoDisponibile.length > 5"
           class="composizione-select"
@@ -229,7 +229,7 @@ function onCancel() {
         scrollable
         scroll-height="flex"
       >
-        <Column field="ordine" :header="t('ui_admin.composizione_col_ordine')" style="width: 90px">
+        <Column field="ordine" :header="t('ui.admin.composizione_col_ordine')" style="width: 90px">
           <template #body="{ index }">
             <div class="ordine-actions">
               <Button
@@ -251,9 +251,9 @@ function onCancel() {
             </div>
           </template>
         </Column>
-        <Column field="codice" :header="t('ui_admin.composizione_col_codice')" style="width: 180px" />
-        <Column field="etichetta" :header="t('ui_admin.composizione_col_etichetta')" />
-        <Column :header="t('ui_admin.composizione_col_larghezza')" style="width: 120px">
+        <Column field="codice" :header="t('ui.admin.composizione_col_codice')" style="width: 180px" />
+        <Column field="etichetta" :header="t('ui.admin.composizione_col_etichetta')" />
+        <Column :header="t('ui.admin.composizione_col_larghezza')" style="width: 120px">
           <template #body="{ data }">
             <InputNumber
               v-model="data.larghezza"
@@ -266,7 +266,7 @@ function onCancel() {
             />
           </template>
         </Column>
-        <Column :header="t('ui_admin.composizione_col_visibile')" style="width: 90px">
+        <Column :header="t('ui.admin.composizione_col_visibile')" style="width: 90px">
           <template #body="{ data }">
             <Checkbox
               v-model="data.visibile"
@@ -276,7 +276,7 @@ function onCancel() {
             />
           </template>
         </Column>
-        <Column :header="t('ui_admin.composizione_col_fissata')" style="width: 90px">
+        <Column :header="t('ui.admin.composizione_col_fissata')" style="width: 90px">
           <template #body="{ data }">
             <Checkbox
               v-model="data.fissata"
@@ -308,7 +308,7 @@ function onCancel() {
         size="small"
         class="mt-1"
       >
-        {{ t('ui_admin.composizione_dirty_warning') }}
+        {{ t('ui.admin.composizione_dirty_warning') }}
       </Message>
     </div>
 

@@ -78,13 +78,13 @@ const hasDefault = computed(() => store.hasDefaultMapping)
 
 async function addSpecificMapping() {
   if (!selectedBA.value?.id) {
-    notify.warn(t('amm_emittenti_fiscali.ba_select_required'))
+    notify.warn(t('amministrazione.emittenti_fiscali.ba_select_required'))
     return
   }
   adding.value = true
   try {
     await store.addMapping({ billing_account_id: selectedBA.value.id })
-    notify.success(t('amm_emittenti_fiscali.ba_added'))
+    notify.success(t('amministrazione.emittenti_fiscali.ba_added'))
     selectedBA.value = null
   } catch {
     // Errore gestito dall'interceptor axios globale.
@@ -95,12 +95,12 @@ async function addSpecificMapping() {
 
 async function addDefaultMapping() {
   if (hasDefault.value) {
-    notify.warn(t('amm_emittenti_fiscali.ba_default_exists'))
+    notify.warn(t('amministrazione.emittenti_fiscali.ba_default_exists'))
     return
   }
   try {
     await store.addMapping({})
-    notify.success(t('amm_emittenti_fiscali.ba_default_added'))
+    notify.success(t('amministrazione.emittenti_fiscali.ba_default_added'))
   } catch {
     // Errore gestito dall'interceptor axios globale.
   }
@@ -110,13 +110,13 @@ function removeMapping(row) {
   confirmAction({
     title: t('common.confirm'),
     message: row.is_default
-      ? t('amm_emittenti_fiscali.ba_remove_default_confirm')
-      : t('amm_emittenti_fiscali.ba_remove_confirm', { codice: row.billing_account_codice || '-' }),
+      ? t('amministrazione.emittenti_fiscali.ba_remove_default_confirm')
+      : t('amministrazione.emittenti_fiscali.ba_remove_confirm', { codice: row.billing_account_codice || '-' }),
     danger: true,
     onAccept: async () => {
       try {
         await store.removeMapping(row.id)
-        notify.success(t('amm_emittenti_fiscali.ba_removed'))
+        notify.success(t('amministrazione.emittenti_fiscali.ba_removed'))
       } catch {
         // Errore gestito dall'interceptor axios globale.
       }
@@ -141,24 +141,24 @@ function buildRowActions(data) {
 <template>
   <div class="app-tab-content">
     <Message severity="info" :closable="false" class="mb-3">
-      {{ t('amm_emittenti_fiscali.ba_help') }}
+      {{ t('amministrazione.emittenti_fiscali.ba_help') }}
     </Message>
 
     <div v-if="!isReadonly" class="form-grid-2col mb-3">
       <BillingAccountLookup
         v-model="selectedBA"
-        :placeholder="t('amm_emittenti_fiscali.ba_search_placeholder')"
+        :placeholder="t('amministrazione.emittenti_fiscali.ba_search_placeholder')"
       />
       <div class="flex gap-2">
         <Button
-          :label="t('amm_emittenti_fiscali.ba_add_specific')"
+          :label="t('amministrazione.emittenti_fiscali.ba_add_specific')"
           icon="pi pi-plus"
           :loading="adding"
           :disabled="!selectedBA?.id"
           @click="addSpecificMapping"
         />
         <Button
-          :label="t('amm_emittenti_fiscali.ba_add_default')"
+          :label="t('amministrazione.emittenti_fiscali.ba_add_default')"
           icon="pi pi-star"
           severity="secondary"
           :disabled="hasDefault"
@@ -171,7 +171,7 @@ function buildRowActions(data) {
       <div class="app-page-filters">
         <InputText
           v-model="searchText"
-          :placeholder="t('amm_emittenti_fiscali.ba_filter_placeholder')"
+          :placeholder="t('amministrazione.emittenti_fiscali.ba_filter_placeholder')"
           style="width: 300px;"
         />
       </div>
@@ -191,22 +191,22 @@ function buildRowActions(data) {
       @page="onPage"
       @sort="onSort"
     >
-      <Column :header="t('amm_emittenti_fiscali.ba_col_default')" style="width: 110px;">
+      <Column :header="t('amministrazione.emittenti_fiscali.ba_col_default')" style="width: 110px;">
         <template #body="{ data }">
           <Badge v-if="data.is_default" :value="t('common.default')" severity="info" />
         </template>
       </Column>
-      <Column field="billing_account_codice" :header="t('amm_emittenti_fiscali.ba_col_codice')" sortable style="width: 180px;">
+      <Column field="billing_account_codice" :header="t('amministrazione.emittenti_fiscali.ba_col_codice')" sortable style="width: 180px;">
         <template #body="{ data }">
           {{ data.billing_account_codice || '—' }}
         </template>
       </Column>
-      <Column field="billing_account_ragione_sociale" :header="t('amm_emittenti_fiscali.ba_col_ragione_sociale')" sortable>
+      <Column field="billing_account_ragione_sociale" :header="t('amministrazione.emittenti_fiscali.ba_col_ragione_sociale')" sortable>
         <template #body="{ data }">
-          {{ data.billing_account_ragione_sociale || t('amm_emittenti_fiscali.ba_default_label') }}
+          {{ data.billing_account_ragione_sociale || t('amministrazione.emittenti_fiscali.ba_default_label') }}
         </template>
       </Column>
-      <Column field="id_fiscale_univoco" :header="t('amm_emittenti_fiscali.ba_col_id_fiscale')" sortable style="width: 200px;">
+      <Column field="id_fiscale_univoco" :header="t('amministrazione.emittenti_fiscali.ba_col_id_fiscale')" sortable style="width: 200px;">
         <template #body="{ data }">
           {{ data.id_fiscale_univoco || '—' }}
         </template>
@@ -217,7 +217,7 @@ function buildRowActions(data) {
         </template>
       </Column>
       <template #empty>
-        <div class="app-empty">{{ t('amm_emittenti_fiscali.ba_empty') }}</div>
+        <div class="app-empty">{{ t('amministrazione.emittenti_fiscali.ba_empty') }}</div>
       </template>
     </DataTable>
   </div>

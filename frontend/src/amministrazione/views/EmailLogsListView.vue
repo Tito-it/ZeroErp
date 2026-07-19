@@ -71,7 +71,7 @@ onMounted(() => {
         <InputText v-model="searchText" :placeholder="t('common.search')" style="width: 250px;" />
         <EmailLogStatoSelect
           :modelValue="store.filters.stato"
-          :placeholder="t('amm.email_stato')"
+          :placeholder="t('amministrazione.email_stato')"
           style="width: 200px;"
           @update:modelValue="onStatoChange"
         />
@@ -113,19 +113,19 @@ onMounted(() => {
       @page="onPage"
       @sort="onSort"
     >
-      <Column field="data_insert" :header="t('amm.email_inviato_at')" sortable style="width: 150px;">
+      <Column field="data_insert" :header="t('amministrazione.email_inviato_at')" sortable style="width: 150px;">
         <template #body="{ data }">{{ displayTimestamp(data.data_insert) }}</template>
       </Column>
-      <Column field="destinatario" :header="t('amm.email_destinatario')" sortable style="width: 200px;" />
-      <Column field="oggetto" :header="t('amm.email_oggetto')" sortable style="width: 220px;" />
-      <Column field="template_codice" :header="t('amm.email_template')" style="width: 150px;" />
-      <Column field="account_codice" :header="t('amm.email_account')" style="width: 110px;" />
-      <Column field="errore" :header="t('amm.email_errore')">
+      <Column field="destinatario" :header="t('amministrazione.email_destinatario')" sortable style="width: 200px;" />
+      <Column field="oggetto" :header="t('amministrazione.email_oggetto')" sortable style="width: 220px;" />
+      <Column field="template_codice" :header="t('amministrazione.email_template')" style="width: 150px;" />
+      <Column field="account_codice" :header="t('amministrazione.email_account')" style="width: 110px;" />
+      <Column field="errore" :header="t('amministrazione.email_errore')">
         <template #body="{ data }">
           <span v-if="data.errore" class="text-red-500" style="font-size: 0.85rem;">{{ data.errore }}</span>
         </template>
       </Column>
-      <Column field="stato" :header="t('amm.email_stato')" sortable style="width: 100px;">
+      <Column field="stato" :header="t('amministrazione.email_stato')" sortable style="width: 100px;">
         <template #body="{ data }">
           <Tag :value="data.stato" :severity="getEmailLogStatoSeverity(data.stato)" />
         </template>

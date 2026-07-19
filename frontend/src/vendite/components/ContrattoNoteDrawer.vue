@@ -20,7 +20,7 @@ const emit = defineEmits(['update:visible', 'saved'])
     @update:visible="emit('update:visible', $event)"
     dominio="contratti"
     :id="contrattoId"
-    :title="t('contratti.note_titolo')"
+    :title="t('vendite.contratti.note_titolo')"
     :righe="righe"
     @saved="emit('saved')"
   />

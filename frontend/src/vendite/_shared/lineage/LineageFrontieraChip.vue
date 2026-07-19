@@ -36,7 +36,7 @@ function tipoLabel(codice) {
       :value="stato ?? fase"
       :severity="faseDocumentoSeverity(fase)" />
     <span v-if="nAttivi > 1" class="lineage-cell-muted">
-      {{ t('lineage.altre_attive', { n: nAttivi - 1 }) }}
+      {{ t('vendite.lineage.altre_attive', { n: nAttivi - 1 }) }}
     </span>
   </span>
   <span v-else class="lineage-cell-muted">—</span>

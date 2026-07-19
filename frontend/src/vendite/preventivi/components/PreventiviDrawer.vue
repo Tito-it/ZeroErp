@@ -200,6 +200,10 @@ const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 // `available_actions` (post brief DB 2026-05-28, mirror offerte).
 const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
 const pushCommessaReasonKey = computed(() => detail.value?.can_push_commessa_reason_key || null)
+// Ramo gemello dello smistamento: `genera_ordine` ha la sua reason, che finora
+// nessuno mostrava (il banner sotto copriva solo il ramo commessa).
+const canGeneraOrdine = computed(() => caps.flag('can_genera_ordine'))
+const generaOrdineReasonKey = computed(() => detail.value?.can_genera_ordine_reason_key || null)
 // Pannello Smistamento visibile da ACCETTATO in poi (EVASO = consuntivo):
 // prima dell'accettazione non c'e' nulla da smistare e il pannello sarebbe
 // solo rumore (tutte RESIDUA, azioni rifiutate dal BE).
@@ -538,11 +542,11 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
   deleteDraft: (id) => store.elimina(id),
   righeCountGetter: () => detail.value?.righe_count ?? 0,
   messages: {
-    bozzaCreata: t('preventivi.bozza_creata'),
-    abbandonoTitolo: t('preventivi.abbandono_bozza_titolo'),
-    abbandonoMessage: t('preventivi.conferma_abbandono_bozza'),
-    abbandonoConferma: t('preventivi.abbandono_bozza_conferma'),
-    bozzaEliminata: t('preventivi.bozza_eliminata'),
+    bozzaCreata: t('vendite.preventivi.bozza_creata'),
+    abbandonoTitolo: t('vendite.preventivi.abbandono_bozza_titolo'),
+    abbandonoMessage: t('vendite.preventivi.conferma_abbandono_bozza'),
+    abbandonoConferma: t('vendite.preventivi.abbandono_bozza_conferma'),
+    bozzaEliminata: t('vendite.preventivi.bozza_eliminata'),
   },
 })
 
@@ -604,7 +608,7 @@ async function handleSave() {
     }
     const result = await execute(
       () => store.update(effectivePreventivoId.value, payload),
-      { successMessage: t('preventivi.preventivo_salvato') }
+      { successMessage: t('vendite.preventivi.preventivo_salvato') }
     )
     if (result !== null) {
       await loadDetail()
@@ -631,7 +635,7 @@ async function handleSave() {
     }
     const result = await execute(
       () => store.create(payload),
-      { successMessage: t('preventivi.preventivo_creato') }
+      { successMessage: t('vendite.preventivi.preventivo_creato') }
     )
     if (result !== null) emit('saved', result)
   }
@@ -697,7 +701,7 @@ function onCambiaStato(action) {
   }
   if (action.requires_confirm) {
     confirmAction({
-      message: t('preventivi.conferma_cambio_stato', { stato: t(action.label_key) }),
+      message: t('vendite.preventivi.conferma_cambio_stato', { stato: t(action.label_key) }),
       onAccept: () => eseguiCambioStato(action.target_state),
     })
   } else {
@@ -712,7 +716,7 @@ async function handleEmissioneConferma({ files }) {
   emissioneLoading.value = true
   const result = await execute(
     () => store.emetti(effectivePreventivoId.value, { allegati: files || [] }),
-    { successMessage: t('preventivi.stato_cambiato') },
+    { successMessage: t('vendite.preventivi.stato_cambiato') },
   )
   emissioneLoading.value = false
   if (result !== null) {
@@ -725,7 +729,7 @@ async function handleEmissioneConferma({ files }) {
 async function eseguiCambioStato(nuovoStato, extras = {}) {
   const result = await execute(
     () => store.cambiaStato(effectivePreventivoId.value, nuovoStato, extras),
-    { successMessage: t('preventivi.stato_cambiato') }
+    { successMessage: t('vendite.preventivi.stato_cambiato') }
   )
   if (result !== null) {
     await loadDetail()
@@ -736,11 +740,11 @@ async function eseguiCambioStato(nuovoStato, extras = {}) {
 // Scopo: Crea nuova revisione del preventivo.
 function onNuovaRevisione() {
   confirmAction({
-    message: t('preventivi.conferma_revisione'),
+    message: t('vendite.preventivi.conferma_revisione'),
     onAccept: async () => {
       const result = await execute(
         () => store.nuovaRevisione(effectivePreventivoId.value),
-        { successMessage: t('preventivi.revisione_creata') }
+        { successMessage: t('vendite.preventivi.revisione_creata') }
       )
       if (result !== null) emit('saved', result)
     }
@@ -790,7 +794,7 @@ const drawerActions = computed(() => {
   list.push({
     key: 'manage-note',
     kind: 'manage',
-    label: t('preventivi.gestisci_note'),
+    label: t('vendite.preventivi.gestisci_note'),
     icon: MANAGE_ICONS.NOTE,
     command: () => { noteDrawerVisible.value = true },
   })
@@ -806,7 +810,7 @@ const drawerActions = computed(() => {
     <template #header>
       <DrawerTitle
         :action="(isEdit || hasDetail) ? t('common.edit') : t('common.new')"
-        :title="t('preventivi.preventivo')"
+        :title="t('vendite.preventivi.preventivo')"
         :icon="NAV_ICONS.PREVENTIVI"
       />
     </template>
@@ -823,38 +827,38 @@ const drawerActions = computed(() => {
       <template v-if="hasDetail">
         <DrawerEntityHeader>
           <Tag :value="`${detail.numero} rev.${detail.rev}`" severity="secondary" />
-          <Tag v-if="isSuperseded" :value="t('preventivi.tag_superseded')" severity="warn" icon="pi pi-history" />
+          <Tag v-if="isSuperseded" :value="t('vendite.preventivi.tag_superseded')" severity="warn" icon="pi pi-history" />
           <span v-if="detail.data" class="app-drawer-header-muted font-bold">
             {{ displayDate(detail.data) }}
           </span>
           <template v-if="contestoPricing && contestoPricing.fonte === 'CONTRATTO'">
             <Tag
-              :value="t('preventivi.contesto_pricing_contratto', {
+              :value="t('vendite.preventivi.contesto_pricing_contratto', {
                 contratto: contestoPricing.contratto_numero,
                 listino: contestoPricing.listino_codice,
               })"
               severity="info"
               icon="pi pi-file-edit"
-              v-tooltip.bottom="t('preventivi.contesto_pricing_contratto_tooltip')"
+              v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_contratto_tooltip')"
             />
           </template>
           <template v-else-if="contestoPricing && contestoPricing.fonte === 'CATEGORIA'">
             <Tag
-              :value="t('preventivi.contesto_pricing_categoria', {
+              :value="t('vendite.preventivi.contesto_pricing_categoria', {
                 listino: contestoPricing.listino_codice,
                 categoria: contestoPricing.categoria_cliente_codice,
               })"
               severity="info"
               icon="pi pi-tag"
-              v-tooltip.bottom="t('preventivi.contesto_pricing_categoria_tooltip')"
+              v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_categoria_tooltip')"
             />
           </template>
           <template v-else-if="contestoPricing && contestoPricing.fonte === 'NONE'">
             <Tag
-              :value="t('preventivi.contesto_pricing_none')"
+              :value="t('vendite.preventivi.contesto_pricing_none')"
               severity="warn"
               icon="pi pi-exclamation-triangle"
-              v-tooltip.bottom="t('preventivi.contesto_pricing_none_tooltip')"
+              v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_none_tooltip')"
             />
           </template>
 
@@ -879,9 +883,9 @@ const drawerActions = computed(() => {
               :sorgente-code="SORGENTE_CODES.PREVENTIVO"
               :entity-id="effectivePreventivoId"
               :pdf="detail.pdf"
-              i18n-prefix="preventivi.pdf"
+              i18n-prefix="vendite.preventivi.pdf"
               :dialog-title="detail.numero
-                ? t('preventivi.pdf.dialog_title', { numero: detail.numero })
+                ? t('vendite.preventivi.pdf.dialog_title', { numero: detail.numero })
                 : ''"
             />
           </template>
@@ -893,7 +897,7 @@ const drawerActions = computed(() => {
            successiva). Il drawer e' interamente readonly: niente azioni stato,
            niente nuova revisione, niente edit testata/righe. -->
       <Message v-if="isSuperseded" severity="warn" :closable="false" class="mt-1">
-        {{ t('preventivi.banner_revisione_superseded') }}
+        {{ t('vendite.preventivi.banner_revisione_superseded') }}
       </Message>
 
       <!-- Sprint E (autorizzazioni prezzi L3): preventivo "congelato" se ha
@@ -903,21 +907,26 @@ const drawerActions = computed(() => {
            - REJECTED → "correggi la riga o eliminala". -->
       <Message v-if="hasDetail && detail.frozen_for_pending_pricing"
         severity="warn" :closable="false" class="mt-1">
-        {{ t('preventivi.banner_frozen_pending_pricing', { count: detail.pending_pricing_count }) }}
+        {{ t('vendite.preventivi.banner_frozen_pending_pricing', { count: detail.pending_pricing_count }) }}
       </Message>
       <Message v-if="hasDetail && detail.frozen_for_rejected_pricing"
         severity="error" :closable="false" class="mt-1">
-        {{ t('preventivi.banner_frozen_rejected_pricing', { count: detail.rejected_pricing_count }) }}
+        {{ t('vendite.preventivi.banner_frozen_rejected_pricing', { count: detail.rejected_pricing_count }) }}
       </Message>
       <!-- Area banner informativi non bloccanti: tenere qui i messaggi di
            contesto del preventivo, evitando banner sparsi in fondo al drawer. -->
       <Message v-if="hasDetail && detail.ba_ha_contratto_attivo === false"
         severity="info" :closable="false" class="mt-1">
-        {{ t('preventivi.banner_no_contratto_attivo') }}
+        {{ t('vendite.preventivi.banner_no_contratto_attivo') }}
       </Message>
-      <Message v-if="hasDetail && !canPushCommessa && pushCommessaReasonKey"
+      <Message v-if="hasDetail && !canPushCommessa && pushCommessaReasonKey && te(pushCommessaReasonKey)"
         severity="info" :closable="false" class="mt-1">
         {{ t(pushCommessaReasonKey) }}
+      </Message>
+      <!-- Ramo ordine dello smistamento: stessa forma del ramo commessa sopra. -->
+      <Message v-if="hasDetail && !canGeneraOrdine && generaOrdineReasonKey && te(generaOrdineReasonKey)"
+        severity="info" :closable="false" class="mt-1">
+        {{ t(generaOrdineReasonKey) }}
       </Message>
 
       <Divider v-if="hasDetail" />
@@ -927,9 +936,9 @@ const drawerActions = computed(() => {
            Default tab "Testata" resettato all'apertura del drawer. -->
       <Tabs v-model:value="activeTab">
         <TabList>
-          <Tab value="testata">{{ t('preventivi.tab_testata') }}</Tab>
+          <Tab value="testata">{{ t('vendite.preventivi.tab_testata') }}</Tab>
           <Tab value="revisioni" :disabled="!isEdit">
-            {{ t('preventivi.tab_revisioni') }}
+            {{ t('vendite.preventivi.tab_revisioni') }}
             <span v-if="isEdit && revisioni.length">({{ revisioni.length }})</span>
           </Tab>
         </TabList>
@@ -1015,11 +1024,11 @@ const drawerActions = computed(() => {
           <!-- ====================== TAB REVISIONI ====================== -->
           <TabPanel value="revisioni">
             <p class="text-color-secondary mt-1">
-              {{ t('preventivi.revisioni_intro') }}
+              {{ t('vendite.preventivi.revisioni_intro') }}
             </p>
             <div v-if="!revisioni.length" class="app-empty-state">
               <i class="pi pi-history" style="font-size: 2rem;" />
-              <div>{{ t('preventivi.revisioni_empty') }}</div>
+              <div>{{ t('vendite.preventivi.revisioni_empty') }}</div>
             </div>
             <DataTable
               v-else
@@ -1029,15 +1038,15 @@ const drawerActions = computed(() => {
               data-key="id"
             >
               <Column field="rev"
-                :header="t('preventivi.col_rev')"
+                :header="t('vendite.preventivi.col_rev')"
                 style="width: 70px;" />
               <Column field="data"
-                :header="t('preventivi.col_data')"
+                :header="t('vendite.preventivi.col_data')"
                 style="width: 130px;">
                 <template #body="{ data }">{{ displayDate(data.data) }}</template>
               </Column>
               <Column field="stato_codice_interno"
-                :header="t('preventivi.col_stato')"
+                :header="t('vendite.preventivi.col_stato')"
                 style="width: 140px;">
                 <template #body="{ data }">
                   <Tag
@@ -1047,7 +1056,7 @@ const drawerActions = computed(() => {
                 </template>
               </Column>
               <Column field="totale_documento"
-                :header="t('preventivi.col_totale')"
+                :header="t('vendite.preventivi.col_totale')"
                 style="width: 130px;">
                 <template #body="{ data }">{{ formatCurrency(data.totale_documento) }}</template>
               </Column>

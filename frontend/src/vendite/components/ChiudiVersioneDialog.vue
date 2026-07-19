@@ -73,8 +73,8 @@ async function conferma() {
   const res = await execute(
     () => updateVersione(props.listinoId, props.versione.id, { valido_al }),
     { successMessage: valido_al
-        ? t('listini.chiudi_versione_successo', { data: displayDate(dataChiusura.value) })
-        : t('listini.chiudi_versione_rimossa')
+        ? t('vendite.listini.chiudi_versione_successo', { data: displayDate(dataChiusura.value) })
+        : t('vendite.listini.chiudi_versione_rimossa')
     }
   )
   // Memoria feedback_drawer_result_check: useApiHandler.execute ritorna
@@ -89,7 +89,7 @@ async function rimuoviChiusura() {
   if (loading.value) return
   const res = await execute(
     () => updateVersione(props.listinoId, props.versione.id, { valido_al: null }),
-    { successMessage: t('listini.chiudi_versione_rimossa') }
+    { successMessage: t('vendite.listini.chiudi_versione_rimossa') }
   )
   if (res !== null) {
     emit('saved', { listinoId: props.listinoId })
@@ -100,15 +100,15 @@ async function rimuoviChiusura() {
 
 <template>
   <AppDialog :visible="visible" @update:visible="onHide"
-    :header="t('listini.chiudi_versione_titolo')" width="sm">
+    :header="t('vendite.listini.chiudi_versione_titolo')" width="sm">
 
     <Message v-if="dataChiusura" severity="warn" :closable="false" class="mb-1">
-      {{ t('listini.chiudi_versione_warning', { data_dopo: dataDopoLabel }) }}
+      {{ t('vendite.listini.chiudi_versione_warning', { data_dopo: dataDopoLabel }) }}
     </Message>
 
     <div class="form-grid">
       <div class="form-field">
-        <label>{{ t('listini.chiudi_versione_data') }}</label>
+        <label>{{ t('vendite.listini.chiudi_versione_data') }}</label>
         <DatePicker v-model="dataChiusura" date-format="dd/mm/yy"
           show-icon show-button-bar :min-date="new Date()" />
       </div>
@@ -126,7 +126,7 @@ async function rimuoviChiusura() {
         @click="rimuoviChiusura"
       />
       <FormFooter
-        :save-label="t('listini.chiudi_versione_conferma')"
+        :save-label="t('vendite.listini.chiudi_versione_conferma')"
         save-severity="warn"
         :loading="loading"
         :disabled="!dataChiusura"

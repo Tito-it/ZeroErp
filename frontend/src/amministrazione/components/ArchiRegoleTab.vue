@@ -35,12 +35,12 @@ const coll = useArchiCollection({
   definizioneId: () => props.definizioneId,
   kind: 'regole-generazione',
   messages: {
-    created: t('definizioni_workflow.ed_msg_figlio_creato'),
-    saved: t('definizioni_workflow.ed_msg_figlio_salvato'),
-    deleted: t('definizioni_workflow.ed_msg_figlio_eliminato'),
+    created: t('amministrazione.definizioni_workflow.ed_msg_figlio_creato'),
+    saved: t('amministrazione.definizioni_workflow.ed_msg_figlio_salvato'),
+    deleted: t('amministrazione.definizioni_workflow.ed_msg_figlio_eliminato'),
   },
   confirmDelete: (row) =>
-    t('definizioni_workflow.ed_conferma_elimina_figlio', {
+    t('amministrazione.definizioni_workflow.ed_conferma_elimina_figlio', {
       nome: `${stepCodice(row.template_flusso_origine_id)} → ${tipoLabel(row.tipo_prestazione_dest_id)}`,
     }),
   onChanged: () => emit('changed'),
@@ -55,10 +55,10 @@ function tipoLabel(id) {
 }
 
 const esitoOptions = computed(() =>
-  ESITO_REGOLA.map((v) => ({ value: v, label: t(`definizioni_workflow.ed_esito_regola_${v}`) })),
+  ESITO_REGOLA.map((v) => ({ value: v, label: t(`amministrazione.definizioni_workflow.ed_esito_regola_${v}`) })),
 )
 function esitoLabel(v) {
-  return v ? t(`definizioni_workflow.ed_esito_regola_${v}`) : t('definizioni_workflow.ed_prereq_qualsiasi_esito')
+  return v ? t(`amministrazione.definizioni_workflow.ed_esito_regola_${v}`) : t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')
 }
 
 const form = reactive({
@@ -118,30 +118,30 @@ function onSave() {
     :coll="coll"
     :rows="rows"
     :readonly="readonly"
-    :add-label="t('definizioni_workflow.ed_aggiungi')"
-    :empty-label="t('definizioni_workflow.ed_regole_generazione_vuoto')"
+    :add-label="t('amministrazione.definizioni_workflow.ed_aggiungi')"
+    :empty-label="t('amministrazione.definizioni_workflow.ed_regole_generazione_vuoto')"
     :can-save="canSave"
     @save="onSave"
   >
     <template #columns>
-      <Column :header="t('definizioni_workflow.ed_col_origine')" style="min-width: 150px;">
+      <Column :header="t('amministrazione.definizioni_workflow.ed_col_origine')" style="min-width: 150px;">
         <template #body="{ data }">{{ stepCodice(data.template_flusso_origine_id) }}</template>
       </Column>
-      <Column :header="t('definizioni_workflow.ed_col_tipo_dest')" style="min-width: 160px;">
+      <Column :header="t('amministrazione.definizioni_workflow.ed_col_tipo_dest')" style="min-width: 160px;">
         <template #body="{ data }">{{ tipoLabel(data.tipo_prestazione_dest_id) }}</template>
       </Column>
-      <Column :header="t('definizioni_workflow.ed_col_dest')" style="min-width: 130px;">
+      <Column :header="t('amministrazione.definizioni_workflow.ed_col_dest')" style="min-width: 130px;">
         <template #body="{ data }">{{ stepCodice(data.template_flusso_dest_id) }}</template>
       </Column>
-      <Column :header="t('definizioni_workflow.ed_col_esito_richiesto')" style="width: 130px;">
+      <Column :header="t('amministrazione.definizioni_workflow.ed_col_esito_richiesto')" style="width: 130px;">
         <template #body="{ data }">{{ esitoLabel(data.esito_richiesto) }}</template>
       </Column>
-      <Column :header="t('definizioni_workflow.ed_col_auto')" style="width: 80px;">
+      <Column :header="t('amministrazione.definizioni_workflow.ed_col_auto')" style="width: 80px;">
         <template #body="{ data }">
           <ToggleSwitch :model-value="data.auto" disabled />
         </template>
       </Column>
-      <Column :header="t('definizioni_workflow.ed_col_attivo')" style="width: 80px;">
+      <Column :header="t('amministrazione.definizioni_workflow.ed_col_attivo')" style="width: 80px;">
         <template #body="{ data }">
           <ToggleSwitch :model-value="data.attivo" :disabled="readonly" @update:model-value="coll.toggleAttivo(data)" />
         </template>
@@ -149,31 +149,31 @@ function onSave() {
     </template>
     <template #form>
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.ed_col_origine') }} *</label>
-        <Select v-model="form.template_flusso_origine_id" :options="stepOptions" option-label="label" option-value="value" filter :placeholder="t('definizioni_workflow.ed_ph_seleziona')" class="w-full" />
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_origine') }} *</label>
+        <Select v-model="form.template_flusso_origine_id" :options="stepOptions" option-label="label" option-value="value" filter :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" class="w-full" />
       </div>
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.ed_col_tipo_dest') }} *</label>
-        <LookupSelect v-model="form.tipo_prestazione_dest_id" rel="pratiche.tipi_prestazione" :placeholder="t('definizioni_workflow.ed_ph_seleziona')" />
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_tipo_dest') }} *</label>
+        <LookupSelect v-model="form.tipo_prestazione_dest_id" rel="pratiche.tipi_prestazione" :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" />
       </div>
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.ed_col_dest') }}</label>
-        <Select v-model="form.template_flusso_dest_id" :options="stepOptions" option-label="label" option-value="value" filter show-clear :placeholder="t('definizioni_workflow.ed_ph_seleziona')" class="w-full" />
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_dest') }}</label>
+        <Select v-model="form.template_flusso_dest_id" :options="stepOptions" option-label="label" option-value="value" filter show-clear :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" class="w-full" />
       </div>
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.ed_col_esito_richiesto') }}</label>
-        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :placeholder="t('definizioni_workflow.ed_prereq_qualsiasi_esito')" class="w-full" />
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_esito_richiesto') }}</label>
+        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :placeholder="t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')" class="w-full" />
       </div>
       <div class="form-field form-field--wide">
-        <label>{{ t('definizioni_workflow.ed_col_descrizione') }}</label>
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_descrizione') }}</label>
         <InputText v-model="form.descrizione" class="w-full" />
       </div>
       <div class="form-field form-field--toggle">
-        <label>{{ t('definizioni_workflow.ed_col_auto') }}</label>
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_auto') }}</label>
         <ToggleSwitch v-model="form.auto" />
       </div>
       <div class="form-field form-field--toggle">
-        <label>{{ t('definizioni_workflow.ed_col_attivo') }}</label>
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_attivo') }}</label>
         <ToggleSwitch v-model="form.attivo" />
       </div>
     </template>

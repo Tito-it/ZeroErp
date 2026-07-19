@@ -76,11 +76,11 @@ const meseCorrente = computed(() => mesi.value[meseIdx.value] ?? null)
 //        tipo evento introdotto DB-side si mostra col suo codice, non col
 //        path della chiave i18n mancante (fail-visible).
 function stadioLabel(stadio) {
-  return labelOrCode(t, te, `dashboard_competenza.stadio_${String(stadio).toLowerCase()}`, stadio)
+  return labelOrCode(t, te, `vendite.dashboard_competenza.stadio_${String(stadio).toLowerCase()}`, stadio)
 }
 
 function tipoEventoLabel(codice) {
-  return labelOrCode(t, te, `dashboard_competenza.tipo_evento.${codice}`, codice)
+  return labelOrCode(t, te, `vendite.dashboard_competenza.tipo_evento.${codice}`, codice)
 }
 
 // Scopo: semaforo del mese: 'ok' = tutto fatturato senza errori; 'vuoto' =
@@ -258,8 +258,8 @@ onActivated(() => {
   <div class="app-page">
     <div class="app-page-toolbar">
       <div class="app-page-filters">
-        <h2 style="margin: 0;">{{ t('dashboard_competenza.page_title') }}</h2>
-        <small class="text-color-secondary">{{ t('dashboard_competenza.page_description') }}</small>
+        <h2 style="margin: 0;">{{ t('vendite.dashboard_competenza.page_title') }}</h2>
+        <small class="text-color-secondary">{{ t('vendite.dashboard_competenza.page_description') }}</small>
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
@@ -284,26 +284,26 @@ onActivated(() => {
           <span
             v-if="statiMesi[idx].errori > 0"
             class="app-dash-mese-errori"
-            v-tooltip.right="t('dashboard_competenza.mese_errori', { n: statiMesi[idx].errori })"
+            v-tooltip.right="t('vendite.dashboard_competenza.mese_errori', { n: statiMesi[idx].errori })"
           >
             <i class="pi pi-times-circle" /> {{ statiMesi[idx].errori }}
           </span>
           <span
             v-if="statiMesi[idx].aperti > 0"
             class="app-dash-mese-fermi"
-            v-tooltip.right="t('dashboard_competenza.mese_aperti', { n: statiMesi[idx].aperti })"
+            v-tooltip.right="t('vendite.dashboard_competenza.mese_aperti', { n: statiMesi[idx].aperti })"
           >
             <i class="pi pi-exclamation-triangle" /> {{ statiMesi[idx].aperti }}
           </span>
           <i
             v-if="statiMesi[idx].stato === 'ok'"
             class="pi pi-check app-dash-mese-ok"
-            v-tooltip.right="t('dashboard_competenza.mese_ok')"
+            v-tooltip.right="t('vendite.dashboard_competenza.mese_ok')"
           />
           <i
             v-else-if="statiMesi[idx].stato === 'vuoto'"
             class="pi pi-minus app-dash-mese-vuoto"
-            v-tooltip.right="t('dashboard_competenza.mese_vuoto')"
+            v-tooltip.right="t('vendite.dashboard_competenza.mese_vuoto')"
           />
         </template>
       </DashMesiSidebar>
@@ -331,7 +331,7 @@ onActivated(() => {
 
         <div class="app-dash-header">
           <h3 style="margin: 0;">
-            {{ t('dashboard_competenza.competenza_titolo', { mese: nomiMesi[meseIdx], anno }) }}
+            {{ t('vendite.dashboard_competenza.competenza_titolo', { mese: nomiMesi[meseIdx], anno }) }}
           </h3>
         </div>
 
@@ -339,14 +339,14 @@ onActivated(() => {
           <!-- Copertura del mese: totali BE (fatturato = imponibile, DB-6). -->
           <div class="app-dash-card" style="cursor: default;">
             <span class="app-dash-card-title">
-              {{ t('dashboard_competenza.copertura_titolo') }}
+              {{ t('vendite.dashboard_competenza.copertura_titolo') }}
             </span>
             <DonutTransito
               :transitato="totaliMese.fatturato"
               :fermo="totaliMese.daFatturare"
               format="currency"
-              :label-transitato="t('dashboard_competenza.fatturato')"
-              :label-fermo="t('dashboard_competenza.da_fatturare')"
+              :label-transitato="t('vendite.dashboard_competenza.fatturato')"
+              :label-fermo="t('vendite.dashboard_competenza.da_fatturare')"
             />
           </div>
 
@@ -363,11 +363,11 @@ onActivated(() => {
           >
             <span class="app-dash-card-title">{{ stadioLabel(card.stadio) }}</span>
             <span class="app-dash-stat-n">{{ card.nAttivita }}</span>
-            <span class="app-dash-stat-sub">{{ t('dashboard_competenza.n_attivita') }}</span>
+            <span class="app-dash-stat-sub">{{ t('vendite.dashboard_competenza.n_attivita') }}</span>
             <span class="app-dash-stat-euro">{{ formatCurrency(card.valoreDisplay) }}</span>
             <span v-if="card.nInRitardo > 0" class="app-dash-ritardo">
               <i class="pi pi-clock" />
-              {{ t('dashboard_competenza.in_ritardo', { n: card.nInRitardo }) }}
+              {{ t('vendite.dashboard_competenza.in_ritardo', { n: card.nInRitardo }) }}
             </span>
             <!-- Breakdown per stato documento fiscale (blocco 3a). -->
             <div v-if="card.statiFattura.length > 0" class="app-dash-breakdown">
@@ -388,19 +388,19 @@ onActivated(() => {
 
         <div class="app-dash-totali">
           <span>
-            {{ t('dashboard_competenza.totale_competenza') }}
+            {{ t('vendite.dashboard_competenza.totale_competenza') }}
             <strong>{{ formatCurrency(totaliMese.teorico) }}</strong>
           </span>
           <span>
-            {{ t('dashboard_competenza.fatturato_mese') }}
+            {{ t('vendite.dashboard_competenza.fatturato_mese') }}
             <strong>{{ formatCurrency(totaliMese.fatturato) }}</strong>
           </span>
           <span>
-            {{ t('dashboard_competenza.da_fatturare_mese') }}
+            {{ t('vendite.dashboard_competenza.da_fatturare_mese') }}
             <strong>{{ formatCurrency(totaliMese.daFatturare) }}</strong>
           </span>
           <span v-if="totaliMese.nInRitardo > 0">
-            {{ t('dashboard_competenza.in_ritardo_mese') }}
+            {{ t('vendite.dashboard_competenza.in_ritardo_mese') }}
             <strong>{{ totaliMese.nInRitardo }}</strong>
           </span>
         </div>
@@ -409,7 +409,7 @@ onActivated(() => {
         <div v-if="nErroriMese > 0" class="app-dash-fermi">
           <h4 class="app-dash-fermi-title">
             <i class="pi pi-times-circle app-dash-mese-errori" />
-            {{ t('dashboard_competenza.errori_titolo', { n: erroriCount }) }}
+            {{ t('vendite.dashboard_competenza.errori_titolo', { n: erroriCount }) }}
           </h4>
           <DataTable
             :value="errori"
@@ -425,32 +425,32 @@ onActivated(() => {
             striped-rows
             @page="onErroriPage"
           >
-            <Column field="tipo_evento" :header="t('dashboard_competenza.col_tipo_evento')" style="width: 140px;">
+            <Column field="tipo_evento" :header="t('vendite.dashboard_competenza.col_tipo_evento')" style="width: 140px;">
               <template #body="{ data }">
                 <Tag :value="tipoEventoLabel(data.tipo_evento)" severity="danger" />
               </template>
             </Column>
-            <Column field="lotto_codice" :header="t('dashboard_competenza.col_lotto')" style="width: 130px;">
+            <Column field="lotto_codice" :header="t('vendite.dashboard_competenza.col_lotto')" style="width: 130px;">
               <template #body="{ data }">
                 {{ data.lotto_codice ?? '—' }}
               </template>
             </Column>
-            <Column field="fattura_numero" :header="t('dashboard_competenza.col_fattura')" style="width: 110px;">
+            <Column field="fattura_numero" :header="t('vendite.dashboard_competenza.col_fattura')" style="width: 110px;">
               <template #body="{ data }">
                 {{ fatturaDisplay(data) }}
               </template>
             </Column>
-            <Column field="error_code" :header="t('dashboard_competenza.col_codice_errore')" style="width: 170px;">
+            <Column field="error_code" :header="t('vendite.dashboard_competenza.col_codice_errore')" style="width: 170px;">
               <template #body="{ data }">
                 {{ data.error_code ?? data.task_code ?? '—' }}
               </template>
             </Column>
-            <Column field="messaggio" :header="t('dashboard_competenza.col_messaggio')">
+            <Column field="messaggio" :header="t('vendite.dashboard_competenza.col_messaggio')">
               <template #body="{ data }">
                 {{ data.messaggio ?? '—' }}
               </template>
             </Column>
-            <Column field="data_evento" :header="t('dashboard_competenza.col_data_evento')" style="width: 150px;">
+            <Column field="data_evento" :header="t('vendite.dashboard_competenza.col_data_evento')" style="width: 150px;">
               <template #body="{ data }">
                 {{ data.data_evento ? displayTimestamp(data.data_evento) : '—' }}
               </template>
@@ -463,11 +463,11 @@ onActivated(() => {
           <template v-if="stadioSelezionato">
             <div class="app-page-toolbar">
               <h4 class="app-dash-fermi-title">
-                {{ t('dashboard_competenza.attivita_titolo', { stadio: stadioSelezionatoLabel }) }}
+                {{ t('vendite.dashboard_competenza.attivita_titolo', { stadio: stadioSelezionatoLabel }) }}
               </h4>
               <label class="app-dash-filter-toggle">
                 <Checkbox v-model="soloRitardo" binary @change="onSoloRitardoChange" />
-                {{ t('dashboard_competenza.solo_ritardo') }}
+                {{ t('vendite.dashboard_competenza.solo_ritardo') }}
               </label>
             </div>
             <DataTable
@@ -489,45 +489,45 @@ onActivated(() => {
               @page="onAttivitaPage"
               @sort="onAttivitaSort"
             >
-              <Column field="commessa_codice" :header="t('dashboard_competenza.col_commessa')" sortable style="width: 130px;">
+              <Column field="commessa_codice" :header="t('vendite.dashboard_competenza.col_commessa')" sortable style="width: 130px;">
                 <template #body="{ data }">
                   {{ data.commessa_codice ?? '—' }}
                 </template>
               </Column>
-              <Column field="cliente_display" :header="t('dashboard_competenza.col_cliente')" sortable>
+              <Column field="cliente_display" :header="t('vendite.dashboard_competenza.col_cliente')" sortable>
                 <template #body="{ data }">
                   {{ data.cliente_display ?? '—' }}
                 </template>
               </Column>
-              <Column field="articolo_codice" :header="t('dashboard_competenza.col_articolo')" sortable>
+              <Column field="articolo_codice" :header="t('vendite.dashboard_competenza.col_articolo')" sortable>
                 <template #body="{ data }">
                   {{ data.articolo_descrizione ?? data.articolo_codice ?? '—' }}
                 </template>
               </Column>
-              <Column field="data_attivita" :header="t('dashboard_competenza.col_data_attivita')" sortable style="width: 110px;">
+              <Column field="data_attivita" :header="t('vendite.dashboard_competenza.col_data_attivita')" sortable style="width: 110px;">
                 <template #body="{ data }">
                   {{ data.data_attivita ? displayDate(data.data_attivita) : '—' }}
                 </template>
               </Column>
-              <Column field="valore" :header="t('dashboard_competenza.col_valore')" sortable style="width: 120px;">
+              <Column field="valore" :header="t('vendite.dashboard_competenza.col_valore')" sortable style="width: 120px;">
                 <template #body="{ data }">
                   {{ data.valore !== null ? formatCurrency(data.valore) : '—' }}
                 </template>
               </Column>
-              <Column field="emessa_in_ritardo" :header="t('dashboard_competenza.col_ritardo')" style="width: 90px;">
+              <Column field="emessa_in_ritardo" :header="t('vendite.dashboard_competenza.col_ritardo')" style="width: 90px;">
                 <template #body="{ data }">
                   <span v-if="data.emessa_in_ritardo" class="app-dash-ritardo">
-                    <i class="pi pi-clock" v-tooltip.bottom="t('dashboard_competenza.emessa_in_ritardo_tooltip')" />
+                    <i class="pi pi-clock" v-tooltip.bottom="t('vendite.dashboard_competenza.emessa_in_ritardo_tooltip')" />
                   </span>
                   <span v-else>—</span>
                 </template>
               </Column>
-              <Column field="fattura_numero" :header="t('dashboard_competenza.col_fattura')" style="width: 110px;">
+              <Column field="fattura_numero" :header="t('vendite.dashboard_competenza.col_fattura')" style="width: 110px;">
                 <template #body="{ data }">
                   {{ fatturaDisplay(data) }}
                 </template>
               </Column>
-              <Column field="stato_fattura_codice" :header="t('dashboard_competenza.col_stato_fattura')" style="width: 120px;">
+              <Column field="stato_fattura_codice" :header="t('vendite.dashboard_competenza.col_stato_fattura')" style="width: 120px;">
                 <template #body="{ data }">
                   <Tag
                     v-if="data.stato_fattura_codice"
@@ -537,7 +537,7 @@ onActivated(() => {
                   <span v-else>—</span>
                 </template>
               </Column>
-              <Column field="valore_fatturato" :header="t('dashboard_competenza.col_fatturato')" style="width: 120px;">
+              <Column field="valore_fatturato" :header="t('vendite.dashboard_competenza.col_fatturato')" style="width: 120px;">
                 <template #body="{ data }">
                   {{ data.valore_fatturato !== null ? formatCurrency(data.valore_fatturato) : '—' }}
                 </template>
@@ -545,12 +545,12 @@ onActivated(() => {
             </DataTable>
             <div v-else class="app-empty-state">
               <i class="pi pi-check-circle" />
-              <p>{{ t('dashboard_competenza.nessuna_attivita') }}</p>
+              <p>{{ t('vendite.dashboard_competenza.nessuna_attivita') }}</p>
             </div>
           </template>
           <div v-else class="app-empty-state">
             <i class="pi pi-chart-pie" />
-            <p>{{ t('dashboard_competenza.attivita_hint') }}</p>
+            <p>{{ t('vendite.dashboard_competenza.attivita_hint') }}</p>
           </div>
         </div>
       </div>

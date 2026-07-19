@@ -110,17 +110,17 @@ const cards = computed(() =>
 // (3 fasi vive sempre presenti + eventuali future accodate fail-visible) —
 // nessuna copia FE del vocabolario config.stati_doc_*.
 const faseOptions = computed(() => [
-  { value: null, label: t('situazione_aperta.filtro_fase_tutte') },
+  { value: null, label: t('vendite.situazione_aperta.filtro_fase_tutte') },
   ...fasi.value.map((f) => ({ value: f, label: faseLabel(f) })),
 ])
 
 // Opzioni filtro "aperti da oltre N giorni" (DL-17): soglia su data documento,
 // solo sulla lista. null = nessuna soglia (drill-down completo).
 const ritardoOptions = computed(() => [
-  { value: null, label: t('situazione_aperta.ritardo_tutti') },
-  { value: 30, label: t('situazione_aperta.ritardo_30') },
-  { value: 60, label: t('situazione_aperta.ritardo_60') },
-  { value: 90, label: t('situazione_aperta.ritardo_90') },
+  { value: null, label: t('vendite.situazione_aperta.ritardo_tutti') },
+  { value: 30, label: t('vendite.situazione_aperta.ritardo_30') },
+  { value: 60, label: t('vendite.situazione_aperta.ritardo_60') },
+  { value: 90, label: t('vendite.situazione_aperta.ritardo_90') },
 ])
 
 // Scopo: carica il riepilogo area × fase con gestione errori standard.
@@ -201,7 +201,7 @@ function buildRowActions(data) {
     buildApriDocumentoAction({
       area: data.area,
       codice: data.codice,
-      label: t('situazione_aperta.apri_documento'),
+      label: t('vendite.situazione_aperta.apri_documento'),
       router,
     }),
   ]
@@ -233,8 +233,8 @@ onActivated(() => {
   <div class="app-page">
     <div class="app-page-toolbar">
       <div class="app-page-filters">
-        <h2 style="margin: 0;">{{ t('situazione_aperta.page_title') }}</h2>
-        <small class="text-color-secondary">{{ t('situazione_aperta.page_description') }}</small>
+        <h2 style="margin: 0;">{{ t('vendite.situazione_aperta.page_title') }}</h2>
+        <small class="text-color-secondary">{{ t('vendite.situazione_aperta.page_description') }}</small>
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
@@ -287,11 +287,11 @@ onActivated(() => {
       <div class="app-dash-fermi">
         <div class="app-page-toolbar">
           <h4 class="app-dash-fermi-title">
-            {{ t('situazione_aperta.lista_titolo') }}
+            {{ t('vendite.situazione_aperta.lista_titolo') }}
           </h4>
           <div class="app-page-filters">
             <label class="app-dash-filter-toggle">
-              <span>{{ t('situazione_aperta.filtro_ritardo_label') }}</span>
+              <span>{{ t('vendite.situazione_aperta.filtro_ritardo_label') }}</span>
               <Select
                 v-model="ritardoGiorni"
                 :options="ritardoOptions"
@@ -307,7 +307,7 @@ onActivated(() => {
               :options="faseOptions"
               option-label="label"
               option-value="value"
-              :placeholder="t('situazione_aperta.filtro_fase_tutte')"
+              :placeholder="t('vendite.situazione_aperta.filtro_fase_tutte')"
               size="small"
               style="width: 200px;"
               @change="onFiltriChange"
@@ -332,34 +332,34 @@ onActivated(() => {
           @page="onDocumentiPage"
           @sort="onDocumentiSort"
         >
-          <Column field="anzianita_giorni" :header="t('situazione_aperta.col_aperto_da')" sortable style="width: 130px;">
+          <Column field="anzianita_giorni" :header="t('vendite.situazione_aperta.col_aperto_da')" sortable style="width: 130px;">
             <template #body="{ data }">
               <span
                 class="app-dash-ritardo"
                 v-tooltip.bottom="data.data_riferimento ? displayDate(data.data_riferimento) : ''"
               >
                 {{ data.anzianita_giorni !== null
-                  ? t('situazione_aperta.aperto_da_giorni', { n: data.anzianita_giorni })
+                  ? t('vendite.situazione_aperta.aperto_da_giorni', { n: data.anzianita_giorni })
                   : '—' }}
               </span>
             </template>
           </Column>
-          <Column field="area" :header="t('situazione_aperta.col_area')" style="width: 110px;">
+          <Column field="area" :header="t('vendite.situazione_aperta.col_area')" style="width: 110px;">
             <template #body="{ data }">
               {{ areaLabel(data.area) }}
             </template>
           </Column>
-          <Column field="codice" :header="t('situazione_aperta.col_codice')" sortable style="width: 130px;">
+          <Column field="codice" :header="t('vendite.situazione_aperta.col_codice')" sortable style="width: 130px;">
             <template #body="{ data }">
               {{ data.codice ?? '—' }}
             </template>
           </Column>
-          <Column field="cliente_display" :header="t('situazione_aperta.col_cliente')" sortable>
+          <Column field="cliente_display" :header="t('vendite.situazione_aperta.col_cliente')" sortable>
             <template #body="{ data }">
               {{ data.cliente_display ?? '—' }}
             </template>
           </Column>
-          <Column field="fase" :header="t('situazione_aperta.col_fase')" style="width: 140px;">
+          <Column field="fase" :header="t('vendite.situazione_aperta.col_fase')" style="width: 140px;">
             <template #body="{ data }">
               <Tag
                 v-if="data.fase"
@@ -369,22 +369,22 @@ onActivated(() => {
               <span v-else>—</span>
             </template>
           </Column>
-          <Column field="stato_codice" :header="t('situazione_aperta.col_stato')" style="width: 120px;">
+          <Column field="stato_codice" :header="t('vendite.situazione_aperta.col_stato')" style="width: 120px;">
             <template #body="{ data }">
               <Tag :value="data.stato_codice ?? '—'" :severity="statoSeverity(data)" />
             </template>
           </Column>
-          <Column field="valore_totale" :header="t('situazione_aperta.col_valore')" sortable style="width: 120px;">
+          <Column field="valore_totale" :header="t('vendite.situazione_aperta.col_valore')" sortable style="width: 120px;">
             <template #body="{ data }">
               {{ data.valore_totale !== null ? formatCurrency(data.valore_totale) : '—' }}
             </template>
           </Column>
-          <Column field="unita_totali" :header="t('situazione_aperta.col_unita')" style="width: 90px;">
+          <Column field="unita_totali" :header="t('vendite.situazione_aperta.col_unita')" style="width: 90px;">
             <template #body="{ data }">
               {{ data.unita_totali ?? '—' }}
             </template>
           </Column>
-          <Column field="motivo_fermo" :header="t('situazione_aperta.col_motivo')">
+          <Column field="motivo_fermo" :header="t('vendite.situazione_aperta.col_motivo')">
             <template #body="{ data }">
               {{ data.motivo_fermo ? motivoLabel(data.motivo_fermo) : '—' }}
             </template>
@@ -398,8 +398,8 @@ onActivated(() => {
         <DashEmptyState
           v-else
           :loaded="documentiLoaded"
-          :empty-text="t('situazione_aperta.nessun_documento')"
-          :placeholder-text="t('situazione_aperta.non_caricato')"
+          :empty-text="t('vendite.situazione_aperta.nessun_documento')"
+          :placeholder-text="t('vendite.situazione_aperta.non_caricato')"
         />
       </div>
     </div>

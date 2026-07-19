@@ -141,21 +141,21 @@ watch(activeDrawer, (newVal, oldVal) => {
   <div v-if="ownerId" class="preview-badges">
     <Button
       outlined icon="pi pi-map-marker"
-      :label="`${counts.indirizzi} ${t('clienti.gestisci_indirizzi')}`"
+      :label="`${counts.indirizzi} ${t('anagrafiche.clienti.gestisci_indirizzi')}`"
       :loading="loading"
       class="preview-badge-btn"
       @click="activeDrawer = 'indirizzi'"
     />
     <Button
       outlined icon="pi pi-wallet"
-      :label="`${counts.conti} ${t('clienti.gestisci_conti')}`"
+      :label="`${counts.conti} ${t('anagrafiche.clienti.gestisci_conti')}`"
       :loading="loading"
       class="preview-badge-btn"
       @click="activeDrawer = 'conti'"
     />
     <Button
       outlined icon="pi pi-id-card"
-      :label="`${counts.contatti} ${t('clienti.gestisci_contatti')}`"
+      :label="`${counts.contatti} ${t('anagrafiche.clienti.gestisci_contatti')}`"
       :loading="loading"
       class="preview-badge-btn"
       @click="activeDrawer = 'contatti'"
