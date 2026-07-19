@@ -127,11 +127,12 @@ BEGIN
       AND (p_billing_account_id IS NULL
            OR COALESCE(d.billing_account_id, src.src_billing_account_id) = p_billing_account_id)
       AND (p_ddt_id IS NULL OR d.id = p_ddt_id)
-      AND NOT EXISTS (
-        SELECT 1 FROM vendite.commesse_attivita ca
-        WHERE ca.segment_key = 'DDT:' || d.uid::text || ':R:' || dr.id::text
-          AND ca.stato_emissione = 'EMESSA'
-      )
+      -- Esclusione "gia' inviato": eleggibile solo se MAI
+      -- instradata (LIBERA) — classificatore condiviso coi rami
+      -- reason della capability: vede anche i componenti #CMP e
+      -- non dipende piu' da stato_emissione (ALLOCATA basta).
+      AND script.fn_get_stato_push_segment(
+            'DDT:' || d.uid::text || ':R:' || dr.id::text) = 'LIBERA'
   ),
   dist AS (
     -- Distribuzione della differenza per riga DDT (greedy oldest-first,
@@ -199,7 +200,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ddt_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ddt_id bigint)
-IS 'Lista righe DDT eligible al push su commessa. rev 2026-07-18 (step 5b): esclude i DDT con causale di trasporto NON fatturabile (config.causali_trasporto.fatturabile, DL-28) — cintura su entrambi i rami, la causale descrive il viaggio della merce non la provenienza del documento; INNER JOIN perche'' la causale e'' obbligatoria dall''emissione (gate trgfn_ddt_guard_causale_emissione). rev 2026-07-18 (step 5): eleggibilita'' order-backed DALLO stato-trigger IN POI (sdd.ordine >= rank del trigger) AND NOT is_abortito AND <> RESO, cintura XOR != CONFERMATO PRESERVATA. rev 2026-07-17 (step 3): proietta come quantita la DIFFERENZA del contatore vw_contatore_merce distribuita per riga DDT (greedy, cappata a dr.quantita); qta_operativa scalata; standalone e compositi a dr.quantita grezza; filtra quantita_push > 0. rev 2026-06-28: sorgente/stato per codice_interno.';
+IS 'Lista righe DDT eligible al push su commessa. rev 2026-07-18 (step 5b): esclude i DDT con causale di trasporto NON fatturabile (config.causali_trasporto.fatturabile, DL-28) — cintura su entrambi i rami, la causale descrive il viaggio della merce non la provenienza del documento; INNER JOIN perche'' la causale e'' obbligatoria dall''emissione (gate trgfn_ddt_guard_causale_emissione). rev 2026-07-18 (step 5): eleggibilita'' order-backed DALLO stato-trigger IN POI (sdd.ordine >= rank del trigger) AND NOT is_abortito AND <> RESO, cintura XOR != CONFERMATO PRESERVATA. rev 2026-07-17 (step 3): proietta come quantita la DIFFERENZA del contatore vw_contatore_merce distribuita per riga DDT (greedy, cappata a dr.quantita); qta_operativa scalata; standalone e compositi a dr.quantita grezza; filtra quantita_push > 0. rev 2026-06-28: sorgente/stato per codice_interno. rev 2026-07-19: esclusione su ALLOCAZIONE via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a.';
 ```
 
 ---

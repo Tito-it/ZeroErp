@@ -22,6 +22,8 @@ AS $function$
 --   rev 2026-07-19: le transizioni verso EMESSO delegano a
 --   script.fn_check_ddt_emittibile (TUTTE le condizioni di emissione,
 --   non solo le righe): brief-db-guard-righe-avanzamento-stato §1a-bis.
+--   rev 2026-07-19 (bis): reason push DDT_GIA_INVIATO/DDT_GIA_FATTURATO
+--   via fn_get_stato_push_segment (brief-db-push-commessa-gia-inviato §4b).
 DECLARE
     v_ddt        vendite.ddt%ROWTYPE;
     v_stato_cod  config.stati_doc_ddt.codice_interno%TYPE;
@@ -128,6 +130,24 @@ BEGIN
     IF EXISTS (SELECT 1
                  FROM vendite.fn_list_ddt_da_pushare(p_ddt_id := p_ddt_id)) THEN
         v_push_ok := true;
+    -- Nessuna riga pushabile: distinguere il PERCHE' via
+    -- classificatore condiviso (stesso predicato della push-list,
+    -- vede anche i componenti #CMP).
+    ELSIF EXISTS (SELECT 1
+                    FROM vendite.ddt_righe r
+                   WHERE r.ddt_id = p_ddt_id
+                     AND script.fn_get_stato_push_segment(
+                           'DDT:' || v_ddt.uid::text || ':R:' || r.id::text) = 'ALLOCATA') THEN
+        -- pushato, in attesa di fatturazione
+        v_push_reason     := 'DDT_GIA_INVIATO';
+        v_push_reason_key := 'vendite.ddt.push_commessa_reason.gia_inviato';
+    ELSIF EXISTS (SELECT 1
+                    FROM vendite.ddt_righe r
+                   WHERE r.ddt_id = p_ddt_id
+                     AND script.fn_get_stato_push_segment(
+                           'DDT:' || v_ddt.uid::text || ':R:' || r.id::text) = 'EMESSA') THEN
+        v_push_reason     := 'DDT_GIA_FATTURATO';
+        v_push_reason_key := 'vendite.ddt.push_commessa_reason.gia_fatturato';
     ELSE
         v_push_reason     := 'DDT_NON_PUSHABILE';
         v_push_reason_key := 'vendite.ddt.push_commessa_reason.non_pushabile';
@@ -168,7 +188,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
-IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-11: + blocco pdf {mode, allow_allegati}. rev 2026-07-16: ogni azione espone enabled/reason/reason_key da meta.requires_righe. rev 2026-07-19: le transizioni verso EMESSO delegano a script.fn_check_ddt_emittibile — enabled=false + reason/reason_key del primo motivo + array completo in "reasons" (righe 543, causale 544, prezzi 545, indirizzi, componenti pendenti). Single source coi 4 guard trigger di emissione: il pulsante non e'' piu'' abilitato per poi fallire con 409. Brief: brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2.';
+IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-11: + blocco pdf {mode, allow_allegati}. rev 2026-07-16: ogni azione espone enabled/reason/reason_key da meta.requires_righe. rev 2026-07-19: le transizioni verso EMESSO delegano a script.fn_check_ddt_emittibile — enabled=false + reason/reason_key del primo motivo + array completo in "reasons" (righe 543, causale 544, prezzi 545, indirizzi, componenti pendenti). Single source coi 4 guard trigger di emissione: il pulsante non e'' piu'' abilitato per poi fallire con 409. Brief: brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2. rev 2026-07-19 (bis): reason push DDT_GIA_INVIATO (allocato, in attesa fatturazione) / DDT_GIA_FATTURATO via script.fn_get_stato_push_segment (vede anche componenti #CMP); fallback DDT_NON_PUSHABILE solo se nessuna riga instradata — brief-db-push-commessa-gia-inviato §4b.';
 ```
 
 ---
