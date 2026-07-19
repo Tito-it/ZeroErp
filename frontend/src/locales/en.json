@@ -1424,7 +1424,10 @@
       "push_commessa_errore": "Push failed: {primo_errore}",
       "push_commessa_skipped": "Push already in progress for this DDT.",
       "push_commessa_reason": {
-        "non_pushabile": "DDT not yet sendable to a job: it must be shipped or delivered.",
+        "non_pushabile": "This DDT cannot currently be sent to a job.",
+        "merce_in_viaggio": "Not yet sendable to a job: it must be shipped or delivered.",
+        "fattura_da_ordine": "Invoicing is handled by the order (on confirmation): this DDT never goes to a job.",
+        "solo_trasporto": "Non-billable reason code: the document accompanies the goods without generating invoicing.",
         "gia_inviato": "DDT already sent to a job: its lines are awaiting invoicing.",
         "gia_fatturato": "DDT already sent to a job and invoiced."
       },

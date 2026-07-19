@@ -305,6 +305,6 @@ loro valore si sposta sul dopo — restano la regola per il codice futuro.
   `docs/it/dev/work-done/addendum-db-stati-doc-offerte-transizioni-label-key.md`
 - Regole superate da correggere: `frontend-standards.md` §Multilingua ·
   `work-in-progress/frontend/guida-sviluppo-frontend.md` §10
-- Companion della stessa famiglia: [brief-db-ddt-reason-push-catch-all.md](../work-in-progress/brief-db-ddt-reason-push-catch-all.md)
+- Companion della stessa famiglia: [brief-db-ddt-reason-push-catch-all.md](brief-db-ddt-reason-push-catch-all.md)
 - Capability che emettono chiavi: `docs/it/dbzero/script/funzioni/fn_available_actions_{ordine,ddt,preventivo}.md`
 - Seed toccati: `db/changelog/migrations_v2/80_data/sql/config/transizioni_stati_{preventivi,ordini,ddt}.csv`

@@ -8,10 +8,20 @@
 > (decisioni **D-1..D-7**, chiuse 2026-07-19).
 > **Prerequisito DB**:
 > [brief-db-processi-fatturazione-cockpit.md](brief-db-processi-fatturazione-cockpit.md)
-> — **gate**: gli step che usano le azioni di processo e il task stampa partono a oggetti
-> DB applicati ([[feedback_be_fe_attende_prerequisiti_db]]).
+> (decisioni **B-1..B-5**, revisione outbox 2026-07-19) — **gate**: gli step che usano le
+> azioni di processo e la coda stampa partono a oggetti DB **G1** applicati
+> ([[feedback_be_fe_attende_prerequisiti_db]]).
 > **Contesto**: non siamo in produzione ([[project_no_produzione_solo_sviluppo]]).
 > **Parte da**: motore fatturazione completo e headless + le tre lenti vive.
+>
+> ⚠️ **Sequenza di rilascio vincolante (G1 → BE → G2)** — dal brief DB §2. La stampa entra
+> in pipeline solo con l'append G2 ai `processi` DEFINITIVA, e **G2 va committato SOLO dopo**
+> che questo BE ha (a) registrato l'handler `stampa_documenti_lotto_default` e (b) schedulato
+> il worker drainer. Motivo: la corsia GIORNALIERO esegue la DEFINITIVA da cron ogni notte;
+> se la stampa fosse accodata nei `processi` ma l'handler non esistesse, `numera_fatture`
+> numererebbe e **poi lo step crasherebbe** (`E_TASK_IMPLEMENTATION_NOT_FOUND`). G1 (coda +
+> funzione + seed, tutto inerte) è sicuro da subito; **G2 è l'interruttore**, lo si arma a
+> BE deployato. Chi chiude la Fase C **coordina con il team DB** l'apply di G2.
 
 ---
 
@@ -27,10 +37,11 @@ implementazione «da interfaccia».
 | # | Invariante | Perché |
 | --- | --- | --- |
 | I-1 | **Un solo processo, due modi di avvio** | D-1: UI, cron e batch chiamano lo **stesso** core. Se ti trovi a scrivere una seconda logica «per la UI», fermati: va estratta e condivisa |
-| I-2 | **Numerazione = numerazione + stampa** | D-1: è uno step di pipeline con due task (seed DB), non due chiamate del caller |
+| I-2 | **Numerazione = numerazione + stampa** | D-1: lo step DEFINITIVA ha due task — `numera_fatture` (numera, atomico) + `stampa_documenti_lotto` (**accoda**, non renderizza). Non due chiamate del caller |
 | I-3 | **La cardinalità decide sincrono o batch** | D-2/§2.5 design: **1 documento → sincrono** (calcolo o stampa di una fattura, azione su una commessa); **2+ → batch in background**, la pagina non resta mai bloccata. Criterio unico, per ogni processo di fatturazione |
 | I-4 | **La stampa è stupida** | D-7: legge ciò che esiste e genera 1..N documenti. Zero logica di dominio, zero cambi di stato, zero calcoli. Chi la invoca decide *cosa*; lei sa solo *come* |
-| I-5 | **Monitoraggio con l'esistente** | D-2: `maintenance.job_run_log` + `vendite.fatturazione_lotti_task_runs` + `vendite.event_log`. Niente tabelle nuove di tracciamento |
+| I-4b | **Il render non tiene il lock fiscale** | B-1: lo step DEFINITIVA è una transazione atomica e `numera_fatture` tiene l'advisory lock sul registro fino al commit. La stampa **accoda dentro la transazione** (INSERT veloce) e **renderizza fuori** (worker). Mai I/O di rendering dentro la transazione di numerazione |
+| I-5 | **Monitoraggio con l'esistente** | D-2: `maintenance.job_run_log` (run) + `vendite.fatturazione_lotti_task_runs` (step/tentativi) + `vendite.event_log` (timeline) + `vendite.fatture_stampa_coda` (stato/tentativi/esito per documento). Niente tabelle **nuove** di tracciamento oltre la coda stampa già decisa dal DB |
 | I-6 | **Il read-side non si tocca** | Le viste `vw_dash_*` e i loro endpoint restano invariati: le azioni sono endpoint di comando accanto |
 | I-7 | **Gate fiscale visibile** | Pre-fiscale e numerazione non stanno mai dietro lo stesso pulsante |
 
@@ -73,28 +84,36 @@ toccare curl, e ogni commessa è ispezionabile/governabile dal drawer.
 
 ---
 
-## FASE C — I verbi «Fattura» e «Rendi definitive»
+## FASE C — I verbi «Fattura» e «Rendi definitive» (+ stampa outbox)
 
-> Obiettivo: il cuore del cockpit. Qui vive il vincolo I-1: si **estrae** il core del driver
-> batch, non lo si riscrive.
+> Obiettivo: il cuore del cockpit. Due vincoli reggono la fase: I-1 (si **estrae** il core
+> del driver batch, non lo si riscrive) e I-4b (la stampa **accoda dentro** la transazione e
+> **renderizza fuori**, in un worker — mai I/O di rendering col lock fiscale tenuto). La
+> stampa massiva è quindi un **worker che drena la coda** `vendite.fatture_stampa_coda`, non
+> un job che cicla in-linea. ⚠️ Chiudere la fase **coordinando l'attivazione G2** con il team
+> DB (C-10) — vedi vincolo di sequenza in testata.
 
 | # | Step | Dettaglio | Stato |
 | --- | --- | --- | --- |
 | C-0 | **BE — generazione documenti eseguibile in contesto sistema (chiude P-1)** | `DocumentGenerationService.genera_documento` usa `user` per **una sola** cosa autorizzazione-critica — calcolare lo scope emittente (`resolve_emittente_scope` → `get_emittenti_ids`); tutto il resto (`generato_da_user_id`, `evento.user_id`, `auth_user_id` nel context) è **audit e tollera già `None`**, e i context builder **non filtrano i dati per utente**. **Decisione (2026-07-19, vedi §4)**: separare *chi autorizza* da *cosa genera* — `genera_documento` accetta lo **scope emittente già risolto** oltre allo `user`. Path web invariato (deriva scope da `user`, i 5 domini non cambiano); path sistema (batch/pipeline) passa `emittente_scope=None` — vede tutto, gira già su canale `system_process_context` BYPASSRLS con emittente **autoritativo** dal lotto — e `audit_user_id=None` (l'attore è già in `app.jwt_user`). **Non-breaking, nessun DB** | ⬜ |
 | C-1 | **BE — estrazione core driver** | Da `run_fatturazione_batch` (management command) estrarre `fatturazione_driver_service` (nome indicativo): discovery coppie `(emittente, tipo_doc)` emittibili → lotto per coppia → pipeline per coppia, **best-effort** (una coppia in errore non blocca le altre) + esito strutturato. Nuovo parametro **`fino_a_stato`** (Python puro, nessun DB): il giro da UI e il massivo da cron si fermano a **EMESSA** (D-1). Il command diventa un **chiamante sottile** — comportamento invariato, coperto dai test esistenti | ⬜ |
-| C-2 | **BE — cablare la famiglia documentale su FATTURA** | La sorgente `FATTURA` esiste (`config.sorgenti` id 10, target `vendite.fatture`, `key_selector=id`) ma **non è istanziata** sulla factory `build_documenti_sorgente_views` (oggi: preventivi, offerte, contratti, ordini, DDT). Delta ~10 righe → `fatture_documenti_views.py` (genera / anteprima / lista / file / download) + template fattura. **Sblocca la stampa singola sincrona** (I-3) e la ristampa on-demand | ⬜ |
-| C-2b | **BE — processo stampa massivo** | Il pezzo che manca davvero (D-7 §5-bis, buco B-b): un processo che genera **N** documenti — input `(sorgente_tipo, ids[])`, output N documenti — eseguito **in background** (I-3) con `registered_job`, per-documento resiliente (un render fallito non ferma gli altri) e **idempotente**. **Stupido per contratto** (I-4): nessuna conoscenza di lotti, fatture o fatturazione; internamente cicla `DocumentGenerationService.genera_documento` (che C-0 ha reso invocabile in contesto sistema). Riusabile da qualunque dominio | ⬜ |
-| C-2c | **BE — handler task `stampa_documenti_lotto_default`** | Registrato in `PipelineStepExecutor.handler_registry` (il seed DB lo dichiara). **È un adattatore, non un generatore**: risolve gli id delle fatture del lotto (dal lotto conosce già l'emittente autoritativo) e li passa al processo C-2b in contesto sistema. Nessuna logica di rendering nella pipeline (I-4). Ri-eseguibile con rerun del solo task | ⬜ |
+| C-2 | **BE — cablare la famiglia documentale su FATTURA** | La sorgente `FATTURA` esiste (`config.sorgenti` id 10, target `vendite.fatture`, `key_selector=id`) ma **non è istanziata** sulla factory `build_documenti_sorgente_views` (oggi: preventivi, offerte, contratti, ordini, DDT). Delta ~10 righe → `fatture_documenti_views.py` (genera / anteprima / lista / file / download) + context builder FATTURA + template fattura. **Sblocca la stampa singola sincrona** (I-3) e la ristampa on-demand | ⬜ |
+| C-2b | **BE — worker drainer della coda stampa** (sostituisce «processo massivo generico») | Management command su cron/systemd (canale `system_process_context`, come `run_fatturazione_batch`), avvolto in `registered_job` (`maintenance.job_run_log`). Drena `vendite.fatture_stampa_coda`: seleziona i `PENDING` con **`FOR UPDATE SKIP LOCKED`** (più worker non si pestano), per riga → **backstop numerazione** (C-2d) → `DocumentGenerationService.genera_documento` in contesto sistema (C-0) → aggiorna `stato`/`tentativi`/`ultimo_errore`/`documento_id`. **Resiliente per-riga** (un render fallito non ferma gli altri, incrementa `tentativi`, `stato=ERRORE` oltre soglia) e **idempotente** (l'indice unico parziale della coda impedisce doppioni vivi). Non conosce «lotto» o «fatturazione»: sa solo drenare la coda | ⬜ |
+| C-2c | **BE — handler task `stampa_documenti_lotto_default`** | Registrato in `PipelineStepExecutor.handler_registry` (il seed DB lo dichiara). **È un adattatore, un one-liner**: `SELECT vendite.fn_accoda_stampe_lotto(<lotto_id>)` — **accoda e ritorna** (I-4b: nessun render dentro la transazione dello step). Non passa id a nessuno, non renderizza. `annullabile=t`, `resume_mode=RESUME_TASK` (seed DB). Ri-eseguibile: ri-accodare è idempotente | ⬜ |
+| C-2d | **BE — backstop numerazione nel worker** (B-2) | Prima di generare il PDF, il worker verifica che la fattura sia numerata; se non lo è, la numera via `fn_numera_fattura_opz_emessa(p_fattura_id)` (per-fattura, **idempotente**: già numerata → no-op). **Vive nel worker / context-builder FATTURA, NON dentro `DocumentGenerationService`** (che resta generico e stupido — I-4). Rende **impossibile un PDF non numerato** → D-1 al livello più forte | ⬜ |
 | C-3 | **BE — endpoint giro fatturazione** | `POST /vendite/fatturazione/run/` · body `{competenza_mese, fino_a_stato}` · corsia **differita**, perimetro `competenza ≤ M` (cumulativo come il batch), scope emittente dell'operatore via RLS. `post_permission = "genera_fatture_lotti"`, `Idempotency-Key`. **I-3**: multi-coppia → esecuzione in background con run registrato (`registered_job`), risposta = handle del run; la coppia singola resta sincrona | ⬜ |
-| C-4 | **BE — endpoint numerazione** | `POST /vendite/fatturazione/numera/` (o `lotti/<id>/numera/` per il singolo) → step DEFINITIVA sui lotti EMESSA del perimetro. `post_permission = "numera_fatture_lotti"`. **I-2**: esegue lo step, che contiene numerazione **e** stampa — l'endpoint non chiama la stampa per conto suo | ⬜ |
-| C-5 | **BE — esiti dei giri** | `GET /vendite/fatturazione/esiti/`: ultimi run per corsia da `maintenance.job_run_log` (quando, esito, coppie ok/errore, messaggio) — **I-4**, nessuna tabella nuova | ⬜ |
-| C-6 | **FE — PageActionsBar del mese** | «Aggiorna commesse» (push, endpoint esistente — **D-5**) · «Fattura competenza M» (C-3) · «Rendi definitive» (C-4, azione **separata** e visivamente distinta — I-6) · pannello/chip «esito ultimo giro» (C-5) | ⬜ |
+| C-4 | **BE — endpoint numerazione** | `POST /vendite/fatturazione/numera/` (o `lotti/<id>/numera/` per il singolo) → step DEFINITIVA sui lotti EMESSA del perimetro. `post_permission = "numera_fatture_lotti"`. **I-2**: esegue lo step, che contiene `numera_fatture` **e** `stampa_documenti_lotto` (che accoda) — l'endpoint non chiama la stampa per conto suo; la coda viene poi drenata dal worker | ⬜ |
+| C-5 | **BE — esiti dei giri + stato coda stampa** | `GET /vendite/fatturazione/esiti/`: ultimi run per corsia da `maintenance.job_run_log`. **+ stato coda stampa** da `vendite.fatture_stampa_coda` (conteggi PENDING/IN_CORSO/FATTO/ERRORE, per lotto/emittente; RLS scope emittente già sulla tabella) — l'operatore vede se le stampe sono in coda, fatte o in errore. **I-5**: nessuna tabella nuova (la coda è già decisa dal DB) | ⬜ |
+| C-6 | **FE — PageActionsBar del mese** | «Aggiorna commesse» (push, endpoint esistente — **D-5**) · «Fattura competenza M» (C-3) · «Rendi definitive» (C-4, azione **separata** e visivamente distinta — I-7) · pannello/chip «esito ultimo giro» + **badge stampe in coda/errore** (C-5) | ⬜ |
 | C-7 | **FE — azioni sulle card stadio** | «Fattura adesso» su `DA_EMETTERE` / `EMESSA_NON_FATTURATA`; «Rendi definitive» sul breakdown `FATTURATA/EMESSA`; feedback di avanzamento per i giri in background + refresh a fine run | ⬜ |
-| C-8 | **FE — stampa e ristampa** | Da una fattura: «Stampa/Anteprima» sincrona (C-2, componenti documentali già esistenti nei 5 domini — si riusa il pattern, non si inventa); da lotto/selezione: «Ristampa» massiva in background (C-2b) con esito nel pannello giri | ⬜ |
-| C-9 | **Test + doc + smoke** | Test service driver (fermata a stato, best-effort, perimetro) + stampa massiva (resilienza per-documento, idempotenza) e API; **smoke E2E** «approva → fattura → rendi definitive» su dati veri, che verifica anche **numerazione e stampa nello stesso atto** (gli smoke scoprono i GRANT/scope che i test mock non vedono); doc `api_fatturazione.md` + `api_documenti_*` + `api.md` | ⬜ |
+| C-8 | **FE — stampa e ristampa** | Da una fattura: «Stampa/Anteprima» **sincrona** (C-2, 1 documento → I-3; componenti documentali già esistenti nei 5 domini — si riusa il pattern); da lotto/selezione: «Ristampa» **massiva → accoda in coda** (C-2b la drena) con stato visibile (C-5). Il singolo passa da `genera_documento`, il massivo dalla coda: due percorsi per cardinalità, un solo render | ⬜ |
+| C-9 | **Test + doc + smoke** | Test service driver (fermata a stato, best-effort, perimetro) + worker drainer (SKIP LOCKED, resilienza per-riga, tentativi/ERRORE, idempotenza, **backstop numera-se-manca**) + accodatore; **smoke E2E** «approva → fattura → rendi definitive → drena coda» su dati veri, che verifica **PDF sempre numerato** e **nessun lock fiscale tenuto durante il render** (gli smoke scoprono i GRANT/scope che i test mock non vedono); doc `api_fatturazione.md` + `api_documenti_*` + `api.md` | ⬜ |
+| C-10 | **DB — attivazione G2** (coordinata) | A handler + worker deployati, dare l'ok al team DB per l'append G2 ai `processi` DEFINITIVA (brief DB §6). **Non prima** (vincolo di sequenza in testata). Verifica post-attivazione: un giro giornaliero notturno accoda e il worker drena, PDF numerati | ⬜ |
 
 **Gate di uscita C**: un mese di competenza si chiude interamente dall'app, con la
-numerazione come atto separato e consapevole.
+numerazione come atto separato e consapevole; le stampe entrano in coda alla DEFINITIVA, il
+worker le drena, ogni PDF è numerato, e l'operatore vede lo stato delle stampe. G2 attivato
+in coordinamento col DB.
 
 ---
 
@@ -119,9 +138,10 @@ numerazione come atto separato e consapevole.
 | # | Punto | Quando |
 | --- | --- | --- |
 | ~~P-1~~ | ✅ **RISOLTO in design (2026-07-19)** — `genera_documento` in contesto sistema: separare scope-authorization dal generatore. Diventa lo step **C-0**; analisi completa in §4 | — |
-| P-2 | Stampa best-effort vs bloccante sul fallimento render | risposta del team DB al §3.4 del brief DB |
+| ~~P-2~~ | ✅ **SUPERATO** dal modello outbox (brief DB §0): con lo step che committa veloce (solo INSERT in coda) il fallimento di render vive nei **tentativi della coda**, disaccoppiato dalla numerazione. Nessuno stato «numerata ma non stampata» da gestire nella pipeline. Resta come parametro del worker la **soglia tentativi → ERRORE** (default sensato, tarabile) | — |
 | P-3 | Template fattura: non esiste ancora (i template sono dato di configurazione, non seed). Senza, la stampa non ha cosa renderizzare | prima di C-2 in-app |
 | P-4 | Soglia oltre cui un'operazione «singola» diventa background (I-3): il criterio è la cardinalità, ma se il documento singolo risultasse lento va tarato sull'evidenza | in C-3, con numeri veri |
+| P-5 | Cadenza del worker drainer (cron) e numero di worker paralleli: `FOR UPDATE SKIP LOCKED` regge il parallelismo, ma la cadenza va tarata sul ritardo accettabile tra «Rendi definitive» e PDF disponibile | in C-2b, con volumi veri |
 
 ---
 
@@ -166,9 +186,11 @@ già risolto** oltre allo `user`:
 
 **Proprietà**: **non-breaking** (i chiamanti web non cambiano), **nessun DB**, **nessuna
 dipendenza dal team DB**. È interamente lavoro BE dello step **C-0**, prerequisito di
-C-2b/C-2c. Il guard di scope resta pieno sul path web (defense-in-depth invariata); sul path
-sistema l'autorizzazione è il canale stesso (`system_process_context` fail-loud se il ruolo
-non è BYPASSRLS).
+C-2b/C-2c/C-2d. Il guard di scope resta pieno sul path web (defense-in-depth invariata); sul
+path sistema l'autorizzazione è il canale stesso (`system_process_context` fail-loud se il
+ruolo non è BYPASSRLS). Il **consumatore reale** del path sistema è il **worker drainer**
+(C-2b): il brief DB (§3, RLS della coda) conferma lo stesso pattern — scrittura del worker in
+canale sistema, come `run_fatturazione_batch`.
 
 ---
 

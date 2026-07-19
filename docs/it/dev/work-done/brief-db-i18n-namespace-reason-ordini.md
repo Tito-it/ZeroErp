@@ -128,7 +128,7 @@ né su `requires_righe`, che era il rischio principale segnalato in §1.
 
 ## 6. Riferimenti
 
-> **Companion (2026-07-19)**: [brief-db-ddt-reason-push-catch-all.md](../work-in-progress/brief-db-ddt-reason-push-catch-all.md)
+> **Companion (2026-07-19)**: [brief-db-ddt-reason-push-catch-all.md](brief-db-ddt-reason-push-catch-all.md)
 > — stessa famiglia (reason del push commessa), **difetto opposto e
 > complementare**: lì le reason DDT hanno il namespace giusto e il messaggio si
 > vede, ma il ramo catch-all ne racconta una falsa (un DDT consegnato di ordine

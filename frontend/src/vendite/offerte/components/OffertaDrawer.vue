@@ -1114,7 +1114,8 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                 <Divider />
                 <LineagePassaggiPanel
                   base-path="/vendite/offerte"
-                  :doc-id="offertaId" />
+                  :doc-id="offertaId"
+                  :readonly="parentReadonly" />
               </template>
 
             </TabPanel>

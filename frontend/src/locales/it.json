@@ -1424,7 +1424,10 @@
       "push_commessa_errore": "Push fallito: {primo_errore}",
       "push_commessa_skipped": "Push già in corso per questo DDT.",
       "push_commessa_reason": {
-        "non_pushabile": "DDT non ancora inviabile a commessa: dev'essere spedito o consegnato.",
+        "non_pushabile": "Questo DDT non è al momento inviabile a commessa.",
+        "merce_in_viaggio": "Non ancora inviabile a commessa: dev'essere spedito o consegnato.",
+        "fattura_da_ordine": "La fatturazione è a carico dell'ordine (conferma): questo DDT non transita in commessa.",
+        "solo_trasporto": "Causale non fatturabile: il documento accompagna la merce senza generare fatturazione.",
         "gia_inviato": "DDT già inviato a commessa: le righe sono in attesa di fatturazione.",
         "gia_fatturato": "DDT già inviato a commessa e fatturato."
       },

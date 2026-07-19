@@ -1017,7 +1017,8 @@ const drawerActions = computed(() => {
               <Divider />
               <LineagePassaggiPanel
                 base-path="/vendite/preventivi"
-                :doc-id="effectivePreventivoId" />
+                :doc-id="effectivePreventivoId"
+                :readonly="isReadonlyPuro" />
             </template>
           </TabPanel>
 

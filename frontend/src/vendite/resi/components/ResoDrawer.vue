@@ -270,7 +270,8 @@ async function onRiconsegnaGenerata() {
         <Divider />
         <LineagePassaggiPanel
           base-path="/vendite/resi"
-          :doc-id="props.resoId" />
+          :doc-id="props.resoId"
+          :readonly="readonly || parentReadonly" />
       </template>
 
       <FormFooter v-if="canEditTestata && !isReadonly && !formRigaAperto"

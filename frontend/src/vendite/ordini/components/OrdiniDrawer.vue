@@ -48,7 +48,6 @@ import OrdineEmissioneDialog from './dialogs/OrdineEmissioneDialog.vue'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
-import Message from 'primevue/message'
 
 const { t, te } = useI18n()
 const store = useOrdiniStore()
@@ -113,11 +112,32 @@ const availableActions = caps.availableActions
 const canEditTestata = caps.canEdit
 const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
-// Push a commessa: l'azione arriva data-driven in `available_actions` solo
-// quando e' eseguibile, quindi da sola sparisce senza spiegare perche'. La
-// capability espone anche il motivo: banner informativo, mirror PreventiviDrawer.
+// Push a commessa: la capability include l'azione in `available_actions` solo
+// quando e' eseguibile; quando non lo e', espone il motivo nei campi
+// can_push_commessa_reason/_key. Presentazione = tooltip su pulsante
+// DISABILITATO, non banner (Decisione D del brief catch-all DDT, applicata qui
+// per simmetria XOR: `fattura_da_ddt` e' la causa permanente speculare di
+// `fattura_da_ordine` — un banner sempre visibile sarebbe rumore perpetuo su
+// ogni ordine a trigger SPEDITO/CONSEGNATO). Entry sintetica nella stessa
+// shape delle azioni DB: il mapper condiviso la rende disabled+tooltip.
 const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
-const pushCommessaReasonKey = computed(() => detail.value?.can_push_commessa_reason_key || null)
+const pushCommessaDisabledAction = computed(() => {
+  if (!hasDetail.value || canPushCommessa.value) return []
+  const reason = detail.value?.can_push_commessa_reason
+  const reasonKey = detail.value?.can_push_commessa_reason_key
+  if (!reason && !reasonKey) return []
+  return [{
+    key: 'push_commessa',
+    target_state: null,
+    label_key: 'vendite.ordini.azione_push_commessa',
+    severity: 'success',
+    icon: 'pi pi-arrow-right',
+    outlined: false,
+    enabled: false,
+    reason,
+    reason_key: reasonKey,
+  }]
+})
 
 // Campi bloccati lato UX. Una volta che l'ordine esiste (EDIT classico o CREATE
 // post auto-save), il cliente NON e' piu' modificabile: il BE deriva
@@ -477,7 +497,7 @@ const drawerActions = computed(() => {
   const availableActionsHeader = (availableActions.value || [])
     .filter(a => a.key !== 'genera_ddt')
   const stateActions = mapAvailableActionsToDrawerActions({
-    availableActions: availableActionsHeader,
+    availableActions: [...availableActionsHeader, ...pushCommessaDisabledAction.value],
     t,
     te,
     onAction,
@@ -554,14 +574,6 @@ const drawerActions = computed(() => {
             />
           </template>
         </DrawerActionsBar>
-
-        <!-- Motivo per cui "Invia a commessa" non e' offerto (gia' inviato,
-             gia' fatturato, ordine non confermato, fatturazione da DDT):
-             senza questo il pulsante sparisce e basta. -->
-        <Message v-if="!canPushCommessa && pushCommessaReasonKey && te(pushCommessaReasonKey)"
-          severity="info" :closable="false" class="mt-1">
-          {{ t(pushCommessaReasonKey) }}
-        </Message>
       </template>
 
       <Divider v-if="hasDetail" />
@@ -624,7 +636,8 @@ const drawerActions = computed(() => {
         <Divider />
         <LineagePassaggiPanel
           base-path="/vendite/ordini"
-          :doc-id="effectiveOrdineId" />
+          :doc-id="effectiveOrdineId"
+          :readonly="isReadonlyPuro" />
       </template>
 
       <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto"
