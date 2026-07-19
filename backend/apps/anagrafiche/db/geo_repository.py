@@ -16,6 +16,7 @@ from apps.core.db._helpers import (
     extract_paginated,
     row_to_dict,
     rows_to_list,
+    sql_order_direction,
 )
 
 from django.db import connection
@@ -42,7 +43,7 @@ class GeoRepository:
         order_by: str = "descrizione", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         order_col = order_by if order_by in _TOPONOMASTICA_ORDER_COLS else "descrizione"
-        direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
+        direction = sql_order_direction(order_dir)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT id, descrizione, attivo, COUNT(*) OVER () AS total_count
@@ -87,7 +88,7 @@ class GeoRepository:
         order_by: str = "descrizione", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         order_col = order_by if order_by in _COMUNI_ORDER_COLS else "descrizione"
-        direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
+        direction = sql_order_direction(order_dir)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT c.id, c.descrizione,
@@ -159,7 +160,7 @@ class GeoRepository:
         order_by: str = "codice", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         order_col = order_by if order_by in _CODICI_POSTALI_ORDER_COLS else "codice"
-        direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
+        direction = sql_order_direction(order_dir)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT cp.id, cp.codice, cp.comune_id,
@@ -220,7 +221,7 @@ class GeoRepository:
         order_by: str = "descrizione", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         order_col = order_by if order_by in _PROVINCE_ORDER_COLS else "descrizione"
-        direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
+        direction = sql_order_direction(order_dir)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT p.id, TRIM(p.descrizione) AS descrizione, TRIM(p.sigla) AS sigla,
@@ -284,7 +285,7 @@ class GeoRepository:
         order_by: str = "descrizione", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         order_col = order_by if order_by in _REGIONI_ORDER_COLS else "descrizione"
-        direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
+        direction = sql_order_direction(order_dir)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT r.id, r.descrizione, r.stato_id, s.descrizione AS stato_descrizione,
@@ -342,7 +343,7 @@ class GeoRepository:
         order_by: str = "descrizione", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         order_col = order_by if order_by in _STATI_ORDER_COLS else "descrizione"
-        direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
+        direction = sql_order_direction(order_dir)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT id, descrizione, sigla_stato, codice_iso2, codice_iso3,

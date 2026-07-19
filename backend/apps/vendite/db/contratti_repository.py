@@ -22,7 +22,12 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    call_jsonb_fn,
+    row_to_dict,
+    rows_to_list,
+    sql_order_direction,
+)
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
@@ -317,7 +322,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         max_limit: int = 200,
     ) -> tuple[list[dict[str, Any]], int]:
         order_column = _ORDER_COLS_CONTRATTI.get(order_by, _ORDER_COLS_CONTRATTI["data"])
-        direction = "DESC" if order_dir and order_dir.lower() == "desc" else "ASC"
+        direction = sql_order_direction(order_dir)
         # `max_limit`: lista cap 200 (gia' via parse_list_params), export fino a
         # EXPORT_MAX_ROWS+1 per non troncare in silenzio (guard su COUNT reale).
         safe_limit = max(1, min(int(limit), max_limit))

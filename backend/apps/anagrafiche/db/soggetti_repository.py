@@ -17,6 +17,7 @@ from apps.core.db._helpers import (
     extract_paginated,
     row_to_dict,
     rows_to_list,
+    sql_order_direction,
 )
 from apps.core.db.parameter_repository import ParameterRepository
 
@@ -128,7 +129,7 @@ class SoggettiRepository:
         order_by: str = "ragione_sociale_completa", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         order_col = order_by if order_by in _SOGGETTI_ORDER_COLS else "ragione_sociale_completa"
-        direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
+        direction = sql_order_direction(order_dir)
         # escape_ilike: senza, una search contenente %/_ agisce da wildcard
         # (stesso fix dei lookup BA/istanze/soggetti-ruoli).
         search_pattern = f"%{escape_ilike(search.strip())}%" if search and search.strip() else None
