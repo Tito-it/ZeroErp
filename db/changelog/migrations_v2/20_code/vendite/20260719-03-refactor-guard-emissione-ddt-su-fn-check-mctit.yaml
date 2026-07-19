@@ -1,0 +1,323 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-guard-righe-avanzamento-stato §1a-bis (Rev 2) — STEP 0, parte 2:
+# i QUATTRO guard trigger dell'emissione DDT delegano la valutazione a
+# script.fn_check_ddt_emittibile (20260719-01) e sollevano SOLO i codici di
+# propria competenza. Senza questo refactor la fn sarebbe una DUPLICAZIONE
+# della logica dei trigger, non la sua single source.
+#
+# INVARIANTI (verificati contro i corpi vivi in doc auto-gen):
+#   - topologia trigger INVARIATA (stessi 4 trigger, stessi nomi, stessi eventi);
+#   - codici errore INVARIATI (543/544/545/E_INDIRIZZO_DOC_OBBLIGATORIO/
+#     E_COMPONENTE_PREZZO_PENDENTE/E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE);
+#   - condizioni di scatto INVARIATE (transizione: solo su cambio stato;
+#     gli altri tre: stato destinazione EMESSO);
+#   - contesto/argomenti degli errori preservati (numero, riga_id, mancanti, hint).
+#
+# COSTO: all'emissione la fn viene valutata fino a 4 volte (una per guard).
+# Accettato: l'emissione e' un evento interattivo raro, e il beneficio e' che
+# capability e guard non possono piu' divergere.
+#
+# ⚠️ ORDINE DI SCATTO trigger (lessicografico, invariato):
+#   causale_emissione -> guard_transizione(+approvazione) -> indirizzi.
+#   L'utente al click vede il primo errore in quest'ordine; la capability
+#   invece mostra i motivi nell'ordine logico della fn (struttura->intento->...).
+#   Non e' un bug: il click su un pulsante disabled non avviene piu'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260719-03-refactor-guard-emissione-ddt-su-fn-check-mctit.yaml
+
+  - changeSet:
+      id: 20260719-03-refactor-guard-emissione-ddt-su-fn-check
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        I 4 guard trigger dell'emissione DDT (transizione, causale, indirizzi,
+        approvazione componenti) delegano a fn_check_ddt_emittibile e sollevano
+        i propri codici invariati: single source con la capability.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script' AND p.proname = 'fn_check_ddt_emittibile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- 1/4 — matrice transizioni + righe (543)
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: enforcement DB-first del grafo transizioni stato DDT.
+              --   La transizione (OLD.stato -> NEW.stato) e' ammessa solo se
+              --   presente e attiva in config.transizioni_stati_ddt.
+              --   Letto dalla matrice (no grafo hardcodato). Mirror del guard
+              --   ordini (trgfn_ordini_guard_transizione).
+              --   rev 2026-07-19: la Regola 2 (righe) delega a
+              --   script.fn_check_ddt_emittibile — single source con la capability.
+              DECLARE
+                  v_codice_da config.stati_doc_ddt.codice_interno%TYPE;
+                  v_codice_a  config.stati_doc_ddt.codice_interno%TYPE;
+                  v_ammessa   boolean := false;
+              BEGIN
+                  -- No-op se lo stato non cambia davvero (UPDATE su altre colonne).
+                  IF NEW.stato_doc_ddt_id IS NOT DISTINCT FROM OLD.stato_doc_ddt_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT
+                      max(CASE WHEN id = OLD.stato_doc_ddt_id THEN codice_interno END),
+                      max(CASE WHEN id = NEW.stato_doc_ddt_id THEN codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM config.stati_doc_ddt
+                   WHERE id IN (OLD.stato_doc_ddt_id, NEW.stato_doc_ddt_id);
+
+                  -- Regola 1: la transizione deve esistere ed essere attiva in matrice.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.transizioni_stati_ddt t
+                       WHERE t.stato_da_id = OLD.stato_doc_ddt_id
+                         AND t.stato_a_id  = NEW.stato_doc_ddt_id
+                         AND t.attivo IS TRUE
+                  ) INTO v_ammessa;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_STATO_DDT_TRANSIZIONE_NON_VALIDA',
+                          jsonb_build_object(
+                              'ddt_id',   NEW.id,
+                              'numero',   NEW.numero,
+                              'stato_da', v_codice_da,
+                              'stato_a',  v_codice_a
+                          ),
+                          NEW.tx_id,
+                          NEW.id::text,
+                          coalesce(v_codice_da, 'NULL'),
+                          coalesce(v_codice_a,  'NULL')
+                      );
+                  END IF;
+
+                  -- Regola 2: DRAFT->EMESSO richiede almeno una riga attiva.
+                  -- Zero righe = niente da trasportare. Il "DDT solo trasporto"
+                  -- resta possibile: e' righe senza prezzo, non zero righe.
+                  -- Verdetto dalla single source (fn_check_ddt_emittibile).
+                  IF v_codice_da = 'DRAFT' AND v_codice_a = 'EMESSO'
+                     AND script.fn_check_ddt_emittibile(NEW)
+                         @> '[{"codice": "E_DDT_EMISSIONE_SENZA_RIGHE"}]'::jsonb THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_DDT_EMISSIONE_SENZA_RIGHE',
+                          jsonb_build_object(
+                              'ddt_id', NEW.id,
+                              'numero', NEW.numero
+                          ),
+                          NEW.tx_id,
+                          NEW.id::text,
+                          coalesce(NEW.numero, 'NULL')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_guard_transizione()
+              IS 'Trigger function: enforcement grafo transizioni stato DDT letto da config.transizioni_stati_ddt (E_STATO_DDT_TRANSIZIONE_NON_VALIDA). Regola 2: DRAFT->EMESSO richiede almeno una riga attiva (E_DDT_EMISSIONE_SENZA_RIGHE) — verdetto delegato a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt). Mirror di trgfn_ordini_guard_transizione. rev 2026-07-19 (brief-db-guard-righe-avanzamento-stato Rev 2).';
+
+              -- ============================================================
+              -- 2/4 — causale obbligatoria (544) + prezzi risolvibili (545)
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_causale_emissione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: bloccare l'emissione (EMESSO) di un DDT che non dichiara
+              --   la causale, o che dichiara una causale fatturabile ma ha righe
+              --   senza prezzo risolvibile (brief-db-fatturazione-ddt-resi §4a,
+              --   DL-28). rev 2026-07-19: valutazione delegata a
+              --   script.fn_check_ddt_emittibile — single source con la capability.
+              DECLARE
+                  v_stato_codice  config.stati_doc_ddt.codice_interno%TYPE;
+                  v_motivo        jsonb;
+              BEGIN
+                  SELECT sdd.codice_interno INTO v_stato_codice
+                    FROM config.stati_doc_ddt sdd
+                   WHERE sdd.id = NEW.stato_doc_ddt_id;
+
+                  IF v_stato_codice IS DISTINCT FROM 'EMESSO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  FOR v_motivo IN
+                      SELECT jsonb_array_elements(script.fn_check_ddt_emittibile(NEW))
+                  LOOP
+                      IF v_motivo->>'codice' = 'E_DDT_CAUSALE_OBBLIGATORIA' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', TG_NAME, 'E_DDT_CAUSALE_OBBLIGATORIA',
+                              jsonb_build_object(
+                                  'ddt_id', NEW.id,
+                                  'numero', NEW.numero),
+                              NEW.tx_id,
+                              COALESCE(NEW.numero, NEW.id::text)
+                          );
+                      ELSIF v_motivo->>'codice' = 'E_DDT_PREZZO_NON_RISOLVIBILE' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', TG_NAME, 'E_DDT_PREZZO_NON_RISOLVIBILE',
+                              jsonb_build_object(
+                                  'ddt_id',   NEW.id,
+                                  'numero',   NEW.numero,
+                                  'riga_id',  (v_motivo->'dettaglio'->>'riga_id')::bigint),
+                              NEW.tx_id,
+                              COALESCE(NEW.numero, NEW.id::text),
+                              COALESCE(v_motivo->'dettaglio'->>'riga_id', 'NULL')
+                          );
+                      END IF;
+                  END LOOP;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_guard_causale_emissione() IS
+                'Gate all''emissione DDT (brief-db-fatturazione-ddt-resi §4a, DL-28): (1) causale di '
+                'trasporto obbligatoria — in DRAFT il NULL resta legittimo; (2) se la causale e'' '
+                'fatturabile, ogni riga attiva deve avere un prezzo risolvibile (proprio o ereditato '
+                'dalla riga ordine via fulfillment). rev 2026-07-19: valutazione delegata a '
+                'script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codici '
+                'errore e argomenti invariati (544/545).';
+
+              -- ============================================================
+              -- 3/4 — indirizzi obbligatori ambito DDT
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_indirizzi_obbligatori()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: bloccare l'emissione (EMESSO) di un DDT privo degli
+              --   indirizzi marcati obbligatori per l'ambito DDT.
+              --   rev 2026-07-19: valutazione delegata a
+              --   script.fn_check_ddt_emittibile — single source con la capability.
+              DECLARE
+                  v_stato_codice config.stati_doc_ddt.codice_interno%TYPE;
+                  v_motivo       jsonb;
+                  v_mancanti     text[];
+              BEGIN
+                  SELECT sdd.codice_interno INTO v_stato_codice
+                    FROM config.stati_doc_ddt sdd
+                   WHERE sdd.id = NEW.stato_doc_ddt_id;
+
+                  IF v_stato_codice IS DISTINCT FROM 'EMESSO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT m INTO v_motivo
+                    FROM jsonb_array_elements(script.fn_check_ddt_emittibile(NEW)) AS m
+                   WHERE m->>'codice' = 'E_INDIRIZZO_DOC_OBBLIGATORIO'
+                   LIMIT 1;
+
+                  IF v_motivo IS NOT NULL THEN
+                      SELECT array_agg(x) INTO v_mancanti
+                        FROM jsonb_array_elements_text(v_motivo->'dettaglio'->'mancanti') AS x;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_INDIRIZZO_DOC_OBBLIGATORIO',
+                          jsonb_build_object(
+                              'ddt_id',   NEW.id,
+                              'numero',   NEW.numero,
+                              'ambito',   'DDT',
+                              'mancanti', v_mancanti),
+                          NEW.tx_id,
+                          'DDT',
+                          NEW.id::text,
+                          array_to_string(v_mancanti, ', ')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_guard_indirizzi_obbligatori()
+              IS 'Blocca l''emissione (EMESSO) di un DDT privo degli indirizzi marcati obbligatori per l''ambito DDT (E_INDIRIZZO_DOC_OBBLIGATORIO). rev 2026-07-19: valutazione delegata a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codice errore e argomenti invariati.';
+
+              -- ============================================================
+              -- 4/4 — componenti BoM CASO A pendenti
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_transizione_approvazione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: blocca la transizione a EMESSO di un DDT con componenti
+              --   BoM CASO A in workflow approvazione prezzo (PENDING) o con
+              --   prezzo_unitario IS NULL (pending valorizzazione).
+              --   rev 2026-07-19: valutazione delegata a
+              --   script.fn_check_ddt_emittibile — single source con la capability.
+              DECLARE
+                  v_stato_codice config.stati_doc_ddt.codice_interno%TYPE;
+                  v_motivo       jsonb;
+              BEGIN
+                  SELECT sdd.codice_interno INTO v_stato_codice
+                    FROM config.stati_doc_ddt sdd
+                   WHERE sdd.id = NEW.stato_doc_ddt_id;
+
+                  IF v_stato_codice IS DISTINCT FROM 'EMESSO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  FOR v_motivo IN
+                      SELECT jsonb_array_elements(script.fn_check_ddt_emittibile(NEW))
+                  LOOP
+                      IF v_motivo->>'codice' = 'E_COMPONENTE_PREZZO_PENDENTE' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', TG_NAME, 'E_COMPONENTE_PREZZO_PENDENTE',
+                              jsonb_build_object('ddt_id', NEW.id,
+                                  'hint', 'Componente BoM CASO A in attesa di approvazione prezzo. '
+                                       || 'Attendi esito su tutti i componenti prima di emettere.'),
+                              NULL::uuid, NEW.id::text
+                          );
+                      ELSIF v_motivo->>'codice' = 'E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', TG_NAME, 'E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE',
+                              jsonb_build_object('ddt_id', NEW.id,
+                                  'hint', 'Uno o piu'' componenti BoM CASO A hanno prezzo non valorizzato. '
+                                       || 'Valorizzare tutti i prezzi prima di emettere il DDT.'),
+                              NULL::uuid, NEW.id::text
+                          );
+                      END IF;
+                  END LOOP;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_guard_transizione_approvazione()
+              IS 'Blocca la transizione a EMESSO di un DDT con componenti BoM CASO A in approvazione prezzo PENDING (E_COMPONENTE_PREZZO_PENDENTE) o con prezzo non valorizzato (E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE). rev 2026-07-19: valutazione delegata a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codici errore invariati.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: rigenerare le revisioni precedenti dei 4 trigger fn
+              -- dalla doc auto-gen. Nessun DROP: i trigger restano agganciati.
+              SELECT 1;

@@ -18,11 +18,20 @@ AS $function$
 --   genera_ordine mutuamente esclusive (ACCETTATA).
 --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
 --   config.stati_doc_offerte (bottone PDF data-driven via capabilities).
+--   rev 2026-07-19: + enabled/reason/reason_key su ogni azione
+--   (uniformita' 6 domini): verso EMESSA disabled se la versione
+--   listino manca o non e' ATTIVA — specchio del guard
+--   BOZZA->EMESSA (brief-db-guard-righe-avanzamento-stato §1a).
 DECLARE
     v_stato_id    vendite.offerte_commerciali.stato_doc_offerta_id%TYPE;
     v_stato_cod   config.stati_doc_offerte.codice_interno%TYPE;
     v_pdf_mode    config.stati_doc_offerte.pdf_mode%TYPE;
     v_pdf_allow   config.stati_doc_offerte.pdf_allow_allegati%TYPE;
+    v_listino_versione_id vendite.offerte_commerciali.listino_versione_id%TYPE;
+    v_stato_versione      vendite.listini_versioni.stato%TYPE;
+    v_emit_ok             boolean := true;
+    v_emit_reason         text := NULL;
+    v_emit_reason_key     text := NULL;
     v_actions     jsonb;
     v_can_edit    boolean;
     v_can_rev     boolean;
@@ -51,7 +60,10 @@ DECLARE
         'severity',           'info',
         'icon',               'pi pi-clone',
         'requires_confirm',   true,
-        'requires_motivazione', false
+        'requires_motivazione', false,
+        'enabled',            true,
+        'reason',             NULL,
+        'reason_key',         NULL
     );
     c_action_push_contratto CONSTANT jsonb := jsonb_build_object(
         'key',                'push_contratto',
@@ -60,7 +72,10 @@ DECLARE
         'severity',           'success',
         'icon',               'pi pi-arrow-right',
         'requires_confirm',   true,
-        'requires_motivazione', false
+        'requires_motivazione', false,
+        'enabled',            true,
+        'reason',             NULL,
+        'reason_key',         NULL
     );
     c_action_genera_ordine CONSTANT jsonb := jsonb_build_object(
         'key',                'genera_ordine',
@@ -69,19 +84,43 @@ DECLARE
         'severity',           'info',
         'icon',               'pi pi-shopping-cart',
         'requires_confirm',   true,
-        'requires_motivazione', false
+        'requires_motivazione', false,
+        'enabled',            true,
+        'reason',             NULL,
+        'reason_key',         NULL
     );
 BEGIN
-    -- Stato corrente + capability PDF (pdf_mode/allow_allegati).
+    -- Stato corrente + versione listino + capability PDF.
     SELECT o.stato_doc_offerta_id, sdo.codice_interno,
-           sdo.pdf_mode, sdo.pdf_allow_allegati
-      INTO v_stato_id, v_stato_cod, v_pdf_mode, v_pdf_allow
+           sdo.pdf_mode, sdo.pdf_allow_allegati,
+           o.listino_versione_id
+      INTO v_stato_id, v_stato_cod, v_pdf_mode, v_pdf_allow,
+           v_listino_versione_id
       FROM vendite.offerte_commerciali o
       JOIN config.stati_doc_offerte sdo ON sdo.id = o.stato_doc_offerta_id
      WHERE o.id = p_offerta_id;
 
     IF NOT FOUND THEN
         RETURN NULL;
+    END IF;
+
+    -- Precondizione di emissione (specchio del guard BOZZA->EMESSA):
+    -- versione listino valorizzata e in stato ATTIVA. Le righe non
+    -- c'entrano: nelle offerte sono espanse dal listino.
+    IF v_listino_versione_id IS NULL THEN
+        v_emit_ok         := false;
+        v_emit_reason     := 'LISTINO_VERSIONE_MANCANTE';
+        v_emit_reason_key := 'vendite.offerte.azione_reason.listino_versione_mancante';
+    ELSE
+        SELECT lv.stato INTO v_stato_versione
+          FROM vendite.listini_versioni lv
+         WHERE lv.id = v_listino_versione_id;
+
+        IF v_stato_versione IS DISTINCT FROM 'ATTIVA' THEN
+            v_emit_ok         := false;
+            v_emit_reason     := 'LISTINO_VERSIONE_NON_ATTIVA';
+            v_emit_reason_key := 'vendite.offerte.azione_reason.listino_versione_non_attiva';
+        END IF;
     END IF;
 
     SELECT COALESCE(
@@ -93,7 +132,13 @@ BEGIN
                 'severity',           t.meta->>'severity',
                 'icon',               t.meta->>'icon',
                 'requires_confirm',   COALESCE((t.meta->>'requires_confirm')::boolean, false),
-                'requires_motivazione', COALESCE((t.meta->>'requires_motivazione')::boolean, false)
+                'requires_motivazione', COALESCE((t.meta->>'requires_motivazione')::boolean, false),
+                'enabled',            CASE WHEN sa.codice_interno = 'EMESSA'
+                                           THEN v_emit_ok ELSE true END,
+                'reason',             CASE WHEN sa.codice_interno = 'EMESSA'
+                                           THEN v_emit_reason END,
+                'reason_key',         CASE WHEN sa.codice_interno = 'EMESSA'
+                                           THEN v_emit_reason_key END
             )
             ORDER BY sa.ordine
         ),
@@ -184,7 +229,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_offerta(p_offerta_id bigint)
-IS 'Capability offerta commerciale per detail API: available_actions + can_edit_* + push_contratto/genera_ordine (mutuamente esclusive) + create_revisione + non_editable_fields. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_offerte (bottone PDF data-driven via capabilities).';
+IS 'Capability offerta commerciale per detail API: available_actions + can_edit_* + push_contratto/genera_ordine (mutuamente esclusive) + create_revisione + non_editable_fields. rev 2026-07-11: + blocco pdf {mode, allow_allegati}. rev 2026-07-19: + enabled/reason/reason_key su ogni azione (uniformita'' 6 domini, brief-db-guard-righe-avanzamento-stato §1a) — la transizione verso EMESSA e'' disabled con reason LISTINO_VERSIONE_MANCANTE / LISTINO_VERSIONE_NON_ATTIVA, specchio del guard BOZZA->EMESSA (per le offerte il "vuoto" e'' la versione listino, non le righe: sono espanse dal listino).';
 ```
 
 ---
