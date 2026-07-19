@@ -1,10 +1,20 @@
 # Brief DB — Documento "vuoto" non avanza di stato + capability righe-aware
 
 > **Tipo**: mini-brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-16
-> · **Rev**: 2026-07-19 — aggiunto il caso **causale DDT** (§1a-bis): stesso rilievo,
+> · **Rev 1**: 2026-07-19 — aggiunto il caso **causale DDT** (§1a-bis): stesso rilievo,
 > stessa famiglia, emerso alla validazione in-app della slice DDT-resi-dashboard.
+> · **Rev 2**: 2026-07-19 (analisi critica lato DB) — tre correzioni sostanziali:
+> le condizioni bloccanti l'emissione DDT sono **cinque, non tre** (§1a-bis);
+> il guard §1b **esiste già** (543, chiuso dalla slice DDT-resi); il principio
+> «single source col trigger» ora ha un **meccanismo** (`fn_check_ddt_emittibile`).
 > · **Owner**: Tid
-> **Stato**: ☐ DA REALIZZARE
+> **Stato**: **APPLICATO + TEST VERDI** (2026-07-19) — migrations `20260719-01..04`
+> EXECUTED, pgTAP verdi (`test-fn-check-ddt-emittibile-v1` plan(10) nuovo +
+> `test-fn-available-actions-offerta-v1` plan(18) esteso). Alla stesura Rev 2 è
+> emerso che gli step 1 (5 domini su 6), 2 e 3 erano **già stati realizzati il
+> 2026-07-16** senza che il brief venisse aggiornato: il lavoro odierno chiude i
+> buchi residui (DDT multi-condizione, offerte senza enabled). Restano:
+> comunicazione §3 a BE/FE, rigen doc auto-gen, commit su «procedi».
 > **Origine**: rilievo in-app di Tid — su un preventivo VUOTO il pulsante "Emetti"
 > è visibile e cliccabile; il guard DB (`PREV_NESSUNA_RIGA_ATTIVA`) rifiuta
 > correttamente al click, ma l'azione non dovrebbe proprio essere offerta.
@@ -32,9 +42,9 @@ documento è "vuoto" nel senso del suo modello:
 |---|---|---|
 | Preventivi | 0 righe attive | ✅ DB (`PREV_NESSUNA_RIGA_ATTIVA` + totale>0) |
 | Resi | 0 righe | ✅ DB (`E_RESO_SENZA_RIGHE`) |
-| Ordini | 0 righe | ⚠️ solo BE (`E_ORD_NESSUNA_RIGA`) |
+| Ordini | 0 righe | ✅ DB (`E_ORDINE_CONFERMA_SENZA_RIGHE` 471, in `trgfn_ordini_guard_transizione` — **corretto in Rev 2**: era «solo BE», ma il guard è stato spostato a DB il 2026-07-16) |
 | Contratti | forma *senza_listino* con 0 righe AGGIUNTA | ✅ DB (`E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE`); forma *con_listino* mai "vuota" di sostanza |
-| DDT | 0 righe **oppure** causale mancante **oppure** riga senza prezzo risolvibile su causale fatturabile (§1a-bis) | 0 righe: ❌ nessuno (vedi 1b) · causale/prezzi: ✅ DB (544/545, DL-28) |
+| DDT | ⚠️ non «vuoto» ma **«non pronto all'emissione»**: cinque condizioni distinte (§1a-bis) | ✅ **tutti a DB**, in 4 trigger diversi: righe 543 · causale 544 · prezzi 545 · indirizzi · componenti pendenti |
 | Offerte | `listino_versione_id` mancante/non ATTIVA (le righe sono espanse dal listino) | ✅ trigger (`E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`) |
 
 FE: con la forma disabled+reason decisa, il render disabled + tooltip sulla
@@ -42,7 +52,13 @@ FE: con la forma disabled+reason decisa, il render disabled + tooltip sulla
 `mapAvailableActionsToDrawerActions`/`DrawerActionsBar`, lo facciamo noi
 appena la capability espone i campi — comunicateci nome e formato, §3).
 
-### 1a-bis. DDT: la capability "emetti" copre ANCHE causale e prezzi (DL-28)
+### 1a-bis. DDT: la capability "emetti" copre TUTTE le condizioni di emissione (DL-28)
+
+> ⚠️ **Nota di scopo (Rev 2)**: per il DDT il concetto di «vuoto» non regge più —
+> causale, prezzi, indirizzi e componenti pendenti non sono vuotezza. Per questo
+> dominio si legga **«non pronto all'emissione»**. Il titolo del brief resta, ma
+> il criterio con cui giudicare cosa ci sta dentro è questo, non «documento vuoto»:
+> serve per non farlo diventare un contenitore buono per tutto.
 
 Rilievo in-app di Tid (2026-07-19, validazione slice DDT-resi-dashboard): la regola
 UX del progetto è che un'azione non pronta non venga offerta — invece «Emetti» su un
@@ -58,35 +74,88 @@ la causale è fatturabile (545, proprio o ereditato dall'ordine via fulfillment)
 evasione nascono senza) → il vincolo NON va sul salvataggio né sulla creazione:
 va **solo sulla capability dell'azione di emissione**, come per le righe.
 
-Quindi per il DDT la capability "emetti" di `fn_available_actions_ddt` deve
-considerare **tre** condizioni, non una:
+#### ⛔ Correzione Rev 2: le condizioni sono CINQUE, e stanno in quattro trigger
 
-1. `≥ 1 riga attiva` (il guard è da creare — §1b);
-2. `causale_trasporto_id IS NOT NULL` (guard 544 già a DB);
-3. se la causale è `fatturabile`: ogni riga attiva con prezzo risolvibile
-   (guard 545 già a DB — stessa `COALESCE` riga/ordine del guard, non
-   ricopiarla: single source col trigger).
+La stesura Rev 1 diceva «tre condizioni». **Censimento sul DB vivo (2026-07-19)**:
+l'emissione di un DDT è oggi sbarrata da **quattro funzioni trigger distinte**,
+tutte `_a10_ BEFORE UPDATE` su `vendite.ddt`:
 
-Stessa forma decisa del §1a: **disabled + `reason`** (es. «manca la causale di
-trasporto», «riga N senza prezzo»). Il FE ha già l'asterisco informativo sulla
-causale in bozza (tooltip "obbligatoria per emettere"): col pulsante
-disabilitato-e-motivato il percorso diventa coerente end-to-end.
+| guard trigger | cosa blocca all'emissione |
+|---|---|
+| `trgfn_ddt_guard_transizione` | matrice stati + **0 righe attive** (`E_DDT_EMISSIONE_SENZA_RIGHE`, **543**) |
+| `trgfn_ddt_guard_causale_emissione` | causale mancante (**544**) · prezzo non risolvibile se causale fatturabile (**545**) |
+| `trgfn_ddt_guard_indirizzi_obbligatori` | indirizzi documento mancanti (`E_INDIRIZZO_DOC_OBBLIGATORIO`) |
+| `trgfn_ddt_guard_transizione_approvazione` | componenti pendenti di valorizzazione (`E_COMPONENTE_PREZZO_PENDENTE`, `E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE`) |
 
-### 1b. Guard mancante: DDT vuoto non deve emettersi
+**Perché conta**: una capability che ne copre solo tre abilita il pulsante e
+lascia fallire il click su indirizzi o componenti — lo stesso difetto che il
+brief vuole eliminare, solo spostato di causa. Anzi peggio di oggi: adesso il
+pulsante è sempre cliccabile e l'utente lo sa; con un fix parziale il pulsante
+abilitato diventa una **promessa non mantenuta**.
 
-`DRAFT→EMESSO` di un DDT con 0 righe oggi **passa** (nessun guard DB né BE).
-Decisione Tid 2026-07-16: **zero righe = niente da trasportare → guard**.
-Il caso legittimo "DDT solo trasporto" resta possibile: è *righe senza prezzo*
-(`prezzo_unitario NULL`), non *zero righe*. Serve il guard `≥1 riga attiva`
-sulla transizione di emissione (stesso principio di preventivi/resi).
+➜ **Regola generale (vale per tutti i domini, non solo DDT)**: la capability
+deve rispecchiare **l'unione di TUTTI i guard che gate-ano quella transizione**,
+mai un sottoinsieme.
 
-### 1c. Simmetria ordini: guard a DB
+#### ✅ Il meccanismo: una funzione sola, due consumatori
 
-Il guard ordini vive **solo nel BE service**: unico dominio in cui il DB
-accetterebbe la conferma di un ordine vuoto (es. scrittura diretta, batch,
-futuro secondo chiamante). Per pari livello con preventivi/resi (e col principio
-"guard restrittivi da subito"), serve il guard `≥1 riga` anche a DB sulla
-transizione DRAFT→CONFERMATO. Il guard BE può restare come fail-fast.
+«Non ricopiarla: single source col trigger» (Rev 1) era giusto come principio ma
+**non eseguibile**: un trigger non è chiamabile da una funzione capability, e la
+logica R2 è una query bespoke (`LATERAL` su `ordini_righe_fulfillment`; la vista
+`vw_ddt_righe_iva_base` **non** è riusabile perché filtra
+`prezzo_unitario IS NOT NULL`). Chi implementa avrebbe dovuto duplicarla,
+violando la regola «niente logica duplicata tra livelli».
+
+Si estrae quindi una funzione **pura** (convenzione `fn_check_*`: nessun raise)
+che ritorna **i motivi ostativi**:
+
+```sql
+script.fn_check_ddt_emittibile(p_ddt vendite.ddt) RETURNS jsonb
+  -- [] se emittibile; altrimenti [{codice, reason, reason_key, dettaglio}, ...]
+  -- NB (in scrittura): parametro = RIGA, non id — i guard sono BEFORE UPDATE
+  -- e devono valutare i valori CANDIDATI (NEW); con un id rileggerebbero i
+  -- valori vecchi e un UPDATE che imposta insieme stato+causale fallirebbe.
+```
+
+- i **quattro guard trigger** la chiamano e sollevano sul primo motivo
+  (fail-fast invariato, **codici errore invariati**: 543/544/545/indirizzi/componenti);
+- `fn_available_actions_ddt` la chiama e, se non vuota, espone `emetti`
+  **disabled** con quei motivi come `reason`.
+
+Un solo posto dove vive «cosa rende un DDT emittibile», due comportamenti
+diversi. Al prossimo vincolo aggiunto, capability e guard restano allineati **per
+costruzione** — invece di scoprire l'asimmetria mesi dopo in produzione, che è
+esattamente come è nato questo brief.
+
+Forma decisa §1a: **disabled + `reason`** (es. «manca la causale di trasporto»,
+«riga N senza prezzo»). Il FE ha già l'asterisco informativo sulla causale in
+bozza: col pulsante disabilitato-e-motivato il percorso diventa coerente
+end-to-end.
+
+### 1b. ~~Guard mancante: DDT vuoto non deve emettersi~~ — GIÀ FATTO
+
+**Corretto in Rev 2**: la stesura del 2026-07-16 diceva «`DRAFT→EMESSO` con 0
+righe passa, nessun guard DB né BE». **Non è più vero**: il guard esiste come
+`E_DDT_EMISSIONE_SENZA_RIGHE` (**543**), implementato dentro
+`trgfn_ddt_guard_transizione` durante la slice DDT-resi — cioè *dopo* la stesura
+originale. (Ironia utile: il §1a-bis cita quella slice per i guard 544/545 ma non
+si era accorto che la stessa slice chiudeva anche questo punto.)
+
+La decisione resta registrata perché è ancora la regola viva: **zero righe =
+niente da trasportare**; il "DDT solo trasporto" resta legittimo perché è *righe
+senza prezzo*, non *zero righe*.
+
+➜ Nessun lavoro da fare. Lo **step 2 del §4 è da spuntare**.
+
+### 1c. ~~Simmetria ordini: guard a DB~~ — GIÀ FATTO
+
+**Corretto in Rev 2**: come il §1b, anche questo punto è stato chiuso il
+2026-07-16 senza aggiornare il brief. `trgfn_ordini_guard_transizione` ha la
+Regola 2 «DRAFT→CONFERMATO richiede almeno una riga ATTIVA»
+(`E_ORDINE_CONFERMA_SENZA_RIGHE`, **471**), con nota esplicita nel corpo:
+*«Spostata da ordini_service.py (E_ORD_NESSUNA_RIGA inline)»*. Il guard BE
+resta come fail-fast, come auspicato. ➜ Nessun lavoro; **step 3 del §4 da
+spuntare**.
 
 ## 2. Fuori perimetro (già coperti, nessuna azione)
 
@@ -94,20 +163,38 @@ transizione DRAFT→CONFERMATO. Il guard BE può restare come fail-fast.
 - Contratti: coperto nella sostanza per entrambe le forme.
 - Offerte: il vincolo giusto è sul listino, non sulle righe (modello espanso).
 
-## 3. Cosa comunicare indietro a BE/FE
+## 3. Cosa comunicare indietro a BE/FE — FORMATO DEFINITO (Rev 2)
 
-- ~~La forma scelta per la capability~~ **decisa (Tid 2026-07-19): disabled +
-  `reason`, mai omessa**. Da comunicare: **nome e formato** dei campi (es.
-  `enabled`/`disabled_reason`/`disabled_reason_key` per azione — se c'è una
-  `reason_key` i18n il FE traduce, altrimenti mostra il testo), così adeguiamo
-  `mapAvailableActionsToDrawerActions`/`DrawerActionsBar`.
-- Codici errore dei nuovi guard (DDT, ordini) per il mapping messaggi FE.
+**Campi per azione** (già esistenti dal 2026-07-16 su 5 domini, ora su tutti 6):
+
+- `enabled` boolean · `reason` text|null (codice macchina, es. `CAUSALE_MANCANTE`)
+  · `reason_key` text|null (chiave i18n: se presente il FE traduce, altrimenti
+  mostra `reason`).
+- **Nuovo (solo azione emetti del DDT)**: `reasons` — array completo dei motivi
+  `[{codice, reason, reason_key, dettaglio}]`, per tooltip multi-riga; il campo
+  è assente quando l'azione è enabled.
+
+**Nuove `reason_key` da tradurre lato FE**:
+
+- `vendite.ddt.azione_reason.causale_mancante` · `.prezzo_non_risolvibile`
+  · `.componenti_prezzo_pendente` · `.componenti_non_valorizzati`
+- `common.azione_reason.indirizzi_mancanti`
+- `vendite.offerte.azione_reason.listino_versione_mancante` · `.listino_versione_non_attiva`
+
+**Codici errore**: nessun codice nuovo — i guard sollevano gli stessi di prima
+(543/544/545/471/`E_INDIRIZZO_DOC_OBBLIGATORIO`/componenti): il mapping FE
+esistente resta valido.
 
 ## 4. Avanzamento
 
 | # | Step | Stato |
 |---|---|---|
-| 1 | Capability righe-aware nelle 6 `fn_available_actions_*` — per il DDT include causale + prezzi risolvibili (§1a-bis) | ☐ |
-| 2 | Guard DDT: emissione con 0 righe → errore | ☐ |
-| 3 | Guard ordini a DB (simmetria) | ☐ |
-| 4 | Apply dev + comunicazione forma capability/codici a BE/FE | ☐ |
+| 0 | **`fn_check_ddt_emittibile`** (motivi ostativi, pura) + refactor dei 4 guard trigger perché la chiamino — **SVILUPPATO** (`20260719-01`/`-03` + manuale) | ☑ |
+| 1 | Capability nelle 6 `fn_available_actions_*` — 5 domini già fatti il 2026-07-16 (`requires_righe`); **oggi**: DDT delega a `fn_check_ddt_emittibile` (`20260719-02`) e offerte ricevono `enabled/reason` sul listino (`20260719-04`) — **SVILUPPATO** | ☑ |
+| 2 | ~~Guard DDT: emissione con 0 righe~~ — **GIÀ FATTO** (543, slice DDT-resi) | ☑ |
+| 3 | ~~Guard ordini a DB~~ — **GIÀ FATTO** il 2026-07-16 (471, §1c) | ☑ |
+| 4 | Apply dev + pgTAP — **FATTO 2026-07-19** (migrate applicato, test verdi); resta la comunicazione §3 a BE/FE | ☑ |
+
+> **Nota di sequenza**: lo step 0 va prima dell'1 **solo per il DDT**. Gli altri
+> cinque domini hanno una condizione sola e non richiedono estrazione: la
+> capability interroga direttamente il proprio predicato (righe o listino).
