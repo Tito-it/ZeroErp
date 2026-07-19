@@ -107,6 +107,7 @@
 - [fn_crea_revisione_preventivo](funzioni/fn_crea_revisione_preventivo.md) — (latest review 15-05-2026) `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione** di un preventivo vendita: copia testata, righe attive, componenti BoM e indirizzi. L'attivazione della revisione non e' piu' gestita qui: il flag `is_revision_attiva` e' stato rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendite.vw_preventivi`.
 - [fn_create_contratto](funzioni/fn_create_contratto.md) — (latest review 08-07-2026)
 - [fn_create_fatturazione_lotto](funzioni/fn_create_fatturazione_lotto.md) — (latest review 27-01-2026) La funzione **`vendite.fn_create_fatturazione_lotto()`** crea un lotto di fatturazione con parametri coerenti (competenza, utility, tipo documento, BA) e inizializza lo stato documento a **DRAFT**.
+- [fn_ddt_push_diagnosi](funzioni/fn_ddt_push_diagnosi.md)
 - [fn_ddt_riga_componenti_init](funzioni/fn_ddt_riga_componenti_init.md)
 - [fn_ddt_riga_componenti_preview](funzioni/fn_ddt_riga_componenti_preview.md)
 - [fn_documento_lineage](funzioni/fn_documento_lineage.md) — `vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo** del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento: ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e `livello`/`ordine` per il rendering a timeline/albero.
