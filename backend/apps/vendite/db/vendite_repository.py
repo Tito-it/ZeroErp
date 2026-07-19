@@ -14,6 +14,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.db._helpers import query_paged_view
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.types import (
     DashApertoDocumentoRow,
@@ -38,29 +39,39 @@ _SORT_COLUMNS: dict[str, str] = {
 }
 
 # Aree della famiglia dash fatturazione, nell'ordine del funnel (brief
-# brief-design-dashboard-fatturazione §4). Allineate al discriminante `area`
-# della union vendite.vw_dash_fatturazione_documenti. Usate dalla Lente 2
-# Backlog (che include COMMESSE).
+# brief-design-dashboard-fatturazione §4 + §6-quater design due-lenti,
+# DL-21/24). Allineate al discriminante `area` della union
+# vendite.vw_dash_fatturazione_documenti (6 aree documento) + il ramo RESI
+# che vive SOLO nel Backlog (union dedicata in vw_dash_backlog_documenti,
+# fuori dal funnel pre-commessa). Usate dalla Lente 2 Backlog (che include
+# COMMESSE e RESI).
 DASH_FATTURAZIONE_AREE: tuple[str, ...] = (
     "PREVENTIVI",
     "ORDINI",
+    "DDT",
     "OFFERTE",
     "CONTRATTI",
     "COMMESSE",
+    "RESI",
 )
 
 # Aree con valore monetario (imponibile, decisione D-4). OFFERTE e CONTRATTI
-# restano a conteggi (decisioni D-2/D-3 confermate da DL-11): valore_* = NULL.
+# restano a conteggi (decisioni D-2/D-3 confermate da DL-11), RESI idem
+# (DL-24: nessun importo sui resi in questa slice): valore_* = NULL.
 DASH_FATTURAZIONE_AREE_EURO: frozenset[str] = frozenset(
-    {"PREVENTIVI", "ORDINI", "COMMESSE"}
+    {"PREVENTIVI", "ORDINI", "DDT", "COMMESSE"}
 )
 
-# Aree della Situazione aperta (stock documenti, §6-bis design due-lenti):
-# le 4 aree documento nell'ordine del funnel — NIENTE COMMESSE (coperte
-# dalla Lente 1). Allineate al WHERE di vendite.vw_dash_aperto_documenti.
+# Aree della Situazione aperta (stock documenti, §6-bis/§6-quater design
+# due-lenti): le 5 aree documento nell'ordine del funnel — NIENTE COMMESSE
+# (coperte dalla Lente 1), NIENTE RESI (DL-24: REVERSE_FLOW, non serbatoio).
+# Il DDT entra con la popolazione ristretta del resolver (DL-21: solo DDT
+# con ruolo di fatturazione). Allineate al WHERE di
+# vendite.vw_dash_aperto_documenti.
 DASH_APERTO_AREE: tuple[str, ...] = (
     "PREVENTIVI",
     "ORDINI",
+    "DDT",
     "OFFERTE",
     "CONTRATTI",
 )
@@ -99,20 +110,12 @@ DASH_BACKLOG_CLASSI: tuple[str, ...] = (
 
 class VenditeRepository:
 
-    # Scopo: Esegue una query paginata su vista/union costosa in UNA SOLA
-    #        valutazione: CTE materializzata + COUNT(*) OVER() + OFFSET
-    #        clampato all'ultima pagina direttamente in SQL. Il rientro da
-    #        una pagina stantia (lista ridotta da altri utenti) non costa
-    #        piu' 2-3 valutazioni della union (data vuota + count fallback +
-    #        refetch FE): il BE serve subito l'ultima pagina reale e il
-    #        service dichiara la pagina effettiva nell'envelope. Estratto
-    #        2026-07-07 (regola del 2 alla 3ª occorrenza + fix efficienza,
-    #        ok Tid): unifica il pattern di aperto/backlog/errori.
-    #        `select_sql` = SELECT...FROM...WHERE gia' parametrizzato, SENZA
-    #        ORDER/LIMIT; `order_by` = clausola ORDER BY completa su NOMI
-    #        COLONNA DI OUTPUT della SELECT (whitelist a carico del
-    #        chiamante, MAI input utente). Ritorna (rows, total_count):
-    #        total_count e' SEMPRE l'ultima colonna delle righe.
+    # Scopo: Query paginata su vista/union costosa in UNA valutazione con
+    #        CLAMP all'ultima pagina (il service dichiara la pagina effettiva
+    #        nell'envelope). Estratto 2026-07-07 (regola del 2, ok Tid) per
+    #        aperto/backlog/errori; PROMOSSO a BB core 2026-07-18
+    #        (`apps.core.db._helpers.query_paged_view`, ok Tid): qui resta il
+    #        delegatore per i call-site interni.
     def _query_paged_view(
         self,
         *,
@@ -122,30 +125,13 @@ class VenditeRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[tuple], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
-        # MATERIALIZED esplicito: la CTE e' referenziata due volte (righe +
-        # count del clamp) e deve essere valutata una volta sola.
-        sql = f"""
-            WITH righe AS MATERIALIZED (
-                {select_sql}
-            )
-            SELECT r.*, COUNT(*) OVER () AS total_count
-            FROM righe r
-            {order_by}
-            LIMIT %s
-            OFFSET LEAST(
-                %s,
-                (SELECT GREATEST(COUNT(*) - 1, 0) / %s * %s FROM righe)
-            )
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(
-                sql, params + [safe_limit, safe_offset, safe_limit, safe_limit]
-            )
-            rows = cursor.fetchall()
-        total_count = int(rows[0][-1]) if rows else 0
-        return list(rows), total_count
+        return query_paged_view(
+            select_sql=select_sql,
+            order_by=order_by,
+            params=params,
+            limit=limit,
+            offset=offset,
+        )
 
     # Scopo: Aggiunge la condizione WHERE per scope emittente (convenzione SR:
     #        colonne <ruolo>_soggetto_ruolo_id). Delega al BB condiviso
@@ -293,11 +279,11 @@ class VenditeRepository:
         return result, total_count
 
     # Scopo: Restituisce le celle non vuote (area × fase) del serbatoio
-    #        pre-commessa. Il completamento a griglia 4 aree × 3 fasi
+    #        pre-commessa. Il completamento a griglia 5 aree × 3 fasi
     #        (celle vuote = zeri, DL-13) e' a carico del service — qui NON si
     #        duplica, si legge solo cio' che esiste.
     # Perimetro: sola lettura su vw_dash_aperto_riepilogo v2 (security_invoker →
-    #        la RLS emittente sulle 4 aree documento filtra da sola; perimetro
+    #        la RLS emittente sulle 5 aree documento filtra da sola; perimetro
     #        aperti-non-chiusi gia' nella vista, DL-15).
     # Risultato: lista piatta DashApertoRiepilogoRow (≤ 12 righe).
     def list_dash_aperto_riepilogo(self) -> list[DashApertoRiepilogoRow]:
@@ -327,14 +313,14 @@ class VenditeRepository:
         return result
 
     # Scopo: Restituisce il drill-down paginato del serbatoio pre-commessa
-    #        (vw_dash_aperto_documenti v2: 4 aree documento, perimetro
+    #        (vw_dash_aperto_documenti v2: 5 aree documento, perimetro
     #        aperti-non-chiusi lato vista), con filtri opzionali area/fase e
     #        ritardo_giorni ("aperti da oltre N giorni" su data_riferimento,
     #        DL-17). anzianita_giorni derivata in SELECT (GREATEST). Ordinamento
     #        BE-side (le viste non garantiscono ORDER): piu' vecchio prima, poi
     #        valore.
     # Perimetro: sola lettura; scope emittente interamente DB-side (RLS
-    #        invoker sulle 4 aree documento). Una sola valutazione della
+    #        invoker sulle 5 aree documento). Una sola valutazione della
     #        union + clamp offset via _query_paged_view.
     # Risultato: tuple (lista DashApertoDocumentoRow, conteggio totale).
     # Colonne ordinabili del drill-down Situazione aperta: chiave esposta al FE
@@ -746,7 +732,7 @@ class VenditeRepository:
     #        classe × area — il pivot per classe (3 classi sempre presenti)
     #        e' a carico del service.
     # Perimetro: sola lettura su vw_dash_backlog_riepilogo (RLS invoker sulle
-    #        4 aree documento + scope GUC nel resolver commesse).
+    #        6 aree documento + rami resi + scope GUC nel resolver commesse).
     # Risultato: lista DashBacklogRiepilogoRow delle sole coppie non vuote.
     def list_dash_backlog_riepilogo(self) -> list[DashBacklogRiepilogoRow]:
         # GREATEST: data_riferimento futura (es. mese esploso contratti o

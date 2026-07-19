@@ -19,8 +19,8 @@
 > (`api_percorso/api_coda_lavoro/api_pratica_detail`).
 > **Fase 3 GUIDA (D4) ✅ pilota PREVENTIVI IMPLEMENTATO + E2E verde (2026-07-07)** — inversione
 > handler→proiezione, binding NULL (accept+reject auto-avanzano il milestone); design-of-record
-> [brief-design-guida-avanza-esito-proiettato](../work-done/brief-design-guida-avanza-esito-proiettato.md)
-> + [brief-db-guida-avanza-esito-proiettato](../work-done/brief-db-guida-avanza-esito-proiettato.md) (chiusi).
+> [brief-design-guida-avanza-esito-proiettato](../work-done/brief-design-guida-avanza-esito-proiettato.md) +
+> [brief-db-guida-avanza-esito-proiettato](../work-done/brief-db-guida-avanza-esito-proiettato.md) (chiusi).
 > **Restano**: validazione E2E in-app di MOSTRA su PREVENTIVI → roll-out MOSTRA+GUIDA agli altri
 > domini (offerte/ordini/contratti, brief DB per dominio) → §10.3 azioni nel descrittore.
 >
@@ -32,25 +32,55 @@
 > ➡️ **Verifica 2026-07-16**: l'indice **esiste già per 2 domini su 4** —
 > `ix_preventivi_uid_text` e `ix_offerte_commerciali_uid_text`. **Mancano `ordini` e `contratti`**:
 > restano voce viva per il brief DB di roll-out di quei due domini.
-> **(b)** 🔴 **la premessa è cambiata, la decisione no — CAPABILITY DORMIENTE.** La nota diceva
-> che i link **COLLEGATO** nascono **senza `flusso_id`** per decisione documentata ("non nascono da
-> un flusso"), rimandando la scelta a quando arriveranno i resolver ordine/commessa: se valorizzare
-> `flusso_id` sui COLLEGATO oppure dare alla LATERAL del percorso un fallback pratica-level.
-> ➡️ **Verifica 2026-07-16**: lato **DB la strada A è già stata costruita** —
-> `fn_push_preventivo_a_ordine` ha `p_flusso_id bigint DEFAULT NULL` in firma e il corpo lo scrive
-> sul link COLLEGATO. **Ma nessun chiamante lo passa**: `push_a_ordine`
-> (`vendite/db/preventivi_repository.py`) non ha proprio l'argomento e invoca la fn con **4
-> parametri su 5** → `p_flusso_id` cade sempre sul DEFAULT NULL. **Riscontro sui dati**:
-> `pratiche.pratiche_sorgenti` ha **39 COLLEGATO, 0 con `flusso_id`** (i ROOT: 13/45).
-> **Conseguenza**: la decisione (b) è di fatto **già presa a metà** — l'infrastruttura DB esiste ma
-> è inefficace end-to-end. Al roll-out ordine/commessa **non è più una scelta A-vs-B a tavolino**:
-> o si cabla il BE perché passi il `flusso_id` (il repository sa già risolverlo:
-> `get_flusso_id_by_preventivo_root`), o si prende consapevolmente il fallback pratica-level e si
-> **ritira** il parametro dormiente per non lasciare in DB una firma che mente sulle sue capacità.
-> **(c)** la **regola dell'ancora**
+> **(b)** ✅🟡 **IN GRAN PARTE RISOLTA — la strada B è stata scelta e implementata.** La nota
+> diceva che i link **COLLEGATO** nascono **senza `flusso_id`** per decisione documentata ("non
+> nascono da un flusso"), rimandando la scelta a quando arriveranno i resolver ordine/commessa: se
+> valorizzare `flusso_id` sui COLLEGATO (**A**) oppure dare alla LATERAL un **fallback
+> pratica-level** (**B**).
+> ➡️ **Verifica 2026-07-16, rettificata dopo analisi BE del 2026-07-19** (⚠️ *una revisione
+> precedente di questa nota affermava che la scelta fosse ancora aperta e indicava
+> `fn_push_preventivo_a_ordine` come sede dell'INSERT: entrambe le affermazioni erano errate*):
+>
+> - **La strada B è già stata percorsa**: la regola d'ancora è stata promossa alla vista DB
+>   condivisa `script.vw_pratica_doc_sorgente` (DISTINCT ON per pratica; ordine: `risolto` →
+>   *non*-terminale → ROOT → `id` DESC), che **accende anche i COLLEGATO privi di `flusso_id`**.
+>   È la vista che alimenta **dettaglio e lista** (`_PRATICA_JOINS`). Vedi anche nota **(c)**, che
+>   chiedeva esattamente questa promozione ed è anch'essa da considerarsi **fatta**.
+> - **Resta scoperta solo l'ancora per-flusso** (percorso/coda), che continua a usare
+>   `ps.flusso_id = f.id` nel frammento `_doc_sorgente_lateral`: lì un COLLEGATO senza `flusso_id`
+>   non si accende. È l'unico residuo reale della nota (b).
+> - **Dove nasce davvero il link** (rettifica): sul percorso pratica `crea_ordine_da_preventivo`
+>   invoca `fn_push_preventivo_a_ordine` con `pratica_id=None`, quindi il blocco INSERT interno
+>   alla fn **non viene mai eseguito**. Il vero autore è `PostSmistamentoHandler` →
+>   `PraticheRepository.upsert_pratica_sorgente`, che **accetta già** `flusso_id` (con
+>   `ON CONFLICT DO UPDATE SET flusso_id = COALESCE(EXCLUDED.flusso_id, …)`). Il `p_flusso_id`
+>   della funzione DB è quindi dormiente **due volte**.
+> - ⚠️ **Perché il cablaggio ingenuo sarebbe SBAGLIATO**: l'handler ha in mano il `flusso_id` di
+>   **SMISTAMENTO (9012)** — lo step che lo dispatcha — non di **CONFERMA_ORDINE (9013)**. Passarlo
+>   così accenderebbe il documento sulla card di SMISTAMENTO, lasciando vuota quella che dovrebbe
+>   mostrarlo. Il guard `trgfn_pratiche_sorgenti_guard_coerenza_flusso` non protegge da questo
+>   (verifica solo che il flusso sia *della stessa pratica*).
+> - ➡️ **Soluzione corretta = D4** «pinning per-step del COLLEGATO, mappa step→sorgente condivisa
+>   con GUIDA», già nominata nel commento di `_doc_sorgente_lateral`: è **lavoro di design**, non un
+>   cablaggio di due righe.
+> - **Scala del beneficio, oggi**: gli step 9013/9014 esistono su **1 sola pratica** (20
+>   RICHIESTA_CLIENTE, 19 PREVENTIVAZIONE, 17 APPROVAZIONE_CLIENTE, 16 SMISTAMENTO). **Dati al
+>   2026-07-19**: **40 COLLEGATO, 0 con `flusso_id`**; ROOT **14/46**. Nessuna urgenza.
+> - **Altri scrittori di COLLEGATO** da considerare al roll-out: `vendite.fn_link_commessa_sorgente`,
+>   `vendite.fn_push_offerta_a_contratto` (⚠️ **priva di `p_flusso_id`** — vedi §9-R1) e
+>   `preventivi_service._aggancia_commessa_servizi_a_pratica`.
+>
+> **(c)** ✅ **FATTA — verificato 2026-07-19.** La nota chiedeva: la **regola dell'ancora**
 > (ROOT preferito, poi link più recente) oggi vive solo nel frammento Python
 > `_doc_sorgente_lateral`: la fase GUIDA (D4) dovrà risolvere la STESSA ancora a livello
 > motore → promuoverla a vista DB condivisa (es. `vw_pratica_doc_sorgente`) in quel cantiere.
+> ➡️ **La promozione è avvenuta, col nome esatto qui ipotizzato**:
+> `script.vw_pratica_doc_sorgente` esiste in DB ed è consumata da `_PRATICA_JOINS`
+> (dettaglio/lista). La regola d'ancora implementata è anche **più ricca** di quella descritta:
+> `risolto` → *non*-terminale → ROOT → `id` DESC (cioè «documento più vivo della pratica», non solo
+> «ROOT poi più recente»). ⚠️ **Resta fuori** l'ancora **per-flusso** (percorso/coda), che continua a
+> usare il frammento Python `_doc_sorgente_lateral` con `ps.flusso_id = f.id`: la promozione di
+> *quella* è il D4 pinning per-step della nota **(b)**.
 >
 > **Origine**: voce **V10** e §2.4 di
 > [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md) — la

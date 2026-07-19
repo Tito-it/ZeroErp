@@ -1,13 +1,20 @@
 # Brief DB — DDT e resi: fatturazione corretta e visibile nelle lenti
 
 > **Tipo**: brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-16 · **Owner**: Tid
-> **Stato**: ☐ DA REALIZZARE
+> **Stato**: ✅ **COMPLETO E CHIUSO** (2026-07-19) — slice DB **realizzata, applicata e
+> mergiata** (PR #1002, apply incrementale step-per-step): tracker §9 tutto ✅ (steps 1-13,
+> 12 file pgTAP verdi), decisioni **tutte chiuse** (nessuna ❓ residua). L'esecuzione BE/FE
+> è avvenuta su `dev/backend-tid` ([brief BE/FE](../work-in-progress/brief-be-fe-ddt-resi-dashboard.md),
+> realizzato 2026-07-18 + review 8-finder). Reperti fuori slice tracciati nei brief dedicati
+> ([guard sorgente polimorfa](../work-in-progress/brief-db-guard-sorgente-polimorfa.md) ·
+> [immutabilità quantità](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md)); alla slice NC
+> resta il **contratto del §7** (NC attribuibile alla merce, con quantità).
 > **Origine**: analisi 2026-07-16 con Tid. Le due lenti a monte (Situazione aperta, Backlog)
 > sono state disegnate prima che esistessero DDT e resi e non li conoscono. Nell'analisi sono
 > emersi **due bug di fatturazione a monte** che le dashboard non possono vedere: mostrerebbero
 > la doppia fatturazione come transito legittimo. Si chiudono insieme — stessa funzione, stesso
 > apply.
-> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
+> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md)
 > §6-quater, decisioni **DL-19..28** (DL-27 = il contatore · DL-28 = solo trasporto via causale; DL-23/24/26 emendati 2026-07-17).
 > **Non si tocca la Lente 1 (Competenza)**: parte dalla commessa ed è sorgente-agnostica — il
 > DDT che pusha ci entra da solo. Decisione Tid.
@@ -407,7 +414,7 @@ fatturati = Σ attivita_fatturabili.quantita  delle righe AF della partita
   (stabilità di `data_insert`); il reset demolisce le **fatture**, non le AF. Due letture della
   parola «emissione», entrambe vere — registrarlo evita che la prossima persona legga DL-5 come
   «il reset non esiste».
-- Con [brief-db-immutabilita-quantita-e-porta-oneri.md](brief-db-immutabilita-quantita-e-porta-oneri.md)
+- Con [brief-db-immutabilita-quantita-e-porta-oneri.md](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md)
   vale inoltre **AF.quantita = CA.quantita sempre** → la misura è stabile per costruzione, e le
   righe manuali (segmenti `MAN:`, `tipo_movimento` non-NORMALE) non entrano mai nel conto.
 
@@ -685,7 +692,7 @@ istante la somma fa 1.000. Chiude anche il buco cieco del §1d.
   lavoro di DL-20 (rendere il resolver ordini trigger-aware), non un secondo.
 
   ✅ **Emendamento a DL-23 — FATTO (Tid, 2026-07-17)**: registrato nel §10 del
-  [brief di design](brief-design-fatturazione-due-lenti.md) — misura netta **solo** per
+  [brief di design](../work-in-progress/brief-design-fatturazione-due-lenti.md) — misura netta **solo** per
   `trigger ∈ {SPEDITO, CONSEGNATO}`, ordine CONFERMATO al valore pieno; barrata la
   giustificazione «somma sempre 1.000». Lo step 8 del §9 lo recepisce già.
 - ⚠️ **La giustificazione *«in ogni istante la somma fa 1.000»* NON regge** — e va tolta, perché
@@ -722,7 +729,7 @@ Backlog**, con un ramo dedicato:
   il rimedio scelto fosse un altro.
 - È 🟢 oggi con una motivazione **verificata**: non esiste alcuna azione che un operatore possa
   compiere — la NC non c'è, e la correzione manuale della quantità è **vietata dal principio di
-  immutabilità** ([brief-db-immutabilita-quantita-e-porta-oneri.md](brief-db-immutabilita-quantita-e-porta-oneri.md)).
+  immutabilità** ([brief-db-immutabilita-quantita-e-porta-oneri.md](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md)).
   Con la slice NC diventa 🟠 cambiando **una riga di seed**. ⚠️ Il precedente citato dalla
   stesura precedente (*«stessa forma di `CANONE_NON_GENERATO`»*) è **falso**: verificato,
   `CANONE_NON_GENERATO` non è emesso da nessuna vista (`vw_dash_fatturazione_contratti` ha
@@ -807,7 +814,7 @@ il modello non la impedisca — cioè la coda etichetta dovuta/facoltativa (§3c
   latente (l'unico consumatore odierno legge solo `pratiche_sorgenti`, che è corretta). Chiusura
   completa — guard giusto per modello, normalizzazione in `fn_link_commessa_sorgente`, backfill,
   doc, pgTAP — nel brief dedicato
-  [brief-db-guard-sorgente-polimorfa.md](brief-db-guard-sorgente-polimorfa.md) (Tid: *«i buchi
+  [brief-db-guard-sorgente-polimorfa.md](../work-in-progress/brief-db-guard-sorgente-polimorfa.md) (Tid: *«i buchi
   vanno chiusi e non con delle toppe»*). Lì anche il reperto collaterale del **settimo ramo
   COMMESSA** mancante.
 - ~~**Catalogo reso: `CONFERMATO` aveva `fase = IN_CORSO`**~~ → **CORRETTO in questa slice**
@@ -840,7 +847,7 @@ il modello non la impedisca — cioè la coda etichetta dovuta/facoltativa (§3c
   le correzioni sono **righe nuove** attraverso porte dedicate, e le correzioni di **merce**
   restano interamente su questo brief (reso → contatore → NC). **La misura del contatore non ne
   dipende** (misura AF in ogni caso, e con l'immutabilità AF = CA sempre) → brief a sé:
-  [brief-db-immutabilita-quantita-e-porta-oneri.md](brief-db-immutabilita-quantita-e-porta-oneri.md).
+  [brief-db-immutabilita-quantita-e-porta-oneri.md](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md).
 - **Segnalazione collaterale (fix a parte, non di questa slice)**: i trigger anti-disattivazione
   `dbops.trgfn_prevent_deactivate_if_children` su `config.causali_trasporto` **e** su
   `config.stati_doc_ddt` proteggono solo i figli in **`acquisti`** (`acquisti.ddt/ordini`), non

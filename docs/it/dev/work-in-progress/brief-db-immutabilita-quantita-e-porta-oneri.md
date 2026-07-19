@@ -1,7 +1,7 @@
 # Brief DB — Quantità immutabili sulla commessa + porta oneri (il libro giornale)
 
 > **Tipo**: brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-17 · **Owner**: Tid
-> **Stato**: ☐ DA REALIZZARE — **priorità sotto** [brief-db-fatturazione-ddt-resi.md](brief-db-fatturazione-ddt-resi.md)
+> **Stato**: ☐ DA REALIZZARE — **priorità sotto** [brief-db-fatturazione-ddt-resi.md](../work-done/brief-db-fatturazione-ddt-resi.md)
 > (il contatore non ne dipende: procede in parallelo).
 > **Sostituisce**: `brief-db-correzione-quantita-commessa-af.md` (ritirato in fase di design,
 > mai realizzato: proponeva un percorso di UPDATE della quantità — esattamente ciò che questo
@@ -52,7 +52,7 @@ conseguenze:
 | Intento | Porta | Governo |
 |---|---|---|
 | **Onere / voce di valore** senza contratto specifico (caso Tid) | azione dedicata «aggiungi onere»: riga in commessa, **quantità fissa = 1, solo positiva**, il prezzo È l'importo, causale obbligatoria da vocabolario config | approvazione umana + `post_permission` dedicato |
-| **Correzione merce** (resa, in più/in meno) | il percorso dei **fatti**: reso → contatore → sottrazione/NC ([brief DDT/resi](brief-db-fatturazione-ddt-resi.md) §3) | i fatti, non l'operatore |
+| **Correzione merce** (resa, in più/in meno) | il percorso dei **fatti**: reso → contatore → sottrazione/NC ([brief DDT/resi](../work-done/brief-db-fatturazione-ddt-resi.md) §3) | i fatti, non l'operatore |
 | **Aggiustamento prezzo** | `fn_riallinea_prezzo` / `fn_variazione_prezzo_eccezionale` — esistono già | `post_permission` da **cablare** (oggi manca, §3-T2) |
 
 La chiave di volta: **la riga manuale non porta quantità, porta valore** (`quantita = 1`

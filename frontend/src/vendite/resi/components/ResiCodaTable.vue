@@ -20,6 +20,7 @@ import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
+import Select from 'primevue/select'
 
 import AccessoBloccatoPanel from '../../../core/components/AccessoBloccatoPanel.vue'
 import PageActionsBar from '../../../core/components/PageActionsBar.vue'
@@ -33,7 +34,12 @@ import { useListaConfigurabilePage } from '../../../core/composables/useListaCon
 import { useStoreFilterBindings } from '../../../core/composables/useStoreFilterBindings'
 import { DATE_FORMAT, MANAGE_ICONS } from '../../../core/constants'
 import { formatNumber } from '../../../core/utils/format'
-import { statoRiconsegnaSeverity } from '../../../core/utils/severity'
+import { labelOrCode } from '../../../core/utils/i18nLabel'
+import {
+  etichettaAccreditoSeverity,
+  statoRiconsegnaSeverity,
+} from '../../../core/utils/severity'
+import { ETICHETTA_ACCREDITO } from '../constants'
 import { exportDaAccreditare, exportDaRiconsegnare } from '../api/resiApi'
 import {
   useResiCodaAccreditareStore,
@@ -49,7 +55,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['apri-reso'])
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const isBlocked = useInjectBlocked()
 
 // Risoluzione statica per variante (la prop `coda` e' fissa per istanza:
@@ -80,9 +86,28 @@ const codaPageActions = computed(
 )
 
 // --- Filtri custom (toolbar caller): date opzionali, NESSUN default (coda). ---
-const { bindDate } = useStoreFilterBindings(store, applyFilters)
+const { bindDate, bindSelect } = useStoreFilterBindings(store, applyFilters)
 const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da')
 const { value: dataAlFilter, onChange: onDataAlChange } = bindDate('data_a')
+
+// Filtro etichetta NC (solo coda accrediti, forma contatore): DOVUTA =
+// lavoro arretrato, FACOLTATIVA = opzione dell'operatore (DL-26 — la scelta
+// "emetto NC?" si esercita da qui, quindi le facoltative devono restare
+// visibili, non solo filtrate via).
+const { value: etichettaFilter, onChange: onEtichettaChange } = bindSelect('etichetta')
+const etichettaOptions = computed(() => [
+  { value: null, label: t('vendite.resi.coda_etichetta_tutte') },
+  ...Object.values(ETICHETTA_ACCREDITO).map((et) => ({
+    value: et,
+    label: etichettaLabel(et),
+  })),
+])
+
+// Decodifica fail-visible (pattern labelOrCode): un'etichetta futura fuori
+// vocabolario mostra il codice grezzo, mai la chiave i18n letterale.
+function etichettaLabel(et) {
+  return labelOrCode(t, te, `vendite.resi.coda_etichetta.${et}`, et)
+}
 
 // Params export: filtri da store.filters + search dal ref immediato + sort
 // corrente. Il BE rispetta colonne visibili/ordine/permessi (DEF-1).
@@ -91,6 +116,7 @@ function buildExportParams(format) {
   if (searchText.value?.trim()) p.search = searchText.value.trim()
   if (store.filters.data_da) p.data_da = store.filters.data_da
   if (store.filters.data_a) p.data_a = store.filters.data_a
+  if (store.filters.etichetta) p.etichetta = store.filters.etichetta
   if (store.filters.order_by) {
     p.order_by = store.filters.order_by
     p.order_dir = store.filters.order_dir || 'desc'
@@ -138,6 +164,16 @@ onMounted(() => store.fetchList())
           <DatePicker v-model="dataAlFilter" :placeholder="t('common.data_a')"
             :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
             @date-select="onDataAlChange" @clear-click="onDataAlChange" />
+          <Select
+            v-if="!isRiconsegna"
+            v-model="etichettaFilter"
+            :options="etichettaOptions"
+            option-label="label"
+            option-value="value"
+            :placeholder="t('vendite.resi.coda_etichetta_tutte')"
+            style="width: 170px;"
+            @change="onEtichettaChange"
+          />
         </div>
         <PageActionsBar :actions="codaPageActions">
           <template #suffix>
@@ -173,6 +209,29 @@ onMounted(() => store.fetchList())
         </template>
         <template #cell-quantita="{ data }">
           {{ formatNumber(data.quantita) }}
+        </template>
+
+        <!-- Coda accrediti, forma contatore: il conto della partita
+             (tenuti/fatturati) e l'accredito dovuto (l'informazione centrale:
+             «fatturata per 10, tenuta 7 → accredito 3»). -->
+        <template #cell-accredito_dovuto="{ data }">
+          <strong>{{ formatNumber(data.accredito_dovuto) }}</strong>
+        </template>
+        <template #cell-tenuti="{ data }">
+          {{ formatNumber(data.tenuti) }}
+        </template>
+        <template #cell-fatturati="{ data }">
+          {{ formatNumber(data.fatturati) }}
+        </template>
+        <template #cell-etichetta="{ data }">
+          <Tag :value="etichettaLabel(data.etichetta)"
+            :severity="etichettaAccreditoSeverity(data.etichetta)" />
+        </template>
+
+        <!-- ddt_numero nullable (forma contatore: aggancio partita via
+             ordine, il join al DDT e' LEFT): mai stringa vuota. -->
+        <template #cell-ddt_numero="{ data }">
+          {{ data.ddt_numero || '—' }}
         </template>
 
         <!-- Coda ri-consegne: copertura resa/ri-consegnata/residua. -->

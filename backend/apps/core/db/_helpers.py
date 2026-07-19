@@ -148,6 +148,119 @@ def resolve_config_id_by_codice_interno(
     return int(row[0])
 
 
+def extract_paginated(cursor) -> tuple[list[dict[str, Any]], int]:
+    """Estrae risultati paginati da query con COUNT(*) OVER() AS total_count.
+
+    Restituisce (lista dict senza total_count, conteggio totale).
+    Pre-computa mappa indici per evitare O(n*m) su cols.index().
+
+    Promozione a BB core (regola del 2, 2026-07-18): nato in
+    `anagrafiche/db/_helpers.py` (6 repository), lo stesso lavoro era
+    riscritto inline in ~15 siti core/amm (email, dbops, lookup, search...).
+    NB: a pagina oltre l'ultima (0 righe) il totale e' 0 — se il chiamante
+    deve distinguere "lista vuota" da "pagina stantia" usi
+    `fetch_paged_with_total` col fallback.
+    """
+    rows = cursor.fetchall()
+    if not rows:
+        return [], 0
+    cols = [c.name for c in cursor.description]
+    tc_idx = cols.index("total_count")
+    total_count = rows[0][tc_idx]
+    col_idx = {c: i for i, c in enumerate(cols) if c != "total_count"}
+    results = [
+        {c: row[i] for c, i in col_idx.items()}
+        for row in rows
+    ]
+    return results, total_count
+
+
+def fetch_paged_with_total(
+    data_sql: str,
+    params: list[Any],
+    *,
+    fallback_count_sql: str | None = None,
+    fallback_params: list[Any] | None = None,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
+    """Esegue una query paginata in UNA valutazione (COUNT(*) OVER()).
+
+    `data_sql` DEVE proiettare `COUNT(*) OVER () AS total_count` e portare
+    LIMIT/OFFSET nei propri `params`. Ritorna (righe dict, totale).
+
+    Fallback pagina-oltre-l'ultima: con `offset > 0` e 0 righe la window
+    function non puo' dire il totale — se `fallback_count_sql` e' fornita
+    viene eseguita SOLO in quel caso (raro), cosi' il chiamante non dichiara
+    "0 risultati" a un utente rimasto su una pagina stantia di una lista che
+    si e' accorciata sotto di lui (es. code di lavoro che si auto-svuotano).
+    Senza fallback il totale e' 0 (comportamento dei siti storici).
+
+    Regola del 2 (2026-07-18): unifica il pattern COUNT-OVER inline dei
+    repository core con la variante fallback nata per le code resi.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(data_sql, params)
+        results, total_count = extract_paginated(cursor)
+        if not results and offset > 0 and fallback_count_sql is not None:
+            cursor.execute(fallback_count_sql, fallback_params or [])
+            row = cursor.fetchone()
+            total_count = row[0] if row else 0
+    return results, total_count
+
+
+def query_paged_view(
+    *,
+    select_sql: str,
+    order_by: str,
+    params: list[Any],
+    limit: int,
+    offset: int,
+    max_limit: int = 200,
+) -> tuple[list[tuple], int]:
+    """Query paginata su vista/union costosa in UNA valutazione, con CLAMP.
+
+    CTE materializzata + COUNT(*) OVER() + OFFSET clampato all'ultima pagina
+    direttamente in SQL: il rientro da una pagina stantia non costa 2-3
+    valutazioni della union (data vuota + count fallback + refetch FE) — il
+    BE serve subito l'ultima pagina REALE e il service dichiara la pagina
+    effettiva nell'envelope. Semantica diversa da `fetch_paged_with_total`
+    (che serve la pagina RICHIESTA): usare il clamp solo dove il contratto
+    API espone la pagina effettiva (famiglia cruscotti + usePagedDashFetch).
+
+    `select_sql` = SELECT...FROM...WHERE gia' parametrizzato, SENZA
+    ORDER/LIMIT; `order_by` = clausola ORDER BY completa su NOMI COLONNA DI
+    OUTPUT della SELECT (whitelist a carico del chiamante, MAI input utente).
+    Ritorna (rows, total_count): total_count e' SEMPRE l'ultima colonna.
+
+    Promozione a BB core (regola del 2, 2026-07-18) da
+    `VenditeRepository._query_paged_view` (estratto 2026-07-07, ok Tid).
+    """
+    safe_limit = max(1, min(int(limit), max_limit))
+    safe_offset = max(0, int(offset))
+    # MATERIALIZED esplicito: la CTE e' referenziata due volte (righe +
+    # count del clamp) e deve essere valutata una volta sola.
+    sql = f"""
+        WITH righe AS MATERIALIZED (
+            {select_sql}
+        )
+        SELECT r.*, COUNT(*) OVER () AS total_count
+        FROM righe r
+        {order_by}
+        LIMIT %s
+        OFFSET LEAST(
+            %s,
+            (SELECT GREATEST(COUNT(*) - 1, 0) / %s * %s FROM righe)
+        )
+    """  # noqa: S608
+    with connection.cursor() as cursor:
+        cursor.execute(
+            sql, params + [safe_limit, safe_offset, safe_limit, safe_limit]
+        )
+        rows = cursor.fetchall()
+    total_count = int(rows[0][-1]) if rows else 0
+    return list(rows), total_count
+
+
 def dynamic_update(table: str, pk: int, **kwargs: Any) -> bool:
     """UPDATE dinamico "kwargs espliciti": SET dai soli kwargs non-None.
 

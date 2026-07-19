@@ -1640,6 +1640,14 @@ a {
   font-size: var(--app-font-size-base);
 }
 
+/* Icona info accanto al titolo card (misure non ovvie, es. area Ordini a
+ * misura mista pieno/da-spedire — DL-23): discreta, tooltip al volo. */
+.app-dash-card-hint {
+  font-size: 0.8em;
+  color: var(--p-text-muted-color);
+  cursor: help;
+}
+
 /* Situazione aperta: riga chip per fase dentro la card area (fasi con
  * documenti aperti). Wrap per card strette, gap compatto. */
 .app-dash-fasi-chips {
