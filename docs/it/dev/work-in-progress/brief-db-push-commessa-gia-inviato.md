@@ -3,7 +3,18 @@
 > **Tipo**: mini-brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-19
 > · **Owner**: Tid · **Priorità**: 🔴 ALTA (bug logico del modello, famiglia già
 > corretta per i preventivi)
-> **Stato**: ☐ DA REALIZZARE
+> **Stato**: **APPLICATO + TEST VERDI** (2026-07-19) — migrations `20260719-05..11`
+> EXECUTED su dev; pgTAP `test-push-list-gia-inviato-v1` plan(10) VERDE (il primo
+> run aveva 2 rossi da visibilità: insert e assert nella stessa statement, il
+> classificatore STABLE non vedeva le righe appena inserite — corretti col
+> pattern a due passi). Restano: verifica §7 su ORD0000227 vivo, comunicazione
+> §6 a BE/FE, rigen doc auto-gen, commit su «procedi».
+> · **Rev 1**: 2026-07-19 (analisi critica lato DB, fatti verificati tutti sulle
+> definizioni vive) — tre integrazioni: §4b riformulato su **classificatore
+> condiviso** (la capability ordine ha GIÀ due fonti di verità: fn_list per
+> can_push + query inline per GIA_FATTURATO — aggiustare la query inline
+> perpetuerebbe la duplicazione curata con fn_check_ddt_emittibile); nota
+> indice/LIKE in §4a; aggiornamento COMMENT consumi in §4a.
 > **Origine**: rilievo in-app di Tid — su ORD0000227 (stato `EVASO`, trigger
 > `CONFERMATO`) l'azione «Invia a commessa» resta visibile e rieseguibile
 > **dopo** che il push è già avvenuto (attività già in commessa).
@@ -91,33 +102,65 @@ AND NOT EXISTS (SELECT 1 FROM vendite.commesse_attivita ca
 ```
 
 (`fn_list_consumi_da_pushare`: già a prefisso, basta togliere il filtro
-`stato_emissione = 'EMESSA'`.)
+`stato_emissione = 'EMESSA'` — ⚠️ e aggiornare COMMENT + manuale nello stesso
+changeset: la semantica dichiarata passa da «esclude già emessi» a «esclude già
+allocati», altrimenti la doc torna a mentire.)
+
+> **Nota performance (Rev 1)**: su `commesse_attivita.segment_key` c'è solo un
+> btree standard — con collazione non-C il `LIKE '...#CMP:%'` non lo usa, e nel
+> `NOT EXISTS` correlato del batch è una scansione per riga candidata. Il
+> precedente preventivi ha già accettato questo costo (a scala attuale non si
+> vede): NON è un blocker. Se il batch rallenta, la cura è un indice
+> `varchar_pattern_ops` su `segment_key`, non tornare all'uguaglianza.
 
 Semantica ANNULLATA invariata rispetto alla decisione preventivi: attività
 annullata = riga instradata, non ri-pushabile (eventuale "annulla e ri-pusha"
 è un flusso da progettare a parte, non qui).
 
-### 4b. Capability: distinguere "già inviato" da "già fatturato"
+### 4b. Capability: distinguere "già inviato" da "già fatturato" — via classificatore CONDIVISO
 
 Con la 4a le righe pushate spariscono dalla lista → serve la reason corretta
 al posto dell'attuale fallback (`ORDINE_NESSUNA_RIGA_PUSHABILE` /
 `DDT_NON_PUSHABILE`, fuorvianti su documento già instradato):
 
 - `ORDINE_GIA_INVIATO` (pushato, in attesa fatturazione) distinta da
-  `ORDINE_GIA_FATTURATO`; entrambi i rami con match anche a prefisso `#CMP:%`;
-- analogo per il DDT (es. `DDT_GIA_INVIATO`).
+  `ORDINE_GIA_FATTURATO`;
+- analogo per il DDT (`DDT_GIA_INVIATO` / `DDT_GIA_FATTURATO`).
+
+**⛔ Vincolo di forma (Rev 1) — NON aggiustare la query inline.** La capability
+ordine ha già oggi **due fonti di verità**: `fn_list_ordini_da_pushare` per il
+`can_push` e una query inline *diversa* per il ramo `ORDINE_GIA_FATTURATO`.
+Correggere il match della query inline perpetuerebbe la duplicazione — è la
+stessa malattia curata sull'emissione DDT con `fn_check_ddt_emittibile`
+(brief capability, Rev 2). Con la 4a gli stati da distinguere diventano **tre**
+(pushabile / allocata / emessa): si estrae **un classificatore condiviso** —
+una `fn_check_*` pura (o vista) che classifica lo stato-push delle righe di un
+documento con l'UNICO predicato (uguaglianza OR prefisso `#CMP:%`) — consumato
+sia dalle push-list (esclusione = riga allocata) sia dai rami reason delle
+capability (allocata e non emessa → GIA_INVIATO; emessa → GIA_FATTURATO).
+Al prossimo cambio di semantica si tocca UN posto. Senza questo vincolo, il
+terzo brief di questa famiglia sarà «il ramo reason non vede X».
 
 Forma già decisa nel [brief capability](brief-db-guard-righe-avanzamento-stato.md)
 §1a: azione **disabled + `reason`/`reason_key`**, mai omessa.
 
-### 4c. Contratti: conferma di semantica (domanda al team DB)
+### 4c. Contratti: conferma di semantica — RISOLTA IN VERIFICA (Rev 1)
 
-Per ordini/DDT il push è one-shot per riga ed è pacifico che "allocata =
-esclusa". Per i contratti confermare che valga lo stesso (la `segment_key`
-`CONTR:<uid>:R:<riga>` è fissa per riga, quindi il modello attuale è già
-one-shot: l'esclusione su EMESSA non abilita alcuna ricorrenza — se in futuro
-servisse un push ricorrente per competenza, sarà una `segment_key` diversa,
-non questo predicato).
+**La premessa della domanda era errata**: la `segment_key` contratti NON è
+`CONTR:<uid>:R:<riga>` — è `CONTR:<uid>:R:<riga>:M:<YYYY-MM>` (verificato sul
+corpo vivo di `fn_list_contratti_da_pushare`): il push contratti è **già
+ricorrente per mese di competenza**, non one-shot. La ricorrenza che il §4c
+temeva di abilitare esiste già, ed è governata dalla chiave, non dal predicato.
+Conseguenze:
+
+- il fix 4a per i contratti esclude «il MESE già allocato» (chiave completa
+  con `:M:`), che è esattamente la semantica giusta: il mese successivo ha
+  chiave diversa e resta pushabile;
+- la base del match (uguaglianza + `#CMP:%`) è la **segment_key emessa dalla
+  lista** — che per i contratti include `:M:` — perché il BE appende
+  `#CMP:<componente_id>` proprio a quella
+  (`commesse_source_handlers.py:251`): il predicato uniforme funziona per
+  tutti i tipi senza casi speciali.
 
 ## 5. Fuori perimetro
 
@@ -150,10 +193,11 @@ ri-elencare le stesse righe; re-push singolo → azione disabled con reason
 
 | # | Step | Stato |
 |---|---|---|
-| 1 | Predicato allocazione + prefisso `#CMP:%` su `fn_list_{ordini,ddt,contratti}_da_pushare`; solo `stato_emissione` su `fn_list_consumi_da_pushare` (§4a) | ☐ |
-| 2 | Capability: reason "già inviato" vs "già fatturato" (ordine + DDT), match `#CMP` anche su `ORDINE_GIA_FATTURATO` (§4b) | ☐ |
-| 3 | Conferma semantica contratti (§4c) | ☐ |
-| 4 | Apply dev + comunicazione reason/firme a BE/FE (§6) + verifica §7 | ☐ |
+| 0 | **Classificatore condiviso** `script.fn_get_stato_push_segment` (LIBERA/ALLOCATA/EMESSA, match `#CMP:%`) + manuale — `20260719-05` | ☑ |
+| 1 | Push-list su ALLOCAZIONE via classificatore: ordini `-06`, DDT `-07`, contratti `-08` (chiave con `:M:`); consumi `-09` (solo drop filtro `stato_emissione` + COMMENT) | ☑ |
+| 2 | Capability: `ORDINE_GIA_INVIATO`/`ORDINE_GIA_FATTURATO` (`-10`) e `DDT_GIA_INVIATO`/`DDT_GIA_FATTURATO` (`-11`), entrambe via classificatore — sparita la query inline | ☑ |
+| 3 | Semantica contratti: **risolta in verifica** (§4c — chiave `:M:` = ricorrenza mensile by design, il fix esclude il mese allocato) | ☑ |
+| 4 | Apply dev + pgTAP — **FATTO 2026-07-19** (migrate applicato, plan(10) verde); restano verifica §7 su ORD0000227 e comunicazione §6 a BE/FE | ☑ |
 
 ## 9. Riferimenti
 

@@ -1,0 +1,219 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-push-commessa-gia-inviato §4b (Rev 1) — fn_available_actions_ordine, reason «gia inviato» vs «gia fatturato».
+#
+# Con le push-list ancorate all'ALLOCAZIONE (20260719-06..09), un documento
+# gia' pushato sparisce dalla lista: senza questa revisione la capability
+# ripiegherebbe sul fallback generico (fuorviante su documento instradato).
+# Qui il ramo reason DISTINGUE, via classificatore condiviso
+# script.fn_get_stato_push_segment (20260719-05):
+#   ALLOCATA -> GIA_INVIATO   (pushato, in attesa di fatturazione)
+#   EMESSA   -> GIA_FATTURATO (tutte le attivita' fatturate)
+# Il classificatore vede anche i componenti BoM (#CMP): sparisce la query
+# inline per uguaglianza che non li matchava mai (rilievo ORD0000227) — la
+# capability e le push-list ora leggono LO STESSO predicato.
+# 
+# Corpo base: 20260716-02, verificato IDENTICO al vivo il 2026-07-19.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/script/20260719-10-update-fn-available-actions-ordine-gia-inviato-mctit.yaml
+
+    - changeSet:
+          id: 20260719-10-update-fn-available-actions-ordine-gia-inviato
+          author: mctit
+          runOnChange: false
+          validCheckSum:
+              - Any
+          failOnError: true
+          comment: >
+              fn_available_actions_ordine: il ramo reason del push distingue
+              ORDINE_GIA_INVIATO (allocato, in attesa fatturazione) da
+              ORDINE_GIA_FATTURATO, via classificatore condiviso
+              fn_get_stato_push_segment (vede anche i componenti BoM #CMP).
+          preConditions:
+              - onFail: HALT
+              - sqlCheck:
+                    expectedResult: "1"
+                    sql: >-
+                      SELECT count(*) FROM pg_proc p
+                      JOIN pg_namespace n ON n.oid = p.pronamespace
+                      WHERE n.nspname = 'script' AND p.proname = 'fn_get_stato_push_segment'
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint)
+                         RETURNS jsonb
+                         LANGUAGE plpgsql
+                         STABLE
+                        AS $function$
+                        -- Scopo: capability ordine di vendita per detail API (data-driven).
+                        --   push_commessa: decoupling fatturazione/spedizione (rev 2026-07-10,
+                        --   fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO /
+                        --   ORDINE_FATTURA_DA_DDT / ORDINE_GIA_INVIATO / ORDINE_GIA_FATTURATO /
+                        --   ORDINE_NESSUNA_RIGA_PUSHABILE).
+                        --   rev 2026-07-19: ramo reason via fn_get_stato_push_segment
+                        --   (brief-db-push-commessa-gia-inviato §4b).
+                        --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+                        --   config.stati_doc_ordini (bottone PDF data-driven via capabilities).
+                        --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+                        --   (documento vuoto non avanza di stato).
+                        DECLARE
+                            v_stato_id   vendite.ordini.stato_doc_ordine_id%TYPE;
+                            v_stato_cod  config.stati_doc_ordini.codice_interno%TYPE;
+                            v_uid        vendite.ordini.uid%TYPE;
+                            v_fatt_trg   vendite.ordini.fatturazione_trigger%TYPE;
+                            v_pdf_mode   config.stati_doc_ordini.pdf_mode%TYPE;
+                            v_pdf_allow  config.stati_doc_ordini.pdf_allow_allegati%TYPE;
+                            v_actions    jsonb;
+                            v_can_change boolean := false;
+                            v_ha_righe   boolean := false;
+                            v_push_ok    boolean := false;
+                            v_push_reason     text := NULL;
+                            v_push_reason_key text := NULL;
+                            c_non_edit_cliente CONSTANT jsonb :=
+                                '["billing_account_id","soggetto_ruolo_id"]'::jsonb;
+                            c_non_edit_tutti CONSTANT jsonb :=
+                                '["billing_account_id","soggetto_ruolo_id","utility_id",'
+                                '"valuta_id","modalita_pagamento_id","termine_pagamento_id",'
+                                '"fatturazione_trigger","agente_soggetto_ruolo_id","data","meta"]'::jsonb;
+                        BEGIN
+                            -- Stato corrente + trigger + uid + capability PDF.
+                            SELECT o.stato_doc_ordine_id, sdo.codice_interno,
+                                   o.uid, o.fatturazione_trigger,
+                                   sdo.pdf_mode, sdo.pdf_allow_allegati
+                              INTO v_stato_id, v_stato_cod, v_uid, v_fatt_trg,
+                                   v_pdf_mode, v_pdf_allow
+                              FROM vendite.ordini o
+                              JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
+                             WHERE o.id = p_ordine_id;
+
+                            IF NOT FOUND THEN
+                                RETURN NULL;
+                            END IF;
+
+                            -- Precondizione "documento non vuoto" per le transizioni che la
+                            -- esigono (meta.requires_righe). La fn sa solo COME contare le
+                            -- proprie righe: specchia il guard (trgfn_ordini_guard_transizione
+                            -- Regola 2, rev 2026-07-16): riga attiva, nessun vincolo su
+                            -- quantita/prezzo (un ordine a totale zero deve poter avanzare).
+                            v_ha_righe := EXISTS (
+                                SELECT 1 FROM vendite.ordini_righe r
+                                 WHERE r.ordine_id = p_ordine_id
+                                   AND r.attivo IS TRUE
+                            );
+
+                            SELECT COALESCE(
+                                jsonb_agg(
+                                    jsonb_build_object(
+                                        'key',              t.meta->>'action_key',
+                                        'target_state',     sa.codice_interno,
+                                        'label_key',        t.meta->>'label_key',
+                                        'severity',         t.meta->>'severity',
+                                        'icon',             t.meta->>'icon',
+                                        'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                                        'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
+                                        'enabled',          NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                                 AND NOT v_ha_righe),
+                                        'reason',           CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                                      AND NOT v_ha_righe
+                                                                 THEN 'DOCUMENTO_SENZA_RIGHE' END,
+                                        'reason_key',       CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                                      AND NOT v_ha_righe
+                                                                 THEN 'common.azione_reason.senza_righe' END
+                                    )
+                                    ORDER BY sa.ordine
+                                ),
+                                '[]'::jsonb
+                            )
+                            INTO v_actions
+                            FROM config.transizioni_stati_ordini t
+                            JOIN config.stati_doc_ordini sa ON sa.id = t.stato_a_id
+                            WHERE t.stato_da_id = v_stato_id
+                              AND t.attivo IS TRUE
+                              AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
+                              AND t.meta ? 'action_key'
+                              AND t.meta ? 'label_key';
+
+                            -- Conta anche le azioni disabilitate: la barra azioni deve
+                            -- comparire proprio per mostrare il pulsante grigio + tooltip.
+                            v_can_change := jsonb_array_length(v_actions) > 0;
+
+                            -- push_commessa: fonte unica fn_list_ordini_da_pushare (decoupling).
+                            IF v_stato_cod IN ('DRAFT', 'ANNULLATO') THEN
+                                v_push_reason     := 'ORDINE_NON_CONFERMATO';
+                                v_push_reason_key := 'ordini.push_commessa_reason.non_confermato';
+                            ELSIF v_fatt_trg IS DISTINCT FROM 'CONFERMATO' THEN
+                                v_push_reason     := 'ORDINE_FATTURA_DA_DDT';
+                                v_push_reason_key := 'ordini.push_commessa_reason.fattura_da_ddt';
+                            ELSIF EXISTS (SELECT 1
+                                            FROM vendite.fn_list_ordini_da_pushare(p_ordine_id := p_ordine_id)) THEN
+                                v_push_ok := true;
+                            -- Nessuna riga pushabile: distinguere il PERCHE'
+                            -- via classificatore condiviso (stesso predicato
+                            -- delle push-list, vede anche i componenti #CMP).
+                            ELSIF EXISTS (SELECT 1
+                                            FROM vendite.ordini_righe r
+                                           WHERE r.ordine_id = p_ordine_id
+                                             AND script.fn_get_stato_push_segment(
+                                                   'ORD:' || v_uid::text || ':R:' || r.id::text) = 'ALLOCATA') THEN
+                                -- pushato, in attesa di fatturazione
+                                v_push_reason     := 'ORDINE_GIA_INVIATO';
+                                v_push_reason_key := 'ordini.push_commessa_reason.gia_inviato';
+                            ELSIF EXISTS (SELECT 1
+                                            FROM vendite.ordini_righe r
+                                           WHERE r.ordine_id = p_ordine_id
+                                             AND script.fn_get_stato_push_segment(
+                                                   'ORD:' || v_uid::text || ':R:' || r.id::text) = 'EMESSA') THEN
+                                v_push_reason     := 'ORDINE_GIA_FATTURATO';
+                                v_push_reason_key := 'ordini.push_commessa_reason.gia_fatturato';
+                            ELSE
+                                v_push_reason     := 'ORDINE_NESSUNA_RIGA_PUSHABILE';
+                                v_push_reason_key := 'ordini.push_commessa_reason.nessuna_riga_pushabile';
+                            END IF;
+
+                            IF v_push_ok THEN
+                                v_actions := v_actions || jsonb_build_array(
+                                    jsonb_build_object(
+                                        'key',              'push_commessa',
+                                        'target_state',     NULL,
+                                        'label_key',        'vendite.ordini.azione_push_commessa',
+                                        'severity',         'success',
+                                        'icon',             'pi pi-arrow-right',
+                                        'requires_confirm', true,
+                                        'outlined',         false,
+                                        'enabled',          true,
+                                        'reason',           NULL,
+                                        'reason_key',       NULL
+                                    )
+                                );
+                            END IF;
+
+                            RETURN jsonb_build_object(
+                                'available_actions',           v_actions,
+                                'can_change_state',            v_can_change,
+                                'can_edit_testata',            (v_stato_cod = 'DRAFT'),
+                                'can_edit_righe',              (v_stato_cod = 'DRAFT'),
+                                'can_push_commessa',           v_push_ok,
+                                'can_push_commessa_reason',    v_push_reason,
+                                'can_push_commessa_reason_key', v_push_reason_key,
+                                'non_editable_fields',         CASE WHEN v_stato_cod = 'DRAFT'
+                                                                    THEN c_non_edit_cliente
+                                                                    ELSE c_non_edit_tutti END,
+                                'pdf',                         jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+                                'stato_codice',                v_stato_cod
+                            );
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint)
+                        IS 'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e l''ordine non ha righe -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard Regola 2, che non filtra su attivo). rev 2026-07-19: reason ORDINE_GIA_INVIATO (allocato, in attesa fatturazione) distinta da ORDINE_GIA_FATTURATO, entrambe via script.fn_get_stato_push_segment (vede anche componenti #CMP) — brief-db-push-commessa-gia-inviato §4b.';

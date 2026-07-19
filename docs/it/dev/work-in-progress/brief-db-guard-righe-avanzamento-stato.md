@@ -8,7 +8,6 @@
 > il guard §1b **esiste già** (543, chiuso dalla slice DDT-resi); il principio
 > «single source col trigger» ora ha un **meccanismo** (`fn_check_ddt_emittibile`).
 > · **Owner**: Tid
-> **Stato**: ☐ DA REALIZZARE
 > **Vedi anche**: [brief-db-push-commessa-gia-inviato.md](brief-db-push-commessa-gia-inviato.md)
 > — stessa famiglia UX (azione non pertinente non va offerta), causa radice diversa:
 > predicato delle `fn_list_*_da_pushare` cieco sull'allocazione (rilievo ORD0000227).

@@ -16,7 +16,10 @@ AS $function$
 -- Scopo: capability ordine di vendita per detail API (data-driven).
 --   push_commessa: decoupling fatturazione/spedizione (rev 2026-07-10,
 --   fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO /
---   ORDINE_FATTURA_DA_DDT / ORDINE_GIA_FATTURATO / ORDINE_NESSUNA_RIGA_PUSHABILE).
+--   ORDINE_FATTURA_DA_DDT / ORDINE_GIA_INVIATO / ORDINE_GIA_FATTURATO /
+--   ORDINE_NESSUNA_RIGA_PUSHABILE).
+--   rev 2026-07-19: ramo reason via fn_get_stato_push_segment
+--   (brief-db-push-commessa-gia-inviato §4b).
 --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
 --   config.stati_doc_ordini (bottone PDF data-driven via capabilities).
 --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
@@ -112,12 +115,22 @@ BEGIN
     ELSIF EXISTS (SELECT 1
                     FROM vendite.fn_list_ordini_da_pushare(p_ordine_id := p_ordine_id)) THEN
         v_push_ok := true;
+    -- Nessuna riga pushabile: distinguere il PERCHE'
+    -- via classificatore condiviso (stesso predicato
+    -- delle push-list, vede anche i componenti #CMP).
     ELSIF EXISTS (SELECT 1
                     FROM vendite.ordini_righe r
-                    JOIN vendite.commesse_attivita ca
-                      ON ca.segment_key = ('ORD:' || v_uid::text || ':R:' || r.id::text)
-                     AND ca.stato_emissione = 'EMESSA'
-                   WHERE r.ordine_id = p_ordine_id) THEN
+                   WHERE r.ordine_id = p_ordine_id
+                     AND script.fn_get_stato_push_segment(
+                           'ORD:' || v_uid::text || ':R:' || r.id::text) = 'ALLOCATA') THEN
+        -- pushato, in attesa di fatturazione
+        v_push_reason     := 'ORDINE_GIA_INVIATO';
+        v_push_reason_key := 'ordini.push_commessa_reason.gia_inviato';
+    ELSIF EXISTS (SELECT 1
+                    FROM vendite.ordini_righe r
+                   WHERE r.ordine_id = p_ordine_id
+                     AND script.fn_get_stato_push_segment(
+                           'ORD:' || v_uid::text || ':R:' || r.id::text) = 'EMESSA') THEN
         v_push_reason     := 'ORDINE_GIA_FATTURATO';
         v_push_reason_key := 'ordini.push_commessa_reason.gia_fatturato';
     ELSE
@@ -160,7 +173,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint)
-IS 'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e l''ordine non ha righe -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard Regola 2, che non filtra su attivo).';
+IS 'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e l''ordine non ha righe -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard Regola 2, che non filtra su attivo). rev 2026-07-19: reason ORDINE_GIA_INVIATO (allocato, in attesa fatturazione) distinta da ORDINE_GIA_FATTURATO, entrambe via script.fn_get_stato_push_segment (vede anche componenti #CMP) — brief-db-push-commessa-gia-inviato §4b.';
 ```
 
 ---
