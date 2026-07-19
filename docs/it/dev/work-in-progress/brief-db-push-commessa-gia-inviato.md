@@ -3,12 +3,14 @@
 > **Tipo**: mini-brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-19
 > · **Owner**: Tid · **Priorità**: 🔴 ALTA (bug logico del modello, famiglia già
 > corretta per i preventivi)
-> **Stato**: **APPLICATO + TEST VERDI** (2026-07-19) — migrations `20260719-05..11`
+> **Stato**: **CHIUSO lato DB + BE/FE** (2026-07-19) — migrations `20260719-05..11`
 > EXECUTED su dev; pgTAP `test-push-list-gia-inviato-v1` plan(10) VERDE (il primo
 > run aveva 2 rossi da visibilità: insert e assert nella stessa statement, il
 > classificatore STABLE non vedeva le righe appena inserite — corretti col
-> pattern a due passi). Restano: verifica §7 su ORD0000227 vivo, comunicazione
-> §6 a BE/FE, rigen doc auto-gen, commit su «procedi».
+> pattern a due passi). **Verifica §7 sul vivo ESEGUITA e superata** (§9) e
+> **lato FE completato** (§10). ⚠️ **Un residuo DB da 5 stringhe**: namespace
+> i18n delle reason ordini (§10a). Restano: rigen doc auto-gen, commit su
+> «procedi».
 > · **Rev 1**: 2026-07-19 (analisi critica lato DB, fatti verificati tutti sulle
 > definizioni vive) — tre integrazioni: §4b riformulato su **classificatore
 > condiviso** (la capability ordine ha GIÀ due fonti di verità: fn_list per
@@ -197,9 +199,96 @@ ri-elencare le stesse righe; re-push singolo → azione disabled con reason
 | 1 | Push-list su ALLOCAZIONE via classificatore: ordini `-06`, DDT `-07`, contratti `-08` (chiave con `:M:`); consumi `-09` (solo drop filtro `stato_emissione` + COMMENT) | ☑ |
 | 2 | Capability: `ORDINE_GIA_INVIATO`/`ORDINE_GIA_FATTURATO` (`-10`) e `DDT_GIA_INVIATO`/`DDT_GIA_FATTURATO` (`-11`), entrambe via classificatore — sparita la query inline | ☑ |
 | 3 | Semantica contratti: **risolta in verifica** (§4c — chiave `:M:` = ricorrenza mensile by design, il fix esclude il mese allocato) | ☑ |
-| 4 | Apply dev + pgTAP — **FATTO 2026-07-19** (migrate applicato, plan(10) verde); restano verifica §7 su ORD0000227 e comunicazione §6 a BE/FE | ☑ |
+| 4 | Apply dev + pgTAP — **FATTO 2026-07-19** (migrate applicato, plan(10) verde) | ☑ |
+| 5 | Verifica §7 su ORD0000227 vivo + non-regressione EVASO-mai-pushati (§9) | ☑ |
+| 6 | Chiusura BE/FE: banner reason in OrdiniDrawer/DdtDrawer + i18n it/en (§10) | ☑ |
+| 7 | **Residuo DB**, scorporato: namespace reason_key ordini → [brief dedicato](brief-db-i18n-namespace-reason-ordini.md) | ☐ |
 
-## 9. Riferimenti
+## 9. Verifica §7 sul DB vivo — ESEGUITA (2026-07-19, lato BE/FE)
+
+**Caso d'origine risolto.** ORD0000227: `fn_list_ordini_da_pushare` → **0 righe**,
+`can_push_commessa` → **false**, reason **`ORDINE_GIA_INVIATO`**
+(reason_key `ordini.push_commessa_reason.gia_inviato`).
+
+**Nessuna regressione, discriminazione corretta** — controllo incrociato
+`attività allocate` vs `can_push` sugli ordini recenti:
+
+| ordine | stato | attività (match uguaglianza **+** `#CMP:%`) | can_push | reason |
+| --- | --- | --- | --- | --- |
+| ORD0000227 | EVASO | 3 | false | `ORDINE_GIA_INVIATO` |
+| ORD0000163 | EVASO | 3 | false | `ORDINE_GIA_INVIATO` |
+| ORD0000228 | EVASO | 0 | **true** | — |
+| ORD0000580 | EVASO | 0 | **true** | — |
+| ORD0000162 | DRAFT | 0 | false | `ORDINE_NON_CONFERMATO` |
+
+Correlazione 1:1 tra esistenza dell'attività e blocco del push. In particolare
+gli ordini **EVASO mai pushati restano pushabili**: il design 2026-07-10
+(decoupling fatturazione/spedizione) non è stato intaccato — era il rischio
+principale del fix.
+
+Coerenza dei consumatori verificata sulle definizioni vive: le 3 push-list e le
+2 capability usano `fn_get_stato_push_segment`; **nessun residuo** di
+`stato_emissione = 'EMESSA'` in nessuna delle 7 funzioni; consumi e preventivi
+correttamente NON lo usano (chiavi a prefisso proprio), come da manuale.
+
+**DDT**: i rami `DDT_GIA_INVIATO`/`DDT_GIA_FATTURATO` non hanno casi vivi in dev
+(tutti i DDT presenti appartengono a ordini con trigger `CONFERMATO`, dove pusha
+l'ordine: `DDT_NON_PUSHABILE` è la reason corretta e infatti hanno 0 attività).
+Coperti dal pgTAP, non dal dato reale: da rivedere alla prima evasione con
+trigger `SPEDITO`/`CONSEGNATO`.
+
+## 10. Chiusura lato BE/FE (2026-07-19)
+
+**BE: zero modifiche**, come previsto in §6 — `get_capabilities` passa il blob
+capability intatto al FE (`ordini_repository.py`, `ddt_repository.py`), e le
+firme delle `fn_list_*_da_pushare` sono invariate (handler e
+`fetch_pushable_rows` non toccati).
+
+**FE — il problema di fondo era che nessuno mostrava la reason.** Ordini e DDT
+non leggevano affatto `can_push_commessa_reason_key`: l'azione `push_commessa`
+arriva data-driven in `available_actions` **solo quando è eseguibile**, quindi
+appena il push viene consumato il pulsante **spariva senza spiegazione** — la
+stessa UX che questa famiglia di brief vuole eliminare. Aggiunto il banner
+informativo, mirror 1:1 del pattern già in `PreventiviDrawer`:
+
+- `OrdiniDrawer.vue`, `DdtDrawer.vue`: computed `canPushCommessa` +
+  `pushCommessaReasonKey`, `<Message severity="info">` sotto `DrawerActionsBar`;
+- chiavi i18n it/en: `vendite.ordini.push_commessa_reason.*` (5: non_confermato,
+  fattura_da_ddt, gia_inviato, gia_fatturato, nessuna_riga_pushabile) e
+  `vendite.ddt.push_commessa_reason.{gia_inviato,gia_fatturato}`;
+- il render è guardato da `te(key)` — idioma già usato per le chiavi i18n
+  provenienti dal DB (`ListaConfigurabile.vue:163`): chiave non risolvibile →
+  banner nascosto invece che path grezzo a video.
+- build Vite verde.
+
+### 10a. ⚠️ Residuo DB (5 stringhe) — namespace i18n delle reason ordini
+
+`fn_available_actions_ordine` emette le reason_key nel namespace **`ordini.*`**,
+che nel FE **non esiste**: l'i18n degli ordini vive tutto sotto
+`vendite.ordini.*`. La stessa funzione, due righe più sopra, usa correttamente
+`vendite.ordini.azione_push_commessa` come `label_key` — quindi è
+**un'incoerenza interna alla funzione**, non una convenzione alternativa. Il DDT
+è già corretto (`vendite.ddt.push_commessa_reason.*`), e tutti i `label_key` di
+`config.transizioni_stati_{ordini,ddt}` usano `vendite.*`.
+
+Difetto **pre-esistente dalla nascita della funzione**
+(`20260605-09-create-fn-available-actions-ordine`, poi trascinato per ereditarietà
+in tutte le revisioni successive: `20260608-47`, `20260710-02`, `20260711-10`,
+`20260716-02`, `20260719-10`). È rimasto latente perché nessun consumatore FE
+leggeva quelle chiavi: il banner di §10 lo rende visibile.
+
+➜ **Scorporato in un mini-brief dedicato**:
+[brief-db-i18n-namespace-reason-ordini.md](brief-db-i18n-namespace-reason-ordini.md)
+— perimetro diverso da questo brief (nessun rapporto col predicato di push: qui
+si tratta solo del nome della chiave i18n) e ciclo di vita diverso, visto che
+questo brief è per il resto chiuso.
+
+Sintesi: le 5 reason_key del push ordini devono essere emesse sotto
+`vendite.ordini.*`; i codici `reason` restano invariati. Le traduzioni it/en sono
+già in repo sotto il nome nuovo, quindi fatto il rename il banner ordini si
+accende da solo — zero tocchi BE/FE.
+
+## 11. Riferimenti
 
 - Precedente (stessa famiglia, preventivi): `../work-done/brief-db-gate-evaso-commessa-asimmetria.md`
 - Design EVASO eleggibile al push: `../work-done/piano-db-fix-orfano-push-ordine-confermato.md`

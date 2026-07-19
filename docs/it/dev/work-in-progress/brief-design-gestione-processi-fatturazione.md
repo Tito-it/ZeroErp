@@ -10,6 +10,12 @@
 > riducendo l'esecuzione a pochi verbi ad alto livello — oggi il motore è completo ma si
 > pilota solo via cron/curl.
 >
+> **Brief operativi derivati** (2026-07-19):
+> [brief-db-processi-fatturazione-cockpit.md](brief-db-processi-fatturazione-cockpit.md)
+> (solo seed: 2 azioni processo + task stampa nello step DEFINITIVA) →
+> [brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md)
+> (piano a step, Fasi A→D).
+>
 > **Documenti collegati**:
 > [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
 > (design-of-record del read-side: le tre lenti; questo brief è il suo complemento
@@ -74,6 +80,17 @@ BE-endpoint sottili + FE; il DB è già pronto (salvo seed azioni processo, §7)
    demolibile (`reset_lotto_draft`); la **numerazione** (DEFINITIVA) è irreversibile. In
    UI i due mondi non stanno mai dietro lo stesso pulsante: «Fattura» porta a EMESSA,
    «Rendi definitive» è un'azione separata e consapevole (vedi D-1).
+5. **La cardinalità decide sincrono o batch** (regola di Tid, 2026-07-19). Il criterio non
+   è il tipo di processo ma **quanti documenti tocca**: *un solo documento* (calcolo di una
+   fattura, stampa di una fattura, azione su una commessa) → **sincrono**, risposta
+   immediata; *da due in su* → **batch in background**, la pagina non resta mai bloccata.
+   Vale per ogni processo di fatturazione — approvazione, giro, numerazione, stampa — senza
+   eccezioni e senza doverlo decidere caso per caso.
+6. **La stampa è un processo separato e "stupido"** (regola di Tid, 2026-07-19). Non
+   contiene logica di fatturazione: **legge le informazioni che già esistono e produce
+   1..N documenti**, punto. Non calcola, non decide, non cambia stati. È il *frontend* di
+   ciò che gli altri processi hanno già scritto — e per questo è ri-eseguibile a piacere e
+   riusabile da qualunque dominio (vedi §5-bis).
 
 ---
 
@@ -193,6 +210,49 @@ Punti fermi:
 
 ---
 
+## 5-bis. La stampa — processo separato, stupido, già quasi tutto in casa
+
+**La regola (§2.6)**: la stampa non sa nulla di fatturazione. Riceve *quali* documenti
+produrre, li legge e li genera. Nessuna logica di dominio, nessun cambio di stato.
+
+**Il riscontro nel codice (2026-07-19)**: quel processo **esiste già ed è esattamente così**.
+`documenti.DocumentGenerationService.genera_documento` è sorgente-agnostico — riceve
+`(sorgente_tipo_id, sorgente_id, sorgente_uid, emittente)`, risolve il template e produce
+il PDF persistito; la famiglia di endpoint documentali (genera / anteprima / lista / file /
+download) è una **factory condivisa** (`build_documenti_sorgente_views`) già cablata su 5
+domini (preventivi, offerte, contratti, ordini, DDT). Non c'è nulla da riprogettare: c'è da
+**riusare**.
+
+Restano due buchi, entrambi piccoli:
+
+| Buco | Cosa manca | Nota |
+|---|---|---|
+| **B-a — FATTURA non è cablata** | La famiglia documentale non è istanziata su `FATTURA` (`config.sorgenti` id 10, target `vendite.fatture` — la sorgente c'è già) | ~10 righe di delta sulla factory + un template fattura |
+| **B-b — non esiste il massivo** | Oggi si genera **un** documento per chiamata; manca il processo che ne produce **N** (le fatture di un lotto, una selezione) come job in background | è il §2.5 applicato alla stampa |
+
+**Come si concilia con D-1** («numerazione e stampa = processo unico»): i due requisiti
+vivono su assi diversi e non si contraddicono.
+
+* **Asse orchestrazione (D-1)**: per l'operatore «Rendi definitive» è **un atto solo** che
+  produce fatture numerate *e* stampate. Lo si ottiene mettendo la stampa come **secondo
+  task dello stesso step DEFINITIVA**, dopo `numera_fatture`: chiunque avvii quello step —
+  pulsante, cron, batch — esegue necessariamente entrambi, e non esiste un chiamante che
+  possa "dimenticarsi" la stampa.
+* **Asse componente (§2.6)**: il task di stampa è un **adattatore sottile** che si limita a
+  dire *«questi sono i documenti, generali»* e delega al processo stampa generico. La
+  logica di rendering non entra mai nella pipeline, e il processo stampa resta invocabile
+  **da solo** — ristampa di una fattura, stampa on-demand, ristampa massiva — senza passare
+  dalla fatturazione.
+
+Detto altrimenti: **un solo atto per l'utente, un solo componente per il codice**. La
+pipeline decide *quando* e *su cosa*; la stampa sa solo *come*.
+
+> Perché non uno step di pipeline dedicato alla stampa: gli step del lotto sono **stati
+> fiscali** (`config.stati_doc_fiscale`: DRAFT → EMESSA → DEFINITIVA → INVIATA). «Stampata»
+> non è uno stato fiscale e inventarlo sporcherebbe la macchina a stati. Un task dentro lo
+> step è la collocazione corretta: ha già il suo `task_run` con tentativi ed esito, ed è
+> ri-eseguibile da solo.
+
 ## 6. Gap da colmare (concentrico: contratto completo da subito, consegna a fasi)
 
 ### DB (→ eventuali brief al team su `dev/db-tid` — nulla di strutturale)
@@ -200,7 +260,8 @@ Punti fermi:
 | # | Cosa | Note |
 |---|---|---|
 | DB-1 | Seed `config.azioni_processo`: `approva_attivita_commessa`, `numera_fatture_lotti` (la numerazione merita permesso proprio, distinto da `genera_fatture_lotti`) | solo seed; pattern action-gate |
-| DB-2 | *(da verificare, probabilmente niente)* riepilogo lotti per competenza: se `ApiLottiList` + aggregazione BE bastano, nessuna vista nuova | fail-fast in analisi Fase B |
+| DB-2 | **Task stampa nello step DEFINITIVA** (D-1 + D-7): registry `dbops.pipeline_task_registry(_impl)` + append ai `processi` dei due step DEFINITIVA (MASSIVO id 4, GIORNALIERO id 6). Il task è un **adattatore**: la logica di stampa resta nel processo generico | verificato: la stampa **non è** oggi un task del motore |
+| DB-3 | ~~Riepilogo lotti per competenza~~ — ✅ **verificato 2026-07-19: nessuna vista nuova**. `list_lotti` filtra già competenza/stato/tipo_doc/emittente/utility con display fields e scope | voce chiusa |
 
 ### Backend
 
@@ -241,7 +302,8 @@ recepirà anche questo brief.)
 | # | Domanda | Proposta |
 |---|---|---|
 | D-1 | **Gate fiscale**: il giro da UI si ferma a EMESSA con «Rendi definitive» separato. E il **batch notturno**? (oggi completa tutto, numerazione inclusa) | ✅ **DECISA (Tid, 2026-07-19)**: corsia **immediata completa** (numera da sola); corsia **differita si ferma a EMESSA** — la numerazione è un **processo separato avviato da umano** per il massivo. ⚠️ Vincoli di Tid: (a) il processo di numerazione **include la stampa** ed è **un processo unico** numerazione+stampa; (b) **mai duplicare i processi** — immediata e massivo eseguono **lo stesso core**, cambia solo il modo di avvio (inline nel giro immediato · pulsante umano o eventualmente cron nel massivo). Il modo di esecuzione non genera software duplicato |
-| D-2 | **Forma dell'esecuzione da UI**: sincrona con esito per coppia vs job registrato + polling | ✅ **DECISA (Tid, 2026-07-19)**: **sincrona sui singoli documenti** (azione su una commessa / un lotto / una fattura), **in background sui giri multipli** (es. «Fattura competenza M» multi-coppia) — mai bloccare lo schermo a lungo. Il monitoraggio **riusa l'infrastruttura esistente**, niente di nuovo: `maintenance.job_run_log` (run del giro, via `registered_job`), `vendite.fatturazione_lotti_task_runs` (step/tentativi per lotto), `vendite.event_log` (timeline con correlation_id) → il pannello «esito giri» (§4.2/BE-4) legge da lì |
+| D-2 | **Forma dell'esecuzione da UI**: sincrona con esito per coppia vs job registrato + polling | ✅ **DECISA (Tid, 2026-07-19)**: decide la **cardinalità** (§2.5) — **un solo documento → sincrono**, **due o più → batch in background**, mai schermo bloccato a lungo. Vale per ogni processo di fatturazione (approvazione, giro, numerazione, stampa), nessuna eccezione. Il monitoraggio **riusa l'infrastruttura esistente**: `maintenance.job_run_log` (run, via `registered_job`), `vendite.fatturazione_lotti_task_runs` (step/tentativi per lotto), `vendite.event_log` (timeline con correlation_id) → il pannello «esito giri» (§4.2/BE-4) legge da lì |
+| D-7 | **Natura del processo di stampa** (Tid, 2026-07-19) | ✅ **DECISA**: processo **separato da tutti gli altri e "stupido"** — nessuna logica di dominio: legge le informazioni esistenti e genera 1..N documenti (§2.6). Concilia con D-1 su assi diversi: **un atto solo per l'utente** (task accodato allo step DEFINITIVA) + **un componente solo per il codice** (adattatore sottile → processo stampa generico, invocabile anche da solo per ristampe). Riusa `DocumentGenerationService` + la factory documentale esistenti; da colmare solo il cablaggio FATTURA e la variante massiva (§5-bis) |
 | D-3 | **Approvazione massiva** dal card stadio (tutto il mese in un click) oltre a quella per commessa/righe | ✅ **DECISA (Tid, 2026-07-19)**: **tutte e tre le grane** — per riga/selezione e per commessa nel drawer, massiva «tutto il mese» dal card con dialogo di conferma (contatore + valore totale); il drill-down resta a un click per chi vuole scorrere prima le righe |
 | D-4 | **Collocazione Lotti**: voce di menu vendite vs solo drawer da dashboard | ✅ **DECISA (Tid, 2026-07-19)**: **voce di menu dedicata** (`/vendite/lotti`, lista con filtri competenza/stato) **+ accesso contestuale dalla dashboard** (pannello errori e breakdown atterrano sul lotto già filtrato); il drawer lotto è lo stesso componente nei due percorsi |
 | D-5 | **Push sorgenti**: schedulato + pulsante manuale «Aggiorna commesse» | ✅ **DECISA (Tid, 2026-07-19)**: **entrambi** — cron ad alta frequenza per l'allineamento continuo + pulsante «Aggiorna commesse» in dashboard per il refresh immediato a richiesta. Stesso processo, due modi di avvio (vincolo D-1: mai duplicare); l'advisory lock rende innocua la sovrapposizione |
@@ -249,11 +311,14 @@ recepirà anche questo brief.)
 
 ## 9. Piano di consegna (dopo la chiusura di §8)
 
+Dettaglio operativo e avanzamento step-by-step:
+[brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md).
+
 | Fase | Contenuto | Prerequisiti |
 |---|---|---|
-| A — Sbloccare gli stadi | BE-1/2 + FE-1 (approvazioni da dashboard) + FE-2 (drawer commessa) | brief DB-1 (seed azioni) |
-| B — Lotti visibili e governabili | BE-5 + FE-3 (lista+drawer lotto, avanza/rerun/reset) | verifica DB-2 |
-| C — I verbi Fattura / Rendi definitive | BE-3/4 + PageActionsBar + esiti giri (FE-4) | Fase A+B; decisioni D-1/D-2 |
+| A — Sbloccare gli stadi | BE-1/2 + FE-1 (approvazioni da dashboard) + FE-2 (drawer commessa) | brief DB **D1** (seed azioni) |
+| B — Lotti visibili e governabili | BE-5 + FE-3 (lista+drawer lotto, avanza/rerun/reset) | nessuno DB (DB-3 chiusa) |
+| C — I verbi Fattura / Rendi definitive | estrazione core driver + BE-3/4 + handler stampa + PageActionsBar + esiti giri (FE-4) | Fase A+B; brief DB **D2** (task stampa) |
 | D — Guida utente | sezione nella guida cruscotti (linguaggio non tecnico, i 4 verbi) | si salda alla Fase 4 due-lenti |
 
 ## 10. Non-obiettivi

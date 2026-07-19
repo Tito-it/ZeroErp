@@ -48,6 +48,7 @@ import OrdineEmissioneDialog from './dialogs/OrdineEmissioneDialog.vue'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
+import Message from 'primevue/message'
 
 const { t, te } = useI18n()
 const store = useOrdiniStore()
@@ -112,6 +113,11 @@ const availableActions = caps.availableActions
 const canEditTestata = caps.canEdit
 const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
+// Push a commessa: l'azione arriva data-driven in `available_actions` solo
+// quando e' eseguibile, quindi da sola sparisce senza spiegare perche'. La
+// capability espone anche il motivo: banner informativo, mirror PreventiviDrawer.
+const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
+const pushCommessaReasonKey = computed(() => detail.value?.can_push_commessa_reason_key || null)
 
 // Campi bloccati lato UX. Una volta che l'ordine esiste (EDIT classico o CREATE
 // post auto-save), il cliente NON e' piu' modificabile: il BE deriva
@@ -548,6 +554,14 @@ const drawerActions = computed(() => {
             />
           </template>
         </DrawerActionsBar>
+
+        <!-- Motivo per cui "Invia a commessa" non e' offerto (gia' inviato,
+             gia' fatturato, ordine non confermato, fatturazione da DDT):
+             senza questo il pulsante sparisce e basta. -->
+        <Message v-if="!canPushCommessa && pushCommessaReasonKey && te(pushCommessaReasonKey)"
+          severity="info" :closable="false" class="mt-1">
+          {{ t(pushCommessaReasonKey) }}
+        </Message>
       </template>
 
       <Divider v-if="hasDetail" />
