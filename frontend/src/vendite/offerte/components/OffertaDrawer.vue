@@ -81,7 +81,7 @@ import ContrattoDrawer from '../../components/ContrattoDrawer.vue'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useOfferteStore()
 const { execute, loading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
@@ -745,6 +745,7 @@ const drawerActions = computed(() => {
     ...mapAvailableActionsToDrawerActions({
       availableActions,
       t,
+      te,
       onAction: onActionDispatch,
       readonly: parentReadonly.value,
     }),

@@ -49,7 +49,7 @@ import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useOrdiniStore()
 const { execute, loading } = useApiHandler()
 const notify = useNotify()
@@ -473,6 +473,7 @@ const drawerActions = computed(() => {
   const stateActions = mapAvailableActionsToDrawerActions({
     availableActions: availableActionsHeader,
     t,
+    te,
     onAction,
     readonly: readonlyPuro,
   })

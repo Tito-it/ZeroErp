@@ -64,7 +64,18 @@ export function useActionBar(getActions, options = {}) {
   }
 
   function buttonTooltip(action) {
-    return action.tooltip || action.label
+    const text = action.tooltip || action.label
+    // Tooltip multi-riga (es. i motivi ostativi multipli della capability
+    // emetti-DDT, brief guard-righe Rev 2): la directive rende il testo in un
+    // textNode, quindi senza `white-space: pre-line` i '\n' collassano in
+    // spazi. Si passa la forma oggetto con `class` — chiave SUPPORTATA dalla
+    // directive PrimeVue 4 (value/disabled/escape/class/fitContent/id/
+    // showDelay/hideDelay/autoHide); lo stile vive in main.css come tutte le
+    // classi app-*. NB: `pt` NON e' letto dalla directive (solo dai
+    // componenti): passarlo qui sarebbe un no-op silenzioso.
+    return text?.includes?.('\n')
+      ? { value: text, class: 'app-tooltip-multiline' }
+      : text
   }
 
   function runAction(action, event) {
