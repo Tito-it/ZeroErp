@@ -36,8 +36,8 @@ sorgenti ROOT di tipi diversi e una sorgente puo' essere collegata a piu' pratic
 |---------|------|
 | `pratica_id` | BIGINT NOT NULL. FK a `pratiche.pratiche`. |
 | `sorgente_tipo_id` | BIGINT NOT NULL. FK a `config.sorgenti` — identifica il tipo di documento sorgente (PREVENTIVO, ORDINE, ecc.). |
-| `sorgente_uid` | TEXT NOT NULL. Identificatore della sorgente (es. UUID del preventivo come testo). Tipo `text` per flessibilita' cross-dominio. |
-| `sorgente_riga` | BIGINT nullable. ID di una riga specifica della sorgente (es. riga preventivo). |
+| `sorgente_uid` | TEXT NOT NULL. **La chiave** del documento sorgente, nel formato dettato da `config.sorgenti.key_selector`: **uuid testuale** per i tipi a chiave `uid` (preventivo, offerta), **`id::text`** per i tipi a chiave `id` (ordine, commessa, ddt, ...). Formato ed esistenza sono blindati dal guard `trg_pratiche_sorgenti_a10_guard_sorgente_ins_upd` (2026-07-18). |
+| `sorgente_riga` | BIGINT nullable. ID di una riga specifica della sorgente (es. riga preventivo). **NON è una chiave documento**: è la grana di riga del link (non validata dal guard; decisione D4 del brief-db-guard-sorgente-polimorfa). |
 | `ruolo_link` | VARCHAR(30) DEFAULT 'ROOT'. Valori ammessi: ROOT (sorgente principale), COLLEGATO (secondaria). CHECK constraint. |
 | `meta` | JSONB DEFAULT '{}'. Metadati aggiuntivi del collegamento. |
 | `storicizza` | BOOLEAN DEFAULT true. Flag per storicizzazione automatica. |

@@ -40,11 +40,19 @@ Le causali di trasporto descrivono il *motivo* del movimento (es. vendita, conto
   * `attivo` indica se la causale è utilizzabile nei processi correnti.
   * L’indice `ix_causali_trasporto_attivo` è pensato per velocizzare i filtri sulle causali attive (combo di selezione, ricerche).
 
+* **`fatturabile` (dal 2026-07-18) — la causale dichiara l'intento commerciale**:
+
+  * `boolean NOT NULL`, **default `false`**. Dice se la merce che viaggia con questa causale genera una **vendita da fatturare** (`true`) o è **solo trasporto** (`false`).
+  * Seed vivo: **`VENDITA` è l'unica `true`**; `CONTO_VISIONE`, `RESO`, `RIPARAZIONE`, `CAMPIONATURA`, `TRASFERIMENTO`, `CONTO_LAVORO`, `OMAGGIO` sono `false`.
+  * **Perché il default è `false`**: una causale nuova nasce non fatturabile, così una dimenticanza produce un DDT che **non entra** nella coda di fatturazione — errore visibile e recuperabile — invece di uno che fattura per sbaglio, che è silenzioso e ha i soldi in mezzo.
+  * **Zero `IF` hardcoded**: il vocabolario guida il comportamento (stesso pattern di `tipi_reso.riapre_residuo`). I casi ambigui — l'omaggio, che qualcuno fattura a sconto 100% — si risolvono cambiando **una cella di seed**, senza toccare codice.
+  * **Cosa ne dipende**: il gate all'emissione [`trgfn_ddt_guard_causale_emissione`](/dbzero/vendite/manual/trgfn_ddt_guard_causale_emissione) (con causale fatturabile ogni riga attiva deve avere un prezzo risolvibile), il lister di push DDT e i cruscotti di fatturazione, che escludono i DDT di solo trasporto.
+  * ⚠️ **La causale è obbligatoria dall'emissione del DDT in poi** (in bozza il valore nullo resta legittimo): senza, il documento sarebbe ambiguo per la fatturazione.
+
 * **Estensioni tramite `meta`**:
 
   * `meta` è un campo `jsonb` utilizzabile per **parametri opzionali**, ad esempio:
 
-    * indicazione se la causale **genera documento di vendita** o meno;
     * flag per distinguere movimenti **in uscita / in entrata / interni**;
     * configurazioni per collegamento con **causali contabili** o **tipologie di fatturazione**;
     * eventuali opzioni specifiche del gestore (es. forzare presenza ordine, vincoli su cliente/fornitore, ecc.).

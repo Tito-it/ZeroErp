@@ -10,7 +10,7 @@
 # Due endpoint GET sottili sopra le viste vendite.vw_dash_aperto_* v2
 # (design brief-design-fatturazione-due-lenti §6-ter, DB in
 # brief-db-situazione-aperta-v2). Livello LETTURA sufficiente; lo scope
-# emittente e' interamente DB-side (RLS invoker sulle 4 aree documento).
+# emittente e' interamente DB-side (RLS invoker sulle 5 aree documento).
 
 from django.http import JsonResponse
 from drf_spectacular.utils import (
@@ -59,7 +59,7 @@ class ApiDashboardAperto(DomainAPIView):
         },
     )
     # Scopo: Restituisce via GET il riepilogo dello stock documenti aperto:
-    #        4 aree documento sempre presenti (ordine funnel), ognuna con
+    #        5 aree documento sempre presenti (ordine funnel), ognuna con
     #        totali e griglia per fase normalizzata (ordine ciclo di vita),
     #        piu' il vocabolario `fasi` per i filtri FE.
     def get(self, request: Request) -> JsonResponse:
@@ -82,8 +82,8 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description=(
-                    "Filtro area documento: PREVENTIVI | ORDINI | OFFERTE | "
-                    "CONTRATTI (default: tutte). Non whitellistato: un'area "
+                    "Filtro area documento: PREVENTIVI | ORDINI | DDT | "
+                    "OFFERTE | CONTRATTI (default: tutte). Non whitellistato: un'area "
                     "sconosciuta (o COMMESSE, esclusa dalla vista — coperta "
                     "dalla Lente 1) da' lista vuota (coerenza fail-visible "
                     "col riepilogo, che accoda le aree fuori whitelist)."

@@ -130,16 +130,30 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
 Cioè: nelle tabelle di collegamento polimorfe (`pratiche.pratiche_sorgenti`,
 `vendite.commesse_sorgenti`) e nelle viste `vw_stato_sorgente_*`, la colonna
 `sorgente_uid` (di tipo `text`) contiene **l'uid per preventivo/offerta** e
-**l'id (::text) per gli altri**. È esattamente ciò che validano
-`script.trgfn_guard_sorgente_polimorfa` e su cui sono costruite le
-`vw_stato_sorgente_*`.
+**l'id (::text) per gli altri**. Dal 2026-07-18 la convenzione è **blindata**
+(brief-db-guard-sorgente-polimorfa) da due livelli:
+
+* **rubinetto**: `vendite.fn_link_commessa_sorgente` normalizza la chiave prima
+  di scrivere (traduce l'uuid dei chiamanti storici in `id::text` per i tipi a
+  chiave `id`; formato non conforme → `E_SORG_FORMATO`, uuid non risolvibile →
+  `E_SORG_NORM_NON_RISOLTA`);
+* **guard**: `script.trgfn_guard_sorgente_polimorfa_testuale` (modello B) valida
+  formato ed esistenza su INSERT/UPDATE di `pratiche_sorgenti` e
+  `commesse_sorgenti`.
+
+> Nota COMMESSA: `target_table` del tipo è `vendite.commesse` (fix 2026-07-18:
+> il seed storico puntava a `vendite.commesse_attivita`, il marker di pipeline —
+> ma i link di collegamento usano l'id della **commessa**, ed è contro
+> `vendite.commesse` che il guard risolve).
 
 **⚠️ Due meccanismi diversi — non confonderli:**
 
 1. **Sorgente polimorfa** (questa tabella + `pratiche_sorgenti` /
    `commesse_sorgenti` / `vw_stato_sorgente_*`): chiave nodo =
    `(sorgente_tipo_id, sorgente_uid)`, con `sorgente_uid` **secondo
-   `key_selector`**. Guard attivo: `trgfn_guard_sorgente_polimorfa`.
+   `key_selector`**. Guard attivo: `trgfn_guard_sorgente_polimorfa_testuale`
+   (modello B — chiave testuale; la sorella `_tipizzata` per il modello A a
+   colonne tipizzate esiste ma oggi non è agganciata).
 2. **Colonne tipizzate dirette** (fuori dal meccanismo polimorfo): es.
    `vendite.ddt.sorgente_uid` e `vendite.resi.sorgente_uid` sono **`uuid`** (puntano
    a `ordini.uid` / `ddt.uid`); `vendite.ordini.documento_origine_id` e

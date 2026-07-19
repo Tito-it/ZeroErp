@@ -10,11 +10,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.core.db._helpers import dynamic_update, row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    dynamic_update,
+    extract_paginated,
+    row_to_dict,
+    rows_to_list,
+)
 
 from django.db import connection, transaction
 
-from apps.anagrafiche.db._helpers import extract_paginated
 
 _ORDER_COLS = {
     "indirizzo_normalizzato", "civico", "descrizione_comune", "cap",

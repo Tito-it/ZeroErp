@@ -33,18 +33,25 @@ function buildCodaParams(f, searchTerm) {
   if (f.billing_account_id != null) p.billing_account_id = f.billing_account_id
   if (f.data_da) p.data_da = f.data_da
   if (f.data_a) p.data_a = f.data_a
+  // Solo coda accrediti (forma contatore): DOVUTA (a credito, NC obbligatoria)
+  // | FACOLTATIVA (per ri-consegna, opzione DL-26). null = tutte.
+  if (f.etichetta) p.etichetta = f.etichetta
   return p
 }
 
 // Factory: crea uno store coda con l'interfaccia standard delle liste
-// configurabili. `id` = id Pinia univoco; `fetchPage` = endpoint API della coda.
-function createResiCodaStore(id, fetchPage) {
+// configurabili. `id` = id Pinia univoco; `fetchPage` = endpoint API della
+// coda; `extraFilters` = filtri specifici della singola coda (solo la coda
+// accrediti ha `etichetta`: lo store riconsegne non deve esporre un filtro
+// che il suo endpoint non legge — sarebbe un no-op silenzioso).
+function createResiCodaStore(id, fetchPage, extraFilters = {}) {
   return defineStore(id, () => {
     const filters = ref({
       search: '',
       billing_account_id: null,
       data_da: null,
       data_a: null,
+      ...extraFilters,
       limit: 25,
       offset: 0,
       // Default sort `data desc` (parità lista resi/DDT), allineato al
@@ -69,7 +76,7 @@ function createResiCodaStore(id, fetchPage) {
 }
 
 export const useResiCodaAccreditareStore = createResiCodaStore(
-  'vendite-resi-coda-accreditare', listDaAccreditare,
+  'vendite-resi-coda-accreditare', listDaAccreditare, { etichetta: null },
 )
 export const useResiCodaRiconsegnareStore = createResiCodaStore(
   'vendite-resi-coda-riconsegnare', listDaRiconsegnare,

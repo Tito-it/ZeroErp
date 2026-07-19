@@ -12,12 +12,16 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from apps.core.db._helpers import escape_ilike, row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    escape_ilike,
+    extract_paginated,
+    row_to_dict,
+    rows_to_list,
+)
 from apps.core.db.parameter_repository import ParameterRepository
 
 from django.db import connection
 
-from apps.anagrafiche.db._helpers import extract_paginated
 
 _SOGGETTI_ORDER_COLS = {
     "codice", "ragione_sociale_completa", "codice_fiscale", "partita_iva",

@@ -202,9 +202,10 @@ function onCrea() {
       {{ t('vendite.resi.crea_nessuna_riga') }}
     </div>
 
-    <Button v-if="!readonly && righeSelezionabili.length" icon="pi pi-replay"
+    <Button v-if="!readonly && righeSelezionabili.length"
+      icon="app-nav-icon app-nav-icon-resi"
       :label="t('vendite.resi.crea_bottone')"
-      severity="warn" size="small" :loading="loading"
+      :loading="loading"
       :disabled="selected.length === 0" @click="onCrea"
       style="align-self: flex-start;" />
   </div>

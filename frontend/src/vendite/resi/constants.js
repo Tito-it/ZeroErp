@@ -25,3 +25,12 @@ export const TIPO_RESO = Object.freeze({
   A_CREDITO: 'RESO_A_CREDITO',
   PER_RICONSEGNA: 'RESO_PER_RICONSEGNA',
 })
+
+// Etichetta NC della coda accrediti (colonna derivata di
+// `vw_resi_da_accreditare`, forma contatore): DOVUTA = obbligo (reso a
+// credito), FACOLTATIVA = opzione dell'operatore (reso per ri-consegna,
+// DL-26). Whitelist speculare a quella BE (`E_RESO_VALIDAZIONE`).
+export const ETICHETTA_ACCREDITO = Object.freeze({
+  DOVUTA: 'DOVUTA',
+  FACOLTATIVA: 'FACOLTATIVA',
+})

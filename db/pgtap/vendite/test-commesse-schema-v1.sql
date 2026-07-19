@@ -8,7 +8,7 @@
 -- 2) Tabella vendite.commesse_sorgenti presente
 -- 3) Tabella vendite.commesse_attivita presente
 -- 4) Tabella vendite.commesse_attivita_log presente
--- 5) Check stato_commessa invalido su commesse
+-- 5) Check tipo_commessa invalido su commesse (chk_commesse_tipo)
 -- 6) Check ruolo_link invalido su commesse_sorgenti
 -- 7) Vincolo una sola ROOT per commessa
 -- 8) Unicita` (commessa_id, segment_key) su commesse_attivita
@@ -115,10 +115,13 @@ SELECT
     LIMIT 1
   ) AS valuta_id,
   (
+    -- Tipo COMMESSA (key_selector='id'): il guard sorgente (20260718-17/19)
+    -- valida formato ed esistenza, quindi le sorgenti dei test sono le
+    -- commesse REALI create qui sotto (chiave canonica id::text).
     SELECT s.id
     FROM config.sorgenti s
-    WHERE s.attivo IS TRUE
-    ORDER BY s.id
+    WHERE s.codice_interno = 'COMMESSA'
+      AND s.attivo IS TRUE
     LIMIT 1
   ) AS sorgente_tipo_id;
 
@@ -127,30 +130,46 @@ SELECT
   ('CMS_' || substr(md5(clock_timestamp()::text), 1, 12))::varchar(64) AS codice1,
   ('CMS_' || substr(md5((clock_timestamp() + interval '1 sec')::text), 1, 12))::varchar(64) AS codice2;
 
+-- NOTA 2026-07-18: allineato allo schema corrente di vendite.commesse —
+-- lo stato e' stato_commessa_id (FK, default 1), non piu' la colonna testuale
+-- stato_commessa; il CHECK testato e' chk_commesse_tipo.
 SELECT throws_ok(
   $$
   INSERT INTO vendite.commesse (
-    codice, tipo_commessa, stato_commessa, policy_fatturazione, fatturazione_immediata, priorita_operativa,
-    billing_account_id, utility_id, emittente_soggetto_ruolo_id
+    codice, tipo_commessa, billing_account_id, utility_id, emittente_soggetto_ruolo_id
   )
   SELECT
-    c.codice1, 'AUTO', 'INVALIDO', 'DA_DOCUMENTO', false, 'NORMALE',
+    c.codice1, 'INVALIDO',
     r.billing_account_id, r.utility_id, r.emittente_soggetto_ruolo_id
   FROM tmp_codes_cs c CROSS JOIN tmp_refs_cs r;
   $$,
   '23514',
   NULL,
-  'Check stato_commessa invalido su commesse'
+  'Check tipo_commessa invalido su commesse (chk_commesse_tipo)'
 );
 
 CREATE TEMP TABLE tmp_commessa_cs AS
 WITH ins AS (
   INSERT INTO vendite.commesse (
-    codice, tipo_commessa, stato_commessa, policy_fatturazione, fatturazione_immediata, priorita_operativa,
-    billing_account_id, utility_id, emittente_soggetto_ruolo_id
+    codice, billing_account_id, utility_id, emittente_soggetto_ruolo_id
   )
   SELECT
-    c.codice1, 'AUTO', 'BOZZA', 'DA_DOCUMENTO', false, 'NORMALE',
+    c.codice1,
+    r.billing_account_id, r.utility_id, r.emittente_soggetto_ruolo_id
+  FROM tmp_codes_cs c CROSS JOIN tmp_refs_cs r
+  RETURNING id
+)
+SELECT id FROM ins;
+
+-- Seconda commessa: serve come sorgente REALE distinta per il test
+-- "una sola ROOT" (il guard sorgente valida l'esistenza della chiave).
+CREATE TEMP TABLE tmp_commessa_cs2 AS
+WITH ins AS (
+  INSERT INTO vendite.commesse (
+    codice, billing_account_id, utility_id, emittente_soggetto_ruolo_id
+  )
+  SELECT
+    c.codice2,
     r.billing_account_id, r.utility_id, r.emittente_soggetto_ruolo_id
   FROM tmp_codes_cs c CROSS JOIN tmp_refs_cs r
   RETURNING id
@@ -163,7 +182,8 @@ SELECT throws_ok(
     commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link
   )
   SELECT
-    (SELECT id FROM tmp_commessa_cs), (SELECT sorgente_tipo_id FROM tmp_refs_cs), 'SRC-A', 'SECONDARIA';
+    (SELECT id FROM tmp_commessa_cs), (SELECT sorgente_tipo_id FROM tmp_refs_cs),
+    (SELECT id::text FROM tmp_commessa_cs), 'SECONDARIA';
   $$,
   '23514',
   NULL,
@@ -174,7 +194,8 @@ INSERT INTO vendite.commesse_sorgenti (
   commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link
 )
 SELECT
-  (SELECT id FROM tmp_commessa_cs), (SELECT sorgente_tipo_id FROM tmp_refs_cs), 'SRC-ROOT-A', 'ROOT';
+  (SELECT id FROM tmp_commessa_cs), (SELECT sorgente_tipo_id FROM tmp_refs_cs),
+  (SELECT id::text FROM tmp_commessa_cs), 'ROOT';
 
 SELECT throws_ok(
   $$
@@ -182,7 +203,8 @@ SELECT throws_ok(
     commessa_id, sorgente_tipo_id, sorgente_uid, ruolo_link
   )
   SELECT
-    (SELECT id FROM tmp_commessa_cs), (SELECT sorgente_tipo_id FROM tmp_refs_cs), 'SRC-ROOT-B', 'ROOT';
+    (SELECT id FROM tmp_commessa_cs), (SELECT sorgente_tipo_id FROM tmp_refs_cs),
+    (SELECT id::text FROM tmp_commessa_cs2), 'ROOT';
   $$,
   '23505',
   NULL,

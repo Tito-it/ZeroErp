@@ -32,6 +32,7 @@ from typing import Any
 from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.list_helpers import validate_enum_param
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     make_db_errors_translator,
@@ -207,7 +208,8 @@ def list_righe_ddt_per_reso(ddt_id: int) -> list[dict[str, Any]]:
     return repo.list_righe_ddt_per_reso(ddt_id)
 
 
-# Scopo: Coda "da accreditare" (righe reso CONFERMATE a credito, vista
+# Scopo: Coda "da accreditare" (forma contatore: righe reso CONFERMATE con
+#        accredito dovuto = fatturati - tenuti > 0, qualunque tipo; vista
 #        vw_resi_da_accreditare). Predisposizione slice nota di credito.
 def list_da_accreditare(
     *,
@@ -215,6 +217,7 @@ def list_da_accreditare(
     data_da: date | None = None,
     data_al: date | None = None,
     search: str | None = None,
+    etichetta: str | None = None,
     auth_user_id: int | None = None,
     limit: int,
     offset: int,
@@ -222,11 +225,24 @@ def list_da_accreditare(
     order_dir: str = "desc",
     max_limit: int = 200,
 ) -> tuple[list[Any], int]:
+    # Filtro etichetta strict (DOVUTA = NC obbligatoria, a credito;
+    # FACOLTATIVA = opzione dell'operatore su merce da ri-spedire, DL-26):
+    # whitelist fail-fast, un valore ignoto e' un errore del chiamante,
+    # non una lista vuota silenziosa.
+    validate_enum_param(
+        etichetta,
+        allowed=("DOVUTA", "FACOLTATIVA"),
+        param_name="etichetta",
+        error_code="E_RESO_VALIDAZIONE",
+        function_name="vendite.resi_service.list_da_accreditare",
+        nullable=True,
+    )
     return ResiRepository().list_da_accreditare(
         billing_account_id=billing_account_id,
         data_da=data_da,
         data_al=data_al,
         search=search,
+        etichetta=etichetta,
         auth_user_id=auth_user_id,
         limit=limit,
         offset=offset,
@@ -275,6 +291,7 @@ def resolve_filtri_coda_export_label(
     billing_account_id: int | None = None,
     data_da: date | None = None,
     data_al: date | None = None,
+    etichetta: str | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
     if search:
@@ -285,6 +302,10 @@ def resolve_filtri_coda_export_label(
         out["Dal"] = str(data_da)
     if data_al is not None:
         out["Al"] = str(data_al)
+    if etichetta is not None:
+        # Senza questa riga l'export filtrato DOVUTA/FACOLTATIVA verrebbe
+        # letto come coda completa (il file non dichiarerebbe il filtro).
+        out["Etichetta NC"] = etichetta
     return out
 
 

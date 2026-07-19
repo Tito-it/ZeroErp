@@ -31,16 +31,30 @@ export function mapAvailableActionsToDrawerActions({
 }) {
   if (unref(readonly)) return []
   const list = unref(availableActions) || []
-  return list.map(action => ({
-    key: action.key || `state-${action.target_state}`,
-    kind: 'state',
-    label: t(action.label_key),
-    icon: action.icon,
-    severity: action.severity,
-    // `outlined` pass-through dal BE (default false). Usato per le azioni
-    // "secondarie pericolose" tipo Annulla DRAFT (rosso outlined invece di
-    // rosso pieno), allineato al pattern Annulla offerte/contratti.
-    outlined: action.outlined === true,
-    command: () => onAction?.(action),
-  }))
+  return list.map(action => {
+    // Precondizioni data-driven (rev DB 2026-07-16, meta.requires_righe):
+    // `enabled:false` + `reason`/`reason_key` (es. DOCUMENTO_SENZA_RIGHE /
+    // common.azione_reason.senza_righe) -> pulsante disabilitato con tooltip
+    // che spiega il perche'. Confronto stretto con `false`: i domini che non
+    // espongono `enabled` (offerte) degradano in sicurezza ad abilitato.
+    const isDisabled = action.enabled === false
+    return {
+      key: action.key || `state-${action.target_state}`,
+      kind: 'state',
+      label: t(action.label_key),
+      icon: action.icon,
+      severity: action.severity,
+      // `outlined` pass-through dal BE (default false). Usato per le azioni
+      // "secondarie pericolose" tipo Annulla DRAFT (rosso outlined invece di
+      // rosso pieno), allineato al pattern Annulla offerte/contratti.
+      outlined: action.outlined === true,
+      disabled: isDisabled,
+      // Tooltip solo da disabilitata: la chiave i18n arriva dal BE
+      // (reason_key); fallback al codice reason grezzo se la chiave manca.
+      tooltip: isDisabled
+        ? (action.reason_key ? t(action.reason_key) : (action.reason || ''))
+        : undefined,
+      command: () => onAction?.(action),
+    }
+  })
 }

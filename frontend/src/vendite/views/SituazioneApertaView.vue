@@ -32,6 +32,7 @@ import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { faseDocumentoSeverity } from '../../core/utils/severity'
 import {
+  DASH_AREA_CONFIG,
   buildApriDocumentoAction,
   dashAreaLabel,
   dashAreaSeverity,
@@ -95,6 +96,12 @@ const cards = computed(() =>
       area: a.area,
       format: isEuro ? 'currency' : 'count',
       fasi: segmenti,
+      // Hint per misure non ovvie (es. ORDINI misura mista, DL-23): la
+      // mappatura area→hint vive in DASH_AREA_CONFIG con route/severity,
+      // non qui — la view non conosce le aree per nome.
+      hint: DASH_AREA_CONFIG[a.area]?.apertoHintKey
+        ? t(DASH_AREA_CONFIG[a.area].apertoHintKey)
+        : null,
     }
   })
 )
@@ -249,7 +256,22 @@ onActivated(() => {
           @click="selezionaArea(card.area)"
           @keydown.enter="selezionaArea(card.area)"
         >
-          <span class="app-dash-card-title">{{ areaLabel(card.area) }}</span>
+          <span class="app-dash-card-title">
+            {{ areaLabel(card.area) }}
+            <!-- Focusabile + aria-label: il chiarimento sulla misura deve
+                 essere raggiungibile anche da tastiera/screen reader (il
+                 v-tooltip PrimeVue si attiva anche su focus). -->
+            <i
+              v-if="card.hint"
+              v-tooltip.bottom="card.hint"
+              class="pi pi-info-circle app-dash-card-hint"
+              role="img"
+              tabindex="0"
+              :aria-label="card.hint"
+              @click.stop
+              @keydown.enter.stop
+            />
+          </span>
           <DonutFasi
             :fasi="card.fasi"
             :format="card.format"

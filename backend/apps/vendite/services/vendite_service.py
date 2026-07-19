@@ -267,7 +267,7 @@ def fn_dash_aperto_riepilogo() -> dict[str, object]:
 
 
 # Scopo: Restituisce il drill-down paginato del serbatoio pre-commessa: stock
-#        dei documenti aperti-non-chiusi delle 4 aree, ordinati per "in essere
+#        dei documenti aperti-non-chiusi delle 5 aree, ordinati per "in essere
 #        da" (i piu' vecchi prima), con filtri opzionali area/fase e
 #        ritardo_giorni ("aperti da oltre N giorni" su data documento — DL-17,
 #        soglia SOLO sul drill-down: le card del riepilogo restano la

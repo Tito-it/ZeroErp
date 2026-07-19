@@ -14,11 +14,12 @@ Indice test eseguiti:
 5) DashBacklogDocumentiServiceTests.test_documenti_ok_envelope_paginato
 6) DashBacklogDocumentiServiceTests.test_documenti_classe_sconosciuta_passthrough
 7) DashBacklogDocumentiServiceTests.test_documenti_area_invalida
-8) DashBacklogDocumentiServiceTests.test_documenti_filtri_none_passthrough
-9) DashBacklogDocumentiServiceTests.test_documenti_page_invalida
-10) DashBacklogDocumentiServiceTests.test_documenti_ordinamento_inoltrato
-11) DashBacklogDocumentiServiceTests.test_documenti_order_by_non_valido
-12) DashBacklogDocumentiServiceTests.test_documenti_order_dir_non_valido
+8) DashBacklogDocumentiServiceTests.test_documenti_aree_ddt_resi_valide
+9) DashBacklogDocumentiServiceTests.test_documenti_filtri_none_passthrough
+10) DashBacklogDocumentiServiceTests.test_documenti_page_invalida
+11) DashBacklogDocumentiServiceTests.test_documenti_ordinamento_inoltrato
+12) DashBacklogDocumentiServiceTests.test_documenti_order_by_non_valido
+13) DashBacklogDocumentiServiceTests.test_documenti_order_dir_non_valido
 """
 
 from unittest import TestCase
@@ -170,6 +171,20 @@ class DashBacklogDocumentiServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             fn_dash_backlog_documenti(area="FATTURE")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: DDT e RESI sono aree valide del backlog (sesta area della union +
+    #        ramo resi, DL-21/24): il drill-down NON deve dare 400 — era la
+    #        regressione "card che non si aprono" (brief BE/FE §2 BE-1).
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_backlog_documenti",
+        return_value=([], 0),
+    )
+    def test_documenti_aree_ddt_resi_valide(self, mock_repo):
+        for area in ("DDT", "RESI"):
+            with self.subTest(area=area):
+                fn_dash_backlog_documenti(area=area)
+                self.assertEqual(mock_repo.call_args.kwargs["area"], area)
 
     # Scopo: Senza filtri il repository riceve None (tutte le classi/aree).
     @patch.object(

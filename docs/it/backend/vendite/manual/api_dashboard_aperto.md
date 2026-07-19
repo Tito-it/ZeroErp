@@ -17,7 +17,9 @@ Fase 3 BE del brief
 [brief-db-situazione-aperta-v2](../../../dev/work-done/brief-db-situazione-aperta-v2.md),
 changeset `20260708-03/04`, PR #944): due endpoint GET **sottili** sopra le
 proiezioni read-only `vendite.vw_dash_aperto_riepilogo` (celle `area × fase`)
-e `vendite.vw_dash_aperto_documenti` (union dei resolver, 4 aree documento).
+e `vendite.vw_dash_aperto_documenti` (union dei resolver, 5 aree documento —
+DDT dal 2026-07-18, §6-quater DL-21: popolazione ristretta ai DDT con ruolo
+di fatturazione; i RESI restano fuori per costruzione, DL-24).
 **Perimetro serbatoio interamente DB-side** (DL-15): la vista v2 filtra
 `is_transitato IS DISTINCT FROM true AND fase <> 'CHIUSO'` — perimetro unico di
 card e drill-down, il BE **non** replica filtri (via il vecchio toggle
@@ -43,7 +45,7 @@ Nessun parametro.
 ### `GET /dashboard-aperto/documenti/`
 
 - `area` (opzionale, case-insensitive; assente = tutte): `PREVENTIVI |
-  ORDINI | OFFERTE | CONTRATTI`. **Non whitellistato di proposito** (coerenza
+  ORDINI | DDT | OFFERTE | CONTRATTI`. **Non whitellistato di proposito** (coerenza
   fail-visible col riepilogo, che accoda le aree fuori whitelist e le rende
   card cliccabili): un'area futura resta drillabile senza toccare il BE;
   un'area sconosciuta — o `COMMESSE`, esclusa dal WHERE della vista (coperta
@@ -88,8 +90,8 @@ Nessun parametro.
 }
 ```
 
-- **4 aree sempre presenti** nell'ordine del funnel (`PREVENTIVI, ORDINI,
-  OFFERTE, CONTRATTI`), ognuna con la **griglia delle 3 fasi vive sempre
+- **5 aree sempre presenti** nell'ordine del funnel (`PREVENTIVI, ORDINI,
+  DDT, OFFERTE, CONTRATTI`), ognuna con la **griglia delle 3 fasi vive sempre
   presenti** nell'ordine della maturità verso la commessa (`APERTO, IN_ATTESA,
   IN_CORSO`) e zeri espliciti — DL-13: la griglia è neutra, il FE decide quali
   card mostrare. Aree o fasi **fuori whitelist** emesse dalla vista vengono
@@ -98,9 +100,15 @@ Nessun parametro.
   griglia di un'area); un'area extra che porta **valori** li espone (decisione
   data-driven, non la whitelist euro statica).
 - Totali per area = somma delle fasi (su Decimal). Misura mista (DL-11/16,
-  conferma D-2/D-3/D-4): aree euro (`PREVENTIVI`/`ORDINI`) con `valore_totale`
-  come stringa (`"0"` se vuote); aree a conteggi (`OFFERTE`/`CONTRATTI`) con
-  `valore_totale` `null` (il FE le legge da `valore_totale !== null`).
+  conferma D-2/D-3/D-4): aree euro (`PREVENTIVI`/`ORDINI`/`DDT`) con
+  `valore_totale` come stringa (`"0"` se vuote); aree a conteggi
+  (`OFFERTE`/`CONTRATTI`) con `valore_totale` `null` (il FE le legge da
+  `valore_totale !== null`).
+- ⚠️ **Misura MISTA dell'area ORDINI** (DL-23 emendato, `20260718-13`): gli
+  ordini con `fatturazione_trigger ∈ {SPEDITO, CONSEGNATO}` portano il **valore
+  ancora da spedire** (il DDT prende in carico il resto); quelli con trigger
+  `CONFERMATO` restano al valore pieno. Il calcolo vive nel resolver DB, il BE
+  è passthrough; il FE lo dichiara con un hint sulla card.
 
 ### Lista documenti
 

@@ -14,19 +14,34 @@ import { labelOrCode } from '../core/utils/i18nLabel'
 import {
   statoCommessaSeverity,
   statoContrattoSeverity,
+  statoDdtSeverity,
   statoOffertaSeverity,
   statoOrdineSeverity,
   statoPreventiveSeverity,
+  statoResoSeverity,
 } from '../core/utils/severity'
 
 // Ordine di iterazione = ordine funnel (allineato alla whitelist BE
-// DASH_FATTURAZIONE_AREE).
+// DASH_FATTURAZIONE_AREE). DDT dopo ORDINI (e' il suo veicolo di
+// fatturazione differita, DL-21); RESI in coda (flusso inverso, vive solo
+// nel Backlog — DL-24).
+// `apertoHintKey` (opzionale): chiave i18n dell'hint mostrato sulla card
+// della Situazione aperta quando la misura dell'area non e' ovvia — oggi
+// solo ORDINI (misura MISTA, DL-23 emendato: netta per trigger S/C, piena
+// per CONFERMATO). Vive qui e non nella view: la semantica e' per-area,
+// come route e severity.
 export const DASH_AREA_CONFIG = {
   PREVENTIVI: { route: '/vendite/preventivi', severity: statoPreventiveSeverity },
-  ORDINI: { route: '/vendite/ordini', severity: statoOrdineSeverity },
+  ORDINI: {
+    route: '/vendite/ordini',
+    severity: statoOrdineSeverity,
+    apertoHintKey: 'situazione_aperta.card_ordini_hint',
+  },
+  DDT: { route: '/vendite/ddt', severity: statoDdtSeverity },
   OFFERTE: { route: '/vendite/offerte', severity: statoOffertaSeverity },
   CONTRATTI: { route: '/vendite/contratti', severity: statoContrattoSeverity },
   COMMESSE: { route: null, severity: statoCommessaSeverity },
+  RESI: { route: '/vendite/resi', severity: statoResoSeverity },
 }
 
 export const DASH_AREE = Object.keys(DASH_AREA_CONFIG)

@@ -111,8 +111,40 @@ Tipico filtro di eleggibilità per il motore:
 
 * `trg_attivita_fatturabili_normalize_ins_upd` → **normalizza** `competenza_mese` al 1° del mese (obbligatoria, derivata da `posticipa_al` se assente), imposta `sorgente_riga` a `0` se `sorgente_tipo_id` è valorizzato e risolve `tipo_doc_fiscale_id`/`valuta_id` quando mancanti.
   * `trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd` → **coerenze BA/istanza/articolo** (regole di dominio).
-  * `trg_attivita_fatturabili_a10_guard_fonte_ins_upd` → **validazione sorgente** (`sorgente_tipo_id`/`sorgente_uid`).
+  * `trg_attivita_fatturabili_a10_guard_commessa_ins_upd` → coerenza col segmento commessa (`commessa_id`/`commessa_attivita_id`).
   * `trg_attivita_fatturabili_a10_guard_fatturato_upd_dlt` → **fail‑fast**: blocca update/delete se già collegate a fattura.
+
+---
+
+### ⚠️ Validazione polimorfa della sorgente — NON attiva (decisione, non dimenticanza)
+
+> Registrato qui (doc permanente) perché i brief migrano in work-done —
+> decisioni Tid 2026-02-25 e 2026-07-18.
+
+Le colonne `sorgente_tipo_id` / `sorgente_riga` / `sorgente_uid` **non hanno un
+guard polimorfo di esistenza**. Storia:
+
+* `20251026-02`: agganciato `trg_attivita_fatturabili_a10_guard_fonte_ins_upd`
+  (guard polimorfo, oggi `script.trgfn_guard_sorgente_polimorfa_tipizzata`);
+* `20260225-45`: **rimosso deliberatamente** — nel flusso commessa-only la
+  sorgente è sempre COMMESSA e la FK `commessa_attivita_id` garantisce già il
+  padre; il probe polimorfo era ridondante;
+* 2026-07-18 (brief-db-guard-sorgente-polimorfa, D6): **confermato staccato**.
+
+**Condizione di riaggancio** — rivalutare `trgfn_guard_sorgente_polimorfa_tipizzata`
+il giorno in cui un flusso scriverà attività fatturabili **non** commessa-only
+(import esterni diretti, sorgenti documento senza segmento commessa): solo lì il
+guard aggiunge protezione che la FK non dà. Prerequisiti già censiti per quel
+giorno:
+
+1. **semantica `sorgente_riga`**: qui NON è la chiave del modello A — il trigger
+   normalize la imposta a `0` (sentinella «nessuna riga specifica») quando
+   `sorgente_tipo_id` è valorizzato, e il guard tipizzato com'è oggi la
+   interpreterebbe come id documento (fallendo sempre su 0). Va risolto il
+   conflitto (togliere la sentinella o adattare il guard);
+2. drop del DEFAULT 0 su `sorgente_riga`;
+3. verifica dei writer (le fn di generazione attività);
+4. regressione pgTAP (~20 file toccano questa tabella).
 
 ---
 

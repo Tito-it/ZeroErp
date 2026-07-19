@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Brief-db-guard-sorgente-polimorfa §2c: aggancio del guard modello B
+# (trgfn_guard_sorgente_polimorfa_testuale, 20260718-17) a
+# vendite.commesse_sorgenti — la tabella dove il bug latente e' nato: la
+# catena lister -> push BE -> fn_link_commessa_sorgente stoccava l'uid anche
+# per i tipi a chiave id (23 righe irrisolvibili al censimento del
+# 2026-07-18 mattina, gia' sparite la sera; brief §1c).
+#
+# Difesa in profondita': il rubinetto normalizza (fn_link, 20260718-15), il
+# guard blinda — qualunque writer futuro che salti la fn e scriva una chiave
+# non canonica fallisce qui in modo parlante, non in silenzio tra N mesi
+# nella proiezione di stato.
+#
+# Scatta su INSERT e UPDATE delle sole colonne-sorgente; sorgente_riga non
+# e' osservata (grana di riga del link, non chiave documento — D1/D4).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260718-19-add-trg-commesse-sorgenti-guard-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20260718-19-add-trg-commesse-sorgenti-guard-sorgente
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        Aggancia trgfn_guard_sorgente_polimorfa_testuale (modello B) a
+        vendite.commesse_sorgenti su INSERT e UPDATE OF colonne sorgente:
+        formato chiave secondo key_selector + esistenza nella target_table.
+        Chiude il buco del censimento §1c (brief-db-guard-sorgente-polimorfa).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script'
+                AND p.proname = 'trgfn_guard_sorgente_polimorfa_testuale'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_commesse_sorgenti_a10_guard_sorgente_ins_upd
+                ON vendite.commesse_sorgenti;
+
+              CREATE TRIGGER trg_commesse_sorgenti_a10_guard_sorgente_ins_upd
+                BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_uid
+                ON vendite.commesse_sorgenti
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_testuale();
+
+              COMMENT ON TRIGGER trg_commesse_sorgenti_a10_guard_sorgente_ins_upd
+                ON vendite.commesse_sorgenti
+              IS 'Guard modello B (brief-db-guard-sorgente-polimorfa): sorgente_uid TEXT conforme al key_selector del tipo (id::text / uuid) ed esistente nella target_table di config.sorgenti.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_commesse_sorgenti_a10_guard_sorgente_ins_upd
+                ON vendite.commesse_sorgenti;

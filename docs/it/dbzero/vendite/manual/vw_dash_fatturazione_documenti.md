@@ -17,18 +17,29 @@ Aggregata e brief:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 03-07-2026)
+(latest review 2026-07-18)
 `vendite.vw_dash_fatturazione_documenti` è la fonte dati del **drill-down della
 Dashboard Fatturazione**: una riga per **documento × mese di competenza** su tutte
-e 5 le aree che portano alla fatturazione (`PREVENTIVI`, `ORDINI`, `OFFERTE`,
-`CONTRATTI`, `COMMESSE`), con valore/unità **totali** vs **transitati** verso l'area
-successiva e il **motivo** per cui un documento è fermo.
+e **6** le aree che portano alla fatturazione (`PREVENTIVI`, `ORDINI`, `OFFERTE`,
+`CONTRATTI`, `COMMESSE`, **`DDT`**), con valore/unità **totali** vs **transitati**
+verso l'area successiva e il **motivo** per cui un documento è fermo.
 
 È una **proiezione read-only**: nessuno stato nuovo sui documenti — il transito è
 derivato dai link che i push scrivono già (FK, `segment_key`, `stato_emissione`,
-`sorgente_*`). `UNION ALL` dei 5 resolver di area (stesso layering della proiezione
+`sorgente_*`). `UNION ALL` dei 6 resolver di area (stesso layering della proiezione
 stato dominio). Il backend consuma **solo** questa vista (drill-down fermi) e
 l'aggregata mensile — mai i resolver singoli.
+
+> **Area `DDT` aggiunta il 2026-07-18** (slice fatturazione DDT/resi, §4a). Due cose
+> da sapere per chi consuma:
+>
+> * la popolazione DDT è **selettiva**: entrano solo i DDT con un ruolo di
+>   fatturazione — fuori quelli di ordini a trigger `CONFERMATO` (fattura l'ordine)
+>   e quelli con causale di trasporto non fatturabile (solo trasporto). Dettaglio in
+>   [vw_dash_fatturazione_ddt](vw_dash_fatturazione_ddt.md);
+> * **i RESI non sono qui e non ci saranno**: sono flusso inverso (`REVERSE_FLOW`),
+>   quindi non appartengono al funnel pre-commessa. Compaiono solo nel
+>   [backlog](vw_dash_backlog_documenti.md), con rami propri.
 
 ---
 
@@ -36,7 +47,7 @@ l'aggregata mensile — mai i resolver singoli.
 
 | Campo | Significato |
 |-------|-------------|
-| `area` | `PREVENTIVI` / `ORDINI` / `OFFERTE` / `CONTRATTI` / `COMMESSE` |
+| `area` | `PREVENTIVI` / `ORDINI` / `OFFERTE` / `CONTRATTI` / `COMMESSE` / `DDT` |
 | `competenza_mese` | 1° del mese; derivazione per area documentata nel resolver |
 | `documento_id` / `documento_uid` / `codice` | Identità del documento (`uid::text` dove esiste, altrimenti `id::text`) |
 | `emittente_fiscale_id` | Scope emittente (NULL per COMMESSE) |

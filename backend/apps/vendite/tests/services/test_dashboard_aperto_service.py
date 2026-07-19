@@ -8,7 +8,7 @@
 
 """
 Indice test eseguiti:
-1) DashApertoRiepilogoServiceTests.test_quattro_aree_sempre_presenti_ordine_funnel
+1) DashApertoRiepilogoServiceTests.test_cinque_aree_sempre_presenti_ordine_funnel
 2) DashApertoRiepilogoServiceTests.test_contratto_simmetrico_griglia_fasi
 3) DashApertoRiepilogoServiceTests.test_pivot_totali_area_e_fasi
 4) DashApertoRiepilogoServiceTests.test_area_conteggi_valori_none
@@ -53,20 +53,26 @@ _ORDINE_FASI = ["APERTO", "IN_ATTESA", "IN_CORSO"]
 
 
 class DashApertoRiepilogoServiceTests(TestCase):
-    # Scopo: Le 4 aree documento sono sempre presenti nell'ordine del funnel
-    #        anche a repo vuoto (NIENTE COMMESSE: coperte dalla Lente 1), e il
-    #        vocabolario `fasi` top-level (3 fasi vive) e' sempre esposto
-    #        (alimenta i filtri FE senza dipendere dalla griglia di un'area).
+    # Scopo: Le 5 aree documento sono sempre presenti nell'ordine del funnel
+    #        anche a repo vuoto (DDT dopo ORDINI, suo veicolo di fatturazione
+    #        differita — DL-21; NIENTE COMMESSE: coperte dalla Lente 1; NIENTE
+    #        RESI: REVERSE_FLOW, solo Backlog — DL-24), e il vocabolario `fasi`
+    #        top-level (3 fasi vive) e' sempre esposto (alimenta i filtri FE
+    #        senza dipendere dalla griglia di un'area).
     @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_riepilogo", return_value=[])
-    def test_quattro_aree_sempre_presenti_ordine_funnel(self, _mock_repo):
+    def test_cinque_aree_sempre_presenti_ordine_funnel(self, _mock_repo):
         data = fn_dash_aperto_riepilogo()
         ordine = [a["area"] for a in data["aree"]]
-        self.assertEqual(ordine, ["PREVENTIVI", "ORDINI", "OFFERTE", "CONTRATTI"])
+        self.assertEqual(
+            ordine, ["PREVENTIVI", "ORDINI", "DDT", "OFFERTE", "CONTRATTI"]
+        )
+        self.assertNotIn("RESI", ordine)
         self.assertEqual(data["fasi"], _ORDINE_FASI)
 
     # Scopo: Contratto simmetrico: ogni area espone SEMPRE la griglia delle 3
     #        fasi nell'ordine del ciclo di vita, con zeri espliciti (aree euro
     #        a "0", aree a conteggi a None) — DL-13: il FE decide cosa rendere.
+    #        DDT e' area euro (DL-21: ha importi via COALESCE riga/ordine).
     @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_riepilogo", return_value=[])
     def test_contratto_simmetrico_griglia_fasi(self, _mock_repo):
         data = fn_dash_aperto_riepilogo()
@@ -75,7 +81,9 @@ class DashApertoRiepilogoServiceTests(TestCase):
             self.assertEqual(area["n_documenti"], 0)
         preventivi = data["aree"][0]
         self.assertEqual(preventivi["valore_totale"], "0")
-        offerte = data["aree"][2]
+        ddt = data["aree"][2]
+        self.assertEqual(ddt["valore_totale"], "0")
+        offerte = data["aree"][3]
         self.assertIsNone(offerte["valore_totale"])
 
     # Scopo: I totali di area sommano le fasi (Decimal, niente float) e le
@@ -145,9 +153,10 @@ class DashApertoRiepilogoServiceTests(TestCase):
         data = fn_dash_aperto_riepilogo()
         ordine = [a["area"] for a in data["aree"]]
         self.assertEqual(
-            ordine, ["PREVENTIVI", "ORDINI", "OFFERTE", "CONTRATTI", "NUOVA_AREA"]
+            ordine,
+            ["PREVENTIVI", "ORDINI", "DDT", "OFFERTE", "CONTRATTI", "NUOVA_AREA"],
         )
-        self.assertEqual(data["aree"][4]["n_documenti"], 2)
+        self.assertEqual(data["aree"][5]["n_documenti"], 2)
 
     # Scopo: Un'area extra che porta VALORI li espone (decisione data-driven,
     #        non la whitelist euro statica): niente euro persi in silenzio.

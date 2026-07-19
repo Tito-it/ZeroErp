@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_ddt_guard_causale_emissione.md" %}
 # ⚙️ Funzione `trgfn_ddt_guard_causale_emissione`
 
 ```sql

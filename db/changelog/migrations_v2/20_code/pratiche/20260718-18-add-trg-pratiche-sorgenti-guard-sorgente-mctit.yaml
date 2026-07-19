@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Brief-db-guard-sorgente-polimorfa §2c: aggancio del guard modello B
+# (trgfn_guard_sorgente_polimorfa_testuale, 20260718-17) a
+# pratiche.pratiche_sorgenti. Il manuale sorgenti dichiarava «Guard attivo»
+# ma pg_trigger diceva 0 righe (brief §1b): da oggi e' vero davvero.
+#
+# Scatta su INSERT e su UPDATE delle sole colonne-sorgente (linee-guida
+# trigger: UPDATE OF quando la logica e' column-specific). sorgente_riga
+# NON e' tra le colonne osservate: non e' una chiave documento (D1/D4).
+#
+# Il writer vivo (service pratiche, pratiche_repository.py) scrive gia'
+# canonico (censimento brief §1c: 45 uuid PREVENTIVO + 20 id ORDINE + 19 id
+# COMMESSA, tutti conformi): il guard non rompe il flusso, lo blinda.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20260718-18-add-trg-pratiche-sorgenti-guard-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20260718-18-add-trg-pratiche-sorgenti-guard-sorgente
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        Aggancia trgfn_guard_sorgente_polimorfa_testuale (modello B) a
+        pratiche.pratiche_sorgenti su INSERT e UPDATE OF colonne sorgente:
+        formato chiave secondo key_selector + esistenza nella target_table.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script'
+                AND p.proname = 'trgfn_guard_sorgente_polimorfa_testuale'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_pratiche_sorgenti_a10_guard_sorgente_ins_upd
+                ON pratiche.pratiche_sorgenti;
+
+              CREATE TRIGGER trg_pratiche_sorgenti_a10_guard_sorgente_ins_upd
+                BEFORE INSERT OR UPDATE OF sorgente_tipo_id, sorgente_uid
+                ON pratiche.pratiche_sorgenti
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_guard_sorgente_polimorfa_testuale();
+
+              COMMENT ON TRIGGER trg_pratiche_sorgenti_a10_guard_sorgente_ins_upd
+                ON pratiche.pratiche_sorgenti
+              IS 'Guard modello B (brief-db-guard-sorgente-polimorfa): sorgente_uid TEXT conforme al key_selector del tipo (id::text / uuid) ed esistente nella target_table di config.sorgenti.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_pratiche_sorgenti_a10_guard_sorgente_ins_upd
+                ON pratiche.pratiche_sorgenti;

@@ -296,14 +296,23 @@ const praticaDrawerVisible = ref(false)
   flex-wrap: wrap;
 }
 
+/* Icona di direzione/ramo: e' un GLIFO, non un controllo — nessuna hit-area,
+   nessun hover, cursor default (vedi frontend-standards, "Glifo vs controllo").
+   La distinzione dalle icone-azione (colore semantico saturo + chrome del
+   controllo) si gioca sul CHROME; il muted la rifinisce facendola arretrare.
+   Deciso con Tid 2026-07-09 dopo A/B sul campo: su un glifo da 0.8rem la
+   differenza --app-text-color vs --app-text-muted e' impercettibile -> il
+   colore non e' la leva, e muted e' gia' inequivocabilmente != verde/blu/rosso. */
 .lineage-step-icon {
   font-size: 0.8rem;
   color: var(--app-text-muted);
 }
 
-.lineage-step-inverso {
-  opacity: 0.75;
-}
+/* Ramo di ritorno (arco R, DDT->Reso): NIENTE opacity sulla riga (Tid 2026-07-09).
+   Smorzava dati veri (codice, Tag stato) per dire una cosa gia' detta due volte —
+   dall'icona ↩ e dalla label "ramo di ritorno" — e si SOMMAVA all'opacity 0.85 di
+   .app-readonly nei drawer post-DRAFT (0.85 x 0.75 ~ 0.64: area illeggibile, e
+   "decorativo" indistinguibile da "disabilitato" per costruzione). */
 
 .lineage-codice {
   font-weight: 600;

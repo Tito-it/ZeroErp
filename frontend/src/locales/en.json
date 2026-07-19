@@ -1,5 +1,8 @@
 {
   "common": {
+    "azione_reason": {
+      "senza_righe": "The document has no rows: add at least one to proceed."
+    },
     "save": "Save",
     "cancel": "Cancel",
     "back": "Back",
@@ -1748,6 +1751,7 @@
       "field_valuta": "Currency",
       "section_trasporto": "Transport",
       "field_causale_trasporto": "Transport reason",
+      "field_causale_richiesta_emissione": "Required to issue the DDT: it declares whether the goods are a sale to invoice or transport only",
       "field_aspetto_bene": "Goods appearance",
       "field_modalita_addebito": "Transport charge",
       "field_vettore": "Carrier",
@@ -1923,6 +1927,11 @@
       "crea_nessuna_riga": "No line with returnable remainder",
       "coda_apri_reso": "Open return",
       "coda_search_accreditare": "Search (return no., recipient, item, DDT, account)",
+      "coda_etichetta_tutte": "All credits",
+      "coda_etichetta": {
+        "DOVUTA": "Credit note due",
+        "FACOLTATIVA": "Credit note optional"
+      },
       "coda_search_riconsegnare": "Search (return no., recipient, item, DDT)"
     },
     "reso": {
@@ -2320,7 +2329,11 @@
       "col_qta_operativa": "Quantity",
       "col_motivo": "Reason",
       "col_ba_codice": "Account code",
-      "col_quantita": "Base quantity"
+      "col_quantita": "Base quantity",
+      "col_accredito_dovuto": "Credit due",
+      "col_etichetta": "CN label",
+      "col_tenuti": "Kept",
+      "col_fatturati": "Invoiced"
     },
     "resi_da_riconsegnare": {
       "col_numero": "Number",
@@ -2747,6 +2760,8 @@
     "area_offerte": "Offers",
     "area_contratti": "Contracts",
     "area_commesse": "Jobs",
+    "area_ddt": "Delivery notes",
+    "area_resi": "Returns",
     "fase_aperto": "In preparation",
     "fase_in_attesa": "Awaiting customer",
     "fase_in_corso": "In progress",
@@ -2761,7 +2776,11 @@
       "FIGLIO_ABORTITO": "Generated document later cancelled — revision needed",
       "CANONE_NON_GENERATO": "Month fee not generated",
       "ATTIVITA_NON_APPROVATA": "Activity not approved",
-      "ATTIVITA_NON_EMESSA": "Activity not issued"
+      "ATTIVITA_NON_EMESSA": "Activity not issued",
+      "IN_TRANSITO": "Goods in transit, invoicing not yet due",
+      "IN_ATTESA_DDT": "Invoicing owned by the delivery note (ship/delivery)",
+      "RICONSEGNA_NON_ESEGUITA": "Re-delivery to generate",
+      "MERCE_RESA_GIA_FATTURATA": "Returned goods already invoiced — credit pending"
     }
   },
   "situazione_aperta": {
@@ -2773,6 +2792,7 @@
     "ritardo_30": "over 30 days",
     "ritardo_60": "over 60 days",
     "ritardo_90": "over 90 days",
+    "card_ordini_hint": "Orders invoiced on ship/delivery count only the not-yet-shipped value (the rest is carried by the delivery note). Orders invoiced on confirmation keep their full value.",
     "lista_titolo": "Documents",
     "col_aperto_da": "Open for",
     "aperto_da_giorni": "{n} d",

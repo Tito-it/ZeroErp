@@ -11,11 +11,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.core.db._helpers import dynamic_update, row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    dynamic_update,
+    extract_paginated,
+    row_to_dict,
+    rows_to_list,
+)
 
 from django.db import connection
 
-from apps.anagrafiche.db._helpers import extract_paginated
 
 _TOPONOMASTICA_ORDER_COLS = {"descrizione", "attivo"}
 _COMUNI_ORDER_COLS = {"descrizione", "provincia_sigla", "regione_descrizione"}

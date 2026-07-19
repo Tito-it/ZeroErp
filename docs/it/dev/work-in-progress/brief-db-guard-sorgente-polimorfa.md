@@ -1,7 +1,11 @@
 # Brief DB — Guard sorgente polimorfa: chiudere il buco, non rattopparlo
 
-> **Stato**: DA EVADERE (accantonato deliberatamente: emerso il 2026-07-18 durante lo step 6b
-> della slice fatturazione DDT/resi, si affronta a slice chiusa).
+> **Stato**: **APPLICATO + TESTATO VERDE** (2026-07-18 sera) — deliverable completo in §6:
+> migrations 20260718-15..19 EXECUTED, seed fix, pgTAP tutti verdi (nuovo plan(18) +
+> 4 test adattati + regressione). **Decisioni D1..D6 tutte chiuse** (D6 ri-decisa dopo
+> il reperto R1: resta staccato, condizione di riaggancio nel manuale
+> `attivita_fatturabili`). Restano: rigenerazione doc auto-gen (al prossimo migrate/gen)
+> e **commit su «procedi»**.
 > **Origine**: scrivendo `vw_stato_sorgente_ddt` è emerso che la chiave giusta era `id::text`
 > e non l'uid — e controllando *perché* la riga DDT viva in `commesse_sorgenti` avesse un uuid
 > si è scoperto che il guard che avrebbe dovuto impedirlo **non è agganciato a nulla**, e che
@@ -89,6 +93,15 @@ com'è, senza normalizzare.
 giorno in cui commesse vorrà la proiezione di stato delle sue sorgenti (o il lineage
 incrocerà i link commessa), quelle righe risulteranno «non risolte» in silenzio.
 
+**⚠️ Aggiornamento censimento (2026-07-18, sera)**: ri-eseguito, le 23 righe in forma uuid
+**non ci sono più** (0 righe; causa della sparizione non indagata — probabile pulizia/reset
+dei dati di test in giornata). Censita anche `attivita_fatturabili` (modello A): 1 riga viva
+con sorgente a `key_selector='id'`, 0 sospette (`sorgente_riga` NULL o 0). Conseguenza:
+**la fase di bonifica dati è annullata** (ex §2b). ⚠️ Ma il rubinetto è ancora aperto: ogni
+push odierno può riscrivere righe in forma uuid — ripetere il censimento immediatamente
+prima di applicare il fix e, se ricomparse, usare il one-shot manuale in Appendice A
+(dati di test → correzione manuale, non migration: regola Workflow Safety di AGENTS.md).
+
 ### 1d. Nota di contesto: i tre usi di "sorgente_uid" NON vanno confusi
 
 | dove | tipo | contenuto | meccanismo |
@@ -97,12 +110,39 @@ incrocerà i link commessa), quelle righe risulteranno «non risolte» in silenz
 | `ddt.sorgente_uid`, `resi.sorgente_uid` | UUID | uid del documento padre | colonna tipizzata diretta — FUORI da questo brief |
 | `commesse_attivita.sorgente_uid` | TEXT | hash md5(segment_key) (caveat C1) | interno commesse — FUORI da questo brief |
 
+### 1e. Reperti emersi IN SVILUPPO (2026-07-18 sera) — cambiano D6 e il seed
+
+**R1 — il trigger su `attivita_fatturabili` era stato DROPPATO APPOSTA.** La premessa
+del §1b («nessuno l'ha mai attaccato») è falsa: il trigger fu agganciato con
+`20251026-02` e **rimosso deliberatamente** con `20260225-45`, motivazione a verbale:
+*«nel flusso commessa-only `sorgente_tipo_id` è sempre COMMESSA e la FK
+`commessa_attivita_id` copre già la validazione»*. **Conseguenza: D6 è RIAPERTA** —
+la decisione «sì all'aggancio» era stata presa su premessa sbagliata. Lo sviluppo
+NON riaggancia: la funzione (rinominata `_tipizzata`) resta disponibile e documentata
+come non attiva; anche il drop del DEFAULT 0 su `sorgente_riga` (prerequisito
+dell'aggancio) è rinviato alla ri-decisione. Da chiudere con Tid.
+
+**R2 — `config.sorgenti`: COMMESSA puntava alla tabella SBAGLIATA.** Il seed dava a
+COMMESSA (id 13) `target_table = vendite.commesse_attivita` (il marker di pipeline,
+scope PIPELINE_MARKER), ma tutti i consumatori del meccanismo di collegamento usano
+l'id della **commessa**: il BE scrive `str(commessa_id)` (preventivi_service →
+`upsert_pratica_sorgente`), la convenzione del manuale dice «per la commessa →
+id::text», il futuro ramo COMMESSA di `vw_stato_sorgente` risolverà contro
+`vendite.commesse`. Col guard attivo, la validazione di esistenza sarebbe andata
+contro la tabella sbagliata. **Fix applicato nel seed** (`sorgenti.csv`:
+`target_table → vendite.commesse`, ripescato dal loader runOnChange): verificato che
+NESSUNA funzione DB né il meccanismo di idempotenza di `commesse_attivita`
+(sorgente_uid = hash md5, non risolvibile per costruzione) consulta quel
+`target_table`; l'unico lettore BE (`resolve_lineage_node_uid`) è chiamato solo per
+i tipi documento del lineage.
+
 ---
 
-## 2. Cosa si fa — i cinque pezzi del lavoro completo
+## 2. Cosa si fa — i quattro pezzi del lavoro completo (2b decaduto)
 
-> Ordine pensato per non rompere mai nulla in mezzo: prima il codice tollera entrambe le
-> forme, poi si bonificano i dati, poi il guard blinda la forma canonica.
+> Ordine pensato per non rompere mai nulla in mezzo: prima la fn scrive canonico (2a),
+> poi il guard blinda la forma canonica (2c). Niente fase dati (censimento pulito, §1c);
+> unico vincolo: ri-censire subito prima dell'applicazione (Appendice A se serve pulizia).
 
 ### 2a. `fn_link_commessa_sorgente` normalizza la chiave (il rubinetto)
 
@@ -110,7 +150,11 @@ La fn legge `config.sorgenti.key_selector` del tipo che riceve e **normalizza**:
 - `key_selector='id'` + valore uuid → risolve l'uuid contro `target_table` e stocca `id::text`;
 - `key_selector='id'` + valore numerico → stocca com'è;
 - `key_selector='uid'` → stocca l'uuid com'è;
-- valore non risolvibile → errore parlante (nuovo codice, append CSV —
+- `key_selector='uid'` + valore NON in formato uuid → errore parlante (no pass-through di
+  spazzatura che il guard 2c respingerebbe poi con un 22P02 grezzo);
+- `key_selector='id'` + valore uuid ma `target_table` SENZA colonna `uid` (caso reale:
+  COMMESSA → `vendite.commesse` non ha `uid`) → errore parlante, non crash del SQL dinamico;
+- valore non risolvibile → errore parlante (nuovi codici: append CSV —
   [[feedback_messaggi_errore_no_new_loader]]).
 
 Così i chiamanti esistenti (orchestratore push BE, che passa l'uid) **continuano a
@@ -122,33 +166,42 @@ normalizza, il guard (2c) valida.
 > chiave di push singolo), con più superficie di rottura e zero benefici rispetto alla
 > normalizzazione nel punto unico di scrittura.
 
-### 2b. Backfill `commesse_sorgenti` (i dati già sbagliati)
+### 2b. ~~Backfill `commesse_sorgenti`~~ — ANNULLATO (censimento pulito)
 
-Migration `80_data` una tantum: per le righe dei tipi `id` con `sorgente_uid` in formato
-uuid, risolvere l'uuid contro la `target_table` del tipo e riscrivere `id::text`.
-23 righe oggi (20 ordini + 2 contratti + 1 DDT). Casi:
-- uuid risolve → riscrittura;
-- uuid non risolve (documento sparito) → NON inventare: lasciare la riga e segnalarla
-  (`meta.backfill_warning`), decisione umana a valle. ⚠️ Attenzione alla UNIQUE
-  `(sorgente_tipo_id, sorgente_uid)`: se la forma canonica esiste già, la riga uuid è un
-  duplicato logico → merge/rimozione, da decidere a vista sul dato reale.
+Il ri-censimento del 2026-07-18 sera ha trovato **0 righe** in forma sbagliata (§1c): la
+migration `80_data`, il flag `meta.backfill_warning` e la gestione dei duplicati UNIQUE
+non servono più. Se prima dell'applicazione ricompaiono righe sbagliate (il rubinetto è
+aperto fino alla 2a), si usa il **one-shot manuale in Appendice A** — dati di test,
+niente fix software (Workflow Safety AGENTS.md). Cade così anche la finestra di
+idempotenza che un backfill posticipato avrebbe aperto: il lookup della fn sulla chiave
+normalizzata non troverebbe le righe legacy in forma uuid e la stessa sorgente potrebbe
+essere linkata due volte (anche a due commesse diverse) — motivo per cui l'eventuale
+pulizia manuale va fatta PRIMA o insieme al rilascio di 2a, mai dopo.
 
-### 2c. Il guard giusto — uno per modello, agganciati davvero
+### 2c. Il guard giusto — due funzioni sorelle, agganciate davvero (D3+D6 chiuse)
 
-Il guard attuale è corretto **per il modello A**: resta (eventualmente rinominato per
-chiarezza) e va **agganciato ad `attivita_fatturabili`**, il suo target dichiarato, oggi
-scoperto anche lui.
+**Modello A** — il guard attuale è corretto e si **rinomina** con nome parlante
+(`script.trgfn_guard_sorgente_polimorfa_tipizzata`, migration 20260718-16): è l'unico
+momento in cui rinominare è gratis — 0 trigger attaccati, solo doc da aggiornare.
 
-Per il **modello B** serve la variante che valida `sorgente_uid` TEXT secondo
-`key_selector` (`id` → `WHERE id = uid::bigint` con guardia sul formato; `uid` →
-`WHERE uid = uid::uuid`), più — opzionale ma coerente — la verifica che `sorgente_riga`,
-se valorizzata, esista davvero come riga della sorgente. Da **agganciare a
+> ⚠️ **Aggancio ad `attivita_fatturabili` NON eseguito**: il reperto R1 (§1e) ha
+> rivelato che il trigger fu rimosso deliberatamente (20260225-45, «ridondante con FK
+> `commessa_attivita_id` nel flusso commessa-only») — D6 è riaperta e va ri-decisa.
+> Se si ri-deciderà per l'aggancio, i prerequisiti restano quelli individuati:
+> drop del DEFAULT 0 su `sorgente_riga` (id mai valido: col guard produrrebbe
+> `E_SORG_NOT_FOUND` «a vuoto» invece del parlante `E_SORG_KEY_MISSING`), verifica dei
+> writer (censimento 2026-07-18: 1 riga viva, conforme), grep pgTAP esteso al modello A
+> ([[feedback_guard_breaks_existing_tests]]: ~20 file toccano `attivita_fatturabili`).
+
+**Modello B** — funzione sorella **nuova** (es. `trgfn_guard_sorgente_polimorfa_testuale`):
+valida `sorgente_uid` TEXT secondo `key_selector` (`id` → `WHERE id = uid::bigint` con
+guardia sul formato; `uid` → `WHERE uid = uid::uuid`). Da **agganciare a
 `pratiche_sorgenti` e `commesse_sorgenti`** (INSERT + UPDATE OF colonne sorgente).
 Naming trigger: convenzione `trg_<tabella>_a10_guard_sorgente_ins_upd`.
 
-> Forma da decidere in scrittura: due funzioni sorelle o una sola parametrizzata via
-> `TG_ARGV` (modello come argomento). Criterio: leggibilità dell'errore e della doc, non
-> l'eleganza — sono due semantiche diverse, va bene anche dirlo con due nomi.
+> D3 chiusa: due funzioni sorelle, nomi parlanti — sono due semantiche diverse, meglio
+> dirlo con due nomi che con un `TG_ARGV`. La verifica di `sorgente_riga` come riga
+> esistente della sorgente (ex opzione qui) è la D4, rinviata a fase 2: vedi §3.
 
 ### 2d. Doc allineata (quella che oggi mente)
 
@@ -163,28 +216,31 @@ Naming trigger: convenzione `trg_<tabella>_a10_guard_sorgente_ins_upd`.
 ### 2e. pgTAP
 
 - Modello B: INSERT canonico passa (id-testo per tipi `id`, uuid per tipi `uid`); INSERT
-  con chiave inesistente → errore; INSERT uuid per tipo `id` su `commesse_sorgenti` →
-  normalizzato dalla fn (si legge indietro `id::text`); `sorgente_riga` inesistente →
-  errore (se si implementa la verifica).
-- Modello A: INSERT `attivita_fatturabili` con `sorgente_riga` inesistente → errore.
-- Post-backfill: la query di censimento del §1c torna 100% risolte (tranne eventuali
-  righe `backfill_warning`).
+  con chiave inesistente → errore; fn con uuid per tipo `id` su `commesse_sorgenti` →
+  normalizzato (si legge indietro `id::text`); fn con valore non-uuid per tipo `uid` →
+  errore parlante; fn con uuid per tipo `id` a target senza colonna `uid` → errore
+  parlante.
+- Modello A: INSERT `attivita_fatturabili` con `sorgente_riga` inesistente → errore;
+  INSERT senza `sorgente_riga` (post drop DEFAULT 0) → errore chiave mancante.
+- Censimento finale: la query del §1c torna 100% risolte — **escludendo il tipo COMMESSA**
+  (le 19 righe a chiave giusta non risolvono per ramo mancante, §5, non per chiave:
+  senza esclusione il check sembrerebbe fallito).
 - Regressione: `test-proiezione-stato-sorgente` (pratiche) e i pgTAP del push commesse
   restano verdi — il guard non deve rompere i flussi vivi
   ([[feedback_guard_breaks_existing_tests]]: grep pgTAP prima di attaccare trigger).
 
 ---
 
-## 3. Decisioni aperte (da chiudere prima di scrivere)
+## 3. Decisioni — TUTTE CHIUSE (Tid, 2026-07-18)
 
-| # | Domanda | Proposta | Stato |
+| # | Domanda | Decisione | Stato |
 |---|---|---|---|
-| D1 | `sorgente_riga`: si tiene? | **SÌ, si tiene** — doppio scopo documentato (§1a). Solo chiarire la doc | ✅ orientamento Tid 2026-07-18, confermato dalla doc |
-| D2 | Normalizzazione nella fn vs correzione dei lister | fn normalizza (§2a), lister intatti | ❓ |
-| D3 | Guard: due funzioni o una parametrizzata | due funzioni sorelle, nomi parlanti | ❓ |
-| D4 | La variante B verifica anche `sorgente_riga` come riga esistente della sorgente? | sì se il costo è basso (le tabelle righe sono note per tipo), altrimenti fase 2 | ❓ |
-| D5 | Righe backfill non risolvibili / duplicati UNIQUE | flag in `meta` + decisione umana; nessuna cancellazione automatica | ❓ |
-| D6 | Si aggancia anche ad `attivita_fatturabili` (modello A) nello stesso giro? | sì — è il target dichiarato del guard ed è scoperto | ❓ |
+| D1 | `sorgente_riga`: si tiene? | **SÌ, si tiene** — doppio scopo documentato (§1a). Solo chiarire la doc | ✅ |
+| D2 | Normalizzazione nella fn vs correzione dei lister | **fn normalizza** (§2a), lister e BE intatti | ✅ |
+| D3 | Guard: due funzioni o una parametrizzata | **due funzioni sorelle**, nomi parlanti; rinominare l'attuale ORA (0 trigger attaccati = gratis) | ✅ |
+| D4 | La variante B verifica anche `sorgente_riga` come riga esistente della sorgente? | **RINVIATA a fase 2** — il costo NON è basso: `config.sorgenti` censisce la `target_table` del documento, non la tabella righe; se si farà, via colonna `target_righe_table` in config, MAI mappa hardcoded nel guard | ✅ |
+| D5 | Righe backfill non risolvibili / duplicati UNIQUE | **DECADUTA** — niente backfill (censimento pulito §1c); eventuale pulizia = one-shot manuale Appendice A | ✅ |
+| D6 | Si aggancia anche ad `attivita_fatturabili` (modello A) nello stesso giro? | ~~SÌ~~ → **NO, resta staccato** (Tid, 2026-07-18 sera, dopo il reperto R1 §1e: il drop 20260225-45 era deliberato — FK `commessa_attivita_id` copre il flusso commessa-only; in più `sorgente_riga=0` è sentinella del normalize, incompatibile col guard com'è). Condizione di riaggancio e prerequisiti registrati in **doc permanente**, non qui: manuale `attivita_fatturabili` §Validazione polimorfa della sorgente | ✅ |
 
 ## 4. Fuori scope (dichiarato)
 
@@ -204,6 +260,96 @@ alla prima slice utile.
 
 ---
 
-*Redatto 2026-07-18 (sessione slice fatturazione DDT/resi, step 6b). Tutti i numeri e i
-comportamenti citati sono stati verificati sul DB di sviluppo in quella data: prima di
-evadere, ripetere il censimento §1c — i dati saranno cambiati.*
+## 6. Deliverable (SCRITTO 2026-07-18 sera — da applicare e testare)
+
+**Migrations** (numerazione globale del giorno, dopo la slice DDT/resi che arriva a 14):
+
+| File | Cosa fa |
+|---|---|
+| `20_code/vendite/20260718-15-update-fn-link-commessa-sorgente-normalizza-chiave` | §2a: la fn normalizza la chiave (uuid→id::text per tipi `id`), errori 546/547 |
+| `20_code/script/20260718-16-rename-trgfn-guard-sorgente-polimorfa-tipizzata` | D3: rinomina guard modello A (+ DROP vecchio nome); NON aggancia (R1) |
+| `20_code/script/20260718-17-create-trgfn-guard-sorgente-polimorfa-testuale` | §2c: guard modello B (formato + esistenza secondo `key_selector`) |
+| `20_code/pratiche/20260718-18-add-trg-pratiche-sorgenti-guard-sorgente` | aggancio guard a `pratiche_sorgenti` (INSERT + UPDATE OF colonne sorgente) |
+| `20_code/vendite/20260718-19-add-trg-commesse-sorgenti-guard-sorgente` | aggancio guard a `commesse_sorgenti` (idem) |
+
+**Seed/CSV** (ripescati dai loader runOnChange, nessun changelog dedicato):
+
+- `80_data/sql/config/messaggi_errore.csv`: +`E_SORG_FORMATO` (546),
+  +`E_SORG_NORM_NON_RISOLTA` (547);
+- `80_data/sql/config/sorgenti.csv`: COMMESSA `target_table` →
+  `vendite.commesse` (reperto R2, §1e).
+
+**pgTAP**:
+
+- NUOVO `db/pgtap/script/test-guard-sorgente-polimorfa-testuale-v1.sql` —
+  plan(18): oggetti in posto, guard su INSERT diretto (canonico/formato/esistenza),
+  normalizzazione fn_link (pass-through, traduzione, 3 rami d'errore), censimento
+  finale di convenzione su entrambe le tabelle;
+- ADATTATI (chiavi sintetiche → sorgenti reali, [[feedback_guard_breaks_existing_tests]]):
+  `vendite/test-fn-link-commessa-sorgente-multi-sorgente-v1.sql` (4 commesse-sorgente
+  reali al posto degli 'A-xxx' PREVENTIVO),
+  `vendite/test-commesse-schema-v1.sql` ('SRC-ROOT-*' → id di commesse del test),
+  `vendite/test-drop-uq-commesse-attivita-src-uid-partial-v1.sql` (uuid sintetico →
+  commessa del fixture; l'insert `commesse_attivita` resta com'era: non guardato),
+  `pratiche/test-pratiche-sorgenti-flusso.sql` ('prev-A1-001'/'comm-A-001' → 6
+  commesse reali TPS_* con cleanup).
+
+**Doc**: manuali `trgfn_guard_sorgente_polimorfa_{tipizzata,testuale}` (nuovi),
+vecchio manuale ridotto a redirect, `config/manual/sorgenti.md` (§Convenzione: guard
+vero + nota COMMESSA), guida `guide/sorgente-polimorfa.md` (§2/§5), manuali
+`pratiche_sorgenti`, `commesse_sorgenti`, `fn_link_commessa_sorgente`.
+
+**Passi restanti** (aggiornato 2026-07-18 sera): migrate ESEGUITO e pgTAP TUTTI VERDI
+(nuovo test + 4 adattati; in corsa sistemati: schema commesse stale in 2 test —
+`stato_commessa`→`stato_commessa_id` — e visibilità per command-id nei readback 12/16
+del nuovo test, ora pattern a due passi). D6 decisa: resta staccato. Restano:
+(1) rigenerazione doc auto-gen; (2) commit su «procedi».
+
+---
+
+## Appendice A — One-shot manuale di pulizia (solo se il censimento torna sporco)
+
+Da eseguire **a mano** sul DB di sviluppo PRIMA (o insieme) al rilascio di 2a — mai dopo
+(vedi finestra di idempotenza in §2b). Dati di test → correzione manuale, non migration
+(Workflow Safety AGENTS.md).
+
+```sql
+-- 1. Censimento (2026-07-18 sera: 0 righe)
+SELECT cs.id, s.codice_interno, cs.sorgente_uid, cs.commessa_id, cs.ruolo_link
+  FROM vendite.commesse_sorgenti cs
+  JOIN config.sorgenti s ON s.id = cs.sorgente_tipo_id
+ WHERE s.key_selector = 'id'
+   AND cs.sorgente_uid ~* '^[0-9a-f]{8}-[0-9a-f]{4}-';
+
+-- 2. Riscrittura uuid -> id::text (ripetere per CONTRATTO -> vendite.contratti
+--    e DDT_VENDITA -> vendite.ddt)
+UPDATE vendite.commesse_sorgenti cs
+   SET sorgente_uid = o.id::text
+  FROM config.sorgenti s, vendite.ordini o
+ WHERE s.id = cs.sorgente_tipo_id AND s.codice_interno = 'ORDINE_VENDITA'
+   AND cs.sorgente_uid ~* '^[0-9a-f]{8}-[0-9a-f]{4}-'
+   AND o.uid = cs.sorgente_uid::uuid;
+
+-- 3. Residui (uuid che non risolvono piu'): DELETE diretto. Attenzione: se la riga
+--    era ROOT la commessa resta senza ROOT (il prossimo link la rimpiazza — ok su
+--    dati di test).
+```
+
+E per il modello A (`attivita_fatturabili`), censimento pre-aggancio guard
+(2026-07-18 sera: tot 1, sospette 0):
+
+```sql
+SELECT count(*) AS tot,
+       count(*) FILTER (WHERE af.sorgente_riga IS NULL OR af.sorgente_riga = 0) AS sospette
+  FROM vendite.attivita_fatturabili af
+  JOIN config.sorgenti s ON s.id = af.sorgente_tipo_id
+ WHERE s.key_selector = 'id';
+```
+
+---
+
+*Redatto 2026-07-18 (sessione slice fatturazione DDT/resi, step 6b); decisioni chiuse,
+censimenti ripetuti (puliti) e SVILUPPO COMPLETATO lo stesso giorno in serata (§6).
+Prima di applicare: ripetere i censimenti (§1c / Appendice A) — il rubinetto resta
+aperto finché la 20260718-15 non è applicata. Aperti: applicazione+test (Tid),
+decisione D6/R1.*

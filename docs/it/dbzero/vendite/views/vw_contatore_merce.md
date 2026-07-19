@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/vw_contatore_merce.md" %}
 # 🔍 View `vw_contatore_merce`
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.

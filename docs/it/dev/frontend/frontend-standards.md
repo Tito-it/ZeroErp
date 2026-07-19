@@ -1672,6 +1672,89 @@ nel pattern lista per l'API completa.
 Per l'inventario completo di classi CSS, pulsanti e componenti, consultare il
 [Catalogo Building Block Frontend](catalogo-building-block-frontend.md).
 
+### Glifo vs controllo — icone decorative/indicative
+
+Non tutte le icone sono pulsanti. Un'icona **decorativa/indicativa** (una freccia
+di direzione, un `↩` di ramo, il glifo accanto a un titolo di sezione) **non deve
+mai sembrare cliccabile**; un'icona **azione** deve esserlo senza ambiguità. La
+distinzione si gioca sul **chrome, non sulla tinta**.
+
+| | Icona **azione** (controllo) | Icona **glifo** (decorativa) |
+| --- | --- | --- |
+| Hit-area (padding/box) | sì | **no** — inline nel flusso |
+| Hover | sì | **no** |
+| `cursor` | `pointer` | `default` |
+| Colore | **semantico saturo** via classe `app-*-btn` (verde azione / blu gestisci / rosso distruttivo / arancio cautela) | `--app-text-muted` |
+
+**Regole**:
+
+- **Il colore non è l'affordance principale: lo è il chrome.** Un glifo senza
+  hit-area, senza hover e con `cursor: default` non viene letto come pulsante
+  qualunque sia la sua tinta.
+- **Mai un colore nuovo** (teal, viola, ecc.) per dire "non sono cliccabile":
+  nella palette il colore È semantica, un 6° colore sarebbe l'unico senza
+  significato e, per essere distinguibile, dovrebbe essere saturo → *avanza*
+  invece di *arretrare*. Pacchiano per costruzione.
+- **Mai uno sfondo/chip** per un glifo: è il segnale più forte di "sono un
+  bottone" — l'opposto dell'obiettivo.
+- Per il glifo usare `--app-text-muted` (arretra). **Attenzione**: ha lo stesso
+  valore di `--app-btn-disabled-color`, quindi *da solo* direbbe "bottone
+  disabilitato" — è il **chrome assente** a chiarire che è decorativo. La
+  differenza `--app-text-color` vs `--app-text-muted` su un glifo piccolo
+  (≈0.8rem) è impercettibile: non usarla come leva.
+- **`opacity` non è un segnale semantico.** Non usarla per "attenuare" un
+  elemento: si **somma** ai veli dei contenitori (es. `.app-readonly` a `0.85`
+  nei drawer post-DRAFT → `0.85 × 0.75 ≈ 0.64`, area illeggibile) e smorza anche
+  i **dati veri** dentro la riga (codici, Tag stato). Se un ramo/stato va
+  segnalato, farlo con icona + label esplicita, non con `opacity`.
+
+Primo consumatore: `LineagePassaggiPanel` (pannello "Passaggi" dei drawer
+documento) — frecce direzione e `↩` ramo inverso come glifi muted.
+
+### Iconografia di dominio — base documento + overlay-tipo
+
+Le icone delle entità vendite (preventivi, offerte, ordini, ddt, resi,
+contratti, fatture) sono **icone composite** definite in `main.css` come
+`.app-nav-icon-<entita>` con due pseudo-elementi, e referenziate da `NAV_ICONS`
+(`navigation.js`), **non** da PrimeIcons singole.
+
+**Il principio** (deciso con Tid 2026-07-09): nessun glifo "si spiega da solo"
+per un nome proprio (un `calculator` significa "calcolo" ovunque, non
+"preventivo"). Il riconoscimento nasce da **famiglia coerente, differenziatore
+ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
+
+- **`::before` = base documento** (`pi-file` `\e958`) → il **marcatore di
+  famiglia/area**: "questo è un documento vendite" (mai un glifo generico che
+  potrebbe significare altro).
+- **`::after` = overlay del TIPO** → il **differenziatore**, un badge d'angolo:
+
+| Entità | Overlay | Glifo |
+| --- | --- | --- |
+| Preventivo | matita (bozza/proposta) | `pi-pencil` `\e942` |
+| Offerta | tag (offerta commerciale) | `pi-tag` `\e95e` |
+| Ordine | carrello | `pi-shopping-cart` `\e980` |
+| DDT | camion (trasporto) | `pi-truck` `\ea00` |
+| Reso | freccia-ritorno | `pi-arrow-circle-left` `\e91f` |
+| Contratto | verificato (vincolante) | `pi-verified` `\ea02` |
+| Fattura | euro (documento fiscale) | `pi-euro` `\e9bd` |
+
+**Regole**:
+
+- **L'overlay deve VARIARE per tipo, non essere condiviso.** L'errore da evitare
+  (corretto qui): mettere lo **stesso** badge (l'euro) su tutte le entità a
+  valore → il pezzo comune domina la lettura e le icone si assomigliano. Il
+  pezzo che varia (l'overlay) è quello che deve distinguere; l'**euro resta solo
+  su Fattura**, dove finalmente significa qualcosa di specifico.
+- **Due elementi, non tre.** Base (famiglia) + overlay (tipo). Non aggiungere un
+  terzo marcatore "area": la base È già l'area → sarebbe solo ingombrante.
+- **Niente collisioni di dominio/azione**: l'icona del dominio Vendite è il
+  carrello **intero** (`pi-shopping-cart` pieno) → l'ordine usa il carrello come
+  **badge** su documento, non collide. Mai `pi-replay`/`pi-refresh` per i Resi
+  (si leggono come "ricarica").
+- Nuova entità vendite: aggiungere `.app-nav-icon-<entita>` (base `\e958` +
+  overlay-tipo) in `main.css` e la chiave in `NAV_ICONS`, mai una PrimeIcon
+  singola generica.
+
 ### Regole CSS per i componenti
 
 - Sempre `<style scoped>` — mai globale (eccetto `main.css`)
