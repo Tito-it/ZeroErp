@@ -58,7 +58,7 @@ import TabPanel from 'primevue/tabpanel'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = usePreventiviStore()
 const { execute, loading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
@@ -783,6 +783,7 @@ const drawerActions = computed(() => {
   const list = mapAvailableActionsToDrawerActions({
     availableActions: availableActionsHeader,
     t,
+    te,
     onAction: onCambiaStato,
     readonly: props.readonly || parentReadonly.value,
   })

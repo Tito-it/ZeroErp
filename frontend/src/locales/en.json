@@ -1,7 +1,8 @@
 {
   "common": {
     "azione_reason": {
-      "senza_righe": "The document has no rows: add at least one to proceed."
+      "senza_righe": "The document has no rows: add at least one to proceed.",
+      "indirizzi_mancanti": "Required document addresses are missing: fill them in the Addresses section."
     },
     "save": "Save",
     "cancel": "Cancel",
@@ -1845,7 +1846,13 @@
       "col_anno": "Year",
       "col_serie": "Series",
       "col_data_insert": "Created",
-      "col_emittente": "Issuer"
+      "col_emittente": "Issuer",
+      "azione_reason": {
+        "causale_mancante": "Transport reason is missing: required to issue the DDT.",
+        "prezzo_non_risolvibile": "One or more rows have no resolvable price (own or inherited from the order) with an invoiceable reason.",
+        "componenti_prezzo_pendente": "Components with price pending valuation.",
+        "componenti_non_valorizzati": "Document components not yet valued."
+      }
     },
     "resi": {
       "reso": "Return",
@@ -2318,7 +2325,11 @@
       "successione_apri_contratto": "Open",
       "successione_validita_attuale": "Current validity",
       "successione_senza_fine": "no end date",
-      "successione_effetto": "On confirmation, the existing contract will be closed on {data} and the new draft contract will be generated."
+      "successione_effetto": "On confirmation, the existing contract will be closed on {data} and the new draft contract will be generated.",
+      "azione_reason": {
+        "listino_versione_mancante": "Price list version is missing: required to issue the offer.",
+        "listino_versione_non_attiva": "The linked price list version is not ACTIVE."
+      }
     },
     "resi_da_accreditare": {
       "col_numero": "Number",

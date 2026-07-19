@@ -1640,6 +1640,14 @@ a {
   font-size: var(--app-font-size-base);
 }
 
+/* Tooltip multi-riga (motivi ostativi di un'azione disabilitata, capability
+ * disabled+reason): il testo arriva come textNode con '\n', che senza
+ * pre-line verrebbe collassato in spazi. Applicata da useActionBar via la
+ * chiave `class` della directive tooltip. */
+.app-tooltip-multiline .p-tooltip-text {
+  white-space: pre-line;
+}
+
 /* Icona info accanto al titolo card (misure non ovvie, es. area Ordini a
  * misura mista pieno/da-spedire — DL-23): discreta, tooltip al volo. */
 .app-dash-card-hint {

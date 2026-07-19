@@ -10,6 +10,7 @@
 // `onCambiaStato(action)` parametrizzato).
 
 import { unref } from 'vue'
+import { labelOrCode } from '../utils/i18nLabel'
 
 // Scopo: trasforma availableActions (ref/computed o array) in azioni
 //   DrawerActionsBar kind:'state'. Il chiamante poi le compone con eventuali
@@ -26,18 +27,36 @@ import { unref } from 'vue'
 export function mapAvailableActionsToDrawerActions({
   availableActions,
   t,
+  te = () => false,
   onAction,
   readonly = false,
 }) {
   if (unref(readonly)) return []
   const list = unref(availableActions) || []
+
   return list.map(action => {
-    // Precondizioni data-driven (rev DB 2026-07-16, meta.requires_righe):
-    // `enabled:false` + `reason`/`reason_key` (es. DOCUMENTO_SENZA_RIGHE /
-    // common.azione_reason.senza_righe) -> pulsante disabilitato con tooltip
-    // che spiega il perche'. Confronto stretto con `false`: i domini che non
-    // espongono `enabled` (offerte) degradano in sicurezza ad abilitato.
+    // Precondizioni data-driven (rev DB 2026-07-16 `requires_righe` +
+    // Rev 2 2026-07-19 brief guard-righe): `enabled:false` +
+    // `reason`/`reason_key` -> pulsante DISABILITATO con tooltip che spiega
+    // il perche' (decisione Tid: disabled, mai nascosto). Confronto stretto
+    // con `false`: i domini/azioni senza `enabled` degradano ad abilitato.
     const isDisabled = action.enabled === false
+    // Motivi ostativi: `reasons` (array completo, oggi solo l'azione emetti
+    // del DDT via fn_check_ddt_emittibile) oppure il motivo singolo — che ha
+    // gli STESSI campi reason/reason_key, quindi si normalizza a lista e si
+    // rende con un percorso solo (join '\n' -> tooltip multi-riga).
+    // `labelOrCode` = fail-visible: chiave i18n mancante -> codice macchina,
+    // mai il path della chiave a video (te di default => false: un caller
+    // che non lo inietta degrada al codice, non crasha).
+    const reasons = action.reasons?.length ? action.reasons : [action]
+    const tooltip = !isDisabled
+      ? undefined
+      : reasons
+          .map(r => (r.reason_key
+            ? labelOrCode(t, te, r.reason_key, r.reason || '')
+            : (r.reason || '')))
+          .filter(Boolean)
+          .join('\n')
     return {
       key: action.key || `state-${action.target_state}`,
       kind: 'state',
@@ -49,11 +68,7 @@ export function mapAvailableActionsToDrawerActions({
       // rosso pieno), allineato al pattern Annulla offerte/contratti.
       outlined: action.outlined === true,
       disabled: isDisabled,
-      // Tooltip solo da disabilitata: la chiave i18n arriva dal BE
-      // (reason_key); fallback al codice reason grezzo se la chiave manca.
-      tooltip: isDisabled
-        ? (action.reason_key ? t(action.reason_key) : (action.reason || ''))
-        : undefined,
+      tooltip,
       command: () => onAction?.(action),
     }
   })

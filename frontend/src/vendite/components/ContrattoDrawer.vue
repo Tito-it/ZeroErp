@@ -62,7 +62,7 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useContrattiStore()
 const { execute, loading } = useApiHandler()
 // Readonly da permessi area (LETTURA/BLOCCATO). Si combina con isContractLocked
@@ -642,6 +642,7 @@ const drawerActions = computed(() => {
   const list = mapAvailableActionsToDrawerActions({
     availableActions,
     t,
+    te,
     onAction: onCambiaStato,
     readonly: props.readonly || parentReadonly.value,
   })

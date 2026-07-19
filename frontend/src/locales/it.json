@@ -1,7 +1,8 @@
 {
   "common": {
     "azione_reason": {
-      "senza_righe": "Il documento non ha righe: aggiungine almeno una per procedere."
+      "senza_righe": "Il documento non ha righe: aggiungine almeno una per procedere.",
+      "indirizzi_mancanti": "Mancano gli indirizzi obbligatori del documento: compilali dalla sezione Indirizzi."
     },
     "save": "Salva",
     "cancel": "Annulla",
@@ -1724,7 +1725,7 @@
       "field_intestazione": "Intestazione",
       "field_via": "Via e civico",
       "field_cap": "CAP",
-      "field_citta": "Citt\u00e0",
+      "field_citta": "Città",
       "field_prov": "Provincia",
       "field_stato": "Stato (ISO2)",
       "field_email": "Email",
@@ -1845,7 +1846,13 @@
       "col_anno": "Anno",
       "col_serie": "Serie",
       "col_data_insert": "Creazione",
-      "col_emittente": "Emittente"
+      "col_emittente": "Emittente",
+      "azione_reason": {
+        "causale_mancante": "Manca la causale di trasporto: obbligatoria per emettere il DDT.",
+        "prezzo_non_risolvibile": "Una o più righe non hanno un prezzo risolvibile (proprio o ereditato dall'ordine) con causale fatturabile.",
+        "componenti_prezzo_pendente": "Componenti con prezzo in attesa di valorizzazione.",
+        "componenti_non_valorizzati": "Componenti del documento non ancora valorizzati."
+      }
     },
     "resi": {
       "reso": "Reso",
@@ -2318,7 +2325,11 @@
       "successione_apri_contratto": "Apri",
       "successione_validita_attuale": "Validità attuale",
       "successione_senza_fine": "senza scadenza",
-      "successione_effetto": "Confermando, il contratto esistente verrà chiuso al {data} e verrà generato il nuovo contratto in BOZZA."
+      "successione_effetto": "Confermando, il contratto esistente verrà chiuso al {data} e verrà generato il nuovo contratto in BOZZA.",
+      "azione_reason": {
+        "listino_versione_mancante": "Manca la versione di listino: obbligatoria per emettere l'offerta.",
+        "listino_versione_non_attiva": "La versione di listino collegata non è ATTIVA."
+      }
     },
     "resi_da_accreditare": {
       "col_numero": "Numero",
