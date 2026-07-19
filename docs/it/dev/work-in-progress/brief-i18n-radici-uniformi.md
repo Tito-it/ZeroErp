@@ -244,10 +244,30 @@ loro valore si sposta sul dopo — restano la regola per il codice futuro.
 | 1 | Fix reason ordini → `vendite.ordini.*` | ✅ 2026-07-19 (`20260719-12`, pgTAP 9/9) |
 | 2 | Standard scritto + tabelle superate corrette in repo | ✅ 2026-07-19 |
 | 3 | Guard FE chiavi-citate vs chiavi-presenti (**prima** della rinomina) | ☐ |
-| 4 | Rinomina scriptata di tutte e 21 le radici — locales + punti di chiamata | ☐ |
-| 5 | Metà DB: `preventivi` (capability + seed) e `contratti` (seed) | ☐ |
-| 6 | Verifica unica: guard + pgTAP + build + parità it/en | ☐ |
-| 7 | Chiusura: doc auto-gen, `profile`, decisione su `lista` (§2e), casi contesi (§2d), commit | ☐ |
+| 4 | Rinomina scriptata di tutte e 21 le radici — locales + punti di chiamata | ✅ FE (radici sotto `vendite.*`/aree, guard FE pulito) |
+| 5 | Metà DB: `preventivi` (capability `20260719-14` + seed) e `contratti` (seed) | ✅ applicato + verificato sul DB vivo |
+| 6 | Verifica: pgTAP `plan(8)` verde, seed+capability live corretti (psql), parità it/en | ✅ — guard azzera al rigen doc (punto 7) |
+| 7 | Chiusura: **rigen doc auto-gen** (Tid), `profile`, decisione su `lista` (§2e), casi contesi (§2d), commit | ☐ |
+
+### 6a. Stato metà DB (step 5) — dettaglio
+
+- **Seed** `transizioni_stati_preventivi.csv` (4 `label_key`, `preventivi.azione_*`
+  → `vendite.preventivi.azione_*`) e `transizioni_stati_contratti.csv` (3,
+  `contratti.azione_*` → `vendite.contratti.azione_*`): editati **direttamente**,
+  ripescati dai loader `runOnChange` esistenti. Guard già pulito su queste 7.
+- **Capability** `fn_available_actions_preventivo`: changeset `20260719-14`,
+  3 `label_key` + 5 `reason_key` → `vendite.preventivi.*`. Corpo dalla doc
+  auto-gen, diff verificato (8 chiavi + commento + `COMMENT`, nessuna regressione
+  su residuo/requires_righe). Il guard segnala ancora queste 8 perché legge la
+  doc auto-gen, che riflette il vivo: si azzerano al migrate + rigen.
+- **pgTAP** `test-fn-available-actions-preventivo-v1.sql`: `plan(7)` → `plan(8)`.
+  Test 4 adattato (leggeva `preventivi.azione_annulla` dal seed, ora
+  `vendite.preventivi.*`); test 8 nuovo, guard di prefisso su label_key (seed) +
+  reason_key (capability).
+- ⚠️ **`contratti` capability**: nessuna funzione emette `contratti.*` a runtime
+  oltre al seed (le sue `reason_key`/`label_key` vivono solo nel `meta` delle
+  transizioni). Verificato col guard: dopo l'edit del CSV non resta nessuna
+  chiave `contratti.*` irrisolvibile. Niente changeset capability per contratti.
 
 ## 7. Riferimenti
 
