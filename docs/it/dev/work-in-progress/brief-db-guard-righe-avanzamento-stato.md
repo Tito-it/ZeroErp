@@ -5,6 +5,9 @@
 > stessa famiglia, emerso alla validazione in-app della slice DDT-resi-dashboard.
 > · **Owner**: Tid
 > **Stato**: ☐ DA REALIZZARE
+> **Vedi anche**: [brief-db-push-commessa-gia-inviato.md](brief-db-push-commessa-gia-inviato.md)
+> — stessa famiglia UX (azione non pertinente non va offerta), causa radice diversa:
+> predicato delle `fn_list_*_da_pushare` cieco sull'allocazione (rilievo ORD0000227).
 > **Origine**: rilievo in-app di Tid — su un preventivo VUOTO il pulsante "Emetti"
 > è visibile e cliccabile; il guard DB (`PREV_NESSUNA_RIGA_ATTIVA`) rifiuta
 > correttamente al click, ma l'azione non dovrebbe proprio essere offerta.
