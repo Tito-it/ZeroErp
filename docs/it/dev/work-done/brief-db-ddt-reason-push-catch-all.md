@@ -5,19 +5,24 @@
 > messaggio che mente su una situazione legittima), ma **sforzo M/L, non S**: la
 > Decisione A (fonte unica sul lister) è un intervento architetturale, non
 > manutenzione di testi — vedi §3.
-> **Stato**: ✅ DB REALIZZATO (2026-07-19) — changeset `20260719-15` (fonte unica
-> `fn_ddt_push_diagnosi`) + `20260719-16` (capability), pgTAP **7/7 verde**,
-> validato end-to-end su DB dev. **Attende**: migrate/rigen doc + 3 traduzioni FE (§4).
+> **Stato**: ✅ **CHIUSO DB + FE** (2026-07-20) — DB: changeset `20260719-15`
+> (fonte unica `fn_ddt_push_diagnosi`) + `20260719-16` (capability), pgTAP
+> **7/7 verde**, doc auto-gen rigenerata, committato/pushato (`8b6614539`).
+> FE: 3 traduzioni + generico riscritto it/en, e **Decisione D applicata
+> davvero** — la reason non è più un banner fisso ma tooltip su pulsante
+> «Invia a commessa» DISABILITATO (§4-bis), esteso per simmetria XOR anche al
+> drawer ordini. Verificato sul caso reale: DDT0000326 → `DDT_FATTURA_DA_ORDINE`.
+> Guard i18n verde, build Vite verde.
 > **Origine**: rilievo in-app di Tid (2026-07-19) su **DDT0000326 / ORD0000580**,
-> emerso validando la slice [brief-be-fe-ddt-resi-dashboard.md](brief-be-fe-ddt-resi-dashboard.md)
+> emerso validando la slice [brief-be-fe-ddt-resi-dashboard.md](../work-in-progress/brief-be-fe-ddt-resi-dashboard.md)
 > (**documento BE/FE collegato**: FE-5 gate solo-trasporto nel drawer DDT).
 > Il DDT è **CONSEGNATO**, ma nel drawer non compare il push a commessa e il
 > banner recita *«DDT non ancora inviabile a commessa: dev'essere spedito o
 > consegnato»* — cioè chiede una condizione **già soddisfatta**.
-> **Stessa famiglia**: [brief-db-push-commessa-gia-inviato.md](brief-db-push-commessa-gia-inviato.md)
+> **Stessa famiglia**: [brief-db-push-commessa-gia-inviato.md](../work-in-progress/brief-db-push-commessa-gia-inviato.md)
 > (reason vere al posto di un no-op) ·
 > [brief-db-i18n-namespace-reason-ordini.md](brief-db-i18n-namespace-reason-ordini.md)
-> (namespace delle reason ordini) · [brief-db-guard-righe-avanzamento-stato.md](brief-db-guard-righe-avanzamento-stato.md)
+> (namespace delle reason ordini) · [brief-db-guard-righe-avanzamento-stato.md](../work-in-progress/brief-db-guard-righe-avanzamento-stato.md)
 > (azione non pronta → disabled+reason). ⚠️ **Non è però lo stesso difetto**: qui
 > la `reason_key` è nel namespace giusto e il messaggio **si vede** — è il
 > *contenuto* a essere falso.
@@ -194,6 +199,31 @@ più evidente perché il messaggio ora è corretto e frequente. Decisione FE, no
 
 Il DB non cambia in nessuno dei due casi: espone la stessa `reason_key`.
 
+#### ✅ Risolta (2026-07-20) — presa la strada allineata a D, senza tocchi DB
+
+Implementazione FE nei drawer **DDT e Ordini** (ordini per simmetria XOR:
+`fattura_da_ddt` è la causa permanente speculare, stesso rumore perpetuo):
+
+- il `<Message>` fisso è stato **rimosso**;
+- quando `can_push_commessa=false` con reason valorizzata, il drawer
+  **sintetizza** l'entry `push_commessa` con `enabled:false` +
+  `reason`/`reason_key`, nella stessa shape delle azioni emesse dal DB, e la
+  accoda ad `available_actions` prima del mapper condiviso
+  (`mapAvailableActionsToDrawerActions`), che già rende `enabled:false` come
+  pulsante **disabilitato con tooltip** (pattern guard-righe, «disabled, mai
+  nascosto») con fallback fail-visible `labelOrCode`;
+- risultato: il pulsante «Invia a commessa» è **sempre presente** — attivo se
+  pushabile, grigio col motivo all'hover altrimenti. Le cause permanenti non
+  urlano più; la spiegazione c'è per chi la cerca, come voleva la D.
+- Nota tecnica: i tooltip sui pulsanti disabilitati funzionano nei browser
+  correnti (Chrome 119+/Firefox: gli eventi mouse vengono emessi anche sugli
+  elementi `disabled`) — stesso meccanismo già in uso per le azioni
+  `requires_righe`.
+
+I drawer **preventivi/offerte** conservano il `<Message>`: le loro cause
+prevalenti sono azionabili (non accettato) e il rumore permanente lì è marginale
+(`gia_generato` offerte) — eventuale allineamento è un follow-up a parte.
+
 ## 5. Impatto sulla validazione in corso (contesto utile)
 
 Il rilievo è emerso mentre si validava la slice DDT-resi-dashboard: il giro di
@@ -216,8 +246,10 @@ Decisioni A–E: ✅ chiuse (§3). Implementazione:
 | 6 | pgTAP `test-fn-available-actions-ddt-reason-catch-all-v1.sql` **7/7**: equivalenza + un caso per ramo + precedenza + namespace | ✅ |
 | 7 | Migrate dev + pgTAP verdi | ✅ 2026-07-19 |
 | 8 | Manuale funzione `vendite/manual/fn_ddt_push_diagnosi.md` | ✅ |
-| 9 | Rigen doc auto-gen (crea `funzioni/fn_ddt_push_diagnosi.md`) + comunicazione §4 a BE/FE | ☐ **rigen = processo Tid** |
-| 10 | Commit (assieme al resto del lavoro DB della giornata) | ☐ **attende «procedi»** |
+| 9 | Rigen doc auto-gen (crea `funzioni/fn_ddt_push_diagnosi.md`) + comunicazione §4 a BE/FE | ✅ (commit `8b6614539`) |
+| 10 | Commit DB | ✅ 2026-07-19 (`8b6614539`, PR #1020) |
+| 11 | **FE**: 3 traduzioni + generico riscritto (it/en) · Decisione D applicata — tooltip su pulsante disabilitato al posto del banner, drawer DDT **e** Ordini (§4-bis) · guard i18n verde · build verde | ✅ 2026-07-20 |
+| 12 | Validazione in-app Tid — ✅ 2026-07-20 su ORD0000608/DDT0000337 (ramo `fattura_da_ordine`, il default): reason corretta e pulsante disabled+tooltip. Durante la validazione emersi e chiusi due difetti FE collaterali (readonly-leak drawer impilati dai Passaggi + freshness liste KeepAlive — v. brief dashboard collegato). ⚠️ Rami `merce_in_viaggio`/`gia_inviato`-da-DDT non esercitabili coi dati attuali: **tutti i 42 BA dev hanno `fatturazione_ordini=CONFERMATO`** — restano coperti dal pgTAP; alla prima anagrafica con trigger `SPEDITO`/`CONSEGNATO` si esercitano in-app | ✅ |
 
 ### 6b. Nota sulla fonte unica (Decisione A) — cosa è stato fatto e cosa no
 
@@ -232,7 +264,7 @@ La delega letterale resta un follow-up sicuro, se e quando serve.
 
 ## 7. Riferimenti
 
-**Documento BE/FE collegato**: [brief-be-fe-ddt-resi-dashboard.md](brief-be-fe-ddt-resi-dashboard.md)
+**Documento BE/FE collegato**: [brief-be-fe-ddt-resi-dashboard.md](../work-in-progress/brief-be-fe-ddt-resi-dashboard.md)
 (slice da cui è emerso il rilievo; FE-5 gate solo-trasporto nel drawer DDT).
 
 **Prodotto da questo brief:**

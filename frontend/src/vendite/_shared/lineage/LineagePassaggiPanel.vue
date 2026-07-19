@@ -18,8 +18,9 @@
 // Root `app-escape`: nei drawer post-DRAFT il contenuto e' .app-readonly ma
 // la consultazione/navigazione della genealogia e' legittima (memoria
 // feedback_app_escape_pannelli_processo).
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import Panel from 'primevue/panel'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
@@ -41,7 +42,19 @@ const props = defineProps({
   // Apre il pannello di default e carica al mount (drawer commessa Fase C:
   // la genealogia È il contenuto principale, non una sezione secondaria).
   startOpen: { type: Boolean, default: false },
+  // Readonly PURO del contesto che apre (permessi area / split / forzato) —
+  // NON il lock-di-stato del documento padre. Vedi provide sotto.
+  readonly: { type: Boolean, default: false },
 })
+
+// I drawer aperti da qui (documento della tappa, pratica) sono documenti
+// DIVERSI dal drawer padre: il suo lock-di-stato (post-DRAFT → provide
+// READONLY_KEY=true) non deve contagiarli — senza questo reset, un ordine
+// aperto dai passaggi di un DDT CONSEGNATO perdeva TUTTE le azioni di stato
+// (mapAvailableActionsToDrawerActions ritorna [] in readonly puro), incluso
+// «Invia a commessa» legittimo. Si ri-fornisce quindi il readonly PURO del
+// chiamante: i permessi area/split continuano a propagare, il lock no.
+provide(READONLY_KEY, computed(() => props.readonly))
 
 // `loaded`: emette il payload passaggi appena caricato (nodo + pratica +
 // frontiera + catene) — consumato dal drawer commessa per l'header di testata

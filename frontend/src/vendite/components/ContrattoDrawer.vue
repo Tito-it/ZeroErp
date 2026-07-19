@@ -977,7 +977,8 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
         <Divider />
         <LineagePassaggiPanel
           base-path="/vendite/contratti"
-          :doc-id="contrattoId" />
+          :doc-id="contrattoId"
+          :readonly="readonly || parentReadonly" />
       </template>
 
       <!-- Footer Salva/Annulla solo se editabile. La regola di dominio e':
