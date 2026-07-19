@@ -19,8 +19,8 @@
 > (`api_percorso/api_coda_lavoro/api_pratica_detail`).
 > **Fase 3 GUIDA (D4) ✅ pilota PREVENTIVI IMPLEMENTATO + E2E verde (2026-07-07)** — inversione
 > handler→proiezione, binding NULL (accept+reject auto-avanzano il milestone); design-of-record
-> [brief-design-guida-avanza-esito-proiettato](../work-done/brief-design-guida-avanza-esito-proiettato.md)
-> + [brief-db-guida-avanza-esito-proiettato](../work-done/brief-db-guida-avanza-esito-proiettato.md) (chiusi).
+> [brief-design-guida-avanza-esito-proiettato](../work-done/brief-design-guida-avanza-esito-proiettato.md) +
+> [brief-db-guida-avanza-esito-proiettato](../work-done/brief-db-guida-avanza-esito-proiettato.md) (chiusi).
 > **Restano**: validazione E2E in-app di MOSTRA su PREVENTIVI → roll-out MOSTRA+GUIDA agli altri
 > domini (offerte/ordini/contratti, brief DB per dominio) → §10.3 azioni nel descrittore.
 >
@@ -69,10 +69,18 @@
 > - **Altri scrittori di COLLEGATO** da considerare al roll-out: `vendite.fn_link_commessa_sorgente`,
 >   `vendite.fn_push_offerta_a_contratto` (⚠️ **priva di `p_flusso_id`** — vedi §9-R1) e
 >   `preventivi_service._aggancia_commessa_servizi_a_pratica`.
-> **(c)** la **regola dell'ancora**
+>
+> **(c)** ✅ **FATTA — verificato 2026-07-19.** La nota chiedeva: la **regola dell'ancora**
 > (ROOT preferito, poi link più recente) oggi vive solo nel frammento Python
 > `_doc_sorgente_lateral`: la fase GUIDA (D4) dovrà risolvere la STESSA ancora a livello
 > motore → promuoverla a vista DB condivisa (es. `vw_pratica_doc_sorgente`) in quel cantiere.
+> ➡️ **La promozione è avvenuta, col nome esatto qui ipotizzato**:
+> `script.vw_pratica_doc_sorgente` esiste in DB ed è consumata da `_PRATICA_JOINS`
+> (dettaglio/lista). La regola d'ancora implementata è anche **più ricca** di quella descritta:
+> `risolto` → *non*-terminale → ROOT → `id` DESC (cioè «documento più vivo della pratica», non solo
+> «ROOT poi più recente»). ⚠️ **Resta fuori** l'ancora **per-flusso** (percorso/coda), che continua a
+> usare il frammento Python `_doc_sorgente_lateral` con `ps.flusso_id = f.id`: la promozione di
+> *quella* è il D4 pinning per-step della nota **(b)**.
 >
 > **Origine**: voce **V10** e §2.4 di
 > [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md) — la

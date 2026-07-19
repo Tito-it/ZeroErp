@@ -16,8 +16,8 @@
 >    Problema 1 §2.1 + radice §2.4 «due macchine a stati»).
 > 2. [brief-design-proiezione-stato-dominio](brief-design-proiezione-stato-dominio.md) — design MOSTRA/GUIDA
 >    (§6 le due direzioni · §8 deliverable · **D4** GUIDA).
-> 3. [brief-design-guida-avanza-esito-proiettato](../work-done/brief-design-guida-avanza-esito-proiettato.md)
->    + [brief-db-guida-avanza-esito-proiettato](../work-done/brief-db-guida-avanza-esito-proiettato.md) —
+> 3. [brief-design-guida-avanza-esito-proiettato](../work-done/brief-design-guida-avanza-esito-proiettato.md) +
+>    [brief-db-guida-avanza-esito-proiettato](../work-done/brief-db-guida-avanza-esito-proiettato.md) —
 >    **pilota PREVENTIVI** (design-of-record + DB, chiusi in work-done).
 > 4. **Questo brief** — roll-out del meccanismo agli altri domini (OFFERTA/CONTRATTO/ORDINE).
 >
@@ -263,15 +263,29 @@ sotto riguardano il *framing* e il *coordinamento con altre attività*, non erro
   (`INSERT INTO pratiche.pratiche_sorgenti (…, ruolo_link, flusso_id) VALUES (…, 'COLLEGATO', p_flusso_id)`).
   **Nessun secondo `DROP FUNCTION` sarà necessario**: R1, come formulata, è chiusa.
 
-  ⚠️ **Ma G-est.2 NON è operativo — è una capability dormiente, e va saputo prima dei brief-DB per
-  dominio.** **Nessun chiamante passa il parametro**: `push_a_ordine` in
-  `vendite/db/preventivi_repository.py` non ha l'argomento e invoca la fn con **4 parametri su 5**, quindi
-  `p_flusso_id` cade sempre sul DEFAULT NULL. **Riscontro sui dati**: `pratiche.pratiche_sorgenti` ha **39
-  link COLLEGATO, 0 con `flusso_id`**. Il roll-out di OFFERTA/ORDINE/CONTRATTO **non deve dare per
-  scontato che il COLLEGATO porti il flusso**: oggi non lo porta mai. O si cabla il BE (il repository sa
-  già risolverlo: `get_flusso_id_by_preventivo_root`), o si sceglie il fallback pratica-level e si ritira
-  il parametro. Decisione da prendere **prima** di scrivere i brief-DB per dominio — vedi nota **(b)** del
-  [brief-padre proiezione-stato-dominio](brief-design-proiezione-stato-dominio.md).
+  ⚠️ **Ma G-est.2 NON è operativo — capability dormiente, da sapere prima dei brief-DB per dominio**
+  (analisi BE 2026-07-19; *una revisione precedente di questa nota indicava `push_a_ordine` come sede
+  dell'INSERT: era imprecisa, vedi sotto*). **Riscontro sui dati**: `pratiche.pratiche_sorgenti` ha
+  **40 link COLLEGATO, 0 con `flusso_id`** (ROOT: 14/46) — link nuovi continuano a nascere vuoti.
+
+  - **Dove nasce davvero il link**: sul percorso pratica `crea_ordine_da_preventivo` invoca la fn con
+    `pratica_id=None`, quindi il blocco INSERT **interno alla fn non viene mai eseguito**. Il vero
+    autore è `PostSmistamentoHandler` → `PraticheRepository.upsert_pratica_sorgente`, che **accetta
+    già** `flusso_id`. Il `p_flusso_id` della fn DB è dormiente **due volte**.
+  - **Il cablaggio ingenuo sarebbe SBAGLIATO**: l'handler ha il `flusso_id` di **SMISTAMENTO (9012)**,
+    non di **CONFERMA_ORDINE (9013)**; con l'ancora `ps.flusso_id = f.id` il documento si accenderebbe
+    sulla card sbagliata. La via corretta è **D4 — pinning per-step, mappa step→sorgente condivisa con
+    GUIDA**: design, non due righe di cablaggio.
+  - **Il fallback pratica-level è già stato implementato** (`script.vw_pratica_doc_sorgente`): dettaglio
+    e lista accendono già i COLLEGATO senza `flusso_id`. Scoperto solo l'aggancio **per-flusso**
+    (percorso/coda). Dettaglio nelle note **(b)** e **(c)** del
+    [brief-padre proiezione-stato-dominio](brief-design-proiezione-stato-dominio.md).
+  - 🔴 **ATTENZIONE sul primo dominio del roll-out — OFFERTA**: `vendite.fn_push_offerta_a_contratto`
+    ha firma `(p_offerta_id, p_pratica_id, p_chiudi_contratto_esistente)` — **nessun `p_flusso_id`**.
+    Il rischio che R1 voleva evitare (seconda modifica di firma → `DROP FUNCTION`) è scongiurato per i
+    **preventivi**, ma per **offerta è ancora tutto da pagare**: se G-est.2 dovrà valere anche lì, la
+    firma va progettata **ora**, nello stesso brief-DB, non dopo. Stessa verifica da fare su
+    `vendite.fn_link_commessa_sorgente` (altro scrittore di COLLEGATO).
 - **R2 — ORDINE: cutover esplicito imperativo→dichiarativo.** Aggiungere alla checklist Passo N per ORDINE
   un passo «**neutralizza `_completa_flusso_ordine_pratica`**» (mirror del pilota che ha disattivato
   l'handler `accetta_preventivo`). Senza, binding G2 e spinta imperativa scattano entrambi su 9013/9014
