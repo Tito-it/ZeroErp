@@ -66,7 +66,15 @@ Grana RIGA (`resi_riga_id` = dataKey; azione "apri reso" via `reso_id`). Filtri:
 filtro stato).
 
 - Da accreditare `GET /api/v1/vendite/resi/da-accreditare/` (+ `…/export/`) —
-  righe a credito (`tipi_reso.riapre_residuo=false`), config `vendite.resi_da_accreditare`.
+  **forma contatore** (2026-07-18, brief DDT-resi §3c): righe la cui partita ha
+  differenza negativa (`accredito_dovuto = fatturati − tenuti > 0`),
+  **qualunque tipo di reso** — il tipo è degradato a `etichetta`
+  `DOVUTA` (a credito, NC obbligatoria) | `FACOLTATIVA` (per ri-consegna,
+  opzione DL-26). Colonne del conto esposte: `accredito_dovuto`, `tenuti`,
+  `fatturati`; `ddt_numero`/`ddt_id` possono essere **NULL** (aggancio partita
+  via ordine, join DDT LEFT). Filtro extra `etichetta` (whitelist
+  `DOVUTA|FACOLTATIVA`, case-insensitive; fuori whitelist →
+  `E_RESO_VALIDAZIONE`; assente = tutte). Config `vendite.resi_da_accreditare`.
 - Da ri-consegnare `GET /api/v1/vendite/resi/da-riconsegnare/` (+ `…/export/`) —
   righe con copertura incompleta + `stato_riconsegna` derivato
   (DA_RICONSEGNARE/PARZIALE/COMPLETATA), config `vendite.resi_da_riconsegnare`.

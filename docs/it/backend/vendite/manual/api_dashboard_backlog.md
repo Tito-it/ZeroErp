@@ -14,8 +14,12 @@ Fase 2 BE del brief
 [brief-db-fatturazione-due-lenti](../../../dev/work-done/brief-db-fatturazione-due-lenti.md)
 §5, migrations `20260706-01..15`): due endpoint GET **sottili** sopra le
 proiezioni read-only `vendite.vw_dash_backlog_riepilogo` (contatori
-classe × area) e `vendite.vw_dash_backlog_documenti` (union dei 5 resolver
-filtrata al non-verde + LEFT JOIN `config.motivi_fermo`). Nessuna logica di
+classe × area) e `vendite.vw_dash_backlog_documenti` (union dei 6 resolver
+documento filtrata al non-verde + LEFT JOIN `config.motivi_fermo`, **più i due
+rami RESI** a grana reso × motivo dalle code accrediti/ri-consegne —
+`20260718-14`, §6-quater DL-24: un reso misto può comparire due volte, una per
+motivo, deroga dichiarata; area RESI a conteggi, `valore_fermo` NULL mai 0).
+Nessuna logica di
 dominio in Python: popolazione, classi (mappatura statica `motivo_fermo →
 classe`, DL-6/7), anzianità (`data_riferimento`, v1 proxy data documento) e
 regola fail-visible (motivo non mappato ⇒ ANOMALIA) vivono nelle viste.
@@ -44,7 +48,8 @@ Nessun parametro.
   riepilogo, che accoda le classi fuori whitelist): una classe futura resta
   drillabile senza toccare il BE; una classe sconosciuta (o `FISIOLOGICO`,
   escluso a monte dalla vista) dà lista vuota, mai 400.
-- `area` (opzionale): `PREVENTIVI | ORDINI | OFFERTE | CONTRATTI | COMMESSE`
+- `area` (opzionale): `PREVENTIVI | ORDINI | DDT | OFFERTE | CONTRATTI |
+  COMMESSE | RESI`
   (case-insensitive; fuori whitelist → `E_VENDITE_VALIDATION`; assente = tutte).
 - `order_by` / `order_dir` (opzionali): **ordinamento colonne server-side**
   (convenzione delle liste standard). `order_by` in whitelist —

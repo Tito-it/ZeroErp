@@ -5,10 +5,15 @@
 > (DL-27/28 + emendamenti DL-21/23/24/26): motivo rinominato, coda accrediti con quantità,
 > card Ordini mista, nuovo gate solo-trasporto, punto "riga non fatturabile" superato.
 > · **Owner**: Tid
-> **Stato**: ☐ DA REALIZZARE — **spec scritta a DB non ancora applicato**
+> **Stato**: 🟢 **REALIZZATO** (2026-07-18, non committato) — DB applicato (PR #1002),
+> BE+FE sviluppati, 1782 test vendite+core verdi, build Vite verde, lint pulito,
+> gunicorn ricaricato. Restano: **seed lista 10** (mini-brief companion
+> [brief-db-seed-lista-coda-accrediti-contatore.md](../work-done/brief-db-seed-lista-coda-accrediti-contatore.md)
+> — le 4 colonne nuove della coda compaiono all'apply, BE/FE già pronti) e
+> **validazione in-app** Tid. Consuntivo in fondo (§7).
 > **Design-of-record**: [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
 > §6-quater, decisioni **DL-19..28**.
-> **Prerequisito DB**: [brief-db-fatturazione-ddt-resi.md](brief-db-fatturazione-ddt-resi.md).
+> **Prerequisito DB**: [brief-db-fatturazione-ddt-resi.md](../work-done/brief-db-fatturazione-ddt-resi.md).
 > **Gate**: BE/FE partono a **oggetti DB applicati** ([[feedback_be_fe_attende_prerequisiti_db]]).
 > **Contesto**: non siamo in produzione ([[project_no_produzione_solo_sviluppo]]) → breaking
 > secchi, nessuna compat.
@@ -212,12 +217,60 @@ la ri-consegna è derivata dal contatore.
 
 | # | Step | Stato |
 | --- | --- | --- |
-| 1 | BE-1 — whitelist aree (`DASH_FATTURAZIONE_AREE` +DDT+RESI · `_EURO` +DDT · `DASH_APERTO_AREE` +DDT) + commenti | ☐ |
-| 2 | FE-1 — `dashboardAree.js`: DDT + RESI (severity già esistenti) | ☐ |
-| 3 | FE-2 — i18n `dash_comune`: 2 aree + 4 motivi (`MERCE_RESA_GIA_FATTURATA`, non `NC_DOVUTA`), it+en | ☐ |
-| 4 | FE-3 — card Ordini: etichetta/tooltip per la misura **mista** (netta solo su trigger S/C) | ☐ |
-| 5 | BE-2 + FE-4 — coda accrediti: nuova popolazione + **quantità accredito dovuto** + etichetta dovuta/facoltativa | ☐ |
-| 6 | BE-3 + FE-5 — gate solo-trasporto: policy errore + i18n + causale richiesta-per-emissione nel form | ☐ |
-| 7 | BE-5 — test (drill-down DDT/RESI senza 400, RESI fuori dal serbatoio, misura a conteggi, quantità in coda) | ☐ |
-| 8 | Suite `apps.vendite` + `apps.core` verde, build FE, `kill -HUP` gunicorn ([[project_backend_gunicorn_reload]]) | ☐ |
+| 1 | BE-1 — whitelist aree (`DASH_FATTURAZIONE_AREE` +DDT+RESI · `_EURO` +DDT · `DASH_APERTO_AREE` +DDT) + commenti | ✅ 2026-07-18 |
+| 2 | FE-1 — `dashboardAree.js`: DDT + RESI (severity già esistenti) | ✅ 2026-07-18 |
+| 3 | FE-2 — i18n `dash_comune`: 2 aree + 4 motivi (`MERCE_RESA_GIA_FATTURATA`, non `NC_DOVUTA`), it+en | ✅ 2026-07-18 |
+| 4 | FE-3 — card Ordini: hint tooltip per la misura **mista** (netta solo su trigger S/C) — icona ⓘ + `card_ordini_hint`, CSS `app-dash-card-hint` | ✅ 2026-07-18 |
+| 5 | BE-2 + FE-4 — coda accrediti: order_cols nuove + filtro `etichetta` whitelisted (repo/service/view+export) · FE slot `accredito_dovuto`/`etichetta` Tag/`tenuti`/`fatturati`/`ddt_numero` "—" + Select etichetta + store/export · `etichettaAccreditoSeverity` | ✅ 2026-07-18 — seed lista 10 **applicato dal team DB 2026-07-19** (+ preset per le 3 liste resi, deviazione motivata nel [mini-brief](../work-done/brief-db-seed-lista-coda-accrediti-contatore.md)); i18n `col_*` create e config verificata end-to-end live |
+| 6 | BE-3 + FE-5 — gate solo-trasporto: policy 544/545 in `error_policies.py` (messaggio dal DB via translator) + asterisco-tooltip causale nel `DdtForm` (obbligatoria all'emissione, non al create) | ✅ 2026-07-18 |
+| 7 | BE-5 — test: aperto 5 aree (DDT euro, RESI assente), backlog DDT/RESI validi (anti-regressione 400), coda etichetta (passthrough/whitelist/default) — 100 test moduli toccati | ✅ 2026-07-18 |
+| 8 | Suite `apps.vendite` + `apps.core` **1782 verdi**, build FE ok, lint pulito, `kill -HUP` gunicorn, doc api (aperto/backlog/resi) | ✅ 2026-07-18 |
 | 9 | Validazione in-app Tid | ☐ |
+
+## 7. Consuntivo (2026-07-18) — realizzato, non committato
+
+File toccati — **BE**: `db/vendite_repository.py` (whitelist 7/4+DDT/5 aree),
+`db/resi_repository.py` (order_cols contatore + filtro `etichetta` in `_list_coda`),
+`services/resi_service.py` (whitelist etichetta via `validate_enum_param`),
+`api/views_resi.py` (query param `etichetta` list+export, `qp_str_upper`),
+`core/services/error_policies.py` (544/545). **FE**: `vendite/dashboardAree.js`
+(DDT+RESI), `core/utils/severity.js` (`etichettaAccreditoSeverity`),
+`vendite/views/SituazioneApertaView.vue` (hint card Ordini), `assets/main.css`
+(`app-dash-card-hint`), `vendite/resi/stores/resiCoda.js` (+`etichetta`),
+`vendite/resi/components/ResiCodaTable.vue` (Select + 5 slot),
+`vendite/ddt/components/DdtForm.vue` (asterisco causale), `locales/it+en.json`.
+**Test**: aperto (rinominato `test_cinque_aree…` + DDT euro + indice extra),
+backlog (`test_documenti_aree_ddt_resi_valide`), resi service
+(`ResiCodaAccreditareTests`, 3 test) + api (etichetta propagata upper).
+**Doc**: `api_dashboard_aperto.md` (5 aree, misura mista ordini),
+`api_dashboard_backlog.md` (7 aree, rami resi), `api_resi.md` (coda forma
+contatore + filtro etichetta). Zero-touch confermati: Backlog view, donut,
+riepiloghi (aree accodate data-driven).
+
+**Review critica 2026-07-18 (8 finder, 10 fix applicati)**: parità list/export
+della coda per costruzione (`_extract_accredito_filters` unico + etichetta nel
+blocco "filtri applicati" dell'export + OpenAPI export); builder `_list_coda`
+reso neutro (condizioni vista-specifiche dal wrapper, via lo special-case
+etichetta); Tag etichetta fail-visible (`labelOrCode`) + vocabolario
+`ETICHETTA_ACCREDITO` in `resi/constants.js`; store riconsegne senza filtro
+no-op (factory con `extraFilters`); hint card per-area in `DASH_AREA_CONFIG`
+(`apertoHintKey`) + icona accessibile (focus/aria-label); asterisco causale
+solo a campo editabile; descrizioni OpenAPI/commenti "4 aree" allineati in 4
+file BE; `subTest` nei loop test. **Su segnalazione Tid**: `_list_coda` a
+**UNA valutazione** della vista per pagina (`COUNT(*) OVER()` con fallback
+COUNT solo su pagina-oltre-l'ultima — le code si auto-svuotano, il caso è
+reale); SQL validato live su entrambe le viste. 1782 test verdi. ⚠️ Candidata
+regola del 2 dichiarata, in attesa di ok: il pattern paginazione-una-valutazione
+ora vive in 2 forme (`_query_paged_view` con clamp SQL nei cruscotti · COUNT
+OVER con fallback in core/email/dbops e qui) — unificabile in BB core come
+task dedicato. → **ESTRATTA (ok Tid, 2026-07-18)**: BB core in
+`apps/core/db/_helpers.py` — `extract_paginated` (promosso da anagrafiche, 6
+repo ripuntati al core), `fetch_paged_with_total` (una valutazione + fallback
+pagina-stantia; adottato da `_list_coda` resi), `query_paged_view` (variante
+clamp promossa da `VenditeRepository._query_paged_view`, che resta delegatore
+per aperto/backlog/errori). Catalogo BB aggiornato con la distinzione di
+semantica (pagina richiesta vs pagina effettiva) e la nota sui ~15 siti
+inline storici core/amm adottabili come allineamento dedicato. Validazione
+live dei tre percorsi + suite vendite/core/anagrafiche (2 flaky preesistenti
+in `test_soggetti_export_api`, ordine-dipendenti da throttle: falliscono
+identici anche senza il diff — controprova stash).

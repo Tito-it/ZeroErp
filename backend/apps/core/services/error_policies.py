@@ -1901,6 +1901,28 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Nessuna quantita' residua da evadere sull'ordine.",
         ),
+        # Gate solo-trasporto all'emissione (trgfn_ddt_guard_causale_emissione,
+        # DL-28): la causale di trasporto dichiara se la merce e' una vendita
+        # da fatturare; obbligatoria a DRAFT->EMESSO, e se fatturabile ogni
+        # riga attiva deve avere un prezzo risolvibile (proprio o ereditato
+        # dall'ordine via fulfillment).
+        "E_DDT_CAUSALE_OBBLIGATORIA": ErrorPolicy(
+            code="E_DDT_CAUSALE_OBBLIGATORIA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Causale di trasporto obbligatoria per emettere il DDT."
+            ),
+        ),
+        "E_DDT_PREZZO_NON_RISOLVIBILE": ErrorPolicy(
+            code="E_DDT_PREZZO_NON_RISOLVIBILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Causale fatturabile ma una riga del DDT non ha un prezzo "
+                "risolvibile (proprio o ereditato dall'ordine)."
+            ),
+        ),
         # Codice sollevato dal trigger guard transizioni DDT
         # (trgfn_ddt_guard_transizione): la coppia (stato_attuale, stato_target)
         # non e' nella matrice config.transizioni_stati_ddt.

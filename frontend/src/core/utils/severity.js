@@ -352,6 +352,17 @@ export function statoRiconsegnaSeverity(codice) {
   return resolveSeverity(STATO_RICONSEGNA_MAP, codice)
 }
 
+// --- Mappa etichetta NC della coda accrediti (vw_resi_da_accreditare, forma
+// contatore): DOVUTA = obbligo (a credito, lavoro arretrato), FACOLTATIVA =
+// opzione dell'operatore su merce da ri-spedire (DL-26). ---
+export const ETICHETTA_ACCREDITO_MAP = {
+  DOVUTA: 'warn',
+  FACOLTATIVA: 'secondary',
+}
+export function etichettaAccreditoSeverity(codice) {
+  return resolveSeverity(ETICHETTA_ACCREDITO_MAP, codice)
+}
+
 // --- Mappa stati commessa ---
 // BOZZA=grigio, APERTA/IN_ESECUZIONE/PRONTA_FATTURAZIONE=azzurro (ciclo in corso),
 // CHIUSA=verde (concluso), ANNULLATA=rosso.

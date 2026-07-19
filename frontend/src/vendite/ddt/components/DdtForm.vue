@@ -143,7 +143,19 @@ function onVettoreClear() {
 
     <div class="form-grid-2col">
       <div class="form-field">
-        <label>{{ t('vendite.ddt.field_causale_trasporto') }}</label>
+        <!-- Obbligatoria all'EMISSIONE, non al create (gate DB
+             trgfn_ddt_guard_causale_emissione, DL-28): in bozza il NULL e'
+             legittimo, l'asterisco col tooltip dichiara il vincolo prima
+             che l'utente lo scopra dall'errore 544. Solo a campo editabile:
+             su DDT gia' emesso/readonly il vincolo non e' piu' azionabile
+             e l'asterisco mentirebbe. -->
+        <label>
+          {{ t('vendite.ddt.field_causale_trasporto') }}
+          <span
+            v-if="!isLocked('causale_trasporto_id')"
+            v-tooltip.bottom="t('vendite.ddt.field_causale_richiesta_emissione')"
+          >*</span>
+        </label>
         <LookupSelect v-model="form.causale_trasporto_id" rel="config.causali_trasporto"
           :placeholder="t('vendite.ddt.field_causale_trasporto')"
           :disabled="isLocked('causale_trasporto_id')" show-clear />

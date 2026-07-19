@@ -1751,6 +1751,7 @@
       "field_valuta": "Valuta",
       "section_trasporto": "Trasporto",
       "field_causale_trasporto": "Causale trasporto",
+      "field_causale_richiesta_emissione": "Obbligatoria per emettere il DDT: dichiara se la merce è una vendita da fatturare o solo trasporto",
       "field_aspetto_bene": "Aspetto dei beni",
       "field_modalita_addebito": "Addebito trasporto",
       "field_vettore": "Vettore",
@@ -1926,6 +1927,11 @@
       "crea_nessuna_riga": "Nessuna riga con residuo rendibile",
       "coda_apri_reso": "Apri reso",
       "coda_search_accreditare": "Cerca (n° reso, destinatario, articolo, DDT, account)",
+      "coda_etichetta_tutte": "Tutti gli accrediti",
+      "coda_etichetta": {
+        "DOVUTA": "NC dovuta",
+        "FACOLTATIVA": "NC facoltativa"
+      },
       "coda_search_riconsegnare": "Cerca (n° reso, destinatario, articolo, DDT)"
     },
     "reso": {
@@ -2323,7 +2329,11 @@
       "col_qta_operativa": "Quantità",
       "col_motivo": "Motivo",
       "col_ba_codice": "Cd. Account",
-      "col_quantita": "Quantità base"
+      "col_quantita": "Quantità base",
+      "col_accredito_dovuto": "Accredito dovuto",
+      "col_etichetta": "Etichetta NC",
+      "col_tenuti": "Tenuti",
+      "col_fatturati": "Fatturati"
     },
     "resi_da_riconsegnare": {
       "col_numero": "Numero",
@@ -2750,6 +2760,8 @@
     "area_offerte": "Offerte",
     "area_contratti": "Contratti",
     "area_commesse": "Commesse",
+    "area_ddt": "DDT",
+    "area_resi": "Resi",
     "fase_aperto": "In lavorazione",
     "fase_in_attesa": "In attesa cliente",
     "fase_in_corso": "In corso",
@@ -2764,7 +2776,11 @@
       "FIGLIO_ABORTITO": "Documento generato poi annullato — serve revisione",
       "CANONE_NON_GENERATO": "Canone del mese non generato",
       "ATTIVITA_NON_APPROVATA": "Attività non approvata",
-      "ATTIVITA_NON_EMESSA": "Attività non emessa"
+      "ATTIVITA_NON_EMESSA": "Attività non emessa",
+      "IN_TRANSITO": "Merce in viaggio, fatturazione non ancora dovuta",
+      "IN_ATTESA_DDT": "Fatturazione a carico del DDT (spedizione/consegna)",
+      "RICONSEGNA_NON_ESEGUITA": "Ri-consegna da generare",
+      "MERCE_RESA_GIA_FATTURATA": "Merce resa già fatturata — accredito in attesa"
     }
   },
   "situazione_aperta": {
@@ -2776,6 +2792,7 @@
     "ritardo_30": "oltre 30 gg",
     "ritardo_60": "oltre 60 gg",
     "ritardo_90": "oltre 90 gg",
+    "card_ordini_hint": "Ordini con fatturazione a spedizione/consegna: conta solo il valore non ancora spedito (il resto è in carico al DDT). Ordini con fatturazione alla conferma: valore pieno.",
     "lista_titolo": "Documenti",
     "col_aperto_da": "Aperto da",
     "aperto_da_giorni": "{n} gg",

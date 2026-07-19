@@ -203,17 +203,20 @@ class TestResiApi(JwtMockedApiTest):
         )
         resp = self.client.get(
             f"{_BASE}da-accreditare/"
-            "?billing_account_id=3&search=rossi&order_by=descrizione&order_dir=asc",
+            "?billing_account_id=3&search=rossi&order_by=descrizione&order_dir=asc"
+            "&etichetta=dovuta",
         )
         self.assertEqual(resp.status_code, 200)
         body = resp.json()["data"]
         self.assertEqual(body["count"], 1)
-        # Filtro BA + search + sort propagati al service (path LIST).
+        # Filtro BA + search + sort + etichetta propagati al service (path
+        # LIST); etichetta normalizzata upper dalla view (qp_str_upper).
         kwargs = mock_coda.call_args.kwargs
         self.assertEqual(kwargs["billing_account_id"], 3)
         self.assertEqual(kwargs["search"], "rossi")
         self.assertEqual(kwargs["order_by"], "descrizione")
         self.assertEqual(kwargs["order_dir"], "asc")
+        self.assertEqual(kwargs["etichetta"], "DOVUTA")
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.list_da_riconsegnare")

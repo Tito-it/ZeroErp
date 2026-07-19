@@ -22,7 +22,12 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
+from apps.core.db._helpers import (
+    call_jsonb_fn,
+    fetch_paged_with_total,
+    row_to_dict,
+    rows_to_list,
+)
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import execute_dynamic_update
 
@@ -48,9 +53,10 @@ _ORDER_COLS_RESI: dict[str, str] = {
 #        reale (le chiavi sono i `campo_sorgente` `ordinabile=t` del catalogo
 #        liste `vendite.resi_da_accreditare` / `..._riconsegnare`, id 10/11).
 #        `search_cols`: colonne `ricercabile_full=t` per la search ILIKE. Le due
-#        code hanno colonne diverse (accreditare espone motivo/qta_operativa/
-#        ba_codice; riconsegnare la copertura resa/riconsegnata/residua +
-#        stato_riconsegna), quindi due mappe distinte, non una condivisa.
+#        code hanno colonne diverse (accreditare espone il conto del contatore
+#        accredito_dovuto/tenuti/fatturati + etichetta DOVUTA|FACOLTATIVA;
+#        riconsegnare la copertura resa/riconsegnata/residua + stato_riconsegna),
+#        quindi due mappe distinte, non una condivisa.
 _CODA_META: dict[str, dict[str, Any]] = {
     "vendite.vw_resi_da_accreditare": {
         "order_cols": {
@@ -63,6 +69,10 @@ _CODA_META: dict[str, dict[str, Any]] = {
             "motivo": "v.motivo",
             "ba_codice": "v.ba_codice",
             "quantita": "v.quantita",
+            "accredito_dovuto": "v.accredito_dovuto",
+            "etichetta": "v.etichetta",
+            "tenuti": "v.tenuti",
+            "fatturati": "v.fatturati",
         },
         "search_cols": [
             "v.reso_numero", "v.destinatario_denominazione",
@@ -394,10 +404,15 @@ class ResiRepository:
     #  LETTURE — Code di lavoro (viste dedicate)
     # ══════════════════════════════════════════════════════════
 
-    # Scopo: Coda "da accreditare" (righe reso CONFERMATE a credito) dalla
-    #        vista `vw_resi_da_accreditare`. Filtri + scope emittente +
-    #        paginazione. La vista si auto-limita ai resi CONFERMATI con
-    #        tipo_reso.riapre_residuo=false. Predisposizione slice NC.
+    # Scopo: Coda "da accreditare" dalla vista `vw_resi_da_accreditare`
+    #        (forma contatore, brief DDT-resi §3c): righe reso CONFERMATE la
+    #        cui partita ha differenza negativa (`accredito_dovuto =
+    #        fatturati - tenuti > 0`), QUALUNQUE tipo di reso — il tipo e'
+    #        degradato a `etichetta` DOVUTA (a credito) | FACOLTATIVA (per
+    #        ri-consegna, scelta DL-26). Espone il conto (tenuti/fatturati/
+    #        accredito_dovuto); `ddt_numero`/`ddt_id` possono essere NULL
+    #        (aggancio partita via ordine_riga_id, join DDT diventato LEFT).
+    #        Filtri + scope emittente + paginazione. Slice NC ci si appoggia.
     def list_da_accreditare(
         self,
         *,
@@ -405,6 +420,7 @@ class ResiRepository:
         data_da: date | None = None,
         data_al: date | None = None,
         search: str | None = None,
+        etichetta: str | None = None,
         auth_user_id: int | None = None,
         limit: int,
         offset: int,
@@ -412,6 +428,15 @@ class ResiRepository:
         order_dir: str = "desc",
         max_limit: int = 200,
     ) -> tuple[list[dict[str, Any]], int]:
+        # La condizione etichetta vive QUI, non nel builder condiviso: la
+        # colonna esiste solo su questa vista, e il builder deve restare
+        # neutro rispetto alle due code (niente parametri validi per meta'
+        # dei chiamanti). Il service whitelist-a DOVUTA|FACOLTATIVA a monte.
+        extra_conditions: list[str] = []
+        extra_params: list[Any] = []
+        if etichetta is not None:
+            extra_conditions.append("v.etichetta = %s")
+            extra_params.append(etichetta)
         return self._list_coda(
             "vendite.vw_resi_da_accreditare",
             billing_account_id=billing_account_id,
@@ -424,6 +449,8 @@ class ResiRepository:
             order_by=order_by,
             order_dir=order_dir,
             max_limit=max_limit,
+            extra_conditions=extra_conditions,
+            extra_params=extra_params,
         )
 
     # Scopo: Coda "da ri-consegnare" (righe reso CONFERMATE per ri-consegna con
@@ -469,6 +496,8 @@ class ResiRepository:
         data_da: date | None,
         data_al: date | None,
         search: str | None = None,
+        extra_conditions: list[str] | None = None,
+        extra_params: list[Any] | None = None,
         auth_user_id: int | None,
         limit: int,
         offset: int,
@@ -497,6 +526,12 @@ class ResiRepository:
         if data_al is not None:
             conditions.append("v.data <= %s")
             params.append(data_al)
+        if extra_conditions:
+            # Condizioni vista-specifiche costruite dal wrapper chiamante
+            # (es. etichetta della coda accrediti): il builder resta neutro
+            # rispetto alle colonne delle singole viste.
+            conditions.extend(extra_conditions)
+            params.extend(extra_params or [])
         if search and len(search) >= 3:
             # Ricerca estesa sulle colonne `ricercabile_full=t` della coda
             # (numero reso + destinatario + articolo + DDT [+ ba_codice]).
@@ -512,25 +547,29 @@ class ResiRepository:
         )
         where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
-        count_sql = f"SELECT COUNT(*) FROM {vista} v {where}"  # noqa: S608
-        # Tie-breaker stabile (reso_id, resi_riga_id) appeso all'order utente
-        # per paginazione deterministica anche su colonne non univoche.
+        # UNA valutazione della vista per pagina (BB core
+        # `fetch_paged_with_total`): con la forma contatore le viste-coda
+        # sono diventate costose (aggregati tenuti/fatturati per partita) e
+        # la doppia query COUNT+SELECT ne pagava il prezzo due volte a ogni
+        # paginazione. Il fallback COUNT scatta SOLO su pagina-oltre-l'ultima
+        # (caso reale: le code si auto-svuotano a copertura/accredito
+        # raggiunti). Tie-breaker stabile (reso_id, resi_riga_id) appeso
+        # all'order utente per paginazione deterministica anche su colonne
+        # non univoche.
         data_sql = f"""
-            SELECT v.* FROM {vista} v
+            SELECT v.*, COUNT(*) OVER () AS total_count
+            FROM {vista} v
             {where}
             ORDER BY {order_column} {direction}, v.reso_id DESC, v.resi_riga_id ASC
             LIMIT %s OFFSET %s
         """  # noqa: S608
-
-        with connection.cursor() as cursor:
-            cursor.execute(count_sql, params)
-            row = cursor.fetchone()
-            total_count = row[0] if row else 0
-
-            cursor.execute(data_sql, [*params, safe_limit, safe_offset])
-            results = rows_to_list(cursor)
-
-        return results, total_count
+        return fetch_paged_with_total(
+            data_sql,
+            [*params, safe_limit, safe_offset],
+            fallback_count_sql=f"SELECT COUNT(*) FROM {vista} v {where}",  # noqa: S608
+            fallback_params=params,
+            offset=safe_offset,
+        )
 
     # ══════════════════════════════════════════════════════════
     #  SCRITTURE — Testata

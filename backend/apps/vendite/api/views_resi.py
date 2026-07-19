@@ -26,6 +26,7 @@ from apps.core.api.payload_validators import (
     optional_iso_date,
     paginated_envelope,
     parse_list_params,
+    qp_str_upper,
 )
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
@@ -47,6 +48,17 @@ _LISTA_CODICE_DA_RICONSEGNARE = "vendite.resi_da_riconsegnare"
 def _extract_coda_filters(qp) -> dict[str, Any]:
     filters = extract_doc_list_filters(qp)
     filters.pop("stato_codice")
+    return filters
+
+
+# Scopo: Filtri della sola coda accrediti = filtri coda comuni + `etichetta`
+#        (DOVUTA | FACOLTATIVA, normalizzata upper; whitelist nel service).
+#        UN punto di estrazione per list ed export: la parita' lista/export
+#        (DEF-1 "filtri identici al list") vale per costruzione, non per
+#        disciplina dei due call-site.
+def _extract_accredito_filters(qp) -> dict[str, Any]:
+    filters = _extract_coda_filters(qp)
+    filters["etichetta"] = qp_str_upper(qp.get("etichetta"))
     return filters
 
 
@@ -164,9 +176,11 @@ class ApiResiExport(DomainAPIView):
 
 
 class ApiResiDaAccreditare(DomainAPIView):
-    """GET /api/v1/vendite/resi/da-accreditare/ — coda righe reso CONFERMATE a
-    credito (vista vw_resi_da_accreditare). Predisposizione slice nota di
-    credito: la coda e' interrogabile, il consumo arriva con la slice NC."""
+    """GET /api/v1/vendite/resi/da-accreditare/ — coda righe reso CONFERMATE
+    con accredito dovuto (forma contatore: fatturati - tenuti > 0, qualunque
+    tipo di reso; vista vw_resi_da_accreditare). `etichetta` distingue le NC
+    DOVUTE (a credito, lavoro arretrato) dalle FACOLTATIVE (per ri-consegna,
+    opzione DL-26). Il consumo arriva con la slice NC."""
 
     area_funzionale = "vendite"
     is_search_endpoint = True
@@ -178,13 +192,16 @@ class ApiResiDaAccreditare(DomainAPIView):
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
+            OpenApiParameter(name="etichetta", type=str, required=False,
+                             description="DOVUTA | FACOLTATIVA (default: tutte)."),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False,
                              description="campo_sorgente catalogo "
                                          "'vendite.resi_da_accreditare' "
                                          "(reso_numero | data | destinatario_denominazione | "
-                                         "descrizione | ddt_numero | qta_operativa | ...)."),
+                                         "descrizione | ddt_numero | accredito_dovuto | "
+                                         "etichetta | ...)."),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={200: inline_serializer(
@@ -203,7 +220,7 @@ class ApiResiDaAccreditare(DomainAPIView):
             offset=p["offset"],
             order_by=p["order_by"],
             order_dir=p["order_dir"],
-            **_extract_coda_filters(qp),
+            **_extract_accredito_filters(qp),
         )
         return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
@@ -228,6 +245,8 @@ class ApiResiDaAccreditareExport(DomainAPIView):
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
+            OpenApiParameter(name="etichetta", type=str, required=False,
+                             description="DOVUTA | FACOLTATIVA (default: tutte)."),
             OpenApiParameter(name="order_by", type=str, required=False),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],
@@ -242,7 +261,7 @@ class ApiResiDaAccreditareExport(DomainAPIView):
         qp = request.query_params
         fmt = parse_export_format(request)
         p = parse_list_params(qp, default_order="data")
-        f = _extract_coda_filters(qp)
+        f = _extract_accredito_filters(qp)
         results, total = resi_service.list_da_accreditare(
             search=p["search"],
             auth_user_id=get_scope_user_id(request),
@@ -258,6 +277,7 @@ class ApiResiDaAccreditareExport(DomainAPIView):
             billing_account_id=f["billing_account_id"],
             data_da=f["data_da"],
             data_al=f["data_al"],
+            etichetta=f["etichetta"],
         )
         return build_export_response(
             request,

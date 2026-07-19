@@ -13,8 +13,8 @@ from typing import Any
 
 from django.db import connection
 
-from apps.anagrafiche.db._helpers import extract_paginated, get_or_create_soggetto_ruolo
-from apps.core.db._helpers import row_to_dict
+from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
+from apps.core.db._helpers import extract_paginated, row_to_dict
 
 
 _FORNITORI_ORDER_COLS = {

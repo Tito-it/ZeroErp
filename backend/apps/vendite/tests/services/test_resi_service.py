@@ -40,6 +40,11 @@ ResiRigheTests
 15) test_aggiorna_riga_ok                — whitelist campi update (quantita esclusa)
 16) test_aggiorna_riga_estranea          — E_RESO_NOT_FOUND
 
+ResiCodaAccreditareTests
+16b) test_etichetta_valida_passthrough    — DOVUTA/FACOLTATIVA al repo
+16c) test_etichetta_invalida_400          — whitelist fail-fast E_RESO_VALIDAZIONE
+16d) test_etichetta_none_default          — assente = tutte le righe
+
 ResiEliminaTests
 17) test_elimina_reso_con_righe_rifiutato — E_RESO_STATO_TRANSIZIONE
 18) test_elimina_reso_bozza_orfana_ok     — hard-delete ammesso (0 righe)
@@ -355,6 +360,41 @@ class ResiRigheTests(SimpleTestCase):
             resi_service.aggiorna_riga(7, 3, {"qta_operativa": "2"})
         self.assertEqual(cm.exception.code, "E_RESO_NOT_FOUND")
         repo.update_riga.assert_not_called()
+
+
+class ResiCodaAccreditareTests(SimpleTestCase):
+    """Filtro etichetta della coda accrediti (forma contatore, DL-26)."""
+
+    # Scopo: etichetta valida (DOVUTA | FACOLTATIVA) passa al repository.
+    @patch(_REPO)
+    def test_etichetta_valida_passthrough(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.list_da_accreditare.return_value = ([], 0)
+        for et in ("DOVUTA", "FACOLTATIVA"):
+            with self.subTest(etichetta=et):
+                resi_service.list_da_accreditare(etichetta=et, limit=25, offset=0)
+                self.assertEqual(
+                    repo.list_da_accreditare.call_args.kwargs["etichetta"], et
+                )
+
+    # Scopo: etichetta fuori whitelist -> E_RESO_VALIDAZIONE fail-fast (un
+    #        valore ignoto e' un errore del chiamante, non una lista vuota).
+    @patch(_REPO)
+    def test_etichetta_invalida_400(self, repo_cls) -> None:
+        with self.assertRaises(ServiceError) as ctx:
+            resi_service.list_da_accreditare(
+                etichetta="OBBLIGATORIA", limit=25, offset=0
+            )
+        self.assertEqual(ctx.exception.code, "E_RESO_VALIDAZIONE")
+        repo_cls.return_value.list_da_accreditare.assert_not_called()
+
+    # Scopo: etichetta assente -> None al repository (tutte le righe).
+    @patch(_REPO)
+    def test_etichetta_none_default(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.list_da_accreditare.return_value = ([], 0)
+        resi_service.list_da_accreditare(limit=25, offset=0)
+        self.assertIsNone(repo.list_da_accreditare.call_args.kwargs["etichetta"])
 
 
 class ResiEliminaTests(SimpleTestCase):
