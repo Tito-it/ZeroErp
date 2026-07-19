@@ -3,7 +3,9 @@
 > **Tipo**: mini-brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-19
 > · **Owner**: Tid · **Priorità**: 🟡 MEDIA (difetto isolato, 5 stringhe; blocca
 > però un banner FE già scritto e pronto)
-> **Stato**: ☐ DA REALIZZARE
+> **Stato**: ✅ REALIZZATO (2026-07-19) — changeset `20260719-12` applicato su dev,
+> pgTAP `test-fn-available-actions-ordine-v2.sql` **9/9 verde**.
+> Residuo: rigenerazione doc auto-gen (§5) e commit.
 > **Origine**: emerso chiudendo lato FE il
 > [brief push commessa «già inviato»](brief-db-push-commessa-gia-inviato.md) §10a.
 > Scritte le prime traduzioni per le reason del push ordini, si è scoperto che la
@@ -90,9 +92,36 @@ le 5 chiavi i18n vanno rinominate lato FE.
 
 | # | Step | Stato |
 | --- | --- | --- |
-| 1 | Reason_key del push ordini emesse sotto `vendite.ordini.*` (5 rami) | ☐ |
-| 2 | Verifica: `can_push_commessa_reason_key` di un ordine già pushato e di uno in DRAFT | ☐ |
-| 3 | Apply dev + rigen doc auto-gen + conferma a BE/FE (§4) | ☐ |
+| 1 | Reason_key del push ordini emesse sotto `vendite.ordini.*` (5 rami) — changeset `20260719-12` | ✅ |
+| 2 | Verifica: `can_push_commessa_reason_key` di un ordine già pushato e di uno in DRAFT | ✅ automatizzata (pgTAP 9/9, §5a) |
+| 3 | Apply dev | ✅ 2026-07-19 |
+| 4 | Rigenerazione doc auto-gen `fn_available_actions_ordine.md` | ✅ 5/5 chiavi `vendite.ordini.*`, nessuna residua |
+| 5 | Conferma a BE/FE (§4) | ☐ nessun intervento atteso da loro |
+| 6 | Commit | ☐ |
+
+### 5a. Nota sulla verifica — perché non è manuale
+
+Lo step 2 era formulato come controllo a vista su due ordini. Non basta: la
+causa del difetto è l'**ereditarietà** fra revisioni (§2), e un controllo
+manuale non impedisce alla settima revisione di reintrodurlo come hanno fatto
+le sei precedenti. È stato quindi tradotto in test automatico:
+
+- `db/pgtap/script/test-fn-available-actions-ordine-v2.sql` — `plan(8)` → `plan(9)`
+  - **test 6 adattato**: asseriva la chiave vecchia (`ordini.push_commessa_reason.gia_fatturato`),
+    quindi la correzione lo avrebbe fatto fallire. ⚠️ Era l'unico consumatore
+    vivo della chiave vecchia oltre alla funzione;
+  - **test 9 nuovo**: guard di namespace, verifica che *ogni* `reason_key`
+    emessa stia sotto `vendite.ordini.push_commessa_reason.*` (copre 3 rami su
+    5 — gli altri due condividono lo stesso prefisso nello stesso blocco `IF`).
+
+Gli altri riscontri della chiave vecchia sono changelog storici
+(`20260605-09`, `20260608-47`, `20260710-02`, `20260711-10`, `20260716-02`,
+`20260719-10`): **non si toccano**, sono la storia applicata.
+
+Corpo del changeset preso dalla doc auto-gen e confrontato riga per riga con il
+vivo: le uniche differenze sono le 5 chiavi, due blocchi di commento e
+l'estensione del `COMMENT`. Nessuna regressione su `fn_get_stato_push_segment`
+né su `requires_righe`, che era il rischio principale segnalato in §1.
 
 ## 6. Riferimenti
 

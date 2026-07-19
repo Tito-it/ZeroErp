@@ -20,6 +20,9 @@ AS $function$
 --   ORDINE_NESSUNA_RIGA_PUSHABILE).
 --   rev 2026-07-19: ramo reason via fn_get_stato_push_segment
 --   (brief-db-push-commessa-gia-inviato §4b).
+--   rev 2026-07-19 (bis): reason_key nel namespace i18n
+--   `vendite.ordini.*` (era `ordini.*`, non risolvibile nel FE)
+--   — brief-db-i18n-namespace-reason-ordini.
 --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
 --   config.stati_doc_ordini (bottone PDF data-driven via capabilities).
 --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
@@ -106,12 +109,15 @@ BEGIN
     v_can_change := jsonb_array_length(v_actions) > 0;
 
     -- push_commessa: fonte unica fn_list_ordini_da_pushare (decoupling).
+    -- Namespace i18n: `vendite.ordini.*` — coerente con la label_key
+    -- dell'azione push qui sotto e con le reason DDT. Il codice reason
+    -- (ORDINE_*) NON e' una chiave i18n e non segue questa convenzione.
     IF v_stato_cod IN ('DRAFT', 'ANNULLATO') THEN
         v_push_reason     := 'ORDINE_NON_CONFERMATO';
-        v_push_reason_key := 'ordini.push_commessa_reason.non_confermato';
+        v_push_reason_key := 'vendite.ordini.push_commessa_reason.non_confermato';
     ELSIF v_fatt_trg IS DISTINCT FROM 'CONFERMATO' THEN
         v_push_reason     := 'ORDINE_FATTURA_DA_DDT';
-        v_push_reason_key := 'ordini.push_commessa_reason.fattura_da_ddt';
+        v_push_reason_key := 'vendite.ordini.push_commessa_reason.fattura_da_ddt';
     ELSIF EXISTS (SELECT 1
                     FROM vendite.fn_list_ordini_da_pushare(p_ordine_id := p_ordine_id)) THEN
         v_push_ok := true;
@@ -125,17 +131,17 @@ BEGIN
                            'ORD:' || v_uid::text || ':R:' || r.id::text) = 'ALLOCATA') THEN
         -- pushato, in attesa di fatturazione
         v_push_reason     := 'ORDINE_GIA_INVIATO';
-        v_push_reason_key := 'ordini.push_commessa_reason.gia_inviato';
+        v_push_reason_key := 'vendite.ordini.push_commessa_reason.gia_inviato';
     ELSIF EXISTS (SELECT 1
                     FROM vendite.ordini_righe r
                    WHERE r.ordine_id = p_ordine_id
                      AND script.fn_get_stato_push_segment(
                            'ORD:' || v_uid::text || ':R:' || r.id::text) = 'EMESSA') THEN
         v_push_reason     := 'ORDINE_GIA_FATTURATO';
-        v_push_reason_key := 'ordini.push_commessa_reason.gia_fatturato';
+        v_push_reason_key := 'vendite.ordini.push_commessa_reason.gia_fatturato';
     ELSE
         v_push_reason     := 'ORDINE_NESSUNA_RIGA_PUSHABILE';
-        v_push_reason_key := 'ordini.push_commessa_reason.nessuna_riga_pushabile';
+        v_push_reason_key := 'vendite.ordini.push_commessa_reason.nessuna_riga_pushabile';
     END IF;
 
     IF v_push_ok THEN
@@ -173,7 +179,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint)
-IS 'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e l''ordine non ha righe -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard Regola 2, che non filtra su attivo). rev 2026-07-19: reason ORDINE_GIA_INVIATO (allocato, in attesa fatturazione) distinta da ORDINE_GIA_FATTURATO, entrambe via script.fn_get_stato_push_segment (vede anche componenti #CMP) — brief-db-push-commessa-gia-inviato §4b.';
+IS 'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e l''ordine non ha righe -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard Regola 2, che non filtra su attivo). rev 2026-07-19: reason ORDINE_GIA_INVIATO (allocato, in attesa fatturazione) distinta da ORDINE_GIA_FATTURATO, entrambe via script.fn_get_stato_push_segment (vede anche componenti #CMP) — brief-db-push-commessa-gia-inviato §4b. rev 2026-07-19 (bis): le 5 reason_key del push passano al namespace i18n vendite.ordini.* (era ordini.*, radice inesistente nei locales FE) — brief-db-i18n-namespace-reason-ordini; convenzione in docs/it/dev/frontend/i18n-namespace-radici.md.';
 ```
 
 ---

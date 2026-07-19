@@ -404,16 +404,21 @@ Pulsanti di consultazione (es. "Gestisci Contatti") usano classe `app-escape` pe
 
 ### Convenzioni chiavi
 
-| Prefisso | Uso |
-|----------|-----|
-| `nav.*` | Label dominio L1 |
-| `nav_menu.<domain>.*` | Label voci menu L2 |
-| `common.*` | Etichette comuni (salva, annulla, cerca) |
-| `placeholder.<domain_menuKey>.*` | Titolo e features placeholder |
-| `notifications.*` | Messaggi toast |
-| `errors.*` | Titoli pagine errore |
-| `context.*` | Tooltip e label contesto globale |
-| `soggetti.*`, `indirizzi.*`, `geo.*`, `amm.*` | Etichette dominio-specifiche |
+> ⛔ **REGOLA SUPERATA — NON SEGUIRE (dal 2026-07-19).**
+> La tabella che stava qui chiudeva con `soggetti.*`, `indirizzi.*`, `geo.*`,
+> `amm.*` come «etichette dominio-specifiche»: sanciva **radici piatte per
+> modulo**, mentre l'archivio usa in prevalenza radici per area (`vendite.*`),
+> mai citata qui. Seguirla produce chiavi che il frontend non risolve, e una
+> chiave non risolta non dà errore: dà **testo mancante**, quindi passa
+> inosservata. È già successo due volte (offerte, ordini).
+>
+> **Regola vigente**: `docs/it/dev/frontend/i18n-namespace-radici.md` — documento
+> unico su come si individua o si crea una radice. In sintesi: stringa di un
+> modulo che vive in `frontend/src/<area>/` → l'indirizzo parte dall'area
+> (`vendite.ordini.*`); vocabolario trasversale a più aree → resta in cima
+> (`common.*`, `errors.*`, `nav.*`).
+>
+> Vale anche per le chiavi **emesse dal database** (`label_key`, `reason_key`).
 
 ### Istanza condivisa
 
