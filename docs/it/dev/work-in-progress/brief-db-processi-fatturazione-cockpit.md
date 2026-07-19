@@ -1,4 +1,4 @@
-# Brief DB — Cockpit processi fatturazione (Fase A/B/C)
+# Brief DB — Cockpit processi fatturazione (Fase A/C)
 
 > **Tipo**: brief operativo per il **team DB** · **Target**: `dev/db-tid` · **Data**: 2026-07-19
 > · **Owner**: Tid · **Stato**: ⬜ **DA ESEGUIRE**
@@ -10,9 +10,42 @@
 > **Contesto**: non siamo in produzione ([[project_no_produzione_solo_sviluppo]]) → breaking
 > secchi ammessi, nessuna compatibilità da mantenere.
 >
-> **Sintesi**: il motore di fatturazione è già completo. Questo brief chiede **solo seed**
-> — due azioni di processo e un task di stampa dentro lo step di numerazione. **Nessun DDL,
-> nessuna vista, nessuna funzione nuova.**
+> **Sintesi**: il motore di fatturazione è già completo, ma la stampa massiva **non esiste**
+> e va costruita **senza tenere il lock del registro fiscale durante il rendering**. La stampa
+> diventa un **task che accoda** (non che renderizza) e il render vive in un **worker che
+> drena una coda** (outbox), con la numerazione garantita in fase di stampa (backstop
+> idempotente). Perciò questo brief **non è "solo seed"**: aggiunge **una tabella-coda + una
+> funzione di accodamento**, oltre ai seed. Nessuna modifica alle viste `vw_dash_*` né alla
+> matrice transizioni.
+>
+> ⚠️ **Revisione 2026-07-19 (analisi critica)**: la prima stesura ("solo seed, stampa come
+> task inline, best-effort") è stata **superata**. Motivo, verificato sul codice vivo:
+> lo **step pipeline è una singola transazione atomica** ([`pipeline_runner.py:316`]),
+> e la numerazione tiene un **`pg_advisory_xact_lock` sul registro** fino al commit
+> ([`fn_get_next_progressivo`]). Un task di stampa *inline* renderizzerebbe i PDF **mentre il
+> lock fiscale è tenuto** → serializzazione del registro contro ogni altra numerazione
+> (corsia giornaliera, altri lotti). La soluzione corretta disaccoppia il render dalla
+> transazione di numerazione. Vedi §0.
+
+---
+
+## 0. Decisioni chiuse a monte di questo brief (2026-07-19)
+
+Consolidate con Tid dopo l'analisi critica del motore reale. Le richiamo perché reggono ogni
+scelta operativa qui sotto.
+
+| # | Decisione | Perché (verifica sul codice) |
+| --- | --- | --- |
+| **B-1** | La stampa **accoda**, non renderizza inline. Il task `stampa_documenti_lotto` scrive N righe in una **coda** (outbox) e ritorna subito; un **worker** separato drena e renderizza. | Lo step è **una transazione atomica** ([`pipeline_runner.py:316`]) e `numera_fatture` tiene il **lock del registro** fino al commit. Render inline = lock fiscale tenuto durante l'I/O di N PDF → contesa. |
+| **B-2** | **La stampa garantisce la numerazione**: in fase di stampa, se la fattura non è numerata, il worker chiama la numerazione (backstop **idempotente**). | `fn_numera_fattura_opz_emessa(p_fattura_id)` è **per-fattura e idempotente** (se già numerata → no-op). È impossibile produrre un PDF non numerato → **D-1** soddisfatto al livello più forte. |
+| **B-3** | `numera_fatture` **resta** come task dello step DEFINITIVA (pre-numerazione bulk): "Rendi definitive" assegna i numeri **subito** a tutto il lotto, atomico. Il backstop B-2 è la rete di sicurezza, non il sostituto. | Coerente col verbo «Rendi definitive = numera adesso» (design §3). |
+| **B-4** | Coda dedicata **`vendite.fatture_stampa_coda`** (scoped a fatturazione ora, colonne già "a forma di" `genera_documento()` → promozione a `documenti.*` banale al 2° consumatore). | Regola di progetto *«generalizzazione al 2° consumatore»* ([[reference_link_parametrico_documento_versionato_pratiche]]); il servizio di render è già generico. |
+| **B-5** | Il **worker drainer** è un **management command su cron/systemd** (server backend), **non** pgAgent. | I due server sono separati; `run_fatturazione_batch` gira già così (cron/systemd), monitor `maintenance.job_run_log`. → **niente `85_pgagent` in questo brief.** |
+
+**Best-effort vs bloccante (ex §3.4): la domanda non si pone più.** Con B-1 lo step committa
+veloce (solo l'INSERT in coda, nessun render) e il fallimento di render vive nei **tentativi
+della coda**, disaccoppiato dalla numerazione. Nessuno stato "numerata ma non stampata" da
+gestire nella pipeline.
 
 ---
 
@@ -20,218 +53,320 @@
 
 La pipeline di fatturazione oggi si pilota solo da cron/curl: nessuna superficie in app.
 Il design collegato porta i processi **dentro la Dashboard Competenza** (approva → fattura
-→ rendi definitive). Perché il BE possa esporre le azioni servono due permessi di processo
-seedati, e perché siano rispettate **D-1** («numerazione e stampa sono **un processo
-unico**, mai duplicato tra corsia immediata e massiva») e **D-7** («la stampa è un processo
-separato e senza logica») serve che la stampa viva **nello stesso step di pipeline** della
-numerazione — cioè in **configurazione**, non nel codice del chiamante — pur restando un
-**task a sé**, ri-eseguibile e delegante (§3).
+→ rendi definitive → stampa). Perché il BE possa esporre le azioni servono due permessi di
+processo seedati; perché la stampa massiva esista serve una **coda** e un **accodatore**;
+perché **D-1** («numerazione e stampa = un processo unico, mai duplicato») e **D-7** («la
+stampa è separata e senza logica») convivano, la stampa vive **nello stesso step della
+numerazione** ma come **adattatore che accoda** — la logica di render resta nel processo
+generico.
 
 ---
 
-## 2. D1 — Due azioni di processo (append `config/azioni_processo.csv`)
+## 2. Sequenza di applicazione — DUE gruppi di changeset (⚠️ leggere prima di tutto)
 
-**Pattern**: append al CSV esistente; il loader
-`80_data/changelog/20260228-18-upsert-config-azioni-processo-mctit.yaml` è
-`runOnChange: true` + `validCheckSums: [ANY]` → ripesca da solo. **Nessun loader nuovo**
-(stessa nota già scritta nel seed `motivi_fermo`: *«Nuovi codici futuri = append al CSV»*).
+Il punto critico dell'intero brief. Gli oggetti si applicano in **due momenti distinti**,
+perché wire-are la stampa nella pipeline **prima** che il BE esista rompe il giro notturno.
 
-Ultimo `id` occupato: **25**. `area_id = 2` = `vendite` (verificato in `aree_funzionali.csv`).
+**Verifica del rischio (sul codice):** l'executor, se l'handler del task non è registrato,
+**solleva `E_TASK_IMPLEMENTATION_NOT_FOUND` (severità C) e fa fallire lo step**
+([`pipeline_step_executor.py:173-204`]). La corsia **GIORNALIERO** esegue la DEFINITIVA da
+sola (cron `run_fatturazione_batch --modalita immediata`, D-1): se la stampa fosse già
+accodata nei `processi` ma l'handler non esistesse, ogni notte `numera_fatture` numererebbe
+e **poi** lo step crasherebbe. È il pattern che [[reference_binding_handler_flusso_attivo_false]]
+esiste per evitare: **si arma alla release BE, non prima.**
+
+| Gruppo | Quando | Cosa | Stato risultante |
+| --- | --- | --- | --- |
+| **G1 — Fondamenta (inerti)** | **Ora**, su `dev/db-tid` | Tabella-coda (00_schema) · funzione accodamento (20_code) · seed azioni_processo · seed registry+impl `stampa_documenti_lotto` · seed **task_policy** stampa | Tutto **inerte**: la coda è vuota (nessuno vi scrive), registry/impl/policy sono lookup non referenziati, la funzione non è chiamata. Zero impatto sul giro notturno. |
+| **G2 — Attivazione** | **Alla release BE** (handler `stampa_documenti_lotto_default` + drainer deployati) | Append di `stampa_documenti_lotto` ai `processi` degli step DEFINITIVA (id 4 e 6) | La stampa entra in pipeline. **Questo append è l'interruttore.** |
+
+> Regola: **MAI** committare G2 finché il BE non ha registrato l'handler e schedulato il
+> drainer. G1 è sicuro in qualsiasi momento.
+
+---
+
+## 3. G1 — Tabella-coda `vendite.fatture_stampa_coda` (00_schema)
+
+Una riga = **un documento da generare** (granularità per-fattura → retry/esito per documento).
+
+```sql
+CREATE TABLE vendite.fatture_stampa_coda (
+    id                    INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,  -- tabella tecnica
+    emittente_fiscale_id  BIGINT   NOT NULL,
+    sorgente_tipo_id      BIGINT   NOT NULL,   -- = 10 (FATTURA). Colonne "a forma di" genera_documento()
+    sorgente_id           BIGINT   NOT NULL,   -- = vendite.fatture.id
+    sorgente_uid          TEXT     NOT NULL,   -- chiave sorgente (convenzione key_selector, vedi nota)
+    lotto_id              BIGINT   NULL,        -- provenienza/monitor; NULL per ristampa on-demand
+    template_documento_id BIGINT   NULL,        -- override opzionale del template
+    stato                 TEXT     NOT NULL DEFAULT 'PENDING'
+                            CONSTRAINT chk_fatture_stampa_coda_stato
+                            CHECK (stato IN ('PENDING','IN_CORSO','FATTO','ERRORE')),
+    tentativi             INTEGER  NOT NULL DEFAULT 0,
+    ultimo_errore         JSONB    NULL,
+    documento_id          BIGINT   NULL,        -- documento prodotto (esito), FK a documenti.*
+    -- audit standard
+    data_insert   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    user_insert   TEXT        NOT NULL DEFAULT current_user,
+    data_update   TIMESTAMPTZ NULL,
+    user_update   TEXT        NULL,
+    tx_id         UUID        NULL,
+    -- anti doppio-accodamento: un solo work-item vivo per fattura
+    CONSTRAINT uq_fatture_stampa_coda_vivo
+        UNIQUE NULLS NOT DISTINCT (sorgente_tipo_id, sorgente_id, stato)  -- vedi nota indice parziale
+);
+```
+
+**Note di implementazione (per il team DB):**
+
+* **Indice unico "vivo"**: l'anti-doppione deve valere solo su `stato IN ('PENDING','IN_CORSO')`.
+  Preferire un **indice unico parziale**:
+  `CREATE UNIQUE INDEX uq_fatture_stampa_coda_vivo ON vendite.fatture_stampa_coda
+   (sorgente_tipo_id, sorgente_id) WHERE stato IN ('PENDING','IN_CORSO');`
+  (rimuovere allora il vincolo `UNIQUE` inline qui sopra — l'indice parziale è più corretto:
+  consente ri-accodamenti dopo `FATTO`/`ERRORE` per una ristampa).
+* **FK**: `lotto_id` → `vendite.fatturazione_lotti`, `emittente_fiscale_id` → emittente
+  fiscale, `documento_id` → tabella documenti prodotti. **Non creare gli indici FK a mano**:
+  registrarli in `dbops.fk_index_policy` (`fn_seed_fk_index_policy`, consentito=true) →
+  `apply_fk_index_policy()` in `90_end`.
+* **RLS**: la tabella espone `emittente_fiscale_id` → applicare **RLS scope emittente**
+  coerente con `vendite.fatturazione_lotti` (multi-face auth operatori attiva): lettura
+  operatore filtrata per emittente, scrittura del **worker in canale sistema**
+  (`system_process_context`), come `run_fatturazione_batch`. Allineare al pattern già in
+  vigore (guida `architettura-multi-face-auth.md` §14) — **non** inventare policy nuove.
+* **`stato` come CHECK e non lookup**: è uno **stato di lavorazione tecnico** della coda, non
+  un dato di dominio configurabile → CHECK è la scelta corretta (no over-config).
+* **Convenzione `sorgente_uid`**: seguire il `key_selector` della sorgente FATTURA in
+  `config.sorgenti` (id 10) — [[reference_sorgente_polimorfa_key_selector]]. La funzione di
+  accodamento (§4) è l'unico punto che la calcola.
+* Doc **manuale** in `docs/it/dbzero/vendite/manual/` (la doc auto-gen la rigenera Tid al
+  migrate — **non** editarla a mano, [[feedback_no_hand_edit_autogen_docs]]).
+
+---
+
+## 4. G1 — Funzione di accodamento `vendite.fn_accoda_stampe_lotto` (20_code)
+
+Rende il task di stampa un **one-liner** (D-7: adattatore stupido). Contratto:
+
+* **Input**: `p_lotto_id BIGINT`.
+* **Effetto**: per **ogni fattura del lotto**, inserisce una riga `PENDING` in
+  `vendite.fatture_stampa_coda` (`sorgente_tipo_id = 10`, `sorgente_id = fatture.id`,
+  `sorgente_uid` risolto, `emittente_fiscale_id` dalla fattura, `lotto_id = p_lotto_id`).
+  **Idempotente** grazie all'indice unico parziale: un secondo accodamento sullo stesso lotto
+  non duplica i work-item vivi (`ON CONFLICT DO NOTHING`).
+* **Guard**: `p_lotto_id NULL/<=0` → errore (`E_PARAMETRO_INVALIDO`, codice registrato —
+  [[feedback_error_codes_messaggi_errore]]). Nessuna riga fattura → ritorno 0 (non è errore).
+* **Ritorno**: numero di righe accodate (per log/esito task).
+* **Atomicità**: pura-DB, una `SELECT fn_()` — madre DB ([[feedback_atomicita_madre_db]]).
+  Gira **dentro** la transazione dello step (commit veloce con la numerazione).
+* **`plpgsql`**, `%TYPE` sulle colonne riflesse, commenti sintetici sullo scopo/regole.
+
+Il task BE `stampa_documenti_lotto_default` (brief BE) sarà quindi solo:
+`SELECT vendite.fn_accoda_stampe_lotto(<lotto_id>)`. Il **backstop B-2** (numera-se-manca) e
+il **render** vivono nel **worker drainer** (brief BE), non qui.
+
+---
+
+## 5. G1 — Seed (append a CSV `runOnChange`, nessun loader nuovo)
+
+Tutti e tre i loader coinvolti sono `runOnChange: true` + `validCheckSums: [ANY]` +
+`loadUpdateData(primaryKey: id, nullValue: "")` → **ripescano da soli** l'append. **Nessun
+nuovo loader** ([[feedback_messaggi_errore_no_new_loader]]).
+
+### 5.1 `config/azioni_processo.csv` — due azioni
+
+Ultimo `id` occupato: **25**. `area_id = 2` = `vendite`.
 
 ```csv
 26,2,approva_attivita_commessa,Approva attivita di commessa per la fatturazione,f,t,{},2026-07-19 00:00:00+02,postgres,2026-07-19 00:00:00+02,postgres
 27,2,numera_fatture_lotti,Numerazione fiscale fatture di lotto (irreversibile),t,t,{},2026-07-19 00:00:00+02,postgres,2026-07-19 00:00:00+02,postgres
 ```
 
-Razionale delle due righe:
-
 | Codename | `pericolosa` | Perché serve |
 | --- | :--: | --- |
-| `approva_attivita_commessa` | `f` | Gate dell'azione **Approva** (riga, commessa, massiva mese — D-3). Oggi `fn_approva_commessa_attivita` non ha né endpoint né permesso: l'approvazione non è distruttiva ma decide *cosa entra in fattura*, quindi merita un permesso proprio e non va sotto `genera_fatture_lotti` |
-| `numera_fatture_lotti` | **`t`** | D-1: la numerazione è **irreversibile** (dopo la DEFINITIVA non c'è rollback, solo NC) e per il massivo è **atto umano esplicito**. Va separata da `genera_fatture_lotti`, che resta il permesso del giro fino a EMESSA (tutto pre-fiscale e demolibile) |
+| `approva_attivita_commessa` | `f` | Gate dell'azione **Approva** (riga, commessa, massiva mese — D-3). `fn_approva_commessa_attivita` non ha né endpoint né permesso: decide *cosa entra in fattura*, merita permesso proprio. |
+| `numera_fatture_lotti` | **`t`** | D-1: la numerazione è **irreversibile** (dopo la DEFINITIVA solo NC) ed è **atto umano esplicito** per il massivo. Distinta da `genera_fatture_lotti` (giro fino a EMESSA, pre-fiscale/demolibile). **Non ridondante col backstop B-2**: il backstop è la rete di sicurezza della stampa, non l'atto di numerazione massiva. |
 
-**Non servono altre azioni**: `genera_fatture_lotti` (giro/pipeline), `run_commesse_push`
-(push sorgenti), `reset_lotto_draft` / `reset_lotto_fattura_draft` (demolizioni) esistono
-già e coprono il resto del cockpit.
+### 5.2 `dbops/pipeline_task_registry.csv` — task stampa
 
----
-
-## 3. D2 — Task di stampa accodato allo step di numerazione (D-1 + D-7)
-
-**I due vincoli di Tid, che convivono.**
-
-* **D-1**: *«il processo che esegue la numerazione include la stampa e deve essere un
-  processo unico; i processi devono essere sempre gli stessi, mai duplicati, anche se in
-  immediato sono eseguiti diversamente dal massivo.»*
-* **D-7**: *«il processo di stampa deve essere separato da tutti gli altri, in pratica
-  "stupido": legge tutte le informazioni esistenti e genera un documento / n documenti.»*
-
-Non si contraddicono perché vivono su assi diversi: **un solo atto per l'utente** (D-1) e
-**un solo componente, senza logica, per il codice** (D-7). Il modo di ottenerli entrambi in
-questo motore è **configurativo**: la stampa diventa un **task accodato a `numera_fatture`
-dentro lo stesso step DEFINITIVA**.
-
-* **D-1 soddisfatto per costruzione**: MASSIVO e GIORNALIERO puntano alla stessa coppia di
-  task; chiunque avvii lo step (pulsante umano, cron, batch) esegue necessariamente
-  entrambi. Nessun chiamante può "dimenticarsi" la stampa, nessuna seconda implementazione
-  da tenere allineata.
-* **D-7 soddisfatto**: il task è un **adattatore sottile** — dice solo *«questi sono i
-  documenti da produrre»* e delega al processo di stampa generico
-  (`documenti.DocumentGenerationService`, già sorgente-agnostico e già usato da 5 domini).
-  La logica di rendering **non entra** nella pipeline, e il processo di stampa resta
-  invocabile **da solo** (ristampa singola, on-demand, ristampa massiva) senza passare dalla
-  fatturazione.
-
-> **Perché un task e non uno step dedicato**: gli step del lotto sono **stati fiscali**
-> (`config.stati_doc_fiscale`). «Stampata» non è uno stato fiscale e inventarlo sporcherebbe
-> la macchina a stati. Il task ha già il suo `task_run` con tentativi/esito ed è
-> ri-eseguibile da solo: è esattamente l'unità di lavoro separata che D-7 chiede.
-
-Verificato oggi: la stampa **non è** un task del motore (registry handler:
-`select_attivita`, `generate_fatture_righe`, `genera_fondi_source_lotto`,
-`applica_fondi_lotto`, `ricalcola_iva_lotto`, `prepare_sdi_payload_lotto`,
-`numera_fatture`, `close_lotto`, `reset_lotto_draft`, `pull_attivita_da_commessa`).
-
-### 3.1 `dbops/pipeline_task_registry.csv` (append)
-
-Ultimo `id`: **17**. `dominio_id = 1` (stesso dominio degli altri task di fatturazione).
+Ultimo `id`: **17**. `dominio_id = 1` (dominio fatturazione).
 
 ```csv
-18,1,stampa_documenti_lotto,Stampa dei documenti del lotto (delega al processo stampa generico),true,{},2026-07-19 00:00:00+02,titodb,,
+18,1,stampa_documenti_lotto,Accodamento stampa documenti del lotto (delega a coda + processo generico),true,{},2026-07-19 00:00:00+02,titodb,,
 ```
 
-Nome scelto `stampa_documenti_lotto` (non `genera_stampa_fatture`): dice ciò che il task
-**fa davvero** — raccoglie i documenti del lotto e li passa al processo di stampa. La
-generazione non è sua (D-7).
+Nome `stampa_documenti_lotto` (non `genera_stampa_fatture`): dice ciò che il task **fa** —
+**accoda** i documenti del lotto. Il render non è suo (D-7).
 
-### 3.2 `dbops/pipeline_task_registry_impl.csv` (append)
+### 5.3 `dbops/pipeline_task_registry_impl.csv` — handler
 
-Ultimo `id`: **17**.
+Ultimo `id`: **17**. `handler_code` = `stampa_documenti_lotto_default` (chiave che il BE
+registra nel dispatch).
 
 ```csv
 18,18,default,stampa_documenti_lotto_default,true,true,{},2026-07-19 00:00:00+02,titodb,,
 ```
 
-`handler_code` = `stampa_documenti_lotto_default`: è la chiave che il BE registrerà nel
-dispatch di `PipelineStepExecutor` (implementazione lato Python — vedi brief BE/FE, non è
-lavoro del team DB).
+### 5.4 `vendite/fatturazione_pipeline_task_policy.csv` — ⚠️ policy del task (lacuna colmata)
 
-### 3.3 `vendite/fatturazione_pipeline.csv` — accodare il task ai due step DEFINITIVA
+**Motivo (verificato):** l'executor crea un `task_run` (tentativi/esito/resume) **solo se
+esiste una task_policy** per quel `(pipeline_id, task_code)` ([`pipeline_step_executor.py:208`]).
+Senza questa riga, `stampa_documenti_lotto` **non avrebbe task_run né resume**. Ultimo `id`: **14**.
 
-Le righe da toccare sono **due**, e sono simmetriche (è esattamente il punto di D-1):
+```csv
+15,4,stampa_documenti_lotto,t,RESUME_TASK,t,"{""scope"":""DEFINITIVA""}",2026-07-19 00:00:00+02,titodb,,
+16,6,stampa_documenti_lotto,t,RESUME_TASK,t,"{""scope"":""DEFINITIVA"",""tipo_lotto"":""GIORNALIERO""}",2026-07-19 00:00:00+02,titodb,,
+```
+
+`annullabile = t` (l'accodamento è ri-eseguibile, a differenza di `numera_fatture` che è
+`f`); `resume_mode = RESUME_TASK` (su resume ri-esegue il solo task, non l'intero step —
+`numera_fatture`, già fatto e `annullabile=f`, resta com'è).
+
+---
+
+## 6. G2 — Attivazione: append ai `processi` DEFINITIVA (⚠️ solo alla release BE)
+
+`vendite/fatturazione_pipeline.csv` — le righe da toccare sono **due**, simmetriche (è il
+punto di D-1):
 
 | id | Step | `processi` oggi | Diventa |
 | --- | --- | --- | --- |
-| **4** | Pipeline **massiva** (DEFINITIVA), `stato_doc_fiscale_id=8` | `[numera_fatture]` | `[numera_fatture, stampa_documenti_lotto]` |
-| **6** | Pipeline **giornaliera** (DEFINITIVA), `stato_doc_fiscale_id=8` | `[numera_fatture]` | `[numera_fatture, stampa_documenti_lotto]` |
+| **4** | Massiva (DEFINITIVA), `stato_doc_fiscale_id=8` | `[numera_fatture]` | `[numera_fatture, stampa_documenti_lotto]` |
+| **6** | Giornaliera (DEFINITIVA), `stato_doc_fiscale_id=8` | `[numera_fatture]` | `[numera_fatture, stampa_documenti_lotto]` |
 
-Elemento da accodare all'array `processi` (dopo `numera_fatture`, l'ordine conta: si stampa
-un documento che ha già il suo numero fiscale):
+Elemento da accodare all'array `processi` (dopo `numera_fatture` — si accoda alla stampa un
+documento che ha già il suo numero fiscale):
 
 ```json
-{"task":"stampa_documenti_lotto","fase":"Generazione stampa fatture","params":{"implementation_key":"default"}}
+{"task":"stampa_documenti_lotto","fase":"Stampa documenti lotto","params":{"implementation_key":"default"}}
 ```
 
-`rollback` resta `[]` su entrambi gli step (dalla DEFINITIVA non si torna indietro).
+> `fase` = **"Stampa documenti lotto"** (non "Generazione stampa fatture"): coerente col nome
+> del task e con D-7 (il task accoda, non genera).
 
-### 3.4 ⚠️ Decisione da confermare — stampa bloccante o best-effort?
+Cella CSV risultante (doppie virgolette Liquibase) per lo step 4:
 
-Domanda onesta da chiudere prima di applicare (impatta solo il **comportamento in errore**,
-non il seed):
+```text
+"[{""task"":""numera_fatture"",""fase"":""Numerazione fatture"",""params"":{""implementation_key"":""default""}},{""task"":""stampa_documenti_lotto"",""fase"":""Stampa documenti lotto"",""params"":{""implementation_key"":""default""}}]"
+```
 
-* **Best-effort** *(proposta)*: se la stampa fallisce (template mancante, render in
-  errore), la **numerazione resta valida** — non è annullabile — il task-run va in ERRORE, il
-  lotto resta segnalato e la stampa è **ri-eseguibile** con un rerun del solo task
-  (idempotente). Il documento fiscale esiste, manca solo la sua rappresentazione.
-* **Bloccante**: il fallimento stampa fa fallire l'intero step. Ma la numerazione è già
-  avvenuta e non si può ritirare → si otterrebbe uno step "fallito" su un fatto compiuto,
-  con stato incoerente. Sconsigliato.
+(idem per lo step 6). `rollback` resta `[]` su entrambi (dalla DEFINITIVA non si torna
+indietro). Loader `20260128-06-upsert-fatturazione-pipeline` già `runOnChange`.
 
-La proposta **non indebolisce D-1**: il processo resta **uno solo** (stesso step, stessi due
-task, per entrambe le corsie); cambia solo che l'anello ri-eseguibile è trattato come tale.
-
----
-
-## 4. D3 — Verifica chiusa: nessuna vista nuova per i lotti
-
-Il design ipotizzava una possibile aggregata dei lotti per competenza (**DB-2** del brief di
-design). **Verificato: non serve.** `vendite.fatturazione_lotti` è già interrogabile con
-tutti i filtri che servono al cockpit, con display fields e scope emittente applicati:
-`competenza_mese`, `stato_lotto`, `tipo_doc_fiscale_id`, `emittente_soggetto_ruolo_id`,
-`utility_id`, `area_geografica_id` + paginazione
-(`VenditeRepository.list_lotti`, esposta da `GET /api/v1/vendite/lotti/`).
-
-➡️ **Nessuna azione DB.** Voce chiusa; la lista/drawer lotti è puro lavoro FE su endpoint
-esistenti.
+**Anti-contesa (garanzia B-1):** lo step ora fa `numera_fatture` (numera + `pg_advisory_xact_lock`
+tenuto) **+** `stampa_documenti_lotto` (**solo INSERT in coda**). L'INSERT è O(N righe) in
+memoria, veloce: la transazione committa e **rilascia subito il lock del registro**. Il
+rendering avviene **dopo**, nel worker, **senza** lock fiscale.
 
 ---
 
-## 5. Cosa NON è richiesto (per non cercarlo)
+## 7. Fuori scope DB (per non cercarlo / per il brief BE)
 
-* Nessun DDL: niente colonne, tabelle, indici.
-* Nessuna funzione o trigger nuovi: `fn_approva_commessa_attivita`,
-  `fn_cambia_stato_commessa`, `fn_available_actions_commessa`,
-  `fn_emit_attivita_fatturabili_da_commessa`, `fn_set_fatturazione_lotto_stato` e la
-  famiglia task-run coprono già tutto il fabbisogno del cockpit.
-* Nessuna modifica alle viste `vw_dash_*`: le tre lenti restano read-only e invariate — le
-  azioni sono endpoint di comando **accanto** alla dashboard, non dentro le viste.
-* Nessun cambio alla matrice transizioni stati (commessa, doc fiscale): il cockpit usa le
-  transizioni esistenti.
+* **Worker drainer** (`ensure_numbered` backstop B-2 + `DocumentGenerationService.genera_documento`
+  per riga + gestione tentativi/`ultimo_errore`) → **brief BE**, management command su
+  cron/systemd, monitor `maintenance.job_run_log` (come `run_fatturazione_batch`).
+* **Handler `stampa_documenti_lotto_default`** (`SELECT vendite.fn_accoda_stampe_lotto(...)`)
+  → brief BE.
+* **Cablaggio FATTURA** sulla factory documentale (`config.sorgenti` id 10 esiste ma non è
+  istanziata) + template fattura → brief BE.
+* **Backstop B-2**: vive nel worker/context-builder FATTURA, **non** dentro
+  `DocumentGenerationService` (che resta generico e stupido — D-7).
+* Nessuna vista nuova (`list_lotti` copre già competenza/stato/tipo_doc/emittente — DB-3
+  chiusa nel design). Nessuna modifica a `vw_dash_*`, alla matrice transizioni, a
+  `fn_approva_commessa_attivita` / famiglia task-run (coprono già).
 
 ---
 
-## 6. Verifica attesa dopo l'apply
+## 8. Verifica attesa dopo l'apply
 
 ```sql
--- D1: le due azioni esistono, attive, sull'area vendite
+-- G1.a: le due azioni esistono, attive, area vendite
 SELECT id, permission_codename, pericolosa, attivo
 FROM config.azioni_processo
 WHERE permission_codename IN ('approva_attivita_commessa','numera_fatture_lotti');
 -- atteso: 2 righe, attivo=t, numera_fatture_lotti.pericolosa=t
 
--- D2a: il task è nel registry ed è dispatchabile
+-- G1.b: task stampa nel registry, dispatchabile
 SELECT r.task_code, i.handler_code, i.is_default, i.attivo
 FROM dbops.pipeline_task_registry r
 JOIN dbops.pipeline_task_registry_impl i ON i.task_registry_id = r.id
 WHERE r.task_code = 'stampa_documenti_lotto';
--- atteso: 1 riga, handler_code=stampa_documenti_lotto_default, is_default+attivo true
+-- atteso: 1 riga, handler=stampa_documenti_lotto_default, is_default+attivo true
 
--- D2b: entrambi gli step DEFINITIVA hanno numerazione E stampa, in quest'ordine
-SELECT tipo_lotto,
-       jsonb_path_query_array(processi, '$[*].task') AS tasks
+-- G1.c: policy del task su ENTRAMBE le corsie DEFINITIVA
+SELECT pipeline_id, task_code, annullabile, resume_mode, attivo
+FROM vendite.fatturazione_pipeline_task_policy
+WHERE task_code = 'stampa_documenti_lotto';
+-- atteso: 2 righe (pipeline 4 e 6), annullabile=t, resume_mode=RESUME_TASK, attivo=t
+
+-- G1.d: coda + funzione esistono
+SELECT to_regclass('vendite.fatture_stampa_coda') IS NOT NULL AS coda_ok,
+       to_regprocedure('vendite.fn_accoda_stampe_lotto(bigint)') IS NOT NULL AS fn_ok;
+-- atteso: coda_ok=t, fn_ok=t
+
+-- G2 (dopo attivazione): entrambi gli step DEFINITIVA hanno numerazione E stampa, in ordine
+SELECT tipo_lotto, jsonb_path_query_array(processi, '$[*].task') AS tasks
 FROM vendite.fatturazione_pipeline
 WHERE stato_doc_fiscale_id = 8 AND attivo;
--- atteso: 2 righe (MASSIVO, GIORNALIERO), entrambe ["numera_fatture","stampa_documenti_lotto"]
+-- atteso: 2 righe, entrambe ["numera_fatture","stampa_documenti_lotto"]
 
--- D2c: nessuna asimmetria fra le due corsie (invariante D-1)
+-- G2: invariante D-1 — nessuna asimmetria fra le due corsie
 SELECT count(DISTINCT processi) AS varianti
 FROM vendite.fatturazione_pipeline
 WHERE stato_doc_fiscale_id = 8 AND attivo;
 -- atteso: 1  → le due corsie eseguono lo STESSO processo
 ```
 
-## 7. pgTAP
+---
 
-Un file test è opportuno per l'invariante di D-1, che è la cosa che si può rompere in
-silenzio nel tempo (qualcuno aggiunge un task a una corsia sola):
+## 9. pgTAP
 
-`db/pgtap/vendite/test-pipeline-definitiva-numerazione-stampa-v1.sql`
+Due file, uno per gruppo (così il test G2 non fallisce finché l'attivazione non è applicata):
+
+**`db/pgtap/vendite/test-stampa-coda-fondamenta-v1.sql`** (G1):
 
 1. le 2 azioni di processo esistono e sono attive; `numera_fatture_lotti.pericolosa = true`;
-2. `stampa_documenti_lotto` è nel registry con un impl `default` attivo;
-3. lo step DEFINITIVA MASSIVO contiene `numera_fatture` **seguito da** `stampa_documenti_lotto`;
-4. idem per GIORNALIERO;
-5. **invariante**: i `processi` dei due step DEFINITIVA attivi sono **identici** (una sola
-   variante distinta) — è la traduzione in test di *«mai processi duplicati/divergenti»*.
+2. `stampa_documenti_lotto` è nel registry con impl `default` attiva;
+3. la task_policy di `stampa_documenti_lotto` esiste su pipeline 4 **e** 6
+   (`annullabile=t`, `resume_mode='RESUME_TASK'`);
+4. `vendite.fatture_stampa_coda` esiste con colonne, `CHECK` stato e indice unico parziale attesi;
+5. `fn_accoda_stampe_lotto` esiste; su un lotto-fixture con N fatture accoda N righe `PENDING`
+   e un **secondo** accodamento è **idempotente** (resta N, non 2N — verifica l'indice parziale).
+
+**`db/pgtap/vendite/test-pipeline-definitiva-numerazione-stampa-v1.sql`** (G2, aggiungere con
+l'attivazione):
+
+1. lo step DEFINITIVA MASSIVO contiene `numera_fatture` **seguito da** `stampa_documenti_lotto`;
+2. idem GIORNALIERO;
+3. **invariante D-1**: i `processi` dei due step DEFINITIVA attivi sono **identici** (una sola
+   variante distinta) — traduzione in test di *«mai processi duplicati/divergenti»*.
+
+(pgTAP: `BEGIN;` + CF validi fissi + fixture preventivi con `emittente_fiscale_id`/`iva_id`
+obbligatori, [[feedback_pgtap_patterns]] / [[feedback_pgtap_preventivi_fixtures]].)
 
 ---
 
-## 8. Sequenza
+## 10. Naming Liquibase (numerazione NN globale per data — [[feedback_liquibase_numerazione_globale_per_data]])
 
-1. Team DB: conferma §3.4 (best-effort proposto) → applica D1 + D2 → pgTAP verdi → PR.
-2. A oggetti applicati parte il **BE/FE** — piano in
-   [brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md),
-   che include l'handler Python `stampa_documenti_lotto_default` (il seed qui sopra lo
-   dichiara, il codice lo implementa).
+`YYYYMMDD-NN-<tipo>-<descrizione>.yaml`, un changeSet per file, sempre `logicalFilePath`.
+Assegnare gli `NN` come **sequenza globale per la data** verificando i file `20260719-*`
+esistenti in tutte le cartelle. Cartelle:
+
+* `00_schema/` — CREATE TABLE `fatture_stampa_coda` (incluso via `changelog-autogen.yaml`,
+  che si rigenera al migrate — [[feedback_no_autogen_changelog_manuale]]).
+* `20_code/` — `fn_accoda_stampe_lotto` (idem autogen).
+* `80_data/` — **solo append ai CSV esistenti** (§5): nessun nuovo `.yaml`, i loader
+  `runOnChange` ripescano.
+* G2: append al CSV `fatturazione_pipeline.csv` (§6) — di nuovo nessun `.yaml` nuovo.
+
+---
+
+## 11. Sequenza operativa
+
+1. **G1** (ora): tabella + funzione + seed (§3–5) → pgTAP fondamenta verdi → PR su `dev/db-tid`.
+2. Parte il **BE/FE** ([brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md)):
+   handler `stampa_documenti_lotto_default` (accoda), worker drainer (backstop + render),
+   cablaggio FATTURA.
+3. **G2** (alla release BE, handler + drainer deployati): append ai `processi` DEFINITIVA
+   (§6) → pgTAP pipeline verdi → PR. **Non prima.**
 
 *Le azioni DB non le esegue l'agent ([[feedback_db_actions_passaggio_team]]).*

@@ -1,0 +1,109 @@
+# ⚙️ Funzione `fn_ddt_push_diagnosi`
+
+```sql
+CREATE FUNCTION fn_ddt_push_diagnosi(p_ddt_id bigint)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_ddt_push_diagnosi(p_ddt_id bigint DEFAULT NULL::bigint)
+ RETURNS TABLE(ddt_id bigint, riga_id bigint, motivo_rank integer, motivo text)
+ LANGUAGE sql
+ STABLE
+AS $function$
+  -- Scopo: per ogni riga DDT, IL motivo per cui non e' inviabile a
+  --   commessa (NULL = eleggibile). Fonte unica dei predicati del
+  --   lister vendite.fn_list_ddt_da_pushare (equivalenza blindata a
+  --   pgTAP). p_ddt_id NULL = tutte le righe (usato dall'equivalenza).
+  WITH cand AS (
+    SELECT
+      d.id AS d_id, d.uid AS d_uid, dr.id AS dr_id,
+      COALESCE(d.billing_account_id, src.src_billing_account_id) AS ba_id,
+      sdd.codice_interno AS sdd_cod, sdd.ordine AS sdd_ord,
+      sdd.is_abortito AS sdd_abort,
+      caus.fatturabile AS caus_fatt,
+      dr.quantita AS dr_quantita, a.is_composito AS a_composito,
+      src.src_fatturazione_trigger AS trg,
+      src.src_ordine_riga_id AS ord_riga,
+      sdd_trg.ordine AS trg_ord,
+      ct.differenza AS partita_diff,
+      script.fn_get_stato_push_segment(
+        'DDT:'||d.uid::text||':R:'||dr.id::text) AS segment
+    FROM vendite.ddt d
+    JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+    JOIN vendite.ddt_righe dr ON dr.ddt_id = d.id AND dr.attivo IS TRUE
+    JOIN catalogo.articoli a ON a.id = dr.articolo_id
+    LEFT JOIN config.causali_trasporto caus ON caus.id = d.causale_trasporto_id
+    LEFT JOIN LATERAL (
+      SELECT o.billing_account_id   AS src_billing_account_id,
+             o.fatturazione_trigger AS src_fatturazione_trigger,
+             orr.id                 AS src_ordine_riga_id
+      FROM vendite.ordini_righe_fulfillment ful
+      JOIN vendite.ordini_righe orr ON orr.id = ful.ordine_riga_id
+      JOIN vendite.ordini o        ON o.id = orr.ordine_id
+      WHERE ful.ddt_riga_id = dr.id ORDER BY ful.id LIMIT 1
+    ) src ON TRUE
+    LEFT JOIN config.stati_doc_ddt sdd_trg
+      ON sdd_trg.codice_interno = src.src_fatturazione_trigger
+    LEFT JOIN vendite.vw_contatore_merce ct
+      ON ct.ordine_riga_id = src.src_ordine_riga_id
+    WHERE (p_ddt_id IS NULL OR d.id = p_ddt_id)
+  ),
+  pre AS (
+    -- Motivo PRE-contatore per-riga (cause 1,2,3,4,6,7 + routed).
+    -- pre_rank NULL = superstite, valutato al contatore.
+    SELECT c.*,
+      (SELECT r.rank FROM (VALUES
+        (1, c.sdd_abort),                                   -- ANNULLATO (doc morto)
+        (1, c.sdd_cod = 'RESO'),                            -- RESO (doc morto, stesso rank)
+        (2, c.caus_fatt IS FALSE),                          -- SOLO_TRASPORTO (causale non fatturabile)
+        (3, c.ba_id IS NULL),                               -- SENZA_BA
+        (4, c.segment <> 'LIBERA'),                         -- ROUTED (gia' instradata)
+        (5, c.trg IS NOT NULL AND c.trg <> 'CONFERMATO'
+            AND (c.trg_ord IS NULL OR c.sdd_ord < c.trg_ord)),   -- MERCE_IN_VIAGGIO order-backed
+        (5, c.trg IS NULL
+            AND c.sdd_cod NOT IN ('SPEDITO','CONSEGNATO')),      -- MERCE_IN_VIAGGIO standalone
+        (5, c.caus_fatt IS NULL AND c.trg IS NOT NULL
+            AND c.trg <> 'CONFERMATO'),                          -- pre-emissione order-backed (no causale)
+        (6, c.trg = 'CONFERMATO')                           -- FATTURA_DA_ORDINE (XOR)
+      ) AS r(rank, hit) WHERE r.hit ORDER BY r.rank LIMIT 1) AS pre_rank
+    FROM cand c
+  ),
+  dist AS (
+    -- Distribuzione greedy SOLO sui superstiti: partizione identica
+    -- a quella del lister (che gira su cand gia' filtrato).
+    SELECT p.*,
+      CASE WHEN p.ord_riga IS NOT NULL AND NOT COALESCE(p.a_composito, false)
+        THEN GREATEST(0::numeric, LEAST(p.dr_quantita,
+               COALESCE(p.partita_diff, 0)
+               - COALESCE(SUM(p.dr_quantita) OVER (
+                   PARTITION BY p.ord_riga ORDER BY p.d_id, p.dr_id
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0)))
+        ELSE p.dr_quantita END AS quantita_push
+    FROM pre p
+    WHERE p.pre_rank IS NULL
+  )
+  SELECT d_id, dr_id, pre_rank,
+         CASE pre_rank
+           WHEN 1 THEN CASE WHEN sdd_cod = 'RESO' THEN 'DDT_RESO' ELSE 'DDT_ANNULLATO' END
+           WHEN 2 THEN 'DDT_SOLO_TRASPORTO'
+           WHEN 3 THEN 'DDT_SENZA_BA'
+           WHEN 4 THEN 'DDT_ROUTED'
+           WHEN 5 THEN 'DDT_MERCE_IN_VIAGGIO'
+           WHEN 6 THEN 'DDT_FATTURA_DA_ORDINE'
+         END
+  FROM pre WHERE pre_rank IS NOT NULL
+  UNION ALL
+  SELECT d_id, dr_id,
+         CASE WHEN ord_riga IS NOT NULL AND quantita_push <= 0 THEN 7 END,
+         CASE WHEN ord_riga IS NOT NULL AND quantita_push <= 0 THEN 'DDT_CONTATORE' END
+  FROM dist
+$function$
+
+COMMENT ON FUNCTION vendite.fn_ddt_push_diagnosi(p_ddt_id bigint)
+IS 'Fonte unica: per riga DDT, IL motivo di esclusione dalla push a commessa (NULL = eleggibile), fra le 7 cause del catch-all. Riproduce i predicati di vendite.fn_list_ddt_da_pushare in un unico posto (equivalenza righe-NULL == output lister, blindata da pgTAP). motivo_rank = precedenza Decisione E: 1 ANNULLATO/RESO, 2 SOLO_TRASPORTO, 3 SENZA_BA, 4 ROUTED, 5 MERCE_IN_VIAGGIO, 6 FATTURA_DA_ORDINE, 7 CONTATORE. La capability script.fn_available_actions_ddt consuma il min(rank) per il ramo reason. Brief: brief-db-ddt-reason-push-catch-all §3 (Decisione A).';
+```
+
+---
+{% include-markdown "signature-core.md" %}

@@ -24,6 +24,10 @@ AS $function$
 --   non solo le righe): brief-db-guard-righe-avanzamento-stato §1a-bis.
 --   rev 2026-07-19 (bis): reason push DDT_GIA_INVIATO/DDT_GIA_FATTURATO
 --   via fn_get_stato_push_segment (brief-db-push-commessa-gia-inviato §4b).
+--   rev 2026-07-19 (ter): catch-all DDT_NON_PUSHABILE decomposto
+--   nelle 7 cause via vendite.fn_ddt_push_diagnosi (fonte unica) +
+--   rami DDT_FATTURA_DA_ORDINE/SOLO_TRASPORTO/MERCE_IN_VIAGGIO +
+--   precedenza a due livelli — brief-db-ddt-reason-push-catch-all §3.
 DECLARE
     v_ddt        vendite.ddt%ROWTYPE;
     v_stato_cod  config.stati_doc_ddt.codice_interno%TYPE;
@@ -149,8 +153,31 @@ BEGIN
         v_push_reason     := 'DDT_GIA_FATTURATO';
         v_push_reason_key := 'vendite.ddt.push_commessa_reason.gia_fatturato';
     ELSE
-        v_push_reason     := 'DDT_NON_PUSHABILE';
-        v_push_reason_key := 'vendite.ddt.push_commessa_reason.non_pushabile';
+        -- Catch-all DECOMPOSTO (brief-db-ddt-reason-push-catch-all §3):
+        -- la diagnosi (fonte unica) da' IL motivo per riga; qui si prende
+        -- il piu' forte (min rank = precedenza Decisione E) e lo si mappa a
+        -- una reason. DDT_ROUTED escluso: gia' intercettato sopra.
+        SELECT g.motivo INTO v_push_reason
+          FROM vendite.fn_ddt_push_diagnosi(p_ddt_id) g
+         WHERE g.motivo IS NOT NULL AND g.motivo <> 'DDT_ROUTED'
+         ORDER BY g.motivo_rank
+         LIMIT 1;
+
+        -- Collasso: solo 3 cause hanno ramo proprio; le altre (senza-BA,
+        -- contatore, annullato, reso) restano nel generico riscritto, che
+        -- NON afferma piu' una condizione di stato (Decisione C).
+        v_push_reason := CASE v_push_reason
+            WHEN 'DDT_FATTURA_DA_ORDINE' THEN 'DDT_FATTURA_DA_ORDINE'
+            WHEN 'DDT_SOLO_TRASPORTO'    THEN 'DDT_SOLO_TRASPORTO'
+            WHEN 'DDT_MERCE_IN_VIAGGIO'  THEN 'DDT_MERCE_IN_VIAGGIO'
+            ELSE 'DDT_NON_PUSHABILE'
+        END;
+        v_push_reason_key := 'vendite.ddt.push_commessa_reason.' || CASE v_push_reason
+            WHEN 'DDT_FATTURA_DA_ORDINE' THEN 'fattura_da_ordine'
+            WHEN 'DDT_SOLO_TRASPORTO'    THEN 'solo_trasporto'
+            WHEN 'DDT_MERCE_IN_VIAGGIO'  THEN 'merce_in_viaggio'
+            ELSE 'non_pushabile'
+        END;
     END IF;
 
     IF v_push_ok THEN
@@ -188,7 +215,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
-IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-11: + blocco pdf {mode, allow_allegati}. rev 2026-07-16: ogni azione espone enabled/reason/reason_key da meta.requires_righe. rev 2026-07-19: le transizioni verso EMESSO delegano a script.fn_check_ddt_emittibile — enabled=false + reason/reason_key del primo motivo + array completo in "reasons" (righe 543, causale 544, prezzi 545, indirizzi, componenti pendenti). Single source coi 4 guard trigger di emissione: il pulsante non e'' piu'' abilitato per poi fallire con 409. Brief: brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2. rev 2026-07-19 (bis): reason push DDT_GIA_INVIATO (allocato, in attesa fatturazione) / DDT_GIA_FATTURATO via script.fn_get_stato_push_segment (vede anche componenti #CMP); fallback DDT_NON_PUSHABILE solo se nessuna riga instradata — brief-db-push-commessa-gia-inviato §4b.';
+IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-19: transizioni verso EMESSO via fn_check_ddt_emittibile; reason push GIA_INVIATO/GIA_FATTURATO via fn_get_stato_push_segment. rev 2026-07-19 (ter): il catch-all DDT_NON_PUSHABILE e'' decomposto nelle 7 cause di esclusione via vendite.fn_ddt_push_diagnosi (fonte unica, equivalenza col lister blindata a pgTAP); rami propri DDT_FATTURA_DA_ORDINE (XOR, speculare di ORDINE_FATTURA_DA_DDT), DDT_SOLO_TRASPORTO (causale non fatturabile), DDT_MERCE_IN_VIAGGIO (stato pre-trigger); casi senza-BA/contatore/annullato/reso nel generico riscritto (non piu'' basato sullo stato); precedenza a due livelli (documento prima, poi riga azionabile) — brief-db-ddt-reason-push-catch-all §3.';
 ```
 
 ---
