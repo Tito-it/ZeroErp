@@ -3,15 +3,22 @@
 > **Tipo**: brief trasversale (DB + FE) · **Target**: `dev/db-tid` + `dev/backend-tid`
 > · **Data**: 2026-07-19 · **Owner**: Tid · **Priorità**: 🟡 MEDIA (nessun dato a
 > rischio; disordine strutturale che genera difetti silenziosi)
-> **Stato**: ☐ DA REALIZZARE
+> **Stato**: ✅ **CHIUSO** (2026-07-19) — migrazione completa end-to-end:
+> 21 radici piatte spostate sotto le rispettive aree (FE `2972ff393`, metà DB
+> `77d4b6b24`), radici morte `profile`/`lista` rimosse, guard `--strict-roots`
+> completamente pulito, parità it/en integra, build verde. Standard vigente in
+> [i18n-namespace-radici.md](../frontend/i18n-namespace-radici.md).
 > **Origine**: analisi critica di
 > [brief-db-i18n-namespace-reason-ordini.md](brief-db-i18n-namespace-reason-ordini.md).
 > Correggendo le reason del push ordini è emerso che il difetto non era locale:
 > l'archivio i18n ha **due stili di sistemazione conviventi**, e la scelta fra i
 > due era stata lasciata al caso. Deciso di disegnare il perimetro **globale**
 > per non avere ripensamenti futuri.
-> **Standard prodotto**: [i18n-namespace-radici.md](../frontend/i18n-namespace-radici.md)
-> — è quello il documento vivo; questo brief è solo l'ordine di lavoro che ce lo porta.
+> **Regola vigente (fonte canonica)**: [frontend-standards.md §Multilingua](../frontend/frontend-standards.md#struttura-chiavi--radici-dei-namespace)
+> — lettura obbligatoria di progetto; l'approfondimento (procedura, inventario)
+> è in [i18n-namespace-radici.md](../frontend/i18n-namespace-radici.md). Questo
+> brief è solo l'ordine di lavoro che ha portato a quella regola: archiviato in
+> work-done, **non** è la fonte della regola.
 
 ## 1. Il problema in breve
 
@@ -243,11 +250,11 @@ loro valore si sposta sul dopo — restano la regola per il codice futuro.
 | --- | --- | --- |
 | 1 | Fix reason ordini → `vendite.ordini.*` | ✅ 2026-07-19 (`20260719-12`, pgTAP 9/9) |
 | 2 | Standard scritto + tabelle superate corrette in repo | ✅ 2026-07-19 |
-| 3 | Guard FE chiavi-citate vs chiavi-presenti (**prima** della rinomina) | ☐ |
-| 4 | Rinomina scriptata di tutte e 21 le radici — locales + punti di chiamata | ✅ FE (radici sotto `vendite.*`/aree, guard FE pulito) |
-| 5 | Metà DB: `preventivi` (capability `20260719-14` + seed) e `contratti` (seed) | ✅ applicato + verificato sul DB vivo |
-| 6 | Verifica: pgTAP `plan(8)` verde, seed+capability live corretti (psql), parità it/en | ✅ — guard azzera al rigen doc (punto 7) |
-| 7 | Chiusura: **rigen doc auto-gen** (Tid), `profile`, decisione su `lista` (§2e), casi contesi (§2d), commit | ☐ |
+| 3 | Guard FE chiavi-citate vs chiavi-presenti (**prima** della rinomina) | ✅ `scripts/check_i18n_keys.py` operativo (esteso a seed CSV + doc auto-gen) |
+| 4 | Rinomina scriptata di tutte e 21 le radici — locales + punti di chiamata | ✅ FE `2972ff393` (1413 rinomine, radici sotto `vendite.*`/aree) |
+| 5 | Metà DB: `preventivi` (capability `20260719-14` + seed) e `contratti` (seed) | ✅ applicato + verificato sul DB vivo (`77d4b6b24`) |
+| 6 | Verifica: pgTAP `plan(8)` verde, seed+capability live corretti (psql), parità it/en | ✅ guard verde su FE **e** DB dopo rigen doc auto-gen |
+| 7 | Chiusura: `profile`/`lista` rimossi (radici morte) + guard irrobustito, casi §2d/§2e/§2f | ✅ 2026-07-19 |
 
 ### 6a. Stato metà DB (step 5) — dettaglio
 
@@ -269,14 +276,35 @@ loro valore si sposta sul dopo — restano la regola per il codice futuro.
   transizioni). Verificato col guard: dopo l'edit del CSV non resta nessuna
   chiave `contratti.*` irrisolvibile. Niente changeset capability per contratti.
 
+### 6b. Chiusura (step 7) — radici morte e casi §2d/§2e/§2f
+
+- **§2e radici morte**: `profile.*` (3 stringhe, ruoli+«no company») e `lista.*`
+  (3 col_*) rimosse da `it.json`/`en.json` — zero consumatori, statici e
+  dinamici (il `portale.profile.*`, vivo, è namespace diverso e resta). Le due
+  radici sono state **tolte anche dalla whitelist `TRASVERSALI` del guard**: la
+  loro assenza fa sì che una futura reintroduzione venga segnalata come radice
+  di dominio in cima.
+- **§2e decisione `lista`**: la domanda aperta in
+  [sviluppo-personalizzazioni-liste_def.md](../work-in-progress/sviluppo-personalizzazioni-liste_def.md)
+  («etichette colonna: riusare chiavi esistenti o creare `lista.{codice}.col_*`?»)
+  è **risolta in favore delle radici d'area**: le etichette di colonna
+  appartengono al modulo che possiede la lista (`vendite.<modulo>.col_*`) o
+  riusano chiavi esistenti; `lista.*` piatto non si crea. Recepito in quel doc.
+- **§2d casi contesi**: risolti in esecuzione — `amm → amministrazione` fuso
+  senza collisioni (172+105 foglie), `notifications` resta trasversale.
+- **§2f consumatore futuro** (API `GET …/i18n/keys?prefix=` per l'autocomplete
+  colonne, DEF-9): nessuna azione ora; quando verrà sviluppato, l'autocomplete
+  non deve proporre radici piatte di dominio (è il punto dove far *rispettare*
+  lo standard, non solo documentarlo).
+
 ## 7. Riferimenti
 
-- Standard: [i18n-namespace-radici.md](../frontend/i18n-namespace-radici.md)
+- Regola canonica: [frontend-standards.md §Multilingua](../frontend/frontend-standards.md#struttura-chiavi--radici-dei-namespace) · approfondimento: [i18n-namespace-radici.md](../frontend/i18n-namespace-radici.md)
 - Brief d'origine: [brief-db-i18n-namespace-reason-ordini.md](brief-db-i18n-namespace-reason-ordini.md)
 - **Precedente identico già riparato** (offerte):
   `docs/it/dev/work-done/addendum-db-stati-doc-offerte-transizioni-label-key.md`
 - Regole superate da correggere: `frontend-standards.md` §Multilingua ·
   `work-in-progress/frontend/guida-sviluppo-frontend.md` §10
-- Companion della stessa famiglia: [brief-db-ddt-reason-push-catch-all.md](brief-db-ddt-reason-push-catch-all.md)
+- Companion della stessa famiglia: [brief-db-ddt-reason-push-catch-all.md](../work-in-progress/brief-db-ddt-reason-push-catch-all.md)
 - Capability che emettono chiavi: `docs/it/dbzero/script/funzioni/fn_available_actions_{ordine,ddt,preventivo}.md`
 - Seed toccati: `db/changelog/migrations_v2/80_data/sql/config/transizioni_stati_{preventivi,ordini,ddt}.csv`

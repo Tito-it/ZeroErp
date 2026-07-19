@@ -480,11 +480,6 @@
     "dash_3": "Dashboard 3",
     "dash_4": "Dashboard 4"
   },
-  "profile": {
-    "role_admin": "Amministratore",
-    "role_operativo": "Operativo",
-    "no_company": "Nessuna emittente associata"
-  },
   "sessions": {
     "other_active": "Altre sessioni attive ({count})",
     "other_active_title": "Altre sessioni attive",
@@ -3201,11 +3196,6 @@
       "tab_modelli": "Modelli documenti",
       "tab_asset": "Asset documentali"
     }
-  },
-  "lista": {
-    "col_pratica": "Pratica",
-    "col_fase": "Fase",
-    "col_transito": "Transito"
   },
   "lista_config": {
     "modal_title": "Personalizza colonne",

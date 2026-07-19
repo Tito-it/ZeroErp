@@ -1,12 +1,18 @@
 # Radici dei namespace i18n — come si individuano e come se ne crea una
 
-> **Tipo**: standard di progetto · **Stato**: ✅ VIGENTE · **Data**: 2026-07-19
+> **Tipo**: riferimento di dettaglio · **Stato**: ✅ VIGENTE · **Data**: 2026-07-19
 > · **Ambito**: frontend, backend e database — ogni livello che *emette* o
 > *consuma* una chiave i18n.
+> **La regola vive in** [frontend-standards.md §Multilingua](frontend-standards.md#struttura-chiavi--radici-dei-namespace)
+> (lettura obbligatoria di progetto): quella è la fonte canonica. Questo
+> documento è il suo **approfondimento** — procedura di classificazione,
+> soglia del 70%, inventario — e le è subordinato.
 
-Questo è il documento unico sulle **radici** dei namespace i18n. Se devi
-aggiungere stringhe, spostarle o decidere dove metterne di nuove, la risposta
-sta qui. Non esistono convenzioni alternative valide altrove.
+Questo documento spiega **come si decide dove va una radice** esistente o nuova
+(la procedura, i casi limite, l'inventario della migrazione 2026-07). La regola
+in sé — indirizzo per area, pericolo del testo silenzioso, obbligo lato DB — è
+enunciata in `frontend-standards.md §Multilingua`. Non esistono convenzioni
+alternative valide altrove.
 
 ## 0. Cosa questo documento sostituisce
 

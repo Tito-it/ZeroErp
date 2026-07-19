@@ -13,7 +13,7 @@
 #   1) ROTTE       - chiavi citate nel codice ma assenti dai locales
 #   2) PARITA'     - chiavi in it.json ma non in en.json (o viceversa)
 #   3) RADICI      - radici di dominio in cima, che violano la convenzione
-#                    di docs/it/dev/frontend/i18n-namespace-radici.md
+#                    di docs/it/dev/frontend/frontend-standards.md (Multilingua)
 #   4) EMISSIONI DB - chiavi emesse dalle funzioni (label_key/reason_key)
 #                    e assenti dai locales: e' la classe di difetto che ha
 #                    colpito offerte e ordini, invisibile dal solo frontend.
@@ -53,14 +53,18 @@ AREE = {"vendite", "anagrafiche", "catalogo", "acquisti", "magazzino",
         "amministrazione", "portale", "shop", "ui"}
 
 # Radici trasversali ammesse in cima (vocabolario di interfaccia, non dominio).
-# Vedi brief-i18n-radici-uniformi §2c. Da sfoltire a migrazione conclusa.
+# Vedi brief-i18n-radici-uniformi §2c. `lista` e `profile` erano radici morte
+# (0 consumatori) rimosse a fine migrazione: NON reinserirle qui — la loro
+# assenza fa sì che un'eventuale reintroduzione (es. `lista.{codice}.col_*`,
+# decisione aperta in liste_def) venga segnalata come radice di dominio da
+# ricondurre a un'area, coerente con lo standard.
 TRASVERSALI = {"common", "errors", "validation", "actions", "confirm", "nav",
                "nav_menu", "pagination", "placeholder", "search", "tabs",
                "context", "lista_config", "export_dialog", "dash_mesi", "home",
                "auth", "sessions", "geo", "note", "ai", "config_panel",
                "dati_societari", "soggetto_ruolo_lookup", "indirizzi",
                "resolver", "istanza_utility", "billing_account",
-               "notifications", "lista", "profile"}
+               "notifications"}
 
 # Posizioni di chiave nel codice FE: t('x') / $t('x') / te('x') / tm('x')
 RE_T = re.compile(r"""(?<![\w$])\$?t[em]?\(\s*(['"`])([\w.]+)\1""")
@@ -229,7 +233,7 @@ def main():
     if radici_sospette:
         marc = "[X]" if STRICT_ROOTS else "[!]"
         print(f"\n{marc} {len(radici_sospette)} RADICI DI DOMINIO IN CIMA")
-        print("    Convenzione: docs/it/dev/frontend/i18n-namespace-radici.md")
+        print("    Convenzione: frontend-standards.md §Multilingua (dettaglio: i18n-namespace-radici.md)")
         print("    Attese sotto la loro area, es. preventivi.* -> vendite.preventivi.*")
         print(f"    {', '.join(radici_sospette)}")
         if STRICT_ROOTS:
