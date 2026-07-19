@@ -24,10 +24,13 @@
 -- 13) non ACCETTATA (BOZZA): can_genera_ordine=false, reason='OFFERTA_NON_ACCETTATA'
 -- 14) Indice: secondo ordine ('OFFERTA', X) viola uq_ordini_v_documento_origine_offerta
 -- 15) Indice: due ordini ('PREVENTIVO', Y) consentiti (indice non li vincola)
+-- 16a/16b) BOZZA senza listino_versione_id: azione verso EMESSA enabled=false +
+--     reason='LISTINO_VERSIONE_MANCANTE' (rev 2026-07-19, uniformita' 6 domini)
+-- 17) BOZZA con versione ATTIVA: azione verso EMESSA enabled=true
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(15);
+SELECT plan(18);
 
 -- ============================================================
 -- Setup fixture: contesti di riferimento
@@ -461,6 +464,57 @@ SELECT lives_ok(
           FROM tmp_aa_ord od
     $sql$,
     '15) due ordini PREVENTIVO con stessa origine consentiti (indice non li vincola)'
+);
+
+-- ============================================================
+-- 16-17) enabled/reason sull'azione verso EMESSA (rev 2026-07-19):
+--   la capability specchia il guard BOZZA->EMESSA (versione listino
+--   valorizzata + ATTIVA). Brief-db-guard-righe-avanzamento-stato §1a.
+-- ============================================================
+WITH ins AS (
+    INSERT INTO vendite.offerte_commerciali (
+        emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
+        listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id
+    )
+    SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
+           ctx.listino_id, NULL,
+           DATE '2088-01-01', ctx.stato_bozza_id
+      FROM tmp_aa_ctx ctx
+    RETURNING id
+)
+INSERT INTO tmp_aa_ids SELECT 'BOZZA_NOLISTINO', id FROM ins;
+
+SELECT is(
+    (SELECT a
+       FROM jsonb_array_elements(
+              script.fn_available_actions_offerta(
+                (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'BOZZA_NOLISTINO')
+              ) -> 'available_actions') AS a
+      WHERE a ->> 'target_state' = 'EMESSA') -> 'enabled',
+    'false'::jsonb,
+    '16a) BOZZA senza versione listino: azione verso EMESSA disabled'
+);
+
+SELECT is(
+    (SELECT a
+       FROM jsonb_array_elements(
+              script.fn_available_actions_offerta(
+                (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'BOZZA_NOLISTINO')
+              ) -> 'available_actions') AS a
+      WHERE a ->> 'target_state' = 'EMESSA') ->> 'reason',
+    'LISTINO_VERSIONE_MANCANTE',
+    '16b) ...con reason LISTINO_VERSIONE_MANCANTE'
+);
+
+SELECT is(
+    (SELECT a
+       FROM jsonb_array_elements(
+              script.fn_available_actions_offerta(
+                (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'BOZZA')
+              ) -> 'available_actions') AS a
+      WHERE a ->> 'target_state' = 'EMESSA') -> 'enabled',
+    'true'::jsonb,
+    '17) BOZZA con versione ATTIVA: azione verso EMESSA enabled'
 );
 
 SELECT * FROM finish();

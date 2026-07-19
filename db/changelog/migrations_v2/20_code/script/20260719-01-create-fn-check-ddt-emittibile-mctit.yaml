@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-guard-righe-avanzamento-stato §1a-bis (Rev 2) — STEP 0.
+#
+# IL PROBLEMA: l'emissione di un DDT e' sbarrata da CINQUE condizioni sparse in
+# QUATTRO trigger diversi (censimento 2026-07-19):
+#   543 righe            -> trgfn_ddt_guard_transizione
+#   544 causale          -> trgfn_ddt_guard_causale_emissione
+#   545 prezzi           -> trgfn_ddt_guard_causale_emissione
+#   indirizzi            -> trgfn_ddt_guard_indirizzi_obbligatori
+#   componenti pendenti  -> trgfn_ddt_guard_transizione_approvazione
+# La capability fn_available_actions_ddt ne conosce UNA (le righe, via
+# meta.requires_righe): il pulsante «Emetti» risulta abilitato e il click
+# fallisce con 409 sulle altre quattro. Un pulsante abilitato che non funziona
+# e' peggio di uno sempre cliccabile: e' una promessa non mantenuta.
+#
+# LA SOLUZIONE: un solo posto dove vive «cosa rende un DDT emittibile», due
+# consumatori con due comportamenti diversi:
+#   - i 4 guard trigger  -> sollevano (fail-fast, codici errore INVARIATI);
+#   - la capability      -> espone «emetti» disabled + reason.
+# Al prossimo vincolo aggiunto restano allineati PER COSTRUZIONE.
+#
+# 🔑 PERCHE' IL PARAMETRO E' UNA RIGA (vendite.ddt) E NON UN id:
+#   i guard sono BEFORE UPDATE e devono valutare i valori CANDIDATI (NEW).
+#   Con un p_ddt_id la fn rileggerebbe dalla tabella i valori ANCORA VECCHI:
+#   un UPDATE che imposta insieme stato=EMESSO e causale_trasporto_id vedrebbe
+#   la causale ancora NULL e bloccherebbe a torto. Passando la ROW:
+#     - trigger    -> fn(NEW)              (valori candidati)
+#     - capability -> fn(riga letta)       (valori persistiti)
+#   Le condizioni sulle RIGHE figlie (543/545/componenti) leggono comunque da
+#   tabella: corretto, perche' un UPDATE sulla testata non le sta cambiando.
+#
+# ORDINE DEI MOTIVI (deterministico e documentato, non piu' l'ordine
+# accidentale-lessicografico dei trigger): struttura -> intento -> dati riga ->
+# testata -> componenti. La capability mostra il PRIMO motivo come reason.
+#
+# PURA: convenzione fn_check_* (linee-guida-sql §5) — nessun raise, nessuna
+# scrittura, STABLE. Chi solleva sono i guard.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260719-01-create-fn-check-ddt-emittibile-mctit.yaml
+
+  - changeSet:
+      id: 20260719-01-create-fn-check-ddt-emittibile
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        Single source dei motivi ostativi all'emissione di un DDT (5 condizioni,
+        oggi sparse in 4 trigger): ritorna [] se emittibile, altrimenti l'elenco
+        ordinato dei motivi con codice errore e reason_key i18n. Consumata dai
+        guard (che sollevano) e dalla capability (che disabilita + motiva).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_ddt_emittibile(p_ddt vendite.ddt)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono l'emissione (EMESSO) di
+              --   un DDT. Funzione PURA (fn_check_*): non solleva, non scrive.
+              --   Consumatori: i 4 guard trigger di emissione (sollevano il
+              --   proprio codice) e script.fn_available_actions_ddt (espone
+              --   l'azione disabled + reason). Brief:
+              --   brief-db-guard-righe-avanzamento-stato §1a-bis (Rev 2).
+              -- Ritorna: [] se emittibile; altrimenti array ordinato di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                  v_motivi      jsonb := '[]'::jsonb;
+                  v_fatturabile boolean;
+                  v_riga_senza  vendite.ddt_righe.id%TYPE;
+                  v_presenti    integer[];
+                  v_mancanti    text[];
+              BEGIN
+                  -- 1. STRUTTURA — zero righe attive = niente da trasportare (543).
+                  --    Il "DDT di solo trasporto" resta legittimo: quello e' righe
+                  --    SENZA PREZZO, non zero righe.
+                  IF NOT EXISTS (
+                      SELECT 1 FROM vendite.ddt_righe dr
+                       WHERE dr.ddt_id = p_ddt.id
+                         AND dr.attivo IS TRUE
+                  ) THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_DDT_EMISSIONE_SENZA_RIGHE',
+                          'reason',     'DOCUMENTO_SENZA_RIGHE',
+                          'reason_key', 'common.azione_reason.senza_righe',
+                          'dettaglio',  NULL);
+                  END IF;
+
+                  -- 2. INTENTO — la causale dichiara se la merce che viaggia e'
+                  --    una vendita da fatturare o solo un trasporto (544, DL-28).
+                  --    In bozza il NULL resta legittimo: il vincolo e' qui, non
+                  --    sul salvataggio.
+                  IF p_ddt.causale_trasporto_id IS NULL THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_DDT_CAUSALE_OBBLIGATORIA',
+                          'reason',     'CAUSALE_MANCANTE',
+                          'reason_key', 'vendite.ddt.azione_reason.causale_mancante',
+                          'dettaglio',  NULL);
+                  ELSE
+                      -- 3. DATI RIGA — causale fatturabile => ogni riga attiva deve
+                      --    avere prezzo RISOLVIBILE: proprio o ereditato dalla riga
+                      --    d'ordine via fulfillment (545). Stessa COALESCE del
+                      --    lister. NB: vw_ddt_righe_iva_base NON e' riusabile qui
+                      --    (filtra prezzo_unitario IS NOT NULL, perderebbe proprio
+                      --    le righe da esaminare).
+                      SELECT ct.fatturabile INTO v_fatturabile
+                        FROM config.causali_trasporto ct
+                       WHERE ct.id = p_ddt.causale_trasporto_id;
+
+                      IF COALESCE(v_fatturabile, false) THEN
+                          SELECT dr.id INTO v_riga_senza
+                            FROM vendite.ddt_righe dr
+                            LEFT JOIN LATERAL (
+                                SELECT or_r.prezzo_unitario
+                                  FROM vendite.ordini_righe_fulfillment ful
+                                  JOIN vendite.ordini_righe or_r ON or_r.id = ful.ordine_riga_id
+                                 WHERE ful.ddt_riga_id = dr.id
+                                 ORDER BY ful.id LIMIT 1
+                            ) src ON TRUE
+                           WHERE dr.ddt_id = p_ddt.id
+                             AND dr.attivo IS TRUE
+                             AND COALESCE(dr.prezzo_unitario, src.prezzo_unitario) IS NULL
+                           ORDER BY dr.id
+                           LIMIT 1;
+
+                          IF v_riga_senza IS NOT NULL THEN
+                              v_motivi := v_motivi || jsonb_build_object(
+                                  'codice',     'E_DDT_PREZZO_NON_RISOLVIBILE',
+                                  'reason',     'PREZZO_NON_RISOLVIBILE',
+                                  'reason_key', 'vendite.ddt.azione_reason.prezzo_non_risolvibile',
+                                  'dettaglio',  jsonb_build_object('riga_id', v_riga_senza));
+                          END IF;
+                      END IF;
+                  END IF;
+
+                  -- 4. TESTATA — indirizzi marcati obbligatori per l'ambito DDT.
+                  SELECT array_agg(di.tipo_indirizzo_id) INTO v_presenti
+                    FROM vendite.ddt_indirizzi di
+                   WHERE di.ddt_id = p_ddt.id;
+
+                  v_mancanti := script.fn_indirizzi_obbligatori_mancanti('DDT', v_presenti);
+
+                  IF array_length(v_mancanti, 1) IS NOT NULL THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_INDIRIZZO_DOC_OBBLIGATORIO',
+                          'reason',     'INDIRIZZI_MANCANTI',
+                          'reason_key', 'common.azione_reason.indirizzi_mancanti',
+                          'dettaglio',  jsonb_build_object('mancanti', to_jsonb(v_mancanti)));
+                  END IF;
+
+                  -- 5. COMPONENTI BoM CASO A — prezzo in attesa di approvazione...
+                  IF EXISTS (
+                      SELECT 1 FROM vendite.ddt_righe dr
+                        JOIN vendite.ddt_righe_componenti drc ON drc.riga_ddt_id = dr.id
+                       WHERE dr.ddt_id = p_ddt.id
+                         AND drc.stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo
+                  ) THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_COMPONENTE_PREZZO_PENDENTE',
+                          'reason',     'COMPONENTI_PREZZO_PENDENTE',
+                          'reason_key', 'vendite.ddt.azione_reason.componenti_prezzo_pendente',
+                          'dettaglio',  NULL);
+                  END IF;
+
+                  -- ...oppure non ancora valorizzato.
+                  IF EXISTS (
+                      SELECT 1 FROM vendite.ddt_righe dr
+                        JOIN vendite.ddt_righe_componenti drc ON drc.riga_ddt_id = dr.id
+                       WHERE dr.ddt_id = p_ddt.id
+                         AND drc.attivo = TRUE
+                         AND drc.prezzo_unitario IS NULL
+                  ) THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE',
+                          'reason',     'COMPONENTI_NON_VALORIZZATI',
+                          'reason_key', 'vendite.ddt.azione_reason.componenti_non_valorizzati',
+                          'dettaglio',  NULL);
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_ddt_emittibile(vendite.ddt)
+              IS 'Single source dei motivi che impediscono l''emissione (EMESSO) di un DDT: righe attive (543), causale (544), prezzo risolvibile se causale fatturabile (545), indirizzi obbligatori, componenti BoM CASO A pendenti/non valorizzati. Ritorna [] se emittibile, altrimenti array ORDINATO (struttura -> intento -> dati riga -> testata -> componenti) di {codice, reason, reason_key, dettaglio}. PURA (fn_check_*): non solleva. Il parametro e'' la RIGA e non un id perche'' i guard sono BEFORE UPDATE e devono valutare i valori CANDIDATI (NEW): con un id si rileggerebbero i valori vecchi e un UPDATE che imposta insieme stato e causale bloccherebbe a torto. Consumatori: i 4 guard trigger di emissione (sollevano il proprio codice) e script.fn_available_actions_ddt (espone l''azione disabled + reason). Brief: brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_ddt_emittibile(vendite.ddt);

@@ -17,6 +17,8 @@ AS $function$
 --   presente e attiva in config.transizioni_stati_ddt.
 --   Letto dalla matrice (no grafo hardcodato). Mirror del guard
 --   ordini (trgfn_ordini_guard_transizione).
+--   rev 2026-07-19: la Regola 2 (righe) delega a
+--   script.fn_check_ddt_emittibile — single source con la capability.
 DECLARE
     v_codice_da config.stati_doc_ddt.codice_interno%TYPE;
     v_codice_a  config.stati_doc_ddt.codice_interno%TYPE;
@@ -64,26 +66,22 @@ BEGIN
     -- Regola 2: DRAFT->EMESSO richiede almeno una riga attiva.
     -- Zero righe = niente da trasportare. Il "DDT solo trasporto"
     -- resta possibile: e' righe senza prezzo, non zero righe.
-    -- Mirror della Regola 2 di trgfn_ordini_guard_transizione.
-    IF v_codice_da = 'DRAFT' AND v_codice_a = 'EMESSO' THEN
-        IF NOT EXISTS (
-            SELECT 1 FROM vendite.ddt_righe r
-             WHERE r.ddt_id = NEW.id
-               AND r.attivo IS TRUE
-        ) THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database',
-                TG_NAME::text,
-                'E_DDT_EMISSIONE_SENZA_RIGHE',
-                jsonb_build_object(
-                    'ddt_id', NEW.id,
-                    'numero', NEW.numero
-                ),
-                NEW.tx_id,
-                NEW.id::text,
-                coalesce(NEW.numero, 'NULL')
-            );
-        END IF;
+    -- Verdetto dalla single source (fn_check_ddt_emittibile).
+    IF v_codice_da = 'DRAFT' AND v_codice_a = 'EMESSO'
+       AND script.fn_check_ddt_emittibile(NEW)
+           @> '[{"codice": "E_DDT_EMISSIONE_SENZA_RIGHE"}]'::jsonb THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database',
+            TG_NAME::text,
+            'E_DDT_EMISSIONE_SENZA_RIGHE',
+            jsonb_build_object(
+                'ddt_id', NEW.id,
+                'numero', NEW.numero
+            ),
+            NEW.tx_id,
+            NEW.id::text,
+            coalesce(NEW.numero, 'NULL')
+        );
     END IF;
 
     RETURN NEW;
@@ -91,7 +89,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_transizione()
-IS 'Trigger function: enforcement grafo transizioni stato DDT letto da config.transizioni_stati_ddt (E_STATO_DDT_TRANSIZIONE_NON_VALIDA). Regola 2: DRAFT->EMESSO richiede almeno una riga attiva (E_DDT_EMISSIONE_SENZA_RIGHE) — zero righe = niente da trasportare; il DDT solo-trasporto e'' righe senza prezzo, non zero righe. Mirror completo di trgfn_ordini_guard_transizione. Convive col guard approvazione emissione (20260709-05). rev 2026-07-16.';
+IS 'Trigger function: enforcement grafo transizioni stato DDT letto da config.transizioni_stati_ddt (E_STATO_DDT_TRANSIZIONE_NON_VALIDA). Regola 2: DRAFT->EMESSO richiede almeno una riga attiva (E_DDT_EMISSIONE_SENZA_RIGHE) — verdetto delegato a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt). Mirror di trgfn_ordini_guard_transizione. rev 2026-07-19 (brief-db-guard-righe-avanzamento-stato Rev 2).';
 ```
 
 ---

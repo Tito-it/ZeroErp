@@ -13,12 +13,13 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_causale_emissione()
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: bloccare l'emissione (EMESSO) di un DDT che non dichiara
---   la causale, o che dichiara VENDITA ma ha righe senza prezzo
---   risolvibile (brief-db-fatturazione-ddt-resi §4a, DL-28).
+--   la causale, o che dichiara una causale fatturabile ma ha righe
+--   senza prezzo risolvibile (brief-db-fatturazione-ddt-resi §4a,
+--   DL-28). rev 2026-07-19: valutazione delegata a
+--   script.fn_check_ddt_emittibile — single source con la capability.
 DECLARE
     v_stato_codice  config.stati_doc_ddt.codice_interno%TYPE;
-    v_fatturabile   boolean;
-    v_riga_senza    vendite.ddt_righe.id%TYPE;
+    v_motivo        jsonb;
 BEGIN
     SELECT sdd.codice_interno INTO v_stato_codice
       FROM config.stati_doc_ddt sdd
@@ -28,64 +29,38 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- R1: la causale dichiara l'intento. Senza, il documento e'
-    -- ambiguo per la fatturazione.
-    IF NEW.causale_trasporto_id IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'database', TG_NAME, 'E_DDT_CAUSALE_OBBLIGATORIA',
-            jsonb_build_object(
-                'ddt_id', NEW.id,
-                'numero', NEW.numero),
-            NEW.tx_id,
-            COALESCE(NEW.numero, NEW.id::text)
-        );
-    END IF;
-
-    SELECT ct.fatturabile INTO v_fatturabile
-      FROM config.causali_trasporto ct
-     WHERE ct.id = NEW.causale_trasporto_id;
-
-    -- Causale non fatturabile: solo trasporto, prezzi irrilevanti.
-    IF NOT COALESCE(v_fatturabile, false) THEN
-        RETURN NEW;
-    END IF;
-
-    -- R2: prezzo risolvibile = proprio OPPURE ereditato dalla riga
-    -- d'ordine via fulfillment (stessa COALESCE del lister).
-    SELECT dr.id INTO v_riga_senza
-      FROM vendite.ddt_righe dr
-      LEFT JOIN LATERAL (
-          SELECT or_r.prezzo_unitario
-            FROM vendite.ordini_righe_fulfillment ful
-            JOIN vendite.ordini_righe or_r ON or_r.id = ful.ordine_riga_id
-           WHERE ful.ddt_riga_id = dr.id
-           ORDER BY ful.id LIMIT 1
-      ) src ON TRUE
-     WHERE dr.ddt_id = NEW.id
-       AND dr.attivo IS TRUE
-       AND COALESCE(dr.prezzo_unitario, src.prezzo_unitario) IS NULL
-     ORDER BY dr.id
-     LIMIT 1;
-
-    IF v_riga_senza IS NOT NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'database', TG_NAME, 'E_DDT_PREZZO_NON_RISOLVIBILE',
-            jsonb_build_object(
-                'ddt_id',   NEW.id,
-                'numero',   NEW.numero,
-                'riga_id',  v_riga_senza),
-            NEW.tx_id,
-            COALESCE(NEW.numero, NEW.id::text),
-            v_riga_senza::text
-        );
-    END IF;
+    FOR v_motivo IN
+        SELECT jsonb_array_elements(script.fn_check_ddt_emittibile(NEW))
+    LOOP
+        IF v_motivo->>'codice' = 'E_DDT_CAUSALE_OBBLIGATORIA' THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database', TG_NAME, 'E_DDT_CAUSALE_OBBLIGATORIA',
+                jsonb_build_object(
+                    'ddt_id', NEW.id,
+                    'numero', NEW.numero),
+                NEW.tx_id,
+                COALESCE(NEW.numero, NEW.id::text)
+            );
+        ELSIF v_motivo->>'codice' = 'E_DDT_PREZZO_NON_RISOLVIBILE' THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database', TG_NAME, 'E_DDT_PREZZO_NON_RISOLVIBILE',
+                jsonb_build_object(
+                    'ddt_id',   NEW.id,
+                    'numero',   NEW.numero,
+                    'riga_id',  (v_motivo->'dettaglio'->>'riga_id')::bigint),
+                NEW.tx_id,
+                COALESCE(NEW.numero, NEW.id::text),
+                COALESCE(v_motivo->'dettaglio'->>'riga_id', 'NULL')
+            );
+        END IF;
+    END LOOP;
 
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_causale_emissione()
-IS 'Gate all''emissione DDT (brief-db-fatturazione-ddt-resi §4a, DL-28): (1) causale di trasporto obbligatoria — in DRAFT il NULL resta legittimo, dall''emissione no, cosi'' il lister non deve trattare il NULL in modo speciale; (2) se la causale e'' fatturabile, ogni riga attiva deve avere un prezzo risolvibile (proprio o ereditato dalla riga ordine via fulfillment — le righe da evasione senza prezzo proprio restano legittime). Causale non fatturabile: prezzi irrilevanti. Mirror di trgfn_ddt_guard_indirizzi_obbligatori. NB: vw_ddt_righe_iva_base NON e'' riusabile qui (filtra prezzo_unitario IS NOT NULL). rev 2026-07-18.';
+IS 'Gate all''emissione DDT (brief-db-fatturazione-ddt-resi §4a, DL-28): (1) causale di trasporto obbligatoria — in DRAFT il NULL resta legittimo; (2) se la causale e'' fatturabile, ogni riga attiva deve avere un prezzo risolvibile (proprio o ereditato dalla riga ordine via fulfillment). rev 2026-07-19: valutazione delegata a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codici errore e argomenti invariati (544/545).';
 ```
 
 ---
