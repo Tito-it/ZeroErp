@@ -1611,6 +1611,43 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Lotto non trovato.",
         ),
+        # C-4: «Rendi definitive» su lotto non in EMESSA (gate fiscale I-7):
+        # conflitto di stato (409), non un semplice bad-request.
+        "E_LOTTO_NON_NUMERABILE": ErrorPolicy(
+            code="E_LOTTO_NON_NUMERABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il lotto non e` in stato EMESSA: numerazione non applicabile.",
+        ),
+        # C-3: polling di un giro (job coda) inesistente o non di proprieta`
+        # dell'operatore → 404 (senza registrazione cadrebbe sul fallback 400).
+        "E_JOB_NON_TROVATO": ErrorPolicy(
+            code="E_JOB_NON_TROVATO",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Lavoro non trovato.",
+        ),
+        # Coda lavori generica (worker): codici sollevati durante il dispatch/
+        # esecuzione dei job. Non attraversano HTTP nel flusso normale (finiscono
+        # in `ultimo_errore` del job), ma la regola è: registrati prima dell'uso.
+        "E_CODA_SCOPE_OPERATORE_INVALIDO": ErrorPolicy(
+            code="E_CODA_SCOPE_OPERATORE_INVALIDO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Lavoro accodato con scope operatore incompleto.",
+        ),
+        "E_CODA_IDENTITA_NON_ATTIVA": ErrorPolicy(
+            code="E_CODA_IDENTITA_NON_ATTIVA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Identità operatore non più attiva: lavoro non eseguibile.",
+        ),
+        "E_CODA_HANDLER_NON_REGISTRATO": ErrorPolicy(
+            code="E_CODA_HANDLER_NON_REGISTRATO",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Tipo di lavoro non cablato nel sistema.",
+        ),
         "E_PREZZO_LISTINO_NON_TROVATO": ErrorPolicy(
             code="E_PREZZO_LISTINO_NON_TROVATO",
             http_status=404,

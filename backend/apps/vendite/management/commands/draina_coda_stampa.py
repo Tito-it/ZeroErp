@@ -19,11 +19,11 @@ from django.core.management.base import BaseCommand
 
 from apps.core.services.auth_constants import AUDIT_ACTOR_WORKER_STAMPA
 from apps.core.services.job_run import ORIGINE_CRON, registered_job
-from apps.core.services.system_context import system_process_context
-# Alias DB del canale di sistema: owner unico è il command batch (stesso ruolo
-# BYPASSRLS `zeroerp_batch_fatturazione`) — niente 2ª copia del letterale.
-from apps.vendite.management.commands.run_fatturazione_batch import (
+# Alias DB del canale di sistema: fonte unica in core (system_context, regola
+# del 2 — 3° consumer col drainer coda lavori) — niente copie del letterale.
+from apps.core.services.system_context import (
     SYSTEM_FATTURAZIONE_DB_ALIAS,
+    system_process_context,
 )
 from apps.vendite.services.stampa_coda_drainer_service import draina_coda_stampa
 

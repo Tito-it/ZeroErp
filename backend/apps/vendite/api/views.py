@@ -5,7 +5,14 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
+from apps.core.services.coda_lavori.repository import (
+    ORIGINE_API,
+    RUN_AS_OPERATORE,
+    CodaLavoriRepository,
+)
+from apps.core.services.auth_helpers import extract_identita_id_from_request
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date, optional_uuid
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.commesse_service import (
@@ -946,6 +953,157 @@ class ApiFatturazioneEsiti(DomainAPIView):
         return success_response(
             esiti_fatturazione(auth_user_id=get_scope_user_id(request)),
         )
+
+
+class ApiFatturazioneRun(DomainAPIView):
+    """C-3: avvia un GIRO di fatturazione on-demand, NON bloccante (I-3).
+    Accoda un job `FATTURAZIONE_GIRO` in `dbops.coda_lavori` con lo scope
+    emittente CATTURATO dell'operatore (run_as=OPERATORE) e risponde subito con
+    l'handle del job (id + stato); il worker lo esegue poi con i permessi
+    dell'operatore (RLS). Idempotenza a DUE layer: header HTTP (`handle_post_json`
+    + `dbops.idempotency_keys`, replay della risposta) e chiave di BUSINESS
+    della coda (competenza+scope, dedup dei giri VIVI)."""
+
+    area_funzionale = "vendite"
+    post_permission = "genera_fatture_lotti"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeFatturazioneRunRequest",
+            fields={
+                "competenza_mese": serializers.DateField(required=True),
+                "fino_a_stato": serializers.CharField(required=False, allow_null=True),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeFatturazioneRunResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeFatturazioneRunData",
+                        fields={
+                            "job_id": serializers.IntegerField(),
+                            "stato": serializers.CharField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Accoda il giro (transazionale) e ritorna l'handle del job.
+    def post(self, request: Request) -> JsonResponse:
+        # Scopo: cattura scope operatore + accoda in dbops.coda_lavori.
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            competenza = optional_iso_date(payload, "competenza_mese")
+            ErrorManager.require(
+                competenza is not None,
+                code="E_VALIDATION_INPUT",
+                message="`competenza_mese` obbligatoria.",
+            )
+            assert competenza is not None
+            # Normalizza al 1° del mese PRIMA di comporre payload+chiave business:
+            # la dedup dei giri vivi è per-MESE, non per-giorno (due click nello
+            # stesso mese con date diverse devono agganciarsi allo stesso job).
+            competenza = competenza.replace(day=1)
+            # Identità dell'operatore che accoda: id VERO (`user.id`, anche per
+            # superuser — NON `get_scope_user_id`, che per superuser è None e
+            # bloccherebbe l'admin globale) + username + identita_id dal JWT.
+            # Il worker la riproporrà per intero (5 GUC, RLS come nel web).
+            user = request.user
+            identita_id = extract_identita_id_from_request(request)
+            ErrorManager.require(
+                identita_id is not None,
+                code="E_VALIDATION_INPUT",
+                message="Identità operatore non risolta dal token.",
+            )
+            # Scope emittente CATTURATO ora (None = admin globale): il worker lo
+            # riapplicherà via RLS (operator_identity_context). Serve al vincolo
+            # DB run_as↔scope, all'idempotenza di business e all'audit.
+            emittente_ids = PermissionResolver.get_emittenti_ids(user)
+            job_payload: dict[str, object] = {"competenza_mese": competenza.isoformat()}
+            fino_a_stato = payload.get("fino_a_stato")
+            if fino_a_stato:
+                job_payload["fino_a_stato"] = fino_a_stato
+
+            # Chiave di BUSINESS (competenza + scope), NON l'header HTTP: dedup
+            # dei GIRI VIVI (due click sullo stesso mese/scope → stesso job).
+            scope_key = (
+                "ALL" if emittente_ids is None
+                else ",".join(str(e) for e in sorted(emittente_ids))
+            )
+            idempotency_key = f"FATTURAZIONE_GIRO:{competenza.isoformat()}:{scope_key}"
+
+            job_id = CodaLavoriRepository().accoda(
+                job_type="FATTURAZIONE_GIRO",
+                payload=job_payload,
+                run_as=RUN_AS_OPERATORE,
+                scope={
+                    "auth_user_id": int(user.id),
+                    "username": str(user.username),
+                    "identita_id": identita_id,
+                    "emittente_ids": emittente_ids,
+                },
+                idempotency_key=idempotency_key,
+                origine=ORIGINE_API,
+            )
+            return {"job_id": job_id, "stato": "PENDING"}
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiFatturazioneRunStato(DomainAPIView):
+    """C-3: stato di un giro accodato (polling NON bloccante). Ownership:
+    l'operatore vede solo i giri che HA accodato (un giro altrui → 404,
+    indistinguibile da inesistente)."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="VenditeFatturazioneRunStatoResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeFatturazioneRunStatoData",
+                        fields={
+                            "id": serializers.IntegerField(),
+                            "job_type": serializers.CharField(),
+                            "stato": serializers.CharField(),
+                            "tentativi": serializers.IntegerField(),
+                            "max_tentativi": serializers.IntegerField(),
+                            "result": serializers.DictField(allow_null=True),
+                            "ultimo_errore": serializers.DictField(allow_null=True),
+                            "job_run_id": serializers.IntegerField(allow_null=True),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce lo stato del job (scoped all'operatore proprietario).
+    def get(self, request: Request, job_id: int) -> JsonResponse:
+        stato = CodaLavoriRepository().get_stato(
+            int(job_id), auth_user_id=get_scope_user_id(request),
+        )
+        ErrorManager.require(
+            stato is not None,
+            code="E_JOB_NON_TROVATO",
+            message="Giro di fatturazione non trovato.",
+            detail=f"job_id={job_id}",
+        )
+        assert stato is not None
+        return success_response(stato)
 
 
 _VARIAZIONE_PREZZO_REQUEST = inline_serializer(

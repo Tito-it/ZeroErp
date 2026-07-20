@@ -1481,24 +1481,45 @@ class VenditePipelineRepository:
     STAMPA_STATO_ERRORE = "ERRORE"
 
     # Scopo: Reaper delle righe rimaste IN_CORSO oltre `stale_minuti` (worker
-    #        morto a metà render): le riporta a PENDING per il ri-drenaggio.
-    #        `data_update` di una riga IN_CORSO == istante del claim (settato
-    #        esplicitamente dal claim, nessun trigger audit sulla tabella),
-    #        quindi funge da claimed_at. Soglia larga (≫ tempo di un render) →
-    #        nessun doppio-render su un worker semplicemente lento. Ritorna il
-    #        numero di righe recuperate.
-    def reset_stale_stampe_in_corso(self, stale_minuti: int) -> int:
+    #        morto a metà render). `data_update` di una riga IN_CORSO == istante
+    #        del claim (settato esplicitamente dal claim, nessun trigger audit
+    #        sulla tabella), quindi funge da claimed_at. Soglia larga (≫ tempo
+    #        di un render) → nessun doppio-render su un worker semplicemente
+    #        lento. Ogni recupero INCREMENTA `tentativi` (il render interrotto È
+    #        un tentativo consumato): una riga il cui render uccide il worker —
+    #        e che quindi non passa mai da `marca_stampa_errore` — non può
+    #        ciclare all'infinito: oltre `soglia_tentativi` → ERRORE terminale
+    #        (con `ultimo_errore` parlante), altrimenti → PENDING. Ritorna il
+    #        numero di righe recuperate (entrambi i rami).
+    def reset_stale_stampe_in_corso(
+        self, stale_minuti: int, *, soglia_tentativi: int,
+    ) -> int:
+        errore_json = json.dumps({
+            "code": "E_STAMPA_JOB_STANTIO",
+            "message": (
+                "Render interrotto (worker morto o kill): "
+                "recuperato dal reaper."
+            ),
+        })
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 UPDATE vendite.fatture_stampa_coda
-                   SET stato = %s,
+                   SET tentativi = tentativi + 1,
+                       ultimo_errore = %s::jsonb,
+                       stato = CASE
+                                 WHEN tentativi + 1 >= %s THEN %s
+                                 ELSE %s
+                               END,
                        data_update = now(),
                        user_update = CURRENT_USER
                  WHERE stato = %s
                    AND data_update < now() - make_interval(mins => %s)
                 """,
                 [
+                    errore_json,
+                    int(soglia_tentativi),
+                    self.STAMPA_STATO_ERRORE,
                     self.STAMPA_STATO_PENDING,
                     self.STAMPA_STATO_IN_CORSO,
                     int(stale_minuti),

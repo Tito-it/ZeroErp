@@ -277,13 +277,41 @@ pattern «servizio always-on con NOTIFY» non è ipotetico (utile per Q-3).
 
 ## 8. Sequenza di rilascio
 
-1. **DB** (team, `dev/db-tid`): `coda_lavori` + `coda_lavori_tipi` + `fn_accoda_lavoro`
-   + seed tipo `FATTURAZIONE_GIRO` + pgTAP. → **brief DB dedicato** (prerequisito).
-2. **BE core** (io): `apps/core/services/coda_lavori/*` (repository + registry +
-   drainer generalizzato) + command `draina_coda_lavori` + test.
-3. **BE consumatore C-3** (io): endpoint `run/` (enqueue) + handler `FATTURAZIONE_GIRO`
-   + polling stato job. C-4/C-5 sono **indipendenti** e procedono in parallelo.
-4. **Deploy**: systemd timer per `draina_coda_lavori`.
+1. ✅ **DB** (team, `dev/db-tid`): `coda_lavori` + `coda_lavori_tipi` + `fn_accoda_lavoro`
+   + seed `FATTURAZIONE_GIRO` + pgTAP `plan(57)`. Applicato (`20260720-07..10`).
+2. ✅ **BE core FATTO (2026-07-21, working tree)**: `apps/core/services/coda_lavori/`
+   — `backend.py` (protocol `QueueBackend` + `QueueItem`), `drain_engine.py`
+   (`QueueDrainEngine`: reaper→claim→per-item best-effort→retry con **backoff
+   esponenziale cappato**; **deviazione da brief DB §3a, ok Tid 2026-07-21**: il
+   reaper consuma un tentativo per riga recuperata — oltre soglia → ERRORE
+   terminale, anti poison-job che uccide il worker; stesso fix sul reaper della
+   coda stampa), `repository.py` (`CodaLavoriRepository` implements
+   QueueBackend: enqueue via `fn_accoda_lavoro` + claim SKIP LOCKED + marca/reaper/
+   annulla/requeue/count/get_stato), `handler_registry.py` (dispatch controllato),
+   `context.py` (`operator_identity_context`: identità COMPLETA operatore — i 5
+   GUC del web via `set_jwt_gucs`, RLS che risolve come nel ciclo web; fail-loud
+   se l'identità non è più attiva; fix 2026-07-21: il solo `app.jwt_user` non
+   bastava, le policy RLS leggono `app.ruolo_applicativo`+`app.current_user_id`),
+   `drainer_service.py` (dispatch `run_as` SISTEMA/OPERATORE). Command
+   **`apps/core/management/commands/draina_coda_lavori.py`** (chiamante sottile).
+   11 test core verdi. **Deviazioni motivate dalla proposta**: (a) command in
+   `apps/core` NON `apps/vendite` (la coda è infrastruttura core, worker generico);
+   (b) **nessun `lock_key`** anti-overlap (SKIP LOCKED rende i worker concorrenti
+   sicuri, e un lock di sessione verrebbe rilasciato dal `system_process_context`
+   per-item dei job SISTEMA); (c) alias di sistema per i job SISTEMA = `system_fatturazione`
+   (unico BYPASSRLS oggi; alias dominio-neutro = cleanup futuro, nessun job SISTEMA
+   seedato ora).
+3. ✅ **BE consumatore C-3 FATTO (2026-07-21, working tree)**: handler
+   `apps/vendite/services/fatturazione_giro_handler.py` (registrato in
+   `VenditeConfig.ready()`, chiama il core C-1 sotto RLS operatore, corsia
+   differita→EMESSA, codici errore registrati); endpoint `ApiFatturazioneRun`
+   (`POST /vendite/fatturazione/run/`, enqueue OPERATORE + scope catturato +
+   chiave business per-mese; header HTTP + `dbops.idempotency_keys` = 2° layer);
+   polling `ApiFatturazioneRunStato` (`GET run/<job_id>/`, ownership operatore).
+   Codici HTTP `E_LOTTO_NON_NUMERABILE`(409)/`E_JOB_NON_TROVATO`(404) registrati
+   in `error_policies`. 10 test. C-4/C-5 già FATTI e indipendenti.
+4. ⬜ **Deploy**: systemd timer per `draina_coda_lavori` (+ validazione in-app,
+   DB dev senza dati di processo).
 
 ## 9. Punti aperti da decidere
 

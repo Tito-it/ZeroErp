@@ -4,7 +4,7 @@
 // del pannello "Passaggi" aprono il dettaglio impilato (come il link pratica
 // apre PraticaDrawer), invece di navigare alla lista. La mappa tipo->drawer
 // (con import async che spezza il ciclo di import) vive in lineageDrawers.js.
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, markRaw } from 'vue'
 import { LINEAGE_DRAWERS } from './lineageDrawers'
 
 const props = defineProps({
@@ -22,10 +22,19 @@ const emit = defineEmits(['update:visible'])
 const activeTipo = ref(null)
 const activeId = ref(null)
 const innerVisible = ref(false)
+// Componente RISOLTO del drawer attivo (il modulo importato, non un
+// `defineAsyncComponent`): reso solo dopo che il chunk e' caricato, così monta
+// in modo SINCRONO con `innerVisible=false` e osserva poi la transizione
+// false->true che innesca `@after-show`/il watch di caricamento dettaglio.
+// Con un componente async il figlio reale montava un microtask dopo, quando
+// `innerVisible` era gia' true -> apertura con i soli default (bug "prima
+// volta vuoto"). markRaw: e' una definizione componente, non va resa reattiva.
+const resolvedComp = ref(null)
 // Contatore di aperture: entra nella :key -> ogni open rimonta un'istanza
 // PULITA del drawer anche su stesso (tipo, id). Senza, il drawer riaperto
 // mostrerebbe lo stato del load precedente (catena/dettaglio stantii se nel
-// frattempo il documento e' cambiato: evasione, push, reso).
+// frattempo il documento e' cambiato: evasione, push, reso). Fa anche da
+// token anti-stale per l'apertura async sotto (open concorrenti).
 const openSeq = ref(0)
 
 const activeEntry = computed(() => (activeTipo.value ? LINEAGE_DRAWERS[activeTipo.value] : null))
@@ -40,19 +49,36 @@ const drawerProps = computed(() => {
   return p
 })
 
-// Apertura: monta il drawer del tipo richiesto e lo apre al tick successivo
-// (visible false->true dà lo slide-in di PrimeVue Drawer).
+// Apertura: (1) attende il caricamento del chunk del drawer, (2) rende il
+// componente risolto -> monta nascosto (visible=false), (3) al tick successivo
+// lo apre (visible false->true dà lo slide-in di PrimeVue Drawer E fa scattare
+// @after-show/il watch di caricamento dettaglio del figlio). Attendere il
+// chunk e montare il componente reale PRIMA di aprire e' cio' che elimina il
+// "primo click apre vuoto": senza, il figlio nasceva gia' visibile (o montava
+// asincrono dopo il flip) e non vedeva la transizione.
 watch(
   () => [props.visible, props.tipoCodice, props.docId],
-  ([vis, tipo, id]) => {
-    if (vis && tipo && id != null && LINEAGE_DRAWERS[tipo]) {
-      activeTipo.value = tipo
-      activeId.value = id
-      openSeq.value += 1
-      nextTick(() => { innerVisible.value = true })
-    } else {
+  async ([vis, tipo, id]) => {
+    if (!(vis && tipo && id != null && LINEAGE_DRAWERS[tipo])) {
       innerVisible.value = false
+      return
     }
+    const entry = LINEAGE_DRAWERS[tipo]
+    activeTipo.value = tipo
+    activeId.value = id
+    innerVisible.value = false
+    resolvedComp.value = null
+    const seq = (openSeq.value += 1)
+    // Carica il chunk PRIMA di rendere il drawer, poi rende il componente
+    // risolto (mount sincrono). Import deduplicato dalla cache dei moduli.
+    let mod
+    try { mod = await entry.load() } catch { return }
+    // Apertura piu' recente vince: scarta i risultati di open sorpassate.
+    if (seq !== openSeq.value) return
+    resolvedComp.value = markRaw(mod.default ?? mod)
+    await nextTick() // il drawer monta ora, ancora nascosto (visible=false)
+    if (seq !== openSeq.value) return
+    innerVisible.value = true // transizione false->true: slide-in + load figlio
   },
   { immediate: true },
 )
@@ -67,8 +93,8 @@ function onInnerVisible(v) {
 
 <template>
   <component
-    :is="activeEntry.comp"
-    v-if="activeEntry"
+    :is="resolvedComp"
+    v-if="resolvedComp"
     :key="`${activeTipo}:${activeId}:${openSeq}`"
     :visible="innerVisible"
     v-bind="drawerProps"
