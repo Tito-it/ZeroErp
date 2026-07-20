@@ -54,7 +54,8 @@ _STALE_MINUTI_DEFAULT = 30
 
 
 # Scopo: Drena la coda stampa. Perimetro e risultato:
-#         1. (opz.) reaper delle righe IN_CORSO stantie → PENDING;
+#         1. (opz.) reaper delle righe IN_CORSO stantie → PENDING (o ERRORE
+#            oltre soglia: il recupero consuma un tentativo, anti poison-job);
 #         2. claim atomico di ≤ `limit` work-item PENDING (SKIP LOCKED);
 #         3. per ciascuno: risolve l'emittente dalla fattura, numera (backstop
 #            C-2d), genera il PDF in contesto sistema, marca l'esito;
@@ -76,8 +77,13 @@ def draina_coda_stampa(
     vendite_repo = vendite_repo or VenditeRepository()
     doc_service = doc_service or DocumentGenerationService()
 
+    # Il reaper consuma un tentativo per riga recuperata (anti poison-job):
+    # passa la stessa soglia usata da marca_stampa_errore.
     recuperate = (
-        repo.reset_stale_stampe_in_corso(stale_minuti) if stale_minuti > 0 else 0
+        repo.reset_stale_stampe_in_corso(
+            stale_minuti, soglia_tentativi=soglia_tentativi,
+        )
+        if stale_minuti > 0 else 0
     )
 
     items = repo.claim_stampe_pending(limit)

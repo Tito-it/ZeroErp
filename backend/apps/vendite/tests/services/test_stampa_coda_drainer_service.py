@@ -180,16 +180,20 @@ class DrainerErrorPathTests(SimpleTestCase):
 
 class DrainerReaperTests(SimpleTestCase):
 
-    # 7. Il reaper viene invocato con la soglia stantie e conteggiato.
+    # 7. Il reaper viene invocato con soglia stantie + soglia tentativi (anti
+    #    poison-job: il recupero consuma un tentativo) e conteggiato.
     def test_reaper_chiamato_con_stale_minuti(self) -> None:
         repo, vr, ds = _mocks(claim=[])
         repo.reset_stale_stampe_in_corso.return_value = 3
 
         summary = draina_coda_stampa(
-            repo=repo, vendite_repo=vr, doc_service=ds, stale_minuti=15,
+            repo=repo, vendite_repo=vr, doc_service=ds,
+            stale_minuti=15, soglia_tentativi=4,
         )
 
-        repo.reset_stale_stampe_in_corso.assert_called_once_with(15)
+        repo.reset_stale_stampe_in_corso.assert_called_once_with(
+            15, soglia_tentativi=4,
+        )
         self.assertEqual(summary["recuperate"], 3)
 
     # 8. stale_minuti=0 disabilita il reaper (nessuna chiamata).

@@ -11,6 +11,8 @@ from apps.vendite.api.views import (
     ApiFatturazioneApprovaCompetenza,
     ApiFatturazioneEsiti,
     ApiFatturazioneNumeraLotto,
+    ApiFatturazioneRun,
+    ApiFatturazioneRunStato,
     ApiLottiList,
     ApiLottoDetail,
     ApiLottoFattureList,
@@ -272,6 +274,18 @@ urlpatterns = [
         "fatturazione/esiti/",
         ApiFatturazioneEsiti.as_view(),
         name="vendite-fatturazione-esiti",
+    ),
+    # C-3: giro di fatturazione on-demand (accoda in dbops.coda_lavori, non
+    # bloccante) + polling dello stato del job (ownership operatore).
+    path(
+        "fatturazione/run/",
+        ApiFatturazioneRun.as_view(),
+        name="vendite-fatturazione-run",
+    ),
+    path(
+        "fatturazione/run/<int:job_id>/",
+        ApiFatturazioneRunStato.as_view(),
+        name="vendite-fatturazione-run-stato",
     ),
     # --- Lookup statici (Fase 2 refactor frontend vendite) ---
     path(

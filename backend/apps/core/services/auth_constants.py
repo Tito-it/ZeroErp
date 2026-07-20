@@ -50,6 +50,12 @@ AUDIT_ACTOR_BATCH_FATTURAZIONE = "BATCH_FATTURAZIONE"
 # prodotte dal worker rispetto ai giri di fatturazione.
 AUDIT_ACTOR_WORKER_STAMPA = "WORKER_STAMPA_DOCUMENTI"
 
+# Attore d'audit del worker DRAINER della coda lavori generica
+# (`dbops.coda_lavori`): identità dei job `run_as=SISTEMA` eseguiti sul canale
+# di sistema. I job `run_as=OPERATORE` girano invece con `app.jwt_user` =
+# l'operatore che li ha accodati (scope catturato), non con questo attore.
+AUDIT_ACTOR_WORKER_CODA_LAVORI = "WORKER_CODA_LAVORI"
+
 # Scopo: Ruoli che accedono ai namespace portale (`/api/portale/*`).
 RUOLI_PORTALE: frozenset[str] = frozenset({
     RUOLO_APPLICATIVO_CLIENTE_PORTALE,

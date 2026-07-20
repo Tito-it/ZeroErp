@@ -18,6 +18,14 @@ from collections.abc import Iterator
 
 from django.db import DEFAULT_DB_ALIAS, connections
 
+# Alias DB del canale di sistema per la fatturazione (settings.DATABASES),
+# ruolo BYPASSRLS `zeroerp_batch_fatturazione` — Path A. FONTE UNICA del
+# letterale (regola del 2, 2026-07-21): i consumer (run_fatturazione_batch,
+# draina_coda_stampa, drainer coda lavori) importano da qui. È l'unico canale
+# BYPASSRLS oggi disponibile; un alias dominio-neutro è un cleanup futuro
+# quando esisteranno job SISTEMA non-vendite.
+SYSTEM_FATTURAZIONE_DB_ALIAS = "system_fatturazione"
+
 # Scopo: legge il valore corrente di `rolbypassrls` per il ruolo della connessione
 #        passata (default: connessione `default`). Una sola query leggera; usata sia
 #        dal gateway (sanity fail-loud sul canale batch) sia dal middleware web

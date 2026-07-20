@@ -31,12 +31,15 @@ _GATEWAY_WHITELIST = {
     # Worker drainer della coda stampa (Fase C C-2b): headless, stesso canale
     # di sistema del batch (ruolo BYPASSRLS) — uso legittimo del gateway.
     "vendite/management/commands/draina_coda_stampa.py",
+    # Drainer coda lavori generica: dispatch per-item dei job run_as=SISTEMA sul
+    # canale di sistema (BYPASSRLS); i job OPERATORE restano su RLS attiva.
+    "core/services/coda_lavori/drainer_service.py",
     "core/middleware/jwt_audit_middleware.py",
 }
-# L'alias DB compare anche dove il canale è cablato (command) e nel gateway.
+# Il LETTERALE dell'alias DB vive SOLO in system_context (fonte unica, regola
+# del 2 — 2026-07-21): i consumer importano la costante SYSTEM_FATTURAZIONE_DB_ALIAS.
 _ALIAS_WHITELIST = {
     "core/services/system_context.py",
-    "vendite/management/commands/run_fatturazione_batch.py",
 }
 
 

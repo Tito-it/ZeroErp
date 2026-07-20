@@ -298,7 +298,7 @@ const selectedIds = computed(() => selected.value.map((r) => r.id))
   <Drawer
     :visible="visible"
     position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
+    :style="{ width: DRAWER_WIDTH.WIDE }"
     :dismissable="true"
     @update:visible="(v) => { if (!v) onClose() }"
     @after-show="onAfterShow"
@@ -406,7 +406,7 @@ const selectedIds = computed(() => selected.value.map((r) => r.id))
               <span class="app-commessa-segment" :title="data.segment_key">{{ data.segment_key }}</span>
             </template>
           </Column>
-          <Column field="quantita" :header="t('vendite.commesse.col_quantita')" style="width: 90px;">
+          <Column field="quantita" :header="t('vendite.commesse.col_quantita')" style="width: 80px;">
             <template #body="{ data }">
               {{ data.quantita ?? '—' }}
             </template>
@@ -428,12 +428,12 @@ const selectedIds = computed(() => selected.value.map((r) => r.id))
               </span>
             </template>
           </Column>
-          <Column field="stato_approvazione" :header="t('vendite.commesse.col_approvazione')" style="width: 110px;">
+          <Column field="stato_approvazione" :header="t('vendite.commesse.col_approvazione')" style="width: 100px;">
             <template #body="{ data }">
               <Tag :value="data.stato_approvazione" :severity="statoApprovazioneAttivitaSeverity(data.stato_approvazione)" />
             </template>
           </Column>
-          <Column field="stato_emissione" :header="t('vendite.commesse.col_emissione')" style="width: 110px;">
+          <Column field="stato_emissione" :header="t('vendite.commesse.col_emissione')" style="width: 100px;">
             <template #body="{ data }">
               <Tag :value="data.stato_emissione" :severity="statoEmissioneAttivitaSeverity(data.stato_emissione)" />
             </template>
@@ -499,7 +499,7 @@ const selectedIds = computed(() => selected.value.map((r) => r.id))
 }
 .app-commessa-segment {
   display: inline-block;
-  max-width: 16rem;
+  max-width: 10rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

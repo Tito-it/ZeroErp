@@ -42,8 +42,13 @@ LOCALES = os.path.join(SRC, "locales")
 DBDOCS = os.path.join(ROOT, "docs", "it", "dbzero")
 # Seed delle transizioni di stato: il `meta` jsonb porta le label_key dei
 # pulsanti di cambio stato, che sono emesse verso l'utente esattamente come
-# quelle scritte nel corpo delle capability.
-SEED = os.path.join(ROOT, "db", "changelog", "migrations_v2", "80_data", "sql", "config")
+# quelle scritte nel corpo delle capability. I CSV vivono nella sottocartella
+# dello schema che possiede la tabella: quasi tutti sotto `config/`, ma quelli
+# di tabelle non-config (es. `vendite.transizioni_stati_commessa`) stanno sotto
+# la cartella dello schema. Si scandisce quindi l'intero albero `80_data/sql`,
+# non la sola `config/`, altrimenti le label_key di quei seed sfuggirebbero al
+# controllo e l'errore tornerebbe silenzioso (il caso commessa di luglio 2026).
+SEED = os.path.join(ROOT, "db", "changelog", "migrations_v2", "80_data", "sql")
 
 STRICT_ROOTS = "--strict-roots" in sys.argv
 
@@ -173,15 +178,16 @@ def main():
     # nel `meta` jsonb e finiscono all'utente come etichette dei pulsanti di
     # cambio stato, quindi valgono quanto quelle scritte nelle funzioni.
     if os.path.isdir(SEED):
-        for f in sorted(os.listdir(SEED)):
-            if not (f.startswith("transizioni_stati_") and f.endswith(".csv")):
-                continue
-            path = os.path.join(SEED, f)
-            with open(path, encoding="utf-8") as fh:
-                testo = fh.read()
-            rel = os.path.relpath(path, ROOT)
-            for m in RE_SEED_KEY.finditer(testo):
-                db_keys.setdefault(m.group(1), set()).add(rel)
+        for dirpath, _dirs, files in os.walk(SEED):
+            for f in sorted(files):
+                if not (f.startswith("transizioni_stati_") and f.endswith(".csv")):
+                    continue
+                path = os.path.join(dirpath, f)
+                with open(path, encoding="utf-8") as fh:
+                    testo = fh.read()
+                rel = os.path.relpath(path, ROOT)
+                for m in RE_SEED_KEY.finditer(testo):
+                    db_keys.setdefault(m.group(1), set()).add(rel)
 
     rotte = sorted((k, v) for k, v in citate.items() if k not in presenti)
     db_rotte = sorted((k, v) for k, v in db_keys.items() if k not in presenti)

@@ -22,14 +22,14 @@ from django.core.management.base import BaseCommand, CommandError
 
 from apps.core.services.auth_constants import AUDIT_ACTOR_BATCH_FATTURAZIONE
 from apps.core.services.job_run import ORIGINE_CRON, registered_job
-from apps.core.services.system_context import system_process_context
+from apps.core.services.system_context import (
+    SYSTEM_FATTURAZIONE_DB_ALIAS,
+    system_process_context,
+)
 from apps.vendite.services.fatturazione_driver_service import (
     esegui_giro_fatturazione,
     modalita_disponibili,
 )
-
-# Alias DB del canale di sistema per la fatturazione (settings.DATABASES) — Path A.
-SYSTEM_FATTURAZIONE_DB_ALIAS = "system_fatturazione"
 
 
 class Command(BaseCommand):
