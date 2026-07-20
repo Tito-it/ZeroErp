@@ -1,10 +1,10 @@
 # Brief DB — Coda lavori generica (`dbops.coda_lavori`)
 
 > **Tipo**: brief operativo per il **team DB** · **Target**: `dev/db-tid` · **Data**: 2026-07-20
-> · **Owner**: Tid · **Stato**: 🟢 **APPLICATO + TESTATO** (2026-07-20) — changeSet
-> `20260720-07..10` migrati, pgTAP `test-coda-lavori.sql` verde `plan(57)`, doc manual
-> fatte. **Commit pendente.** Prerequisito del giro fatturazione on-demand (C-3) e
-> fondazione async dell'ERP.
+> · **Owner**: Tid · **Stato**: 🟢 **APPLICATO + TESTATO + COMMITTATO** (2026-07-20/21) —
+> changeSet `20260720-07..10` migrati, pgTAP `test-coda-lavori.sql` verde `plan(57)`, doc
+> manual + guida divulgativa fatte, autogen rigenerato. Prerequisito del giro fatturazione
+> on-demand (C-3) e fondazione async dell'ERP. **Prossimo: BE.**
 >
 > **Design-of-record**:
 > [brief-design-coda-lavori-generica.md](brief-design-coda-lavori-generica.md) — leggere

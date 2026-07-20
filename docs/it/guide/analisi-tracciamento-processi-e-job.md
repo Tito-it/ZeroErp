@@ -12,6 +12,7 @@
 > * [Guida Sistema di Audit Logging](/guide/messaggi-audit) — il registro delle operazioni
 > * [Guida Messaggi di Errore e Generazione Log](/guide/Messaggi-di-Errore-e-Generazione-Log) — error logging e routing di dominio
 > * [Guida Framework di Automazione DB](/guide/automazione-db) — automazioni dichiarative e audit
+> * [Guida Gestione delle code di lavoro](/guide/gestione-code-di-lavoro) — job asincroni su richiesta; il worker che li drena si registra qui in `job_run_log`
 > * [PostgreSQL: pgAgent](/postgresql/pgAgent) — lo scheduler integrato
 
 ---
