@@ -21,6 +21,12 @@ Indice test eseguiti:
 19) LottoPipelineRunnerUnitTests.test_runner_emits_pipeline_error_event
 20) LottoPipelineRunnerUnitTests.test_runner_syncs_fatture_to_step_stato_on_forward
 21) LottoPipelineRunnerUnitTests.test_runner_does_not_sync_fatture_in_dry_run
+22) test_runner_emits_pipeline_started_event (famiglia eventi, vedi classi sotto)
+23) test_until_done_advances_and_stops_at_chiude_lotto (driver F2)
+24) test_until_done_ferma_a_stato_richiesto (C-1, FERMATO_A_STATO)
+25) test_until_done_stops_on_no_progress_without_chiude_flag
+26) test_until_done_existing_lotto_already_at_last_step_no_phantom_step
+27) test_until_done_blocked_by_critical_returns_outcome
 """
 
 from contextlib import nullcontext
@@ -673,6 +679,23 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertEqual(esito["motivo_stop"], "COMPLETATO")
         self.assertEqual(esito["stato_doc_fiscale_id"], 8)
         self.assertEqual([c["stato_doc_fiscale_id"] for c in step_executor.calls], [1, 2, 8])
+
+    # Scopo: C-1 (gate fiscale D-1) — con fino_a_stato_doc_fiscale_id=2 (EMESSA)
+    # il driver si FERMA allo stato richiesto senza eseguire lo step DEFINITIVA:
+    # 2 step eseguiti [1,2], motivo FERMATO_A_STATO.
+    def test_until_done_ferma_a_stato_richiesto(self):
+        repo = self._StatefulRepo(chiude_su=8)
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+            esito = runner.run_lotto_until_done(
+                LottoPipelineParams(dry_run=True, fino_a_stato_doc_fiscale_id=2)
+            )
+        self.assertEqual(esito["lotto_id"], 10)
+        self.assertEqual(esito["step_eseguiti"], 2)
+        self.assertEqual(esito["motivo_stop"], "FERMATO_A_STATO")
+        self.assertEqual(esito["stato_doc_fiscale_id"], 2)
+        self.assertEqual([c["stato_doc_fiscale_id"] for c in step_executor.calls], [1, 2])
 
     # Scopo: F2 — senza flag chiude_lotto, il driver si ferma per "nessun avanzamento"
     # una volta esaurito il catalogo (3 step eseguiti), esito COMPLETATO.

@@ -6,6 +6,7 @@
 # ------------------------------------------------------------
 
 
+from dataclasses import replace
 from datetime import date
 
 from apps.core.db.dbops_repository import DbopsRepository
@@ -55,6 +56,11 @@ def _validate_pipeline_lookups(
                 context={"utility_id": utility_id},
                 function_name=function_name,
             )
+
+
+# Cache modulo-level codice->id degli stati di fermata (C-1): vocabolario
+# config seed-stabile, un solo lookup per processo per codice.
+_STATO_FERMATA_ID_CACHE: dict[str, int] = {}
 
 
 # Scopo: Costruisce i params del runner dai kwargs del facade (riuso single/until-done).
@@ -135,14 +141,39 @@ def run_lotto_pipeline_until_done(
     meta: LottoPipelineMeta | None = None,
     dry_run: bool = False,
     tipo_lotto: str = "MASSIVO",
+    fino_a_stato: str | None = None,
 ) -> dict[str, object]:
-    """Entrypoint servizio Python per eseguire la catena lotto fino a conclusione."""
+    """Entrypoint servizio Python per eseguire la catena lotto fino a conclusione.
+
+    `fino_a_stato` (C-1, gate fiscale D-1): codice_interno di
+    config.stati_doc_fiscale (es. 'EMESSA') a cui la catena si FERMA con
+    motivo_stop=FERMATO_A_STATO. None = fino in fondo (storico)."""
     _validate_pipeline_lookups(
         tipo_doc_fiscale_id=tipo_doc_fiscale_id,
         utility_id=utility_id,
         function_name="vendite.pipeline_service.run_lotto_pipeline_until_done",
     )
     runner = LottoPipelineRunner()
+    # Risoluzione codice -> id qui (il runner confronta id, Python puro), con
+    # cache modulo-level: config.stati_doc_fiscale e' vocabolario seed stabile
+    # (gli id non cambiano a runtime) e il driver chiama questa facade una
+    # volta PER TERNA con lo stesso codice — senza cache sarebbero N lookup
+    # identici per giro.
+    fino_a_stato_id: int | None = None
+    if fino_a_stato is not None:
+        fino_a_stato_id = _STATO_FERMATA_ID_CACHE.get(fino_a_stato)
+        if fino_a_stato_id is None:
+            fino_a_stato_id = runner.repository.get_stato_doc_fiscale_id(fino_a_stato)
+            ErrorManager.require(
+                fino_a_stato_id is not None,
+                code="E_PIPELINE_VALIDATION",
+                message="Stato di fermata non valido.",
+                detail=f"fino_a_stato={fino_a_stato!r} non trovato in config.stati_doc_fiscale",
+                context={"fino_a_stato": fino_a_stato},
+                function_name="vendite.pipeline_service.run_lotto_pipeline_until_done",
+            )
+            assert fino_a_stato_id is not None
+            _STATO_FERMATA_ID_CACHE[fino_a_stato] = fino_a_stato_id
     params = _build_pipeline_params(
         lotto_id=lotto_id,
         competenza_mese=competenza_mese,
@@ -155,6 +186,8 @@ def run_lotto_pipeline_until_done(
         dry_run=dry_run,
         tipo_lotto=tipo_lotto,
     )
+    if fino_a_stato_id is not None:
+        params = replace(params, fino_a_stato_doc_fiscale_id=fino_a_stato_id)
     return runner.run_lotto_until_done(params)
 
 

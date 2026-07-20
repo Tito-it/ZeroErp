@@ -34,6 +34,11 @@ class LottoPipelineParams:
     meta: LottoPipelineMeta | None = None
     dry_run: bool = False
     tipo_lotto: str = "MASSIVO"
+    # C-1 (gate fiscale D-1): id stato_doc_fiscale a cui FERMARSI in
+    # run_lotto_until_done (raggiunto lo stato, la catena si arresta con
+    # motivo FERMATO_A_STATO). None = fino in fondo (comportamento storico).
+    # Confronto Python puro: la risoluzione codice->id sta nel chiamante.
+    fino_a_stato_doc_fiscale_id: int | None = None
 
 
 class LottoPipelineRunner:
@@ -538,6 +543,15 @@ class LottoPipelineRunner:
                 break
             step_eseguiti += 1
             last_stato_doc = after_stato_doc
+            # Fermata voluta (C-1, gate fiscale D-1): raggiunto lo stato
+            # richiesto la catena si arresta QUI — la numerazione (DEFINITIVA)
+            # e' un processo separato avviato da umano.
+            if (
+                params.fino_a_stato_doc_fiscale_id is not None
+                and after_stato_doc == params.fino_a_stato_doc_fiscale_id
+            ):
+                motivo_stop = "FERMATO_A_STATO"
+                break
             if after_stato_doc is not None and self.repository.is_stato_doc_chiude_lotto(
                 after_stato_doc
             ):

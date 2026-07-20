@@ -26,6 +26,8 @@ from django.core.management import call_command
 from apps.core.services.service_errors import ServiceError
 
 _CMD = "apps.vendite.management.commands.run_fatturazione_batch"
+# Core estratto (C-1): repository e pipeline vivono nel service condiviso.
+_SVC = "apps.vendite.services.fatturazione_driver_service"
 
 
 # Scopo: helper che costruisce una lane (terna emittente, tipo_doc, utility) come la
@@ -58,8 +60,8 @@ class RunFatturazioneBatchCommandTests(TestCase):
     #        tipo_doc_fiscale_id e competenza presi DALLA LANE.
     def test_immediata_runs_per_coppia_with_giornaliero_and_filter(self):
         cm, _h = _registered_job_cm()
-        with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
-             patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
+        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+             patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run, \
              patch(f"{_CMD}.system_process_context"), \
              patch(f"{_CMD}.registered_job", cm):
             RepoCls.return_value.list_emittibili_lane.return_value = [
@@ -93,8 +95,8 @@ class RunFatturazioneBatchCommandTests(TestCase):
     # Scopo: corsia differita → MASSIVO + filtro False.
     def test_differita_uses_massivo_and_false_filter(self):
         cm, _h = _registered_job_cm()
-        with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
-             patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
+        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+             patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run, \
              patch(f"{_CMD}.system_process_context"), \
              patch(f"{_CMD}.registered_job", cm):
             RepoCls.return_value.list_emittibili_lane.return_value = [_lane(9)]
@@ -107,8 +109,8 @@ class RunFatturazioneBatchCommandTests(TestCase):
 
     # Scopo: dry-run → solo discovery/conteggio, nessun run pipeline, nessuna registrazione.
     def test_dry_run_only_discovers_and_skips_registration(self):
-        with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
-             patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
+        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+             patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run, \
              patch(f"{_CMD}.system_process_context"), \
              patch(f"{_CMD}.registered_job") as mock_reg:
             RepoCls.return_value.list_emittibili_lane.return_value = [_lane(1, tot=2)]
@@ -125,8 +127,8 @@ class RunFatturazioneBatchCommandTests(TestCase):
     # Scopo: best-effort → un emittente in errore non blocca gli altri.
     def test_best_effort_on_error(self):
         cm, _h = _registered_job_cm()
-        with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
-             patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
+        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+             patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run, \
              patch(f"{_CMD}.system_process_context"), \
              patch(f"{_CMD}.registered_job", cm):
             RepoCls.return_value.list_emittibili_lane.return_value = [_lane(1), _lane(2)]
@@ -148,8 +150,8 @@ class RunFatturazioneBatchCommandTests(TestCase):
             SYSTEM_FATTURAZIONE_DB_ALIAS,
         )
         cm, _h = _registered_job_cm()
-        with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
-             patch(f"{_CMD}.run_lotto_pipeline_until_done"), \
+        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+             patch(f"{_SVC}.run_lotto_pipeline_until_done"), \
              patch(f"{_CMD}.registered_job", cm), \
              patch(f"{_CMD}.system_process_context") as mock_gateway:
             RepoCls.return_value.list_emittibili_lane.return_value = []
@@ -175,8 +177,8 @@ class RunFatturazioneBatchCommandTests(TestCase):
             captured["handle"] = handle
             yield handle
 
-        with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
-             patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
+        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+             patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run, \
              patch(f"{_CMD}.system_process_context"), \
              patch(f"{_CMD}.registered_job", _cm):
             RepoCls.return_value.list_emittibili_lane.return_value = [_lane(7)]
@@ -195,8 +197,8 @@ class RunFatturazioneBatchCommandTests(TestCase):
     # Scopo: lock occupato (acquired=False) → il corpo NON viene eseguito (skip).
     def test_skip_when_lock_busy(self):
         cm, _h = _registered_job_cm(acquired=False)
-        with patch(f"{_CMD}.CommesseRepository") as RepoCls, \
-             patch(f"{_CMD}.run_lotto_pipeline_until_done") as mock_run, \
+        with patch(f"{_SVC}.CommesseRepository") as RepoCls, \
+             patch(f"{_SVC}.run_lotto_pipeline_until_done") as mock_run, \
              patch(f"{_CMD}.system_process_context"), \
              patch(f"{_CMD}.registered_job", cm):
             out = StringIO()

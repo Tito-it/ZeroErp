@@ -50,6 +50,10 @@
 #  24. aggiungi_allegati_append_persiste_file (+ evento ALLEGATO_AGGIUNTO)
 #  25. aggiungi_allegati_documento_inesistente_raises_not_found
 #  26. aggiungi_allegati_lista_vuota_raises_validation
+#  27. genera_documento_path_sistema_completo_audit_none (C-0)
+#  28. genera_documento_scope_none_senza_canale_sistema_raises (C-0)
+#  29. genera_documento_scope_esplicito_guard_emittente (C-0)
+#  30. genera_documento_path_sistema_template_override_usa_repo (C-0)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -967,3 +971,112 @@ class AggiungiAllegatiTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.create_documento_generato_file.assert_not_called()
         storage.write.assert_not_called()
+
+
+# =====================================================================
+# C-0 — path sistema (scope separato dallo user, cockpit Fase C)
+# =====================================================================
+
+
+def _patch_bypassrls(value: bool):
+    return patch(
+        "apps.core.services.system_context.connection_role_bypasses_rls",
+        return_value=value,
+    )
+
+
+class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
+    """C-0: `emittente_scope` esplicito separa chi autorizza da cosa genera.
+
+    Indice test (27..30):
+     27. path sistema (user=None, scope=None, canale BYPASSRLS) -> pipeline
+         completa, audit a None, PermissionResolver MAI interpellato
+     28. user=None + scope=None su canale NON di sistema -> VALIDATION
+         fail-loud, nessun accesso repo/storage
+     29. scope esplicito lista: guard emittente si applica senza auth guard
+     30. template override in path sistema -> repo.get_template (non reader)
+    """
+
+    # 27. path sistema: pipeline completa senza utente.
+    def test_genera_documento_path_sistema_completo_audit_none(self) -> None:
+        template = _template_row()
+        versione = _versione_row()
+        svc, repo, _, storage = _service_with_mocks(
+            repo_methods={
+                "find_template_applicabile": template,
+                "get_versione_pubblicata_attiva": versione,
+                "next_progressivo_sorgente": 1,
+                "create_documento_generato": (99, "uid-sys"),
+                "create_documento_generato_file": 1,
+                "emit_evento_documento": 1,
+                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "attivo": True},
+            },
+            storage_methods={"write": "fs:sys"},
+        )
+        with _patch_scope([1]) as scope_mock, _patch_bypassrls(True), \
+                _patch_get_builder({"numero": 7}), _patch_render():
+            with _patch_transaction_atomic_noop():
+                result = svc.genera_documento(
+                    None,
+                    emittente_scope=None,
+                    **_GENERA_DEFAULT,
+                )
+        self.assertEqual(result["id"], 99)
+        # Lo scope NON viene derivato dallo user: il chiamante l'ha risolto.
+        scope_mock.assert_not_called()
+        documento_data = repo.create_documento_generato.call_args.args[0]
+        self.assertIsNone(documento_data["generato_da_user_id"])
+        evento_data = repo.emit_evento_documento.call_args.args[0]
+        self.assertIsNone(evento_data["user_id"])
+        storage.write.assert_called_once()
+
+    # 28. user=None + scope=None su canale web -> fail-loud, niente DB.
+    def test_genera_documento_scope_none_senza_canale_sistema_raises(self) -> None:
+        svc, repo, _, storage = _service_with_mocks()
+        with _patch_bypassrls(False):
+            with self.assertRaises(ServiceError) as ctx:
+                svc.genera_documento(None, emittente_scope=None, **_GENERA_DEFAULT)
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.find_template_applicabile.assert_not_called()
+        storage.write.assert_not_called()
+
+    # 29. scope esplicito lista: emittente fuori whitelist -> rifiutato,
+    #     senza passare dall'auth guard (user=None ammesso).
+    def test_genera_documento_scope_esplicito_guard_emittente(self) -> None:
+        svc, repo, _, storage = _service_with_mocks()
+        with self.assertRaises(ServiceError) as ctx:
+            svc.genera_documento(
+                None, emittente_scope=[1, 2], **_GENERA_DEFAULT,
+            )
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.find_template_applicabile.assert_not_called()
+        storage.write.assert_not_called()
+
+    # 30. override template in path sistema: repo.get_template con lo scope
+    #     del chiamante, il reader (che pretende auth) non viene toccato.
+    def test_genera_documento_path_sistema_template_override_usa_repo(self) -> None:
+        template = _template_row(template_id=42)
+        versione = _versione_row()
+        svc, repo, reader, _ = _service_with_mocks(
+            repo_methods={
+                "get_template": template,
+                "get_versione_pubblicata_attiva": versione,
+                "next_progressivo_sorgente": 1,
+                "create_documento_generato": (99, "uid-sys"),
+                "create_documento_generato_file": 1,
+                "emit_evento_documento": 1,
+                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "attivo": True},
+            },
+            storage_methods={"write": "fs:sys"},
+        )
+        with _patch_bypassrls(True), _patch_get_builder({"numero": 7}), _patch_render():
+            with _patch_transaction_atomic_noop():
+                svc.genera_documento(
+                    None,
+                    emittente_scope=None,
+                    template_documento_id=42,
+                    **_GENERA_DEFAULT,
+                )
+        repo.get_template.assert_called_once_with(42, emittente_ids_scope=None)
+        reader.get_template.assert_not_called()
+        repo.find_template_applicabile.assert_not_called()

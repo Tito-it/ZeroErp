@@ -1446,6 +1446,20 @@ class VenditePipelineRepository:
                 [fattura_id],
             )
 
+    # Scopo: Accoda in vendite.fatture_stampa_coda una riga PENDING per ogni
+    #        fattura non esclusa del lotto (outbox stampa, Fase C C-2c).
+    #        Idempotente (indice unico parziale sui work-item vivi).
+    #        Ritorna il numero di righe accodate.
+    def accoda_stampe_lotto(self, lotto_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_accoda_stampe_lotto(%s)",
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
+
     # Scopo: Gestisce `sync_lotto_fatture_stato` nel flusso applicativo del modulo.
     def sync_lotto_fatture_stato(
         self,
