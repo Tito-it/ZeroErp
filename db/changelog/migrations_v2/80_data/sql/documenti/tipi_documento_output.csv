@@ -4,3 +4,4 @@ id,codice,codice_interno,descrizione,attivo,meta,storicizza,data_insert,user_ins
 3,OFFERTA_COMMERCIALE,OFFERTA_COMMERCIALE,Offerta commerciale,true,{},"true",2026-05-26 00:00:00,titodb,2026-05-26 00:00:00,titodb,NULL
 4,ORDINE_VENDITA,ORDINE_VENDITA,Ordine vendita,true,{},"true",2026-06-04 00:00:00,titodb,2026-06-04 00:00:00,titodb,NULL
 5,DDT_VENDITA,DDT_VENDITA,DDT vendita,true,{},"true",2026-07-10 00:00:00,titodb,2026-07-10 00:00:00,titodb,NULL
+6,FATTURA_VENDITA,FATTURA_VENDITA,fattura vendita,true,{},"true",2026-07-10 00:00:00,titodb,2026-07-10 00:00:00,titodb,NULL
