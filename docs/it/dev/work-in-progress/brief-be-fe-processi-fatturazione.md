@@ -1,7 +1,9 @@
 # Brief BE/FE — Cockpit processi fatturazione in Dashboard Competenza
 
 > **Tipo**: brief operativo BE/FE (piano a step) · **Target**: `dev/backend-tid`
-> · **Data**: 2026-07-19 · **Owner**: Tid · **Stato**: ⬜ **DA INIZIARE**
+> · **Data**: 2026-07-19 · **Owner**: Tid · **Stato**: 🟡 **FASI A+B FATTE (2026-07-20,
+> non committate) + revisione critica passata** — vedi §«Revisione critica 2026-07-20»
+> dopo il gate B. Fase C da iniziare; validazione in-app A+B ancora aperta (DB dev vuoto).
 >
 > **Design-of-record**:
 > [brief-design-gestione-processi-fatturazione.md](brief-design-gestione-processi-fatturazione.md)
@@ -11,6 +13,11 @@
 > (decisioni **B-1..B-5**, revisione outbox 2026-07-19) — **gate**: gli step che usano le
 > azioni di processo e la coda stampa partono a oggetti DB **G1** applicati
 > ([[feedback_be_fe_attende_prerequisiti_db]]).
+> **Stato prerequisito (2026-07-20)**: ✅ **G1 APPLICATO, COMMITTATO E PUSHATO** (commit
+> `67d63cae9`; verificato sul DB vivo: azioni 26/27 attive, coda + `fn_accoda_stampe_lotto`
+> esistono, task policy su pipeline 4/6, e G2 correttamente NON attivo — DEFINITIVA contiene
+> solo `numera_fatture`). **Gate Fase A aperto.** Valori concreti in §5; la parte stampa
+> (C-2*) ha le fondamenta pronte, l'attivazione G2 resta alla release BE (C-10).
 > **Contesto**: non siamo in produzione ([[project_no_produzione_solo_sviluppo]]).
 > **Parte da**: motore fatturazione completo e headless + le tre lenti vive.
 >
@@ -54,15 +61,19 @@ implementazione «da interfaccia».
 
 | # | Step | Dettaglio | Stato |
 | --- | --- | --- | --- |
-| A-1 | **BE — endpoint approvazione righe commessa** | `POST /vendite/commesse/<id>/attivita/approva/` · body `{righe_ids?: int[]}` (assente = tutte le NON_EMESSA) → `fn_approva_commessa_attivita(p_commessa_id, p_righe_ids, p_user)`. `post_permission = "approva_attivita_commessa"`, `Idempotency-Key` (la fn è già idempotente: 2ª chiamata = 0 righe). Ritorna `{approvate: N}` | ⬜ |
-| A-2 | **BE — approvazione massiva per competenza** | `POST /vendite/fatturazione/approva-competenza/` · body `{competenza_mese, commessa_ids?}` → risolve le commesse del perimetro (scope emittente RLS) e cicla A-1 per commessa in **una** `transaction.atomic()`; esito `{commesse: N, approvate: M, errori: [...]}`. Stesso permesso di A-1 | ⬜ |
-| A-3 | **BE — lista/dettaglio commessa per il drawer** | `GET /vendite/commesse/` (lista minima filtrabile per competenza/BA/stato, paginata) + `GET /vendite/commesse/<id>/` se `fn_get_commessa_stato` non basta da solo (già espone contatori + `capabilities`) | ⬜ |
-| A-4 | **FE — `CommessaGestioneDrawer`** | Drawer **autonomo** ([[feedback_drawer_autonomi]]): testata+stato+contatori da `fn_get_commessa_stato`; azioni di stato da `available_actions` via `useDrawerActions`+`DrawerActionsBar`; righe da `GET /commesse/<id>/attivita/` con **selezione multipla** → «Approva selezionate» (A-1); azioni prezzo per riga (N5/N7/sblocco, endpoint esistenti); tab Passaggi (lineage riusato). Readonly-aware ([[feedback_drawer_readonly]]) | ⬜ |
-| A-5 | **FE — azioni nella Dashboard Competenza** | Card `DA_APPROVARE` → «Approva tutto il mese» con `useConfirmAction` (conferma con **contatore + valore**); kebab `RowActionsMenu` sul drill-down → Approva riga · Apri commessa (apre A-4). Action-gate `action: 'approva_attivita_commessa'`; refresh aggregata + drill-down dopo l'azione | ⬜ |
-| A-6 | **Test + doc** | Test service A-1/A-2 (validazione, idempotenza, perimetro, 0-righe), test API (permesso, 404, envelope); doc `api_commessa_attivita.md` aggiornata + `api.md`; cataloghi BB se emergono estrazioni | ⬜ |
+| A-1 | **BE — endpoint approvazione righe commessa** | `POST /vendite/commesse/<id>/attivita/approva/` · body `{righe_ids?: int[]}` (assente = tutte le NON_EMESSA) → `fn_approva_commessa_attivita(p_commessa_id, p_righe_ids, p_user)`. `post_permission = "approva_attivita_commessa"`, `Idempotency-Key` (la fn è già idempotente: 2ª chiamata = 0 righe). Ritorna `{approvate: N}` | ✅ 2026-07-20 — view `ApiCommessaAttivitaApprova` + service `approva_commessa_attivita` (guard input, 404 parlante); repo wrapper già esistente riusato |
+| A-2 | **BE — approvazione massiva per competenza** | `POST /vendite/fatturazione/approva-competenza/` · body `{competenza_mese, commessa_ids?}` → popolazione da `vw_dash_competenza_attivita` (`stadio=DA_APPROVARE`, **WYSIWYG con la card**, scope emittente in-vista) e ciclo per commessa in **una** `transaction.atomic()` (all-or-nothing; retry innocuo, fn idempotente); esito `{commesse: N, approvate: M}`. Stesso permesso di A-1 | ✅ 2026-07-20 — view `ApiFatturazioneApprovaCompetenza` + service `approva_attivita_competenza` + repo `list_da_approvare_per_competenza` |
+| A-3 | **BE — lista/dettaglio commessa per il drawer** | `GET /vendite/commesse/` (lista minima) + `GET /vendite/commesse/<id>/` | ✅ **NON SERVE** (2026-07-20): il drawer si apre dal drill-down che porta già `commessa_id`, e `GET /commesse/<id>/stato/` (contatori + `capabilities`) + `GET /commesse/<id>/attivita/` (righe) coprono tutto. Nessuna lista commesse necessaria in Fase A |
+| A-4 | **FE — `CommessaGestioneDrawer`** | Drawer **autonomo** ([[feedback_drawer_autonomi]]): testata+stato+contatori da `fn_get_commessa_stato`; azioni di stato da `available_actions` via `useDrawerActions`+`DrawerActionsBar`; righe da `GET /commesse/<id>/attivita/` con **selezione multipla** → «Approva selezionate» (A-1); azioni prezzo per riga (N5/N7/sblocco, endpoint esistenti); Passaggi (lineage riusato). Readonly-aware ([[feedback_drawer_readonly]]) | ✅ 2026-07-20 — `src/vendite/components/CommessaGestioneDrawer.vue`: contatori funnel, `DrawerActionsBar` da capabilities, righe con `useSelezioneToggle` (checkbox custom sulle sole BOZZA+NON_EMESSA) + «Approva selezionate/tutte», kebab prezzi N5/N7/sblocco (dialog variazione), `LineagePassaggiPanel`, `content-ready`+`loadDetailOrClose`, gate `useActionPermission` |
+| A-5 | **FE — azioni nella Dashboard Competenza** | Card `DA_APPROVARE` → «Approva tutto il mese» con `useConfirmAction` (conferma con **contatore + valore**); kebab `RowActionsMenu` sul drill-down → Approva riga · Apri commessa (apre A-4). Action-gate `action: 'approva_attivita_commessa'`; refresh aggregata + drill-down dopo l'azione | ✅ 2026-07-20 — bottone «Approva mese» sul card DA_APPROVARE (`@click.stop`, conferma con n+valore+mese), colonna kebab nel drill-down (Approva riga solo su DA_APPROVARE + Apri commessa), drawer A-4 montato con `@saved`→refresh. Gate permesso+readonly |
+| A-6 | **Test + doc** | Test service A-1/A-2, test API, doc; cataloghi BB se emergono estrazioni | ✅ 2026-07-20 — BE: 10 test service + 8 test API (permission allowed/denied), suite **vendite 1196 + core 604 verdi**, doc `api_commessa_attivita.md` (2 sezioni). FE: **build Vite verde**, **lint pulito**, i18n it+en completa (parity verificata). Nessuna estrazione BB nuova (riusati `useSelezioneToggle`, `mapAvailableActionsToDrawerActions`, `RowActionsMenu`, `useConfirmAction`, `useActionPermission`) |
 
 **Gate di uscita A**: da `/vendite/dashboard-competenza` si porta `DA_APPROVARE` a zero senza
-toccare curl, e ogni commessa è ispezionabile/governabile dal drawer.
+toccare curl, e ogni commessa è ispezionabile/governabile dal drawer. 🟢 **Codice completo,
+build+test verdi. Aperto: validazione in-app** (⚠️ su questo DB di sviluppo la vista
+`vw_dash_competenza_attivita` è **vuota anche per admin globale** — nessuna riga `DA_APPROVARE`
+proiettata — quindi il flusso `Approva mese` non è stato esercitabile end-to-end con dati
+reali: da verificare in app con uno scope/dati che popolano la Lente 1).
 
 ---
 
@@ -73,14 +84,67 @@ toccare curl, e ogni commessa è ispezionabile/governabile dal drawer.
 
 | # | Step | Dettaglio | Stato |
 | --- | --- | --- | --- |
-| B-1 | **BE — dettaglio lotto** | `GET /vendite/lotti/<id>/` (testata + step corrente + contatori). Le sotto-risorse esistono già: `fatture/`, `task-runs/`, `segnalazioni/`. ⚠️ Verificato: **nessuna vista DB nuova serve** (la lista filtra già per competenza/stato/emittente/tipo_doc con scope) | ⬜ |
-| B-2 | **FE — `LottiListView`** | Rotta `/vendite/lotti` + voce di menu vendite (**D-4**), pattern lista standard ([[feedback_lista_pattern_standard]]): filtri competenza/stato/tipo_doc/emittente, `statoDocFiscaleSeverity`, kebab → apri drawer | ⬜ |
-| B-3 | **FE — `LottoDrawer` diagnostico** | Step corrente + fatture + task-run (tentativi/esiti) + segnalazioni + timeline eventi. Tab, contenuto deferito (`@after-show`) | ⬜ |
-| B-4 | **FE+BE — azioni sul lotto** | «Avanza step» (`pipeline/run/`, un step per click — com'è il motore) · «Rerun» su ERRORE · «Riporta a bozza» (`reset-draft/`) con **conferma forte e linguaggio onesto**: *demolisce le fatture pre-fiscali del lotto; le attività restano libere per un lotto nuovo* · reset singola fattura DRAFT. Action-gate sui permessi esistenti (`genera_fatture_lotti`, `reset_lotto_draft`, `reset_lotto_fattura_draft`) | ⬜ |
-| B-5 | **FE — raggiungibilità contestuale** | Dal pannello **errori** e dal breakdown `FATTURATA` della dashboard si atterra sul lotto già filtrato (D-4: stesso drawer nei due percorsi) | ⬜ |
-| B-6 | **Test + doc** | Test API dettaglio lotto; doc `api_lotti.md`/`api.md`; catalogo BB FE per i componenti nuovi | ⬜ |
+| B-1 | **BE — dettaglio lotto** | `GET /vendite/lotti/<id>/` (testata + step corrente). Le sotto-risorse esistono già: `fatture/`, `task-runs/`, `segnalazioni/`. ⚠️ Verificato: **nessuna vista DB nuova serve** | ✅ 2026-07-20 — `VenditeRepository.get_lotto` (proiezione+JOIN+mapping condivisi con `list_lotti` via `_LOTTO_SELECT_COLS`/`_LOTTO_JOINS`/`_map_lotto_row`, no duplicazione) + `fn_get_lotto` (scope emittente → 404 `E_LOTTO_NON_TROVATO` su fuori-scope/inesistente) + `ApiLottoDetail` + route `lotti/<id>/`. 4 test API |
+| B-2 | **FE — `LottiListView`** | Rotta `/vendite/lotti` + voce di menu vendite (**D-4**): filtri competenza/stato, semaforo stato lotto, kebab → apri drawer | ✅ 2026-07-20 — `src/vendite/views/LottiListView.vue` + `api/lotti.js`; rotta `vendite-lotti` + voce menu (icona `pi pi-server`); filtri mese+stato, `statoLottoSeverity`, row-click e kebab aprono il drawer |
+| B-3 | **FE — `LottoDrawer` diagnostico** | Step corrente + fatture + task-run (tentativi/esiti) + segnalazioni. Tab, contenuto deferito (`@after-show`) | ✅ 2026-07-20 — `src/vendite/components/LottoDrawer.vue`: testata + step corrente, 3 tab (Fatture / Task-run con tentativi+esito+errore / Segnalazioni con contatori), banner segnalazioni critiche, `content-ready`+`loadDetailOrClose`. Timeline eventi omessa (nessun endpoint `event_log`; i task-run coprono la traccia operativa) |
+| B-4 | **FE+BE — azioni sul lotto** | «Avanza step» · «Rerun» su ERRORE · «Riporta a bozza» (conferma forte e onesta: *demolisce le fatture pre-fiscali; le attività restano libere*) · reset singola fattura DRAFT. Action-gate sui permessi esistenti | ✅ 2026-07-20 — Avanza/Rerun (`pipeline/run/`, stesso endpoint, un step) gated `genera_fatture_lotti` (Rerun solo su ERRORE, Avanza bloccato da segnalazioni critiche); «Riporta a bozza» `danger`+label «Demolisci» + messaggio esplicito, gated `reset_lotto_draft`; reset fattura DRAFT dal kebab, gated `reset_lotto_fattura_draft` |
+| B-5 | **FE — raggiungibilità contestuale** | Dal pannello **errori** e dal breakdown `FATTURATA` della dashboard si atterra sul lotto già filtrato | 🟡 **parziale** 2026-07-20 — il `LottoDrawer` è un componente riusabile: montabile dalla dashboard con lo stesso pattern. **Rinviato** l'aggancio dai pannelli errori/breakdown della Dashboard Competenza (richiede il `lotto_id` sulle righe errore/attività — da verificare nel payload; non bloccante per il gate B) |
+| B-6 | **Test + doc** | Test API dettaglio lotto; doc; catalogo BB FE | ✅ 2026-07-20 — 4 test API (`VenditeLottoDetailApiTests`: ok/jwt/404/scope), suite vendite verde; **build Vite + lint puliti**; i18n it+en `vendite.lotti` (parity verificata) + nav label; doc dettaglio in `api_lotti_list.md`. Nessuna estrazione BB nuova |
 
 **Gate di uscita B**: un lotto in ERRORE si diagnostica e si sblocca dall'app, senza psql.
+🟢 **Codice completo, build+test verdi. Aperto: validazione in-app** (⚠️ su questo DB di
+sviluppo `vendite.fatturazione_lotti` e `vendite.fatture` sono **vuote** — 0 lotti — quindi
+lista/drawer/azioni non sono stati esercitabili end-to-end con dati reali; `fn_get_lotto`
+verificato su 404, `fn_list_lotti` gira). B-5 (aggancio contestuale da dashboard) rinviato,
+non bloccante.
+
+---
+
+## Revisione critica 2026-07-20 (pre-commit, tutto il codice A+B)
+
+Review a 8 angoli (3 correttezza + riuso/semplificazione/efficienza + altitudine +
+convenzioni) con passo di verifica: 24 candidati → 10 finding confermati → **9 corretti**,
+1 segnalato (P-6). Post-fix: **suite vendite 1200 test verdi, lint pulito, build Vite
+verde, check i18n verde**.
+
+**Fix funzionali:**
+
+* **Reset-fattura era una feature morta** (B-3/B-4): il gate FE usava
+  `descrizione.includes('DRAFT')` ma il seed ha descrizione «Bozza» → l'azione non
+  compariva mai. `list_lotto_fatture` ora proietta **`stato_doc_fiscale_codice`**
+  (`codice_interno` stabile) e il FE gate su `=== 'DRAFT'` (doc
+  `api_lotto_fatture_list.md` aggiornata: i gate FE usano SEMPRE il codice, mai la
+  descrizione display).
+* **`LottoDrawer` ignorava il readonly d'area**: in LETTURA restavano cliccabili le azioni
+  distruttive (incluso «Riporta a bozza»). Ora prop `readonly` + `useInjectReadonly` con
+  azioni/kebab nascosti, simmetrico al drawer commessa.
+* **Errori silenziosi**: `loadRighe`/`loadTabs` senza catch → tabella vuota
+  indistinguibile da «nessun dato». Ora toast fail-visible (`extractApiError`).
+* **A-2**: la SELECT della popolazione DA_APPROVARE è stata spostata **dentro** la
+  `transaction.atomic()` (snapshot e scritture nella stessa transazione).
+
+**Fix riuso/convenzioni/efficienza:**
+
+* `LottiListView` rifatta su **`usePagedDashFetch`** (prima paginazione hand-rolled senza
+  guard anti-race) + eliminato il doppio fetch iniziale (solo `onActivated` sotto
+  KeepAlive).
+* 6 mappe severity inline (una duplicata byte-identica in 2 file) centralizzate in
+  `core/utils/severity.js` (`statoLottoSeverity`, `statoTaskRunSeverity`,
+  `statoEsecuzioneFatturaSeverity`, `statoApprovazioneAttivitaSeverity`,
+  `statoEmissioneAttivitaSeverity`).
+* Dialog N7 → **`AppDialog width="sm"`** (era `<Dialog>` grezzo con width hardcoded).
+* Letterale SQL `'DA_APPROVARE'` → costante **`DASH_STADIO_DA_APPROVARE`**
+  (vendite_repository, unico owner del vocabolario stadi) passata come parametro; gate
+  approvazione deduplicato in un solo computed `canApprova` (dashboard + drawer);
+  `prezzo_snapshot != null`; reload mirato post reset-fattura (testata+fatture, non 4
+  richieste).
+
+**Scartati in verifica** (falsi positivi o per-spec): loop per-commessa in A-2 (design del
+brief), `assert` dopo `require` (AGENTS.md li richiede), array vuoto→400 (fail-safe
+corretto), «Avanza» su lotto COMPLETATO (intenzionale: COMPLETATO a EMESSA avanza a
+DEFINITIVA), doppia normalizzazione mese (defense-in-depth). Rinviate a Fase C come
+migliorie candidate: capabilities BE sul dettaglio lotto (oggi il gating rerun/avanza è su
+letterali stato FE) e flag `approvabile` calcolato dal BE sulle righe attività.
 
 ---
 
@@ -142,6 +206,7 @@ in coordinamento col DB.
 | P-3 | Template fattura: non esiste ancora (i template sono dato di configurazione, non seed). Senza, la stampa non ha cosa renderizzare | prima di C-2 in-app |
 | P-4 | Soglia oltre cui un'operazione «singola» diventa background (I-3): il criterio è la cardinalità, ma se il documento singolo risultasse lento va tarato sull'evidenza | in C-3, con numeri veri |
 | P-5 | Cadenza del worker drainer (cron) e numero di worker paralleli: `FOR UPDATE SKIP LOCKED` regge il parallelismo, ma la cadenza va tarata sul ritardo accettabile tra «Rendi definitive» e PDF disponibile | in C-2b, con volumi veri |
+| P-6 | ⚠️ **Scritture famiglia commesse senza scope emittente** (revisione 2026-07-20, CONFERMATO): il nuovo `attivita/approva/` **e** gli endpoint pre-esistenti stato + prezzi N5/N7 non verificano che la commessa appartenga all'emittente dell'operatore, e `commesse`/`commesse_attivita` **non hanno RLS** (analisi RLS: «NO in prima battuta», asimmetria lettura/scrittura già segnalata lì). Un operatore con permesso azione ma scope X può scrivere su commesse di Y per id. Gap **sistemico pre-esistente**, non introdotto dalla Fase A → niente toppa asimmetrica sul solo endpoint nuovo: la soluzione è **RLS su `commesse`/`commesse_attivita`** via brief al team DB ([[feedback_db_actions_passaggio_team]]) | decisione Tid: brief DB dedicato (consigliato prima della release C) |
 
 ---
 
@@ -189,8 +254,53 @@ dipendenza dal team DB**. È interamente lavoro BE dello step **C-0**, prerequis
 C-2b/C-2c/C-2d. Il guard di scope resta pieno sul path web (defense-in-depth invariata); sul
 path sistema l'autorizzazione è il canale stesso (`system_process_context` fail-loud se il
 ruolo non è BYPASSRLS). Il **consumatore reale** del path sistema è il **worker drainer**
-(C-2b): il brief DB (§3, RLS della coda) conferma lo stesso pattern — scrittura del worker in
-canale sistema, come `run_fatturazione_batch`.
+(C-2b): il brief DB conferma lo stesso pattern — scrittura del worker in canale sistema,
+come `run_fatturazione_batch`.
+
+---
+
+## 5. Fondamenta DB G1 — cosa il BE trova già pronto (valori reali, 2026-07-20)
+
+Scritto dal team DB (commit `67d63cae9`, in attesa di apply). Il BE si aggancia a **questi**
+nomi/firme — niente da indovinare:
+
+**Azioni di processo** (`config.azioni_processo`): `26 approva_attivita_commessa` (`pericolosa=f`),
+`27 numera_fatture_lotti` (`pericolosa=t`), area `2` (vendite) → per i `post_permission` di A-1/A-2 e C-4.
+
+**Task pipeline** (`dbops.pipeline_task_registry` id 18 / `_impl` id 18): `task_code =
+stampa_documenti_lotto`, `handler_code = stampa_documenti_lotto_default` → la chiave che C-2c
+registra in `PipelineStepExecutor.handler_registry`. Policy (`fatturazione_pipeline_task_policy`
+id 15/16, pipeline 4 e 6): `annullabile=t`, `resume_mode=RESUME_TASK`.
+
+**Funzione accodamento** — firma reale per l'handler C-2c:
+`vendite.fn_accoda_stampe_lotto(p_lotto_id bigint) RETURNS integer` (righe accodate). Accoda
+**una riga PENDING per ogni fattura non esclusa** del lotto (`fatturazione_lotti_fatture` con
+`esclusa IS NOT TRUE`), `sorgente_tipo_id = FATTURA` (risolto da `config.sorgenti`, no
+hardcode), **`sorgente_uid = fattura.id::text`** (key_selector FATTURA), idempotente
+(`ON CONFLICT … DO NOTHING` sull'indice parziale). L'handler è quindi davvero
+`SELECT vendite.fn_accoda_stampe_lotto(<lotto_id>)`.
+
+**Coda** `vendite.fatture_stampa_coda` — colonne per il worker (C-2b) e il monitoraggio (C-5):
+`id`, `sorgente_tipo_id`, `sorgente_id` (= `fatture.id`, FK), `sorgente_uid`, `lotto_id` (FK,
+NULL per ristampa on-demand), `template_documento_id` (override opz.), `stato`
+(`PENDING/IN_CORSO/FATTO/ERRORE`), `tentativi`, `ultimo_errore` (jsonb), `documento_id`
+(esito). Indice **`ix_fatture_stampa_coda_da_lavorare`** su `id WHERE stato IN (PENDING,
+IN_CORSO)` → è la corsia del `SELECT … FOR UPDATE SKIP LOCKED` del worker. Unico parziale
+`uq_fatture_stampa_coda_vivo (sorgente_tipo_id, sorgente_id) WHERE stato IN (PENDING,
+IN_CORSO)` → anti-doppione vivo.
+
+> ⚠️ **Scelta di modello del team DB (rispetto alla specifica): la coda NON ha
+> `emittente_fiscale_id`.** È un **satellite di `vendite.fatture`** (`sorgente_id = fatture.id`)
+> e lo **scope emittente si deriva via JOIN alla fattura**, non da una colonna denormalizzata.
+> Conseguenze per il BE:
+>
+> * **C-2b worker**: gira in canale sistema (BYPASSRLS) → vede tutto, nessun impatto;
+> * **C-5 monitoraggio (lettura operatore)**: il filtro scope emittente va fatto **JOIN
+>   `fatture`** (o via la RLS già attiva su `vendite.fatture`), non su una colonna della coda.
+>   Da tenere presente scrivendo la query di stato coda: l'operatore vede solo le stampe delle
+>   proprie fatture per emittente, coerente con le altre liste vendite;
+> * **C-2 cablaggio FATTURA**: `genera_documento` riceve `emittente_fiscale_id` — nel worker si
+>   ricava dalla fattura (`sorgente_id`), non dalla riga di coda.
 
 ---
 

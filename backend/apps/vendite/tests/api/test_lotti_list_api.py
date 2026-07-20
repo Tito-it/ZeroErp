@@ -21,6 +21,10 @@ Indice test eseguiti:
 12) VenditeLottiListApiTests.test_list_lotti_senza_filtri_lista_vuota_ok
 13) VenditeLottiListApiTests.test_list_lotti_scope_emittente_non_superuser
 14) VenditeLottiListApiTests.test_list_lotti_scope_emittente_superuser
+15) VenditeLottoDetailApiTests.test_get_lotto_detail_ok
+16) VenditeLottoDetailApiTests.test_get_lotto_detail_requires_jwt
+17) VenditeLottoDetailApiTests.test_get_lotto_detail_not_found
+18) VenditeLottoDetailApiTests.test_get_lotto_detail_scope_non_superuser
 """
 
 from datetime import date
@@ -218,3 +222,55 @@ class VenditeLottiListApiTests(JwtMockedApiTest):
         self.client.get("/api/v1/vendite/lotti/")
         kwargs = mocked_list.call_args.kwargs
         self.assertIsNone(kwargs["auth_user_id"])
+
+
+class VenditeLottoDetailApiTests(JwtMockedApiTest):
+    """Dettaglio testata singolo lotto (cockpit Fase B, B-1)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        cache.clear()
+        self.client = Client()
+
+    # Scopo: dettaglio ok → 200 con la testata del lotto.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.fn_get_lotto")
+    def test_get_lotto_detail_ok(self, mocked_get, _mock_auth):
+        mocked_get.return_value = _LOTTO_ROW
+        response = self.client.get("/api/v1/vendite/lotti/42/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["id"], 42)
+        self.assertEqual(data["codice"], "LOT-2026-001")
+        mocked_get.assert_called_once()
+        self.assertEqual(mocked_get.call_args.kwargs["lotto_id"], 42)
+
+    # Scopo: endpoint richiede JWT.
+    def test_get_lotto_detail_requires_jwt(self):
+        response = self.client.get("/api/v1/vendite/lotti/42/")
+        self.assertEqual(response.status_code, 401)
+
+    # Scopo: lotto inesistente/fuori scope → 404 E_LOTTO_NON_TROVATO.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.fn_get_lotto")
+    def test_get_lotto_detail_not_found(self, mocked_get, _mock_auth):
+        from apps.core.services.service_errors import ServiceError
+
+        mocked_get.side_effect = ServiceError(code="E_LOTTO_NON_TROVATO", message="Lotto non trovato.")
+        response = self.client.get("/api/v1/vendite/lotti/999/")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["error"]["code"], "E_LOTTO_NON_TROVATO")
+
+    # Scopo: scope emittente — auth_user_id passato al service per non-superuser.
+    @patch("apps.core.api.permissions.ZeroERPPermission.has_permission", return_value=True)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    @patch("apps.vendite.api.views.fn_get_lotto")
+    def test_get_lotto_detail_scope_non_superuser(self, mocked_get, mock_auth, _mock_perm):
+        user = Mock()
+        user.id = 77
+        user.is_superuser = False
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+        mocked_get.return_value = _LOTTO_ROW
+        self.client.get("/api/v1/vendite/lotti/42/")
+        self.assertEqual(mocked_get.call_args.kwargs["auth_user_id"], 77)

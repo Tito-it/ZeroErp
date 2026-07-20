@@ -9,6 +9,8 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date, optional_uuid
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.commesse_service import (
+    approva_attivita_competenza,
+    approva_commessa_attivita,
     cambia_stato_commessa,
     fn_get_commessa_stato,
     fn_get_commesse_push_log,
@@ -26,7 +28,7 @@ from apps.vendite.services.pipeline_service import (
     run_lotto_pipeline,
     run_lotto_pipeline_until_done,
 )
-from apps.vendite.services.vendite_service import fn_list_lotti, fn_list_lotto_fatture
+from apps.vendite.services.vendite_service import fn_get_lotto, fn_list_lotti, fn_list_lotto_fatture
 
 # View API vendite: espone endpoint HTTP per avviare pipeline lotto.
 
@@ -404,6 +406,52 @@ class ApiLottiList(DomainAPIView):
 
 
 
+class ApiLottoDetail(DomainAPIView):
+    """Dettaglio testata di un singolo lotto (cockpit Fase B, drawer diagnostico).
+    Le sotto-risorse (fatture / task-runs / segnalazioni) restano endpoint
+    separati. Scope emittente in repo → 404 su lotto fuori scope/inesistente."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="VenditeLottoDetailResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeLottoDetailData",
+                        fields={
+                            "id": serializers.IntegerField(),
+                            "codice": serializers.CharField(),
+                            "competenza_mese": serializers.CharField(allow_null=True),
+                            "tipo_lotto": serializers.CharField(),
+                            "utility_id": serializers.IntegerField(allow_null=True),
+                            "utility_descrizione": serializers.CharField(allow_null=True),
+                            "stato_lotto": serializers.CharField(),
+                            "stato_operativo": serializers.CharField(),
+                            "stato_doc_fiscale_id": serializers.IntegerField(allow_null=True),
+                            "stato_doc_fiscale_descrizione": serializers.CharField(allow_null=True),
+                            "tipo_doc_fiscale_id": serializers.IntegerField(),
+                            "tipo_doc_fiscale_descrizione": serializers.CharField(allow_null=True),
+                            "area_geografica_id": serializers.IntegerField(allow_null=True),
+                            "area_geografica_descrizione": serializers.CharField(allow_null=True),
+                            "emittente_soggetto_ruolo_id": serializers.IntegerField(allow_null=True),
+                            "data_insert": serializers.CharField(allow_null=True),
+                            "user_insert": serializers.CharField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET la testata del lotto (scope emittente).
+    def get(self, request: Request, lotto_id: int) -> JsonResponse:
+        auth_user_id = get_scope_user_id(request)
+        data = fn_get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
+        return success_response(data)
+
+
 class ApiLottoFattureList(DomainAPIView):
     area_funzionale = "vendite"
     is_search_endpoint = True
@@ -697,6 +745,121 @@ class ApiCommessaAttivita(DomainAPIView):
             offset=offset,
         )
         return success_response(data)
+
+
+class ApiCommessaAttivitaApprova(DomainAPIView):
+    """Azione APPROVA sulle attivita' di una commessa (cockpit Fase A, A-1):
+    righe_ids assente = tutte le righe NON_EMESSA in BOZZA; altrimenti solo le
+    righe indicate (selezione dal drawer). Idempotente (fn DB)."""
+
+    area_funzionale = "vendite"
+    post_permission = "approva_attivita_commessa"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeCommessaAttivitaApprovaRequest",
+            fields={
+                "righe_ids": serializers.ListField(
+                    child=serializers.IntegerField(), required=False, allow_null=True,
+                ),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeCommessaAttivitaApprovaResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeCommessaAttivitaApprovaData",
+                        fields={
+                            "commessa_id": serializers.IntegerField(),
+                            "approvate": serializers.IntegerField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Approva le attivita' della commessa (tutte o selezione righe_ids).
+    def post(self, request: Request, commessa_id: int) -> JsonResponse:
+        # Scopo: delega al service la validazione input + esistenza + approvazione.
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            user = getattr(request.user, "username", None) or None
+            return approva_commessa_attivita(
+                commessa_id=commessa_id,
+                righe_ids=payload.get("righe_ids"),  # type: ignore[arg-type]
+                user=user,
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiFatturazioneApprovaCompetenza(DomainAPIView):
+    """Azione APPROVA massiva per mese di competenza (cockpit Fase A, A-2):
+    approva le attivita' in stadio DA_APPROVARE del mese — la popolazione della
+    card della Dashboard Competenza (stessa vista, scope emittente in-vista).
+    All-or-nothing in una transazione; idempotente (retry innocuo)."""
+
+    area_funzionale = "vendite"
+    post_permission = "approva_attivita_commessa"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeApprovaCompetenzaRequest",
+            fields={
+                "competenza_mese": serializers.DateField(required=True),
+                "commessa_ids": serializers.ListField(
+                    child=serializers.IntegerField(), required=False, allow_null=True,
+                ),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeApprovaCompetenzaResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeApprovaCompetenzaData",
+                        fields={
+                            "competenza_mese": serializers.CharField(),
+                            "commesse": serializers.IntegerField(),
+                            "approvate": serializers.IntegerField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Approva in massa le attivita' DA_APPROVARE del mese di competenza.
+    def post(self, request: Request) -> JsonResponse:
+        # Scopo: parsing payload + delega al service (validazioni e transazione).
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            user = getattr(request.user, "username", None) or None
+            return approva_attivita_competenza(
+                competenza_mese=optional_iso_date(payload, "competenza_mese"),  # type: ignore[arg-type]
+                commessa_ids=payload.get("commessa_ids"),  # type: ignore[arg-type]
+                user=user,
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
 _VARIAZIONE_PREZZO_REQUEST = inline_serializer(

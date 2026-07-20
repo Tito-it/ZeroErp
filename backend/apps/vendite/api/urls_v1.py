@@ -2,12 +2,15 @@ from django.urls import include, path
 
 from apps.vendite.api.views import (
     ApiCommessaAttivita,
+    ApiCommessaAttivitaApprova,
     ApiCommessaAttivitaRiallineaPrezzo,
     ApiCommessaAttivitaSbloccaPrezzo,
     ApiCommessaAttivitaVariazionePrezzoEccezionale,
     ApiCommessePushLog,
     ApiCommessaStato,
+    ApiFatturazioneApprovaCompetenza,
     ApiLottiList,
+    ApiLottoDetail,
     ApiLottoFattureList,
     ApiLottoSegnalazioniSummary,
     ApiLottoTaskRuns,
@@ -163,6 +166,7 @@ urlpatterns = [
         name="vendite-dashboard-backlog-documenti",
     ),
     path("lotti/", ApiLottiList.as_view(), name="vendite-lotti-list"),
+    path("lotti/<int:lotto_id>/", ApiLottoDetail.as_view(), name="vendite-lotto-detail"),
     path("pipeline/run/", ApiRunLottoPipeline.as_view(), name="vendite-run-lotto-pipeline"),
     path(
         "pipeline/run-until-done/",
@@ -237,6 +241,20 @@ urlpatterns = [
         "commesse/<int:commessa_id>/attivita/",
         ApiCommessaAttivita.as_view(),
         name="vendite-commessa-attivita",
+    ),
+    # Azione APPROVA righe (cockpit Fase A, A-1): tutte o selezione righe_ids.
+    path(
+        "commesse/<int:commessa_id>/attivita/approva/",
+        ApiCommessaAttivitaApprova.as_view(),
+        name="vendite-commessa-attivita-approva",
+    ),
+    # --- Fatturazione (cockpit Dashboard Competenza) ---
+    # Azione APPROVA massiva per mese di competenza (Fase A, A-2): la popolazione
+    # della card DA_APPROVARE (stessa vista del drill-down, scope in-vista).
+    path(
+        "fatturazione/approva-competenza/",
+        ApiFatturazioneApprovaCompetenza.as_view(),
+        name="vendite-fatturazione-approva-competenza",
     ),
     # --- Lookup statici (Fase 2 refactor frontend vendite) ---
     path(

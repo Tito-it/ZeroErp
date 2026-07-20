@@ -19,23 +19,39 @@ import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import DashMesiSidebar from '../../core/components/dash/DashMesiSidebar.vue'
 import DashMeseStepper from '../../core/components/dash/DashMeseStepper.vue'
 import DonutTransito from '../../core/components/charts/DonutTransito.vue'
+import Button from 'primevue/button'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import CommessaGestioneDrawer from '../components/CommessaGestioneDrawer.vue'
 import { useDashMesiNav } from '../../core/composables/useDashMesiNav'
-import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { useReadonlyMode, useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
+import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useActionPermission } from '../../core/composables/useActionPermission'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { statoDocFiscaleSeverity } from '../../core/utils/severity'
+import { approvaCommessaAttivita, approvaCompetenza } from '../api/commesse'
 import { useDashboardCompetenzaStore } from '../stores/dashboardCompetenza'
 
 const { t, te } = useI18n()
 const notify = useNotify()
 
-// Provider readonly di area: la lente e' consultazione pura, ma il provider
-// mantiene il pattern standard (ReadonlyBadge nel suffix toolbar).
+// Provider readonly di area: con le azioni di processo (Fase A cockpit) il
+// readonly ora governa anche i pulsanti Approva (ReadonlyBadge + gate).
 useReadonlyMode(READONLY_DOMAINS.VENDITE)
+const areaReadonly = useInjectReadonly()
+// Gate azione di processo (pattern action gate, L2): senza permesso i
+// pulsanti/kebab di approvazione spariscono (il BE resta la difesa vera).
+const { isAllowed: canApprovare } = useActionPermission('approva_attivita_commessa')
+// Gate unico dell'approvazione (permesso + readonly): card e kebab usano lo
+// stesso predicato — mai due copie che possono divergere.
+const canApprova = computed(() => canApprovare.value && !areaReadonly.value)
+const { execute, loading: azioneLoading } = useApiHandler()
+const { confirmAction } = useConfirmAction()
 
 const store = useDashboardCompetenzaStore()
 const {
@@ -244,6 +260,89 @@ const pageActions = computed(() => [
   },
 ])
 
+// ------------------------------------------------------------------ azioni (Fase A cockpit)
+// Card DA_APPROVARE del mese corrente (per contatore/valore della conferma).
+const cardDaApprovare = computed(() => cards.value.find((c) => c.stadio === 'DA_APPROVARE') ?? null)
+
+// Scopo: refresh post-azione — aggregata + drill-down aperto (gli errori
+//        seguono l'aggregata via watch).
+function reloadDopoAzione() {
+  loadMensile()
+  if (stadioSelezionato.value) loadAttivita()
+}
+
+// Scopo: verbo APPROVA a grana mese (A-2/D-3): conferma con contatore+valore
+//        (WYSIWYG con la card), poi POST approva-competenza sul mese corrente.
+function onApprovaMese() {
+  const card = cardDaApprovare.value
+  if (!card) return
+  confirmAction({
+    title: t('vendite.dashboard_competenza.approva_mese_header'),
+    message: t('vendite.dashboard_competenza.approva_mese_conferma', {
+      n: card.nAttivita,
+      valore: formatCurrency(card.valoreDisplay),
+      mese: `${nomiMesi.value[meseIdx.value]} ${anno.value}`,
+    }),
+    onAccept: async () => {
+      const res = await execute(() => approvaCompetenza(competenzaCorrente.value))
+      if (res !== null) {
+        notify.success(t('vendite.dashboard_competenza.approva_mese_esito', {
+          n: res?.approvate ?? 0,
+          commesse: res?.commesse ?? 0,
+        }))
+        reloadDopoAzione()
+      }
+    },
+  })
+}
+
+// Scopo: verbo APPROVA a grana riga dal drill-down (A-1): conferma e approva
+//        la singola attivita' della sua commessa.
+function onApprovaRiga(row) {
+  confirmAction({
+    title: t('vendite.dashboard_competenza.approva_riga_header'),
+    message: t('vendite.dashboard_competenza.approva_riga_conferma'),
+    onAccept: async () => {
+      const res = await execute(() =>
+        approvaCommessaAttivita(row.commessa_id, [row.commessa_attivita_id]))
+      if (res !== null) {
+        notify.success(t('vendite.dashboard_competenza.approva_riga_esito'))
+        reloadDopoAzione()
+      }
+    },
+  })
+}
+
+// Drawer di governo commessa (A-4), aperto dal kebab del drill-down.
+const commessaDrawerVisible = ref(false)
+const commessaDrawerId = ref(null)
+
+function apriCommessa(row) {
+  commessaDrawerId.value = row.commessa_id
+  commessaDrawerVisible.value = true
+}
+
+// Scopo: kebab riga drill-down — Apri commessa sempre; Approva solo sullo
+//        stadio DA_APPROVARE (con permesso e non in readonly).
+function buildAttivitaRowActions(row) {
+  return [
+    {
+      key: 'approva',
+      label: t('vendite.dashboard_competenza.azione_approva'),
+      icon: 'pi pi-check',
+      visible: stadioSelezionato.value === 'DA_APPROVARE' && canApprova.value,
+      disabled: azioneLoading.value,
+      command: () => onApprovaRiga(row),
+    },
+    {
+      key: 'apri_commessa',
+      label: t('vendite.dashboard_competenza.azione_apri_commessa'),
+      icon: 'pi pi-briefcase',
+      command: () => apriCommessa(row),
+    },
+  ]
+}
+
 // KeepAlive (ContentTabs): onActivated scatta anche al primo mount e a ogni
 // rientro in foreground — refresh idempotente di aggregata E drill-down
 // aperto; il pannello errori segue l'aggregata via watch
@@ -365,6 +464,18 @@ onActivated(() => {
             <span class="app-dash-stat-n">{{ card.nAttivita }}</span>
             <span class="app-dash-stat-sub">{{ t('vendite.dashboard_competenza.n_attivita') }}</span>
             <span class="app-dash-stat-euro">{{ formatCurrency(card.valoreDisplay) }}</span>
+            <!-- Verbo APPROVA a grana mese (Fase A cockpit): solo sul card
+                 DA_APPROVARE, gate permesso+readonly; @click.stop per non
+                 attivare il drill-down della card. -->
+            <Button
+              v-if="card.stadio === 'DA_APPROVARE' && card.nAttivita > 0 && canApprova"
+              :label="t('vendite.dashboard_competenza.approva_mese')"
+              icon="pi pi-check-circle"
+              size="small"
+              :disabled="azioneLoading"
+              style="margin-top: 0.5rem;"
+              @click.stop="onApprovaMese"
+            />
             <span v-if="card.nInRitardo > 0" class="app-dash-ritardo">
               <i class="pi pi-clock" />
               {{ t('vendite.dashboard_competenza.in_ritardo', { n: card.nInRitardo }) }}
@@ -542,6 +653,12 @@ onActivated(() => {
                   {{ data.valore_fatturato !== null ? formatCurrency(data.valore_fatturato) : '—' }}
                 </template>
               </Column>
+              <!-- Azioni riga (Fase A cockpit): Approva (solo DA_APPROVARE) + Apri commessa. -->
+              <Column :header="t('vendite.dashboard_competenza.col_azioni')" class="app-col-actions" :exportable="false">
+                <template #body="{ data }">
+                  <RowActionsMenu :row="data" :actions="buildAttivitaRowActions(data)" />
+                </template>
+              </Column>
             </DataTable>
             <div v-else class="app-empty-state">
               <i class="pi pi-check-circle" />
@@ -555,5 +672,12 @@ onActivated(() => {
         </div>
       </div>
     </div>
+
+    <!-- Drawer di governo commessa (A-4): riapprovvigiona la dashboard al save. -->
+    <CommessaGestioneDrawer
+      v-model:visible="commessaDrawerVisible"
+      :commessa-id="commessaDrawerId"
+      @saved="reloadDopoAzione"
+    />
   </div>
 </template>

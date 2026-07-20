@@ -15,6 +15,7 @@ from django.db import connection, transaction
 
 from apps.core.db._helpers import call_jsonb_fn
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.db.vendite_repository import DASH_STADIO_DA_APPROVARE
 from apps.vendite.types import (
     CommessaEmitResult,
     CommessaEmittibileLane,
@@ -510,6 +511,45 @@ class CommesseRepository:
             row = cursor.fetchone()
         assert row is not None
         return int(row[0])
+
+    # Scopo: Attivita' in stadio DA_APPROVARE del mese di competenza, raggruppate
+    #        per commessa, per l'approvazione massiva A-2 (WYSIWYG con la card).
+    def list_da_approvare_per_competenza(
+        self,
+        *,
+        competenza_mese: date,
+        commessa_ids: list[int] | None = None,
+    ) -> list[tuple[int, list[int]]]:
+        """Attivita' in stadio DA_APPROVARE per il mese di competenza, raggruppate
+        per commessa: [(commessa_id, [attivita_ids]), ...].
+
+        Legge vendite.vw_dash_competenza_attivita — la STESSA vista del drill-down
+        della Lente 1 — cosi' l'approvazione massiva copre esattamente cio' che la
+        card DA_APPROVARE mostra (WYSIWYG) e lo scope emittente e' applicato
+        in-vista (GUC app.current_user_id, security_invoker)."""
+        where_clauses = [
+            "stadio = %s",
+            "competenza_mese = date_trunc('month', %s::date)::date",
+        ]
+        params: list[Any] = [DASH_STADIO_DA_APPROVARE, competenza_mese]
+        if commessa_ids:
+            where_clauses.append("commessa_id = ANY(%s)")
+            params.append(commessa_ids)
+        where_sql = " AND ".join(where_clauses)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT commessa_id,
+                       array_agg(commessa_attivita_id ORDER BY commessa_attivita_id)
+                FROM vendite.vw_dash_competenza_attivita
+                WHERE {where_sql}
+                GROUP BY commessa_id
+                ORDER BY commessa_id
+                """,  # noqa: S608 — where_clauses da letterali interni parametrizzati
+                params,
+            )
+            raw = cursor.fetchall()
+        return [(int(r[0]), [int(i) for i in r[1]]) for r in raw]
 
     def cambia_stato_commessa(
         self,

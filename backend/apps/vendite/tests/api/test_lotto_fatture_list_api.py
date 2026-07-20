@@ -40,6 +40,7 @@ _FATTURA_ROW = {
     "stato_sdi_descrizione": None,
     "stato_doc_fiscale_id": 3,
     "stato_doc_fiscale_descrizione": "Fattura emessa",
+    "stato_doc_fiscale_codice": "EMESSA",
     "stato_esecuzione": "OK",
     "esclusa": False,
     "numero": 234,

@@ -89,9 +89,11 @@ DASH_APERTO_FASI: tuple[str, ...] = (
 
 # Stadi del funnel Lente 1 Competenza, nell'ordine commessa → fattura (brief
 # brief-db-fatturazione-due-lenti §4.1). Allineati al CASE `stadio` di
-# vendite.vw_dash_competenza_attivita.
+# vendite.vw_dash_competenza_attivita. Il primo stadio ha una costante puntuale:
+# e' il perimetro dell'approvazione massiva A-2 (un solo owner del letterale).
+DASH_STADIO_DA_APPROVARE = "DA_APPROVARE"
 DASH_COMPETENZA_STADI: tuple[str, ...] = (
-    "DA_APPROVARE",
+    DASH_STADIO_DA_APPROVARE,
     "DA_EMETTERE",
     "EMESSA_NON_FATTURATA",
     "FATTURATA",
@@ -153,6 +155,62 @@ class VenditeRepository:
 
     # Scopo: Restituisce elenco lotti paginato con JOIN decodifica e filtri opzionali.
     # Obiettivo: lista generica fatturazione_lotti con decodifiche config.
+    # Proiezione + JOIN + mapping condivisi da list_lotti e get_lotto (la testata
+    # del dettaglio è la stessa riga della lista: nessuna vista/colonna nuova).
+    _LOTTO_SELECT_COLS = """
+                fl.id,
+                fl.codice,
+                fl.competenza_mese,
+                fl.tipo_lotto,
+                fl.utility_id,
+                u.descrizione      AS utility_descrizione,
+                fl.stato_lotto,
+                fl.stato_operativo,
+                fl.stato_doc_fiscale_id,
+                sdf.descrizione    AS stato_doc_fiscale_descrizione,
+                fl.tipo_doc_fiscale_id,
+                tdf.descrizione    AS tipo_doc_fiscale_descrizione,
+                fl.area_geografica_id,
+                agf.descrizione    AS area_geografica_descrizione,
+                fl.emittente_soggetto_ruolo_id,
+                fl.data_insert,
+                fl.user_insert
+    """
+
+    _LOTTO_JOINS = """
+            LEFT JOIN config.utilities u
+                ON u.id = fl.utility_id
+            LEFT JOIN config.stati_doc_fiscale sdf
+                ON sdf.id = fl.stato_doc_fiscale_id
+            LEFT JOIN config.tipi_doc_fiscale tdf
+                ON tdf.id = fl.tipo_doc_fiscale_id
+            LEFT JOIN vendite.area_geografica_fatturazione agf
+                ON agf.id = fl.area_geografica_id
+    """
+
+    # Scopo: mappa una riga (ordine di _LOTTO_SELECT_COLS) in LottoListRow.
+    @staticmethod
+    def _map_lotto_row(row: tuple) -> LottoListRow:
+        return {
+            "id": int(row[0]),
+            "codice": str(row[1]),
+            "competenza_mese": row[2].isoformat() if row[2] is not None else None,
+            "tipo_lotto": str(row[3]),
+            "utility_id": None if row[4] is None else int(row[4]),
+            "utility_descrizione": row[5],
+            "stato_lotto": str(row[6]),
+            "stato_operativo": str(row[7]),
+            "stato_doc_fiscale_id": None if row[8] is None else int(row[8]),
+            "stato_doc_fiscale_descrizione": row[9],
+            "tipo_doc_fiscale_id": int(row[10]),
+            "tipo_doc_fiscale_descrizione": row[11],
+            "area_geografica_id": None if row[12] is None else int(row[12]),
+            "area_geografica_descrizione": row[13],
+            "emittente_soggetto_ruolo_id": None if row[14] is None else int(row[14]),
+            "data_insert": row[15].isoformat() if row[15] is not None else None,
+            "user_insert": str(row[16]),
+        }
+
     # Perimetro: solo lettura; nessun side-effect.
     # Risultato: tuple (lista LottoListRow, conteggio totale).
     def list_lotti(
@@ -200,16 +258,7 @@ class VenditeRepository:
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        joins = """
-            LEFT JOIN config.utilities u
-                ON u.id = fl.utility_id
-            LEFT JOIN config.stati_doc_fiscale sdf
-                ON sdf.id = fl.stato_doc_fiscale_id
-            LEFT JOIN config.tipi_doc_fiscale tdf
-                ON tdf.id = fl.tipo_doc_fiscale_id
-            LEFT JOIN vendite.area_geografica_fatturazione agf
-                ON agf.id = fl.area_geografica_id
-        """
+        joins = self._LOTTO_JOINS
 
         count_sql = f"""
             SELECT COUNT(*)
@@ -219,24 +268,7 @@ class VenditeRepository:
         """
 
         data_sql = f"""
-            SELECT
-                fl.id,
-                fl.codice,
-                fl.competenza_mese,
-                fl.tipo_lotto,
-                fl.utility_id,
-                u.descrizione      AS utility_descrizione,
-                fl.stato_lotto,
-                fl.stato_operativo,
-                fl.stato_doc_fiscale_id,
-                sdf.descrizione    AS stato_doc_fiscale_descrizione,
-                fl.tipo_doc_fiscale_id,
-                tdf.descrizione    AS tipo_doc_fiscale_descrizione,
-                fl.area_geografica_id,
-                agf.descrizione    AS area_geografica_descrizione,
-                fl.emittente_soggetto_ruolo_id,
-                fl.data_insert,
-                fl.user_insert
+            SELECT {self._LOTTO_SELECT_COLS}
             FROM vendite.fatturazione_lotti fl
             {joins}
             {where_clause}
@@ -253,30 +285,35 @@ class VenditeRepository:
             cursor.execute(data_sql, params + [safe_limit, safe_offset])
             rows = cursor.fetchall()
 
-        result: list[LottoListRow] = []
-        for row in rows:
-            result.append(
-                {
-                    "id": int(row[0]),
-                    "codice": str(row[1]),
-                    "competenza_mese": row[2].isoformat() if row[2] is not None else None,
-                    "tipo_lotto": str(row[3]),
-                    "utility_id": None if row[4] is None else int(row[4]),
-                    "utility_descrizione": row[5],
-                    "stato_lotto": str(row[6]),
-                    "stato_operativo": str(row[7]),
-                    "stato_doc_fiscale_id": None if row[8] is None else int(row[8]),
-                    "stato_doc_fiscale_descrizione": row[9],
-                    "tipo_doc_fiscale_id": int(row[10]),
-                    "tipo_doc_fiscale_descrizione": row[11],
-                    "area_geografica_id": None if row[12] is None else int(row[12]),
-                    "area_geografica_descrizione": row[13],
-                    "emittente_soggetto_ruolo_id": None if row[14] is None else int(row[14]),
-                    "data_insert": row[15].isoformat() if row[15] is not None else None,
-                    "user_insert": str(row[16]),
-                }
-            )
+        result: list[LottoListRow] = [self._map_lotto_row(row) for row in rows]
         return result, total_count
+
+    # Scopo: Restituisce il dettaglio testata di un singolo lotto (stessa
+    #        proiezione della lista), con scope emittente applicato: un lotto
+    #        fuori scope torna None → il BE risponde 404 (indistinguibile da id
+    #        inesistente, coerente con la RLS operatori, api.md §scope).
+    # Perimetro: sola lettura; nessun side-effect.
+    def get_lotto(
+        self, *, lotto_id: int, auth_user_id: int | None = None,
+    ) -> LottoListRow | None:
+        conditions: list[str] = ["fl.id = %s"]
+        params: list[Any] = [lotto_id]
+        self._add_scope_emittente(
+            auth_user_id, "fl.emittente_soggetto_ruolo_id", conditions, params
+        )
+        where_clause = "WHERE " + " AND ".join(conditions)
+        sql = f"""
+            SELECT {self._LOTTO_SELECT_COLS}
+            FROM vendite.fatturazione_lotti fl
+            {self._LOTTO_JOINS}
+            {where_clause}
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        return self._map_lotto_row(row)
 
     # Scopo: Restituisce le celle non vuote (area × fase) del serbatoio
     #        pre-commessa. Il completamento a griglia 5 aree × 3 fasi
@@ -968,7 +1005,8 @@ class VenditeRepository:
                 f.totale_a_pagare,
                 srd.soggetto_id,
                 srd.ragione_sociale_completa,
-                srd.id_fiscale_univoco_cf_piva
+                srd.id_fiscale_univoco_cf_piva,
+                sdf.codice_interno      AS stato_doc_fiscale_codice
             FROM vendite.fatturazione_lotti_fatture fllf
             {joins}
             {where_clause}
@@ -1007,6 +1045,7 @@ class VenditeRepository:
                     "soggetto_id": int(row[15]),
                     "ragione_sociale_completa": row[16],
                     "id_fiscale_univoco_cf_piva": row[17],
+                    "stato_doc_fiscale_codice": row[18],
                 }
             )
         return result, total_count
