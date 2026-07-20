@@ -12,9 +12,11 @@ Funzioni esposte:
 - fn_get_commesse_push_log  — dettaglio di un push log (read)
 - fn_get_commessa_stato     — stato e contatori di una commessa (read)
 - fn_list_commessa_attivita — lista paginata attività di una commessa (read)
+- approva_commessa_attivita — approvazione righe di una commessa (write, A-1)
+- approva_attivita_competenza — approvazione massiva per mese (write, A-2)
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -429,6 +431,109 @@ def cambia_stato_commessa(*, commessa_id: int, nuovo_stato: str, user: str | Non
     return repo.cambia_stato_commessa(
         commessa_id=commessa_id, nuovo_stato=nuovo_stato, user=user,
     )
+
+
+# Scopo: Helper — valida una lista opzionale di id dal payload (righe_ids,
+#        commessa_ids): None = nessun filtro (semantica del chiamante); se presente
+#        deve essere lista non vuota di interi positivi. Lista vuota = 400
+#        (ambiguo: per "tutti" omettere il campo).
+def _parse_ids_list(raw: object, *, field: str, function_name: str) -> list[int] | None:
+    if raw is None:
+        return None
+    valid = isinstance(raw, list) and len(raw) > 0 and all(
+        isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in raw
+    )
+    ErrorManager.require(
+        valid,
+        code="E_COMMESSA_VALIDATION",
+        message=f"{field} non valido.",
+        detail=f"{field}: lista non vuota di interi positivi, oppure omesso",
+        context={field: raw},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    assert isinstance(raw, list)
+    return [int(v) for v in raw]
+
+
+# Scopo: Azione APPROVA sulle attivita' di una commessa (cockpit Fase A, A-1):
+#        porta le righe BOZZA+NON_EMESSA ad APPROVATA via
+#        vendite.fn_approva_commessa_attivita (idempotente: gia' APPROVATA = 0).
+#        righe_ids None = tutte le righe NON_EMESSA della commessa; altrimenti solo
+#        le righe indicate. Il gate di permesso (`approva_attivita_commessa`) e'
+#        applicato dalla view; qui guard input + esistenza commessa.
+def approva_commessa_attivita(
+    *, commessa_id: int, righe_ids: list[int] | None = None, user: str | None = None,
+) -> dict:
+    _fn = "vendite.commesse_service.approva_commessa_attivita"
+    _guard_commessa_id(commessa_id, function_name=_fn)
+    righe_ids = _parse_ids_list(righe_ids, field="righe_ids", function_name=_fn)
+
+    repo = CommesseRepository()
+    # Esistenza commessa (404 parlante prima del guard DB della fn).
+    if repo.get_commessa_stato_codice(commessa_id) is None:
+        ErrorManager.raise_error(
+            code="E_COMMESSA_NOT_FOUND",
+            message="Commessa non trovata.",
+            detail=f"Nessuna commessa con id={commessa_id}",
+            context={"commessa_id": commessa_id},
+            function_name=_fn,
+            log_to_db=True,
+        )
+
+    approvate = repo.approva_commessa_attivita(
+        commessa_id=commessa_id, righe_ids=righe_ids, user=user,
+    )
+    return {"commessa_id": commessa_id, "approvate": approvate}
+
+
+# Scopo: Azione APPROVA massiva per mese di competenza (cockpit Fase A, A-2):
+#        approva TUTTE le attivita' in stadio DA_APPROVARE del mese M — esattamente
+#        la popolazione che la card della Dashboard Competenza mostra (stessa vista
+#        del drill-down, scope emittente in-vista). All-or-nothing: il loop per
+#        commessa gira in UNA transazione (guardrail «una azione = una unita'
+#        atomica»); la fn DB e' idempotente, quindi il retry post-errore e' innocuo.
+#        commessa_ids opzionale restringe il perimetro (subset del mese).
+def approva_attivita_competenza(
+    *,
+    competenza_mese: date,
+    commessa_ids: list[int] | None = None,
+    user: str | None = None,
+) -> dict:
+    _fn = "vendite.commesse_service.approva_attivita_competenza"
+    ErrorManager.require(
+        competenza_mese is not None,
+        code="E_COMMESSA_VALIDATION",
+        message="Mese di competenza obbligatorio.",
+        detail="competenza_mese mancante (ISO YYYY-MM-DD)",
+        function_name=_fn,
+        log_to_db=True,
+    )
+    assert competenza_mese is not None
+    commessa_ids = _parse_ids_list(commessa_ids, field="commessa_ids", function_name=_fn)
+    competenza = competenza_mese.replace(day=1)
+
+    repo = CommesseRepository()
+    totale = 0
+    # Snapshot + scritture nella STESSA transazione: la popolazione approvata e'
+    # quella letta (niente finestra fra SELECT e loop). Piu' scritture (una fn
+    # per commessa) = una sola unita' atomica.
+    with transaction.atomic():
+        gruppi = repo.list_da_approvare_per_competenza(
+            competenza_mese=competenza, commessa_ids=commessa_ids,
+        )
+        for cid, attivita_ids in gruppi:
+            totale += repo.approva_commessa_attivita(
+                commessa_id=cid, righe_ids=attivita_ids, user=user,
+            )
+    # Nessuna attivita' da approvare nel perimetro: esito onesto a zero, non errore.
+    if not gruppi:
+        return {"competenza_mese": competenza.isoformat(), "commesse": 0, "approvate": 0}
+    return {
+        "competenza_mese": competenza.isoformat(),
+        "commesse": len(gruppi),
+        "approvate": totale,
+    }
 
 
 # Scopo: Restituisce la lista paginata delle attività di una commessa.

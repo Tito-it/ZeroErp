@@ -22,11 +22,19 @@ Indice test eseguiti:
 13) VenditeCommesseApiTests.test_get_commessa_attivita_con_filtri
 14) VenditeCommesseApiTests.test_run_commesse_push_post_permission_allowed
 15) VenditeCommesseApiTests.test_run_commesse_push_post_permission_denied
+16) VenditeCommesseApiTests.test_post_commessa_attivita_approva_ok
+17) VenditeCommesseApiTests.test_post_commessa_attivita_approva_selezione
+18) VenditeCommesseApiTests.test_post_commessa_attivita_approva_requires_jwt
+19) VenditeCommesseApiTests.test_post_commessa_attivita_approva_validation
+20) VenditeCommesseApiTests.test_post_approva_competenza_ok
+21) VenditeCommesseApiTests.test_post_approva_competenza_requires_jwt
+22) VenditeCommesseApiTests.test_approva_competenza_post_permission_allowed
+23) VenditeCommesseApiTests.test_commessa_attivita_approva_post_permission_denied
 """
 
 import json
 
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 from django.test import Client, SimpleTestCase, override_settings
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
@@ -296,3 +304,163 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 403)
         mock_azione.assert_called_once()
         self.assertEqual(mock_azione.call_args.args[1], "run_commesse_push")
+
+    # ------------------------------------------------------------------ #
+    # POST /api/v1/vendite/commesse/<id>/attivita/approva/ (A-1)         #
+    # ------------------------------------------------------------------ #
+
+    # Scopo: approvazione ok → 200 con contatore righe approvate.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.approva_commessa_attivita")
+    def test_post_commessa_attivita_approva_ok(self, mocked_approva, _mock_auth):
+        mocked_approva.return_value = {"commessa_id": 42, "approvate": 5}
+        response = self.client.post(
+            "/api/v1/vendite/commesse/42/attivita/approva/",
+            data=json.dumps({}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-approva-1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["approvate"], 5)
+        mocked_approva.assert_called_once_with(
+            commessa_id=42, righe_ids=None, user=ANY,
+        )
+
+    # Scopo: selezione righe → passthrough righe_ids al service.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.approva_commessa_attivita")
+    def test_post_commessa_attivita_approva_selezione(self, mocked_approva, _mock_auth):
+        mocked_approva.return_value = {"commessa_id": 42, "approvate": 2}
+        response = self.client.post(
+            "/api/v1/vendite/commesse/42/attivita/approva/",
+            data=json.dumps({"righe_ids": [10, 11]}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-approva-2"},
+        )
+        self.assertEqual(response.status_code, 200)
+        mocked_approva.assert_called_once_with(
+            commessa_id=42, righe_ids=[10, 11], user=ANY,
+        )
+
+    # Scopo: endpoint richiede JWT.
+    def test_post_commessa_attivita_approva_requires_jwt(self):
+        response = self.client.post(
+            "/api/v1/vendite/commesse/42/attivita/approva/",
+            data=json.dumps({}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-approva-auth-1"},
+        )
+        self.assertEqual(response.status_code, 401)
+
+    # Scopo: ServiceError di validazione dal service → 400 con codice.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.approva_commessa_attivita")
+    def test_post_commessa_attivita_approva_validation(self, mocked_approva, _mock_auth):
+        mocked_approva.side_effect = ServiceError(
+            code="E_COMMESSA_VALIDATION", message="righe_ids non valido.",
+        )
+        response = self.client.post(
+            "/api/v1/vendite/commesse/42/attivita/approva/",
+            data=json.dumps({"righe_ids": []}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-approva-3"},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"]["code"], "E_COMMESSA_VALIDATION")
+
+    # ------------------------------------------------------------------ #
+    # POST /api/v1/vendite/fatturazione/approva-competenza/ (A-2)        #
+    # ------------------------------------------------------------------ #
+
+    # Scopo: massiva ok → 200 con contatori commesse/approvate.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.approva_attivita_competenza")
+    def test_post_approva_competenza_ok(self, mocked_massiva, _mock_auth):
+        from datetime import date as _date
+
+        mocked_massiva.return_value = {
+            "competenza_mese": "2026-07-01", "commesse": 2, "approvate": 3,
+        }
+        response = self.client.post(
+            "/api/v1/vendite/fatturazione/approva-competenza/",
+            data=json.dumps({"competenza_mese": "2026-07-15"}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-massiva-1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["commesse"], 2)
+        self.assertEqual(data["approvate"], 3)
+        mocked_massiva.assert_called_once_with(
+            competenza_mese=_date(2026, 7, 15), commessa_ids=None, user=ANY,
+        )
+
+    # Scopo: endpoint richiede JWT.
+    def test_post_approva_competenza_requires_jwt(self):
+        response = self.client.post(
+            "/api/v1/vendite/fatturazione/approva-competenza/",
+            data=json.dumps({"competenza_mese": "2026-07-01"}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-massiva-auth-1"},
+        )
+        self.assertEqual(response.status_code, 401)
+
+    # ------------------------------------------------------------------ #
+    # post_permission = "approva_attivita_commessa" (A-1 + A-2)          #
+    # ------------------------------------------------------------------ #
+
+    # Scopo: azione abilitata → 200 e codename corretto verificato (A-2).
+    @patch("apps.core.api.permissions.save_user_cache")
+    @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=True)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_applicativo", return_value="OPERATORE")
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.is_super_admin", return_value=False)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    @patch("apps.vendite.api.views.approva_attivita_competenza")
+    def test_approva_competenza_post_permission_allowed(
+        self, mocked_massiva, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
+    ):
+        user = Mock()
+        user.id = 42
+        user.is_superuser = False
+        user.is_authenticated = True
+        user.username = "op1"
+        mock_auth.return_value = (user, None)
+        mocked_massiva.return_value = {
+            "competenza_mese": "2026-07-01", "commesse": 0, "approvate": 0,
+        }
+        response = self.client.post(
+            "/api/v1/vendite/fatturazione/approva-competenza/",
+            data=json.dumps({"competenza_mese": "2026-07-01"}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-massiva-perm-ok-1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        mock_azione.assert_called_once()
+        self.assertEqual(mock_azione.call_args.args[1], "approva_attivita_commessa")
+
+    # Scopo: azione disabilitata → 403 sul singolo (A-1), stesso codename.
+    @patch("apps.core.api.permissions.save_user_cache")
+    @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=False)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_applicativo", return_value="OPERATORE")
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.is_super_admin", return_value=False)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    def test_commessa_attivita_approva_post_permission_denied(
+        self, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
+    ):
+        user = Mock()
+        user.id = 42
+        user.is_superuser = False
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+        response = self.client.post(
+            "/api/v1/vendite/commesse/42/attivita/approva/",
+            data=json.dumps({}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-approva-perm-deny-1"},
+        )
+        self.assertEqual(response.status_code, 403)
+        mock_azione.assert_called_once()
+        self.assertEqual(mock_azione.call_args.args[1], "approva_attivita_commessa")

@@ -421,3 +421,64 @@ export const FASE_DOCUMENTO_MAP = {
 export function faseDocumentoSeverity(codice) {
   return resolveSeverity(FASE_DOCUMENTO_MAP, codice)
 }
+
+// Stato di esecuzione del lotto di fatturazione (cockpit Fase B): DRAFT=grigio,
+// IN_ESECUZIONE=arancio (step in corso), COMPLETATO=verde, ERRORE=rosso.
+// Allineato a vendite.fatturazione_lotti.stato_lotto.
+export const STATO_LOTTO_MAP = {
+  DRAFT: 'secondary',
+  IN_ESECUZIONE: 'warn',
+  COMPLETATO: 'success',
+  ERRORE: 'danger',
+}
+export function statoLottoSeverity(codice) {
+  return resolveSeverity(STATO_LOTTO_MAP, codice)
+}
+
+// Task-run della pipeline lotto (vendite.fatturazione_lotti_task_runs.task_stato):
+// IN_ESECUZIONE=arancio, COMPLETATO=verde, ERRORE=rosso, ANNULLATO=grigio.
+export const STATO_TASK_RUN_MAP = {
+  IN_ESECUZIONE: 'warn',
+  COMPLETATO: 'success',
+  ERRORE: 'danger',
+  ANNULLATO: 'secondary',
+}
+export function statoTaskRunSeverity(codice) {
+  return resolveSeverity(STATO_TASK_RUN_MAP, codice)
+}
+
+// Stato di esecuzione della singola fattura nel lotto
+// (vendite.fatturazione_lotti_fatture.stato_esecuzione): PRONTA/ESCLUSA=grigio,
+// ELABORATA=verde, ERRORE=rosso.
+export const STATO_ESECUZIONE_FATTURA_MAP = {
+  PRONTA: 'secondary',
+  ELABORATA: 'success',
+  ERRORE: 'danger',
+  ESCLUSA: 'secondary',
+}
+export function statoEsecuzioneFatturaSeverity(codice) {
+  return resolveSeverity(STATO_ESECUZIONE_FATTURA_MAP, codice)
+}
+
+// Stato approvazione della riga commessa (vendite.commesse_attivita
+// .stato_approvazione): BOZZA=arancio (lavoro da fare), APPROVATA=verde,
+// RIFIUTATA=rosso.
+export const STATO_APPROVAZIONE_ATTIVITA_MAP = {
+  BOZZA: 'warn',
+  APPROVATA: 'success',
+  RIFIUTATA: 'danger',
+}
+export function statoApprovazioneAttivitaSeverity(codice) {
+  return resolveSeverity(STATO_APPROVAZIONE_ATTIVITA_MAP, codice)
+}
+
+// Stato emissione della riga commessa (vendite.commesse_attivita
+// .stato_emissione): NON_EMESSA=grigio, EMESSA=azzurro, ANNULLATA=rosso.
+export const STATO_EMISSIONE_ATTIVITA_MAP = {
+  NON_EMESSA: 'secondary',
+  EMESSA: 'info',
+  ANNULLATA: 'danger',
+}
+export function statoEmissioneAttivitaSeverity(codice) {
+  return resolveSeverity(STATO_EMISSIONE_ATTIVITA_MAP, codice)
+}

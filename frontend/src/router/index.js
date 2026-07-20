@@ -317,6 +317,12 @@ const router = createRouter({
           meta: { domain: 'vendite', menuKey: 'dashboard-backlog' }
         },
         {
+          path: 'vendite/lotti',
+          name: 'vendite-lotti',
+          component: () => import('../vendite/views/LottiListView.vue'),
+          meta: { domain: 'vendite', menuKey: 'lotti' }
+        },
+        {
           path: 'vendite/preventivi',
           name: 'vendite-preventivi',
           component: () => import('../vendite/preventivi/views/PreventiviView.vue'),

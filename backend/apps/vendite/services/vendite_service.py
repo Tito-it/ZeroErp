@@ -130,6 +130,35 @@ def fn_list_lotti(
     return _build_list_response(results, total_count, page, page_size)
 
 
+# Scopo: Restituisce la testata di un singolo lotto (dettaglio drawer diagnostico,
+#        cockpit Fase B). Scope emittente applicato in repo: lotto fuori scope o
+#        inesistente → E_LOTTO_NOT_FOUND (404), indistinguibili per non leakare
+#        l'esistenza (coerente RLS operatori).
+def fn_get_lotto(*, lotto_id: int, auth_user_id: int | None = None) -> dict[str, object]:
+    ErrorManager.require(
+        bool(lotto_id and lotto_id > 0),
+        code="E_LOTTO_PARAMETRO_NON_COERENTE",
+        message="Parametri non validi.",
+        detail="lotto_id obbligatorio e > 0",
+        context={"lotto_id": lotto_id},
+        function_name="vendite.vendite_service.fn_get_lotto",
+        log_to_db=True,
+    )
+    repository = VenditeRepository()
+    lotto = repository.get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
+    if lotto is None:
+        ErrorManager.raise_error(
+            code="E_LOTTO_NON_TROVATO",
+            message="Lotto non trovato.",
+            detail=f"Nessun lotto accessibile con id={lotto_id}",
+            context={"lotto_id": lotto_id},
+            function_name="vendite.vendite_service.fn_get_lotto",
+            log_to_db=True,
+        )
+    assert lotto is not None
+    return dict(lotto)
+
+
 # Scopo: Restituisce elenco fatture di un lotto con decodifiche, filtri e ordinamento opzionali.
 # Obiettivo: esporre lista paginata per lotto con validazione parametri.
 # Perimetro: sola lettura; delega query a VenditeRepository.

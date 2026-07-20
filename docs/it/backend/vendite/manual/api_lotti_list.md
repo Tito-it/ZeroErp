@@ -84,3 +84,43 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
 
 - Query raw nel repository (`VenditeRepository.list_lotti`); nessuna funzione SQL dedicata.
 - Due query per request: `COUNT(*)` + dati con `LIMIT/OFFSET` (pattern offset pagination).
+
+---
+
+## Dettaglio testata lotto (cockpit Fase B)
+
+### Scopo
+
+Restituire la testata di un singolo lotto per il drawer diagnostico del cockpit
+fatturazione (registro dei giri). Stessa proiezione della lista (nessuna vista o
+colonna nuova); le sotto-risorse restano endpoint separati (`fatture/`,
+`task-runs/`, `segnalazioni/`).
+
+### Input
+
+- Metodo: `GET`
+- Path: `/api/v1/vendite/lotti/{lotto_id}/`
+- Header: `Authorization: Bearer <token>`
+- Path param: `lotto_id` (int)
+
+### Output
+
+- `200`: `{ "data": { ...testata lotto (stessi campi di una riga della lista)... } }`
+- `400`: `E_LOTTO_PARAMETRO_NON_COERENTE` — `lotto_id` non valido (≤ 0)
+- `401`: JWT mancante
+- `404`: `E_LOTTO_NON_TROVATO` — lotto inesistente **o fuori scope emittente**
+  (indistinguibili, per non leakare l'esistenza — coerente con la RLS operatori)
+
+### Regole
+
+- View `ApiLottoDetail` → service `fn_get_lotto` → `VenditeRepository.get_lotto`.
+- Scope emittente applicato in repository (`_add_scope_emittente` su
+  `emittente_soggetto_ruolo_id`, con `get_scope_user_id` dalla view): un lotto
+  fuori scope torna 404, identico a un id inesistente.
+- Sola lettura: nessun `Idempotency-Key`.
+- Proiezione + JOIN + mapping condivisi con `list_lotti` (`_LOTTO_SELECT_COLS`,
+  `_LOTTO_JOINS`, `_map_lotto_row`) — nessuna duplicazione.
+
+### Dipendenze DB
+
+- `vendite.fatturazione_lotti` + le stesse LEFT JOIN di decodifica della lista.

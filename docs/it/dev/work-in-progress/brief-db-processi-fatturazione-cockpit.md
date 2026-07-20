@@ -1,9 +1,10 @@
 # Brief DB — Cockpit processi fatturazione (Fase A/C)
 
 > **Tipo**: brief operativo per il **team DB** · **Target**: `dev/db-tid` · **Data**: 2026-07-19
-> · **Owner**: Tid · **Stato**: 🟡 **G1 SCRITTO (2026-07-20)** — migration e seed creati su
-> `dev/db-tid` (§3–5), da **applicare + testare + committare** (attendere «procedi»,
-> [[feedback_no_commit_autonomo]]); **G2** (append pipeline) resta **DA FARE alla release BE**.
+> · **Owner**: Tid · **Stato**: 🟢 **G1 APPLICATO + COMMITTATO + PUSHATO (2026-07-20**, commit
+> `67d63cae9`; verifica §8 G1.a-d eseguita sul DB vivo, ok). **G2** (append pipeline) resta
+> **DA FARE alla release BE** — l'ok arriva dal BE allo step C-10 del
+> [brief BE/FE](brief-be-fe-processi-fatturazione.md).
 >
 > **Design-of-record**:
 > [brief-design-gestione-processi-fatturazione.md](brief-design-gestione-processi-fatturazione.md)

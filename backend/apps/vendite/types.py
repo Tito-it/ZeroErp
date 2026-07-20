@@ -74,6 +74,7 @@ class LottoFattureRow(TypedDict):
     stato_sdi_descrizione: str | None
     stato_doc_fiscale_id: int | None
     stato_doc_fiscale_descrizione: str | None
+    stato_doc_fiscale_codice: str | None
     stato_esecuzione: str
     esclusa: bool
     numero: int | None

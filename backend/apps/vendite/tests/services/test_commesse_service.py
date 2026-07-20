@@ -44,6 +44,12 @@ Azioni di stato commessa (#7 — fn_available_actions_commessa + cambia stato):
 22) CommesseServiceTests.test_cambia_stato_commessa_azione_non_ammessa
 23) CommesseServiceTests.test_cambia_stato_commessa_not_found
 24) CommesseServiceTests.test_cambia_stato_commessa_validation
+
+CommesseApprovazioneServiceTests (A-1/A-2 cockpit):
+- test_approva_commessa_attivita_tutte / _selezione / _righe_ids_invalido
+- test_approva_commessa_attivita_not_found / _id_invalido
+- test_approva_attivita_competenza_ok / _vuota / _senza_mese
+- test_approva_attivita_competenza_filtro_commesse / _all_or_nothing
 """
 
 from unittest import TestCase
@@ -888,3 +894,165 @@ class CommesseServiceTests(TestCase):
         self.assertEqual(result["versione_originale_id"], 101)
         self.assertEqual(result["versione_attuale_id"], 202)
         repo.update_attivita_prezzo.assert_not_called()
+
+
+class CommesseApprovazioneServiceTests(TestCase):
+    """Test A-1/A-2 cockpit: approva_commessa_attivita + approva_attivita_competenza."""
+
+    # Scopo: approvazione di tutte le righe (righe_ids omesso) → repo con None.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_approva_commessa_attivita_tutte(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import approva_commessa_attivita
+
+        repo = mock_repo_cls.return_value
+        repo.get_commessa_stato_codice.return_value = "APERTA"
+        repo.approva_commessa_attivita.return_value = 5
+
+        result = approva_commessa_attivita(commessa_id=42, user="op1")
+
+        self.assertEqual(result, {"commessa_id": 42, "approvate": 5})
+        repo.approva_commessa_attivita.assert_called_once_with(
+            commessa_id=42, righe_ids=None, user="op1",
+        )
+
+    # Scopo: selezione righe → passthrough della lista al repo.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_approva_commessa_attivita_selezione(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import approva_commessa_attivita
+
+        repo = mock_repo_cls.return_value
+        repo.get_commessa_stato_codice.return_value = "APERTA"
+        repo.approva_commessa_attivita.return_value = 2
+
+        result = approva_commessa_attivita(commessa_id=42, righe_ids=[10, 11])
+
+        self.assertEqual(result["approvate"], 2)
+        repo.approva_commessa_attivita.assert_called_once_with(
+            commessa_id=42, righe_ids=[10, 11], user=None,
+        )
+
+    # Scopo: righe_ids invalido (lista vuota / tipi errati) → 400 E_COMMESSA_VALIDATION.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_approva_commessa_attivita_righe_ids_invalido(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import approva_commessa_attivita
+
+        for bad in ([], [0], [-1], ["x"], [True], "10", 10):
+            with self.subTest(righe_ids=bad):
+                with self.assertRaises(ServiceError) as ctx:
+                    approva_commessa_attivita(commessa_id=42, righe_ids=bad)
+                self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        mock_repo_cls.return_value.approva_commessa_attivita.assert_not_called()
+
+    # Scopo: commessa inesistente → 404 E_COMMESSA_NOT_FOUND, nessuna scrittura.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_approva_commessa_attivita_not_found(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import approva_commessa_attivita
+
+        repo = mock_repo_cls.return_value
+        repo.get_commessa_stato_codice.return_value = None
+
+        with self.assertRaises(ServiceError) as ctx:
+            approva_commessa_attivita(commessa_id=999)
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_NOT_FOUND")
+        repo.approva_commessa_attivita.assert_not_called()
+
+    # Scopo: commessa_id invalido → 400 senza toccare il repo.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_approva_commessa_attivita_id_invalido(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import approva_commessa_attivita
+
+        with self.assertRaises(ServiceError) as ctx:
+            approva_commessa_attivita(commessa_id=0)
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        mock_repo_cls.return_value.approva_commessa_attivita.assert_not_called()
+
+    # Scopo: massiva ok — normalizza al 1° del mese, un giro per commessa, somma esiti.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_approva_attivita_competenza_ok(self, mock_repo_cls):
+        from datetime import date as _date
+
+        from apps.vendite.services.commesse_service import approva_attivita_competenza
+
+        repo = mock_repo_cls.return_value
+        repo.list_da_approvare_per_competenza.return_value = [(1, [10, 11]), (2, [20])]
+        repo.approva_commessa_attivita.side_effect = [2, 1]
+
+        result = approva_attivita_competenza(
+            competenza_mese=_date(2026, 7, 15), user="op1",
+        )
+
+        self.assertEqual(result, {
+            "competenza_mese": "2026-07-01", "commesse": 2, "approvate": 3,
+        })
+        repo.list_da_approvare_per_competenza.assert_called_once_with(
+            competenza_mese=_date(2026, 7, 1), commessa_ids=None,
+        )
+        self.assertEqual(repo.approva_commessa_attivita.call_count, 2)
+        repo.approva_commessa_attivita.assert_any_call(
+            commessa_id=1, righe_ids=[10, 11], user="op1",
+        )
+        repo.approva_commessa_attivita.assert_any_call(
+            commessa_id=2, righe_ids=[20], user="op1",
+        )
+
+    # Scopo: perimetro vuoto → esito a zero senza scritture (non è un errore).
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_approva_attivita_competenza_vuota(self, mock_repo_cls):
+        from datetime import date as _date
+
+        from apps.vendite.services.commesse_service import approva_attivita_competenza
+
+        repo = mock_repo_cls.return_value
+        repo.list_da_approvare_per_competenza.return_value = []
+
+        result = approva_attivita_competenza(competenza_mese=_date(2026, 7, 1))
+
+        self.assertEqual(result, {
+            "competenza_mese": "2026-07-01", "commesse": 0, "approvate": 0,
+        })
+        repo.approva_commessa_attivita.assert_not_called()
+
+    # Scopo: competenza_mese mancante → 400 E_COMMESSA_VALIDATION.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_approva_attivita_competenza_senza_mese(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import approva_attivita_competenza
+
+        with self.assertRaises(ServiceError) as ctx:
+            approva_attivita_competenza(competenza_mese=None)  # type: ignore[arg-type]
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        mock_repo_cls.return_value.list_da_approvare_per_competenza.assert_not_called()
+
+    # Scopo: filtro commessa_ids → passthrough al repo (subset del mese).
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_approva_attivita_competenza_filtro_commesse(self, mock_repo_cls):
+        from datetime import date as _date
+
+        from apps.vendite.services.commesse_service import approva_attivita_competenza
+
+        repo = mock_repo_cls.return_value
+        repo.list_da_approvare_per_competenza.return_value = [(7, [70])]
+        repo.approva_commessa_attivita.return_value = 1
+
+        result = approva_attivita_competenza(
+            competenza_mese=_date(2026, 7, 1), commessa_ids=[7],
+        )
+
+        self.assertEqual(result["commesse"], 1)
+        repo.list_da_approvare_per_competenza.assert_called_once_with(
+            competenza_mese=_date(2026, 7, 1), commessa_ids=[7],
+        )
+
+    # Scopo: errore su una commessa → all-or-nothing, l'eccezione propaga
+    #        (la transazione avvolge il loop: niente esiti parziali).
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_approva_attivita_competenza_all_or_nothing(self, mock_repo_cls):
+        from datetime import date as _date
+
+        from apps.vendite.services.commesse_service import approva_attivita_competenza
+
+        repo = mock_repo_cls.return_value
+        repo.list_da_approvare_per_competenza.return_value = [(1, [10]), (2, [20])]
+        repo.approva_commessa_attivita.side_effect = [1, RuntimeError("guard DB")]
+
+        with self.assertRaises(RuntimeError):
+            approva_attivita_competenza(competenza_mese=_date(2026, 7, 1))
