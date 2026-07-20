@@ -46,6 +46,23 @@ export function runLottoPipeline(lottoId, { lockBatchId = null } = {}) {
   )
 }
 
+// POST «Rendi definitive» (C-4): numerazione di un singolo lotto EMESSA. Esegue
+// lo step DEFINITIVA (numera + accoda stampa). Gate fiscale separato (I-7):
+// endpoint e permesso dedicati (numera_fatture_lotti), distinto da «Avanza».
+export function numeraLotto(lottoId) {
+  return api.post(
+    `/vendite/fatturazione/lotti/${lottoId}/numera/`,
+    {},
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
+// GET esiti giri fatturazione per corsia (job_run_log) + stato coda stampa
+// (conteggi per stato, scope emittente operatore). Sola lettura (C-5).
+export function getFatturazioneEsiti() {
+  return api.get('/vendite/fatturazione/esiti/')
+}
+
 // POST reset del lotto a bozza (DEMOLIZIONE pre-fiscale): cancella le fatture
 // non numerate; le attività tornano libere per un lotto nuovo. Azione forte.
 export function resetLottoDraft(lottoId) {

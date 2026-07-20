@@ -15,6 +15,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import rows_to_list
+from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.value_normalizer import as_bool, empty_to_none
 from apps.vendite.types import (
@@ -1610,25 +1611,39 @@ class VenditePipelineRepository:
             return str(row[0])
 
     # Scopo: Contatori della coda stampa per il monitoraggio (C-5) — conteggi
-    #        per stato, opzionalmente ristretti a un lotto. Lettura pura; lo
-    #        scope emittente NON è qui (la coda non ha emittente: si deriva via
-    #        JOIN fatture nel read operatore C-5, brief §5). Ritorna dict
-    #        {stato: n} dei soli stati presenti.
+    #        per stato, opzionalmente ristretti a un lotto. La coda NON ha
+    #        colonna emittente (brief §5): per la lettura OPERATORE lo scope
+    #        emittente si deriva via **JOIN a vendite.fatture** su `sorgente_id`
+    #        + il BB `add_emittente_scope_condition` (convenzione SR). Con
+    #        `auth_user_id=None` (worker/sistema) nessuno scope → conta tutto.
+    #        Ritorna dict {stato: n} dei soli stati presenti.
     def count_coda_stampa_per_stato(
-        self, *, lotto_id: int | None = None,
+        self, *, lotto_id: int | None = None, auth_user_id: int | None = None,
     ) -> dict[str, int]:
         conditions: list[str] = []
         params: list[Any] = []
+        joins = ""
         if lotto_id is not None:
-            conditions.append("lotto_id = %s")
+            conditions.append("c.lotto_id = %s")
             params.append(int(lotto_id))
+        if auth_user_id is not None:
+            # La coda è un satellite di fatture: lo scope emittente vive sulla
+            # fattura, non sulla coda → JOIN + scope applicativo (defense-in-depth).
+            joins = "JOIN vendite.fatture f ON f.id = c.sorgente_id"
+            add_emittente_scope_condition(
+                conditions, params,
+                auth_user_id=auth_user_id,
+                column="f.emittente_soggetto_ruolo_id",
+                convention="sr",
+            )
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         sql = f"""
-            SELECT stato, COUNT(*)::int
-              FROM vendite.fatture_stampa_coda
+            SELECT c.stato, COUNT(*)::int
+              FROM vendite.fatture_stampa_coda c
+              {joins}
               {where}
-             GROUP BY stato
-        """  # noqa: S608 — where da condizioni whitelisted (nessun input libero)
+             GROUP BY c.stato
+        """  # noqa: S608 — join/where da condizioni whitelisted (nessun input libero)
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return {str(row[0]): int(row[1]) for row in cursor.fetchall()}

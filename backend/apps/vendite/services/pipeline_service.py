@@ -191,6 +191,104 @@ def run_lotto_pipeline_until_done(
     return runner.run_lotto_until_done(params)
 
 
+# Scopo: C-4 — Numerazione (step DEFINITIVA) di un SINGOLO lotto EMESSA.
+#        Obiettivo: eseguire il verbo fiscale «Rendi definitive» su un lotto,
+#        come atto separato e consapevole (gate fiscale I-7): lo step DEFINITIVA
+#        contiene `numera_fatture` (numera, atomico) E `stampa_documenti_lotto`
+#        (che ACCODA la stampa, I-2/I-4b) — l'endpoint non chiama la stampa per
+#        conto suo. Perimetro: un lotto per chiamata (I-3 sincrono); il giro di
+#        perimetro (più lotti) passerà dalla coda lavori generica (background).
+#        Risultato: l'esito strutturato del runner (motivo_stop, stato).
+#        Guard: il lotto deve essere in scope operatore (fuori scope/inesistente
+#        → 404 unificato) e in stato EMESSA (altrimenti la numerazione non è
+#        applicabile → errore parlante, il gate fiscale non sta dietro lo stesso
+#        pulsante della pre-fiscale).
+def numera_lotto(
+    *, lotto_id: int, auth_user_id: int | None = None,
+) -> dict[str, object]:
+    from apps.vendite.db.vendite_repository import VenditeRepository
+
+    lotto = VenditeRepository().get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
+    ErrorManager.require(
+        lotto is not None,
+        code="E_LOTTO_NON_TROVATO",
+        message="Lotto non trovato.",
+        detail=f"lotto_id={lotto_id}",
+    )
+    assert lotto is not None
+
+    emessa_id = VenditePipelineRepository().get_stato_doc_fiscale_id("EMESSA")
+    # Fail-fast su config rotta: senza questo guard, emessa_id=None e lotto
+    # con stato NULL passerebbero il gate fiscale per None == None.
+    ErrorManager.require(
+        emessa_id is not None,
+        code="E_PIPELINE_VALIDATION",
+        message="Stato EMESSA non configurato in config.stati_doc_fiscale.",
+    )
+    ErrorManager.require(
+        lotto["stato_doc_fiscale_id"] == emessa_id,
+        code="E_LOTTO_NON_NUMERABILE",
+        message=(
+            "Il lotto non è in stato EMESSA: la numerazione (Rendi definitive) "
+            "non è applicabile."
+        ),
+        detail=(
+            f"lotto_id={lotto_id} "
+            f"stato_doc_fiscale_id={lotto['stato_doc_fiscale_id']} atteso={emessa_id}"
+        ),
+    )
+
+    # Esegue la catena fino a DEFINITIVA: da EMESSA è esattamente lo step
+    # DEFINITIVA (numera + accoda stampa), poi si ferma (DEFINITIVA chiude il lotto).
+    return run_lotto_pipeline_until_done(
+        lotto_id=lotto_id, fino_a_stato="DEFINITIVA",
+    )
+
+
+# Prefissi jobname delle corsie di fatturazione in maintenance.job_run_log:
+# il batch registra `run_fatturazione_batch:<corsia>`, i worker
+# `draina_coda_stampa` / (futuro) `draina_coda_lavori`. Owner unico del
+# vocabolario jobname lato lettura esiti.
+_JOBNAME_PREFISSI_FATTURAZIONE = (
+    "run_fatturazione_batch",
+    "draina_coda_stampa",
+    "draina_coda_lavori",
+)
+
+
+# Scopo: C-5 — Esiti dei giri di fatturazione + stato della coda stampa, per il
+#        cockpit. Aggrega due sorgenti di sola lettura, nessuna tabella nuova
+#        (I-5): (a) `maintenance.job_run_log` riassunto per corsia (ultimo esito,
+#        ultimo run, ok/fail) filtrato ai jobname di fatturazione; (b) i conteggi
+#        della coda stampa per stato, **con scope emittente dell'operatore** (la
+#        coda non ha emittente → JOIN fatture nel repo, brief §5). `auth_user_id`
+#        None solo per usi di sistema; dal cockpit è sempre l'operatore.
+def esiti_fatturazione(*, auth_user_id: int | None = None) -> dict[str, object]:
+    from apps.core.db.maintenance_repository import MaintenanceRepository
+
+    # limit=200 sui JOBNAME DISTINTI (il summary e' un GROUP BY jobname):
+    # i job registrati sono decine, il cap e' largo per costruzione. Se mai
+    # venisse superato, i giri fatturazione potrebbero uscire dalla finestra
+    # (ordinata per last_run_at): rivedere con un filtro SQL sul repo core.
+    summary, _ = MaintenanceRepository().list_job_summary(limit=200)
+    giri = []
+    for s in summary:
+        if not str(s.get("jobname", "")).startswith(_JOBNAME_PREFISSI_FATTURAZIONE):
+            continue
+        # `last_run_at` arriva come testo PG ("YYYY-MM-DD HH:MM:SS...+TZ",
+        # spazio non 'T'): normalizzato a ISO-8601 per il parse Date()
+        # cross-browser del FE (displayTimestamp).
+        last_run = s.get("last_run_at")
+        giri.append({
+            **s,
+            "last_run_at": last_run.replace(" ", "T", 1) if last_run else None,
+        })
+    coda_stampa = VenditePipelineRepository().count_coda_stampa_per_stato(
+        auth_user_id=auth_user_id,
+    )
+    return {"giri": giri, "coda_stampa": coda_stampa}
+
+
 # Scopo: Facade applicativa: esegue un singolo step pipeline sul lotto richiesto.
 def fn_execute_pipeline_step(
     *,

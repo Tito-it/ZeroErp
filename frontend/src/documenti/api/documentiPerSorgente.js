@@ -108,3 +108,11 @@ export const ordineDocumenti = buildSorgenteClient(
 export const ddtDocumenti = buildSorgenteClient(
   (ddtId) => `/vendite/ddt/${ddtId}/documenti`,
 )
+
+// Client per documenti di una FATTURA (stampa/ristampa). Path coerente con
+// `apps/vendite/api/urls_fatture.py`. La fattura NON si emette da UI (nasce
+// dalla pipeline): niente `emetti/`. La stampa singola sincrona passa da
+// `anteprima` (render on-the-fly) / `genera` (archivio); il massivo dalla coda.
+export const fattureDocumenti = buildSorgenteClient(
+  (fatturaId) => `/vendite/fatture/${fatturaId}/documenti`,
+)

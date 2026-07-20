@@ -28,6 +28,9 @@ _APPS_ROOT = Path(__file__).resolve().parents[2]
 _GATEWAY_WHITELIST = {
     "core/services/system_context.py",
     "vendite/management/commands/run_fatturazione_batch.py",
+    # Worker drainer della coda stampa (Fase C C-2b): headless, stesso canale
+    # di sistema del batch (ruolo BYPASSRLS) — uso legittimo del gateway.
+    "vendite/management/commands/draina_coda_stampa.py",
     "core/middleware/jwt_audit_middleware.py",
 }
 # L'alias DB compare anche dove il canale è cablato (command) e nel gateway.

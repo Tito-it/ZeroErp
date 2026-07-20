@@ -17,6 +17,7 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import LottoDrawer from '../components/LottoDrawer.vue'
+import FatturazioneEsitiPanel from '../components/FatturazioneEsitiPanel.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
 import { usePagedDashFetch } from '../../core/composables/usePagedDashFetch'
@@ -124,6 +125,9 @@ const pageActions = computed(() => [
         </template>
       </PageActionsBar>
     </div>
+
+    <!-- Esiti fatturazione (C-5): stato coda stampa + ultimi giri per corsia. -->
+    <FatturazioneEsitiPanel />
 
     <div class="app-page-filters" style="display: flex; gap: 1rem; align-items: flex-end; margin-bottom: 1rem;">
       <div class="form-field">

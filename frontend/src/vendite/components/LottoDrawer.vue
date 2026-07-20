@@ -23,6 +23,10 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
+import { useDocumentiPerSorgenteStore } from '../../documenti/stores/documentiPerSorgente'
+import { SORGENTE_CODES } from '../../documenti/constants'
+import { downloadBlob } from '../../core/utils/download'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
@@ -31,7 +35,7 @@ import { useDrawerContentReady } from '../../core/composables/useDrawerContentRe
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useActionPermission } from '../../core/composables/useActionPermission'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { extractApiError } from '../../core/utils/apiError'
@@ -46,6 +50,7 @@ import {
   listLottoTaskRuns,
   getLottoSegnalazioni,
   runLottoPipeline,
+  numeraLotto,
   resetLottoDraft,
   resetLottoFatturaDraft,
 } from '../api/lotti'
@@ -65,6 +70,7 @@ const { confirmAction } = useConfirmAction()
 const onClose = useDrawerClose(emit)
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
+const docStore = useDocumentiPerSorgenteStore()
 
 // Readonly effettivo: area in LETTURA (inject dal provider della view) o prop
 // di ispezione. In readonly le azioni di governo spariscono (il BE resta il
@@ -72,8 +78,11 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const parentReadonly = useInjectReadonly()
 const isReadonly = computed(() => parentReadonly.value || props.readonly)
 
-// Gate azioni: pipeline (avanza/rerun) e i due reset hanno permessi propri.
+// Gate azioni: pipeline (avanza/rerun), numerazione e i due reset hanno permessi
+// propri. La numerazione (Rendi definitive) è un gate fiscale SEPARATO (I-7):
+// permesso dedicato, non lo stesso di «Avanza».
 const { isAllowed: canPipeline } = useActionPermission('genera_fatture_lotti')
+const { isAllowed: canNumera } = useActionPermission('numera_fatture_lotti')
 const { isAllowed: canResetLotto } = useActionPermission('reset_lotto_draft')
 const { isAllowed: canResetFattura } = useActionPermission('reset_lotto_fattura_draft')
 
@@ -82,9 +91,17 @@ const fatture = ref([])
 const taskRuns = ref([])
 const segnalazioni = ref(null)
 const tabLoading = ref(false)
+// Dialog archivio documenti fattura (C-8). Dichiarati QUI, PRIMA del watch
+// immediate che li resetta: una ref toccata da un watch immediate dichiarata
+// dopo va in TDZ silenziosa (memoria feedback_vue_watch_immediate_tdz).
+const pdfDialogVisible = ref(false)
+const pdfFatturaId = ref(null)
 
 const isErrore = computed(() => lotto.value?.stato_lotto === 'ERRORE')
 const isInEsecuzione = computed(() => lotto.value?.stato_lotto === 'IN_ESECUZIONE')
+// Gate fiscale I-7: il lotto è numerabile quando è in EMESSA (prossimo step =
+// DEFINITIVA). Gate sul CODICE stabile, mai la descrizione display (lezione B-4).
+const isEmessa = computed(() => lotto.value?.stato_doc_fiscale_codice === 'EMESSA')
 
 // Segnalazioni bloccanti: mostra il banner se il lotto ha criticità.
 const haSegnalazioniCritiche = computed(() => (segnalazioni.value?.critical_count ?? 0) > 0)
@@ -140,6 +157,9 @@ async function reloadFatture() {
 watch(
   () => [props.visible, props.lottoId],
   async ([visible]) => {
+    // Il dialog documenti e' teleported (fuori dal DOM del drawer): senza
+    // chiusura esplicita resterebbe aperto orfano alla chiusura del drawer.
+    pdfDialogVisible.value = false
     if (!visible || !props.lottoId) return
     lotto.value = null
     fatture.value = []
@@ -161,6 +181,23 @@ function avanzaStep(isRerun) {
       const res = await execute(() => runLottoPipeline(props.lottoId))
       if (res !== null) {
         notify.success(t('vendite.lotti.avanza_esito'))
+        await reloadAll()
+        emit('changed')
+      }
+    },
+  })
+}
+
+// Scopo: «Rendi definitive» (C-4) — numera il lotto EMESSA (step DEFINITIVA:
+//        numera + accoda stampa). Atto fiscale consapevole → conferma esplicita.
+function rendiDefinitive() {
+  confirmAction({
+    title: t('vendite.lotti.numera_header'),
+    message: t('vendite.lotti.numera_conferma'),
+    onAccept: async () => {
+      const res = await execute(() => numeraLotto(props.lottoId))
+      if (res !== null) {
+        notify.success(t('vendite.lotti.numera_esito'))
         await reloadAll()
         emit('changed')
       }
@@ -206,19 +243,54 @@ function resetFattura(row) {
   })
 }
 
-// Riga fattura DRAFT (pre-fiscale) → reset ammesso; oltre no (gate vero al BE).
-// Il gate usa il codice stabile (codice_interno), MAI la descrizione display.
+// ---------------------------------------------------------------- stampa (C-8)
+// Stampa/ristampa di una fattura via il motore documentale (sorgente FATTURA).
+// La stampa è una LETTURA (I-4: legge le tabelle e renderizza, non edita):
+// disponibile anche in sola lettura, a differenza delle azioni di governo.
+
+// Scopo: anteprima PDF sincrona on-the-fly (nessun record, download immediato).
+//        Render della fattura corrente (context builder FATTURA → template).
+async function anteprimaFattura(row) {
+  docStore.setSorgente(SORGENTE_CODES.FATTURA, row.fattura_id)
+  const result = await execute(() => docStore.anteprima({}))
+  if (result) downloadBlob(result.blob, result.fileName)
+}
+
+// Scopo: apre il dialog archivio documenti generati della fattura
+//        (lista + download). Le ref del dialog sono dichiarate in testa
+//        (prima del watch immediate che le resetta).
+function apriDocumentiFattura(row) {
+  pdfFatturaId.value = row.fattura_id
+  pdfDialogVisible.value = true
+}
+
+// Azioni di riga fattura: stampa (anteprima + archivio) sempre disponibili
+// (lettura); reset a bozza solo per fattura DRAFT fuori sola-lettura. Il gate
+// reset usa il codice stabile (codice_interno), MAI la descrizione display.
 function buildFatturaActions(row) {
-  if (isReadonly.value) return []
-  return [
+  const actions = [
     {
+      key: 'anteprima',
+      label: t('vendite.lotti.azione_anteprima_fattura'),
+      icon: MANAGE_ICONS.PDF,
+      command: () => anteprimaFattura(row),
+    },
+    {
+      key: 'documenti',
+      label: t('vendite.lotti.azione_documenti_fattura'),
+      icon: 'pi pi-folder-open',
+      command: () => apriDocumentiFattura(row),
+    },
+  ]
+  if (!isReadonly.value && canResetFattura.value && row.stato_doc_fiscale_codice === 'DRAFT') {
+    actions.push({
       key: 'reset',
       label: t('vendite.lotti.azione_reset_fattura'),
       icon: 'pi pi-undo',
-      visible: canResetFattura.value && row.stato_doc_fiscale_codice === 'DRAFT',
       command: () => resetFattura(row),
-    },
-  ]
+    })
+  }
+  return actions
 }
 
 function fatturaNumero(row) {
@@ -277,8 +349,19 @@ function fatturaNumero(row) {
             :disabled="loading"
             @click="avanzaStep(true)"
           />
+          <!-- Gate fiscale I-7: su lotto EMESSA il verbo è «Rendi definitive»
+               (numera, permesso dedicato), NON il generico «Avanza». -->
           <Button
-            v-else-if="canPipeline && !isInEsecuzione"
+            v-else-if="isEmessa && canNumera"
+            :label="t('vendite.lotti.numera')"
+            icon="pi pi-verified"
+            severity="success"
+            size="small"
+            :disabled="loading || haSegnalazioniCritiche"
+            @click="rendiDefinitive"
+          />
+          <Button
+            v-else-if="canPipeline && !isInEsecuzione && !isEmessa"
             :label="t('vendite.lotti.avanza')"
             icon="pi pi-forward"
             size="small"
@@ -335,7 +418,9 @@ function fatturaNumero(row) {
                     {{ data.totale_doc != null ? formatCurrency(Number(data.totale_doc)) : '—' }}
                   </template>
                 </Column>
-                <Column v-if="!isReadonly" class="app-col-actions" :exportable="false">
+                <!-- Azioni sempre presenti: la stampa (anteprima/documenti) è
+                     una lettura, disponibile anche in sola lettura. -->
+                <Column class="app-col-actions" :exportable="false">
                   <template #body="{ data }">
                     <RowActionsMenu :row="data" :actions="buildFatturaActions(data)" />
                   </template>
@@ -413,6 +498,14 @@ function fatturaNumero(row) {
 
       <FormFooter close-only @cancel="onClose" />
     </div>
+
+    <!-- Archivio documenti generati della fattura selezionata (sorgente FATTURA). -->
+    <PdfDocumentiSorgenteDialog
+      v-model:visible="pdfDialogVisible"
+      :sorgente-code="SORGENTE_CODES.FATTURA"
+      :sorgente-id="pdfFatturaId"
+      :title="t('vendite.lotti.documenti_fattura_titolo')"
+    />
   </Drawer>
 </template>
 
