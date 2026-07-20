@@ -12,8 +12,8 @@
 //         2) entry qui;
 //         3) chiave i18n `documenti.context_builders.<CODE>`.
 //
-//        PREVENTIVO, CONTRATTO, OFFERTA_COMMERCIALE, ORDINE_VENDITA e
-//        DDT_VENDITA sono registrati lato BE (VenditeConfig.ready()).
+//        PREVENTIVO, CONTRATTO, OFFERTA_COMMERCIALE, ORDINE_VENDITA,
+//        DDT_VENDITA e FATTURA sono registrati lato BE (VenditeConfig.ready()).
 //        Aggiungere un builder concreto richiede: registro BE + entry qui
 //        + chiave i18n.
 // ------------------------------------------------------------
@@ -24,6 +24,7 @@ export const CONTEXT_BUILDER_CODES = [
   { code: 'OFFERTA_COMMERCIALE', i18nKey: 'documenti.context_builders.OFFERTA_COMMERCIALE', registered: true },
   { code: 'ORDINE_VENDITA',     i18nKey: 'documenti.context_builders.ORDINE_VENDITA',     registered: true },
   { code: 'DDT_VENDITA',        i18nKey: 'documenti.context_builders.DDT_VENDITA',        registered: true },
+  { code: 'FATTURA',            i18nKey: 'documenti.context_builders.FATTURA',            registered: true },
 ]
 
 // Scopo: Helper per il dropdown PrimeVue Select. Ritorna un array di

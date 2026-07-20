@@ -14,7 +14,12 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import query_paged_view, sql_order_direction
+from apps.core.db._helpers import (
+    query_paged_view,
+    row_to_dict,
+    rows_to_list,
+    sql_order_direction,
+)
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.types import (
     DashApertoDocumentoRow,
@@ -1049,6 +1054,177 @@ class VenditeRepository:
                 }
             )
         return result, total_count
+
+    # ══════════════════════════════════════════════════════════
+    #  LETTURE — Fattura (generazione documento / stampa, C-2)
+    #  Read-side per il motore documentale (sorgente FATTURA). La fattura
+    #  non ha un repository dedicato: i read vivono qui, accanto a
+    #  list_lotto_fatture (convenzione AGENTS.md — `<schema>_repository`
+    #  per le operazioni generiche vendite che non sono un sottodominio
+    #  con orchestrazione propria).
+    # ══════════════════════════════════════════════════════════
+
+    # Scopo: Contesto minimo per la generazione documento (stampa PDF) della
+    #        fattura. Mirror di OrdiniRepository.get_for_documento_generation,
+    #        con la differenza-chiave FATTURA: la testata espone
+    #        `emittente_soggetto_ruolo_id` (SR), mentre il motore documentale
+    #        vuole `emittente_fiscale_id` (PK). Si risolve la PK con JOIN a
+    #        anagrafiche.emittenti_fiscali (1:1 garantito da
+    #        uq_emittenti_fiscali_ruolo) — memoria
+    #        feedback_emittente_pk_vs_soggetto_ruolo. LEFT JOIN, non INNER: se
+    #        il record EF manca (dato sporco), la fattura ESISTE con
+    #        emittente_fiscale_id NULL → il BB `resolve_contesto_documentale`
+    #        distingue "non trovata" (404) da "emittente non risolto"
+    #        (validation parlante); un INNER collasserebbe i due casi. Ritorna
+    #        {id, uid, emittente_fiscale_id}; None se id inesistente o fuori
+    #        scope RLS (indistinguibile per design → 404 unificato nel caller).
+    def get_fattura_for_documento_generation(
+        self, fattura_id: int,
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT
+                f.id,
+                f.uid::text AS uid,
+                ef.id       AS emittente_fiscale_id
+              FROM vendite.fatture f
+              LEFT JOIN anagrafiche.emittenti_fiscali ef
+                ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+             WHERE f.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return row_to_dict(cursor)
+
+    # Scopo: Testata fattura per il context builder documentale (stampa).
+    #        Denormalizza cliente (BA → soggetto), emittente (SR → EF PK+codice),
+    #        stato/tipo doc fiscale e valuta; espone i totali di testata così
+    #        come li mantiene la pipeline (`*_tot`, bollo, arrotondamento,
+    #        totale_a_pagare). Lettura pura: nessun calcolo fiscale in Python.
+    #        None se la fattura non esiste (o è fuori scope RLS).
+    def get_fattura_testata(self, fattura_id: int) -> dict[str, Any] | None:
+        sql = """
+            SELECT
+                f.id,
+                f.uid::text                  AS uid,
+                f.anno,
+                f.serie,
+                f.numero,
+                f.data,
+                f.tipo_doc_fiscale_id,
+                tdf.codice_interno           AS tipo_doc_fiscale_codice,
+                tdf.descrizione              AS tipo_doc_fiscale_descrizione,
+                f.stato_doc_fiscale_id,
+                sdf.codice_interno           AS stato_codice_interno,
+                sdf.descrizione              AS stato_descrizione,
+                f.emittente_soggetto_ruolo_id,
+                ef.id                        AS emittente_fiscale_id,
+                ef.codice                    AS emittente_fiscale_codice,
+                f.billing_account_id,
+                ba.codice                    AS ba_codice,
+                ba.soggetto_ruolo_id         AS cliente_soggetto_ruolo_id,
+                srd.soggetto_id,
+                srd.ragione_sociale_completa,
+                srd.id_fiscale_univoco_cf_piva,
+                f.valuta_id,
+                val.iso_code                 AS valuta_codice,
+                f.tasso_cambio,
+                f.imponibile_tot,
+                f.imposta_tot,
+                f.bollo_applicato,
+                f.bollo_importo,
+                f.arrotondamento_attuale,
+                f.totale_doc,
+                f.totale_a_pagare,
+                f.data_contabilizzazione,
+                f.meta
+              FROM vendite.fatture f
+              LEFT JOIN anagrafiche.emittenti_fiscali ef
+                ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+              JOIN anagrafiche.billing_account ba
+                ON ba.id = f.billing_account_id
+              JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
+                ON srd.soggetto_ruolo_id = ba.soggetto_ruolo_id
+              LEFT JOIN config.tipi_doc_fiscale tdf
+                ON tdf.id = f.tipo_doc_fiscale_id
+              LEFT JOIN config.stati_doc_fiscale sdf
+                ON sdf.id = f.stato_doc_fiscale_id
+              LEFT JOIN config.valute val
+                ON val.id = f.valuta_id
+             WHERE f.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return row_to_dict(cursor)
+
+    # Scopo: Righe fattura con decodifiche articolo/uom/iva per il context
+    #        builder. Espone gli importi di riga già mantenuti dal DB
+    #        (imponibile/imposta/totale) + `iva_natura` per le righe non
+    #        imponibili. Ordine stabile per riga_nr. Lettura pura.
+    def list_fattura_righe(self, fattura_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                r.id,
+                r.fattura_id,
+                r.riga_nr,
+                r.articolo_id,
+                a.codice            AS articolo_codice,
+                a.descrizione       AS articolo_descrizione,
+                r.descrizione,
+                r.uom_id,
+                um.codice           AS uom_codice,
+                r.qta,
+                r.prezzo_unitario,
+                r.sconto_percentuale,
+                r.iva_id,
+                iva.codice          AS iva_codice,
+                iva.descrizione     AS iva_descrizione,
+                iva.aliquota_iva    AS iva_aliquota,
+                r.iva_natura,
+                r.imponibile_riga,
+                r.imposta_riga,
+                r.totale_riga
+              FROM vendite.fatture_righe r
+              LEFT JOIN catalogo.articoli a      ON a.id  = r.articolo_id
+              LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_id
+              LEFT JOIN config.iva iva           ON iva.id = r.iva_id
+             WHERE r.fattura_id = %s
+             ORDER BY r.riga_nr, r.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Riepilogo IVA della fattura, letto dalla tabella REALE
+    #        `vendite.fatture_riepiloghi_iva` (a differenza degli ordini, che
+    #        derivano il riepilogo on-the-fly da una vista): una riga per
+    #        gruppo (iva/natura/esigibilità/split). Decodifica iva + natura via
+    #        JOIN (display field). Lettura pura: gli importi sono già
+    #        aggregati/arrotondati dalla pipeline di fatturazione.
+    def list_fattura_riepilogo_iva(self, fattura_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                ri.id,
+                ri.fattura_id,
+                ri.iva_id,
+                iva.codice          AS iva_codice,
+                iva.descrizione     AS iva_descrizione,
+                iva.aliquota_iva    AS iva_aliquota,
+                ri.natura_id,
+                nat.codice          AS natura_codice,
+                ri.esigibilita,
+                ri.split_payment,
+                ri.imponibile,
+                ri.imposta,
+                ri.arrotondamento
+              FROM vendite.fatture_riepiloghi_iva ri
+              LEFT JOIN config.iva iva        ON iva.id  = ri.iva_id
+              LEFT JOIN config.iva_natura nat ON nat.id  = ri.natura_id
+             WHERE ri.fattura_id = %s
+             ORDER BY iva.aliquota_iva NULLS LAST, ri.iva_id NULLS LAST
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return rows_to_list(cursor)
 
     # ------------------------------------------------------------------
     # Lineage documenti (genealogia/transiti — brief-be-fe-lineage)

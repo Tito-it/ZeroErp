@@ -44,6 +44,12 @@ RUOLO_APPLICATIVO: tuple[str, ...] = (
 # `RUOLO_APPLICATIVO_SISTEMA`/Opzione B: non era una veste.)
 AUDIT_ACTOR_BATCH_FATTURAZIONE = "BATCH_FATTURAZIONE"
 
+# Attore d'audit del worker DRAINER della coda stampa documentale (Fase C
+# C-2b): gira sullo stesso canale di sistema del batch fatturazione (ruolo
+# BYPASSRLS), identità d'audit distinta per riconoscere nel giornale le stampe
+# prodotte dal worker rispetto ai giri di fatturazione.
+AUDIT_ACTOR_WORKER_STAMPA = "WORKER_STAMPA_DOCUMENTI"
+
 # Scopo: Ruoli che accedono ai namespace portale (`/api/portale/*`).
 RUOLI_PORTALE: frozenset[str] = frozenset({
     RUOLO_APPLICATIVO_CLIENTE_PORTALE,
