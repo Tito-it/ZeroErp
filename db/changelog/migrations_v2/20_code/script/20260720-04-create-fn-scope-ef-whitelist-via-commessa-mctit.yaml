@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-rls-commesse §2/§4 (P1) — adapter via-commessa dello scope EF_WHITELIST.
+#
+# Mirror di script.fn_scope_ef_whitelist_via_fattura (usato da fatture_scadenze):
+# risolve commessa_id -> emittente_soggetto_ruolo_id e delega all'adapter SR
+# (-> canonica fn_check_user_emittente_scope). Per la tabella satellite
+# vendite.commesse_attivita, che non ha colonna emittente propria. Nessuna
+# logica whitelist duplicata. STABLE, sql, inlineable.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260720-04-create-fn-scope-ef-whitelist-via-commessa-mctit.yaml
+
+  - changeSet:
+      id: 20260720-04-create-fn-scope-ef-whitelist-via-commessa
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: commesse
+                columnName: emittente_soggetto_ruolo_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                   WHERE n.nspname='script' AND p.proname='fn_scope_ef_whitelist_via_sr';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_commessa(p_auth_user_id integer, p_commessa_id vendite.commesse.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Risolve commessa -> emittente_soggetto_ruolo_id e delega
+                  -- all'adapter SR. Commessa inesistente / emittente NULL -> SR
+                  -- NULL -> false (fail-closed se whitelist valorizzata).
+                  SELECT script.fn_scope_ef_whitelist_via_sr(
+                      p_auth_user_id,
+                      (SELECT c.emittente_soggetto_ruolo_id
+                         FROM vendite.commesse c
+                        WHERE c.id = p_commessa_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_commessa(p_auth_user_id integer, p_commessa_id bigint)
+              IS 'Adapter via-commessa dello scope EF_WHITELIST: risolve l''emittente attraverso vendite.commesse e delega a fn_scope_ef_whitelist_via_sr (-> canonica). Per tabelle figlie senza colonna emittente propria (es. vendite.commesse_attivita). STABLE, inlineable. Mirror di fn_scope_ef_whitelist_via_fattura. Brief: brief-db-rls-commesse.';

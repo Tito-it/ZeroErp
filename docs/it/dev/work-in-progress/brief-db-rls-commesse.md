@@ -1,8 +1,10 @@
 # Brief DB — RLS scope emittente su `vendite.commesse` + `vendite.commesse_attivita`
 
 > **Tipo**: brief operativo per il **team DB** · **Target**: `dev/db-tid` · **Data**: 2026-07-20
-> · **Owner**: Tid · **Stato**: ⬜ **DA FARE** (consigliato **prima della release Fase C**
-> del cockpit — vedi §1)
+> · **Owner**: Tid · **Stato**: 🟢 **P1–P4 APPLICATI + pgTAP VERDI + COMMITTATI (2026-07-20)**
+> su `dev/db-tid` (§4). **Restano gate BE** prima della **release Fase C**: **G-1**
+> (probe-first su N5/N7/sblocco — no-op silenzioso vs 404) e **G-2** (WITH CHECK push da
+> operatore). Sono verifiche/smoke lato BE, non bloccano la correttezza DB già testata.
 >
 > **Origine**: punto **P-6** di
 > [brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md) §3
@@ -68,16 +70,22 @@ Note di modello:
 * **`vw_dash_competenza_*`**: già scope in-vista; con RLS si somma (defense-in-depth),
   nessuna doppia esclusione anomala (stesso predicato whitelist).
 
-## 4. Changeset richiesti (naming per data, un changeSet per file)
+## 4. Changeset richiesti (naming per data, un changeSet per file) — **SCRITTI**
 
-1. `20_code/script/YYYYMMDD-NN-create-fn-scope-ef-whitelist-via-commessa-mctit.yaml` —
-   nuovo adapter (mirror `fn_scope_ef_whitelist_via_fattura`, `runOnChange`).
-2. `00_schema/vendite/YYYYMMDD-NN-enable-rls-commesse-ef-whitelist-mctit.yaml` — policy +
-   `ENABLE ROW LEVEL SECURITY` su `commesse`. **Mirror esatto** del pattern
-   `20260713-17-enable-rls-resi-ef-whitelist` (preconditions su colonna+fn, DROP POLICY IF
-   EXISTS, COMMENT ON POLICY, rollback disable+drop) con l'adapter `via_sr` al posto del PK.
-3. `00_schema/vendite/YYYYMMDD-NN-enable-rls-commesse-attivita-ef-whitelist-mctit.yaml` —
-   policy via padre + ENABLE su `commesse_attivita`.
+1. **P1** [`20_code/script/20260720-04-create-fn-scope-ef-whitelist-via-commessa-mctit.yaml`](../../../../db/changelog/migrations_v2/20_code/script/20260720-04-create-fn-scope-ef-whitelist-via-commessa-mctit.yaml)
+   — adapter `fn_scope_ef_whitelist_via_commessa(integer, vendite.commesse.id%TYPE)`, mirror
+   `via_fattura`, `runOnChange`. `p_auth_user_id` resta `integer` (ref `django.*` → no `%TYPE`).
+2. **P2** [`00_schema/vendite/20260720-05-enable-rls-commesse-ef-whitelist-mctit.yaml`](../../../../db/changelog/migrations_v2/00_schema/vendite/20260720-05-enable-rls-commesse-ef-whitelist-mctit.yaml)
+   — policy `rls_commesse_ef_whitelist` (via_sr su `emittente_soggetto_ruolo_id`) + `ENABLE`
+   (NO FORCE). Mirror esatto `20260713-17-enable-rls-resi-ef-whitelist` (preconditions
+   colonna+fn, DROP POLICY IF EXISTS, COMMENT, rollback disable+drop).
+3. **P3** [`00_schema/vendite/20260720-06-enable-rls-commesse-attivita-ef-whitelist-mctit.yaml`](../../../../db/changelog/migrations_v2/00_schema/vendite/20260720-06-enable-rls-commesse-attivita-ef-whitelist-mctit.yaml)
+   — policy `rls_commesse_attivita_ef_whitelist` via padre (`via_commessa` su `commessa_id`)
+   con `ENABLE` (NO FORCE). **Applicare dopo P1** (dipende dall'adapter).
+4. **P4 (pgTAP)** [`db/pgtap/rls/test-rls-commesse-ef-whitelist-write.sql`](../../../../db/pgtap/rls/test-rls-commesse-ef-whitelist-write.sql)
+   — `plan(5)`, ENABLE+FORCE locale alla tx su fixture da dati esistenti (commessa in-scope +
+   2 operatori): in-scope/off-scope/no-ruolo su `commesse` + scope-via-padre su
+   `commesse_attivita`. Soft-skip se fixture non costruibile.
 
 ## 5. Verifica attesa + pgTAP
 
@@ -93,10 +101,15 @@ WHERE polrelid IN ('vendite.commesse'::regclass, 'vendite.commesse_attivita'::re
 -- atteso: rls_commesse_ef_whitelist (*), rls_commesse_attivita_ef_whitelist (*)
 ```
 
-pgTAP: `db/pgtap/rls/test-rls-commesse-ef-whitelist-write.sql` sul modello di
-`test-rls-resi-ef-whitelist-write.sql` (ENABLE+FORCE locale alla tx): operatore in scope
-legge/scrive; operatore fuori scope 0 righe in lettura e UPDATE morto; commessa con
-emittente NULL visibile solo ad admin globale; riga `commesse_attivita` segue il padre.
+pgTAP: `db/pgtap/rls/test-rls-commesse-ef-whitelist-write.sql` (ENABLE+FORCE locale alla tx,
+fixture da dati esistenti): operatore in scope scrive; fuori scope UPDATE morto (0 righe);
+no-ruolo 0 righe (fail-closed); `commesse_attivita` segue il padre. ✅ **`plan(5)` verde
+(2026-07-20)**.
+
+> **Nota di implementazione**: l'adapter satellite è `fn_scope_ef_whitelist_via_commessa`
+> ([manuale](/dbzero/script/funzioni/fn_scope_ef_whitelist_via_commessa)); `p_auth_user_id`
+> resta `integer` (ref `django.*` → no `%TYPE`, [[feedback_django_refs_in_liquibase]]),
+> `p_commessa_id` usa `vendite.commesse.id%TYPE`.
 
 Smoke applicativo post-apply (lato BE, lo faccio io): approva/stato/prezzi su commessa in
 scope OK, su commessa fuori scope → 404; `POST /commesse/push/run/` da operatore genera
