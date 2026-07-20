@@ -32,6 +32,8 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_fatture_stampa_coda_da_lavorare | `CREATE INDEX ix_fatture_stampa_coda_da_lavorare ON vendite.fatture_stampa_coda USING btree (id) WHERE (stato = ANY (ARRAY['PENDING'::text, 'IN_CORSO'::text]))` |
+| ix_fatture_stampa_coda_lotto_id | `CREATE INDEX ix_fatture_stampa_coda_lotto_id ON vendite.fatture_stampa_coda USING btree (lotto_id)` |
+| ix_fatture_stampa_coda_sorgente_id | `CREATE INDEX ix_fatture_stampa_coda_sorgente_id ON vendite.fatture_stampa_coda USING btree (sorgente_id)` |
 | pk_fatture_stampa_coda | `CREATE UNIQUE INDEX pk_fatture_stampa_coda ON vendite.fatture_stampa_coda USING btree (id)` |
 | uq_fatture_stampa_coda_vivo | `CREATE UNIQUE INDEX uq_fatture_stampa_coda_vivo ON vendite.fatture_stampa_coda USING btree (sorgente_tipo_id, sorgente_id) WHERE (stato = ANY (ARRAY['PENDING'::text, 'IN_CORSO'::text]))` |
 
