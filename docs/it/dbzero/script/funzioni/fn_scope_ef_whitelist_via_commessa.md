@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_scope_ef_whitelist_via_commessa.md" %}
 # ⚙️ Funzione `fn_scope_ef_whitelist_via_commessa`
 
 ```sql

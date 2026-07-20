@@ -1,0 +1,49 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-coda-lavori-generica §4 — seed del primo tipo di job.
+#
+# FATTURAZIONE_GIRO: primo consumatore (C-3, giro fatturazione on-demand).
+# handler_code=fatturazione_giro_default -> risolto dal handler_registry Python
+# al boot. Seed attivo=true: il dispatch e' worker-based (non in-transazione
+# fail-fast), l'enqueuer (endpoint C-3) atterra insieme all'handler, quindi
+# nessuna finestra di dispatch orfano. Upsert su codice (chiave naturale
+# stabile referenziata in FK da coda_lavori.job_type); id (identity) e meta
+# (default '{}') omessi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260720-10-seed-dbops-coda-lavori-tipi-fatturazione-giro-mctit.yaml
+
+  - changeSet:
+      id: 20260720-10-seed-dbops-coda-lavori-tipi-fatturazione-giro
+      author: mctit
+      runOnChange: true
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: coda_lavori_tipi
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/coda_lavori_tipi.csv
+            tableName: coda_lavori_tipi
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "codice"
+            columns:
+              - column: { name: codice, type: STRING }
+              - column: { name: handler_code, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: run_as_default, type: STRING }
+              - column: { name: max_tentativi_default, type: NUMERIC }
+              - column: { name: attivo, type: BOOLEAN }

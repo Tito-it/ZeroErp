@@ -14,6 +14,8 @@
 - [automazione_chiusura_scadenze](tabelle/automazione_chiusura_scadenze.md) — (latest review 26-04-2026)
 - [automazione_guard_utility_tipo_ruolo](tabelle/automazione_guard_utility_tipo_ruolo.md) — La tabella **`dbops.automazione_guard_utility_tipo_ruolo`** configura le tabelle su cui applicare automaticamente il trigger di guardia **utility -> tipo_ruolo**.
 - [automazione_overlap](tabelle/automazione_overlap.md) — (latest review 19-01-26) La tabella **`dbops.automazione_overlap`** centralizza la configurazione del controllo **anti-overlap temporale** tramite vincoli `EXCLUDE USING gist` sulle tabelle versionate.
+- [coda_lavori](tabelle/coda_lavori.md) — (latest review 20-07-2026)
+- [coda_lavori_tipi](tabelle/coda_lavori_tipi.md) — (latest review 20-07-2026)
 - [domini_task](tabelle/domini_task.md) — (latest review 08-02-2026) `dbops.domini_task` definisce i **domini logici** per i task pipeline (es. `FATTURAZIONE`, `ATTIVITA_FATTURABILI`, `PRATICHE`). Serve a stabilire un **perimetro chiaro** per il registry multi‑dominio e garantire univocita` dei task per dominio.
 - [error_log](tabelle/error_log.md) — * Raccogliere in un unico punto gli errori generati da funzioni, trigger o applicazioni, permettendo analisi e allineamento con il catalogo di messaggi di errore. * Consentire il **collegamento transazionale** tramite `tx_id`, per ricostruire l’intero flusso di operazioni (ad esempio un job batch) incrociando tabelle come `dbops.audit_log`.
 - [fk_index_policy](tabelle/fk_index_policy.md) — (latest review 16-01-26) La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** per la gestione degli index sulle foreign key, consentendo di abilitare o disabilitare la creazione/uso di indici per specifici vincoli referenziali.
@@ -28,6 +30,7 @@
 
 ## ⚙️ Funzioni
 - [apply_fk_index_policy](funzioni/apply_fk_index_policy.md) — (latest update 16-01-26) Applicare in modo automatico le regole di indicizzazione definite nella tabella `dbops.fk_index_policy`:   
+- [fn_accoda_lavoro](funzioni/fn_accoda_lavoro.md) — (latest review 20-07-2026)
 - [fn_admin_merge_comune](funzioni/fn_admin_merge_comune.md)
 - [fn_admin_merge_stradario](funzioni/fn_admin_merge_stradario.md)
 - [fn_apply_automazione_guard_utility_tipo_ruolo](funzioni/fn_apply_automazione_guard_utility_tipo_ruolo.md) — La funzione **`dbops.fn_apply_automazione_guard_utility_tipo_ruolo(p_exec_mode, p_dry_run)`** crea in modo idempotente i trigger di guardia utility/ruolo sulle tabelle configurate in `dbops.automazione_guard_utility_tipo_ruolo`.
