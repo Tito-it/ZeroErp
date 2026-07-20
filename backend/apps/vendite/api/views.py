@@ -21,10 +21,12 @@ from apps.vendite.services.commesse_service import (
     pr_run_commesse_push,
 )
 from apps.vendite.services.pipeline_service import (
+    esiti_fatturazione,
     fn_get_lotto_segnalazioni_summary,
     fn_get_lotto_task_runs,
     fn_reset_lotto_draft,
     fn_reset_lotto_fattura_draft,
+    numera_lotto,
     run_lotto_pipeline,
     run_lotto_pipeline_until_done,
 )
@@ -860,6 +862,90 @@ class ApiFatturazioneApprovaCompetenza(DomainAPIView):
             )
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiFatturazioneNumeraLotto(DomainAPIView):
+    """C-4: numerazione «Rendi definitive» di un singolo lotto EMESSA. Esegue lo
+    step DEFINITIVA (numera_fatture + stampa_documenti_lotto che ACCODA, I-2):
+    l'endpoint NON chiama la stampa. Gate fiscale separato (I-7): permesso
+    `numera_fatture_lotti`, distinto da `genera_fatture_lotti`. Scope operatore:
+    lotto fuori scope/inesistente → 404; non EMESSA → errore parlante."""
+
+    area_funzionale = "vendite"
+    post_permission = "numera_fatture_lotti"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="VenditeNumeraLottoResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeNumeraLottoData",
+                        fields={
+                            "lotto_id": serializers.IntegerField(allow_null=True),
+                            "stato_lotto": serializers.CharField(allow_null=True),
+                            "stato_doc_fiscale_id": serializers.IntegerField(allow_null=True),
+                            "step_eseguiti": serializers.IntegerField(),
+                            "motivo_stop": serializers.CharField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Numera (Rendi definitive) il lotto: guard scope+EMESSA, poi step DEFINITIVA.
+    def post(self, request: Request, lotto_id: int) -> JsonResponse:
+        # Scopo: delega al service (guard fiscale + esecuzione step DEFINITIVA).
+        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+            return numera_lotto(
+                lotto_id=int(lotto_id),
+                auth_user_id=get_scope_user_id(request),
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiFatturazioneEsiti(DomainAPIView):
+    """C-5: esiti dei giri di fatturazione (riassunto per corsia da
+    `maintenance.job_run_log`) + stato della coda stampa (conteggi per stato,
+    scope emittente dell'operatore via JOIN fatture). Sola lettura (I-5: nessuna
+    tabella nuova)."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="VenditeFatturazioneEsitiResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeFatturazioneEsitiData",
+                        fields={
+                            "giri": serializers.ListField(child=serializers.DictField()),
+                            "coda_stampa": serializers.DictField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce esiti giri + stato coda stampa (scope operatore).
+    def get(self, request: Request) -> JsonResponse:
+        return success_response(
+            esiti_fatturazione(auth_user_id=get_scope_user_id(request)),
+        )
 
 
 _VARIAZIONE_PREZZO_REQUEST = inline_serializer(

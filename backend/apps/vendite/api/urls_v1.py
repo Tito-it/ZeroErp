@@ -9,6 +9,8 @@ from apps.vendite.api.views import (
     ApiCommessePushLog,
     ApiCommessaStato,
     ApiFatturazioneApprovaCompetenza,
+    ApiFatturazioneEsiti,
+    ApiFatturazioneNumeraLotto,
     ApiLottiList,
     ApiLottoDetail,
     ApiLottoFattureList,
@@ -256,6 +258,20 @@ urlpatterns = [
         "fatturazione/approva-competenza/",
         ApiFatturazioneApprovaCompetenza.as_view(),
         name="vendite-fatturazione-approva-competenza",
+    ),
+    # C-4: numerazione «Rendi definitive» di un singolo lotto EMESSA (step
+    # DEFINITIVA = numera + accoda stampa). Gate fiscale separato (I-7).
+    path(
+        "fatturazione/lotti/<int:lotto_id>/numera/",
+        ApiFatturazioneNumeraLotto.as_view(),
+        name="vendite-fatturazione-numera-lotto",
+    ),
+    # C-5: esiti dei giri (job_run_log per corsia) + stato coda stampa (scope
+    # emittente operatore). Sola lettura.
+    path(
+        "fatturazione/esiti/",
+        ApiFatturazioneEsiti.as_view(),
+        name="vendite-fatturazione-esiti",
     ),
     # --- Lookup statici (Fase 2 refactor frontend vendite) ---
     path(

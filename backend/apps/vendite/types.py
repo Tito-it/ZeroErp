@@ -99,6 +99,10 @@ class LottoListRow(TypedDict):
     stato_operativo: str
     stato_doc_fiscale_id: int | None
     stato_doc_fiscale_descrizione: str | None
+    # Codice stabile (codice_interno) dello stato doc fiscale: i gate FE usano
+    # SEMPRE il codice, mai la descrizione display (lezione B-4). Es. 'EMESSA'
+    # abilita «Rendi definitive» (C-4).
+    stato_doc_fiscale_codice: str | None
     tipo_doc_fiscale_id: int
     tipo_doc_fiscale_descrizione: str | None
     area_geografica_id: int | None
