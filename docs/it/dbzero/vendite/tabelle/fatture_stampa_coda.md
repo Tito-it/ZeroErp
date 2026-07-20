@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fatture_stampa_coda.md" %}
 # 📚 Tabella `fatture_stampa_coda`
 
 ## 🗂️ Campi principali
