@@ -84,6 +84,7 @@
 - [fn_scope_ba_ownership_via_fattura](manual/fn_scope_ba_ownership_via_fattura.md) — (latest review 19-04-2026)
 - [fn_scope_cliente_ownership](manual/fn_scope_cliente_ownership.md) — (latest review 19-04-2026)
 - [fn_scope_ef_whitelist](manual/fn_scope_ef_whitelist.md) — (rev 2026-06-01 — refactor RLS: delega alla canonica)
+- [fn_scope_ef_whitelist_via_commessa](manual/fn_scope_ef_whitelist_via_commessa.md) — (rev 2026-07-20)
 - [fn_scope_ef_whitelist_via_efba](manual/fn_scope_ef_whitelist_via_efba.md) — (rev 2026-06-01 — Ondata 2)
 - [fn_scope_ef_whitelist_via_fattura](manual/fn_scope_ef_whitelist_via_fattura.md) — (rev 2026-06-01)
 - [fn_scope_ef_whitelist_via_sr](manual/fn_scope_ef_whitelist_via_sr.md) — (rev 2026-06-01)

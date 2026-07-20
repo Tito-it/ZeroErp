@@ -1,0 +1,2 @@
+codice,handler_code,descrizione,run_as_default,max_tentativi_default,attivo
+FATTURAZIONE_GIRO,fatturazione_giro_default,"Giro fatturazione on-demand (C-3): discovery terne + lotto + pipeline fino a fino_a_stato.",OPERATORE,5,true

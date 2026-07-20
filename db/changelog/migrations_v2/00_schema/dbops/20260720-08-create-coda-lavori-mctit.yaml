@@ -1,0 +1,176 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-coda-lavori-generica §1 — la coda di lavori generica DB-native
+# (variante senza broker del pattern task-queue). Enqueue atomico col dato di
+# business (fn_accoda_lavoro, NN 09), drenata da un worker unico che dispatcha
+# per job_type. Claim/reaper/marca = BE in SQL diretto (SKIP LOCKED), non
+# funzioni DB. Primo consumatore: FATTURAZIONE_GIRO (C-3).
+#
+# Tabella multi-writer (ogni dominio accoda, worker, cancel, requeue) ->
+# trigger audit + tx_id come dbops.idempotency_keys (NON il no-trigger di
+# vendite.fatture_stampa_coda, single-writer).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260720-08-create-coda-lavori-mctit.yaml
+
+  - changeSet:
+      id: 20260720-08-create-coda-lavori
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea dbops.coda_lavori: coda di lavori generica. PK id, uid uuidv7,
+        job_type (FK a coda_lavori_tipi.codice), payload, run_as/scope (CHECK di
+        coerenza), origine, priorita, stato, tentativi/max_tentativi, run_after
+        (differiti/backoff), campi di lavorazione, idempotency_key (dedup job
+        vivi). Indice claim su (priorita,id) WHERE vivo (serve anche il reaper),
+        unique parziale vivo su (job_type,idempotency_key). Trigger audit + tx_id.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: coda_lavori_tipi }
+            - not:
+                - tableExists:
+                    { schemaName: dbops, tableName: coda_lavori }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Coda di lavori generica DB-native. Una riga = un job async
+              --   (payload + job_type di dispatch). Enqueue atomico col dato di
+              --   business via dbops.fn_accoda_lavoro (callable anche da trigger).
+              -- Regole:
+              --   - stato di lavorazione tecnico via CHECK (non lookup dominio);
+              --   - run_as OPERATORE => scope catturato NOT NULL; SISTEMA => NULL;
+              --   - un solo job "vivo" (PENDING/IN_CORSO) per (job_type,
+              --     idempotency_key) quando la chiave e' valorizzata (dedup business);
+              --   - eleggibile al claim se stato=PENDING e (run_after IS NULL o <= now()).
+              -- =========================================================
+              CREATE TABLE dbops.coda_lavori (
+                  id              bigint GENERATED ALWAYS AS IDENTITY
+                                    CONSTRAINT pk_coda_lavori PRIMARY KEY,
+                  uid             uuid    NOT NULL DEFAULT uuidv7(),
+                  job_type        text    NOT NULL,
+                  payload         jsonb   NOT NULL DEFAULT '{}'::jsonb,
+                  run_as          text    NOT NULL,
+                  scope           jsonb   NULL,
+                  origine         text    NOT NULL DEFAULT 'API',
+                  priorita        smallint NOT NULL DEFAULT 100,
+                  stato           text    NOT NULL DEFAULT 'PENDING',
+                  tentativi       int     NOT NULL DEFAULT 0,
+                  max_tentativi   int     NOT NULL DEFAULT 5,
+                  ultimo_errore   jsonb   NULL,
+                  run_after       timestamptz NULL,
+                  claimed_at      timestamptz NULL,
+                  started_at      timestamptz NULL,
+                  ended_at        timestamptz NULL,
+                  job_run_id      bigint  NULL,
+                  idempotency_key text    NULL,
+                  result          jsonb   NULL,
+                  data_insert     timestamp with time zone NOT NULL DEFAULT now(),
+                  user_insert     text    NOT NULL DEFAULT CURRENT_USER,
+                  data_update     timestamp with time zone NOT NULL DEFAULT now(),
+                  user_update     text    NOT NULL DEFAULT CURRENT_USER,
+                  tx_id           uuid    NULL,
+                  CONSTRAINT uq_coda_lavori_uid UNIQUE (uid),
+                  CONSTRAINT chk_coda_lavori_run_as
+                      CHECK (run_as IN ('SISTEMA', 'OPERATORE')),
+                  CONSTRAINT chk_coda_lavori_origine
+                      CHECK (origine IN ('API', 'CRON', 'COMMAND', 'TRIGGER')),
+                  CONSTRAINT chk_coda_lavori_stato
+                      CHECK (stato IN ('PENDING', 'IN_CORSO', 'FATTO', 'ERRORE', 'ANNULLATO')),
+                  CONSTRAINT chk_coda_lavori_tentativi
+                      CHECK (tentativi >= 0),
+                  CONSTRAINT chk_coda_lavori_max_tentativi
+                      CHECK (max_tentativi >= 1),
+                  -- Coerenza run_as<->scope: OPERATORE deve portare lo scope
+                  -- autorizzativo catturato (altrimenti girerebbe senza filtro RLS);
+                  -- SISTEMA non deve avere scope spurio.
+                  CONSTRAINT chk_coda_lavori_run_as_scope
+                      CHECK (
+                          (run_as = 'OPERATORE' AND scope IS NOT NULL)
+                          OR (run_as = 'SISTEMA' AND scope IS NULL)
+                      ),
+                  -- FK logica al registry tipi (codice UNIQUE). L'indice FK non
+                  -- si crea a mano: dbops.apply_fk_index_policy() (opt-in).
+                  CONSTRAINT fk_coda_lavori_tipo
+                      FOREIGN KEY (job_type)
+                      REFERENCES dbops.coda_lavori_tipi (codice)
+              );
+
+              -- Corsia del claim (FIFO per priorita): il predicato include
+              -- IN_CORSO cosi' lo stesso indice serve anche il reaper
+              -- (WHERE stato='IN_CORSO' AND claimed_at < now()-soglia).
+              CREATE INDEX ix_coda_lavori_da_lavorare
+                  ON dbops.coda_lavori (priorita, id)
+                  WHERE stato IN ('PENDING', 'IN_CORSO');
+
+              -- Dedup dei job vivi per chiave di business (idempotency_key).
+              -- Parziale su PENDING/IN_CORSO -> a job FATTO/ERRORE/ANNULLATO la
+              -- stessa chiave puo' ripartire (equivalente generico di
+              -- uq_fatture_stampa_coda_vivo).
+              CREATE UNIQUE INDEX uq_coda_lavori_vivo_idem
+                  ON dbops.coda_lavori (job_type, idempotency_key)
+                  WHERE idempotency_key IS NOT NULL
+                    AND stato IN ('PENDING', 'IN_CORSO');
+
+              -- Monitoraggio conteggi per stato (badge coda/errore).
+              CREATE INDEX ix_coda_lavori_stato
+                  ON dbops.coda_lavori (stato);
+
+              COMMENT ON TABLE dbops.coda_lavori IS
+                  'Coda di lavori generica DB-native (senza broker). Una riga = un job async (job_type + payload). Enqueue atomico via dbops.fn_accoda_lavoro (callable da trigger). Claim FOR UPDATE SKIP LOCKED, reaper e marca esito li fa il worker BE in SQL diretto. Brief: brief-db-coda-lavori-generica §1.';
+              COMMENT ON COLUMN dbops.coda_lavori.job_type IS
+                  'Tipo di job = dbops.coda_lavori_tipi.codice (hard FK). Chiave di dispatch verso il handler_registry Python.';
+              COMMENT ON COLUMN dbops.coda_lavori.payload IS
+                  'Argomenti del job (JSONB). Es. {competenza, fino_a_stato} per FATTURAZIONE_GIRO.';
+              COMMENT ON COLUMN dbops.coda_lavori.run_as IS
+                  'Chi esegue: SISTEMA (worker apre system_process_context BYPASSRLS) | OPERATORE (applica lo scope catturato, no BYPASSRLS).';
+              COMMENT ON COLUMN dbops.coda_lavori.scope IS
+                  'Scope autorizzativo catturato all''enqueue per i job OPERATORE (es. {emittente_ids, auth_user_id}). Obbligatorio se run_as=OPERATORE (CHECK).';
+              COMMENT ON COLUMN dbops.coda_lavori.origine IS
+                  'Chi ha accodato: API (endpoint) | CRON | COMMAND | TRIGGER (enqueue DB-native da dominio). Set proprio della coda, distinto da maintenance.job_run_log.origine.';
+              COMMENT ON COLUMN dbops.coda_lavori.priorita IS
+                  'Minore = piu'' urgente. Il worker fa claim a batch misto ORDER BY priorita, id (no starvation tra job_type).';
+              COMMENT ON COLUMN dbops.coda_lavori.stato IS
+                  'Stato di lavorazione: PENDING | IN_CORSO | FATTO | ERRORE (terminale oltre soglia) | ANNULLATO (cancel su PENDING).';
+              COMMENT ON COLUMN dbops.coda_lavori.run_after IS
+                  'Eleggibile al claim solo se NULL o <= now(). Usato per i job differiti e per il backoff sui retry (run_after = now()+f(tentativi)).';
+              COMMENT ON COLUMN dbops.coda_lavori.claimed_at IS
+                  'Istante del claim (autoritativo per il reaper; nessun trigger lo tocca, lo setta il claim BE).';
+              COMMENT ON COLUMN dbops.coda_lavori.job_run_id IS
+                  'Link a maintenance.job_run_log (no FK cross-schema). Valorizzato dal worker quando il job parte.';
+              COMMENT ON COLUMN dbops.coda_lavori.idempotency_key IS
+                  'Chiave di BUSINESS per dedup dei job vivi (unique parziale). NON e'' l''header HTTP Idempotency-Key (gestito dal layer dbops.idempotency_keys).';
+              COMMENT ON COLUMN dbops.coda_lavori.result IS
+                  'Esito/summary del job a stato FATTO (JSONB). Es. {lotto_id, documento_id}.';
+
+              -- Trigger audit (data_update/user_update) + tx_id: tabella
+              -- multi-writer -> stesso wiring di dbops.idempotency_keys.
+              CREATE TRIGGER trg_coda_lavori_audit_data_user_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON dbops.coda_lavori
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_audit_data_user_generic();
+
+              CREATE TRIGGER trg_coda_lavori_gen_tx_id_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON dbops.coda_lavori
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_tx_id_managed();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS dbops.coda_lavori;
