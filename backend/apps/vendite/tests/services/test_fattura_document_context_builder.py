@@ -1,0 +1,194 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test unit `FatturaDocumentContextBuilder` (stampa/ristampa fattura).
+#        Mock-only su `VenditeRepository`. Verifica shape context (fattura +
+#        cliente + righe + riepilogo IVA), formattazione date, guard id + 404,
+#        registrazione registry.
+#
+# Indice test (0..N):
+#   0. build_context_shape_e_campi
+#   1. build_context_righe_propagate
+#   2. build_context_riepilogo_iva_propagate
+#   3. build_context_id_non_valido_raises_validation
+#   4. build_context_fattura_inesistente_raises_not_found
+#   5. registry_contiene_fattura_dopo_import_modulo
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from typing import Any
+from unittest.mock import MagicMock
+
+from django.test import SimpleTestCase
+
+from apps.core.services.service_errors import ServiceError
+from apps.vendite.services.fattura_document_context_builder import (
+    FatturaDocumentContextBuilder,
+)
+
+
+def _testata_row() -> dict[str, Any]:
+    """Riga gemella di `VenditeRepository.get_fattura_testata`."""
+    return {
+        "id": 42,
+        "uid": "0190b000-0000-0000-0000-000000000042",
+        "anno": 2026,
+        "serie": "A",
+        "numero": 137,
+        "data": "2026-06-30",
+        "data_contabilizzazione": "2026-06-30",
+        "tipo_doc_fiscale_id": 1,
+        "tipo_doc_fiscale_codice": "TD01",
+        "tipo_doc_fiscale_descrizione": "Fattura",
+        "stato_doc_fiscale_id": 3,
+        "stato_codice_interno": "EMESSA",
+        "stato_descrizione": "Emessa",
+        "emittente_soggetto_ruolo_id": 88,
+        "emittente_fiscale_id": 11,
+        "emittente_fiscale_codice": "EF-11",
+        "billing_account_id": 10,
+        "ba_codice": "BA-10",
+        "cliente_soggetto_ruolo_id": 50,
+        "soggetto_id": 40,
+        "ragione_sociale_completa": "Cliente Fattura Srl",
+        "id_fiscale_univoco_cf_piva": "IT01234567890",
+        "valuta_id": 1,
+        "valuta_codice": "EUR",
+        "tasso_cambio": "1",
+        "imponibile_tot": "100.00",
+        "imposta_tot": "22.00",
+        "bollo_applicato": False,
+        "bollo_importo": None,
+        "arrotondamento_attuale": "0.00",
+        "totale_doc": "122.00",
+        "totale_a_pagare": "122.00",
+        "meta": {"note": "fattura demo"},
+    }
+
+
+class BuildContextFatturaTests(SimpleTestCase):
+    """Shape context + formattazione."""
+
+    # 0. Shape stabile + campi denormalizzati + date formattate IT/ISO.
+    def test_build_context_shape_e_campi(self) -> None:
+        repo = MagicMock()
+        repo.get_fattura_testata.return_value = _testata_row()
+        repo.list_fattura_righe.return_value = []
+        repo.list_fattura_riepilogo_iva.return_value = []
+
+        ctx = FatturaDocumentContextBuilder(repo=repo).build_context(
+            42, auth_user_id=9,
+        )
+
+        self.assertEqual(
+            set(ctx.keys()),
+            {"fattura", "cliente", "righe", "riepilogo_iva", "_meta"},
+        )
+        fattura = ctx["fattura"]
+        self.assertEqual(fattura["numero"], 137)
+        self.assertEqual(fattura["serie"], "A")
+        self.assertEqual(fattura["anno"], 2026)
+        self.assertEqual(fattura["data"], "30-06-2026")
+        self.assertEqual(fattura["data_iso"], "2026-06-30")
+        self.assertEqual(fattura["tipo_doc"]["codice_interno"], "TD01")
+        self.assertEqual(fattura["stato"]["codice_interno"], "EMESSA")
+        self.assertEqual(fattura["emittente"]["id"], 11)
+        self.assertEqual(fattura["emittente"]["codice"], "EF-11")
+        self.assertEqual(fattura["bollo_applicato"], False)
+        self.assertEqual(fattura["totali"]["imponibile"], "100.00")
+        self.assertEqual(fattura["totali"]["imposta"], "22.00")
+        self.assertEqual(fattura["totali"]["documento"], "122.00")
+        self.assertEqual(fattura["totali"]["a_pagare"], "122.00")
+        self.assertEqual(fattura["totali"]["valuta_codice"], "EUR")
+
+        cliente = ctx["cliente"]
+        self.assertEqual(cliente["denominazione"], "Cliente Fattura Srl")
+        self.assertEqual(cliente["id_fiscale"], "IT01234567890")
+        self.assertEqual(cliente["ba_codice"], "BA-10")
+        self.assertEqual(cliente["soggetto_ruolo_id"], 50)
+
+        self.assertEqual(ctx["_meta"]["context_code"], "FATTURA")
+        self.assertEqual(ctx["_meta"]["context_version"], 1)
+        self.assertEqual(ctx["_meta"]["auth_user_id"], 9)
+        self.assertEqual(ctx["_meta"]["locale"], "it-IT")
+
+    # 1. Le righe del repo passano intatte nel context.
+    def test_build_context_righe_propagate(self) -> None:
+        repo = MagicMock()
+        repo.get_fattura_testata.return_value = _testata_row()
+        repo.list_fattura_righe.return_value = [
+            {"id": 1, "articolo_descrizione": "Art A", "qta": "2"},
+            {"id": 2, "articolo_descrizione": "Art B", "qta": "1"},
+        ]
+        repo.list_fattura_riepilogo_iva.return_value = []
+
+        ctx = FatturaDocumentContextBuilder(repo=repo).build_context(42)
+
+        self.assertEqual(len(ctx["righe"]), 2)
+        self.assertEqual(ctx["righe"][0]["articolo_descrizione"], "Art A")
+        repo.list_fattura_righe.assert_called_once_with(42)
+
+    # 2. Il riepilogo IVA (tabella reale) passa intatto nel context.
+    def test_build_context_riepilogo_iva_propagate(self) -> None:
+        repo = MagicMock()
+        repo.get_fattura_testata.return_value = _testata_row()
+        repo.list_fattura_righe.return_value = []
+        repo.list_fattura_riepilogo_iva.return_value = [
+            {
+                "fattura_id": 42, "iva_id": 1, "iva_codice": "22",
+                "iva_aliquota": "22.00", "natura_id": None,
+                "imponibile": "100.00", "imposta": "22.00",
+                "arrotondamento": "0.00",
+            },
+        ]
+
+        ctx = FatturaDocumentContextBuilder(repo=repo).build_context(42)
+
+        self.assertEqual(len(ctx["riepilogo_iva"]), 1)
+        self.assertEqual(ctx["riepilogo_iva"][0]["iva_aliquota"], "22.00")
+        self.assertEqual(ctx["riepilogo_iva"][0]["imposta"], "22.00")
+        repo.list_fattura_riepilogo_iva.assert_called_once_with(42)
+
+
+class BuildContextFatturaGuardTests(SimpleTestCase):
+    """Guard input + 404."""
+
+    # 3. id non valido -> VALIDATION, no DB.
+    def test_build_context_id_non_valido_raises_validation(self) -> None:
+        repo = MagicMock()
+        builder = FatturaDocumentContextBuilder(repo=repo)
+        for bad in (0, -1, True, "stringa"):
+            with self.subTest(value=bad):
+                with self.assertRaises(ServiceError) as ctx:
+                    builder.build_context(bad)  # type: ignore[arg-type]
+                self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.get_fattura_testata.assert_not_called()
+
+    # 4. fattura inesistente -> NOT_FOUND, niente righe/riepilogo.
+    def test_build_context_fattura_inesistente_raises_not_found(self) -> None:
+        repo = MagicMock()
+        repo.get_fattura_testata.return_value = None
+        builder = FatturaDocumentContextBuilder(repo=repo)
+        with self.assertRaises(ServiceError) as ctx:
+            builder.build_context(999)
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
+        repo.list_fattura_righe.assert_not_called()
+        repo.list_fattura_riepilogo_iva.assert_not_called()
+
+
+class BuilderCodeAndRegistryTests(SimpleTestCase):
+    """Costante CODE + registrazione al boot Django."""
+
+    # 5. Dopo l'import del modulo, il registry contiene 'FATTURA'.
+    def test_registry_contiene_fattura_dopo_import_modulo(self) -> None:
+        import apps.vendite.services.fattura_document_context_builder  # noqa: F401
+        from apps.documenti.services.context_builders.registry import (
+            get_builder,
+            registered_codes,
+        )
+
+        self.assertIn("FATTURA", registered_codes())
+        builder = get_builder("FATTURA")
+        self.assertIsInstance(builder, FatturaDocumentContextBuilder)

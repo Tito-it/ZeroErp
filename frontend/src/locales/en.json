@@ -3115,7 +3115,8 @@
       "CONTRATTO": "Contract",
       "OFFERTA_COMMERCIALE": "Commercial offer",
       "ORDINE_VENDITA": "Sales order",
-      "DDT_VENDITA": "Sales delivery note (DDT)"
+      "DDT_VENDITA": "Sales delivery note (DDT)",
+      "FATTURA": "Invoice"
     },
     "genera_pdf": {
       "label": "Generate PDF",

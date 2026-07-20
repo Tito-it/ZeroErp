@@ -37,6 +37,7 @@ Indice test eseguiti:
 17) CommesseServiceTests.test_riallinea_prezzo_ok
 18) CommesseServiceTests.test_riallinea_prezzo_bloccato
 19) CommesseServiceTests.test_riallinea_prezzo_versione_cambiata_senza_conferma
+19-bis) CommesseServiceTests.test_prezzi_attivita_fuori_scope_o_inesistente_404 (P-6 RLS)
 
 Azioni di stato commessa (#7 — fn_available_actions_commessa + cambia stato):
 20) CommesseServiceTests.test_fn_get_commessa_stato_include_capabilities
@@ -893,6 +894,36 @@ class CommesseServiceTests(TestCase):
         self.assertTrue(result["richiede_conferma"])
         self.assertEqual(result["versione_originale_id"], 101)
         self.assertEqual(result["versione_attuale_id"], 202)
+        repo.update_attivita_prezzo.assert_not_called()
+
+    # Scopo: RLS scope emittente (P-6) — attivita fuori scope: get_attivita_pricing
+    #        (SELECT su commesse_attivita JOIN commesse, SECURITY INVOKER) torna None
+    #        esattamente come per un id inesistente. I tre endpoint prezzi devono
+    #        rispondere 404 E_COMMESSA_ATTIVITA_NOT_FOUND SENZA eseguire alcun UPDATE
+    #        (probe-first: nessun no-op silenzioso su UPDATE morto). Blinda anche il
+    #        futuro FORCE ROW LEVEL SECURITY: il 404 e' garantito dalla lettura.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_prezzi_attivita_fuori_scope_o_inesistente_404(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import (
+            fn_riallinea_prezzo,
+            fn_sblocca_prezzo,
+            fn_variazione_prezzo_eccezionale,
+        )
+
+        repo = mock_repo_cls.return_value
+        repo.get_attivita_pricing.return_value = None  # RLS fuori scope == inesistente
+
+        casi = [
+            ("riallinea", lambda: fn_riallinea_prezzo(10, 501, {})),
+            ("variazione", lambda: fn_variazione_prezzo_eccezionale(10, 501, {"prezzo": "42.00", "motivo": "x"})),
+            ("sblocca", lambda: fn_sblocca_prezzo(10, 501, {"motivo": "x"})),
+        ]
+        for nome, azione in casi:
+            with self.subTest(endpoint=nome):
+                with self.assertRaises(ServiceError) as ctx:
+                    azione()
+                self.assertEqual(ctx.exception.code, "E_COMMESSA_ATTIVITA_NOT_FOUND")
+        # Nessun UPDATE eseguito su nessuno dei tre path (probe-first).
         repo.update_attivita_prezzo.assert_not_called()
 
 

@@ -14,6 +14,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.db._helpers import rows_to_list
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.value_normalizer import as_bool, empty_to_none
 from apps.vendite.types import (
@@ -1459,6 +1460,178 @@ class VenditePipelineRepository:
             row = cursor.fetchone()
         assert row is not None
         return int(row[0])
+
+    # ══════════════════════════════════════════════════════════
+    #  CODA STAMPA — drenaggio worker (outbox, Fase C C-2b/C-2d)
+    #  `accoda_stampe_lotto` (sopra) POPOLA la coda; questi metodi la
+    #  DRENANO. Owner unico del vocabolario stati coda (costanti sotto,
+    #  CHECK chk_fatture_stampa_coda_stato).
+    #  ⚠️ La tabella NON ha trigger audit (verificato sul DDL G1): ogni
+    #  UPDATE di stato setta data_update/user_update ESPLICITAMENTE —
+    #  data_update è anche il claimed_at su cui ragiona il reaper.
+    # ══════════════════════════════════════════════════════════
+
+    # Stati della coda stampa (CHECK chk_fatture_stampa_coda_stato). Unica
+    # fonte dei letterali: il service drainer importa da qui, mai stringhe
+    # inline cross-file.
+    STAMPA_STATO_PENDING = "PENDING"
+    STAMPA_STATO_IN_CORSO = "IN_CORSO"
+    STAMPA_STATO_FATTO = "FATTO"
+    STAMPA_STATO_ERRORE = "ERRORE"
+
+    # Scopo: Reaper delle righe rimaste IN_CORSO oltre `stale_minuti` (worker
+    #        morto a metà render): le riporta a PENDING per il ri-drenaggio.
+    #        `data_update` di una riga IN_CORSO == istante del claim (settato
+    #        esplicitamente dal claim, nessun trigger audit sulla tabella),
+    #        quindi funge da claimed_at. Soglia larga (≫ tempo di un render) →
+    #        nessun doppio-render su un worker semplicemente lento. Ritorna il
+    #        numero di righe recuperate.
+    def reset_stale_stampe_in_corso(self, stale_minuti: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.fatture_stampa_coda
+                   SET stato = %s,
+                       data_update = now(),
+                       user_update = CURRENT_USER
+                 WHERE stato = %s
+                   AND data_update < now() - make_interval(mins => %s)
+                """,
+                [
+                    self.STAMPA_STATO_PENDING,
+                    self.STAMPA_STATO_IN_CORSO,
+                    int(stale_minuti),
+                ],
+            )
+            return cursor.rowcount
+
+    # Scopo: Claim atomico di un batch di work-item PENDING per il worker
+    #        drainer. `FOR UPDATE SKIP LOCKED` → più worker in parallelo non si
+    #        pestano (ognuno prende righe diverse); il flip a IN_CORSO nella
+    #        stessa istruzione le sottrae ai claim successivi (e al
+    #        ri-accodamento, uq_fatture_stampa_coda_vivo). `data_update = now()`
+    #        = claimed_at per il reaper (la tabella non ha trigger audit).
+    #        Ordine per id (indice parziale ix_fatture_stampa_coda_da_lavorare).
+    #        Il render avviene FUORI da qui: la connessione non tiene il lock
+    #        durante l'I/O (I-4b). Ritorna i work-item claimati (lista dict).
+    def claim_stampe_pending(self, limit: int) -> list[dict[str, Any]]:
+        safe_limit = max(1, int(limit))
+        sql = """
+            WITH claimed AS (
+                SELECT id
+                  FROM vendite.fatture_stampa_coda
+                 WHERE stato = %s
+                 ORDER BY id
+                 FOR UPDATE SKIP LOCKED
+                 LIMIT %s
+            )
+            UPDATE vendite.fatture_stampa_coda c
+               SET stato = %s,
+                   data_update = now(),
+                   user_update = CURRENT_USER
+              FROM claimed
+             WHERE c.id = claimed.id
+            RETURNING c.id, c.sorgente_tipo_id, c.sorgente_id, c.sorgente_uid,
+                      c.lotto_id, c.template_documento_id, c.tentativi
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                self.STAMPA_STATO_PENDING, safe_limit, self.STAMPA_STATO_IN_CORSO,
+            ])
+            return rows_to_list(cursor)
+
+    # Scopo: C-2d — backstop numerazione: garantisce che la fattura sia
+    #        numerata PRIMA del render (rende impossibile un PDF non numerato,
+    #        D-1 al livello più forte). Delega a `fn_numera_fattura_opz_emessa`,
+    #        già idempotente (fattura già numerata → no-op che ritorna i valori
+    #        correnti). Vive nel worker, NON in DocumentGenerationService (che
+    #        resta generico e stupido, I-4).
+    def numera_fattura_backstop(self, fattura_id: int) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM vendite.fn_numera_fattura_opz_emessa(%s)",
+                [int(fattura_id)],
+            )
+            cursor.fetchall()  # drena il result set TABLE (invocazione)
+
+    # Scopo: Marca una riga di coda come completata (FATTO) col documento
+    #        prodotto; azzera `ultimo_errore` (esito pulito dopo eventuali
+    #        tentativi precedenti falliti). data_update esplicito (no trigger).
+    def marca_stampa_fatto(self, coda_id: int, documento_id: int) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.fatture_stampa_coda
+                   SET stato = %s,
+                       documento_id = %s,
+                       ultimo_errore = NULL,
+                       data_update = now(),
+                       user_update = CURRENT_USER
+                 WHERE id = %s
+                """,
+                [self.STAMPA_STATO_FATTO, int(documento_id), int(coda_id)],
+            )
+
+    # Scopo: Registra il fallimento del render di una riga: incrementa
+    #        `tentativi`, salva `ultimo_errore` (jsonb, `default=str` per non
+    #        far mai fallire la registrazione dell'errore su detail esotici) e
+    #        decide lo stato risultante — `ERRORE` (terminale) raggiunta la
+    #        soglia, altrimenti `PENDING` (riprovabile al PROSSIMO giro del
+    #        worker, non nello stesso). data_update esplicito (no trigger).
+    #        Ritorna lo stato risultante ('ERRORE'|'PENDING').
+    def marca_stampa_errore(
+        self, coda_id: int, *, errore: dict[str, Any], soglia_tentativi: int,
+    ) -> str:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.fatture_stampa_coda
+                   SET tentativi = tentativi + 1,
+                       ultimo_errore = %s::jsonb,
+                       stato = CASE
+                                 WHEN tentativi + 1 >= %s THEN %s
+                                 ELSE %s
+                               END,
+                       data_update = now(),
+                       user_update = CURRENT_USER
+                 WHERE id = %s
+                RETURNING stato
+                """,
+                [
+                    json.dumps(errore, default=str),
+                    int(soglia_tentativi),
+                    self.STAMPA_STATO_ERRORE,
+                    self.STAMPA_STATO_PENDING,
+                    int(coda_id),
+                ],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            return str(row[0])
+
+    # Scopo: Contatori della coda stampa per il monitoraggio (C-5) — conteggi
+    #        per stato, opzionalmente ristretti a un lotto. Lettura pura; lo
+    #        scope emittente NON è qui (la coda non ha emittente: si deriva via
+    #        JOIN fatture nel read operatore C-5, brief §5). Ritorna dict
+    #        {stato: n} dei soli stati presenti.
+    def count_coda_stampa_per_stato(
+        self, *, lotto_id: int | None = None,
+    ) -> dict[str, int]:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if lotto_id is not None:
+            conditions.append("lotto_id = %s")
+            params.append(int(lotto_id))
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        sql = f"""
+            SELECT stato, COUNT(*)::int
+              FROM vendite.fatture_stampa_coda
+              {where}
+             GROUP BY stato
+        """  # noqa: S608 — where da condizioni whitelisted (nessun input libero)
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return {str(row[0]): int(row[1]) for row in cursor.fetchall()}
 
     # Scopo: Gestisce `sync_lotto_fatture_stato` nel flusso applicativo del modulo.
     def sync_lotto_fatture_stato(

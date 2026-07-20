@@ -3115,7 +3115,8 @@
       "CONTRATTO": "Contratto",
       "OFFERTA_COMMERCIALE": "Offerta commerciale",
       "ORDINE_VENDITA": "Ordine di vendita",
-      "DDT_VENDITA": "DDT di vendita"
+      "DDT_VENDITA": "DDT di vendita",
+      "FATTURA": "Fattura"
     },
     "genera_pdf": {
       "label": "Genera PDF",

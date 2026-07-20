@@ -203,6 +203,19 @@ variazione richiede interventi manuali sul DB.
   (`vendite.variazione_prezzo_eccezionale`). Per v1 la traccia audit nel `meta` e` il meccanismo
   di controllo sufficiente.
 
+### Scope emittente (RLS, 2026-07-20)
+
+Le tabelle `vendite.commesse` / `commesse_attivita` hanno RLS scope emittente
+(`rls_commesse_ef_whitelist` + `rls_commesse_attivita_ef_whitelist`, EF whitelist
+dell'operatore — vedi `analisi-attivazione-rls-operatori.md`). I 3 endpoint sono
+**probe-first**: leggono l'attivita con `get_attivita_pricing` (SELECT su
+`commesse_attivita JOIN commesse`, SECURITY INVOKER, quindi filtrata dalla RLS)
+**prima** di qualsiasi UPDATE. Un'attivita di un emittente fuori dallo scope
+dell'operatore e` **indistinguibile da una inesistente**: entrambe → **404
+`E_COMMESSA_ATTIVITA_NOT_FOUND`**, nessun UPDATE eseguito (nessun no-op silenzioso
+su UPDATE a 0 righe). Regressione blindata in
+`test_prezzi_attivita_fuori_scope_o_inesistente_404`.
+
 ## Dipendenze DB
 
 - Tabelle:

@@ -24,6 +24,9 @@ export const SORGENTE_CODES = Object.freeze({
   // DDT di vendita (DDT accompagnatorio): quinto dominio del motore
   // documentale, context builder DDT_VENDITA registrato lato BE.
   DDT: 'DDT_VENDITA',
+  // Fattura: sesto dominio del motore documentale, context builder FATTURA
+  // registrato lato BE. Stampa/ristampa (nessuna emissione da UI).
+  FATTURA: 'FATTURA',
 })
 
 // Modalita' PDF di uno stato documento, capability `pdf.mode` esposta da
