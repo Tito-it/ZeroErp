@@ -119,46 +119,49 @@ nav:
                             - Storico: it/backend/storico/index.md
                             - Vendite: it/backend/vendite/index.md
 
-        - Guide tecniche:
-                  - Gestione pratiche: it/guide/gestione-pratiche.md
-                  - Pratiche — Configurazione e opzioni: it/guide/gestione-pratiche-configurazione.md
-                  - Soggetti e ruoli anagrafici: it/guide/soggetti-e-ruoli-anagrafici.md
-                  - Risorse Umane e Accessi al Software: it/guide/risorse-umane-e-accessi.md
-                  - Architettura Permessi e Autorizzazioni: it/guide/architettura-permessi-e-autorizzazioni.md
-                  - Architettura multi face auth: it/guide/architettura-multi-face-auth.md
-                  - Audit e tracciabilità: it/guide/audit-e-tracciabilita.md
-                  - Gestione delle Istanze Utility: it/guide/gestione-delle-istanze-utility.md
-                  - Generazione di un cliente: it/guide/generazione-cliente.md
-                  - Gestione degli indirizzi: it/guide/gestione-degli-indirizzi.md
-                  - Riclassificazione vie: it/guide/riclassificazione-vie.md
-                  - Gestione dei contatti: it/guide/gestione-dei-contatti.md
-                  - Gestione conti bancari: it/guide/gestione-conti-bancari.md
-                  - Gestione listini: it/guide/gestione-listini.md
-                  - Gestione preventivi: it/guide/gestione-preventivi.md
-                  - Gestione offerte commerciali: it/guide/gestione-offerte-commerciali.md
-                  - Gestione contratti: it/guide/gestione-contratti.md
-                  - Gestione ordini: it/guide/gestione-ordini.md
-                  - Gestione ddt: it/guide/gestione-ddt.md
-                  - Gestione commesse: it/guide/gestione-commesse.md
-                  - Fatturazione: it/guide/fatturazione.md
-                  - Cruscotti fatturazione (le tre lenti): it/guide/cruscotti-fatturazione.md
-                  - Gestione dei pagamenti: it/guide/gestione-dei-pagamenti.md
-                  - Integrazione Ai: it/guide/integrazione-ai.md
-                  - Gestione mail: it/guide/gestione-mail.md
-                  - Documenti e stampe: it/guide/documenti-e-stampe.md
-                  - Implementazione Transaction ID: it/guide/tx_id_implementation_guide.md
-                  - Storicizzazione Tabelle: it/guide/storicizzazione-tabelle.md
-                  - Configurazione e gestione parametri: it/guide/configurazione-e-gestione-parametri.md
-                  - Configurazione e responsività delle liste: it/guide/configurazione-liste.md
-                  - Automazione DB: it/guide/automazione-db.md
-                  - Sorgente polimorfa: it/guide/sorgente-polimorfa.md
-                  - Contatto GUC APP: it/guide/contratto-guc-app.md
-                  - Mandare in pensione una voce di catalogo (obsoleto_dal): it/guide/uso-di-obsoleto.md
-                  - Processi-pgagent: it/guide/processi-pgagent-funzionali.md
-                  - Log:
-                            - Messaggi di Errore: it/guide/Messaggi-di-Errore-e-Generazione-Log.md
-                            - Messaggi di Audit: it/guide/messaggi-audit.md
-                            - Processi e Job: it/guide/Analisi-tracciamento-processi-e-job.md
+        - Guide:
+                  - Come funziona ZeroErp:
+                            - Soggetti e ruoli anagrafici: it/guide/soggetti-e-ruoli-anagrafici.md
+                            - Generazione di un cliente: it/guide/generazione-cliente.md
+                            - Gestione degli indirizzi: it/guide/gestione-degli-indirizzi.md
+                            - Gestione dei contatti: it/guide/gestione-dei-contatti.md
+                            - Gestione conti bancari: it/guide/gestione-conti-bancari.md
+                            - Gestione pratiche: it/guide/gestione-pratiche.md
+                            - Pratiche — Configurazione e opzioni: it/guide/gestione-pratiche-configurazione.md
+                            - Gestione commesse: it/guide/gestione-commesse.md
+                            - Gestione delle Istanze Utility: it/guide/gestione-delle-istanze-utility.md
+                            - Gestione listini: it/guide/gestione-listini.md
+                            - Gestione preventivi: it/guide/gestione-preventivi.md
+                            - Gestione offerte commerciali: it/guide/gestione-offerte-commerciali.md
+                            - Gestione contratti: it/guide/gestione-contratti.md
+                            - Gestione ordini: it/guide/gestione-ordini.md
+                            - Gestione ddt: it/guide/gestione-ddt.md
+                            - Fatturazione: it/guide/fatturazione.md
+                            - Cruscotti fatturazione (le tre lenti): it/guide/cruscotti-fatturazione.md
+                            - Gestione dei pagamenti: it/guide/gestione-dei-pagamenti.md
+                            - Documenti e stampe: it/guide/documenti-e-stampe.md
+                            - Gestione mail: it/guide/gestione-mail.md
+                            - Integrazione Ai: it/guide/integrazione-ai.md
+                            - Risorse Umane e Accessi al Software: it/guide/risorse-umane-e-accessi.md
+                            - Configurazione e responsività delle liste: it/guide/configurazione-liste.md
+                  - Approfondimenti tecnici:
+                            - Architettura Permessi e Autorizzazioni: it/guide/architettura-permessi-e-autorizzazioni.md
+                            - Architettura multi face auth: it/guide/architettura-multi-face-auth.md
+                            - Contratto GUC APP: it/guide/contratto-guc-app.md
+                            - Implementazione Transaction ID: it/guide/tx_id_implementation_guide.md
+                            - Storicizzazione Tabelle: it/guide/storicizzazione-tabelle.md
+                            - Audit e tracciabilità: it/guide/audit-e-tracciabilita.md
+                            - Automazione DB: it/guide/automazione-db.md
+                            - Sorgente polimorfa: it/guide/sorgente-polimorfa.md
+                            - Riclassificazione vie: it/guide/riclassificazione-vie.md
+                            - Mandare in pensione una voce di catalogo (obsoleto_dal): it/guide/uso-di-obsoleto.md
+                            - Configurazione e gestione parametri: it/guide/configurazione-e-gestione-parametri.md
+                            - Gestione code di lavoro: it/guide/gestione-code-di-lavoro.md
+                            - Processi-pgagent: it/guide/processi-pgagent-funzionali.md
+                            - Log:
+                                      - Messaggi di Errore: it/guide/Messaggi-di-Errore-e-Generazione-Log.md
+                                      - Messaggi di Audit: it/guide/messaggi-audit.md
+                                      - Processi e Job: it/guide/analisi-tracciamento-processi-e-job.md
         - Tutorial:
                   - Framework automazione DB: it/tutorial/framework-automazione-db.md
 
