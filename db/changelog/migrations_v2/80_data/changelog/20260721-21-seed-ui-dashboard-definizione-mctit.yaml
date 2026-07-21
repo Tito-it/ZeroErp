@@ -1,0 +1,45 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed ui.dashboard_definizione — catalogo delle dashboard configurabili.
+# Prima (e per ora unica) dashboard: 'home'. Il catalogo widget e i preset
+# sono un seed successivo, lato brief BE/FE (brief §1 Fuori perimetro).
+# runOnChange: aggiungere nuove dashboard al CSV e Liquibase le applica.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260721-21-seed-ui-dashboard-definizione-mctit.yaml
+
+  - changeSet:
+      id: 20260721-21-seed-ui-dashboard-definizione
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: dashboard_definizione
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/ui/dashboard_definizione.csv
+            tableName: dashboard_definizione
+            schemaName: ui
+            separator: ","
+            encoding: UTF-8
+            primaryKey: "id"
+            columns:
+              - column: { name: id,          type: NUMERIC }
+              - column: { name: codice,       type: STRING }
+              - column: { name: descrizione,  type: STRING }
+              - column: { name: attivo,       type: BOOLEAN }
+              - column: { name: data_insert,  type: STRING }
+              - column: { name: user_insert,  type: STRING }

@@ -69,6 +69,7 @@ Ogni area corrisponde a uno **schema PostgreSQL** (es. `vendite`, `anagrafiche`,
 | core | core | 100 | seed iniziale |
 | pratiche | pratiche | 110 | 2026-04-10 |
 | documenti | documenti | 120 | 2026-05-03 (modelli documenti — gestione template/asset) |
+| strumenti | strumenti | 130 | 2026-07-21 (superfici operative self-service — code di lavoro/stampa; area *virtuale*, accesso dichiarato esplicitamente su `DomainAPIView`, non da mapping model→schema) |
 
 ---
 

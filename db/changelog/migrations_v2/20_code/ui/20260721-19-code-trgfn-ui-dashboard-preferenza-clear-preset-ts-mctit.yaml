@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger z90 su ui.dashboard_preferenza_utente:
+# azzera preset_base_data_update e preset_aggiornato_ignored_at quando
+# preset_base_id cambia (verso NULL o verso un preset diverso).
+#
+# Why: entrambi i campi si riferiscono al preset di base referenziato:
+# lo snapshot data_update e il tombstone dell'avviso ignorato. Quando
+# preset_base_id cambia — ON DELETE SET NULL della FK, oppure UPDATE
+# diretto verso un altro preset — quei valori perdono significato.
+# Azzerarli chiude il contratto FE: senza preset di base coerente non
+# si mostra il badge "preset aggiornato". Ricalca il trigger vivo di
+# ui.lista_preferenza_utente (DEF-2 con IS DISTINCT FROM).
+#
+# IS DISTINCT FROM copre: NULL->valore, valore->NULL, valore->valore.
+#
+# Ref: docs/it/dev/work-in-progress/brief-db-dashboard-home.md §3.ter
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20260721-19-code-trgfn-ui-dashboard-preferenza-clear-preset-ts-mctit.yaml
+
+  - changeSet:
+      id: 20260721-19-01-trgfn-ui-dashboard-preferenza-clear-preset-base-ts
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: "Trigger z90: azzera snapshot+tombstone quando preset_base_id cambia"
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: dashboard_preferenza_utente
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $fn$
+              -- Scopo: mantiene la coerenza tra preset_base_id e i campi derivati
+              -- (snapshot data_update + tombstone ignore). Quando preset_base_id cambia
+              -- verso qualsiasi valore diverso (NULL o altro preset), entrambi i campi
+              -- perdono significato: si riferivano al vecchio preset.
+              -- IS DISTINCT FROM copre: NULL->valore, valore->NULL, valore->valore diverso.
+              BEGIN
+                IF NEW.preset_base_id IS DISTINCT FROM OLD.preset_base_id THEN
+                  NEW.preset_base_data_update      := NULL;
+                  NEW.preset_aggiornato_ignored_at := NULL;
+                END IF;
+                RETURN NEW;
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts()
+              IS 'Azzera preset_base_data_update e preset_aggiornato_ignored_at quando preset_base_id cambia (IS DISTINCT FROM). Previene badge FE "preset aggiornato" non coerente dopo cambio o eliminazione del preset di base. Mirror del trigger ui.lista_preferenza_utente.';
+
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts_upd
+                ON ui.dashboard_preferenza_utente;
+
+              CREATE TRIGGER trg_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts_upd
+                BEFORE UPDATE OF preset_base_id
+                ON ui.dashboard_preferenza_utente
+                FOR EACH ROW
+                EXECUTE FUNCTION ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts_upd
+                ON ui.dashboard_preferenza_utente;
+              DROP FUNCTION IF EXISTS ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts();
