@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-immutabilita-quantita-e-porta-oneri §4a step 1 (AF) — opzione
+# MIRROR-ENFORCEMENT (decisa 2026-07-21).
+#
+# La quantita dell'AF specchia la commessa madre (commessa_attivita_id). L'emit
+# fa UPSERT con SET quantita = ca.quantita: un guard "blocca sempre" lo
+# romperebbe. Si blocca invece solo se l'UPDATE porterebbe l'AF a un valore
+# DIVERSO da quello della CA madre: l'emit passa per costruzione (scrive lo
+# specchio), un UPDATE manuale che disallinea l'AF dalla commessa e' bloccato.
+# Enforce diretto dell'invariante AF.quantita = CA.quantita su cui poggia il
+# contatore merce. Bypass tecnico via GUC zeroerp.maintenance_reset_lotto_draft.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260721-02-create-trgfn-attivita-fatturabili-guard-quantita-immutabile-mctit.yaml
+
+  - changeSet:
+      id: 20260721-02-create-trgfn-attivita-fatturabili-guard-quantita-immutabile
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard mirror-enforcement quantita su vendite.attivita_fatturabili: blocca
+        UPDATE che porterebbe la quantita a un valore diverso da quello della
+        commessa madre (commessa_attivita_id). L'emit (upsert = specchio) passa;
+        bypass via GUC zeroerp.maintenance_reset_lotto_draft. BEFORE UPDATE OF
+        quantita, fase _a10_.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_bypass text;
+                  v_qta_ca vendite.commesse_attivita.quantita%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   La quantita dell'AF DEVE specchiare la commessa madre. Si
+                  --   blocca solo l'UPDATE che disallinea l'AF dalla CA (valore
+                  --   diverso). L'emit (upsert AF.quantita = ca.quantita) passa per
+                  --   costruzione; un UPDATE manuale a valore diverso e' bloccato.
+                  --   Brief immutabilita-quantita §4a (mirror-enforcement, 2026-07-21).
+                  -- Regole:
+                  --   - bypass tecnico via GUC zeroerp.maintenance_reset_lotto_draft;
+                  --   - se commessa_attivita_id IS NULL non c'e' specchio da imporre.
+                  -- =========================================================
+                  v_bypass := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
+                  IF v_bypass IS NOT NULL AND lower(v_bypass) IN ('1','true','on','yes') THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF NEW.commessa_attivita_id IS NOT NULL
+                     AND NEW.quantita IS DISTINCT FROM OLD.quantita THEN
+
+                      SELECT ca.quantita INTO v_qta_ca
+                        FROM vendite.commesse_attivita ca
+                       WHERE ca.id = NEW.commessa_attivita_id;
+
+                      IF NEW.quantita IS DISTINCT FROM v_qta_ca THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', TG_NAME, 'E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE',
+                              jsonb_build_object(
+                                  'id', OLD.id,
+                                  'commessa_attivita_id', NEW.commessa_attivita_id,
+                                  'quantita_new', NEW.quantita,
+                                  'quantita_commessa', v_qta_ca),
+                              NULL::uuid, OLD.id::text, v_qta_ca::text
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile() IS
+                  'Guard mirror-enforcement quantita attivita_fatturabili: blocca UPDATE che porterebbe la quantita a un valore diverso dalla commessa madre (commessa_attivita_id). L''emit (upsert = specchio) passa; bypass via GUC zeroerp.maintenance_reset_lotto_draft. Errore E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE. Brief immutabilita-quantita §4a (2026-07-21).';
+
+              DROP TRIGGER IF EXISTS trg_attivita_fatturabili_a10_guard_quantita_immutabile_upd
+                  ON vendite.attivita_fatturabili;
+
+              CREATE TRIGGER trg_attivita_fatturabili_a10_guard_quantita_immutabile_upd
+                  BEFORE UPDATE OF quantita
+                  ON vendite.attivita_fatturabili
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_attivita_fatturabili_a10_guard_quantita_immutabile_upd
+                  ON vendite.attivita_fatturabili;
+              DROP FUNCTION IF EXISTS vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile();

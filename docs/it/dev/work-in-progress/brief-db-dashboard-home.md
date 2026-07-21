@@ -1,9 +1,11 @@
 # Brief DB — Dashboard home: catalogo widget + preferenza utente
 
 > **Tipo**: brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-19
-> · **Owner**: Tid · **Priorità**: 🟠 ALTA (prerequisito bloccante: senza queste
-> strutture il lavoro BE/FE sulla home non può partire)
-> **Stato**: ☐ DA REALIZZARE
+> (agg. 2026-07-21) · **Owner**: Tid · **Priorità**: 🟠 ALTA (prerequisito
+> bloccante: senza queste strutture il lavoro BE/FE sulla home non può partire)
+> **Stato**: ☐ DA REALIZZARE — **decisioni §3 prese (2026-07-21)**, DDL/funzione
+> ancora da scrivere. Verifiche di fattibilità §3b (filtro permessi) e §3e (FK
+> `auth_user`) **confermate sul codice**.
 > **Origine**: revisione della home page. Le 4 card `Dash 1..4` di
 > `HomeView.vue` sono placeholder statici dal giorno uno; la visione già scritta
 > in [layout-menu-navigazione.md §9.2](frontend/layout-menu-navigazione.md)
@@ -94,10 +96,11 @@ Sono agganci da valutare, non un vincolo: se il team DB vede una ragione per
 divergere, la decisione è sua — purché le tre capacità di §1 e i due vincoli
 restino soddisfatti.
 
-## 3. Punti che chiedono una decisione esplicita
+## 3. Punti che chiedono una decisione esplicita — **DECISI (2026-07-21)**
 
 Sono i punti dove la simmetria con le liste non è ovvia, e dove una scelta presa
-distrattamente costa cara dopo.
+distrattamente costa cara dopo. Sotto ogni punto, la decisione presa e la
+motivazione.
 
 **3a — Il widget appartiene alla dashboard o è globale?**
 In `ui`, una colonna appartiene a una lista (`lista_colonna.lista_id`). Per i
@@ -105,18 +108,43 @@ widget la simmetria non è scontata: «resi da accreditare» ha senso in home og
 e potrebbe averlo in una dashboard di magazzino domani. Le due strade sono
 widget-per-dashboard (simmetrico, semplice, duplicazione se il widget serve
 altrove) o widget globale + tabella di composizione (più flessibile, una FK in
-più). Con una sola dashboard oggi non c'è evidenza per decidere sul campo:
-serve una scelta consapevole, non ereditata.
+più).
+
+→ **DECISO: widget GLOBALE + tabella di composizione.** Non c'è "una sola
+dashboard": home è la prima, ma **backlog** e **fatturazione** (le lenti di
+`brief-design-fatturazione-due-lenti.md`) sono già dashboard a modello. Con più
+dashboard in arrivo, modellare il widget come globale è la scelta onesta:
+`ui.widget` (catalogo globale, `codice` unico) + `ui.dashboard_widget`
+(`dashboard_id`, `widget_id`, `ordine_default`) come pool candidato per
+dashboard. Evita di duplicare la definizione di un KPI il giorno in cui serve su
+due superfici, e la definizione duplicata driftrebbe. Costo: una tabella e un
+JOIN in più — accettato perché il bisogno è reale, non ipotetico.
+> Nota: se backlog/fatturazione resteranno **viste analitiche fisse** (non
+> griglie-card personalizzabili per utente) non entrano in
+> `ui.dashboard_definizione`; la struttura regge comunque entrambi i casi.
 
 **3b — Come si filtrano i permessi dei widget.**
 Le liste hanno una tabella dedicata (`ui.lista_colonna_permesso`, livello per
 profilo) perché una colonna può essere in sola lettura o mascherata. Un widget
 non ha stati intermedi: **o lo vedi o non lo vedi**. Replicare la tabella
-sarebbe sovradimensionato. L'aggancio naturale è che ogni widget dichiari l'area
-funzionale / azione che deep-linka, e la risoluzione riusi il filtro
-autorizzativo già esistente (`config.aree_funzionali`, override utente in
-`config.user_override_*`). Da confermare che quel filtro sia interrogabile dalla
-funzione di risoluzione.
+sarebbe sovradimensionato.
+
+→ **DECISO: nessuna tabella permessi; riuso dei resolver esistenti.**
+Verificato sul codice che il filtro è interrogabile dalla funzione di
+risoluzione (`STABLE`, GUC-aware, fail-closed sulla veste non-`OPERATORE`):
+
+- `script.fn_resolve_livello_area(auth_user_id, schema_db) → config.livello_accesso`
+- `script.fn_check_azione_processo(auth_user_id, permission_codename) → boolean`
+- mappe aggregate `script.fn_get_user_permissions_map` / `fn_get_user_actions_map`
+  (JSONB), pattern "resolve once" come `fn_resolve_lista_config`.
+
+Sono **esattamente** ciò che il FE usa per nascondere le voci di menu
+(`auth.isAreaBlocked(schemaDb)` + `isActionAllowed(codename)` in
+`isMenuItemAllowed`): il widget dichiara la stessa cosa che la rotta di
+destinazione dichiara. Ogni widget porta `area_id` (FK `config.aree_funzionali`)
+e/o `azione_id` (FK `config.azioni_processo`), entrambi **nullable**. Visibile ⇔
+`(area IS NULL OR livello_area <> 'BLOCCATO') AND (azione IS NULL OR azione_abilitata)`.
+La risoluzione chiama le due mappe una volta e filtra in-memory.
 
 **3c — Quante card in home.**
 Oggi sono 4 e i preferiti hanno `FAVORITES_PER_DOMAIN_MAX = 4`: due limiti
@@ -124,14 +152,67 @@ scorrelati che coincidono per caso. Se il layout ha un massimo, va fissato
 esplicitamente come dato (sul preset, come `lista_preset.pagina_dimensione`),
 non lasciato implicito nel CSS del frontend.
 
+→ **DECISO: `dimensione_max` sul preset** (mirror di `pagina_dimensione`),
+risolta nella cascata e restituita nel JSONB. Seed del preset di sistema = **8**
+(respiro oltre le 4 attuali, tunabile per ruolo/emittente). Il pool selezionabile
+resta comunque limitato da catalogo + permessi.
+
 **3d — Chiavi funzionali stabili.**
 Convenzione già viva nello schema `ui`: i JSONB di configurazione referenziano
 il `codice` stringa, mai l'`id` numerico, per resistere ai cross-ambiente.
-Vale identico per i widget.
+
+→ **DECISO: confermato.** Il JSONB della preferenza referenzia il `codice`
+widget. I riferimenti a permessi nel *catalogo* (`area_id`, `azione_id`) sono FK
+a `config` — integrità DB-interna, non JSONB cross-ambiente: la convenzione §3d
+riguarda il JSONB, non i FK interni del catalogo.
 
 **3e — FK verso `django.auth_user`.**
 Come `ui.lista_preferenza_utente`, va aggiunta in fase `90_end` perché
 `auth_user` è creata da Django migrate dopo Liquibase.
+
+→ **DECISO: confermato.** Pattern identico già presente in
+`90_end/20260506-08-fk-ui-preferenza-auth-user-mctit.yaml` (preCondition
+`tableExists django.auth_user` + `onFail: MARK_RAN`). Si replica tale e quale.
+
+**3f — Forma di deep-link, KPI e soglia (emerso in analisi).**
+Il deep-link oggi lato FE è **solo una path stringa** (`stores/navigation.js`):
+nessun params/query persistito, quindi i widget con "stato preimpostato" sono
+territorio nuovo.
+
+→ **DECISO: campi opachi al DB.** `deep_link jsonb` (grammatica route+stato
+posseduta dal FE), `contatore_key varchar` (quale KPI — il *come si calcola* è
+BE, §Fuori perimetro), `soglia jsonb` (come/quando allarmare). Il DB non
+interpreta né valuta nulla di questi tre: li conserva e li restituisce.
+
+### 3.bis — Nodo critico: "mai vuota" vs filtro permessi (emerso in analisi)
+
+C'è una tensione reale tra il **vincolo "nessuna home vuota"** (§1: degradare al
+catalogo grezzo) e il **caso §4.5** (widget senza permesso non compare). La
+degradazione garantisce non-vuoto **prima** del filtro permessi; ma il filtro è
+ortogonale e può legittimamente svuotare la home (utente senza permesso su
+*nessuna* area dei widget seedati). La struttura DB **non può inventare
+permessi**. Conseguenza: la garanzia "mai vuota" è realmente onorata solo se il
+seed del catalogo include **almeno un widget non-gated** (`area_id`/`azione_id`
+entrambi NULL, es. card di benvenuto). È una condizione di **seed**, non di
+struttura — fuori dal perimetro DDL, ma da comunicare a chi popola il catalogo
+(vedi §5).
+
+### 3.ter — Struttura decisa (schema `ui`)
+
+Mirror della famiglia liste, con la composizione §3a:
+
+| Tabella / funzione | Ricalca | Note |
+| --- | --- | --- |
+| `ui.dashboard_definizione` | `lista_definizione` | Senza `vista_sql` (una dashboard non ha vista sorgente unica). Seed: `home`. |
+| `ui.widget` | `lista_colonna` (ma **globale**) | `codice` unico globale; `etichetta`/`etichetta_i18n_key`, `tipo_widget` (enum `ui.tipo_widget`, oggi `kpi`), `deep_link jsonb`, `contatore_key`, `soglia jsonb`, `area_id`, `azione_id`, `attivo`. |
+| `ui.dashboard_widget` | *(nuova, §3a)* | Composizione `dashboard_id`↔`widget_id` + `ordine_default`. PK `(dashboard_id, widget_id)`. È il pool candidato + sorgente di "catalogo grezzo"/merge. |
+| `ui.dashboard_preset` + `ui.dashboard_preset_widget` | `lista_preset` (+ `_colonna`) | Riuso enum `ui.ambito_preset` + indice unique-parziale sul default. `dimensione_max` ← `pagina_dimensione`. Preset-widget: `ordine` + `visibile`. |
+| `ui.dashboard_preferenza_utente` | `lista_preferenza_utente` | JSONB + `preset_base_id`/`preset_base_data_update` + `preset_aggiornato_ignored_at` + trigger `z90` clear-ts identico. `uq(auth_user_id, dashboard_id)`. |
+| `ui.fn_resolve_dashboard_config(codice, auth_user_id, emittente_fiscale_id)` | `fn_resolve_lista_config` | Cascata → merge nuovi (`widget_nuovi`) → **filtro permessi** → JSONB `{ widget[], dimensione_max, widget_nuovi, preset_aggiornato }`. Più semplice: niente livelli per-elemento, niente normalizzazione `esportabile`. Sorgente catalogo/merge = `dashboard_widget ⋈ widget` per `dashboard_id`. |
+
+Codice errore: `E_UI_DASHBOARD_NON_TROVATA` (solo **append** al CSV
+`messaggi_errore.csv`, nessun nuovo loader). FK-index: seed esplicito
+`consentito=true` per i nuovi FK (l'automation da sola registra `false`).
 
 ## 4. Verifica attesa
 
@@ -164,15 +245,30 @@ Alla chiusura servono, per poter scrivere il brief BE/FE:
   liste, va detto, perché il BE riuserebbe altrimenti i pattern di
   `lista_preferenza_service.py` per analogia.
 
+Divergenze già note dalle decisioni §3 (da riportare nel brief BE/FE):
+
+- **Widget globale + composizione** (§3a): a differenza di `lista_colonna`
+  (legata a `lista_id`), il widget è globale e la coppia dashboard↔widget vive in
+  `ui.dashboard_widget`. Il BE che compone per analogia deve JOIN-are la
+  composizione, non filtrare per un `dashboard_id` sul catalogo.
+- **Niente tabella permessi** (§3b): il filtro non è `lista_colonna_permesso` ma
+  i resolver `script.fn_resolve_livello_area` / `fn_check_azione_processo`.
+- **Vincolo di seed "mai vuota"** (§3.bis): il catalogo widget deve includere
+  **almeno un widget non-gated** (`area_id`/`azione_id` NULL), altrimenti il
+  filtro permessi può svuotare la home a un utente senza permessi. La struttura
+  non lo garantisce: è responsabilità del seed BE/FE.
+
 Nessun adeguamento FE è pendente: oggi la home mostra card statiche, non c'è
-codice da rompere.
+codice da rompere. Il pattern di consumo lato FE è già maturo e riusabile
+(`useListaConfig` + API `/api/v1/ui/liste/{codice}/config/`): il brief BE/FE
+ricalcherà quella catena per `dashboard`.
 
 ## 6. Avanzamento
 
 | # | Step | Stato |
 | --- | --- | --- |
-| 1 | Decisioni §3a–3e prese e motivate | ☐ |
-| 2 | Catalogo widget + default per ambito + preferenza utente | ☐ |
+| 1 | Decisioni §3a–3f prese e motivate (+ nodo "mai vuota" §3.bis, struttura §3.ter) | ✅ 2026-07-21 |
+| 2 | Catalogo widget globale + composizione + default per ambito + preferenza utente | ☐ |
 | 3 | Funzione di risoluzione con cascata, merge nuovi, filtro permessi | ☐ |
 | 4 | Verifica §4 (6 casi) | ☐ |
 | 5 | Apply dev + rigen doc auto-gen + comunicazione §5 a BE/FE | ☐ |
@@ -187,7 +283,7 @@ codice da rompere.
   `lista_colonna`, `lista_preset`, `lista_preset_colonna`,
   `lista_colonna_permesso`, `lista_preferenza_utente`)
 - Funzione di riferimento: `docs/it/dbzero/ui/funzioni/fn_resolve_lista_config.md`
-  + `docs/it/dbzero/ui/manual/fn_resolve_lista_config.md`
+  e `docs/it/dbzero/ui/manual/fn_resolve_lista_config.md`
 - Consumatori attuali della home: `frontend/src/core/views/HomeView.vue`,
   `frontend/src/stores/navigation.js`,
   `frontend/src/core/composables/useNavigationFavorites.js`

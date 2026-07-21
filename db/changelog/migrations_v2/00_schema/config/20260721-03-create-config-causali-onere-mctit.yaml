@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Vocabolario config.causali_onere — la "porta oneri"
+#   (brief-db-immutabilita-quantita-e-porta-oneri §4c.3).
+#
+# Una riga onere (commesse_attivita.tipo_movimento='ONERE', qta=1, porta valore
+# non merce) e' semanticamente opaca: la CAUSALE dichiara il PERCHE' dell'importo.
+# Stesso pattern data-driven di config.tipi_reso / motivi_fermo: nessun IF
+# hardcoded, il consumatore legge il codice.
+#
+# i18n (deciso 2026-07-21): MONO-LINGUA descrizione, come i vocabolari gemelli
+#   (tipi_reso / motivi_fermo / causali_trasporto — tutti resi via LookupSelect
+#   con label = descrizione DB). NIENTE label_key/it-en: quel pattern
+#   (config.transizioni_stati_*) e' per i bottoni-azione di una macchina a stati,
+#   ruolo UI diverso. Una causale onere e' una voce di tendina -> descrizione.
+#   Conseguenza: non passa da scripts/check_i18n_keys.py (nessuna label_key emessa).
+#
+# codice_interno immutabile: il lock si auto-provisiona dalla sola presenza della
+#   colonna (dbops.fn_run_automations_lock_columns, linee-guida-sql §6b).
+# Seed valori in 80_data (20260721-05).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260721-03-create-config-causali-onere-mctit.yaml
+
+  - changeSet:
+      id: 20260721-03-create-config-causali-onere
+      author: mctit
+      comment: >
+        Crea config.causali_onere: vocabolario causale della porta oneri
+        (data-driven, mono-lingua descrizione come tipi_reso). Seed in 20260721-05.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists:
+                schemaName: config
+                tableName: causali_onere
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: causali_onere
+            remarks: >-
+              Vocabolario causale onere (porta oneri, brief immutabilita §4c.3).
+              La causale nomina il perche' dell'importo su una riga
+              commesse_attivita tipo_movimento='ONERE'. Mono-lingua (descrizione).
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_causali_onere
+                    nullable: false
+
+              - column: { name: codice_interno, type: VARCHAR(64), constraints: { nullable: false }, remarks: "Codice interno immutabile (chiave logica)." }
+              - column: { name: codice, type: VARCHAR(64), constraints: { nullable: false }, remarks: "Codice stabile (display/API)." }
+              - column: { name: descrizione, type: VARCHAR(160), constraints: { nullable: false }, remarks: "Descrizione (IT) resa a video via LookupSelect." }
+
+              - column: { name: attivo, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: ordine, type: smallint, defaultValueNumeric: 0, constraints: { nullable: false } }
+              - column: { name: meta, type: jsonb, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: causali_onere
+            columnNames: codice_interno
+            constraintName: uq_causali_onere_codice_interno
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: causali_onere
+            columnNames: codice
+            constraintName: uq_causali_onere_codice
+
+        - createIndex: { schemaName: config, tableName: causali_onere, indexName: ix_causali_onere_attivo, columns: [ { name: attivo } ] }
+        - createIndex: { schemaName: config, tableName: causali_onere, indexName: ix_causali_onere_ordine, columns: [ { name: ordine } ] }
+
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON TABLE config.causali_onere IS
+                'Vocabolario causale della porta oneri (brief-db-immutabilita-'
+                'quantita-e-porta-oneri §4c.3). Nomina il perche'' dell''importo di '
+                'una riga commesse_attivita tipo_movimento=ONERE (qta=1, valore). '
+                'Mono-lingua: la descrizione e'' il label (pattern tipi_reso, nessun '
+                'IF hardcoded). rev 2026-07-21.';
+              COMMENT ON COLUMN config.causali_onere.codice_interno IS 'Codice interno immutabile (chiave logica).';
+              COMMENT ON COLUMN config.causali_onere.descrizione IS 'Descrizione IT resa a video (label LookupSelect).';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: causali_onere

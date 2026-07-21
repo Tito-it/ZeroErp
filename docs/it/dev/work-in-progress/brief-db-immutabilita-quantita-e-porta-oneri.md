@@ -1,8 +1,33 @@
 # Brief DB — Quantità immutabili sulla commessa + porta oneri (il libro giornale)
 
 > **Tipo**: brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-17 · **Owner**: Tid
-> **Stato**: ☐ DA REALIZZARE — **priorità sotto** [brief-db-fatturazione-ddt-resi.md](../work-done/brief-db-fatturazione-ddt-resi.md)
-> (il contatore non ne dipende: procede in parallelo).
+> **Stato**: 🟢 **step 3 + step 1 + PORTA ONERI (step 4/5/6/7) FATTI** — porta oneri
+> **applicata su dev + pgTAP verde (2026-07-21)**. Step 3 (`tipo_movimento` colonna+CHECK incl.
+> `ONERE`, `20260717-01..04`) e **step 1 (guard immutabilità CA+AF, `20260721-01..02`,
+> codici 550/551, pgTAP `plan(16)` verde)** applicati e testati. **Porta oneri** (changeset
+> `20260721-03..09` **APPLICATI** + pgTAP `test-porta-oneri-v1` **`plan(19)` verde**): vocabolario `config.causali_onere`
+> (5 voci, mono-lingua), colonna FK `causale_onere_id`+CHECK biconditional su `commesse_attivita`,
+> **modello articolo↔causale**: `catalogo.articoli.causale_onere_id` (1:1) → **5 articoli-onere**
+> (uno per causale, **IVA propria**), `fn_upsert` esteso con `p_causale_onere_id`, madre
+> `fn_aggiungi_onere_commessa(…, p_articolo_onere_id, …)` (riga SOURCELESS qta=1 APPROVATA +
+> writer `commesse_attivita_log`), codici 552/553/554. **Restano**: commit su `dev/db-tid`,
+> ponte approvazione (step 2, hardening), permessi prezzo N5/N7 (step 8, BE), pgTAP giro
+> completo onere→fattura + contatore cieco alle MAN. Verificato sul codice vivo **2026-07-21**.
+>
+> **✅ Decisioni ratificate con Tid (2026-07-21)**: (a) causali **mono-lingua `descrizione`**
+> come i vocabolari gemelli (`tipi_reso`…), NON `label_key` (§4c.3 rivisto); (b) causale su
+> **colonna FK dedicata** `causale_onere_id`, non in `meta`; (c) **modello articolo↔causale 1:1**
+> — un articolo È un onere collegandogli una causale (`catalogo.articoli.causale_onere_id`), così
+> **ogni onere porta la SUA IVA** (l'IVA sta sull'articolo, non è più unica): risolve il vincolo
+> «l'IVA non può essere solo 22%» — penale fuori campo art.15, resto 22% (§4c.8 riscritto);
+> (d) riga onere **SOURCELESS** (il CHECK `sorgente_pair` impone tipo+uid entrambi-o-nessuno e un
+> inserimento diretto non ha documento → sorgente NULL; discriminatore portante
+> `tipo_movimento='ONERE'`) → la sorgente `DIRECT_ENTRY` NON serve a questa slice.
+> **Validità confermata (2026-07-21)**: nessun brief successivo (coda-lavori, be-fe
+> processi-fatturazione) tocca quantità/immutabilità/oneri/prezzo → design intatto. Anzi lo
+> **step 1 è più urgente**: il contatore merce (viste `20260717-11/12`, live) poggia
+> sull'invariante `AF.quantita = CA.quantita` immutabile, oggi presidiata **solo de-facto**
+> (nessun writer) + post-fattura (`guard_fatturato`) — il guard è la rete mancante.
 > **Sostituisce**: `brief-db-correzione-quantita-commessa-af.md` (ritirato in fase di design,
 > mai realizzato: proponeva un percorso di UPDATE della quantità — esattamente ciò che questo
 > brief vieta).
@@ -174,6 +199,30 @@ delle righe appena upsertate (`p_righe_ids`), non NULL. Grep dei pgTAP esistenti
    seed CSV [[feedback_seed_80_data_csv]]). **✅ DECISO (Tid, 2026-07-17)**: si parte con 3-4
    voci reali — l'elenco concreto lo fornisce Tid **in fase di seed** (prima voce nota dal caso
    d'origine: onere senza contratto specifico); aggiungere dopo costa una riga di CSV.
+   > ⚠️ **i18n (nota 2026-07-21, frontend-standards §Multilingua)**: se le causali vanno a
+   > video in multilingua, la tabella deve **emettere un `label_key`** (contratto a 3 livelli
+   > DB→BE→FE), radice **`vendite.commesse.*`** (mai `oneri.*` piatto), chiavi in **it.json E
+   > en.json**, guardrail `scripts/check_i18n_keys.py` **verde** (valida le chiavi emesse dal
+   > DB). Valutare `label_key` vs `descrizione` per-lingua sul modello dei vocabolari esistenti
+   > (`tipi_reso`/`motivi_fermo`/`causali_trasporto`). Vale anche per gli eventuali `reason_key`
+   > di capability/transizioni introdotte dalla porta.
+   >
+   > ✅ **RISOLTO (2026-07-21) — MONO-LINGUA `descrizione`, niente `label_key`.** Verificato
+   > sul codice vivo: i tre vocabolari gemelli (`tipi_reso`/`motivi_fermo`/`causali_trasporto`)
+   > sono **tutti mono-lingua** (una sola colonna `descrizione`, resa a video via `LookupSelect`),
+   > NON usano `label_key`. Il pattern `label_key` vive solo in `config.transizioni_stati_*`
+   > (i **bottoni-azione** di una macchina a stati, ruolo UI diverso). Una causale onere è una
+   > voce di **tendina**, gemella di `tipi_reso` → si segue quel pattern: `config.causali_onere`
+   > con `descrizione` (IT). Conseguenza: **non** passa da `scripts/check_i18n_keys.py` (nessuna
+   > `label_key` emessa). Il percorso `label_key` `vendite.commesse.*` resta disponibile solo se
+   > in futuro queste voci dovranno comparire tradotte — eccezione rispetto agli altri vocabolari.
+   >
+   > **Voci seedate (Tid 2026-07-21)**: `ONERE_SENZA_CONTRATTO`, `SPESE_TRASFERTA`,
+   > `MAGGIORAZIONE_URGENZA`, `SPESE_AMMINISTRATIVE`, `PENALE` (`20260721-05`, CSV append per
+   > aggiungerne). Discriminatore = **colonna FK** `commesse_attivita.causale_onere_id`
+   > (`20260721-04`) + CHECK biconditional `(tipo_movimento='ONERE') ⇔ (causale IS NOT NULL)`,
+   > NON `meta` (stessa critica del §3 al jsonb). `fn_upsert` esteso con `p_causale_onere_id`
+   > (`20260721-06`).
 4. **Disciplina quantità**: `quantita = 1` fissa e positiva per le righe della porta —
    enforced dal guard (T3), non dalla UI.
 5. **Autorizzazione — ✅ DECISO (Tid, 2026-07-17): NESSUNA approvazione a due passi.** *«Chi
@@ -192,6 +241,32 @@ delle righe appena upsertate (`p_righe_ids`), non NULL. Grep dei pgTAP esistenti
    emissione → AF → fattura. La riga stessa è l'audit; in più è il primo **evento vero** per
    `commesse_attivita_log` (writer da costruire — il suo manuale va prima riscritto: metà
    descrive operazioni inesistenti, il «pull» che toglie dalla commessa non esiste).
+
+### 4c.8. Le colonne obbligatorie di `commesse_attivita` — il problema veicolo (scoperto 2026-07-21)
+
+Il brief assumeva «riga di puro valore, qta=1». La realtà del codice vivo: `commesse_attivita`
+ha **NOT NULL + FK + trigger `require_attivo`** su `articolo_id`, `istanza_utility_id`, `uom_id`
+(oltre a `data_attivita`, `competenza_*`, `prezzo_snapshot`). Un onere non ne ha di naturali →
+servono dei **veicoli**. Decisioni (Tid 2026-07-21):
+
+- **articolo_id** → **modello articolo↔causale (Tid 2026-07-21)**: «un articolo È un onere
+  collegandogli una causale». Nuova colonna `catalogo.articoli.causale_onere_id` (FK, **1:1**,
+  `20260721-05`): un articolo è un onere ⟺ causale valorizzata. Seed di **5 articoli-onere**
+  (`20260721-09`, natura `SERVIZIO_UNA_TANTUM`, uom `NR`), uno per causale. La madre riceve
+  l'**articolo-onere** (`p_articolo_onere_id`) e **deriva** causale + uom (e a valle l'IVA) da esso.
+  > ✅ **IVA RISOLTA (Tid 2026-07-21)**: l'IVA vive sull'articolo → **ogni onere porta la SUA
+  > aliquota** (non più unica). Mappa seedata: `ONERE_SENZA_CONTRATTO`/`_TRASFERTA`/`_MAGG_URGENZA`/
+  > `_SPESE_AMM` = **22%** (iva 16); `ONERE_PENALE` = **Escluso art.15** (iva 1, ES — le penali non
+  > sono corrispettivo, fuori campo). Aggiungere/variare = una riga di `articoli_onere.csv`.
+- **istanza_utility_id** + **tipo_doc_fiscale_id** → **forniti dal chiamante**: nessun default
+  sensato; l'onere si aggancia al servizio/documento reale che l'operatore conosce. `tipo_doc`
+  obbligatorio perché la riga nasce APPROVATA+NON_EMESSA = emittibile (guard `tipo_doc_emittibile`).
+- **uom** = `NR`, **qta=1**, **competenza/data** = oggi (default), override opzionale.
+- **Riga SOURCELESS**: `chk_commesse_attivita_sorgente_pair` impone `sorgente_tipo_id` e
+  `sorgente_uid` **entrambi-o-nessuno**; un inserimento diretto non ha documento sorgente e non
+  ha un `uid` naturale → **sorgente NULL**. Il discriminatore portante resta `tipo_movimento='ONERE'`
+  (+ causale + segment `MAN:`). **Conseguenza sul §4c.1**: la sorgente `DIRECT_ENTRY` **non serve**
+  a questa slice (resta disponibile per un futuro inserimento diretto *con* chiave esterna).
 
 ### 4d. Prezzo — cablare l'autorizzazione (T2)
 
@@ -237,15 +312,15 @@ sempre** → la misura del contatore su AF è stabile per costruzione.
 | # | Step | Stato |
 |---|---|---|
 | 0 | Decisioni: **TUTTE CHIUSE** (2026-07-17) — drift storico verificato: **zero righe** (query §6 eseguita da Tid). Unica coda operativa: le **voci concrete** del vocabolario causali (Tid, in fase di seed) | ✅ |
-| 1 | Guard immutabilità su `commesse_attivita.quantita` **e** `attivita_fatturabili.quantita`, bypass GUC di percorso (§4a, deciso) | ☐ |
+| 1 | Guard immutabilità su `commesse_attivita.quantita` **e** `attivita_fatturabili.quantita`, bypass GUC di percorso (§4a, deciso) | ✅ **FATTO (2026-07-21)** — `20260721-01` guard CA (blocca `UPDATE OF quantita` su EMESSA), `20260721-02` guard AF **mirror-enforcement** (blocca se `quantita ≠ CA madre`; scelta 2026-07-21 perché l'emit fa UPSERT `SET quantita` → un "blocca-sempre" lo romperebbe). Bypass GUC riusato: `zeroerp.maintenance_reset_lotto_draft`. Codici `E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE` (550) / `E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE` (551). pgTAP `test-guard-quantita-immutabile-v1` **plan(16) verde** (senza emit: CA sourceless + flip EMESSA + AF INSERT diretto, per aggirare il guard esistenza-sorgente 2026-07-18). |
 | 2 | Fix ponte approvazione: il push approva le proprie righe (`p_righe_ids`) (§4b) — **hardening raccomandato**, non più prerequisito | ☐ |
-| 3 | `tipo_movimento` a colonna + CHECK + backfill NORMALE (CA e AF) (§4c.2) | ✅ **SCRITTO, non applicato** — **anticipato nella slice DDT/resi** (step 0b del piano di ripartenza): changeset `20260717-01..04` + pgTAP `test-tipo-movimento-colonna-v1`. Motivo dell'anticipo: il contatore filtra `tipo_movimento = 'NORMALE'` (§5) e deve nascere sulla colonna vera, non riaprirsi dopo. Dettaglio in §4c.2 |
-| 4 | Vocabolario causali config + seed (§4c.3) | ☐ |
-| 5 | Sorgente `DIRECT_ENTRY` accesa + convenzione `segment_key` manuale (§4c.1/.6) | ☐ |
-| 6 | Madre/endpoint «aggiungi onere» (qta=1, causale, `post_permission`, riga nasce **APPROVATA** — niente endpoint approvazione, deciso §4c.5) | ☐ |
-| 7 | Writer `commesse_attivita_log` (primo evento: la voce manuale) — **dopo** riscrittura del suo manuale (§4c.7) | ☐ |
+| 3 | `tipo_movimento` a colonna + CHECK + backfill NORMALE (CA e AF) (§4c.2) | ✅ **FATTO E APPLICATO** (committato) — **anticipato nella slice DDT/resi** (step 0b del piano di ripartenza): changeset `20260717-01..04` + pgTAP `test-tipo-movimento-colonna-v1`. Motivo dell'anticipo: il contatore filtra `tipo_movimento = 'NORMALE'` (§5) e deve nascere sulla colonna vera, non riaprirsi dopo. Dettaglio in §4c.2 |
+| 4 | Vocabolario causali config + seed (§4c.3) | ✅ **SCRITTO (2026-07-21)** — `config.causali_onere` (`20260721-03`) mono-lingua + seed 5 voci (`20260721-08`); colonna FK `causale_onere_id`+CHECK biconditional (`20260721-04`); `fn_upsert`+`p_causale_onere_id` (`20260721-06`). **Applicato dev + pgTAP verde.** |
+| 5 | Sorgente `DIRECT_ENTRY` accesa + convenzione `segment_key` manuale (§4c.1/.6) | ➖ **RIVISTO (2026-07-21)** — riga **SOURCELESS** (§4c.8: `sorgente_pair` entrambi-o-nessuno, nessun documento) → `DIRECT_ENTRY` non serve a questa slice. Convenzione `segment_key` = `MAN:<commessa>:<progressivo>` implementata nella madre. |
+| 6 | Madre/endpoint «aggiungi onere» (qta=1, causale, `post_permission`, riga nasce **APPROVATA** — niente endpoint approvazione, deciso §4c.5) | ✅ **SCRITTO (2026-07-21)** — **modello articolo↔causale 1:1**: colonna `catalogo.articoli.causale_onere_id` (`20260721-05`, UNIQUE) + 5 articoli-onere (`20260721-09`, IVA propria: 22% + penale fuori campo). Madre DB `fn_aggiungi_onere_commessa(…, p_articolo_onere_id, …)` (`20260721-07`): riga ONERE qta=1 APPROVATA sourceless, causale+uom+IVA derivate dall'articolo; codici 552/554. `post_permission` = BE (fuori perimetro DB). **Applicato dev + pgTAP verde.** |
+| 7 | Writer `commesse_attivita_log` (primo evento: la voce manuale) — **dopo** riscrittura del suo manuale (§4c.7) | ✅ **SCRITTO (2026-07-21)** — writer dentro la madre (evento `ONERE_AGGIUNTO`); manuale `commesse_attivita_log` riscritto sul comportamento reale (rimosso il «push/pull» inesistente). |
 | 8 | `post_permission` su N5/N7 prezzo (§4d) — indipendente, può andare per primo | ☐ |
-| 9 | pgTAP: UPDATE quantita su EMESSA bloccato (CA **e** AF) · re-push su NON_EMESSA passa (via GUC) · riga onere nasce APPROVATA e fa il giro completo fino in fattura · porta rifiuta qta ≠ 1 e negative · contatore cieco alle righe MAN (§5) · se fatto lo step 2: riga BOZZA di terzi non approvata dal push | ☐ |
+| 9 | pgTAP: UPDATE quantita su EMESSA bloccato (CA **e** AF) · re-push su NON_EMESSA passa (via GUC) · riga onere nasce APPROVATA e fa il giro completo fino in fattura · porta rifiuta qta ≠ 1 e negative · contatore cieco alle righe MAN (§5) · se fatto lo step 2: riga BOZZA di terzi non approvata dal push | 🟡 **PARZIALE (2026-07-21)** — immutabilità: `test-guard-quantita-immutabile-v1` `plan(16)` verde. Porta: `test-porta-oneri-v1` **`plan(19)` VERDE** (nasce APPROVATA qta=1 ONERE sourceless, segment MAN:, causale derivata dall'articolo, IVA per-onere penale≠trasferta, writer log, rifiuta importo≤0/NULL e articolo non-onere, CHECK biconditional). **Manca**: giro completo onere→fattura; contatore cieco alle MAN (§5); step 2. |
 | 10 | Apply dev + comunicazione BE/FE (endpoint nuovi, permessi, vocabolari i18n) | ☐ |
 
 > **Decisioni — stato (2026-07-17)**: perimetro guard ✅ (CA+AF, bypass GUC) · valore
