@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_aggiungi_onere_commessa.md" %}
 # ⚙️ Funzione `fn_aggiungi_onere_commessa`
 
 ```sql

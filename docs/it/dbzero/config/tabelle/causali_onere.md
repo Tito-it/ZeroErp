@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/causali_onere.md" %}
 # 📚 Tabella `causali_onere`
 
 ## 🗂️ Campi principali
@@ -30,6 +31,14 @@
 | pk_causali_onere | `CREATE UNIQUE INDEX pk_causali_onere ON config.causali_onere USING btree (id)` |
 | uq_causali_onere_codice | `CREATE UNIQUE INDEX uq_causali_onere_codice ON config.causali_onere USING btree (codice)` |
 | uq_causali_onere_codice_interno | `CREATE UNIQUE INDEX uq_causali_onere_codice_interno ON config.causali_onere USING btree (codice_interno)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_causali_onere_a10_articoli_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('catalogo', 'articoli', 'causale_onere_id', 'id', 'attivo')` |
+| trg_causali_onere_a10_commesse_attivita_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'commesse_attivita', 'causale_onere_id', 'id', 'attivo')` |
+| trg_causali_onere_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_causali_onere_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

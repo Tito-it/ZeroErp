@@ -10,9 +10,10 @@
 > **modello articolo↔causale**: `catalogo.articoli.causale_onere_id` (1:1) → **5 articoli-onere**
 > (uno per causale, **IVA propria**), `fn_upsert` esteso con `p_causale_onere_id`, madre
 > `fn_aggiungi_onere_commessa(…, p_articolo_onere_id, …)` (riga SOURCELESS qta=1 APPROVATA +
-> writer `commesse_attivita_log`), codici 552/553/554. **Restano**: commit su `dev/db-tid`,
-> ponte approvazione (step 2, hardening), permessi prezzo N5/N7 (step 8, BE), pgTAP giro
-> completo onere→fattura + contatore cieco alle MAN. Verificato sul codice vivo **2026-07-21**.
+> writer `commesse_attivita_log`), codici 552/553/554. **pgTAP tutti verdi** (porta base
+> `plan(19)`, contatore cieco `plan(5)`, giro completo onere→fattura `plan(12)` 12/12 dopo il
+> fix `fn_group` — vedi §7 step 9). **Restano solo BE**: ponte approvazione (step 2, hardening),
+> permessi prezzo N5/N7 (step 8). Verificato sul codice vivo **2026-07-21**.
 >
 > **✅ Decisioni ratificate con Tid (2026-07-21)**: (a) causali **mono-lingua `descrizione`**
 > come i vocabolari gemelli (`tipi_reso`…), NON `label_key` (§4c.3 rivisto); (b) causale su
@@ -320,7 +321,7 @@ sempre** → la misura del contatore su AF è stabile per costruzione.
 | 6 | Madre/endpoint «aggiungi onere» (qta=1, causale, `post_permission`, riga nasce **APPROVATA** — niente endpoint approvazione, deciso §4c.5) | ✅ **SCRITTO (2026-07-21)** — **modello articolo↔causale 1:1**: colonna `catalogo.articoli.causale_onere_id` (`20260721-05`, UNIQUE) + 5 articoli-onere (`20260721-09`, IVA propria: 22% + penale fuori campo). Madre DB `fn_aggiungi_onere_commessa(…, p_articolo_onere_id, …)` (`20260721-07`): riga ONERE qta=1 APPROVATA sourceless, causale+uom+IVA derivate dall'articolo; codici 552/554. `post_permission` = BE (fuori perimetro DB). **Applicato dev + pgTAP verde.** |
 | 7 | Writer `commesse_attivita_log` (primo evento: la voce manuale) — **dopo** riscrittura del suo manuale (§4c.7) | ✅ **SCRITTO (2026-07-21)** — writer dentro la madre (evento `ONERE_AGGIUNTO`); manuale `commesse_attivita_log` riscritto sul comportamento reale (rimosso il «push/pull» inesistente). |
 | 8 | `post_permission` su N5/N7 prezzo (§4d) — indipendente, può andare per primo | ☐ |
-| 9 | pgTAP: UPDATE quantita su EMESSA bloccato (CA **e** AF) · re-push su NON_EMESSA passa (via GUC) · riga onere nasce APPROVATA e fa il giro completo fino in fattura · porta rifiuta qta ≠ 1 e negative · contatore cieco alle righe MAN (§5) · se fatto lo step 2: riga BOZZA di terzi non approvata dal push | 🟡 **PARZIALE (2026-07-21)** — immutabilità: `test-guard-quantita-immutabile-v1` `plan(16)` verde. Porta: `test-porta-oneri-v1` **`plan(19)` VERDE** (nasce APPROVATA qta=1 ONERE sourceless, segment MAN:, causale derivata dall'articolo, IVA per-onere penale≠trasferta, writer log, rifiuta importo≤0/NULL e articolo non-onere, CHECK biconditional). **Manca**: giro completo onere→fattura; contatore cieco alle MAN (§5); step 2. |
+| 9 | pgTAP: UPDATE quantita su EMESSA bloccato (CA **e** AF) · re-push su NON_EMESSA passa (via GUC) · riga onere nasce APPROVATA e fa il giro completo fino in fattura · porta rifiuta qta ≠ 1 e negative · contatore cieco alle righe MAN (§5) · se fatto lo step 2: riga BOZZA di terzi non approvata dal push | ✅ **VERDE (2026-07-21, migrate applicato)** — immutabilità: `test-guard-quantita-immutabile-v1` `plan(16)`. Porta base: `test-porta-oneri-v1` `plan(19)`. Contatore cieco alle MAN: `test-porta-oneri-contatore-cieco-v1` `plan(5)` (tripla cintura §5 sulla porta reale: `tipo_movimento`≠NORMALE + segment MAN:∉ORD/DDT + no `:R:`). **Giro completo**: `test-porta-oneri-giro-completo-v1` **`plan(12)` 12/12** — onere→emissione→AF→**fattura**, con **IVA per-onere fino in fattura** (penale fuori campo). Ha richiesto: fix `20260721-11` del bug **pre-esistente** `fn_group_attivita_fatturabili` (`SELECT INTO v_regole` senza alias + senza fallback no-row → `fn_generate_fatture_righe` rotto per QUALUNQUE articolo; la pipeline reale genera via BE, la fn DB non era mai stata esercitata così) + seed regole onere `20260721-10`. **Manca solo**: step 2 (BE). |
 | 10 | Apply dev + comunicazione BE/FE (endpoint nuovi, permessi, vocabolari i18n) | ☐ |
 
 > **Decisioni — stato (2026-07-17)**: perimetro guard ✅ (CA+AF, bypass GUC) · valore
