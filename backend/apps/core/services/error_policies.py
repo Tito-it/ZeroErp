@@ -1619,6 +1619,17 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Il lotto non e` in stato EMESSA: numerazione non applicabile.",
         ),
+        # C-8: ristampa massiva su lotto non DEFINITIVA (I-7: niente numerazione
+        # backdoor via ristampa): conflitto di stato (409).
+        "E_LOTTO_NON_RISTAMPABILE": ErrorPolicy(
+            code="E_LOTTO_NON_RISTAMPABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il lotto non e` definitivo: la ristampa massiva richiede fatture "
+                "numerate (Rendi definitive)."
+            ),
+        ),
         # C-3: polling di un giro (job coda) inesistente o non di proprieta`
         # dell'operatore → 404 (senza registrazione cadrebbe sul fallback 400).
         "E_JOB_NON_TROVATO": ErrorPolicy(

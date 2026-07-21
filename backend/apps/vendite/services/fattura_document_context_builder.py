@@ -92,12 +92,14 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
 
         righe = self._repo.list_fattura_righe(sorgente_id)
         riepilogo_iva = self._repo.list_fattura_riepilogo_iva(sorgente_id)
+        scadenze = self._repo.list_fattura_scadenze(sorgente_id)
 
         return {
             "fattura": self._shape_fattura(testata),
             "cliente": self._shape_cliente(testata),
             "righe": righe,
             "riepilogo_iva": riepilogo_iva,
+            "scadenze": [self._shape_scadenza(s) for s in scadenze],
             # `_meta`: parametri di rendering stabili a parità di chiamata
             # (locale, utente). NON inserire qui timestamp/random: il
             # `context_hash` deve restare deterministico per il dedup logico
@@ -141,20 +143,53 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
                 "codice_interno": testata.get("stato_codice_interno"),
                 "descrizione": testata.get("stato_descrizione"),
             },
+            # Intestazione emittente (chi emette la fattura): denominazione +
+            # identificativi fiscali dal dettaglio soggetto-ruolo + sede legale
+            # (indirizzo tipo SEDELEG) dalla vista indirizzi risolti (JOIN in
+            # get_fattura_testata). `piva` = id fiscale univoco (P.IVA per le
+            # imprese); `cf` = codice fiscale. `sede` None se l'emittente non ha
+            # un indirizzo SEDELEG registrato.
             "emittente": {
                 "id": testata.get("emittente_fiscale_id"),
                 "codice": testata.get("emittente_fiscale_codice"),
+                "denominazione": testata.get("emittente_denominazione"),
+                "piva": testata.get("emittente_piva"),
+                "cf": testata.get("emittente_cf"),
+                "sede": testata.get("emittente_sede"),
             },
             "bollo_applicato": testata.get("bollo_applicato"),
             "totali": {
                 "imponibile": testata.get("imponibile_tot"),
                 "imposta": testata.get("imposta_tot"),
+                # alias `iva` (nome usato dal template) dell'imposta totale
+                "iva": testata.get("imposta_tot"),
+                "sconto": testata.get("sconto_tot"),
                 "bollo": testata.get("bollo_importo"),
                 "arrotondamento": testata.get("arrotondamento_attuale"),
                 "documento": testata.get("totale_doc"),
                 "a_pagare": testata.get("totale_a_pagare"),
                 "valuta_codice": testata.get("valuta_codice"),
                 "tasso_cambio": testata.get("tasso_cambio"),
+            },
+            # Campi «ricchi» del template. Chiavi SEMPRE presenti (StrictUndefined
+            # → chiave mancante = errore); il template le guarda con {% if %},
+            # quindi None = riga omessa. `agente`/`origine` NON sono mantenuti
+            # come dato di testata di questa fattura (reseller/sorgente polimorfa
+            # a NULL) → restano None finché il flusso a monte non li popola
+            # (documentato nel brief). `pagamento` è sorgentato (JOIN sotto).
+            "agente_denominazione": testata.get("agente_denominazione"),
+            "origine": {
+                "codice": testata.get("origine_codice"),
+                "tipo": testata.get("origine_tipo"),
+            },
+            "pagamento": {
+                "modalita_codice": testata.get("pagamento_modalita_codice"),
+                "termine_codice": testata.get("pagamento_termine_codice"),
+            },
+            # Utility del servizio fatturato (dal billing account → config.utilities).
+            "utility": {
+                "codice": testata.get("utility_codice"),
+                "descrizione": testata.get("utility_descrizione"),
             },
             "meta": testata.get("meta") or {},
         }
@@ -167,8 +202,26 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
             "soggetto_id": testata.get("soggetto_id"),
             "denominazione": testata.get("ragione_sociale_completa"),
             "id_fiscale": testata.get("id_fiscale_univoco_cf_piva"),
+            # Indirizzo di fatturazione del cliente (tipo FATT) dalla vista
+            # indirizzi risolti. None se non registrato; chiave sempre presente
+            # (StrictUndefined); il template la guarda con {% if %}.
+            "indirizzo": testata.get("cliente_indirizzo"),
             "billing_account_id": testata.get("billing_account_id"),
             "ba_codice": testata.get("ba_codice"),
+        }
+
+    # Scopo: Sotto-dict "scadenza" (rata del piano pagamenti). Chiavi stabili
+    #        attese dal template (`nr`/`data`/`importo`/`modalita_codice`); tutte
+    #        presenti (il motore usa StrictUndefined → una chiave mancante è
+    #        errore di render). `modalita_codice` dal jsonb meta se presente.
+    def _shape_scadenza(self, s: dict[str, Any]) -> dict[str, Any]:
+        meta = s.get("meta") or {}
+        return {
+            "nr": s.get("numero_rata"),
+            "data": format_date_it(s.get("data_scadenza")),
+            "data_iso": format_date_iso(s.get("data_scadenza")),
+            "importo": s.get("importo"),
+            "modalita_codice": meta.get("modalita_codice"),
         }
 
 

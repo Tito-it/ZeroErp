@@ -286,19 +286,20 @@ class CodaLavoriRepository:
 
     # Scopo: Stato di un job per il polling FE (I-3 non bloccante): stato +
     #        result (a FATTO) + ultimo_errore (a ERRORE). None se id inesistente
-    #        (o non di proprietà, se `auth_user_id` passato). `auth_user_id`
-    #        (ownership): l'operatore vede solo i job che HA accodato
-    #        (`scope->>'auth_user_id'`) → un job altrui è indistinguibile da
-    #        inesistente (no leak cross-operatore). None = nessun filtro (admin/
-    #        sistema).
+    #        (o fuori dallo scope, se `owner_scope_key` passato). Ownership
+    #        SCOPE-based: il job è di proprietà della sua `scope->>'scope_key'`
+    #        (chi condivide lo scope lo vede — coerente con la dedup, che aggancia
+    #        allo stesso job solo chi ha la stessa scope_key). Un job di altro
+    #        scope è indistinguibile da inesistente (no leak). `owner_scope_key`
+    #        None = nessun filtro (admin globale / sistema: vede ogni job).
     def get_stato(
-        self, item_id: int, *, auth_user_id: int | None = None,
+        self, item_id: int, *, owner_scope_key: str | None = None,
     ) -> dict[str, Any] | None:
         conditions = ["id = %s"]
         params: list[Any] = [int(item_id)]
-        if auth_user_id is not None:
-            conditions.append("(scope->>'auth_user_id')::bigint = %s")
-            params.append(int(auth_user_id))
+        if owner_scope_key is not None:
+            conditions.append("scope->>'scope_key' = %s")
+            params.append(str(owner_scope_key))
         where = " AND ".join(conditions)
         with connection.cursor() as cursor:
             cursor.execute(

@@ -34,6 +34,7 @@ from apps.vendite.services.pipeline_service import (
     fn_reset_lotto_draft,
     fn_reset_lotto_fattura_draft,
     numera_lotto,
+    ristampa_lotto,
     run_lotto_pipeline,
     run_lotto_pipeline_until_done,
 )
@@ -923,6 +924,57 @@ class ApiFatturazioneNumeraLotto(DomainAPIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
+class ApiFatturazioneRistampaLotto(DomainAPIView):
+    """C-8: ristampa MASSIVA di un lotto DEFINITIVA. Accoda in
+    `vendite.fatture_stampa_coda` una riga per ogni fattura non esclusa
+    (idempotente sui vivi); il worker `draina_coda_stampa` le renderizza (async,
+    stato via pannello esiti C-5). Accodamento SINCRONO (INSERT veloce), non un
+    job con polling. Stampa = lettura (I-4): nessun `post_permission` (come la
+    stampa singola), gate readonly a carico del FE. Scope operatore: lotto fuori
+    scope/inesistente → 404; non DEFINITIVA → 409 parlante (I-7: niente
+    numerazione backdoor)."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="VenditeRistampaLottoResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeRistampaLottoData",
+                        fields={
+                            "lotto_id": serializers.IntegerField(),
+                            "accodate": serializers.IntegerField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Accoda le stampe del lotto (guard scope+DEFINITIVA), ritorna il conteggio.
+    def post(self, request: Request, lotto_id: int) -> JsonResponse:
+        # Scopo: delega al service (guard fiscale + fn_accoda_stampe_lotto).
+        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+            return ristampa_lotto(
+                lotto_id=int(lotto_id),
+                auth_user_id=get_scope_user_id(request),
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
 class ApiFatturazioneEsiti(DomainAPIView):
     """C-5: esiti dei giri di fatturazione (riassunto per corsia da
     `maintenance.job_run_log`) + stato della coda stampa (conteggi per stato,
@@ -953,6 +1005,21 @@ class ApiFatturazioneEsiti(DomainAPIView):
         return success_response(
             esiti_fatturazione(auth_user_id=get_scope_user_id(request)),
         )
+
+
+# Scopo: Chiave canonica dello SCOPE emittente di un job fatturazione — "ALL"
+#        per l'admin globale (whitelist None), altrimenti gli emittenti
+#        autorizzati ORDINATI e joinati. Ha DUE ruoli, per costruzione coerenti:
+#        (1) componente-scope della chiave di BUSINESS (dedup dei job VIVI —
+#        stesso scope+mese → stesso job); (2) token di OWNERSHIP del polling —
+#        due operatori con la STESSA scope_key condividono job E visibilità. È
+#        sicuro: un operatore può ricevere via dedup solo un job con la PROPRIA
+#        scope_key, quindi il polling scope-based non allarga la visibilità
+#        oltre ciò a cui è già autorizzato.
+def _scope_key_fatturazione(emittente_ids: list[int] | None) -> str:
+    if emittente_ids is None:
+        return "ALL"
+    return ",".join(str(e) for e in sorted(emittente_ids))
 
 
 # Scopo: Enqueue comune dei job di fatturazione OPERATORE su dbops.coda_lavori
@@ -995,6 +1062,7 @@ def _accoda_job_fatturazione(
     # Scope emittente CATTURATO ora (None = admin globale): serve al vincolo
     # DB run_as↔scope, all'idempotenza di business e all'audit.
     emittente_ids = PermissionResolver.get_emittenti_ids(user)
+    scope_key = _scope_key_fatturazione(emittente_ids)
     job_payload: dict[str, object] = {"competenza_mese": competenza.isoformat()}
     for key in extra_payload_keys:
         value = payload.get(key)
@@ -1003,10 +1071,6 @@ def _accoda_job_fatturazione(
 
     # Chiave di BUSINESS (competenza + scope), NON l'header HTTP: dedup dei
     # job VIVI (due click sullo stesso mese/scope → stesso job).
-    scope_key = (
-        "ALL" if emittente_ids is None
-        else ",".join(str(e) for e in sorted(emittente_ids))
-    )
     idempotency_key = f"{job_type}:{competenza.isoformat()}:{scope_key}"
 
     job_id = CodaLavoriRepository().accoda(
@@ -1018,6 +1082,9 @@ def _accoda_job_fatturazione(
             "username": str(user.username),
             "identita_id": identita_id,
             "emittente_ids": emittente_ids,
+            # Token di ownership del polling: scope-based (chi condivide lo
+            # scope vede il job condiviso via dedup). Vedi _scope_key_fatturazione.
+            "scope_key": scope_key,
         },
         idempotency_key=idempotency_key,
         origine=ORIGINE_API,
@@ -1113,10 +1180,19 @@ class ApiFatturazioneRunStato(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce lo stato del job (scoped all'operatore proprietario).
+    # Scopo: Restituisce lo stato del job, con ownership SCOPE-based (non
+    #        per-enqueuer): l'operatore vede i job della propria scope_key —
+    #        così due operatori con la STESSA whitelist che condividono un giro
+    #        via dedup ne seguono entrambi l'avanzamento (fix cross-operatore).
+    #        Admin globale (whitelist None) → nessun filtro (vede ogni job).
     def get(self, request: Request, job_id: int) -> JsonResponse:
+        emittente_ids = PermissionResolver.get_emittenti_ids(request.user)
+        owner_scope_key = (
+            None if emittente_ids is None
+            else _scope_key_fatturazione(emittente_ids)
+        )
         stato = CodaLavoriRepository().get_stato(
-            int(job_id), auth_user_id=get_scope_user_id(request),
+            int(job_id), owner_scope_key=owner_scope_key,
         )
         ErrorManager.require(
             stato is not None,

@@ -13,10 +13,12 @@
 #   1) run_richiede_jwt — 401
 #   2) run_richiede_idempotency_key — 400
 #   3) run_ok_accoda_operatore_scope_business_key — 200 + kwargs accoda
-#      (identità completa nello scope: auth_user_id+username+identita_id)
+#      (identità completa + scope_key nello scope)
 #   4) run_senza_identita_400 — JWT senza claim identita_id
-#   5) stato_ok_ritorna_job — 200 (scoped all'operatore)
-#   6) stato_non_trovato_404 — job altrui/inesistente
+#   5) stato_ok_ritorna_job — 200, ownership scope-based (scope_key richiedente)
+#   6) stato_non_trovato_404 — job di altro scope/inesistente
+#   7) stato_admin_vede_tutto — whitelist None → owner_scope_key None (no filtro)
+#   8) stato_ownership_scope_non_enqueuer — fix cross-operatore (filtro per scope)
 # ------------------------------------------------------------
 
 import json
@@ -29,7 +31,6 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _REPO = "apps.vendite.api.views.CodaLavoriRepository"
 _RESOLVER = "apps.vendite.api.views.PermissionResolver"
-_SCOPE_UID = "apps.vendite.api.views.get_scope_user_id"
 _EXTRACT_IDENTITA = "apps.vendite.api.views.extract_identita_id_from_request"
 
 _RUN = "/api/v1/vendite/fatturazione/run/"
@@ -96,6 +97,9 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
         self.assertEqual(kwargs["scope"], {
             "auth_user_id": 9, "username": "op9", "identita_id": 5,
             "emittente_ids": [4, 3],
+            # scope_key = componente-scope della chiave business (emittenti
+            # ORDINATI) = token di ownership del polling (scope-based)
+            "scope_key": "3,4",
         })
         # competenza normalizzata al 1° nel payload del job
         self.assertEqual(kwargs["payload"]["competenza_mese"], "2026-06-01")
@@ -118,11 +122,13 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
         self.assertEqual(resp.status_code, 400)
         repo_cls.return_value.accoda.assert_not_called()
 
-    # 5. Polling: ritorna lo stato del job (scoped all'operatore).
+    # 5. Polling: ritorna lo stato del job, ownership SCOPE-based (la scope_key
+    #    del richiedente, non l'id di chi ha accodato).
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_SCOPE_UID, return_value=9)
+    @patch(_RESOLVER)
     @patch(_REPO)
-    def test_stato_ok_ritorna_job(self, repo_cls, _scope_uid, _auth) -> None:
+    def test_stato_ok_ritorna_job(self, repo_cls, resolver, _auth) -> None:
+        resolver.get_emittenti_ids.return_value = [72]  # operatore scoped
         repo_cls.return_value.get_stato.return_value = {
             "id": 555, "job_type": "FATTURAZIONE_GIRO", "stato": "FATTO",
             "tentativi": 0, "max_tentativi": 5,
@@ -133,15 +139,59 @@ class FatturazioneRunApiTests(JwtMockedApiTest):
 
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["data"]["stato"], "FATTO")
-        # get_stato invocato con ownership (auth_user_id dell'operatore)
-        repo_cls.return_value.get_stato.assert_called_once_with(555, auth_user_id=9)
+        # get_stato invocato con la scope_key del richiedente (ownership scope)
+        repo_cls.return_value.get_stato.assert_called_once_with(
+            555, owner_scope_key="72",
+        )
 
-    # 6. Job inesistente o di altro operatore → 404 (get_stato None).
+    # 6. Job inesistente o di altro SCOPE → 404 (get_stato None).
     @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_SCOPE_UID, return_value=9)
+    @patch(_RESOLVER)
     @patch(_REPO)
-    def test_stato_non_trovato_404(self, repo_cls, _scope_uid, _auth) -> None:
+    def test_stato_non_trovato_404(self, repo_cls, resolver, _auth) -> None:
+        resolver.get_emittenti_ids.return_value = [72]
         repo_cls.return_value.get_stato.return_value = None
         resp = self.client.get(f"{_RUN}999/")
         self.assertEqual(resp.status_code, 404)
         self.assertEqual(resp.json()["error"]["code"], "E_JOB_NON_TROVATO")
+
+    # 7. Admin globale (whitelist None) → owner_scope_key=None: nessun filtro,
+    #    vede ogni job.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_RESOLVER)
+    @patch(_REPO)
+    def test_stato_admin_vede_tutto(self, repo_cls, resolver, _auth) -> None:
+        resolver.get_emittenti_ids.return_value = None  # admin globale
+        repo_cls.return_value.get_stato.return_value = {
+            "id": 555, "job_type": "FATTURAZIONE_GIRO", "stato": "IN_CORSO",
+            "tentativi": 0, "max_tentativi": 5,
+            "result": None, "ultimo_errore": None, "job_run_id": 1,
+        }
+        resp = self.client.get(f"{_RUN}555/")
+        self.assertEqual(resp.status_code, 200)
+        repo_cls.return_value.get_stato.assert_called_once_with(
+            555, owner_scope_key=None,
+        )
+
+    # 8. Fix cross-operatore: l'ownership del polling dipende dalla SCOPE_KEY del
+    #    richiedente (whitelist), NON dall'id di chi ha accodato → un altro
+    #    operatore con la stessa whitelist risolve la stessa ownership e vede il
+    #    job condiviso via dedup (qui user_id 99 ≠ enqueuer, ma stessa scope 3,4).
+    @patch(_AUTH, return_value=(_mock_user(user_id=99, username="altro_op"), None))
+    @patch(_RESOLVER)
+    @patch(_REPO)
+    def test_stato_ownership_scope_non_enqueuer(
+        self, repo_cls, resolver, _auth,
+    ) -> None:
+        resolver.get_emittenti_ids.return_value = [4, 3]  # stessa whitelist
+        repo_cls.return_value.get_stato.return_value = {
+            "id": 555, "job_type": "FATTURAZIONE_GIRO", "stato": "IN_CORSO",
+            "tentativi": 0, "max_tentativi": 5,
+            "result": None, "ultimo_errore": None, "job_run_id": 1,
+        }
+        resp = self.client.get(f"{_RUN}555/")
+        self.assertEqual(resp.status_code, 200)
+        # filtrato per SCOPE (3,4), non per user_id 99
+        repo_cls.return_value.get_stato.assert_called_once_with(
+            555, owner_scope_key="3,4",
+        )

@@ -36,7 +36,7 @@ import { formatCurrency } from '../../core/utils/format'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { approvaCommessaAttivita, approvaCompetenza } from '../api/commesse'
-import { getFatturazioneRun, runFatturazione } from '../api/lotti'
+import { getFatturazioneRun, runFatturazione, runNumerazione } from '../api/lotti'
 import { useDashboardCompetenzaStore } from '../stores/dashboardCompetenza'
 
 const { t, te } = useI18n()
@@ -56,6 +56,10 @@ const canApprova = computed(() => canApprovare.value && !areaReadonly.value)
 // Stesso permesso dell'endpoint C-3 (genera_fatture_lotti) + readonly d'area.
 const { isAllowed: canGenerareFatture } = useActionPermission('genera_fatture_lotti')
 const canFatturare = computed(() => canGenerareFatture.value && !areaReadonly.value)
+// Gate del verbo RENDI DEFINITIVE (C-7, atto fiscale I-7): permesso dedicato
+// dell'endpoint C-4 (numera_fatture_lotti) + readonly d'area.
+const { isAllowed: canNumerareFatture } = useActionPermission('numera_fatture_lotti')
+const canNumerare = computed(() => canNumerareFatture.value && !areaReadonly.value)
 const { execute, loading: azioneLoading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 
@@ -302,56 +306,94 @@ function onApprovaMese() {
   })
 }
 
-// ------------------------------------------------------------------ verbo FATTURA (C-6)
-// Il verbo Fattura vive sulla card DA_EMETTERE (WYSIWYG, come «Approva mese» sta
-// su DA_APPROVARE): il gate di visibilita' e' nel template sulla card.
-//
-// Polling NON bloccante (I-3) del giro accodato: interroga lo stato del job
-// (GET run/<id>/) finche' terminale, poi rinfresca la dashboard. Silenzioso sui
-// colpi a vuoto; se il worker non e' schedulato il job resta PENDING → onTimeout
-// avvisa "in coda" invece di girare all'infinito.
-const { start: avviaPollingGiro, polling: giroInCorso } = useJobPolling({
-  fetchStatus: (jobId) => getFatturazioneRun(jobId),
-  onDone: (stato) => {
-    if (stato.stato === 'FATTO') {
-      const r = stato.result ?? {}
-      const lane = Number(r.lane ?? 0)
-      const falliti = Number(r.falliti ?? 0)
-      if (falliti > 0) {
-        notify.warn(t('vendite.dashboard_competenza.fattura_mese_esito_parziale', { lane, falliti }))
+// -------------------------------------------------- verbi asincroni FATTURA / NUMERA (C-6/C-7)
+// I due verbi non bloccanti «Fattura adesso» (C-6) e «Rendi definitive» (C-7)
+// condividono il flusso: conferma → accoda (POST) → polling del job (GET
+// run/<id>/) → esito + refresh. Estratto in un helper locale (regola del 2):
+// cambiano solo API, testi e campi dell'esito. Ogni verbo ha il PROPRIO polling
+// (loading del pulsante indipendente); vive sulla card del suo stadio (WYSIWYG),
+// gate nel template. I-7: «Fattura» (pre-fiscale, ferma a EMESSA) e «Rendi
+// definitive» (numerazione, atto fiscale) sono pulsanti SEPARATI su card diverse.
+// Se il worker non e' schedulato il job resta PENDING → onTimeout avvisa "in
+// coda" invece di girare all'infinito; colpi a vuoto del polling silenziosi.
+function useVerboFatturazione({ apiFn, keys, buildEsitoOk }) {
+  const { start, polling } = useJobPolling({
+    fetchStatus: (jobId) => getFatturazioneRun(jobId),
+    onDone: (stato) => {
+      if (stato.stato === 'FATTO') {
+        buildEsitoOk(stato.result ?? {})
       } else {
-        notify.success(t('vendite.dashboard_competenza.fattura_mese_esito', { lane }))
+        // ERRORE/ANNULLATO: non andato a buon fine (payload, revoca…).
+        notify.error(stato.ultimo_errore?.message || t(keys.errore))
       }
-    } else {
-      // ERRORE/ANNULLATO: il giro non e' andato a buon fine (payload, revoca…).
-      notify.error(stato.ultimo_errore?.message || t('vendite.dashboard_competenza.fattura_mese_errore'))
-    }
-    reloadDopoAzione()
+      reloadDopoAzione()
+    },
+    onTimeout: () => {
+      notify.warn(t(keys.inCoda))
+      reloadDopoAzione()
+    },
+  })
+  function avvia() {
+    confirmAction({
+      title: t(keys.header),
+      message: t(keys.conferma, {
+        mese: `${nomiMesi.value[meseIdx.value]} ${anno.value}`,
+      }),
+      onAccept: async () => {
+        const res = await execute(() => apiFn(competenzaCorrente.value))
+        if (res === null) return
+        notify.success(t(keys.accodato))
+        start(res.job_id)
+      },
+    })
+  }
+  return { avvia, polling }
+}
+
+// Verbo FATTURA (C-6): card DA_EMETTERE. Corsia differita → ferma a EMESSA,
+// cumulativo su competenza ≤ M.
+const { avvia: onFatturaMese, polling: giroInCorso } = useVerboFatturazione({
+  apiFn: runFatturazione,
+  keys: {
+    header: 'vendite.dashboard_competenza.fattura_mese_header',
+    conferma: 'vendite.dashboard_competenza.fattura_mese_conferma',
+    accodato: 'vendite.dashboard_competenza.fattura_mese_accodato',
+    errore: 'vendite.dashboard_competenza.fattura_mese_errore',
+    inCoda: 'vendite.dashboard_competenza.fattura_mese_in_coda',
   },
-  onTimeout: () => {
-    notify.warn(t('vendite.dashboard_competenza.fattura_mese_in_coda'))
-    reloadDopoAzione()
+  buildEsitoOk: (r) => {
+    const lane = Number(r.lane ?? 0)
+    const falliti = Number(r.falliti ?? 0)
+    if (falliti > 0) {
+      notify.warn(t('vendite.dashboard_competenza.fattura_mese_esito_parziale', { lane, falliti }))
+    } else {
+      notify.success(t('vendite.dashboard_competenza.fattura_mese_esito', { lane }))
+    }
   },
 })
 
-// Scopo: verbo FATTURA a grana mese (C-3/C-6): conferma, accoda il giro
-//        on-demand (corsia differita → si ferma a EMESSA, cumulativo su
-//        competenza ≤ M) e avvia il polling. La numerazione resta atto separato
-//        (I-7): non e' dietro questo pulsante.
-function onFatturaMese() {
-  confirmAction({
-    title: t('vendite.dashboard_competenza.fattura_mese_header'),
-    message: t('vendite.dashboard_competenza.fattura_mese_conferma', {
-      mese: `${nomiMesi.value[meseIdx.value]} ${anno.value}`,
-    }),
-    onAccept: async () => {
-      const res = await execute(() => runFatturazione(competenzaCorrente.value))
-      if (res === null) return
-      notify.success(t('vendite.dashboard_competenza.fattura_mese_accodato'))
-      avviaPollingGiro(res.job_id)
-    },
-  })
-}
+// Verbo RENDI DEFINITIVE (C-7): card EMESSA_NON_FATTURATA. Numerazione di
+// perimetro (step DEFINITIVA sui lotti EMESSA del mese) — atto fiscale.
+const { avvia: onRendiDefinitive, polling: numeraInCorso } = useVerboFatturazione({
+  apiFn: runNumerazione,
+  keys: {
+    header: 'vendite.dashboard_competenza.numera_mese_header',
+    conferma: 'vendite.dashboard_competenza.numera_mese_conferma',
+    accodato: 'vendite.dashboard_competenza.numera_mese_accodato',
+    errore: 'vendite.dashboard_competenza.numera_mese_errore',
+    inCoda: 'vendite.dashboard_competenza.numera_mese_in_coda',
+  },
+  buildEsitoOk: (r) => {
+    const lotti = Number(r.lotti ?? 0)
+    const numerati = Number(r.numerati ?? 0)
+    const falliti = Number(r.falliti ?? 0)
+    if (falliti > 0) {
+      notify.warn(t('vendite.dashboard_competenza.numera_mese_esito_parziale', { numerati, falliti, lotti }))
+    } else {
+      notify.success(t('vendite.dashboard_competenza.numera_mese_esito', { numerati }))
+    }
+  },
+})
 
 // Scopo: verbo APPROVA a grana riga dal drill-down (A-1): conferma e approva
 //        la singola attivita' della sua commessa.
@@ -545,6 +587,21 @@ onActivated(() => {
               :disabled="azioneLoading || giroInCorso"
               style="margin-top: 0.5rem;"
               @click.stop="onFatturaMese"
+            />
+            <!-- Verbo RENDI DEFINITIVE a grana mese (C-7): solo sul card
+                 EMESSA_NON_FATTURATA, gate permesso+readonly. Atto FISCALE
+                 (I-7): severity warn per distinguerlo dal pre-fiscale «Fattura».
+                 Loading = numerazione in corso (polling non bloccante). -->
+            <Button
+              v-if="card.stadio === 'EMESSA_NON_FATTURATA' && card.nAttivita > 0 && canNumerare"
+              :label="t('vendite.dashboard_competenza.numera_mese')"
+              icon="pi pi-lock"
+              size="small"
+              severity="warn"
+              :loading="numeraInCorso"
+              :disabled="azioneLoading || numeraInCorso"
+              style="margin-top: 0.5rem;"
+              @click.stop="onRendiDefinitive"
             />
             <span v-if="card.nInRitardo > 0" class="app-dash-ritardo">
               <i class="pi pi-clock" />

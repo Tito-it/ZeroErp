@@ -57,6 +57,18 @@ export function numeraLotto(lottoId) {
   )
 }
 
+// POST ristampa MASSIVA di un lotto DEFINITIVA (C-8): accoda in coda stampa una
+// riga per fattura non esclusa; il worker draina_coda_stampa le renderizza
+// (async). Ritorna { lotto_id, accodate }. Re-stampa, mai numerazione (gate BE
+// DEFINITIVA). Accodamento sincrono (non un job con polling).
+export function ristampaLotto(lottoId) {
+  return api.post(
+    `/vendite/fatturazione/lotti/${lottoId}/ristampa/`,
+    {},
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
 // GET esiti giri fatturazione per corsia (job_run_log) + stato coda stampa
 // (conteggi per stato, scope emittente operatore). Sola lettura (C-5).
 export function getFatturazioneEsiti() {
@@ -76,8 +88,20 @@ export function runFatturazione(competenzaMese) {
   )
 }
 
-// GET stato di un giro accodato (polling, C-3/C-6). Ownership operatore: un
-// giro altrui/inesistente → 404. Sola lettura (nessuna Idempotency-Key).
+// POST «Rendi definitive competenza» (C-4/C-7): numerazione di PERIMETRO, NON
+// bloccante. Accoda un job che esegue lo step DEFINITIVA (numera + accoda
+// stampa) sui lotti EMESSA del mese. Atto fiscale SEPARATO dalla fatturazione
+// (I-7). Ritorna { job_id, stato: 'PENDING' }; avanzamento via getFatturazioneRun.
+export function runNumerazione(competenzaMese) {
+  return api.post(
+    '/vendite/fatturazione/numera/',
+    { competenza_mese: competenzaMese },
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
+// GET stato di un job accodato (polling, C-3/C-4/C-6/C-7). Ownership per SCOPE:
+// un job di altro scope/inesistente → 404. Sola lettura (nessuna Idempotency-Key).
 export function getFatturazioneRun(jobId) {
   return api.get(`/vendite/fatturazione/run/${jobId}/`)
 }
