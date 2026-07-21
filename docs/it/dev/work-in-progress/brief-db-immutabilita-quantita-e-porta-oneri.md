@@ -5,7 +5,7 @@
 > **applicata su dev + pgTAP verde (2026-07-21)**. Step 3 (`tipo_movimento` colonna+CHECK incl.
 > `ONERE`, `20260717-01..04`) e **step 1 (guard immutabilità CA+AF, `20260721-01..02`,
 > codici 550/551, pgTAP `plan(16)` verde)** applicati e testati. **Porta oneri** (changeset
-> `20260721-03..09` **APPLICATI** + pgTAP `test-porta-oneri-v1` **`plan(19)` verde**): vocabolario `config.causali_onere`
+> `20260721-03..11` **APPLICATI** — porta `03..09`, seed regole onere `10`, fix `fn_group` `11`): vocabolario `config.causali_onere`
 > (5 voci, mono-lingua), colonna FK `causale_onere_id`+CHECK biconditional su `commesse_attivita`,
 > **modello articolo↔causale**: `catalogo.articoli.causale_onere_id` (1:1) → **5 articoli-onere**
 > (uno per causale, **IVA propria**), `fn_upsert` esteso con `p_causale_onere_id`, madre
