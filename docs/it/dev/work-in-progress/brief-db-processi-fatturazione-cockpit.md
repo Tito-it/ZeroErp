@@ -1,10 +1,13 @@
 # Brief DB — Cockpit processi fatturazione (Fase A/C)
 
 > **Tipo**: brief operativo per il **team DB** · **Target**: `dev/db-tid` · **Data**: 2026-07-19
-> · **Owner**: Tid · **Stato**: 🟢 **G1 APPLICATO + COMMITTATO + PUSHATO (2026-07-20**, commit
-> `67d63cae9`; verifica §8 G1.a-d eseguita sul DB vivo, ok). **G2** (append pipeline) resta
-> **DA FARE alla release BE** — l'ok arriva dal BE allo step C-10 del
-> [brief BE/FE](brief-be-fe-processi-fatturazione.md).
+> (agg. 2026-07-21) · **Owner**: Tid · **Stato**: 🟢 **G1 APPLICATO + COMMITTATO + PUSHATO
+> (2026-07-20**, commit `67d63cae9`; verifica §8 G1.a-d sul DB vivo, ok). **G2 APPLICATO,
+> pgTAP VERDI (2026-07-21)** — l'interruttore è armato e testato: prerequisito BE
+> **verificato sul codice** (handler `stampa_documenti_lotto_default` registrato in
+> [`pipeline_step_executor.py:47`], repo → `SELECT vendite.fn_accoda_stampe_lotto(...)`,
+> BE pushato); migrate eseguito e §8 blocco G2 verde. **Resta solo il commit** su
+> `dev/db-tid`. 🟢 **Brief CHIUSO** salvo push.
 >
 > **Design-of-record**:
 > [brief-design-gestione-processi-fatturazione.md](brief-design-gestione-processi-fatturazione.md)
@@ -246,7 +249,13 @@ Senza questa riga, `stampa_documenti_lotto` **non avrebbe task_run né resume**.
 
 ---
 
-## 6. G2 — Attivazione: append ai `processi` DEFINITIVA (⚠️ solo alla release BE)
+## 6. G2 — Attivazione: append ai `processi` DEFINITIVA — ✅ SCRITTO 2026-07-21
+
+> **Prerequisito BE sciolto**: l'handler `stampa_documenti_lotto_default` è registrato
+> nel dispatch ([`pipeline_step_executor.py:47`]) e il repo chiama
+> `SELECT vendite.fn_accoda_stampe_lotto(%s)` ([`pipeline_repository.py:1455`]), BE
+> pushato → nessun `E_TASK_IMPLEMENTATION_NOT_FOUND` al giro notturno. Append applicato
+> al CSV per **entrambi** gli step (id 4 e 6), con `data_update` bumpato a 2026-07-21.
 
 `vendite/fatturazione_pipeline.csv` — le righe da toccare sono **due**, simmetriche (è il
 punto di D-1):
@@ -354,12 +363,13 @@ pipeline 4/6). **Strutturale+seed, CI-safe**: il test funzionale dell'idempotenz
 un integration test lato BE, non qui; l'invariante anti-doppione è comunque blindata
 dall'asserzione sull'indice unico parziale.
 
-**`db/pgtap/vendite/test-pipeline-definitiva-numerazione-stampa-v1.sql`** (G2, aggiungere con
-l'attivazione):
+**`db/pgtap/vendite/test-pipeline-definitiva-numerazione-stampa-v1.sql`** (G2 — **scritto**,
+`plan(4)`):
 
-1. lo step DEFINITIVA MASSIVO contiene `numera_fatture` **seguito da** `stampa_documenti_lotto`;
-2. idem GIORNALIERO;
-3. **invariante D-1**: i `processi` dei due step DEFINITIVA attivi sono **identici** (una sola
+1. lo step DEFINITIVA MASSIVO (id 4) contiene `numera_fatture` **seguito da** `stampa_documenti_lotto`;
+2. idem GIORNALIERO (id 6);
+3. ordinalità esplicita: `stampa_documenti_lotto` accodata **dopo** `numera_fatture` nello step 4;
+4. **invariante D-1**: i `processi` dei due step DEFINITIVA attivi sono **identici** (una sola
    variante distinta) — traduzione in test di *«mai processi duplicati/divergenti»*.
 
 (pgTAP: `BEGIN;` + CF validi fissi + fixture preventivi con `emittente_fiscale_id`/`iva_id`
@@ -380,17 +390,21 @@ NN = **sequenza globale per data** (i `20260719-*` arrivano a `-16` → i nuovi 
 * `80_data/` — **solo append ai CSV esistenti** (§5): nessun nuovo `.yaml`, i loader
   `runOnChange` ripescano.
 * `db/pgtap/vendite/test-stampa-coda-fondamenta-v1.sql` — pgTAP G1.
-* G2 (da fare): append al CSV `fatturazione_pipeline.csv` (§6) — di nuovo nessun `.yaml` nuovo.
+* **G2 (✅ 2026-07-21)**: append al CSV `fatturazione_pipeline.csv` (§6, righe id 4 e 6) —
+  nessun `.yaml` nuovo (loader `20260128-06-upsert-fatturazione-pipeline` già `runOnChange`).
+* `db/pgtap/vendite/test-pipeline-definitiva-numerazione-stampa-v1.sql` — pgTAP G2.
 
 ---
 
 ## 11. Sequenza operativa
 
-1. **G1** (ora): tabella + funzione + seed (§3–5) → pgTAP fondamenta verdi → PR su `dev/db-tid`.
-2. Parte il **BE/FE** ([brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md)):
+1. **G1** ✅ (2026-07-20): tabella + funzione + seed (§3–5) → pgTAP fondamenta verdi →
+   applicato/committato/pushato (`67d63cae9`).
+2. **BE/FE** ✅ ([brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md)):
    handler `stampa_documenti_lotto_default` (accoda), worker drainer (backstop + render),
-   cablaggio FATTURA.
-3. **G2** (alla release BE, handler + drainer deployati): append ai `processi` DEFINITIVA
-   (§6) → pgTAP pipeline verdi → PR. **Non prima.**
+   cablaggio FATTURA — completato e pushato.
+3. **G2** ✅ scritto (2026-07-21, handler BE registrato e pushato): append ai `processi`
+   DEFINITIVA (§6) + pgTAP pipeline. **Prossimo**: apply dev → §8 G2 verde → commit su
+   `dev/db-tid` (l'apply lo esegue il team DB, [[feedback_db_actions_passaggio_team]]).
 
 *Le azioni DB non le esegue l'agent ([[feedback_db_actions_passaggio_team]]).*

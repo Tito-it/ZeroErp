@@ -168,6 +168,19 @@ WHERE a.uom_id IS NOT NULL
 
 ---
 
+### Articolo-onere (porta oneri)
+
+Un articolo **è un onere** quando ha `causale_onere_id` valorizzato (FK verso
+[`config.causali_onere`](/dbzero/config/tabelle/causali_onere), legame **1:1** —
+`uq_articoli_causale_onere`). È il modello «un articolo è un onere collegandogli una causale»:
+così **ogni onere porta la propria IVA** (la `iva_id` dell'articolo — es. spese/trasferte 22%,
+penale fuori campo art.15), mentre la causale ne è la classificazione business. La madre
+[`vendite.fn_aggiungi_onere_commessa`](/dbzero/vendite/funzioni/fn_aggiungi_onere_commessa)
+riceve l'articolo-onere e ne deriva causale, `uom` e IVA. Riferimento:
+`brief-db-immutabilita-quantita-e-porta-oneri` §4c.8.
+
+---
+
 ### Diagramma ER relazioni (focus articolo)
 
 ```mermaid

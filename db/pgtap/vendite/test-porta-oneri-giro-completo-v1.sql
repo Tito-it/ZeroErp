@@ -1,0 +1,181 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: porta oneri — GIRO COMPLETO onere → emissione → AF → fattura.
+-- Brief: brief-db-immutabilita-quantita-e-porta-oneri §4c.7 (step 9).
+--
+-- Verifica che una riga onere (sourceless, tipo_movimento='ONERE') faccia il
+-- "giro normale da APPROVATA in poi": emissione (fn_emit) crea l'attività
+-- fatturabile propagando ONERE + qta=1 + prezzo; poi il lotto + generate_fatture_righe
+-- producono la riga di fattura. PAYOFF: l'IVA della riga fattura è quella
+-- dell'articolo-onere (penale = fuori campo art.15), non un default → il modello
+-- articolo↔causale porta l'IVA per-onere fino in fattura.
+--
+-- fn_emit esige una ROOT source sulla COMMESSA (non sulla riga): la si crea con
+-- fn_link_commessa_sorgente. Il lock delle AF nel lotto (step select_attivita del
+-- runner) è emulato a mano (lock_batch_id + lock_in_fatturazione) per pilotare
+-- fn_generate_fatture_righe in puro SQL.
+-- ------------------------------------------------------------
+-- Indice test (1..12):
+--   1  onere creato (CA ONERE)
+--   2  commessa con ROOT source
+--   3  fn_emit: 1 AF inserita
+--   4  AF: tipo_movimento='ONERE' propagato
+--   5  AF: quantita=1 e prezzo_unitario=importo
+--   6  AF: articolo = articolo-onere passato
+--   7  AF: approvato=true + link commessa_attivita_id
+--   8  AF: sorgente COMMESSA (pull idempotente)
+--   9  lotto creato
+--  10  fn_generate_fatture_righe: 1 riga generata
+--  11  fattura_riga: qta=1 e prezzo_unitario=importo
+--  12  fattura_riga: iva_id = IVA dell'articolo-onere (penale fuori campo) + AF fatturata
+-- ------------------------------------------------------------
+
+BEGIN;
+SELECT plan(12);
+
+-- Le madri/viste sono SECURITY INVOKER: dai un ruolo applicativo.
+SET LOCAL app.ruolo_applicativo = 'OPERATORE';
+SET LOCAL app.current_user_id = '1';
+
+-- ===== riferimenti =====
+CREATE TEMP TABLE tmp_refs AS
+SELECT
+  (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS billing_account_id,
+  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS utility_id,
+  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
+  (SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id) FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS emittente_soggetto_ruolo_id,
+  (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
+  -- Sorgente ROOT: COMMESSA (target vendite.commesse, key_selector='id') con uid =
+  -- id della commessa stessa -> la riga esiste per costruzione (passa il guard
+  -- sorgente polimorfa: formato id::text + esistenza nel target). fn_emit richiede
+  -- solo che esista una ROOT in commesse_sorgenti, non ne dereferenzia il tipo.
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo LIMIT 1) AS sorgente_root_id,
+  (SELECT id FROM catalogo.articoli WHERE codice='ONERE_PENALE') AS articolo_onere_id,
+  (SELECT iva_id FROM catalogo.articoli WHERE codice='ONERE_PENALE') AS iva_onere_id;
+
+-- ===== commessa + ROOT source (richiesta da fn_emit) =====
+CREATE TEMP TABLE tmp_com AS
+SELECT vendite.fn_get_or_create_commessa(
+  p_billing_account_id => (SELECT billing_account_id FROM tmp_refs),
+  p_utility_id => (SELECT utility_id FROM tmp_refs),
+  p_tipo_commessa => 'AUTO', p_policy_fatturazione => 'DA_DOCUMENTO',
+  p_fatturazione_immediata => false, p_priorita_operativa => 'NORMALE',
+  p_emittente_soggetto_ruolo_id => (SELECT emittente_soggetto_ruolo_id FROM tmp_refs),
+  p_competenza_dal => DATE '2026-07-01', p_competenza_al => DATE '2026-07-31',
+  p_meta => jsonb_build_object('test_scope','pgtap_onere_giro'), p_force_new => true
+) AS commessa_id;
+
+SELECT vendite.fn_link_commessa_sorgente(
+  p_commessa_id => (SELECT commessa_id FROM tmp_com),
+  p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs),
+  p_sorgente_uid => (SELECT commessa_id FROM tmp_com)::text,
+  p_sorgente_riga => 1, p_meta => '{}'::jsonb);
+
+-- ===== onere (penale 150,00) =====
+CREATE TEMP TABLE tmp_onere AS
+SELECT vendite.fn_aggiungi_onere_commessa(
+  p_commessa_id        => (SELECT commessa_id FROM tmp_com),
+  p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs),
+  p_articolo_onere_id  => (SELECT articolo_onere_id FROM tmp_refs),
+  p_importo            => 150.00,
+  p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs),
+  p_motivo             => 'Ritardo consegna — pgtap giro completo',
+  p_data_attivita      => DATE '2026-07-15'
+) AS commessa_attivita_id;
+
+SELECT ok((SELECT commessa_attivita_id IS NOT NULL FROM tmp_onere), '1) onere creato (CA ONERE)');
+
+SELECT ok(
+  (SELECT count(*) = 1 FROM vendite.commesse_sorgenti cs
+    WHERE cs.commessa_id = (SELECT commessa_id FROM tmp_com) AND cs.ruolo_link = 'ROOT'),
+  '2) commessa con ROOT source');
+
+-- ===== emissione: PRONTA_FATTURAZIONE + pull =====
+SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
+CREATE TEMP TABLE tmp_emit AS
+SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));
+
+SELECT is((SELECT inserted_rows FROM tmp_emit), 1, '3) fn_emit: 1 AF inserita');
+
+-- AF dell'onere
+CREATE TEMP TABLE tmp_af AS
+SELECT a.*
+FROM vendite.attivita_fatturabili a
+WHERE a.commessa_attivita_id = (SELECT commessa_attivita_id FROM tmp_onere);
+
+SELECT is((SELECT tipo_movimento FROM tmp_af), 'ONERE'::varchar, '4) AF: tipo_movimento=ONERE propagato');
+
+SELECT ok(
+  (SELECT quantita = 1 AND prezzo_unitario = 150.00 FROM tmp_af),
+  '5) AF: quantita=1 e prezzo_unitario=importo');
+
+SELECT is((SELECT articolo_id FROM tmp_af), (SELECT articolo_onere_id FROM tmp_refs),
+  '6) AF: articolo = articolo-onere passato');
+
+SELECT ok(
+  (SELECT approvato IS TRUE AND commessa_attivita_id = (SELECT commessa_attivita_id FROM tmp_onere) FROM tmp_af),
+  '7) AF: approvato=true + link commessa_attivita_id');
+
+SELECT is(
+  (SELECT s.codice_interno FROM config.sorgenti s WHERE s.id = (SELECT sorgente_tipo_id FROM tmp_af)),
+  'COMMESSA'::varchar,
+  '8) AF: sorgente COMMESSA (pull idempotente)');
+
+-- ===== fattura: lotto + lock manuale AF + generate =====
+CREATE TEMP TABLE tmp_lotto AS
+SELECT vendite.fn_create_fatturazione_lotto(
+  p_competenza_mese => DATE '2026-07-01',
+  p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs),
+  p_utility_id => (SELECT utility_id FROM tmp_refs)::integer,
+  p_billing_account_id => (SELECT billing_account_id FROM tmp_refs),
+  p_lock_batch_id => '11111111-1111-1111-1111-111111111111'::uuid,
+  p_meta => jsonb_build_object('test_scope','pgtap_onere_giro'),
+  p_emittente_soggetto_ruolo_id => (SELECT emittente_soggetto_ruolo_id FROM tmp_refs)
+) AS lotto_id;
+
+SELECT ok((SELECT lotto_id IS NOT NULL FROM tmp_lotto), '9) lotto creato');
+
+-- Emula lo step select_attivita: locka l'AF dell'onere nel lotto.
+UPDATE vendite.attivita_fatturabili a
+   SET lock_batch_id = '11111111-1111-1111-1111-111111111111'::uuid,
+       lock_in_fatturazione = true,
+       stato_esecuzione = 'PENDING'
+ WHERE a.id = (SELECT id FROM tmp_af);
+
+CREATE TEMP TABLE tmp_gen AS
+SELECT vendite.fn_generate_fatture_righe((SELECT lotto_id FROM tmp_lotto)) AS righe;
+
+SELECT is((SELECT righe FROM tmp_gen), 1, '10) fn_generate_fatture_righe: 1 riga generata');
+
+-- Riga di fattura dell'onere (via la AF ora fatturata)
+CREATE TEMP TABLE tmp_fr AS
+SELECT r.*
+FROM vendite.fatture_righe r
+WHERE r.id = (SELECT fattura_riga_id FROM vendite.attivita_fatturabili WHERE id = (SELECT id FROM tmp_af));
+
+SELECT ok(
+  (SELECT qta = 1 AND prezzo_unitario = 150.00 FROM tmp_fr),
+  '11) fattura_riga: qta=1 e prezzo_unitario=importo');
+
+-- PAYOFF: l'IVA della riga fattura è quella dell'articolo-onere (penale fuori campo),
+-- + l'AF risulta fatturata.
+SELECT ok(
+  (SELECT (SELECT iva_id FROM tmp_fr) = (SELECT iva_onere_id FROM tmp_refs)
+      AND (SELECT fatturato FROM vendite.attivita_fatturabili WHERE id = (SELECT id FROM tmp_af)) IS TRUE),
+  '12) fattura_riga: iva_id = IVA articolo-onere (penale fuori campo) + AF fatturata');
+
+SELECT * FROM finish();
+ROLLBACK;

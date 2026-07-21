@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Regole di fatturazione per gli articoli-onere (porta oneri, step 6/9).
+#
+# PERCHE': vendite.fn_group_attivita_fatturabili (usata da fn_generate_fatture_righe)
+# legge vendite.articolo_regole_fatturazione per l'articolo di ogni AF; senza la
+# riga fallisce ("record v_regole non ha campo visibilita_componenti"). Non esiste
+# trigger/seed che la crei automaticamente e articoli.csv e' vuoto: gli articoli-onere
+# (20260721-09) sono i PRIMI articoli fatturabili, quindi le loro regole vanno seedate
+# qui. Senza, un onere non arriverebbe in fattura (non solo nei test: in produzione).
+#
+# Tutte le colonne di regole hanno default sensati (visibilita='solo_padre',
+# calcolo_qta='fissa', arrotondamenti 2/3 HALF_UP): il CSV porta il solo articolo_id,
+# i default riempiono il resto. Idempotente su articolo_id (UNIQUE).
+# Dipendenze: vendite.articolo_regole_fatturazione, articoli-onere (20260721-09).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260721-10-seed-articolo-regole-onere-mctit.yaml
+
+  - changeSet:
+      id: 20260721-10-seed-articolo-regole-onere
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: articolo_regole_fatturazione
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/vendite/articolo_regole_onere.csv
+            tableName: articolo_regole_fatturazione
+            schemaName: vendite
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "articolo_id"
+            columns:
+              - column: { name: articolo_id, type: UUID }

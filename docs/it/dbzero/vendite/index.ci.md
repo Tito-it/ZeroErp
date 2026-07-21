@@ -13,7 +13,7 @@
 - [attivita_fatturabili_log](manual/attivita_fatturabili_log.md) — (latest review 24-01-2026) `vendite.attivita_fatturabili_log` registra **warning** e **errori critici** relativi ai processi di alimentazione di `attivita_fatturabili`.
 - [commesse](manual/commesse.md) — (latest review 26-02-2026)   `vendite.commesse` e` la testata di governo del ciclo operativo `sorgente -> commessa -> commesse_attivita -> attivita_fatturabili`.
 - [commesse_attivita](manual/commesse_attivita.md) — La tabella `vendite.commesse_attivita` e` la sorgente di verita` operativa delle righe da emettere verso `attivita_fatturabili`.
-- [commesse_attivita_log](manual/commesse_attivita_log.md) — La tabella `vendite.commesse_attivita_log` registra eventi tecnici e dominio sulle righe `commesse_attivita` per audit e troubleshooting.
+- [commesse_attivita_log](manual/commesse_attivita_log.md) — La tabella `vendite.commesse_attivita_log` registra eventi di dominio sulle righe `commesse_attivita`, come audit persistente indipendente dal layer applicativo.
 - [commesse_push_log](manual/commesse_push_log.md) — `vendite.commesse_push_log` traccia ogni esecuzione dell'orchestratore di push sorgenti verso commesse/attivita` con un audit minimale ma operativo.
 - [commesse_sorgenti](manual/commesse_sorgenti.md) — La tabella `vendite.commesse_sorgenti` traccia la sorgente ROOT della commessa e garantisce idempotenza sorgente a livello commessa.
 - [contratti](manual/contratti.md) — (Initial version - 19-01-26) `vendite.contratti` rappresenta la **testata del contratto commerciale**: l’accordo che lega un **billing account** a una **istanza/utility** e ne definisce **ambito**, **periodo di validita** e **stato**. E` la base di aggregazione delle righe (`vendite.contratti_righe`) e il punto di riferimento per la generazione di **attivita fatturabili**.
@@ -86,6 +86,7 @@
 - [transizioni_stati_commessa](manual/transizioni_stati_commessa.md) — (rev 2026-06-07) `vendite.transizioni_stati_commessa` definisce la **matrice delle transizioni ammesse** tra gli stati della commessa. Pattern identico a `config.transizioni_stati_ordini` / `config.transizioni_stati_preventivi`, ma collocato in schema `vendite` perché lì vive la tabella stati di riferimento `vendite.stati_commessa` (a differenza di preventivi/ordini, i cui stati sono in `config.stati_doc_*`).
 
 ## ⚙️ Funzioni (manuale)
+- [fn_aggiungi_onere_commessa](manual/fn_aggiungi_onere_commessa.md) — (rev 2026-07-21)
 - [fn_annulla_reso](manual/fn_annulla_reso.md) — (rev 2026-07-13)
 - [fn_applica_fondi_fattura](manual/fn_applica_fondi_fattura.md) — La funzione **`vendite.fn_applica_fondi_fattura()`** applica i fondi fattura in stato `DISPONIBILE` ad una **fattura figlia**, creando le righe in `vendite.fatture_fondi_fattura` e aggiornando la `source` a stato `ASSEGNATO`.
 - [fn_approva_commessa_attivita](manual/fn_approva_commessa_attivita.md) — (rev 2026-06-07) `vendite.fn_approva_commessa_attivita(p_commessa_id, p_righe_ids, p_user)` porta le righe `commesse_attivita` da `stato_approvazione = 'BOZZA'` a `'APPROVATA'`.
