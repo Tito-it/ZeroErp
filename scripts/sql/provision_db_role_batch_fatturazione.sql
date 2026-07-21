@@ -174,8 +174,17 @@ INSERT INTO _perimeter (nspname, relname, grade) VALUES
     ('vendite', 'event_log',                        'i'),
     ('vendite', 'attivita_fatturabili_log',         'i'),
     ('pagamenti', 'vendite_contabili_lotti',        'i'),
+    -- render documentale (C-2b, documenti.DocumentGenerationService, contesto
+    -- sistema): il worker fa solo INSERT append (no UPDATE/DELETE). Le identity
+    -- sequence si auto-concedono via il join pg_depend piu' sotto.
+    ('documenti', 'documenti_generati',             'i'),
+    ('documenti', 'documenti_generati_file',        'i'),
+    ('documenti', 'documenti_generati_eventi',      'i'),
     -- UPDATE only: il batch aggiorna stato_emissione, non inserisce/cancella
-    ('vendite', 'commesse_attivita',                'u');
+    ('vendite', 'commesse_attivita',                'u'),
+    -- coda stampa (C-2b): il drainer fa SOLO claim/marca/reaper (UPDATE).
+    -- l'accodamento (fn_accoda_stampe_lotto) e' flusso operatore/app, non batch.
+    ('vendite', 'fatture_stampa_coda',              'u');
 
 -- Filtra le tabelle inesistenti (DB parziali / ambienti test)
 DELETE FROM _perimeter p
