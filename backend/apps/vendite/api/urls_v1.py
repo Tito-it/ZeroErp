@@ -10,6 +10,7 @@ from apps.vendite.api.views import (
     ApiCommessaStato,
     ApiFatturazioneApprovaCompetenza,
     ApiFatturazioneEsiti,
+    ApiFatturazioneNumera,
     ApiFatturazioneNumeraLotto,
     ApiFatturazioneRun,
     ApiFatturazioneRunStato,
@@ -286,6 +287,13 @@ urlpatterns = [
         "fatturazione/run/<int:job_id>/",
         ApiFatturazioneRunStato.as_view(),
         name="vendite-fatturazione-run-stato",
+    ),
+    # C-4: numerazione di perimetro «Rendi definitive competenza» (accoda in
+    # dbops.coda_lavori, non bloccante). Polling via fatturazione/run/<job_id>/.
+    path(
+        "fatturazione/numera/",
+        ApiFatturazioneNumera.as_view(),
+        name="vendite-fatturazione-numera",
     ),
     # --- Lookup statici (Fase 2 refactor frontend vendite) ---
     path(

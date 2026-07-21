@@ -28,6 +28,7 @@ import { useNotify } from '../../core/composables/useNotify'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useActionPermission } from '../../core/composables/useActionPermission'
+import { useJobPolling } from '../../core/composables/useJobPolling'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayDate, displayTimestamp } from '../../core/utils/date'
@@ -35,6 +36,7 @@ import { formatCurrency } from '../../core/utils/format'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { approvaCommessaAttivita, approvaCompetenza } from '../api/commesse'
+import { getFatturazioneRun, runFatturazione } from '../api/lotti'
 import { useDashboardCompetenzaStore } from '../stores/dashboardCompetenza'
 
 const { t, te } = useI18n()
@@ -50,6 +52,10 @@ const { isAllowed: canApprovare } = useActionPermission('approva_attivita_commes
 // Gate unico dell'approvazione (permesso + readonly): card e kebab usano lo
 // stesso predicato — mai due copie che possono divergere.
 const canApprova = computed(() => canApprovare.value && !areaReadonly.value)
+// Gate del verbo FATTURA (C-6, I-7: separato da APPROVA e dalla numerazione).
+// Stesso permesso dell'endpoint C-3 (genera_fatture_lotti) + readonly d'area.
+const { isAllowed: canGenerareFatture } = useActionPermission('genera_fatture_lotti')
+const canFatturare = computed(() => canGenerareFatture.value && !areaReadonly.value)
 const { execute, loading: azioneLoading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 
@@ -296,6 +302,57 @@ function onApprovaMese() {
   })
 }
 
+// ------------------------------------------------------------------ verbo FATTURA (C-6)
+// Il verbo Fattura vive sulla card DA_EMETTERE (WYSIWYG, come «Approva mese» sta
+// su DA_APPROVARE): il gate di visibilita' e' nel template sulla card.
+//
+// Polling NON bloccante (I-3) del giro accodato: interroga lo stato del job
+// (GET run/<id>/) finche' terminale, poi rinfresca la dashboard. Silenzioso sui
+// colpi a vuoto; se il worker non e' schedulato il job resta PENDING → onTimeout
+// avvisa "in coda" invece di girare all'infinito.
+const { start: avviaPollingGiro, polling: giroInCorso } = useJobPolling({
+  fetchStatus: (jobId) => getFatturazioneRun(jobId),
+  onDone: (stato) => {
+    if (stato.stato === 'FATTO') {
+      const r = stato.result ?? {}
+      const lane = Number(r.lane ?? 0)
+      const falliti = Number(r.falliti ?? 0)
+      if (falliti > 0) {
+        notify.warn(t('vendite.dashboard_competenza.fattura_mese_esito_parziale', { lane, falliti }))
+      } else {
+        notify.success(t('vendite.dashboard_competenza.fattura_mese_esito', { lane }))
+      }
+    } else {
+      // ERRORE/ANNULLATO: il giro non e' andato a buon fine (payload, revoca…).
+      notify.error(stato.ultimo_errore?.message || t('vendite.dashboard_competenza.fattura_mese_errore'))
+    }
+    reloadDopoAzione()
+  },
+  onTimeout: () => {
+    notify.warn(t('vendite.dashboard_competenza.fattura_mese_in_coda'))
+    reloadDopoAzione()
+  },
+})
+
+// Scopo: verbo FATTURA a grana mese (C-3/C-6): conferma, accoda il giro
+//        on-demand (corsia differita → si ferma a EMESSA, cumulativo su
+//        competenza ≤ M) e avvia il polling. La numerazione resta atto separato
+//        (I-7): non e' dietro questo pulsante.
+function onFatturaMese() {
+  confirmAction({
+    title: t('vendite.dashboard_competenza.fattura_mese_header'),
+    message: t('vendite.dashboard_competenza.fattura_mese_conferma', {
+      mese: `${nomiMesi.value[meseIdx.value]} ${anno.value}`,
+    }),
+    onAccept: async () => {
+      const res = await execute(() => runFatturazione(competenzaCorrente.value))
+      if (res === null) return
+      notify.success(t('vendite.dashboard_competenza.fattura_mese_accodato'))
+      avviaPollingGiro(res.job_id)
+    },
+  })
+}
+
 // Scopo: verbo APPROVA a grana riga dal drill-down (A-1): conferma e approva
 //        la singola attivita' della sua commessa.
 function onApprovaRiga(row) {
@@ -475,6 +532,19 @@ onActivated(() => {
               :disabled="azioneLoading"
               style="margin-top: 0.5rem;"
               @click.stop="onApprovaMese"
+            />
+            <!-- Verbo FATTURA a grana mese (C-6): solo sul card DA_EMETTERE,
+                 gate permesso+readonly; @click.stop per non attivare il
+                 drill-down. Loading = giro in corso (polling non bloccante). -->
+            <Button
+              v-if="card.stadio === 'DA_EMETTERE' && card.nAttivita > 0 && canFatturare"
+              :label="t('vendite.dashboard_competenza.fattura_mese')"
+              icon="pi pi-file-export"
+              size="small"
+              :loading="giroInCorso"
+              :disabled="azioneLoading || giroInCorso"
+              style="margin-top: 0.5rem;"
+              @click.stop="onFatturaMese"
             />
             <span v-if="card.nInRitardo > 0" class="app-dash-ritardo">
               <i class="pi pi-clock" />

@@ -8,9 +8,12 @@
 > run aveva 2 rossi da visibilità: insert e assert nella stessa statement, il
 > classificatore STABLE non vedeva le righe appena inserite — corretti col
 > pattern a due passi). **Verifica §7 sul vivo ESEGUITA e superata** (§9) e
-> **lato FE completato** (§10). ⚠️ **Un residuo DB da 5 stringhe**: namespace
-> i18n delle reason ordini (§10a). Restano: rigen doc auto-gen, commit su
-> «procedi».
+> **lato FE completato** (§10). Il residuo DB da 5 stringhe (namespace i18n reason
+> ordini, §10a) è stato **scorporato e a sua volta CHIUSO**
+> ([brief-db-i18n-namespace-reason-ordini.md](brief-db-i18n-namespace-reason-ordini.md),
+> in `work-done/`): verificato sul vivo che `fn_available_actions_ordine` emette ora
+> `vendite.ordini.push_commessa_reason.*`. **✅ COMPLETO** — committato, doc auto-gen
+> rigenerata. Spostato in `work-done/` il 2026-07-21.
 > · **Rev 1**: 2026-07-19 (analisi critica lato DB, fatti verificati tutti sulle
 > definizioni vive) — tre integrazioni: §4b riformulato su **classificatore
 > condiviso** (la capability ordine ha GIÀ due fonti di verità: fn_list per
@@ -22,7 +25,7 @@
 > **dopo** che il push è già avvenuto (attività già in commessa).
 > **Vedi anche**: [brief-db-guard-righe-avanzamento-stato.md](brief-db-guard-righe-avanzamento-stato.md)
 > (stessa famiglia UX "azione non pertinente non va offerta", causa radice
-> diversa) · [brief-db-gate-evaso-commessa-asimmetria.md](../work-done/brief-db-gate-evaso-commessa-asimmetria.md)
+> diversa) · [brief-db-gate-evaso-commessa-asimmetria.md](brief-db-gate-evaso-commessa-asimmetria.md)
 > (precedente: stesso bug diagnosticato e corretto per i preventivi, 2026-06-28).
 
 ## 1. Sintomo (dati vivi, DB dev 2026-07-19)
@@ -202,7 +205,7 @@ ri-elencare le stesse righe; re-push singolo → azione disabled con reason
 | 4 | Apply dev + pgTAP — **FATTO 2026-07-19** (migrate applicato, plan(10) verde) | ☑ |
 | 5 | Verifica §7 su ORD0000227 vivo + non-regressione EVASO-mai-pushati (§9) | ☑ |
 | 6 | Chiusura BE/FE: banner reason in OrdiniDrawer/DdtDrawer + i18n it/en (§10) | ☑ |
-| 7 | **Residuo DB**, scorporato: namespace reason_key ordini → [brief dedicato](brief-db-i18n-namespace-reason-ordini.md) | ☐ |
+| 7 | **Residuo DB**, scorporato: namespace reason_key ordini → [brief dedicato](brief-db-i18n-namespace-reason-ordini.md) (CHIUSO, in `work-done/`) | ☑ |
 
 ## 9. Verifica §7 sul DB vivo — ESEGUITA (2026-07-19, lato BE/FE)
 
@@ -290,8 +293,8 @@ accende da solo — zero tocchi BE/FE.
 
 ## 11. Riferimenti
 
-- Precedente (stessa famiglia, preventivi): `../work-done/brief-db-gate-evaso-commessa-asimmetria.md`
-- Design EVASO eleggibile al push: `../work-done/piano-db-fix-orfano-push-ordine-confermato.md`
+- Precedente (stessa famiglia, preventivi): `brief-db-gate-evaso-commessa-asimmetria.md`
+- Design EVASO eleggibile al push: `piano-db-fix-orfano-push-ordine-confermato.md`
 - Definizioni vive: `docs/it/dbzero/vendite/funzioni/fn_list_*_da_pushare.md`,
   `docs/it/dbzero/script/funzioni/fn_available_actions_{ordine,ddt}.md`
 - Upsert idempotente + guard `E_COMMESSA_ATTIVITA_GIA_EMESSA`:

@@ -19,10 +19,10 @@
 > Il DDT è **CONSEGNATO**, ma nel drawer non compare il push a commessa e il
 > banner recita *«DDT non ancora inviabile a commessa: dev'essere spedito o
 > consegnato»* — cioè chiede una condizione **già soddisfatta**.
-> **Stessa famiglia**: [brief-db-push-commessa-gia-inviato.md](../work-in-progress/brief-db-push-commessa-gia-inviato.md)
+> **Stessa famiglia**: [brief-db-push-commessa-gia-inviato.md](brief-db-push-commessa-gia-inviato.md)
 > (reason vere al posto di un no-op) ·
 > [brief-db-i18n-namespace-reason-ordini.md](brief-db-i18n-namespace-reason-ordini.md)
-> (namespace delle reason ordini) · [brief-db-guard-righe-avanzamento-stato.md](../work-in-progress/brief-db-guard-righe-avanzamento-stato.md)
+> (namespace delle reason ordini) · [brief-db-guard-righe-avanzamento-stato.md](brief-db-guard-righe-avanzamento-stato.md)
 > (azione non pronta → disabled+reason). ⚠️ **Non è però lo stesso difetto**: qui
 > la `reason_key` è nel namespace giusto e il messaggio **si vede** — è il
 > *contenuto* a essere falso.

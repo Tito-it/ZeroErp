@@ -2,6 +2,7 @@
 set -e
 cd "$(dirname "$0")/.."
 set -a
+# shellcheck source=/dev/null  # env.sh è un file runtime per-host, non in repo
 source ./env.sh
 set +a
 

@@ -295,6 +295,35 @@ class VenditeRepository:
         result: list[LottoListRow] = [self._map_lotto_row(row) for row in rows]
         return result, total_count
 
+    # Scopo: Lotti in stato fiscale EMESSA per la competenza data → candidati
+    #        alla numerazione di PERIMETRO (C-4). Query PURA (id+codice): lo
+    #        `stato_doc_fiscale_id` EMESSA lo risolve+guarda il chiamante (handler,
+    #        service layer), non il repo. Scope operatore via RLS — il chiamante
+    #        gira sotto `operator_identity_context`, la policy
+    #        `rls_fatturazione_lotti_ef_whitelist` filtra agli emittenti
+    #        dell'operatore. NESSUN limite: no silent cap (i lotti EMESSA di un
+    #        mese sono pochi, uno per terna emittente/tipo); il perimetro deve
+    #        essere completo, non troncato.
+    # Perimetro: sola lettura; nessun side-effect.
+    def list_lotti_numerabili(
+        self, *, competenza_mese: date, stato_doc_fiscale_id: int,
+    ) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT fl.id, fl.codice
+                  FROM vendite.fatturazione_lotti fl
+                 WHERE fl.competenza_mese = %s
+                   AND fl.stato_doc_fiscale_id = %s
+                 ORDER BY fl.id
+                """,
+                [competenza_mese, int(stato_doc_fiscale_id)],
+            )
+            return [
+                {"id": int(row[0]), "codice": row[1]}
+                for row in cursor.fetchall()
+            ]
+
     # Scopo: Restituisce il dettaglio testata di un singolo lotto (stessa
     #        proiezione della lista), con scope emittente applicato: un lotto
     #        fuori scope torna None → il BE risponde 404 (indistinguibile da id

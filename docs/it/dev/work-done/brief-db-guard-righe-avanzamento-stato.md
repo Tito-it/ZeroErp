@@ -16,9 +16,11 @@
 > `test-fn-available-actions-offerta-v1` plan(18) esteso). Alla stesura Rev 2 è
 > emerso che gli step 1 (5 domini su 6), 2 e 3 erano **già stati realizzati il
 > 2026-07-16** senza che il brief venisse aggiornato: il lavoro odierno chiude i
-> buchi residui (DDT multi-condizione, offerte senza enabled). Restano:
-> rigen doc auto-gen, commit su «procedi».
-> · **BE/FE RECEPITO (2026-07-19, non committato)** — il formato §3 è stato
+> buchi residui (DDT multi-condizione, offerte senza enabled). **✅ COMPLETO**
+> (2026-07-21): DB committato (`00eb20a48`), doc auto-gen rigenerata, verificato
+> sul vivo che i 4 guard DDT + `fn_available_actions_ddt` delegano a
+> `fn_check_ddt_emittibile`. Spostato in `work-done/` il 2026-07-21.
+> · **BE/FE RECEPITO (2026-07-19, COMMITTATO)** — il formato §3 è stato
 > implementato lato client: mapper azioni multi-motivo + tooltip multi-riga +
 > 7 chiavi i18n `azione_reason`, con review critica (5 fix, incluso un bug
 > reale del tooltip). Dettaglio nel §5. **Nessun lavoro BE**: le capability
@@ -74,7 +76,7 @@ DDT **senza causale di trasporto** è visibile e cliccabile, e l'utente scopre i
 vincolo solo dal banner 409.
 
 I guard bloccanti **esistono già** (slice DDT-resi,
-[brief in work-done](../work-done/brief-db-fatturazione-ddt-resi.md) §4a DL-28,
+[brief in work-done](brief-db-fatturazione-ddt-resi.md) §4a DL-28,
 `trgfn_ddt_guard_causale_emissione` applicato `20260718-04`): R1 causale
 obbligatoria all'emissione (544) · R2 prezzo **risolvibile** su ogni riga attiva se
 la causale è fatturabile (545, proprio o ereditato dall'ordine via fulfillment).

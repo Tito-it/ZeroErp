@@ -63,6 +63,25 @@ export function getFatturazioneEsiti() {
   return api.get('/vendite/fatturazione/esiti/')
 }
 
+// POST «Fattura competenza» (C-3/C-6): avvia un GIRO di fatturazione on-demand,
+// NON bloccante (I-3). Accoda un job in dbops.coda_lavori e ritorna subito
+// { job_id, stato: 'PENDING' }; l'avanzamento si segue via getFatturazioneRun.
+// Corsia differita → si ferma a EMESSA (D-1): la numerazione è atto separato
+// (I-7). Idempotenza a 2 layer: header HTTP + chiave business competenza+scope.
+export function runFatturazione(competenzaMese) {
+  return api.post(
+    '/vendite/fatturazione/run/',
+    { competenza_mese: competenzaMese },
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
+// GET stato di un giro accodato (polling, C-3/C-6). Ownership operatore: un
+// giro altrui/inesistente → 404. Sola lettura (nessuna Idempotency-Key).
+export function getFatturazioneRun(jobId) {
+  return api.get(`/vendite/fatturazione/run/${jobId}/`)
+}
+
 // POST reset del lotto a bozza (DEMOLIZIONE pre-fiscale): cancella le fatture
 // non numerate; le attività tornano libere per un lotto nuovo. Azione forte.
 export function resetLottoDraft(lottoId) {

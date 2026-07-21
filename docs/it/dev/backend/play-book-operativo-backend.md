@@ -321,3 +321,84 @@ journalctl -u zeroerp-fatturazione-immediata.service -n 50 --no-pager
 
 > Si abilitano i **`.timer`** (non i `.service`). Per un run on-demand manuale si lancia il
 > `.service`. Endpoint UI on-demand restano l'alternativa interattiva (scope operatore).
+
+---
+
+## 16) Worker code di lavoro (systemd timer — drainer coda generica + coda stampa)
+
+Due worker DRAINER headless della Fase C cockpit fatturazione, entrambi chiamanti sottili
+di un core (`registered_job` → `maintenance.job_run_log`, `origine=CRON`):
+
+* **`draina_coda_lavori`** — coda generica `dbops.coda_lavori`. Serve i giri di
+  fatturazione **on-demand** accodati dalla UI (`POST /vendite/fatturazione/run/`, job
+  `FATTURAZIONE_GIRO` `run_as=OPERATORE`). Gira sulla connessione **app** (`zeroerp_app`,
+  RLS attiva con l'identità dell'operatore che ha accodato); passa al ruolo batch solo per
+  job `run_as=SISTEMA` (nessuno oggi). Anti-overlap: **nessun lock** — il claim
+  `FOR UPDATE SKIP LOCKED` è concorrenza-safe.
+* **`draina_coda_stampa`** — coda stampa `vendite.fatture_stampa_coda` (outbox PDF). Gira
+  **interamente** nel canale di sistema (ruolo `zeroerp_batch_fatturazione` BYPASSRLS:
+  renderizza fatture di ogni emittente, emittente autoritativo dalla riga). Anti-overlap:
+  advisory-lock `registered_job` (un solo drainer stampa alla volta).
+
+> ⚠️ **Gate deploy `draina_coda_stampa`**: richiede i GRANT del ruolo batch sul path di
+> render (vedi `work-in-progress/brief-db-grant-batch-coda-stampa.md`). Finché il team DB
+> non li applica, il worker fallisce «permesso negato per la tabella fatture_stampa_coda».
+> `draina_coda_lavori` è invece deployabile **subito** (smoke reale ok).
+
+Su questa macchina (dev): `User=tid`, app in `/home/tid/apps/ZeroErp/backend`, venv
+`backend/.venv`, avvio via il wrapper riusabile **`bin/run-command.sh`** (carica `env.sh`
+come `start-gunicorn.sh`); i segreti (incl. `DB_SYSTEM_FATTURAZIONE_*`) arrivano da
+`EnvironmentFile=.../.env.systemd`. Adatta `APP_USER`/percorsi ad altri host.
+
+### 16.0) Modo rapido (script idempotente)
+
+Invece dei blocchi manuali §16.1/16.2, un solo comando scrive gli unit, fa
+`daemon-reload` e abilita **solo** la coda generica (la coda stampa resta scritta ma
+disabilitata, gate GRANT DB):
+
+```bash
+sudo /home/tid/apps/ZeroErp/backend/bin/install-timers.sh
+```
+
+Deriva `APP_USER`/percorsi dalla cartella app, verifica wrapper+template, è ri-eseguibile.
+Dopo i GRANT del ruolo batch:  `sudo systemctl enable --now zeroerp-coda-stampa.timer`.
+
+### 16.1) Dove vivono gli unit (fonte di verità: template versionati)
+
+Gli unit **non si scrivono più a mano**: i template sono versionati in
+[`backend/deploy/systemd/`](../../../../backend/deploy/systemd/) —
+`zeroerp-coda-lavori.service|.timer` e `zeroerp-coda-stampa.service|.timer` — con
+placeholder per-host `__APP_DIR__` / `__APP_USER__` / `__ONCALENDAR__`.
+`install-timers.sh` (§16.0) li renderizza (sostituzione placeholder) e li copia in
+`/etc/systemd/system`. Per cambiare un unit si **edita il template** e si ri-lancia
+l'installer: le modifiche passano da PR come qualsiasi codice, e la CI
+(`.github/workflows/ci-validate.yaml`, job `validate-deploy`) le valida con
+`shellcheck` sugli script e **`systemd-analyze verify`** sugli unit renderizzati
+(un unit malformato fa fallire la CI prima di raggiungere un host).
+
+Cadenze default (nell'installer, override via `__ONCALENDAR__`): coda-lavori
+`*:0/1` (ogni minuto; tunable a `*:0/30` per uno spinner UI più reattivo — il
+polling FE ha timeout ~3 min), coda-stampa `*:0/2` (ogni 2 min, tunable, P-5:
+ritardo accettabile tra «Rendi definitive» e PDF disponibile). La coda stampa
+richiede `DB_SYSTEM_FATTURAZIONE_*` in `.env.systemd` (già presente su questo host)
+e i GRANT del ruolo batch prima dell'abilitazione.
+
+> Per validare i template in locale, senza root né systemctl:
+> `backend/bin/install-timers.sh --render-only /tmp/units && systemd-analyze verify /tmp/units/*`.
+
+### 16.3) Attiva e verifica
+
+```bash
+systemctl daemon-reload
+systemctl enable --now zeroerp-coda-lavori.timer        # coda stampa: SOLO dopo i GRANT DB
+# systemctl enable --now zeroerp-coda-stampa.timer
+systemctl list-timers | grep coda                       # prossimo run
+systemctl start zeroerp-coda-lavori.service             # run manuale di prova
+journalctl -u zeroerp-coda-lavori.service -n 50 --no-pager
+# Esito: SELECT jobname, origine, ok, message FROM maintenance.job_run_log
+#        WHERE jobname LIKE 'draina_coda_%' ORDER BY id DESC LIMIT 5;
+```
+
+> Convergenza futura (Q-4): `draina_coda_stampa` aggancerà lo stesso motore
+> (`QueueDrainEngine`) via un `QueueBackend` sui metodi repo esistenti — la tabella resta,
+> si deduplica solo il loop; il worker/timer non cambiano.

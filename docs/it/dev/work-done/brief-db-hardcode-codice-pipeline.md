@@ -2,6 +2,9 @@
 
 > **Per**: team DB (`dev/db-tid`). · **Da**: backend agent. · **Priorità**: 🔴 alta (bug
 > logici latenti). · **Data**: 2026-06-28.
+> **Stato**: ✅ **FATTO** (verificato 2026-07-21 sul SQL vivo autogen): tutti i 16 oggetti
+> usano `codice_interno`, nessun confronto `.codice =`/`.codice IN` residuo. Committato in
+> `f16820a55`. Spostato in `work-done/` il 2026-07-21.
 > **Origine**: `analisi-hardcoded-codice.md` §3a. Classe DIVERSA dal brief naming
 > (`brief-naming-stato-codice-interno.md`, che corregge gli *alias* `codice_interno AS *_codice`).
 > Qui la logica **legge/filtra per `codice` (mutabile)** dove deve usare `codice_interno`.

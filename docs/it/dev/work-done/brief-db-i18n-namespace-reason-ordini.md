@@ -10,7 +10,7 @@
 > [brief-i18n-radici-uniformi.md](brief-i18n-radici-uniformi.md) (migrazione
 > completa delle 21 radici), anch'esso chiuso.
 > **Origine**: emerso chiudendo lato FE il
-> [brief push commessa «già inviato»](../work-in-progress/brief-db-push-commessa-gia-inviato.md) §10a.
+> [brief push commessa «già inviato»](brief-db-push-commessa-gia-inviato.md) §10a.
 > Scritte le prime traduzioni per le reason del push ordini, si è scoperto che la
 > chiave i18n emessa dal DB non è risolvibile nel FE.
 
@@ -139,7 +139,7 @@ né su `requires_righe`, che era il rischio principale segnalato in §1.
 > finiscono nello stesso giro, conviene rileggerli insieme: toccano entrambi il
 > vocabolario delle reason di push.
 
-- Brief d'origine: [brief-db-push-commessa-gia-inviato.md](../work-in-progress/brief-db-push-commessa-gia-inviato.md) §10a
+- Brief d'origine: [brief-db-push-commessa-gia-inviato.md](brief-db-push-commessa-gia-inviato.md) §10a
 - Definizione viva: `docs/it/dbzero/script/funzioni/fn_available_actions_ordine.md`
 - Gemella già corretta: `docs/it/dbzero/script/funzioni/fn_available_actions_ddt.md`
 - Consumatore FE: `frontend/src/vendite/ordini/components/OrdiniDrawer.vue`

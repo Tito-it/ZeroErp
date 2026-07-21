@@ -955,6 +955,76 @@ class ApiFatturazioneEsiti(DomainAPIView):
         )
 
 
+# Scopo: Enqueue comune dei job di fatturazione OPERATORE su dbops.coda_lavori
+#        (C-3 giro, C-4 numerazione di perimetro — regola del 2, ok Tid
+#        2026-07-21): valida+normalizza `competenza_mese` al 1° del mese,
+#        cattura l'identità COMPLETA dell'operatore (id vero anche per
+#        superuser + username + identita_id dal JWT — il worker la riproporrà
+#        per intero, 5 GUC, RLS come nel web) e lo scope emittente, compone la
+#        chiave di BUSINESS `{job_type}:{mese}:{scope}` (dedup dei job VIVI) e
+#        accoda. `extra_payload_keys`: chiavi opzionali del payload HTTP da
+#        propagare al payload del job (es. `fino_a_stato` del giro). Ritorna
+#        l'handle `{job_id, stato}` per la risposta.
+def _accoda_job_fatturazione(
+    request: Request,
+    payload: dict[str, object],
+    *,
+    job_type: str,
+    extra_payload_keys: tuple[str, ...] = (),
+) -> dict[str, object]:
+    competenza = optional_iso_date(payload, "competenza_mese")
+    ErrorManager.require(
+        competenza is not None,
+        code="E_VALIDATION_INPUT",
+        message="`competenza_mese` obbligatoria.",
+    )
+    assert competenza is not None
+    # Normalizza al 1° del mese PRIMA di comporre payload+chiave business: la
+    # dedup dei job vivi è per-MESE, non per-giorno.
+    competenza = competenza.replace(day=1)
+    # Identità dell'operatore che accoda: id VERO (`user.id`, anche per
+    # superuser — NON `get_scope_user_id`, che per superuser è None e
+    # bloccherebbe l'admin globale) + username + identita_id dal JWT.
+    user = request.user
+    identita_id = extract_identita_id_from_request(request)
+    ErrorManager.require(
+        identita_id is not None,
+        code="E_VALIDATION_INPUT",
+        message="Identità operatore non risolta dal token.",
+    )
+    # Scope emittente CATTURATO ora (None = admin globale): serve al vincolo
+    # DB run_as↔scope, all'idempotenza di business e all'audit.
+    emittente_ids = PermissionResolver.get_emittenti_ids(user)
+    job_payload: dict[str, object] = {"competenza_mese": competenza.isoformat()}
+    for key in extra_payload_keys:
+        value = payload.get(key)
+        if value:
+            job_payload[key] = value
+
+    # Chiave di BUSINESS (competenza + scope), NON l'header HTTP: dedup dei
+    # job VIVI (due click sullo stesso mese/scope → stesso job).
+    scope_key = (
+        "ALL" if emittente_ids is None
+        else ",".join(str(e) for e in sorted(emittente_ids))
+    )
+    idempotency_key = f"{job_type}:{competenza.isoformat()}:{scope_key}"
+
+    job_id = CodaLavoriRepository().accoda(
+        job_type=job_type,
+        payload=job_payload,
+        run_as=RUN_AS_OPERATORE,
+        scope={
+            "auth_user_id": int(user.id),
+            "username": str(user.username),
+            "identita_id": identita_id,
+            "emittente_ids": emittente_ids,
+        },
+        idempotency_key=idempotency_key,
+        origine=ORIGINE_API,
+    )
+    return {"job_id": job_id, "stato": "PENDING"}
+
+
 class ApiFatturazioneRun(DomainAPIView):
     """C-3: avvia un GIRO di fatturazione on-demand, NON bloccante (I-3).
     Accoda un job `FATTURAZIONE_GIRO` in `dbops.coda_lavori` con lo scope
@@ -1002,61 +1072,13 @@ class ApiFatturazioneRun(DomainAPIView):
     )
     # Scopo: Accoda il giro (transazionale) e ritorna l'handle del job.
     def post(self, request: Request) -> JsonResponse:
-        # Scopo: cattura scope operatore + accoda in dbops.coda_lavori.
+        # Scopo: enqueue comune + `fino_a_stato` opzionale propagato al job.
         def _handler(payload: dict[str, object]) -> dict[str, object]:
-            competenza = optional_iso_date(payload, "competenza_mese")
-            ErrorManager.require(
-                competenza is not None,
-                code="E_VALIDATION_INPUT",
-                message="`competenza_mese` obbligatoria.",
-            )
-            assert competenza is not None
-            # Normalizza al 1° del mese PRIMA di comporre payload+chiave business:
-            # la dedup dei giri vivi è per-MESE, non per-giorno (due click nello
-            # stesso mese con date diverse devono agganciarsi allo stesso job).
-            competenza = competenza.replace(day=1)
-            # Identità dell'operatore che accoda: id VERO (`user.id`, anche per
-            # superuser — NON `get_scope_user_id`, che per superuser è None e
-            # bloccherebbe l'admin globale) + username + identita_id dal JWT.
-            # Il worker la riproporrà per intero (5 GUC, RLS come nel web).
-            user = request.user
-            identita_id = extract_identita_id_from_request(request)
-            ErrorManager.require(
-                identita_id is not None,
-                code="E_VALIDATION_INPUT",
-                message="Identità operatore non risolta dal token.",
-            )
-            # Scope emittente CATTURATO ora (None = admin globale): il worker lo
-            # riapplicherà via RLS (operator_identity_context). Serve al vincolo
-            # DB run_as↔scope, all'idempotenza di business e all'audit.
-            emittente_ids = PermissionResolver.get_emittenti_ids(user)
-            job_payload: dict[str, object] = {"competenza_mese": competenza.isoformat()}
-            fino_a_stato = payload.get("fino_a_stato")
-            if fino_a_stato:
-                job_payload["fino_a_stato"] = fino_a_stato
-
-            # Chiave di BUSINESS (competenza + scope), NON l'header HTTP: dedup
-            # dei GIRI VIVI (due click sullo stesso mese/scope → stesso job).
-            scope_key = (
-                "ALL" if emittente_ids is None
-                else ",".join(str(e) for e in sorted(emittente_ids))
-            )
-            idempotency_key = f"FATTURAZIONE_GIRO:{competenza.isoformat()}:{scope_key}"
-
-            job_id = CodaLavoriRepository().accoda(
+            return _accoda_job_fatturazione(
+                request, payload,
                 job_type="FATTURAZIONE_GIRO",
-                payload=job_payload,
-                run_as=RUN_AS_OPERATORE,
-                scope={
-                    "auth_user_id": int(user.id),
-                    "username": str(user.username),
-                    "identita_id": identita_id,
-                    "emittente_ids": emittente_ids,
-                },
-                idempotency_key=idempotency_key,
-                origine=ORIGINE_API,
+                extra_payload_keys=("fino_a_stato",),
             )
-            return {"job_id": job_id, "stato": "PENDING"}
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
@@ -1104,6 +1126,63 @@ class ApiFatturazioneRunStato(DomainAPIView):
         )
         assert stato is not None
         return success_response(stato)
+
+
+class ApiFatturazioneNumera(DomainAPIView):
+    """C-4: «Rendi definitive competenza» — numerazione di PERIMETRO, NON
+    bloccante (I-3). Accoda un job `FATTURAZIONE_NUMERA` in `dbops.coda_lavori`
+    con l'identità operatore CATTURATA (run_as=OPERATORE) e risponde subito con
+    l'handle del job; il worker esegue lo step DEFINITIVA (numera + accoda
+    stampa) sui lotti EMESSA del mese, sotto RLS operatore. Atto fiscale
+    SEPARATO dalla fatturazione (gate I-7): endpoint e permesso dedicati.
+    Polling: `GET /vendite/fatturazione/run/<job_id>/` (stato job generico,
+    ownership operatore). Idempotenza a DUE layer: header HTTP + chiave di
+    BUSINESS della coda (competenza+scope, dedup dei numera VIVI)."""
+
+    area_funzionale = "vendite"
+    post_permission = "numera_fatture_lotti"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeFatturazioneNumeraRequest",
+            fields={
+                "competenza_mese": serializers.DateField(required=True),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeFatturazioneNumeraResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeFatturazioneNumeraData",
+                        fields={
+                            "job_id": serializers.IntegerField(),
+                            "stato": serializers.CharField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Accoda la numerazione di perimetro e ritorna l'handle del job.
+    def post(self, request: Request) -> JsonResponse:
+        # Scopo: enqueue comune (nessuna chiave extra: solo competenza_mese).
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return _accoda_job_fatturazione(
+                request, payload, job_type="FATTURAZIONE_NUMERA",
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
 _VARIAZIONE_PREZZO_REQUEST = inline_serializer(
