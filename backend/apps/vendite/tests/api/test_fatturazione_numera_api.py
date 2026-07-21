@@ -90,6 +90,7 @@ class FatturazioneNumeraApiTests(JwtMockedApiTest):
         self.assertEqual(kwargs["scope"], {
             "auth_user_id": 9, "username": "op9", "identita_id": 5,
             "emittente_ids": [4, 3],
+            "scope_key": "3,4",  # ownership scope-based del polling
         })
         # competenza normalizzata al 1° nel payload del job
         self.assertEqual(kwargs["payload"]["competenza_mese"], "2026-06-01")

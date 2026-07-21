@@ -48,6 +48,13 @@ def _testata_row() -> dict[str, Any]:
         "emittente_soggetto_ruolo_id": 88,
         "emittente_fiscale_id": 11,
         "emittente_fiscale_codice": "EF-11",
+        "emittente_denominazione": "Emittente Demo SpA",
+        "emittente_piva": "IT09876543210",
+        "emittente_cf": "MTTMHL80A01H501X",
+        "emittente_sede": "Via Roma 1, 20100 Milano MI",
+        "utility_codice": "BASE",
+        "utility_descrizione": "Servizio Base",
+        "cliente_indirizzo": "Corso Test 12, 00100 Roma RM",
         "billing_account_id": 10,
         "ba_codice": "BA-10",
         "cliente_soggetto_ruolo_id": 50,
@@ -84,7 +91,7 @@ class BuildContextFatturaTests(SimpleTestCase):
 
         self.assertEqual(
             set(ctx.keys()),
-            {"fattura", "cliente", "righe", "riepilogo_iva", "_meta"},
+            {"fattura", "cliente", "righe", "riepilogo_iva", "scadenze", "_meta"},
         )
         fattura = ctx["fattura"]
         self.assertEqual(fattura["numero"], 137)
@@ -94,20 +101,32 @@ class BuildContextFatturaTests(SimpleTestCase):
         self.assertEqual(fattura["data_iso"], "2026-06-30")
         self.assertEqual(fattura["tipo_doc"]["codice_interno"], "TD01")
         self.assertEqual(fattura["stato"]["codice_interno"], "EMESSA")
+        # Emittente arricchito (intestazione fattura, C-9): denominazione + P.IVA + CF.
         self.assertEqual(fattura["emittente"]["id"], 11)
         self.assertEqual(fattura["emittente"]["codice"], "EF-11")
+        self.assertEqual(fattura["emittente"]["denominazione"], "Emittente Demo SpA")
+        self.assertEqual(fattura["emittente"]["piva"], "IT09876543210")
+        self.assertEqual(fattura["emittente"]["cf"], "MTTMHL80A01H501X")
+        self.assertEqual(fattura["emittente"]["sede"], "Via Roma 1, 20100 Milano MI")
+        self.assertEqual(fattura["utility"]["codice"], "BASE")
+        self.assertEqual(fattura["utility"]["descrizione"], "Servizio Base")
         self.assertEqual(fattura["bollo_applicato"], False)
         self.assertEqual(fattura["totali"]["imponibile"], "100.00")
         self.assertEqual(fattura["totali"]["imposta"], "22.00")
+        self.assertEqual(fattura["totali"]["iva"], "22.00")  # alias template
         self.assertEqual(fattura["totali"]["documento"], "122.00")
         self.assertEqual(fattura["totali"]["a_pagare"], "122.00")
         self.assertEqual(fattura["totali"]["valuta_codice"], "EUR")
+        # Chiavi «ricche» sempre presenti (StrictUndefined), None se non sorgentate.
+        for k in ("origine", "pagamento", "utility"):
+            self.assertIn(k, fattura)
 
         cliente = ctx["cliente"]
         self.assertEqual(cliente["denominazione"], "Cliente Fattura Srl")
         self.assertEqual(cliente["id_fiscale"], "IT01234567890")
         self.assertEqual(cliente["ba_codice"], "BA-10")
         self.assertEqual(cliente["soggetto_ruolo_id"], 50)
+        self.assertEqual(cliente["indirizzo"], "Corso Test 12, 00100 Roma RM")
 
         self.assertEqual(ctx["_meta"]["context_code"], "FATTURA")
         self.assertEqual(ctx["_meta"]["context_version"], 1)
@@ -150,6 +169,36 @@ class BuildContextFatturaTests(SimpleTestCase):
         self.assertEqual(ctx["riepilogo_iva"][0]["iva_aliquota"], "22.00")
         self.assertEqual(ctx["riepilogo_iva"][0]["imposta"], "22.00")
         repo.list_fattura_riepilogo_iva.assert_called_once_with(42)
+
+    # 3. Le scadenze (piano pagamenti) sono shaped con chiavi stabili per il
+    #    template (nr/data/importo/modalita_codice); modalita dal meta.
+    def test_build_context_scadenze_shape(self) -> None:
+        repo = MagicMock()
+        repo.get_fattura_testata.return_value = _testata_row()
+        repo.list_fattura_righe.return_value = []
+        repo.list_fattura_riepilogo_iva.return_value = []
+        repo.list_fattura_scadenze.return_value = [
+            {
+                "id": 1, "numero_rata": 1, "data_scadenza": "2026-07-31",
+                "importo": "61.00", "meta": {"modalita_codice": "BONIFICO"},
+            },
+            {
+                "id": 2, "numero_rata": 2, "data_scadenza": "2026-08-31",
+                "importo": "61.00", "meta": None,
+            },
+        ]
+
+        ctx = FatturaDocumentContextBuilder(repo=repo).build_context(42)
+
+        self.assertEqual(len(ctx["scadenze"]), 2)
+        s0 = ctx["scadenze"][0]
+        self.assertEqual(s0["nr"], 1)
+        self.assertEqual(s0["data"], "31-07-2026")  # formattazione IT
+        self.assertEqual(s0["importo"], "61.00")
+        self.assertEqual(s0["modalita_codice"], "BONIFICO")
+        # meta None → modalita_codice None (nessun errore)
+        self.assertIsNone(ctx["scadenze"][1]["modalita_codice"])
+        repo.list_fattura_scadenze.assert_called_once_with(42)
 
 
 class BuildContextFatturaGuardTests(SimpleTestCase):

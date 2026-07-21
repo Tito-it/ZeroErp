@@ -51,6 +51,7 @@ import {
   getLottoSegnalazioni,
   runLottoPipeline,
   numeraLotto,
+  ristampaLotto,
   resetLottoDraft,
   resetLottoFatturaDraft,
 } from '../api/lotti'
@@ -102,6 +103,9 @@ const isInEsecuzione = computed(() => lotto.value?.stato_lotto === 'IN_ESECUZION
 // Gate fiscale I-7: il lotto è numerabile quando è in EMESSA (prossimo step =
 // DEFINITIVA). Gate sul CODICE stabile, mai la descrizione display (lezione B-4).
 const isEmessa = computed(() => lotto.value?.stato_doc_fiscale_codice === 'EMESSA')
+// Lotto DEFINITIVA (fatture numerate) → abilita la ristampa MASSIVA (C-8):
+// re-stampa, mai numerazione (il BE gate DEFINITIVA garantisce I-7).
+const isDefinitiva = computed(() => lotto.value?.stato_doc_fiscale_codice === 'DEFINITIVA')
 
 // Segnalazioni bloccanti: mostra il banner se il lotto ha criticità.
 const haSegnalazioniCritiche = computed(() => (segnalazioni.value?.critical_count ?? 0) > 0)
@@ -200,6 +204,23 @@ function rendiDefinitive() {
         notify.success(t('vendite.lotti.numera_esito'))
         await reloadAll()
         emit('changed')
+      }
+    },
+  })
+}
+
+// Scopo: «Ristampa documenti» (C-8) — accoda in coda stampa le fatture del
+//        lotto DEFINITIVA; il worker draina_coda_stampa le renderizza (async, lo
+//        stato si vede nel pannello esiti della lista lotti). Stampa = lettura
+//        (I-4): re-stampa, nessuna numerazione (il gate BE DEFINITIVA lo garantisce).
+function ristampaDocumenti() {
+  confirmAction({
+    title: t('vendite.lotti.ristampa_header'),
+    message: t('vendite.lotti.ristampa_conferma'),
+    onAccept: async () => {
+      const res = await execute(() => ristampaLotto(props.lottoId))
+      if (res !== null) {
+        notify.success(t('vendite.lotti.ristampa_esito', { n: res?.accodate ?? 0 }))
       }
     },
   })
@@ -367,6 +388,17 @@ function fatturaNumero(row) {
             size="small"
             :disabled="loading || haSegnalazioniCritiche"
             @click="avanzaStep(false)"
+          />
+          <!-- Ristampa MASSIVA (C-8): lotto DEFINITIVA → accoda le fatture in
+               coda stampa (async). Indipendente dal verbo di stato sopra. -->
+          <Button
+            v-if="isDefinitiva"
+            :label="t('vendite.lotti.ristampa')"
+            icon="pi pi-print"
+            severity="secondary"
+            size="small"
+            :disabled="loading"
+            @click="ristampaDocumenti"
           />
           <Button
             v-if="canResetLotto"

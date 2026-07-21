@@ -4,15 +4,17 @@
 > · **Owner**: Tid · **Stato**: 🟢 **APPLICATO + TESTATO + COMMITTATO** (2026-07-20/21) —
 > changeSet `20260720-07..10` migrati, pgTAP `test-coda-lavori.sql` verde `plan(57)`, doc
 > manual + guida divulgativa fatte, autogen rigenerato. Prerequisito del giro fatturazione
-> on-demand (C-3) e fondazione async dell'ERP. **Prossimo: BE.**
+> on-demand (C-3) e fondazione async dell'ERP. **BE realizzato e committato** (`2895f9653`:
+> core `apps/core/services/coda_lavori/` + consumatore C-3), vedi design §8. **✅ CHIUSO**,
+> spostato in `work-done/` il 2026-07-21.
 >
 > **Design-of-record**:
 > [brief-design-coda-lavori-generica.md](brief-design-coda-lavori-generica.md) — leggere
 > §3 (modello) e §4 (dispatch) prima di implementare.
 > **Consumatore 1**:
-> [brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md) C-3.
+> [brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md) C-3.
 > **Relazione con B-4**: **NON** è la promozione prevista da **B-4** del
-> [brief-db-processi-fatturazione-cockpit.md](brief-db-processi-fatturazione-cockpit.md).
+> [brief-db-processi-fatturazione-cockpit.md](../work-in-progress/brief-db-processi-fatturazione-cockpit.md).
 > B-4 generalizza `fatture_stampa_coda` lungo l'asse **documentale** (→ `documenti.*`,
 > outbox di *documenti* con FK sorgente tipizzata); questa è una coda di **job**
 > generici (asse diverso). Le due generalizzazioni sono distinte e possono coesistere

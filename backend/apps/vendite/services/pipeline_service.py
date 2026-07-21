@@ -191,20 +191,20 @@ def run_lotto_pipeline_until_done(
     return runner.run_lotto_until_done(params)
 
 
-# Scopo: C-4 — Numerazione (step DEFINITIVA) di un SINGOLO lotto EMESSA.
-#        Obiettivo: eseguire il verbo fiscale «Rendi definitive» su un lotto,
-#        come atto separato e consapevole (gate fiscale I-7): lo step DEFINITIVA
-#        contiene `numera_fatture` (numera, atomico) E `stampa_documenti_lotto`
-#        (che ACCODA la stampa, I-2/I-4b) — l'endpoint non chiama la stampa per
-#        conto suo. Perimetro: un lotto per chiamata (I-3 sincrono); il giro di
-#        perimetro (più lotti) passerà dalla coda lavori generica (background).
-#        Risultato: l'esito strutturato del runner (motivo_stop, stato).
-#        Guard: il lotto deve essere in scope operatore (fuori scope/inesistente
-#        → 404 unificato) e in stato EMESSA (altrimenti la numerazione non è
-#        applicabile → errore parlante, il gate fiscale non sta dietro lo stesso
-#        pulsante della pre-fiscale).
-def numera_lotto(
-    *, lotto_id: int, auth_user_id: int | None = None,
+# Scopo: Guard comune dei verbi per-lotto (C-4 numera, C-8 ristampa — estratto
+#        alla 2ª occorrenza, regola del 2): carica il lotto nello scope
+#        operatore (fuori scope/inesistente → 404 unificato E_LOTTO_NON_TROVATO),
+#        risolve l'id dello stato fiscale richiesto (fail-fast su config rotta:
+#        senza questo guard, lookup None e lotto con stato NULL passerebbero il
+#        gate per None == None) e applica il gate di stato con l'errore di
+#        dominio parlante del verbo chiamante. Ritorna il lotto caricato.
+def _get_lotto_in_stato(
+    *,
+    lotto_id: int,
+    auth_user_id: int | None,
+    stato_codice: str,
+    error_code: str,
+    error_message: str,
 ) -> dict[str, object]:
     from apps.vendite.db.vendite_repository import VenditeRepository
 
@@ -217,24 +217,47 @@ def numera_lotto(
     )
     assert lotto is not None
 
-    emessa_id = VenditePipelineRepository().get_stato_doc_fiscale_id("EMESSA")
-    # Fail-fast su config rotta: senza questo guard, emessa_id=None e lotto
-    # con stato NULL passerebbero il gate fiscale per None == None.
+    stato_id = VenditePipelineRepository().get_stato_doc_fiscale_id(stato_codice)
     ErrorManager.require(
-        emessa_id is not None,
+        stato_id is not None,
         code="E_PIPELINE_VALIDATION",
-        message="Stato EMESSA non configurato in config.stati_doc_fiscale.",
+        message=(
+            f"Stato {stato_codice} non configurato in config.stati_doc_fiscale."
+        ),
     )
     ErrorManager.require(
-        lotto["stato_doc_fiscale_id"] == emessa_id,
-        code="E_LOTTO_NON_NUMERABILE",
-        message=(
-            "Il lotto non è in stato EMESSA: la numerazione (Rendi definitive) "
-            "non è applicabile."
-        ),
+        lotto["stato_doc_fiscale_id"] == stato_id,
+        code=error_code,
+        message=error_message,
         detail=(
             f"lotto_id={lotto_id} "
-            f"stato_doc_fiscale_id={lotto['stato_doc_fiscale_id']} atteso={emessa_id}"
+            f"stato_doc_fiscale_id={lotto['stato_doc_fiscale_id']} atteso={stato_id}"
+        ),
+    )
+    return lotto
+
+
+# Scopo: C-4 — Numerazione (step DEFINITIVA) di un SINGOLO lotto EMESSA.
+#        Obiettivo: eseguire il verbo fiscale «Rendi definitive» su un lotto,
+#        come atto separato e consapevole (gate fiscale I-7): lo step DEFINITIVA
+#        contiene `numera_fatture` (numera, atomico) E `stampa_documenti_lotto`
+#        (che ACCODA la stampa, I-2/I-4b) — l'endpoint non chiama la stampa per
+#        conto suo. Perimetro: un lotto per chiamata (I-3 sincrono); il giro di
+#        perimetro (più lotti) passa dalla coda lavori generica (background).
+#        Risultato: l'esito strutturato del runner (motivo_stop, stato).
+#        Guard: scope operatore + stato EMESSA (via _get_lotto_in_stato — il
+#        gate fiscale non sta dietro lo stesso pulsante della pre-fiscale).
+def numera_lotto(
+    *, lotto_id: int, auth_user_id: int | None = None,
+) -> dict[str, object]:
+    _get_lotto_in_stato(
+        lotto_id=lotto_id,
+        auth_user_id=auth_user_id,
+        stato_codice="EMESSA",
+        error_code="E_LOTTO_NON_NUMERABILE",
+        error_message=(
+            "Il lotto non è in stato EMESSA: la numerazione (Rendi definitive) "
+            "non è applicabile."
         ),
     )
 
@@ -243,6 +266,33 @@ def numera_lotto(
     return run_lotto_pipeline_until_done(
         lotto_id=lotto_id, fino_a_stato="DEFINITIVA",
     )
+
+
+# Scopo: C-8 — Ristampa MASSIVA di un lotto DEFINITIVA: accoda in
+#        `vendite.fatture_stampa_coda` una riga per ogni fattura non esclusa del
+#        lotto (`fn_accoda_stampe_lotto`, idempotente sui work-item vivi); il
+#        worker `draina_coda_stampa` le renderizza (async — lo stato si vede nel
+#        pannello esiti C-5). Stampa = lettura (I-4): NESSUNA numerazione qui. Il
+#        gate DEFINITIVA (via _get_lotto_in_stato) garantisce fatture già
+#        numerate → il backstop del worker (C-2d) non ha nulla da numerare: la
+#        ristampa non è mai un atto fiscale mascherato (I-7). Scope operatore:
+#        lotto fuori scope/inesistente → 404.
+def ristampa_lotto(
+    *, lotto_id: int, auth_user_id: int | None = None,
+) -> dict[str, object]:
+    _get_lotto_in_stato(
+        lotto_id=lotto_id,
+        auth_user_id=auth_user_id,
+        stato_codice="DEFINITIVA",
+        error_code="E_LOTTO_NON_RISTAMPABILE",
+        error_message=(
+            "Il lotto non è definitivo: la ristampa massiva è disponibile solo "
+            "su lotti con fatture numerate (Rendi definitive)."
+        ),
+    )
+
+    accodate = VenditePipelineRepository().accoda_stampe_lotto(lotto_id)
+    return {"lotto_id": lotto_id, "accodate": accodate}
 
 
 # Prefissi jobname delle corsie di fatturazione in maintenance.job_run_log:

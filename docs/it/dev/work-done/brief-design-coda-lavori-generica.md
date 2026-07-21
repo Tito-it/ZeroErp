@@ -1,7 +1,13 @@
 # Brief di design — Coda lavori generica (job queue DB-native)
 
 > **Tipo**: brief di design (design-of-record) · **Data**: 2026-07-20 · **Owner**: Tid
-> · **Stato**: 🟡 proposta — in attesa approvazione ambito + prerequisiti DB
+> · **Stato**: ✅ **CHIUSO (2026-07-21)** — ambito approvato (fondazione completa),
+> DB applicato+committato (`545ae2d92`, [brief-db-coda-lavori-generica.md](brief-db-coda-lavori-generica.md)),
+> BE core + consumatore C-3 committati (`2895f9653`), 11+10 test verdi. Deploy worker
+> = template/installer systemd versionati + validazione CI
+> ([brief-deploy-worker-riproducibilita-ci.md](../work-in-progress/brief-deploy-worker-riproducibilita-ci.md));
+> `sudo install` su host + validazione in-app = runtime di Tid (DB dev senza dati di
+> processo). Spostato in `work-done/` il 2026-07-21.
 > · **Target codice**: `dev/backend-tid` · **Target DB**: `dev/db-tid`
 >
 > **Contesto**: emerso durante la Fase C del cockpit fatturazione (C-3, giro
@@ -15,7 +21,7 @@
 > generica è la base async di tutto l'ERP; C-3 ne è il **primo consumatore**.
 >
 > **Documenti collegati**:
-> [brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md)
+> [brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md)
 > (Fase C, C-3 consumatore) · brief DB dedicato (DDL) da produrre su `dev/db-tid`
 > ([[feedback_db_actions_passaggio_team]]).
 
@@ -310,8 +316,12 @@ pattern «servizio always-on con NOTIFY» non è ipotetico (utile per Q-3).
    polling `ApiFatturazioneRunStato` (`GET run/<job_id>/`, ownership operatore).
    Codici HTTP `E_LOTTO_NON_NUMERABILE`(409)/`E_JOB_NON_TROVATO`(404) registrati
    in `error_policies`. 10 test. C-4/C-5 già FATTI e indipendenti.
-4. ⬜ **Deploy**: systemd timer per `draina_coda_lavori` (+ validazione in-app,
-   DB dev senza dati di processo).
+4. 🟢 **Deploy**: artefatti pronti e versionati — template systemd
+   `zeroerp-coda-lavori.service|.timer` in `backend/deploy/systemd/` + installer
+   `install-timers.sh` + validazione CI (`systemd-analyze verify`), vedi
+   [brief-deploy-worker-riproducibilita-ci.md](../work-in-progress/brief-deploy-worker-riproducibilita-ci.md).
+   Restano runtime di Tid: `sudo install-timers.sh` su host + validazione in-app
+   (DB dev senza dati di processo).
 
 ## 9. Punti aperti da decidere
 

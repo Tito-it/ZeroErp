@@ -10,7 +10,10 @@
 #   0. numera_lotto_ok_esegue_step_definitiva
 #   1. numera_lotto_fuori_scope_o_inesistente_404
 #   2. numera_lotto_non_emessa_raises
-#   3. esiti_filtra_jobname_fatturazione_e_coda_scoped
+#   3. ristampa_lotto_ok_accoda
+#   4. ristampa_lotto_fuori_scope_o_inesistente_404
+#   5. ristampa_lotto_non_definitiva_raises
+#   6. esiti_filtra_jobname_fatturazione_e_coda_scoped
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -20,7 +23,11 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
-from apps.vendite.services.pipeline_service import esiti_fatturazione, numera_lotto
+from apps.vendite.services.pipeline_service import (
+    esiti_fatturazione,
+    numera_lotto,
+    ristampa_lotto,
+)
 
 _SVC = "apps.vendite.services.pipeline_service"
 _VEN_REPO = "apps.vendite.db.vendite_repository.VenditeRepository"
@@ -77,6 +84,53 @@ class NumeraLottoTests(SimpleTestCase):
 
         self.assertEqual(ctx.exception.code, "E_LOTTO_NON_NUMERABILE")
         mock_run.assert_not_called()
+
+
+class RistampaLottoTests(SimpleTestCase):
+
+    # 3. Lotto DEFINITIVA in scope → accoda le stampe e ritorna il conteggio.
+    def test_ristampa_lotto_ok_accoda(self) -> None:
+        with patch(_VEN_REPO) as VenRepo, \
+             patch(f"{_SVC}.VenditePipelineRepository") as PipeRepo:
+            VenRepo.return_value.get_lotto.return_value = {
+                "id": 5, "stato_doc_fiscale_id": 8,  # DEFINITIVA
+            }
+            PipeRepo.return_value.get_stato_doc_fiscale_id.return_value = 8
+            PipeRepo.return_value.accoda_stampe_lotto.return_value = 4
+
+            esito = ristampa_lotto(lotto_id=5, auth_user_id=9)
+
+        self.assertEqual(esito, {"lotto_id": 5, "accodate": 4})
+        PipeRepo.return_value.accoda_stampe_lotto.assert_called_once_with(5)
+        VenRepo.return_value.get_lotto.assert_called_once_with(
+            lotto_id=5, auth_user_id=9,
+        )
+
+    # 4. Lotto fuori scope o inesistente (get_lotto None) → 404, niente accoda.
+    def test_ristampa_lotto_fuori_scope_o_inesistente_404(self) -> None:
+        with patch(_VEN_REPO) as VenRepo, \
+             patch(f"{_SVC}.VenditePipelineRepository") as PipeRepo:
+            VenRepo.return_value.get_lotto.return_value = None
+            with self.assertRaises(ServiceError) as ctx:
+                ristampa_lotto(lotto_id=999, auth_user_id=9)
+
+        self.assertEqual(ctx.exception.code, "E_LOTTO_NON_TROVATO")
+        PipeRepo.return_value.accoda_stampe_lotto.assert_not_called()
+
+    # 5. Lotto non DEFINITIVA (es. EMESSA) → gate I-7: niente ristampa (che
+    #    numererebbe via backstop), niente accoda.
+    def test_ristampa_lotto_non_definitiva_raises(self) -> None:
+        with patch(_VEN_REPO) as VenRepo, \
+             patch(f"{_SVC}.VenditePipelineRepository") as PipeRepo:
+            VenRepo.return_value.get_lotto.return_value = {
+                "id": 5, "stato_doc_fiscale_id": 2,  # EMESSA
+            }
+            PipeRepo.return_value.get_stato_doc_fiscale_id.return_value = 8  # DEFINITIVA
+            with self.assertRaises(ServiceError) as ctx:
+                ristampa_lotto(lotto_id=5, auth_user_id=9)
+
+        self.assertEqual(ctx.exception.code, "E_LOTTO_NON_RISTAMPABILE")
+        PipeRepo.return_value.accoda_stampe_lotto.assert_not_called()
 
 
 class EsitiFatturazioneTests(SimpleTestCase):

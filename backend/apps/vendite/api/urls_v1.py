@@ -12,6 +12,7 @@ from apps.vendite.api.views import (
     ApiFatturazioneEsiti,
     ApiFatturazioneNumera,
     ApiFatturazioneNumeraLotto,
+    ApiFatturazioneRistampaLotto,
     ApiFatturazioneRun,
     ApiFatturazioneRunStato,
     ApiLottiList,
@@ -268,6 +269,13 @@ urlpatterns = [
         "fatturazione/lotti/<int:lotto_id>/numera/",
         ApiFatturazioneNumeraLotto.as_view(),
         name="vendite-fatturazione-numera-lotto",
+    ),
+    # C-8: ristampa MASSIVA di un lotto DEFINITIVA (accoda in fatture_stampa_coda,
+    # drenata dal worker draina_coda_stampa). Accodamento sincrono.
+    path(
+        "fatturazione/lotti/<int:lotto_id>/ristampa/",
+        ApiFatturazioneRistampaLotto.as_view(),
+        name="vendite-fatturazione-ristampa-lotto",
     ),
     # C-5: esiti dei giri (job_run_log per corsia) + stato coda stampa (scope
     # emittente operatore). Sola lettura.

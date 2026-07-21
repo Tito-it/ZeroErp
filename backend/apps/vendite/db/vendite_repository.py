@@ -104,6 +104,13 @@ DASH_COMPETENZA_STADI: tuple[str, ...] = (
     "FATTURATA",
 )
 
+# Codici stabili (codice_interno di config.tipi_indirizzi) dei tipi indirizzo
+# risolti nella testata fattura per la stampa (C-9): sede legale dell'emittente
+# e indirizzo di fatturazione del cliente. Costanti passate come parametri SQL
+# (mai letterali embedded nella query — lezione review A+B sul letterale stadio).
+TIPO_INDIRIZZO_SEDE_LEGALE = "SEDELEG"
+TIPO_INDIRIZZO_FATTURAZIONE = "FATT"
+
 # Classi di azionabilita' della Lente 2 Backlog, nell'ordine di esposizione UI
 # del design (§5: contatori 🟠 recuperabile · 🔵 sollecito cliente · 🔴
 # anomalia). Il FISIOLOGICO 🟢 e' escluso a monte dalla vista. Allineate al
@@ -1150,12 +1157,38 @@ class VenditeRepository:
                 f.emittente_soggetto_ruolo_id,
                 ef.id                        AS emittente_fiscale_id,
                 ef.codice                    AS emittente_fiscale_codice,
+                srd_em.ragione_sociale_completa   AS emittente_denominazione,
+                srd_em.id_fiscale_univoco_cf_piva AS emittente_piva,
+                srd_em.codice_fiscale             AS emittente_cf,
+                -- Sede legale emittente (stringa formattata) — tipo indirizzo
+                -- TIPO_INDIRIZZO_SEDE_LEGALE (codice_interno stabile, parametro).
+                -- Subquery scalare: un solo valore anche con più indirizzi
+                -- dello stesso tipo (no fan-out).
+                (SELECT ind_em.indirizzo_display
+                   FROM anagrafiche.vw_indirizzi_resolved_ruolo ind_em
+                  WHERE ind_em.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                    AND ind_em.tipo_indirizzo_codice = %s
+                  ORDER BY ind_em.indirizzo_id
+                  LIMIT 1)                  AS emittente_sede,
+                util.codice                  AS utility_codice,
+                util.descrizione             AS utility_descrizione,
+                mpag.codice                  AS pagamento_modalita_codice,
+                tpag.codice_interno          AS pagamento_termine_codice,
                 f.billing_account_id,
                 ba.codice                    AS ba_codice,
                 ba.soggetto_ruolo_id         AS cliente_soggetto_ruolo_id,
                 srd.soggetto_id,
                 srd.ragione_sociale_completa,
                 srd.id_fiscale_univoco_cf_piva,
+                -- Indirizzo di fatturazione cliente — tipo
+                -- TIPO_INDIRIZZO_FATTURAZIONE (parametro). Subquery scalare
+                -- come per l'emittente.
+                (SELECT ind_cli.indirizzo_display
+                   FROM anagrafiche.vw_indirizzi_resolved_ruolo ind_cli
+                  WHERE ind_cli.soggetto_ruolo_id = ba.soggetto_ruolo_id
+                    AND ind_cli.tipo_indirizzo_codice = %s
+                  ORDER BY ind_cli.indirizzo_id
+                  LIMIT 1)                  AS cliente_indirizzo,
                 f.valuta_id,
                 val.iso_code                 AS valuta_codice,
                 f.tasso_cambio,
@@ -1171,8 +1204,16 @@ class VenditeRepository:
               FROM vendite.fatture f
               LEFT JOIN anagrafiche.emittenti_fiscali ef
                 ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+              LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd_em
+                ON srd_em.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
               JOIN anagrafiche.billing_account ba
                 ON ba.id = f.billing_account_id
+              LEFT JOIN config.utilities util
+                ON util.id = ba.utility_id
+              LEFT JOIN config.modalita_pagamento mpag
+                ON mpag.id = f.modalita_pagamento_id
+              LEFT JOIN config.termini_pagamento tpag
+                ON tpag.id = f.termine_pagamento_id
               JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
                 ON srd.soggetto_ruolo_id = ba.soggetto_ruolo_id
               LEFT JOIN config.tipi_doc_fiscale tdf
@@ -1184,7 +1225,16 @@ class VenditeRepository:
              WHERE f.id = %s
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [int(fattura_id)])
+            # Parametri nell'ordine dei %s: subquery sede emittente, subquery
+            # indirizzo fatturazione cliente, id fattura.
+            cursor.execute(
+                sql,
+                [
+                    TIPO_INDIRIZZO_SEDE_LEGALE,
+                    TIPO_INDIRIZZO_FATTURAZIONE,
+                    int(fattura_id),
+                ],
+            )
             return row_to_dict(cursor)
 
     # Scopo: Righe fattura con decodifiche articolo/uom/iva per il context
@@ -1252,6 +1302,26 @@ class VenditeRepository:
               LEFT JOIN config.iva_natura nat ON nat.id  = ri.natura_id
              WHERE ri.fattura_id = %s
              ORDER BY iva.aliquota_iva NULLS LAST, ri.iva_id NULLS LAST
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Scadenze (rate) della fattura per il context builder (piano
+    #        pagamenti stampato in fattura). Lettura pura, ordine stabile per
+    #        numero rata → data. `modalita_codice` (opz.) dal jsonb `meta` se il
+    #        DB lo mantiene; la tabella non ha colonna dedicata.
+    def list_fattura_scadenze(self, fattura_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                sc.id,
+                sc.numero_rata,
+                sc.data_scadenza,
+                sc.importo,
+                sc.meta
+              FROM vendite.fatture_scadenze sc
+             WHERE sc.fattura_id = %s
+             ORDER BY sc.numero_rata NULLS LAST, sc.data_scadenza NULLS LAST, sc.id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(fattura_id)])
