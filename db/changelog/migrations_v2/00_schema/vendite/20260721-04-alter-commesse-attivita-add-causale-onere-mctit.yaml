@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Colonna causale_onere_id su vendite.commesse_attivita — la porta oneri
+#   (brief-db-immutabilita-quantita-e-porta-oneri §4c.3, decisione 2026-07-21:
+#    causale su COLONNA FK dedicata, non in meta jsonb).
+#
+# PERCHE' COLONNA E NON meta: la causale e' il PERCHE' di un onere e serve al
+#   reporting/audit; sepolta in jsonb sarebbe fragile e non vincolabile —
+#   stessa critica che il brief §3 muove al tipo_movimento in meta. Qui e'
+#   colonna FK + CHECK: il DB lega causale e tipo_movimento per costruzione.
+#
+# CHECK BICONDIZIONALE: (tipo_movimento='ONERE') <=> (causale_onere_id IS NOT NULL).
+#   - una riga ONERE DEVE avere una causale;
+#   - una riga NORMALE/RETTIFICA NON puo' averla (la causale appartiene solo
+#     alla porta oneri).
+#   Righe storiche: tutte NORMALE con causale NULL (nessuna riga ONERE esiste
+#   ancora — la porta non e' stata usata), quindi il CHECK valida senza backfill.
+#
+# require_attivo / block_deact: NON scritti a mano. dbops.fn_run_automations_attivo
+#   li provisiona automaticamente (make db-ci-apply) su questa FK, perche' il
+#   padre config.causali_onere ha colonna attivo e la FK termina in _id — come
+#   per gli altri FK di commesse_attivita (sorgenti, unita_misura, ...). Il
+#   trigger REQUIRE salta la FK NULL (righe non-ONERE).
+# Dipendenze: vendite.commesse_attivita, config.causali_onere (20260721-03).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260721-04-alter-commesse-attivita-add-causale-onere-mctit.yaml
+
+  - changeSet:
+      id: 20260721-04-alter-commesse-attivita-add-causale-onere
+      author: mctit
+      comment: >
+        Aggiunge vendite.commesse_attivita.causale_onere_id (FK config.causali_onere,
+        nullable) + CHECK biconditional tipo_movimento='ONERE' <=> causale valorizzata.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: commesse_attivita
+            - tableExists:
+                schemaName: config
+                tableName: causali_onere
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: commesse_attivita
+                    columnName: causale_onere_id
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: commesse_attivita
+            columns:
+              - column:
+                  name: causale_onere_id
+                  type: bigint
+                  remarks: >-
+                    Causale della porta oneri (FK config.causali_onere). NOT NULL
+                    solo sulle righe tipo_movimento='ONERE' (CHECK biconditional).
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita
+            baseColumnNames: causale_onere_id
+            referencedTableSchemaName: config
+            referencedTableName: causali_onere
+            referencedColumnNames: id
+            onDelete: NO ACTION
+            onUpdate: NO ACTION
+            constraintName: fk_commesse_attivita_causale_onere
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.commesse_attivita
+                ADD CONSTRAINT chk_commesse_attivita_causale_onere
+                CHECK ((tipo_movimento = 'ONERE') = (causale_onere_id IS NOT NULL));
+
+              COMMENT ON COLUMN vendite.commesse_attivita.causale_onere_id IS
+                  'Causale della porta oneri (FK config.causali_onere). Valorizzata '
+                  'se e solo se tipo_movimento=ONERE (chk_commesse_attivita_causale_onere). '
+                  'La causale nomina il perche'' dell''importo (qta=1, valore). '
+                  'brief-db-immutabilita-quantita-e-porta-oneri §4c.3, rev 2026-07-21.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.commesse_attivita
+                DROP CONSTRAINT IF EXISTS chk_commesse_attivita_causale_onere;
+              ALTER TABLE vendite.commesse_attivita
+                DROP CONSTRAINT IF EXISTS fk_commesse_attivita_causale_onere;
+              ALTER TABLE vendite.commesse_attivita
+                DROP COLUMN IF EXISTS causale_onere_id;

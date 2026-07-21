@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Articoli-onere (brief-db-immutabilita-quantita-e-porta-oneri §4c.8 / step 6).
+#
+# MODELLO (Tid 2026-07-21): un articolo E' un onere collegandogli una causale
+# (catalogo.articoli.causale_onere_id, 20260721-05). Legame 1:1: un articolo-onere
+# per causale. Ogni articolo porta la SUA iva_id -> l'IVA non e' piu' unica.
+#
+#   ONERE_SENZA_CONTRATTO  causale 1  IVA 16 (22%)
+#   ONERE_TRASFERTA        causale 2  IVA 16 (22%)
+#   ONERE_MAGG_URGENZA     causale 3  IVA 16 (22%)
+#   ONERE_SPESE_AMM        causale 4  IVA 16 (22%)
+#   ONERE_PENALE           causale 5  IVA 1  (ES, Escluso art.15 - penale fuori campo)
+#
+# La madre fn_aggiungi_onere_commessa riceve l'articolo-onere e deriva causale+uom
+# (e a valle l'IVA) da esso. uom=2 (NR) "a corpo", natura=2 (SERVIZIO_UNA_TANTUM).
+#
+# Loader dedicato (non la articoli.csv condivisa) perche' dichiara natura_vendita_id
+#   e causale_onere_id, non presenti nel loader 20260114-06.
+# Dipendenze: catalogo.articoli.causale_onere_id (20260721-05), config.causali_onere
+#   (seed 20260721-08), config.iva(1,16), catalogo.unita_misura(2), config.nature_vendita(2).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260721-09-seed-articolo-onere-mctit.yaml
+
+  - changeSet:
+      id: 20260721-09-seed-articolo-onere
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: catalogo
+                tableName: articoli
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli
+                columnName: causale_onere_id
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/catalogo/articoli_onere.csv
+            tableName: articoli
+            schemaName: catalogo
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: UUID }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: descrizione_breve, type: STRING }
+              - column: { name: uom_id, type: STRING }
+              - column: { name: iva_id, type: STRING }
+              - column: { name: natura_vendita_id, type: STRING }
+              - column: { name: causale_onere_id, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }
