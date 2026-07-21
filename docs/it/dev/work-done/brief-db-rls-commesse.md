@@ -1,15 +1,20 @@
 # Brief DB — RLS scope emittente su `vendite.commesse` + `vendite.commesse_attivita`
 
 > **Tipo**: brief operativo per il **team DB** · **Target**: `dev/db-tid` · **Data**: 2026-07-20
-> · **Owner**: Tid · **Stato**: 🟢 **P1–P4 APPLICATI + pgTAP VERDI + COMMITTATI (2026-07-20)**
-> su `dev/db-tid` (§4). **Restano gate BE** prima della **release Fase C**: **G-1**
-> (probe-first su N5/N7/sblocco — no-op silenzioso vs 404) e **G-2** (WITH CHECK push da
-> operatore). Sono verifiche/smoke lato BE, non bloccano la correttezza DB già testata.
+> · **Owner**: Tid · **Stato**: ✅ **COMPLETO (2026-07-21)** — P1–P4 APPLICATI + pgTAP
+> `plan(5)` VERDI + COMMITTATI (`19d486edb`) su `dev/db-tid` (§4). **Gate BE chiusi**: **G-1**
+> (probe-first su N5/N7/sblocco) soddisfatto per costruzione — le fn leggono con SELECT
+> SECURITY INVOKER prima di ogni UPDATE → fuori scope = 404 identico a inesistente
+> (regressione `test_prezzi_attivita_fuori_scope_o_inesistente_404`); **G-2** (WITH CHECK
+> push operatore) sicuro per costruzione — la commessa eredita l'emittente dal documento
+> sorgente già RLS-scoped. Vedi [brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md)
+> §P-6. Resta solo lo smoke end-to-end reale = validazione in-app di Tid (DB dev vuoto,
+> come Fasi A/B). **FORCE ROW LEVEL SECURITY** = ondata coordinata futura (§6).
 >
 > **Origine**: punto **P-6** di
-> [brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md) §3
+> [brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md) §3
 > (revisione critica 2026-07-20, finding CONFERMATO). Completa l'ondata RLS operatori:
-> [analisi-attivazione-rls-operatori.md](../work-done/analisi-attivazione-rls-operatori.md)
+> [analisi-attivazione-rls-operatori.md](analisi-attivazione-rls-operatori.md)
 > classificava `vendite.commesse` «NO in prima battuta» segnalando già l'asimmetria
 > lettura/scrittura (§ tabelle escluse).
 >

@@ -50,3 +50,10 @@ class VenditeConfig(AppConfig):
             register as register_fatturazione_giro,
         )
         register_fatturazione_giro()
+
+        # Handler del job coda-lavori FATTURAZIONE_NUMERA (C-4): numerazione di
+        # perimetro «Rendi definitive competenza». Stesso pattern del giro.
+        from apps.vendite.services.fatturazione_numera_handler import (
+            register as register_fatturazione_numera,
+        )
+        register_fatturazione_numera()

@@ -25,10 +25,9 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
 from typing import Any
 
-from apps.core.services.error_manager import ErrorManager, ServiceError
+from apps.vendite.services._fatturazione_job_helpers import parse_competenza_mese
 
 # handler_code seedato in dbops.coda_lavori_tipi per il tipo FATTURAZIONE_GIRO.
 HANDLER_CODE = "fatturazione_giro_default"
@@ -36,27 +35,10 @@ HANDLER_CODE = "fatturazione_giro_default"
 # Corsia del giro on-demand: differita → fermata di corsia a EMESSA (D-1).
 _MODALITA_ONDEMAND = "differita"
 
-# Codice errore (registrato) per payload di giro malformato: fallimento di
-# dominio parlante, NON un'eccezione generica (guida Tracciamento).
+# Codice errore per payload di giro malformato: fallimento di dominio parlante
+# (finisce in `coda.ultimo_errore`; non è una risposta HTTP → non va in
+# error_policies). Parse condiviso in _fatturazione_job_helpers (regola del 2).
 E_GIRO_PAYLOAD = "E_FATTURAZIONE_GIRO_PAYLOAD"
-
-
-# Scopo: Normalizza `competenza_mese` (ISO YYYY-MM-DD) al 1° del mese. Errore
-#        parlante con codice registrato su valore mancante/invalido.
-def _parse_competenza(raw: Any) -> date:
-    ErrorManager.require(
-        bool(raw),
-        code=E_GIRO_PAYLOAD,
-        message="Payload giro senza `competenza_mese`.",
-    )
-    try:
-        return datetime.strptime(str(raw), "%Y-%m-%d").date().replace(day=1)
-    except ValueError as exc:
-        raise ServiceError(
-            code=E_GIRO_PAYLOAD,
-            message="`competenza_mese` non valida (atteso YYYY-MM-DD).",
-            detail=str(raw),
-        ) from exc
 
 
 # Scopo: Esegue il giro di fatturazione on-demand. `payload`:
@@ -68,7 +50,9 @@ def _parse_competenza(raw: Any) -> date:
 def fatturazione_giro_handler(
     payload: dict[str, Any], *, scope: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    competenza = _parse_competenza(payload.get("competenza_mese"))
+    competenza = parse_competenza_mese(
+        payload.get("competenza_mese"), error_code=E_GIRO_PAYLOAD,
+    )
     fino_a_stato = payload.get("fino_a_stato")
 
     # Import locale: evita di caricare la catena driver al boot del modulo

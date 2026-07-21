@@ -1,0 +1,17 @@
+# Template systemd — worker DRAINER coda stampa (vendite.fatture_stampa_coda).
+# Fonte di verità versionata: si edita QUI e si ri-renderizza con
+# `sudo backend/bin/install-timers.sh`. Placeholder per-host sostituiti
+# dall'installer: __APP_DIR__ (cartella backend), __APP_USER__ (owner app).
+# NB: l'installer scrive questo unit ma NON lo abilita finché il team DB non
+# applica i GRANT del ruolo batch sulla coda stampa/render.
+[Unit]
+Description=ZeroERP drainer coda stampa (vendite.fatture_stampa_coda)
+After=network.target
+
+[Service]
+Type=oneshot
+User=__APP_USER__
+Group=www-data
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env.systemd
+ExecStart=__APP_DIR__/bin/run-command.sh draina_coda_stampa
