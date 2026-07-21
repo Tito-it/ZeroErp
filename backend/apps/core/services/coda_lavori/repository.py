@@ -235,15 +235,24 @@ class CodaLavoriRepository:
 
     # Scopo: Annulla un job SOLO se ancora PENDING → ANNULLATO (0 righe se già
     #        claimato: nessuna race col worker). Ritorna True se annullato.
-    def annulla(self, item_id: int) -> bool:
+    #        `owner_scope_key`: enforcement ownership (agisce solo sui job della
+    #        propria `scope_key`; None = qualunque job, per l'admin `code_manage`).
+    #        Job fuori scope → 0 righe, indistinguibile da inesistente (no leak).
+    def annulla(self, item_id: int, *, owner_scope_key: str | None = None) -> bool:
+        conditions = ["id = %s", "stato = 'PENDING'"]
+        params: list[Any] = [int(item_id)]
+        if owner_scope_key is not None:
+            conditions.append("scope->>'scope_key' = %s")
+            params.append(str(owner_scope_key))
+        where = " AND ".join(conditions)
         with connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 UPDATE dbops.coda_lavori
                    SET stato = 'ANNULLATO'
-                 WHERE id = %s AND stato = 'PENDING'
-                """,
-                [int(item_id)],
+                 WHERE {where}
+                """,  # noqa: S608 — where da condizioni whitelisted
+                params,
             )
             return cursor.rowcount > 0
 
@@ -251,28 +260,49 @@ class CodaLavoriRepository:
     #        ERRORE terminale → PENDING. `tentativi` si MANTIENE (storia dei
     #        fallimenti preservata) e si alza `max_tentativi += extra_tentativi`
     #        per consentire i nuovi tentativi (brief DB §3a). Ritorna True se
-    #        rimesso in coda.
-    def requeue(self, item_id: int, *, extra_tentativi: int = 3) -> bool:
+    #        rimesso in coda. `owner_scope_key`: enforcement ownership (None =
+    #        qualunque job, per l'admin `code_manage`); fuori scope → 0 righe.
+    def requeue(
+        self,
+        item_id: int,
+        *,
+        extra_tentativi: int = 3,
+        owner_scope_key: str | None = None,
+    ) -> bool:
+        conditions = ["id = %s", "stato IN ('IN_CORSO', 'ERRORE')"]
+        params: list[Any] = [int(item_id)]
+        if owner_scope_key is not None:
+            conditions.append("scope->>'scope_key' = %s")
+            params.append(str(owner_scope_key))
+        where = " AND ".join(conditions)
         with connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 UPDATE dbops.coda_lavori
                    SET stato = 'PENDING',
                        max_tentativi = max_tentativi + %s,
                        claimed_at = NULL, run_after = NULL
-                 WHERE id = %s AND stato IN ('IN_CORSO', 'ERRORE')
-                """,
-                [int(extra_tentativi), int(item_id)],
+                 WHERE {where}
+                """,  # noqa: S608 — where da condizioni whitelisted
+                [int(extra_tentativi), *params],
             )
             return cursor.rowcount > 0
 
-    # Scopo: Conteggi per stato (monitoraggio), opzionalmente per job_type.
-    def count_per_stato(self, *, job_type: str | None = None) -> dict[str, int]:
+    # Scopo: Conteggi per stato (monitoraggio), opzionalmente per job_type e/o
+    #        scope operatore. `owner_scope_key` None = tutta la coda (admin/
+    #        sistema); valorizzato = solo i job della propria `scope_key` (badge
+    #        top bar per-operatore).
+    def count_per_stato(
+        self, *, job_type: str | None = None, owner_scope_key: str | None = None,
+    ) -> dict[str, int]:
         conditions: list[str] = []
         params: list[Any] = []
         if job_type is not None:
             conditions.append("job_type = %s")
             params.append(job_type)
+        if owner_scope_key is not None:
+            conditions.append("scope->>'scope_key' = %s")
+            params.append(str(owner_scope_key))
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         sql = f"""
             SELECT stato, COUNT(*)::int
@@ -283,6 +313,95 @@ class CodaLavoriRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return {str(r[0]): int(r[1]) for r in cursor.fetchall()}
+
+    # Scopo: Elenco paginato dei job per la UI di gestione code (tracciamento).
+    #        Proietta stato/tentativi/errore/timeline/proprietario + `is_mio`
+    #        (il job è del chiamante: la `scope_key` combacia) calcolato QUI, così
+    #        il FE non confronta identità (P-5). `owner_scope_key` FILTRA le righe
+    #        (operatore → solo le proprie; None = tutte, per l'admin `code_manage`);
+    #        `caller_scope_key` serve SOLO a calcolare `is_mio` (resta la chiave del
+    #        chiamante anche quando vede tutto). Filtri opzionali stato/job_type/
+    #        intervallo `data_insert`/solo-vivi. Ritorna `{items, total}` (total =
+    #        righe che matchano PRIMA della paginazione, via `COUNT(*) OVER()`).
+    def elenca(
+        self,
+        *,
+        owner_scope_key: str | None = None,
+        caller_scope_key: str | None = None,
+        stati: list[str] | None = None,
+        job_type: str | None = None,
+        data_da: Any = None,
+        data_a: Any = None,
+        solo_vivi: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        conditions: list[str] = []
+        where_params: list[Any] = []
+        if owner_scope_key is not None:
+            conditions.append("scope->>'scope_key' = %s")
+            where_params.append(str(owner_scope_key))
+        if solo_vivi:
+            conditions.append("stato IN ('PENDING', 'IN_CORSO')")
+        elif stati:
+            conditions.append("stato = ANY(%s)")
+            where_params.append(list(stati))
+        if job_type is not None:
+            conditions.append("job_type = %s")
+            where_params.append(str(job_type))
+        if data_da is not None:
+            conditions.append("data_insert >= %s")
+            where_params.append(data_da)
+        if data_a is not None:
+            conditions.append("data_insert <= %s")
+            where_params.append(data_a)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+        sql = f"""
+            SELECT id, job_type, stato, priorita, tentativi, max_tentativi,
+                   ultimo_errore, run_after, claimed_at, started_at, ended_at,
+                   job_run_id, result,
+                   scope->>'username' AS proprietario,
+                   scope->>'scope_key' AS scope_key,
+                   (scope->>'scope_key' = %s) AS is_mio,
+                   COUNT(*) OVER()::int AS total
+              FROM dbops.coda_lavori
+              {where}
+             ORDER BY priorita, id
+             LIMIT %s OFFSET %s
+        """  # noqa: S608 — where da condizioni whitelisted (nessun input libero)
+        params = [caller_scope_key, *where_params, safe_limit, safe_offset]
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+
+        def _iso(value: Any) -> str | None:
+            return value.isoformat() if value is not None else None
+
+        total = int(rows[0][16]) if rows else 0
+        items = [
+            {
+                "id": int(r[0]),
+                "job_type": str(r[1]),
+                "stato": str(r[2]),
+                "priorita": int(r[3]),
+                "tentativi": int(r[4]),
+                "max_tentativi": int(r[5]),
+                "ultimo_errore": r[6],
+                "run_after": _iso(r[7]),
+                "claimed_at": _iso(r[8]),
+                "started_at": _iso(r[9]),
+                "ended_at": _iso(r[10]),
+                "job_run_id": None if r[11] is None else int(r[11]),
+                "result": r[12],
+                "proprietario": r[13],
+                "scope_key": r[14],
+                "is_mio": bool(r[15]),
+            }
+            for r in rows
+        ]
+        return {"items": items, "total": total}
 
     # Scopo: Stato di un job per il polling FE (I-3 non bloccante): stato +
     #        result (a FATTO) + ultimo_errore (a ERRORE). None se id inesistente
