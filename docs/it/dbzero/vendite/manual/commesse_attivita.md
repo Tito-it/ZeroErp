@@ -103,7 +103,16 @@ piu'. Su `meta` resta `tipo_consumo` (`ACCONTO` | `CONGUAGLIO` | `STORNO`), non 
 > residua: vale sempre `NORMALE` (verificato all'applicazione della migrazione) e nessuno la
 > legge — la colonna e' l'unica fonte.
 
-Riferimento: `brief-db-immutabilita-quantita-e-porta-oneri` §4c.2.
+**La porta oneri (`ONERE`).** Il registro `ONERE` è la voce di valore manuale (`quantita = 1`,
+il prezzo È l'importo) caricata da
+[`fn_aggiungi_onere_commessa`](/dbzero/vendite/funzioni/fn_aggiungi_onere_commessa): porta una
+`causale_onere_id` **obbligatoria** (colonna FK verso
+[`config.causali_onere`](/dbzero/config/tabelle/causali_onere), CHECK biconditional
+`tipo_movimento='ONERE' ⇔ causale valorizzata`) e **nessuna sorgente documentale**. La causale è
+*snapshottata* dall'articolo-onere e l'IVA è quella dell'articolo (ogni onere ha la propria
+aliquota).
+
+Riferimento: `brief-db-immutabilita-quantita-e-porta-oneri` §4c.2 e §4c.3.
 
 ---
 

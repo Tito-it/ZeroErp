@@ -30,6 +30,7 @@
 | is_solo_componente | boolean | NO | false |
 | listino_tipologia_id | smallint | YES |  |
 | natura_vendita_id | bigint | NO | 1 |
+| causale_onere_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -38,6 +39,7 @@
 | FOREIGN KEY | fk_articoli_articoli_gruppi | gruppo_voce_id |
 | FOREIGN KEY | fk_articoli_articoli_spesa | spesa_id |
 | FOREIGN KEY | fk_articoli_articoli_tipologie | tipo_voce_id |
+| FOREIGN KEY | fk_articoli_causale_onere | causale_onere_id |
 | FOREIGN KEY | fk_articoli_conti_contabili_acquisto | conto_contabile_acquisto_id |
 | FOREIGN KEY | fk_articoli_conti_contabili_vendita | conto_contabile_vendita_id |
 | FOREIGN KEY | fk_articoli_iva | iva_id |
@@ -57,6 +59,7 @@
 | ix_catalogo_articoli_descrizione | `CREATE INDEX ix_catalogo_articoli_descrizione ON catalogo.articoli USING btree (descrizione) WITH (fillfactor='100', deduplicate_items='true')` |
 | ix_catalogo_articoli_descrizione_trgm | `CREATE INDEX ix_catalogo_articoli_descrizione_trgm ON catalogo.articoli USING gin (descrizione gin_trgm_ops) WITH (fastupdate='true', gin_pending_list_limit='4194304')` |
 | pk_articoli | `CREATE UNIQUE INDEX pk_articoli ON catalogo.articoli USING btree (id)` |
+| uq_articoli_causale_onere | `CREATE UNIQUE INDEX uq_articoli_causale_onere ON catalogo.articoli USING btree (causale_onere_id) WHERE (causale_onere_id IS NOT NULL)` |
 | uq_articoli_codice | `CREATE UNIQUE INDEX uq_articoli_codice ON catalogo.articoli USING btree (codice)` |
 
 ## 🚨 Trigger

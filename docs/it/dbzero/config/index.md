@@ -10,6 +10,7 @@
 - [azioni_processo](tabelle/azioni_processo.md) — * Catalogare le **azioni di processo** che richiedono abilitazione esplicita. * Raccordare il **codename Django** (`Meta.permissions` → `auth_permission`) con la gestione profili. * Segnalare le azioni **pericolose** che richiedono conferma aggiuntiva nella UI.
 - [canali_pratiche](tabelle/canali_pratiche.md) — La tabella `config.canali_pratiche` definisce i **canali di visibilita'** attraverso cui i flussi di una pratica possono essere esposti verso l'esterno. Non e' un flag booleano sulla pratica ma un **registry di interfacce** configurabile.
 - [categoria_accisa](tabelle/categoria_accisa.md)
+- [causali_onere](tabelle/causali_onere.md)
 - [causali_trasporto](tabelle/causali_trasporto.md) — * Fornire un **catalogo centralizzato** delle causali di trasporto utilizzabili nei DDT. * Supportare la **classificazione omogenea** dei flussi di movimentazione in base alla motivazione dell’invio/ritiro dei beni. * Costituire la base per **regole di processo** (es. fatturazione automatica, valorizzazione, contabilizzazione, statistiche) dipendenti dalla causale utilizzata.
 - [classi_utenze](tabelle/classi_utenze.md)
 - [codici_postali](tabelle/codici_postali.md) — * **Elenco dei codici postali**   Per ogni comune (city/municipality), memorizza tutti i codici postali (Postal Code o ZIP Code) validi per quell’area geografica.
