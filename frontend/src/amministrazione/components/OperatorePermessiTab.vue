@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: Componente permessi operatore riutilizzabile.
 // Sezioni: override aree, override azioni, emittenti scope.
-// Usato sia dentro il TabView di OperatoreDrawer sia dal
+// Usato sia dentro i Tabs di OperatoreDrawer sia dal
 // drawer dedicato OperatorePermessiDrawer (azione rapida dalla lista).
 // Reagisce automaticamente al cambio di authUserId.
 import { ref, computed, watch, nextTick } from 'vue'

@@ -17,7 +17,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
-import InputSwitch from 'primevue/inputswitch'
+import ToggleSwitch from 'primevue/toggleswitch'
 import Badge from 'primevue/badge'
 import Tag from 'primevue/tag'
 import FormFooter from '../FormFooter.vue'
@@ -158,7 +158,7 @@ function onReset() {
         :key="widget.codice"
         class="dash-config-row"
       >
-        <InputSwitch
+        <ToggleSwitch
           v-model="widget.visibile"
           :aria-label="labelDi(widget)"
         />

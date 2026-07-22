@@ -730,8 +730,9 @@ Quando una pagina contiene piu' sezioni correlate (es. Gestione Geografica con 6
 ### Regole (PrimeVue 4 — `Tabs`)
 
 > Siamo su **PrimeVue 4.5**. I componenti da usare sono `Tabs`, `TabList`, `Tab`,
-> `TabPanels`, `TabPanel`. `TabView` è **PrimeVue 3, deprecato**: non usarlo in
-> codice nuovo (vedi §Legacy sotto).
+> `TabPanels`, `TabPanel`. `TabView` (PrimeVue 3) è **eliminato dal repo**
+> (migrazione completata 2026-07-22): se lo trovi in un esempio, l'esempio è
+> vecchio.
 
 - Usare `Tabs` con `lazy` (carica il contenuto solo quando il tab è attivo)
 - Il div root della vista ha `class="app-page"` — `Tabs` si espande in altezza
@@ -749,8 +750,20 @@ Quando una pagina contiene piu' sezioni correlate (es. Gestione Geografica con 6
   l'attivazione della rotta → tab vuoto per sempre). Vedi `CodaLavoriTab.vue`.
 - Ogni tab contiene un **SearchTable** riutilizzabile (non logica inline nella vista)
 - I drawer sono dichiarati nella vista, fuori da `Tabs`
+- Le chiavi `value` sono **stringhe stabili e parlanti** (`indirizzi`, `comuni`…),
+  mai indici numerici: sono ciò che rende il tab attivo deep-linkabile
+- ⚠️ **Tab condizionali** (`v-if` su permesso/modo): il `value` iniziale va
+  **calcolato sul primo tab effettivamente reso**, non fissato al primo in ordine.
+  `TabView` v3 attivava da sé il primo pannello presente; `Tabs` v4 no — un
+  `value="preset"` fisso lascia la pagina **senza alcun pannello** per chi non ha
+  quel tab. Vedi `GestionePersonalizzazioniListeView.vue`.
+- ⚠️ **Tab dentro un drawer**: il tab attivo va riportato al primo a ogni
+  riapertura (`v-model:value` nel watch su `visible`), altrimenti si riapre sul
+  tab dell'ultima consultazione — e se quel tab era condizionale al modo
+  (es. «Permessi» solo in modifica) il pannello risulta vuoto. Vedi
+  `OperatoreDrawer.vue`, `PraticaDrawer.vue`.
 
-Riferimenti corretti: `ResiView.vue`, `CodeLavoroView.vue`.
+Riferimenti corretti: `ResiView.vue`, `CodeLavoroView.vue`, `IndirizziView.vue`.
 
 ### CSS automatico
 
@@ -758,25 +771,23 @@ Riferimenti corretti: `ResiView.vue`, `CodeLavoroView.vue`.
 > .p-tabpanel` (+ `.app-tab-content`): automatica, nessun CSS scoped necessario.
 `.p-tablist` è fissata a `flex: 0 0 auto` proprio per non farsi comprimere.
 
-### Legacy — `TabView` (PrimeVue 3), da migrare
+⚠️ La catena è ancorata a `.app-page >`: **i tab dentro un drawer non sono
+intercettati** (e non lo erano nemmeno con `TabView`). Lì l'altezza la gestisce il
+corpo del drawer — non serve CSS aggiuntivo, e non va aggiunto CSS scoped.
 
-La catena gemella `.app-page > .p-tabview > …` in `main.css` **non è eliminabile
-oggi**: 7 view usano ancora `TabView`. Va rimossa solo dopo averle migrate a
-`Tabs` (le classi rese sono diverse, quindi le due catene non si sovrappongono).
+### Residui PrimeVue 3 — nessuno
 
-| Da migrare a `Tabs` |
-| --- |
-| `ui/views/PersonalizzazioniListeTecnicheView.vue` |
-| `ui/views/GestionePersonalizzazioniListeView.vue` |
-| `pratiche/components/PraticaDrawer.vue` |
-| `amministrazione/components/OperatoreDrawer.vue` |
-| `amministrazione/views/MatriciListView.vue` |
-| `config/views/ConfigurazioneDocumentiView.vue` |
-| `anagrafiche/views/IndirizziView.vue` |
+Migrazione completata il **2026-07-22**: `TabView` → `Tabs` (7 view) e
+`InputSwitch` → `ToggleSwitch` (3 componenti). `Dropdown`/`Calendar`/
+`OverlayPanel`/`Sidebar` erano già migrati. La catena CSS gemella `.p-tabview` è
+stata rimossa da `main.css` insieme all'ultimo uso.
 
-Altro residuo PrimeVue 3: **`InputSwitch`** (→ `ToggleSwitch` in v4) in
-`core/components/{dash/DashboardWidgetModal,NoteDrawer,ListaColonneModal}.vue`.
-`Dropdown`/`Calendar`/`OverlayPanel`/`Sidebar` sono invece **già migrati** (0 usi).
+Controllo di non-regressione (deve dare **0 risultati**):
+
+```bash
+grep -rn "primevue/tabview\|primevue/inputswitch" frontend/src
+grep -c "p-tabview" frontend/src/assets/main.css
+```
 
 ---
 

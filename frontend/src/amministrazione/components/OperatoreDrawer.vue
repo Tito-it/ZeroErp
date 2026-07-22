@@ -2,8 +2,8 @@
 // Scopo: Drawer unificato creazione/modifica operatore.
 // Sezioni: Soggetto (resolver in crea, banner in modifica),
 // Auth (solo crea), Dati anagrafici, Collocazione.
-// TabView: Dati + Permessi (permessi solo in modifica).
-import { ref, watch, computed, nextTick } from 'vue'
+// Tabs: Dati + Permessi (permessi solo in modifica).
+import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -30,8 +30,11 @@ import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
-import TabView from 'primevue/tabview'
+import Tab from 'primevue/tab'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
 import TabPanel from 'primevue/tabpanel'
+import TabPanels from 'primevue/tabpanels'
 import Button from 'primevue/button'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 
@@ -106,8 +109,7 @@ function resetForm() {
 watch(() => props.visible, async (val) => {
   if (!val) return
   emailEditInvalid.value = false
-  // Forza remount TabView dopo che il drawer è visibile (ink bar fix)
-  nextTick(() => { tabViewKey.value++ })
+  activeTab.value = 'dati'
   if (isEdit.value && props.authUserId) {
     await store.fetchDetail(props.authUserId)
     const u = store.currentOperatore
@@ -224,8 +226,10 @@ async function onSave() {
   }
 }
 
-// Scopo: forza remount TabView dopo apertura drawer per ink bar
-const tabViewKey = ref(0)
+// Tab attivo. Riportato a 'dati' a ogni apertura del drawer: il tab
+// 'permessi' esiste solo in modifica, quindi riaprendo in creazione un
+// valore residuo punterebbe a un tab inesistente (nessun pannello reso).
+const activeTab = ref('dati')
 
 // Computed: form creazione completo
 const canSaveCreate = computed(() =>
@@ -287,8 +291,13 @@ const onClose = useDrawerClose(emit, 'cancelled')
     </template>
 
     <div :class="{ 'app-readonly': isReadonly }">
-    <TabView :key="tabViewKey">
-      <TabPanel :header="t('amministrazione.tab_dati')">
+    <Tabs v-model:value="activeTab">
+      <TabList>
+        <Tab value="dati">{{ t('amministrazione.tab_dati') }}</Tab>
+        <Tab v-if="isEdit" value="permessi">{{ t('amministrazione.tab_permessi') }}</Tab>
+      </TabList>
+      <TabPanels>
+      <TabPanel value="dati">
         <!-- === Sezione Soggetto === -->
         <h4>{{ t('amministrazione.section_persona') }}</h4>
 
@@ -448,10 +457,11 @@ const onClose = useDrawerClose(emit, 'cancelled')
       </TabPanel>
 
       <!-- Tab Permessi: solo modifica -->
-      <TabPanel v-if="isEdit" :header="t('amministrazione.tab_permessi')">
+      <TabPanel v-if="isEdit" value="permessi">
         <OperatorePermessiTab :auth-user-id="props.authUserId" />
       </TabPanel>
-    </TabView>
+      </TabPanels>
+    </Tabs>
     </div>
 
     <!-- Sotto-drawer: SoggettoResolver (solo creazione) -->

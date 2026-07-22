@@ -1,9 +1,10 @@
 # Brief FE — Migrazione residui PrimeVue 3 → 4 (`TabView` → `Tabs`, `InputSwitch` → `ToggleSwitch`)
 
 > **Tipo**: brief operativo FE · **Target**: `dev/backend-tid` · **Data**: 2026-07-22
-> · **Owner**: Tid · **Stato**: ☐ **DA REALIZZARE** · **Priorità**: 🟡 MEDIA
-> (nessuna funzionalità rotta oggi: le due catene CSS convivono. È debito che
-> **fa scrivere codice nuovo sbagliato** — vedi §1).
+> · **Owner**: Tid · **Stato**: ☑ **COMPLETO** (validato da Tid il 2026-07-22)
+> · **Priorità**: 🟡 MEDIA
+> (all'apertura: nessuna funzionalità rotta, le due catene CSS convivevano. Era
+> debito che **faceva scrivere codice nuovo sbagliato** — vedi §1).
 >
 > **Perimetro**: SOLO FE. Nessuna modifica BE, DB, API o i18n di contenuto.
 > **Contesto**: non siamo in produzione ([[project_no_produzione_solo_sviluppo]])
@@ -116,15 +117,51 @@ indici numerici — sono ciò che rende il tab attivo deep-linkabile in futuro.
 
 | # | Step | Stato |
 | --- | --- | --- |
-| 1 | Migrare le **2 view semplici** (`ConfigurazioneDocumentiView`, `OperatoreDrawer`) come pilota: fissano il pattern e sciolgono il dubbio §4.5 sul drawer | ☐ |
-| 2 | Migrare le restanti 5 (`IndirizziView`, `PraticaDrawer`, `MatriciListView`, le 2 `*PersonalizzazioniListe*`) | ☐ |
-| 3 | Rimuovere `tabViewKey` (ref + incrementi + `:key`) in tutti e 7 | ☐ |
-| 4 | `InputSwitch` → `ToggleSwitch` nei 3 componenti | ☐ |
-| 5 | **Eliminare la catena `.app-page > .p-tabview > …`** da `main.css` e la sezione «Legacy» di `frontend-standards.md` | ☐ |
-| 6 | Verifica manuale per-schermata (§6) + lint + build | ☐ |
+| 1 | Migrare le **2 view semplici** (`ConfigurazioneDocumentiView`, `OperatoreDrawer`) come pilota: fissano il pattern e sciolgono il dubbio §4.5 sul drawer | ☑ |
+| 2 | Migrare le restanti 5 (`IndirizziView`, `PraticaDrawer`, `MatriciListView`, le 2 `*PersonalizzazioniListe*`) | ☑ |
+| 3 | Rimuovere `tabViewKey` (ref + incrementi + `:key`) in tutti e 7 | ☑ |
+| 4 | `InputSwitch` → `ToggleSwitch` nei 3 componenti | ☑ |
+| 5 | **Eliminare la catena `.app-page > .p-tabview > …`** da `main.css` e la sezione «Legacy» di `frontend-standards.md` | ☑ |
+| 6 | Verifica manuale per-schermata (§6) + lint + build | ☑ |
 
 Lo step 5 è possibile **solo dopo** che 1-3 sono completi: la catena `.p-tabview`
 serve finché esiste un `TabView`.
+
+### Esito (2026-07-22)
+
+Perimetro confermato esatto: 7 view / 24 TabPanel + 3 `InputSwitch`. Verifiche di
+chiusura §6 **entrambe a 0**; lint su tutto `src` pulito, `vite build` verde, e i
+10 file migrati trasformati senza errori anche dal dev server (compile dev-mode,
+diverso dal build di produzione).
+
+**Due difetti che la migrazione meccanica avrebbe introdotto** (§2.1 diceva
+«nessuno stato indice→chiave da ridisegnare»: vero per `activeIndex`/`v-for`, ma
+non basta quando i tab sono **condizionali**):
+
+1. `GestionePersonalizzazioniListeView` ha i 2 tab condizionali ai permessi
+   (`ui_preset_manage` / `ui_permesso_manage`). `TabView` v3 attivava da sé il
+   primo pannello **reso**; `Tabs` v4 no → un `value="preset"` fisso avrebbe
+   lasciato **senza alcun pannello** chi ha solo `ui_permesso_manage`. Risolto con
+   default calcolato sul primo tab disponibile + scelta utente sovrapposta
+   (`computed` writable), robusto anche se i permessi arrivano async.
+2. `OperatoreDrawer` ha il tab «Permessi» solo in modifica: senza reset del tab
+   attivo alla riapertura, riaprendo in **creazione** dopo una modifica il valore
+   residuo `permessi` avrebbe reso un drawer vuoto. Risolto col reset a `dati` nel
+   watch su `visible` (lo stesso che il remount `tabViewKey` faceva implicitamente).
+   Stesso reset applicato a `PraticaDrawer` (riapertura su un'altra pratica).
+
+Entrambi i casi sono ora **regola scritta** in `frontend-standards.md` §Pattern
+Tab-View, così la prossima migrazione non li ripete.
+
+**Dubbio §4.5 sciolto — nessun CSS aggiuntivo per i drawer**: la catena legacy era
+ancorata a `.app-page >`, quindi `PraticaDrawer`/`OperatoreDrawer` non erano
+intercettati **nemmeno prima**. L'altezza lì la gestisce il corpo del drawer: la
+simmetria v4 è già corretta e aggiungere una catena drawer sarebbe stata una
+regressione, non un fix. Annotato nello standard.
+
+Pulizia extra oltre al piano: rimosso anche il selettore `.app-readonly
+.p-tabview-tab-header` (gemello legacy ormai morto, `.p-tab` copre già la nuova
+API) e aggiornati i commenti che descrivevano come «TabView» codice ora `Tabs`.
 
 ## 6. Definition of done
 
@@ -150,4 +187,4 @@ risultati**, e `grep -c "p-tabview" frontend/src/assets/main.css` → **0**.
   `strumenti/views/CodeLavoroView.vue` (+ `strumenti/components/CodaLavoriTab.vue`
   per il pattern `onMounted`/`onActivated`)
 - Origine dei bug: brief cantiere code
-  [brief-be-fe-gestione-code-lavori-stampa.md](../work-done/brief-be-fe-gestione-code-lavori-stampa.md)
+  [brief-be-fe-gestione-code-lavori-stampa.md](brief-be-fe-gestione-code-lavori-stampa.md)

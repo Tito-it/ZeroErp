@@ -20,7 +20,7 @@ import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
-import InputSwitch from 'primevue/inputswitch'
+import ToggleSwitch from 'primevue/toggleswitch'
 
 import { fetchParameterDefaults, lookupCodici } from '../apiCore'
 import { useApiHandler } from '../composables/useApiHandler'
@@ -353,11 +353,11 @@ function rigaLabel(n) {
           <div class="form-grid-2col">
             <div class="form-field form-field-inline">
               <label>{{ t('note.field_visibile') }}</label>
-              <InputSwitch v-model="form.visibile" />
+              <ToggleSwitch v-model="form.visibile" />
             </div>
             <div class="form-field form-field-inline">
               <label>{{ t('note.field_solo_stampa') }}</label>
-              <InputSwitch v-model="form.solo_stampa" />
+              <ToggleSwitch v-model="form.solo_stampa" />
             </div>
           </div>
         </div>
