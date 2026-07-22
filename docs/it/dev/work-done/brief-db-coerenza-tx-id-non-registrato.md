@@ -1,9 +1,18 @@
 # Brief DB — Coerenza tx_id: mai pubblicare un id non registrato, e `W_` che avverte davvero
 
 > **Tipo**: brief operativo per il **team DB** · **Target**: `dev/db-tid` · **Data**:
-> 2026-07-22 · **Owner**: Tid · **Stato**: ✅ **COMPLETATO (2026-07-22)** · **Priorità**: era media
-> (nessun blocco in produzione, dove il canale di log è configurato; blocca invece
-> qualunque ambiente **senza** canale — CI `no provision`, macchine di sviluppo).
+> 2026-07-22 · **Owner**: Tid · **Stato**: ✅ **CHIUSO (2026-07-22)** — tutti e 9 gli
+> step fatti, pgTAP 7/7, **CI verde senza bypass**.
+>
+> **Esito.** Il difetto bloccava ogni ambiente **senza** canale di log (CI
+> `no provision`, macchine di sviluppo); in produzione, dove il canale è
+> configurato, non si manifestava. Ora la validazione del tx_id è attiva anche
+> nella CI senza provisioning, invece di essere disattivata: quello step esercita
+> il caso peggiore anziché aggirarlo.
+>
+> ⚠️ **Se un domani quello step tornasse a fallire con `W_TXID_NOT_REGISTERED`, la
+> risposta NON è rimettere `myapp.bypass_tx_id_check`**: significa che qualcosa ha
+> ricominciato a pubblicare nella GUC un tx_id non registrato. Vedi §3.
 >
 > **Perimetro**: SOLO DB + guida + un ritocco CI in coda. Due funzioni `dbops`, una
 > nota nel registro, la guida `tx_id_implementation_guide.md`, un pgTAP nuovo.
@@ -216,8 +225,8 @@ verdi. Toglierlo prima rimette la CI rossa.
 
 ### 5.2 Di integrazione
 
-- La CI `ci-validate` passa **senza** `bypass_tx_id_check` (§4.6).
-- `ci.yaml` (con canale configurato) resta verde: il percorso dblink non è toccato.
+- ✅ La CI `ci-validate` passa **senza** `bypass_tx_id_check` (§4.6) — verificato 2026-07-22.
+- ✅ `ci.yaml` (con canale configurato) resta verde: il percorso dblink non è toccato.
 
 ## 6. Avanzamento
 
