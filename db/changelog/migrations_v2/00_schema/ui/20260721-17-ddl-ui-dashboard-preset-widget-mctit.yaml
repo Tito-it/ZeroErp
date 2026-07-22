@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Tabella ui.dashboard_preset_widget.
+#
+# Why: composizione di un preset dashboard — quali widget, in che ordine,
+# visibili di default o solo nel pool. Ricalca ui.lista_preset_colonna.
+# visibile=FALSE indica un widget nel pool selezionabile (appare nella
+# personalizzazione) ma non mostrato di default: consente preset con
+# molti widget disponibili ma poche card visibili di default.
+#
+# Nota: i widget di un preset devono appartenere al pool della dashboard
+# del preset (ui.dashboard_widget) — vincolo di seed, non strutturale
+# (widget_id e' FK al catalogo globale ui.widget, non a dashboard_widget).
+#
+# Ref: docs/it/dev/work-in-progress/brief-db-dashboard-home.md §3.ter
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20260721-17-ddl-ui-dashboard-preset-widget-mctit.yaml
+
+  - changeSet:
+      id: 20260721-17-01-create-ui-dashboard-preset-widget
+      author: mctit
+      comment: "Composizione preset dashboard: quali widget, ordine, visibilita di default"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                schemaName: ui
+                tableName: dashboard_preset_widget
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE ui.dashboard_preset_widget (
+                preset_id   INTEGER NOT NULL,
+                widget_id   INTEGER NOT NULL,
+                ordine      INTEGER NOT NULL,
+                visibile    BOOLEAN NOT NULL DEFAULT TRUE,
+                  -- FALSE: widget disponibile nel pool ma non mostrato di default
+
+                CONSTRAINT pk_ui_dashboard_preset_widget PRIMARY KEY (preset_id, widget_id),
+
+                CONSTRAINT fk_ui_dashboard_preset_widget_dashboard_preset
+                    FOREIGN KEY (preset_id) REFERENCES ui.dashboard_preset(id) ON DELETE CASCADE,
+
+                CONSTRAINT fk_ui_dashboard_preset_widget_widget
+                    FOREIGN KEY (widget_id) REFERENCES ui.widget(id)
+              );
+
+              COMMENT ON TABLE  ui.dashboard_preset_widget IS 'Widget di un preset dashboard: ordine e visibilita di default. Ricalca ui.lista_preset_colonna.';
+              COMMENT ON COLUMN ui.dashboard_preset_widget.visibile IS 'FALSE=widget nel pool (attivabile dalla personalizzazione) ma non mostrato di default.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: DROP TABLE IF EXISTS ui.dashboard_preset_widget CASCADE;

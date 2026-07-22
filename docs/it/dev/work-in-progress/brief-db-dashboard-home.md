@@ -3,9 +3,14 @@
 > **Tipo**: brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-19
 > (agg. 2026-07-21) · **Owner**: Tid · **Priorità**: 🟠 ALTA (prerequisito
 > bloccante: senza queste strutture il lavoro BE/FE sulla home non può partire)
-> **Stato**: ☐ DA REALIZZARE — **decisioni §3 prese (2026-07-21)**, DDL/funzione
-> ancora da scrivere. Verifiche di fattibilità §3b (filtro permessi) e §3e (FK
-> `auth_user`) **confermate sul codice**.
+> **Stato**: 🔄 DB REALIZZATO E APPLICATO (2026-07-21) — struttura (enum
+> `ui.tipo_widget` + 6 tabelle), funzione `ui.fn_resolve_dashboard_config`,
+> trigger `z90`, seed `dashboard_definizione` 'home', fk-index policy, codice
+> errore `E_UI_DASHBOARD_NON_TROVATA` (555), FK `auth_user` in 90_end e resync
+> sequenze: **migrations `20260721-12..24` applicate, pgTAP `plan(12)` verde**.
+> Decisioni §3 prese (2026-07-21) e verifiche §3b/§3e confermate sul codice.
+> Restano: rigen doc auto-gen dbzero (Tid) + comunicazione §5 al brief BE/FE
+> (contratto funzione riportato in §5). **Non committato** (attendere "procedi").
 > **Origine**: revisione della home page. Le 4 card `Dash 1..4` di
 > `HomeView.vue` sono placeholder statici dal giorno uno; la visione già scritta
 > in [layout-menu-navigazione.md §9.2](frontend/layout-menu-navigazione.md)
@@ -268,10 +273,22 @@ ricalcherà quella catena per `dashboard`.
 | # | Step | Stato |
 | --- | --- | --- |
 | 1 | Decisioni §3a–3f prese e motivate (+ nodo "mai vuota" §3.bis, struttura §3.ter) | ✅ 2026-07-21 |
-| 2 | Catalogo widget globale + composizione + default per ambito + preferenza utente | ☐ |
-| 3 | Funzione di risoluzione con cascata, merge nuovi, filtro permessi | ☐ |
-| 4 | Verifica §4 (6 casi) | ☐ |
-| 5 | Apply dev + rigen doc auto-gen + comunicazione §5 a BE/FE | ☐ |
+| 2 | Catalogo widget globale + composizione + default per ambito + preferenza utente | ✅ 2026-07-21 (`20260721-12..18`) |
+| 3 | Funzione di risoluzione con cascata, merge nuovi, filtro permessi | ✅ 2026-07-21 (`20260721-19..20`) |
+| 4 | Verifica §4 (6 casi) | ✅ 2026-07-21 (pgTAP `plan(12)` verde) |
+| 5 | Apply dev + rigen doc auto-gen + comunicazione §5 a BE/FE | 🔄 apply ✅; restano rigen doc auto-gen (Tid) + brief BE/FE |
+
+> **Note di realizzazione (2026-07-21).** Divergenze §2/§3 concretizzate:
+> filtro permessi via mappe aggregate `script.fn_get_user_permissions_map` /
+> `fn_get_user_actions_map` (pattern "resolve once", fail-closed non-OPERATORE),
+> non i resolver scalari. Contratto funzione:
+> `ui.fn_resolve_dashboard_config(codice, auth_user_id, emittente_fiscale_id) →
+> jsonb { widget[], dimensione_max, widget_nuovi, preset_aggiornato }`; ogni
+> widget porta `{codice, ordine, visibile, tipo_widget, etichetta,
+> etichetta_i18n_key, deep_link, contatore_key, soglia}`. Preferenza scritta dal
+> FE: `{ widget:[{codice,ordine,visibile}], dimensione_max }`. **Seed BE/FE**:
+> (a) almeno un widget non-gated (§3.bis); (b) resync sequenze `ui.widget` /
+> `ui.dashboard_preset` quando seedati con id espliciti (nota nel file `20260721-24`).
 
 ## 7. Riferimenti
 

@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Tabella ui.dashboard_widget — composizione dashboard <-> widget.
+#
+# Why: e' il ponte che rende il widget GLOBALE utilizzabile su piu'
+# dashboard senza duplicarne la definizione (brief §3a). Dichiara quali
+# widget del catalogo globale sono candidati per una dashboard, e il
+# loro ordine di default. E' anche la sorgente del "catalogo grezzo"
+# (fallback "mai vuota") e del merge automatico dei widget nuovi nella
+# funzione di risoluzione.
+#
+# PK (dashboard_id, widget_id): un widget compare una sola volta per
+# dashboard. dashboard_id e' leading -> la PK copre gia' l'accesso per
+# dashboard (nessun indice FK dedicato su dashboard_id).
+#
+# Ref: docs/it/dev/work-in-progress/brief-db-dashboard-home.md §3a/§3.ter
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20260721-15-ddl-ui-dashboard-widget-mctit.yaml
+
+  - changeSet:
+      id: 20260721-15-01-create-ui-dashboard-widget
+      author: mctit
+      comment: "Composizione dashboard<->widget: pool candidato + ordine di default"
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                schemaName: ui
+                tableName: dashboard_widget
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE ui.dashboard_widget (
+                dashboard_id    INTEGER NOT NULL,
+                widget_id       INTEGER NOT NULL,
+                ordine_default  INTEGER NOT NULL,
+
+                CONSTRAINT pk_ui_dashboard_widget PRIMARY KEY (dashboard_id, widget_id),
+
+                CONSTRAINT fk_ui_dashboard_widget_dashboard_definizione
+                    FOREIGN KEY (dashboard_id) REFERENCES ui.dashboard_definizione(id),
+
+                CONSTRAINT fk_ui_dashboard_widget_widget
+                    FOREIGN KEY (widget_id) REFERENCES ui.widget(id)
+              );
+
+              COMMENT ON TABLE  ui.dashboard_widget IS 'Composizione dashboard<->widget: pool candidato per dashboard + ordine di default. Sorgente del catalogo grezzo e del merge widget nuovi nella risoluzione.';
+              COMMENT ON COLUMN ui.dashboard_widget.ordine_default IS 'Ordine di default del widget nella dashboard (fallback "catalogo grezzo" quando manca preset/preferenza).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: DROP TABLE IF EXISTS ui.dashboard_widget CASCADE;

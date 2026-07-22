@@ -11,3 +11,4 @@ id,codice,codice_interno,descrizione,schema_db,attivo,ordinamento,meta,data_inse
 10,core,core,Core,core,t,100,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
 12,pratiche,pratiche,Pratiche,pratiche,t,110,{},2026-04-10 00:00:00+02,postgres,2026-04-10 00:00:00+02,postgres
 11,documenti,documenti,Modelli documenti,documenti,t,120,{},2026-05-03 00:00:00+02,postgres,2026-05-03 00:00:00+02,postgres
+13,strumenti,strumenti,Strumenti,strumenti,t,130,{},2026-07-21 00:00:00+02,postgres,2026-07-21 00:00:00+02,postgres
