@@ -1,16 +1,27 @@
 # Brief DB — Dashboard home: catalogo widget + preferenza utente
 
 > **Tipo**: brief al team DB · **Target**: `dev/db-tid` · **Data**: 2026-07-19
-> (agg. 2026-07-21) · **Owner**: Tid · **Priorità**: 🟠 ALTA (prerequisito
-> bloccante: senza queste strutture il lavoro BE/FE sulla home non può partire)
-> **Stato**: 🔄 DB REALIZZATO E APPLICATO (2026-07-21) — struttura (enum
-> `ui.tipo_widget` + 6 tabelle), funzione `ui.fn_resolve_dashboard_config`,
-> trigger `z90`, seed `dashboard_definizione` 'home', fk-index policy, codice
-> errore `E_UI_DASHBOARD_NON_TROVATA` (555), FK `auth_user` in 90_end e resync
-> sequenze: **migrations `20260721-12..24` applicate, pgTAP `plan(12)` verde**.
-> Decisioni §3 prese (2026-07-21) e verifiche §3b/§3e confermate sul codice.
-> Restano: rigen doc auto-gen dbzero (Tid) + comunicazione §5 al brief BE/FE
-> (contratto funzione riportato in §5). **Non committato** (attendere "procedi").
+> (agg. 2026-07-22) · **Owner**: Tid · **Priorità**: ✅ ASSOLTA — era il
+> prerequisito bloccante del lavoro BE/FE sulla home: **il blocco non esiste più**.
+> **Stato**: ✅ **CHIUSO (verificato 2026-07-22)** — nulla di aperto lato DB.
+> Struttura (enum `ui.tipo_widget` + 6 tabelle), funzione
+> `ui.fn_resolve_dashboard_config`, trigger `z90`, seed `dashboard_definizione`
+> 'home', fk-index policy, codice errore `E_UI_DASHBOARD_NON_TROVATA` (555), FK
+> `auth_user` in 90_end e resync sequenze: **migrations `20260721-12..24`
+> applicate, pgTAP `plan(12)` verde, doc auto-gen `dbzero/ui` rigenerata,
+> committato in `26bc562d2`** su `dev/db-tid` (migrations + pgTAP + doc + manual
+> nello stesso commit). Decisioni §3 prese (2026-07-21) e verifiche §3b/§3e
+> confermate sul codice. Comunicazione §5 recepita in
+> [brief-be-fe-dashboard-home.md](brief-be-fe-dashboard-home.md) (contratto
+> funzione e forma JSONB riportati in §5 / §6-Note).
+>
+> ⚠️ **Palla a BE/FE.** Il brief a valle è fermo allo step 0 con un header che lo
+> dichiara ancora «bloccato sull'apply del prerequisito DB» — presupposto ormai
+> superato: i suoi 7 step sono sbloccati.
+>
+> 📁 Resta in `work-in-progress/` per non rompere i due link relativi same-folder
+> del brief BE/FE; spostarlo in `work-done/` richiede prima di correggerli.
+>
 > **Origine**: revisione della home page. Le 4 card `Dash 1..4` di
 > `HomeView.vue` sono placeholder statici dal giorno uno; la visione già scritta
 > in [layout-menu-navigazione.md §9.2](frontend/layout-menu-navigazione.md)
@@ -276,7 +287,14 @@ ricalcherà quella catena per `dashboard`.
 | 2 | Catalogo widget globale + composizione + default per ambito + preferenza utente | ✅ 2026-07-21 (`20260721-12..18`) |
 | 3 | Funzione di risoluzione con cascata, merge nuovi, filtro permessi | ✅ 2026-07-21 (`20260721-19..20`) |
 | 4 | Verifica §4 (6 casi) | ✅ 2026-07-21 (pgTAP `plan(12)` verde) |
-| 5 | Apply dev + rigen doc auto-gen + comunicazione §5 a BE/FE | 🔄 apply ✅; restano rigen doc auto-gen (Tid) + brief BE/FE |
+| 5 | Apply dev + rigen doc auto-gen + comunicazione §5 a BE/FE | ✅ 2026-07-21 (tutte e tre) |
+| 6 | Commit su `dev/db-tid` | ✅ `26bc562d2` (migrations + pgTAP + doc auto-gen + manual) |
+
+**Brief chiuso lato DB.** Il seguito è in
+[brief-be-fe-dashboard-home.md](brief-be-fe-dashboard-home.md), che non ha più
+prerequisiti pendenti. Le due responsabilità che il DB **non può** garantire e
+che passano al seed BE/FE restano quelle di §3.bis e delle note qui sotto:
+(a) almeno un widget non-gated, (b) resync sequenze se si seeda con id espliciti.
 
 > **Note di realizzazione (2026-07-21).** Divergenze §2/§3 concretizzate:
 > filtro permessi via mappe aggregate `script.fn_get_user_permissions_map` /
