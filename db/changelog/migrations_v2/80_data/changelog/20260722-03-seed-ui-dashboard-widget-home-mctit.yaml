@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed ui.dashboard_widget — composizione dashboard 'home' (id 1) x i 4 widget
+# del catalogo (20260722-02).
+#
+# Perche' esiste questa tabella (brief DB §3a): il widget e' GLOBALE, non
+# appartiene a una dashboard. Questa e' la tabella che dice "quali widget sono
+# candidati per la home", ed e' anche la sorgente di due comportamenti della
+# fn_resolve_dashboard_config: il fallback "catalogo grezzo" (step 2e, garanzia
+# "mai vuota") e il merge automatico dei widget nuovi (step 3, i widget aggiunti
+# qui dopo che un utente ha salvato la preferenza compaiono come
+# widget_nuovi/non visibili, senza riscrivere la preferenza).
+#
+# ordine_default a passi di 10: lascia spazio per inserire widget in mezzo
+# senza rinumerare (stessa convenzione dei preset liste).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260722-03-seed-ui-dashboard-widget-home-mctit.yaml
+
+  - changeSet:
+      id: 20260722-03-seed-ui-dashboard-widget-home
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Composizione dashboard 'home' x 4 widget (pool candidato + sorgente del
+        fallback catalogo grezzo e del merge widget nuovi).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: dashboard_widget
+        # La dashboard 'home' (seed 20260721-21) e i 4 widget devono esserci.
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM ui.dashboard_definizione
+               WHERE id = 1
+                 AND codice = 'home';
+        - sqlCheck:
+            expectedResult: 4
+            sql: |
+              SELECT COUNT(*) FROM ui.widget WHERE id IN (1, 2, 3, 4);
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/ui/dashboard_widget.csv
+            tableName: dashboard_widget
+            schemaName: ui
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "dashboard_id,widget_id"
+            columns:
+              - column: { name: dashboard_id,   type: NUMERIC }
+              - column: { name: widget_id,      type: NUMERIC }
+              - column: { name: ordine_default, type: NUMERIC }

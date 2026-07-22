@@ -51,7 +51,7 @@ databaseChangeLog:
       preConditions:
         - onFail: HALT
         - sqlCheck:
-            expectedResult: '1'
+            expectedResult: 1
             sql: |
               SELECT COUNT(*)
                 FROM pg_proc p
@@ -59,7 +59,7 @@ databaseChangeLog:
                WHERE n.nspname = 'script'
                  AND p.proname = 'fn_get_emittenti_scope_sr_ids';
         - sqlCheck:
-            expectedResult: '1'
+            expectedResult: 1
             sql: |
               SELECT COUNT(*)
                 FROM information_schema.tables

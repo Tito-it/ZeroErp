@@ -1,0 +1,5 @@
+id,codice,etichetta,etichetta_i18n_key,deep_link,contatore_key,soglia,area_id,azione_id,attivo,data_insert,user_insert
+1,home.benvenuto,Benvenuto,home.widget_benvenuto,NULL,NULL,NULL,NULL,NULL,f,2026-07-22 00:00:00,mctit
+2,home.situazione_aperta,Situazione aperta,home.widget_situazione_aperta,"{""path"": ""/vendite/situazione-aperta""}",vendite.situazione_aperta.totale_aperto,NULL,2,NULL,t,2026-07-22 00:00:00,mctit
+3,home.competenza,Da fatturare,home.widget_competenza,"{""path"": ""/vendite/dashboard-competenza""}",vendite.competenza.da_fatturare,NULL,2,NULL,t,2026-07-22 00:00:00,mctit
+4,home.backlog,Documenti fermi,home.widget_backlog,"{""path"": ""/vendite/dashboard-backlog""}",vendite.backlog.documenti_fermi,NULL,2,NULL,t,2026-07-22 00:00:00,mctit
