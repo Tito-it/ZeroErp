@@ -750,6 +750,46 @@ a {
   min-height: 0;
 }
 
+/* ===== PrimeVue 4 `Tabs` — gemello della catena `.p-tabview` sopra =====
+ * Il nuovo componente rende `.p-tabs / .p-tablist / .p-tabpanels / .p-tabpanel`
+ * (nomi diversi da TabView v3), quindi la catena v3 NON lo intercetta: senza
+ * queste regole il contenuto del tab non riceve altezza e la DataTable con
+ * `scroll-height="flex"` non scrolla (resta tagliata). Vale per tutte le view
+ * migrate a `Tabs` (ResiView, DefinizioneEditorView, CodeLavoroView...).
+ *
+ * ⚠️ `.p-tablist` DEVE restare `flex: 0 0 auto`: se partecipa alla ripartizione
+ * dello spazio, i pannelli la comprimono fuori vista quando il contenuto cresce
+ * — i tab compaiono al primo paint e spariscono appena la tabella si popola
+ * (bug 2026-07-22, sintomo dipendente dal numero di righe visibili all'utente).
+ * Per lo stesso motivo NON si mette `app-tab-content` sul contenitore <Tabs>. */
+.app-page > .p-tabs {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-page > .p-tabs > .p-tablist {
+  flex: 0 0 auto;
+}
+
+.app-page > .p-tabs > .p-tabpanels {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.5rem 0 0 0;
+}
+
+.app-page > .p-tabs > .p-tabpanels > .p-tabpanel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 /* Wrapper generico per contenuto tab con DataTable flex.
  * Applicare class="app-tab-content" al div root del componente dentro un TabPanel.
  * overflow:hidden vincola l'altezza — la DataTable con scrollHeight="flex" gestisce

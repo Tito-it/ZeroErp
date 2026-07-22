@@ -33,7 +33,7 @@
 > user-facing; casa futura delle viste operative trasversali. Accesso primario resta il
 > badge top bar (D-B). **Allineamento area (Tid, ok)**: le 6 view tracciamento esistenti
 > ora dichiarano `area_funzionale="core"` (prima fail-closed = di fatto SUPER_ADMIN-only).
-> **Raccordo cantiere dashboard-home** ([brief-be-fe-dashboard-home.md](../work-in-progress/brief-be-fe-dashboard-home.md)):
+> **Raccordo cantiere dashboard-home** ([brief-be-fe-dashboard-home.md](brief-be-fe-dashboard-home.md)):
 > l'eventuale widget KPI «Processi in coda» dovrà riusare `gestione_service.conteggi_code`
 > come callable del registry contatori (mai una seconda query) e deep-linkare a
 > `/strumenti/code-lavoro`; l'estrazione `KpiCard` resta in quel cantiere (qui nessuna

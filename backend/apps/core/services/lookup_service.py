@@ -99,8 +99,16 @@ def fn_list_lookup_codici(
             offset=offset,
         )
     except DatabaseError as exc:
-        _raise_db_error(exc, rel=rel)
-        raise AssertionError("unreachable")  # pragma: no cover
+        # `fallback_code=None`: P0001 ignoti propagano l'eccezione originale
+        # al middleware (mapping E_DATABASE).
+        ErrorManager.raise_from_database_error(
+            exc,
+            known_markers=_KNOWN_DB_ERROR_MARKERS,
+            fallback_code=None,
+            message="Configurazione lookup non valida.",
+            context={"rel": rel},
+            function_name="core.lookup_service.fn_list_lookup_codici",
+        )
 
     total_pages = math.ceil(total_count / page_size) if page_size > 0 else 0
     return {
@@ -112,26 +120,3 @@ def fn_list_lookup_codici(
     }
 
 
-# Scopo: Traduce DatabaseError (P0001 via fn_log_and_raise_error) in ServiceError.
-# Riconosce E_LOOKUP_STRUTTURA_TABELLA_INVALIDA via substring-match sul MESSAGE
-# e propaga il codice originale. Per altri P0001 ignoti, propaga E_DATABASE
-# tramite fallback ErrorManager (il middleware applica la policy generica).
-def _raise_db_error(exc: DatabaseError, *, rel: str) -> None:
-    msg = str(exc)
-    matched_code: str | None = None
-    for code_candidate, markers in _KNOWN_DB_ERROR_MARKERS:
-        if all(marker in msg for marker in markers):
-            matched_code = code_candidate
-            break
-    if matched_code is None:
-        # Lascia propagare l'eccezione originale al middleware (mapping E_DATABASE).
-        raise exc
-    ErrorManager.raise_error(
-        code=matched_code,
-        message="Configurazione lookup non valida.",
-        detail=msg,
-        context={"rel": rel},
-        cause=exc,
-        log_to_db=True,
-        function_name="core.lookup_service.fn_list_lookup_codici",
-    )

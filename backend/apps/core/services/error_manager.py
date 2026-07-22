@@ -7,7 +7,7 @@
 
 
 import json
-from typing import Any
+from typing import Any, NoReturn
 
 from django.db import connection
 
@@ -80,6 +80,59 @@ class ErrorManager:
             function_name=function_name,
             log_to_db=log_to_db,
         )
+
+    # Scopo: Traduce una DatabaseError (tipicamente RAISE P0001 dal DB) in
+    #        ServiceError preservando il codice originale. Il messaggio
+    #        dell'eccezione viene confrontato con `known_markers`: la PRIMA
+    #        voce i cui marker compaiono TUTTI nel messaggio vince; nessun
+    #        match -> `fallback_code`. I marker restano dati di dominio del
+    #        chiamante (ogni service dichiara i propri); qui vive solo il
+    #        meccanismo di match+raise, prima duplicato in pricing_service,
+    #        ui_service e dashboard_service.
+    #        Nota fragilita' (review B4/F1 2026-04-15): il match su substring
+    #        regge finche' il codice/template sopravvive nel MESSAGE_TEXT del
+    #        RAISE; la soluzione strutturale (codice in DETAIL/HINT lato DB)
+    #        e' rimandata — proteggersi con test di regressione sui marker.
+    #
+    #        Varianti per il caso NESSUN match:
+    #        - `fallback_code=None` -> ri-solleva l'eccezione originale
+    #          (la policy generica la mappa il middleware, es. E_DATABASE);
+    #        - `fallback_message` -> messaggio utente alternativo quando si
+    #          usa il fallback (default: stesso `message` del caso match).
+    @staticmethod
+    def raise_from_database_error(
+        exc: Exception,
+        *,
+        known_markers: tuple[tuple[str, tuple[str, ...]], ...],
+        fallback_code: str | None,
+        message: str,
+        fallback_message: str | None = None,
+        context: dict[str, Any] | None = None,
+        function_name: str = "django_service",
+        log_to_db: bool = True,
+    ) -> NoReturn:
+        msg = str(exc)
+        matched_code: str | None = None
+        for code_candidate, markers in known_markers:
+            if all(marker in msg for marker in markers):
+                matched_code = code_candidate
+                break
+        if matched_code is None and fallback_code is None:
+            raise exc
+        ErrorManager.raise_error(
+            code=matched_code or fallback_code,
+            message=(
+                message
+                if matched_code is not None or fallback_message is None
+                else fallback_message
+            ),
+            detail=msg,
+            context=context,
+            cause=exc,
+            log_to_db=log_to_db,
+            function_name=function_name,
+        )
+        raise AssertionError("unreachable: raise_error alza sempre")
 
     # Scopo: Registra un errore tecnico su DB in best-effort senza interrompere il flusso chiamante.
     @staticmethod

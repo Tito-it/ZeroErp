@@ -2555,6 +2555,15 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Lista non trovata.",
         ),
+        # E_UI_DASHBOARD_NON_TROVATA: gemello del precedente per le
+        # dashboard configurabili — sollevato da fn_resolve_dashboard_config
+        # quando il codice dashboard non esiste o e' attivo=false.
+        "E_UI_DASHBOARD_NON_TROVATA": ErrorPolicy(
+            code="E_UI_DASHBOARD_NON_TROVATA",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Dashboard non trovata.",
+        ),
         "E_UI_VISTA_SQL_NON_TROVATA": ErrorPolicy(
             code="E_UI_VISTA_SQL_NON_TROVATA",
             http_status=400,

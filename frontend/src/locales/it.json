@@ -541,10 +541,22 @@
   "home": {
     "welcome_user": "Benvenuto, {name}",
     "welcome_fallback": "utente",
-    "dash_1": "Dashboard 1",
-    "dash_2": "Dashboard 2",
-    "dash_3": "Dashboard 3",
-    "dash_4": "Dashboard 4"
+    "kpi_titolo": "Il tuo cruscotto",
+    "kpi_empty_hint": "Nessuna card attiva. Usa l'ingranaggio per sceglierle.",
+    "kpi_empty_nessuna_disponibile": "Nessuna card disponibile per il tuo profilo.",
+    "kpi_non_disponibile": "Dato non disponibile",
+    "personalizza_titolo": "Personalizza le card",
+    "personalizza_hint": "Scegli quali card vedere in home e in che ordine. Ne vengono mostrate al massimo {max}.",
+    "personalizza_oltre_cap": "Hai selezionato {n} card ma la home ne mostra {max}: le eccedenti restano nascoste.",
+    "personalizza_nessun_widget": "Nessuna card disponibile per il tuo profilo.",
+    "personalizza_su": "Sposta su",
+    "personalizza_giu": "Sposta giù",
+    "personalizza_reset": "Ripristina predefinite",
+    "personalizza_reset_conferma": "Ripristinare le card predefinite? La tua personalizzazione andrà persa.",
+    "widget_situazione_aperta": "Situazione aperta",
+    "widget_competenza": "Da fatturare",
+    "widget_backlog": "Documenti fermi",
+    "widget_benvenuto": "Benvenuto in ZeroERP"
   },
   "sessions": {
     "other_active": "Altre sessioni attive ({count})",

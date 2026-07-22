@@ -541,10 +541,22 @@
   "home": {
     "welcome_user": "Welcome, {name}",
     "welcome_fallback": "user",
-    "dash_1": "Dashboard 1",
-    "dash_2": "Dashboard 2",
-    "dash_3": "Dashboard 3",
-    "dash_4": "Dashboard 4"
+    "kpi_titolo": "Your dashboard",
+    "kpi_empty_hint": "No active cards. Use the gear icon to choose them.",
+    "kpi_empty_nessuna_disponibile": "No cards available for your profile.",
+    "kpi_non_disponibile": "Data unavailable",
+    "personalizza_titolo": "Customise cards",
+    "personalizza_hint": "Choose which cards to show on the home page and in what order. At most {max} are displayed.",
+    "personalizza_oltre_cap": "You selected {n} cards but the home page shows {max}: the extra ones stay hidden.",
+    "personalizza_nessun_widget": "No cards available for your profile.",
+    "personalizza_su": "Move up",
+    "personalizza_giu": "Move down",
+    "personalizza_reset": "Restore defaults",
+    "personalizza_reset_conferma": "Restore the default cards? Your customisation will be lost.",
+    "widget_situazione_aperta": "Open situation",
+    "widget_competenza": "To be invoiced",
+    "widget_backlog": "Stalled documents",
+    "widget_benvenuto": "Welcome to ZeroERP"
   },
   "sessions": {
     "other_active": "Other active sessions ({count})",

@@ -1,9 +1,11 @@
 # Guida — Cruscotti fatturazione (le tre lenti)
 
-> **Ultima revisione**: 8 luglio 2026 — Situazione aperta v2 (serbatoio
-> pre-commessa): donut per fase, filtro "aperti da oltre N giorni" solo-lista,
-> via il concetto *transitato*. Le tre lenti sullo stesso insieme — il lavoro
-> aperto verso la fatturazione — con tagli complementari.
+> **Ultima revisione**: 22 luglio 2026 — nuova **§7 «Gestire la fatturazione»**:
+> la Lente 1 non è più solo una fotografia, da lì si **agisce** (approva →
+> fattura → rendi definitive), con il perché la numerazione resta un passo
+> separato e cosa fa il sistema da solo. Revisione precedente (8 luglio):
+> Situazione aperta v2 (serbatoio pre-commessa), donut per fase, filtro "aperti
+> da oltre N giorni" solo-lista, via il concetto *transitato*.
 >
 > **Destinatari**: analisti funzionali, operatori vendite/amministrazione,
 > sviluppatori backend/frontend.
@@ -196,7 +198,97 @@ lavoro.
 
 ---
 
-## 7. Note tecniche
+## 7. Gestire la fatturazione (agire dalla Lente 1)
+
+Le altre lenti sono **fotografie**: si guardano, poi si va altrove a lavorare. La
+**Lente 1 — Competenza** no: da lì si **agisce**. I pulsanti stanno sulle card del
+funnel, così l'azione è sempre accanto al numero che la motiva.
+
+### 7.1 I tre verbi
+
+Si procede da sinistra a destra nel funnel. Ogni verbo agisce sull'**intero mese**
+selezionato e chiede sempre conferma, mostrando quante attività coinvolge.
+
+| Verbo | Card | Cosa fa | Serve il permesso |
+| --- | --- | --- | --- |
+| **Approva** | `Da approvare` | Rende le attività **emettibili**: dice che quel lavoro è buono per essere fatturato | Approvazione attività commessa |
+| **Fattura adesso** | `Da emettere` | Crea le fatture del mese e le porta fino a **EMESSA**. Si ferma lì: **non numera** | Generazione fatture/lotti |
+| **Rendi definitive** | `Emesse non fatturate` | **Numera** le fatture (atto fiscale) e le manda in stampa | Numerazione fatture/lotti (dedicato) |
+
+Due dettagli che non sono ovvi:
+
+- **«Fattura adesso» è cumulativo**: raccoglie l'arretrato dei mesi precedenti,
+  non solo il mese a schermo. Se a maggio era rimasto indietro qualcosa, fatturando
+  giugno viene preso anche quello. È voluto: evita che il non fatturato si sedimenti.
+- **Approvare non fattura niente.** Approvare significa solo «questo lavoro è
+  corretto». La fattura nasce col verbo successivo.
+
+### 7.2 Perché la numerazione è un passo separato
+
+È la domanda che ricorre di più, e la risposta è sostanziale: **numerare è un atto
+fiscale irreversibile**.
+
+Finché una fattura è **EMESSA** ha tutti i suoi importi ma **non ha un numero**: si
+può ancora correggere, rigenerare, annullare senza lasciare tracce nel registro. Nel
+momento in cui viene resa **DEFINITIVA** prende un numero progressivo dal registro,
+e quel numero non si riusa e non si buca: da lì in poi si può solo emettere una nota
+di credito.
+
+Per questo i due verbi sono **separati, con permessi diversi**: chi prepara le
+fatture non necessariamente è chi si assume la responsabilità di numerarle. Un solo
+pulsante «fattura e numera» renderebbe impossibile fermarsi a controllare nel punto
+in cui il controllo conta.
+
+Regola pratica: **fatturare quando il lavoro del mese è finito, numerare quando i
+controlli sono finiti.**
+
+### 7.3 Cosa fa il sistema da solo, cosa fa l'operatore
+
+Buona parte del lavoro avviene **senza che nessuno prema niente**:
+
+| Chi | Quando | Cosa |
+| --- | --- | --- |
+| **Processo notturno** | ogni notte | esegue il giro di fatturazione automatico; per la corsia **giornaliera** arriva **fino alla numerazione** |
+| **Processi di servizio** | ogni minuto | prendono in carico i lavori avviati dalla dashboard e producono i **PDF** delle fatture numerate |
+| **Operatore** | quando serve | **anticipa** il giro senza aspettare la notte, **numera** la fatturazione massiva, **sblocca** ciò che si è fermato |
+
+Quindi i verbi della dashboard **non sostituiscono** il processo automatico: lo
+anticipano quando serve chiudere il mese senza attendere, e coprono i casi che il
+processo notturno lascia deliberatamente all'umano — in primo luogo la numerazione
+della fatturazione massiva.
+
+### 7.4 Il lavoro non blocca la pagina
+
+Fatturare o numerare un mese intero può richiedere tempo. Per questo l'azione non
+congela lo schermo: viene **messa in lavorazione** e si riceve subito conferma
+(«elaborazione in corso»). Si continua a lavorare e l'esito arriva da sé.
+
+Per seguire cosa sta succedendo c'è l'**indicatore in alto a destra**, che mostra
+quanti processi sono in corso: cliccandolo si apre il riepilogo, e da lì si arriva a
+**Strumenti → Code di lavoro** per il dettaglio completo (cosa è in coda, cosa è
+fallito e perché, e la possibilità di rimettere in coda un lavoro bloccato).
+
+Se l'indicatore diventa **rosso**, i processi di servizio non stanno girando: i
+lavori restano in attesa e nessuno li perde, ma finché non riparte il servizio non
+verranno eseguiti. È il caso in cui vale la pena avvisare chi gestisce il sistema.
+
+### 7.5 Quando qualcosa si ferma
+
+Gli errori vivi del mese compaiono nel **pannello errori** della Lente 1. Da lì il
+codice del lotto è **cliccabile** e porta direttamente al lotto interessato, dove si
+vedono le fatture, i tentativi già fatti e il motivo del blocco — senza doverlo
+cercare a mano nell'elenco dei lotti. Lo stesso collegamento esiste sulle righe già
+fatturate del drill-down.
+
+### 7.6 Cosa non si fa ancora da qui
+
+L'**invio allo SDI** non è disponibile dalla dashboard: resta un passo successivo,
+gestito fuori da questa schermata. La dashboard copre il percorso
+**approvazione → fattura → numerazione → stampa**.
+
+---
+
+## 8. Note tecniche
 
 - **Sorgenti**: ogni lente ha la sua famiglia di viste `vendite.vw_dash_*`
   (competenza / backlog / aperto), esposte da endpoint GET sottili

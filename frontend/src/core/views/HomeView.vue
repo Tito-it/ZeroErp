@@ -1,6 +1,14 @@
 <script setup>
-// Scopo: dashboard home — benvenuto, sessioni attive, 4 card placeholder dashboard
-import { ref } from 'vue'
+// Scopo: dashboard home — benvenuto, sessioni attive, preferiti di
+// navigazione e griglia di card KPI configurabili per utente.
+//
+// I due meccanismi della home sono distinti e ortogonali, non vanno
+// confusi:
+//   - PREFERITI: scorciatoie a voci di menu, persistite in localStorage
+//     user-scoped (stores/navigation). Rispondono a "dove voglio andare".
+//   - CARD KPI: widget configurabili persistiti a DB (ui.dashboard_*),
+//     risolti con cascata preset+permessi. Rispondono a "devo andarci?".
+import { onActivated, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import Badge from 'primevue/badge'
@@ -8,9 +16,13 @@ import Button from 'primevue/button'
 import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/ui'
 import { useNavigationFavorites } from '../composables/useNavigationFavorites'
+import { useDashboardConfig } from '../composables/useDashboardConfig'
+import { useWidgetNavigation } from '../composables/useWidgetNavigation'
 import { MANAGE_ICONS } from '../constants'
 import FavoriteItem from '../components/FavoriteItem.vue'
 import SessioniAttivePanel from '../components/SessioniAttivePanel.vue'
+import KpiCard from '../components/dash/KpiCard.vue'
+import DashboardWidgetModal from '../components/dash/DashboardWidgetModal.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -23,13 +35,65 @@ const draggedFavorite = ref(null)
 // stesso browser. Default: collassato (coerente con SessioniAttivePanel).
 const { favoritesExpanded } = storeToRefs(ui)
 
-// 4 card placeholder per futura dashboard KPI
-const dashCards = [
-  { key: 'dash-1', labelKey: 'home.dash_1', icon: 'pi pi-wrench' },
-  { key: 'dash-2', labelKey: 'home.dash_2', icon: 'pi pi-wrench' },
-  { key: 'dash-3', labelKey: 'home.dash_3', icon: 'pi pi-wrench' },
-  { key: 'dash-4', labelKey: 'home.dash_4', icon: 'pi pi-wrench' }
-]
+// ── Card KPI configurabili ──────────────────────────────────────────
+// Codice stabile della dashboard home in ui.dashboard_definizione.
+const DASHBOARD_CODICE = 'home'
+
+const {
+  config: dashConfig,
+  loaded: dashLoaded,
+  loading: dashLoading,
+  widgetNuovi,
+  widgetVisibili,
+  dimensioneMax,
+  poolVuoto,
+  loadAll: loadDashboard,
+  applyChange: applyDashChange,
+  save: saveDashboard,
+  reset: resetDashboard,
+  contatoreDi,
+} = useDashboardConfig(DASHBOARD_CODICE)
+
+const { resolveWidgetTarget, navigateToWidget } = useWidgetNavigation()
+
+const personalizzaVisible = ref(false)
+
+// onActivated e non onMounted: sotto KeepAlive (AppLayout) la home viene
+// messa in cache — al rientro config e contatori KPI vanno rinfrescati,
+// altrimenti i numeri restano quelli della prima visita (scatta anche al
+// primo mount). Fallimento gia' notificato da useApiHandler: qui non
+// serve altro che non bloccare il resto della pagina (preferiti e
+// sessioni restano utilizzabili).
+onActivated(loadDashboard)
+
+// Scopo: una card e' cliccabile solo se il suo deep-link risolve a una
+//        voce di menu permessa. Un widget informativo (senza deep_link)
+//        o un seed incoerente danno una card non cliccabile invece di un
+//        vicolo cieco.
+function isWidgetCliccabile(widget) {
+  return resolveWidgetTarget(widget?.deep_link) !== null
+}
+
+function onApriWidget(widget) {
+  navigateToWidget(widget?.deep_link)
+}
+
+// Scopo: applica la selezione/ordine scelti nella modale e salva.
+// Il payload della modale porta SOLO {codice, ordine, visibile}: va fuso
+// coi widget correnti per codice, non sostituito — altrimenti la griglia
+// perde i campi di catalogo (etichetta, deep_link, contatore_key) finche'
+// il reload post-save non riesce, e a save fallito resterebbe rotta.
+async function onPersonalizzaApply(payload) {
+  applyDashChange(c => {
+    const perCodice = new Map((c.widget || []).map(w => [w.codice, w]))
+    c.widget = payload.widget.map(w => ({
+      ...(perCodice.get(w.codice) || {}),
+      ...w,
+    }))
+  })
+  const result = await saveDashboard()
+  if (result !== null) personalizzaVisible.value = false
+}
 
 function onFavoriteDragStart(favorite, event) {
   draggedFavorite.value = favorite
@@ -117,16 +181,53 @@ function onFavoriteDragEnd() {
       </div>
     </section>
 
-    <div class="dashboard-grid">
-      <div
-        v-for="card in dashCards"
-        :key="card.key"
-        class="dash-card"
-      >
-        <i :class="card.icon"></i>
-        <span>{{ t(card.labelKey) }}</span>
+    <!-- Card KPI configurabili. La sezione compare solo a fetch riuscita:
+         prima del load non si dichiara nulla, ne' card ne' assenza di
+         card (empty-state onesto). -->
+    <section v-if="dashLoaded" class="dash-panel">
+      <div class="dash-panel-header">
+        <h3 class="dash-panel-title">{{ t('home.kpi_titolo') }}</h3>
+        <Badge v-if="widgetNuovi > 0" :value="widgetNuovi" severity="info" />
+        <Button
+          class="dash-panel-action"
+          :icon="MANAGE_ICONS.PERSONALIZZA"
+          text
+          rounded
+          :aria-label="t('home.personalizza_titolo')"
+          v-tooltip.bottom="t('home.personalizza_titolo')"
+          @click="personalizzaVisible = true"
+        />
       </div>
-    </div>
+
+      <div v-if="widgetVisibili.length > 0" class="app-dash-cards">
+        <KpiCard
+          v-for="widget in widgetVisibili"
+          :key="widget.codice"
+          :widget="widget"
+          :contatore="contatoreDi(widget)"
+          :loading="dashLoading"
+          :cliccabile="isWidgetCliccabile(widget)"
+          @apri="onApriWidget"
+        />
+      </div>
+
+      <!-- Empty-state onesto, differenziato: invitare a "scegliere le card"
+           chi non ne ha nessuna disponibile sarebbe una bugia. -->
+      <div v-else class="app-empty-state">
+        <i class="pi pi-th-large" aria-hidden="true"></i>
+        <span>{{ poolVuoto ? t('home.kpi_empty_nessuna_disponibile') : t('home.kpi_empty_hint') }}</span>
+      </div>
+    </section>
+
+    <DashboardWidgetModal
+      v-model:visible="personalizzaVisible"
+      :config="dashConfig"
+      :widget-nuovi="widgetNuovi"
+      :dimensione-max="dimensioneMax"
+      :loading="dashLoading"
+      @apply="onPersonalizzaApply"
+      @reset="resetDashboard"
+    />
   </div>
 </template>
 
@@ -180,38 +281,37 @@ function onFavoriteDragEnd() {
   gap: 0.75rem;
 }
 
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1rem;
+/* Pannello card KPI. La griglia interna usa la classe globale
+   `.app-dash-cards` (main.css), la stessa dei cruscotti vendite: le card
+   della home e quelle dei cruscotti devono respirare identiche. */
+.dash-panel {
   width: 100%;
-}
-
-.dash-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 0.75rem;
-  padding: 1.5rem 1rem;
-  border-radius: var(--app-card-radius);
-  background: var(--app-card-bg);
-  border: 1px solid var(--app-card-border);
-  color: var(--p-text-muted-color);
-  font-size: 0.9rem;
-  font-weight: 500;
 }
 
-.dash-card i {
-  font-size: 1.75rem;
-  color: var(--p-text-muted-color);
+.dash-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dash-panel-title {
+  margin: 0;
+  font-size: var(--app-font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--app-text-muted);
+}
+
+/* Il bottone "personalizza" si stacca a destra dal titolo. */
+.dash-panel-action {
+  margin-left: auto;
 }
 
 /* Tablet landscape */
 @media (max-width: 1024px) {
-  .dashboard-grid {
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  }
-
   .favorites-grid {
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   }
@@ -219,16 +319,8 @@ function onFavoriteDragEnd() {
 
 /* Tablet portrait / mobile */
 @media (max-width: 768px) {
-  .dashboard-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
   .favorites-grid {
     grid-template-columns: repeat(2, 1fr);
-  }
-
-  .dash-card {
-    padding: 1.25rem 0.75rem;
   }
 }
 </style>

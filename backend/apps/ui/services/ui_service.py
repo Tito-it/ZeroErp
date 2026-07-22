@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import Any, NoReturn
+from typing import Any
 
 from django.db import DatabaseError
 
@@ -61,8 +61,11 @@ class UiService:
                 emittente_fiscale_id=emittente_fiscale_id,
             )
         except DatabaseError as exc:
-            self._raise_db_error(
+            ErrorManager.raise_from_database_error(
                 exc,
+                known_markers=_KNOWN_DB_ERROR_MARKERS,
+                fallback_code=E_UI_GENERIC_FAILED,
+                message="Errore risoluzione lista.",
                 context={
                     "lista_codice": lista_codice,
                     "auth_user_id": user.id,
@@ -116,31 +119,3 @@ class UiService:
         ]
 
         return {"colonne": colonne_visibili}
-
-    # Scopo: Traduzione DatabaseError P0001 (raise_exception del DB) in
-    #        ServiceError con codice originale preservato. `function_name`
-    #        e' parametrizzato per il logging DB: ogni caller passa il
-    #        proprio fully-qualified name.
-    def _raise_db_error(
-        self,
-        exc: DatabaseError,
-        *,
-        context: dict[str, Any],
-        function_name: str,
-    ) -> NoReturn:
-        msg = str(exc)
-        matched_code: str | None = None
-        for code_candidate, markers in _KNOWN_DB_ERROR_MARKERS:
-            if all(marker in msg for marker in markers):
-                matched_code = code_candidate
-                break
-        code = matched_code or E_UI_GENERIC_FAILED
-        ErrorManager.raise_error(
-            code=code,
-            message="Errore risoluzione lista.",
-            detail=msg,
-            context=context,
-            cause=exc,
-            log_to_db=True,
-            function_name=function_name,
-        )

@@ -29,6 +29,111 @@ _GUC_VESTE_EXPR = (
     "::config.ruolo_applicativo"
 )
 
+# Tabelle preset ammesse dal BB `fetch_preset_base_snapshot`
+# (tabella -> colonna FK dell'entita' personalizzata). Whitelist chiusa:
+# i nomi vengono interpolati nell'SQL, mai valori provenienti dall'esterno.
+_PRESET_SNAPSHOT_TABLES: dict[str, str] = {
+    "ui.lista_preset": "lista_id",
+    "ui.dashboard_preset": "dashboard_id",
+}
+
+
+# Scopo: BB condiviso liste/dashboard — snapshot (id, snapshot_ts) del
+#        preset di base risolto per l'utente, da memorizzare nella
+#        preferenza al momento del salvataggio. Replica la cascata
+#        Step 2b/c/d delle fn DB (`ui.fn_resolve_lista_config` /
+#        `ui.fn_resolve_dashboard_config`): ruolo (priorita ASC) ->
+#        emittente fiscale -> sistema. Ritorna `(None, None)` se nessun
+#        preset applicabile (la preferenza partira' dal catalogo grezzo).
+#
+# `snapshot_ts = COALESCE(data_update, data_insert)`: i preset seedati
+# hanno `data_update=NULL` finche' non vengono modificati. Salvare `NULL`
+# come snapshot rompe il calcolo `preset_aggiornato` nelle fn di
+# risoluzione (`NULL > qualcosa` e' sempre NULL/false). Il fallback su
+# `data_insert` garantisce uno snapshot valorizzato per ogni preset
+# esistente (DEF-2 bug latente fissato 2026-05-11).
+#
+# ATTENZIONE — drift risk: questa cascata duplica la logica DB. Se in
+# futuro le fn di risoluzione cambiano (nuovo livello di preset,
+# ordinamento, ecc.) va aggiornata anche questa funzione. Soluzione
+# strutturale: brief team DB per esporre il preset di base nel JSONB
+# delle fn (campo `preset_base`) — eliminerebbe la duplicazione.
+def fetch_preset_base_snapshot(
+    preset_table: str,
+    *,
+    entity_id: int,
+    auth_user_id: int,
+    emittente_fiscale_id: int | None,
+) -> tuple[int | None, Any | None]:
+    fk_column = _PRESET_SNAPSHOT_TABLES.get(preset_table)
+    assert fk_column is not None, (
+        f"tabella preset non in whitelist: {preset_table}"
+    )
+
+    # 1. preset di ruolo (priorita ASC)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT p.id, COALESCE(p.data_update, p.data_insert)
+              FROM {preset_table} p
+              JOIN script.fn_get_profili_accesso_applicabili(
+                     %s,
+                     {_GUC_VESTE_EXPR}
+                   ) pa
+                ON pa.profilo_accesso_id = p.profilo_accesso_id
+             WHERE p.{fk_column} = %s
+               AND p.ambito      = 'ruolo'
+               AND p.is_default  = TRUE
+               AND p.attivo      = TRUE
+             ORDER BY pa.priorita ASC
+             LIMIT 1
+            """,
+            [auth_user_id, entity_id],
+        )
+        row = cursor.fetchone()
+    if row:
+        return int(row[0]), row[1]
+
+    # 2. preset di emittente fiscale
+    if emittente_fiscale_id is not None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT id, COALESCE(data_update, data_insert)
+                  FROM {preset_table}
+                 WHERE {fk_column}           = %s
+                   AND ambito               = 'emittente_fiscale'
+                   AND emittente_fiscale_id = %s
+                   AND is_default           = TRUE
+                   AND attivo               = TRUE
+                 LIMIT 1
+                """,
+                [entity_id, emittente_fiscale_id],
+            )
+            row = cursor.fetchone()
+        if row:
+            return int(row[0]), row[1]
+
+    # 3. preset di sistema
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT id, COALESCE(data_update, data_insert)
+              FROM {preset_table}
+             WHERE {fk_column} = %s
+               AND ambito      = 'sistema'
+               AND is_default  = TRUE
+               AND attivo      = TRUE
+             LIMIT 1
+            """,
+            [entity_id],
+        )
+        row = cursor.fetchone()
+    if row:
+        return int(row[0]), row[1]
+
+    return None, None
+
 
 class UiRepository:
     """Accesso DB per personalizzazioni liste (schema `ui`).
@@ -242,93 +347,18 @@ class UiRepository:
             )
             return cursor.rowcount > 0
 
-    # Scopo: Snapshot (id, snapshot_ts) del preset di base risolto per
-    #        l'utente, da memorizzare nella preferenza al momento del
-    #        salvataggio. La logica replica la cascata Step 2b/c/d di
-    #        `ui.fn_resolve_lista_config`: ruolo (priorita ASC) ->
-    #        emittente -> sistema. Ritorna `(None, None)` se nessun
-    #        preset applicabile (preferenza partira' dal catalogo grezzo).
-    #
-    # `snapshot_ts = COALESCE(lp.data_update, lp.data_insert)`: i preset
-    # seedati hanno `data_update=NULL` finche' non vengono modificati.
-    # Salvare `NULL` come snapshot rompe il calcolo `preset_aggiornato`
-    # in fn_resolve_lista_config (`NULL > qualcosa` e' sempre NULL/false).
-    # Il fallback su `data_insert` garantisce uno snapshot valorizzato
-    # per ogni preset esistente (DEF-2 bug latente fissato 2026-05-11).
-    #
-    # ATTENZIONE — drift risk: questa cascata duplica la logica DB.
-    #        Se in futuro `fn_resolve_lista_config` cambia (nuovo livello
-    #        di preset, ordinamento, ecc.) va aggiornata anche questa
-    #        funzione. Soluzione strutturale: brief team DB per esporre
-    #        il preset di base nel JSONB di `fn_resolve_lista_config`
-    #        (campo `preset_base`) — eliminerebbe la duplicazione. Non
-    #        in scope per il Blocco C.
+    # Scopo: Snapshot preset di base per la preferenza liste. Delega al BB
+    #        condiviso `fetch_preset_base_snapshot` (cascata, COALESCE e
+    #        drift risk documentati li').
     def get_preset_base_snapshot(
         self,
         lista_id: int,
         auth_user_id: int,
         emittente_fiscale_id: int | None,
     ) -> tuple[int | None, Any | None]:
-        # 1. preset di ruolo (priorita ASC)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT lp.id, COALESCE(lp.data_update, lp.data_insert)
-                  FROM ui.lista_preset lp
-                  JOIN script.fn_get_profili_accesso_applicabili(
-                         %s,
-                         {_GUC_VESTE_EXPR}
-                       ) pa
-                    ON pa.profilo_accesso_id = lp.profilo_accesso_id
-                 WHERE lp.lista_id   = %s
-                   AND lp.ambito     = 'ruolo'
-                   AND lp.is_default = TRUE
-                   AND lp.attivo     = TRUE
-                 ORDER BY pa.priorita ASC
-                 LIMIT 1
-                """,
-                [auth_user_id, lista_id],
-            )
-            row = cursor.fetchone()
-        if row:
-            return int(row[0]), row[1]
-
-        # 2. preset di emittente fiscale
-        if emittente_fiscale_id is not None:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT id, COALESCE(data_update, data_insert)
-                      FROM ui.lista_preset
-                     WHERE lista_id             = %s
-                       AND ambito               = 'emittente_fiscale'
-                       AND emittente_fiscale_id = %s
-                       AND is_default           = TRUE
-                       AND attivo               = TRUE
-                     LIMIT 1
-                    """,
-                    [lista_id, emittente_fiscale_id],
-                )
-                row = cursor.fetchone()
-            if row:
-                return int(row[0]), row[1]
-
-        # 3. preset di sistema
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id, COALESCE(data_update, data_insert)
-                  FROM ui.lista_preset
-                 WHERE lista_id   = %s
-                   AND ambito     = 'sistema'
-                   AND is_default = TRUE
-                   AND attivo     = TRUE
-                 LIMIT 1
-                """,
-                [lista_id],
-            )
-            row = cursor.fetchone()
-        if row:
-            return int(row[0]), row[1]
-
-        return None, None
+        return fetch_preset_base_snapshot(
+            "ui.lista_preset",
+            entity_id=lista_id,
+            auth_user_id=auth_user_id,
+            emittente_fiscale_id=emittente_fiscale_id,
+        )

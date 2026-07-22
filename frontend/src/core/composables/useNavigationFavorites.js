@@ -5,11 +5,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { useNavigationStore } from '../../stores/navigation'
 import { useTabsStore } from '../../stores/tabs'
-import { DOMAINS, DOMAIN_MENUS, resolveNavigationLabel } from '../navigation'
-
-function flattenMenu(items) {
-  return items.flatMap(item => item.children ? [item, ...item.children] : [item])
-}
+import { DOMAINS, DOMAIN_MENUS, flattenMenu, resolveNavigationLabel } from '../navigation'
 
 export function useNavigationFavorites() {
   const { t, te } = useI18n()

@@ -24,7 +24,7 @@
 >
 > **Origine**: revisione della home page. Le 4 card `Dash 1..4` di
 > `HomeView.vue` sono placeholder statici dal giorno uno; la visione già scritta
-> in [layout-menu-navigazione.md §9.2](frontend/layout-menu-navigazione.md)
+> in [layout-menu-navigazione.md §9.2](../work-in-progress/frontend/layout-menu-navigazione.md)
 > («la home diventerà una dashboard personalizzata per utente, composta da card
 > configurabili») non è mai stata istruita perché manca ogni struttura di
 > persistenza.
