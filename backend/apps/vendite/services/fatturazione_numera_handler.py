@@ -101,14 +101,20 @@ def fatturazione_numera_handler(
             if esito.get("stato_doc_fiscale_id") == definitiva_id:
                 numerati += 1
             else:
+                # `errore` (dal runner) porta il PERCHE': senza, l'operatore
+                # legge un «ERRORE» muto e non sa se agire (dato incoerente da
+                # bonificare) o attendere.
+                errore = esito.get("errore")
                 saltati_dett.append({
                     "lotto_id": lotto["id"], "codice": lotto["codice"],
                     "motivo_stop": esito.get("motivo_stop"),
+                    "errore": errore,
                 })
                 logger.warning(
                     "fatturazione_numera.lotto_non_transitato lotto_id=%s "
-                    "codice=%s motivo_stop=%s",
+                    "codice=%s motivo_stop=%s errore=%s",
                     lotto["id"], lotto["codice"], esito.get("motivo_stop"),
+                    (errore or {}).get("code"),
                 )
         except Exception as exc:  # noqa: BLE001 — resilienza per-lotto voluta
             code = getattr(exc, "code", type(exc).__name__)

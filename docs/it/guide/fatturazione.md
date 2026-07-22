@@ -502,12 +502,80 @@ Per evitare ambiguita` tra SQL legacy e runtime applicativo:
 
 ## Dashboard operative
 
-Vista funzionale consigliata (anche in singola UI a sezioni):
+> Questa sezione descrive l'**assetto realmente implementato** (aggiornata
+> 2026-07-22). Guida operativa per l'utente finale:
+> [cruscotti-fatturazione.md](cruscotti-fatturazione.md) — §7 per i verbi.
 
-1. Input/Push Commesse: ingestione sorgenti e verifica errori push.
-2. Gestione Commesse: stato testata, righe, approvazioni e anomalie.
-3. Emissione da Commesse: pull verso `attivita_fatturabili`.
-4. Emissione Fatture: gestione lotti, numerazione, invio.
+### Le superfici
+
+| Rotta | Cosa | Read/Write |
+| --- | --- | --- |
+| `/vendite/situazione-aperta` | Serbatoio **pre-commessa** per fase (preventivi, offerte, ordini, contratti) | sola lettura |
+| `/vendite/dashboard-competenza` | **Lente 1** — funnel commessa → fattura per mese di competenza. È il **cockpit**: qui vivono i verbi | lettura + **azioni** |
+| `/vendite/dashboard-backlog` | **Lente 2** — solo il non-verde, per anzianità | sola lettura |
+| `/vendite/lotti` | Registro lotti + drawer diagnostico (fatture, task-run, segnalazioni, stampa/ristampa) | lettura + azioni per-lotto |
+| `/strumenti/code-lavoro` | Code asincrone: lavori generici e outbox stampa | lettura + governo job |
+
+Il read-side delle tre lenti poggia sulle viste `vendite.vw_dash_*` esposte da
+endpoint GET sottili: nessuna logica di dominio nel frontend.
+
+### I verbi del cockpit (Lente 1)
+
+Tre azioni, sulle card del funnel, ciascuna con permesso dedicato. **Non esistono
+implementazioni «da interfaccia»**: chiamano lo stesso core del batch notturno.
+
+| Verbo | Endpoint | Permesso | Semantica |
+| --- | --- | --- | --- |
+| **Approva** | `POST /vendite/fatturazione/approva-competenza/` | `approva_attivita_commessa` | approva le attività `DA_APPROVARE` del mese (all-or-nothing, idempotente) |
+| **Fattura adesso** | `POST /vendite/fatturazione/run/` | `genera_fatture_lotti` | giro on-demand, corsia differita, **cumulativo su competenza ≤ M**, si ferma a `EMESSA` |
+| **Rendi definitive** | `POST /vendite/fatturazione/numera/` | `numera_fatture_lotti` | step `DEFINITIVA` sui lotti `EMESSA` del mese: numera **e** accoda la stampa |
+
+Esiste anche la variante per-lotto `POST /vendite/fatturazione/lotti/<id>/numera/`
+(dal drawer lotto) e la ristampa massiva `.../<id>/ristampa/`.
+
+⚠️ **L'invio SDI non è esposto dalla dashboard**: il percorso coperto è
+approvazione → fattura → numerazione → stampa.
+
+### Gate fiscale: perché fatturazione e numerazione sono separate
+
+Invariante I-7 del cockpit. `EMESSA` è uno stato **reversibile** (importi
+calcolati, nessun numero); `DEFINITIVA` assegna il progressivo dal registro ed è
+**irreversibile**. I due verbi hanno quindi **endpoint e permessi distinti**: chi
+prepara le fatture non è necessariamente chi si assume la numerazione. Un solo
+comando «fattura e numera» eliminerebbe il punto di controllo dove serve.
+
+Corollario sul modello: lo stato della **fattura segue lo stato del lotto**
+(`DRAFT → EMESSA → DEFINITIVA`); il salto `DRAFT → DEFINITIVA` **non esiste** per la
+fattura nella matrice transizioni. Dal 2026-07-22 un constraint trigger DEFERRED
+impedisce che lotto e fatture restino disallineati a fine transazione
+(`E_LOTTO_FATTURE_STATO_INCOERENTE`).
+
+### Esecuzione asincrona
+
+I verbi di perimetro **non eseguono in-request**: accodano un job in
+`dbops.coda_lavori` e rispondono con l'handle. Criterio (invariante I-3):
+**1 documento → sincrono, 2+ → background**. La pagina non resta mai bloccata.
+
+| Processo | Cadenza | Ruolo |
+| --- | --- | --- |
+| `run_fatturazione_batch` | notturno | giro automatico; la corsia **GIORNALIERO** arriva fino alla `DEFINITIVA` |
+| `draina_coda_lavori` | ogni minuto | esegue i job accodati dalla UI, con l'identità dell'operatore (RLS) |
+| `draina_coda_stampa` | ogni minuto | renderizza i PDF **fuori** dalla transazione fiscale (invariante I-4b) |
+
+I verbi della dashboard **non sostituiscono** il batch notturno: lo anticipano, e
+coprono ciò che il batch lascia all'umano — in primo luogo la numerazione della
+fatturazione massiva.
+
+### Monitoraggio
+
+- **Badge top bar**: conteggio dei processi vivi dell'operatore + liveness dei
+  worker (rosso = drainer fermi). Apre un drawer di riepilogo.
+- **Strumenti → Code di lavoro**: due schede — coda lavori (scope per **utente**)
+  e coda stampa (scope per **emittente**, via JOIN a `fatture`). Da qui si annulla
+  un job `PENDING` o si rimette in coda un job in `ERRORE`/bloccato.
+- **Pannello errori della Lente 1**: errori vivi del mese, col codice lotto
+  cliccabile che porta al lotto interessato (stesso aggancio dal drill-down).
+- Livelli di log: vedi §«Gestione errori e osservabilità».
 
 ---
 

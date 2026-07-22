@@ -727,17 +727,56 @@ Quando una pagina contiene piu' sezioni correlate (es. Gestione Geografica con 6
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Regole
+### Regole (PrimeVue 4 — `Tabs`)
 
-- Usare PrimeVue `TabView` con `lazy` (carica il contenuto solo quando il tab e' attivo)
-- Il div root della vista ha `class="app-page"` — il TabView si espande per riempire l'altezza
-- Il componente dentro ogni TabPanel ha `class="app-tab-content"` per propagare il flex
+> Siamo su **PrimeVue 4.5**. I componenti da usare sono `Tabs`, `TabList`, `Tab`,
+> `TabPanels`, `TabPanel`. `TabView` è **PrimeVue 3, deprecato**: non usarlo in
+> codice nuovo (vedi §Legacy sotto).
+
+- Usare `Tabs` con `lazy` (carica il contenuto solo quando il tab è attivo)
+- Il div root della vista ha `class="app-page"` — `Tabs` si espande in altezza
+- **NON mettere `app-tab-content` sul contenitore `<Tabs>`**: quella classe, come
+  figlia diretta di `.app-page`, applica `flex:1; overflow:hidden` pensati per un
+  *pannello di contenuto*. Sul contenitore fa sì che i pannelli comprimano la
+  `TabList` fuori vista appena il contenuto cresce — sintomo insidioso perché
+  **dipende dalla quantità di righe**: chi vede pochi record non nota nulla, chi
+  ne vede molti «perde» i tab (bug reale, 2026-07-22).
+- `class="app-tab-content"` va sul div root del componente **dentro** ogni `TabPanel`
+- La `DataTable` dentro il tab vuole `scrollable` + `scroll-height="flex"`
+  (§Regole liste): senza, la catena flex esiste ma la tabella non scrolla
+- ⚠️ Con `lazy` ogni attivazione del tab è un **mount**: il primo caricamento va in
+  `onMounted` (il solo `onActivated` non scatta per un discendente montato dopo
+  l'attivazione della rotta → tab vuoto per sempre). Vedi `CodaLavoriTab.vue`.
 - Ogni tab contiene un **SearchTable** riutilizzabile (non logica inline nella vista)
-- I drawer sono dichiarati nella vista, fuori dal TabView
+- I drawer sono dichiarati nella vista, fuori da `Tabs`
+
+Riferimenti corretti: `ResiView.vue`, `CodeLavoroView.vue`.
 
 ### CSS automatico
 
-Le classi in `main.css` gestiscono la catena flex: `.app-page > .p-tabview > .p-tabview-panels > .p-tabview-panel > .app-tab-content` — tutto automatico, nessun CSS scoped necessario.
+`main.css` contiene la catena flex `.app-page > .p-tabs > .p-tablist|.p-tabpanels
+> .p-tabpanel` (+ `.app-tab-content`): automatica, nessun CSS scoped necessario.
+`.p-tablist` è fissata a `flex: 0 0 auto` proprio per non farsi comprimere.
+
+### Legacy — `TabView` (PrimeVue 3), da migrare
+
+La catena gemella `.app-page > .p-tabview > …` in `main.css` **non è eliminabile
+oggi**: 7 view usano ancora `TabView`. Va rimossa solo dopo averle migrate a
+`Tabs` (le classi rese sono diverse, quindi le due catene non si sovrappongono).
+
+| Da migrare a `Tabs` |
+| --- |
+| `ui/views/PersonalizzazioniListeTecnicheView.vue` |
+| `ui/views/GestionePersonalizzazioniListeView.vue` |
+| `pratiche/components/PraticaDrawer.vue` |
+| `amministrazione/components/OperatoreDrawer.vue` |
+| `amministrazione/views/MatriciListView.vue` |
+| `config/views/ConfigurazioneDocumentiView.vue` |
+| `anagrafiche/views/IndirizziView.vue` |
+
+Altro residuo PrimeVue 3: **`InputSwitch`** (→ `ToggleSwitch` in v4) in
+`core/components/{dash/DashboardWidgetModal,NoteDrawer,ListaColonneModal}.vue`.
+`Dropdown`/`Calendar`/`OverlayPanel`/`Sidebar` sono invece **già migrati** (0 usi).
 
 ---
 

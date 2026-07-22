@@ -32,7 +32,15 @@ useReadonlyMode(READONLY_DOMAINS.STRUMENTI)
       <ReadonlyBadge />
     </div>
 
-    <Tabs value="lavori" lazy class="app-tab-content">
+    <!-- ⚠️ NIENTE `app-tab-content` sul contenitore <Tabs> (pattern ResiView):
+         quella classe, come figlia diretta di .app-page, attiva
+         `flex:1; min-height:0; overflow:hidden` — regola pensata per il
+         PANNELLO di contenuto, non per il contenitore dei tab. Applicata qui
+         faceva prendere tutto lo spazio ai TabPanels, che schiacciavano fuori
+         vista la TabList: i tab comparivano al primo paint e sparivano appena
+         la tabella si popolava. Sintomo dipendente dai DATI (chi vedeva più
+         righe non vedeva più i tab) — bug 2026-07-22. -->
+    <Tabs value="lavori" lazy>
       <TabList>
         <Tab value="lavori">
           <i class="pi pi-inbox" /> {{ t('strumenti.code.tab_lavori') }}

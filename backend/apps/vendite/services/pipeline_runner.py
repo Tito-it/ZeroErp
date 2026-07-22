@@ -237,12 +237,19 @@ class LottoPipelineRunner:
         # DEFINITIVA (evita il salto 1→8 vietato dalla matrice transizioni). Eseguito DOPO
         # i task dello step (semantica "EMESSA = IVA certificata"); idempotente grazie al
         # guard `IS DISTINCT FROM` in fn_sync_lotto_fatture_stato (step DRAFT → 1→1 no-op).
-        # Solo forward (questo metodo non è il path di rollback) e mai in dry-run.
-        if not dry_run:
-            self.repository.sync_lotto_fatture_stato(
-                lotto_id=lotto_id,
-                stato_doc_fiscale_id=step.stato_doc_fiscale_id,
-            )
+        # Solo forward (questo metodo non è il path di rollback).
+        # ⚠️ INCONDIZIONATO anche in dry-run (fix 2026-07-22): è la COPPIA con
+        # `update_lotto_stato_doc` sopra a dover essere indivisibile — se la sync
+        # fosse saltata mentre lo stato del lotto avanza, resterebbe esattamente
+        # l'incoerenza lotto-avanti/fatture-indietro che il guard DB
+        # `E_LOTTO_FATTURE_STATO_INCOERENTE` ora respinge al commit. In dry-run
+        # non persiste nulla perché l'intera fase viene rollbackata da
+        # `run_pipeline`; in più il dry-run diventa fedele (esercita le stesse
+        # scritture, quindi predice gli errori del run vero).
+        self.repository.sync_lotto_fatture_stato(
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=step.stato_doc_fiscale_id,
+        )
         self.repository.log_lotto_esito_fatture(lotto_id)
         self.repository.log_event(
             domain="PIPELINE",
@@ -307,7 +314,16 @@ class LottoPipelineRunner:
         return lotto_id, is_existing_lotto_request
 
     # Scopo: Orchestra l'intero flusso pipeline lotto: risoluzione lotto, step execution, resume/rollback e gestione errori finali.
-    def run_pipeline(self, params: LottoPipelineParams) -> int:
+    # `defer_dry_run_rollback=True` (SOLO driver until_done): il rollback del
+    # dry-run non viene marcato qui ma dal driver, che avvolge l'intera catena
+    # in un'unica transazione — altrimenti ogni step verrebbe rollbackato
+    # singolarmente e lo stato non avanzerebbe mai (catena non simulabile).
+    def run_pipeline(
+        self,
+        params: LottoPipelineParams,
+        *,
+        defer_dry_run_rollback: bool = False,
+    ) -> int:
         lotto_id: int | None = None
         correlation_id: str | None = None
         effective_tipo_lotto = params.tipo_lotto or "MASSIVO"
@@ -452,6 +468,22 @@ class LottoPipelineRunner:
                     correlation_id=correlation_id,
                     payload={"tipo_lotto": effective_tipo_lotto},
                 )
+                # DRY-RUN = NESSUNA PERSISTENZA (fix 2026-07-22, segnalazione team DB).
+                # Prima lo stato fiscale del lotto veniva avanzato in modo
+                # INCONDIZIONATO mentre la sync delle fatture era sotto
+                # `if not dry_run`: un dry-run lasciava il lotto avanti e le
+                # fatture indietro — è la genesi dei lotti 106/107 (lotto EMESSA,
+                # fatture DRAFT), emersa un mese dopo come `transizione 1→8`.
+                # Rollback dell'INTERA fase invece di condizionare ogni singola
+                # scrittura: non dipende dal ricordarsi di farlo a ogni nuova
+                # scrittura aggiunta qui in futuro.
+                # ⚠️ Deve restare l'ULTIMA istruzione del blocco: dentro un
+                # atomic marcato per rollback Django vieta ulteriori query
+                # (TransactionManagementError).
+                # Con `defer_dry_run_rollback` il rollback e' di proprieta' del
+                # driver until_done (transazione unica sull'intera catena).
+                if params.dry_run and not defer_dry_run_rollback:
+                    transaction.set_rollback(True)
                 return lotto_id
         except ServiceError as exc:
             if lotto_id is not None:
@@ -500,11 +532,40 @@ class LottoPipelineRunner:
     #        direttamente (lo fa già _process_close_lotto_by_flag dentro run_pipeline) →
     #        niente doppia chiusura. Sui motivi di stop noti non solleva: ritorna un
     #        esito strutturato (l'endpoint/management command lo interpreta).
+    #
+    #        DRY-RUN (fix 2026-07-22): l'intera catena viene simulata dentro
+    #        UN'UNICA transazione marcata per rollback alla fine. Il rollback
+    #        per-step di run_pipeline qui e' DIFFERITO (`defer_dry_run_rollback`):
+    #        se ogni step rollbackasse da solo, lo stato del lotto non
+    #        avanzerebbe mai e il driver uscirebbe alla prima iterazione con un
+    #        «COMPLETATO» bugiardo (0 step simulati). Cosi' invece il dry-run
+    #        percorre davvero tutta la catena — predice gli errori del run vero —
+    #        senza persistere nulla (nemmeno il lotto creato in Fase 1, la cui
+    #        transazione autonoma diventa savepoint di questa).
     def run_lotto_until_done(self, params: LottoPipelineParams) -> dict[str, Any]:
+        if params.dry_run:
+            with transaction.atomic():
+                esito = self._drive_lotto_until_done(params)
+                # ⚠️ ULTIMA istruzione del blocco (come in run_pipeline): dopo
+                # il set_rollback Django vieta ulteriori query.
+                transaction.set_rollback(True)
+            return esito
+        return self._drive_lotto_until_done(params)
+
+    # Scopo: Corpo del driver until_done (loop step + esito strutturato).
+    #        Separato da run_lotto_until_done perche' il chiamante decide il
+    #        perimetro transazionale (dry-run = transazione unica rollbackata).
+    def _drive_lotto_until_done(self, params: LottoPipelineParams) -> dict[str, Any]:
         lotto_id = self._normalize_lotto_id(params.lotto_id)
         step_eseguiti = 0
         last_stato_doc: int | None = None
         motivo_stop = "COMPLETATO"
+        # Errore di dominio che ha fermato la catena (motivo_stop ERRORE/
+        # BLOCCATO_CRITICITA): serve al chiamante per dire all'operatore PERCHE'
+        # un lotto non e' avanzato. Senza, l'esito e' un "ERRORE" muto e la
+        # diagnosi richiede di rieseguire a mano lo step (smoke C-9, 2026-07-22:
+        # dietro l'ERRORE c'era una transizione di stato fattura vietata).
+        errore: dict[str, Any] | None = None
         iterazioni = 0
         while True:
             iterazioni += 1
@@ -525,13 +586,23 @@ class LottoPipelineRunner:
             )
             run_params = params if lotto_id is None else replace(params, lotto_id=lotto_id)
             try:
-                lotto_id = self.run_pipeline(run_params)
+                # Il rollback del dry-run e' gestito a livello driver (transazione
+                # unica in run_lotto_until_done), mai per singolo step.
+                lotto_id = self.run_pipeline(run_params, defer_dry_run_rollback=True)
             except ServiceError as exc:
                 motivo_stop = (
                     "BLOCCATO_CRITICITA"
                     if exc.code == "E_PIPELINE_LOTTO_CRITICAL"
                     else "ERRORE"
                 )
+                # Conserva l'errore parlante prima di degradare a esito
+                # strutturato (il `detail` porta il messaggio del DB: guard di
+                # transizione, vincoli, ecc.).
+                errore = {
+                    "code": exc.code,
+                    "message": getattr(exc, "message", None) or str(exc),
+                    "detail": getattr(exc, "detail", None),
+                }
                 if lotto_id is None:
                     # Primo run su lotto nuovo fallito: nessun id da riportare → propaga.
                     raise
@@ -565,4 +636,6 @@ class LottoPipelineRunner:
             "stato_doc_fiscale_id": last_stato_doc,
             "step_eseguiti": step_eseguiti,
             "motivo_stop": motivo_stop,
+            # None quando la catena non si e' fermata per errore.
+            "errore": errore,
         }

@@ -184,6 +184,8 @@ const pageActions = computed(() => [
       paginator
       paginator-position="top"
       lazy
+      scrollable
+      scroll-height="flex"
       :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
       class="app-datatable app-datatable--inner"
       striped-rows

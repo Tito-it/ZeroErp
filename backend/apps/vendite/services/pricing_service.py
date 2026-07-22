@@ -175,8 +175,12 @@ class PricingService:
                 listino_versione_id_preferito=listino_versione_id_preferito,
             )
         except DatabaseError as exc:
-            self._raise_pricing_error(
+            ErrorManager.raise_from_database_error(
                 exc,
+                known_markers=_KNOWN_DB_ERROR_MARKERS,
+                fallback_code=E_VENDITE_PRICING_FAILED,
+                message="Impossibile risolvere il prezzo listino.",
+                function_name="pricing_service.resolve",
                 context={
                     "articolo_id": articolo_str,
                     "uom_id": uom_id,
@@ -186,35 +190,4 @@ class PricingService:
                     "articolo_padre_contesto": padre_str,
                 },
             )
-            raise AssertionError("unreachable")  # pragma: no cover
 
-    # =================================================================
-    # Helpers privati
-    # =================================================================
-
-    # Scopo: Converte una DatabaseError del resolver (P0001 via
-    #        fn_log_and_raise_error) in ServiceError. Riconosce i codici
-    #        noti via substring-match sul MESSAGE — se match, propaga il
-    #        codice originale; altrimenti usa E_VENDITE_PRICING_FAILED.
-    def _raise_pricing_error(
-        self,
-        exc: DatabaseError,
-        *,
-        context: dict[str, Any],
-    ) -> None:
-        msg = str(exc)
-        matched_code: str | None = None
-        for code_candidate, markers in _KNOWN_DB_ERROR_MARKERS:
-            if all(marker in msg for marker in markers):
-                matched_code = code_candidate
-                break
-        code = matched_code or E_VENDITE_PRICING_FAILED
-        ErrorManager.raise_error(
-            code=code,
-            message="Impossibile risolvere il prezzo listino.",
-            detail=msg,
-            context=context,
-            cause=exc,
-            log_to_db=True,
-            function_name="pricing_service.resolve",
-        )

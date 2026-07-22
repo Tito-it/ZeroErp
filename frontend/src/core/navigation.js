@@ -222,6 +222,18 @@ export const DOMAIN_MENUS = {
 // Voce sidebar home (usata dal SidebarDomain per il pulsante indietro)
 export const HOME_ITEM = { key: 'home', icon: NAV_ICONS.HOME, to: '/' }
 
+// Scopo: appiattisce un menu di dominio in un unico elenco di voci
+// (L1 + figli L2), per cercare una voce per `key` o per `to` senza
+// dover conoscere la profondita' della struttura.
+// Centralizzata qui perche' consumata da piu' composable di
+// navigazione (preferiti, deep-link dei widget dashboard): e' la
+// definizione unica di "tutte le voci di questo dominio".
+export function flattenMenu(items) {
+  return (items || []).flatMap(item =>
+    item.children ? [item, ...item.children] : [item],
+  )
+}
+
 // Risolve la label tab/breadcrumb dalla route meta usando i18n.
 // Usato da router guard e AppBreadcrumb per evitare duplicazione.
 export function resolveNavigationLabel({ domain, menuKey }, t, te = null) {

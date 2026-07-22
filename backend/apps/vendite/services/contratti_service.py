@@ -516,7 +516,15 @@ class ContrattiService:
                 context=context,
             )
         except DatabaseError as exc:
-            self._raise_db_error(exc, context=context)
+            ErrorManager.raise_from_database_error(
+                exc,
+                known_markers=_KNOWN_DB_ERROR_MARKERS,
+                fallback_code=E_VENDITE_VALIDATION,
+                message="Violazione vincolo contrattuale.",
+                fallback_message=_MESSAGE,
+                context=context,
+                function_name="contratti_service.db_error",
+            )
 
     # =================================================================
     # Lista e dettaglio
@@ -2531,28 +2539,6 @@ class ContrattiService:
             data[field] = None
             return
         data[field] = self._v.require_positive_int(payload, field, message=message)
-
-    # Scopo: Traduce DatabaseError (P0001 via fn_log_and_raise_error) nel
-    #        codice domain-specifico se matcha un marker noto; altrimenti
-    #        fallback E_VENDITE_VALIDATION con detail originale.
-    def _raise_db_error(self, exc: DatabaseError, *, context: dict[str, Any]) -> None:
-        msg = str(exc)
-        matched_code: str | None = None
-        for code_candidate, markers in _KNOWN_DB_ERROR_MARKERS:
-            if all(marker in msg for marker in markers):
-                matched_code = code_candidate
-                break
-        code = matched_code or E_VENDITE_VALIDATION
-        ErrorManager.raise_error(
-            code=code,
-            message="Violazione vincolo contrattuale." if matched_code else _MESSAGE,
-            detail=msg,
-            context=context,
-            cause=exc,
-            log_to_db=True,
-            function_name="contratti_service.db_error",
-        )
-        raise AssertionError("unreachable")  # pragma: no cover
 
 
 # ────────────────────────────────────────────────────────────────────────
