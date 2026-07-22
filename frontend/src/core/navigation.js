@@ -33,6 +33,10 @@ export const NAV_ICONS = Object.freeze({
   LOTTI: 'pi pi-server',
   PROMO_ARTICOLI: 'app-nav-icon app-nav-icon-promo-articoli',
   PERSONALIZZAZIONI_LISTE: 'pi pi-th-large',
+  // Dominio Strumenti (viste operative trasversali: code di lavoro, in
+  // futuro giri/job). pi-wrench = cassetta attrezzi, non-tecnico.
+  STRUMENTI: 'pi pi-wrench',
+  CODE_LAVORO: 'pi pi-inbox',
   HOME: 'pi pi-home',
   BACK: 'pi pi-arrow-left',
 
@@ -103,6 +107,12 @@ export const DOMAINS = [
   { key: 'pagamenti', icon: NAV_ICONS.PAGAMENTI, to: '/pagamenti', schemaDb: 'pagamenti' },
   { key: 'contabilita', icon: NAV_ICONS.CONTABILITA, to: '/contabilita', schemaDb: 'contabilita' },
   { key: 'pratiche', icon: NAV_ICONS.PRATICHE, to: '/pratiche', schemaDb: 'pratiche' },
+  // Strumenti: viste operative trasversali, con AREA BE DEDICATA `strumenti`
+  // (decisione Tid 2026-07-21: non si apre `core` — che presidia anche il
+  // tracciamento infra — solo per le code). Prima voce: gestione code di
+  // lavoro/stampa (accesso primario = badge top bar; la voce menu e' la via
+  // secondaria — brief gestione-code P-1).
+  { key: 'strumenti', icon: NAV_ICONS.STRUMENTI, to: '/strumenti', schemaDb: 'strumenti' },
   { key: 'config', icon: NAV_ICONS.CONFIG, to: '/config', schemaDb: 'config' },
   { key: 'amm-software', icon: NAV_ICONS.AMM_SOFTWARE, to: '/amm-software', adminOnly: true, schemaDb: 'amm_software' }
 ]
@@ -179,6 +189,9 @@ export const DOMAIN_MENUS = {
   'magazzino': [],
   'pagamenti': [],
   'contabilita': [],
+  'strumenti': [
+    { key: 'code-lavoro', icon: NAV_ICONS.CODE_LAVORO, to: '/strumenti/code-lavoro' }
+  ],
   'pratiche': [
     { key: 'home', icon: NAV_ICONS.HOME, to: '/pratiche' },
     { key: 'gestione', icon: NAV_ICONS.FOLDER_OPEN, to: '/pratiche/gestione' }

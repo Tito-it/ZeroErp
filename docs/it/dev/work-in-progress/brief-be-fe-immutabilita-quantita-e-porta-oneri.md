@@ -1,0 +1,218 @@
+# Brief BE/FE — Porta oneri + permessi prezzo commessa
+
+> **Tipo**: brief BE/FE · **Target**: `dev/backend-tid` + FE · **Data**: 2026-07-21
+> · **Owner**: Tid · **Priorità**: 🟠 ALTA
+> **Stato**: ☐ DA REALIZZARE — prerequisiti DB **PRONTI** (apply su dev + pgTAP
+> verdi, 2026-07-21). Unico micro-prerequisito residuo: seed codename
+> `carica_voce_manuale` in `config.azioni_processo` (§6, una riga CSV al team DB).
+> **Origine**: step 10 («comunicazione BE/FE») del
+> [brief-db-immutabilita-quantita-e-porta-oneri.md](brief-db-immutabilita-quantita-e-porta-oneri.md),
+> che copre anche gli step 2 (ponte approvazione) e 8 (permessi prezzo N5/N7)
+> lì dichiarati «fuori perimetro DB». Design a monte:
+> [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md) DL-27.
+
+## 1. Scopo e confine
+
+Tre lavorazioni indipendenti (ordinabili a piacere; la C può andare per prima):
+
+- **A — Porta oneri** (il pezzo di sostanza): endpoint + UI per «aggiungi onere»
+  su commessa, wrapper della madre DB `vendite.fn_aggiungi_onere_commessa`.
+  La riga nasce `APPROVATA`, qta=1, `tipo_movimento='ONERE'`, sourceless — tutta
+  la disciplina è **già nel DB**; il BE aggiunge SOLO il presidio permessi
+  (`post_permission`) e il passaggio parametri. Zero logica di business in Python.
+- **B — Ponte approvazione (hardening)**: il push approva **le proprie righe**
+  (`p_righe_ids`), non tutte le NON_EMESSA della commessa.
+- **C — Permessi prezzo N5/N7**: cablare `post_permission` sui tre endpoint
+  prezzo di commessa (riallinea / variazione eccezionale / sblocca), oggi coperti
+  dal solo permesso generico di scrittura area vendite (trappola T2 del brief DB).
+
+### Fuori perimetro
+
+- Slice NC / righe negative in fattura (contratto rinviato dal brief DB §6).
+- Processo automatico chiamante della porta (la madre DB lo supporta già; quando
+  servirà, riuserà il service di questa slice — nessuna predisposizione extra).
+- Admin CRUD del vocabolario `config.causali_onere` e degli articoli-onere: si
+  gestiscono da seed CSV (DB); niente UI dedicata in v1.
+- Guard immutabilità quantità (550/551): **nessun lavoro BE** — verificato che
+  nessun percorso Python scrive `quantita`; al BE resta solo il mapping errori (§3.4).
+
+## 2. Contratto DB (verificato sul vivo, 2026-07-21)
+
+Firma reale della madre ([doc auto-gen](../../dbzero/vendite/funzioni/fn_aggiungi_onere_commessa.md)):
+
+```sql
+vendite.fn_aggiungi_onere_commessa(
+  p_commessa_id        bigint,   -- obbligatorio
+  p_istanza_utility_id bigint,   -- obbligatorio
+  p_articolo_onere_id  uuid,     -- obbligatorio: articolo con causale_onere_id NOT NULL
+  p_importo            numeric,  -- obbligatorio, > 0 (il prezzo È l'importo, qta=1)
+  p_tipo_doc_fiscale_id bigint,  -- obbligatorio (la riga nasce emittibile)
+  p_motivo             text DEFAULT NULL,
+  p_data_attivita      date DEFAULT NULL  -- default CURRENT_DATE
+) RETURNS bigint  -- attivita_id
+```
+
+La fn deriva **da sola** causale, uom (e a valle IVA) dall'articolo-onere,
+genera `segment_key = MAN:<commessa>:<progressivo>`, scrive l'audit su
+`commesse_attivita_log` (evento `ONERE_AGGIUNTO`). Errori parlanti:
+`E_PARAMETRO_INVALIDO`, `E_ONERE_IMPORTO_NON_VALIDO`, `E_ONERE_ARTICOLO_MANCANTE`.
+
+Fatti a contorno:
+
+- **5 articoli-onere seedati** (natura `SERVIZIO_UNA_TANTUM`, uom `NR`, IVA
+  propria: 4×22%, penale Escluso art.15), uno per causale
+  (`ONERE_SENZA_CONTRATTO`, `SPESE_TRASFERTA`, `MAGGIORAZIONE_URGENZA`,
+  `SPESE_AMMINISTRATIVE`, `PENALE`). Discriminatore:
+  `catalogo.articoli.causale_onere_id IS NOT NULL` (1:1, UNIQUE).
+- `config.causali_onere` = vocabolario mono-lingua standard (`codice`,
+  `descrizione`) — il FE **non lo interroga** in v1: la causale viaggia
+  nell'articolo.
+- La riga onere fa il giro completo onere→emissione→AF→fattura con IVA per-onere
+  (pgTAP `test-porta-oneri-giro-completo-v1` 12/12); il contatore merce è cieco
+  alle righe `MAN:` (tripla cintura, pgTAP dedicato).
+- `config.tipi_doc_fiscale` è **già** nella whitelist lookup
+  (`dbops_repository._REL_CONSENTITE`) → il FE la legge via lookupCodici,
+  nessun endpoint nuovo.
+
+## 3. Piano Backend
+
+### 3.1 — A: endpoint «aggiungi onere»
+
+`POST /api/v1/vendite/commesse/<int:commessa_id>/aggiungi-onere/`
+
+- View `ApiCommessaAggiungiOnere(DomainAPIView)` in `apps/vendite/api/views.py`,
+  `area_funzionale = "vendite"`, **`post_permission = "carica_voce_manuale"`**
+  (codename nuovo, §6), pattern `handle_post_json` come le sorelle di commessa.
+- Payload: `{ articolo_onere_id, importo, istanza_utility_id,
+  tipo_doc_fiscale_id, motivo?, data_attivita? }`. Validazioni Python solo
+  presenza/tipo (`ErrorManager.require` + assert); la semantica (importo > 0,
+  articolo È un onere, attivo) resta al DB — non duplicarla.
+- Service `commesse_service.aggiungi_onere_commessa(...)` → repo
+  `commesse_repository.aggiungi_onere(...)` (wrapper 1:1 della fn, stesso stile
+  di `approva_commessa_attivita`). Risposta: `{ attivita_id }` + eco della riga
+  creata (riletta con i display fields della lista attività, così il drawer
+  aggiorna senza seconda chiamata — [[feedback_display_fields_backend]]).
+- `@extend_schema` su `post` (obbligo CI drf-spectacular).
+
+### 3.2 — A: lookup articoli-onere
+
+Estendere **`ApiArticoliLookup`** (catalogo) con filtro opzionale
+`solo_oneri=true` → `WHERE causale_onere_id IS NOT NULL AND attivo`, e includere
+nei risultati `causale_onere_codice`/`descrizione` + descrizione IVA quando il
+filtro è attivo (display fields via JOIN). Niente endpoint dedicato
+([[feedback_lookup_whitelist_first]] per spirito: si riusa la porta esistente).
+⚠️ Nome parametro italiano, NON `format`/nomi riservati DRF
+([[feedback_drf_format_magic_param]]).
+
+### 3.3 — B: ponte approvazione (`p_righe_ids`)
+
+In `commesse_service` il ponte post-push chiama oggi
+`repo.approva_commessa_attivita(commessa_id=..., user=...)` senza `righe_ids`
+(→ NULL → approva TUTTE le NON_EMESSA, anche righe non sue). Il repo supporta
+già il parametro. Fix: gli handler del push raccolgono gli `attivita_id`
+upsertati nella lavorazione corrente e il ponte li passa esplicitamente.
+Prima del fix: grep dei test esistenti che assumono il comportamento «approva
+tutto» ([[feedback_guard_breaks_existing_tests]] citato dal brief DB §4b) e
+adeguarli — il nuovo comportamento è quello giusto, i test si allineano.
+Nota: l'endpoint interattivo A-1 (`approva_attivita_commessa`, per selezione o
+tutte) NON cambia — lì il «tutte» è una scelta esplicita dell'operatore.
+
+### 3.4 — C: permessi prezzo N5/N7 + mapping errori
+
+- Aggiungere **`post_permission = "prezzo_override_manuale"`** (codename
+  esistente, già seedato area vendite) alle tre view in `apps/vendite/api/views.py`:
+  `ApiCommessaAttivitaRiallineaPrezzo`, `ApiCommessaAttivitaVariazionePrezzoEccezionale`,
+  `ApiCommessaAttivitaSbloccaPrezzo`. Coerente con i gate già vivi su
+  preventivi/contratti/DDT; nessun codename nuovo.
+- `error_policies.py`: mappare i codici DB nuovi → HTTP status + azione UI:
+  `E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE` (550) e
+  `E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE` (551) → 409;
+  `E_ONERE_IMPORTO_NON_VALIDO` / `E_ONERE_ARTICOLO_MANCANTE` (+ eventuale codice
+  del CHECK biconditional causale) → 400/422 secondo policy esistente. Nomi e
+  numeri esatti dalla doc auto-gen / `config.messaggi_errore`, non da questo brief.
+
+## 4. Piano Frontend
+
+Tutto dentro **`CommessaGestioneDrawer.vue`** (il drawer di governo, Fase A-4
+cockpit) — nessuna vista nuova.
+
+### 4.1 — Pannello «Aggiungi onere»
+
+- Pulsante/pannello-azione visibile se `!isReadonly &&
+  useActionPermission('carica_voce_manuale')` — stesso pattern del gate
+  `canApprovare` già presente nel drawer.
+- ⚠️ Il drawer post-DRAFT è `.app-readonly`: il pannello-azione va in wrapper
+  **`app-escape`** ([[feedback_app_escape_pannelli_processo]] — 2 bug bloccanti
+  storici trovati così).
+- Dialog di caricamento con: **articolo-onere** (Select dai risultati di
+  `articoli/lookup/?solo_oneri=true` — 5 voci, niente autocomplete server-side;
+  mostrare descrizione + causale + IVA così l'operatore vede cosa sta
+  caricando), **importo** (InputNumber > 0, valuta), **istanza utility**
+  (lookup ricco esistente `anagrafiche/istanze-utility/lookup/` scopato sul
+  billing account della commessa — [[feedback_billing_account_lookup]]),
+  **tipo doc fiscale** (lookupCodici `config.tipi_doc_fiscale`), **motivo**
+  (textarea opzionale), **data attività** (DatePicker, default oggi, opzionale).
+- Conferma → `POST aggiungi-onere/` → toast esito + `ricaricaTutto()` (la riga
+  appare APPROVATA nella lista attività). Errori DB → messaggio parlante
+  dall'envelope, nessuna traduzione client dei codici.
+- API client: nuovo metodo in `src/vendite/api/commesse.js`.
+
+### 4.2 — Gate FE azioni prezzo (specchio di 3.4)
+
+Le tre azioni riga esistenti (riallinea / variazione / sblocca) nel
+`CommessaGestioneDrawer` vanno nascoste senza permesso:
+`useActionPermission('prezzo_override_manuale')`, stesso predicato combinato
+readonly+permesso già usato per l'approvazione. Oggi il menu le mostra a
+chiunque scriva sull'area — dopo il cablaggio BE (3.4) fallirebbero con 403:
+il gate FE le fa sparire invece ([[feedback_row_actions_menu]] per lo stile kebab).
+
+### 4.3 — i18n
+
+Chiavi nuove sotto `vendite.commesse.*` in **it.json E en.json**,
+`scripts/check_i18n_keys.py` verde. Nessuna chiave per le causali (mono-lingua
+dal DB, decisione ratificata nel brief DB §4c.3).
+
+## 5. Test
+
+- **Service** (`apps/vendite/tests/services/`, unittest + mock DB, CI-safe):
+  aggiungi_onere passa i parametri alla fn e rilegge la riga; payload incompleto
+  → `ServiceError`; ponte push chiama `approva_commessa_attivita` con i SOLI id
+  upsertati (test del fix B, il più importante: fissa il contratto).
+- **API** (`apps/vendite/tests/api/`): 403 senza `carica_voce_manuale`; 200 con
+  permesso (fn mockata); 403 sulle tre view prezzo senza
+  `prezzo_override_manuale` (oggi passerebbero — il test documenta la chiusura
+  di T2); envelope errori 550/551/552+ → status della policy.
+- Adeguamento test esistenti del push che assumono «approva tutto» (3.3).
+- FE: smoke manuale nel drawer (validazione in-app Tid); nessun test FE
+  automatico richiesto in v1.
+
+## 6. Micro-prerequisito DB (una riga, team DB su `dev/db-tid`)
+
+Append a `80_data/sql/config/azioni_processo.csv`:
+codename **`carica_voce_manuale`**, `area_id = 2` (vendite), descrizione
+«Carica voce manuale (onere) su commessa», `pericolosa = f`, `attivo = t` —
+stesso formato della riga 26 (`approva_attivita_commessa`).
+`prezzo_override_manuale` esiste già (riga 9): per la lavorazione C non serve
+nulla lato DB. Il BE-A può partire subito e testare col permesso mockato;
+serve il seed solo per la validazione in-app.
+
+## 7. Documentazione da aggiornare a fine slice
+
+- `docs/it/dev/api.md`: endpoint nuovo + `post_permission` aggiunti a N5/N7.
+- Manuale backend (`docs/it/backend/vendite/manual/`): sezione porta oneri
+  (struttura standard Scopo/Contesto/Input/Output/Regole/Dipendenze DB).
+- Il brief DB gemello passa in `work-done/` insieme a questo.
+
+## 8. Avanzamento
+
+| # | Step | Stato |
+|---|---|---|
+| A1 | Endpoint + service + repo `aggiungi-onere` (`post_permission carica_voce_manuale`) (§3.1) | ☐ |
+| A2 | Lookup articoli-onere: filtro `solo_oneri` su `ApiArticoliLookup` (§3.2) | ☐ |
+| A3 | FE pannello «Aggiungi onere» in `CommessaGestioneDrawer` (app-escape) (§4.1) | ☐ |
+| B1 | Ponte approvazione: push passa `p_righe_ids` + adeguamento test (§3.3) | ☐ |
+| C1 | `post_permission prezzo_override_manuale` su N5/N7 + mapping errori 550-554 (§3.4) | ☐ |
+| C2 | FE gate azioni prezzo con `useActionPermission` (§4.2) | ☐ |
+| D1 | Seed `carica_voce_manuale` (team DB, §6) | ☐ |
+| E1 | Test §5 verdi + i18n check verde | ☐ |
+| E2 | Doc §7 + validazione in-app Tid → brief in work-done | ☐ |

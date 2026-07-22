@@ -9,6 +9,20 @@ from django.db import connection
 
 from apps.core.services.error_manager import ErrorManager
 
+# Cap standard del page size delle liste API (fonte unica: repo clampano e le
+# view lo dichiarano — mai lo stesso 200 ripetuto inline in più file).
+LIST_MAX_LIMIT = 200
+
+
+def iso_or_none(value: Any) -> str | None:
+    """Timestamp/date → ISO 8601, preservando None (colonne nullable).
+
+    Regola del 2 (2026-07-22): estratto alla 3ª copia della closure `_iso`
+    nei mapping riga→dict dei repository (coda lavori elenca/dettaglio,
+    coda stampa).
+    """
+    return value.isoformat() if value is not None else None
+
 
 def row_to_dict(cursor) -> dict[str, Any] | None:
     """Converte la riga corrente (fetchone) in dict {colonna: valore}.
@@ -41,6 +55,23 @@ def coerce_jsonb_dict(value: Any) -> dict[str, Any]:
         except ValueError:
             return {}
     return value if isinstance(value, dict) else {}
+
+
+def jsonb_out(value: Any) -> Any:
+    """Decodifica una colonna jsonb letta da cursor RAW, preservando NULL.
+
+    Il backend Django per psycopg 3 NON decodifica i jsonb fuori dall'ORM:
+    arrivano come `str`. Variante NULL-PRESERVING di `coerce_jsonb_dict`
+    (che invece coercizza None/malformato a `{}`): qui None resta None
+    (es. `scope` NULL = job SISTEMA, `ultimo_errore` NULL = nessun errore)
+    e il JSON e' garantito valido dal tipo colonna — un decode error e' un
+    bug da far esplodere, non da mascherare. Nata dal bug scoperto dallo
+    smoke C-9 «parte alta» (2026-07-22): il worker della coda generica
+    riceveva payload/scope come stringa e l'handler moriva al primo `.get`.
+    """
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
 
 
 def escape_ilike(value: str) -> str:

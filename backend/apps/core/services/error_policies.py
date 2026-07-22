@@ -1638,6 +1638,22 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Lavoro non trovato.",
         ),
+        # UI gestione code (BE-7): annullo di un job non piu` PENDING →
+        # conflitto di stato (il worker lo ha gia` preso, o e` terminato).
+        "E_JOB_NON_ANNULLABILE": ErrorPolicy(
+            code="E_JOB_NON_ANNULLABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il lavoro non e` piu` in attesa: annullo non possibile.",
+        ),
+        # UI gestione code (BE-7): requeue di un job non IN_CORSO/ERRORE →
+        # conflitto di stato (solo i bloccati/terminali si riaccodano).
+        "E_JOB_NON_RIACCODABILE": ErrorPolicy(
+            code="E_JOB_NON_RIACCODABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il lavoro non e` riaccodabile nello stato corrente.",
+        ),
         # Coda lavori generica (worker): codici sollevati durante il dispatch/
         # esecuzione dei job. Non attraversano HTTP nel flusso normale (finiscono
         # in `ultimo_errore` del job), ma la regola è: registrati prima dell'uso.

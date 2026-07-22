@@ -1753,6 +1753,15 @@ a {
   color: var(--app-sidebar-item-active-color);
 }
 
+/* Link dentro una cella di tabella (es. codice lotto → drawer, B-5): il
+   PrimeVue Button link porta padding/altezza da bottone che gonfia la riga —
+   qui lo si comprime a testo cliccabile allineato al contenuto della cella. */
+.app-cell-link.p-button.p-button-link {
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+}
+
 /* Riga riepilogo mese sotto le card. */
 .app-dash-totali {
   display: flex;

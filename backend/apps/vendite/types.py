@@ -616,6 +616,9 @@ class DashCompetenzaAttivitaRow(TypedDict):
     fattura_anno: int | None
     fattura_serie: str | None
     fattura_numero: int | None
+    # Lotto della fattura (NULL fuori dagli stadi con fattura in lotto): abilita
+    # l'atterraggio contestuale sul LottoDrawer dal drill-down (B-5).
+    lotto_id: int | None
     stato_fattura_codice_interno: str | None
     stato_fattura_codice: str | None
     valore_fatturato: str | None

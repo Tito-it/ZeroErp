@@ -10,6 +10,7 @@ from apps.core.services.coda_lavori.repository import (
     RUN_AS_OPERATORE,
     CodaLavoriRepository,
 )
+from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
 from apps.core.services.auth_helpers import extract_identita_id_from_request
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.permissions_resolver import PermissionResolver
@@ -1007,21 +1008,6 @@ class ApiFatturazioneEsiti(DomainAPIView):
         )
 
 
-# Scopo: Chiave canonica dello SCOPE emittente di un job fatturazione — "ALL"
-#        per l'admin globale (whitelist None), altrimenti gli emittenti
-#        autorizzati ORDINATI e joinati. Ha DUE ruoli, per costruzione coerenti:
-#        (1) componente-scope della chiave di BUSINESS (dedup dei job VIVI —
-#        stesso scope+mese → stesso job); (2) token di OWNERSHIP del polling —
-#        due operatori con la STESSA scope_key condividono job E visibilità. È
-#        sicuro: un operatore può ricevere via dedup solo un job con la PROPRIA
-#        scope_key, quindi il polling scope-based non allarga la visibilità
-#        oltre ciò a cui è già autorizzato.
-def _scope_key_fatturazione(emittente_ids: list[int] | None) -> str:
-    if emittente_ids is None:
-        return "ALL"
-    return ",".join(str(e) for e in sorted(emittente_ids))
-
-
 # Scopo: Enqueue comune dei job di fatturazione OPERATORE su dbops.coda_lavori
 #        (C-3 giro, C-4 numerazione di perimetro — regola del 2, ok Tid
 #        2026-07-21): valida+normalizza `competenza_mese` al 1° del mese,
@@ -1062,7 +1048,9 @@ def _accoda_job_fatturazione(
     # Scope emittente CATTURATO ora (None = admin globale): serve al vincolo
     # DB run_as↔scope, all'idempotenza di business e all'audit.
     emittente_ids = PermissionResolver.get_emittenti_ids(user)
-    scope_key = _scope_key_fatturazione(emittente_ids)
+    # Chiave canonica dello scope (BB core `coda_lavori.scope` — fonte unica
+    # del formato, condivisa con polling/liste/badge della UI code).
+    scope_key = scope_key_da_emittenti(emittente_ids)
     job_payload: dict[str, object] = {"competenza_mese": competenza.isoformat()}
     for key in extra_payload_keys:
         value = payload.get(key)
@@ -1083,7 +1071,7 @@ def _accoda_job_fatturazione(
             "identita_id": identita_id,
             "emittente_ids": emittente_ids,
             # Token di ownership del polling: scope-based (chi condivide lo
-            # scope vede il job condiviso via dedup). Vedi _scope_key_fatturazione.
+            # scope vede il job condiviso via dedup). Vedi scope_key_da_emittenti.
             "scope_key": scope_key,
         },
         idempotency_key=idempotency_key,
@@ -1189,7 +1177,7 @@ class ApiFatturazioneRunStato(DomainAPIView):
         emittente_ids = PermissionResolver.get_emittenti_ids(request.user)
         owner_scope_key = (
             None if emittente_ids is None
-            else _scope_key_fatturazione(emittente_ids)
+            else scope_key_da_emittenti(emittente_ids)
         )
         stato = CodaLavoriRepository().get_stato(
             int(job_id), owner_scope_key=owner_scope_key,

@@ -77,6 +77,41 @@ class MaintenanceRepository:
         ]
         return results, total_count
 
+    # Scopo: Liveness dei worker schedulati (badge UI code, BE-4): per ogni
+    #        jobname richiesto ritorna ultimo run, esito dell'ultimo run e flag
+    #        `attivo` = ultimo run entro `soglia_minuti` (confronto in SQL col
+    #        clock DB — nessun parsing timestamp in Python, tz-safe). Jobname
+    #        MAI girati non compaiono nel dict (il caller li tratta come
+    #        "worker giù"). Sola lettura su maintenance.job_run_log.
+    def job_liveness(
+        self, jobnames: list[str], *, soglia_minuti: int,
+    ) -> dict[str, dict]:
+        if not jobnames:
+            return {}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT jobname,
+                       MAX(started_at)::text AS last_run_at,
+                       MAX(started_at) > now() - make_interval(mins => %s)
+                           AS attivo,
+                       (ARRAY_AGG(ok ORDER BY started_at DESC))[1] AS last_ok
+                  FROM maintenance.job_run_log
+                 WHERE jobname = ANY(%s)
+                 GROUP BY jobname
+                """,
+                [int(soglia_minuti), list(jobnames)],
+            )
+            rows = cursor.fetchall()
+        return {
+            str(r[0]): {
+                "last_run_at": r[1],
+                "attivo": bool(r[2]),
+                "last_ok": r[3],
+            }
+            for r in rows
+        }
+
     # Scopo: Restituisce la lista dei jobname distinti con conteggio esecuzioni e ultimo esito.
     # Utile per dashboard riepilogativa dei job schedulati.
     def list_job_summary(

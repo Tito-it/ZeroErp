@@ -47,6 +47,12 @@ export const useUiStore = defineStore('ui', () => {
   const aiDrawerVisible = ref(false)
   const aiAvailable = ref(false)
 
+  // Drawer rapido code di lavoro (badge top bar → drawer, D-B brief
+  // gestione-code-lavori-stampa).
+  const codeDrawerVisible = ref(false)
+
+  function openCodeDrawer() { codeDrawerVisible.value = true }
+
   // Dark/Light mode — persistito in localStorage, applicato su <html> class.
   // Chiave "device default" al boot (pre-login); sovrascritta dalla chiave
   // user-specific quando `syncUserPreferences(userId)` viene chiamata dopo
@@ -159,6 +165,7 @@ export const useUiStore = defineStore('ui', () => {
     searchDrawerVisible.value = false
     aiDrawerVisible.value = false
     aiAvailable.value = false
+    codeDrawerVisible.value = false
     currentUserId.value = null
     // isDark, sidebarCollapsed, layoutMode: intatti.
     // Al prossimo login, `syncUserPreferences` applichera' la preferenza
@@ -180,6 +187,8 @@ export const useUiStore = defineStore('ui', () => {
     aiAvailable,
     openAiDrawer,
     toggleAiDrawer,
+    codeDrawerVisible,
+    openCodeDrawer,
     toggleSidebar,
     isDark,
     toggleDarkMode,

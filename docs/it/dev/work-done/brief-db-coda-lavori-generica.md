@@ -14,7 +14,7 @@
 > **Consumatore 1**:
 > [brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md) C-3.
 > **Relazione con B-4**: **NON** è la promozione prevista da **B-4** del
-> [brief-db-processi-fatturazione-cockpit.md](../work-in-progress/brief-db-processi-fatturazione-cockpit.md).
+> [brief-db-processi-fatturazione-cockpit.md](brief-db-processi-fatturazione-cockpit.md).
 > B-4 generalizza `fatture_stampa_coda` lungo l'asse **documentale** (→ `documenti.*`,
 > outbox di *documenti* con FK sorgente tipizzata); questa è una coda di **job**
 > generici (asse diverso). Le due generalizzazioni sono distinte e possono coesistere

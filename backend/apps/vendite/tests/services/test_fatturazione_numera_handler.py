@@ -47,10 +47,15 @@ class FatturazioneNumeraHandlerTests(SimpleTestCase):
     def test_happy_path_numera_tutti_i_lotti(
         self, pipe_repo, vend_repo, mock_numera,
     ) -> None:
-        pipe_repo.return_value.get_stato_doc_fiscale_id.return_value = 7  # EMESSA
+        pipe_repo.return_value.get_stato_doc_fiscale_id.side_effect = (
+            lambda codice: {"EMESSA": 7, "DEFINITIVA": 8}[codice]
+        )
         vend_repo.return_value.list_lotti_numerabili.return_value = [
             {"id": 1, "codice": "LOT1"}, {"id": 2, "codice": "LOT2"},
         ]
+        mock_numera.return_value = {
+            "stato_doc_fiscale_id": 8, "motivo_stop": "COMPLETATO",
+        }
 
         result = fatturazione_numera_handler(
             {"competenza_mese": "2026-06-15"},
@@ -68,6 +73,7 @@ class FatturazioneNumeraHandlerTests(SimpleTestCase):
         self.assertEqual(result["competenza"], "2026-06-01")
         self.assertEqual(result["lotti"], 2)
         self.assertEqual(result["numerati"], 2)
+        self.assertEqual(result["saltati"], 0)
         self.assertEqual(result["falliti"], 0)
         self.assertEqual(result["falliti_dett"], [])
 
@@ -79,12 +85,15 @@ class FatturazioneNumeraHandlerTests(SimpleTestCase):
     def test_best_effort_un_lotto_fallito_non_blocca(
         self, pipe_repo, vend_repo, mock_numera,
     ) -> None:
-        pipe_repo.return_value.get_stato_doc_fiscale_id.return_value = 7
+        pipe_repo.return_value.get_stato_doc_fiscale_id.side_effect = (
+            lambda codice: {"EMESSA": 7, "DEFINITIVA": 8}[codice]
+        )
         vend_repo.return_value.list_lotti_numerabili.return_value = [
             {"id": 1, "codice": "LOT1"}, {"id": 2, "codice": "LOT2"},
         ]
         mock_numera.side_effect = [
-            ServiceError(code="E_LOTTO_NON_NUMERABILE", message="x"), None,
+            ServiceError(code="E_LOTTO_NON_NUMERABILE", message="x"),
+            {"stato_doc_fiscale_id": 8, "motivo_stop": "COMPLETATO"},
         ]
 
         result = fatturazione_numera_handler(
@@ -98,6 +107,39 @@ class FatturazioneNumeraHandlerTests(SimpleTestCase):
         self.assertEqual(result["falliti_dett"][0]["code"], "E_LOTTO_NON_NUMERABILE")
         # il 2° lotto è stato comunque lavorato
         self.assertEqual(mock_numera.call_count, 2)
+
+    # 1-bis. Lotto che NON transita a DEFINITIVA (es. legacy pre-G1: pipeline
+    #        si ferma senza step, nessuna eccezione) → conteggiato SALTATO con
+    #        motivo_stop, MAI «numerato» (smoke C-9: fatture senza numero
+    #        nascoste da un contatore ottimista).
+    @patch(_NUMERA)
+    @patch(_VEND_REPO)
+    @patch(_PIPE_REPO)
+    def test_lotto_non_transitato_conta_saltato(
+        self, pipe_repo, vend_repo, mock_numera,
+    ) -> None:
+        pipe_repo.return_value.get_stato_doc_fiscale_id.side_effect = (
+            lambda codice: {"EMESSA": 7, "DEFINITIVA": 8}[codice]
+        )
+        vend_repo.return_value.list_lotti_numerabili.return_value = [
+            {"id": 106, "codice": "LEGACY"},
+        ]
+        mock_numera.return_value = {
+            "stato_doc_fiscale_id": 7,  # resta EMESSA
+            "motivo_stop": "NESSUNO_STEP_ESEGUIBILE",
+        }
+
+        result = fatturazione_numera_handler(
+            {"competenza_mese": "2026-06-01"}, scope=None,
+        )
+
+        self.assertEqual(result["numerati"], 0)
+        self.assertEqual(result["saltati"], 1)
+        self.assertEqual(result["falliti"], 0)
+        self.assertEqual(result["saltati_dett"][0]["lotto_id"], 106)
+        self.assertEqual(
+            result["saltati_dett"][0]["motivo_stop"], "NESSUNO_STEP_ESEGUIBILE",
+        )
 
     # 2. Nessun lotto EMESSA nel mese → job no-op (lotti=0), numera mai chiamato.
     @patch(_NUMERA)

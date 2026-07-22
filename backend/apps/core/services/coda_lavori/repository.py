@@ -19,6 +19,13 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.db._helpers import (
+    LIST_MAX_LIMIT,
+    fetch_paged_with_total,
+    iso_or_none,
+    jsonb_out,
+)
+
 from .backend import QueueItem
 
 # Origini di accodamento (CHECK chk_coda_lavori_origine). Chi ha ACCODATO
@@ -31,6 +38,15 @@ ORIGINE_TRIGGER = "TRIGGER"
 # Modalità di esecuzione (CHECK chk_coda_lavori_run_as + chk_..._run_as_scope).
 RUN_AS_SISTEMA = "SISTEMA"
 RUN_AS_OPERATORE = "OPERATORE"
+
+# Soglia (minuti) oltre cui un IN_CORSO è considerato STANTIO (worker morto):
+# fonte unica condivisa da reaper (drainer) e requeue manuale — la stessa
+# definizione di «bloccato» per entrambi, mai due soglie che divergono.
+STALE_MINUTI_DEFAULT = 30
+
+# Default dei tentativi extra concessi da un requeue manuale (fonte unica:
+# service e view NON lo ripetono — passano None/omettono il kwarg).
+DEFAULT_EXTRA_TENTATIVI = 3
 
 
 class CodaLavoriRepository:
@@ -170,9 +186,9 @@ class CodaLavoriRepository:
             QueueItem(
                 id=int(r[0]),
                 job_type=str(r[1]),
-                payload=r[2] or {},
+                payload=jsonb_out(r[2]) or {},
                 run_as=str(r[3]),
-                scope=r[4],
+                scope=jsonb_out(r[4]),
                 tentativi=int(r[5]),
                 max_tentativi=int(r[6]),
                 raw={"handler_code": r[7]},
@@ -181,6 +197,10 @@ class CodaLavoriRepository:
         ]
 
     # Scopo: Marca l'item completato (→FATTO) col result; azzera l'errore.
+    #        Guard di OWNERSHIP dell'esecuzione (review 2026-07-22): scrive solo
+    #        se il job è ancora IN_CORSO e claimato da QUESTO run (`job_run_id`
+    #        timbrato dal claim) — un worker sopravvissuto a reaper/requeue non
+    #        può sovrascrivere l'esito dell'esecuzione che l'ha rimpiazzato.
     def mark_done(self, item_id: int, *, result: dict[str, Any]) -> None:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -189,14 +209,17 @@ class CodaLavoriRepository:
                    SET stato = 'FATTO', result = %s::jsonb,
                        ultimo_errore = NULL, ended_at = now()
                  WHERE id = %s
+                   AND stato = 'IN_CORSO'
+                   AND job_run_id IS NOT DISTINCT FROM %s
                 """,
-                [json.dumps(result, default=str), int(item_id)],
+                [json.dumps(result, default=str), int(item_id), self._job_run_id],
             )
 
     # Scopo: Registra il fallimento. `retry_after_secondi=None` → ERRORE
     #        terminale; int → PENDING con `run_after = now()+intervallo`
     #        (backoff col clock DB) e `claimed_at` azzerato (ri-eleggibile).
-    #        `tentativi` sempre incrementato (storia preservata).
+    #        `tentativi` sempre incrementato (storia preservata). Stesso guard
+    #        di ownership di `mark_done` (IN_CORSO + job_run_id del claim).
     def mark_error(
         self,
         item_id: int,
@@ -213,8 +236,10 @@ class CodaLavoriRepository:
                        SET stato = 'ERRORE', tentativi = tentativi + 1,
                            ultimo_errore = %s::jsonb, ended_at = now()
                      WHERE id = %s
+                       AND stato = 'IN_CORSO'
+                       AND job_run_id IS NOT DISTINCT FROM %s
                     """,
-                    [errore_json, int(item_id)],
+                    [errore_json, int(item_id), self._job_run_id],
                 )
             else:
                 cursor.execute(
@@ -225,8 +250,11 @@ class CodaLavoriRepository:
                            run_after = now() + make_interval(secs => %s),
                            claimed_at = NULL
                      WHERE id = %s
+                       AND stato = 'IN_CORSO'
+                       AND job_run_id IS NOT DISTINCT FROM %s
                     """,
-                    [errore_json, int(retry_after_secondi), int(item_id)],
+                    [errore_json, int(retry_after_secondi), int(item_id),
+                     self._job_run_id],
                 )
 
     # ══════════════════════════════════════════════════════════
@@ -262,15 +290,25 @@ class CodaLavoriRepository:
     #        per consentire i nuovi tentativi (brief DB §3a). Ritorna True se
     #        rimesso in coda. `owner_scope_key`: enforcement ownership (None =
     #        qualunque job, per l'admin `code_manage`); fuori scope → 0 righe.
+    #        ⚠️ IN_CORSO è riaccodabile SOLO se STANTIO (`claimed_at` oltre
+    #        `stale_minuti`, stessa soglia del reaper): riaccodare un job che
+    #        un worker sta DAVVERO eseguendo farebbe partire una seconda
+    #        esecuzione concorrente dello stesso handler (review 2026-07-22).
     def requeue(
         self,
         item_id: int,
         *,
-        extra_tentativi: int = 3,
+        extra_tentativi: int = DEFAULT_EXTRA_TENTATIVI,
         owner_scope_key: str | None = None,
+        stale_minuti: int = STALE_MINUTI_DEFAULT,
     ) -> bool:
-        conditions = ["id = %s", "stato IN ('IN_CORSO', 'ERRORE')"]
-        params: list[Any] = [int(item_id)]
+        conditions = [
+            "id = %s",
+            """(stato = 'ERRORE'
+                OR (stato = 'IN_CORSO'
+                    AND claimed_at < now() - make_interval(mins => %s)))""",
+        ]
+        params: list[Any] = [int(item_id), int(stale_minuti)]
         if owner_scope_key is not None:
             conditions.append("scope->>'scope_key' = %s")
             params.append(str(owner_scope_key))
@@ -321,8 +359,13 @@ class CodaLavoriRepository:
     #        (operatore → solo le proprie; None = tutte, per l'admin `code_manage`);
     #        `caller_scope_key` serve SOLO a calcolare `is_mio` (resta la chiave del
     #        chiamante anche quando vede tutto). Filtri opzionali stato/job_type/
-    #        intervallo `data_insert`/solo-vivi. Ritorna `{items, total}` (total =
-    #        righe che matchano PRIMA della paginazione, via `COUNT(*) OVER()`).
+    #        intervallo `data_insert` (`data_a` bound ESCLUSIVO: il chiamante
+    #        passa già il giorno+1). Ritorna `{items, total}` via BB
+    #        `fetch_paged_with_total` (fallback pagina-stantia: le code si
+    #        auto-svuotano sotto l'utente — mai «0 risultati» a offset alto).
+    #        Ordine `id DESC` (i più recenti in alto): è una lista di
+    #        MONITORAGGIO, non la corsia del worker (che resta `priorita, id`
+    #        nel claim) — così la prima pagina è anche «gli ultimi job».
     def elenca(
         self,
         *,
@@ -332,7 +375,6 @@ class CodaLavoriRepository:
         job_type: str | None = None,
         data_da: Any = None,
         data_a: Any = None,
-        solo_vivi: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> dict[str, Any]:
@@ -341,9 +383,7 @@ class CodaLavoriRepository:
         if owner_scope_key is not None:
             conditions.append("scope->>'scope_key' = %s")
             where_params.append(str(owner_scope_key))
-        if solo_vivi:
-            conditions.append("stato IN ('PENDING', 'IN_CORSO')")
-        elif stati:
+        if stati:
             conditions.append("stato = ANY(%s)")
             where_params.append(list(stati))
         if job_type is not None:
@@ -353,55 +393,117 @@ class CodaLavoriRepository:
             conditions.append("data_insert >= %s")
             where_params.append(data_da)
         if data_a is not None:
-            conditions.append("data_insert <= %s")
+            conditions.append("data_insert < %s")
             where_params.append(data_a)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        safe_limit = max(1, min(int(limit), 200))
+        safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
         safe_offset = max(0, int(offset))
-        sql = f"""
+        data_sql = f"""
             SELECT id, job_type, stato, priorita, tentativi, max_tentativi,
                    ultimo_errore, run_after, claimed_at, started_at, ended_at,
                    job_run_id, result,
                    scope->>'username' AS proprietario,
                    scope->>'scope_key' AS scope_key,
                    (scope->>'scope_key' = %s) AS is_mio,
-                   COUNT(*) OVER()::int AS total
+                   COUNT(*) OVER() AS total_count
               FROM dbops.coda_lavori
               {where}
-             ORDER BY priorita, id
+             ORDER BY id DESC
              LIMIT %s OFFSET %s
         """  # noqa: S608 — where da condizioni whitelisted (nessun input libero)
-        params = [caller_scope_key, *where_params, safe_limit, safe_offset]
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            rows = cursor.fetchall()
-
-        def _iso(value: Any) -> str | None:
-            return value.isoformat() if value is not None else None
-
-        total = int(rows[0][16]) if rows else 0
+        rows, total = fetch_paged_with_total(
+            data_sql,
+            [caller_scope_key, *where_params, safe_limit, safe_offset],
+            fallback_count_sql=(
+                f"SELECT COUNT(*) FROM dbops.coda_lavori {where}"  # noqa: S608
+            ),
+            fallback_params=list(where_params),
+            offset=safe_offset,
+        )
         items = [
             {
-                "id": int(r[0]),
-                "job_type": str(r[1]),
-                "stato": str(r[2]),
-                "priorita": int(r[3]),
-                "tentativi": int(r[4]),
-                "max_tentativi": int(r[5]),
-                "ultimo_errore": r[6],
-                "run_after": _iso(r[7]),
-                "claimed_at": _iso(r[8]),
-                "started_at": _iso(r[9]),
-                "ended_at": _iso(r[10]),
-                "job_run_id": None if r[11] is None else int(r[11]),
-                "result": r[12],
-                "proprietario": r[13],
-                "scope_key": r[14],
-                "is_mio": bool(r[15]),
+                "id": int(r["id"]),
+                "job_type": str(r["job_type"]),
+                "stato": str(r["stato"]),
+                "priorita": int(r["priorita"]),
+                "tentativi": int(r["tentativi"]),
+                "max_tentativi": int(r["max_tentativi"]),
+                "ultimo_errore": jsonb_out(r["ultimo_errore"]),
+                "run_after": iso_or_none(r["run_after"]),
+                "claimed_at": iso_or_none(r["claimed_at"]),
+                "started_at": iso_or_none(r["started_at"]),
+                "ended_at": iso_or_none(r["ended_at"]),
+                "job_run_id": None if r["job_run_id"] is None else int(r["job_run_id"]),
+                "result": jsonb_out(r["result"]),
+                "proprietario": r["proprietario"],
+                "scope_key": r["scope_key"],
+                "is_mio": bool(r["is_mio"]),
             }
             for r in rows
         ]
-        return {"items": items, "total": total}
+        return {"items": items, "total": int(total)}
+
+    # Scopo: Dettaglio COMPLETO di un job per il drawer della UI code (BE-8):
+    #        oltre ai campi del polling, payload, origine, priorita, timeline
+    #        (accodato/claimed/started/ended), run_after, proprietario
+    #        (scope->>'username') e `is_mio` (scope_key del job == quella del
+    #        chiamante, calcolato QUI — il FE non confronta identità, P-5).
+    #        `owner_scope_key` filtra come in `get_stato` (None = nessun filtro,
+    #        admin `code_manage`); `caller_scope_key` serve SOLO a `is_mio`.
+    #        None se id inesistente o fuori scope (indistinguibile, no leak).
+    def get_dettaglio(
+        self,
+        item_id: int,
+        *,
+        owner_scope_key: str | None = None,
+        caller_scope_key: str | None = None,
+    ) -> dict[str, Any] | None:
+        conditions = ["id = %s"]
+        params: list[Any] = [caller_scope_key, int(item_id)]
+        if owner_scope_key is not None:
+            conditions.append("scope->>'scope_key' = %s")
+            params.append(str(owner_scope_key))
+        where = " AND ".join(conditions)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT id, job_type, stato, priorita, origine, payload,
+                       tentativi, max_tentativi, result, ultimo_errore,
+                       run_after, data_insert, claimed_at, started_at,
+                       ended_at, job_run_id,
+                       scope->>'username' AS proprietario,
+                       scope->>'scope_key' AS scope_key,
+                       (scope->>'scope_key' = %s) AS is_mio
+                  FROM dbops.coda_lavori
+                 WHERE {where}
+                """,  # noqa: S608 — where da condizioni whitelisted
+                params,
+            )
+            row = cursor.fetchone()
+        if row is None:
+            return None
+
+        return {
+            "id": int(row[0]),
+            "job_type": str(row[1]),
+            "stato": str(row[2]),
+            "priorita": int(row[3]),
+            "origine": str(row[4]),
+            "payload": jsonb_out(row[5]),
+            "tentativi": int(row[6]),
+            "max_tentativi": int(row[7]),
+            "result": jsonb_out(row[8]),
+            "ultimo_errore": jsonb_out(row[9]),
+            "run_after": iso_or_none(row[10]),
+            "data_insert": iso_or_none(row[11]),
+            "claimed_at": iso_or_none(row[12]),
+            "started_at": iso_or_none(row[13]),
+            "ended_at": iso_or_none(row[14]),
+            "job_run_id": None if row[15] is None else int(row[15]),
+            "proprietario": row[16],
+            "scope_key": row[17],
+            "is_mio": bool(row[18]),
+        }
 
     # Scopo: Stato di un job per il polling FE (I-3 non bloccante): stato +
     #        result (a FATTO) + ultimo_errore (a ERRORE). None se id inesistente
@@ -439,7 +541,7 @@ class CodaLavoriRepository:
             "stato": str(row[2]),
             "tentativi": int(row[3]),
             "max_tentativi": int(row[4]),
-            "result": row[5],
-            "ultimo_errore": row[6],
+            "result": jsonb_out(row[5]),
+            "ultimo_errore": jsonb_out(row[6]),
             "job_run_id": None if row[7] is None else int(row[7]),
         }

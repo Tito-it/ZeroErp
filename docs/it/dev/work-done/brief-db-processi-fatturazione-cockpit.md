@@ -6,8 +6,10 @@
 > pgTAP VERDI (2026-07-21)** — l'interruttore è armato e testato: prerequisito BE
 > **verificato sul codice** (handler `stampa_documenti_lotto_default` registrato in
 > [`pipeline_step_executor.py:47`], repo → `SELECT vendite.fn_accoda_stampe_lotto(...)`,
-> BE pushato); migrate eseguito e §8 blocco G2 verde. **Resta solo il commit** su
-> `dev/db-tid`. 🟢 **Brief CHIUSO** salvo push.
+> BE pushato); migrate eseguito e §8 blocco G2 verde. **Committato e pushato** su
+> `dev/db-tid` (commit `12307d0bc`, mergiato) e **C-10 verificato sul DB vivo** dal BE
+> (pipeline 4+6 con `stampa_documenti_lotto`, worker attivi). 🟢 **Brief CHIUSO ed
+> EVASO (2026-07-21)** — spostato in work-done.
 >
 > **Design-of-record**:
 > [brief-design-gestione-processi-fatturazione.md](brief-design-gestione-processi-fatturazione.md)
@@ -400,7 +402,7 @@ NN = **sequenza globale per data** (i `20260719-*` arrivano a `-16` → i nuovi 
 
 1. **G1** ✅ (2026-07-20): tabella + funzione + seed (§3–5) → pgTAP fondamenta verdi →
    applicato/committato/pushato (`67d63cae9`).
-2. **BE/FE** ✅ ([brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md)):
+2. **BE/FE** ✅ ([brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md)):
    handler `stampa_documenti_lotto_default` (accoda), worker drainer (backstop + render),
    cablaggio FATTURA — completato e pushato.
 3. **G2** ✅ scritto (2026-07-21, handler BE registrato e pushato): append ai `processi`

@@ -676,6 +676,7 @@ class VenditeRepository:
                 a.fattura_anno,
                 a.fattura_serie,
                 a.fattura_numero,
+                a.lotto_id,
                 a.stato_fattura_codice_interno,
                 a.stato_fattura_codice,
                 a.valore_fatturato,
@@ -722,10 +723,11 @@ class VenditeRepository:
                     "fattura_anno": None if row[18] is None else int(row[18]),
                     "fattura_serie": None if row[19] is None else str(row[19]),
                     "fattura_numero": None if row[20] is None else int(row[20]),
-                    "stato_fattura_codice_interno": None if row[21] is None else str(row[21]),
-                    "stato_fattura_codice": None if row[22] is None else str(row[22]),
-                    "valore_fatturato": str(row[23]) if row[23] is not None else None,
-                    "fattura_critical": bool(row[24]),
+                    "lotto_id": None if row[21] is None else int(row[21]),
+                    "stato_fattura_codice_interno": None if row[22] is None else str(row[22]),
+                    "stato_fattura_codice": None if row[23] is None else str(row[23]),
+                    "valore_fatturato": str(row[24]) if row[24] is not None else None,
+                    "fattura_critical": bool(row[25]),
                 }
             )
         return result, total_count
