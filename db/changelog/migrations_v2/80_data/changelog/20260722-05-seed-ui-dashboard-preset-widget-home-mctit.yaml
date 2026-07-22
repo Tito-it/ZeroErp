@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed ui.dashboard_preset_widget — contenuto del preset di sistema
+# 'home_default' (20260722-04): tutti e 4 i widget, visibili, ordine a passi
+# di 10.
+#
+# Tutti visibile=TRUE: la selezione fine e' compito dell'utente (preferenza
+# personale, step 2a della cascata), il preset dice solo cosa vede chi non ha
+# mai personalizzato. Chi non ha l'area vendite ne vedra' comunque uno solo:
+# il gate permessi (step 4) scarta i tre gated a valle. Vedi il blocco
+# DIVERGENZA in 20260722-04 per il perche' non c'e' un preset di ruolo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260722-05-seed-ui-dashboard-preset-widget-home-mctit.yaml
+
+  - changeSet:
+      id: 20260722-05-seed-ui-dashboard-preset-widget-home
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Contenuto del preset di sistema 'home_default': i 4 widget, visibili,
+        ordine 10/20/30/40.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: dashboard_preset_widget
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM ui.dashboard_preset
+               WHERE id = 1
+                 AND codice = 'home_default';
+        - sqlCheck:
+            expectedResult: 4
+            sql: |
+              SELECT COUNT(*) FROM ui.widget WHERE id IN (1, 2, 3, 4);
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/ui/dashboard_preset_widget.csv
+            tableName: dashboard_preset_widget
+            schemaName: ui
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "preset_id,widget_id"
+            columns:
+              - column: { name: preset_id, type: NUMERIC }
+              - column: { name: widget_id, type: NUMERIC }
+              - column: { name: ordine,    type: NUMERIC }
+              - column: { name: visibile,  type: BOOLEAN }

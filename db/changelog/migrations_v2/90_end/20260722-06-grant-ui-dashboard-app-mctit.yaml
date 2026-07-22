@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# B-GRANT — sanatoria privilegi runtime sulle 6 tabelle ui.dashboard_* / ui.widget
+# (mini-brief GRANT+seed §1).
+#
+# SINTOMO: ui.fn_resolve_dashboard_config e' SECURITY INVOKER e l'EXECUTE al
+# ruolo applicativo c'era gia', ma la funzione legge tabelle su cui zeroerp_app
+# non aveva NESSUN privilegio -> a runtime:
+#   ProgrammingError: permesso negato per la tabella dashboard_definizione
+#   CONTEXT: SELECT id FROM ui.dashboard_definizione WHERE codice = ...
+#
+# CAUSA SISTEMICA (identica a 20260615-12 e 20260608-12): i grant runtime
+# generici (90_end/ci_apply/20260205-41) girano solo nel context 'ci_apply',
+# quindi fuori CI il ruolo applicativo non riceve privilegi sulle tabelle nuove.
+# Qui un GRANT mirato, idempotente e difensivo (skip se il ruolo manca), valido
+# in ogni contesto.
+#
+# NOTA DI METODO (dal mini-brief, vale oltre questo caso): il difetto era
+# invisibile da information_schema.tables, che e' FILTRATA PER PRIVILEGI — a
+# zeroerp_app le tabelle risultavano *inesistenti*, non *inaccessibili*. Solo
+# pg_catalog (non filtrato) mostra che ci sono. Se in futuro un apply "non
+# risulta", controllare i GRANT prima di sospettare che il DDL non sia passato.
+#
+# ------------------------------------------------------------
+# PERIMETRO DEI PRIVILEGI — minimo necessario, non mirror cieco delle lista_*
+# ------------------------------------------------------------
+# Il mini-brief §1 mostra che tutte le ui.lista_* hanno SELECT+INSERT+UPDATE+
+# DELETE e chiede privilegi "allineati". Il testo del brief pero' precisa il
+# criterio vero: "lettura per il catalogo e i preset, scrittura per la
+# preferenza utente". Si applica quello:
+#
+#   SELECT              -> widget, dashboard_definizione, dashboard_widget,
+#                          dashboard_preset, dashboard_preset_widget
+#                          (catalogo e preset: si popolano via seed Liquibase,
+#                          non dal BE -- vedi 20260722-02..05)
+#   SELECT/INS/UPD/DEL  -> dashboard_preferenza_utente
+#                          (l'unica che il BE scrive: PUT .../preferenza/)
+#
+# Il full-DML sulle lista_* e' con ogni probabilita' un over-grant storico: non
+# lo si replica per simmetria. Se emergesse un CRUD admin sul catalogo widget
+# lato BE, allargare e' una riga in questo array -- il contrario (restringere
+# dopo) e' molto piu' scomodo.
+#
+# SEQUENCE: USAGE solo sull'identity di dashboard_preferenza_utente, l'unica
+# tabella in cui il ruolo fa INSERT. Concedere USAGE sulle sequence di tabelle
+# su cui non ha INSERT non servirebbe a nulla.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20260722-06-grant-ui-dashboard-app-mctit.yaml
+
+  - changeSet:
+      id: 20260722-06-grant-ui-dashboard-app
+      author: mctit
+      runOnChange: true
+      comment: >
+        GRANT runtime al ruolo applicativo zeroerp_app sulle 6 tabelle
+        ui.widget / ui.dashboard_*: SELECT su catalogo e preset, DML completa
+        sulla sola dashboard_preferenza_utente (+ USAGE sulla sua sequence).
+        Idempotente e difensivo. Sblocca fn_resolve_dashboard_config (invoker).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+                v_tbl      text;
+                -- Sola lettura: catalogo widget, composizione e preset.
+                -- Si popolano via seed Liquibase, il BE non li scrive.
+                v_ro_tables text[] := ARRAY[
+                  'ui.widget',
+                  'ui.dashboard_definizione',
+                  'ui.dashboard_widget',
+                  'ui.dashboard_preset',
+                  'ui.dashboard_preset_widget'
+                ];
+                -- Scrittura: la preferenza utente (PUT .../preferenza/).
+                v_rw_tables text[] := ARRAY[
+                  'ui.dashboard_preferenza_utente'
+                ];
+                v_seq      text;
+              BEGIN
+                -- Se il ruolo non esiste (es. bootstrap incompleto) non blocchiamo.
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  RAISE NOTICE 'Ruolo % assente: skip grant ui.dashboard_*.', v_app_role;
+                  RETURN;
+                END IF;
+
+                EXECUTE format('GRANT USAGE ON SCHEMA ui TO %I', v_app_role);
+
+                FOREACH v_tbl IN ARRAY v_ro_tables LOOP
+                  EXECUTE format('GRANT SELECT ON TABLE %s TO %I', v_tbl, v_app_role);
+                END LOOP;
+
+                FOREACH v_tbl IN ARRAY v_rw_tables LOOP
+                  EXECUTE format(
+                    'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %s TO %I',
+                    v_tbl, v_app_role
+                  );
+                END LOOP;
+
+                -- USAGE sulla sequence identity delle sole tabelle con INSERT,
+                -- altrimenti l'INSERT auto-id fallisce su "permission denied
+                -- for sequence". Risolta a runtime: il nome e' generato da PG.
+                FOREACH v_tbl IN ARRAY v_rw_tables LOOP
+                  v_seq := pg_get_serial_sequence(v_tbl, 'id');
+                  IF v_seq IS NOT NULL THEN
+                    EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE %s TO %I',
+                                   v_seq, v_app_role);
+                  END IF;
+                END LOOP;
+              END;
+              $$;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DO $$
+              DECLARE
+                v_app_role text := 'zeroerp_app';
+                v_tbl      text;
+                v_tables   text[] := ARRAY[
+                  'ui.widget',
+                  'ui.dashboard_definizione',
+                  'ui.dashboard_widget',
+                  'ui.dashboard_preset',
+                  'ui.dashboard_preset_widget',
+                  'ui.dashboard_preferenza_utente'
+                ];
+                v_seq      text;
+              BEGIN
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_app_role) THEN
+                  FOREACH v_tbl IN ARRAY v_tables LOOP
+                    EXECUTE format('REVOKE ALL ON TABLE %s FROM %I', v_tbl, v_app_role);
+                  END LOOP;
+
+                  v_seq := pg_get_serial_sequence('ui.dashboard_preferenza_utente', 'id');
+                  IF v_seq IS NOT NULL THEN
+                    EXECUTE format('REVOKE ALL ON SEQUENCE %s FROM %I', v_seq, v_app_role);
+                  END IF;
+                END IF;
+              END;
+              $$;

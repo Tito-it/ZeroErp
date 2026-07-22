@@ -1,0 +1,269 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: guard di coerenza stato lotto <-> stato fatture
+--       vendite.fn_guard_lotto_fatture_stato_coerente
+--       + constraint trigger DEFERRED su fatture / fatturazione_lotti /
+--         fatturazione_lotti_fatture
+-- Brief: brief-db-guard-coerenza-stato-lotto-fatture §4.2
+-- ------------------------------------------------------------
+-- Indice test
+--  1) Riferimenti minimi presenti
+--  2) Lotto creato
+--  3) Fatture test create (ok / critical / da-escludere)
+--  4) Ponte lotto-fatture creato
+--  5) Stato iniziale allineato => guard NON solleva
+--  6) Lotto avanzato a EMESSA senza sync => guard SOLLEVA (caso incidente)
+--  7) Dopo fn_sync_lotto_fatture_stato => guard NON solleva (non-regressione)
+--  8) Le eccezioni sono davvero rimaste indietro (anti-test-vacuo del 7)
+--  9) La vista di sorveglianza non elenca le eccezioni
+-- 10) Lotto senza fatture => guard NON solleva
+-- 11) I 3 constraint trigger esistono, sono CONSTRAINT e DEFERRED
+-- 12) End-to-end con SET CONSTRAINTS IMMEDIATE: l'UPDATE che disallinea fallisce
+-- ------------------------------------------------------------
+-- NOTA SUL PERCHE' DI QUESTA STRUTTURA
+-- Un CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED scatta al COMMIT. Questo
+-- file, come 140 pgTAP su 144, chiude in ROLLBACK: i trigger non scatterebbero
+-- MAI da soli. Un test che si limitasse a disallineare e sperare nel fallimento
+-- passerebbe senza aver verificato nulla -- il modo peggiore di fallire.
+-- Quindi:
+--   - i test 5..10 chiamano il guard DIRETTAMENTE (logica, deterministica);
+--   - il test 11 verifica il CABLAGGIO su pg_catalog (trigger giusti, sulle
+--     tabelle giuste, davvero constraint e davvero deferred);
+--   - il test 12 forza `SET CONSTRAINTS ALL IMMEDIATE` per esercitare la catena
+--     completa trigger -> trgfn -> guard.
+-- ------------------------------------------------------------
+BEGIN;
+SELECT plan(12);
+
+CREATE TEMP TABLE tmp_costanti_glf AS
+SELECT ('pgtap_guard_lotto_fatt_' || to_char(clock_timestamp(), 'YYMMDDHH24MISS'))::text AS test_scope;
+
+CREATE TEMP TABLE tmp_refs_glf AS
+SELECT
+  (SELECT m.registro_id
+     FROM vendite.tipi_doc_fiscale_registri m
+     JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
+    WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1) AS registro_id,
+  (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS billing_account_id,
+  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS utility_id,
+  (SELECT m.tipo_doc_fiscale_id
+     FROM vendite.tipi_doc_fiscale_registri m
+     JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
+    WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1) AS tipo_doc_fiscale_id,
+  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
+  (SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id)
+     FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS emittente_soggetto_ruolo_id,
+  (SELECT s.id FROM config.stati_doc_fiscale s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE
+    ORDER BY s.id LIMIT 1) AS stato_draft_id,
+  (SELECT s.id FROM config.stati_doc_fiscale s
+    WHERE s.codice_interno = 'EMESSA' AND s.attivo IS TRUE
+    ORDER BY s.id LIMIT 1) AS stato_emessa_id;
+
+SELECT ok(
+  (SELECT registro_id IS NOT NULL AND billing_account_id IS NOT NULL
+      AND utility_id IS NOT NULL AND tipo_doc_fiscale_id IS NOT NULL
+      AND valuta_id IS NOT NULL AND emittente_soggetto_ruolo_id IS NOT NULL
+      AND stato_draft_id IS NOT NULL AND stato_emessa_id IS NOT NULL
+     FROM tmp_refs_glf),
+  '1) Riferimenti minimi presenti'
+);
+
+-- ------------------------------------------------------------
+-- Fixture: un lotto con tre fatture (ok / critical / da-escludere)
+-- ------------------------------------------------------------
+CREATE TEMP TABLE tmp_lotto_glf AS
+SELECT vendite.fn_create_fatturazione_lotto(
+    p_competenza_mese            => date_trunc('month', current_date)::date,
+    p_tipo_doc_fiscale_id        => (SELECT tipo_doc_fiscale_id FROM tmp_refs_glf),
+    p_utility_id                 => (SELECT utility_id FROM tmp_refs_glf),
+    p_billing_account_id         => (SELECT billing_account_id FROM tmp_refs_glf),
+    p_lock_batch_id              => NULL,
+    p_meta                       => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_glf)),
+    p_emittente_soggetto_ruolo_id=> (SELECT emittente_soggetto_ruolo_id FROM tmp_refs_glf)
+  ) AS lotto_id;
+
+SELECT ok(
+  (SELECT lotto_id IS NOT NULL AND lotto_id > 0 FROM tmp_lotto_glf),
+  '2) Lotto creato'
+);
+
+CREATE TEMP TABLE tmp_fatture_glf AS
+WITH base AS (
+  SELECT r.registro_id, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+         r.tipo_doc_fiscale_id, r.stato_draft_id, r.valuta_id,
+         c.test_scope
+    FROM tmp_refs_glf r CROSS JOIN tmp_costanti_glf c
+), ins AS (
+  INSERT INTO vendite.fatture (
+    registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
+    tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, totale_a_pagare,
+    critical, meta
+  )
+  SELECT b.registro_id, current_date, b.emittente_soggetto_ruolo_id, b.billing_account_id,
+         b.tipo_doc_fiscale_id, b.stato_draft_id, b.valuta_id, v.importo,
+         v.critical,
+         jsonb_build_object('test_scope', b.test_scope, 'case', v.caso)
+    FROM base b
+    CROSS JOIN (VALUES (10.00, FALSE, 'ok'),
+                       (12.00, TRUE,  'critical'),
+                       (14.00, FALSE, 'esclusa')) AS v(importo, critical, caso)
+  RETURNING id, critical, stato_doc_fiscale_id, meta ->> 'case' AS caso
+)
+SELECT * FROM ins;
+
+SELECT is(
+  (SELECT count(*)::int FROM tmp_fatture_glf), 3,
+  '3) Fatture test create (ok / critical / esclusa)'
+);
+
+INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id, stato_doc_fiscale_id, esclusa, meta)
+SELECT (SELECT lotto_id FROM tmp_lotto_glf),
+       f.id,
+       f.stato_doc_fiscale_id,
+       (f.caso = 'esclusa'),
+       jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_glf))
+  FROM tmp_fatture_glf f;
+
+SELECT is(
+  (SELECT count(*)::int FROM vendite.fatturazione_lotti_fatture
+    WHERE lotto_id = (SELECT lotto_id FROM tmp_lotto_glf)), 3,
+  '4) Ponte lotto-fatture creato'
+);
+
+-- ------------------------------------------------------------
+-- 5) Stato iniziale: tutto DRAFT, lotto DRAFT => coerente
+-- ------------------------------------------------------------
+SELECT lives_ok(
+  format('SELECT vendite.fn_guard_lotto_fatture_stato_coerente(%s)',
+         (SELECT lotto_id FROM tmp_lotto_glf)),
+  '5) Stato allineato => guard non solleva'
+);
+
+-- ------------------------------------------------------------
+-- 6) IL CASO DELL'INCIDENTE: il lotto avanza, le fatture no.
+--    E' esattamente cio' che produce un dry-run della pipeline BE.
+-- ------------------------------------------------------------
+UPDATE vendite.fatturazione_lotti
+   SET stato_doc_fiscale_id = (SELECT stato_emessa_id FROM tmp_refs_glf)
+ WHERE id = (SELECT lotto_id FROM tmp_lotto_glf);
+
+SELECT throws_ok(
+  format('SELECT vendite.fn_guard_lotto_fatture_stato_coerente(%s)',
+         (SELECT lotto_id FROM tmp_lotto_glf)),
+  'P0001',
+  NULL,
+  '6) Lotto avanzato senza sync => guard solleva E_LOTTO_FATTURE_STATO_INCOERENTE'
+);
+
+-- ------------------------------------------------------------
+-- 7) Riallineamento con la funzione canonica => guard verde.
+--    Non-regressione: il percorso reale della pipeline non e' ostacolato.
+-- ------------------------------------------------------------
+SELECT vendite.fn_sync_lotto_fatture_stato(
+  (SELECT lotto_id FROM tmp_lotto_glf),
+  (SELECT stato_emessa_id FROM tmp_refs_glf)
+);
+
+SELECT lives_ok(
+  format('SELECT vendite.fn_guard_lotto_fatture_stato_coerente(%s)',
+         (SELECT lotto_id FROM tmp_lotto_glf)),
+  '7) Dopo fn_sync_lotto_fatture_stato => guard non solleva'
+);
+
+-- ------------------------------------------------------------
+-- 8) ANTI-TEST-VACUO: il 7 vale solo se le due eccezioni sono
+--    DAVVERO rimaste indietro. Se il sync le avesse allineate,
+--    il 7 passerebbe senza dimostrare nulla sulle eccezioni.
+-- ------------------------------------------------------------
+SELECT ok(
+  (SELECT bool_and(f.stato_doc_fiscale_id = (SELECT stato_draft_id FROM tmp_refs_glf))
+     FROM vendite.fatturazione_lotti_fatture lf
+     JOIN vendite.fatture f ON f.id = lf.fattura_id
+    WHERE lf.lotto_id = (SELECT lotto_id FROM tmp_lotto_glf)
+      AND (COALESCE(lf.esclusa, FALSE) IS TRUE OR COALESCE(f.critical, FALSE) IS TRUE)),
+  '8) Fatture esclusa/critical rimaste a DRAFT mentre il lotto e'' EMESSA (eccezioni reali)'
+);
+
+-- ------------------------------------------------------------
+-- 9) La vista di sorveglianza concorda col guard: nessuna riga.
+-- ------------------------------------------------------------
+SELECT is(
+  (SELECT count(*)::int FROM vendite.vw_lotti_fatture_incoerenti
+    WHERE lotto_id = (SELECT lotto_id FROM tmp_lotto_glf)), 0,
+  '9) vw_lotti_fatture_incoerenti non elenca le eccezioni'
+);
+
+-- ------------------------------------------------------------
+-- 10) Lotto senza fatture: nulla da confrontare, deve passare.
+-- ------------------------------------------------------------
+CREATE TEMP TABLE tmp_lotto_vuoto_glf AS
+SELECT vendite.fn_create_fatturazione_lotto(
+    p_competenza_mese            => (date_trunc('month', current_date) - interval '1 month')::date,
+    p_tipo_doc_fiscale_id        => (SELECT tipo_doc_fiscale_id FROM tmp_refs_glf),
+    p_utility_id                 => (SELECT utility_id FROM tmp_refs_glf),
+    p_billing_account_id         => (SELECT billing_account_id FROM tmp_refs_glf),
+    p_lock_batch_id              => NULL,
+    p_meta                       => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_glf)),
+    p_emittente_soggetto_ruolo_id=> (SELECT emittente_soggetto_ruolo_id FROM tmp_refs_glf)
+  ) AS lotto_id;
+
+SELECT lives_ok(
+  format('SELECT vendite.fn_guard_lotto_fatture_stato_coerente(%s)',
+         (SELECT lotto_id FROM tmp_lotto_vuoto_glf)),
+  '10) Lotto senza fatture => guard non solleva'
+);
+
+-- ------------------------------------------------------------
+-- 11) CABLAGGIO: i tre trigger esistono, sono CONSTRAINT e DEFERRED.
+--     tgconstraint <> 0 => constraint trigger; tgdeferrable/tginitdeferred
+--     => differito. Senza questo, il guard potrebbe non essere agganciato.
+-- ------------------------------------------------------------
+SELECT is(
+  (SELECT count(*)::int
+     FROM pg_trigger t
+     JOIN pg_class c ON c.oid = t.tgrelid
+     JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'vendite'
+      AND c.relname IN ('fatture', 'fatturazione_lotti', 'fatturazione_lotti_fatture')
+      AND t.tgname LIKE '%def_guard_stato%'
+      AND NOT t.tgisinternal
+      AND t.tgconstraint <> 0
+      AND t.tgdeferrable
+      AND t.tginitdeferred), 3,
+  '11) I 3 constraint trigger esistono, sono CONSTRAINT e INITIALLY DEFERRED'
+);
+
+-- ------------------------------------------------------------
+-- 12) END-TO-END. A questo punto lo stato e' coerente, quindi si puo'
+--     passare a IMMEDIATE senza far scattare violazioni pendenti.
+--     Da qui il trigger valuta subito: l'UPDATE che disallinea deve
+--     fallire da solo, senza chiamare il guard a mano.
+-- ------------------------------------------------------------
+SET CONSTRAINTS ALL IMMEDIATE;
+
+SELECT throws_ok(
+  format($q$ UPDATE vendite.fatturazione_lotti
+                SET stato_doc_fiscale_id = %s
+              WHERE id = %s $q$,
+         (SELECT stato_draft_id FROM tmp_refs_glf),
+         (SELECT lotto_id FROM tmp_lotto_glf)),
+  'P0001',
+  NULL,
+  '12) Con constraint IMMEDIATE l''UPDATE che disallinea il lotto fallisce'
+);
+
+SET CONSTRAINTS ALL DEFERRED;
+
+SELECT * FROM finish();
+ROLLBACK;

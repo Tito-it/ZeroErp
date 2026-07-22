@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed ui.dashboard_preset — default della dashboard 'home'.
+#
+# ============================================================
+# DIVERGENZA MOTIVATA DAL MINI-BRIEF §2 — LEGGERE PRIMA DI MODIFICARE
+# ============================================================
+# Il mini-brief chiedeva DUE preset: 'sistema' col solo home.benvenuto e
+# 'ruolo vendite' con tutti e quattro. Qui c'e' UN SOLO preset, 'sistema',
+# con tutti e quattro. Non e' una semplificazione: e' il pattern di casa, il
+# preset di ruolo non e' seedabile in modo portabile, e quello di sistema da
+# solo produce esattamente lo stesso risultato visibile.
+#
+# 0) IL PRECEDENTE (decisivo). La famiglia liste, che questa ricalca, NON usa
+#    preset di ruolo: verificato 2026-07-22 su 80_data/sql/ui/lista_preset.csv,
+#    11 preset su 11 hanno ambito='sistema' e profilo_accesso_id NULL. E il
+#    preset di sistema porta TUTTE le colonne visibili, non un sottoinsieme
+#    minimo (vedi lista_preset_colonna.csv, preset 1). Stessa cosa per i
+#    preferiti di navigazione (localStorage per utente, nessun ruolo). La
+#    macchina del preset di ruolo esiste nella struttura ma non e' mai stata
+#    accesa in questo progetto: differenziare e' compito del filtro permessi
+#    (a valle) e della personalizzazione personale (a monte).
+#
+# 1) NON SEEDABILE IN MODO PORTABILE. ui.dashboard_preset ha
+#    CONSTRAINT chk_ui_dashboard_preset_ambito_refs:
+#      ambito='ruolo' => profilo_accesso_id IS NOT NULL
+#    con FK a config.profili_accesso. Il "ruolo" di un operatore passa dal suo
+#    REPARTO: identita OPERATORE -> risorsa umana -> unita organizzativa ->
+#    binding -> profilo di tipo REPARTO (ramo 3 di
+#    script.fn_get_profili_accesso_applicabili, priorita 2 = il gradino 2b
+#    della cascata). Quei profili pero' NON sono creati da nessuna migration di
+#    migrations_v2: arrivano da un cutover legacy, quindi i loro id sono dati
+#    d'installazione e non si possono scrivere in un CSV versionato. Andrebbero
+#    risolti a runtime dal codice UO ('AMM', 'COM', ...), che invece e' seedato
+#    e stabile. Fattibile, ma vedi il punto 2: non serve.
+#
+# 2) EQUIVALENTE. Nella fn_resolve_dashboard_config il filtro permessi (step 4)
+#    e' ORTOGONALE e SUCCESSIVO alla cascata dei preset (step 2). Con il solo
+#    preset di sistema che porta tutti e quattro:
+#      - utente CON area vendite  -> gate passa sui 3 gated -> vede 4 card
+#        (esattamente cio' che il brief voleva dal preset 'ruolo vendite');
+#      - utente SENZA area vendite -> gate scarta i 3 gated -> vede il solo
+#        home.benvenuto (esattamente cio' che il brief voleva dal preset
+#        'sistema'), e non vuoto perche' benvenuto e' non-gated.
+#    E' il gate a fare il lavoro che il preset di ruolo avrebbe duplicato.
+#
+# 3) NON CHIUDE LA PORTA. Il giorno in cui esistera' un profilo OPERATORE
+#    vendite, aggiungere il preset di ruolo e' una riga in questo CSV (+ le
+#    righe in dashboard_preset_widget): la cascata lo preferira'
+#    automaticamente al preset di sistema (step 2b prima di 2d). Nessuna
+#    modifica strutturale.
+#
+# ATTENZIONE al contrario: seedare 'sistema' col SOLO benvenuto senza il preset
+# di ruolo (lettura letterale del brief) darebbe UNA SOLA CARD A TUTTI, inclusi
+# gli operatori vendite -- la cascata si ferma al preset di sistema e non
+# arriva mai al catalogo grezzo. Sarebbe il bug piu' probabile qui.
+# ============================================================
+#
+# dimensione_max = 8 (brief DB §3c): respiro oltre le 4 card attuali, tunabile
+# per ruolo/emittente. is_default = TRUE: unico per (dashboard, ambito, profilo,
+# emittente) via UNIQUE INDEX parziale uq_ui_dashboard_preset_default.
+#
+# NULL da CSV: token letterale NULL + nullValue "NULL" (profilo_accesso_id ed
+# emittente_fiscale_id devono essere NULL veri: il CHECK sull'ambito 'sistema'
+# li vuole entrambi NULL).
+#
+# Sequenza identity riallineata in 90_end/20260722-07 (seed con id espliciti).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260722-04-seed-ui-dashboard-preset-home-mctit.yaml
+
+  - changeSet:
+      id: 20260722-04-seed-ui-dashboard-preset-home
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Preset di sistema 'home_default' (dimensione_max 8, is_default) con tutti
+        e 4 i widget. Nessun preset di ruolo: stesso pattern della famiglia liste
+        (11 preset su 11 ambito 'sistema'), e il filtro permessi lo rende
+        superfluo. Vedi il blocco DIVERGENZA in testa al file.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: dashboard_preset
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM ui.dashboard_definizione
+               WHERE id = 1
+                 AND codice = 'home';
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/ui/dashboard_preset.csv
+            tableName: dashboard_preset
+            schemaName: ui
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id,                    type: NUMERIC }
+              - column: { name: dashboard_id,          type: NUMERIC }
+              - column: { name: codice,                type: STRING }
+              - column: { name: descrizione,           type: STRING }
+              - column: { name: ambito,                type: STRING }
+              - column: { name: profilo_accesso_id,    type: NUMERIC }
+              - column: { name: emittente_fiscale_id,  type: NUMERIC }
+              - column: { name: is_default,            type: BOOLEAN }
+              - column: { name: dimensione_max,        type: NUMERIC }
+              - column: { name: attivo,                type: BOOLEAN }
+              - column: { name: data_insert,           type: STRING }
+              - column: { name: user_insert,           type: STRING }

@@ -1,0 +1,2 @@
+id,dashboard_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is_default,dimensione_max,attivo,data_insert,user_insert
+1,1,home_default,Home operatore standard,sistema,NULL,NULL,t,8,t,2026-07-22 00:00:00,mctit
