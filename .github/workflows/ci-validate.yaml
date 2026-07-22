@@ -150,16 +150,17 @@ jobs:
              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.databasechangeloglock TO zeroerp;"
 
       - name: Liquibase update (standard, no provision)
-        # bypass_tx_id_check=true: senza provisioning manca il canale dblink di log,
-        # quindi fn_get_or_create_session_tx_id cade nel fallback locale, che per
-        # disegno produce un tx_id NON registrato in dbops.transaction_ids
-        # (tx_id_implementation_guide.md §Catena di fallback). Il trigger
-        # trgfn_tx_id_managed lo rifiuterebbe con W_TXID_NOT_REGISTERED su ogni
-        # scrittura tx_id-managed. La GUC di bypass e' il meccanismo previsto
-        # proprio per test e migrazioni (stessa guida, §GUC di sessione).
+        # NIENTE bypass_tx_id_check qui, ed e' voluto: questo step deve esercitare
+        # davvero la validazione del tx_id, non spegnerla. Senza canale di log
+        # fn_get_or_create_session_tx_id ritorna la sentinella uuid_nil SENZA
+        # pubblicare la GUC, quindi il trigger trgfn_tx_id_managed non ha nulla da
+        # rifiutare (migration 20260722-10/-11, brief-db-coerenza-tx-id-non-registrato.md).
+        # Se un giorno questo step tornasse a fallire con W_TXID_NOT_REGISTERED,
+        # la risposta NON e' rimettere il bypass: significa che qualcuno ha
+        # ricominciato a pubblicare un tx_id non registrato.
         run: |
           liquibase \
-            --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff%20-c%20myapp.bypass_tx_id_check%3Dtrue" \
+            --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff" \
             --username=zeroerp \
             --password=secret \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \
@@ -175,12 +176,11 @@ jobs:
             update --contexts=provision
 
       - name: Liquibase CI apply (run automations)
-        # Stesso motivo dello step "standard, no provision": gira come zeroerp con
-        # log_with_dblink=off, quindi senza bypass ogni scrittura tx_id-managed
-        # fallirebbe su W_TXID_NOT_REGISTERED.
+        # Come lo step "standard, no provision": nessun bypass, la validazione
+        # del tx_id resta attiva.
         run: |
           liquibase \
-            --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff%20-c%20myapp.env%3Dci%20-c%20myapp.bypass_tx_id_check%3Dtrue" \
+            --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff%20-c%20myapp.env%3Dci" \
             --username=zeroerp \
             --password=secret \
             --changeLogFile=db/changelog/changelog-master-v2.yaml \

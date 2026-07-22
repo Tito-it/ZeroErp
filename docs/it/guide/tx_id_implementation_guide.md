@@ -73,8 +73,8 @@ dbops
 maintenance
 └── proc_automations_tx_id_job()  -- wrapper schedulato con lock e logging
 
-GUC di sessione
-├── dbops.tx_id                   -- tx_id corrente (session-scoped)
+GUC
+├── dbops.tx_id                   -- tx_id corrente (transaction-scoped)
 ├── myapp.bypass_tx_id_check      -- override bypass per sessione
 └── myapp.dblink_log_connection   -- stringa di connessione dblink
 ```
@@ -142,13 +142,27 @@ Da un punto di vista tecnico:
 
 1. **Riuso GUC**: legge `current_setting('dbops.tx_id', true)`. Se esiste un UUID valido, lo restituisce immediatamente.
 
-2. **Verifica dblink**: legge `myapp.dblink_log_connection`. Se non impostato, WARNING e fallback a `uuidv7()` locale (impostato nella GUC di sessione).
+2. **Connessione di log**: chiama `script.fn_ensure_logconn()`, l'helper canonico che rispetta l'interruttore `myapp.log_with_dblink` (default `on`), la connstring assente e il `too_many_connections`. Non blocca mai il chiamante.
 
-3. **Generazione via dblink**: chiama `dbops.fn_generate_tx_id` tramite dblink sulla connessione di log. Questo permette la registrazione in `transaction_ids` anche in caso di rollback della transazione principale.
+3. **Verifica dblink**: legge `myapp.dblink_log_connection`. Se assente o vuota, WARNING e **ritorno della sentinella `script.uuid_nil()`, senza impostare la GUC**.
 
-4. **Fallback errore dblink**: se dblink fallisce, WARNING e fallback a `uuidv7()` locale.
+4. **Generazione via dblink**: chiama `dbops.fn_generate_tx_id` tramite dblink sulla connessione di log. È **l'unico percorso che registra** in `transaction_ids`, e lo fa su una connessione separata: la registrazione sopravvive al rollback della transazione principale.
 
-5. **Impostazione GUC**: in tutti i casi, imposta `dbops.tx_id` nella sessione con `set_config`.
+5. **Ripiego su errore o NULL da dblink**: WARNING e ritorno della sentinella `uuid_nil()`, **senza impostare la GUC**.
+
+6. **Impostazione GUC**: avviene **solo** quando l'id è stato registrato, e con **scope locale alla transazione** (`set_config(..., TRUE)`).
+
+> ### La regola: non pubblicare mai un tx_id che non hai registrato
+>
+> La validazione di `trgfn_tx_id_managed` scatta **solo sull'id pubblicato nella
+> GUC**. Pubblicando unicamente id venuti dal registro — e nel degrado non
+> pubblicando affatto — l'invariante è vero per costruzione e il ramo «id non
+> registrato» diventa irraggiungibile in condizioni normali.
+>
+> Fino al 2026-07-22 i ripieghi generavano un `uuidv7()` **non registrato** e lo
+> pubblicavano con scope di **sessione**: la prima scrittura tracciata falliva e,
+> poiché Liquibase usa una sola connessione, da lì in poi falliva l'intera
+> migrazione. Vedi `brief-db-coerenza-tx-id-non-registrato.md`.
 
 **Catena di fallback:**
 
@@ -157,7 +171,9 @@ GUC dbops.tx_id gia impostato?
   SI → riusa
   NO → dblink disponibile?
          SI → fn_generate_tx_id via dblink → registrato in transaction_ids
-         NO → uuidv7() locale (WARNING, non registrato)
+                                           → GUC impostata (scope transazione)
+         NO → sentinella uuid_nil (WARNING)
+                                           → GUC NON impostata
 ```
 
 > Documentazione dettagliata: [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)
@@ -222,7 +238,7 @@ Il sistema tx_id si appoggia a una combinazione di parametri di sessione (GUC) e
 
 | GUC | Tipo | Descrizione |
 | --- | --- | --- |
-| `dbops.tx_id` | UUID | Transaction ID corrente di sessione. Impostato da `fn_get_or_create_session_tx_id`, letto da `trgfn_tx_id_managed` |
+| `dbops.tx_id` | UUID | Transaction ID corrente. Impostato da `fn_get_or_create_session_tx_id` con **scope locale alla transazione** (`set_config(..., TRUE)`), letto da `trgfn_tx_id_managed`. **Contiene solo id registrati** in `dbops.transaction_ids`: nei ripieghi non viene impostata affatto |
 | `myapp.bypass_tx_id_check` | BOOLEAN | Override di sessione per disabilitare la validazione tx_id (utile in test/migrazioni) |
 | `myapp.dblink_log_connection` | TEXT | Stringa di connessione dblink per la generazione remota del tx_id |
 
@@ -348,13 +364,13 @@ Se il backend non imposta il tx_id, il trigger lo genera automaticamente alla pr
 
 1. **Colonna `tx_id` nullable**: la colonna e dichiarata `UUID` nullable nelle tabelle operative. Il trigger la popola automaticamente; il valore non e mai NULL dopo l'esecuzione del trigger.
 
-2. **Unicita per sessione**: all'interno di una connessione database, tutte le operazioni condividono lo stesso `tx_id` (memorizzato nella GUC `dbops.tx_id`).
+2. **Unicita per transazione**: la GUC `dbops.tx_id` è impostata con scope **locale alla transazione** (`set_config(..., TRUE)`), quindi tutte le operazioni della stessa transazione condividono il `tx_id` e ogni nuova transazione ne ottiene uno proprio. È coerente col nome: un identificativo *di transazione* non deve sopravvivere alla transazione. (Fino al 2026-07-22 lo scope era di sessione: un solo `tx_id` per connessione, ed era ciò che rendeva permanente l'effetto di un ripiego andato male.)
 
 3. **Immutabilita del registro**: i record in `transaction_ids` non possono essere modificati ne cancellati (trigger di protezione).
 
 4. **Generazione via dblink**: quando disponibile, il tx_id e generato tramite dblink verso il DB di log. Questo garantisce la persistenza del record anche in caso di rollback della transazione principale.
 
-5. **Fallback locale**: se dblink non e disponibile o fallisce, il sistema genera un `uuidv7()` locale con WARNING. Il tx_id resta valido ma non e registrato in `transaction_ids`.
+5. **Ripiego con sentinella**: se dblink non e disponibile o fallisce, il sistema emette un WARNING e usa `script.uuid_nil()` **senza impostare la GUC**. Non viene mai pubblicato un id assente da `transaction_ids`: le scritture di quella transazione portano `uuid_nil`, valore riconoscibile a colpo d'occhio come "nessuna transazione tracciabile". La correlazione per-transazione si perde, ma è una proprietà non ottenibile senza il canale — che serve appunto ad avere una connessione separata, non a raggiungere un DB remoto (`log_db` è `current_database()`).
 
 6. **Bypass configurabile**: il bypass disabilita generazione e validazione. Attivabile globalmente (`config.parameters.tx_id_bypass_enabled`) o per sessione (`myapp.bypass_tx_id_check`). In bypass, il tx_id e `uuid_nil()` se non gia impostato.
 
