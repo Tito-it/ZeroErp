@@ -22,6 +22,7 @@ import DonutTransito from '../../core/components/charts/DonutTransito.vue'
 import Button from 'primevue/button'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import CommessaGestioneDrawer from '../components/CommessaGestioneDrawer.vue'
+import LottoDrawer from '../components/LottoDrawer.vue'
 import { useDashMesiNav } from '../../core/composables/useDashMesiNav'
 import { useReadonlyMode, useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
@@ -386,9 +387,12 @@ const { avvia: onRendiDefinitive, polling: numeraInCorso } = useVerboFatturazion
   buildEsitoOk: (r) => {
     const lotti = Number(r.lotti ?? 0)
     const numerati = Number(r.numerati ?? 0)
+    const saltati = Number(r.saltati ?? 0)
     const falliti = Number(r.falliti ?? 0)
-    if (falliti > 0) {
-      notify.warn(t('vendite.dashboard_competenza.numera_mese_esito_parziale', { numerati, falliti, lotti }))
+    // «saltato» = lotto processato ma NON transitato a DEFINITIVA (es. legacy
+    // senza step eseguibili): esito parziale quanto un errore, va mostrato.
+    if (falliti > 0 || saltati > 0) {
+      notify.warn(t('vendite.dashboard_competenza.numera_mese_esito_parziale', { numerati, saltati, falliti, lotti }))
     } else {
       notify.success(t('vendite.dashboard_competenza.numera_mese_esito', { numerati }))
     }
@@ -419,6 +423,21 @@ const commessaDrawerId = ref(null)
 function apriCommessa(row) {
   commessaDrawerId.value = row.commessa_id
   commessaDrawerVisible.value = true
+}
+
+// Raggiungibilita' contestuale (B-5): dal pannello errori si atterra sul
+// LottoDrawer diagnostico gia' filtrato sul lotto dell'evento — l'operatore
+// passa dall'errore al governo del lotto (fatture/task-run/segnalazioni,
+// ristampa) senza cercarlo a mano nella lista lotti. Solo le righe con
+// lotto_id sono agganciabili (una FATTURA_CRITICA non ancora in lotto ne e'
+// priva): il gate e' sul dato, non sul tipo evento.
+const lottoDrawerVisible = ref(false)
+const lottoDrawerId = ref(null)
+
+function apriLotto(lottoId) {
+  if (!lottoId) return
+  lottoDrawerId.value = lottoId
+  lottoDrawerVisible.value = true
 }
 
 // Scopo: kebab riga drill-down — Apri commessa sempre; Approva solo sullo
@@ -670,7 +689,15 @@ onActivated(() => {
             </Column>
             <Column field="lotto_codice" :header="t('vendite.dashboard_competenza.col_lotto')" style="width: 130px;">
               <template #body="{ data }">
-                {{ data.lotto_codice ?? '—' }}
+                <Button
+                  v-if="data.lotto_id"
+                  link
+                  class="app-cell-link"
+                  :label="data.lotto_codice ?? String(data.lotto_id)"
+                  v-tooltip.top="t('vendite.dashboard_competenza.apri_lotto')"
+                  @click="apriLotto(data.lotto_id)"
+                />
+                <span v-else>{{ data.lotto_codice ?? '—' }}</span>
               </template>
             </Column>
             <Column field="fattura_numero" :header="t('vendite.dashboard_competenza.col_fattura')" style="width: 110px;">
@@ -765,6 +792,22 @@ onActivated(() => {
                   {{ fatturaDisplay(data) }}
                 </template>
               </Column>
+              <!-- Atterraggio contestuale sul lotto (B-5): stesso drawer/handler
+                   del pannello errori; link solo sulle righe con lotto (stadi
+                   FATTURATA / EMESSA in lotto). -->
+              <Column field="lotto_id" :header="t('vendite.dashboard_competenza.col_lotto')" style="width: 90px;">
+                <template #body="{ data }">
+                  <Button
+                    v-if="data.lotto_id"
+                    link
+                    class="app-cell-link"
+                    :label="String(data.lotto_id)"
+                    v-tooltip.top="t('vendite.dashboard_competenza.apri_lotto')"
+                    @click="apriLotto(data.lotto_id)"
+                  />
+                  <span v-else>—</span>
+                </template>
+              </Column>
               <Column field="stato_fattura_codice" :header="t('vendite.dashboard_competenza.col_stato_fattura')" style="width: 120px;">
                 <template #body="{ data }">
                   <Tag
@@ -805,6 +848,14 @@ onActivated(() => {
       v-model:visible="commessaDrawerVisible"
       :commessa-id="commessaDrawerId"
       @saved="reloadDopoAzione"
+    />
+
+    <!-- Drawer diagnostico lotto (B-5): agganciato dal pannello errori. Un
+         @changed (es. ristampa/reset dal drawer) riallinea aggregata+errori. -->
+    <LottoDrawer
+      v-model:visible="lottoDrawerVisible"
+      :lotto-id="lottoDrawerId"
+      @changed="reloadDopoAzione"
     />
   </div>
 </template>

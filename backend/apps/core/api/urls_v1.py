@@ -57,6 +57,12 @@ from apps.core.api.views_parameters import (
 )
 from apps.core.api.views_tracciamento import (
     ApiAuditLog,
+    ApiCodaLavoriAnnulla,
+    ApiCodaLavoriDetail,
+    ApiCodaLavoriList,
+    ApiCodaLavoriRequeue,
+    ApiCodaStampaList,
+    ApiCodeConteggi,
     ApiDominiTask,
     ApiJobRuns,
     ApiJobSummary,
@@ -212,6 +218,38 @@ urlpatterns = [
         "tracciamento/job-summary/",
         ApiJobSummary.as_view(),
         name="core-job-summary",
+    ),
+    # Gestione code (brief-be-fe-gestione-code-lavori-stampa): badge conteggi,
+    # liste coda lavori/stampa, dettaglio job e azioni annulla/requeue.
+    path(
+        "tracciamento/code/conteggi/",
+        ApiCodeConteggi.as_view(),
+        name="core-code-conteggi",
+    ),
+    path(
+        "tracciamento/coda-lavori/",
+        ApiCodaLavoriList.as_view(),
+        name="core-coda-lavori-list",
+    ),
+    path(
+        "tracciamento/coda-lavori/<int:job_id>/",
+        ApiCodaLavoriDetail.as_view(),
+        name="core-coda-lavori-detail",
+    ),
+    path(
+        "tracciamento/coda-lavori/<int:job_id>/annulla/",
+        ApiCodaLavoriAnnulla.as_view(),
+        name="core-coda-lavori-annulla",
+    ),
+    path(
+        "tracciamento/coda-lavori/<int:job_id>/requeue/",
+        ApiCodaLavoriRequeue.as_view(),
+        name="core-coda-lavori-requeue",
+    ),
+    path(
+        "tracciamento/coda-stampa/",
+        ApiCodaStampaList.as_view(),
+        name="core-coda-stampa-list",
     ),
     # --- Config CRUD generico ---
     path("config/tables/", ConfigTablesListView.as_view(), name="core-config-tables"),

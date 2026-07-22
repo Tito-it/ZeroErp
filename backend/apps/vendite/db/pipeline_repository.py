@@ -14,7 +14,13 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import rows_to_list
+from apps.core.db._helpers import (
+    LIST_MAX_LIMIT,
+    fetch_paged_with_total,
+    iso_or_none,
+    jsonb_out,
+    rows_to_list,
+)
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.value_normalizer import as_bool, empty_to_none
@@ -1668,6 +1674,104 @@ class VenditePipelineRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return {str(row[0]): int(row[1]) for row in cursor.fetchall()}
+
+    # Scopo: Elenco paginato della coda stampa per la UI di gestione code
+    #        (brief-be-fe-gestione-code-lavori-stampa BE-6). JOIN a
+    #        vendite.fatture (numero/anno/serie — la coda e` un satellite di
+    #        fatture) + emittenti_fiscali (codice, per la colonna proprietario
+    #        della vista admin). Scope emittente OPERATORE via
+    #        `add_emittente_scope_condition` sulla fattura (come i conteggi);
+    #        `auth_user_id=None` = nessuno scope (admin `code_manage`).
+    #        Filtri opzionali stati/lotto/intervallo `data_insert` (`data_a`
+    #        bound ESCLUSIVO: il chiamante passa gia` il giorno+1). Ordine
+    #        id DESC (i piu` recenti in alto: e` una lista di monitoraggio, non
+    #        la corsia del worker). Ritorna `{items, total}` via BB
+    #        `fetch_paged_with_total` (fallback pagina-stantia: la coda si
+    #        auto-svuota sotto l'utente a ogni drain).
+    def elenca_coda_stampa(
+        self,
+        *,
+        auth_user_id: int | None = None,
+        stati: list[str] | None = None,
+        lotto_id: int | None = None,
+        data_da: Any = None,
+        data_a: Any = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if stati:
+            conditions.append("c.stato = ANY(%s)")
+            params.append(list(stati))
+        if lotto_id is not None:
+            conditions.append("c.lotto_id = %s")
+            params.append(int(lotto_id))
+        if data_da is not None:
+            conditions.append("c.data_insert >= %s")
+            params.append(data_da)
+        if data_a is not None:
+            conditions.append("c.data_insert < %s")
+            params.append(data_a)
+        if auth_user_id is not None:
+            add_emittente_scope_condition(
+                conditions, params,
+                auth_user_id=auth_user_id,
+                column="f.emittente_soggetto_ruolo_id",
+                convention="sr",
+            )
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
+        safe_offset = max(0, int(offset))
+        from_join = """
+              FROM vendite.fatture_stampa_coda c
+              JOIN vendite.fatture f ON f.id = c.sorgente_id
+              LEFT JOIN anagrafiche.emittenti_fiscali ef
+                ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+        """
+        data_sql = f"""
+            SELECT c.id, c.sorgente_id AS fattura_id,
+                   f.numero AS fattura_numero, f.anno AS fattura_anno,
+                   f.serie AS fattura_serie,
+                   ef.codice AS emittente_codice,
+                   c.lotto_id, c.stato, c.tentativi, c.ultimo_errore,
+                   c.documento_id, c.data_insert, c.data_update,
+                   COUNT(*) OVER() AS total_count
+              {from_join}
+              {where}
+             ORDER BY c.id DESC
+             LIMIT %s OFFSET %s
+        """  # noqa: S608 — where da condizioni whitelisted (nessun input libero)
+        rows, total = fetch_paged_with_total(
+            data_sql,
+            [*params, safe_limit, safe_offset],
+            fallback_count_sql=(
+                f"SELECT COUNT(*) {from_join} {where}"  # noqa: S608
+            ),
+            fallback_params=list(params),
+            offset=safe_offset,
+        )
+        items = [
+            {
+                "id": int(r["id"]),
+                "fattura_id": int(r["fattura_id"]),
+                "fattura_numero": r["fattura_numero"],
+                "fattura_anno": r["fattura_anno"],
+                "fattura_serie": r["fattura_serie"],
+                "emittente_codice": r["emittente_codice"],
+                "lotto_id": None if r["lotto_id"] is None else int(r["lotto_id"]),
+                "stato": str(r["stato"]),
+                "tentativi": int(r["tentativi"]),
+                "ultimo_errore": jsonb_out(r["ultimo_errore"]),
+                "documento_id": (
+                    None if r["documento_id"] is None else int(r["documento_id"])
+                ),
+                "data_insert": iso_or_none(r["data_insert"]),
+                "data_update": iso_or_none(r["data_update"]),
+            }
+            for r in rows
+        ]
+        return {"items": items, "total": int(total)}
 
     # Scopo: Gestisce `sync_lotto_fatture_stato` nel flusso applicativo del modulo.
     def sync_lotto_fatture_stato(

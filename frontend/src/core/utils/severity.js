@@ -482,3 +482,30 @@ export const STATO_EMISSIONE_ATTIVITA_MAP = {
 export function statoEmissioneAttivitaSeverity(codice) {
   return resolveSeverity(STATO_EMISSIONE_ATTIVITA_MAP, codice)
 }
+
+// Stato dei job della coda lavori generica (dbops.coda_lavori.stato):
+// PENDING=arancio (in attesa), IN_CORSO=azzurro, FATTO=verde, ERRORE=rosso,
+// ANNULLATO=grigio. UI gestione code (FE-7, centralizzata qui).
+export const STATO_CODA_LAVORI_MAP = {
+  PENDING: 'warn',
+  IN_CORSO: 'info',
+  FATTO: 'success',
+  ERRORE: 'danger',
+  ANNULLATO: 'secondary',
+}
+export function statoCodaLavoriSeverity(codice) {
+  return resolveSeverity(STATO_CODA_LAVORI_MAP, codice)
+}
+
+// Stato delle righe coda stampa (vendite.fatture_stampa_coda.stato):
+// stesso vocabolario visivo della coda lavori, senza ANNULLATO (il CHECK DB
+// non lo prevede). Unifica la mappa prima inline in FatturazioneEsitiPanel.
+export const STATO_CODA_STAMPA_MAP = {
+  PENDING: 'warn',
+  IN_CORSO: 'info',
+  FATTO: 'success',
+  ERRORE: 'danger',
+}
+export function statoCodaStampaSeverity(codice) {
+  return resolveSeverity(STATO_CODA_STAMPA_MAP, codice)
+}

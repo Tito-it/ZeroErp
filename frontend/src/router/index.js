@@ -41,7 +41,7 @@ function resolvePathNamespace(path) {
 
 // Genera rotte placeholder per domini senza pagine dedicate
 function domainPlaceholderRoutes() {
-  const domainsWithRoutes = new Set(['amm-software', 'anagrafiche', 'catalogo', 'config', 'pratiche', 'vendite'])
+  const domainsWithRoutes = new Set(['amm-software', 'anagrafiche', 'catalogo', 'config', 'pratiche', 'strumenti', 'vendite'])
   return DOMAINS
     .filter(d => !domainsWithRoutes.has(d.key))
     .map(d => ({
@@ -321,6 +321,14 @@ const router = createRouter({
           name: 'vendite-lotti',
           component: () => import('../vendite/views/LottiListView.vue'),
           meta: { domain: 'vendite', menuKey: 'lotti' }
+        },
+        {
+          // Strumenti → Code di lavoro: vista completa a due tab (coda lavori
+          // generica + coda stampa). Accesso primario dal badge top bar.
+          path: 'strumenti/code-lavoro',
+          name: 'strumenti-code-lavoro',
+          component: () => import('../strumenti/views/CodeLavoroView.vue'),
+          meta: { domain: 'strumenti', menuKey: 'code-lavoro' }
         },
         {
           path: 'vendite/preventivi',

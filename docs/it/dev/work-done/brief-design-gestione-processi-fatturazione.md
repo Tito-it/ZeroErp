@@ -1,9 +1,10 @@
 # Brief Design — Gestione dei processi di fatturazione dalla Dashboard Competenza
 
 > **Tipo**: brief di design (modello + decisioni da prendere → poi brief operativi per fase)
-> · **Data**: 2026-07-19 · **Owner**: Tid · **Stato**: 🟢 **DECISO (Tid, 2026-07-19)** —
-> le 6 decisioni §8 sono chiuse; prossimo passo: derivare i brief operativi per fase (§9),
-> a partire dal brief DB-1 (seed azioni processo) per la Fase A.
+> · **Data**: 2026-07-19 · **Owner**: Tid · **Stato**: 🟢 **DECISO ed EVASO (2026-07-21)** —
+> le 6 decisioni §8 sono chiuse; i brief operativi derivati sono stati realizzati: il brief
+> DB è **chiuso** (G1+G2 applicati e committati), il brief BE/FE ha le Fasi A/B/C fatte
+> (restano guide Fase D + validazione in-app, tracciate lì). Spostato in work-done.
 >
 > **Scopo in una riga**: dare all'operatore la **guida dei processi di fatturazione**
 > (approvazione → emissione → lotto → numerazione) **dentro la Dashboard Competenza**,
@@ -13,16 +14,16 @@
 > **Brief operativi derivati** (2026-07-19):
 > [brief-db-processi-fatturazione-cockpit.md](brief-db-processi-fatturazione-cockpit.md)
 > (seed azioni + **modello outbox stampa**: coda + accodatore, applicato in 2 gruppi G1/G2) →
-> [brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md)
+> [brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md)
 > (piano a step, Fasi A→D; la stampa è worker-drainer, non render inline).
 >
 > **Documenti collegati**:
-> [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
+> [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md)
 > (design-of-record del read-side: le tre lenti; questo brief è il suo complemento
 > **write-side**) · [Guida fatturazione](../../guide/fatturazione.md) (pipeline end-to-end)
 > · [Guida gestione commesse](../../guide/gestione-commesse.md) ·
 > [Guida cruscotti fatturazione](../../guide/cruscotti-fatturazione.md) ·
-> [fatturazione-roadmap.md](fatturazione-roadmap.md) (§5 «la dashboard non è un report,
+> [fatturazione-roadmap.md](../work-in-progress/fatturazione-roadmap.md) (§5 «la dashboard non è un report,
 > è uno strumento di governo» — questo brief realizza quel punto).
 
 ---
@@ -345,7 +346,7 @@ recepirà anche questo brief.)
 ## 9. Piano di consegna (dopo la chiusura di §8)
 
 Dettaglio operativo e avanzamento step-by-step:
-[brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md).
+[brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md).
 
 | Fase | Contenuto | Prerequisiti |
 |---|---|---|

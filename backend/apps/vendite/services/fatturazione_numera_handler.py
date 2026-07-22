@@ -75,16 +75,41 @@ def fatturazione_numera_handler(
         competenza_mese=competenza, stato_doc_fiscale_id=emessa_id,
     )
 
+    # `numerato` = transizione DEFINITIVA VERIFICATA sull'esito, non «nessuna
+    # eccezione»: un lotto legacy la cui pipeline si ferma senza step (es.
+    # emesso pre-G1, motivo_stop parlante) NON è numerato — contarlo tale
+    # nasconderebbe fatture rimaste senza numero (smoke C-9, 2026-07-22:
+    # lotti 106/107 EMESSA con fatture DRAFT «numerati» due volte no-op).
+    definitiva_id = VenditePipelineRepository().get_stato_doc_fiscale_id(
+        "DEFINITIVA",
+    )
+    ErrorManager.require(
+        definitiva_id is not None,
+        code="E_PIPELINE_VALIDATION",
+        message="Stato DEFINITIVA non configurato in config.stati_doc_fiscale.",
+    )
     numerati = 0
+    saltati_dett: list[dict[str, Any]] = []
     falliti_dett: list[dict[str, Any]] = []
     for lotto in lotti:
         try:
             # Riusa il core single-lotto: gate EMESSA (I-7) + step DEFINITIVA
             # (numera + accoda stampa). Idempotente/resume-safe (C-2d).
-            pipeline_service.numera_lotto(
+            esito = pipeline_service.numera_lotto(
                 lotto_id=lotto["id"], auth_user_id=auth_user_id,
             )
-            numerati += 1
+            if esito.get("stato_doc_fiscale_id") == definitiva_id:
+                numerati += 1
+            else:
+                saltati_dett.append({
+                    "lotto_id": lotto["id"], "codice": lotto["codice"],
+                    "motivo_stop": esito.get("motivo_stop"),
+                })
+                logger.warning(
+                    "fatturazione_numera.lotto_non_transitato lotto_id=%s "
+                    "codice=%s motivo_stop=%s",
+                    lotto["id"], lotto["codice"], esito.get("motivo_stop"),
+                )
         except Exception as exc:  # noqa: BLE001 — resilienza per-lotto voluta
             code = getattr(exc, "code", type(exc).__name__)
             falliti_dett.append(
@@ -99,8 +124,10 @@ def fatturazione_numera_handler(
         "competenza": competenza.isoformat(),
         "lotti": len(lotti),
         "numerati": numerati,
+        "saltati": len(saltati_dett),
         "falliti": len(falliti_dett),
-        # Solo i falliti (pochi, per mese): utili al FE per il toast d'esito.
+        # Solo saltati/falliti (pochi, per mese): utili al FE per il toast.
+        "saltati_dett": saltati_dett,
         "falliti_dett": falliti_dett,
     }
 

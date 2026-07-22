@@ -349,6 +349,9 @@ export const READONLY_DOMAINS = {
   CATALOGO: 'catalogo',
   CONFIG: 'config',
   DOCUMENTI: 'documenti',
+  // Area dedicata del dominio Strumenti (code di lavoro; l'area `core` resta
+  // all'infra tracciamento, non si apre agli operatori per le code).
+  STRUMENTI: 'strumenti',
   PRATICHE: 'pratiche',
   VENDITE: 'vendite',
 }

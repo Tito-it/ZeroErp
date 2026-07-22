@@ -12,6 +12,7 @@ import Button from 'primevue/button'
 import { useNotify } from '../../core/composables/useNotify'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayTimestamp } from '../../core/utils/date'
+import { statoCodaStampaSeverity } from '../../core/utils/severity'
 import { MANAGE_ICONS } from '../../core/constants'
 import { getFatturazioneEsiti } from '../api/lotti'
 
@@ -22,15 +23,15 @@ const giri = ref([])
 const codaStampa = ref({})
 const loading = ref(false)
 
-// Ordine + severità degli stati coda (owner FE del vocabolario di rendering;
-// il vocabolario stati vive nel BE/DB, qui solo la resa visiva). Le label sono
-// chiavi i18n ESPLICITE (statiche): niente costruzione dinamica della chiave,
-// così il guard i18n le vede come citate (no falso "testo mancante").
+// Ordine degli stati coda + label i18n ESPLICITE (statiche): niente
+// costruzione dinamica della chiave, così il guard i18n le vede come citate.
+// La severità è centralizzata in core/utils/severity.js
+// (statoCodaStampaSeverity — FE-7 brief gestione-code, prima inline qui).
 const CODA_STATI = computed(() => [
-  { key: 'PENDING', severity: 'warn', label: t('vendite.fatturazione.coda_pending') },
-  { key: 'IN_CORSO', severity: 'info', label: t('vendite.fatturazione.coda_in_corso') },
-  { key: 'FATTO', severity: 'success', label: t('vendite.fatturazione.coda_fatto') },
-  { key: 'ERRORE', severity: 'danger', label: t('vendite.fatturazione.coda_errore') },
+  { key: 'PENDING', label: t('vendite.fatturazione.coda_pending') },
+  { key: 'IN_CORSO', label: t('vendite.fatturazione.coda_in_corso') },
+  { key: 'FATTO', label: t('vendite.fatturazione.coda_fatto') },
+  { key: 'ERRORE', label: t('vendite.fatturazione.coda_errore') },
 ])
 
 // Coda senza alcuna riga (in nessuno stato) → messaggio "vuota" al posto dei badge.
@@ -82,7 +83,7 @@ defineExpose({ refresh: load })
           <Tag
             v-if="(codaStampa[s.key] ?? 0) > 0"
             :value="`${s.label}: ${codaStampa[s.key]}`"
-            :severity="s.severity"
+            :severity="statoCodaStampaSeverity(s.key)"
           />
         </template>
         <span v-if="codaVuota" class="text-color-secondary">

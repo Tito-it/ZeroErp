@@ -29,6 +29,7 @@ from apps.core.services.coda_lavori.drain_engine import QueueDrainEngine
 from apps.core.services.coda_lavori.handler_registry import get_handler
 from apps.core.services.coda_lavori.repository import (
     RUN_AS_SISTEMA,
+    STALE_MINUTI_DEFAULT,
     CodaLavoriRepository,
 )
 # Canale di sistema per i job run_as=SISTEMA: fonte unica del letterale in
@@ -43,8 +44,10 @@ from apps.core.services.system_context import (
 # Righe claimate per giro (batch unico misto per priorità). Tarabile su volumi.
 _LIMIT_DEFAULT = 200
 # Reaper: righe IN_CORSO stantie oltre N minuti (worker morto): tentativi+1 →
-# PENDING, o ERRORE terminale oltre soglia (anti poison-job).
-_STALE_MINUTI_DEFAULT = 30
+# PENDING, o ERRORE terminale oltre soglia (anti poison-job). Fonte unica in
+# repository (STALE_MINUTI_DEFAULT): stessa definizione di «stantio» del
+# requeue manuale della UI code.
+_STALE_MINUTI_DEFAULT = STALE_MINUTI_DEFAULT
 
 
 # Scopo: Esegue un work-item nel contesto giusto secondo `run_as`, risolvendo
