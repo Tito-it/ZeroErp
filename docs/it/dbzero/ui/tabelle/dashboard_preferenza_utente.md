@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/ui/manual/dashboard_preferenza_utente.md" %}
 # 📚 Tabella `dashboard_preferenza_utente`
 
 ## 🗂️ Campi principali

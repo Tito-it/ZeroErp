@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/ui/manual/trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts.md" %}
 # ⚙️ Funzione `trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts`
 
 ```sql

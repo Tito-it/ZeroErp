@@ -40,8 +40,9 @@ SELECT ca.competenza_mese,
     sdf.codice_interno AS stato_fattura_codice_interno,
     sdf.codice AS stato_fattura_codice,
     fr.imponibile_riga AS valore_fatturato,
-    COALESCE(f.critical, false) AS fattura_critical
-   FROM ((((((((((vendite.commesse co
+    COALESCE(f.critical, false) AS fattura_critical,
+    lf.lotto_id
+   FROM (((((((((((vendite.commesse co
      JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
      JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
      LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
@@ -51,6 +52,11 @@ SELECT ca.competenza_mese,
      LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
      LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
      LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+     LEFT JOIN LATERAL ( SELECT flf.lotto_id
+           FROM vendite.fatturazione_lotti_fatture flf
+          WHERE (flf.fattura_id = f.id)
+          ORDER BY flf.lotto_id DESC
+         LIMIT 1) lf ON (true))
      CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
   WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
 ```

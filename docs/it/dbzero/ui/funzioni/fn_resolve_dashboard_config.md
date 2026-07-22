@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/ui/manual/fn_resolve_dashboard_config.md" %}
 # ⚙️ Funzione `fn_resolve_dashboard_config`
 
 ```sql

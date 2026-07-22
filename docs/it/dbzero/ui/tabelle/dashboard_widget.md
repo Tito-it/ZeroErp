@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/ui/manual/dashboard_widget.md" %}
 # 📚 Tabella `dashboard_widget`
 
 ## 🗂️ Campi principali
