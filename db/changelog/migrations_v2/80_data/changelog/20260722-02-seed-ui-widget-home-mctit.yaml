@@ -9,10 +9,43 @@
 # Seed ui.widget — catalogo GLOBALE dei widget (mini-brief GRANT+seed §2).
 # Quattro widget v1: una card di benvenuto non-gated + i tre cruscotti vendite.
 #
-# VINCOLO "MAI UNA HOME VUOTA" (brief DB §3.bis): 'home.benvenuto' ha
-# area_id E azione_id NULL. Il filtro permessi della fn_resolve_dashboard_config
-# e' ORTOGONALE alla cascata preset: senza almeno un widget non-gated puo'
-# svuotare la home a un utente senza area vendite. Non toccare quei due NULL.
+# ============================================================
+# 'home.benvenuto' E' DISATTIVATO DAL 2026-07-22 — non riattivarlo per errore
+# ============================================================
+# Era nato come unico widget NON-GATED (area_id E azione_id NULL) per soddisfare
+# l'invariante "mai una home vuota" del brief DB §3.bis: gli altri tre sono gated
+# su area vendite, quindi senza di lui un utente senza quell'area risolve una
+# lista vuota.
+#
+# Ritirato su richiesta BE dopo la validazione in-app (mini-brief "rimuovere il
+# widget Benvenuto"): mostrava solo un'etichetta, senza numero ne' deep-link, e
+# occupava uno slot della griglia a tutti gli utenti con permessi.
+#
+# L'INVARIANTE §3.bis RESTA SODDISFATTO NELLA SOSTANZA, non piu' nella forma: il
+# FE ora distingue esplicitamente "nessuna card attiva" da "nessuna card
+# disponibile per il tuo profilo" (chiavi home.kpi_empty_hint /
+# home.kpi_empty_nessuna_disponibile). Un empty-state che dice la verita' e'
+# meglio di una card-riempitivo che finge che ci sia qualcosa da configurare.
+#
+# VIA SCELTA: attivo=FALSE, non DELETE. Motivi:
+#   - fn_resolve_dashboard_config filtra w.attivo = TRUE in OGNI ramo (preset
+#     ruolo/emittente/sistema, catalogo grezzo, merge nuovi e assemblaggio
+#     finale): il widget sparisce da solo, anche da chi lo aveva in preferenza
+#     salvata, senza errori. E' il caso §4.6 del brief DB, gia' coperto dal
+#     pgTAP test-fn-resolve-dashboard-config.sql (test 9);
+#   - loadUpdateData e' un UPSERT: togliere la riga dal CSV NON la cancella dai
+#     DB gia' migrati, servirebbe un changeset DELETE dedicato con l'ordine FK
+#     corretto (dashboard_preset_widget -> dashboard_widget -> widget);
+#   - reversibile: se l'empty-state si rivelasse peggiore sul campo, si rimette
+#     attivo=t e il widget torna, ordine e preset intatti.
+# Le righe in dashboard_widget e dashboard_preset_widget restano APPOSTA: sono
+# inerti finche' attivo=FALSE e conservano la reversibilita'.
+#
+# ⚠️ Da qui in poi il catalogo NON ha piu' widget non-gated. Se un domani si
+# vuole tornare alla garanzia "mai vuota" in forma di card, va aggiunto un
+# widget con area_id/azione_id NULL -- non riattivato questo, che il BE ha
+# scartato nel merito.
+# ============================================================
 #
 # INVARIANTE PERMESSI <-> DEEP-LINK (mini-brief §2 vincolo 3): l'area dichiarata
 # dal widget e' quella che guarda la rotta di destinazione. I tre widget gated
