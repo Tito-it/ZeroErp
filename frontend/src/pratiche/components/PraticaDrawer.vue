@@ -1,9 +1,9 @@
 <script setup>
-// Scopo: Drawer dettaglio/creazione pratica con TabView (Dati, Flussi, Giornale).
+// Scopo: Drawer dettaglio/creazione pratica con Tabs (Dati, Flussi, Giornale).
 // In edit: 3 tab + bottoni azioni stato nel tab Dati.
 //          I campi display (stato_descrizione, soggetto_display, ecc.) arrivano dal backend.
 // In create: solo form creazione (no tab).
-import { ref, watch, computed, nextTick, provide } from 'vue'
+import { ref, watch, computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePraticheStore } from '../stores/pratiche'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -34,8 +34,11 @@ import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import DatePicker from 'primevue/datepicker'
-import TabView from 'primevue/tabview'
+import Tab from 'primevue/tab'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
 import TabPanel from 'primevue/tabpanel'
+import TabPanels from 'primevue/tabpanels'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 
@@ -59,7 +62,10 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
 const detail = ref(null)
-const tabViewKey = ref(0)
+// Tab attivo, riportato su 'dati' a ogni riapertura del drawer: senza
+// reset, riaprendo su un'altra pratica si resterebbe sul tab dell'ultima
+// consultazione (con TabView lo faceva implicitamente il remount).
+const activeTab = ref('dati')
 
 function defaultForm() {
   return {
@@ -159,6 +165,7 @@ provide(READONLY_KEY, effectiveReadonly)
 // (caso normale) il guard `!val` rende la chiamata immediate un no-op.
 watch(() => props.visible, async (val) => {
   if (!val) return
+  activeTab.value = 'dati'
   if (isEdit.value && props.praticaId) {
     const d = await store.fetchDetail(props.praticaId)
     detail.value = d
@@ -265,20 +272,10 @@ function onAnnullaPratica() {
   })
 }
 
-// Deferimento contenuto: TabView e LookupSelect montano solo dopo l'animazione
+// Deferimento contenuto: Tabs e LookupSelect montano solo dopo l'animazione
 // del drawer (pattern feedback_content_ready_after_show centralizzato in
 // useDrawerContentReady).
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
-
-// Fix ink bar TabView (PrimeVue legacy): il TabView monta solo quando
-// contentReady passa a true (a fine animazione, via @after-show). Il remount
-// correttivo dell'indicatore va quindi forzato DOPO quel primo render — non
-// nel watch su `visible`, dove il TabView non esiste ancora e l'incremento
-// andrebbe perso. Senza questo, al primo render l'ink bar prende la larghezza
-// piena e si corregge solo al primo cambio tab.
-watch(contentReady, (ready) => {
-  if (ready) nextTick(() => { tabViewKey.value++ })
-})
 
 // Azioni della testata pratica consumate da DrawerActionsBar (refactor UI
 // drawer 2026-05-22, Fase 3.A). State actions condizionali per stato corrente:
@@ -493,10 +490,10 @@ const onClose = useDrawerClose(emit, 'cancelled')
         />
       </template>
 
-      <!-- === EDIT: header + azioni in alto, poi TabView con Dati + Flussi + Giornale === -->
+      <!-- === EDIT: header + azioni in alto, poi Tabs con Dati + Flussi + Giornale === -->
       <template v-if="isEdit && detail">
         <!-- Refactor UI drawer 2026-05-22 (Fase 3.A): header info + barra
-             azioni state in alto al drawer (sopra il TabView), simmetrici a
+             azioni state in alto al drawer (sopra i Tabs), simmetrici a
              contratti/preventivi. Tag stato + Tag priorita' in #status,
              codice come identificativo a sinistra. -->
         <DrawerEntityHeader>
@@ -516,10 +513,19 @@ const onClose = useDrawerClose(emit, 'cancelled')
 
         <DrawerActionsBar :actions="drawerActions" />
 
-        <TabView :key="tabViewKey">
+        <Tabs v-model:value="activeTab">
+          <TabList>
+            <Tab value="dati">{{ t('pratiche.tab_dati') }}</Tab>
+            <Tab value="flussi">{{ t('pratiche.tab_flussi') }}</Tab>
+            <Tab value="note">{{ t('pratiche.tab_note') }}</Tab>
+            <Tab value="allegati">{{ t('pratiche.tab_allegati') }}</Tab>
+            <Tab value="sospensioni">{{ t('pratiche.tab_sospensioni') }}</Tab>
+            <Tab value="giornale">{{ t('pratiche.tab_giornale') }}</Tab>
+          </TabList>
+          <TabPanels>
 
           <!-- Tab Dati -->
-          <TabPanel :header="t('pratiche.tab_dati')">
+          <TabPanel value="dati">
             <!-- Soggetto (se presente) -->
             <div v-if="detail.soggetto_display" class="form-field">
               <label>{{ t('pratiche.col_soggetto') }}</label>
@@ -566,31 +572,32 @@ const onClose = useDrawerClose(emit, 'cancelled')
           </TabPanel>
 
           <!-- Tab Flussi -->
-          <TabPanel :header="t('pratiche.tab_flussi')">
+          <TabPanel value="flussi">
             <PraticaFlussiTab :pratica-id="props.praticaId" />
           </TabPanel>
 
           <!-- Tab Note -->
-          <TabPanel :header="t('pratiche.tab_note')">
+          <TabPanel value="note">
             <PraticaNoteTab :pratica-id="props.praticaId" />
           </TabPanel>
 
           <!-- Tab Allegati -->
-          <TabPanel :header="t('pratiche.tab_allegati')">
+          <TabPanel value="allegati">
             <PraticaAllegatiTab :pratica-id="props.praticaId" />
           </TabPanel>
 
           <!-- Tab Sospensioni -->
-          <TabPanel :header="t('pratiche.tab_sospensioni')">
+          <TabPanel value="sospensioni">
             <PraticaSospensioniTab :pratica-id="props.praticaId" />
           </TabPanel>
 
           <!-- Tab Giornale -->
-          <TabPanel :header="t('pratiche.tab_giornale')">
+          <TabPanel value="giornale">
             <PraticaGiornaleTab :pratica-id="props.praticaId" />
           </TabPanel>
 
-        </TabView>
+          </TabPanels>
+        </Tabs>
 
         <!-- Dialog condiviso sospendi/riattiva (data/ora manuale) aperto dai
              pulsanti della DrawerActionsBar. -->

@@ -9,7 +9,7 @@
 //        che e' una lista globale). All'apertura ricarico le definizioni
 //        del Select per assicurare freschezza dopo CRUD.
 //
-//        TabView lazy con due tab:
+//        Tabs lazy con due tab:
 //          - Definizioni       (CRUD `ui.lista_definizione`)
 //          - Catalogo colonne  (CRUD `ui.lista_colonna`, master = lista
 //                               corrente)
@@ -17,11 +17,14 @@
 //        Differenza vs `GestionePersonalizzazioniListeView` (Fase 1
 //        sotto /config/...): qui niente azioni di processo, solo
 //        SUPER_ADMIN. La voce sidebar e' `adminOnly: true`.
-import { computed, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import TabView from 'primevue/tabview'
+import Tab from 'primevue/tab'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
 import TabPanel from 'primevue/tabpanel'
+import TabPanels from 'primevue/tabpanels'
 import StatusPage from '../../core/components/StatusPage.vue'
 import { useAuthStore } from '../../stores/auth'
 import ListaCorrenteSelect from '../components/ListaCorrenteSelect.vue'
@@ -33,13 +36,8 @@ const { t } = useI18n()
 const router = useRouter()
 const auth = useAuthStore()
 const uiAdmin = useUiAdminStore()
-const tabViewKey = ref(0)
 
 const canAccess = computed(() => auth.isAdmin)
-
-onMounted(() => {
-  tabViewKey.value += 1
-})
 
 // Scopo: Quando una definizione viene creata/aggiornata/eliminata,
 //        ricarico l'elenco del Select header per non lasciare voci
@@ -71,14 +69,20 @@ async function onDefinizioneChanged() {
         <ListaCorrenteSelect />
       </div>
 
-      <TabView lazy :key="tabViewKey">
-        <TabPanel :header="t('ui.admin.tab_definizioni')">
-          <ListaDefinizionePanel @definizione-changed="onDefinizioneChanged" />
-        </TabPanel>
-        <TabPanel :header="t('ui.admin.tab_catalogo_colonne')">
-          <ListaColonnaPanel />
-        </TabPanel>
-      </TabView>
+      <Tabs value="definizioni" lazy>
+        <TabList>
+          <Tab value="definizioni">{{ t('ui.admin.tab_definizioni') }}</Tab>
+          <Tab value="catalogo-colonne">{{ t('ui.admin.tab_catalogo_colonne') }}</Tab>
+        </TabList>
+        <TabPanels>
+          <TabPanel value="definizioni">
+            <ListaDefinizionePanel @definizione-changed="onDefinizioneChanged" />
+          </TabPanel>
+          <TabPanel value="catalogo-colonne">
+            <ListaColonnaPanel />
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
     </template>
   </div>
 </template>

@@ -19,7 +19,7 @@ import { useI18n } from 'vue-i18n'
 import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
 import FormFooter from './FormFooter.vue'
-import InputSwitch from 'primevue/inputswitch'
+import ToggleSwitch from 'primevue/toggleswitch'
 import InputNumber from 'primevue/inputnumber'
 import Badge from 'primevue/badge'
 import Tag from 'primevue/tag'
@@ -183,7 +183,7 @@ function onReset() {
           :key="col.codice"
           class="lista-config-row"
         >
-          <InputSwitch
+          <ToggleSwitch
             :model-value="col.visibile !== false"
             :disabled="!isToggleable(col._meta)"
             v-tooltip.left="

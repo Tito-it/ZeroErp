@@ -1,6 +1,5 @@
 <script setup>
 // Scopo: vista principale Gestione Geografica con 7 tab.
-import { ref, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
@@ -19,8 +18,11 @@ import RegioniSearchTable from '../../core/components/RegioniSearchTable.vue'
 import RegioniDrawer from '../../core/components/RegioniDrawer.vue'
 import StatiSearchTable from '../../core/components/StatiSearchTable.vue'
 import StatiDrawer from '../../core/components/StatiDrawer.vue'
-import TabView from 'primevue/tabview'
+import Tab from 'primevue/tab'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
 import TabPanel from 'primevue/tabpanel'
+import TabPanels from 'primevue/tabpanels'
 
 const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE)
@@ -31,62 +33,68 @@ const capDrawer = useDrawerState()
 const provDrawer = useDrawerState()
 const regDrawer = useDrawerState()
 const statoDrawer = useDrawerState()
-
-// Scopo: forza remount TabView dopo mount per ink bar
-const tabViewKey = ref(0)
-onMounted(() => { nextTick(() => { tabViewKey.value++ }) })
 </script>
 
 <template>
   <div class="app-page">
-    <TabView lazy :key="tabViewKey">
-      <TabPanel :header="t('indirizzi.tab_indirizzi')">
-        <IndirizziSearchTable
-          @new="indDrawer.openCreate"
-          @row-click="(data) => indDrawer.editRow(data, 'indirizzo_dettaglio_id')"
-        />
-      </TabPanel>
+    <Tabs value="indirizzi" lazy>
+      <TabList>
+        <Tab value="indirizzi">{{ t('indirizzi.tab_indirizzi') }}</Tab>
+        <Tab value="toponomastica">{{ t('indirizzi.tab_toponomastica') }}</Tab>
+        <Tab value="comuni">{{ t('indirizzi.tab_comuni') }}</Tab>
+        <Tab value="cap">{{ t('indirizzi.tab_cap') }}</Tab>
+        <Tab value="province">{{ t('geo.tab_province') }}</Tab>
+        <Tab value="regioni">{{ t('geo.tab_regioni') }}</Tab>
+        <Tab value="stati">{{ t('geo.tab_stati') }}</Tab>
+      </TabList>
+      <TabPanels>
+        <TabPanel value="indirizzi">
+          <IndirizziSearchTable
+            @new="indDrawer.openCreate"
+            @row-click="(data) => indDrawer.editRow(data, 'indirizzo_dettaglio_id')"
+          />
+        </TabPanel>
 
-      <TabPanel :header="t('indirizzi.tab_toponomastica')">
-        <ToponomasticaSearchTable
-          @new="topoDrawer.openCreate"
-          @row-click="(data) => topoDrawer.editRow(data)"
-        />
-      </TabPanel>
+        <TabPanel value="toponomastica">
+          <ToponomasticaSearchTable
+            @new="topoDrawer.openCreate"
+            @row-click="(data) => topoDrawer.editRow(data)"
+          />
+        </TabPanel>
 
-      <TabPanel :header="t('indirizzi.tab_comuni')">
-        <ComuniSearchTable @new="comuneDrawer.openCreate" />
-      </TabPanel>
+        <TabPanel value="comuni">
+          <ComuniSearchTable @new="comuneDrawer.openCreate" />
+        </TabPanel>
 
-      <TabPanel :header="t('indirizzi.tab_cap')">
-        <CodiciPostaliSearchTable
-          @new="capDrawer.openCreate"
-          @row-click="(data) => capDrawer.editRow(data)"
-        />
-      </TabPanel>
+        <TabPanel value="cap">
+          <CodiciPostaliSearchTable
+            @new="capDrawer.openCreate"
+            @row-click="(data) => capDrawer.editRow(data)"
+          />
+        </TabPanel>
 
-      <TabPanel :header="t('geo.tab_province')">
-        <ProvinceSearchTable
-          @new="provDrawer.openCreate"
-          @row-click="(data) => provDrawer.editRow(data)"
-        />
-      </TabPanel>
+        <TabPanel value="province">
+          <ProvinceSearchTable
+            @new="provDrawer.openCreate"
+            @row-click="(data) => provDrawer.editRow(data)"
+          />
+        </TabPanel>
 
-      <TabPanel :header="t('geo.tab_regioni')">
-        <RegioniSearchTable
-          @new="regDrawer.openCreate"
-          @row-click="(data) => regDrawer.editRow(data)"
-        />
-      </TabPanel>
+        <TabPanel value="regioni">
+          <RegioniSearchTable
+            @new="regDrawer.openCreate"
+            @row-click="(data) => regDrawer.editRow(data)"
+          />
+        </TabPanel>
 
-      <TabPanel :header="t('geo.tab_stati')">
-        <StatiSearchTable
-          @new="statoDrawer.openCreate"
-          @row-click="(data) => statoDrawer.editRow(data)"
-        />
-      </TabPanel>
-
-    </TabView>
+        <TabPanel value="stati">
+          <StatiSearchTable
+            @new="statoDrawer.openCreate"
+            @row-click="(data) => statoDrawer.editRow(data)"
+          />
+        </TabPanel>
+      </TabPanels>
+    </Tabs>
 
     <IndirizzoDrawer
       :visible="indDrawer.state.visible"
