@@ -264,9 +264,33 @@ La severita segue una gerarchia a tre livelli: se almeno un errore critico (`C`)
 ### Codici errore
 
 * **Centralizzare tutti i messaggi** in `config.messaggi_errore` — mai hard-codare testi nelle funzioni
-* **Usare la convenzione `E_`** per i codici errore: `E_GENERICO`, `E_SOGGETTO_NO_CONTATTI`, `E_RUOLO_NATURA_NON_AMMESSA`
 * **Usare nomi descrittivi** che rendano il codice autoesplicativo senza consultare il catalogo
 * Ogni codice deve essere registrato nel catalogo **prima** di essere usato nel codice — se manca, `fn_log_error_only` ricade su `MESSAGGIO_NON_DEFINITO`
+
+#### Il prefisso dice se blocca: `E_` e `W_`
+
+Il prefisso del codice **non è decorativo**: dichiara al lettore se l'operazione
+prosegue o si ferma. Deve corrispondere alla funzione che lo solleva.
+
+| Prefisso | Significato | Funzione da usare | Effetto |
+| --- | --- | --- | --- |
+| `E_` | **Errore bloccante** | `script.fn_log_and_raise_error` | logga **e** solleva: la transazione si ferma |
+| `W_` | **Avvertimento** | `script.fn_log_error_only` | logga soltanto: l'esecuzione prosegue |
+
+Esempi: `E_GENERICO`, `E_SOGGETTO_NO_CONTATTI`, `E_RUOLO_NATURA_NON_AMMESSA` da un
+lato; `W_TXID_NOT_REGISTERED` dall'altro.
+
+**Perché la regola conta.** Un codice `W_` sollevato con `fn_log_and_raise_error`
+blocca pur dichiarandosi innocuo, e chi legge lo stack trace cerca la causa nel
+posto sbagliato. È successo davvero: `W_TXID_NOT_REGISTERED` bloccava le
+migrazioni in ogni ambiente senza canale di log, e il prefisso `W_` ha portato
+fuori strada la diagnosi (vedi `brief-db-coerenza-tx-id-non-registrato.md`).
+
+**Nel dubbio, guarda il chiamante, non il nome.** Quando si aggiunge o si modifica
+un codice, la verifica è una sola riga: se passa per `fn_log_and_raise_error` deve
+iniziare per `E_`, se passa per `fn_log_error_only` per `W_`. I codici storici
+senza prefisso (es. `ERRORE_PARAMETRI_TABELLA`) vanno allineati quando si tocca il
+punto in cui sono usati, non con una migrazione di massa.
 
 ### Logging
 
