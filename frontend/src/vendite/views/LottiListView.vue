@@ -33,8 +33,27 @@ useReadonlyMode(READONLY_DOMAINS.VENDITE)
 
 // Filtri: mese di competenza (DatePicker mese) + stato lotto (select statico
 // sui valori di dominio; una nuova voce si mostra comunque via fail-visible).
-const competenzaFilter = ref(null)
+//
+// Default = MESE CORRENTE (non "tutti"): il registro dei giri si consulta per
+// il mese che si sta fatturando, e senza filtro la lista mescolava mesi
+// arbitrari. Resta azzerabile dall'utente (`show-button-bar` → Svuota) per le
+// ricerche storiche: con `null` il BE non applica il filtro.
+const competenzaFilter = ref(primoDelMeseCorrente())
 const statoFilter = ref(null)
+
+// Scopo: 1° del mese corrente. È la granularità del dominio (la competenza è
+//        sempre normalizzata al 1° lato BE): partire dal giorno di oggi
+//        renderebbe il valore inviato dipendente dalla data di apertura.
+function primoDelMeseCorrente() {
+  const oggi = new Date()
+  return new Date(oggi.getFullYear(), oggi.getMonth(), 1)
+}
+
+// Competenza in formato API (YYYY-MM-DD), condivisa da lista ed esiti: unica
+// derivazione, così i due non possono divergere.
+const competenzaParam = computed(() =>
+  competenzaFilter.value ? toDateString(competenzaFilter.value) : null,
+)
 
 const statoOptions = computed(() => [
   { value: 'DRAFT', label: t('vendite.lotti.stato_draft') },
@@ -46,7 +65,7 @@ const statoOptions = computed(() => [
 // Scopo: fetch di pagina per il BB paginato (filtri correnti nella query).
 function fetchLottiPage(paging) {
   const params = { page: paging.page, page_size: paging.page_size }
-  if (competenzaFilter.value) params.competenza_mese = toDateString(competenzaFilter.value)
+  if (competenzaParam.value) params.competenza_mese = competenzaParam.value
   if (statoFilter.value) params.stato_lotto = statoFilter.value
   return listLotti(params)
 }
@@ -126,32 +145,44 @@ const pageActions = computed(() => [
       </PageActionsBar>
     </div>
 
-    <!-- Esiti fatturazione (C-5): stato coda stampa + ultimi giri per corsia. -->
-    <FatturazioneEsitiPanel />
+    <!-- Esiti fatturazione (C-5): stato coda stampa + giri del mese filtrato.
+         La competenza è la STESSA della lista: pannello e lista raccontano lo
+         stesso periodo (prima i giri erano totali da sempre sotto un filtro
+         mese che non li toccava). -->
+    <FatturazioneEsitiPanel :competenza-mese="competenzaParam" />
 
-    <div class="app-page-filters" style="display: flex; gap: 1rem; align-items: flex-end; margin-bottom: 1rem;">
-      <div class="form-field">
-        <label>{{ t('vendite.lotti.filtro_competenza') }}</label>
-        <DatePicker
-          v-model="competenzaFilter"
-          view="month"
-          date-format="mm/yy"
-          show-icon
-          show-button-bar
-          @update:model-value="onFilterChange"
-        />
-      </div>
-      <div class="form-field">
-        <label>{{ t('vendite.lotti.filtro_stato') }}</label>
-        <Select
-          v-model="statoFilter"
-          :options="statoOptions"
-          option-label="label"
-          option-value="value"
-          show-clear
-          :placeholder="t('common.all')"
-          @update:model-value="onFilterChange"
-        />
+    <!-- ⚠️ La riga filtri sta DENTRO `.app-page-toolbar` (pattern standard, cfr.
+         EmailLogsListView/SituazioneApertaView). `.app-page-filters` porta
+         `flex: 1`, che ha senso solo in un contenitore in RIGA («prendi lo
+         spazio orizzontale»): come figlia diretta di `.app-page` — che è flex
+         COLUMN — quel `flex: 1` diventa crescita VERTICALE e la riga filtri si
+         mangiava tutto lo spazio libero, aprendo un vuoto sopra i campi appena
+         la lista si accorciava (bug 2026-07-23, visibile solo filtrando). -->
+    <div class="app-page-toolbar">
+      <div class="app-page-filters">
+        <div class="form-field">
+          <label>{{ t('vendite.lotti.filtro_competenza') }}</label>
+          <DatePicker
+            v-model="competenzaFilter"
+            view="month"
+            date-format="mm/yy"
+            show-icon
+            show-button-bar
+            @update:model-value="onFilterChange"
+          />
+        </div>
+        <div class="form-field">
+          <label>{{ t('vendite.lotti.filtro_stato') }}</label>
+          <Select
+            v-model="statoFilter"
+            :options="statoOptions"
+            option-label="label"
+            option-value="value"
+            show-clear
+            :placeholder="t('common.all')"
+            @update:model-value="onFilterChange"
+          />
+        </div>
       </div>
     </div>
 

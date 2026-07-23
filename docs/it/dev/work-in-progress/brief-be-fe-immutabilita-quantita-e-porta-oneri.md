@@ -2,9 +2,16 @@
 
 > **Tipo**: brief BE/FE · **Target**: `dev/backend-tid` + FE · **Data**: 2026-07-21
 > · **Owner**: Tid · **Priorità**: 🟠 ALTA
-> **Stato**: ☐ DA REALIZZARE — prerequisiti DB **PRONTI** (apply su dev + pgTAP
-> verdi, 2026-07-21). Unico micro-prerequisito residuo: seed codename
-> `carica_voce_manuale` in `config.azioni_processo` (§6, una riga CSV al team DB).
+> **Stato**: 🟢 **REALIZZATO (2026-07-23)** — A1/A2/A3 · B1 · C1/C2 · test in
+> working tree, **suite backend 3300 verdi**, build FE verde, guardrail i18n
+> pulito. Prerequisiti DB erano pronti (apply dev + pgTAP verdi, 2026-07-21).
+> **Seed `carica_voce_manuale` FATTO e applicato su dev** (id 29, area vendite,
+> §6) e backend ricaricato: la porta è **operativa in-app**. Il changeset del
+> team DB non è ancora pushato, quindi la riga CSV non si vede dal branch BE.
+> **Unico aperto**: la validazione in-app di Tid, che richiede **prima una
+> commessa** — oggi su dev `vendite.commesse` è **vuota** (0 righe) e non ci sono
+> documenti pushabili (preventivi/ordini/contratti/DDT/consumi tutti a 0): serve
+> ricostruire una catena minima per avere un bersaglio su cui caricare l'onere.
 > **Origine**: step 10 («comunicazione BE/FE») del
 > [brief-db-immutabilita-quantita-e-porta-oneri.md](brief-db-immutabilita-quantita-e-porta-oneri.md),
 > che copre anche gli step 2 (ponte approvazione) e 8 (permessi prezzo N5/N7)
@@ -207,12 +214,12 @@ serve il seed solo per la validazione in-app.
 
 | # | Step | Stato |
 |---|---|---|
-| A1 | Endpoint + service + repo `aggiungi-onere` (`post_permission carica_voce_manuale`) (§3.1) | ☐ |
-| A2 | Lookup articoli-onere: filtro `solo_oneri` su `ApiArticoliLookup` (§3.2) | ☐ |
-| A3 | FE pannello «Aggiungi onere» in `CommessaGestioneDrawer` (app-escape) (§4.1) | ☐ |
-| B1 | Ponte approvazione: push passa `p_righe_ids` + adeguamento test (§3.3) | ☐ |
-| C1 | `post_permission prezzo_override_manuale` su N5/N7 + mapping errori 550-554 (§3.4) | ☐ |
-| C2 | FE gate azioni prezzo con `useActionPermission` (§4.2) | ☐ |
-| D1 | Seed `carica_voce_manuale` (team DB, §6) | ☐ |
-| E1 | Test §5 verdi + i18n check verde | ☐ |
-| E2 | Doc §7 + validazione in-app Tid → brief in work-done | ☐ |
+| A1 | Endpoint + service + repo `aggiungi-onere` (`post_permission carica_voce_manuale`) (§3.1) | ✅ **FATTO (2026-07-23)** — `POST /vendite/commesse/<id>/oneri/` (`ApiCommessaOneri`, Idempotency-Key obbligatoria) → `commesse_service.aggiungi_onere_commessa` → `CommesseRepository.aggiungi_onere` (una SELECT di madre = unità atomica). Istanza utility **derivata dal BA della commessa** quando assente (scelta migliorativa rispetto al brief: la commessa è per costruzione (BA, utility) e il BA ha una sola istanza → campo tolto alla UI, override sempre possibile). Errori della madre tradotti col LORO codice via `ErrorManager.raise_from_database_error`. |
+| A2 | Lookup articoli-onere: filtro `solo_oneri` su `ApiArticoliLookup` (§3.2) | ✅ **FATTO** — query param `solo_oneri`, JOIN `catalogo.articoli` + `config.causali_onere`, display fields `causale_onere_id/_codice/_descrizione` aggiunti solo quando il filtro è attivo. Nessun endpoint nuovo; il JOIN su `articoli` è ora condiviso col filtro natura (una volta sola, stesso alias). |
+| A3 | FE pannello «Aggiungi onere» in `CommessaGestioneDrawer` (app-escape) (§4.1) | ✅ **FATTO** — azione in `DrawerActionsBar` (che applica `app-escape` e fa da gate nativo via `action: 'carica_voce_manuale'` + `hideWhenReadonly`) + `AppDialog` con Select ricco `app-lookup-option` (descrizione + tag IVA + causale: l'IVA è per-onere e va vista alla scelta), importo, tipo doc (`LookupSelect rel=config.tipi_doc_fiscale`), data e motivo. |
+| B1 | Ponte approvazione: push passa `p_righe_ids` + adeguamento test (§3.3) | ✅ **FATTO** — `fn_batch_upsert_commessa_attivita` ritorna solo contatori: gli id si risolvono dalle chiavi naturali `(commessa_id, segment_key)` con `list_attivita_ids_by_segments` (un round-trip, `unnest` di due array), tracciati in `HandlerResult.attivita_ids_per_commessa` e passati al ponte. Nessuna riga = nessuna approvazione (le BOZZA di terzi restano intatte), ma la testata va comunque a PRONTA. 4 test esistenti adeguati al nuovo contratto + 1 nuovo che fissa il fix. |
+| C1 | `post_permission prezzo_override_manuale` su N5/N7 + mapping errori 550-554 (§3.4) | ✅ **FATTO** — gate su tutte e tre le view prezzo di commessa; 6 codici registrati in `error_policies.py` (550/551 → **409**, oneri 552/553/554 + tipo_doc → 400). |
+| C2 | FE gate azioni prezzo con `useActionPermission` (§4.2) | ✅ **FATTO** — `buildRowActions` ritorna vuoto senza `prezzo_override_manuale`: il kebab non propone azioni che finirebbero in 403. |
+| D1 | Seed `carica_voce_manuale` (team DB, §6) | ✅ **FATTO (2026-07-23)** — riga CSV scritta dal team DB e **applicata su dev**: verificato sul DB vivo `config.azioni_processo` id **29**, area `vendite`, `attivo=true`. Il changeset non è ancora pushato su `dev/db-tid` (per questo non compare nel working tree BE): arriverà col prossimo push del team DB |
+| E1 | Test §5 verdi + i18n check verde | ✅ **FATTO** — `CommessaPortaOneriServiceTests` (7 casi: happy path, istanza esplicita, 8 payload invalidi, 404, traduzione dei 4 errori madre, fallback) + `VenditeCommessaOneriApiTests` (6 casi: ok, JWT, errore dominio, permesso negato/consentito, gate prezzo sui 3 endpoint). **Suite backend 3300 verdi**, `check_i18n_keys.py` pulito, `vite build` verde. |
+| E2 | Doc §7 + validazione in-app Tid → brief in work-done | 🟡 **PARZIALE** — manuale [api_commessa_oneri.md](../../backend/vendite/manual/api_commessa_oneri.md) scritto + `api.md` aggiornato (bullet «Vendite — Commesse»). Manca la validazione in-app di Tid. |

@@ -17,7 +17,10 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
 import Textarea from 'primevue/textarea'
+import Select from 'primevue/select'
+import DatePicker from 'primevue/datepicker'
 import AppDialog from '../../core/components/AppDialog.vue'
+import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
@@ -35,7 +38,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
 import { DRAWER_WIDTH, PAGINATION } from '../../core/constants'
-import { displayDate } from '../../core/utils/date'
+import { displayDate, toDateString } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { extractApiError } from '../../core/utils/apiError'
 import {
@@ -44,6 +47,7 @@ import {
   statoEmissioneAttivitaSeverity,
 } from '../../core/utils/severity'
 import {
+  aggiungiOnereCommessa,
   approvaCommessaAttivita,
   cambiaStatoCommessa,
   getCommessaStato,
@@ -52,6 +56,7 @@ import {
   sbloccaPrezzoAttivita,
   variazionePrezzoAttivita,
 } from '../api/commesse'
+import { lookupArticoli } from '../../catalogo/api/catalogo'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -77,6 +82,9 @@ const { isAllowed: canApprovare } = useActionPermission('approva_attivita_commes
 // Gate unico dell'approvazione (readonly + permesso): un solo predicato per
 // toolbar e colonna checkbox — mai due copie che possono divergere.
 const canApprova = computed(() => !isReadonly.value && canApprovare.value)
+// Gate azioni prezzo N5/N7 (specchio del `post_permission` sugli endpoint:
+// senza il permesso il kebab non le propone invece di farle fallire in 403).
+const { isAllowed: canPrezzo } = useActionPermission('prezzo_override_manuale')
 
 // ------------------------------------------------------------------ stato
 const stato = ref(null)
@@ -177,6 +185,73 @@ function approva(righeIds) {
   })
 }
 
+// ------------------------------------------------------------------ porta oneri
+// Riga di puro valore sulla commessa (qta=1, causale+IVA dall'articolo-onere).
+// Il presidio e' all'ingresso: senza `carica_voce_manuale` l'azione non compare
+// (gate nativo di DrawerActionsBar via `action`), e il BE la rifiuta comunque.
+const onereDialog = ref(false)
+const onereArticoli = ref([])
+const onereArticoliLoading = ref(false)
+const onereForm = ref({
+  articoloOnereId: null,
+  importo: null,
+  tipoDocFiscaleId: null,
+  motivo: '',
+  dataAttivita: null,
+})
+
+// Scopo: carica gli articoli-onere del catalogo (uno per causale: pochi, si
+//        presentano come tendina e non come autocomplete).
+async function loadArticoliOnere() {
+  if (onereArticoli.value.length) return
+  onereArticoliLoading.value = true
+  try {
+    const res = await lookupArticoli({ solo_oneri: true, limit: 50 })
+    onereArticoli.value = res.data?.data?.results ?? []
+  } catch (err) {
+    notify.error(extractApiError(err, t('common.error')))
+  } finally {
+    onereArticoliLoading.value = false
+  }
+}
+
+// Scopo: apre il dialog azzerando il form (mai residui del giro precedente).
+async function apriOnere() {
+  onereForm.value = {
+    articoloOnereId: null,
+    importo: null,
+    tipoDocFiscaleId: null,
+    motivo: '',
+    dataAttivita: null,
+  }
+  onereDialog.value = true
+  await loadArticoliOnere()
+}
+
+const onereValido = computed(() =>
+  !!onereForm.value.articoloOnereId
+  && onereForm.value.importo != null
+  && onereForm.value.importo > 0
+  && !!onereForm.value.tipoDocFiscaleId)
+
+// Scopo: carica l'onere; la riga nasce APPROVATA e compare subito in lista.
+async function salvaOnere() {
+  const f = onereForm.value
+  const res = await execute(() => aggiungiOnereCommessa(props.commessaId, {
+    articoloOnereId: f.articoloOnereId,
+    importo: f.importo,
+    tipoDocFiscaleId: f.tipoDocFiscaleId,
+    motivo: f.motivo,
+    dataAttivita: f.dataAttivita ? toDateString(f.dataAttivita) : null,
+  }))
+  if (res !== null) {
+    onereDialog.value = false
+    notify.success(t('vendite.commesse.onere_esito'))
+    await reloadAll()
+    emit('saved')
+  }
+}
+
 // ------------------------------------------------------------------ stato (capabilities)
 // Azioni di stato utente dal blob capabilities (transizioni manuali).
 const stateActions = computed(() => mapAvailableActionsToDrawerActions({
@@ -208,7 +283,7 @@ const variazioneMotivo = ref('')
 // Scopo: kebab riga — azioni prezzo condizionate dai flag riga; il guard vero
 //        (riga fatturata, commessa non modificabile) resta al BE (fail-visible).
 function buildRowActions(row) {
-  if (isReadonly.value) return []
+  if (isReadonly.value || !canPrezzo.value) return []
   return [
     {
       key: 'riallinea',
@@ -292,6 +367,23 @@ function sblocca(row) {
 }
 
 const selectedIds = computed(() => selected.value.map((r) => r.id))
+
+// Barra azioni del drawer: porta oneri + transizioni di stato. `action` fa da
+// gate permesso e `hideWhenReadonly` da gate ispezione (logica in DrawerActionsBar,
+// che applica anche `app-escape` — i pannelli-azione vivono in contenuto readonly).
+const drawerActions = computed(() => [
+  {
+    key: 'aggiungi-onere',
+    kind: 'primary',
+    label: t('vendite.commesse.onere_azione'),
+    icon: 'pi pi-plus-circle',
+    tooltip: t('vendite.commesse.onere_tooltip'),
+    action: 'carica_voce_manuale',
+    hideWhenReadonly: true,
+    command: apriOnere,
+  },
+  ...stateActions.value,
+])
 </script>
 
 <template>
@@ -323,8 +415,8 @@ const selectedIds = computed(() => selected.value.map((r) => r.id))
           </template>
         </DrawerEntityHeader>
 
-        <!-- Azioni di stato utente (capabilities data-driven). -->
-        <DrawerActionsBar v-if="stateActions.length" :actions="stateActions" :disabled="loading" />
+        <!-- Porta oneri + azioni di stato utente (capabilities data-driven). -->
+        <DrawerActionsBar v-if="drawerActions.length" :actions="drawerActions" :disabled="loading" />
 
         <!-- Contatori funnel testata. -->
         <div v-if="stato" class="app-commessa-contatori">
@@ -479,6 +571,83 @@ const selectedIds = computed(() => selected.value.map((r) => r.id))
       <div class="form-field">
         <label>{{ t('vendite.commesse.variazione_motivo') }}</label>
         <Textarea v-model="variazioneMotivo" rows="3" fluid />
+      </div>
+    </AppDialog>
+
+    <!-- Dialog porta oneri — riga di valore (qta=1) sulla commessa. -->
+    <AppDialog
+      v-model:visible="onereDialog"
+      :header="t('vendite.commesse.onere_header')"
+      width="md"
+      :loading="loading"
+      :save-disabled="!onereValido"
+      :save-label="t('vendite.commesse.onere_salva')"
+      @save="salvaOnere"
+      @cancel="onereDialog = false"
+    >
+      <div class="form-field">
+        <label>{{ t('vendite.commesse.onere_articolo') }}</label>
+        <!-- Voce ricca: l'IVA e' propria di ogni onere (la penale e' fuori
+             campo art.15), va vista al momento della scelta. -->
+        <Select
+          v-model="onereForm.articoloOnereId"
+          :options="onereArticoli"
+          option-label="descrizione"
+          option-value="id"
+          :loading="onereArticoliLoading"
+          :placeholder="t('vendite.commesse.onere_articolo_placeholder')"
+          fluid
+        >
+          <template #option="{ option }">
+            <div class="app-lookup-option">
+              <div class="app-lookup-option__primary">
+                {{ option.descrizione }}
+                <Tag v-if="option.iva_codice" :value="option.iva_codice" severity="secondary" />
+              </div>
+              <div class="app-lookup-option__secondary">{{ option.codice }}</div>
+              <div class="app-lookup-option__meta">
+                <span v-if="option.causale_onere_descrizione">
+                  {{ option.causale_onere_descrizione }}
+                </span>
+                <span v-if="option.iva_descrizione">{{ option.iva_descrizione }}</span>
+              </div>
+            </div>
+          </template>
+        </Select>
+      </div>
+      <div class="form-field">
+        <label>{{ t('vendite.commesse.onere_importo') }}</label>
+        <InputNumber
+          v-model="onereForm.importo"
+          mode="decimal"
+          :min="0"
+          :min-fraction-digits="2"
+          :max-fraction-digits="10"
+          fluid
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('vendite.commesse.onere_tipo_doc') }}</label>
+        <LookupSelect
+          v-model="onereForm.tipoDocFiscaleId"
+          rel="config.tipi_doc_fiscale"
+          :placeholder="t('vendite.commesse.onere_tipo_doc_placeholder')"
+          show-code
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('vendite.commesse.onere_data') }}</label>
+        <DatePicker
+          v-model="onereForm.dataAttivita"
+          date-format="dd/mm/yy"
+          show-icon
+          show-button-bar
+          fluid
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('vendite.commesse.onere_motivo') }}</label>
+        <Textarea v-model="onereForm.motivo" rows="2" fluid />
       </div>
     </AppDialog>
   </Drawer>

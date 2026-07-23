@@ -6,12 +6,15 @@
 # ------------------------------------------------------------
 
 
+import re
 from dataclasses import replace
 from datetime import date
+from typing import Any
 
 from apps.core.db.dbops_repository import DbopsRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.pipeline_repository import SdiPayloadRow, VenditePipelineRepository
+from apps.vendite.services._fatturazione_job_helpers import JOB_TYPES_FATTURAZIONE_APP
 from apps.vendite.services.lotto_segnalazioni_service import LottoSegnalazioniService
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
@@ -295,46 +298,131 @@ def ristampa_lotto(
     return {"lotto_id": lotto_id, "accodate": accodate}
 
 
-# Prefissi jobname delle corsie di fatturazione in maintenance.job_run_log:
-# il batch registra `run_fatturazione_batch:<corsia>`, i worker
-# `draina_coda_stampa` / (futuro) `draina_coda_lavori`. Owner unico del
-# vocabolario jobname lato lettura esiti.
-_JOBNAME_PREFISSI_FATTURAZIONE = (
-    "run_fatturazione_batch",
-    "draina_coda_stampa",
-    "draina_coda_lavori",
-)
+# Prefisso jobname delle CORSIE DI FATTURAZIONE in maintenance.job_run_log:
+# il batch registra `run_fatturazione_batch:<corsia>` (immediata/differita).
+#
+# I worker di drenaggio code (`draina_coda_lavori`/`draina_coda_stampa`) NON
+# sono qui di proposito (2026-07-23, richiesta Tid): sono poller che si
+# svegliano ogni 1-2 minuti, quindi il loro contatore di run cresce di ~1440
+# al giorno e non dice nulla sulla fatturazione — affiancato alle corsie vere
+# rendeva indistinguibile «worker vivo» da «batch fermo da un mese». La
+# liveness delle code resta esposta dove è pertinente, accanto alle code
+# stesse: `coda_lavori.gestione_service.conteggi_code` -> `worker.*`
+# (last_run_at + attivo), reso nei tab della vista Code di lavoro.
+_JOBNAME_PREFISSO_FATTURAZIONE = "run_fatturazione_batch"
+
+
+# Scopo: normalizza il timestamp testuale di PG ("YYYY-MM-DD HH:MM:SS...+TZ",
+#        spazio non 'T') a ISO-8601, per il parse Date() cross-browser del FE
+#        (displayTimestamp). Entrambe le sorgenti dei giri lo restituiscono
+#        come testo, quindi la conversione è una sola.
+#        L'offset PG senza minuti ("+02") viene completato a "+02:00": lo
+#        standard ECMA per Date() richiede ±HH:MM — V8 è permissivo, Safari
+#        no (Invalid Date → cella vuota). Gli offset con minuti ("+05:30")
+#        arrivano già completi e non vengono toccati.
+_OFFSET_SENZA_MINUTI = re.compile(r"([+-]\d{2})$")
+
+
+def _iso(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    return _OFFSET_SENZA_MINUTI.sub(r"\1:00", raw.replace(" ", "T", 1))
+
+
+# Job type dei lavori di fatturazione accodati dall'APP (C-3 giro, C-4 numera):
+# l'altra strada con cui si fattura, quella usata quotidianamente dagli
+# operatori. Vive in `dbops.coda_lavori`, non in `maintenance.job_run_log`.
+# Le costanti sono in `_fatturazione_job_helpers` (condivise con l'enqueue
+# delle view — regola del 2, ok Tid 2026-07-23), importate in testa al modulo.
+
+# Etichette di ORIGINE dei giri: dicono da DOVE è partito il lavoro, non cosa ha
+# fatto. Servono al FE per non confondere le due strade in un unico mucchio.
+ORIGINE_APP = "app"
+ORIGINE_BATCH = "batch"
 
 
 # Scopo: C-5 — Esiti dei giri di fatturazione + stato della coda stampa, per il
-#        cockpit. Aggrega due sorgenti di sola lettura, nessuna tabella nuova
-#        (I-5): (a) `maintenance.job_run_log` riassunto per corsia (ultimo esito,
-#        ultimo run, ok/fail) filtrato ai jobname di fatturazione; (b) i conteggi
-#        della coda stampa per stato, **con scope emittente dell'operatore** (la
-#        coda non ha emittente → JOIN fatture nel repo, brief §5). `auth_user_id`
-#        None solo per usi di sistema; dal cockpit è sempre l'operatore.
-def esiti_fatturazione(*, auth_user_id: int | None = None) -> dict[str, object]:
+#        cockpit. Aggrega sorgenti di sola lettura, nessuna tabella nuova (I-5).
+#
+# I giri arrivano dalle DUE strade con cui si può fatturare, unite in un'unica
+# lista e distinguibili per `origine` (2026-07-23):
+#   - `app`   → `dbops.coda_lavori` (FATTURAZIONE_GIRO/NUMERA): i lavori
+#               lanciati dagli operatori dai pulsanti del cockpit;
+#   - `batch` → `maintenance.job_run_log` (`run_fatturazione_batch:<corsia>`):
+#               il batch da riga di comando, per quando verrà schedulato.
+# Mostrarne UNA sola è il difetto che ha reso il pannello fuorviante: leggeva
+# solo `batch` e dichiarava «nessun giro» mentre gli operatori fatturavano ogni
+# giorno dall'app. Tenerle entrambe significa che attivare (o spegnere) lo
+# scheduler non fa sparire nulla dal pannello.
+#
+# CONTEGGI COMPLESSIVI, non per-operatore (decisione Tid 2026-07-23): chi è
+# autorizzato all'attività vede il totale dei giri del mese — un totale
+# ristretto ai propri sarebbe un'informazione sbagliata (il pannello di `pochi`
+# dichiarava «nessun giro» mentre l'admin fatturava per tutti). Il totale delle
+# righe `app` è pero' SPEZZATO in `mio_count`/`altri_count` (identità is_mio
+# della vista code): l'operatore distingue il proprio lavoro da quello altrui
+# senza perdere il quadro. Le righe `batch` non hanno split: sono di sistema,
+# non di un operatore.
+#
+# `competenza_mese` restringe i giri a quel mese. L'attribuzione differisce per
+# sorgente, ed è volutamente la più precisa disponibile per ciascuna:
+#   - app   → `payload->>'competenza_mese'`, DICHIARATO all'accodamento;
+#   - batch → competenza dal meta del run se c'è, altrimenti mese di esecuzione
+#             (i run storici non la scrivevano: vedi `list_job_summary`).
+# Anche `coda_stampa` segue il mese (via il lotto della riga di coda): senza, i
+# suoi contatori sono cumulativi da sempre — «Fatte: 7» cresce all'infinito e
+# non dice nulla sul mese che si sta fatturando. L'intero pannello parla quindi
+# di UN periodo solo, quello filtrato nella lista sottostante.
+#
+# `user` serve allo split miei/altri dei giri app; `auth_user_id` allo scope
+# della coda stampa. None = uso di sistema (split a 0, coda senza scope).
+def esiti_fatturazione(
+    *,
+    auth_user_id: int | None = None,
+    competenza_mese: date | None = None,
+    user: Any = None,
+) -> dict[str, object]:
     from apps.core.db.maintenance_repository import MaintenanceRepository
+    from apps.core.services.coda_lavori.gestione_service import (
+        scope_key_operatore,
+    )
+    from apps.core.services.coda_lavori.repository import CodaLavoriRepository
 
-    # limit=200 sui JOBNAME DISTINTI (il summary e' un GROUP BY jobname):
-    # i job registrati sono decine, il cap e' largo per costruzione. Se mai
-    # venisse superato, i giri fatturazione potrebbero uscire dalla finestra
-    # (ordinata per last_run_at): rivedere con un filtro SQL sul repo core.
-    summary, _ = MaintenanceRepository().list_job_summary(limit=200)
-    giri = []
-    for s in summary:
-        if not str(s.get("jobname", "")).startswith(_JOBNAME_PREFISSI_FATTURAZIONE):
-            continue
-        # `last_run_at` arriva come testo PG ("YYYY-MM-DD HH:MM:SS...+TZ",
-        # spazio non 'T'): normalizzato a ISO-8601 per il parse Date()
-        # cross-browser del FE (displayTimestamp).
-        last_run = s.get("last_run_at")
-        giri.append({
-            **s,
-            "last_run_at": last_run.replace(" ", "T", 1) if last_run else None,
-        })
+    # (a) Giri lanciati dall'APP: totale complessivo + split miei/altri.
+    caller_scope_key = None if user is None else scope_key_operatore(user)
+    giri = [
+        {
+            **r,
+            "origine": ORIGINE_APP,
+            "altri_count": int(r["total_runs"]) - int(r["mio_count"]),
+            "last_run_at": _iso(r.get("last_run_at")),
+        }
+        for r in CodaLavoriRepository().summary_per_job_type(
+            job_types=list(JOB_TYPES_FATTURAZIONE_APP),
+            competenza_mese=competenza_mese,
+            caller_scope_key=caller_scope_key,
+        )
+    ]
+
+    # (b) Giri del BATCH schedulato. limit=200 sui JOBNAME DISTINTI (il summary
+    # e' un GROUP BY jobname) gia' ristretti al prefisso di fatturazione: le
+    # corsie sono 2, il cap e' largo per costruzione.
+    summary, _ = MaintenanceRepository().list_job_summary(
+        limit=200,
+        jobname_prefix=_JOBNAME_PREFISSO_FATTURAZIONE,
+        meta_month_equals=(
+            ("competenza", competenza_mese.replace(day=1).isoformat())
+            if competenza_mese is not None
+            else None
+        ),
+    )
+    giri.extend(
+        {**s, "origine": ORIGINE_BATCH, "last_run_at": _iso(s.get("last_run_at"))}
+        for s in summary
+    )
     coda_stampa = VenditePipelineRepository().count_coda_stampa_per_stato(
         auth_user_id=auth_user_id,
+        competenza_mese=competenza_mese,
     )
     return {"giri": giri, "coda_stampa": coda_stampa}
 

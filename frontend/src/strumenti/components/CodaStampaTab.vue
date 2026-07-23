@@ -1,10 +1,12 @@
 <script setup>
 // Scopo: Tab «Coda stampa» della vista Strumenti (FE-4): lista paginata
 //        dell'outbox PDF (vendite.fatture_stampa_coda). SOLA LETTURA: nessuna
-//        azione (P-4 — il drainer ritenta da solo); lo scope è per-emittente
-//        (JOIN fatture lato BE), quindi niente is_mio/proprietario-utente.
-//        «Tutti» (code_manage) allarga agli altri emittenti.
-import { computed, nextTick, onActivated, onMounted } from 'vue'
+//        azione (P-4 — il drainer ritenta da solo). Ambito PER-OPERATORE come
+//        la coda lavori (2026-07-23, decisione Tid): «Solo i miei» = righe
+//        innescate da me (audit user_insert via GUC identità), «Tutti» = di
+//        tutti gli operatori. La colonna «Operatore» + tag «mio» rendono
+//        leggibile chi ha lanciato; l'emittente resta colonna informativa.
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -16,16 +18,26 @@ import { displayTimestamp } from '../../core/utils/date'
 import { statoCodaStampaSeverity, STATO_CODA_STAMPA_MAP } from '../../core/utils/severity'
 import { MANAGE_ICONS, PAGINATION } from '../../core/constants'
 import { listCodaStampa } from '../../core/api/tracciamento'
+import { useLazyTabLoad } from '../../core/composables/useLazyTabLoad'
 import { useCodaFiltri } from '../composables/useCodaFiltri'
 import CodaFiltriToolbar from './CodaFiltriToolbar.vue'
+import CodaWorkerStato from './CodaWorkerStato.vue'
 
 const { t } = useI18n()
 const notify = useNotify()
 
 // Filtri condivisi dei tab code — composable estratto alla 2ª copia
 // (regola del 2); qui «tutti» allarga agli altri emittenti.
-const { filtri, canManage, statoOptions, ambitoOptions, buildParams } =
-  useCodaFiltri(STATO_CODA_STAMPA_MAP)
+// La coda stampa non ha azioni per-riga né dettaglio: `canManage` non serve
+// (le righe sono per-emittente, non per-operatore). Ordinamento default
+// «aggiornato» discendente (2026-07-23, richiesta Tid): la riga lavorata più
+// di recente in testa.
+const {
+  filtri, ordinamento, applySortEvent,
+  statoOptions, ambitoOptions, buildParams,
+} = useCodaFiltri(STATO_CODA_STAMPA_MAP, {
+  sortDefault: { field: 'data_update', order: -1 },
+})
 
 // Scopo: fetch di pagina per il BB paginato (filtri correnti in query).
 function fetchPage(paging) {
@@ -36,7 +48,12 @@ const {
   items, count, page, pageSize, loading, fetch: fetchStampe, applyPageEvent,
 } = usePagedDashFetch(fetchPage, { defaultPageSize: PAGINATION.DEFAULT_ROWS })
 
+// Stato worker: ricaricato insieme alla lista, così «Ricarica» aggiorna anche
+// l'ultimo giro (altrimenti resterebbe fermo al primo ingresso nel tab).
+const workerStatoRef = ref(null)
+
 async function load() {
+  workerStatoRef.value?.refresh()
   try {
     await fetchStampe()
   } catch (err) {
@@ -54,19 +71,16 @@ function onFilterChange() {
   load()
 }
 
-// Con <Tabs lazy> ogni attivazione del tab è un MOUNT (v. nota gemella in
-// CodaLavoriTab): onMounted popola, onActivated copre il rientro rotta,
-// il flag scarta il doppione al mount iniziale della rotta.
-let primedByMount = false
-onMounted(() => {
-  primedByMount = true
-  load()
-  nextTick(() => { primedByMount = false })
-})
-onActivated(() => {
-  if (primedByMount) return
-  load()
-})
+// Scopo: sort lazy della DataTable — aggiorna lo stato e ricarica da pagina 1
+//        (l'ordinamento è server-side: la pagina corrente non ha più senso).
+function onSort(event) {
+  applySortEvent(event)
+  onFilterChange()
+}
+
+// Primo popolamento + freshness al rientro, senza doppio fetch iniziale
+// (BB estratto alla 3ª copia — la spiegazione del pattern vive lì).
+useLazyTabLoad(load)
 
 // Scopo: numero fattura leggibile (anno/serie/numero, campi opzionali).
 function fatturaLabel(row) {
@@ -99,10 +113,14 @@ const pageActions = computed(() => [
       :filtri="filtri"
       :stato-options="statoOptions"
       :ambito-options="ambitoOptions"
-      :can-manage="canManage"
       :page-actions="pageActions"
       @change="onFilterChange"
     />
+
+    <!-- Liveness del drainer: dice se la coda sta girando o è ferma. Il
+         conteggio delle sue esecuzioni è volutamente assente (un poller a
+         1/2min produce numeri enormi che non informano su nulla). -->
+    <CodaWorkerStato ref="workerStatoRef" coda="coda_stampa" />
 
     <DataTable
       :value="items"
@@ -113,6 +131,9 @@ const pageActions = computed(() => [
       paginator
       paginator-position="top"
       lazy
+      :sort-field="ordinamento.field"
+      :sort-order="ordinamento.order"
+      @sort="onSort"
       scrollable
       scroll-height="flex"
       :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
@@ -122,7 +143,9 @@ const pageActions = computed(() => [
       @page="onPage"
     >
       <Column field="id" header="ID" style="width: 80px;" />
-      <Column :header="t('strumenti.code.col_fattura')" style="width: 150px;">
+      <!-- `field` serve al sort lazy (chiave whitelistata dal BE): l'ordine è
+           per id fattura, la label resta anno/serie/numero componibile. -->
+      <Column field="fattura_id" :header="t('strumenti.code.col_fattura')" sortable style="width: 150px;">
         <template #body="{ data }">
           {{ fatturaLabel(data) }}
         </template>
@@ -132,7 +155,23 @@ const pageActions = computed(() => [
           {{ data.emittente_codice ?? '—' }}
         </template>
       </Column>
-      <Column field="lotto_id" :header="t('strumenti.code.col_lotto')" style="width: 90px;">
+      <!-- Operatore che ha innescato il processo (audit user_insert via GUC
+           identità), con tag «mio» come la colonna proprietario della coda
+           lavori. Sempre visibile: anche in «Solo i miei» dice chi sei. -->
+      <Column field="operatore" :header="t('strumenti.code.col_operatore')" style="width: 130px;">
+        <template #body="{ data }">
+          <span>
+            {{ data.operatore ?? '—' }}
+            <Tag
+              v-if="data.is_mio"
+              :value="t('strumenti.code.mio_tag')"
+              severity="info"
+              class="app-code-mio-tag"
+            />
+          </span>
+        </template>
+      </Column>
+      <Column field="lotto_id" :header="t('strumenti.code.col_lotto')" sortable style="width: 90px;">
         <template #body="{ data }">
           {{ data.lotto_id ?? '—' }}
         </template>
@@ -158,7 +197,7 @@ const pageActions = computed(() => [
           <span v-else>—</span>
         </template>
       </Column>
-      <Column field="data_update" :header="t('strumenti.code.col_aggiornato')" style="width: 150px;">
+      <Column field="data_update" :header="t('strumenti.code.col_aggiornato')" sortable style="width: 150px;">
         <template #body="{ data }">
           {{ data.data_update ? displayTimestamp(data.data_update) : '—' }}
         </template>

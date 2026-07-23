@@ -29,6 +29,7 @@ from apps.core.services.coda_lavori.repository import (
 )
 from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.list_helpers import validate_enum_param
 from apps.core.services.permissions_resolver import PermissionResolver
 
 # Azione di processo che sblocca la vista cross-utente e le azioni su job
@@ -62,6 +63,16 @@ def _resolve_scope_keys(user: Any) -> tuple[str, str | None]:
     return caller_key, owner_filter
 
 
+# Scopo: Chiave di scope che IDENTIFICA il chiamante sui job di coda ('ALL'
+#        per l'admin globale, altrimenti gli emittenti ordinati). È la stessa
+#        identità con cui `elenca` calcola `is_mio`. Esposta come API pubblica
+#        del modulo perché serve anche fuori dalla gestione code: il cockpit
+#        fatturazione spezza i conteggi dei giri in «miei / di altri» e deve
+#        usare la STESSA identità, non una seconda copia che può divergere.
+def scope_key_operatore(user: Any) -> str:
+    return _resolve_scope_keys(user)[0]
+
+
 # Scopo: Il chiamante può vedere/gestire i job di TUTTI gli scope? SUPER_ADMIN
 #        bypassa; altrimenti serve l'azione di processo `code_manage` (D-A).
 def puo_gestire_tutte_le_code(user: Any) -> bool:
@@ -70,16 +81,29 @@ def puo_gestire_tutte_le_code(user: Any) -> bool:
     return PermissionResolver.check_azione(user, AZIONE_CODE_MANAGE)
 
 
-# Scopo: Guard del parametro `ambito=tutti` delle liste: consentito solo a chi
-#        può gestire tutte le code; altrimenti 403 parlante (l'operatore non
-#        deve poter allargare la visibilità via query param).
-def _guard_ambito_tutti(user: Any) -> None:
-    ErrorManager.require(
-        puo_gestire_tutte_le_code(user),
-        code="E_PERMESSO_NEGATO",
-        message="Vista di tutte le code riservata (permesso code_manage).",
-        detail=f"azione richiesta: {AZIONE_CODE_MANAGE}",
+# Scopo: valida `sort_by`/`sort_dir` delle liste code contro la whitelist del
+#        chiamante e applica i default (2026-07-23, richiesta Tid: lavori →
+#        `started_at DESC`, stampa → `data_update DESC`). Valori fuori
+#        whitelist → E_SEARCH_VALIDATION parlante; il repo ha comunque il suo
+#        assert di defense-in-depth. Ritorna la coppia normalizzata.
+def _valida_ordinamento(
+    sort_by: str | None,
+    sort_dir: str | None,
+    *,
+    allowed: tuple[str, ...],
+    default: str,
+    function_name: str,
+) -> tuple[str, str]:
+    validate_enum_param(
+        sort_by, allowed=allowed, param_name="sort_by",
+        error_code="E_SEARCH_VALIDATION", function_name=function_name,
     )
+    sort_dir_norm = sort_dir.upper() if sort_dir else None
+    validate_enum_param(
+        sort_dir_norm, allowed=("ASC", "DESC"), param_name="sort_dir",
+        error_code="E_SEARCH_VALIDATION", function_name=function_name,
+    )
+    return sort_by or default, sort_dir_norm or "DESC"
 
 
 # Scopo: BE-4 — conteggi per il badge top bar + liveness worker. Ritorna
@@ -124,11 +148,16 @@ def conteggi_code(user: Any, *, auth_user_id: int | None) -> dict[str, Any]:
 
 
 # Scopo: BE-5 — lista paginata della coda lavori. Scope operatore di default;
-#        `tutti=True` (query `?ambito=tutti`) consentito solo con `code_manage`/
-#        SUPER_ADMIN → nessun filtro righe, `is_mio` continua a marcare i propri
-#        (colonna proprietario per capire chi impegna la coda). `data_a` è
-#        inclusiva a livello di GIORNO: convertita in esclusivo `+1 giorno`
-#        (la colonna è timestamptz). Ritorna `{count, results}`.
+#        `tutti=True` (query `?ambito=tutti`) è VISIBILITÀ, non gestione, ed è
+#        aperto a ogni operatore (decisione Tid 2026-07-23): la coda è una
+#        risorsa condivisa e chi aspetta deve poter vedere il lavoro altrui che
+#        la impegna — proprietario e tipo attività non sono segreti tra
+#        colleghi. Restano gated da `code_manage`: le AZIONI sui job altrui
+#        (`_owner_filter_per_azione`) e il DETTAGLIO (payload/errori possono
+#        contenere dati dell'attività altrui — vedi `dettaglio_job`).
+#        `is_mio` continua a marcare i propri. `data_a` è inclusiva a livello
+#        di GIORNO: convertita in esclusivo `+1 giorno` (la colonna è
+#        timestamptz). Ritorna `{count, results}`.
 def elenca_coda_lavori(
     user: Any,
     *,
@@ -140,11 +169,18 @@ def elenca_coda_lavori(
     limit: int = 50,
     offset: int = 0,
     tutti: bool = False,
+    sort_by: str | None = None,
+    sort_dir: str | None = None,
 ) -> dict[str, Any]:
     caller_key, owner_filter = _resolve_scope_keys(user)
     if tutti:
-        _guard_ambito_tutti(user)
         owner_filter = None
+    sort_by, sort_dir = _valida_ordinamento(
+        sort_by, sort_dir,
+        allowed=("id", "job_type", "started_at", "ended_at"),
+        default="started_at",
+        function_name="core.gestione_code.elenca_coda_lavori",
+    )
     esito = CodaLavoriRepository().elenca(
         owner_scope_key=owner_filter,
         caller_scope_key=caller_key,
@@ -156,19 +192,22 @@ def elenca_coda_lavori(
         data_a=(data_a + timedelta(days=1)) if data_a else None,
         limit=limit,
         offset=offset,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
     return {"count": esito["total"], "results": esito["items"]}
 
 
-# Scopo: BE-6 — lista paginata della coda stampa (outbox PDF). Scope emittente
-#        dell'operatore via JOIN fatture (la coda non ha utente proprietario:
-#        è per-emittente/lotto — asimmetria §1 del brief). `tutti=True` con
-#        `code_manage` → nessuno scope (auth_user_id=None al repo). Ritorna
-#        `{count, results}`.
+# Scopo: BE-6 — lista paginata della coda stampa (outbox PDF). Ambito
+#        PER-OPERATORE come la coda lavori (2026-07-23, decisione Tid — una
+#        semantica diversa per coda si leggeva come filtro rotto): «miei» =
+#        righe innescate dal chiamante (`user_insert`, identità GUC), `tutti`
+#        = tutte (visibilità aperta a ogni operatore). Il `caller_username`
+#        marca comunque `is_mio` anche in vista «Tutti», come la coda lavori.
+#        Ritorna `{count, results}`.
 def elenca_coda_stampa(
     user: Any,
     *,
-    auth_user_id: int | None,
     stato: str | None = None,
     lotto_id: int | None = None,
     data_da: date | None = None,
@@ -177,21 +216,30 @@ def elenca_coda_stampa(
     limit: int = 50,
     offset: int = 0,
     tutti: bool = False,
+    sort_by: str | None = None,
+    sort_dir: str | None = None,
 ) -> dict[str, Any]:
-    if tutti:
-        _guard_ambito_tutti(user)
-        auth_user_id = None
+    caller_username = getattr(user, "username", None)
+    sort_by, sort_dir = _valida_ordinamento(
+        sort_by, sort_dir,
+        allowed=("fattura_id", "lotto_id", "data_update"),
+        default="data_update",
+        function_name="core.gestione_code.elenca_coda_stampa",
+    )
 
     from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 
     esito = VenditePipelineRepository().elenca_coda_stampa(
-        auth_user_id=auth_user_id,
+        operatore=None if tutti else caller_username,
+        caller_username=caller_username,
         stati=list(_STATI_VIVI) if solo_vivi else ([stato] if stato else None),
         lotto_id=lotto_id,
         data_da=data_da,
         data_a=(data_a + timedelta(days=1)) if data_a else None,
         limit=limit,
         offset=offset,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
     return {"count": esito["total"], "results": esito["items"]}
 

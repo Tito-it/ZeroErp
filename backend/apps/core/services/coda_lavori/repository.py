@@ -15,7 +15,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from datetime import date
+from typing import Any, ClassVar
 
 from django.db import connection
 
@@ -352,6 +353,95 @@ class CodaLavoriRepository:
             cursor.execute(sql, params)
             return {str(r[0]): int(r[1]) for r in cursor.fetchall()}
 
+    # Scopo: Riassunto per `job_type` dei lavori accodati — quanti lanciati,
+    #        quanti riusciti, quando è stato l'ultimo e com'è andato. Gemello di
+    #        `MaintenanceRepository.list_job_summary` per la coda: serve a
+    #        raccontare l'attività ON-DEMAND (lanciata dall'app) accanto a quella
+    #        del batch schedulato, che vive invece in `maintenance.job_run_log`.
+    #        Le due strade di lancio devono comparire nello stesso pannello,
+    #        altrimenti se ne guarda una sola e l'altra sembra non esistere
+    #        (2026-07-23: la fatturazione girava da mesi via app mentre il
+    #        cockpit leggeva solo il batch, e mostrava «fermo da un mese»).
+    #
+    #  - `competenza_mese`: filtra sul `payload->>'competenza_mese'` del job. Qui
+    #    la competenza è DICHIARATA all'accodamento (l'endpoint la normalizza al
+    #    1° del mese) — nessun ripiego euristico, a differenza dei run storici
+    #    del batch.
+    #  - `caller_scope_key`: NON filtra — i conteggi sono l'attività COMPLESSIVA
+    #    (decisione Tid 2026-07-23: chi è autorizzato all'attività deve vedere il
+    #    totale, un conteggio ristretto ai propri è un'informazione sbagliata).
+    #    Serve a SPEZZARE il totale in `mio_count` (job con la stessa scope_key
+    #    del chiamante) vs altri — stessa identità di `is_mio` in `elenca`, mai
+    #    una seconda regola. None (uso di sistema) → `mio_count = 0`.
+    #
+    # `ok`/`fail` contano gli stati TERMINALI (FATTO/ERRORE); `total` include
+    # anche i non terminali (PENDING/IN_CORSO) e gli ANNULLATO, così «10/13» si
+    # legge onestamente come «13 lanciati, 10 riusciti» senza gonfiare i riusciti.
+    def summary_per_job_type(
+        self,
+        *,
+        job_types: list[str],
+        competenza_mese: date | None = None,
+        caller_scope_key: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if not job_types:
+            return []
+        conditions: list[str] = ["job_type = ANY(%s)"]
+        params: list[Any] = [list(job_types)]
+        if competenza_mese is not None:
+            conditions.append("payload->>'competenza_mese' = %s")
+            params.append(competenza_mese.replace(day=1).isoformat())
+        where = "WHERE " + " AND ".join(conditions)
+        # `ended_at` è l'istante in cui il lavoro si è concluso; per i job non
+        # ancora terminati si ripiega su started_at e infine sull'accodamento,
+        # così «ultimo giro» non risulta mai vuoto per un job in corso.
+        # `caller_scope_key` è il primo parametro perché compare per primo
+        # nell'SQL (FILTER del mio_count); '' quando None: non matcha nessuna
+        # scope_key reale → mio_count 0.
+        sql = f"""
+            SELECT job_type,
+                   COUNT(*)::int AS total_runs,
+                   COUNT(*) FILTER (WHERE stato = 'FATTO')::int AS ok_count,
+                   COUNT(*) FILTER (WHERE stato = 'ERRORE')::int AS fail_count,
+                   COUNT(*) FILTER (WHERE scope->>'scope_key' = %s)::int
+                       AS mio_count,
+                   MAX(COALESCE(ended_at, started_at, data_insert))::text
+                       AS last_run_at,
+                   (ARRAY_AGG(stato ORDER BY
+                        COALESCE(ended_at, started_at, data_insert) DESC))[1]
+                       = 'FATTO' AS last_ok
+              FROM dbops.coda_lavori
+              {where}
+             GROUP BY job_type
+             ORDER BY job_type
+        """  # noqa: S608 — where da condizioni whitelisted (nessun input libero)
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [caller_scope_key or "", *params])
+            return [
+                {
+                    "jobname": str(r[0]),
+                    "total_runs": int(r[1]),
+                    "ok_count": int(r[2]),
+                    "fail_count": int(r[3]),
+                    "mio_count": int(r[4]),
+                    "last_run_at": r[5],
+                    "last_ok": r[6],
+                }
+                for r in cursor.fetchall()
+            ]
+
+    # Whitelist CHIUSA di ordinamento della lista job: chiave pubblica (query
+    # param) -> espressione SQL. `started_at`/`ended_at` sono NULL per i job
+    # non ancora avviati/conclusi: NULLS LAST esplicito, così ordinando per
+    # «avviato» i job mai partiti stanno in fondo in ENTRAMBE le direzioni
+    # (senza, in DESC PG li metterebbe in testa).
+    _ELENCA_SORT_SQL: ClassVar[dict[str, str]] = {
+        "id": "id",
+        "job_type": "job_type",
+        "started_at": "started_at {dir} NULLS LAST",
+        "ended_at": "ended_at {dir} NULLS LAST",
+    }
+
     # Scopo: Elenco paginato dei job per la UI di gestione code (tracciamento).
     #        Proietta stato/tentativi/errore/timeline/proprietario + `is_mio`
     #        (il job è del chiamante: la `scope_key` combacia) calcolato QUI, così
@@ -363,9 +453,14 @@ class CodaLavoriRepository:
     #        passa già il giorno+1). Ritorna `{items, total}` via BB
     #        `fetch_paged_with_total` (fallback pagina-stantia: le code si
     #        auto-svuotano sotto l'utente — mai «0 risultati» a offset alto).
-    #        Ordine `id DESC` (i più recenti in alto): è una lista di
-    #        MONITORAGGIO, non la corsia del worker (che resta `priorita, id`
-    #        nel claim) — così la prima pagina è anche «gli ultimi job».
+    #
+    #        Ordinamento (2026-07-23, richiesta Tid): `sort_by`/`sort_dir` da
+    #        whitelist `_ELENCA_SORT_SQL` — il service ha già validato, qui
+    #        l'assert è defense-in-depth (mai input libero nell'SQL). Default
+    #        `started_at DESC` (l'ultimo lavoro avviato in testa); tiebreaker
+    #        `id DESC` sempre, per un ordine stabile tra righe pari. È una
+    #        lista di MONITORAGGIO, non la corsia del worker (che resta
+    #        `priorita, id` nel claim).
     def elenca(
         self,
         *,
@@ -377,6 +472,8 @@ class CodaLavoriRepository:
         data_a: Any = None,
         limit: int = 50,
         offset: int = 0,
+        sort_by: str = "started_at",
+        sort_dir: str = "DESC",
     ) -> dict[str, Any]:
         conditions: list[str] = []
         where_params: list[Any] = []
@@ -398,6 +495,16 @@ class CodaLavoriRepository:
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
         safe_offset = max(0, int(offset))
+        sort_expr = self._ELENCA_SORT_SQL.get(sort_by)
+        assert sort_expr is not None, f"sort_by non in whitelist: {sort_by!r}"
+        assert sort_dir in ("ASC", "DESC"), f"sort_dir non valido: {sort_dir!r}"
+        # `{dir}` presente solo nelle espressioni con NULLS LAST (la direzione
+        # va PRIMA della clausola NULLS); per le altre si appende in coda.
+        order_by = (
+            sort_expr.format(dir=sort_dir)
+            if "{dir}" in sort_expr
+            else f"{sort_expr} {sort_dir}"
+        )
         data_sql = f"""
             SELECT id, job_type, stato, priorita, tentativi, max_tentativi,
                    ultimo_errore, run_after, claimed_at, started_at, ended_at,
@@ -408,9 +515,9 @@ class CodaLavoriRepository:
                    COUNT(*) OVER() AS total_count
               FROM dbops.coda_lavori
               {where}
-             ORDER BY id DESC
+             ORDER BY {order_by}, id DESC
              LIMIT %s OFFSET %s
-        """  # noqa: S608 — where da condizioni whitelisted (nessun input libero)
+        """  # noqa: S608 — where/order da whitelist chiuse (nessun input libero)
         rows, total = fetch_paged_with_total(
             data_sql,
             [caller_scope_key, *where_params, safe_limit, safe_offset],

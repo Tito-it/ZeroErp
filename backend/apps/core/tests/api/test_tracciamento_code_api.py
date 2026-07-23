@@ -105,10 +105,10 @@ class TestApiCodaLavoriList(TestCase):
 
 class TestApiCodaStampaList(TestCase):
 
-    # 4. Parsing condiviso + lotto_id + auth_user_id di scope.
-    @patch(f"{_VIEWS}.get_scope_user_id", return_value=9)
+    # 4. Parsing condiviso + lotto_id. L'ambito per-operatore vive nel service
+    #    (user_insert vs username del request.user): la view passa solo `user`.
     @patch(f"{_VIEWS}.gestione_service")
-    def test_coda_stampa_list_200(self, mock_svc, _scope):
+    def test_coda_stampa_list_200(self, mock_svc):
         from apps.core.api.views_tracciamento import ApiCodaStampaList
 
         mock_svc.elenca_coda_stampa.return_value = {"count": 0, "results": []}
@@ -119,7 +119,7 @@ class TestApiCodaStampaList(TestCase):
         response = ApiCodaStampaList().get(request)
         self.assertEqual(response.status_code, 200)
         kwargs = mock_svc.elenca_coda_stampa.call_args.kwargs
-        self.assertEqual(kwargs["auth_user_id"], 9)
+        self.assertNotIn("auth_user_id", kwargs)
         self.assertEqual(kwargs["lotto_id"], 117)
         self.assertTrue(kwargs["solo_vivi"])
 

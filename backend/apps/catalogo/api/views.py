@@ -615,6 +615,17 @@ class ApiArticoliLookup(DomainAPIView):
                     "ricorrenti sulle righe di un preventivo (difesa in profondità)."
                 ),
             ),
+            OpenApiParameter(
+                name="solo_oneri",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Solo articoli-onere (con causale_onere_id valorizzato). "
+                    "Aggiunge causale_onere_id/_codice/_descrizione ai risultati. "
+                    "Alimenta la porta oneri della commessa."
+                ),
+            ),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
         ],
         responses={
@@ -645,6 +656,9 @@ class ApiArticoliLookup(DomainAPIView):
             is_composito=qp_bool_optional(request.query_params.get("is_composito"), "is_composito"),
             is_solo_componente=qp_bool_optional(request.query_params.get("is_solo_componente"), "is_solo_componente"),
             escludi_destinazione_tipi=escludi_destinazione_tipi,
+            # Gli articoli-onere sono pochi (uno per causale) e si presentano
+            # come tendina, non come autocomplete: il filtro vive senza `search`.
+            solo_oneri=qp_bool(qp.get("solo_oneri"), False),
             limit=qp_int_strict(qp.get("limit"), "limit", 20),
         )
         return success_response(data)

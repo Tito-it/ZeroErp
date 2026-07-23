@@ -431,6 +431,18 @@ _OFFSET_PARAM = OpenApiParameter(
     name="offset", type=int, location=OpenApiParameter.QUERY,
     required=False, description="Offset paginazione (default 0).",
 )
+_SORT_BY_PARAM = OpenApiParameter(
+    name="sort_by", type=str, location=OpenApiParameter.QUERY,
+    required=False, description=(
+        "Colonna di ordinamento. Coda lavori: id, job_type, started_at, "
+        "ended_at (default started_at). Coda stampa: fattura_id, lotto_id, "
+        "data_update (default data_update)."
+    ),
+)
+_SORT_DIR_PARAM = OpenApiParameter(
+    name="sort_dir", type=str, location=OpenApiParameter.QUERY,
+    required=False, description="Direzione: ASC | DESC (default DESC).",
+)
 
 _LISTA_CODE_RESPONSE = inline_serializer(
     name="CodeListaResponse",
@@ -461,6 +473,10 @@ def _parse_code_list_params(qp) -> dict:
         "solo_vivi": qp_bool_optional(qp.get("solo_vivi"), "solo_vivi") or False,
         "limit": min(qp_int(qp.get("limit"), 50), LIST_MAX_LIMIT),
         "offset": qp_int(qp.get("offset"), 0),
+        # Whitelist e default vivono nel service (differiscono per coda):
+        # qui solo il pass-through delle stringhe grezze.
+        "sort_by": qp_str(qp.get("sort_by")),
+        "sort_dir": qp_str_upper(qp.get("sort_dir")),
     }
 
 
@@ -512,6 +528,7 @@ class ApiCodaLavoriList(DomainAPIView):
                 required=False, description="Filtra per job_type (es. FATTURAZIONE_GIRO).",
             ),
             _DATA_DA_PARAM, _DATA_A_PARAM, _LIMIT_PARAM, _OFFSET_PARAM,
+            _SORT_BY_PARAM, _SORT_DIR_PARAM,
         ],
         responses={200: _LISTA_CODE_RESPONSE},
     )
@@ -529,8 +546,9 @@ class ApiCodaLavoriList(DomainAPIView):
 
 class ApiCodaStampaList(DomainAPIView):
     """BE-6: lista paginata della coda stampa (vendite.fatture_stampa_coda,
-    outbox PDF). Scope emittente dell'operatore via JOIN fatture (la coda e'
-    per-emittente, non per-utente); `?ambito=tutti` con code_manage."""
+    outbox PDF). Ambito per-OPERATORE come la coda lavori (2026-07-23):
+    `?ambito=miei` = righe innescate dal chiamante (user_insert), `tutti` =
+    tutte (visibilita' aperta a ogni operatore)."""
 
     area_funzionale = "strumenti"
     is_search_endpoint = True
@@ -544,6 +562,7 @@ class ApiCodaStampaList(DomainAPIView):
                 required=False, description="Filtra per lotto di fatturazione.",
             ),
             _DATA_DA_PARAM, _DATA_A_PARAM, _LIMIT_PARAM, _OFFSET_PARAM,
+            _SORT_BY_PARAM, _SORT_DIR_PARAM,
         ],
         responses={200: _LISTA_CODE_RESPONSE},
     )
@@ -553,7 +572,6 @@ class ApiCodaStampaList(DomainAPIView):
         params = _parse_code_list_params(qp)
         data = gestione_service.elenca_coda_stampa(
             request.user,
-            auth_user_id=get_scope_user_id(request),
             lotto_id=qp_int_optional(qp.get("lotto_id"), "lotto_id"),
             **params,
         )

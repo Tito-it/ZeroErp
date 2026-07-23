@@ -9,9 +9,9 @@
 #   1) conteggi_code_scoped_operatore — owner filter = scope_key, worker attivi
 #   2) conteggi_code_worker_mai_girato — liveness assente → worker giù
 #   3) elenca_coda_lavori_operatore — filtro owner + caller key per is_mio
-#   4) elenca_coda_lavori_tutti_richiede_permesso — 403 senza code_manage
+#   4) elenca_coda_lavori_tutti_aperto_senza_permesso — visibilità libera
 #   5) elenca_coda_lavori_tutti_con_permesso — owner filter None
-#   6) elenca_coda_stampa_tutti_con_permesso — auth_user_id None
+#   6) elenca_coda_stampa_ambito_per_operatore — miei=user_insert, tutti=None
 #   7) dettaglio_job_non_trovato_404
 #   8) dettaglio_job_admin_code_manage_vede_tutto — owner filter None
 #   9) annulla_job_ok
@@ -136,21 +136,49 @@ class ElencaCodaLavoriTests(SimpleTestCase):
         self.assertEqual(kwargs["owner_scope_key"], "7")
         self.assertEqual(kwargs["caller_scope_key"], "7")
         self.assertEqual(kwargs["stati"], ["ERRORE"])
+        # Default ordinamento (2026-07-23): l'ultimo lavoro avviato in testa.
+        self.assertEqual(kwargs["sort_by"], "started_at")
+        self.assertEqual(kwargs["sort_dir"], "DESC")
         self.assertEqual(esito, {"count": 1, "results": [{"id": 1, "is_mio": True}]})
 
-    # 4. `tutti` senza code_manage/SUPER_ADMIN → 403 parlante, repo non chiamato.
-    def test_elenca_coda_lavori_tutti_richiede_permesso(self) -> None:
+    # 3-bis. `sort_by`/`sort_dir` espliciti: normalizzati (dir upper) e passati
+    #    al repo; fuori whitelist → E_SEARCH_VALIDATION, repo non chiamato.
+    def test_elenca_coda_lavori_ordinamento_esplicito_e_whitelist(self) -> None:
         patches, _resolver, repo_cls, _maint = _patch_all(emittenti=[7])
         try:
+            repo_cls.return_value.elenca.return_value = {"items": [], "total": 0}
+            svc.elenca_coda_lavori(MagicMock(), sort_by="ended_at", sort_dir="asc")
+            kwargs = repo_cls.return_value.elenca.call_args.kwargs
+            self.assertEqual(kwargs["sort_by"], "ended_at")
+            self.assertEqual(kwargs["sort_dir"], "ASC")
+
+            repo_cls.return_value.elenca.reset_mock()
             with self.assertRaises(ServiceError) as ctx:
-                svc.elenca_coda_lavori(MagicMock(), tutti=True)
+                svc.elenca_coda_lavori(MagicMock(), sort_by="payload")
         finally:
             for p in patches:
                 p.stop()
-        self.assertEqual(ctx.exception.code, "E_PERMESSO_NEGATO")
+        self.assertEqual(ctx.exception.code, "E_SEARCH_VALIDATION")
         repo_cls.return_value.elenca.assert_not_called()
 
-    # 5. `tutti` con code_manage → owner filter None, caller key resta (is_mio).
+    # 4. `tutti` è aperto anche SENZA code_manage (2026-07-23, decisione Tid):
+    #    la lista è visibilità di una risorsa condivisa, non gestione — chi
+    #    aspetta deve poter vedere il lavoro altrui che impegna la coda. Le
+    #    AZIONI e il DETTAGLIO restano gated (test dedicati sotto).
+    def test_elenca_coda_lavori_tutti_aperto_senza_permesso(self) -> None:
+        patches, _resolver, repo_cls, _maint = _patch_all(emittenti=[7])
+        try:
+            repo_cls.return_value.elenca.return_value = {"items": [], "total": 0}
+            svc.elenca_coda_lavori(MagicMock(), tutti=True)
+        finally:
+            for p in patches:
+                p.stop()
+        kwargs = repo_cls.return_value.elenca.call_args.kwargs
+        # Nessun filtro righe; la caller key resta per marcare `is_mio`.
+        self.assertIsNone(kwargs["owner_scope_key"])
+        self.assertEqual(kwargs["caller_scope_key"], "7")
+
+    # 5. `tutti` con code_manage → identico (owner filter None, caller resta).
     def test_elenca_coda_lavori_tutti_con_permesso(self) -> None:
         patches, _resolver, repo_cls, _maint = _patch_all(
             emittenti=[7], code_manage=True,
@@ -168,11 +196,14 @@ class ElencaCodaLavoriTests(SimpleTestCase):
 
 class ElencaCodaStampaTests(SimpleTestCase):
 
-    # 6. `tutti` con code_manage → auth_user_id None al repo (nessuno scope).
-    def test_elenca_coda_stampa_tutti_con_permesso(self) -> None:
-        patches, _resolver, _repo, _maint = _patch_all(
-            emittenti=[7], code_manage=True,
-        )
+    # 6. Ambito PER-OPERATORE (2026-07-23, decisione Tid): «miei» filtra su
+    #    user_insert = username del chiamante; «tutti» nessun filtro. In
+    #    entrambi i casi caller_username marca is_mio. Stessa semantica della
+    #    coda lavori: mai due comportamenti diversi per la stessa UI.
+    def test_elenca_coda_stampa_ambito_per_operatore(self) -> None:
+        patches, _resolver, _repo, _maint = _patch_all(emittenti=[7])
+        user = MagicMock()
+        user.username = "pochi"
         try:
             with patch(
                 "apps.vendite.db.pipeline_repository.VenditePipelineRepository"
@@ -180,12 +211,27 @@ class ElencaCodaStampaTests(SimpleTestCase):
                 pipe_cls.return_value.elenca_coda_stampa.return_value = {
                     "items": [], "total": 0,
                 }
-                svc.elenca_coda_stampa(MagicMock(), auth_user_id=9, tutti=True)
-                kwargs = pipe_cls.return_value.elenca_coda_stampa.call_args.kwargs
+                svc.elenca_coda_stampa(user, tutti=False)
+                kwargs_miei = (
+                    pipe_cls.return_value.elenca_coda_stampa.call_args.kwargs
+                )
+                svc.elenca_coda_stampa(user, tutti=True)
+                kwargs_tutti = (
+                    pipe_cls.return_value.elenca_coda_stampa.call_args.kwargs
+                )
         finally:
             for p in patches:
                 p.stop()
-        self.assertIsNone(kwargs["auth_user_id"])
+        # «miei» = solo le righe innescate da me; «tutti» = nessun filtro.
+        self.assertEqual(kwargs_miei["operatore"], "pochi")
+        self.assertIsNone(kwargs_tutti["operatore"])
+        # is_mio marcato in entrambe le viste.
+        self.assertEqual(kwargs_miei["caller_username"], "pochi")
+        self.assertEqual(kwargs_tutti["caller_username"], "pochi")
+        # Default ordinamento (2026-07-23): la riga aggiornata più di recente
+        # in testa; whitelist propria della coda stampa.
+        self.assertEqual(kwargs_tutti["sort_by"], "data_update")
+        self.assertEqual(kwargs_tutti["sort_dir"], "DESC")
 
 
 class DettaglioJobTests(SimpleTestCase):

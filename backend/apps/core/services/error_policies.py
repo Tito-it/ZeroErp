@@ -703,6 +703,54 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Attivita` commessa non trovata.",
         ),
+        # --- Immutabilita' quantita' + porta oneri (guard DB 550-554) ---
+        # I due guard di immutabilita' sono 409: non e' un input da correggere,
+        # e' un fatto che non si modifica (si corregge con una riga nuova).
+        "E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE": ErrorPolicy(
+            code="E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Riga di commessa gia` emessa: la quantita` non si modifica. "
+                "Correggere aggiungendo una riga nuova."
+            ),
+        ),
+        "E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE": ErrorPolicy(
+            code="E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La quantita` dell`attivita` fatturabile deve specchiare quella "
+                "della commessa: modifica non consentita."
+            ),
+        ),
+        "E_ONERE_IMPORTO_NON_VALIDO": ErrorPolicy(
+            code="E_ONERE_IMPORTO_NON_VALIDO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Importo onere non valido: deve essere maggiore di zero.",
+        ),
+        "E_ONERE_CAUSALE_NON_VALIDA": ErrorPolicy(
+            code="E_ONERE_CAUSALE_NON_VALIDA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Causale onere non valida o non attiva.",
+        ),
+        "E_ONERE_ARTICOLO_MANCANTE": ErrorPolicy(
+            code="E_ONERE_ARTICOLO_MANCANTE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Articolo-onere non valido: inesistente, non attivo o senza "
+                "causale associata."
+            ),
+        ),
+        "E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO": ErrorPolicy(
+            code="E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Tipo documento fiscale obbligatorio sulla riga emittibile.",
+        ),
         "E_COMMESSA_PUSH_PARZIALE_VIETATO": ErrorPolicy(
             code="E_COMMESSA_PUSH_PARZIALE_VIETATO",
             http_status=422,
