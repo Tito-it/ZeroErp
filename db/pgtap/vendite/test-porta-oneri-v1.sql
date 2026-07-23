@@ -12,8 +12,20 @@
 --
 -- Nota fixture: NON si usa fn_emit (richiede ROOT source documentale reale).
 -- La porta e' sourceless per costruzione, quindi la creazione non passa da emit.
+--
+-- Concorrenza (brief-db-race-segment-key-onere, 2026-07-23): i test 20-22
+-- coprono il fix della race sul progressivo segment_key. ATTENZIONE al limite:
+-- la race vive solo FRA TRANSAZIONI CONCORRENTI, che pgTAP (mono-sessione,
+-- BEGIN/ROLLBACK) non sa riprodurre — nella stessa transazione il calcolo del
+-- progressivo vede gia' la riga non committata, quindi il test 14 e' una
+-- NON-REGRESSIONE della numerazione, non la prova del fix. I test 20-21 sono
+-- percio' STRUTTURALI (il codice c'e'), non comportamentali (serializza).
+-- La prova di serializzazione e' manuale, a due sessioni psql: vedi §3 del
+-- brief. La via dblink e' stata scartata: il canale e' provisioning disabilitato
+-- e condizionato a una password non valorizzata in sviluppo -> non eseguibile
+-- in CI.
 -- ------------------------------------------------------------
--- Indice test (1..19):
+-- Indice test (1..22):
 --   1   funzione madre presente
 --   2   vocabolario causali con almeno una voce attiva
 --   3   5 articoli-onere seedati e attivi (con causale)
@@ -27,16 +39,19 @@
 --  11   segment_key MAN:
 --  12   articolo riga = articolo-onere passato
 --  13   evento ONERE_AGGIUNTO su commesse_attivita_log
---  14   secondo onere: progressivo MAN:...:2
+--  14   secondo onere: progressivo MAN:...:2 (non-regressione numerazione)
 --  15   rifiuta importo <= 0
 --  16   rifiuta importo NULL
 --  17   rifiuta articolo non-onere (id inesistente)
 --  18   CHECK biconditional: NORMALE con causale bloccato
 --  19   codici errore porta oneri presenti (552/553/554)
+--  20   [strutturale] progressivo sotto pg_advisory_xact_lock per commessa
+--  21   [strutturale] guard E_ONERE_SEGMENT_DUPLICATO (porta = CREATE, non upsert)
+--  22   codice errore 557 E_ONERE_SEGMENT_DUPLICATO a catalogo
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(19);
+SELECT plan(22);
 
 -- ===== 1..5 struttura =====
 SELECT has_function('vendite', 'fn_aggiungi_onere_commessa',
@@ -229,6 +244,36 @@ SELECT is(
       AND lingua = 'it'),
   3,
   '19) codici errore porta oneri presenti nel catalogo');
+
+-- ===== 20..22 fix race sul progressivo segment_key =====
+-- (brief-db-race-segment-key-onere, 2026-07-23)
+-- Test STRUTTURALI: verificano che il presidio sia nel corpo della funzione
+-- viva. Non possono verificare la serializzazione (serve una seconda sessione,
+-- vedi nota in testa al file). Pattern di casa: test-ordini-lock-cliente.sql.
+
+-- 20) il progressivo si calcola sotto advisory lock per commessa
+SELECT ok(
+  pg_get_functiondef(
+    'vendite.fn_aggiungi_onere_commessa(bigint,bigint,uuid,numeric,bigint,text,date)'::regprocedure
+  ) LIKE '%pg_advisory_xact_lock%',
+  '20) progressivo segment_key calcolato sotto pg_advisory_xact_lock per commessa');
+
+-- 21) guard di difesa in profondita': la porta e' una CREATE, un update non
+--     e' mai legittimo (is_new = false -> errore parlante, non sovrascrittura)
+SELECT ok(
+  pg_get_functiondef(
+    'vendite.fn_aggiungi_onere_commessa(bigint,bigint,uuid,numeric,bigint,text,date)'::regprocedure
+  ) LIKE '%E_ONERE_SEGMENT_DUPLICATO%',
+  '21) guard E_ONERE_SEGMENT_DUPLICATO presente (porta = CREATE, non upsert)');
+
+-- 22) codice errore 557 a catalogo (append a messaggi_errore.csv)
+SELECT is(
+  (SELECT count(*)::int FROM config.messaggi_errore
+    WHERE codice = 'E_ONERE_SEGMENT_DUPLICATO'
+      AND id = 557
+      AND lingua = 'it'),
+  1,
+  '22) codice errore 557 E_ONERE_SEGMENT_DUPLICATO presente nel catalogo');
 
 SELECT * FROM finish();
 ROLLBACK;
