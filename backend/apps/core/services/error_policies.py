@@ -724,6 +724,18 @@ class ErrorPolicyRegistry:
                 "della commessa: modifica non consentita."
             ),
         ),
+        # Race sul progressivo segment_key degli oneri (guard DB 557,
+        # brief-db-race-segment-key-onere §5): NON e' un input da correggere
+        # ma un conflitto di concorrenza ritentabile → 409 come la famiglia
+        # immutabilita', non 400. Nota: perche' questo codice ARRIVI qui e non
+        # cada sul fallback E_COMMESSA_VALIDATION, deve essere anche nei
+        # `_ONERE_DB_ERROR_MARKERS` del service (catena di traduzione).
+        "E_ONERE_SEGMENT_DUPLICATO": ErrorPolicy(
+            code="E_ONERE_SEGMENT_DUPLICATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Onere non creato per una modifica concorrente. Riprovare.",
+        ),
         "E_ONERE_IMPORTO_NON_VALIDO": ErrorPolicy(
             code="E_ONERE_IMPORTO_NON_VALIDO",
             http_status=400,

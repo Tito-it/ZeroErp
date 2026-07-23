@@ -540,6 +540,21 @@ class VenditeCommessaOneriApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"]["code"], "E_ONERE_ARTICOLO_MANCANTE")
 
+    # Scopo: la race sul progressivo (guard DB 557) è un CONFLITTO di
+    #        concorrenza ritentabile, non un input errato → envelope 409, non
+    #        400. Blinda la policy registrata per l'handoff §5 del brief DB.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.aggiungi_onere_commessa")
+    def test_post_onere_segment_duplicato_409(self, mocked_service, _mock_auth):
+        mocked_service.side_effect = ServiceError(
+            code="E_ONERE_SEGMENT_DUPLICATO",
+            message="Onere non creato per una modifica concorrente. Riprovare.",
+        )
+        response = self._post_oneri(key="idem-onere-race")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"]["code"], "E_ONERE_SEGMENT_DUPLICATO")
+
     # Scopo: gate all'ingresso (§4c.5) — senza `carica_voce_manuale` niente
     #        caricamento oneri, e il service non viene nemmeno interpellato.
     @patch("apps.core.api.permissions.save_user_cache")

@@ -1318,6 +1318,10 @@ class CommessaPortaOneriServiceTests(TestCase):
             "E_ONERE_IMPORTO_NON_VALIDO",
             "E_ONERE_CAUSALE_NON_VALIDA",
             "E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO",
+            # Guard race progressivo (DB 557): deve sopravvivere alla traduzione
+            # col PROPRIO codice → policy 409, non cadere su E_COMMESSA_VALIDATION
+            # (400). Regressione se sparisse dai marker del service.
+            "E_ONERE_SEGMENT_DUPLICATO",
         ]
         for codice in attesi:
             repo = self._repo_ok(mock_repo_cls)
