@@ -14,13 +14,15 @@ Funzioni esposte:
 - fn_list_commessa_attivita — lista paginata attività di una commessa (read)
 - approva_commessa_attivita — approvazione righe di una commessa (write, A-1)
 - approva_attivita_competenza — approvazione massiva per mese (write, A-2)
+- aggiungi_onere_commessa   — porta oneri: riga di puro valore (write)
 """
 
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from uuid import UUID
 
-from django.db import transaction
+from django.db import DatabaseError, transaction
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
@@ -75,12 +77,23 @@ def _commesse_ids_da_report(report: PushReport) -> list[int]:
     return sorted(ids)
 
 
+# Scopo: Unione degli id attivita` upsertati dal run, raggruppati per commessa.
+#        Alimenta il ponte di approvazione «il push approva le PROPRIE righe».
+def _attivita_ids_da_report(report: PushReport) -> dict[int, list[int]]:
+    out: dict[int, list[int]] = {}
+    for h in report.handlers:
+        for commessa_id, ids in h.attivita_ids_per_commessa.items():
+            out.setdefault(commessa_id, []).extend(ids)
+    return {cid: sorted(set(ids)) for cid, ids in out.items()}
+
+
 # Scopo: Ponte di emittibilita` post-push — righe APPROVATA + testata
 #        PRONTA_FATTURAZIONE per una commessa toccata da un push riuscito.
 def _rendi_commessa_emittibile(
     repo: CommesseRepository,
     *,
     commessa_id: int,
+    righe_ids: list[int] | None = None,
     user: str | None = None,
 ) -> None:
     """Regola di modello (V9, generalizzata dal handler pratica al push):
@@ -101,8 +114,20 @@ def _rendi_commessa_emittibile(
     Granularita` singola deliberata: il batch deve poter isolare il fallimento
     di una commessa senza perdere il ponte sulle altre (best-effort), il push
     singolo itera e lascia propagare (all-or-nothing).
+
+    `righe_ids` = le righe che QUESTO push ha upsertato sulla commessa: il push
+    e` l'autorizzazione delle attivita` che genera, non di quelle altrui. Senza
+    il filtro approverebbe tutte le BOZZA+NON_EMESSA della commessa, spazzando
+    ad APPROVATA righe di terzi in attesa (brief-db-immutabilita-quantita-e-
+    porta-oneri §4b, trappola T1). Lista vuota = nessuna riga nostra atterrata:
+    si salta l'approvazione (l'array vuoto a DB significherebbe comunque zero)
+    ma la testata va comunque portata PRONTA_FATTURAZIONE, come prima.
+    `None` = nessun filtro (retro-compatibile, usato dai chiamanti diretti).
     """
-    repo.approva_commessa_attivita(commessa_id=commessa_id, user=user)
+    if righe_ids is None or righe_ids:
+        repo.approva_commessa_attivita(
+            commessa_id=commessa_id, righe_ids=righe_ids, user=user,
+        )
     if repo.get_commessa_stato_codice(commessa_id) != _STATO_COMMESSA_PRONTA:
         repo.cambia_stato_commessa(
             commessa_id=commessa_id,
@@ -155,13 +180,18 @@ def pr_run_commesse_push(
     # semantica per-riga del batch (1 commessa rotta non blocca le altre).
     # Gli errori finiscono nel report, non sollevano.
     commesse_ids = _commesse_ids_da_report(report)
+    attivita_per_commessa = _attivita_ids_da_report(report)
     emittibilita_errors: list[str] = []
     tipo_doc_mancante: list[int] = []
     if not dry_run:
         for commessa_id in commesse_ids:
             try:
                 with transaction.atomic():
-                    _rendi_commessa_emittibile(repo, commessa_id=commessa_id)
+                    _rendi_commessa_emittibile(
+                        repo,
+                        commessa_id=commessa_id,
+                        righe_ids=attivita_per_commessa.get(commessa_id, []),
+                    )
             except Exception as exc:  # noqa: BLE001 — best-effort, report-driven
                 emittibilita_errors.append(
                     f"commessa_id={commessa_id}: {type(exc).__name__}: {exc}"
@@ -295,9 +325,15 @@ def pr_run_commesse_push_one(
         # coerente con la semantica del push singolo). COMPLETATO only:
         # SKIPPED non ha scritto nulla, dry-run non deve scrivere.
         commesse_ids = _commesse_ids_da_report(report)
+        attivita_per_commessa = _attivita_ids_da_report(report)
         if not dry_run and report.stato == _STATO_PUSH_COMPLETATO:
             for commessa_id in commesse_ids:
-                _rendi_commessa_emittibile(repo, commessa_id=commessa_id, user=user)
+                _rendi_commessa_emittibile(
+                    repo,
+                    commessa_id=commessa_id,
+                    righe_ids=attivita_per_commessa.get(commessa_id, []),
+                    user=user,
+                )
     return {
         "stato": report.stato,
         "dry_run": report.dry_run,
@@ -533,6 +569,231 @@ def approva_attivita_competenza(
         "competenza_mese": competenza.isoformat(),
         "commesse": len(gruppi),
         "approvate": totale,
+    }
+
+
+# --- Porta oneri (brief-db-immutabilita-quantita-e-porta-oneri §4c) ---
+
+# Marker P0001 → codice applicativo per gli errori della madre DB. Substring
+# stretti sul MESSAGE (pattern `PricingService._KNOWN_DB_ERROR_MARKERS`): i
+# codici sono emessi da `script.fn_log_and_raise_error` e non sono localizzati.
+_ONERE_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("E_ONERE_IMPORTO_NON_VALIDO", ("E_ONERE_IMPORTO_NON_VALIDO",)),
+    ("E_ONERE_ARTICOLO_MANCANTE", ("E_ONERE_ARTICOLO_MANCANTE",)),
+    ("E_ONERE_CAUSALE_NON_VALIDA", ("E_ONERE_CAUSALE_NON_VALIDA",)),
+    ("E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO", (_ERR_TIPO_DOC_MANCANTE,)),
+)
+
+
+# Scopo: Helper — parsing importo onere dal payload (numerico, > 0). Distinto da
+#        `_parse_prezzo` (che parla di `prezzo` ed e` legato agli endpoint N5/N7):
+#        qui il campo si chiama `importo` e il messaggio deve nominarlo.
+def _parse_importo(raw: object, *, function_name: str) -> Decimal:
+    ErrorManager.require(
+        raw is not None,
+        code="E_COMMESSA_VALIDATION",
+        message="Parametro obbligatorio mancante.",
+        detail="importo e` obbligatorio.",
+        context={"field": "importo"},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    try:
+        importo = Decimal(str(raw))
+    except (InvalidOperation, TypeError, ValueError):
+        ErrorManager.raise_error(
+            code="E_COMMESSA_VALIDATION",
+            message="Importo non valido.",
+            detail=f"importo deve essere numerico, ricevuto: {raw!r}.",
+            context={"field": "importo"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+    assert isinstance(importo, Decimal)
+    # Guard applicativo anticipato: il DB rifiuta comunque (`E_ONERE_IMPORTO_NON
+    # _VALIDO`, 552), ma un 400 parlante evita il round-trip sul caso banale.
+    ErrorManager.require(
+        importo > 0,
+        code="E_COMMESSA_VALIDATION",
+        message="Importo non valido.",
+        detail="L`importo dell`onere deve essere maggiore di zero.",
+        context={"importo": str(importo)},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return importo
+
+
+# Scopo: Porta oneri — aggiunge alla commessa una riga di PURO VALORE (qta=1,
+#        `tipo_movimento='ONERE'`, sourceless) gia' APPROVATA, derivando causale,
+#        unita' di misura e IVA dall'ARTICOLO-ONERE passato.
+#        Perimetro: un solo onere per chiamata, delegato interamente alla madre
+#        DB `vendite.fn_aggiungi_onere_commessa` (una SELECT = unita' atomica,
+#        riga + audit `commesse_attivita_log` insieme). Qui vivono solo: guard di
+#        input, esistenza commessa (404 parlante) e derivazione dell'istanza
+#        utility dal billing account della commessa quando il chiamante non la
+#        specifica. Risultato: id della riga creata.
+#        Il presidio di autorizzazione (`carica_voce_manuale`) e' sulla view: la
+#        madre resta usabile anche da un processo autorizzato.
+def aggiungi_onere_commessa(
+    *,
+    commessa_id: int,
+    articolo_onere_id: object,
+    importo: object,
+    tipo_doc_fiscale_id: int | None,
+    istanza_utility_id: int | None = None,
+    motivo: str | None = None,
+    data_attivita: date | None = None,
+) -> dict:
+    _fn = "vendite.commesse_service.aggiungi_onere_commessa"
+    _guard_commessa_id(commessa_id, function_name=_fn)
+
+    # Articolo-onere: qui solo la forma (UUID). Che sia davvero un onere —
+    # attivo, con `causale_onere_id` valorizzato — lo stabilisce il DB
+    # (E_ONERE_ARTICOLO_MANCANTE): unica fonte di verita', non duplicata.
+    try:
+        if articolo_onere_id is None:
+            raise ValueError("articolo_onere_id assente")
+        articolo_uuid = str(UUID(str(articolo_onere_id)))
+    except (TypeError, ValueError):
+        ErrorManager.raise_error(
+            code="E_COMMESSA_VALIDATION",
+            message="Articolo onere non valido.",
+            detail=(
+                "articolo_onere_id obbligatorio (UUID di un articolo-onere), "
+                f"ricevuto: {articolo_onere_id!r}."
+            ),
+            context={"field": "articolo_onere_id"},
+            function_name=_fn,
+            log_to_db=True,
+        )
+
+    importo_dec = _parse_importo(importo, function_name=_fn)
+
+    # tipo_doc obbligatorio: la riga nasce APPROVATA+NON_EMESSA = emittibile, e
+    # il guard DB `tipo_doc_emittibile` lo esige (§4c.8 del brief).
+    ErrorManager.require(
+        bool(tipo_doc_fiscale_id and tipo_doc_fiscale_id > 0),
+        code="E_COMMESSA_VALIDATION",
+        message="Tipo documento fiscale obbligatorio.",
+        detail="tipo_doc_fiscale_id obbligatorio e > 0: la riga onere nasce emittibile.",
+        context={"field": "tipo_doc_fiscale_id"},
+        function_name=_fn,
+        log_to_db=True,
+    )
+    assert tipo_doc_fiscale_id is not None
+
+    # Type-check esplicito PRIMA dello strip: un `motivo` non-stringa dal
+    # payload (es. numero) farebbe AttributeError → 500 E_INTERNAL invece di
+    # un 400 parlante (review 2026-07-23).
+    ErrorManager.require(
+        motivo is None or isinstance(motivo, str),
+        code="E_COMMESSA_VALIDATION",
+        message="Motivo non valido.",
+        detail=f"Il campo 'motivo' deve essere una stringa, ricevuto: {motivo!r}.",
+        context={"field": "motivo"},
+        function_name=_fn,
+        log_to_db=False,
+    )
+    motivo_norm = (motivo or "").strip() or None
+    if motivo_norm is not None:
+        ErrorManager.require(
+            len(motivo_norm) <= _MOTIVO_MAX_LENGTH,
+            code="E_COMMESSA_VALIDATION",
+            message="Motivo troppo lungo.",
+            detail=f"Massimo {_MOTIVO_MAX_LENGTH} caratteri.",
+            context={"field": "motivo", "length": len(motivo_norm)},
+            function_name=_fn,
+            log_to_db=False,
+        )
+
+    repo = CommesseRepository()
+    stato = repo.get_commessa_stato(commessa_id)
+    if stato is None:
+        ErrorManager.raise_error(
+            code="E_COMMESSA_NOT_FOUND",
+            message="Commessa non trovata.",
+            detail=f"Nessuna commessa con id={commessa_id}",
+            context={"commessa_id": commessa_id},
+            function_name=_fn,
+            log_to_db=True,
+        )
+    assert stato is not None
+
+    # Istanza utility: il modello e' 1:1 — «una istanza referenzia un solo
+    # billing account e un billing account ha una sola istanza» (guida
+    # gestione-delle-istanze-utility) — quindi la derivazione dal BA della
+    # commessa e' ESATTA e l'istanza esplicita del chiamante DEVE coincidere
+    # con quella derivata: senza il confronto si potrebbe agganciare l'onere
+    # all'istanza di un ALTRO cliente (la FK verifica solo l'esistenza —
+    # review 2026-07-23, ok Tid). La FK sul BA e' nullable (ON DELETE SET
+    # NULL): il caso None e' intercettato dal require piu' sotto.
+    from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
+
+    istanza_derivata = BillingAccountRepository().get_istanza_utility_id(
+        stato.billing_account_id
+    )
+    if istanza_utility_id is None:
+        istanza_utility_id = istanza_derivata
+    else:
+        ErrorManager.require(
+            istanza_derivata is not None
+            and int(istanza_utility_id) == int(istanza_derivata),
+            code="E_COMMESSA_VALIDATION",
+            message="Istanza utility non coerente con la commessa.",
+            detail=(
+                f"istanza_utility_id={istanza_utility_id} non e' l'istanza del "
+                f"billing account {stato.billing_account_id} della commessa "
+                f"(attesa: {istanza_derivata})."
+            ),
+            context={
+                "commessa_id": commessa_id,
+                "billing_account_id": stato.billing_account_id,
+                "istanza_utility_id": istanza_utility_id,
+            },
+            function_name=_fn,
+            log_to_db=True,
+        )
+    ErrorManager.require(
+        bool(istanza_utility_id and istanza_utility_id > 0),
+        code="E_COMMESSA_VALIDATION",
+        message="Istanza utility non risolvibile.",
+        detail=(
+            "istanza_utility_id non passata e non derivabile dal billing account "
+            f"{stato.billing_account_id} della commessa."
+        ),
+        context={"commessa_id": commessa_id, "billing_account_id": stato.billing_account_id},
+        function_name=_fn,
+        log_to_db=True,
+    )
+    assert istanza_utility_id is not None
+
+    try:
+        attivita_id = repo.aggiungi_onere(
+            commessa_id=commessa_id,
+            istanza_utility_id=istanza_utility_id,
+            articolo_onere_id=articolo_uuid,
+            importo=importo_dec,
+            tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+            motivo=motivo_norm,
+            data_attivita=data_attivita,
+        )
+    except DatabaseError as exc:
+        # I guard della madre (importo, articolo-onere, causale, tipo_doc) sono
+        # errori d'uso: vanno all'operatore col loro codice, non come E_DATABASE.
+        ErrorManager.raise_from_database_error(
+            exc,
+            known_markers=_ONERE_DB_ERROR_MARKERS,
+            fallback_code="E_COMMESSA_VALIDATION",
+            message="Onere non caricato: dati non validi.",
+            context={"commessa_id": commessa_id, "articolo_onere_id": articolo_uuid},
+            function_name=_fn,
+        )
+
+    return {
+        "commessa_id": commessa_id,
+        "attivita_id": attivita_id,
+        "importo": str(importo_dec),
     }
 
 

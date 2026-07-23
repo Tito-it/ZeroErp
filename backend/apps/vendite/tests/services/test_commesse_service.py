@@ -28,6 +28,7 @@ Indice test eseguiti:
 13f) CommesseServiceTests.test_pr_run_commesse_push_one_ponte_skip_se_gia_pronta
 13g) CommesseServiceTests.test_pr_run_commesse_push_one_dry_run_non_attiva_ponte
 13h) CommesseServiceTests.test_pr_run_commesse_push_batch_ponte_best_effort
+13i) CommesseServiceTests.test_pr_run_commesse_push_one_ponte_non_approva_righe_di_terzi
 14) CommesseServiceTests.test_variazione_eccezionale_ok
 12) CommesseServiceTests.test_variazione_eccezionale_commessa_stato_bloccato
 13) CommesseServiceTests.test_variazione_eccezionale_riga_fatturata_bloccata
@@ -51,10 +52,19 @@ CommesseApprovazioneServiceTests (A-1/A-2 cockpit):
 - test_approva_commessa_attivita_not_found / _id_invalido
 - test_approva_attivita_competenza_ok / _vuota / _senza_mese
 - test_approva_attivita_competenza_filtro_commesse / _all_or_nothing
+
+CommessaPortaOneriServiceTests (porta oneri §A1):
+- test_aggiungi_onere_ok_deriva_istanza_da_ba / _istanza_esplicita_coincidente_ok
+- test_aggiungi_onere_istanza_esplicita_incoerente_raises
+- test_aggiungi_onere_payload_invalido / _commessa_not_found
+- test_aggiungi_onere_traduce_errori_madre / _errore_db_sconosciuto_fallback
 """
 
+from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
+
+from django.db import DatabaseError
 
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.commesse_push_orchestrator import PushReport
@@ -182,17 +192,26 @@ class CommesseServiceTests(TestCase):
     # --- Ponte emittibilita' post-push (V9 generalizzato) ---
 
     def _push_one_con_commesse(self, mock_build, mock_orch_cls, *, commesse_ids,
+                               attivita_ids_per_commessa=None,
                                dry_run=False, stato="COMPLETATO"):
-        """Setup comune: handler PREVENTIVO attivo + report con commesse toccate."""
+        """Setup comune: handler PREVENTIVO attivo + report con commesse toccate.
+
+        `attivita_ids_per_commessa` = le righe che il push ha upsertato: sono
+        quelle (e solo quelle) che il ponte deve approvare. Default: una riga
+        fittizia per commessa, cosi' i test che non guardano gli id restano
+        leggibili."""
         handler_mock = MagicMock()
         handler_mock.sorgente_codice = "PREVENTIVO"
         mock_build.return_value = [handler_mock]
+        if attivita_ids_per_commessa is None:
+            attivita_ids_per_commessa = {cid: [cid * 10] for cid in commesse_ids}
         report = PushReport(
             dry_run=dry_run,
             stato=stato,
             handlers=[HandlerResult(
                 handler_name="HandlerPreventivi", created=2,
                 commesse_ids=set(commesse_ids),
+                attivita_ids_per_commessa=dict(attivita_ids_per_commessa),
             )],
             push_log_id=11,
             durata_ms=80,
@@ -217,13 +236,43 @@ class CommesseServiceTests(TestCase):
             sorgente_codice="PREVENTIVO", sorgente_uid=42, user="alice",
         )
 
+        # Il ponte approva SOLO le righe upsertate da questo push (T1): mai
+        # righe_ids=None, che spazzerebbe ad APPROVATA le BOZZA di terzi.
         mock_repo.approva_commessa_attivita.assert_called_once_with(
-            commessa_id=7701, user="alice",
+            commessa_id=7701, righe_ids=[77010], user="alice",
         )
         mock_repo.cambia_stato_commessa.assert_called_once_with(
             commessa_id=7701, nuovo_stato="PRONTA_FATTURAZIONE", user="alice",
         )
         self.assertEqual(result["commesse_ids"], [7701])
+
+    # Scopo (T1 — il cuore del fix): il push NON approva righe che non ha
+    # generato. Se sulla commessa non e' atterrata nessuna riga di questo push,
+    # l'approvazione non parte affatto (una riga BOZZA di terzi — es. un onere
+    # in attesa — resta intatta), ma la testata va comunque a PRONTA.
+    @patch("apps.vendite.services.commesse_service.CommessaPushOrchestrator")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    @patch("apps.vendite.services.commesse_service._build_handlers")
+    def test_pr_run_commesse_push_one_ponte_non_approva_righe_di_terzi(
+        self, mock_build, mock_repo_cls, mock_orch_cls,
+    ):
+        from apps.vendite.services.commesse_service import pr_run_commesse_push_one
+
+        mock_repo = MagicMock()
+        mock_repo_cls.return_value = mock_repo
+        mock_repo.get_commessa_stato_codice.return_value = "BOZZA"
+        self._push_one_con_commesse(
+            mock_build, mock_orch_cls,
+            commesse_ids={7701},
+            attivita_ids_per_commessa={7701: []},
+        )
+
+        pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=42)
+
+        mock_repo.approva_commessa_attivita.assert_not_called()
+        mock_repo.cambia_stato_commessa.assert_called_once_with(
+            commessa_id=7701, nuovo_stato="PRONTA_FATTURAZIONE", user=None,
+        )
 
     # Scopo: commessa multi-sorgente GIA' PRONTA → approva comunque le nuove
     # righe ma NON ri-transita PRONTA→PRONTA (fn_cambia_stato non ammette da=a).
@@ -284,7 +333,10 @@ class CommesseServiceTests(TestCase):
         report = PushReport(
             dry_run=False,
             stato="COMPLETATO",
-            handlers=[HandlerResult(handler_name="HandlerA", commesse_ids={1, 2})],
+            handlers=[HandlerResult(
+                handler_name="HandlerA", commesse_ids={1, 2},
+                attivita_ids_per_commessa={1: [101], 2: [201]},
+            )],
             push_log_id=10,
             durata_ms=120,
         )
@@ -325,7 +377,10 @@ class CommesseServiceTests(TestCase):
         report = PushReport(
             dry_run=False,
             stato="COMPLETATO",
-            handlers=[HandlerResult(handler_name="HandlerA", commesse_ids={1, 2, 3})],
+            handlers=[HandlerResult(
+                handler_name="HandlerA", commesse_ids={1, 2, 3},
+                attivita_ids_per_commessa={1: [101], 2: [201], 3: [301]},
+            )],
             push_log_id=10,
             durata_ms=120,
         )
@@ -1087,3 +1142,195 @@ class CommesseApprovazioneServiceTests(TestCase):
 
         with self.assertRaises(RuntimeError):
             approva_attivita_competenza(competenza_mese=_date(2026, 7, 1))
+
+
+class CommessaPortaOneriServiceTests(TestCase):
+    """Porta oneri (brief-be-fe-immutabilita-quantita-e-porta-oneri §A1).
+
+    Il perimetro Python e' sottile per costruzione: guard di input, esistenza
+    commessa, derivazione istanza dal BA, traduzione degli errori della madre.
+    Le regole di dominio (qta=1, causale/uom/IVA dall'articolo, riga APPROVATA
+    sourceless) vivono nel DB e NON sono testate qui.
+    """
+
+    def _repo_ok(self, mock_repo_cls, *, billing_account_id=900):
+        repo = mock_repo_cls.return_value
+        stato = MagicMock()
+        stato.billing_account_id = billing_account_id
+        repo.get_commessa_stato.return_value = stato
+        repo.aggiungi_onere.return_value = 5150
+        return repo
+
+    # Scopo: happy path — parametri inoltrati alla madre DB, istanza derivata
+    #        dal billing account della commessa (campo assente nel payload).
+    @patch("apps.anagrafiche.db.billing_account_repository.BillingAccountRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_aggiungi_onere_ok_deriva_istanza_da_ba(self, mock_repo_cls, mock_ba_cls):
+        from apps.vendite.services.commesse_service import aggiungi_onere_commessa
+
+        repo = self._repo_ok(mock_repo_cls)
+        mock_ba_cls.return_value.get_istanza_utility_id.return_value = 321
+
+        result = aggiungi_onere_commessa(
+            commessa_id=42,
+            articolo_onere_id="3f1c9a52-0d5e-4c7b-9a10-2b6d8e4f0011",
+            importo="150.00",
+            tipo_doc_fiscale_id=7,
+            motivo="  trasferta cantiere  ",
+        )
+
+        self.assertEqual(result["attivita_id"], 5150)
+        self.assertEqual(result["commessa_id"], 42)
+        mock_ba_cls.return_value.get_istanza_utility_id.assert_called_once_with(900)
+        kwargs = repo.aggiungi_onere.call_args.kwargs
+        self.assertEqual(kwargs["commessa_id"], 42)
+        self.assertEqual(kwargs["istanza_utility_id"], 321)
+        self.assertEqual(kwargs["tipo_doc_fiscale_id"], 7)
+        self.assertEqual(kwargs["importo"], Decimal("150.00"))
+        # Motivo normalizzato (strip); nessuna data → default DB (CURRENT_DATE).
+        self.assertEqual(kwargs["motivo"], "trasferta cantiere")
+        self.assertIsNone(kwargs["data_attivita"])
+
+    # Scopo: istanza esplicita nel payload → ammessa SOLO se coincide con
+    #        quella derivata dal BA della commessa (modello 1:1 BA↔istanza,
+    #        guida gestione-delle-istanze-utility; review 2026-07-23, ok Tid).
+    @patch("apps.anagrafiche.db.billing_account_repository.BillingAccountRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_aggiungi_onere_istanza_esplicita_coincidente_ok(self, mock_repo_cls, mock_ba_cls):
+        from apps.vendite.services.commesse_service import aggiungi_onere_commessa
+
+        repo = self._repo_ok(mock_repo_cls)
+        mock_ba_cls.return_value.get_istanza_utility_id.return_value = 999
+
+        aggiungi_onere_commessa(
+            commessa_id=42,
+            articolo_onere_id="3f1c9a52-0d5e-4c7b-9a10-2b6d8e4f0011",
+            importo="10",
+            tipo_doc_fiscale_id=7,
+            istanza_utility_id=999,
+        )
+
+        self.assertEqual(repo.aggiungi_onere.call_args.kwargs["istanza_utility_id"], 999)
+
+    # Scopo: istanza esplicita DIVERSA da quella del BA della commessa →
+    #        rifiuto parlante, la madre DB non viene nemmeno chiamata (senza
+    #        il guard si aggancerebbe l'onere all'istanza di un altro cliente:
+    #        la FK verifica solo l'esistenza).
+    @patch("apps.anagrafiche.db.billing_account_repository.BillingAccountRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_aggiungi_onere_istanza_esplicita_incoerente_raises(self, mock_repo_cls, mock_ba_cls):
+        from apps.vendite.services.commesse_service import aggiungi_onere_commessa
+
+        repo = self._repo_ok(mock_repo_cls)
+        mock_ba_cls.return_value.get_istanza_utility_id.return_value = 321
+
+        with self.assertRaises(ServiceError) as ctx:
+            aggiungi_onere_commessa(
+                commessa_id=42,
+                articolo_onere_id="3f1c9a52-0d5e-4c7b-9a10-2b6d8e4f0011",
+                importo="10",
+                tipo_doc_fiscale_id=7,
+                istanza_utility_id=999,
+            )
+
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        repo.aggiungi_onere.assert_not_called()
+
+    # Scopo: payload non valido → 400 parlante prima del round-trip DB.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_aggiungi_onere_payload_invalido(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import aggiungi_onere_commessa
+
+        repo = self._repo_ok(mock_repo_cls)
+        uuid_ok = "3f1c9a52-0d5e-4c7b-9a10-2b6d8e4f0011"
+        casi = [
+            # (kwargs sovrascritti, motivo del rifiuto)
+            ({"articolo_onere_id": "non-un-uuid"}, "articolo non UUID"),
+            ({"articolo_onere_id": None}, "articolo assente"),
+            ({"importo": None}, "importo mancante"),
+            ({"motivo": 123}, "motivo non stringa (prima: AttributeError → 500)"),
+            ({"importo": "abc"}, "importo non numerico"),
+            ({"importo": "0"}, "importo nullo"),
+            ({"importo": "-5"}, "importo negativo (NC travestita)"),
+            ({"tipo_doc_fiscale_id": None}, "tipo doc mancante"),
+            ({"tipo_doc_fiscale_id": 0}, "tipo doc non positivo"),
+            ({"commessa_id": 0}, "commessa non valida"),
+        ]
+        for override, descrizione in casi:
+            kwargs = {
+                "commessa_id": 42,
+                "articolo_onere_id": uuid_ok,
+                "importo": "10",
+                "tipo_doc_fiscale_id": 7,
+            }
+            kwargs.update(override)
+            with self.subTest(caso=descrizione):
+                with self.assertRaises(ServiceError) as ctx:
+                    aggiungi_onere_commessa(**kwargs)
+                self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        repo.aggiungi_onere.assert_not_called()
+
+    # Scopo: commessa inesistente (o fuori scope RLS) → 404 prima della madre.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_aggiungi_onere_commessa_not_found(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import aggiungi_onere_commessa
+
+        repo = mock_repo_cls.return_value
+        repo.get_commessa_stato.return_value = None
+
+        with self.assertRaises(ServiceError) as ctx:
+            aggiungi_onere_commessa(
+                commessa_id=42,
+                articolo_onere_id="3f1c9a52-0d5e-4c7b-9a10-2b6d8e4f0011",
+                importo="10",
+                tipo_doc_fiscale_id=7,
+            )
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_NOT_FOUND")
+        repo.aggiungi_onere.assert_not_called()
+
+    # Scopo: i guard della madre DB arrivano all'operatore col LORO codice
+    #        (non E_DATABASE): e' un errore d'uso, non un guasto.
+    @patch("apps.anagrafiche.db.billing_account_repository.BillingAccountRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_aggiungi_onere_traduce_errori_madre(self, mock_repo_cls, mock_ba_cls):
+        from apps.vendite.services.commesse_service import aggiungi_onere_commessa
+
+        mock_ba_cls.return_value.get_istanza_utility_id.return_value = 321
+        attesi = [
+            "E_ONERE_ARTICOLO_MANCANTE",
+            "E_ONERE_IMPORTO_NON_VALIDO",
+            "E_ONERE_CAUSALE_NON_VALIDA",
+            "E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO",
+        ]
+        for codice in attesi:
+            repo = self._repo_ok(mock_repo_cls)
+            repo.aggiungi_onere.side_effect = DatabaseError(f"{codice}: messaggio dal DB")
+            with self.subTest(codice=codice):
+                with self.assertRaises(ServiceError) as ctx:
+                    aggiungi_onere_commessa(
+                        commessa_id=42,
+                        articolo_onere_id="3f1c9a52-0d5e-4c7b-9a10-2b6d8e4f0011",
+                        importo="10",
+                        tipo_doc_fiscale_id=7,
+                    )
+                self.assertEqual(ctx.exception.code, codice)
+
+    # Scopo: errore DB non riconosciuto → fallback di validazione, mai un 500
+    #        muto sull'operatore.
+    @patch("apps.anagrafiche.db.billing_account_repository.BillingAccountRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_aggiungi_onere_errore_db_sconosciuto_fallback(self, mock_repo_cls, mock_ba_cls):
+        from apps.vendite.services.commesse_service import aggiungi_onere_commessa
+
+        mock_ba_cls.return_value.get_istanza_utility_id.return_value = 321
+        repo = self._repo_ok(mock_repo_cls)
+        repo.aggiungi_onere.side_effect = DatabaseError("guasto imprevisto")
+
+        with self.assertRaises(ServiceError) as ctx:
+            aggiungi_onere_commessa(
+                commessa_id=42,
+                articolo_onere_id="3f1c9a52-0d5e-4c7b-9a10-2b6d8e4f0011",
+                importo="10",
+                tipo_doc_fiscale_id=7,
+            )
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")

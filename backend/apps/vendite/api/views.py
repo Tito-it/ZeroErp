@@ -14,9 +14,20 @@ from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
 from apps.core.services.auth_helpers import extract_identita_id_from_request
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.permissions_resolver import PermissionResolver
-from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date, optional_uuid
+from apps.core.api.payload_validators import (
+    optional_bool,
+    optional_int,
+    optional_iso_date,
+    optional_uuid,
+    qp_iso_date_optional,
+)
 from apps.core.api.success_responses import success_response
+from apps.vendite.services._fatturazione_job_helpers import (
+    JOB_TYPE_FATTURAZIONE_GIRO,
+    JOB_TYPE_FATTURAZIONE_NUMERA,
+)
 from apps.vendite.services.commesse_service import (
+    aggiungi_onere_commessa,
     approva_attivita_competenza,
     approva_commessa_attivita,
     cambia_stato_commessa,
@@ -814,6 +825,83 @@ class ApiCommessaAttivitaApprova(DomainAPIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
+class ApiCommessaOneri(DomainAPIView):
+    """Porta oneri (brief-db-immutabilita-quantita-e-porta-oneri §4c): crea sulla
+    commessa una riga di PURO VALORE (qta=1, `tipo_movimento=ONERE`, sourceless)
+    gia' APPROVATA — causale, unita' di misura e IVA derivate dall'articolo-onere
+    dalla madre DB.
+
+    Presidio ALL'INGRESSO, non a valle (decisione Tid §4c.5): niente approvazione
+    a due passi, il gate e' l'azione di processo `carica_voce_manuale` — chi
+    carica oneri e' responsabile di quello che fa. L'audit resta pieno (causale +
+    motivo + la riga stessa + `commesse_attivita_log`)."""
+
+    area_funzionale = "vendite"
+    post_permission = "carica_voce_manuale"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeCommessaOnereRequest",
+            fields={
+                "articolo_onere_id": serializers.UUIDField(required=True),
+                "importo": serializers.DecimalField(
+                    required=True, max_digits=22, decimal_places=10,
+                ),
+                "tipo_doc_fiscale_id": serializers.IntegerField(required=True),
+                "istanza_utility_id": serializers.IntegerField(required=False, allow_null=True),
+                "motivo": serializers.CharField(required=False, allow_null=True),
+                "data_attivita": serializers.DateField(required=False, allow_null=True),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeCommessaOnereResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeCommessaOnereData",
+                        fields={
+                            "commessa_id": serializers.IntegerField(),
+                            "attivita_id": serializers.IntegerField(),
+                            "importo": serializers.CharField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Carica un onere sulla commessa (riga di valore, qta=1, APPROVATA).
+    def post(self, request: Request, commessa_id: int) -> JsonResponse:
+        # Scopo: estrae il payload e delega al service; guard di dominio a DB.
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return aggiungi_onere_commessa(
+                commessa_id=commessa_id,
+                # Grezzo: la forma (UUID) e la sua assenza le valida il service,
+                # con messaggio parlante — `str(None)` darebbe "None" all'utente.
+                articolo_onere_id=payload.get("articolo_onere_id"),  # type: ignore[arg-type]
+                importo=payload.get("importo"),
+                tipo_doc_fiscale_id=optional_int(
+                    payload, "tipo_doc_fiscale_id", zero_as_none=True,
+                ),
+                istanza_utility_id=optional_int(
+                    payload, "istanza_utility_id", zero_as_none=True,
+                ),
+                motivo=payload.get("motivo"),  # type: ignore[arg-type]
+                data_attivita=optional_iso_date(payload, "data_attivita"),
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
 class ApiFatturazioneApprovaCompetenza(DomainAPIView):
     """Azione APPROVA massiva per mese di competenza (cockpit Fase A, A-2):
     approva le attivita' in stadio DA_APPROVARE del mese — la popolazione della
@@ -980,11 +1068,27 @@ class ApiFatturazioneEsiti(DomainAPIView):
     """C-5: esiti dei giri di fatturazione (riassunto per corsia da
     `maintenance.job_run_log`) + stato della coda stampa (conteggi per stato,
     scope emittente dell'operatore via JOIN fatture). Sola lettura (I-5: nessuna
-    tabella nuova)."""
+    tabella nuova).
+
+    `?competenza_mese=YYYY-MM-DD` (opzionale): restringe i giri a quelli
+    lanciati PER quel mese di competenza — allinea il pannello al filtro della
+    lista lotti. Senza il parametro i giri sono i totali da sempre."""
 
     area_funzionale = "vendite"
 
     @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="competenza_mese",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Mese di competenza (YYYY-MM-DD, normalizzato al 1° del "
+                    "mese): filtra i giri lanciati per quel mese."
+                ),
+            ),
+        ],
         responses={
             200: inline_serializer(
                 name="VenditeFatturazioneEsitiResponse",
@@ -1001,10 +1105,20 @@ class ApiFatturazioneEsiti(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce esiti giri + stato coda stampa (scope operatore).
+    # Scopo: Restituisce esiti giri (opz. filtrati per mese di competenza) +
+    #        stato coda stampa (scope operatore).
     def get(self, request: Request) -> JsonResponse:
+        competenza_mese = qp_iso_date_optional(
+            request.query_params.get("competenza_mese"), "competenza_mese",
+        )
         return success_response(
-            esiti_fatturazione(auth_user_id=get_scope_user_id(request)),
+            esiti_fatturazione(
+                auth_user_id=get_scope_user_id(request),
+                competenza_mese=competenza_mese,
+                # Serve allo scope dei lavori accodati dall'app (scope_key):
+                # l'operatore conta i propri giri, non quelli altrui.
+                user=request.user,
+            ),
         )
 
 
@@ -1131,7 +1245,7 @@ class ApiFatturazioneRun(DomainAPIView):
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             return _accoda_job_fatturazione(
                 request, payload,
-                job_type="FATTURAZIONE_GIRO",
+                job_type=JOB_TYPE_FATTURAZIONE_GIRO,
                 extra_payload_keys=("fino_a_stato",),
             )
 
@@ -1243,7 +1357,7 @@ class ApiFatturazioneNumera(DomainAPIView):
         # Scopo: enqueue comune (nessuna chiave extra: solo competenza_mese).
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             return _accoda_job_fatturazione(
-                request, payload, job_type="FATTURAZIONE_NUMERA",
+                request, payload, job_type=JOB_TYPE_FATTURAZIONE_NUMERA,
             )
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -1271,7 +1385,13 @@ _SBLOCCA_PREZZO_REQUEST = inline_serializer(
 
 
 class ApiCommessaAttivitaRiallineaPrezzo(DomainAPIView):
+    """N5 — riallineo prezzo da listino. Gate `prezzo_override_manuale` (T2 del
+    brief porta-oneri): toccare il prezzo di una riga di commessa e' l'azione
+    su cui l'autorizzazione conta di piu', e finora bastava la scrittura d'area.
+    Stesso codename gia' vivo sui gate prezzo di preventivi/contratti/DDT."""
+
     area_funzionale = "vendite"
+    post_permission = "prezzo_override_manuale"
 
     @extend_schema(
         request=_RIALLINEA_PREZZO_REQUEST,
@@ -1291,7 +1411,10 @@ class ApiCommessaAttivitaRiallineaPrezzo(DomainAPIView):
 
 
 class ApiCommessaAttivitaVariazionePrezzoEccezionale(DomainAPIView):
+    """N7 — override manuale del prezzo. Gate `prezzo_override_manuale` (T2)."""
+
     area_funzionale = "vendite"
+    post_permission = "prezzo_override_manuale"
 
     @extend_schema(
         request=_VARIAZIONE_PREZZO_REQUEST,
@@ -1311,7 +1434,11 @@ class ApiCommessaAttivitaVariazionePrezzoEccezionale(DomainAPIView):
 
 
 class ApiCommessaAttivitaSbloccaPrezzo(DomainAPIView):
+    """N7-sblocco — rimuove il blocco e ricalcola dal resolver. Stesso gate
+    `prezzo_override_manuale` (T2): sbloccare cambia il prezzo della riga."""
+
     area_funzionale = "vendite"
+    post_permission = "prezzo_override_manuale"
 
     @extend_schema(
         request=_SBLOCCA_PREZZO_REQUEST,

@@ -30,6 +30,14 @@ Indice test eseguiti:
 21) VenditeCommesseApiTests.test_post_approva_competenza_requires_jwt
 22) VenditeCommesseApiTests.test_approva_competenza_post_permission_allowed
 23) VenditeCommesseApiTests.test_commessa_attivita_approva_post_permission_denied
+
+VenditeCommessaOneriApiTests (porta oneri §A1 + gate prezzo N5/N7 §C1):
+24) test_post_onere_ok
+25) test_post_onere_requires_jwt
+26) test_post_onere_errore_dominio
+27) test_post_onere_permission_denied
+28) test_post_onere_permission_allowed
+29) test_endpoint_prezzo_richiedono_permesso_override
 """
 
 import json
@@ -464,3 +472,158 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 403)
         mock_azione.assert_called_once()
         self.assertEqual(mock_azione.call_args.args[1], "approva_attivita_commessa")
+
+
+@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
+class VenditeCommessaOneriApiTests(JwtMockedApiTest):
+    """POST /api/v1/vendite/commesse/<id>/oneri/ — porta oneri (§A1) e gate
+    `prezzo_override_manuale` sugli endpoint prezzo N5/N7 (§C1)."""
+
+    # Scopo: Prepara il contesto comune del test.
+    def setUp(self) -> None:
+        super().setUp()
+        self.client = Client()
+
+    def _payload(self, **override):
+        payload = {
+            "articolo_onere_id": "3f1c9a52-0d5e-4c7b-9a10-2b6d8e4f0011",
+            "importo": "150.00",
+            "tipo_doc_fiscale_id": 7,
+            "motivo": "trasferta cantiere",
+        }
+        payload.update(override)
+        return payload
+
+    def _post_oneri(self, *, key: str, payload=None):
+        return self.client.post(
+            "/api/v1/vendite/commesse/42/oneri/",
+            data=json.dumps(self._payload() if payload is None else payload),
+            content_type="application/json",
+            headers={"Idempotency-Key": key},
+        )
+
+    # Scopo: carico onere ok → 200 con l'id della riga creata; payload inoltrato
+    #        al service con i nomi di dominio attesi.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.aggiungi_onere_commessa")
+    def test_post_onere_ok(self, mocked_service, _mock_auth):
+        mocked_service.return_value = {
+            "commessa_id": 42, "attivita_id": 5150, "importo": "150.00",
+        }
+        response = self._post_oneri(key="idem-onere-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"]["attivita_id"], 5150)
+        kwargs = mocked_service.call_args.kwargs
+        self.assertEqual(kwargs["commessa_id"], 42)
+        self.assertEqual(kwargs["tipo_doc_fiscale_id"], 7)
+        self.assertEqual(kwargs["motivo"], "trasferta cantiere")
+        # Istanza non passata dalla UI: la deriva il service dal BA della commessa.
+        self.assertIsNone(kwargs["istanza_utility_id"])
+
+    # Scopo: endpoint protetto — senza JWT nessun accesso.
+    def test_post_onere_requires_jwt(self):
+        response = self._post_oneri(key="idem-onere-jwt")
+        self.assertEqual(response.status_code, 401)
+
+    # Scopo: errore di dominio del service → envelope con il codice originale
+    #        (l'operatore legge "articolo non valido", non "errore generico").
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.aggiungi_onere_commessa")
+    def test_post_onere_errore_dominio(self, mocked_service, _mock_auth):
+        mocked_service.side_effect = ServiceError(
+            code="E_ONERE_ARTICOLO_MANCANTE",
+            message="Articolo-onere non valido.",
+        )
+        response = self._post_oneri(key="idem-onere-err")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"]["code"], "E_ONERE_ARTICOLO_MANCANTE")
+
+    # Scopo: gate all'ingresso (§4c.5) — senza `carica_voce_manuale` niente
+    #        caricamento oneri, e il service non viene nemmeno interpellato.
+    @patch("apps.core.api.permissions.save_user_cache")
+    @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=False)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_applicativo", return_value="OPERATORE")
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.is_super_admin", return_value=False)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    @patch("apps.vendite.api.views.aggiungi_onere_commessa")
+    def test_post_onere_permission_denied(
+        self, mocked_service, mock_auth, _mock_sa, _mock_ruolo, mock_azione, _mock_load, _mock_save,
+    ):
+        user = Mock()
+        user.id = 42
+        user.is_superuser = False
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+
+        response = self._post_oneri(key="idem-onere-deny")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(mock_azione.call_args.args[1], "carica_voce_manuale")
+        mocked_service.assert_not_called()
+
+    # Scopo: gate abilitato → passa, con il codename giusto.
+    @patch("apps.core.api.permissions.save_user_cache")
+    @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=True)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_applicativo", return_value="OPERATORE")
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.is_super_admin", return_value=False)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    @patch("apps.vendite.api.views.aggiungi_onere_commessa")
+    def test_post_onere_permission_allowed(
+        self, mocked_service, mock_auth, _mock_sa, _mock_ruolo, mock_azione, _mock_load, _mock_save,
+    ):
+        user = Mock()
+        user.id = 42
+        user.is_superuser = False
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+        mocked_service.return_value = {
+            "commessa_id": 42, "attivita_id": 5150, "importo": "150.00",
+        }
+
+        response = self._post_oneri(key="idem-onere-allow")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mock_azione.call_args.args[1], "carica_voce_manuale")
+
+    # ------------------------------------------------------------------ #
+    # Gate prezzo N5/N7 (§C1 — chiusura della trappola T2)               #
+    # ------------------------------------------------------------------ #
+
+    # Scopo: i tre endpoint prezzo di commessa esigono `prezzo_override_manuale`.
+    #        Prima bastava la scrittura sull'area vendite: questo test documenta
+    #        la chiusura di T2 e impedisce che il gate venga rimosso in futuro.
+    @patch("apps.core.api.permissions.save_user_cache")
+    @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=False)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_applicativo", return_value="OPERATORE")
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.is_super_admin", return_value=False)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    def test_endpoint_prezzo_richiedono_permesso_override(
+        self, mock_auth, _mock_sa, _mock_ruolo, mock_azione, _mock_load, _mock_save,
+    ):
+        user = Mock()
+        user.id = 42
+        user.is_superuser = False
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+
+        percorsi = (
+            ("riallinea-prezzo", {}),
+            ("variazione-prezzo-eccezionale", {"prezzo": "10", "motivo": "x"}),
+            ("sblocca-prezzo", {"motivo": "x"}),
+        )
+        for idx, (azione, payload) in enumerate(percorsi):
+            mock_azione.reset_mock()
+            with self.subTest(azione=azione):
+                response = self.client.post(
+                    f"/api/v1/vendite/commesse/42/attivita/7/{azione}/",
+                    data=json.dumps(payload),
+                    content_type="application/json",
+                    headers={"Idempotency-Key": f"idem-prezzo-deny-{idx}"},
+                )
+                self.assertEqual(response.status_code, 403)
+                self.assertEqual(mock_azione.call_args.args[1], "prezzo_override_manuale")

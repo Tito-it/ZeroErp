@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 import json
-from typing import Any
+from typing import Any, ClassVar
 
 from django.db import connection
 
@@ -1638,36 +1638,57 @@ class VenditePipelineRepository:
             return str(row[0])
 
     # Scopo: Contatori della coda stampa per il monitoraggio (C-5) — conteggi
-    #        per stato, opzionalmente ristretti a un lotto. La coda NON ha
-    #        colonna emittente (brief §5): per la lettura OPERATORE lo scope
-    #        emittente si deriva via **JOIN a vendite.fatture** su `sorgente_id`
-    #        + il BB `add_emittente_scope_condition` (convenzione SR). Con
+    #        per stato, opzionalmente ristretti a un lotto o a un mese di
+    #        competenza. La coda NON ha colonna emittente (brief §5): per la
+    #        lettura OPERATORE lo scope emittente si deriva via **JOIN a
+    #        vendite.fatture** su `sorgente_id` + il BB
+    #        `add_emittente_scope_condition` (convenzione SR). Con
     #        `auth_user_id=None` (worker/sistema) nessuno scope → conta tutto.
     #        Ritorna dict {stato: n} dei soli stati presenti.
+    #
+    # `competenza_mese` (2026-07-23): restringe al mese di competenza del LOTTO
+    # a cui la riga di coda appartiene (`c.lotto_id` -> `fatturazione_lotti`).
+    # Senza, i conteggi sono cumulativi da sempre: «Fatte: 7» cresce all'infinito
+    # e non dice nulla su cosa si sta fatturando ora — stesso difetto per cui i
+    # contatori dei worker sono stati tolti dal pannello esiti.
+    # JOIN interno di proposito: una riga senza lotto non è attribuibile a un
+    # mese e non deve entrare in un conteggio di periodo.
     def count_coda_stampa_per_stato(
-        self, *, lotto_id: int | None = None, auth_user_id: int | None = None,
+        self,
+        *,
+        lotto_id: int | None = None,
+        auth_user_id: int | None = None,
+        competenza_mese: date | None = None,
     ) -> dict[str, int]:
         conditions: list[str] = []
         params: list[Any] = []
-        joins = ""
+        # Lista e non stringa singola: i join sono più d'uno e si accumulano
+        # (assegnarla sovrascriverebbe silenziosamente quello già impostato).
+        joins: list[str] = []
         if lotto_id is not None:
             conditions.append("c.lotto_id = %s")
             params.append(int(lotto_id))
         if auth_user_id is not None:
             # La coda è un satellite di fatture: lo scope emittente vive sulla
             # fattura, non sulla coda → JOIN + scope applicativo (defense-in-depth).
-            joins = "JOIN vendite.fatture f ON f.id = c.sorgente_id"
+            joins.append("JOIN vendite.fatture f ON f.id = c.sorgente_id")
             add_emittente_scope_condition(
                 conditions, params,
                 auth_user_id=auth_user_id,
                 column="f.emittente_soggetto_ruolo_id",
                 convention="sr",
             )
+        if competenza_mese is not None:
+            joins.append(
+                "JOIN vendite.fatturazione_lotti l ON l.id = c.lotto_id"
+            )
+            conditions.append("l.competenza_mese = %s")
+            params.append(competenza_mese.replace(day=1))
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         sql = f"""
             SELECT c.stato, COUNT(*)::int
               FROM vendite.fatture_stampa_coda c
-              {joins}
+              {" ".join(joins)}
               {where}
              GROUP BY c.stato
         """  # noqa: S608 — join/where da condizioni whitelisted (nessun input libero)
@@ -1678,26 +1699,47 @@ class VenditePipelineRepository:
     # Scopo: Elenco paginato della coda stampa per la UI di gestione code
     #        (brief-be-fe-gestione-code-lavori-stampa BE-6). JOIN a
     #        vendite.fatture (numero/anno/serie — la coda e` un satellite di
-    #        fatture) + emittenti_fiscali (codice, per la colonna proprietario
-    #        della vista admin). Scope emittente OPERATORE via
-    #        `add_emittente_scope_condition` sulla fattura (come i conteggi);
-    #        `auth_user_id=None` = nessuno scope (admin `code_manage`).
+    #        fatture) + emittenti_fiscali (codice, colonna informativa).
+    #
+    #        Ambito PER-OPERATORE come la coda lavori (2026-07-23, decisione
+    #        Tid — la vecchia semantica per-emittente del «miei» si leggeva
+    #        come filtro rotto): `operatore` filtra su `c.user_insert`
+    #        (l'identita` GUC di chi ha innescato l'accodamento); None = tutte
+    #        le righe (vista «Tutti», aperta a ogni operatore).
+    #        `caller_username` serve SOLO a calcolare `is_mio` (tag «mio» in
+    #        colonna), mai a filtrare — stessa separazione owner/caller della
+    #        coda lavori.
     #        Filtri opzionali stati/lotto/intervallo `data_insert` (`data_a`
-    #        bound ESCLUSIVO: il chiamante passa gia` il giorno+1). Ordine
-    #        id DESC (i piu` recenti in alto: e` una lista di monitoraggio, non
-    #        la corsia del worker). Ritorna `{items, total}` via BB
+    #        bound ESCLUSIVO: il chiamante passa gia` il giorno+1).
+    #        Ordinamento (2026-07-23, richiesta Tid): `sort_by`/`sort_dir` da
+    #        whitelist `_CODA_STAMPA_SORT_SQL` — il service valida, qui assert
+    #        di defense-in-depth. Default `data_update DESC` («aggiornato»: la
+    #        riga lavorata piu` di recente in testa); tiebreaker `c.id DESC`
+    #        per un ordine stabile. E` una lista di monitoraggio, non la corsia
+    #        del worker. Ritorna `{items, total}` via BB
     #        `fetch_paged_with_total` (fallback pagina-stantia: la coda si
     #        auto-svuota sotto l'utente a ogni drain).
+    _CODA_STAMPA_SORT_SQL: ClassVar[dict[str, str]] = {
+        "fattura_id": "c.sorgente_id",
+        # NULLS LAST esplicito: lotto_id e` NULL per le stampe fuori lotto
+        # (es. ristampe singole) — in DESC finirebbero in testa.
+        "lotto_id": "c.lotto_id {dir} NULLS LAST",
+        "data_update": "c.data_update",
+    }
+
     def elenca_coda_stampa(
         self,
         *,
-        auth_user_id: int | None = None,
+        operatore: str | None = None,
+        caller_username: str | None = None,
         stati: list[str] | None = None,
         lotto_id: int | None = None,
         data_da: Any = None,
         data_a: Any = None,
         limit: int = 50,
         offset: int = 0,
+        sort_by: str = "data_update",
+        sort_dir: str = "DESC",
     ) -> dict[str, Any]:
         conditions: list[str] = []
         params: list[Any] = []
@@ -1713,16 +1755,20 @@ class VenditePipelineRepository:
         if data_a is not None:
             conditions.append("c.data_insert < %s")
             params.append(data_a)
-        if auth_user_id is not None:
-            add_emittente_scope_condition(
-                conditions, params,
-                auth_user_id=auth_user_id,
-                column="f.emittente_soggetto_ruolo_id",
-                convention="sr",
-            )
+        if operatore is not None:
+            conditions.append("c.user_insert = %s")
+            params.append(str(operatore))
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
         safe_offset = max(0, int(offset))
+        sort_expr = self._CODA_STAMPA_SORT_SQL.get(sort_by)
+        assert sort_expr is not None, f"sort_by non in whitelist: {sort_by!r}"
+        assert sort_dir in ("ASC", "DESC"), f"sort_dir non valido: {sort_dir!r}"
+        order_by = (
+            sort_expr.format(dir=sort_dir)
+            if "{dir}" in sort_expr
+            else f"{sort_expr} {sort_dir}"
+        )
         from_join = """
               FROM vendite.fatture_stampa_coda c
               JOIN vendite.fatture f ON f.id = c.sorgente_id
@@ -1736,15 +1782,20 @@ class VenditePipelineRepository:
                    ef.codice AS emittente_codice,
                    c.lotto_id, c.stato, c.tentativi, c.ultimo_errore,
                    c.documento_id, c.data_insert, c.data_update,
+                   c.user_insert AS operatore,
+                   (c.user_insert = %s) AS is_mio,
                    COUNT(*) OVER() AS total_count
               {from_join}
               {where}
-             ORDER BY c.id DESC
+             ORDER BY {order_by}, c.id DESC
              LIMIT %s OFFSET %s
-        """  # noqa: S608 — where da condizioni whitelisted (nessun input libero)
+        """  # noqa: S608 — where/order da whitelist chiuse (nessun input libero)
         rows, total = fetch_paged_with_total(
             data_sql,
-            [*params, safe_limit, safe_offset],
+            # `caller_username` per primo: è il parametro dell'is_mio nella
+            # SELECT, che precede il WHERE. '' quando None: non matcha nessun
+            # user reale → is_mio False, mai NULL.
+            [caller_username or "", *params, safe_limit, safe_offset],
             fallback_count_sql=(
                 f"SELECT COUNT(*) {from_join} {where}"  # noqa: S608
             ),
@@ -1768,6 +1819,14 @@ class VenditePipelineRepository:
                 ),
                 "data_insert": iso_or_none(r["data_insert"]),
                 "data_update": iso_or_none(r["data_update"]),
+                # Operatore che ha innescato l'accodamento: l'audit trigger
+                # scrive in `user_insert` l'identità dalla GUC (es. 'tid'),
+                # mentre `user_update` è il worker che ha stampato — per la
+                # colonna «Operatore» conta chi ha lanciato il processo.
+                # («operatore» e non «utente»: nel dominio utente è ambiguo,
+                # può indicare il cliente/utenza — glossario di progetto.)
+                "operatore": r["operatore"],
+                "is_mio": bool(r["is_mio"]),
             }
             for r in rows
         ]

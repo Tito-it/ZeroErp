@@ -53,6 +53,27 @@ export function cambiaStatoCommessa(commessaId, nuovoStato) {
   )
 }
 
+// POST porta oneri: aggiunge alla commessa una riga di puro valore (qta=1,
+// tipo_movimento=ONERE, gia' APPROVATA). Causale, unita' di misura e IVA sono
+// derivate dall'articolo-onere lato DB; l'istanza utility dal BA della commessa
+// se non passata. Gate azione di processo `carica_voce_manuale`.
+export function aggiungiOnereCommessa(commessaId, {
+  articoloOnereId, importo, tipoDocFiscaleId, motivo = null, dataAttivita = null,
+}) {
+  const payload = {
+    articolo_onere_id: articoloOnereId,
+    importo,
+    tipo_doc_fiscale_id: tipoDocFiscaleId,
+  }
+  if (motivo) payload.motivo = motivo
+  if (dataAttivita) payload.data_attivita = dataAttivita
+  return api.post(
+    `${BASE}/${commessaId}/oneri/`,
+    payload,
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
 // POST riallineo prezzo da listino (N5). `confermaVersioneDiversa` al secondo
 // giro quando il BE segnala versione listino cambiata (richiede_conferma).
 export function riallineaPrezzoAttivita(commessaId, attId, { confermaVersioneDiversa = false } = {}) {

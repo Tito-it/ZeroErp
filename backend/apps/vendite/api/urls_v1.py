@@ -6,6 +6,7 @@ from apps.vendite.api.views import (
     ApiCommessaAttivitaRiallineaPrezzo,
     ApiCommessaAttivitaSbloccaPrezzo,
     ApiCommessaAttivitaVariazionePrezzoEccezionale,
+    ApiCommessaOneri,
     ApiCommessePushLog,
     ApiCommessaStato,
     ApiFatturazioneApprovaCompetenza,
@@ -248,6 +249,13 @@ urlpatterns = [
         "commesse/<int:commessa_id>/attivita/",
         ApiCommessaAttivita.as_view(),
         name="vendite-commessa-attivita",
+    ),
+    # Porta oneri: POST crea la riga di valore sulla sotto-risorsa `oneri`
+    # (nessun verbo nel path — il metodo HTTP dice "crea", api.md §Grammatica).
+    path(
+        "commesse/<int:commessa_id>/oneri/",
+        ApiCommessaOneri.as_view(),
+        name="vendite-commessa-oneri",
     ),
     # Azione APPROVA righe (cockpit Fase A, A-1): tutte o selezione righe_ids.
     path(

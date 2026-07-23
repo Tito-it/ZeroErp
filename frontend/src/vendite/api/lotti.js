@@ -71,8 +71,14 @@ export function ristampaLotto(lottoId) {
 
 // GET esiti giri fatturazione per corsia (job_run_log) + stato coda stampa
 // (conteggi per stato, scope emittente operatore). Sola lettura (C-5).
-export function getFatturazioneEsiti() {
-  return api.get('/vendite/fatturazione/esiti/')
+//
+// `competenzaMese` (YYYY-MM-DD, opzionale): restringe i GIRI a quelli lanciati
+// per quel mese. Senza, sono i totali da sempre. La coda stampa non è mai
+// filtrata: è lo stato attuale della coda, non un dato di periodo.
+export function getFatturazioneEsiti(competenzaMese = null) {
+  return api.get('/vendite/fatturazione/esiti/', {
+    params: competenzaMese ? { competenza_mese: competenzaMese } : {},
+  })
 }
 
 // POST «Fattura competenza» (C-3/C-6): avvia un GIRO di fatturazione on-demand,

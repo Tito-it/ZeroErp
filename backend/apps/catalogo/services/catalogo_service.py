@@ -1453,6 +1453,7 @@ def fn_lookup_articoli(
     is_composito: bool | None = None,
     is_solo_componente: bool | None = None,
     escludi_destinazione_tipi: list[str] | None = None,
+    solo_oneri: bool = False,
     limit: int = 20,
 ) -> dict[str, object]:
     _validate_lookup_limit(
@@ -1467,6 +1468,7 @@ def fn_lookup_articoli(
         is_composito=is_composito,
         is_solo_componente=is_solo_componente,
         escludi_destinazione_tipi=escludi_destinazione_tipi,
+        solo_oneri=solo_oneri,
         limit=limit,
     )
     return _build_results_response(results)

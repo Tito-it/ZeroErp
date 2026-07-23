@@ -1,9 +1,11 @@
 <script setup>
 // Scopo: Toolbar filtri condivisa dei tab code (estratta alla 2ª copia,
-//        regola del 2): stato + range date + ambito miei/tutti (visibile solo
-//        con code_manage) + azioni pagina (ricarica). Stato/opzioni arrivano
-//        da useCodaFiltri; a ogni cambio emette 'change' (il tab riparte da
-//        pagina 1).
+//        regola del 2): stato + range date + ambito miei/tutti + azioni
+//        pagina (ricarica). L'ambito è per TUTTI gli operatori (2026-07-23,
+//        decisione Tid): la coda è una risorsa condivisa e vedere il lavoro
+//        altrui che la impegna è visibilità, non gestione — le azioni restano
+//        gated altrove. Stato/opzioni arrivano da useCodaFiltri; a ogni
+//        cambio emette 'change' (il tab riparte da pagina 1).
 import { useI18n } from 'vue-i18n'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
@@ -18,7 +20,6 @@ const filtri = defineModel('filtri', { type: Object, required: true })
 defineProps({
   statoOptions: { type: Array, required: true },
   ambitoOptions: { type: Array, required: true },
-  canManage: { type: Boolean, default: false },
   pageActions: { type: Array, required: true },
 })
 defineEmits(['change'])
@@ -62,7 +63,7 @@ const { t } = useI18n()
           @update:model-value="$emit('change')"
         />
       </div>
-      <div v-if="canManage" class="form-field">
+      <div class="form-field">
         <label>{{ t('strumenti.code.filtro_ambito') }}</label>
         <SelectButton
           v-model="filtri.ambito"

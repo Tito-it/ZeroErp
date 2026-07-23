@@ -6,6 +6,8 @@
 #        (tracciamento esecuzioni job pgAgent).
 # ------------------------------------------------------------
 
+from typing import Any
+
 from django.db import connection
 
 from apps.core.types import JobRunLogRow
@@ -92,7 +94,7 @@ class MaintenanceRepository:
             cursor.execute(
                 """
                 SELECT jobname,
-                       MAX(started_at)::text AS last_run_at,
+                       MAX(started_at) AS last_run_at,
                        MAX(started_at) > now() - make_interval(mins => %s)
                            AS attivo,
                        (ARRAY_AGG(ok ORDER BY started_at DESC))[1] AS last_ok
@@ -105,7 +107,12 @@ class MaintenanceRepository:
             rows = cursor.fetchall()
         return {
             str(r[0]): {
-                "last_run_at": r[1],
+                # ISO-8601 vero (datetime.isoformat: 'T' + offset ±HH:MM), non
+                # il ::text di PG ("YYYY-MM-DD ...+02"): quel formato non è
+                # parsabile da Date() su tutti i browser (Safari) e da quando
+                # il FE lo MOSTRA (CodaWorkerStato) non basta più che sia
+                # "abbastanza vero" per un confronto lato server.
+                "last_run_at": r[1].isoformat() if r[1] else None,
                 "attivo": bool(r[2]),
                 "last_ok": r[3],
             }
@@ -114,15 +121,57 @@ class MaintenanceRepository:
 
     # Scopo: Restituisce la lista dei jobname distinti con conteggio esecuzioni e ultimo esito.
     # Utile per dashboard riepilogativa dei job schedulati.
+    #
+    # Filtri OPZIONALI (default: nessuno → comportamento storico invariato):
+    #  - `jobname_prefix`: tiene solo i job il cui nome inizia col prefisso
+    #    (es. 'run_fatturazione_batch' = le corsie di fatturazione, escludendo
+    #    i worker di drenaggio code). Filtro SQL e non post-filtro Python:
+    #    altrimenti il `LIMIT` taglierebbe PRIMA di scartare i job non voluti.
+    #  - `meta_month_equals`: `(chiave, 'YYYY-MM-01')` — tiene i run ATTRIBUITI
+    #    a quel mese, applicato PRIMA del GROUP BY (i conteggi risultano quindi
+    #    relativi ai soli run che matchano). L'attribuzione è:
+    #        COALESCE(meta ->> chiave, mese di `started_at`)
+    #    cioè il mese DICHIARATO dal run se c'è, altrimenti quello in cui il run
+    #    è stato ESEGUITO.
+    #    Il fallback non è una comodità: senza, il filtro non troverebbe MAI
+    #    nulla sui run che non valorizzano la chiave (es. tutti i 28 run storici
+    #    di `run_fatturazione_batch`, registrati prima che il batch scrivesse
+    #    `competenza` — verificato 2026-07-23), e il pannello resterebbe vuoto
+    #    per ogni mese. Restare sul solo `meta ->>` sarebbe "corretto" e inutile.
+    #    Il valore dichiarato ha comunque la precedenza, così un giro lanciato a
+    #    luglio per gli arretrati di giugno resta attribuito a GIUGNO.
     def list_job_summary(
         self,
         *,
         limit: int = 50,
         offset: int = 0,
+        jobname_prefix: str | None = None,
+        meta_month_equals: tuple[str, str] | None = None,
     ) -> tuple[list[dict], int]:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if jobname_prefix is not None:
+            conditions.append("jobname LIKE %s")
+            params.append(f"{jobname_prefix}%")
+        if meta_month_equals is not None:
+            # La CHIAVE finisce nell'SQL come letterale quotato (è un nome di
+            # campo, non un valore: non parametrizzabile) → validata qui. Il
+            # VALORE resta parametro (%s). La chiave arriva dal codice
+            # chiamante, mai dal client.
+            chiave, mese = meta_month_equals
+            if not chiave.replace("_", "").isalnum():
+                raise ValueError(f"chiave meta non ammessa: {chiave!r}")
+            conditions.append(
+                f"COALESCE(meta ->> '{chiave}',"
+                " to_char(date_trunc('month', started_at), 'YYYY-MM-DD')) = %s"
+            )
+            params.append(str(mese))
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        params.extend([limit, offset])
+
         with connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 WITH summary AS (
                     SELECT jobname,
                            COUNT(*) AS total_runs,
@@ -131,6 +180,7 @@ class MaintenanceRepository:
                            MAX(started_at) AS last_run_at,
                            (ARRAY_AGG(ok ORDER BY started_at DESC))[1] AS last_ok
                       FROM maintenance.job_run_log
+                      {where}
                      GROUP BY jobname
                 )
                 SELECT jobname, total_runs, ok_count, fail_count,
@@ -139,8 +189,8 @@ class MaintenanceRepository:
                   FROM summary
                  ORDER BY last_run_at DESC NULLS LAST, jobname
                  LIMIT %s OFFSET %s
-                """,
-                [limit, offset],
+                """,  # noqa: S608 — `where` da condizioni whitelisted, valori parametrizzati
+                params,
             )
             rows = cursor.fetchall()
 
