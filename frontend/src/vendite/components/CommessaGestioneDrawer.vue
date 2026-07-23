@@ -85,6 +85,12 @@ const canApprova = computed(() => !isReadonly.value && canApprovare.value)
 // Gate azioni prezzo N5/N7 (specchio del `post_permission` sugli endpoint:
 // senza il permesso il kebab non le propone invece di farle fallire in 403).
 const { isAllowed: canPrezzo } = useActionPermission('prezzo_override_manuale')
+// Gate di STATO commessa per le azioni prezzo (specchio di
+// `_assert_commessa_modificabile` lato BE, data-driven su
+// stati_commessa.modificabile): su CHIUSA/ANNULLATA il kebab non propone
+// azioni che il BE rifiuterebbe. Fail-closed: capabilities non ancora
+// caricate ⇒ nessuna azione.
+const canEditRighe = computed(() => capabilities.value.can_edit_righe === true)
 
 // ------------------------------------------------------------------ stato
 const stato = ref(null)
@@ -280,10 +286,16 @@ const variazioneRiga = ref(null)
 const variazionePrezzo = ref(null)
 const variazioneMotivo = ref('')
 
+// Sblocco (N7-sblocco): il BE esige motivo obbligatorio, quindi dialog (non
+// più solo confirm) — stesso pattern della variazione.
+const sbloccaDialog = ref(false)
+const sbloccaRiga = ref(null)
+const sbloccaMotivo = ref('')
+
 // Scopo: kebab riga — azioni prezzo condizionate dai flag riga; il guard vero
 //        (riga fatturata, commessa non modificabile) resta al BE (fail-visible).
 function buildRowActions(row) {
-  if (isReadonly.value || !canPrezzo.value) return []
+  if (isReadonly.value || !canPrezzo.value || !canEditRighe.value) return []
   return [
     {
       key: 'riallinea',
@@ -293,9 +305,12 @@ function buildRowActions(row) {
       command: () => riallinea(row, false),
     },
     {
+      // DEC-3: la variazione eccezionale è vietata su prezzo bloccato — prima
+      // si sblocca (con motivo). Specchio del guard BE E-BE-1.
       key: 'variazione',
       label: t('vendite.commesse.azione_variazione'),
       icon: 'pi pi-pencil',
+      visible: !row.prezzo_bloccato,
       command: () => {
         variazioneRiga.value = row
         variazionePrezzo.value = null
@@ -304,9 +319,12 @@ function buildRowActions(row) {
       },
     },
     {
+      // Icona-azione (chiave) distinta dai lucchetti-STATO della colonna prezzo
+      // (pi-lock chiuso = bloccato): il bottone inline icon-only non deve
+      // leggersi come uno stato «aperto».
       key: 'sblocca',
       label: t('vendite.commesse.azione_sblocca'),
-      icon: 'pi pi-lock-open',
+      icon: 'pi pi-key',
       visible: row.prezzo_bloccato === true,
       command: () => sblocca(row),
     },
@@ -350,20 +368,26 @@ async function salvaVariazione() {
 const variazioneValida = computed(() =>
   variazionePrezzo.value !== null && String(variazioneMotivo.value ?? '').trim().length > 0)
 
-// Scopo: N7-sblocco — conferma e ricalcola dal resolver.
+// Scopo: N7-sblocco — apre il dialog motivo (motivo obbligatorio lato BE).
 function sblocca(row) {
-  confirmAction({
-    title: t('vendite.commesse.sblocca_header'),
-    message: t('vendite.commesse.sblocca_conferma'),
-    onAccept: async () => {
-      const res = await execute(() => sbloccaPrezzoAttivita(props.commessaId, row.id))
-      if (res !== null) {
-        notify.success(t('vendite.commesse.sblocca_esito'))
-        await reloadAll()
-        emit('saved')
-      }
-    },
-  })
+  sbloccaRiga.value = row
+  sbloccaMotivo.value = ''
+  sbloccaDialog.value = true
+}
+
+const sbloccaValido = computed(() =>
+  String(sbloccaMotivo.value ?? '').trim().length > 0)
+
+// Scopo: N7-sblocco — rimuove il blocco e ricalcola dal resolver (motivo obbligatorio).
+async function salvaSblocco() {
+  const res = await execute(() =>
+    sbloccaPrezzoAttivita(props.commessaId, sbloccaRiga.value.id, { motivo: sbloccaMotivo.value }))
+  if (res !== null) {
+    sbloccaDialog.value = false
+    notify.success(t('vendite.commesse.sblocca_esito'))
+    await reloadAll()
+    emit('saved')
+  }
 }
 
 const selectedIds = computed(() => selected.value.map((r) => r.id))
@@ -571,6 +595,26 @@ const drawerActions = computed(() => [
       <div class="form-field">
         <label>{{ t('vendite.commesse.variazione_motivo') }}</label>
         <Textarea v-model="variazioneMotivo" rows="3" fluid />
+      </div>
+    </AppDialog>
+
+    <!-- Dialog N7-sblocco — motivo obbligatorio (il BE lo esige). -->
+    <AppDialog
+      v-model:visible="sbloccaDialog"
+      :header="t('vendite.commesse.sblocca_header')"
+      width="sm"
+      :loading="loading"
+      :save-disabled="!sbloccaValido"
+      :save-label="t('vendite.commesse.sblocca_salva')"
+      @save="salvaSblocco"
+      @cancel="sbloccaDialog = false"
+    >
+      <p class="text-color-secondary" style="margin-top: 0;">
+        {{ t('vendite.commesse.sblocca_conferma') }}
+      </p>
+      <div class="form-field">
+        <label>{{ t('vendite.commesse.sblocca_motivo') }}</label>
+        <Textarea v-model="sbloccaMotivo" rows="3" fluid />
       </div>
     </AppDialog>
 

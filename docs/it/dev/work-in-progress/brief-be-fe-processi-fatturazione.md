@@ -18,10 +18,15 @@
 > [brief-db-lotto-id-vista-competenza-attivita.md](../work-done/brief-db-lotto-id-vista-competenza-attivita.md)
 > applicato). **Fase D ✅ CHIUSA 2026-07-22** (D-1 guida operativa + D-2 guida tecnica;
 > nel farla è emerso che i verbi implementati sono **3, non 4**: l'invio SDI non è
-> esposto dalla dashboard, ora documentato come tale). **Nessuno step ⬜ residuo.**
+> esposto dalla dashboard, ora documentato come tale).
 > P-3 template fattura ✅
-> (is_default=true, ⚠️ `file_name_pattern` da correggere in-app). Validazione
-> in-app aperta (in parte già esercitata da Tid: approva/annulla/requeue dalla UI).
+> (is_default=true, ⚠️ `file_name_pattern` da correggere in-app).
+> **FASE E APERTA (2026-07-23)**: la validazione in-app di Tid su Lente 1 + drawer
+> A-4 ha scoperto 3 buchi di modello sulla macchina a stati commessa (annulla con
+> fatture emesse, chiudi con righe da fatturare, riapri = vicolo cieco), il bug FE
+> sblocco-prezzo-senza-motivo e 4 decisioni di design (auto-chiusura, capabilities
+> enabled/motivo, variazione vietata su bloccato, drill-down per commessa) —
+> dettagli e step in **FASE E** (prerequisito DB E-DB-1..4 da passare al team DB).
 >
 > **Fix di merito lungo il cantiere (2026-07-21)**: (a) **RLS worker** — `operator_identity_context`
 > setta i **5 GUC** (`set_jwt_gucs`, validazione identità attiva): senza, la discovery di
@@ -222,6 +227,56 @@ in coordinamento col DB.
 | --- | --- | --- | --- |
 | D-1 | **Guida** | Sezione «Gestire la fatturazione» nella [guida cruscotti](../../guide/cruscotti-fatturazione.md): i **quattro verbi** in linguaggio non tecnico, cosa fa il cron e cosa fa l'operatore, perché la numerazione è separata. Si salda con la Fase 4 del piano due-lenti | ✅ **2026-07-22** — nuova §7 «Gestire la fatturazione (agire dalla Lente 1)» in [cruscotti-fatturazione.md](../../guide/cruscotti-fatturazione.md), registro operativo: i verbi con card/permesso, **perché la numerazione è separata** (EMESSA reversibile vs DEFINITIVA irreversibile → «fatturare a lavoro finito, numerare a controlli finiti»), cosa fa il notturno vs l'operatore, lavoro non bloccante + badge/Code di lavoro, atterraggio sul lotto dal pannello errori. ⚠️ **Corretto il perimetro del brief**: i verbi implementati sono **3, non 4** — «Invia»/SDI NON esiste nella dashboard (verificato: 0 occorrenze), documentato esplicitamente come non disponibile invece di descriverlo |
 | D-2 | **Guida fatturazione** | Aggiornare [fatturazione.md](../../guide/fatturazione.md) §«Dashboard operative» (oggi elenca 4 viste ipotetiche) con l'assetto reale | ✅ **2026-07-22** — §«Dashboard operative» riscritta con l'assetto REALE: tabella delle 5 superfici con rotte vere (verificate nel router), i 3 verbi con endpoint+permesso (verificati in `urls_v1.py`/`views.py`), gate fiscale I-7 e corollario sulla catena stati fattura + guard DEFERRED, modello asincrono (I-3) con i 3 processi e le loro cadenze, monitoraggio (badge, code, pannello errori). Rimosso l'elenco delle 4 viste ipotetiche |
+
+---
+
+## FASE E — Esiti validazione in-app 2026-07-23 (dashboard competenza + drawer commessa)
+
+> Prima validazione in-app di Tid su Lente 1 + drawer A-4: emersi **3 buchi di
+> modello sulla macchina a stati commessa**, 1 bug FE bloccante (sblocco prezzo),
+> e 3 decisioni di design. Analisi verificata sul codice/DB vivo (doc auto-gen):
+> matrice [transizioni_stati_commessa](/it/dbzero/vendite/tabelle/transizioni_stati_commessa.md),
+> guard [trgfn_commesse_guard_transizione](/it/dbzero/vendite/funzioni/trgfn_commesse_guard_transizione.md)
+> (unico guard di dominio: ingresso in PRONTA_FATTURAZIONE),
+> [fn_available_actions_commessa](/it/dbzero/script/funzioni/fn_available_actions_commessa.md)
+> (nessun `enabled`/`reasons`),
+> [fn_get_commessa_stato](/it/dbzero/vendite/funzioni/fn_get_commessa_stato.md)
+> (non espone `codice` né cliente).
+
+### Decisioni prese (Tid, 2026-07-23)
+
+| # | Tema | Decisione |
+| --- | --- | --- |
+| DEC-1 | Commessa interamente fatturata | **Chiusura automatica**: il modello non ha stato FATTURATA (lo stadio dashboard è a grana attività); la testata → CHIUSA quando l'ultima attività viva arriva a fattura. Il «Chiudi commessa» manuale resta per la chiusura anticipata, ma **solo senza righe APPROVATE+NON_EMESSE** (altrimenti mancato ricavo silenzioso: CHIUSA è `emittibile=f, modificabile=f`) |
+| DEC-2 | Pulsanti di stato sempre attivi | Pattern **guard-righe dei DDT**: `fn_available_actions_commessa` emette `enabled:false` + `reason_key` quando le precondizioni non passano; FE già pronto (`mapAvailableActionsToDrawerActions` → pulsante **disabilitato con tooltip del motivo, mai nascosto**) |
+| DEC-3 | Variazione eccezionale su prezzo bloccato | **Vietata finché non si sblocca** (oggi ammessa come ri-override sia FE che BE; solo il riallineo è vietato su bloccato). Allineare BE (guard) + FE (kebab) |
+| DEC-4 | Drill-down «da emettere» con commessa ripetuta | **Lista per commessa** (una riga totale: n attività, Σ valore, range date); il dettaglio a grana attività resta nel drawer. Deroga consapevole alla «grana attività» del due-lenti §2 per la **lista** — le card/contatori restano a grana attività |
+
+### E-DB — Prerequisito DB (gate per E-BE/E-FE, [[feedback_be_fe_attende_prerequisiti_db]])
+
+| # | Step | Dettaglio | Stato |
+| --- | --- | --- | --- |
+| E-DB-1 | **Guard di uscita da PRONTA_FATTURAZIONE** (bug logici modello) | In `trgfn_commesse_guard_transizione`: (a) **→ANNULLATA vietata con righe EMESSE** (oggi annulli una commessa con fatture fiscali reali); (b) **→CHIUSA vietata con righe APPROVATE+NON_EMESSE** (oggi chiudi e le perdi); (c) **riapri (→IN_ESECUZIONE) vietata se non restano righe rilavorabili**: su commessa tutta emessa è un **vicolo cieco** — il rientro in PRONTA_FATTURAZIONE richiede ≥1 APPROVATA+NON_EMESSA e CHIUSA è raggiungibile solo da lì → commessa incastrata con unica uscita ANNULLATA | ⬜ |
+| E-DB-2 | **Auto-chiusura** (DEC-1) | Trigger: quando l'ultima attività viva (non ANNULLATA/RIFIUTATA) ha `fattura_riga_id` valorizzato → testata a CHIUSA. Valutare l'aggancio (scrittura su `attivita_fatturabili.fattura_riga_id`) e la convivenza con il guard E-DB-1b (l'auto-chiusura passa perché non restano NON_EMESSE) | ⬜ |
+| E-DB-3 | **Capabilities con motivo** (DEC-2) | `fn_available_actions_commessa` → `enabled` + `reason_key` per azione, specchio esatto dei guard E-DB-1 (pattern `fn_check_ddt_emittibile`). Simmetria subito, non «fase 2» ([[feedback_simmetria_modello_no_meta_scope]]) | ⬜ |
+| E-DB-4 | **Testata identificabile** | `fn_get_commessa_stato` + `codice` e `cliente_display` (ragione sociale via BA→SR→soggetto, stesso join della vista competenza): oggi il drawer può mostrare solo `#<PK>` mentre la lista mostra `commessa_codice` — non correlabili dall'operatore | ⬜ |
+
+### E-BE
+
+| # | Step | Dettaglio | Stato |
+| --- | --- | --- | --- |
+| E-BE-1 | **Guard variazione su bloccato** (DEC-3) | `fn_variazione_prezzo_eccezionale`: require `prezzo_bloccato=FALSE` (come già il riallineo N5) — percorso unico: sblocca (con motivo) → poi varia | ✅ **2026-07-23** — guard `require(not att["prezzo_bloccato"])` → `E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA` (già mappato in `error_policies`), prima del parse prezzo/motivo (nessuna scrittura); test `test_variazione_eccezionale_su_prezzo_bloccato_rifiutata`. Suite service 57 + API 29 verdi. Simmetrico a E-FE-2 (variazione nascosta su bloccato) |
+| E-BE-2 | **Drill-down per commessa** (DEC-4) | `GET dashboard-competenza/attivita/`: aggregazione per commessa sulla stessa vista (GROUP BY `commessa_id`: n_attivita, SUM(valore), MIN/MAX date, Σ fatturato); sort/paginazione sulla grana commessa. L'azione «Approva» a riga-commessa esiste già: `approva-competenza` con `commessa_ids=[id]`. **Include**: esporre `fattura_riga_id`/flag `fatturata` sulla riga (sblocca E-FE-2) | ⬜ |
+
+### E-FE
+
+| # | Step | Dettaglio | Stato |
+| --- | --- | --- | --- |
+| E-FE-1 | **BUG: sblocco prezzo fallisce sempre** | Il BE esige `motivo` obbligatorio (doc `api_commesse_pricing.md`, test API lo passano) ma `sbloccaPrezzoAttivita` invia `{}` e il drawer fa solo confirm → 400 «Motivo obbligatorio» garantito. Serve dialog motivo (come la variazione N7) | ✅ **2026-07-23** — `sbloccaPrezzoAttivita(commessaId, attId, {motivo})` invia il motivo; `sblocca()` apre un `AppDialog` (testo `sblocca_conferma` + `Textarea` motivo, `save-disabled` finché vuoto) con `salvaSblocco()`; i18n `sblocca_motivo`/`sblocca_salva` (it+en). Build+eslint verdi |
+| E-FE-2 | **Congruità kebab prezzi** | Nascondere/disabilitare le azioni prezzo su righe con `fattura_riga_id` valorizzato e con `capabilities.can_edit_righe=false` (oggi su riga fatturata o commessa CHIUSA compaiono e falliscono); `variazione` invisibile su `prezzo_bloccato` (specchio E-BE-1) | 🟡 **PARZIALE 2026-07-23** — fatte le parti indipendenti: gate `canEditRighe` (`capabilities.can_edit_righe===true`, fail-closed) su tutto il kebab prezzi → su CHIUSA/ANNULLATA non compare; `variazione` `visible: !prezzo_bloccato` (specchio E-FE↔E-BE-1/DEC-3). **Resta**: il gate su riga fatturata — `fn_list_commessa_attivita` **non espone** `fattura_riga_id` e `stato_emissione=EMESSA` **non** implica fatturata (il BE ammette il cambio prezzo su emesse-non-ancora-fatturate) → serve esporre `fattura_riga_id`/flag `fatturata` nella lista (dipende da E-BE) |
+| E-FE-3 | **Semantica lucchetti** | La colonna prezzo usa il lucchetto chiuso come **stato**; l'azione «Sblocca» usa `pi-lock-open` come icona inline → si legge come stato «aperto». Distinguere icona-azione da icona-stato | ✅ **2026-07-23** — icona azione «Sblocca» = `pi-key` (chiave), distinta dai lucchetti-stato `pi-lock` della colonna prezzo |
+| E-FE-4 | **Header drawer** | `DrawerEntityHeader`: etichetta + `codice` commessa + cliente (post E-DB-4) al posto del solo `#<commessa_id>` | ⬜ (dipende E-DB-4) |
+| E-FE-5 | **Lista per commessa** (post E-BE-2) | Drill-down a righe-commessa; kebab: «Apri commessa» + «Approva» (via `approva-competenza` scoped). Card/contatori invariati (grana attività) | ⬜ (dipende E-BE-2) |
 
 ---
 

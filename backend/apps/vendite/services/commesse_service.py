@@ -1058,6 +1058,9 @@ def fn_riallinea_prezzo(
 
 # Scopo: Override manuale del prezzo su un'attivita` di commessa LIBERA o CONFERMATA.
 #        Imposta prezzo_bloccato=TRUE. Motivo obbligatorio.
+#        DEC-3 (brief processi-fatturazione §E): vietata su prezzo gia` bloccato —
+#        il percorso e` sblocca (con motivo, ricalcola dal listino) e poi varia.
+#        Evita il ri-override silenzioso di un blocco esistente.
 def fn_variazione_prezzo_eccezionale(
     commessa_id: int,
     attivita_id: int,
@@ -1068,6 +1071,16 @@ def fn_variazione_prezzo_eccezionale(
     att = _get_attivita_pricing_or_raise(commessa_id, attivita_id, function_name=function_name)
     _assert_commessa_modificabile(att, function_name=function_name)
     _assert_non_fatturata(att, function_name=function_name)
+
+    ErrorManager.require(
+        not att.get("prezzo_bloccato"),
+        code="E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA",
+        message="Variazione non ammessa su prezzo bloccato.",
+        detail="Il prezzo e` gia` bloccato: sbloccarlo prima di applicare una nuova variazione.",
+        context={"prezzo_bloccato": att.get("prezzo_bloccato")},
+        function_name=function_name,
+        log_to_db=True,
+    )
 
     nuovo_prezzo = _parse_prezzo(payload, function_name=function_name)
     motivo = _parse_motivo(payload, function_name=function_name)

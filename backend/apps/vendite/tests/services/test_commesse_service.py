@@ -32,6 +32,7 @@ Indice test eseguiti:
 14) CommesseServiceTests.test_variazione_eccezionale_ok
 12) CommesseServiceTests.test_variazione_eccezionale_commessa_stato_bloccato
 13) CommesseServiceTests.test_variazione_eccezionale_riga_fatturata_bloccata
+13-bis) CommesseServiceTests.test_variazione_eccezionale_su_prezzo_bloccato_rifiutata (DEC-3)
 14) CommesseServiceTests.test_variazione_eccezionale_senza_motivo
 15) CommesseServiceTests.test_sblocca_prezzo_ok
 16) CommesseServiceTests.test_sblocca_prezzo_non_bloccato
@@ -827,6 +828,22 @@ class CommesseServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             fn_variazione_prezzo_eccezionale(10, 501, {"prezzo": "42.00", "motivo": "test"})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA")
+
+    # Scopo: N7 - variazione su prezzo gia` bloccato rifiutata (DEC-3): prima
+    #        si sblocca (con motivo), poi si varia. Niente ri-override silenzioso.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_variazione_eccezionale_su_prezzo_bloccato_rifiutata(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import fn_variazione_prezzo_eccezionale
+
+        repo = mock_repo_cls.return_value
+        att = dict(self._ATT_BASE)
+        att["prezzo_bloccato"] = True
+        repo.get_attivita_pricing.return_value = att
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_variazione_prezzo_eccezionale(10, 501, {"prezzo": "42.00", "motivo": "test"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA")
+        repo.update_attivita_prezzo.assert_not_called()
 
     # Scopo: N7 - senza motivo rifiutata.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")

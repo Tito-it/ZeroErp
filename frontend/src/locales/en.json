@@ -2874,6 +2874,8 @@
       "variazione_esito": "Price overridden and locked",
       "sblocca_header": "Price unlock",
       "sblocca_conferma": "Remove the lock and recompute the price from the price list?",
+      "sblocca_motivo": "Reason (required)",
+      "sblocca_salva": "Unlock and recompute",
       "sblocca_esito": "Price unlocked and recomputed",
       "onere_azione": "Add charge",
       "onere_tooltip": "Add a value line (charge) to the job without a specific contract",
