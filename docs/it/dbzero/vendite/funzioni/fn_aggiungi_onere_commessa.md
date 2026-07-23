@@ -84,14 +84,54 @@ BEGIN
   v_data      := COALESCE(p_data_attivita, CURRENT_DATE);
   v_comp_mese := date_trunc('month', v_data)::date;
 
+  -- =====================================================
   -- segment_key progressivo della porta manuale per la commessa.
   -- Convenzione dedicata MAN:<commessa>:<n> (nessun prefisso manuale
   -- esisteva prima). Non si incrocia con i segment di push (ORD:/DDT:).
-  SELECT count(*) + 1
+  --
+  -- CONCORRENZA (brief-db-race-segment-key-onere, 2026-07-23):
+  -- il progressivo va calcolato SOTTO LOCK. Senza, due operatori
+  -- sulla stessa commessa leggono lo stesso valore, generano la
+  -- stessa segment_key e la fn_upsert (ON CONFLICT su
+  -- (commessa_id, segment_key)) AGGIORNA la riga del primo invece
+  -- di crearne una nuova: un onere perso in silenzio, 200 OK a
+  -- entrambi. La porta manuale e' il primo scrittore concorrente
+  -- reale di questa fn (i push serializzano su worker singolo).
+  --
+  -- Advisory lock TRANSAZIONALE per commessa: serializza solo gli
+  -- oneri della stessa commessa, si rilascia da solo a fine
+  -- transazione, nessun oggetto nuovo. Sta QUI, dopo tutte le
+  -- guard e dopo il lookup articolo: una chiamata invalida non
+  -- deve serializzare gli altri operatori.
+  -- Forma a 2 argomenti (namespace + chiave): lo spazio dei lock a
+  -- 1 argomento e' condiviso con altre feature del progetto.
+  -- =====================================================
+  PERFORM pg_advisory_xact_lock(
+    hashtext('vendite.fn_aggiungi_onere_commessa'),
+    hashtext(p_commessa_id::text)
+  );
+
+  -- NOTA ISOLAMENTO: sotto READ COMMITTED (default PostgreSQL e
+  -- Django) la SELECT qui sotto prende uno snapshot NUOVO e vede la
+  -- riga committata da chi ha appena rilasciato il lock, quindi il
+  -- progressivo e' corretto. Sotto REPEATABLE READ/SERIALIZABLE lo
+  -- snapshot resta fisso all'inizio della transazione e il progressivo
+  -- sarebbe stale: in quel caso e' il guard
+  -- E_ONERE_SEGMENT_DUPLICATO a valle a impedire la perdita
+  -- silenziosa (fallisce invece di sovrascrivere).
+  --
+  -- Progressivo dal MASSIMO, non dal count: il conteggio assume
+  -- l'invariante "count = max", che nulla garantisce. Una sola
+  -- DELETE di una riga MAN: e count+1 punterebbe su una chiave gia'
+  -- esistente -> stessa collisione, senza nemmeno la concorrenza.
+  -- I buchi nella numerazione sono ammessi e non significano nulla.
+  -- Il match e' sulla forma PIENA della chiave (commessa inclusa):
+  -- una chiave MAN: non auto-coerente non entra nel calcolo.
+  SELECT COALESCE(MAX((split_part(ca.segment_key, ':', 3))::integer), 0) + 1
     INTO v_progressivo
     FROM vendite.commesse_attivita ca
    WHERE ca.commessa_id = p_commessa_id
-     AND ca.segment_key LIKE 'MAN:%';
+     AND ca.segment_key ~ ('^MAN:' || p_commessa_id || ':[0-9]+$');
 
   v_segment_key := format('MAN:%s:%s', p_commessa_id, v_progressivo);
 
@@ -141,8 +181,33 @@ BEGIN
       p_causale_onere_id            => v_causale_id
     ) AS u;
 
+  -- Difesa in profondita' (brief-db-race-segment-key-onere §2):
+  -- la porta oneri e' una CREATE, non una upsert. Riusa
+  -- fn_upsert_commessa_attivita solo per non duplicarne il mapping
+  -- a 38 parametri (no logica duplicata fra livelli), ma un
+  -- "update" qui non e' MAI legittimo: ogni chiamata e' un onere
+  -- NUOVO. Se is_new e' false siamo su una collisione di
+  -- segment_key -> fallire rumorosamente invece di sovrascrivere
+  -- l'onere di un altro operatore.
+  -- Il guard sta QUI e non dentro fn_upsert_commessa_attivita:
+  -- la' l'update e' la semantica corretta (re-push idempotente dei
+  -- documenti sorgente) e spostarlo romperebbe i push.
+  -- Con il lock + MAX(...)+1 sopra non deve mai scattare: se scatta
+  -- e' una regressione, o una transazione fuori READ COMMITTED.
+  IF NOT v_is_new THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite','fn_aggiungi_onere_commessa','E_ONERE_SEGMENT_DUPLICATO',
+      jsonb_build_object(
+        'commessa_id', p_commessa_id,
+        'segment_key', v_segment_key,
+        'attivita_id', v_attivita_id),
+      NULL::uuid, v_segment_key, p_commessa_id::text);
+  END IF;
+
   -- Audit: PRIMO evento vero di commesse_attivita_log (finora nessun
   -- writer). tx_id e audit sono gestiti dai trigger della tabella.
+  -- is_new resta nel dettaglio come testimone dell'invariante: dopo
+  -- il guard qui sopra puo' valere solo true.
   INSERT INTO vendite.commesse_attivita_log (commessa_attivita_id, evento, dettaglio)
   VALUES (
     v_attivita_id,
@@ -164,7 +229,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_aggiungi_onere_commessa(p_commessa_id bigint, p_istanza_utility_id bigint, p_articolo_onere_id uuid, p_importo numeric, p_tipo_doc_fiscale_id bigint, p_motivo text, p_data_attivita date)
-IS 'Madre DB porta oneri (brief-db-immutabilita-quantita-e-porta-oneri §4c). Da un ARTICOLO-ONERE (catalogo.articoli.causale_onere_id NOT NULL, 1:1) crea una riga commesse_attivita di puro valore (qta=1, tipo_movimento=ONERE) gia'' APPROVATA, SOURCELESS. Deriva causale+uom (e a valle IVA) dall''articolo; snapshotta la causale su commesse_attivita.causale_onere_id. Importo solo positivo. Riusa fn_upsert_commessa_attivita e scrive commesse_attivita_log (evento ONERE_AGGIUNTO). Usabile da endpoint o processo autorizzato (presidio permessi sul BE). Ritorna attivita_id. rev 2026-07-21.';
+IS 'Madre DB porta oneri (brief-db-immutabilita-quantita-e-porta-oneri §4c). Da un ARTICOLO-ONERE (catalogo.articoli.causale_onere_id NOT NULL, 1:1) crea una riga commesse_attivita di puro valore (qta=1, tipo_movimento=ONERE) gia'' APPROVATA, SOURCELESS. Deriva causale+uom (e a valle IVA) dall''articolo; snapshotta la causale su commesse_attivita.causale_onere_id. Importo solo positivo. Riusa fn_upsert_commessa_attivita e scrive commesse_attivita_log (evento ONERE_AGGIUNTO). Usabile da endpoint o processo autorizzato (presidio permessi sul BE). Ritorna attivita_id. CONCORRENZA (brief-db-race-segment-key-onere, 2026-07-23): progressivo segment_key MAN:<commessa>:<n> da MAX(...)+1 sotto pg_advisory_xact_lock per commessa (serializza solo gli oneri della stessa commessa); guard E_ONERE_SEGMENT_DUPLICATO se la upsert aggiorna invece di creare (la porta e'' una CREATE, non una upsert). Buchi nella numerazione ammessi. rev 2026-07-23.';
 ```
 
 ---

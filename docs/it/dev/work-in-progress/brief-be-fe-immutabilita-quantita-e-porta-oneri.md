@@ -138,6 +138,32 @@ tutte) NON cambia — lì il «tutte» è una scelta esplicita dell'operatore.
   del CHECK biconditional causale) → 400/422 secondo policy esistente. Nomi e
   numeri esatti dalla doc auto-gen / `config.messaggi_errore`, non da questo brief.
 
+### 3.5 — C: codice 557 dalla slice DB «race segment_key» (2026-07-23)
+
+Il fix DB della race sul progressivo `segment_key` della porta oneri
+([brief-db-race-segment-key-onere.md](brief-db-race-segment-key-onere.md),
+sviluppato 2026-07-23) introduce un guard con un codice errore nuovo, che il BE
+**deve registrare**:
+
+```python
+"E_ONERE_SEGMENT_DUPLICATO": ErrorPolicy(
+    code="E_ONERE_SEGMENT_DUPLICATO",
+    http_status=409,
+    ui_action="show_error_banner",
+    user_message="Onere non creato per una modifica concorrente. Riprovare.",
+),
+```
+
+**409 e non 400**: non è un input da correggere, è un conflitto di concorrenza
+**ritentabile** — stessa famiglia dei 409 di immutabilità qui sopra. Verificato:
+senza questa voce il codice cade sul **fallback 400** dei codici `E_*` non
+mappati, con azione UI sbagliata (l'operatore vedrebbe evidenziati i campi del
+form invece di un invito a ripetere l'operazione).
+
+Nessun'altra modifica BE: la firma di `vendite.fn_aggiungi_onere_commessa` non
+cambia, quindi `commesse_repository.aggiungi_onere` e
+`commesse_service.aggiungi_onere_commessa` restano identici.
+
 ## 4. Piano Frontend
 
 Tutto dentro **`CommessaGestioneDrawer.vue`** (il drawer di governo, Fase A-4
@@ -220,6 +246,7 @@ serve il seed solo per la validazione in-app.
 | B1 | Ponte approvazione: push passa `p_righe_ids` + adeguamento test (§3.3) | ✅ **FATTO** — `fn_batch_upsert_commessa_attivita` ritorna solo contatori: gli id si risolvono dalle chiavi naturali `(commessa_id, segment_key)` con `list_attivita_ids_by_segments` (un round-trip, `unnest` di due array), tracciati in `HandlerResult.attivita_ids_per_commessa` e passati al ponte. Nessuna riga = nessuna approvazione (le BOZZA di terzi restano intatte), ma la testata va comunque a PRONTA. 4 test esistenti adeguati al nuovo contratto + 1 nuovo che fissa il fix. |
 | C1 | `post_permission prezzo_override_manuale` su N5/N7 + mapping errori 550-554 (§3.4) | ✅ **FATTO** — gate su tutte e tre le view prezzo di commessa; 6 codici registrati in `error_policies.py` (550/551 → **409**, oneri 552/553/554 + tipo_doc → 400). |
 | C2 | FE gate azioni prezzo con `useActionPermission` (§4.2) | ✅ **FATTO** — `buildRowActions` ritorna vuoto senza `prezzo_override_manuale`: il kebab non propone azioni che finirebbero in 403. |
+| C3 | Registrare `E_ONERE_SEGMENT_DUPLICATO` (557) → **409** in `error_policies.py` (§3.5) | ☐ **DA FARE** — arriva dal fix DB della race sul progressivo `segment_key` ([brief-db-race-segment-key-onere.md](brief-db-race-segment-key-onere.md), DB sviluppato 2026-07-23). Senza la voce il codice cade sul fallback **400** (azione UI sbagliata: campi del form evidenziati invece dell'invito a riprovare). Nessun'altra modifica BE: la firma della madre non cambia. |
 | D1 | Seed `carica_voce_manuale` (team DB, §6) | ✅ **FATTO (2026-07-23)** — riga CSV scritta dal team DB e **applicata su dev**: verificato sul DB vivo `config.azioni_processo` id **29**, area `vendite`, `attivo=true`. Il changeset non è ancora pushato su `dev/db-tid` (per questo non compare nel working tree BE): arriverà col prossimo push del team DB |
 | E1 | Test §5 verdi + i18n check verde | ✅ **FATTO** — `CommessaPortaOneriServiceTests` (7 casi: happy path, istanza esplicita, 8 payload invalidi, 404, traduzione dei 4 errori madre, fallback) + `VenditeCommessaOneriApiTests` (6 casi: ok, JWT, errore dominio, permesso negato/consentito, gate prezzo sui 3 endpoint). **Suite backend 3300 verdi**, `check_i18n_keys.py` pulito, `vite build` verde. |
 | E2 | Doc §7 + validazione in-app Tid → brief in work-done | 🟡 **PARZIALE** — manuale [api_commessa_oneri.md](../../backend/vendite/manual/api_commessa_oneri.md) scritto + `api.md` aggiornato (bullet «Vendite — Commesse»). Manca la validazione in-app di Tid. |
