@@ -2874,6 +2874,8 @@
       "variazione_esito": "Prezzo variato e bloccato",
       "sblocca_header": "Sblocco prezzo",
       "sblocca_conferma": "Rimuovi il blocco e ricalcola il prezzo dal listino?",
+      "sblocca_motivo": "Motivo (obbligatorio)",
+      "sblocca_salva": "Sblocca e ricalcola",
       "sblocca_esito": "Prezzo sbloccato e ricalcolato",
       "onere_azione": "Aggiungi onere",
       "onere_tooltip": "Carica sulla commessa una voce di valore (onere) senza contratto specifico",

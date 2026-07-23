@@ -97,10 +97,12 @@ export function variazionePrezzoAttivita(commessaId, attId, { prezzo, motivo }) 
 }
 
 // POST sblocco prezzo (N7-sblocco): rimuove il blocco e ricalcola dal resolver.
-export function sbloccaPrezzoAttivita(commessaId, attId) {
+// `motivo` obbligatorio lato BE (fn_sblocca_prezzo → _parse_motivo): senza,
+// l'endpoint risponde 400 «Motivo obbligatorio».
+export function sbloccaPrezzoAttivita(commessaId, attId, { motivo }) {
   return api.post(
     `${BASE}/${commessaId}/attivita/${attId}/sblocca-prezzo/`,
-    {},
+    { motivo },
     { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
