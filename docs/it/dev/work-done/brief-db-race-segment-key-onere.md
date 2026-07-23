@@ -10,13 +10,13 @@
 >
 > **Perimetro**: SOLO DB — `vendite.fn_aggiungi_onere_commessa`. Il service
 > `aggiungi_onere_commessa` e il repository sono wrapper 1:1 della madre e **non
-> cambiano** (firma invariata). ⚠️ **Un'appendice BE resta aperta**: la
-> registrazione del nuovo codice errore in `error_policies.py` — vedi §5,
-> rimandata alla slice BE per decisione di Tid (2026-07-23).
+> cambiano** (firma invariata). ✅ **Appendice BE CHIUSA (2026-07-23)**: policy
+> 409 + marker di traduzione + test — il codice 557 risponde 409 end-to-end
+> (vedi §5; l'handoff originale era incompleto, mancava il marker nel service).
 > **Contesto**: non siamo in produzione ([[project_no_produzione_solo_sviluppo]])
 > → fix restrittivo da subito, nessuna compatibilità.
 > **Origine**: review critica 2026-07-23 della porta oneri
-> ([brief-be-fe-immutabilita-quantita-e-porta-oneri.md](brief-be-fe-immutabilita-quantita-e-porta-oneri.md), step A1).
+> ([brief-be-fe-immutabilita-quantita-e-porta-oneri.md](../work-in-progress/brief-be-fe-immutabilita-quantita-e-porta-oneri.md), step A1).
 
 ---
 
@@ -183,28 +183,32 @@ Criteri effettivi:
 - Endpoint esposto: `POST /api/v1/vendite/commesse/<id>/oneri/` (azione
   `carica_voce_manuale`).
 
-## 5. Handoff BE — codice 557 (fuori perimetro, aperto)
+## 5. Handoff BE — codice 557 → ✅ CHIUSO (dev/backend-tid, 2026-07-23)
 
-Il nuovo codice `E_ONERE_SEGMENT_DUPLICATO` **non è registrato** in
-`backend/apps/core/services/error_policies.py`. Verificato: i codici `E_*` non
-mappati cadono sul **fallback 400** — semanticamente errato, perché non è un
-input da correggere ma un **conflitto di concorrenza ritentabile**.
+Il codice `E_ONERE_SEGMENT_DUPLICATO` risponde ora **409** end-to-end.
+Verificato con la DatabaseError reale del RAISE: codice tradotto
+`E_ONERE_SEGMENT_DUPLICATO`, policy `http_status=409 / show_error_banner`.
 
-Da fare nella slice BE (`dev/backend-tid`), una voce:
+> ⚠️ **L'handoff era incompleto: la policy da sola NON bastava.** La catena di
+> traduzione ha due anelli, non uno. Il service `aggiungi_onere_commessa`
+> cattura la `DatabaseError` e la passa a `ErrorManager.raise_from_database_error`
+> con `known_markers=_ONERE_DB_ERROR_MARKERS`: un codice **non presente nei
+> marker** cade sul `fallback_code="E_COMMESSA_VALIDATION"` **prima** di
+> arrivare al registry → avrebbe risolto 400 nonostante la policy 409. Serviva
+> quindi anche il **marker nel service**, altrimenti la policy era codice
+> morto. La coppia policy+marker va sempre tenuta insieme (nota lasciata in
+> entrambi i punti del codice).
 
-```python
-"E_ONERE_SEGMENT_DUPLICATO": ErrorPolicy(
-    code="E_ONERE_SEGMENT_DUPLICATO",
-    http_status=409,
-    ui_action="show_error_banner",
-    user_message="Onere non creato per una modifica concorrente. Riprovare.",
-),
-```
+Consegnato (3 pezzi + regressione):
 
-Coerente con gli altri 409 della famiglia (`E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE`,
-`E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE`). **Fino ad allora l'API risponde
-400** su un evento che comunque non deve mai accadere: degrado accettato,
-tracciato qui e in §3 di `brief-be-fe-immutabilita-quantita-e-porta-oneri.md`.
+1. **Policy 409** in `apps/core/services/error_policies.py` (come da §5), accanto
+   agli altri 409 della famiglia immutabilità.
+2. **Marker** `E_ONERE_SEGMENT_DUPLICATO` in
+   `apps/vendite/services/commesse_service.py::_ONERE_DB_ERROR_MARKERS` — il
+   pezzo mancante sopra.
+3. **Test**: `test_aggiungi_onere_traduce_errori_madre` esteso al nuovo codice
+   (sopravvive alla traduzione col proprio codice) + `test_post_onere_segment_
+   duplicato_409` a livello API (envelope 409 vero).
 
 ## 6. Test di concorrenza manuale (due sessioni psql)
 
@@ -278,7 +282,7 @@ sovrascritta.
 
 1. **BE — codice 557 → 409** in `error_policies.py` (§5). Tracciato come riga
    **C3 ☐ DA FARE** in §8 di
-   [brief-be-fe-immutabilita-quantita-e-porta-oneri.md](brief-be-fe-immutabilita-quantita-e-porta-oneri.md).
+   [brief-be-fe-immutabilita-quantita-e-porta-oneri.md](../work-in-progress/brief-be-fe-immutabilita-quantita-e-porta-oneri.md).
    Fino ad allora l'API risponde **400** su un evento che comunque non deve mai
    accadere: degrado accettato e consapevole.
 2. **Test di concorrenza manuale** (§6): **non ancora eseguito**. È l'**unica**

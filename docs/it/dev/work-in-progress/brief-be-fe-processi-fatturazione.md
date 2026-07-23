@@ -242,6 +242,15 @@ in coordinamento col DB.
 > (nessun `enabled`/`reasons`),
 > [fn_get_commessa_stato](/it/dbzero/vendite/funzioni/fn_get_commessa_stato.md)
 > (non espone `codice` né cliente).
+>
+> **Stato (2026-07-23)** — chiusa la fetta **indipendente dai prerequisiti DB**
+> (BE/FE puri, build+eslint FE + 57 service/29 API BE verdi, **non committato**):
+> **E-FE-1** ✅ (bug sblocco prezzo: dialog motivo), **E-FE-3** ✅ (icona azione
+> `pi-key` vs lucchetti-stato), **E-FE-2** 🟡 parziale (gate `canEditRighe` +
+> `variazione` nascosta su bloccato; resta il gate riga-fatturata → dipende E-BE),
+> **E-BE-1** ✅ (guard variazione su bloccato, DEC-3, simmetrico al FE).
+> **In attesa del team DB** (`dev/db-tid`, [[feedback_db_actions_passaggio_team]]):
+> **E-DB-1..4** e, a cascata, **E-BE-2** → **E-FE-4/E-FE-5** + coda E-FE-2.
 
 ### Decisioni prese (Tid, 2026-07-23)
 

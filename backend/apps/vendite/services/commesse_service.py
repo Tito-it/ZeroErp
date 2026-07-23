@@ -582,6 +582,11 @@ _ONERE_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("E_ONERE_ARTICOLO_MANCANTE", ("E_ONERE_ARTICOLO_MANCANTE",)),
     ("E_ONERE_CAUSALE_NON_VALIDA", ("E_ONERE_CAUSALE_NON_VALIDA",)),
     ("E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO", (_ERR_TIPO_DOC_MANCANTE,)),
+    # Guard race progressivo segment_key (DB 557, brief-db-race-segment-key-
+    # onere): senza questo marker il codice cadrebbe sul fallback
+    # E_COMMESSA_VALIDATION (400), scavalcando la policy 409 registrata in
+    # error_policies. La coppia policy+marker va tenuta insieme.
+    ("E_ONERE_SEGMENT_DUPLICATO", ("E_ONERE_SEGMENT_DUPLICATO",)),
 )
 
 
