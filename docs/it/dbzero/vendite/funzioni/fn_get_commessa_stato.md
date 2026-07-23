@@ -9,7 +9,7 @@ CREATE FUNCTION fn_get_commessa_stato(p_commessa_id bigint)
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_commessa_stato(p_commessa_id bigint)
- RETURNS TABLE(commessa_id bigint, stato_commessa_id bigint, stato_commessa character varying, chiude_commessa boolean, emittibile boolean, modificabile boolean, policy_fatturazione character varying, fatturazione_immediata boolean, priorita_operativa character varying, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, total_attivita bigint, total_approvate bigint, total_non_approvate bigint, total_emesse bigint, total_non_emesse bigint, total_prezzo_da_riallineare bigint, last_update timestamp with time zone)
+ RETURNS TABLE(commessa_id bigint, stato_commessa_id bigint, stato_commessa character varying, chiude_commessa boolean, emittibile boolean, modificabile boolean, policy_fatturazione character varying, fatturazione_immediata boolean, priorita_operativa character varying, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, total_attivita bigint, total_approvate bigint, total_non_approvate bigint, total_emesse bigint, total_non_emesse bigint, total_prezzo_da_riallineare bigint, last_update timestamp with time zone, commessa_codice character varying, cliente_display text)
  LANGUAGE plpgsql
 AS $function$
 BEGIN
@@ -50,21 +50,35 @@ BEGIN
         COALESCE(count(*) FILTER (WHERE ca.stato_emissione = 'EMESSA'), 0)::BIGINT,
         COALESCE(count(*) FILTER (WHERE ca.stato_emissione <> 'EMESSA'), 0)::BIGINT,
         COALESCE(count(*) FILTER (WHERE ca.prezzo_da_riallineare IS TRUE), 0)::BIGINT,
-        GREATEST(c.data_update, COALESCE(max(ca.data_update), c.data_update))
+        GREATEST(c.data_update, COALESCE(max(ca.data_update), c.data_update)),
+        -- rev 2026-07-24: identificazione della testata.
+        -- ATTENZIONE: 'stato_commessa' qui sopra e' sc.codice (codice
+        -- dello STATO); questo e' c.codice, il codice della COMMESSA.
+        -- Nomi distinti di proposito.
+        c.codice AS commessa_codice,
+        -- Stessa espressione di vw_dash_competenza_attivita: una sola
+        -- definizione di "nome del cliente" in tutto il dominio.
+        s.ragione_sociale_completa AS cliente_display
     FROM vendite.commesse c
     JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id
     LEFT JOIN vendite.commesse_attivita ca ON ca.commessa_id = c.id
+    -- LEFT: un BA senza soggetto risolto non deve far sparire la riga
+    -- di stato (cliente_display esce NULL, la testata resta leggibile).
+    LEFT JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+    LEFT JOIN anagrafiche.soggetti_ruoli sr  ON sr.id = ba.soggetto_ruolo_id
+    LEFT JOIN anagrafiche.soggetti s         ON s.id  = sr.soggetto_id
     WHERE c.id = p_commessa_id
     GROUP BY c.id, c.stato_commessa_id, sc.codice, sc.chiude_commessa,
              sc.emittibile, sc.modificabile, c.policy_fatturazione,
              c.fatturazione_immediata, c.priorita_operativa,
              c.billing_account_id, c.utility_id,
-             c.emittente_soggetto_ruolo_id, c.data_update;
+             c.emittente_soggetto_ruolo_id, c.data_update,
+             c.codice, s.ragione_sociale_completa;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_commessa_stato(p_commessa_id bigint)
-IS 'Stato testata commessa con flag operativi e contatori attivita in singolo round-trip.';
+IS 'Stato testata commessa con flag operativi e contatori attivita in singolo round-trip. rev 2026-07-24 (brief-db-guard-uscita-commessa-e-capabilities D6): + commessa_codice (c.codice — da non confondere con stato_commessa, che e'' il codice dello STATO) e + cliente_display (anagrafiche.soggetti.ragione_sociale_completa via billing_account->soggetti_ruoli->soggetti, STESSA espressione di vw_dash_competenza_attivita). Senza di questi il drawer mostrava #<PK> mentre la lista mostra il codice: non correlabili dall''operatore. LEFT JOIN sulla catena cliente: un BA senza soggetto non fa sparire la riga.';
 ```
 
 ---

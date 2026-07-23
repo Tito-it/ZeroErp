@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Guard di USCITA dalla commessa: ->CHIUSA e ->ANNULLATA
+#   (brief-db-guard-uscita-commessa-e-capabilities §3.3, D1+D2+D5)
+#
+# Aggiunge la REGOLA 3 a vendite.trgfn_commesse_guard_transizione, che finora
+# presidiava solo (1) l'esistenza della transizione in matrice e (2) la
+# precondizione di INGRESSO a PRONTA_FATTURAZIONE.
+#
+# PERCHE': CHIUSA e ANNULLATA sono stati TERMINALI — verificato sul seed vivo,
+#   vendite.transizioni_stati_commessa non ha NESSUN arco con stato_da_id in
+#   (5,6) — ed entrambi hanno emittibile=false e modificabile=false. Una
+#   commessa chiusa o annullata per errore esce PER SEMPRE dal giro di
+#   fatturazione e nessun UPDATE applicativo la riporta indietro
+#   (fn_cambia_stato_commessa legge solo dalla matrice). Il danno non e'
+#   correggibile a posteriori -> guard fail-fast.
+#
+# SIMMETRIA COL GUARD ESISTENTE: la Regola 2 dice "si ENTRA in
+#   PRONTA_FATTURAZIONE solo se c'e' almeno una riga APPROVATA+NON_EMESSA".
+#   La Regola 3 dice "si ESCE solo se non resta niente di vivo". Stesso
+#   invariante, letto nei due versi.
+#
+# DOVE VIVE LA REGOLA (D5): NON qui. Le condizioni stanno nelle funzioni pure
+#   script.fn_check_commessa_chiudibile / _annullabile (20260724-01/-02), che
+#   sono la sorgente UNICA condivisa con script.fn_available_actions_commessa.
+#   Qui si solleva soltanto. Se la regola vivesse anche qui, le due copie
+#   divergerebbero al primo ritocco e la UI mostrerebbe abilitata un'azione che
+#   il DB rifiuta (o viceversa).
+#
+# RAISE GENERICO, NON RAMIFICATO PER CODICE: si solleva il codice del PRIMO
+#   motivo con la coppia (codice commessa, dettaglio). Regge finche' ogni
+#   codice di questa famiglia ha esattamente 2 %s in quest'ordine — contratto
+#   di arita' dichiarato nel brief §3.1. Un motivo nuovo che non lo rispetti
+#   va aggiunto QUI con il suo ramo, non forzato nel generico.
+#
+# ABILITA L'ARCO 3->5 (D3): la transizione IN_ESECUZIONE->CHIUSA aggiunta in
+#   matrice (append CSV, 80_data) e' sicura solo con questo guard in vigore.
+#   Ordine garantito: 20_code gira PRIMA di 80_data nello stesso migrate ->
+#   nessuna finestra in cui l'arco esista senza presidio.
+#
+# Base: doc auto-gen docs/it/dbzero/vendite/funzioni/trgfn_commesse_guard_transizione.md
+#   (rev 2026-06-07), NON gli YAML precedenti (AGENTS.md: doc-first).
+# Trigger invariato: trg_commesse_a10_guard_transizione_upd (fase _a10_ = guard).
+# Codici errore: 558/559 (messaggi_errore.csv, append).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260724-03-update-trgfn-commesse-guard-transizione-uscita-mctit.yaml
+
+  - changeSet:
+      id: 20260724-03-update-trgfn-commesse-guard-transizione-uscita
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard di uscita commessa: ->CHIUSA vietata con righe APPROVATE+NON_EMESSE
+        (559), ->ANNULLATA vietata con righe EMESSE (558). Regola delegata alle
+        fn_check_* condivise con le capabilities. Nessun trigger nuovo.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_guard_transizione()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: enforcement DB-first del grafo transizioni stato commessa.
+              --   La transizione (OLD.stato -> NEW.stato) e' ammessa solo se
+              --   presente e attiva in vendite.transizioni_stati_commessa. In piu',
+              --   ->PRONTA_FATTURAZIONE richiede almeno una riga commesse_attivita
+              --   APPROVATA e NON_EMESSA (ingresso), e ->CHIUSA / ->ANNULLATA
+              --   richiedono che non resti niente di vivo (uscita, rev 2026-07-24).
+              --   Letto dalla matrice (no grafo hardcodato).
+              DECLARE
+                  v_codice_da vendite.stati_commessa.codice_interno%TYPE;
+                  v_codice_a  vendite.stati_commessa.codice_interno%TYPE;
+                  v_ammessa   boolean := false;
+                  v_motivi    jsonb;
+              BEGIN
+                  -- No-op se lo stato non cambia davvero (UPDATE su altre colonne).
+                  IF NEW.stato_commessa_id IS NOT DISTINCT FROM OLD.stato_commessa_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT
+                      max(CASE WHEN id = OLD.stato_commessa_id THEN codice_interno END),
+                      max(CASE WHEN id = NEW.stato_commessa_id THEN codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM vendite.stati_commessa
+                   WHERE id IN (OLD.stato_commessa_id, NEW.stato_commessa_id);
+
+                  -- Regola 1: la transizione deve esistere ed essere attiva in matrice.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.transizioni_stati_commessa t
+                       WHERE t.stato_da_id = OLD.stato_commessa_id
+                         AND t.stato_a_id  = NEW.stato_commessa_id
+                         AND t.attivo IS TRUE
+                  ) INTO v_ammessa;
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_COMMESSA_STATO_TRANSIZIONE_INVALIDA',
+                          jsonb_build_object(
+                              'commessa_id', NEW.id,
+                              'codice',      NEW.codice,
+                              'stato_da',    v_codice_da,
+                              'stato_a',     v_codice_a
+                          ),
+                          NEW.tx_id,
+                          NEW.id::text,
+                          coalesce(v_codice_da, 'NULL'),
+                          coalesce(v_codice_a,  'NULL')
+                      );
+                  END IF;
+
+                  -- Regola 2: ->PRONTA_FATTURAZIONE richiede almeno una riga
+                  -- approvata e non ancora emessa. Tiene allineati i due livelli
+                  -- (testata emittibile <-> esiste qualcosa da emettere).
+                  IF v_codice_a = 'PRONTA_FATTURAZIONE' THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM vendite.commesse_attivita ca
+                           WHERE ca.commessa_id = NEW.id
+                             AND ca.stato_approvazione = 'APPROVATA'
+                             AND ca.stato_emissione    = 'NON_EMESSA'
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_COMMESSA_NESSUNA_RIGA_APPROVATA',
+                              jsonb_build_object(
+                                  'commessa_id', NEW.id,
+                                  'codice',      NEW.codice
+                              ),
+                              NEW.tx_id,
+                              NEW.id::text,
+                              coalesce(NEW.codice, 'NULL')
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Regola 3 (rev 2026-07-24): guard di USCITA, speculare alla
+                  -- Regola 2. CHIUSA e ANNULLATA sono TERMINALI (nessun arco
+                  -- uscente in matrice) e non emittibili: un errore qui non e'
+                  -- recuperabile per via applicativa, quindi fail-fast.
+                  -- La regola vera vive nelle fn_check_* (sorgente UNICA,
+                  -- condivisa con script.fn_available_actions_commessa): qui si
+                  -- solleva soltanto, col codice del PRIMO motivo.
+                  -- Arita' fissa (codice commessa, dettaglio): vale per tutti i
+                  -- codici di questa famiglia (brief §3.1).
+                  IF v_codice_a IN ('CHIUSA', 'ANNULLATA') THEN
+                      v_motivi := CASE v_codice_a
+                                    WHEN 'CHIUSA' THEN script.fn_check_commessa_chiudibile(NEW.id)
+                                    ELSE               script.fn_check_commessa_annullabile(NEW.id)
+                                  END;
+
+                      IF jsonb_array_length(v_motivi) > 0 THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              v_motivi -> 0 ->> 'codice',
+                              jsonb_build_object(
+                                  'commessa_id', NEW.id,
+                                  'codice',      NEW.codice,
+                                  'stato_da',    v_codice_da,
+                                  'stato_a',     v_codice_a,
+                                  'motivi',      v_motivi
+                              ),
+                              NEW.tx_id,
+                              coalesce(NEW.codice, NEW.id::text),
+                              coalesce(v_motivi -> 0 ->> 'dettaglio', '0')
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_commesse_guard_transizione()
+              IS 'Trigger function: enforcement grafo transizioni stato commessa letto da vendite.transizioni_stati_commessa (E_COMMESSA_STATO_TRANSIZIONE_INVALIDA). Precondizione INGRESSO ->PRONTA_FATTURAZIONE: almeno una riga APPROVATA+NON_EMESSA (E_COMMESSA_NESSUNA_RIGA_APPROVATA). Precondizione USCITA ->CHIUSA/->ANNULLATA (rev 2026-07-24, brief-db-guard-uscita-commessa-e-capabilities): delegata alle funzioni pure script.fn_check_commessa_chiudibile / _annullabile — sorgente UNICA condivisa con script.fn_available_actions_commessa — che producono i motivi; qui si solleva il codice del primo (558 righe emesse / 559 righe approvate non emesse) con arita'' fissa (codice commessa, dettaglio). Motivo: CHIUSA e ANNULLATA sono terminali e non emittibili, un errore non e'' recuperabile. rev 2026-07-24.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: la firma non cambia (trigger function), quindi nessun
+              -- overload da rimuovere. Per tornare alla revisione precedente
+              -- (senza guard di uscita) va ri-applicato il changeset precedente
+              -- che definisce questa trigger function. ATTENZIONE: senza la
+              -- Regola 3 tornano possibili sia il passaggio a CHIUSA con righe
+              -- pendenti sia quello ad ANNULLATA con righe emesse: IRREVERSIBILI.
+              SELECT 1;
