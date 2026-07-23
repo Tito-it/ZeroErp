@@ -13,7 +13,7 @@
 --  2) Trigger guard transizione presente su vendite.commesse
 --  3) fn_cambia_stato_commessa presente
 --  4) fn_approva_commessa_attivita presente
---  5) Seed: 11 transizioni presenti
+--  5) Seed: 12 transizioni presenti
 --  6) Seed: BOZZA->PRONTA_FATTURAZIONE (1->4) presente e attiva
 --  7) Transizione non in matrice rifiutata (BOZZA->CHIUSA)
 --  8) ->PRONTA_FATTURAZIONE senza righe approvate rifiutata
@@ -70,10 +70,17 @@ SELECT ok(
 -- SEED MATRICE
 -- ============================================================
 
+-- 11 transizioni originarie + IN_ESECUZIONE->CHIUSA (id 12), aggiunta il
+-- 2026-07-24 da brief-db-guard-uscita-commessa-e-capabilities (D3) per chiudere
+-- il vicolo cieco: una commessa riaperta e tutta emessa non poteva ne' tornare
+-- a PRONTA_FATTURAZIONE (serve >=1 riga APPROVATA+NON_EMESSA) ne' essere chiusa
+-- (CHIUSA era raggiungibile solo da PRONTA), e restava con la sola uscita
+-- ANNULLATA — a sua volta vietata dal guard se aveva righe emesse.
+-- La copertura dell'arco nuovo sta in test-guard-uscita-commessa-v1.sql.
 SELECT is(
   (SELECT count(*)::int FROM vendite.transizioni_stati_commessa),
-  11,
-  'Seed: 11 transizioni presenti'
+  12,
+  'Seed: 12 transizioni presenti'
 );
 
 SELECT ok(
@@ -130,7 +137,20 @@ SELECT
     WHERE u.attivo IS TRUE
     ORDER BY u.id
     LIMIT 1
-  ) AS uom_id;
+  ) AS uom_id,
+  -- Aggiunto 2026-07-24: il test 9 approva la riga, che diventa
+  -- APPROVATA+NON_EMESSA = emittibile, e il guard
+  -- trg_commesse_attivita_a10_guard_tipo_doc_emittibile
+  -- (brief-db-guard-tipo-doc-attivita, posteriore a questo test) esige
+  -- tipo_doc_fiscale_id valorizzato. Senza, il fixture abortisce la
+  -- transazione e il file intero risulta rosso.
+  (
+    SELECT id
+    FROM config.tipi_doc_fiscale
+    WHERE attivo IS TRUE
+    ORDER BY id
+    LIMIT 1
+  ) AS tipo_doc_fiscale_id;
 
 -- Commessa di test (force_new per isolamento), nasce in BOZZA
 CREATE TEMP TABLE tmp_commessa_tsc AS
@@ -170,6 +190,8 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_contratto_id => NULL,
   p_categoria_cliente_id_snapshot => NULL,
   p_classe_utenza_id_snapshot => NULL,
+  -- Serve all'approvazione del test 9 (vedi nota su tmp_refs_tsc).
+  p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_tsc),
   p_stato_approvazione => 'BOZZA',
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'NORMALE',

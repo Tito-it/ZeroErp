@@ -47,7 +47,16 @@ SELECT
   (
     SELECT u.id FROM catalogo.unita_misura u
     WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1
-  ) AS uom_id;
+  ) AS uom_id,
+  -- Aggiunto 2026-07-24: la riga nasce APPROVATA+NON_EMESSA = emittibile, e il
+  -- guard trg_commesse_attivita_a10_guard_tipo_doc_emittibile
+  -- (brief-db-guard-tipo-doc-attivita, posteriore a questo test) esige
+  -- tipo_doc_fiscale_id valorizzato. Senza, il fixture abortisce la transazione
+  -- e il file intero resta rosso.
+  (
+    SELECT t.id FROM config.tipi_doc_fiscale t
+    WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1
+  ) AS tipo_doc_fiscale_id;
 
 CREATE TEMP TABLE tmp_commessa_aa AS
 SELECT vendite.fn_get_or_create_commessa(
@@ -114,6 +123,8 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_contratto_id => NULL,
   p_categoria_cliente_id_snapshot => NULL,
   p_classe_utenza_id_snapshot => NULL,
+  -- Obbligatorio sulla riga emittibile (vedi nota su tmp_refs).
+  p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_aa),
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'NORMALE',
@@ -146,6 +157,21 @@ SELECT is(
 -- ============================================================
 -- Porta in CHIUSA (terminale) e verifica
 -- ============================================================
+-- Adeguamento 2026-07-24 (brief-db-guard-uscita-commessa-e-capabilities, D2):
+-- la chiusura esige che non restino righe APPROVATE+NON_EMESSE, altrimenti le
+-- si perderebbe per sempre (CHIUSA e' terminale). Il percorso realistico e'
+-- che la riga venga prima EMESSA: qui la si emette per poter osservare lo
+-- stato CHIUSA, che e' l'oggetto del test.
+DO $emissione$
+BEGIN
+  UPDATE vendite.commesse_attivita
+     SET stato_emissione = 'EMESSA'
+   WHERE commessa_id = (SELECT commessa_id FROM tmp_commessa_aa)
+     AND stato_approvazione = 'APPROVATA'
+     AND stato_emissione    = 'NON_EMESSA';
+END
+$emissione$;
+
 SELECT * FROM vendite.fn_cambia_stato_commessa(
   (SELECT commessa_id FROM tmp_commessa_aa), 'CHIUSA');
 

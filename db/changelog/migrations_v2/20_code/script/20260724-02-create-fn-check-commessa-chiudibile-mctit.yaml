@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_check_commessa_chiudibile — motivi ostativi alla CHIUSURA
+#   (brief-db-guard-uscita-commessa-e-capabilities §3.2, D2+D5)
+#
+# SORGENTE UNICA della regola (D5), come la gemella _annullabile:
+#   1. vendite.trgfn_commesse_guard_transizione (20260724-03) solleva;
+#   2. script.fn_available_actions_commessa (20260724-04) espone
+#      enabled=false + reasons sull'azione 'chiudi'.
+#
+# PERCHE' SERVE: le righe APPROVATE+NON_EMESSE sono esattamente quelle che
+#   fn_list_commesse_emittibili avrebbe raccolto. CHIUSA e' uno stato TERMINALE
+#   (nessun arco uscente in matrice) con emittibile=false: chiuderci sopra
+#   quelle righe le perde PER SEMPRE, senza via applicativa di recupero.
+#
+# SIMMETRIA: il guard vivo ha gia' la regola speculare in INGRESSO —
+#   ->PRONTA_FATTURAZIONE RICHIEDE >=1 riga APPROVATA+NON_EMESSA
+#   (E_COMMESSA_NESSUNA_RIGA_APPROVATA). Questa e' la sua chiusura:
+#   si entra se hai qualcosa da emettere, si esce se non ti resta niente.
+#
+# ABILITA L'ARCO IN_ESECUZIONE->CHIUSA (D3): la transizione 3->5 aggiunta in
+#   matrice (append a transizioni_stati_commessa.csv) e' sicura PER COSTRUZIONE
+#   solo grazie a questo check. Ordine garantito: 20_code gira prima di 80_data
+#   nello stesso migrate -> il guard e' in vigore prima che l'arco esista.
+#
+# NOTA DUE ASSI: 'APPROVATA' sta su stato_approvazione (BOZZA|APPROVATA|RIFIUTATA),
+#   'NON_EMESSA' su stato_emissione (NON_EMESSA|EMESSA|ANNULLATA). Sono colonne
+#   distinte con CHECK distinti: la condizione e' una CONGIUNZIONE sui due assi.
+# Codice errore: 559 E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI (messaggi_errore.csv).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260724-02-create-fn-check-commessa-chiudibile-mctit.yaml
+
+  - changeSet:
+      id: 20260724-02-create-fn-check-commessa-chiudibile
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Funzione pura: motivi ostativi alla chiusura di una commessa (righe
+        APPROVATE+NON_EMESSE ancora pendenti). Sorgente unica condivisa fra il
+        guard di transizione e le capabilities. Ritorna [] se chiudibile.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_commessa_chiudibile(
+                  p_commessa_id vendite.commesse.id%TYPE
+              )
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono la CHIUSURA di una
+              --   commessa. Funzione PURA (fn_check_*): nessun raise di dominio,
+              --   nessuna scrittura. Consumatori: il guard di transizione (che
+              --   solleva il codice del primo motivo) e fn_available_actions_commessa
+              --   (che espone l'azione disabled + reasons).
+              --   Brief: brief-db-guard-uscita-commessa-e-capabilities §3.2.
+              -- Ritorna: [] se chiudibile; altrimenti array ordinato di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                v_motivi  jsonb   := '[]'::jsonb;
+                v_pendenti integer;
+              BEGIN
+                -- Guard parametro (AGENTS.md): id assente o non valido e' un errore
+                -- di programmazione, non una condizione di dominio.
+                IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_commessa_chiudibile','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','commessa_id','valore',p_commessa_id),
+                    NULL::uuid, 'commessa_id obbligatorio (>0)');
+                END IF;
+
+                -- MOTIVO 1 — righe approvate e non ancora emesse (D2).
+                -- Congiunzione sui DUE assi distinti: stato_approvazione e
+                -- stato_emissione sono colonne separate con CHECK separati.
+                -- Sono le righe che fn_list_commesse_emittibili avrebbe raccolto:
+                -- chiudere sopra di esse le perde, e CHIUSA e' irreversibile.
+                -- Indice: ix_commesse_attivita_commessa_stati.
+                SELECT count(*)
+                  INTO v_pendenti
+                  FROM vendite.commesse_attivita ca
+                 WHERE ca.commessa_id = p_commessa_id
+                   AND ca.stato_approvazione = 'APPROVATA'
+                   AND ca.stato_emissione    = 'NON_EMESSA';
+
+                IF v_pendenti > 0 THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI',
+                    'reason',     'RIGHE_DA_EMETTERE',
+                    'reason_key', 'vendite.commesse.azione_reason.righe_da_emettere',
+                    'dettaglio',  v_pendenti);
+                END IF;
+
+                RETURN v_motivi;
+              END;
+              $function$;
+
+              -- COMMENT e DROP esigono tipi RISOLTI: qui il %TYPE non si usa.
+              COMMENT ON FUNCTION script.fn_check_commessa_chiudibile(bigint)
+              IS 'Funzione PURA (fn_check_*): motivi ostativi alla chiusura di una commessa. Ritorna [] se chiudibile, altrimenti array di {codice, reason, reason_key, dettaglio}. Motivo unico: esistono righe APPROVATA+NON_EMESSA (codice 559) — quelle che fn_list_commesse_emittibili avrebbe raccolto, e CHIUSA e'' terminale/irreversibile. Speculare al guard di INGRESSO ->PRONTA_FATTURAZIONE (E_COMMESSA_NESSUNA_RIGA_APPROVATA). Rende sicuro l''arco IN_ESECUZIONE->CHIUSA. Sorgente UNICA condivisa da vendite.trgfn_commesse_guard_transizione (solleva) e script.fn_available_actions_commessa (espone enabled/reasons). rev 2026-07-24.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_commessa_chiudibile(bigint);

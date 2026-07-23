@@ -17,6 +17,8 @@
 - [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (latest review 04-05-2026 — modello legacy `profili_reparto_*` dismesso)
 - [fn_check_ba_visible_for_emittenti](funzioni/fn_check_ba_visible_for_emittenti.md)
 - [fn_check_blocco_login](funzioni/fn_check_blocco_login.md)
+- [fn_check_commessa_annullabile](funzioni/fn_check_commessa_annullabile.md)
+- [fn_check_commessa_chiudibile](funzioni/fn_check_commessa_chiudibile.md)
 - [fn_check_ddt_emittibile](funzioni/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
 - [fn_check_indirizzo_duplicato](funzioni/fn_check_indirizzo_duplicato.md)
 - [fn_check_operatore_invitabile](funzioni/fn_check_operatore_invitabile.md)

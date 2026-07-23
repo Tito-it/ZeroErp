@@ -1,0 +1,66 @@
+# ⚙️ Funzione `fn_check_commessa_chiudibile`
+
+```sql
+CREATE FUNCTION fn_check_commessa_chiudibile(p_commessa_id bigint)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.fn_check_commessa_chiudibile(p_commessa_id bigint)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+-- Scopo: elencare i motivi che impediscono la CHIUSURA di una
+--   commessa. Funzione PURA (fn_check_*): nessun raise di dominio,
+--   nessuna scrittura. Consumatori: il guard di transizione (che
+--   solleva il codice del primo motivo) e fn_available_actions_commessa
+--   (che espone l'azione disabled + reasons).
+--   Brief: brief-db-guard-uscita-commessa-e-capabilities §3.2.
+-- Ritorna: [] se chiudibile; altrimenti array ordinato di
+--   {codice, reason, reason_key, dettaglio}.
+DECLARE
+  v_motivi  jsonb   := '[]'::jsonb;
+  v_pendenti integer;
+BEGIN
+  -- Guard parametro (AGENTS.md): id assente o non valido e' un errore
+  -- di programmazione, non una condizione di dominio.
+  IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'script','fn_check_commessa_chiudibile','E_PARAMETRO_INVALIDO',
+      jsonb_build_object('parametro','commessa_id','valore',p_commessa_id),
+      NULL::uuid, 'commessa_id obbligatorio (>0)');
+  END IF;
+
+  -- MOTIVO 1 — righe approvate e non ancora emesse (D2).
+  -- Congiunzione sui DUE assi distinti: stato_approvazione e
+  -- stato_emissione sono colonne separate con CHECK separati.
+  -- Sono le righe che fn_list_commesse_emittibili avrebbe raccolto:
+  -- chiudere sopra di esse le perde, e CHIUSA e' irreversibile.
+  -- Indice: ix_commesse_attivita_commessa_stati.
+  SELECT count(*)
+    INTO v_pendenti
+    FROM vendite.commesse_attivita ca
+   WHERE ca.commessa_id = p_commessa_id
+     AND ca.stato_approvazione = 'APPROVATA'
+     AND ca.stato_emissione    = 'NON_EMESSA';
+
+  IF v_pendenti > 0 THEN
+    v_motivi := v_motivi || jsonb_build_object(
+      'codice',     'E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI',
+      'reason',     'RIGHE_DA_EMETTERE',
+      'reason_key', 'vendite.commesse.azione_reason.righe_da_emettere',
+      'dettaglio',  v_pendenti);
+  END IF;
+
+  RETURN v_motivi;
+END;
+$function$
+
+COMMENT ON FUNCTION script.fn_check_commessa_chiudibile(p_commessa_id bigint)
+IS 'Funzione PURA (fn_check_*): motivi ostativi alla chiusura di una commessa. Ritorna [] se chiudibile, altrimenti array di {codice, reason, reason_key, dettaglio}. Motivo unico: esistono righe APPROVATA+NON_EMESSA (codice 559) — quelle che fn_list_commesse_emittibili avrebbe raccolto, e CHIUSA e'' terminale/irreversibile. Speculare al guard di INGRESSO ->PRONTA_FATTURAZIONE (E_COMMESSA_NESSUNA_RIGA_APPROVATA). Rende sicuro l''arco IN_ESECUZIONE->CHIUSA. Sorgente UNICA condivisa da vendite.trgfn_commesse_guard_transizione (solleva) e script.fn_available_actions_commessa (espone enabled/reasons). rev 2026-07-24.';
+```
+
+---
+{% include-markdown "signature-core.md" %}
