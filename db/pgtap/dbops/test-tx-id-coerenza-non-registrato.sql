@@ -13,6 +13,10 @@
 --  5) GUC forzata a un id NON registrato: l'INSERT non solleva (era il blocco)
 --  6) Non-regressione: con bypass attivo l'INSERT riesce
 --  7) Canale attivo (skip condizionale): l'id ritornato e' registrato
+--  8) tx_id esplicito: INSERT riesce (uscita anticipata)
+--  9) tx_id esplicito: il valore fornito e' conservato tale e quale
+-- 10) tx_id esplicito + GUC avvelenata: il valore fornito non viene contaminato
+-- 11) [strutturale] l'uscita anticipata precede la lettura di config.parameters
 -- ------------------------------------------------------------
 -- COSA PRESIDIA QUESTO FILE
 -- Il difetto originale: fn_get_or_create_session_tx_id, senza canale dblink,
@@ -26,7 +30,7 @@
 -- I test 3 e 5 sono la riproduzione diretta di quel fallimento.
 -- ------------------------------------------------------------
 BEGIN;
-SELECT plan(7);
+SELECT plan(11);
 
 -- Scope univoco: la tabella ha UNIQUE su codice.
 CREATE TEMP TABLE tmp_costanti_txid AS
@@ -146,6 +150,82 @@ SELECT CASE
     '7) Canale attivo: l''id e'' registrato ed e'' quello pubblicato nella GUC'
   )
 END;
+
+-- ------------------------------------------------------------
+-- Scenario E — uscita anticipata quando il tx_id e' GIA' fornito.
+--   (brief-db-tx-id-uscita-anticipata.md, 2026-07-24)
+--
+-- Dal 2026-07-24 il trigger normalizza il tx_id "stringa vuota" e, se il
+-- valore e' gia' valorizzato, RITORNA SUBITO: tutto il corpo sottostante
+-- serve solo a calcolare il valore da assegnare quando manca. Due effetti:
+-- 280 tabelle tracciate smettono di leggere config.parameters su ogni
+-- scrittura, e la sessione remota del canale di log -- che fornisce sempre
+-- il proprio tx_id e ha grant sul solo schema dbops -- non chiede piu'
+-- permessi su config e script (era "permesso negato per lo schema script").
+--
+-- NOTA sui test 1..7: nessuno di essi fornisce un tx_id esplicito (inseriscono
+-- solo colonne di business e lasciano riempire al trigger), quindi vivono
+-- tutti sul percorso NEW.tx_id IS NULL, che questa modifica non tocca. Se uno
+-- di loro diventasse rosso sarebbe una REGRESSIONE vera, non un test da
+-- allineare.
+-- ------------------------------------------------------------
+
+CREATE TEMP TABLE tmp_txid_esplicito AS
+SELECT '00000000-0000-4000-8000-0000000000e1'::uuid AS tx_id;
+
+SELECT lives_ok(
+  format(
+    $q$ INSERT INTO dbops.coda_lavori_tipi
+          (codice, handler_code, descrizione, run_as_default, max_tentativi_default, attivo, tx_id)
+        VALUES (%L, %L, 'pgTAP uscita anticipata', 'OPERATORE', 3, TRUE, %L::uuid) $q$,
+    (SELECT scope || '_E' FROM tmp_costanti_txid),
+    'pgtap_handler_txid',
+    (SELECT tx_id FROM tmp_txid_esplicito)
+  ),
+  '8) tx_id esplicito: INSERT riesce (uscita anticipata, nessun giro lungo)'
+);
+
+SELECT is(
+  (SELECT t.tx_id FROM dbops.coda_lavori_tipi t
+    WHERE t.codice = (SELECT scope || '_E' FROM tmp_costanti_txid)),
+  (SELECT tx_id FROM tmp_txid_esplicito),
+  '9) tx_id esplicito: il valore fornito e'' conservato tale e quale'
+);
+
+-- Con la GUC avvelenata (id non registrato) il valore fornito dal chiamante
+-- NON deve essere contaminato: e' la prova che il percorso lungo -- quello che
+-- consulta la GUC e il registro -- viene davvero saltato.
+SET LOCAL dbops.tx_id = '00000000-0000-4000-8000-00000000dead';
+
+INSERT INTO dbops.coda_lavori_tipi
+  (codice, handler_code, descrizione, run_as_default, max_tentativi_default, attivo, tx_id)
+SELECT c.scope || '_F', 'pgtap_handler_txid', 'pgTAP uscita anticipata (GUC avvelenata)',
+       'OPERATORE', 3, TRUE, e.tx_id
+  FROM tmp_costanti_txid c, tmp_txid_esplicito e;
+
+SELECT is(
+  (SELECT t.tx_id
+     FROM dbops.coda_lavori_tipi t
+    WHERE t.codice = (SELECT scope || '_F' FROM tmp_costanti_txid)),
+  (SELECT tx_id FROM tmp_txid_esplicito),
+  '10) tx_id esplicito + GUC avvelenata: il valore fornito non viene contaminato'
+);
+
+-- I test 8..10 fissano l'INVARIANTE (il valore fornito sopravvive), ma passano
+-- sia prima sia dopo la modifica: anche la versione con i blocchi in fondo
+-- restituiva NEW invariato, solo dopo aver fatto il giro lungo. Che il lavoro
+-- venga SALTATO non e' osservabile dall'esterno, quindi il solo modo di
+-- presidiarlo e' guardare il corpo vivo della funzione: l'uscita anticipata
+-- deve precedere la lettura di config.parameters. E' questo il test che
+-- diventerebbe rosso se qualcuno rimettesse i blocchi in fondo.
+SELECT ok(
+  strpos(pg_get_functiondef('dbops.trgfn_tx_id_managed()'::regprocedure),
+         'IF NEW.tx_id IS NOT NULL THEN')
+  <
+  strpos(pg_get_functiondef('dbops.trgfn_tx_id_managed()'::regprocedure),
+         'FROM config.parameters'),
+  '11) uscita anticipata in testa: precede la lettura di config.parameters'
+);
 
 SELECT * FROM finish();
 ROLLBACK;
