@@ -182,7 +182,14 @@ GUC dbops.tx_id gia impostato?
 
 ## Trigger function: `trgfn_tx_id_managed`
 
-Questa e la trigger function centrale del sistema. Viene eseguita `BEFORE INSERT OR UPDATE` su ogni tabella che contiene la colonna `tx_id`. E dichiarata `SECURITY DEFINER`.
+Questa e la trigger function centrale del sistema. Viene eseguita `BEFORE INSERT OR UPDATE` su ogni tabella che contiene la colonna `tx_id`.
+
+> **Non e `SECURITY DEFINER`.** Gira con i privilegi del ruolo che sta scrivendo
+> la riga. E un dettaglio che conta: quando la scrittura arriva da un ruolo
+> ristretto — per esempio la sessione `dblink` del canale di log, che ha i grant
+> sul solo schema `dbops` — il trigger non puo toccare `config` o `script` senza
+> incappare in «permesso negato». E la ragione dell'uscita anticipata descritta
+> sotto (Fase 0).
 
 Il suo compito e assegnare a `NEW.tx_id` un valore valido, seguendo un flusso decisionale che bilancia rigore (verifica del tx_id nel registro) e flessibilita (bypass configurabili per test e migrazioni).
 
@@ -190,7 +197,36 @@ Da un punto di vista tecnico:
 
 **Flusso di esecuzione completo:**
 
+### Fase 0 — Uscita anticipata quando il tx_id e gia fornito (rev 2026-07-24)
+
+Prima di ogni altra cosa, il trigger normalizza un eventuale `tx_id` "stringa
+vuota" a `NULL` e poi, **se `NEW.tx_id` risulta gia valorizzato, ritorna
+subito** (`RETURN NEW`) senza eseguire nulla di quanto segue.
+
+E l'unica fase che quasi sempre decide l'esito quando il client pre-imposta il
+tx_id. Il perche e semplice: tutte le fasi 1-4 servono solo a **calcolare un
+valore da assegnare quando manca** — quel valore finisce nella `COALESCE`
+finale, raggiunta unicamente se `NEW.tx_id IS NULL`. Se il valore c'e gia, quel
+lavoro non cambierebbe il risultato.
+
+Due conseguenze pratiche:
+
+* Il trigger e installato su ~280 tabelle: ogni scrittura che porta gia il
+  proprio tx_id smette di leggere `config.parameters` e di attraversare i rami
+  che chiamano `script.*`.
+* Il canale di log (`fn_log_error_only` via `dblink`, che fornisce **sempre** il
+  proprio tx_id) non richiede piu permessi su `config`/`script`: prima quelle
+  chiamate fallivano con «permesso negato per lo schema script» e l'errore non
+  veniva persistito in `dbops.error_log`.
+
+> **Nota sull'ordine.** La normalizzazione deve precedere l'uscita: invertirle
+> lascerebbe passare un tx_id "stringa vuota". Per una colonna `UUID` quel caso
+> e di fatto irraggiungibile, ma la logica resta dov'era.
+
 ### Fase 1 — Verifica bypass globale
+
+Le fasi 1-5 si eseguono **solo se `NEW.tx_id` era NULL** (altrimenti la Fase 0 e
+gia uscita).
 
 Legge il parametro `tx_id_bypass_enabled` da `config.parameters`.
 
@@ -221,8 +257,10 @@ Legge `current_setting('dbops.tx_id', true)` per ottenere un eventuale tx_id gia
 
 ### Fase 5 — Assegnazione a `NEW.tx_id`
 
-* Se `NEW.tx_id` e gia valorizzato (impostato esplicitamente dal client): lo mantiene
-* Altrimenti: `NEW.tx_id = COALESCE(GUC dbops.tx_id, v_new_tx_id, uuidv7())`
+Si arriva qui solo con `NEW.tx_id` NULL (il caso "gia valorizzato" e uscito alla
+Fase 0). L'assegnazione e:
+
+`NEW.tx_id = COALESCE(GUC dbops.tx_id, v_new_tx_id, uuidv7())`
 
 La catena COALESCE finale garantisce che `NEW.tx_id` non sia mai NULL, con `uuidv7()` come ultimo fallback.
 
@@ -347,6 +385,12 @@ SELECT dbops.fn_get_or_create_session_tx_id() AS tx_id;
 ```
 
 Questo imposta la GUC `dbops.tx_id` per tutte le operazioni successive nella stessa connessione. Il trigger `trgfn_tx_id_managed` trovera il valore gia in sessione e lo riusera senza rigenararlo.
+
+> Diverso dal pre-impostare **la colonna** `NEW.tx_id` sulla singola riga: quello
+> attiva l'uscita anticipata del trigger (Fase 0), che salta del tutto il
+> percorso di generazione. Pre-impostare la **GUC di sessione**, invece,
+> attraversa le fasi 1-5 la prima volta e poi riusa il valore. Per la
+> correlazione request/task e la GUC lo strumento giusto.
 
 ### Quando pre-impostare il tx_id
 
