@@ -44,6 +44,7 @@ from apps.vendite.api.views_dashboard_backlog import (
 from apps.vendite.api.views_dashboard_competenza import (
     ApiDashboardCompetenza,
     ApiDashboardCompetenzaAttivita,
+    ApiDashboardCompetenzaCommesse,
     ApiDashboardCompetenzaErrori,
 )
 from apps.vendite.api.views_dashboard_aperto import (
@@ -155,6 +156,11 @@ urlpatterns = [
         "dashboard-competenza/attivita/",
         ApiDashboardCompetenzaAttivita.as_view(),
         name="vendite-dashboard-competenza-attivita",
+    ),
+    path(
+        "dashboard-competenza/commesse/",
+        ApiDashboardCompetenzaCommesse.as_view(),
+        name="vendite-dashboard-competenza-commesse",
     ),
     path(
         "dashboard-competenza/errori/",

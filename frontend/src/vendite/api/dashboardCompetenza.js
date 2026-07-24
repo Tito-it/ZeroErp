@@ -17,6 +17,15 @@ export function listDashboardCompetenzaAttivita(params = {}) {
   return api.get('/vendite/dashboard-competenza/attivita/', { params })
 }
 
+// GET /vendite/dashboard-competenza/commesse/?competenza_mese=&stadio=&solo_ritardo=&order_by=&order_dir=&page=&page_size=
+// Drill-down AGGREGATO per commessa (DEC-4): una riga per commessa nel perimetro
+// (mese + stadio), con n attivita', totali valore/fatturato ed estremi data. Il
+// dettaglio a grana attivita' resta nel drawer di gestione. Ordinamento
+// server-side (order_by whitelist BE: valore_tot default), tiebreak su commessa.
+export function listDashboardCompetenzaCommesse(params = {}) {
+  return api.get('/vendite/dashboard-competenza/commesse/', { params })
+}
+
 // GET /vendite/dashboard-competenza/errori/?competenza_mese=&page=&page_size=
 // Errori vivi fatturazione (task run in ERRORE + fatture critical), blocco 4.
 export function listDashboardCompetenzaErrori(params = {}) {

@@ -243,20 +243,29 @@ in coordinamento col DB.
 > [fn_get_commessa_stato](/it/dbzero/vendite/funzioni/fn_get_commessa_stato.md)
 > (non espone `codice` né cliente).
 >
-> **Stato (2026-07-23)** — chiusa la fetta **indipendente dai prerequisiti DB**
-> (BE/FE puri, build+eslint FE + 57 service/29 API BE verdi, **non committato**):
-> **E-FE-1** ✅ (bug sblocco prezzo: dialog motivo), **E-FE-3** ✅ (icona azione
-> `pi-key` vs lucchetti-stato), **E-FE-2** 🟡 parziale (gate `canEditRighe` +
-> `variazione` nascosta su bloccato; resta il gate riga-fatturata → dipende E-BE),
-> **E-BE-1** ✅ (guard variazione su bloccato, DEC-3, simmetrico al FE).
-> **In attesa del team DB** (`dev/db-tid`, [[feedback_db_actions_passaggio_team]]):
-> **E-DB-1..4** e, a cascata, **E-BE-2** → **E-FE-4/E-FE-5** + coda E-FE-2.
+> **Stato (agg. 2026-07-24)**:
+> - **Fetta indipendente dal DB** (committata `1e19b30b0`): **E-FE-1** ✅ (bug
+>   sblocco prezzo: dialog motivo), **E-FE-3** ✅ (icona `pi-key` vs lucchetti),
+>   **E-BE-1** ✅ (guard variazione su bloccato, DEC-3), **E-FE-2** 🟡 (gate
+>   `canEditRighe` + `variazione` nascosta su bloccato).
+> - **DB CONSEGNATO** dal team (`dev/db-tid`, migrato+pgTAP, brief
+>   [brief-db-guard-uscita-commessa-e-capabilities.md](brief-db-guard-uscita-commessa-e-capabilities.md)):
+>   **E-DB-1/3/4 fatti**, **E-DB-2 (auto-chiusura) SCARTATO** con analisi (D4, vedi
+>   DEC-1 sotto). ⚠️ **Diverge dalla mia proposta** su 2 punti (D3, D4).
+> - **Recepimento BE/FE (2026-07-24, questa sessione, non committato)**: filtro
+>   `enabled` in `cambia_stato_commessa` (§6.1), codici 558/559 in `error_policies`,
+>   `commessa_codice`/`cliente_display` in `CommessaStatoResult`+repo, **E-FE-4** ✅
+>   (header drawer con codice+cliente), 2 chiavi i18n `azione_reason`. **469 test BE
+>   + build/eslint FE verdi.**
+> - **Ancora aperto**: **E-BE-2** (drill-down per commessa + esporre `fattura_riga_id`)
+>   → sblocca coda **E-FE-2** e **E-FE-5**. + segnalazione §8 DB (permesso mancante
+>   su chiudi/annulla) da decidere lato BE.
 
 ### Decisioni prese (Tid, 2026-07-23)
 
 | # | Tema | Decisione |
 | --- | --- | --- |
-| DEC-1 | Commessa interamente fatturata | **Chiusura automatica**: il modello non ha stato FATTURATA (lo stadio dashboard è a grana attività); la testata → CHIUSA quando l'ultima attività viva arriva a fattura. Il «Chiudi commessa» manuale resta per la chiusura anticipata, ma **solo senza righe APPROVATE+NON_EMESSE** (altrimenti mancato ricavo silenzioso: CHIUSA è `emittibile=f, modificabile=f`) |
+| DEC-1 | Commessa interamente fatturata | ~~**Chiusura automatica**~~ → **SUPERATA da D4 del brief DB (2026-07-24, ok Tid)**: l'auto-chiusura è **scartata**. Motivo: l'evento scatenante (`attivita_fatturabili.fattura_riga_id`) è **reversibile** (il reset lotto DRAFT lo azzera) ma CHIUSA è **terminale irreversibile** → una commessa si chiuderebbe da sola e poi, al reset lotto, resterebbe murata con righe di nuovo fatturabili. Al suo posto: il DB **espone la condizione** «non resta nulla da fatturare» via capabilities (`chiudi` diventa `enabled`), la UI la evidenzia, ma **a chiudere è una persona**. Il guard di uscita (E-DB-1b) impedisce comunque la chiusura con righe pendenti |
 | DEC-2 | Pulsanti di stato sempre attivi | Pattern **guard-righe dei DDT**: `fn_available_actions_commessa` emette `enabled:false` + `reason_key` quando le precondizioni non passano; FE già pronto (`mapAvailableActionsToDrawerActions` → pulsante **disabilitato con tooltip del motivo, mai nascosto**) |
 | DEC-3 | Variazione eccezionale su prezzo bloccato | **Vietata finché non si sblocca** (oggi ammessa come ri-override sia FE che BE; solo il riallineo è vietato su bloccato). Allineare BE (guard) + FE (kebab) |
 | DEC-4 | Drill-down «da emettere» con commessa ripetuta | **Lista per commessa** (una riga totale: n attività, Σ valore, range date); il dettaglio a grana attività resta nel drawer. Deroga consapevole alla «grana attività» del due-lenti §2 per la **lista** — le card/contatori restano a grana attività |
@@ -265,27 +274,40 @@ in coordinamento col DB.
 
 | # | Step | Dettaglio | Stato |
 | --- | --- | --- | --- |
-| E-DB-1 | **Guard di uscita da PRONTA_FATTURAZIONE** (bug logici modello) | In `trgfn_commesse_guard_transizione`: (a) **→ANNULLATA vietata con righe EMESSE** (oggi annulli una commessa con fatture fiscali reali); (b) **→CHIUSA vietata con righe APPROVATE+NON_EMESSE** (oggi chiudi e le perdi); (c) **riapri (→IN_ESECUZIONE) vietata se non restano righe rilavorabili**: su commessa tutta emessa è un **vicolo cieco** — il rientro in PRONTA_FATTURAZIONE richiede ≥1 APPROVATA+NON_EMESSA e CHIUSA è raggiungibile solo da lì → commessa incastrata con unica uscita ANNULLATA | ⬜ |
-| E-DB-2 | **Auto-chiusura** (DEC-1) | Trigger: quando l'ultima attività viva (non ANNULLATA/RIFIUTATA) ha `fattura_riga_id` valorizzato → testata a CHIUSA. Valutare l'aggancio (scrittura su `attivita_fatturabili.fattura_riga_id`) e la convivenza con il guard E-DB-1b (l'auto-chiusura passa perché non restano NON_EMESSE) | ⬜ |
-| E-DB-3 | **Capabilities con motivo** (DEC-2) | `fn_available_actions_commessa` → `enabled` + `reason_key` per azione, specchio esatto dei guard E-DB-1 (pattern `fn_check_ddt_emittibile`). Simmetria subito, non «fase 2» ([[feedback_simmetria_modello_no_meta_scope]]) | ⬜ |
-| E-DB-4 | **Testata identificabile** | `fn_get_commessa_stato` + `codice` e `cliente_display` (ragione sociale via BA→SR→soggetto, stesso join della vista competenza): oggi il drawer può mostrare solo `#<PK>` mentre la lista mostra `commessa_codice` — non correlabili dall'operatore | ⬜ |
+| E-DB-1 | **Guard di uscita da PRONTA_FATTURAZIONE** (bug logici modello) | In `trgfn_commesse_guard_transizione`: (a) →ANNULLATA vietata con righe EMESSE; (b) →CHIUSA vietata con righe APPROVATE+NON_EMESSE; (c) il vicolo cieco «riapri» | ✅ **DB 2026-07-24** — (a)/(b) come **Regola 3** del guard, delegata a funzioni pure `script.fn_check_commessa_annullabile`/`_chiudibile` (sorgente unica condivisa con le capabilities); codici errore **558/559**. **DIVERGE su (c)**: il team NON vieta «riapri» — la causa è un **arco mancante nel dato**, quindi ha **aggiunto la transizione `IN_ESECUZIONE→CHIUSA`** in matrice (`transizioni_stati_commessa` id 12, meta = quello di `4→5`). Motivo (D3): «riapri» serve a togliere la commessa dal giro (IN_ESECUZIONE non è emittibile), vietarla toglie una leva; e lo stallo si raggiunge anche senza «riapri» (commessa nata in IN_ESEC con righe BOZZA). Con (b) attivo l'arco è sicuro |
+| E-DB-2 | ~~**Auto-chiusura** (DEC-1)~~ | — | ❌ **SCARTATO (D4, ok Tid)** — vedi DEC-1: evento scatenante reversibile, stato prodotto no. Sostituito dall'esposizione della condizione via capabilities |
+| E-DB-3 | **Capabilities con motivo** (DEC-2) | `fn_available_actions_commessa` → `enabled` + `reasons` per azione | ✅ **DB 2026-07-24** — `enabled`+`reasons` su `chiudi`/`annulla` dalle stesse `fn_check_commessa_*` del guard; `can_change_state` ricalcolato sulle sole azioni abilitate. Shape identica a `fn_available_actions_ddt` (contratto §5 del brief DB) |
+| E-DB-4 | **Testata identificabile** | `fn_get_commessa_stato` + codice commessa e cliente | ✅ **DB 2026-07-24** — aggiunte in coda alla `RETURNS TABLE`: **`commessa_codice`** (`c.codice`; nome esplicito per non confonderlo con `stato_commessa`=codice dello STATO) e **`cliente_display`** (`ragione_sociale_completa` via BA→SR→soggetto, LEFT JOIN) |
 
 ### E-BE
 
 | # | Step | Dettaglio | Stato |
 | --- | --- | --- | --- |
 | E-BE-1 | **Guard variazione su bloccato** (DEC-3) | `fn_variazione_prezzo_eccezionale`: require `prezzo_bloccato=FALSE` (come già il riallineo N5) — percorso unico: sblocca (con motivo) → poi varia | ✅ **2026-07-23** — guard `require(not att["prezzo_bloccato"])` → `E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA` (già mappato in `error_policies`), prima del parse prezzo/motivo (nessuna scrittura); test `test_variazione_eccezionale_su_prezzo_bloccato_rifiutata`. Suite service 57 + API 29 verdi. Simmetrico a E-FE-2 (variazione nascosta su bloccato) |
-| E-BE-2 | **Drill-down per commessa** (DEC-4) | `GET dashboard-competenza/attivita/`: aggregazione per commessa sulla stessa vista (GROUP BY `commessa_id`: n_attivita, SUM(valore), MIN/MAX date, Σ fatturato); sort/paginazione sulla grana commessa. L'azione «Approva» a riga-commessa esiste già: `approva-competenza` con `commessa_ids=[id]`. **Include**: esporre `fattura_riga_id`/flag `fatturata` sulla riga (sblocca E-FE-2) | ⬜ |
+| E-BE-2 | **Drill-down per commessa** (DEC-4) | Aggregazione per commessa sulla stessa vista (GROUP BY `commessa_id`); sort/paginazione sulla grana commessa | ✅ **2026-07-24** — nuovo endpoint `GET dashboard-competenza/commesse/` (`ApiDashboardCompetenzaCommesse` → `fn_dash_competenza_commesse` → `list_dash_competenza_commesse`): GROUP BY su `vw_dash_competenza_attivita` (n_attivita, n_in_ritardo, SUM valore/fatturato, MIN/MAX data); `count` = n commesse; whitelist ordinamento **aggregata** (`valore_tot` default); scope emittente DB-side invariato. Tipo `DashCompetenzaCommessaRow`, doc `api_dashboard_competenza.md`. **6 test service + 4 API**, suite vendite 1304 verde. NB: la lista NON è un oggetto DB nuovo — è una query GROUP BY nel repo, stesso layer delle query esistenti |
+| E-BE-3 | **Recepimento contratto capabilities + testata** (impatti §6.1 brief DB) | Filtro `enabled` nella difesa applicativa di `cambia_stato_commessa`; codici 558/559 in `error_policies`; nuovi campi testata nel repo/type | ✅ **2026-07-24** — (1) `stati_ammessi = {… if a.get("enabled") is not False}` (senza, un'azione terminale vietata passava il gate e il DB rispondeva 558/559); (2) `E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE`/`E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI` → 409 `show_error_banner`; (3) `commessa_codice`/`cliente_display` in `CommessaStatoResult` + SELECT/mapping `get_commessa_stato` (row[18]/[19]), propagati all'API via spread. Test: `test_cambia_stato_commessa_azione_disabilitata_rifiutata`, mock repo+service aggiornati. **469 test BE verdi** |
 
 ### E-FE
 
 | # | Step | Dettaglio | Stato |
 | --- | --- | --- | --- |
 | E-FE-1 | **BUG: sblocco prezzo fallisce sempre** | Il BE esige `motivo` obbligatorio (doc `api_commesse_pricing.md`, test API lo passano) ma `sbloccaPrezzoAttivita` invia `{}` e il drawer fa solo confirm → 400 «Motivo obbligatorio» garantito. Serve dialog motivo (come la variazione N7) | ✅ **2026-07-23** — `sbloccaPrezzoAttivita(commessaId, attId, {motivo})` invia il motivo; `sblocca()` apre un `AppDialog` (testo `sblocca_conferma` + `Textarea` motivo, `save-disabled` finché vuoto) con `salvaSblocco()`; i18n `sblocca_motivo`/`sblocca_salva` (it+en). Build+eslint verdi |
-| E-FE-2 | **Congruità kebab prezzi** | Nascondere/disabilitare le azioni prezzo su righe con `fattura_riga_id` valorizzato e con `capabilities.can_edit_righe=false` (oggi su riga fatturata o commessa CHIUSA compaiono e falliscono); `variazione` invisibile su `prezzo_bloccato` (specchio E-BE-1) | 🟡 **PARZIALE 2026-07-23** — fatte le parti indipendenti: gate `canEditRighe` (`capabilities.can_edit_righe===true`, fail-closed) su tutto il kebab prezzi → su CHIUSA/ANNULLATA non compare; `variazione` `visible: !prezzo_bloccato` (specchio E-FE↔E-BE-1/DEC-3). **Resta**: il gate su riga fatturata — `fn_list_commessa_attivita` **non espone** `fattura_riga_id` e `stato_emissione=EMESSA` **non** implica fatturata (il BE ammette il cambio prezzo su emesse-non-ancora-fatturate) → serve esporre `fattura_riga_id`/flag `fatturata` nella lista (dipende da E-BE) |
+| E-FE-2 | **Congruità kebab prezzi** | Nascondere/disabilitare le azioni prezzo su righe con `fattura_riga_id` valorizzato e con `capabilities.can_edit_righe=false` (oggi su riga fatturata o commessa CHIUSA compaiono e falliscono); `variazione` invisibile su `prezzo_bloccato` (specchio E-BE-1) | 🟡 **PARZIALE 2026-07-23** — fatte le parti indipendenti: gate `canEditRighe` (`capabilities.can_edit_righe===true`, fail-closed) su tutto il kebab prezzi → su CHIUSA/ANNULLATA non compare; `variazione` `visible: !prezzo_bloccato` (specchio E-FE↔E-BE-1/DEC-3). **Resta**: il gate su riga fatturata — `fn_list_commessa_attivita` (funzione DB del drawer) **non espone** `fattura_riga_id` e `stato_emissione=EMESSA` **non** implica fatturata (il BE ammette il cambio prezzo su emesse-non-ancora-fatturate) → **brief DB pronto (2026-07-24)**: [brief-db-fattura-riga-id-lista-commessa-attivita.md](brief-db-fattura-riga-id-lista-commessa-attivita.md) (espone flag `fatturata` = EXISTS AF con `fattura_riga_id`; poi 1 riga BE in `_ATTIVITA_COLS` + gate FE `!row.fatturata`). **In attesa team DB** |
 | E-FE-3 | **Semantica lucchetti** | La colonna prezzo usa il lucchetto chiuso come **stato**; l'azione «Sblocca» usa `pi-lock-open` come icona inline → si legge come stato «aperto». Distinguere icona-azione da icona-stato | ✅ **2026-07-23** — icona azione «Sblocca» = `pi-key` (chiave), distinta dai lucchetti-stato `pi-lock` della colonna prezzo |
-| E-FE-4 | **Header drawer** | `DrawerEntityHeader`: etichetta + `codice` commessa + cliente (post E-DB-4) al posto del solo `#<commessa_id>` | ⬜ (dipende E-DB-4) |
-| E-FE-5 | **Lista per commessa** (post E-BE-2) | Drill-down a righe-commessa; kebab: «Apri commessa» + «Approva» (via `approva-competenza` scoped). Card/contatori invariati (grana attività) | ⬜ (dipende E-BE-2) |
+| E-FE-4 | **Header drawer** | `DrawerEntityHeader`: etichetta + `codice` commessa + cliente (post E-DB-4) al posto del solo `#<commessa_id>` | ✅ **2026-07-24** — `DrawerEntityHeader` mostra `stato.commessa_codice \|\| #<id>` + `stato.cliente_display` (muted); il titolo drawer «Gestione commessa» c'era già. + 2 chiavi i18n `vendite.commesse.azione_reason.{righe_emesse,righe_da_emettere}` (it+en) per i tooltip dei pulsanti disabilitati (mapper FE già pronto, «zero modifiche» §6.2 del brief DB). Build+eslint+i18n verdi |
+| E-FE-5 | **Lista per commessa** (post E-BE-2) | Drill-down a righe-commessa; kebab: «Apri commessa» + «Approva» (via `approva-competenza` scoped). Card/contatori invariati (grana attività) | ✅ **2026-07-24** — store `dashboardCompetenza` e `DashboardCompetenzaView` passati al drill-down per commessa (`listDashboardCompetenzaCommesse`; refs `commesse*`, default sort `valore_tot`). Colonne: commessa, cliente, n attività (tag), valore, fatturato, periodo (min–max), ritardi; kebab «Approva» (DA_APPROVARE → `approvaCompetenza(mese,{commessaIds:[id]})`, conferma con n+codice) + «Apri commessa» (drawer col dettaglio attività). Card/donut/totali/errori invariati; i18n it+en. Build+eslint verdi. **Risolve il reclamo utente** (commessa non più ripetuta). NB: persi dal drill-down i link fattura/lotto per-attività (B-5 resta nel pannello errori); il dettaglio è nel drawer |
+
+### E-BE-4 — DECISIONE APERTA: permesso su chiudi/annulla commessa (§8 brief DB)
+
+Il team DB ha segnalato (fuori dal loro perimetro) che `ApiCommessaStato`
+([views.py:635](../../../../backend/apps/vendite/api/views.py#L635)) dichiara
+`area_funzionale = "vendite"` **ma non ha `post_permission`**: chiunque abbia
+accesso all'area vendite può portare una commessa a `CHIUSA`/`ANNULLATA` — atto
+**irreversibile** — mentre le azioni molto meno gravi (prezzi N5/N7, porta oneri)
+sono gated. I guard E-DB-1 riducono il **danno** ma non sostituiscono il
+**permesso** (assi diversi: *cosa è lecito* vs *chi può*). Se si chiude, serve:
+un codename in `config.azioni_processo` (micro-append CSV → team DB) +
+`post_permission` sulla view + gate FE `useActionPermission`. **Da decidere Tid.**
 
 ---
 

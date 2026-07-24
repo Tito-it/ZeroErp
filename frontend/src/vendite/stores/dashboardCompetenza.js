@@ -1,11 +1,11 @@
 // Store Pinia Lente 1 Competenza (brief-design-fatturazione-due-lenti §4):
-// anno, mese selezionato, aggregata 12 mesi × 4 stadi, drill-down attivita'
-// per stadio e pannello errori vivi del mese.
+// anno, mese selezionato, aggregata 12 mesi × 4 stadi, drill-down per commessa
+// (DEC-4: una riga per commessa, dettaglio nel drawer) e pannello errori vivi.
 // Le action fanno la chiamata axios internamente e lasciano propagare gli
 // errori: i componenti le invocano dentro try/catch con extractApiError
 // (niente useApiHandler.execute su promise non-axios —
 // memoria feedback_useapihandler_solo_axios).
-// Le sezioni paginate (attivita', errori) usano il BB usePagedDashFetch
+// Le sezioni paginate (commesse, errori) usano il BB usePagedDashFetch
 // (guard di versione + rientro pagina-oltre-l'ultima); l'aggregata ha il suo
 // guard di versione dedicato.
 import { defineStore } from 'pinia'
@@ -15,7 +15,7 @@ import { usePagedDashFetch } from '../../core/composables/usePagedDashFetch'
 import { PAGINATION } from '../../core/constants'
 import {
   getDashboardCompetenza,
-  listDashboardCompetenzaAttivita,
+  listDashboardCompetenzaCommesse,
   listDashboardCompetenzaErrori,
 } from '../api/dashboardCompetenza'
 
@@ -23,17 +23,17 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
   const anno = ref(new Date().getFullYear())
   // Indice 0-11 del mese selezionato (default: mese corrente).
   const meseIdx = ref(new Date().getMonth())
-  // Stadio selezionato per il drill-down attivita' (null = nessuna card attiva).
+  // Stadio selezionato per il drill-down (null = nessuna card attiva).
   const stadioSelezionato = ref(null)
   // Filtro recuperi tardivi del drill-down (solo attivita' emesse in ritardo).
   const soloRitardo = ref(false)
 
-  // Ordinamento del drill-down attivita' (convenzione order_by/order_dir come
-  // le liste standard): default "data attivita'" DESC. Lista lazy (paginata
-  // server-side) -> ordinamento server-side, corretto su TUTTE le pagine.
-  // Ordina per la COLONNA data, non per la stringa gg/mm/aaaa mostrata.
-  const attivitaOrderBy = ref('data_attivita')
-  const attivitaOrderDir = ref('desc')
+  // Ordinamento del drill-down per commessa (convenzione order_by/order_dir come
+  // le liste standard): default "valore totale" DESC (le commesse piu' pesanti
+  // prima). Lista lazy (paginata server-side) -> ordinamento server-side,
+  // corretto su TUTTE le pagine. Si ordina per gli AGGREGATI, non per la riga.
+  const commesseOrderBy = ref('valore_tot')
+  const commesseOrderDir = ref('desc')
 
   // Aggregata: array 12 mesi { competenza_mese, stadi, totali, n_errori }
   // dal BE. Fetch guardata anti-race via BB useDashRiepilogo: scarta la
@@ -47,25 +47,25 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     }
   )
 
-  // Drill-down attivita' + pannello errori: sezioni paginate standard.
-  const attivitaFetch = usePagedDashFetch((paging, competenzaMese) =>
-    listDashboardCompetenzaAttivita({
+  // Drill-down per commessa + pannello errori: sezioni paginate standard.
+  const commesseFetch = usePagedDashFetch((paging, competenzaMese) =>
+    listDashboardCompetenzaCommesse({
       competenza_mese: competenzaMese,
       stadio: stadioSelezionato.value,
       solo_ritardo: soloRitardo.value,
-      order_by: attivitaOrderBy.value,
-      order_dir: attivitaOrderDir.value,
+      order_by: commesseOrderBy.value,
+      order_dir: commesseOrderDir.value,
       ...paging,
     })
   )
 
-  // Scopo: applica un evento @sort del DataTable attivita' allo stato
+  // Scopo: applica un evento @sort del DataTable commesse allo stato
   //        ordinamento (sortOrder 1 = asc, -1/altro = desc). Sort rimosso
-  //        (sortField null) -> torna al default "data attivita'" DESC. Solo
+  //        (sortField null) -> torna al default "valore totale" DESC. Solo
   //        stato: la ricarica (pagina 1) resta al caller.
-  function applyAttivitaSort(event) {
-    attivitaOrderBy.value = event.sortField || 'data_attivita'
-    attivitaOrderDir.value =
+  function applyCommesseSort(event) {
+    commesseOrderBy.value = event.sortField || 'valore_tot'
+    commesseOrderDir.value =
       event.sortField && event.sortOrder === 1 ? 'asc' : 'desc'
   }
   const erroriFetch = usePagedDashFetch(
@@ -77,11 +77,11 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     { defaultPageSize: PAGINATION.COMPACT_ROWS }
   )
 
-  // Scopo: carica una pagina di attivita' per (mese, stadio selezionato,
+  // Scopo: carica una pagina di commesse per (mese, stadio selezionato,
   //        filtro ritardo). Senza stadio attivo non parte nessuna fetch.
-  async function fetchAttivita(competenzaMese) {
+  async function fetchCommesse(competenzaMese) {
     if (!stadioSelezionato.value) return
-    await attivitaFetch.fetch(competenzaMese)
+    await commesseFetch.fetch(competenzaMese)
   }
 
   // Scopo: carica una pagina di errori vivi del mese (blocco 4).
@@ -89,12 +89,12 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     await erroriFetch.fetch(competenzaMese)
   }
 
-  // Scopo: azzera il drill-down attivita' (cambio mese/anno o deselezione
-  //        card) e invalida le fetch in volo.
-  function resetAttivita() {
+  // Scopo: azzera il drill-down (cambio mese/anno o deselezione card) e
+  //        invalida le fetch in volo.
+  function resetCommesse() {
     stadioSelezionato.value = null
     soloRitardo.value = false
-    attivitaFetch.reset()
+    commesseFetch.reset()
   }
 
   // Scopo: azzera il pannello errori (cambio mese/anno) e invalida le fetch.
@@ -111,9 +111,9 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     mesi.value = []
     stadioSelezionato.value = null
     soloRitardo.value = false
-    attivitaOrderBy.value = 'data_attivita'
-    attivitaOrderDir.value = 'desc'
-    attivitaFetch.resetAll()
+    commesseOrderBy.value = 'valore_tot'
+    commesseOrderDir.value = 'desc'
+    commesseFetch.resetAll()
     erroriFetch.resetAll()
   }
 
@@ -122,16 +122,16 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     meseIdx,
     stadioSelezionato,
     soloRitardo,
-    attivitaOrderBy,
-    attivitaOrderDir,
+    commesseOrderBy,
+    commesseOrderDir,
     mesi,
-    attivita: attivitaFetch.items,
-    attivitaCount: attivitaFetch.count,
-    attivitaPage: attivitaFetch.page,
-    attivitaPageSize: attivitaFetch.pageSize,
-    attivitaLoading: attivitaFetch.loading,
-    applyAttivitaPage: attivitaFetch.applyPageEvent,
-    applyAttivitaSort,
+    commesse: commesseFetch.items,
+    commesseCount: commesseFetch.count,
+    commessePage: commesseFetch.page,
+    commessePageSize: commesseFetch.pageSize,
+    commesseLoading: commesseFetch.loading,
+    applyCommessePage: commesseFetch.applyPageEvent,
+    applyCommesseSort,
     errori: erroriFetch.items,
     erroriCount: erroriFetch.count,
     erroriPage: erroriFetch.page,
@@ -139,9 +139,9 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
     erroriLoading: erroriFetch.loading,
     applyErroriPage: erroriFetch.applyPageEvent,
     fetchMensile: aggregata.fetchRiepilogo,
-    fetchAttivita,
+    fetchCommesse,
     fetchErrori,
-    resetAttivita,
+    resetCommesse,
     resetErrori,
     clearUserState,
   }

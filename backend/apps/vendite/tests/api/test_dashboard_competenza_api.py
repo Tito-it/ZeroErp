@@ -19,6 +19,10 @@ Indice test eseguiti:
 10) DashboardCompetenzaAttivitaApiTests.test_attivita_solo_ritardo_e_paginazione
 10a) DashboardCompetenzaAttivitaApiTests.test_attivita_ordinamento_parametri
 11) DashboardCompetenzaAttivitaApiTests.test_attivita_scope_db_side_no_auth_user
+11a) DashboardCompetenzaCommesseApiTests.test_commesse_ok (DEC-4)
+11b) DashboardCompetenzaCommesseApiTests.test_commesse_requires_jwt
+11c) DashboardCompetenzaCommesseApiTests.test_commesse_competenza_obbligatoria
+11d) DashboardCompetenzaCommesseApiTests.test_commesse_normalizza_e_ordina
 12) DashboardCompetenzaErroriApiTests.test_errori_ok
 13) DashboardCompetenzaErroriApiTests.test_errori_requires_jwt
 14) DashboardCompetenzaErroriApiTests.test_errori_competenza_opzionale
@@ -251,6 +255,72 @@ class DashboardCompetenzaAttivitaApiTests(JwtMockedApiTest):
         self.client.get(f"{self._URL}?competenza_mese=2026-05-01")
         kwargs = mocked_fn.call_args.kwargs
         self.assertNotIn("auth_user_id", kwargs)
+
+
+class DashboardCompetenzaCommesseApiTests(JwtMockedApiTest):
+    # Scopo: Prepara il contesto comune del test.
+    def setUp(self) -> None:
+        super().setUp()
+        cache.clear()
+        self.client = Client()
+
+    _URL = "/api/v1/vendite/dashboard-competenza/commesse/"
+
+    # Scopo: drill-down aggregato OK — passthrough parametri e riga per commessa.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_dashboard_competenza.fn_dash_competenza_commesse")
+    def test_commesse_ok(self, mocked_fn, _mock_auth):
+        mocked_fn.return_value = {
+            "count": 1, "page": 1, "page_size": 50, "total_pages": 1,
+            "results": [{
+                "commessa_id": 7, "commessa_codice": "COMM-0007",
+                "cliente_display": "Rossi Impianti SRL", "n_attivita": 4,
+                "n_in_ritardo": 1, "valore_tot": "3960.00",
+                "valore_fatturato_tot": "0.00",
+                "data_attivita_min": "2026-05-02", "data_attivita_max": "2026-05-28",
+            }],
+        }
+        response = self.client.get(
+            f"{self._URL}?competenza_mese=2026-05-01&stadio=DA_EMETTERE"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["count"], 1)
+        row = data["results"][0]
+        self.assertEqual(row["commessa_codice"], "COMM-0007")
+        self.assertEqual(row["n_attivita"], 4)
+        self.assertEqual(row["valore_tot"], "3960.00")
+        kwargs = mocked_fn.call_args.kwargs
+        self.assertEqual(kwargs["competenza_mese"], date(2026, 5, 1))
+        self.assertEqual(kwargs["stadio"], "DA_EMETTERE")
+
+    # Scopo: senza JWT -> 401.
+    def test_commesse_requires_jwt(self):
+        response = self.client.get(self._URL)
+        self.assertEqual(response.status_code, 401)
+
+    # Scopo: competenza_mese mancante -> 400 E_VENDITE_VALIDATION.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_commesse_competenza_obbligatoria(self, _mock_auth):
+        response = self.client.get(f"{self._URL}?stadio=DA_EMETTERE")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"]["code"], "E_VENDITE_VALIDATION")
+
+    # Scopo: stadio minuscolo normalizzato + order_by/order_dir inoltrati.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_dashboard_competenza.fn_dash_competenza_commesse")
+    def test_commesse_normalizza_e_ordina(self, mocked_fn, _mock_auth):
+        mocked_fn.return_value = {
+            "count": 0, "page": 1, "page_size": 50, "total_pages": 0, "results": [],
+        }
+        self.client.get(
+            f"{self._URL}?competenza_mese=2026-05-01&stadio=da_emettere"
+            "&order_by=valore_tot&order_dir=desc"
+        )
+        kwargs = mocked_fn.call_args.kwargs
+        self.assertEqual(kwargs["stadio"], "DA_EMETTERE")
+        self.assertEqual(kwargs["order_by"], "valore_tot")
+        self.assertEqual(kwargs["order_dir"], "desc")
 
 
 class DashboardCompetenzaErroriApiTests(JwtMockedApiTest):

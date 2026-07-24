@@ -450,9 +450,16 @@ def cambia_stato_commessa(*, commessa_id: int, nuovo_stato: str, user: str | Non
             log_to_db=True,
         )
 
-    # Difesa applicativa: il target deve essere una transizione manuale ammessa.
+    # Difesa applicativa: il target deve essere una transizione manuale ammessa
+    # E abilitata. Con enabled/reasons (brief-db-guard-uscita-commessa §6.1) le
+    # azioni terminali vietate (chiudi/annulla con righe pendenti/emesse) restano
+    # in lista ma con `enabled:false`: senza questo filtro passerebbero il gate
+    # applicativo e il DB le respingerebbe con 558/559 — la difesa nata per
+    # bloccare le transizioni AUTOMATICHE forzate via API si aprirebbe. Confronto
+    # stretto con False: un'azione senza `enabled` degrada ad abilitata (coerente
+    # col mapper FE mapAvailableActionsToDrawerActions).
     azioni = capabilities.get("available_actions") or []
-    stati_ammessi = {a.get("target_state") for a in azioni}
+    stati_ammessi = {a.get("target_state") for a in azioni if a.get("enabled") is not False}
     ErrorManager.require(
         nuovo_stato in stati_ammessi,
         code="E_COMMESSA_AZIONE_NON_AMMESSA",

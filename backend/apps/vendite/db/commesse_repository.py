@@ -665,7 +665,7 @@ class CommesseRepository:
                        billing_account_id, utility_id, emittente_soggetto_ruolo_id,
                        total_attivita, total_approvate, total_non_approvate,
                        total_emesse, total_non_emesse, total_prezzo_da_riallineare,
-                       last_update
+                       last_update, commessa_codice, cliente_display
                 FROM vendite.fn_get_commessa_stato(%s)
                 """,
                 [commessa_id],
@@ -692,6 +692,8 @@ class CommesseRepository:
             total_non_emesse=int(row[15]),
             total_prezzo_da_riallineare=int(row[16]),
             last_update=(row[17].isoformat() if row[17] is not None else None),
+            commessa_codice=row[18],
+            cliente_display=row[19],
         )
 
     def get_commessa_stato_codice(self, commessa_id: int) -> str | None:
