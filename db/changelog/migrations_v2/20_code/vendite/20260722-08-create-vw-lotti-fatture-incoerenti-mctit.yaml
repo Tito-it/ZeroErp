@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Vista di sorveglianza: lotti le cui fatture NON sono allineate allo stato
+# fiscale del lotto (brief-db-guard-coerenza-stato-lotto-fatture §3.2).
+#
+# INVARIANTE PRESIDIATO (§2): per ogni lotto, ogni fattura collegata che non sia
+# 'esclusa' ne' 'critical' deve avere lo stesso stato_doc_fiscale_id del lotto.
+# Le due eccezioni non sono negoziabili: sono gia' la semantica di
+# fn_sync_lotto_fatture_stato, che salta esattamente quelle righe.
+#
+# PERCHE' UNA VISTA E NON (SOLO) UN GUARD: la vista rileva, il guard previene.
+# Sono complementari e la vista resta utile anche dopo il guard, perche' vede
+# anche le righe entrate da percorsi che il trigger non copre (import massivi
+# con trigger disabilitati, ripristini, DML manuale in dev).
+#
+# ⚠️ La vista rileva l'incoerenza ma NON la causa. La causa nota al 2026-07-22 e'
+# lato BE: pipeline_runner._execute_pipeline_step aggiorna lo stato del lotto
+# in modo incondizionato e sincronizza le fatture solo `if not dry_run`, dentro
+# una transaction.atomic() che committa -> un dry-run avanza il lotto e lascia
+# indietro le fatture, in modo permanente. Finche' quello non e' chiuso, questa
+# vista tornera' a popolarsi a ogni dry-run.
+#
+# security_invoker=on: standard delle viste di lista, coerente con le catene RLS
+# sottostanti (le fatture sono soggette a scope emittente a valle).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260722-08-create-vw-lotti-fatture-incoerenti-mctit.yaml
+
+  - changeSet:
+      id: 20260722-08-create-vw-lotti-fatture-incoerenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Vista di sorveglianza sull'invariante lotto <-> stato fatture: elenca le
+        fatture non escluse e non critical il cui stato_doc_fiscale_id diverge da
+        quello del lotto. Zero righe attese su DB sano.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: fatturazione_lotti_fatture
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_lotti_fatture_incoerenti
+              WITH (security_invoker = on) AS
+              SELECT
+                  l.id                      AS lotto_id,
+                  l.codice                  AS lotto_codice,
+                  l.tipo_lotto,
+                  l.stato_operativo,
+                  l.stato_doc_fiscale_id    AS stato_lotto_id,
+                  sl.codice_interno         AS stato_lotto_codice_interno,
+                  sl.codice                 AS stato_lotto_codice,
+                  f.id                      AS fattura_id,
+                  f.anno                    AS fattura_anno,
+                  f.serie                   AS fattura_serie,
+                  f.numero                  AS fattura_numero,
+                  f.stato_doc_fiscale_id    AS stato_fattura_id,
+                  sf.codice_interno         AS stato_fattura_codice_interno,
+                  sf.codice                 AS stato_fattura_codice,
+                  l.data_update             AS lotto_data_update,
+                  f.data_update             AS fattura_data_update
+                FROM vendite.fatturazione_lotti l
+                JOIN vendite.fatturazione_lotti_fatture lf ON lf.lotto_id = l.id
+                JOIN vendite.fatture f                     ON f.id = lf.fattura_id
+                LEFT JOIN config.stati_doc_fiscale sl ON sl.id = l.stato_doc_fiscale_id
+                LEFT JOIN config.stati_doc_fiscale sf ON sf.id = f.stato_doc_fiscale_id
+                -- Le due eccezioni della semantica di sync: riga esclusa dal lotto
+                -- e fattura in errore critico restano legittimamente indietro.
+               WHERE COALESCE(lf.esclusa,  FALSE) IS FALSE
+                 AND COALESCE(f.critical, FALSE) IS FALSE
+                 AND f.stato_doc_fiscale_id IS DISTINCT FROM l.stato_doc_fiscale_id;
+
+              COMMENT ON VIEW vendite.vw_lotti_fatture_incoerenti IS
+                'Sorveglianza invariante lotto <-> fatture: fatture non escluse e non critical il cui stato_doc_fiscale_id diverge da quello del lotto di appartenenza. Zero righe = DB sano. Eccezioni escluse dal WHERE (esclusa/critical) perche'' sono la semantica di fn_sync_lotto_fatture_stato, che salta quelle righe. Complemento alla prevenzione (constraint trigger): rileva anche cio'' che entra da percorsi non coperti dal trigger (import con trigger disabilitati, DML manuale). Causa nota 2026-07-22: dry-run della pipeline BE che avanza il lotto senza sincronizzare le fatture. security_invoker=on.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_lotti_fatture_incoerenti;

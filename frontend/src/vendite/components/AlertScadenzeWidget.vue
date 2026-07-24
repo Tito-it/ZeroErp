@@ -55,21 +55,21 @@ onMounted(load)
     </Button>
 
     <Popover ref="op" :style="{ width: '550px' }">
-      <h4 class="mt-0 mb-05">{{ t('listini.alert_scadenze_titolo') }}</h4>
+      <h4 class="mt-0 mb-05">{{ t('vendite.listini.alert_scadenze_titolo') }}</h4>
       <DataTable :value="items" striped-rows class="app-datatable" data-key="versione_id"
         scrollable scroll-height="250px">
-        <Column field="listino_codice" :header="t('listini.col_codice')" style="width: 120px;" />
-        <Column field="codice_versione" :header="t('listini.col_codice_versione')" style="width: 110px;" />
-        <Column field="valido_al" :header="t('listini.field_valido_al')" style="width: 110px;">
+        <Column field="listino_codice" :header="t('vendite.listini.col_codice')" style="width: 120px;" />
+        <Column field="codice_versione" :header="t('vendite.listini.col_codice_versione')" style="width: 110px;" />
+        <Column field="valido_al" :header="t('vendite.listini.field_valido_al')" style="width: 110px;">
           <template #body="{ data }">{{ displayDate(data.valido_al) }}</template>
         </Column>
-        <Column :header="t('listini.col_stato')" style="width: 110px;">
+        <Column :header="t('vendite.listini.col_stato')" style="width: 110px;">
           <template #body="{ data }">
             <span v-if="data.giorni_rimanenti <= 0" class="text-red-500 font-bold">
-              {{ t('listini.alert_scadenze_scaduto') }}
+              {{ t('vendite.listini.alert_scadenze_scaduto') }}
             </span>
             <span v-else>
-              {{ t('listini.alert_scadenze_giorni_rimanenti', { giorni: data.giorni_rimanenti }) }}
+              {{ t('vendite.listini.alert_scadenze_giorni_rimanenti', { giorni: data.giorni_rimanenti }) }}
             </span>
           </template>
         </Column>

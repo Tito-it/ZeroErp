@@ -15,6 +15,7 @@ from django.db import connection, transaction
 
 from apps.core.db._helpers import call_jsonb_fn
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.db.vendite_repository import DASH_STADIO_DA_APPROVARE
 from apps.vendite.types import (
     CommessaEmitResult,
     CommessaEmittibileLane,
@@ -511,6 +512,88 @@ class CommesseRepository:
         assert row is not None
         return int(row[0])
 
+    # Scopo: Wrapper 1:1 della madre DB `vendite.fn_aggiungi_onere_commessa`
+    #        (riga onere APPROVATA+NON_EMESSA + audit in una SELECT atomica).
+    def aggiungi_onere(
+        self,
+        *,
+        commessa_id: int,
+        istanza_utility_id: int,
+        articolo_onere_id: str,
+        importo: Decimal,
+        tipo_doc_fiscale_id: int,
+        motivo: str | None = None,
+        data_attivita: date | None = None,
+    ) -> int:
+        """Porta oneri: crea una riga di puro valore sulla commessa (qta=1,
+        tipo_movimento=ONERE, gia' APPROVATA, sourceless) e restituisce
+        l'attivita_id. Wrapper 1:1 della madre DB
+        `vendite.fn_aggiungi_onere_commessa` (brief-db-immutabilita-quantita-e-
+        porta-oneri §4c): causale, uom e IVA sono derivate dall'articolo-onere
+        dalla fn, non dal Python — qui nessuna regola di dominio duplicata.
+
+        Un'unica SELECT di funzione madre = unita' atomica per costruzione
+        (riga + log audit dentro la stessa fn): niente transaction.atomic nel
+        service (api.md §Atomicita' e composizione di scritture)."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT vendite.fn_aggiungi_onere_commessa(
+                    p_commessa_id => %s,
+                    p_istanza_utility_id => %s,
+                    p_articolo_onere_id => %s::uuid,
+                    p_importo => %s,
+                    p_tipo_doc_fiscale_id => %s,
+                    p_motivo => %s,
+                    p_data_attivita => %s
+                )
+                """,
+                [commessa_id, istanza_utility_id, articolo_onere_id, importo,
+                 tipo_doc_fiscale_id, motivo, data_attivita],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
+
+    # Scopo: Attivita' in stadio DA_APPROVARE del mese di competenza, raggruppate
+    #        per commessa, per l'approvazione massiva A-2 (WYSIWYG con la card).
+    def list_da_approvare_per_competenza(
+        self,
+        *,
+        competenza_mese: date,
+        commessa_ids: list[int] | None = None,
+    ) -> list[tuple[int, list[int]]]:
+        """Attivita' in stadio DA_APPROVARE per il mese di competenza, raggruppate
+        per commessa: [(commessa_id, [attivita_ids]), ...].
+
+        Legge vendite.vw_dash_competenza_attivita — la STESSA vista del drill-down
+        della Lente 1 — cosi' l'approvazione massiva copre esattamente cio' che la
+        card DA_APPROVARE mostra (WYSIWYG) e lo scope emittente e' applicato
+        in-vista (GUC app.current_user_id, security_invoker)."""
+        where_clauses = [
+            "stadio = %s",
+            "competenza_mese = date_trunc('month', %s::date)::date",
+        ]
+        params: list[Any] = [DASH_STADIO_DA_APPROVARE, competenza_mese]
+        if commessa_ids:
+            where_clauses.append("commessa_id = ANY(%s)")
+            params.append(commessa_ids)
+        where_sql = " AND ".join(where_clauses)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT commessa_id,
+                       array_agg(commessa_attivita_id ORDER BY commessa_attivita_id)
+                FROM vendite.vw_dash_competenza_attivita
+                WHERE {where_sql}
+                GROUP BY commessa_id
+                ORDER BY commessa_id
+                """,  # noqa: S608 — where_clauses da letterali interni parametrizzati
+                params,
+            )
+            raw = cursor.fetchall()
+        return [(int(r[0]), [int(i) for i in r[1]]) for r in raw]
+
     def cambia_stato_commessa(
         self,
         *,
@@ -582,7 +665,7 @@ class CommesseRepository:
                        billing_account_id, utility_id, emittente_soggetto_ruolo_id,
                        total_attivita, total_approvate, total_non_approvate,
                        total_emesse, total_non_emesse, total_prezzo_da_riallineare,
-                       last_update
+                       last_update, commessa_codice, cliente_display
                 FROM vendite.fn_get_commessa_stato(%s)
                 """,
                 [commessa_id],
@@ -609,6 +692,8 @@ class CommesseRepository:
             total_non_emesse=int(row[15]),
             total_prezzo_da_riallineare=int(row[16]),
             last_update=(row[17].isoformat() if row[17] is not None else None),
+            commessa_codice=row[18],
+            cliente_display=row[19],
         )
 
     def get_commessa_stato_codice(self, commessa_id: int) -> str | None:
@@ -785,6 +870,47 @@ class CommesseRepository:
             "categoria_cliente_id_snapshot": inp.categoria_cliente_id_snapshot,
             "classe_utenza_id_snapshot": inp.classe_utenza_id_snapshot,
         }
+
+    # Scopo: Risolve gli id attivita` dalle coppie (commessa_id, segment_key)
+    #        per il ponte di approvazione post-push (dettagli nel docstring).
+    def list_attivita_ids_by_segments(
+        self, pairs: list[tuple[int, str]],
+    ) -> dict[int, list[int]]:
+        """Risolve gli id delle righe attivita` dalle coppie (commessa_id,
+        segment_key) appena upsertate. Serve al ponte di approvazione post-push:
+        `fn_batch_upsert_commessa_attivita` restituisce solo i contatori, non gli
+        id, ma il push deve approvare **le proprie righe** e non tutte le
+        NON_EMESSA della commessa (che possono includere righe di terzi, es. un
+        onere manuale in attesa). La coppia (commessa_id, segment_key) e` la
+        chiave naturale della riga (indice unico), quindi il lookup e` esatto.
+
+        Le coppie fallite le esclude il CHIAMANTE (handler) prima di arrivare
+        qui: per gli INSERT falliti la riga non esiste e non tornerebbe
+        comunque, ma per gli UPDATE falliti la riga preesistente esiste ancora
+        e senza esclusione verrebbe approvata coi valori stali.
+        Restituisce {commessa_id: [attivita_id, ...]}."""
+        if not pairs:
+            return {}
+        commessa_ids = [p[0] for p in pairs]
+        segment_keys = [p[1] for p in pairs]
+        with connection.cursor() as cursor:
+            # unnest delle due liste in coppie: un solo round-trip, niente IN
+            # gigante costruito a stringa.
+            cursor.execute(
+                """
+                SELECT ca.commessa_id, ca.id
+                  FROM vendite.commesse_attivita ca
+                  JOIN unnest(%s::bigint[], %s::varchar[]) AS t(commessa_id, segment_key)
+                    ON t.commessa_id = ca.commessa_id
+                   AND t.segment_key = ca.segment_key
+                """,
+                [commessa_ids, segment_keys],
+            )
+            rows = cursor.fetchall()
+        out: dict[int, list[int]] = {}
+        for commessa_id, attivita_id in rows:
+            out.setdefault(int(commessa_id), []).append(int(attivita_id))
+        return out
 
     def batch_upsert_attivita(self, inputs: list[CommessaAttivitaInput]) -> BatchUpsertResult:
         """Upsert batch di righe attivita in una sola chiamata DB.

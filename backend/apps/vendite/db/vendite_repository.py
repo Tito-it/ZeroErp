@@ -14,7 +14,12 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import query_paged_view
+from apps.core.db._helpers import (
+    query_paged_view,
+    row_to_dict,
+    rows_to_list,
+    sql_order_direction,
+)
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.types import (
     DashApertoDocumentoRow,
@@ -22,6 +27,7 @@ from apps.vendite.types import (
     DashBacklogDocumentoRow,
     DashBacklogRiepilogoRow,
     DashCompetenzaAttivitaRow,
+    DashCompetenzaCommessaRow,
     DashCompetenzaErroreRow,
     DashCompetenzaMensileRow,
     LineageNodoRow,
@@ -89,13 +95,22 @@ DASH_APERTO_FASI: tuple[str, ...] = (
 
 # Stadi del funnel Lente 1 Competenza, nell'ordine commessa → fattura (brief
 # brief-db-fatturazione-due-lenti §4.1). Allineati al CASE `stadio` di
-# vendite.vw_dash_competenza_attivita.
+# vendite.vw_dash_competenza_attivita. Il primo stadio ha una costante puntuale:
+# e' il perimetro dell'approvazione massiva A-2 (un solo owner del letterale).
+DASH_STADIO_DA_APPROVARE = "DA_APPROVARE"
 DASH_COMPETENZA_STADI: tuple[str, ...] = (
-    "DA_APPROVARE",
+    DASH_STADIO_DA_APPROVARE,
     "DA_EMETTERE",
     "EMESSA_NON_FATTURATA",
     "FATTURATA",
 )
+
+# Codici stabili (codice_interno di config.tipi_indirizzi) dei tipi indirizzo
+# risolti nella testata fattura per la stampa (C-9): sede legale dell'emittente
+# e indirizzo di fatturazione del cliente. Costanti passate come parametri SQL
+# (mai letterali embedded nella query — lezione review A+B sul letterale stadio).
+TIPO_INDIRIZZO_SEDE_LEGALE = "SEDELEG"
+TIPO_INDIRIZZO_FATTURAZIONE = "FATT"
 
 # Classi di azionabilita' della Lente 2 Backlog, nell'ordine di esposizione UI
 # del design (§5: contatori 🟠 recuperabile · 🔵 sollecito cliente · 🔴
@@ -153,6 +168,64 @@ class VenditeRepository:
 
     # Scopo: Restituisce elenco lotti paginato con JOIN decodifica e filtri opzionali.
     # Obiettivo: lista generica fatturazione_lotti con decodifiche config.
+    # Proiezione + JOIN + mapping condivisi da list_lotti e get_lotto (la testata
+    # del dettaglio è la stessa riga della lista: nessuna vista/colonna nuova).
+    _LOTTO_SELECT_COLS = """
+                fl.id,
+                fl.codice,
+                fl.competenza_mese,
+                fl.tipo_lotto,
+                fl.utility_id,
+                u.descrizione      AS utility_descrizione,
+                fl.stato_lotto,
+                fl.stato_operativo,
+                fl.stato_doc_fiscale_id,
+                sdf.descrizione    AS stato_doc_fiscale_descrizione,
+                sdf.codice_interno AS stato_doc_fiscale_codice,
+                fl.tipo_doc_fiscale_id,
+                tdf.descrizione    AS tipo_doc_fiscale_descrizione,
+                fl.area_geografica_id,
+                agf.descrizione    AS area_geografica_descrizione,
+                fl.emittente_soggetto_ruolo_id,
+                fl.data_insert,
+                fl.user_insert
+    """
+
+    _LOTTO_JOINS = """
+            LEFT JOIN config.utilities u
+                ON u.id = fl.utility_id
+            LEFT JOIN config.stati_doc_fiscale sdf
+                ON sdf.id = fl.stato_doc_fiscale_id
+            LEFT JOIN config.tipi_doc_fiscale tdf
+                ON tdf.id = fl.tipo_doc_fiscale_id
+            LEFT JOIN vendite.area_geografica_fatturazione agf
+                ON agf.id = fl.area_geografica_id
+    """
+
+    # Scopo: mappa una riga (ordine di _LOTTO_SELECT_COLS) in LottoListRow.
+    @staticmethod
+    def _map_lotto_row(row: tuple) -> LottoListRow:
+        return {
+            "id": int(row[0]),
+            "codice": str(row[1]),
+            "competenza_mese": row[2].isoformat() if row[2] is not None else None,
+            "tipo_lotto": str(row[3]),
+            "utility_id": None if row[4] is None else int(row[4]),
+            "utility_descrizione": row[5],
+            "stato_lotto": str(row[6]),
+            "stato_operativo": str(row[7]),
+            "stato_doc_fiscale_id": None if row[8] is None else int(row[8]),
+            "stato_doc_fiscale_descrizione": row[9],
+            "stato_doc_fiscale_codice": row[10],
+            "tipo_doc_fiscale_id": int(row[11]),
+            "tipo_doc_fiscale_descrizione": row[12],
+            "area_geografica_id": None if row[13] is None else int(row[13]),
+            "area_geografica_descrizione": row[14],
+            "emittente_soggetto_ruolo_id": None if row[15] is None else int(row[15]),
+            "data_insert": row[16].isoformat() if row[16] is not None else None,
+            "user_insert": str(row[17]),
+        }
+
     # Perimetro: solo lettura; nessun side-effect.
     # Risultato: tuple (lista LottoListRow, conteggio totale).
     def list_lotti(
@@ -200,16 +273,7 @@ class VenditeRepository:
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        joins = """
-            LEFT JOIN config.utilities u
-                ON u.id = fl.utility_id
-            LEFT JOIN config.stati_doc_fiscale sdf
-                ON sdf.id = fl.stato_doc_fiscale_id
-            LEFT JOIN config.tipi_doc_fiscale tdf
-                ON tdf.id = fl.tipo_doc_fiscale_id
-            LEFT JOIN vendite.area_geografica_fatturazione agf
-                ON agf.id = fl.area_geografica_id
-        """
+        joins = self._LOTTO_JOINS
 
         count_sql = f"""
             SELECT COUNT(*)
@@ -219,24 +283,7 @@ class VenditeRepository:
         """
 
         data_sql = f"""
-            SELECT
-                fl.id,
-                fl.codice,
-                fl.competenza_mese,
-                fl.tipo_lotto,
-                fl.utility_id,
-                u.descrizione      AS utility_descrizione,
-                fl.stato_lotto,
-                fl.stato_operativo,
-                fl.stato_doc_fiscale_id,
-                sdf.descrizione    AS stato_doc_fiscale_descrizione,
-                fl.tipo_doc_fiscale_id,
-                tdf.descrizione    AS tipo_doc_fiscale_descrizione,
-                fl.area_geografica_id,
-                agf.descrizione    AS area_geografica_descrizione,
-                fl.emittente_soggetto_ruolo_id,
-                fl.data_insert,
-                fl.user_insert
+            SELECT {self._LOTTO_SELECT_COLS}
             FROM vendite.fatturazione_lotti fl
             {joins}
             {where_clause}
@@ -253,30 +300,64 @@ class VenditeRepository:
             cursor.execute(data_sql, params + [safe_limit, safe_offset])
             rows = cursor.fetchall()
 
-        result: list[LottoListRow] = []
-        for row in rows:
-            result.append(
-                {
-                    "id": int(row[0]),
-                    "codice": str(row[1]),
-                    "competenza_mese": row[2].isoformat() if row[2] is not None else None,
-                    "tipo_lotto": str(row[3]),
-                    "utility_id": None if row[4] is None else int(row[4]),
-                    "utility_descrizione": row[5],
-                    "stato_lotto": str(row[6]),
-                    "stato_operativo": str(row[7]),
-                    "stato_doc_fiscale_id": None if row[8] is None else int(row[8]),
-                    "stato_doc_fiscale_descrizione": row[9],
-                    "tipo_doc_fiscale_id": int(row[10]),
-                    "tipo_doc_fiscale_descrizione": row[11],
-                    "area_geografica_id": None if row[12] is None else int(row[12]),
-                    "area_geografica_descrizione": row[13],
-                    "emittente_soggetto_ruolo_id": None if row[14] is None else int(row[14]),
-                    "data_insert": row[15].isoformat() if row[15] is not None else None,
-                    "user_insert": str(row[16]),
-                }
-            )
+        result: list[LottoListRow] = [self._map_lotto_row(row) for row in rows]
         return result, total_count
+
+    # Scopo: Lotti in stato fiscale EMESSA per la competenza data → candidati
+    #        alla numerazione di PERIMETRO (C-4). Query PURA (id+codice): lo
+    #        `stato_doc_fiscale_id` EMESSA lo risolve+guarda il chiamante (handler,
+    #        service layer), non il repo. Scope operatore via RLS — il chiamante
+    #        gira sotto `operator_identity_context`, la policy
+    #        `rls_fatturazione_lotti_ef_whitelist` filtra agli emittenti
+    #        dell'operatore. NESSUN limite: no silent cap (i lotti EMESSA di un
+    #        mese sono pochi, uno per terna emittente/tipo); il perimetro deve
+    #        essere completo, non troncato.
+    # Perimetro: sola lettura; nessun side-effect.
+    def list_lotti_numerabili(
+        self, *, competenza_mese: date, stato_doc_fiscale_id: int,
+    ) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT fl.id, fl.codice
+                  FROM vendite.fatturazione_lotti fl
+                 WHERE fl.competenza_mese = %s
+                   AND fl.stato_doc_fiscale_id = %s
+                 ORDER BY fl.id
+                """,
+                [competenza_mese, int(stato_doc_fiscale_id)],
+            )
+            return [
+                {"id": int(row[0]), "codice": row[1]}
+                for row in cursor.fetchall()
+            ]
+
+    # Scopo: Restituisce il dettaglio testata di un singolo lotto (stessa
+    #        proiezione della lista), con scope emittente applicato: un lotto
+    #        fuori scope torna None → il BE risponde 404 (indistinguibile da id
+    #        inesistente, coerente con la RLS operatori, api.md §scope).
+    # Perimetro: sola lettura; nessun side-effect.
+    def get_lotto(
+        self, *, lotto_id: int, auth_user_id: int | None = None,
+    ) -> LottoListRow | None:
+        conditions: list[str] = ["fl.id = %s"]
+        params: list[Any] = [lotto_id]
+        self._add_scope_emittente(
+            auth_user_id, "fl.emittente_soggetto_ruolo_id", conditions, params
+        )
+        where_clause = "WHERE " + " AND ".join(conditions)
+        sql = f"""
+            SELECT {self._LOTTO_SELECT_COLS}
+            FROM vendite.fatturazione_lotti fl
+            {self._LOTTO_JOINS}
+            {where_clause}
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        return self._map_lotto_row(row)
 
     # Scopo: Restituisce le celle non vuote (area × fase) del serbatoio
     #        pre-commessa. Il completamento a griglia 5 aree × 3 fasi
@@ -391,9 +472,9 @@ class VenditeRepository:
         # "in essere da" (i piu' vecchi prima).
         sort_col = self.DASH_APERTO_SORT_COLUMNS.get(order_by or "")
         if sort_col is not None:
-            direction = "DESC" if (order_dir or "").lower() == "desc" else "ASC"
+            direction = sql_order_direction(order_dir)
             order_clause = (
-                f"ORDER BY {sort_col} {direction} NULLS LAST, "
+                f"ORDER BY {sort_col} {direction}, "
                 "area ASC, documento_id ASC"
             )
         else:
@@ -556,9 +637,9 @@ class VenditeRepository:
         # (valore DESC).
         sort_col = self.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS.get(order_by or "")
         if sort_col is not None:
-            direction = "DESC" if (order_dir or "").lower() == "desc" else "ASC"
+            direction = sql_order_direction(order_dir)
             order_clause = (
-                f"ORDER BY {sort_col} {direction} NULLS LAST, "
+                f"ORDER BY {sort_col} {direction}, "
                 "a.commessa_codice ASC, a.commessa_attivita_id ASC"
             )
         else:
@@ -596,6 +677,7 @@ class VenditeRepository:
                 a.fattura_anno,
                 a.fattura_serie,
                 a.fattura_numero,
+                a.lotto_id,
                 a.stato_fattura_codice_interno,
                 a.stato_fattura_codice,
                 a.valore_fatturato,
@@ -642,10 +724,120 @@ class VenditeRepository:
                     "fattura_anno": None if row[18] is None else int(row[18]),
                     "fattura_serie": None if row[19] is None else str(row[19]),
                     "fattura_numero": None if row[20] is None else int(row[20]),
-                    "stato_fattura_codice_interno": None if row[21] is None else str(row[21]),
-                    "stato_fattura_codice": None if row[22] is None else str(row[22]),
-                    "valore_fatturato": str(row[23]) if row[23] is not None else None,
-                    "fattura_critical": bool(row[24]),
+                    "lotto_id": None if row[21] is None else int(row[21]),
+                    "stato_fattura_codice_interno": None if row[22] is None else str(row[22]),
+                    "stato_fattura_codice": None if row[23] is None else str(row[23]),
+                    "valore_fatturato": str(row[24]) if row[24] is not None else None,
+                    "fattura_critical": bool(row[25]),
+                }
+            )
+        return result, total_count
+
+    # Colonne di ordinamento ammesse per il drill-down AGGREGATO per commessa.
+    # Su aggregati si ordina per gli aggregati, non per le colonne di riga.
+    DASH_COMPETENZA_COMMESSE_SORT_COLUMNS = {
+        "commessa_codice": "commessa_codice",
+        "cliente_display": "cliente_display",
+        "n_attivita": "n_attivita",
+        "valore_tot": "valore_tot",
+        "data_attivita_max": "data_attivita_max",
+    }
+
+    # Scopo: Drill-down AGGREGATO per commessa (DEC-4) — una riga per commessa nel
+    #        perimetro corrente (competenza_mese + stadio + solo_ritardo), con
+    #        n attivita', totali valore/fatturato, estremi data e recuperi tardivi.
+    #        Sostituisce la lista a grana attivita' quando l'operatore vuole la
+    #        fotografia per commessa; il dettaglio resta nel drawer di gestione.
+    # Perimetro: sola lettura su vw_dash_competenza_attivita (scope GUC in vista).
+    # Risultato: tuple (lista DashCompetenzaCommessaRow, conteggio commesse).
+    def list_dash_competenza_commesse(
+        self,
+        *,
+        competenza_mese: date,
+        stadio: str | None,
+        solo_ritardo: bool,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[DashCompetenzaCommessaRow], int]:
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+
+        conditions: list[str] = ["a.competenza_mese = %s"]
+        params: list[Any] = [competenza_mese]
+        if stadio is not None:
+            conditions.append("a.stadio = %s")
+            params.append(stadio)
+        if solo_ritardo:
+            conditions.append("a.emessa_in_ritardo IS TRUE")
+
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+        # ORDER BY server-side sugli aggregati (corretto su TUTTE le pagine):
+        # colonna dalla whitelist + direzione, tiebreak stabile su commessa.
+        # Assente/non ammesso -> default valore_tot DESC (le commesse piu' pesanti
+        # prima), coerente col default a grana attivita'.
+        sort_col = self.DASH_COMPETENZA_COMMESSE_SORT_COLUMNS.get(order_by or "")
+        if sort_col is not None:
+            # sql_order_direction ritorna gia' 'ASC NULLS FIRST'/'DESC NULLS LAST':
+            # NON aggiungere un secondo NULLS (errore di sintassi PG).
+            direction = sql_order_direction(order_dir)
+            order_clause = f"ORDER BY {sort_col} {direction}, commessa_codice ASC, commessa_id ASC"
+        else:
+            order_clause = "ORDER BY valore_tot DESC NULLS LAST, commessa_codice ASC, commessa_id ASC"
+
+        # Conteggio = numero di commesse distinte nel perimetro (una riga per
+        # commessa): COUNT su una subquery raggruppata.
+        count_sql = f"""
+            SELECT COUNT(*) FROM (
+                SELECT a.commessa_id
+                FROM vendite.vw_dash_competenza_attivita a
+                {where_clause}
+                GROUP BY a.commessa_id
+            ) t
+        """
+
+        data_sql = f"""
+            SELECT
+                a.commessa_id,
+                a.commessa_codice,
+                a.cliente_display,
+                COUNT(*)                                         AS n_attivita,
+                COUNT(*) FILTER (WHERE a.emessa_in_ritardo IS TRUE) AS n_in_ritardo,
+                SUM(a.valore)                                   AS valore_tot,
+                SUM(a.valore_fatturato)                         AS valore_fatturato_tot,
+                MIN(a.data_attivita)                            AS data_attivita_min,
+                MAX(a.data_attivita)                            AS data_attivita_max
+            FROM vendite.vw_dash_competenza_attivita a
+            {where_clause}
+            GROUP BY a.commessa_id, a.commessa_codice, a.cliente_display
+            {order_clause}
+            LIMIT %s OFFSET %s
+        """
+
+        with connection.cursor() as cursor:
+            cursor.execute(count_sql, params)
+            row = cursor.fetchone()
+            assert row is not None
+            total_count = int(row[0])
+
+            cursor.execute(data_sql, params + [safe_limit, safe_offset])
+            rows = cursor.fetchall()
+
+        result: list[DashCompetenzaCommessaRow] = []
+        for row in rows:
+            result.append(
+                {
+                    "commessa_id": int(row[0]),
+                    "commessa_codice": None if row[1] is None else str(row[1]),
+                    "cliente_display": None if row[2] is None else str(row[2]),
+                    "n_attivita": int(row[3]),
+                    "n_in_ritardo": int(row[4]),
+                    "valore_tot": str(row[5]) if row[5] is not None else None,
+                    "valore_fatturato_tot": str(row[6]) if row[6] is not None else None,
+                    "data_attivita_min": row[7].isoformat() if row[7] is not None else None,
+                    "data_attivita_max": row[8].isoformat() if row[8] is not None else None,
                 }
             )
         return result, total_count
@@ -842,9 +1034,9 @@ class VenditeRepository:
         # storico "fermo da" (i piu' vecchi prima).
         sort_col = self.DASH_BACKLOG_SORT_COLUMNS.get(order_by or "")
         if sort_col is not None:
-            direction = "DESC" if (order_dir or "").lower() == "desc" else "ASC"
+            direction = sql_order_direction(order_dir)
             order_clause = (
-                f"ORDER BY {sort_col} {direction} NULLS LAST, "
+                f"ORDER BY {sort_col} {direction}, "
                 "area ASC, documento_id ASC"
             )
         else:
@@ -968,7 +1160,8 @@ class VenditeRepository:
                 f.totale_a_pagare,
                 srd.soggetto_id,
                 srd.ragione_sociale_completa,
-                srd.id_fiscale_univoco_cf_piva
+                srd.id_fiscale_univoco_cf_piva,
+                sdf.codice_interno      AS stato_doc_fiscale_codice
             FROM vendite.fatturazione_lotti_fatture fllf
             {joins}
             {where_clause}
@@ -1007,9 +1200,244 @@ class VenditeRepository:
                     "soggetto_id": int(row[15]),
                     "ragione_sociale_completa": row[16],
                     "id_fiscale_univoco_cf_piva": row[17],
+                    "stato_doc_fiscale_codice": row[18],
                 }
             )
         return result, total_count
+
+    # ══════════════════════════════════════════════════════════
+    #  LETTURE — Fattura (generazione documento / stampa, C-2)
+    #  Read-side per il motore documentale (sorgente FATTURA). La fattura
+    #  non ha un repository dedicato: i read vivono qui, accanto a
+    #  list_lotto_fatture (convenzione AGENTS.md — `<schema>_repository`
+    #  per le operazioni generiche vendite che non sono un sottodominio
+    #  con orchestrazione propria).
+    # ══════════════════════════════════════════════════════════
+
+    # Scopo: Contesto minimo per la generazione documento (stampa PDF) della
+    #        fattura. Mirror di OrdiniRepository.get_for_documento_generation,
+    #        con la differenza-chiave FATTURA: la testata espone
+    #        `emittente_soggetto_ruolo_id` (SR), mentre il motore documentale
+    #        vuole `emittente_fiscale_id` (PK). Si risolve la PK con JOIN a
+    #        anagrafiche.emittenti_fiscali (1:1 garantito da
+    #        uq_emittenti_fiscali_ruolo) — memoria
+    #        feedback_emittente_pk_vs_soggetto_ruolo. LEFT JOIN, non INNER: se
+    #        il record EF manca (dato sporco), la fattura ESISTE con
+    #        emittente_fiscale_id NULL → il BB `resolve_contesto_documentale`
+    #        distingue "non trovata" (404) da "emittente non risolto"
+    #        (validation parlante); un INNER collasserebbe i due casi. Ritorna
+    #        {id, uid, emittente_fiscale_id}; None se id inesistente o fuori
+    #        scope RLS (indistinguibile per design → 404 unificato nel caller).
+    def get_fattura_for_documento_generation(
+        self, fattura_id: int,
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT
+                f.id,
+                f.uid::text AS uid,
+                ef.id       AS emittente_fiscale_id
+              FROM vendite.fatture f
+              LEFT JOIN anagrafiche.emittenti_fiscali ef
+                ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+             WHERE f.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return row_to_dict(cursor)
+
+    # Scopo: Testata fattura per il context builder documentale (stampa).
+    #        Denormalizza cliente (BA → soggetto), emittente (SR → EF PK+codice),
+    #        stato/tipo doc fiscale e valuta; espone i totali di testata così
+    #        come li mantiene la pipeline (`*_tot`, bollo, arrotondamento,
+    #        totale_a_pagare). Lettura pura: nessun calcolo fiscale in Python.
+    #        None se la fattura non esiste (o è fuori scope RLS).
+    def get_fattura_testata(self, fattura_id: int) -> dict[str, Any] | None:
+        sql = """
+            SELECT
+                f.id,
+                f.uid::text                  AS uid,
+                f.anno,
+                f.serie,
+                f.numero,
+                f.data,
+                f.tipo_doc_fiscale_id,
+                tdf.codice_interno           AS tipo_doc_fiscale_codice,
+                tdf.descrizione              AS tipo_doc_fiscale_descrizione,
+                f.stato_doc_fiscale_id,
+                sdf.codice_interno           AS stato_codice_interno,
+                sdf.descrizione              AS stato_descrizione,
+                f.emittente_soggetto_ruolo_id,
+                ef.id                        AS emittente_fiscale_id,
+                ef.codice                    AS emittente_fiscale_codice,
+                srd_em.ragione_sociale_completa   AS emittente_denominazione,
+                srd_em.id_fiscale_univoco_cf_piva AS emittente_piva,
+                srd_em.codice_fiscale             AS emittente_cf,
+                -- Sede legale emittente (stringa formattata) — tipo indirizzo
+                -- TIPO_INDIRIZZO_SEDE_LEGALE (codice_interno stabile, parametro).
+                -- Subquery scalare: un solo valore anche con più indirizzi
+                -- dello stesso tipo (no fan-out).
+                (SELECT ind_em.indirizzo_display
+                   FROM anagrafiche.vw_indirizzi_resolved_ruolo ind_em
+                  WHERE ind_em.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+                    AND ind_em.tipo_indirizzo_codice = %s
+                  ORDER BY ind_em.indirizzo_id
+                  LIMIT 1)                  AS emittente_sede,
+                util.codice                  AS utility_codice,
+                util.descrizione             AS utility_descrizione,
+                mpag.codice                  AS pagamento_modalita_codice,
+                tpag.codice_interno          AS pagamento_termine_codice,
+                f.billing_account_id,
+                ba.codice                    AS ba_codice,
+                ba.soggetto_ruolo_id         AS cliente_soggetto_ruolo_id,
+                srd.soggetto_id,
+                srd.ragione_sociale_completa,
+                srd.id_fiscale_univoco_cf_piva,
+                -- Indirizzo di fatturazione cliente — tipo
+                -- TIPO_INDIRIZZO_FATTURAZIONE (parametro). Subquery scalare
+                -- come per l'emittente.
+                (SELECT ind_cli.indirizzo_display
+                   FROM anagrafiche.vw_indirizzi_resolved_ruolo ind_cli
+                  WHERE ind_cli.soggetto_ruolo_id = ba.soggetto_ruolo_id
+                    AND ind_cli.tipo_indirizzo_codice = %s
+                  ORDER BY ind_cli.indirizzo_id
+                  LIMIT 1)                  AS cliente_indirizzo,
+                f.valuta_id,
+                val.iso_code                 AS valuta_codice,
+                f.tasso_cambio,
+                f.imponibile_tot,
+                f.imposta_tot,
+                f.bollo_applicato,
+                f.bollo_importo,
+                f.arrotondamento_attuale,
+                f.totale_doc,
+                f.totale_a_pagare,
+                f.data_contabilizzazione,
+                f.meta
+              FROM vendite.fatture f
+              LEFT JOIN anagrafiche.emittenti_fiscali ef
+                ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+              LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd_em
+                ON srd_em.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+              JOIN anagrafiche.billing_account ba
+                ON ba.id = f.billing_account_id
+              LEFT JOIN config.utilities util
+                ON util.id = ba.utility_id
+              LEFT JOIN config.modalita_pagamento mpag
+                ON mpag.id = f.modalita_pagamento_id
+              LEFT JOIN config.termini_pagamento tpag
+                ON tpag.id = f.termine_pagamento_id
+              JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
+                ON srd.soggetto_ruolo_id = ba.soggetto_ruolo_id
+              LEFT JOIN config.tipi_doc_fiscale tdf
+                ON tdf.id = f.tipo_doc_fiscale_id
+              LEFT JOIN config.stati_doc_fiscale sdf
+                ON sdf.id = f.stato_doc_fiscale_id
+              LEFT JOIN config.valute val
+                ON val.id = f.valuta_id
+             WHERE f.id = %s
+        """
+        with connection.cursor() as cursor:
+            # Parametri nell'ordine dei %s: subquery sede emittente, subquery
+            # indirizzo fatturazione cliente, id fattura.
+            cursor.execute(
+                sql,
+                [
+                    TIPO_INDIRIZZO_SEDE_LEGALE,
+                    TIPO_INDIRIZZO_FATTURAZIONE,
+                    int(fattura_id),
+                ],
+            )
+            return row_to_dict(cursor)
+
+    # Scopo: Righe fattura con decodifiche articolo/uom/iva per il context
+    #        builder. Espone gli importi di riga già mantenuti dal DB
+    #        (imponibile/imposta/totale) + `iva_natura` per le righe non
+    #        imponibili. Ordine stabile per riga_nr. Lettura pura.
+    def list_fattura_righe(self, fattura_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                r.id,
+                r.fattura_id,
+                r.riga_nr,
+                r.articolo_id,
+                a.codice            AS articolo_codice,
+                a.descrizione       AS articolo_descrizione,
+                r.descrizione,
+                r.uom_id,
+                um.codice           AS uom_codice,
+                r.qta,
+                r.prezzo_unitario,
+                r.sconto_percentuale,
+                r.iva_id,
+                iva.codice          AS iva_codice,
+                iva.descrizione     AS iva_descrizione,
+                iva.aliquota_iva    AS iva_aliquota,
+                r.iva_natura,
+                r.imponibile_riga,
+                r.imposta_riga,
+                r.totale_riga
+              FROM vendite.fatture_righe r
+              LEFT JOIN catalogo.articoli a      ON a.id  = r.articolo_id
+              LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_id
+              LEFT JOIN config.iva iva           ON iva.id = r.iva_id
+             WHERE r.fattura_id = %s
+             ORDER BY r.riga_nr, r.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Riepilogo IVA della fattura, letto dalla tabella REALE
+    #        `vendite.fatture_riepiloghi_iva` (a differenza degli ordini, che
+    #        derivano il riepilogo on-the-fly da una vista): una riga per
+    #        gruppo (iva/natura/esigibilità/split). Decodifica iva + natura via
+    #        JOIN (display field). Lettura pura: gli importi sono già
+    #        aggregati/arrotondati dalla pipeline di fatturazione.
+    def list_fattura_riepilogo_iva(self, fattura_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                ri.id,
+                ri.fattura_id,
+                ri.iva_id,
+                iva.codice          AS iva_codice,
+                iva.descrizione     AS iva_descrizione,
+                iva.aliquota_iva    AS iva_aliquota,
+                ri.natura_id,
+                nat.codice          AS natura_codice,
+                ri.esigibilita,
+                ri.split_payment,
+                ri.imponibile,
+                ri.imposta,
+                ri.arrotondamento
+              FROM vendite.fatture_riepiloghi_iva ri
+              LEFT JOIN config.iva iva        ON iva.id  = ri.iva_id
+              LEFT JOIN config.iva_natura nat ON nat.id  = ri.natura_id
+             WHERE ri.fattura_id = %s
+             ORDER BY iva.aliquota_iva NULLS LAST, ri.iva_id NULLS LAST
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Scadenze (rate) della fattura per il context builder (piano
+    #        pagamenti stampato in fattura). Lettura pura, ordine stabile per
+    #        numero rata → data. `modalita_codice` (opz.) dal jsonb `meta` se il
+    #        DB lo mantiene; la tabella non ha colonna dedicata.
+    def list_fattura_scadenze(self, fattura_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT
+                sc.id,
+                sc.numero_rata,
+                sc.data_scadenza,
+                sc.importo,
+                sc.meta
+              FROM vendite.fatture_scadenze sc
+             WHERE sc.fattura_id = %s
+             ORDER BY sc.numero_rata NULLS LAST, sc.data_scadenza NULLS LAST, sc.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return rows_to_list(cursor)
 
     # ------------------------------------------------------------------
     # Lineage documenti (genealogia/transiti — brief-be-fe-lineage)

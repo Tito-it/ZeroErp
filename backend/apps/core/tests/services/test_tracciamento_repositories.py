@@ -198,3 +198,60 @@ class TestMaintenanceJobSummary(TestCase):
         self.assertEqual(count, 1)
         self.assertEqual(results[0]["total_runs"], 10)
         self.assertEqual(results[0]["ok_count"], 9)
+
+    # Scopo: senza filtri nessuna condizione aggiunta e soli limit/offset come
+    #        parametri (comportamento storico invariato). NB: non si asserisce
+    #        l'assenza di "WHERE" — gli aggregati contengono sempre
+    #        `FILTER (WHERE ok = ...)`; si verificano le condizioni opzionali.
+    @patch("apps.core.db.maintenance_repository.connection")
+    def test_list_job_summary_senza_filtri_nessuna_condizione(self, mock_conn):
+        from apps.core.db.maintenance_repository import MaintenanceRepository
+
+        _mock_cursor(mock_conn, [])
+        MaintenanceRepository().list_job_summary(limit=50, offset=0)
+        sql, params = mock_conn.cursor.return_value.__enter__.return_value \
+            .execute.call_args[0]
+        self.assertNotIn("jobname LIKE", sql)
+        self.assertNotIn("meta ->>", sql)
+        self.assertEqual(params, [50, 0])
+
+    # Scopo: filtri opzionali → WHERE su jobname (LIKE prefisso) e sul mese
+    #        ATTRIBUITO al run, con i VALORI parametrizzati (mai interpolati).
+    @patch("apps.core.db.maintenance_repository.connection")
+    def test_list_job_summary_filtra_prefisso_e_mese(self, mock_conn):
+        from apps.core.db.maintenance_repository import MaintenanceRepository
+
+        _mock_cursor(mock_conn, [])
+        MaintenanceRepository().list_job_summary(
+            limit=10, offset=0,
+            jobname_prefix="run_fatturazione_batch",
+            meta_month_equals=("competenza", "2026-07-01"),
+        )
+        sql, params = mock_conn.cursor.return_value.__enter__.return_value \
+            .execute.call_args[0]
+        self.assertIn("jobname LIKE %s", sql)
+        # Attribuzione: mese DICHIARATO nel meta, con ripiego sul mese di
+        # esecuzione — senza il COALESCE i run che non scrivono la chiave (tutti
+        # quelli storici) non matcherebbero mai alcun mese.
+        self.assertIn("meta ->> 'competenza'", sql)
+        self.assertIn("date_trunc('month', started_at)", sql)
+        self.assertIn("COALESCE", sql)
+        # Il filtro è PRIMA del GROUP BY: i conteggi sono relativi ai soli run
+        # che matchano, non al totale del job.
+        self.assertLess(sql.index("WHERE"), sql.index("GROUP BY"))
+        self.assertEqual(
+            params, ["run_fatturazione_batch%", "2026-07-01", 10, 0],
+        )
+
+    # Scopo: la CHIAVE di meta_month_equals finisce nell'SQL come letterale (non
+    #        parametrizzabile): una chiave non alfanumerica va rifiutata, non
+    #        interpolata. Guard anti-injection sul solo punto non parametrizzato.
+    @patch("apps.core.db.maintenance_repository.connection")
+    def test_list_job_summary_meta_chiave_non_valida_raises(self, mock_conn):
+        from apps.core.db.maintenance_repository import MaintenanceRepository
+
+        _mock_cursor(mock_conn, [])
+        with self.assertRaises(ValueError):
+            MaintenanceRepository().list_job_summary(
+                meta_month_equals=("x' OR '1'='1", "2026-07-01"),
+            )

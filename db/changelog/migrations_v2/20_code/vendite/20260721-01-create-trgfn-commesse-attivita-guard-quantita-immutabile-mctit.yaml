@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-immutabilita-quantita-e-porta-oneri §4a step 1 (CA).
+#
+# Immutabilita della quantita su commesse_attivita: una riga EMESSA e' un fatto
+# (specchio del documento d'origine al push) e non si corregge con UPDATE, ma con
+# righe nuove. Finora era garantito solo dall'assenza di chiamanti; questo guard
+# lo rende REGOLA (un UPDATE a mano in SQL passava). Il re-push su NON_EMESSA
+# (fn_upsert_commessa_attivita) resta l'unico writer legittimo e passa (riga non
+# emessa; e comunque non tocca le emesse per via di E_COMMESSA_ATTIVITA_GIA_EMESSA).
+# Bypass tecnico via GUC zeroerp.maintenance_reset_lotto_draft (reset lotto), come
+# gia' fa trgfn_attivita_fatturabili_guard_fatturato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260721-01-create-trgfn-commesse-attivita-guard-quantita-immutabile-mctit.yaml
+
+  - changeSet:
+      id: 20260721-01-create-trgfn-commesse-attivita-guard-quantita-immutabile
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard immutabilita quantita su vendite.commesse_attivita: blocca UPDATE
+        della quantita su righe EMESSA (stato_emissione <> 'NON_EMESSA'); bypass
+        via GUC zeroerp.maintenance_reset_lotto_draft. Trigger BEFORE UPDATE OF
+        quantita, fase _a10_.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_attivita_guard_quantita_immutabile()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_bypass text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Immutabilita della quantita: una riga di commessa EMESSA e'
+                  --   un fatto e non si modifica con UPDATE (si corregge con righe
+                  --   nuove). Brief immutabilita-quantita §0/§4a.
+                  -- Regole:
+                  --   - blocca UPDATE della quantita se stato_emissione <> 'NON_EMESSA';
+                  --   - il re-push su NON_EMESSA (fn_upsert_commessa_attivita) passa
+                  --     (riga non emessa) -> nessun bypass necessario nella hot-path;
+                  --   - bypass tecnico via GUC zeroerp.maintenance_reset_lotto_draft
+                  --     (reset lotto), coerente con gli altri guard di dominio.
+                  -- =========================================================
+                  v_bypass := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
+                  IF v_bypass IS NOT NULL AND lower(v_bypass) IN ('1','true','on','yes') THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF OLD.stato_emissione <> 'NON_EMESSA'
+                     AND NEW.quantita IS DISTINCT FROM OLD.quantita THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE',
+                          jsonb_build_object(
+                              'id', OLD.id,
+                              'segment_key', OLD.segment_key,
+                              'stato_emissione', OLD.stato_emissione,
+                              'quantita_old', OLD.quantita,
+                              'quantita_new', NEW.quantita),
+                          NULL::uuid, OLD.id::text, OLD.segment_key
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_commesse_attivita_guard_quantita_immutabile() IS
+                  'Guard immutabilita quantita commesse_attivita: blocca UPDATE della quantita su righe EMESSA (stato_emissione <> NON_EMESSA). Il re-push su NON_EMESSA passa; bypass tecnico via GUC zeroerp.maintenance_reset_lotto_draft. Errore E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE. Brief immutabilita-quantita §4a.';
+
+              DROP TRIGGER IF EXISTS trg_commesse_attivita_a10_guard_quantita_immutabile_upd
+                  ON vendite.commesse_attivita;
+
+              CREATE TRIGGER trg_commesse_attivita_a10_guard_quantita_immutabile_upd
+                  BEFORE UPDATE OF quantita
+                  ON vendite.commesse_attivita
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_commesse_attivita_guard_quantita_immutabile();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_commesse_attivita_a10_guard_quantita_immutabile_upd
+                  ON vendite.commesse_attivita;
+              DROP FUNCTION IF EXISTS vendite.trgfn_commesse_attivita_guard_quantita_immutabile();

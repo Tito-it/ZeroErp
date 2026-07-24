@@ -14,7 +14,7 @@ from typing import Any
 from django.db import connection
 
 from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
-from apps.core.db._helpers import extract_paginated, row_to_dict
+from apps.core.db._helpers import extract_paginated, row_to_dict, sql_order_direction
 
 
 _FORNITORI_ORDER_COLS = {
@@ -89,7 +89,7 @@ class FornitoriRepository:
         order_by: str = "ragione_sociale_completa", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         order_col = order_by if order_by in _FORNITORI_ORDER_COLS else "ragione_sociale_completa"
-        direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
+        direction = sql_order_direction(order_dir)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT v.id,

@@ -88,10 +88,12 @@ BEGIN
     AND (p_billing_account_id IS NULL OR ac.billing_account_id = p_billing_account_id)
     -- Estensione 2026-05: NULL = lista globale; NOT NULL = singolo consumo.
     AND (p_consumo_id IS NULL OR ac.id = p_consumo_id)
+    -- Esclusione "gia' inviato": basta l'ALLOCAZIONE (qualunque
+    -- stato_emissione, ANNULLATA inclusa) — il match a prefisso
+    -- per-documento era gia' corretto (vede anche i #CMP).
     AND NOT EXISTS (
       SELECT 1 FROM vendite.commesse_attivita ca
       WHERE ca.segment_key LIKE 'CONS:' || ac.uid::text || ':%'
-        AND ca.stato_emissione = 'EMESSA'
     )
   ORDER BY ac.competenza_mese, ac.id
   LIMIT p_limit;
@@ -99,7 +101,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_consumi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_consumo_id bigint)
-IS 'Lista consumi eligible al push su commessa (stato_calcolo OK, non fatturati). p_consumo_id (opzionale): NULL=lista globale batch, NOT NULL=singolo consumo. Tutti i filtri in AND. Esclude consumi gia` emessi via NOT EXISTS su commesse_attivita. rev 2026-06-28: sorgente per codice_interno (analisi-hardcoded-codice §3a).';
+IS 'Lista consumi eligible al push su commessa (stato_calcolo OK, non fatturati). p_consumo_id (opzionale): NULL=lista globale batch, NOT NULL=singolo consumo. Tutti i filtri in AND. Esclude consumi gia` emessi via NOT EXISTS su commesse_attivita. rev 2026-06-28: sorgente per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE (non piu'' solo emessi): il NOT EXISTS non filtra piu'' stato_emissione — brief-db-push-commessa-gia-inviato §4a.';
 ```
 
 ---

@@ -5,7 +5,7 @@
 //        2 azioni di processo o a SUPER_ADMIN (bypass).
 //
 //        Header: Select "Lista corrente" condiviso da tutti i tab.
-//        TabView lazy con tab condizionali alle azioni:
+//        Tabs lazy con tab condizionali alle azioni:
 //          - Preset           (azione `ui_preset_manage`)
 //          - Permessi colonne (azione `ui_permesso_manage`)
 //
@@ -18,11 +18,14 @@
 //
 //        Schema BE coinvolto: `ui` (skip_area_check). Il check accesso
 //        e' sulle 2 azioni di processo o SUPER_ADMIN.
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import TabView from 'primevue/tabview'
+import Tab from 'primevue/tab'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
 import TabPanel from 'primevue/tabpanel'
+import TabPanels from 'primevue/tabpanels'
 import StatusPage from '../../core/components/StatusPage.vue'
 import { useAuthStore } from '../../stores/auth'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
@@ -34,7 +37,6 @@ import ListaColonnaPermessoPanel from '../components/ListaColonnaPermessoPanel.v
 const { t } = useI18n()
 const router = useRouter()
 const auth = useAuthStore()
-const tabViewKey = ref(0)
 
 // Provider readonly. Le entita' gestite sono in schema `ui`
 // (skip_area_check), ma la pagina vive sotto config: per coerenza
@@ -51,8 +53,20 @@ const canAccess = computed(
   () => canManagePreset.value || canManagePermesso.value,
 )
 
-onMounted(() => {
-  tabViewKey.value += 1
+// Tab attivo. I due tab sono CONDIZIONALI ai permessi: un valore fisso
+// ('preset') lascerebbe senza pannello chi ha solo `ui_permesso_manage`.
+// TabView v3 attivava da se' il primo pannello reso, `Tabs` v4 no — il
+// default va quindi calcolato sul primo tab effettivamente presente.
+// Scelta utente (`tabScelto`) e default convivono: il ref parte null e
+// il getter cade sul primo tab disponibile finche' l'utente non sceglie,
+// cosi' il valore resta corretto anche se i permessi arrivano async.
+const primoTabDisponibile = computed(() =>
+  canManagePreset.value ? 'preset' : 'permessi',
+)
+const tabScelto = ref(null)
+const activeTab = computed({
+  get: () => tabScelto.value ?? primoTabDisponibile.value,
+  set: (v) => { tabScelto.value = v },
 })
 </script>
 
@@ -70,18 +84,24 @@ onMounted(() => {
 
     <template v-else>
       <div class="ui-admin-header">
-        <h2 class="ui-admin-title">{{ t('ui_admin.titolo') }}</h2>
+        <h2 class="ui-admin-title">{{ t('ui.admin.titolo') }}</h2>
         <ListaCorrenteSelect />
       </div>
 
-      <TabView v-if="canAccess" lazy :key="tabViewKey">
-        <TabPanel v-if="canManagePreset" :header="t('ui_admin.tab_preset')">
-          <ListaPresetPanel />
-        </TabPanel>
-        <TabPanel v-if="canManagePermesso" :header="t('ui_admin.tab_permessi')">
-          <ListaColonnaPermessoPanel />
-        </TabPanel>
-      </TabView>
+      <Tabs v-model:value="activeTab" lazy>
+        <TabList>
+          <Tab v-if="canManagePreset" value="preset">{{ t('ui.admin.tab_preset') }}</Tab>
+          <Tab v-if="canManagePermesso" value="permessi">{{ t('ui.admin.tab_permessi') }}</Tab>
+        </TabList>
+        <TabPanels>
+          <TabPanel v-if="canManagePreset" value="preset">
+            <ListaPresetPanel />
+          </TabPanel>
+          <TabPanel v-if="canManagePermesso" value="permessi">
+            <ListaColonnaPermessoPanel />
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
     </template>
   </div>
 </template>

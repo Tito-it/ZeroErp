@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-rls-commesse §2/§4 (P2) — policy RLS su vendite.commesse.
+#
+# Mirror di rls_resi_ef_whitelist (20260713-17) con adapter SR al posto del PK:
+# policy PERMISSIVE FOR ALL rls_commesse_ef_whitelist (operatore vede/scrive solo
+# commesse con emittente in whitelist, script.fn_scope_ef_whitelist_via_sr su
+# emittente_soggetto_ruolo_id) + ENABLE ROW LEVEL SECURITY (NO FORCE), a parita'
+# con ddt/ordini/preventivi/fatture/resi (enabled=t, forced=f). L'owner
+# (zeroerp_app) bypassa finche' non arriva il FORCE (ondata coordinata); il
+# canale batch (system_process_context, BYPASSRLS) resta esente. Chiude
+# l'asimmetria lettura/scrittura sulla famiglia commesse (write cross-emittente).
+#
+# emittente_soggetto_ruolo_id NULL (legacy) -> adapter SR fail-closed ->
+# visibile/scrivibile solo ad admin globale (comportamento voluto).
+# Verifica: db/pgtap/rls/test-rls-commesse-ef-whitelist-write.sql.
+# Dipendenze: vendite.commesse (col. emittente_soggetto_ruolo_id),
+#             script.fn_scope_ef_whitelist_via_sr.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260720-05-enable-rls-commesse-ef-whitelist-mctit.yaml
+
+  - changeSet:
+      id: 20260720-05-create-policy-rls-commesse-ef-whitelist
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Policy rls_commesse_ef_whitelist su vendite.commesse (FOR ALL, scope
+        emittente operatore via fn_scope_ef_whitelist_via_sr) + ENABLE ROW LEVEL
+        SECURITY (NO FORCE), a parita' con la famiglia fatture. Mirror
+        rls_resi_ef_whitelist.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: commesse
+                columnName: emittente_soggetto_ruolo_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                   WHERE n.nspname='script' AND p.proname='fn_scope_ef_whitelist_via_sr';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_commesse_ef_whitelist ON vendite.commesse;
+              CREATE POLICY rls_commesse_ef_whitelist ON vendite.commesse
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          emittente_soggetto_ruolo_id
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_sr(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          emittente_soggetto_ruolo_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_commesse_ef_whitelist ON vendite.commesse IS
+                  'RLS: operatore vede/scrive solo commesse con emittente in whitelist '
+                  '(adapter SR fn_scope_ef_whitelist_via_sr), gate OPERATORE fail-closed. '
+                  'Mirror rls_resi_ef_whitelist. rev 2026-07-20.';
+
+              -- Parita' con ddt/ordini/preventivi/fatture/resi (relrowsecurity=t,
+              -- relforcerowsecurity=f): RLS abilitata ma NON forzata -> l'owner
+              -- (zeroerp_app) la bypassa finche' non arriva il FORCE (ondata).
+              ALTER TABLE vendite.commesse ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.commesse DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_commesse_ef_whitelist ON vendite.commesse;

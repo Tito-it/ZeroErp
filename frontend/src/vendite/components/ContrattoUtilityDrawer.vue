@@ -72,13 +72,13 @@ async function handleSave() {
   if (utilityId.value == null) {
     const result = await execute(
       () => store.addUtility(props.contrattoId, payload),
-      { successMessage: t('contratti.utility_creata') }
+      { successMessage: t('vendite.contratti.utility_creata') }
     )
     if (result !== null) emit('changed')
   } else {
     const result = await execute(
       () => store.updateUtility(props.contrattoId, utilityId.value, payload),
-      { successMessage: t('contratti.utility_salvata') }
+      { successMessage: t('vendite.contratti.utility_salvata') }
     )
     if (result !== null) emit('changed')
   }
@@ -96,30 +96,30 @@ const onClose = useDrawerClose(emit)
     :dismissable="true"
   >
     <template #header>
-      <DrawerTitle :title="t('contratti.gestisci_utility')" :icon="MANAGE_ICONS.UTILITY" />
+      <DrawerTitle :title="t('vendite.contratti.gestisci_utility')" :icon="MANAGE_ICONS.UTILITY" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('contratti.field_tipo_utenza') }}</label>
+          <label>{{ t('vendite.contratti.field_tipo_utenza') }}</label>
           <LookupSelect v-model="form.tipo_utenza_id" rel="config.tipi_utenze" class="w-full"
-            :placeholder="t('contratti.select_tipo_utenza')" show-clear />
+            :placeholder="t('vendite.contratti.select_tipo_utenza')" show-clear />
         </div>
         <div class="form-field">
-          <label>{{ t('contratti.field_classe_utenza') }}</label>
+          <label>{{ t('vendite.contratti.field_classe_utenza') }}</label>
           <LookupSelect v-model="form.classe_utenza_id" rel="config.classi_utenze" class="w-full"
-            :placeholder="t('contratti.select_classe_utenza')" show-clear />
+            :placeholder="t('vendite.contratti.select_classe_utenza')" show-clear />
         </div>
       </div>
       <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('contratti.field_param_1_num') }}</label>
+          <label>{{ t('vendite.contratti.field_param_1_num') }}</label>
           <InputNumber v-model="form.param_1_num" class="w-full"
             :min-fraction-digits="0" :max-fraction-digits="4" />
         </div>
         <div class="form-field">
-          <label>{{ t('contratti.field_param_2_txt') }}</label>
+          <label>{{ t('vendite.contratti.field_param_2_txt') }}</label>
           <InputText v-model="form.param_2_txt" class="w-full" />
         </div>
       </div>

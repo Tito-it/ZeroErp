@@ -10,10 +10,18 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 import json
-from typing import Any
+from typing import Any, ClassVar
 
 from django.db import connection
 
+from apps.core.db._helpers import (
+    LIST_MAX_LIMIT,
+    fetch_paged_with_total,
+    iso_or_none,
+    jsonb_out,
+    rows_to_list,
+)
+from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.value_normalizer import as_bool, empty_to_none
 from apps.vendite.types import (
@@ -1445,6 +1453,384 @@ class VenditePipelineRepository:
                 "SELECT vendite.fn_numera_fattura_opz_emessa(%s)",
                 [fattura_id],
             )
+
+    # Scopo: Accoda in vendite.fatture_stampa_coda una riga PENDING per ogni
+    #        fattura non esclusa del lotto (outbox stampa, Fase C C-2c).
+    #        Idempotente (indice unico parziale sui work-item vivi).
+    #        Ritorna il numero di righe accodate.
+    def accoda_stampe_lotto(self, lotto_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_accoda_stampe_lotto(%s)",
+                [lotto_id],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
+
+    # ══════════════════════════════════════════════════════════
+    #  CODA STAMPA — drenaggio worker (outbox, Fase C C-2b/C-2d)
+    #  `accoda_stampe_lotto` (sopra) POPOLA la coda; questi metodi la
+    #  DRENANO. Owner unico del vocabolario stati coda (costanti sotto,
+    #  CHECK chk_fatture_stampa_coda_stato).
+    #  ⚠️ La tabella NON ha trigger audit (verificato sul DDL G1): ogni
+    #  UPDATE di stato setta data_update/user_update ESPLICITAMENTE —
+    #  data_update è anche il claimed_at su cui ragiona il reaper.
+    # ══════════════════════════════════════════════════════════
+
+    # Stati della coda stampa (CHECK chk_fatture_stampa_coda_stato). Unica
+    # fonte dei letterali: il service drainer importa da qui, mai stringhe
+    # inline cross-file.
+    STAMPA_STATO_PENDING = "PENDING"
+    STAMPA_STATO_IN_CORSO = "IN_CORSO"
+    STAMPA_STATO_FATTO = "FATTO"
+    STAMPA_STATO_ERRORE = "ERRORE"
+
+    # Scopo: Reaper delle righe rimaste IN_CORSO oltre `stale_minuti` (worker
+    #        morto a metà render). `data_update` di una riga IN_CORSO == istante
+    #        del claim (settato esplicitamente dal claim, nessun trigger audit
+    #        sulla tabella), quindi funge da claimed_at. Soglia larga (≫ tempo
+    #        di un render) → nessun doppio-render su un worker semplicemente
+    #        lento. Ogni recupero INCREMENTA `tentativi` (il render interrotto È
+    #        un tentativo consumato): una riga il cui render uccide il worker —
+    #        e che quindi non passa mai da `marca_stampa_errore` — non può
+    #        ciclare all'infinito: oltre `soglia_tentativi` → ERRORE terminale
+    #        (con `ultimo_errore` parlante), altrimenti → PENDING. Ritorna il
+    #        numero di righe recuperate (entrambi i rami).
+    def reset_stale_stampe_in_corso(
+        self, stale_minuti: int, *, soglia_tentativi: int,
+    ) -> int:
+        errore_json = json.dumps({
+            "code": "E_STAMPA_JOB_STANTIO",
+            "message": (
+                "Render interrotto (worker morto o kill): "
+                "recuperato dal reaper."
+            ),
+        })
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.fatture_stampa_coda
+                   SET tentativi = tentativi + 1,
+                       ultimo_errore = %s::jsonb,
+                       stato = CASE
+                                 WHEN tentativi + 1 >= %s THEN %s
+                                 ELSE %s
+                               END,
+                       data_update = now(),
+                       user_update = CURRENT_USER
+                 WHERE stato = %s
+                   AND data_update < now() - make_interval(mins => %s)
+                """,
+                [
+                    errore_json,
+                    int(soglia_tentativi),
+                    self.STAMPA_STATO_ERRORE,
+                    self.STAMPA_STATO_PENDING,
+                    self.STAMPA_STATO_IN_CORSO,
+                    int(stale_minuti),
+                ],
+            )
+            return cursor.rowcount
+
+    # Scopo: Claim atomico di un batch di work-item PENDING per il worker
+    #        drainer. `FOR UPDATE SKIP LOCKED` → più worker in parallelo non si
+    #        pestano (ognuno prende righe diverse); il flip a IN_CORSO nella
+    #        stessa istruzione le sottrae ai claim successivi (e al
+    #        ri-accodamento, uq_fatture_stampa_coda_vivo). `data_update = now()`
+    #        = claimed_at per il reaper (la tabella non ha trigger audit).
+    #        Ordine per id (indice parziale ix_fatture_stampa_coda_da_lavorare).
+    #        Il render avviene FUORI da qui: la connessione non tiene il lock
+    #        durante l'I/O (I-4b). Ritorna i work-item claimati (lista dict).
+    def claim_stampe_pending(self, limit: int) -> list[dict[str, Any]]:
+        safe_limit = max(1, int(limit))
+        sql = """
+            WITH claimed AS (
+                SELECT id
+                  FROM vendite.fatture_stampa_coda
+                 WHERE stato = %s
+                 ORDER BY id
+                 FOR UPDATE SKIP LOCKED
+                 LIMIT %s
+            )
+            UPDATE vendite.fatture_stampa_coda c
+               SET stato = %s,
+                   data_update = now(),
+                   user_update = CURRENT_USER
+              FROM claimed
+             WHERE c.id = claimed.id
+            RETURNING c.id, c.sorgente_tipo_id, c.sorgente_id, c.sorgente_uid,
+                      c.lotto_id, c.template_documento_id, c.tentativi
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                self.STAMPA_STATO_PENDING, safe_limit, self.STAMPA_STATO_IN_CORSO,
+            ])
+            return rows_to_list(cursor)
+
+    # Scopo: C-2d — backstop numerazione: garantisce che la fattura sia
+    #        numerata PRIMA del render (rende impossibile un PDF non numerato,
+    #        D-1 al livello più forte). Delega a `fn_numera_fattura_opz_emessa`,
+    #        già idempotente (fattura già numerata → no-op che ritorna i valori
+    #        correnti). Vive nel worker, NON in DocumentGenerationService (che
+    #        resta generico e stupido, I-4).
+    def numera_fattura_backstop(self, fattura_id: int) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM vendite.fn_numera_fattura_opz_emessa(%s)",
+                [int(fattura_id)],
+            )
+            cursor.fetchall()  # drena il result set TABLE (invocazione)
+
+    # Scopo: Marca una riga di coda come completata (FATTO) col documento
+    #        prodotto; azzera `ultimo_errore` (esito pulito dopo eventuali
+    #        tentativi precedenti falliti). data_update esplicito (no trigger).
+    def marca_stampa_fatto(self, coda_id: int, documento_id: int) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.fatture_stampa_coda
+                   SET stato = %s,
+                       documento_id = %s,
+                       ultimo_errore = NULL,
+                       data_update = now(),
+                       user_update = CURRENT_USER
+                 WHERE id = %s
+                """,
+                [self.STAMPA_STATO_FATTO, int(documento_id), int(coda_id)],
+            )
+
+    # Scopo: Registra il fallimento del render di una riga: incrementa
+    #        `tentativi`, salva `ultimo_errore` (jsonb, `default=str` per non
+    #        far mai fallire la registrazione dell'errore su detail esotici) e
+    #        decide lo stato risultante — `ERRORE` (terminale) raggiunta la
+    #        soglia, altrimenti `PENDING` (riprovabile al PROSSIMO giro del
+    #        worker, non nello stesso). data_update esplicito (no trigger).
+    #        Ritorna lo stato risultante ('ERRORE'|'PENDING').
+    def marca_stampa_errore(
+        self, coda_id: int, *, errore: dict[str, Any], soglia_tentativi: int,
+    ) -> str:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.fatture_stampa_coda
+                   SET tentativi = tentativi + 1,
+                       ultimo_errore = %s::jsonb,
+                       stato = CASE
+                                 WHEN tentativi + 1 >= %s THEN %s
+                                 ELSE %s
+                               END,
+                       data_update = now(),
+                       user_update = CURRENT_USER
+                 WHERE id = %s
+                RETURNING stato
+                """,
+                [
+                    json.dumps(errore, default=str),
+                    int(soglia_tentativi),
+                    self.STAMPA_STATO_ERRORE,
+                    self.STAMPA_STATO_PENDING,
+                    int(coda_id),
+                ],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            return str(row[0])
+
+    # Scopo: Contatori della coda stampa per il monitoraggio (C-5) — conteggi
+    #        per stato, opzionalmente ristretti a un lotto o a un mese di
+    #        competenza. La coda NON ha colonna emittente (brief §5): per la
+    #        lettura OPERATORE lo scope emittente si deriva via **JOIN a
+    #        vendite.fatture** su `sorgente_id` + il BB
+    #        `add_emittente_scope_condition` (convenzione SR). Con
+    #        `auth_user_id=None` (worker/sistema) nessuno scope → conta tutto.
+    #        Ritorna dict {stato: n} dei soli stati presenti.
+    #
+    # `competenza_mese` (2026-07-23): restringe al mese di competenza del LOTTO
+    # a cui la riga di coda appartiene (`c.lotto_id` -> `fatturazione_lotti`).
+    # Senza, i conteggi sono cumulativi da sempre: «Fatte: 7» cresce all'infinito
+    # e non dice nulla su cosa si sta fatturando ora — stesso difetto per cui i
+    # contatori dei worker sono stati tolti dal pannello esiti.
+    # JOIN interno di proposito: una riga senza lotto non è attribuibile a un
+    # mese e non deve entrare in un conteggio di periodo.
+    def count_coda_stampa_per_stato(
+        self,
+        *,
+        lotto_id: int | None = None,
+        auth_user_id: int | None = None,
+        competenza_mese: date | None = None,
+    ) -> dict[str, int]:
+        conditions: list[str] = []
+        params: list[Any] = []
+        # Lista e non stringa singola: i join sono più d'uno e si accumulano
+        # (assegnarla sovrascriverebbe silenziosamente quello già impostato).
+        joins: list[str] = []
+        if lotto_id is not None:
+            conditions.append("c.lotto_id = %s")
+            params.append(int(lotto_id))
+        if auth_user_id is not None:
+            # La coda è un satellite di fatture: lo scope emittente vive sulla
+            # fattura, non sulla coda → JOIN + scope applicativo (defense-in-depth).
+            joins.append("JOIN vendite.fatture f ON f.id = c.sorgente_id")
+            add_emittente_scope_condition(
+                conditions, params,
+                auth_user_id=auth_user_id,
+                column="f.emittente_soggetto_ruolo_id",
+                convention="sr",
+            )
+        if competenza_mese is not None:
+            joins.append(
+                "JOIN vendite.fatturazione_lotti l ON l.id = c.lotto_id"
+            )
+            conditions.append("l.competenza_mese = %s")
+            params.append(competenza_mese.replace(day=1))
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        sql = f"""
+            SELECT c.stato, COUNT(*)::int
+              FROM vendite.fatture_stampa_coda c
+              {" ".join(joins)}
+              {where}
+             GROUP BY c.stato
+        """  # noqa: S608 — join/where da condizioni whitelisted (nessun input libero)
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return {str(row[0]): int(row[1]) for row in cursor.fetchall()}
+
+    # Scopo: Elenco paginato della coda stampa per la UI di gestione code
+    #        (brief-be-fe-gestione-code-lavori-stampa BE-6). JOIN a
+    #        vendite.fatture (numero/anno/serie — la coda e` un satellite di
+    #        fatture) + emittenti_fiscali (codice, colonna informativa).
+    #
+    #        Ambito PER-OPERATORE come la coda lavori (2026-07-23, decisione
+    #        Tid — la vecchia semantica per-emittente del «miei» si leggeva
+    #        come filtro rotto): `operatore` filtra su `c.user_insert`
+    #        (l'identita` GUC di chi ha innescato l'accodamento); None = tutte
+    #        le righe (vista «Tutti», aperta a ogni operatore).
+    #        `caller_username` serve SOLO a calcolare `is_mio` (tag «mio» in
+    #        colonna), mai a filtrare — stessa separazione owner/caller della
+    #        coda lavori.
+    #        Filtri opzionali stati/lotto/intervallo `data_insert` (`data_a`
+    #        bound ESCLUSIVO: il chiamante passa gia` il giorno+1).
+    #        Ordinamento (2026-07-23, richiesta Tid): `sort_by`/`sort_dir` da
+    #        whitelist `_CODA_STAMPA_SORT_SQL` — il service valida, qui assert
+    #        di defense-in-depth. Default `data_update DESC` («aggiornato»: la
+    #        riga lavorata piu` di recente in testa); tiebreaker `c.id DESC`
+    #        per un ordine stabile. E` una lista di monitoraggio, non la corsia
+    #        del worker. Ritorna `{items, total}` via BB
+    #        `fetch_paged_with_total` (fallback pagina-stantia: la coda si
+    #        auto-svuota sotto l'utente a ogni drain).
+    _CODA_STAMPA_SORT_SQL: ClassVar[dict[str, str]] = {
+        "fattura_id": "c.sorgente_id",
+        # NULLS LAST esplicito: lotto_id e` NULL per le stampe fuori lotto
+        # (es. ristampe singole) — in DESC finirebbero in testa.
+        "lotto_id": "c.lotto_id {dir} NULLS LAST",
+        "data_update": "c.data_update",
+    }
+
+    def elenca_coda_stampa(
+        self,
+        *,
+        operatore: str | None = None,
+        caller_username: str | None = None,
+        stati: list[str] | None = None,
+        lotto_id: int | None = None,
+        data_da: Any = None,
+        data_a: Any = None,
+        limit: int = 50,
+        offset: int = 0,
+        sort_by: str = "data_update",
+        sort_dir: str = "DESC",
+    ) -> dict[str, Any]:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if stati:
+            conditions.append("c.stato = ANY(%s)")
+            params.append(list(stati))
+        if lotto_id is not None:
+            conditions.append("c.lotto_id = %s")
+            params.append(int(lotto_id))
+        if data_da is not None:
+            conditions.append("c.data_insert >= %s")
+            params.append(data_da)
+        if data_a is not None:
+            conditions.append("c.data_insert < %s")
+            params.append(data_a)
+        if operatore is not None:
+            conditions.append("c.user_insert = %s")
+            params.append(str(operatore))
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
+        safe_offset = max(0, int(offset))
+        sort_expr = self._CODA_STAMPA_SORT_SQL.get(sort_by)
+        assert sort_expr is not None, f"sort_by non in whitelist: {sort_by!r}"
+        assert sort_dir in ("ASC", "DESC"), f"sort_dir non valido: {sort_dir!r}"
+        order_by = (
+            sort_expr.format(dir=sort_dir)
+            if "{dir}" in sort_expr
+            else f"{sort_expr} {sort_dir}"
+        )
+        from_join = """
+              FROM vendite.fatture_stampa_coda c
+              JOIN vendite.fatture f ON f.id = c.sorgente_id
+              LEFT JOIN anagrafiche.emittenti_fiscali ef
+                ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+        """
+        data_sql = f"""
+            SELECT c.id, c.sorgente_id AS fattura_id,
+                   f.numero AS fattura_numero, f.anno AS fattura_anno,
+                   f.serie AS fattura_serie,
+                   ef.codice AS emittente_codice,
+                   c.lotto_id, c.stato, c.tentativi, c.ultimo_errore,
+                   c.documento_id, c.data_insert, c.data_update,
+                   c.user_insert AS operatore,
+                   (c.user_insert = %s) AS is_mio,
+                   COUNT(*) OVER() AS total_count
+              {from_join}
+              {where}
+             ORDER BY {order_by}, c.id DESC
+             LIMIT %s OFFSET %s
+        """  # noqa: S608 — where/order da whitelist chiuse (nessun input libero)
+        rows, total = fetch_paged_with_total(
+            data_sql,
+            # `caller_username` per primo: è il parametro dell'is_mio nella
+            # SELECT, che precede il WHERE. '' quando None: non matcha nessun
+            # user reale → is_mio False, mai NULL.
+            [caller_username or "", *params, safe_limit, safe_offset],
+            fallback_count_sql=(
+                f"SELECT COUNT(*) {from_join} {where}"  # noqa: S608
+            ),
+            fallback_params=list(params),
+            offset=safe_offset,
+        )
+        items = [
+            {
+                "id": int(r["id"]),
+                "fattura_id": int(r["fattura_id"]),
+                "fattura_numero": r["fattura_numero"],
+                "fattura_anno": r["fattura_anno"],
+                "fattura_serie": r["fattura_serie"],
+                "emittente_codice": r["emittente_codice"],
+                "lotto_id": None if r["lotto_id"] is None else int(r["lotto_id"]),
+                "stato": str(r["stato"]),
+                "tentativi": int(r["tentativi"]),
+                "ultimo_errore": jsonb_out(r["ultimo_errore"]),
+                "documento_id": (
+                    None if r["documento_id"] is None else int(r["documento_id"])
+                ),
+                "data_insert": iso_or_none(r["data_insert"]),
+                "data_update": iso_or_none(r["data_update"]),
+                # Operatore che ha innescato l'accodamento: l'audit trigger
+                # scrive in `user_insert` l'identità dalla GUC (es. 'tid'),
+                # mentre `user_update` è il worker che ha stampato — per la
+                # colonna «Operatore» conta chi ha lanciato il processo.
+                # («operatore» e non «utente»: nel dominio utente è ambiguo,
+                # può indicare il cliente/utenza — glossario di progetto.)
+                "operatore": r["operatore"],
+                "is_mio": bool(r["is_mio"]),
+            }
+            for r in rows
+        ]
+        return {"items": items, "total": int(total)}
 
     # Scopo: Gestisce `sync_lotto_fatture_stato` nel flusso applicativo del modulo.
     def sync_lotto_fatture_stato(

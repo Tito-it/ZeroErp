@@ -105,7 +105,7 @@ async function handlePreview() {
     <template #header>
       <DrawerTitle
         :action="t('common.edit')"
-        :title="t('amm.email_template_title')"
+        :title="t('amministrazione.email_template_title')"
         icon="pi pi-file-edit"
       />
     </template>
@@ -114,17 +114,17 @@ async function handlePreview() {
       <div class="form-grid">
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('amm.email_codice') }}</label>
+            <label>{{ t('amministrazione.email_codice') }}</label>
             <InputText :modelValue="form.codice" disabled fluid />
           </div>
           <div class="form-field">
-            <label>{{ t('amm.email_lingua') }}</label>
+            <label>{{ t('amministrazione.email_lingua') }}</label>
             <InputText :modelValue="form.lingua" disabled fluid />
           </div>
         </div>
 
         <div class="form-field" v-if="form.variabili_disponibili?.length">
-          <label>{{ t('amm.email_variabili') }}</label>
+          <label>{{ t('amministrazione.email_variabili') }}</label>
           <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
             <Tag v-for="v in form.variabili_disponibili" :key="v"
                  :value="`{{${v}}}`" severity="info" />
@@ -132,23 +132,23 @@ async function handlePreview() {
         </div>
 
         <div class="form-field">
-          <label>{{ t('amm.email_oggetto') }}</label>
+          <label>{{ t('amministrazione.email_oggetto') }}</label>
           <InputText v-model="form.oggetto" :disabled="isReadonly" fluid />
         </div>
 
         <div class="form-field">
-          <label>{{ t('amm.email_corpo_html') }}</label>
+          <label>{{ t('amministrazione.email_corpo_html') }}</label>
           <Textarea v-model="form.corpo_html" :rows="12" fluid autoResize :disabled="isReadonly" />
         </div>
 
         <div class="form-field">
-          <label>{{ t('amm.email_corpo_testo') }}</label>
+          <label>{{ t('amministrazione.email_corpo_testo') }}</label>
           <Textarea v-model="form.corpo_testo" :rows="5" fluid autoResize :disabled="isReadonly" />
         </div>
 
         <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
           <Button
-            :label="t('amm.email_preview')"
+            :label="t('amministrazione.email_preview')"
             icon="pi pi-eye"
             :loading="previewLoading"
             outlined

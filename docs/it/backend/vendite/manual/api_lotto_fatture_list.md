@@ -42,6 +42,7 @@ Endpoint di sola lettura che interroga `vendite.fatturazione_lotti_fatture` con 
         "stato_sdi_descrizione": null,
         "stato_doc_fiscale_id": 3,
         "stato_doc_fiscale_descrizione": "Fattura emessa",
+        "stato_doc_fiscale_codice": "EMESSA",
         "stato_esecuzione": "OK",
         "esclusa": false,
         "numero": 234,
@@ -71,6 +72,9 @@ Endpoint di sola lettura che interroga `vendite.fatturazione_lotti_fatture` con 
 - Quando `sort_by != fattura_id` viene aggiunto `fllf.fattura_id ASC` come tiebreaker deterministico.
 - `page` deve essere >= 1; `page_size` deve essere compreso tra 1 e 200.
 - `is_search_endpoint = True` sulla view: attiva throttling `SearchBurstRateThrottle`.
+- `stato_doc_fiscale_codice` = `config.stati_doc_fiscale.codice_interno` (chiave stabile):
+  e' il campo su cui il FE basa i gate (es. reset fattura solo su `DRAFT`) — mai la
+  `descrizione`, che e' display e puo' cambiare.
 - Endpoint di sola lettura: nessun `Idempotency-Key` richiesto.
 - Endpoint v1 richiede JWT.
 

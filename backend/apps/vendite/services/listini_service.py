@@ -2015,31 +2015,6 @@ _KNOWN_BUNDLE_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
-# Scopo: Converte un `DatabaseError` (P0001 via `script.fn_log_and_raise_error`)
-#        in `ServiceError` preservando il codice DB originale quando matcha
-#        un trigger noto. Pattern speculare a `pricing_service._raise_pricing_error`.
-#        Fallback `E_VENDITE_VALIDATION` con il MESSAGE DB in `detail`.
-def _raise_bundle_db_error(
-    exc: DatabaseError, *, function_name: str, context: dict[str, Any],
-) -> None:
-    msg = str(exc)
-    matched_code: str | None = None
-    for code_candidate, markers in _KNOWN_BUNDLE_DB_ERROR_MARKERS:
-        if all(marker in msg for marker in markers):
-            matched_code = code_candidate
-            break
-    code = matched_code or "E_VENDITE_VALIDATION"
-    ErrorManager.raise_error(
-        code=code,
-        message="Impossibile salvare i prezzi bundle.",
-        detail=msg,
-        context=context,
-        cause=exc,
-        log_to_db=True,
-        function_name=function_name,
-    )
-
-
 # Scopo: Lista articoli compositi che hanno almeno 1 prezzo bundle
 #        definito in `listini_righe_componenti` per la versione data.
 #        Usata dal FE per popolare la sezione "Prezzi bundle compositi"
@@ -2189,10 +2164,14 @@ def fn_save_bundle(
         # (immutabilita' versione ATTIVA/CHIUSA, guard coerenza BoM).
         # Senza questo catch il codice DB strutturato verrebbe perso e
         # il middleware mapperebbe a `E_DATABASE` generico.
-        _raise_bundle_db_error(
-            exc, function_name=function_name, context=err_context,
+        ErrorManager.raise_from_database_error(
+            exc,
+            known_markers=_KNOWN_BUNDLE_DB_ERROR_MARKERS,
+            fallback_code="E_VENDITE_VALIDATION",
+            message="Impossibile salvare i prezzi bundle.",
+            context=err_context,
+            function_name=function_name,
         )
-        raise AssertionError("unreachable")  # pragma: no cover
 
     return result
 

@@ -91,9 +91,9 @@ const {
     confirmDelete(itemName, doDelete)
   },
   messages: {
-    created: t('conti_bancari.conto_creato'),
-    saved: t('conti_bancari.conto_salvato'),
-    deleted: t('conti_bancari.conto_eliminato'),
+    created: t('anagrafiche.conti_bancari.conto_creato'),
+    saved: t('anagrafiche.conti_bancari.conto_salvato'),
+    deleted: t('anagrafiche.conti_bancari.conto_eliminato'),
   },
   onSaved: () => emit('saved'),
 })
@@ -110,7 +110,7 @@ const pageActions = computed(() => [
     key: 'new',
     kind: 'primary',
     label: t('common.new'),
-    tooltip: t('conti_bancari.aggiungi_conto'),
+    tooltip: t('anagrafiche.conti_bancari.aggiungi_conto'),
     icon: MANAGE_ICONS.ADD,
     command: onStartNew,
   },
@@ -140,7 +140,7 @@ const onClose = useDrawerClose(emit)
     :style="{ width: DRAWER_WIDTH.STANDARD }"
   >
     <template #header>
-      <DrawerTitle :action="formMode === 'new' ? t('common.new') : t('common.edit')" :title="t('conti_bancari.titolo')" :icon="MANAGE_ICONS.CONTI_BANCARI" />
+      <DrawerTitle :action="formMode === 'new' ? t('common.new') : t('common.edit')" :title="t('anagrafiche.conti_bancari.titolo')" :icon="MANAGE_ICONS.CONTI_BANCARI" />
     </template>
 
     <!-- Livello oggetto BLOCCATO: pannello sostitutivo (safety net se
@@ -166,7 +166,7 @@ const onClose = useDrawerClose(emit)
       <template v-if="!listLoading">
         <div v-if="contiList.length === 0 && !formMode" class="app-empty-state">
           <i class="pi pi-wallet" />
-          <p>{{ t('conti_bancari.nessun_conto') }}</p>
+          <p>{{ t('anagrafiche.conti_bancari.nessun_conto') }}</p>
         </div>
 
         <div v-else-if="contiList.length > 0" class="conti-list">
@@ -177,11 +177,11 @@ const onClose = useDrawerClose(emit)
                 <Tag v-if="c.fonte" :value="c.fonte === 'soggetto' ? t('common.soggetto') : (c.fonte === 'istanza' && c.utility_codice ? c.utility_codice : t('common.ruolo'))"
                   :severity="c.fonte === 'soggetto' ? 'secondary' : 'info'" />
                 <Tag :value="c.uso" :severity="usoSeverity(c.uso)" />
-                <Tag v-if="c.bloccato" :value="t('conti_bancari.bloccato')" severity="danger" />
-                <Tag v-if="c.verificato && !c.bloccato" :value="t('conti_bancari.verificato')" severity="info" />
+                <Tag v-if="c.bloccato" :value="t('anagrafiche.conti_bancari.bloccato')" severity="danger" />
+                <Tag v-if="c.verificato && !c.bloccato" :value="t('anagrafiche.conti_bancari.verificato')" severity="info" />
               </div>
               <div class="conto-card-iban">
-                <i v-if="c.predefinito" class="pi pi-check-circle conto-predefinito" v-tooltip.top="t('conti_bancari.predefinito')" />
+                <i v-if="c.predefinito" class="pi pi-check-circle conto-predefinito" v-tooltip.top="t('anagrafiche.conti_bancari.predefinito')" />
                 {{ c.iban }}
               </div>
               <div class="conto-card-detail">
@@ -205,7 +205,7 @@ const onClose = useDrawerClose(emit)
       <!-- Form (aggiungi o modifica) -->
       <template v-if="formMode">
         <div class="app-drawer-section">
-          <h4>{{ formMode === 'edit' ? t('conti_bancari.modifica_conto') : t('conti_bancari.nuovo_conto') }}</h4>
+          <h4>{{ formMode === 'edit' ? t('anagrafiche.conti_bancari.modifica_conto') : t('anagrafiche.conti_bancari.nuovo_conto') }}</h4>
         </div>
         <ContoBancarioForm
           :form="conto.form"

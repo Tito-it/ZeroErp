@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed ui.widget — catalogo GLOBALE dei widget (mini-brief GRANT+seed §2).
+# Quattro widget v1: una card di benvenuto non-gated + i tre cruscotti vendite.
+#
+# ============================================================
+# 'home.benvenuto' E' DISATTIVATO DAL 2026-07-22 — non riattivarlo per errore
+# ============================================================
+# Era nato come unico widget NON-GATED (area_id E azione_id NULL) per soddisfare
+# l'invariante "mai una home vuota" del brief DB §3.bis: gli altri tre sono gated
+# su area vendite, quindi senza di lui un utente senza quell'area risolve una
+# lista vuota.
+#
+# Ritirato su richiesta BE dopo la validazione in-app (mini-brief "rimuovere il
+# widget Benvenuto"): mostrava solo un'etichetta, senza numero ne' deep-link, e
+# occupava uno slot della griglia a tutti gli utenti con permessi.
+#
+# L'INVARIANTE §3.bis RESTA SODDISFATTO NELLA SOSTANZA, non piu' nella forma: il
+# FE ora distingue esplicitamente "nessuna card attiva" da "nessuna card
+# disponibile per il tuo profilo" (chiavi home.kpi_empty_hint /
+# home.kpi_empty_nessuna_disponibile). Un empty-state che dice la verita' e'
+# meglio di una card-riempitivo che finge che ci sia qualcosa da configurare.
+#
+# VIA SCELTA: attivo=FALSE, non DELETE. Motivi:
+#   - fn_resolve_dashboard_config filtra w.attivo = TRUE in OGNI ramo (preset
+#     ruolo/emittente/sistema, catalogo grezzo, merge nuovi e assemblaggio
+#     finale): il widget sparisce da solo, anche da chi lo aveva in preferenza
+#     salvata, senza errori. E' il caso §4.6 del brief DB, gia' coperto dal
+#     pgTAP test-fn-resolve-dashboard-config.sql (test 9);
+#   - loadUpdateData e' un UPSERT: togliere la riga dal CSV NON la cancella dai
+#     DB gia' migrati, servirebbe un changeset DELETE dedicato con l'ordine FK
+#     corretto (dashboard_preset_widget -> dashboard_widget -> widget);
+#   - reversibile: se l'empty-state si rivelasse peggiore sul campo, si rimette
+#     attivo=t e il widget torna, ordine e preset intatti.
+# Le righe in dashboard_widget e dashboard_preset_widget restano APPOSTA: sono
+# inerti finche' attivo=FALSE e conservano la reversibilita'.
+#
+# ⚠️ Da qui in poi il catalogo NON ha piu' widget non-gated. Se un domani si
+# vuole tornare alla garanzia "mai vuota" in forma di card, va aggiunto un
+# widget con area_id/azione_id NULL -- non riattivato questo, che il BE ha
+# scartato nel merito.
+# ============================================================
+#
+# INVARIANTE PERMESSI <-> DEEP-LINK (mini-brief §2 vincolo 3): l'area dichiarata
+# dal widget e' quella che guarda la rotta di destinazione. I tre widget gated
+# puntano a rotte del dominio 'vendite' (navigation.js gruppo 'vendite') ->
+# area_id = 2 (config.aree_funzionali codice 'vendite', schema_db 'vendite',
+# la chiave su cui il resolver valuta il gate). Un widget visibile che porta a
+# una rotta bloccata sarebbe un vicolo cieco.
+#
+# DEEP-LINK (mini-brief §2 vincolo 2): deep_link.path deve combaciare con il
+# 'to' della voce di menu in frontend/src/core/navigation.js (gruppo 'vendite'),
+# perche' il FE risolve il link cercando quella voce per aprire tab e sidebar
+# coerenti. Verificato 2026-07-22: /vendite/situazione-aperta,
+# /vendite/dashboard-competenza, /vendite/dashboard-backlog esistono tutte e
+# tre. Una path che non corrisponde da' una card non cliccabile (by design).
+#
+# soglia NULL su tutti: semafori neutri in v1 per decisione presa (si tarano
+# sui dati reali). Il FE valuta gia' la soglia quando arrivera': bastera'
+# popolare il campo, senza toccare il frontend.
+#
+# tipo_widget NON e' nel CSV: la colonna ha DEFAULT 'kpi' e tutti e quattro
+# sono kpi. Ometterla evita di passare un parametro varchar a una colonna
+# ENUM (ui.tipo_widget) da loadUpdateData.
+#
+# NULL da CSV: token letterale NULL + nullValue "NULL", non la cella vuota.
+# Obbligatorio qui perche' deep_link/soglia sono JSONB: una cella vuota
+# diventerebbe '' -> "invalid input syntax for type json".
+#
+# Sequenza identity riallineata in 90_end/20260722-07 (seed con id espliciti).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260722-02-seed-ui-widget-home-mctit.yaml
+
+  - changeSet:
+      id: 20260722-02-seed-ui-widget-home
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Catalogo widget v1 della dashboard 'home': benvenuto (non-gated, garanzia
+        "mai vuota") + situazione aperta / da fatturare / documenti fermi (gated
+        area vendite). soglia NULL: semafori neutri in v1.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: widget
+        # L'area 'vendite' deve esistere: e' il gate dei tre widget gated e il
+        # FK fallirebbe a valle in modo meno leggibile.
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM config.aree_funzionali
+               WHERE id = 2
+                 AND schema_db = 'vendite';
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/ui/widget.csv
+            tableName: widget
+            schemaName: ui
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id,                  type: NUMERIC }
+              - column: { name: codice,              type: STRING }
+              - column: { name: etichetta,           type: STRING }
+              - column: { name: etichetta_i18n_key,  type: STRING }
+              - column: { name: deep_link,           type: CLOB }
+              - column: { name: contatore_key,       type: STRING }
+              - column: { name: soglia,              type: CLOB }
+              - column: { name: area_id,             type: NUMERIC }
+              - column: { name: azione_id,           type: NUMERIC }
+              - column: { name: attivo,              type: BOOLEAN }
+              - column: { name: data_insert,         type: STRING }
+              - column: { name: user_insert,         type: STRING }

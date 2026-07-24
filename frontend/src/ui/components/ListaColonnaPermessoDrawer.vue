@@ -132,7 +132,7 @@ function onCancel() {
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('ui_admin.permesso')"
+        :title="t('ui.admin.permesso')"
         icon="pi pi-shield"
       />
     </template>
@@ -143,7 +143,7 @@ function onCancel() {
     >
       <div class="form-grid">
         <div class="form-field">
-          <label>{{ t('ui_admin.permesso_colonna') }}</label>
+          <label>{{ t('ui.admin.permesso_colonna') }}</label>
           <template v-if="isEdit">
             <InputText
               :model-value="recordData?.colonna_codice ? `${recordData.colonna_etichetta} (${recordData.colonna_codice})` : ''"
@@ -155,7 +155,7 @@ function onCancel() {
               v-model="form.colonna_id"
               :options="catalogo"
               option-value="id"
-              :placeholder="t('ui_admin.permesso_seleziona_colonna')"
+              :placeholder="t('ui.admin.permesso_seleziona_colonna')"
               :loading="loadingCatalogo"
               :filter="catalogo.length > 5"
             >
@@ -164,7 +164,7 @@ function onCancel() {
                   {{ catalogoLabel(value) }}
                 </span>
                 <span v-else class="muted">
-                  {{ t('ui_admin.permesso_seleziona_colonna') }}
+                  {{ t('ui.admin.permesso_seleziona_colonna') }}
                 </span>
               </template>
               <template #option="{ option }">
@@ -175,7 +175,7 @@ function onCancel() {
         </div>
 
         <div class="form-field">
-          <label>{{ t('ui_admin.permesso_profilo') }}</label>
+          <label>{{ t('ui.admin.permesso_profilo') }}</label>
           <template v-if="isEdit">
             <InputText
               :model-value="recordData?.profilo_accesso_codice ?? ''"
@@ -187,13 +187,13 @@ function onCancel() {
               v-model="form.profilo_accesso_id"
               rel="config.profili_accesso"
               show-code
-              :placeholder="t('ui_admin.permesso_seleziona_profilo')"
+              :placeholder="t('ui.admin.permesso_seleziona_profilo')"
             />
           </template>
         </div>
 
         <div class="form-field">
-          <label>{{ t('ui_admin.permesso_livello_accesso') }}</label>
+          <label>{{ t('ui.admin.permesso_livello_accesso') }}</label>
           <Select
             v-model="form.livello_accesso"
             :options="livelliOptions"

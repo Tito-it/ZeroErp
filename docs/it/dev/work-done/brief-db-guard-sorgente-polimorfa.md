@@ -348,8 +348,8 @@ SELECT count(*) AS tot,
 
 ---
 
-*Redatto 2026-07-18 (sessione slice fatturazione DDT/resi, step 6b); decisioni chiuse,
-censimenti ripetuti (puliti) e SVILUPPO COMPLETATO lo stesso giorno in serata (§6).
-Prima di applicare: ripetere i censimenti (§1c / Appendice A) — il rubinetto resta
-aperto finché la 20260718-15 non è applicata. Aperti: applicazione+test (Tid),
-decisione D6/R1.*
+*Redatto 2026-07-18 (sessione slice fatturazione DDT/resi, step 6b); decisioni chiuse
+(D1..D6, D6/R1 → resta staccato), censimenti ripetuti (puliti) e SVILUPPO COMPLETATO lo
+stesso giorno in serata (§6). **CHIUSO**: migrations 20260718-15..19 applicate, pgTAP
+verdi, doc rigenerata, tutto committato (`07cde3432`). Brief spostato in `work-done/`
+il 2026-07-21.*

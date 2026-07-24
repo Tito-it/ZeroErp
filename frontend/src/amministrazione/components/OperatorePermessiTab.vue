@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: Componente permessi operatore riutilizzabile.
 // Sezioni: override aree, override azioni, emittenti scope.
-// Usato sia dentro il TabView di OperatoreDrawer sia dal
+// Usato sia dentro i Tabs di OperatoreDrawer sia dal
 // drawer dedicato OperatorePermessiDrawer (azione rapida dalla lista).
 // Reagisce automaticamente al cambio di authUserId.
 import { ref, computed, watch, nextTick } from 'vue'
@@ -91,8 +91,8 @@ const allowedScopeModes = computed(() => store.emittentiScope.allowed_scope_mode
 const canChangeScope = computed(() => store.emittentiScope.can_change_scope !== false)
 const changeScopeReason = computed(() => store.emittentiScope.change_scope_reason || null)
 const scopeModeOptions = computed(() => [
-  { value: 'GLOBAL', label: t('amm.scope_mode_global'), disabled: !allowedScopeModes.value.includes('GLOBAL') },
-  { value: 'SINGLE', label: t('amm.scope_mode_single'), disabled: !allowedScopeModes.value.includes('SINGLE') },
+  { value: 'GLOBAL', label: t('amministrazione.scope_mode_global'), disabled: !allowedScopeModes.value.includes('GLOBAL') },
+  { value: 'SINGLE', label: t('amministrazione.scope_mode_single'), disabled: !allowedScopeModes.value.includes('SINGLE') },
 ])
 
 // Pattern: store action gia' unwrappate → chiamata diretta + try/catch.
@@ -258,20 +258,20 @@ function onModelSelect(item, row) {
 <template>
   <div class="permessi-tab">
     <Message v-if="isSuperAdmin" severity="info" :closable="false" class="mb-3">
-      {{ t('amm.admin_full_access') }}
+      {{ t('amministrazione.admin_full_access') }}
     </Message>
 
     <!-- Override Aree -->
-    <h4>{{ t('amm.override_aree_title') }}</h4>
+    <h4>{{ t('amministrazione.override_aree_title') }}</h4>
     <DataTable :value="localAree" class="mb-2" size="small">
-      <Column :header="t('amm.col_area')">
+      <Column :header="t('amministrazione.col_area')">
         <template #body="{ data }">
           <Select v-model="data.area_id" :options="areeFunzionali.items.value"
             option-label="descrizione" option-value="id" class="w-full"
             :disabled="isReadonly" />
         </template>
       </Column>
-      <Column :header="t('amm.col_livello')">
+      <Column :header="t('amministrazione.col_livello')">
         <template #body="{ data }">
           <Select v-model="data.livello" :options="livelloOptions"
             option-label="label" option-value="value" class="w-full"
@@ -285,21 +285,21 @@ function onModelSelect(item, row) {
       </Column>
     </DataTable>
     <div v-if="!isReadonly" class="flex justify-between mb-4">
-      <Button :label="t('amm.add_override')" :icon="MANAGE_ICONS.ADD" text @click="addAreaOverride" />
+      <Button :label="t('amministrazione.add_override')" :icon="MANAGE_ICONS.ADD" text @click="addAreaOverride" />
       <Button :label="t('common.save')" :icon="MANAGE_ICONS.CONFIRM" size="small" @click="saveAree" />
     </div>
 
     <!-- Override Azioni -->
-    <h4>{{ t('amm.override_azioni_title') }}</h4>
+    <h4>{{ t('amministrazione.override_azioni_title') }}</h4>
     <DataTable :value="localAzioni" class="mb-2" size="small">
-      <Column :header="t('amm.col_azione')">
+      <Column :header="t('amministrazione.col_azione')">
         <template #body="{ data }">
           <Select v-model="data.azione_id" :options="azioniProcesso.items.value"
             option-label="descrizione" option-value="id" class="w-full"
             :disabled="isReadonly" />
         </template>
       </Column>
-      <Column :header="t('amm.col_abilitata')" style="width: 6rem">
+      <Column :header="t('amministrazione.col_abilitata')" style="width: 6rem">
         <template #body="{ data }">
           <ToggleSwitch v-model="data.abilitata" :disabled="isReadonly" />
         </template>
@@ -311,21 +311,21 @@ function onModelSelect(item, row) {
       </Column>
     </DataTable>
     <div v-if="!isReadonly" class="flex justify-between mb-4">
-      <Button :label="t('amm.add_override')" :icon="MANAGE_ICONS.ADD" text @click="addAzioneOverride" />
+      <Button :label="t('amministrazione.add_override')" :icon="MANAGE_ICONS.ADD" text @click="addAzioneOverride" />
       <Button :label="t('common.save')" :icon="MANAGE_ICONS.CONFIRM" size="small" @click="saveAzioni" />
     </div>
 
     <!-- Override Oggetti (v2 permessi — livello model) -->
-    <h4>{{ t('amm.override_oggetti_title') }}</h4>
+    <h4>{{ t('amministrazione.override_oggetti_title') }}</h4>
     <DataTable :value="localOggetti" class="mb-2" size="small">
-      <Column :header="t('amm.col_model')">
+      <Column :header="t('amministrazione.col_model')">
         <template #body="{ data }">
           <span v-tooltip.top="modelOverrideReason(data)" class="block w-full">
             <Select
               :modelValue="data.app_label && data.model_name ? modelOverrideOptions.find(m => m.app_label === data.app_label && m.model_name === data.model_name) : null"
               :options="modelOverrideOptions"
               option-label="label"
-              :placeholder="t('amm.select_model')"
+              :placeholder="t('amministrazione.select_model')"
               class="w-full"
               :disabled="isReadonly || !!modelOverrideReason(data)"
               @update:modelValue="v => onModelSelect(v, data)"
@@ -333,7 +333,7 @@ function onModelSelect(item, row) {
           </span>
         </template>
       </Column>
-      <Column :header="t('amm.col_livello')">
+      <Column :header="t('amministrazione.col_livello')">
         <template #body="{ data }">
           <Select v-model="data.livello" :options="livelloOptions"
             option-label="label" option-value="value" class="w-full"
@@ -347,13 +347,13 @@ function onModelSelect(item, row) {
       </Column>
     </DataTable>
     <div v-if="!isReadonly" class="flex justify-between mb-4">
-      <Button :label="t('amm.add_override')" :icon="MANAGE_ICONS.ADD" text @click="addOggettoOverride" />
+      <Button :label="t('amministrazione.add_override')" :icon="MANAGE_ICONS.ADD" text @click="addOggettoOverride" />
       <Button :label="t('common.save')" :icon="MANAGE_ICONS.CONFIRM" size="small" @click="saveOggetti" />
     </div>
 
     <!-- Emittenti Scope (Fase 2 multi-face) -->
-    <h4>{{ t('amm.emittenti_scope_title') }}</h4>
-    <p class="text-sm text-color-secondary mb-2">{{ t('amm.emittenti_scope_hint') }}</p>
+    <h4>{{ t('amministrazione.emittenti_scope_title') }}</h4>
+    <p class="text-sm text-color-secondary mb-2">{{ t('amministrazione.emittenti_scope_hint') }}</p>
 
     <!-- Radio scope: GLOBAL/SINGLE. `MULTI` non e' incluso in
          allowed_scope_modes post Q2 (architetturalmente chiuso). -->
@@ -383,7 +383,7 @@ function onModelSelect(item, row) {
       :options="emittentiFiscali.items.value"
       option-label="ragione_sociale"
       option-value="id"
-      :placeholder="t('amm.select_emittenti')"
+      :placeholder="t('amministrazione.select_emittenti')"
       show-clear
       class="w-full mb-2"
       :disabled="isReadonly || !canChangeScope"

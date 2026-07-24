@@ -34,6 +34,7 @@ from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services.vendite_service import (
     fn_dash_competenza_attivita,
+    fn_dash_competenza_commesse,
     fn_dash_competenza_errori,
     fn_dash_competenza_mensile,
 )
@@ -195,6 +196,123 @@ class ApiDashboardCompetenzaAttivita(DomainAPIView):
         # Scope emittente interamente DB-side (GUC fail-closed nella vista):
         # la view non passa alcun auth_user_id.
         data = fn_dash_competenza_attivita(
+            competenza_mese=competenza_mese,
+            stadio=stadio,
+            solo_ritardo=bool(solo_ritardo),
+            order_by=order_by,
+            order_dir=order_dir,
+            page=page,
+            page_size=page_size,
+        )
+        return success_response(data)
+
+
+class ApiDashboardCompetenzaCommesse(DomainAPIView):
+    """GET /api/v1/vendite/dashboard-competenza/commesse/ — drill-down per commessa."""
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="vendite_dashboard_competenza_commesse",
+        parameters=[
+            OpenApiParameter(
+                name="competenza_mese",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description="Mese di competenza ISO (YYYY-MM-DD, normalizzato al 1° del mese).",
+            ),
+            OpenApiParameter(
+                name="stadio",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Filtro stadio funnel: DA_APPROVARE | DA_EMETTERE | "
+                    "EMESSA_NON_FATTURATA | FATTURATA (default: tutti)."
+                ),
+            ),
+            OpenApiParameter(
+                name="solo_ritardo",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Se true, solo attivita' emesse in ritardo (recuperi tardivi).",
+            ),
+            OpenApiParameter(
+                name="order_by",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Colonna di ordinamento (whitelist): commessa_codice | "
+                    "cliente_display | n_attivita | valore_tot (default) | "
+                    "data_attivita_max. Colonna non ammessa -> 400."
+                ),
+            ),
+            OpenApiParameter(
+                name="order_dir",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Direzione ordinamento: asc | desc. Valore diverso -> 400.",
+            ),
+            OpenApiParameter(
+                name="page",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Numero pagina (default 1).",
+            ),
+            OpenApiParameter(
+                name="page_size",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Dimensione pagina (default 50, max 200).",
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeDashCompetenzaCommesseResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeDashCompetenzaCommesseData",
+                        fields={
+                            "count": serializers.IntegerField(),
+                            "page": serializers.IntegerField(),
+                            "page_size": serializers.IntegerField(),
+                            "total_pages": serializers.IntegerField(),
+                            "results": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET la lista paginata AGGREGATA per commessa del
+    #        mese/stadio di competenza (DEC-4: una riga per commessa; il dettaglio
+    #        a grana attivita' resta nel drawer di gestione).
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        competenza_mese = qp_iso_date_optional(qp.get("competenza_mese"), "competenza_mese")
+        ErrorManager.require(
+            competenza_mese is not None,
+            code="E_VENDITE_VALIDATION",
+            message="Parametro competenza_mese obbligatorio.",
+            function_name="vendite.api.views_dashboard_competenza.commesse",
+        )
+        assert competenza_mese is not None
+        stadio = qp_str_upper(qp.get("stadio"))
+        solo_ritardo = qp_bool_optional(qp.get("solo_ritardo"), "solo_ritardo")
+        order_by = qp_str(qp.get("order_by"))
+        order_dir = qp_str(qp.get("order_dir"))
+        page = qp_int_strict(qp.get("page"), "page", 1)
+        page_size = qp_int_strict(qp.get("page_size"), "page_size", 50)
+
+        data = fn_dash_competenza_commesse(
             competenza_mese=competenza_mese,
             stadio=stadio,
             solo_ritardo=bool(solo_ritardo),

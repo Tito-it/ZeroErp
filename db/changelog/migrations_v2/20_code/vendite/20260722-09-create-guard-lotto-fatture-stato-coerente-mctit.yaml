@@ -1,0 +1,315 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GUARD di coerenza stato lotto <-> stato fatture
+# (brief-db-guard-coerenza-stato-lotto-fatture §3.1).
+#
+# INVARIANTE (§2): per ogni lotto, ogni fattura collegata che non sia 'esclusa'
+# (fatturazione_lotti_fatture.esclusa) ne' 'critical' (fatture.critical) deve
+# avere lo stesso stato_doc_fiscale_id del lotto, A FINE TRANSAZIONE.
+# Le due eccezioni non sono negoziabili: sono gia' la semantica di
+# fn_sync_lotto_fatture_stato, che salta esattamente quelle righe.
+#
+# ------------------------------------------------------------
+# PERCHE' DEFERRED E NON IMMEDIATE
+# ------------------------------------------------------------
+# La pipeline aggiorna il lotto e POI sincronizza le fatture, nella stessa
+# transazione (lo step e' atomico). Un trigger immediato fallirebbe sullo stato
+# intermedio, che e' legittimo. DEFERRABLE INITIALLY DEFERRED valuta solo il
+# risultato al COMMIT: e' esattamente cio' che l'invariante descrive.
+#
+# ⚠️ CONSEGUENZA SUI TEST: un constraint trigger DEFERRED non scatta se la
+# transazione finisce in ROLLBACK. 140 pgTAP su 144 chiudono in ROLLBACK,
+# quindi (a) nessun test esistente si rompe, ma (b) per ESERCITARE il guard in
+# pgTAP serve un `SET CONSTRAINTS ALL IMMEDIATE` esplicito. Senza quello il
+# test passerebbe senza aver verificato nulla. Vedi
+# db/pgtap/vendite/test-guard-lotto-fatture-stato-coerente.sql.
+#
+# ------------------------------------------------------------
+# VALIDAZIONE §2 — flussi legittimi verificati sul codice vivo (2026-07-22)
+# ------------------------------------------------------------
+# Passate in rassegna tutte le funzioni VIVE (doc auto-gen) che scrivono i due
+# stati. Nessuna viola l'invariante, quindi non servono eccezioni oltre alle due:
+#   - fn_sync_lotto_fatture_stato .. allinea le fatture al target saltando
+#                                    esclusa/critical -> conforme;
+#   - fn_close_giornaliero_lotto .. porta lotto E fatture a INVIATA insieme
+#                                    (allinea anche escluse/critical: piu'
+#                                    stretto dell'invariante) -> conforme;
+#   - fn_reset_lotto_draft ........ lotto -> ANNULLATA e fn_cleanup_fatture_by_ids
+#                                    CANCELLA fatture e righe ponte: restano zero
+#                                    fatture, il confronto non ha soggetti -> conforme;
+#   - fn_numera_fattura_opz_emessa  SET stato = COALESCE(stato, EMESSA) su una
+#                                    singola fattura: scrive solo se lo stato era
+#                                    NULL. Caso limite noto, vedi sotto.
+# In particolare SDI/INVIATA e il reset -- i due sospetti indicati nel brief --
+# NON sono eccezioni da aggiungere.
+#
+# ------------------------------------------------------------
+# LA CAUSA A MONTE E' LATO BE (non chiusa da questo changeset)
+# ------------------------------------------------------------
+# backend/apps/vendite/services/pipeline_runner.py::_execute_pipeline_step
+# aggiorna lo stato del lotto in modo INCONDIZIONATO (update_lotto_stato_doc)
+# ma sincronizza le fatture solo `if not dry_run`, dentro una
+# transaction.atomic() che committa (nessun set_rollback per il dry-run).
+# Risultato: un dry-run avanza il lotto e lascia indietro le fatture, in modo
+# permanente. E' la genesi dell'incidente dei lotti 106/107.
+# Con questo guard attivo quel percorso FALLISCE AL COMMIT invece di corrompere
+# in silenzio: il difetto diventa impossibile da ignorare, ma il dry-run resta
+# inutilizzabile finche' il BE non e' sistemato. E' una scelta consapevole
+# (nessuna produzione), da chiudere lato dev/backend-tid.
+#
+# ------------------------------------------------------------
+# LIMITE DOCUMENTATO: lotto con stato_doc_fiscale_id NULL
+# ------------------------------------------------------------
+# La colonna e' nullable su entrambe le tabelle. Se il lotto ha stato NULL il
+# guard NON verifica: un confronto con NULL non e' significativo e produrrebbe
+# falsi positivi sui lotti parzialmente inizializzati. La classe di guasto reale
+# ("lotto avanzato, fatture indietro") richiede per definizione uno stato lotto
+# valorizzato, quindi resta coperta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260722-09-create-guard-lotto-fatture-stato-coerente-mctit.yaml
+
+  - changeSet:
+      id: 20260722-09-create-guard-lotto-fatture-stato-coerente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard DEFERRED sull'invariante lotto <-> stato fatture: al COMMIT ogni
+        fattura non esclusa e non critical deve avere lo stato fiscale del suo
+        lotto. fn_guard + trgfn + 3 constraint trigger (fatture,
+        fatturazione_lotti, fatturazione_lotti_fatture). Errore 556.
+      # NB: NIENTE preCondition sul codice errore E_LOTTO_FATTURE_STATO_INCOERENTE.
+      # Le fasi girano nell'ordine 00_schema -> 20_code -> 80_data: da qui il seed
+      # dei messaggi non e' ancora stato caricato e il check darebbe sempre 0.
+      # Non e' un problema: il codice serve solo A RUNTIME, quando il guard
+      # solleva, e a quel punto 80_data della stessa run lo ha gia' caricato.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: fatture
+        - tableExists:
+            schemaName: vendite
+            tableName: fatturazione_lotti
+        - tableExists:
+            schemaName: vendite
+            tableName: fatturazione_lotti_fatture
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ========================================================
+              -- 1) Guard puro: verifica l'invariante per UN lotto.
+              --    fn_guard_* = fail-fast, puo' sollevare (linee guida SQL).
+              -- ========================================================
+              CREATE OR REPLACE FUNCTION vendite.fn_guard_lotto_fatture_stato_coerente(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $fn$
+              DECLARE
+                v_stato_lotto vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
+                v_count       integer;
+                v_dettaglio   jsonb;
+              BEGIN
+                IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                  RETURN;
+                END IF;
+
+                -- Il lotto puo' essere stato cancellato nella stessa transazione:
+                -- essendo il check differito, qui la riga potrebbe non esserci piu'.
+                SELECT l.stato_doc_fiscale_id
+                  INTO v_stato_lotto
+                  FROM vendite.fatturazione_lotti l
+                 WHERE l.id = p_lotto_id;
+
+                IF NOT FOUND THEN
+                  RETURN;
+                END IF;
+
+                -- Limite documentato: senza stato lotto il confronto non e'
+                -- significativo (vedi testata del changeset).
+                IF v_stato_lotto IS NULL THEN
+                  RETURN;
+                END IF;
+
+                -- Fatture disallineate, escluse le due eccezioni di semantica.
+                -- Conteggio completo: e' il numero riportato nel messaggio.
+                SELECT count(*)
+                  INTO v_count
+                  FROM vendite.fatturazione_lotti_fatture lf
+                  JOIN vendite.fatture f ON f.id = lf.fattura_id
+                 WHERE lf.lotto_id = p_lotto_id
+                   AND COALESCE(lf.esclusa,  FALSE) IS FALSE
+                   AND COALESCE(f.critical, FALSE) IS FALSE
+                   AND f.stato_doc_fiscale_id IS DISTINCT FROM v_stato_lotto;
+
+                IF v_count = 0 THEN
+                  RETURN;
+                END IF;
+
+                SELECT jsonb_agg(x.riga ORDER BY x.fattura_id)
+                  INTO v_dettaglio
+                  FROM (
+                    SELECT f.id AS fattura_id,
+                           jsonb_build_object(
+                             'fattura_id',       f.id,
+                             'stato_fattura_id', f.stato_doc_fiscale_id,
+                             'esclusa',          COALESCE(lf.esclusa,  FALSE),
+                             'critical',         COALESCE(f.critical, FALSE)
+                           ) AS riga
+                      FROM vendite.fatturazione_lotti_fatture lf
+                      JOIN vendite.fatture f ON f.id = lf.fattura_id
+                     WHERE lf.lotto_id = p_lotto_id
+                       AND COALESCE(lf.esclusa,  FALSE) IS FALSE
+                       AND COALESCE(f.critical, FALSE) IS FALSE
+                       AND f.stato_doc_fiscale_id IS DISTINCT FROM v_stato_lotto
+                     ORDER BY f.id
+                     LIMIT 20
+                  ) x;
+
+                PERFORM script.fn_log_and_raise_error(
+                  'vendite',
+                  'fn_guard_lotto_fatture_stato_coerente',
+                  'E_LOTTO_FATTURE_STATO_INCOERENTE',
+                  jsonb_build_object(
+                    'detail',              'Stato fatture non allineato allo stato del lotto a fine transazione',
+                    'lotto_id',            p_lotto_id,
+                    'stato_lotto_id',      v_stato_lotto,
+                    'fatture_incoerenti',  COALESCE(v_dettaglio, '[]'::jsonb),
+                    'totale_incoerenti',   v_count,
+                    'rimedio',             'SELECT vendite.fn_sync_lotto_fatture_stato(' || p_lotto_id::text || ', <stato_target>)'
+                  ),
+                  NULL::uuid,
+                  p_lotto_id::text,
+                  v_count::text
+                );
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION vendite.fn_guard_lotto_fatture_stato_coerente(bigint) IS
+                'Guard dell''invariante lotto <-> fatture: solleva E_LOTTO_FATTURE_STATO_INCOERENTE (556) se il lotto ha fatture non escluse e non critical con stato_doc_fiscale_id diverso dal proprio. Pensata per essere invocata da un CONSTRAINT TRIGGER DEFERRED (valutazione al COMMIT): gli stati intermedi dentro la transazione sono leciti. No-op se il lotto non esiste piu'' o ha stato NULL.';
+
+              -- ========================================================
+              -- 2) Trigger function: risolve i lotti impattati e delega.
+              -- ========================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_lotto_fatture_guard_stato_coerente()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $trg$
+              DECLARE
+                v_lotto_id vendite.fatturazione_lotti.id%TYPE;
+              BEGIN
+                IF TG_TABLE_NAME = 'fatturazione_lotti' THEN
+                  -- Il lotto si e' mosso: verifica le sue fatture.
+                  PERFORM vendite.fn_guard_lotto_fatture_stato_coerente(NEW.id);
+
+                ELSIF TG_TABLE_NAME = 'fatture' THEN
+                  -- La fattura si e' mossa: verifica ogni lotto che la contiene
+                  -- (lo schema del ponte ammette 1:N, anche se oggi e' 1:1).
+                  FOR v_lotto_id IN
+                    SELECT DISTINCT lf.lotto_id
+                      FROM vendite.fatturazione_lotti_fatture lf
+                     WHERE lf.fattura_id = NEW.id
+                  LOOP
+                    PERFORM vendite.fn_guard_lotto_fatture_stato_coerente(v_lotto_id);
+                  END LOOP;
+
+                ELSIF TG_TABLE_NAME = 'fatturazione_lotti_fatture' THEN
+                  -- Il legame e' cambiato (aggancio/sgancio/esclusione): il
+                  -- perimetro dell'invariante cambia, quindi si riverifica.
+                  IF TG_OP = 'DELETE' THEN
+                    v_lotto_id := OLD.lotto_id;
+                  ELSE
+                    v_lotto_id := NEW.lotto_id;
+                  END IF;
+                  PERFORM vendite.fn_guard_lotto_fatture_stato_coerente(v_lotto_id);
+
+                  -- Su UPDATE il lotto puo' essere cambiato: verifica anche il vecchio.
+                  IF TG_OP = 'UPDATE' AND OLD.lotto_id IS DISTINCT FROM NEW.lotto_id THEN
+                    PERFORM vendite.fn_guard_lotto_fatture_stato_coerente(OLD.lotto_id);
+                  END IF;
+                END IF;
+
+                -- AFTER trigger: il valore di ritorno e' ignorato.
+                RETURN NULL;
+              END;
+              $trg$;
+
+              COMMENT ON FUNCTION vendite.trgfn_lotto_fatture_guard_stato_coerente() IS
+                'Trigger function condivisa dai constraint trigger DEFERRED su vendite.fatture, vendite.fatturazione_lotti e vendite.fatturazione_lotti_fatture: risolve i lotti impattati dalla riga e delega a vendite.fn_guard_lotto_fatture_stato_coerente.';
+
+              -- ========================================================
+              -- 3) Constraint trigger DEFERRED sulle tre tabelle.
+              --    Fase _def_ (deferrable) come da convenzione dei guard
+              --    differiti gia' presenti (anagrafiche.*_def_guard_*).
+              -- ========================================================
+
+              -- 3a) La fattura cambia stato (o smette di essere critical).
+              DROP TRIGGER IF EXISTS trg_fatture_def_guard_stato_lotto_coerente_ins_upd
+                ON vendite.fatture;
+
+              CREATE CONSTRAINT TRIGGER trg_fatture_def_guard_stato_lotto_coerente_ins_upd
+              AFTER INSERT OR UPDATE OF stato_doc_fiscale_id, critical
+              ON vendite.fatture
+              DEFERRABLE INITIALLY DEFERRED
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_lotto_fatture_guard_stato_coerente();
+
+              COMMENT ON TRIGGER trg_fatture_def_guard_stato_lotto_coerente_ins_upd
+                ON vendite.fatture
+                IS 'Al COMMIT verifica che la fattura sia allineata allo stato dei lotti che la contengono. Include UPDATE OF critical: togliendo il flag la fattura rientra nel perimetro dell''invariante.';
+
+              -- 3b) Il lotto cambia stato fiscale.
+              DROP TRIGGER IF EXISTS trg_fatturazione_lotti_def_guard_stato_fatture_coerente_upd
+                ON vendite.fatturazione_lotti;
+
+              CREATE CONSTRAINT TRIGGER trg_fatturazione_lotti_def_guard_stato_fatture_coerente_upd
+              AFTER UPDATE OF stato_doc_fiscale_id
+              ON vendite.fatturazione_lotti
+              DEFERRABLE INITIALLY DEFERRED
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_lotto_fatture_guard_stato_coerente();
+
+              COMMENT ON TRIGGER trg_fatturazione_lotti_def_guard_stato_fatture_coerente_upd
+                ON vendite.fatturazione_lotti
+                IS 'Al COMMIT verifica che le fatture del lotto abbiano seguito il lotto. E'' il trigger che intercetta il caso "lotto avanzato senza sync" (incidente lotti 106/107).';
+
+              -- 3c) Cambia il legame lotto-fattura o il flag di esclusione.
+              DROP TRIGGER IF EXISTS trg_fatturazione_lotti_fatture_def_guard_stato_coerente_ins_upd_dlt
+                ON vendite.fatturazione_lotti_fatture;
+
+              CREATE CONSTRAINT TRIGGER trg_fatturazione_lotti_fatture_def_guard_stato_coerente_ins_upd_dlt
+              AFTER INSERT OR UPDATE OF lotto_id, fattura_id, esclusa OR DELETE
+              ON vendite.fatturazione_lotti_fatture
+              DEFERRABLE INITIALLY DEFERRED
+              FOR EACH ROW
+              EXECUTE FUNCTION vendite.trgfn_lotto_fatture_guard_stato_coerente();
+
+              COMMENT ON TRIGGER trg_fatturazione_lotti_fatture_def_guard_stato_coerente_ins_upd_dlt
+                ON vendite.fatturazione_lotti_fatture
+                IS 'Al COMMIT verifica il lotto quando cambia il perimetro: aggancio/sgancio di una fattura o revoca del flag esclusa (che fa rientrare la riga nell''invariante).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_def_guard_stato_lotto_coerente_ins_upd
+                ON vendite.fatture;
+              DROP TRIGGER IF EXISTS trg_fatturazione_lotti_def_guard_stato_fatture_coerente_upd
+                ON vendite.fatturazione_lotti;
+              DROP TRIGGER IF EXISTS trg_fatturazione_lotti_fatture_def_guard_stato_coerente_ins_upd_dlt
+                ON vendite.fatturazione_lotti_fatture;
+              DROP FUNCTION IF EXISTS vendite.trgfn_lotto_fatture_guard_stato_coerente();
+              DROP FUNCTION IF EXISTS vendite.fn_guard_lotto_fatture_stato_coerente(bigint);

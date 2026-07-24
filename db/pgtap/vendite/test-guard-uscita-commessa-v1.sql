@@ -1,0 +1,320 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: guard di USCITA dalla commessa (->CHIUSA / ->ANNULLATA),
+--       arco IN_ESECUZIONE->CHIUSA e capabilities con enabled/reasons.
+-- Brief: brief-db-guard-uscita-commessa-e-capabilities (2026-07-24).
+--
+-- PERCHE' ESISTE: CHIUSA e ANNULLATA sono stati TERMINALI (nessun arco uscente
+-- in vendite.transizioni_stati_commessa) e non emittibili. Chiudere una commessa
+-- con righe APPROVATE+NON_EMESSE le perde per sempre; annullarne una con righe
+-- EMESSE le fa sparire dalla dashboard di competenza mentre le fatture restano
+-- vive. Nessuna via applicativa di recupero -> il guard e' l'unica difesa.
+--
+-- SORGENTE UNICA: la regola vive nelle funzioni pure
+-- script.fn_check_commessa_chiudibile / _annullabile, usate SIA dal guard
+-- (che solleva) SIA da script.fn_available_actions_commessa (che espone
+-- enabled/reasons). I test 5/9/12 verificano le fn, i test 6/13/15 il guard,
+-- i test 7/8/10/14 le capabilities: se le due strade divergessero, questi
+-- gruppi si contraddirebbero.
+--
+-- Nota fixture: NON si usa fn_emit (esige una ROOT source documentale reale).
+-- Le righe EMESSE si creano direttamente via fn_upsert_commessa_attivita: il
+-- guard di immutabilita' quantita' agisce su UPDATE, non su INSERT.
+-- Il guard tipo_doc_emittibile scatta solo su APPROVATA+NON_EMESSA, ma il
+-- tipo_doc si passa comunque ovunque per realismo.
+--
+-- Nota TAP: le chiamate di setup NON assertive stanno dentro blocchi DO/PERFORM.
+-- Un `SELECT fn(...)` nudo emetterebbe righe di risultato nel flusso che
+-- pg_prove interpreta come TAP, sporcando l'esito.
+-- ------------------------------------------------------------
+-- Indice test (1..16):
+--   1   script.fn_check_commessa_chiudibile presente
+--   2   script.fn_check_commessa_annullabile presente
+--   3   matrice: arco IN_ESECUZIONE->CHIUSA (3->5) presente, attivo e manuale
+--   4   codici errore 558/559 presenti a catalogo
+--   5   [A] _chiudibile: motivo 559 con righe APPROVATE+NON_EMESSE
+--   6   [A] ->CHIUSA con righe pendenti rifiutata
+--   7   [A] capabilities: azione chiudi presente con enabled=false
+--   8   [A] capabilities: reasons di chiudi porta il reason_key
+--   9   [B] _chiudibile: [] quando non resta nulla di pendente
+--  10   [B] capabilities in IN_ESECUZIONE: chiudi esposta ed enabled=true
+--  11   [B] ->CHIUSA da IN_ESECUZIONE ammessa  <- chiude il vicolo cieco
+--  12   [C] _annullabile: motivo 558 con righe EMESSE
+--  13   [C] ->ANNULLATA con righe emesse rifiutata
+--  14   [C] capabilities: can_change_state=false se tutte le azioni sono disabilitate
+--  15   [D] ->ANNULLATA senza righe emesse ammessa
+--  16   fn_get_commessa_stato espone commessa_codice e cliente_display
+-- ------------------------------------------------------------
+
+BEGIN;
+SELECT plan(16);
+
+-- ============================================================
+-- 1..4 STRUTTURA
+-- ============================================================
+
+SELECT has_function('script', 'fn_check_commessa_chiudibile',
+    '1) script.fn_check_commessa_chiudibile presente');
+
+SELECT has_function('script', 'fn_check_commessa_annullabile',
+    '2) script.fn_check_commessa_annullabile presente');
+
+-- L'arco che chiude il vicolo cieco: senza, una commessa riaperta e tutta
+-- emessa non ha piu' uscite se non ANNULLATA (che il guard vieta).
+SELECT ok(
+  EXISTS (
+    SELECT 1
+      FROM vendite.transizioni_stati_commessa t
+      JOIN vendite.stati_commessa sd ON sd.id = t.stato_da_id
+      JOIN vendite.stati_commessa sa ON sa.id = t.stato_a_id
+     WHERE sd.codice_interno = 'IN_ESECUZIONE'
+       AND sa.codice_interno = 'CHIUSA'
+       AND t.attivo IS TRUE
+       AND (t.meta->>'action_key') = 'chiudi'
+       AND COALESCE((t.meta->>'manuale')::boolean, false) IS TRUE
+  ),
+  '3) matrice: arco IN_ESECUZIONE->CHIUSA presente, attivo e manuale');
+
+SELECT is(
+  (SELECT count(*)::int FROM config.messaggi_errore
+    WHERE codice IN ('E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE',
+                     'E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI')
+      AND lingua = 'it'),
+  2,
+  '4) codici errore 558/559 presenti a catalogo');
+
+-- ============================================================
+-- FIXTURE COMUNI
+-- ============================================================
+
+CREATE TEMP TABLE tmp_refs_guc AS
+SELECT
+  (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS billing_account_id,
+  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS utility_id,
+  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
+  (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE
+    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1) AS articolo_id,
+  (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE
+    ORDER BY u.id LIMIT 1) AS uom_id,
+  (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE
+    ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id;
+
+-- Scopo: crea una commessa isolata (force_new) che nasce in BOZZA.
+CREATE OR REPLACE FUNCTION pg_temp.fx_commessa(p_scope text)
+RETURNS vendite.commesse.id%TYPE LANGUAGE sql AS $fx$
+  SELECT vendite.fn_get_or_create_commessa(
+    p_billing_account_id     => (SELECT billing_account_id FROM tmp_refs_guc),
+    p_utility_id             => (SELECT utility_id FROM tmp_refs_guc),
+    p_tipo_commessa          => 'AUTO',
+    p_policy_fatturazione    => 'DA_DOCUMENTO',
+    p_fatturazione_immediata => false,
+    p_priorita_operativa     => 'NORMALE',
+    p_competenza_dal         => DATE '2026-09-01',
+    p_competenza_al          => DATE '2026-09-30',
+    p_meta                   => jsonb_build_object('test_scope', p_scope),
+    p_force_new              => true);
+$fx$;
+
+-- Scopo: aggiunge una riga alla commessa negli stati richiesti.
+CREATE OR REPLACE FUNCTION pg_temp.fx_riga(
+  p_commessa_id vendite.commesse.id%TYPE,
+  p_seg         vendite.commesse_attivita.segment_key%TYPE,
+  p_appr        vendite.commesse_attivita.stato_approvazione%TYPE,
+  p_emis        vendite.commesse_attivita.stato_emissione%TYPE)
+RETURNS vendite.commesse_attivita.id%TYPE LANGUAGE sql AS $fx$
+  SELECT r.attivita_id
+    FROM vendite.fn_upsert_commessa_attivita(
+      p_commessa_id                   => p_commessa_id,
+      p_segment_key                   => p_seg,
+      p_articolo_id                   => (SELECT articolo_id FROM tmp_refs_guc),
+      p_istanza_utility_id            => (SELECT istanza_utility_id FROM tmp_refs_guc),
+      p_data_attivita                 => DATE '2026-09-15',
+      p_uom_id                        => (SELECT uom_id FROM tmp_refs_guc),
+      p_quantita                      => 1.000000,
+      p_competenza_mese               => DATE '2026-09-01',
+      p_competenza_dal                => DATE '2026-09-01',
+      p_competenza_al                 => DATE '2026-09-30',
+      p_prezzo_snapshot               => 10.0000000000,
+      p_prezzo_base_snapshot          => NULL,
+      p_origine_prezzo                => NULL,
+      p_tipo_variazione_applicata     => NULL,
+      p_valore_variazione_applicata   => NULL,
+      p_promo_id                      => NULL,
+      p_contratto_id                  => NULL,
+      p_categoria_cliente_id_snapshot => NULL,
+      p_classe_utenza_id_snapshot     => NULL,
+      p_tipo_doc_fiscale_id           => (SELECT tipo_doc_fiscale_id FROM tmp_refs_guc),
+      p_stato_approvazione            => p_appr,
+      p_stato_emissione               => p_emis,
+      p_tipo_movimento                => 'NORMALE',
+      p_tipo_consumo                  => 'CONGUAGLIO',
+      p_meta                          => jsonb_build_object('case', 'GUC')
+    ) r;
+$fx$;
+
+-- ============================================================
+-- [A] PRONTA_FATTURAZIONE con una riga APPROVATA + NON_EMESSA
+-- ============================================================
+
+CREATE TEMP TABLE tmp_a AS SELECT pg_temp.fx_commessa('guard_uscita_A') AS commessa_id;
+
+DO $setup$
+DECLARE v_id vendite.commesse.id%TYPE := (SELECT commessa_id FROM tmp_a);
+BEGIN
+  PERFORM pg_temp.fx_riga(v_id, 'SEG-GUC-A1', 'APPROVATA', 'NON_EMESSA');
+  -- BOZZA -> PRONTA_FATTURAZIONE (arco 1->4): la precondizione di INGRESSO
+  -- (>=1 riga APPROVATA+NON_EMESSA) e' soddisfatta dalla riga appena creata.
+  PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'PRONTA_FATTURAZIONE');
+END
+$setup$;
+
+SELECT is(
+  (SELECT (m ->> 'codice') || '|' || (m ->> 'dettaglio')
+     FROM (SELECT script.fn_check_commessa_chiudibile(
+                    (SELECT commessa_id FROM tmp_a)) -> 0 AS m) x),
+  'E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI|1',
+  '5) _chiudibile: motivo 559 con dettaglio = numero righe pendenti');
+
+SELECT throws_ok(
+  $$ SELECT * FROM vendite.fn_cambia_stato_commessa(
+       (SELECT commessa_id FROM tmp_a), 'CHIUSA') $$,
+  'P0001', NULL,
+  '6) ->CHIUSA con righe APPROVATE+NON_EMESSE rifiutata');
+
+SELECT is(
+  (SELECT (a ->> 'enabled')::boolean
+     FROM jsonb_array_elements(
+            script.fn_available_actions_commessa((SELECT commessa_id FROM tmp_a))
+              -> 'available_actions') AS a
+    WHERE a ->> 'key' = 'chiudi'),
+  false,
+  '7) capabilities: azione chiudi presente ma enabled=false');
+
+SELECT is(
+  (SELECT a -> 'reasons' -> 0 ->> 'reason_key'
+     FROM jsonb_array_elements(
+            script.fn_available_actions_commessa((SELECT commessa_id FROM tmp_a))
+              -> 'available_actions') AS a
+    WHERE a ->> 'key' = 'chiudi'),
+  'vendite.commesse.azione_reason.righe_da_emettere',
+  '8) capabilities: reasons di chiudi porta il reason_key per il tooltip');
+
+-- ============================================================
+-- [B] IN_ESECUZIONE senza pendenti (una sola riga in BOZZA).
+--     E' il caso del vicolo cieco: prima di questo brief non poteva
+--     ne' andare a PRONTA (nessuna approvata) ne' a CHIUSA (arco assente).
+-- ============================================================
+
+CREATE TEMP TABLE tmp_b AS SELECT pg_temp.fx_commessa('guard_uscita_B') AS commessa_id;
+
+DO $setup$
+DECLARE v_id vendite.commesse.id%TYPE := (SELECT commessa_id FROM tmp_b);
+BEGIN
+  PERFORM pg_temp.fx_riga(v_id, 'SEG-GUC-B1', 'BOZZA', 'NON_EMESSA');
+  PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'APERTA');
+  PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'IN_ESECUZIONE');
+END
+$setup$;
+
+SELECT is(
+  script.fn_check_commessa_chiudibile((SELECT commessa_id FROM tmp_b)),
+  '[]'::jsonb,
+  '9) _chiudibile: nessun motivo quando non resta nulla di pendente');
+
+SELECT is(
+  (SELECT (a ->> 'enabled')::boolean
+     FROM jsonb_array_elements(
+            script.fn_available_actions_commessa((SELECT commessa_id FROM tmp_b))
+              -> 'available_actions') AS a
+    WHERE a ->> 'key' = 'chiudi'),
+  true,
+  '10) capabilities: in IN_ESECUZIONE chiudi e'' esposta e abilitata (arco nuovo)');
+
+SELECT lives_ok(
+  $$ SELECT * FROM vendite.fn_cambia_stato_commessa(
+       (SELECT commessa_id FROM tmp_b), 'CHIUSA') $$,
+  '11) ->CHIUSA da IN_ESECUZIONE ammessa: il vicolo cieco e'' chiuso');
+
+-- ============================================================
+-- [C] IN_ESECUZIONE con una riga EMESSA + una APPROVATA/NON_EMESSA.
+--     Entrambe le uscite manuali sono ostruite -> can_change_state=false.
+-- ============================================================
+
+CREATE TEMP TABLE tmp_c AS SELECT pg_temp.fx_commessa('guard_uscita_C') AS commessa_id;
+
+DO $setup$
+DECLARE v_id vendite.commesse.id%TYPE := (SELECT commessa_id FROM tmp_c);
+BEGIN
+  PERFORM pg_temp.fx_riga(v_id, 'SEG-GUC-C1', 'APPROVATA', 'EMESSA');
+  PERFORM pg_temp.fx_riga(v_id, 'SEG-GUC-C2', 'APPROVATA', 'NON_EMESSA');
+  PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'APERTA');
+  PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'IN_ESECUZIONE');
+END
+$setup$;
+
+SELECT is(
+  (SELECT (m ->> 'codice') || '|' || (m ->> 'dettaglio')
+     FROM (SELECT script.fn_check_commessa_annullabile(
+                    (SELECT commessa_id FROM tmp_c)) -> 0 AS m) x),
+  'E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE|1',
+  '12) _annullabile: motivo 558 con dettaglio = numero righe emesse');
+
+SELECT throws_ok(
+  $$ SELECT * FROM vendite.fn_cambia_stato_commessa(
+       (SELECT commessa_id FROM tmp_c), 'ANNULLATA') $$,
+  'P0001', NULL,
+  '13) ->ANNULLATA con righe EMESSE rifiutata');
+
+-- Discriminante del ricalcolo: entrambe le azioni manuali da IN_ESECUZIONE
+-- (chiudi, annulla) sono disabilitate. Col vecchio
+-- jsonb_array_length(actions) > 0 questo test fallirebbe.
+SELECT is(
+  (script.fn_available_actions_commessa((SELECT commessa_id FROM tmp_c))
+     ->> 'can_change_state')::boolean,
+  false,
+  '14) capabilities: can_change_state=false se tutte le azioni sono disabilitate');
+
+-- ============================================================
+-- [D] IN_ESECUZIONE senza righe emesse -> annullamento lecito
+-- ============================================================
+
+CREATE TEMP TABLE tmp_d AS SELECT pg_temp.fx_commessa('guard_uscita_D') AS commessa_id;
+
+DO $setup$
+DECLARE v_id vendite.commesse.id%TYPE := (SELECT commessa_id FROM tmp_d);
+BEGIN
+  PERFORM pg_temp.fx_riga(v_id, 'SEG-GUC-D1', 'BOZZA', 'NON_EMESSA');
+  PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'APERTA');
+  PERFORM * FROM vendite.fn_cambia_stato_commessa(v_id, 'IN_ESECUZIONE');
+END
+$setup$;
+
+SELECT lives_ok(
+  $$ SELECT * FROM vendite.fn_cambia_stato_commessa(
+       (SELECT commessa_id FROM tmp_d), 'ANNULLATA') $$,
+  '15) ->ANNULLATA senza righe emesse ammessa');
+
+-- ============================================================
+-- [16] Testata identificabile (D6)
+-- ============================================================
+
+SELECT ok(
+  (SELECT s.commessa_codice IS NOT NULL
+      AND s.commessa_codice = (SELECT c.codice FROM vendite.commesse c
+                                WHERE c.id = (SELECT commessa_id FROM tmp_a))
+      AND s.cliente_display IS NOT NULL
+     FROM vendite.fn_get_commessa_stato((SELECT commessa_id FROM tmp_a)) s),
+  '16) fn_get_commessa_stato espone commessa_codice e cliente_display');
+
+SELECT * FROM finish();
+ROLLBACK;

@@ -1,0 +1,13 @@
+# Template systemd — timer del worker coda lavori generica.
+# Placeholder per-host: __ONCALENDAR__ (cadenza, default installer *:0/1 = ogni
+# minuto; tunable a *:*:0/30 — ogni 30 SECONDI — per una UI più reattiva;
+# NB: *:0/30 significherebbe ogni 30 minuti). Vedi il .service gemello.
+[Unit]
+Description=Timer ZeroERP drainer coda lavori generica (dbops.coda_lavori)
+
+[Timer]
+OnCalendar=__ONCALENDAR__
+Persistent=true
+
+[Install]
+WantedBy=timers.target

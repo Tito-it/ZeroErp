@@ -61,7 +61,7 @@ const pageActions = computed(() => [
     key: 'new',
     kind: 'primary',
     label: t('common.new'),
-    tooltip: props.canCreate ? t('contratti.nuovo_contratto') : props.disabledCreateReason,
+    tooltip: props.canCreate ? t('vendite.contratti.nuovo_contratto') : props.disabledCreateReason,
     icon: MANAGE_ICONS.ADD,
     disabled: !props.canCreate,
     hideWhenReadonly: true,
@@ -131,7 +131,7 @@ function buildRowActions(data) {
   return [
     {
       key: 'gestisci-righe',
-      label: t('contratti.gestisci_righe'),
+      label: t('vendite.contratti.gestisci_righe'),
       icon: MANAGE_ICONS.RIGHE,
       command: () => onOpenRighe(data),
     },
@@ -182,7 +182,7 @@ const onClose = useDrawerClose(emit)
   >
     <template #header>
       <DrawerTitle
-        :title="t('contratti.contratti_cliente')"
+        :title="t('vendite.contratti.contratti_cliente')"
         :icon="NAV_ICONS.CONTRATTI"
       />
     </template>
@@ -200,7 +200,7 @@ const onClose = useDrawerClose(emit)
           <LookupSelect
             v-model="statoFilter"
             rel="config.stati_doc_contratti"
-            :placeholder="t('contratti.filtro_stato')"
+            :placeholder="t('vendite.contratti.filtro_stato')"
             show-clear
           />
         </div>
@@ -229,24 +229,24 @@ const onClose = useDrawerClose(emit)
         <template #empty>
           <div class="app-empty-state">
             <i class="pi pi-file" style="font-size: 2rem;"></i>
-            <div>{{ t('contratti.nessun_contratto_ba') }}</div>
+            <div>{{ t('vendite.contratti.nessun_contratto_ba') }}</div>
           </div>
         </template>
-        <Column field="numero" :header="t('contratti.col_numero')" sortable style="width: 130px;" />
-        <Column field="ambito" :header="t('contratti.col_ambito')" sortable style="width: 110px;" />
-        <Column field="categoria_cliente_snapshot_codice" :header="t('contratti.col_categoria_cliente')" sortable style="width: 100px;">
+        <Column field="numero" :header="t('vendite.contratti.col_numero')" sortable style="width: 130px;" />
+        <Column field="ambito" :header="t('vendite.contratti.col_ambito')" sortable style="width: 110px;" />
+        <Column field="categoria_cliente_snapshot_codice" :header="t('vendite.contratti.col_categoria_cliente')" sortable style="width: 100px;">
           <template #body="{ data }">{{ data.categoria_cliente_snapshot_codice || '—' }}</template>
         </Column>
-        <Column field="listino_codice" :header="t('contratti.col_listino')" sortable style="width: 150px;">
+        <Column field="listino_codice" :header="t('vendite.contratti.col_listino')" sortable style="width: 150px;">
           <template #body="{ data }">{{ data.listino_codice || '—' }}</template>
         </Column>
-        <Column field="valido_dal" :header="t('contratti.col_valido_dal')" sortable style="width: 100px;">
+        <Column field="valido_dal" :header="t('vendite.contratti.col_valido_dal')" sortable style="width: 100px;">
           <template #body="{ data }">{{ displayDate(data.valido_dal) }}</template>
         </Column>
-        <Column field="valido_al" :header="t('contratti.col_valido_al')" sortable style="width: 100px;">
+        <Column field="valido_al" :header="t('vendite.contratti.col_valido_al')" sortable style="width: 100px;">
           <template #body="{ data }">{{ displayDate(data.valido_al) }}</template>
         </Column>
-        <Column field="stato_descrizione" :header="t('contratti.col_stato')" sortable style="width: 100px;">
+        <Column field="stato_descrizione" :header="t('vendite.contratti.col_stato')" sortable style="width: 100px;">
           <template #body="{ data }">
             <Tag :value="data.stato_descrizione" :severity="statoContrattoSeverity(data.stato_codice_interno)" />
           </template>

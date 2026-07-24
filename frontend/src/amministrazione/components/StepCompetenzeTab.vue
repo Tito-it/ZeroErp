@@ -27,12 +27,12 @@ const coll = useStepFigliCollection({
   stepId: () => props.stepId,
   kind: 'competenze',
   messages: {
-    created: t('definizioni_workflow.ed_msg_figlio_creato'),
-    saved: t('definizioni_workflow.ed_msg_figlio_salvato'),
-    deleted: t('definizioni_workflow.ed_msg_figlio_eliminato'),
+    created: t('amministrazione.definizioni_workflow.ed_msg_figlio_creato'),
+    saved: t('amministrazione.definizioni_workflow.ed_msg_figlio_salvato'),
+    deleted: t('amministrazione.definizioni_workflow.ed_msg_figlio_eliminato'),
   },
   confirmDelete: (row) =>
-    t('definizioni_workflow.ed_conferma_elimina_figlio', { nome: row.risorsa_umana_display }),
+    t('amministrazione.definizioni_workflow.ed_conferma_elimina_figlio', { nome: row.risorsa_umana_display }),
   onChanged: () => emit('changed'),
 })
 
@@ -86,15 +86,15 @@ function onSave() {
     :coll="coll"
     :rows="rows"
     :readonly="readonly"
-    :add-label="t('definizioni_workflow.ed_aggiungi')"
-    :empty-label="t('definizioni_workflow.ed_competenze_vuoto')"
+    :add-label="t('amministrazione.definizioni_workflow.ed_aggiungi')"
+    :empty-label="t('amministrazione.definizioni_workflow.ed_competenze_vuoto')"
     :can-save="canSave"
     @save="onSave"
   >
     <template #columns>
-      <Column field="unita_organizzativa_descrizione" :header="t('definizioni_workflow.ed_col_unita')" style="min-width: 200px;" />
-      <Column field="risorsa_umana_display" :header="t('definizioni_workflow.ed_col_risorsa')" style="min-width: 200px;" />
-      <Column :header="t('definizioni_workflow.ed_col_attivo')" style="width: 80px;">
+      <Column field="unita_organizzativa_descrizione" :header="t('amministrazione.definizioni_workflow.ed_col_unita')" style="min-width: 200px;" />
+      <Column field="risorsa_umana_display" :header="t('amministrazione.definizioni_workflow.ed_col_risorsa')" style="min-width: 200px;" />
+      <Column :header="t('amministrazione.definizioni_workflow.ed_col_attivo')" style="width: 80px;">
         <template #body="{ data }">
           <ToggleSwitch :model-value="data.attivo" :disabled="readonly" @update:model-value="coll.toggleAttivo(data)" />
         </template>
@@ -102,15 +102,15 @@ function onSave() {
     </template>
     <template #form>
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.ed_col_unita') }} *</label>
-        <LookupSelect v-model="form.unita_organizzativa_id" rel="config.unita_organizzative" :placeholder="t('definizioni_workflow.ed_ph_seleziona')" />
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_unita') }} *</label>
+        <LookupSelect v-model="form.unita_organizzativa_id" rel="config.unita_organizzative" :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" />
       </div>
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.ed_col_risorsa') }} *</label>
-        <LookupSelect v-model="form.risorsa_umana_id" :fetcher="risorseFetcher" lookup-key="amm.operatori.risorse" :transform="risorseTransform" :placeholder="t('definizioni_workflow.ed_ph_seleziona')" />
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_risorsa') }} *</label>
+        <LookupSelect v-model="form.risorsa_umana_id" :fetcher="risorseFetcher" lookup-key="amm.operatori.risorse" :transform="risorseTransform" :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" />
       </div>
       <div class="form-field form-field--toggle">
-        <label>{{ t('definizioni_workflow.ed_col_attivo') }}</label>
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_attivo') }}</label>
         <ToggleSwitch v-model="form.attivo" />
       </div>
     </template>

@@ -332,11 +332,15 @@ class CatalogoRepository:
         is_composito: bool | None,
         is_solo_componente: bool | None = None,
         escludi_destinazione_tipi: list[str] | None = None,
+        solo_oneri: bool = False,
         limit: int,
     ) -> list[dict[str, Any]]:
         safe_limit = max(1, min(int(limit), 50))
         conditions: list[str] = []
         params: list[Any] = []
+        # Il JOIN sulla base `catalogo.articoli` serve a piu' filtri (natura,
+        # causale onere): si aggiunge UNA volta sola, con lo stesso alias.
+        needs_articoli_join = False
         join_clause = ""
 
         _append_ilike_search(
@@ -366,15 +370,32 @@ class CatalogoRepository:
         # dal picker — viene escluso solo se la sua destinazione è tra quelle
         # vietate. Coerente col "NULL = include" di fn_list_preventivi_da_pushare.
         if escludi_destinazione_tipi:
-            join_clause = (
-                " LEFT JOIN catalogo.articoli art ON art.id = a.id"
-                " LEFT JOIN config.nature_vendita nv ON nv.id = art.natura_vendita_id"
-            )
+            needs_articoli_join = True
+            join_clause += " LEFT JOIN config.nature_vendita nv ON nv.id = art.natura_vendita_id"
             conditions.append(
                 "(nv.destinazione_tipo IS NULL"
                 " OR nv.destinazione_tipo <> ALL(%s::text[]))"
             )
             params.append(list(escludi_destinazione_tipi))
+
+        # Porta oneri: un articolo E' un onere se ha una causale collegata
+        # (`causale_onere_id` NOT NULL, legame 1:1 — brief porta-oneri §4c.8).
+        # La vista dettaglio non espone la causale: JOIN sulla base + vocabolario
+        # per portare a video la causale accanto all'articolo (display fields lato
+        # BE, il FE non fa lookup client-side).
+        extra_cols = ""
+        if solo_oneri:
+            needs_articoli_join = True
+            join_clause += " JOIN config.causali_onere co ON co.id = art.causale_onere_id"
+            conditions.append("art.causale_onere_id IS NOT NULL")
+            extra_cols = (
+                ",\n                    art.causale_onere_id,"
+                "\n                    co.codice AS causale_onere_codice,"
+                "\n                    co.descrizione AS causale_onere_descrizione"
+            )
+
+        if needs_articoli_join:
+            join_clause = " LEFT JOIN catalogo.articoli art ON art.id = a.id" + join_clause
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -392,13 +413,13 @@ class CatalogoRepository:
                     a.iva_id,
                     a.iva_codice,
                     a.iva_descrizione,
-                    a.iva_aliquota_iva
+                    a.iva_aliquota_iva{extra_cols}
                 FROM catalogo.vw_articoli_dettaglio a
                 {join_clause}
                 {where_clause}
                 ORDER BY a.codice ASC
                 LIMIT %s
-                """,
+                """,  # noqa: S608 — frammenti da letterali interni, valori parametrizzati
                 params + [safe_limit],
             )
             return rows_to_list(cursor)

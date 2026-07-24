@@ -41,11 +41,21 @@ BEGIN
             jsonb_build_object('attivita_id', p_attivita_id), NULL::uuid, concat('attivita_id ', p_attivita_id));
     END IF;
 
-    SELECT COALESCE(r.visibilita_componenti, 'solo_padre'), COALESCE(r.calcolo_qta_padre, 'fissa'),
-           COALESCE(r.arrotondamento_importi_dec, 2), COALESCE(r.arrotondamento_quantita_dec, 3),
-           COALESCE(r.metodo_arrotondamento_importi, 'HALF_UP'), COALESCE(r.metodo_arrotondamento_quantita, 'HALF_UP')
+    -- Regole articolo con FALLBACK ai default: LEFT JOIN da una riga-base
+    -- cosi' si ottiene SEMPRE una riga (i default scattano quando manca la
+    -- riga in articolo_regole_fatturazione; un SELECT diretto darebbe 0
+    -- righe e la COALESCE non servirebbe a nulla). ALIAS espliciti: senza,
+    -- i campi del record si chiamerebbero 'coalesce' e l'accesso
+    -- v_regole.visibilita_componenti fallirebbe. (fix 2026-07-21)
+    SELECT COALESCE(r.visibilita_componenti, 'solo_padre')       AS visibilita_componenti,
+           COALESCE(r.calcolo_qta_padre, 'fissa')                AS calcolo_qta_padre,
+           COALESCE(r.arrotondamento_importi_dec, 2)             AS arrotondamento_importi_dec,
+           COALESCE(r.arrotondamento_quantita_dec, 3)            AS arrotondamento_quantita_dec,
+           COALESCE(r.metodo_arrotondamento_importi, 'HALF_UP')  AS metodo_arrotondamento_importi,
+           COALESCE(r.metodo_arrotondamento_quantita, 'HALF_UP') AS metodo_arrotondamento_quantita
       INTO v_regole
-      FROM vendite.articolo_regole_fatturazione r WHERE r.articolo_id = v_articolo_id;
+      FROM (SELECT 1) base
+      LEFT JOIN vendite.articolo_regole_fatturazione r ON r.articolo_id = v_articolo_id;
 
     v_use_competenza := v_comp_dal IS NOT NULL AND v_comp_al IS NOT NULL
         AND (v_comp_dal <> v_comp_al OR v_comp_dal <> v_data_attivita);
@@ -66,7 +76,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_group_attivita_fatturabili(p_attivita_id bigint)
-IS 'Chiave aggregazione riga fattura da attivita_fatturabili con fallback regole articolo.';
+IS 'Chiave aggregazione riga fattura da attivita_fatturabili con fallback regole articolo (LEFT JOIN: default se manca la riga articolo_regole_fatturazione). rev 2026-07-21: fix alias record v_regole + fallback no-row (il path fn_generate_fatture_righe era rotto per qualunque articolo).';
 ```
 
 ---

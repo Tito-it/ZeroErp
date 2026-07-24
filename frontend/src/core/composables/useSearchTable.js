@@ -150,6 +150,11 @@ export function useSearchTable(store, options = {}) {
   // Idempotente: al primo mount searchText coincide gia' con la query (il
   // guard evita il doppio fetch); `skipNextDebounce` neutralizza il watch
   // debounced su searchText. Pattern memoria feedback_keepalive_onactivated.
+  // Freshness (stessa memoria): la prima onActivated e' quella del mount — il
+  // fetch iniziale e' gia' partito (o partira' dal flusso di ricerca), quindi
+  // va saltata per non raddoppiarlo. Dalle riattivazioni successive in poi si
+  // rinfresca la pagina corrente.
+  let firstActivation = true
   onActivated(() => {
     const qs = route.query.search
     // Applica solo un deep-link NUOVO (query cambiata da quando l'abbiamo
@@ -164,7 +169,20 @@ export function useSearchTable(store, options = {}) {
       store.filters.offset = 0
       clearDateDefaultsForExternalSearch()
       store.fetchList()
+      firstActivation = false
+      return
     }
+    if (firstActivation) {
+      firstActivation = false
+      return
+    }
+    // Ri-attivazione senza deep-link nuovo: i dati possono essere stantii per
+    // effetti collaterali maturati altrove (es. evasione da DDT -> ordine
+    // EVASO, push commessa, resi). Refetch idempotente della PAGINA CORRENTE:
+    // filtri/ricerca/offset invariati, cambia solo il contenuto righe. Guard
+    // su hasSearched (liste a ricerca obbligatoria mai interrogate: nulla da
+    // rinfrescare) e loading (niente accavallamento risposte).
+    if (store.hasSearched && !store.loading) store.fetchList()
   })
 
   // Cleanup timeout e listener on unmount

@@ -19,6 +19,7 @@ class VenditeConfig(AppConfig):
         from apps.vendite.services import (  # noqa: F401
             contratto_document_context_builder,
             ddt_document_context_builder,
+            fattura_document_context_builder,
             offerta_document_context_builder,
             ordine_document_context_builder,
             preventivo_document_context_builder,
@@ -40,3 +41,19 @@ class VenditeConfig(AppConfig):
         # come sorgente COLLEGATO. NON crea flussi a valle: 9013/9014 sono
         # obbligatori-su-ramo e compaiono via roadmap/prerequisiti.
         register_handler("vendita.post_smistamento", PostSmistamentoHandler)
+
+        # Registra l'handler del job coda-lavori FATTURAZIONE_GIRO (C-3): il
+        # giro di fatturazione on-demand. Dispatch controllato
+        # (handler_code=fatturazione_giro_default → funzione), come i context
+        # builder: registrazione esplicita al boot, mai auto-discovery.
+        from apps.vendite.services.fatturazione_giro_handler import (
+            register as register_fatturazione_giro,
+        )
+        register_fatturazione_giro()
+
+        # Handler del job coda-lavori FATTURAZIONE_NUMERA (C-4): numerazione di
+        # perimetro «Rendi definitive competenza». Stesso pattern del giro.
+        from apps.vendite.services.fatturazione_numera_handler import (
+            register as register_fatturazione_numera,
+        )
+        register_fatturazione_numera()

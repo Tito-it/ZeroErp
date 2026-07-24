@@ -330,6 +330,11 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_contratto_id => NULL,
   p_categoria_cliente_id_snapshot => NULL,
   p_classe_utenza_id_snapshot => NULL,
+  -- Aggiunto 2026-07-24: la riga nasce APPROVATA+NON_EMESSA = emittibile e il
+  -- guard trg_commesse_attivita_a10_guard_tipo_doc_emittibile
+  -- (brief-db-guard-tipo-doc-attivita, posteriore a questo test) esige il
+  -- tipo_doc. Il riferimento era gia' nel fixture, mancava solo passarlo.
+  p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_sc),
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'NORMALE',
@@ -393,6 +398,21 @@ SELECT ok(
 --   PRONTA_FATTURAZIONE -> CHIUSA: transizione valida. CHIUSA ha
 --   emittibile=false e modificabile=false.
 -- ============================================================
+
+-- Adeguamento 2026-07-24 (brief-db-guard-uscita-commessa-e-capabilities, D2):
+-- la chiusura esige che non restino righe APPROVATE+NON_EMESSE, altrimenti le
+-- si perderebbe per sempre (CHIUSA e' terminale). Il percorso realistico e'
+-- che la riga venga prima EMESSA: qui la si emette per poter osservare lo
+-- stato CHIUSA, che e' l'oggetto del test.
+DO $emissione$
+BEGIN
+  UPDATE vendite.commesse_attivita
+     SET stato_emissione = 'EMESSA'
+   WHERE commessa_id = (SELECT commessa_id FROM tmp_commessa_sc)
+     AND stato_approvazione = 'APPROVATA'
+     AND stato_emissione    = 'NON_EMESSA';
+END
+$emissione$;
 
 SELECT * FROM vendite.fn_cambia_stato_commessa(
   (SELECT commessa_id FROM tmp_commessa_sc),

@@ -2,12 +2,22 @@ from django.urls import include, path
 
 from apps.vendite.api.views import (
     ApiCommessaAttivita,
+    ApiCommessaAttivitaApprova,
     ApiCommessaAttivitaRiallineaPrezzo,
     ApiCommessaAttivitaSbloccaPrezzo,
     ApiCommessaAttivitaVariazionePrezzoEccezionale,
+    ApiCommessaOneri,
     ApiCommessePushLog,
     ApiCommessaStato,
+    ApiFatturazioneApprovaCompetenza,
+    ApiFatturazioneEsiti,
+    ApiFatturazioneNumera,
+    ApiFatturazioneNumeraLotto,
+    ApiFatturazioneRistampaLotto,
+    ApiFatturazioneRun,
+    ApiFatturazioneRunStato,
     ApiLottiList,
+    ApiLottoDetail,
     ApiLottoFattureList,
     ApiLottoSegnalazioniSummary,
     ApiLottoTaskRuns,
@@ -34,6 +44,7 @@ from apps.vendite.api.views_dashboard_backlog import (
 from apps.vendite.api.views_dashboard_competenza import (
     ApiDashboardCompetenza,
     ApiDashboardCompetenzaAttivita,
+    ApiDashboardCompetenzaCommesse,
     ApiDashboardCompetenzaErrori,
 )
 from apps.vendite.api.views_dashboard_aperto import (
@@ -63,6 +74,7 @@ urlpatterns = [
     path("offerte/", include("apps.vendite.api.urls_offerte")),
     path("ordini/", include("apps.vendite.api.urls_ordini")),
     path("ddt/", include("apps.vendite.api.urls_ddt")),
+    path("fatture/", include("apps.vendite.api.urls_fatture")),
     path("resi/", include("apps.vendite.api.urls_resi")),
     # Pricing v5 diagnostico: resolver 3 stadi (PROMO/CONTRATTO/CATEGORIA).
     path("pricing/resolve/", PricingResolveView.as_view(), name="vendite-pricing-resolve"),
@@ -146,6 +158,11 @@ urlpatterns = [
         name="vendite-dashboard-competenza-attivita",
     ),
     path(
+        "dashboard-competenza/commesse/",
+        ApiDashboardCompetenzaCommesse.as_view(),
+        name="vendite-dashboard-competenza-commesse",
+    ),
+    path(
         "dashboard-competenza/errori/",
         ApiDashboardCompetenzaErrori.as_view(),
         name="vendite-dashboard-competenza-errori",
@@ -163,6 +180,7 @@ urlpatterns = [
         name="vendite-dashboard-backlog-documenti",
     ),
     path("lotti/", ApiLottiList.as_view(), name="vendite-lotti-list"),
+    path("lotti/<int:lotto_id>/", ApiLottoDetail.as_view(), name="vendite-lotto-detail"),
     path("pipeline/run/", ApiRunLottoPipeline.as_view(), name="vendite-run-lotto-pipeline"),
     path(
         "pipeline/run-until-done/",
@@ -237,6 +255,67 @@ urlpatterns = [
         "commesse/<int:commessa_id>/attivita/",
         ApiCommessaAttivita.as_view(),
         name="vendite-commessa-attivita",
+    ),
+    # Porta oneri: POST crea la riga di valore sulla sotto-risorsa `oneri`
+    # (nessun verbo nel path — il metodo HTTP dice "crea", api.md §Grammatica).
+    path(
+        "commesse/<int:commessa_id>/oneri/",
+        ApiCommessaOneri.as_view(),
+        name="vendite-commessa-oneri",
+    ),
+    # Azione APPROVA righe (cockpit Fase A, A-1): tutte o selezione righe_ids.
+    path(
+        "commesse/<int:commessa_id>/attivita/approva/",
+        ApiCommessaAttivitaApprova.as_view(),
+        name="vendite-commessa-attivita-approva",
+    ),
+    # --- Fatturazione (cockpit Dashboard Competenza) ---
+    # Azione APPROVA massiva per mese di competenza (Fase A, A-2): la popolazione
+    # della card DA_APPROVARE (stessa vista del drill-down, scope in-vista).
+    path(
+        "fatturazione/approva-competenza/",
+        ApiFatturazioneApprovaCompetenza.as_view(),
+        name="vendite-fatturazione-approva-competenza",
+    ),
+    # C-4: numerazione «Rendi definitive» di un singolo lotto EMESSA (step
+    # DEFINITIVA = numera + accoda stampa). Gate fiscale separato (I-7).
+    path(
+        "fatturazione/lotti/<int:lotto_id>/numera/",
+        ApiFatturazioneNumeraLotto.as_view(),
+        name="vendite-fatturazione-numera-lotto",
+    ),
+    # C-8: ristampa MASSIVA di un lotto DEFINITIVA (accoda in fatture_stampa_coda,
+    # drenata dal worker draina_coda_stampa). Accodamento sincrono.
+    path(
+        "fatturazione/lotti/<int:lotto_id>/ristampa/",
+        ApiFatturazioneRistampaLotto.as_view(),
+        name="vendite-fatturazione-ristampa-lotto",
+    ),
+    # C-5: esiti dei giri (job_run_log per corsia) + stato coda stampa (scope
+    # emittente operatore). Sola lettura.
+    path(
+        "fatturazione/esiti/",
+        ApiFatturazioneEsiti.as_view(),
+        name="vendite-fatturazione-esiti",
+    ),
+    # C-3: giro di fatturazione on-demand (accoda in dbops.coda_lavori, non
+    # bloccante) + polling dello stato del job (ownership operatore).
+    path(
+        "fatturazione/run/",
+        ApiFatturazioneRun.as_view(),
+        name="vendite-fatturazione-run",
+    ),
+    path(
+        "fatturazione/run/<int:job_id>/",
+        ApiFatturazioneRunStato.as_view(),
+        name="vendite-fatturazione-run-stato",
+    ),
+    # C-4: numerazione di perimetro «Rendi definitive competenza» (accoda in
+    # dbops.coda_lavori, non bloccante). Polling via fatturazione/run/<job_id>/.
+    path(
+        "fatturazione/numera/",
+        ApiFatturazioneNumera.as_view(),
+        name="vendite-fatturazione-numera",
     ),
     # --- Lookup statici (Fase 2 refactor frontend vendite) ---
     path(

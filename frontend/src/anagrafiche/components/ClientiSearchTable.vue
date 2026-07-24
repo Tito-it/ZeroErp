@@ -40,7 +40,7 @@ const {
 } = useListaConfigurabilePage(store, {
   exportFn: exportClienti,
   getExportParams: (fmt) => buildExportParams(fmt),
-  newTooltipKey: 'clienti.nuovo_cliente',
+  newTooltipKey: 'anagrafiche.clienti.nuovo_cliente',
   onNew: () => emit('new'),
   searchTableOptions: { defaultSortField: 'ragione_sociale_completa' },
 })
@@ -78,32 +78,32 @@ function buildRowActions(data) {
   return [
     {
       key: 'soggetto',
-      label: t('clienti.gestisci_soggetto'),
+      label: t('anagrafiche.clienti.gestisci_soggetto'),
       icon: MANAGE_ICONS.SOGGETTO,
       command: () => emit('soggetto', data),
     },
     {
       key: 'contatti',
-      label: t('contatto.gestisci_contatti'),
+      label: t('anagrafiche.contatto.gestisci_contatti'),
       icon: MANAGE_ICONS.CONTATTI,
       command: () => emit('contatti', data),
     },
     {
       key: 'indirizzi',
-      label: t('indirizzo_soggetto.gestisci_indirizzi'),
+      label: t('anagrafiche.indirizzo_soggetto.gestisci_indirizzi'),
       icon: MANAGE_ICONS.INDIRIZZI,
       command: () => emit('indirizzi', data),
     },
     {
       key: 'conti-bancari',
-      label: t('conti_bancari.gestisci_conti'),
+      label: t('anagrafiche.conti_bancari.gestisci_conti'),
       icon: MANAGE_ICONS.CONTI_BANCARI,
       disabled: contiBlocked,
       command: () => emit('conti-bancari', data),
     },
     {
       key: 'contratti',
-      label: t('contratti.gestisci_contratti'),
+      label: t('vendite.contratti.gestisci_contratti'),
       icon: MANAGE_ICONS.CONTRATTI,
       command: () => emit('contratti', data),
     },
@@ -115,11 +115,11 @@ function dataSospRiatt(row) {
   const sosp = row.data_sospensione
   const riatt = row.data_riattivazione
   if (!sosp && !riatt) return null
-  if (sosp && !riatt) return { label: 'clienti.col_sospeso_il', date: sosp }
-  if (!sosp && riatt) return { label: 'clienti.col_riattivato_il', date: riatt }
+  if (sosp && !riatt) return { label: 'anagrafiche.clienti.col_sospeso_il', date: sosp }
+  if (!sosp && riatt) return { label: 'anagrafiche.clienti.col_riattivato_il', date: riatt }
   return sosp > riatt
-    ? { label: 'clienti.col_sospeso_il', date: sosp }
-    : { label: 'clienti.col_riattivato_il', date: riatt }
+    ? { label: 'anagrafiche.clienti.col_sospeso_il', date: sosp }
+    : { label: 'anagrafiche.clienti.col_riattivato_il', date: riatt }
 }
 
 useTabFreshness(store, TAB_ENTITIES.CLIENTE)
@@ -141,13 +141,13 @@ onMounted(() => {
         <div class="app-page-filters">
           <InputText
             v-model="searchText"
-            :placeholder="t('clienti.search_placeholder')"
+            :placeholder="t('anagrafiche.clienti.search_placeholder')"
             style="width: 320px;"
           />
           <UtilityPerRuoloSelect
             v-model="utilityFilter"
             :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
-            :placeholder="t('clienti.filtro_utility')"
+            :placeholder="t('anagrafiche.clienti.filtro_utility')"
             show-clear
             apply-default
             @change="onUtilityChange"
@@ -155,7 +155,7 @@ onMounted(() => {
           <LookupSelect
             v-model="statoFilter"
             rel="config.stati_cliente"
-            :placeholder="t('clienti.filtro_stato')"
+            :placeholder="t('anagrafiche.clienti.filtro_stato')"
             show-clear
             @change="onStatoChange"
           />

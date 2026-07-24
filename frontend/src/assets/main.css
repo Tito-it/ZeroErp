@@ -345,9 +345,9 @@ a {
   height: 3.5rem;
 }
 
-/* Fix globale: quando app-tab-content e' figlio diretto di app-page (senza TabView),
+/* Fix globale: quando app-tab-content e' figlio diretto di app-page (fuori da un tab),
  * la catena flex deve propagarsi identicamente a quando e' dentro un TabPanel.
- * Questo copre sia le view con TabView (IndirizziView) sia quelle dirette (ClientiView). */
+ * Questo copre sia le view con Tabs (IndirizziView) sia quelle dirette (ClientiView). */
 .app-page > .app-tab-content {
   display: flex;
   flex-direction: column;
@@ -717,16 +717,29 @@ a {
   }
 }
 
-/* ===== TabView full-height dentro app-page =====
- * Quando un TabView e' figlio di .app-page, deve riempire tutta l'altezza
- * disponibile per far funzionare scrollHeight="flex" nella DataTable.
- * Catena: .app-page > .p-tabview > .p-tabview-panels > .p-tabview-panel > .app-tab-content > DataTable
+/* ===== `Tabs` (PrimeVue 4) full-height dentro app-page =====
+ * Quando un `Tabs` e' figlio di .app-page deve riempire tutta l'altezza
+ * disponibile per far funzionare `scroll-height="flex"` nella DataTable.
+ * Catena: .app-page > .p-tabs > .p-tabpanels > .p-tabpanel > .app-tab-content
+ *         > DataTable
  *
- * PrimeVue 4.5 applica padding su .p-tabview-panels (0.875rem 1.125rem) —
- * lo azzeriamo perche' il contenuto gestisce il proprio spacing.
- * Ogni livello deve essere flex column con min-height: 0 e overflow: hidden.
- */
-.app-page > .p-tabview {
+ * PrimeVue applica un padding su `.p-tabpanels` — lo azzeriamo perche' il
+ * contenuto gestisce il proprio spacing. Ogni livello deve essere flex column
+ * con min-height: 0 e overflow: hidden.
+ *
+ * Nota storica: fino al 2026-07-22 esisteva qui una catena gemella per la
+ * vecchia API tab di PrimeVue 3, rimossa con la migrazione dell'ultima view a
+ * `Tabs`. Le due API rendevano classi diverse, quindi convivevano senza
+ * sovrapporsi — ma avere due catene per la stessa funzione induceva a copiare
+ * il pattern sbagliato (origine di 2 bug sulla vista «Code di lavoro»).
+ * Questa e' ora l'UNICA catena tab: non reintrodurne una seconda.
+ *
+ * ⚠️ `.p-tablist` DEVE restare `flex: 0 0 auto`: se partecipa alla ripartizione
+ * dello spazio, i pannelli la comprimono fuori vista quando il contenuto cresce
+ * — i tab compaiono al primo paint e spariscono appena la tabella si popola
+ * (bug 2026-07-22, sintomo dipendente dal numero di righe visibili all'utente).
+ * Per lo stesso motivo NON si mette `app-tab-content` sul contenitore <Tabs>. */
+.app-page > .p-tabs {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -734,7 +747,11 @@ a {
   overflow: hidden;
 }
 
-.app-page > .p-tabview > .p-tabview-panels {
+.app-page > .p-tabs > .p-tablist {
+  flex: 0 0 auto;
+}
+
+.app-page > .p-tabs > .p-tabpanels {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -743,7 +760,7 @@ a {
   padding: 0.5rem 0 0 0;
 }
 
-.app-page > .p-tabview > .p-tabview-panels > .p-tabview-panel {
+.app-page > .p-tabs > .p-tabpanels > .p-tabpanel {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -788,13 +805,12 @@ a {
  * tab navigation PrimeVue: cambio sezione = navigazione, non azione di
  * scrittura. Bloccarla rende inaccessibili contenuti raggiungibili solo da
  * tab (es. drawer offerta tab "Revisioni", drawer pratica chiusa tutte le tab).
- * Coprire ENTRAMBE le API: `p-tab` (nuova Tabs/Tab) e `p-tabview-tab-header`
- * (legacy TabView/TabPanel, usata es. da PraticaDrawer). */
+ * `.p-tab` e' l'unica API in uso (Tabs/Tab): il selettore gemello della
+ * vecchia API v3 e' stato rimosso con la migrazione a `Tabs`. */
 .app-readonly .app-page-filters,
 .app-readonly .p-paginator,
 .app-readonly .p-datatable-thead,
-.app-readonly .p-tab,
-.app-readonly .p-tabview-tab-header {
+.app-readonly .p-tab {
   pointer-events: auto;
   opacity: 1;
 }
@@ -1640,6 +1656,14 @@ a {
   font-size: var(--app-font-size-base);
 }
 
+/* Tooltip multi-riga (motivi ostativi di un'azione disabilitata, capability
+ * disabled+reason): il testo arriva come textNode con '\n', che senza
+ * pre-line verrebbe collassato in spazi. Applicata da useActionBar via la
+ * chiave `class` della directive tooltip. */
+.app-tooltip-multiline .p-tooltip-text {
+  white-space: pre-line;
+}
+
 /* Icona info accanto al titolo card (misure non ovvie, es. area Ordini a
  * misura mista pieno/da-spedire — DL-23): discreta, tooltip al volo. */
 .app-dash-card-hint {
@@ -1743,6 +1767,15 @@ a {
 
 .app-dash-mese-btn.is-active .app-dash-mese-errori {
   color: var(--app-sidebar-item-active-color);
+}
+
+/* Link dentro una cella di tabella (es. codice lotto → drawer, B-5): il
+   PrimeVue Button link porta padding/altezza da bottone che gonfia la riga —
+   qui lo si comprime a testo cliccabile allineato al contenuto della cella. */
+.app-cell-link.p-button.p-button-link {
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
 }
 
 /* Riga riepilogo mese sotto le card. */

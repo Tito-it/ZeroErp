@@ -1,0 +1,128 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_check_commessa_annullabile — motivi ostativi all'ANNULLAMENTO
+#   (brief-db-guard-uscita-commessa-e-capabilities §3.2, D1+D5+D7)
+#
+# SORGENTE UNICA della regola (D5): consumata da DUE lati, mai duplicata.
+#   1. vendite.trgfn_commesse_guard_transizione (20260724-03): solleva il
+#      codice del primo motivo -> blocca la transizione.
+#   2. script.fn_available_actions_commessa (20260724-04): espone l'azione
+#      'annulla' con enabled=false + reasons -> il FE la disabilita col
+#      tooltip che spiega il perche'.
+# Se la regola vivesse in due posti divergerebbe al primo ritocco.
+#
+# PERCHE' SERVE: CHIUSA e ANNULLATA sono stati TERMINALI (nessun arco uscente
+#   in vendite.transizioni_stati_commessa) e hanno emittibile=false, quindi una
+#   commessa annullata esce PER SEMPRE dal giro di fatturazione. In piu'
+#   vw_dash_competenza_attivita filtra sc.codice_interno <> 'ANNULLATA': annullare
+#   una commessa con righe gia' emesse fa SPARIRE dalla dashboard di competenza
+#   righe le cui fatture restano fiscalmente vive (sotto-riporto silenzioso).
+#   Nessuna via applicativa di recupero -> fail-fast.
+#
+# CRITERIO (D7, deciso 2026-07-23): il motivo scatta su
+#   stato_emissione = 'EMESSA', NON su "esiste una fattura viva".
+#   Deliberatamente piu' restrittivo: fn_cleanup_fatture_by_ids (reset lotto
+#   DRAFT) cancella le fatture e azzera attivita_fatturabili.fattura_riga_id ma
+#   NON riporta indietro commesse_attivita.stato_emissione, quindi esistono
+#   righe EMESSE senza fattura viva — e le blocchiamo lo stesso. Un falso blocco
+#   costa una riga in piu'; un falso permesso non si corregge (irreversibile).
+#   NON "correggere" questo criterio credendolo una svista: vedi §2.1-bis del brief.
+#
+# PUREZZA: fn_check_* non solleva e non scrive per condizioni di DOMINIO (quelle
+#   escono come motivi). L'unico raise e' il guard di parametro (AGENTS.md: id
+#   NULL o <=0 -> errore parlante, mai normalizzazione silenziosa); STABLE con
+#   guard e' pattern gia' in uso (fn_resolve_emittente_for_user, fn_stato_sorgente).
+# Codice errore: 558 E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE (messaggi_errore.csv).
+# Contratto di arita': il messaggio ha 2 %s (codice commessa, dettaglio) e il
+#   guard solleva sempre con quella coppia -> ogni motivo di questa famiglia DEVE
+#   esporre 'dettaglio' numerico.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260724-01-create-fn-check-commessa-annullabile-mctit.yaml
+
+  - changeSet:
+      id: 20260724-01-create-fn-check-commessa-annullabile
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Funzione pura: motivi ostativi all'annullamento di una commessa
+        (righe gia' EMESSE). Sorgente unica condivisa fra il guard di
+        transizione e le capabilities. Ritorna [] se annullabile.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_commessa_annullabile(
+                  p_commessa_id vendite.commesse.id%TYPE
+              )
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono l'ANNULLAMENTO di una
+              --   commessa. Funzione PURA (fn_check_*): nessun raise di dominio,
+              --   nessuna scrittura. Consumatori: il guard di transizione (che
+              --   solleva il codice del primo motivo) e fn_available_actions_commessa
+              --   (che espone l'azione disabled + reasons).
+              --   Brief: brief-db-guard-uscita-commessa-e-capabilities §3.2.
+              -- Ritorna: [] se annullabile; altrimenti array ordinato di
+              --   {codice, reason, reason_key, dettaglio}.
+              DECLARE
+                v_motivi jsonb   := '[]'::jsonb;
+                v_emesse integer;
+              BEGIN
+                -- Guard parametro (AGENTS.md): id assente o non valido e' un errore
+                -- di programmazione, non una condizione di dominio -> errore parlante
+                -- invece di normalizzazione silenziosa. Non intacca la purezza.
+                IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script','fn_check_commessa_annullabile','E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro','commessa_id','valore',p_commessa_id),
+                    NULL::uuid, 'commessa_id obbligatorio (>0)');
+                END IF;
+
+                -- MOTIVO 1 — righe gia' EMESSE (D1, criterio D7).
+                -- 'EMESSA' = uscita verso una fattura, NON "fatturata in via
+                -- definitiva": il reset lotto cancella le fatture ma non riporta
+                -- indietro questo stato. Blocchiamo comunque, di proposito.
+                -- Indice: ix_commesse_attivita_commessa_stati
+                -- (commessa_id, stato_approvazione, stato_emissione).
+                SELECT count(*)
+                  INTO v_emesse
+                  FROM vendite.commesse_attivita ca
+                 WHERE ca.commessa_id = p_commessa_id
+                   AND ca.stato_emissione = 'EMESSA';
+
+                IF v_emesse > 0 THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE',
+                    'reason',     'RIGHE_EMESSE',
+                    'reason_key', 'vendite.commesse.azione_reason.righe_emesse',
+                    'dettaglio',  v_emesse);
+                END IF;
+
+                RETURN v_motivi;
+              END;
+              $function$;
+
+              -- COMMENT e DROP esigono tipi RISOLTI: qui il %TYPE non si usa.
+              COMMENT ON FUNCTION script.fn_check_commessa_annullabile(bigint)
+              IS 'Funzione PURA (fn_check_*): motivi ostativi all''annullamento di una commessa. Ritorna [] se annullabile, altrimenti array di {codice, reason, reason_key, dettaglio}. Motivo unico: esistono righe con stato_emissione=EMESSA (codice 558). Criterio deliberatamente restrittivo (brief §2.1-bis, D7): EMESSA e non "fattura viva", perche'' il reset lotto azzera fattura_riga_id ma non stato_emissione, e ANNULLATA e'' terminale/irreversibile. Sorgente UNICA condivisa da vendite.trgfn_commesse_guard_transizione (solleva) e script.fn_available_actions_commessa (espone enabled/reasons). rev 2026-07-24.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_commessa_annullabile(bigint);

@@ -150,6 +150,14 @@ jobs:
              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.databasechangeloglock TO zeroerp;"
 
       - name: Liquibase update (standard, no provision)
+        # NIENTE bypass_tx_id_check qui, ed e' voluto: questo step deve esercitare
+        # davvero la validazione del tx_id, non spegnerla. Senza canale di log
+        # fn_get_or_create_session_tx_id ritorna la sentinella uuid_nil SENZA
+        # pubblicare la GUC, quindi il trigger trgfn_tx_id_managed non ha nulla da
+        # rifiutare (migration 20260722-10/-11, brief-db-coerenza-tx-id-non-registrato.md).
+        # Se un giorno questo step tornasse a fallire con W_TXID_NOT_REGISTERED,
+        # la risposta NON e' rimettere il bypass: significa che qualcuno ha
+        # ricominciato a pubblicare un tx_id non registrato.
         run: |
           liquibase \
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff" \
@@ -168,6 +176,8 @@ jobs:
             update --contexts=provision
 
       - name: Liquibase CI apply (run automations)
+        # Come lo step "standard, no provision": nessun bypass, la validazione
+        # del tx_id resta attiva.
         run: |
           liquibase \
             --url="jdbc:postgresql://localhost:5432/zeroerp?options=-c%20myapp.log_with_dblink%3Doff%20-c%20myapp.env%3Dci" \
@@ -222,3 +232,37 @@ jobs:
         run: |
           source .venv/bin/activate
           python manage.py test
+
+  # Validazione artefatti di deploy dei worker (systemd timer). Job leggero e
+  # indipendente: NON esegue i timer (la CI non è un host di runtime), ne
+  # garantisce la VALIDITÀ prima che raggiungano un host. Vedi
+  # brief-deploy-worker-riproducibilita-ci.md §3.
+  validate-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Lint script bash (bash -n + shellcheck)
+        run: |
+          command -v shellcheck >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y shellcheck; }
+          shellcheck --version
+          rc=0
+          for f in backend/bin/*.sh; do
+            echo "· $f"
+            bash -n "$f" || rc=1
+            shellcheck "$f" || rc=1
+          done
+          exit "$rc"
+
+      - name: Valida unit systemd dei worker (render template + systemd-analyze verify)
+        run: |
+          command -v systemd-analyze >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y systemd; }
+          OUT="$(mktemp -d)"
+          # Render REALE tramite l'installer (stessa fonte di verità del deploy),
+          # senza root né systemctl. APP_DIR = questo backend → gli ExecStart
+          # puntano al wrapper committato (esiste ed è eseguibile) e la verify
+          # passa; un unit malformato (OnCalendar rotto, ExecStart assente, ...)
+          # fa fallire il job.
+          bash backend/bin/install-timers.sh --render-only "$OUT"
+          systemd-analyze verify "$OUT"/*.service "$OUT"/*.timer
+          echo "Unit systemd dei worker validati."

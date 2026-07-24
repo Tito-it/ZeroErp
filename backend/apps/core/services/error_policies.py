@@ -703,6 +703,66 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Attivita` commessa non trovata.",
         ),
+        # --- Immutabilita' quantita' + porta oneri (guard DB 550-554) ---
+        # I due guard di immutabilita' sono 409: non e' un input da correggere,
+        # e' un fatto che non si modifica (si corregge con una riga nuova).
+        "E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE": ErrorPolicy(
+            code="E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Riga di commessa gia` emessa: la quantita` non si modifica. "
+                "Correggere aggiungendo una riga nuova."
+            ),
+        ),
+        "E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE": ErrorPolicy(
+            code="E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La quantita` dell`attivita` fatturabile deve specchiare quella "
+                "della commessa: modifica non consentita."
+            ),
+        ),
+        # Race sul progressivo segment_key degli oneri (guard DB 557,
+        # brief-db-race-segment-key-onere §5): NON e' un input da correggere
+        # ma un conflitto di concorrenza ritentabile → 409 come la famiglia
+        # immutabilita', non 400. Nota: perche' questo codice ARRIVI qui e non
+        # cada sul fallback E_COMMESSA_VALIDATION, deve essere anche nei
+        # `_ONERE_DB_ERROR_MARKERS` del service (catena di traduzione).
+        "E_ONERE_SEGMENT_DUPLICATO": ErrorPolicy(
+            code="E_ONERE_SEGMENT_DUPLICATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Onere non creato per una modifica concorrente. Riprovare.",
+        ),
+        "E_ONERE_IMPORTO_NON_VALIDO": ErrorPolicy(
+            code="E_ONERE_IMPORTO_NON_VALIDO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Importo onere non valido: deve essere maggiore di zero.",
+        ),
+        "E_ONERE_CAUSALE_NON_VALIDA": ErrorPolicy(
+            code="E_ONERE_CAUSALE_NON_VALIDA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Causale onere non valida o non attiva.",
+        ),
+        "E_ONERE_ARTICOLO_MANCANTE": ErrorPolicy(
+            code="E_ONERE_ARTICOLO_MANCANTE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Articolo-onere non valido: inesistente, non attivo o senza "
+                "causale associata."
+            ),
+        ),
+        "E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO": ErrorPolicy(
+            code="E_COMMESSA_ATTIVITA_TIPO_DOC_OBBLIGATORIO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Tipo documento fiscale obbligatorio sulla riga emittibile.",
+        ),
         "E_COMMESSA_PUSH_PARZIALE_VIETATO": ErrorPolicy(
             code="E_COMMESSA_PUSH_PARZIALE_VIETATO",
             http_status=422,
@@ -726,6 +786,21 @@ class ErrorPolicyRegistry:
             http_status=409,
             ui_action="show_toast_error",
             user_message="Riallineamento richiede conferma: la versione listino e` cambiata.",
+        ),
+        # Guard di uscita commessa (brief-db-guard-uscita-commessa 558/559):
+        # transizione terminale IRREVERSIBILE bloccata → conflitto di stato (409),
+        # come la famiglia immutabilita`. Banner: e` un blocco d'azione grave.
+        "E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE": ErrorPolicy(
+            code="E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Annullamento non consentito: la commessa ha righe gia` emesse.",
+        ),
+        "E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI": ErrorPolicy(
+            code="E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Chiusura non consentita: restano righe approvate non ancora emesse.",
         ),
         # ── Pratiche ──
         "E_PRATICA_VALIDATION": ErrorPolicy(
@@ -1611,6 +1686,70 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Lotto non trovato.",
         ),
+        # C-4: «Rendi definitive» su lotto non in EMESSA (gate fiscale I-7):
+        # conflitto di stato (409), non un semplice bad-request.
+        "E_LOTTO_NON_NUMERABILE": ErrorPolicy(
+            code="E_LOTTO_NON_NUMERABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il lotto non e` in stato EMESSA: numerazione non applicabile.",
+        ),
+        # C-8: ristampa massiva su lotto non DEFINITIVA (I-7: niente numerazione
+        # backdoor via ristampa): conflitto di stato (409).
+        "E_LOTTO_NON_RISTAMPABILE": ErrorPolicy(
+            code="E_LOTTO_NON_RISTAMPABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Il lotto non e` definitivo: la ristampa massiva richiede fatture "
+                "numerate (Rendi definitive)."
+            ),
+        ),
+        # C-3: polling di un giro (job coda) inesistente o non di proprieta`
+        # dell'operatore → 404 (senza registrazione cadrebbe sul fallback 400).
+        "E_JOB_NON_TROVATO": ErrorPolicy(
+            code="E_JOB_NON_TROVATO",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Lavoro non trovato.",
+        ),
+        # UI gestione code (BE-7): annullo di un job non piu` PENDING →
+        # conflitto di stato (il worker lo ha gia` preso, o e` terminato).
+        "E_JOB_NON_ANNULLABILE": ErrorPolicy(
+            code="E_JOB_NON_ANNULLABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il lavoro non e` piu` in attesa: annullo non possibile.",
+        ),
+        # UI gestione code (BE-7): requeue di un job non IN_CORSO/ERRORE →
+        # conflitto di stato (solo i bloccati/terminali si riaccodano).
+        "E_JOB_NON_RIACCODABILE": ErrorPolicy(
+            code="E_JOB_NON_RIACCODABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Il lavoro non e` riaccodabile nello stato corrente.",
+        ),
+        # Coda lavori generica (worker): codici sollevati durante il dispatch/
+        # esecuzione dei job. Non attraversano HTTP nel flusso normale (finiscono
+        # in `ultimo_errore` del job), ma la regola è: registrati prima dell'uso.
+        "E_CODA_SCOPE_OPERATORE_INVALIDO": ErrorPolicy(
+            code="E_CODA_SCOPE_OPERATORE_INVALIDO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Lavoro accodato con scope operatore incompleto.",
+        ),
+        "E_CODA_IDENTITA_NON_ATTIVA": ErrorPolicy(
+            code="E_CODA_IDENTITA_NON_ATTIVA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Identità operatore non più attiva: lavoro non eseguibile.",
+        ),
+        "E_CODA_HANDLER_NON_REGISTRATO": ErrorPolicy(
+            code="E_CODA_HANDLER_NON_REGISTRATO",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Tipo di lavoro non cablato nel sistema.",
+        ),
         "E_PREZZO_LISTINO_NON_TROVATO": ErrorPolicy(
             code="E_PREZZO_LISTINO_NON_TROVATO",
             http_status=404,
@@ -2490,6 +2629,15 @@ class ErrorPolicyRegistry:
             http_status=404,
             ui_action="show_empty_state",
             user_message="Lista non trovata.",
+        ),
+        # E_UI_DASHBOARD_NON_TROVATA: gemello del precedente per le
+        # dashboard configurabili — sollevato da fn_resolve_dashboard_config
+        # quando il codice dashboard non esiste o e' attivo=false.
+        "E_UI_DASHBOARD_NON_TROVATA": ErrorPolicy(
+            code="E_UI_DASHBOARD_NON_TROVATA",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Dashboard non trovata.",
         ),
         "E_UI_VISTA_SQL_NON_TROVATA": ErrorPolicy(
             code="E_UI_VISTA_SQL_NON_TROVATA",

@@ -87,11 +87,11 @@ const limitiPricingText = computed(() => {
   //     limite e' gia' adattato alla categoria cliente (cascata 2026-05-15)
   //     e il testo lo dichiara esplicitamente per trasparenza UX. Senza BA
   //     (cascata "generica utente") usa il copy base senza riferimento.
-  if (!canOverride.value) return t('preventivi.limiti_prezzo_non_autorizzato')
-  if (s === 0 && m === 0) return t('preventivi.limiti_prezzo_zero_autorizzato')
+  if (!canOverride.value) return t('vendite.preventivi.limiti_prezzo_non_autorizzato')
+  if (s === 0 && m === 0) return t('vendite.preventivi.limiti_prezzo_zero_autorizzato')
   const key = props.billingAccountId
-    ? 'preventivi.limiti_prezzo_hint_con_cliente'
-    : 'preventivi.limiti_prezzo_hint'
+    ? 'vendite.preventivi.limiti_prezzo_hint_con_cliente'
+    : 'vendite.preventivi.limiti_prezzo_hint'
   return t(key, { sconto: s, maggiorazione: m })
 })
 
@@ -308,7 +308,7 @@ async function suggerisciPrezzo() {
     // E_CATEGORIA_LISTINO_NON_MAPPATA, E_PREZZO_LISTINO_RIGA_NON_TROVATA,
     // E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C, E_PREV_VALIDAZIONE.
     prezzoOrigine.value = null
-    const msg = extractApiError(err, t('preventivi.prezzo_non_risolto'))
+    const msg = extractApiError(err, t('vendite.preventivi.prezzo_non_risolto'))
     notify.warn(msg)
   }
 }
@@ -408,9 +408,9 @@ const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = u
   buildPayload: buildRigaPayload,
   onSuccess: (result) => emit('saved', result),
   messages: {
-    success: () => (isEdit.value ? t('preventivi.riga_salvata') : t('preventivi.riga_aggiunta')),
-    approvalRequested: t('preventivi.richiesta_approvazione_inviata'),
-    error: t('preventivi.errore_generico'),
+    success: () => (isEdit.value ? t('vendite.preventivi.riga_salvata') : t('vendite.preventivi.riga_aggiunta')),
+    approvalRequested: t('vendite.preventivi.richiesta_approvazione_inviata'),
+    error: t('vendite.preventivi.errore_generico'),
   },
   l2Error,
   loading,
@@ -421,34 +421,34 @@ const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = u
 <template>
   <div class="form-grid">
     <div class="form-field">
-      <label>{{ t('preventivi.riga_articolo') }} <span v-if="!isEdit">*</span></label>
+      <label>{{ t('vendite.preventivi.riga_articolo') }} <span v-if="!isEdit">*</span></label>
       <ArticoloLookup :model-value="articoloObj" :disabled="isEdit"
         :filtri="{ soloComponenti: 'escludi' }"
         :escludi-destinazione="['CONTRATTO']"
-        :placeholder="t('preventivi.riga_cerca_articolo')" @select="onArticoloSelect" />
+        :placeholder="t('vendite.preventivi.riga_cerca_articolo')" @select="onArticoloSelect" />
     </div>
 
     <div class="form-field">
-      <label>{{ t('preventivi.riga_descrizione') }}</label>
+      <label>{{ t('vendite.preventivi.riga_descrizione') }}</label>
       <InputText v-model="form.descrizione" />
     </div>
 
     <div class="form-grid-3col">
       <div class="form-field">
-        <label>{{ t('preventivi.riga_quantita') }} *</label>
+        <label>{{ t('vendite.preventivi.riga_quantita') }} *</label>
         <InputNumber v-model="form.qta_operativa" :min-fraction-digits="2" :max-fraction-digits="6" />
       </div>
       <div class="form-field">
         <label style="display: flex; align-items: center; gap: 0.5rem;">
-          {{ t('preventivi.riga_prezzo') }} *
+          {{ t('vendite.preventivi.riga_prezzo') }} *
           <Tag v-if="prezzoOrigineBadge"
             :severity="prezzoOrigineBadge.severity"
             :value="t(prezzoOrigineBadge.key)"
-            v-tooltip.top="t('preventivi.badge_origine_tooltip', { origine: prezzoOrigine })" />
+            v-tooltip.top="t('vendite.preventivi.badge_origine_tooltip', { origine: prezzoOrigine })" />
           <Tag v-if="isPadreComposito"
             severity="secondary"
-            :value="t('preventivi.componenti_padre_calcolato')"
-            v-tooltip.top="t('preventivi.componenti_section_hint')" />
+            :value="t('vendite.preventivi.componenti_padre_calcolato')"
+            v-tooltip.top="t('vendite.preventivi.componenti_section_hint')" />
         </label>
         <InputNumber v-model="form.prezzo_unitario" mode="currency" currency="EUR" locale="it-IT"
           :min-fraction-digits="6" :max-fraction-digits="6"
@@ -466,10 +466,10 @@ const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = u
            componenti, mostrato nel pannello sotto. -->
       <div v-if="!isPadreComposito" class="form-field">
         <label style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
-          <span>{{ t('preventivi.riga_prezzo_listino') }}</span>
+          <span>{{ t('vendite.preventivi.riga_prezzo_listino') }}</span>
           <Button
             v-if="canRipristinaPrezzoListino"
-            v-tooltip.top="t('preventivi.azione_usa_prezzo_listino')"
+            v-tooltip.top="t('vendite.preventivi.azione_usa_prezzo_listino')"
             icon="pi pi-undo"
             text
             rounded
@@ -488,30 +488,30 @@ const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = u
 
     <div class="form-grid-2col">
       <div class="form-field">
-        <label>{{ t('preventivi.riga_sconto') }}</label>
+        <label>{{ t('vendite.preventivi.riga_sconto') }}</label>
         <InputNumber v-model="form.sconto_percentuale" suffix="%" :min="0" :max="100"
           :min-fraction-digits="2" :max-fraction-digits="2" />
       </div>
       <div class="form-field">
-        <label>{{ t('preventivi.riga_iva') }} *</label>
+        <label>{{ t('vendite.preventivi.riga_iva') }} *</label>
         <IvaSelect v-model="form.iva_id"
-          :placeholder="t('preventivi.riga_iva')" :disabled="isEdit" />
+          :placeholder="t('vendite.preventivi.riga_iva')" :disabled="isEdit" />
       </div>
     </div>
 
     <div class="form-grid-2col" v-if="!isEdit">
       <div class="form-field">
-        <label>{{ t('preventivi.riga_uom') }} *</label>
+        <label>{{ t('vendite.preventivi.riga_uom') }} *</label>
         <Select v-model="form.uom_operativa_id"
           :options="uomOptions" :option-label="uomLabel" option-value="uom_id"
           :loading="uomLoading"
           :disabled="!form.articolo_id || uomLoading"
           :placeholder="form.articolo_id
-            ? t('preventivi.riga_uom')
+            ? t('vendite.preventivi.riga_uom')
             : t('vendite.promo_articoli.field_uom_articolo_first')" />
       </div>
       <div class="form-field">
-        <label>{{ t('preventivi.riga_ordine') }}</label>
+        <label>{{ t('vendite.preventivi.riga_ordine') }}</label>
         <InputNumber v-model="form.ordine" :use-grouping="false" />
       </div>
     </div>
@@ -519,9 +519,9 @@ const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = u
     <L2ErrorBanner
       :error="l2Error"
       :loading="loading"
-      :label="t('preventivi.richiedi_approvazione')"
-      :label-loading="t('preventivi.richiedi_approvazione_in_corso')"
-      :tooltip="t('preventivi.richiedi_approvazione_tooltip')"
+      :label="t('vendite.preventivi.richiedi_approvazione')"
+      :label-loading="t('vendite.preventivi.richiedi_approvazione_in_corso')"
+      :tooltip="t('vendite.preventivi.richiedi_approvazione_tooltip')"
       @richiedi="handleRichiediApprovazione"
     />
 
@@ -534,7 +534,7 @@ const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = u
              init applica. -->
     <div v-if="isCasoA" class="app-drawer-section" style="margin-top: 1rem;">
       <h4 style="margin: 0 0 0.5rem 0; font-size: 1rem;">
-        {{ t('preventivi.componenti_section_title') }}
+        {{ t('vendite.preventivi.componenti_section_title') }}
       </h4>
       <PreventiviRigaComponentiPanel
         :preventivo-id="preventivoId"
@@ -552,7 +552,7 @@ const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = u
          lato `PreventiviRigheTable`). -->
     <ComponentiCreateActionsPanel
       v-if="!isEdit && articoloObj?.is_composito"
-      section-title-key="preventivi.componenti_section_title"
+      section-title-key="vendite.preventivi.componenti_section_title"
       :disabled="!form.articolo_id || !form.uom_operativa_id
         || ((form.qta_operativa || 0) <= 0)"
       :componenti-payload="componentiPayload"

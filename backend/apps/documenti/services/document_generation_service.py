@@ -119,6 +119,14 @@ _DOCUMENTO_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     ),
 }
 
+# Sentinel C-0 (P-1, brief-be-fe-processi-fatturazione §4): "scope non passato"
+# e' diverso da "scope None". Default = deriva lo scope dallo user (path web,
+# invariato per i 6 domini). Il path SISTEMA (worker drainer, pipeline, cron)
+# passa `emittente_scope=None` esplicito (vede tutto: l'emittente e' input
+# autoritativo del lotto e il canale e' gia' `system_process_context`
+# BYPASSRLS) e `user=None` (audit a None: l'attore e' in `app.jwt_user`).
+_SCOPE_DA_UTENTE: Any = object()
+
 
 class DocumentGenerationService:
     """Orchestratore generazione persistita di un documento."""
@@ -150,6 +158,10 @@ class DocumentGenerationService:
     #        default (`is_default=true`) oppure tramite override esplicito
     #        `template_documento_id`. Ritorna un dict con id+uid+nome_file
     #        del documento generato + storage_uri del file persistito.
+    #        C-0: `emittente_scope` separa CHI AUTORIZZA da COSA GENERA —
+    #        default sentinel = deriva dallo `user` (path web, invariato);
+    #        il path sistema passa lo scope gia' risolto (None = vede tutto,
+    #        canale BYPASSRLS obbligatorio, guard `_guard_canale_sistema`).
     def genera_documento(
         self,
         user: AbstractBaseUser | AnonymousUser | None,
@@ -163,6 +175,7 @@ class DocumentGenerationService:
         template_documento_id: int | None = None,
         allegati: list[dict[str, Any]] | None = None,
         locale: str = "it-IT",
+        emittente_scope: Any = _SCOPE_DA_UTENTE,
     ) -> dict[str, Any]:
         # 0) guard input scalari (errore parlante PRIMA dei round-trip DB).
         self._v.guard_positive_int(emittente_fiscale_id, field="emittente_fiscale_id")
@@ -179,12 +192,10 @@ class DocumentGenerationService:
             allegati, emittente_fiscale_id,
         )
 
-        # 1) auth + cache scope (un solo round-trip per l'intera invocazione,
-        #    riusato in `_resolve_template`). Helper di dominio condivisi
-        #    con admin testata/asset (`apps.documenti.services._scope`).
-        guard_user_authenticated(user)
-        assert user is not None
-        scope = resolve_emittente_scope(user)
+        # 1) autorizzazione: path web deriva lo scope dallo user (auth guard
+        #    + un solo round-trip, riusato in `_resolve_template`); path
+        #    sistema riceve lo scope gia' risolto dal chiamante (C-0).
+        scope = self._resolve_scope_chiamante(user, emittente_scope)
         guard_emittente_in_scope(scope, emittente_fiscale_id)
 
         # 2) risolve template applicabile (override esplicito o default)
@@ -790,6 +801,51 @@ class DocumentGenerationService:
     # Helpers privati
     # =================================================================
 
+    # Scopo: C-0 — risolve lo scope emittente del chiamante separando CHI
+    #        AUTORIZZA da COSA GENERA. Sentinel (default) = path web: auth
+    #        guard + `resolve_emittente_scope(user)` come sempre. Scope
+    #        esplicito = path caller-resolved: il chiamante ha gia' deciso
+    #        (worker/pipeline passano None = vede tutto). La combinazione
+    #        `scope=None + user=None` e' ammessa SOLO su canale di sistema
+    #        BYPASSRLS (fail-loud: una view web che la passasse per errore
+    #        viene bloccata qui, non genera cross-scope).
+    def _resolve_scope_chiamante(
+        self,
+        user: AbstractBaseUser | AnonymousUser | None,
+        emittente_scope: Any,
+    ) -> list[int] | None:
+        if emittente_scope is _SCOPE_DA_UTENTE:
+            guard_user_authenticated(user)
+            assert user is not None
+            return resolve_emittente_scope(user)
+        # Fail-fast parlante su input malformato del chiamante (lo scope
+        # esplicito e' un contratto interno: lista di id oppure None).
+        ErrorManager.require(
+            emittente_scope is None or isinstance(emittente_scope, list),
+            code=E_VALIDATION,
+            message="emittente_scope non valido: attesa lista di id o None.",
+            detail=f"emittente_scope={type(emittente_scope).__name__}",
+        )
+        if emittente_scope is None and user is None:
+            self._guard_canale_sistema()
+        return emittente_scope
+
+    # Scopo: Guard fail-loud del path sistema: senza utente e senza scope si
+    #        genera SOLO su una connessione di canale sistema (BYPASSRLS,
+    #        aperta da `system_process_context`). Metodo separato per
+    #        testabilita' (i test lo patchano senza DB).
+    def _guard_canale_sistema(self) -> None:
+        from apps.core.services.system_context import connection_role_bypasses_rls
+
+        ErrorManager.require(
+            connection_role_bypasses_rls(),
+            code=E_VALIDATION,
+            message=(
+                "Generazione senza utente e senza scope ammessa solo dal "
+                "canale di sistema (BYPASSRLS)."
+            ),
+        )
+
     # Scopo: Risolve il template da generare. Tre casi:
     #         a) caller passa `template_documento_id` -> get_template via
     #            reader (404 unificato + scope automatico);
@@ -800,7 +856,7 @@ class DocumentGenerationService:
     #        Se nessun template matcha -> E_DOCUMENTI_NOT_FOUND.
     def _resolve_template(
         self,
-        user: AbstractBaseUser | AnonymousUser,
+        user: AbstractBaseUser | AnonymousUser | None,
         *,
         scope: list[int] | None,
         emittente_fiscale_id: int,
@@ -809,8 +865,22 @@ class DocumentGenerationService:
         template_documento_id: int | None,
     ) -> dict[str, Any]:
         if template_documento_id is not None:
-            # Scope + 404 gia' applicati dal reader.
-            return self._reader.get_template(user, template_documento_id)
+            if user is not None:
+                # Path web: scope + 404 gia' applicati dal reader.
+                return self._reader.get_template(user, template_documento_id)
+            # Path sistema (C-0, user=None): il reader pretende l'auth —
+            # qui lo scope e' gia' risolto dal chiamante, si va di repo.
+            row = self._repo.get_template(
+                template_documento_id, emittente_ids_scope=scope,
+            )
+            ErrorManager.require(
+                row is not None,
+                code=E_NOT_FOUND,
+                message="Template documento non trovato.",
+                detail=f"template_id={template_documento_id}",
+            )
+            assert row is not None
+            return row
 
         row = self._repo.find_template_applicabile(
             sorgente_tipo_id=sorgente_tipo_id,
@@ -880,7 +950,7 @@ class DocumentGenerationService:
     #        18+74) il registry solleva E_DOCUMENTI_VALIDATION.
     def _build_context_for_sorgente(
         self,
-        user: AbstractBaseUser | AnonymousUser,
+        user: AbstractBaseUser | AnonymousUser | None,
         template: dict[str, Any],
         sorgente_id: int,
         *,

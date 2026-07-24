@@ -59,9 +59,14 @@ from apps.documenti.api.multipart_helpers import extract_allegati
 #                             (repo.get_for_documento_generation)
 #         - doc_service:      closure dominio () -> DocumentGenerationService
 #         - emetti_call:      closure dominio (request, sorgente_id) -> dict
-#                             (transizione di stato del dominio)
+#                             (transizione di stato del dominio). **Opzionale**:
+#                             sorgenti SENZA emissione manuale (es. FATTURA, gia'
+#                             prodotta dalla pipeline — si stampa/ristampa, non si
+#                             "emette") passano None → la view `emetti` non viene
+#                             costruita (namespace.emetti = None).
 #         - emetti_response_key: chiave del risultato transizione nella
-#                             response emetti (es. "ordine", "ddt")
+#                             response emetti (es. "ordine", "ddt"). Ignorato se
+#                             emetti_call is None.
 #         - emetti_post_permission: azione di processo per emetti (opzionale,
 #                             es. "cambia_stato_preventivi")
 def build_documenti_sorgente_views(
@@ -72,8 +77,8 @@ def build_documenti_sorgente_views(
     emittente_message: str,
     get_entity: Callable[[int], dict[str, Any] | None],
     doc_service: Callable[[], Any],
-    emetti_call: Callable[[Request, int], dict[str, Any]],
-    emetti_response_key: str,
+    emetti_call: Callable[[Request, int], dict[str, Any]] | None = None,
+    emetti_response_key: str | None = None,
     emetti_post_permission: str | None = None,
     area_funzionale: str = "vendite",
 ) -> SimpleNamespace:
@@ -149,6 +154,10 @@ def build_documenti_sorgente_views(
     Emetti.area_funzionale = area_funzionale
     if emetti_post_permission is not None:
         Emetti.post_permission = emetti_post_permission
+    # Sorgenti senza emissione manuale (FATTURA): la view emetti non viene
+    # esposta (namespace.emetti = None) → il dominio non ne cabla la rotta.
+    # La classe resta definita ma inerte (closure su emetti_call=None mai chiamata).
+    emetti_view = Emetti if emetti_call is not None else None
 
     class DocumentoGenera(DomainAPIView):
         @extend_schema(
@@ -375,7 +384,7 @@ def build_documenti_sorgente_views(
     DocumentoFileDownload.area_funzionale = area_funzionale
 
     return SimpleNamespace(
-        emetti=Emetti,
+        emetti=emetti_view,
         genera=DocumentoGenera,
         anteprima=DocumentoAnteprima,
         lista=DocumentiList,

@@ -224,12 +224,14 @@ class CommesseRepositoryUnitTests(TestCase):
         # stato_commessa_id, stato_commessa, chiude, emittibile, modificabile,
         # policy, fatt_immediata, priorita, ba_id, utility_id, emittente_id,
         # total_attivita, total_approvate, total_non_approvate, total_emesse,
-        # total_non_emesse, total_prezzo_da_riallineare, last_update
+        # total_non_emesse, total_prezzo_da_riallineare, last_update,
+        # commessa_codice, cliente_display (E-DB-4)
         mock_cursor_factory.return_value = _mock_cursor(
             fetchone=(
                 4, "PRONTA_FATTURAZIONE", False, True, True,
                 "DA_DOCUMENTO", False, None, 1001, 2, 555,
                 10, 8, 2, 6, 4, 1, None,
+                "COMM-0042", "Rossi Mario SRL",
             )
         )
         repo = CommesseRepository()
@@ -247,6 +249,8 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(result["total_non_emesse"], 4)
         self.assertEqual(result["total_prezzo_da_riallineare"], 1)
         self.assertIsNone(result["last_update"])
+        self.assertEqual(result["commessa_codice"], "COMM-0042")
+        self.assertEqual(result["cliente_display"], "Rossi Mario SRL")
 
     # Scopo: Verifica che get_commessa_stato restituisca None quando la commessa non esiste.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")

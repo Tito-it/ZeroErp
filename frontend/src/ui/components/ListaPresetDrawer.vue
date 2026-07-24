@@ -48,9 +48,9 @@ const isReadonlyEffective = computed(
 const isEdit = computed(() => props.mode === 'edit')
 
 const ambitiOptions = computed(() => [
-  { label: t('ui_admin.preset_ambito_sistema'), value: 'sistema' },
-  { label: t('ui_admin.preset_ambito_emittente_fiscale'), value: 'emittente_fiscale' },
-  { label: t('ui_admin.preset_ambito_ruolo'), value: 'ruolo' },
+  { label: t('ui.admin.preset_ambito_sistema'), value: 'sistema' },
+  { label: t('ui.admin.preset_ambito_emittente_fiscale'), value: 'emittente_fiscale' },
+  { label: t('ui.admin.preset_ambito_ruolo'), value: 'ruolo' },
 ])
 
 function defaultForm() {
@@ -173,7 +173,7 @@ function onCancel() {
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('ui_admin.preset')"
+        :title="t('ui.admin.preset')"
         icon="pi pi-th-large"
       />
     </template>
@@ -185,11 +185,11 @@ function onCancel() {
       <div class="form-grid">
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('ui_admin.preset_codice') }}</label>
+            <label>{{ t('ui.admin.preset_codice') }}</label>
             <InputText v-model="form.codice" maxlength="80" />
           </div>
           <div class="form-field">
-            <label>{{ t('ui_admin.preset_pagina_dimensione') }}</label>
+            <label>{{ t('ui.admin.preset_pagina_dimensione') }}</label>
             <InputNumber
               v-model="form.pagina_dimensione"
               :min="1"
@@ -200,12 +200,12 @@ function onCancel() {
         </div>
 
         <div class="form-field">
-          <label>{{ t('ui_admin.preset_descrizione') }}</label>
+          <label>{{ t('ui.admin.preset_descrizione') }}</label>
           <InputText v-model="form.descrizione" maxlength="200" />
         </div>
 
         <div class="form-field">
-          <label>{{ t('ui_admin.preset_ambito') }}</label>
+          <label>{{ t('ui.admin.preset_ambito') }}</label>
           <Select
             v-model="form.ambito"
             :options="ambitiOptions"
@@ -220,18 +220,18 @@ function onCancel() {
             size="small"
             class="mt-025"
           >
-            {{ t('ui_admin.preset_ambito_immutabile') }}
+            {{ t('ui.admin.preset_ambito_immutabile') }}
           </Message>
         </div>
 
         <div v-if="form.ambito === 'ruolo'" class="form-field">
-          <label>{{ t('ui_admin.preset_profilo_accesso') }}</label>
+          <label>{{ t('ui.admin.preset_profilo_accesso') }}</label>
           <LookupSelect
             v-if="!isEdit"
             v-model="form.profilo_accesso_id"
             rel="config.profili_accesso"
             show-code
-            :placeholder="t('ui_admin.preset_seleziona_profilo')"
+            :placeholder="t('ui.admin.preset_seleziona_profilo')"
           />
           <InputText
             v-else
@@ -240,7 +240,7 @@ function onCancel() {
           />
         </div>
         <div v-else-if="form.ambito === 'emittente_fiscale'" class="form-field">
-          <label>{{ t('ui_admin.preset_emittente_fiscale') }}</label>
+          <label>{{ t('ui.admin.preset_emittente_fiscale') }}</label>
           <!-- emittenti_fiscali non e' nella whitelist lookup generico
                (campi non standard); manteniamo InputNumber per ora.
                Fase 2: switch a EmittenteFiscaleField (gia' building block). -->
@@ -260,7 +260,7 @@ function onCancel() {
         <div class="form-grid-2col">
           <div class="form-field form-field-inline">
             <Checkbox v-model="form.is_default" binary input-id="ui-preset-default" />
-            <label for="ui-preset-default">{{ t('ui_admin.preset_is_default') }}</label>
+            <label for="ui-preset-default">{{ t('ui.admin.preset_is_default') }}</label>
           </div>
           <div class="form-field form-field-inline">
             <Checkbox v-model="form.attivo" binary input-id="ui-preset-attivo" />

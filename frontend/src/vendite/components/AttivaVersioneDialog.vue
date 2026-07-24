@@ -122,7 +122,7 @@ async function handleConfirm() {
   // Il valido_dal e' gia' stato persistito da onDateChange (se modificato).
   const result = await execute(
     () => changeVersioneStato(props.listinoId, props.versione.id, { stato: 'ATTIVA' }),
-    { successMessage: t('listini.stato_aggiornato') },
+    { successMessage: t('vendite.listini.stato_aggiornato') },
   )
   if (result !== null) {
     emit('confirmed', { listinoId: props.listinoId, versioneId: props.versione.id })
@@ -139,11 +139,11 @@ function close() {
   <AppDialog
     :visible="visible"
     @update:visible="v => emit('update:visible', v)"
-    :header="t('listini.attiva_versione_titolo')"
+    :header="t('vendite.listini.attiva_versione_titolo')"
     width="md"
     :dismissable-mask="!loading && !updatingDate"
     :closable="!loading && !updatingDate"
-    :save-label="t('listini.conferma_attivazione')"
+    :save-label="t('vendite.listini.conferma_attivazione')"
     :loading="loading"
     :save-disabled="!preview || !!previewError || updatingDate"
     @save="handleConfirm"
@@ -152,7 +152,7 @@ function close() {
       <h4>{{ versione.codice_versione }}</h4>
       <div class="form-grid-2col mt-05">
         <div class="form-field">
-          <label>{{ t('listini.field_valido_dal') }} *</label>
+          <label>{{ t('vendite.listini.field_valido_dal') }} *</label>
           <DatePicker v-model="dataValidoDal" :dateFormat="DATE_FORMAT" showIcon
             :disabled="updatingDate || loading"
             @date-select="onDateChange" />
@@ -162,7 +162,7 @@ function close() {
           <small v-else-if="dateError" class="app-field-error">{{ dateError }}</small>
         </div>
         <div class="form-field">
-          <label>{{ t('listini.field_valido_al') }}</label>
+          <label>{{ t('vendite.listini.field_valido_al') }}</label>
           <span>{{ displayDate(versione.valido_al) || '—' }}</span>
         </div>
       </div>
@@ -179,22 +179,22 @@ function close() {
     <template v-else-if="preview">
       <div v-if="!preview.auto_close?.length" class="mt-1">
         <Message severity="info" :closable="false">
-          {{ t('listini.attivazione_no_precedenti') }}
+          {{ t('vendite.listini.attivazione_no_precedenti') }}
         </Message>
       </div>
       <template v-else>
         <Message severity="warn" :closable="false" class="mt-1">
-          {{ t('listini.attivazione_autoclose_warning', { count: preview.auto_close.length }) }}
+          {{ t('vendite.listini.attivazione_autoclose_warning', { count: preview.auto_close.length }) }}
         </Message>
         <DataTable :value="preview.auto_close" class="app-datatable mt-1" striped-rows data-key="id">
-          <Column field="codice_versione" :header="t('listini.col_codice_versione')" style="width: 140px;" />
-          <Column :header="t('listini.field_valido_dal')" style="width: 110px;">
+          <Column field="codice_versione" :header="t('vendite.listini.col_codice_versione')" style="width: 140px;" />
+          <Column :header="t('vendite.listini.field_valido_dal')" style="width: 110px;">
             <template #body="{ data }">{{ displayDate(data.valido_dal) }}</template>
           </Column>
-          <Column :header="t('listini.attivazione_valido_al_prima')" style="width: 110px;">
+          <Column :header="t('vendite.listini.attivazione_valido_al_prima')" style="width: 110px;">
             <template #body="{ data }">{{ displayDate(data.valido_al_prima) || '∞' }}</template>
           </Column>
-          <Column :header="t('listini.attivazione_valido_al_dopo')" style="width: 110px;">
+          <Column :header="t('vendite.listini.attivazione_valido_al_dopo')" style="width: 110px;">
             <template #body="{ data }">{{ displayDate(data.valido_al_dopo) }}</template>
           </Column>
         </DataTable>

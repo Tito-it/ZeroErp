@@ -1,0 +1,234 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Delta ADDITIVO su vendite.vw_dash_competenza_attivita: aggiunge la colonna
+# lotto_id (brief-db-dashboard-home / prerequisito step B-5 cockpit
+# fatturazione). Serve alla seconda superficie del drill-down attivita' ->
+# LottoDrawer: la vista esponeva fattura_id ma non lotto_id, e non esiste un
+# percorso BE "apri lotto da fattura". La vw_dash_competenza_errori gemella
+# espone gia' lotto_id: questo allinea le due superfici sullo stesso drawer.
+#
+# CORPO: ripreso dalla doc auto-gen (oggetto vivo) + due sole aggiunte.
+#   1) colonna lf.lotto_id IN FONDO alla SELECT (regola BE: le colonne nuove su
+#      una lista esistente vanno sempre in coda; nessun consumer si rompe, il BE
+#      seleziona per nome, non SELECT *).
+#   2) LEFT JOIN LATERAL su vendite.fatturazione_lotti_fatture agganciato alla
+#      fattura gia' presente (f.id).
+#
+# PERCHE' LATERAL ... LIMIT 1 (non un LEFT JOIN piano):
+#   fatturazione_lotti_fatture ha UNIQUE (lotto_id, fattura_id) -- NON su
+#   fattura_id da solo: lo schema ammette 1:N (una fattura in piu' lotti). Oggi
+#   e' 1:1 effettivo, ma un LEFT JOIN diretto moltiplicherebbe le righe attivita'
+#   se l'invariante 1:1 cadesse in futuro. Il LATERAL con ORDER BY lotto_id DESC
+#   LIMIT 1 sceglie deterministicamente un solo lotto -> nessuna moltiplicazione
+#   di righe by-construction, indipendente dai dati. Il consumer FE usa solo
+#   lotto_id scalare: la scelta e' trasparente. Correttezza-per-costruzione
+#   invece di dipendere da un assunto sui dati.
+#
+# security_invoker=on RI-SPECIFICATO: reloption non visibile in pg_get_viewdef,
+# PostgreSQL la azzera se non ripetuta nel CREATE OR REPLACE (trappola nota
+# sulle vw_dash_*). runOnChange=false: stato finale committato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260722-01-update-vw-dash-competenza-attivita-lotto-id-mctit.yaml
+
+  - changeSet:
+      id: 20260722-01-update-vw-dash-competenza-attivita-lotto-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Aggiunge la colonna lotto_id (in coda) a vw_dash_competenza_attivita via
+        LEFT JOIN LATERAL a fatturazione_lotti_fatture sulla fattura. Prerequisito
+        della superficie "apri lotto dal drill-down attivita'" (step B-5 cockpit
+        fatturazione). Additivo, non breaking. security_invoker=on ri-specificato.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_get_emittenti_scope_sr_ids';
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM information_schema.tables
+               WHERE table_schema = 'vendite'
+                 AND table_name = 'fatturazione_lotti_fatture';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+              WITH (security_invoker = on) AS
+              SELECT
+                  ca.competenza_mese,
+                  co.id                                          AS commessa_id,
+                  (co.codice)::text                              AS commessa_codice,
+                  ca.id                                          AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa::text               AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  -- Stadio del funnel: i primi due rami valgono per attivita' non
+                  -- emesse (BOZZA reale vs approvata da emettere: i void sono gia'
+                  -- fuori dal WHERE); gli ultimi due seguono l'aggancio fattura.
+                  CASE
+                    WHEN ca.stato_emissione <> 'EMESSA'
+                         AND ca.stato_approvazione <> 'APPROVATA' THEN 'DA_APPROVARE'
+                    WHEN ca.stato_emissione <> 'EMESSA'           THEN 'DA_EMETTERE'
+                    WHEN af.fattura_riga_id IS NULL               THEN 'EMESSA_NON_FATTURATA'
+                    ELSE 'FATTURATA'
+                  END::varchar                                   AS stadio,
+                  -- Misura unica del funnel (DB-6): stessa formula del resolver commesse.
+                  (COALESCE(ca.prezzo_snapshot, 0) * ca.quantita) AS valore,
+                  af.data_insert                                 AS data_emissione,
+                  -- Recupero tardivo: emessa in un mese successivo alla competenza.
+                  -- NULL per le attivita' non ancora emesse (nessuna riga AF).
+                  CASE
+                    WHEN af.id IS NULL THEN NULL
+                    ELSE (date_trunc('month', af.data_insert))::date > ca.competenza_mese
+                  END                                            AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id                                           AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno                                         AS fattura_anno,
+                  f.serie                                        AS fattura_serie,
+                  f.numero                                       AS fattura_numero,
+                  sdf.codice_interno                             AS stato_fattura_codice_interno,
+                  sdf.codice                                     AS stato_fattura_codice,
+                  -- Riconciliazione (DB-6): il valore realmente in fattura.
+                  fr.imponibile_riga                             AS valore_fatturato,
+                  COALESCE(f.critical, false)                    AS fattura_critical,
+                  -- Colonna nuova IN CODA (regola BE): lotto della fattura, per far
+                  -- atterrare il drill-down attivita' sul LottoDrawer. LATERAL LIMIT 1
+                  -- => un solo lotto deterministico, nessuna moltiplicazione di righe
+                  -- anche se lo schema (UNIQUE lotto_id,fattura_id) ammette 1:N.
+                  lf.lotto_id                                    AS lotto_id
+                FROM vendite.commesse co
+                JOIN vendite.stati_commessa sc
+                  ON sc.id = co.stato_commessa_id
+                JOIN vendite.commesse_attivita ca
+                  ON ca.commessa_id = co.id
+                -- 1:1 garantito da uq_attivita_fatturabili_commessa_attivita.
+                LEFT JOIN vendite.attivita_fatturabili af
+                  ON af.commessa_attivita_id = ca.id
+                LEFT JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                LEFT JOIN vendite.fatture f        ON f.id = fr.fattura_id
+                LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = f.stato_doc_fiscale_id
+                -- Cliente = intestatario BA (stesso path del resolver commesse).
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = co.billing_account_id
+                LEFT JOIN anagrafiche.soggetti_ruoli sr  ON sr.id = ba.soggetto_ruolo_id
+                LEFT JOIN anagrafiche.soggetti s         ON s.id = sr.soggetto_id
+                -- Lotto della fattura (1 solo, deterministico): additivo per il
+                -- drill-down -> LottoDrawer. NULL finche' la fattura non e' in lotto.
+                LEFT JOIN LATERAL (
+                  SELECT flf.lotto_id
+                    FROM vendite.fatturazione_lotti_fatture flf
+                   WHERE flf.fattura_id = f.id
+                   ORDER BY flf.lotto_id DESC
+                   LIMIT 1
+                ) lf ON true
+                -- Scope emittente (commesse fuori RLS): valutato UNA volta da GUC.
+                -- NULL=super-admin (tutto), '{}'=GUC vuota/no-scope (niente),
+                -- array=whitelist. Fail-closed by design.
+                CROSS JOIN LATERAL (
+                  SELECT script.fn_get_emittenti_scope_sr_ids(
+                           NULLIF(current_setting('app.current_user_id', true), '')::integer
+                         ) AS sr_ids
+                ) escope
+               WHERE (escope.sr_ids IS NULL
+                      OR co.emittente_soggetto_ruolo_id = ANY(escope.sr_ids))
+                 -- Commessa viva: le testate ANNULLATE sono void, escluse (la Lente 1
+                 -- non le marca come abortite: non appartengono al funnel).
+                 AND sc.codice_interno <> 'ANNULLATA'
+                 -- Predicato "computabile" (riuso 20260703-61): esclude attivita' void.
+                 AND ca.stato_emissione <> 'ANNULLATA'
+                 AND (ca.stato_approvazione <> 'RIFIUTATA'
+                      OR ca.stato_emissione = 'EMESSA');
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_attivita IS
+                'Lente 1 Competenza (due lenti): dettaglio a grana attivita'' di commessa, competenza VERA (ca.competenza_mese). Stadi funnel: DA_APPROVARE / DA_EMETTERE / EMESSA_NON_FATTURATA / FATTURATA (+ stato_fattura_codice_interno per il breakdown 3a). valore = prezzo_snapshot*quantita su tutti gli stadi (DB-6); valore_fatturato = imponibile_riga (riconciliazione). data_emissione = attivita_fatturabili.data_insert (DL-5, validata 2026-07-06: mai spostata da reset/re-fatturazione; caveat C1 nel manuale); emessa_in_ritardo = mese(data_emissione) > competenza_mese. lotto_id (in coda) = lotto della fattura via LATERAL LIMIT 1 su fatturazione_lotti_fatture (un solo lotto deterministico, nessuna moltiplicazione righe; NULL se non in lotto): abilita il drill-down attivita'' -> LottoDrawer come la vw_dash_competenza_errori gemella. Esclude commesse ANNULLATE e attivita'' void (predicato 20260703-61). SCOPE EMITTENTE via fn_get_emittenti_scope_sr_ids(GUC app.current_user_id): NULL=tutto, ''{}''=niente (fail-closed: senza GUC 0 righe), array=whitelist. security_invoker=on. Consumata da vw_dash_competenza_mensile e dal drill-down BE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+              WITH (security_invoker = on) AS
+              SELECT
+                  ca.competenza_mese,
+                  co.id                                          AS commessa_id,
+                  (co.codice)::text                              AS commessa_codice,
+                  ca.id                                          AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa::text               AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  CASE
+                    WHEN ca.stato_emissione <> 'EMESSA'
+                         AND ca.stato_approvazione <> 'APPROVATA' THEN 'DA_APPROVARE'
+                    WHEN ca.stato_emissione <> 'EMESSA'           THEN 'DA_EMETTERE'
+                    WHEN af.fattura_riga_id IS NULL               THEN 'EMESSA_NON_FATTURATA'
+                    ELSE 'FATTURATA'
+                  END::varchar                                   AS stadio,
+                  (COALESCE(ca.prezzo_snapshot, 0) * ca.quantita) AS valore,
+                  af.data_insert                                 AS data_emissione,
+                  CASE
+                    WHEN af.id IS NULL THEN NULL
+                    ELSE (date_trunc('month', af.data_insert))::date > ca.competenza_mese
+                  END                                            AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id                                           AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno                                         AS fattura_anno,
+                  f.serie                                        AS fattura_serie,
+                  f.numero                                       AS fattura_numero,
+                  sdf.codice_interno                             AS stato_fattura_codice_interno,
+                  sdf.codice                                     AS stato_fattura_codice,
+                  fr.imponibile_riga                             AS valore_fatturato,
+                  COALESCE(f.critical, false)                    AS fattura_critical
+                FROM vendite.commesse co
+                JOIN vendite.stati_commessa sc
+                  ON sc.id = co.stato_commessa_id
+                JOIN vendite.commesse_attivita ca
+                  ON ca.commessa_id = co.id
+                LEFT JOIN vendite.attivita_fatturabili af
+                  ON af.commessa_attivita_id = ca.id
+                LEFT JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                LEFT JOIN vendite.fatture f        ON f.id = fr.fattura_id
+                LEFT JOIN config.stati_doc_fiscale sdf ON sdf.id = f.stato_doc_fiscale_id
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = co.billing_account_id
+                LEFT JOIN anagrafiche.soggetti_ruoli sr  ON sr.id = ba.soggetto_ruolo_id
+                LEFT JOIN anagrafiche.soggetti s         ON s.id = sr.soggetto_id
+                CROSS JOIN LATERAL (
+                  SELECT script.fn_get_emittenti_scope_sr_ids(
+                           NULLIF(current_setting('app.current_user_id', true), '')::integer
+                         ) AS sr_ids
+                ) escope
+               WHERE (escope.sr_ids IS NULL
+                      OR co.emittente_soggetto_ruolo_id = ANY(escope.sr_ids))
+                 AND sc.codice_interno <> 'ANNULLATA'
+                 AND ca.stato_emissione <> 'ANNULLATA'
+                 AND (ca.stato_approvazione <> 'RIFIUTATA'
+                      OR ca.stato_emissione = 'EMESSA');

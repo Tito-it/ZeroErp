@@ -19,14 +19,27 @@ AS $function$
 --   config.stati_doc_ddt (bottone PDF data-driven via capabilities).
 --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
 --   (documento vuoto non avanza di stato).
+--   rev 2026-07-19: le transizioni verso EMESSO delegano a
+--   script.fn_check_ddt_emittibile (TUTTE le condizioni di emissione,
+--   non solo le righe): brief-db-guard-righe-avanzamento-stato §1a-bis.
+--   rev 2026-07-19 (bis): reason push DDT_GIA_INVIATO/DDT_GIA_FATTURATO
+--   via fn_get_stato_push_segment (brief-db-push-commessa-gia-inviato §4b).
+--   rev 2026-07-19 (ter): catch-all DDT_NON_PUSHABILE decomposto
+--   nelle 7 cause via vendite.fn_ddt_push_diagnosi (fonte unica) +
+--   rami DDT_FATTURA_DA_ORDINE/SOLO_TRASPORTO/MERCE_IN_VIAGGIO +
+--   precedenza a due livelli — brief-db-ddt-reason-push-catch-all §3.
 DECLARE
-    v_stato_id   vendite.ddt.stato_doc_ddt_id%TYPE;
+    v_ddt        vendite.ddt%ROWTYPE;
     v_stato_cod  config.stati_doc_ddt.codice_interno%TYPE;
     v_pdf_mode   config.stati_doc_ddt.pdf_mode%TYPE;
     v_pdf_allow  config.stati_doc_ddt.pdf_allow_allegati%TYPE;
     v_actions    jsonb;
     v_can_change boolean := false;
     v_ha_righe   boolean := false;
+    v_motivi     jsonb := '[]'::jsonb;
+    v_emit_ok    boolean := true;
+    v_emit_reason     text := NULL;
+    v_emit_reason_key text := NULL;
     v_push_ok    boolean := false;
     v_push_reason     text := NULL;
     v_push_reason_key text := NULL;
@@ -38,27 +51,36 @@ DECLARE
         '"vettore_soggetto_ruolo_id","causale_trasporto_id","aspetto_bene_id",'
         '"modalita_addebito_trasporto_id","valuta_id","utility_id","data","meta"]'::jsonb;
 BEGIN
-    -- Stato corrente + capability PDF (pdf_mode/allow_allegati).
-    SELECT d.stato_doc_ddt_id, sdd.codice_interno,
-           sdd.pdf_mode, sdd.pdf_allow_allegati
-      INTO v_stato_id, v_stato_cod, v_pdf_mode, v_pdf_allow
-      FROM vendite.ddt d
-      JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
-     WHERE d.id = p_ddt_id;
+    -- Riga completa: serve sia per lo stato sia per passarla alla
+    -- fn_check (che valuta i valori della riga, non un id).
+    SELECT d.* INTO v_ddt FROM vendite.ddt d WHERE d.id = p_ddt_id;
 
     IF NOT FOUND THEN
         RETURN NULL;
     END IF;
 
+    SELECT sdd.codice_interno, sdd.pdf_mode, sdd.pdf_allow_allegati
+      INTO v_stato_cod, v_pdf_mode, v_pdf_allow
+      FROM config.stati_doc_ddt sdd
+     WHERE sdd.id = v_ddt.stato_doc_ddt_id;
+
     -- Precondizione "documento non vuoto" per le transizioni che la
-    -- esigono (meta.requires_righe). La fn sa solo COME contare le
-    -- proprie righe: specchia la Regola 2 del guard
-    -- (trgfn_ddt_guard_transizione, 20260716-01): riga attiva.
+    -- esigono (meta.requires_righe), diverse da EMESSO.
     v_ha_righe := EXISTS (
         SELECT 1 FROM vendite.ddt_righe r
          WHERE r.ddt_id = p_ddt_id
            AND r.attivo IS TRUE
     );
+
+    -- Precondizioni COMPLETE dell'emissione: single source coi guard
+    -- (righe, causale, prezzi, indirizzi, componenti). Il primo motivo
+    -- e' quello mostrato all'utente.
+    v_motivi := script.fn_check_ddt_emittibile(v_ddt);
+    IF jsonb_array_length(v_motivi) > 0 THEN
+        v_emit_ok         := false;
+        v_emit_reason     := v_motivi -> 0 ->> 'reason';
+        v_emit_reason_key := v_motivi -> 0 ->> 'reason_key';
+    END IF;
 
     SELECT COALESCE(
         jsonb_agg(
@@ -70,14 +92,27 @@ BEGIN
                 'icon',             t.meta->>'icon',
                 'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
                 'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
-                'enabled',          NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
-                                         AND NOT v_ha_righe),
-                'reason',           CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                -- Verso EMESSO comandano i motivi della fn_check;
+                -- altrove resta il predicato requires_righe.
+                'enabled',          CASE WHEN sa.codice_interno = 'EMESSO'
+                                         THEN v_emit_ok
+                                         ELSE NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                   AND NOT v_ha_righe) END,
+                'reason',           CASE WHEN sa.codice_interno = 'EMESSO'
+                                         THEN v_emit_reason
+                                         WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
                                               AND NOT v_ha_righe
                                          THEN 'DOCUMENTO_SENZA_RIGHE' END,
-                'reason_key',       CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                'reason_key',       CASE WHEN sa.codice_interno = 'EMESSO'
+                                         THEN v_emit_reason_key
+                                         WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
                                               AND NOT v_ha_righe
-                                         THEN 'common.azione_reason.senza_righe' END
+                                         THEN 'common.azione_reason.senza_righe' END,
+                -- Elenco completo dei motivi: il FE puo' mostrarli
+                -- tutti nel tooltip invece del solo primo.
+                'reasons',          CASE WHEN sa.codice_interno = 'EMESSO'
+                                              AND jsonb_array_length(v_motivi) > 0
+                                         THEN v_motivi END
             )
             ORDER BY sa.ordine
         ),
@@ -86,7 +121,7 @@ BEGIN
     INTO v_actions
     FROM config.transizioni_stati_ddt t
     JOIN config.stati_doc_ddt sa ON sa.id = t.stato_a_id
-    WHERE t.stato_da_id = v_stato_id
+    WHERE t.stato_da_id = v_ddt.stato_doc_ddt_id
       AND t.attivo IS TRUE
       AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
       AND t.meta ? 'action_key'
@@ -99,9 +134,50 @@ BEGIN
     IF EXISTS (SELECT 1
                  FROM vendite.fn_list_ddt_da_pushare(p_ddt_id := p_ddt_id)) THEN
         v_push_ok := true;
+    -- Nessuna riga pushabile: distinguere il PERCHE' via
+    -- classificatore condiviso (stesso predicato della push-list,
+    -- vede anche i componenti #CMP).
+    ELSIF EXISTS (SELECT 1
+                    FROM vendite.ddt_righe r
+                   WHERE r.ddt_id = p_ddt_id
+                     AND script.fn_get_stato_push_segment(
+                           'DDT:' || v_ddt.uid::text || ':R:' || r.id::text) = 'ALLOCATA') THEN
+        -- pushato, in attesa di fatturazione
+        v_push_reason     := 'DDT_GIA_INVIATO';
+        v_push_reason_key := 'vendite.ddt.push_commessa_reason.gia_inviato';
+    ELSIF EXISTS (SELECT 1
+                    FROM vendite.ddt_righe r
+                   WHERE r.ddt_id = p_ddt_id
+                     AND script.fn_get_stato_push_segment(
+                           'DDT:' || v_ddt.uid::text || ':R:' || r.id::text) = 'EMESSA') THEN
+        v_push_reason     := 'DDT_GIA_FATTURATO';
+        v_push_reason_key := 'vendite.ddt.push_commessa_reason.gia_fatturato';
     ELSE
-        v_push_reason     := 'DDT_NON_PUSHABILE';
-        v_push_reason_key := 'vendite.ddt.push_commessa_reason.non_pushabile';
+        -- Catch-all DECOMPOSTO (brief-db-ddt-reason-push-catch-all §3):
+        -- la diagnosi (fonte unica) da' IL motivo per riga; qui si prende
+        -- il piu' forte (min rank = precedenza Decisione E) e lo si mappa a
+        -- una reason. DDT_ROUTED escluso: gia' intercettato sopra.
+        SELECT g.motivo INTO v_push_reason
+          FROM vendite.fn_ddt_push_diagnosi(p_ddt_id) g
+         WHERE g.motivo IS NOT NULL AND g.motivo <> 'DDT_ROUTED'
+         ORDER BY g.motivo_rank
+         LIMIT 1;
+
+        -- Collasso: solo 3 cause hanno ramo proprio; le altre (senza-BA,
+        -- contatore, annullato, reso) restano nel generico riscritto, che
+        -- NON afferma piu' una condizione di stato (Decisione C).
+        v_push_reason := CASE v_push_reason
+            WHEN 'DDT_FATTURA_DA_ORDINE' THEN 'DDT_FATTURA_DA_ORDINE'
+            WHEN 'DDT_SOLO_TRASPORTO'    THEN 'DDT_SOLO_TRASPORTO'
+            WHEN 'DDT_MERCE_IN_VIAGGIO'  THEN 'DDT_MERCE_IN_VIAGGIO'
+            ELSE 'DDT_NON_PUSHABILE'
+        END;
+        v_push_reason_key := 'vendite.ddt.push_commessa_reason.' || CASE v_push_reason
+            WHEN 'DDT_FATTURA_DA_ORDINE' THEN 'fattura_da_ordine'
+            WHEN 'DDT_SOLO_TRASPORTO'    THEN 'solo_trasporto'
+            WHEN 'DDT_MERCE_IN_VIAGGIO'  THEN 'merce_in_viaggio'
+            ELSE 'non_pushabile'
+        END;
     END IF;
 
     IF v_push_ok THEN
@@ -139,7 +215,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
-IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ddt. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il DDT non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dalla Regola 2 del guard, 20260716-01).';
+IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-19: transizioni verso EMESSO via fn_check_ddt_emittibile; reason push GIA_INVIATO/GIA_FATTURATO via fn_get_stato_push_segment. rev 2026-07-19 (ter): il catch-all DDT_NON_PUSHABILE e'' decomposto nelle 7 cause di esclusione via vendite.fn_ddt_push_diagnosi (fonte unica, equivalenza col lister blindata a pgTAP); rami propri DDT_FATTURA_DA_ORDINE (XOR, speculare di ORDINE_FATTURA_DA_DDT), DDT_SOLO_TRASPORTO (causale non fatturabile), DDT_MERCE_IN_VIAGGIO (stato pre-trigger); casi senza-BA/contatore/annullato/reso nel generico riscritto (non piu'' basato sullo stato); precedenza a due livelli (documento prima, poi riga azionabile) — brief-db-ddt-reason-push-catch-all §3.';
 ```
 
 ---

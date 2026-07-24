@@ -90,6 +90,10 @@ class HandlerResult:
     # emittibilita` post-push in commesse_service e l'esposizione API — i soli
     # contatori non permettevano di risalire alla commessa dal documento sorgente.
     commesse_ids: set[int] = field(default_factory=set)
+    # Id delle righe attivita` effettivamente upsertate dal run, per commessa.
+    # Alimentano il ponte di approvazione: il push autorizza le PROPRIE righe,
+    # non tutte le BOZZA della commessa (brief porta-oneri §4b, trappola T1).
+    attivita_ids_per_commessa: dict[int, list[int]] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         """Serializza per commesse_push_log.risultato (JSONB)."""
@@ -481,6 +485,24 @@ class BaseSourceHandler(ABC):
                 result.errors.append(
                     f"Errore batch segment_key={err.get('segment_key')}: {err.get('error')}"
                 )
+            # Il batch DB ritorna solo contatori: risolviamo gli id dalle chiavi
+            # naturali (commessa_id, segment_key) per dire al ponte QUALI righe
+            # sono nostre. Le chiavi FALLITE vanno escluse esplicitamente: per
+            # gli INSERT falliti la riga non esiste e la query non la trova, ma
+            # per gli UPDATE falliti la riga preesistente (del push precedente)
+            # esiste ancora — senza il filtro il ponte la approverebbe coi
+            # VALORI STALI mentre il report la segna in errore (review
+            # 2026-07-23: BOZZA→APPROVATA→fatturata col vecchio importo).
+            chiavi_fallite = {
+                err.get("segment_key") for err in batch.errors
+            }
+            result.attivita_ids_per_commessa = self._repo.list_attivita_ids_by_segments(
+                [
+                    (inp.commessa_id, inp.segment_key)
+                    for inp in pending_inputs
+                    if inp.segment_key not in chiavi_fallite
+                ]
+            )
         elif pending_inputs:
             result.created = len(pending_inputs)
 

@@ -52,8 +52,8 @@ const detail = ref(null)
 // Il codice tecnico e' visibile dentro al form (campo Codice), nel titolo
 // usiamo solo la ragione sociale per leggibilita'.
 const drawerTitle = computed(() => {
-  if (!isEdit.value) return t('amm_emittenti_fiscali.create_title')
-  const base = t('amm_emittenti_fiscali.edit_title')
+  if (!isEdit.value) return t('amministrazione.emittenti_fiscali.create_title')
+  const base = t('amministrazione.emittenti_fiscali.edit_title')
   const rs = detail.value?.ragione_sociale_completa
   return rs ? `${base} — ${rs}` : base
 })
@@ -201,14 +201,14 @@ async function save() {
   if (isEdit.value) {
     result = await execute(
       () => store.update(props.emittenteId, payload),
-      { successMessage: t('amm_emittenti_fiscali.updated') }
+      { successMessage: t('amministrazione.emittenti_fiscali.updated') }
     )
   } else {
     payload.soggetto_id = soggettoSelezionato.value.id
     payload.codice = form.value.codice.trim()
     result = await execute(
       () => store.create(payload),
-      { successMessage: t('amm_emittenti_fiscali.created') }
+      { successMessage: t('amministrazione.emittenti_fiscali.created') }
     )
   }
   if (result !== null) emit('saved', result)
@@ -237,7 +237,7 @@ function close() {
     <div :class="{ 'app-readonly': isReadonly }">
         <div class="form-grid">
           <!-- Soggetto -->
-          <h4>{{ t('amm_emittenti_fiscali.field_soggetto') }}</h4>
+          <h4>{{ t('amministrazione.emittenti_fiscali.field_soggetto') }}</h4>
           <template v-if="!isEdit">
             <div v-if="soggettoSelezionato" class="mb-3">
               <SoggettoMessageBanner
@@ -251,7 +251,7 @@ function close() {
                 :closable="false"
                 class="mt-2"
               >
-                {{ t('amm_emittenti_fiscali.soggetto_no_piva') }}
+                {{ t('amministrazione.emittenti_fiscali.soggetto_no_piva') }}
               </Message>
               <Button :label="t('resolver.change')" :icon="MANAGE_ICONS.EDIT"
                 text size="small" class="mt-1" @click="clearSoggetto" />
@@ -270,10 +270,10 @@ function close() {
 
           <!-- Sezioni dati emittente: visibili solo dopo selezione soggetto (create) o sempre (edit) -->
           <template v-if="isEdit || (soggettoSelezionato && soggettoHasPartitaIva)">
-            <h4 class="mt-3">{{ t('amm_emittenti_fiscali.section_anagrafica') }}</h4>
+            <h4 class="mt-3">{{ t('amministrazione.emittenti_fiscali.section_anagrafica') }}</h4>
 
             <div class="form-field">
-              <label>{{ t('amm_emittenti_fiscali.field_codice') }} *</label>
+              <label>{{ t('amministrazione.emittenti_fiscali.field_codice') }} *</label>
               <InputText
                 v-model="form.codice"
                 :disabled="isEdit"
@@ -283,29 +283,29 @@ function close() {
             </div>
 
             <div class="form-field">
-              <label>{{ t('amm_emittenti_fiscali.field_descrizione') }} *</label>
+              <label>{{ t('amministrazione.emittenti_fiscali.field_descrizione') }} *</label>
               <InputText v-model="form.descrizione" maxlength="200" class="w-full" />
             </div>
 
-            <h4 class="mt-3">{{ t('amm_emittenti_fiscali.section_fiscale') }}</h4>
+            <h4 class="mt-3">{{ t('amministrazione.emittenti_fiscali.section_fiscale') }}</h4>
 
             <div class="form-field">
-              <label>{{ t('amm_emittenti_fiscali.field_regime_fiscale_rf') }}</label>
+              <label>{{ t('amministrazione.emittenti_fiscali.field_regime_fiscale_rf') }}</label>
               <InputText v-model="form.regime_fiscale_rf" maxlength="10" class="w-full" />
               <small class="block mt-1 text-color-secondary">
-                {{ t('amm_emittenti_fiscali.regime_fiscale_rf_hint') }}
+                {{ t('amministrazione.emittenti_fiscali.regime_fiscale_rf_hint') }}
               </small>
             </div>
 
-            <h4 class="mt-3">{{ t('amm_emittenti_fiscali.section_bollo') }}</h4>
+            <h4 class="mt-3">{{ t('amministrazione.emittenti_fiscali.section_bollo') }}</h4>
 
             <div class="form-grid-2col">
               <div class="form-field">
-                <label>{{ t('amm_emittenti_fiscali.field_bollo_auto') }}</label>
+                <label>{{ t('amministrazione.emittenti_fiscali.field_bollo_auto') }}</label>
                 <ToggleSwitch v-model="form.bollo_auto" />
               </div>
               <div class="form-field">
-                <label>{{ t('amm_emittenti_fiscali.field_bollo_soglia') }}</label>
+                <label>{{ t('amministrazione.emittenti_fiscali.field_bollo_soglia') }}</label>
                 <!-- Editabile solo se bollo_auto = true; altrimenti azzerata via watch. -->
                 <InputNumber
                   v-model="form.bollo_soglia"
@@ -317,10 +317,10 @@ function close() {
             </div>
 
             <div class="form-field">
-              <label>{{ t('amm_emittenti_fiscali.field_rounding_policy') }}</label>
+              <label>{{ t('amministrazione.emittenti_fiscali.field_rounding_policy') }}</label>
               <EmittenteRoundingModeSelect
                 v-model="form.rounding_policy"
-                :placeholder="t('amm_emittenti_fiscali.field_rounding_policy')"
+                :placeholder="t('amministrazione.emittenti_fiscali.field_rounding_policy')"
                 show-clear
                 class="w-full"
               />
@@ -330,22 +330,22 @@ function close() {
                  usata da preventivi/contratti senza BA. Senza questo valore i
                  form-defaults restituiscono valuta vuota. -->
             <div class="form-field">
-              <label>{{ t('amm_emittenti_fiscali.field_valuta') }}</label>
+              <label>{{ t('amministrazione.emittenti_fiscali.field_valuta') }}</label>
               <LookupSelect
                 v-model="form.valuta_id"
                 rel="config.valute"
-                :placeholder="t('amm_emittenti_fiscali.field_valuta')"
+                :placeholder="t('amministrazione.emittenti_fiscali.field_valuta')"
                 show-clear
                 class="w-full"
               />
               <small class="block mt-1 text-color-secondary">
-                {{ t('amm_emittenti_fiscali.field_valuta_hint') }}
+                {{ t('amministrazione.emittenti_fiscali.field_valuta_hint') }}
               </small>
             </div>
 
             <!-- Attivo: ultimo elemento del form (richiesta UX) -->
             <div class="form-field mt-3">
-              <label>{{ t('amm_emittenti_fiscali.field_attivo') }}</label>
+              <label>{{ t('amministrazione.emittenti_fiscali.field_attivo') }}</label>
               <ToggleSwitch v-model="form.attivo" />
             </div>
           </template>

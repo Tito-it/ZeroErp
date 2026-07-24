@@ -18,8 +18,9 @@
 // Root `app-escape`: nei drawer post-DRAFT il contenuto e' .app-readonly ma
 // la consultazione/navigazione della genealogia e' legittima (memoria
 // feedback_app_escape_pannelli_processo).
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import Panel from 'primevue/panel'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
@@ -41,7 +42,19 @@ const props = defineProps({
   // Apre il pannello di default e carica al mount (drawer commessa Fase C:
   // la genealogia È il contenuto principale, non una sezione secondaria).
   startOpen: { type: Boolean, default: false },
+  // Readonly PURO del contesto che apre (permessi area / split / forzato) —
+  // NON il lock-di-stato del documento padre. Vedi provide sotto.
+  readonly: { type: Boolean, default: false },
 })
+
+// I drawer aperti da qui (documento della tappa, pratica) sono documenti
+// DIVERSI dal drawer padre: il suo lock-di-stato (post-DRAFT → provide
+// READONLY_KEY=true) non deve contagiarli — senza questo reset, un ordine
+// aperto dai passaggi di un DDT CONSEGNATO perdeva TUTTE le azioni di stato
+// (mapAvailableActionsToDrawerActions ritorna [] in readonly puro), incluso
+// «Invia a commessa» legittimo. Si ri-fornisce quindi il readonly PURO del
+// chiamante: i permessi area/split continuano a propagare, il lock no.
+provide(READONLY_KEY, computed(() => props.readonly))
 
 // `loaded`: emette il payload passaggi appena caricato (nodo + pratica +
 // frontiera + catene) — consumato dal drawer commessa per l'header di testata
@@ -111,15 +124,15 @@ function passaggioToRow(p, lato) {
 const sezioni = computed(() => [
   {
     key: 'origine',
-    titolo: t('lineage.origine'),
-    vuoto: t('lineage.nessuna_origine'),
+    titolo: t('vendite.lineage.origine'),
+    vuoto: t('vendite.lineage.nessuna_origine'),
     icona: 'pi-arrow-left',
     rows: (data.value?.indietro ?? []).map((p) => passaggioToRow(p, 'from')),
   },
   {
     key: 'destinazioni',
-    titolo: t('lineage.destinazioni'),
-    vuoto: t('lineage.nessun_transito'),
+    titolo: t('vendite.lineage.destinazioni'),
+    vuoto: t('vendite.lineage.nessun_transito'),
     icona: 'pi-arrow-right',
     rows: (data.value?.avanti ?? []).map((p) => passaggioToRow(p, 'to')),
   },
@@ -157,7 +170,7 @@ const praticaDrawerVisible = ref(false)
   <div class="app-escape">
     <Panel v-model:collapsed="collapsed" toggleable class="lineage-panel">
       <template #header>
-        <span class="lineage-panel-title">{{ t('lineage.titolo') }}</span>
+        <span class="lineage-panel-title">{{ t('vendite.lineage.titolo') }}</span>
       </template>
 
       <ProgressBar v-if="loading" mode="indeterminate" style="height: 4px" />
@@ -167,7 +180,7 @@ const praticaDrawerVisible = ref(false)
              Senza pratica: messaggio testuale al posto del "—" (il documento
              puo' legittimamente nascere fuori dal percorso pratica). -->
         <div class="lineage-row">
-          <span class="lineage-label">{{ t('lineage.pratica') }}</span>
+          <span class="lineage-label">{{ t('vendite.lineage.pratica') }}</span>
           <template v-if="pratica">
             <Button
               link
@@ -175,15 +188,15 @@ const praticaDrawerVisible = ref(false)
               :label="pratica.pratica_numero"
               @click="praticaDrawerVisible = true" />
             <span v-if="pratica.n_pratiche > 1" class="lineage-muted">
-              {{ t('lineage.altre_pratiche', { n: pratica.n_pratiche - 1 }) }}
+              {{ t('vendite.lineage.altre_pratiche', { n: pratica.n_pratiche - 1 }) }}
             </span>
           </template>
-          <span v-else class="lineage-muted">{{ t('lineage.nessuna_pratica') }}</span>
+          <span v-else class="lineage-muted">{{ t('vendite.lineage.nessuna_pratica') }}</span>
         </div>
 
         <!-- Frontiera: documento piu' prossimo in esecuzione (G-6/G-9/G-10) -->
         <div class="lineage-row">
-          <span class="lineage-label">{{ t('lineage.frontiera') }}</span>
+          <span class="lineage-label">{{ t('vendite.lineage.frontiera') }}</span>
           <template v-if="frontiera">
             <Tag :value="tipoLabel(frontiera.tipo_codice)" severity="secondary" />
             <span class="lineage-codice">{{ frontiera.codice }}</span>
@@ -191,10 +204,10 @@ const praticaDrawerVisible = ref(false)
               :value="frontiera.stato_codice_interno ?? frontiera.fase"
               :severity="faseDocumentoSeverity(frontiera.fase)" />
             <span v-if="frontiera.n_discendenti_attivi > 1" class="lineage-muted">
-              {{ t('lineage.altre_attive', { n: frontiera.n_discendenti_attivi - 1 }) }}
+              {{ t('vendite.lineage.altre_attive', { n: frontiera.n_discendenti_attivi - 1 }) }}
             </span>
           </template>
-          <span v-else class="lineage-muted">{{ t('lineage.nessun_transito') }}</span>
+          <span v-else class="lineage-muted">{{ t('vendite.lineage.nessun_transito') }}</span>
         </div>
 
         <!-- Timeline nelle due direzioni (Origine = indietro, Destinazioni =
@@ -219,7 +232,7 @@ const praticaDrawerVisible = ref(false)
               link
               class="lineage-link"
               :label="row.codice"
-              v-tooltip.top="t('lineage.apri_documento')"
+              v-tooltip.top="t('vendite.lineage.apri_documento')"
               @click="apriDocumento(row)" />
             <span v-else class="lineage-codice">{{ row.codice ?? '—' }}</span>
             <Tag
@@ -228,7 +241,7 @@ const praticaDrawerVisible = ref(false)
               :severity="faseDocumentoSeverity(row.fase)" />
             <span v-if="row.ruolo" class="lineage-muted">{{ row.ruolo }}</span>
             <span v-if="row.ramoInverso" class="lineage-muted">
-              {{ t('lineage.ramo_inverso') }}
+              {{ t('vendite.lineage.ramo_inverso') }}
             </span>
           </div>
         </div>

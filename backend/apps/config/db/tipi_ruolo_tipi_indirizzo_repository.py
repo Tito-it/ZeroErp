@@ -13,7 +13,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_direction
 
 
 # Whitelist colonne ammesse per ORDER BY.
@@ -82,7 +82,7 @@ class TipiRuoloTipiIndirizzoRepository:
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         order_column = _ORDER_COLS.get(order_by, _ORDER_COLS["tipo_ruolo_descrizione"])
-        direction = "DESC" if order_dir and order_dir.lower() == "desc" else "ASC"
+        direction = sql_order_direction(order_dir)
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
 

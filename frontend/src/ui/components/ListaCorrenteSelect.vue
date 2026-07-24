@@ -32,7 +32,7 @@ function onChange(event) {
 <template>
   <div class="lista-corrente-select">
     <label class="lista-corrente-label">
-      {{ t('ui_admin.lista_corrente') }}
+      {{ t('ui.admin.lista_corrente') }}
     </label>
     <Select
       :model-value="store.listaCorrenteId"
@@ -41,7 +41,7 @@ function onChange(event) {
       :disabled="disabled || store.loading"
       option-label="descrizione"
       option-value="id"
-      :placeholder="t('ui_admin.lista_corrente_placeholder')"
+      :placeholder="t('ui.admin.lista_corrente_placeholder')"
       :filter="store.liste.length > 5"
       :show-clear="true"
       @change="onChange"
@@ -53,7 +53,7 @@ function onChange(event) {
       size="small"
       class="mt-025"
     >
-      {{ t('ui_admin.lista_load_error') }}
+      {{ t('ui.admin.lista_load_error') }}
     </Message>
   </div>
 </template>

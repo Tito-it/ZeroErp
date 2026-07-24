@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ENUM ui.tipo_widget.
+#
+# Why: comportamento/forma di un widget nel catalogo dashboard.
+# Oggi esiste un solo tipo ('kpi': card con numero, soglia e deep-link),
+# ma l'ENUM tiene aperta l'evoluzione (grafici, liste embedded, ecc.)
+# senza cambiare la firma della funzione di risoluzione: il FE legge
+# tipo_widget e sa quale componente montare.
+#
+# Definito nello schema ui gia' esistente (creato in 20260506-01).
+# Usato da: ui.widget.tipo_widget
+#
+# Ref: docs/it/dev/work-in-progress/brief-db-dashboard-home.md §3.ter
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20260721-12-ddl-ui-enum-tipo-widget-mctit.yaml
+
+  - changeSet:
+      id: 20260721-12-01-create-enum-ui-tipo-widget
+      author: mctit
+      comment: "ENUM ui.tipo_widget: forma del widget dashboard (oggi solo kpi)"
+      preConditions:
+        - onFail: MARK_RAN
+        - onError: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT COUNT(*) FROM pg_type t
+              JOIN pg_namespace n ON n.oid = t.typnamespace
+              WHERE n.nspname = 'ui'
+                AND t.typname = 'tipo_widget'
+      changes:
+        - sql:
+            sql: |
+              CREATE TYPE ui.tipo_widget AS ENUM (
+                  'kpi'   -- card KPI: un numero, una soglia di attenzione, un deep-link a vista preimpostata
+              );
+        - sql:
+            sql: |
+              COMMENT ON TYPE ui.tipo_widget IS
+              'Forma strutturale di un widget dashboard. Oggi solo kpi (card numero/soglia/deep-link). '
+              'ENUM per abilitare tipi futuri (grafici, liste) senza cambiare la firma della risoluzione. '
+              'Usato da ui.widget.tipo_widget.';
+      rollback:
+        - sql:
+            sql: DROP TYPE IF EXISTS ui.tipo_widget;

@@ -73,9 +73,9 @@ const tipologiaLookup = useGlobalLookup(
 
 const attivoFilter = ref(true)
 const attivoOptions = [
-  { value: null, label: t('amm.stato_all') },
-  { value: true, label: t('amm.stato_attivo') },
-  { value: false, label: t('amm.stato_inattivo') }
+  { value: null, label: t('amministrazione.stato_all') },
+  { value: true, label: t('amministrazione.stato_attivo') },
+  { value: false, label: t('amministrazione.stato_inattivo') }
 ]
 
 // Stato espansione righe (usato come v-model:expandedRows di PrimeVue).
@@ -184,7 +184,7 @@ function onEliminaVersione(versione, listino) {
   confirmDelete(versione.codice_versione, async () => {
     const result = await execute(
       () => deleteVersione(listino.id, versione.id),
-      { successMessage: t('listini.versione_eliminata') },
+      { successMessage: t('vendite.listini.versione_eliminata') },
     )
     if (result !== null) {
       await store.invalidateVersioniListino(listino.id)
@@ -200,7 +200,7 @@ function onEliminaListino(listino) {
   confirmDelete(listino.codice, async () => {
     const result = await execute(
       () => deleteListino(listino.id),
-      { successMessage: t('listini.listino_eliminato') },
+      { successMessage: t('vendite.listini.listino_eliminato') },
     )
     if (result !== null) {
       await store.fetchList()
@@ -216,8 +216,8 @@ const pageActions = computed(() => [
     key: 'toggle-all-versioni',
     kind: 'utility',
     label: allRowsExpanded.value
-      ? t('listini.comprimi_tutte_versioni')
-      : t('listini.espandi_tutte_versioni'),
+      ? t('vendite.listini.comprimi_tutte_versioni')
+      : t('vendite.listini.espandi_tutte_versioni'),
     icon: allRowsExpanded.value ? MANAGE_ICONS.COLLAPSE : MANAGE_ICONS.EXPAND,
     severity: 'info',
     disabled: store.items.length === 0,
@@ -226,7 +226,7 @@ const pageActions = computed(() => [
   {
     key: 'test-prezzo',
     kind: 'utility',
-    label: t('listini.test_prezzo'),
+    label: t('vendite.listini.test_prezzo'),
     icon: 'pi pi-calculator',
     severity: 'info',
     // Strumento diagnostico: oltre al SUPER_ADMIN (bypass) lo apriamo a chi
@@ -248,7 +248,7 @@ const pageActions = computed(() => [
     key: 'new',
     kind: 'primary',
     label: t('common.new'),
-    tooltip: t('listini.nuovo_listino'),
+    tooltip: t('vendite.listini.nuovo_listino'),
     icon: MANAGE_ICONS.ADD,
     hideWhenReadonly: true,
     command: () => emit('new'),
@@ -260,13 +260,13 @@ function buildListinoActions(data) {
   return [
     {
       key: 'toggle-versioni',
-      label: expandedRows.value[data.id] ? t('listini.nascondi_versioni') : t('listini.mostra_versioni'),
+      label: expandedRows.value[data.id] ? t('vendite.listini.nascondi_versioni') : t('vendite.listini.mostra_versioni'),
       icon: expandedRows.value[data.id] ? MANAGE_ICONS.COLLAPSE : MANAGE_ICONS.EXPAND,
       command: () => toggleExpand(data),
     },
     {
       key: 'elimina-listino',
-      label: t('listini.elimina_listino'),
+      label: t('vendite.listini.elimina_listino'),
       icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       visible: !data.versioni_count,
@@ -285,7 +285,7 @@ function buildVersioneActions(ver, listino) {
   return [
     {
       key: 'attiva',
-      label: ver.righe_count ? t('listini.attiva') : t('listini.attiva_no_righe'),
+      label: ver.righe_count ? t('vendite.listini.attiva') : t('vendite.listini.attiva_no_righe'),
       icon: MANAGE_ICONS.PUBLISH,
       severity: 'primary',
       visible: isBozza,
@@ -294,7 +294,7 @@ function buildVersioneActions(ver, listino) {
     },
     {
       key: 'chiudi',
-      label: t('listini.chiudi'),
+      label: t('vendite.listini.chiudi'),
       icon: MANAGE_ICONS.CLOSE,
       severity: 'warn',
       visible: isAttiva,
@@ -302,7 +302,7 @@ function buildVersioneActions(ver, listino) {
     },
     {
       key: 'clona',
-      label: t('listini.clona_versione'),
+      label: t('vendite.listini.clona_versione'),
       icon: MANAGE_ICONS.CLONE,
       // Disabilitato in BOZZA: la versione e' ancora editabile, non ha
       // senso clonarla — l'admin lavora direttamente sulla BOZZA stessa.
@@ -311,13 +311,13 @@ function buildVersioneActions(ver, listino) {
     },
     {
       key: 'gestisci-righe',
-      label: t('listini.gestisci_righe'),
+      label: t('vendite.listini.gestisci_righe'),
       icon: MANAGE_ICONS.RIGHE,
       command: () => emit('open-righe', ver, listino),
     },
     {
       key: 'elimina-versione',
-      label: t('listini.elimina_versione'),
+      label: t('vendite.listini.elimina_versione'),
       icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       visible: isBozza,
@@ -342,18 +342,18 @@ onMounted(() => store.fetchList())
     <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
-        <InputText v-model="searchText" :placeholder="t('listini.search_placeholder')" style="width: 320px;" />
+        <InputText v-model="searchText" :placeholder="t('vendite.listini.search_placeholder')" style="width: 320px;" />
         <UtilityPerRuoloSelect v-model="utilityFilter"
-          :placeholder="t('listini.filtro_utility')" :show-clear="true"
+          :placeholder="t('vendite.listini.filtro_utility')" :show-clear="true"
           apply-default
           @change="onUtilityChange" style="width: 200px;" />
         <Select v-model="tipologiaFilter" :options="tipologiaLookup.items.value"
           option-label="descrizione" option-value="id"
-          :placeholder="t('listini.filtro_tipologia')" :show-clear="true"
+          :placeholder="t('vendite.listini.filtro_tipologia')" :show-clear="true"
           :loading="tipologiaLookup.loading.value"
           @change="onTipologiaChange" class="app-filter-select" />
         <Select v-model="attivoFilter" :options="attivoOptions" option-label="label" option-value="value"
-          :placeholder="t('listini.col_attivo')" @change="onAttivoChange" style="width: 120px;" />
+          :placeholder="t('vendite.listini.col_attivo')" @change="onAttivoChange" style="width: 120px;" />
       </div>
       <PageActionsBar :actions="pageActions">
         <template #prefix>
@@ -375,20 +375,20 @@ onMounted(() => store.fetchList())
       @page="onPage" @sort="onSort" @row-click="onRowClick"
       selection-mode="single" data-key="id"
     >
-      <Column field="codice" :header="t('listini.col_codice')" sortable style="width: 140px;" />
-      <Column field="descrizione" :header="t('listini.col_descrizione')" sortable style="min-width: 200px;" />
-      <Column field="utility_descrizione" :header="t('listini.col_utility')" sortable style="width: 150px;">
+      <Column field="codice" :header="t('vendite.listini.col_codice')" sortable style="width: 140px;" />
+      <Column field="descrizione" :header="t('vendite.listini.col_descrizione')" sortable style="min-width: 200px;" />
+      <Column field="utility_descrizione" :header="t('vendite.listini.col_utility')" sortable style="width: 150px;">
         <template #body="{ data }">
-          <span>{{ data.utility_descrizione || t('listini.commercio') }}</span>
+          <span>{{ data.utility_descrizione || t('vendite.listini.commercio') }}</span>
         </template>
       </Column>
-      <Column field="tipologia_descrizione" :header="t('listini.col_tipologia')" sortable style="width: 150px;">
+      <Column field="tipologia_descrizione" :header="t('vendite.listini.col_tipologia')" sortable style="width: 150px;">
         <template #body="{ data }">
           <span>{{ data.tipologia_descrizione || '—' }}</span>
         </template>
       </Column>
-      <Column field="versioni_count" :header="t('listini.col_versioni')" style="width: 80px;" />
-      <Column field="attivo" :header="t('listini.col_attivo')" style="width: 80px;">
+      <Column field="versioni_count" :header="t('vendite.listini.col_versioni')" style="width: 80px;" />
+      <Column field="attivo" :header="t('vendite.listini.col_attivo')" style="width: 80px;">
         <template #body="{ data }">
           <AttivoTag :active="data.attivo" />
         </template>
@@ -405,9 +405,9 @@ onMounted(() => store.fetchList())
             <span class="app-row-expansion__title">
               <i class="pi pi-arrow-turn-down-right"></i>
               <i :class="MANAGE_ICONS.VERSIONI"></i>
-              {{ t('listini.tab_versioni') }} ({{ store.versioniByListino[listino.id]?.length ?? 0 }})
+              {{ t('vendite.listini.tab_versioni') }} ({{ store.versioniByListino[listino.id]?.length ?? 0 }})
             </span>
-            <Button :icon="MANAGE_ICONS.ADD" :label="t('listini.nuova_versione')"
+            <Button :icon="MANAGE_ICONS.ADD" :label="t('vendite.listini.nuova_versione')"
               text size="small" class="app-action-btn"
               @click.stop="emit('open-nuova-versione', listino)" />
           </div>
@@ -417,22 +417,22 @@ onMounted(() => store.fetchList())
           </div>
           <div v-else-if="store.versioniByListino[listino.id].length === 0" class="app-empty-state">
             <i class="pi pi-history" />
-            <p>{{ t('listini.nessuna_versione_inline') }}</p>
+            <p>{{ t('vendite.listini.nessuna_versione_inline') }}</p>
           </div>
           <DataTable v-else
             :value="store.versioniByListino[listino.id]"
             class="app-datatable app-datatable--inner"
             striped-rows data-key="id"
           >
-            <Column field="codice_versione" :header="t('listini.col_codice_versione')" style="width: 140px;" />
-            <Column :header="t('listini.field_valido_dal')" style="width: 110px;">
+            <Column field="codice_versione" :header="t('vendite.listini.col_codice_versione')" style="width: 140px;" />
+            <Column :header="t('vendite.listini.field_valido_dal')" style="width: 110px;">
               <template #body="{ data: ver }">{{ displayDate(ver.valido_dal) }}</template>
             </Column>
-            <Column :header="t('listini.field_valido_al')" style="width: 110px;">
+            <Column :header="t('vendite.listini.field_valido_al')" style="width: 110px;">
               <template #body="{ data: ver }">{{ displayDate(ver.valido_al) || '—' }}</template>
             </Column>
-            <Column field="righe_count" :header="t('listini.col_righe')" style="width: 80px;" />
-            <Column :header="t('listini.col_stato')" style="width: 90px;">
+            <Column field="righe_count" :header="t('vendite.listini.col_righe')" style="width: 80px;" />
+            <Column :header="t('vendite.listini.col_stato')" style="width: 90px;">
               <template #body="{ data: ver }">
                 <Tag :value="statoVersioneVisibile(ver)" :severity="statoVersioneListinoSeverity(statoVersioneVisibile(ver))" />
               </template>

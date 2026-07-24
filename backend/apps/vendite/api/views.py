@@ -5,10 +5,31 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
+from apps.core.services.coda_lavori.repository import (
+    ORIGINE_API,
+    RUN_AS_OPERATORE,
+    CodaLavoriRepository,
+)
+from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
+from apps.core.services.auth_helpers import extract_identita_id_from_request
 from apps.core.services.error_manager import ErrorManager
-from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date, optional_uuid
+from apps.core.services.permissions_resolver import PermissionResolver
+from apps.core.api.payload_validators import (
+    optional_bool,
+    optional_int,
+    optional_iso_date,
+    optional_uuid,
+    qp_iso_date_optional,
+)
 from apps.core.api.success_responses import success_response
+from apps.vendite.services._fatturazione_job_helpers import (
+    JOB_TYPE_FATTURAZIONE_GIRO,
+    JOB_TYPE_FATTURAZIONE_NUMERA,
+)
 from apps.vendite.services.commesse_service import (
+    aggiungi_onere_commessa,
+    approva_attivita_competenza,
+    approva_commessa_attivita,
     cambia_stato_commessa,
     fn_get_commessa_stato,
     fn_get_commesse_push_log,
@@ -19,14 +40,17 @@ from apps.vendite.services.commesse_service import (
     pr_run_commesse_push,
 )
 from apps.vendite.services.pipeline_service import (
+    esiti_fatturazione,
     fn_get_lotto_segnalazioni_summary,
     fn_get_lotto_task_runs,
     fn_reset_lotto_draft,
     fn_reset_lotto_fattura_draft,
+    numera_lotto,
+    ristampa_lotto,
     run_lotto_pipeline,
     run_lotto_pipeline_until_done,
 )
-from apps.vendite.services.vendite_service import fn_list_lotti, fn_list_lotto_fatture
+from apps.vendite.services.vendite_service import fn_get_lotto, fn_list_lotti, fn_list_lotto_fatture
 
 # View API vendite: espone endpoint HTTP per avviare pipeline lotto.
 
@@ -404,6 +428,52 @@ class ApiLottiList(DomainAPIView):
 
 
 
+class ApiLottoDetail(DomainAPIView):
+    """Dettaglio testata di un singolo lotto (cockpit Fase B, drawer diagnostico).
+    Le sotto-risorse (fatture / task-runs / segnalazioni) restano endpoint
+    separati. Scope emittente in repo → 404 su lotto fuori scope/inesistente."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="VenditeLottoDetailResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeLottoDetailData",
+                        fields={
+                            "id": serializers.IntegerField(),
+                            "codice": serializers.CharField(),
+                            "competenza_mese": serializers.CharField(allow_null=True),
+                            "tipo_lotto": serializers.CharField(),
+                            "utility_id": serializers.IntegerField(allow_null=True),
+                            "utility_descrizione": serializers.CharField(allow_null=True),
+                            "stato_lotto": serializers.CharField(),
+                            "stato_operativo": serializers.CharField(),
+                            "stato_doc_fiscale_id": serializers.IntegerField(allow_null=True),
+                            "stato_doc_fiscale_descrizione": serializers.CharField(allow_null=True),
+                            "tipo_doc_fiscale_id": serializers.IntegerField(),
+                            "tipo_doc_fiscale_descrizione": serializers.CharField(allow_null=True),
+                            "area_geografica_id": serializers.IntegerField(allow_null=True),
+                            "area_geografica_descrizione": serializers.CharField(allow_null=True),
+                            "emittente_soggetto_ruolo_id": serializers.IntegerField(allow_null=True),
+                            "data_insert": serializers.CharField(allow_null=True),
+                            "user_insert": serializers.CharField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET la testata del lotto (scope emittente).
+    def get(self, request: Request, lotto_id: int) -> JsonResponse:
+        auth_user_id = get_scope_user_id(request)
+        data = fn_get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
+        return success_response(data)
+
+
 class ApiLottoFattureList(DomainAPIView):
     area_funzionale = "vendite"
     is_search_endpoint = True
@@ -699,6 +769,600 @@ class ApiCommessaAttivita(DomainAPIView):
         return success_response(data)
 
 
+class ApiCommessaAttivitaApprova(DomainAPIView):
+    """Azione APPROVA sulle attivita' di una commessa (cockpit Fase A, A-1):
+    righe_ids assente = tutte le righe NON_EMESSA in BOZZA; altrimenti solo le
+    righe indicate (selezione dal drawer). Idempotente (fn DB)."""
+
+    area_funzionale = "vendite"
+    post_permission = "approva_attivita_commessa"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeCommessaAttivitaApprovaRequest",
+            fields={
+                "righe_ids": serializers.ListField(
+                    child=serializers.IntegerField(), required=False, allow_null=True,
+                ),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeCommessaAttivitaApprovaResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeCommessaAttivitaApprovaData",
+                        fields={
+                            "commessa_id": serializers.IntegerField(),
+                            "approvate": serializers.IntegerField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Approva le attivita' della commessa (tutte o selezione righe_ids).
+    def post(self, request: Request, commessa_id: int) -> JsonResponse:
+        # Scopo: delega al service la validazione input + esistenza + approvazione.
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            user = getattr(request.user, "username", None) or None
+            return approva_commessa_attivita(
+                commessa_id=commessa_id,
+                righe_ids=payload.get("righe_ids"),  # type: ignore[arg-type]
+                user=user,
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiCommessaOneri(DomainAPIView):
+    """Porta oneri (brief-db-immutabilita-quantita-e-porta-oneri §4c): crea sulla
+    commessa una riga di PURO VALORE (qta=1, `tipo_movimento=ONERE`, sourceless)
+    gia' APPROVATA — causale, unita' di misura e IVA derivate dall'articolo-onere
+    dalla madre DB.
+
+    Presidio ALL'INGRESSO, non a valle (decisione Tid §4c.5): niente approvazione
+    a due passi, il gate e' l'azione di processo `carica_voce_manuale` — chi
+    carica oneri e' responsabile di quello che fa. L'audit resta pieno (causale +
+    motivo + la riga stessa + `commesse_attivita_log`)."""
+
+    area_funzionale = "vendite"
+    post_permission = "carica_voce_manuale"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeCommessaOnereRequest",
+            fields={
+                "articolo_onere_id": serializers.UUIDField(required=True),
+                "importo": serializers.DecimalField(
+                    required=True, max_digits=22, decimal_places=10,
+                ),
+                "tipo_doc_fiscale_id": serializers.IntegerField(required=True),
+                "istanza_utility_id": serializers.IntegerField(required=False, allow_null=True),
+                "motivo": serializers.CharField(required=False, allow_null=True),
+                "data_attivita": serializers.DateField(required=False, allow_null=True),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeCommessaOnereResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeCommessaOnereData",
+                        fields={
+                            "commessa_id": serializers.IntegerField(),
+                            "attivita_id": serializers.IntegerField(),
+                            "importo": serializers.CharField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Carica un onere sulla commessa (riga di valore, qta=1, APPROVATA).
+    def post(self, request: Request, commessa_id: int) -> JsonResponse:
+        # Scopo: estrae il payload e delega al service; guard di dominio a DB.
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return aggiungi_onere_commessa(
+                commessa_id=commessa_id,
+                # Grezzo: la forma (UUID) e la sua assenza le valida il service,
+                # con messaggio parlante — `str(None)` darebbe "None" all'utente.
+                articolo_onere_id=payload.get("articolo_onere_id"),  # type: ignore[arg-type]
+                importo=payload.get("importo"),
+                tipo_doc_fiscale_id=optional_int(
+                    payload, "tipo_doc_fiscale_id", zero_as_none=True,
+                ),
+                istanza_utility_id=optional_int(
+                    payload, "istanza_utility_id", zero_as_none=True,
+                ),
+                motivo=payload.get("motivo"),  # type: ignore[arg-type]
+                data_attivita=optional_iso_date(payload, "data_attivita"),
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiFatturazioneApprovaCompetenza(DomainAPIView):
+    """Azione APPROVA massiva per mese di competenza (cockpit Fase A, A-2):
+    approva le attivita' in stadio DA_APPROVARE del mese — la popolazione della
+    card della Dashboard Competenza (stessa vista, scope emittente in-vista).
+    All-or-nothing in una transazione; idempotente (retry innocuo)."""
+
+    area_funzionale = "vendite"
+    post_permission = "approva_attivita_commessa"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeApprovaCompetenzaRequest",
+            fields={
+                "competenza_mese": serializers.DateField(required=True),
+                "commessa_ids": serializers.ListField(
+                    child=serializers.IntegerField(), required=False, allow_null=True,
+                ),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeApprovaCompetenzaResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeApprovaCompetenzaData",
+                        fields={
+                            "competenza_mese": serializers.CharField(),
+                            "commesse": serializers.IntegerField(),
+                            "approvate": serializers.IntegerField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Approva in massa le attivita' DA_APPROVARE del mese di competenza.
+    def post(self, request: Request) -> JsonResponse:
+        # Scopo: parsing payload + delega al service (validazioni e transazione).
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            user = getattr(request.user, "username", None) or None
+            return approva_attivita_competenza(
+                competenza_mese=optional_iso_date(payload, "competenza_mese"),  # type: ignore[arg-type]
+                commessa_ids=payload.get("commessa_ids"),  # type: ignore[arg-type]
+                user=user,
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiFatturazioneNumeraLotto(DomainAPIView):
+    """C-4: numerazione «Rendi definitive» di un singolo lotto EMESSA. Esegue lo
+    step DEFINITIVA (numera_fatture + stampa_documenti_lotto che ACCODA, I-2):
+    l'endpoint NON chiama la stampa. Gate fiscale separato (I-7): permesso
+    `numera_fatture_lotti`, distinto da `genera_fatture_lotti`. Scope operatore:
+    lotto fuori scope/inesistente → 404; non EMESSA → errore parlante."""
+
+    area_funzionale = "vendite"
+    post_permission = "numera_fatture_lotti"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="VenditeNumeraLottoResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeNumeraLottoData",
+                        fields={
+                            "lotto_id": serializers.IntegerField(allow_null=True),
+                            "stato_lotto": serializers.CharField(allow_null=True),
+                            "stato_doc_fiscale_id": serializers.IntegerField(allow_null=True),
+                            "step_eseguiti": serializers.IntegerField(),
+                            "motivo_stop": serializers.CharField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Numera (Rendi definitive) il lotto: guard scope+EMESSA, poi step DEFINITIVA.
+    def post(self, request: Request, lotto_id: int) -> JsonResponse:
+        # Scopo: delega al service (guard fiscale + esecuzione step DEFINITIVA).
+        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+            return numera_lotto(
+                lotto_id=int(lotto_id),
+                auth_user_id=get_scope_user_id(request),
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiFatturazioneRistampaLotto(DomainAPIView):
+    """C-8: ristampa MASSIVA di un lotto DEFINITIVA. Accoda in
+    `vendite.fatture_stampa_coda` una riga per ogni fattura non esclusa
+    (idempotente sui vivi); il worker `draina_coda_stampa` le renderizza (async,
+    stato via pannello esiti C-5). Accodamento SINCRONO (INSERT veloce), non un
+    job con polling. Stampa = lettura (I-4): nessun `post_permission` (come la
+    stampa singola), gate readonly a carico del FE. Scope operatore: lotto fuori
+    scope/inesistente → 404; non DEFINITIVA → 409 parlante (I-7: niente
+    numerazione backdoor)."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="VenditeRistampaLottoResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeRistampaLottoData",
+                        fields={
+                            "lotto_id": serializers.IntegerField(),
+                            "accodate": serializers.IntegerField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Accoda le stampe del lotto (guard scope+DEFINITIVA), ritorna il conteggio.
+    def post(self, request: Request, lotto_id: int) -> JsonResponse:
+        # Scopo: delega al service (guard fiscale + fn_accoda_stampe_lotto).
+        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+            return ristampa_lotto(
+                lotto_id=int(lotto_id),
+                auth_user_id=get_scope_user_id(request),
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiFatturazioneEsiti(DomainAPIView):
+    """C-5: esiti dei giri di fatturazione (riassunto per corsia da
+    `maintenance.job_run_log`) + stato della coda stampa (conteggi per stato,
+    scope emittente dell'operatore via JOIN fatture). Sola lettura (I-5: nessuna
+    tabella nuova).
+
+    `?competenza_mese=YYYY-MM-DD` (opzionale): restringe i giri a quelli
+    lanciati PER quel mese di competenza — allinea il pannello al filtro della
+    lista lotti. Senza il parametro i giri sono i totali da sempre."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="competenza_mese",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Mese di competenza (YYYY-MM-DD, normalizzato al 1° del "
+                    "mese): filtra i giri lanciati per quel mese."
+                ),
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeFatturazioneEsitiResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeFatturazioneEsitiData",
+                        fields={
+                            "giri": serializers.ListField(child=serializers.DictField()),
+                            "coda_stampa": serializers.DictField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce esiti giri (opz. filtrati per mese di competenza) +
+    #        stato coda stampa (scope operatore).
+    def get(self, request: Request) -> JsonResponse:
+        competenza_mese = qp_iso_date_optional(
+            request.query_params.get("competenza_mese"), "competenza_mese",
+        )
+        return success_response(
+            esiti_fatturazione(
+                auth_user_id=get_scope_user_id(request),
+                competenza_mese=competenza_mese,
+                # Serve allo scope dei lavori accodati dall'app (scope_key):
+                # l'operatore conta i propri giri, non quelli altrui.
+                user=request.user,
+            ),
+        )
+
+
+# Scopo: Enqueue comune dei job di fatturazione OPERATORE su dbops.coda_lavori
+#        (C-3 giro, C-4 numerazione di perimetro — regola del 2, ok Tid
+#        2026-07-21): valida+normalizza `competenza_mese` al 1° del mese,
+#        cattura l'identità COMPLETA dell'operatore (id vero anche per
+#        superuser + username + identita_id dal JWT — il worker la riproporrà
+#        per intero, 5 GUC, RLS come nel web) e lo scope emittente, compone la
+#        chiave di BUSINESS `{job_type}:{mese}:{scope}` (dedup dei job VIVI) e
+#        accoda. `extra_payload_keys`: chiavi opzionali del payload HTTP da
+#        propagare al payload del job (es. `fino_a_stato` del giro). Ritorna
+#        l'handle `{job_id, stato}` per la risposta.
+def _accoda_job_fatturazione(
+    request: Request,
+    payload: dict[str, object],
+    *,
+    job_type: str,
+    extra_payload_keys: tuple[str, ...] = (),
+) -> dict[str, object]:
+    competenza = optional_iso_date(payload, "competenza_mese")
+    ErrorManager.require(
+        competenza is not None,
+        code="E_VALIDATION_INPUT",
+        message="`competenza_mese` obbligatoria.",
+    )
+    assert competenza is not None
+    # Normalizza al 1° del mese PRIMA di comporre payload+chiave business: la
+    # dedup dei job vivi è per-MESE, non per-giorno.
+    competenza = competenza.replace(day=1)
+    # Identità dell'operatore che accoda: id VERO (`user.id`, anche per
+    # superuser — NON `get_scope_user_id`, che per superuser è None e
+    # bloccherebbe l'admin globale) + username + identita_id dal JWT.
+    user = request.user
+    identita_id = extract_identita_id_from_request(request)
+    ErrorManager.require(
+        identita_id is not None,
+        code="E_VALIDATION_INPUT",
+        message="Identità operatore non risolta dal token.",
+    )
+    # Scope emittente CATTURATO ora (None = admin globale): serve al vincolo
+    # DB run_as↔scope, all'idempotenza di business e all'audit.
+    emittente_ids = PermissionResolver.get_emittenti_ids(user)
+    # Chiave canonica dello scope (BB core `coda_lavori.scope` — fonte unica
+    # del formato, condivisa con polling/liste/badge della UI code).
+    scope_key = scope_key_da_emittenti(emittente_ids)
+    job_payload: dict[str, object] = {"competenza_mese": competenza.isoformat()}
+    for key in extra_payload_keys:
+        value = payload.get(key)
+        if value:
+            job_payload[key] = value
+
+    # Chiave di BUSINESS (competenza + scope), NON l'header HTTP: dedup dei
+    # job VIVI (due click sullo stesso mese/scope → stesso job).
+    idempotency_key = f"{job_type}:{competenza.isoformat()}:{scope_key}"
+
+    job_id = CodaLavoriRepository().accoda(
+        job_type=job_type,
+        payload=job_payload,
+        run_as=RUN_AS_OPERATORE,
+        scope={
+            "auth_user_id": int(user.id),
+            "username": str(user.username),
+            "identita_id": identita_id,
+            "emittente_ids": emittente_ids,
+            # Token di ownership del polling: scope-based (chi condivide lo
+            # scope vede il job condiviso via dedup). Vedi scope_key_da_emittenti.
+            "scope_key": scope_key,
+        },
+        idempotency_key=idempotency_key,
+        origine=ORIGINE_API,
+    )
+    return {"job_id": job_id, "stato": "PENDING"}
+
+
+class ApiFatturazioneRun(DomainAPIView):
+    """C-3: avvia un GIRO di fatturazione on-demand, NON bloccante (I-3).
+    Accoda un job `FATTURAZIONE_GIRO` in `dbops.coda_lavori` con lo scope
+    emittente CATTURATO dell'operatore (run_as=OPERATORE) e risponde subito con
+    l'handle del job (id + stato); il worker lo esegue poi con i permessi
+    dell'operatore (RLS). Idempotenza a DUE layer: header HTTP (`handle_post_json`
+    + `dbops.idempotency_keys`, replay della risposta) e chiave di BUSINESS
+    della coda (competenza+scope, dedup dei giri VIVI)."""
+
+    area_funzionale = "vendite"
+    post_permission = "genera_fatture_lotti"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeFatturazioneRunRequest",
+            fields={
+                "competenza_mese": serializers.DateField(required=True),
+                "fino_a_stato": serializers.CharField(required=False, allow_null=True),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeFatturazioneRunResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeFatturazioneRunData",
+                        fields={
+                            "job_id": serializers.IntegerField(),
+                            "stato": serializers.CharField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Accoda il giro (transazionale) e ritorna l'handle del job.
+    def post(self, request: Request) -> JsonResponse:
+        # Scopo: enqueue comune + `fino_a_stato` opzionale propagato al job.
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return _accoda_job_fatturazione(
+                request, payload,
+                job_type=JOB_TYPE_FATTURAZIONE_GIRO,
+                extra_payload_keys=("fino_a_stato",),
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
+class ApiFatturazioneRunStato(DomainAPIView):
+    """C-3: stato di un giro accodato (polling NON bloccante). Ownership:
+    l'operatore vede solo i giri che HA accodato (un giro altrui → 404,
+    indistinguibile da inesistente)."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="VenditeFatturazioneRunStatoResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeFatturazioneRunStatoData",
+                        fields={
+                            "id": serializers.IntegerField(),
+                            "job_type": serializers.CharField(),
+                            "stato": serializers.CharField(),
+                            "tentativi": serializers.IntegerField(),
+                            "max_tentativi": serializers.IntegerField(),
+                            "result": serializers.DictField(allow_null=True),
+                            "ultimo_errore": serializers.DictField(allow_null=True),
+                            "job_run_id": serializers.IntegerField(allow_null=True),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce lo stato del job, con ownership SCOPE-based (non
+    #        per-enqueuer): l'operatore vede i job della propria scope_key —
+    #        così due operatori con la STESSA whitelist che condividono un giro
+    #        via dedup ne seguono entrambi l'avanzamento (fix cross-operatore).
+    #        Admin globale (whitelist None) → nessun filtro (vede ogni job).
+    def get(self, request: Request, job_id: int) -> JsonResponse:
+        emittente_ids = PermissionResolver.get_emittenti_ids(request.user)
+        owner_scope_key = (
+            None if emittente_ids is None
+            else scope_key_da_emittenti(emittente_ids)
+        )
+        stato = CodaLavoriRepository().get_stato(
+            int(job_id), owner_scope_key=owner_scope_key,
+        )
+        ErrorManager.require(
+            stato is not None,
+            code="E_JOB_NON_TROVATO",
+            message="Giro di fatturazione non trovato.",
+            detail=f"job_id={job_id}",
+        )
+        assert stato is not None
+        return success_response(stato)
+
+
+class ApiFatturazioneNumera(DomainAPIView):
+    """C-4: «Rendi definitive competenza» — numerazione di PERIMETRO, NON
+    bloccante (I-3). Accoda un job `FATTURAZIONE_NUMERA` in `dbops.coda_lavori`
+    con l'identità operatore CATTURATA (run_as=OPERATORE) e risponde subito con
+    l'handle del job; il worker esegue lo step DEFINITIVA (numera + accoda
+    stampa) sui lotti EMESSA del mese, sotto RLS operatore. Atto fiscale
+    SEPARATO dalla fatturazione (gate I-7): endpoint e permesso dedicati.
+    Polling: `GET /vendite/fatturazione/run/<job_id>/` (stato job generico,
+    ownership operatore). Idempotenza a DUE layer: header HTTP + chiave di
+    BUSINESS della coda (competenza+scope, dedup dei numera VIVI)."""
+
+    area_funzionale = "vendite"
+    post_permission = "numera_fatture_lotti"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=inline_serializer(
+            name="VenditeFatturazioneNumeraRequest",
+            fields={
+                "competenza_mese": serializers.DateField(required=True),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="VenditeFatturazioneNumeraResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeFatturazioneNumeraData",
+                        fields={
+                            "job_id": serializers.IntegerField(),
+                            "stato": serializers.CharField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Accoda la numerazione di perimetro e ritorna l'handle del job.
+    def post(self, request: Request) -> JsonResponse:
+        # Scopo: enqueue comune (nessuna chiave extra: solo competenza_mese).
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return _accoda_job_fatturazione(
+                request, payload, job_type=JOB_TYPE_FATTURAZIONE_NUMERA,
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
 _VARIAZIONE_PREZZO_REQUEST = inline_serializer(
     name="VenditeVariazionePrezzoRequest",
     fields={
@@ -721,7 +1385,13 @@ _SBLOCCA_PREZZO_REQUEST = inline_serializer(
 
 
 class ApiCommessaAttivitaRiallineaPrezzo(DomainAPIView):
+    """N5 — riallineo prezzo da listino. Gate `prezzo_override_manuale` (T2 del
+    brief porta-oneri): toccare il prezzo di una riga di commessa e' l'azione
+    su cui l'autorizzazione conta di piu', e finora bastava la scrittura d'area.
+    Stesso codename gia' vivo sui gate prezzo di preventivi/contratti/DDT."""
+
     area_funzionale = "vendite"
+    post_permission = "prezzo_override_manuale"
 
     @extend_schema(
         request=_RIALLINEA_PREZZO_REQUEST,
@@ -741,7 +1411,10 @@ class ApiCommessaAttivitaRiallineaPrezzo(DomainAPIView):
 
 
 class ApiCommessaAttivitaVariazionePrezzoEccezionale(DomainAPIView):
+    """N7 — override manuale del prezzo. Gate `prezzo_override_manuale` (T2)."""
+
     area_funzionale = "vendite"
+    post_permission = "prezzo_override_manuale"
 
     @extend_schema(
         request=_VARIAZIONE_PREZZO_REQUEST,
@@ -761,7 +1434,11 @@ class ApiCommessaAttivitaVariazionePrezzoEccezionale(DomainAPIView):
 
 
 class ApiCommessaAttivitaSbloccaPrezzo(DomainAPIView):
+    """N7-sblocco — rimuove il blocco e ricalcola dal resolver. Stesso gate
+    `prezzo_override_manuale` (T2): sbloccare cambia il prezzo della riga."""
+
     area_funzionale = "vendite"
+    post_permission = "prezzo_override_manuale"
 
     @extend_schema(
         request=_SBLOCCA_PREZZO_REQUEST,

@@ -26,12 +26,12 @@ const coll = useStepFigliCollection({
   stepId: () => props.stepId,
   kind: 'canali',
   messages: {
-    created: t('definizioni_workflow.ed_msg_figlio_creato'),
-    saved: t('definizioni_workflow.ed_msg_figlio_salvato'),
-    deleted: t('definizioni_workflow.ed_msg_figlio_eliminato'),
+    created: t('amministrazione.definizioni_workflow.ed_msg_figlio_creato'),
+    saved: t('amministrazione.definizioni_workflow.ed_msg_figlio_salvato'),
+    deleted: t('amministrazione.definizioni_workflow.ed_msg_figlio_eliminato'),
   },
   confirmDelete: (row) =>
-    t('definizioni_workflow.ed_conferma_elimina_figlio', { nome: row.canale_codice }),
+    t('amministrazione.definizioni_workflow.ed_conferma_elimina_figlio', { nome: row.canale_codice }),
   onChanged: () => emit('changed'),
 })
 
@@ -61,16 +61,16 @@ function onSave() {
     :coll="coll"
     :rows="rows"
     :readonly="readonly"
-    :add-label="t('definizioni_workflow.ed_aggiungi')"
-    :empty-label="t('definizioni_workflow.ed_canali_vuoto')"
+    :add-label="t('amministrazione.definizioni_workflow.ed_aggiungi')"
+    :empty-label="t('amministrazione.definizioni_workflow.ed_canali_vuoto')"
     :can-save="canSave"
     @save="onSave"
   >
     <template #columns>
-      <Column field="canale_codice" :header="t('definizioni_workflow.ed_col_canale')" style="width: 140px;" />
-      <Column field="canale_descrizione" :header="t('definizioni_workflow.ed_col_descrizione')" style="min-width: 180px;" />
-      <Column field="canale_codice_interno" :header="t('definizioni_workflow.ed_col_canale_interno')" style="width: 150px;" />
-      <Column :header="t('definizioni_workflow.ed_col_attivo')" style="width: 80px;">
+      <Column field="canale_codice" :header="t('amministrazione.definizioni_workflow.ed_col_canale')" style="width: 140px;" />
+      <Column field="canale_descrizione" :header="t('amministrazione.definizioni_workflow.ed_col_descrizione')" style="min-width: 180px;" />
+      <Column field="canale_codice_interno" :header="t('amministrazione.definizioni_workflow.ed_col_canale_interno')" style="width: 150px;" />
+      <Column :header="t('amministrazione.definizioni_workflow.ed_col_attivo')" style="width: 80px;">
         <template #body="{ data }">
           <ToggleSwitch :model-value="data.attivo" :disabled="readonly" @update:model-value="coll.toggleAttivo(data)" />
         </template>
@@ -78,11 +78,11 @@ function onSave() {
     </template>
     <template #form>
       <div class="form-field">
-        <label>{{ t('definizioni_workflow.ed_col_canale') }} *</label>
-        <LookupSelect v-model="form.canale_id" rel="config.canali_pratiche" :placeholder="t('definizioni_workflow.ed_ph_seleziona')" show-code />
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_canale') }} *</label>
+        <LookupSelect v-model="form.canale_id" rel="config.canali_pratiche" :placeholder="t('amministrazione.definizioni_workflow.ed_ph_seleziona')" show-code />
       </div>
       <div class="form-field form-field--toggle">
-        <label>{{ t('definizioni_workflow.ed_col_attivo') }}</label>
+        <label>{{ t('amministrazione.definizioni_workflow.ed_col_attivo') }}</label>
         <ToggleSwitch v-model="form.attivo" />
       </div>
     </template>

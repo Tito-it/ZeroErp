@@ -14,9 +14,11 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_indirizzi_obbligatori()
 AS $function$
 -- Scopo: bloccare l'emissione (EMESSO) di un DDT privo degli
 --   indirizzi marcati obbligatori per l'ambito DDT.
+--   rev 2026-07-19: valutazione delegata a
+--   script.fn_check_ddt_emittibile — single source con la capability.
 DECLARE
     v_stato_codice config.stati_doc_ddt.codice_interno%TYPE;
-    v_presenti     integer[];
+    v_motivo       jsonb;
     v_mancanti     text[];
 BEGIN
     SELECT sdd.codice_interno INTO v_stato_codice
@@ -27,14 +29,15 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- Tipi indirizzo gia' presenti sulla testata DDT.
-    SELECT array_agg(di.tipo_indirizzo_id) INTO v_presenti
-      FROM vendite.ddt_indirizzi di
-     WHERE di.ddt_id = NEW.id;
+    SELECT m INTO v_motivo
+      FROM jsonb_array_elements(script.fn_check_ddt_emittibile(NEW)) AS m
+     WHERE m->>'codice' = 'E_INDIRIZZO_DOC_OBBLIGATORIO'
+     LIMIT 1;
 
-    v_mancanti := script.fn_indirizzi_obbligatori_mancanti('DDT', v_presenti);
+    IF v_motivo IS NOT NULL THEN
+        SELECT array_agg(x) INTO v_mancanti
+          FROM jsonb_array_elements_text(v_motivo->'dettaglio'->'mancanti') AS x;
 
-    IF array_length(v_mancanti, 1) IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'database', TG_NAME, 'E_INDIRIZZO_DOC_OBBLIGATORIO',
             jsonb_build_object(
@@ -52,6 +55,9 @@ BEGIN
     RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.trgfn_ddt_guard_indirizzi_obbligatori()
+IS 'Blocca l''emissione (EMESSO) di un DDT privo degli indirizzi marcati obbligatori per l''ambito DDT (E_INDIRIZZO_DOC_OBBLIGATORIO). rev 2026-07-19: valutazione delegata a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codice errore e argomenti invariati.';
 ```
 
 ---

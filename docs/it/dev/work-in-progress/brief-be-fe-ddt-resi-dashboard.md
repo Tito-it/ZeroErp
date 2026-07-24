@@ -225,7 +225,39 @@ la ri-consegna è derivata dal contatore.
 | 6 | BE-3 + FE-5 — gate solo-trasporto: policy 544/545 in `error_policies.py` (messaggio dal DB via translator) + asterisco-tooltip causale nel `DdtForm` (obbligatoria all'emissione, non al create) | ✅ 2026-07-18 |
 | 7 | BE-5 — test: aperto 5 aree (DDT euro, RESI assente), backlog DDT/RESI validi (anti-regressione 400), coda etichetta (passthrough/whitelist/default) — 100 test moduli toccati | ✅ 2026-07-18 |
 | 8 | Suite `apps.vendite` + `apps.core` **1782 verdi**, build FE ok, lint pulito, `kill -HUP` gunicorn, doc api (aperto/backlog/resi) | ✅ 2026-07-18 |
-| 9 | Validazione in-app Tid | ☐ |
+| 9 | Validazione in-app Tid | ☐ **in corso** — vedi §6-bis: 3 rilievi emersi e già chiusi |
+
+### 6-bis. Rilievi emersi durante la validazione (2026-07-19/20) — tutti chiusi
+
+La validazione ha già prodotto e chiuso tre difetti collaterali; il giro
+complessivo resta da completare:
+
+1. **Reason push DDT falsa (catch-all)** — su DDT0000326/ORD0000580 il banner
+   diceva «dev'essere spedito o consegnato» a DDT già consegnato. Brief dedicato
+   **chiuso end-to-end** (DB fonte unica `fn_ddt_push_diagnosi` + capability,
+   FE tooltip su pulsante disabilitato):
+   [brief-db-ddt-reason-push-catch-all.md](../work-done/brief-db-ddt-reason-push-catch-all.md).
+   Rivalidato in-app su ORD0000608/DDT0000337 (2026-07-20).
+2. **Readonly-leak nei drawer impilati dai «Passaggi»** — un ordine aperto dal
+   pannello lineage di un DDT post-DRAFT ereditava il lock-di-stato del DDT e
+   perdeva TUTTE le azioni (incluso «Invia a commessa» legittimo). Fix:
+   `LineagePassaggiPanel` resetta `READONLY_KEY` fornendo ai drawer impilati il
+   readonly PURO del chiamante (permessi area sì, lock del padre no); cablati i
+   7 embed (ordini/ddt/preventivi/offerte/contratti/resi/commessa). Copre anche
+   il `PraticaDrawer` aperto dallo stesso pannello.
+3. **Liste stantie al rientro (KeepAlive)** — lo stato ordine cambiato come
+   effetto collaterale (evasione da DDT → EVASO) non compariva rientrando nella
+   lista cachata: refresh solo su `saved` del proprio drawer. Fix in
+   `useSearchTable.onActivated` (vale per TUTTE le liste): refetch idempotente
+   della pagina corrente alla ri-attivazione (filtri/offset invariati, skip al
+   primo mount, guard `hasSearched`/`loading`) — pattern
+   [[feedback_keepalive_onactivated]] applicato alla freshness.
+
+⚠️ Nota per il seguito della validazione: **tutti i 42 BA di dev hanno
+`fatturazione_ordini = CONFERMATO`** — il percorso push-da-DDT (reason
+`merce_in_viaggio`, `gia_inviato` da DDT) non è esercitabile finché non si
+imposta un BA di prova a `SPEDITO`/`CONSEGNATO` e si crea un ordine NUOVO per
+quel BA (il trigger si eredita alla creazione).
 
 ## 7. Consuntivo (2026-07-18) — realizzato, non committato
 

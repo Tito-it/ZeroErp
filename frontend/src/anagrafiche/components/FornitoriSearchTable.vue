@@ -38,7 +38,7 @@ const {
 } = useListaConfigurabilePage(store, {
   exportFn: exportFornitori,
   getExportParams: (fmt) => buildExportParams(fmt),
-  newTooltipKey: 'fornitori.nuovo_fornitore',
+  newTooltipKey: 'anagrafiche.fornitori.nuovo_fornitore',
   onNew: () => emit('new'),
   searchTableOptions: { defaultSortField: 'ragione_sociale_completa' },
 })
@@ -68,25 +68,25 @@ function buildRowActions(data) {
   return [
     {
       key: 'soggetto',
-      label: t('fornitori.gestisci_soggetto'),
+      label: t('anagrafiche.fornitori.gestisci_soggetto'),
       icon: MANAGE_ICONS.SOGGETTO,
       command: () => emit('soggetto', data),
     },
     {
       key: 'contatti',
-      label: t('contatto.gestisci_contatti'),
+      label: t('anagrafiche.contatto.gestisci_contatti'),
       icon: MANAGE_ICONS.CONTATTI,
       command: () => emit('contatti', data),
     },
     {
       key: 'indirizzi',
-      label: t('indirizzo_soggetto.gestisci_indirizzi'),
+      label: t('anagrafiche.indirizzo_soggetto.gestisci_indirizzi'),
       icon: MANAGE_ICONS.INDIRIZZI,
       command: () => emit('indirizzi', data),
     },
     {
       key: 'conti-bancari',
-      label: t('conti_bancari.gestisci_conti'),
+      label: t('anagrafiche.conti_bancari.gestisci_conti'),
       icon: MANAGE_ICONS.CONTI_BANCARI,
       disabled: contiBlocked,
       command: () => emit('conti-bancari', data),
@@ -112,12 +112,12 @@ onMounted(() => {
         <div class="app-page-filters">
           <InputText
             v-model="searchText"
-            :placeholder="t('fornitori.search_placeholder')"
+            :placeholder="t('anagrafiche.fornitori.search_placeholder')"
           />
           <LookupSelect
             v-model="statoFilter"
             rel="config.stati_fornitore"
-            :placeholder="t('fornitori.filtro_stato')"
+            :placeholder="t('anagrafiche.fornitori.filtro_stato')"
             show-clear
             @change="onStatoChange"
           />

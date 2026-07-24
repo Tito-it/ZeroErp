@@ -131,7 +131,7 @@ function onCancel() {
     <template #header>
       <DrawerTitle
         :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('ui_admin.definizione')"
+        :title="t('ui.admin.definizione')"
         icon="pi pi-list"
       />
     </template>
@@ -140,22 +140,22 @@ function onCancel() {
       <div class="form-grid">
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('ui_admin.definizione_codice') }}</label>
+            <label>{{ t('ui.admin.definizione_codice') }}</label>
             <InputText v-model="form.codice" maxlength="80" />
           </div>
           <div class="form-field">
-            <label>{{ t('ui_admin.definizione_schema_dati') }}</label>
+            <label>{{ t('ui.admin.definizione_schema_dati') }}</label>
             <InputText v-model="form.schema_dati" maxlength="80" />
           </div>
         </div>
 
         <div class="form-field">
-          <label>{{ t('ui_admin.definizione_descrizione') }}</label>
+          <label>{{ t('ui.admin.definizione_descrizione') }}</label>
           <InputText v-model="form.descrizione" maxlength="200" />
         </div>
 
         <div class="form-field">
-          <label>{{ t('ui_admin.definizione_vista_sql') }}</label>
+          <label>{{ t('ui.admin.definizione_vista_sql') }}</label>
           <InputText v-model="form.vista_sql" maxlength="120" />
           <Message
             severity="info"
@@ -163,12 +163,12 @@ function onCancel() {
             size="small"
             class="mt-025"
           >
-            {{ t('ui_admin.definizione_vista_sql_hint') }}
+            {{ t('ui.admin.definizione_vista_sql_hint') }}
           </Message>
         </div>
 
         <div class="form-field">
-          <label>{{ t('ui_admin.definizione_note') }}</label>
+          <label>{{ t('ui.admin.definizione_note') }}</label>
           <Textarea v-model="form.note" rows="3" auto-resize />
         </div>
 
@@ -182,7 +182,7 @@ function onCancel() {
           :closable="false"
           size="small"
         >
-          {{ t('ui_admin.definizione_disattivata_hint') }}
+          {{ t('ui.admin.definizione_disattivata_hint') }}
         </Message>
       </div>
     </div>

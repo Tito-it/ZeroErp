@@ -172,4 +172,16 @@ Output:
 
 ---
 
+### Nota — porta oneri (`p_causale_onere_id`)
+
+Dal 21-07-2026 la firma include `p_causale_onere_id` (default `NULL`): la causale di un onere,
+scritta sulla colonna `commesse_attivita.causale_onere_id`. Guard di coerenza: ammessa **se e
+solo se** `tipo_movimento = 'ONERE'` (rispecchia il CHECK biconditional della tabella). I
+chiamanti storici (push/lister) non la passano → righe `NORMALE` con causale `NULL`. Il writer
+di norma è la madre
+[`fn_aggiungi_onere_commessa`](/dbzero/vendite/funzioni/fn_aggiungi_onere_commessa), non un
+chiamante diretto.
+
+---
+
 {% include-markdown "signature-core.md" %}

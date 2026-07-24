@@ -18,6 +18,9 @@ AS $function$
 --   config.stati_doc_preventivi (bottone PDF data-driven via capabilities).
 --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
 --   (documento vuoto non avanza di stato).
+--   rev 2026-07-19: label_key e reason_key nel namespace i18n
+--   vendite.preventivi.* (era preventivi.*, radice spostata dal FE
+--   nella migrazione radici i18n) — brief-i18n-radici-uniformi §5.
 DECLARE
     v_stato_id          vendite.preventivi.stato_doc_preventivo_id%TYPE;
     v_stato_cod         config.stati_doc_preventivi.codice_interno%TYPE;
@@ -40,7 +43,7 @@ DECLARE
     c_action_crea_revisione CONSTANT jsonb := jsonb_build_object(
         'key',                  'crea_revisione',
         'target_state',         NULL,
-        'label_key',            'preventivi.azione_crea_revisione',
+        'label_key',            'vendite.preventivi.azione_crea_revisione',
         'severity',             'info',
         'icon',                 'pi pi-clone',
         'requires_confirm',     true,
@@ -52,7 +55,7 @@ DECLARE
     c_action_push_commessa CONSTANT jsonb := jsonb_build_object(
         'key',                  'push_commessa',
         'target_state',         NULL,
-        'label_key',            'preventivi.azione_push_commessa',
+        'label_key',            'vendite.preventivi.azione_push_commessa',
         'severity',             'info',
         'icon',                 'pi pi-arrow-right',
         'requires_motivazione', false,
@@ -64,7 +67,7 @@ DECLARE
     c_action_genera_ordine CONSTANT jsonb := jsonb_build_object(
         'key',                  'genera_ordine',
         'target_state',         NULL,
-        'label_key',            'preventivi.azione_genera_ordine',
+        'label_key',            'vendite.preventivi.azione_genera_ordine',
         'severity',             'info',
         'icon',                 'pi pi-shopping-cart',
         'requires_confirm',     true,
@@ -156,13 +159,13 @@ BEGIN
         v_push_reason_key := NULL;
     ELSIF v_stato_cod <> 'ACCETTATO' THEN
         v_push_reason     := 'PREVENTIVO_NON_ACCETTATO';
-        v_push_reason_key := 'preventivi.push_commessa_reason.non_accettato';
+        v_push_reason_key := 'vendite.preventivi.push_commessa_reason.non_accettato';
     ELSIF v_ba_id IS NULL OR v_utility_id IS NULL THEN
         v_push_reason     := 'PREVENTIVO_SENZA_BILLING_ACCOUNT';
-        v_push_reason_key := 'preventivi.push_commessa_reason.senza_billing_account';
+        v_push_reason_key := 'vendite.preventivi.push_commessa_reason.senza_billing_account';
     ELSE
         v_push_reason     := 'PREVENTIVO_NESSUNA_RIGA_COMMESSA';
-        v_push_reason_key := 'preventivi.push_commessa_reason.nessuna_riga';
+        v_push_reason_key := 'vendite.preventivi.push_commessa_reason.nessuna_riga';
     END IF;
 
     IF v_can_ordine THEN
@@ -170,10 +173,10 @@ BEGIN
         v_ordine_reason_key := NULL;
     ELSIF v_stato_cod <> 'ACCETTATO' THEN
         v_ordine_reason     := 'PREVENTIVO_NON_ACCETTATO';
-        v_ordine_reason_key := 'preventivi.genera_ordine_reason.non_accettato';
+        v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.non_accettato';
     ELSE
         v_ordine_reason     := 'PREVENTIVO_NESSUNA_RIGA_ORDINE';
-        v_ordine_reason_key := 'preventivi.genera_ordine_reason.nessuna_riga';
+        v_ordine_reason_key := 'vendite.preventivi.genera_ordine_reason.nessuna_riga';
     END IF;
 
     RETURN jsonb_build_object(
@@ -197,7 +200,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_preventivo(p_preventivo_id bigint)
-IS 'Capability preventivo per detail API: available_actions + can_edit_* + push_commessa + genera_ordine + create_revisione + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_preventivi (bottone PDF data-driven via capabilities). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il preventivo non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard PREV_NESSUNA_RIGA_ATTIVA: SOLO presenza, nessun vincolo su quantita/prezzo/totale).';
+IS 'Capability preventivo per detail API: available_actions + can_edit_* + push_commessa + genera_ordine + create_revisione + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_preventivi (bottone PDF data-driven via capabilities). rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e il preventivo non ha righe attive -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard PREV_NESSUNA_RIGA_ATTIVA: SOLO presenza, nessun vincolo su quantita/prezzo/totale). rev 2026-07-19: le 3 label_key (crea_revisione/push_commessa/genera_ordine) e le 5 reason_key (push_commessa_reason.*, genera_ordine_reason.*) passano al namespace i18n vendite.preventivi.* — la radice preventivi.* e'' stata spostata sotto vendite.* dal FE nella migrazione radici i18n; brief-i18n-radici-uniformi §5.';
 ```
 
 ---

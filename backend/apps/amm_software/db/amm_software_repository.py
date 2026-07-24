@@ -15,7 +15,7 @@ from typing import Any, ClassVar
 
 from django.db import DatabaseError, connection, transaction
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import row_to_dict, rows_to_list, sql_order_direction
 
 from apps.core.services.auth_constants import TIPO_PROFILO_SUPER_ADMIN
 from apps.core.services.error_manager import ErrorManager
@@ -127,7 +127,7 @@ class AmmSoftwareRepository:
 
         # Ordinamento sicuro (whitelist)
         if order_by and order_by in ALLOWED_ORDER_COLUMNS:
-            direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
+            direction = sql_order_direction(order_dir)
             order_clause = f"ORDER BY {order_by} {direction}, au.id"
         else:
             order_clause = "ORDER BY soggetto_cognome ASC, au.username ASC, au.id"
@@ -1103,7 +1103,7 @@ class AmmSoftwareRepository:
         }
         safe_col = _col_map.get(order_by, order_by) if order_by else None
         if safe_col and safe_col in self._AUDIT_ORDER_COLUMNS:
-            direction = "ASC" if order_dir and order_dir.upper() == "ASC" else "DESC"
+            direction = sql_order_direction(order_dir, default_desc=True)
             sql += f"ORDER BY {safe_col} {direction}, valid_from DESC "  # noqa: S608
         else:
             sql += "ORDER BY valid_from DESC "

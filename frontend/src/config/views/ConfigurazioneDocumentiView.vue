@@ -8,13 +8,16 @@
 // non blocca utenti con `documenti=BLOCCATO`. Il check qui sotto chiude
 // la falla mostrando StatusPage forbidden invece di una pagina vuota
 // con errori 403 al primo POST.
-import { computed, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { READONLY_DOMAINS } from '../../core/constants'
-import TabView from 'primevue/tabview'
+import Tab from 'primevue/tab'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
 import TabPanel from 'primevue/tabpanel'
+import TabPanels from 'primevue/tabpanels'
 import StatusPage from '../../core/components/StatusPage.vue'
 import ModelliDocumentiTemplatesView from './ModelliDocumentiTemplatesView.vue'
 import ModelliDocumentiAssetView from './ModelliDocumentiAssetView.vue'
@@ -22,16 +25,10 @@ import ModelliDocumentiAssetView from './ModelliDocumentiAssetView.vue'
 const { t } = useI18n()
 const router = useRouter()
 const auth = useAuthStore()
-const tabViewKey = ref(0)
 
 const isDocumentiBlocked = computed(() =>
   auth.isAreaBlocked(READONLY_DOMAINS.DOCUMENTI),
 )
-
-onMounted(() => {
-  // Scopo: forza il ricalcolo dell'ink bar PrimeVue dopo il mount nel layout.
-  tabViewKey.value += 1
-})
 </script>
 
 <template>
@@ -45,17 +42,23 @@ onMounted(() => {
       action-icon="pi pi-home"
       @action="router.push('/')"
     />
-    <TabView v-else lazy :key="tabViewKey">
-      <TabPanel :header="t('config_documenti.tab_modelli')">
-        <div class="app-tab-content">
-          <ModelliDocumentiTemplatesView />
-        </div>
-      </TabPanel>
-      <TabPanel :header="t('config_documenti.tab_asset')">
-        <div class="app-tab-content">
-          <ModelliDocumentiAssetView />
-        </div>
-      </TabPanel>
-    </TabView>
+    <Tabs v-else value="modelli" lazy>
+      <TabList>
+        <Tab value="modelli">{{ t('config.documenti.tab_modelli') }}</Tab>
+        <Tab value="asset">{{ t('config.documenti.tab_asset') }}</Tab>
+      </TabList>
+      <TabPanels>
+        <TabPanel value="modelli">
+          <div class="app-tab-content">
+            <ModelliDocumentiTemplatesView />
+          </div>
+        </TabPanel>
+        <TabPanel value="asset">
+          <div class="app-tab-content">
+            <ModelliDocumentiAssetView />
+          </div>
+        </TabPanel>
+      </TabPanels>
+    </Tabs>
   </div>
 </template>

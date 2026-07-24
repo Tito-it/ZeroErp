@@ -29,6 +29,7 @@ from apps.vendite.types import (
     DashApertoRiepilogoRow,
     DashBacklogDocumentoRow,
     DashCompetenzaAttivitaRow,
+    DashCompetenzaCommessaRow,
     DashCompetenzaErroreRow,
     LottoFattureRow,
     LottoListRow,
@@ -128,6 +129,35 @@ def fn_list_lotti(
         offset=offset,
     )
     return _build_list_response(results, total_count, page, page_size)
+
+
+# Scopo: Restituisce la testata di un singolo lotto (dettaglio drawer diagnostico,
+#        cockpit Fase B). Scope emittente applicato in repo: lotto fuori scope o
+#        inesistente → E_LOTTO_NOT_FOUND (404), indistinguibili per non leakare
+#        l'esistenza (coerente RLS operatori).
+def fn_get_lotto(*, lotto_id: int, auth_user_id: int | None = None) -> dict[str, object]:
+    ErrorManager.require(
+        bool(lotto_id and lotto_id > 0),
+        code="E_LOTTO_PARAMETRO_NON_COERENTE",
+        message="Parametri non validi.",
+        detail="lotto_id obbligatorio e > 0",
+        context={"lotto_id": lotto_id},
+        function_name="vendite.vendite_service.fn_get_lotto",
+        log_to_db=True,
+    )
+    repository = VenditeRepository()
+    lotto = repository.get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
+    if lotto is None:
+        ErrorManager.raise_error(
+            code="E_LOTTO_NON_TROVATO",
+            message="Lotto non trovato.",
+            detail=f"Nessun lotto accessibile con id={lotto_id}",
+            context={"lotto_id": lotto_id},
+            function_name="vendite.vendite_service.fn_get_lotto",
+            log_to_db=True,
+        )
+    assert lotto is not None
+    return dict(lotto)
 
 
 # Scopo: Restituisce elenco fatture di un lotto con decodifiche, filtri e ordinamento opzionali.
@@ -528,6 +558,68 @@ def fn_dash_competenza_attivita(
         offset=offset,
     )
     return _build_list_response(results, total_count, page, page_size)
+
+
+# Scopo: Drill-down AGGREGATO per commessa della Lente 1 (DEC-4): una riga per
+#        commessa nel perimetro (mese + stadio + solo_ritardo) invece della grana
+#        attivita' — risolve la commessa "ripetuta" nella lista; il dettaglio a
+#        grana attivita' vive nel drawer di gestione. Stessa validazione della
+#        lista a grana attivita' (stadio whitelist, order_by/order_dir, pagina).
+# Perimetro: sola lettura; scope emittente DB-side (GUC fail-closed nella vista).
+# Risultato: dict con count (n commesse), page, page_size, total_pages, results.
+def fn_dash_competenza_commesse(
+    *,
+    competenza_mese: date,
+    stadio: str | None = None,
+    solo_ritardo: bool = False,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> dict[str, object]:
+    _validate_enum(
+        stadio,
+        allowed=DASH_COMPETENZA_STADI,
+        param_name="stadio",
+        function_name="vendite.vendite_service.fn_dash_competenza_commesse",
+    )
+    ErrorManager.require(
+        order_by is None
+        or order_by in VenditeRepository.DASH_COMPETENZA_COMMESSE_SORT_COLUMNS,
+        code="E_VENDITE_VALIDATION",
+        message="Colonna di ordinamento non valida.",
+        detail=(
+            f"order_by='{order_by}' non ammesso. Valori: "
+            f"{', '.join(sorted(VenditeRepository.DASH_COMPETENZA_COMMESSE_SORT_COLUMNS))}."
+        ),
+        context={"order_by": order_by},
+        function_name="vendite.vendite_service.fn_dash_competenza_commesse",
+    )
+    ErrorManager.require(
+        order_dir is None or order_dir.lower() in ("asc", "desc"),
+        code="E_VENDITE_VALIDATION",
+        message="Direzione di ordinamento non valida.",
+        detail="order_dir deve essere 'asc' o 'desc'.",
+        context={"order_dir": order_dir},
+        function_name="vendite.vendite_service.fn_dash_competenza_commesse",
+    )
+    offset = _validate_pagination(
+        page, page_size, "vendite.vendite_service.fn_dash_competenza_commesse"
+    )
+    repository = VenditeRepository()
+    results: list[DashCompetenzaCommessaRow]
+    results, total_count = repository.list_dash_competenza_commesse(
+        competenza_mese=competenza_mese.replace(day=1),
+        stadio=stadio,
+        solo_ritardo=solo_ritardo,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=page_size,
+        offset=offset,
+    )
+    return _build_list_response(
+        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    )
 
 
 @dataclass

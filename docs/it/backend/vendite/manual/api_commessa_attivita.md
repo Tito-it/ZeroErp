@@ -86,3 +86,89 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 - `vendite.fn_list_commessa_attivita(p_commessa_id, p_stato_emissione, p_stato_approvazione, p_competenza_mese, p_limit, p_offset)` — funzione principale, restituisce TABLE con 20 colonne
 - `vendite.commesse_attivita` — tabella dati
 - `config.sorgenti` — JOIN per `sorgente_codice`
+
+---
+
+## Azione APPROVA — righe di una commessa (A-1, cockpit fatturazione)
+
+### Scopo
+
+Portare le attività della commessa da `stato_approvazione = BOZZA` ad `APPROVATA`
+(prerequisito di riga per l'emissione verso `attivita_fatturabili`). È il verbo
+**Approva** del cockpit Dashboard Competenza a grana riga/commessa
+(design: `brief-design-gestione-processi-fatturazione.md` §3, decisione D-3).
+
+### Input
+
+- Metodo: `POST`
+- Path: `/api/v1/vendite/commesse/<commessa_id>/attivita/approva/`
+- Header: `Authorization: Bearer <token>` + `Idempotency-Key` (obbligatoria)
+- Permesso: azione di processo **`approva_attivita_commessa`** (`post_permission`)
+- Body JSON:
+  - `righe_ids` (int[], opzionale) — righe da approvare; **assente = tutte** le
+    righe `NON_EMESSA` in `BOZZA` della commessa. Lista vuota = `400` (per
+    "tutte" omettere il campo).
+
+### Output
+
+- `200`: `{ "data": { "commessa_id": 42, "approvate": 5 } }` — `approvate` è il
+  numero di righe effettivamente transitate (già `APPROVATA` = non contate:
+  la fn DB è **idempotente**, seconda invocazione → 0).
+- `400`: `E_COMMESSA_VALIDATION` — `commessa_id`/`righe_ids` non validi
+- `403`: azione di processo non abilitata
+- `404`: `E_COMMESSA_NOT_FOUND` — commessa inesistente
+
+### Regole
+
+- View `ApiCommessaAttivitaApprova` → service `approva_commessa_attivita` →
+  `CommesseRepository.approva_commessa_attivita` → fn DB.
+- Il service verifica l'esistenza della commessa prima della fn (404 parlante).
+- La fn approva solo righe `BOZZA` **e** `NON_EMESSA`: le emesse non sono toccate.
+
+### Dipendenze DB
+
+- `vendite.fn_approva_commessa_attivita(p_commessa_id, p_righe_ids, p_user)`
+
+---
+
+## Azione APPROVA massiva per competenza (A-2, cockpit fatturazione)
+
+### Scopo
+
+Approvare in un colpo **tutte le attività in stadio `DA_APPROVARE` di un mese di
+competenza** — esattamente la popolazione che la card `DA_APPROVARE` della
+Dashboard Competenza mostra (stessa vista del drill-down, WYSIWYG). Verbo
+**Approva** a grana mese (D-3).
+
+### Input
+
+- Metodo: `POST`
+- Path: `/api/v1/vendite/fatturazione/approva-competenza/`
+- Header: `Authorization: Bearer <token>` + `Idempotency-Key` (obbligatoria)
+- Permesso: azione di processo **`approva_attivita_commessa`**
+- Body JSON:
+  - `competenza_mese` (date `YYYY-MM-DD`, **obbligatoria**) — normalizzata al 1° del mese
+  - `commessa_ids` (int[], opzionale) — restringe al subset di commesse del mese
+
+### Output
+
+- `200`: `{ "data": { "competenza_mese": "2026-07-01", "commesse": 2, "approvate": 3 } }`
+  — perimetro vuoto = contatori a zero (non è un errore).
+- `400`: `E_COMMESSA_VALIDATION` — mese mancante / liste non valide
+- `403`: azione di processo non abilitata
+
+### Regole
+
+- View `ApiFatturazioneApprovaCompetenza` → service `approva_attivita_competenza`.
+- Popolazione da `vendite.vw_dash_competenza_attivita` (`stadio = 'DA_APPROVARE'`,
+  `competenza_mese = M`): **scope emittente applicato in-vista** (GUC
+  `app.current_user_id`, `security_invoker`) — l'operatore approva solo il suo
+  perimetro, per costruzione.
+- **All-or-nothing**: il loop per commessa gira in UNA `transaction.atomic()`
+  (guardrail «una azione = una unità atomica»); un errore su una commessa
+  annulla tutto. Il retry è innocuo (fn idempotente).
+
+### Dipendenze DB
+
+- `vendite.vw_dash_competenza_attivita` (read, selezione popolazione)
+- `vendite.fn_approva_commessa_attivita` (write, per commessa)

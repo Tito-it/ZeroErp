@@ -36,7 +36,7 @@ import ResoForm from './ResoForm.vue'
 import ResoRigheTable from './ResoRigheTable.vue'
 import ResoRiconsegnaPanel from './ResoRiconsegnaPanel.vue'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useResiStore()
 const { execute, loading } = useApiHandler()
 const notify = useNotify()
@@ -174,6 +174,7 @@ const drawerActions = computed(() => {
   return mapAvailableActionsToDrawerActions({
     availableActions: availableActions.value,
     t,
+    te,
     onAction,
     readonly: readonlyPuro,
   })
@@ -269,7 +270,8 @@ async function onRiconsegnaGenerata() {
         <Divider />
         <LineagePassaggiPanel
           base-path="/vendite/resi"
-          :doc-id="props.resoId" />
+          :doc-id="props.resoId"
+          :readonly="readonly || parentReadonly" />
       </template>
 
       <FormFooter v-if="canEditTestata && !isReadonly && !formRigaAperto"

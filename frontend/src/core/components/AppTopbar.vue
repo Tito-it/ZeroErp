@@ -7,6 +7,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import Badge from 'primevue/badge'
 import Button from 'primevue/button'
 import Chip from 'primevue/chip'
 import TieredMenu from 'primevue/tieredmenu'
@@ -19,8 +20,10 @@ import { setAppLanguage, SUPPORTED_LOCALES } from '../i18n'
 import { MANAGE_ICONS } from '../constants'
 import SearchDrawer from './SearchDrawer.vue'
 import AiAssistantDrawer from './AiAssistantDrawer.vue'
+import CodeLavoroDrawer from './CodeLavoroDrawer.vue'
 import { menuItemClass } from '../utils/rowActions'
 import { useNavigationFavorites } from '../composables/useNavigationFavorites'
+import { useQueueCountsPolling } from '../composables/useQueueCountsPolling'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -92,6 +95,14 @@ async function toggleLanguage() {
 
 const languageLabel = computed(() => locale.value.toUpperCase())
 
+// Badge code di lavoro (D-B/D-C brief gestione-code): due segmenti — job vivi
+// della coda lavori (propri) e stampe vive (per emittente). Polling lento 60s
+// sospeso in background; su 403 (niente area core) il pulsante sparisce.
+const {
+  lavoriVivi, stampaVive, workerOk,
+  disponibile: codeDisponibile,
+} = useQueueCountsPolling()
+
 // Scopo: classe CSS standard per le voci del kebab topbar. Tutte neutre/
 // preferenze (preferiti/lingua/dark + search/AI quando mobile) -> nessuna
 // severity esplicita, fallback "action" (verde) coerente col colore dei
@@ -140,6 +151,14 @@ const userKebabItems = computed(() => {
       class: TOPBAR_MENU_CLASS,
       command: () => ui.openSearchDrawer(),
     })
+    if (codeDisponibile.value) {
+      items.push({
+        label: t('strumenti.code.badge_tooltip'),
+        icon: 'pi pi-inbox',
+        class: TOPBAR_MENU_CLASS,
+        command: () => ui.openCodeDrawer(),
+      })
+    }
     if (ui.aiAvailable) {
       items.push({
         label: t('ai.title'),
@@ -236,6 +255,32 @@ onMounted(async () => {
            (subito dopo). Qui restano solo ricerca universale e assistente AI,
            azioni di lavoro che vivono tra la data e il kebab utente. -->
       <div class="topbar-actions-inline">
+        <!-- Badge code di lavoro: due segmenti (lavori · stampa), warn se un
+             worker e' giu'. Visibile solo se l'endpoint conteggi e' accessibile
+             (area core). Click → drawer rapido. -->
+        <button
+          v-if="codeDisponibile"
+          class="topbar-icon-btn topbar-code-btn"
+          v-tooltip.bottom="workerOk === false
+            ? t('strumenti.code.badge_worker_giu')
+            : t('strumenti.code.badge_tooltip')"
+          @click="ui.openCodeDrawer()"
+        >
+          <i class="pi pi-inbox" :class="{ 'topbar-code-icon-warn': workerOk === false }"></i>
+          <Badge
+            v-if="lavoriVivi > 0"
+            :value="lavoriVivi"
+            severity="info"
+            class="topbar-code-badge topbar-code-badge-lavori"
+          />
+          <Badge
+            v-if="stampaVive > 0"
+            :value="stampaVive"
+            severity="warn"
+            class="topbar-code-badge topbar-code-badge-stampa"
+          />
+        </button>
+
         <!-- Pulsante ricerca universale -->
         <button
           class="topbar-icon-btn"
@@ -282,6 +327,7 @@ onMounted(async () => {
 
   <SearchDrawer v-model:visible="ui.searchDrawerVisible" />
   <AiAssistantDrawer v-model:visible="ui.aiDrawerVisible" />
+  <CodeLavoroDrawer v-model:visible="ui.codeDrawerVisible" />
 </template>
 
 <style scoped>
@@ -413,6 +459,30 @@ onMounted(async () => {
   margin-left: 0.3rem;
   font-weight: 600;
   color: var(--p-orange-500);
+}
+
+/* Badge code di lavoro — due segmenti overlay sull'icona (pattern
+   AlertScadenzeWidget): lavori in alto a destra, stampa in basso a destra. */
+.topbar-code-btn {
+  position: relative;
+}
+.topbar-code-badge {
+  position: absolute;
+  font-size: 0.6rem;
+  min-width: 1rem;
+  height: 1rem;
+  line-height: 1rem;
+}
+.topbar-code-badge-lavori {
+  top: -4px;
+  right: -6px;
+}
+.topbar-code-badge-stampa {
+  bottom: -4px;
+  right: -6px;
+}
+.topbar-code-icon-warn {
+  color: var(--p-red-500);
 }
 
 /* Logout — override hover rosso (usa topbar-icon-btn come base) */

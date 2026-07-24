@@ -1,0 +1,222 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: predicato "gia' inviato" delle push-list + reason capability
+--       (brief-db-push-commessa-gia-inviato, rilievo ORD0000227;
+--       migrations 20260719-05..11).
+--       Riproduce il caso vivo: ordine con attivita' componenti BoM
+--       ('#CMP:', NON_EMESSA) che il vecchio predicato (uguaglianza +
+--       stato_emissione='EMESSA') non vedeva -> riga ri-elencata e
+--       azione ri-offerta dopo il push.
+-- ------------------------------------------------------------
+-- Indice test (1..10):
+--   1)  esiste script.fn_get_stato_push_segment
+--   2)  classificatore: segment mai instradato -> LIBERA
+--   3)  classificatore: solo attivita' componenti #CMP NON_EMESSA -> ALLOCATA
+--   4)  classificatore: tutte le attivita' EMESSE -> EMESSA
+--   5)  classificatore: nessuna collisione di prefisso riga
+--       (R:24 non matcha R:241#CMP:...)
+--   6)  fn_list_ordini_da_pushare: ordine con attivita' #CMP NON_EMESSA
+--       -> 0 righe (era 1 = bug ORD0000227)
+--   7)  capability ordine: can_push_commessa=false + reason ORDINE_GIA_INVIATO
+--   8)  dopo la fatturazione (stato_emissione=EMESSA su tutte)
+--       -> reason ORDINE_GIA_FATTURATO
+--   9)  controprova: ordine gemello MAI pushato -> 1 riga in lista
+--  10)  controprova capability: can_push_commessa=true sul gemello
+-- ------------------------------------------------------------
+
+BEGIN;
+SELECT plan(10);
+
+SELECT set_config('app.current_user_id', '', true);
+
+-- ============================================================
+-- Riferimenti minimi
+-- ============================================================
+CREATE TEMP TABLE tmp_gi_refs AS
+SELECT
+  (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
+  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)                                              AS utility_id,
+  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)                                              AS istanza_utility_id,
+  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
+  (SELECT a.id FROM catalogo.articoli a
+    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
+    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
+  (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
+  (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
+  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
+  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
+  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='ORDINE_VENDITA' AND s.attivo LIMIT 1) AS src_ordine_id;
+
+-- ============================================================
+-- 1) il classificatore esiste
+-- ============================================================
+SELECT has_function('script', 'fn_get_stato_push_segment',
+  '1) esiste script.fn_get_stato_push_segment');
+
+-- ============================================================
+-- Fixture: commessa ospite + 2 ordini CONFERMATI con una riga con prezzo
+-- (eleggibili al push). L'ordine A ricevera' attivita' componenti #CMP.
+-- ============================================================
+CREATE TEMP TABLE tmp_gi_commessa AS
+WITH ins AS (
+  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id)
+  SELECT 'PGTAP-GIAINV-' || substr(md5(clock_timestamp()::text), 1, 8),
+         r.billing_account_id, r.utility_id
+    FROM tmp_gi_refs r
+  RETURNING id
+)
+SELECT id FROM ins;
+
+CREATE OR REPLACE FUNCTION pg_temp.mk_ordine(p_tag text)
+RETURNS TABLE(ordine_id bigint, ordine_uid uuid, riga_id bigint) AS $$
+DECLARE r RECORD; v_ord bigint; v_uid uuid; v_riga bigint;
+BEGIN
+  SELECT * INTO r FROM tmp_gi_refs;
+  INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
+    valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
+  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id, r.valuta_id,
+          DATE '2026-07-19', 'CONFERMATO', r.emittente_fiscale_id, false,
+          jsonb_build_object('test_scope', 'pgtap_gia_inviato_' || p_tag))
+  RETURNING id, uid INTO v_ord, v_uid;
+  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+  VALUES (v_ord, 1, r.articolo_id, 'Riga push ' || p_tag, 10, 10, 25, r.iva_id, true, false,
+          jsonb_build_object('test_scope', 'pgtap_gia_inviato_' || p_tag))
+  RETURNING id INTO v_riga;
+  RETURN QUERY SELECT v_ord, v_uid, v_riga;
+END $$ LANGUAGE plpgsql;
+
+CREATE TEMP TABLE tmp_gi_ord AS
+SELECT a.ordine_id AS ord_a, a.ordine_uid AS uid_a, a.riga_id AS riga_a,
+       b.ordine_id AS ord_b, b.ordine_uid AS uid_b, b.riga_id AS riga_b
+  FROM pg_temp.mk_ordine('A') a, pg_temp.mk_ordine('B') b;
+
+-- Helper: inserisce un'attivita' in commessa con segment_key arbitraria.
+CREATE OR REPLACE FUNCTION pg_temp.mk_attivita(p_segment text, p_stato_emissione text)
+RETURNS bigint AS $$
+DECLARE r RECORD; v_id bigint;
+BEGIN
+  SELECT * INTO r FROM tmp_gi_refs;
+  INSERT INTO vendite.commesse_attivita (
+    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
+    competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
+    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione,
+    sorgente_tipo_id, sorgente_uid
+  )
+  VALUES (
+    (SELECT id FROM tmp_gi_commessa), p_segment, r.articolo_id, r.istanza_utility_id,
+    DATE '2026-07-01', r.uom_id, 1,
+    DATE '2026-07-01', DATE '2026-07-01', DATE '2026-07-31',
+    r.tipo_doc_fiscale_id, r.valuta_id, 25.00,
+    'FIXED', 'BOZZA', p_stato_emissione,
+    r.src_ordine_id, p_segment
+  )
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END $$ LANGUAGE plpgsql;
+
+-- ============================================================
+-- 2..5) unita' del classificatore (segment key sintetiche dedicate)
+-- ============================================================
+SELECT is(
+  script.fn_get_stato_push_segment('PGTAPCLS:mai-esistita:R:1'),
+  'LIBERA',
+  '2) segment mai instradato -> LIBERA'
+);
+
+-- Riproduzione ORD0000227: SOLO attivita' componenti #CMP, NON_EMESSE.
+-- Insert in statement SEPARATA dall'assert: il classificatore e' STABLE e
+-- usa lo snapshot d'inizio statement — nella stessa statement non vedrebbe
+-- le righe appena inserite (visibilita' per command id).
+DO $$
+BEGIN
+  PERFORM pg_temp.mk_attivita('PGTAPCLS:doc1:R:241#CMP:comp-a', 'NON_EMESSA');
+  PERFORM pg_temp.mk_attivita('PGTAPCLS:doc1:R:241#CMP:comp-b', 'NON_EMESSA');
+  PERFORM pg_temp.mk_attivita('PGTAPCLS:doc2:R:7#CMP:comp-a', 'EMESSA');
+END $$;
+
+SELECT is(
+  script.fn_get_stato_push_segment('PGTAPCLS:doc1:R:241'),
+  'ALLOCATA',
+  '3) solo componenti #CMP NON_EMESSA -> ALLOCATA (il vecchio predicato non li vedeva)'
+);
+
+SELECT is(
+  script.fn_get_stato_push_segment('PGTAPCLS:doc2:R:7'),
+  'EMESSA',
+  '4) tutte le attivita EMESSE -> EMESSA'
+);
+
+SELECT is(
+  script.fn_get_stato_push_segment('PGTAPCLS:doc1:R:24'),
+  'LIBERA',
+  '5) R:24 non matcha R:241#CMP (nessuna collisione di prefisso riga)'
+);
+
+-- ============================================================
+-- 6..8) il caso vivo: ordine A con attivita' componenti NON_EMESSE
+-- ============================================================
+-- Insert separata dall'assert (stessa ragione di visibilita' dei test 3-4).
+DO $$
+BEGIN
+  PERFORM pg_temp.mk_attivita('ORD:' || (SELECT uid_a::text FROM tmp_gi_ord)
+                               || ':R:' || (SELECT riga_a::text FROM tmp_gi_ord)
+                               || '#CMP:comp-1', 'NON_EMESSA');
+END $$;
+
+SELECT is(
+  (SELECT count(*)::int FROM vendite.fn_list_ordini_da_pushare(
+     p_ordine_id := (SELECT ord_a FROM tmp_gi_ord))),
+  0,
+  '6) ordine con componenti #CMP NON_EMESSA -> 0 righe pushabili (era il bug)'
+);
+
+SELECT is(
+  (SELECT (j->>'can_push_commessa') || '|' || (j->>'can_push_commessa_reason')
+     FROM script.fn_available_actions_ordine((SELECT ord_a FROM tmp_gi_ord)) AS j),
+  'false|ORDINE_GIA_INVIATO',
+  '7) capability: pushato ma non fatturato -> ORDINE_GIA_INVIATO'
+);
+
+UPDATE vendite.commesse_attivita
+   SET stato_emissione = 'EMESSA'
+ WHERE segment_key LIKE 'ORD:' || (SELECT uid_a::text FROM tmp_gi_ord) || ':%';
+
+SELECT is(
+  (SELECT (j->>'can_push_commessa') || '|' || (j->>'can_push_commessa_reason')
+     FROM script.fn_available_actions_ordine((SELECT ord_a FROM tmp_gi_ord)) AS j),
+  'false|ORDINE_GIA_FATTURATO',
+  '8) dopo la fatturazione -> ORDINE_GIA_FATTURATO'
+);
+
+-- ============================================================
+-- 9..10) controprova: l'ordine B mai pushato resta eleggibile
+-- ============================================================
+SELECT is(
+  (SELECT count(*)::int FROM vendite.fn_list_ordini_da_pushare(
+     p_ordine_id := (SELECT ord_b FROM tmp_gi_ord))),
+  1,
+  '9) ordine mai pushato -> 1 riga in lista'
+);
+
+SELECT is(
+  (SELECT j->>'can_push_commessa'
+     FROM script.fn_available_actions_ordine((SELECT ord_b FROM tmp_gi_ord)) AS j),
+  'true',
+  '10) capability: ordine mai pushato -> can_push_commessa=true'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

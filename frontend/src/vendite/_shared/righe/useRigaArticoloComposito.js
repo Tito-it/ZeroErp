@@ -49,7 +49,7 @@ export function useRigaArticoloComposito({ store, parentId, riga, articoloObj, f
     useArticoloUomOptions()
 
   function uomLabel(uom) {
-    const base = uom.is_base ? ` ${t('listini.uom_base_suffix')}` : ''
+    const base = uom.is_base ? ` ${t('vendite.listini.uom_base_suffix')}` : ''
     return `${uom.uom_codice} — ${uom.uom_descrizione}${base}`
   }
 

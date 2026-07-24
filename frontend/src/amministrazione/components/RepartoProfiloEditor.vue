@@ -89,7 +89,7 @@ function onSave() {
       { successMessage: t('notifications.save_success') }
     )
     if (result) emit('saved')
-  }, t('amm.profilo_save_confirm'))
+  }, t('amministrazione.profilo_save_confirm'))
 }
 
 const onClose = useDrawerClose(emit, 'cancelled')
@@ -103,17 +103,17 @@ const onClose = useDrawerClose(emit, 'cancelled')
     @update:visible="val => emit('update:visible', val)"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('amm.profilo_reparto', { nome: uoNome })" :icon="NAV_ICONS.SITEMAP" />
+      <DrawerTitle :action="t('common.edit')" :title="t('amministrazione.profilo_reparto', { nome: uoNome })" :icon="NAV_ICONS.SITEMAP" />
     </template>
 
     <div :class="{ 'app-readonly': isReadonly }">
     <Accordion :value="['aree', 'azioni']" multiple>
       <AccordionPanel value="aree">
-        <AccordionHeader>{{ t('amm.aree_funzionali') }}</AccordionHeader>
+        <AccordionHeader>{{ t('amministrazione.aree_funzionali') }}</AccordionHeader>
         <AccordionContent>
           <DataTable :value="localAree" size="small">
-            <Column field="area_descrizione" :header="t('amm.col_area')" />
-            <Column :header="t('amm.col_livello')" style="width: 12rem">
+            <Column field="area_descrizione" :header="t('amministrazione.col_area')" />
+            <Column :header="t('amministrazione.col_livello')" style="width: 12rem">
               <template #body="{ data }">
                 <Select v-model="data.livello" :options="livelloOptions"
                   option-label="label" option-value="value" class="w-full" />
@@ -124,12 +124,12 @@ const onClose = useDrawerClose(emit, 'cancelled')
       </AccordionPanel>
 
       <AccordionPanel value="azioni">
-        <AccordionHeader>{{ t('amm.azioni_processo') }}</AccordionHeader>
+        <AccordionHeader>{{ t('amministrazione.azioni_processo') }}</AccordionHeader>
         <AccordionContent>
           <DataTable :value="localAzioni" size="small">
-            <Column field="azione_descrizione" :header="t('amm.col_azione')" />
-            <Column field="area_codice" :header="t('amm.col_area')" style="width: 8rem" />
-            <Column :header="t('amm.col_abilitata')" style="width: 6rem">
+            <Column field="azione_descrizione" :header="t('amministrazione.col_azione')" />
+            <Column field="area_codice" :header="t('amministrazione.col_area')" style="width: 8rem" />
+            <Column :header="t('amministrazione.col_abilitata')" style="width: 6rem">
               <template #body="{ data }">
                 <ToggleSwitch v-model="data.abilitata" />
               </template>

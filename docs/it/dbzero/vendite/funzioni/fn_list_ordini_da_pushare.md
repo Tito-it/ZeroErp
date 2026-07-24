@@ -100,18 +100,19 @@ BEGIN
     AND (p_competenza_mese IS NULL OR date_trunc('month', o.data)::date = p_competenza_mese)
     AND (p_billing_account_id IS NULL OR o.billing_account_id = p_billing_account_id)
     AND (p_ordine_id IS NULL OR o.id = p_ordine_id)
-    AND NOT EXISTS (
-      SELECT 1 FROM vendite.commesse_attivita ca
-      WHERE ca.segment_key = 'ORD:' || o.uid::text || ':R:' || or_r.id::text
-        AND ca.stato_emissione = 'EMESSA'
-    )
+    -- Esclusione "gia' inviato": eleggibile solo se MAI
+    -- instradata (LIBERA) — classificatore condiviso coi rami
+    -- reason della capability: vede anche i componenti #CMP e
+    -- non dipende piu' da stato_emissione (ALLOCATA basta).
+    AND script.fn_get_stato_push_segment(
+          'ORD:' || o.uid::text || ':R:' || or_r.id::text) = 'LIBERA'
   ORDER BY o.id, or_r.id
   LIMIT p_limit;
 END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ordini_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ordine_id bigint)
-IS 'Lista righe ordine eligible al push su commessa (fatturazione_trigger CONFERMATO; stato documento libero sull''asse spedizione, esclusi DRAFT/ANNULLATO/FATTURATO). uom_id da catalogo.articoli (canonica). p_ordine_id opzionale: NULL=batch globale, NOT NULL=singolo ordine. Filtri in AND. Esclude EMESSA via NOT EXISTS. rev 2026-07-10: fix orfano trigger CONFERMATO evaso (decoupling fatturazione/spedizione, piano-db-fix-orfano-push-ordine-confermato).';
+IS 'Lista righe ordine eligible al push su commessa (fatturazione_trigger CONFERMATO; stato documento libero sull''asse spedizione, esclusi DRAFT/ANNULLATO/FATTURATO). uom_id da catalogo.articoli (canonica). p_ordine_id opzionale: NULL=batch globale, NOT NULL=singolo ordine. Filtri in AND. Esclude EMESSA via NOT EXISTS. rev 2026-07-10: fix orfano trigger CONFERMATO evaso (decoupling fatturazione/spedizione, piano-db-fix-orfano-push-ordine-confermato). rev 2026-07-19: esclusione su ALLOCAZIONE via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a.';
 ```
 
 ---

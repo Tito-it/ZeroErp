@@ -25,6 +25,11 @@ Indice test eseguiti:
 13a) DashCompetenzaAttivitaServiceTests.test_attivita_ordinamento_inoltrato
 13b) DashCompetenzaAttivitaServiceTests.test_attivita_order_by_non_valido
 13c) DashCompetenzaAttivitaServiceTests.test_attivita_order_dir_non_valido
+13d) DashCompetenzaCommesseServiceTests.test_commesse_ok_envelope_e_passthrough (DEC-4)
+13e) DashCompetenzaCommesseServiceTests.test_commesse_stadio_invalido
+13f) DashCompetenzaCommesseServiceTests.test_commesse_order_by_non_valido
+13g) DashCompetenzaCommesseServiceTests.test_commesse_order_dir_non_valido
+13h) DashCompetenzaCommesseServiceTests.test_commesse_page_invalida
 14) DashCompetenzaErroriServiceTests.test_errori_ok_envelope_paginato
 15) DashCompetenzaErroriServiceTests.test_errori_competenza_opzionale_none
 16) DashCompetenzaErroriServiceTests.test_errori_competenza_normalizzata_al_primo
@@ -38,6 +43,7 @@ from apps.core.services.service_errors import ServiceError
 from apps.vendite.services import vendite_service
 from apps.vendite.services.vendite_service import (
     fn_dash_competenza_attivita,
+    fn_dash_competenza_commesse,
     fn_dash_competenza_errori,
     fn_dash_competenza_mensile,
 )
@@ -345,6 +351,66 @@ class DashCompetenzaAttivitaServiceTests(TestCase):
                 order_by="valore",
                 order_dir="up",
             )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+
+class DashCompetenzaCommesseServiceTests(TestCase):
+    # Scopo: Envelope paginato con conteggio = n commesse; competenza al 1°,
+    #        stadio/solo_ritardo/ordinamento inoltrati al repository.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_competenza_commesse",
+        return_value=([{"commessa_id": 7, "n_attivita": 4}], 1),
+    )
+    def test_commesse_ok_envelope_e_passthrough(self, mock_repo):
+        data = fn_dash_competenza_commesse(
+            competenza_mese=date(2026, 5, 17),
+            stadio="DA_EMETTERE",
+            solo_ritardo=True,
+            order_by="valore_tot",
+            order_dir="desc",
+        )
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["results"], [{"commessa_id": 7, "n_attivita": 4}])
+        kwargs = mock_repo.call_args.kwargs
+        self.assertEqual(kwargs["competenza_mese"], date(2026, 5, 1))
+        self.assertEqual(kwargs["stadio"], "DA_EMETTERE")
+        self.assertTrue(kwargs["solo_ritardo"])
+        self.assertEqual(kwargs["order_by"], "valore_tot")
+        self.assertEqual(kwargs["order_dir"], "desc")
+        self.assertNotIn("auth_user_id", kwargs)
+
+    # Scopo: Stadio fuori whitelist -> E_VENDITE_VALIDATION.
+    def test_commesse_stadio_invalido(self):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_competenza_commesse(
+                competenza_mese=date(2026, 5, 1), stadio="TRANSITATA"
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: order_by fuori dalla whitelist AGGREGATA -> E_VENDITE_VALIDATION.
+    #        (le colonne di riga come data_attivita non sono ammesse qui).
+    def test_commesse_order_by_non_valido(self):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_competenza_commesse(
+                competenza_mese=date(2026, 5, 1), order_by="data_attivita"
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: order_dir diverso da asc/desc -> E_VENDITE_VALIDATION.
+    def test_commesse_order_dir_non_valido(self):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_competenza_commesse(
+                competenza_mese=date(2026, 5, 1),
+                order_by="n_attivita",
+                order_dir="up",
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: Paginazione invalida -> E_VENDITE_VALIDATION.
+    def test_commesse_page_invalida(self):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_competenza_commesse(competenza_mese=date(2026, 5, 1), page=0)
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
 

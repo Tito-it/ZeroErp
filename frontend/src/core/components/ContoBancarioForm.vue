@@ -58,7 +58,7 @@ function onBranchItemSelect(event) {
 // Opzioni dropdown uso tradotte
 const usiOptions = props.usiDisponibili.map(u => ({
   value: u,
-  label: t(`conti_bancari.uso_${u.toLowerCase()}`)
+  label: t(`anagrafiche.conti_bancari.uso_${u.toLowerCase()}`)
 }))
 
 // Scopo: Label per autocomplete filiale — usata da optionLabel.
@@ -86,7 +86,7 @@ function ibanOptionLabel(item) {
     <!-- Riga 1: Uso + Predefinito -->
     <div class="form-grid-2col">
       <div class="form-field">
-        <label>{{ t('conti_bancari.uso') }} *</label>
+        <label>{{ t('anagrafiche.conti_bancari.uso') }} *</label>
         <Select
           v-model="form.uso"
           :options="usiOptions"
@@ -102,32 +102,32 @@ function ibanOptionLabel(item) {
           <Checkbox v-model="form.predefinito" :binary="true" :disabled="disabled"
             input-id="cb-predefinito"
             @update:model-value="v => { if (v) form.bloccato = false }" />
-          <label for="cb-predefinito">{{ t('conti_bancari.predefinito') }}</label>
+          <label for="cb-predefinito">{{ t('anagrafiche.conti_bancari.predefinito') }}</label>
         </div>
       </div>
     </div>
 
     <!-- Riga 2: Intestatario predefinito -->
     <div class="form-field">
-      <label>{{ t('conti_bancari.intestatario') }}</label>
+      <label>{{ t('anagrafiche.conti_bancari.intestatario') }}</label>
       <InputText v-model="form.intestatario_predefinito" :disabled="disabled" class="w-full" />
     </div>
 
     <!-- Riga 3: Intestazione dichiarata -->
     <div class="form-field">
-      <label>{{ t('conti_bancari.intestazione_dichiarata') }}</label>
+      <label>{{ t('anagrafiche.conti_bancari.intestazione_dichiarata') }}</label>
       <InputText v-model="form.intestazione_dichiarata" :disabled="disabled" class="w-full" />
     </div>
 
     <!-- Riga 4: Banca/Filiale con autocomplete -->
     <div class="form-field">
-      <label>{{ t('conti_bancari.banca_filiale') }} *</label>
+      <label>{{ t('anagrafiche.conti_bancari.banca_filiale') }} *</label>
       <AutoComplete
         v-model="form.bank_branch_obj"
         :suggestions="branchAc.suggestions.value"
         :loading="branchAc.loading.value"
         :option-label="branchOptionLabel"
-        :placeholder="t('conti_bancari.banca_filiale')"
+        :placeholder="t('anagrafiche.conti_bancari.banca_filiale')"
         :disabled="disabled"
         class="w-full"
         :invalid="errors.includes('bank_branch_id')"
@@ -142,13 +142,13 @@ function ibanOptionLabel(item) {
     <!-- Riga 5: IBAN (largo) + BIC/SWIFT (corto) -->
     <div class="form-grid-2col cb-iban-row">
       <div class="form-field">
-        <label>{{ t('conti_bancari.iban') }} *</label>
+        <label>{{ t('anagrafiche.conti_bancari.iban') }} *</label>
         <AutoComplete
           v-model="form.iban"
           :suggestions="ibanAc.suggestions.value"
           :loading="ibanAc.loading.value"
           :option-label="ibanOptionLabel"
-          :placeholder="t('conti_bancari.iban')"
+          :placeholder="t('anagrafiche.conti_bancari.iban')"
           :disabled="disabled"
           class="w-full"
           :invalid="errors.includes('iban') || errors.includes('iban_format')"
@@ -162,11 +162,11 @@ function ibanOptionLabel(item) {
           @input="normalizeUpperNoSpaces(form, 'iban')"
         />
         <small v-if="errors.includes('iban_format')" class="app-field-error">
-          {{ t('conti_bancari.iban_formato_errore') }}
+          {{ t('anagrafiche.conti_bancari.iban_formato_errore') }}
         </small>
       </div>
       <div class="form-field">
-        <label>{{ t('conti_bancari.bic_swift') }}</label>
+        <label>{{ t('anagrafiche.conti_bancari.bic_swift') }}</label>
         <InputText v-model="form.bic_swift" :disabled="disabled" class="w-full" />
       </div>
     </div>
@@ -174,12 +174,12 @@ function ibanOptionLabel(item) {
     <!-- Riga 6: Valido dal + Valido al -->
     <div class="form-grid-2col">
       <div class="form-field">
-        <label>{{ t('conti_bancari.valido_dal') }}</label>
+        <label>{{ t('anagrafiche.conti_bancari.valido_dal') }}</label>
         <DatePicker v-model="form.valido_dal" :date-format="DATE_FORMAT"
           :disabled="disabled" show-icon icon-display="input" class="w-full" />
       </div>
       <div class="form-field">
-        <label>{{ t('conti_bancari.valido_al') }}</label>
+        <label>{{ t('anagrafiche.conti_bancari.valido_al') }}</label>
         <DatePicker v-model="form.valido_al" :date-format="DATE_FORMAT"
           :disabled="disabled" show-icon icon-display="input" class="w-full"
           :invalid="errors.includes('date_range')" />
@@ -192,7 +192,7 @@ function ibanOptionLabel(item) {
         <div style="display: flex; align-items: center; gap: 0.5rem;">
           <Checkbox v-model="form.verificato" :binary="true" :disabled="disabled"
             input-id="cb-verificato" />
-          <label for="cb-verificato">{{ t('conti_bancari.verificato') }}</label>
+          <label for="cb-verificato">{{ t('anagrafiche.conti_bancari.verificato') }}</label>
         </div>
       </div>
       <div class="form-field">
@@ -200,7 +200,7 @@ function ibanOptionLabel(item) {
           <Checkbox v-model="form.bloccato" :binary="true" :disabled="disabled"
             input-id="cb-bloccato"
             @update:model-value="v => { if (v) form.predefinito = false }" />
-          <label for="cb-bloccato">{{ t('conti_bancari.bloccato') }}</label>
+          <label for="cb-bloccato">{{ t('anagrafiche.conti_bancari.bloccato') }}</label>
         </div>
       </div>
     </div>

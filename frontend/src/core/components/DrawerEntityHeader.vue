@@ -12,7 +12,7 @@
 //   <DrawerEntityHeader>
 //     <Tag :value="detail.numero" severity="secondary" />
 //     <span class="app-drawer-header-muted">{{ displayDate(detail.data) }}</span>
-//     <Tag :value="t('contratti.forma_con_listino')" severity="info" />
+//     <Tag :value="t('vendite.contratti.forma_con_listino')" severity="info" />
 //
 //     <template #status>
 //       <Tag :value="detail.stato_descrizione"

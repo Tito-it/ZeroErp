@@ -175,7 +175,7 @@ const pageActions = computed(() => [
     key: 'aggiungi-articolo',
     kind: 'primary',
     label: t('common.new'),
-    tooltip: t('contratti.aggiungi_articolo_tooltip'),
+    tooltip: t('vendite.contratti.aggiungi_articolo_tooltip'),
     icon: MANAGE_ICONS.ADD,
     visible: canVariarePrezzi.value,
     disabled: formMode.value === 'create' || isReadonly.value,
@@ -413,9 +413,9 @@ async function caricaUomConPickBase(articoloId) {
 
 // === Options ===
 const tipoErogazioneOptions = computed(() => [
-  { value: 'CANONE', label: t('contratti.tipo_erogazione_canone') },
-  { value: 'CONSUMO', label: t('contratti.tipo_erogazione_consumo') },
-  { value: 'UNA_TANTUM', label: t('contratti.tipo_erogazione_una_tantum') },
+  { value: 'CANONE', label: t('vendite.contratti.tipo_erogazione_canone') },
+  { value: 'CONSUMO', label: t('vendite.contratti.tipo_erogazione_consumo') },
+  { value: 'UNA_TANTUM', label: t('vendite.contratti.tipo_erogazione_una_tantum') },
 ])
 
 // Refactor 2026-05-19: matrice (tipo_erogazione × fonte_quantita_attesa).
@@ -459,7 +459,7 @@ function _defaultFontePerTipo(tipo) {
 
 const fonteQuantitaOptions = computed(() => _fontiPerTipo(form.value?.tipo_erogazione).map(f => ({
   value: f.value,
-  label: t(`contratti.fonte_quantita_value_${f.value.toLowerCase()}`),
+  label: t(`vendite.contratti.fonte_quantita_value_${f.value.toLowerCase()}`),
   severity: f.severity,
 })))
 
@@ -620,9 +620,9 @@ function onEscludi(row) {
     ? `${row.articolo_codice} — ${row.articolo_descrizione}`
     : row.articolo_descrizione
   confirmAction({
-    header: t('contratti.escludi_dialog_titolo'),
-    message: t('contratti.escludi_dialog_messaggio', { articolo: label }),
-    acceptLabel: t('contratti.escludi_dialog_conferma'),
+    header: t('vendite.contratti.escludi_dialog_titolo'),
+    message: t('vendite.contratti.escludi_dialog_messaggio', { articolo: label }),
+    acceptLabel: t('vendite.contratti.escludi_dialog_conferma'),
     danger: true,
     onAccept: async () => {
       const payload = {
@@ -635,7 +635,7 @@ function onEscludi(row) {
       }
       const result = await execute(
         () => store.addRiga(props.contrattoId, payload),
-        { successMessage: t('contratti.articolo_escluso') },
+        { successMessage: t('vendite.contratti.articolo_escluso') },
       )
       if (result !== null) {
         if (!isSenzaListino.value) await loadPreview()
@@ -778,8 +778,8 @@ const canSave = computed(() => {
 })
 
 const formTitle = computed(() => {
-  if (formMode.value === 'create') return t('contratti.nuova_riga')
-  if (formMode.value === 'edit') return t('contratti.modifica_riga')
+  if (formMode.value === 'create') return t('vendite.contratti.nuova_riga')
+  if (formMode.value === 'edit') return t('vendite.contratti.modifica_riga')
   return ''
 })
 
@@ -839,9 +839,9 @@ const { save: onSave, richiediApprovazione: onRichiediApprovazione } = useL2Save
     closeForm()
   },
   messages: {
-    success: () => (formMode.value === 'create' ? t('contratti.riga_creata') : t('contratti.riga_salvata')),
-    approvalRequested: t('contratti.richiesta_approvazione_inviata'),
-    error: t('contratti.errore_generico'),
+    success: () => (formMode.value === 'create' ? t('vendite.contratti.riga_creata') : t('vendite.contratti.riga_salvata')),
+    approvalRequested: t('vendite.contratti.richiesta_approvazione_inviata'),
+    error: t('vendite.contratti.errore_generico'),
   },
   l2Error,
   loading,
@@ -855,7 +855,7 @@ function onDelete(r) {
   confirmDelete(label, async () => {
     const result = await execute(
       () => store.deleteRiga(props.contrattoId, rigaId),
-      { successMessage: t('contratti.riga_eliminata') }
+      { successMessage: t('vendite.contratti.riga_eliminata') }
     )
     if (result !== null) {
       // Se stavo editando questa riga, chiudi il form.
@@ -883,14 +883,14 @@ function onRipristina(r, origine) {
     ? 'ripristina_listino'
     : 'ripristina_articolo'
   confirmAction({
-    header: t(`contratti.${prefix}_dialog_titolo`),
-    message: t(`contratti.${prefix}_dialog_messaggio`, { articolo: articoloLabel }),
-    acceptLabel: t(`contratti.${prefix}_dialog_conferma`),
+    header: t(`vendite.contratti.${prefix}_dialog_titolo`),
+    message: t(`vendite.contratti.${prefix}_dialog_messaggio`, { articolo: articoloLabel }),
+    acceptLabel: t(`vendite.contratti.${prefix}_dialog_conferma`),
     danger: false,
     onAccept: async () => {
       const result = await execute(
         () => store.deleteRiga(props.contrattoId, rigaId),
-        { successMessage: t('contratti.riga_ripristinata') }
+        { successMessage: t('vendite.contratti.riga_ripristinata') }
       )
       if (result !== null) {
         if (rigaEditId.value === rigaId) closeForm()
@@ -920,7 +920,7 @@ function buildRigaActions(data) {
     return [
       {
         key: 'escludi',
-        label: t('contratti.azione_escludi'),
+        label: t('vendite.contratti.azione_escludi'),
         icon: 'pi pi-ban',
         severity: 'warn',
         visible: !isReadonly.value && canVariarePrezzi.value,
@@ -932,7 +932,7 @@ function buildRigaActions(data) {
     return [
       {
         key: 'ripristina-listino',
-        label: t('contratti.azione_ripristina_listino'),
+        label: t('vendite.contratti.azione_ripristina_listino'),
         icon: 'pi pi-replay',
         severity: 'secondary',
         visible: !isReadonly.value,
@@ -944,7 +944,7 @@ function buildRigaActions(data) {
     return [
       {
         key: 'ripristina-articolo',
-        label: t('contratti.azione_ripristina_articolo'),
+        label: t('vendite.contratti.azione_ripristina_articolo'),
         icon: 'pi pi-replay',
         severity: 'secondary',
         visible: !isReadonly.value,
@@ -957,7 +957,7 @@ function buildRigaActions(data) {
   return [
     {
       key: 'rimuovi-aggiunta',
-      label: t('contratti.azione_rimuovi_aggiunta'),
+      label: t('vendite.contratti.azione_rimuovi_aggiunta'),
       icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       visible: !isReadonly.value,
@@ -988,7 +988,7 @@ function origineSeverity(origine) {
     :dismissable="true"
   >
     <template #header>
-      <DrawerTitle :title="t('contratti.drawer_righe_titolo')" :icon="MANAGE_ICONS.RIGHE" />
+      <DrawerTitle :title="t('vendite.contratti.drawer_righe_titolo')" :icon="MANAGE_ICONS.RIGHE" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -997,9 +997,9 @@ function origineSeverity(origine) {
       <DrawerContextHeader
         :tag-value="contrattoNumero"
         :items="[
-          { label: t('contratti.col_ba'),         value: contrattoCliente },
-          { label: t('contratti.col_valido_dal'), value: displayDate(contrattoValidoDal) },
-          { label: t('contratti.col_valido_al'),  value: contrattoValidoAl ? displayDate(contrattoValidoAl) : '—' },
+          { label: t('vendite.contratti.col_ba'),         value: contrattoCliente },
+          { label: t('vendite.contratti.col_valido_dal'), value: displayDate(contrattoValidoDal) },
+          { label: t('vendite.contratti.col_valido_al'),  value: contrattoValidoAl ? displayDate(contrattoValidoAl) : '—' },
         ]">
         <template #status>
           <Tag v-if="contrattoStatoCodice"
@@ -1015,38 +1015,38 @@ function origineSeverity(origine) {
         :severity="isSenzaListino ? 'warn' : 'info'"
         :closable="false" size="small">
         <div>
-          <strong>{{ t(`contratti.forma_${formaEffettiva}_descrizione`) }}</strong>
+          <strong>{{ t(`vendite.contratti.forma_${formaEffettiva}_descrizione`) }}</strong>
         </div>
         <div v-if="contestoPricing.listino_codice" class="text-sm">
-          {{ t('contratti.contesto_listino', {
+          {{ t('vendite.contratti.contesto_listino', {
             codice: contestoPricing.listino_codice,
             versione: contestoPricing.listino_versione_codice || '—',
           }) }}
           <Tag v-if="contestoPricing.listino_versione_fissata"
-               :value="t('contratti.contesto_versione_fissata')"
+               :value="t('vendite.contratti.contesto_versione_fissata')"
                severity="success" class="ml-1" />
           <!-- Drift warning: il contratto e' fissato a una versione listino
                diversa da quella attualmente ATTIVA sul listino. Tag
                informativo, no blocco: i prezzi restano calcolati sulla
                fissata per design (snapshot post-attivazione). -->
           <Tag v-if="contestoPricing.drift_versione_listino"
-               :value="t('contratti.contesto_drift_versione', {
+               :value="t('vendite.contratti.contesto_drift_versione', {
                  versione_corrente: contestoPricing.listino_versione_corrente_codice,
                })"
                severity="warn" class="ml-1"
-               v-tooltip.top="t('contratti.contesto_drift_versione_tooltip', {
+               v-tooltip.top="t('vendite.contratti.contesto_drift_versione_tooltip', {
                  versione_corrente: contestoPricing.listino_versione_corrente_codice,
                  versione_fissata: contestoPricing.listino_versione_codice,
                })" />
         </div>
         <div v-if="contestoPricing.tipo_variazione_globale" class="text-sm">
-          {{ t('contratti.contesto_variazione', {
+          {{ t('vendite.contratti.contesto_variazione', {
             tipo: contestoPricing.tipo_variazione_globale,
             valore: contestoPricing.valore_variazione_globale,
           }) }}
         </div>
         <div v-if="contestoPricing.categoria_cliente_codice" class="text-sm">
-          {{ t('contratti.contesto_categoria', {
+          {{ t('vendite.contratti.contesto_categoria', {
             codice: contestoPricing.categoria_cliente_codice,
           }) }}
         </div>
@@ -1055,7 +1055,7 @@ function origineSeverity(origine) {
       <!-- Avviso "senza_listino": tutte le righe AGGIUNTA, prezzo obbligatorio. -->
       <Message v-if="isSenzaListino && !contestoPricing"
                severity="warn" :closable="false" size="small">
-        {{ t('contratti.righe_senza_listino_warn') }}
+        {{ t('vendite.contratti.righe_senza_listino_warn') }}
       </Message>
 
       <!-- Avviso: listino associato ma senza versione operativa oggi.
@@ -1063,7 +1063,7 @@ function origineSeverity(origine) {
            una versione del listino prima che il pricing sia calcolato. -->
       <Message v-if="previewMeta?.listino_senza_versione_oggi"
         severity="warn" :closable="false" size="small">
-        {{ t('contratti.preview_listino_senza_versione', {
+        {{ t('vendite.contratti.preview_listino_senza_versione', {
           codice: previewMeta.listino_codice || ''
         }) }}
       </Message>
@@ -1072,7 +1072,7 @@ function origineSeverity(origine) {
       <div class="app-page-toolbar">
         <div class="app-page-filters">
           <InputText v-model="filtroArticolo"
-            :placeholder="t('contratti.filtro_articolo_placeholder')"
+            :placeholder="t('vendite.contratti.filtro_articolo_placeholder')"
             style="min-width: 240px;" />
         </div>
         <PageActionsBar :actions="pageActions" />
@@ -1108,45 +1108,45 @@ function origineSeverity(origine) {
             <Button v-if="hasBundleComponenti(data)"
               :icon="isExpanded(data) ? 'pi pi-chevron-down' : 'pi pi-chevron-right'"
               text rounded size="small"
-              v-tooltip.top="t('contratti.componenti_bundle_tooltip')"
+              v-tooltip.top="t('vendite.contratti.componenti_bundle_tooltip')"
               @click.stop="toggleExpansion(data)" />
           </template>
         </Column>
-        <Column field="articolo_codice" :header="t('contratti.col_articolo')" sortable style="width: 150px;" />
-        <Column field="articolo_descrizione" :header="t('contratti.col_descrizione')" sortable />
-        <Column :header="t('contratti.col_uom')" style="width: 80px;">
+        <Column field="articolo_codice" :header="t('vendite.contratti.col_articolo')" sortable style="width: 150px;" />
+        <Column field="articolo_descrizione" :header="t('vendite.contratti.col_descrizione')" sortable />
+        <Column :header="t('vendite.contratti.col_uom')" style="width: 80px;">
           <template #body="{ data }">{{ data.uom_codice ?? '—' }}</template>
         </Column>
         <!-- Modalita' C: prezzo singolo. A/B: prezzo listino + prezzo finale + origine. -->
         <template v-if="isSenzaListino">
-          <Column field="prezzo_unitario" :header="t('contratti.col_prezzo')" style="width: 90px;">
+          <Column field="prezzo_unitario" :header="t('vendite.contratti.col_prezzo')" style="width: 90px;">
             <template #body="{ data }">
               {{ formatCurrency(data.prezzo_unitario, { placeholder: '—', maximumFractionDigits: 2 }) }}
             </template>
           </Column>
-          <Column field="qta_operativa" :header="t('contratti.col_qta')" style="width: 70px;">
+          <Column field="qta_operativa" :header="t('vendite.contratti.col_qta')" style="width: 70px;">
             <template #body="{ data }">
               {{ formatNumber(data.qta_operativa, { placeholder: '—', minimumFractionDigits: 0, maximumFractionDigits: 4 }) }}
             </template>
           </Column>
-          <Column field="tipo_erogazione" :header="t('contratti.col_tipo_erogazione')" style="width: 100px;" />
+          <Column field="tipo_erogazione" :header="t('vendite.contratti.col_tipo_erogazione')" style="width: 100px;" />
         </template>
         <template v-else>
-          <Column :header="t('contratti.col_prezzo_listino')" style="width: 110px;">
+          <Column :header="t('vendite.contratti.col_prezzo_listino')" style="width: 110px;">
             <template #body="{ data }">
               {{ formatCurrency(data.prezzo_listino, { placeholder: '—', maximumFractionDigits: 2 }) }}
             </template>
           </Column>
-          <Column :header="t('contratti.col_prezzo_finale')" style="width: 110px;">
+          <Column :header="t('vendite.contratti.col_prezzo_finale')" style="width: 110px;">
             <template #body="{ data }">
               <span class="font-bold">
                 {{ formatCurrency(data.prezzo_finale, { placeholder: '—', maximumFractionDigits: 2 }) }}
               </span>
             </template>
           </Column>
-          <Column :header="t('contratti.col_origine')" style="width: 110px;">
+          <Column :header="t('vendite.contratti.col_origine')" style="width: 110px;">
             <template #body="{ data }">
-              <Tag :value="t(`contratti.origine_${data.origine?.toLowerCase()}`)"
+              <Tag :value="t(`vendite.contratti.origine_${data.origine?.toLowerCase()}`)"
                 :severity="origineSeverity(data.origine)" />
             </template>
           </Column>
@@ -1182,7 +1182,7 @@ function origineSeverity(origine) {
 
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('contratti.field_articolo') }} *</label>
+            <label>{{ t('vendite.contratti.field_articolo') }} *</label>
             <!-- Refactor FE 2.2 Opzione C (2026-05-18): l'articolo e' libero
                  SOLO per "Aggiungi articolo" (AGGIUNTA fuori-listino). Per
                  "Modifica prezzo" (OVERRIDE) e in EDIT e' precompilato e
@@ -1193,7 +1193,7 @@ function origineSeverity(origine) {
               @update:modelValue="onArticoloSelected"
               :disabled="formMode === 'edit' || form.tipo_eccezione !== 'AGGIUNTA'"
               :filtri="{ soloComponenti: 'escludi' }"
-              :placeholder="t('contratti.select_articolo')"
+              :placeholder="t('vendite.contratti.select_articolo')"
             />
           </div>
           <div class="form-field">
@@ -1203,9 +1203,9 @@ function origineSeverity(origine) {
                  ESCLUSIONE non passa dal form (one-click via kebab+conferma).
                  Mostrato come Tag readonly sia CREATE che EDIT per
                  trasparenza UX. -->
-            <label>{{ t('contratti.field_tipo_eccezione') }}</label>
+            <label>{{ t('vendite.contratti.field_tipo_eccezione') }}</label>
             <div>
-              <Tag :value="t(`contratti.tipo_eccezione_${form.tipo_eccezione}`)"
+              <Tag :value="t(`vendite.contratti.tipo_eccezione_${form.tipo_eccezione}`)"
                 severity="secondary" />
             </div>
           </div>
@@ -1213,18 +1213,18 @@ function origineSeverity(origine) {
 
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('contratti.field_uom') }} *</label>
+            <label>{{ t('vendite.contratti.field_uom') }} *</label>
             <Select v-model="form.uom_operativa_id"
               :options="uomOptions"
               option-value="uom_id"
               :option-label="uomLabel"
-              :placeholder="form.articolo_id ? t('contratti.select_uom') : t('contratti.uom_select_articolo_first')"
+              :placeholder="form.articolo_id ? t('vendite.contratti.select_uom') : t('vendite.contratti.uom_select_articolo_first')"
               :disabled="!form.articolo_id || uomLoading"
               :loading="uomLoading"
               class="w-full" />
           </div>
           <div class="form-field">
-            <label>{{ t('contratti.field_tipo_erogazione') }}</label>
+            <label>{{ t('vendite.contratti.field_tipo_erogazione') }}</label>
             <Select v-model="form.tipo_erogazione" :options="tipoErogazioneOptions"
               option-label="label" option-value="value" class="w-full" />
           </div>
@@ -1237,25 +1237,25 @@ function origineSeverity(origine) {
              sulle combinazioni rare (🟡 nella matrice). -->
         <div class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('contratti.field_fonte_quantita_attesa') }} *</label>
+            <label>{{ t('vendite.contratti.field_fonte_quantita_attesa') }} *</label>
             <Select v-model="form.fonte_quantita_attesa"
               :options="fonteQuantitaOptions"
               option-label="label" option-value="value"
-              :placeholder="t('contratti.select_fonte_quantita')"
+              :placeholder="t('vendite.contratti.select_fonte_quantita')"
               class="w-full" />
             <small v-if="fonteCorrente?.severity === 'warn'" class="contratti-fonte-uso-atipico">
-              <i class="pi pi-info-circle" /> {{ t('contratti.fonte_quantita_uso_atipico') }}
+              <i class="pi pi-info-circle" /> {{ t('vendite.contratti.fonte_quantita_uso_atipico') }}
             </small>
           </div>
           <div class="form-field">
             <label>
-              {{ t('contratti.field_prezzo_unitario') }}
+              {{ t('vendite.contratti.field_prezzo_unitario') }}
               <!-- Obbligatorio per OVERRIDE/AGGIUNTA (default tipo) non
                    composito. ESCLUSIONE = prezzo NULL. -->
               <span v-if="form.tipo_eccezione !== 'ESCLUSIONE' && !articoloObj?.is_composito">*</span>
               <Tag v-if="form.tipo_eccezione === 'ESCLUSIONE'"
                 severity="warn"
-                :value="t('contratti.prezzo_esclusione_n_a')" />
+                :value="t('vendite.contratti.prezzo_esclusione_n_a')" />
               <Tag v-else-if="articoloObj?.is_composito"
                 severity="info"
                 :value="t('vendite.componenti.panel.padre_calcolato')"
@@ -1277,18 +1277,18 @@ function origineSeverity(origine) {
              arrivera' il valore. -->
         <div class="form-grid-2col">
           <div class="form-field" v-if="showQtaOperativa">
-            <label>{{ t('contratti.field_qta_operativa_fissa') }} *</label>
+            <label>{{ t('vendite.contratti.field_qta_operativa_fissa') }} *</label>
             <InputNumber v-model="form.qta_operativa" class="w-full"
               :min="0.0001" :min-fraction-digits="0" :max-fraction-digits="4" showButtons />
           </div>
           <div class="form-field" v-else-if="form.fonte_quantita_attesa">
-            <label>{{ t('contratti.field_qta_operativa') }}</label>
+            <label>{{ t('vendite.contratti.field_qta_operativa') }}</label>
             <Tag severity="info"
-              :value="t(`contratti.fonte_quantita_tag_${form.fonte_quantita_attesa.toLowerCase()}`)"
-              v-tooltip.top="t('contratti.fonte_quantita_tag_tooltip')" />
+              :value="t(`vendite.contratti.fonte_quantita_tag_${form.fonte_quantita_attesa.toLowerCase()}`)"
+              v-tooltip.top="t('vendite.contratti.fonte_quantita_tag_tooltip')" />
           </div>
           <div class="form-field">
-            <label>{{ t('contratti.field_ordine') }}</label>
+            <label>{{ t('vendite.contratti.field_ordine') }}</label>
             <InputNumber v-model="form.ordine" class="w-full" :min="0" />
           </div>
         </div>
@@ -1346,9 +1346,9 @@ function origineSeverity(origine) {
         <L2ErrorBanner
           :error="l2Error"
           :loading="loading"
-          :label="t('contratti.richiedi_approvazione')"
-          :label-loading="t('contratti.richiedi_approvazione_in_corso')"
-          :tooltip="t('contratti.richiedi_approvazione_tooltip')"
+          :label="t('vendite.contratti.richiedi_approvazione')"
+          :label-loading="t('vendite.contratti.richiedi_approvazione_in_corso')"
+          :tooltip="t('vendite.contratti.richiedi_approvazione_tooltip')"
           @richiedi="onRichiediApprovazione"
         />
 

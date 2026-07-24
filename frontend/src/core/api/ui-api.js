@@ -1,6 +1,6 @@
-// Scopo: API client per il namespace /api/v1/ui/* (personalizzazioni
-//        liste). Wrappa i 4 endpoint di Blocco C: config, catalogo,
-//        upsert preferenza, delete preferenza.
+// Scopo: API client per il namespace /api/v1/ui/* — personalizzazioni
+//        liste (config, catalogo, preferenza) e dashboard configurabili
+//        (config, contatori KPI, preferenza).
 //
 // Convenzione: ritornano la response Axios; lo unwrap dell'envelope
 // `{data, meta}` viene fatto a livello composable (`useApiHandler` o
@@ -50,6 +50,52 @@ export function deleteListaPreferenza(codice) {
 export function ignorePresetUpdate(codice, idempotencyKey) {
   return api.post(
     `${BASE}/liste/${encodeURIComponent(codice)}/preferenza/ignore-preset-update/`,
+    null,
+    { headers: { 'Idempotency-Key': idempotencyKey } },
+  )
+}
+
+// ── Dashboard configurabili (card KPI home) ──────────────────────────
+
+// Scopo: Risolve la configurazione effettiva di una dashboard per
+// l'utente. Restituisce {widget[], dimensione_max, widget_nuovi,
+// preset_aggiornato}. Ogni widget porta codice/ordine/visibile piu' i
+// campi freschi del catalogo (etichetta, etichetta_i18n_key,
+// tipo_widget, deep_link, contatore_key, soglia). Gia' filtrato per i
+// permessi dell'utente lato fn DB: il FE non filtra.
+export function getDashboardConfig(codice) {
+  return api.get(`${BASE}/dashboard/${encodeURIComponent(codice)}/config/`)
+}
+
+// Scopo: Contatori KPI dei widget visibili, in un solo giro.
+// Restituisce {contatori: {<contatore_key>: {valore, ok}}}.
+// Nessuna chiave passata dal client di proposito: il BE calcola solo le
+// key dei widget che la fn DB ha concesso a questo utente (altrimenti
+// sarebbe una lettura cross-area). `ok:false` = contatore degradato,
+// la singola card mostra lo stato non disponibile.
+export function getDashboardContatori(codice) {
+  return api.get(`${BASE}/dashboard/${encodeURIComponent(codice)}/contatori/`)
+}
+
+// Scopo: UPSERT preferenza dashboard. Idempotency-Key obbligatoria.
+// Payload: {widget: [{codice, ordine, visibile}], dimensione_max}.
+export function putDashboardPreferenza(codice, configurazione, idempotencyKey) {
+  return api.put(
+    `${BASE}/dashboard/${encodeURIComponent(codice)}/preferenza/`,
+    configurazione,
+    { headers: { 'Idempotency-Key': idempotencyKey } },
+  )
+}
+
+// Scopo: Elimina preferenza dashboard (torna al default di ruolo).
+export function deleteDashboardPreferenza(codice) {
+  return api.delete(`${BASE}/dashboard/${encodeURIComponent(codice)}/preferenza/`)
+}
+
+// Scopo: Tombstone "ignora banner preset aggiornato" per la dashboard.
+export function ignoreDashboardPresetUpdate(codice, idempotencyKey) {
+  return api.post(
+    `${BASE}/dashboard/${encodeURIComponent(codice)}/preferenza/ignore-preset-update/`,
     null,
     { headers: { 'Idempotency-Key': idempotencyKey } },
   )

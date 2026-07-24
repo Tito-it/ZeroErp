@@ -6,7 +6,7 @@
 > 12 file pgTAP verdi), decisioni **tutte chiuse** (nessuna ❓ residua). L'esecuzione BE/FE
 > è avvenuta su `dev/backend-tid` ([brief BE/FE](../work-in-progress/brief-be-fe-ddt-resi-dashboard.md),
 > realizzato 2026-07-18 + review 8-finder). Reperti fuori slice tracciati nei brief dedicati
-> ([guard sorgente polimorfa](../work-in-progress/brief-db-guard-sorgente-polimorfa.md) ·
+> ([guard sorgente polimorfa](brief-db-guard-sorgente-polimorfa.md) ·
 > [immutabilità quantità](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md)); alla slice NC
 > resta il **contratto del §7** (NC attribuibile alla merce, con quantità).
 > **Origine**: analisi 2026-07-16 con Tid. Le due lenti a monte (Situazione aperta, Backlog)
@@ -814,7 +814,7 @@ il modello non la impedisca — cioè la coda etichetta dovuta/facoltativa (§3c
   latente (l'unico consumatore odierno legge solo `pratiche_sorgenti`, che è corretta). Chiusura
   completa — guard giusto per modello, normalizzazione in `fn_link_commessa_sorgente`, backfill,
   doc, pgTAP — nel brief dedicato
-  [brief-db-guard-sorgente-polimorfa.md](../work-in-progress/brief-db-guard-sorgente-polimorfa.md) (Tid: *«i buchi
+  [brief-db-guard-sorgente-polimorfa.md](brief-db-guard-sorgente-polimorfa.md) (Tid: *«i buchi
   vanno chiusi e non con delle toppe»*). Lì anche il reperto collaterale del **settimo ramo
   COMMESSA** mancante.
 - ~~**Catalogo reso: `CONFERMATO` aveva `fase = IN_CORSO`**~~ → **CORRETTO in questa slice**

@@ -74,6 +74,7 @@ class LottoFattureRow(TypedDict):
     stato_sdi_descrizione: str | None
     stato_doc_fiscale_id: int | None
     stato_doc_fiscale_descrizione: str | None
+    stato_doc_fiscale_codice: str | None
     stato_esecuzione: str
     esclusa: bool
     numero: int | None
@@ -98,6 +99,10 @@ class LottoListRow(TypedDict):
     stato_operativo: str
     stato_doc_fiscale_id: int | None
     stato_doc_fiscale_descrizione: str | None
+    # Codice stabile (codice_interno) dello stato doc fiscale: i gate FE usano
+    # SEMPRE il codice, mai la descrizione display (lezione B-4). Es. 'EMESSA'
+    # abilita «Rendi definitive» (C-4).
+    stato_doc_fiscale_codice: str | None
     tipo_doc_fiscale_id: int
     tipo_doc_fiscale_descrizione: str | None
     area_geografica_id: int | None
@@ -149,6 +154,11 @@ class CommessaStatoResult(TypedDict):
     total_non_emesse: int
     total_prezzo_da_riallineare: int
     last_update: str | None
+    # Identificazione testata (brief-db-guard-uscita-commessa D6): codice della
+    # COMMESSA (c.codice, non lo stato) + ragione sociale cliente. Il drawer li
+    # usa per correlarsi alla lista (che mostra commessa_codice) invece di #<PK>.
+    commessa_codice: str | None
+    cliente_display: str | None
 
 
 class CommessaPushLogRow(TypedDict):
@@ -611,10 +621,28 @@ class DashCompetenzaAttivitaRow(TypedDict):
     fattura_anno: int | None
     fattura_serie: str | None
     fattura_numero: int | None
+    # Lotto della fattura (NULL fuori dagli stadi con fattura in lotto): abilita
+    # l'atterraggio contestuale sul LottoDrawer dal drill-down (B-5).
+    lotto_id: int | None
     stato_fattura_codice_interno: str | None
     stato_fattura_codice: str | None
     valore_fatturato: str | None
     fattura_critical: bool
+
+
+class DashCompetenzaCommessaRow(TypedDict):
+    # Riga drill-down AGGREGATA per commessa (DEC-4): una riga per commessa nel
+    # perimetro corrente (competenza_mese + stadio + solo_ritardo), invece della
+    # grana attivita'. Le n attivita' e gli estremi fattura restano nel drawer.
+    commessa_id: int
+    commessa_codice: str | None
+    cliente_display: str | None
+    n_attivita: int
+    n_in_ritardo: int
+    valore_tot: str | None
+    valore_fatturato_tot: str | None
+    data_attivita_min: str | None
+    data_attivita_max: str | None
 
 
 class DashBacklogRiepilogoRow(TypedDict):

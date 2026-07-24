@@ -73,9 +73,9 @@ function getStatoSeverity(op) {
 }
 
 function getStatoLabel(op) {
-  if (op.is_super_admin) return t('amm.permessi_stato_super_admin')
-  if (op.ruolo_applicativo === 'DISABILITATO' || op.is_active === false) return t('amm.permessi_stato_disabilitato')
-  return t('amm.permessi_stato_operatore')
+  if (op.is_super_admin) return t('amministrazione.permessi_stato_super_admin')
+  if (op.ruolo_applicativo === 'DISABILITATO' || op.is_active === false) return t('amministrazione.permessi_stato_disabilitato')
+  return t('amministrazione.permessi_stato_operatore')
 }
 
 // Colonne dinamiche per aree funzionali
@@ -94,19 +94,19 @@ const areaColumns = computed(() =>
       <div class="app-page-filters">
         <Select
           v-model="emittenteFilter"
-          :options="[{ ragione_sociale: t('amm.permessi_filter_emittente'), id: null }, ...emittenti.items.value]"
+          :options="[{ ragione_sociale: t('amministrazione.permessi_filter_emittente'), id: null }, ...emittenti.items.value]"
           :loading="emittenti.loading.value"
           option-label="ragione_sociale"
           option-value="id"
-          :placeholder="t('amm.permessi_filter_emittente')"
+          :placeholder="t('amministrazione.permessi_filter_emittente')"
           @change="applyFilters"
         />
         <Select
           v-model="repartoFilter"
-          :options="[{ descrizione: t('amm.select_reparto'), id: null }, ...unitaOrg.items.value]"
+          :options="[{ descrizione: t('amministrazione.select_reparto'), id: null }, ...unitaOrg.items.value]"
           option-label="descrizione"
           option-value="id"
-          :placeholder="t('amm.permessi_filter_reparto')"
+          :placeholder="t('amministrazione.permessi_filter_reparto')"
           @change="applyFilters"
         />
         <Select
@@ -114,7 +114,7 @@ const areaColumns = computed(() =>
           :options="superAdminOptions"
           option-label="label"
           option-value="value"
-          :placeholder="t('amm.filter_super_admin_tutti')"
+          :placeholder="t('amministrazione.filter_super_admin_tutti')"
           @change="applyFilters"
         />
       </div>
@@ -132,13 +132,13 @@ const areaColumns = computed(() =>
       class="app-datatable"
       data-key="auth_user_id"
     >
-      <Column field="cognome" :header="t('amm.permessi_col_operatore')" sortable frozen>
+      <Column field="cognome" :header="t('amministrazione.permessi_col_operatore')" sortable frozen>
         <template #body="{ data }">
           {{ data.cognome }} {{ data.nome }}
         </template>
       </Column>
-      <Column field="reparto" :header="t('amm.permessi_col_reparto')" sortable />
-      <Column field="is_super_admin" :header="t('amm.permessi_col_stato')" sortable style="width: 9rem">
+      <Column field="reparto" :header="t('amministrazione.permessi_col_reparto')" sortable />
+      <Column field="is_super_admin" :header="t('amministrazione.permessi_col_stato')" sortable style="width: 9rem">
         <template #body="{ data }">
           <Tag :value="getStatoLabel(data)" :severity="getStatoSeverity(data)" />
         </template>

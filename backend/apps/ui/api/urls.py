@@ -16,6 +16,12 @@ from apps.ui.api.views import (
     ApiListaIgnorePresetUpdateView,
     ApiListaPreferenzaView,
 )
+from apps.ui.api.views_dashboard import (
+    ApiDashboardConfigView,
+    ApiDashboardContatoriView,
+    ApiDashboardIgnorePresetUpdateView,
+    ApiDashboardPreferenzaView,
+)
 from apps.ui.api.views_admin import (
     ApiAdminListaColonnaDetailView,
     ApiAdminListaColonnaListView,
@@ -58,6 +64,27 @@ urlpatterns = [
         "liste/<str:codice>/preferenza/ignore-preset-update/",
         ApiListaIgnorePresetUpdateView.as_view(),
         name="ui-liste-preferenza-ignore-preset-update",
+    ),
+    # ── Dashboard configurabili (card KPI home) ─────────────────────────
+    path(
+        "dashboard/<str:codice>/config/",
+        ApiDashboardConfigView.as_view(),
+        name="ui-dashboard-config",
+    ),
+    path(
+        "dashboard/<str:codice>/contatori/",
+        ApiDashboardContatoriView.as_view(),
+        name="ui-dashboard-contatori",
+    ),
+    path(
+        "dashboard/<str:codice>/preferenza/",
+        ApiDashboardPreferenzaView.as_view(),
+        name="ui-dashboard-preferenza",
+    ),
+    path(
+        "dashboard/<str:codice>/preferenza/ignore-preset-update/",
+        ApiDashboardIgnorePresetUpdateView.as_view(),
+        name="ui-dashboard-preferenza-ignore-preset-update",
     ),
     # ── Admin CRUD (Blocco F Fase 1) ────────────────────────────────────
     # Selectore "Lista corrente" + catalogo colonne grezzo

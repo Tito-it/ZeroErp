@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-rls-commesse §2/§4 (P3) — policy RLS su vendite.commesse_attivita.
+#
+# Satellite di vendite.commesse (commessa_id NOT NULL, nessuna colonna emittente
+# propria): la policy delega al padre via script.fn_scope_ef_whitelist_via_commessa
+# (mirror di fatture_scadenze -> via_fattura). Policy PERMISSIVE FOR ALL
+# rls_commesse_attivita_ef_whitelist + ENABLE ROW LEVEL SECURITY (NO FORCE), a
+# parita' con la famiglia. Dipende dall'adapter creato in 20260720-04.
+#
+# Verifica: db/pgtap/rls/test-rls-commesse-ef-whitelist-write.sql.
+# Dipendenze: vendite.commesse_attivita (col. commessa_id),
+#             script.fn_scope_ef_whitelist_via_commessa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260720-06-enable-rls-commesse-attivita-ef-whitelist-mctit.yaml
+
+  - changeSet:
+      id: 20260720-06-create-policy-rls-commesse-attivita-ef-whitelist
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Policy rls_commesse_attivita_ef_whitelist su vendite.commesse_attivita
+        (FOR ALL, scope emittente via padre fn_scope_ef_whitelist_via_commessa) +
+        ENABLE ROW LEVEL SECURITY (NO FORCE), a parita' con la famiglia commesse.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: commesse_attivita
+                columnName: commessa_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                   WHERE n.nspname='script' AND p.proname='fn_scope_ef_whitelist_via_commessa';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_commesse_attivita_ef_whitelist ON vendite.commesse_attivita;
+              CREATE POLICY rls_commesse_attivita_ef_whitelist ON vendite.commesse_attivita
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_commessa(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          commessa_id
+                      )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_commessa(
+                          NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                          commessa_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_commesse_attivita_ef_whitelist ON vendite.commesse_attivita IS
+                  'RLS: operatore vede/scrive solo attivita di commesse con emittente in '
+                  'whitelist, scope delegato al padre (adapter fn_scope_ef_whitelist_via_commessa), '
+                  'gate OPERATORE fail-closed. Mirror satellite fatture_scadenze. rev 2026-07-20.';
+
+              -- Parita' con la famiglia (relrowsecurity=t, relforcerowsecurity=f):
+              -- RLS abilitata ma NON forzata -> l'owner (zeroerp_app) la bypassa
+              -- finche' non arriva il FORCE (ondata coordinata).
+              ALTER TABLE vendite.commesse_attivita ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.commesse_attivita DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_commesse_attivita_ef_whitelist ON vendite.commesse_attivita;

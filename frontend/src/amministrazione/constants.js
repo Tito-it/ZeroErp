@@ -16,9 +16,9 @@ export const TIPO_RUOLO_CODICE = {
 // Il BE accetta il param is_super_admin come bool opzionale.
 export function buildFilterSuperAdminOptions(t) {
   return [
-    { label: t('amm.filter_super_admin_tutti'), value: null },
-    { label: t('amm.filter_super_admin_si'), value: true },
-    { label: t('amm.filter_super_admin_no'), value: false }
+    { label: t('amministrazione.filter_super_admin_tutti'), value: null },
+    { label: t('amministrazione.filter_super_admin_si'), value: true },
+    { label: t('amministrazione.filter_super_admin_no'), value: false }
   ]
 }
 
@@ -26,18 +26,18 @@ export function buildFilterSuperAdminOptions(t) {
 // null/true/false mappato direttamente su is_active del BE.
 export function buildFilterStatoOptions(t) {
   return [
-    { label: t('amm.stato_all'), value: null },
-    { label: t('amm.stato_attivo'), value: true },
-    { label: t('amm.stato_inattivo'), value: false }
+    { label: t('amministrazione.stato_all'), value: null },
+    { label: t('amministrazione.stato_attivo'), value: true },
+    { label: t('amministrazione.stato_inattivo'), value: false }
   ]
 }
 
 // Scopo: Costruisce le opzioni livello accesso per Select.
 export function buildLivelloOptions(t) {
   return [
-    { label: t('amm.livello_tutto'), value: LIVELLO_ACCESSO.TUTTO },
-    { label: t('amm.livello_lettura'), value: LIVELLO_ACCESSO.LETTURA },
-    { label: t('amm.livello_bloccato'), value: LIVELLO_ACCESSO.BLOCCATO }
+    { label: t('amministrazione.livello_tutto'), value: LIVELLO_ACCESSO.TUTTO },
+    { label: t('amministrazione.livello_lettura'), value: LIVELLO_ACCESSO.LETTURA },
+    { label: t('amministrazione.livello_bloccato'), value: LIVELLO_ACCESSO.BLOCCATO }
   ]
 }
 
@@ -85,9 +85,9 @@ export function getLivelloSeverity(livello) {
 
 // Scopo: Restituisce la label i18n per un livello accesso.
 export function getLivelloLabel(t, livello) {
-  if (livello === LIVELLO_ACCESSO.TUTTO) return t('amm.livello_tutto')
-  if (livello === LIVELLO_ACCESSO.LETTURA) return t('amm.livello_lettura')
-  return t('amm.livello_bloccato')
+  if (livello === LIVELLO_ACCESSO.TUTTO) return t('amministrazione.livello_tutto')
+  if (livello === LIVELLO_ACCESSO.LETTURA) return t('amministrazione.livello_lettura')
+  return t('amministrazione.livello_bloccato')
 }
 
 // Scopo: Restituisce la severity PrimeVue per un tipo operazione audit.

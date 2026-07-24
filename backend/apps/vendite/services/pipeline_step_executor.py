@@ -44,6 +44,7 @@ class PipelineStepExecutor:
             "ricalcola_iva_lotto_default": self._handle_ricalcola_iva_lotto_task,
             "prepare_sdi_payload_lotto_default": self._handle_prepare_sdi_payload_lotto_task,
             "numera_fatture_default": self._handle_numera_fatture_task,
+            "stampa_documenti_lotto_default": self._handle_stampa_documenti_lotto_task,
             "close_lotto_default": self._handle_close_lotto_task,
             "reset_lotto_draft_default": self._handle_reset_lotto_draft_task,
             "pull_attivita_da_commessa_default": self._handle_pull_attivita_da_commessa_task,
@@ -616,6 +617,40 @@ class PipelineStepExecutor:
             if not self.repository.is_stato_doc_chiude_lotto(stato_doc_fiscale_id):
                 return
             self.repository.close_lotto_operativo(lotto_id)
+
+        self._run_validated_task(
+            task=task,
+            fn_name=fn_name,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+            dry_run=dry_run,
+            action=_action,
+        )
+
+    # Scopo: Task stampa dello step DEFINITIVA (C-2c, outbox D-7/B-1): ADATTATORE
+    #        STUPIDO che ACCODA i documenti del lotto nella coda stampa e ritorna
+    #        subito — one-liner `SELECT vendite.fn_accoda_stampe_lotto(lotto_id)`.
+    #        NESSUN render qui (invariante I-4b: lo step e' una transazione
+    #        atomica col lock del registro fiscale tenuto — l'I/O di rendering
+    #        vive nel worker drainer, fuori transazione). Ri-eseguibile:
+    #        l'accodamento e' idempotente (indice unico parziale della coda).
+    def _handle_stampa_documenti_lotto_task(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        context: LottoContext,
+        params: dict[str, Any],
+        dry_run: bool,
+    ) -> None:
+        def _action() -> None:
+            accodate = self.repository.accoda_stampe_lotto(lotto_id)
+            logging.getLogger(__name__).info(
+                "vendite.pipeline.stampa_documenti_lotto accodate=%s lotto_id=%s",
+                accodate, lotto_id,
+            )
 
         self._run_validated_task(
             task=task,

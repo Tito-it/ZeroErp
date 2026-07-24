@@ -22,7 +22,7 @@ const emit = defineEmits(['update:visible', 'saved'])
     @update:visible="emit('update:visible', $event)"
     dominio="preventivi"
     :id="preventivoId"
-    :title="t('preventivi.note_titolo')"
+    :title="t('vendite.preventivi.note_titolo')"
     :righe="righe"
     @saved="emit('saved')"
   />

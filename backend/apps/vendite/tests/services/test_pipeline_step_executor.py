@@ -23,6 +23,8 @@ Indice test eseguiti:
 21) PipelineStepExecutorUnitTests.test_execute_step_runs_pull_attivita_da_commessa_task
 22) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_dry_run_skips_emit
 23) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_empty_list_no_emit
+24) PipelineStepExecutorUnitTests.test_execute_step_runs_stampa_documenti_lotto_task (C-2c)
+25) PipelineStepExecutorUnitTests.test_execute_step_stampa_documenti_lotto_dry_run_skips (C-2c)
 """
 
 from unittest.mock import MagicMock, patch
@@ -238,6 +240,42 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         # Il task numera NON sincronizza piu' lo stato documentale: l'allineamento allo
         # stato dello step (→ DEFINITIVA/8) e' centralizzato nel runner (_execute_pipeline_step).
         repo.sync_lotto_fatture_stato.assert_not_called()
+
+    # Scopo: C-2c (outbox stampa) — il task stampa_documenti_lotto ACCODA via
+    #        fn_accoda_stampe_lotto e non tocca altro (nessun render qui).
+    def test_execute_step_runs_stampa_documenti_lotto_task(self):
+        processi = [{"task": "stampa_documenti_lotto", "fase": "Stampa documenti lotto", "params": {"implementation_key": "default"}}]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "stampa_documenti_lotto_default"
+        repo.accoda_stampe_lotto.return_value = 3
+
+        executor.execute_step(
+            lotto_id=9,
+            stato_doc_fiscale_id=8,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.accoda_stampe_lotto.assert_called_once_with(9)
+        # Adattatore stupido: niente render, niente numerazione qui.
+        repo.numera_fattura_opz_emessa.assert_not_called()
+
+    # Scopo: C-2c — in dry-run l'accodamento NON viene eseguito.
+    def test_execute_step_stampa_documenti_lotto_dry_run_skips(self):
+        processi = [{"task": "stampa_documenti_lotto", "fase": "Stampa documenti lotto", "params": {}}]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "stampa_documenti_lotto_default"
+
+        executor.execute_step(
+            lotto_id=9,
+            stato_doc_fiscale_id=8,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=True,
+        )
+
+        repo.accoda_stampe_lotto.assert_not_called()
 
     # Scopo: Verifica il caso `test_execute_step_runs_close_lotto_task`.
     def test_execute_step_runs_close_lotto_task(self):

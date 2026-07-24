@@ -727,17 +727,67 @@ Quando una pagina contiene piu' sezioni correlate (es. Gestione Geografica con 6
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Regole
+### Regole (PrimeVue 4 — `Tabs`)
 
-- Usare PrimeVue `TabView` con `lazy` (carica il contenuto solo quando il tab e' attivo)
-- Il div root della vista ha `class="app-page"` — il TabView si espande per riempire l'altezza
-- Il componente dentro ogni TabPanel ha `class="app-tab-content"` per propagare il flex
+> Siamo su **PrimeVue 4.5**. I componenti da usare sono `Tabs`, `TabList`, `Tab`,
+> `TabPanels`, `TabPanel`. `TabView` (PrimeVue 3) è **eliminato dal repo**
+> (migrazione completata 2026-07-22): se lo trovi in un esempio, l'esempio è
+> vecchio.
+
+- Usare `Tabs` con `lazy` (carica il contenuto solo quando il tab è attivo)
+- Il div root della vista ha `class="app-page"` — `Tabs` si espande in altezza
+- **NON mettere `app-tab-content` sul contenitore `<Tabs>`**: quella classe, come
+  figlia diretta di `.app-page`, applica `flex:1; overflow:hidden` pensati per un
+  *pannello di contenuto*. Sul contenitore fa sì che i pannelli comprimano la
+  `TabList` fuori vista appena il contenuto cresce — sintomo insidioso perché
+  **dipende dalla quantità di righe**: chi vede pochi record non nota nulla, chi
+  ne vede molti «perde» i tab (bug reale, 2026-07-22).
+- `class="app-tab-content"` va sul div root del componente **dentro** ogni `TabPanel`
+- La `DataTable` dentro il tab vuole `scrollable` + `scroll-height="flex"`
+  (§Regole liste): senza, la catena flex esiste ma la tabella non scrolla
+- ⚠️ Con `lazy` ogni attivazione del tab è un **mount**: il primo caricamento va in
+  `onMounted` (il solo `onActivated` non scatta per un discendente montato dopo
+  l'attivazione della rotta → tab vuoto per sempre). Vedi `CodaLavoriTab.vue`.
 - Ogni tab contiene un **SearchTable** riutilizzabile (non logica inline nella vista)
-- I drawer sono dichiarati nella vista, fuori dal TabView
+- I drawer sono dichiarati nella vista, fuori da `Tabs`
+- Le chiavi `value` sono **stringhe stabili e parlanti** (`indirizzi`, `comuni`…),
+  mai indici numerici: sono ciò che rende il tab attivo deep-linkabile
+- ⚠️ **Tab condizionali** (`v-if` su permesso/modo): il `value` iniziale va
+  **calcolato sul primo tab effettivamente reso**, non fissato al primo in ordine.
+  `TabView` v3 attivava da sé il primo pannello presente; `Tabs` v4 no — un
+  `value="preset"` fisso lascia la pagina **senza alcun pannello** per chi non ha
+  quel tab. Vedi `GestionePersonalizzazioniListeView.vue`.
+- ⚠️ **Tab dentro un drawer**: il tab attivo va riportato al primo a ogni
+  riapertura (`v-model:value` nel watch su `visible`), altrimenti si riapre sul
+  tab dell'ultima consultazione — e se quel tab era condizionale al modo
+  (es. «Permessi» solo in modifica) il pannello risulta vuoto. Vedi
+  `OperatoreDrawer.vue`, `PraticaDrawer.vue`.
+
+Riferimenti corretti: `ResiView.vue`, `CodeLavoroView.vue`, `IndirizziView.vue`.
 
 ### CSS automatico
 
-Le classi in `main.css` gestiscono la catena flex: `.app-page > .p-tabview > .p-tabview-panels > .p-tabview-panel > .app-tab-content` — tutto automatico, nessun CSS scoped necessario.
+`main.css` contiene la catena flex `.app-page > .p-tabs > .p-tablist|.p-tabpanels
+> .p-tabpanel` (+ `.app-tab-content`): automatica, nessun CSS scoped necessario.
+`.p-tablist` è fissata a `flex: 0 0 auto` proprio per non farsi comprimere.
+
+⚠️ La catena è ancorata a `.app-page >`: **i tab dentro un drawer non sono
+intercettati** (e non lo erano nemmeno con `TabView`). Lì l'altezza la gestisce il
+corpo del drawer — non serve CSS aggiuntivo, e non va aggiunto CSS scoped.
+
+### Residui PrimeVue 3 — nessuno
+
+Migrazione completata il **2026-07-22**: `TabView` → `Tabs` (7 view) e
+`InputSwitch` → `ToggleSwitch` (3 componenti). `Dropdown`/`Calendar`/
+`OverlayPanel`/`Sidebar` erano già migrati. La catena CSS gemella `.p-tabview` è
+stata rimossa da `main.css` insieme all'ultimo uso.
+
+Controllo di non-regressione (deve dare **0 risultati**):
+
+```bash
+grep -rn "primevue/tabview\|primevue/inputswitch" frontend/src
+grep -c "p-tabview" frontend/src/assets/main.css
+```
 
 ---
 
@@ -1513,20 +1563,50 @@ Testo sempre in italiano, chiaro e specifico — mai "Errore" o "OK".
 <!-- SI --> <Button :label="$t('common.save')" />
 ```
 
-### Struttura chiavi
+### Struttura chiavi — radici dei namespace
 
-| Sezione                | Contenuto                                                        |
-| ---------------------- | ---------------------------------------------------------------- |
-| `common.*`             | Termini riutilizzabili (salva, annulla, cerca...)                |
-| `nav.*`                | Label domini L1                                                  |
-| `nav_menu.<dominio>.*` | Label voci L2                                                    |
-| `indirizzi.*`          | Etichette gestione geografica (indirizzi, toponomastica, comuni) |
-| `geo.*`                | Etichette province, regioni, stati                               |
-| `amm.*`                | Etichette amministrazione software                               |
-| `notifications.*`      | Messaggi toast                                                   |
-| `errors.*`             | Messaggi pagine errore                                           |
+**La chiave i18n è un contratto fra tre livelli, non una faccenda del solo
+frontend.** Il database *emette* l'indirizzo di una traduzione (`label_key`,
+`reason_key` nelle capability `script.fn_available_actions_*` e nel `meta` dei
+seed `config.transizioni_stati_*`), il backend lo trasporta senza interpretarlo,
+il frontend lo risolve. Se l'indirizzo non esiste il frontend **non segnala un
+errore: mostra testo mancante** — il difetto è silenzioso e si scopre solo
+guardando la schermata. È già costato due difetti in produzione-dev (offerte,
+ordini), entrambi da chiavi emesse in una radice inesistente.
 
-Ogni nuova stringa va aggiunta **in entrambi i file** (`it.json` e `en.json`) contemporaneamente.
+**La regola (una sola):**
+
+> Se una stringa appartiene a un modulo che vive in una **cartella d'area** di
+> `frontend/src/` (`vendite`, `anagrafiche`, `catalogo`, `amministrazione`,
+> `config`, `ui`, `portale`, `shop`, …), il suo indirizzo **parte da
+> quell'area**: `vendite.ordini.*`, `anagrafiche.clienti.*`,
+> `amministrazione.emittenti_fiscali.*`. Se è **vocabolario trasversale**,
+> riusato da più aree o che vive in `core/`, resta in cima: `common.*`,
+> `errors.*`, `validation.*`, `nav.*`, `search.*`, `confirm.*`.
+
+Corollari operativi:
+
+- **L'ancora è la cartella del codice, non lo schema DB**: `listini` sta in
+  `vendite/`, `clienti` in `anagrafiche/` — l'indirizzo segue il codice.
+- **La foglia non ripete l'area**: `amministrazione.emittenti_fiscali`, non
+  `amministrazione.amm_emittenti_fiscali`.
+- **Niente radici piatte di dominio in cima** (`preventivi.*`, `clienti.*`): sono
+  esattamente la forma che ha generato i difetti. Una radice nuova in cima si
+  crea solo per vocabolario d'interfaccia trasversale.
+- **Vale identica per le chiavi emesse dal DB**: una `reason_key` di un ordine
+  deve iniziare per `vendite.ordini.`, non `ordini.`.
+- Ogni stringa va aggiunta **in entrambi i file** (`it.json` **e** `en.json`)
+  contemporaneamente: la parità è verificata.
+
+**Controllo automatico (obbligatorio prima di toccare chiavi o namespace):**
+`python3 scripts/check_i18n_keys.py [--strict-roots]` — rende rumoroso l'errore
+silenzioso: chiavi citate ma assenti, chiavi emesse dal DB (capability + seed)
+non risolvibili, parità it/en, radici di dominio in cima. Va tenuto verde.
+
+**Procedura di classificazione e inventario** (come si decide dove va una radice
+esistente, soglia del 70%, casi «due indirizzi con lo stesso nome»):
+[i18n-namespace-radici.md](i18n-namespace-radici.md) — riferimento di dettaglio,
+subordinato a questa sezione.
 
 ---
 

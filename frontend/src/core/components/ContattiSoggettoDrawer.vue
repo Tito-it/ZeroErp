@@ -81,9 +81,9 @@ const {
     contatto.unitaOrganizzative.load()
   },
   messages: {
-    created: t('contatto.contatto_creato'),
-    saved: t('contatto.contatto_salvato'),
-    deleted: t('contatto.contatto_eliminato'),
+    created: t('anagrafiche.contatto.contatto_creato'),
+    saved: t('anagrafiche.contatto.contatto_salvato'),
+    deleted: t('anagrafiche.contatto.contatto_eliminato'),
   },
   onSaved: () => emit('saved'),
 })
@@ -100,7 +100,7 @@ const onClose = useDrawerClose(emit)
     :style="{ width: DRAWER_WIDTH.STANDARD }"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('soggetti.section_contatto')" :icon="MANAGE_ICONS.CONTATTI" />
+      <DrawerTitle :action="t('common.edit')" :title="t('anagrafiche.soggetti.section_contatto')" :icon="MANAGE_ICONS.CONTATTI" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -113,7 +113,7 @@ const onClose = useDrawerClose(emit)
       <template v-if="!listLoading">
         <div v-if="contattiList.length === 0 && !formMode" class="app-empty-state">
           <i class="pi pi-users" />
-          <p>{{ t('contatto.nessun_contatto') }}</p>
+          <p>{{ t('anagrafiche.contatto.nessun_contatto') }}</p>
         </div>
 
         <div v-else-if="contattiList.length > 0" class="contatti-list">
@@ -147,7 +147,7 @@ const onClose = useDrawerClose(emit)
         <!-- Pulsante aggiungi (nascosto in readonly) -->
         <div v-if="!formMode && !isReadonly" class="mt-05">
           <Button
-            :label="t('contatto.aggiungi_contatto')"
+            :label="t('anagrafiche.contatto.aggiungi_contatto')"
             :icon="MANAGE_ICONS.ADD"
             text
             size="small"
@@ -162,7 +162,7 @@ const onClose = useDrawerClose(emit)
       <!-- Form (aggiungi o modifica) -->
       <template v-if="formMode">
         <div class="app-drawer-section">
-          <h4>{{ formMode === 'edit' ? t('contatto.modifica_contatto') : t('contatto.nuovo_contatto') }}</h4>
+          <h4>{{ formMode === 'edit' ? t('anagrafiche.contatto.modifica_contatto') : t('anagrafiche.contatto.nuovo_contatto') }}</h4>
         </div>
         <ContattoForm
           :form="contatto.form"

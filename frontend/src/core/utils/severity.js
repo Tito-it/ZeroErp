@@ -249,13 +249,13 @@ export function pricingOrigineSeverity(codice) {
 // Quando il pattern verra' replicato sui 4 sorgenti futuri valutare lo
 // spostamento delle chiavi i18n in `common.pricing_origine_*`.
 export const PRICING_ORIGINE_LABEL_KEY = {
-  PROMO: 'preventivi.badge_origine_promo',
-  CONTRATTO: 'preventivi.badge_origine_contratto',
-  CONTRATTO_LISTINO: 'preventivi.badge_origine_contratto',
-  CONTRATTO_OVERRIDE: 'preventivi.badge_origine_contratto_override',
-  CATEGORIA: 'preventivi.badge_origine_categoria',
-  LISTINO_BUNDLE: 'preventivi.badge_origine_listino_bundle',
-  MANUALE: 'preventivi.badge_origine_manuale',
+  PROMO: 'vendite.preventivi.badge_origine_promo',
+  CONTRATTO: 'vendite.preventivi.badge_origine_contratto',
+  CONTRATTO_LISTINO: 'vendite.preventivi.badge_origine_contratto',
+  CONTRATTO_OVERRIDE: 'vendite.preventivi.badge_origine_contratto_override',
+  CATEGORIA: 'vendite.preventivi.badge_origine_categoria',
+  LISTINO_BUNDLE: 'vendite.preventivi.badge_origine_listino_bundle',
+  MANUALE: 'vendite.preventivi.badge_origine_manuale',
 }
 
 // Scopo: Ritorna la chiave i18n per il codice origine, o null se sconosciuto.
@@ -420,4 +420,92 @@ export const FASE_DOCUMENTO_MAP = {
 }
 export function faseDocumentoSeverity(codice) {
   return resolveSeverity(FASE_DOCUMENTO_MAP, codice)
+}
+
+// Stato di esecuzione del lotto di fatturazione (cockpit Fase B): DRAFT=grigio,
+// IN_ESECUZIONE=arancio (step in corso), COMPLETATO=verde, ERRORE=rosso.
+// Allineato a vendite.fatturazione_lotti.stato_lotto.
+export const STATO_LOTTO_MAP = {
+  DRAFT: 'secondary',
+  IN_ESECUZIONE: 'warn',
+  COMPLETATO: 'success',
+  ERRORE: 'danger',
+}
+export function statoLottoSeverity(codice) {
+  return resolveSeverity(STATO_LOTTO_MAP, codice)
+}
+
+// Task-run della pipeline lotto (vendite.fatturazione_lotti_task_runs.task_stato):
+// IN_ESECUZIONE=arancio, COMPLETATO=verde, ERRORE=rosso, ANNULLATO=grigio.
+export const STATO_TASK_RUN_MAP = {
+  IN_ESECUZIONE: 'warn',
+  COMPLETATO: 'success',
+  ERRORE: 'danger',
+  ANNULLATO: 'secondary',
+}
+export function statoTaskRunSeverity(codice) {
+  return resolveSeverity(STATO_TASK_RUN_MAP, codice)
+}
+
+// Stato di esecuzione della singola fattura nel lotto
+// (vendite.fatturazione_lotti_fatture.stato_esecuzione): PRONTA/ESCLUSA=grigio,
+// ELABORATA=verde, ERRORE=rosso.
+export const STATO_ESECUZIONE_FATTURA_MAP = {
+  PRONTA: 'secondary',
+  ELABORATA: 'success',
+  ERRORE: 'danger',
+  ESCLUSA: 'secondary',
+}
+export function statoEsecuzioneFatturaSeverity(codice) {
+  return resolveSeverity(STATO_ESECUZIONE_FATTURA_MAP, codice)
+}
+
+// Stato approvazione della riga commessa (vendite.commesse_attivita
+// .stato_approvazione): BOZZA=arancio (lavoro da fare), APPROVATA=verde,
+// RIFIUTATA=rosso.
+export const STATO_APPROVAZIONE_ATTIVITA_MAP = {
+  BOZZA: 'warn',
+  APPROVATA: 'success',
+  RIFIUTATA: 'danger',
+}
+export function statoApprovazioneAttivitaSeverity(codice) {
+  return resolveSeverity(STATO_APPROVAZIONE_ATTIVITA_MAP, codice)
+}
+
+// Stato emissione della riga commessa (vendite.commesse_attivita
+// .stato_emissione): NON_EMESSA=grigio, EMESSA=azzurro, ANNULLATA=rosso.
+export const STATO_EMISSIONE_ATTIVITA_MAP = {
+  NON_EMESSA: 'secondary',
+  EMESSA: 'info',
+  ANNULLATA: 'danger',
+}
+export function statoEmissioneAttivitaSeverity(codice) {
+  return resolveSeverity(STATO_EMISSIONE_ATTIVITA_MAP, codice)
+}
+
+// Stato dei job della coda lavori generica (dbops.coda_lavori.stato):
+// PENDING=arancio (in attesa), IN_CORSO=azzurro, FATTO=verde, ERRORE=rosso,
+// ANNULLATO=grigio. UI gestione code (FE-7, centralizzata qui).
+export const STATO_CODA_LAVORI_MAP = {
+  PENDING: 'warn',
+  IN_CORSO: 'info',
+  FATTO: 'success',
+  ERRORE: 'danger',
+  ANNULLATO: 'secondary',
+}
+export function statoCodaLavoriSeverity(codice) {
+  return resolveSeverity(STATO_CODA_LAVORI_MAP, codice)
+}
+
+// Stato delle righe coda stampa (vendite.fatture_stampa_coda.stato):
+// stesso vocabolario visivo della coda lavori, senza ANNULLATO (il CHECK DB
+// non lo prevede). Unifica la mappa prima inline in FatturazioneEsitiPanel.
+export const STATO_CODA_STAMPA_MAP = {
+  PENDING: 'warn',
+  IN_CORSO: 'info',
+  FATTO: 'success',
+  ERRORE: 'danger',
+}
+export function statoCodaStampaSeverity(codice) {
+  return resolveSeverity(STATO_CODA_STAMPA_MAP, codice)
 }

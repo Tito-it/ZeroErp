@@ -86,8 +86,8 @@ const { isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected
 const smistaLabel = computed(() => {
   const dest = new Set(righeResidue.value.map(r => r.destinazione_tipo))
   return dest.size === 1 && allSelected.value
-    ? t('preventivi.smista_tutto')
-    : t('preventivi.smista_selezionate')
+    ? t('vendite.preventivi.smista_tutto')
+    : t('vendite.preventivi.smista_selezionate')
 })
 
 // Scopo: Carica lo smistamento (aggregato + righe) e preseleziona tutte le
@@ -134,20 +134,20 @@ function notifyEsitoPush(result) {
   ) ?? result?.righe_pushable ?? 0
 
   if (stato === 'COMPLETATO') {
-    notify.success(t('preventivi.push_commessa_ok_dettaglio', { righe: righePush, push_log_id: pushLogId }))
+    notify.success(t('vendite.preventivi.push_commessa_ok_dettaglio', { righe: righePush, push_log_id: pushLogId }))
   } else if (stato === 'PARZIALE') {
-    notify.warn(t('preventivi.push_commessa_parziale', { righe: righePush, push_log_id: pushLogId }))
+    notify.warn(t('vendite.preventivi.push_commessa_parziale', { righe: righePush, push_log_id: pushLogId }))
   } else if (stato === 'ERRORE') {
-    const firstError = result?.handlers?.[0]?.errors?.[0] || t('common.generic_error')
-    notify.error(t('preventivi.push_commessa_errore', { primo_errore: firstError }))
+    const firstError = result?.handlers?.[0]?.errors?.[0] || t('common.error_generic')
+    notify.error(t('vendite.preventivi.push_commessa_errore', { primo_errore: firstError }))
   } else if (stato === 'SKIPPED') {
-    notify.warn(t('preventivi.push_commessa_skipped'))
+    notify.warn(t('vendite.preventivi.push_commessa_skipped'))
   } else {
-    notify.success(t('preventivi.push_commessa_ok'))
+    notify.success(t('vendite.preventivi.push_commessa_ok'))
   }
   if (result?.fatturazione_immediata) {
     // useNotify non espone severity 'info': warn come avviso non bloccante.
-    notify.warn(t('preventivi.push_commessa_immediata_hint'))
+    notify.warn(t('vendite.preventivi.push_commessa_immediata_hint'))
   }
   return stato === 'COMPLETATO' || stato === 'PARZIALE'
 }
@@ -169,7 +169,7 @@ function onSmista() {
   if (!merceIds.length && !serviziIds.length) return
 
   confirmAction({
-    message: t('preventivi.conferma_smistamento', {
+    message: t('vendite.preventivi.conferma_smistamento', {
       merce: merceIds.length, servizi: serviziIds.length,
     }),
     onAccept: async () => {
@@ -183,7 +183,7 @@ function onSmista() {
         if (result === null) return // errore gestito; niente ramo servizi
         ordineId = result.ordine_id
         qualcosaSmistato = true
-        notify.success(t('preventivi.ordine_generato', { numero: result.numero }))
+        notify.success(t('vendite.preventivi.ordine_generato', { numero: result.numero }))
       }
 
       if (serviziIds.length) {
@@ -210,12 +210,12 @@ function onSmista() {
          verde con la spunta cerchiata (il testo esteso resta nel tooltip):
          sostituisce il vecchio messaggio ridondante in fondo al pannello. -->
     <div class="smistamento-header">
-      <h4 style="margin: 0;">{{ t('preventivi.section_smistamento') }}</h4>
+      <h4 style="margin: 0;">{{ t('vendite.preventivi.section_smistamento') }}</h4>
       <Tag v-if="aggregato && aggregato.righe_totali > 0"
         :severity="tutteSmistate ? 'success' : 'info'"
         :icon="tutteSmistate ? 'pi pi-check-circle' : undefined"
-        v-tooltip.bottom="tutteSmistate ? t('preventivi.smistamento_completato') : ''"
-        :value="t('preventivi.smistamento_progress', {
+        v-tooltip.bottom="tutteSmistate ? t('vendite.preventivi.smistamento_completato') : ''"
+        :value="t('vendite.preventivi.smistamento_progress', {
           smistate: righeSmistate, totali: aggregato.righe_totali,
         })" />
     </div>
@@ -236,28 +236,28 @@ function onSmista() {
             :disabled="!isSelectable(data)" @update:model-value="toggleRow(data)" />
         </template>
       </Column>
-      <Column :header="t('preventivi.riga_articolo')">
+      <Column :header="t('vendite.preventivi.riga_articolo')">
         <template #body="{ data }">
           {{ data.articolo_codice }} — {{ data.riga_descrizione }}
         </template>
       </Column>
-      <Column :header="t('preventivi.riga_quantita')" style="width: 110px;">
+      <Column :header="t('vendite.preventivi.riga_quantita')" style="width: 110px;">
         <template #body="{ data }">
           {{ formatNumber(data.qta_operativa) }} {{ data.uom_codice }}
         </template>
       </Column>
-      <Column :header="t('preventivi.smistamento_col_destinazione')" style="width: 150px;">
+      <Column :header="t('vendite.preventivi.smistamento_col_destinazione')" style="width: 150px;">
         <template #body="{ data }">
           <Tag severity="secondary"
             :value="data.destinazione_tipo === DESTINAZIONE_SMISTAMENTO.ORDINE
-              ? t('preventivi.destinazione_ordine')
-              : t('preventivi.destinazione_commessa')" />
+              ? t('vendite.preventivi.destinazione_ordine')
+              : t('vendite.preventivi.destinazione_commessa')" />
         </template>
       </Column>
-      <Column :header="t('preventivi.smistamento_col_stato')" style="width: 180px;">
+      <Column :header="t('vendite.preventivi.smistamento_col_stato')" style="width: 180px;">
         <template #body="{ data }">
           <Tag :severity="statoSmistamentoSeverity(data.stato_smistamento)"
-            :value="t(`preventivi.stato_smistamento.${data.stato_smistamento.toLowerCase()}`)" />
+            :value="t(`vendite.preventivi.stato_smistamento.${data.stato_smistamento.toLowerCase()}`)" />
           <span v-if="data.ordine_numero" class="smistamento-doc-rif">
             {{ data.ordine_numero }}
           </span>
@@ -265,7 +265,7 @@ function onSmista() {
       </Column>
     </DataTable>
     <div v-else-if="!loadingSmistamento" style="color: var(--text-color-secondary); font-style: italic;">
-      {{ t('preventivi.smistamento_non_disponibile') }}
+      {{ t('vendite.preventivi.smistamento_non_disponibile') }}
     </div>
 
     <Button v-if="!consuntivo && righeResidue.length" icon="pi pi-send"

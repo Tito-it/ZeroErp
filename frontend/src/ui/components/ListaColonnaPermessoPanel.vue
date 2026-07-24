@@ -61,7 +61,7 @@ const pageActions = computed(() => [
     key: 'new',
     kind: 'primary',
     label: t('common.new'),
-    tooltip: t('ui_admin.permesso_nuovo'),
+    tooltip: t('ui.admin.permesso_nuovo'),
     icon: 'pi pi-plus',
     hideWhenReadonly: true,
     disabled: !listaSelezionata.value,
@@ -84,8 +84,8 @@ function buildRowActions(data) {
 
 function onDelete(data) {
   confirmAction({
-    title: t('ui_admin.permesso_delete_titolo'),
-    message: t('ui_admin.permesso_delete_messaggio', {
+    title: t('ui.admin.permesso_delete_titolo'),
+    message: t('ui.admin.permesso_delete_messaggio', {
       colonna: data.colonna_etichetta,
       profilo: data.profilo_accesso_codice,
     }),
@@ -136,7 +136,7 @@ function severityForLivello(livello) {
         size="small"
         class="mt-1"
       >
-        {{ t('ui_admin.lista_corrente_obbligatoria') }}
+        {{ t('ui.admin.lista_corrente_obbligatoria') }}
       </Message>
 
       <DataTable
@@ -150,10 +150,10 @@ function severityForLivello(livello) {
         striped-rows
         @row-click="(e) => drawer.editRow(e.data, 'id')"
       >
-        <Column field="colonna_etichetta" :header="t('ui_admin.permesso_colonna')" />
-        <Column field="colonna_codice" :header="t('ui_admin.permesso_colonna_codice')" style="width: 220px" />
-        <Column field="profilo_accesso_codice" :header="t('ui_admin.permesso_profilo')" style="width: 240px" />
-        <Column :header="t('ui_admin.permesso_livello_accesso')" style="width: 140px">
+        <Column field="colonna_etichetta" :header="t('ui.admin.permesso_colonna')" />
+        <Column field="colonna_codice" :header="t('ui.admin.permesso_colonna_codice')" style="width: 220px" />
+        <Column field="profilo_accesso_codice" :header="t('ui.admin.permesso_profilo')" style="width: 240px" />
+        <Column :header="t('ui.admin.permesso_livello_accesso')" style="width: 140px">
           <template #body="{ data }">
             <Tag
               :value="t(`common.livello_${data.livello_accesso.toLowerCase()}`)"

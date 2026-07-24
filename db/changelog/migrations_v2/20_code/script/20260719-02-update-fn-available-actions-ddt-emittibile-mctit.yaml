@@ -1,0 +1,233 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-guard-righe-avanzamento-stato §1a-bis (Rev 2) — STEP 1 per il DDT.
+#
+# PRIMA: la capability conosceva UNA sola precondizione (righe attive, via
+# meta.requires_righe, rev 2026-07-16). Su un DDT con righe ma senza causale il
+# pulsante «Emetti» risultava ABILITATO e il click falliva con 409 (544) —
+# rilievo in-app di Tid, 2026-07-19.
+#
+# DOPO: per le transizioni che portano a EMESSO la capability delega a
+# script.fn_check_ddt_emittibile (20260719-01), che conosce tutte e cinque le
+# condizioni. Se la lista dei motivi non e' vuota: enabled=false + reason/
+# reason_key del PRIMO motivo (ordine documentato nella fn).
+#
+# ⚠️ meta.requires_righe NON viene rimosso: resta il predicato per le transizioni
+#   DIVERSE da EMESSO che dovessero esigere righe (oggi nessuna, ma il
+#   meccanismo e' data-driven e va lasciato funzionante). Per EMESSO e'
+#   sovrascritto dalla fn, che sulle righe dice la stessa cosa (543).
+#
+# Nessun cambio di CONTRATTO verso il FE: i campi enabled/reason/reason_key
+# esistono gia' dal 2026-07-16, cambiano solo i valori possibili di reason.
+# Nuove reason_key da tradurre lato FE (§3 del brief):
+#   vendite.ddt.azione_reason.causale_mancante
+#   vendite.ddt.azione_reason.prezzo_non_risolvibile
+#   common.azione_reason.indirizzi_mancanti
+#   vendite.ddt.azione_reason.componenti_prezzo_pendente
+#   vendite.ddt.azione_reason.componenti_non_valorizzati
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260719-02-update-fn-available-actions-ddt-emittibile-mctit.yaml
+
+  - changeSet:
+      id: 20260719-02-update-fn-available-actions-ddt-emittibile
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      failOnError: true
+      comment: >
+        La capability DDT delega a fn_check_ddt_emittibile per le transizioni
+        verso EMESSO: l'azione e' disabled con reason quando manca la causale,
+        i prezzi non sono risolvibili, mancano indirizzi o ci sono componenti
+        pendenti — non piu' solo per assenza di righe.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script' AND p.proname = 'fn_check_ddt_emittibile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: capability DDT per il detail API (data-driven,
+              --   config.transizioni_stati_ddt). Mirror di fn_available_actions_ordine.
+              --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+              --   config.stati_doc_ddt (bottone PDF data-driven via capabilities).
+              --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+              --   (documento vuoto non avanza di stato).
+              --   rev 2026-07-19: le transizioni verso EMESSO delegano a
+              --   script.fn_check_ddt_emittibile (TUTTE le condizioni di emissione,
+              --   non solo le righe): brief-db-guard-righe-avanzamento-stato §1a-bis.
+              DECLARE
+                  v_ddt        vendite.ddt%ROWTYPE;
+                  v_stato_cod  config.stati_doc_ddt.codice_interno%TYPE;
+                  v_pdf_mode   config.stati_doc_ddt.pdf_mode%TYPE;
+                  v_pdf_allow  config.stati_doc_ddt.pdf_allow_allegati%TYPE;
+                  v_actions    jsonb;
+                  v_can_change boolean := false;
+                  v_ha_righe   boolean := false;
+                  v_motivi     jsonb := '[]'::jsonb;
+                  v_emit_ok    boolean := true;
+                  v_emit_reason     text := NULL;
+                  v_emit_reason_key text := NULL;
+                  v_push_ok    boolean := false;
+                  v_push_reason     text := NULL;
+                  v_push_reason_key text := NULL;
+                  c_non_edit_draft CONSTANT jsonb :=
+                      '["numero","sorgente_tipo_id","sorgente_uid","billing_account_id"]'::jsonb;
+                  c_non_edit_tutti CONSTANT jsonb :=
+                      '["numero","sorgente_tipo_id","sorgente_uid","billing_account_id",'
+                      '"destinatario_soggetto_ruolo_id","mittente_soggetto_ruolo_id",'
+                      '"vettore_soggetto_ruolo_id","causale_trasporto_id","aspetto_bene_id",'
+                      '"modalita_addebito_trasporto_id","valuta_id","utility_id","data","meta"]'::jsonb;
+              BEGIN
+                  -- Riga completa: serve sia per lo stato sia per passarla alla
+                  -- fn_check (che valuta i valori della riga, non un id).
+                  SELECT d.* INTO v_ddt FROM vendite.ddt d WHERE d.id = p_ddt_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT sdd.codice_interno, sdd.pdf_mode, sdd.pdf_allow_allegati
+                    INTO v_stato_cod, v_pdf_mode, v_pdf_allow
+                    FROM config.stati_doc_ddt sdd
+                   WHERE sdd.id = v_ddt.stato_doc_ddt_id;
+
+                  -- Precondizione "documento non vuoto" per le transizioni che la
+                  -- esigono (meta.requires_righe), diverse da EMESSO.
+                  v_ha_righe := EXISTS (
+                      SELECT 1 FROM vendite.ddt_righe r
+                       WHERE r.ddt_id = p_ddt_id
+                         AND r.attivo IS TRUE
+                  );
+
+                  -- Precondizioni COMPLETE dell'emissione: single source coi guard
+                  -- (righe, causale, prezzi, indirizzi, componenti). Il primo motivo
+                  -- e' quello mostrato all'utente.
+                  v_motivi := script.fn_check_ddt_emittibile(v_ddt);
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                      v_emit_ok         := false;
+                      v_emit_reason     := v_motivi -> 0 ->> 'reason';
+                      v_emit_reason_key := v_motivi -> 0 ->> 'reason_key';
+                  END IF;
+
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',              t.meta->>'action_key',
+                              'target_state',     sa.codice_interno,
+                              'label_key',        t.meta->>'label_key',
+                              'severity',         t.meta->>'severity',
+                              'icon',             t.meta->>'icon',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
+                              -- Verso EMESSO comandano i motivi della fn_check;
+                              -- altrove resta il predicato requires_righe.
+                              'enabled',          CASE WHEN sa.codice_interno = 'EMESSO'
+                                                       THEN v_emit_ok
+                                                       ELSE NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                                 AND NOT v_ha_righe) END,
+                              'reason',           CASE WHEN sa.codice_interno = 'EMESSO'
+                                                       THEN v_emit_reason
+                                                       WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                            AND NOT v_ha_righe
+                                                       THEN 'DOCUMENTO_SENZA_RIGHE' END,
+                              'reason_key',       CASE WHEN sa.codice_interno = 'EMESSO'
+                                                       THEN v_emit_reason_key
+                                                       WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                                            AND NOT v_ha_righe
+                                                       THEN 'common.azione_reason.senza_righe' END,
+                              -- Elenco completo dei motivi: il FE puo' mostrarli
+                              -- tutti nel tooltip invece del solo primo.
+                              'reasons',          CASE WHEN sa.codice_interno = 'EMESSO'
+                                                            AND jsonb_array_length(v_motivi) > 0
+                                                       THEN v_motivi END
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  FROM config.transizioni_stati_ddt t
+                  JOIN config.stati_doc_ddt sa ON sa.id = t.stato_a_id
+                  WHERE t.stato_da_id = v_ddt.stato_doc_ddt_id
+                    AND t.attivo IS TRUE
+                    AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
+                    AND t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
+
+                  -- Conta anche le azioni disabilitate: la barra azioni deve
+                  -- comparire proprio per mostrare il pulsante grigio + tooltip.
+                  v_can_change := jsonb_array_length(v_actions) > 0;
+
+                  IF EXISTS (SELECT 1
+                               FROM vendite.fn_list_ddt_da_pushare(p_ddt_id := p_ddt_id)) THEN
+                      v_push_ok := true;
+                  ELSE
+                      v_push_reason     := 'DDT_NON_PUSHABILE';
+                      v_push_reason_key := 'vendite.ddt.push_commessa_reason.non_pushabile';
+                  END IF;
+
+                  IF v_push_ok THEN
+                      v_actions := v_actions || jsonb_build_array(
+                          jsonb_build_object(
+                              'key',              'push_commessa',
+                              'target_state',     NULL,
+                              'label_key',        'vendite.ddt.azione_push_commessa',
+                              'severity',         'success',
+                              'icon',             'pi pi-arrow-right',
+                              'requires_confirm', true,
+                              'outlined',         false,
+                              'enabled',          true,
+                              'reason',           NULL,
+                              'reason_key',       NULL
+                          )
+                      );
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'available_actions',            v_actions,
+                      'can_change_state',             v_can_change,
+                      'can_edit_testata',             (v_stato_cod = 'DRAFT'),
+                      'can_edit_righe',               (v_stato_cod = 'DRAFT'),
+                      'can_push_commessa',            v_push_ok,
+                      'can_push_commessa_reason',     v_push_reason,
+                      'can_push_commessa_reason_key', v_push_reason_key,
+                      'non_editable_fields',          CASE WHEN v_stato_cod = 'DRAFT'
+                                                           THEN c_non_edit_draft
+                                                           ELSE c_non_edit_tutti END,
+                      'pdf',                          jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+                      'stato_codice',                 v_stato_cod
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
+              IS 'Capability DDT per detail API: available_actions + push_commessa (fn_list_ddt_da_pushare) + can_change_state + can_edit_* + non_editable_fields + stato_codice. Mirror di fn_available_actions_ordine. rev 2026-07-11: + blocco pdf {mode, allow_allegati}. rev 2026-07-16: ogni azione espone enabled/reason/reason_key da meta.requires_righe. rev 2026-07-19: le transizioni verso EMESSO delegano a script.fn_check_ddt_emittibile — enabled=false + reason/reason_key del primo motivo + array completo in "reasons" (righe 543, causale 544, prezzi 545, indirizzi, componenti pendenti). Single source coi 4 guard trigger di emissione: il pulsante non e'' piu'' abilitato per poi fallire con 409. Brief: brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: rigenerare la revisione precedente (rev 2026-07-16)
+              -- dalla doc auto-gen. Nessun DROP: la fn deve continuare a esistere.
+              SELECT 1;

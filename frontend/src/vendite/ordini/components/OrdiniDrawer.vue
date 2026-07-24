@@ -49,7 +49,7 @@ import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useOrdiniStore()
 const { execute, loading } = useApiHandler()
 const notify = useNotify()
@@ -112,6 +112,32 @@ const availableActions = caps.availableActions
 const canEditTestata = caps.canEdit
 const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
+// Push a commessa: la capability include l'azione in `available_actions` solo
+// quando e' eseguibile; quando non lo e', espone il motivo nei campi
+// can_push_commessa_reason/_key. Presentazione = tooltip su pulsante
+// DISABILITATO, non banner (Decisione D del brief catch-all DDT, applicata qui
+// per simmetria XOR: `fattura_da_ddt` e' la causa permanente speculare di
+// `fattura_da_ordine` — un banner sempre visibile sarebbe rumore perpetuo su
+// ogni ordine a trigger SPEDITO/CONSEGNATO). Entry sintetica nella stessa
+// shape delle azioni DB: il mapper condiviso la rende disabled+tooltip.
+const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
+const pushCommessaDisabledAction = computed(() => {
+  if (!hasDetail.value || canPushCommessa.value) return []
+  const reason = detail.value?.can_push_commessa_reason
+  const reasonKey = detail.value?.can_push_commessa_reason_key
+  if (!reason && !reasonKey) return []
+  return [{
+    key: 'push_commessa',
+    target_state: null,
+    label_key: 'vendite.ordini.azione_push_commessa',
+    severity: 'success',
+    icon: 'pi pi-arrow-right',
+    outlined: false,
+    enabled: false,
+    reason,
+    reason_key: reasonKey,
+  }]
+})
 
 // Campi bloccati lato UX. Una volta che l'ordine esiste (EDIT classico o CREATE
 // post auto-save), il cliente NON e' piu' modificabile: il BE deriva
@@ -412,7 +438,7 @@ function onPush() {
       } else if (stato === 'PARZIALE') {
         notify.warn(t('vendite.ordini.push_commessa_parziale', { righe, push_log_id: pushLogId }))
       } else if (stato === 'ERRORE') {
-        const firstError = result?.handlers?.[0]?.errors?.[0] || t('common.generic_error')
+        const firstError = result?.handlers?.[0]?.errors?.[0] || t('common.error_generic')
         notify.error(t('vendite.ordini.push_commessa_errore', { primo_errore: firstError }))
       } else if (stato === 'SKIPPED') {
         notify.warn(t('vendite.ordini.push_commessa_skipped'))
@@ -471,8 +497,9 @@ const drawerActions = computed(() => {
   const availableActionsHeader = (availableActions.value || [])
     .filter(a => a.key !== 'genera_ddt')
   const stateActions = mapAvailableActionsToDrawerActions({
-    availableActions: availableActionsHeader,
+    availableActions: [...availableActionsHeader, ...pushCommessaDisabledAction.value],
     t,
+    te,
     onAction,
     readonly: readonlyPuro,
   })
@@ -609,7 +636,8 @@ const drawerActions = computed(() => {
         <Divider />
         <LineagePassaggiPanel
           base-path="/vendite/ordini"
-          :doc-id="effectiveOrdineId" />
+          :doc-id="effectiveOrdineId"
+          :readonly="isReadonlyPuro" />
       </template>
 
       <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto"

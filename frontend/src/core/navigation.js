@@ -30,8 +30,13 @@ export const NAV_ICONS = Object.freeze({
   SITUAZIONE_APERTA: 'pi pi-chart-pie',
   DASHBOARD_COMPETENZA: 'pi pi-chart-bar',
   DASHBOARD_BACKLOG: 'pi pi-inbox',
+  LOTTI: 'pi pi-server',
   PROMO_ARTICOLI: 'app-nav-icon app-nav-icon-promo-articoli',
   PERSONALIZZAZIONI_LISTE: 'pi pi-th-large',
+  // Dominio Strumenti (viste operative trasversali: code di lavoro, in
+  // futuro giri/job). pi-wrench = cassetta attrezzi, non-tecnico.
+  STRUMENTI: 'pi pi-wrench',
+  CODE_LAVORO: 'pi pi-inbox',
   HOME: 'pi pi-home',
   BACK: 'pi pi-arrow-left',
 
@@ -102,6 +107,12 @@ export const DOMAINS = [
   { key: 'pagamenti', icon: NAV_ICONS.PAGAMENTI, to: '/pagamenti', schemaDb: 'pagamenti' },
   { key: 'contabilita', icon: NAV_ICONS.CONTABILITA, to: '/contabilita', schemaDb: 'contabilita' },
   { key: 'pratiche', icon: NAV_ICONS.PRATICHE, to: '/pratiche', schemaDb: 'pratiche' },
+  // Strumenti: viste operative trasversali, con AREA BE DEDICATA `strumenti`
+  // (decisione Tid 2026-07-21: non si apre `core` — che presidia anche il
+  // tracciamento infra — solo per le code). Prima voce: gestione code di
+  // lavoro/stampa (accesso primario = badge top bar; la voce menu e' la via
+  // secondaria — brief gestione-code P-1).
+  { key: 'strumenti', icon: NAV_ICONS.STRUMENTI, to: '/strumenti', schemaDb: 'strumenti' },
   { key: 'config', icon: NAV_ICONS.CONFIG, to: '/config', schemaDb: 'config' },
   { key: 'amm-software', icon: NAV_ICONS.AMM_SOFTWARE, to: '/amm-software', adminOnly: true, schemaDb: 'amm_software' }
 ]
@@ -163,6 +174,7 @@ export const DOMAIN_MENUS = {
     { key: 'situazione-aperta', icon: NAV_ICONS.SITUAZIONE_APERTA, to: '/vendite/situazione-aperta' },
     { key: 'dashboard-competenza', icon: NAV_ICONS.DASHBOARD_COMPETENZA, to: '/vendite/dashboard-competenza' },
     { key: 'dashboard-backlog', icon: NAV_ICONS.DASHBOARD_BACKLOG, to: '/vendite/dashboard-backlog' },
+    { key: 'lotti', icon: NAV_ICONS.LOTTI, to: '/vendite/lotti' },
     { key: 'preventivi', icon: NAV_ICONS.PREVENTIVI, to: '/vendite/preventivi' },
     { key: 'offerte', icon: NAV_ICONS.OFFERTE, to: '/vendite/offerte' },
     { key: 'ordini', icon: NAV_ICONS.ORDINI, to: '/vendite/ordini' },
@@ -177,6 +189,9 @@ export const DOMAIN_MENUS = {
   'magazzino': [],
   'pagamenti': [],
   'contabilita': [],
+  'strumenti': [
+    { key: 'code-lavoro', icon: NAV_ICONS.CODE_LAVORO, to: '/strumenti/code-lavoro' }
+  ],
   'pratiche': [
     { key: 'home', icon: NAV_ICONS.HOME, to: '/pratiche' },
     { key: 'gestione', icon: NAV_ICONS.FOLDER_OPEN, to: '/pratiche/gestione' }
@@ -206,6 +221,18 @@ export const DOMAIN_MENUS = {
 
 // Voce sidebar home (usata dal SidebarDomain per il pulsante indietro)
 export const HOME_ITEM = { key: 'home', icon: NAV_ICONS.HOME, to: '/' }
+
+// Scopo: appiattisce un menu di dominio in un unico elenco di voci
+// (L1 + figli L2), per cercare una voce per `key` o per `to` senza
+// dover conoscere la profondita' della struttura.
+// Centralizzata qui perche' consumata da piu' composable di
+// navigazione (preferiti, deep-link dei widget dashboard): e' la
+// definizione unica di "tutte le voci di questo dominio".
+export function flattenMenu(items) {
+  return (items || []).flatMap(item =>
+    item.children ? [item, ...item.children] : [item],
+  )
+}
 
 // Risolve la label tab/breadcrumb dalla route meta usando i18n.
 // Usato da router guard e AppBreadcrumb per evitare duplicazione.

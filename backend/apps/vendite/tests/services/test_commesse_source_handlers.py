@@ -172,6 +172,31 @@ class CommesseSourceHandlersTests(TestCase):
         inputs = repo.batch_upsert_attivita.call_args[0][0]
         self.assertEqual(len(inputs), 1)
 
+    # Scopo: regressione review 2026-07-23 — le segment_key FALLITE nel batch
+    #        vanno ESCLUSE dalla risoluzione id post-upsert. Per gli UPDATE
+    #        falliti la riga preesistente esiste ancora a DB: senza il filtro
+    #        il ponte la approverebbe (BOZZA→APPROVATA) coi valori STALI
+    #        mentre il report la segna in errore.
+    def test_process_rows_esclude_segment_key_fallite_dalla_risoluzione_id(self):
+        repo = _mock_repo()
+        riga_ok = _make_row(segment_key="TEST:uid-001:R:1")
+        riga_ko = _make_row(sorgente_uid="uid-002", segment_key="TEST:uid-002:R:1")
+        repo.fetch_pushable_rows.return_value = [riga_ok, riga_ko]
+        repo.batch_upsert_attivita.return_value = BatchUpsertResult(
+            total_rows=2, inserted=1, updated=0,
+            errors=[{"segment_key": "TEST:uid-002:R:1", "error": "guard KO"}],
+        )
+        handler = HandlerPreventivi(repo)
+
+        result = handler.run()
+
+        # Solo la coppia riuscita arriva alla risoluzione id.
+        coppie = repo.list_attivita_ids_by_segments.call_args[0][0]
+        self.assertEqual([c[1] for c in coppie], ["TEST:uid-001:R:1"])
+        # L'errore resta visibile nel report.
+        self.assertEqual(result.skipped, 1)
+        self.assertTrue(any("TEST:uid-002:R:1" in e for e in result.errors))
+
     # Scopo: sorgente_uid valorizzato → propagato a fetch_pushable_rows del repo.
     # Assicura che il push singolo UI-driven filtri davvero a livello DB.
     def test_run_propaga_sorgente_uid_al_fetch_pushable_rows(self):

@@ -312,7 +312,7 @@ const onClose = useDrawerClose(emit)
     :style="{ width: DRAWER_WIDTH.STANDARD }"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('indirizzi.indirizzo') + ' - ' + t(`indirizzo_soggetto.context_${context}`)" :icon="NAV_ICONS.INDIRIZZO" />
+      <DrawerTitle :action="t('common.edit')" :title="t('indirizzi.indirizzo') + ' - ' + t(`anagrafiche.indirizzo_soggetto.context_${context}`)" :icon="NAV_ICONS.INDIRIZZO" />
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
@@ -328,7 +328,7 @@ const onClose = useDrawerClose(emit)
         <slot name="pre-list" />
         <div v-if="indirizziList.length === 0 && !formMode" class="app-empty-state">
           <i class="pi pi-map-marker" />
-          <p>{{ t('indirizzo_soggetto.nessun_indirizzo') }}</p>
+          <p>{{ t('anagrafiche.indirizzo_soggetto.nessun_indirizzo') }}</p>
         </div>
 
         <div v-else-if="indirizziList.length > 0" class="indirizzi-list">
@@ -358,13 +358,13 @@ const onClose = useDrawerClose(emit)
               rounded
               size="small"
               class="app-action-btn"
-              :title="t('indirizzo_soggetto.cambia_indirizzo')"
+              :title="t('anagrafiche.indirizzo_soggetto.cambia_indirizzo')"
               @click="onStartReplace(ind)"
             />
             <!-- Azioni ruolo: cambia + delete (solo se editabile e non readonly) -->
             <div v-if="!formMode && !isReadonly && isRuolo && ind.fonte !== 'soggetto'" class="indirizzo-card-actions">
               <Button :icon="MANAGE_ICONS.EDIT" text rounded size="small"
-                :title="t('indirizzo_soggetto.cambia_indirizzo')"
+                :title="t('anagrafiche.indirizzo_soggetto.cambia_indirizzo')"
                 @click="onStartReplace(ind)" />
               <Button :icon="MANAGE_ICONS.DELETE" text rounded size="small"
                 class="app-delete-btn" :title="t('common.delete')" @click="onDeleteRuolo(ind)" />
@@ -375,11 +375,11 @@ const onClose = useDrawerClose(emit)
           <Button
             v-if="selectable && !formMode && !isReadonly"
             icon="pi pi-check"
-            :label="t('indirizzo_soggetto.usa')"
+            :label="t('anagrafiche.indirizzo_soggetto.usa')"
             outlined
             size="small"
             class="app-action-btn indirizzo-card-usa"
-            :title="selectTooltip || t('indirizzo_soggetto.usa_questo')"
+            :title="selectTooltip || t('anagrafiche.indirizzo_soggetto.usa_questo')"
             @click="emit('select', ind)"
           />
           </div>
@@ -388,13 +388,13 @@ const onClose = useDrawerClose(emit)
         <!-- Warning tipi mancanti -->
         <div v-if="tipiMancanti.length > 0 && !formMode" class="indirizzi-warning">
           <i class="pi pi-exclamation-triangle" />
-          {{ t('indirizzo_soggetto.tipi_mancanti', { tipi: tipiMancanti.map(t => t.descrizione).join(', ') }) }}
+          {{ t('anagrafiche.indirizzo_soggetto.tipi_mancanti', { tipi: tipiMancanti.map(t => t.descrizione).join(', ') }) }}
         </div>
 
         <!-- Pulsante aggiungi (soggetto: se ci sono tipi disponibili, ruolo: sempre, mai in readonly) -->
         <div v-if="!formMode && !isReadonly && (isRuolo || matriceDisponibile.length > 0)" class="mt-05">
           <Button
-            :label="t('indirizzo_soggetto.aggiungi_indirizzo')"
+            :label="t('anagrafiche.indirizzo_soggetto.aggiungi_indirizzo')"
             :icon="MANAGE_ICONS.ADD"
             text
             size="small"
@@ -413,8 +413,8 @@ const onClose = useDrawerClose(emit)
       <template v-if="formMode">
         <div class="app-drawer-section">
           <h4>{{ formMode === 'replace'
-            ? t('indirizzo_soggetto.cambia_indirizzo') + ': ' + replaceLabel
-            : t('indirizzo_soggetto.nuovo_indirizzo')
+            ? t('anagrafiche.indirizzo_soggetto.cambia_indirizzo') + ': ' + replaceLabel
+            : t('anagrafiche.indirizzo_soggetto.nuovo_indirizzo')
           }}</h4>
         </div>
         <IndirizzoSoggettoForm
@@ -435,7 +435,7 @@ const onClose = useDrawerClose(emit)
         />
 
         <Message v-if="addressNotFound" severity="warn" size="small" class="mt-1">
-          {{ t('indirizzo_soggetto.replace_non_trovato') }}
+          {{ t('anagrafiche.indirizzo_soggetto.replace_non_trovato') }}
         </Message>
 
         <FormFooter

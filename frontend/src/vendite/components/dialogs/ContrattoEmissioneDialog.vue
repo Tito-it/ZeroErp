@@ -30,18 +30,18 @@ const { t } = useI18n()
     :sorgente-code="SORGENTE_CODE"
     :sorgente-id="props.contratto?.id ?? null"
     advances-state
-    :header="t('contratti.emissione_titolo')"
-    :confirm-label="t('contratti.emissione_conferma')"
+    :header="t('vendite.contratti.emissione_titolo')"
+    :confirm-label="t('vendite.contratti.emissione_conferma')"
     :loading="props.loading"
     @update:visible="(val) => emit('update:visible', val)"
     @confirm="(payload) => emit('confirm', payload)"
   >
     <template #riepilogo>
-      <p>{{ t('contratti.emissione_messaggio') }}</p>
+      <p>{{ t('vendite.contratti.emissione_messaggio') }}</p>
 
       <div v-if="contratto" style="margin: 0.5rem 0; display: flex; flex-direction: column; gap: 0.4rem;">
         <div v-if="contratto.billing_account_codice || contratto.billing_account_ragione_sociale">
-          <strong>{{ t('contratti.col_ba') }}:</strong>
+          <strong>{{ t('vendite.contratti.col_ba') }}:</strong>
           {{ contratto.billing_account_ragione_sociale || contratto.billing_account_codice }}
           <span
             v-if="contratto.billing_account_codice && contratto.billing_account_ragione_sociale"
@@ -51,7 +51,7 @@ const { t } = useI18n()
           </span>
         </div>
         <div>
-          <strong>{{ t('contratti.col_valido_dal') }}:</strong>
+          <strong>{{ t('vendite.contratti.col_valido_dal') }}:</strong>
           {{ displayDate(contratto.valido_dal) }}
           <span v-if="contratto.valido_al">
             → {{ displayDate(contratto.valido_al) }}

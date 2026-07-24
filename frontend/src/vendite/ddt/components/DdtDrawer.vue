@@ -51,7 +51,7 @@ import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useDdtStore()
 const { execute, loading } = useApiHandler()
 const notify = useNotify()
@@ -124,6 +124,32 @@ const availableActions = caps.availableActions
 const canEditTestata = caps.canEdit
 const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
+// Push a commessa: la capability include l'azione in `available_actions` solo
+// quando e' eseguibile; quando non lo e', espone il motivo nei campi
+// can_push_commessa_reason/_key. Presentazione = tooltip su pulsante
+// DISABILITATO, non banner (Decisione D, brief-db-ddt-reason-push-catch-all §3):
+// molte cause sono PERMANENTI — fattura_da_ordine e' il caso default — e un
+// banner sempre visibile sarebbe rumore perpetuo. Si sintetizza quindi lato FE
+// l'entry disabled nella stessa shape che emette il DB per le azioni di stato:
+// il mapper condiviso la rende gia' disabled+tooltip (fail-visible labelOrCode).
+const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
+const pushCommessaDisabledAction = computed(() => {
+  if (!hasDetail.value || canPushCommessa.value) return []
+  const reason = detail.value?.can_push_commessa_reason
+  const reasonKey = detail.value?.can_push_commessa_reason_key
+  if (!reason && !reasonKey) return []
+  return [{
+    key: 'push_commessa',
+    target_state: null,
+    label_key: 'vendite.ddt.azione_push_commessa',
+    severity: 'success',
+    icon: 'pi pi-arrow-right',
+    outlined: false,
+    enabled: false,
+    reason,
+    reason_key: reasonKey,
+  }]
+})
 
 // Campi bloccati lato UX. Una volta che il DDT esiste, il cliente NON e' piu'
 // modificabile: il BE deriva il destinatario_soggetto_ruolo dal billing_account
@@ -408,7 +434,7 @@ function onPush() {
       } else if (stato === 'PARZIALE') {
         notify.warn(t('vendite.ddt.push_commessa_parziale', { righe, push_log_id: pushLogId }))
       } else if (stato === 'ERRORE') {
-        const firstError = result?.handlers?.[0]?.errors?.[0] || t('common.generic_error')
+        const firstError = result?.handlers?.[0]?.errors?.[0] || t('common.error_generic')
         notify.error(t('vendite.ddt.push_commessa_errore', { primo_errore: firstError }))
       } else if (stato === 'SKIPPED') {
         notify.warn(t('vendite.ddt.push_commessa_skipped'))
@@ -460,8 +486,9 @@ const drawerActions = computed(() => {
   if (!hasDetail.value) return []
   const readonlyPuro = props.readonly || parentReadonly.value
   const stateActions = mapAvailableActionsToDrawerActions({
-    availableActions: availableActions.value,
+    availableActions: [...availableActions.value, ...pushCommessaDisabledAction.value],
     t,
+    te,
     onAction,
     readonly: readonlyPuro,
   })
@@ -596,7 +623,8 @@ const drawerActions = computed(() => {
         <Divider />
         <LineagePassaggiPanel
           base-path="/vendite/ddt"
-          :doc-id="effectiveDdtId" />
+          :doc-id="effectiveDdtId"
+          :readonly="readonly || parentReadonly" />
 
       </template>
 

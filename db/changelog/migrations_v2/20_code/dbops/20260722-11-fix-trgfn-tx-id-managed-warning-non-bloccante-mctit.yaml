@@ -1,0 +1,232 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# STEP 2 di brief-db-coerenza-tx-id-non-registrato.md (§4.2)
+#
+# Il ramo "Caso C" (tx_id di sessione non presente in dbops.transaction_ids)
+# passa da script.fn_log_and_raise_error a script.fn_log_error_only: AVVERTE e
+# prosegue, invece di sollevare.
+#
+# PERCHE' E' UNA CORREZIONE E NON UN ALLENTAMENTO
+# Il comportamento voluto e' documentato da sempre. Il commento nel codice dice
+# "ID non registrato: log warning e assegna nil", la guida
+# tx_id_implementation_guide.md §202 dice "logga WARNING W_TXID_NOT_REGISTERED e
+# assegna uuid_nil()", e subito sotto la PERFORM c'e' gia'
+# "v_new_tx_id := script.uuid_nil();" -- una riga IRRAGGIUNGIBILE, perche'
+# fn_log_and_raise_error solleva e non torna mai. E' l'impronta dell'intenzione
+# originale: serviva l'helper che logga soltanto.
+#
+# ARCHEOLOGIA (verificata 2026-07-22): il ramo e' identico in tutte e quattro le
+# versioni del trigger (20250707-21, 20250814-01, 20251031-11, 20251114-04),
+# commento e riga morta compresi. Non e' stato allentato ne' irrigidito da
+# nessuno: la discrepanza e' nata con la prima versione ed e' stata ricopiata.
+#
+# CONVENZIONE E_ / W_ (decisa 2026-07-22)
+#   E_ = errore bloccante      -> script.fn_log_and_raise_error
+#   W_ = avvertimento          -> script.fn_log_error_only
+# Dopo questa modifica il trigger la rispetta:
+#   E_SQL_READ_TABLE   (bloccante) - config.parameters illeggibile: errore vero
+#   E_TXID_GENERATION  (bloccante) - generazione fallita: errore vero
+#   W_TXID_NOT_REGISTERED (avvertimento) - ora avverte davvero
+# W_TXID_NOT_REGISTERED (id 19) e' l'unico codice W_ dell'intero
+# messaggi_errore.csv (354 codici): NON va rinominato in E_, il nome era gia'
+# giusto ed e' il comportamento che non lo rispettava.
+#
+# NOTA a margine: ERRORE_PARAMETRI_TABELLA e' non bloccante ma non porta ne' E_
+# ne' W_. Fuori perimetro qui (e' usato anche altrove): candidato all'audit
+# della convenzione, step 6 del brief.
+#
+# NESSUN TEST INVALIDATO: zero occorrenze di W_TXID_NOT_REGISTERED in db/pgtap/
+# e in backend/ (verificato 2026-07-22). La modifica e' nel verso permissivo,
+# quindi non puo' rompere test che oggi passano.
+#
+# Corpo ripreso dalla doc auto-gen (oggetto vivo) con la sola sostituzione
+# descritta sopra; i commenti erano gia' assenti nel vivo perche' il changeset
+# originale usava stripComments: true.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260722-11-fix-trgfn-tx-id-managed-warning-non-bloccante-mctit.yaml
+
+  - changeSet:
+      id: 20260722-11-fix-trgfn-tx-id-managed-warning-non-bloccante
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        W_TXID_NOT_REGISTERED torna a essere un avvertimento: fn_log_error_only
+        invece di fn_log_and_raise_error, cosi' la riga uuid_nil() che segue
+        diventa raggiungibile ed e' il comportamento che guida e commenti
+        descrivono da sempre. Applica la convenzione E_=bloccante / W_=warning.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_log_error_only';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.trgfn_tx_id_managed()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_bypass_enabled BOOLEAN := FALSE;
+                  v_session_tx_id     UUID;
+                  v_new_tx_id      UUID;
+              BEGIN
+
+                  BEGIN
+                      SELECT default_value::BOOLEAN
+                        INTO v_bypass_enabled
+                        FROM config.parameters
+                      WHERE code = 'tx_id_bypass_enabled';
+
+                      IF NOT FOUND THEN
+
+                          PERFORM script.fn_log_error_only(
+                              'database',
+                              'dbops.trgfn_tx_id_managed',
+                              'ERRORE_PARAMETRI_TABELLA',
+                              jsonb_build_object(
+                                  'codice_parametro', 'tx_id_bypass_enabled',
+                                  'nome_tabella',      'config.parameters',
+                                  'action', 'default bypass=false'
+                              ),
+                                NULL::uuid,
+                                'tx_id_bypass_enabled',
+                                'config.parameters'
+                            );
+                      END IF;
+
+                  EXCEPTION WHEN OTHERS THEN
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'dbops.trgfn_tx_id_managed',
+                          'E_SQL_READ_TABLE',
+                          jsonb_build_object(
+                            'parameter', 'tx_id_bypass_enabled',
+                            'error', SQLERRM
+                          ),
+                          NULL::uuid,
+                          TG_TABLE_NAME::text,
+                          SQLERRM::text
+                      );
+
+                      RAISE;
+                  END;
+
+                  IF NOT v_bypass_enabled THEN
+                      BEGIN
+                          v_bypass_enabled := current_setting('myapp.bypass_tx_id_check', TRUE)::BOOLEAN;
+                      EXCEPTION WHEN OTHERS THEN
+
+                          NULL;
+                      END;
+                  END IF;
+
+                  BEGIN
+                      v_session_tx_id := current_setting('dbops.tx_id', TRUE)::UUID;
+                  EXCEPTION WHEN OTHERS THEN
+                      v_session_tx_id := NULL;
+                  END;
+
+                  IF v_bypass_enabled THEN
+
+                      v_new_tx_id := COALESCE(v_session_tx_id, script.uuid_nil());
+
+                  ELSE
+                      IF v_session_tx_id IS NOT NULL THEN
+
+                          PERFORM 1
+                            FROM dbops.transaction_ids
+                          WHERE id = v_session_tx_id;
+                          IF FOUND THEN
+                              v_new_tx_id := v_session_tx_id;
+
+                          ELSE
+                              -- Caso C) id di sessione non presente nel registro.
+                              -- AVVERTE e prosegue con la sentinella: e' il comportamento che
+                              -- la guida descrive ("logga WARNING e assegna nil") e che il
+                              -- prefisso W_ promette. Prima qui si sollevava, quindi la riga
+                              -- uuid_nil() sotto era irraggiungibile e un id non registrato
+                              -- bloccava ogni scrittura tracciata.
+                              -- Vedi brief-db-coerenza-tx-id-non-registrato.md §4.2.
+                              PERFORM script.fn_log_error_only(
+                                  'database',
+                                  'dbops.trgfn_tx_id_managed',
+                                  'W_TXID_NOT_REGISTERED',
+                                  jsonb_build_object( 'tx_id', v_session_tx_id ),
+                                  NULL::uuid,
+                                  VARIADIC ARRAY[]::text[]
+                              );
+                              v_new_tx_id := script.uuid_nil();
+
+                          END IF;
+
+                      ELSE
+
+                          BEGIN
+
+                            v_new_tx_id := dbops.fn_get_or_create_session_tx_id();
+
+                          EXCEPTION WHEN OTHERS THEN
+
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  'dbops.trgfn_tx_id_managed',
+                                  'E_TXID_GENERATION',
+                                  jsonb_build_object(
+                                    'error', SQLERRM
+                                  ) ,
+                                  NULL::uuid,
+                                  VARIADIC ARRAY[]::text[]
+                              );
+                              v_new_tx_id := script.uuid_nil();
+                          END;
+                      END IF;
+                  END IF;
+
+                IF NEW.tx_id IS NOT NULL AND NEW.tx_id::text = '' THEN
+                  NEW.tx_id := NULL;
+                END IF;
+
+                IF NEW.tx_id IS NOT NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                  NEW.tx_id := COALESCE(
+                      NULLIF(current_setting('dbops.tx_id', true), '')::uuid,
+                      v_new_tx_id,
+                      uuidv7()
+                  );
+                RETURN NEW;
+
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.trgfn_tx_id_managed() IS
+                'Trigger function di audit: valorizza NEW.tx_id. Bypass a due livelli (config.parameters.tx_id_bypass_enabled e GUC myapp.bypass_tx_id_check). Senza bypass: se la GUC dbops.tx_id e'' impostata, l''id deve esistere in dbops.transaction_ids -- altrimenti AVVERTE (W_TXID_NOT_REGISTERED, non bloccante) e assegna script.uuid_nil(); se la GUC e'' assente chiama dbops.fn_get_or_create_session_tx_id(). Convenzione: E_ = errore bloccante, W_ = avvertimento. Vedi brief-db-coerenza-tx-id-non-registrato.md.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ATTENZIONE: ripristina il comportamento bloccante, cioe' il difetto:
+              -- un tx_id non registrato torna a far fallire ogni scrittura tracciata.
+              -- Per il rollback completo usare il changeset 20251114-04.
+              SELECT 1;

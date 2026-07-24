@@ -21,15 +21,44 @@ Indice test eseguiti:
 19) LottoPipelineRunnerUnitTests.test_runner_emits_pipeline_error_event
 20) LottoPipelineRunnerUnitTests.test_runner_syncs_fatture_to_step_stato_on_forward
 21) LottoPipelineRunnerUnitTests.test_runner_does_not_sync_fatture_in_dry_run
+22) test_runner_emits_pipeline_started_event (famiglia eventi, vedi classi sotto)
+23) test_until_done_advances_and_stops_at_chiude_lotto (driver F2)
+24) test_until_done_ferma_a_stato_richiesto (C-1, FERMATO_A_STATO)
+25) test_until_done_stops_on_no_progress_without_chiude_flag
+26) test_until_done_existing_lotto_already_at_last_step_no_phantom_step
+27) test_until_done_blocked_by_critical_returns_outcome
 """
 
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
+
+
+# Scopo: neutralizza la facade transazionale nei unit test (SimpleTestCase, zero
+#        DB). Patcha `atomic` E `set_rollback` INSIEME: stubare solo `atomic`
+#        lascerebbe `set_rollback` a colpire una connessione senza blocco
+#        atomico → TransactionManagementError (regressione 2026-07-22, quando il
+#        runner ha iniziato a marcare il rollback del dry-run).
+#        Restituisce la lista dei valori passati a `set_rollback`, così i test
+#        possono asserire l'invariante «il dry-run non persiste».
+@contextmanager
+def _fake_tx():
+    rollback_calls: list[bool] = []
+    with (
+        patch(
+            "apps.vendite.services.pipeline_runner.transaction.atomic",
+            return_value=nullcontext(),
+        ),
+        patch(
+            "apps.vendite.services.pipeline_runner.transaction.set_rollback",
+            side_effect=rollback_calls.append,
+        ),
+    ):
+        yield rollback_calls
 
 
 class LottoPipelineRunnerUnitTests(SimpleTestCase):
@@ -171,6 +200,25 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         def log_event(self, **kwargs):
             return 1
 
+    # Scopo: repo con UN SOLO step (EMESSA/2) da eseguire — usato dalla coppia di
+    #        test sulla sync fatture (run vero vs dry-run), che devono differire
+    #        SOLO per il flag `dry_run` per essere confrontabili.
+    class _SingleEmessaStepRepo(_RepoMock):
+        # Scopo: Forza il resolve a tenere lo step EMESSA come unico step da eseguire.
+        def get_lotto_stato_doc_fiscale_id(self, lotto_id):
+            return None
+
+        # Scopo: Restituisce un solo step EMESSA(2).
+        def list_pipeline_steps(self, tipo_lotto, utility_id=None, tipo_doc_fiscale_id=None):
+            class _Step:
+                # Scopo: Inizializza la istanza.
+                def __init__(self, stato_doc_fiscale_id, descrizione, ordine):
+                    self.stato_doc_fiscale_id = stato_doc_fiscale_id
+                    self.descrizione = descrizione
+                    self.ordine = ordine
+
+            return [_Step(2, "Step EMESSA", 1)]
+
     class _StepExecutorMock:
         # Scopo: Inizializza la istanza.
         def __init__(self):
@@ -203,7 +251,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = self._RepoMock()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             result = runner.run_pipeline(LottoPipelineParams(dry_run=True))
         self.assertEqual(result, 10)
         self.assertTrue(step_executor.called)
@@ -214,7 +262,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = self._RepoMock()
         step_executor = self._UnexpectedFailingStepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             with self.assertRaises(ServiceError) as exc:
                 runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(exc.exception.code, "E_PIPELINE")
@@ -226,7 +274,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = self._RepoMock()
         step_executor = self._ServiceFailingStepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             with self.assertRaises(ServiceError) as exc:
                 runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(exc.exception.code, "E_TASK_NOT_IMPLEMENTED")
@@ -244,7 +292,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = _FailingMarkRepo()
         step_executor = self._ServiceFailingStepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             with self.assertRaises(ServiceError) as exc:
                 runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(exc.exception.code, "E_TASK_NOT_IMPLEMENTED")
@@ -259,7 +307,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = _CompletedRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             result = runner.run_pipeline(LottoPipelineParams(lotto_id=0, dry_run=True))
         self.assertEqual(result, 10)
         self.assertEqual(len(step_executor.calls), 1)
@@ -279,7 +327,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = _ErroredRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             result = runner.run_pipeline(LottoPipelineParams(dry_run=True, tipo_lotto="MASSIVO"))
         self.assertEqual(result, 10)
         self.assertEqual(len(step_executor.calls), 1)
@@ -314,7 +362,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = _ErroredRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             result = runner.run_pipeline(
                 LottoPipelineParams(
                     dry_run=True,
@@ -343,7 +391,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = _ErroredRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             result = runner.run_pipeline(
                 LottoPipelineParams(
                     dry_run=True,
@@ -366,7 +414,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = _RunningRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             with self.assertRaises(ServiceError) as exc:
                 runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=True))
         self.assertEqual(exc.exception.code, "E_PIPELINE_LOTTO_IN_ESECUZIONE")
@@ -393,7 +441,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = _CloseByFlagRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             result = runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(result, 10)
         self.assertEqual(getattr(repo, "close_lotto_operativo_called", None), 10)
@@ -419,7 +467,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = _NoCloseByFlagRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             result = runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(result, 10)
         self.assertIsNone(getattr(repo, "close_lotto_operativo_called", None))
@@ -428,40 +476,37 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
     # sincronizzate allo stato_doc_fiscale_id dello step (es. EMESSA/2), così la
     # fattura segue il lotto e non salta a DEFINITIVA/8 violando la matrice.
     def test_runner_syncs_fatture_to_step_stato_on_forward(self):
-        class _SingleEmessaStepRepo(self._RepoMock):
-            # Scopo: Forza il resolve a tenere lo step EMESSA come unico step da eseguire.
-            def get_lotto_stato_doc_fiscale_id(self, lotto_id):
-                return None
-
-            # Scopo: Restituisce un solo step EMESSA(2).
-            def list_pipeline_steps(self, tipo_lotto, utility_id=None, tipo_doc_fiscale_id=None):
-                class _Step:
-                    # Scopo: Inizializza la istanza.
-                    def __init__(self, stato_doc_fiscale_id, descrizione, ordine):
-                        self.stato_doc_fiscale_id = stato_doc_fiscale_id
-                        self.descrizione = descrizione
-                        self.ordine = ordine
-
-                return [_Step(2, "Step EMESSA", 1)]
-
-        repo = _SingleEmessaStepRepo()
+        repo = self._SingleEmessaStepRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx() as rollback_calls:
             result = runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(result, 10)
         # La fattura viene allineata allo stato dello step (lotto 10, stato 2).
         self.assertEqual(getattr(repo, "sync_calls", []), [(10, 2)])
+        # Run vero: la fase NON va mai marcata per il rollback (deve committare).
+        self.assertEqual(rollback_calls, [])
 
-    # Scopo: Verifica che in dry-run NON venga sincronizzato lo stato delle fatture.
-    def test_runner_does_not_sync_fatture_in_dry_run(self):
-        repo = self._RepoMock()
+    # Scopo: DRY-RUN — la sync fatture viene eseguita COME nel run vero (la coppia
+    #        stato-lotto + stato-fatture è indivisibile: separarle è ciò che ha
+    #        prodotto i lotti 106/107, lotto EMESSA con fatture DRAFT), ma
+    #        l'intera fase è marcata per il ROLLBACK, quindi non persiste nulla.
+    #        Regressione storica: qui si asseriva `sync_calls == []`, cioè
+    #        esattamente il comportamento che generava l'incoerenza.
+    def test_runner_dry_run_sincronizza_ma_non_persiste(self):
+        # Stesso repo del gemello `..._syncs_fatture_to_step_stato_on_forward`:
+        # l'unica differenza fra i due test è `dry_run`.
+        repo = self._SingleEmessaStepRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx() as rollback_calls:
             result = runner.run_pipeline(LottoPipelineParams(dry_run=True))
         self.assertEqual(result, 10)
-        self.assertEqual(getattr(repo, "sync_calls", []), [])
+        # Stato lotto e stato fatture avanzano INSIEME anche in dry-run —
+        # identico al run vero (la coppia è indivisibile)...
+        self.assertEqual(getattr(repo, "sync_calls", []), [(10, 2)])
+        # ...ma la fase viene marcata per il rollback: nessuna scrittura persiste.
+        self.assertEqual(rollback_calls, [True])
 
     # Scopo: Verifica il caso `test_runner_does_not_block_new_lotto_when_initial_state_is_in_esecuzione`.
     def test_runner_does_not_block_new_lotto_when_initial_state_is_in_esecuzione(self):
@@ -473,7 +518,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = _NewLottoInEsecuzioneRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             result = runner.run_pipeline(LottoPipelineParams(lotto_id=0, dry_run=True))
         self.assertEqual(result, 10)
         self.assertTrue(step_executor.called)
@@ -495,7 +540,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = _CriticalSignalsRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             with self.assertRaises(ServiceError) as exc:
                 runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(exc.exception.code, "E_PIPELINE_LOTTO_CRITICAL")
@@ -519,7 +564,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = _StatoEsecuzioneErroreRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             with self.assertRaises(ServiceError) as exc:
                 runner.run_pipeline(LottoPipelineParams(dry_run=False))
         self.assertEqual(exc.exception.code, "E_PIPELINE_LOTTO_CRITICAL")
@@ -543,7 +588,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = _OnlyWarningsRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             result = runner.run_pipeline(LottoPipelineParams(dry_run=True))
         self.assertEqual(result, 10)
         self.assertTrue(step_executor.called)
@@ -553,7 +598,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = MagicMock(wraps=self._RepoMock())
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             runner.run_pipeline(LottoPipelineParams(dry_run=True))
         started_calls = [
             c for c in repo.log_event.call_args_list
@@ -569,7 +614,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = MagicMock(wraps=self._RepoMock())
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             runner.run_pipeline(LottoPipelineParams(dry_run=True))
         completed_calls = [
             c for c in repo.log_event.call_args_list
@@ -584,7 +629,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = MagicMock(wraps=self._RepoMock())
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             runner.run_pipeline(LottoPipelineParams(dry_run=True))
         step_calls = [
             c for c in repo.log_event.call_args_list
@@ -598,7 +643,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = MagicMock(wraps=self._RepoMock())
         step_executor = self._UnexpectedFailingStepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             with self.assertRaises(ServiceError):
                 runner.run_pipeline(LottoPipelineParams(dry_run=False))
         error_calls = [
@@ -616,7 +661,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = self._RepoMock()  # job_stato "DRAFT" (non ERRORE), stato_doc corrente 1
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             result = runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=True))
         self.assertEqual(result, 10)
         self.assertEqual(len(step_executor.calls), 1)
@@ -634,7 +679,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = _AtLastStepRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             result = runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=True))
         self.assertEqual(result, 10)
         self.assertEqual(len(step_executor.calls), 0)
@@ -666,13 +711,35 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = self._StatefulRepo(chiude_su=8)
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx() as rollback_calls:
             esito = runner.run_lotto_until_done(LottoPipelineParams(dry_run=True))
         self.assertEqual(esito["lotto_id"], 10)
         self.assertEqual(esito["step_eseguiti"], 3)
         self.assertEqual(esito["motivo_stop"], "COMPLETATO")
         self.assertEqual(esito["stato_doc_fiscale_id"], 8)
         self.assertEqual([c["stato_doc_fiscale_id"] for c in step_executor.calls], [1, 2, 8])
+        # DRY-RUN a livello driver: la catena INTERA viene simulata dentro una
+        # sola transazione marcata per rollback UNA volta a fine corsa. Un
+        # rollback per-step ([True, True, True]) sarebbe la regressione che
+        # impedisce alla catena di avanzare (uscita immediata «COMPLETATO»/0).
+        self.assertEqual(rollback_calls, [True])
+
+    # Scopo: C-1 (gate fiscale D-1) — con fino_a_stato_doc_fiscale_id=2 (EMESSA)
+    # il driver si FERMA allo stato richiesto senza eseguire lo step DEFINITIVA:
+    # 2 step eseguiti [1,2], motivo FERMATO_A_STATO.
+    def test_until_done_ferma_a_stato_richiesto(self):
+        repo = self._StatefulRepo(chiude_su=8)
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with _fake_tx():
+            esito = runner.run_lotto_until_done(
+                LottoPipelineParams(dry_run=True, fino_a_stato_doc_fiscale_id=2)
+            )
+        self.assertEqual(esito["lotto_id"], 10)
+        self.assertEqual(esito["step_eseguiti"], 2)
+        self.assertEqual(esito["motivo_stop"], "FERMATO_A_STATO")
+        self.assertEqual(esito["stato_doc_fiscale_id"], 2)
+        self.assertEqual([c["stato_doc_fiscale_id"] for c in step_executor.calls], [1, 2])
 
     # Scopo: F2 — senza flag chiude_lotto, il driver si ferma per "nessun avanzamento"
     # una volta esaurito il catalogo (3 step eseguiti), esito COMPLETATO.
@@ -680,7 +747,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = self._StatefulRepo(chiude_su=None)
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             esito = runner.run_lotto_until_done(LottoPipelineParams(dry_run=True))
         self.assertEqual(esito["step_eseguiti"], 3)
         self.assertEqual(esito["motivo_stop"], "COMPLETATO")
@@ -693,7 +760,7 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo.current = 8  # già all'ultimo step del catalogo [1,2,8]
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx():
             esito = runner.run_lotto_until_done(LottoPipelineParams(lotto_id=10, dry_run=True))
         self.assertEqual(esito["lotto_id"], 10)
         self.assertEqual(esito["step_eseguiti"], 0)
@@ -718,9 +785,11 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         repo = _CriticalRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
-        with patch("apps.vendite.services.pipeline_runner.transaction.atomic", return_value=nullcontext()):
+        with _fake_tx() as rollback_calls:
             esito = runner.run_lotto_until_done(LottoPipelineParams(lotto_id=10, dry_run=False))
         self.assertEqual(esito["lotto_id"], 10)
         self.assertEqual(esito["step_eseguiti"], 0)
         self.assertEqual(esito["motivo_stop"], "BLOCCATO_CRITICITA")
         self.assertEqual(len(step_executor.calls), 0)
+        # Run vero (dry_run=False): il driver non marca MAI il rollback.
+        self.assertEqual(rollback_calls, [])

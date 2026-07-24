@@ -81,7 +81,7 @@ import ContrattoDrawer from '../../components/ContrattoDrawer.vue'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useOfferteStore()
 const { execute, loading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
@@ -122,6 +122,17 @@ const stato = computed(() => detail.value?.stato_codice_interno || null)
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
 const availableActions = caps.availableActions
 const canEditTestata = caps.canEdit
+
+// Push contratto / genera ordine: le azioni arrivano data-driven in
+// `available_actions` solo quando sono eseguibili, quindi da sole spariscono
+// senza spiegare perche'. La capability espone anche il motivo: banner
+// informativo, mirror di PreventiviDrawer/OrdiniDrawer.
+const pushReasons = computed(() =>
+  [
+    { ok: caps.flag('can_push_contratto'), key: detail.value?.can_push_contratto_reason_key },
+    { ok: caps.flag('can_genera_ordine'), key: detail.value?.can_genera_ordine_reason_key },
+  ].filter((r) => !r.ok && r.key && te(r.key)),
+)
 
 // isReadonly cumulativo: OR tra permessi area e workflow lock (= !canEditTestata
 // in edit mode). In create canEditTestata e' true per costruzione (l'offerta
@@ -745,6 +756,7 @@ const drawerActions = computed(() => {
     ...mapAvailableActionsToDrawerActions({
       availableActions,
       t,
+      te,
       onAction: onActionDispatch,
       readonly: parentReadonly.value,
     }),
@@ -826,6 +838,19 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
               />
             </template>
           </DrawerActionsBar>
+
+          <!-- Motivo per cui push contratto / genera ordine non sono offerti
+               (gia' generato, offerta non accettata): senza questo i pulsanti
+               spariscono e basta. -->
+          <Message
+            v-for="r in pushReasons"
+            :key="r.key"
+            severity="info"
+            :closable="false"
+            class="mt-1"
+          >
+            {{ t(r.key) }}
+          </Message>
 
           <Message
             v-if="isStatoTerminale"
@@ -1089,7 +1114,8 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                 <Divider />
                 <LineagePassaggiPanel
                   base-path="/vendite/offerte"
-                  :doc-id="offertaId" />
+                  :doc-id="offertaId"
+                  :readonly="parentReadonly" />
               </template>
 
             </TabPanel>

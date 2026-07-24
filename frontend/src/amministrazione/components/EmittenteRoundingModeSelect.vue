@@ -34,7 +34,7 @@ const { t } = useI18n()
     value-field="codice"
     show-code
     :filter="false"
-    :placeholder="placeholder || t('amm.select_rounding_policy')"
+    :placeholder="placeholder || t('amministrazione.select_rounding_policy')"
     :disabled="disabled"
     :show-clear="showClear"
     @update:model-value="(v) => emit('update:modelValue', v)"

@@ -26,7 +26,7 @@ const emit = defineEmits(['update:visible'])
 // Titolo drawer che include il nome operatore quando il dettaglio e' gia'
 // stato caricato da OperatorePermessiTab. Fallback al titolo generico.
 const drawerTitle = computed(() => {
-  const base = t('amm.permessi_operatore_title')
+  const base = t('amministrazione.permessi_operatore_title')
   const u = store.currentOperatore
   if (!u || u.auth_user_id !== props.authUserId) return base
   const fullName = [u.soggetto_cognome || u.last_name, u.soggetto_nome || u.first_name]
