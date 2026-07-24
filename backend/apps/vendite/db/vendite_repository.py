@@ -27,6 +27,7 @@ from apps.vendite.types import (
     DashBacklogDocumentoRow,
     DashBacklogRiepilogoRow,
     DashCompetenzaAttivitaRow,
+    DashCompetenzaCommessaRow,
     DashCompetenzaErroreRow,
     DashCompetenzaMensileRow,
     LineageNodoRow,
@@ -728,6 +729,115 @@ class VenditeRepository:
                     "stato_fattura_codice": None if row[23] is None else str(row[23]),
                     "valore_fatturato": str(row[24]) if row[24] is not None else None,
                     "fattura_critical": bool(row[25]),
+                }
+            )
+        return result, total_count
+
+    # Colonne di ordinamento ammesse per il drill-down AGGREGATO per commessa.
+    # Su aggregati si ordina per gli aggregati, non per le colonne di riga.
+    DASH_COMPETENZA_COMMESSE_SORT_COLUMNS = {
+        "commessa_codice": "commessa_codice",
+        "cliente_display": "cliente_display",
+        "n_attivita": "n_attivita",
+        "valore_tot": "valore_tot",
+        "data_attivita_max": "data_attivita_max",
+    }
+
+    # Scopo: Drill-down AGGREGATO per commessa (DEC-4) — una riga per commessa nel
+    #        perimetro corrente (competenza_mese + stadio + solo_ritardo), con
+    #        n attivita', totali valore/fatturato, estremi data e recuperi tardivi.
+    #        Sostituisce la lista a grana attivita' quando l'operatore vuole la
+    #        fotografia per commessa; il dettaglio resta nel drawer di gestione.
+    # Perimetro: sola lettura su vw_dash_competenza_attivita (scope GUC in vista).
+    # Risultato: tuple (lista DashCompetenzaCommessaRow, conteggio commesse).
+    def list_dash_competenza_commesse(
+        self,
+        *,
+        competenza_mese: date,
+        stadio: str | None,
+        solo_ritardo: bool,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[DashCompetenzaCommessaRow], int]:
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+
+        conditions: list[str] = ["a.competenza_mese = %s"]
+        params: list[Any] = [competenza_mese]
+        if stadio is not None:
+            conditions.append("a.stadio = %s")
+            params.append(stadio)
+        if solo_ritardo:
+            conditions.append("a.emessa_in_ritardo IS TRUE")
+
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+        # ORDER BY server-side sugli aggregati (corretto su TUTTE le pagine):
+        # colonna dalla whitelist + direzione, tiebreak stabile su commessa.
+        # Assente/non ammesso -> default valore_tot DESC (le commesse piu' pesanti
+        # prima), coerente col default a grana attivita'.
+        sort_col = self.DASH_COMPETENZA_COMMESSE_SORT_COLUMNS.get(order_by or "")
+        if sort_col is not None:
+            # sql_order_direction ritorna gia' 'ASC NULLS FIRST'/'DESC NULLS LAST':
+            # NON aggiungere un secondo NULLS (errore di sintassi PG).
+            direction = sql_order_direction(order_dir)
+            order_clause = f"ORDER BY {sort_col} {direction}, commessa_codice ASC, commessa_id ASC"
+        else:
+            order_clause = "ORDER BY valore_tot DESC NULLS LAST, commessa_codice ASC, commessa_id ASC"
+
+        # Conteggio = numero di commesse distinte nel perimetro (una riga per
+        # commessa): COUNT su una subquery raggruppata.
+        count_sql = f"""
+            SELECT COUNT(*) FROM (
+                SELECT a.commessa_id
+                FROM vendite.vw_dash_competenza_attivita a
+                {where_clause}
+                GROUP BY a.commessa_id
+            ) t
+        """
+
+        data_sql = f"""
+            SELECT
+                a.commessa_id,
+                a.commessa_codice,
+                a.cliente_display,
+                COUNT(*)                                         AS n_attivita,
+                COUNT(*) FILTER (WHERE a.emessa_in_ritardo IS TRUE) AS n_in_ritardo,
+                SUM(a.valore)                                   AS valore_tot,
+                SUM(a.valore_fatturato)                         AS valore_fatturato_tot,
+                MIN(a.data_attivita)                            AS data_attivita_min,
+                MAX(a.data_attivita)                            AS data_attivita_max
+            FROM vendite.vw_dash_competenza_attivita a
+            {where_clause}
+            GROUP BY a.commessa_id, a.commessa_codice, a.cliente_display
+            {order_clause}
+            LIMIT %s OFFSET %s
+        """
+
+        with connection.cursor() as cursor:
+            cursor.execute(count_sql, params)
+            row = cursor.fetchone()
+            assert row is not None
+            total_count = int(row[0])
+
+            cursor.execute(data_sql, params + [safe_limit, safe_offset])
+            rows = cursor.fetchall()
+
+        result: list[DashCompetenzaCommessaRow] = []
+        for row in rows:
+            result.append(
+                {
+                    "commessa_id": int(row[0]),
+                    "commessa_codice": None if row[1] is None else str(row[1]),
+                    "cliente_display": None if row[2] is None else str(row[2]),
+                    "n_attivita": int(row[3]),
+                    "n_in_ritardo": int(row[4]),
+                    "valore_tot": str(row[5]) if row[5] is not None else None,
+                    "valore_fatturato_tot": str(row[6]) if row[6] is not None else None,
+                    "data_attivita_min": row[7].isoformat() if row[7] is not None else None,
+                    "data_attivita_max": row[8].isoformat() if row[8] is not None else None,
                 }
             )
         return result, total_count

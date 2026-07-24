@@ -426,7 +426,12 @@ const drawerActions = computed(() => [
     <div class="app-drawer-content">
       <template v-if="contentReady">
         <DrawerEntityHeader v-if="stato">
-          <Tag :value="`#${stato.commessa_id}`" severity="secondary" />
+          <!-- Codice COMMESSA (E-DB-4): correla il drawer alla lista, che mostra
+               commessa_codice; fallback a #<PK> finché il dato non c'è. -->
+          <Tag :value="stato.commessa_codice || `#${stato.commessa_id}`" severity="secondary" />
+          <span v-if="stato.cliente_display" class="app-drawer-header-muted">
+            {{ stato.cliente_display }}
+          </span>
           <span v-if="stato.policy_fatturazione" class="text-color-secondary">
             {{ stato.policy_fatturazione }}
           </span>

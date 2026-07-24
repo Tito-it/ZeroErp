@@ -24,13 +24,22 @@ viste (DB-first); il service fa solo il **pivot** del formato lungo. Livello are
 ```text
 GET /api/v1/vendite/dashboard-competenza/            (ApiDashboardCompetenza)
 GET /api/v1/vendite/dashboard-competenza/attivita/   (ApiDashboardCompetenzaAttivita)
+GET /api/v1/vendite/dashboard-competenza/commesse/   (ApiDashboardCompetenzaCommesse)
 GET /api/v1/vendite/dashboard-competenza/errori/     (ApiDashboardCompetenzaErrori)
 ```
 
 Catena: view (`views_dashboard_competenza.py`) →
-`vendite_service.fn_dash_competenza_{mensile,attivita,errori}` →
-`VenditeRepository.list_dash_competenza_{mensile,attivita,errori}` +
+`vendite_service.fn_dash_competenza_{mensile,attivita,commesse,errori}` →
+`VenditeRepository.list_dash_competenza_{mensile,attivita,commesse,errori}` +
 `count_dash_competenza_errori_mensile`.
+
+Il drill-down esiste in **due grane** sullo stesso perimetro (mese + stadio +
+`solo_ritardo`): `attivita/` a grana attività (una riga per `commessa_attivita`)
+e `commesse/` **aggregato per commessa** (una riga per commessa — DEC-4, brief
+processi-fatturazione §FASE E). Il FE della Lente 1 usa `commesse/` per la lista
+(la commessa non è più ripetuta); il dettaglio a grana attività vive nel drawer
+di gestione commessa. Entrambi leggono `vw_dash_competenza_attivita` (lo scope
+emittente è DB-side via GUC nella vista): `commesse/` fa `GROUP BY commessa_id`.
 
 ## Input
 
@@ -59,6 +68,19 @@ Catena: view (`views_dashboard_competenza.py`) →
   fuori whitelist o direzione ≠ asc/desc → 400 (`E_VENDITE_VALIDATION`). Tiebreak
   stabile `(commessa_codice, commessa_attivita_id)`.
 - `page` / `page_size` (opzionali): paginazione standard (default 1/50, max 200).
+
+### `GET /dashboard-competenza/commesse/`
+
+Stesso perimetro e stessi filtri di `attivita/` (`competenza_mese` obbligatorio,
+`stadio`, `solo_ritardo`, `page`/`page_size`), ma **aggregato per commessa**.
+
+- `order_by` / `order_dir` (opzionali): whitelist **aggregata** —
+  `commessa_codice` | `cliente_display` | `n_attivita` | `valore_tot` (default,
+  DESC) | `data_attivita_max`; `order_dir` = `asc` | `desc`. Le colonne di riga
+  (es. `data_attivita`) **non** sono ammesse qui → 400 (`E_VENDITE_VALIDATION`).
+  Tiebreak stabile `(commessa_codice, commessa_id)`.
+- Il `count` dell'envelope è il **numero di commesse distinte** nel perimetro
+  (non di attività).
 
 ### `GET /dashboard-competenza/errori/`
 
@@ -131,6 +153,17 @@ Ordinamento: default `valore DESC NULLS LAST, commessa_codice,
 commessa_attivita_id`; con `order_by`/`order_dir` (vedi Input) l'ORDER BY diventa
 `<colonna whitelist> <asc|desc> NULLS LAST` + tiebreak `commessa_codice,
 commessa_attivita_id` — colonna e direzione **whitelistate** (mai input grezzo).
+
+### Drill-down per commessa (aggregato)
+
+Envelope paginato standard; `count` = numero di **commesse** distinte. Ogni riga:
+`commessa_id`, `commessa_codice`, `cliente_display`, `n_attivita` (COUNT),
+`n_in_ritardo` (COUNT FILTER `emessa_in_ritardo`), `valore_tot` (SUM `valore`),
+`valore_fatturato_tot` (SUM `valore_fatturato`), `data_attivita_min` /
+`data_attivita_max` (MIN/MAX). Importi/date serializzati come stringhe (NULL
+preservato). Ordinamento: default `valore_tot DESC NULLS LAST, commessa_codice,
+commessa_id`; con `order_by`/`order_dir` colonna **aggregata** whitelistata +
+stesso tiebreak.
 
 ### Errori vivi
 

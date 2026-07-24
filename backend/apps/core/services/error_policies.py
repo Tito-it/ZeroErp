@@ -787,6 +787,21 @@ class ErrorPolicyRegistry:
             ui_action="show_toast_error",
             user_message="Riallineamento richiede conferma: la versione listino e` cambiata.",
         ),
+        # Guard di uscita commessa (brief-db-guard-uscita-commessa 558/559):
+        # transizione terminale IRREVERSIBILE bloccata → conflitto di stato (409),
+        # come la famiglia immutabilita`. Banner: e` un blocco d'azione grave.
+        "E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE": ErrorPolicy(
+            code="E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Annullamento non consentito: la commessa ha righe gia` emesse.",
+        ),
+        "E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI": ErrorPolicy(
+            code="E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Chiusura non consentita: restano righe approvate non ancora emesse.",
+        ),
         # ── Pratiche ──
         "E_PRATICA_VALIDATION": ErrorPolicy(
             code="E_PRATICA_VALIDATION",

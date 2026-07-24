@@ -36,7 +36,7 @@ import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { statoDocFiscaleSeverity } from '../../core/utils/severity'
-import { approvaCommessaAttivita, approvaCompetenza } from '../api/commesse'
+import { approvaCompetenza } from '../api/commesse'
 import { getFatturazioneRun, runFatturazione, runNumerazione } from '../api/lotti'
 import { useDashboardCompetenzaStore } from '../stores/dashboardCompetenza'
 
@@ -71,13 +71,13 @@ const {
   stadioSelezionato,
   soloRitardo,
   mesi,
-  attivita,
-  attivitaCount,
-  attivitaPage,
-  attivitaPageSize,
-  attivitaLoading,
-  attivitaOrderBy,
-  attivitaOrderDir,
+  commesse,
+  commesseCount,
+  commessePage,
+  commessePageSize,
+  commesseLoading,
+  commesseOrderBy,
+  commesseOrderDir,
   errori,
   erroriCount,
   erroriPage,
@@ -91,7 +91,7 @@ const { nomiMesi, competenzaCorrente, selezionaMese, cambiaAnno, stepMese } = us
   anno,
   meseIdx,
   onMeseChange: () => {
-    store.resetAttivita()
+    store.resetCommesse()
     store.resetErrori()
   },
   onAnnoChange: loadMensile,
@@ -168,11 +168,11 @@ async function loadMensile() {
   }
 }
 
-// Scopo: carica la pagina corrente del drill-down attivita' (competenza
+// Scopo: carica la pagina corrente del drill-down per commessa (competenza
 //        derivata da anno/mese selezionati, race-free sul cambio anno).
-async function loadAttivita() {
+async function loadCommesse() {
   try {
-    await store.fetchAttivita(competenzaCorrente.value)
+    await store.fetchCommesse(competenzaCorrente.value)
   } catch (err) {
     notify.error(extractApiError(err, t('common.error')))
   }
@@ -188,19 +188,19 @@ async function loadErrori() {
 }
 
 // Ref alla sezione drill-down per l'auto-scroll post-selezione.
-const attivitaSection = ref(null)
+const commesseSection = ref(null)
 
 function selezionaStadio(stadio) {
   if (stadioSelezionato.value === stadio) {
-    store.resetAttivita()
+    store.resetCommesse()
     return
   }
-  store.resetAttivita()
+  store.resetCommesse()
   stadioSelezionato.value = stadio
-  loadAttivita()
+  loadCommesse()
   // Su schermi piccoli la sezione renderizza sotto il fold: senza auto-scroll
   // il click sembra non fare nulla. Scroll dopo il re-render.
-  nextTick(() => attivitaSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  nextTick(() => commesseSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
 }
 
 // Il pannello errori segue (mese selezionato, aggregata): il watch scatta sia
@@ -218,28 +218,28 @@ watch([competenzaCorrente, mesi], () => {
 
 // Scopo: toggle filtro recuperi tardivi del drill-down (riparte da pagina 1).
 function onSoloRitardoChange() {
-  attivitaPage.value = 1
-  loadAttivita()
+  commessePage.value = 1
+  loadCommesse()
 }
 
-// Scopo: paginazione DataTable attivita' (lazy, paginator top; calcolo
+// Scopo: paginazione DataTable commesse (lazy, paginator top; calcolo
 //        pagina nel BB usePagedDashFetch).
-function onAttivitaPage(event) {
-  store.applyAttivitaPage(event)
-  loadAttivita()
+function onCommessePage(event) {
+  store.applyCommessePage(event)
+  loadCommesse()
 }
 
-// Ordinamento colonne attivita' per il DataTable (controllato): campo dallo
+// Ordinamento colonne commesse per il DataTable (controllato): campo dallo
 // store, direzione nella convenzione PrimeVue (1 asc, -1 desc).
-const attivitaSortOrder = computed(() => (attivitaOrderDir.value === 'desc' ? -1 : 1))
+const commesseSortOrder = computed(() => (commesseOrderDir.value === 'desc' ? -1 : 1))
 
-// Scopo: ordinamento colonne attivita' (server-side, lista lazy): aggiorna lo
+// Scopo: ordinamento colonne commesse (server-side, lista lazy): aggiorna lo
 //        stato sort e ricarica dalla PAGINA 1 senza deselezionare lo stadio
 //        (come il filtro recuperi tardivi). Corretto su tutte le pagine.
-function onAttivitaSort(event) {
-  store.applyAttivitaSort(event)
-  attivitaPage.value = 1
-  loadAttivita()
+function onCommesseSort(event) {
+  store.applyCommesseSort(event)
+  commessePage.value = 1
+  loadCommesse()
 }
 
 // Scopo: paginazione DataTable errori (lazy, paginator top; calcolo
@@ -266,7 +266,7 @@ const pageActions = computed(() => [
     command: () => {
       // Gli errori si riallineano da soli via watch sull'aggregata fresca.
       loadMensile()
-      if (stadioSelezionato.value) loadAttivita()
+      if (stadioSelezionato.value) loadCommesse()
     },
   },
 ])
@@ -279,7 +279,7 @@ const cardDaApprovare = computed(() => cards.value.find((c) => c.stadio === 'DA_
 //        seguono l'aggregata via watch).
 function reloadDopoAzione() {
   loadMensile()
-  if (stadioSelezionato.value) loadAttivita()
+  if (stadioSelezionato.value) loadCommesse()
 }
 
 // Scopo: verbo APPROVA a grana mese (A-2/D-3): conferma con contatore+valore
@@ -399,17 +399,24 @@ const { avvia: onRendiDefinitive, polling: numeraInCorso } = useVerboFatturazion
   },
 })
 
-// Scopo: verbo APPROVA a grana riga dal drill-down (A-1): conferma e approva
-//        la singola attivita' della sua commessa.
-function onApprovaRiga(row) {
+// Scopo: verbo APPROVA a grana commessa dal drill-down (A-1, DEC-4): la riga e'
+//        aggregata, quindi approva TUTTE le attivita' DA_APPROVARE della commessa
+//        nel mese via approva-competenza scoped (commessa_ids=[id]) — non la
+//        singola attivita' (che vive nel drawer). Conferma con contatore+codice.
+function onApprovaCommessa(row) {
   confirmAction({
-    title: t('vendite.dashboard_competenza.approva_riga_header'),
-    message: t('vendite.dashboard_competenza.approva_riga_conferma'),
+    title: t('vendite.dashboard_competenza.approva_commessa_header'),
+    message: t('vendite.dashboard_competenza.approva_commessa_conferma', {
+      n: row.n_attivita,
+      commessa: row.commessa_codice ?? `#${row.commessa_id}`,
+    }),
     onAccept: async () => {
       const res = await execute(() =>
-        approvaCommessaAttivita(row.commessa_id, [row.commessa_attivita_id]))
+        approvaCompetenza(competenzaCorrente.value, { commessaIds: [row.commessa_id] }))
       if (res !== null) {
-        notify.success(t('vendite.dashboard_competenza.approva_riga_esito'))
+        notify.success(t('vendite.dashboard_competenza.approva_commessa_esito', {
+          n: res?.approvate ?? 0,
+        }))
         reloadDopoAzione()
       }
     },
@@ -440,9 +447,10 @@ function apriLotto(lottoId) {
   lottoDrawerVisible.value = true
 }
 
-// Scopo: kebab riga drill-down — Apri commessa sempre; Approva solo sullo
-//        stadio DA_APPROVARE (con permesso e non in readonly).
-function buildAttivitaRowActions(row) {
+// Scopo: kebab riga drill-down (per commessa) — Apri commessa sempre; Approva
+//        solo sullo stadio DA_APPROVARE (con permesso e non in readonly),
+//        approva l'intera popolazione DA_APPROVARE della commessa nel mese.
+function buildCommessaRowActions(row) {
   return [
     {
       key: 'approva',
@@ -450,7 +458,7 @@ function buildAttivitaRowActions(row) {
       icon: 'pi pi-check',
       visible: stadioSelezionato.value === 'DA_APPROVARE' && canApprova.value,
       disabled: azioneLoading.value,
-      command: () => onApprovaRiga(row),
+      command: () => onApprovaCommessa(row),
     },
     {
       key: 'apri_commessa',
@@ -467,7 +475,7 @@ function buildAttivitaRowActions(row) {
 // (memoria feedback_keepalive_onactivated).
 onActivated(() => {
   loadMensile()
-  if (stadioSelezionato.value) loadAttivita()
+  if (stadioSelezionato.value) loadCommesse()
 })
 </script>
 
@@ -723,12 +731,14 @@ onActivated(() => {
           </DataTable>
         </div>
 
-        <!-- Drill-down attivita' in pagina (click su card stadio). -->
-        <div ref="attivitaSection" class="app-dash-fermi">
+        <!-- Drill-down per COMMESSA in pagina (click su card stadio, DEC-4):
+             una riga per commessa; il dettaglio a grana attivita' e' nel
+             drawer di gestione (kebab «Apri commessa»). -->
+        <div ref="commesseSection" class="app-dash-fermi">
           <template v-if="stadioSelezionato">
             <div class="app-page-toolbar">
               <h4 class="app-dash-fermi-title">
-                {{ t('vendite.dashboard_competenza.attivita_titolo', { stadio: stadioSelezionatoLabel }) }}
+                {{ t('vendite.dashboard_competenza.commesse_titolo', { stadio: stadioSelezionatoLabel }) }}
               </h4>
               <label class="app-dash-filter-toggle">
                 <Checkbox v-model="soloRitardo" binary @change="onSoloRitardoChange" />
@@ -736,27 +746,27 @@ onActivated(() => {
               </label>
             </div>
             <DataTable
-              v-if="attivitaCount > 0 || attivitaLoading"
-              :value="attivita"
-              :loading="attivitaLoading"
-              :total-records="attivitaCount"
-              :rows="attivitaPageSize"
-              :first="(attivitaPage - 1) * attivitaPageSize"
+              v-if="commesseCount > 0 || commesseLoading"
+              :value="commesse"
+              :loading="commesseLoading"
+              :total-records="commesseCount"
+              :rows="commessePageSize"
+              :first="(commessePage - 1) * commessePageSize"
               paginator
               paginator-position="top"
               lazy
               :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
-              :sort-field="attivitaOrderBy"
-              :sort-order="attivitaSortOrder"
+              :sort-field="commesseOrderBy"
+              :sort-order="commesseSortOrder"
               class="app-datatable app-datatable--inner"
               striped-rows
-              data-key="commessa_attivita_id"
-              @page="onAttivitaPage"
-              @sort="onAttivitaSort"
+              data-key="commessa_id"
+              @page="onCommessePage"
+              @sort="onCommesseSort"
             >
-              <Column field="commessa_codice" :header="t('vendite.dashboard_competenza.col_commessa')" sortable style="width: 130px;">
+              <Column field="commessa_codice" :header="t('vendite.dashboard_competenza.col_commessa')" sortable style="width: 140px;">
                 <template #body="{ data }">
-                  {{ data.commessa_codice ?? '—' }}
+                  {{ data.commessa_codice ?? `#${data.commessa_id}` }}
                 </template>
               </Column>
               <Column field="cliente_display" :header="t('vendite.dashboard_competenza.col_cliente')" sortable>
@@ -764,80 +774,53 @@ onActivated(() => {
                   {{ data.cliente_display ?? '—' }}
                 </template>
               </Column>
-              <Column field="articolo_codice" :header="t('vendite.dashboard_competenza.col_articolo')" sortable>
+              <Column field="n_attivita" :header="t('vendite.dashboard_competenza.col_n_attivita')" sortable style="width: 100px;">
                 <template #body="{ data }">
-                  {{ data.articolo_descrizione ?? data.articolo_codice ?? '—' }}
+                  <Tag :value="String(data.n_attivita)" severity="secondary" v-tooltip.bottom="t('vendite.dashboard_competenza.n_attivita_tooltip', { n: data.n_attivita })" />
                 </template>
               </Column>
-              <Column field="data_attivita" :header="t('vendite.dashboard_competenza.col_data_attivita')" sortable style="width: 110px;">
+              <Column field="valore_tot" :header="t('vendite.dashboard_competenza.col_valore')" sortable style="width: 130px;">
                 <template #body="{ data }">
-                  {{ data.data_attivita ? displayDate(data.data_attivita) : '—' }}
+                  {{ data.valore_tot !== null ? formatCurrency(data.valore_tot) : '—' }}
                 </template>
               </Column>
-              <Column field="valore" :header="t('vendite.dashboard_competenza.col_valore')" sortable style="width: 120px;">
+              <Column field="valore_fatturato_tot" :header="t('vendite.dashboard_competenza.col_fatturato')" style="width: 130px;">
                 <template #body="{ data }">
-                  {{ data.valore !== null ? formatCurrency(data.valore) : '—' }}
+                  {{ data.valore_fatturato_tot !== null ? formatCurrency(data.valore_fatturato_tot) : '—' }}
                 </template>
               </Column>
-              <Column field="emessa_in_ritardo" :header="t('vendite.dashboard_competenza.col_ritardo')" style="width: 90px;">
+              <Column field="data_attivita_max" :header="t('vendite.dashboard_competenza.col_periodo')" sortable style="width: 150px;">
                 <template #body="{ data }">
-                  <span v-if="data.emessa_in_ritardo" class="app-dash-ritardo">
-                    <i class="pi pi-clock" v-tooltip.bottom="t('vendite.dashboard_competenza.emessa_in_ritardo_tooltip')" />
+                  <span v-if="data.data_attivita_min">
+                    {{ displayDate(data.data_attivita_min) }}<template v-if="data.data_attivita_max && data.data_attivita_max !== data.data_attivita_min"> – {{ displayDate(data.data_attivita_max) }}</template>
                   </span>
                   <span v-else>—</span>
                 </template>
               </Column>
-              <Column field="fattura_numero" :header="t('vendite.dashboard_competenza.col_fattura')" style="width: 110px;">
+              <Column field="n_in_ritardo" :header="t('vendite.dashboard_competenza.col_ritardo')" style="width: 90px;">
                 <template #body="{ data }">
-                  {{ fatturaDisplay(data) }}
-                </template>
-              </Column>
-              <!-- Atterraggio contestuale sul lotto (B-5): stesso drawer/handler
-                   del pannello errori; link solo sulle righe con lotto (stadi
-                   FATTURATA / EMESSA in lotto). -->
-              <Column field="lotto_id" :header="t('vendite.dashboard_competenza.col_lotto')" style="width: 90px;">
-                <template #body="{ data }">
-                  <Button
-                    v-if="data.lotto_id"
-                    link
-                    class="app-cell-link"
-                    :label="String(data.lotto_id)"
-                    v-tooltip.top="t('vendite.dashboard_competenza.apri_lotto')"
-                    @click="apriLotto(data.lotto_id)"
-                  />
+                  <span v-if="data.n_in_ritardo > 0" class="app-dash-ritardo">
+                    <i class="pi pi-clock" /> {{ data.n_in_ritardo }}
+                  </span>
                   <span v-else>—</span>
                 </template>
               </Column>
-              <Column field="stato_fattura_codice" :header="t('vendite.dashboard_competenza.col_stato_fattura')" style="width: 120px;">
-                <template #body="{ data }">
-                  <Tag
-                    v-if="data.stato_fattura_codice"
-                    :value="data.stato_fattura_codice"
-                    :severity="statoDocFiscaleSeverity(data.stato_fattura_codice_interno)"
-                  />
-                  <span v-else>—</span>
-                </template>
-              </Column>
-              <Column field="valore_fatturato" :header="t('vendite.dashboard_competenza.col_fatturato')" style="width: 120px;">
-                <template #body="{ data }">
-                  {{ data.valore_fatturato !== null ? formatCurrency(data.valore_fatturato) : '—' }}
-                </template>
-              </Column>
-              <!-- Azioni riga (Fase A cockpit): Approva (solo DA_APPROVARE) + Apri commessa. -->
+              <!-- Azioni riga (Fase A cockpit): Approva (solo DA_APPROVARE, l'intera
+                   commessa) + Apri commessa (drawer col dettaglio attivita'). -->
               <Column :header="t('vendite.dashboard_competenza.col_azioni')" class="app-col-actions" :exportable="false">
                 <template #body="{ data }">
-                  <RowActionsMenu :row="data" :actions="buildAttivitaRowActions(data)" />
+                  <RowActionsMenu :row="data" :actions="buildCommessaRowActions(data)" />
                 </template>
               </Column>
             </DataTable>
             <div v-else class="app-empty-state">
               <i class="pi pi-check-circle" />
-              <p>{{ t('vendite.dashboard_competenza.nessuna_attivita') }}</p>
+              <p>{{ t('vendite.dashboard_competenza.nessuna_commessa') }}</p>
             </div>
           </template>
           <div v-else class="app-empty-state">
             <i class="pi pi-chart-pie" />
-            <p>{{ t('vendite.dashboard_competenza.attivita_hint') }}</p>
+            <p>{{ t('vendite.dashboard_competenza.commesse_hint') }}</p>
           </div>
         </div>
       </div>

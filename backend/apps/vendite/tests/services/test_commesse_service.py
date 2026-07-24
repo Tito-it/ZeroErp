@@ -45,6 +45,7 @@ Azioni di stato commessa (#7 — fn_available_actions_commessa + cambia stato):
 20) CommesseServiceTests.test_fn_get_commessa_stato_include_capabilities
 21) CommesseServiceTests.test_cambia_stato_commessa_ok
 22) CommesseServiceTests.test_cambia_stato_commessa_azione_non_ammessa
+22-bis) CommesseServiceTests.test_cambia_stato_commessa_azione_disabilitata_rifiutata (§6.1 enabled)
 23) CommesseServiceTests.test_cambia_stato_commessa_not_found
 24) CommesseServiceTests.test_cambia_stato_commessa_validation
 
@@ -619,6 +620,8 @@ class CommesseServiceTests(TestCase):
             "total_non_emesse": 5,
             "total_prezzo_da_riallineare": 0,
             "last_update": "2026-06-15T10:00:00",
+            "commessa_codice": "COMM-0042",
+            "cliente_display": "Rossi Mario SRL",
         }
 
         result = fn_get_commessa_stato(commessa_id=1)
@@ -630,6 +633,9 @@ class CommesseServiceTests(TestCase):
         self.assertTrue(result["emittibile"])
         self.assertEqual(result["total_attivita"], 10)
         self.assertEqual(result["total_non_emesse"], 5)
+        # E-DB-4: codice commessa + cliente propagati all'API (spread di dict(stato)).
+        self.assertEqual(result["commessa_codice"], "COMM-0042")
+        self.assertEqual(result["cliente_display"], "Rossi Mario SRL")
 
     # Scopo: commessa non trovata → ServiceError.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
@@ -708,6 +714,28 @@ class CommesseServiceTests(TestCase):
 
         with self.assertRaises(ServiceError) as ctx:
             cambia_stato_commessa(commessa_id=1, nuovo_stato="PRONTA_FATTURAZIONE")
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_AZIONE_NON_AMMESSA")
+        repo.cambia_stato_commessa.assert_not_called()
+
+    # Scopo: difesa applicativa §6.1 — azione IN LISTA ma con enabled:false
+    #        (guard di uscita: chiudi con righe pendenti) → respinta senza
+    #        arrivare al DB (che risponderebbe 559). Senza il filtro `enabled`
+    #        la transizione passerebbe il gate applicativo.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_cambia_stato_commessa_azione_disabilitata_rifiutata(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import cambia_stato_commessa
+
+        repo = mock_repo_cls.return_value
+        repo.get_capabilities.return_value = {
+            "available_actions": [
+                {"key": "chiudi", "target_state": "CHIUSA", "enabled": False,
+                 "reasons": [{"codice": "E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI"}]},
+            ],
+            "stato_codice": "PRONTA_FATTURAZIONE",
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            cambia_stato_commessa(commessa_id=1, nuovo_stato="CHIUSA")
         self.assertEqual(ctx.exception.code, "E_COMMESSA_AZIONE_NON_AMMESSA")
         repo.cambia_stato_commessa.assert_not_called()
 
