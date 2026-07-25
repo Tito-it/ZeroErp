@@ -20,10 +20,12 @@
 -- 13) fn_available_actions_ddt EMESSO: can_edit_testata=false
 -- 14) vw_ddt_lista: numero valorizzato dopo EMESSO
 -- 15) fn_available_actions_ddt su DDT inesistente -> NULL
+-- 16) nessun arco MANUALE attivo punta a RESO (regola blindata sulla matrice)
+-- 17) CONSEGNATO->RESO resta attivo ma manuale:false (flip automatico preservato)
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(15);
+SELECT plan(17);
 
 -- ============================================================
 -- 1-2) Oggetti presenti
@@ -197,6 +199,43 @@ SELECT ok(
   script.fn_available_actions_ddt(999999999) IS NULL,
   '15) fn_available_actions_ddt su DDT inesistente -> NULL'
 );
+
+-- ============================================================
+-- 16-17) RESO e' uno stato DERIVATO, non un pulsante.
+--   brief-db-rimuovere-azione-segna-reso-ddt (2026-07-25).
+--   Il flip DDT->RESO lo fa SOLO fn_conferma_reso su reso totale; il
+--   ri-flip RESO->CONSEGNATO solo fn_annulla_reso. Nessun arco MANUALE
+--   deve puntare a RESO, altrimenti torna il pulsante «Segna reso».
+--   Regola blindata sulla matrice, indipendente dai dati: cattura sia la
+--   regressione da re-seed (righe 6/7 riportate manuali) sia un futuro seed
+--   sbagliato.
+-- ============================================================
+SELECT is(
+  (SELECT count(*)::int
+     FROM config.transizioni_stati_ddt t
+     JOIN config.stati_doc_ddt sa ON sa.id = t.stato_a_id
+    WHERE sa.codice_interno = 'RESO'
+      AND t.attivo IS TRUE
+      AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE),
+  0,
+  '16) nessun arco MANUALE attivo punta a RESO (stato derivato, non pulsante)');
+
+-- L'arco CONSEGNATO->RESO deve restare ATTIVO (manuale:false): e' quello che
+-- il trigger trgfn_ddt_guard_transizione valida sull'UPDATE interno di
+-- fn_conferma_reso. Disattivarlo romperebbe il flip automatico
+-- (E_STATO_DDT_TRANSIZIONE_NON_VALIDA).
+SELECT ok(
+  EXISTS (
+    SELECT 1
+      FROM config.transizioni_stati_ddt t
+      JOIN config.stati_doc_ddt sd ON sd.id = t.stato_da_id
+      JOIN config.stati_doc_ddt sa ON sa.id = t.stato_a_id
+     WHERE sd.codice_interno = 'CONSEGNATO'
+       AND sa.codice_interno = 'RESO'
+       AND t.attivo IS TRUE
+       AND COALESCE((t.meta->>'manuale')::boolean, true) IS FALSE
+  ),
+  '17) CONSEGNATO->RESO resta attivo ma manuale:false (flip automatico preservato)');
 
 SELECT * FROM finish();
 ROLLBACK;
