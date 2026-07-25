@@ -1,6 +1,6 @@
 // Scopo: BB "selezione righe con quantità" (estratto 2026-07-14, regola del
-// 2 alla 3ª copia, ok Tid — unifica la macchina di OrdineEvasionePanel,
-// DdtResoPanel e ResoRiconsegnaPanel): tabella di righe con residuo, selezione
+// 2 alla 3ª copia, ok Tid — unifica la macchina di OrdineEvasioneDialog,
+// DdtResoDialog e ResoRiconsegnaDialog): tabella di righe con residuo, selezione
 // multipla, quantità editabile per riga (default = residuo) e semantica
 // "tutto-vs-selezione" (selezione completa e intatta ⇒ il caller può inviare
 // null e delegare al BE il residuo effettivo, race-proof).
@@ -19,6 +19,14 @@
 // - rowKey: chiave riga per selezione/qtaMap (default 'id'; 'ddt_riga_id' nel
 //   pannello crea-reso).
 // - readonly: () => bool — in readonly la preselezione resta vuota (consuntivo).
+// - preselezione: 'tutto' (default) | 'nessuna' — politica di seed al load.
+//   'tutto' preseleziona le righe lavorabili e riempie le quantità col residuo
+//   ("lavora tutto": evasione ordine e ri-consegna, dove chiudere il residuo è
+//   l'esito atteso e il default risparmia lavoro). 'nessuna' lascia selezione
+//   vuota e quantità NON compilate: è il crea-reso (decisione Tid 2026-07-25),
+//   dove quali righe tornano indietro e in che quantità è un DATO DI FATTO che
+//   solo l'operatore conosce — proporre "tutto reso" invita a confermare un
+//   reso totale per inerzia, e il reso totale flippa il DDT a RESO.
 // - onLoaded: (rows) => void opzionale — seed di mappe extra del caller
 //   (es. tipo/motivo per riga nel crea-reso).
 import { computed, ref } from 'vue'
@@ -29,8 +37,10 @@ export function useRigheSelezioneQta({
   residuoDi,
   rowKey = 'id',
   readonly = () => false,
+  preselezione = 'tutto',
   onLoaded = null,
 } = {}) {
+  const preselezionaTutto = preselezione !== 'nessuna'
   const righe = ref([])
   const loadingRighe = ref(false)
   const selected = ref([])
@@ -48,18 +58,22 @@ export function useRigheSelezioneQta({
   const { isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected } =
     useSelezioneToggle({ selected, selezionabili: righeSelezionabili, rowKey })
 
-  // Scopo: carica le righe, seeda qtaMap col residuo (0 per le esaurite) e
-  //        preseleziona le selezionabili (lavora-tutto di default).
+  // Scopo: carica le righe e applica la politica di seed (`preselezione`):
+  //        'tutto' → qtaMap col residuo (0 per le esaurite) + righe lavorabili
+  //        preselezionate; 'nessuna' → qtaMap vuota (null = campo non compilato)
+  //        e selezione vuota. In readonly la selezione resta comunque vuota.
   async function loadRighe() {
     loadingRighe.value = true
     try {
       const rows = (await fetchRighe()) || []
       righe.value = rows
       const map = {}
-      for (const r of rows) map[r[rowKey]] = residuoDi(r)
+      for (const r of rows) map[r[rowKey]] = preselezionaTutto ? residuoDi(r) : null
       qtaMap.value = map
       if (onLoaded) onLoaded(rows)
-      selected.value = readonly() ? [] : [...righeSelezionabili.value]
+      selected.value = (readonly() || !preselezionaTutto)
+        ? []
+        : [...righeSelezionabili.value]
     } finally {
       loadingRighe.value = false
     }

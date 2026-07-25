@@ -1,13 +1,16 @@
 # Brief DB — Flag `fatturata` nella lista attività di commessa
 
 > **Tipo**: brief operativo per il **team DB** · **Target**: `dev/db-tid` · **Data**:
-> 2026-07-24 · **Owner**: Tid · **Stato**: 🟢 **DB FATTO — da applicare**
-> (2026-07-24) · **Priorità**: 🟢 BASSA (nessun danno dati: è una congruenza UI
-> mancante; il BE difende già).
+> 2026-07-24 · **Owner**: Tid · **Stato**: 🟢 **COMPLETO — DB applicato + handoff
+> BE/FE FATTO** (2026-07-24) · **Priorità**: 🟢 BASSA (nessun danno dati: è una
+> congruenza UI mancante; il BE difende già).
 >
-> **Esito DB (2026-07-24)**: ✅ changeset §2 scritto · ✅ pgTAP §3 **4/4 verde**
-> (validato end-to-end in transazione `ROLLBACK`, nulla persistito) · ☐ migrate
-> da lanciare. **Handoff BE/FE aperto** (§5, fuori perimetro di questa slice).
+> **Esito DB (2026-07-24)**: ✅ changeset §2 (`20260724-07`) scritto + **pushato**
+> su `dev/db-tid` (commit `0436029f6`) + **applicato sul DB di dev** (verificato
+> sul vivo: `fn_list_commessa_attivita` ritorna `fatturata boolean` in coda) · ✅
+> pgTAP §3 **4/4 verde**. **Handoff BE/FE CHIUSO (2026-07-24, `dev/backend-tid`)**:
+> vedi §5. Questo brief **sostituisce** e assorbe l'originale committente
+> `brief-db-fattura-riga-id-lista-commessa-attivita.md`, ora eliminato.
 >
 > **Perimetro**: **solo DB** in questa slice (una funzione, additiva). Le modifiche
 > BE (§5.1) e FE (§5.2) sono **handoff** su `dev/backend-tid`, non incluse qui.
@@ -113,7 +116,7 @@ esattamente quello del guard BE: **esiste un'AF con `fattura_riga_id` valorizzat
 
 ---
 
-## 2. ✅ Piano DB — `20260724-07` (FATTO, da applicare)
+## 2. ✅ Piano DB — `20260724-07` (FATTO e APPLICATO su dev)
 
 Numerazione: sequenza **globale per data**
 ([[feedback_liquibase_numerazione_globale_per_data]]).
@@ -205,13 +208,14 @@ per il caso 4 collegare un'AF con `fattura_riga_id` a una fattura di prova.
 > a mostrare le azioni prezzo su riga fatturata (l'errore resta parlante lato BE,
 > come oggi). Verificate durante la revisione ma **non applicate qui**.
 
-### 5.1 ☐ BE — una riga (DA FARE, `dev/backend-tid`)
+### 5.1 ✅ BE — una riga (FATTO, `dev/backend-tid` 2026-07-24)
 
-`backend/apps/vendite/db/commesse_repository.py`: aggiungere `"fatturata"` alla
-costante **`_ATTIVITA_COLS`** (la lista di colonne nominate che
-`list_commessa_attivita` seleziona da `fn_list_commessa_attivita`). Additivo: il
-mapping è per nome/indice sulla stessa tupla, nessun altro punto da toccare. Il
-valore è `bool` nativo → nessuna serializzazione speciale.
+`backend/apps/vendite/db/commesse_repository.py`: aggiunto `"fatturata"` in coda a
+**`_ATTIVITA_COLS`**. La `SELECT` proietta per nome (`", ".join(_ATTIVITA_COLS)`) e
+il mapping legge per indice sulla stessa tupla → internamente consistente,
+additivo, nessun altro punto da toccare. Bool nativo, nessuna decodifica. Test
+`test_list_commessa_attivita_maps_rows` aggiornato: 21° valore posizionale + asserzione
+`row["fatturata"] is True`. **87 test commesse verdi.**
 
 > ✅ **[rev]** Verificato: `_ATTIVITA_COLS`
 > ([commesse_repository.py:1055](../../../../backend/apps/vendite/db/commesse_repository.py#L1055))
@@ -231,12 +235,15 @@ valore è `bool` nativo → nessuna serializzazione speciale.
 > va aggiunto il 21° valore (`fatturata`) alla tupla del test + un'asserzione sul
 > nuovo campo. Non è una regressione: è il test che segue la colonna nuova.
 
-### 5.2 ☐ FE — completa E-FE-2 (DA FARE, `dev/backend-tid`)
+### 5.2 ✅ FE — completa E-FE-2 (FATTO, `dev/backend-tid` 2026-07-24)
 
-`CommessaGestioneDrawer.vue::buildRowActions`: aggiungere `visible: !row.fatturata`
-(o disabilitare con tooltip) alle tre azioni prezzo, accanto ai gate già presenti
-(`canPrezzo`, `canEditRighe`, e `!prezzo_bloccato` sulla variazione). Con questo
-il kebab prezzi non propone più azioni che il BE rifiuterebbe su riga fatturata.
+`CommessaGestioneDrawer.vue::buildRowActions`: gate `if (row.fatturata) return []`
+all'inizio, accanto agli early-return esistenti (`isReadonly`/`canPrezzo`/
+`canEditRighe`). Scelto l'early-return unico invece di `visible: !row.fatturata` su
+ciascuna delle tre azioni: sono **tutte** azioni-prezzo che il guard BE
+`_assert_non_fatturata` rifiuta su riga fatturata, quindi il verdetto è uno solo e
+non va ripetuto tre volte. Con questo il kebab prezzi non propone più azioni che il
+BE rifiuterebbe. **Build FE verde.**
 
 ---
 

@@ -21,7 +21,7 @@ export const STATO_ORDINE = Object.freeze({
 
 // Stati dell'ordine dai quali e' possibile generare un DDT di evasione: c'e'
 // residuo da evadere (CONFERMATO = tutto aperto, PARZIALMENTE_EVASO = residuo
-// parziale). Guida il montaggio dell'OrdineEvasionePanel nel drawer ordine.
+// parziale). Guida la disponibilita' dell'azione «Genera DDT» (OrdineEvasioneDialog).
 export const STATI_ORDINE_EVADIBILI = Object.freeze([
   STATO_ORDINE.CONFERMATO,
   STATO_ORDINE.PARZIALMENTE_EVASO,

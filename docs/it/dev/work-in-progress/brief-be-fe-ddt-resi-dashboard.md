@@ -253,6 +253,56 @@ complessivo resta da completare:
    primo mount, guard `hasSearched`/`loading`) — pattern
    [[feedback_keepalive_onactivated]] applicato alla freshness.
 
+4. **Doppio percorso verso lo stato RESO + crea-reso precompilato**
+   (2026-07-25, su ORD0000609/DDT0000338). Due difetti dallo stesso giro,
+   **entrambi chiusi**:
+   - il pulsante **«Segna reso»** era ricomparso in barra azioni: transizione
+     manuale `SPEDITO|CONSEGNATO → RESO` (archi 6/7 di
+     `config.transizioni_stati_ddt`) che porta il DDT a RESO **senza** reso —
+     contatore intatto, nessun accredito dovuto, residuo ordine non riaperto,
+     DDT fuori dalla push (`DDT_RESO` rank 1) e **senza ritorno**
+     (`trgfn_resi_guard_ddt_consegnato` vieta i resi da un DDT non CONSEGNATO).
+     ⚠️ **Causa vera, e lezione generale**: la de-attivazione *era* già stata
+     applicata da `20260713-38` il 13 lug; il 16 lug il CSV di seed è stato
+     modificato (per `requires_righe` sull'arco `emetti`) → cambio di checksum
+     → `loadUpdateData` ri-eseguito → **righe 6/7 sovrascritte dai valori
+     manuali del CSV**, e il changeSet di UPDATE (già eseguito) non è stato
+     ri-applicato. Un dato seedato da CSV va corretto **nel CSV**: un changeSet
+     `UPDATE` successivo funziona una volta sola e viene regredito dal re-seed
+     seguente. Fix applicato dal team DB il 2026-07-25 nel CSV: arco 6
+     `attivo=false`, arco 7 ridotto a `{"manuale": false}` con `attivo=true`
+     (**non** `attivo=false`: `trgfn_ddt_guard_transizione` valida il grafo
+     anche sull'`UPDATE` interno di `fn_conferma_reso`, che deve poter fare il
+     flip automatico a reso totale). Arco 9 volutamente non toccato: non è nel
+     CSV, quindi il re-seed non lo regredisce. Verificato live: su DDT
+     CONSEGNATO `available_actions` non espone più `reso`. Nessuna bonifica
+     dati (i 2 DDT in RESO di dev hanno un reso CONFERMATO a monte). Follow-up
+     FE fatto: chiave i18n orfana `vendite.ddt.azione_reso` rimossa (it+en).
+   - il pannello crea-reso arrivava con **righe già spuntate e quantità
+     precompilate** al residuo: invito a confermare per inerzia un reso TOTALE.
+     Fix FE: opzione `preselezione: 'nessuna'` nel BB `useRigheSelezioneQta`
+     (default `'tutto'` invariato per evasione/ri-consegna) + il pannello è
+     diventato la dialog **`DdtResoDialog`** («Genera reso», pulsante in barra
+     azioni, fetch lazy all'apertura) invece di un blocco sempre montato in coda
+     al drawer.
+
+5. **Ri-consegna senza uscita** (2026-07-25, su RESO0000150/DDT0000338). Il
+   pannello ri-spedizione è diventato la dialog **`ResoRiconsegnaDialog`**
+   («DDT ri-spedizione», pulsante in barra azioni) — terza azione di processo
+   che sale in alto dopo «Genera reso» e «Genera DDT». Validandola è emerso il
+   difetto di modello: `fn_genera_ddt_riconsegna` gestisce bene il parziale
+   (il resto resta in coda e si ri-spedisce dopo), ma **non esiste l'uscita
+   opposta** — se la merce non tornerà mai al cliente, l'ordine resta
+   PARZIALMENTE_EVASO a vita e l'accredito resta etichettato FACOLTATIVA,
+   quindi invisibile a chi lavora le dovute. Fix DB in
+   [brief-db-chiusura-riconsegna-reso-definitivo.md](brief-db-chiusura-riconsegna-reso-definitivo.md),
+   decisioni chiuse. Nota di progetto che lo rende piccolo: **l'accredito è già
+   in coda e già dell'importo giusto** (`vw_contatore_merce` sottrae i resi
+   senza filtro sul tipo) — chiudere la ri-consegna non cambia alcun numero,
+   cambia solo la natura della quota pendente. Intanto la dialog dichiara
+   esplicitamente che il parziale non perde il resto
+   (`riconsegna_nota_parziale`).
+
 ⚠️ Nota per il seguito della validazione: **tutti i 42 BA di dev hanno
 `fatturazione_ordini = CONFERMATO`** — il percorso push-da-DDT (reason
 `merce_in_viaggio`, `gia_inviato` da DDT) non è esercitabile finché non si

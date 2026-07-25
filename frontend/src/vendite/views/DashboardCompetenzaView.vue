@@ -463,7 +463,7 @@ function buildCommessaRowActions(row) {
     {
       key: 'apri_commessa',
       label: t('vendite.dashboard_competenza.azione_apri_commessa'),
-      icon: 'pi pi-briefcase',
+      icon: MANAGE_ICONS.COMMESSA,
       command: () => apriCommessa(row),
     },
   ]

@@ -1061,6 +1061,11 @@ class CommesseRepository:
         "prezzo_snapshot", "prezzo_bloccato", "prezzo_da_riallineare",
         "stato_approvazione", "stato_emissione", "sorgente_tipo_id",
         "sorgente_codice", "meta", "data_update",
+        # In coda alla RETURNS TABLE (changeset 20260724-07): EXISTS di un'AF
+        # con fattura_riga_id valorizzato = specchio esatto del guard BE
+        # `_assert_non_fatturata`. Il FE lo usa per nascondere le azioni prezzo
+        # su riga già fatturata. Bool nativo: nessuna decodifica speciale.
+        "fatturata",
     )
     # Type mapping per serializzazione colonne attivita.
     _ATTIVITA_DATE_COLS = frozenset({

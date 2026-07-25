@@ -1,5 +1,5 @@
 <script setup>
-// Scopo: Pannello Smistamento del preventivo — vista unica riga-per-riga dei
+// Scopo: Dialog Smistamento del preventivo — vista unica riga-per-riga dei
 // due rami di smistamento (merce → ordine, servizi → fatturazione via
 // commessa) con selezione multipla e azione unica "Smista selezionate": il
 // routing per destinazione e' deciso dalla natura di riga (D3, nessuna scelta
@@ -7,24 +7,33 @@
 // PreventiviIntegrazione + GeneraOrdineDialog (2026-06-12,
 // brief-db-smistamento-preventivi.md §6). Fonte dati: GET /smistamento/
 // (vw_preventivi_smistamento + _righe, stato autorevole). La sezione
-// "Pratiche collegate" e' stata rimossa 2026-07-15: la pratica vive nel
-// pannello Passaggi (LineagePassaggiPanel, link che apre il PraticaDrawer).
+// "Pratiche collegate" e' stata rimossa 2026-07-15: la pratica vive nei
+// collegamenti del documento (chip «Pratica» di DocumentoCollegamentiBar, che
+// apre il PraticaDrawer).
 //
-// `consuntivo`: pannello in sola lettura — niente selezione ne' azioni. Usato
-// sul percorso pratica (lo smistamento lo fa l'orchestratore CONFERMA_VENDITA)
-// e in readonly puro (permesso LETTURA / revisione superseded).
+// Aperta dal pulsante «Smistamento» nella barra azioni del drawer preventivo
+// (2026-07-25, decisione Tid): le azioni stanno in alto, non in coda al
+// contenuto. Era un pannello sempre montato che allungava il drawer e faceva
+// la fetch dello smistamento anche a chi non stava smistando nulla; ora le
+// righe si caricano all'APERTURA (lazy) e a ogni riapertura (freschezza).
+// Stesso pattern di DdtResoDialog.
+//
+// `consuntivo`: dialog in sola lettura — niente selezione ne' azioni. Usato in
+// readonly puro (permesso LETTURA / revisione superseded). NB: sul percorso
+// pratica il dialog resta INTERATTIVO (lo smistamento e' l'attivita' dello
+// step), come nello standalone.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useApiHandler } from '../../../core/composables/useApiHandler'
-import { useConfirmAction } from '../../../core/composables/useConfirmAction'
-import { useNotify } from '../../../core/composables/useNotify'
-import { usePreventiviStore } from '../stores/preventivi'
-import { generaOrdineFromPreventivo } from '../api/preventiviApi'
-import { DESTINAZIONE_SMISTAMENTO, STATO_SMISTAMENTO } from '../../constants'
-import { formatNumber } from '../../../core/utils/format'
-import { useSelezioneToggle } from '../../_shared/righe/useSelezioneToggle'
+import { useApiHandler } from '../../../../core/composables/useApiHandler'
+import { useConfirmAction } from '../../../../core/composables/useConfirmAction'
+import { useNotify } from '../../../../core/composables/useNotify'
+import { usePreventiviStore } from '../../stores/preventivi'
+import { generaOrdineFromPreventivo } from '../../api/preventiviApi'
+import { DESTINAZIONE_SMISTAMENTO, STATO_SMISTAMENTO } from '../../../constants'
+import { formatNumber } from '../../../../core/utils/format'
+import { useSelezioneToggle } from '../../../_shared/righe/useSelezioneToggle'
+import AppDialog from '../../../../core/components/AppDialog.vue'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -36,6 +45,7 @@ const { confirmAction } = useConfirmAction()
 const notify = useNotify()
 
 const props = defineProps({
+  visible: { type: Boolean, required: true },
   preventivoId: { type: Number, required: true },
   consuntivo: { type: Boolean, default: false },
 })
@@ -43,7 +53,7 @@ const props = defineProps({
 // e che testata + capabilities vanno ricaricate (transizione automatica
 // ACCETTATO -> EVASO BE-driven, gate bi-ramo). Payload: { ordineId } se il
 // ramo merce ha creato un ordine (il padre notifica il tab ordini).
-const emit = defineEmits(['smistato'])
+const emit = defineEmits(['update:visible', 'smistato'])
 
 const smistamento = ref(null)
 const loadingSmistamento = ref(false)
@@ -90,6 +100,12 @@ const smistaLabel = computed(() => {
     : t('vendite.preventivi.smista_selezionate')
 })
 
+// Footer di sola chiusura quando non c'e' nulla da fare: consuntivo (readonly
+// puro) o nessuna riga residua da smistare.
+const soloChiusura = computed(
+  () => props.consuntivo || righeResidue.value.length === 0,
+)
+
 // Scopo: Carica lo smistamento (aggregato + righe) e preseleziona tutte le
 // righe residue (D2 "preseleziona tutte": smista-tutto e' il default,
 // l'operatore deseleziona per lo smistamento parziale). Richiamata anche
@@ -105,7 +121,18 @@ async function loadSmistamento() {
   }
 }
 
-watch(() => props.preventivoId, loadSmistamento, { immediate: true })
+// Fetch lazy: all'apertura (e a ogni riapertura, cosi' lo stato resta fresco
+// dopo uno smistamento). Non al mount: il dialog vive montato nel drawer, ma
+// chi non smista non deve pagarne la query.
+watch(
+  () => [props.visible, props.preventivoId],
+  ([visible]) => { if (visible && props.preventivoId) loadSmistamento() },
+  { immediate: true },
+)
+
+function close() {
+  emit('update:visible', false)
+}
 
 // Scopo: severita' Tag per lo stato di smistamento riga.
 function statoSmistamentoSeverity(stato) {
@@ -195,85 +222,102 @@ function onSmista() {
         }
       }
 
-      // Reload dello stato autorevole post-smistamento (righe + aggregato).
+      // Reload dello stato autorevole post-smistamento (righe + aggregato):
+      // se l'azione e' fallita del tutto il dialog resta aperto e aggiornato.
       await loadSmistamento()
-      if (qualcosaSmistato) emit('smistato', { ordineId })
+      if (!qualcosaSmistato) return
+      emit('smistato', { ordineId })
+      // Azione conclusa -> chiusura (come il crea-reso DDT): il drawer
+      // ricarica testata e capability. Uno smistamento parziale si riprende
+      // riaprendo la dialog, che ricarica lo stato autorevole.
+      close()
     },
   })
 }
-
 </script>
 
 <template>
-  <div class="form-grid">
-    <!-- Smistamento: progress verso EVASO. A completamento il Tag diventa
-         verde con la spunta cerchiata (il testo esteso resta nel tooltip):
-         sostituisce il vecchio messaggio ridondante in fondo al pannello. -->
-    <div class="smistamento-header">
-      <h4 style="margin: 0;">{{ t('vendite.preventivi.section_smistamento') }}</h4>
-      <Tag v-if="aggregato && aggregato.righe_totali > 0"
-        :severity="tutteSmistate ? 'success' : 'info'"
-        :icon="tutteSmistate ? 'pi pi-check-circle' : undefined"
-        v-tooltip.bottom="tutteSmistate ? t('vendite.preventivi.smistamento_completato') : ''"
-        :value="t('vendite.preventivi.smistamento_progress', {
-          smistate: righeSmistate, totali: aggregato.righe_totali,
-        })" />
-    </div>
+  <!-- `readonly` esplicito = il consuntivo del chiamante: il dialog e' lanciato
+       da un drawer locked-by-stato (preventivo ACCETTATO) e senza override il
+       FormFooter erediterebbe readonly=true nascondendo il pulsante di
+       smistamento — pur essendo lo smistamento un'azione legittima proprio in
+       quello stato. Stessa ragione per cui il pannello, quando viveva nel
+       drawer, stava in `app-escape`. -->
+  <AppDialog
+    :visible="visible"
+    width="xl"
+    :header="t('vendite.preventivi.section_smistamento')"
+    :readonly="consuntivo"
+    :loading="loading"
+    :close-only="soloChiusura"
+    :save-disabled="selected.length === 0"
+    :save-label="smistaLabel"
+    @update:visible="emit('update:visible', $event)"
+    @save="onSmista"
+    @cancel="close"
+  >
+    <div class="form-grid">
+      <!-- Progress verso EVASO. A completamento il Tag diventa verde con la
+           spunta cerchiata (il testo esteso resta nel tooltip). -->
+      <div v-if="aggregato && aggregato.righe_totali > 0" class="smistamento-header">
+        <Tag
+          :severity="tutteSmistate ? 'success' : 'info'"
+          :icon="tutteSmistate ? 'pi pi-check-circle' : undefined"
+          v-tooltip.bottom="tutteSmistate ? t('vendite.preventivi.smistamento_completato') : ''"
+          :value="t('vendite.preventivi.smistamento_progress', {
+            smistate: righeSmistate, totali: aggregato.righe_totali,
+          })" />
+      </div>
 
-    <DataTable v-if="righe.length" :value="righe"
-      data-key="riga_id" striped-rows size="small" class="app-datatable"
-      :loading="loadingSmistamento" scrollable scrollHeight="220px">
-      <!-- Checkbox custom (no selectionMode: PrimeVue 4 renderebbe spuntabili
-           anche le righe già smistate): disabled per riga da isSelectable,
-           colonna nascosta quando non resta nulla da smistare (consuntivo). -->
-      <Column v-if="!consuntivo && righeResidue.length" headerStyle="width: 3rem">
-        <template #header>
-          <Checkbox :model-value="allSelected" binary
-            :indeterminate="anySelected" @update:model-value="toggleAll" />
-        </template>
-        <template #body="{ data }">
-          <Checkbox :model-value="isSelected(data)" binary
-            :disabled="!isSelectable(data)" @update:model-value="toggleRow(data)" />
-        </template>
-      </Column>
-      <Column :header="t('vendite.preventivi.riga_articolo')">
-        <template #body="{ data }">
-          {{ data.articolo_codice }} — {{ data.riga_descrizione }}
-        </template>
-      </Column>
-      <Column :header="t('vendite.preventivi.riga_quantita')" style="width: 110px;">
-        <template #body="{ data }">
-          {{ formatNumber(data.qta_operativa) }} {{ data.uom_codice }}
-        </template>
-      </Column>
-      <Column :header="t('vendite.preventivi.smistamento_col_destinazione')" style="width: 150px;">
-        <template #body="{ data }">
-          <Tag severity="secondary"
-            :value="data.destinazione_tipo === DESTINAZIONE_SMISTAMENTO.ORDINE
-              ? t('vendite.preventivi.destinazione_ordine')
-              : t('vendite.preventivi.destinazione_commessa')" />
-        </template>
-      </Column>
-      <Column :header="t('vendite.preventivi.smistamento_col_stato')" style="width: 180px;">
-        <template #body="{ data }">
-          <Tag :severity="statoSmistamentoSeverity(data.stato_smistamento)"
-            :value="t(`vendite.preventivi.stato_smistamento.${data.stato_smistamento.toLowerCase()}`)" />
-          <span v-if="data.ordine_numero" class="smistamento-doc-rif">
-            {{ data.ordine_numero }}
-          </span>
-        </template>
-      </Column>
-    </DataTable>
-    <div v-else-if="!loadingSmistamento" style="color: var(--text-color-secondary); font-style: italic;">
-      {{ t('vendite.preventivi.smistamento_non_disponibile') }}
+      <DataTable v-if="righe.length" :value="righe"
+        data-key="riga_id" striped-rows size="small" class="app-datatable"
+        :loading="loadingSmistamento" scrollable scrollHeight="360px">
+        <!-- Checkbox custom (no selectionMode: PrimeVue 4 renderebbe spuntabili
+             anche le righe già smistate): disabled per riga da isSelectable,
+             colonna nascosta quando non resta nulla da smistare (consuntivo). -->
+        <Column v-if="!consuntivo && righeResidue.length" headerStyle="width: 3rem">
+          <template #header>
+            <Checkbox :model-value="allSelected" binary
+              :indeterminate="anySelected" @update:model-value="toggleAll" />
+          </template>
+          <template #body="{ data }">
+            <Checkbox :model-value="isSelected(data)" binary
+              :disabled="!isSelectable(data)" @update:model-value="toggleRow(data)" />
+          </template>
+        </Column>
+        <Column :header="t('vendite.preventivi.riga_articolo')">
+          <template #body="{ data }">
+            {{ data.articolo_codice }} — {{ data.riga_descrizione }}
+          </template>
+        </Column>
+        <Column :header="t('vendite.preventivi.riga_quantita')" style="width: 110px;">
+          <template #body="{ data }">
+            {{ formatNumber(data.qta_operativa) }} {{ data.uom_codice }}
+          </template>
+        </Column>
+        <Column :header="t('vendite.preventivi.smistamento_col_destinazione')" style="width: 150px;">
+          <template #body="{ data }">
+            <Tag severity="secondary"
+              :value="data.destinazione_tipo === DESTINAZIONE_SMISTAMENTO.ORDINE
+                ? t('vendite.preventivi.destinazione_ordine')
+                : t('vendite.preventivi.destinazione_commessa')" />
+          </template>
+        </Column>
+        <Column :header="t('vendite.preventivi.smistamento_col_stato')" style="width: 180px;">
+          <template #body="{ data }">
+            <Tag :severity="statoSmistamentoSeverity(data.stato_smistamento)"
+              :value="t(`vendite.preventivi.stato_smistamento.${data.stato_smistamento.toLowerCase()}`)" />
+            <span v-if="data.ordine_numero" class="smistamento-doc-rif">
+              {{ data.ordine_numero }}
+            </span>
+          </template>
+        </Column>
+      </DataTable>
+      <div v-else-if="!loadingSmistamento" style="color: var(--text-color-secondary); font-style: italic;">
+        {{ t('vendite.preventivi.smistamento_non_disponibile') }}
+      </div>
     </div>
-
-    <Button v-if="!consuntivo && righeResidue.length" icon="pi pi-send"
-      :label="smistaLabel"
-      severity="info" size="small" :loading="loading"
-      :disabled="selected.length === 0" @click="onSmista"
-      style="align-self: flex-start;" />
-  </div>
+  </AppDialog>
 </template>
 
 <style scoped>
