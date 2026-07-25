@@ -39,11 +39,11 @@ import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
 import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
-import LineagePassaggiPanel from '../../_shared/lineage/LineagePassaggiPanel.vue'
+import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegamentiBar.vue'
 import OrdiniForm from './OrdiniForm.vue'
 import OrdiniRigheTable from './OrdiniRigheTable.vue'
 import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
-import OrdineEvasionePanel from './OrdineEvasionePanel.vue'
+import OrdineEvasioneDialog from './dialogs/OrdineEvasioneDialog.vue'
 import OrdineEmissioneDialog from './dialogs/OrdineEmissioneDialog.vue'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
@@ -151,23 +151,35 @@ const nonEditableFields = computed(() => (hasDetail.value ? ['billing_account_id
 // Readonly PURO (permesso LETTURA / split / readonly forzato) — SENZA il
 // lock-di-stato post-DRAFT: l'evasione e' un'azione di processo legittima su un
 // ordine CONFERMATO (stato post-DRAFT), come lo smistamento sui preventivi
-// ACCETTATI. Serve al pannello evasione per restare interattivo sotto il
-// lock-di-stato (app-escape), consuntivo solo in readonly puro.
+// ACCETTATI. Serve alla dialog di evasione per restare operativa sotto il
+// lock-di-stato (prop `readonly` esplicita su AppDialog, che altrimenti
+// erediterebbe il lock e nasconderebbe il pulsante), consuntiva solo in
+// readonly puro.
 const isReadonlyPuro = computed(() => props.readonly || parentReadonly.value)
 
-// Pannello evasione (genera DDT) visibile quando l'ordine ha residuo da evadere
-// (CONFERMATO o PARZIALMENTE_EVASO). Trigger fatturazione differita
+// Azione evasione (genera DDT) disponibile quando l'ordine ha residuo da
+// evadere (CONFERMATO o PARZIALMENTE_EVASO). Trigger fatturazione differita
 // (SPEDITO/CONSEGNATO) resta lato DB; qui la vista e' data-driven sullo stato.
 const showEvasione = computed(
   () => hasDetail.value
     && STATI_ORDINE_EVADIBILI.includes(detail.value?.stato_codice_interno),
 )
+// Dialog "Genera DDT": aperta dal pulsante in barra azioni (2026-07-25). Era un
+// pannello in coda al contenuto del drawer — le azioni di processo stanno in
+// alto, come per il «Genera reso» del DDT.
+const evasioneDialogVisible = ref(false)
+// Ref alla barra collegamenti (chip pratica/origine/destinazioni).
+const collegamentiRef = ref(null)
 
-// Scopo: callback @evaso del pannello — generato un DDT dall'ordine: ricarica il
+// Scopo: callback @evaso della dialog — generato un DDT dall'ordine: ricarica il
 // detail (lo stato ordine viene proiettato dal BE: CONFERMATO/PARZIALMENTE_EVASO/
-// EVASO) e le capability. Il pannello ha gia' notificato il tab DDT.
+// EVASO) e le capability. La dialog ha gia' notificato il tab DDT.
 async function onEvaso() {
   await loadDetail()
+  // L'evasione crea un DDT: nuovo arco ordine->DDT, quindi i chip dei
+  // collegamenti vanno ricaricati (senza questo il chip «DDT» comparirebbe
+  // solo alla riapertura del drawer).
+  collegamentiRef.value?.reload()
 }
 
 // Default emittente fiscale: operatore → id profilo; admin globale → null
@@ -489,11 +501,11 @@ async function eseguiCambioStato(action) {
 const drawerActions = computed(() => {
   if (!hasDetail.value) return []
   const readonlyPuro = isReadonlyPuro.value
-  // `genera_ddt` (evasione) vive nel pannello OrdineEvasionePanel nel contenuto
-  // del drawer (selezione righe + quantita'): un bottone header duplicherebbe il
-  // percorso — filtrato a monte (come i preventivi con genera_ordine). Difensivo:
-  // la fn ordini non espone ancora quest'azione, ma il filtro previene doppioni
-  // quando arrivera' data-driven.
+  // `genera_ddt` (evasione) ha il suo pulsante header dedicato sotto, che apre
+  // OrdineEvasioneDialog (selezione righe + quantita'): l'azione data-driven
+  // omonima e' filtrata a monte per non avere due bottoni per lo stesso
+  // percorso. Difensivo: la fn ordini non espone ancora quest'azione, ma il
+  // filtro previene doppioni quando arrivera' data-driven.
   const availableActionsHeader = (availableActions.value || [])
     .filter(a => a.key !== 'genera_ddt')
   const stateActions = mapAvailableActionsToDrawerActions({
@@ -505,6 +517,18 @@ const drawerActions = computed(() => {
   })
   return [
     ...stateActions,
+    // Genera DDT: apre la dialog di evasione (righe con residuo + quantita').
+    // Resta visibile anche in readonly puro — la dialog si apre in sola
+    // consultazione (footer di sola chiusura).
+    ...(showEvasione.value
+      ? [{
+          key: 'genera-ddt',
+          kind: 'manage',
+          label: t('vendite.ordini.evasione_titolo'),
+          icon: NAV_ICONS.DDT,
+          command: () => { evasioneDialogVisible.value = true },
+        }]
+      : []),
     {
       key: 'manage-note',
       kind: 'manage',
@@ -537,19 +561,10 @@ const drawerActions = computed(() => {
           <span v-if="detail.data" class="app-drawer-header-muted font-bold">
             {{ displayDate(detail.data) }}
           </span>
-          <!-- Provenienza upstream (A1): chip read-only quando l'ordine nasce da
-               un preventivo/offerta. Lo scheletro non valorizza queste colonne
-               (le usera' la conversione upstream), ma il drawer le mostra. -->
-          <Tag
-            v-if="detail.documento_origine_tipo"
-            :value="t('vendite.ordini.origine_chip', {
-              tipo: detail.documento_origine_tipo,
-              codice: detail.documento_origine_codice || detail.documento_origine_id,
-            })"
-            severity="info"
-            icon="pi pi-link"
-            v-tooltip.bottom="t('vendite.ordini.origine_chip_tooltip')"
-          />
+          <!-- La provenienza upstream (preventivo/offerta) NON e' piu' un chip
+               d'header dedicato: e' assorbita dai chip di
+               DocumentoCollegamentiBar sotto la barra azioni, dove sta
+               l'origine di TUTTI i domini (2026-07-25). -->
 
           <template #status>
             <Tag
@@ -574,6 +589,15 @@ const drawerActions = computed(() => {
             />
           </template>
         </DrawerActionsBar>
+
+        <!-- Collegamenti diretti (pratica + origine + destinazioni di livello 1):
+             segnalazione a colpo d'occhio sotto i pulsanti — «Preventivo»,
+             «2 DDT». Il grafo completo si apre dai chip stessi in dialog. -->
+        <DocumentoCollegamentiBar
+          ref="collegamentiRef"
+          base-path="/vendite/ordini"
+          :doc-id="effectiveOrdineId"
+          :readonly="isReadonlyPuro" />
       </template>
 
       <Divider v-if="hasDetail" />
@@ -614,31 +638,6 @@ const drawerActions = computed(() => {
         </template>
       </template>
 
-      <!-- Pannello evasione "Genera DDT": visibile quando l'ordine ha residuo
-           (CONFERMATO / PARZIALMENTE_EVASO). In stato post-DRAFT il contenuto e'
-           `app-readonly` (lock-di-stato) ma l'evasione e' un'azione di processo
-           legittima → `app-escape` la mantiene cliccabile. In readonly PURO
-           (LETTURA/split/forzato) il pannello e' consuntivo (niente azioni). -->
-      <template v-if="contentReady && showEvasione">
-        <Divider />
-        <div class="app-escape">
-          <OrdineEvasionePanel
-            :ordine-id="effectiveOrdineId"
-            :readonly="isReadonlyPuro"
-            @evaso="onEvaso" />
-        </div>
-      </template>
-
-      <!-- Genealogia/lineage (pannello "Passaggi", BB condiviso lazy: fetch
-           al primo expand; app-escape interno per la consultazione in
-           readonly di stato). -->
-      <template v-if="contentReady && hasDetail">
-        <Divider />
-        <LineagePassaggiPanel
-          base-path="/vendite/ordini"
-          :doc-id="effectiveOrdineId"
-          :readonly="isReadonlyPuro" />
-      </template>
 
       <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto"
         :loading="loading" :disabled="!canSave"
@@ -662,5 +661,17 @@ const drawerActions = computed(() => {
     :ordine="detail"
     :loading="emissioneLoading"
     @confirm="handleEmissioneConferma"
+  />
+
+  <!-- Dialog "Genera DDT" (evasione): righe con residuo + quantita' da evadere,
+       aperta dal pulsante in barra azioni. Il DDT nasce DRAFT e si rifinisce
+       dal tab DDT; lo stato ordine (PARZIALMENTE_EVASO/EVASO) e' proiettato dal
+       BE e si vede dopo il reload del detail. -->
+  <OrdineEvasioneDialog
+    v-if="effectiveOrdineId && showEvasione"
+    v-model:visible="evasioneDialogVisible"
+    :ordine-id="effectiveOrdineId"
+    :readonly="isReadonlyPuro"
+    @evaso="onEvaso"
   />
 </template>

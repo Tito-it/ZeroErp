@@ -1,17 +1,21 @@
 <script setup>
 // Scopo: Host cross-dominio che apre, "a comando", il drawer di DETTAGLIO del
-// documento vendite corrispondente a un tipo sorgente + id — così le tappe
-// del pannello "Passaggi" aprono il dettaglio impilato (come il link pratica
-// apre PraticaDrawer), invece di navigare alla lista. La mappa tipo->drawer
-// (con import async che spezza il ciclo di import) vive in lineageDrawers.js.
+// documento vendite corrispondente a una chiave registry + id — così le tappe
+// del pannello "Passaggi" e le righe drill-down dei cruscotti aprono il
+// dettaglio impilato (come il link pratica apre PraticaDrawer), invece di
+// navigare alla lista. La mappa chiave->drawer (con import async che spezza il
+// ciclo di import) vive in documentoDrawers.js.
 import { ref, computed, watch, nextTick, markRaw } from 'vue'
-import { LINEAGE_DRAWERS } from './lineageDrawers'
+import { DOCUMENTO_DRAWERS } from './documentoDrawers'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
-  // Tipo sorgente della tappa da aprire (codice_interno).
+  // Chiave registry del documento da aprire: tipo sorgente (codice_interno)
+  // per le tappe lineage, chiave non-sorgente per i drawer senza sorgente
+  // propria (COMMESSA_GESTIONE).
   tipoCodice: { type: String, default: null },
-  // Id numerico di dominio del documento (from_doc_id/to_doc_id BE).
+  // Id numerico di dominio del documento (from_doc_id/to_doc_id BE lineage,
+  // documento_id delle viste vw_dash_* per i cruscotti).
   docId: { type: [Number, null], default: null },
 })
 
@@ -37,7 +41,7 @@ const resolvedComp = ref(null)
 // token anti-stale per l'apertura async sotto (open concorrenti).
 const openSeq = ref(0)
 
-const activeEntry = computed(() => (activeTipo.value ? LINEAGE_DRAWERS[activeTipo.value] : null))
+const activeEntry = computed(() => (activeTipo.value ? DOCUMENTO_DRAWERS[activeTipo.value] : null))
 
 // Props del drawer attivo: la prop id ha nome variabile per dominio; `mode`
 // solo dove il drawer lo accetta (edit = dettaglio su id esistente).
@@ -59,11 +63,11 @@ const drawerProps = computed(() => {
 watch(
   () => [props.visible, props.tipoCodice, props.docId],
   async ([vis, tipo, id]) => {
-    if (!(vis && tipo && id != null && LINEAGE_DRAWERS[tipo])) {
+    if (!(vis && tipo && id != null && DOCUMENTO_DRAWERS[tipo])) {
       innerVisible.value = false
       return
     }
-    const entry = LINEAGE_DRAWERS[tipo]
+    const entry = DOCUMENTO_DRAWERS[tipo]
     activeTipo.value = tipo
     activeId.value = id
     innerVisible.value = false

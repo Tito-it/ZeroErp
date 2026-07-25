@@ -480,6 +480,7 @@ class CommesseRepositoryUnitTests(TestCase):
             Decimal("22.50"), True, False,
             "APPROVATA", "NON_EMESSA", 3,
             "PREVENTIVO", {"note": "test"}, datetime(2026, 2, 26, 10, 0, 0),
+            True,  # fatturata (in coda, changeset 20260724-07)
         )
         # Due execute: 1) COUNT → fetchone, 2) data → fetchall.
         mock_cursor_factory.return_value = _mock_cursor(
@@ -496,6 +497,7 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(row["articolo_id"], str(_art_id))
         self.assertEqual(row["stato_emissione"], "NON_EMESSA")
         self.assertEqual(row["meta"], {"note": "test"})
+        self.assertIs(row["fatturata"], True)  # colonna in coda (20260724-07)
         # Seconda execute (data query) contiene fn_list_commessa_attivita.
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
         self.assertIn("fn_list_commessa_attivita", sql)

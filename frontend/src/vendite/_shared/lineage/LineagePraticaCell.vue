@@ -28,7 +28,7 @@ const everOpened = ref(false)
 function open() {
   if (!props.praticaId) return
   everOpened.value = true
-  // Apertura al tick successivo (pattern LineageDocumentoDrawerHost): il
+  // Apertura al tick successivo (pattern DocumentoDrawerHost): il
   // drawer monta NASCOSTO e riceve visible false->true, così parte lo
   // slide-in PrimeVue (after-show -> contentReady). Il fetch e' comunque
   // garantito anche a mount gia'-visibile (watch immediate nel PraticaDrawer).

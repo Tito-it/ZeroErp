@@ -10,7 +10,6 @@
 import { computed, onActivated } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
@@ -27,6 +26,8 @@ import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import { classeBacklogSeverity } from '../../core/utils/severity'
+import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
+import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
 import {
   buildApriDocumentoAction,
   DASH_AREE,
@@ -38,7 +39,6 @@ import { useDashboardBacklogStore } from '../stores/dashboardBacklog'
 
 const { t, te } = useI18n()
 const notify = useNotify()
-const router = useRouter()
 
 // Provider readonly di area: la lente e' consultazione pura, ma il provider
 // mantiene il pattern standard (ReadonlyBadge nel suffix toolbar).
@@ -147,15 +147,31 @@ function statoSeverity(row) {
   return dashAreaSeverity(row.area, row.stato_codice_interno)
 }
 
-// Azioni riga: "apri documento" via BB condiviso (naviga alla lista area
-// con ?search=; il deep-link azzera i default data della lista target).
+// Drawer di dettaglio del documento di riga: stato nel BB condiviso, host
+// montato in fondo alla view. La lista e' cross-area (incluse le COMMESSE,
+// che non hanno una view lista): il registry risolve area -> drawer. Alla
+// chiusura si ricarica la lente: sbloccare il documento dal drawer e' proprio
+// lo scopo del Backlog, la riga appena lavorata non deve restare stantia.
+const {
+  visible: docDrawerVisible,
+  tipo: docDrawerTipo,
+  id: docDrawerId,
+  apri: apriDocumento,
+  onVisibleChange: onDocDrawerVisible,
+} = useDocumentoDrawer(() => {
+  loadRiepilogo()
+  loadDocumenti()
+})
+
+// Azioni riga: "apri documento" via BB condiviso — apre il drawer di gestione
+// del documento per id, senza lasciare il cruscotto.
 function buildRowActions(data) {
   return [
     buildApriDocumentoAction({
       area: data.area,
-      codice: data.codice,
+      documentoId: data.documento_id,
       label: t('vendite.dashboard_backlog.apri_documento'),
-      router,
+      onApri: apriDocumento,
     }),
   ]
 }
@@ -337,5 +353,14 @@ onActivated(() => {
         />
       </div>
     </div>
+
+    <!-- Host cross-dominio: apre il drawer di gestione del documento della
+         riga (stesso meccanismo delle tappe "Passaggi"), senza uscire dalla
+         lente. -->
+    <DocumentoDrawerHost
+      :visible="docDrawerVisible"
+      :tipo-codice="docDrawerTipo"
+      :doc-id="docDrawerId"
+      @update:visible="onDocDrawerVisible" />
   </div>
 </template>

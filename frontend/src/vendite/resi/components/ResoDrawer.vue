@@ -30,11 +30,11 @@ import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
-import LineagePassaggiPanel from '../../_shared/lineage/LineagePassaggiPanel.vue'
+import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegamentiBar.vue'
 import { STATO_RESO } from '../constants'
 import ResoForm from './ResoForm.vue'
 import ResoRigheTable from './ResoRigheTable.vue'
-import ResoRiconsegnaPanel from './ResoRiconsegnaPanel.vue'
+import ResoRiconsegnaDialog from './dialogs/ResoRiconsegnaDialog.vue'
 
 const { t, te } = useI18n()
 const store = useResiStore()
@@ -85,6 +85,12 @@ const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const righeTableRef = ref(null)
+// Ref alla barra collegamenti (chip pratica/origine/destinazioni).
+const collegamentiRef = ref(null)
+// Dialog "DDT ri-spedizione": aperta dal pulsante in barra azioni (2026-07-25).
+// Era un pannello in coda al contenuto del drawer — le azioni di processo
+// stanno in alto, come «Genera reso» del DDT e «Genera DDT» dell'ordine.
+const riconsegnaDialogVisible = ref(false)
 
 function resetForm() {
   form.value = { emittente_fiscale_id: null, data: null }
@@ -171,19 +177,37 @@ function onAction(action) {
 const drawerActions = computed(() => {
   if (!hasDetail.value) return []
   const readonlyPuro = props.readonly || parentReadonly.value
-  return mapAvailableActionsToDrawerActions({
+  const stateActions = mapAvailableActionsToDrawerActions({
     availableActions: availableActions.value,
     t,
     te,
     onAction,
     readonly: readonlyPuro,
   })
+  return [
+    ...stateActions,
+    // DDT ri-spedizione: apre la dialog dedicata (righe con copertura ancora
+    // pendente). Solo post-conferma; per i resi solo-credito la dialog si
+    // presenta vuota e in sola chiusura (nessuna riga riapre_residuo).
+    ...(isConfermato.value
+      ? [{
+          key: 'ddt-rispedizione',
+          kind: 'manage',
+          label: t('vendite.resi.riconsegna_azione'),
+          icon: NAV_ICONS.DDT,
+          command: () => { riconsegnaDialogVisible.value = true },
+        }]
+      : []),
+  ]
 })
 
-// Scopo: post ri-spedizione — il flip/stati possono essere cambiati: reload.
+// Scopo: post ri-spedizione — il flip/stati possono essere cambiati: reload
+//        del detail, delle righe e dei chip collegamenti (nasce un arco
+//        reso->DDT di ri-consegna).
 async function onRiconsegnaGenerata() {
   await loadDetail()
   righeTableRef.value?.loadRighe()
+  collegamentiRef.value?.reload()
   emit('saved', {})
 }
 </script>
@@ -209,14 +233,9 @@ async function onRiconsegnaGenerata() {
           <span v-if="detail.data" class="app-drawer-header-muted font-bold">
             {{ displayDate(detail.data) }}
           </span>
-          <!-- Provenienza: chip read-only del DDT sorgente. -->
-          <Tag
-            v-if="detail.ddt_origine_numero"
-            :value="t('vendite.resi.origine_chip', { numero: detail.ddt_origine_numero })"
-            severity="info"
-            icon="pi pi-link"
-            v-tooltip.bottom="t('vendite.resi.origine_chip_tooltip')"
-          />
+          <!-- La provenienza (DDT sorgente) NON e' piu' un chip d'header
+               dedicato: e' assorbita dai chip di DocumentoCollegamentiBar sotto
+               la barra azioni, dove sta l'origine di TUTTI i domini (2026-07-25). -->
 
           <template #status>
             <Tag
@@ -227,6 +246,16 @@ async function onRiconsegnaGenerata() {
         </DrawerEntityHeader>
 
         <DrawerActionsBar :actions="drawerActions" />
+
+        <!-- Collegamenti diretti: per il reso la catena significativa e'
+             l'ORIGINE (reso <- DDT <- ordine), qui riassunta nei chip; il
+             grafo completo si apre dai chip in dialog. -->
+        <DocumentoCollegamentiBar
+          ref="collegamentiRef"
+          v-if="props.resoId"
+          base-path="/vendite/resi"
+          :doc-id="props.resoId"
+          :readonly="readonly || parentReadonly" />
       </template>
 
       <Divider v-if="hasDetail" />
@@ -247,31 +276,6 @@ async function onRiconsegnaGenerata() {
           @changed="loadDetail()"
           @form-aperto="(v) => { formRigaAperto = v }" />
 
-        <!-- Ri-spedizione: solo post-conferma (il pannello si auto-svuota a
-             copertura completa; per i resi solo-credito non compare). In
-             CONFERMATO il contenuto e' `app-readonly` (lock-di-stato) ma la
-             ri-spedizione e' un'azione di processo legittima → `app-escape`
-             la mantiene cliccabile (mirror pannello evasione ordini). In
-             readonly PURO il pannello e' consuntivo (niente azioni). -->
-        <template v-if="isConfermato">
-          <Divider />
-          <div class="app-escape">
-            <ResoRiconsegnaPanel
-              :reso-id="props.resoId"
-              :readonly="props.readonly || parentReadonly"
-              @generato="onRiconsegnaGenerata" />
-          </div>
-        </template>
-
-        <!-- Genealogia/lineage (pannello "Passaggi", BB condiviso lazy: per
-             il reso la catena significativa e' l'Origine: reso <- DDT <-
-             ordine <- ... app-escape interno per la consultazione in
-             readonly di stato). -->
-        <Divider />
-        <LineagePassaggiPanel
-          base-path="/vendite/resi"
-          :doc-id="props.resoId"
-          :readonly="readonly || parentReadonly" />
       </template>
 
       <FormFooter v-if="canEditTestata && !isReadonly && !formRigaAperto"
@@ -280,4 +284,17 @@ async function onRiconsegnaGenerata() {
       <FormFooter v-else-if="hasDetail && !formRigaAperto" close-only @cancel="onClose" />
     </div>
   </Drawer>
+
+  <!-- Dialog "DDT ri-spedizione": righe reso con copertura ancora pendente.
+       Il DDT nasce DRAFT e si rifinisce dal tab DDT; una ri-spedizione parziale
+       lascia il resto in coda (la riga resta con `qta_residua` ridotta).
+       `readonly` = quello PURO del chiamante: il lock di stato del drawer
+       (CONFERMATO) non deve disabilitare un'azione legittima in quello stato. -->
+  <ResoRiconsegnaDialog
+    v-if="props.resoId && isConfermato"
+    v-model:visible="riconsegnaDialogVisible"
+    :reso-id="props.resoId"
+    :readonly="props.readonly || parentReadonly"
+    @generato="onRiconsegnaGenerata"
+  />
 </template>

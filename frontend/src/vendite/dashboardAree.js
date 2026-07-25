@@ -1,16 +1,17 @@
 // Scopo: config di presentazione per area del funnel vendite, condivisa dai
 //        cruscotti fatturazione (Situazione aperta e Lente Backlog): ordine
-//        funnel, rotta lista FE per "apri documento" (null = area senza
-//        view lista, riga consultiva) e severity stato documento (shortcut
-//        centralizzate in core/utils/severity.js). La misura euro/count NON
-//        vive qui: la decide il BE nel payload (valore_* null = area a
-//        conteggi, DL-11) — il FE legge, non ri-decide. Estratta 2026-07-06
-//        (regola del 2, ok Tid): era duplicata in DashboardFatturazioneView
-//        (poi trasformata in SituazioneApertaView, Fase 3) e
-//        DashboardBacklogView, con drift garantito su rinomina rotte o
-//        nuova area.
+//        funnel, drawer di dettaglio + icona per "apri documento" e severity
+//        stato documento (shortcut centralizzate in core/utils/severity.js).
+//        La misura euro/count NON vive qui: la decide il BE nel payload
+//        (valore_* null = area a conteggi, DL-11) — il FE legge, non ri-decide.
+//        Estratta 2026-07-06 (regola del 2, ok Tid): era duplicata in
+//        DashboardFatturazioneView (poi trasformata in SituazioneApertaView,
+//        Fase 3) e DashboardBacklogView, con drift garantito su rinomina rotte
+//        o nuova area.
 import { MANAGE_ICONS } from '../core/constants'
+import { NAV_ICONS } from '../core/navigation'
 import { labelOrCode } from '../core/utils/i18nLabel'
+import { DOCUMENTO_DRAWER_TIPI } from './_shared/documenti/documentoDrawers'
 import {
   statoCommessaSeverity,
   statoContrattoSeverity,
@@ -25,23 +26,55 @@ import {
 // DASH_FATTURAZIONE_AREE). DDT dopo ORDINI (e' il suo veicolo di
 // fatturazione differita, DL-21); RESI in coda (flusso inverso, vive solo
 // nel Backlog — DL-24).
+// `drawerTipo`: chiave del registry `DOCUMENTO_DRAWERS` — il drawer di
+// dettaglio che l'azione "apri documento" apre sull'id di riga (null = area
+// senza drawer, riga consultiva). COMMESSE usa il drawer di GESTIONE, non
+// quello leggero dei passaggi: dal Backlog si governa la commessa.
+// `icon`: icona dell'azione, quella dell'area (le stesse della sidebar) —
+// nelle liste drill-down, che sono cross-area, l'icona dice quale documento
+// si sta per aprire. COMMESSE non ha voce di navigazione: MANAGE_ICONS.
 // `apertoHintKey` (opzionale): chiave i18n dell'hint mostrato sulla card
 // della Situazione aperta quando la misura dell'area non e' ovvia — oggi
 // solo ORDINI (misura MISTA, DL-23 emendato: netta per trigger S/C, piena
 // per CONFERMATO). Vive qui e non nella view: la semantica e' per-area,
-// come route e severity.
+// come drawer, icona e severity.
 export const DASH_AREA_CONFIG = {
-  PREVENTIVI: { route: '/vendite/preventivi', severity: statoPreventiveSeverity },
+  PREVENTIVI: {
+    drawerTipo: DOCUMENTO_DRAWER_TIPI.PREVENTIVO,
+    icon: NAV_ICONS.PREVENTIVI,
+    severity: statoPreventiveSeverity,
+  },
   ORDINI: {
-    route: '/vendite/ordini',
+    drawerTipo: DOCUMENTO_DRAWER_TIPI.ORDINE_VENDITA,
+    icon: NAV_ICONS.ORDINI,
     severity: statoOrdineSeverity,
     apertoHintKey: 'vendite.situazione_aperta.card_ordini_hint',
   },
-  DDT: { route: '/vendite/ddt', severity: statoDdtSeverity },
-  OFFERTE: { route: '/vendite/offerte', severity: statoOffertaSeverity },
-  CONTRATTI: { route: '/vendite/contratti', severity: statoContrattoSeverity },
-  COMMESSE: { route: null, severity: statoCommessaSeverity },
-  RESI: { route: '/vendite/resi', severity: statoResoSeverity },
+  DDT: {
+    drawerTipo: DOCUMENTO_DRAWER_TIPI.DDT_VENDITA,
+    icon: NAV_ICONS.DDT,
+    severity: statoDdtSeverity,
+  },
+  OFFERTE: {
+    drawerTipo: DOCUMENTO_DRAWER_TIPI.OFFERTA_COMMERCIALE,
+    icon: NAV_ICONS.OFFERTE,
+    severity: statoOffertaSeverity,
+  },
+  CONTRATTI: {
+    drawerTipo: DOCUMENTO_DRAWER_TIPI.CONTRATTO,
+    icon: NAV_ICONS.CONTRATTI,
+    severity: statoContrattoSeverity,
+  },
+  COMMESSE: {
+    drawerTipo: DOCUMENTO_DRAWER_TIPI.COMMESSA_GESTIONE,
+    icon: MANAGE_ICONS.COMMESSA,
+    severity: statoCommessaSeverity,
+  },
+  RESI: {
+    drawerTipo: DOCUMENTO_DRAWER_TIPI.RESO_VENDITA,
+    icon: NAV_ICONS.RESI,
+    severity: statoResoSeverity,
+  },
 }
 
 export const DASH_AREE = Object.keys(DASH_AREA_CONFIG)
@@ -70,18 +103,26 @@ export function dashMotivoLabel(t, te, motivo) {
   return labelOrCode(t, te, `vendite.dash_comune.motivo_fermo.${motivo}`, motivo)
 }
 
-// Scopo: azione riga "apri documento" dei drill-down dashboard: naviga alla
-//        lista dell'area con la ricerca precaricata (?search=, pattern
-//        ricerca-universale; il deep-link azzera i default data della lista
-//        target via useSearchTable). Nascosta se l'area non ha una view
-//        lista o il documento non ha codice.
-export function buildApriDocumentoAction({ area, codice, label, router }) {
-  const route = DASH_AREA_CONFIG[area]?.route
+// Scopo: azione riga "apri documento" dei drill-down dashboard: apre il DRAWER
+//        di gestione del documento della riga, per id — stesso meccanismo delle
+//        tappe del pannello "Passaggi" (DocumentoDrawerHost + registry
+//        DOCUMENTO_DRAWERS). Prima navigava alla lista d'area con
+//        ?search=<codice>: l'operatore atterrava su una lista filtrata e doveva
+//        comunque aprire la riga a mano, perdendo il contesto del cruscotto
+//        (cambio rotta). Nascosta se l'area non ha un drawer o la riga non ha
+//        id di dominio. `onApri(drawerTipo, documentoId)` lo passa il caller:
+//        tipicamente `apri` di useDocumentoDrawer.
+export function buildApriDocumentoAction({ area, documentoId, label, onApri }) {
+  const config = DASH_AREA_CONFIG[area]
+  const drawerTipo = config?.drawerTipo ?? null
   return {
     key: 'apri',
     label,
-    icon: MANAGE_ICONS.LIST,
-    visible: Boolean(route && codice),
-    command: () => router.push({ path: route, query: { search: codice } }),
+    // Icona dell'area (la lista e' cross-area: dice quale documento si apre).
+    // Fallback generico per aree future non ancora mappate — fail-visible,
+    // mai un'azione senza icona.
+    icon: config?.icon ?? MANAGE_ICONS.INSPECT,
+    visible: Boolean(drawerTipo && documentoId != null),
+    command: () => onApri(drawerTipo, documentoId),
   }
 }

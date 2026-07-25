@@ -1788,8 +1788,9 @@ distinzione si gioca sul **chrome, non sulla tinta**.
   i **dati veri** dentro la riga (codici, Tag stato). Se un ramo/stato va
   segnalato, farlo con icona + label esplicita, non con `opacity`.
 
-Primo consumatore: `LineagePassaggiPanel` (pannello "Passaggi" dei drawer
-documento) — frecce direzione e `↩` ramo inverso come glifi muted.
+Primo consumatore: `LineagePassaggiContenuto` (corpo "Passaggi", in dialog dai
+chip di `DocumentoCollegamentiBar`) — frecce direzione e `↩` ramo inverso come
+glifi muted.
 
 ### Iconografia di dominio — base documento + overlay-tipo
 
@@ -2208,6 +2209,31 @@ con quella regola e la propaga. Il sub-drawer resta agnostico.
 applica automaticamente `.app-escape` a tutti i suoi pulsanti. Non filtrare la lista actions
 per `isReadonly` (allineato a `ContrattoDrawer.drawerActions` / `PreventiviDrawer.drawerActions`):
 la sicurezza e' garantita dal BE che rifiuta i comandi senza permesso.
+
+**Azioni di processo su selezione righe → dialog, non pannello in coda** (2026-07-25,
+decisione Tid). Le attività che generano un documento a valle selezionando righe
+(evasione ordine → DDT, smistamento preventivo → ordine/commessa, crea reso da DDT,
+ri-spedizione reso) si aprono da un **pulsante nella `DrawerActionsBar`** — con l'icona
+del documento che si genera (`NAV_ICONS.DDT`, `NAV_ICONS.RESI`, `MANAGE_ICONS.SEND`) e
+`kind: 'manage'` — e vivono in un `AppDialog` dedicato. Non più come pannello sempre
+montato in fondo al drawer: allungava il contenuto e faceva la fetch delle righe anche a
+chi non stava lavorando quel processo.
+
+Regole del dialog d'azione:
+
+- **fetch lazy** su `watch([visible, id])` — all'apertura e a **ogni riapertura** (i
+  residui devono essere freschi dopo un'azione appena eseguita), mai al mount;
+- **`:readonly` esplicito** = il readonly PURO del chiamante (permessi/split/superseded),
+  NON quello combinato col lock-di-stato: il dialog è lanciato da un drawer post-DRAFT
+  `app-readonly` e senza override `FormFooter` erediterebbe `readonly=true` nascondendo il
+  pulsante di conferma — è la stessa ragione per cui il pannello, quando viveva nel
+  drawer, stava in `app-escape` (vedi `AppDialog.readonly`);
+- **`:close-only`** quando non c'è nulla da fare (readonly puro o nessuna riga
+  lavorabile): il dialog resta consultabile come consuntivo;
+- **chiusura a conferma riuscita**, con emit al drawer padre che ricarica detail e
+  capability. Un lavoro parziale si riprende riaprendo il dialog.
+
+Riferimento: `DdtResoDialog`, `OrdineEvasioneDialog`, `PreventiviSmistamentoDialog`.
 
 **Esempi nel codice**:
 

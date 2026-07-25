@@ -2,21 +2,25 @@
 // Scopo: Drawer leggero SOLA LETTURA per la commessa (Fase C, genealogia
 // inversa). La commessa non ha lista/CRUD propria: qui si consulta solo la
 // sua genealogia — sorgenti che l'hanno generata (Origine) + fatture a valle
-// (Destinazioni) — riusando LineagePassaggiPanel aperto di default. Aperto
-// dalle tappe COMMESSA dei pannelli "Passaggi" dei documenti (via
-// LineageDocumentoDrawerHost). L'header (codice + stato) arriva dal payload
-// passaggi già caricato dal pannello (evento @loaded): niente seconda fetch.
-import { ref } from 'vue'
+// (Destinazioni) — riusando il contenuto lineage INLINE. Aperto dalle tappe
+// COMMESSA dei chip/dialog "Passaggi" dei documenti (via DocumentoDrawerHost).
+// L'header (codice + stato) arriva dal nodo dello stesso payload passaggi:
+// una fetch sola per header e genealogia.
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
+import PraticaDrawer from '../../../pratiche/components/PraticaDrawer.vue'
 import { DRAWER_WIDTH } from '../../../core/constants'
 import { statoCommessaSeverity } from '../../../core/utils/severity'
-import LineagePassaggiPanel from './LineagePassaggiPanel.vue'
+import DocumentoDrawerHost from '../documenti/DocumentoDrawerHost.vue'
+import { useDocumentoDrawer } from '../documenti/useDocumentoDrawer'
+import LineagePassaggiContenuto from './LineagePassaggiContenuto.vue'
+import { useDocumentoPassaggi } from './useDocumentoPassaggi'
 
-defineProps({
+const props = defineProps({
   visible: { type: Boolean, default: false },
   commessaId: { type: [Number, null], default: null },
 })
@@ -24,10 +28,28 @@ defineProps({
 const emit = defineEmits(['update:visible'])
 const { t } = useI18n()
 
-const nodo = ref(null)
+const {
+  data: passaggi,
+  loaded,
+  loading,
+} = useDocumentoPassaggi('/vendite/commesse', () => props.commessaId)
 
-function onLoaded(data) {
-  nodo.value = data?.nodo ?? null
+const nodo = computed(() => passaggi.value?.nodo ?? null)
+const pratica = computed(() => passaggi.value?.pratica ?? null)
+
+const praticaDrawerVisible = ref(false)
+
+// Host cross-dominio: apre il drawer di dettaglio del documento della tappa.
+const {
+  visible: docDrawerVisible,
+  tipo: docDrawerTipo,
+  id: docDrawerId,
+  apri: apriDocumentoDrawer,
+} = useDocumentoDrawer()
+
+function apriDocumento(row) {
+  // Guardia "tappa apribile" nel composable (`apri` no-op su chiave ignota).
+  apriDocumentoDrawer(row?.tipoCodice, row?.docId)
 }
 
 function onClose() {
@@ -57,14 +79,26 @@ function onClose() {
         </template>
       </DrawerEntityHeader>
 
-      <!-- La genealogia È il contenuto principale del drawer: pannello aperto
-           di default (start-open). Mostra Origine (sorgenti) + Destinazioni. -->
-      <LineagePassaggiPanel
-        v-if="commessaId"
-        base-path="/vendite/commesse"
-        :doc-id="commessaId"
-        start-open
-        @loaded="onLoaded" />
+      <!-- La genealogia È il contenuto principale del drawer: contenuto INLINE,
+           non chip + dialog come nei drawer documento — qui una modale sarebbe
+           un click di troppo su un drawer che esiste solo per mostrarla. -->
+      <LineagePassaggiContenuto
+        :data="passaggi"
+        :loading="loading"
+        :loaded="loaded"
+        @apri-pratica="praticaDrawerVisible = true"
+        @apri-documento="apriDocumento" />
+
+      <PraticaDrawer
+        v-if="pratica"
+        v-model:visible="praticaDrawerVisible"
+        mode="edit"
+        :pratica-id="pratica.pratica_id" />
+
+      <DocumentoDrawerHost
+        v-model:visible="docDrawerVisible"
+        :tipo-codice="docDrawerTipo"
+        :doc-id="docDrawerId" />
     </div>
   </Drawer>
 </template>

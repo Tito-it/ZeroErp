@@ -14,7 +14,6 @@
 import { computed, onActivated } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
@@ -31,6 +30,8 @@ import { extractApiError } from '../../core/utils/apiError'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { faseDocumentoSeverity } from '../../core/utils/severity'
+import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
+import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
 import {
   DASH_AREA_CONFIG,
   buildApriDocumentoAction,
@@ -43,7 +44,6 @@ import { useDashboardApertoStore } from '../stores/dashboardAperto'
 
 const { t, te } = useI18n()
 const notify = useNotify()
-const router = useRouter()
 
 // Provider readonly di area: la vista e' consultazione pura, ma il provider
 // mantiene il pattern standard (ReadonlyBadge nel suffix toolbar).
@@ -194,15 +194,31 @@ function statoSeverity(row) {
   return dashAreaSeverity(row.area, row.stato_codice_interno)
 }
 
-// Azioni riga: "apri documento" via BB condiviso (naviga alla lista area
-// con ?search=; il deep-link azzera i default data della lista target).
+// Drawer di dettaglio del documento di riga: stato nel BB condiviso, host
+// montato in fondo alla view. La lista e' cross-area: il registry risolve
+// area -> drawer (DASH_AREA_CONFIG.drawerTipo). Alla chiusura si ricarica il
+// cruscotto: nel drawer il documento puo' essere avanzato (e magari uscito
+// dal perimetro aperti-non-chiusi).
+const {
+  visible: docDrawerVisible,
+  tipo: docDrawerTipo,
+  id: docDrawerId,
+  apri: apriDocumento,
+  onVisibleChange: onDocDrawerVisible,
+} = useDocumentoDrawer(() => {
+  loadRiepilogo()
+  loadDocumenti()
+})
+
+// Azioni riga: "apri documento" via BB condiviso — apre il drawer di gestione
+// del documento per id, senza lasciare il cruscotto.
 function buildRowActions(data) {
   return [
     buildApriDocumentoAction({
       area: data.area,
-      codice: data.codice,
+      documentoId: data.documento_id,
       label: t('vendite.situazione_aperta.apri_documento'),
-      router,
+      onApri: apriDocumento,
     }),
   ]
 }
@@ -403,5 +419,14 @@ onActivated(() => {
         />
       </div>
     </div>
+
+    <!-- Host cross-dominio: apre il drawer di gestione del documento della
+         riga (stesso meccanismo delle tappe "Passaggi"), senza uscire dal
+         cruscotto. -->
+    <DocumentoDrawerHost
+      :visible="docDrawerVisible"
+      :tipo-codice="docDrawerTipo"
+      :doc-id="docDrawerId"
+      @update:visible="onDocDrawerVisible" />
   </div>
 </template>

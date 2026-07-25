@@ -26,7 +26,7 @@ import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-import LineagePassaggiPanel from '../_shared/lineage/LineagePassaggiPanel.vue'
+import DocumentoCollegamentiBar from '../_shared/lineage/DocumentoCollegamentiBar.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
@@ -296,6 +296,12 @@ const sbloccaMotivo = ref('')
 //        (riga fatturata, commessa non modificabile) resta al BE (fail-visible).
 function buildRowActions(row) {
   if (isReadonly.value || !canPrezzo.value || !canEditRighe.value) return []
+  // Riga fatturata: nessuna azione prezzo (le tre sono tutte rifiutate dal
+  // guard BE `_assert_non_fatturata`). `fatturata` = EXISTS di un'AF con
+  // fattura_riga_id valorizzato, esposta dalla lista (changeset 20260724-07):
+  // specchio esatto del guard, non `stato_emissione` (che resta EMESSA anche
+  // dopo un reset-lotto che ha reso il prezzo di nuovo modificabile).
+  if (row.fatturata) return []
   return [
     {
       key: 'riallinea',
@@ -447,6 +453,15 @@ const drawerActions = computed(() => [
         <!-- Porta oneri + azioni di stato utente (capabilities data-driven). -->
         <DrawerActionsBar v-if="drawerActions.length" :actions="drawerActions" :disabled="loading" />
 
+        <!-- Collegamenti diretti (sorgenti a monte + fatture a valle): stessa
+             riga di chip dei drawer documento, il grafo completo si apre dai
+             chip in dialog. -->
+        <DocumentoCollegamentiBar
+          v-if="commessaId"
+          base-path="/vendite/commesse"
+          :doc-id="commessaId"
+          :readonly="isReadonly" />
+
         <!-- Contatori funnel testata. -->
         <div v-if="stato" class="app-commessa-contatori">
           <span v-for="c in contatori" :key="c.key" class="app-commessa-contatore">
@@ -566,12 +581,6 @@ const drawerActions = computed(() => [
           </Column>
         </DataTable>
 
-        <!-- Genealogia (riuso pannello lineage, chiuso di default). -->
-        <LineagePassaggiPanel
-          v-if="commessaId"
-          base-path="/vendite/commesse"
-          :doc-id="commessaId"
-        />
       </template>
 
       <FormFooter close-only @cancel="onClose" />

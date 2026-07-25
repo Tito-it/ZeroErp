@@ -37,10 +37,10 @@ import { mapAvailableActionsToDrawerActions } from '../../../core/composables/us
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import PreventiviForm from './PreventiviForm.vue'
 import PreventiviRigheTable from './PreventiviRigheTable.vue'
-import PreventiviSmistamentoPanel from './PreventiviSmistamentoPanel.vue'
+import PreventiviSmistamentoDialog from './dialogs/PreventiviSmistamentoDialog.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
 import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
-import LineagePassaggiPanel from '../../_shared/lineage/LineagePassaggiPanel.vue'
+import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegamentiBar.vue'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
@@ -127,12 +127,13 @@ const isReadonly = computed(
 )
 provide(READONLY_KEY, isReadonly)
 // Readonly PURO: permesso LETTURA / readonly forzato / revisione superseded —
-// SENZA il lock-di-stato post-DRAFT. Distinzione necessaria per le sezioni
-// operative dentro il contenuto (PreventiviSmistamentoPanel): in ACCETTATO il
-// drawer e' `app-readonly` per il lock-di-stato, ma lo smistamento e'
-// un'azione di processo legittima e deve restare cliccabile (escape); in
-// readonly puro invece la scrittura e' vietata: il pannello riceve
-// `consuntivo=true` (niente selezione/azioni) e l'escape resta innocuo.
+// SENZA il lock-di-stato post-DRAFT. Distinzione necessaria per le azioni di
+// processo (PreventiviSmistamentoDialog): in ACCETTATO il drawer e'
+// `app-readonly` per il lock-di-stato, ma lo smistamento e' legittimo e la
+// dialog deve restare operativa (`readonly` esplicito su AppDialog, che
+// altrimenti erediterebbe il lock e nasconderebbe il pulsante); in readonly
+// puro invece la scrittura e' vietata: la dialog riceve `consuntivo=true`
+// (niente selezione/azioni).
 // Stessa semantica del gate `drawerActions` (props.readonly || parentReadonly).
 const isReadonlyPuro = computed(
   () => props.readonly || parentReadonly.value || isSuperseded.value,
@@ -657,6 +658,13 @@ const acceptDialogVisible = ref(false)
 // (refactor 2026-05-28, mirror del flusso offerta `ApiOffertaEmetti`).
 const emissioneDialogVisible = ref(false)
 const emissioneLoading = ref(false)
+// Dialog Smistamento: aperta dal pulsante in barra azioni (2026-07-25). Era un
+// pannello in coda al contenuto del drawer — le azioni di processo stanno in
+// alto, come per il «Genera reso» del DDT.
+const smistamentoDialogVisible = ref(false)
+// Ref alla barra collegamenti: lo smistamento crea archi verso ordine/commessa,
+// quindi i chip vanno ricaricati insieme al detail (vedi `onSmistato`).
+const collegamentiRef = ref(null)
 // Dialog accettazione estratto in PreventivoAccettazioneDialog (componente
 // condiviso col percorso pratica): qui resta solo apertura + conferma. Il
 // payload {fatturazione_immediata, competenza_mese} arriva gia' BE-ready.
@@ -678,11 +686,11 @@ function onCambiaStato(action) {
     return
   }
   if (action.key === 'push_commessa' || action.key === 'genera_ordine') {
-    // Entrambi i rami dello smistamento vivono nel Pannello Smistamento
-    // (PreventiviSmistamentoPanel: selezione righe, routing per natura,
-    // progress EVASO). Le azioni restano esposte dal BE per coerenza modello
-    // ma i bottoni drawer sono filtrati a monte (vedi `availableActionsHeader`
-    // nel computed `drawerActions`): questo branch e' difensivo.
+    // Entrambi i rami dello smistamento vivono nella dialog Smistamento
+    // (PreventiviSmistamentoDialog: selezione righe, routing per natura,
+    // progress EVASO), aperta dal suo pulsante dedicato. Le azioni restano
+    // esposte dal BE per coerenza modello ma i bottoni drawer sono filtrati a
+    // monte (vedi `availableActionsHeader` in `drawerActions`): difensivo.
     return
   }
   // Transizione → EMESSO: dialog dedicato con anteprima documento + allegati.
@@ -751,13 +759,16 @@ function onNuovaRevisione() {
   })
 }
 
-// Scopo: callback @smistato del PreventiviSmistamentoPanel — almeno un ramo
+// Scopo: callback @smistato della PreventiviSmistamentoDialog — almeno un ramo
 // dello smistamento e' andato a buon fine: ricarica il detail (la transizione
-// automatica ACCETTATO → EVASO e le capability si vedono solo dopo il reload)
-// e, se il ramo merce ha creato un ordine, notifica il tab ordini.
+// automatica ACCETTATO → EVASO e le capability si vedono solo dopo il reload),
+// i chip dei collegamenti (lo smistamento crea gli archi preventivo→ordine e
+// preventivo→commessa: senza reload il chip comparirebbe solo alla riapertura
+// del drawer) e, se il ramo merce ha creato un ordine, notifica il tab ordini.
 async function onSmistato({ ordineId } = {}) {
   if (ordineId) emitDataChanged(TAB_ENTITIES.ORDINE, ordineId)
   await loadDetail()
+  collegamentiRef.value?.reload()
 }
 
 // Azioni della testata preventivo consumate da DrawerActionsBar.
@@ -774,7 +785,7 @@ const drawerActions = computed(() => {
   // post brief DB 2026-05-28). `crea_revisione` arriva qui come voce normale
   // con target_state=null; il dispatch e' su `action.key` in `onCambiaStato`.
   // `push_commessa` e `genera_ordine` vengono filtrati: entrambi i rami dello
-  // smistamento vivono nel Pannello Smistamento (PreventiviSmistamentoPanel:
+  // smistamento vivono nella dialog Smistamento (PreventiviSmistamentoDialog:
   // selezione righe, routing per natura, progress EVASO) — un bottone header
   // duplicherebbe il percorso. Le azioni restano esposte dal BE per coerenza
   // modello (capability + gate residuo per ramo).
@@ -791,6 +802,18 @@ const drawerActions = computed(() => {
     onAction: onCambiaStato,
     readonly: props.readonly || parentReadonly.value,
   })
+  // Smistamento: apre la dialog dedicata (righe residue instradate per natura
+  // verso ordine/commessa). Da ACCETTATO in poi; resta visibile anche in
+  // readonly puro — la dialog si apre consuntiva (footer di sola chiusura).
+  if (showSmistamento.value) {
+    list.push({
+      key: 'smistamento',
+      kind: 'manage',
+      label: t('vendite.preventivi.section_smistamento'),
+      icon: MANAGE_ICONS.SEND,
+      command: () => { smistamentoDialogVisible.value = true },
+    })
+  }
   list.push({
     key: 'manage-note',
     kind: 'manage',
@@ -890,6 +913,15 @@ const drawerActions = computed(() => {
             />
           </template>
         </DrawerActionsBar>
+
+        <!-- Collegamenti diretti (pratica + origine + destinazioni di livello 1):
+             segnalazione a colpo d'occhio sotto i pulsanti — «Ordine»,
+             «Contratto». Il grafo completo si apre dai chip stessi in dialog. -->
+        <DocumentoCollegamentiBar
+          ref="collegamentiRef"
+          base-path="/vendite/preventivi"
+          :doc-id="effectivePreventivoId"
+          :readonly="isReadonlyPuro" />
       </template>
 
       <!-- Banner revisione superseded: visibile sotto le azioni quando il
@@ -984,42 +1016,11 @@ const drawerActions = computed(() => {
               </template>
             </template>
 
-            <!-- Pannello Smistamento: da ACCETTATO in poi (in EVASO resta come
-                 consuntivo). Le capability per ramo (can_push_commessa /
-                 can_genera_ordine + reason) restano la difesa BE; il Message
-                 hint con la reason e' nell'area banner in alto.
-                 `app-escape`: in ACCETTATO il contenuto drawer e'
-                 `app-readonly` (lock-di-stato) ma lo smistamento e' un'azione
-                 di processo che deve restare cliccabile. Sul percorso pratica
-                 (step SMISTAMENTO) il pannello e' INTERATTIVO come nello
-                 standalone (uniformita', Fase 2): l'operatore smista qui; il
-                 post_smistamento aggancia ordine e crea i flussi a valle. Solo
-                 in readonly PURO (LETTURA/forzato/superseded) il pannello e'
-                 `consuntivo` (niente selezione/azioni, escape innocuo). -->
-            <template v-if="contentReady && hasDetail && showSmistamento">
-              <Divider />
-              <div class="app-escape">
-                <PreventiviSmistamentoPanel :preventivo-id="effectivePreventivoId"
-                  :consuntivo="isReadonlyPuro"
-                  @smistato="onSmistato" />
-              </div>
-            </template>
-
             <!-- L'area inline "Documenti generati" e' stata rimossa 2026-07-16
                  (doppione): l'archivio PDF si consulta dal pulsante PDF in
                  testata (EntityPdfButton -> PdfDocumentiSorgenteDialog, stesso
                  BB con in piu' expand automatico e append allegati). -->
 
-            <!-- Genealogia/lineage (pannello "Passaggi", BB condiviso lazy:
-                 fetch al primo expand; app-escape interno per la
-                 consultazione in readonly di stato). -->
-            <template v-if="contentReady && hasDetail">
-              <Divider />
-              <LineagePassaggiPanel
-                base-path="/vendite/preventivi"
-                :doc-id="effectivePreventivoId"
-                :readonly="isReadonlyPuro" />
-            </template>
           </TabPanel>
 
           <!-- ====================== TAB REVISIONI ====================== -->
@@ -1104,6 +1105,22 @@ const drawerActions = computed(() => {
     v-model:visible="acceptDialogVisible"
     :readonly="props.readonly || parentReadonly"
     @confirm="confirmAcceptDialog"
+  />
+
+  <!-- Dialog Smistamento (righe residue → ordine / commessa per natura),
+       aperta dal pulsante in barra azioni. Le capability per ramo
+       (can_push_commessa / can_genera_ordine + reason) restano la difesa BE;
+       il Message hint con la reason e' nell'area banner in alto. Sul percorso
+       pratica (step SMISTAMENTO) e' INTERATTIVA come nello standalone
+       (uniformita', Fase 2): l'operatore smista qui e il post_smistamento
+       aggancia ordine e crea i flussi a valle. Solo in readonly PURO
+       (LETTURA/forzato/superseded) e' `consuntivo`. -->
+  <PreventiviSmistamentoDialog
+    v-if="effectivePreventivoId && showSmistamento"
+    v-model:visible="smistamentoDialogVisible"
+    :preventivo-id="effectivePreventivoId"
+    :consuntivo="isReadonlyPuro"
+    @smistato="onSmistato"
   />
 </template>
 
