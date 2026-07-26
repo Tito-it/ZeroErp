@@ -66,8 +66,24 @@ l'utente di sistema PostgreSQL ma **l'utente applicativo JWT reale**, reso
 disponibile tramite il GUC `app.jwt_user` impostato dal middleware Django
 ad ogni request autenticata.
 
-Per i dettagli sull'implementazione del GUC e della catena middleware si rimanda
-al brief tecnico interno dedicato all'audit JWT utente.
+**`app.jwt_user` non è più solo.** Dopo il refactor multi-face auth i GUC propagati
+a ogni request autenticata sono **cinque** — `app.jwt_user`, `app.current_user_id`,
+`app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id` — e non
+servono solo all'audit: la **RLS** delle tabelle sensibili risolve lo scope emittente
+proprio a partire da questi valori. Due invarianti conseguenti:
+
+- `JwtAuditMiddleware.process_request` **azzera i 5 GUC all'inizio di ogni richiesta
+  `/api/`**, prima che l'auth class li ripopoli, in modo **fail-closed**: se il reset
+  fallisce la richiesta non viene servita (500 `E_GUC_RESET_FAILED`). Chiude il leak
+  cross-request sulle connessioni persistenti;
+- una connessione del percorso richiesta che gira su un ruolo `BYPASSRLS` viene
+  rifiutata (500 `E_DB_ROLE_UNSAFE`): il bypass è ammesso solo ai canali di sistema
+  headless (`system_process_context`).
+
+Contratto completo e semantica per GUC: [contratto-guc-app.md](contratto-guc-app.md) e
+[risorse-umane-e-accessi.md](risorse-umane-e-accessi.md) sezione GUC. Conseguenze lato
+API (liste filtrate, 404 su dettaglio fuori scope): [api.md](../dev/api.md) sezione
+"Scope emittente".
 
 ### 2.3 Transaction ID
 

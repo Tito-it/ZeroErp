@@ -72,8 +72,16 @@ REQUEST_LOG_ENABLED = env("DJANGO_REQUEST_LOG_ENABLED", "1") == "1"
 AI_ENABLED = env("AI_ENABLED", "0") == "1"
 AI_PROVIDER = env("AI_PROVIDER", "mock")
 AI_API_KEY = env("AI_API_KEY", "")
-AI_MODEL = env("AI_MODEL", "claude-sonnet-4-20250514")
-AI_MAX_TOKENS = int(env("AI_MAX_TOKENS", "4096"))
+# Modello LLM di default. Claude Opus 5 (2026-07-26): sostituisce
+# claude-sonnet-4-20250514, ritirato il 15-06-2026 (le chiamate a quel modello
+# falliscono). L'id non porta suffisso data.
+AI_MODEL = env("AI_MODEL", "claude-opus-5")
+# ATTENZIONE: su Opus 5 il thinking e' attivo per default e max_tokens limita
+# thinking + testo della risposta INSIEME. Il precedente default 4096 (tarato su
+# un modello senza thinking) troncherebbe le risposte a meta'. 16000 e' il valore
+# prudente per chiamate non-streaming come questa (oltre si rischia il timeout
+# HTTP dell'SDK: in quel caso servirebbe lo streaming).
+AI_MAX_TOKENS = int(env("AI_MAX_TOKENS", "16000"))
 AI_CONVERSATION_TTL = int(env("AI_CONVERSATION_TTL", "900"))
 AI_EMBEDDING_PROVIDER = env("AI_EMBEDDING_PROVIDER", "same")
 AI_EMBEDDING_MODEL = env("AI_EMBEDDING_MODEL", "")

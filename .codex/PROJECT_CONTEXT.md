@@ -26,7 +26,7 @@
 | Django | 6.01 | DRF 3.16, SimpleJWT, drf-spectacular |
 | PostgreSQL | 18 (CI) | PostGIS 3.6, pgTAP, pgAgent |
 | Liquibase | 5 Community | Migrazioni YAML in `db/changelog/migrations_v2/` |
-| Vue 3 | placeholder | Non ancora sviluppato |
+| Vue 3 | 3.5 | **Frontend sviluppato e in uso** (non più placeholder): Vite 7, PrimeVue 4.5, Pinia 3, Vue Router 5, vue-i18n 10, Node 24 LTS. Standard: `docs/it/dev/frontend/frontend-standards.md` + catalogo BB FE |
 
 ## Infrastruttura di Sviluppo
 
@@ -89,7 +89,7 @@ ZeroErp/
 | `dbops` | Strumenti DBA, registry task, FK policy |
 | `script` | Viste e funzioni applicative riusabili (incl. risoluzione permessi) |
 | `maintenance` | Job schedulati (pgAgent) |
-| `public` | Oggetti pubblici (version_info) |
+| `public` | Oggetti pubblici. ⚠️ `version_info` è citata storicamente ma **non risulta in `migrations_v2`**: per la versione applicata usare `DATABASECHANGELOG` (ultimo changeset Liquibase) finché non si verifica se l'oggetto esiste ancora |
 
 ## Struttura App Django (pattern per ogni dominio)
 
@@ -147,9 +147,16 @@ def nome_metodo(self, ...):
 # Scopo: obiettivo, perimetro e risultato atteso dettagliati
 ```
 
-## Stato Attuale del Progetto (aprile 2026)
+## Stato del Progetto — istantanea aprile 2026 (storica)
 
-### Completato ✅
+> ⚠️ **Questa sezione è ferma ad aprile 2026 e non riflette lo stato corrente.** Da allora
+> sono arrivati (fra gli altri) frontend Vue completo, multi-face auth, RLS operatori,
+> personalizzazioni liste, motore documentale, commesse/DDT/resi e il cockpit fatturazione.
+> Per lo stato reale usare, in quest'ordine: l'handoff più recente in memoria, i documenti in
+> `docs/it/dev/work-in-progress/`, e il repo. Le voci sotto restano perché descrivono
+> fondamenta ancora valide, non perché siano l'ultima parola.
+
+### Completato ✅ (al netto della nota sopra)
 - Refactor permessi (08-03-2026): 9 funzioni risoluzione permessi spostate da `config` a `script` — migrations `20260308-01..12`, Python backend + pgTAP test + doc aggiornati
 - Pipeline fatturazione: `vendite.fatturazione_pipeline` + runner Django (`LottoPipelineRunner`)
 - Lotti massivi e giornalieri con stati (DRAFT→EMESSA→DEFINITIVA)
