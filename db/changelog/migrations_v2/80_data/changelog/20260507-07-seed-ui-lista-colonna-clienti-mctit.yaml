@@ -16,6 +16,24 @@
 #
 # Blocco F.2 (2026-05-08): aggiunta etichetta_i18n_key, fix campo_sorgente
 # codice_fiscale -> id_fiscale_univoco_cf_piva, nuova riga sosp_riatt.
+#
+# 2026-07-26 — `priorita` entra nel CSV (24a colonna).
+# Fino a ieri il peso del ritiro responsive NON era esprimibile qui: nasceva a
+# DEFAULT 50 (20260602-13) e veniva impostato da changeset SQL separati, uno per
+# famiglia di lista — 20260602-16 (contratti), 20260603-07 (preventivi),
+# 20260603-08 (offerte), 20260603-15 (ordini), 20260709-17 (DDT), 20260718-20
+# (resi). Sei file per UNA colonna, con il valore vivo non leggibile da nessun
+# seed: ogni colonna nuova pretendeva il suo changeset.
+# Ora `priorita` sta nel CSV come tutte le altre: cambiare un peso = editare una
+# cella e ri-applicare. I sei changeset SQL restano nella storia e diventano
+# inerti — riscrivono esattamente i valori che il CSV gia' porta (trascritti 1:1
+# da quei file; tutto cio' che non nominavano e' rimasto a 50).
+# Da qui in avanti NON creare changeset SQL per priorita.
+#
+# ⚠️ Questo changeSet e' `runOnChange: true` + `validCheckSums: ANY`, cioe' un
+# mirror vivo del CSV: e' progettato per ri-girare a ogni modifica del file, ed
+# e' per questo che l'aggiunta di una colonna alla lista qui sotto non rompe la
+# sequenza dei checksum. Vale solo per i loader con questa forma.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -67,3 +85,7 @@ databaseChangeLog:
               - column: { name: data_insert,          type: STRING }
               - column: { name: user_insert,          type: STRING }
               - column: { name: etichetta_i18n_key,   type: STRING }
+              # Peso del ritiro dinamico colonne (consumato da
+              # ui.fn_resolve_lista_config): piu' alto = resiste piu' a lungo
+              # allo stringersi dello schermo. NOT NULL, mai cella vuota.
+              - column: { name: priorita,             type: NUMERIC }
