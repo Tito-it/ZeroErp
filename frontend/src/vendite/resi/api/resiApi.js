@@ -72,6 +72,25 @@ export function generaDdtRiconsegna(id, { righe = null, data = null } = {}) {
   return api.post(`${BASE}/${id}/genera-ddt-riconsegna/`, payload)
 }
 
+// Chiude la ri-consegna: dichiara DEFINITIVA una quota di merce resa (non
+// tornera' al cliente). Stesso contratto righe della ri-spedizione — le due
+// uscite condividono la copertura. `note` = motivo facoltativo.
+export function chiudiRiconsegna(id, { righe = null, note = null } = {}) {
+  const payload = {}
+  if (righe != null) payload.righe = righe
+  if (note != null) payload.note = note
+  return api.post(`${BASE}/${id}/chiudi-riconsegna/`, payload)
+}
+
+// Riapre una chiusura (rimedio a una rinuncia errata): la quota torna
+// ri-spedibile, l'ordine torna PARZIALMENTE_EVASO, l'accredito torna
+// FACOLTATIVA. `righe` omesse = tutte le rinunce del reso.
+export function riapriRiconsegna(id, { righe = null } = {}) {
+  const payload = {}
+  if (righe != null) payload.righe = righe
+  return api.post(`${BASE}/${id}/riapri-riconsegna/`, payload)
+}
+
 // --- Righe (solo testata DRAFT) ---
 
 export function listRighe(resoId) {

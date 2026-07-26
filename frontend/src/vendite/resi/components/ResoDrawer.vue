@@ -201,10 +201,10 @@ const drawerActions = computed(() => {
   ]
 })
 
-// Scopo: post ri-spedizione — il flip/stati possono essere cambiati: reload
-//        del detail, delle righe e dei chip collegamenti (nasce un arco
-//        reso->DDT di ri-consegna).
-async function onRiconsegnaGenerata() {
+// Scopo: la copertura ri-consegna e' cambiata (DDT generato, quota resa
+//        definitiva o rinuncia riaperta): in tutti e tre i casi stato reso,
+//        righe e collegamenti possono essere diversi — reload di tutti e tre.
+async function onCoperturaRiconsegnaCambiata() {
   await loadDetail()
   righeTableRef.value?.loadRighe()
   collegamentiRef.value?.reload()
@@ -295,6 +295,6 @@ async function onRiconsegnaGenerata() {
     v-model:visible="riconsegnaDialogVisible"
     :reso-id="props.resoId"
     :readonly="props.readonly || parentReadonly"
-    @generato="onRiconsegnaGenerata"
+    @aggiornato="onCoperturaRiconsegnaCambiata"
   />
 </template>

@@ -122,6 +122,6 @@ Nessun rischio di prodotto, ma un **costo ricorrente e insidioso**:
   `docs/it/dbzero/config/manual/sorgenti.md` §Convenzione chiave sorgente
 - Slice che hanno incontrato il problema:
   [brief-db-guard-uscita-commessa-e-capabilities.md](brief-db-guard-uscita-commessa-e-capabilities.md),
-  [brief-db-chiusura-riconsegna-reso-definitivo.md](brief-db-chiusura-riconsegna-reso-definitivo.md) §9
+  [brief-db-chiusura-riconsegna-reso-definitivo.md](../work-done/brief-db-chiusura-riconsegna-reso-definitivo.md) §9
 - Esempio di fixture corretto (usa la chiave nativa `commessa_id::text` per la
   sorgente `COMMESSA`): `db/pgtap/vendite/test-porta-oneri-giro-completo-v1.sql`

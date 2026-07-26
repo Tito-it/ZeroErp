@@ -17,9 +17,11 @@ from apps.vendite.api.views_resi import (
     ApiResiExport,
     ApiResiList,
     ApiResoAnnulla,
+    ApiResoChiudiRiconsegna,
     ApiResoConferma,
     ApiResoDetail,
     ApiResoGeneraDdtRiconsegna,
+    ApiResoRiapriRiconsegna,
     ApiResoRigaDetail,
     ApiResoRighe,
 )
@@ -57,6 +59,14 @@ urlpatterns = [
     path("<int:reso_id>/genera-ddt-riconsegna/",
          ApiResoGeneraDdtRiconsegna.as_view(),
          name="vendite-resi-genera-ddt-riconsegna"),
+    # Le due uscite della stessa copertura: ri-spedisci (sopra) oppure dichiara
+    # definitivo (qui). La riapertura e' il rimedio a una chiusura errata.
+    path("<int:reso_id>/chiudi-riconsegna/",
+         ApiResoChiudiRiconsegna.as_view(),
+         name="vendite-resi-chiudi-riconsegna"),
+    path("<int:reso_id>/riapri-riconsegna/",
+         ApiResoRiapriRiconsegna.as_view(),
+         name="vendite-resi-riapri-riconsegna"),
 
     # Righe
     path("<int:reso_id>/righe/", ApiResoRighe.as_view(),

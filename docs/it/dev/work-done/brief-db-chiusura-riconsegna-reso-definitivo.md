@@ -2,9 +2,11 @@
 
 > **Tipo**: brief operativo DB · **Target**: `dev/db-tid` · **Data**: 2026-07-25
 > · **Owner**: Tid
-> **Stato**: ✅ **DB COMPLETO — applicato e verde** (2026-07-26). Tutte le 10 voci
-> del §8 fatte. Le quattro scelte di progetto sono chiuse in §5 (ok Tid
-> 2026-07-25). **Palla al BE/FE** (§7) ([[feedback_be_fe_attende_prerequisiti_db]]).
+> **Stato**: ✅ **SLICE CHIUSA END-TO-END** (2026-07-26) — DB (10 voci del §8) +
+> **BE/FE** (§7, esito in §9-ter) + **seed lista 11**. Le quattro scelte di
+> progetto sono chiuse in §5 (ok Tid 2026-07-25). Resta la **validazione in-app**,
+> che richiede un reso per ri-consegna nuovo (in dev la coda è vuota).
+> ⚠️ Il lavoro DB è applicato ma **non ancora pushato**.
 >
 > **Esito**: `20260726-01..11` applicati. pgTAP **20 test verdi** su due file —
 > `test-resi-rinunce-fondamenta-v1` (11: tabella, helper, guard) e
@@ -537,7 +539,55 @@ con gli stessi conteggi. Il refactor delle voci 6a/6b — che tocca codice
 funzionante — non ha regredito nulla.
 
 ⚠️ **Debito noto e scollegato**: i rossi per guard sorgente polimorfa hanno ora
-un brief dedicato — [brief-db-bonifica-pgtap-sorgente-polimorfa.md](brief-db-bonifica-pgtap-sorgente-polimorfa.md).
+un brief dedicato — [brief-db-bonifica-pgtap-sorgente-polimorfa.md](../work-in-progress/brief-db-bonifica-pgtap-sorgente-polimorfa.md).
+
+## 9-ter. Esito BE/FE (2026-07-26) — §7 realizzato
+
+**BE**: `resi_repository` — `chiudi_riconsegna`/`riapri_riconsegna` (madri),
+`qta_rinunciata` nella whitelist `order_cols` della coda, e soprattutto
+**`list_righe` ripuntata su `fn_resi_riga_residuo_riconsegna`**: era la
+**QUARTA copia** della formula del residuo (§4.2-bis ne censiva tre a DB, questa
+viveva nel BE) ed era diventata **sbagliata** con le rinunce — non le sottraeva,
+quindi la dialog avrebbe proposto come ri-spedibile una quota già dichiarata
+definitiva. Ora il residuo lo dice solo l'helper, e `stato_riconsegna` replica
+1:1 la `CASE` della vista (incluso `RINUNCIATA`). `resi_service` —
+`chiudi_riconsegna`/`riapri_riconsegna` con la stessa validazione righe della
+gemella (degeneri → 400, mai degrado a «rendi definitivo tutto») e `note`
+normalizzate a NULL. `views_resi`/`urls_resi` — i due endpoint;
+`error_policies` — **560** `E_RESO_RINUNCIA_SUPERA_RESO` → 409 banner.
+
+**FE**: `ResoRiconsegnaDialog` con **footer a due esiti** sulla stessa lista e
+sulla stessa selezione — «Rendi definitivo il reso» (warn outlined, conseguenza
+contabile) e «Genera DDT» (percorso normale, ultima posizione) — colonna
+«Definitiva» accanto a «Ri-consegnata», e **riapertura** sul kebab delle sole
+righe con rinuncia. Lo store notifica anche `ORDINE`: il suo stato cambia come
+effetto collaterale (→ EVASO) ed è il caso che il refresh KeepAlive delle liste
+deve cogliere.
+
+**Verificato**: `list_righe` sul DB vivo (RESO0000150: riga COMPLETATA, residuo
+0 dall'helper); traduzione errore reale `E_RESO_NESSUNA_RICONSEGNA_PENDENTE`;
+payload degeneri rifiutati. Suite `apps.vendite`+`apps.core` **1961 verdi**,
+build Vite verde, lint pulito, `kill -HUP` gunicorn.
+
+### ✅ Seed lista 11 — applicato dal team DB (2026-07-26)
+
+La colonna `qta_rinunciata` è ora nella config della lista
+`vendite.resi_da_riconsegnare`: **id 204, etichetta «Definitiva», ordine 75** —
+fra `qta_riconsegnata` (70) e `qta_residua` (80), così le due uscite della
+copertura si leggono affiancate prima del residuo. Verificato sul DB vivo.
+⚠️ Applicato al DB ma **non ancora pushato** (changelog sul branch del team DB).
+
+Il seed referenzia `vendite.resi_da_riconsegnare.col_rinunciata`: la chiave
+i18n **mancava** ed è stata aggiunta (it «Definitiva» / en «Final») — senza,
+l'intestazione della colonna sarebbe uscita grezza in lista.
+
+**Con questo la slice è chiusa end-to-end: DB, BE, FE, seed.** Resta solo la
+validazione in-app, che richiede un reso per ri-consegna nuovo (in dev
+`vw_resi_da_riconsegnare` è vuota — vedi §9-ter).
+
+Rilievo minore ancora aperto, non bloccante: il ramo `RINUNCIATA` della `CASE`
+è irraggiungibile *nella vista* (la `WHERE` filtra residuo > 0), mentre è vivo e
+usato in `ResiRepository.list_righe` per il consuntivo nella dialog.
 
 ## 10. Riferimenti
 

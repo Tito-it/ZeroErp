@@ -89,6 +89,9 @@ _CODA_META: dict[str, dict[str, Any]] = {
             "ddt_numero": "v.ddt_numero",
             "qta_resa": "v.qta_resa",
             "qta_riconsegnata": "v.qta_riconsegnata",
+            # Quota dichiarata definitiva (ponte resi_righe_rinunce): la coda
+            # espone entrambe le uscite della copertura, non solo la consegnata.
+            "qta_rinunciata": "v.qta_rinunciata",
             "qta_residua": "v.qta_residua",
             "stato_riconsegna": "v.stato_riconsegna",
         },
@@ -267,9 +270,18 @@ class ResiRepository:
             return int(row[0]) if row else 0
 
     # Scopo: Righe attive del reso con decodifiche articolo/uom/tipo reso e la
-    #        copertura ri-consegna derivata dal ponte `resi_righe_riconsegne`
-    #        (qta_riconsegnata/qta_residua/stato_riconsegna, stessa formula
-    #        della vista coda — R1: stato DERIVATO, nessuna colonna fisica).
+    #        copertura ri-consegna: qta_riconsegnata (ponte
+    #        `resi_righe_riconsegne`), qta_rinunciata (ponte
+    #        `resi_righe_rinunce`), qta_residua e stato_riconsegna DERIVATI
+    #        (R1: nessuna colonna fisica).
+    #        ⚠️ Il residuo NON si ricalcola qui: arriva da
+    #        `vendite.fn_resi_riga_residuo_riconsegna` — l'helper unico estratto
+    #        dal team DB (brief chiusura-riconsegna §4.2-bis) proprio perche' la
+    #        formula `quantita − Σric` era gia' triplicata a DB. Questa era la
+    #        QUARTA copia, ed era diventata SBAGLIATA con l'arrivo delle rinunce
+    #        (non le sottraeva): mostrava come ri-spedibile una quota gia'
+    #        dichiarata definitiva. Le due uscite condividono la copertura, il
+    #        residuo e' `quantita − Σric − Σrin` e lo dice una funzione sola.
     def list_righe(self, reso_id: int) -> list[dict[str, Any]]:
         sql = """
             SELECT
@@ -293,13 +305,21 @@ class ResiRepository:
                 tr.descrizione          AS tipo_reso_descrizione,
                 tr.riapre_residuo,
                 rr.motivo,
-                COALESCE(ric.tot, 0::numeric)                 AS qta_riconsegnata,
-                (rr.quantita - COALESCE(ric.tot, 0::numeric)) AS qta_residua,
+                COALESCE(ric.tot, 0::numeric) AS qta_riconsegnata,
+                COALESCE(rin.tot, 0::numeric) AS qta_rinunciata,
+                res.residuo AS qta_residua,
+                -- Stati allineati 1:1 a vw_resi_da_riconsegnare (stessa
+                -- semantica nel drawer e nella coda): RINUNCIATA quando la
+                -- copertura si e' chiusa per rinuncia e non per consegna.
                 CASE
                     WHEN tr.riapre_residuo IS NOT TRUE THEN NULL
+                    WHEN res.residuo = 0::numeric
+                         AND COALESCE(rin.tot, 0::numeric) > 0::numeric
+                        THEN 'RINUNCIATA'
                     WHEN COALESCE(ric.tot, 0::numeric) = 0::numeric
+                         AND COALESCE(rin.tot, 0::numeric) = 0::numeric
                         THEN 'DA_RICONSEGNARE'
-                    WHEN COALESCE(ric.tot, 0::numeric) < rr.quantita
+                    WHEN res.residuo > 0::numeric
                         THEN 'PARZIALE'
                     ELSE 'COMPLETATA'
                 END AS stato_riconsegna,
@@ -315,6 +335,17 @@ class ResiRepository:
                       FROM vendite.resi_righe_riconsegne
                      GROUP BY resi_riga_id
               ) ric ON ric.resi_riga_id = rr.id
+              LEFT JOIN (
+                    SELECT resi_riga_id, SUM(qta) AS tot
+                      FROM vendite.resi_righe_rinunce
+                     GROUP BY resi_riga_id
+              ) rin ON rin.resi_riga_id = rr.id
+              -- Helper valutato UNA volta per riga e riusato da qta_residua e
+              -- dai tre rami della CASE: senza il LATERAL sarebbero 3 chiamate
+              -- per riga (STABLE non garantisce il riuso fra occorrenze).
+              CROSS JOIN LATERAL (
+                    SELECT vendite.fn_resi_riga_residuo_riconsegna(rr.id) AS residuo
+              ) res
              WHERE rr.reso_id = %s
                AND rr.attivo IS TRUE
              ORDER BY rr.riga_nr, rr.id
@@ -726,13 +757,70 @@ class ResiRepository:
         righe: list[dict[str, Any]] | None = None,
         data: date | None = None,
     ) -> int:
-        righe_json = json.dumps(righe) if righe is not None else None
         sql = (
             "SELECT vendite.fn_genera_ddt_riconsegna("
             "%s, %s::jsonb, COALESCE(%s, CURRENT_DATE))"
         )
+        return self._chiama_madre_riconsegna(
+            sql, reso_id, righe, extra=[data],
+        )
+
+    # Scopo: Chiude la ri-consegna via fn madre
+    #        `vendite.fn_chiudi_riconsegna_reso` (atomica): dichiara che una
+    #        quota di merce resa PER RI-CONSEGNA non tornera' al cliente —
+    #        scrive `resi_righe_rinunce` e ri-proietta lo stato ordine (il
+    #        residuo si chiude → EVASO). `righe` = [{resi_riga_id, qta}] in
+    #        UNITA' BASE, None = tutta la copertura residua; `note` = motivo
+    #        facoltativo dell'intera chiusura. Ritorna il numero di righe chiuse.
+    #        NON muove numeri: l'accredito in coda resta identico, cambia solo
+    #        la sua etichetta (FACOLTATIVA → DOVUTA) — brief §3.
+    def chiudi_riconsegna(
+        self,
+        reso_id: int,
+        righe: list[dict[str, Any]] | None = None,
+        note: str | None = None,
+    ) -> int:
+        return self._chiama_madre_riconsegna(
+            "SELECT vendite.fn_chiudi_riconsegna_reso(%s, %s::jsonb, %s)",
+            reso_id, righe, extra=[note],
+        )
+
+    # Scopo: Riapre una chiusura via fn madre
+    #        `vendite.fn_riapri_riconsegna_reso` (atomica): cancella le rinunce
+    #        e ri-proietta lo stato ordine (torna PARZIALMENTE_EVASO). La quota
+    #        torna ri-spedibile e l'accredito torna FACOLTATIVA (round-trip =
+    #        stato iniziale). `righe` = [{resi_riga_id, qta}], None = tutte le
+    #        rinunce del reso; lo scalo parte dalle rinunce piu' RECENTI (LIFO,
+    #        deciso lato DB). Ritorna il numero di righe riaperte.
+    def riapri_riconsegna(
+        self,
+        reso_id: int,
+        righe: list[dict[str, Any]] | None = None,
+    ) -> int:
+        return self._chiama_madre_riconsegna(
+            "SELECT vendite.fn_riapri_riconsegna_reso(%s, %s::jsonb)",
+            reso_id, righe,
+        )
+
+    # Scopo: chiamata alle tre fn madri che lavorano la copertura ri-consegna
+    #        (genera / chiudi / riapri). Condividono la stessa forma —
+    #        `(reso_id, righe::jsonb [, extra...]) -> integer` con `None` =
+    #        "tutta la copertura residua" — quindi anche la serializzazione
+    #        delle righe e la lettura dello scalare stanno in un posto solo
+    #        (era ripetuta 3 volte identica).
+    def _chiama_madre_riconsegna(
+        self,
+        sql: str,
+        reso_id: int,
+        righe: list[dict[str, Any]] | None,
+        extra: list[Any] | None = None,
+    ) -> int:
+        # NULL (non "[]") quando le righe non sono specificate: e' il jsonb che
+        # le madri leggono come "lavora tutta la copertura residua".
+        righe_json = json.dumps(righe) if righe is not None else None
+        params: list[Any] = [int(reso_id), righe_json, *(extra or [])]
         with connection.cursor() as cursor:
-            cursor.execute(sql, [int(reso_id), righe_json, data])
+            cursor.execute(sql, params)
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])
