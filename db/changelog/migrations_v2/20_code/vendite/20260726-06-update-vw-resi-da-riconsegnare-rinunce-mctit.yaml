@@ -1,0 +1,148 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vw_resi_da_riconsegnare: residuo dall'helper unico + colonna qta_rinunciata
+#   (brief-db-chiusura-riconsegna-reso-definitivo §4.2-bis, Fase 2 voce 6a)
+#
+# TRE MODIFICHE, tutte additive per i consumatori:
+#
+# 1. `qta_residua` passa dall'aritmetica inline (rr.quantita - COALESCE(ric.tot,0))
+#    all'helper vendite.fn_resi_riga_residuo_riconsegna(rr.id), che sottrae ANCHE
+#    le rinunce. Effetto: una riga interamente rinunciata ESCE dall'elenco
+#    ri-spedizione (la WHERE filtra residuo > 0), che e' il punto del brief —
+#    prima restava in coda indistinguibile da una lavorabile.
+#
+# 2. Nuova colonna `qta_rinunciata` accanto a `qta_riconsegnata`: consuntivo per
+#    il FE (§7 del brief prevede la colonna «rinunciata» in dialog).
+#
+# 3. `stato_riconsegna` acquisisce il caso RINUNCIATA. La scala diventa:
+#      DA_RICONSEGNARE  nulla lavorato
+#      PARZIALE         qualcosa lavorato, residuo ancora > 0
+#      RINUNCIATA       residuo 0 e almeno una rinuncia (chiusa definitivamente)
+#      COMPLETATA       residuo 0 senza rinunce (tutto ri-spedito)
+#    ⚠️ RINUNCIATA/COMPLETATA sono visibili solo a chi legge la vista SENZA il
+#    filtro della WHERE (residuo > 0 le esclude): restano per i consumatori che
+#    interrogano per resi_riga_id. Il valore c'e' e non mente, ed e' cio' che
+#    conta quando il FE mostrera' il consuntivo.
+#
+# PERCHE' l'helper e non l'inline: la formula era ripetuta in TRE punti (questa
+# vista, fn_genera_ddt_riconsegna, trgfn_resi_riconsegne_guard) e la rinuncia ne
+# richiedeva l'effetto in quattro. Passare dall'helper allinea tutti e sana un
+# debito preesistente (§4.2-bis).
+#
+# ⚠️ COSTO: l'helper e' una chiamata di funzione per riga, l'inline era un
+# LEFT JOIN aggregato. La vista e' un elenco operativo (righe reso di resi
+# CONFERMATI ancora da lavorare: decine, non milioni) e l'helper e' STABLE con
+# indici su entrambi i ponti — accettabile. Il LEFT JOIN su `ric` resta perche'
+# serve a `qta_riconsegnata`, che e' un dato esposto, non un passaggio di calcolo.
+#
+# Base: doc auto-gen docs/it/dbzero/vendite/views/vw_resi_da_riconsegnare.md.
+# CREATE OR REPLACE VIEW: le colonne nuove vanno IN CODA, mai in mezzo (PostgreSQL
+# rifiuta il replace se cambia posizione/tipo delle esistenti).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260726-06-update-vw-resi-da-riconsegnare-rinunce-mctit.yaml
+
+  - changeSet:
+      id: 20260726-06-update-vw-resi-da-riconsegnare-rinunce
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_resi_da_riconsegnare: qta_residua dall'helper unico (sottrae le
+        rinunce, le righe chiuse escono dall'elenco) + colonna qta_rinunciata +
+        stato_riconsegna con il caso RINUNCIATA.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_resi_da_riconsegnare
+              WITH (security_invoker=on) AS
+              SELECT rr.id AS resi_riga_id,
+                  r.id AS reso_id,
+                  r.uid AS reso_uid,
+                  r.numero AS reso_numero,
+                  r.data,
+                  r.emittente_fiscale_id,
+                  r.billing_account_id,
+                  r.destinatario_soggetto_ruolo_id,
+                  s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                  rr.articolo_id,
+                  rr.descrizione,
+                  rr.uom_operativa_id,
+                  rr.quantita AS qta_resa,
+                  COALESCE(ric.tot, (0)::numeric) AS qta_riconsegnata,
+                  -- rev 2026-07-26: residuo dallo helper UNICO, che sottrae anche
+                  -- le rinunce. Una riga interamente rinunciata ha residuo 0 e la
+                  -- WHERE la esclude: esce dallo elenco ri-spedizione.
+                  vendite.fn_resi_riga_residuo_riconsegna(rr.id) AS qta_residua,
+                      CASE
+                          -- RINUNCIATA prima di COMPLETATA: a residuo 0 la
+                          -- presenza di rinunce e il discriminante.
+                          WHEN (vendite.fn_resi_riga_residuo_riconsegna(rr.id) = (0)::numeric
+                                AND COALESCE(rin.tot, (0)::numeric) > (0)::numeric) THEN 'RINUNCIATA'::text
+                          WHEN (COALESCE(ric.tot, (0)::numeric) = (0)::numeric
+                                AND COALESCE(rin.tot, (0)::numeric) = (0)::numeric) THEN 'DA_RICONSEGNARE'::text
+                          WHEN (vendite.fn_resi_riga_residuo_riconsegna(rr.id) > (0)::numeric) THEN 'PARZIALE'::text
+                          ELSE 'COMPLETATA'::text
+                      END AS stato_riconsegna,
+                  rr.ddt_riga_id,
+                  dr.ddt_id,
+                  d.numero AS ddt_numero,
+                  rr.ordine_riga_id,
+                  -- Colonna NUOVA in coda (CREATE OR REPLACE VIEW non ammette
+                  -- inserimenti in mezzo): consuntivo delle quote dichiarate
+                  -- definitive, per la dialog di ri-spedizione (brief §7).
+                  COALESCE(rin.tot, (0)::numeric) AS qta_rinunciata
+                 FROM ((((((((vendite.resi_righe rr
+                   JOIN vendite.resi r ON ((r.id = rr.reso_id)))
+                   JOIN config.stati_doc_reso sr ON ((sr.id = r.stato_doc_reso_id)))
+                   JOIN config.tipi_reso tr ON ((tr.id = rr.tipo_reso_id)))
+                   JOIN vendite.ddt_righe dr ON ((dr.id = rr.ddt_riga_id)))
+                   JOIN vendite.ddt d ON ((d.id = dr.ddt_id)))
+                   JOIN anagrafiche.soggetti_ruoli sr_dest ON ((sr_dest.id = r.destinatario_soggetto_ruolo_id)))
+                   JOIN anagrafiche.soggetti s_dest ON ((s_dest.id = sr_dest.soggetto_id)))
+                   LEFT JOIN ( SELECT resi_righe_riconsegne.resi_riga_id,
+                          sum(resi_righe_riconsegne.qta) AS tot
+                         FROM vendite.resi_righe_riconsegne
+                        GROUP BY resi_righe_riconsegne.resi_riga_id) ric ON ((ric.resi_riga_id = rr.id)))
+                   -- rev 2026-07-26: aggregato rinunce, per la colonna esposta e
+                   -- per il discriminante di stato_riconsegna.
+                   LEFT JOIN ( SELECT resi_righe_rinunce.resi_riga_id,
+                          sum(resi_righe_rinunce.qta) AS tot
+                         FROM vendite.resi_righe_rinunce
+                        GROUP BY resi_righe_rinunce.resi_riga_id) rin ON ((rin.resi_riga_id = rr.id))
+                WHERE (((sr.codice_interno)::text = 'CONFERMATO'::text)
+                       AND (tr.riapre_residuo = true)
+                       AND (rr.attivo IS TRUE)
+                       AND (vendite.fn_resi_riga_residuo_riconsegna(rr.id) > (0)::numeric));
+
+              COMMENT ON VIEW vendite.vw_resi_da_riconsegnare IS
+                'Elenco operativo delle righe reso ancora da ri-spedire al cliente '
+                '(resi CONFERMATI, tipo riapre_residuo, residuo > 0). rev 2026-07-26 '
+                '(brief-db-chiusura-riconsegna-reso-definitivo S4.2-bis): qta_residua '
+                'viene dall''helper unico vendite.fn_resi_riga_residuo_riconsegna, che '
+                'sottrae ANCHE le quote rinunciate - una riga dichiarata definitiva ha '
+                'residuo 0 e sparisce da questo elenco, che era il punto del brief. '
+                'Nuove: qta_rinunciata (consuntivo) e lo stato RINUNCIATA (residuo 0 '
+                'con almeno una rinuncia, distinto da COMPLETATA = tutto ri-spedito).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: la vista guadagna una colonna in coda, quindi il
+              -- ripristino richiede il changeset precedente che la definisce.
+              -- ATTENZIONE: quella revisione ignora le rinunce, e le righe chiuse
+              -- restano nello elenco ri-spedizione.
+              SELECT 1;

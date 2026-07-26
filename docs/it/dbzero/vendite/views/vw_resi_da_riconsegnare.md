@@ -20,17 +20,19 @@ SELECT rr.id AS resi_riga_id,
     rr.uom_operativa_id,
     rr.quantita AS qta_resa,
     COALESCE(ric.tot, (0)::numeric) AS qta_riconsegnata,
-    (rr.quantita - COALESCE(ric.tot, (0)::numeric)) AS qta_residua,
+    vendite.fn_resi_riga_residuo_riconsegna(rr.id) AS qta_residua,
         CASE
-            WHEN (COALESCE(ric.tot, (0)::numeric) = (0)::numeric) THEN 'DA_RICONSEGNARE'::text
-            WHEN (COALESCE(ric.tot, (0)::numeric) < rr.quantita) THEN 'PARZIALE'::text
+            WHEN ((vendite.fn_resi_riga_residuo_riconsegna(rr.id) = (0)::numeric) AND (COALESCE(rin.tot, (0)::numeric) > (0)::numeric)) THEN 'RINUNCIATA'::text
+            WHEN ((COALESCE(ric.tot, (0)::numeric) = (0)::numeric) AND (COALESCE(rin.tot, (0)::numeric) = (0)::numeric)) THEN 'DA_RICONSEGNARE'::text
+            WHEN (vendite.fn_resi_riga_residuo_riconsegna(rr.id) > (0)::numeric) THEN 'PARZIALE'::text
             ELSE 'COMPLETATA'::text
         END AS stato_riconsegna,
     rr.ddt_riga_id,
     dr.ddt_id,
     d.numero AS ddt_numero,
-    rr.ordine_riga_id
-   FROM ((((((((vendite.resi_righe rr
+    rr.ordine_riga_id,
+    COALESCE(rin.tot, (0)::numeric) AS qta_rinunciata
+   FROM (((((((((vendite.resi_righe rr
      JOIN vendite.resi r ON ((r.id = rr.reso_id)))
      JOIN config.stati_doc_reso sr ON ((sr.id = r.stato_doc_reso_id)))
      JOIN config.tipi_reso tr ON ((tr.id = rr.tipo_reso_id)))
@@ -42,7 +44,11 @@ SELECT rr.id AS resi_riga_id,
             sum(resi_righe_riconsegne.qta) AS tot
            FROM vendite.resi_righe_riconsegne
           GROUP BY resi_righe_riconsegne.resi_riga_id) ric ON ((ric.resi_riga_id = rr.id)))
-  WHERE (((sr.codice_interno)::text = 'CONFERMATO'::text) AND (tr.riapre_residuo = true) AND (rr.attivo IS TRUE) AND ((rr.quantita - COALESCE(ric.tot, (0)::numeric)) > (0)::numeric));
+     LEFT JOIN ( SELECT resi_righe_rinunce.resi_riga_id,
+            sum(resi_righe_rinunce.qta) AS tot
+           FROM vendite.resi_righe_rinunce
+          GROUP BY resi_righe_rinunce.resi_riga_id) rin ON ((rin.resi_riga_id = rr.id)))
+  WHERE (((sr.codice_interno)::text = 'CONFERMATO'::text) AND (tr.riapre_residuo = true) AND (rr.attivo IS TRUE) AND (vendite.fn_resi_riga_residuo_riconsegna(rr.id) > (0)::numeric));
 ```
 
 

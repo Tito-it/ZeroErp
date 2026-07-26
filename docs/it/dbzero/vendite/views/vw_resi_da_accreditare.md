@@ -51,7 +51,7 @@ WITH acc AS (
     x.accredito_dovuto,
     (
         CASE
-            WHEN x.riapre_residuo THEN 'FACOLTATIVA'::text
+            WHEN (x.riapre_residuo AND (vendite.fn_resi_riga_residuo_riconsegna(x.resi_riga_id) > (0)::numeric)) THEN 'FACOLTATIVA'::text
             ELSE 'DOVUTA'::text
         END)::character varying AS etichetta
    FROM (((((((dist x
