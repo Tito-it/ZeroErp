@@ -171,7 +171,7 @@ Le tabelle sensibili (`vendite.fatture`, `vendite.fatturazione_lotti`, ...) hann
 
 ### 4.3 Conferma sulle scritture — *(pilastro 3)*
 
-Ogni operazione che modifica dati passa da preview + conferma esplicita. I parametri sono ripresi dallo **stato server** della conversazione (il client non puo' alterarli tra preview e conferma). I permessi vanno **ri-verificati a execution-time**, non solo alla preview (vedi `../dev/work-done/analisi-sicurezza-aggiornata.md` §2: ri-check in corso di introduzione).
+Ogni operazione che modifica dati passa da preview + conferma esplicita. I parametri sono ripresi dallo **stato server** della conversazione (il client non puo' alterarli tra preview e conferma). I permessi sono **ri-verificati a execution-time**, non solo alla preview: il ri-check e' stato introdotto in `preview` e in `_execute_confirmation` il 2026-06-26 (P1 di [analisi-sicurezza-aggiornata.md](../dev/work-done/analisi-sicurezza-aggiornata.md) §2 — Step 2 applicato), chiudendo la finestra TOCTOU fra offerta del catalogo ed esecuzione.
 
 ### 4.4 Trattamento dei dati dal DB — *(igiene, NON difesa principale)*
 
@@ -187,7 +187,7 @@ L'assistente risponde solo a domande relative a ZeroERP. Riduce la superficie di
 
 ### 4.7 Audit come rilevamento
 
-Ogni interazione e' loggata in `dbops.ai_query_log` (input, strumenti+parametri, risposta, provider, modello, token, durata; `request_id` correla con `request_log`; scritture marcate `confirmed: true`). Oltre alla tracciabilita', e' il modo per **accorgersi di comportamenti anomali**: per le scritture confermate (e in futuro MCP/profilo supporto) il logging deve diventare **affidabile** (un fallimento genera alert), non best-effort.
+Ogni interazione e' loggata in `dbops.ai_query_log` (input, strumenti+parametri, risposta, provider, modello, token, durata; `request_id` correla con `request_log`; scritture marcate `confirmed: true`). Oltre alla tracciabilita', e' il modo per **accorgersi di comportamenti anomali**. Per le **scritture confermate** il logging e' stato reso affidabile il 2026-06-26 (P2 di [analisi-sicurezza-aggiornata.md](../dev/work-done/analisi-sicurezza-aggiornata.md), Step 2 applicato): un fallimento non passa piu' in silenzio. Per le sole **letture** il best-effort resta accettabile. Quando arriveranno MCP e profilo supporto, quegli accessi ricadono nella prima categoria, non nella seconda.
 
 ### 4.8 Cosa NON e' una difesa
 
@@ -271,8 +271,8 @@ Tutte le configurazioni sono via variabili d'ambiente:
 | `AI_ENABLED` | `0` | Feature flag globale. Se `0`, l'app non viene caricata |
 | `AI_PROVIDER` | `mock` | Provider: `anthropic`, `mistral`, `mock` |
 | `AI_API_KEY` | — | Chiave API del provider (mai in codice) |
-| `AI_MODEL` | `claude-sonnet-4-20250514` | Modello LLM da usare |
-| `AI_MAX_TOKENS` | `4096` | Limite token risposta |
+| `AI_MODEL` | `claude-opus-5` | Modello LLM da usare (dal 2026-07-26; sostituisce `claude-sonnet-4-20250514`, ritirato il 15-06-2026) |
+| `AI_MAX_TOKENS` | `16000` | Limite token risposta. ⚠️ Su Opus 5 il **thinking e' attivo per default** e questo limite copre thinking + testo **insieme**: un valore basso (il precedente 4096) tronca la risposta a meta'. Non abbassarlo senza aver verificato l'effetto |
 | `AI_CONVERSATION_TTL` | `900` | TTL conversazione in secondi (15 min) |
 | `AI_CONTEXT_FILE` | `docs/it/ai/ai-context.md` | Contesto statico per system prompt |
 
@@ -294,6 +294,15 @@ Queste garanzie sono esplicite nel system prompt e nell'architettura:
 ---
 
 ## 9. Evoluzione prevista
+
+**Decisione bloccante prima della produzione — perimetro dei dati.** Con `AI_PROVIDER=anthropic` o
+`mistral`, ogni `tool_result` invia **dati reali di clienti** a un fornitore esterno nell'esercizio
+ordinario, e `dbops.ai_query_log.input_text` conserva in chiaro le domande degli operatori. La scelta del
+provider di produzione (esterno con DPA, opzione EU, o modello self-hosted) e le sue implicazioni di
+trattamento vanno decise **prima** della prima installazione, non dopo: e' il requisito R7 di
+[analisi-diagnostica-produzione-senza-accesso-db.md](../dev/work-in-progress/analisi-diagnostica-produzione-senza-accesso-db.md)
+(§5.6), che osserva come non abbia senso progettare la minimizzazione sul canale diagnostico lasciando
+aperto quello ordinario. Non e' un'evoluzione facoltativa come le voci sotto.
 
 Le attivita' di evoluzione previste sono:
 

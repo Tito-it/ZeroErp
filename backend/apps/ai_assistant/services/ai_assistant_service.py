@@ -194,8 +194,11 @@ def query(
 
     # Chiama provider con loop tool_call
     provider = get_ai_provider()
-    model = getattr(settings, "AI_MODEL", "claude-sonnet-4-20250514")
-    max_tokens = getattr(settings, "AI_MAX_TOKENS", 4096)
+    # Fallback allineati ai default di settings.py: claude-sonnet-4 e' ritirato
+    # (15-06-2026) e 4096 troncherebbe le risposte di Opus 5, dove il thinking
+    # attivo per default consuma lo stesso budget del testo.
+    model = getattr(settings, "AI_MODEL", "claude-opus-5")
+    max_tokens = getattr(settings, "AI_MAX_TOKENS", 16000)
 
     tools_used: list[str] = []
     tools_log: list[dict[str, Any]] = []
