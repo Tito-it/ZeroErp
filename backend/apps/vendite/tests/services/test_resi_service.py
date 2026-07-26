@@ -60,6 +60,17 @@ ResiAzioniTests
 24c) test_riconsegna_righe_non_lista      — E_RESO_VALIDAZIONE (no degrado a "tutto")
 24d) test_riconsegna_riga_senza_qta       — E_RESO_VALIDAZIONE
 
+ResiChiusuraRiconsegnaTests (chiudi/riapri ri-consegna — l'altra uscita)
+24e) test_chiudi_delega_e_ritorna         — fn_chiudi_riconsegna_reso + righe_chiuse
+24f) test_chiudi_note_vuote_a_null        — note whitespace -> NULL
+24g) test_chiudi_note_trimmate            — note trimmate
+24g-bis) test_chiudi_note_tipo_non_stringa_rifiutata — E_RESO_VALIDAZIONE
+24h) test_chiudi_righe_none_e_tutta_la_copertura — None = tutta la copertura
+24i) test_chiudi_righe_degeneri_rifiutate — E_RESO_VALIDAZIONE (no degrado)
+24j) test_riapri_delega_e_ritorna         — fn_riapri_riconsegna_reso
+24k) test_riapri_righe_degeneri_rifiutate — E_RESO_VALIDAZIONE
+24l) test_nessun_atomic_extra             — nessun transaction.atomic extra
+
 ResiDbErrorsTests
 25) test_integrity_error_fk_mappato       — E_VENDITE_FK
 26) test_integrity_error_fallback         — E_VENDITE_VALIDATION
@@ -520,6 +531,111 @@ class ResiAzioniTests(SimpleTestCase):
             resi_service.genera_ddt_riconsegna(7, [{"resi_riga_id": 71}])
         self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
         repo.genera_ddt_riconsegna.assert_not_called()
+
+
+class ResiChiusuraRiconsegnaTests(SimpleTestCase):
+    """L'ALTRA uscita della copertura: chiudi/riapri la ri-consegna (rinuncia).
+
+    Delega alle fn madri DB `fn_chiudi_riconsegna_reso` /
+    `fn_riapri_riconsegna_reso`; la validazione righe e' la stessa della
+    ri-spedizione (le due uscite condividono contratto e copertura).
+    """
+
+    @patch(_REPO)
+    def test_chiudi_delega_e_ritorna(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.chiudi_riconsegna.return_value = 2
+
+        out = resi_service.chiudi_riconsegna(
+            7, [{"resi_riga_id": 71, "qta": "3"}], "cliente non lo rivuole",
+        )
+
+        repo.chiudi_riconsegna.assert_called_once_with(
+            7, [{"resi_riga_id": 71, "qta": "3"}], "cliente non lo rivuole",
+        )
+        self.assertEqual(out, {"reso_id": 7, "righe_chiuse": 2})
+
+    @patch(_REPO)
+    def test_chiudi_note_vuote_a_null(self, repo_cls) -> None:
+        # Testo libero facoltativo: whitespace -> NULL, mai stringa vuota a DB
+        # ([[feedback_null_vs_empty]]).
+        repo = repo_cls.return_value
+        repo.chiudi_riconsegna.return_value = 1
+        resi_service.chiudi_riconsegna(7, None, "   ")
+        self.assertIsNone(repo.chiudi_riconsegna.call_args[0][2])
+
+    @patch(_REPO)
+    def test_chiudi_note_trimmate(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.chiudi_riconsegna.return_value = 1
+        resi_service.chiudi_riconsegna(7, None, "  merce non ripristinabile  ")
+        self.assertEqual(
+            repo.chiudi_riconsegna.call_args[0][2], "merce non ripristinabile",
+        )
+
+    @patch(_REPO)
+    def test_chiudi_note_tipo_non_stringa_rifiutata(self, repo_cls) -> None:
+        # Un `note` non testuale e' un body malformato: 400 parlante qui, non
+        # un parametro varchar imprevedibile passato a psycopg.
+        repo = repo_cls.return_value
+        for note in (123, {"x": 1}, ["a"]):
+            with self.subTest(note=note):
+                with self.assertRaises(ServiceError) as cm:
+                    resi_service.chiudi_riconsegna(7, None, note)
+                self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
+        repo.chiudi_riconsegna.assert_not_called()
+
+    @patch(_REPO)
+    def test_chiudi_righe_none_e_tutta_la_copertura(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.chiudi_riconsegna.return_value = 3
+        resi_service.chiudi_riconsegna(7)
+        repo.chiudi_riconsegna.assert_called_once_with(7, None, None)
+
+    @patch(_REPO)
+    def test_chiudi_righe_degeneri_rifiutate(self, repo_cls) -> None:
+        # Il degrado silenzioso a "rendi definitiva TUTTA la copertura" e' qui
+        # piu' grave che sulla gemella: rinuncerebbe a merce che l'operatore
+        # voleva ri-spedire.
+        repo = repo_cls.return_value
+        for righe in ([], {"resi_riga_id": 71}, [{"resi_riga_id": 71}]):
+            with self.subTest(righe=righe):
+                with self.assertRaises(ServiceError) as cm:
+                    resi_service.chiudi_riconsegna(7, righe)
+                self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
+        repo.chiudi_riconsegna.assert_not_called()
+
+    @patch(_REPO)
+    def test_riapri_delega_e_ritorna(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.riapri_riconsegna.return_value = 1
+
+        out = resi_service.riapri_riconsegna(7, [{"resi_riga_id": 71, "qta": "3"}])
+
+        repo.riapri_riconsegna.assert_called_once_with(
+            7, [{"resi_riga_id": 71, "qta": "3"}],
+        )
+        self.assertEqual(out, {"reso_id": 7, "righe_riaperte": 1})
+
+    @patch(_REPO)
+    def test_riapri_righe_degeneri_rifiutate(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.riapri_riconsegna(7, [])
+        self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
+        repo.riapri_riconsegna.assert_not_called()
+
+    @patch(f"{_SVC}.transaction")
+    @patch(_REPO)
+    def test_nessun_atomic_extra(self, repo_cls, mock_tx) -> None:
+        # Le madri DB sono gia' atomiche: un atomic applicativo sopra sarebbe
+        # solo un lock in piu' (stessa regola della ri-spedizione).
+        repo = repo_cls.return_value
+        repo.chiudi_riconsegna.return_value = 1
+        repo.riapri_riconsegna.return_value = 1
+        resi_service.chiudi_riconsegna(7)
+        resi_service.riapri_riconsegna(7)
+        mock_tx.atomic.assert_not_called()
 
 
 class ResiDbErrorsTests(SimpleTestCase):

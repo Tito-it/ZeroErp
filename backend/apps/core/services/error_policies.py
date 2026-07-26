@@ -2168,6 +2168,21 @@ class ErrorPolicyRegistry:
                 "ri-consegnare."
             ),
         ),
+        # Gemello del precedente sull'ALTRA uscita della stessa copertura
+        # (id 560): ri-spedizioni e rinunce condividono il residuo
+        # `quantita - Sigma ric - Sigma rin`, quindi anche la rinuncia puo'
+        # eccederlo. Causa tipica: due operatori sulla stessa riga reso, uno
+        # ri-spedisce e l'altro dichiara definitiva la quota -> 409, conflitto
+        # di stato, non errore di validazione del payload.
+        "E_RESO_RINUNCIA_SUPERA_RESO": ErrorPolicy(
+            code="E_RESO_RINUNCIA_SUPERA_RESO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La quantita' dichiarata definitiva supera la quantita' resa "
+                "ancora da ri-consegnare."
+            ),
+        ),
         # fn_conferma_reso: conferma ammessa solo da DRAFT / con righe attive.
         "E_RESO_STATO_NON_CONFERMABILE": ErrorPolicy(
             code="E_RESO_STATO_NON_CONFERMABILE",

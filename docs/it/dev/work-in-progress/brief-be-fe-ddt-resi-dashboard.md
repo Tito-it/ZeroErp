@@ -294,9 +294,11 @@ complessivo resta da completare:
    (il resto resta in coda e si ri-spedisce dopo), ma **non esiste l'uscita
    opposta** — se la merce non tornerà mai al cliente, l'ordine resta
    PARZIALMENTE_EVASO a vita e l'accredito resta etichettato FACOLTATIVA,
-   quindi invisibile a chi lavora le dovute. Fix DB in
-   [brief-db-chiusura-riconsegna-reso-definitivo.md](brief-db-chiusura-riconsegna-reso-definitivo.md),
-   decisioni chiuse. Nota di progetto che lo rende piccolo: **l'accredito è già
+   quindi invisibile a chi lavora le dovute. **Chiuso end-to-end il 2026-07-26**
+   (DB + BE/FE + seed lista 11):
+   [brief-db-chiusura-riconsegna-reso-definitivo.md](../work-done/brief-db-chiusura-riconsegna-reso-definitivo.md).
+   Resta la validazione in-app (serve un reso per ri-consegna nuovo: in dev la
+   coda è vuota). Nota di progetto che lo rende piccolo: **l'accredito è già
    in coda e già dell'importo giusto** (`vw_contatore_merce` sottrae i resi
    senza filtro sul tipo) — chiudere la ri-consegna non cambia alcun numero,
    cambia solo la natura della quota pendente. Intanto la dialog dichiara
