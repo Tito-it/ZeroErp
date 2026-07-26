@@ -18,6 +18,7 @@
 - [fn_check_indirizzo_duplicato](manual/fn_check_indirizzo_duplicato.md)
 - [fn_check_operatore_invitabile](manual/fn_check_operatore_invitabile.md)
 - [fn_check_parameter_fk_surrogate](manual/fn_check_parameter_fk_surrogate.md) — (latest review 02-05-2026)
+- [fn_check_rinuncia_reversibile](manual/fn_check_rinuncia_reversibile.md) — (creata 2026-07-26 — brief-db-chiusura-riconsegna-reso-definitivo §5.1)
 - [fn_check_ultimo_super_admin_attivo](manual/fn_check_ultimo_super_admin_attivo.md)
 - [fn_check_user_can_create_ba](manual/fn_check_user_can_create_ba.md)
 - [fn_check_user_emittente_scope](manual/fn_check_user_emittente_scope.md) — (latest review 08-03-2026) La funzione **`script.fn_check_user_emittente_scope`** verifica se un utente ha accesso a uno specifico emittente fiscale. Pensata per i trigger defense-in-depth su tabelle operative (fatture, pagamenti).

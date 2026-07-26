@@ -17,7 +17,7 @@
 
 ### 🎯 Scopo Principale
 
-(rev 2026-07-18 — **forma cambiata: rileggere le regole chiave**)
+(rev 2026-07-26 — etichetta ora reso-aware; rev 2026-07-18 forma cambiata)
 
 **Coda di lavoro** delle righe reso per cui c'è un **accredito dovuto**: merce che il cliente
 ha reso ma che gli **risulta già fatturata**. La generazione della nota di credito arriva con
@@ -54,12 +54,36 @@ Cosa cambia in concreto:
 l'accredito della partita si **distribuisce** fra le sue righe reso, oldest-first, cappato alla
 quantità della singola riga; chi riceve 0 esce.
 
-**Il tipo di reso è solo un'etichetta**:
+**Il tipo di reso è solo un'etichetta** — e dal 2026-07-26 non basta il tipo:
 
 | `etichetta` | Quando | Natura |
 |---|---|---|
-| `DOVUTA` | reso *a credito*: la merce non torna più | obbligo — è arretrato |
-| `FACOLTATIVA` | reso *per ri-consegna*: la merce tornerà fuori | opzione dell'operatore |
+| `DOVUTA` | reso *a credito* (la merce non torna più) **oppure** reso per ri-consegna la cui copertura residua è **esaurita** | obbligo — è arretrato |
+| `FACOLTATIVA` | reso *per ri-consegna* con copertura residua **ancora > 0**: la merce può ancora tornare fuori | opzione dell'operatore |
+
+#### Perché il tipo non basta più (rev 2026-07-26)
+
+`riapre_residuo = true` significava «la merce tornerà al cliente, quindi l'accredito è una
+scelta». Vero **finché la ri-consegna è possibile**. Ma se la quota è stata dichiarata
+**definitiva** ([`resi_righe_rinunce`](/dbzero/vendite/tabelle/resi_righe_rinunce)) la merce
+non torna, e l'accredito non è più una scelta. La condizione diventa:
+
+```text
+riapre_residuo AND fn_resi_riga_residuo_riconsegna(riga) > 0  ->  FACOLTATIVA
+altrimenti                                                    ->  DOVUTA
+```
+
+È l'ultimo pezzo che rende **visibile** la chiusura: chi lavora la coda «dovute» prima non
+vedeva mai quelle righe.
+
+⚠️ **L'IMPORTO NON CAMBIA.** `accredito_dovuto` viene dal contatore
+([`vw_contatore_merce`](/dbzero/vendite/views/vw_contatore_merce)), che le rinunce **non
+toccano** per scelta di progetto. Una rinuncia cambia l'etichetta, non il numero: se dopo
+una chiusura l'importo cambiasse — o la riga uscisse dalla coda — sarebbe il sintomo che la
+sottrazione delle rinunce è finita nella vista sbagliata.
+
+Il caso «tutto ri-consegnato» non serve gestirlo qui: quelle righe **escono da sole** dalla
+coda (il fulfillment rialza `evaso`, `differenza` torna a 0).
 
 ---
 
