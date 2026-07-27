@@ -302,9 +302,16 @@ SELECT results_eq(
   '18) Seed D1 OFFERTA: BOZZA/EMESSA/ACCETTATA/RIFIUTATA/SUPERATA/ANNULLATA mappati'
 );
 
+-- rev 2026-07-27 (bonifica): aggiunto PARZIALMENTE_EVASO in 3a posizione.
+-- Lo stato e' entrato nel seed DOPO la scrittura di questo test e, poiche' il
+-- confronto e' posizionale (ORDER BY ordine), aveva sfalsato tutte le righe
+-- successive: il test segnalava EVASO come sbagliato quando il seed era giusto.
+-- ⚠️ Causa diversa dal guard sorgente polimorfa: era mascherata dal fallimento
+-- del fixture, che abortiva prima di arrivare qui.
 SELECT results_eq(
   $$SELECT fase, esito, terminale FROM config.stati_doc_ordini ORDER BY ordine$$,
   $$VALUES ('APERTO'::varchar,   NULL::varchar,       false),
+          ('IN_CORSO'::varchar, NULL::varchar,       false),
           ('IN_CORSO'::varchar, NULL::varchar,       false),
           ('CHIUSO'::varchar,   'POSITIVO'::varchar, true),
           ('IN_CORSO'::varchar, NULL::varchar,       false),
@@ -312,7 +319,7 @@ SELECT results_eq(
           ('IN_CORSO'::varchar, NULL::varchar,       false),
           ('CHIUSO'::varchar,   'NEGATIVO'::varchar, true),
           ('CHIUSO'::varchar,   'POSITIVO'::varchar, true)$$,
-  '19) Seed D1 ORDINE: DRAFT/CONFERMATO/EVASO/ALLOCATO/SPEDITO/CONSEGNATO/ANNULLATO/FATTURATO mappati'
+  '19) Seed D1 ORDINE: DRAFT/CONFERMATO/PARZIALMENTE_EVASO/EVASO/ALLOCATO/SPEDITO/CONSEGNATO/ANNULLATO/FATTURATO mappati'
 );
 
 SELECT results_eq(
@@ -380,7 +387,18 @@ SELECT
   (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1)                    AS soggetto_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'APERTA')       AS st_aperta,
   (SELECT id FROM config.priorita_pratiche WHERE codice_interno = 'NORMALE')   AS priorita_id,
-  (SELECT id FROM config.sorgenti WHERE codice_interno = 'PREVENTIVO')         AS src_preventivo;
+  (SELECT id FROM config.sorgenti WHERE codice_interno = 'PREVENTIVO')         AS src_preventivo,
+  -- rev 2026-07-27 (bonifica): per i casi "non risolto" serviva una chiave che
+  -- il guard sorgente polimorfa accetti ma che vw_stato_sorgente non sappia
+  -- risolvere. E' esattamente la COMMESSA: chiave valida (key_selector='id',
+  -- riga esistente in vendite.commesse) ma la vista NON ha il ramo commessa
+  -- (reperto §5 di brief-db-guard-sorgente-polimorfa: le 19 righe COMMESSA di
+  -- pratiche_sorgenti sono a chiave GIUSTA e non risolvono per questo motivo).
+  -- Prima si usavano stringhe inventate 'FAKE-UNRESOLVED-*', illegali dal
+  -- guard del 2026-07-18 — e il commento diceva gia' "mima la commessa":
+  -- ora la mima davvero, invece di falsificarla.
+  (SELECT id FROM config.sorgenti WHERE codice_interno = 'COMMESSA')           AS src_commessa,
+  (SELECT id::text FROM vendite.commesse ORDER BY id LIMIT 1)                  AS commessa_uid_reale;
 
 CREATE TEMP TABLE tmp_anc_tp AS
 WITH ins AS (
@@ -437,14 +455,15 @@ VALUES
    (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'ANNULLATO'), 'ROOT',      NULL),
   ((SELECT pratica_id FROM tmp_anc_pb), (SELECT src_preventivo FROM tmp_anc_refs),
    (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'ACCETTATO'), 'COLLEGATO', NULL),
-  -- C) ROOT EMESSO (risolto) + COLLEGATO fake (non-risolto: mima la commessa)
+  -- C) ROOT EMESSO (risolto) + COLLEGATO COMMESSA (non-risolto: chiave valida,
+  --    ma vw_stato_sorgente non ha il ramo commessa)
   ((SELECT pratica_id FROM tmp_anc_pc), (SELECT src_preventivo FROM tmp_anc_refs),
    (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO'),    'ROOT',      NULL),
-  ((SELECT pratica_id FROM tmp_anc_pc), (SELECT src_preventivo FROM tmp_anc_refs),
-   'FAKE-UNRESOLVED-C-' || substr(md5(clock_timestamp()::text), 1, 8),      'COLLEGATO', NULL),
-  -- D) solo ROOT non-risolto
-  ((SELECT pratica_id FROM tmp_anc_pd), (SELECT src_preventivo FROM tmp_anc_refs),
-   'FAKE-UNRESOLVED-D-' || substr(md5(clock_timestamp()::text), 1, 8),      'ROOT',      NULL);
+  ((SELECT pratica_id FROM tmp_anc_pc), (SELECT src_commessa FROM tmp_anc_refs),
+   (SELECT commessa_uid_reale FROM tmp_anc_refs),                           'COLLEGATO', NULL),
+  -- D) solo ROOT non-risolto (stessa tecnica)
+  ((SELECT pratica_id FROM tmp_anc_pd), (SELECT src_commessa FROM tmp_anc_refs),
+   (SELECT commessa_uid_reale FROM tmp_anc_refs),                           'ROOT',      NULL);
 
 -- ============================================================
 -- 25-28) vw_pratica_doc_sorgente: la regola d'ancora sceglie il doc PIU' VIVO

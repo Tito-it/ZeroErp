@@ -94,6 +94,3 @@
 - [vw_non_editable_fields](manual/vw_non_editable_fields.md) — (latest review 2026-05-22 — aggiunto riferimento al sistema lock condizionali)
 - [vw_parameter_fk_surrogate_dangling](manual/vw_parameter_fk_surrogate_dangling.md) — (latest review 02-05-2026)
 - [vw_trigger_functions](manual/vw_trigger_functions.md) — * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database. * Rendere immediatamente accessibili:
-
-## 📘 Altri contenuti manuali
-- [pr_apply_fk_index_policy](manual/pr_apply_fk_index_policy.md) — * **Centralizzare la gestione degli indici FK**   Evitare di duplicare script DDL e consentire modifiche runtime delle policy. * **Allineare schema e policy**   Creare solo gli indici consentiti e rimuovere quelli non più autorizzati. * **Integrazione con Liquibase**   Può essere richiamata in un changeSet `runAlways` per applicare le policy ad ogni deploy.

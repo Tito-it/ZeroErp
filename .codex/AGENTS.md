@@ -203,6 +203,26 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
 - Esempio esecuzione test Django: `./manage-test.sh apps.core.tests.api -v 2`
 - Smoke test API docs/schema: vedi `apps/core/tests/api/test_diagnostics_api.py` (endpoint `/api/docs/` e `/api/schema/`).
 
+### ⚠️ La suite ha rossi preesistenti: usare la baseline
+
+Una parte dei pgTAP e` rossa da prima (fixture rimaste indietro rispetto a guard
+entrati dopo). **Non attribuire un rosso alla propria modifica senza verificare.**
+
+```bash
+scripts/pgtap-baseline.sh vendite          # confronta col noto (solo gli schemi toccati)
+scripts/pgtap-baseline.sh                  # tutta la suite (~7 min)
+scripts/pgtap-baseline.sh --update vendite # dopo aver sanato dei file
+```
+
+Lo script distingue **regressioni** (rosso nuovo → exit 1) da **rossi gia` noti**
+(silenzio) e segnala i **rientrati** (ora verdi, da togliere dalla baseline).
+Registro: `db/pgtap/baseline-rossi.tsv`, con la causa classificata.
+
+⚠️ La baseline e` un **registro di debito, non una lista di eccezioni**: deve
+calare. Un file che fallisce nel *fixture* non esegue **nessuna** asserzione — la
+sua copertura vale zero, non "parziale", ed e` un'area che *sembra* coperta.
+Bonifica in corso: `docs/it/dev/work-done/brief-db-bonifica-pgtap-sorgente-polimorfa.md`.
+
 ### Regole test Django per compatibilità CI
 
 I test Django devono funzionare in CI (GitHub Actions) **senza dipendere da un DB reale accessibile**:

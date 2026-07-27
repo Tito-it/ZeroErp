@@ -5,7 +5,7 @@
 -- Test: script.fn_get_parameter_full (firma con emittente_fiscale_id)
 --
 -- Elenco test:
---  1) Funzione presente (nuova firma bigint)
+--  1) Funzione presente con la firma VIVA a 7 argomenti
 --  2) Vecchia firma (integer) non esiste piu'
 --  3) Riferimenti minimi: tabelle parameters e parameter_overrides
 --  4) Setup parametro test e emittente fiscale di riferimento
@@ -13,19 +13,30 @@
 --  6) Override emittente restituito
 --  7) Priorita': user > emittente
 --  8) Priorita': group > emittente
+--  9) GUARDRAIL: nessun overload a 6 argomenti (ambiguita' di risoluzione)
+-- ------------------------------------------------------------
+-- rev 2026-07-27: il caso 1 asseriva la firma a 6 argomenti (bigint), che era
+--   "la nuova" quando il test fu scritto (20260403-15). Dal 20260515-08 e'
+--   arrivata la firma a 7 argomenti (p_categoria_cliente_id) SENZA rimuovere
+--   la precedente: avendo entrambe i DEFAULT su tutti i parametri tranne il
+--   primo, OGNI chiamata con meno di 7 argomenti diventava ambigua — cast
+--   compreso. Due chiamanti erano rotti a runtime
+--   (ai_assistant/tool_registry.py con 1 arg, script.fn_get_default_by_param
+--   con 6). La firma a 6 argomenti e' stata droppata (20260727-25) e il caso 1
+--   ora punta a quella viva. Il caso 9 e' il presidio perche' non ricapiti.
 -- ------------------------------------------------------------
 
 BEGIN;
 
-SELECT plan(8);
+SELECT plan(9);
 
 -- ============================================================
--- 1) Funzione presente (nuova firma con bigint)
+-- 1) Funzione presente con la firma VIVA (7 argomenti, dal 20260515-08)
 -- ============================================================
 SELECT has_function(
     'script', 'fn_get_parameter_full',
-    ARRAY['text', 'bigint', 'integer', 'integer[]', 'text', 'text'],
-    '1) fn_get_parameter_full presente con firma (text, bigint, integer, integer[], text, text)'
+    ARRAY['text', 'bigint', 'integer', 'integer[]', 'text', 'text', 'smallint'],
+    '1) fn_get_parameter_full presente con firma a 7 argomenti (categoria_cliente)'
 );
 
 -- ============================================================
@@ -143,5 +154,27 @@ SELECT is(
 );
 
 -- ============================================================
+-- ============================================================
+-- 9) GUARDRAIL — deve esistere UNA SOLA firma.
+--   Non e' una ripetizione del caso 1: quello verifica che la funzione ci sia,
+--   questo che non ce ne sia una SECONDA. Due overload con default su tutti i
+--   parametri tranne il primo non sono distinguibili da PostgreSQL per nessuna
+--   arieta' inferiore alla massima: il risultato e' "la funzione non e' unica"
+--   su ogni chiamata breve, cioe' percorsi applicativi rotti in silenzio
+--   finche' qualcuno non li esegue.
+--   Se domani serve un altro livello di cascata: NON creare un overload
+--   "backward compatible" (fu l'intenzione del 20260515-08, e non funziono'),
+--   ma estendere questa firma con un parametro opzionale in coda.
+-- ============================================================
+SELECT is(
+    (SELECT count(*)::int
+       FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'script'
+        AND p.proname = 'fn_get_parameter_full'),
+    1,
+    '9) guardrail: una sola firma di fn_get_parameter_full (nessun overload ambiguo)'
+);
+
 SELECT * FROM finish();
 ROLLBACK;

@@ -160,7 +160,9 @@ SELECT
   (
     SELECT s.id
     FROM config.sorgenti s
-    WHERE s.codice = 'PREVENTIVO'
+    -- rev 2026-07-27: COMMESSA (key_selector='id') + lookup per codice_interno
+    -- immutabile, non per codice (etichetta modificabile) — §6c/§6d.
+    WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE
     LIMIT 1
   ) AS root_sorgente_tipo_id;
 
@@ -180,21 +182,16 @@ SELECT ok(
   'Riferimenti minimi disponibili'
 );
 
-INSERT INTO config.sorgenti (
-  codice_interno, codice, categoria, descrizione, attivo, target_table, key_selector, scope, meta
-)
-VALUES (
-  'COMMESSA', 'COMMESSA', 'DOCUMENTO', 'Commessa test pgtap', true,
-  'vendite.commesse_attivita'::regclass, 'id', 'PIPELINE_MARKER',
-  jsonb_build_object('idempotency_key','segment_key')
-)
-ON CONFLICT (codice)
-DO UPDATE
-   SET attivo = true,
-       target_table = EXCLUDED.target_table,
-       key_selector = EXCLUDED.key_selector,
-       data_update = now(),
-       user_update = current_user;
+-- rev 2026-07-27 (bonifica): RIMOSSO l'upsert su config.sorgenti che stava qui.
+-- Riscriveva la riga di seed della sorgente COMMESSA imponendo
+-- target_table='vendite.commesse_attivita' — il valore ERRATO corretto nel seed
+-- dal brief-db-guard-sorgente-polimorfa (reperto R2): i consumatori del
+-- collegamento usano l'id della COMMESSA, non della riga di attivita'.
+-- Col guard attivo dal 2026-07-18 quell'upsert faceva validare l'esistenza
+-- contro la tabella sbagliata, e ogni link falliva.
+-- ⚠️ Un test non deve riscrivere righe di seed condivise: ne altera il
+-- comportamento per tutto il resto della transazione. Il seed e' gia' corretto;
+-- l'asserzione qui sotto ne verifica la presenza, che e' il vero scopo.
 
 SELECT ok(
   EXISTS (
@@ -230,7 +227,8 @@ CREATE TEMP TABLE tmp_link_core AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
   p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_commesse_core),
-  p_sorgente_uid => ('SRC-' || substr(md5(clock_timestamp()::text), 1, 12))::text,
+  -- ROOT: uid = id della commessa stessa, esiste per costruzione.
+  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_core)::text,
   p_sorgente_riga => 1,
   p_meta => jsonb_build_object('test_scope', 'pgtap_commesse_core')
 ) AS link_id;
@@ -261,11 +259,30 @@ SELECT is(
 
 -- Commessa multi-sorgente (brief 2026-06-09): una 2a sorgente DIVERSA sulla
 -- stessa commessa non e' piu' un conflitto, ma il flusso normale -> COLLEGATO.
+--
+-- rev 2026-07-27 (bonifica): la 2a chiave deve essere DIVERSA dalla ROOT (se
+-- coincidesse, fn_link sarebbe idempotente e restituirebbe il link ROOT, non un
+-- COLLEGATO) ma comunque RISOLVIBILE nel target. Si crea quindi una seconda
+-- commessa reale e se ne usa l'id: due chiavi distinte, entrambe esistenti.
+CREATE TEMP TABLE tmp_commessa_core_2 AS
+SELECT vendite.fn_get_or_create_commessa(
+  p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_commesse_core),
+  p_utility_id => (SELECT utility_id FROM tmp_refs_commesse_core),
+  p_tipo_commessa => 'AUTO',
+  p_policy_fatturazione => 'DA_DOCUMENTO',
+  p_fatturazione_immediata => false,
+  p_priorita_operativa => 'NORMALE',
+  p_competenza_dal => DATE '2026-06-01',
+  p_competenza_al => DATE '2026-06-30',
+  p_meta => jsonb_build_object('test_scope', 'pgtap_commesse_core_collegato'),
+  p_force_new => true
+) AS commessa_id;
+
 CREATE TEMP TABLE tmp_link_core_collegato AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_core),
   p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_commesse_core),
-  p_sorgente_uid => ('SRC-COLL-' || substr(md5(clock_timestamp()::text), 1, 12))::text,
+  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_core_2)::text,
   p_sorgente_riga => 2,
   p_meta => '{}'::jsonb
 ) AS link_id;

@@ -53,7 +53,7 @@
 >    doc auto-gen `dbzero` — a cura di Tid;
 > 2. **P6** — rientro concordato sui 9 pgTAP rossi per `E_SORG_FORMATO`, di cui
 >    3 non censiti nel backlog di
->    [brief-db-bonifica-pgtap-sorgente-polimorfa](brief-db-bonifica-pgtap-sorgente-polimorfa.md)
+>    [brief-db-bonifica-pgtap-sorgente-polimorfa](../work-done/brief-db-bonifica-pgtap-sorgente-polimorfa.md)
 >    (§10.4). **Non sono regressioni di questa slice**: verificato uno per uno;
 > 3. **BE/FE** — punti 3-6 del perimetro, con il contratto di §8-bis.
 
@@ -767,7 +767,7 @@ A7-ter e A9 sono rifiniture a valle, fuori dal cammino critico.
 | **P1** | ~~Conferma **D-6** (consumi esclusi dal flag)~~ | Tid | ✅ **chiuso 2026-07-27 — sui consumi NO** |
 | **P2** | ~~Chiusura **D-5** (dove vive la mappa `area ↔ sorgente`)~~ | Tid | ✅ **chiuso 2026-07-27 — colonna `area` su `config.sorgenti`** (step A7-bis) |
 | **P4** | ~~**Chiusura D-9**: forma di `sorgente_uid` per la chiave di gruppo~~ | Tid | ✅ **chiuso 2026-07-27 — si usa l'`uid`** (opzione a). P4 e D-9 erano lo stesso punto: P4 = riga di tracciamento, D-9 = registrazione della decisione |
-| **P6** | **Rientro concordato (2026-07-27)**: i 9 pgTAP rossi per `E_SORG_FORMATO` appartengono tutti al perimetro di [brief-db-bonifica-pgtap-sorgente-polimorfa](brief-db-bonifica-pgtap-sorgente-polimorfa.md) — 3 non sono nel suo backlog (§10.4). Da riprendere **dopo** la chiusura di questo brief | Tid+DB | ⬜ **schedulato** |
+| **P6** | **Rientro concordato (2026-07-27)**: i 9 pgTAP rossi per `E_SORG_FORMATO` appartengono tutti al perimetro di [brief-db-bonifica-pgtap-sorgente-polimorfa](../work-done/brief-db-bonifica-pgtap-sorgente-polimorfa.md) — 3 non sono nel suo backlog (§10.4). Da riprendere **dopo** la chiusura di questo brief | Tid+DB | ⬜ **schedulato** |
 | **P5** | ~~Correggere §1d di `brief-db-guard-sorgente-polimorfa.md`~~ | DB | ✅ **chiuso 2026-07-27** — §1d corretto (4 righe invece di 3), + nota nel manuale `commesse_attivita` e nuova §4a della guida `sorgente-polimorfa` |
 | **P3** | ~~Verifica che nessun pgTAP esistente si rompa con il guard B5~~ | DB | ✅ **chiuso 2026-07-27 — nessun test rotto** (le 20 occorrenze pgTAP sono `p_fatturazione_immediata =>`, parametro di `fn_get_or_create_commessa`, non scritture sulla colonna). Unico percorso applicativo che scrive il flag: `preventivi_service.cambia_stato`, che gira **prima** del push |
 
@@ -891,7 +891,7 @@ con `app.current_user_id` di un operatore limitato a un altro emittente.
 >
 > | Causa del rosso | File | Nota |
 > |---|---|---|
-> | `E_SORG_FORMATO` (guard sorgente polimorfa, 2026-07-18) | 9 | 6 già censiti in [brief-db-bonifica-pgtap-sorgente-polimorfa](brief-db-bonifica-pgtap-sorgente-polimorfa.md), **3 no**: `test-sorgente-origine-tipo-doc-fiscale-v1`, `test-tipo-movimento-colonna-v1`, `test-trigger-af-commessa-aware-v1` → **da aggiungere a quel backlog** |
+> | `E_SORG_FORMATO` (guard sorgente polimorfa, 2026-07-18) | 9 | 6 già censiti in [brief-db-bonifica-pgtap-sorgente-polimorfa](../work-done/brief-db-bonifica-pgtap-sorgente-polimorfa.md), **3 no**: `test-sorgente-origine-tipo-doc-fiscale-v1`, `test-tipo-movimento-colonna-v1`, `test-trigger-af-commessa-aware-v1` → **da aggiungere a quel backlog** |
 > | guard `tipo_doc_emittibile` | `test-fn-list-commesse-emittibili-fatturazione-immediata-v1` | muore nella **fixture** (riga 132), la funzione modificata è chiamata a riga 175: non ci arriva mai |
 > | guard AF commessa-aware | `test-fatturazione-draft` | fixture, non correlato |
 >

@@ -57,7 +57,7 @@ SELECT
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='PREVENTIVO' AND s.attivo LIMIT 1)      AS sorgente_root_id,
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo LIMIT 1)        AS sorgente_root_id,
   (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_PER_RICONSEGNA' AND t.attivo LIMIT 1) AS tipo_riconsegna_id,
@@ -127,7 +127,13 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_com),
   p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs),
-  p_sorgente_uid => ('SRC-BKL-' || substr(md5(clock_timestamp()::text),1,12))::text,
+  -- ROOT: sorgente COMMESSA (key_selector='id') con uid = id della commessa
+  -- stessa. La riga esiste per costruzione, quindi passa il guard sorgente
+  -- polimorfa su entrambi i fronti: formato (id::text) ed esistenza nel
+  -- target. fn_emit pretende solo che una ROOT esista, non ne dereferenzia
+  -- il tipo. rev 2026-07-27 (bonifica: prima era una stringa inventata su
+  -- sorgente PREVENTIVO, illegale dal guard del 2026-07-18).
+  p_sorgente_uid => (SELECT commessa_id FROM tmp_com)::text,
   p_sorgente_riga => 1, p_meta => '{}'::jsonb);
 
 CREATE OR REPLACE FUNCTION pg_temp.mk_af(p_segment varchar, p_qta numeric)

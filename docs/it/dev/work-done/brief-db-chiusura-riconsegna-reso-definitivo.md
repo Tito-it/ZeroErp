@@ -539,7 +539,7 @@ con gli stessi conteggi. Il refactor delle voci 6a/6b — che tocca codice
 funzionante — non ha regredito nulla.
 
 ⚠️ **Debito noto e scollegato**: i rossi per guard sorgente polimorfa hanno ora
-un brief dedicato — [brief-db-bonifica-pgtap-sorgente-polimorfa.md](../work-in-progress/brief-db-bonifica-pgtap-sorgente-polimorfa.md).
+un brief dedicato — [brief-db-bonifica-pgtap-sorgente-polimorfa.md](brief-db-bonifica-pgtap-sorgente-polimorfa.md).
 
 ## 9-ter. Esito BE/FE (2026-07-26) — §7 realizzato
 
