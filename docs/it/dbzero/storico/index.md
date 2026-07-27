@@ -80,6 +80,7 @@
 - [resi](tabelle/resi.md)
 - [resi_righe](tabelle/resi_righe.md)
 - [resi_righe_riconsegne](tabelle/resi_righe_riconsegne.md)
+- [resi_righe_rinunce](tabelle/resi_righe_rinunce.md)
 - [rettifiche](tabelle/rettifiche.md)
 - [rettifiche_righe](tabelle/rettifiche_righe.md)
 - [risorse_umane](tabelle/risorse_umane.md)
