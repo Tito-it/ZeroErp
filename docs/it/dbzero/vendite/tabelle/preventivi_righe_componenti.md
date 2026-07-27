@@ -48,7 +48,6 @@
 |------|-------------|
 | ix_vendite_prevrighe_comp_articolo_componente | `CREATE INDEX ix_vendite_prevrighe_comp_articolo_componente ON vendite.preventivi_righe_componenti USING btree (articolo_componente_id)` |
 | ix_vendite_prevrighe_comp_componente | `CREATE INDEX ix_vendite_prevrighe_comp_componente ON vendite.preventivi_righe_componenti USING btree (componente_id)` |
-| ix_vendite_prevrighe_comp_riga | `CREATE INDEX ix_vendite_prevrighe_comp_riga ON vendite.preventivi_righe_componenti USING btree (riga_preventivo_id)` |
 | ix_vendite_prevrighe_comp_stato_approvazione | `CREATE INDEX ix_vendite_prevrighe_comp_stato_approvazione ON vendite.preventivi_righe_componenti USING btree (stato_approvazione_prezzo) WHERE (stato_approvazione_prezzo IS NOT NULL)` |
 | pk_prevrighe_componenti | `CREATE UNIQUE INDEX pk_prevrighe_componenti ON vendite.preventivi_righe_componenti USING btree (id)` |
 | uq_prevrighe_comp_riga_art_comp | `CREATE UNIQUE INDEX uq_prevrighe_comp_riga_art_comp ON vendite.preventivi_righe_componenti USING btree (riga_preventivo_id, articolo_componente_id)` |

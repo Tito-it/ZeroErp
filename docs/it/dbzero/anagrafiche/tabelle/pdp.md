@@ -36,7 +36,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_anagrafiche_pdp_cliente_id | `CREATE INDEX ix_anagrafiche_pdp_cliente_id ON anagrafiche.pdp USING btree (cliente_id)` |
-| ix_anagrafiche_pdp_indirizzo_dettaglio_id | `CREATE INDEX ix_anagrafiche_pdp_indirizzo_dettaglio_id ON anagrafiche.pdp USING btree (indirizzo_dettaglio_id)` |
 | ix_anagrafiche_pdp_utility_id | `CREATE INDEX ix_anagrafiche_pdp_utility_id ON anagrafiche.pdp USING btree (utility_id)` |
 | pk_pdp | `CREATE UNIQUE INDEX pk_pdp ON anagrafiche.pdp USING btree (id)` |
 | uq_pdp_addr_utility | `CREATE UNIQUE INDEX uq_pdp_addr_utility ON anagrafiche.pdp USING btree (indirizzo_dettaglio_id, utility_id)` |

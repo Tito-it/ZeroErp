@@ -152,14 +152,20 @@ SELECT ok(
 );
 
 -- Collega ROOT source (richiesto da fn_emit)
+-- rev 2026-07-27 (bonifica): ROOT su sorgente COMMESSA (key_selector='id') con
+-- uid = id della commessa stessa. Prima: sorgente PREVENTIVO (che vuole un
+-- uuid) e chiave con prefisso 'PGTAP-TCA-' davanti all'id — illegale dal guard
+-- del 2026-07-18 su entrambi i fronti (formato e tabella target).
+-- Nota: la lookup era anche per `codice` (etichetta modificabile) invece che
+-- per `codice_interno` (immutabile) — linee-guida-sql §6c/§6d.
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_tca),
   p_sorgente_tipo_id => (
     SELECT s.id FROM config.sorgenti s
-    WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE
+    WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE
     LIMIT 1
   ),
-  p_sorgente_uid => 'PGTAP-TCA-' || (SELECT commessa_id FROM tmp_commessa_tca)::text
+  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_tca)::text
 );
 
 -- Porta commessa in stato PRONTA_FATTURAZIONE (emittibile=true)

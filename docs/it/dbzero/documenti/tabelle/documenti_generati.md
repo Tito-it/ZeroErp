@@ -57,8 +57,6 @@
 |------|-------------|
 | documenti_generati_pkey | `CREATE UNIQUE INDEX documenti_generati_pkey ON documenti.documenti_generati USING btree (id)` |
 | ix_documenti_generati_generato_at | `CREATE INDEX ix_documenti_generati_generato_at ON documenti.documenti_generati USING btree (generato_at DESC)` |
-| ix_documenti_generati_sorgente_riga | `CREATE INDEX ix_documenti_generati_sorgente_riga ON documenti.documenti_generati USING btree (sorgente_tipo_id, sorgente_uid, sorgente_riga)` |
-| ix_documenti_generati_sorgente_uid | `CREATE INDEX ix_documenti_generati_sorgente_uid ON documenti.documenti_generati USING btree (sorgente_tipo_id, sorgente_uid)` |
 | ix_documenti_generati_stato | `CREATE INDEX ix_documenti_generati_stato ON documenti.documenti_generati USING btree (stato)` |
 | ix_documenti_generati_template_versione | `CREATE INDEX ix_documenti_generati_template_versione ON documenti.documenti_generati USING btree (template_versione_id)` |
 | uq_documenti_generati_sorgente_progressivo | `CREATE UNIQUE INDEX uq_documenti_generati_sorgente_progressivo ON documenti.documenti_generati USING btree (sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente) NULLS NOT DISTINCT` |

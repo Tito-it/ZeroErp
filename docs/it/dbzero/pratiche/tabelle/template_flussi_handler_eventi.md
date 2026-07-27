@@ -28,7 +28,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_template_flussi_handler_eventi_template_flusso_id | `CREATE INDEX ix_template_flussi_handler_eventi_template_flusso_id ON pratiche.template_flussi_handler_eventi USING btree (template_flusso_id)` |
 | pk_pratiche_template_flussi_handler_eventi | `CREATE UNIQUE INDEX pk_pratiche_template_flussi_handler_eventi ON pratiche.template_flussi_handler_eventi USING btree (id)` |
 | uq_tfhe | `CREATE UNIQUE INDEX uq_tfhe ON pratiche.template_flussi_handler_eventi USING btree (template_flusso_id, evento, esito_richiesto, handler_id) NULLS NOT DISTINCT` |
 

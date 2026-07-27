@@ -38,7 +38,6 @@
 | ix_overrides_param_categoria_cliente | `CREATE INDEX ix_overrides_param_categoria_cliente ON config.parameter_overrides USING btree (parameter_id, categoria_cliente_id)` |
 | ix_overrides_param_group | `CREATE INDEX ix_overrides_param_group ON config.parameter_overrides USING btree (parameter_id, django_group_id)` |
 | ix_overrides_param_user | `CREATE INDEX ix_overrides_param_user ON config.parameter_overrides USING btree (parameter_id, django_user_id)` |
-| ix_parameter_overrides_emittente | `CREATE INDEX ix_parameter_overrides_emittente ON config.parameter_overrides USING btree (parameter_id, emittente_fiscale_id)` |
 | parameter_overrides_pkey | `CREATE UNIQUE INDEX parameter_overrides_pkey ON config.parameter_overrides USING btree (id)` |
 | uq_overrides_full_scope_v4 | `CREATE UNIQUE INDEX uq_overrides_full_scope_v4 ON config.parameter_overrides USING btree (parameter_id, emittente_fiscale_id, django_user_id, django_group_id, categoria_cliente_id, session_key, function_name)` |
 

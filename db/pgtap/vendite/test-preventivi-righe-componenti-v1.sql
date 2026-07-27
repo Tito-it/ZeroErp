@@ -16,7 +16,7 @@
 --   9)  Trigger trgfn_componenti_check_prezzo_obbligatorio registrato
 --       (modello unificato: CHECK prezzo<>0 rimosso, sostituito da trigger condizionale)
 --   10) CHECK chk_prevrighe_comp_origine esiste
---   11) Indice ix_vendite_prevrighe_comp_riga esiste
+--   11) FK fk_prevrighe_comp_riga coperta da un indice
 --   12) Tutti gli 8 trigger registrati sulla tabella
 --   13) fn_preventivo_riga_componenti_init: p_riga_id NULL -> raise
 --   14) fn_preventivo_riga_componenti_init: p_emittente_sr_id NULL -> raise
@@ -29,7 +29,7 @@
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(29);
+SELECT plan(30);
 
 -- =========================================================
 -- 1) Tabella esiste
@@ -141,43 +141,97 @@ SELECT ok(
 );
 
 -- =========================================================
--- 11) Indice FK principale
+-- 11) FK riga_preventivo_id coperta da un indice
+--     L'indice dedicato ix_vendite_prevrighe_comp_riga e' stato rimosso il 2026-07-27
+--     (changeSet 20260727-37): era ridondante, perche' uq_prevrighe_comp_riga_art_comp
+--     ha riga_preventivo_id come colonna leading e serve gia' ogni ricerca per riga,
+--     ON DELETE CASCADE compreso.
+--     Il test verifica ora la PROPRIETA' — la FK e' coperta — invece del nome
+--     di un indice specifico: resta valido anche se l'indice coprente cambia.
 -- =========================================================
 SELECT ok(
-    EXISTS (SELECT 1 FROM pg_indexes
-             WHERE schemaname = 'vendite'
-               AND tablename  = 'preventivi_righe_componenti'
-               AND indexname  = 'ix_vendite_prevrighe_comp_riga'),
-    '11) indice ix_vendite_prevrighe_comp_riga esiste'
+    NOT EXISTS (SELECT 1 FROM dbops.vw_fk_senza_indice
+                 WHERE schema_name     = 'vendite'
+                   AND table_name      = 'preventivi_righe_componenti'
+                   AND constraint_name = 'fk_prevrighe_comp_riga'),
+    '11) FK fk_prevrighe_comp_riga coperta da un indice'
 );
 
 -- =========================================================
 -- 12) Tutti i 10 trigger nominali registrati
 --     +2 da modello unificato 20260513: prezzo_obbligatorio + guard_obbligatorio
 -- =========================================================
-SELECT ok(
-    (
-        SELECT COUNT(*) = 10
+-- rev 2026-07-27 (bonifica): l'asserzione confrontava 10 nomi LETTERALI di
+-- trigger. Era fragile per costruzione e falsa da tempo:
+-- 'trg_preventivi_righe_componenti_a10_articoli_require_attivo_ins_upd' e' lungo
+-- 67 caratteri, oltre il limite di 63 di PostgreSQL. L'automazione dbops che
+-- provisiona i guard require_attivo, quando il nome sfora, accorcia e aggiunge
+-- un hash: quel trigger si chiama davvero
+-- '..._a10_articoli_require_att_f4df00'. Il nome atteso NON PUO' esistere, e il
+-- prossimo trigger auto-provisionato con nome lungo ricreerebbe il problema.
+--
+-- Si asserisce quindi sul COMPORTAMENTO, non sul nome: il nome e' un dettaglio
+-- di implementazione dell'automazione, cio' che conta e' che il presidio ci sia.
+--   - i trigger BESPOKE (scritti a mano) si verificano per FUNZIONE eseguita:
+--     il nome della trigger function non viene troncato ne' hashato;
+--   - i guard require_attivo si verificano per PADRE presidiato, leggendo gli
+--     argomenti da pg_get_triggerdef: e' l'informazione di dominio (quale FK e'
+--     protetta), stabile a prescindere da come l'automazione battezza il trigger.
+
+-- 12a) presidi bespoke: uno per funzione
+SELECT is(
+    ARRAY(
+        SELECT DISTINCT p.proname::text
           FROM pg_trigger t
           JOIN pg_class c ON c.oid = t.tgrelid
           JOIN pg_namespace n ON n.oid = c.relnamespace
+          JOIN pg_proc p ON p.oid = t.tgfoid
          WHERE n.nspname = 'vendite'
            AND c.relname = 'preventivi_righe_componenti'
            AND NOT t.tgisinternal
-           AND t.tgname IN (
-               'trg_preventivi_righe_componenti_a10_guard_bom_coerenza_ins_upd',
-               'trg_preventivi_righe_componenti_a10_guard_pending_upd',
-               'trg_preventivi_righe_componenti_m50_calcola_quantita_ins_upd',
-               'trg_preventivi_righe_componenti_audit_data_user_ins_upd',
-               'trg_preventivi_righe_componenti_gen_tx_id_ins_upd',
-               'trg_preventivi_righe_componenti_a10_articoli_require_attivo_ins_upd',
-               'trg_preventivi_righe_componenti_a10_iva_require_attivo_ins_upd',
-               'trg_preventivi_righe_componenti_z90_ricalcola_padre_ins_upd_dlt',
-               'trg_prevrighe_comp_a10_prezzo_obbligatorio_ins_upd',
-               'trg_prevrighe_comp_a10_guard_obbligatorio_upd'
-           )
+           AND p.proname <> 'trgfn_child_requires_active_parent'
+         ORDER BY 1
     ),
-    '12) tutti i 10 trigger registrati su preventivi_righe_componenti'
+    ARRAY[
+        'trgfn_audit_data_user_generic',
+        'trgfn_componenti_calcola_quantita',
+        'trgfn_componenti_check_prezzo_obbligatorio',
+        'trgfn_componenti_guard_coerenza_bom',
+        'trgfn_componenti_guard_obbligatorio',
+        'trgfn_componenti_ricalcola_padre',
+        'trgfn_preventivi_righe_componenti_guard_pending',
+        'trgfn_tx_id_managed'
+    ],
+    '12a) presidi bespoke armati su preventivi_righe_componenti (per funzione)'
+);
+
+-- 12b) guard require_attivo: uno per FK verso un padre con colonna attivo
+SELECT is(
+    ARRAY(
+        SELECT DISTINCT substring(
+                   pg_get_triggerdef(t.oid)
+                   from 'trgfn_child_requires_active_parent\(''([a-z_]+)'', ''([a-z_]+)''')
+             || '.' || substring(
+                   pg_get_triggerdef(t.oid)
+                   from 'trgfn_child_requires_active_parent\(''[a-z_]+'', ''([a-z_]+)''')
+          FROM pg_trigger t
+          JOIN pg_class c ON c.oid = t.tgrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          JOIN pg_proc p ON p.oid = t.tgfoid
+         WHERE n.nspname = 'vendite'
+           AND c.relname = 'preventivi_righe_componenti'
+           AND NOT t.tgisinternal
+           AND p.proname = 'trgfn_child_requires_active_parent'
+         ORDER BY 1
+    ),
+    ARRAY[
+        'catalogo.articoli',
+        'catalogo.articoli_componenti',
+        'catalogo.unita_misura',
+        'config.iva',
+        'vendite.preventivi_righe'
+    ],
+    '12b) guard require_attivo su tutti i padri attesi (per tabella, non per nome trigger)'
 );
 
 -- =========================================================

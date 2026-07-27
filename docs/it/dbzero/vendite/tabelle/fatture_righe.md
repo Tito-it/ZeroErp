@@ -48,7 +48,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_vendite_fatture_righe_dest_billing_account_id | `CREATE INDEX ix_vendite_fatture_righe_dest_billing_account_id ON vendite.fatture_righe USING btree (dest_billing_account_id)` |
-| ix_vendite_fatture_righe_fattura_id | `CREATE INDEX ix_vendite_fatture_righe_fattura_id ON vendite.fatture_righe USING btree (fattura_id)` |
 | ix_vendite_fatture_righe_iva_id | `CREATE INDEX ix_vendite_fatture_righe_iva_id ON vendite.fatture_righe USING btree (iva_id)` |
 | pk_fatture_righe | `CREATE UNIQUE INDEX pk_fatture_righe ON vendite.fatture_righe USING btree (id)` |
 | uq_fatture_righe_riga_nr | `CREATE UNIQUE INDEX uq_fatture_righe_riga_nr ON vendite.fatture_righe USING btree (fattura_id, riga_nr)` |

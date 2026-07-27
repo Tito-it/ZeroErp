@@ -69,7 +69,7 @@ SELECT
   ) AS uom_id,
   (
     SELECT s.id FROM config.sorgenti s
-    WHERE s.codice_interno = 'PREVENTIVO' LIMIT 1
+    WHERE s.codice_interno = 'COMMESSA' LIMIT 1
   ) AS root_sorgente_tipo_id,
   (
     SELECT t.id FROM config.tipi_doc_fiscale t
@@ -95,7 +95,11 @@ CREATE TEMP TABLE tmp_link_tm AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_tm),
   p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_tm),
-  p_sorgente_uid => ('SRC-TM-' || substr(md5(clock_timestamp()::text), 1, 12))::text,
+  -- ROOT: sorgente COMMESSA (key_selector='id') con uid = id della commessa
+  -- stessa: esiste per costruzione, quindi passa il guard sorgente polimorfa
+  -- (formato id::text + esistenza nel target). fn_emit pretende solo che una
+  -- ROOT esista, non ne dereferenzia il tipo. rev 2026-07-27 (bonifica).
+  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_tm)::text,
   p_sorgente_riga => 1,
   p_meta => jsonb_build_object('test_scope', 'pgtap_tipo_movimento')
 ) AS link_id;
@@ -167,7 +171,11 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'ONERE',
   p_tipo_consumo => 'CONGUAGLIO',
-  p_meta => jsonb_build_object('case', 'TIPO_MOV_ONERE')
+  p_meta => jsonb_build_object('case', 'TIPO_MOV_ONERE'),
+  -- rev 2026-07-27 (bonifica): la causale e' obbligatoria se e solo se
+  -- tipo_movimento='ONERE' (CHECK chk_commesse_attivita_causale_onere,
+  -- 20260721-04, entrato DOPO questo test).
+  p_causale_onere_id => (SELECT id FROM config.causali_onere WHERE attivo ORDER BY id LIMIT 1)
 ) r;
 
 -- ============================================================

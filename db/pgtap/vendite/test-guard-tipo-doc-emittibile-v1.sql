@@ -90,7 +90,7 @@ SELECT
   (SELECT id FROM catalogo.unita_misura WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS uom_id,
   (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id,
-  (SELECT id FROM config.sorgenti WHERE codice = 'PREVENTIVO' LIMIT 1) AS src_preventivo_id;
+  (SELECT id FROM config.sorgenti WHERE codice_interno = 'COMMESSA' LIMIT 1) AS src_preventivo_id;
 
 SELECT ok(
   (
@@ -112,7 +112,7 @@ SELECT ok(
 -- (manipolato e ripristinato entro la transazione, comunque rollback finale).
 CREATE TEMP TABLE tmp_src_orig AS
 SELECT tipo_doc_fiscale_id AS orig_tipo_doc
-FROM config.sorgenti WHERE codice = 'PREVENTIVO';
+FROM config.sorgenti WHERE codice_interno = 'COMMESSA';
 
 -- Chiavi segment riusate tra i test (generate una sola volta).
 CREATE TEMP TABLE tmp_seg AS
@@ -138,7 +138,10 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa),
   p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_refs),
-  p_sorgente_uid => ('SRC-TDF-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
+  -- ROOT: sorgente COMMESSA (key_selector='id') con uid = id della commessa
+  -- stessa: esiste per costruzione -> passa formato ed esistenza del guard
+  -- sorgente polimorfa. rev 2026-07-27 (bonifica).
+  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa)::text,
   p_sorgente_riga => 1,
   p_meta => '{}'::jsonb
 );
@@ -153,7 +156,7 @@ SELECT ok(
 -- ============================================================
 UPDATE config.sorgenti
    SET tipo_doc_fiscale_id = (SELECT tipo_doc_fiscale_id FROM tmp_refs)
- WHERE codice = 'PREVENTIVO';
+ WHERE codice_interno = 'COMMESSA';
 
 CREATE TEMP TABLE tmp_ca1 AS
 SELECT r.attivita_id
@@ -210,7 +213,7 @@ SELECT is(
 -- ============================================================
 UPDATE config.sorgenti
    SET tipo_doc_fiscale_id = NULL
- WHERE codice = 'PREVENTIVO';
+ WHERE codice_interno = 'COMMESSA';
 
 -- Re-push dello stesso segment con param NULL e sorgente senza default:
 -- il COALESCE su ON CONFLICT deve conservare il valore gia' risolto.

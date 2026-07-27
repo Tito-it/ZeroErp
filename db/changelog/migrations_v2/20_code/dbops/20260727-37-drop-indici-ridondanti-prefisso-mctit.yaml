@@ -1,0 +1,193 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica: 48 indici btree ridondanti per PREFISSO
+#   (bonifica indici del 2026-07-27, PASSO C1)
+#
+# COSA SONO. Btree non-unique le cui colonne chiave sono la testa di quelle di
+#   un altro btree sulla stessa tabella, con identici opclass, collation,
+#   ordinamento e predicato. PostgreSQL usa gia' l'indice piu' largo per ogni
+#   ricerca su quelle colonne, controllo referenziale delle foreign key
+#   compreso: il piu' stretto e' scrittura, spazio e manutenzione senza
+#   ritorno. L'elenco esatto e' quello prodotto da
+#   dbops.vw_indici_ridondanti_prefisso (changeSet 20260727-21) il 2026-07-27,
+#   trascritto qui riga per riga con l'indice coprente in commento.
+#
+# VENTISETTE VENGONO DALL'AUTOMAZIONE, ventuno sono scritti a mano nei
+#   changelog. I primi nascono dal difetto di dbops.vw_fk_senza_indice
+#   corretto dal 20260727-22: la copertura era valutata per uguaglianza
+#   dell'array di colonne invece che per prefisso, quindi una FK gia' servita
+#   da una UNIQUE piu' larga risultava scoperta e l'automazione ci piantava
+#   sopra un gemello.
+#
+# ⚠️ IL DROP DA SOLO NON BASTA, per quei ventisette. Le loro righe in
+#   dbops.fk_index_policy hanno consentito=true, e CALL
+#   dbops.apply_fk_index_policy() gira runAlways in 90_end: al PRIMO migrate
+#   successivo li ricreerebbe tutti. Il changeSet 20260727-38 porta quelle
+#   righe a consentito=false, e sta in 80_data cioe' PRIMA di 90_end nello
+#   stesso migrate. I due changeSet vanno insieme: applicare questo senza
+#   quello e' inutile.
+#
+# PERCHE' ANCHE IL DROP ESPLICITO, visto che consentito=false li farebbe
+#   togliere comunque da apply in 90_end (decisione di Tid). Perche' il flag e'
+#   un interruttore: finche' l'effetto dipende solo da lui, un true rimesso per
+#   errore rifa' il danno. Qui la rimozione e' un fatto compiuto e tracciato
+#   nel changelog, indipendente dal giro successivo del job. La terza difesa e'
+#   il 20260727-36, che impedisce ad apply di ricreare cio' che risulta gia'
+#   coperto anche a flag true.
+#
+# LETTURE NON NULLE, e vanno lette per quello che sono. Undici dei
+#   quarantotto hanno idx_scan > 50, tre sopra i mille
+#   (ix_vendite_ordini_righe_ordine_id 45.192,
+#    ix_anagrafiche_soggetti_ruoli_soggetto_id 18.726,
+#    ix_utilities_tipi_ruolo_utility_id 1.296). Non e' un
+#   controindicazione: il planner sceglie l'indice piu' stretto quando ci sono
+#   entrambi, perche' costa meno pagine, ed e' esattamente per questo che
+#   quelle letture stanno li'. Tolto il piu' stretto, le stesse query passano
+#   sul piu' largo. Verificato il rapporto di dimensione fra i due su tutti
+#   gli undici: otto sono IDENTICI (16 kB contro 16 kB), quindi il piu' stretto
+#   non porta alcun vantaggio di cache; i tre residui hanno il coprente
+#   piu' grande di 1,17x, 1,75x e 2,23x, su indici da 96, 160 e 104 kB —
+#   differenze irrilevanti a queste dimensioni. Se un domani una di queste
+#   tabelle crescesse di ordini di grandezza, la scelta va rimisurata: il
+#   caso in cui un indice stretto merita di sopravvivere accanto a uno largo
+#   esiste, semplicemente qui non si presenta.
+#
+# ORDINE DEL FILE: prima i ventisette dell'automazione, poi i ventuno manuali,
+#   ciascun gruppo per schema e tabella. Ogni DROP porta in commento origine,
+#   indice coprente e letture rilevate.
+#
+# IF EXISTS ovunque: su un DB ricostruito da zero i ventisette non esistono
+#   ancora quando questo changeSet gira (li creerebbe 90_end), e i ventuno
+#   manuali potrebbero essere stati creati da un changeSet 00_schema che nel
+#   frattempo e' cambiato.
+#
+# Dipendenze: nessuna oltre alle tabelle coinvolte.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260727-37-drop-indici-ridondanti-prefisso-mctit.yaml
+
+  - changeSet:
+      id: 20260727-37-drop-indici-ridondanti-prefisso
+      author: mctit
+      runAlways: false
+      runOnChange: false
+      comment: >
+        Droppa i 48 btree ridondanti per prefisso censiti da
+        dbops.vw_indici_ridondanti_prefisso: 27 generati dall'automazione FK,
+        21 scritti a mano. Da applicare insieme al 20260727-38, che porta a
+        consentito=false le righe di policy dei 27, altrimenti apply in 90_end
+        li ricrea al primo migrate.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP INDEX IF EXISTS acquisti.ix_acquisti_ddt_indirizzi_ddt_id;   -- AUTOMAZIONE_FK, coperto da uq_ddt_indirizzi_uno_per_tipo, letture 0
+              DROP INDEX IF EXISTS acquisti.ix_acquisti_ordini_righe_ordine_id;   -- AUTOMAZIONE_FK, coperto da uq_ao_r_riga_nr, letture 0
+              DROP INDEX IF EXISTS anagrafiche.ix_anagrafiche_bank_branches_soggetto_ruolo_id;   -- AUTOMAZIONE_FK, coperto da uq_bank_branches_soggetto_ruolo_bank_branch_code, letture 0
+              DROP INDEX IF EXISTS anagrafiche.ix_anagrafiche_billing_account_istanza_utility_id;   -- AUTOMAZIONE_FK, coperto da uq_billing_instance_utility, letture 355
+              DROP INDEX IF EXISTS anagrafiche.ix_anagrafiche_dati_societari_id_prov_iscri_rea;   -- AUTOMAZIONE_FK, coperto da uq_ds_prov_cea, letture 0
+              DROP INDEX IF EXISTS anagrafiche.ix_anagrafiche_gestori_utilities_gestore_id;   -- AUTOMAZIONE_FK, coperto da uq_gestore_utility, letture 1
+              DROP INDEX IF EXISTS anagrafiche.ix_anagrafiche_indirizzi_dettaglio_stradario_id;   -- AUTOMAZIONE_FK, coperto da uq_indirizzi_dettaglio_norm, letture 0
+              DROP INDEX IF EXISTS anagrafiche.ix_anagrafiche_indirizzi_soggetti_soggetto_id;   -- AUTOMAZIONE_FK, coperto da uq_indirizzi_soggetti_soggetto_tipo, letture 6
+              DROP INDEX IF EXISTS anagrafiche.ix_anagrafiche_istanze_dati_precontrattuali_istanza_utility_id;   -- AUTOMAZIONE_FK, coperto da uq_istanze_dati_precontrattuali_id_utility_id, letture 0
+              DROP INDEX IF EXISTS anagrafiche.ix_anagrafiche_pdp_indirizzo_dettaglio_id;   -- AUTOMAZIONE_FK, coperto da uq_pdp_addr_utility, letture 0
+              DROP INDEX IF EXISTS anagrafiche.ix_anagrafiche_soggetti_stato_id;   -- AUTOMAZIONE_FK, coperto da uq_soggetto_idstato_id_fiscale_univoco, letture 0
+              DROP INDEX IF EXISTS anagrafiche.ix_anagrafiche_soggetti_conti_bancari_soggetto_id;   -- AUTOMAZIONE_FK, coperto da uq_soggetti_conti_bancari_soggetto_id_conto_id_uso, letture 0
+              DROP INDEX IF EXISTS anagrafiche.ix_anagrafiche_soggetti_ruoli_soggetto_id;   -- AUTOMAZIONE_FK, coperto da uq_soggetto_ruolo, letture 18726
+              DROP INDEX IF EXISTS config.ix_config_stradario_comune_id;   -- AUTOMAZIONE_FK, coperto da uq_stradario_comune_stradario_gen_cp, letture 784
+              DROP INDEX IF EXISTS config.ix_config_stradario_generale_toponomastica_id;   -- AUTOMAZIONE_FK, coperto da uq_toponomastica_descr, letture 1232
+              DROP INDEX IF EXISTS config.ix_config_tipi_ruolo_tipi_indirizzo_tipo_ruolo_id;   -- AUTOMAZIONE_FK, coperto da uq_tipi_ruolo_tipi_indirizzo_tipo_ruolo_tipo, letture 0
+              DROP INDEX IF EXISTS magazzino.ix_magazzino_ubicazioni_magazzino_id;   -- AUTOMAZIONE_FK, coperto da uq_mag_ubicazioni_mag_codice, letture 0
+              DROP INDEX IF EXISTS pratiche.ix_template_flussi_handler_eventi_template_flusso_id;   -- AUTOMAZIONE_FK, coperto da uq_tfhe, letture 0
+              DROP INDEX IF EXISTS vendite.ix_vendite_ddt_indirizzi_ddt_id;   -- AUTOMAZIONE_FK, coperto da uq_ddt_indirizzi_uno_per_tipo, letture 0
+              DROP INDEX IF EXISTS vendite.ix_fatture_billing_account_id;   -- AUTOMAZIONE_FK, coperto da ix_fatture_ba_data, letture 0
+              DROP INDEX IF EXISTS vendite.ix_fatture_emittente_soggetto_ruolo_id;   -- AUTOMAZIONE_FK, coperto da ix_fatture_emitt_data, letture 88
+              DROP INDEX IF EXISTS vendite.ix_vendite_fatture_indirizzi_fattura_id;   -- AUTOMAZIONE_FK, coperto da uq_fatture_indirizzi_uno_per_tipo_, letture 0
+              DROP INDEX IF EXISTS vendite.ix_vendite_fatture_rettifiche_fattura_id;   -- AUTOMAZIONE_FK, coperto da uq_fatture_rettifiche_pair, letture 0
+              DROP INDEX IF EXISTS vendite.ix_vendite_fatture_righe_fattura_id;   -- AUTOMAZIONE_FK, coperto da uq_fatture_righe_riga_nr, letture 0
+              DROP INDEX IF EXISTS vendite.ix_vendite_ordini_indirizzi_ordine_id;   -- AUTOMAZIONE_FK, coperto da uq_ordini_indirizzi_uno_per_tipo, letture 0
+              DROP INDEX IF EXISTS vendite.ix_vendite_ordini_righe_ordine_id;   -- AUTOMAZIONE_FK, coperto da uq_ordrig_riga_nr, letture 45192
+              DROP INDEX IF EXISTS vendite.ix_vendite_preventivi_indirizzi_preventivo_id;   -- AUTOMAZIONE_FK, coperto da uq_preventivi_indirizzi_uno_per_tipo_, letture 0
+              DROP INDEX IF EXISTS config.ix_config_forme_giuridiche_tipi_soggetto_dettaglio_forma_giurid;   -- MANUALE, coperto da pk_forme_giuridiche_tsd, letture 0
+              DROP INDEX IF EXISTS config.ix_parameter_overrides_emittente;   -- MANUALE, coperto da uq_overrides_full_scope_v4, letture 0
+              DROP INDEX IF EXISTS config.ix_tipi_indirizzi_allowed_ambito_attivi;   -- MANUALE, coperto da pk_tipi_indirizzi_allowed, letture 0
+              DROP INDEX IF EXISTS config.ix_tipi_ruoli_nature_ammesse_tipo_ruolo_id;   -- MANUALE, coperto da uq_tipi_ruoli_nature_ammesse_ruolo_soggetto, letture 0
+              DROP INDEX IF EXISTS config.ix_config_tipi_soggetto_dettaglio_tipi_indirizzo_tipo_soggetto_;   -- MANUALE, coperto da uq_tipi_soggetto_dettaglio_tipi_indirizzo_tipo_soggetto_tipo, letture 0
+              DROP INDEX IF EXISTS config.ix_user_override_aree_auth_user_id;   -- MANUALE, coperto da uq_user_override_aree_user_area, letture 0
+              DROP INDEX IF EXISTS config.ix_user_override_azioni_auth_user_id;   -- MANUALE, coperto da uq_user_override_azioni_user_azione, letture 0
+              DROP INDEX IF EXISTS config.ix_user_override_oggetti_auth_user_id;   -- MANUALE, coperto da uq_user_override_oggetti_user_app_model, letture 0
+              DROP INDEX IF EXISTS config.ix_utilities_tipi_ruolo_utility_id;   -- MANUALE, coperto da uq_utilities_tipi_ruolo_utility_tipo_ruolo, letture 1296
+              DROP INDEX IF EXISTS documenti.ix_documenti_generati_sorgente_riga;   -- MANUALE, coperto da uq_documenti_generati_sorgente_progressivo, letture 0
+              DROP INDEX IF EXISTS documenti.ix_documenti_generati_sorgente_uid;   -- MANUALE, coperto da uq_documenti_generati_sorgente_progressivo, letture 25
+              DROP INDEX IF EXISTS documenti.ix_documenti_generati_file_documento;   -- MANUALE, coperto da uq_documenti_generati_file_doc_tipo_ord, letture 1
+              DROP INDEX IF EXISTS magazzino.ix_mag_cmedio_articolo;   -- MANUALE, coperto da uq_mag_costo_medio_art_mag, letture 0
+              DROP INDEX IF EXISTS vendite.ix_contratti_indir_contratto;   -- MANUALE, coperto da uq_contratti_indirizzi_uno_per_tipo, letture 0
+              DROP INDEX IF EXISTS vendite.ix_vendite_contrighe_comp_riga;   -- MANUALE, coperto da uq_contrighe_comp_riga_art_comp, letture 13
+              DROP INDEX IF EXISTS vendite.ix_vendite_ddtrighe_comp_riga;   -- MANUALE, coperto da uq_ddtrighe_comp_riga_art_comp, letture 154
+              DROP INDEX IF EXISTS vendite.ix_doc_fatt_canali_sorgente;   -- MANUALE, coperto da uq_doc_fatt_canali_sorgente_canale, letture 1257
+              DROP INDEX IF EXISTS vendite.ix_vendite_oce_comp_eccezione;   -- MANUALE, coperto da uq_oce_comp_eccezione_art_comp, letture 10
+              DROP INDEX IF EXISTS vendite.ix_offerte_commerciali_indir_offerta;   -- MANUALE, coperto da uq_offerte_commerciali_indirizzi_uno_per_tipo, letture 0
+              DROP INDEX IF EXISTS vendite.ix_vendite_ordrighe_comp_riga;   -- MANUALE, coperto da uq_ordrighe_comp_riga_art_comp, letture 268
+              DROP INDEX IF EXISTS vendite.ix_vendite_prevrighe_comp_riga;   -- MANUALE, coperto da uq_prevrighe_comp_riga_art_comp, letture 145
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_acquisti_ddt_indirizzi_ddt_id ON acquisti.ddt_indirizzi USING btree (ddt_id);
+              CREATE INDEX IF NOT EXISTS ix_acquisti_ordini_righe_ordine_id ON acquisti.ordini_righe USING btree (ordine_id);
+              CREATE INDEX IF NOT EXISTS ix_anagrafiche_bank_branches_soggetto_ruolo_id ON anagrafiche.bank_branches USING btree (soggetto_ruolo_id);
+              CREATE INDEX IF NOT EXISTS ix_anagrafiche_billing_account_istanza_utility_id ON anagrafiche.billing_account USING btree (istanza_utility_id);
+              CREATE INDEX IF NOT EXISTS ix_anagrafiche_dati_societari_id_prov_iscri_rea ON anagrafiche.dati_societari USING btree (id_prov_iscri_rea);
+              CREATE INDEX IF NOT EXISTS ix_anagrafiche_gestori_utilities_gestore_id ON anagrafiche.gestori_utilities USING btree (gestore_id);
+              CREATE INDEX IF NOT EXISTS ix_anagrafiche_indirizzi_dettaglio_stradario_id ON anagrafiche.indirizzi_dettaglio USING btree (stradario_id);
+              CREATE INDEX IF NOT EXISTS ix_anagrafiche_indirizzi_soggetti_soggetto_id ON anagrafiche.indirizzi_soggetti USING btree (soggetto_id);
+              CREATE INDEX IF NOT EXISTS ix_anagrafiche_istanze_dati_precontrattuali_istanza_utility_id ON anagrafiche.istanze_dati_precontrattuali USING btree (istanza_utility_id);
+              CREATE INDEX IF NOT EXISTS ix_anagrafiche_pdp_indirizzo_dettaglio_id ON anagrafiche.pdp USING btree (indirizzo_dettaglio_id);
+              CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_stato_id ON anagrafiche.soggetti USING btree (stato_id);
+              CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_conti_bancari_soggetto_id ON anagrafiche.soggetti_conti_bancari USING btree (soggetto_id);
+              CREATE INDEX IF NOT EXISTS ix_anagrafiche_soggetti_ruoli_soggetto_id ON anagrafiche.soggetti_ruoli USING btree (soggetto_id);
+              CREATE INDEX IF NOT EXISTS ix_config_stradario_comune_id ON config.stradario USING btree (comune_id);
+              CREATE INDEX IF NOT EXISTS ix_config_stradario_generale_toponomastica_id ON config.stradario_generale USING btree (toponomastica_id);
+              CREATE INDEX IF NOT EXISTS ix_config_tipi_ruolo_tipi_indirizzo_tipo_ruolo_id ON config.tipi_ruolo_tipi_indirizzo USING btree (tipo_ruolo_id);
+              CREATE INDEX IF NOT EXISTS ix_magazzino_ubicazioni_magazzino_id ON magazzino.ubicazioni USING btree (magazzino_id);
+              CREATE INDEX IF NOT EXISTS ix_template_flussi_handler_eventi_template_flusso_id ON pratiche.template_flussi_handler_eventi USING btree (template_flusso_id);
+              CREATE INDEX IF NOT EXISTS ix_vendite_ddt_indirizzi_ddt_id ON vendite.ddt_indirizzi USING btree (ddt_id);
+              CREATE INDEX IF NOT EXISTS ix_fatture_billing_account_id ON vendite.fatture USING btree (billing_account_id);
+              CREATE INDEX IF NOT EXISTS ix_fatture_emittente_soggetto_ruolo_id ON vendite.fatture USING btree (emittente_soggetto_ruolo_id);
+              CREATE INDEX IF NOT EXISTS ix_vendite_fatture_indirizzi_fattura_id ON vendite.fatture_indirizzi USING btree (fattura_id);
+              CREATE INDEX IF NOT EXISTS ix_vendite_fatture_rettifiche_fattura_id ON vendite.fatture_rettifiche USING btree (fattura_id);
+              CREATE INDEX IF NOT EXISTS ix_vendite_fatture_righe_fattura_id ON vendite.fatture_righe USING btree (fattura_id);
+              CREATE INDEX IF NOT EXISTS ix_vendite_ordini_indirizzi_ordine_id ON vendite.ordini_indirizzi USING btree (ordine_id);
+              CREATE INDEX IF NOT EXISTS ix_vendite_ordini_righe_ordine_id ON vendite.ordini_righe USING btree (ordine_id);
+              CREATE INDEX IF NOT EXISTS ix_vendite_preventivi_indirizzi_preventivo_id ON vendite.preventivi_indirizzi USING btree (preventivo_id);
+              CREATE INDEX IF NOT EXISTS ix_config_forme_giuridiche_tipi_soggetto_dettaglio_forma_giurid ON config.forme_giuridiche_tipi_soggetto_dettaglio USING btree (forma_giuridica_id);
+              CREATE INDEX IF NOT EXISTS ix_parameter_overrides_emittente ON config.parameter_overrides USING btree (parameter_id, emittente_fiscale_id);
+              CREATE INDEX IF NOT EXISTS ix_tipi_indirizzi_allowed_ambito_attivi ON config.tipi_indirizzi_allowed USING btree (ambito);
+              CREATE INDEX IF NOT EXISTS ix_tipi_ruoli_nature_ammesse_tipo_ruolo_id ON config.tipi_ruoli_nature_ammesse USING btree (tipo_ruolo_id);
+              CREATE INDEX IF NOT EXISTS ix_config_tipi_soggetto_dettaglio_tipi_indirizzo_tipo_soggetto_ ON config.tipi_soggetto_dettaglio_tipi_indirizzo USING btree (tipo_soggetto_dettaglio_id);
+              CREATE INDEX IF NOT EXISTS ix_user_override_aree_auth_user_id ON config.user_override_aree USING btree (auth_user_id);
+              CREATE INDEX IF NOT EXISTS ix_user_override_azioni_auth_user_id ON config.user_override_azioni USING btree (auth_user_id);
+              CREATE INDEX IF NOT EXISTS ix_user_override_oggetti_auth_user_id ON config.user_override_oggetti USING btree (auth_user_id);
+              CREATE INDEX IF NOT EXISTS ix_utilities_tipi_ruolo_utility_id ON config.utilities_tipi_ruolo USING btree (utility_id);
+              CREATE INDEX IF NOT EXISTS ix_documenti_generati_sorgente_riga ON documenti.documenti_generati USING btree (sorgente_tipo_id, sorgente_uid, sorgente_riga);
+              CREATE INDEX IF NOT EXISTS ix_documenti_generati_sorgente_uid ON documenti.documenti_generati USING btree (sorgente_tipo_id, sorgente_uid);
+              CREATE INDEX IF NOT EXISTS ix_documenti_generati_file_documento ON documenti.documenti_generati_file USING btree (documento_generato_id);
+              CREATE INDEX IF NOT EXISTS ix_mag_cmedio_articolo ON magazzino.costo_medio USING btree (articolo_id);
+              CREATE INDEX IF NOT EXISTS ix_contratti_indir_contratto ON vendite.contratti_indirizzi USING btree (contratto_id);
+              CREATE INDEX IF NOT EXISTS ix_vendite_contrighe_comp_riga ON vendite.contratti_righe_componenti USING btree (riga_contratto_id);
+              CREATE INDEX IF NOT EXISTS ix_vendite_ddtrighe_comp_riga ON vendite.ddt_righe_componenti USING btree (riga_ddt_id);
+              CREATE INDEX IF NOT EXISTS ix_doc_fatt_canali_sorgente ON vendite.documenti_fatturazione_canali USING btree (sorgente_tipo_id, sorgente_uid);
+              CREATE INDEX IF NOT EXISTS ix_vendite_oce_comp_eccezione ON vendite.offerte_commerciali_eccezioni_componenti USING btree (eccezione_offerta_id);
+              CREATE INDEX IF NOT EXISTS ix_offerte_commerciali_indir_offerta ON vendite.offerte_commerciali_indirizzi USING btree (offerta_id);
+              CREATE INDEX IF NOT EXISTS ix_vendite_ordrighe_comp_riga ON vendite.ordini_righe_componenti USING btree (riga_ordine_id);
+              CREATE INDEX IF NOT EXISTS ix_vendite_prevrighe_comp_riga ON vendite.preventivi_righe_componenti USING btree (riga_preventivo_id);

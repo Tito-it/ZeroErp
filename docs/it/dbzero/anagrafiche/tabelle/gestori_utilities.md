@@ -24,7 +24,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_anagrafiche_gestori_utilities_gestore_id | `CREATE INDEX ix_anagrafiche_gestori_utilities_gestore_id ON anagrafiche.gestori_utilities USING btree (gestore_id)` |
 | ix_anagrafiche_gestori_utilities_utility_id | `CREATE INDEX ix_anagrafiche_gestori_utilities_utility_id ON anagrafiche.gestori_utilities USING btree (utility_id)` |
 | pk_gestori_utilities_ruoli | `CREATE UNIQUE INDEX pk_gestori_utilities_ruoli ON anagrafiche.gestori_utilities USING btree (id)` |
 | uq_gestore_utility | `CREATE UNIQUE INDEX uq_gestore_utility ON anagrafiche.gestori_utilities USING btree (gestore_id, utility_id)` |

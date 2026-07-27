@@ -29,7 +29,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_vendite_fatture_indirizzi_fattura_id | `CREATE INDEX ix_vendite_fatture_indirizzi_fattura_id ON vendite.fatture_indirizzi USING btree (fattura_id)` |
 | ix_vendite_fatture_indirizzi_origine_indirizzo_id | `CREATE INDEX ix_vendite_fatture_indirizzi_origine_indirizzo_id ON vendite.fatture_indirizzi USING btree (origine_indirizzo_id)` |
 | ix_vendite_fatture_indirizzi_origine_soggetto_ruolo_id | `CREATE INDEX ix_vendite_fatture_indirizzi_origine_soggetto_ruolo_id ON vendite.fatture_indirizzi USING btree (origine_soggetto_ruolo_id)` |
 | pk_fatture_indirizzi | `CREATE UNIQUE INDEX pk_fatture_indirizzi ON vendite.fatture_indirizzi USING btree (id)` |

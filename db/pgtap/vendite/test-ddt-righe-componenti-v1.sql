@@ -15,7 +15,7 @@
 --   8)  CHECK chk_ddtrighe_comp_quantita_pos esiste
 --   9)  CHECK chk_ddtrighe_comp_prezzo_nonneg esiste
 --   10) CHECK chk_ddtrighe_comp_origine esiste
---   11) Indice ix_vendite_ddtrighe_comp_riga esiste
+--   11) FK fk_ddtrighe_comp_riga coperta da un indice
 --   12) Tutti i 7 trigger registrati sulla tabella
 --   13) Trigger propaga_qta registrato su ddt_righe
 --   14) fn_ddt_riga_componenti_init: p_riga_id NULL -> raise
@@ -120,12 +120,20 @@ SELECT col_has_check(
 );
 
 -- =========================================================
--- 11) Indice su riga_ddt_id
+-- 11) FK riga_ddt_id coperta da un indice
+--     L'indice dedicato ix_vendite_ddtrighe_comp_riga e' stato rimosso il 2026-07-27
+--     (changeSet 20260727-37): era ridondante, perche' uq_ddtrighe_comp_riga_art_comp
+--     ha riga_ddt_id come colonna leading e serve gia' ogni ricerca per riga,
+--     ON DELETE CASCADE compreso.
+--     Il test verifica ora la PROPRIETA' — la FK e' coperta — invece del nome
+--     di un indice specifico: resta valido anche se l'indice coprente cambia.
 -- =========================================================
-SELECT has_index(
-    'vendite', 'ddt_righe_componenti',
-    'ix_vendite_ddtrighe_comp_riga',
-    '11) indice ix_vendite_ddtrighe_comp_riga esiste'
+SELECT ok(
+    NOT EXISTS (SELECT 1 FROM dbops.vw_fk_senza_indice
+                 WHERE schema_name     = 'vendite'
+                   AND table_name      = 'ddt_righe_componenti'
+                   AND constraint_name = 'fk_ddtrighe_comp_riga'),
+    '11) FK fk_ddtrighe_comp_riga coperta da un indice'
 );
 
 -- =========================================================

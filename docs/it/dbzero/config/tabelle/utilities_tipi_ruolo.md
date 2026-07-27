@@ -31,7 +31,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_utilities_tipi_ruolo_tipo_ruolo_id | `CREATE INDEX ix_utilities_tipi_ruolo_tipo_ruolo_id ON config.utilities_tipi_ruolo USING btree (tipo_ruolo_id)` |
-| ix_utilities_tipi_ruolo_utility_id | `CREATE INDEX ix_utilities_tipi_ruolo_utility_id ON config.utilities_tipi_ruolo USING btree (utility_id)` |
 | pk_utilities_tipi_ruolo | `CREATE UNIQUE INDEX pk_utilities_tipi_ruolo ON config.utilities_tipi_ruolo USING btree (id)` |
 | uq_utilities_tipi_ruolo_utility_tipo_ruolo | `CREATE UNIQUE INDEX uq_utilities_tipi_ruolo_utility_tipo_ruolo ON config.utilities_tipi_ruolo USING btree (utility_id, tipo_ruolo_id)` |
 
