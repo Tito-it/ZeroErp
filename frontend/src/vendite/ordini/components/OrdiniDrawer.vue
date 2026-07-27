@@ -208,6 +208,8 @@ function defaultForm() {
     modalita_pagamento_id: null,
     termine_pagamento_id: null,
     fatturazione_trigger: null,
+    // Corsia di instradamento: default differita (il DB ha DEFAULT false).
+    fatturazione_immediata: false,
     data: new Date(),
   }
 }
@@ -247,6 +249,7 @@ async function loadDetail(id = null) {
     modalita_pagamento_id: data.modalita_pagamento_id ?? null,
     termine_pagamento_id: data.termine_pagamento_id ?? null,
     fatturazione_trigger: data.fatturazione_trigger ?? null,
+    fatturazione_immediata: data.fatturazione_immediata ?? false,
     data: data.data ? new Date(data.data + 'T00:00:00') : null,
   }
   await nextTick()
@@ -336,6 +339,7 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
       modalita_pagamento_id: f.modalita_pagamento_id || null,
       termine_pagamento_id: f.termine_pagamento_id || null,
       fatturazione_trigger: f.fatturazione_trigger || null,
+      fatturazione_immediata: !!f.fatturazione_immediata,
       data: f.data ? toDateString(f.data) : null,
     }
   },
@@ -369,6 +373,7 @@ async function handleSave() {
       modalita_pagamento_id: f.modalita_pagamento_id ?? null,
       termine_pagamento_id: f.termine_pagamento_id ?? null,
       fatturazione_trigger: f.fatturazione_trigger ?? null,
+      fatturazione_immediata: !!f.fatturazione_immediata,
       data: f.data ? toDateString(f.data) : null,
     }
     const result = await execute(
@@ -389,6 +394,7 @@ async function handleSave() {
       modalita_pagamento_id: f.modalita_pagamento_id || null,
       termine_pagamento_id: f.termine_pagamento_id || null,
       fatturazione_trigger: f.fatturazione_trigger || null,
+      fatturazione_immediata: !!f.fatturazione_immediata,
       data: f.data ? toDateString(f.data) : null,
     }
     const result = await execute(

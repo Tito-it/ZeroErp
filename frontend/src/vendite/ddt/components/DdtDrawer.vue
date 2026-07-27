@@ -191,6 +191,8 @@ function defaultForm() {
     // _obj per BillingAccountLookup (pattern restore lookup ricco).
     billing_account_obj: null,
     valuta_id: null,
+    // Corsia di instradamento: default differita (DEFAULT false a DB).
+    fatturazione_immediata: false,
     data: new Date(),
     // Trasporto
     causale_trasporto_id: null,
@@ -231,6 +233,7 @@ async function loadDetail(id = null) {
     billing_account_id: data.billing_account_id ?? null,
     billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
     valuta_id: data.valuta_id ?? null,
+    fatturazione_immediata: data.fatturazione_immediata ?? false,
     data: data.data ? new Date(data.data + 'T00:00:00') : null,
     // Trasporto
     causale_trasporto_id: data.causale_trasporto_id ?? null,
@@ -320,6 +323,7 @@ function buildTestataPayload({ includeBa = false } = {}) {
   const payload = {
     utility_id: f.utility_id || null,
     valuta_id: f.valuta_id || null,
+    fatturazione_immediata: !!f.fatturazione_immediata,
     data: f.data ? toDateString(f.data) : null,
     causale_trasporto_id: f.causale_trasporto_id || null,
     aspetto_bene_id: f.aspetto_bene_id || null,

@@ -711,6 +711,10 @@ class PipelineStepExecutor:
             # Corsia: filtro propagato dal lotto (meta), non re-derivato qui dal
             # tipo_lotto (separazione immediata/differita decisa dal driver).
             fatturazione_immediata=context.fatturazione_immediata,
+            # Perimetro mirato: visita solo le commesse che contengono almeno
+            # uno dei gruppi richiesti (persistito sul lotto, non passato qui
+            # dal chiamante — vedi LottoContext.gruppi).
+            gruppi=context.gruppi,
         )
         if dry_run:
             return
@@ -723,6 +727,10 @@ class PipelineStepExecutor:
                     self.commesse_repository.emit_attivita_fatturabili(
                         commessa_id,
                         dry_run=dry_run,
+                        # Stesso perimetro anche DENTRO la commessa: senza, le
+                        # righe degli altri gruppi passerebbero a EMESSA pur
+                        # non essendo state chieste (A2.3 del brief DB).
+                        gruppi=context.gruppi,
                     )
             except Exception as exc:
                 msg = f"Errore emit commessa_id={commessa_id}: {type(exc).__name__}: {exc}"

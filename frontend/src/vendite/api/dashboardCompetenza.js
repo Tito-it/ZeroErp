@@ -26,6 +26,20 @@ export function listDashboardCompetenzaCommesse(params = {}) {
   return api.get('/vendite/dashboard-competenza/commesse/', { params })
 }
 
+// GET /vendite/dashboard-competenza/gruppi/?competenza_mese=&stadio=&order_by=&order_dir=&page=&page_size=
+// Elenco dei GRUPPI FATTURABILI: l'unita' su cui l'operatore decide nella card
+// «Da emettere» — un documento sorgente (PRV-0012, CTR-0007…) oppure gli oneri
+// di una commessa, che documento non hanno e senza questa lista resterebbero
+// lavoro conteggiato ma non azionabile.
+//
+// La `gruppo_key` di ogni riga e' la STESSA che si rimanda a runFatturazione
+// nel campo `gruppi`: non va costruita ne' trasformata lato FE.
+// La risposta porta anche `riepilogo` (n gruppi/attivita'/valore di TUTTO il
+// perimetro, non della pagina): e' la riga di totali del cockpit.
+export function listDashboardCompetenzaGruppi(params = {}) {
+  return api.get('/vendite/dashboard-competenza/gruppi/', { params })
+}
+
 // GET /vendite/dashboard-competenza/errori/?competenza_mese=&page=&page_size=
 // Errori vivi fatturazione (task run in ERRORE + fatture critical), blocco 4.
 export function listDashboardCompetenzaErrori(params = {}) {

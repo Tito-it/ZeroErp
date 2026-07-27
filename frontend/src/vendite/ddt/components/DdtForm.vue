@@ -24,6 +24,7 @@ import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Divider from 'primevue/divider'
+import ToggleSwitch from 'primevue/toggleswitch'
 
 const { t } = useI18n()
 
@@ -134,6 +135,22 @@ function onVettoreClear() {
         <LookupSelect v-model="form.valuta_id" rel="config.valute"
           :placeholder="t('vendite.ddt.field_valuta')" :disabled="isLocked('valuta_id')"
           show-clear />
+      </div>
+      <!-- Corsia di fatturazione: instradamento deciso PRIMA che il lavoro
+           entri in commessa (dopo il push il flag e' inerte e il DB respinge
+           la modifica). Per fatturare adesso qualcosa gia' in commessa si usa
+           l'emissione mirata dal cruscotto Competenza. -->
+      <div class="form-field">
+        <label for="ddt-fatt-immediata">{{ t('vendite.ddt.field_fatturazione_immediata') }}</label>
+        <div class="app-form-inline-toggle">
+          <ToggleSwitch
+            input-id="ddt-fatt-immediata"
+            v-model="form.fatturazione_immediata"
+            :disabled="isLocked('fatturazione_immediata')" />
+          <small class="text-color-secondary">
+            {{ t('vendite.ddt.fatturazione_immediata_hint') }}
+          </small>
+        </div>
       </div>
     </div>
 
