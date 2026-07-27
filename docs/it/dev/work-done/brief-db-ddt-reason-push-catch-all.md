@@ -14,7 +14,7 @@
 > drawer ordini. Verificato sul caso reale: DDT0000326 → `DDT_FATTURA_DA_ORDINE`.
 > Guard i18n verde, build Vite verde.
 > **Origine**: rilievo in-app di Tid (2026-07-19) su **DDT0000326 / ORD0000580**,
-> emerso validando la slice [brief-be-fe-ddt-resi-dashboard.md](../work-in-progress/brief-be-fe-ddt-resi-dashboard.md)
+> emerso validando la slice [brief-be-fe-ddt-resi-dashboard.md](brief-be-fe-ddt-resi-dashboard.md)
 > (**documento BE/FE collegato**: FE-5 gate solo-trasporto nel drawer DDT).
 > Il DDT è **CONSEGNATO**, ma nel drawer non compare il push a commessa e il
 > banner recita *«DDT non ancora inviabile a commessa: dev'essere spedito o
@@ -264,7 +264,7 @@ La delega letterale resta un follow-up sicuro, se e quando serve.
 
 ## 7. Riferimenti
 
-**Documento BE/FE collegato**: [brief-be-fe-ddt-resi-dashboard.md](../work-in-progress/brief-be-fe-ddt-resi-dashboard.md)
+**Documento BE/FE collegato**: [brief-be-fe-ddt-resi-dashboard.md](brief-be-fe-ddt-resi-dashboard.md)
 (slice da cui è emerso il rilievo; FE-5 gate solo-trasporto nel drawer DDT).
 
 **Prodotto da questo brief:**

@@ -24,12 +24,21 @@ import { labelOrCode } from '../utils/i18nLabel'
 //   (`parentReadonly || props.readonly`), NON l'isReadonly del drawer che
 //   include anche il lock-di-stato: un contratto ATTIVO ha la form bloccata
 //   ma deve comunque mostrare "Cessa".
+//   `permission` (2026-07-27, opzionale): codename dell'azione di processo che
+//   autorizza le transizioni di questo dominio (es. `cambia_stato_commessa`).
+//   Viene stampato come `action` su OGNI azione mappata, e da lì il filtro di
+//   `DrawerActionsBar`/`useActionBar` (`auth.isActionAllowed`) nasconde i
+//   pulsanti a chi non ha il permesso. Ortogonale a `enabled`/`reasons` del BE:
+//   quelli dicono se l'azione e' eseguibile ADESSO (disabled + motivo), il
+//   permesso dice se quell'operatore puo' eseguirla (pulsante assente).
+//   Omesso = nessun gate di processo, comportamento invariato.
 export function mapAvailableActionsToDrawerActions({
   availableActions,
   t,
   te = () => false,
   onAction,
   readonly = false,
+  permission = null,
 }) {
   if (unref(readonly)) return []
   const list = unref(availableActions) || []
@@ -69,6 +78,9 @@ export function mapAvailableActionsToDrawerActions({
       outlined: action.outlined === true,
       disabled: isDisabled,
       tooltip,
+      // Gate permesso di processo (solo se il dominio lo dichiara): la chiave
+      // `action` e' quella che DrawerActionsBar passa ad `auth.isActionAllowed`.
+      ...(permission ? { action: permission } : {}),
       command: () => onAction?.(action),
     }
   })

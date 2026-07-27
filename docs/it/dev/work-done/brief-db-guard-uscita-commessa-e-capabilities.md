@@ -1,8 +1,8 @@
 # Brief DB — Guard di uscita commessa, arco mancante e capabilities con motivo
 
 > **Tipo**: brief operativo per il **team DB** · **Target**: `dev/db-tid` · **Data**:
-> 2026-07-23 · **Owner**: Tid · **Stato**: ☑ **SVILUPPATO — da applicare/testare**
-> (2026-07-24) · **Priorità**: 🟠 ALTA
+> 2026-07-23 · **Owner**: Tid · **Stato**: ✅ **CHIUSO — DB applicato, BE e FE
+> recepiti** (verificato 2026-07-27, dettaglio in §9) · **Priorità**: 🟠 ALTA
 > (perdita **irreversibile** di righe fatturabili e sotto-riporto della dashboard
 > di competenza: nessuna via applicativa di recupero — vedi §0).
 >
@@ -14,6 +14,11 @@
 > **Origine**: richiesta del team BE (step E-DB-1..4) a corredo di
 > [brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md),
 > più l'analisi critica del 2026-07-23 che ne ha riformulato due punti (§1).
+>
+> **Unico strascico aperto, e vive altrove**: il permesso mancante su
+> chiudi/annulla commessa — segnalato qui in §8, **tracciato come decisione
+> aperta E-BE-4** nel brief committente. Non è un residuo di questa slice: è un
+> altro asse (*chi può*, non *cosa è lecito*).
 >
 > **Contesto**: non siamo in produzione ([[project_no_produzione_solo_sviluppo]])
 > → guard restrittivi da subito, nessuna compatibilità da mantenere.
@@ -103,6 +108,15 @@ risolve con una riga in più, un falso permesso non si risolve affatto. La scelt
 non è definitiva per costruzione — restringere il criterio in seguito è una
 modifica della sola `EXISTS` dentro `fn_check_commessa_annullabile`, **senza
 alcun impatto di contratto** su guard, capabilities, BE o FE.
+
+> **Nota post-chiusura (2026-07-27)**: il criterio (b) nel frattempo **è stato
+> implementato per un altro scopo** — `fn_list_commessa_attivita` espone la
+> colonna `fatturata` = EXISTS di un'AF con `fattura_riga_id` valorizzato
+> (changeset `20260724-07`,
+> [brief-db-flag-fatturata-lista-attivita.md](brief-db-flag-fatturata-lista-attivita.md)),
+> usata dal FE per nascondere le azioni prezzo su riga fatturata. Se un domani si
+> volesse restringere D7, l'espressione da riusare è quella: la scelta resta
+> aperta e continua a costare la sola `EXISTS`.
 
 ### 2.2 →CHIUSA con righe APPROVATE+NON_EMESSE (D2)
 
@@ -334,7 +348,11 @@ consumatori posizionali; il BE usa comunque colonne nominate, §6.1):
 | Colonna | Origine |
 | --- | --- |
 | `commessa_codice varchar` | `c.codice` |
-| `cliente_display varchar` | `s.ragione_sociale_completa`, via `LEFT JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id` → `LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id` → `LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id` |
+| `cliente_display text` | `s.ragione_sociale_completa`, via `LEFT JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id` → `LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id` → `LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id` |
+
+> `cliente_display` esce **`text`** (non `varchar`): `ragione_sociale_completa` è
+> una colonna generata `text`, e il `%TYPE` ne eredita il tipo. Nessun impatto —
+> il BE la consuma come stringa nominata.
 
 `LEFT JOIN` obbligatorio: un BA senza soggetto non deve far sparire la riga di
 stato. Entrambe le espressioni vanno aggiunte al `GROUP BY` esistente.
@@ -345,23 +363,28 @@ stato. Entrambe le espressioni vanno aggiunte al `GROUP BY` esistente.
 
 ### 4.1 Nuovo: `db/pgtap/vendite/test-guard-uscita-commessa-v1.sql`
 
-Indice in testa al file (regola AGENTS.md). Copertura minima:
+Indice in testa al file (regola AGENTS.md). **Scritto: `plan(16)`**, per scenario
+(`[A]` pendenti · `[B]` nulla di pendente · `[C]` righe emesse · `[D]` nessuna
+emessa) — così guard e capabilities vengono interrogati sullo **stesso** stato e
+una divergenza fra le due strade fa contraddire i gruppi:
 
 | # | Test |
 | --- | --- |
 | 1-2 | `fn_check_commessa_chiudibile` / `_annullabile` presenti |
-| 3 | Arco `3→5` presente e attivo in matrice |
-| 4 | `_chiudibile` ritorna motivo con commessa che ha righe APPROVATE+NON_EMESSE |
-| 5 | `_chiudibile` ritorna `[]` quando non resta nulla di pendente |
-| 6 | →CHIUSA con righe pendenti **rifiutata** (`throws_ok`, `P0001`) |
-| 7 | **→CHIUSA da IN_ESECUZIONE senza pendenti ammessa** ← chiude il vicolo cieco (§2.3) |
-| 8 | `_annullabile` ritorna motivo con righe EMESSE |
-| 9 | →ANNULLATA con righe emesse **rifiutata** |
-| 10 | →ANNULLATA senza righe emesse ammessa |
-| 11 | Capabilities: `chiudi` con `enabled = false` + `reasons` non vuoto quando pendenti |
-| 12 | Capabilities: `chiudi` con `enabled = true` e `can_change_state` coerente quando nulla pende |
-| 13 | Codici **558/559** presenti in `config.messaggi_errore` |
-| 14 | `fn_get_commessa_stato` espone `commessa_codice` e `cliente_display` valorizzati |
+| 3 | Arco `3→5` presente, **attivo e manuale** in matrice |
+| 4 | Codici **558/559** presenti a catalogo |
+| 5 | `[A]` `_chiudibile`: motivo 559 con righe APPROVATE+NON_EMESSE |
+| 6 | `[A]` →CHIUSA con righe pendenti **rifiutata** (`throws_ok`, `P0001`) |
+| 7 | `[A]` capabilities: `chiudi` presente con `enabled = false` |
+| 8 | `[A]` capabilities: `reasons` di `chiudi` porta il `reason_key` |
+| 9 | `[B]` `_chiudibile`: `[]` quando non resta nulla di pendente |
+| 10 | `[B]` capabilities in IN_ESECUZIONE: `chiudi` esposta ed `enabled = true` |
+| 11 | `[B]` **→CHIUSA da IN_ESECUZIONE ammessa** ← chiude il vicolo cieco (§2.3) |
+| 12 | `[C]` `_annullabile`: motivo 558 con righe EMESSE |
+| 13 | `[C]` →ANNULLATA con righe emesse **rifiutata** |
+| 14 | `[C]` capabilities: `can_change_state = false` se tutte le azioni sono disabilitate |
+| 15 | `[D]` →ANNULLATA senza righe emesse ammessa |
+| 16 | `fn_get_commessa_stato` espone `commessa_codice` e `cliente_display` valorizzati |
 
 Fixture: riusare il pattern di `test-commesse-transizioni-stati-v1.sql`
 (`fn_get_or_create_commessa` con `p_force_new => true`); righe sourceless come in
@@ -408,7 +431,7 @@ eseguibile**. Chi consuma deve guardare `enabled`.
 
 ## 6. Impatti fuori DB
 
-### 6.1 BE — una riga, obbligatoria e contestuale
+### 6.1 BE — una riga, obbligatoria e contestuale ✅ **recepito 2026-07-24**
 
 `backend/apps/vendite/services/commesse_service.py::cambia_stato_commessa`
 costruisce la difesa applicativa così:
@@ -429,16 +452,20 @@ stati_ammessi = {a.get("target_state") for a in azioni if a.get("enabled") is no
 Confronto stretto con `False`, coerente col mapper FE: le azioni senza `enabled`
 degradano ad abilitato. **Va rilasciato insieme al DB**, non dopo.
 
+✅ **Fatto** ([commesse_service.py:462](../../../../backend/apps/vendite/services/commesse_service.py#L462)),
+con test `test_cambia_stato_commessa_azione_disabilitata_rifiutata`.
+
 Nessun altro impatto BE: verificato,
 [commesse_repository.py:662-669](../../../../backend/apps/vendite/db/commesse_repository.py#L662-L669)
 seleziona **colonne nominate** da `fn_get_commessa_stato` → l'aggiunta di §3.6 è
 additiva e non rompe il mapping posizionale. Serve solo estendere
-`CommessaStatoResult` per esporre i due campi nuovi.
+`CommessaStatoResult` per esporre i due campi nuovi. ✅ **Fatto**: i due campi
+sono nella SELECT del repo e nel type.
 
 Codici 558/559 da registrare in `error_policies.py` → **409** (conflitto di
-stato, come la famiglia immutabilità), `show_error_banner`.
+stato, come la famiglia immutabilità), `show_error_banner`. ✅ **Fatto**.
 
-### 6.2 FE — zero modifiche
+### 6.2 FE — zero modifiche ✅ **confermato; le due chiavi i18n sono state aggiunte**
 
 Verificato: `CommessaGestioneDrawer.vue` instrada le azioni di stato attraverso
 il mapper condiviso `mapAvailableActionsToDrawerActions`
@@ -447,10 +474,10 @@ che **già gestisce** `enabled: false` → pulsante **disabilitato con tooltip**
 costruito da `reasons[].reason_key`, e degrada ad abilitato se `enabled` manca.
 La decisione «disabled, mai nascosto» è già quella cablata lì.
 
-Restano da aggiungere **due chiavi i18n** — `vendite.commesse.azione_reason.
-righe_emesse` e `.righe_da_emettere` — in `it.json`/`en.json`. **Non
-bloccanti**: `labelOrCode` è fail-visible e mostra il codice macchina se la
-chiave manca, non il path né un crash.
+Servivano **due chiavi i18n** — `vendite.commesse.azione_reason.righe_emesse` e
+`.righe_da_emettere` — in `it.json`/`en.json`: ✅ **aggiunte (it+en)** con lo step
+E-FE-4. Erano comunque non bloccanti: `labelOrCode` è fail-visible e mostra il
+codice macchina se la chiave manca, non il path né un crash.
 
 ---
 
@@ -467,29 +494,25 @@ chiave manca, non il path né un crash.
 
 ## 8. Segnalazione al team BE — permesso mancante su chiusura e annullamento
 
-> **Fuori dal perimetro di questo brief.** Non è una richiesta al team DB: è una
-> cosa emersa verificando il contorno di E-DB-1, che riguarda il BE e che il
-> team BE deve decidere. Qui è registrata perché non vada persa.
+> **Emersa qui, ma vive altrove.** Non era una richiesta al team DB: è una cosa
+> notata verificando il contorno di E-DB-1, che riguarda il BE. È stata
+> **recepita** ed è tracciata come decisione aperta — questo paragrafo resta come
+> traccia dell'origine, **non** come copia della decisione.
 
-`ApiCommessaStato` ([views.py:635](../../../../backend/apps/vendite/api/views.py#L635))
-dichiara `area_funzionale = "vendite"` ma **non ha `post_permission`**:
-chiunque abbia accesso all'area vendite può portare una commessa a `CHIUSA` o
-`ANNULLATA`, cioè compiere un atto **irreversibile** (§0) che può far uscire per
-sempre righe fatturabili dal giro.
+**Dove vive adesso**: step **E-BE-4 — «DECISIONE APERTA: permesso su
+chiudi/annulla commessa»** in
+[brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md)
+(⚠️ *da decidere Tid*). Là ci sono il testo completo, le tre cose che servono
+(codename in `config.azioni_processo` con relativo append CSV → team DB;
+`post_permission` sulla view; gate FE `useActionPermission`) e il collegamento
+con gli altri step della fase E. Aggiornare **lì**, non qui.
 
-L'asimmetria è netta rispetto alle azioni molto meno gravi della stessa entità:
-le tre operazioni di prezzo N5/N7 (`riallinea`, `variazione eccezionale`,
-`sblocca`) sono gated da `prezzo_override_manuale`, e la porta oneri da
-`carica_voce_manuale`. Il cambio di stato terminale non è gated da niente.
-
-**Cosa servirebbe**, se il team BE decide di chiuderla:
-
-- un codename in `config.azioni_processo` — nuovo (es. `chiudi_commessa`) o il
-  riuso di uno esistente, è una scelta di modello permessi che spetta a voi;
-- il seed CSV corrispondente (append, nessun loader nuovo) — **è l'unica parte
-  che tocca il DB**: apritela come micro-prerequisito e il team DB la evade;
-- `post_permission` sulla view, con il gate FE via `useActionPermission` come
-  già fatto per le azioni prezzo.
+In sintesi, per chi legge solo questo brief: `ApiCommessaStato`
+([views.py:684](../../../../backend/apps/vendite/api/views.py#L684)) dichiara
+`area_funzionale = "vendite"` ma **non ha `post_permission`** — chiunque abbia
+accesso all'area vendite può compiere l'atto **irreversibile** (§0), mentre le
+azioni molto meno gravi della stessa entità (prezzi N5/N7, porta oneri) sono
+gated.
 
 Nota di interazione con questo brief: i guard §3.3 e le capabilities §3.4
 riducono il **danno da errore** (non si chiude più una commessa con righe
@@ -501,8 +524,21 @@ pendenti), ma **non sostituiscono il permesso** — restano due assi diversi:
 ## 9. Note operative
 
 - **Nessun punto aperto di dominio**: tutte le decisioni (D1-D7) sono chiuse.
-- **Stato consegna (2026-07-24)**: DB scritto e verificato staticamente, **non
-  ancora applicato**. Manufatti:
+- **Stato consegna**: scritto il **2026-07-24**, **applicato** e recepito da BE e
+  FE. Verifica del **2026-07-27** contro il DB vivo (doc auto-gen) e il codice:
+
+| Cosa | Evidenza |
+| --- | --- |
+| Funzioni pure §3.2 | [fn_check_commessa_annullabile](../../dbzero/script/funzioni/fn_check_commessa_annullabile.md) · [fn_check_commessa_chiudibile](../../dbzero/script/funzioni/fn_check_commessa_chiudibile.md) |
+| Guard §3.3 | **Regola 3** dentro [trgfn_commesse_guard_transizione](../../dbzero/vendite/funzioni/trgfn_commesse_guard_transizione.md) |
+| Capabilities §3.4 | [fn_available_actions_commessa](../../dbzero/script/funzioni/fn_available_actions_commessa.md): `enabled`+`reasons`, e `can_change_state` **ricalcolato sulle sole azioni abilitate** (l'avvertenza ⚠️ è stata seguita) |
+| Arco §3.5 | `transizioni_stati_commessa` id **12** (`3→5`) |
+| Testata §3.6 | [fn_get_commessa_stato](../../dbzero/vendite/funzioni/fn_get_commessa_stato.md) con `commessa_codice` + `cliente_display` in coda |
+| Errori §3.1 | 558/559 a catalogo in `messaggi_errore.csv` (con causa/soluzione) |
+| BE §6.1 | filtro `enabled`, `CommessaStatoResult`, `error_policies` → tutti presenti |
+| FE §6.2 | le due chiavi `azione_reason.*` presenti in `it.json` **e** `en.json` |
+
+- **Manufatti**:
 
 | File | Tipo |
 | --- | --- |
@@ -516,13 +552,13 @@ pendenti), ma **non sostituiscono il permesso** — restano due assi diversi:
 | `db/pgtap/vendite/test-guard-uscita-commessa-v1.sql` | nuovo, `plan(16)` |
 | `db/pgtap/vendite/test-commesse-transizioni-stati-v1.sql` | adeguato (11 → 12) |
 
-- **Da fare all'applicazione**: `make db-migrate`, poi
-  `scripts/testpgtap.sh db/pgtap/vendite/test-guard-uscita-commessa-v1.sql` e
-  `scripts/testpgtap.sh db/pgtap/vendite/test-commesse-transizioni-stati-v1.sql`.
-- **BE (§6.1)**: non ancora fatto — il filtro `enabled` in
-  `cambia_stato_commessa`, i codici 558/559 in `error_policies.py` e i due campi
-  nuovi in `CommessaStatoResult`. Da decidere se li fa il team DB in coda a
-  questa slice o il team BE su `dev/backend-tid`.
+- ⚠️ **Unica spunta che il brief non registra**: l'**esito dei due pgTAP**
+  (`test-guard-uscita-commessa-v1.sql` — `plan(16)` — e
+  `test-commesse-transizioni-stati-v1.sql` adeguato a `plan(12)`). Il migrate è
+  applicato e i file sono in repo, ma il verde non risulta scritto da nessuna
+  parte: se non è stato eseguito, si eseguono con
+  `scripts/testpgtap.sh <file>` — sono l'unica difesa automatica di una regola
+  che protegge un atto irreversibile.
 
 ---
 

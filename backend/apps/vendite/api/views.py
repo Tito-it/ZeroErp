@@ -683,6 +683,18 @@ class ApiCommessePushLog(DomainAPIView):
 
 class ApiCommessaStato(DomainAPIView):
     area_funzionale = "vendite"
+    # Il POST cambia lo stato della commessa: CHIUSA e ANNULLATA sono terminali
+    # irreversibili (nessun arco uscente in matrice, emittibile=false) → la
+    # commessa esce per sempre dal giro di fatturazione. Prima era protetto dal
+    # solo controllo d'area, mentre azioni reversibili della stessa entita'
+    # (prezzo, oneri, approvazione) erano gia' gated: asimmetria chiusa dal
+    # 2026-07-27 (brief-db-permesso-cambio-stato-commessa). Un solo codename per
+    # i tre verbi chiudi/riapri/annulla — post_permission gatta l'ENDPOINT, non
+    # la action_key; stesso schema di `cambia_stato_preventivi`. Ortogonale alle
+    # capability DB (enabled/reasons dicono se l'azione e' eseguibile ORA, il
+    # permesso dice se quell'operatore puo' eseguirla): i due gate si sommano.
+    # NB: il GET di lettura stato resta libero nell'area.
+    post_permission = "cambia_stato_commessa"
     @extend_schema(
         responses={
             200: inline_serializer(

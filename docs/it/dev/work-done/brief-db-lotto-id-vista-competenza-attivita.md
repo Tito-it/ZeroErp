@@ -7,7 +7,7 @@
 > (§5.2) realizzati e verdi. Era: piccolo delta additivo (1 colonna via LEFT JOIN),
 > niente breaking. Prerequisito della metà **breakdown FATTURATA** dello step **B-5** del
 > cockpit
-> ([brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md)).
+> ([brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md)).
 >
 > **Perimetro**: SOLO DB — una `CREATE OR REPLACE VIEW` di
 > `vendite.vw_dash_competenza_attivita` che aggiunge la colonna `lotto_id`. BE/FE restano

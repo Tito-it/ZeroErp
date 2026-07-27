@@ -7,12 +7,12 @@
 > SECURITY INVOKER prima di ogni UPDATE → fuori scope = 404 identico a inesistente
 > (regressione `test_prezzi_attivita_fuori_scope_o_inesistente_404`); **G-2** (WITH CHECK
 > push operatore) sicuro per costruzione — la commessa eredita l'emittente dal documento
-> sorgente già RLS-scoped. Vedi [brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md)
+> sorgente già RLS-scoped. Vedi [brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md)
 > §P-6. Resta solo lo smoke end-to-end reale = validazione in-app di Tid (DB dev vuoto,
 > come Fasi A/B). **FORCE ROW LEVEL SECURITY** = ondata coordinata futura (§6).
 >
 > **Origine**: punto **P-6** di
-> [brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md) §3
+> [brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md) §3
 > (revisione critica 2026-07-20, finding CONFERMATO). Completa l'ondata RLS operatori:
 > [analisi-attivazione-rls-operatori.md](analisi-attivazione-rls-operatori.md)
 > classificava `vendite.commesse` «NO in prima battuta» segnalando già l'asimmetria

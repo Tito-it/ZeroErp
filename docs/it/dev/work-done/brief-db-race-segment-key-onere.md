@@ -16,7 +16,7 @@
 > **Contesto**: non siamo in produzione ([[project_no_produzione_solo_sviluppo]])
 > → fix restrittivo da subito, nessuna compatibilità.
 > **Origine**: review critica 2026-07-23 della porta oneri
-> ([brief-be-fe-immutabilita-quantita-e-porta-oneri.md](../work-in-progress/brief-be-fe-immutabilita-quantita-e-porta-oneri.md), step A1).
+> ([brief-be-fe-immutabilita-quantita-e-porta-oneri.md](brief-be-fe-immutabilita-quantita-e-porta-oneri.md), step A1).
 
 ---
 
@@ -282,7 +282,7 @@ sovrascritta.
 
 1. **BE — codice 557 → 409** in `error_policies.py` (§5). Tracciato come riga
    **C3 ☐ DA FARE** in §8 di
-   [brief-be-fe-immutabilita-quantita-e-porta-oneri.md](../work-in-progress/brief-be-fe-immutabilita-quantita-e-porta-oneri.md).
+   [brief-be-fe-immutabilita-quantita-e-porta-oneri.md](brief-be-fe-immutabilita-quantita-e-porta-oneri.md).
    Fino ad allora l'API risponde **400** su un evento che comunque non deve mai
    accadere: degrado accettato e consapevole.
 2. **Test di concorrenza manuale** (§6): **non ancora eseguito**. È l'**unica**

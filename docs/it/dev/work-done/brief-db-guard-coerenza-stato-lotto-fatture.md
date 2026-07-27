@@ -19,7 +19,7 @@
 > **Contesto**: non siamo in produzione ([[project_no_produzione_solo_sviluppo]]) → guard
 > restrittivo da subito, nessuna compatibilità da mantenere.
 > **Origine**: smoke C-9 «parte alta» del cockpit fatturazione
-> ([brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md), C-9).
+> ([brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md), C-9).
 
 ---
 

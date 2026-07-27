@@ -4,7 +4,7 @@
 > **Stato**: ✅ **COMPLETO E CHIUSO** (2026-07-19) — slice DB **realizzata, applicata e
 > mergiata** (PR #1002, apply incrementale step-per-step): tracker §9 tutto ✅ (steps 1-13,
 > 12 file pgTAP verdi), decisioni **tutte chiuse** (nessuna ❓ residua). L'esecuzione BE/FE
-> è avvenuta su `dev/backend-tid` ([brief BE/FE](../work-in-progress/brief-be-fe-ddt-resi-dashboard.md),
+> è avvenuta su `dev/backend-tid` ([brief BE/FE](brief-be-fe-ddt-resi-dashboard.md),
 > realizzato 2026-07-18 + review 8-finder). Reperti fuori slice tracciati nei brief dedicati
 > ([guard sorgente polimorfa](brief-db-guard-sorgente-polimorfa.md) ·
 > [immutabilità quantità](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md)); alla slice NC
