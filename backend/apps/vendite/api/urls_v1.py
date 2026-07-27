@@ -47,6 +47,7 @@ from apps.vendite.api.views_dashboard_competenza import (
     ApiDashboardCompetenzaAttivita,
     ApiDashboardCompetenzaCommesse,
     ApiDashboardCompetenzaErrori,
+    ApiDashboardCompetenzaGruppi,
 )
 from apps.vendite.api.views_dashboard_aperto import (
     ApiDashboardAperto,
@@ -162,6 +163,14 @@ urlpatterns = [
         "dashboard-competenza/commesse/",
         ApiDashboardCompetenzaCommesse.as_view(),
         name="vendite-dashboard-competenza-commesse",
+    ),
+    # Emissione mirata: l'unita' su cui l'operatore decide nella card «Da
+    # emettere» (documento sorgente oppure oneri di commessa). La gruppo_key
+    # esposta qui e' quella accettata da fatturazione/run/ (campo `gruppi`).
+    path(
+        "dashboard-competenza/gruppi/",
+        ApiDashboardCompetenzaGruppi.as_view(),
+        name="vendite-dashboard-competenza-gruppi",
     ),
     path(
         "dashboard-competenza/errori/",

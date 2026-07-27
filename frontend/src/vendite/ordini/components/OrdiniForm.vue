@@ -17,6 +17,7 @@ import BillingAccountLookup from '../../../core/components/BillingAccountLookup.
 import EmittenteFiscaleField from '../../../core/components/EmittenteFiscaleField.vue'
 import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
+import ToggleSwitch from 'primevue/toggleswitch'
 
 const { t } = useI18n()
 
@@ -123,6 +124,27 @@ function onBaClear() {
           :disabled="isLocked('fatturazione_trigger')" show-clear
           v-tooltip.bottom="t('vendite.ordini.fatturazione_trigger_hint')" />
       </div>
+    </div>
+
+    <div class="form-grid-2col">
+      <!-- Corsia di fatturazione: «questo ordine va fatturato subito».
+           E' un INSTRADAMENTO, non un'azione: si decide prima che il lavoro
+           entri in commessa (dopo il push il flag e' inerte e il DB respinge la
+           modifica). Per fatturare adesso qualcosa gia' in commessa si usa
+           l'emissione mirata dal cruscotto Competenza. -->
+      <div class="form-field">
+        <label for="ord-fatt-immediata">{{ t('vendite.ordini.field_fatturazione_immediata') }}</label>
+        <div class="app-form-inline-toggle">
+          <ToggleSwitch
+            input-id="ord-fatt-immediata"
+            v-model="form.fatturazione_immediata"
+            :disabled="isLocked('fatturazione_immediata')" />
+          <small class="text-color-secondary">
+            {{ t('vendite.ordini.fatturazione_immediata_hint') }}
+          </small>
+        </div>
+      </div>
+      <div class="form-field"></div>
     </div>
 
     <div class="form-grid-2col">

@@ -39,10 +39,30 @@ _FERMATA_DA_CORSIA: Any = object()
 # fermata di default). Convenzione del modello a due corsie + D-1:
 # l'immediata numera da sola (nessuna fermata), la differita si ferma a
 # EMESSA — la numerazione e' un atto umano separato.
-_MODALITA: dict[str, tuple[str, bool, str | None]] = {
+#
+# La terza voce, `mirata`, e' l'EMISSIONE MIRATA per gruppo fatturabile
+# (decisione BF-1, brief BE/FE): il filtro di corsia e' **None**, cioe' non
+# filtra. E' deliberato, non una dimenticanza — motivo per esteso:
+#   la lista dei gruppi fatturabili (vw_dash_competenza_gruppi) NON conosce la
+#   corsia, quindi mostra anche i gruppi di commesse a fatturazione immediata.
+#   Se il giro mirato girasse su corsia differita, quei gruppi sarebbero
+#   selezionabili a video ma produrrebbero ZERO lotti in silenzio. La
+#   selezione esplicita dell'operatore e' un perimetro piu' preciso
+#   dell'instradamento automatico: quando c'e', la corsia non serve piu'.
+# La fermata resta EMESSA: il gate fiscale I-7 non si tocca.
+MODALITA_MIRATA = "mirata"
+_MODALITA: dict[str, tuple[str, bool | None, str | None]] = {
     "immediata": ("GIORNALIERO", True, None),
     "differita": ("MASSIVO", False, STATO_FERMATA_EMESSA),
+    MODALITA_MIRATA: ("MASSIVO", None, STATO_FERMATA_EMESSA),
 }
+
+# Corsie avviabili dallo SCHEDULER (management command/cron): tutte MENO la
+# mirata, che nasce solo da una selezione umana di gruppi e senza gruppi
+# degenererebbe in un giro di massa su entrambe le corsie insieme.
+# DERIVATA da _MODALITA, non riscritta: un elenco parallelo si sarebbe
+# disallineato in silenzio alla prima corsia aggiunta.
+_MODALITA_SCHEDULABILI: frozenset[str] = frozenset(_MODALITA) - {MODALITA_MIRATA}
 
 # Callback opzionale di progresso per-terna: (lane, esito, errore) — esito
 # valorizzato su successo, errore (ServiceError) su fallimento. Serve al
@@ -55,9 +75,12 @@ OnLaneEsito = Callable[[dict[str, Any], dict[str, Any] | None, ServiceError | No
 OnDiscovery = Callable[[dict[str, Any]], None]
 
 
-# Scopo: Espone le corsie valide (per argparse del command e validazione API).
+# Scopo: Espone le corsie SCHEDULABILI (argparse del management command). NON
+#        include `mirata`, che non e' una corsia del calendario ma l'esito di
+#        una selezione umana di gruppi: esporla come choice del cron
+#        significherebbe offrire un giro senza perimetro su entrambe le corsie.
 def modalita_disponibili() -> list[str]:
-    return sorted(_MODALITA.keys())
+    return sorted(_MODALITA_SCHEDULABILI)
 
 
 # Scopo: Esegue il GIRO di fatturazione di una corsia: discovery terne
@@ -79,13 +102,22 @@ def esegui_giro_fatturazione(
     fino_a_stato: Any = _FERMATA_DA_CORSIA,
     on_lane_esito: OnLaneEsito | None = None,
     on_discovery: OnDiscovery | None = None,
+    gruppi: tuple[str, ...] | list[str] | None = None,
 ) -> dict[str, Any]:
     if modalita not in _MODALITA:
-        raise ValueError(f"modalita non valida: {modalita!r} (ammesse: {modalita_disponibili()})")
+        raise ValueError(
+            f"modalita non valida: {modalita!r} (ammesse: {sorted(_MODALITA.keys())})"
+        )
+    # La corsia mirata SENZA gruppi degenererebbe in un giro di massa su
+    # entrambe le corsie insieme (filtro corsia None + nessun perimetro):
+    # fail-fast, mai un default silenzioso.
+    if modalita == MODALITA_MIRATA and not gruppi:
+        raise ValueError("modalita 'mirata' richiede almeno un gruppo fatturabile")
     tipo_lotto, fatturazione_immediata, fermata_default = _MODALITA[modalita]
     fermata: str | None = (
         fermata_default if fino_a_stato is _FERMATA_DA_CORSIA else fino_a_stato
     )
+    gruppi_tuple: tuple[str, ...] | None = None if not gruppi else tuple(gruppi)
 
     repo = CommesseRepository()
 
@@ -101,6 +133,9 @@ def esegui_giro_fatturazione(
         emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
         fatturazione_immediata=fatturazione_immediata,
         limit=limit,
+        # Emissione mirata: senza questo filtro la discovery restituirebbe
+        # TUTTE le terne del perimetro e nascerebbe un lotto vuoto per ognuna.
+        gruppi=gruppi_tuple,
     )
 
     # Un lotto richiede un emittente (emittente_soggetto_ruolo_id NOT NULL):
@@ -120,6 +155,15 @@ def esegui_giro_fatturazione(
         "falliti": 0,
         "per_motivo": {},
         "esiti": [],
+        # Gruppi richiesti (emissione mirata): tenerli nell'esito rende il
+        # perimetro leggibile a posteriori nel log/result del job, senza
+        # doverlo ricostruire dalla tabella figlia dei lotti.
+        "gruppi": list(gruppi_tuple) if gruppi_tuple else None,
+        # Lotti prodotti dal giro, COMPATTI: e' il dato del «vai al lotto» del
+        # FE. Un giro produce N lotti (un gruppo con righe di tipo doc fiscale
+        # diverso finisce in terne diverse — fatto F5/G15 del brief DB), quindi
+        # e' una lista, mai un singolo id.
+        "lotti": [],
     }
     # Testata disponibile al chiamante PRIMA dell'esecuzione (header nei log).
     if on_discovery is not None:
@@ -164,6 +208,10 @@ def esegui_giro_fatturazione(
                 meta={LOTTO_META_KEY_FATTURAZIONE_IMMEDIATA: fatturazione_immediata},
                 dry_run=False,
                 fino_a_stato=fermata,
+                # I gruppi non arrivano agli step come parametro: il runner li
+                # PERSISTE su vendite.fatturazione_lotti_gruppi nella stessa
+                # transazione in cui crea il lotto (contratto §8-bis).
+                gruppi=gruppi_tuple,
             )
         except ServiceError as exc:
             falliti += 1
@@ -191,4 +239,16 @@ def esegui_giro_fatturazione(
     summary["falliti"] = falliti
     summary["per_motivo"] = esiti_per_motivo
     summary["esiti"] = esiti
+    # Estratto compatto dei lotti prodotti: sopravvive alla potatura dell'array
+    # `esiti` fatta dall'handler di coda (il jsonb del job non deve gonfiarsi),
+    # ed e' cio' che permette al FE di offrire N «vai al lotto».
+    summary["lotti"] = [
+        {
+            "lotto_id": e["lotto_id"],
+            "tipo_doc_fiscale_id": e["tipo_doc_fiscale_id"],
+            "competenza_mese": e["competenza_mese"],
+        }
+        for e in esiti
+        if e.get("ok") and e.get("lotto_id")
+    ]
     return summary

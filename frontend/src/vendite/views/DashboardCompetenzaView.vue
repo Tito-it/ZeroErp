@@ -11,6 +11,7 @@ import { computed, nextTick, onActivated, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import Checkbox from 'primevue/checkbox'
+import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -38,7 +39,8 @@ import { labelOrCode } from '../../core/utils/i18nLabel'
 import { statoDocFiscaleSeverity } from '../../core/utils/severity'
 import { approvaCompetenza } from '../api/commesse'
 import { getFatturazioneRun, runFatturazione, runNumerazione } from '../api/lotti'
-import { useDashboardCompetenzaStore } from '../stores/dashboardCompetenza'
+import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
+import { STADIO_GRUPPI, useDashboardCompetenzaStore } from '../stores/dashboardCompetenza'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -78,6 +80,17 @@ const {
   commesseLoading,
   commesseOrderBy,
   commesseOrderDir,
+  gruppi,
+  gruppiCount,
+  gruppiPage,
+  gruppiPageSize,
+  gruppiLoading,
+  gruppiLoaded,
+  gruppiOrderBy,
+  gruppiOrderDir,
+  gruppiRiepilogo,
+  gruppiTipo,
+  gruppiTipi,
   errori,
   erroriCount,
   erroriPage,
@@ -93,6 +106,12 @@ const { nomiMesi, competenzaCorrente, selezionaMese, cambiaAnno, stepMese } = us
   onMeseChange: () => {
     store.resetCommesse()
     store.resetErrori()
+    // La selezione e i lotti prodotti vivono nella view, non nello store:
+    // vanno azzerati QUI e non solo in selezionaStadio, altrimenti restano
+    // agganciati a un mese che non e' piu' quello a video — e basterebbe un
+    // percorso futuro che riapre la lista senza passare da selezionaStadio
+    // per fatturare, col mese nuovo, i gruppi del mese vecchio.
+    azzeraStatoGruppi()
   },
   onAnnoChange: loadMensile,
 })
@@ -142,6 +161,23 @@ const cards = computed(() => {
   }))
 })
 
+// Difetto D2 (§6-bis, corretto 2026-07-27): il verbo «Rendi definitive» stava
+// sulla card EMESSA_NON_FATTURATA, ma numera i LOTTI IN STATO EMESSA, cioe'
+// fatture gia' create — che nel funnel stanno in FATTURATA con
+// `stato_fattura_codice_interno = 'EMESSA'` (vedi il CASE di
+// vw_dash_competenza_attivita: FATTURATA = riga con fattura_riga_id).
+// Conseguenza del difetto: a mese tutto fatturato la card residui va a 0 e il
+// pulsante SPARIVA proprio quando serviva numerare, e compariva quando non
+// c'era nulla da numerare. Qui la condizione e' il dato vero: esistono
+// attivita' fatturate la cui fattura e' ancora EMESSA.
+const nDaNumerare = computed(() => {
+  const fatturate = cards.value.find((c) => c.stadio === 'FATTURATA')
+  if (!fatturate) return 0
+  return fatturate.statiFattura
+    .filter((s) => s.stato_fattura_codice_interno === 'EMESSA')
+    .reduce((acc, s) => acc + Number(s.n_attivita ?? 0), 0)
+})
+
 // Totali di copertura del mese: calcolati dal BE (blocco `totali`, DB-6).
 const totaliMese = computed(() => {
   const tot = meseCorrente.value?.totali ?? {}
@@ -178,6 +214,24 @@ async function loadCommesse() {
   }
 }
 
+// Scopo: carica la pagina corrente dei gruppi fatturabili del mese (drill-down
+//        della card «Da emettere»: l'unita' su cui si preme «Fattura»).
+async function loadGruppi() {
+  try {
+    await store.fetchGruppi(competenzaCorrente.value)
+  } catch (err) {
+    notify.error(extractApiError(err, t('common.error')))
+  }
+}
+
+// Il drill-down della card «Da emettere» scende sui GRUPPI FATTURABILI, quello
+// delle altre card resta sulle commesse: ogni card scende sull'unita' del
+// proprio verbo. Un solo punto di smistamento, cosi' non puo' capitare che una
+// card carichi una lista e ne mostri un'altra.
+function loadDrillDown() {
+  return stadioSelezionato.value === STADIO_GRUPPI ? loadGruppi() : loadCommesse()
+}
+
 // Scopo: carica la pagina corrente degli errori vivi del mese (blocco 4).
 async function loadErrori() {
   try {
@@ -196,8 +250,9 @@ function selezionaStadio(stadio) {
     return
   }
   store.resetCommesse()
+  azzeraStatoGruppi()
   stadioSelezionato.value = stadio
-  loadCommesse()
+  loadDrillDown()
   // Su schermi piccoli la sezione renderizza sotto il fold: senza auto-scroll
   // il click sembra non fare nulla. Scroll dopo il re-render.
   nextTick(() => commesseSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
@@ -242,6 +297,133 @@ function onCommesseSort(event) {
   loadCommesse()
 }
 
+// ------------------------------------------------------- gruppi fatturabili (emissione mirata)
+// Selezione multipla dei gruppi da fatturare. Tutti i gruppi elencati sono
+// lavorabili (la vista espone solo lo stadio richiesto), quindi `selezionabili`
+// coincide con le righe a video: il BB serve per la Column checkbox custom
+// (PrimeVue 4 non ha piu' il predicato per-riga) e per il toggle di riga.
+const selezioneGruppi = ref([])
+const {
+  isSelected: isGruppoSelezionato,
+  toggleRow: toggleGruppo,
+  allSelected: tuttiGruppiSelezionati,
+} = useSelezioneToggle({
+  selected: selezioneGruppi,
+  selezionabili: gruppi,
+  rowKey: 'gruppo_key',
+})
+
+// ⚠️ `toggleAll`/`anySelected` del BB NON sono riusabili qui, ed e' il punto
+// meno ovvio di questa lista. Il BB nasce per dialog a lista INTERA (evasione
+// ordine, crea-reso): `toggleAll` fa `selected = [...selezionabili]`, cioe'
+// SOSTITUISCE la selezione. Su una lista PAGINATA questo significa che
+// spuntare «tutti» in pagina 2 butterebbe via quanto selezionato in pagina 1 —
+// silenziosamente, e l'operatore se ne accorgerebbe solo dal conteggio del
+// pulsante. Qui la selezione e' per chiave di dominio e vive attraverso le
+// pagine, quindi il seleziona-tutto opera SOLO sulla pagina corrente,
+// aggiungendo o togliendo e lasciando intatto il resto.
+const chiaviPagina = computed(() => gruppi.value.map((r) => r.gruppo_key))
+
+// Selezione parziale DELLA PAGINA (stato indeterminate della checkbox header).
+const alcuniGruppiSelezionati = computed(
+  () => !tuttiGruppiSelezionati.value
+    && gruppi.value.some((r) => isGruppoSelezionato(r)),
+)
+
+function toggleTuttiGruppi() {
+  if (tuttiGruppiSelezionati.value) {
+    const daTogliere = new Set(chiaviPagina.value)
+    selezioneGruppi.value = selezioneGruppi.value.filter(
+      (r) => !daTogliere.has(r.gruppo_key),
+    )
+    return
+  }
+  const gia = new Set(selezioneGruppi.value.map((r) => r.gruppo_key))
+  selezioneGruppi.value = [
+    ...selezioneGruppi.value,
+    ...gruppi.value.filter((r) => !gia.has(r.gruppo_key)),
+  ]
+}
+
+// Lotti prodotti dall'ultima emissione mirata: sono N, non uno (un gruppo con
+// righe di tipo doc fiscale diverso finisce in lotti diversi). Alimentano
+// l'aggancio «vai al lotto» — senza, l'operatore dovrebbe cercarsi a mano nella
+// lista lotti il contenitore appena creato per andare a numerarlo.
+const lottiEmessi = ref([])
+
+// Scopo: azzera lo stato di selezione/esito che vive nella view (lo store
+//        azzera il suo). Dichiarata come `function` per essere invocabile dai
+//        callback registrati piu' in alto (nessun watch immediate la chiama in
+//        setup: `useDashMesiNav` scatta solo su azione utente).
+function azzeraStatoGruppi() {
+  selezioneGruppi.value = []
+  lottiEmessi.value = []
+}
+
+const gruppiSortOrder = computed(() => (gruppiOrderDir.value === 'desc' ? -1 : 1))
+
+// Scopo: paginazione DataTable gruppi. La selezione NON si azzera al cambio
+//        pagina: le chiavi selezionate restano valide (sono chiavi di dominio,
+//        non indici di riga) e l'operatore puo' comporre la selezione su piu'
+//        pagine.
+function onGruppiPage(event) {
+  store.applyGruppiPage(event)
+  loadGruppi()
+}
+
+function onGruppiSort(event) {
+  store.applyGruppiSort(event)
+  gruppiPage.value = 1
+  loadGruppi()
+}
+
+// Opzioni del filtro «tipo documento/sorgente»: vengono dal BE (facet sui dati
+// del perimetro), non da `config.sorgenti` — quella tabella offre sorgenti che
+// non possono mai essere un gruppo fatturabile e NON contiene gli oneri di
+// commessa, che sono proprio il caso che si vuole poter isolare.
+// «Tutti» in testa con value null = filtro assente (non un valore speciale).
+const opzioniTipoGruppo = computed(() => [
+  {
+    value: null,
+    label: t('vendite.dashboard_competenza.tipo_tutti', {
+      n: gruppiTipi.value.reduce((acc, x) => acc + Number(x.n_gruppi ?? 0), 0),
+    }),
+  },
+  ...gruppiTipi.value.map((x) => ({
+    value: x.tipo_gruppo,
+    label: `${gruppoTipoLabel(x)} (${x.n_gruppi})`,
+  })),
+])
+
+// Scopo: cambio del filtro tipo — riparte da pagina 1 (le pagine successive
+//        appartengono al perimetro precedente) e azzera la selezione: le righe
+//        selezionate potrebbero non essere piu' a video, e fatturare una
+//        selezione invisibile e' esattamente il tipo di sorpresa da evitare.
+function onGruppiTipoChange() {
+  gruppiPage.value = 1
+  selezioneGruppi.value = []
+  loadGruppi()
+}
+
+// Scopo: etichetta del gruppo — riferimento leggibile del documento
+//        (PRV-0012…) oppure, per gli oneri sourceless, la commessa che li
+//        contiene. Il BE risolve gia' il riferimento: qui solo il fallback.
+function gruppoRiferimento(row) {
+  return row.riferimento || row.commessa_codice || row.gruppo_key
+}
+
+// Scopo: etichetta del TIPO di gruppo con decodifica i18n fail-visible: un
+//        tipo nuovo introdotto DB-side si mostra col suo codice, non col path
+//        della chiave mancante.
+function gruppoTipoLabel(row) {
+  return labelOrCode(
+    t,
+    te,
+    `vendite.dashboard_competenza.tipo_gruppo.${String(row.tipo_gruppo).toLowerCase()}`,
+    row.tipo_gruppo,
+  )
+}
+
 // Scopo: paginazione DataTable errori (lazy, paginator top; calcolo
 //        pagina nel BB usePagedDashFetch).
 function onErroriPage(event) {
@@ -266,7 +448,7 @@ const pageActions = computed(() => [
     command: () => {
       // Gli errori si riallineano da soli via watch sull'aggregata fresca.
       loadMensile()
-      if (stadioSelezionato.value) loadCommesse()
+      if (stadioSelezionato.value) loadDrillDown()
     },
   },
 ])
@@ -279,7 +461,7 @@ const cardDaApprovare = computed(() => cards.value.find((c) => c.stadio === 'DA_
 //        seguono l'aggregata via watch).
 function reloadDopoAzione() {
   loadMensile()
-  if (stadioSelezionato.value) loadCommesse()
+  if (stadioSelezionato.value) loadDrillDown()
 }
 
 // Scopo: verbo APPROVA a grana mese (A-2/D-3): conferma con contatore+valore
@@ -317,6 +499,10 @@ function onApprovaMese() {
 // definitive» (numerazione, atto fiscale) sono pulsanti SEPARATI su card diverse.
 // Se il worker non e' schedulato il job resta PENDING → onTimeout avvisa "in
 // coda" invece di girare all'infinito; colpi a vuoto del polling silenziosi.
+// `avvia(opzioni)`: `messageParams` per i verbi la cui conferma non parla di un
+// mese ma di una selezione (l'emissione mirata), `apiOptions` per gli argomenti
+// extra della chiamata (i gruppi). Entrambi vuoti = comportamento dei due verbi
+// storici, invariato.
 function useVerboFatturazione({ apiFn, keys, buildEsitoOk }) {
   const { start, polling } = useJobPolling({
     fetchStatus: (jobId) => getFatturazioneRun(jobId),
@@ -334,14 +520,16 @@ function useVerboFatturazione({ apiFn, keys, buildEsitoOk }) {
       reloadDopoAzione()
     },
   })
-  function avvia() {
+  function avvia({ messageParams = null, apiOptions = null } = {}) {
     confirmAction({
       title: t(keys.header),
-      message: t(keys.conferma, {
+      message: t(keys.conferma, messageParams ?? {
         mese: `${nomiMesi.value[meseIdx.value]} ${anno.value}`,
       }),
       onAccept: async () => {
-        const res = await execute(() => apiFn(competenzaCorrente.value))
+        const res = await execute(() =>
+          apiOptions ? apiFn(competenzaCorrente.value, apiOptions)
+                     : apiFn(competenzaCorrente.value))
         if (res === null) return
         notify.success(t(keys.accodato))
         start(res.job_id)
@@ -398,6 +586,82 @@ const { avvia: onRendiDefinitive, polling: numeraInCorso } = useVerboFatturazion
     }
   },
 })
+
+// Verbo FATTURA MIRATA: stesso endpoint e stesso core del verbo di mese
+// (I-1), ma con il perimetro ristretto ai gruppi selezionati. Si ferma a
+// EMESSA come l'altro; l'esito porta gli N lotti prodotti, che diventano
+// l'aggancio «vai al lotto».
+const { avvia: avviaFatturaGruppi, polling: giroMirataInCorso } = useVerboFatturazione({
+  apiFn: runFatturazione,
+  keys: {
+    header: 'vendite.dashboard_competenza.fattura_gruppi_header',
+    conferma: 'vendite.dashboard_competenza.fattura_gruppi_conferma',
+    accodato: 'vendite.dashboard_competenza.fattura_gruppi_accodato',
+    errore: 'vendite.dashboard_competenza.fattura_mese_errore',
+    inCoda: 'vendite.dashboard_competenza.fattura_mese_in_coda',
+  },
+  buildEsitoOk: (r) => {
+    const lotti = Array.isArray(r.lotti) ? r.lotti : []
+    lottiEmessi.value = lotti
+    selezioneGruppi.value = []
+    const falliti = Number(r.falliti ?? 0)
+    if (falliti > 0) {
+      notify.warn(t('vendite.dashboard_competenza.fattura_gruppi_esito_parziale', {
+        lotti: lotti.length, falliti,
+      }))
+    } else if (lotti.length === 0) {
+      // Zero lotti senza errori: nulla era davvero fatturabile (righe gia'
+      // prese da un altro giro, o commessa non piu' emittibile). Va detto —
+      // un «fatto» muto farebbe pensare a una fattura che non esiste.
+      notify.warn(t('vendite.dashboard_competenza.fattura_gruppi_esito_vuoto'))
+    } else {
+      notify.success(t('vendite.dashboard_competenza.fattura_gruppi_esito', {
+        lotti: lotti.length,
+      }))
+    }
+  },
+})
+
+// Scopo: avvia l'emissione mirata sui gruppi passati (una riga dal kebab,
+//        oppure l'intera selezione). La conferma dichiara quanti gruppi e
+//        quante attivita' si stanno per fatturare: e' il peso di cio' che sta
+//        per succedere, prima che succeda.
+function fatturaGruppi(righe) {
+  if (!righe.length) return
+  const nAttivita = righe.reduce((acc, r) => acc + Number(r.n_attivita ?? 0), 0)
+  avviaFatturaGruppi({
+    messageParams: {
+      n: righe.length,
+      attivita: nAttivita,
+      riferimenti: righe.slice(0, 3).map(gruppoRiferimento).join(', ')
+        + (righe.length > 3 ? '…' : ''),
+    },
+    apiOptions: { gruppi: righe.map((r) => r.gruppo_key) },
+  })
+}
+
+// Scopo: kebab riga della lista gruppi — «Fattura questo» (gate permesso +
+//        readonly, come il verbo di massa) e apertura della commessa che lo
+//        contiene, per ispezionare le righe prima di decidere.
+function buildGruppoRowActions(row) {
+  return [
+    {
+      key: 'fattura_gruppo',
+      label: t('vendite.dashboard_competenza.azione_fattura_gruppo'),
+      icon: 'pi pi-file-export',
+      visible: canFatturare.value,
+      disabled: azioneLoading.value || giroMirataInCorso.value,
+      command: () => fatturaGruppi([row]),
+    },
+    {
+      key: 'apri_commessa',
+      label: t('vendite.dashboard_competenza.azione_apri_commessa'),
+      icon: MANAGE_ICONS.COMMESSA,
+      visible: !!row.commessa_id,
+      command: () => apriCommessa(row),
+    },
+  ]
+}
 
 // Scopo: verbo APPROVA a grana commessa dal drill-down (A-1, DEC-4): la riga e'
 //        aggregata, quindi approva TUTTE le attivita' DA_APPROVARE della commessa
@@ -475,7 +739,7 @@ function buildCommessaRowActions(row) {
 // (memoria feedback_keepalive_onactivated).
 onActivated(() => {
   loadMensile()
-  if (stadioSelezionato.value) loadCommesse()
+  if (stadioSelezionato.value) loadDrillDown()
 })
 </script>
 
@@ -615,21 +879,38 @@ onActivated(() => {
               style="margin-top: 0.5rem;"
               @click.stop="onFatturaMese"
             />
-            <!-- Verbo RENDI DEFINITIVE a grana mese (C-7): solo sul card
-                 EMESSA_NON_FATTURATA, gate permesso+readonly. Atto FISCALE
+            <!-- Verbo RENDI DEFINITIVE a grana mese (C-7): sulla card
+                 FATTURATA, dove stanno le fatture ancora EMESSA — cioe' quelle
+                 che questo verbo numera (fix difetto D2, §6-bis). Atto FISCALE
                  (I-7): severity warn per distinguerlo dal pre-fiscale «Fattura».
                  Loading = numerazione in corso (polling non bloccante). -->
             <Button
-              v-if="card.stadio === 'EMESSA_NON_FATTURATA' && card.nAttivita > 0 && canNumerare"
+              v-if="card.stadio === 'FATTURATA' && nDaNumerare > 0 && canNumerare"
               :label="t('vendite.dashboard_competenza.numera_mese')"
               icon="pi pi-lock"
               size="small"
               severity="warn"
               :loading="numeraInCorso"
               :disabled="azioneLoading || numeraInCorso"
+              v-tooltip.bottom="t('vendite.dashboard_competenza.numera_mese_tooltip', { n: nDaNumerare })"
               style="margin-top: 0.5rem;"
               @click.stop="onRendiDefinitive"
             />
+            <!-- Difetto D3 (§6-bis): «Emesse non fatturate» NON e' un passaggio
+                 del percorso — pull e generazione righe fattura avvengono nello
+                 stesso step DRAFT, quindi le attivita' passano da «Da emettere»
+                 direttamente a «Fatturate». Quello che si raccoglie qui sono
+                 RESIDUI (AF sospese, posticipate, o rimaste indietro per un
+                 giro interrotto). Dirlo evita che l'operatore aspetti un
+                 avanzamento che non arrivera' da solo. -->
+            <span
+              v-if="card.stadio === 'EMESSA_NON_FATTURATA' && card.nAttivita > 0"
+              class="app-dash-residui-hint"
+              v-tooltip.bottom="t('vendite.dashboard_competenza.residui_tooltip')"
+            >
+              <i class="pi pi-info-circle" />
+              {{ t('vendite.dashboard_competenza.residui_hint') }}
+            </span>
             <span v-if="card.nInRitardo > 0" class="app-dash-ritardo">
               <i class="pi pi-clock" />
               {{ t('vendite.dashboard_competenza.in_ritardo', { n: card.nInRitardo }) }}
@@ -735,7 +1016,180 @@ onActivated(() => {
              una riga per commessa; il dettaglio a grana attivita' e' nel
              drawer di gestione (kebab «Apri commessa»). -->
         <div ref="commesseSection" class="app-dash-fermi">
-          <template v-if="stadioSelezionato">
+          <!-- Card «Da emettere»: il drill-down scende sui GRUPPI FATTURABILI,
+               non sulle commesse. Motivo: il verbo qui e' «Fattura», e si
+               fattura un documento (o gli oneri di una commessa) — la commessa
+               e' multi-sorgente e selezionarla non isola nulla. -->
+          <template v-if="stadioSelezionato === STADIO_GRUPPI">
+            <div class="app-page-toolbar">
+              <h4 class="app-dash-fermi-title">
+                {{ t('vendite.dashboard_competenza.gruppi_titolo') }}
+              </h4>
+              <div class="app-dash-filtri">
+                <!-- Filtro tipo documento/sorgente: «Tutti» di default. Le voci
+                     sono quelle presenti nel perimetro, col conteggio: una
+                     tendina che offre opzioni da zero risultati sarebbe peggio
+                     di nessun filtro. -->
+                <Select
+                  v-model="gruppiTipo"
+                  :options="opzioniTipoGruppo"
+                  option-label="label"
+                  option-value="value"
+                  class="app-form-select"
+                  :placeholder="t('vendite.dashboard_competenza.filtro_tipo')"
+                  v-tooltip.bottom="t('vendite.dashboard_competenza.filtro_tipo')"
+                  @change="onGruppiTipoChange"
+                />
+                <Button
+                  v-if="canFatturare"
+                  :label="t('vendite.dashboard_competenza.fattura_selezionati', { n: selezioneGruppi.length })"
+                  icon="pi pi-file-export"
+                  size="small"
+                  :loading="giroMirataInCorso"
+                  :disabled="selezioneGruppi.length === 0 || azioneLoading || giroMirataInCorso"
+                  @click="fatturaGruppi(selezioneGruppi)"
+                />
+              </div>
+            </div>
+
+            <!-- Aggancio al lotto (§5.2): dopo l'emissione l'operatore deve
+                 poterci arrivare per numerare. Sono N e non uno: un gruppo con
+                 righe di tipo doc fiscale diverso finisce in lotti diversi. -->
+            <div v-if="lottiEmessi.length" class="app-dash-lotti-emessi">
+              <span>{{ t('vendite.dashboard_competenza.lotti_emessi', { n: lottiEmessi.length }) }}</span>
+              <Button
+                v-for="lotto in lottiEmessi"
+                :key="lotto.lotto_id"
+                link
+                class="app-cell-link"
+                :label="t('vendite.dashboard_competenza.vai_al_lotto', { id: lotto.lotto_id })"
+                @click="apriLotto(lotto.lotto_id)"
+              />
+            </div>
+
+            <!-- Riga di totali: viene dal BE (aggrega la stessa vista della
+                 lista), non dalla somma della pagina corrente — che sarebbe un
+                 parziale con l'aria di un totale. -->
+            <div class="app-dash-totali app-dash-totali--inner">
+              <span>
+                {{ t('vendite.dashboard_competenza.tot_gruppi') }}
+                <strong>{{ gruppiRiepilogo.n_gruppi }}</strong>
+              </span>
+              <span>
+                {{ t('vendite.dashboard_competenza.tot_attivita') }}
+                <strong>{{ gruppiRiepilogo.n_attivita }}</strong>
+              </span>
+              <span>
+                {{ t('vendite.dashboard_competenza.tot_valore') }}
+                <strong>{{ formatCurrency(Number(gruppiRiepilogo.valore ?? 0)) }}</strong>
+              </span>
+              <span v-if="gruppiRiepilogo.n_gruppi_oneri > 0">
+                {{ t('vendite.dashboard_competenza.tot_gruppi_oneri') }}
+                <strong>{{ gruppiRiepilogo.n_gruppi_oneri }}</strong>
+              </span>
+            </div>
+
+            <DataTable
+              v-if="gruppiCount > 0 || gruppiLoading"
+              :value="gruppi"
+              :loading="gruppiLoading"
+              :total-records="gruppiCount"
+              :rows="gruppiPageSize"
+              :first="(gruppiPage - 1) * gruppiPageSize"
+              paginator
+              paginator-position="top"
+              lazy
+              :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
+              :sort-field="gruppiOrderBy"
+              :sort-order="gruppiSortOrder"
+              class="app-datatable app-datatable--inner"
+              striped-rows
+              data-key="gruppo_key"
+              @page="onGruppiPage"
+              @sort="onGruppiSort"
+            >
+              <!-- Column checkbox CUSTOM: PrimeVue 4 non ha piu' il predicato
+                   per-riga sul selectionMode (BB useSelezioneToggle). -->
+              <Column v-if="canFatturare" headerStyle="width: 3rem">
+                <template #header>
+                  <Checkbox
+                    binary
+                    :model-value="tuttiGruppiSelezionati"
+                    :indeterminate="alcuniGruppiSelezionati"
+                    @update:model-value="toggleTuttiGruppi"
+                  />
+                </template>
+                <template #body="{ data }">
+                  <Checkbox
+                    binary
+                    :model-value="isGruppoSelezionato(data)"
+                    @update:model-value="toggleGruppo(data)"
+                  />
+                </template>
+              </Column>
+              <Column field="riferimento" :header="t('vendite.dashboard_competenza.col_gruppo')" sortable style="width: 170px;">
+                <template #body="{ data }">
+                  <strong>{{ gruppoRiferimento(data) }}</strong>
+                </template>
+              </Column>
+              <Column field="tipo_gruppo" :header="t('vendite.dashboard_competenza.col_tipo_gruppo')" sortable style="width: 150px;">
+                <template #body="{ data }">
+                  <Tag
+                    :value="gruppoTipoLabel(data)"
+                    :severity="data.ha_oneri ? 'warn' : 'secondary'"
+                  />
+                </template>
+              </Column>
+              <Column field="cliente_display" :header="t('vendite.dashboard_competenza.col_cliente')" sortable>
+                <template #body="{ data }">
+                  {{ data.cliente_display ?? '—' }}
+                </template>
+              </Column>
+              <Column field="commessa_codice" :header="t('vendite.dashboard_competenza.col_commessa')" sortable style="width: 140px;">
+                <template #body="{ data }">
+                  {{ data.commessa_codice ?? '—' }}
+                </template>
+              </Column>
+              <Column field="n_attivita" :header="t('vendite.dashboard_competenza.col_n_attivita')" sortable style="width: 100px;">
+                <template #body="{ data }">
+                  <Tag
+                    :value="String(data.n_attivita)"
+                    severity="secondary"
+                    v-tooltip.bottom="t('vendite.dashboard_competenza.n_attivita_tooltip', { n: data.n_attivita })"
+                  />
+                </template>
+              </Column>
+              <Column field="valore" :header="t('vendite.dashboard_competenza.col_valore')" sortable style="width: 130px;">
+                <template #body="{ data }">
+                  {{ data.valore !== null ? formatCurrency(data.valore) : '—' }}
+                </template>
+              </Column>
+              <Column field="data_attivita_max" :header="t('vendite.dashboard_competenza.col_periodo')" sortable style="width: 150px;">
+                <template #body="{ data }">
+                  <span v-if="data.data_attivita_min">
+                    {{ displayDate(data.data_attivita_min) }}<template v-if="data.data_attivita_max && data.data_attivita_max !== data.data_attivita_min"> – {{ displayDate(data.data_attivita_max) }}</template>
+                  </span>
+                  <span v-else>—</span>
+                </template>
+              </Column>
+              <Column :header="t('vendite.dashboard_competenza.col_azioni')" class="app-col-actions" :exportable="false">
+                <template #body="{ data }">
+                  <RowActionsMenu :row="data" :actions="buildGruppoRowActions(data)" />
+                </template>
+              </Column>
+            </DataTable>
+            <!-- Empty-state ONESTO (regola del BB usePagedDashFetch): «nessun
+                 gruppo» si dice solo dopo una fetch RIUSCITA. Prima — o dopo un
+                 errore di rete — la lista e' vuota per ignoranza, non per
+                 assenza di lavoro, e dichiararlo sarebbe una bugia che invita a
+                 chiudere il mese. -->
+            <div v-else-if="gruppiLoaded" class="app-empty-state">
+              <i class="pi pi-check-circle" />
+              <p>{{ t('vendite.dashboard_competenza.nessun_gruppo') }}</p>
+            </div>
+          </template>
+
+          <template v-else-if="stadioSelezionato">
             <div class="app-page-toolbar">
               <h4 class="app-dash-fermi-title">
                 {{ t('vendite.dashboard_competenza.commesse_titolo', { stadio: stadioSelezionatoLabel }) }}

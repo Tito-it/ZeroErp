@@ -51,6 +51,16 @@ class LottoContext:
     # Corsia driver: filtro fatturazione_immediata propagato dal management command
     # via meta del lotto (True=immediata, False=differita, None=tutte/storico).
     fatturazione_immediata: bool | None = None
+    # Perimetro dell'EMISSIONE MIRATA (brief emissione mirata, D-3): chiavi dei
+    # gruppi fatturabili che questo lotto ha il permesso di lavorare, lette da
+    # `vendite.fatturazione_lotti_gruppi`. `None` = NESSUNA restrizione = il
+    # comportamento storico del giro schedulato.
+    #
+    # ⚠️ Perche' sta QUI e non nei parametri di chiamata: gli step ricevono solo
+    # `lotto_id` e ricostruiscono tutto da questo contesto. Un criterio passato
+    # "allo step" non esiste — e un rerun/avanza step su lotto esistente
+    # allargherebbe in silenzio il perimetro di un lotto mirato.
+    gruppi: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -916,25 +926,39 @@ class VenditePipelineRepository:
             )
 
     # Scopo: Recupera `lotto_context` dal contesto applicativo o dal database.
+    #        Include il PERIMETRO MIRATO (`gruppi`) letto dalla tabella figlia
+    #        `fatturazione_lotti_gruppi`: e' l'unico canale con cui il criterio
+    #        raggiunge gli step, che ricevono solo `lotto_id` (brief emissione
+    #        mirata, D-3). Nessuna riga = nessuna restrizione (`gruppi=None`).
     def get_lotto_context(self, lotto_id: int) -> LottoContext | None:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT competenza_mese,
-                       tipo_doc_fiscale_id,
-                       utility_id,
-                       billing_account_id,
-                       lock_batch_id,
-                       emittente_soggetto_ruolo_id,
-                       (meta->>%s)::boolean
-                FROM vendite.fatturazione_lotti
-                WHERE id = %s
+                SELECT l.competenza_mese,
+                       l.tipo_doc_fiscale_id,
+                       l.utility_id,
+                       l.billing_account_id,
+                       l.lock_batch_id,
+                       l.emittente_soggetto_ruolo_id,
+                       (l.meta->>%s)::boolean,
+                       (
+                           SELECT array_agg(g.gruppo_key ORDER BY g.gruppo_key)
+                           FROM vendite.fatturazione_lotti_gruppi g
+                           WHERE g.lotto_id = l.id
+                       )
+                FROM vendite.fatturazione_lotti l
+                WHERE l.id = %s
                 """,
                 [LOTTO_META_KEY_FATTURAZIONE_IMMEDIATA, lotto_id],
             )
             row = cursor.fetchone()
         if not row:
             return None
+        # array_agg su zero righe ritorna NULL, non un array vuoto: la
+        # distinzione «nessuna riga» -> None e' proprio la convenzione DB
+        # (assenza di criterio = comportamento odierno). Un array vuoto
+        # significherebbe «nessun gruppo ammesso» ed e' il contrario.
+        gruppi_raw = row[7]
         return LottoContext(
             competenza_mese=row[0],
             tipo_doc_fiscale_id=row[1],
@@ -943,7 +967,39 @@ class VenditePipelineRepository:
             lock_batch_id=row[4],
             emittente_soggetto_ruolo_id=None if row[5] is None else int(row[5]),
             fatturazione_immediata=row[6],
+            gruppi=None if not gruppi_raw else tuple(str(g) for g in gruppi_raw),
         )
+
+    # Scopo: Persiste il PERIMETRO MIRATO del lotto in
+    #        `vendite.fatturazione_lotti_gruppi`. Da chiamare nella STESSA
+    #        transazione della creazione del lotto (contratto BE §8-bis del
+    #        brief DB): il criterio non e' un parametro di chiamata, e' uno
+    #        stato del lotto, e un lotto creato senza i suoi gruppi sarebbe un
+    #        giro di massa mascherato da giro mirato.
+    # Perimetro: solo INSERT idempotente (UNIQUE lotto_id+gruppo_key). Non
+    #        cancella nulla: il perimetro di un lotto non si riscrive.
+    # Risultato: numero di righe EFFETTIVAMENTE inserite (`rowcount`, non le
+    #        chiavi richieste: con ON CONFLICT DO NOTHING i duplicati non
+    #        producono riga e dichiararli scritti sarebbe un conteggio falso).
+    def set_lotto_gruppi(self, lotto_id: int, gruppi: tuple[str, ...] | list[str]) -> int:
+        # Normalizzazione allineata a `fn_build_gruppo_fatturabile_key`: una
+        # chiave con spazi in coda non combacerebbe MAI con quella costruita
+        # dal DB e filtrerebbe zero righe senza dirlo. Lo strip sta qui e non
+        # solo nel validatore d'ingresso perche' questo metodo e' pubblico.
+        chiavi = [k for k in (str(g).strip() for g in gruppi) if k]
+        if not chiavi:
+            return 0
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO vendite.fatturazione_lotti_gruppi (lotto_id, gruppo_key)
+                SELECT %s, k
+                FROM unnest(%s::text[]) AS k
+                ON CONFLICT (lotto_id, gruppo_key) DO NOTHING
+                """,
+                [lotto_id, chiavi],
+            )
+            return cursor.rowcount
 
     # Scopo: Recupera i task JSON dello step (processi o rollback) e normalizza il payload in lista Python.
     def get_step_processes(
@@ -1042,7 +1098,8 @@ class VenditePipelineRepository:
                     p_utility_id => %s,
                     p_valuta_id => %s,
                     p_emittente_soggetto_ruolo_id => %s,
-                    p_limit => %s
+                    p_limit => %s,
+                    p_gruppi => %s::text[]
                 )
                 """,
                 [
@@ -1056,6 +1113,15 @@ class VenditePipelineRepository:
                     valuta_id,
                     emittente_id,
                     limit_value,
+                    # Perimetro mirato: e' il punto DECISIVO. Il filtro sul pull
+                    # non basta — qui si filtrano le AF GIA' ESISTENTI (residui di
+                    # giri interrotti, reset, giro schedulato a meta'), che
+                    # altrimenti un lotto mirato rastrellerebbe.
+                    # ⚠️ `if context.gruppi` e non `is not None`: una tupla VUOTA
+                    # diventerebbe `'{}'::text[]`, e `= ANY('{}')` e' sempre
+                    # falso → zero righe. Vuoto e assente devono collassare
+                    # entrambi su NULL = nessuna restrizione (convenzione DB).
+                    list(context.gruppi) if context.gruppi else None,
                 ],
             )
 

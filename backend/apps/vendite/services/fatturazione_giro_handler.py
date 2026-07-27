@@ -27,13 +27,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.vendite.services._fatturazione_job_helpers import parse_competenza_mese
+from apps.vendite.services._fatturazione_job_helpers import (
+    parse_competenza_mese,
+    parse_gruppi,
+)
 
 # handler_code seedato in dbops.coda_lavori_tipi per il tipo FATTURAZIONE_GIRO.
 HANDLER_CODE = "fatturazione_giro_default"
 
-# Corsia del giro on-demand: differita → fermata di corsia a EMESSA (D-1).
+# Corsia del giro on-demand di MASSA: differita → fermata a EMESSA (D-1).
 _MODALITA_ONDEMAND = "differita"
+
+# La corsia dell'EMISSIONE MIRATA (BF-1) NON e' ridichiarata qui: si importa
+# dal driver, che ne e' l'owner (`_MODALITA`). Un secondo letterale "mirata"
+# in questo modulo si sarebbe potuto disallineare dal dizionario delle corsie
+# — e il sintomo sarebbe stato un giro che parte e non fattura nulla.
+# L'import e' locale alla funzione, come quello del core: il modulo e'
+# registrato in `ready()` e non deve tirarsi dietro la catena driver al boot.
 
 # Codice errore per payload di giro malformato: fallimento di dominio parlante
 # (finisce in `coda.ultimo_errore`; non è una risposta HTTP → non va in
@@ -42,11 +52,17 @@ E_GIRO_PAYLOAD = "E_FATTURAZIONE_GIRO_PAYLOAD"
 
 
 # Scopo: Esegue il giro di fatturazione on-demand. `payload`:
-#        `{competenza_mese: ISO, fino_a_stato?: codice}`. `scope`: catturato
-#        all'enqueue (`{auth_user_id, emittente_ids}`) — qui NON usato per
-#        filtrare (lo fa la RLS del contesto operatore), presente per il
-#        vincolo DB run_as↔scope e per l'audit. Ritorna l'esito compatto del
-#        giro (senza la lista per-terna) come `result` del job.
+#        `{competenza_mese: ISO, fino_a_stato?: codice, gruppi?: [chiavi]}`.
+#        `scope`: catturato all'enqueue (`{auth_user_id, emittente_ids}`) — qui
+#        NON usato per filtrare (lo fa la RLS del contesto operatore), presente
+#        per il vincolo DB run_as↔scope e per l'audit. Ritorna l'esito compatto
+#        del giro (senza la lista per-terna) come `result` del job.
+#
+#        Due modi nello STESSO job type, distinti dalla presenza di `gruppi`:
+#        senza → giro di massa del mese (corsia differita, comportamento
+#        storico); con → EMISSIONE MIRATA sui soli gruppi richiesti (corsia
+#        mirata). Un solo verbo, un solo handler: la differenza e' il
+#        perimetro, non il processo (invariante I-1).
 def fatturazione_giro_handler(
     payload: dict[str, Any], *, scope: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -54,23 +70,30 @@ def fatturazione_giro_handler(
         payload.get("competenza_mese"), error_code=E_GIRO_PAYLOAD,
     )
     fino_a_stato = payload.get("fino_a_stato")
+    gruppi = parse_gruppi(payload.get("gruppi"), error_code=E_GIRO_PAYLOAD)
 
     # Import locale: evita di caricare la catena driver al boot del modulo
     # (registrato in ready()); il core è l'unico punto di verità I-1.
     from apps.vendite.services.fatturazione_driver_service import (
+        MODALITA_MIRATA,
         esegui_giro_fatturazione,
     )
 
     kwargs: dict[str, Any] = {
-        "modalita": _MODALITA_ONDEMAND,
+        "modalita": MODALITA_MIRATA if gruppi else _MODALITA_ONDEMAND,
         "competenza": competenza,
     }
+    if gruppi:
+        kwargs["gruppi"] = gruppi
     if fino_a_stato:
         kwargs["fino_a_stato"] = fino_a_stato
 
     summary = esegui_giro_fatturazione(**kwargs)
     # Compatta per il `result` del job (la lista per-terna gonfierebbe il jsonb;
-    # il dettaglio vive nei log/task_runs, correlati via job_run).
+    # il dettaglio vive nei log/task_runs, correlati via job_run). La chiave
+    # `lotti` NON si potata: e' l'estratto compatto che alimenta il «vai al
+    # lotto» del FE, e senza di essa l'operatore dovrebbe cercare a mano nella
+    # lista lotti il contenitore appena prodotto.
     return {k: v for k, v in summary.items() if k != "esiti"}
 
 

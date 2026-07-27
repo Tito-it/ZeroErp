@@ -29,6 +29,9 @@ from apps.vendite.types import (
     DashCompetenzaAttivitaRow,
     DashCompetenzaCommessaRow,
     DashCompetenzaErroreRow,
+    DashCompetenzaGruppiRiepilogoRow,
+    DashCompetenzaGruppoRow,
+    DashCompetenzaGruppoTipoRow,
     DashCompetenzaMensileRow,
     LineageNodoRow,
     LineagePassaggioRow,
@@ -97,6 +100,14 @@ DASH_APERTO_FASI: tuple[str, ...] = (
 # brief-db-fatturazione-due-lenti §4.1). Allineati al CASE `stadio` di
 # vendite.vw_dash_competenza_attivita. Il primo stadio ha una costante puntuale:
 # e' il perimetro dell'approvazione massiva A-2 (un solo owner del letterale).
+# Valore SINTETICO di `tipo_gruppo` per le righe sourceless (oneri di
+# commessa): non e' un `config.sorgenti.codice_interno` ma il COALESCE della
+# vista vw_dash_competenza_gruppi. Costante e non letterale sparso: e' il
+# discriminante degli oneri nel riepilogo e nel filtro per tipo, ed e' anche il
+# motivo per cui la tendina non si puo' costruire da `config.sorgenti` (dove
+# questo valore non esiste).
+TIPO_GRUPPO_ONERI = "ONERI_COMMESSA"
+
 DASH_STADIO_DA_APPROVARE = "DA_APPROVARE"
 DASH_COMPETENZA_STADI: tuple[str, ...] = (
     DASH_STADIO_DA_APPROVARE,
@@ -626,12 +637,14 @@ class VenditeRepository:
     # mostra la descrizione (fallback codice) -> si ordina per il valore
     # mostrato; la data si ordina per la COLONNA data (non la stringa gg/mm/aaaa
     # del FE). Whitelist: nell'ORDER BY solo chiavi note + ASC/DESC (no injection).
+    # NB: nomi di OUTPUT della SELECT (senza alias di tabella): l'ORDER BY di
+    # `query_paged_view` si applica alla CTE `righe`, non alle tabelle sorgente.
     DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS = {
-        "commessa_codice": "a.commessa_codice",
-        "cliente_display": "a.cliente_display",
-        "articolo_codice": "COALESCE(art.descrizione, art.codice)",
-        "data_attivita": "a.data_attivita",
-        "valore": "a.valore",
+        "commessa_codice": "commessa_codice",
+        "cliente_display": "cliente_display",
+        "articolo_codice": "COALESCE(articolo_descrizione, articolo_codice)",
+        "data_attivita": "data_attivita",
+        "valore": "valore",
     }
 
     def list_dash_competenza_attivita(
@@ -645,9 +658,6 @@ class VenditeRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[DashCompetenzaAttivitaRow], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
-
         conditions: list[str] = ["a.competenza_mese = %s"]
         params: list[Any] = [competenza_mese]
         if stadio is not None:
@@ -663,25 +673,14 @@ class VenditeRepository:
         # commessa_attivita_id). order_by assente/non ammesso -> default storico
         # (valore DESC).
         sort_col = self.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS.get(order_by or "")
+        tiebreak = "commessa_codice ASC, commessa_attivita_id ASC"
         if sort_col is not None:
             direction = sql_order_direction(order_dir)
-            order_clause = (
-                f"ORDER BY {sort_col} {direction}, "
-                "a.commessa_codice ASC, a.commessa_attivita_id ASC"
-            )
+            order_clause = f"ORDER BY {sort_col} {direction}, {tiebreak}"
         else:
-            order_clause = (
-                "ORDER BY a.valore DESC NULLS LAST, a.commessa_codice ASC, "
-                "a.commessa_attivita_id ASC"
-            )
+            order_clause = f"ORDER BY valore DESC NULLS LAST, {tiebreak}"
 
-        count_sql = f"""
-            SELECT COUNT(*)
-            FROM vendite.vw_dash_competenza_attivita a
-            {where_clause}
-        """
-
-        data_sql = f"""
+        select_sql = f"""
             SELECT
                 a.commessa_attivita_id,
                 a.commessa_id,
@@ -713,18 +712,18 @@ class VenditeRepository:
             LEFT JOIN catalogo.articoli art
                 ON art.id = a.articolo_id
             {where_clause}
-            {order_clause}
-            LIMIT %s OFFSET %s
         """
 
-        with connection.cursor() as cursor:
-            cursor.execute(count_sql, params)
-            row = cursor.fetchone()
-            assert row is not None
-            total_count = int(row[0])
-
-            cursor.execute(data_sql, params + [safe_limit, safe_offset])
-            rows = cursor.fetchall()
+        # Una sola valutazione della vista (CTE materializzata + COUNT(*) OVER)
+        # con CLAMP dell'offset all'ultima pagina reale, come le altre liste dei
+        # cruscotti: il service dichiara poi la pagina effettiva nell'envelope.
+        rows, total_count = self._query_paged_view(
+            select_sql=select_sql,
+            order_by=order_clause,
+            params=params,
+            limit=limit,
+            offset=offset,
+        )
 
         result: list[DashCompetenzaAttivitaRow] = []
         for row in rows:
@@ -788,9 +787,6 @@ class VenditeRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[DashCompetenzaCommessaRow], int]:
-        safe_limit = max(1, min(int(limit), 200))
-        safe_offset = max(0, int(offset))
-
         conditions: list[str] = ["a.competenza_mese = %s"]
         params: list[Any] = [competenza_mese]
         if stadio is not None:
@@ -806,26 +802,16 @@ class VenditeRepository:
         # Assente/non ammesso -> default valore_tot DESC (le commesse piu' pesanti
         # prima), coerente col default a grana attivita'.
         sort_col = self.DASH_COMPETENZA_COMMESSE_SORT_COLUMNS.get(order_by or "")
+        tiebreak = "commessa_codice ASC, commessa_id ASC"
         if sort_col is not None:
             # sql_order_direction ritorna gia' 'ASC NULLS FIRST'/'DESC NULLS LAST':
             # NON aggiungere un secondo NULLS (errore di sintassi PG).
             direction = sql_order_direction(order_dir)
-            order_clause = f"ORDER BY {sort_col} {direction}, commessa_codice ASC, commessa_id ASC"
+            order_clause = f"ORDER BY {sort_col} {direction}, {tiebreak}"
         else:
-            order_clause = "ORDER BY valore_tot DESC NULLS LAST, commessa_codice ASC, commessa_id ASC"
+            order_clause = f"ORDER BY valore_tot DESC NULLS LAST, {tiebreak}"
 
-        # Conteggio = numero di commesse distinte nel perimetro (una riga per
-        # commessa): COUNT su una subquery raggruppata.
-        count_sql = f"""
-            SELECT COUNT(*) FROM (
-                SELECT a.commessa_id
-                FROM vendite.vw_dash_competenza_attivita a
-                {where_clause}
-                GROUP BY a.commessa_id
-            ) t
-        """
-
-        data_sql = f"""
+        select_sql = f"""
             SELECT
                 a.commessa_id,
                 a.commessa_codice,
@@ -839,18 +825,23 @@ class VenditeRepository:
             FROM vendite.vw_dash_competenza_attivita a
             {where_clause}
             GROUP BY a.commessa_id, a.commessa_codice, a.cliente_display
-            {order_clause}
-            LIMIT %s OFFSET %s
         """
 
-        with connection.cursor() as cursor:
-            cursor.execute(count_sql, params)
-            row = cursor.fetchone()
-            assert row is not None
-            total_count = int(row[0])
-
-            cursor.execute(data_sql, params + [safe_limit, safe_offset])
-            rows = cursor.fetchall()
+        # UNA sola valutazione della vista: prima il COUNT delle commesse
+        # distinte era una seconda scansione con lo stesso GROUP BY. Qui il
+        # `COUNT(*) OVER ()` della CTE conta le RIGHE raggruppate, che sono
+        # esattamente le commesse distinte — stesso numero, meta' del lavoro.
+        # In piu' arriva il CLAMP dell'offset: prima il service dichiarava la
+        # pagina EFFETTIVA mentre il repository serviva quella RICHIESTA, e su
+        # una pagina stantia l'envelope diceva «pagina 2» con zero righe — il
+        # frontend ripiegava sulla pagina 1, cioe' nel posto sbagliato.
+        rows, total_count = self._query_paged_view(
+            select_sql=select_sql,
+            order_by=order_clause,
+            params=params,
+            limit=limit,
+            offset=offset,
+        )
 
         result: list[DashCompetenzaCommessaRow] = []
         for row in rows:
@@ -868,6 +859,233 @@ class VenditeRepository:
                 }
             )
         return result, total_count
+
+    # Colonne ordinabili dell'elenco GRUPPI FATTURABILI: chiave FE (field del
+    # DataTable) -> colonna di OUTPUT della CTE `righe` (senza alias di
+    # tabella: l'ORDER BY di `query_paged_view` si applica alla CTE, non alla
+    # vista). Whitelist: nell'ORDER BY solo chiavi note + ASC/DESC (no injection).
+    DASH_COMPETENZA_GRUPPI_SORT_COLUMNS = {
+        "riferimento": "riferimento",
+        "tipo_gruppo": "tipo_gruppo",
+        "cliente_display": "cliente_display",
+        "commessa_codice": "commessa_codice",
+        "n_attivita": "n_attivita",
+        "valore": "valore",
+        "data_attivita_max": "data_attivita_max",
+    }
+
+    # Scopo: Elenco dei GRUPPI FATTURABILI di un mese/stadio — l'unita' su cui
+    #        l'operatore decide nella card «Da emettere»: un documento sorgente
+    #        (PRV-0012, CTR-0007…) oppure gli oneri di una commessa, che
+    #        documento non hanno e altrimenti resterebbero lavoro invisibile e
+    #        non azionabile. La `gruppo_key` esposta qui e' la STESSA che si
+    #        rimanda al POST di emissione mirata: nessun mapping, nessuna
+    #        possibilita' che elenco e criterio divergano.
+    # Perimetro: sola lettura su vw_dash_competenza_gruppi (security_invoker:
+    #        lo scope emittente e' applicato dalla vista, fail-closed senza GUC).
+    # Risultato: tuple (lista DashCompetenzaGruppoRow, conteggio totale).
+    # Scopo: predicato comune dell'elenco gruppi (lista + riepilogo), cosi' i
+    #        totali non possono descrivere un perimetro diverso dalle righe che
+    #        stanno sopra. `tipo_gruppo` e' opzionale: il filtro «tipo
+    #        documento/sorgente» del cockpit. NON lo usa la facet, che deve
+    #        vedere tutti i tipi anche quando uno e' selezionato (altrimenti
+    #        scegliendo «Preventivi» le altre voci sparirebbero dalla tendina e
+    #        non si potrebbe piu' cambiare idea).
+    @staticmethod
+    def _where_gruppi(
+        *,
+        competenza_mese: date,
+        stadio: str | None,
+        tipo_gruppo: str | None = None,
+    ) -> tuple[list[str], list[Any]]:
+        conditions: list[str] = ["g.competenza_mese = %s"]
+        params: list[Any] = [competenza_mese]
+        if stadio is not None:
+            conditions.append("g.stadio = %s")
+            params.append(stadio)
+        if tipo_gruppo is not None:
+            conditions.append("g.tipo_gruppo = %s")
+            params.append(tipo_gruppo)
+        return conditions, params
+
+    def list_dash_competenza_gruppi(
+        self,
+        *,
+        competenza_mese: date,
+        stadio: str | None,
+        tipo_gruppo: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[DashCompetenzaGruppoRow], int]:
+        conditions, params = self._where_gruppi(
+            competenza_mese=competenza_mese, stadio=stadio, tipo_gruppo=tipo_gruppo,
+        )
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+        # ⚠️ Tiebreak su (gruppo_key, stadio) e non sulla sola chiave: la vista
+        # raggruppa per (competenza, gruppo_key, …, stadio), quindi SENZA il
+        # filtro stadio — che e' opzionale — lo STESSO gruppo compare su piu'
+        # righe (parte da emettere, parte gia' fatturata). Con il solo
+        # gruppo_key l'ordine fra quelle righe sarebbe indefinito e la
+        # paginazione non deterministica (frontend-standards §Paginazione
+        # deterministica): righe ripetute o saltate cambiando pagina.
+        tiebreak = "gruppo_key ASC, stadio ASC"
+        sort_col = self.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS.get(order_by or "")
+        if sort_col is not None:
+            # sql_order_direction ritorna gia' 'ASC NULLS FIRST'/'DESC NULLS LAST'.
+            direction = sql_order_direction(order_dir)
+            order_clause = f"ORDER BY {sort_col} {direction}, {tiebreak}"
+        else:
+            # Default: i gruppi che pesano di piu' in cima (stessa logica del
+            # drill-down per commessa).
+            order_clause = f"ORDER BY valore DESC NULLS LAST, {tiebreak}"
+
+        # Clamp dell'offset all'ultima pagina reale in UNA valutazione, come le
+        # altre liste dei cruscotti: il service dichiara poi la pagina effettiva
+        # nell'envelope e `usePagedDashFetch` la adotta. Senza, una pagina
+        # stantia tornerebbe VUOTA con count > 0 e il FE ripiegherebbe sulla
+        # PRIMA pagina — un secondo giro, e per giunta nel posto sbagliato.
+        rows, total_count = self._query_paged_view(
+            select_sql=f"""
+            SELECT
+                g.gruppo_key,
+                g.tipo_gruppo,
+                g.area_documento,
+                g.riferimento,
+                g.commessa_id,
+                g.commessa_codice,
+                g.cliente_display,
+                g.stadio,
+                g.n_attivita,
+                g.valore,
+                g.ha_oneri,
+                g.data_attivita_min,
+                g.data_attivita_max
+            FROM vendite.vw_dash_competenza_gruppi g
+            {where_clause}
+            """,
+            order_by=order_clause,
+            params=params,
+            limit=limit,
+            offset=offset,
+        )
+
+        result: list[DashCompetenzaGruppoRow] = []
+        for row in rows:
+            result.append(
+                {
+                    "gruppo_key": str(row[0]),
+                    "tipo_gruppo": str(row[1]),
+                    "area_documento": None if row[2] is None else str(row[2]),
+                    "riferimento": None if row[3] is None else str(row[3]),
+                    "commessa_id": None if row[4] is None else int(row[4]),
+                    "commessa_codice": None if row[5] is None else str(row[5]),
+                    "cliente_display": None if row[6] is None else str(row[6]),
+                    "stadio": None if row[7] is None else str(row[7]),
+                    "n_attivita": int(row[8]),
+                    "valore": str(row[9]) if row[9] is not None else None,
+                    "ha_oneri": bool(row[10]),
+                    "data_attivita_min": row[11].isoformat() if row[11] is not None else None,
+                    "data_attivita_max": row[12].isoformat() if row[12] is not None else None,
+                }
+            )
+        return result, total_count
+
+    # Scopo: Totali di perimetro dell'elenco gruppi (riga di riconciliazione
+    #        «N gruppi · M attivita' · X €»). Vengono dal DB e non dalla somma
+    #        delle righe della pagina corrente, che sarebbe un parziale con
+    #        l'aria di un totale — e nessuno somma a mano piu' pagine per
+    #        accorgersene.
+    # Perimetro: aggrega `vw_dash_competenza_gruppi` con lo STESSO predicato
+    #        della lista (`_where_gruppi`, filtro tipo incluso): i totali
+    #        descrivono esattamente le righe che stanno sopra, non un perimetro
+    #        vicino.
+    #        ⚠️ NON usa `vw_dash_competenza_gruppi_riepilogo`: quella vista
+    #        aggrega per (competenza, stadio, emittente) e **non espone
+    #        `tipo_gruppo`**, quindi non saprebbe seguire il filtro. I numeri
+    #        sono gli stessi — e' l'aggregazione della stessa vista di
+    #        dettaglio — ma qui la sorgente e' letteralmente quella della
+    #        lista. La vista di riepilogo resta valida per altri consumatori.
+    def get_dash_competenza_gruppi_riepilogo(
+        self,
+        *,
+        competenza_mese: date,
+        stadio: str | None,
+        tipo_gruppo: str | None = None,
+    ) -> DashCompetenzaGruppiRiepilogoRow:
+        conditions, params = self._where_gruppi(
+            competenza_mese=competenza_mese, stadio=stadio, tipo_gruppo=tipo_gruppo,
+        )
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    COUNT(*)::int,
+                    COALESCE(SUM(g.n_attivita), 0)::bigint,
+                    COALESCE(SUM(g.valore), 0),
+                    COUNT(*) FILTER (WHERE g.tipo_gruppo = %s)::int
+                FROM vendite.vw_dash_competenza_gruppi g
+                {where_clause}
+                """,
+                [TIPO_GRUPPO_ONERI, *params],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return {
+            "n_gruppi": int(row[0]),
+            "n_attivita": int(row[1]),
+            "valore": str(row[2]) if row[2] is not None else None,
+            "n_gruppi_oneri": int(row[3]),
+        }
+
+    # Scopo: Voci del filtro «tipo documento/sorgente» della lista gruppi,
+    #        calcolate SUI DATI del perimetro (facet) con il conteggio accanto.
+    #        Cosi' la tendina offre solo cio' che esiste davvero: un'opzione che
+    #        dà sempre zero risultati e' peggio di nessun filtro.
+    # ⚠️ Il predicato NON include `tipo_gruppo`: le facet devono restare tutte
+    #        visibili anche quando una e' selezionata, altrimenti scegliendo
+    #        «Preventivi» le altre voci sparirebbero e l'operatore resterebbe
+    #        chiuso dentro il filtro appena messo.
+    # Perimetro: sola lettura su vw_dash_competenza_gruppi (scope GUC in vista).
+    def list_dash_competenza_gruppi_tipi(
+        self,
+        *,
+        competenza_mese: date,
+        stadio: str | None,
+    ) -> list[DashCompetenzaGruppoTipoRow]:
+        conditions, params = self._where_gruppi(
+            competenza_mese=competenza_mese, stadio=stadio,
+        )
+        where_clause = "WHERE " + " AND ".join(conditions)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    g.tipo_gruppo,
+                    MIN(g.area_documento) AS area_documento,
+                    COUNT(*)::int         AS n_gruppi,
+                    COALESCE(SUM(g.n_attivita), 0)::bigint AS n_attivita
+                FROM vendite.vw_dash_competenza_gruppi g
+                {where_clause}
+                GROUP BY g.tipo_gruppo
+                ORDER BY COUNT(*) DESC, g.tipo_gruppo ASC
+                """,
+                params,
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "tipo_gruppo": str(r[0]),
+                "area_documento": None if r[1] is None else str(r[1]),
+                "n_gruppi": int(r[2]),
+                "n_attivita": int(r[3]),
+            }
+            for r in rows
+        ]
 
     # Scopo: Restituisce la lista paginata degli errori vivi (blocco 4 Lente 1:
     #        task run in ERRORE non superati + fatture critical), con filtro
