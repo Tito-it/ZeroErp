@@ -479,7 +479,13 @@ const drawerActions = computed(() => [
         <!-- Righe attivita' + approvazione (A-1). -->
         <div class="app-page-toolbar" style="margin-top: 1rem;">
           <h4 style="margin: 0;">{{ t('vendite.commesse.righe_titolo') }}</h4>
-          <div v-if="canApprova" style="display: flex; gap: 0.5rem;">
+          <!-- Difetto D1 (§6-bis, corretto 2026-07-27): la visibilita' era sul
+               SOLO permesso, quindi su una commessa gia' PRONTA_FATTURAZIONE i
+               due verbi restavano a video disabilitati — rumore che suggerisce
+               un'azione che non c'e' piu'. Ora compaiono solo se c'e'
+               davvero qualcosa da approvare (il permesso resta condizione
+               necessaria, e il BE resta la difesa vera). -->
+          <div v-if="canApprova && (stato?.total_non_approvate ?? 0) > 0" style="display: flex; gap: 0.5rem;">
             <Button
               :label="t('vendite.commesse.approva_selezionate', { n: selectedIds.length })"
               icon="pi pi-check"

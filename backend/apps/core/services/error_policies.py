@@ -1906,6 +1906,23 @@ class ErrorPolicyRegistry:
                 "crea un nuovo ordine."
             ),
         ),
+        # Corsia di instradamento non piu' modificabile: il documento e' gia'
+        # stato inviato in commessa, dove il flag entra nella chiave di dedup —
+        # cambiarlo dopo non sposta nulla, sarebbe solo un campo che INGANNA.
+        # Sollevato dal guard DB `trgfn_guard_fatturazione_immediata_immutabile`
+        # su ordini/contratti/DDT/preventivi (codice DB messaggi_errore 561).
+        # Trasversale ai 4 domini: il codice e' uno solo, come lo e' la regola.
+        "E_FATT_IMMEDIATA_NON_MODIFICABILE": ErrorPolicy(
+            code="E_FATT_IMMEDIATA_NON_MODIFICABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La fatturazione immediata non e` piu` modificabile: il "
+                "documento e` gia` stato inviato in commessa. Per fatturare "
+                "subito questo lavoro usa l'emissione mirata dal cruscotto "
+                "Competenza."
+            ),
+        ),
         "E_ORD_STATO_TRANSIZIONE": ErrorPolicy(
             code="E_ORD_STATO_TRANSIZIONE",
             http_status=409,

@@ -210,6 +210,9 @@ class DdtRepository(
                 v.*,
                 d.meta,
                 d.storicizza,
+                -- Corsia di instradamento: colonna aggiunta dalla Fase B del
+                -- brief emissione mirata, non esposta dalla vista di lista.
+                d.fatturazione_immediata,
                 ba.istanza_utility_id
               FROM vendite.vw_ddt_lista v
               JOIN vendite.ddt d ON d.id = v.id
@@ -429,6 +432,7 @@ class DdtRepository(
         tracking_code: str | None = None,
         data: date | None = None,
         meta: dict[str, Any] | None = None,
+        fatturazione_immediata: bool | None = None,
     ) -> dict[str, Any]:
         cols: list[str] = ["destinatario_soggetto_ruolo_id", "stato_doc_ddt_id"]
         vals: list[Any] = [destinatario_soggetto_ruolo_id, stato_doc_ddt_id]
@@ -451,6 +455,8 @@ class DdtRepository(
             "autista": autista,
             "tracking_code": tracking_code,
             "data": data,
+            # Corsia di instradamento: None = DEFAULT false del DB (differita).
+            "fatturazione_immediata": fatturazione_immediata,
         }
         for col, val in optional.items():
             if val is not None:

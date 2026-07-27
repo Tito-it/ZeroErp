@@ -202,6 +202,10 @@ class OrdiniRepository(
                 v.*,
                 o.meta,
                 o.storicizza,
+                -- Corsia di instradamento: colonna aggiunta dalla Fase B del
+                -- brief emissione mirata. Letta dalla tabella e non dalla vista
+                -- di lista, che non la espone (la vista e' del team DB).
+                o.fatturazione_immediata,
                 ba.istanza_utility_id
               FROM vendite.vw_ordini_lista v
               JOIN vendite.ordini o ON o.id = v.id
@@ -417,6 +421,7 @@ class OrdiniRepository(
         data: date | None = None,
         stato_doc_ordine_id: int,
         meta: dict[str, Any] | None = None,
+        fatturazione_immediata: bool | None = None,
     ) -> dict[str, Any]:
         cols: list[str] = ["soggetto_ruolo_id", "billing_account_id", "stato_doc_ordine_id"]
         vals: list[Any] = [soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id]
@@ -432,6 +437,9 @@ class OrdiniRepository(
             "fatturazione_trigger": fatturazione_trigger,
             "agente_soggetto_ruolo_id": agente_soggetto_ruolo_id,
             "data": data,
+            # Corsia di instradamento (simmetria del flag): None = si lascia il
+            # DEFAULT false del DB, cioe' corsia differita.
+            "fatturazione_immediata": fatturazione_immediata,
         }
         for col, val in optional.items():
             if val is not None:

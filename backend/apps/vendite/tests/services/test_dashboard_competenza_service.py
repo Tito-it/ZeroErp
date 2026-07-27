@@ -33,6 +33,12 @@ Indice test eseguiti:
 14) DashCompetenzaErroriServiceTests.test_errori_ok_envelope_paginato
 15) DashCompetenzaErroriServiceTests.test_errori_competenza_opzionale_none
 16) DashCompetenzaErroriServiceTests.test_errori_competenza_normalizzata_al_primo
+17) DashCompetenzaGruppiServiceTests.test_gruppi_envelope_con_riepilogo_e_facet
+18) DashCompetenzaGruppiServiceTests.test_gruppi_filtro_tipo_inoltrato_alla_lista_e_ai_totali
+19) DashCompetenzaGruppiServiceTests.test_gruppi_facet_ignora_il_filtro_tipo
+20) DashCompetenzaGruppiServiceTests.test_gruppi_stadio_invalido
+21) DashCompetenzaGruppiServiceTests.test_gruppi_order_by_non_valido
+22) DashCompetenzaGruppiServiceTests.test_gruppi_competenza_normalizzata_al_primo
 """
 
 from datetime import date
@@ -45,6 +51,7 @@ from apps.vendite.services.vendite_service import (
     fn_dash_competenza_attivita,
     fn_dash_competenza_commesse,
     fn_dash_competenza_errori,
+    fn_dash_competenza_gruppi,
     fn_dash_competenza_mensile,
 )
 
@@ -449,3 +456,100 @@ class DashCompetenzaErroriServiceTests(TestCase):
         fn_dash_competenza_errori(competenza_mese=date(2026, 5, 17))
         kwargs = mock_repo.call_args.kwargs
         self.assertEqual(kwargs["competenza_mese"], date(2026, 5, 1))
+
+
+class DashCompetenzaGruppiServiceTests(TestCase):
+    """Elenco GRUPPI FATTURABILI + filtro «tipo documento/sorgente».
+
+    Il punto che questi test presidiano non e' l'envelope (banale) ma la
+    DIFFERENZA di perimetro fra i tre blocchi della stessa risposta: le righe e
+    i totali seguono il filtro, le voci del filtro no.
+    """
+
+    # Scopo: repository mockato con le tre letture dell'endpoint.
+    def _repo(self, mock_repo_cls):
+        repo = mock_repo_cls.return_value
+        repo.list_dash_competenza_gruppi.return_value = ([{"gruppo_key": "PREVENTIVO:a"}], 1)
+        repo.get_dash_competenza_gruppi_riepilogo.return_value = {
+            "n_gruppi": 1, "n_attivita": 3, "valore": "100.00", "n_gruppi_oneri": 0,
+        }
+        repo.list_dash_competenza_gruppi_tipi.return_value = [
+            {"tipo_gruppo": "PREVENTIVO", "area_documento": "PREVENTIVI",
+             "n_gruppi": 1, "n_attivita": 3},
+            {"tipo_gruppo": "ONERI_COMMESSA", "area_documento": None,
+             "n_gruppi": 2, "n_attivita": 2},
+        ]
+        return repo
+
+    # 17) La risposta porta pagina + riepilogo + facet insieme: una seconda
+    #     chiamata per i totali potrebbe raccontare un istante diverso.
+    @patch.object(vendite_service, "VenditeRepository")
+    def test_gruppi_envelope_con_riepilogo_e_facet(self, mock_repo_cls):
+        self._repo(mock_repo_cls)
+        out = fn_dash_competenza_gruppi(competenza_mese=date(2026, 6, 1))
+        self.assertEqual(out["count"], 1)
+        self.assertEqual(out["riepilogo"]["n_attivita"], 3)
+        self.assertEqual([t["tipo_gruppo"] for t in out["tipi"]],
+                         ["PREVENTIVO", "ONERI_COMMESSA"])
+
+    # 18) Il filtro tipo arriva SIA alla lista SIA ai totali: se arrivasse solo
+    #     alla lista, la riga di totali descriverebbe un perimetro piu' largo
+    #     delle righe che ha sopra — cioe' mentirebbe.
+    @patch.object(vendite_service, "VenditeRepository")
+    def test_gruppi_filtro_tipo_inoltrato_alla_lista_e_ai_totali(self, mock_repo_cls):
+        repo = self._repo(mock_repo_cls)
+        fn_dash_competenza_gruppi(
+            competenza_mese=date(2026, 6, 1), tipo_gruppo="ONERI_COMMESSA",
+        )
+        self.assertEqual(
+            repo.list_dash_competenza_gruppi.call_args.kwargs["tipo_gruppo"],
+            "ONERI_COMMESSA",
+        )
+        self.assertEqual(
+            repo.get_dash_competenza_gruppi_riepilogo.call_args.kwargs["tipo_gruppo"],
+            "ONERI_COMMESSA",
+        )
+
+    # 19) ⭐ Le facet NON ricevono il filtro: se lo ricevessero, selezionando un
+    #     tipo la tendina resterebbe con la sola voce scelta e l'operatore non
+    #     potrebbe piu' cambiare idea senza azzerare alla cieca.
+    @patch.object(vendite_service, "VenditeRepository")
+    def test_gruppi_facet_ignora_il_filtro_tipo(self, mock_repo_cls):
+        repo = self._repo(mock_repo_cls)
+        fn_dash_competenza_gruppi(
+            competenza_mese=date(2026, 6, 1), tipo_gruppo="PREVENTIVO",
+        )
+        kwargs = repo.list_dash_competenza_gruppi_tipi.call_args.kwargs
+        self.assertNotIn("tipo_gruppo", kwargs)
+
+    # 20) Stadio fuori vocabolario -> 400 (stessa whitelist delle altre liste).
+    @patch.object(vendite_service, "VenditeRepository")
+    def test_gruppi_stadio_invalido(self, mock_repo_cls):
+        self._repo(mock_repo_cls)
+        with self.assertRaises(ServiceError):
+            fn_dash_competenza_gruppi(
+                competenza_mese=date(2026, 6, 1), stadio="INVENTATO",
+            )
+
+    # 21) order_by fuori whitelist -> 400, mai un ordinamento silenziosamente
+    #     ignorato (che renderebbe la paginazione non deterministica).
+    @patch.object(vendite_service, "VenditeRepository")
+    def test_gruppi_order_by_non_valido(self, mock_repo_cls):
+        self._repo(mock_repo_cls)
+        with self.assertRaises(ServiceError):
+            fn_dash_competenza_gruppi(
+                competenza_mese=date(2026, 6, 1), order_by="drop_table",
+            )
+
+    # 22) Competenza normalizzata al 1° del mese su TUTTE E TRE le letture.
+    @patch.object(vendite_service, "VenditeRepository")
+    def test_gruppi_competenza_normalizzata_al_primo(self, mock_repo_cls):
+        repo = self._repo(mock_repo_cls)
+        fn_dash_competenza_gruppi(competenza_mese=date(2026, 6, 23))
+        atteso = date(2026, 6, 1)
+        for chiamata in (
+            repo.list_dash_competenza_gruppi,
+            repo.get_dash_competenza_gruppi_riepilogo,
+            repo.list_dash_competenza_gruppi_tipi,
+        ):
+            self.assertEqual(chiamata.call_args.kwargs["competenza_mese"], atteso)

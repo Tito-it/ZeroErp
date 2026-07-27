@@ -645,6 +645,51 @@ class DashCompetenzaCommessaRow(TypedDict):
     data_attivita_max: str | None
 
 
+class DashCompetenzaGruppoRow(TypedDict):
+    # Riga dell'elenco GRUPPI FATTURABILI (vw_dash_competenza_gruppi): l'unita'
+    # su cui l'operatore decide nella card «Da emettere» — un documento sorgente
+    # OPPURE le righe manuali/oneri di una commessa (che documento non hanno).
+    # `gruppo_key` e' la chiave costruita da fn_build_gruppo_fatturabile_key: e'
+    # la STESSA che si rimanda al POST di emissione mirata, senza mapping.
+    gruppo_key: str
+    tipo_gruppo: str
+    area_documento: str | None
+    riferimento: str | None
+    commessa_id: int | None
+    commessa_codice: str | None
+    cliente_display: str | None
+    stadio: str | None
+    n_attivita: int
+    valore: str | None
+    ha_oneri: bool
+    data_attivita_min: str | None
+    data_attivita_max: str | None
+
+
+class DashCompetenzaGruppoTipoRow(TypedDict):
+    # Voce del filtro «tipo documento/sorgente» della lista gruppi, calcolata
+    # SUI DATI del perimetro (facet) e non da `config.sorgenti`. Due ragioni:
+    # quella tabella contiene sorgenti che non possono mai essere un gruppo
+    # fatturabile (i `*_RIGA` con scope ROW_VALIDATOR, FATTURA, RESO_VENDITA) e
+    # NON contiene `ONERI_COMMESSA`, che e' un valore sintetico della vista —
+    # cioe' proprio il caso che si vuole poter isolare.
+    tipo_gruppo: str
+    area_documento: str | None
+    n_gruppi: int
+    n_attivita: int
+
+
+class DashCompetenzaGruppiRiepilogoRow(TypedDict):
+    # Totali di perimetro dell'elenco gruppi (vw_dash_competenza_gruppi_riepilogo):
+    # aggregano la vista di dettaglio, quindi non possono divergere da essa.
+    # Vengono dal DB e non dal FE di proposito: sommare la pagina corrente
+    # mostrerebbe un parziale che sembra un totale.
+    n_gruppi: int
+    n_attivita: int
+    valore: str | None
+    n_gruppi_oneri: int
+
+
 class DashBacklogRiepilogoRow(TypedDict):
     # Riga contatori Lente 2 Backlog (vw_dash_backlog_riepilogo, grana
     # classe × area — il pivot per classe e' del service).
