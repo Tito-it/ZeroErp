@@ -508,6 +508,15 @@ Ordine proposto. I punti 1-2 sono **DB e vanno per primi**: BE/FE attendono
 4-quater. **[FE, indipendente]** correzione dei **3 difetti del cockpit**
    (§6-bis): D1 pulsanti Approva, D2 verbo «Rendi definitive» sulla card
    corretta, D3 presentazione di `Emesse non fatturate` come residui.
+4-quinquies. ~~**[BE+FE] permesso su chiudi/annulla commessa**~~ → ✅ **FATTO
+   2026-07-27, fuori da questa slice**: `cambia_stato_commessa` a catalogo
+   (id 30), `post_permission` su `ApiCommessaStato`, gate FE sulle azioni di
+   stato del drawer commessa
+   ([brief chiuso](../work-done/brief-db-permesso-cambio-stato-commessa.md) ·
+   E-BE-4 del [brief cockpit processi](../work-done/brief-be-fe-processi-fatturazione.md)).
+   Resta solo l'assegnazione dell'azione ai profili, da UI amministrazione.
+   Lasciato qui come traccia: era l'unico punto di permessi che toccava le
+   stesse corde della slice.
 5. **[FE documenti]** esporre il flag `fatturazione_immediata` in creazione/
    accettazione dei documenti, ora che è simmetrico (§5.3).
 6. **[FE Lotti]** (opzionale) verbi di avanzamento in lista + colonna stato-step.

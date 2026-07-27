@@ -17,7 +17,7 @@
 > end-to-end live** su `ui.fn_resolve_lista_config`: accredito_dovuto/etichetta visibili,
 > tenuti/fatturati opt-in, `etichetta_i18n_key` combacianti; parità it/en programmatica,
 > build Vite verde.
-> **Origine**: sviluppo BE/FE di [brief-be-fe-ddt-resi-dashboard.md](../work-in-progress/brief-be-fe-ddt-resi-dashboard.md).
+> **Origine**: sviluppo BE/FE di [brief-be-fe-ddt-resi-dashboard.md](brief-be-fe-ddt-resi-dashboard.md).
 > La `vw_resi_da_accreditare` in forma contatore (`20260718-01`) espone quattro colonne nuove
 > — `accredito_dovuto`, `etichetta`, `tenuti`, `fatturati` — ma il **catalogo lista UI**
 > `vendite.resi_da_accreditare` (`ui.lista_definizione` id **10**, colonne 161-172) è rimasto

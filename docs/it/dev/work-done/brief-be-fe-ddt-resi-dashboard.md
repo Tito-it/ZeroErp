@@ -5,13 +5,20 @@
 > (DL-27/28 + emendamenti DL-21/23/24/26): motivo rinominato, coda accrediti con quantità,
 > card Ordini mista, nuovo gate solo-trasporto, punto "riga non fatturabile" superato.
 > · **Owner**: Tid
-> **Stato**: 🟢 **REALIZZATO** (2026-07-18, non committato) — DB applicato (PR #1002),
-> BE+FE sviluppati, 1782 test vendite+core verdi, build Vite verde, lint pulito,
-> gunicorn ricaricato. Restano: **seed lista 10** (mini-brief companion
-> [brief-db-seed-lista-coda-accrediti-contatore.md](../work-done/brief-db-seed-lista-coda-accrediti-contatore.md)
-> — le 4 colonne nuove della coda compaiono all'apply, BE/FE già pronti) e
-> **validazione in-app** Tid. Consuntivo in fondo (§7).
-> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](brief-design-fatturazione-due-lenti.md)
+> **Stato**: ✅ **CHIUSO (2026-07-27)** — DB applicato (PR #1002), BE+FE
+> sviluppati, 1782 test vendite+core verdi, build Vite verde, lint pulito,
+> gunicorn ricaricato; **seed lista 10 applicato** (mini-brief companion
+> [brief-db-seed-lista-coda-accrediti-contatore.md](../work-done/brief-db-seed-lista-coda-accrediti-contatore.md))
+> e **validazione in-app di Tid fatta** — durante la quale sono emersi e sono
+> stati chiusi i 3 rilievi di §6-bis. Consuntivo in fondo (§7).
+> ⚠️ Il codice è nel working tree, **non committato**.
+>
+> **Dopo la chiusura** (2026-07-25, slice separata): i pannelli-azione di questa
+> area sono diventati dialog aperte dalla barra azioni — «Genera reso» del DDT
+> (`DdtResoDialog`) e «DDT ri-spedizione» del reso (`ResoRiconsegnaDialog`) — e
+> il pannello Passaggi è stato sostituito dai chip `DocumentoCollegamentiBar`.
+> Non cambia nulla di quanto consuntivato qui: è il contenitore, non la logica.
+> **Design-of-record**: [brief-design-fatturazione-due-lenti.md](../work-in-progress/brief-design-fatturazione-due-lenti.md)
 > §6-quater, decisioni **DL-19..28**.
 > **Prerequisito DB**: [brief-db-fatturazione-ddt-resi.md](../work-done/brief-db-fatturazione-ddt-resi.md).
 > **Gate**: BE/FE partono a **oggetti DB applicati** ([[feedback_be_fe_attende_prerequisiti_db]]).
@@ -225,12 +232,12 @@ la ri-consegna è derivata dal contatore.
 | 6 | BE-3 + FE-5 — gate solo-trasporto: policy 544/545 in `error_policies.py` (messaggio dal DB via translator) + asterisco-tooltip causale nel `DdtForm` (obbligatoria all'emissione, non al create) | ✅ 2026-07-18 |
 | 7 | BE-5 — test: aperto 5 aree (DDT euro, RESI assente), backlog DDT/RESI validi (anti-regressione 400), coda etichetta (passthrough/whitelist/default) — 100 test moduli toccati | ✅ 2026-07-18 |
 | 8 | Suite `apps.vendite` + `apps.core` **1782 verdi**, build FE ok, lint pulito, `kill -HUP` gunicorn, doc api (aperto/backlog/resi) | ✅ 2026-07-18 |
-| 9 | Validazione in-app Tid | ☐ **in corso** — vedi §6-bis: 3 rilievi emersi e già chiusi |
+| 9 | Validazione in-app Tid | ✅ **FATTA (2026-07-27)** — vedi §6-bis: 3 rilievi emersi e tutti chiusi (reason push catch-all, seed lista, coda accrediti) |
 
 ### 6-bis. Rilievi emersi durante la validazione (2026-07-19/20) — tutti chiusi
 
-La validazione ha già prodotto e chiuso tre difetti collaterali; il giro
-complessivo resta da completare:
+La validazione ha prodotto e chiuso tre difetti collaterali; il giro complessivo
+è stato poi completato (☑ 2026-07-27):
 
 1. **Reason push DDT falsa (catch-all)** — su DDT0000326/ORD0000580 il banner
    diceva «dev'essere spedito o consegnato» a DDT già consegnato. Brief dedicato

@@ -402,7 +402,7 @@ NN = **sequenza globale per data** (i `20260719-*` arrivano a `-16` → i nuovi 
 
 1. **G1** ✅ (2026-07-20): tabella + funzione + seed (§3–5) → pgTAP fondamenta verdi →
    applicato/committato/pushato (`67d63cae9`).
-2. **BE/FE** ✅ ([brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md)):
+2. **BE/FE** ✅ ([brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md)):
    handler `stampa_documenti_lotto_default` (accoda), worker drainer (backstop + render),
    cablaggio FATTURA — completato e pushato.
 3. **G2** ✅ scritto (2026-07-21, handler BE registrato e pushato): append ai `processi`
