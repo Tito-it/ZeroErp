@@ -18,11 +18,21 @@ import { PAGINATION } from '../constants'
 //   un endpoint con envelope paginato standard {data: {results, count, ...}}.
 //   Gli ...args extra di fetch() vengono inoltrati (es. competenza_mese).
 // - defaultPageSize: default PAGINATION.DEFAULT_ROWS.
+// - onPayload(payload): hook opzionale (2026-07-27) per i campi EXTRA che
+//   l'endpoint mette accanto a results/count — es. il `riepilogo` di perimetro
+//   della lista gruppi fatturabili. Viene invocato SOLO dopo il guard di
+//   versione: agganciare quei campi fuori di qui (tappando la promise nel
+//   fetchPage del caller) li applicherebbe anche alle risposte scartate, e la
+//   riga di totali finirebbe a raccontare un contesto diverso dalla lista che
+//   le sta sopra. Omesso = comportamento invariato per gli altri consumer.
 // `loaded` = almeno una fetch riuscita (non scartata) dopo l'ultimo reset:
 // distingue "lista davvero vuota" da "mai caricata / fetch fallita" — il
 // caller NON deve mostrare un empty-state positivo se loaded e' false.
 // Ritorna { items, count, page, pageSize, loading, loaded, fetch, reset, resetAll }.
-export function usePagedDashFetch(fetchPage, { defaultPageSize = PAGINATION.DEFAULT_ROWS } = {}) {
+export function usePagedDashFetch(
+  fetchPage,
+  { defaultPageSize = PAGINATION.DEFAULT_ROWS, onPayload = null } = {},
+) {
   const items = ref([])
   const count = ref(0)
   const page = ref(1)
@@ -50,6 +60,9 @@ export function usePagedDashFetch(fetchPage, { defaultPageSize = PAGINATION.DEFA
       // clamp SQL serve direttamente l'ultima pagina reale quando quella
       // richiesta e' oltre la fine (envelope page != richiesta).
       page.value = payload.page ?? page.value
+      // Campi extra dell'envelope (es. riepilogo di perimetro): applicati solo
+      // qui dentro, cioe' solo per una risposta che ha superato il guard.
+      if (onPayload) onPayload(payload)
       loaded.value = true
       // Fallback per endpoint senza clamp BE: pagina oltre l'ultima, torna
       // alla prima e ricarica.

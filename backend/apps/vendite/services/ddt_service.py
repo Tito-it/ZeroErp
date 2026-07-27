@@ -89,6 +89,12 @@ _CREATE_KEYS_DDT: frozenset[str] = frozenset({
     "causale_trasporto_id", "aspetto_bene_id", "modalita_addebito_trasporto_id",
     "num_colli", "peso_lordo", "peso_netto", "volume", "targa", "autista",
     "tracking_code", "data", "meta",
+    # Corsia di instradamento della fatturazione (simmetria del flag, Fase B
+    # del brief emissione mirata): si decide PRIMA del push in commessa, dove
+    # il flag entra nella chiave di dedup; dopo e' inerte e il guard DB
+    # `trgfn_guard_fatturazione_immediata_immutabile` respinge l'UPDATE. La
+    # testata DDT e' editabile solo in DRAFT: le due finestre non si toccano.
+    "fatturazione_immediata",
 })
 # NB: billing_account_id/destinatario NON aggiornabili (cliente immutabile
 # post-creazione, vedi aggiorna_ddt): cambiare cliente = nuovo DDT.
@@ -97,6 +103,7 @@ _UPDATE_KEYS_DDT: frozenset[str] = frozenset({
     "vettore_soggetto_ruolo_id", "causale_trasporto_id", "aspetto_bene_id",
     "modalita_addebito_trasporto_id", "num_colli", "peso_lordo", "peso_netto",
     "volume", "targa", "autista", "tracking_code", "data", "meta",
+    "fatturazione_immediata",
 })
 _CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id", "descrizione", "quantita", "qta_operativa",
@@ -323,6 +330,7 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
             tracking_code=data.get("tracking_code"),
             data=data.get("data"),
             meta=meta if isinstance(meta, dict) else None,
+            fatturazione_immediata=data.get("fatturazione_immediata"),
         )
     # UX v2: auto-assegnazione best-effort dell'indirizzo di consegna default
     # (indirizzo di ruolo CON del cliente, fallback FATT). Mai bloccante.

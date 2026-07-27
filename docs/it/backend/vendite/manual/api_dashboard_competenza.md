@@ -82,6 +82,24 @@ Stesso perimetro e stessi filtri di `attivita/` (`competenza_mese` obbligatorio,
 - Il `count` dell'envelope è il **numero di commesse distinte** nel perimetro
   (non di attività).
 
+### `GET /dashboard-competenza/gruppi/`
+
+Elenco dei **gruppi fatturabili** (emissione mirata, 2026-07-27).
+
+- `competenza_mese` (obbligatorio, date ISO, normalizzato al 1°).
+- `stadio` (opzionale, whitelist come sopra). Il cockpit usa `DA_EMETTERE`.
+- `tipo_gruppo` (opzionale, **assente = tutti**): filtro «tipo
+  documento/sorgente». Valori = `config.sorgenti.codice_interno`
+  (`PREVENTIVO`, `ORDINE_VENDITA`, `CONTRATTO`, `DDT_VENDITA`, …) oppure
+  `ONERI_COMMESSA` per le righe manuali senza documento. **Nessuna whitelist
+  Python**: il vocabolario è estensibile lato DB e una lista parallela si
+  disallineerebbe al primo tipo aggiunto; il valore è un bind param e le voci
+  valide del perimetro le dichiara il blocco `tipi` della risposta.
+- `order_by` / `order_dir` (opzionali): whitelist `riferimento` | `tipo_gruppo` |
+  `cliente_display` | `commessa_codice` | `n_attivita` | `valore` (default,
+  DESC) | `data_attivita_max`; tiebreak stabile su `gruppo_key`.
+- `page` / `page_size` (opzionali): paginazione standard.
+
 ### `GET /dashboard-competenza/errori/`
 
 - `competenza_mese` (opzionale, date ISO, normalizzato al 1°): assente = errori
@@ -165,6 +183,43 @@ preservato). Ordinamento: default `valore_tot DESC NULLS LAST, commessa_codice,
 commessa_id`; con `order_by`/`order_dir` colonna **aggregata** whitelistata +
 stesso tiebreak.
 
+### Gruppi fatturabili
+
+Envelope paginato standard **più** la chiave `riepilogo` — i totali di TUTTO il
+perimetro, non della pagina: `n_gruppi`, `n_attivita`, `valore`,
+`n_gruppi_oneri`. Vengono dal DB
+(`vw_dash_competenza_gruppi_riepilogo` **aggrega** la vista di dettaglio, quindi
+i due numeri non possono divergere); sommare le righe della pagina corrente lato
+client produrrebbe un parziale con l'aria di un totale.
+
+Ogni riga: `gruppo_key`, `tipo_gruppo` (`codice_interno` della sorgente, oppure
+`ONERI_COMMESSA`), `area_documento`, `riferimento` (numero leggibile del
+documento, o la commessa per gli oneri), `commessa_id/commessa_codice`,
+`cliente_display`, `stadio`, `n_attivita`, `valore`, `ha_oneri`,
+`data_attivita_min` / `data_attivita_max`.
+
+Il blocco **`tipi`** è la *facet* del filtro: le voci realmente presenti nel
+perimetro con il conteggio (`tipo_gruppo`, `area_documento`, `n_gruppi`,
+`n_attivita`), ordinate per numerosità.
+
+> ⚠️ **Tre blocchi, due perimetri diversi, ed è voluto.** `results` e
+> `riepilogo` **seguono** `tipo_gruppo` (i totali riconciliano la lista che
+> l'utente sta guardando); `tipi` **no** — deve mostrare tutte le voci anche
+> quando una è selezionata, altrimenti scegliendo «Preventivi» le altre
+> sparirebbero dalla tendina e non si potrebbe più cambiare idea.
+
+> ⚠️ **Perché la facet e non un lookup su `config.sorgenti`.** Quella tabella
+> ha 15 righe, di cui 5 `*_RIGA` con `scope = ROW_VALIDATOR` più
+> `FATTURA`/`ATTIVITA`/`RESO_VENDITA`: sorgenti che non possono mai essere un
+> gruppo fatturabile — offrire opzioni da zero risultati è peggio di nessun
+> filtro. E soprattutto **non contiene `ONERI_COMMESSA`**, che è un valore
+> sintetico della vista: proprio il caso che si vuole poter isolare.
+
+> ⚠️ **La `gruppo_key` è un contratto, non un'etichetta**: è la stessa stringa
+> che `POST /vendite/fatturazione/run/` accetta nel campo `gruppi`. Non va
+> costruita, derivata o normalizzata dal client — la costruisce
+> `vendite.fn_build_gruppo_fatturabile_key`, unica fonte di verità.
+
 ### Errori vivi
 
 Envelope paginato standard; ogni riga: `tipo_evento`
@@ -204,6 +259,9 @@ tiebreaker deterministico su chiavi naturali (la union non ha PK).
   `docs/it/dbzero/vendite/manual/vw_dash_competenza_mensile.md`
 - `vendite.vw_dash_competenza_errori` — doc:
   `docs/it/dbzero/vendite/manual/vw_dash_competenza_errori.md`
+- `vendite.vw_dash_competenza_gruppi` + `vw_dash_competenza_gruppi_riepilogo`
+  (emissione mirata) — doc:
+  `docs/it/dbzero/vendite/manual/vw_dash_competenza_gruppi.md`
 - `config.stati_doc_fiscale` (decode etichetta + ordine breakdown 3a)
 - `catalogo.articoli` (decode articolo nel drill-down)
 - Indice `ix_attivita_fatturabili_competenza_mese` (migration `20260706-14`)
@@ -218,3 +276,6 @@ tiebreaker deterministico su chiavi naturali (la union non ha PK).
   tutti con mock (CI-safe).
 - FE (Fase 1): rotta `/vendite/dashboard-competenza`
   (`DashboardCompetenzaView.vue`, store `dashboardCompetenza.js`).
+- **Emissione mirata (2026-07-27)**: aggiunto `gruppi/` sopra le viste
+  `20260727-18/19`. Additivo: i quattro endpoint preesistenti sono invariati.
+  Brief: `dev/work-in-progress/brief-be-fe-emissione-fattura-mirata.md`.

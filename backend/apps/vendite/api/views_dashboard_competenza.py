@@ -36,6 +36,7 @@ from apps.vendite.services.vendite_service import (
     fn_dash_competenza_attivita,
     fn_dash_competenza_commesse,
     fn_dash_competenza_errori,
+    fn_dash_competenza_gruppi,
     fn_dash_competenza_mensile,
 )
 
@@ -316,6 +317,147 @@ class ApiDashboardCompetenzaCommesse(DomainAPIView):
             competenza_mese=competenza_mese,
             stadio=stadio,
             solo_ritardo=bool(solo_ritardo),
+            order_by=order_by,
+            order_dir=order_dir,
+            page=page,
+            page_size=page_size,
+        )
+        return success_response(data)
+
+
+class ApiDashboardCompetenzaGruppi(DomainAPIView):
+    """GET /api/v1/vendite/dashboard-competenza/gruppi/ — gruppi fatturabili.
+
+    L'unita' su cui l'operatore decide nella card «Da emettere»: un documento
+    sorgente (PRV-0012, CTR-0007…) **oppure** gli oneri di una commessa, che
+    documento non hanno e senza questa lista resterebbero lavoro conteggiato ma
+    invisibile e non azionabile.
+
+    La `gruppo_key` di ogni riga e' la stessa che si rimanda a
+    `POST /vendite/fatturazione/run/` nel campo `gruppi`: non va costruita ne'
+    trasformata dal client."""
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        operation_id="vendite_dashboard_competenza_gruppi",
+        parameters=[
+            OpenApiParameter(
+                name="competenza_mese",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description="Mese di competenza ISO (YYYY-MM-DD, normalizzato al 1° del mese).",
+            ),
+            OpenApiParameter(
+                name="stadio",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Filtro stadio funnel: DA_APPROVARE | DA_EMETTERE | "
+                    "EMESSA_NON_FATTURATA | FATTURATA (default: tutti). Il "
+                    "cockpit usa DA_EMETTERE."
+                ),
+            ),
+            OpenApiParameter(
+                name="tipo_gruppo",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Filtro tipo documento/sorgente (assente = tutti): "
+                    "codice_interno della sorgente (PREVENTIVO, ORDINE_VENDITA, "
+                    "CONTRATTO, DDT_VENDITA, ...) oppure ONERI_COMMESSA per le "
+                    "righe manuali senza documento. Le voci disponibili nel "
+                    "perimetro sono nel blocco `tipi` della risposta."
+                ),
+            ),
+            OpenApiParameter(
+                name="order_by",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Colonna di ordinamento (whitelist): riferimento | "
+                    "tipo_gruppo | cliente_display | commessa_codice | "
+                    "n_attivita | valore (default) | data_attivita_max. "
+                    "Colonna non ammessa -> 400."
+                ),
+            ),
+            OpenApiParameter(
+                name="order_dir",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Direzione ordinamento: asc | desc. Valore diverso -> 400.",
+            ),
+            OpenApiParameter(
+                name="page",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Numero pagina (default 1).",
+            ),
+            OpenApiParameter(
+                name="page_size",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Dimensione pagina (default 50, max 200).",
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeDashCompetenzaGruppiResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeDashCompetenzaGruppiData",
+                        fields={
+                            "count": serializers.IntegerField(),
+                            "page": serializers.IntegerField(),
+                            "page_size": serializers.IntegerField(),
+                            "total_pages": serializers.IntegerField(),
+                            "results": serializers.ListField(child=serializers.DictField()),
+                            "riepilogo": serializers.DictField(),
+                            "tipi": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce via GET la lista paginata dei gruppi fatturabili del
+    #        mese/stadio richiesto PIU' il riepilogo di perimetro (n gruppi, n
+    #        attivita', valore, di cui oneri) nella stessa risposta.
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        competenza_mese = qp_iso_date_optional(qp.get("competenza_mese"), "competenza_mese")
+        ErrorManager.require(
+            competenza_mese is not None,
+            code="E_VENDITE_VALIDATION",
+            message="Parametro competenza_mese obbligatorio.",
+            function_name="vendite.api.views_dashboard_competenza.gruppi",
+        )
+        assert competenza_mese is not None
+        stadio = qp_str_upper(qp.get("stadio"))
+        # Vocabolario ESTENSIBILE lato DB (config.sorgenti.codice_interno +
+        # ONERI_COMMESSA): nessuna whitelist Python, che si disallineerebbe al
+        # primo tipo di sorgente aggiunto. Il valore e' un bind param (nessuna
+        # injection) e le voci valide le dichiara il blocco `tipi` della
+        # risposta, calcolato sui dati.
+        tipo_gruppo = qp_str_upper(qp.get("tipo_gruppo"))
+        order_by = qp_str(qp.get("order_by"))
+        order_dir = qp_str(qp.get("order_dir"))
+        page = qp_int_strict(qp.get("page"), "page", 1)
+        page_size = qp_int_strict(qp.get("page_size"), "page_size", 50)
+
+        data = fn_dash_competenza_gruppi(
+            competenza_mese=competenza_mese,
+            stadio=stadio,
+            tipo_gruppo=tipo_gruppo,
             order_by=order_by,
             order_dir=order_dir,
             page=page,

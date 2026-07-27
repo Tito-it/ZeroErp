@@ -39,6 +39,10 @@ class LottoPipelineParams:
     # motivo FERMATO_A_STATO). None = fino in fondo (comportamento storico).
     # Confronto Python puro: la risoluzione codice->id sta nel chiamante.
     fino_a_stato_doc_fiscale_id: int | None = None
+    # EMISSIONE MIRATA (brief emissione mirata, D-3): chiavi dei gruppi
+    # fatturabili da lavorare. Persistite sul lotto alla creazione — NON sono
+    # un parametro che viaggia fino agli step. None = nessuna restrizione.
+    gruppi: tuple[str, ...] | None = None
 
 
 class LottoPipelineRunner:
@@ -292,7 +296,10 @@ class LottoPipelineRunner:
             meta={"process": "close_lotto_by_flag"},
         )
 
-    # Scopo: Risolve o crea il lotto in transazione autonoma.
+    # Scopo: Risolve o crea il lotto in transazione autonoma, registrando nella
+    #        STESSA transazione l'eventuale perimetro mirato (gruppi
+    #        fatturabili). Obiettivo: un lotto mirato non deve mai esistere
+    #        senza il suo criterio — sarebbe un giro di massa travestito.
     # Il lotto persiste anche se la fase di esecuzione fallisce,
     # consentendo a _mark_lotto_error di trovarlo e marcarlo ERRORE.
     def _resolve_lotto(self, params: LottoPipelineParams) -> tuple[int, bool]:
@@ -311,6 +318,12 @@ class LottoPipelineRunner:
                 meta=params.meta,
                 tipo_lotto=params.tipo_lotto,
             )
+            # Perimetro mirato scritto SOLO alla creazione: su un lotto
+            # esistente (rerun / avanza step del LottoDrawer) il criterio e'
+            # gia' persistito e va riprodotto, non riscritto — riscriverlo da
+            # una chiamata che non porta gruppi lo allargherebbe in silenzio.
+            if params.gruppi and not is_existing_lotto_request:
+                self.repository.set_lotto_gruppi(lotto_id, params.gruppi)
         return lotto_id, is_existing_lotto_request
 
     # Scopo: Orchestra l'intero flusso pipeline lotto: risoluzione lotto, step execution, resume/rollback e gestione errori finali.

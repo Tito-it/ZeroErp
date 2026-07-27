@@ -79,6 +79,7 @@ def _build_pipeline_params(
     meta: LottoPipelineMeta | None,
     dry_run: bool,
     tipo_lotto: str,
+    gruppi: tuple[str, ...] | None = None,
 ) -> LottoPipelineParams:
     return LottoPipelineParams(
         lotto_id=lotto_id,
@@ -91,6 +92,7 @@ def _build_pipeline_params(
         meta=meta,
         dry_run=dry_run,
         tipo_lotto=tipo_lotto,
+        gruppi=gruppi,
     )
 
 
@@ -145,12 +147,18 @@ def run_lotto_pipeline_until_done(
     dry_run: bool = False,
     tipo_lotto: str = "MASSIVO",
     fino_a_stato: str | None = None,
+    gruppi: tuple[str, ...] | None = None,
 ) -> dict[str, object]:
     """Entrypoint servizio Python per eseguire la catena lotto fino a conclusione.
 
     `fino_a_stato` (C-1, gate fiscale D-1): codice_interno di
     config.stati_doc_fiscale (es. 'EMESSA') a cui la catena si FERMA con
-    motivo_stop=FERMATO_A_STATO. None = fino in fondo (storico)."""
+    motivo_stop=FERMATO_A_STATO. None = fino in fondo (storico).
+
+    `gruppi` (emissione mirata, D-3): chiavi dei gruppi fatturabili da lavorare.
+    Vengono PERSISTITE sul lotto alla creazione, non passate agli step: da li'
+    in poi il perimetro vive nel `LottoContext` e sopravvive ai rerun. None =
+    nessuna restrizione (giro di massa, comportamento storico)."""
     _validate_pipeline_lookups(
         tipo_doc_fiscale_id=tipo_doc_fiscale_id,
         utility_id=utility_id,
@@ -188,6 +196,7 @@ def run_lotto_pipeline_until_done(
         meta=meta,
         dry_run=dry_run,
         tipo_lotto=tipo_lotto,
+        gruppi=gruppi,
     )
     if fino_a_stato_id is not None:
         params = replace(params, fino_a_stato_doc_fiscale_id=fino_a_stato_id)

@@ -135,6 +135,11 @@ _SELECT_COLS_CONTRATTO = """
     c.valuta_id,
     v_val.codice AS valuta_codice,
     v_val.descrizione AS valuta_descrizione,
+    -- Corsia di instradamento della fatturazione (Fase B del brief emissione
+    -- mirata): «questo contratto va fatturato subito». Modificabile solo
+    -- prima del push in commessa (guard DB); in ATTIVO la whitelist di patch
+    -- non lo ammette, quindi il FE lo mostra readonly da li' in poi.
+    c.fatturazione_immediata,
     c.meta,
     c.data_insert,
     c.user_insert,
@@ -715,6 +720,10 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             "tipo_variazione_globale",
             "valore_variazione_globale",
             "categoria_cliente_id_snapshot",
+            # Corsia di instradamento (Fase B brief emissione mirata): il guard
+            # DB respinge l'UPDATE dopo il push in commessa, e la whitelist di
+            # patch per stato lo ammette solo in DRAFT.
+            "fatturazione_immediata",
             "meta",
         )
         set_parts: list[str] = []

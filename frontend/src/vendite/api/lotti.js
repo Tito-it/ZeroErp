@@ -90,12 +90,23 @@ export function getFatturazioneEsiti(competenzaMese = null) {
 // POST «Fattura competenza» (C-3/C-6): avvia un GIRO di fatturazione on-demand,
 // NON bloccante (I-3). Accoda un job in dbops.coda_lavori e ritorna subito
 // { job_id, stato: 'PENDING' }; l'avanzamento si segue via getFatturazioneRun.
-// Corsia differita → si ferma a EMESSA (D-1): la numerazione è atto separato
-// (I-7). Idempotenza a 2 layer: header HTTP + chiave business competenza+scope.
-export function runFatturazione(competenzaMese) {
+// Si ferma a EMESSA (D-1): la numerazione è atto separato (I-7). Idempotenza a
+// 2 layer: header HTTP + chiave business competenza+scope[+gruppi].
+//
+// `gruppi` (emissione mirata): array di `gruppo_key` prese da
+// listDashboardCompetenzaGruppi. Presente → si fatturano SOLO quei gruppi
+// fatturabili (un documento sorgente o gli oneri di una commessa) e la corsia
+// non filtra: la selezione dell'operatore è un perimetro più preciso
+// dell'instradamento automatico. Assente → giro di massa del mese, invariato.
+//
+// L'esito del job (`result`) porta `lotti: [{lotto_id, …}]`: sono N, non uno —
+// un gruppo con righe di tipo doc fiscale diverso finisce in lotti diversi.
+export function runFatturazione(competenzaMese, { gruppi = null } = {}) {
+  const payload = { competenza_mese: competenzaMese }
+  if (gruppi && gruppi.length) payload.gruppi = gruppi
   return api.post(
     '/vendite/fatturazione/run/',
-    { competenza_mese: competenzaMese },
+    payload,
     { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
