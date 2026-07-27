@@ -268,3 +268,35 @@ la provenienza è tracciata da una coppia di colonne tipizzate dedicate:
 
 `vendite.ordini` è la **base operativa** del ciclo vendite: raccoglie tutte le informazioni contrattuali e logistiche preliminari alla spedizione e alla fatturazione.  
 Assicura la **tracciabilità completa** del flusso commerciale e costituisce un **ponte naturale** tra la fase commerciale, logistica e amministrativa del gestionale.
+
+---
+
+### Corsia di fatturazione: `fatturazione_immediata` (27-07-2026)
+
+Colonna `boolean NOT NULL DEFAULT false` aggiunta dalla slice di simmetria del
+flag (brief `brief-db-emissione-fattura-per-documento-sorgente` PARTE B,
+migration `20260727-01`). Prima esisteva **solo** su `vendite.preventivi`: le altre
+sorgenti esponevano il campo nel contratto delle `fn_list_*_da_pushare` ma con
+valore costante `FALSE`, quindi **solo un preventivo poteva essere fatturato
+subito** — non per una scelta di dominio, ma per un buco di modello.
+
+| Valore | Corsia | Arriva a |
+|---|---|---|
+| `true` | immediata (lotto `GIORNALIERO`) | `DEFINITIVA` — numera da sola |
+| `false` *(default)* | differita (lotto `MASSIVO`) | `EMESSA` — la numerazione è un atto separato |
+
+**Si stabilisce PRIMA del push.** Il valore viene letto una sola volta, da
+`vendite.fn_list_ordini_da_pushare`, e propagato alla commessa dove è **parte della chiave di dedup** di
+`fn_get_or_create_commessa`. Dopo il push è inerte, e la modifica è respinta
+dal guard
+[`trgfn_guard_fatturazione_immediata_immutabile`](/dbzero/vendite/funzioni/trgfn_guard_fatturazione_immediata_immutabile)
+(`E_FATT_IMMEDIATA_NON_MODIFICABILE`). Il caso «cambio idea dopo» è coperto
+dall'**emissione mirata per gruppo fatturabile**, non da questo flag.
+
+⚠️ **Non governa `prezzo_bloccato`.** L'accoppiamento
+`prezzo_bloccato = COALESCE(fatturazione_immediata, false)` esiste **solo sui
+preventivi**: qui i due valori sono indipendenti e vanno tenuti tali.
+
+Il default `false` garantisce che l'aggiunta della colonna **non cambi la corsia
+di nessun documento esistente**.
+

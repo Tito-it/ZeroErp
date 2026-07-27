@@ -28,3 +28,4 @@ id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,us
 27,2,numera_fatture_lotti,Numerazione fiscale fatture di lotto (irreversibile),t,t,{},2026-07-20 00:00:00+02,postgres,2026-07-20 00:00:00+02,postgres
 28,13,code_manage,Gestione code di lavoro e stampa (vista e azioni cross-utente),f,t,{},2026-07-21 00:00:00+02,postgres,2026-07-21 00:00:00+02,postgres
 29,2,carica_voce_manuale,Carica voce manuale (onere) su commessa,f,t,{},2026-07-23 00:00:00+02,postgres,2026-07-23 00:00:00+02,postgres
+30,2,cambia_stato_commessa,Cambia stato commessa (chiudi/riapri/annulla),t,t,{},2026-07-27 00:00:00+02,postgres,2026-07-27 00:00:00+02,postgres

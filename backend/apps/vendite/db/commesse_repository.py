@@ -941,12 +941,19 @@ class CommesseRepository:
         *,
         only_approved: bool = True,
         dry_run: bool = False,
+        gruppi: tuple[str, ...] | list[str] | None = None,
     ) -> CommessaEmitResult:
         """Pull commessa → attivita_fatturabili (step 0 pipeline fatturazione).
         Idempotente. Restituisce contatori candidati/inseriti/aggiornati.
 
         NB: la fn DB non ha più `p_lotto_attivita_id` (sottosistema lotto-attività
-        deprecato, changeset 20260227-16): firma a 3 parametri."""
+        deprecato, changeset 20260227-16).
+
+        `gruppi` (emissione mirata, A3): restringe il pull ai soli gruppi
+        fatturabili richiesti — senza, le righe degli altri gruppi della stessa
+        commessa passerebbero a `stato_emissione = EMESSA` uscendo dalla card
+        «Da emettere» pur non essendo state chieste. None = nessuna
+        restrizione (comportamento storico)."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -954,10 +961,17 @@ class CommesseRepository:
                 FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
                     p_commessa_id => %s,
                     p_only_approved => %s,
-                    p_dry_run => %s
+                    p_dry_run => %s,
+                    p_gruppi => %s::text[]
                 )
                 """,
-                [commessa_id, only_approved, dry_run],
+                # ⚠️ `if gruppi` e non `is not None`: una lista VUOTA diventerebbe
+                # `'{}'::text[]`, e `= ANY('{}')` e' sempre falso → zero righe.
+                # Vuoto e assente devono collassare entrambi su NULL = nessuna
+                # restrizione (convenzione DB dell'emissione mirata). Stessa
+                # forma nelle due discovery sotto.
+                [commessa_id, only_approved, dry_run,
+                 list(gruppi) if gruppi else None],
             )
             row = cursor.fetchone()
         assert row is not None
@@ -977,10 +991,14 @@ class CommesseRepository:
         emittente_soggetto_ruolo_id: int | None = None,
         fatturazione_immediata: bool | None = None,
         limit: int = 1000,
+        gruppi: tuple[str, ...] | list[str] | None = None,
     ) -> list[int]:
         """Chiama vendite.fn_list_commesse_emittibili e restituisce i commessa_id.
         `fatturazione_immediata`: True=solo immediate, False=solo differite,
-        None=tutte (storico). Filtro usato per separare le corsie del driver."""
+        None=tutte (storico). Filtro usato per separare le corsie del driver.
+
+        `gruppi` (emissione mirata, A6): visita solo le commesse che contengono
+        almeno uno dei gruppi richiesti. None = nessuna restrizione."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -991,11 +1009,13 @@ class CommesseRepository:
                     p_utility_id => %s,
                     p_emittente_soggetto_ruolo_id => %s,
                     p_fatturazione_immediata => %s,
-                    p_limit => %s
+                    p_limit => %s,
+                    p_gruppi => %s::text[]
                 )
                 """,
                 [competenza_mese, billing_account_id, utility_id,
-                 emittente_soggetto_ruolo_id, fatturazione_immediata, limit],
+                 emittente_soggetto_ruolo_id, fatturazione_immediata, limit,
+                 list(gruppi) if gruppi else None],
             )
             return [row[0] for row in cursor.fetchall()]
 
@@ -1008,6 +1028,7 @@ class CommesseRepository:
         emittente_soggetto_ruolo_id: int | None = None,
         fatturazione_immediata: bool | None = None,
         limit: int = 10000,
+        gruppi: tuple[str, ...] | list[str] | None = None,
     ) -> list[CommessaEmittibileLane]:
         """Terne distinte `(emittente, tipo_doc_fiscale, utility)` con lavoro pronto da
         fatturare, via vendite.fn_list_emittibili_lane. Usato dal driver batch per creare
@@ -1022,7 +1043,11 @@ class CommesseRepository:
 
         `competenza_mese` in input è un **bound superiore** (`<=`, cumulativo). Le righe
         con tipo_doc_fiscale NULL sono escluse a monte dalla funzione DB. `limit` è il cap
-        sulle TERNE restituite."""
+        sulle TERNE restituite.
+
+        `gruppi` (emissione mirata, A5): restituisce solo le terne dei gruppi
+        richiesti. Senza, un giro mirato farebbe nascere un lotto VUOTO per ogni
+        altra terna del perimetro. None = nessuna restrizione."""
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -1034,11 +1059,13 @@ class CommesseRepository:
                     p_utility_id => %s,
                     p_emittente_soggetto_ruolo_id => %s,
                     p_fatturazione_immediata => %s,
-                    p_limit => %s
+                    p_limit => %s,
+                    p_gruppi => %s::text[]
                 )
                 """,
                 [competenza_mese, billing_account_id, utility_id,
-                 emittente_soggetto_ruolo_id, fatturazione_immediata, limit],
+                 emittente_soggetto_ruolo_id, fatturazione_immediata, limit,
+                 list(gruppi) if gruppi else None],
             )
             return [
                 CommessaEmittibileLane(
@@ -1061,6 +1088,11 @@ class CommesseRepository:
         "prezzo_snapshot", "prezzo_bloccato", "prezzo_da_riallineare",
         "stato_approvazione", "stato_emissione", "sorgente_tipo_id",
         "sorgente_codice", "meta", "data_update",
+        # In coda alla RETURNS TABLE (changeset 20260724-07): EXISTS di un'AF
+        # con fattura_riga_id valorizzato = specchio esatto del guard BE
+        # `_assert_non_fatturata`. Il FE lo usa per nascondere le azioni prezzo
+        # su riga già fatturata. Bool nativo: nessuna decodifica speciale.
+        "fatturata",
     )
     # Type mapping per serializzazione colonne attivita.
     _ATTIVITA_DATE_COLS = frozenset({

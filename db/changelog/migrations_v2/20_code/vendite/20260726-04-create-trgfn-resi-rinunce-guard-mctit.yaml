@@ -1,0 +1,257 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Guard ponte RINUNCE + estensione del guard gemello
+#   (brief-db-chiusura-riconsegna-reso-definitivo §4.6, Fase 1 voce 4)
+#
+# DUE oggetti in un changeSet perche' sono UN SOLO invariante letto dai due lati:
+#
+#   quantita >= Sigma riconsegnate + Sigma rinunciate
+#
+# 1) vendite.trgfn_resi_rinunce_guard (NUOVO) — mirror di
+#    trgfn_resi_riconsegne_guard: tipo riapre_residuo obbligatorio + la quota
+#    rinunciata non puo' eccedere il residuo. Codice nuovo
+#    E_RESO_RINUNCIA_SUPERA_RESO (560), simmetrico a
+#    E_RESO_RICONSEGNA_SUPERA_RESO (534).
+#
+# 2) vendite.trgfn_resi_riconsegne_guard (ESTESO) — ⚠️ MODIFICA OBBLIGATORIA,
+#    non un abbellimento. Oggi calcola v_residuo := v_qta_resa - v_gia_ric:
+#    somma SOLO le riconsegne. Introdotte le rinunce, su una riga da 10 con 7
+#    rinunciati vedrebbe ancora residuo=10 e lascerebbe ri-spedire 10 ->
+#    Sigma ric + Sigma rin = 17 > 10, cioe' l'invariante violato dal lato
+#    opposto. Senza questa estensione la voce 1 sarebbe una mezza cintura.
+#
+# LOCK: nessun advisory lock. La serializzazione e' il FOR UPDATE su
+# vendite.resi_righe che entrambi i guard eseguono: essendo la STESSA riga padre,
+# rinuncia e ri-consegna concorrenti si serializzano fra loro senza altro
+# meccanismo. E' il pattern di casa (mirror trgfn_ordini_ful_guard_consistenza) e
+# protegge anche le scritture dirette sui ponti, non solo quelle che passano
+# dalle funzioni madri.
+#
+# FORMULA: entrambi i guard NON chiamano fn_resi_riga_residuo_riconsegna e la
+# calcolano inline. E' deliberato: il guard deve escludere la riga corrente in
+# UPDATE (TG_OP <> 'UPDATE' OR q.id <> NEW.id), cosa che l'helper - pensato per
+# le viste - non sa fare. L'helper resta il punto unico per i CONSUMATORI in
+# lettura (vista elenco, madre, coda accrediti); qui la formula e' la stessa ma
+# valutata su un insieme diverso (senza la riga in corso di modifica).
+#
+# Base: corpo del gemello dalla doc auto-gen
+#   docs/it/dbzero/vendite/funzioni/trgfn_resi_riconsegne_guard.md (rev 2026-07-13).
+# Dipendenze: vendite.resi_righe_rinunce (20260726-01), codice errore 560.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260726-04-create-trgfn-resi-rinunce-guard-mctit.yaml
+
+  - changeSet:
+      id: 20260726-04-create-trgfn-resi-rinunce-guard
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard ponte rinunce (nuovo, E_RESO_RINUNCIA_SUPERA_RESO 560) + guard
+        gemello ri-consegne ESTESO alle rinunce: un solo invariante
+        quantita >= Sigma riconsegnate + Sigma rinunciate, presidiato dai due lati.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- 1) GUARD NUOVO sul ponte rinunce
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_rinunce_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: consistenza ponte RINUNCE. Tipo ri-consegna obbligatorio;
+              --   Sigma riconsegnate + Sigma rinunciate <= qta_resa;
+              --   lock anti-concorrenza. Mirror di trgfn_resi_riconsegne_guard.
+              DECLARE
+                  v_qta_resa vendite.resi_righe.quantita%TYPE;
+                  v_riapre   config.tipi_reso.riapre_residuo%TYPE;
+                  v_gia_ric  numeric;
+                  v_gia_rin  numeric;
+                  v_residuo  numeric;
+              BEGIN
+                  -- 0) qta > 0 (difesa oltre al CHECK).
+                  IF NEW.qta IS NULL OR NEW.qta <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_rinunce_guard','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('qta', NEW.qta), NEW.tx_id, NEW.qta::text);
+                  END IF;
+
+                  -- 1) Lock riga reso + ENTRAMBI i gruppi (serializza rinuncia e
+                  --    ri-consegna concorrenti: condividono la stessa copertura).
+                  PERFORM 1 FROM vendite.resi_righe WHERE id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_riconsegne q
+                    WHERE q.resi_riga_id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_rinunce r
+                    WHERE r.resi_riga_id = NEW.resi_riga_id FOR UPDATE;
+
+                  -- 2) Riga reso: qta_resa + tipo ri-consegna.
+                  SELECT rr.quantita, tr.riapre_residuo
+                    INTO v_qta_resa, v_riapre
+                    FROM vendite.resi_righe rr
+                    JOIN config.tipi_reso tr ON tr.id = rr.tipo_reso_id
+                   WHERE rr.id = NEW.resi_riga_id;
+
+                  -- Si rinuncia solo a merce rientrata PER essere ri-consegnata:
+                  -- su una riga A_CREDITO non c'e' nulla da ri-consegnare, quindi
+                  -- nulla a cui rinunciare. Riuso del codice del gemello (533).
+                  IF v_riapre IS DISTINCT FROM true THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_rinunce_guard','E_RESO_RICONSEGNA_TIPO_NON_VALIDO',
+                      jsonb_build_object('resi_riga_id', NEW.resi_riga_id),
+                      NEW.tx_id, NEW.resi_riga_id::text);
+                  END IF;
+
+                  -- 3) Copertura residua = qta_resa - Sigma ric - Sigma rin
+                  --    (esclusa la riga corrente in UPDATE).
+                  SELECT COALESCE(SUM(q.qta), 0)
+                    INTO v_gia_ric
+                    FROM vendite.resi_righe_riconsegne q
+                   WHERE q.resi_riga_id = NEW.resi_riga_id;
+
+                  SELECT COALESCE(SUM(r.qta), 0)
+                    INTO v_gia_rin
+                    FROM vendite.resi_righe_rinunce r
+                   WHERE r.resi_riga_id = NEW.resi_riga_id
+                     AND (TG_OP <> 'UPDATE' OR r.id <> NEW.id);
+
+                  v_residuo := v_qta_resa - v_gia_ric - v_gia_rin;
+
+                  IF NEW.qta > v_residuo THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_rinunce_guard','E_RESO_RINUNCIA_SUPERA_RESO',
+                      jsonb_build_object('resi_riga_id', NEW.resi_riga_id,
+                                         'qta_resa', v_qta_resa,
+                                         'gia_riconsegnato', v_gia_ric,
+                                         'gia_rinunciato', v_gia_rin,
+                                         'qta_nuova', NEW.qta,
+                                         'residuo', v_residuo),
+                      NEW.tx_id,
+                      NEW.resi_riga_id::text, v_qta_resa::text,
+                      v_gia_ric::text, v_gia_rin::text,
+                      NEW.qta::text, v_residuo::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_rinunce_guard()
+              IS 'Guard ponte RINUNCE: tipo riapre_residuo obbligatorio (E_RESO_RICONSEGNA_TIPO_NON_VALIDO, riuso 533) + Sigma riconsegnate + Sigma rinunciate <= qta_resa (E_RESO_RINUNCIA_SUPERA_RESO 560), lock FOR UPDATE su resi_righe e su ENTRAMBI i ponti. Mirror di trgfn_resi_riconsegne_guard: le due uscite (ri-spedire / dichiarare definitiva) condividono la stessa copertura, quindi lo stesso invariante e'' presidiato dai due lati. Il FOR UPDATE sulla riga reso padre serializza rinuncia e ri-consegna concorrenti senza advisory lock. rev 2026-07-26.';
+
+              DROP TRIGGER IF EXISTS trg_resi_rinunce_a10_guard_ins_upd ON vendite.resi_righe_rinunce;
+              CREATE TRIGGER trg_resi_rinunce_a10_guard_ins_upd
+                BEFORE INSERT OR UPDATE OF qta, resi_riga_id
+                ON vendite.resi_righe_rinunce
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_resi_rinunce_guard();
+
+              -- =========================================================
+              -- 2) GUARD GEMELLO ESTESO alle rinunce (obbligatorio)
+              --    Corpo dalla doc auto-gen rev 2026-07-13, unica modifica:
+              --    il residuo sottrae anche Sigma rinunciate.
+              -- =========================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_riconsegne_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: consistenza ponte ri-consegna. Tipo ri-consegna
+              --   obbligatorio; Sigma qta <= qta_resa; lock anti-concorrenza.
+              -- rev 2026-07-26: il residuo sottrae ANCHE le rinunce
+              --   (resi_righe_rinunce). Senza, su una riga da 10 con 7 rinunciati
+              --   il guard vedrebbe residuo=10 e lascerebbe ri-spedire 10:
+              --   Sigma ric + Sigma rin = 17 > 10. Le due uscite condividono la
+              --   stessa copertura, quindi lo stesso invariante.
+              DECLARE
+                  v_qta_resa vendite.resi_righe.quantita%TYPE;
+                  v_riapre   config.tipi_reso.riapre_residuo%TYPE;
+                  v_gia_ric  numeric;
+                  v_gia_rin  numeric;
+                  v_residuo  numeric;
+              BEGIN
+                  -- 0) qta > 0 (difesa oltre al CHECK).
+                  IF NEW.qta IS NULL OR NEW.qta <= 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_riconsegne_guard','E_QTA_NON_POSITIVA',
+                      jsonb_build_object('qta', NEW.qta), NEW.tx_id, NEW.qta::text);
+                  END IF;
+
+                  -- 1) Lock riga reso + gruppo riconsegne + gruppo rinunce
+                  --    (rev 2026-07-26: anche le rinunce, stessa copertura).
+                  PERFORM 1 FROM vendite.resi_righe WHERE id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_riconsegne q
+                    WHERE q.resi_riga_id = NEW.resi_riga_id FOR UPDATE;
+                  PERFORM 1 FROM vendite.resi_righe_rinunce r
+                    WHERE r.resi_riga_id = NEW.resi_riga_id FOR UPDATE;
+
+                  -- 2) Riga reso: qta_resa + tipo ri-consegna.
+                  SELECT rr.quantita, tr.riapre_residuo
+                    INTO v_qta_resa, v_riapre
+                    FROM vendite.resi_righe rr
+                    JOIN config.tipi_reso tr ON tr.id = rr.tipo_reso_id
+                   WHERE rr.id = NEW.resi_riga_id;
+
+                  IF v_riapre IS DISTINCT FROM true THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_riconsegne_guard','E_RESO_RICONSEGNA_TIPO_NON_VALIDO',
+                      jsonb_build_object('resi_riga_id', NEW.resi_riga_id),
+                      NEW.tx_id, NEW.resi_riga_id::text);
+                  END IF;
+
+                  -- 3) Copertura residua = qta_resa - Sigma ric - Sigma rin
+                  --    (escl. riga corrente in UPDATE sul proprio ponte).
+                  SELECT COALESCE(SUM(q.qta), 0)
+                    INTO v_gia_ric
+                    FROM vendite.resi_righe_riconsegne q
+                   WHERE q.resi_riga_id = NEW.resi_riga_id
+                     AND (TG_OP <> 'UPDATE' OR q.id <> NEW.id);
+
+                  SELECT COALESCE(SUM(r.qta), 0)
+                    INTO v_gia_rin
+                    FROM vendite.resi_righe_rinunce r
+                   WHERE r.resi_riga_id = NEW.resi_riga_id;
+
+                  v_residuo := v_qta_resa - v_gia_ric - v_gia_rin;
+
+                  IF NEW.qta > v_residuo THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','trgfn_resi_riconsegne_guard','E_RESO_RICONSEGNA_SUPERA_RESO',
+                      jsonb_build_object('resi_riga_id', NEW.resi_riga_id,
+                                         'qta_resa', v_qta_resa,
+                                         'gia_riconsegnato', v_gia_ric,
+                                         'gia_rinunciato', v_gia_rin,
+                                         'qta_nuova', NEW.qta,
+                                         'residuo', v_residuo),
+                      NEW.tx_id,
+                      NEW.resi_riga_id::text, v_qta_resa::text,
+                      v_gia_ric::text, NEW.qta::text, v_residuo::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_riconsegne_guard()
+              IS 'Guard ponte ri-consegna: tipo riapre_residuo obbligatorio (E_RESO_RICONSEGNA_TIPO_NON_VALIDO) + Sigma qta <= qta_resa (E_RESO_RICONSEGNA_SUPERA_RESO), lock FOR UPDATE. Mirror trgfn_ordini_ful_guard_consistenza. rev 2026-07-13. rev 2026-07-26 (brief-db-chiusura-riconsegna-reso-definitivo S4.6): il residuo sottrae ANCHE le rinunce (vendite.resi_righe_rinunce) e il lock copre entrambi i ponti - le due uscite (ri-spedire / dichiarare definitiva) condividono la stessa copertura, quindi lo stesso invariante quantita >= Sigma ric + Sigma rin, presidiato dai due lati.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_resi_rinunce_a10_guard_ins_upd ON vendite.resi_righe_rinunce;
+              DROP FUNCTION IF EXISTS vendite.trgfn_resi_rinunce_guard();
+              -- Il guard gemello NON si ripristina qui: la versione senza le
+              -- rinunce va ri-applicata dal changeset 20260713-25. ATTENZIONE:
+              -- quella revisione ignora le rinunce nel calcolo del residuo.

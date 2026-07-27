@@ -29,7 +29,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_vendite_preventivi_r_iva_preventivo_id | `CREATE INDEX ix_vendite_preventivi_r_iva_preventivo_id ON vendite.preventivi_riepiloghi_iva USING btree (preventivo_id)` |
 | pk_preventivi_r_iva | `CREATE UNIQUE INDEX pk_preventivi_r_iva ON vendite.preventivi_riepiloghi_iva USING btree (id)` |
 | uq_preventivi_r_iva_key | `CREATE UNIQUE INDEX uq_preventivi_r_iva_key ON vendite.preventivi_riepiloghi_iva USING btree (preventivo_id, COALESCE(natura_id, 0), COALESCE(esigibilita, 'I'::bpchar), COALESCE(split_payment, false), COALESCE(iva_id, 0))` |
 

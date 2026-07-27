@@ -37,7 +37,7 @@ export const STATO_PREVENTIVO = Object.freeze({
 // Destinazione effettiva di smistamento riga preventivo
 // (`config.nature_vendita.destinazione_tipo`, natura NULL = pregresso →
 // COMMESSA lato DB). Guida il ROUTING di "Smista selezionate" nel
-// PreventiviSmistamentoPanel: merce → ordine, servizi → commessa.
+// PreventiviSmistamentoDialog: merce → ordine, servizi → commessa.
 export const DESTINAZIONE_SMISTAMENTO = Object.freeze({
   ORDINE: 'ORDINE',
   COMMESSA: 'COMMESSA',

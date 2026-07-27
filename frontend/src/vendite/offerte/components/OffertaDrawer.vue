@@ -12,7 +12,6 @@ import { computed, nextTick, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import DatePicker from 'primevue/datepicker'
-import Divider from 'primevue/divider'
 import AppDialog from '../../../core/components/AppDialog.vue'
 import Drawer from 'primevue/drawer'
 import InputNumber from 'primevue/inputnumber'
@@ -32,7 +31,7 @@ import BillingAccountLookup from '../../../core/components/BillingAccountLookup.
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
-import LineagePassaggiPanel from '../../_shared/lineage/LineagePassaggiPanel.vue'
+import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegamentiBar.vue'
 import FormFooter from '../../../core/components/FormFooter.vue'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import EmittenteFiscaleField from '../../../core/components/EmittenteFiscaleField.vue'
@@ -183,6 +182,9 @@ const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
 // Sub-drawer + dialogs.
 const eccezioniDrawerVisible = ref(false)
 const noteDrawerVisible = ref(false)
+// Ref alla barra collegamenti: le azioni dell'offerta creano archi
+// (offerta→contratto, offerta→ordine) — i chip si ricaricano in refreshDetail.
+const collegamentiRef = ref(null)
 const emissioneDialogVisible = ref(false)
 const esitoDialogVisible = ref(false)
 const esitoDialogModalita = ref('ACCETTATA') // ACCETTATA | RIFIUTATA | ANNULLATA
@@ -504,6 +506,10 @@ async function refreshDetail() {
   if (!fv.isCurrent(t)) return
   detail.value = d
   populateFromDetail(d)
+  // Chip collegamenti riallineati qui e non nei singoli handler: push contratto
+  // e genera ordine creano archi (offerta→contratto, offerta→ordine) e passano
+  // TUTTI da questo punto — agganciarlo qui vale anche per le azioni future.
+  collegamentiRef.value?.reload()
 }
 
 // Reload revisioni: thin wrapper su `revisioniTab.loadRevisioni` che ha gia'
@@ -839,6 +845,17 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
             </template>
           </DrawerActionsBar>
 
+          <!-- Collegamenti diretti (pratica + origine + destinazioni di livello
+               1): segnalazione a colpo d'occhio sotto i pulsanti — «Ordine»,
+               «Contratto». Il grafo completo si apre dai chip in dialog.
+               Solo in EDIT: in CREATE non c'e' ancora un documento. -->
+          <DocumentoCollegamentiBar
+            v-if="isEdit && offertaId"
+            ref="collegamentiRef"
+            base-path="/vendite/offerte"
+            :doc-id="offertaId"
+            :readonly="parentReadonly" />
+
           <!-- Motivo per cui push contratto / genera ordine non sono offerti
                (gia' generato, offerta non accettata): senza questo i pulsanti
                spariscono e basta. -->
@@ -1108,15 +1125,6 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
                 </Message>
               </template>
 
-              <!-- Genealogia/lineage (pannello "Passaggi", BB condiviso
-                   lazy: fetch al primo expand). Solo in EDIT. -->
-              <template v-if="isEdit && detail">
-                <Divider />
-                <LineagePassaggiPanel
-                  base-path="/vendite/offerte"
-                  :doc-id="offertaId"
-                  :readonly="parentReadonly" />
-              </template>
 
             </TabPanel>
 

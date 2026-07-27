@@ -85,18 +85,25 @@ _STATI_PUSHABILI: frozenset[str] = frozenset(
 )
 
 # Whitelist campi testata accettati in create/update (null_vs_empty → None).
+# `fatturazione_immediata` (simmetria del flag, Fase B del brief emissione
+# mirata): instradamento di CORSIA deciso PRIMA del push in commessa — dopo il
+# push il flag e' inerte (fa parte della chiave di dedup della commessa) e il
+# guard DB `trgfn_guard_fatturazione_immediata_immutabile` respinge l'UPDATE.
+# Qui non serve una difesa applicativa aggiuntiva: la testata dell'ordine e'
+# editabile solo in DRAFT (`can_edit_testata`), e il push avviene da CONFERMATO
+# in poi — le due finestre non si sovrappongono.
 _CREATE_KEYS_ORDINE: frozenset[str] = frozenset({
     "billing_account_id", "soggetto_ruolo_id", "utility_id",
     "emittente_fiscale_id", "valuta_id", "modalita_pagamento_id",
     "termine_pagamento_id", "fatturazione_trigger", "agente_soggetto_ruolo_id",
-    "data", "meta",
+    "data", "meta", "fatturazione_immediata",
 })
 # NB: billing_account_id NON e' aggiornabile (cliente immutabile post-creazione,
 # vedi aggiorna_ordine): a differenza di create, dove deriva soggetto_ruolo_id.
 _UPDATE_KEYS_ORDINE: frozenset[str] = frozenset({
     "utility_id", "valuta_id", "modalita_pagamento_id",
     "termine_pagamento_id", "fatturazione_trigger", "agente_soggetto_ruolo_id",
-    "data", "meta",
+    "data", "meta", "fatturazione_immediata",
 })
 _CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id", "descrizione", "quantita", "qta_operativa",
@@ -374,6 +381,7 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
             data=data.get("data"),
             stato_doc_ordine_id=int(stato_bozza_id),
             meta=data.get("meta") if isinstance(data.get("meta"), dict) else None,
+            fatturazione_immediata=data.get("fatturazione_immediata"),
         )
     # UX v2: auto-assegnazione best-effort dell'indirizzo default (indirizzo
     # di ruolo CON del cliente, fallback FATT). Mai bloccante. Copre anche le

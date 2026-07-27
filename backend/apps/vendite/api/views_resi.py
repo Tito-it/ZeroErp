@@ -467,6 +467,50 @@ class ApiResoGeneraDdtRiconsegna(DomainAPIView):
         return handle_post_json(request, handler=_handler)
 
 
+class ApiResoChiudiRiconsegna(DomainAPIView):
+    """POST /api/v1/vendite/resi/<reso_id>/chiudi-riconsegna/ — dichiara
+    DEFINITIVA una quota di merce resa per ri-consegna (non tornera' al
+    cliente) via fn madre `fn_chiudi_riconsegna_reso`: il residuo ordine si
+    chiude (→ EVASO) e l'accredito in coda passa da FACOLTATIVA a DOVUTA
+    **senza cambiare importo**. Body: `{righe?: [{resi_riga_id, qta}], note?}`
+    — `qta` in UNITA' BASE (stesso contratto della ri-spedizione: le due uscite
+    condividono la copertura); righe assente/null = tutta la copertura residua.
+    `righe` degeneri = 400, NON "rendi definitivo tutto"."""
+
+    area_funzionale = "vendite"
+
+    # Scopo: Chiude la ri-consegna (rinuncia parziale/totale) sul reso.
+    def post(self, request: Request, reso_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            return resi_service.chiudi_riconsegna(
+                int(reso_id),
+                payload.get("righe"),
+                payload.get("note"),
+            )
+
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiResoRiapriRiconsegna(DomainAPIView):
+    """POST /api/v1/vendite/resi/<reso_id>/riapri-riconsegna/ — annulla una
+    chiusura via fn madre `fn_riapri_riconsegna_reso`: la quota torna
+    ri-spedibile, lo stato ordine torna PARZIALMENTE_EVASO e l'accredito torna
+    FACOLTATIVA (round-trip = stato iniziale). Body:
+    `{righe?: [{resi_riga_id, qta}]}` — righe assente/null = tutte le rinunce
+    del reso; lo scalo parte dalle rinunce piu' RECENTI (LIFO, lato DB)."""
+
+    area_funzionale = "vendite"
+
+    # Scopo: Riapre una chiusura di ri-consegna (rimedio a una rinuncia errata).
+    def post(self, request: Request, reso_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: resi_service.riapri_riconsegna(
+                int(reso_id), payload.get("righe")
+            ),
+        )
+
+
 class ApiResoRighe(DomainAPIView):
     """GET/POST /api/v1/vendite/resi/<reso_id>/righe/."""
 

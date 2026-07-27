@@ -1,0 +1,269 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: SCENARIO end-to-end della chiusura ri-consegna (Fase 2)
+--   fn_chiudi_riconsegna_reso + fn_riapri_riconsegna_reso e i loro effetti
+--   su residuo ordine, elenco ri-spedizione e coda accrediti.
+-- Brief: brief-db-chiusura-riconsegna-reso-definitivo §6 (voce 10 del §8).
+--
+-- Complementare a test-resi-rinunce-fondamenta-v1.sql, che copre tabella,
+-- helper e i due guard. Qui si esercitano le MADRI e le CONSEGUENZE.
+--
+-- ⚠️ IL TEST CHE VALE PIU' DEGLI ALTRI e' il 6: l'accredito deve restare
+-- IN CODA con l'IMPORTO IDENTICO, e cambiare solo etichetta
+-- (FACOLTATIVA -> DOVUTA). E' la promessa del brief §3 ("chiudere la
+-- ri-consegna non cambia nessun numero") ed e' il discriminante della
+-- decisione §4.2: se la sottrazione delle rinunce finisse in
+-- vw_resi_righe_effettive invece che in fn_ordine_riga_qta_riconsegna, la riga
+-- USCIREBBE dalla coda e l'accredito dovuto al cliente sparirebbe in silenzio.
+-- Il probe manuale del 2026-07-26 non aveva potuto verificarlo (fixture senza
+-- merce "fatturata"): questo test chiude quel buco.
+--
+-- FIXTURE — perche' e' articolato: per far entrare la riga in coda accrediti
+-- serve differenza < 0 in vw_contatore_merce, cioe' tenuti < fatturati:
+--   tenuti    = evaso - reso            (dai fulfillment e dai resi)
+--   fatturati = somma delle attivita_fatturabili NORMALE con segment_key
+--               'DDT:<uid>:R:<ddt_riga_id>' (o 'ORD:...'), ricondotte alla riga
+--               ordine via ordini_righe_fulfillment.
+-- Quindi servono: una riga DDT consegnata order-backed, una commessa con una
+-- commessa_attivita che porti quel segment_key, l'AF corrispondente, e il reso.
+-- Nessuna fattura vera e' necessaria: 'fatturati' non guarda fattura_riga_id.
+-- ------------------------------------------------------------
+-- Indice test (1..9):
+--   1  le due madri presenti
+--   2  fixture: riga in elenco ri-spedizione con residuo atteso
+--   3  fixture: riga in coda accrediti, etichetta FACOLTATIVA
+--   4  chiusura: ritorna il numero di righe chiuse
+--   5  dopo la chiusura: residuo 0 e riga FUORI dall'elenco ri-spedizione
+--   6  [IL PUNTO] accredito ANCORA in coda, importo IDENTICO, etichetta DOVUTA
+--   7  non-regressione: la quota rinunciata non e' piu' ri-spedibile
+--   8  riapertura: residuo e elenco tornano allo stato iniziale
+--   9  riapertura: etichetta torna FACOLTATIVA (round-trip completo)
+-- ------------------------------------------------------------
+
+BEGIN;
+SELECT plan(9);
+
+-- ============================================================
+-- 1) STRUTTURA
+-- ============================================================
+SELECT ok(
+  EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname = 'vendite' AND p.proname = 'fn_chiudi_riconsegna_reso')
+  AND
+  EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname = 'vendite' AND p.proname = 'fn_riapri_riconsegna_reso'),
+  '1) fn_chiudi_riconsegna_reso e fn_riapri_riconsegna_reso presenti');
+
+-- ============================================================
+-- FIXTURE
+-- ============================================================
+-- Riga DDT consegnata, order-backed (ha fulfillment), con capienza di reso.
+CREATE TEMP TABLE tmp_r AS
+SELECT dr.id AS ddt_riga_id, dr.quantita AS consegnato, dr.articolo_id,
+       dr.descrizione, dr.uom_operativa_id, dr.factor_to_base,
+       d.id AS ddt_id, d.uid AS ddt_uid,
+       f.ordine_riga_id, orr.ordine_id,
+       (SELECT s.id FROM config.sorgenti s
+         WHERE s.codice_interno = 'DDT_VENDITA' AND s.attivo LIMIT 1) AS sorg_ddt,
+       (SELECT s.id FROM config.stati_doc_reso s
+         WHERE s.codice_interno = 'DRAFT' AND s.attivo LIMIT 1)       AS st_reso_draft,
+       (SELECT tr.id FROM config.tipi_reso tr
+         WHERE tr.riapre_residuo IS TRUE AND tr.attivo
+         ORDER BY tr.id LIMIT 1)                                      AS tipo_ric,
+       d.billing_account_id, d.utility_id
+  FROM vendite.ddt_righe dr
+  JOIN vendite.ddt d ON d.id = dr.ddt_id
+  JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
+  JOIN vendite.ordini_righe_fulfillment f ON f.ddt_riga_id = dr.id
+  JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id
+ WHERE dr.attivo IS TRUE
+   AND s.codice_interno = 'CONSEGNATO'
+   -- Capienza di reso >= 2: trgfn_resi_righe_guard_quantita limita il reso al
+   -- consegnato meno il gia' reso. Resi pregressi sulla riga sono ammessi (i
+   -- dati di dev ne hanno): l'accredito si distribuisce sulle righe reso in
+   -- ordine di id, e alla nostra resta comunque quota - vedi test 3, che
+   -- fallirebbe in modo leggibile se cosi' non fosse.
+   AND dr.quantita - COALESCE((SELECT SUM(rr.quantita) FROM vendite.resi_righe rr
+                                WHERE rr.ddt_riga_id = dr.id AND rr.attivo IS TRUE), 0) >= 2
+ ORDER BY dr.quantita - COALESCE((SELECT SUM(rr.quantita) FROM vendite.resi_righe rr
+                                   WHERE rr.ddt_riga_id = dr.id AND rr.attivo IS TRUE), 0) DESC,
+          dr.id
+ LIMIT 1;
+
+-- Commessa + attivita' con il segment_key che il contatore riconosce come
+-- "fatturato": 'DDT:<uid>:R:<ddt_riga_id>'. La CTE fatt di vw_contatore_merce
+-- lo ricollega alla riga ordine via ordini_righe_fulfillment.
+CREATE TEMP TABLE tmp_com AS
+SELECT vendite.fn_get_or_create_commessa(
+  p_billing_account_id     => (SELECT billing_account_id FROM tmp_r),
+  p_utility_id             => (SELECT utility_id FROM tmp_r),
+  p_tipo_commessa          => 'AUTO',
+  p_policy_fatturazione    => 'DA_DOCUMENTO',
+  p_fatturazione_immediata => false,
+  p_priorita_operativa     => 'NORMALE',
+  p_meta                   => jsonb_build_object('test_scope','pgtap_rinunce_scenario'),
+  p_force_new              => true
+) AS commessa_id;
+
+CREATE TEMP TABLE tmp_ca AS
+SELECT u.attivita_id
+  FROM tmp_r r,
+       vendite.fn_upsert_commessa_attivita(
+         p_commessa_id                   => (SELECT commessa_id FROM tmp_com),
+         p_segment_key                   => ('DDT:' || r.ddt_uid || ':R:' || r.ddt_riga_id)::varchar,
+         p_articolo_id                   => r.articolo_id,
+         p_istanza_utility_id            => (SELECT ba.istanza_utility_id
+                                               FROM anagrafiche.billing_account ba
+                                              WHERE ba.id = r.billing_account_id),
+         p_data_attivita                 => CURRENT_DATE,
+         p_uom_id                        => (SELECT uom_id FROM catalogo.articoli
+                                              WHERE id = r.articolo_id),
+         p_quantita                      => r.consegnato,
+         p_competenza_mese               => date_trunc('month', CURRENT_DATE)::date,
+         p_competenza_dal                => CURRENT_DATE,
+         p_competenza_al                 => CURRENT_DATE,
+         p_prezzo_snapshot               => 10.0000000000,
+         p_prezzo_base_snapshot          => NULL,
+         p_origine_prezzo                => NULL,
+         p_tipo_variazione_applicata     => NULL,
+         p_valore_variazione_applicata   => NULL,
+         p_promo_id                      => NULL,
+         p_contratto_id                  => NULL,
+         p_categoria_cliente_id_snapshot => NULL,
+         p_classe_utenza_id_snapshot     => NULL,
+         p_tipo_doc_fiscale_id           => (SELECT id FROM config.tipi_doc_fiscale
+                                              WHERE attivo ORDER BY id LIMIT 1),
+         p_stato_approvazione            => 'APPROVATA',
+         p_stato_emissione               => 'EMESSA',
+         p_tipo_movimento                => 'NORMALE',
+         p_tipo_consumo                  => 'CONGUAGLIO',
+         p_meta                          => jsonb_build_object('case','RIN_SCEN')
+       ) u;
+
+-- AF che rappresenta la quota "fatturata" (tutto il consegnato).
+INSERT INTO vendite.attivita_fatturabili (
+  articolo_id, istanza_utility_id, data_attivita, quantita,
+  competenza_mese, competenza_dal, competenza_al,
+  uom_id, prezzo_unitario, tipo_doc_fiscale_id,
+  commessa_id, commessa_attivita_id, tipo_movimento)
+SELECT r.articolo_id,
+       (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
+         WHERE ba.id = r.billing_account_id),
+       CURRENT_DATE, r.consegnato,
+       date_trunc('month', CURRENT_DATE)::date, CURRENT_DATE, CURRENT_DATE,
+       (SELECT uom_id FROM catalogo.articoli WHERE id = r.articolo_id),
+       10.000000,
+       (SELECT id FROM config.tipi_doc_fiscale WHERE attivo ORDER BY id LIMIT 1),
+       (SELECT commessa_id FROM tmp_com),
+       (SELECT attivita_id FROM tmp_ca),
+       'NORMALE'
+FROM tmp_r r;
+
+-- Reso PER RI-CONSEGNA di 2 sulla riga DDT, poi CONFERMATO.
+CREATE TEMP TABLE tmp_reso AS
+WITH ins AS (
+  INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid,
+                            storicizza, meta)
+  SELECT st_reso_draft, sorg_ddt, ddt_uid, false,
+         jsonb_build_object('test_scope','pgtap_rinunce_scenario')
+  FROM tmp_r RETURNING id)
+SELECT id AS reso_id FROM ins;
+
+CREATE TEMP TABLE tmp_riga AS
+WITH ins AS (
+  INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
+        articolo_id, descrizione, qta_operativa, uom_operativa_id,
+        factor_to_base, tipo_reso_id, attivo, storicizza)
+  SELECT (SELECT reso_id FROM tmp_reso), 1, r.ddt_riga_id, r.ordine_riga_id,
+         r.articolo_id, r.descrizione, 2.000000, r.uom_operativa_id,
+         r.factor_to_base, r.tipo_ric, true, false
+  FROM tmp_r r RETURNING id)
+SELECT id AS resi_riga_id FROM ins;
+
+-- La conferma proietta lo stato ordine (residuo riaperto dal reso).
+DO $setup$
+BEGIN
+  PERFORM vendite.fn_conferma_reso((SELECT reso_id FROM tmp_reso));
+END
+$setup$;
+
+-- Snapshot dell'accredito PRIMA della chiusura: e' il valore che il test 6
+-- pretende INVARIATO.
+CREATE TEMP TABLE tmp_pre AS
+SELECT a.accredito_dovuto, a.etichetta
+  FROM vendite.vw_resi_da_accreditare a
+ WHERE a.resi_riga_id = (SELECT resi_riga_id FROM tmp_riga);
+
+-- ============================================================
+-- 2-3) Stato iniziale
+-- ============================================================
+SELECT is(
+  (SELECT v.qta_residua FROM vendite.vw_resi_da_riconsegnare v
+    WHERE v.resi_riga_id = (SELECT resi_riga_id FROM tmp_riga)),
+  2.000000::numeric,
+  '2) fixture: riga in elenco ri-spedizione con residuo 2');
+
+-- Se questo test fallisce con "0 righe", il fixture non ha prodotto
+-- differenza < 0: verificare la catena AF/segment_key, non le madri.
+SELECT is(
+  (SELECT etichetta::text FROM tmp_pre),
+  'FACOLTATIVA',
+  '3) fixture: riga in coda accrediti con etichetta FACOLTATIVA');
+
+-- ============================================================
+-- 4-6) CHIUSURA
+-- ============================================================
+SELECT is(
+  vendite.fn_chiudi_riconsegna_reso((SELECT reso_id FROM tmp_reso)),
+  1,
+  '4) chiusura: 1 riga reso chiusa');
+
+SELECT ok(
+  vendite.fn_resi_riga_residuo_riconsegna((SELECT resi_riga_id FROM tmp_riga)) = 0
+  AND NOT EXISTS (SELECT 1 FROM vendite.vw_resi_da_riconsegnare v
+                   WHERE v.resi_riga_id = (SELECT resi_riga_id FROM tmp_riga)),
+  '5) dopo la chiusura: residuo 0 e riga fuori dall''elenco ri-spedizione');
+
+-- IL PUNTO: stessa riga, stesso importo, etichetta cambiata.
+SELECT is(
+  (SELECT a.accredito_dovuto::text || ' / ' || a.etichetta
+     FROM vendite.vw_resi_da_accreditare a
+    WHERE a.resi_riga_id = (SELECT resi_riga_id FROM tmp_riga)),
+  (SELECT accredito_dovuto::text FROM tmp_pre) || ' / DOVUTA',
+  '6) accredito ANCORA in coda, importo IDENTICO, etichetta -> DOVUTA');
+
+-- ============================================================
+-- 7) Non-regressione: la quota rinunciata non e' ri-spedibile
+-- ============================================================
+SELECT throws_ok(
+  format($$ SELECT vendite.fn_genera_ddt_riconsegna(%s) $$,
+         (SELECT reso_id FROM tmp_reso)),
+  'P0001', NULL,
+  '7) la quota rinunciata non e'' piu'' ri-spedibile');
+
+-- ============================================================
+-- 8-9) RIAPERTURA: round-trip
+-- ============================================================
+-- La riapertura si esegue PRIMA e in isolamento: e' una funzione che SCRIVE, e
+-- dentro un AND con le letture che ne dipendono l'ordine di valutazione non
+-- sarebbe garantito (il residuo potrebbe essere letto prima della riapertura).
+CREATE TEMP TABLE tmp_riap AS
+SELECT vendite.fn_riapri_riconsegna_reso((SELECT reso_id FROM tmp_reso)) AS righe;
+
+SELECT ok(
+  (SELECT righe FROM tmp_riap) = 1
+  AND vendite.fn_resi_riga_residuo_riconsegna((SELECT resi_riga_id FROM tmp_riga)) = 2
+  AND EXISTS (SELECT 1 FROM vendite.vw_resi_da_riconsegnare v
+               WHERE v.resi_riga_id = (SELECT resi_riga_id FROM tmp_riga)),
+  '8) riapertura: residuo torna 2 e la riga torna in elenco');
+
+SELECT is(
+  (SELECT a.accredito_dovuto::text || ' / ' || a.etichetta
+     FROM vendite.vw_resi_da_accreditare a
+    WHERE a.resi_riga_id = (SELECT resi_riga_id FROM tmp_riga)),
+  (SELECT accredito_dovuto::text FROM tmp_pre) || ' / FACOLTATIVA',
+  '9) round-trip: etichetta torna FACOLTATIVA, importo sempre identico');
+
+SELECT * FROM finish();
+ROLLBACK;

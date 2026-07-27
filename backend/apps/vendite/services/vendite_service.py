@@ -31,6 +31,7 @@ from apps.vendite.types import (
     DashCompetenzaAttivitaRow,
     DashCompetenzaCommessaRow,
     DashCompetenzaErroreRow,
+    DashCompetenzaGruppoRow,
     LottoFattureRow,
     LottoListRow,
 )
@@ -129,6 +130,39 @@ def fn_list_lotti(
         offset=offset,
     )
     return _build_list_response(results, total_count, page, page_size)
+
+
+# Range anni accettato (mirror del clamp FE useDashMesiNav): fuori range → 400,
+# non una query su un anno assurdo. Vive qui perché la validazione è del service.
+_DASH_ANNO_MIN = 2000
+_DASH_ANNO_MAX = 2100
+
+
+# Scopo: Conteggio lotti generati per mese di competenza di un anno — alimenta il
+#        badge per-mese della sidebar anno/mese del registro lotti (stile Lente
+#        Competenza). Fotografia completa (nessun filtro stato, decisione UX).
+#        Ritorna sempre i 12 mesi (0-riempiti) in ordine, ognuno con la sua
+#        competenza (YYYY-MM-01, chiave stabile per il componente FE) e n_lotti.
+#        Scope emittente applicato in repo (RLS + whitelist), come la lista.
+def fn_lotti_mensile(*, anno: int, auth_user_id: int | None = None) -> dict[str, object]:
+    ErrorManager.require(
+        isinstance(anno, int) and _DASH_ANNO_MIN <= anno <= _DASH_ANNO_MAX,
+        code="E_VENDITE_VALIDATION",
+        message="Anno non valido.",
+        detail=f"anno deve essere un intero tra {_DASH_ANNO_MIN} e {_DASH_ANNO_MAX}.",
+        context={"anno": anno},
+        function_name="vendite.vendite_service.fn_lotti_mensile",
+    )
+    repository = VenditeRepository()
+    per_mese = repository.count_lotti_per_mese(anno=anno, auth_user_id=auth_user_id)
+    mesi = [
+        {
+            "competenza_mese": f"{anno:04d}-{mese:02d}-01",
+            "n_lotti": per_mese.get(mese, 0),
+        }
+        for mese in range(1, 13)
+    ]
+    return {"anno": anno, "mesi": mesi}
 
 
 # Scopo: Restituisce la testata di un singolo lotto (dettaglio drawer diagnostico,
@@ -557,7 +591,13 @@ def fn_dash_competenza_attivita(
         limit=page_size,
         offset=offset,
     )
-    return _build_list_response(results, total_count, page, page_size)
+    # Pagina EFFETTIVA, non quella richiesta: il repository clampa l'offset
+    # all'ultima pagina reale, quindi l'envelope deve dichiarare la pagina che
+    # le righe rappresentano davvero. Era l'ultimo dei sei endpoint dei
+    # cruscotti a non farlo.
+    return _build_list_response(
+        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    )
 
 
 # Scopo: Drill-down AGGREGATO per commessa della Lente 1 (DEC-4): una riga per
@@ -620,6 +660,88 @@ def fn_dash_competenza_commesse(
     return _build_list_response(
         results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
     )
+
+
+# Scopo: Elenco dei GRUPPI FATTURABILI di un mese/stadio — l'unita' su cui
+#        agisce l'emissione mirata. Restituisce la pagina E il riepilogo di
+#        perimetro nella STESSA risposta: la riga di totali («7 documenti · 29
+#        attivita' · 12.500 €») e' la sola riconciliazione onesta con la card
+#        del funnel, e tenerla in un secondo endpoint significherebbe due
+#        chiamate che possono raccontare due momenti diversi.
+# Perimetro: sola lettura; scope emittente DB-side (viste security_invoker,
+#        fail-closed senza GUC operatore).
+# Risultato: dict con count, page, page_size, total_pages, results, riepilogo.
+def fn_dash_competenza_gruppi(
+    *,
+    competenza_mese: date,
+    stadio: str | None = None,
+    tipo_gruppo: str | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> dict[str, object]:
+    _validate_enum(
+        stadio,
+        allowed=DASH_COMPETENZA_STADI,
+        param_name="stadio",
+        function_name="vendite.vendite_service.fn_dash_competenza_gruppi",
+    )
+    ErrorManager.require(
+        order_by is None
+        or order_by in VenditeRepository.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS,
+        code="E_VENDITE_VALIDATION",
+        message="Colonna di ordinamento non valida.",
+        detail=(
+            f"order_by='{order_by}' non ammesso. Valori: "
+            f"{', '.join(sorted(VenditeRepository.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS))}."
+        ),
+        context={"order_by": order_by},
+        function_name="vendite.vendite_service.fn_dash_competenza_gruppi",
+    )
+    ErrorManager.require(
+        order_dir is None or order_dir.lower() in ("asc", "desc"),
+        code="E_VENDITE_VALIDATION",
+        message="Direzione di ordinamento non valida.",
+        detail="order_dir deve essere 'asc' o 'desc'.",
+        context={"order_dir": order_dir},
+        function_name="vendite.vendite_service.fn_dash_competenza_gruppi",
+    )
+    offset = _validate_pagination(
+        page, page_size, "vendite.vendite_service.fn_dash_competenza_gruppi"
+    )
+    repository = VenditeRepository()
+    competenza = competenza_mese.replace(day=1)
+    results: list[DashCompetenzaGruppoRow]
+    results, total_count = repository.list_dash_competenza_gruppi(
+        competenza_mese=competenza,
+        stadio=stadio,
+        tipo_gruppo=tipo_gruppo,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=page_size,
+        offset=offset,
+    )
+    payload = _build_list_response(
+        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    )
+    # Due perimetri DIVERSI nella stessa risposta, ed e' voluto:
+    #  - `riepilogo` SEGUE il filtro tipo: e' la riconciliazione della lista che
+    #    l'utente sta guardando;
+    #  - `tipi` (facet del filtro) NON lo segue: deve mostrare tutte le voci
+    #    disponibili anche quando una e' selezionata, altrimenti scegliendo
+    #    «Preventivi» le altre sparirebbero dalla tendina e non si potrebbe piu'
+    #    cambiare idea senza azzerare il filtro alla cieca.
+    payload["riepilogo"] = repository.get_dash_competenza_gruppi_riepilogo(
+        competenza_mese=competenza,
+        stadio=stadio,
+        tipo_gruppo=tipo_gruppo,
+    )
+    payload["tipi"] = repository.list_dash_competenza_gruppi_tipi(
+        competenza_mese=competenza,
+        stadio=stadio,
+    )
+    return payload
 
 
 @dataclass
@@ -707,6 +829,7 @@ def fn_dash_backlog_documenti(
     *,
     classe: str | None = None,
     area: str | None = None,
+    ritardo_giorni: int | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
@@ -716,6 +839,17 @@ def fn_dash_backlog_documenti(
         area,
         allowed=DASH_FATTURAZIONE_AREE,
         param_name="area",
+        function_name="vendite.vendite_service.fn_dash_backlog_documenti",
+    )
+    # Filtro "fermo da oltre N giorni": soglia positiva o assente (una soglia
+    # non-positiva non ha senso; niente normalizzazione silenziosa). Speculare
+    # al filtro ritardo della Situazione aperta.
+    ErrorManager.require(
+        ritardo_giorni is None or ritardo_giorni > 0,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro ritardo_giorni non valido.",
+        detail="ritardo_giorni deve essere un intero positivo (o assente).",
+        context={"ritardo_giorni": ritardo_giorni},
         function_name="vendite.vendite_service.fn_dash_backlog_documenti",
     )
     # Ordinamento server-side (convenzione order_by/order_dir come le liste
@@ -749,6 +883,7 @@ def fn_dash_backlog_documenti(
     results, total_count = repository.list_dash_backlog_documenti(
         classe=classe,
         area=area,
+        ritardo_giorni=ritardo_giorni,
         order_by=order_by,
         order_dir=order_dir,
         limit=page_size,

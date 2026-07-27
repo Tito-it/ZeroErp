@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Colonna fatturazione_immediata su vendite.contratti — simmetria del flag di
+#   instradamento corsia (brief-db-emissione-fattura-per-documento-sorgente
+#   PARTE B, step B1). Gemello di 20260727-01 (ordini).
+#
+# Razionale completo, scelta NOT NULL DEFAULT false, perimetro D-6 (consumi
+#   esclusi) e non-interferenza con prezzo_bloccato: vedi il commento esteso in
+#   20260727-01-alter-ordini-add-fatturazione-immediata-mctit.yaml.
+#
+# NOTA SUL CONTRATTO: e' la sorgente per cui il flag ha il senso piu' pieno —
+#   "questo cliente va sempre fatturato subito" e' tipicamente una clausola del
+#   contratto, non una decisione presa documento per documento. E' anche la
+#   ragione per cui i CONSUMI non ricevono il flag (D-6): la corsia dei consumi
+#   la decide il contratto che li governa.
+#
+# Dipendenze: vendite.contratti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260727-02-alter-contratti-add-fatturazione-immediata-mctit.yaml
+
+  - changeSet:
+      id: 20260727-02-alter-contratti-add-fatturazione-immediata
+      author: mctit
+      comment: >
+        Aggiunge vendite.contratti.fatturazione_immediata (boolean NOT NULL DEFAULT false):
+        instradamento corsia immediata/differita, simmetria con vendite.preventivi.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: contratti
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: contratti
+                    columnName: fatturazione_immediata
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: contratti
+            columns:
+              - column:
+                  name: fatturazione_immediata
+                  type: boolean
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+                  remarks: >-
+                    Instradamento corsia: true = corsia immediata (lotto
+                    GIORNALIERO, numera da solo), false = corsia differita
+                    (lotto MASSIVO, si ferma a EMESSA).
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN vendite.contratti.fatturazione_immediata IS
+                  'Instradamento corsia di fatturazione: true = immediata (lotto '
+                  'GIORNALIERO, arriva a DEFINITIVA da solo), false = differita '
+                  '(lotto MASSIVO, si ferma a EMESSA). Letto da '
+                  'fn_list_contratti_da_pushare e propagato alla commessa, dove e'' '
+                  'parte della chiave di dedup di fn_get_or_create_commessa. '
+                  'SI STABILISCE PRIMA DEL PUSH: dopo, il flag e'' inerte e la '
+                  'modifica e'' respinta dal guard. Il caso "cambio idea dopo" e'' '
+                  'coperto dall''emissione mirata per gruppo fatturabile. '
+                  'E'' la sorgente naturale della clausola "questo cliente si '
+                  'fattura subito": per questo i consumi NON hanno il flag (D-6). '
+                  'NON governa prezzo_bloccato. '
+                  'brief-db-emissione-fattura-per-documento-sorgente PARTE B, rev 2026-07-27.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti
+                DROP COLUMN IF EXISTS fatturazione_immediata;

@@ -94,13 +94,17 @@ BEGIN
     RETURNING id INTO v_new_ddt_id;
 
     -- 5) Righe ri-consegna con copertura residua.
+    --    rev 2026-07-26: il residuo viene dall'helper UNICO
+    --    fn_resi_riga_residuo_riconsegna, che sottrae anche le
+    --    RINUNCE. Cosi' la quota dichiarata definitiva non e' piu'
+    --    ri-spedibile: la richiesta viene troncata dal LEAST, e se
+    --    tutto e' rinunciato la riga si salta (CONTINUE) fino a
+    --    E_RESO_NESSUNA_RICONSEGNA_PENDENTE.
     FOR v_riga IN
         SELECT rr.id AS resi_riga_id, rr.articolo_id, rr.descrizione,
                rr.uom_operativa_id, COALESCE(rr.factor_to_base, 1) AS factor,
                rr.quantita AS qta_resa, rr.ordine_riga_id,
-               COALESCE((
-                   SELECT SUM(x.qta) FROM vendite.resi_righe_riconsegne x
-                    WHERE x.resi_riga_id = rr.id), 0) AS gia_ric,
+               vendite.fn_resi_riga_residuo_riconsegna(rr.id) AS residuo_ric,
                (SELECT (e->>'qta')::numeric
                   FROM jsonb_array_elements(COALESCE(p_righe,'[]'::jsonb)) e
                  WHERE (e->>'resi_riga_id')::bigint = rr.id
@@ -115,9 +119,9 @@ BEGIN
                    FROM jsonb_array_elements(p_righe) e))
          ORDER BY rr.riga_nr, rr.id
     LOOP
-        v_residuo_ric := v_riga.qta_resa - v_riga.gia_ric;   -- base
+        v_residuo_ric := v_riga.residuo_ric;   -- base, al netto di ric+rin
         IF v_residuo_ric <= 0 THEN
-            CONTINUE;  -- gia' ri-consegnata
+            CONTINUE;  -- gia' ri-consegnata o interamente rinunciata
         END IF;
 
         IF p_righe IS NOT NULL THEN
@@ -193,7 +197,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_ddt_riconsegna(p_reso_id bigint, p_righe jsonb, p_data date)
-IS 'Madre ri-spedizione reso: nuovo DDT DRAFT (order-backed ORDINE_VENDITA o standalone), popola il ponte resi_righe_riconsegne (aggancio duro) e, se order-backed, il fulfillment che richiude il residuo. p_righe [{resi_riga_id, qta}] NULL=copertura residua. brief §5b. rev 2026-07-13.';
+IS 'Madre ri-spedizione reso: nuovo DDT DRAFT (order-backed ORDINE_VENDITA o standalone), popola il ponte resi_righe_riconsegne (aggancio duro) e, se order-backed, il fulfillment che richiude il residuo. p_righe [{resi_riga_id, qta}] NULL=copertura residua. brief S5b. rev 2026-07-13. rev 2026-07-26 (brief-db-chiusura-riconsegna-reso-definitivo S4.2-bis): la copertura residua viene dall''helper unico vendite.fn_resi_riga_residuo_riconsegna, che sottrae ANCHE le quote rinunciate -> una quota dichiarata definitiva non e'' piu'' ri-spedibile (troncata dal LEAST, o riga saltata fino a E_RESO_NESSUNA_RICONSEGNA_PENDENTE). Il guard del ponte resta la difesa finale, ma ora la quantita'' e'' corretta in partenza.';
 ```
 
 ---

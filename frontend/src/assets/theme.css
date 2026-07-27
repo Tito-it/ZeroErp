@@ -80,6 +80,13 @@
   /* Verde "fatto/successo" per icone di completamento (es. check dei passi
    * conclusi nel percorso pratica). Centralizzato: mai green hardcoded. */
   --app-success-color: var(--p-green-500);
+  /* Arancio "attenzione/irreversibile" per i DATI che vanno letti prima di
+   * agire — non per i controlli, che usano `severity="warn"` di PrimeVue.
+   * Primo consumer: la quantita' resa dichiarata DEFINITIVA nella dialog
+   * ri-spedizione (fatto contabile: chiude l'ordine e rende dovuto
+   * l'accredito). Stesso orange-600 della coppia grafici sotto, gia' validata
+   * CVD+contrasto su entrambe le superfici -> nessun override light. */
+  --app-warning-color: var(--p-orange-600);
 
   /* ===== Grafici (dashboard) ===== */
   /* Coppia stato transitato/fermo dei donut dashboard fatturazione.

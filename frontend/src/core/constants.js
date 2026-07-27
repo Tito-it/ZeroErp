@@ -284,6 +284,11 @@ export const MANAGE_ICONS = {
   // Vendite
   VERSIONI: 'pi pi-history',
   CONTRATTI: 'app-nav-icon app-nav-icon-contratti',
+  // Commessa: non ha voce di navigazione (nessuna lista/CRUD propria), quindi
+  // vive qui e non in NAV_ICONS. Centralizzata 2026-07-25 alla 2a occorrenza:
+  // era hardcoded `pi pi-briefcase` nell'azione «Apri commessa» del drill-down
+  // Competenza, e serve ora anche all'«apri documento» del drill-down Backlog.
+  COMMESSA: 'pi pi-briefcase',
   LISTINI: 'app-nav-icon app-nav-icon-listini',
   RIGHE: 'pi pi-list',
   // Trasversali

@@ -22,6 +22,8 @@ Indice test eseguiti:
 13) VenditeCommesseApiTests.test_get_commessa_attivita_con_filtri
 14) VenditeCommesseApiTests.test_run_commesse_push_post_permission_allowed
 15) VenditeCommesseApiTests.test_run_commesse_push_post_permission_denied
+15-bis) VenditeCommesseApiTests.test_commessa_stato_post_permission_allowed
+15-ter) VenditeCommesseApiTests.test_commessa_stato_post_permission_denied
 16) VenditeCommesseApiTests.test_post_commessa_attivita_approva_ok
 17) VenditeCommesseApiTests.test_post_commessa_attivita_approva_selezione
 18) VenditeCommesseApiTests.test_post_commessa_attivita_approva_requires_jwt
@@ -312,6 +314,66 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 403)
         mock_azione.assert_called_once()
         self.assertEqual(mock_azione.call_args.args[1], "run_commesse_push")
+
+    # ------------------------------------------------------------------ #
+    # POST /api/v1/vendite/commesse/<id>/stato/ — post_permission        #
+    # ------------------------------------------------------------------ #
+
+    # Scopo: post_permission="cambia_stato_commessa" consente la transizione
+    #        con azione abilitata (il GET di lettura stato resta libero).
+    @patch("apps.core.api.permissions.save_user_cache")
+    @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=True)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_applicativo", return_value="OPERATORE")
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.is_super_admin", return_value=False)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    @patch("apps.vendite.api.views.cambia_stato_commessa")
+    def test_commessa_stato_post_permission_allowed(
+        self, mocked_cambia, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
+    ):
+        user = Mock()
+        user.id = 42
+        user.is_superuser = False
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+        mocked_cambia.return_value = {"commessa_id": 1, "stato_codice_interno": "CHIUSA"}
+        response = self.client.post(
+            "/api/v1/vendite/commesse/1/stato/",
+            data=json.dumps({"nuovo_stato": "CHIUSA"}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-stato-ok-1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        mock_azione.assert_called_once()
+        self.assertEqual(mock_azione.call_args.args[1], "cambia_stato_commessa")
+
+    # Scopo: senza l'azione abilitata la transizione e' negata (403) e il
+    #        service NON viene invocato — chiudere/annullare e' irreversibile.
+    @patch("apps.core.api.permissions.save_user_cache")
+    @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=False)
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_applicativo", return_value="OPERATORE")
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.is_super_admin", return_value=False)
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
+    @patch("apps.vendite.api.views.cambia_stato_commessa")
+    def test_commessa_stato_post_permission_denied(
+        self, mocked_cambia, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
+    ):
+        user = Mock()
+        user.id = 42
+        user.is_superuser = False
+        user.is_authenticated = True
+        mock_auth.return_value = (user, None)
+        response = self.client.post(
+            "/api/v1/vendite/commesse/1/stato/",
+            data=json.dumps({"nuovo_stato": "ANNULLATA"}),
+            content_type="application/json",
+            headers={"Idempotency-Key": "idem-stato-deny-1"},
+        )
+        self.assertEqual(response.status_code, 403)
+        mock_azione.assert_called_once()
+        self.assertEqual(mock_azione.call_args.args[1], "cambia_stato_commessa")
+        mocked_cambia.assert_not_called()
 
     # ------------------------------------------------------------------ #
     # POST /api/v1/vendite/commesse/<id>/attivita/approva/ (A-1)         #

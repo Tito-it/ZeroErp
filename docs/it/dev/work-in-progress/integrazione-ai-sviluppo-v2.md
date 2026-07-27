@@ -11,7 +11,7 @@
 
 La v1 dell'integrazione AI e' completata con:
 
-- 9 tool (6 lettura + 3 scrittura con conferma)
+- il catalogo tool iniziale (allora 9: 6 lettura + 3 scrittura con conferma). ⚠️ **Numero storico, non attuale**: il catalogo e' cresciuto con i domini (vendite, catalogo, documenti, billing account). La fonte di verita' e' la §6 della [guida integrazione AI](../../guide/integrazione-ai.md), che va aggiornata insieme a `tool_registry.populate_registry()` — non replicare qui il conteggio
 - Widget flottante non modale con conversazione multi-turno
 - Contesto statico documentale (`ai-context.md`)
 - Multi-tool chaining con timeout 30s
@@ -136,6 +136,16 @@ Dopo test in produzione con operatori reali — le priorita' emergono dall'uso.
 ## Test con provider reale
 
 > Richiedono `AI_PROVIDER=anthropic` e credito API attivo.
+
+⚠️ **Da verificare per primo — thinking blocks e storia della conversazione (post switch a Opus 5,
+2026-07-26).** Il default e' passato a `claude-opus-5`, dove il **thinking e' attivo per default**.
+Oggi `_run_tool_loop` **ricostruisce** il turno assistant dai campi normalizzati
+(`{"type": "text"}` + `{"type": "tool_use"}`, `ai_assistant_service.py` ~riga 399): gli eventuali
+blocchi `thinking` restituiti dal modello **non vengono ri-inviati** nella storia. Con thinking +
+tool use l'API puo' richiedere che quei blocchi siano riproposti invariati nel turno che contiene i
+`tool_use`. Non e' verificabile con `AI_PROVIDER=mock`: **il primo smoke con provider reale deve
+esercitare un giro multi-tool** e, se l'API rifiuta, il fix e' propagare i blocchi grezzi
+(`ProviderResponse` oggi scarta i content block diversi da `text`/`tool_use`) invece di ricostruirli.
 
 - [ ] Smoke test: query che esercitano ciascun tool
 - [ ] Smoke test: flusso completo preview → conferma → esecuzione

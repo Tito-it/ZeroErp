@@ -1,0 +1,312 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_list_ddt_da_pushare: legge il flag REALE invece della costante FALSE
+#   (brief-db-emissione-fattura-per-documento-sorgente PARTE B, step B3)
+#
+# Ultimo dei tre gemelli (20260727-04 ordini, -05 contratti). Razionale
+#   completo: vedi 20260727-04-update-fn-list-ordini-da-pushare-fatt-immediata-mctit.yaml.
+#
+# ⚠️ DIFFERENZA RISPETTO AGLI ALTRI DUE: qui la SELECT finale non legge la
+#   tabella, legge la CTE `dist` (che a sua volta legge `cand`). Il flag va
+#   quindi TRASPORTATO lungo la catena:
+#     cand : aggiunto `d.fatturazione_immediata AS d_fatt_immediata`
+#     dist : nessuna modifica — fa `SELECT c.*`, la colonna passa da sola
+#     final: `FALSE` -> `x.d_fatt_immediata`
+#   Aggiungere la colonna in `cand` NON tocca la window function di `dist`
+#   (PARTITION BY src_ordine_riga_id ORDER BY d_id, dr_id): quella distribuisce
+#   la differenza del contatore e non dipende dalle colonne proiettate.
+#
+# ⚠️ NON TOCCA prezzo_bloccato (fatto F11, garanzia G18). Qui lo slot e'
+#   `(COALESCE(x.dr_prezzo, x.src_prezzo_unitario) IS NOT NULL)` — dipende dal
+#   prezzo della riga, non dal flag di corsia. L'accoppiamento
+#   flag -> prezzo_bloccato esiste SOLO sui preventivi e non va propagato.
+#
+# ⚠️ NON TOCCA la distribuzione della differenza del contatore (rev 2026-07-17,
+#   step 3 del brief contatore merce) ne' l'eleggibilita' order-backed
+#   dallo stato-trigger in poi (rev 2026-07-18): il corpo e' ripreso 1:1 dalla
+#   doc auto-gen e l'unica modifica e' il trasporto del flag.
+#
+# Firma e RETURNS TABLE INVARIATI -> CREATE OR REPLACE puro, nessun DROP.
+#
+# Base: doc auto-gen docs/it/dbzero/vendite/funzioni/fn_list_ddt_da_pushare.md
+#   (rev 2026-07-19). Dipendenze: 20260727-03 (colonna).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260727-06-update-fn-list-ddt-da-pushare-fatt-immediata-mctit.yaml
+
+  - changeSet:
+      id: 20260727-06-update-fn-list-ddt-da-pushare-fatt-immediata
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_list_ddt_da_pushare proietta vendite.ddt.fatturazione_immediata invece
+        della costante FALSE (trasportata via CTE cand). prezzo_bloccato e
+        distribuzione contatore invariati.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: ddt
+            columnName: fatturazione_immediata
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_list_ddt_da_pushare(
+                  p_competenza_mese    date                                DEFAULT NULL::date,
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE  DEFAULT NULL::bigint,
+                  p_limit              integer                             DEFAULT NULL::integer,
+                  p_ddt_id             vendite.ddt.id%TYPE                 DEFAULT NULL::bigint)
+               RETURNS TABLE(
+                  ddt_id                      vendite.ddt.id%TYPE,
+                  ddt_uid                     vendite.ddt.uid%TYPE,
+                  riga_id                     vendite.ddt_righe.id%TYPE,
+                  billing_account_id          vendite.ddt.billing_account_id%TYPE,
+                  utility_id                  anagrafiche.billing_account.utility_id%TYPE,
+                  emittente_soggetto_ruolo_id bigint,
+                  competenza_dal              date,
+                  competenza_al               date,
+                  -- rev 2026-07-27: ancorata alla colonna, non piu' boolean nudo
+                  -- (prima del flag reale non c'era una colonna a cui ancorarsi).
+                  fatturazione_immediata      vendite.ddt.fatturazione_immediata%TYPE,
+                  sorgente_tipo_id            config.sorgenti.id%TYPE,
+                  sorgente_uid                text,
+                  segment_key                 character varying,
+                  articolo_id                 vendite.ddt_righe.articolo_id%TYPE,
+                  istanza_utility_id          anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  data_attivita               date,
+                  uom_id                      catalogo.articoli.uom_id%TYPE,
+                  quantita                    vendite.ddt_righe.quantita%TYPE,
+                  qta_operativa               vendite.ddt_righe.qta_operativa%TYPE,
+                  uom_operativa_id            vendite.ddt_righe.uom_operativa_id%TYPE,
+                  factor_to_base              vendite.ddt_righe.factor_to_base%TYPE,
+                  competenza_mese             date,
+                  prezzo_snapshot             vendite.ddt_righe.prezzo_unitario%TYPE,
+                  prezzo_bloccato             boolean,
+                  pricing_mode                character varying,
+                  tipo_movimento              character varying,
+                  tipo_consumo                character varying,
+                  valuta_id                   vendite.ddt.valuta_id%TYPE,
+                  meta                        jsonb,
+                  tipo_doc_fiscale_id         config.sorgenti.tipo_doc_fiscale_id%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+                v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
+              BEGIN
+                -- rev 2026-06-28: sorgente/stato DDT per codice_interno (immutabile).
+                -- rev 2026-07-17 (step 3): proietta la differenza del contatore.
+                -- rev 2026-07-18 (step 5): eleggibilita' dallo stato-trigger IN POI.
+                -- rev 2026-07-18 (step 5b): esclude le causali non fatturabili.
+                -- rev 2026-07-27 (brief emissione mirata PARTE B): fatturazione_immediata
+                -- proiettata dalla COLONNA (era la costante FALSE), trasportata
+                -- lungo la CTE cand -> dist -> SELECT finale.
+                IF p_ddt_id IS NOT NULL AND p_ddt_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_ddt_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
+                    jsonb_build_object('parametro', 'p_ddt_id', 'valore', p_ddt_id),
+                    NULL::uuid, 'p_ddt_id', p_ddt_id::text);
+                END IF;
+
+                SELECT s.id, s.tipo_doc_fiscale_id
+                  INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
+                FROM config.sorgenti s
+                WHERE s.codice_interno = 'DDT_VENDITA' AND s.attivo IS TRUE LIMIT 1;
+
+                IF v_sorgente_tipo_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_ddt_da_pushare', 'E_CODICE',
+                    jsonb_build_object('codice', 'DDT_VENDITA'),
+                    NULL::uuid, 'DDT_VENDITA', 'config.sorgenti');
+                END IF;
+
+                RETURN QUERY
+                WITH cand AS (
+                  -- Righe DDT eleggibili + riga d'ordine (via fulfillment) +
+                  -- differenza di partita dal contatore.
+                  SELECT
+                    d.id            AS d_id,
+                    d.uid           AS d_uid,
+                    dr.id           AS dr_id,
+                    COALESCE(d.billing_account_id, src.src_billing_account_id) AS ba_id,
+                    ba.utility_id           AS ba_utility_id,
+                    ba.istanza_utility_id   AS ba_istanza,
+                    d.data          AS d_data,
+                    d.numero        AS d_numero,
+                    d.anno          AS d_anno,
+                    d.serie         AS d_serie,
+                    d.valuta_id     AS d_valuta,
+                    -- Corsia di instradamento: trasportata fino alla SELECT finale.
+                    d.fatturazione_immediata AS d_fatt_immediata,
+                    dr.articolo_id  AS dr_articolo,
+                    dr.quantita     AS dr_quantita,
+                    dr.qta_operativa AS dr_qta_op,
+                    dr.uom_operativa_id AS dr_uom_op,
+                    dr.factor_to_base   AS dr_factor,
+                    dr.prezzo_unitario  AS dr_prezzo,
+                    a.uom_id        AS a_uom,
+                    a.is_composito  AS a_composito,
+                    src.src_ordine_uid,
+                    src.src_fatturazione_trigger,
+                    src.src_prezzo_unitario,
+                    src.src_valuta_id,
+                    src.src_ordine_riga_id,
+                    ct.differenza   AS partita_diff
+                  FROM vendite.ddt d
+                  JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                  -- CINTURA solo-trasporto (DL-28): la causale dichiara se la
+                  -- merce che viaggia e' una vendita. Vale per entrambi i rami:
+                  -- descrive il viaggio, non la provenienza del documento.
+                  -- INNER JOIN: la causale e' obbligatoria dall'emissione (gate
+                  -- 20260718-04) e qui si guardano solo stati >= SPEDITO.
+                  JOIN config.causali_trasporto caus
+                    ON caus.id = d.causale_trasporto_id
+                   AND caus.fatturabile IS TRUE
+                  JOIN vendite.ddt_righe dr
+                    ON dr.ddt_id = d.id
+                   AND dr.attivo IS TRUE
+                  JOIN catalogo.articoli a ON a.id = dr.articolo_id
+                  LEFT JOIN LATERAL (
+                    SELECT
+                      o_src.billing_account_id   AS src_billing_account_id,
+                      o_src.fatturazione_trigger AS src_fatturazione_trigger,
+                      o_src.uid                  AS src_ordine_uid,
+                      o_src.valuta_id            AS src_valuta_id,
+                      or_r.prezzo_unitario       AS src_prezzo_unitario,
+                      or_r.id                    AS src_ordine_riga_id
+                    FROM vendite.ordini_righe_fulfillment ful
+                    JOIN vendite.ordini_righe or_r ON or_r.id = ful.ordine_riga_id
+                    JOIN vendite.ordini o_src      ON o_src.id = or_r.ordine_id
+                    WHERE ful.ddt_riga_id = dr.id
+                    ORDER BY ful.id LIMIT 1
+                  ) src ON TRUE
+                  -- Rank dello stato-trigger dell'ordine, per chiave naturale
+                  -- stabile. CONFERMATO non esiste fra gli stati DDT -> non
+                  -- risolve -> il ramo order-backed e' falso (§3e.3).
+                  LEFT JOIN config.stati_doc_ddt sdd_trg
+                    ON sdd_trg.codice_interno = src.src_fatturazione_trigger
+                  JOIN anagrafiche.billing_account ba
+                    ON ba.id = COALESCE(d.billing_account_id, src.src_billing_account_id)
+                  LEFT JOIN vendite.vw_contatore_merce ct
+                    ON ct.ordine_riga_id = src.src_ordine_riga_id
+                  WHERE COALESCE(d.billing_account_id, src.src_billing_account_id) IS NOT NULL
+                    AND (
+                      -- ORDER-BACKED: dallo stato-trigger IN POI (fix orfano §1c),
+                      -- ma mai su un documento morto (ANNULLATO, via is_abortito)
+                      -- ne' su merce tutta tornata indietro (RESO).
+                      (src.src_fatturazione_trigger IS NOT NULL
+                       AND src.src_fatturazione_trigger != 'CONFERMATO'   -- cintura XOR: NON toccare
+                       AND sdd_trg.ordine IS NOT NULL
+                       AND sdd.ordine >= sdd_trg.ordine
+                       AND NOT sdd.is_abortito
+                       AND sdd.codice_interno <> 'RESO')
+                      OR
+                      -- STANDALONE: invariato (gia' privo di RESO/ANNULLATO).
+                      (src.src_fatturazione_trigger IS NULL
+                       AND d.billing_account_id IS NOT NULL
+                       AND sdd.codice_interno IN ('SPEDITO', 'CONSEGNATO'))
+                    )
+                    AND (p_competenza_mese IS NULL OR date_trunc('month', d.data)::date = p_competenza_mese)
+                    AND (p_billing_account_id IS NULL
+                         OR COALESCE(d.billing_account_id, src.src_billing_account_id) = p_billing_account_id)
+                    AND (p_ddt_id IS NULL OR d.id = p_ddt_id)
+                    -- Esclusione "gia' inviato": eleggibile solo se MAI
+                    -- instradata (LIBERA) — classificatore condiviso coi rami
+                    -- reason della capability: vede anche i componenti #CMP e
+                    -- non dipende piu' da stato_emissione (ALLOCATA basta).
+                    AND script.fn_get_stato_push_segment(
+                          'DDT:' || d.uid::text || ':R:' || dr.id::text) = 'LIBERA'
+                ),
+                dist AS (
+                  -- Distribuzione della differenza per riga DDT (greedy oldest-first,
+                  -- cappata a dr.quantita). Order-backed non composito -> differenza;
+                  -- standalone / composito -> dr.quantita grezza (invariato).
+                  SELECT c.*,
+                    CASE
+                      WHEN c.src_ordine_riga_id IS NOT NULL AND NOT COALESCE(c.a_composito, false)
+                        THEN GREATEST(0::numeric, LEAST(
+                               c.dr_quantita,
+                               COALESCE(c.partita_diff, 0)
+                               - COALESCE(SUM(c.dr_quantita) OVER (
+                                     PARTITION BY c.src_ordine_riga_id
+                                     ORDER BY c.d_id, c.dr_id
+                                     ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0)
+                             ))
+                      ELSE c.dr_quantita
+                    END AS quantita_push
+                  FROM cand c
+                )
+                SELECT
+                  x.d_id,
+                  x.d_uid,
+                  x.dr_id,
+                  x.ba_id,
+                  x.ba_utility_id,
+                  anagrafiche.fn_get_emittente_fiscale_id(x.ba_id),
+                  x.d_data,
+                  x.d_data,
+                  -- Corsia di instradamento: valore reale del DDT.
+                  x.d_fatt_immediata,
+                  v_sorgente_tipo_id,
+                  x.d_uid::text,
+                  ('DDT:' || x.d_uid::text || ':R:' || x.dr_id::text)::varchar,
+                  x.dr_articolo,
+                  x.ba_istanza,
+                  x.d_data,
+                  x.a_uom,
+                  x.quantita_push,
+                  -- qta_operativa scalata proporzionalmente (ratio = 1 se nessuna riduzione)
+                  x.dr_qta_op * (x.quantita_push / NULLIF(x.dr_quantita, 0)),
+                  x.dr_uom_op,
+                  COALESCE(x.dr_factor, 1::numeric),
+                  date_trunc('month', x.d_data)::date,
+                  COALESCE(x.dr_prezzo, x.src_prezzo_unitario),
+                  -- prezzo_bloccato: dipende dal PREZZO della riga,
+                  -- INDIPENDENTE dal flag di corsia. Vedi header del changeSet.
+                  (COALESCE(x.dr_prezzo, x.src_prezzo_unitario) IS NOT NULL),
+                  'FIXED'::varchar,
+                  'NORMALE'::varchar,
+                  'CONGUAGLIO'::varchar,
+                  COALESCE(x.d_valuta, x.src_valuta_id),
+                  jsonb_build_object(
+                    'ddt_numero',          x.d_numero,
+                    'ddt_anno',            x.d_anno,
+                    'ddt_serie',           x.d_serie,
+                    'ordine_sorgente_uid', x.src_ordine_uid,
+                    'ordine_fatturaz_trg', x.src_fatturazione_trigger,
+                    'tipo_commessa',       'AUTO',
+                    'policy_fatturazione', 'DA_DOCUMENTO'
+                  ),
+                  v_tipo_doc_fiscale_id
+                FROM dist x
+                WHERE x.quantita_push > 0
+                ORDER BY x.d_id, x.dr_id
+                LIMIT p_limit;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_ddt_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ddt_id bigint)
+              IS 'Lista righe DDT eligible al push su commessa. rev 2026-07-18 (step 5b): esclude i DDT con causale di trasporto NON fatturabile (config.causali_trasporto.fatturabile, DL-28) — cintura su entrambi i rami, la causale descrive il viaggio della merce non la provenienza del documento; INNER JOIN perche'' la causale e'' obbligatoria dall''emissione (gate trgfn_ddt_guard_causale_emissione). rev 2026-07-18 (step 5): eleggibilita'' order-backed DALLO stato-trigger IN POI (sdd.ordine >= rank del trigger) AND NOT is_abortito AND <> RESO, cintura XOR != CONFERMATO PRESERVATA. rev 2026-07-17 (step 3): proietta come quantita la DIFFERENZA del contatore vw_contatore_merce distribuita per riga DDT (greedy, cappata a dr.quantita); qta_operativa scalata; standalone e compositi a dr.quantita grezza; filtra quantita_push > 0. rev 2026-06-28: sorgente/stato per codice_interno. rev 2026-07-19: esclusione su ALLOCAZIONE via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.ddt.fatturazione_immediata (era costante FALSE), trasportata via CTE cand -> dist — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta legato al prezzo della riga: l''accoppiamento flag/prezzo esiste solo sui preventivi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: nessun ripristino automatico del corpo precedente.
+              -- Per tornare indietro, ri-applicare la revisione 2026-07-19
+              -- (costante FALSE al posto di x.d_fatt_immediata, senza la
+              --  colonna d_fatt_immediata nella CTE cand).
+              SELECT 1;

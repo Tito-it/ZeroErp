@@ -11,7 +11,8 @@
 > `backend/apps/ai_assistant/` (riuso logica tool esistente)
 >
 > **Documenti correlati:**
-> [integrazione-ai.md](/dev/work-done/integrazione-ai) — architettura AI Assistant interno (implementato, Anello 4)
+> [integrazione-ai.md](/dev/work-done/integrazione-ai) — architettura AI Assistant interno (implementato, Anello 4) ·
+> [analisi-diagnostica-produzione-senza-accesso-db.md](analisi-diagnostica-produzione-senza-accesso-db.md) — **documento padre** per tutto ciò che riguarda il canale diagnostico (§6.1) e il profilo supporto (§6.3)
 
 ---
 
@@ -124,7 +125,7 @@ Per completezza, ecco le alternative considerate e **perché non sono adatte**:
 
 ### 4.1 Stack tecnologico
 
-- **Linguaggio:** Python 3.11+
+- **Linguaggio:** Python allineato a `.python-version` (oggi 3.14) — fonte unica di verità del progetto (`.codex/AGENTS.md`). Il server è un processo separato, ma non c'è ragione di divergere dalla versione del backend
 - **SDK MCP ufficiale:** `mcp` (mantenuto da Anthropic, su PyPI)
 - **Client HTTP:** `httpx` (async-friendly, timeout configurabili)
 - **Configurazione:** variabili d'ambiente via `pydantic-settings` o equivalente
@@ -224,7 +225,16 @@ Oltre al caso generico "agente esterno che interroga ZeroERP", ci sono due scena
 
 Il vantaggio sul "SQL a mano" è l'**iterazione autonoma**: Claude esegue una query, vede un risultato sospetto, formula una seconda query più mirata, correla con un'altra tabella, e arriva al pattern senza che lo sviluppatore debba pilotare ogni passo. Investigazioni che richiederebbero 30-45 minuti si risolvono in 2-3 minuti.
 
-**Tool di investigazione proposti.** Questi sono tool **di sola lettura**, distinti dai tool operativi del §5, con accesso privilegiato ai dati di audit:
+**Tool di investigazione proposti.** Questi sono tool **di sola lettura**, distinti dai tool operativi del §5, con accesso privilegiato ai dati di audit.
+
+> ⚠️ **Sono consumatori, non un secondo canale.** Dal 2026-07-25 il canale diagnostico è progettato in
+> [analisi-diagnostica-produzione-senza-accesso-db.md](analisi-diagnostica-produzione-senza-accesso-db.md):
+> l'artefatto è un **endpoint diagnostico** (Fase 1, §5.3 di quel documento) che aggrega stato, azioni
+> ammesse, storico, contesto permessi e correlazione `request_id`/`tx_id`. I tool `investigazione_*`
+> **devono chiamare quell'endpoint**, non leggere `dbops.*` per conto proprio: due strade verso gli stessi
+> dati significherebbero due superfici di rischio, due set di permessi e due punti di disallineamento con
+> lo schema. La tabella qui sotto va quindi letta come «quali domande deve saper rispondere l'endpoint»,
+> non come «quali query fa il server MCP».
 
 | Tool                                  | Fonte dati                     | Scopo                                                                 |
 | ------------------------------------- | ------------------------------ | --------------------------------------------------------------------- |
@@ -253,6 +263,12 @@ L'accesso a `dbops.ai_query_log` merita una nota: consente di investigare anche 
 > [analisi-sicurezza-aggiornata.md](../work-done/analisi-sicurezza-aggiornata.md) §4 (P3 free-text) e
 > guida AI §4.4. Questo è il framing che sostituisce l'idea errata "il dato nel `tool_result`
 > è già sicuro".
+
+**Dove finisce l'investigazione.** Questi tool rispondono a «cosa vede il sistema»; **non** riproducono il
+caso altrove. La riproduzione (staging mascherato o pacchetto per-caso) è la Fase 3 dell'analisi
+diagnostica e **resta fuori dal perimetro MCP**: comporta estrazione di dati personali, mascheratura e
+conservazione a termine, cioè un profilo di rischio diverso da quello di un tool di lettura. Il server MCP
+può al più *segnalare* che serve una riproduzione; non deve poterla produrre.
 
 ### 6.2 Assistenza documentale e help contestuale
 
@@ -284,9 +300,18 @@ Questo è l'esempio più chiaro del principio "il server MCP può anche essere u
 
 **Rischio e controlli.** Rischio nullo (solo testo di documentazione, già pubblico internamente). Accessibile con permessi normali dell'utente. Non serve il profilo "supporto".
 
-### 6.3 Il profilo utente "supporto" — da definire
+### 6.3 Il profilo utente "supporto" — definito nell'analisi diagnostica
 
 Il caso d'uso §6.1 richiede un profilo utente che oggi non esiste in ZeroERP. Va definito prima di implementare i tool di investigazione.
+
+> **La modellazione non è più una questione aperta qui.** È decisa in
+> [analisi-diagnostica-produzione-senza-accesso-db.md §5.6](analisi-diagnostica-produzione-senza-accesso-db.md):
+> il profilo si costruisce come **alias di connessione DB a un ruolo dedicato read-only**, coerente con
+> `system_process_context` ([system_context.py](../../../../backend/apps/core/services/system_context.py)),
+> **non** come livello applicativo accanto a `TUTTO`/`LETTURA`/`BLOCCATO`. Il requisito «nessuna scrittura»
+> diventa così un privilegio negato dal database, non una regola dell'applicazione — che è il punto §3 del
+> documento padre. La scelta residua (bypass RLS vs GUC ampio controllato) è una **decisione DB** e va nel
+> brief al team DB (§10.3 di quel documento).
 
 **Requisiti minimi del profilo:**
 
@@ -297,13 +322,13 @@ Il caso d'uso §6.1 richiede un profilo utente che oggi non esiste in ZeroERP. V
 - Audit rinforzato: ogni operazione di un utente supporto è marcata in modo distinguibile nel log, con motivo dell'accesso se possibile
 - Sessioni a scadenza breve (es. 4 ore) con re-autenticazione, dato il livello di privilegio
 
-**Decisione aperta.** Il profilo "supporto" va modellato come:
-
-1. **Nuovo livello accesso** (`SUPPORTO`) accanto a `TUTTO`/`LETTURA`/`BLOCCATO` nel sistema permessi esistente
-2. **Nuovo ruolo trasversale** che si affianca ai ruoli funzionali senza toccare i livelli
-3. **Flag utente dedicato** (`is_supporto`) che attiva un bypass controllato ai filtri organizzativi
-
-La scelta va fatta coerentemente con la guida [Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) e merita un documento progettuale dedicato prima dell'implementazione. Per ora è sufficiente sapere che **il server MCP di investigazione presuppone questo profilo**: prima si definisce il profilo, poi si espongono i tool §6.1.
+**Cosa resta da fare qui.** Nulla di modellazione: il server MCP **presuppone** il profilo, non lo progetta.
+Prima si definisce il profilo (analisi diagnostica §5.6 + brief DB), poi si espongono i tool §6.1. Le tre
+opzioni applicative valutate in una versione precedente di questo paragrafo (nuovo livello `SUPPORTO`,
+ruolo trasversale, flag `is_supporto`) sono state **scartate**: nessuna delle tre rende il vincolo
+«nessuna scrittura» un permesso negato dal database, che è il requisito. Il coordinamento con la guida
+[Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) resta necessario per la parte
+applicativa (chi può *invocare* i tool), non per lo scope dati.
 
 ---
 
@@ -317,7 +342,7 @@ L'implementazione va affrontata per fasi, non in blocco. Le prime due fasi offro
 
 - Repo `zeroerp-mcp-server` minimale
 - 3-5 tool di sola lettura operativa: `cerca_pratiche`, `dettaglio_pratica`, `cerca_soggetti`, `dettaglio_soggetto`, `cerca_articoli`
-- Auth tramite JWT di servizio in `.env` (singolo utente sviluppatore)
+- Auth: **identità dedicata con `ruolo_applicativo = API_CLIENT`** (la veste prevista per i client programmatici dal refactor multi-face auth), token ottenuto dal namespace di login che le compete e credenziali solo da variabili d'ambiente. ⚠️ Il vecchio path unificato `/api/v1/auth/token/` è stato **rimosso senza alias**: i tre namespace attivi sono `/api/v1/{admin,portale,shop}/token/`, ognuno con le proprie vesti ammesse — un JWT «di servizio» generico non esiste più. Contratto: [api_multi_veste_token.md](../../backend/core/manual/api_multi_veste_token.md)
 - Endpoint `/catalog/` e `/invoke/` aggiunti in Django
 - Configurazione Claude Desktop (`claude_desktop_config.json`)
 - Logging locale, audit su `dbops.ai_query_log` con marker `client_type: 'mcp'`
@@ -328,13 +353,15 @@ L'implementazione va affrontata per fasi, non in blocco. Le prime due fasi offro
 
 **Obiettivo:** abilitare il caso d'uso §6.1 (investigazione bug erratici).
 
-- Definizione del profilo utente "supporto" (§6.3) — documento progettuale dedicato
-- Implementazione endpoint Django di investigazione (lettura `dbops.*`, cross-utente)
-- Tool MCP `investigazione_*` elencati in §6.1
+- Profilo "supporto" **realizzato** secondo l'analisi diagnostica §5.6 (alias di connessione a ruolo DB read-only) + brief al team DB
+- **Endpoint diagnostico** (Fase 1 dell'analisi diagnostica) realizzato lato Django — è il prerequisito, non un lavoro di questa fase
+- Tool MCP `investigazione_*` (§6.1) come **thin wrapper** sull'endpoint diagnostico: nessuna query `dbops.*` propria, nessuna logica di dominio (§8.1)
 - Audit rinforzato per accessi in modalità supporto
 - Test di scenari reali con bug già noti (riprodurre investigazioni passate)
 
-**Questa fase richiede la definizione preventiva del profilo "supporto"**, che ha impatto sul sistema permessi esistente.
+**Questa fase richiede due prerequisiti**, entrambi fuori dal server MCP: il profilo "supporto" e
+l'endpoint diagnostico. Finché non esistono, i tool `investigazione_*` non vanno esposti — nemmeno in
+lettura, nemmeno «solo per lo sviluppatore».
 
 ### Fase 3 — RAG documentale (condiviso con AI Assistant v2)
 

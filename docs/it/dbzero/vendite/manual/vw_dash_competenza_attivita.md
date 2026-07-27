@@ -76,4 +76,34 @@ GROUP BY stadio;
 
 ---
 
+---
+
+### Colonne di gruppo fatturabile (rev 2026-07-27)
+
+Aggiunte **in coda** quattro colonne: `sorgente_tipo_id`, `sorgente_uid`,
+`tipo_movimento`, `gruppo_key`.
+
+`gruppo_key` viene da
+[`fn_build_gruppo_fatturabile_key`](/dbzero/vendite/funzioni/fn_build_gruppo_fatturabile_key),
+la **stessa** funzione usata dai filtri `p_gruppi` dell'emissione: le chiavi
+mostrate sono esattamente quelle che l'emissione accetta.
+
+Questa vista è la base di
+[`vw_dash_competenza_gruppi`](/dbzero/vendite/views/vw_dash_competenza_gruppi),
+che da qui eredita **scope emittente** e **coerenza dei conteggi con la card**.
+
+⚠️ **Due vincoli su ogni futura modifica**:
+
+1. `CREATE OR REPLACE VIEW` ammette solo l'**aggiunta di colonne in fondo**: non
+   si possono rinominare, riordinare o eliminare quelle esistenti. L'ordine
+   attuale è di fatto immutabile;
+2. `WITH (security_invoker=on)` va **ri-specificato ogni volta**: la reloption
+   non compare in `pg_get_viewdef` e PostgreSQL la azzera in silenzio,
+   trasformando la vista in `security_definer` di fatto e aprendo un buco nello
+   scope emittente su tutte le dashboard di competenza.
+
+**Fail-closed senza GUC**: `script.fn_get_emittenti_scope_sr_ids(NULL)`
+restituisce l'array **vuoto**, non `NULL`, quindi senza `app.current_user_id`
+nessuna riga passa. Da tenere presente scrivendo test.
+
 {% include-markdown "signature-core.md" %}

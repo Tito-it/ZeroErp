@@ -1906,6 +1906,23 @@ class ErrorPolicyRegistry:
                 "crea un nuovo ordine."
             ),
         ),
+        # Corsia di instradamento non piu' modificabile: il documento e' gia'
+        # stato inviato in commessa, dove il flag entra nella chiave di dedup —
+        # cambiarlo dopo non sposta nulla, sarebbe solo un campo che INGANNA.
+        # Sollevato dal guard DB `trgfn_guard_fatturazione_immediata_immutabile`
+        # su ordini/contratti/DDT/preventivi (codice DB messaggi_errore 561).
+        # Trasversale ai 4 domini: il codice e' uno solo, come lo e' la regola.
+        "E_FATT_IMMEDIATA_NON_MODIFICABILE": ErrorPolicy(
+            code="E_FATT_IMMEDIATA_NON_MODIFICABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La fatturazione immediata non e` piu` modificabile: il "
+                "documento e` gia` stato inviato in commessa. Per fatturare "
+                "subito questo lavoro usa l'emissione mirata dal cruscotto "
+                "Competenza."
+            ),
+        ),
         "E_ORD_STATO_TRANSIZIONE": ErrorPolicy(
             code="E_ORD_STATO_TRANSIZIONE",
             http_status=409,
@@ -2166,6 +2183,21 @@ class ErrorPolicyRegistry:
             user_message=(
                 "La quantita' ri-spedita supera la quantita' resa da "
                 "ri-consegnare."
+            ),
+        ),
+        # Gemello del precedente sull'ALTRA uscita della stessa copertura
+        # (id 560): ri-spedizioni e rinunce condividono il residuo
+        # `quantita - Sigma ric - Sigma rin`, quindi anche la rinuncia puo'
+        # eccederlo. Causa tipica: due operatori sulla stessa riga reso, uno
+        # ri-spedisce e l'altro dichiara definitiva la quota -> 409, conflitto
+        # di stato, non errore di validazione del payload.
+        "E_RESO_RINUNCIA_SUPERA_RESO": ErrorPolicy(
+            code="E_RESO_RINUNCIA_SUPERA_RESO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La quantita' dichiarata definitiva supera la quantita' resa "
+                "ancora da ri-consegnare."
             ),
         ),
         # fn_conferma_reso: conferma ammessa solo da DRAFT / con righe attive.

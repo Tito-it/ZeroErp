@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_ordine_riga_qta_riconsegna: l'addendo reso scende della quota RINUNCIATA
+#   (brief-db-chiusura-riconsegna-reso-definitivo §4.2, Fase 2 voce 5)
+#
+# E' IL PUNTO che chiude l'ordine. Questa funzione e' l'addendo "reso" del
+# residuo di evasione: somma le quantita' delle righe reso di tipo
+# riapre_residuo (la merce rientrata che tornera' al cliente, quindi ancora da
+# evadere). Finche' quella quota resta contata, fn_ordine_ha_residuo_evasione
+# vede residuo e l'ordine resta PARZIALMENTE_EVASO a vita.
+#
+# Sottraendo qui le rinunce, la quota dichiarata definitiva smette di pesare sul
+# residuo -> l'ordine si chiude (EVASO). E poiche' la funzione e' dichiarata
+# "single source per fn_ordine_ha_residuo_evasione e
+# trgfn_ordini_ful_guard_consistenza (coerenza formula)", la modifica allinea
+# ENTRAMBI senza toccarli: il guard anti over-fulfillment continua a vedere la
+# stessa aritmetica del calcolo del residuo.
+#
+# ⚠️ PERCHE' QUI E NON IN vw_resi_righe_effettive (§4.2, decisione chiusa).
+# La vista ha SEI consumatori, e vw_contatore_merce la somma SENZA filtro tipo:
+#   tenuti = evaso - reso   ->   differenza = tenuti - fatturati
+#   coda accrediti = differenza < 0
+# Sottraendo le rinunce nella vista, `reso` scenderebbe -> `tenuti` salirebbe ->
+# `differenza` tenderebbe a 0 -> la riga USCIREBBE dalla coda accrediti, cioe'
+# l'accredito dovuto al cliente sparirebbe in silenzio. Esattamente la perdita
+# che la rifondazione a contatore doveva chiudere.
+# Questa funzione invece filtra riapre_residuo ed e' letta SOLO dal residuo
+# ordine e dal guard fulfillment: sottrarre qui chiude l'ordine e lascia
+# l'accredito INTATTO, che e' la promessa del brief (§3: "chiudere la
+# ri-consegna non cambia nessun numero").
+# NON spostare questa sottrazione nella vista.
+#
+# FORMA: LEFT JOIN LATERAL sulla somma delle rinunce per riga reso, invece di
+# chiamare fn_resi_riga_residuo_riconsegna. Motivo: l'helper sottrae ANCHE le
+# ri-consegne, che qui NON vanno sottratte — le ri-consegne sono gia' contate
+# come `evaso` dal fulfillment, sottrarle di nuovo conterebbe due volte. Serve
+# la sola quota rinunciata: aritmetica diversa, non riuso mancato.
+#
+# Base: doc auto-gen docs/it/dbzero/vendite/funzioni/fn_ordine_riga_qta_riconsegna.md
+#   (rev 2026-07-17). Firma invariata -> nessun impatto sui chiamanti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260726-05-update-fn-ordine-riga-qta-riconsegna-rinunce-mctit.yaml
+
+  - changeSet:
+      id: 20260726-05-update-fn-ordine-riga-qta-riconsegna-rinunce
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_ordine_riga_qta_riconsegna: l'addendo reso del residuo scende della
+        quota rinunciata -> l'ordine si chiude (EVASO). Allinea per costruzione
+        fn_ordine_ha_residuo_evasione e il guard fulfillment. Accredito intatto.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_ordine_riga_qta_riconsegna(
+                  p_ordine_riga_id vendite.ordini_righe.id%TYPE
+              )
+               RETURNS numeric
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: addendo reso del residuo per una riga ordine. Sigma
+              --   quantita (base) delle righe reso EFFETTIVE (vw_resi_righe_effettive:
+              --   CONFERMATE + attive) di tipo riapre_residuo=true collegate a quella
+              --   riga ordine. Single source per fn_ordine_ha_residuo_evasione e per
+              --   il guard fulfillment (coerenza formula residuo).
+              -- rev 2026-07-17 (step 2): legge l'helper unico invece di ripetere
+              --   la catena JOIN + filtro CONFERMATO; il filtro-tipo (riapre_residuo)
+              --   resta qui, "sopra" la vista (brief §3b).
+              -- rev 2026-07-26 (brief-db-chiusura-riconsegna-reso-definitivo §4.2):
+              --   sottrae la quota RINUNCIATA (resi_righe_rinunce). Una quota
+              --   dichiarata definitiva non tornera' al cliente, quindi non e' piu'
+              --   merce "da evadere": togliendola dall'addendo il residuo si chiude
+              --   e l'ordine passa a EVASO.
+              --   La sottrazione sta QUI e NON in vw_resi_righe_effettive: quella
+              --   vista alimenta anche vw_contatore_merce (che somma senza filtro
+              --   tipo), e toccarla farebbe uscire la riga dalla coda accrediti,
+              --   cioe' l'accredito dovuto sparirebbe. Vedi §4.2 del brief.
+              --   Si sottraggono SOLO le rinunce, non le ri-consegne: quelle sono
+              --   gia' contate come `evaso` dal fulfillment.
+              DECLARE
+                  v_qta numeric;
+              BEGIN
+                  IF p_ordine_riga_id IS NULL OR p_ordine_riga_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_ordine_riga_qta_riconsegna','E_VALIDAZIONE',
+                          jsonb_build_object('p_ordine_riga_id', p_ordine_riga_id),
+                          NULL::uuid, 'p_ordine_riga_id deve essere > 0');
+                  END IF;
+
+                  SELECT COALESCE(SUM(GREATEST(0::numeric, e.quantita - COALESCE(rin.tot, 0))), 0)
+                    INTO v_qta
+                    FROM vendite.vw_resi_righe_effettive e
+                    LEFT JOIN LATERAL (
+                        SELECT SUM(r.qta) AS tot
+                          FROM vendite.resi_righe_rinunce r
+                         WHERE r.resi_riga_id = e.resi_riga_id
+                    ) rin ON TRUE
+                   WHERE e.ordine_riga_id = p_ordine_riga_id
+                     AND e.riapre_residuo IS TRUE;
+
+                  RETURN v_qta;
+              END;
+              $function$;
+
+              -- COMMENT esige tipi RISOLTI: qui il %TYPE non si usa.
+              COMMENT ON FUNCTION vendite.fn_ordine_riga_qta_riconsegna(bigint)
+              IS 'Addendo reso del residuo per riga ordine: Sigma quantita (base) delle righe reso EFFETTIVE (vw_resi_righe_effettive) di tipo riapre_residuo, AL NETTO della quota rinunciata (vendite.resi_righe_rinunce). Single source per fn_ordine_ha_residuo_evasione e trgfn_ordini_ful_guard_consistenza (coerenza formula). rev 2026-07-13. rev 2026-07-17 (step 2): legge l helper unico; ora filtra anche resi_righe.attivo (canonico CONFERMATI+attivi). rev 2026-07-26 (brief-db-chiusura-riconsegna-reso-definitivo S4.2): sottrae le RINUNCE, cosi'' una quota dichiarata definitiva smette di pesare sul residuo e l''ordine passa a EVASO. La sottrazione sta QUI e NON in vw_resi_righe_effettive, che alimenta anche vw_contatore_merce: toccarla farebbe sparire l''accredito dalla coda. Si sottraggono solo le rinunce, non le ri-consegne (quelle sono gia'' contate come evaso dal fulfillment).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: firma invariata. Per tornare alla revisione che NON
+              -- sottrae le rinunce va ri-applicato il changeset precedente che
+              -- definisce questa funzione. ATTENZIONE: senza la sottrazione gli
+              -- ordini con quote rinunciate restano PARZIALMENTE_EVASO a vita.
+              SELECT 1;

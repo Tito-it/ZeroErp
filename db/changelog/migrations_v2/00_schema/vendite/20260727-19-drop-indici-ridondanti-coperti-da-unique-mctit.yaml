@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Bonifica indici ridondanti: tre btree gia' coperti da un UNIQUE
+#   (analisi dbops.vw_duplicate_indexes del 2026-07-27, PASSO A)
+#
+# IL PROBLEMA. dbops.vw_duplicate_indexes segnalava 19 gruppi. L'analisi
+#   indice-per-indice ne ha promossi solo TRE a ridondanza vera; gli altri 16
+#   sono falsi positivi della vista, che raggruppa per solo insieme di colonne
+#   e ignora metodo di accesso (GIN trgm vs btree), predicato WHERE degli
+#   indici parziali ed espressioni. La correzione della vista e' il PASSO B,
+#   trattato in un changeSet separato: qui si tocca solo il dato di fatto.
+#
+# ⚠️ NESSUNO DEI TRE VIENE DALL'AUTOMAZIONE FK. Verificato il 2026-07-27
+#   incrociando ogni nome con dbops.fk_index_policy.dll_command: zero
+#   corrispondenze su tutti e 38 gli indici dei 19 gruppi. Sono indici scritti
+#   a mano nei changelog (o, per il primo della lista, creati fuori Liquibase).
+#   dbops.apply_fk_index_policy() non c'entra e non li ricreera' — vedi sotto.
+#
+# COSA SI DROPPA E PERCHE'.
+#
+#   1. vendite.ix_attivita_fatturabili_commessa_attivita_id
+#      DUPLICATO ESATTO. btree non-unique su (commessa_attivita_id), stesso
+#      metodo, nessun predicato, nessuna espressione. Nato in 20260224-09
+#      insieme alla FK fk_attivita_fatturabili_commessa_attivita; poco dopo
+#      20260224-42 ha aggiunto uq_attivita_fatturabili_commessa_attivita
+#      (UNIQUE sulla stessa identica colonna, a sancire l'1:1 CA<->AF) senza
+#      rimuovere il precedente. idx_scan al 2026-07-27: 0 contro 20.619 della
+#      UNIQUE — il planner ha gia' scelto da solo.
+#
+#   2. vendite.ix_vendite_preventivi_r_iva_preventivo_id
+#   3. vendite.ix_vendite_fatture_riepiloghi_iva_fattura_id
+#      RIDONDANTI PER PREFISSO. Le due UNIQUE uq_preventivi_r_iva_key e
+#      uq_fatture_r_iva_key sono su cinque colonne, la prima delle quali e'
+#      esattamente preventivo_id / fattura_id:
+#        (preventivo_id, COALESCE(natura_id,0), COALESCE(esigibilita,'I'),
+#         COALESCE(split_payment,false), COALESCE(iva_id,0))
+#      Un btree con quella colonna leading serve gia' ogni lookup per
+#      documento, incluso il controllo referenziale. Il btree dedicato e'
+#      spazio e costo di scrittura senza ritorno (idx_scan 0 su entrambi).
+#      NOTA: questi due non erano nemmeno rilevabili come "duplicati" —
+#      vw_duplicate_indexes leggeva le UNIQUE come indici a UNA colonna,
+#      perche' scarta gli attnum=0 delle espressioni. Comparivano nella lista
+#      per un difetto della vista, ma la ridondanza e' reale per un altro
+#      motivo.
+#
+# ⚠️ PROVENIENZA ANOMALA DEL n.3. ix_vendite_fatture_riepiloghi_iva_fattura_id
+#   NON esiste in nessun YAML del repository: l'unica occorrenza e' il DROP in
+#   20260116-10-01. Porta il naming della VECCHIA automazione FK
+#   (ix_<schema>_<tabella>_<colonne>, dismesso da 20260116-01 in favore di
+#   ix_<tabella>_<colonne>), e' stato droppato il 2026-01-16 ed e' ricomparso
+#   sul DB di sviluppo senza changeSet. Va considerato creato a mano. Su un DB
+#   ricostruito da zero non esistera': per questo il DROP e' IF EXISTS e il
+#   rollback lo ricrea solo per simmetria.
+#
+# PERCHE' L'AUTOMAZIONE NON LI RICREERA'. dbops.vw_fk_senza_indice considera
+#   coperta una FK quando esiste un indice il cui array di colonne EGUAGLIA
+#   quello della FK. Per le tre FK interessate
+#   (fk_attivita_fatturabili_commessa_attivita, fk_fatture_r_iva_fattura,
+#   fk_preventivi_r_iva_preventivo) l'array resta soddisfatto dalle UNIQUE che
+#   restano in piedi: nel caso delle due _r_iva_key proprio perche' la vista
+#   scarta le quattro colonne-espressione e le legge come indici a una colonna.
+#   Conseguenza: fn_populate_fk_index_policy() non inserira' nuove righe e
+#   apply_fk_index_policy() non avra' nulla da creare. Verificato il
+#   2026-07-27: nessuna delle tre FK ha oggi una riga in dbops.fk_index_policy.
+#
+# PRECONDIZIONE FAIL-FAST. sqlCheck pretende che tutte e tre le UNIQUE coprenti
+#   esistano PRIMA di droppare: se una di esse fosse stata rinominata o rimossa
+#   in futuro, questo changeSet toglierebbe l'unica copertura rimasta a una FK.
+#   Meglio fermare il migrate che degradare in silenzio.
+#
+# Dipendenze: vendite.attivita_fatturabili, vendite.fatture_riepiloghi_iva,
+#   vendite.preventivi_riepiloghi_iva.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260727-19-drop-indici-ridondanti-coperti-da-unique-mctit.yaml
+
+  - changeSet:
+      id: 20260727-19-drop-indici-ridondanti-coperti-da-unique
+      author: mctit
+      comment: >
+        Droppa tre btree ridondanti in vendite, gia' coperti da un UNIQUE sulla
+        stessa colonna leading: ix_attivita_fatturabili_commessa_attivita_id
+        (duplicato esatto di uq_attivita_fatturabili_commessa_attivita),
+        ix_vendite_preventivi_r_iva_preventivo_id e
+        ix_vendite_fatture_riepiloghi_iva_fattura_id (prefisso delle rispettive
+        uq_*_r_iva_key). Nessuno dei tre e' gestito da dbops.fk_index_policy.
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - sqlCheck:
+            expectedResult: "3"
+            sql: >-
+              SELECT count(*)
+                FROM pg_class i
+                JOIN pg_namespace n ON n.oid = i.relnamespace
+               WHERE i.relkind = 'i'
+                 AND n.nspname = 'vendite'
+                 AND i.relname IN (
+                       'uq_attivita_fatturabili_commessa_attivita',
+                       'uq_fatture_r_iva_key',
+                       'uq_preventivi_r_iva_key'
+                     )
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- 1. Duplicato esatto: stessa colonna, stesso metodo, nessun
+              --    predicato. Coperto da uq_attivita_fatturabili_commessa_attivita.
+              DROP INDEX IF EXISTS vendite.ix_attivita_fatturabili_commessa_attivita_id;
+
+              -- 2. Prefisso di uq_preventivi_r_iva_key (preventivo_id leading).
+              DROP INDEX IF EXISTS vendite.ix_vendite_preventivi_r_iva_preventivo_id;
+
+              -- 3. Prefisso di uq_fatture_r_iva_key (fattura_id leading).
+              --    Indice mai presente nei changelog: creato fuori Liquibase.
+              DROP INDEX IF EXISTS vendite.ix_vendite_fatture_riepiloghi_iva_fattura_id;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_attivita_fatturabili_commessa_attivita_id
+                ON vendite.attivita_fatturabili (commessa_attivita_id);
+
+              CREATE INDEX IF NOT EXISTS ix_vendite_preventivi_r_iva_preventivo_id
+                ON vendite.preventivi_riepiloghi_iva (preventivo_id);
+
+              CREATE INDEX IF NOT EXISTS ix_vendite_fatture_riepiloghi_iva_fattura_id
+                ON vendite.fatture_riepiloghi_iva (fattura_id);

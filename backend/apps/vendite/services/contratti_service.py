@@ -130,6 +130,14 @@ _CREATE_KEYS_TESTATA: frozenset[str] = frozenset({
     # Snapshot categoria cliente: opzionale. Se fornito, congela il valore
     # scelto dall'operatore; se omesso, il trigger DB lo popola dal BA.
     "categoria_cliente_id_snapshot",
+    # ⚠️ `fatturazione_immediata` NON e' qui, e non e' una dimenticanza: la fn
+    # madre `vendite.fn_create_contratto` costruisce l'INSERT da una whitelist
+    # SUA (`v_testata_allowed`) che non contiene ancora la colonna, quindi
+    # passarla qui la farebbe scartare **in silenzio** — il peggiore dei mondi.
+    # Il flag si imposta con la PATCH in DRAFT (whitelist sotto), che copre il
+    # caso d'uso per intero: la corsia va decisa prima del push, e in DRAFT il
+    # contratto non e' ancora pushabile. Estendere la whitelist della fn madre
+    # e' una modifica DB, passata al team ([[feedback_db_actions_passaggio_team]]).
     # Snapshot valuta fissato al CREATE, opzionale: se non passato, il
     # trigger DB `_a*_set_valuta_default_ins` risolve via
     # `vendite.fn_get_valuta_id` (catena BA → emittente → gestore, brief
@@ -153,6 +161,7 @@ _UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
     "tipo_variazione_globale",
     "valore_variazione_globale",
     "categoria_cliente_id_snapshot",
+    "fatturazione_immediata",
     "meta",
 })
 

@@ -19,6 +19,9 @@ DECLARE
 BEGIN
   -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente/stato
   -- risolti per codice_interno (immutabile), non per codice (mutabile).
+  -- rev 2026-07-27 (brief emissione mirata PARTE B): fatturazione_immediata
+  -- proiettata dalla COLONNA (era la costante FALSE). Il valore instrada
+  -- la corsia via chiave di dedup di fn_get_or_create_commessa.
   IF p_contratto_id IS NOT NULL AND p_contratto_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_list_contratti_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
@@ -52,7 +55,8 @@ BEGIN
     c.utility_id,
     anagrafiche.fn_get_emittente_fiscale_id(c.billing_account_id),
     c.valido_dal, c.valido_al,
-    FALSE,
+    -- Corsia di instradamento: valore reale del contratto.
+    c.fatturazione_immediata,
     v_sorgente_tipo_id,
     c.uid::text,
     ('CONTR:' || c.uid::text || ':R:' || cr.id::text || ':M:' ||
@@ -68,6 +72,8 @@ BEGIN
     COALESCE(cr.factor_to_base, 1::numeric),
     date_trunc('month', COALESCE(c.valido_dal, c.data))::date,
     cr.prezzo_unitario,
+    -- prezzo_bloccato: dipende dalla RIGA (prezzo valorizzato),
+    -- INDIPENDENTE dal flag di corsia. Vedi header del changeSet.
     (cr.prezzo_unitario IS NOT NULL),
     'FIXED'::varchar,
     'NORMALE'::varchar,
@@ -107,7 +113,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_contratti_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_contratto_id bigint)
-IS 'Lista righe contratto eligible al push su commessa (stato ATTIVO). uom_id da catalogo.articoli (canonica). p_contratto_id opzionale: NULL=batch globale, NOT NULL=singolo contratto. Filtri in AND. Esclude EMESSA via NOT EXISTS. (20260511-33: cr.quantita_fissa -> cr.quantita dopo rename colonna) rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE del mese via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a.';
+IS 'Lista righe contratto eligible al push su commessa (stato ATTIVO). uom_id da catalogo.articoli (canonica). p_contratto_id opzionale: NULL=batch globale, NOT NULL=singolo contratto. Filtri in AND. Esclude EMESSA via NOT EXISTS. (20260511-33: cr.quantita_fissa -> cr.quantita dopo rename colonna) rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE del mese via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.contratti.fatturazione_immediata (era costante FALSE) — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta legato alla riga (prezzo valorizzato): l''accoppiamento flag/prezzo esiste solo sui preventivi.';
 ```
 
 ---

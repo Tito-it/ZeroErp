@@ -14,7 +14,7 @@
 > **Brief operativi derivati** (2026-07-19):
 > [brief-db-processi-fatturazione-cockpit.md](brief-db-processi-fatturazione-cockpit.md)
 > (seed azioni + **modello outbox stampa**: coda + accodatore, applicato in 2 gruppi G1/G2) →
-> [brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md)
+> [brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md)
 > (piano a step, Fasi A→D; la stampa è worker-drainer, non render inline).
 >
 > **Documenti collegati**:
@@ -346,7 +346,7 @@ recepirà anche questo brief.)
 ## 9. Piano di consegna (dopo la chiusura di §8)
 
 Dettaglio operativo e avanzamento step-by-step:
-[brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md).
+[brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md).
 
 | Fase | Contenuto | Prerequisiti |
 |---|---|---|

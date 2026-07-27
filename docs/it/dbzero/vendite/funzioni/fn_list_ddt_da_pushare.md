@@ -20,6 +20,9 @@ BEGIN
   -- rev 2026-07-17 (step 3): proietta la differenza del contatore.
   -- rev 2026-07-18 (step 5): eleggibilita' dallo stato-trigger IN POI.
   -- rev 2026-07-18 (step 5b): esclude le causali non fatturabili.
+  -- rev 2026-07-27 (brief emissione mirata PARTE B): fatturazione_immediata
+  -- proiettata dalla COLONNA (era la costante FALSE), trasportata
+  -- lungo la CTE cand -> dist -> SELECT finale.
   IF p_ddt_id IS NOT NULL AND p_ddt_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_list_ddt_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
@@ -55,6 +58,8 @@ BEGIN
       d.anno          AS d_anno,
       d.serie         AS d_serie,
       d.valuta_id     AS d_valuta,
+      -- Corsia di instradamento: trasportata fino alla SELECT finale.
+      d.fatturazione_immediata AS d_fatt_immediata,
       dr.articolo_id  AS dr_articolo,
       dr.quantita     AS dr_quantita,
       dr.qta_operativa AS dr_qta_op,
@@ -162,7 +167,8 @@ BEGIN
     anagrafiche.fn_get_emittente_fiscale_id(x.ba_id),
     x.d_data,
     x.d_data,
-    FALSE,
+    -- Corsia di instradamento: valore reale del DDT.
+    x.d_fatt_immediata,
     v_sorgente_tipo_id,
     x.d_uid::text,
     ('DDT:' || x.d_uid::text || ':R:' || x.dr_id::text)::varchar,
@@ -177,6 +183,8 @@ BEGIN
     COALESCE(x.dr_factor, 1::numeric),
     date_trunc('month', x.d_data)::date,
     COALESCE(x.dr_prezzo, x.src_prezzo_unitario),
+    -- prezzo_bloccato: dipende dal PREZZO della riga,
+    -- INDIPENDENTE dal flag di corsia. Vedi header del changeSet.
     (COALESCE(x.dr_prezzo, x.src_prezzo_unitario) IS NOT NULL),
     'FIXED'::varchar,
     'NORMALE'::varchar,
@@ -200,7 +208,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ddt_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ddt_id bigint)
-IS 'Lista righe DDT eligible al push su commessa. rev 2026-07-18 (step 5b): esclude i DDT con causale di trasporto NON fatturabile (config.causali_trasporto.fatturabile, DL-28) — cintura su entrambi i rami, la causale descrive il viaggio della merce non la provenienza del documento; INNER JOIN perche'' la causale e'' obbligatoria dall''emissione (gate trgfn_ddt_guard_causale_emissione). rev 2026-07-18 (step 5): eleggibilita'' order-backed DALLO stato-trigger IN POI (sdd.ordine >= rank del trigger) AND NOT is_abortito AND <> RESO, cintura XOR != CONFERMATO PRESERVATA. rev 2026-07-17 (step 3): proietta come quantita la DIFFERENZA del contatore vw_contatore_merce distribuita per riga DDT (greedy, cappata a dr.quantita); qta_operativa scalata; standalone e compositi a dr.quantita grezza; filtra quantita_push > 0. rev 2026-06-28: sorgente/stato per codice_interno. rev 2026-07-19: esclusione su ALLOCAZIONE via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a.';
+IS 'Lista righe DDT eligible al push su commessa. rev 2026-07-18 (step 5b): esclude i DDT con causale di trasporto NON fatturabile (config.causali_trasporto.fatturabile, DL-28) — cintura su entrambi i rami, la causale descrive il viaggio della merce non la provenienza del documento; INNER JOIN perche'' la causale e'' obbligatoria dall''emissione (gate trgfn_ddt_guard_causale_emissione). rev 2026-07-18 (step 5): eleggibilita'' order-backed DALLO stato-trigger IN POI (sdd.ordine >= rank del trigger) AND NOT is_abortito AND <> RESO, cintura XOR != CONFERMATO PRESERVATA. rev 2026-07-17 (step 3): proietta come quantita la DIFFERENZA del contatore vw_contatore_merce distribuita per riga DDT (greedy, cappata a dr.quantita); qta_operativa scalata; standalone e compositi a dr.quantita grezza; filtra quantita_push > 0. rev 2026-06-28: sorgente/stato per codice_interno. rev 2026-07-19: esclusione su ALLOCAZIONE via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.ddt.fatturazione_immediata (era costante FALSE), trasportata via CTE cand -> dist — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta legato al prezzo della riga: l''accoppiamento flag/prezzo esiste solo sui preventivi.';
 ```
 
 ---

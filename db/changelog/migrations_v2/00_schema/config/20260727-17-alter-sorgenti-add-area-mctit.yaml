@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.sorgenti.area — la mappa sorgente -> area documentale
+#   (brief-db-emissione-fattura-per-documento-sorgente PARTE A, step A7-bis,
+#    decisione D-5)
+#
+# IL PROBLEMA. L'elenco dei gruppi fatturabili deve mostrare all'operatore
+#   «PRV-0012», non 'PREVENTIVO:9f3a-4b1c-...'. Il numero leggibile esiste gia'
+#   in vendite.vw_dash_fatturazione_documenti, che pero' etichetta i documenti
+#   per AREA ('PREVENTIVI', 'ORDINI', 'CONTRATTI', 'DDT', 'OFFERTE',
+#   'COMMESSE'), mentre il gruppo li identifica per sorgente_tipo_id
+#   ('PREVENTIVO', 'ORDINE_VENDITA', ...). Due vocabolari per le stesse cose.
+#
+# ⚠️ IL VOCABOLARIO "AREA" NON ESISTEVA COME DATO. Verificato il 2026-07-27: la
+#   stringa e' scritta A MANO dentro ciascuna delle SEI viste per-sorgente
+#   ('PREVENTIVI'::varchar AS area in vw_dash_fatturazione_preventivi, e cosi'
+#   via). Non stiamo scegliendo dove LEGGERE una mappa esistente: la stiamo
+#   CREANDO.
+#
+# PERCHE' QUI E NON DENTRO LA NUOVA VISTA (D-5, decisione di Tid).
+#   La regola di casa estrae un valore ripetuto alla SECONDA occorrenza; qui
+#   siamo a SEI. Mettere la traduzione dentro vw_dash_competenza_gruppi la
+#   nasconderebbe li' dentro: al secondo consumatore verrebbe copiata, e da
+#   quel momento esisterebbero due mappe che possono divergere. In
+#   config.sorgenti sta accanto a codice_interno, codice, categoria,
+#   target_table e key_selector — che descrivono gia' ogni sorgente — ed e'
+#   trovabile da chiunque ne abbia bisogno.
+#   Stessa famiglia di problema di analisi-hardcoded-codice.
+#
+# NULLABLE, e il NULL ha significato: 'questa sorgente non e' un documento
+#   sfogliabile'. Vale per ATTIVITA, ATTIVITA_CONSUMI, FATTURA e RESO_VENDITA:
+#   non hanno una scheda documento nel cockpit di fatturazione e non compaiono
+#   in vw_dash_fatturazione_documenti. Il join dell'elenco sara' quindi un LEFT
+#   JOIN: un gruppo senza area non sparisce, mostra la chiave grezza.
+#
+# NON AGGIUNTA ALLE COLONNE LOCK (trg_sorgenti_a10_upd_lock_columns), a
+#   differenza di categoria. Motivo: categoria e' strutturale (classifica il
+#   tipo di entita' e cambia il comportamento), area e' una mappa di
+#   PRESENTAZIONE verso un altro vocabolario, che puo' legittimamente aver
+#   bisogno di correzione se una vista di dashboard cambia etichetta. In piu'
+#   aggiungere una colonna al lock su un DB esistente richiede DROP+rigenera
+#   del trigger: costo non giustificato per una colonna di display.
+#   Se in futuro si decidesse di bloccarla, va fatto con un changeSet dedicato.
+#
+# CHECK non-vuota: '' sarebbe indistinguibile da NULL a occhio ma si
+#   comporterebbe in modo diverso nel join (matcherebbe nulla invece di
+#   saltare). O e' NULL, o e' un'area vera.
+#
+# Il SEED della mappa (6 righe valorizzate + 4 NULL) sta nel CSV
+#   80_data/sql/config/sorgenti.csv, caricato dal loader esistente
+#   20251002-21 (runOnChange + validCheckSums ANY = mirror vivo del CSV):
+#   nessun loader nuovo.
+#
+# ⚠️ %TYPE non e' valido in ALTER TABLE ADD COLUMN (DDL plain): tipo esplicito.
+# Dipendenze: config.sorgenti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260727-17-alter-sorgenti-add-area-mctit.yaml
+
+  - changeSet:
+      id: 20260727-17-alter-sorgenti-add-area
+      author: mctit
+      comment: >
+        Aggiunge config.sorgenti.area (varchar nullable): mappa sorgente -> area
+        documentale, oggi scritta a mano dentro 6 viste. NULL = sorgente non
+        sfogliabile come documento.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: sorgenti
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: sorgenti
+                    columnName: area
+      changes:
+        - addColumn:
+            schemaName: config
+            tableName: sorgenti
+            columns:
+              - column:
+                  name: area
+                  type: character varying(30)
+                  remarks: >-
+                    Area documentale corrispondente alla sorgente
+                    (PREVENTIVI, ORDINI, CONTRATTI, DDT, OFFERTE, COMMESSE).
+                    NULL = sorgente non sfogliabile come documento.
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.sorgenti
+                ADD CONSTRAINT chk_sorgenti_area_non_vuota
+                CHECK (area IS NULL OR btrim(area) <> '');
+
+              COMMENT ON COLUMN config.sorgenti.area IS
+                  'Area documentale corrispondente alla sorgente: PREVENTIVI, ORDINI, '
+                  'CONTRATTI, DDT, OFFERTE, COMMESSE. E'' la chiave con cui '
+                  'vendite.vw_dash_fatturazione_documenti (e le sei viste per-sorgente '
+                  'che la compongono) etichetta i documenti, e serve a tradurre un '
+                  'gruppo fatturabile nel suo riferimento leggibile per l''operatore. '
+                  'Prima del 2026-07-27 questo vocabolario NON esisteva come dato: la '
+                  'stringa era scritta a mano dentro ciascuna delle sei viste. '
+                  'NULL = la sorgente non e'' un documento sfogliabile (ATTIVITA, '
+                  'ATTIVITA_CONSUMI, FATTURA, RESO_VENDITA): i consumatori usano LEFT '
+                  'JOIN, cosi'' un gruppo senza area non sparisce dall''elenco. '
+                  'NON e'' fra le colonne lock (a differenza di categoria): e'' una mappa '
+                  'di presentazione, non una classificazione strutturale. '
+                  'brief-db-emissione-fattura-per-documento-sorgente A7-bis / D-5.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.sorgenti
+                DROP CONSTRAINT IF EXISTS chk_sorgenti_area_non_vuota;
+              ALTER TABLE config.sorgenti
+                DROP COLUMN IF EXISTS area;

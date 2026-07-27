@@ -41,11 +41,11 @@ import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import RiepilogoIvaTable from '../../../core/components/RiepilogoIvaTable.vue'
 import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
-import LineagePassaggiPanel from '../../_shared/lineage/LineagePassaggiPanel.vue'
+import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegamentiBar.vue'
 import DdtForm from './DdtForm.vue'
 import DdtRigheTable from './DdtRigheTable.vue'
 import DdtNoteDrawer from './DdtNoteDrawer.vue'
-import DdtResoPanel from './DdtResoPanel.vue'
+import DdtResoDialog from './DdtResoDialog.vue'
 import DdtEmissioneDialog from './dialogs/DdtEmissioneDialog.vue'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
@@ -82,6 +82,18 @@ const showRiepilogoIva = computed(
   () => Array.isArray(riepilogoIva.value) && riepilogoIva.value.length > 0,
 )
 const noteDrawerVisible = ref(false)
+const resoDialogVisible = ref(false)
+// Ref alla barra collegamenti: la creazione di un reso aggiunge un arco
+// DDT->Reso, quindi i chip vanno ricaricati insieme al detail (senza questo,
+// il chip «Reso» comparirebbe solo alla riapertura del drawer).
+const collegamentiRef = ref(null)
+
+// Scopo: dopo la creazione di un reso, ricarica sia il detail (residui
+//        rendibili, stato) sia i chip dei collegamenti.
+function onResoCreato() {
+  loadDetail()
+  collegamentiRef.value?.reload()
+}
 // Avviso emissione: true quando manca l'indirizzo obbligatorio (CON) —
 // alimentato dalla sezione indirizzi, mostrato nel dialog di emissione.
 const indirizzoObbligatorioMancante = ref(false)
@@ -109,10 +121,11 @@ const isReadonly = computed(
 )
 provide(READONLY_KEY, isReadonly)
 
-// Pannello "Crea reso": solo su DDT CONSEGNATO (l'azione manuale «Reso» e'
-// stata rimossa dalla matrice — il flip a RESO e' automatico alla conferma di
-// un reso totale; questo pannello e' il percorso per aprire il reso).
-const showResoPanel = computed(
+// Azione "Genera reso" (dialog dedicata): solo su DDT CONSEGNATO — non si
+// rende cio' che non e' stato consegnato. E' il percorso per aprire un reso;
+// il flip del DDT a RESO resta automatico lato DB alla conferma di un reso
+// TOTALE (fn_conferma_reso), mai manuale.
+const showResoAction = computed(
   () => detail.value?.stato_codice_interno === STATO_DDT.CONSEGNATO,
 )
 
@@ -178,6 +191,8 @@ function defaultForm() {
     // _obj per BillingAccountLookup (pattern restore lookup ricco).
     billing_account_obj: null,
     valuta_id: null,
+    // Corsia di instradamento: default differita (DEFAULT false a DB).
+    fatturazione_immediata: false,
     data: new Date(),
     // Trasporto
     causale_trasporto_id: null,
@@ -218,6 +233,7 @@ async function loadDetail(id = null) {
     billing_account_id: data.billing_account_id ?? null,
     billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
     valuta_id: data.valuta_id ?? null,
+    fatturazione_immediata: data.fatturazione_immediata ?? false,
     data: data.data ? new Date(data.data + 'T00:00:00') : null,
     // Trasporto
     causale_trasporto_id: data.causale_trasporto_id ?? null,
@@ -307,6 +323,7 @@ function buildTestataPayload({ includeBa = false } = {}) {
   const payload = {
     utility_id: f.utility_id || null,
     valuta_id: f.valuta_id || null,
+    fatturazione_immediata: !!f.fatturazione_immediata,
     data: f.data ? toDateString(f.data) : null,
     causale_trasporto_id: f.causale_trasporto_id || null,
     aspetto_bene_id: f.aspetto_bene_id || null,
@@ -494,6 +511,18 @@ const drawerActions = computed(() => {
   })
   return [
     ...stateActions,
+    // Genera reso: apre la dialog dedicata (righe consegnate con residuo
+    // rendibile). Resta visibile anche in readonly puro — la dialog si apre
+    // in sola consultazione (footer di sola chiusura).
+    ...(showResoAction.value
+      ? [{
+          key: 'genera-reso',
+          kind: 'manage',
+          label: t('vendite.ddt.genera_reso'),
+          icon: NAV_ICONS.RESI,
+          command: () => { resoDialogVisible.value = true },
+        }]
+      : []),
     {
       key: 'manage-note',
       kind: 'manage',
@@ -527,15 +556,10 @@ const drawerActions = computed(() => {
           <span v-if="detail.data" class="app-drawer-header-muted font-bold">
             {{ displayDate(detail.data) }}
           </span>
-          <!-- Provenienza: chip read-only quando il DDT nasce da un ordine
-               (evasione). Mostra il numero dell'ordine di origine. -->
-          <Tag
-            v-if="detail.ordine_origine_numero"
-            :value="t('vendite.ddt.origine_chip', { numero: detail.ordine_origine_numero })"
-            severity="info"
-            icon="pi pi-link"
-            v-tooltip.bottom="t('vendite.ddt.origine_chip_tooltip')"
-          />
+          <!-- La provenienza (ordine di evasione) NON e' piu' un chip d'header
+               dedicato: e' assorbita dai chip di DocumentoCollegamentiBar sotto
+               la barra azioni, dove sta l'origine di TUTTI i domini (2026-07-25).
+               Un solo posto, uguale ovunque, invece di un chip speciale del DDT. -->
 
           <template #status>
             <Tag
@@ -560,6 +584,16 @@ const drawerActions = computed(() => {
             />
           </template>
         </DrawerActionsBar>
+
+        <!-- Collegamenti diretti (pratica + origine + destinazioni di livello 1):
+             segnalazione a colpo d'occhio sotto i pulsanti — «Ordine», «1 Reso».
+             Il dettaglio (grafo completo) si apre dai chip stessi in dialog.
+             `ref` per ricaricare i chip dopo un'azione che li cambia (reso). -->
+        <DocumentoCollegamentiBar
+          ref="collegamentiRef"
+          base-path="/vendite/ddt"
+          :doc-id="effectiveDdtId"
+          :readonly="readonly || parentReadonly" />
       </template>
 
       <Divider v-if="hasDetail" />
@@ -600,32 +634,6 @@ const drawerActions = computed(() => {
           <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
         </template>
 
-        <!-- Crea reso (slice resi): righe consegnate con residuo rendibile.
-             Il reso nasce DRAFT nel tab Resi; alla sua CONFERMA il BE riapre
-             il residuo ordine e, se reso totale, flippa questo DDT a RESO.
-             In CONSEGNATO il contenuto e' `app-readonly` (lock-di-stato) ma la
-             creazione reso e' un'azione di processo legittima → `app-escape`
-             la mantiene cliccabile (mirror pannello evasione ordini). In
-             readonly PURO il pannello e' consuntivo (niente azioni). -->
-        <template v-if="showResoPanel">
-          <Divider />
-          <div class="app-escape">
-            <DdtResoPanel
-              :ddt-id="effectiveDdtId"
-              :readonly="props.readonly || parentReadonly"
-              @reso-creato="loadDetail()" />
-          </div>
-        </template>
-
-        <!-- Genealogia/lineage (pannello "Passaggi", BB condiviso lazy:
-             fetch al primo expand; app-escape interno per la consultazione
-             in readonly di stato). -->
-        <Divider />
-        <LineagePassaggiPanel
-          base-path="/vendite/ddt"
-          :doc-id="effectiveDdtId"
-          :readonly="readonly || parentReadonly" />
-
       </template>
 
       <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto"
@@ -640,6 +648,20 @@ const drawerActions = computed(() => {
     v-if="effectiveDdtId"
     v-model:visible="noteDrawerVisible"
     :ddt-id="effectiveDdtId"
+  />
+
+  <!-- Dialog "Genera reso" (slice resi): righe consegnate con residuo rendibile,
+       aperta dal pulsante in barra azioni. Il reso nasce DRAFT nel tab Resi;
+       alla sua CONFERMA il BE riapre il residuo ordine e, se il reso e' TOTALE,
+       flippa questo DDT a RESO. `readonly` = quello PURO del chiamante: il lock
+       di stato del drawer (CONSEGNATO) non deve disabilitare un'azione di
+       processo legittima proprio in quello stato. -->
+  <DdtResoDialog
+    v-if="effectiveDdtId && showResoAction"
+    v-model:visible="resoDialogVisible"
+    :ddt-id="effectiveDdtId"
+    :readonly="props.readonly || parentReadonly"
+    @reso-creato="onResoCreato"
   />
 
   <!-- Dialog emissione DDT (transizione DRAFT → EMESSO, assegna numero). -->

@@ -1,0 +1,391 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: vendite.vw_dash_competenza_gruppi (elenco dei gruppi fatturabili)
+-- Brief: brief-db-emissione-fattura-per-documento-sorgente PARTE A (step A10)
+-- Changeset coperti: 20260727-16, 20260727-17 (+ seed CSV), 20260727-18
+-- ------------------------------------------------------------
+-- Indice test (1..10):
+--  1) la vista espone i 3 gruppi della commessa: preventivo, contratto, oneri
+--  2) n_attivita per gruppo = 2 / 2 / 1
+--  3) valore per gruppo = somma di prezzo_snapshot * quantita
+--  4) G8 ⭐ la somma dei gruppi coincide con le righe DA_EMETTERE della vista base
+--  5) G8 le chiavi esposte sono accettate TALI E QUALI da fn_emit come p_gruppi
+--  6) D-5 riferimento del gruppo documento = numero del documento (via area)
+--  7) G4 il gruppo oneri c'e', con area NULL e riferimento = commessa (LEFT JOIN)
+--  8) G14 operatore fuori scope emittente -> zero righe
+--  9) security_invoker=on presente su entrambe le viste
+-- 10) A5/A9: il riepilogo coincide con la somma dell'elenco (riconciliazione)
+-- ------------------------------------------------------------
+-- ⭐ IL TEST 4 e' quello che protegge la promessa di D-4: l'elenco e' derivato
+--    da vw_dash_competenza_attivita proprio perche' i suoi numeri coincidano
+--    con quelli della card PER COSTRUZIONE. Se qualcuno riscrivesse la vista
+--    come query autonoma, e' il test che se ne accorge.
+--
+-- ⚠️ COSA QUESTO FILE NON COPRE (limite dichiarato). Il test 8 verifica lo
+--    scope sul lato LETTURA (la vista, che filtra via GUC +
+--    script.fn_get_emittenti_scope_sr_ids). Lo scope sul lato EMISSIONE —
+--    passare a fn_emit la chiave di un gruppo fuori perimetro — e' presidiato
+--    dalla RLS su vendite.commesse, che pgTAP NON puo' esercitare: gira come
+--    owner e la bypassa. Verificarlo richiede un test applicativo con il ruolo
+--    zeroerp_app, non un pgTAP.
+-- ------------------------------------------------------------
+
+BEGIN;
+
+SELECT plan(10);
+
+-- ============================================================
+-- Riferimenti minimi
+-- ============================================================
+CREATE TEMP TABLE tmp_vg_refs AS
+SELECT
+  (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)                         AS billing_account_id,
+  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)                         AS utility_id,
+  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)                         AS istanza_utility_id,
+  (SELECT a.id FROM catalogo.articoli a
+    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
+      AND a.causale_onere_id IS NULL
+    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1) AS articolo_id,
+  (SELECT a.id FROM catalogo.articoli a
+    WHERE a.attivo IS TRUE AND a.causale_onere_id IS NOT NULL
+    ORDER BY a.id LIMIT 1)                          AS articolo_onere_id,
+  (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
+  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
+  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+  (SELECT s.id FROM config.stati_doc_preventivi s
+    WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_prev_accettato_id,
+  (SELECT t.id FROM config.tipi_doc_fiscale t
+    WHERE t.attivo IS TRUE
+      AND EXISTS (SELECT 1 FROM vendite.tipi_doc_fiscale_registri m WHERE m.tipo_doc_fiscale_id = t.id)
+    ORDER BY t.id LIMIT 1)                          AS tipo_doc_fiscale_id,
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO' LIMIT 1) AS src_preventivo_id,
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'CONTRATTO' LIMIT 1)  AS src_contratto_id;
+
+CREATE TEMP TABLE tmp_vg_prev AS
+WITH ins AS (
+  INSERT INTO vendite.preventivi (
+    numero, rev, billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
+    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
+  SELECT 'PGTAP-VGRUPPI', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2081-01-01', DATE '2081-12-31', r.valuta_id, r.stato_prev_accettato_id,
+         DATE '2081-01-01', false, false,
+         jsonb_build_object('test_scope', 'pgtap_vgruppi'), r.emittente_fiscale_id
+  FROM tmp_vg_refs r
+  RETURNING id, uid, numero)
+SELECT * FROM ins;
+
+CREATE TEMP TABLE tmp_vg_comm AS
+SELECT vendite.fn_get_or_create_commessa(
+  p_billing_account_id => (SELECT billing_account_id FROM tmp_vg_refs),
+  p_utility_id => (SELECT utility_id FROM tmp_vg_refs),
+  p_tipo_commessa => 'AUTO',
+  p_policy_fatturazione => 'DA_DOCUMENTO',
+  p_fatturazione_immediata => false,
+  p_priorita_operativa => 'NORMALE',
+  p_competenza_dal => DATE '2081-01-01',
+  p_competenza_al => DATE '2081-01-31',
+  p_meta => jsonb_build_object('test_scope', 'pgtap_vgruppi'),
+  p_force_new => true
+) AS commessa_id;
+
+SELECT vendite.fn_link_commessa_sorgente(
+  p_commessa_id      => (SELECT commessa_id FROM tmp_vg_comm),
+  p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_vg_refs),
+  p_sorgente_uid     => (SELECT uid::text FROM tmp_vg_prev),
+  p_meta             => jsonb_build_object('test_scope', 'pgtap_vgruppi')
+);
+
+-- 4 righe documentali: 2 preventivo (100 cad.) + 2 contratto (50 cad.)
+CREATE TEMP TABLE tmp_vg_righe AS
+SELECT r.attivita_id
+FROM (VALUES ('P', 1, 100.0), ('P', 2, 100.0), ('C', 1, 50.0), ('C', 2, 50.0)) AS x(g, n, prezzo)
+CROSS JOIN LATERAL (
+  SELECT * FROM vendite.fn_upsert_commessa_attivita(
+    p_commessa_id => (SELECT commessa_id FROM tmp_vg_comm),
+    p_segment_key => ('SEG-VG-' || x.g || '-' || x.n)::varchar,
+    p_articolo_id => (SELECT articolo_id FROM tmp_vg_refs),
+    p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_vg_refs),
+    p_data_attivita => DATE '2081-01-15',
+    p_uom_id => (SELECT uom_id FROM tmp_vg_refs),
+    p_quantita => 1.000000,
+    p_competenza_mese => DATE '2081-01-01',
+    p_competenza_dal => DATE '2081-01-01',
+    p_competenza_al => DATE '2081-01-31',
+    p_prezzo_snapshot => x.prezzo,
+    p_prezzo_base_snapshot => NULL,
+    p_origine_prezzo => NULL,
+    p_tipo_variazione_applicata => NULL,
+    p_valore_variazione_applicata => NULL,
+    p_promo_id => NULL,
+    p_contratto_id => NULL,
+    p_categoria_cliente_id_snapshot => NULL,
+    p_classe_utenza_id_snapshot => NULL,
+    p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_vg_refs),
+    p_valuta_id => (SELECT valuta_id FROM tmp_vg_refs),
+    p_stato_approvazione => 'APPROVATA',
+    p_stato_emissione => 'NON_EMESSA',
+    p_sorgente_tipo_id => CASE WHEN x.g = 'P'
+                               THEN (SELECT src_preventivo_id FROM tmp_vg_refs)
+                               ELSE (SELECT src_contratto_id FROM tmp_vg_refs) END,
+    p_sorgente_uid => CASE WHEN x.g = 'P'
+                           THEN (SELECT uid::text FROM tmp_vg_prev)
+                           ELSE 'c0000000-0000-4000-8000-000000000002' END,
+    p_tipo_movimento => 'NORMALE',
+    p_tipo_consumo => 'CONGUAGLIO',
+    p_meta => jsonb_build_object('test_scope', 'pgtap_vgruppi')
+  )
+) r;
+
+-- Riga onere (500) dalla porta manuale: sourceless.
+CREATE TEMP TABLE tmp_vg_onere AS
+SELECT vendite.fn_aggiungi_onere_commessa(
+  p_commessa_id => (SELECT commessa_id FROM tmp_vg_comm),
+  p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_vg_refs),
+  p_articolo_onere_id => (SELECT articolo_onere_id FROM tmp_vg_refs),
+  p_importo => 500.00,
+  p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_vg_refs),
+  p_motivo => 'pgtap vista gruppi',
+  p_data_attivita => DATE '2081-01-20'
+) AS attivita_id;
+
+-- ============================================================
+-- ⚠️ SESSIONE OPERATORE: la vista base e' FAIL-CLOSED senza GUC.
+--   script.fn_get_emittenti_scope_sr_ids(NULL) restituisce l'array VUOTO
+--   (non NULL), e la clausola della vista e'
+--     escope.sr_ids IS NULL OR emittente = ANY(sr_ids)
+--   quindi senza app.current_user_id nessuna riga passa: e' voluto
+--   (fail-closed), ma significa che un test che non imposta la sessione
+--   misurerebbe zero per il motivo sbagliato.
+--   Qui impersoniamo un operatore whitelistato sull'emittente della commessa
+--   fixture; al test 8 spostiamo la whitelist su un altro emittente.
+-- ============================================================
+CREATE TEMP TABLE tmp_vg_op AS
+SELECT id.auth_user_id AS user_id
+  FROM anagrafiche.identita_digitali id
+ WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+   AND id.attivo = true
+   AND NOT EXISTS (
+       SELECT 1 FROM config.profili_accesso_bindings pab
+       JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
+       WHERE pab.identita_digitale_id = id.id
+         AND pab.attivo = true
+         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso)
+ ORDER BY id.id LIMIT 1;
+
+-- Emittente EFFETTIVO della commessa (risolto da fn_get_or_create_commessa),
+-- non quello pescato nei refs: e' quello che la vista confronta.
+CREATE TEMP TABLE tmp_vg_ef AS
+SELECT ef.id AS emittente_fiscale_id
+  FROM anagrafiche.emittenti_fiscali ef
+  JOIN vendite.commesse c ON c.id = (SELECT commessa_id FROM tmp_vg_comm)
+ WHERE ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
+ LIMIT 1;
+
+SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
+DELETE FROM config.user_emittenti_fiscali
+ WHERE auth_user_id = (SELECT user_id FROM tmp_vg_op);
+SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+
+INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
+SELECT (SELECT user_id FROM tmp_vg_op), (SELECT emittente_fiscale_id FROM tmp_vg_ef);
+
+SELECT set_config('app.current_user_id', (SELECT user_id::text FROM tmp_vg_op), true);
+
+-- ============================================================
+-- TEST 1: i tre gruppi ci sono tutti — documenti E oneri.
+-- ============================================================
+SELECT is(
+  (SELECT count(*)::int FROM vendite.vw_dash_competenza_gruppi g
+    WHERE g.commessa_id = (SELECT commessa_id FROM tmp_vg_comm)
+      AND g.stadio = 'DA_EMETTERE'),
+  3,
+  '1) la vista espone 3 gruppi: preventivo, contratto, oneri'
+);
+
+-- ============================================================
+-- TEST 2: il PESO di ciascun gruppo — e' il numero che dice all'operatore
+--   quanto sta per fatturare PRIMA di agire (requisito A3).
+-- ============================================================
+SELECT is(
+  ARRAY(
+    SELECT g.n_attivita FROM vendite.vw_dash_competenza_gruppi g
+     WHERE g.commessa_id = (SELECT commessa_id FROM tmp_vg_comm)
+       AND g.stadio = 'DA_EMETTERE'
+     ORDER BY g.tipo_gruppo
+  ),
+  ARRAY[2::bigint, 1::bigint, 2::bigint],   -- CONTRATTO, ONERI_COMMESSA, PREVENTIVO
+  '2) n_attivita per gruppo = 2 (contratto) / 1 (oneri) / 2 (preventivo)'
+);
+
+-- ============================================================
+-- TEST 3: il valore. 2x100 preventivo, 2x50 contratto, 500 onere.
+-- ============================================================
+SELECT is(
+  (SELECT g.valore FROM vendite.vw_dash_competenza_gruppi g
+    WHERE g.commessa_id = (SELECT commessa_id FROM tmp_vg_comm)
+      AND g.tipo_gruppo = 'PREVENTIVO'
+      AND g.stadio = 'DA_EMETTERE'),
+  200.00::numeric,
+  '3) valore del gruppo preventivo = 2 x 100'
+);
+
+-- ============================================================
+-- TEST 4 ⭐ (G8): riconciliazione con la vista base.
+--   La somma delle attivita' dei gruppi DEVE coincidere con il numero di
+--   righe DA_EMETTERE che alimenta la card. E' la promessa di D-4.
+-- ============================================================
+SELECT is(
+  (SELECT COALESCE(sum(g.n_attivita), 0)::int
+     FROM vendite.vw_dash_competenza_gruppi g
+    WHERE g.commessa_id = (SELECT commessa_id FROM tmp_vg_comm)
+      AND g.stadio = 'DA_EMETTERE'),
+  (SELECT count(*)::int
+     FROM vendite.vw_dash_competenza_attivita a
+    WHERE a.commessa_id = (SELECT commessa_id FROM tmp_vg_comm)
+      AND a.stadio = 'DA_EMETTERE'),
+  '4) G8: somma dei gruppi = righe DA_EMETTERE della vista base'
+);
+
+-- ============================================================
+-- TEST 5 (G8): round-trip. Le chiavi che l'elenco mostra sono ESATTAMENTE
+--   quelle che l'emissione accetta: il FE passa cio' che legge, senza
+--   mappature. Si prende la chiave DALLA VISTA e la si da' a fn_emit.
+-- ============================================================
+SELECT is(
+  (SELECT total_candidate FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
+      p_commessa_id => (SELECT commessa_id FROM tmp_vg_comm),
+      p_dry_run => true,
+      p_gruppi => ARRAY(
+        SELECT g.gruppo_key FROM vendite.vw_dash_competenza_gruppi g
+         WHERE g.commessa_id = (SELECT commessa_id FROM tmp_vg_comm)
+           AND g.tipo_gruppo = 'PREVENTIVO'
+           AND g.stadio = 'DA_EMETTERE'))),
+  2,
+  '5) G8: la chiave letta dalla vista e'' accettata da fn_emit tale e quale'
+);
+
+-- ============================================================
+-- TEST 6 (D-5): il riferimento leggibile. L'operatore deve vedere il numero
+--   del documento, non la chiave. Passa da config.sorgenti.area ->
+--   vw_dash_fatturazione_documenti.
+-- ============================================================
+SELECT is(
+  (SELECT ARRAY[g.area_documento::text, g.riferimento::text]
+     FROM vendite.vw_dash_competenza_gruppi g
+    WHERE g.commessa_id = (SELECT commessa_id FROM tmp_vg_comm)
+      AND g.tipo_gruppo = 'PREVENTIVO'
+      AND g.stadio = 'DA_EMETTERE'),
+  ARRAY['PREVENTIVI'::text, (SELECT numero::text FROM tmp_vg_prev)],
+  '6) D-5: gruppo preventivo -> area PREVENTIVI e riferimento = numero documento'
+);
+
+-- ============================================================
+-- TEST 7 (G4): il gruppo oneri non ha area ne' documento, e proprio per
+--   questo il join deve essere LEFT: se fosse INNER sparirebbe dall'elenco,
+--   che e' esattamente il difetto che il concetto di gruppo evita.
+-- ============================================================
+SELECT is(
+  (SELECT ARRAY[g.tipo_gruppo::text,
+                COALESCE(g.area_documento::text, '<NULL>'),
+                g.riferimento::text]
+     FROM vendite.vw_dash_competenza_gruppi g
+    WHERE g.commessa_id = (SELECT commessa_id FROM tmp_vg_comm)
+      AND g.gruppo_key = 'MAN:' || (SELECT commessa_id::text FROM tmp_vg_comm)),
+  ARRAY['ONERI_COMMESSA'::text, '<NULL>'::text,
+        (SELECT c.codice::text FROM vendite.commesse c
+          WHERE c.id = (SELECT commessa_id FROM tmp_vg_comm))],
+  '7) G4: gruppo oneri presente, area NULL, riferimento = codice commessa'
+);
+
+-- ============================================================
+-- TEST 8 (G14): scope emittente. Impostando la sessione come un operatore
+--   whitelistato su un ALTRO emittente, i gruppi della commessa spariscono.
+--   Non e' una regola riscritta nella vista: e' quella ereditata dalla base.
+-- ============================================================
+-- Sposta la whitelist dello STESSO operatore su un emittente diverso:
+-- cambia solo il perimetro, non l'identita'. Se i gruppi restassero
+-- visibili, vorrebbe dire che la vista non eredita davvero lo scope.
+SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
+DELETE FROM config.user_emittenti_fiscali
+ WHERE auth_user_id = (SELECT user_id FROM tmp_vg_op);
+SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+
+INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
+SELECT (SELECT user_id FROM tmp_vg_op), ef.id
+  FROM anagrafiche.emittenti_fiscali ef
+ WHERE ef.attivo IS TRUE
+   AND ef.id <> (SELECT emittente_fiscale_id FROM tmp_vg_ef)
+ ORDER BY ef.id LIMIT 1;
+
+SELECT is(
+  (SELECT count(*)::int FROM vendite.vw_dash_competenza_gruppi g
+    WHERE g.commessa_id = (SELECT commessa_id FROM tmp_vg_comm)),
+  0,
+  '8) G14: operatore fuori scope emittente -> zero gruppi'
+);
+
+SELECT set_config('app.current_user_id', '', true);
+
+-- ============================================================
+-- TEST 9: la reloption che PostgreSQL azzera in silenzio a ogni
+--   CREATE OR REPLACE VIEW. Perderla trasformerebbe le viste in
+--   security_definer di fatto, aprendo un buco nello scope emittente
+--   su tutte le dashboard di competenza.
+-- ============================================================
+SELECT is(
+  (SELECT count(*)::int FROM pg_class c
+     JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'vendite'
+      AND c.relname IN ('vw_dash_competenza_attivita', 'vw_dash_competenza_gruppi')
+      AND c.reloptions::text LIKE '%security_invoker=on%'),
+  2,
+  '9) security_invoker=on presente su entrambe le viste'
+);
+
+-- ============================================================
+-- TEST 10 (requisito A5, step A9): la riga di totali.
+--   Il riepilogo AGGREGA l'elenco invece di ricalcolare: i due numeri non
+--   possono divergere per costruzione. Questo test lo verifica sul dato,
+--   cosi' se qualcuno riscrivesse il riepilogo come query autonoma se ne
+--   accorge.
+--   ⚠️ Rimesso lo scope dell'operatore giusto (il test 8 lo aveva spostato).
+-- ============================================================
+SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
+DELETE FROM config.user_emittenti_fiscali
+ WHERE auth_user_id = (SELECT user_id FROM tmp_vg_op);
+SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+
+INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
+SELECT (SELECT user_id FROM tmp_vg_op), (SELECT emittente_fiscale_id FROM tmp_vg_ef);
+
+SELECT set_config('app.current_user_id', (SELECT user_id::text FROM tmp_vg_op), true);
+
+SELECT is(
+  (SELECT ARRAY[r.n_gruppi, r.n_attivita::int, r.n_gruppi_oneri]
+     FROM vendite.vw_dash_competenza_gruppi_riepilogo r
+    WHERE r.competenza_mese = DATE '2081-01-01'
+      AND r.stadio = 'DA_EMETTERE'
+      AND r.emittente_soggetto_ruolo_id = (
+          SELECT c.emittente_soggetto_ruolo_id FROM vendite.commesse c
+           WHERE c.id = (SELECT commessa_id FROM tmp_vg_comm))),
+  (SELECT ARRAY[count(*)::int, sum(g.n_attivita)::int,
+                count(*) FILTER (WHERE g.tipo_gruppo = 'ONERI_COMMESSA')::int]
+     FROM vendite.vw_dash_competenza_gruppi g
+    WHERE g.commessa_id = (SELECT commessa_id FROM tmp_vg_comm)
+      AND g.stadio = 'DA_EMETTERE'),
+  '10) A5/A9: il riepilogo coincide con la somma dell''elenco'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

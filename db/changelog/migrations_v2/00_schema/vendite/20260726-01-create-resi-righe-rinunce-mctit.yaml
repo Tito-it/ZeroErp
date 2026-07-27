@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Chiusura ri-consegna — tabella vendite.resi_righe_rinunce
+#   (brief-db-chiusura-riconsegna-reso-definitivo §4.1, Fase 1 voce 2)
+#
+# COSA REGISTRA: la quota di merce resa PER RI-CONSEGNA che NON tornera' al
+# cliente. E' una DICHIARAZIONE, non un movimento: non crea documenti, non
+# cambia il contatore merce, non cambia l'importo dell'accredito (brief §3).
+# Cambia solo la natura della quota pendente: da "tornera' indietro" a
+# "definitiva" -> il residuo ordine si chiude e l'accredito diventa DOVUTO.
+#
+# GEMELLA di vendite.resi_righe_riconsegne (che registra il lato consegnato):
+# stessa granularita', stesse convenzioni, stessa unita' (base). La formula del
+# residuo diventa simmetrica:
+#   residuo = quantita - Sigma riconsegnate - Sigma rinunciate
+#
+# PERCHE' UNA TABELLA e non una colonna qta_rinunciata su resi_righe: la
+# rinuncia, come la ri-consegna, e' PARZIALE e RIPETIBILE (rinuncio a 3 oggi,
+# ad altri 2 la settimana prossima). Una colonna accumula il totale e perde
+# chi/quando/perche' di ogni evento; la tabella rende la reversibilita'
+# (fn_riapri_riconsegna_reso, Fase 2) la cancellazione di una riga invece di
+# un'aritmetica all'indietro.
+#
+# ⚠️ NESSUNA UNIQUE — e non e' una dimenticanza (brief §4.1-bis). La gemella ha
+# uq_resi_riconsegne_pair (resi_riga_id, ddt_riga_id) perche' ogni ri-consegna
+# punta a una riga DDT. La rinuncia NON ha un secondo termine: non c'e' coppia
+# da rendere unica, e una UNIQUE sul solo resi_riga_id VIETEREBBE le rinunce
+# ripetute, che sono il caso d'uso. L'invariante di non-eccedenza e' garantito
+# dal guard (20260726-03), non dall'unicita'.
+#
+# ⚠️ INDICE su resi_riga_id OBBLIGATORIO, a differenza della gemella: la' la
+# UNIQUE (resi_riga_id, ddt_riga_id) copriva gia' le query per resi_riga_id come
+# prefisso. Qui la UNIQUE non c'e', e l'helper fn_resi_riga_residuo_riconsegna
+# fa SUM(qta) WHERE resi_riga_id = ? su ogni riga di elenco/coda -> senza
+# indice sarebbe seq scan. Creazione delegata alla policy opt-in
+# (dbops.fk_index_policy, seed 20260726-02): mai indici FK a mano.
+#
+# Popolata solo da vendite.fn_chiudi_riconsegna_reso (Fase 2).
+# Auto-provisioning dbops: storico, audit, tx_id, require_attivo, indici FK.
+# Dipendenze: vendite.resi_righe.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260726-01-create-resi-righe-rinunce-mctit.yaml
+
+  - changeSet:
+      id: 20260726-01-create-resi-righe-rinunce
+      author: mctit
+      comment: >
+        Crea vendite.resi_righe_rinunce: quota di merce resa per ri-consegna che
+        non tornera' al cliente (gemella di resi_righe_riconsegne). Rinunce
+        parziali e ripetute, nessuna UNIQUE per costruzione.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - tableExists:
+                    schemaName: vendite
+                    tableName: resi_righe_rinunce
+            - tableExists:
+                schemaName: vendite
+                tableName: resi_righe
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: resi_righe_rinunce
+            remarks: >-
+              Quota di una riga reso per ri-consegna dichiarata DEFINITIVA (non
+              tornera' al cliente). Gemella di resi_righe_riconsegne: rinunce
+              parziali e ripetute. brief-db-chiusura-riconsegna-reso-definitivo §4.1.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { primaryKey: true, primaryKeyName: pk_resi_rinunce, nullable: false }
+
+              - column: { name: resi_riga_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> vendite.resi_righe.id (riga reso di tipo ri-consegna)." }
+              - column: { name: qta, type: numeric, constraints: { nullable: false }, remarks: "Quantita rinunciata (unita' base), coerente con resi_righe_riconsegne.qta." }
+              - column: { name: note, type: VARCHAR(255), remarks: "Motivo facoltativo, testo libero (stessa forma di resi_righe_riconsegne.note)." }
+
+              - column: { name: meta, type: jsonb, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+              - column: { name: storicizza, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: tx_id, type: uuid }
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER" }
+
+        # NESSUNA addUniqueConstraint: vedi nota in testa (rinunce ripetute lecite).
+        - addForeignKeyConstraint: { baseTableSchemaName: vendite, baseTableName: resi_righe_rinunce, baseColumnNames: resi_riga_id, constraintName: fk_resi_rinunce_resi_riga, referencedTableSchemaName: vendite, referencedTableName: resi_righe, referencedColumnNames: id, onUpdate: CASCADE, onDelete: CASCADE }
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.resi_righe_rinunce
+                ADD CONSTRAINT k_resi_rinunce_qta_pos CHECK (qta > 0);
+
+              COMMENT ON TABLE vendite.resi_righe_rinunce IS
+                'Quota di una riga reso per ri-consegna dichiarata DEFINITIVA: la merce '
+                'non tornera'' al cliente (brief-db-chiusura-riconsegna-reso-definitivo '
+                'S4.1). Gemella di resi_righe_riconsegne; rinunce parziali e ripetute, '
+                'nessuna UNIQUE per costruzione (l''invariante quantita >= Sigma '
+                'riconsegnate + Sigma rinunciate lo tiene il guard). Non muove numeri: '
+                'ne'' il contatore merce ne'' l''importo dell''accredito cambiano - '
+                'cambia la NATURA della quota pendente, che chiude il residuo ordine e '
+                'rende l''accredito DOVUTO. La merce resta materialmente al fornitore: '
+                'senza modulo magazzino non c''e'' nulla da movimentare (S5.4). '
+                'rev 2026-07-26.';
+
+      rollback:
+        - dropTable:
+            schemaName: vendite
+            tableName: resi_righe_rinunce

@@ -62,4 +62,31 @@ FROM vendite.fn_list_commesse_emittibili(
 
 ---
 
+---
+
+### Emissione mirata: `p_gruppi` (rev 2026-07-27)
+
+Parametro `text[]`, default `NULL`. Restringe alle commesse che contengono
+almeno una riga di un gruppo richiesto.
+
+**Perché.** Questa è la discovery dello step di *pull*: il task cicla commessa
+per commessa con un savepoint ciascuna. Senza filtro, un'emissione mirata su un
+preventivo farebbe comunque il giro di tutte le commesse emittibili del
+perimetro — savepoint, chiamata all'emit (già filtrato), zero righe. Nessun
+danno ai dati, ma un log che dice «ho lavorato 40 commesse» per un'operazione
+che ne riguardava una sola è fuorviante quando poi si va a leggere cos'è
+successo.
+
+⚠️ **Non sostituisce il filtro per riga dentro l'emit.** Qui si sceglie *quali
+commesse* visitare, lì *quali righe* emettere. Una commessa multi-sorgente che
+contiene sia il preventivo richiesto sia il contratto non richiesto passa
+comunque il filtro: sarà l'emit a prendere solo le righe giuste.
+
+Con `p_gruppi` valorizzato anche `total_non_emesse` segue il filtro: è il numero
+di righe che l'emit lavorerà davvero su quella commessa.
+
+> **Prerequisito di entrambe le discovery**: la commessa deve essere in uno
+> stato **emittibile** (`stati_commessa.emittibile = true`). È il criterio 1,
+> valutato prima di ogni filtro di perimetro.
+
 {% include-markdown "signature-core.md" %}

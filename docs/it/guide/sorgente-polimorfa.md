@@ -71,6 +71,37 @@ completa + spiegazione dei **due meccanismi** (polimorfo vs colonne tipizzate di
 come `ddt.sorgente_uid`/`resi.sorgente_uid` che sono `uuid` a sé):
 [config.sorgenti — §Convenzione chiave sorgente](/dbzero/config/tabelle/sorgenti).
 
+### 4a. ⚠️ La trappola vera: colonne che *sembrano* polimorfe ma non lo sono
+
+Il punto che fa sbagliare più spesso **non è** `key_selector` in sé — quello è
+scritto e chiaro. È che esistono colonne chiamate `sorgente_tipo_id` /
+`sorgente_uid` **fuori** da questo meccanismo, che quindi **non sono
+normalizzate** e non seguono `key_selector`.
+
+| Dove | Tipo | Cosa contiene davvero | Dentro il meccanismo? |
+|---|---|---|---|
+| `pratiche.pratiche_sorgenti` | TEXT | chiave **canonica** per `key_selector` | ✅ sì (guard) |
+| `vendite.commesse_sorgenti` | TEXT | chiave **canonica** per `key_selector` | ✅ sì (guard + normalizzazione in `fn_link_commessa_sorgente`) |
+| `vendite.commesse_attivita` | TEXT | **l'`uid` del documento, sempre** — anche per i tipi a chiave `id` | ❌ no |
+| `vendite.attivita_fatturabili` | UUID | `md5(segment_key)`, con tipo `COMMESSA` | ❌ no (idempotenza del pull) |
+| `vendite.ddt`, `vendite.resi` | UUID | uid del padre | ❌ no (colonna tipizzata diretta) |
+
+**Come si riconosce chi è dentro**: la Query 1 di §5 (elenco dei trigger guard).
+Se una tabella non compare lì, **non dare per scontata la forma della chiave**:
+vai a leggere la funzione che fa l'INSERT.
+
+**La regola che chiude il dubbio**: la convenzione di `sorgente_uid` la
+determina **chi scrive**, non chi chiama. `fn_link_commessa_sorgente` riceve un
+uid e scrive `id::text`; `fn_upsert_commessa_attivita` riceve lo stesso uid e lo
+scrive tale e quale. Guardare il chiamante (il push, che passa sempre l'uid)
+porta a concludere «è sempre l'uid» e a scrivere query che non trovano nulla,
+**in silenzio**.
+
+> Caso concreto: `commesse_sorgenti` e `commesse_attivita` sono popolate dallo
+> stesso push, hanno colonne omonime, e per lo **stesso ordine** contengono
+> valori **diversi** (`id::text` vs `uid::text`). Nessuna delle due è
+> sbagliata; sbagliato è dedurre l'una dall'altra.
+
 ## 5. Stato attuale di utilizzo — **NON è una lista scritta qui**
 
 Una lista a mano invecchierebbe. Lo stato reale è già nel database: **interrogalo**.

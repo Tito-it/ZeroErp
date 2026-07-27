@@ -26,7 +26,7 @@ import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-import LineagePassaggiPanel from '../_shared/lineage/LineagePassaggiPanel.vue'
+import DocumentoCollegamentiBar from '../_shared/lineage/DocumentoCollegamentiBar.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
@@ -260,11 +260,17 @@ async function salvaOnere() {
 
 // ------------------------------------------------------------------ stato (capabilities)
 // Azioni di stato utente dal blob capabilities (transizioni manuali).
+// `permission`: chiudi/annulla portano la commessa in uno stato TERMINALE
+// irreversibile (esce per sempre dal giro di fatturazione) → dal 2026-07-27
+// l'endpoint esige `cambia_stato_commessa` e qui il gate FE nasconde i pulsanti
+// a chi non ha l'azione, invece di farlo scoprire con un 403. Un solo codename
+// per i tre verbi: il permesso gatta l'endpoint, non la singola transizione.
 const stateActions = computed(() => mapAvailableActionsToDrawerActions({
   availableActions: capabilities.value.available_actions ?? [],
   t,
   te,
   readonly: isReadonly,
+  permission: 'cambia_stato_commessa',
   onAction: (action) => {
     confirmAction({
       title: t('vendite.commesse.stato_header'),
@@ -296,6 +302,12 @@ const sbloccaMotivo = ref('')
 //        (riga fatturata, commessa non modificabile) resta al BE (fail-visible).
 function buildRowActions(row) {
   if (isReadonly.value || !canPrezzo.value || !canEditRighe.value) return []
+  // Riga fatturata: nessuna azione prezzo (le tre sono tutte rifiutate dal
+  // guard BE `_assert_non_fatturata`). `fatturata` = EXISTS di un'AF con
+  // fattura_riga_id valorizzato, esposta dalla lista (changeset 20260724-07):
+  // specchio esatto del guard, non `stato_emissione` (che resta EMESSA anche
+  // dopo un reset-lotto che ha reso il prezzo di nuovo modificabile).
+  if (row.fatturata) return []
   return [
     {
       key: 'riallinea',
@@ -447,6 +459,15 @@ const drawerActions = computed(() => [
         <!-- Porta oneri + azioni di stato utente (capabilities data-driven). -->
         <DrawerActionsBar v-if="drawerActions.length" :actions="drawerActions" :disabled="loading" />
 
+        <!-- Collegamenti diretti (sorgenti a monte + fatture a valle): stessa
+             riga di chip dei drawer documento, il grafo completo si apre dai
+             chip in dialog. -->
+        <DocumentoCollegamentiBar
+          v-if="commessaId"
+          base-path="/vendite/commesse"
+          :doc-id="commessaId"
+          :readonly="isReadonly" />
+
         <!-- Contatori funnel testata. -->
         <div v-if="stato" class="app-commessa-contatori">
           <span v-for="c in contatori" :key="c.key" class="app-commessa-contatore">
@@ -458,7 +479,13 @@ const drawerActions = computed(() => [
         <!-- Righe attivita' + approvazione (A-1). -->
         <div class="app-page-toolbar" style="margin-top: 1rem;">
           <h4 style="margin: 0;">{{ t('vendite.commesse.righe_titolo') }}</h4>
-          <div v-if="canApprova" style="display: flex; gap: 0.5rem;">
+          <!-- Difetto D1 (§6-bis, corretto 2026-07-27): la visibilita' era sul
+               SOLO permesso, quindi su una commessa gia' PRONTA_FATTURAZIONE i
+               due verbi restavano a video disabilitati — rumore che suggerisce
+               un'azione che non c'e' piu'. Ora compaiono solo se c'e'
+               davvero qualcosa da approvare (il permesso resta condizione
+               necessaria, e il BE resta la difesa vera). -->
+          <div v-if="canApprova && (stato?.total_non_approvate ?? 0) > 0" style="display: flex; gap: 0.5rem;">
             <Button
               :label="t('vendite.commesse.approva_selezionate', { n: selectedIds.length })"
               icon="pi pi-check"
@@ -566,12 +593,6 @@ const drawerActions = computed(() => [
           </Column>
         </DataTable>
 
-        <!-- Genealogia (riuso pannello lineage, chiuso di default). -->
-        <LineagePassaggiPanel
-          v-if="commessaId"
-          base-path="/vendite/commesse"
-          :doc-id="commessaId"
-        />
       </template>
 
       <FormFooter close-only @cancel="onClose" />

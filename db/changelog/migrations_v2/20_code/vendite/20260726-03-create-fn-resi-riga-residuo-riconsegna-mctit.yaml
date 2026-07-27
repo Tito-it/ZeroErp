@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_resi_riga_residuo_riconsegna — helper UNICO del residuo
+#   ri-consegnabile di una riga reso
+#   (brief-db-chiusura-riconsegna-reso-definitivo §4.2-bis, Fase 1 voce 3)
+#
+#   residuo = resi_righe.quantita - Sigma riconsegnate - Sigma rinunciate
+#
+# PERCHE' NASCE: la formula "quantita - Sigma riconsegnate" esiste OGGI in TRE
+# implementazioni indipendenti, e la rinuncia ne richiede l'effetto in quattro
+# punti (brief §4.2-bis):
+#   1. vw_resi_da_riconsegnare        -> LEFT JOIN + COALESCE(ric.tot,0)
+#   2. fn_genera_ddt_riconsegna       -> subquery SUM inline (v_riga.gia_ric)
+#   3. trgfn_resi_riconsegne_guard    -> v_qta_resa - v_gia_ric
+#   4. vw_resi_da_accreditare         -> (da aggiungere, per l'etichetta DOVUTA)
+# Aggiungere la quarta copia della sottrazione avrebbe portato a quattro formule
+# da tenere allineate a mano. Questa funzione e' il punto unico: i consumatori
+# la chiamano invece di ripetere il calcolo. Sana un debito preesistente invece
+# di aggravarlo (stessa logica per cui esiste fn_ordine_riga_qta_riconsegna,
+# dichiarata "single source per coerenza formula").
+#
+# ⚠️ NON confondere con vendite.fn_ordine_riga_qta_riconsegna: quella calcola
+# l'addendo del residuo ORDINE (Sigma quantita delle righe reso riapre_residuo
+# viste dal lato ordine, per fn_ordine_ha_residuo_evasione e il guard
+# fulfillment). Questa calcola il residuo RI-CONSEGNABILE di una singola riga
+# reso: quanta merce resta da ri-spedire o da dichiarare definitiva. Due addendi
+# diversi, due funzioni diverse.
+#
+# STABLE: sola lettura. Guard parametro (AGENTS.md: id NULL o <=0 -> errore
+# parlante, mai normalizzazione silenziosa).
+#
+# NON filtra ne' lo stato del reso ne' resi_righe.attivo: e' un'aritmetica di
+# copertura sulla singola riga, e i chiamanti applicano i propri filtri di
+# dominio (CONFERMATO + attivo + tipo riapre_residuo) DOVE gli servono - come
+# fa oggi vw_resi_da_riconsegnare nella sua WHERE. Mettere i filtri qui
+# renderebbe la funzione inutilizzabile dal guard, che deve poter valutare la
+# copertura anche mentre la riga sta cambiando.
+#
+# Dipendenze: vendite.resi_righe, vendite.resi_righe_riconsegne,
+#   vendite.resi_righe_rinunce (20260726-01).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260726-03-create-fn-resi-riga-residuo-riconsegna-mctit.yaml
+
+  - changeSet:
+      id: 20260726-03-create-fn-resi-riga-residuo-riconsegna
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Helper unico: residuo ri-consegnabile di una riga reso
+        (quantita - Sigma riconsegnate - Sigma rinunciate). Punto unico consumato
+        da vista elenco, madre ri-spedizione, guard e coda accrediti.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_resi_riga_residuo_riconsegna(
+                  p_resi_riga_id vendite.resi_righe.id%TYPE
+              )
+               RETURNS numeric
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: residuo RI-CONSEGNABILE di una riga reso, cioe' quanta
+              --   merce resta da ri-spedire al cliente oppure da dichiarare
+              --   definitiva (rinuncia):
+              --     quantita - Sigma riconsegnate - Sigma rinunciate
+              --   Punto UNICO della formula (brief §4.2-bis): prima era ripetuta
+              --   in vw_resi_da_riconsegnare, fn_genera_ddt_riconsegna e
+              --   trgfn_resi_riconsegne_guard, che ora la consumano da qui.
+              -- NB: e' un'aritmetica di copertura sulla singola riga. NON filtra
+              --   stato reso / attivo / tipo: quei filtri di dominio restano ai
+              --   chiamanti (la vista li ha nella WHERE, il guard deve poter
+              --   valutare la copertura mentre la riga cambia).
+              -- Da non confondere con fn_ordine_riga_qta_riconsegna, che calcola
+              --   l'addendo del residuo ORDINE.
+              DECLARE
+                  v_quantita vendite.resi_righe.quantita%TYPE;
+                  v_ric      numeric;
+                  v_rin      numeric;
+              BEGIN
+                  IF p_resi_riga_id IS NULL OR p_resi_riga_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','fn_resi_riga_residuo_riconsegna','E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro','resi_riga_id','valore',p_resi_riga_id),
+                          NULL::uuid, 'resi_riga_id obbligatorio (>0)');
+                  END IF;
+
+                  SELECT rr.quantita INTO v_quantita
+                    FROM vendite.resi_righe rr
+                   WHERE rr.id = p_resi_riga_id;
+
+                  -- Riga inesistente: 0 residuo, non un errore. La funzione e'
+                  -- letta da viste che possono valutarla su insiemi in movimento;
+                  -- un raise qui le farebbe fallire per una riga cancellata.
+                  IF v_quantita IS NULL THEN
+                      RETURN 0;
+                  END IF;
+
+                  SELECT COALESCE(SUM(q.qta), 0) INTO v_ric
+                    FROM vendite.resi_righe_riconsegne q
+                   WHERE q.resi_riga_id = p_resi_riga_id;
+
+                  SELECT COALESCE(SUM(r.qta), 0) INTO v_rin
+                    FROM vendite.resi_righe_rinunce r
+                   WHERE r.resi_riga_id = p_resi_riga_id;
+
+                  -- GREATEST(0, ...): il residuo non e' mai negativo verso i
+                  -- consumatori. L'invariante quantita >= Sigma ric + Sigma rin
+                  -- e' presidiato dai due guard dei ponti; qui si evita solo che
+                  -- un'eventuale incoerenza si propaghi come numero negativo
+                  -- nelle viste.
+                  RETURN GREATEST(0::numeric, v_quantita - v_ric - v_rin);
+              END;
+              $function$;
+
+              -- COMMENT esige tipi RISOLTI: qui il %TYPE non si usa.
+              COMMENT ON FUNCTION vendite.fn_resi_riga_residuo_riconsegna(bigint)
+              IS 'Residuo RI-CONSEGNABILE di una riga reso: quantita - Sigma resi_righe_riconsegne.qta - Sigma resi_righe_rinunce.qta (brief-db-chiusura-riconsegna-reso-definitivo S4.2-bis). PUNTO UNICO della formula, prima ripetuta in vw_resi_da_riconsegnare, fn_genera_ddt_riconsegna e trgfn_resi_riconsegne_guard: modificarla qui la allinea in tutti. Non filtra stato reso / attivo / tipo riapre_residuo: e'' aritmetica di copertura sulla singola riga, i filtri di dominio restano ai chiamanti. Ritorna 0 su riga inesistente (letta da viste su insiemi in movimento) e mai un valore negativo. DA NON CONFONDERE con fn_ordine_riga_qta_riconsegna, che calcola l''addendo del residuo ORDINE. rev 2026-07-26.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_resi_riga_residuo_riconsegna(bigint);

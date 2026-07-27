@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_list_commessa_attivita: + colonna booleana 'fatturata'
+#   (brief-db-flag-fatturata-lista-attivita.md, 2026-07-24)
+#
+# PROBLEMA: il drawer di gestione commessa offre le azioni prezzo N5/N7/sblocco
+#   per riga. Il BE le difende gia' (commesse_service._assert_non_fatturata
+#   rifiuta il cambio prezzo su riga fatturata leggendo af.fattura_riga_id), ma
+#   il FE non puo' NASCONDERLE prima del click perche' la lista non espone il
+#   dato: l'operatore le vede, le usa, prende un errore. Congruenza UI mancante.
+#
+# CRITERIO (D4): 'fatturata' = EXISTS di un'attivita_fatturabili della riga con
+#   fattura_riga_id IS NOT NULL. E' lo SPECCHIO ESATTO del guard BE: la UI non
+#   puo' divergere da cio' che il BE rifiuta. NON si usa la colonna denormalizzata
+#   attivita_fatturabili.fatturato (che oggi coincide -- si muovono in coppia --
+#   ma e' un secondo asse che potrebbe sfasarsi): si specchia la FK reale che il
+#   guard legge.
+#
+# PERCHE' NON stato_emissione (gia' esposto): 'EMESSA' = uscita verso una fattura,
+#   NON "fatturata in via irreversibile". Il reset lotto DRAFT
+#   (fn_cleanup_fatture_by_ids) azzera fattura_riga_id senza riportare indietro
+#   stato_emissione -> esiste la riga EMESSA con prezzo ancora modificabile
+#   (fattura_riga_id NULL). Usare stato_emissione come proxy nasconderebbe azioni
+#   lecite.
+#
+# RELAZIONE CA<->AF = 1:1 (uq_attivita_fatturabili_commessa_attivita, UNIQUE su
+#   commessa_attivita_id): al massimo una AF per riga. L'EXISTS e il guard BE
+#   (get_attivita_pricing, LEFT JOIN che ritorna 0/1 riga) coincidono per
+#   costruzione, nessuna ambiguita' multi-AF.
+#
+# DROP + CREATE: RETURNS TABLE fa parte del tipo di ritorno, CREATE OR REPLACE
+#   non basta. Verificato: nessun oggetto DB dipende dalla funzione; il BE la
+#   chiama via cursor con colonne nominate (_ATTIVITA_COLS) -> aggiunta in coda
+#   additiva.
+#
+# STESURA: firma+RETURNS dall'ultimo YAML che definisce la fn (20260331-16, %TYPE
+#   intatti); corpo dalla doc auto-gen. La colonna nuova 'fatturata boolean' e'
+#   un tipo DERIVATO (esito di EXISTS), non specchia una colonna reale -> tipo
+#   esplicito boolean, non %TYPE. Modifica PURAMENTE ADDITIVA: SELECT + RETURNS,
+#   WHERE/ORDER BY/LIMIT/OFFSET invariati. La funzione resta STABLE (EXISTS
+#   read-only). L'EXISTS non e' mai NULL: nessun COALESCE.
+# Impatto BE: aggiungere "fatturata" in coda a _ATTIVITA_COLS (§5.1). FE: gate
+#   visible:!row.fatturata sulle azioni prezzo (§5.2).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260724-07-update-fn-list-commessa-attivita-fatturata-mctit.yaml
+
+  - changeSet:
+      id: 20260724-07-update-fn-list-commessa-attivita-fatturata
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_list_commessa_attivita: + colonna fatturata (EXISTS di AF con
+        fattura_riga_id valorizzato) = specchio del guard BE _assert_non_fatturata,
+        per il gate UI delle azioni prezzo. DROP+CREATE (RETURNS TABLE), additivo.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- RETURNS TABLE fa parte del tipo di ritorno: serve DROP. Nessun
+              -- dipendente DB (verificato).
+              DROP FUNCTION IF EXISTS vendite.fn_list_commessa_attivita(
+                bigint, character varying, character varying, date, integer, integer);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_list_commessa_attivita(
+                  p_commessa_id        vendite.commesse.id%TYPE,
+                  p_stato_emissione    CHARACTER VARYING DEFAULT NULL,
+                  p_stato_approvazione CHARACTER VARYING DEFAULT NULL,
+                  p_competenza_mese    DATE DEFAULT NULL,
+                  p_limit              INTEGER DEFAULT 1000,
+                  p_offset             INTEGER DEFAULT 0
+              )
+              RETURNS TABLE(id BIGINT, commessa_id BIGINT, segment_key CHARACTER VARYING,
+                  articolo_id UUID, istanza_utility_id BIGINT, data_attivita DATE,
+                  uom_id BIGINT, quantita NUMERIC, competenza_mese DATE, competenza_dal DATE,
+                  competenza_al DATE, prezzo_snapshot NUMERIC, prezzo_bloccato BOOLEAN,
+                  prezzo_da_riallineare BOOLEAN, stato_approvazione CHARACTER VARYING,
+                  stato_emissione CHARACTER VARYING, sorgente_tipo_id BIGINT,
+                  sorgente_codice CHARACTER VARYING, meta JSONB, data_update TIMESTAMPTZ,
+                  -- rev 2026-07-24: tipo DERIVATO (esito EXISTS), non specchia una
+                  -- colonna reale -> boolean esplicito, non %TYPE.
+                  fatturata BOOLEAN)
+              LANGUAGE plpgsql STABLE
+              AS $function$
+              DECLARE
+                  v_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE;
+              BEGIN
+                  IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_list_commessa_attivita', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_commessa_id', 'valore', p_commessa_id), NULL::uuid, 'p_commessa_id obbligatorio e > 0');
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM vendite.commesse c WHERE c.id = p_commessa_id) THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_list_commessa_attivita', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('commessa_id', p_commessa_id), NULL::uuid, concat('commessa_id ', p_commessa_id));
+                  END IF;
+
+                  -- Sanitize limit/offset
+                  IF p_limit IS NULL OR p_limit <= 0 THEN p_limit := 1000; END IF;
+                  IF p_limit > 10000 THEN p_limit := 10000; END IF;
+                  IF p_offset IS NULL OR p_offset < 0 THEN p_offset := 0; END IF;
+
+                  v_competenza_mese := CASE WHEN p_competenza_mese IS NOT NULL
+                      THEN date_trunc('month', p_competenza_mese)::DATE ELSE NULL END;
+
+                  RETURN QUERY
+                  SELECT ca.id, ca.commessa_id, ca.segment_key, ca.articolo_id, ca.istanza_utility_id,
+                         ca.data_attivita, ca.uom_id, ca.quantita, ca.competenza_mese, ca.competenza_dal,
+                         ca.competenza_al, ca.prezzo_snapshot, ca.prezzo_bloccato, ca.prezzo_da_riallineare,
+                         ca.stato_approvazione, ca.stato_emissione, ca.sorgente_tipo_id,
+                         s.codice AS sorgente_codice, ca.meta, ca.data_update,
+                         -- fatturata: specchio del guard BE _assert_non_fatturata.
+                         -- true = esiste (0/1, per la UNIQUE 1:1) un'AF della riga
+                         -- con fattura_riga_id valorizzato -> il BE rifiutera' ogni
+                         -- azione prezzo. Coperto da ix_attivita_fatturabili_commessa_attivita_id.
+                         EXISTS (
+                             SELECT 1 FROM vendite.attivita_fatturabili af
+                              WHERE af.commessa_attivita_id = ca.id
+                                AND af.fattura_riga_id IS NOT NULL
+                         ) AS fatturata
+                    FROM vendite.commesse_attivita ca
+                    LEFT JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
+                   WHERE ca.commessa_id = p_commessa_id
+                     AND (p_stato_emissione IS NULL OR ca.stato_emissione = p_stato_emissione)
+                     AND (p_stato_approvazione IS NULL OR ca.stato_approvazione = p_stato_approvazione)
+                     AND (v_competenza_mese IS NULL OR ca.competenza_mese = v_competenza_mese)
+                   ORDER BY ca.id LIMIT p_limit OFFSET p_offset;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_commessa_attivita(BIGINT, CHARACTER VARYING, CHARACTER VARYING, DATE, INTEGER, INTEGER)
+                IS 'Read-only: righe commesse_attivita con filtri opzionali e paginazione. JOIN sorgenti per codice. rev 2026-07-24 (brief-db-flag-fatturata-lista-attivita): + colonna fatturata BOOLEAN = EXISTS di un''attivita_fatturabili della riga con fattura_riga_id valorizzato -- specchio esatto del guard BE commesse_service._assert_non_fatturata, per il gate UI delle azioni prezzo. NON usa la colonna denormalizzata attivita_fatturabili.fatturato: specchia la FK che il guard legge. CA<->AF e'' 1:1 (uq_attivita_fatturabili_commessa_attivita). STABLE preservato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: la RETURNS TABLE cambia, quindi si rimuove la funzione.
+              -- La versione a 20 colonne (senza fatturata) va ri-applicata dal
+              -- changeset precedente che la definisce (20260331-16).
+              DROP FUNCTION IF EXISTS vendite.fn_list_commessa_attivita(
+                bigint, character varying, character varying, date, integer, integer);

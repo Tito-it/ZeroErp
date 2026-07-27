@@ -507,6 +507,53 @@ def genera_ddt_riconsegna(
     return {"reso_id": int(reso_id), "ddt_id": ddt_id, "numero": None}
 
 
+# Scopo: Chiude la ri-consegna via fn madre atomica
+#        `fn_chiudi_riconsegna_reso`: dichiara definitiva una quota di merce
+#        resa PER RI-CONSEGNA (non tornera' al cliente). Scrive
+#        `resi_righe_rinunce` e ri-proietta lo stato ordine: il residuo si
+#        chiude → EVASO, chiudendo il buco "PARZIALMENTE_EVASO a vita".
+#        `righe` = [{resi_riga_id, qta}] in UNITA' BASE (stesso contratto della
+#        ri-spedizione — le due uscite condividono la copertura); None = tutta
+#        la copertura residua. `note` = motivo facoltativo della chiusura.
+#        NON muove numeri: l'accredito in coda resta identico, cambia solo
+#        l'etichetta FACOLTATIVA → DOVUTA (brief §3).
+def chiudi_riconsegna(
+    reso_id: int,
+    righe_raw: Any = None,
+    note: Any = None,
+) -> dict[str, Any]:
+    repo = ResiRepository()
+    # Stessa validazione della ri-spedizione: un body degenere NON deve
+    # degradare in silenzio a None = "rendi definitiva TUTTA la copertura
+    # residua" — qui l'effetto silenzioso sarebbe anche peggiore che sulla
+    # gemella (si rinuncerebbe a merce che l'operatore voleva ri-spedire).
+    righe = _parse_righe_riconsegna(righe_raw)
+    note_norm = _parse_note_rinuncia(note)
+    # Guard di merito (CONFERMATO, copertura pendente, over-rinuncia) nella fn
+    # madre / guard ponte DB: E_RESO_NON_CONFERMATO,
+    # E_RESO_NESSUNA_RICONSEGNA_PENDENTE, E_RESO_RINUNCIA_SUPERA_RESO.
+    with _db_errors("chiudi_riconsegna"):
+        righe_chiuse = repo.chiudi_riconsegna(int(reso_id), righe, note_norm)
+    return {"reso_id": int(reso_id), "righe_chiuse": righe_chiuse}
+
+
+# Scopo: Riapre una chiusura via fn madre atomica
+#        `fn_riapri_riconsegna_reso`: cancella le rinunce e ri-proietta lo
+#        stato ordine (torna PARZIALMENTE_EVASO). La quota torna ri-spedibile e
+#        l'accredito torna FACOLTATIVA — round-trip chiudi→riapri = stato
+#        iniziale. `righe` = [{resi_riga_id, qta}], None = tutte le rinunce del
+#        reso; lo scalo parte dalle rinunce piu' RECENTI (LIFO, deciso a DB).
+#        Il gate "non riaprire dopo l'emissione della NC" e' gia' cablato a DB
+#        (script.fn_check_rinuncia_reversibile, dormiente finche' non esiste il
+#        ramo NC): qui nessuna logica da replicare.
+def riapri_riconsegna(reso_id: int, righe_raw: Any = None) -> dict[str, Any]:
+    repo = ResiRepository()
+    righe = _parse_righe_riconsegna(righe_raw)
+    with _db_errors("riapri_riconsegna"):
+        righe_riaperte = repo.riapri_riconsegna(int(reso_id), righe)
+    return {"reso_id": int(reso_id), "righe_riaperte": righe_riaperte}
+
+
 # ══════════════════════════════════════════════════════════
 #  SCRITTURE — Righe (snapshot dalla riga DDT; solo testata DRAFT)
 # ══════════════════════════════════════════════════════════
@@ -715,6 +762,26 @@ def _parse_data_iso(value: Any, *, op: str) -> date | None:
 #        presente DEVE essere una lista non vuota di {resi_riga_id, qta} —
 #        lista vuota o elementi malformati sono errore, NON degradano a
 #        "ri-spedisci tutto" (mirror _parse_righe_evasione di views_ordini).
+# Scopo: normalizza il motivo facoltativo della chiusura ri-consegna. Testo
+#        libero: whitespace/vuoto -> NULL, mai stringa vuota a DB
+#        ([[feedback_null_vs_empty]]). Un tipo non stringa e' un body malformato
+#        e va rifiutato QUI con un 400 parlante: lasciarlo passare lo farebbe
+#        arrivare come parametro varchar a psycopg (adattamento imprevedibile o
+#        errore DB nudo al posto di un messaggio all'operatore).
+def _parse_note_rinuncia(note: Any) -> str | None:
+    if note is None:
+        return None
+    ErrorManager.require(
+        isinstance(note, str),
+        code="E_RESO_VALIDAZIONE",
+        message="note deve essere un testo (motivo della chiusura).",
+        detail=f"note={note!r}",
+        function_name=f"{_FN}._parse_note_rinuncia",
+    )
+    assert isinstance(note, str)
+    return empty_to_none(note.strip())
+
+
 def _parse_righe_riconsegna(righe_raw: Any) -> list[dict[str, Any]] | None:
     fn = f"{_FN}._parse_righe_riconsegna"
     if righe_raw is None:

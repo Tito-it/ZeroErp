@@ -21,7 +21,7 @@
 > generica è la base async di tutto l'ERP; C-3 ne è il **primo consumatore**.
 >
 > **Documenti collegati**:
-> [brief-be-fe-processi-fatturazione.md](../work-in-progress/brief-be-fe-processi-fatturazione.md)
+> [brief-be-fe-processi-fatturazione.md](brief-be-fe-processi-fatturazione.md)
 > (Fase C, C-3 consumatore) · brief DB dedicato (DDL) da produrre su `dev/db-tid`
 > ([[feedback_db_actions_passaggio_team]]).
 

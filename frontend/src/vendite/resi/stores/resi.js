@@ -25,7 +25,9 @@ import {
   createRiga,
   deleteReso,
   deleteRiga,
+  chiudiRiconsegna as apiChiudiRiconsegna,
   generaDdtRiconsegna,
+  riapriRiconsegna as apiRiapriRiconsegna,
   getReso,
   listResi,
   listRighe,
@@ -124,6 +126,26 @@ export const useResiStore = defineStore('vendite-resi', () => {
     return res.data.data
   }
 
+  // Chiude la ri-consegna (rinuncia): la quota resa diventa definitiva, il
+  // residuo ordine si chiude e l'accredito passa a DOVUTA. Notifica anche
+  // l'ORDINE: il suo stato cambia (→ EVASO) come effetto collaterale, ed e' il
+  // caso che il refresh KeepAlive delle liste deve poter cogliere.
+  async function chiudiRiconsegna(id, { righe = null, note = null } = {}) {
+    const res = await apiChiudiRiconsegna(id, { righe, note })
+    emitDataChanged(TAB_ENTITIES.RESO, id)
+    emitDataChanged(TAB_ENTITIES.ORDINE, null)
+    return res.data.data
+  }
+
+  // Riapre una chiusura: round-trip esatto della precedente (l'ordine torna
+  // PARZIALMENTE_EVASO, la quota torna ri-spedibile).
+  async function riapriRiconsegna(id, { righe = null } = {}) {
+    const res = await apiRiapriRiconsegna(id, { righe })
+    emitDataChanged(TAB_ENTITIES.RESO, id)
+    emitDataChanged(TAB_ENTITIES.ORDINE, null)
+    return res.data.data
+  }
+
   // --- Righe ---
 
   async function loadRighe(resoId) {
@@ -156,7 +178,7 @@ export const useResiStore = defineStore('vendite-resi', () => {
     // testata
     fetchList, fetchDetail, create, update, elimina,
     // azioni di dominio
-    conferma, annulla, generaRiconsegna,
+    conferma, annulla, generaRiconsegna, chiudiRiconsegna, riapriRiconsegna,
     // righe
     loadRighe, addRiga, aggiornaRiga, eliminaRiga,
   }

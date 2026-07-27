@@ -12,47 +12,61 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
-import DatePicker from 'primevue/datepicker'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import DashMesiSidebar from '../../core/components/dash/DashMesiSidebar.vue'
+import DashMeseStepper from '../../core/components/dash/DashMeseStepper.vue'
 import LottoDrawer from '../components/LottoDrawer.vue'
 import FatturazioneEsitiPanel from '../components/FatturazioneEsitiPanel.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
 import { usePagedDashFetch } from '../../core/composables/usePagedDashFetch'
+import { useDashMesiNav } from '../../core/composables/useDashMesiNav'
 import { extractApiError } from '../../core/utils/apiError'
-import { displayDate, displayTimestamp, toDateString } from '../../core/utils/date'
+import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
 import { statoLottoSeverity } from '../../core/utils/severity'
-import { listLotti } from '../api/lotti'
+import { listLotti, listLottiMensile } from '../api/lotti'
 
 const { t } = useI18n()
 const notify = useNotify()
 useReadonlyMode(READONLY_DOMAINS.VENDITE)
 
-// Filtri: mese di competenza (DatePicker mese) + stato lotto (select statico
-// sui valori di dominio; una nuova voce si mostra comunque via fail-visible).
-//
-// Default = MESE CORRENTE (non "tutti"): il registro dei giri si consulta per
-// il mese che si sta fatturando, e senza filtro la lista mescolava mesi
-// arbitrari. Resta azzerabile dall'utente (`show-button-bar` → Svuota) per le
-// ricerche storiche: con `null` il BE non applica il filtro.
-const competenzaFilter = ref(primoDelMeseCorrente())
+// Filtro stato lotto (select statico sui valori di dominio; una nuova voce si
+// mostra comunque via fail-visible).
 const statoFilter = ref(null)
 
-// Scopo: 1° del mese corrente. È la granularità del dominio (la competenza è
-//        sempre normalizzata al 1° lato BE): partire dal giorno di oggi
-//        renderebbe il valore inviato dipendente dalla data di apertura.
-function primoDelMeseCorrente() {
-  const oggi = new Date()
-  return new Date(oggi.getFullYear(), oggi.getMonth(), 1)
-}
+// Navigazione anno/mese — stesso telaio della Lente Competenza (BB condiviso
+// useDashMesiNav + DashMesiSidebar): anno in alto, 12 mesi sotto. C'è SEMPRE un
+// mese selezionato (niente "tutti i mesi": lo storico si naviga con le frecce
+// anno). Default = mese corrente, la competenza che si sta fatturando.
+const oggi = new Date()
+const anno = ref(oggi.getFullYear())
+const meseIdx = ref(oggi.getMonth())
 
-// Competenza in formato API (YYYY-MM-DD), condivisa da lista ed esiti: unica
-// derivazione, così i due non possono divergere.
-const competenzaParam = computed(() =>
-  competenzaFilter.value ? toDateString(competenzaFilter.value) : null,
+// `onMeseChange`/`onAnnoChange` sono dichiarazioni di funzione (hoisted): il
+// telaio le riceve qui ma le invoca solo su interazione.
+const { nomiMesi, competenzaCorrente, selezionaMese, cambiaAnno, stepMese } = useDashMesiNav({
+  anno,
+  meseIdx,
+  onMeseChange: onFilterChange,
+  onAnnoChange: loadMensile,
+})
+
+// Competenza in formato API (YYYY-MM-01): è già la forma di competenzaCorrente,
+// condivisa da lista ed esiti (unica derivazione, non possono divergere).
+const competenzaParam = computed(() => competenzaCorrente.value)
+
+// Conteggi lotti/mese dell'anno per il badge della sidebar: mappa
+// competenza→n. I 12 mesi sono SEMPRE presenti (0-riempiti) e reattivi
+// all'anno, così la sidebar non "lampeggia" vuota prima della fetch.
+const conteggiMese = ref({})
+const mesi = computed(() =>
+  Array.from({ length: 12 }, (_, m) => {
+    const cm = `${anno.value}-${String(m + 1).padStart(2, '0')}-01`
+    return { competenza_mese: cm, n_lotti: conteggiMese.value[cm] ?? 0 }
+  })
 )
 
 const statoOptions = computed(() => [
@@ -85,11 +99,26 @@ async function load() {
   }
 }
 
+// Scopo: conteggi lotti/mese dell'anno per il badge della sidebar. Fotografia
+//        completa (nessun filtro stato): indipendente dai filtri di lista.
+async function loadMensile() {
+  try {
+    const res = await listLottiMensile(anno.value)
+    const map = {}
+    for (const m of res.data?.data?.mesi ?? []) map[m.competenza_mese] = m.n_lotti
+    conteggiMese.value = map
+  } catch (err) {
+    notify.error(extractApiError(err, t('common.error')))
+  }
+}
+
 function onPage(event) {
   applyPageEvent(event)
   load()
 }
 
+// Scopo: cambio mese/filtro stato → lista da pagina 1 (il badge non cambia:
+//        è la fotografia dell'anno, ricaricata solo al cambio anno).
 function onFilterChange() {
   page.value = 1
   load()
@@ -97,8 +126,11 @@ function onFilterChange() {
 
 // KeepAlive (ContentTabs): onActivated scatta anche al primo mount e a ogni
 // rientro nel tab — un solo hook, niente doppio fetch iniziale
-// (feedback_keepalive_onactivated).
-onActivated(load)
+// (feedback_keepalive_onactivated). Ricarica lista + badge dell'anno.
+onActivated(() => {
+  load()
+  loadMensile()
+})
 
 // Drawer diagnostico.
 const drawerVisible = ref(false)
@@ -126,7 +158,10 @@ const pageActions = computed(() => [
     kind: 'utility',
     label: t('common.reload_list'),
     icon: MANAGE_ICONS.RELOAD,
-    command: load,
+    command: () => {
+      load()
+      loadMensile()
+    },
   },
 ])
 </script>
@@ -145,63 +180,81 @@ const pageActions = computed(() => [
       </PageActionsBar>
     </div>
 
-    <!-- Esiti fatturazione (C-5): stato coda stampa + giri del mese filtrato.
-         La competenza è la STESSA della lista: pannello e lista raccontano lo
-         stesso periodo (prima i giri erano totali da sempre sotto un filtro
-         mese che non li toccava). -->
-    <FatturazioneEsitiPanel :competenza-mese="competenzaParam" />
+    <div class="app-dash-layout">
+      <!-- Pannello laterale anno + 12 mesi (BB condiviso con la Lente
+           Competenza): badge = numero lotti generati nel mese. -->
+      <DashMesiSidebar
+        :anno="anno"
+        :mesi="mesi"
+        :mese-idx="meseIdx"
+        :nomi-mesi="nomiMesi"
+        @seleziona-mese="selezionaMese"
+        @cambia-anno="cambiaAnno"
+      >
+        <template #badge="{ idx }">
+          <span
+            v-if="mesi[idx].n_lotti > 0"
+            class="app-dash-mese-lotti"
+            v-tooltip.right="t('vendite.lotti.mese_lotti', { n: mesi[idx].n_lotti })"
+          >
+            <i class="pi pi-server" /> {{ mesi[idx].n_lotti }}
+          </span>
+        </template>
+      </DashMesiSidebar>
 
-    <!-- ⚠️ La riga filtri sta DENTRO `.app-page-toolbar` (pattern standard, cfr.
-         EmailLogsListView/SituazioneApertaView). `.app-page-filters` porta
-         `flex: 1`, che ha senso solo in un contenitore in RIGA («prendi lo
-         spazio orizzontale»): come figlia diretta di `.app-page` — che è flex
-         COLUMN — quel `flex: 1` diventa crescita VERTICALE e la riga filtri si
-         mangiava tutto lo spazio libero, aprendo un vuoto sopra i campi appena
-         la lista si accorciava (bug 2026-07-23, visibile solo filtrando). -->
-    <div class="app-page-toolbar">
-      <div class="app-page-filters">
-        <div class="form-field">
-          <label>{{ t('vendite.lotti.filtro_competenza') }}</label>
-          <DatePicker
-            v-model="competenzaFilter"
-            view="month"
-            date-format="mm/yy"
-            show-icon
-            show-button-bar
-            @update:model-value="onFilterChange"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.lotti.filtro_stato') }}</label>
-          <Select
-            v-model="statoFilter"
-            :options="statoOptions"
-            option-label="label"
-            option-value="value"
-            show-clear
-            :placeholder="t('common.all')"
-            @update:model-value="onFilterChange"
-          />
-        </div>
-      </div>
-    </div>
+      <div class="app-dash-main">
+        <!-- Stepper compatto anno/mese (BB condiviso): solo piccoli schermi. -->
+        <DashMeseStepper
+          :anno="anno"
+          :mese-idx="meseIdx"
+          :nomi-mesi="nomiMesi"
+          @step="stepMese"
+        >
+          <template #badge>
+            <span v-if="mesi[meseIdx].n_lotti > 0" class="app-dash-mese-lotti">
+              <i class="pi pi-server" /> {{ mesi[meseIdx].n_lotti }}
+            </span>
+          </template>
+        </DashMeseStepper>
 
-    <DataTable
-      :value="items"
-      :loading="loading"
-      :total-records="count"
-      :rows="pageSize"
-      :first="(page - 1) * pageSize"
-      paginator
-      paginator-position="top"
-      lazy
-      :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
-      class="app-datatable"
-      striped-rows
-      data-key="id"
-      @page="onPage"
-      @row-click="({ data }) => apriLotto(data)"
-    >
+        <!-- Esiti fatturazione (C-5): stato coda stampa + giri del mese
+             selezionato. La competenza è la STESSA della lista: pannello e
+             lista raccontano lo stesso periodo. -->
+        <FatturazioneEsitiPanel :competenza-mese="competenzaParam" />
+
+        <div class="app-page-toolbar">
+          <div class="app-page-filters">
+            <div class="form-field">
+              <label>{{ t('vendite.lotti.filtro_stato') }}</label>
+              <Select
+                v-model="statoFilter"
+                :options="statoOptions"
+                option-label="label"
+                option-value="value"
+                show-clear
+                :placeholder="t('common.all')"
+                @update:model-value="onFilterChange"
+              />
+            </div>
+          </div>
+        </div>
+
+        <DataTable
+          :value="items"
+          :loading="loading"
+          :total-records="count"
+          :rows="pageSize"
+          :first="(page - 1) * pageSize"
+          paginator
+          paginator-position="top"
+          lazy
+          :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
+          class="app-datatable"
+          striped-rows
+          data-key="id"
+          @page="onPage"
+          @row-click="({ data }) => apriLotto(data)"
+        >
       <Column field="codice" :header="t('vendite.lotti.col_codice')" style="width: 160px;">
         <template #body="{ data }">
           <strong>{{ data.codice }}</strong>
@@ -258,7 +311,9 @@ const pageActions = computed(() => [
           <p>{{ t('vendite.lotti.nessun_lotto') }}</p>
         </div>
       </template>
-    </DataTable>
+        </DataTable>
+      </div>
+    </div>
 
     <LottoDrawer
       v-model:visible="drawerVisible"
@@ -267,3 +322,16 @@ const pageActions = computed(() => [
     />
   </div>
 </template>
+
+<style scoped>
+/* Badge "numero lotti generati" nel mese (sidebar/stepper anno-mese). Neutro:
+ * è un conteggio informativo, non un allarme (diverso dai badge errori/fermi
+ * della Lente Competenza). */
+.app-dash-mese-lotti {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--p-text-muted-color);
+}
+</style>

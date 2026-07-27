@@ -1,4 +1,5 @@
 from django.http import JsonResponse
+from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -19,12 +20,15 @@ from apps.core.api.payload_validators import (
     optional_int,
     optional_iso_date,
     optional_uuid,
+    qp_int_strict,
     qp_iso_date_optional,
 )
 from apps.core.api.success_responses import success_response
 from apps.vendite.services._fatturazione_job_helpers import (
     JOB_TYPE_FATTURAZIONE_GIRO,
     JOB_TYPE_FATTURAZIONE_NUMERA,
+    gruppi_digest,
+    parse_gruppi,
 )
 from apps.vendite.services.commesse_service import (
     aggiungi_onere_commessa,
@@ -50,7 +54,12 @@ from apps.vendite.services.pipeline_service import (
     run_lotto_pipeline,
     run_lotto_pipeline_until_done,
 )
-from apps.vendite.services.vendite_service import fn_get_lotto, fn_list_lotti, fn_list_lotto_fatture
+from apps.vendite.services.vendite_service import (
+    fn_get_lotto,
+    fn_list_lotti,
+    fn_list_lotto_fatture,
+    fn_lotti_mensile,
+)
 
 # View API vendite: espone endpoint HTTP per avviare pipeline lotto.
 
@@ -426,6 +435,48 @@ class ApiLottiList(DomainAPIView):
         return success_response(data)
 
 
+class ApiLottiMensile(DomainAPIView):
+    """Conteggio lotti generati per mese di un anno — alimenta il badge della
+    sidebar anno/mese del registro lotti (stile Lente Competenza). Read-only,
+    scope emittente DB-side come la lista. Fotografia completa (nessun filtro
+    stato: il badge conta i lotti generati, non quelli dello stato filtrato)."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="anno",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Anno di competenza (default: anno corrente). 2000-2100.",
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeLottiMensileResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeLottiMensileData",
+                        fields={
+                            "anno": serializers.IntegerField(),
+                            "mesi": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce i 12 conteggi lotti/mese dell'anno per la sidebar.
+    def get(self, request: Request) -> JsonResponse:
+        anno = qp_int_strict(request.query_params.get("anno"), "anno", timezone.localdate().year)
+        auth_user_id = get_scope_user_id(request)
+        data = fn_lotti_mensile(anno=anno, auth_user_id=auth_user_id)
+        return success_response(data)
+
+
 
 
 class ApiLottoDetail(DomainAPIView):
@@ -634,6 +685,18 @@ class ApiCommessePushLog(DomainAPIView):
 
 class ApiCommessaStato(DomainAPIView):
     area_funzionale = "vendite"
+    # Il POST cambia lo stato della commessa: CHIUSA e ANNULLATA sono terminali
+    # irreversibili (nessun arco uscente in matrice, emittibile=false) → la
+    # commessa esce per sempre dal giro di fatturazione. Prima era protetto dal
+    # solo controllo d'area, mentre azioni reversibili della stessa entita'
+    # (prezzo, oneri, approvazione) erano gia' gated: asimmetria chiusa dal
+    # 2026-07-27 (brief-db-permesso-cambio-stato-commessa). Un solo codename per
+    # i tre verbi chiudi/riapri/annulla — post_permission gatta l'ENDPOINT, non
+    # la action_key; stesso schema di `cambia_stato_preventivi`. Ortogonale alle
+    # capability DB (enabled/reasons dicono se l'azione e' eseguibile ORA, il
+    # permesso dice se quell'operatore puo' eseguirla): i due gate si sommano.
+    # NB: il GET di lettura stato resta libero nell'area.
+    post_permission = "cambia_stato_commessa"
     @extend_schema(
         responses={
             200: inline_serializer(
@@ -1132,12 +1195,22 @@ class ApiFatturazioneEsiti(DomainAPIView):
 #        accoda. `extra_payload_keys`: chiavi opzionali del payload HTTP da
 #        propagare al payload del job (es. `fino_a_stato` del giro). Ritorna
 #        l'handle `{job_id, stato}` per la risposta.
+#
+#        `accetta_gruppi=True` (emissione mirata, solo il giro): valida la
+#        lista dei gruppi fatturabili e la porta nel payload del job. ⚠️ In quel
+#        caso la chiave di business include un DIGEST dei gruppi: senza,
+#        due emissioni mirate sullo stesso mese e scope con gruppi diversi
+#        cadrebbero sullo stesso job vivo e la seconda verrebbe assorbita in
+#        silenzio (l'operatore vede «accodato» e non succede nulla). Senza
+#        gruppi il digest e' vuoto → chiave IDENTICA a prima per il giro di
+#        massa (nessuna regressione sulla dedup esistente).
 def _accoda_job_fatturazione(
     request: Request,
     payload: dict[str, object],
     *,
     job_type: str,
     extra_payload_keys: tuple[str, ...] = (),
+    accetta_gruppi: bool = False,
 ) -> dict[str, object]:
     competenza = optional_iso_date(payload, "competenza_mese")
     ErrorManager.require(
@@ -1171,9 +1244,24 @@ def _accoda_job_fatturazione(
         if value:
             job_payload[key] = value
 
-    # Chiave di BUSINESS (competenza + scope), NON l'header HTTP: dedup dei
-    # job VIVI (due click sullo stesso mese/scope → stesso job).
+    # Perimetro dell'emissione mirata: validato QUI (400 parlante al chiamante)
+    # e non solo nel worker, dove diventerebbe un job fallito da leggere nei log.
+    gruppi = (
+        parse_gruppi(payload.get("gruppi"), error_code="E_VALIDATION_INPUT")
+        if accetta_gruppi
+        else None
+    )
+    if gruppi:
+        job_payload["gruppi"] = list(gruppi)
+
+    # Chiave di BUSINESS (competenza + scope [+ gruppi]), NON l'header HTTP:
+    # dedup dei job VIVI (due click sullo stesso mese/scope → stesso job).
+    # Il digest e' vuoto senza gruppi: la chiave del giro di massa resta quella
+    # storica, quella mirata cambia con il perimetro selezionato.
+    digest = gruppi_digest(gruppi)
     idempotency_key = f"{job_type}:{competenza.isoformat()}:{scope_key}"
+    if digest:
+        idempotency_key = f"{idempotency_key}:{digest}"
 
     job_id = CodaLavoriRepository().accoda(
         job_type=job_type,
@@ -1201,7 +1289,15 @@ class ApiFatturazioneRun(DomainAPIView):
     l'handle del job (id + stato); il worker lo esegue poi con i permessi
     dell'operatore (RLS). Idempotenza a DUE layer: header HTTP (`handle_post_json`
     + `dbops.idempotency_keys`, replay della risposta) e chiave di BUSINESS
-    della coda (competenza+scope, dedup dei giri VIVI)."""
+    della coda (competenza+scope[+gruppi], dedup dei giri VIVI).
+
+    **Due perimetri, un solo verbo** (BF-2, emissione mirata): senza `gruppi` e'
+    il giro di massa del mese, esattamente come prima; con `gruppi` e' una
+    EMISSIONE MIRATA sui soli gruppi fatturabili indicati (un documento
+    sorgente, oppure gli oneri di una commessa). Entrambi si fermano a EMESSA:
+    la numerazione resta l'atto separato «Rendi definitive» (gate I-7).
+    Le chiavi di gruppo sono quelle esposte da
+    `GET /vendite/dashboard-competenza/gruppi/` — non si costruiscono a mano."""
 
     area_funzionale = "vendite"
     post_permission = "genera_fatture_lotti"
@@ -1221,6 +1317,16 @@ class ApiFatturazioneRun(DomainAPIView):
             fields={
                 "competenza_mese": serializers.DateField(required=True),
                 "fino_a_stato": serializers.CharField(required=False, allow_null=True),
+                "gruppi": serializers.ListField(
+                    child=serializers.CharField(),
+                    required=False,
+                    allow_null=True,
+                    help_text=(
+                        "Emissione mirata: chiavi dei gruppi fatturabili da "
+                        "fatturare (da dashboard-competenza/gruppi/). Assente = "
+                        "giro di massa del mese."
+                    ),
+                ),
             },
         ),
         responses={
@@ -1241,12 +1347,13 @@ class ApiFatturazioneRun(DomainAPIView):
     )
     # Scopo: Accoda il giro (transazionale) e ritorna l'handle del job.
     def post(self, request: Request) -> JsonResponse:
-        # Scopo: enqueue comune + `fino_a_stato` opzionale propagato al job.
+        # Scopo: enqueue comune + `fino_a_stato` opzionale e `gruppi` (mirata).
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             return _accoda_job_fatturazione(
                 request, payload,
                 job_type=JOB_TYPE_FATTURAZIONE_GIRO,
                 extra_payload_keys=("fino_a_stato",),
+                accetta_gruppi=True,
             )
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)

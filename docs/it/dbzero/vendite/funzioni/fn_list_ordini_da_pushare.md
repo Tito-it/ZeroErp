@@ -25,6 +25,9 @@ BEGIN
   -- Esclusi solo DRAFT/ANNULLATO (doc commercialmente inesistente)
   -- e FATTURATO (cintura). L'anti doppia fatturazione resta il
   -- NOT EXISTS su commesse_attivita EMESSA (verita' di billing).
+  -- rev 2026-07-27 (brief emissione mirata PARTE B): fatturazione_immediata
+  -- proiettata dalla COLONNA (era la costante FALSE). Il valore instrada
+  -- la corsia via chiave di dedup di fn_get_or_create_commessa.
   IF p_ordine_id IS NOT NULL AND p_ordine_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_list_ordini_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
@@ -54,7 +57,8 @@ BEGIN
     ba.utility_id,
     anagrafiche.fn_get_emittente_fiscale_id(o.billing_account_id),
     o.data, o.data,
-    FALSE,
+    -- Corsia di instradamento: valore reale del documento.
+    o.fatturazione_immediata,
     v_sorgente_tipo_id,
     o.uid::text,
     ('ORD:' || o.uid::text || ':R:' || or_r.id::text)::varchar,
@@ -69,6 +73,8 @@ BEGIN
     COALESCE(or_r.factor_to_base, 1::numeric),
     date_trunc('month', o.data)::date,
     or_r.prezzo_unitario,
+    -- prezzo_bloccato: costante TRUE per gli ordini, INDIPENDENTE dal
+    -- flag di corsia (l'accoppiamento esiste solo sui preventivi).
     TRUE,
     'FIXED'::varchar,
     'NORMALE'::varchar,
@@ -112,7 +118,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ordini_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ordine_id bigint)
-IS 'Lista righe ordine eligible al push su commessa (fatturazione_trigger CONFERMATO; stato documento libero sull''asse spedizione, esclusi DRAFT/ANNULLATO/FATTURATO). uom_id da catalogo.articoli (canonica). p_ordine_id opzionale: NULL=batch globale, NOT NULL=singolo ordine. Filtri in AND. Esclude EMESSA via NOT EXISTS. rev 2026-07-10: fix orfano trigger CONFERMATO evaso (decoupling fatturazione/spedizione, piano-db-fix-orfano-push-ordine-confermato). rev 2026-07-19: esclusione su ALLOCAZIONE via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a.';
+IS 'Lista righe ordine eligible al push su commessa (fatturazione_trigger CONFERMATO; stato documento libero sull''asse spedizione, esclusi DRAFT/ANNULLATO/FATTURATO). uom_id da catalogo.articoli (canonica). p_ordine_id opzionale: NULL=batch globale, NOT NULL=singolo ordine. Filtri in AND. Esclude EMESSA via NOT EXISTS. rev 2026-07-10: fix orfano trigger CONFERMATO evaso (decoupling fatturazione/spedizione, piano-db-fix-orfano-push-ordine-confermato). rev 2026-07-19: esclusione su ALLOCAZIONE via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.ordini.fatturazione_immediata (era costante FALSE) — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta la costante TRUE: l''accoppiamento flag/prezzo esiste solo sui preventivi.';
 ```
 
 ---

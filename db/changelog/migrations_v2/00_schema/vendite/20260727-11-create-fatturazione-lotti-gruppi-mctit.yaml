@@ -1,0 +1,180 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fatturazione_lotti_gruppi — il perimetro di un lotto MIRATO
+#   (brief-db-emissione-fattura-per-documento-sorgente PARTE A, step A2,
+#    decisione D-3)
+#
+# COSA REGISTRA: quali GRUPPI FATTURABILI un lotto ha il permesso di lavorare.
+#   Righe presenti  -> il lotto e' MIRATO: pull e select lavorano SOLO quei gruppi.
+#   Nessuna riga    -> nessuna restrizione = ESATTAMENTE il comportamento
+#                      odierno (giro schedulato e "fattura il mese").
+#   Quest'ultima convenzione e' il cardine della retro-compatibilita'
+#   (vincolo 1 del brief, garanzia G1): non esiste un "flag mirato" da
+#   valorizzare, l'assenza di criterio E' il criterio storico.
+#
+# ⚠️ PERCHE' UNA TABELLA E NON UN PARAMETRO DI CHIAMATA (fatto F9, il punto che
+#   fa esistere questo changeSet). Gli step della pipeline ricevono SOLO
+#   lotto_id e ricostruiscono tutto dal LottoContext, cioe' dalla riga del
+#   lotto: _handle_pull_attivita_da_commessa_task chiama fn_list_commesse_emittibili
+#   coi campi del contesto, e run_select_attivita_task passa a
+#   fn_select_attivita_fatturabili solo valori del contesto + i params JSON
+#   della pipeline. I parametri dell'endpoint NON arrivano agli step.
+#   Senza persistenza, il design non parte.
+#
+#   Corollario non banale: i verbi "Rerun step" e "Avanza step" del LottoDrawer
+#   ri-eseguono uno step su un lotto ESISTENTE. Se il perimetro fosse un
+#   parametro di chiamata, un rerun lo perderebbe e allargherebbe in silenzio
+#   il lotto mirato a tutto il perimetro. Persistendolo, il rerun riproduce lo
+#   stesso perimetro per costruzione -> garanzia G11.
+#
+# PERCHE' NON fatturazione_lotti.meta (jsonb) — alternativa valutata e scartata
+#   (D-3). meta e' gia' il canale di CONFIGURAZIONE della pipeline (ci vive
+#   fatturazione_immediata): metterci dentro dati di PERIMETRO sovraccarica la
+#   semantica di un campo che ha gia' un ruolo. In piu' il filtro serve dentro
+#   il SQL DINAMICO di fn_select_attivita_fatturabili, dove un
+#   "= ANY(SELECT ... FROM tabella)" e' naturale e indicizzabile mentre un
+#   jsonb andrebbe destrutturato. E una tabella porta con se' audit e tx_id
+#   veri: il perimetro di un lotto fiscale e' un dato da poter ricostruire.
+#
+# ⚠️ NESSUN INDICE FK DEDICATO, e non e' una dimenticanza. La UNIQUE
+#   (lotto_id, gruppo_key) e' un indice btree che ha lotto_id come PREFISSO:
+#   copre gia' "WHERE lotto_id = ?", che e' l'unico accesso previsto (i filtri
+#   di A3..A6 leggono i gruppi di UN lotto). Un secondo indice sul solo
+#   lotto_id sarebbe ridondante -> lo intercetterebbe dbops.vw_duplicate_indexes.
+#   Stessa logica gia' applicata su vendite.resi_righe_riconsegne, dove la
+#   UNIQUE di coppia rende superfluo l'indice FK. La policy opt-in
+#   (dbops.fk_index_policy) registrera' la FK con consentito=false: e' corretto
+#   cosi', nessun seed a true.
+#
+# ON DELETE CASCADE: il perimetro non ha vita propria: senza il suo lotto non
+#   significa nulla. Se il lotto viene cancellato, la selezione sparisce con lui.
+#
+# gruppo_key: TEXT, nella forma prodotta da vendite.fn_build_gruppo_fatturabile_key
+#   ('<codice_interno_sorgente>:<uid>' oppure 'MAN:<commessa_id>'). NON e' una FK
+#   verso nulla: e' una chiave di dominio calcolata, e un gruppo puo'
+#   legittimamente riferirsi a un documento che nel frattempo ha cambiato stato.
+#   Il CHECK garantisce solo che non sia vuota: una chiave vuota vorrebbe dire
+#   "nessun gruppo" e sarebbe indistinguibile da "nessuna restrizione", cioe'
+#   il contrario di quello che l'operatore ha chiesto.
+#
+# Auto-provisioning dbops: storico, audit, tx_id, indici FK.
+# Dipendenze: vendite.fatturazione_lotti, vendite.fn_build_gruppo_fatturabile_key
+#   (20260727-10, produttore della chiave).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260727-11-create-fatturazione-lotti-gruppi-mctit.yaml
+
+  - changeSet:
+      id: 20260727-11-create-fatturazione-lotti-gruppi
+      author: mctit
+      comment: >
+        Crea vendite.fatturazione_lotti_gruppi: perimetro di un lotto mirato
+        (quali gruppi fatturabili puo' lavorare). Nessuna riga = nessuna
+        restrizione = comportamento odierno.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - tableExists:
+                    schemaName: vendite
+                    tableName: fatturazione_lotti_gruppi
+            - tableExists:
+                schemaName: vendite
+                tableName: fatturazione_lotti
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: fatturazione_lotti_gruppi
+            remarks: >-
+              Perimetro di un lotto MIRATO: i gruppi fatturabili che ha il
+              permesso di lavorare. Nessuna riga per un lotto = nessuna
+              restrizione (comportamento del giro schedulato).
+              brief-db-emissione-fattura-per-documento-sorgente A2 / D-3.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints: { primaryKey: true, primaryKeyName: pk_fatturazione_lotti_gruppi, nullable: false }
+
+              - column: { name: lotto_id, type: bigint, constraints: { nullable: false }, remarks: "FK -> vendite.fatturazione_lotti.id. ON DELETE CASCADE: il perimetro non sopravvive al suo lotto." }
+              - column: { name: gruppo_key, type: text, constraints: { nullable: false }, remarks: "Chiave di gruppo fatturabile nella forma di vendite.fn_build_gruppo_fatturabile_key: '<codice_interno_sorgente>:<uid>' oppure 'MAN:<commessa_id>'." }
+
+              - column: { name: meta, type: jsonb, defaultValueComputed: "'{}'::jsonb", constraints: { nullable: false } }
+              - column: { name: storicizza, type: boolean, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: tx_id, type: uuid }
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER" }
+
+        # UNIQUE di coppia: idempotenza della selezione (chiedere due volte lo
+        # stesso gruppo per lo stesso lotto non e' un errore da propagare) e
+        # indice di accesso per lotto_id (prefisso) — vedi nota in testa.
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: fatturazione_lotti_gruppi
+            columnNames: lotto_id, gruppo_key
+            constraintName: uq_fatturazione_lotti_gruppi_lotto_key
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: fatturazione_lotti_gruppi
+            baseColumnNames: lotto_id
+            constraintName: fk_fatturazione_lotti_gruppi_lotto
+            referencedTableSchemaName: vendite
+            referencedTableName: fatturazione_lotti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: CASCADE
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti_gruppi
+                ADD CONSTRAINT chk_fatturazione_lotti_gruppi_key_non_vuota
+                CHECK (btrim(gruppo_key) <> '');
+
+              COMMENT ON TABLE vendite.fatturazione_lotti_gruppi IS
+                'Perimetro di un lotto MIRATO: i gruppi fatturabili che quel lotto ha il '
+                'permesso di lavorare (brief-db-emissione-fattura-per-documento-sorgente '
+                'A2, decisione D-3). CONVENZIONE PORTANTE: nessuna riga per un lotto = '
+                'NESSUNA restrizione = esattamente il comportamento odierno del giro '
+                'schedulato (vincolo di retro-compatibilita'', garanzia G1). Non esiste un '
+                'flag "lotto mirato": l''assenza di criterio E'' il criterio storico. '
+                'Perche'' una tabella e non un parametro di chiamata: gli step della '
+                'pipeline ricevono solo lotto_id e ricostruiscono tutto dalla riga del '
+                'lotto, quindi il perimetro DEVE essere persistito o non arriva agli step; '
+                'in piu'' i verbi Rerun/Avanza step del drawer ri-eseguono su un lotto '
+                'esistente, e senza persistenza allargherebbero in silenzio il perimetro '
+                'di un lotto mirato (garanzia G11). Scartato fatturazione_lotti.meta: e'' '
+                'gia'' il canale di configurazione della pipeline, e il filtro serve dentro '
+                'il SQL dinamico di fn_select_attivita_fatturabili. gruppo_key non e'' una '
+                'FK: e'' una chiave di dominio calcolata da '
+                'vendite.fn_build_gruppo_fatturabile_key. Popolata dal BE alla creazione '
+                'del lotto, nella stessa transazione. rev 2026-07-27.';
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti_gruppi.gruppo_key IS
+                'Chiave del gruppo fatturabile, nella forma prodotta da '
+                'vendite.fn_build_gruppo_fatturabile_key: ''<codice_interno_sorgente>:<uid>'' '
+                'per i documenti, ''MAN:<commessa_id>'' per gli oneri di commessa. '
+                'L''identificativo del documento e'' l''UID (decisione D-9): e'' la forma '
+                'presente in vendite.commesse_attivita.sorgente_uid, che NON coincide con '
+                'la chiave canonica di commesse_sorgenti. Non costruire questa chiave a '
+                'mano: usare sempre la funzione.';
+
+      rollback:
+        - dropTable:
+            schemaName: vendite
+            tableName: fatturazione_lotti_gruppi

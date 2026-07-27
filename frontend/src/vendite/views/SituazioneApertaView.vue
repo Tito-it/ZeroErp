@@ -14,7 +14,6 @@
 import { computed, onActivated } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
@@ -31,6 +30,8 @@ import { extractApiError } from '../../core/utils/apiError'
 import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { faseDocumentoSeverity } from '../../core/utils/severity'
+import DocumentoDrawerHost from '../_shared/documenti/DocumentoDrawerHost.vue'
+import { useDocumentoDrawer } from '../_shared/documenti/useDocumentoDrawer'
 import {
   DASH_AREA_CONFIG,
   buildApriDocumentoAction,
@@ -43,7 +44,6 @@ import { useDashboardApertoStore } from '../stores/dashboardAperto'
 
 const { t, te } = useI18n()
 const notify = useNotify()
-const router = useRouter()
 
 // Provider readonly di area: la vista e' consultazione pura, ma il provider
 // mantiene il pattern standard (ReadonlyBadge nel suffix toolbar).
@@ -106,6 +106,25 @@ const cards = computed(() =>
   })
 )
 
+// Totali per la card "Tutte le aree" (altrimenti troppo scarna vs le card
+// donut): valore euro complessivo (somma dei valori-area delle aree a euro) +
+// i conteggi delle due aree a soli numeri più significative (offerte, contratti).
+// Ogni area espone già n_documenti e valore_totale a livello area (BE
+// fn_dash_aperto_riepilogo): qui solo aggregazione, nessuna seconda fonte.
+const totaliAperto = computed(() => {
+  let euro = 0
+  let offerte = 0
+  let contratti = 0
+  for (const a of aree.value) {
+    if (a.valore_totale !== null && a.valore_totale !== undefined) {
+      euro += Number(a.valore_totale)
+    }
+    if (a.area === 'OFFERTE') offerte = a.n_documenti ?? 0
+    if (a.area === 'CONTRATTI') contratti = a.n_documenti ?? 0
+  }
+  return { euro, offerte, contratti }
+})
+
 // Opzioni filtro fase: dal vocabolario top-level servito dal riepilogo BE
 // (3 fasi vive sempre presenti + eventuali future accodate fail-visible) —
 // nessuna copia FE del vocabolario config.stati_doc_*.
@@ -149,17 +168,32 @@ function onFiltriChange() {
   loadDocumenti()
 }
 
-// Scopo: click sul corpo della card = livello AREA (nessuna fase). Se su
-//        quest'area c'e' gia' una fase attiva (drill-down da legenda), il click
-//        la rimuove tornando a "tutta l'area"; altrimenti toggle classico
-//        dell'area. In ogni caso la fase viene azzerata (vista d'area).
+// Scopo: click sul corpo della card = livello AREA (nessuna fase), SELEZIONE
+//        esclusiva (non piu' toggle: un secondo click sulla stessa area non la
+//        deseleziona piu', evitando che la lista si rimescolasse con tutte le
+//        aree). Il ritorno a "tutte" ha la sua card dedicata (`area === null`).
+//        Se sull'area c'e' gia' una fase attiva (drill-down da legenda), il
+//        click sul corpo la rimuove tornando a "tutta l'area".
 function selezionaArea(area) {
+  // Card "Tutte le aree": azzera area + fase. No-op se gia' su "tutte".
+  if (area === null) {
+    if (areaSelezionata.value === null && faseSelezionata.value === null) return
+    areaSelezionata.value = null
+    faseSelezionata.value = null
+    onFiltriChange()
+    return
+  }
+  // Stessa area con fase attiva: torna a "tutta l'area" (azzera solo la fase).
   if (areaSelezionata.value === area && faseSelezionata.value !== null) {
     faseSelezionata.value = null
-  } else {
-    areaSelezionata.value = areaSelezionata.value === area ? null : area
-    faseSelezionata.value = null
+    onFiltriChange()
+    return
   }
+  // Stessa area senza fase = no-op (niente toggle-off, niente refetch).
+  if (areaSelezionata.value === area) return
+  // Area diversa: selezione esclusiva, fase azzerata.
+  areaSelezionata.value = area
+  faseSelezionata.value = null
   onFiltriChange()
 }
 
@@ -194,15 +228,31 @@ function statoSeverity(row) {
   return dashAreaSeverity(row.area, row.stato_codice_interno)
 }
 
-// Azioni riga: "apri documento" via BB condiviso (naviga alla lista area
-// con ?search=; il deep-link azzera i default data della lista target).
+// Drawer di dettaglio del documento di riga: stato nel BB condiviso, host
+// montato in fondo alla view. La lista e' cross-area: il registry risolve
+// area -> drawer (DASH_AREA_CONFIG.drawerTipo). Alla chiusura si ricarica il
+// cruscotto: nel drawer il documento puo' essere avanzato (e magari uscito
+// dal perimetro aperti-non-chiusi).
+const {
+  visible: docDrawerVisible,
+  tipo: docDrawerTipo,
+  id: docDrawerId,
+  apri: apriDocumento,
+  onVisibleChange: onDocDrawerVisible,
+} = useDocumentoDrawer(() => {
+  loadRiepilogo()
+  loadDocumenti()
+})
+
+// Azioni riga: "apri documento" via BB condiviso — apre il drawer di gestione
+// del documento per id, senza lasciare il cruscotto.
 function buildRowActions(data) {
   return [
     buildApriDocumentoAction({
       area: data.area,
-      codice: data.codice,
+      documentoId: data.documento_id,
       label: t('vendite.situazione_aperta.apri_documento'),
-      router,
+      onApri: apriDocumento,
     }),
   ]
 }
@@ -244,8 +294,26 @@ onActivated(() => {
     </div>
 
     <div class="app-dash-main">
-      <!-- Card per area (click = filtro toggle sulla lista): donut per fase. -->
+      <!-- Card per area (click = filtro, selezione esclusiva): donut per fase.
+           La card "Tutte le aree" azzera il filtro area. -->
       <div class="app-dash-cards">
+        <div
+          class="app-dash-card app-dash-card--reset"
+          :class="{ 'is-selected': areaSelezionata === null }"
+          role="button"
+          tabindex="0"
+          @click="selezionaArea(null)"
+          @keydown.enter="selezionaArea(null)"
+        >
+          <span class="app-dash-card-title">{{ t('vendite.situazione_aperta.filtro_area_tutte') }}</span>
+          <span v-if="totaliAperto.euro > 0" class="app-dash-stat-euro">
+            {{ formatCurrency(totaliAperto.euro) }}
+          </span>
+          <span class="app-dash-stat-sub">
+            {{ areaLabel('OFFERTE') }}: {{ totaliAperto.offerte }}
+            · {{ areaLabel('CONTRATTI') }}: {{ totaliAperto.contratti }}
+          </span>
+        </div>
         <div
           v-for="card in cards"
           :key="card.area"
@@ -403,5 +471,14 @@ onActivated(() => {
         />
       </div>
     </div>
+
+    <!-- Host cross-dominio: apre il drawer di gestione del documento della
+         riga (stesso meccanismo delle tappe "Passaggi"), senza uscire dal
+         cruscotto. -->
+    <DocumentoDrawerHost
+      :visible="docDrawerVisible"
+      :tipo-codice="docDrawerTipo"
+      :doc-id="docDrawerId"
+      @update:visible="onDocDrawerVisible" />
   </div>
 </template>

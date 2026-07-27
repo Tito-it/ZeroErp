@@ -41,7 +41,11 @@ SELECT ca.competenza_mese,
     sdf.codice AS stato_fattura_codice,
     fr.imponibile_riga AS valore_fatturato,
     COALESCE(f.critical, false) AS fattura_critical,
-    lf.lotto_id
+    lf.lotto_id,
+    ca.sorgente_tipo_id,
+    ca.sorgente_uid,
+    ca.tipo_movimento,
+    vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key
    FROM (((((((((((vendite.commesse co
      JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
      JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
