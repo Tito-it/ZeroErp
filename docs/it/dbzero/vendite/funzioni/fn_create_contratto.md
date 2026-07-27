@@ -20,12 +20,17 @@ DECLARE
     v_insert_cols  text;
     v_select_cols  text;
     v_sql          text;
+    -- rev 2026-07-27: aggiunta 'fatturazione_immediata' (corsia di
+    -- instradamento, Fase B brief emissione mirata). Va decisa PRIMA
+    -- del push in commessa: in create e' il momento naturale, e senza
+    -- questa voce la chiave veniva scartata in silenzio.
     v_testata_allowed text[] := ARRAY[
         'billing_account_id', 'emittente_fiscale_id', 'istanza_utility_id',
         'utility_id', 'ambito', 'valido_dal', 'valido_al',
         'parent_contratto_id', 'data', 'listino_id',
         'tipo_variazione_globale', 'valore_variazione_globale',
-        'categoria_cliente_id_snapshot', 'valuta_id', 'meta'
+        'categoria_cliente_id_snapshot', 'valuta_id',
+        'fatturazione_immediata', 'meta'
     ];
     v_util_allowed text[] := ARRAY[
         'istanza_utility_id', 'utility_id', 'istanza_dati_precontrattuali_id',
@@ -109,7 +114,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_create_contratto(p_testata jsonb, p_utility jsonb)
-IS 'Funzione madre atomica: genera il numero, crea la testata contratto (stato DRAFT) e l''eventuale riga utility in un''unica statement (o tutto o rollback, contatore numero incluso). INSERT dinamico delle sole chiavi whitelisted presenti (rispetta i default DB). SECURITY INVOKER. Ritorna (contratto_id, numero). Piano: analisi-fix-transazioni Classe A #2.';
+IS 'Funzione madre atomica: genera il numero, crea la testata contratto (stato DRAFT) e l''eventuale riga utility in un''unica statement (o tutto o rollback, contatore numero incluso). INSERT dinamico delle sole chiavi whitelisted presenti (rispetta i default DB). SECURITY INVOKER. Ritorna (contratto_id, numero). rev 2026-07-27: ''fatturazione_immediata'' aggiunta a v_testata_allowed — la corsia di instradamento si decide PRIMA del push in commessa e la create e'' il momento naturale; senza questa voce la chiave veniva scartata in silenzio. Il filtro e'' sulla PRESENZA della chiave: chiave assente = DEFAULT false, chiave = null = NOT NULL violation (il BE deve omettere o mandare un booleano, mai null). Piano: analisi-fix-transazioni Classe A #2 + brief-db-fatturazione-immediata-create-contratto.';
 ```
 
 ---

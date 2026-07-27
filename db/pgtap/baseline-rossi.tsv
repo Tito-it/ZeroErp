@@ -89,7 +89,6 @@ db/pgtap/vendite/test-fatturazione-reset-lotto-draft.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fatture-arrotondamenti-scope.sql	ASSERZIONE
 db/pgtap/vendite/test-fn-cambia-stato-preventivo.sql	ASSERZIONE
 db/pgtap/vendite/test-fn-contratto-righe-preview-nuovi-campi-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fn-create-contratto-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-init-componenti-jsonb-override-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-fn-list-commessa-attivita-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-commesse-emittibili-fatturazione-immediata-v1.sql	ERRORE_FIXTURE
