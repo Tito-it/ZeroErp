@@ -8,7 +8,7 @@
 | table_name | text | NO |  |
 | constraint_name | text | NO |  |
 | consentito | boolean | NO | true |
-| dll_command | text | YES |  |
+| dll_command | text | NO |  |
 | generated_by_script | boolean | YES | false |
 | user_insert | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
@@ -18,6 +18,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fk_index_policy_dll_command_forma |  |
 | PRIMARY KEY | fk_index_policy_pkey | schema_name, table_name, constraint_name |
 
 ## 📑 Indici

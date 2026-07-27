@@ -76,7 +76,7 @@ SELECT
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='DDT_VENDITA' AND s.attivo LIMIT 1)     AS sorgente_ddt_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='PREVENTIVO' AND s.attivo LIMIT 1)      AS sorgente_root_id,
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='COMMESSA' AND s.attivo LIMIT 1)        AS sorgente_root_id,
   (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)     AS stato_reso_draft_id,
   (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno='RESO_A_CREDITO' AND t.attivo LIMIT 1) AS tipo_credito_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
@@ -150,15 +150,30 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_com),
   p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs),
-  p_sorgente_uid => ('SRC-CM-' || substr(md5(clock_timestamp()::text),1,12))::text,
+  -- ROOT: sorgente COMMESSA (key_selector='id') con uid = id della commessa
+  -- stessa. La riga esiste per costruzione, quindi passa il guard sorgente
+  -- polimorfa su entrambi i fronti: formato (id::text) ed esistenza nel
+  -- target. fn_emit pretende solo che una ROOT esista, non ne dereferenzia
+  -- il tipo. rev 2026-07-27 (bonifica: prima era una stringa inventata su
+  -- sorgente PREVENTIVO, illegale dal guard del 2026-07-18).
+  p_sorgente_uid => (SELECT commessa_id FROM tmp_com)::text,
   p_sorgente_riga => 1, p_meta => '{}'::jsonb);
 
 -- Helper: aggiunge una CA con segment_key esplicito + tipo_movimento e la emette.
+-- rev 2026-07-27 (bonifica): la causale e' obbligatoria se e solo se
+-- tipo_movimento='ONERE' (CHECK biconditional chk_commesse_attivita_causale_onere,
+-- 20260721-04, entrato DOPO questo test). Senza, la upsert respinge la riga
+-- ONERE con E_PARAMETRO_INVALIDO.
 CREATE OR REPLACE FUNCTION pg_temp.mk_af(p_segment varchar, p_qta numeric, p_tipo_mov varchar)
 RETURNS void AS $$
-DECLARE r RECORD;
+DECLARE
+  r RECORD;
+  v_causale_id bigint;
 BEGIN
   SELECT * INTO r FROM tmp_refs;
+  IF p_tipo_mov = 'ONERE' THEN
+    SELECT id INTO v_causale_id FROM config.causali_onere WHERE attivo ORDER BY id LIMIT 1;
+  END IF;
   PERFORM vendite.fn_upsert_commessa_attivita(
     p_commessa_id => (SELECT commessa_id FROM tmp_com),
     p_segment_key => p_segment,
@@ -172,7 +187,8 @@ BEGIN
     p_promo_id => NULL, p_contratto_id => NULL, p_categoria_cliente_id_snapshot => NULL, p_classe_utenza_id_snapshot => NULL,
     p_tipo_doc_fiscale_id => r.tipo_doc_fiscale_id,
     p_stato_approvazione => 'APPROVATA', p_stato_emissione => 'NON_EMESSA',
-    p_tipo_movimento => p_tipo_mov, p_tipo_consumo => 'CONGUAGLIO', p_meta => '{}'::jsonb);
+    p_tipo_movimento => p_tipo_mov, p_tipo_consumo => 'CONGUAGLIO', p_meta => '{}'::jsonb,
+    p_causale_onere_id => v_causale_id);
 END $$ LANGUAGE plpgsql;
 
 -- ============================================================

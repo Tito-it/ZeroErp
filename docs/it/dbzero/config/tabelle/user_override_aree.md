@@ -32,7 +32,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_user_override_aree_area_id | `CREATE INDEX ix_user_override_aree_area_id ON config.user_override_aree USING btree (area_id)` |
-| ix_user_override_aree_auth_user_id | `CREATE INDEX ix_user_override_aree_auth_user_id ON config.user_override_aree USING btree (auth_user_id)` |
 | pk_user_override_aree | `CREATE UNIQUE INDEX pk_user_override_aree ON config.user_override_aree USING btree (id)` |
 | uq_user_override_aree_user_area | `CREATE UNIQUE INDEX uq_user_override_aree_user_area ON config.user_override_aree USING btree (auth_user_id, area_id)` |
 

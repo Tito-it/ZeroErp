@@ -31,7 +31,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_user_override_azioni_auth_user_id | `CREATE INDEX ix_user_override_azioni_auth_user_id ON config.user_override_azioni USING btree (auth_user_id)` |
 | ix_user_override_azioni_azione_id | `CREATE INDEX ix_user_override_azioni_azione_id ON config.user_override_azioni USING btree (azione_id)` |
 | pk_user_override_azioni | `CREATE UNIQUE INDEX pk_user_override_azioni ON config.user_override_azioni USING btree (id)` |
 | uq_user_override_azioni_user_azione | `CREATE UNIQUE INDEX uq_user_override_azioni_user_azione ON config.user_override_azioni USING btree (auth_user_id, azione_id)` |

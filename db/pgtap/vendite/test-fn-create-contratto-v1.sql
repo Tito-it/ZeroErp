@@ -16,6 +16,10 @@
 --   * ATOMICITA'           : se l'INSERT utility fallisce (classe_utenza
 --                            inesistente), il contratto NON deve restare creato
 --                            (nessun orfano). E' il cuore del fix.
+--   * WHITELIST fatt.imm.  : (10-12, changeset 20260727-40) la corsia di
+--                            instradamento `fatturazione_immediata` e' accettata
+--                            dal p_testata; assente -> DEFAULT false; null ->
+--                            errore, mai un silenzio.
 --
 -- Nota sul numero: `script.fn_generate_codice` usa una SEQUENCE (nextval), che
 -- per definizione NON fa rollback. Quindi un fallimento lascia un "buco" nella
@@ -29,32 +33,55 @@
 
 BEGIN;
 
-SELECT plan(9);
+SELECT plan(12);
 
 -- =========================================================
--- Precondizione: BA senza precontrattuali (con emittente)
+-- Precondizione: coppia (istanza_utility, utility) SENZA precontrattuali
 -- =========================================================
--- BA senza precontrattuali e con emittente fiscale risolvibile (efba): passiamo
--- l'emittente esplicito nel payload perche' in sessione pgTAP la GUC e' vuota
--- (il trigger default_emittente richiede l'emittente esplicito senza GUC; il
--- guard_emittente_scope invece fa skip con GUC vuota).
+-- Serve un emittente fiscale risolvibile (efba) da passare esplicito nel
+-- payload: in sessione pgTAP la GUC e' vuota (il trigger default_emittente
+-- richiede l'emittente esplicito senza GUC; il guard_emittente_scope invece fa
+-- skip con GUC vuota).
+--
+-- Serve inoltre che il contratto NON faccia scattare lo snapshot automatico
+-- `trgfn_contratti_snapshot_precontrattuali`, che creerebbe da solo una riga
+-- `contratti_utilities` e falserebbe i casi 5-7.
+--
+-- ⚠️ La prima stesura cercava un billing_account **senza** precontrattuali. Non
+--    e' piu' soddisfacibile: tutti i BA ne hanno (verificato 2026-07-27, 42/42),
+--    e il test era rosso da fixture — non da codice. Il trigger pero' non
+--    guarda il BA: guarda la coppia (istanza_utility_id, utility_id) del
+--    contratto, che arriva dal payload. Quindi si sceglie la prima utility
+--    **libera da precontrattuali** per l'istanza del BA, preferendo quella del
+--    BA stesso quando gia' lo e' (`ORDER BY (u.id = ba.utility_id) DESC`): il
+--    caso realistico resta il primo candidato, la variante subentra solo
+--    quando serve. La `CROSS JOIN LATERAL` scarta i BA per cui nessuna utility
+--    e' libera, cosi' la coppia scelta e' garantita, non sperata.
 CREATE TEMP TABLE tmp_ba AS
-SELECT ba.id AS billing_account_id, ba.istanza_utility_id, ba.utility_id,
+SELECT ba.id AS billing_account_id, ba.istanza_utility_id,
+       libera.utility_id,
        ef.id AS emittente_fiscale_id
 FROM anagrafiche.billing_account ba
 JOIN anagrafiche.emittenti_fiscali_billing_account efba
        ON efba.billing_account_id = ba.id
 JOIN anagrafiche.emittenti_fiscali ef
        ON ef.soggetto_ruolo_id = efba.emittente_soggetto_ruolo_id
-LEFT JOIN anagrafiche.istanze_dati_precontrattuali idp
-       ON idp.istanza_utility_id = ba.istanza_utility_id
-      AND idp.utility_id = ba.utility_id
-WHERE idp.id IS NULL
+CROSS JOIN LATERAL (
+    SELECT u.id AS utility_id
+      FROM config.utilities u
+     WHERE NOT EXISTS (
+             SELECT 1
+               FROM anagrafiche.istanze_dati_precontrattuali idp
+              WHERE idp.istanza_utility_id = ba.istanza_utility_id
+                AND idp.utility_id         = u.id)
+     ORDER BY (u.id = ba.utility_id) DESC, u.id
+     LIMIT 1
+) AS libera
 ORDER BY ba.id
 LIMIT 1;
 
 SELECT is((SELECT count(*)::int FROM tmp_ba), 1,
-          'Precondizione: esiste un billing_account senza precontrattuali con emittente');
+          'Precondizione: BA con emittente + coppia (istanza,utility) senza precontrattuali');
 
 -- =========================================================
 -- HAPPY senza utility
@@ -148,6 +175,64 @@ SELECT is(
       WHERE billing_account_id = (SELECT billing_account_id FROM tmp_ba)),
     (SELECT n FROM tmp_cnt_before),
     'Atomicita'': nessun contratto orfano creato (INSERT testata annullato)');
+
+-- =========================================================
+-- WHITELIST `fatturazione_immediata` (changeset 20260727-40)
+-- Garanzie C1/C2/C4 del brief-db-fatturazione-immediata-create-contratto.
+--
+-- C3 (il guard respinge l'UPDATE del flag su documento gia' pushato) NON si
+-- ritesta qui: e' gia' coperto da test-fatturazione-immediata-simmetria-
+-- sorgenti-v1.sql caso 15, e riguarda l'UPDATE — la create non tocca quel
+-- trigger (BEFORE UPDATE OF).
+-- =========================================================
+
+-- C2: la create SENZA la chiave lascia il DEFAULT false. Riusa r1 (happy
+-- no-utility, payload privo del flag): e' esattamente il caso "chiamata
+-- esistente non toccata dalla modifica" — la non-regressione delle create gia'
+-- in produzione.
+SELECT is(
+    (SELECT c.fatturazione_immediata
+       FROM vendite.contratti c WHERE c.id = (SELECT contratto_id FROM r1)),
+    false,
+    'C2) create senza la chiave: fatturazione_immediata resta al DEFAULT false');
+
+-- C1: la create CON la chiave a true la persiste. Prima del 20260727-40 questo
+-- test sarebbe fallito in silenzio (colonna false), non con un errore: la
+-- chiave fuori whitelist veniva filtrata via senza dirlo a nessuno.
+CREATE TEMP TABLE r3 AS
+SELECT * FROM vendite.fn_create_contratto(
+    jsonb_build_object(
+        'billing_account_id',    (SELECT billing_account_id FROM tmp_ba),
+        'emittente_fiscale_id',  (SELECT emittente_fiscale_id FROM tmp_ba),
+        'istanza_utility_id',    (SELECT istanza_utility_id FROM tmp_ba),
+        'utility_id',            (SELECT utility_id FROM tmp_ba),
+        'fatturazione_immediata', true
+    ),
+    NULL
+);
+
+SELECT is(
+    (SELECT c.fatturazione_immediata
+       FROM vendite.contratti c WHERE c.id = (SELECT contratto_id FROM r3)),
+    true,
+    'C1) create con fatturazione_immediata=true: valore persistito');
+
+-- C4: chiave PRESENTE con valore null. Il filtro della whitelist e' sulla
+-- presenza, non sul valore: la colonna entra nell'INSERT come NULL e la NOT NULL
+-- respinge (23502). Comportamento voluto e documentato — il contratto per il BE
+-- e' "ometti la chiave oppure manda un booleano": meglio un errore che una
+-- corsia decisa da un default nascosto.
+SELECT throws_ok(
+    $$ SELECT * FROM vendite.fn_create_contratto(
+           jsonb_build_object(
+               'billing_account_id',    (SELECT billing_account_id FROM tmp_ba),
+               'emittente_fiscale_id',  (SELECT emittente_fiscale_id FROM tmp_ba),
+               'istanza_utility_id',    (SELECT istanza_utility_id FROM tmp_ba),
+               'utility_id',            (SELECT utility_id FROM tmp_ba),
+               'fatturazione_immediata', null)) $$,
+    '23502',
+    NULL::text,
+    'C4) create con fatturazione_immediata=null: errore NOT NULL, mai un silenzio');
 
 SELECT * FROM finish();
 

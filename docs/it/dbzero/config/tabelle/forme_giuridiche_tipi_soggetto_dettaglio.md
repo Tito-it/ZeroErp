@@ -27,7 +27,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_config_forme_giuridiche_tipi_soggetto_dettaglio_forma_giurid | `CREATE INDEX ix_config_forme_giuridiche_tipi_soggetto_dettaglio_forma_giurid ON config.forme_giuridiche_tipi_soggetto_dettaglio USING btree (forma_giuridica_id)` |
 | ix_config_forme_giuridiche_tipi_soggetto_dettaglio_tipo_soggett | `CREATE INDEX ix_config_forme_giuridiche_tipi_soggetto_dettaglio_tipo_soggett ON config.forme_giuridiche_tipi_soggetto_dettaglio USING btree (tipo_soggetto_dettaglio_id)` |
 | pk_forme_giuridiche_tsd | `CREATE UNIQUE INDEX pk_forme_giuridiche_tsd ON config.forme_giuridiche_tipi_soggetto_dettaglio USING btree (forma_giuridica_id, tipo_soggetto_dettaglio_id)` |
 

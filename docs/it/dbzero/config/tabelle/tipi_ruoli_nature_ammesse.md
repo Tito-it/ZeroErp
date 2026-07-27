@@ -30,7 +30,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_tipi_ruoli_nature_ammesse_tipo_ruolo_id | `CREATE INDEX ix_tipi_ruoli_nature_ammesse_tipo_ruolo_id ON config.tipi_ruoli_nature_ammesse USING btree (tipo_ruolo_id)` |
 | ix_tipi_ruoli_nature_ammesse_tipo_soggetto_id | `CREATE INDEX ix_tipi_ruoli_nature_ammesse_tipo_soggetto_id ON config.tipi_ruoli_nature_ammesse USING btree (tipo_soggetto_id)` |
 | pk_tipi_ruoli_nature_ammesse | `CREATE UNIQUE INDEX pk_tipi_ruoli_nature_ammesse ON config.tipi_ruoli_nature_ammesse USING btree (id)` |
 | uq_tipi_ruoli_nature_ammesse_ruolo_soggetto | `CREATE UNIQUE INDEX uq_tipi_ruoli_nature_ammesse_ruolo_soggetto ON config.tipi_ruoli_nature_ammesse USING btree (tipo_ruolo_id, tipo_soggetto_id)` |

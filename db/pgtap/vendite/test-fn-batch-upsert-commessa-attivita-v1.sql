@@ -105,7 +105,7 @@ SELECT
   (
     SELECT s.id
     FROM config.sorgenti s
-    WHERE s.codice = 'PREVENTIVO'
+    WHERE s.codice_interno = 'COMMESSA'
     LIMIT 1
   ) AS root_sorgente_tipo_id;
 
@@ -129,7 +129,10 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_batch_commessa),
   p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_batch_refs),
-  p_sorgente_uid => ('BSRC-' || substr(md5(clock_timestamp()::text), 1, 12))::text,
+  -- ROOT: sorgente COMMESSA (key_selector='id') con uid = id della commessa
+  -- stessa: esiste per costruzione -> passa formato ed esistenza del guard
+  -- sorgente polimorfa. rev 2026-07-27 (bonifica).
+  p_sorgente_uid => (SELECT commessa_id FROM tmp_batch_commessa)::text,
   p_sorgente_riga => 1,
   p_meta => jsonb_build_object('test_scope', 'pgtap_batch_upsert')
 );

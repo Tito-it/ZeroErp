@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fk_index_policy.dll_command — NOT NULL + CHECK di forma
+#   (bonifica indici del 2026-07-27, indurimento della tabella di policy)
+#
+# IL PROBLEMA. dll_command non e' una nota descrittiva: e' SQL che
+#   dbops.apply_fk_index_policy() esegue alla lettera con EXECUTE, e da cui
+#   estrae il nome dell'indice — il SESTO token separato da spazi — per il
+#   DROP. Finora la colonna era nullable e senza vincoli di forma, quindi una
+#   riga scritta a mano poteva contenere qualsiasi cosa.
+#
+# ⚠️ E LE CONSEGUENZE ARRIVANO IN DEPLOY, NON ALL'INSERIMENTO. Verificato sul
+#   DB il 2026-07-27:
+#     - dll_command NULL  -> format('DROP INDEX IF EXISTS %I.%I', schema, NULL)
+#       solleva «i valori vuoti non possono essere formattati come un
+#       identificativo SQL». Poiche' apply_fk_index_policy() gira runAlways in
+#       90_end, OGNI migrate si blocca finche' qualcuno non trova la riga.
+#     - testo libero + consentito=true -> EXECUTE della frase, errore di
+#       sintassi, stesso effetto.
+#     - testo libero + consentito=false -> split_part(...,' ',6) restituisce
+#       una parola a caso ('frequentemente,' nell'esempio che stava in
+#       documentazione) e il DROP diventa un no-op silenzioso: la riga sembra
+#       funzionare e non fa nulla. E' il caso peggiore, perche' non si nota.
+#
+#   Il terzo caso non e' teorico: la pagina manual/fk_index_policy.md mostrava
+#   proprio un INSERT con una descrizione in italiano dentro dll_command, e un
+#   secondo esempio che ometteva del tutto la colonna. Chi avesse seguito la
+#   documentazione avrebbe rotto il deploy.
+#
+# LA FORMA IMPOSTA. Il CHECK pretende esattamente la struttura da cui il sesto
+#   token e' il nome dell'indice:
+#
+#     CREATE  INDEX  IF  NOT  EXISTS  <nome>  ON  <schema>.<tabella>(<colonne>)
+#        1      2     3   4     5       6      7
+#
+#   Il nome deve essere un identificatore NON quotato ([a-z_][a-z0-9_$]*):
+#   un nome fra virgolette contenente spazi spezzerebbe lo split_part anche
+#   con la forma giusta, e in questo progetto tutti gli indici sono minuscoli
+#   e senza virgolette. La clausola ' ON ' finale garantisce che il nome sia
+#   davvero terminato e non incorpori il resto del comando.
+#
+# COMPATIBILE CON TUTTO CIO' CHE ESISTE. Verificato il 2026-07-27: 724 righe,
+#   0 nulle, 0 fuori forma. Anche i comandi generati da
+#   dbops.vw_fk_senza_indice e da dbops.vw_fk_con_indice_missing_policy
+#   rispettano il pattern per costruzione, quindi ne' fn_populate ne' fn_seed
+#   possono violarlo.
+#
+# PERCHE' UN CHECK E NON UNA GUARDIA NELLA PROCEDURA. La procedura ha gia' due
+#   guardie (changeSet 20260727-36), ma agiscono al momento dell'esecuzione,
+#   cioe' in deploy. Questo vincolo agisce al momento della scrittura: la riga
+#   sbagliata non entra proprio. E' la differenza fra accorgersi di un errore
+#   quando fa danno e non poterlo commettere.
+#
+# Dipendenze: dbops.fk_index_policy.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260727-39-alter-fk-index-policy-guard-dll-command-mctit.yaml
+
+  - changeSet:
+      id: 20260727-39-alter-fk-index-policy-guard-dll-command
+      author: mctit
+      runAlways: false
+      runOnChange: false
+      comment: >
+        dbops.fk_index_policy.dll_command diventa NOT NULL e ottiene un CHECK
+        di forma: deve essere un CREATE INDEX IF NOT EXISTS <nome> ON ...
+        Rende impossibile all'inserimento la riga che oggi farebbe fallire
+        apply_fk_index_policy() in 90_end, bloccando ogni migrate.
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: fk_index_policy
+            # fail-fast: se esistesse anche una sola riga non conforme, meglio
+            # fermare il migrate che vederlo fallire a meta' ALTER TABLE
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >-
+                  SELECT count(*)
+                    FROM dbops.fk_index_policy
+                   WHERE dll_command IS NULL
+                      OR dll_command !~ '^CREATE INDEX IF NOT EXISTS [a-z_][a-z0-9_$]* ON '
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.fk_index_policy
+                ALTER COLUMN dll_command SET NOT NULL;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.fk_index_policy
+                ADD CONSTRAINT chk_fk_index_policy_dll_command_forma
+                CHECK (dll_command ~ '^CREATE INDEX IF NOT EXISTS [a-z_][a-z0-9_$]* ON ');
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON CONSTRAINT chk_fk_index_policy_dll_command_forma
+                ON dbops.fk_index_policy IS
+                  'dll_command e'' SQL eseguibile, non una nota: '
+                  'dbops.apply_fk_index_policy() lo esegue con EXECUTE quando '
+                  'consentito=true, e quando consentito=false ne estrae il nome '
+                  'dell''indice come SESTO token separato da spazi per il DROP. '
+                  'La forma imposta e'' quindi '
+                  '"CREATE INDEX IF NOT EXISTS <nome> ON ...", con <nome> '
+                  'identificatore non quotato: solo cosi'' il sesto token e'' '
+                  'davvero il nome. Senza questo vincolo una riga con testo '
+                  'libero rendeva il DROP un no-op silenzioso, e una riga con '
+                  'dll_command NULL faceva fallire format(''%I'', NULL) dentro la '
+                  'procedura — che gira runAlways in 90_end, quindi bloccava '
+                  'ogni migrate.';
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN dbops.fk_index_policy.dll_command IS
+                  'Comando DDL eseguibile che crea l''indice della FK. NON e'' un '
+                  'campo note. Forma obbligatoria (chk_fk_index_policy_dll_command_forma): '
+                  'CREATE INDEX IF NOT EXISTS <nome> ON <schema>.<tabella>(<colonne>); '
+                  'Letto da dbops.apply_fk_index_policy() in entrambi i rami: '
+                  'eseguito tale e quale se consentito=true, usato per ricavare il '
+                  'nome dell''indice da droppare se consentito=false. '
+                  'Resta valorizzato anche sulle righe a consentito=false: e'' cio'' '
+                  'che rende reversibile una bonifica, perche'' rimettere il flag a '
+                  'true ricrea l''indice con lo stesso nome di prima.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE dbops.fk_index_policy
+                DROP CONSTRAINT IF EXISTS chk_fk_index_policy_dll_command_forma;
+
+              ALTER TABLE dbops.fk_index_policy
+                ALTER COLUMN dll_command DROP NOT NULL;

@@ -1,0 +1,214 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.apply_fk_index_policy() — non crea cio' che sarebbe gia' coperto, non
+#   droppa cio' che non e' un semplice acceleratore (bonifica indici del
+#   2026-07-27, PASSO C3)
+#
+# IL PROBLEMA CHE RISOLVE, ed e' quello sollevato da Tid: la bonifica poggia su
+#   un flag booleano. Se un consentito=false torna a true — per una modifica
+#   sbagliata, un CSV rigenerato, un merge — la procedura riesegue il
+#   dll_command e l'indice ridondante rinasce, silenziosamente, al primo
+#   passaggio del job settimanale. Portare il flag a false e droppare a mano
+#   non bastava: restava un interruttore che, girato per errore, rifaceva il
+#   danno. La risposta giusta non e' togliere l'interruttore, e' fare in modo
+#   che girarlo non produca piu' nulla di dannoso.
+#
+# GUARDIA 1 — NON CREARE CIO' CHE E' GIA' COPERTO. Prima di eseguire il
+#   dll_command, la procedura verifica che la FK figuri ancora in
+#   dbops.vw_fk_senza_indice, cioe' che sia DAVVERO scoperta. Una FK gia'
+#   servita da una UNIQUE piu' larga, o da un parziale "IS NOT NULL", non
+#   riceve piu' un indice dedicato nemmeno con consentito=true. E' la stessa
+#   nozione di copertura del 20260727-35, applicata nel punto in cui si agisce
+#   invece che solo dove si osserva.
+#   La vista e' letta UNA volta e fotografata in un array: valutarla dentro il
+#   ciclo significherebbe rieseguirla settecentoventidue volte. Le righe di
+#   policy sono una per FK distinta, quindi creare l'indice della FK A non
+#   cambia la copertura della FK B: la fotografia resta valida per tutto il
+#   ciclo.
+#
+# GUARDIA 2 — NON DROPPARE CIO' CHE NON E' SOLO UN ACCELERATORE. Il ramo
+#   consentito=false estrae il nome dell'indice dal comando ed esegue DROP
+#   INDEX. Se quel nome appartenesse a un UNIQUE, a una PRIMARY KEY, a un
+#   indice a supporto di un constraint o alla REPLICA IDENTITY della tabella,
+#   il flag a false toglierebbe un vincolo di integrita' o romperebbe la
+#   replica. Oggi nessuna delle 722 righe e' in questa condizione (verificato
+#   il 2026-07-27) e il 20260727-23 impedisce che se ne creino di nuove, ma le
+#   due difese stanno a monte: questa sta nel punto in cui il DROP viene
+#   davvero eseguito, ed e' l'unica che regge anche a un INSERT fatto a mano
+#   nella tabella di policy.
+#   Il DROP viene SALTATO con RAISE WARNING, non con un errore: un'eccezione
+#   qui bloccherebbe ogni migrate e ogni giro del job finche' qualcuno non
+#   interviene, e il costo di un indice di troppo e' incomparabilmente minore
+#   di quello di una pipeline ferma. Il warning finisce nel log di
+#   maintenance.fn_run_and_log.
+#
+# RIEPILOGO A FINE CICLO via RAISE NOTICE: creati, saltati perche' gia'
+#   coperti, droppati, rifiutati. Prima la procedura era muta e non c'era modo
+#   di sapere cosa avesse fatto in un dato giro.
+#
+# COMPORTAMENTO INVARIATO in tutto il resto: stessa firma, stesso ciclo,
+#   stesso split_part(dll_command, ' ', 6) per il nome — verificato che tutte e
+#   722 le righe hanno la forma "CREATE INDEX IF NOT EXISTS <nome> ON ...",
+#   quindi il sesto token e' sempre il nome.
+#
+# Chiamata da: 90_end/20250626-31 (runAlways, a ogni migrate) e da
+#   maintenance.proc_apply_fk_index_policy_job() (job pgAgent settimanale).
+# Dipendenze: dbops.fk_index_policy, dbops.vw_fk_senza_indice.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260727-36-update-apply-fk-index-policy-guard-copertura-mctit.yaml
+
+  - changeSet:
+      id: 20260727-36-update-apply-fk-index-policy-guard-copertura
+      author: mctit
+      runAlways: false
+      runOnChange: false
+      comment: >
+        Due guardie in dbops.apply_fk_index_policy(): non crea l'indice se la
+        FK non figura piu' in vw_fk_senza_indice (un consentito=true rimesso
+        per errore non rigenera piu' ridondanze), e rifiuta il DROP se il nome
+        target e' un UNIQUE, una PK, un indice di constraint o la REPLICA
+        IDENTITY. Riepilogo finale via RAISE NOTICE.
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: fk_index_policy
+            - viewExists:
+                schemaName: dbops
+                viewName: vw_fk_senza_indice
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE dbops.apply_fk_index_policy()
+               LANGUAGE plpgsql
+              AS $procedure$
+              DECLARE
+                rec            RECORD;
+                idx_name       TEXT;
+                v_scoperte     TEXT[];
+                v_creati       INT := 0;
+                v_saltati      INT := 0;
+                v_droppati     INT := 0;
+                v_rifiutati    INT := 0;
+              BEGIN
+                -- Fotografia delle FK realmente scoperte. Una sola valutazione:
+                -- la vista e' costosa e le righe di policy sono centinaia.
+                SELECT array_agg(schema_name || '.' || table_name || '.' || constraint_name)
+                  INTO v_scoperte
+                  FROM dbops.vw_fk_senza_indice;
+
+                v_scoperte := COALESCE(v_scoperte, ARRAY[]::TEXT[]);
+
+                FOR rec IN SELECT * FROM dbops.fk_index_policy LOOP
+                  idx_name := split_part(rec.dll_command, ' ', 6);
+
+                  IF rec.consentito THEN
+
+                    -- GUARDIA 1: si crea solo se la FK e' ancora scoperta.
+                    IF (rec.schema_name || '.' || rec.table_name || '.' || rec.constraint_name)
+                       = ANY (v_scoperte)
+                    THEN
+                      EXECUTE rec.dll_command;
+                      v_creati := v_creati + 1;
+                    ELSE
+                      v_saltati := v_saltati + 1;
+                    END IF;
+
+                  ELSE
+
+                    -- GUARDIA 2: mai togliere un vincolo o la replica identity.
+                    IF EXISTS (
+                         SELECT 1
+                           FROM pg_class c
+                           JOIN pg_namespace n ON n.oid = c.relnamespace
+                           JOIN pg_index ix    ON ix.indexrelid = c.oid
+                          WHERE c.relkind = 'i'
+                            AND n.nspname = rec.schema_name
+                            AND c.relname = idx_name
+                            AND (ix.indisunique
+                                 OR ix.indisprimary
+                                 OR ix.indisreplident
+                                 OR EXISTS (SELECT 1 FROM pg_constraint k
+                                             WHERE k.conindid = c.oid)))
+                    THEN
+                      v_rifiutati := v_rifiutati + 1;
+                      RAISE WARNING
+                        'apply_fk_index_policy: DROP RIFIUTATO su %.% — l''indice sostiene un vincolo (UNIQUE/PK/constraint) o e'' la REPLICA IDENTITY. Riga di policy: %.%.%',
+                        rec.schema_name, idx_name,
+                        rec.schema_name, rec.table_name, rec.constraint_name;
+                    ELSE
+                      EXECUTE format('DROP INDEX IF EXISTS %I.%I', rec.schema_name, idx_name);
+                      v_droppati := v_droppati + 1;
+                    END IF;
+
+                  END IF;
+                END LOOP;
+
+                RAISE NOTICE
+                  'apply_fk_index_policy: creati=%, saltati_perche_gia_coperti=%, droppati=%, drop_rifiutati=%',
+                  v_creati, v_saltati, v_droppati, v_rifiutati;
+              END;
+              $procedure$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON PROCEDURE dbops.apply_fk_index_policy() IS
+                  'Applica dbops.fk_index_policy: crea o rimuove gli indici sulle '
+                  'foreign key secondo il flag consentito. '
+                  'Dal 2026-07-27 con due guardie. (1) Con consentito=true crea '
+                  'SOLO se la FK figura ancora in dbops.vw_fk_senza_indice: una FK '
+                  'gia'' servita da una UNIQUE piu'' larga o da un parziale '
+                  '"IS NOT NULL" non riceve un indice dedicato nemmeno se il flag '
+                  'e'' true, cosi'' un true rimesso per errore non puo'' rigenerare '
+                  'le ridondanze bonificate. (2) Con consentito=false RIFIUTA il '
+                  'DROP, con RAISE WARNING, se il nome estratto dal comando '
+                  'appartiene a un UNIQUE, a una PK, a un indice a supporto di un '
+                  'constraint o alla REPLICA IDENTITY: un flag non deve poter '
+                  'togliere un vincolo di integrita''. Si sceglie il warning e non '
+                  'l''eccezione perche'' la procedura gira runAlways in 90_end e nel '
+                  'job settimanale, e un errore bloccherebbe ogni migrate. '
+                  'Emette a fine ciclo un RAISE NOTICE con creati / saltati / '
+                  'droppati / rifiutati.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE PROCEDURE dbops.apply_fk_index_policy()
+               LANGUAGE plpgsql
+              AS $procedure$
+              DECLARE
+                rec RECORD;
+                idx_name TEXT;
+              BEGIN
+                FOR rec IN SELECT * FROM dbops.fk_index_policy LOOP
+                  IF rec.consentito THEN
+                    EXECUTE rec.dll_command;
+                  ELSE
+                       -- estraggo solo il nome dell'indice
+                      idx_name := split_part(rec.dll_command, ' ', 6);
+                      EXECUTE format(
+                        'DROP INDEX IF EXISTS %I.%I',
+                        rec.schema_name,
+                        idx_name
+                    );
+                  END IF;
+                END LOOP;
+              END;
+              $procedure$;

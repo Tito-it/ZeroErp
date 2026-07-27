@@ -1,0 +1,190 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_fk_senza_indice — copertura valutata per PREFISSO, non per
+#   uguaglianza (bonifica indici del 2026-07-27, PASSO B3)
+#
+# LA CAUSA A MONTE DELLE RIDONDANZE. La vista considerava coperta una FK solo
+#   se esisteva un indice il cui array di colonne EGUAGLIAVA quello della FK:
+#     LEFT JOIN indexed_columns idx ON ... AND fk.fk_cols = idx.indexed_cols
+#   Ma un btree su (contratto_id, riga_nr) serve benissimo il controllo
+#   referenziale su contratto_id — PostgreSQL cerca "WHERE fkcol = $1 FOR
+#   SHARE". Con la regola dell'uguaglianza quella FK risultava scoperta, veniva
+#   registrata in dbops.fk_index_policy e l'automazione ci piantava sopra un
+#   indice gemello. Ventisette dei quarantotto indici ridondanti rilevati il
+#   2026-07-27 nascono qui. Correggere solo a valle, droppandoli, non sarebbe
+#   servito a niente: il job settimanale li avrebbe rifatti.
+#
+# ⚠️ IL BUG SPECULARE, altrettanto importante. La vista non guardava indpred:
+#   un indice PARZIALE veniva contato come copertura. Un indice con
+#   "WHERE stato = 'APERTO'" non serve il controllo referenziale, che deve
+#   poter cercare QUALSIASI riga figlia. Undici FK risultavano coperte quando
+#   non lo erano — fra queste pratiche.sospensioni.fk_sospensioni_pratica e
+#   pratiche.pratiche_sorgenti.fk_pratiche_sorgenti_flusso: ogni DELETE sul
+#   padre faceva seq scan sul figlio. Ora indpred IS NULL e' obbligatorio, e
+#   quelle undici compaiono correttamente.
+#
+# SOLO btree, VALIDO e PRONTO. GIN e GiST non servono l'uguaglianza scalare del
+#   controllo referenziale; un indice indisvalid=false (CREATE INDEX
+#   CONCURRENTLY fallito) esiste nel catalogo ma il planner non lo usa.
+#   Contarli come copertura significava lasciare una FK di fatto scoperta.
+#
+# CONFRONTO A INSIEMI, non a liste ordinate. Il vecchio codice costruiva
+#   fk_cols con ORDER BY column_name (alfabetico) e indexed_cols con ORDER BY
+#   ordinality (posizionale): per le undici FK multicolonna in scope il
+#   confronto era semplicemente sbagliato. La semantica giusta e' insiemistica:
+#   il controllo referenziale filtra per uguaglianza su TUTTE le colonne della
+#   FK, quindi qualunque permutazione in testa all'indice va bene. Entrambi i
+#   lati sono ora ordinati alfabeticamente prima del confronto.
+#
+# solo_colonne: il prefisso deve essere fatto di colonne vere (indkey > 0). Se
+#   in testa c'e' un'espressione, il planner non puo' usarla per un'uguaglianza
+#   sulla colonna sottostante.
+#
+# COLONNE INVARIATE, quindi CREATE OR REPLACE: nomi, ordine e tipi restano
+#   (name, name, name, name[], text) e i privilegi si conservano. Anche il
+#   testo di create_index_suggestion resta byte per byte identico a prima —
+#   e' costruito dall'array alfabetico come sempre — cosi' le righe gia'
+#   presenti in fk_index_policy non vanno in deriva rispetto alla vista.
+#
+# EFFETTO ALLA PROSSIMA fn_populate_fk_index_policy(): sparisce
+#   fk_fatturazione_lotti_gruppi_lotto (era un falso positivo) e compaiono le
+#   undici FK davvero scoperte, inserite con consentito=false come da
+#   comportamento della funzione. Diventeranno consentito=true nel PASSO C4,
+#   che e' dove si decide di indicizzarle davvero.
+#
+# Dipendenze: dbops.automation_scope, dbops.fk_index_policy.
+# Consumatori: dbops.fn_populate_fk_index_policy().
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260727-22-update-vw-fk-senza-indice-copertura-prefisso-mctit.yaml
+
+  - changeSet:
+      id: 20260727-22-update-vw-fk-senza-indice-copertura-prefisso
+      author: mctit
+      runAlways: false
+      runOnChange: false
+      comment: >
+        Copertura FK valutata per prefisso invece che per uguaglianza
+        dell'array di colonne, con indice obbligatoriamente btree, totale
+        (indpred IS NULL), valido e pronto; confronto a insiemi per le FK
+        multicolonna. Toglie la causa a monte di 27 indici ridondanti e
+        scopre 11 FK oggi coperte solo da indici parziali. Colonne invariate.
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: automation_scope
+            - tableExists:
+                schemaName: dbops
+                tableName: fk_index_policy
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_fk_senza_indice AS
+              WITH fk_grouped AS (
+                SELECT
+                  con.conname AS constraint_name,
+                  nsp.nspname AS schema_name,
+                  rel.relname AS table_name,
+                  con.conrelid,
+                  -- ordine alfabetico: il confronto con il prefisso e'
+                  -- insiemistico, non posizionale
+                  (SELECT array_agg(a.attname ORDER BY a.attname)
+                     FROM unnest(con.conkey) k(att)
+                     JOIN pg_attribute a
+                       ON a.attrelid = con.conrelid AND a.attnum = k.att) AS fk_cols
+                FROM pg_constraint con
+                JOIN pg_class rel     ON rel.oid = con.conrelid
+                JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+                WHERE con.contype = 'f'
+                  AND EXISTS (
+                    SELECT 1 FROM dbops.automation_scope sc
+                     WHERE sc.schema_name = nsp.nspname)
+              ),
+              idx_prefix AS (
+                -- una riga per ogni PREFISSO di ogni indice utilizzabile:
+                -- lunghezza 1..indnkeyatts
+                SELECT
+                  ix.indrelid,
+                  p.n AS prefix_len,
+                  (SELECT array_agg(a.attname ORDER BY a.attname)
+                     FROM generate_series(1, p.n) g(k)
+                     JOIN pg_attribute a
+                       ON a.attrelid = ix.indrelid AND a.attnum = ix.indkey[g.k-1]) AS prefix_cols,
+                  (SELECT bool_and(ix.indkey[g.k-1] > 0)
+                     FROM generate_series(1, p.n) g(k))                             AS solo_colonne
+                FROM pg_index ix
+                JOIN pg_class i     ON i.oid = ix.indexrelid
+                JOIN pg_class t     ON t.oid = ix.indrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                JOIN pg_am am       ON am.oid = i.relam
+                CROSS JOIN LATERAL generate_series(1, ix.indnkeyatts) p(n)
+                WHERE i.relkind = 'i'
+                  AND am.amname = 'btree'
+                  AND ix.indisvalid
+                  AND ix.indisready
+                  AND ix.indpred IS NULL
+                  AND EXISTS (
+                    SELECT 1 FROM dbops.automation_scope sc
+                     WHERE sc.schema_name = n.nspname)
+              )
+              SELECT
+                fk.schema_name,
+                fk.table_name,
+                fk.constraint_name,
+                fk.fk_cols,
+                format('CREATE INDEX IF NOT EXISTS ix_%I_%s ON %I.%I(%s);',
+                       fk.table_name, array_to_string(fk.fk_cols, '_'),
+                       fk.schema_name, fk.table_name,
+                       array_to_string(fk.fk_cols, ', ')) AS create_index_suggestion
+              FROM fk_grouped fk
+              LEFT JOIN dbops.fk_index_policy pol
+                     ON fk.schema_name     = pol.schema_name
+                    AND fk.table_name      = pol.table_name
+                    AND fk.constraint_name = pol.constraint_name
+              WHERE COALESCE(pol.consentito, true) = true
+                AND NOT EXISTS (
+                      SELECT 1 FROM idx_prefix ip
+                       WHERE ip.indrelid   = fk.conrelid
+                         AND ip.prefix_len = cardinality(fk.fk_cols)
+                         AND ip.solo_colonne
+                         AND ip.prefix_cols = fk.fk_cols)
+              ORDER BY fk.schema_name, fk.table_name;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW dbops.vw_fk_senza_indice IS
+                  'Foreign key SENZA copertura di indice negli schemi in '
+                  'dbops.automation_scope. Dal 2026-07-27 la copertura e'' '
+                  'valutata per PREFISSO: la FK e'' coperta se le sue colonne '
+                  'coincidono, come insieme, con le prime N colonne chiave di un '
+                  'btree TOTALE (indpred IS NULL), valido e pronto. Prima si '
+                  'pretendeva l''uguaglianza dell''intero array di colonne, e '
+                  'questo faceva registrare come scoperte FK gia'' servite da una '
+                  'UNIQUE piu'' larga: 27 degli indici ridondanti censiti in '
+                  'dbops.vw_indici_ridondanti_prefisso nascono da li''. '
+                  'indpred IS NULL e'' ora obbligatorio: un indice parziale non '
+                  'serve il controllo referenziale, che deve poter cercare '
+                  'qualsiasi riga figlia. Il confronto e'' insiemistico perche'' '
+                  'il controllo filtra per uguaglianza su tutte le colonne della '
+                  'FK, quindi qualunque loro permutazione in testa all''indice va '
+                  'bene. Letta da dbops.fn_populate_fk_index_policy().';
+      rollback:
+        - changeSetId: 20260116-01-update-vw-fk-senza-indice-scope
+          changeSetAuthor: mctit
+          changeSetPath: db/changelog/migrations_v2/20_code/dbops/20260116-01-update-vw-fk-senza-indice-scope-mctit.yaml

@@ -1,0 +1,202 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_indici_ridondanti_prefisso — la ridondanza che vw_duplicate_indexes
+#   non puo' vedere (bonifica indici del 2026-07-27, PASSO B2)
+#
+# IL PROBLEMA. Un btree su (a) e' inutile se ne esiste uno su (a, b): PostgreSQL
+#   usa gia' il secondo per ogni ricerca su a, incluso il controllo referenziale
+#   delle foreign key, che esegue "WHERE fkcol = $1 FOR SHARE". Il primo e'
+#   scrittura, spazio e manutenzione senza ritorno. Non e' un DUPLICATO — le
+#   colonne differiscono — quindi vw_duplicate_indexes non lo vedra' mai, per
+#   quanto la si corregga. Serve una seconda nozione, ed e' questa vista.
+#
+# QUANTO PESA. Rilevati il 2026-07-27, dopo la bonifica dei tre duplicati veri:
+#   48 indici ridondanti per prefisso, circa 1 MB. Ventisette generati da
+#   dbops.apply_fk_index_policy() con consentito=true, ventuno scritti a mano
+#   nei changelog.
+#
+# SOLO btree. GIN e GiST non hanno semantica di prefisso: in un GIN
+#   multicolonna ogni colonna e' una lista di posting indipendente, non c'e'
+#   una "testa" che una ricerca parziale possa sfruttare. Includerli avrebbe
+#   prodotto consigli sbagliati.
+#
+# LA FIRMA PER COLONNA. Il confronto non guarda solo il nome della colonna ma
+#   anche classe di operatori, collation e opzioni di ordinamento
+#   (indclass / indcollation / indoption). Due indici su (descrizione) con
+#   collation diverse non si coprono a vicenda per le ricerche di intervallo,
+#   e un DESC non serve un ORDER BY ASC.
+#
+# PREDICATO IDENTICO, non "compatibile". Un indice totale non e' coperto da uno
+#   parziale, e stabilire se il predicato di B implica quello di A e'
+#   indecidibile in generale. La regola e' quindi conservativa: stesso
+#   predicato, oppure entrambi senza. Meglio non segnalare una ridondanza vera
+#   che suggerire un DROP sbagliato.
+#
+# ⚠️ QUATTRO ESCLUSIONI DI SICUREZZA sul candidato, perche' questa vista
+#   suggerisce DROP:
+#   - a.indisunique = false ....... un UNIQUE impone un vincolo, non e' mai
+#                                   solo un acceleratore;
+#   - NOT a.indisprimary .......... la PK non si tocca;
+#   - NOT a.indisreplident ........ e' la REPLICA IDENTITY di una tabella
+#                                   replicata: droppandolo si rompe la replica;
+#   - nessun pg_constraint.conindid l'indice sostiene un constraint (UNIQUE,
+#                                   PK, EXCLUDE): DROP INDEX fallirebbe o,
+#                                   peggio, porterebbe via il vincolo.
+#   In piu' il candidato non deve avere colonne INCLUDE (indnatts =
+#   indnkeyatts): coprirle richiederebbe verificare che stiano anche in B, e
+#   non vale la complicazione per un caso che qui non si presenta.
+#
+# DISTINCT ON: un indice puo' essere coperto da piu' indici. Si riporta il
+#   coprente piu' "stretto" (UNIQUE prima, poi meno colonne chiave), che e'
+#   quello la cui esistenza e' piu' difficile da mettere in discussione.
+#
+# LA COLONNA CHE CONTA E' origine. Dice se l'indice e' governato da
+#   dbops.fk_index_policy o creato a mano, cioe' SE si rimuove agendo sulla
+#   policy o con un DROP in changeSet. Senza questa colonna la vista
+#   suggerirebbe DROP che l'automazione rifarebbe al giro successivo.
+#
+# Dipendenze: dbops.automation_scope, dbops.fk_index_policy.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260727-21-create-vw-indici-ridondanti-prefisso-mctit.yaml
+
+  - changeSet:
+      id: 20260727-21-create-vw-indici-ridondanti-prefisso
+      author: mctit
+      runAlways: false
+      runOnChange: false
+      comment: >
+        Nuova dbops.vw_indici_ridondanti_prefisso: btree non-unique le cui
+        colonne chiave sono prefisso di un altro btree (stessi opclass,
+        collation, ordinamento e predicato). Espone origine
+        (AUTOMAZIONE_FK / MANUALE) per sapere se si rimuove via policy o con
+        DROP. 48 candidati al 2026-07-27.
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: automation_scope
+            - tableExists:
+                schemaName: dbops
+                tableName: fk_index_policy
+            - not:
+                - viewExists:
+                    schemaName: dbops
+                    viewName: vw_indici_ridondanti_prefisso
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW dbops.vw_indici_ridondanti_prefisso AS
+              WITH idx AS (
+                SELECT
+                  ix.indexrelid,
+                  ix.indrelid,
+                  n.nspname       AS schema_name,
+                  t.relname       AS table_name,
+                  i.relname::text AS index_name,
+                  ix.indisunique,
+                  ix.indisprimary,
+                  ix.indisreplident,
+                  ix.indnkeyatts,
+                  ix.indnatts,
+                  pg_get_expr(ix.indpred, ix.indrelid) AS predicato,
+                  -- firma per colonna chiave: espressione + classe di
+                  -- operatori + collation + opzioni di ordinamento. Il solo
+                  -- nome della colonna non basterebbe a garantire che B
+                  -- serva davvero cio' che serve A.
+                  (SELECT array_agg(pg_get_indexdef(ix.indexrelid, k, false)
+                                    || '|' || ix.indclass[k-1]::text
+                                    || '|' || ix.indcollation[k-1]::text
+                                    || '|' || ix.indoption[k-1]::text
+                                    ORDER BY k)
+                     FROM generate_series(1, ix.indnkeyatts) k) AS colsig
+                FROM pg_index ix
+                JOIN pg_class i     ON i.oid = ix.indexrelid
+                JOIN pg_class t     ON t.oid = ix.indrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                JOIN pg_am am       ON am.oid = i.relam
+                WHERE i.relkind = 'i'
+                  AND am.amname = 'btree'
+                  AND ix.indisvalid
+                  AND ix.indisready
+                  AND EXISTS (
+                    SELECT 1 FROM dbops.automation_scope sc
+                     WHERE sc.schema_name = n.nspname)
+              )
+              SELECT DISTINCT ON (a.indexrelid)
+                a.schema_name,
+                a.table_name,
+                a.index_name AS indice_ridondante,
+                b.index_name AS coperto_da,
+                CASE WHEN a.indnkeyatts = b.indnkeyatts
+                     THEN 'DUPLICATO_ESATTO' ELSE 'PREFISSO' END::text AS motivo,
+                pg_relation_size(a.indexrelid)                 AS peso_byte,
+                pg_size_pretty(pg_relation_size(a.indexrelid)) AS peso,
+                st.idx_scan,
+                CASE WHEN p.constraint_name IS NULL
+                     THEN 'MANUALE' ELSE 'AUTOMAZIONE_FK' END::text AS origine,
+                p.constraint_name AS policy_constraint_name,
+                p.consentito      AS policy_consentito
+              FROM idx a
+              JOIN idx b
+                ON  b.indrelid    = a.indrelid
+                AND b.indexrelid <> a.indexrelid
+                AND b.colsig[1:array_length(a.colsig, 1)] = a.colsig
+                AND a.predicato IS NOT DISTINCT FROM b.predicato
+                AND (b.indnkeyatts > a.indnkeyatts OR b.indisunique)
+              LEFT JOIN dbops.fk_index_policy p
+                ON  p.schema_name = a.schema_name
+                AND p.table_name  = a.table_name
+                AND p.dll_command ILIKE '%' || a.index_name || ' ON%'
+              LEFT JOIN pg_stat_user_indexes st
+                ON st.indexrelid = a.indexrelid
+              WHERE a.indisunique = false
+                AND NOT a.indisprimary
+                AND NOT a.indisreplident
+                AND a.indnatts = a.indnkeyatts
+                AND NOT EXISTS (
+                      SELECT 1 FROM pg_constraint c
+                       WHERE c.conindid = a.indexrelid)
+              ORDER BY a.indexrelid, b.indisunique DESC, b.indnkeyatts, b.indexrelid;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE ON dbops.vw_indici_ridondanti_prefisso TO zeroerp_app;
+              GRANT SELECT ON dbops.vw_indici_ridondanti_prefisso TO zeroerp_batch_fatturazione;
+
+              COMMENT ON VIEW dbops.vw_indici_ridondanti_prefisso IS
+                  'Indici btree ridondanti PER PREFISSO negli schemi in '
+                  'dbops.automation_scope: le colonne chiave di indice_ridondante '
+                  'sono la testa di quelle di coperto_da, con stessi opclass, '
+                  'collation, ordinamento e stesso predicato. PostgreSQL usa gia'' '
+                  'coperto_da per ogni ricerca sulle colonne di indice_ridondante, '
+                  'controllo referenziale delle FK compreso. Complementare a '
+                  'dbops.vw_duplicate_indexes, che vede solo i duplicati esatti e '
+                  'per costruzione non puo'' vedere questi. '
+                  'Esclude PK, UNIQUE, REPLICA IDENTITY e indici a supporto di un '
+                  'constraint: sono candidati al DROP, non si suggerisce di '
+                  'rimuovere cio'' che impone integrita''. '
+                  'origine dice COME si rimuove: AUTOMAZIONE_FK = agire su '
+                  'dbops.fk_index_policy (un DROP secco verrebbe rifatto dal job '
+                  'settimanale), MANUALE = DROP in changeSet.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_indici_ridondanti_prefisso;

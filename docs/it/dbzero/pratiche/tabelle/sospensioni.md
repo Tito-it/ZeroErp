@@ -31,6 +31,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ex_sospensioni_no_overlap | `CREATE INDEX ex_sospensioni_no_overlap ON pratiche.sospensioni USING gist (pratica_id, COALESCE(flusso_id, ('-1'::integer)::bigint), periodo_sospensione)` |
+| ix_sospensioni_pratica_id | `CREATE INDEX ix_sospensioni_pratica_id ON pratiche.sospensioni USING btree (pratica_id)` |
 | pk_pratiche_sospensioni | `CREATE UNIQUE INDEX pk_pratiche_sospensioni ON pratiche.sospensioni USING btree (id)` |
 | uq_sospensioni_attiva_flusso | `CREATE UNIQUE INDEX uq_sospensioni_attiva_flusso ON pratiche.sospensioni USING btree (pratica_id, flusso_id) WHERE ((data_fine IS NULL) AND (flusso_id IS NOT NULL))` |
 | uq_sospensioni_attiva_pratica | `CREATE UNIQUE INDEX uq_sospensioni_attiva_pratica ON pratiche.sospensioni USING btree (pratica_id) WHERE ((data_fine IS NULL) AND (flusso_id IS NULL))` |

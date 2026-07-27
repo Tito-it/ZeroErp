@@ -3,34 +3,39 @@
 
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_duplicate_indexes AS
-WITH index_cols AS (
-         SELECT i.oid AS index_oid,
+WITH idx AS (
+         SELECT ix.indexrelid,
             n.nspname AS schema_name,
             t.relname AS table_name,
-            i.relname AS index_name,
-            ix.indisunique AS is_unique,
-            ix.indisprimary AS is_primary,
-            array_agg(a.attname ORDER BY x.ordinality) AS cols
-           FROM (((((pg_index ix
+            (i.relname)::text AS index_name,
+            ix.indisunique,
+            (am.amname)::text AS metodo,
+            pg_get_expr(ix.indpred, ix.indrelid) AS predicato,
+            ( SELECT array_agg(pg_get_indexdef(ix.indexrelid, k.k, false) ORDER BY k.k) AS array_agg
+                   FROM generate_series(1, (ix.indnkeyatts)::integer) k(k)) AS index_columns,
+            regexp_replace(regexp_replace(regexp_replace(pg_get_indexdef(ix.indexrelid), '^CREATE (UNIQUE )?INDEX .*? ON '::text, 'ON '::text), ' WITH \(.*?\)'::text, ''::text), ' TABLESPACE \S+'::text, ''::text) AS firma
+           FROM ((((pg_index ix
              JOIN pg_class i ON ((i.oid = ix.indexrelid)))
              JOIN pg_class t ON ((t.oid = ix.indrelid)))
              JOIN pg_namespace n ON ((n.oid = t.relnamespace)))
-             JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY x(attnum, ordinality) ON (true))
-             JOIN pg_attribute a ON (((a.attrelid = t.oid) AND (a.attnum = x.attnum))))
-          WHERE ((NOT ix.indisprimary) AND (i.relkind = 'i'::"char") AND (EXISTS ( SELECT 1
+             JOIN pg_am am ON ((am.oid = i.relam)))
+          WHERE ((i.relkind = 'i'::"char") AND (NOT ix.indisprimary) AND ix.indisvalid AND (EXISTS ( SELECT 1
                    FROM dbops.automation_scope sc
                   WHERE (sc.schema_name = n.nspname))))
-          GROUP BY i.oid, n.nspname, t.relname, i.relname, ix.indisunique, ix.indisprimary
         )
  SELECT schema_name,
     table_name,
-    cols AS index_columns,
-    array_agg(index_name) AS duplicate_index_names,
-    count(*) AS count_of_indexes
-   FROM index_cols
-  GROUP BY schema_name, table_name, cols
+    index_columns,
+    metodo,
+    predicato,
+    array_agg(index_name ORDER BY indisunique DESC, indexrelid) AS duplicate_index_names,
+    count(*) AS count_of_indexes,
+    (array_agg(index_name ORDER BY indisunique DESC, indexrelid))[1] AS indice_da_tenere,
+    (array_agg(index_name ORDER BY indisunique DESC, indexrelid))[2:] AS indici_da_droppare
+   FROM idx
+  GROUP BY schema_name, table_name, index_columns, metodo, predicato, firma
  HAVING (count(*) > 1)
-  ORDER BY schema_name, table_name, (count(*)) DESC;
+  ORDER BY schema_name, table_name;
 ```
 
 

@@ -3,76 +3,50 @@
 
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_fk_senza_indice AS
-WITH fk_columns AS (
-         SELECT con.oid AS constraint_oid,
-            con.conname AS constraint_name,
+WITH fk_grouped AS (
+         SELECT con.conname AS constraint_name,
             nsp.nspname AS schema_name,
             rel.relname AS table_name,
-            unnest(con.conkey) AS attnum,
-            con.conrelid
+            con.conrelid,
+            ( SELECT array_agg(a.attname ORDER BY a.attname) AS array_agg
+                   FROM (unnest(con.conkey) k(att)
+                     JOIN pg_attribute a ON (((a.attrelid = con.conrelid) AND (a.attnum = k.att))))) AS fk_cols
            FROM ((pg_constraint con
              JOIN pg_class rel ON ((rel.oid = con.conrelid)))
              JOIN pg_namespace nsp ON ((nsp.oid = rel.relnamespace)))
           WHERE ((con.contype = 'f'::"char") AND (EXISTS ( SELECT 1
                    FROM dbops.automation_scope sc
                   WHERE (sc.schema_name = nsp.nspname))))
-        ), fk_fields AS (
-         SELECT fk_1.constraint_name,
-            fk_1.schema_name,
-            fk_1.table_name,
-            a.attname AS column_name,
-            fk_1.conrelid,
-            fk_1.constraint_oid
-           FROM (fk_columns fk_1
-             JOIN pg_attribute a ON (((a.attrelid = fk_1.conrelid) AND (a.attnum = fk_1.attnum))))
-        ), indexed_columns AS (
-         SELECT i.relname AS index_name,
-            n.nspname AS schema_name,
-            t.relname AS table_name,
-            array_agg(a.attname ORDER BY x.ordinality) AS indexed_cols
+        ), idx_prefix AS (
+         SELECT ix.indrelid,
+            p.n AS prefix_len,
+            pg_get_expr(ix.indpred, ix.indrelid) AS predicato,
+            ( SELECT array_agg(a.attname ORDER BY a.attname) AS array_agg
+                   FROM (generate_series(1, p.n) g(k)
+                     JOIN pg_attribute a ON (((a.attrelid = ix.indrelid) AND (a.attnum = ix.indkey[(g.k - 1)]))))) AS prefix_cols,
+            ( SELECT bool_and((ix.indkey[(g.k - 1)] > 0)) AS bool_and
+                   FROM generate_series(1, p.n) g(k)) AS solo_colonne
            FROM (((((pg_index ix
              JOIN pg_class i ON ((i.oid = ix.indexrelid)))
              JOIN pg_class t ON ((t.oid = ix.indrelid)))
              JOIN pg_namespace n ON ((n.oid = t.relnamespace)))
-             JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY x(attnum, ordinality) ON (true))
-             JOIN pg_attribute a ON (((a.attrelid = t.oid) AND (a.attnum = x.attnum))))
-          WHERE (EXISTS ( SELECT 1
-                   FROM dbops.automation_scope sc
-                  WHERE (sc.schema_name = n.nspname)))
-          GROUP BY i.relname, n.nspname, t.relname
-        UNION
-         SELECT c.conname AS index_name,
-            n.nspname AS schema_name,
-            t.relname AS table_name,
-            array_agg(a.attname ORDER BY k.ordinality) AS indexed_cols
-           FROM ((((pg_constraint c
-             JOIN pg_class t ON ((t.oid = c.conrelid)))
-             JOIN pg_namespace n ON ((n.oid = t.relnamespace)))
-             JOIN LATERAL unnest(c.conkey) WITH ORDINALITY k(attnum, ordinality) ON (true))
-             JOIN pg_attribute a ON (((a.attrelid = t.oid) AND (a.attnum = k.attnum))))
-          WHERE ((c.contype = 'u'::"char") AND (EXISTS ( SELECT 1
+             JOIN pg_am am ON ((am.oid = i.relam)))
+             CROSS JOIN LATERAL generate_series(1, (ix.indnkeyatts)::integer) p(n))
+          WHERE ((i.relkind = 'i'::"char") AND (am.amname = 'btree'::name) AND ix.indisvalid AND ix.indisready AND (EXISTS ( SELECT 1
                    FROM dbops.automation_scope sc
                   WHERE (sc.schema_name = n.nspname))))
-          GROUP BY c.conname, n.nspname, t.relname
-        ), fk_grouped AS (
-         SELECT fk_fields.constraint_name,
-            fk_fields.schema_name,
-            fk_fields.table_name,
-            fk_fields.conrelid,
-            fk_fields.constraint_oid,
-            array_agg(fk_fields.column_name ORDER BY fk_fields.column_name) AS fk_cols
-           FROM fk_fields
-          GROUP BY fk_fields.constraint_name, fk_fields.schema_name, fk_fields.table_name, fk_fields.conrelid, fk_fields.constraint_oid
         )
  SELECT fk.schema_name,
     fk.table_name,
     fk.constraint_name,
     fk.fk_cols,
     format('CREATE INDEX IF NOT EXISTS ix_%I_%s ON %I.%I(%s);'::text, fk.table_name, array_to_string(fk.fk_cols, '_'::text), fk.schema_name, fk.table_name, array_to_string(fk.fk_cols, ', '::text)) AS create_index_suggestion
-   FROM ((fk_grouped fk
-     LEFT JOIN indexed_columns idx ON (((fk.schema_name = idx.schema_name) AND (fk.table_name = idx.table_name) AND (fk.fk_cols = idx.indexed_cols))))
+   FROM (fk_grouped fk
      LEFT JOIN dbops.fk_index_policy pol ON (((fk.schema_name = pol.schema_name) AND (fk.table_name = pol.table_name) AND (fk.constraint_name = pol.constraint_name))))
-  WHERE ((idx.index_name IS NULL) AND (COALESCE(pol.consentito, true) = true))
+  WHERE ((COALESCE(pol.consentito, true) = true) AND (NOT (EXISTS ( SELECT 1
+           FROM idx_prefix ip
+          WHERE ((ip.indrelid = fk.conrelid) AND (ip.prefix_len = cardinality(fk.fk_cols)) AND ip.solo_colonne AND (ip.prefix_cols = fk.fk_cols) AND ((ip.predicato IS NULL) OR ( SELECT bool_and(((btrim(parte.parte, '() '::text) ~ '^"?[a-z_][a-z0-9_$]*"?[[:space:]]+IS NOT NULL$'::text) AND (replace(btrim(regexp_replace(parte.parte, '[[:space:]]+IS NOT NULL.*$'::text, ''::text), '() '::text), '"'::text, ''::text) = ANY (fk.fk_cols)))) AS bool_and
+                   FROM regexp_split_to_table(ip.predicato, '[[:space:]]+AND[[:space:]]+'::text) parte(parte))))))))
   ORDER BY fk.schema_name, fk.table_name;
 ```
 

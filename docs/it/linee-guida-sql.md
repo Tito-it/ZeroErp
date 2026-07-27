@@ -594,16 +594,29 @@ All’interno della cartella **`90_end/`** delle migrazioni Liquibase, inserire 
   * popolare policy con `SELECT dbops.fn_populate_fk_index_policy();`
 * La policy consente di generare o eliminare indici non necessari.
 
+**La policy è OPT-IN**: `fn_populate_fk_index_policy()` registra le FK nuove con `consentito=false`. Perché l'indice nasca serve un seed esplicito che porti il flag a `true` — senza, l'automazione non crea nulla.
+
+**Non creare né droppare a mano un indice governato dalla policy.** Si agisce sul flag e ci pensa `apply_fk_index_policy()` in `90_end`. Dettagli e casistica in §8.7.
+
 ---
 
-### 10. Gestione Indici Duplicati
+### 10. Gestione Indici Ridondanti
 
-Utilizzare la view **`dbops.vw_duplicate_indexes`** per visualizzare gli indici che condividono lo stesso insieme di colonne e razionalizzare la struttura:
+Un indice può essere superfluo in **due modi diversi**, e servono due viste perché nessuna delle due può vedere l'altro caso.
 
 ```sql
-SELECT *
-  FROM dbops.vw_duplicate_indexes;
+-- 1. duplicati esatti: stessa firma completa, sono intercambiabili
+SELECT * FROM dbops.vw_duplicate_indexes;
+
+-- 2. ridondanti per prefisso: le colonne di uno sono la testa di un altro
+SELECT * FROM dbops.vw_indici_ridondanti_prefisso;
 ```
+
+**`vw_duplicate_indexes`** raggruppa per firma normalizzata — metodo di accesso, colonne ed espressioni, classe di operatori, collation, ordinamento, `INCLUDE`, predicato. Usare `indice_da_tenere` e `indici_da_droppare`, che il gruppo espone già pronti.
+
+**`vw_indici_ridondanti_prefisso`** trova i btree le cui colonne chiave sono la testa di quelle di un altro btree: PostgreSQL usa già il più largo per ogni ricerca sulle colonne del più stretto. La colonna **`origine`** dice come si rimuove — vedi §8.6.
+
+> ⚠️ Due indici sulla stessa colonna **non** sono duplicati se differiscono per metodo (un GIN `trgm` e un btree servono query diverse) o per predicato (due UNIQUE parziali disgiunte convivono legittimamente). Le viste tengono conto di entrambi: se una coppia compare, è ridondante davvero.
 
 
 ## 8. Indici
@@ -791,6 +804,7 @@ Usare indici parziali per:
 
 * logica di default
 * flag booleani
+* **foreign key nullabili**
 
 Esempio:
 
@@ -799,6 +813,10 @@ CREATE UNIQUE INDEX ix_contatti_default
 ON contatti(soggetto_id)
 WHERE is_default;
 ```
+
+**Su una FK nullabile, `WHERE <colonna> IS NOT NULL` è preferibile all'indice totale.** Il controllo di integrità referenziale esegue `WHERE fkcol = $1` con `$1` mai nullo — una riga con FK nulla non ha padre da verificare — e la condizione `fkcol = $1` implica `fkcol IS NOT NULL`: il planner lo dimostra e usa l'indice parziale senza problemi. Che è più piccolo, perché non indicizza righe che nessuno cercherà mai.
+
+`dbops.vw_fk_senza_indice` riconosce questo caso e considera la FK coperta. **Ogni altro predicato no**: un indice con, per dire, `WHERE stato = 'ATTIVO'` non copre la FK, perché il controllo referenziale deve poter trovare qualsiasi riga figlia, non solo quelle attive.
 
 ---
 
@@ -812,16 +830,54 @@ Preferire:
 
 ---
 
-### 8.6 Gestione Indici Duplicati
+### 8.6 Gestione Indici Ridondanti
 
-Utilizzare la view:
+Un indice di troppo non costa solo spazio: costa una scrittura in più a ogni `INSERT`, `UPDATE` e `DELETE` sulla tabella, e lavoro di manutenzione che non ripaga mai. Va tolto.
 
-```
-SELECT *
+La ridondanza si presenta in **due forme**, e ciascuna ha la sua vista.
+
+#### 1. Duplicati esatti — `dbops.vw_duplicate_indexes`
+
+```sql
+SELECT schema_name, table_name, indice_da_tenere, indici_da_droppare
 FROM dbops.vw_duplicate_indexes;
 ```
 
-per razionalizzare la struttura e prevenire overhead inutili.
+Raggruppa per **firma normalizzata**: la definizione dell'indice privata del nome, dei parametri di storage e del tablespace. Resta tutto ciò che determina quali query l'indice sa servire — metodo, colonne ed espressioni, classe di operatori, collation, `ASC`/`DESC`, `NULLS FIRST`/`LAST`, `NULLS NOT DISTINCT`, `INCLUDE`, predicato. Due indici nello stesso gruppo sono intercambiabili per definizione.
+
+Il flag `UNIQUE` **non** entra nella chiave di raggruppamento, ma nell'ordinamento: un btree non-unique identico a un UNIQUE è ridondante al 100%, e deve restare visibile. `indice_da_tenere` è sempre l'UNIQUE, se c'è.
+
+#### 2. Ridondanti per prefisso — `dbops.vw_indici_ridondanti_prefisso`
+
+```sql
+SELECT indice_ridondante, coperto_da, origine, idx_scan, peso
+FROM dbops.vw_indici_ridondanti_prefisso;
+```
+
+Un btree su `(a)` è inutile se ne esiste uno su `(a, b)`: PostgreSQL usa già il secondo per ogni ricerca su `a`, controllo referenziale delle FK compreso. Non è un _duplicato_ — le colonne differiscono — quindi `vw_duplicate_indexes` non lo vedrà mai, per quanto la si affini. Servono entrambe le viste.
+
+Il confronto pretende identici opclass, collation, ordinamento **e predicato**; sono esclusi da candidato PK, UNIQUE, `REPLICA IDENTITY` e indici a supporto di un constraint, perché la vista suggerisce `DROP` e non si suggerisce mai di rimuovere ciò che impone integrità.
+
+**La colonna che decide l'azione è `origine`:**
+
+| `origine` | Come si rimuove |
+| --- | --- |
+| `AUTOMAZIONE_FK` | `consentito=false` in `dbops.fk_index_policy` **e** `DROP` esplicito. Il solo `DROP` verrebbe annullato da `apply_fk_index_policy()` al primo `migrate` |
+| `MANUALE` | `DROP INDEX` in un changeSet dedicato |
+
+#### Un `idx_scan` alto non è una controindicazione
+
+Il planner sceglie l'indice più stretto quando ci sono entrambi, perché costa meno pagine: è proprio per questo che le letture stanno lì. Tolto il più stretto, le stesse query passano sul più largo. Prima di decidere, confrontare le dimensioni dei due:
+
+```sql
+SELECT v.indice_ridondante, v.idx_scan, v.peso AS peso_stretto,
+       pg_size_pretty(pg_relation_size(
+         (v.schema_name || '.' || quote_ident(v.coperto_da))::regclass)) AS peso_largo
+FROM dbops.vw_indici_ridondanti_prefisso v
+WHERE v.idx_scan > 50;
+```
+
+Se i due pesano uguale, il più stretto non porta alcun vantaggio di cache e si toglie senza pensarci. Se il coprente è molto più grande **e** la tabella è grande davvero, il caso va misurato: un indice stretto che sopravvive accanto a uno largo è legittimo, ma va motivato con numeri, non con il sospetto.
 
 ---
 
@@ -847,11 +903,42 @@ La tabella `dbops.fk_index_policy` governa:
 * quali FK indicizzare
 * quali escludere
 
-La view di supporto:
+Le viste di supporto:
 
-```
+```sql
+-- FK realmente prive di copertura
 SELECT * FROM dbops.vw_fk_senza_indice;
+
+-- FK con un indice dedicato ma senza riga di policy (candidate al governo)
+SELECT * FROM dbops.vw_fk_con_indice_missing_policy;
 ```
+
+#### La policy è OPT-IN
+
+`fn_populate_fk_index_policy()` registra le FK nuove con `consentito=false`. **Perché l'indice nasca serve un seed esplicito** che porti il flag a `true`: senza, l'automazione non crea nulla. Il seed va in `80_data` come CSV più `loadUpdateData`, mai come SQL inline.
+
+#### Quando una FK si considera coperta
+
+Non serve un indice dedicato. La FK è coperta se le sue colonne coincidono, **come insieme**, con le prime N colonne chiave di un btree valido — cioè per **prefisso**: un indice su `(contratto_id, riga_nr)` copre la FK su `contratto_id`, perché il controllo referenziale cerca `WHERE fkcol = $1` e quel btree lo serve.
+
+Il predicato dell'indice dev'essere assente, oppure una congiunzione di soli `<colonna della FK> IS NOT NULL` — vedi §8.4.
+
+> Pretendere l'uguaglianza esatta dell'elenco di colonne, come faceva la vista fino al 2026-07-27, porta a registrare come scoperte FK già servite da una UNIQUE più larga, e a piantarci sopra un indice gemello. È così che sono nati 27 dei 48 indici ridondanti censiti in quella data.
+
+#### Mai a mano
+
+Gli indici governati dalla policy **non si creano e non si droppano con un `CREATE`/`DROP` scritto a mano**: si agisce sul flag e ci pensa `apply_fk_index_policy()`. Un `DROP` senza flag verrebbe annullato al primo `migrate` successivo, perché la procedura gira `runAlways` in `90_end`.
+
+#### Le due guardie di `apply_fk_index_policy()`
+
+1. **Con `consentito=true` crea solo se la FK figura ancora in `vw_fk_senza_indice`.** Una FK già servita da una UNIQUE più larga, o da un parziale `IS NOT NULL`, non riceve un indice dedicato nemmeno a flag `true`. Un `true` rimesso per errore non può quindi rigenerare ridondanze già bonificate.
+2. **Con `consentito=false` rifiuta il `DROP`**, con `RAISE WARNING`, se il nome estratto dal comando appartiene a un UNIQUE, a una PK, a un indice a supporto di un constraint o alla `REPLICA IDENTITY`. Un flag booleano non deve poter togliere un vincolo di integrità.
+
+Warning e non eccezione: la procedura gira a ogni `migrate` e nel job settimanale, e un errore bloccherebbe la pipeline. A fine ciclo emette un `RAISE NOTICE` con creati / saltati / droppati / rifiutati.
+
+#### Il `dll_command` deve nominare l'indice che esiste
+
+`fn_seed_fk_index_policy()` porta sotto il governo della policy le FK che hanno già un indice. Il comando registrato deve puntare al **nome reale** di quell'indice: se ne sintetizza uno diverso, `apply` crea un secondo indice gemello sotto quel nome. E si registrano **solo indici dedicati** alla FK — colonne uguali a quelle della FK, non UNIQUE, non a supporto di constraint — perché il ramo `consentito=false` esegue `DROP INDEX` su quel nome, e deve poter togliere solo un acceleratore.
 
 ---
 

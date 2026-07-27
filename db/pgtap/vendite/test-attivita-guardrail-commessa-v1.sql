@@ -98,7 +98,7 @@ SELECT
   (SELECT id FROM catalogo.unita_misura WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS uom_id,
   (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id,
-  (SELECT id FROM config.sorgenti WHERE codice = 'PREVENTIVO' LIMIT 1) AS src_preventivo_id;
+  (SELECT id FROM config.sorgenti WHERE codice_interno = 'COMMESSA' LIMIT 1) AS src_preventivo_id;
 
 SELECT ok(
   (
@@ -116,21 +116,17 @@ SELECT ok(
   'riferimenti minimi disponibili'
 );
 
-INSERT INTO config.sorgenti (
-  codice_interno, codice, categoria, descrizione, attivo, target_table, key_selector, scope, meta
-)
-VALUES (
-  'COMMESSA', 'COMMESSA', 'DOCUMENTO', 'Commessa test pgtap guardrail', true,
-  'vendite.commesse_attivita'::regclass, 'id', 'PIPELINE_MARKER',
-  jsonb_build_object('idempotency_key','segment_key')
-)
-ON CONFLICT (codice)
-DO UPDATE
-   SET attivo = true,
-       target_table = EXCLUDED.target_table,
-       key_selector = EXCLUDED.key_selector,
-       data_update = now(),
-       user_update = current_user;
+-- rev 2026-07-27 (bonifica): RIMOSSO l'upsert su config.sorgenti che questo
+-- test faceva qui. Riscriveva la riga di seed della sorgente COMMESSA
+-- imponendo target_table='vendite.commesse_attivita' — il valore ERRATO che il
+-- brief-db-guard-sorgente-polimorfa (reperto R2) ha corretto nel seed a
+-- 'vendite.commesse', perche' tutti i consumatori del collegamento usano l'id
+-- della COMMESSA. Con il guard attivo dal 2026-07-18, quell'upsert faceva
+-- validare l'esistenza contro la tabella sbagliata e il link falliva.
+-- La sorgente COMMESSA esiste gia' nel seed, correttamente configurata: al
+-- test basta leggerla (tmp_guard_refs.src_preventivo_id, sopra).
+-- ⚠️ Un test non deve riscrivere righe di seed condivise: ne altera il
+-- comportamento per tutto il resto della transazione.
 
 CREATE TEMP TABLE tmp_commessa_a AS
 SELECT vendite.fn_get_or_create_commessa(
@@ -155,7 +151,10 @@ SELECT ok(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_a),
   p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_guard_refs),
-  p_sorgente_uid => ('SRC-A-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
+  -- ROOT: sorgente COMMESSA (key_selector='id') con uid = id della commessa
+  -- stessa: esiste per costruzione -> passa formato ed esistenza del guard
+  -- sorgente polimorfa. rev 2026-07-27 (bonifica).
+  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_a)::text,
   p_sorgente_riga => 1,
   p_meta => '{}'::jsonb
 );
@@ -293,7 +292,10 @@ SELECT vendite.fn_get_or_create_commessa(
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_b),
   p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_guard_refs),
-  p_sorgente_uid => ('SRC-B-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
+  -- ROOT: sorgente COMMESSA (key_selector='id') con uid = id della commessa
+  -- stessa: esiste per costruzione -> passa formato ed esistenza del guard
+  -- sorgente polimorfa. rev 2026-07-27 (bonifica).
+  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_b)::text,
   p_sorgente_riga => 2,
   p_meta => '{}'::jsonb
 );

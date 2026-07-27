@@ -48,7 +48,6 @@
 |------|-------------|
 | ix_vendite_ddtrighe_comp_articolo_componente | `CREATE INDEX ix_vendite_ddtrighe_comp_articolo_componente ON vendite.ddt_righe_componenti USING btree (articolo_componente_id)` |
 | ix_vendite_ddtrighe_comp_componente | `CREATE INDEX ix_vendite_ddtrighe_comp_componente ON vendite.ddt_righe_componenti USING btree (componente_id)` |
-| ix_vendite_ddtrighe_comp_riga | `CREATE INDEX ix_vendite_ddtrighe_comp_riga ON vendite.ddt_righe_componenti USING btree (riga_ddt_id)` |
 | ix_vendite_ddtrighe_comp_stato_approvazione | `CREATE INDEX ix_vendite_ddtrighe_comp_stato_approvazione ON vendite.ddt_righe_componenti USING btree (stato_approvazione_prezzo) WHERE (stato_approvazione_prezzo IS NOT NULL)` |
 | pk_ddtrighe_comp | `CREATE UNIQUE INDEX pk_ddtrighe_comp ON vendite.ddt_righe_componenti USING btree (id)` |
 | uq_ddtrighe_comp_riga_art_comp | `CREATE UNIQUE INDEX uq_ddtrighe_comp_riga_art_comp ON vendite.ddt_righe_componenti USING btree (riga_ddt_id, articolo_componente_id)` |

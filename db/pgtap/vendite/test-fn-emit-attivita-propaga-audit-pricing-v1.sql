@@ -50,8 +50,11 @@ SELECT
     WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1
   ) AS uom_id,
   (
+    -- rev 2026-07-27 (bonifica): ROOT su sorgente COMMESSA (key_selector='id'),
+    -- e lookup per codice_interno (immutabile) invece che per codice
+    -- (etichetta modificabile) — linee-guida-sql §6c/§6d.
     SELECT s.id FROM config.sorgenti s
-    WHERE s.codice = 'PREVENTIVO' LIMIT 1
+    WHERE s.codice_interno = 'COMMESSA' AND s.attivo LIMIT 1
   ) AS root_sorgente_tipo_id,
   (
     SELECT t.id FROM config.tipi_doc_fiscale t
@@ -78,7 +81,11 @@ CREATE TEMP TABLE tmp_link_au AS
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_au),
   p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_au),
-  p_sorgente_uid => ('SRC-AU-' || substr(md5(clock_timestamp()::text), 1, 12))::text,
+  -- ROOT: sorgente COMMESSA (key_selector='id') con uid = id della commessa
+  -- stessa: esiste per costruzione, quindi passa il guard sorgente polimorfa
+  -- (formato id::text + esistenza nel target). fn_emit pretende solo che una
+  -- ROOT esista, non ne dereferenzia il tipo. rev 2026-07-27 (bonifica).
+  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_au)::text,
   p_sorgente_riga => 1,
   p_meta => jsonb_build_object('test_scope', 'pgtap_emit_audit')
 ) AS link_id;

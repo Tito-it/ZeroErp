@@ -54,9 +54,19 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_refs_sot AS
 SELECT
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1)
+  -- ⚠️ PREVENTIVO resta: e' l'oggetto delle asserzioni 3/5/6 (tipo_doc_fiscale
+  -- configurato sulla sorgente e propagazione di sorgente_origine_tipo_id).
+  -- Lookup per codice_interno (immutabile), non per codice — §6c/§6d.
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1)
     AS sorgente_preventivo_id,
-  (SELECT s.tipo_doc_fiscale_id FROM config.sorgenti s WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1)
+  -- Sorgente per il solo link ROOT, che fn_emit pretende esista ma di cui non
+  -- dereferenzia il tipo: COMMESSA (key_selector='id') permette di usare come
+  -- chiave l'id della commessa stessa, che esiste per costruzione.
+  -- rev 2026-07-27 (bonifica): prima il link usava PREVENTIVO con una stringa
+  -- inventata, illegale dal guard del 2026-07-18.
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE LIMIT 1)
+    AS sorgente_root_id,
+  (SELECT s.tipo_doc_fiscale_id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1)
     AS expected_tipo_doc_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice = 'COMMESSA' AND s.attivo IS TRUE LIMIT 1)
     AS sorgente_commessa_id,
@@ -149,11 +159,11 @@ SELECT vendite.fn_get_or_create_commessa(
   p_force_new => true
 ) AS commessa_id;
 
--- Link ROOT
+-- Link ROOT (serve solo che ESISTA: fn_emit non ne dereferenzia il tipo)
 SELECT vendite.fn_link_commessa_sorgente(
   p_commessa_id => (SELECT commessa_id FROM tmp_commessa_sot),
-  p_sorgente_tipo_id => (SELECT sorgente_preventivo_id FROM tmp_refs_sot),
-  p_sorgente_uid => ('SOT-' || substr(md5(clock_timestamp()::text), 1, 12))::text,
+  p_sorgente_tipo_id => (SELECT sorgente_root_id FROM tmp_refs_sot),
+  p_sorgente_uid => (SELECT commessa_id FROM tmp_commessa_sot)::text,
   p_sorgente_riga => 1,
   p_meta => '{}'::jsonb
 );

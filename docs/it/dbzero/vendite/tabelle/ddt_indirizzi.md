@@ -29,7 +29,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_vendite_ddt_indirizzi_ddt_id | `CREATE INDEX ix_vendite_ddt_indirizzi_ddt_id ON vendite.ddt_indirizzi USING btree (ddt_id)` |
 | ix_vendite_ddt_indirizzi_origine_indirizzo_id | `CREATE INDEX ix_vendite_ddt_indirizzi_origine_indirizzo_id ON vendite.ddt_indirizzi USING btree (origine_indirizzo_id)` |
 | ix_vendite_ddt_indirizzi_origine_soggetto_ruolo_id | `CREATE INDEX ix_vendite_ddt_indirizzi_origine_soggetto_ruolo_id ON vendite.ddt_indirizzi USING btree (origine_soggetto_ruolo_id)` |
 | pk_ddt_indirizzi | `CREATE UNIQUE INDEX pk_ddt_indirizzi ON vendite.ddt_indirizzi USING btree (id)` |

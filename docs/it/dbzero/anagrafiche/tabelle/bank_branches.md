@@ -30,7 +30,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_anagrafiche_bank_branches_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_bank_branches_soggetto_ruolo_id ON anagrafiche.bank_branches USING btree (soggetto_ruolo_id)` |
 | ix_bank_branches_attivo | `CREATE INDEX ix_bank_branches_attivo ON anagrafiche.bank_branches USING btree (attivo)` |
 | ix_bank_branches_bank_code_trgm | `CREATE INDEX ix_bank_branches_bank_code_trgm ON anagrafiche.bank_branches USING gin (bank_code gin_trgm_ops)` |
 | pk_bank_branches | `CREATE UNIQUE INDEX pk_bank_branches ON anagrafiche.bank_branches USING btree (id)` |

@@ -41,7 +41,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_anagrafiche_indirizzi_soggetti_soggetto_id | `CREATE INDEX ix_anagrafiche_indirizzi_soggetti_soggetto_id ON anagrafiche.indirizzi_soggetti USING btree (soggetto_id)` |
 | ix_anagrafiche_indirizzi_soggetti_tipo_indirizzo_id | `CREATE INDEX ix_anagrafiche_indirizzi_soggetti_tipo_indirizzo_id ON anagrafiche.indirizzi_soggetti USING btree (tipo_indirizzo_id)` |
 | pk_indirizzi_soggetti | `CREATE UNIQUE INDEX pk_indirizzi_soggetti ON anagrafiche.indirizzi_soggetti USING btree (id)` |
 | uq_indirizzi_soggetti_soggetto_tipo | `CREATE UNIQUE INDEX uq_indirizzi_soggetti_soggetto_tipo ON anagrafiche.indirizzi_soggetti USING btree (soggetto_id, tipo_indirizzo_id)` |

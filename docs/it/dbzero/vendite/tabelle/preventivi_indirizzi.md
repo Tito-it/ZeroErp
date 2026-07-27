@@ -31,7 +31,6 @@
 |------|-------------|
 | ix_vendite_preventivi_indirizzi_origine_indirizzo_id | `CREATE INDEX ix_vendite_preventivi_indirizzi_origine_indirizzo_id ON vendite.preventivi_indirizzi USING btree (origine_indirizzo_id)` |
 | ix_vendite_preventivi_indirizzi_origine_soggetto_ruolo_id | `CREATE INDEX ix_vendite_preventivi_indirizzi_origine_soggetto_ruolo_id ON vendite.preventivi_indirizzi USING btree (origine_soggetto_ruolo_id)` |
-| ix_vendite_preventivi_indirizzi_preventivo_id | `CREATE INDEX ix_vendite_preventivi_indirizzi_preventivo_id ON vendite.preventivi_indirizzi USING btree (preventivo_id)` |
 | pk_preventivi_indirizzi | `CREATE UNIQUE INDEX pk_preventivi_indirizzi ON vendite.preventivi_indirizzi USING btree (id)` |
 | uq_preventivi_indirizzi_uno_per_tipo_ | `CREATE UNIQUE INDEX uq_preventivi_indirizzi_uno_per_tipo_ ON vendite.preventivi_indirizzi USING btree (preventivo_id, tipo_indirizzo_id)` |
 
