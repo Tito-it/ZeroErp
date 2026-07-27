@@ -1,0 +1,206 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# trgfn_guard_fatturazione_immediata_immutabile: il flag di corsia non si
+#   cambia dopo il push in commessa
+#   (brief-db-emissione-fattura-per-documento-sorgente PARTE B / B3, step B5,
+#    decisione D-7)
+#
+# PERCHE' NON E' UN "DI PIU'". Dopo il push il flag e' GIA' inerte, per tre
+#   ragioni concorrenti tutte verificate:
+#     1. e' parte della chiave di dedup di fn_get_or_create_commessa, quindi
+#        cambiarlo NON sposta le righe gia' pushate;
+#     2. vendite.commesse_sorgenti ha un UNIQUE GLOBALE su
+#        (sorgente_tipo_id, sorgente_uid): il documento e' legato a una sola
+#        commessa per sempre, non e' ri-pushabile verso una commessa di corsia
+#        diversa (darebbe E_COMMESSA_ROOT_CONFLITTO);
+#     3. anche potendo, si sposterebbe l'INTERA commessa, che e' multi-sorgente.
+#   Senza guard, il FE esporrebbe un campo editabile che non produce alcun
+#   effetto: il peggiore dei casi, perche' *sembra* funzionare. Meglio una
+#   regola scritta che una disciplina affidata alle persone.
+#   Il caso "cambio idea dopo" e' coperto INTERAMENTE dall'emissione mirata
+#   per gruppo fatturabile (PARTE A), non dal flag.
+#
+# ⚠️ CHIAVE DI MATCH — si segue key_selector, punto.
+#   commesse_sorgenti.sorgente_uid contiene la chiave CANONICA definita da
+#   config.sorgenti.key_selector: 'uid' -> uuid::text (PREVENTIVO,
+#   OFFERTA_COMMERCIALE), 'id' -> id::text (ORDINE_VENDITA, CONTRATTO,
+#   DDT_VENDITA, ...). La forma canonica e' garantita alla scrittura da
+#   vendite.fn_link_commessa_sorgente, che NORMALIZZA: i chiamanti storici
+#   passano l'uid del documento anche per i tipi a chiave id (tutte le
+#   fn_list_*_da_pushare proiettano <tabella>.uid::text), e la fn traduce
+#   prima dell'idempotenza e dell'insert, cosi' uq_commesse_sorgenti_src_uid
+#   lavora sempre sulla forma canonica.
+#   Vedi guida /guide/sorgente-polimorfa §2 e §4.
+#
+#   ⚠️ NON dedurre la chiave da cio' che il CHIAMANTE passa: la
+#   normalizzazione avviene un livello piu' sotto, dentro la funzione di
+#   scrittura. Guardare solo il push porta a concludere "e' sempre l'uid" e
+#   a scrivere un guard che non trova mai il link -> no-op silenzioso.
+#   Questo guard risolve quindi la chiave come fa la fn di link: legge
+#   key_selector e sceglie NEW.uid::text o NEW.id::text.
+#
+# SOLO CAMBI REALI: il trigger e' armato con una clausola WHEN
+#   (NEW IS DISTINCT FROM OLD) — vedi 20260727-09. Riscrivere lo STESSO valore
+#   non e' un cambio e non va bloccato: serve al percorso legittimo di
+#   ri-accettazione di un preventivo, che riscrive il flag invariato.
+#
+# GENERICA SU 4 TABELLE: la sorgente arriva da TG_ARGV[0] come codice_interno
+#   (immutabile, §6b linee-guida-sql), non come id. Stesso pattern dei trigger
+#   generici dbops.trgfn_child_requires_active_parent gia' in uso.
+#
+# P3 (verifica pre-scrittura, richiesta dal piano): grep su db/pgtap/ e
+#   backend/apps/ — nessun UPDATE del flag su documenti gia' pushati. Le 20
+#   occorrenze pgTAP sono tutte `p_fatturazione_immediata =>` (parametro di
+#   fn_get_or_create_commessa), non scritture sulla colonna del documento.
+#   L'unico percorso applicativo che scrive il flag e'
+#   preventivi_service.cambia_stato (EMESSO->ACCETTATO), che gira PRIMA del
+#   push: non viene toccato.
+#
+# Dipendenze: 20260727-01/02/03 (colonne), codice errore
+#   E_FATT_IMMEDIATA_NON_MODIFICABILE (id 561, seed CSV messaggi_errore).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260727-08-create-trgfn-guard-fatt-immediata-immutabile-mctit.yaml
+
+  - changeSet:
+      id: 20260727-08-create-trgfn-guard-fatt-immediata-immutabile
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Trigger function generica: blocca il cambio di fatturazione_immediata su
+        un documento gia' collegato a una commessa (commesse_sorgenti). Sorgente
+        per codice_interno via TG_ARGV[0]; match sulla chiave canonica risolta
+        da config.sorgenti.key_selector.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_guard_fatturazione_immediata_immutabile()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: impedire il cambio del flag di instradamento corsia su un
+              --        documento gia' inviato in commessa, dove sarebbe inerte.
+              -- Uso:   BEFORE UPDATE OF fatturazione_immediata FOR EACH ROW
+              --        WHEN (NEW.fatturazione_immediata IS DISTINCT FROM
+              --              OLD.fatturazione_immediata)
+              --        EXECUTE FUNCTION vendite.trgfn_guard_fatturazione_immediata_immutabile('<CODICE_INTERNO_SORGENTE>')
+              -- brief-db-emissione-fattura-per-documento-sorgente PARTE B, D-7.
+              DECLARE
+                  v_sorgente_codice  config.sorgenti.codice_interno%TYPE;
+                  v_sorgente_tipo_id vendite.commesse_sorgenti.sorgente_tipo_id%TYPE;
+                  v_key_selector     config.sorgenti.key_selector%TYPE;
+                  v_chiave           vendite.commesse_sorgenti.sorgente_uid%TYPE;
+                  v_commessa_id      vendite.commesse_sorgenti.commessa_id%TYPE;
+              BEGIN
+                  -- Guard di configurazione del trigger: l'argomento e'
+                  -- obbligatorio (senza, il guard sarebbe un no-op silenzioso).
+                  IF TG_NARGS < 1 OR btrim(COALESCE(TG_ARGV[0], '')) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'trgfn_guard_fatturazione_immediata_immutabile',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'TG_ARGV[0]', 'tabella', TG_TABLE_NAME),
+                          NULL::uuid,
+                          'TG_ARGV[0] (codice_interno sorgente) obbligatorio'
+                      );
+                  END IF;
+
+                  v_sorgente_codice := btrim(TG_ARGV[0]);
+
+                  -- Sorgente per codice_interno (immutabile), MAI per codice
+                  -- (mutabile) — linee-guida-sql §6c/§6d.
+                  -- NB: nessun filtro su attivo. Il legame documento->commessa
+                  -- esiste anche se la sorgente venisse disattivata, e il guard
+                  -- deve continuare a proteggerlo.
+                  SELECT s.id, s.key_selector
+                    INTO v_sorgente_tipo_id, v_key_selector
+                    FROM config.sorgenti s
+                   WHERE s.codice_interno = v_sorgente_codice
+                   LIMIT 1;
+
+                  IF v_sorgente_tipo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'trgfn_guard_fatturazione_immediata_immutabile',
+                          'E_CODICE',
+                          jsonb_build_object('codice', v_sorgente_codice, 'tabella', TG_TABLE_NAME),
+                          NULL::uuid, v_sorgente_codice, 'config.sorgenti'
+                      );
+                  END IF;
+
+                  -- Chiave CANONICA secondo key_selector, la stessa forma che
+                  -- fn_link_commessa_sorgente normalizza in scrittura:
+                  --   'uid' -> uuid::text   (preventivi, offerte)
+                  --   'id'  -> id::text     (ordini, contratti, DDT, ...)
+                  -- Non si deduce dal valore passato dal push (che e' sempre
+                  -- l'uid): la normalizzazione sta dentro la fn di link.
+                  v_chiave := CASE v_key_selector
+                                  WHEN 'uid' THEN NEW.uid::text
+                                  WHEN 'id'  THEN NEW.id::text
+                              END;
+
+                  IF v_chiave IS NULL THEN
+                      -- key_selector fuori dominio: fail-loud, non silenzio.
+                      -- Un guard che non risolve la chiave e' un guard che non
+                      -- protegge, e non deve poter passare inosservato.
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'trgfn_guard_fatturazione_immediata_immutabile',
+                          'E_SORG_CONF',
+                          jsonb_build_object('sorgente', v_sorgente_codice,
+                                             'key_selector', COALESCE(v_key_selector, '<NULL>'),
+                                             'tabella', TG_TABLE_NAME),
+                          NULL::uuid,
+                          concat('key_selector non gestito: ', COALESCE(v_key_selector, '<NULL>'))
+                      );
+                  END IF;
+
+                  -- Il documento e' gia' stato pushato in commessa?
+                  SELECT cs.commessa_id
+                    INTO v_commessa_id
+                    FROM vendite.commesse_sorgenti cs
+                   WHERE cs.sorgente_tipo_id = v_sorgente_tipo_id
+                     AND cs.sorgente_uid = v_chiave
+                   LIMIT 1;
+
+                  IF v_commessa_id IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'trgfn_guard_fatturazione_immediata_immutabile',
+                          'E_FATT_IMMEDIATA_NON_MODIFICABILE',
+                          jsonb_build_object(
+                              'tabella',       TG_TABLE_NAME,
+                              'documento_id',  NEW.id,
+                              'documento_uid', NEW.uid,
+                              'chiave_canonica', v_chiave,
+                              'sorgente',      v_sorgente_codice,
+                              'commessa_id',   v_commessa_id,
+                              'valore_attuale', OLD.fatturazione_immediata,
+                              'valore_richiesto', NEW.fatturazione_immediata
+                          ),
+                          NULL::uuid,
+                          v_chiave, v_sorgente_codice
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_guard_fatturazione_immediata_immutabile()
+              IS 'Guard generico (BEFORE UPDATE OF fatturazione_immediata): blocca il cambio del flag di instradamento corsia su un documento gia'' collegato a una commessa (vendite.commesse_sorgenti). Sorgente passata come codice_interno in TG_ARGV[0]. Il match usa la chiave CANONICA secondo config.sorgenti.key_selector (''uid'' -> uid::text, ''id'' -> id::text): e'' la forma che vendite.fn_link_commessa_sorgente normalizza in scrittura, non quella che il push passa (sempre l''uid). Dedurre la chiave dal chiamante invece che da key_selector produce un guard che non trova mai il link — no-op silenzioso. Vedi guida /guide/sorgente-polimorfa §2 e §4. Dopo il push il flag e'' inerte: e'' nella chiave di dedup di fn_get_or_create_commessa, il documento e'' legato a una sola commessa per sempre (UNIQUE globale) e comunque si sposterebbe l''intera commessa multi-sorgente. Il caso "cambio idea dopo" e'' coperto dall''emissione mirata per gruppo fatturabile. Errore: E_FATT_IMMEDIATA_NON_MODIFICABILE. brief-db-emissione-fattura-per-documento-sorgente PARTE B / D-7, rev 2026-07-27.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.trgfn_guard_fatturazione_immediata_immutabile();

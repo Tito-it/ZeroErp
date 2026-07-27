@@ -42,6 +42,44 @@ segmentazione idempotente (`segment_key`) e stato approvazione/emissione.
 
 ---
 
+### ⚠️ `sorgente_uid` qui NON è la chiave canonica polimorfa
+
+Trappola verificata il 27-07-2026. La coppia `(sorgente_tipo_id, sorgente_uid)`
+su questa tabella **assomiglia** all'aggancio polimorfo di
+[`commesse_sorgenti`](commesse_sorgenti.md) e di `pratiche_sorgenti`, ma
+**non segue la stessa convenzione**.
+
+| Tabella | Cosa contiene `sorgente_uid` | Chi lo garantisce |
+|---|---|---|
+| `commesse_sorgenti` | chiave **canonica** secondo `config.sorgenti.key_selector` (`id::text` per ordini/contratti/DDT, `uid::text` per preventivi/offerte) | `fn_link_commessa_sorgente`, che **normalizza in scrittura** |
+| **`commesse_attivita`** | **l'`uid` del documento, sempre** — per tutte le sorgenti, anche quelle con `key_selector = 'id'` | **nessuno**: `fn_upsert_commessa_attivita` scrive il valore ricevuto senza tradurlo |
+
+**Perché**: tutte le `fn_list_<sorgente>_da_pushare` proiettano
+`<tabella>.uid::text`. Quel valore viene scritto qui **grezzo**, mentre
+`fn_link_commessa_sorgente` lo traduce prima di scriverlo su
+`commesse_sorgenti`. Le due tabelle vengono popolate nello stesso push e per lo
+stesso documento contengono **valori diversi**.
+
+**Non è un errore da bonificare**: è una convenzione autonoma, già usata da
+consumatori vivi — es. `vw_dash_fatturazione_contratti` fa
+`JOIN ... AND ca.sorgente_uid = c.uid::text`. Normalizzare questa colonna
+romperebbe quei join.
+
+**Regola pratica per chi scrive query**:
+
+* per interrogare **`commesse_attivita`** → usa **l'uid** del documento;
+* per interrogare **`commesse_sorgenti`** → usa la **chiave canonica**
+  (risolvila da `config.sorgenti.key_selector`, non darla per scontata);
+* **non dedurre l'una dall'altra per analogia**: la somiglianza dei nomi di
+  colonna è precisamente ciò che induce l'errore.
+
+Il meccanismo polimorfo e il suo perimetro sono descritti in
+[guida sorgente polimorfa](/guide/sorgente-polimorfa): questa tabella sta
+**fuori** da quel perimetro (nessun guard `trgfn_guard_sorgente_polimorfa_*`
+agganciato).
+
+---
+
 ### Utilizzo previsto
 
 * input del pull `fn_emit_attivita_fatturabili_da_commessa`;

@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Armamento del guard su 4 sorgenti: preventivi, ordini, contratti, DDT
+#   (brief-db-emissione-fattura-per-documento-sorgente PARTE B, step B5, D-7)
+#
+# Funzione: vendite.trgfn_guard_fatturazione_immediata_immutabile (20260727-08).
+#
+# PERCHE' ANCHE I PREVENTIVI: il buco semantico che il guard chiude non e' nato
+#   con le colonne nuove — esiste da sempre proprio sui preventivi, l'unica
+#   sorgente che aveva il flag. La simmetria del modello (PARTE B) sarebbe a
+#   meta' se la regola valesse solo per le tre sorgenti nuove.
+#
+# ⚠️ COSA CAMBIA PER I PREVENTIVI (unico impatto su percorsi esistenti).
+#   preventivi_service.cambia_stato scrive il flag sulla transizione
+#   EMESSO->ACCETTATO, e ammette anche il no-op ACCETTATO->ACCETTATO. Poiche':
+#     - il push avviene DOPO l'accettazione, il percorso normale non e' toccato;
+#     - il trigger e' armato con WHEN (IS DISTINCT FROM), quindi una
+#       ri-accettazione che riscrive lo STESSO valore passa senza errore;
+#   l'unico caso che ora fallisce e' la ri-accettazione di un preventivo GIA'
+#   PUSHATO con un valore DIVERSO del flag. E' esattamente il caso che il guard
+#   deve intercettare: oggi quella modifica riesce ma non produce alcun effetto
+#   sul lavoro gia' in commessa.
+#
+# CLAUSOLA WHEN, non IF nel corpo: il confronto IS DISTINCT FROM sta nella
+#   definizione del trigger, cosi' PostgreSQL non entra nemmeno nella funzione
+#   quando il valore non cambia (linee-guida-trigger: UPDATE OF colonna quando
+#   possibile, per performance). IS DISTINCT FROM e non <> perche' su
+#   vendite.preventivi la colonna e' NULLABLE.
+#
+# FASE _a10_: guard/blocco, prima linea di difesa (linee-guida-trigger).
+#   Nome: trg_<tabella>_a10_guard_fatt_immediata_upd.
+#
+# NON serve su vendite.attivita_consumi: i consumi non hanno il flag per
+#   scelta di dominio (D-6).
+#
+# Dipendenze: 20260727-08 (funzione), 20260727-01/02/03 (colonne).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260727-09-create-trg-guard-fatt-immediata-4-sorgenti-mctit.yaml
+
+  - changeSet:
+      id: 20260727-09-create-trg-guard-fatt-immediata-4-sorgenti
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Arma trgfn_guard_fatturazione_immediata_immutabile su preventivi, ordini,
+        contratti e ddt (BEFORE UPDATE OF fatturazione_immediata, solo cambi reali).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: ordini
+                columnName: fatturazione_immediata
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: fatturazione_immediata
+            - columnExists:
+                schemaName: vendite
+                tableName: ddt
+                columnName: fatturazione_immediata
+            - columnExists:
+                schemaName: vendite
+                tableName: preventivi
+                columnName: fatturazione_immediata
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- PREVENTIVI (sorgente storica del flag)
+              DROP TRIGGER IF EXISTS trg_preventivi_a10_guard_fatt_immediata_upd
+                  ON vendite.preventivi;
+              CREATE TRIGGER trg_preventivi_a10_guard_fatt_immediata_upd
+                  BEFORE UPDATE OF fatturazione_immediata ON vendite.preventivi
+                  FOR EACH ROW
+                  WHEN (NEW.fatturazione_immediata IS DISTINCT FROM OLD.fatturazione_immediata)
+                  EXECUTE FUNCTION vendite.trgfn_guard_fatturazione_immediata_immutabile('PREVENTIVO');
+
+              -- ORDINI
+              DROP TRIGGER IF EXISTS trg_ordini_a10_guard_fatt_immediata_upd
+                  ON vendite.ordini;
+              CREATE TRIGGER trg_ordini_a10_guard_fatt_immediata_upd
+                  BEFORE UPDATE OF fatturazione_immediata ON vendite.ordini
+                  FOR EACH ROW
+                  WHEN (NEW.fatturazione_immediata IS DISTINCT FROM OLD.fatturazione_immediata)
+                  EXECUTE FUNCTION vendite.trgfn_guard_fatturazione_immediata_immutabile('ORDINE_VENDITA');
+
+              -- CONTRATTI
+              DROP TRIGGER IF EXISTS trg_contratti_a10_guard_fatt_immediata_upd
+                  ON vendite.contratti;
+              CREATE TRIGGER trg_contratti_a10_guard_fatt_immediata_upd
+                  BEFORE UPDATE OF fatturazione_immediata ON vendite.contratti
+                  FOR EACH ROW
+                  WHEN (NEW.fatturazione_immediata IS DISTINCT FROM OLD.fatturazione_immediata)
+                  EXECUTE FUNCTION vendite.trgfn_guard_fatturazione_immediata_immutabile('CONTRATTO');
+
+              -- DDT
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_fatt_immediata_upd
+                  ON vendite.ddt;
+              CREATE TRIGGER trg_ddt_a10_guard_fatt_immediata_upd
+                  BEFORE UPDATE OF fatturazione_immediata ON vendite.ddt
+                  FOR EACH ROW
+                  WHEN (NEW.fatturazione_immediata IS DISTINCT FROM OLD.fatturazione_immediata)
+                  EXECUTE FUNCTION vendite.trgfn_guard_fatturazione_immediata_immutabile('DDT_VENDITA');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_a10_guard_fatt_immediata_upd ON vendite.preventivi;
+              DROP TRIGGER IF EXISTS trg_ordini_a10_guard_fatt_immediata_upd     ON vendite.ordini;
+              DROP TRIGGER IF EXISTS trg_contratti_a10_guard_fatt_immediata_upd  ON vendite.contratti;
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_fatt_immediata_upd        ON vendite.ddt;

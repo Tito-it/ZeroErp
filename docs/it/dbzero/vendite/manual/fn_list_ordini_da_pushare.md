@@ -107,4 +107,30 @@ FROM vendite.fn_list_ordini_da_pushare(
 
 ---
 
+---
+
+### `fatturazione_immediata`: dalla costante alla colonna (rev 2026-07-27)
+
+Fino al 2026-07-27 questa funzione proiettava la **costante `FALSE`** nello slot
+`fatturazione_immediata`: il contratto della `RETURNS TABLE` era simmetrico a
+quello dei preventivi, ma il **dato** no. Conseguenza pratica: un ordine non
+poteva mai finire sulla corsia immediata.
+
+Dal changeset `20260727-04` il valore è letto dalla **colonna reale**
+`vendite.ordini.fatturazione_immediata` (aggiunta da `20260727-01`). Il valore proiettato qui viaggia fino a
+`fn_get_or_create_commessa`, dove è **parte della chiave di dedup**: è così che
+il flag separa fisicamente le due corsie (commesse distinte → lotti distinti →
+`GIORNALIERO` che numera da solo *vs* `MASSIVO` che si ferma a `EMESSA`).
+
+⚠️ **`prezzo_bloccato` NON è stato toccato** e non va toccato: qui vale
+la costante `TRUE`, indipendente dal flag. L'accoppiamento
+`prezzo_bloccato = COALESCE(fatturazione_immediata, false)` esiste **solo** in
+`fn_list_preventivi_da_pushare`. Copiare qui quella riga cambierebbe in silenzio
+il comportamento di pricing.
+
+Presidio a valle: dopo il push il flag non è più modificabile sul documento
+([`trgfn_guard_fatturazione_immediata_immutabile`](/dbzero/vendite/funzioni/trgfn_guard_fatturazione_immediata_immutabile)).
+
+Brief: `brief-db-emissione-fattura-per-documento-sorgente` PARTE B (step B3).
+
 {% include-markdown "signature-core.md" %}

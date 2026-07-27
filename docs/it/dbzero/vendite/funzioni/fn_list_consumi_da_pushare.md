@@ -18,6 +18,10 @@ DECLARE
 BEGIN
   -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente risolta
   -- per codice_interno (immutabile), non per codice (mutabile).
+  -- rev 2026-07-27 (brief emissione mirata PARTE B, D-6): a differenza
+  -- di ordini/contratti/DDT, qui fatturazione_immediata RESTA la
+  -- costante FALSE. Non e' una dimenticanza: e' dominio. Un consumo
+  -- e' una misura, la corsia la decide il contratto che lo governa.
   -- Guard: p_consumo_id, se specificato, deve essere > 0.
   IF p_consumo_id IS NOT NULL AND p_consumo_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
@@ -52,6 +56,11 @@ BEGIN
     ba.utility_id,
     anagrafiche.fn_get_emittente_fiscale_id(ac.billing_account_id),
     ac.periodo_dal, ac.periodo_al,
+    -- fatturazione_immediata: costante FALSE PER SCELTA DI DOMINIO
+    -- (D-6, 2026-07-27). I consumi seguono sempre la corsia
+    -- differita; la corsia immediata si ottiene marcando il
+    -- CONTRATTO che governa la fornitura, non la singola lettura.
+    -- NON sostituire con una colonna: vedi header del changeSet.
     FALSE,
     v_sorgente_tipo_id,
     ac.uid::text,
@@ -66,6 +75,10 @@ BEGIN
     1::numeric,
     ac.competenza_mese,
     NULL::numeric,
+    -- prezzo_bloccato: FALSE per una ragione DIVERSA e non
+    -- correlata alla precedente — un consumo non porta prezzo
+    -- dalla sorgente (prezzo_snapshot NULL sopra), quindi non
+    -- c'e' nulla da bloccare: il prezzo lo risolve il pricing.
     FALSE,
     'FIXED'::varchar,
     'NORMALE'::varchar,
@@ -101,7 +114,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_consumi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_consumo_id bigint)
-IS 'Lista consumi eligible al push su commessa (stato_calcolo OK, non fatturati). p_consumo_id (opzionale): NULL=lista globale batch, NOT NULL=singolo consumo. Tutti i filtri in AND. Esclude consumi gia` emessi via NOT EXISTS su commesse_attivita. rev 2026-06-28: sorgente per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE (non piu'' solo emessi): il NOT EXISTS non filtra piu'' stato_emissione — brief-db-push-commessa-gia-inviato §4a.';
+IS 'Lista consumi eligible al push su commessa (stato_calcolo OK, non fatturati). p_consumo_id (opzionale): NULL=lista globale batch, NOT NULL=singolo consumo. Tutti i filtri in AND. Esclude consumi gia` emessi via NOT EXISTS su commesse_attivita. rev 2026-06-28: sorgente per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE (non piu'' solo emessi): il NOT EXISTS non filtra piu'' stato_emissione — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: NESSUN cambio di comportamento — documentata come scelta di dominio (D-6) la costante FALSE su fatturazione_immediata: a differenza di ordini/contratti/DDT i consumi NON hanno il flag, perche'' un consumo e'' una misura e la corsia la decide il contratto che lo governa. Non sostituire con una colonna — brief-db-emissione-fattura-per-documento-sorgente PARTE B.';
 ```
 
 ---

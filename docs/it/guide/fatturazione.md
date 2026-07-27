@@ -563,6 +563,49 @@ I verbi della dashboard **non sostituiscono** il batch notturno: lo anticipano, 
 coprono ciò che il batch lascia all'umano — in primo luogo la numerazione della
 fatturazione massiva.
 
+### Su quale corsia finisce il lavoro: `fatturazione_immediata`
+
+Ogni documento porta un flag che decide su quale delle due corsie viene
+instradato il lavoro che ne deriva:
+
+| Flag | Corsia | `tipo_lotto` | Arriva a |
+| --- | --- | --- | --- |
+| `true` | immediata | `GIORNALIERO` | **`DEFINITIVA`** — numera da sola |
+| `false` *(default)* | differita | `MASSIVO` | **`EMESSA`** — la numerazione resta un atto separato |
+
+**Dove si trova** *(dal 27-07-2026)*: `vendite.preventivi`, `vendite.ordini`,
+`vendite.contratti`, `vendite.ddt`. Prima esisteva **solo sui preventivi**: le
+altre sorgenti esponevano il campo ma con valore costante `false`, quindi solo
+un preventivo poteva essere fatturato subito — non per una scelta di dominio,
+ma per un buco di modello.
+
+**I consumi non hanno il flag**, ed è deliberato: un consumo è una *misura*,
+non un accordo commerciale. La corsia la decide il **contratto** che governa la
+fornitura; un flag sulla singola lettura creerebbe lo stesso interruttore in
+due posti.
+
+#### Si decide prima del push, e poi non si cambia
+
+Il flag viene letto **una sola volta**, quando il documento entra in commessa, e
+propagato alla commessa dove è **parte della chiave di dedup**: è così che le
+due corsie restano fisicamente separate (commesse distinte → lotti distinti).
+
+Dopo il push il valore è **inerte** — cambiarlo non sposta il lavoro già
+pushato, e il documento è legato a una sola commessa per sempre. Per questo la
+modifica è **respinta** dal DB (`E_FATT_IMMEDIATA_NON_MODIFICABILE`): un campo
+editabile che non produce effetti sarebbe peggio di un campo bloccato, perché
+sembra funzionare.
+
+> **«E se cambio idea dopo?»** Non serve il flag: si usa l'**emissione mirata
+> per gruppo fatturabile**, che fattura esattamente le righe di quel documento
+> senza toccare il resto della commessa. Due strumenti distinti — il flag è
+> *instradamento automatico* deciso a monte, l'emissione mirata è un *atto
+> puntuale* dell'operatore, usabile in qualsiasi momento.
+
+⚠️ Il flag **non governa il blocco del prezzo**. L'accoppiamento
+`prezzo_bloccato = fatturazione_immediata` esiste **solo sui preventivi**: sulle
+altre sorgenti i due valori sono indipendenti.
+
 ### Monitoraggio
 
 - **Badge top bar**: conteggio dei processi vivi dell'operatore + liveness dei
