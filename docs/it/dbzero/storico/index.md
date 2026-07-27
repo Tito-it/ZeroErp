@@ -34,6 +34,7 @@
 - [fatturazione_lotti](tabelle/fatturazione_lotti.md)
 - [fatturazione_lotti_attivita](tabelle/fatturazione_lotti_attivita.md)
 - [fatturazione_lotti_fatture](tabelle/fatturazione_lotti_fatture.md)
+- [fatturazione_lotti_gruppi](tabelle/fatturazione_lotti_gruppi.md)
 - [fatture](tabelle/fatture.md)
 - [fatture_righe](tabelle/fatture_righe.md)
 - [fatture_scadenze](tabelle/fatture_scadenze.md)

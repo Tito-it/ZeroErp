@@ -1,0 +1,294 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_create_contratto: `fatturazione_immediata` entra nella whitelist di testata
+#   (brief-db-fatturazione-immediata-create-contratto.md)
+#
+# COSA CAMBIA: una sola stringa dentro `v_testata_allowed`. Nient'altro: l'INSERT
+#   e' gia' generico (`jsonb_populate_record`), la colonna esiste dal 20260727-02
+#   e il DEFAULT false continua a valere per tutte le chiamate che non la passano.
+#
+# PERCHE' SERVE. La Fase B del brief emissione mirata ha dato il flag di corsia a
+#   ordini, contratti e DDT. Ordini e DDT si creano con un INSERT costruito lato
+#   BE (dict-comprehension sulla whitelist del service), quindi la colonna e'
+#   arrivata subito. Il contratto no: si crea con questa funzione madre, che
+#   costruisce l'INSERT da una whitelist SUA. Una chiave fuori whitelist non
+#   produce errore — viene filtrata da `WHERE key = ANY(v_testata_allowed)` e
+#   **scartata in silenzio**. Il BE, correttamente, non la mandava affatto: un
+#   campo che sembra funzionare e non fa nulla e' il peggiore dei casi (stessa
+#   ragione per cui esiste il guard 20260727-08).
+#
+# ⚠️ SEMANTICA DELLA CHIAVE NULLA — differenza voluta, da conoscere.
+#   Il filtro e' sulla PRESENZA della chiave, non sul valore. Quindi:
+#     - chiave assente        -> colonna omessa dall'INSERT -> DEFAULT false;
+#     - chiave = false/true   -> valore scritto;
+#     - chiave = null (JSON)  -> la colonna entra nell'INSERT con NULL e la
+#                               NOT NULL respinge la chiamata.
+#   NON e' allineato al repository degli ordini, che omette le colonne opzionali
+#   quando valgono None ("None = lascia il DEFAULT"): la' la stessa chiamata
+#   passerebbe. Qui la differenza e' preferita al silenzio — meglio un errore che
+#   una corsia decisa da un default nascosto. Contratto per il BE: **omettere la
+#   chiave oppure mandare un booleano**, mai null. Coperto da pgTAP (caso 12).
+#
+# NON e' stata resa fail-loud la whitelist nel suo insieme (chiave ignota ->
+#   errore invece che scarto silenzioso): sarebbe un cambio di comportamento su
+#   TUTTE le chiavi di una madre gia' in uso dal BE, fuori dal perimetro di
+#   questo brief. Resta come proposta nel brief §6.
+#
+# Firma e RETURNS TABLE INVARIATI -> CREATE OR REPLACE puro, nessun DROP
+#   (il DROP del 20260707-12 serviva alla creazione, non serve qui).
+#
+# Base: doc auto-gen docs/it/dbzero/vendite/funzioni/fn_create_contratto.md
+#   (corpo) + 20260707-12 (firma con %TYPE, che l'auto-gen scioglie).
+#   Dipendenze: 20260727-02 (colonna vendite.contratti.fatturazione_immediata).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260727-40-update-fn-create-contratto-fatt-immediata-mctit.yaml
+
+  - changeSet:
+      id: 20260727-40-update-fn-create-contratto-fatt-immediata
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_create_contratto accetta fatturazione_immediata nel p_testata
+        (whitelist v_testata_allowed). Nessun'altra modifica: INSERT gia'
+        generico, DEFAULT false invariato per le chiamate che non la passano.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: contratti
+            columnName: fatturazione_immediata
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_create_contratto(
+                  p_testata jsonb,
+                  p_utility jsonb DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  contratto_id vendite.contratti.id%TYPE,
+                  numero       vendite.contratti.numero%TYPE
+              )
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS
+              $BODY$
+              DECLARE
+                  v_numero       vendite.contratti.numero%TYPE;
+                  v_stato_id     vendite.contratti.stato_doc_contratto_id%TYPE;
+                  v_contratto_id vendite.contratti.id%TYPE;
+                  v_cols         text[];
+                  v_insert_cols  text;
+                  v_select_cols  text;
+                  v_sql          text;
+                  -- rev 2026-07-27: aggiunta 'fatturazione_immediata' (corsia di
+                  -- instradamento, Fase B brief emissione mirata). Va decisa PRIMA
+                  -- del push in commessa: in create e' il momento naturale, e senza
+                  -- questa voce la chiave veniva scartata in silenzio.
+                  v_testata_allowed text[] := ARRAY[
+                      'billing_account_id', 'emittente_fiscale_id', 'istanza_utility_id',
+                      'utility_id', 'ambito', 'valido_dal', 'valido_al',
+                      'parent_contratto_id', 'data', 'listino_id',
+                      'tipo_variazione_globale', 'valore_variazione_globale',
+                      'categoria_cliente_id_snapshot', 'valuta_id',
+                      'fatturazione_immediata', 'meta'
+                  ];
+                  v_util_allowed text[] := ARRAY[
+                      'istanza_utility_id', 'utility_id', 'istanza_dati_precontrattuali_id',
+                      'tipo_utenza_id', 'classe_utenza_id', 'param_1_num',
+                      'param_2_txt', 'meta'
+                  ];
+              BEGIN
+                  -- ----------------------------------------------------
+                  -- 1) Numero contratto (consuma il contatore; rolla con
+                  --    la funzione se un qualsiasi step successivo fallisce).
+                  -- ----------------------------------------------------
+                  v_numero := script.fn_generate_codice('contratto');
+
+                  -- 2) Stato iniziale DRAFT.
+                  SELECT s.id
+                    INTO v_stato_id
+                    FROM config.stati_doc_contratti s
+                   WHERE s.codice_interno = 'DRAFT';
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'vendite.fn_create_contratto',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'config.stati_doc_contratti.DRAFT'),
+                          NULL::uuid,
+                          VARIADIC ARRAY['stato iniziale DRAFT (config.stati_doc_contratti)']
+                      );
+                  END IF;
+
+                  -- ----------------------------------------------------
+                  -- 3) INSERT testata: solo chiavi whitelisted presenti
+                  --    (le assenti ereditano default/trigger DB).
+                  -- ----------------------------------------------------
+                  SELECT array_agg(quote_ident(key) ORDER BY key)
+                    INTO v_cols
+                    FROM jsonb_object_keys(COALESCE(p_testata, '{}'::jsonb)) AS key
+                   WHERE key = ANY(v_testata_allowed);
+
+                  v_insert_cols := COALESCE(', ' || array_to_string(v_cols, ', '), '');
+                  v_select_cols := COALESCE(
+                      ', ' || (SELECT string_agg('r.' || c, ', ' ORDER BY n)
+                                 FROM unnest(v_cols) WITH ORDINALITY AS u(c, n)),
+                      '');
+
+                  v_sql := format(
+                      'INSERT INTO vendite.contratti (numero, stato_doc_contratto_id%s) '
+                      'SELECT $1, $2%s '
+                      '  FROM jsonb_populate_record(NULL::vendite.contratti, $3) AS r '
+                      'RETURNING id',
+                      v_insert_cols, v_select_cols);
+                  EXECUTE v_sql
+                     INTO v_contratto_id
+                    USING v_numero, v_stato_id, COALESCE(p_testata, '{}'::jsonb);
+
+                  -- ----------------------------------------------------
+                  -- 4) INSERT utility opzionale.
+                  -- ----------------------------------------------------
+                  IF p_utility IS NOT NULL AND p_utility <> '{}'::jsonb THEN
+                      SELECT array_agg(quote_ident(key) ORDER BY key)
+                        INTO v_cols
+                        FROM jsonb_object_keys(p_utility) AS key
+                       WHERE key = ANY(v_util_allowed);
+
+                      v_insert_cols := COALESCE(', ' || array_to_string(v_cols, ', '), '');
+                      v_select_cols := COALESCE(
+                          ', ' || (SELECT string_agg('r.' || c, ', ' ORDER BY n)
+                                     FROM unnest(v_cols) WITH ORDINALITY AS u(c, n)),
+                          '');
+
+                      v_sql := format(
+                          'INSERT INTO vendite.contratti_utilities (contratto_id%s) '
+                          'SELECT $1%s '
+                          '  FROM jsonb_populate_record(NULL::vendite.contratti_utilities, $2) AS r',
+                          v_insert_cols, v_select_cols);
+                      EXECUTE v_sql USING v_contratto_id, p_utility;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT v_contratto_id, v_numero;
+              END;
+              $BODY$;
+
+              COMMENT ON FUNCTION vendite.fn_create_contratto(jsonb, jsonb)
+              IS 'Funzione madre atomica: genera il numero, crea la testata contratto (stato DRAFT) e l''eventuale riga utility in un''unica statement (o tutto o rollback, contatore numero incluso). INSERT dinamico delle sole chiavi whitelisted presenti (rispetta i default DB). SECURITY INVOKER. Ritorna (contratto_id, numero). rev 2026-07-27: ''fatturazione_immediata'' aggiunta a v_testata_allowed — la corsia di instradamento si decide PRIMA del push in commessa e la create e'' il momento naturale; senza questa voce la chiave veniva scartata in silenzio. Il filtro e'' sulla PRESENZA della chiave: chiave assente = DEFAULT false, chiave = null = NOT NULL violation (il BE deve omettere o mandare un booleano, mai null). Piano: analisi-fix-transazioni Classe A #2 + brief-db-fatturazione-immediata-create-contratto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rollback: ripristina la whitelist SENZA 'fatturazione_immediata'
+              -- (stato 20260707-12). Il corpo e' identico per il resto.
+              CREATE OR REPLACE FUNCTION vendite.fn_create_contratto(
+                  p_testata jsonb,
+                  p_utility jsonb DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  contratto_id vendite.contratti.id%TYPE,
+                  numero       vendite.contratti.numero%TYPE
+              )
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS
+              $BODY$
+              DECLARE
+                  v_numero       vendite.contratti.numero%TYPE;
+                  v_stato_id     vendite.contratti.stato_doc_contratto_id%TYPE;
+                  v_contratto_id vendite.contratti.id%TYPE;
+                  v_cols         text[];
+                  v_insert_cols  text;
+                  v_select_cols  text;
+                  v_sql          text;
+                  v_testata_allowed text[] := ARRAY[
+                      'billing_account_id', 'emittente_fiscale_id', 'istanza_utility_id',
+                      'utility_id', 'ambito', 'valido_dal', 'valido_al',
+                      'parent_contratto_id', 'data', 'listino_id',
+                      'tipo_variazione_globale', 'valore_variazione_globale',
+                      'categoria_cliente_id_snapshot', 'valuta_id', 'meta'
+                  ];
+                  v_util_allowed text[] := ARRAY[
+                      'istanza_utility_id', 'utility_id', 'istanza_dati_precontrattuali_id',
+                      'tipo_utenza_id', 'classe_utenza_id', 'param_1_num',
+                      'param_2_txt', 'meta'
+                  ];
+              BEGIN
+                  v_numero := script.fn_generate_codice('contratto');
+
+                  SELECT s.id
+                    INTO v_stato_id
+                    FROM config.stati_doc_contratti s
+                   WHERE s.codice_interno = 'DRAFT';
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'vendite.fn_create_contratto',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'config.stati_doc_contratti.DRAFT'),
+                          NULL::uuid,
+                          VARIADIC ARRAY['stato iniziale DRAFT (config.stati_doc_contratti)']
+                      );
+                  END IF;
+
+                  SELECT array_agg(quote_ident(key) ORDER BY key)
+                    INTO v_cols
+                    FROM jsonb_object_keys(COALESCE(p_testata, '{}'::jsonb)) AS key
+                   WHERE key = ANY(v_testata_allowed);
+
+                  v_insert_cols := COALESCE(', ' || array_to_string(v_cols, ', '), '');
+                  v_select_cols := COALESCE(
+                      ', ' || (SELECT string_agg('r.' || c, ', ' ORDER BY n)
+                                 FROM unnest(v_cols) WITH ORDINALITY AS u(c, n)),
+                      '');
+
+                  v_sql := format(
+                      'INSERT INTO vendite.contratti (numero, stato_doc_contratto_id%s) '
+                      'SELECT $1, $2%s '
+                      '  FROM jsonb_populate_record(NULL::vendite.contratti, $3) AS r '
+                      'RETURNING id',
+                      v_insert_cols, v_select_cols);
+                  EXECUTE v_sql
+                     INTO v_contratto_id
+                    USING v_numero, v_stato_id, COALESCE(p_testata, '{}'::jsonb);
+
+                  IF p_utility IS NOT NULL AND p_utility <> '{}'::jsonb THEN
+                      SELECT array_agg(quote_ident(key) ORDER BY key)
+                        INTO v_cols
+                        FROM jsonb_object_keys(p_utility) AS key
+                       WHERE key = ANY(v_util_allowed);
+
+                      v_insert_cols := COALESCE(', ' || array_to_string(v_cols, ', '), '');
+                      v_select_cols := COALESCE(
+                          ', ' || (SELECT string_agg('r.' || c, ', ' ORDER BY n)
+                                     FROM unnest(v_cols) WITH ORDINALITY AS u(c, n)),
+                          '');
+
+                      v_sql := format(
+                          'INSERT INTO vendite.contratti_utilities (contratto_id%s) '
+                          'SELECT $1%s '
+                          '  FROM jsonb_populate_record(NULL::vendite.contratti_utilities, $2) AS r',
+                          v_insert_cols, v_select_cols);
+                      EXECUTE v_sql USING v_contratto_id, p_utility;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT v_contratto_id, v_numero;
+              END;
+              $BODY$;
