@@ -30,7 +30,14 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: ""
+            # nullValue: token LETTERALE "NULL", non la cella vuota.
+            #   Con nullValue:"" una cella vuota produce la stringa '' e non un
+            #   vero NULL (violerebbe i CHECK non-vuota). Cambiato il 2026-07-27
+            #   per poter esprimere area=NULL sulle sorgenti che non sono
+            #   documenti sfogliabili. ⚠️ Modifica INERTE per le 15 colonne
+            #   preesistenti: verificato che nel CSV non esiste alcuna cella
+            #   vuota ne' alcuna cella contenente la stringa "NULL".
+            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: STRING }
@@ -56,3 +63,10 @@ databaseChangeLog:
               - column: { name: key_selector, type: STRING }
               - column: { name: tipo_doc_fiscale_id, type: STRING }
               - column: { name: scope, type: STRING }
+
+              # area: mappa sorgente -> area documentale, aggiunta 2026-07-27
+              #   (colonna da 20260727-17, brief emissione mirata A7-bis / D-5).
+              #   Loader esteso IN PLACE: e' runOnChange + validCheckSums ANY,
+              #   quindi mirror vivo del CSV. Nessun loader nuovo.
+              #   NULL (token) = sorgente non sfogliabile come documento.
+              - column: { name: area, type: STRING }

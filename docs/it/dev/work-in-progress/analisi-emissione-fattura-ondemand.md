@@ -2,9 +2,15 @@
 
 > **Tipo**: analisi + design · **Data**: 2026-07-26/27 · **Owner**: Tid ·
 > **Stato**: 🟢 **ANALISI COMPLETA — design stabilito e confermato** (2026-07-27).
-> Tutte le decisioni chiuse (§5). Prossimo passo: consegna del
-> [brief DB](brief-db-emissione-fattura-per-documento-sorgente.md) al team; BE/FE
-> attendono. **Nessun codice scritto** per questa slice.
+> Tutte le decisioni chiuse (§5). Il
+> [brief DB](brief-db-emissione-fattura-per-documento-sorgente.md) è stato
+> consegnato, analizzato criticamente e **contiene ora il piano di sviluppo a
+> step + il piano pgTAP** (§9-§10 del brief). BE/FE attendono. **Nessun codice
+> scritto** per questa slice.
+>
+> ⚠️ Due punti di questa analisi sono stati **superati** dall'analisi critica DB
+> del 2026-07-27: §6.1 (chiuso: nessun conflitto di identità lotto) e §5.3
+> (consumi: proposta di esclusione, conferma richiesta). Vedi le note in linea.
 >
 > **Origine**: manca un modo per **generare una fattura da UI in modo mirato**
 > (un cliente, una commessa) senza aspettare il giro notturno. Decisione di
@@ -336,6 +342,18 @@ costante `FALSE`. Chiude un'asimmetria del modello e rende sensato sia
 l'instradamento sia l'eventuale filtro «a fatturazione immediata» in UI.
 Confluisce nel brief DB ([[feedback_simmetria_modello_no_meta_scope]]).
 
+> ✅ **Rettifica 2026-07-27 — decisa da Tid: i consumi sono ESCLUSI** (decisione
+> D-6 del brief). Un consumo è una lettura, non un accordo commerciale: la corsia
+> appartiene al contratto che lo governa, e un flag lì creerebbe due luoghi dove
+> decidere la stessa cosa. La costante `FALSE` in `fn_list_consumi_da_pushare`
+> resta, commentata come scelta di dominio. **Perimetro definitivo della
+> simmetria: ordini, contratti, DDT.**
+>
+> ⚠️ **Accoppiamento rilevato**: su `fn_list_preventivi_da_pushare` il flag fa
+> doppio lavoro (`prezzo_bloccato = COALESCE(fatturazione_immediata, false)`),
+> mentre sulle altre sorgenti quello slot è una costante indipendente. Si estende
+> **solo** la semantica di instradamento (brief, fatto F11 e garanzia G18).
+
 ### 5.4 Fino a EMESSA (gate fiscale I-7)
 
 - L'emissione mirata da UI si **ferma a EMESSA**, coerente con la separazione
@@ -426,13 +444,17 @@ nello stesso meccanismo, non un meccanismo nuovo (→ requisito del brief DB).
 
 ## 6. Punti aperti — da verificare col team DB prima di implementare
 
-1. **Coesistenza lotto anticipato-per-cliente vs lotto notturno di terna.**
-   Se un operatore fattura in anticipo il cliente X (lotto BA-scoped), le sue AF
-   vengono consumate (`fattura_riga_id` valorizzato) e il giro notturno di terna
-   **non le ripesca** — ma va confermato che `fn_get_or_create_lotto` **non entri
-   in conflitto** (unicità/riuso) tra un lotto (competenza, tipo_doc, utility,
-   **BA**, emittente) e uno (competenza, tipo_doc, utility, **NULL**, emittente)
-   sullo stesso perimetro. È l'unico prerequisito DB del design.
+1. ~~**Coesistenza lotto anticipato-per-cliente vs lotto notturno di terna.**~~
+   ✅ **CHIUSO 2026-07-27 — nessun conflitto.** `vendite.fatturazione_lotti` ha
+   UNIQUE **solo** su `codice` (da sequenza) e `lock_batch_id` (`uuidv7()`):
+   nessun vincolo sulla combinazione dimensionale. `fn_get_or_create_lotto` fa
+   «get» solo se riceve `p_lotto_id` o `p_lock_batch_id`, che il driver non passa
+   mai → il CASO 3 **crea sempre un lotto nuovo**. Un lotto BA-scoped e uno
+   BA-NULL sullo stesso perimetro **coesistono**.
+   ⚠️ Il rischio vero è a valle e non era stato visto:
+   `fn_select_attivita_fatturabili` **non ha nozione di sorgente**, quindi un
+   giro mirato rastrellerebbe le AF residue di altri gruppi. Dettaglio e
+   contromisura nel brief DB, fatto F8 e garanzia G12.
 2. **Deploy riproducibile del batch**: versionare i timer systemd
    `immediata`/`differita` nel repo (oggi solo in play-book) e **abilitare
    `coda-stampa`** dopo i GRANT del ruolo batch. Indipendente da questa slice ma

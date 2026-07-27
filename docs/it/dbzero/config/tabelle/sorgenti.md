@@ -19,10 +19,12 @@
 | key_selector | text | NO | 'id'::text |
 | tipo_doc_fiscale_id | bigint | YES |  |
 | scope | character varying | NO |  |
+| area | character varying | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_sorgenti_area_non_vuota |  |
 | CHECK | chk_sorgenti_codice_interno_non_vuoto |  |
 | CHECK | chk_sorgenti_key_selector_values |  |
 | CHECK | chk_sorgenti_scope |  |

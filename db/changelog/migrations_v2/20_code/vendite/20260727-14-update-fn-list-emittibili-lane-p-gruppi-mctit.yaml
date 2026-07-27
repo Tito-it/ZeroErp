@@ -1,0 +1,192 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_list_emittibili_lane + p_gruppi: la DISCOVERY vede solo le terne dei
+#   gruppi richiesti
+#   (brief-db-emissione-fattura-per-documento-sorgente PARTE A, step A5)
+#
+# COSA FA QUESTA FUNZIONE: risponde al driver "quali TERNE distinte
+#   (emittente, tipo_doc, utility) hanno lavoro pronto da fatturare". Il driver
+#   crea UN LOTTO PER TERNA restituita.
+#
+# PERCHE' SERVE IL FILTRO ANCHE QUI. Senza, un'emissione mirata su un solo
+#   preventivo produrrebbe comunque un lotto per OGNI terna che ha lavoro
+#   pronto nel perimetro. I lotti delle altre terne nascerebbero, girerebbero
+#   il pull e la select (entrambi ora filtrati), non troverebbero nulla e
+#   resterebbero li': lotti vuoti, task run, log e segnalazioni per lavoro che
+#   nessuno ha chiesto. Non un errore di correttezza — la fattura sarebbe
+#   giusta — ma rumore operativo che l'operatore poi deve interpretare.
+#   Filtrando qui, un'emissione mirata produce SOLO i lotti che servono.
+#
+# EFFETTO SU G15: un gruppo le cui righe hanno tipo_doc_fiscale diverso resta
+#   spalmato su piu' terne, e questa funzione le restituisce tutte. E' corretto:
+#   il tipo doc fiscale sta sulla RIGA (commesse_attivita), non sulla testata
+#   del documento, quindi un gruppo PUO' legittimamente produrre N lotti. E'
+#   il motivo per cui il contratto verso il BE (§8-bis) restituisce una LISTA
+#   di lotto_id, non uno solo.
+#
+# SEMANTICA DELL'ARGOMENTO: identica agli altri step della catena —
+#   NULL = nessuna restrizione (G1), '{}' = zero terne, chiave inesistente =
+#   zero terne senza errore (G6).
+#
+# STABLE preservata: il filtro aggiunge solo una chiamata a
+#   fn_build_gruppo_fatturabile_key, anch'essa STABLE.
+#
+# ⚠️ DROP + CREATE: RETURNS TABLE + parametro in coda con DEFAULT = overload
+#   ambiguo (fatto F13). Chiamante Python: CommesseRepository.list_emittibili_lane,
+#   parametri nominati.
+#
+# Base: corpo da doc auto-gen fn_list_emittibili_lane.md, firma da 20260619-11.
+# Dipendenze: 20260727-10 (fn_build_gruppo_fatturabile_key).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260727-14-update-fn-list-emittibili-lane-p-gruppi-mctit.yaml
+
+  - changeSet:
+      id: 20260727-14-update-fn-list-emittibili-lane-p-gruppi
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_list_emittibili_lane + p_gruppi text[]: la discovery restituisce solo le
+        terne dei gruppi richiesti, cosi' l'emissione mirata non genera lotti vuoti
+        per le altre terne del perimetro.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'fn_build_gruppo_fatturabile_key'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_list_emittibili_lane(
+                  date, bigint, integer, bigint, boolean, integer);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_list_emittibili_lane(
+                p_competenza_mese             vendite.commesse_attivita.competenza_mese%TYPE        DEFAULT NULL::date,
+                p_billing_account_id          vendite.commesse.billing_account_id%TYPE              DEFAULT NULL::bigint,
+                p_utility_id                  vendite.commesse.utility_id%TYPE                       DEFAULT NULL::integer,
+                p_emittente_soggetto_ruolo_id vendite.commesse.emittente_soggetto_ruolo_id%TYPE     DEFAULT NULL::bigint,
+                p_fatturazione_immediata      vendite.commesse.fatturazione_immediata%TYPE          DEFAULT NULL::boolean,
+                p_limit                       integer                                                DEFAULT 1000,
+                p_gruppi                      text[]                                                 DEFAULT NULL
+              )
+              RETURNS TABLE(
+                emittente_soggetto_ruolo_id vendite.commesse.emittente_soggetto_ruolo_id%TYPE,
+                tipo_doc_fiscale_id         vendite.commesse_attivita.tipo_doc_fiscale_id%TYPE,
+                utility_id                  vendite.commesse.utility_id%TYPE,
+                competenza_mese             vendite.commesse_attivita.competenza_mese%TYPE,
+                total_candidate             bigint
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                v_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo: rispondere al driver batch "quali TERNE distinte
+                --   (emittente, tipo_doc, utility) hanno lavoro pronto da
+                --   fatturare, e fino a quale competenza creare il lotto".
+                -- Criteri:
+                --   1. commessa in stato emittibile (stati_commessa.emittibile=true)
+                --   2. righe commesse_attivita APPROVATA + NON_EMESSA (allineato pull)
+                --   3. tipo_doc_fiscale_id NOT NULL (il lotto lo richiede)
+                --   4. competenza CUMULATIVA: competenza_mese <= p_competenza_mese
+                --      (coerente con fn_select_attivita_fatturabili); NULL = no limite
+                --   5. filtri perimetro BA/utility/emittente; corsia fatturazione_immediata
+                --   6. rev 2026-07-27: p_gruppi restringe ai GRUPPI FATTURABILI
+                --      richiesti, cosi' l'emissione mirata non fa nascere un lotto
+                --      per ogni altra terna del perimetro (lotti vuoti = rumore).
+                --      NULL = nessuna restrizione (comportamento storico).
+                -- Grana: (emittente, tipo_doc, utility). utility_id e' NOT NULL a monte
+                --   (commesse.utility_id) -> in output mai NULL. La coerenza
+                --   c.utility_id = ba.utility_id (E_CLIENTE_UTILITY_MISMATCH_BA in
+                --   fn_get_or_create_commessa) garantisce che la terna scoperta qui sia
+                --   esattamente quella che fn_select_attivita_fatturabili filtra a valle.
+                -- Output per terna: competenza_mese = max(...), total_candidate = count(*).
+                -- Regole: p_limit max 10000/default 1000; competenza normalizzata al mese;
+                --   STABLE (read-only); LIMIT sulle TERNE.
+                -- =========================================================
+                IF p_limit IS NULL OR p_limit <= 0 THEN
+                  p_limit := 1000;
+                END IF;
+                IF p_limit > 10000 THEN
+                  p_limit := 10000;
+                END IF;
+
+                v_competenza_mese := CASE
+                  WHEN p_competenza_mese IS NOT NULL
+                  THEN date_trunc('month', p_competenza_mese)::date
+                  ELSE NULL
+                END;
+
+                RETURN QUERY
+                SELECT
+                  c.emittente_soggetto_ruolo_id,
+                  ca.tipo_doc_fiscale_id,
+                  c.utility_id,
+                  max(ca.competenza_mese)        AS competenza_mese,
+                  count(ca.id)::bigint           AS total_candidate
+                FROM vendite.commesse c
+                JOIN vendite.stati_commessa sc
+                  ON sc.id = c.stato_commessa_id
+                 AND sc.emittibile = true
+                INNER JOIN vendite.commesse_attivita ca
+                  ON ca.commessa_id = c.id
+                 AND ca.stato_emissione = 'NON_EMESSA'
+                 AND ca.stato_approvazione = 'APPROVATA'
+                 AND ca.tipo_doc_fiscale_id IS NOT NULL
+                 AND (v_competenza_mese IS NULL OR ca.competenza_mese <= v_competenza_mese)
+                WHERE true
+                  AND (p_billing_account_id IS NULL OR c.billing_account_id = p_billing_account_id)
+                  AND (p_utility_id IS NULL OR c.utility_id = p_utility_id)
+                  AND (p_emittente_soggetto_ruolo_id IS NULL OR c.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+                  AND (p_fatturazione_immediata IS NULL OR c.fatturazione_immediata = p_fatturazione_immediata)
+                  -- EMISSIONE MIRATA (rev 2026-07-27): chiave dalla funzione A1,
+                  -- mai ricostruita qui. Un gruppo con righe di tipo doc diverso
+                  -- resta su piu' terne, e vengono restituite tutte (G15).
+                  AND (
+                       p_gruppi IS NULL
+                       OR vendite.fn_build_gruppo_fatturabile_key(
+                              ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
+                          ) = ANY (p_gruppi)
+                      )
+                GROUP BY
+                  c.emittente_soggetto_ruolo_id,
+                  ca.tipo_doc_fiscale_id,
+                  c.utility_id
+                ORDER BY
+                  c.emittente_soggetto_ruolo_id,
+                  ca.tipo_doc_fiscale_id,
+                  c.utility_id
+                LIMIT p_limit;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_emittibili_lane(date, bigint, integer, bigint, boolean, integer, text[])
+              IS 'Read-only/STABLE: discovery delle corsie (emittente, tipo_doc_fiscale, utility, competenza_mese) pronte da fatturare per il driver batch. Grana per-utility (il lotto e'' segregato per utility: fn_create pretende utility NOT NULL, fn_select filtra ba.utility_id). utility_id mai NULL (commesse.utility_id NOT NULL); coerenza c.utility_id=ba.utility_id garantita da fn_get_or_create_commessa. Criterio APPROVATA+NON_EMESSA, tipo_doc NOT NULL, competenza cumulativa (<=) con output competenza_mese=max. Filtri perimetro + corsia fatturazione_immediata. fn_list_commesse_emittibili resta separata e invariata. rev 2026-07-27 (brief emissione mirata A5): p_gruppi text[] restringe alle terne dei gruppi richiesti — NULL = nessuna restrizione (G1). Serve a non far nascere un lotto per ogni altra terna del perimetro durante un''emissione mirata: quei lotti sarebbero vuoti (pull e select ora filtrano) ma lascerebbero task run, log e segnalazioni da interpretare. Un gruppo con righe di tipo doc fiscale diverso resta su piu'' terne e vengono restituite TUTTE (G15): e'' il motivo per cui l''esito verso il BE e'' una lista di lotto_id.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: rimuove la firma a 7 argomenti. Ripristino della
+              -- versione a 6 argomenti: ri-applicare 20260619-11.
+              DROP FUNCTION IF EXISTS vendite.fn_list_emittibili_lane(
+                  date, bigint, integer, bigint, boolean, integer, text[]);

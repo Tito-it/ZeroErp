@@ -563,6 +563,118 @@ I verbi della dashboard **non sostituiscono** il batch notturno: lo anticipano, 
 coprono ciò che il batch lascia all'umano — in primo luogo la numerazione della
 fatturazione massiva.
 
+### Su quale corsia finisce il lavoro: `fatturazione_immediata`
+
+Ogni documento porta un flag che decide su quale delle due corsie viene
+instradato il lavoro che ne deriva:
+
+| Flag | Corsia | `tipo_lotto` | Arriva a |
+| --- | --- | --- | --- |
+| `true` | immediata | `GIORNALIERO` | **`DEFINITIVA`** — numera da sola |
+| `false` *(default)* | differita | `MASSIVO` | **`EMESSA`** — la numerazione resta un atto separato |
+
+**Dove si trova** *(dal 27-07-2026)*: `vendite.preventivi`, `vendite.ordini`,
+`vendite.contratti`, `vendite.ddt`. Prima esisteva **solo sui preventivi**: le
+altre sorgenti esponevano il campo ma con valore costante `false`, quindi solo
+un preventivo poteva essere fatturato subito — non per una scelta di dominio,
+ma per un buco di modello.
+
+**I consumi non hanno il flag**, ed è deliberato: un consumo è una *misura*,
+non un accordo commerciale. La corsia la decide il **contratto** che governa la
+fornitura; un flag sulla singola lettura creerebbe lo stesso interruttore in
+due posti.
+
+#### Si decide prima del push, e poi non si cambia
+
+Il flag viene letto **una sola volta**, quando il documento entra in commessa, e
+propagato alla commessa dove è **parte della chiave di dedup**: è così che le
+due corsie restano fisicamente separate (commesse distinte → lotti distinti).
+
+Dopo il push il valore è **inerte** — cambiarlo non sposta il lavoro già
+pushato, e il documento è legato a una sola commessa per sempre. Per questo la
+modifica è **respinta** dal DB (`E_FATT_IMMEDIATA_NON_MODIFICABILE`): un campo
+editabile che non produce effetti sarebbe peggio di un campo bloccato, perché
+sembra funzionare.
+
+> **«E se cambio idea dopo?»** Non serve il flag: si usa l'**emissione mirata
+> per gruppo fatturabile**, che fattura esattamente le righe di quel documento
+> senza toccare il resto della commessa. Due strumenti distinti — il flag è
+> *instradamento automatico* deciso a monte, l'emissione mirata è un *atto
+> puntuale* dell'operatore, usabile in qualsiasi momento.
+
+⚠️ Il flag **non governa il blocco del prezzo**. L'accoppiamento
+`prezzo_bloccato = fatturazione_immediata` esiste **solo sui preventivi**: sulle
+altre sorgenti i due valori sono indipendenti.
+
+### Fatturare un documento preciso: l'emissione mirata
+
+*(dal 27-07-2026)*
+
+Il giro di fatturazione, schedulato o lanciato a mano, pesca **tutto**
+l'emittibile di un perimetro. Serviva poter dire: «fattura **questo** preventivo,
+adesso, senza trascinare dentro il resto».
+
+#### L'unità di decisione: il gruppo fatturabile
+
+Non è la commessa e non è sempre un documento:
+
+- **non la commessa**, perché è multi-sorgente. Un preventivo e un contratto
+  dello stesso cliente, stesso mese, stesso perimetro commerciale finiscono
+  nella **stessa** commessa: selezionarla non isola niente;
+- **non sempre un documento**, perché le righe della *porta oneri* sono senza
+  documento per costruzione.
+
+Un **gruppo fatturabile** è quindi *un documento sorgente* **oppure** *gli oneri
+di una commessa*:
+
+```text
+Card «Da emettere» (29 attività)
+ ├─ PRV-0012              Rossi    5 righe   1.000 €   [Fattura]
+ ├─ CTR-0007              Rossi    3 righe     500 €   [Fattura]
+ ├─ ORD-0033              Bianchi  8 righe   2.300 €   [Fattura]
+ └─ Oneri · commessa #42  Rossi    1 riga      500 €   [Fattura]
+```
+
+La seconda forma non è un dettaglio: senza, gli oneri sarebbero **contati** nel
+numero della card ma irraggiungibili da qualunque azione mirata — lavoro
+invisibile, recuperabile solo dal giro schedulato.
+
+#### Cosa garantisce
+
+| | |
+|---|---|
+| Si fattura **solo** ciò che si è chiesto | anche se la commessa contiene altro lavoro idoneo |
+| Ciò che non si è chiesto **resta come prima** | stesso stato, ancora fatturabile: nessun effetto collaterale |
+| Si può ripetere | prima il preventivo, domani il contratto: due giri che convivono |
+| Si ferma a **EMESSA** | la numerazione resta l'atto separato «Rendi definitive» |
+
+#### Il rapporto col flag di corsia
+
+Sono due strumenti distinti, e non vanno sovrapposti:
+
+| Serve a | Strumento | Quando |
+|---|---|---|
+| «questo cliente va **sempre** fatturato subito» | flag `fatturazione_immediata` | **prima** del push, alla creazione o accettazione del documento |
+| «fattura **questo**, adesso» | emissione mirata | in qualsiasi momento, anche a lavoro già in commessa |
+
+Il flag è *instradamento automatico*, deciso a monte e poi immutabile.
+L'emissione mirata è un *atto puntuale dell'operatore*. Il caso «cambio idea
+dopo» è coperto interamente dalla seconda: nessun intervento sul modello della
+commessa.
+
+#### Un documento può produrre più fatture
+
+Il tipo di documento fiscale sta sulla **riga**, non sulla testata: un gruppo con
+righe di tipo diverso finisce in **lotti diversi**, quindi in fatture diverse. È
+corretto e voluto — l'esito dell'operazione restituisce l'elenco dei lotti
+prodotti, non uno solo.
+
+> **Dettaglio tecnico**: il perimetro scelto è **persistito sul lotto**
+> (`vendite.fatturazione_lotti_gruppi`), non passato come parametro. È ciò che
+> garantisce che un *Rerun* o un *Avanza step* dal drawer del lotto non allarghi
+> silenziosamente il perimetro. Nessuna riga per un lotto = nessuna restrizione =
+> comportamento del giro schedulato.
+
 ### Monitoraggio
 
 - **Badge top bar**: conteggio dei processi vivi dell'operatore + liveness dei

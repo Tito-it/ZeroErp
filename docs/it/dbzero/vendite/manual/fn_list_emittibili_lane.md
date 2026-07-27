@@ -112,4 +112,24 @@ SELECT * FROM vendite.fn_list_emittibili_lane(
 
 ---
 
+---
+
+### Emissione mirata: `p_gruppi` (rev 2026-07-27)
+
+Parametro `text[]`, default `NULL`. La discovery restituisce **solo le terne dei
+gruppi richiesti**.
+
+**Perché serve anche qui.** Il driver crea **un lotto per terna** restituita.
+Senza il filtro, un'emissione mirata su un solo preventivo farebbe comunque
+nascere un lotto per ogni terna con lavoro pronto nel perimetro: quei lotti
+girerebbero pull e select (entrambi filtrati), non troverebbero nulla e
+resterebbero lì. Non un errore di correttezza — la fattura sarebbe giusta — ma
+lotti vuoti, task run, log e segnalazioni per lavoro che nessuno ha chiesto.
+
+**Un gruppo può restare su più terne**, ed è corretto: `tipo_doc_fiscale_id` sta
+sulla **riga** (`commesse_attivita`), non sulla testata del documento, quindi un
+gruppo con righe di tipo diverso produce N lotti. La funzione le restituisce
+tutte — ed è il motivo per cui l'esito verso il backend è una **lista** di
+`lotto_id`, non uno solo.
+
 {% include-markdown "signature-core.md" %}

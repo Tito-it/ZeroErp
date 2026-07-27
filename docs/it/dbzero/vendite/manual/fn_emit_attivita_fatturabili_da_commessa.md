@@ -41,4 +41,35 @@ Ritorna contatori:
 
 ---
 
+---
+
+### Emissione mirata: `p_gruppi` (rev 2026-07-27)
+
+Parametro `text[]`, default `NULL`. Restringe l'emissione ai soli **gruppi
+fatturabili** richiesti — la chiave arriva da
+[`fn_build_gruppo_fatturabile_key`](/dbzero/vendite/funzioni/fn_build_gruppo_fatturabile_key),
+mai ricostruita a mano.
+
+| Valore | Comportamento |
+|---|---|
+| `NULL` *(default)* | nessuna restrizione: **identico** al comportamento storico |
+| `'{}'` | richiesta vuota → zero righe |
+| `{...}` | solo le righe di quei gruppi; chiave inesistente → zero righe, **nessun errore** |
+
+**Il problema che chiude.** Questa funzione cicla *tutte* le righe `NON_EMESSA`
+della commessa e mette `stato_emissione='EMESSA'` su ognuna. La commessa è
+multi-sorgente: chiedere «fattura solo il preventivo» e far girare il pull non
+filtrato porterebbe fuori da «Da emettere» anche le righe del contratto,
+trasformandole in attività fatturabili orfane.
+
+⚠️ **Filtrare qui NON basta.** Le attività fatturabili **già esistenti** — residui
+di un giro interrotto, di un reset a bozza o del giro schedulato — le filtra
+[`fn_select_attivita_fatturabili`](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili).
+I due filtri lavorano su assi diversi e servono entrambi.
+
+> **Firma cambiata**: la versione a 3 argomenti è stata droppata nello stesso
+> changeSet. Un parametro con default su `RETURNS TABLE` crea un overload
+> ambiguo, e ogni chiamata che omette `p_gruppi` fallirebbe con *function is not
+> unique*.
+
 {% include-markdown "signature-core.md" %}

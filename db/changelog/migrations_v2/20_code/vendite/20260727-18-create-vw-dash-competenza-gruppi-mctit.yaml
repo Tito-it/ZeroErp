@@ -1,0 +1,211 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vw_dash_competenza_gruppi — l'elenco dei GRUPPI FATTURABILI
+#   (brief-db-emissione-fattura-per-documento-sorgente PARTE A, step A8,
+#    requisito A3, decisione D-4)
+#
+# COSA SERVE (requisito A3): prima di agire, l'operatore deve vedere l'elenco
+#   di cio' che e' fatturabile nel mese, raggruppato nelle unita' su cui puo'
+#   decidere, con quante righe e quanto valore ciascuna pesa. Oggi questo
+#   elenco NON esiste in nessuna forma: la discovery lavora a livello di terna
+#   del lotto, non di gruppo.
+#
+#   Card «Da emettere» (29 attivita')
+#    ├─ PRV-0012              Rossi    5 righe   1.000 EUR  [Fattura]
+#    ├─ CTR-0007              Rossi    3 righe     500 EUR  [Fattura]
+#    ├─ ORD-0033              Bianchi  8 righe   2.300 EUR  [Fattura]
+#    └─ Oneri · commessa #42  Rossi    1 riga      500 EUR  [Fattura]
+#
+# ⚠️ GLI ONERI DEVONO COMPARIRE. E' il punto che ha fatto scegliere il concetto
+#   di "gruppo" invece di "documento": la porta oneri crea righe SOURCELESS per
+#   progetto. Raggruppando solo per documento, quelle righe — che SONO
+#   conteggiate nel numero della card — non comparirebbero in nessuna riga
+#   dell'elenco e nessuna azione mirata le raggiungerebbe: lavoro invisibile e
+#   non azionabile, recuperabile solo dal giro schedulato. Qui formano il
+#   gruppo 'MAN:<commessa_id>' (garanzia G4).
+#
+# COSTRUITA SU vw_dash_competenza_attivita (D-4), non su una query nuova:
+#   - lo SCOPE EMITTENTE arriva da li' (security_invoker + fn_get_emittenti_scope_sr_ids):
+#     un operatore non puo' vedere ne' selezionare gruppi fuori dal suo
+#     perimetro, e non per una regola ripetuta qui ma perche' e' la stessa
+#     sorgente (garanzia G14);
+#   - i CONTEGGI coincidono con quelli della card PER COSTRUZIONE, perche'
+#     nascono dallo stesso `stadio` e dallo stesso `valore` (garanzia G8).
+#
+# `stadio` E' NEL GROUP BY, non filtrato qui. La vista resta generale: il
+#   consumatore filtra stadio='DA_EMETTERE' per la lista del cockpit. Un gruppo
+#   parzialmente fatturato compare quindi su due righe, una per stadio — che e'
+#   l'informazione vera, non un difetto: dice all'operatore che di quel
+#   documento una parte e' gia' passata.
+#
+# ⚠️ RIFERIMENTO LEGGIBILE VIA LATERAL + LIMIT 1, non JOIN diretto.
+#   vw_dash_fatturazione_documenti ha una riga per (documento, competenza_mese):
+#   un LEFT JOIN su (area, documento_uid) moltiplicherebbe le righe del gruppo
+#   PRIMA dell'aggregazione, gonfiando n_attivita e valore. Il LATERAL con
+#   LIMIT 1 e' applicato DOPO l'aggregazione e restituisce un solo codice per
+#   gruppo: l'etichetta non puo' alterare i numeri.
+#   Il join usa config.sorgenti.area (colonna da 20260727-17) per tradurre il
+#   tipo sorgente nell'area documentale — i due vocabolari che D-5 ha
+#   riconciliato.
+#
+# ⚠️ LEFT JOIN, mai INNER, su sorgenti e documento: un gruppo il cui documento
+#   non e' risolvibile (sorgente senza area, documento fuori dal perimetro
+#   della vista documenti) deve comunque comparire con la chiave grezza. Sparire
+#   dall'elenco significherebbe lavoro non azionabile — lo stesso difetto che
+#   il concetto di gruppo esiste per evitare.
+#
+# CHIAVI: gruppo_key e' esattamente la stringa che i filtri p_gruppi
+#   dell'emissione accettano (stessa funzione A1): il FE passa quello che
+#   legge, senza mappature (garanzia G8).
+#
+# Dipendenze: 20260727-16 (colonne di gruppo sulla vista base),
+#   20260727-17 + seed CSV (config.sorgenti.area).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260727-18-create-vw-dash-competenza-gruppi-mctit.yaml
+
+  - changeSet:
+      id: 20260727-18-create-vw-dash-competenza-gruppi
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea vendite.vw_dash_competenza_gruppi: elenco dei gruppi fatturabili
+        (documento sorgente oppure oneri di commessa) con n_attivita, valore e
+        riferimento leggibile. security_invoker=on.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: sorgenti
+                columnName: area
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >-
+                  SELECT count(*) FROM information_schema.columns
+                   WHERE table_schema = 'vendite'
+                     AND table_name = 'vw_dash_competenza_attivita'
+                     AND column_name = 'gruppo_key'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi
+              WITH (security_invoker=on) AS
+              WITH aggregato AS (
+                  -- Aggregazione sull'unita' su cui l'operatore decide.
+                  -- Lo scope emittente e' gia' applicato dalla vista base.
+                  SELECT
+                      a.competenza_mese,
+                      a.gruppo_key,
+                      a.sorgente_tipo_id,
+                      a.sorgente_uid,
+                      a.commessa_id,
+                      a.commessa_codice,
+                      a.emittente_soggetto_ruolo_id,
+                      a.cliente_display,
+                      a.stadio,
+                      count(*)::bigint                        AS n_attivita,
+                      COALESCE(sum(a.valore), 0::numeric)     AS valore,
+                      min(a.data_attivita)                    AS data_attivita_min,
+                      max(a.data_attivita)                    AS data_attivita_max,
+                      -- Un gruppo di oneri e' interamente ONERE, un gruppo
+                      -- documento interamente NORMALE: bool_or e' difensivo,
+                      -- non ci si aspetta gruppi misti.
+                      bool_or(a.tipo_movimento = 'ONERE')     AS ha_oneri
+                    FROM vendite.vw_dash_competenza_attivita a
+                   GROUP BY
+                      a.competenza_mese,
+                      a.gruppo_key,
+                      a.sorgente_tipo_id,
+                      a.sorgente_uid,
+                      a.commessa_id,
+                      a.commessa_codice,
+                      a.emittente_soggetto_ruolo_id,
+                      a.cliente_display,
+                      a.stadio
+              )
+              SELECT
+                  g.competenza_mese,
+                  g.gruppo_key,
+                  -- Tipo di gruppo: il codice_interno della sorgente per i
+                  -- documenti, il marcatore ONERI_COMMESSA per le righe
+                  -- sourceless. E' un codice, non un'etichetta: la traduzione
+                  -- a video la fa il frontend (i18n).
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area                                       AS area_documento,
+                  -- Riferimento leggibile: numero del documento se risolvibile,
+                  -- altrimenti il codice della commessa (caso oneri) e in
+                  -- ultima istanza la chiave grezza. Non si resta mai senza
+                  -- etichetta.
+                  COALESCE(doc.codice, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid
+                FROM aggregato g
+                -- LEFT: una sorgente non risolta non fa sparire il gruppo.
+                LEFT JOIN config.sorgenti s
+                  ON s.id = g.sorgente_tipo_id
+                -- LATERAL + LIMIT 1: vw_dash_fatturazione_documenti ha una riga
+                -- per (documento, competenza_mese); un join diretto prima
+                -- dell'aggregazione avrebbe moltiplicato n_attivita e valore.
+                -- Qui l'etichetta non puo' toccare i numeri.
+                LEFT JOIN LATERAL (
+                    SELECT d.codice
+                      FROM vendite.vw_dash_fatturazione_documenti d
+                     WHERE s.area IS NOT NULL
+                       AND d.area = s.area
+                       AND d.documento_uid = g.sorgente_uid
+                     ORDER BY d.competenza_mese DESC NULLS LAST
+                     LIMIT 1
+                ) doc ON true;
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_gruppi IS
+                'Elenco dei GRUPPI FATTURABILI per la card "Da emettere" della Lente '
+                'Competenza (brief-db-emissione-fattura-per-documento-sorgente A3/A8). '
+                'Un gruppo e'' un DOCUMENTO SORGENTE oppure l''insieme delle righe '
+                'manuali/oneri di una commessa: e'' l''unita'' su cui l''operatore decide, '
+                'perche'' la commessa e'' multi-sorgente e gli oneri non hanno documento. '
+                'Gli oneri compaiono come gruppo MAN:<commessa_id>: raggruppando solo per '
+                'documento sarebbero conteggiati nella card ma irraggiungibili da ogni '
+                'azione mirata (garanzia G4). gruppo_key e'' esattamente la stringa che i '
+                'filtri p_gruppi dell''emissione accettano — stessa '
+                'vendite.fn_build_gruppo_fatturabile_key — quindi il FE passa cio'' che '
+                'legge, senza mappature (G8). Costruita su vw_dash_competenza_attivita: '
+                'ne eredita lo scope emittente (G14) e la coerenza dei conteggi con la '
+                'card (G8). stadio e'' nel GROUP BY e NON filtrato: il consumatore filtra '
+                'DA_EMETTERE; un gruppo parzialmente fatturato compare su due righe, che '
+                'e'' l''informazione vera. Il riferimento leggibile passa da '
+                'config.sorgenti.area -> vw_dash_fatturazione_documenti via LATERAL '
+                'LIMIT 1 (un join diretto moltiplicherebbe gli aggregati, perche'' quella '
+                'vista ha una riga per documento-competenza). Tutti i join sono LEFT: un '
+                'gruppo non risolvibile compare comunque, con la chiave grezza. '
+                'security_invoker=on: RI-SPECIFICARLO a ogni CREATE OR REPLACE. '
+                'rev 2026-07-27.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_gruppi;

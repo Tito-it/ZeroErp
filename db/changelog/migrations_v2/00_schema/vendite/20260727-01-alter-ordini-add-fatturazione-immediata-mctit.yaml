@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Colonna fatturazione_immediata su vendite.ordini — simmetria del flag di
+#   instradamento corsia (brief-db-emissione-fattura-per-documento-sorgente
+#   PARTE B, step B1).
+#
+# IL PROBLEMA CHE CHIUDE: il flag decide su quale corsia finisce il lavoro
+#   (true = corsia immediata, il lotto GIORNALIERO numera da solo; false =
+#   corsia differita, si ferma a EMESSA). Ma la colonna esisteva SOLO su
+#   vendite.preventivi: fn_list_ordini_da_pushare restituiva la costante FALSE
+#   hardcoded. Di fatto solo un preventivo poteva essere fatturato subito, e
+#   non per una scelta di dominio ma per un buco di modello.
+#
+# NOT NULL DEFAULT false (a differenza di preventivi, dove la colonna e'
+#   nullable e i consumer fanno COALESCE): il flag e' un booleano di
+#   instradamento, "non so" non e' uno stato sensato. Il default false
+#   riproduce esattamente il comportamento odierno su tutte le righe
+#   esistenti — nessun documento cambia corsia per effetto di questa
+#   migration (garanzia G16 del brief).
+#
+# PERIMETRO (decisione D-6, confermata da Tid 2026-07-27): ordini, contratti,
+#   DDT. I CONSUMI restano ESCLUSI — un consumo e' una misura, non un accordo
+#   commerciale: la corsia la decide il contratto che lo governa, e un flag
+#   sulla singola lettura creerebbe due luoghi dove decidere la stessa cosa.
+#
+# NON TOCCA prezzo_bloccato (fatto F11 del brief): su preventivi il flag fa
+#   doppio lavoro (fn_list_preventivi_da_pushare: prezzo_bloccato =
+#   COALESCE(fatturazione_immediata, false)); sugli ordini lo stesso slot e'
+#   la costante TRUE, indipendente. Qui si estende SOLO la semantica di
+#   instradamento. Vedi step B3.
+#
+# Dipendenze: vendite.ordini.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260727-01-alter-ordini-add-fatturazione-immediata-mctit.yaml
+
+  - changeSet:
+      id: 20260727-01-alter-ordini-add-fatturazione-immediata
+      author: mctit
+      comment: >
+        Aggiunge vendite.ordini.fatturazione_immediata (boolean NOT NULL DEFAULT false):
+        instradamento corsia immediata/differita, simmetria con vendite.preventivi.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ordini
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: ordini
+                    columnName: fatturazione_immediata
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: ordini
+            columns:
+              - column:
+                  name: fatturazione_immediata
+                  type: boolean
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+                  remarks: >-
+                    Instradamento corsia: true = corsia immediata (lotto
+                    GIORNALIERO, numera da solo), false = corsia differita
+                    (lotto MASSIVO, si ferma a EMESSA).
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN vendite.ordini.fatturazione_immediata IS
+                  'Instradamento corsia di fatturazione: true = immediata (lotto '
+                  'GIORNALIERO, arriva a DEFINITIVA da solo), false = differita '
+                  '(lotto MASSIVO, si ferma a EMESSA). Letto da '
+                  'fn_list_ordini_da_pushare e propagato alla commessa, dove e'' '
+                  'parte della chiave di dedup di fn_get_or_create_commessa. '
+                  'SI STABILISCE PRIMA DEL PUSH: dopo, il flag e'' inerte (il '
+                  'documento e'' legato a una sola commessa per sempre) e la '
+                  'modifica e'' respinta dal guard. Il caso "cambio idea dopo" e'' '
+                  'coperto dall''emissione mirata per gruppo fatturabile, non da '
+                  'questo flag. NON governa prezzo_bloccato (accoppiamento '
+                  'presente solo sui preventivi). '
+                  'brief-db-emissione-fattura-per-documento-sorgente PARTE B, rev 2026-07-27.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ordini
+                DROP COLUMN IF EXISTS fatturazione_immediata;

@@ -1,0 +1,216 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_select_attivita_fatturabili + p_gruppi — ⭐ IL PUNTO CRITICO DELLA SLICE
+#   (brief-db-emissione-fattura-per-documento-sorgente PARTE A, step A4,
+#    fatto F8, garanzia G12)
+#
+# ⚠️ LA FALLA CHE CHIUDE — e' la ragione per cui la Fase A non e' "filtra il
+#   pull e hai finito". Questa funzione seleziona e BLOCCA le attivita'
+#   fatturabili su cui il lotto costruira' le righe fattura, filtrando per
+#   (approvato, non fatturato, non sospesa, non lockata, posticipa_al,
+#   competenza <= M, tipo_doc, BA, utility, emittente, valuta, area).
+#   NESSUNO di questi criteri sa nulla della sorgente.
+#
+#   Conseguenza: un lotto mirato al gruppo A rastrella qualunque AF GIA'
+#   ESISTENTE e non ancora consumata del gruppo B nello stesso perimetro.
+#   Le AF residue non sono un caso di scuola, esistono per almeno tre vie:
+#     - un giro precedente interrotto fra il pull e la generazione righe;
+#     - un reset-a-bozza che ha liberato le AF senza cancellarle;
+#     - il giro schedulato che ha fatto pull ma non ha completato.
+#   Filtrare solo il pull (20260727-12) lascerebbe quindi passare esattamente
+#   cio' che l'operatore ha chiesto di NON fatturare — e in silenzio, perche'
+#   il risultato e' una fattura corretta nella forma e sbagliata nel perimetro.
+#   -> garanzia G12; senza questo changeSet G2 e G3 si romperebbero "per
+#      perdita" invece che per errore.
+#
+# COME: il legame AF -> documento d'origine NON e' su attivita_fatturabili.
+#   Li' sorgente_tipo_id/sorgente_uid sono rioccupati (sorgente COMMESSA +
+#   hash md5 della segment_key) e resta solo sorgente_origine_tipo_id, cioe' il
+#   TIPO di origine, non l'identificativo. Sopravvive pero'
+#   attivita_fatturabili.commessa_attivita_id, NOT NULL: l'identita' del
+#   documento e' recuperabile con un JOIN alla riga di commessa (fatto F2).
+#   Da qui la decisione D-2: JOIN, nessuna denormalizzazione.
+#
+#   - nessuna colonna nuova su una tabella calda, nessun backfill;
+#   - nessuna possibilita' di drift fra valore copiato e sorgente;
+#   - il join e' su FK indicizzata e viene aggiunto SOLO quando il filtro e'
+#     attivo (p_gruppi NOT NULL): il giro schedulato non paga nulla.
+#   Se un EXPLAIN sul volume reale mostrasse che pesa, la via da riaprire e'
+#   la colonna denormalizzata + indice, mantenendo fn_build_gruppo_fatturabile_key
+#   come unica fonte del valore.
+#
+# ⚠️ FOR UPDATE OF a — invariante da NON rompere. Il ramo con lock blocca le
+#   righe candidate con "FOR UPDATE OF a ... SKIP LOCKED". Aggiungendo il JOIN,
+#   la clausola resta "OF a": si blocca SOLO attivita_fatturabili, mai
+#   commesse_attivita. Bloccare anche la riga di commessa serializzerebbe il
+#   giro di fatturazione con le operazioni di commessa (approvazioni, oneri) —
+#   un deadlock che oggi non esiste. La rev 20260619-12 aveva introdotto
+#   proprio "OF a" per restringere il lock: non allargarlo qui.
+#
+# SEMANTICA DELL'ARGOMENTO (identica a 20260727-12):
+#   NULL = nessuna restrizione (default, retro-compatibilita' G1);
+#   '{}' = richiesta vuota -> zero righe;
+#   {...} = solo quei gruppi; chiave inesistente -> zero righe, nessun errore.
+#
+# ⚠️ SQL DINAMICO: l'array entra nella stringa via quote_literal(p_gruppi::text)
+#   + cast ::text[], coerente con come la funzione gia' inietta tutti gli altri
+#   parametri. quote_literal fa l'escaping: nessuna via di iniezione.
+#
+# ⚠️ DROP + CREATE non necessario: la funzione ritorna
+#   SETOF vendite.attivita_fatturabili (non RETURNS TABLE) e l'aggiunta di un
+#   parametro in coda con DEFAULT creerebbe comunque un overload ambiguo ->
+#   il DROP c'e' lo stesso, per la stessa ragione di 20260727-12 (fatto F13).
+#   Il chiamante Python (VenditePipelineRepository.run_select_attivita_task)
+#   usa parametri nominati.
+#
+# Base: corpo da doc auto-gen fn_select_attivita_fatturabili.md,
+#   firma da 20260619-12 (l'auto-gen scioglie i %TYPE).
+# Dipendenze: 20260727-10 (fn_build_gruppo_fatturabile_key).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260727-13-update-fn-select-attivita-fatturabili-p-gruppi-mctit.yaml
+
+  - changeSet:
+      id: 20260727-13-update-fn-select-attivita-fatturabili-p-gruppi
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_select_attivita_fatturabili + p_gruppi text[]: chiude la falla per cui
+        un giro mirato consumava le AF residue di altri gruppi (G12). JOIN a
+        commesse_attivita solo quando il filtro e' attivo; FOR UPDATE OF a invariato.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'fn_build_gruppo_fatturabile_key'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Overload ambiguo: via la firma a 11 argomenti prima della nuova.
+              DROP FUNCTION IF EXISTS vendite.fn_select_attivita_fatturabili(
+                  date, bigint, uuid, boolean, date, bigint, integer, integer, bigint, bigint, integer);
+
+              CREATE OR REPLACE FUNCTION vendite.fn_select_attivita_fatturabili(
+                  p_competenza_mese             DATE,
+                  p_tipo_doc_fiscale_id         config.tipi_doc_fiscale.id%TYPE,
+                  p_lock_batch_id               UUID DEFAULT NULL,
+                  p_lock                        BOOLEAN DEFAULT FALSE,
+                  p_data_fatturazione           DATE DEFAULT CURRENT_DATE,
+                  p_billing_account_id          anagrafiche.billing_account.id%TYPE DEFAULT NULL,
+                  p_utility_id                  config.utilities.id%TYPE DEFAULT NULL,
+                  p_valuta_id                   config.valute.id%TYPE DEFAULT NULL,
+                  p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE DEFAULT NULL,
+                  p_area_geografica_id          BIGINT DEFAULT NULL,
+                  p_limit                       INTEGER DEFAULT NULL,
+                  p_gruppi                      TEXT[] DEFAULT NULL
+              )
+              RETURNS SETOF vendite.attivita_fatturabili
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: seleziona (e opzionalmente blocca) le attivita' fatturabili
+              --        eleggibili di un perimetro, marcandole stato_esecuzione=PENDING.
+              -- rev 2026-06-19: FOR UPDATE OF a (lock ristretto ad attivita_fatturabili).
+              -- rev 2026-07-27 (brief emissione mirata A4): p_gruppi restringe la
+              --        selezione ai GRUPPI FATTURABILI richiesti. E' il secondo e
+              --        decisivo punto di applicazione del perimetro mirato: qui si
+              --        filtrano le AF GIA' ESISTENTI, che il filtro sul pull
+              --        (fn_emit_attivita_fatturabili_da_commessa) non puo' vedere.
+              DECLARE
+                  v_competenza DATE;
+                  v_data_fatturazione DATE;
+                  v_where TEXT;
+                  v_join TEXT;
+                  v_limit TEXT;
+                  v_sql TEXT;
+              BEGIN
+                  IF p_competenza_mese IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_select_attivita_fatturabili', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_competenza_mese', 'valore', NULL), NULL::uuid, 'p_competenza_mese obbligatoria');
+                  END IF;
+                  IF p_tipo_doc_fiscale_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_select_attivita_fatturabili', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_doc_fiscale_id', 'valore', NULL), NULL::uuid, 'p_tipo_doc_fiscale_id obbligatorio');
+                  END IF;
+                  IF p_lock AND p_lock_batch_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_select_attivita_fatturabili', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lock_batch_id', 'valore', NULL), NULL::uuid, 'p_lock_batch_id obbligatorio quando p_lock=true');
+                  END IF;
+
+                  v_competenza := date_trunc('month', p_competenza_mese)::DATE;
+                  v_data_fatturazione := COALESCE(p_data_fatturazione, CURRENT_DATE);
+
+                  v_where := ' WHERE a.approvato IS TRUE AND a.fatturato IS FALSE AND a.sospesa IS FALSE AND COALESCE(a.lock_in_fatturazione, false) IS FALSE'
+                      || ' AND (a.posticipa_al IS NULL OR a.posticipa_al <= ' || quote_literal(v_data_fatturazione) || ')'
+                      || ' AND a.competenza_mese <= ' || quote_literal(v_competenza)
+                      || ' AND a.tipo_doc_fiscale_id = ' || quote_literal(p_tipo_doc_fiscale_id);
+
+                  IF p_billing_account_id IS NOT NULL THEN v_where := v_where || ' AND a.billing_account_id = ' || quote_literal(p_billing_account_id); END IF;
+                  IF p_utility_id IS NOT NULL THEN v_where := v_where || ' AND ba.utility_id = ' || quote_literal(p_utility_id); END IF;
+                  IF p_valuta_id IS NOT NULL THEN v_where := v_where || ' AND a.valuta_id = ' || quote_literal(p_valuta_id); END IF;
+                  IF p_emittente_soggetto_ruolo_id IS NOT NULL THEN
+                      v_where := v_where || ' AND a.billing_account_id IS NOT NULL AND anagrafiche.fn_get_emittente_fiscale_id(a.billing_account_id) = ' || quote_literal(p_emittente_soggetto_ruolo_id);
+                  END IF;
+                  IF p_area_geografica_id IS NOT NULL THEN v_where := v_where || ' AND a.area_geografica_id = ' || quote_literal(p_area_geografica_id); END IF;
+
+                  -- ============================================
+                  -- EMISSIONE MIRATA (rev 2026-07-27): filtro per gruppo.
+                  -- ============================================
+                  -- Il join alla riga di commessa si aggiunge SOLO quando il
+                  -- filtro e' attivo: senza p_gruppi la query resta identica a
+                  -- prima, sia come forma sia come piano (garanzia G1).
+                  -- commessa_attivita_id e' NOT NULL su attivita_fatturabili,
+                  -- quindi l'INNER JOIN non perde righe.
+                  -- L'array entra come letterale quotato + cast, coerente con
+                  -- gli altri parametri iniettati sopra.
+                  v_join := '';
+                  IF p_gruppi IS NOT NULL THEN
+                      v_join := ' JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id';
+                      v_where := v_where
+                          || ' AND vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) = ANY ('
+                          || quote_literal(p_gruppi::text) || '::text[])';
+                  END IF;
+
+                  v_limit := CASE WHEN p_limit IS NOT NULL THEN ' LIMIT ' || p_limit::TEXT ELSE '' END;
+
+                  IF p_lock THEN
+                      -- ⚠️ FOR UPDATE OF a: il lock resta ristretto ad
+                      -- attivita_fatturabili anche in presenza del join. Non
+                      -- estenderlo a ca: serializzerebbe la fatturazione con le
+                      -- operazioni di commessa.
+                      v_sql := 'WITH candidati AS (SELECT a.id FROM vendite.attivita_fatturabili a JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' || v_join || v_where || ' ORDER BY a.data_attivita, a.id' || v_limit || ' FOR UPDATE OF a SKIP LOCKED) UPDATE vendite.attivita_fatturabili a SET lock_in_fatturazione = true, lock_batch_id = ' || quote_literal(p_lock_batch_id) || ', stato_esecuzione = ''PENDING'', data_update = now(), user_update = current_user FROM candidati c WHERE a.id = c.id AND a.fatturato IS FALSE AND COALESCE(a.lock_in_fatturazione, false) IS FALSE RETURNING a.*';
+                  ELSE
+                      v_sql := 'WITH candidati AS (SELECT a.id FROM vendite.attivita_fatturabili a JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' || v_join || v_where || ' ORDER BY a.data_attivita, a.id' || v_limit || ') SELECT a.* FROM vendite.attivita_fatturabili a JOIN candidati c ON c.id = a.id ORDER BY a.data_attivita, a.id';
+                  END IF;
+
+                  RETURN QUERY EXECUTE v_sql;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_select_attivita_fatturabili(date, bigint, uuid, boolean, date, bigint, integer, integer, bigint, bigint, integer, text[])
+              IS 'Select attivita_fatturabili eleggibili con lock opzionale e stato_esecuzione=PENDING. rev 2026-06-19: FOR UPDATE OF a (lock ristretto). rev 2026-07-27 (brief emissione mirata A4): p_gruppi text[] restringe la selezione ai gruppi fatturabili richiesti — NULL = nessuna restrizione (comportamento storico, G1), array vuoto = zero righe, chiave inesistente = zero righe senza errore. ⭐ E'' IL PUNTO CRITICO della slice: senza questo filtro un giro mirato consumerebbe le AF GIA'' ESISTENTI di altri gruppi nello stesso perimetro (residui di un giro interrotto, di un reset-a-bozza o del giro schedulato), perche'' nessun altro criterio di questa funzione sa nulla della sorgente — garanzia G12. Il legame al documento passa dal JOIN a commesse_attivita via commessa_attivita_id (NOT NULL): su attivita_fatturabili sorgente_tipo_id/sorgente_uid sono rioccupati dall''idempotenza del pull. Il join si aggiunge SOLO con p_gruppi valorizzato: il giro schedulato non paga nulla. ⚠️ FOR UPDATE OF a resta ristretto ad attivita_fatturabili: non estendere il lock a commesse_attivita.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: rimuove la firma a 12 argomenti. Il ripristino della
+              -- versione a 11 argomenti richiede di ri-applicare 20260619-12.
+              DROP FUNCTION IF EXISTS vendite.fn_select_attivita_fatturabili(
+                  date, bigint, uuid, boolean, date, bigint, integer, integer, bigint, bigint, integer, text[]);

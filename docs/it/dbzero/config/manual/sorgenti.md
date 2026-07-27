@@ -62,6 +62,18 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
   * utilizzata per raggruppare e filtrare sorgenti in base al tipo di entità collegata;
   * **non modificabile** dopo la creazione (vedi trigger `trg_sorgenti_a10_upd_lock_columns`).
 
+* **Area documentale** (`area`) — *aggiunta 27-07-2026*:
+
+  * area corrispondente alla sorgente: `PREVENTIVI`, `ORDINI`, `CONTRATTI`, `DDT`, `OFFERTE`, `COMMESSE`;
+  * è la chiave con cui `vendite.vw_dash_fatturazione_documenti` — e le sei viste per-sorgente che la compongono — etichetta i documenti. Serve a tradurre un riferimento tecnico nel **numero leggibile** che l'operatore riconosce;
+  * **`NULL` = la sorgente non è un documento sfogliabile** (`ATTIVITA`, `ATTIVITA_CONSUMI`, `FATTURA`, `RESO_VENDITA`): non hanno una scheda nel cockpit di fatturazione. I consumatori usano `LEFT JOIN`, così un riferimento senza area non sparisce dagli elenchi;
+  * `CHECK` non-vuota: `''` sarebbe indistinguibile da `NULL` a occhio ma si comporterebbe diversamente nel join (matcherebbe nulla invece di saltare);
+  * ⚠️ **non è fra le colonne lock**, a differenza di `categoria`. La categoria è strutturale — classifica il tipo di entità e cambia il comportamento; l'area è una mappa di **presentazione** verso un altro vocabolario, che può legittimamente aver bisogno di correzione se una vista di dashboard cambia etichetta.
+
+  > **Perché questa colonna esiste.** Prima del 27-07-2026 il vocabolario «area» **non esisteva come dato**: la stringa era scritta a mano dentro ciascuna delle sei viste per-sorgente (`'PREVENTIVI'::varchar AS area` in `vw_dash_fatturazione_preventivi`, e così via). Alla sesta occorrenza è stato estratto qui, accanto agli altri attributi che descrivono la sorgente. La bonifica delle sei viste, che possono leggerla da qui, è una rifinitura separata.
+  >
+  > Riferimento: `brief-db-emissione-fattura-per-documento-sorgente` decisione D-5.
+
 * **Descrizione** (`descrizione`):
 
   * testo leggibile che descrive in modo chiaro cosa rappresenta la sorgente (es. “Riga preventivo vendita”, “DDT di vendita”, “Attività di fatturazione”).

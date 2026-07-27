@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vw_dash_competenza_gruppi_riepilogo — i totali della riga di riconciliazione
+#   (brief-db-emissione-fattura-per-documento-sorgente PARTE A, step A9,
+#    requisito A5)
+#
+# A COSA SERVE: la riga di totali sotto la lista dei gruppi fatturabili —
+#   «7 documenti · 29 attivita' · 12.500 EUR».
+#
+# PERCHE' NON E' COSMETICA. Senza aggregati dal DB, il frontend calcolerebbe il
+#   totale sommando le righe della PAGINA CORRENTE: mostrerebbe un numero che
+#   sembra il totale ma e' il parziale, e nessuno se ne accorgerebbe. Nessuno
+#   somma a mano le righe di piu' pagine per verificare. E' anche cio' che rende
+#   evidente quando un filtro di lista sta mostrando un sottoinsieme: se il
+#   totale della riga non torna col numero della card, il filtro e' attivo.
+#
+# FORMA: stesso pattern gia' in uso per il backlog
+#   (vw_dash_backlog_documenti + vw_dash_backlog_riepilogo): la vista di
+#   riepilogo aggrega quella di dettaglio, non ricalcola da capo. Cosi' i due
+#   numeri non possono divergere — se cambia la definizione di gruppo o di
+#   valore, cambiano insieme.
+#
+# GRANA DELL'AGGREGATO: (competenza_mese, stadio, emittente). Lo stadio serve
+#   perche' la lista e' per-stadio (il consumatore filtra DA_EMETTERE);
+#   l'emittente perche' il cockpit puo' essere ristretto a uno solo e i totali
+#   devono seguire. Il perimetro piu' fine (cliente, utility) lo applica il
+#   consumatore in WHERE: aggregare anche su quelli moltiplicherebbe le righe
+#   senza aggiungere informazione.
+#
+# n_gruppi CONTA I GRUPPI, non le righe: e' il primo dei tre numeri della riga
+#   di totali ed e' l'unico che la vista di dettaglio non sa dare da sola.
+#
+# ⚠️ security_invoker=on: la vista eredita lo scope emittente da
+#   vw_dash_competenza_gruppi -> vw_dash_competenza_attivita. Va RI-SPECIFICATO
+#   a ogni CREATE OR REPLACE, altrimenti PostgreSQL lo azzera e i totali
+#   verrebbero calcolati fuori dal perimetro dell'operatore — cioe' proprio il
+#   numero che dovrebbe riconciliare diventerebbe quello sbagliato.
+#
+# Dipendenze: 20260727-18 (vw_dash_competenza_gruppi).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260727-20-create-vw-dash-competenza-gruppi-riepilogo-mctit.yaml
+
+  - changeSet:
+      id: 20260727-20-create-vw-dash-competenza-gruppi-riepilogo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea vendite.vw_dash_competenza_gruppi_riepilogo: totali (n_gruppi,
+        n_attivita, valore) per competenza/stadio/emittente. Aggrega la vista di
+        dettaglio, non ricalcola.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: vendite
+            viewName: vw_dash_competenza_gruppi
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi_riepilogo
+              WITH (security_invoker=on) AS
+              SELECT
+                  g.competenza_mese,
+                  g.stadio,
+                  g.emittente_soggetto_ruolo_id,
+                  count(*)::integer                          AS n_gruppi,
+                  COALESCE(sum(g.n_attivita), 0)::bigint     AS n_attivita,
+                  COALESCE(sum(g.valore), 0::numeric)        AS valore,
+                  -- Quanti gruppi sono oneri: distingue "7 documenti" da
+                  -- "7 voci di cui 2 di oneri", che a video e' un'informazione
+                  -- diversa.
+                  count(*) FILTER (WHERE g.tipo_gruppo = 'ONERI_COMMESSA')::integer AS n_gruppi_oneri
+                FROM vendite.vw_dash_competenza_gruppi g
+               GROUP BY
+                  g.competenza_mese,
+                  g.stadio,
+                  g.emittente_soggetto_ruolo_id;
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_gruppi_riepilogo IS
+                'Totali del perimetro per la riga di riconciliazione sotto la lista dei '
+                'gruppi fatturabili ("7 documenti - 29 attivita - 12.500 EUR"). '
+                'brief-db-emissione-fattura-per-documento-sorgente A9 / requisito A5. '
+                'Non e'' cosmetica: senza aggregati dal DB il frontend sommerebbe le righe '
+                'della PAGINA CORRENTE, mostrando un parziale che sembra un totale — e '
+                'nessuno somma a mano le righe di piu'' pagine per accorgersene. E'' anche '
+                'il modo per rendere evidente che un filtro di lista sta mostrando un '
+                'sottoinsieme. AGGREGA vw_dash_competenza_gruppi invece di ricalcolare: '
+                'stesso pattern di vw_dash_backlog_riepilogo, cosi'' i totali e il '
+                'dettaglio non possono divergere. Grana (competenza_mese, stadio, '
+                'emittente): il perimetro piu'' fine (cliente, utility) lo applica il '
+                'consumatore in WHERE. n_gruppi conta i GRUPPI, l''unico numero che la '
+                'vista di dettaglio non sa dare da sola. security_invoker=on: eredita lo '
+                'scope emittente dalla catena — RI-SPECIFICARLO a ogni CREATE OR REPLACE, '
+                'altrimenti i totali verrebbero calcolati fuori dal perimetro '
+                'dell''operatore. rev 2026-07-27.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_gruppi_riepilogo;

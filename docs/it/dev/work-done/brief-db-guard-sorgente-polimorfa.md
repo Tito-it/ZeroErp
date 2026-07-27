@@ -102,13 +102,33 @@ push odierno può riscrivere righe in forma uuid — ripetere il censimento imme
 prima di applicare il fix e, se ricomparse, usare il one-shot manuale in Appendice A
 (dati di test → correzione manuale, non migration: regola Workflow Safety di AGENTS.md).
 
-### 1d. Nota di contesto: i tre usi di "sorgente_uid" NON vanno confusi
+### 1d. Nota di contesto: i **quattro** usi di "sorgente_uid" NON vanno confusi
+
+> ⚠️ **Rettifica 2026-07-27.** La stesura originale di questa tabella aveva
+> **tre** righe e attribuiva a `commesse_attivita.sorgente_uid` il contenuto
+> «hash md5(segment_key)». È **sbagliato**: quell'hash è di
+> `attivita_fatturabili.sorgente_uid` (che è `uuid`, non TEXT). Le due tabelle
+> erano state fuse in una riga sola. Corretto qui sotto, verificato sul codice
+> vivo (`fn_upsert_commessa_attivita` vs `fn_emit_attivita_fatturabili_da_commessa`).
 
 | dove | tipo | contenuto | meccanismo |
 |---|---|---|---|
-| `pratiche_sorgenti` / `commesse_sorgenti` | TEXT | chiave secondo `key_selector` | polimorfo (questo brief) |
+| `pratiche_sorgenti` / `commesse_sorgenti` | TEXT | chiave **canonica** secondo `key_selector` — garantita in scrittura da `fn_link_commessa_sorgente`, che **normalizza** l'uuid in `id::text` per i tipi a chiave `id` | polimorfo (questo brief) |
+| **`commesse_attivita.sorgente_uid`** | **TEXT** | **l'`uid` del documento, sempre** — è il valore che le `fn_list_*_da_pushare` proiettano (`<tabella>.uid::text`), scritto **grezzo**: qui **nessuno normalizza** | interno commesse — FUORI da questo brief |
+| **`attivita_fatturabili.sorgente_uid`** | **UUID** | **hash md5(`segment_key`)** con `sorgente_tipo_id` = `COMMESSA` (caveat C1) | idempotenza pull — FUORI da questo brief |
 | `ddt.sorgente_uid`, `resi.sorgente_uid` | UUID | uid del documento padre | colonna tipizzata diretta — FUORI da questo brief |
-| `commesse_attivita.sorgente_uid` | TEXT | hash md5(segment_key) (caveat C1) | interno commesse — FUORI da questo brief |
+
+⚠️ **La conseguenza pratica**, che la vecchia tabella nascondeva:
+`commesse_sorgenti` e `commesse_attivita` sono popolate **dallo stesso push**,
+hanno colonne con **lo stesso nome**, e per **lo stesso documento** contengono
+**valori diversi** quando `key_selector = 'id'` (ordini, contratti, DDT):
+`id::text` la prima, `uid::text` la seconda. Chi scrive una query deve sapere
+quale delle due sta interrogando — dedurre l'una dall'altra per analogia
+produce un match a zero righe, in silenzio.
+
+Non è un errore da bonificare: la convenzione di `commesse_attivita` è già
+usata da consumatori vivi (es. `vw_dash_fatturazione_contratti`:
+`AND ca.sorgente_uid = c.uid::text`). Documentata nel manuale della tabella.
 
 ### 1e. Reperti emersi IN SVILUPPO (2026-07-18 sera) — cambiano D6 e il seed
 
