@@ -36,7 +36,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_anagrafiche_soggetti_conti_bancari_conto_bancario_id | `CREATE INDEX ix_anagrafiche_soggetti_conti_bancari_conto_bancario_id ON anagrafiche.soggetti_conti_bancari USING btree (conto_bancario_id)` |
-| ix_anagrafiche_soggetti_conti_bancari_soggetto_id | `CREATE INDEX ix_anagrafiche_soggetti_conti_bancari_soggetto_id ON anagrafiche.soggetti_conti_bancari USING btree (soggetto_id)` |
 | ix_soggetti_conti_bancari_predef_per_uso | `CREATE UNIQUE INDEX ix_soggetti_conti_bancari_predef_per_uso ON anagrafiche.soggetti_conti_bancari USING btree (soggetto_id, uso) WHERE (predefinito = true)` |
 | pk_soggetti_conti_bancari | `CREATE UNIQUE INDEX pk_soggetti_conti_bancari ON anagrafiche.soggetti_conti_bancari USING btree (id)` |
 | uq_soggetti_conti_bancari_soggetto_id_conto_id_uso | `CREATE UNIQUE INDEX uq_soggetti_conti_bancari_soggetto_id_conto_id_uso ON anagrafiche.soggetti_conti_bancari USING btree (soggetto_id, conto_bancario_id, uso)` |

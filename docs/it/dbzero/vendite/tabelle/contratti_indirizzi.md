@@ -29,7 +29,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_contratti_indir_contratto | `CREATE INDEX ix_contratti_indir_contratto ON vendite.contratti_indirizzi USING btree (contratto_id)` |
 | ix_contratti_indir_origine_indirizzo | `CREATE INDEX ix_contratti_indir_origine_indirizzo ON vendite.contratti_indirizzi USING btree (origine_indirizzo_id)` |
 | ix_contratti_indir_origine_sog_ruolo | `CREATE INDEX ix_contratti_indir_origine_sog_ruolo ON vendite.contratti_indirizzi USING btree (origine_soggetto_ruolo_id)` |
 | pk_contratti_indirizzi | `CREATE UNIQUE INDEX pk_contratti_indirizzi ON vendite.contratti_indirizzi USING btree (id)` |

@@ -29,7 +29,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_offerte_commerciali_indir_offerta | `CREATE INDEX ix_offerte_commerciali_indir_offerta ON vendite.offerte_commerciali_indirizzi USING btree (offerta_id)` |
 | ix_offerte_commerciali_indir_origine_indirizzo | `CREATE INDEX ix_offerte_commerciali_indir_origine_indirizzo ON vendite.offerte_commerciali_indirizzi USING btree (origine_indirizzo_id)` |
 | ix_offerte_commerciali_indir_origine_sog_ruolo | `CREATE INDEX ix_offerte_commerciali_indir_origine_sog_ruolo ON vendite.offerte_commerciali_indirizzi USING btree (origine_soggetto_ruolo_id)` |
 | pk_offerte_commerciali_indirizzi | `CREATE UNIQUE INDEX pk_offerte_commerciali_indirizzi ON vendite.offerte_commerciali_indirizzi USING btree (id)` |

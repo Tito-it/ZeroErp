@@ -1,0 +1,214 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_fk_con_indice_missing_policy — il comando deve puntare all'indice
+#   CHE ESISTE (bonifica indici del 2026-07-27, PASSO B4)
+#
+# ⚠️ QUESTA VISTA FABBRICAVA INDICI DUPLICATI. Serve a registrare in
+#   dbops.fk_index_policy le FK che hanno gia' un indice ma nessuna riga di
+#   policy, cosi' che l'automazione le governi: dbops.fn_seed_fk_index_policy()
+#   la legge e inserisce le righe con consentito=true. Il difetto e' che
+#   esponeva gia' index_name — il nome REALE dell'indice trovato — ma poi
+#   costruiva create_index_suggestion SINTETIZZANDO un nome diverso, con la
+#   vecchia convenzione ix_<schema>_<tabella>_<colonne> abbandonata dal
+#   20260116-01 in favore di ix_<tabella>_<colonne>. Risultato: la policy
+#   riceveva un comando che creava un SECONDO indice, identico al primo ma con
+#   un altro nome.
+#
+# E' QUESTA LA SPIEGAZIONE DI ix_vendite_fatture_riepiloghi_iva_fattura_id,
+#   l'indice che il changeSet 20260116-10-01 aveva droppato il 2026-01-16 e che
+#   il 2026-07-27 era di nuovo li' senza comparire in alcun changelog. Non era
+#   stato creato a mano, come avevo supposto: dopo il drop la FK e' tornata a
+#   figurare in questa vista, fn_seed l'ha reinserita in policy con il nome
+#   vecchio e consentito=true, e apply_fk_index_policy() l'ha ricreata.
+#   Verifica del 2026-07-27, PRIMA di questa correzione: la vista proponeva 96
+#   righe, e fra queste esattamente
+#     CREATE INDEX IF NOT EXISTS ix_vendite_fatture_riepiloghi_iva_fattura_id ...
+#   Una sola chiamata a fn_seed_fk_index_policy() avrebbe rimesso in circolo il
+#   problema appena bonificato.
+#
+# ⚠️ E NON BASTAVA USARE index_name. Prima correzione tentata e SCARTATA: far
+#   puntare il comando al nome reale, qualunque esso fosse. Il test l'ha
+#   bocciata subito, perche' produceva righe come
+#     CREATE INDEX IF NOT EXISTS uq_fatture_r_iva_key ON ...(fattura_id);
+#   Innocua in creazione (IF NOT EXISTS su un nome che esiste), letale
+#   nell'altro ramo: apply_fk_index_policy(), quando consentito=false, estrae
+#   il nome dal comando ed esegue DROP INDEX. Un consentito=false messo su
+#   quella riga avrebbe droppato una UNIQUE che garantisce integrita' di
+#   dominio.
+#
+# LA REGOLA GIUSTA: si propongono solo indici DEDICATI alla FK — colonne chiave
+#   esattamente uguali (come insieme) alle colonne della FK, niente colonne in
+#   piu', non UNIQUE, non PK, non REPLICA IDENTITY, non a supporto di un
+#   constraint, totali e btree. Solo un indice cosi' e' legittimamente
+#   governabile dalla policy: crearlo e' un no-op se c'e', droparlo toglie
+#   soltanto un acceleratore.
+#   Le FK coperte da un indice piu' largo o da una UNIQUE semplicemente NON si
+#   propongono piu': non c'e' niente da governare, e un indice dedicato sarebbe
+#   ridondante — e' la stessa nozione di copertura del PASSO B3, applicata
+#   coerentemente qui.
+#
+# EFFETTO MISURATO (2026-07-27, in transazione): le righe proposte scendono da
+#   96 a 65; nessuna punta piu' a un UNIQUE o a un indice di constraint (da 0 a
+#   0 dopo il filtro, verificato); ogni index_name proposto esiste davvero,
+#   quindi nessuna proposta puo' creare un indice nuovo.
+#
+# COLONNE INVARIATE (schema_name, table_name, constraint_name, fk_cols,
+#   index_name, create_index_suggestion): CREATE OR REPLACE, privilegi
+#   conservati.
+#
+# NOTA: e' sparito il filtro "COALESCE(pol.consentito, true) = true", che era
+#   sempre vero — la WHERE pretende gia' pol.constraint_name IS NULL, quindi
+#   pol.consentito e' per forza NULL. Nessun cambio di comportamento.
+#
+# Dipendenze: dbops.automation_scope, dbops.fk_index_policy.
+# Consumatori: dbops.fn_seed_fk_index_policy().
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260727-23-update-vw-fk-con-indice-missing-policy-indice-reale-mctit.yaml
+
+  - changeSet:
+      id: 20260727-23-update-vw-fk-con-indice-missing-policy-indice-reale
+      author: mctit
+      runAlways: false
+      runOnChange: false
+      comment: >
+        create_index_suggestion punta ora all'indice reale, e si propongono
+        solo indici DEDICATI alla FK (colonne = colonne FK, non UNIQUE, non a
+        supporto di constraint). Chiude la fabbrica di duplicati che aveva
+        ricreato ix_vendite_fatture_riepiloghi_iva_fattura_id, ed evita che un
+        consentito=false droppi una UNIQUE di dominio. Colonne invariate.
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: automation_scope
+            - tableExists:
+                schemaName: dbops
+                tableName: fk_index_policy
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_fk_con_indice_missing_policy AS
+              WITH fk_grouped AS (
+                SELECT
+                  con.conname AS constraint_name,
+                  nsp.nspname AS schema_name,
+                  rel.relname AS table_name,
+                  con.conrelid,
+                  (SELECT array_agg(a.attname ORDER BY a.attname)
+                     FROM unnest(con.conkey) k(att)
+                     JOIN pg_attribute a
+                       ON a.attrelid = con.conrelid AND a.attnum = k.att) AS fk_cols
+                FROM pg_constraint con
+                JOIN pg_class rel     ON rel.oid = con.conrelid
+                JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+                WHERE con.contype = 'f'
+                  AND EXISTS (
+                    SELECT 1 FROM dbops.automation_scope sc
+                     WHERE sc.schema_name = nsp.nspname)
+              ),
+              idx_dedicati AS (
+                -- Solo indici che la policy puo' legittimamente possedere:
+                -- esistono PER la FK e per nient'altro. Le esclusioni non sono
+                -- prudenza generica, sono il ramo DROP di
+                -- apply_fk_index_policy() che deve restare innocuo.
+                SELECT
+                  ix.indrelid,
+                  i.relname AS index_name,
+                  (SELECT array_agg(a.attname ORDER BY a.attname)
+                     FROM generate_series(1, ix.indnkeyatts) g(k)
+                     JOIN pg_attribute a
+                       ON a.attrelid = ix.indrelid AND a.attnum = ix.indkey[g.k-1]) AS cols_set,
+                  (SELECT string_agg(a.attname, ', ' ORDER BY g.k)
+                     FROM generate_series(1, ix.indnkeyatts) g(k)
+                     JOIN pg_attribute a
+                       ON a.attrelid = ix.indrelid AND a.attnum = ix.indkey[g.k-1]) AS cols_ordinate,
+                  (SELECT bool_and(ix.indkey[g.k-1] > 0)
+                     FROM generate_series(1, ix.indnkeyatts) g(k))                  AS solo_colonne
+                FROM pg_index ix
+                JOIN pg_class i     ON i.oid = ix.indexrelid
+                JOIN pg_class t     ON t.oid = ix.indrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                JOIN pg_am am       ON am.oid = i.relam
+                WHERE i.relkind = 'i'
+                  AND am.amname = 'btree'
+                  AND ix.indisvalid
+                  AND ix.indisready
+                  AND ix.indpred IS NULL
+                  AND ix.indnatts = ix.indnkeyatts
+                  AND NOT ix.indisunique
+                  AND NOT ix.indisprimary
+                  AND NOT ix.indisreplident
+                  AND NOT EXISTS (
+                        SELECT 1 FROM pg_constraint c
+                         WHERE c.conindid = ix.indexrelid)
+                  AND EXISTS (
+                    SELECT 1 FROM dbops.automation_scope sc
+                     WHERE sc.schema_name = n.nspname)
+              )
+              SELECT DISTINCT ON (fk.conrelid, fk.constraint_name)
+                fk.schema_name,
+                fk.table_name,
+                fk.constraint_name,
+                fk.fk_cols,
+                ix.index_name,
+                -- il nome e' quello REALE, le colonne nell'ordine REALE:
+                -- il comando descrive l'indice che c'e', non uno inventato
+                format('CREATE INDEX IF NOT EXISTS %I ON %I.%I(%s);',
+                       ix.index_name, fk.schema_name, fk.table_name,
+                       ix.cols_ordinate) AS create_index_suggestion
+              FROM fk_grouped fk
+              JOIN idx_dedicati ix
+                ON  ix.indrelid = fk.conrelid
+                AND ix.solo_colonne
+                AND ix.cols_set = fk.fk_cols
+              LEFT JOIN dbops.fk_index_policy pol
+                     ON fk.schema_name     = pol.schema_name
+                    AND fk.table_name      = pol.table_name
+                    AND fk.constraint_name = pol.constraint_name
+              WHERE pol.constraint_name IS NULL
+              ORDER BY fk.conrelid, fk.constraint_name, ix.index_name;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW dbops.vw_fk_con_indice_missing_policy IS
+                  'Foreign key che hanno gia'' un indice DEDICATO ma nessuna riga '
+                  'in dbops.fk_index_policy: sono le candidate a passare sotto il '
+                  'governo dell''automazione. Letta da '
+                  'dbops.fn_seed_fk_index_policy(), che le inserisce con '
+                  'consentito=true. '
+                  'Dal 2026-07-27 create_index_suggestion usa il nome REALE '
+                  'dell''indice: prima ne sintetizzava uno con la vecchia '
+                  'convenzione ix_<schema>_<tabella>_<colonne>, e la policy finiva '
+                  'per creare un secondo indice gemello sotto quel nome — e'' cosi'' '
+                  'che era ricomparso ix_vendite_fatture_riepiloghi_iva_fattura_id '
+                  'dopo il drop del 2026-01-16. '
+                  'Si propongono SOLO indici dedicati alla FK (colonne chiave = '
+                  'colonne FK, non UNIQUE, non PK, non REPLICA IDENTITY, non a '
+                  'supporto di un constraint, totali, btree): il ramo '
+                  'consentito=false di apply_fk_index_policy() esegue DROP INDEX '
+                  'sul nome estratto dal comando, e deve poter togliere solo un '
+                  'acceleratore, mai un vincolo di integrita''. '
+                  'Le FK coperte da un indice piu'' largo o da una UNIQUE non si '
+                  'propongono: non c''e'' nulla da governare e un indice dedicato '
+                  'sarebbe ridondante (stessa nozione di copertura di '
+                  'dbops.vw_fk_senza_indice).';
+      rollback:
+        - changeSetId: 20260116-02-update-vw-fk-con-indice-missing-policy-scope
+          changeSetAuthor: mctit
+          changeSetPath: db/changelog/migrations_v2/20_code/dbops/20260116-02-update-vw-fk-con-indice-missing-policy-scope-mctit.yaml

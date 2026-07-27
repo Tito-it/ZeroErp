@@ -24,7 +24,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_config_stradario_generale_toponomastica_id | `CREATE INDEX ix_config_stradario_generale_toponomastica_id ON config.stradario_generale USING btree (toponomastica_id)` |
 | ix_stradario_generale_norm_trgm | `CREATE INDEX ix_stradario_generale_norm_trgm ON config.stradario_generale USING gin (indirizzo_normalizzato gin_trgm_ops)` |
 | pk_stradario_generale | `CREATE UNIQUE INDEX pk_stradario_generale ON config.stradario_generale USING btree (id)` |
 | uq_toponomastica_descr | `CREATE UNIQUE INDEX uq_toponomastica_descr ON config.stradario_generale USING btree (toponomastica_id, descrizione)` |

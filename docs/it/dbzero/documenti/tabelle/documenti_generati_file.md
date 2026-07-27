@@ -39,7 +39,6 @@
 | Nome | Definizione |
 |------|-------------|
 | documenti_generati_file_pkey | `CREATE UNIQUE INDEX documenti_generati_file_pkey ON documenti.documenti_generati_file USING btree (id)` |
-| ix_documenti_generati_file_documento | `CREATE INDEX ix_documenti_generati_file_documento ON documenti.documenti_generati_file USING btree (documento_generato_id)` |
 | ix_documenti_generati_file_file_tipo | `CREATE INDEX ix_documenti_generati_file_file_tipo ON documenti.documenti_generati_file USING btree (file_tipo_id)` |
 | ix_documenti_generati_file_storage_key | `CREATE INDEX ix_documenti_generati_file_storage_key ON documenti.documenti_generati_file USING btree (storage_key)` |
 | uq_documenti_generati_file_doc_tipo_ord | `CREATE UNIQUE INDEX uq_documenti_generati_file_doc_tipo_ord ON documenti.documenti_generati_file USING btree (documento_generato_id, file_tipo_id, ordinamento)` |

@@ -23,7 +23,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_vendite_fatture_rettifiche_fattura_id | `CREATE INDEX ix_vendite_fatture_rettifiche_fattura_id ON vendite.fatture_rettifiche USING btree (fattura_id)` |
 | ix_vendite_fatture_rettifiche_rettificata_id | `CREATE INDEX ix_vendite_fatture_rettifiche_rettificata_id ON vendite.fatture_rettifiche USING btree (rettificata_id)` |
 | pk_fatture_rettifiche | `CREATE UNIQUE INDEX pk_fatture_rettifiche ON vendite.fatture_rettifiche USING btree (id)` |
 | uq_fatture_rettifiche_pair | `CREATE UNIQUE INDEX uq_fatture_rettifiche_pair ON vendite.fatture_rettifiche USING btree (fattura_id, rettificata_id)` |

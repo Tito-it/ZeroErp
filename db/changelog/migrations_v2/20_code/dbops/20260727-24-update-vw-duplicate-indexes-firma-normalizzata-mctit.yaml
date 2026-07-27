@@ -1,0 +1,226 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_duplicate_indexes — raggruppamento per FIRMA, non per sole colonne
+#   (bonifica indici del 2026-07-27, PASSO B1)
+#
+# IL PROBLEMA. La vista raggruppava per il solo array di colonne. Ignorava:
+#   - il metodo di accesso, quindi un GIN trgm e un btree sulla stessa colonna
+#     risultavano "duplicati" pur servendo query completamente diverse
+#     (ILIKE '%x%' contro uguaglianza e ordinamento);
+#   - il predicato WHERE, quindi due UNIQUE parziali disgiunte
+#     (stato='BOZZA' e stato='PUBBLICATA') risultavano duplicate fra loro;
+#   - le espressioni: il join su pg_attribute scarta gli attnum=0, quindi
+#     uq_fatture_r_iva_key, che ha cinque colonne di cui quattro COALESCE,
+#     veniva letto come un indice a UNA colonna.
+#   Al 2026-07-27 segnalava 19 gruppi: TRE ridondanze vere (rimosse dal
+#   changeSet 20260727-19) e SEDICI falsi positivi. Una diagnostica che grida
+#   al lupo sedici volte su diciannove non viene piu' letta.
+#
+# LA FIRMA. Il raggruppamento usa ora pg_get_indexdef() normalizzato: si toglie
+#   il nome dell'indice, la clausola WITH (...) dei parametri di storage e
+#   TABLESPACE. Resta tutto cio' che determina COSA l'indice sa servire —
+#   metodo, colonne ed espressioni, classe di operatori, collation, ASC/DESC,
+#   NULLS FIRST/LAST, NULLS NOT DISTINCT, INCLUDE, predicato. Due indici con la
+#   stessa firma sono intercambiabili per definizione. Applicata a tutto
+#   l'automation_scope dopo la bonifica: ZERO gruppi.
+#
+# ⚠️ UNIQUE FUORI DALLA CHIAVE DI RAGGRUPPAMENTO, di proposito. Un btree
+#   non-unique identico a un UNIQUE ha una firma che differisce solo per quel
+#   flag, ma e' ridondante al 100%: era esattamente il caso di
+#   ix_attivita_fatturabili_commessa_attivita_id (0 letture contro 20.619 della
+#   UNIQUE gemella). Metterlo nella chiave lo avrebbe reso invisibile. Il flag
+#   e' invece usato per ORDINARE il gruppo, cosi' l'indice da tenere e' sempre
+#   il primo: nuove colonne indice_da_tenere e indici_da_droppare dicono
+#   direttamente cosa fare, senza doverlo dedurre a occhio.
+#
+# COSA NON CATTURA, per costruzione: la ridondanza per PREFISSO (un indice su
+#   (a) reso inutile da uno su (a,b)). Non e' una svista — sono due nozioni
+#   diverse e la seconda vive nella vista sorella dbops.vw_indici_ridondanti_prefisso
+#   (changeSet 20260727-21). Le due si usano insieme.
+#
+# ⚠️ DROP + CREATE, NON CREATE OR REPLACE. La lista colonne cambia
+#   (index_columns passa da name[] a text[] per reggere le espressioni, e se ne
+#   aggiungono quattro), e CREATE OR REPLACE VIEW non lo consente. Il DROP
+#   perde i privilegi: esistono ALTER DEFAULT PRIVILEGES di titodb su dbops che
+#   li rimetterebbero, ma valgono solo se l'esecutore e' titodb — rete di
+#   sicurezza, non garanzia. I GRANT sono quindi RIEMESSI esplicitamente sotto,
+#   identici a quelli rilevati prima del drop:
+#     zeroerp_app=arwd, zeroerp_batch_fatturazione=r
+#
+# NESSUN CONSUMATORE. Verificato il 2026-07-27 su backend Django, frontend,
+#   modelli db_table, CI, scripts/, tools/, setup/, pgTAP, viste dipendenti
+#   (pg_rewrite), funzioni (pg_proc.prosrc) e job pgAgent: la vista e' usata
+#   solo a mano dall'operatore. Per questo il DROP e' praticabile.
+#
+# Dipendenze: dbops.automation_scope.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260727-24-update-vw-duplicate-indexes-firma-normalizzata-mctit.yaml
+
+  - changeSet:
+      id: 20260727-24-update-vw-duplicate-indexes-firma-normalizzata
+      author: mctit
+      runAlways: false
+      runOnChange: false
+      comment: >
+        Ricrea dbops.vw_duplicate_indexes raggruppando per firma normalizzata
+        (metodo, opclass, collation, ordinamento, espressioni, predicato)
+        invece che per sole colonne. Elimina 16 falsi positivi su 19. Aggiunge
+        metodo, predicato, indice_da_tenere, indici_da_droppare. DROP+CREATE
+        con GRANT riemessi: la lista colonne cambia.
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: automation_scope
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_duplicate_indexes;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW dbops.vw_duplicate_indexes AS
+              WITH idx AS (
+                SELECT
+                  ix.indexrelid,
+                  n.nspname                            AS schema_name,
+                  t.relname                            AS table_name,
+                  i.relname::text                      AS index_name,
+                  ix.indisunique,
+                  am.amname::text                      AS metodo,
+                  pg_get_expr(ix.indpred, ix.indrelid) AS predicato,
+                  -- colonne CHIAVE, espressioni comprese (pg_get_indexdef per
+                  -- colonna scioglie il COALESCE(...) che il join su
+                  -- pg_attribute scartava)
+                  (SELECT array_agg(pg_get_indexdef(ix.indexrelid, k, false) ORDER BY k)
+                     FROM generate_series(1, ix.indnkeyatts) k) AS index_columns,
+                  -- FIRMA: la definizione senza nome, senza parametri di
+                  -- storage e senza tablespace. Cio' che resta e' tutto e solo
+                  -- cio' che determina quali query l'indice sa servire.
+                  regexp_replace(
+                    regexp_replace(
+                      regexp_replace(pg_get_indexdef(ix.indexrelid),
+                                     '^CREATE (UNIQUE )?INDEX .*? ON ', 'ON '),
+                      ' WITH \(.*?\)', ''),
+                    ' TABLESPACE \S+', '')             AS firma
+                FROM pg_index ix
+                JOIN pg_class i     ON i.oid = ix.indexrelid
+                JOIN pg_class t     ON t.oid = ix.indrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                JOIN pg_am am       ON am.oid = i.relam
+                WHERE i.relkind = 'i'
+                  AND NOT ix.indisprimary
+                  AND ix.indisvalid
+                  AND EXISTS (
+                    SELECT 1 FROM dbops.automation_scope sc
+                     WHERE sc.schema_name = n.nspname)
+              )
+              SELECT
+                schema_name,
+                table_name,
+                index_columns,
+                metodo,
+                predicato,
+                array_agg(index_name ORDER BY indisunique DESC, indexrelid)
+                  AS duplicate_index_names,
+                count(*)
+                  AS count_of_indexes,
+                -- UNIQUE per primo: e' sempre quello da tenere, perche' oltre a
+                -- servire le query impone un vincolo che l'altro non impone.
+                (array_agg(index_name ORDER BY indisunique DESC, indexrelid))[1]
+                  AS indice_da_tenere,
+                (array_agg(index_name ORDER BY indisunique DESC, indexrelid))[2:]
+                  AS indici_da_droppare
+              FROM idx
+              GROUP BY schema_name, table_name, index_columns, metodo, predicato, firma
+              HAVING count(*) > 1
+              ORDER BY schema_name, table_name;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE ON dbops.vw_duplicate_indexes TO zeroerp_app;
+              GRANT SELECT ON dbops.vw_duplicate_indexes TO zeroerp_batch_fatturazione;
+
+              COMMENT ON VIEW dbops.vw_duplicate_indexes IS
+                  'Indici DUPLICATI ESATTI negli schemi in dbops.automation_scope. '
+                  'Raggruppa per firma normalizzata (pg_get_indexdef senza nome, '
+                  'senza WITH(...) e senza TABLESPACE): due indici nello stesso '
+                  'gruppo sono intercambiabili, quindi tutti tranne uno sono '
+                  'eliminabili. Prima del 2026-07-27 raggruppava per sole colonne '
+                  'e produceva 16 falsi positivi su 19 (GIN trgm contro btree, '
+                  'UNIQUE parziali disgiunte, colonne-espressione scartate). '
+                  'Il flag UNIQUE NON e'' nella chiave di raggruppamento ma nel '
+                  'criterio di ordinamento: un btree non-unique identico a un '
+                  'UNIQUE e'' ridondante e deve restare visibile. Usare '
+                  'indice_da_tenere / indici_da_droppare. '
+                  'NON copre la ridondanza per prefisso: per quella vedere '
+                  'dbops.vw_indici_ridondanti_prefisso.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_duplicate_indexes;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE VIEW dbops.vw_duplicate_indexes AS
+              WITH index_cols AS (
+                SELECT
+                  i.oid                    AS index_oid,
+                  n.nspname                AS schema_name,
+                  t.relname                AS table_name,
+                  i.relname                AS index_name,
+                  ix.indisunique           AS is_unique,
+                  ix.indisprimary          AS is_primary,
+                  array_agg(a.attname ORDER BY x.ordinality) AS cols
+                FROM pg_index ix
+                JOIN pg_class i    ON i.oid = ix.indexrelid
+                JOIN pg_class t    ON t.oid = ix.indrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS x(attnum, ordinality) ON true
+                JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = x.attnum
+                WHERE NOT ix.indisprimary
+                  AND i.relkind = 'i'
+                  AND EXISTS (
+                    SELECT 1
+                      FROM dbops.automation_scope sc
+                     WHERE sc.schema_name = n.nspname
+                  )
+                GROUP BY i.oid, n.nspname, t.relname, i.relname, ix.indisunique, ix.indisprimary
+              )
+              SELECT
+                schema_name,
+                table_name,
+                cols                AS index_columns,
+                array_agg(index_name) AS duplicate_index_names,
+                count(*)            AS count_of_indexes
+              FROM index_cols
+              GROUP BY schema_name, table_name, cols
+              HAVING count(*) > 1
+              ORDER BY schema_name, table_name, count_of_indexes DESC;
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE ON dbops.vw_duplicate_indexes TO zeroerp_app;
+              GRANT SELECT ON dbops.vw_duplicate_indexes TO zeroerp_batch_fatturazione;

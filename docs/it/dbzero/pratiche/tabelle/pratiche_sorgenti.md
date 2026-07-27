@@ -32,6 +32,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_pratiche_sorgenti_flusso_id | `CREATE INDEX ix_pratiche_sorgenti_flusso_id ON pratiche.pratiche_sorgenti USING btree (flusso_id)` |
 | ix_pratiche_sorgenti_tipo_uid | `CREATE INDEX ix_pratiche_sorgenti_tipo_uid ON pratiche.pratiche_sorgenti USING btree (sorgente_tipo_id, sorgente_uid)` |
 | pk_pratiche_sorgenti | `CREATE UNIQUE INDEX pk_pratiche_sorgenti ON pratiche.pratiche_sorgenti USING btree (id)` |
 | uq_pratiche_sorgenti_flusso_root | `CREATE UNIQUE INDEX uq_pratiche_sorgenti_flusso_root ON pratiche.pratiche_sorgenti USING btree (flusso_id) WHERE (((ruolo_link)::text = 'ROOT'::text) AND (flusso_id IS NOT NULL))` |

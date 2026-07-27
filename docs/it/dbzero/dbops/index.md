@@ -18,7 +18,7 @@
 - [coda_lavori_tipi](tabelle/coda_lavori_tipi.md) — (latest review 20-07-2026)
 - [domini_task](tabelle/domini_task.md) — (latest review 08-02-2026) `dbops.domini_task` definisce i **domini logici** per i task pipeline (es. `FATTURAZIONE`, `ATTIVITA_FATTURABILI`, `PRATICHE`). Serve a stabilire un **perimetro chiaro** per il registry multi‑dominio e garantire univocita` dei task per dominio.
 - [error_log](tabelle/error_log.md) — * Raccogliere in un unico punto gli errori generati da funzioni, trigger o applicazioni, permettendo analisi e allineamento con il catalogo di messaggi di errore. * Consentire il **collegamento transazionale** tramite `tx_id`, per ricostruire l’intero flusso di operazioni (ad esempio un job batch) incrociando tabelle come `dbops.audit_log`.
-- [fk_index_policy](tabelle/fk_index_policy.md) — (latest review 16-01-26) La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** per la gestione degli index sulle foreign key, consentendo di abilitare o disabilitare la creazione/uso di indici per specifici vincoli referenziali.
+- [fk_index_policy](tabelle/fk_index_policy.md) — (latest review 27-07-26) La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** per la gestione degli indici sulle foreign key: una riga per vincolo, un flag che dice se l'indice deve esistere, e il comando che lo crea.
 - [idempotency_keys](tabelle/idempotency_keys.md) — (latest review 06-02-26) * Prevenire doppie esecuzioni in caso di retry o chiamate duplicate. * Restituire **la stessa risposta** quando arriva la stessa `idempotency_key`. * Collegare operazioni applicative alla **tracciabilità transazionale** tramite `tx_id`.
 - [lock_columns_conditional](tabelle/lock_columns_conditional.md)
 - [pipeline_task_registry](tabelle/pipeline_task_registry.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry` e` il catalogo dei **task ammessi** per ciascun dominio pipeline. Impedisce l'esecuzione di task non registrati e centralizza la governance delle azioni eseguibili dal motore applicativo.
@@ -29,7 +29,7 @@
 - [transaction_ids](tabelle/transaction_ids.md) — (latest review 10-01-26) La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti gli identificativi di transazione (UUID) utilizzati in Zero ERP: ogni volta che viene avviata un’operazione di modifica dati (inserimento, aggiornamento o cancellazione) che coinvolge più tabelle, si genera un nuovo **`tx_id`** in questa tabella e lo si propaga a tutte le righe interessate, garantendo la **tracciabilità** e il **raggruppamento** coerente delle modifiche.
 
 ## ⚙️ Funzioni
-- [apply_fk_index_policy](funzioni/apply_fk_index_policy.md) — (latest update 16-01-26) Applicare in modo automatico le regole di indicizzazione definite nella tabella `dbops.fk_index_policy`:   
+- [apply_fk_index_policy](funzioni/apply_fk_index_policy.md) — (latest update 27-07-26) Applicare in modo automatico le regole di indicizzazione definite nella tabella `dbops.fk_index_policy`:  
 - [fn_accoda_lavoro](funzioni/fn_accoda_lavoro.md) — (latest review 20-07-2026)
 - [fn_admin_merge_comune](funzioni/fn_admin_merge_comune.md)
 - [fn_admin_merge_stradario](funzioni/fn_admin_merge_stradario.md)
@@ -63,7 +63,7 @@
 - [fn_name_from_template](funzioni/fn_name_from_template.md) — La funzione **`fn_name_from_template`** genera in modo consistente un **nome normalizzato** (per trigger, constraint, indici, ecc.) a partire da un **template testuale** con *placeholder* e da un set di parametri (schema, tabella, parent/child, nome FK, operazione).
 - [fn_non_editable_fields](funzioni/fn_non_editable_fields.md)
 - [fn_normalize_indirizzo](funzioni/fn_normalize_indirizzo.md)
-- [fn_populate_fk_index_policy](funzioni/fn_populate_fk_index_policy.md) — * **Coerenza iniziale**   Garantire che ogni FK rilevata nella view senza indice abbia la propria entry di policy, evitando omissioni. * **Popolamento “a freddo”**   Tutti i nuovi record vengono creati con `consentito = false`, lasciando in carico all’operatore la decisione di abilitare o meno l’indice. * **Automazione**   Riduce il lavoro manuale di inserimento di policy per nuove FKs.
+- [fn_populate_fk_index_policy](funzioni/fn_populate_fk_index_policy.md) — (latest review 27-07-26)
 - [fn_purge_cleanup_expired](funzioni/fn_purge_cleanup_expired.md) — (latest review 07-02-26) La funzione **`dbops.fn_purge_cleanup_expired`** elimina i record con **`cleanup_at` scaduto** usando una strategia a **batch**, per ridurre lock e impatti sulle tabelle più grandi.
 - [fn_refresh_mv_ddt_ordini](funzioni/fn_refresh_mv_ddt_ordini.md)
 - [fn_rename_triggers_by_order](funzioni/fn_rename_triggers_by_order.md)
@@ -83,7 +83,7 @@
 - [fn_search_column_usage](funzioni/fn_search_column_usage.md) — * Individuare rapidamente tutte le occorrenze di un campo in definizioni SQL presenti nel database. * Facilitare attività di refactoring, pulizia del codice, e verifica di dipendenze tra oggetti del database.
 - [fn_seed_automazione_guard_utility_tipo_ruolo](funzioni/fn_seed_automazione_guard_utility_tipo_ruolo.md) — La funzione **`dbops.fn_seed_automazione_guard_utility_tipo_ruolo(p_schemas)`** popola la tabella di configurazione automazione individuando in modo automatico le tabelle candidate.
 - [fn_seed_automazione_overlap](funzioni/fn_seed_automazione_overlap.md) — (latest review 19-01-26) La funzione **`dbops.fn_seed_automazione_overlap(p_schemas)`** popola (o aggiorna) `dbops.automazione_overlap` rilevando automaticamente le tabelle con periodo di validita (`valido_dal/valido_al` o `valid_from/valid_to`) e valutando se risultano versionate.
-- [fn_seed_fk_index_policy](funzioni/fn_seed_fk_index_policy.md) — (latest review 16-01-26) * **Sincronizzazione iniziale**   Aggiunge in `fk_index_policy` tutte le FK con indice esistente rilevate in `vw_fk_con_indice_missing_policy`. * **Automazione**   Evita inserimenti manuali per policy già coperte da indice. * **Flag di origine**   Imposta `generated_by_script = true` per distinguere le righe create automaticamente.
+- [fn_seed_fk_index_policy](funzioni/fn_seed_fk_index_policy.md) — (latest review 27-07-26)
 - [fn_set_gucs_conn](funzioni/fn_set_gucs_conn.md) — (latest review 29-12-25) La funzione `dbops.fn_set_gucs_conn` serve a impostare in modo centralizzato le **GUC (Grand Unified Configuration)** custom di PostgreSQL per la **connessione corrente**. Queste variabili sono usate da trigger, funzioni e policy RLS per conoscere l’utente applicativo e il contesto di esecuzione (es. sessione Django, gruppi, tenant).
 - [fn_sync_functions_owner](funzioni/fn_sync_functions_owner.md) — * **Applicare automaticamente la policy di sicurezza** definita in `dbops.sec_functions_owner`. * **Rilevare e correggere** owner incoerenti di funzioni critiche. * Rendere ripetibile e idempotente il processo di *hardening* dopo:
 - [fn_table_in_scope](funzioni/fn_table_in_scope.md) — (latest review 10-01-26) La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di filtro tabellare** che determina se una specifica tabella appartiene all'ambito di automazione, basandosi sulle regole definite in `dbops.automation_scope`. In questo modo, le automazioni possono applicarsi solo alle tabelle consentite.
@@ -100,10 +100,11 @@
 ## 🔍 Views
 - [vw_catalogo_oggetti](views/vw_catalogo_oggetti.md) — * Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione. * Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.
 - [vw_diag_v_clienti_links](views/vw_diag_v_clienti_links.md) — (latest review 25-12-25) La vista **`dbops.vw_diag_v_clienti_links`** è una **vista diagnostica** che espone in modo “leggibile” i **legami strutturali** tra:
-- [vw_duplicate_indexes](views/vw_duplicate_indexes.md) — (latest review 10-01-26) * **Individuare indici ridondanti**   Scoprire indici che hanno lo stesso set di colonne e possono quindi essere unificati o rimossi. * **Ottimizzazione dello storage e delle performance**   Ridurre overhead di manutenzione e migliorare le prestazioni di scrittura eliminando duplicazioni. * **Governance della struttura**   Supportare analisi periodiche per mantenere lo schema pulito e coerente.
-- [vw_fk_con_indice_missing_policy](views/vw_fk_con_indice_missing_policy.md) — (latest review 16-01-26) * **Identificare gli indici esistenti**   Trova le FK già indicizzate che non dispongono di una policy dedicata. * **Suggerimento DDL**   Genera automaticamente la stringa `CREATE INDEX ...` per uniformare naming e struttura. * **Supporto auditing e governance**   Permette di scoprire eventuali indici non tracciati, inserendoli poi in `fk_index_policy`.
-- [vw_fk_senza_indice](views/vw_fk_senza_indice.md) — (latest review 16-01-26) * Individuare automaticamente vincoli di integrità referenziale (FK) privi di indice, potenziali colli di bottiglia nelle operazioni di JOIN e DELETE. * Fornire suggerimenti di creazione indice coerenti, facilitando l’ottimizzazione delle performance. * Applicare eventuali policy di esclusione gestite in `dbops.fk_index_policy`.
+- [vw_duplicate_indexes](views/vw_duplicate_indexes.md) — (latest review 27-07-26)
+- [vw_fk_con_indice_missing_policy](views/vw_fk_con_indice_missing_policy.md) — (latest review 27-07-26)
+- [vw_fk_senza_indice](views/vw_fk_senza_indice.md) — (latest review 27-07-26)
 - [vw_function_list](views/vw_function_list.md) — * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione. * Rendere immediatamente disponibili:
+- [vw_indici_ridondanti_prefisso](views/vw_indici_ridondanti_prefisso.md) — (latest review 27-07-26)
 - [vw_non_editable_fields](views/vw_non_editable_fields.md) — (latest review 2026-05-22 — aggiunto riferimento al sistema lock condizionali)
 - [vw_parameter_fk_surrogate_dangling](views/vw_parameter_fk_surrogate_dangling.md) — (latest review 02-05-2026)
 - [vw_trigger_functions](views/vw_trigger_functions.md) — * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database. * Rendere immediatamente accessibili:

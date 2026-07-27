@@ -50,7 +50,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_vendite_ordini_righe_articolo_id | `CREATE INDEX ix_vendite_ordini_righe_articolo_id ON vendite.ordini_righe USING btree (articolo_id)` |
-| ix_vendite_ordini_righe_ordine_id | `CREATE INDEX ix_vendite_ordini_righe_ordine_id ON vendite.ordini_righe USING btree (ordine_id)` |
 | ix_vendite_ordini_righe_stato_doc_ordine_id | `CREATE INDEX ix_vendite_ordini_righe_stato_doc_ordine_id ON vendite.ordini_righe USING btree (stato_doc_ordine_id)` |
 | pk_ordrig | `CREATE UNIQUE INDEX pk_ordrig ON vendite.ordini_righe USING btree (id)` |
 | uq_ordini_righe_v_preventivo_riga | `CREATE UNIQUE INDEX uq_ordini_righe_v_preventivo_riga ON vendite.ordini_righe USING btree (preventivo_riga_id) WHERE (preventivo_riga_id IS NOT NULL)` |

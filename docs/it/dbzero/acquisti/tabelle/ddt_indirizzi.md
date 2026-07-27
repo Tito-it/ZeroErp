@@ -28,7 +28,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_acquisti_ddt_indirizzi_ddt_id | `CREATE INDEX ix_acquisti_ddt_indirizzi_ddt_id ON acquisti.ddt_indirizzi USING btree (ddt_id)` |
 | ix_acquisti_ddt_indirizzi_origine_indirizzo | `CREATE INDEX ix_acquisti_ddt_indirizzi_origine_indirizzo ON acquisti.ddt_indirizzi USING btree (origine_indirizzo_id)` |
 | ix_acquisti_ddt_indirizzi_origine_sog_ruolo | `CREATE INDEX ix_acquisti_ddt_indirizzi_origine_sog_ruolo ON acquisti.ddt_indirizzi USING btree (origine_soggetto_ruolo_id)` |
 | pk_ddt_indirizzi | `CREATE UNIQUE INDEX pk_ddt_indirizzi ON acquisti.ddt_indirizzi USING btree (id)` |

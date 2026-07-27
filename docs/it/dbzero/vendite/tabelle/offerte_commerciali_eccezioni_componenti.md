@@ -48,7 +48,6 @@
 |------|-------------|
 | ix_vendite_oce_comp_art_comp | `CREATE INDEX ix_vendite_oce_comp_art_comp ON vendite.offerte_commerciali_eccezioni_componenti USING btree (articolo_componente_id)` |
 | ix_vendite_oce_comp_componente | `CREATE INDEX ix_vendite_oce_comp_componente ON vendite.offerte_commerciali_eccezioni_componenti USING btree (componente_id)` |
-| ix_vendite_oce_comp_eccezione | `CREATE INDEX ix_vendite_oce_comp_eccezione ON vendite.offerte_commerciali_eccezioni_componenti USING btree (eccezione_offerta_id)` |
 | ix_vendite_oce_comp_stato_appr | `CREATE INDEX ix_vendite_oce_comp_stato_appr ON vendite.offerte_commerciali_eccezioni_componenti USING btree (stato_approvazione_prezzo) WHERE (stato_approvazione_prezzo IS NOT NULL)` |
 | pk_oce_comp | `CREATE UNIQUE INDEX pk_oce_comp ON vendite.offerte_commerciali_eccezioni_componenti USING btree (id)` |
 | uq_oce_comp_eccezione_art_comp | `CREATE UNIQUE INDEX uq_oce_comp_eccezione_art_comp ON vendite.offerte_commerciali_eccezioni_componenti USING btree (eccezione_offerta_id, articolo_componente_id)` |

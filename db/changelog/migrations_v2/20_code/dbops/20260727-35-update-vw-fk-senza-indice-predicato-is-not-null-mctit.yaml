@@ -1,0 +1,211 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_fk_senza_indice — un indice parziale "WHERE colonna IS NOT NULL"
+#   COPRE la foreign key (bonifica indici del 2026-07-27, correzione al
+#   PASSO B3)
+#
+# COSA AVEVO SBAGLIATO. Il changeSet 20260727-22 ha reso obbligatorio
+#   "indpred IS NULL", partendo dal fatto — giusto — che un indice parziale non
+#   serve il controllo referenziale, che deve poter cercare qualsiasi riga
+#   figlia. La regola pero' e' troppo larga di un caso, e proprio del caso piu'
+#   frequente.
+#
+# PERCHE' "IS NOT NULL" E' DIVERSO. Il trigger di integrita' referenziale
+#   esegue "SELECT 1 FROM figlio WHERE fkcol = $1 FOR SHARE", e $1 non e' mai
+#   NULL: una riga con FK nulla non ha padre da controllare. La condizione
+#   "fkcol = $1" IMPLICA "fkcol IS NOT NULL", e il planner PostgreSQL sa
+#   dimostrarlo, quindi usa l'indice parziale senza problemi. Su una FK
+#   nullabile quell'indice non e' un ripiego: e' STRETTAMENTE MIGLIORE di uno
+#   totale, perche' non indicizza righe che non verranno mai cercate.
+#
+# QUANTO COSTAVA L'ERRORE. Delle undici FK che il 20260727-22 segnalava come
+#   scoperte, NOVE erano coperte da un parziale "IS NOT NULL":
+#     catalogo.articoli, config.profili_accesso_bindings (x2),
+#     pagamenti.vendite_movimenti, pratiche.pratiche (x2),
+#     vendite.offerte_commerciali (x2), vendite.ordini_righe
+#   Le scoperte VERE sono due, ed erano nascoste in mezzo alle altre:
+#     pratiche.pratiche_sorgenti.fk_pratiche_sorgenti_flusso
+#       -> uq_pratiche_sorgenti_flusso_root ha ruolo_link = 'ROOT' nel
+#          predicato: non implicato dal controllo referenziale
+#     pratiche.sospensioni.fk_sospensioni_pratica
+#       -> uq_sospensioni_attiva_pratica ha data_fine IS NULL AND
+#          flusso_id IS NULL: idem
+#
+# ⚠️ E AVREBBE FATTO DANNO SILENZIOSO. Il passo successivo della bonifica
+#   avrebbe portato quelle nove FK a consentito=true, e apply_fk_index_policy()
+#   avrebbe eseguito il loro create_index_suggestion. Per DUE di esse —
+#   fk_pratiche_istanza_utility e fk_pratiche_soggetto_ruolo — il nome
+#   sintetizzato coincide esattamente con quello del parziale gia' esistente
+#   (ix_pratiche_istanza_utility_id, ix_pratiche_soggetto_ruolo_id): l'IF NOT
+#   EXISTS avrebbe reso il comando un no-op, la FK sarebbe rimasta a figurare
+#   come scoperta e l'automazione avrebbe ritentato a ogni giro, per sempre,
+#   senza che nessuno se ne accorgesse. Per le altre sette avrebbe creato un
+#   indice totale accanto a un parziale che gia' bastava — cioe' esattamente il
+#   tipo di ridondanza che questa bonifica sta smontando.
+#
+# COME SI RICONOSCE UN PREDICATO AMMISSIBILE. Il predicato viene accettato se
+#   OGNI suo congiunto e' un test "IS NOT NULL" su una colonna CHE APPARTIENE
+#   ALLA FK. Il testo di pg_get_expr viene spezzato sugli AND e ogni pezzo deve
+#   superare sia la forma sia l'appartenenza. Un predicato annidato o con un
+#   AND dentro una sottoespressione produce pezzi che non superano il test e
+#   viene quindi RIFIUTATO: l'errore possibile e' segnalare come scoperta una
+#   FK coperta, mai il contrario. E' la direzione giusta in cui sbagliare.
+#
+# COLONNE INVARIATE: CREATE OR REPLACE, privilegi conservati.
+#
+# Dipendenze: dbops.automation_scope, dbops.fk_index_policy.
+# Consumatori: dbops.fn_populate_fk_index_policy(), e da 20260727-36 anche
+#   dbops.apply_fk_index_policy().
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260727-35-update-vw-fk-senza-indice-predicato-is-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20260727-35-update-vw-fk-senza-indice-predicato-is-not-null
+      author: mctit
+      runAlways: false
+      runOnChange: false
+      comment: >
+        Un indice parziale il cui predicato e' una congiunzione di
+        "<colonna FK> IS NOT NULL" copre la FK: il controllo referenziale
+        cerca "fkcol = $1", che implica "fkcol IS NOT NULL". Corregge il
+        20260727-22, che ne segnalava 11 scoperte quando le vere sono 2.
+      preConditions:
+        - onFail: HALT
+        - onError: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: automation_scope
+            - tableExists:
+                schemaName: dbops
+                tableName: fk_index_policy
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_fk_senza_indice AS
+              WITH fk_grouped AS (
+                SELECT
+                  con.conname AS constraint_name,
+                  nsp.nspname AS schema_name,
+                  rel.relname AS table_name,
+                  con.conrelid,
+                  (SELECT array_agg(a.attname ORDER BY a.attname)
+                     FROM unnest(con.conkey) k(att)
+                     JOIN pg_attribute a
+                       ON a.attrelid = con.conrelid AND a.attnum = k.att) AS fk_cols
+                FROM pg_constraint con
+                JOIN pg_class rel     ON rel.oid = con.conrelid
+                JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+                WHERE con.contype = 'f'
+                  AND EXISTS (
+                    SELECT 1 FROM dbops.automation_scope sc
+                     WHERE sc.schema_name = nsp.nspname)
+              ),
+              idx_prefix AS (
+                -- una riga per ogni PREFISSO di ogni btree valido: il
+                -- predicato NON e' piu' filtrato qui, perche' la sua
+                -- ammissibilita' dipende dalle colonne della FK e va quindi
+                -- valutata in correlazione, sotto.
+                SELECT
+                  ix.indrelid,
+                  p.n AS prefix_len,
+                  pg_get_expr(ix.indpred, ix.indrelid) AS predicato,
+                  (SELECT array_agg(a.attname ORDER BY a.attname)
+                     FROM generate_series(1, p.n) g(k)
+                     JOIN pg_attribute a
+                       ON a.attrelid = ix.indrelid AND a.attnum = ix.indkey[g.k-1]) AS prefix_cols,
+                  (SELECT bool_and(ix.indkey[g.k-1] > 0)
+                     FROM generate_series(1, p.n) g(k))                             AS solo_colonne
+                FROM pg_index ix
+                JOIN pg_class i     ON i.oid = ix.indexrelid
+                JOIN pg_class t     ON t.oid = ix.indrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                JOIN pg_am am       ON am.oid = i.relam
+                CROSS JOIN LATERAL generate_series(1, ix.indnkeyatts) p(n)
+                WHERE i.relkind = 'i'
+                  AND am.amname = 'btree'
+                  AND ix.indisvalid
+                  AND ix.indisready
+                  AND EXISTS (
+                    SELECT 1 FROM dbops.automation_scope sc
+                     WHERE sc.schema_name = n.nspname)
+              )
+              SELECT
+                fk.schema_name,
+                fk.table_name,
+                fk.constraint_name,
+                fk.fk_cols,
+                format('CREATE INDEX IF NOT EXISTS ix_%I_%s ON %I.%I(%s);',
+                       fk.table_name, array_to_string(fk.fk_cols, '_'),
+                       fk.schema_name, fk.table_name,
+                       array_to_string(fk.fk_cols, ', ')) AS create_index_suggestion
+              FROM fk_grouped fk
+              LEFT JOIN dbops.fk_index_policy pol
+                     ON fk.schema_name     = pol.schema_name
+                    AND fk.table_name      = pol.table_name
+                    AND fk.constraint_name = pol.constraint_name
+              WHERE COALESCE(pol.consentito, true) = true
+                AND NOT EXISTS (
+                      SELECT 1 FROM idx_prefix ip
+                       WHERE ip.indrelid   = fk.conrelid
+                         AND ip.prefix_len = cardinality(fk.fk_cols)
+                         AND ip.solo_colonne
+                         AND ip.prefix_cols = fk.fk_cols
+                         AND (
+                               -- indice totale: copre sempre
+                               ip.predicato IS NULL
+                               -- oppure predicato fatto di soli
+                               -- "<colonna della FK> IS NOT NULL", che il
+                               -- controllo referenziale soddisfa sempre
+                               OR (SELECT bool_and(
+                                      btrim(parte, '() ')
+                                        ~ '^"?[a-z_][a-z0-9_$]*"?[[:space:]]+IS NOT NULL$'
+                                      AND replace(
+                                            btrim(regexp_replace(parte,
+                                                  '[[:space:]]+IS NOT NULL.*$', ''), '() '),
+                                            '"', '') = ANY (fk.fk_cols))
+                                     FROM regexp_split_to_table(
+                                            ip.predicato,
+                                            '[[:space:]]+AND[[:space:]]+') AS parte)
+                             ))
+              ORDER BY fk.schema_name, fk.table_name;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW dbops.vw_fk_senza_indice IS
+                  'Foreign key SENZA copertura di indice negli schemi in '
+                  'dbops.automation_scope. La FK e'' coperta se le sue colonne '
+                  'coincidono, come insieme, con le prime N colonne chiave di un '
+                  'btree valido, E il predicato dell''indice e'' assente oppure '
+                  'e'' una congiunzione di soli "<colonna della FK> IS NOT NULL". '
+                  'Quest''ultimo caso vale perche'' il controllo referenziale cerca '
+                  '"fkcol = $1" con $1 mai NULL, condizione che implica '
+                  '"fkcol IS NOT NULL": su una FK nullabile un indice parziale '
+                  'cosi'' e'' migliore di uno totale, non peggiore. '
+                  'Ogni altro predicato viene rifiutato, anche quando di fatto '
+                  'coprirebbe: l''errore possibile e'' segnalare come scoperta una '
+                  'FK coperta, mai il contrario. '
+                  'La copertura e'' valutata per PREFISSO dal 2026-07-27: prima si '
+                  'pretendeva l''uguaglianza dell''intero array di colonne, ed e'' '
+                  'da li'' che nascevano 27 degli indici ridondanti censiti in '
+                  'dbops.vw_indici_ridondanti_prefisso. '
+                  'Letta da dbops.fn_populate_fk_index_policy() e, come guardia '
+                  'anti-ridondanza, da dbops.apply_fk_index_policy().';
+      rollback:
+        - changeSetId: 20260727-22-update-vw-fk-senza-indice-copertura-prefisso
+          changeSetAuthor: mctit
+          changeSetPath: migrations_v2/20_code/dbops/20260727-22-update-vw-fk-senza-indice-copertura-prefisso-mctit.yaml

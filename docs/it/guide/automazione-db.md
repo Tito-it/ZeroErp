@@ -481,27 +481,43 @@ Gli indici sulle chiavi esterne sono fondamentali per le performance. Il framewo
 ### 7.1 Componenti
 
 **Tabella policy:** [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)
-Ogni riga rappresenta una FK con un flag `consentito` (l'indice deve esistere?) e il `ddl_command` per crearlo/rimuoverlo.
+Ogni riga rappresenta una FK con un flag `consentito` (l'indice deve esistere?) e il `dll_command` per crearlo/rimuoverlo.
 
 **View di supporto:**
 
-| View                                                                                   | Cosa mostra                                     |
-| -------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| [vw_fk_con_indice_missing_policy](/dbzero/dbops/views/vw_fk_con_indice_missing_policy) | FK con indice esistente ma senza riga in policy |
-| [vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice)                           | FK senza indice (considerando anche UNIQUE)     |
-| [vw_duplicate_indexes](/dbzero/dbops/views/vw_duplicate_indexes)                       | Indici duplicati per schema/tabella             |
+| View | Cosa mostra |
+| --- | --- |
+| [vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice) | FK realmente prive di copertura (vedi 7.2) |
+| [vw_fk_con_indice_missing_policy](/dbzero/dbops/views/vw_fk_con_indice_missing_policy) | FK con un indice **dedicato** ma senza riga in policy |
+| [vw_duplicate_indexes](/dbzero/dbops/views/vw_duplicate_indexes) | Indici duplicati esatti (stessa firma completa) |
+| [vw_indici_ridondanti_prefisso](/dbzero/dbops/views/vw_indici_ridondanti_prefisso) | Indici le cui colonne sono la testa di un altro indice |
 
 Tutte le view lavorano solo sugli schemi presenti in `dbops.automation_scope`.
 
 **Funzioni e procedure:**
 
-| Nome                                                                              | Tipo      | Cosa fa                                                       |
-| --------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------- |
-| [fn_seed_fk_index_policy](/dbzero/dbops/funzioni/fn_seed_fk_index_policy)         | Funzione  | Registra in policy le FK gia indicizzate (`consentito=true`)  |
-| [fn_populate_fk_index_policy](/dbzero/dbops/funzioni/fn_populate_fk_index_policy) | Funzione  | Registra in policy le FK senza indice (`consentito=false`)    |
-| [apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy)             | Procedura | Crea/rimuove indici in base alla policy (invocata con `CALL`) |
+| Nome | Tipo | Cosa fa |
+| --- | --- | --- |
+| [fn_seed_fk_index_policy](/dbzero/dbops/funzioni/fn_seed_fk_index_policy) | Funzione | Registra in policy le FK gia indicizzate (`consentito=true`) |
+| [fn_populate_fk_index_policy](/dbzero/dbops/funzioni/fn_populate_fk_index_policy) | Funzione | Registra in policy le FK senza indice (`consentito=false`) |
+| [apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy) | Procedura | Crea/rimuove indici in base alla policy (invocata con `CALL`) |
 
-### 7.2 Flusso operativo
+### 7.2 Quando una FK si considera coperta
+
+Non serve un indice **dedicato**. Il controllo di integrità referenziale esegue `WHERE fkcol = $1`, e qualsiasi btree che sappia servire quella ricerca va bene. La FK è quindi coperta quando esiste un btree valido tale che:
+
+* le colonne della FK coincidono, **come insieme**, con le sue prime N colonne chiave — cioè per **prefisso**. Un indice su `(contratto_id, riga_nr)` copre la FK su `contratto_id`;
+* il predicato è assente, **oppure** è una congiunzione di soli `<colonna della FK> IS NOT NULL`. Quest'ultimo caso vale perché `$1` non è mai nullo — una riga con FK nulla non ha padre da verificare — quindi `fkcol = $1` implica `fkcol IS NOT NULL`, e il planner lo dimostra. Su una FK nullabile un parziale così è **migliore** di un indice totale, non peggiore.
+
+Ogni altro predicato viene rifiutato, anche quando di fatto coprirebbe: l'errore possibile è segnalare come scoperta una FK coperta, mai il contrario.
+
+> ⚠️ Fino al 2026-07-27 la copertura era valutata pretendendo l'**uguaglianza esatta** dell'elenco di colonne. Le FK già servite da una UNIQUE più larga risultavano scoperte e l'automazione ci piantava sopra un indice gemello: 27 dei 48 indici ridondanti censiti in quella data sono nati così.
+
+### 7.3 La policy è OPT-IN
+
+`fn_populate_fk_index_policy()` registra le FK nuove con `consentito=false`. **Perché l'indice nasca serve un seed esplicito** che porti il flag a `true`: senza, l'automazione non crea nulla. Il seed va in `80_data` come CSV più `loadUpdateData`, mai come SQL inline.
+
+### 7.4 Flusso operativo
 
 ```text
 1. Seed     → registra le FK gia indicizzate
@@ -520,9 +536,38 @@ SELECT dbops.fn_populate_fk_index_policy();
 CALL dbops.apply_fk_index_policy();
 ```
 
-**Job schedulabile:** `maintenance.proc_apply_fk_index_policy_job()` (con logging e lock).
+`apply` è invocata a ogni `migrate` da `90_end` (`runAlways: true`) e dal job settimanale.
 
-**Regola operativa:** non creare indici FK manualmente. Se servono, usa la policy e il naming coerente, poi registra in `fk_index_policy`.
+**Job schedulabile:** `maintenance.proc_apply_fk_index_policy_job()` (con logging e lock). Invocata con `true` esegue anche il `populate`.
+
+### 7.5 Le due guardie di `apply_fk_index_policy()`
+
+La policy poggia su un flag booleano, e un flag può essere girato per errore. Le guardie servono a rendere innocuo l'errore, non a impedirlo.
+
+1. **Con `consentito=true` crea solo se la FK figura ancora in `vw_fk_senza_indice`.** Una FK già coperta non riceve un indice dedicato nemmeno a flag `true`: un `true` rimesso per sbaglio non può rigenerare ridondanze già bonificate. L'auto-riparazione resta intatta — se l'indice viene cancellato a mano, la FK ricompare nella view e al giro dopo viene ricreato.
+2. **Con `consentito=false` rifiuta il `DROP`**, con `RAISE WARNING`, se il nome estratto dal comando appartiene a un UNIQUE, a una PK, a un indice a supporto di un constraint o alla `REPLICA IDENTITY`. Un flag non deve poter togliere un vincolo di integrità.
+
+Si sceglie il warning e non l'eccezione perché la procedura gira a ogni `migrate`: un errore bloccherebbe la pipeline, e un indice di troppo costa incomparabilmente meno. A fine ciclo viene emesso un `RAISE NOTICE` con creati / saltati / droppati / rifiutati.
+
+### 7.6 Il `dll_command` deve nominare l'indice che esiste
+
+`fn_seed_fk_index_policy()` porta sotto governo le FK che hanno già un indice, leggendo `vw_fk_con_indice_missing_policy`. Due regole rendono l'operazione sicura:
+
+* il comando registrato punta al **nome reale** dell'indice trovato. Se ne sintetizza uno diverso, `apply` crea un secondo indice gemello sotto quel nome — è esattamente così che un indice già rimosso è ricomparso mesi dopo senza alcun changeSet;
+* si registrano **solo indici dedicati** alla FK: colonne uguali a quelle della FK, non UNIQUE, non PK, non `REPLICA IDENTITY`, non a supporto di un constraint, totali. Il ramo `consentito=false` esegue `DROP INDEX` su quel nome, e deve poter togliere solo un acceleratore. Le FK coperte da un indice più largo non si registrano: non c'è nulla da governare.
+
+### 7.7 Indici ridondanti
+
+Vedi `docs/it/linee-guida-sql.md` §8.6 per il dettaglio. In sintesi, due viste per due nozioni distinte:
+
+```sql
+SELECT * FROM dbops.vw_duplicate_indexes;            -- duplicati esatti
+SELECT * FROM dbops.vw_indici_ridondanti_prefisso;   -- ridondanti per prefisso
+```
+
+La colonna `origine` della seconda dice **come** si rimuove: `AUTOMAZIONE_FK` richiede `consentito=false` più il `DROP` esplicito, `MANUALE` un `DROP INDEX` in changeSet.
+
+**Regola operativa:** non creare né droppare indici FK manualmente. Si agisce sulla policy e ci pensa `apply_fk_index_policy()`. Un `DROP` senza flag verrebbe annullato al primo `migrate` successivo.
 
 ---
 

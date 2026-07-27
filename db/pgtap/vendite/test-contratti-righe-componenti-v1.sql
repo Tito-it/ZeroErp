@@ -16,7 +16,7 @@
 --   9)  Trigger trgfn_componenti_check_prezzo_obbligatorio registrato
 --       (modello unificato: CHECK prezzo<>0 rimosso, sostituito da trigger condizionale)
 --   10) CHECK chk_contrighe_comp_origine esiste
---   11) Indice ix_vendite_contrighe_comp_riga esiste
+--   11) FK fk_contrighe_comp_riga coperta da un indice
 --   12) Colonna quantita presente su contratti_righe (rename da quantita_fissa)
 --   13) Tutti i 13 trigger registrati sulla tabella
 --       (+2 da modello unificato: prezzo_obbligatorio + guard_obbligatorio)
@@ -132,12 +132,20 @@ SELECT col_has_check(
 );
 
 -- =========================================================
--- 11) Indice su riga_contratto_id
+-- 11) FK riga_contratto_id coperta da un indice
+--     L'indice dedicato ix_vendite_contrighe_comp_riga e' stato rimosso il 2026-07-27
+--     (changeSet 20260727-37): era ridondante, perche' uq_contrighe_comp_riga_art_comp
+--     ha riga_contratto_id come colonna leading e serve gia' ogni ricerca per riga,
+--     ON DELETE CASCADE compreso.
+--     Il test verifica ora la PROPRIETA' — la FK e' coperta — invece del nome
+--     di un indice specifico: resta valido anche se l'indice coprente cambia.
 -- =========================================================
-SELECT has_index(
-    'vendite', 'contratti_righe_componenti',
-    'ix_vendite_contrighe_comp_riga',
-    '11) indice ix_vendite_contrighe_comp_riga esiste'
+SELECT ok(
+    NOT EXISTS (SELECT 1 FROM dbops.vw_fk_senza_indice
+                 WHERE schema_name     = 'vendite'
+                   AND table_name      = 'contratti_righe_componenti'
+                   AND constraint_name = 'fk_contrighe_comp_riga'),
+    '11) FK fk_contrighe_comp_riga coperta da un indice'
 );
 
 -- =========================================================

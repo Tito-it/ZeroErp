@@ -47,7 +47,6 @@
 |------|-------------|
 | ix_anagrafiche_soggetti_comune_id | `CREATE INDEX ix_anagrafiche_soggetti_comune_id ON anagrafiche.soggetti USING btree (comune_id)` |
 | ix_anagrafiche_soggetti_ragione_sociale_completa | `CREATE INDEX ix_anagrafiche_soggetti_ragione_sociale_completa ON anagrafiche.soggetti USING btree (ragione_sociale_completa)` |
-| ix_anagrafiche_soggetti_stato_id | `CREATE INDEX ix_anagrafiche_soggetti_stato_id ON anagrafiche.soggetti USING btree (stato_id)` |
 | ix_anagrafiche_soggetti_titolo_cortesia_id | `CREATE INDEX ix_anagrafiche_soggetti_titolo_cortesia_id ON anagrafiche.soggetti USING btree (titolo_cortesia_id)` |
 | ix_soggetti_codice_trgm | `CREATE INDEX ix_soggetti_codice_trgm ON anagrafiche.soggetti USING gin (codice gin_trgm_ops)` |
 | ix_soggetti_id_fiscale_univoco_trgm | `CREATE INDEX ix_soggetti_id_fiscale_univoco_trgm ON anagrafiche.soggetti USING gin (id_fiscale_univoco_cf_piva gin_trgm_ops) WITH (fastupdate='true', gin_pending_list_limit='4194304')` |

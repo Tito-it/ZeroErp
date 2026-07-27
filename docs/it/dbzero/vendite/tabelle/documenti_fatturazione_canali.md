@@ -36,7 +36,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_doc_fatt_canali_sorgente | `CREATE INDEX ix_doc_fatt_canali_sorgente ON vendite.documenti_fatturazione_canali USING btree (sorgente_tipo_id, sorgente_uid)` |
 | ix_doc_fatt_canali_stato_canale | `CREATE INDEX ix_doc_fatt_canali_stato_canale ON vendite.documenti_fatturazione_canali USING btree (stato_canale, canale_codice)` |
 | pk_documenti_fatturazione_canali | `CREATE UNIQUE INDEX pk_documenti_fatturazione_canali ON vendite.documenti_fatturazione_canali USING btree (id)` |
 | uq_doc_fatt_canali_sorgente_canale | `CREATE UNIQUE INDEX uq_doc_fatt_canali_sorgente_canale ON vendite.documenti_fatturazione_canali USING btree (sorgente_tipo_id, sorgente_uid, canale_codice)` |

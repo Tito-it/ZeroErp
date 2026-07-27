@@ -64,10 +64,8 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_fatture_ba_data | `CREATE INDEX ix_fatture_ba_data ON vendite.fatture USING btree (billing_account_id, data)` |
-| ix_fatture_billing_account_id | `CREATE INDEX ix_fatture_billing_account_id ON vendite.fatture USING btree (billing_account_id)` |
 | ix_fatture_data_contabile | `CREATE INDEX ix_fatture_data_contabile ON vendite.fatture USING btree (data_contabilizzazione)` |
 | ix_fatture_emitt_data | `CREATE INDEX ix_fatture_emitt_data ON vendite.fatture USING btree (emittente_soggetto_ruolo_id, data)` |
-| ix_fatture_emittente_soggetto_ruolo_id | `CREATE INDEX ix_fatture_emittente_soggetto_ruolo_id ON vendite.fatture USING btree (emittente_soggetto_ruolo_id)` |
 | ix_fatture_modalita_pagamento_id | `CREATE INDEX ix_fatture_modalita_pagamento_id ON vendite.fatture USING btree (modalita_pagamento_id)` |
 | ix_fatture_registro_id | `CREATE INDEX ix_fatture_registro_id ON vendite.fatture USING btree (registro_id)` |
 | ix_fatture_reseller_soggetto_ruolo_id | `CREATE INDEX ix_fatture_reseller_soggetto_ruolo_id ON vendite.fatture USING btree (reseller_soggetto_ruolo_id)` |

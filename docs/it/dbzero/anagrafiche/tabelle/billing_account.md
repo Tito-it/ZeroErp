@@ -42,7 +42,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_anagrafiche_billing_account_istanza_utility_id | `CREATE INDEX ix_anagrafiche_billing_account_istanza_utility_id ON anagrafiche.billing_account USING btree (istanza_utility_id)` |
 | ix_anagrafiche_billing_account_parent_account_id | `CREATE INDEX ix_anagrafiche_billing_account_parent_account_id ON anagrafiche.billing_account USING btree (parent_account_id)` |
 | ix_anagrafiche_billing_account_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_billing_account_soggetto_ruolo_id ON anagrafiche.billing_account USING btree (soggetto_ruolo_id)` |
 | ix_anagrafiche_billing_account_utility_id | `CREATE INDEX ix_anagrafiche_billing_account_utility_id ON anagrafiche.billing_account USING btree (utility_id)` |
