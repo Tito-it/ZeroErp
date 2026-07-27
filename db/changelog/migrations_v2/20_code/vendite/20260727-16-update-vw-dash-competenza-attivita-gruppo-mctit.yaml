@@ -1,0 +1,180 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vw_dash_competenza_attivita + colonne di gruppo fatturabile
+#   (brief-db-emissione-fattura-per-documento-sorgente PARTE A, step A7,
+#    prerequisito di A8)
+#
+# PERCHE' PARTIRE DA QUESTA VISTA E NON DA UNA QUERY NUOVA (decisione D-4).
+#   L'elenco dei gruppi fatturabili (A8) deve rispondere a due requisiti che
+#   questa vista soddisfa gia':
+#     1. SCOPE EMITTENTE (vincolo 2 del brief, garanzia G14): la vista e'
+#        security_invoker=on e filtra su script.fn_get_emittenti_scope_sr_ids.
+#        Un operatore non puo' raggiungere righe che oggi non vede — e non
+#        perche' ce lo siamo ricordati, ma perche' e' la stessa vista;
+#     2. COERENZA COI NUMERI DELLA CARD (garanzia G8): il conteggio della card
+#        "Da emettere" nasce da qui, dallo stesso CASE che calcola `stadio`.
+#        Derivando l'elenco dalla stessa fonte, i totali coincidono PER
+#        COSTRUZIONE. Una query parallela partirebbe uguale e divergerebbe alla
+#        prima modifica di una delle due — e' la lezione gia' pagata con le
+#        viste del riepilogo IVA.
+#
+# COSA AGGIUNGE: quattro colonne, tutte IN CODA.
+#   sorgente_tipo_id / sorgente_uid -> l'origine della riga, che la vista non
+#       esponeva: senza, il gruppo non e' calcolabile a valle;
+#   tipo_movimento -> distingue le righe ONERE dalle NORMALE. Serve all'elenco
+#       per etichettare il gruppo "Oneri di commessa" e all'operatore per
+#       sapere che sta fatturando una penale e non merce;
+#   gruppo_key -> la chiave, calcolata da vendite.fn_build_gruppo_fatturabile_key.
+#       E' la stessa funzione che usano i filtri di emissione (A3..A6): l'elenco
+#       mostra quindi ESATTAMENTE le chiavi che l'emissione accettera', senza
+#       mappature intermedie (garanzia G8, e requisito A3 del brief).
+#
+# ⚠️ COLONNE IN CODA — vincolo di PostgreSQL, non stile. CREATE OR REPLACE VIEW
+#   ammette solo l'AGGIUNTA di colonne in fondo: non si possono rinominare,
+#   riordinare o eliminare quelle esistenti (servirebbe DROP + CREATE, che
+#   fallirebbe per le dipendenze). L'ordine attuale e' quindi immutabile.
+#
+# ⚠️ security_invoker=on VA RI-SPECIFICATO. La reloption non compare in
+#   pg_get_viewdef e PostgreSQL la AZZERA a ogni CREATE OR REPLACE che non la
+#   ripete: dimenticarla trasformerebbe la vista in security_definer di fatto,
+#   aprendo un buco nello scope emittente su tutte le dashboard di competenza.
+#   E' lo stesso incidente gia' occorso e corretto (fix V-1, slice
+#   fatturazione a due lenti). Un pgTAP di A10 verifica la reloption.
+#
+# NESSUN CAMBIO DI SEMANTICA: filtri, join, CASE dello stadio e calcolo del
+#   valore sono ripresi 1:1 dalla doc auto-gen. I consumatori esistenti
+#   (DashboardCompetenzaView e le viste che ci si appoggiano) non vedono
+#   differenze.
+#
+# Base: doc auto-gen docs/it/dbzero/vendite/views/vw_dash_competenza_attivita.md.
+# Dipendenze: 20260727-10 (fn_build_gruppo_fatturabile_key).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260727-16-update-vw-dash-competenza-attivita-gruppo-mctit.yaml
+
+  - changeSet:
+      id: 20260727-16-update-vw-dash-competenza-attivita-gruppo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_dash_competenza_attivita + sorgente_tipo_id, sorgente_uid, tipo_movimento,
+        gruppo_key (in coda). Prerequisito dell'elenco dei gruppi fatturabili.
+        security_invoker=on ri-specificato.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'fn_build_gruppo_fatturabile_key'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+              WITH (security_invoker=on) AS
+              SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  (
+                      CASE
+                          WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                          WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                          WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                          ELSE 'FATTURATA'::text
+                      END)::character varying AS stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE ((date_trunc('month'::text, af.data_insert))::date > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  fr.imponibile_riga AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  -- ============================================================
+                  -- Colonne di GRUPPO FATTURABILE (rev 2026-07-27, step A7).
+                  -- IN CODA per vincolo di CREATE OR REPLACE VIEW.
+                  -- ============================================================
+                  ca.sorgente_tipo_id,
+                  ca.sorgente_uid,
+                  ca.tipo_movimento,
+                  -- Chiave del gruppo: stessa funzione usata dai filtri di
+                  -- emissione, cosi' cio' che l'elenco mostra e' esattamente
+                  -- cio' che l'emissione accetta (G8). NULL impossibile: la
+                  -- funzione o risolve o solleva.
+                  vendite.fn_build_gruppo_fatturabile_key(
+                      ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key
+                 FROM (((((((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
+                   LEFT JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                   LEFT JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE (flf.fattura_id = f.id)
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON (true))
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_attivita IS
+                'Grana RIGA di commessa per la Lente Competenza: stadio del funnel '
+                '(DA_APPROVARE / DA_EMETTERE / EMESSA_NON_FATTURATA / FATTURATA), valore, '
+                'cliente, aggancio a fattura e lotto. security_invoker=on + filtro '
+                'script.fn_get_emittenti_scope_sr_ids: lo scope emittente e'' applicato '
+                'dalla vista, non dal chiamante. rev 2026-07-27 (brief emissione mirata '
+                'A7): aggiunte in coda sorgente_tipo_id, sorgente_uid, tipo_movimento e '
+                'gruppo_key. gruppo_key viene da vendite.fn_build_gruppo_fatturabile_key, '
+                'la stessa funzione usata dai filtri p_gruppi dell''emissione: le chiavi '
+                'mostrate sono esattamente quelle che l''emissione accetta (garanzia G8). '
+                'E'' la base di vw_dash_competenza_gruppi, che eredita da qui scope '
+                'emittente e coerenza dei conteggi con la card. ⚠️ Ogni CREATE OR REPLACE '
+                'deve RI-SPECIFICARE WITH (security_invoker=on): la reloption non compare '
+                'in pg_get_viewdef e PostgreSQL la azzera, aprendo un buco nello scope.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Rollback: le colonne aggiunte non sono rimovibili con
+              -- CREATE OR REPLACE VIEW. Per tornare indietro serve DROP VIEW
+              -- + ri-applicazione della definizione precedente (e dei suoi
+              -- dipendenti). Non automatizzato: additivo e retro-compatibile.
+              SELECT 1;

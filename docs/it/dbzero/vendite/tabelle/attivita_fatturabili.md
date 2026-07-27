@@ -92,7 +92,6 @@
 |------|-------------|
 | ix_attivita_articolo_flags | `CREATE INDEX ix_attivita_articolo_flags ON vendite.attivita_fatturabili USING btree (articolo_id, approvato, fatturato)` |
 | ix_attivita_billing_competenza | `CREATE INDEX ix_attivita_billing_competenza ON vendite.attivita_fatturabili USING btree (billing_account_id, competenza_mese)` |
-| ix_attivita_fatturabili_commessa_attivita_id | `CREATE INDEX ix_attivita_fatturabili_commessa_attivita_id ON vendite.attivita_fatturabili USING btree (commessa_attivita_id)` |
 | ix_attivita_fatturabili_commessa_id | `CREATE INDEX ix_attivita_fatturabili_commessa_id ON vendite.attivita_fatturabili USING btree (commessa_id)` |
 | ix_attivita_fatturabili_competenza_mese | `CREATE INDEX ix_attivita_fatturabili_competenza_mese ON vendite.attivita_fatturabili USING btree (competenza_mese)` |
 | ix_attivita_fatturabili_fattura_riga_id | `CREATE INDEX ix_attivita_fatturabili_fattura_riga_id ON vendite.attivita_fatturabili USING btree (fattura_riga_id)` |

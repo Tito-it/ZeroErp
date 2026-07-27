@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_emit_attivita_fatturabili_da_commessa`
 
 ```sql
-CREATE FUNCTION fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean)
+CREATE FUNCTION fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean, p_gruppi text[])
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean DEFAULT true, p_dry_run boolean DEFAULT false)
+CREATE OR REPLACE FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean DEFAULT true, p_dry_run boolean DEFAULT false, p_gruppi text[] DEFAULT NULL::text[])
  RETURNS TABLE(total_candidate integer, inserted_rows integer, updated_rows integer, skipped_rows integer)
  LANGUAGE plpgsql
 AS $function$
@@ -22,6 +22,14 @@ AS $function$
 -- rev 2026-07-17: propaga tipo_movimento (brief immutabilita §4c.2);
 --        e' il filtro con cui il contatore tenuti-fatturati tiene
 --        fuori dal libro mastro della merce le righe non-NORMALE.
+-- rev 2026-07-27 (brief emissione mirata A3): p_gruppi restringe
+--        l'emissione ai soli GRUPPI FATTURABILI richiesti. NULL =
+--        nessuna restrizione (comportamento storico). E' il primo
+--        dei due punti in cui il perimetro mirato va applicato:
+--        l'altro e' fn_select_attivita_fatturabili, che filtra le
+--        AF gia' esistenti (senza quello, le righe di un altro
+--        gruppo rimaste da un giro precedente verrebbero comunque
+--        rastrellate — garanzia G12).
 DECLARE
     v_commessa              vendite.commesse%ROWTYPE;
     v_root_id               vendite.commesse_sorgenti.id%TYPE;
@@ -104,6 +112,16 @@ BEGIN
          WHERE ca.commessa_id = p_commessa_id
            AND ca.stato_emissione = 'NON_EMESSA'
            AND (p_only_approved IS FALSE OR ca.stato_approvazione = 'APPROVATA')
+           -- EMISSIONE MIRATA (rev 2026-07-27): NULL = nessuna
+           -- restrizione; array vuoto = richiesta vuota -> zero righe;
+           -- chiave inesistente -> zero righe, nessun errore (G6).
+           -- La chiave viene dalla funzione A1, mai ricostruita qui.
+           AND (
+                p_gruppi IS NULL
+                OR vendite.fn_build_gruppo_fatturabile_key(
+                       ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
+                   ) = ANY (p_gruppi)
+               )
          ORDER BY ca.id
     LOOP
         total_candidate := total_candidate + 1;
@@ -224,8 +242,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean)
-IS 'Pull da commesse_attivita ad attivita_fatturabili con sorgente COMMESSA+segment_key (hash UUID) e idempotenza. Propaga lo snapshot audit pricing v5 (8 colonne) 1:1 e tipo_movimento. Sottosistema lotto rimosso (deprecato 20260227-16). rev 2026-06-28: sorgente per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-17: propaga tipo_movimento (colonna, brief immutabilita §4c.2).';
+COMMENT ON FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean, p_gruppi text[])
+IS 'Pull da commesse_attivita ad attivita_fatturabili con sorgente COMMESSA+segment_key (hash UUID) e idempotenza. Propaga lo snapshot audit pricing v5 (8 colonne) 1:1 e tipo_movimento. Sottosistema lotto rimosso (deprecato 20260227-16). rev 2026-06-28: sorgente per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-17: propaga tipo_movimento (colonna, brief immutabilita §4c.2). rev 2026-07-27 (brief emissione mirata A3): p_gruppi text[] restringe l''emissione ai soli gruppi fatturabili richiesti — NULL = nessuna restrizione (comportamento storico, garanzia G1), array vuoto = richiesta vuota (zero righe), chiave inesistente = zero righe senza errore (G6). La chiave arriva da vendite.fn_build_gruppo_fatturabile_key, mai ricostruita a mano: elenco ed emissione filtrano cosi'' sulla stessa stringa (G8). Senza questo filtro un giro mirato porterebbe fuori da "Da emettere" anche le righe degli altri documenti della stessa commessa, che e'' multi-sorgente (G3/G13). ⚠️ Filtrare qui NON basta: le AF gia'' esistenti le filtra fn_select_attivita_fatturabili (G12).';
 ```
 
 ---

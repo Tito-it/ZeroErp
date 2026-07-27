@@ -1,0 +1,215 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_build_gruppo_fatturabile_key: l'unica fonte di verita' della chiave di
+#   gruppo fatturabile
+#   (brief-db-emissione-fattura-per-documento-sorgente PARTE A, step A1,
+#    decisioni D-1 e D-9)
+#
+# COS'E' UN GRUPPO FATTURABILE. L'unita' su cui l'operatore decide "questo lo
+#   fatturo adesso" non e' la commessa (e' multi-sorgente: contiene lavoro di
+#   documenti diversi) e non e' sempre un documento (gli oneri non ne hanno).
+#   Sono quindi DUE forme:
+#     - un DOCUMENTO SORGENTE  -> '<codice_interno_sorgente>:<sorgente_uid>'
+#     - gli ONERI di una commessa -> 'MAN:<commessa_id>'
+#   La seconda forma non e' un ripiego: la porta oneri crea righe SOURCELESS
+#   per progetto (brief porta oneri), e senza questa forma quel lavoro sarebbe
+#   conteggiato nella card ma non raggiungibile da nessuna azione mirata —
+#   invisibile e non azionabile.
+#
+# PERCHE' UNA STRINGA SOLA (D-1). Il criterio di emissione accetta N gruppi in
+#   un colpo: una chiave scalare si passa come text[], si mostra come
+#   identificativo nell'elenco e si confronta senza mapping fra DB, BE e FE.
+#   L'alternativa (coppia sorgente_tipo_id + sorgente_uid, piu' un terzo campo
+#   per gli oneri) avrebbe richiesto di propagare tre colonne in quattro
+#   funzioni e di costruire un array di record lato BE, per zero valore.
+#
+# ⚠️ LA FORMA DELL'IDENTIFICATIVO E' L'uid, NON L'id (D-9, decisa 2026-07-27).
+#   Questa funzione legge cio' che sta in vendite.commesse_attivita, dove
+#   sorgente_uid contiene <tabella>.uid::text per TUTTE le sorgenti — anche
+#   quelle con config.sorgenti.key_selector = 'id'.
+#   NON e' un errore da correggere e NON va allineata a commesse_sorgenti:
+#     - commesse_sorgenti e' normalizzata da fn_link_commessa_sorgente
+#       (key_selector: 'id' -> id::text). Le due tabelle sono popolate dallo
+#       stesso push e per lo stesso documento contengono valori DIVERSI;
+#     - la chiave di gruppo non esce mai dal mondo di commesse_attivita:
+#       la produce vw_dash_competenza_gruppi (A8) e la consumano i filtri
+#       dell'emissione (A3..A6), che leggono tutti quella tabella;
+#     - normalizzare commesse_attivita romperebbe i join vivi delle dashboard
+#       (vw_dash_fatturazione_contratti: ca.sorgente_uid = c.uid::text);
+#     - il riferimento leggibile (D-5) si aggancia a
+#       vw_dash_fatturazione_documenti.documento_uid, che e' l'uid: con questa
+#       forma il join e' un'uguaglianza diretta.
+#   Riferimenti: guida /guide/sorgente-polimorfa §4a, manuale
+#   commesse_attivita, brief §4-bis fatto F15.
+#
+# PREFISSO PER codice_interno, NON PER codice: il codice_interno e' immutabile
+#   (lock automatico), il codice e' un'etichetta modificabile dall'utente.
+#   Stessa regola gia' applicata in fn_emit_attivita_fatturabili_da_commessa
+#   (rev 2026-06-28, analisi-hardcoded-codice §3a) e in linee-guida-sql §6c/§6d.
+#
+# NON derivare la chiave da segment_key: quella e' 'ORD:<uid>:R:<n>',
+#   'MAN:<commessa>:<n>', 'CONTR:<uid>:R:<n>:M:<YYYY-MM>' — prefissi di
+#   leggibilita' per-sorgente, non un contratto. Ricavarne il gruppo con
+#   split_part creerebbe un accoppiamento fragile a una convenzione di
+#   formattazione.
+#
+# STABLE: legge config.sorgenti (vocabolario stabile a runtime), nessuna
+#   scrittura. Non IMMUTABLE proprio per la lookup.
+#
+# Dipendenze: config.sorgenti, vendite.commesse_attivita.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260727-10-create-fn-build-gruppo-fatturabile-key-mctit.yaml
+
+  - changeSet:
+      id: 20260727-10-create-fn-build-gruppo-fatturabile-key
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea vendite.fn_build_gruppo_fatturabile_key: unica fonte di verita' della
+        chiave di gruppo fatturabile ('<codice_interno>:<uid>' per i documenti,
+        'MAN:<commessa_id>' per le righe sourceless/oneri).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: sorgenti
+            - tableExists:
+                schemaName: vendite
+                tableName: commesse_attivita
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_build_gruppo_fatturabile_key(
+                  p_sorgente_tipo_id vendite.commesse_attivita.sorgente_tipo_id%TYPE,
+                  p_sorgente_uid     vendite.commesse_attivita.sorgente_uid%TYPE,
+                  p_commessa_id      vendite.commesse_attivita.commessa_id%TYPE
+              )
+               RETURNS text
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: costruire la chiave del GRUPPO FATTURABILE di una riga di
+              --        commessa. Due forme, secondo la natura della riga:
+              --          riga con documento sorgente -> '<codice_interno>:<uid>'
+              --          riga sourceless (oneri)     -> 'MAN:<commessa_id>'
+              -- E' l'unica fonte di verita' della chiave: la usano l'elenco dei
+              -- gruppi (vw_dash_competenza_gruppi) e tutti i filtri di emissione
+              -- mirata. Se la forma cambiasse qui, cambierebbe ovunque insieme.
+              -- brief-db-emissione-fattura-per-documento-sorgente A1 / D-1 / D-9.
+              DECLARE
+                  v_uid             vendite.commesse_attivita.sorgente_uid%TYPE;
+                  v_codice_interno  config.sorgenti.codice_interno%TYPE;
+              BEGIN
+                  -- Guard parametri ID: errore esplicito, mai normalizzazione
+                  -- silenziosa (linee-guida-sql: "se NULL o <= 0 -> errore").
+                  IF p_sorgente_tipo_id IS NOT NULL AND p_sorgente_tipo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_build_gruppo_fatturabile_key', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_sorgente_tipo_id', 'valore', p_sorgente_tipo_id),
+                          NULL::uuid, 'p_sorgente_tipo_id se fornito deve essere > 0'
+                      );
+                  END IF;
+
+                  IF p_commessa_id IS NOT NULL AND p_commessa_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_build_gruppo_fatturabile_key', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_commessa_id', 'valore', p_commessa_id),
+                          NULL::uuid, 'p_commessa_id se fornito deve essere > 0'
+                      );
+                  END IF;
+
+                  v_uid := NULLIF(btrim(COALESCE(p_sorgente_uid, '')), '');
+
+                  -- ============================================
+                  -- CASO 1: riga SOURCELESS -> gruppo "oneri di commessa"
+                  -- ============================================
+                  -- Il CHECK chk_commesse_attivita_sorgente_pair impone che la
+                  -- coppia (sorgente_tipo_id, sorgente_uid) sia tutta NULL o
+                  -- tutta valorizzata: sourceless = entrambe NULL.
+                  IF p_sorgente_tipo_id IS NULL AND v_uid IS NULL THEN
+                      IF p_commessa_id IS NULL THEN
+                          -- Senza documento E senza commessa la riga non ha
+                          -- alcun contenitore: non e' un gruppo, e' un errore.
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', 'fn_build_gruppo_fatturabile_key', 'E_PARAMETRO_INVALIDO',
+                              jsonb_build_object('parametro', 'p_commessa_id', 'valore', NULL),
+                              NULL::uuid,
+                              'riga sourceless: p_commessa_id obbligatorio (e'' il suo unico contenitore)'
+                          );
+                      END IF;
+
+                      -- Prefisso MAN: allineato alla convenzione della porta
+                      -- oneri (segment_key 'MAN:<commessa>:<n>'), ma qui la
+                      -- chiave si ferma alla commessa: tutti gli oneri di una
+                      -- commessa sono UN gruppo solo, non uno per riga.
+                      RETURN 'MAN:' || p_commessa_id::text;
+                  END IF;
+
+                  -- ============================================
+                  -- CASO 2: coppia incoerente -> fail-loud
+                  -- ============================================
+                  -- Non dovrebbe accadere (lo impedisce il CHECK sulla tabella),
+                  -- ma la funzione e' chiamabile con valori arbitrari: meglio
+                  -- rumore che una chiave inventata che poi non risolve.
+                  IF p_sorgente_tipo_id IS NULL OR v_uid IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_build_gruppo_fatturabile_key', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'sorgente_uid', p_sorgente_uid),
+                          NULL::uuid,
+                          'coppia sorgente incoerente: attesi entrambi NULL (riga sourceless) o entrambi valorizzati'
+                      );
+                  END IF;
+
+                  -- ============================================
+                  -- CASO 3: riga con documento sorgente
+                  -- ============================================
+                  -- codice_interno (immutabile), MAI codice (etichetta
+                  -- modificabile) — linee-guida-sql §6c/§6d.
+                  -- Nessun filtro su attivo: una riga di commessa nata da una
+                  -- sorgente poi disattivata appartiene comunque al suo gruppo,
+                  -- e deve restare fatturabile.
+                  SELECT s.codice_interno
+                    INTO v_codice_interno
+                    FROM config.sorgenti s
+                   WHERE s.id = p_sorgente_tipo_id
+                   LIMIT 1;
+
+                  IF v_codice_interno IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_build_gruppo_fatturabile_key', 'E_CODICE',
+                          jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id),
+                          NULL::uuid, p_sorgente_tipo_id::text, 'config.sorgenti'
+                      );
+                  END IF;
+
+                  -- v_uid e' l'UID del documento (D-9): e' la forma presente in
+                  -- commesse_attivita, NON la chiave canonica di
+                  -- commesse_sorgenti. Vedi header del changeSet.
+                  RETURN v_codice_interno || ':' || v_uid;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_build_gruppo_fatturabile_key(bigint, text, bigint)
+              IS 'Unica fonte di verita'' della chiave di GRUPPO FATTURABILE di una riga vendite.commesse_attivita. Due forme: riga con documento sorgente -> ''<codice_interno_sorgente>:<sorgente_uid>''; riga sourceless (oneri della porta manuale, sorgente_* NULL) -> ''MAN:<commessa_id>'' (tutti gli oneri di una commessa sono UN gruppo). Prefisso da codice_interno (immutabile), mai da codice. ⚠️ L''identificativo del documento e'' l''UID, perche'' e'' cio'' che commesse_attivita.sorgente_uid contiene per TUTTE le sorgenti, anche quelle con config.sorgenti.key_selector=''id'': NON allineare a commesse_sorgenti, che e'' normalizzata da fn_link_commessa_sorgente e per lo stesso documento contiene un valore diverso (decisione D-9; guida /guide/sorgente-polimorfa §4a). La chiave non esce mai dal perimetro di commesse_attivita: la produce vw_dash_competenza_gruppi e la consumano i filtri p_gruppi dell''emissione mirata. Non derivarla da segment_key. STABLE (lookup su config.sorgenti). Guard: ID <= 0, riga sourceless senza commessa, coppia sorgente incoerente. brief-db-emissione-fattura-per-documento-sorgente A1, rev 2026-07-27.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_build_gruppo_fatturabile_key(bigint, text, bigint);

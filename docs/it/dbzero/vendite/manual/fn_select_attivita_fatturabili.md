@@ -86,4 +86,47 @@ FROM vendite.fn_select_attivita_fatturabili(
 
 ---
 
+---
+
+### ⭐ Emissione mirata: `p_gruppi` — il punto critico della slice (rev 2026-07-27)
+
+Parametro `text[]`, default `NULL`, stessa semantica delle altre funzioni della
+catena (`NULL` = nessuna restrizione, `'{}'` = zero righe, chiave inesistente =
+zero righe senza errore).
+
+**La falla che chiude.** Questa funzione seleziona e blocca le attività su cui
+il lotto costruirà le righe fattura, filtrando per approvato, non fatturato, non
+sospesa, non lockata, `posticipa_al`, competenza, tipo doc, BA, utility,
+emittente, valuta, area. **Nessuno di questi criteri sa nulla della sorgente.**
+
+Conseguenza senza il filtro: un lotto mirato al gruppo A rastrella qualunque
+attività fatturabile **già esistente** e non ancora consumata del gruppo B nello
+stesso perimetro. I residui non sono un caso di scuola — nascono da un giro
+interrotto fra pull e generazione righe, da un reset a bozza, o dal giro
+schedulato che ha fatto pull senza completare.
+
+Il risultato sarebbe una fattura **corretta nella forma e sbagliata nel
+perimetro**: l'errore peggiore, perché silenzioso.
+
+#### Come, e perché così
+
+Il legame attività → documento **non è** su `attivita_fatturabili`: lì
+`sorgente_tipo_id`/`sorgente_uid` sono rioccupati dall'idempotenza del pull
+(sorgente `COMMESSA` + hash md5 della `segment_key`) e resta solo
+`sorgente_origine_tipo_id`, cioè il *tipo* di origine. Sopravvive però
+`commessa_attivita_id` **NOT NULL**: l'identità è recuperabile con un **JOIN**
+alla riga di commessa.
+
+Da qui la scelta di **non denormalizzare**: nessuna colonna nuova su una tabella
+calda, nessun backfill, nessun drift possibile fra valore copiato e sorgente. Il
+join si aggiunge **solo** quando `p_gruppi` è valorizzato: il giro schedulato
+non paga nulla, né in forma né in piano d'esecuzione.
+
+#### ⚠️ `FOR UPDATE OF a` — invariante da non rompere
+
+Anche in presenza del join, il lock resta ristretto ad `attivita_fatturabili`.
+Estenderlo a `commesse_attivita` serializzerebbe il giro di fatturazione con le
+operazioni di commessa (approvazioni, oneri): un deadlock che oggi non esiste.
+La rev 2026-06-19 aveva introdotto `OF a` proprio per restringerlo.
+
 {% include-markdown "signature-core.md" %}

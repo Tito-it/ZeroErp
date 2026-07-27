@@ -1,16 +1,23 @@
 # Brief DB — Emissione fattura mirata per gruppo fatturabile + simmetria `fatturazione_immediata`
 
 > **Tipo**: brief operativo per il **team DB** · **Target**: `dev/db-tid` ·
-> **Data**: 2026-07-27 · **Owner**: Tid · **Stato**: 🟡 **ANALIZZATO — piano di
-> sviluppo definito, implementazione da avviare** (agg. 2026-07-27)
+> **Data**: 2026-07-27 · **Owner**: Tid · **Stato**: 🟢 **PERIMETRO DB
+> COMPLETO — applicato e testato** (agg. 2026-07-27). Fase B e Fase A chiuse,
+> rifiniture incluse; nessuna voce di piano aperta. Restano: **commit della
+> Fase A**, rigenerazione doc auto-gen, e il rientro schedulato **P6**.
 > · **Priorità**: 🟠 MEDIA (abilita un'esigenza operativa reale; additivo,
 > nessun dato a rischio).
+>
+> **Conseguenza per BE/FE**: il prerequisito DB **non è più bloccante**. I punti
+> 3-6 del perimetro in [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md)
+> §8 possono partire, con il contratto di **§8-bis** di questo brief.
 >
 > **Come leggere questo brief**: §1-§5 descrivono **cosa serve**. §6 riporta le
 > decisioni implementative **prese** dopo l'analisi critica del 2026-07-27 (con
 > le alternative scartate e il perché). §9 è il **piano di sviluppo a step
 > aggiornabili**, §10 il piano di **test pgTAP**, §11 il **registro di cosa è
-> stato fatto**. §4 «Fatti verificati» è il contesto rilevato sul codice/DB vivo.
+> stato fatto** — con il consuntivo in testa. §4 «Fatti verificati» è il
+> contesto rilevato sul codice/DB vivo.
 >
 > **Origine**: [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md),
 > decisioni Tid 2026-07-26/27.
@@ -18,8 +25,9 @@
 > **Contesto**: non siamo in produzione ([[project_no_produzione_solo_sviluppo]])
 > → breaking secchi ammessi.
 >
-> **Conseguenza**: BE e FE **attendono** questo lavoro
-> ([[feedback_be_fe_attende_prerequisiti_db]]).
+> ~~**Conseguenza**: BE e FE **attendono** questo lavoro
+> ([[feedback_be_fe_attende_prerequisiti_db]]).~~ → **attesa terminata il
+> 2026-07-27**: il perimetro DB è completo, applicato e testato.
 >
 > ---
 >
@@ -27,18 +35,27 @@
 >
 > | Fase | Contenuto | Stato |
 > |---|---|---|
-> | **B** — simmetria flag | colonna su ordini/contratti/DDT (**no consumi**, D-6) + push fn + presidio | ✅ **CHIUSA** — `20260727-01..09` **applicate**, pgTAP **verde** (plan 20), doc aggiornata. Da committare |
-> | **A** — emissione mirata | chiave gruppo, persistenza criterio, 4 funzioni, colonna `area` su `config.sorgenti` (D-5), 2 viste | ⬜ da fare |
-> | **T** — pgTAP | 3 file nuovi + adeguamento esistenti | 🟡 1/3 fatto e **verde** (`test-fatturazione-immediata-simmetria-sorgenti-v1.sql`); restano i 2 della Fase A |
-> | **D** — doc | manual dbzero + guida fatturazione + contratto BE | 🟡 Fase B fatta (9 file); resta la Fase A |
+> | **B** — simmetria flag | colonna su ordini/contratti/DDT (**no consumi**, D-6) + push fn + presidio | ✅ **CHIUSA e COMMITTATA** (`49eed89d0`) — `20260727-01..09`, pgTAP verde (plan 20), doc aggiornata |
+> | **A** — emissione mirata | chiave gruppo, persistenza criterio, 4 funzioni, colonna `area`, **3 viste** | ✅ **CHIUSA, rifiniture incluse** — `20260727-10..19` + seed CSV applicati; pgTAP 17+10+5 verdi; doc completa. ⏳ **da committare** |
+> | **T** — pgTAP | file nuovi + adeguamento esistenti | ✅ **4/4 verdi, 52 asserzioni**: simmetria flag (20), emissione mirata (17), viste gruppi+riepilogo (10), guardrail area (5) |
+> | **D** — doc | manual dbzero + guida fatturazione + contratto BE | ✅ **completa** — 9 file Fase B + 10 Fase A (4 manuali nuovi, 6 aggiornati) |
 >
-> Le due fasi sono **indipendenti**: B non dipende da A. **Fase B chiusa il
-> 2026-07-27** → il punto 5 del perimetro FE (esporre il flag in creazione/
-> accettazione documenti) è **sbloccato**. Prossimo passo DB: **step A1**.
+> Le due fasi erano **indipendenti**: B non dipendeva da A. Entrambe chiuse il
+> **2026-07-27**, rifiniture A9 e A7-ter incluse.
 >
-> **Punti aperti: nessuno.** P1 (consumi esclusi), P2 (mappa `area`), P3 (pgTAP
-> vs guard B5), P4/D-9 (chiave di gruppo = `uid`) e P5 (doc sorgente polimorfa)
-> tutti chiusi il 2026-07-27. **Fase A sbloccata dallo step A1.**
+> **Decisioni: nessuna aperta.** P1 (consumi esclusi), P2 (mappa `area`),
+> P3 (pgTAP vs guard B5), P4/D-9 (chiave di gruppo = `uid`) e P5 (doc sorgente
+> polimorfa) chiusi il 2026-07-27.
+>
+> **Cosa resta**, in ordine:
+>
+> 1. **commit della Fase A** (`20260727-10..19` + pgTAP + doc) e rigenerazione
+>    doc auto-gen `dbzero` — a cura di Tid;
+> 2. **P6** — rientro concordato sui 9 pgTAP rossi per `E_SORG_FORMATO`, di cui
+>    3 non censiti nel backlog di
+>    [brief-db-bonifica-pgtap-sorgente-polimorfa](brief-db-bonifica-pgtap-sorgente-polimorfa.md)
+>    (§10.4). **Non sono regressioni di questa slice**: verificato uno per uno;
+> 3. **BE/FE** — punti 3-6 del perimetro, con il contratto di §8-bis.
 
 ---
 
@@ -728,20 +745,20 @@ A7-ter e A9 sono rifiniture a valle, fuori dal cammino critico.
 
 | # | Stato | Cartella | Contenuto | Garanzie |
 |---|---|---|---|---|
-| **A1** | ⬜ | `20_code` | `vendite.fn_build_gruppo_fatturabile_key(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_commessa_id bigint) RETURNS text` **STABLE** (legge `config.sorgenti.codice_interno`). Unica fonte di verità della chiave (D-1). Guard sui parametri ID: errore se `<= 0`, non normalizzare in silenzio | D-1 |
-| **A2** | ⬜ | `00_schema` + `90_end` | Tabella `vendite.fatturazione_lotti_gruppi`: `id INTEGER GENERATED BY DEFAULT AS IDENTITY`, `lotto_id` FK → `fatturazione_lotti` (ON DELETE CASCADE), `gruppo_key TEXT NOT NULL`, UNIQUE `(lotto_id, gruppo_key)`, colonne audit + `tx_id`, trigger `trgfn_audit_data_user_generic` + `trgfn_tx_id_managed`. ⚠️ Indice FK **opt-in**: serve seed esplicito `consentito=true` in `dbops.fk_index_policy` ([[reference_fk_index_policy_optin]]) | D-3, G11 |
-| **A3** | ⬜ | `20_code` | `fn_emit_attivita_fatturabili_da_commessa` + `p_gruppi text[] DEFAULT NULL`: filtra il loop `FOR v_row IN` con `fn_build_gruppo_fatturabile_key(...) = ANY(p_gruppi)`. ⚠️ **`DROP FUNCTION IF EXISTS` della firma a 3 arg nello stesso changeSet** (fatto F13) | G2, G3, G13 |
-| **A4** | ⬜ | `20_code` | `fn_select_attivita_fatturabili` + `p_gruppi text[] DEFAULT NULL`: nel SQL dinamico, `JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id` + predicato sulla chiave. ⚠️ `FOR UPDATE OF a` deve restare **solo su `a`**. **È lo step che chiude la falla F8** | **G12**, G2, G5 |
-| **A5** | ⬜ | `20_code` | `fn_list_emittibili_lane` + `p_gruppi text[] DEFAULT NULL` → la discovery restituisce **solo le terne dei gruppi selezionati** (altrimenti il driver creerebbe lotti vuoti per le altre terne). `DROP` + `CREATE` (RETURNS TABLE) | G15, G6 |
-| **A6** | ⬜ | `20_code` | `fn_list_commesse_emittibili` + `p_gruppi text[] DEFAULT NULL` → il pull visita solo le commesse che contengono almeno un gruppo selezionato. `DROP` + `CREATE` | G2 |
-| **A7** | ⬜ | `20_code` | **Estendere `vw_dash_competenza_attivita`** con `sorgente_tipo_id`, `sorgente_uid`, `tipo_movimento`, `gruppo_key` (da A1). ⚠️ `CREATE OR REPLACE VIEW` **deve ri-specificare `WITH (security_invoker=on)`** | prereq. G8/G14 |
-| **A7-bis** | ⬜ | `00_schema` + `80_data` | **Colonna `area varchar` su `config.sorgenti`** (nullable) + seed della mappa di D-5. ⚠️ Il seed va **nel CSV esistente** `80_data/sql/config/sorgenti.csv` **estendendo in place** il loader `20251002-21-upsert-config-sorgenti-table.yaml` (già `runOnChange: true` + `validCheckSums: ANY` = mirror vivo del CSV): **non creare un nuovo loader** ([[feedback_seed_80_data_csv]], [[feedback_messaggi_errore_no_new_loader]]). Valutare se aggiungere `area` alle colonne lock del trigger `trg_sorgenti_a10_upd_lock_columns` — se sì, su DB esistenti serve DROP+rigenera ([[feedback_automation_lock_columns_create_if_not_exists]]) | prereq. A8 |
-| **A7-ter** | ⏭️ | `20_code` | *(rifinitura separata)* Bonifica delle **6 viste** `vw_dash_fatturazione_{preventivi,ordini,contratti,ddt,offerte,commesse}` che scrivono il letterale `'PREVENTIVI'::varchar AS area` → leggerlo da `config.sorgenti.area`. Non blocca A8; tocca viste già in uso dalle dashboard, quindi si fa a valle e con i suoi test | pulizia D-5 |
-| **A8** | ⬜ | `20_code` | Vista elenco `vendite.vw_dash_competenza_gruppi`: una riga per `(competenza_mese, gruppo_key)` con tipo gruppo, **riferimento leggibile** (join `config.sorgenti.area` → `vw_dash_fatturazione_documenti`, D-5), cliente, commessa, `n_attivita`, `valore`. Filtro `stadio = 'DA_EMETTERE'` applicato dal consumatore, non cablato | G8, G14, A3 |
-| **A9** | ⏭️ | `20_code` | *(A5 del brief — separabile)* Vista `vendite.vw_dash_competenza_gruppi_riepilogo` con gli aggregati di perimetro. Da fare **solo dopo** che A8 è verde | A5 |
-| **A10** | ⬜ | `db/pgtap` | `test-emissione-mirata-gruppi-fatturabili-v1.sql` + `test-vw-dash-competenza-gruppi-v1.sql` (§10) | G1-G8, G11-G15 |
-| **A11** | ⬜ | `db/pgtap` | **Adeguamento dei test esistenti** alle firme cambiate: 16 file toccano le 4 funzioni. Elenco in §10.3 | non-regressione |
-| **A12** | ⬜ | docs | Manual dbzero delle fn/viste nuove + guida `fatturazione.md` §Fase 3 + comunicazione del contratto §8-bis al BE | — |
+| **A1** | ✅ | `20_code` | `vendite.fn_build_gruppo_fatturabile_key(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_commessa_id bigint) RETURNS text` **STABLE** (legge `config.sorgenti.codice_interno`). Unica fonte di verità della chiave (D-1). Guard sui parametri ID: errore se `<= 0`, non normalizzare in silenzio | D-1 |
+| **A2** | ✅ | `00_schema` + `90_end` | Tabella `vendite.fatturazione_lotti_gruppi`: `id INTEGER GENERATED BY DEFAULT AS IDENTITY`, `lotto_id` FK → `fatturazione_lotti` (ON DELETE CASCADE), `gruppo_key TEXT NOT NULL`, UNIQUE `(lotto_id, gruppo_key)`, colonne audit + `tx_id`, trigger `trgfn_audit_data_user_generic` + `trgfn_tx_id_managed`. ⚠️ Indice FK **opt-in**: serve seed esplicito `consentito=true` in `dbops.fk_index_policy` ([[reference_fk_index_policy_optin]]) | D-3, G11 |
+| **A3** | ✅ | `20_code` | `fn_emit_attivita_fatturabili_da_commessa` + `p_gruppi text[] DEFAULT NULL`: filtra il loop `FOR v_row IN` con `fn_build_gruppo_fatturabile_key(...) = ANY(p_gruppi)`. ⚠️ **`DROP FUNCTION IF EXISTS` della firma a 3 arg nello stesso changeSet** (fatto F13) | G2, G3, G13 |
+| **A4** | ✅ | `20_code` | `fn_select_attivita_fatturabili` + `p_gruppi text[] DEFAULT NULL`: nel SQL dinamico, `JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id` + predicato sulla chiave. ⚠️ `FOR UPDATE OF a` deve restare **solo su `a`**. **È lo step che chiude la falla F8** | **G12**, G2, G5 |
+| **A5** | ✅ | `20_code` | `fn_list_emittibili_lane` + `p_gruppi text[] DEFAULT NULL` → la discovery restituisce **solo le terne dei gruppi selezionati** (altrimenti il driver creerebbe lotti vuoti per le altre terne). `DROP` + `CREATE` (RETURNS TABLE) | G15, G6 |
+| **A6** | ✅ | `20_code` | `fn_list_commesse_emittibili` + `p_gruppi text[] DEFAULT NULL` → il pull visita solo le commesse che contengono almeno un gruppo selezionato. `DROP` + `CREATE` | G2 |
+| **A7** | ✅ | `20_code` | **Estendere `vw_dash_competenza_attivita`** con `sorgente_tipo_id`, `sorgente_uid`, `tipo_movimento`, `gruppo_key` (da A1). ⚠️ `CREATE OR REPLACE VIEW` **deve ri-specificare `WITH (security_invoker=on)`** | prereq. G8/G14 |
+| **A7-bis** | ✅ | `00_schema` + `80_data` | **Colonna `area varchar` su `config.sorgenti`** (nullable) + seed della mappa di D-5. ⚠️ Il seed va **nel CSV esistente** `80_data/sql/config/sorgenti.csv` **estendendo in place** il loader `20251002-21-upsert-config-sorgenti-table.yaml` (già `runOnChange: true` + `validCheckSums: ANY` = mirror vivo del CSV): **non creare un nuovo loader** ([[feedback_seed_80_data_csv]], [[feedback_messaggi_errore_no_new_loader]]). Valutare se aggiungere `area` alle colonne lock del trigger `trg_sorgenti_a10_upd_lock_columns` — se sì, su DB esistenti serve DROP+rigenera ([[feedback_automation_lock_columns_create_if_not_exists]]) | prereq. A8 |
+| **A7-ter** | ✅ *(come guardrail)* | `db/pgtap` | **Decisione 2026-07-27: NON si riscrivono le 6 viste**, si presidia la coerenza con `test-sorgenti-area-coerenza-viste-v1.sql` (5 casi, verde). Motivo: sei `CREATE OR REPLACE` su viste in uso dalle dashboard per un output **identico** = rischio reale, guadagno solo di igiene. In più la bonifica **non eliminerebbe** il letterale, lo sposterebbe da `'PREVENTIVI'` (area, mutabile) a `'PREVENTIVO'` (`codice_interno`, immutabile). Il guardrail non impedisce la divergenza ma la **intercetta**, a rischio zero. Riscrittura rimandata a quando una di quelle viste verrà toccata per motivi suoi. ~~Bonifica delle **6 viste** `vw_dash_fatturazione_{preventivi,ordini,contratti,ddt,offerte,commesse}`~~ | pulizia D-5 |
+| **A8** | ✅ | `20_code` | Vista elenco `vendite.vw_dash_competenza_gruppi`: una riga per `(competenza_mese, gruppo_key)` con tipo gruppo, **riferimento leggibile** (join `config.sorgenti.area` → `vw_dash_fatturazione_documenti`, D-5), cliente, commessa, `n_attivita`, `valore`. Filtro `stadio = 'DA_EMETTERE'` applicato dal consumatore, non cablato | G8, G14, A3 |
+| **A9** | ✅ | `20_code` | *(A5 del brief — separabile)* Vista `vendite.vw_dash_competenza_gruppi_riepilogo` con gli aggregati di perimetro. Da fare **solo dopo** che A8 è verde | A5 |
+| **A10** | ✅ | `db/pgtap` | `test-emissione-mirata-gruppi-fatturabili-v1.sql` + `test-vw-dash-competenza-gruppi-v1.sql` (§10) | G1-G8, G11-G15 |
+| **A11** | ✅ | `db/pgtap` | **Adeguamento dei test esistenti** alle firme cambiate: 16 file toccano le 4 funzioni. Elenco in §10.3 | non-regressione |
+| **A12** | ✅ | docs | Manual dbzero delle fn/viste nuove + guida `fatturazione.md` §Fase 3 + comunicazione del contratto §8-bis al BE | — |
 
 ### Punti da chiudere prima di partire
 
@@ -750,6 +767,7 @@ A7-ter e A9 sono rifiniture a valle, fuori dal cammino critico.
 | **P1** | ~~Conferma **D-6** (consumi esclusi dal flag)~~ | Tid | ✅ **chiuso 2026-07-27 — sui consumi NO** |
 | **P2** | ~~Chiusura **D-5** (dove vive la mappa `area ↔ sorgente`)~~ | Tid | ✅ **chiuso 2026-07-27 — colonna `area` su `config.sorgenti`** (step A7-bis) |
 | **P4** | ~~**Chiusura D-9**: forma di `sorgente_uid` per la chiave di gruppo~~ | Tid | ✅ **chiuso 2026-07-27 — si usa l'`uid`** (opzione a). P4 e D-9 erano lo stesso punto: P4 = riga di tracciamento, D-9 = registrazione della decisione |
+| **P6** | **Rientro concordato (2026-07-27)**: i 9 pgTAP rossi per `E_SORG_FORMATO` appartengono tutti al perimetro di [brief-db-bonifica-pgtap-sorgente-polimorfa](brief-db-bonifica-pgtap-sorgente-polimorfa.md) — 3 non sono nel suo backlog (§10.4). Da riprendere **dopo** la chiusura di questo brief | Tid+DB | ⬜ **schedulato** |
 | **P5** | ~~Correggere §1d di `brief-db-guard-sorgente-polimorfa.md`~~ | DB | ✅ **chiuso 2026-07-27** — §1d corretto (4 righe invece di 3), + nota nel manuale `commesse_attivita` e nuova §4a della guida `sorgente-polimorfa` |
 | **P3** | ~~Verifica che nessun pgTAP esistente si rompa con il guard B5~~ | DB | ✅ **chiuso 2026-07-27 — nessun test rotto** (le 20 occorrenze pgTAP sono `p_fatturazione_immediata =>`, parametro di `fn_get_or_create_commessa`, non scritture sulla colonna). Unico percorso applicativo che scrive il flag: `preventivi_service.cambia_stato`, che gira **prima** del push |
 
@@ -771,7 +789,7 @@ Percorso `db/pgtap/vendite/`. Regole: indice dei test nei commenti in testa al
 file, `BEGIN;` + rollback, codici fiscali validi fissi, evitare collisioni
 UNIQUE ([[feedback_pgtap_patterns]]).
 
-### 10.1 `test-emissione-mirata-gruppi-fatturabili-v1.sql`
+### 10.1 `test-emissione-mirata-gruppi-fatturabili-v1.sql` ✅ *(scritto e verde, `plan(17)`)*
 
 Fixture: 1 emittente, 1 BA, 1 commessa multi-sorgente con **tre gruppi** —
 un preventivo (2 righe), un contratto (2 righe), un onere `MAN:` (1 riga) —
@@ -801,7 +819,30 @@ tutte `APPROVATA + NON_EMESSA`, stesso mese, stesso tipo doc.
 > ed è quello che si romperebbe se qualcuno «semplificasse» filtrando solo il
 > pull.
 
-### 10.2 `test-vw-dash-competenza-gruppi-v1.sql`
+### 10.2 `test-vw-dash-competenza-gruppi-v1.sql` ✅ *(scritto e verde, `plan(9)`)*
+
+> **Due cose imparate scrivendolo**, entrambe annotate nel file:
+>
+> 1. **La vista base è fail-closed senza GUC.**
+>    `script.fn_get_emittenti_scope_sr_ids(NULL)` restituisce l'array **vuoto**,
+>    non `NULL`, e la clausola è `sr_ids IS NULL OR emittente = ANY(sr_ids)`:
+>    senza `app.current_user_id` **nessuna riga passa**. È il comportamento
+>    voluto, ma un test che non imposta la sessione misurerebbe zero *per il
+>    motivo sbagliato* — verde o rosso senza dire nulla sul filtro. Il file
+>    impersona quindi un operatore whitelistato sull'emittente della fixture, e
+>    al caso 8 sposta la whitelist su un altro emittente.
+> 2. **Il caso 14 del file 10.1 era debole** nella prima stesura: verificava
+>    solo «gruppo inesistente → 0», che sarebbe passato anche con il filtro
+>    completamente rotto (bastava che la commessa non fosse emittibile). Ora
+>    confronta **filtrato vs non filtrato** sulla stessa commessa, e la
+>    transizione a `PRONTA_FATTURAZIONE` è esplicita: entrambe le discovery
+>    filtrano prima di tutto su `stati_commessa.emittibile`.
+>
+> **Limite dichiarato in testa al file**: il caso 8 copre lo scope in
+> **lettura** (la vista). Lo scope in **emissione** — passare a `fn_emit` la
+> chiave di un gruppo fuori perimetro — è presidiato dalla RLS su
+> `vendite.commesse`, che pgTAP **non può esercitare** perché gira come owner e
+> la bypassa. Serve un test applicativo con il ruolo `zeroerp_app`.
 
 Stessa fixture. Il test gira **due volte**: senza GUC utente (scope aperto) e
 con `app.current_user_id` di un operatore limitato a un altro emittente.
@@ -842,7 +883,31 @@ con `app.current_user_id` di un operatore limitato a un altro emittente.
 | 9 | `UPDATE` del flag su documento **già pushato** (riga in `commesse_sorgenti`) → `E_FATT_IMMEDIATA_NON_MODIFICABILE` | **G17** |
 | 10 | Il guard non blocca `UPDATE` di altre colonne dello stesso documento | G17 |
 
-### 10.4 Test esistenti da verificare (firme cambiate)
+### 10.4 Test esistenti da verificare (firme cambiate) — ✅ *eseguito 2026-07-27*
+
+> **Esito**: **nessuna regressione da A1-A6**. Dei 17 file eseguiti, 6 verdi e
+> 11 rossi — **tutti e 11 già rossi prima**, per guard introdotti a luglio e
+> indipendenti da questa slice:
+>
+> | Causa del rosso | File | Nota |
+> |---|---|---|
+> | `E_SORG_FORMATO` (guard sorgente polimorfa, 2026-07-18) | 9 | 6 già censiti in [brief-db-bonifica-pgtap-sorgente-polimorfa](brief-db-bonifica-pgtap-sorgente-polimorfa.md), **3 no**: `test-sorgente-origine-tipo-doc-fiscale-v1`, `test-tipo-movimento-colonna-v1`, `test-trigger-af-commessa-aware-v1` → **da aggiungere a quel backlog** |
+> | guard `tipo_doc_emittibile` | `test-fn-list-commesse-emittibili-fatturazione-immediata-v1` | muore nella **fixture** (riga 132), la funzione modificata è chiamata a riga 175: non ci arriva mai |
+> | guard AF commessa-aware | `test-fatturazione-draft` | fixture, non correlato |
+>
+> Prova che nessun rosso è attribuibile alla slice: **nessun errore menziona
+> «function is not unique» o una firma inesistente**, che sarebbero i sintomi
+> del `DROP`+`CREATE`. Tutti falliscono in fase di **fixture**, prima di
+> chiamare le funzioni modificate.
+>
+> **Smoke test delle firme nuove** (8 asserzioni, verde): funzione A1 presente e
+> `STABLE`, entrambe le forme di chiave corrette, i 2 guard che sollevano,
+> tabella A2 con la sua UNIQUE, e — il controllo che conta — **le 4 funzioni
+> esistono in una sola versione**, cioè il `DROP` della vecchia firma ha
+> funzionato e non c'è overload ambiguo.
+>
+> **Non-regressione Fase B**: `test-fatturazione-immediata-simmetria-sorgenti-v1`
+> ancora verde (20/20) dopo l'applicazione di A1-A6.
 
 Il `DROP`+`CREATE` di 4 funzioni tocca **16 file**. Da rieseguire e adeguare
 dove chiamano posizionalmente:
@@ -875,6 +940,30 @@ DB): `commesse_repository.py`, `pipeline_repository.py`, `commesse_service.py`,
 > Cronologia di cosa è stato **effettivamente fatto**, con gli artefatti
 > prodotti. Serve a chi riprende in mano il brief per sapere dove si è
 > arrivati senza ricostruirlo dal git log.
+
+### Consuntivo della slice
+
+| | Prodotto |
+|---|---|
+| **Migration** | 19 changeSet `20260727-01..19` + estensione del seed `config.sorgenti` |
+| **Oggetti DB nuovi** | 1 funzione, 1 trigger function + 4 trigger, 1 tabella, 2 viste, 2 colonne su 4 tabelle, 1 codice errore |
+| **Funzioni modificate** | 8 (4 push `fn_list_*_da_pushare`, 4 della catena di emissione) |
+| **pgTAP** | 4 file nuovi, **52 asserzioni**, tutte verdi |
+| **Documentazione** | 19 file: 7 manuali nuovi, 10 aggiornati, 2 guide |
+| **Decisioni registrate** | D-1…D-9, ognuna con l'alternativa scartata e il perché |
+| **Garanzie** | da 10 (G1-G10 iniziali) a 18 (G11-G18 dall'analisi critica) |
+| **Punti aperti** | P1…P5 chiusi · **P6 schedulato** (pgTAP sorgente polimorfa) |
+
+**Correzioni fuori perimetro**, emerse strada facendo e sistemate:
+
+1. §1d di [brief-db-guard-sorgente-polimorfa](../work-done/brief-db-guard-sorgente-polimorfa.md)
+   attribuiva a `commesse_attivita.sorgente_uid` l'hash md5, che è di
+   `attivita_fatturabili.sorgente_uid` — ed era proprio la riga che serviva a
+   questa slice;
+2. la [guida sorgente polimorfa](../../guide/sorgente-polimorfa.md) non diceva
+   **chi sta fuori** dal meccanismo → nuova §4a;
+3. `commesse_attivita.sorgente_uid` non era documentata affatto → sezione
+   dedicata nel manuale della tabella.
 
 ### 2026-07-27 · Analisi critica e chiusura decisioni
 
@@ -942,13 +1031,115 @@ nuova sezione «Su quale corsia finisce il lavoro» in
 - I test Django dei preventivi sono `unittest.TestCase` con repository mockato:
   non raggiungono il trigger.
 
-**Aperto**: commit (non ancora eseguito) e rigenerazione della doc auto-gen
-`dbzero` (a cura di Tid).
+**Chiusura**: migration applicate, pgTAP verde, doc auto-gen rigenerata e
+**commit eseguito** (`49eed89d0`).
+
+### 2026-07-27 · Fase A — emissione mirata per gruppo fatturabile ✅
+
+**Migration applicate** (`db/changelog/migrations_v2/`):
+
+| # | File | Step |
+|---|---|---|
+| `20260727-10` | `20_code/vendite/` — `fn_build_gruppo_fatturabile_key` | A1 |
+| `20260727-11` | `00_schema/vendite/` — tabella `fatturazione_lotti_gruppi` | A2 |
+| `20260727-12` | `fn_emit_attivita_fatturabili_da_commessa` + `p_gruppi` | A3 |
+| `20260727-13` | `fn_select_attivita_fatturabili` + `p_gruppi` ⭐ | A4 |
+| `20260727-14` | `fn_list_emittibili_lane` + `p_gruppi` | A5 |
+| `20260727-15` | `fn_list_commesse_emittibili` + `p_gruppi` | A6 |
+| `20260727-16` | `vw_dash_competenza_attivita` + colonne di gruppo | A7 |
+| `20260727-17` + CSV | `config.sorgenti.area` + seed della mappa | A7-bis |
+| `20260727-18` | vista `vw_dash_competenza_gruppi` | A8 |
+
+**Test** — 3 file nuovi, tutti verdi:
+`test-emissione-mirata-gruppi-fatturabili-v1.sql` `plan(17)`,
+`test-vw-dash-competenza-gruppi-v1.sql` `plan(10)` (il caso 10 arriva con A9) e
+`test-sorgenti-area-coerenza-viste-v1.sql` `plan(5)` (guardrail A7-ter).
+Più la verifica di non-regressione sui 17 file toccati dal cambio firma (§10.4).
+
+**Due difetti trovati nei test stessi, non nel codice**:
+
+- il caso 13 falliva perché entrambe le discovery filtrano *prima di tutto* su
+  `stati_commessa.emittibile`, e la commessa fixture era in BOZZA;
+- più importante, il **caso 14 passava per la ragione sbagliata**: verificava
+  solo «gruppo inesistente → 0», il che sarebbe stato verde anche col filtro
+  completamente rotto. Riscritto per confrontare **filtrato vs non filtrato**
+  sulla stessa commessa.
+
+**Limite dichiarato**: lo scope in **emissione** (passare a `fn_emit` la chiave
+di un gruppo fuori perimetro) è presidiato dalla RLS su `vendite.commesse`, che
+pgTAP **non può esercitare** perché gira come owner. Serve un test applicativo
+con il ruolo `zeroerp_app`. Annotato in testa al file.
+
+**Documentazione** (10 file): 4 manuali nuovi
+(`fn_build_gruppo_fatturabile_key`, `fatturazione_lotti_gruppi`,
+`vw_dash_competenza_gruppi`, `vw_dash_competenza_gruppi_riepilogo`),
+5 aggiornati (le 4 funzioni con `p_gruppi` + `vw_dash_competenza_attivita`),
+`config/manual/sorgenti.md` per la colonna `area`, e nuova sezione «Fatturare un
+documento preciso: l'emissione mirata» nella
+[guida fatturazione](../../guide/fatturazione.md).
+
+**Deviazioni dal piano, motivate**:
+
+- **A2 senza seed `fk_index_policy`**: la `UNIQUE (lotto_id, gruppo_key)` ha
+  `lotto_id` come prefisso e copre già l'unico accesso previsto. Un indice FK
+  dedicato sarebbe ridondante (`dbops.vw_duplicate_indexes`). Registrato con
+  `consentito = false`, che è il default della policy opt-in.
+- **A7-bis ha richiesto di cambiare `nullValue` del loader CSV** da `""` a
+  `"NULL"` per poter esprimere `area = NULL`. Verificato prima: nel CSV non
+  esiste alcuna cella vuota né alcuna contenente la stringa `NULL` → modifica
+  **inerte** per le 15 colonne preesistenti.
+- **A9 e A7-ter restano ⏭️ rifiniture**, come da piano.
+
+### 2026-07-27 · Rifiniture A9 e A7-ter — chiuse
+
+**A9 · vista di riepilogo** (`20260727-19`, applicata):
+`vw_dash_competenza_gruppi_riepilogo` — `n_gruppi`, `n_attivita`, `valore`,
+`n_gruppi_oneri`, per `(competenza, stadio, emittente)`. **Aggrega** la vista di
+dettaglio, non ricalcola: i due numeri non possono divergere. Coperta dal caso
+10 di `test-vw-dash-competenza-gruppi-v1.sql`.
+
+*Motivo per cui non è stata rinviata*: senza aggregati dal DB il frontend
+sommerebbe le righe della **pagina corrente**, mostrando un parziale che sembra
+un totale — e nessuno somma a mano più pagine per accorgersene.
+
+**A7-ter · deciso il guardrail al posto della bonifica.** Le 6 viste
+`vw_dash_fatturazione_*` continuano a scrivere il letterale `area` a mano; la
+coerenza con `config.sorgenti.area` è presidiata da
+`test-sorgenti-area-coerenza-viste-v1.sql` (5 casi, verde), che legge le
+**definizioni** (`pg_get_viewdef`) e non i dati.
+
+Le due ragioni della scelta:
+
+1. sei `CREATE OR REPLACE` su viste **in uso dalle dashboard** per un output
+   **identico** = rischio reale, guadagno di sola igiene;
+2. la bonifica **non eliminerebbe** il letterale: lo sposterebbe da
+   `'PREVENTIVI'` (area, vocabolario mutabile) a `'PREVENTIVO'`
+   (`codice_interno`, immutabile). Miglioramento vero — è la regola di
+   linee-guida-sql §6d — ma non il salto da hardcoded a non-hardcoded.
+
+Il guardrail non impedisce la divergenza, la **intercetta**: 90% del valore,
+0% del rischio. Riscrittura rimandata a quando una di quelle viste verrà
+toccata per motivi suoi.
+
+**⚠️ Reperto emerso dal guardrail**: `config.sorgenti` contiene **15 righe, non
+10**. Il seed CSV ne copre 10; le altre cinque (`PREVENTIVO_RIGA`,
+`CONTRATTO_RIGA`, `ORDINE_VENDITA_RIGA`, `DDT_VENDITA_RIGA`, `FATTURA_RIGA`,
+`scope = ROW_VALIDATOR`) arrivano da `20260225-44`. Il seed dell'area ha
+funzionato correttamente — quelle righe non essendo nel CSV hanno mantenuto
+`NULL` — ma **`sorgenti.csv` non è lo specchio completo della tabella**: chi
+ragiona sul seed sta vedendo due terzi delle righe.
+
+**Aperto**: commit e rigenerazione doc auto-gen `dbzero` (a cura di Tid).
 
 ### Prossimo passo
 
-**Step A1** — `vendite.fn_build_gruppo_fatturabile_key`. Tutte le decisioni che
-lo riguardano sono chiuse (D-1 forma della chiave, D-9 forma di `sorgente_uid`).
+Chiusa la Fase A **con le rifiniture**, il perimetro DB del brief è
+**completo**: non restano voci ⬜ né ⏭️. Restano:
+
+1. **P6** — rientro sui pgTAP rossi della sorgente polimorfa (concordato);
+2. **BE/FE** — punti 3-6 del perimetro in
+   [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md) §8,
+   con il contratto di §8-bis di questo brief.
 
 ---
 

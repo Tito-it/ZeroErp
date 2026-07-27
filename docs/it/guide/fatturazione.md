@@ -606,6 +606,75 @@ sembra funzionare.
 `prezzo_bloccato = fatturazione_immediata` esiste **solo sui preventivi**: sulle
 altre sorgenti i due valori sono indipendenti.
 
+### Fatturare un documento preciso: l'emissione mirata
+
+*(dal 27-07-2026)*
+
+Il giro di fatturazione, schedulato o lanciato a mano, pesca **tutto**
+l'emittibile di un perimetro. Serviva poter dire: «fattura **questo** preventivo,
+adesso, senza trascinare dentro il resto».
+
+#### L'unità di decisione: il gruppo fatturabile
+
+Non è la commessa e non è sempre un documento:
+
+- **non la commessa**, perché è multi-sorgente. Un preventivo e un contratto
+  dello stesso cliente, stesso mese, stesso perimetro commerciale finiscono
+  nella **stessa** commessa: selezionarla non isola niente;
+- **non sempre un documento**, perché le righe della *porta oneri* sono senza
+  documento per costruzione.
+
+Un **gruppo fatturabile** è quindi *un documento sorgente* **oppure** *gli oneri
+di una commessa*:
+
+```text
+Card «Da emettere» (29 attività)
+ ├─ PRV-0012              Rossi    5 righe   1.000 €   [Fattura]
+ ├─ CTR-0007              Rossi    3 righe     500 €   [Fattura]
+ ├─ ORD-0033              Bianchi  8 righe   2.300 €   [Fattura]
+ └─ Oneri · commessa #42  Rossi    1 riga      500 €   [Fattura]
+```
+
+La seconda forma non è un dettaglio: senza, gli oneri sarebbero **contati** nel
+numero della card ma irraggiungibili da qualunque azione mirata — lavoro
+invisibile, recuperabile solo dal giro schedulato.
+
+#### Cosa garantisce
+
+| | |
+|---|---|
+| Si fattura **solo** ciò che si è chiesto | anche se la commessa contiene altro lavoro idoneo |
+| Ciò che non si è chiesto **resta come prima** | stesso stato, ancora fatturabile: nessun effetto collaterale |
+| Si può ripetere | prima il preventivo, domani il contratto: due giri che convivono |
+| Si ferma a **EMESSA** | la numerazione resta l'atto separato «Rendi definitive» |
+
+#### Il rapporto col flag di corsia
+
+Sono due strumenti distinti, e non vanno sovrapposti:
+
+| Serve a | Strumento | Quando |
+|---|---|---|
+| «questo cliente va **sempre** fatturato subito» | flag `fatturazione_immediata` | **prima** del push, alla creazione o accettazione del documento |
+| «fattura **questo**, adesso» | emissione mirata | in qualsiasi momento, anche a lavoro già in commessa |
+
+Il flag è *instradamento automatico*, deciso a monte e poi immutabile.
+L'emissione mirata è un *atto puntuale dell'operatore*. Il caso «cambio idea
+dopo» è coperto interamente dalla seconda: nessun intervento sul modello della
+commessa.
+
+#### Un documento può produrre più fatture
+
+Il tipo di documento fiscale sta sulla **riga**, non sulla testata: un gruppo con
+righe di tipo diverso finisce in **lotti diversi**, quindi in fatture diverse. È
+corretto e voluto — l'esito dell'operazione restituisce l'elenco dei lotti
+prodotti, non uno solo.
+
+> **Dettaglio tecnico**: il perimetro scelto è **persistito sul lotto**
+> (`vendite.fatturazione_lotti_gruppi`), non passato come parametro. È ciò che
+> garantisce che un *Rerun* o un *Avanza step* dal drawer del lotto non allarghi
+> silenziosamente il perimetro. Nessuna riga per un lotto = nessuna restrizione =
+> comportamento del giro schedulato.
+
 ### Monitoraggio
 
 - **Badge top bar**: conteggio dei processi vivi dell'operatore + liveness dei

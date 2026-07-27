@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_list_emittibili_lane`
 
 ```sql
-CREATE FUNCTION fn_list_emittibili_lane(p_competenza_mese date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_fatturazione_immediata boolean, p_limit integer)
+CREATE FUNCTION fn_list_emittibili_lane(p_competenza_mese date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_fatturazione_immediata boolean, p_limit integer, p_gruppi text[])
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_list_emittibili_lane(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_fatturazione_immediata boolean DEFAULT NULL::boolean, p_limit integer DEFAULT 1000)
+CREATE OR REPLACE FUNCTION vendite.fn_list_emittibili_lane(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_fatturazione_immediata boolean DEFAULT NULL::boolean, p_limit integer DEFAULT 1000, p_gruppi text[] DEFAULT NULL::text[])
  RETURNS TABLE(emittente_soggetto_ruolo_id bigint, tipo_doc_fiscale_id bigint, utility_id integer, competenza_mese date, total_candidate bigint)
  LANGUAGE plpgsql
  STABLE
@@ -27,6 +27,10 @@ BEGIN
   --   4. competenza CUMULATIVA: competenza_mese <= p_competenza_mese
   --      (coerente con fn_select_attivita_fatturabili); NULL = no limite
   --   5. filtri perimetro BA/utility/emittente; corsia fatturazione_immediata
+  --   6. rev 2026-07-27: p_gruppi restringe ai GRUPPI FATTURABILI
+  --      richiesti, cosi' l'emissione mirata non fa nascere un lotto
+  --      per ogni altra terna del perimetro (lotti vuoti = rumore).
+  --      NULL = nessuna restrizione (comportamento storico).
   -- Grana: (emittente, tipo_doc, utility). utility_id e' NOT NULL a monte
   --   (commesse.utility_id) -> in output mai NULL. La coerenza
   --   c.utility_id = ba.utility_id (E_CLIENTE_UTILITY_MISMATCH_BA in
@@ -71,6 +75,15 @@ BEGIN
     AND (p_utility_id IS NULL OR c.utility_id = p_utility_id)
     AND (p_emittente_soggetto_ruolo_id IS NULL OR c.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
     AND (p_fatturazione_immediata IS NULL OR c.fatturazione_immediata = p_fatturazione_immediata)
+    -- EMISSIONE MIRATA (rev 2026-07-27): chiave dalla funzione A1,
+    -- mai ricostruita qui. Un gruppo con righe di tipo doc diverso
+    -- resta su piu' terne, e vengono restituite tutte (G15).
+    AND (
+         p_gruppi IS NULL
+         OR vendite.fn_build_gruppo_fatturabile_key(
+                ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id
+            ) = ANY (p_gruppi)
+        )
   GROUP BY
     c.emittente_soggetto_ruolo_id,
     ca.tipo_doc_fiscale_id,
@@ -83,8 +96,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION vendite.fn_list_emittibili_lane(p_competenza_mese date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_fatturazione_immediata boolean, p_limit integer)
-IS 'Read-only/STABLE: discovery delle corsie (emittente, tipo_doc_fiscale, utility, competenza_mese) pronte da fatturare per il driver batch. Grana per-utility (il lotto e'' segregato per utility: fn_create pretende utility NOT NULL, fn_select filtra ba.utility_id). utility_id mai NULL (commesse.utility_id NOT NULL); coerenza c.utility_id=ba.utility_id garantita da fn_get_or_create_commessa. Criterio APPROVATA+NON_EMESSA, tipo_doc NOT NULL, competenza cumulativa (<=) con output competenza_mese=max. Filtri perimetro + corsia fatturazione_immediata. fn_list_commesse_emittibili resta separata e invariata.';
+COMMENT ON FUNCTION vendite.fn_list_emittibili_lane(p_competenza_mese date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_fatturazione_immediata boolean, p_limit integer, p_gruppi text[])
+IS 'Read-only/STABLE: discovery delle corsie (emittente, tipo_doc_fiscale, utility, competenza_mese) pronte da fatturare per il driver batch. Grana per-utility (il lotto e'' segregato per utility: fn_create pretende utility NOT NULL, fn_select filtra ba.utility_id). utility_id mai NULL (commesse.utility_id NOT NULL); coerenza c.utility_id=ba.utility_id garantita da fn_get_or_create_commessa. Criterio APPROVATA+NON_EMESSA, tipo_doc NOT NULL, competenza cumulativa (<=) con output competenza_mese=max. Filtri perimetro + corsia fatturazione_immediata. fn_list_commesse_emittibili resta separata e invariata. rev 2026-07-27 (brief emissione mirata A5): p_gruppi text[] restringe alle terne dei gruppi richiesti — NULL = nessuna restrizione (G1). Serve a non far nascere un lotto per ogni altra terna del perimetro durante un''emissione mirata: quei lotti sarebbero vuoti (pull e select ora filtrano) ma lascerebbero task run, log e segnalazioni da interpretare. Un gruppo con righe di tipo doc fiscale diverso resta su piu'' terne e vengono restituite TUTTE (G15): e'' il motivo per cui l''esito verso il BE e'' una lista di lotto_id.';
 ```
 
 ---

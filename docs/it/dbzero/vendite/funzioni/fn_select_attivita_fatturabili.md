@@ -2,20 +2,29 @@
 # ⚙️ Funzione `fn_select_attivita_fatturabili`
 
 ```sql
-CREATE FUNCTION fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_lock_batch_id uuid, p_lock boolean, p_data_fatturazione date, p_billing_account_id bigint, p_utility_id integer, p_valuta_id integer, p_emittente_soggetto_ruolo_id bigint, p_area_geografica_id bigint, p_limit integer)
+CREATE FUNCTION fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_lock_batch_id uuid, p_lock boolean, p_data_fatturazione date, p_billing_account_id bigint, p_utility_id integer, p_valuta_id integer, p_emittente_soggetto_ruolo_id bigint, p_area_geografica_id bigint, p_limit integer, p_gruppi text[])
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_lock_batch_id uuid DEFAULT NULL::uuid, p_lock boolean DEFAULT false, p_data_fatturazione date DEFAULT CURRENT_DATE, p_billing_account_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_valuta_id integer DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_area_geografica_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer)
+CREATE OR REPLACE FUNCTION vendite.fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_lock_batch_id uuid DEFAULT NULL::uuid, p_lock boolean DEFAULT false, p_data_fatturazione date DEFAULT CURRENT_DATE, p_billing_account_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_valuta_id integer DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_area_geografica_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_gruppi text[] DEFAULT NULL::text[])
  RETURNS SETOF vendite.attivita_fatturabili
  LANGUAGE plpgsql
 AS $function$
+-- Scopo: seleziona (e opzionalmente blocca) le attivita' fatturabili
+--        eleggibili di un perimetro, marcandole stato_esecuzione=PENDING.
+-- rev 2026-06-19: FOR UPDATE OF a (lock ristretto ad attivita_fatturabili).
+-- rev 2026-07-27 (brief emissione mirata A4): p_gruppi restringe la
+--        selezione ai GRUPPI FATTURABILI richiesti. E' il secondo e
+--        decisivo punto di applicazione del perimetro mirato: qui si
+--        filtrano le AF GIA' ESISTENTI, che il filtro sul pull
+--        (fn_emit_attivita_fatturabili_da_commessa) non puo' vedere.
 DECLARE
     v_competenza DATE;
     v_data_fatturazione DATE;
     v_where TEXT;
+    v_join TEXT;
     v_limit TEXT;
     v_sql TEXT;
 BEGIN
@@ -48,20 +57,42 @@ BEGIN
     END IF;
     IF p_area_geografica_id IS NOT NULL THEN v_where := v_where || ' AND a.area_geografica_id = ' || quote_literal(p_area_geografica_id); END IF;
 
+    -- ============================================
+    -- EMISSIONE MIRATA (rev 2026-07-27): filtro per gruppo.
+    -- ============================================
+    -- Il join alla riga di commessa si aggiunge SOLO quando il
+    -- filtro e' attivo: senza p_gruppi la query resta identica a
+    -- prima, sia come forma sia come piano (garanzia G1).
+    -- commessa_attivita_id e' NOT NULL su attivita_fatturabili,
+    -- quindi l'INNER JOIN non perde righe.
+    -- L'array entra come letterale quotato + cast, coerente con
+    -- gli altri parametri iniettati sopra.
+    v_join := '';
+    IF p_gruppi IS NOT NULL THEN
+        v_join := ' JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id';
+        v_where := v_where
+            || ' AND vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) = ANY ('
+            || quote_literal(p_gruppi::text) || '::text[])';
+    END IF;
+
     v_limit := CASE WHEN p_limit IS NOT NULL THEN ' LIMIT ' || p_limit::TEXT ELSE '' END;
 
     IF p_lock THEN
-        v_sql := 'WITH candidati AS (SELECT a.id FROM vendite.attivita_fatturabili a JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' || v_where || ' ORDER BY a.data_attivita, a.id' || v_limit || ' FOR UPDATE OF a SKIP LOCKED) UPDATE vendite.attivita_fatturabili a SET lock_in_fatturazione = true, lock_batch_id = ' || quote_literal(p_lock_batch_id) || ', stato_esecuzione = ''PENDING'', data_update = now(), user_update = current_user FROM candidati c WHERE a.id = c.id AND a.fatturato IS FALSE AND COALESCE(a.lock_in_fatturazione, false) IS FALSE RETURNING a.*';
+        -- ⚠️ FOR UPDATE OF a: il lock resta ristretto ad
+        -- attivita_fatturabili anche in presenza del join. Non
+        -- estenderlo a ca: serializzerebbe la fatturazione con le
+        -- operazioni di commessa.
+        v_sql := 'WITH candidati AS (SELECT a.id FROM vendite.attivita_fatturabili a JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' || v_join || v_where || ' ORDER BY a.data_attivita, a.id' || v_limit || ' FOR UPDATE OF a SKIP LOCKED) UPDATE vendite.attivita_fatturabili a SET lock_in_fatturazione = true, lock_batch_id = ' || quote_literal(p_lock_batch_id) || ', stato_esecuzione = ''PENDING'', data_update = now(), user_update = current_user FROM candidati c WHERE a.id = c.id AND a.fatturato IS FALSE AND COALESCE(a.lock_in_fatturazione, false) IS FALSE RETURNING a.*';
     ELSE
-        v_sql := 'WITH candidati AS (SELECT a.id FROM vendite.attivita_fatturabili a JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' || v_where || ' ORDER BY a.data_attivita, a.id' || v_limit || ') SELECT a.* FROM vendite.attivita_fatturabili a JOIN candidati c ON c.id = a.id ORDER BY a.data_attivita, a.id';
+        v_sql := 'WITH candidati AS (SELECT a.id FROM vendite.attivita_fatturabili a JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id' || v_join || v_where || ' ORDER BY a.data_attivita, a.id' || v_limit || ') SELECT a.* FROM vendite.attivita_fatturabili a JOIN candidati c ON c.id = a.id ORDER BY a.data_attivita, a.id';
     END IF;
 
     RETURN QUERY EXECUTE v_sql;
 END;
 $function$
 
-COMMENT ON FUNCTION vendite.fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_lock_batch_id uuid, p_lock boolean, p_data_fatturazione date, p_billing_account_id bigint, p_utility_id integer, p_valuta_id integer, p_emittente_soggetto_ruolo_id bigint, p_area_geografica_id bigint, p_limit integer)
-IS 'Select attivita_fatturabili eleggibili con lock opzionale e stato_esecuzione=PENDING.';
+COMMENT ON FUNCTION vendite.fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_lock_batch_id uuid, p_lock boolean, p_data_fatturazione date, p_billing_account_id bigint, p_utility_id integer, p_valuta_id integer, p_emittente_soggetto_ruolo_id bigint, p_area_geografica_id bigint, p_limit integer, p_gruppi text[])
+IS 'Select attivita_fatturabili eleggibili con lock opzionale e stato_esecuzione=PENDING. rev 2026-06-19: FOR UPDATE OF a (lock ristretto). rev 2026-07-27 (brief emissione mirata A4): p_gruppi text[] restringe la selezione ai gruppi fatturabili richiesti — NULL = nessuna restrizione (comportamento storico, G1), array vuoto = zero righe, chiave inesistente = zero righe senza errore. ⭐ E'' IL PUNTO CRITICO della slice: senza questo filtro un giro mirato consumerebbe le AF GIA'' ESISTENTI di altri gruppi nello stesso perimetro (residui di un giro interrotto, di un reset-a-bozza o del giro schedulato), perche'' nessun altro criterio di questa funzione sa nulla della sorgente — garanzia G12. Il legame al documento passa dal JOIN a commesse_attivita via commessa_attivita_id (NOT NULL): su attivita_fatturabili sorgente_tipo_id/sorgente_uid sono rioccupati dall''idempotenza del pull. Il join si aggiunge SOLO con p_gruppi valorizzato: il giro schedulato non paga nulla. ⚠️ FOR UPDATE OF a resta ristretto ad attivita_fatturabili: non estendere il lock a commesse_attivita.';
 ```
 
 ---
