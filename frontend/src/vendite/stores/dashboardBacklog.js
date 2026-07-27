@@ -16,9 +16,13 @@ import {
 } from '../api/dashboardBacklog'
 
 export const useDashboardBacklogStore = defineStore('vendite-dashboard-backlog', () => {
-  // Filtri lista: classe di azionabilita' (null = tutte) e area (null = tutte).
+  // Filtri lista: classe di azionabilita' (null = tutte), area (null = tutte) e
+  // ritardo_giorni "fermo da oltre N giorni" (null = nessuna soglia). Il
+  // ritardo filtra SOLO la lista: le card per classe restano la fotografia
+  // completa (stessa scelta della Situazione aperta).
   const classeSelezionata = ref(null)
   const areaSelezionata = ref(null)
+  const ritardoGiorni = ref(null)
 
   // Ordinamento lista (convenzione order_by/order_dir come le liste standard):
   // default "fermo da" DESC = i piu' anziani prima. Lista lazy (paginata
@@ -39,6 +43,7 @@ export const useDashboardBacklogStore = defineStore('vendite-dashboard-backlog',
     listDashboardBacklogDocumenti({
       classe: classeSelezionata.value,
       area: areaSelezionata.value,
+      ritardo_giorni: ritardoGiorni.value,
       order_by: orderBy.value,
       order_dir: orderDir.value,
       ...paging,
@@ -70,6 +75,7 @@ export const useDashboardBacklogStore = defineStore('vendite-dashboard-backlog',
     riepilogo.invalidate()
     classeSelezionata.value = null
     areaSelezionata.value = null
+    ritardoGiorni.value = null
     orderBy.value = 'anzianita_giorni'
     orderDir.value = 'desc'
     classi.value = []
@@ -79,6 +85,7 @@ export const useDashboardBacklogStore = defineStore('vendite-dashboard-backlog',
   return {
     classeSelezionata,
     areaSelezionata,
+    ritardoGiorni,
     orderBy,
     orderDir,
     classi,

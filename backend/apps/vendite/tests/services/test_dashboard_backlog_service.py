@@ -20,6 +20,8 @@ Indice test eseguiti:
 11) DashBacklogDocumentiServiceTests.test_documenti_ordinamento_inoltrato
 12) DashBacklogDocumentiServiceTests.test_documenti_order_by_non_valido
 13) DashBacklogDocumentiServiceTests.test_documenti_order_dir_non_valido
+14) DashBacklogDocumentiServiceTests.test_documenti_ritardo_giorni_inoltrato
+15) DashBacklogDocumentiServiceTests.test_documenti_ritardo_giorni_non_positivo
 """
 
 from unittest import TestCase
@@ -197,6 +199,26 @@ class DashBacklogDocumentiServiceTests(TestCase):
         kwargs = mock_repo.call_args.kwargs
         self.assertIsNone(kwargs["classe"])
         self.assertIsNone(kwargs["area"])
+        self.assertIsNone(kwargs["ritardo_giorni"])
+
+    # Scopo: il filtro "fermo da oltre N giorni" e' inoltrato al repository
+    #        (stessa semantica del ritardo della Situazione aperta).
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_backlog_documenti",
+        return_value=([], 0),
+    )
+    def test_documenti_ritardo_giorni_inoltrato(self, mock_repo):
+        fn_dash_backlog_documenti(ritardo_giorni=60)
+        self.assertEqual(mock_repo.call_args.kwargs["ritardo_giorni"], 60)
+
+    # Scopo: ritardo_giorni non-positivo -> E_VENDITE_VALIDATION (nessuna
+    #        normalizzazione silenziosa: una soglia <= 0 non ha senso).
+    def test_documenti_ritardo_giorni_non_positivo(self):
+        for valore in (0, -5):
+            with self.assertRaises(ServiceError) as ctx:
+                fn_dash_backlog_documenti(ritardo_giorni=valore)
+            self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: Paginazione invalida -> E_VENDITE_VALIDATION (validate_pagination).
     def test_documenti_page_invalida(self):

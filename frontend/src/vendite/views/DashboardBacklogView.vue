@@ -48,6 +48,7 @@ const store = useDashboardBacklogStore()
 const {
   classeSelezionata,
   areaSelezionata,
+  ritardoGiorni,
   orderBy,
   orderDir,
   classi,
@@ -87,11 +88,31 @@ const cards = computed(() =>
   }))
 )
 
+// Totali per la card "Tutte" (le classi partizionano il backlog: la somma è il
+// totale). Documenti + valore euro fermo complessivo, così la card di reset non
+// resta scarna. Il valore euro è la somma dei valori-fermo di classe (le aree a
+// soli conteggi contribuiscono 0 al valore, coerente con le card di classe).
+const totaleDocumenti = computed(() =>
+  cards.value.reduce((s, c) => s + c.nDocumenti, 0)
+)
+const totaleValore = computed(() =>
+  cards.value.reduce((s, c) => s + c.valoreFermo, 0)
+)
+
 // Opzioni filtro area (tutte + 5 aree funnel dal BB condiviso, label
 // condivise con la 5-card).
 const areaOptions = computed(() => [
   { value: null, label: t('vendite.dashboard_backlog.filtro_area_tutte') },
   ...DASH_AREE.map((area) => ({ value: area, label: areaLabel(area) })),
+])
+
+// Opzioni filtro "fermo da oltre N giorni" (stessa scala della Situazione
+// aperta): null = nessuna soglia. Filtra solo la lista, non le card.
+const ritardoOptions = computed(() => [
+  { value: null, label: t('vendite.dashboard_backlog.ritardo_tutti') },
+  { value: 30, label: t('vendite.dashboard_backlog.ritardo_30') },
+  { value: 60, label: t('vendite.dashboard_backlog.ritardo_60') },
+  { value: 90, label: t('vendite.dashboard_backlog.ritardo_90') },
 ])
 
 // Scopo: carica i contatori per classe con gestione errori standard.
@@ -112,15 +133,26 @@ async function loadDocumenti() {
   }
 }
 
-// Scopo: click su card classe = toggle del filtro classe (riparte da pag. 1).
+// Scopo: click su card classe = SELEZIONE (non toggle). Un secondo click sulla
+//        stessa card la lascia selezionata: prima il toggle-off la deselezionava
+//        e la lista si rimescolava con tutte le classi (un doppio-click bastava a
+//        perdere il filtro). Il ritorno a "tutte" ha ora la sua card dedicata
+//        (`classe === null`). Idempotente: stessa classe = no-op (niente refetch).
 function selezionaClasse(classe) {
-  classeSelezionata.value = classeSelezionata.value === classe ? null : classe
+  if (classeSelezionata.value === classe) return
+  classeSelezionata.value = classe
   store.resetDocumenti()
   loadDocumenti()
 }
 
 // Scopo: cambio filtro area (riparte da pagina 1).
 function onAreaChange() {
+  store.resetDocumenti()
+  loadDocumenti()
+}
+
+// Scopo: cambio filtro "fermo da oltre N giorni" (riparte da pagina 1).
+function onRitardoChange() {
   store.resetDocumenti()
   loadDocumenti()
 }
@@ -213,8 +245,24 @@ onActivated(() => {
     </div>
 
     <div class="app-dash-main">
-      <!-- Contatori per classe di azionabilita' (card = filtro toggle). -->
+      <!-- Contatori per classe di azionabilita' (card = filtro, selezione
+           esclusiva). La card "Tutte" azzera il filtro classe. -->
       <div class="app-dash-cards">
+        <div
+          class="app-dash-card"
+          :class="{ 'is-selected': classeSelezionata === null }"
+          role="button"
+          tabindex="0"
+          @click="selezionaClasse(null)"
+          @keydown.enter="selezionaClasse(null)"
+        >
+          <Tag :value="t('vendite.dashboard_backlog.filtro_classe_tutte')" severity="secondary" />
+          <span class="app-dash-stat-n">{{ totaleDocumenti }}</span>
+          <span class="app-dash-stat-sub">{{ t('vendite.dashboard_backlog.n_documenti') }}</span>
+          <span v-if="totaleValore > 0" class="app-dash-stat-euro">
+            {{ formatCurrency(totaleValore) }}
+          </span>
+        </div>
         <div
           v-for="card in cards"
           :key="card.classe"
@@ -253,16 +301,30 @@ onActivated(() => {
           <h4 class="app-dash-fermi-title">
             {{ t('vendite.dashboard_backlog.lista_titolo') }}
           </h4>
-          <Select
-            v-model="areaSelezionata"
-            :options="areaOptions"
-            option-label="label"
-            option-value="value"
-            :placeholder="t('vendite.dashboard_backlog.filtro_area_tutte')"
-            size="small"
-            style="width: 200px;"
-            @change="onAreaChange"
-          />
+          <div class="app-page-filters">
+            <label class="app-dash-filter-toggle">
+              <span>{{ t('vendite.dashboard_backlog.filtro_ritardo_label') }}</span>
+              <Select
+                v-model="ritardoGiorni"
+                :options="ritardoOptions"
+                option-label="label"
+                option-value="value"
+                size="small"
+                style="width: 150px;"
+                @change="onRitardoChange"
+              />
+            </label>
+            <Select
+              v-model="areaSelezionata"
+              :options="areaOptions"
+              option-label="label"
+              option-value="value"
+              :placeholder="t('vendite.dashboard_backlog.filtro_area_tutte')"
+              size="small"
+              style="width: 200px;"
+              @change="onAreaChange"
+            />
+          </div>
         </div>
         <DataTable
           v-if="documentiCount > 0 || documentiLoading"

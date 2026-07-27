@@ -294,9 +294,12 @@ FROM vendite.fn_list_commesse_emittibili(
 | Parametro | Obbligatorio | Note |
 |-----------|:------------:|------|
 | `p_commessa_id` | si | |
-| `p_lotto_attivita_id` | no | Se presente, associa AF al lotto |
 | `p_only_approved` | no | Default `true` — solo righe APPROVATA |
 | `p_dry_run` | no | Default `false` — simula senza scrivere |
+
+> ⚠️ Il parametro `p_lotto_attivita_id` **non esiste più** (sotto-sistema
+> lotto-attività rimosso, changeset `20260227-16`): la firma reale è
+> `(p_commessa_id, p_only_approved, p_dry_run)` — vedi la nota nel «Flusso tipo».
 
 **Ritorna**: contatori (`total_candidate`, `inserted_rows`, `updated_rows`, `skipped_rows`).
 
@@ -313,7 +316,6 @@ FROM vendite.fn_list_commesse_emittibili(
 SELECT *
 FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
   p_commessa_id => 12345,
-  p_lotto_attivita_id => 100,
   p_only_approved => true,
   p_dry_run => false
 );

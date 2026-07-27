@@ -1656,6 +1656,14 @@ a {
   font-size: var(--app-font-size-base);
 }
 
+/* Card "Tutte" di reset del filtro in testa ai cruscotti a card-donut
+ * (Situazione aperta): non avendo il donut resterebbe piu' bassa dei fratelli,
+ * la si centra verticalmente per allinearla nella riga. */
+.app-dash-card--reset {
+  justify-content: center;
+  text-align: center;
+}
+
 /* Tooltip multi-riga (motivi ostativi di un'azione disabilitata, capability
  * disabled+reason): il testo arriva come textNode con '\n', che senza
  * pre-line verrebbe collassato in spazi. Applicata da useActionBar via la

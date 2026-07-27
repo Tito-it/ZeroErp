@@ -303,6 +303,33 @@ class VenditeRepository:
         result: list[LottoListRow] = [self._map_lotto_row(row) for row in rows]
         return result, total_count
 
+    # Scopo: Conteggio lotti per mese di competenza di un anno (mese 1..12 → n).
+    # Obiettivo: alimentare il badge per-mese della sidebar anno/mese del
+    #            registro lotti (stile Lente Competenza). Fotografia completa:
+    #            NESSUN filtro stato (il badge conta i lotti generati, non quelli
+    #            dello stato filtrato — decisione UX). Scope emittente identico
+    #            alla lista (RLS + whitelist applicativa via _add_scope_emittente).
+    # Perimetro: sola lettura, nessun side-effect. Righe con competenza_mese NULL
+    #            escluse dal confronto sull'anno (non sono di alcun mese).
+    def count_lotti_per_mese(
+        self, *, anno: int, auth_user_id: int | None = None,
+    ) -> dict[int, int]:
+        conditions: list[str] = ["EXTRACT(YEAR FROM fl.competenza_mese) = %s"]
+        params: list[Any] = [anno]
+        self._add_scope_emittente(
+            auth_user_id, "fl.emittente_soggetto_ruolo_id", conditions, params
+        )
+        where_clause = "WHERE " + " AND ".join(conditions)
+        sql = f"""
+            SELECT EXTRACT(MONTH FROM fl.competenza_mese)::int AS mese, COUNT(*)
+            FROM vendite.fatturazione_lotti fl
+            {where_clause}
+            GROUP BY 1
+        """  # noqa: S608 — where da frammenti interni, valori parametrizzati
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return {int(r[0]): int(r[1]) for r in cursor.fetchall()}
+
     # Scopo: Lotti in stato fiscale EMESSA per la competenza data → candidati
     #        alla numerazione di PERIMETRO (C-4). Query PURA (id+codice): lo
     #        `stato_doc_fiscale_id` EMESSA lo risolve+guarda il chiamante (handler,
@@ -990,6 +1017,7 @@ class VenditeRepository:
         *,
         classe: str | None,
         area: str | None,
+        ritardo_giorni: int | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
         limit: int,
@@ -1003,6 +1031,16 @@ class VenditeRepository:
         if area is not None:
             conditions.append("d.area = %s")
             params.append(area)
+        # Filtro "fermo da oltre N giorni" su data documento — stessa semantica e
+        # stesso SQL della Situazione aperta (DL-17). Solo sulla lista: le card
+        # per classe restano la fotografia completa. Le righe con data ignota
+        # (data_riferimento NULL, anzianita_giorni NULL) sono escluse dal
+        # confronto — coerente: "fermo da N giorni" richiede un'età nota.
+        if ritardo_giorni is not None:
+            conditions.append(
+                "d.data_riferimento <= current_date - make_interval(days => %s)"
+            )
+            params.append(ritardo_giorni)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

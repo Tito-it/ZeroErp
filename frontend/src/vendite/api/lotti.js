@@ -13,6 +13,12 @@ export function listLotti(params = {}) {
   return api.get(`${BASE}/`, { params })
 }
 
+// GET conteggi lotti/mese di un anno (badge sidebar anno/mese). Fotografia
+// completa (nessun filtro stato): { anno, mesi: [{competenza_mese, n_lotti}] }.
+export function listLottiMensile(anno) {
+  return api.get(`${BASE}/mensile/`, { params: { anno } })
+}
+
 // GET dettaglio testata lotto (B-1). 404 su lotto fuori scope/inesistente.
 export function getLotto(lottoId) {
   return api.get(`${BASE}/${lottoId}/`)
