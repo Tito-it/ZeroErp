@@ -1,4 +1,5 @@
 from django.http import JsonResponse
+from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -19,6 +20,7 @@ from apps.core.api.payload_validators import (
     optional_int,
     optional_iso_date,
     optional_uuid,
+    qp_int_strict,
     qp_iso_date_optional,
 )
 from apps.core.api.success_responses import success_response
@@ -50,7 +52,12 @@ from apps.vendite.services.pipeline_service import (
     run_lotto_pipeline,
     run_lotto_pipeline_until_done,
 )
-from apps.vendite.services.vendite_service import fn_get_lotto, fn_list_lotti, fn_list_lotto_fatture
+from apps.vendite.services.vendite_service import (
+    fn_get_lotto,
+    fn_list_lotti,
+    fn_list_lotto_fatture,
+    fn_lotti_mensile,
+)
 
 # View API vendite: espone endpoint HTTP per avviare pipeline lotto.
 
@@ -423,6 +430,48 @@ class ApiLottiList(DomainAPIView):
             page=page,
             page_size=page_size,
         )
+        return success_response(data)
+
+
+class ApiLottiMensile(DomainAPIView):
+    """Conteggio lotti generati per mese di un anno — alimenta il badge della
+    sidebar anno/mese del registro lotti (stile Lente Competenza). Read-only,
+    scope emittente DB-side come la lista. Fotografia completa (nessun filtro
+    stato: il badge conta i lotti generati, non quelli dello stato filtrato)."""
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="anno",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Anno di competenza (default: anno corrente). 2000-2100.",
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeLottiMensileResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeLottiMensileData",
+                        fields={
+                            "anno": serializers.IntegerField(),
+                            "mesi": serializers.ListField(child=serializers.DictField()),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce i 12 conteggi lotti/mese dell'anno per la sidebar.
+    def get(self, request: Request) -> JsonResponse:
+        anno = qp_int_strict(request.query_params.get("anno"), "anno", timezone.localdate().year)
+        auth_user_id = get_scope_user_id(request)
+        data = fn_lotti_mensile(anno=anno, auth_user_id=auth_user_id)
         return success_response(data)
 
 

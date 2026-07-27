@@ -131,6 +131,39 @@ def fn_list_lotti(
     return _build_list_response(results, total_count, page, page_size)
 
 
+# Range anni accettato (mirror del clamp FE useDashMesiNav): fuori range → 400,
+# non una query su un anno assurdo. Vive qui perché la validazione è del service.
+_DASH_ANNO_MIN = 2000
+_DASH_ANNO_MAX = 2100
+
+
+# Scopo: Conteggio lotti generati per mese di competenza di un anno — alimenta il
+#        badge per-mese della sidebar anno/mese del registro lotti (stile Lente
+#        Competenza). Fotografia completa (nessun filtro stato, decisione UX).
+#        Ritorna sempre i 12 mesi (0-riempiti) in ordine, ognuno con la sua
+#        competenza (YYYY-MM-01, chiave stabile per il componente FE) e n_lotti.
+#        Scope emittente applicato in repo (RLS + whitelist), come la lista.
+def fn_lotti_mensile(*, anno: int, auth_user_id: int | None = None) -> dict[str, object]:
+    ErrorManager.require(
+        isinstance(anno, int) and _DASH_ANNO_MIN <= anno <= _DASH_ANNO_MAX,
+        code="E_VENDITE_VALIDATION",
+        message="Anno non valido.",
+        detail=f"anno deve essere un intero tra {_DASH_ANNO_MIN} e {_DASH_ANNO_MAX}.",
+        context={"anno": anno},
+        function_name="vendite.vendite_service.fn_lotti_mensile",
+    )
+    repository = VenditeRepository()
+    per_mese = repository.count_lotti_per_mese(anno=anno, auth_user_id=auth_user_id)
+    mesi = [
+        {
+            "competenza_mese": f"{anno:04d}-{mese:02d}-01",
+            "n_lotti": per_mese.get(mese, 0),
+        }
+        for mese in range(1, 13)
+    ]
+    return {"anno": anno, "mesi": mesi}
+
+
 # Scopo: Restituisce la testata di un singolo lotto (dettaglio drawer diagnostico,
 #        cockpit Fase B). Scope emittente applicato in repo: lotto fuori scope o
 #        inesistente → E_LOTTO_NOT_FOUND (404), indistinguibili per non leakare
@@ -707,6 +740,7 @@ def fn_dash_backlog_documenti(
     *,
     classe: str | None = None,
     area: str | None = None,
+    ritardo_giorni: int | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
     page: int = 1,
@@ -716,6 +750,17 @@ def fn_dash_backlog_documenti(
         area,
         allowed=DASH_FATTURAZIONE_AREE,
         param_name="area",
+        function_name="vendite.vendite_service.fn_dash_backlog_documenti",
+    )
+    # Filtro "fermo da oltre N giorni": soglia positiva o assente (una soglia
+    # non-positiva non ha senso; niente normalizzazione silenziosa). Speculare
+    # al filtro ritardo della Situazione aperta.
+    ErrorManager.require(
+        ritardo_giorni is None or ritardo_giorni > 0,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro ritardo_giorni non valido.",
+        detail="ritardo_giorni deve essere un intero positivo (o assente).",
+        context={"ritardo_giorni": ritardo_giorni},
         function_name="vendite.vendite_service.fn_dash_backlog_documenti",
     )
     # Ordinamento server-side (convenzione order_by/order_dir come le liste
@@ -749,6 +794,7 @@ def fn_dash_backlog_documenti(
     results, total_count = repository.list_dash_backlog_documenti(
         classe=classe,
         area=area,
+        ritardo_giorni=ritardo_giorni,
         order_by=order_by,
         order_dir=order_dir,
         limit=page_size,

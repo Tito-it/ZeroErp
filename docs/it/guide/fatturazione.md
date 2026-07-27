@@ -55,7 +55,7 @@ Il processo e` suddiviso su tre layer con responsabilita` distinte:
 | ----------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | **PostgreSQL**    | Stato, regole di dominio, vincoli, log funzionali              | `fn_get_or_create_commessa`, `fn_set_fatturazione_lotto_stato`, trigger append-only |
 | **Python/Django** | Orchestrazione, sequencing, fan-out, gestione errori, API REST | `CommessaPushOrchestrator`, `LottoPipelineRunner`, `PipelineStepExecutor`           |
-| **API REST**      | Esposizione endpoint, validazione input, idempotenza request   | `/api/vendite/run-lotto-pipeline/`, `/api/vendite/run-commesse-push/`               |
+| **API REST**      | Esposizione endpoint, validazione input, idempotenza request   | `/api/v1/vendite/pipeline/run/`, `/api/v1/vendite/commesse/push/run/`               |
 
 Principio generale: il database e` l'autorita` su stato e regole; Python orchestra il flusso e gestisce le eccezioni; l'API espone e protegge.
 
@@ -302,9 +302,13 @@ Componenti:
 
 ### Schema ER (pipeline lotti)
 
+> ℹ️ Il sotto-sistema **lotto-attività** (`attivita_fatturabili_lotti` +
+> `attivita_fatturabili.lotto_attivita_id`) è stato **rimosso** dal changeset
+> `20260227-16`: le attività fatturabili non hanno più un lotto-attività proprio,
+> il raggruppamento avviene solo a livello `fatturazione_lotti`.
+
 ```mermaid
 erDiagram
-  ATTIVITA_FATTURABILI_LOTTI ||--o{ ATTIVITA_FATTURABILI : "lotto_attivita_id"
   ATTIVITA_FATTURABILI }o--|| COMMESSE_ATTIVITA : "commessa_attivita_id"
   FATTURAZIONE_LOTTI ||--o{ FATTURAZIONE_LOTTI_FATTURE : "lotto_id"
   FATTURE ||--o{ FATTURAZIONE_LOTTI_FATTURE : "fattura_id"
@@ -319,17 +323,10 @@ erDiagram
   }
   ATTIVITA_FATTURABILI {
     bigint id PK
-    bigint lotto_attivita_id FK
     bigint commessa_id FK
     bigint commessa_attivita_id FK
+    bigint fattura_riga_id FK
     varchar stato_esecuzione
-  }
-  ATTIVITA_FATTURABILI_LOTTI {
-    bigint id PK
-    varchar codice
-    date competenza_mese
-    bigint utility_id FK
-    varchar stato_lotto
   }
   FATTURAZIONE_LOTTI {
     bigint id PK

@@ -21,7 +21,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.payload_validators import qp_int_strict, qp_str, qp_str_upper
+from apps.core.api.payload_validators import qp_int_optional, qp_int_strict, qp_str, qp_str_upper
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.vendite_service import (
     fn_dash_backlog_documenti,
@@ -91,6 +91,20 @@ class ApiDashboardBacklogDocumenti(DomainAPIView):
                 ),
             ),
             OpenApiParameter(
+                name="ritardo_giorni",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Soglia \"fermo da oltre N giorni\" su data documento: "
+                    "tiene solo i documenti con data_riferimento <= oggi - N "
+                    "(stessa semantica del filtro ritardo della Situazione "
+                    "aperta). Solo sulla lista; le card per classe restano la "
+                    "fotografia completa. Strict: non numerico -> 400; "
+                    "intero <= 0 -> 400 (E_VENDITE_VALIDATION)."
+                ),
+            ),
+            OpenApiParameter(
                 name="order_by",
                 type=str,
                 location=OpenApiParameter.QUERY,
@@ -153,6 +167,9 @@ class ApiDashboardBacklogDocumenti(DomainAPIView):
         qp = request.query_params
         classe = qp_str_upper(qp.get("classe"))
         area = qp_str_upper(qp.get("area"))
+        # Filtro "fermo da oltre N giorni" (strict: non numerico -> 400). Solo
+        # sul drill-down; le card per classe restano la fotografia completa.
+        ritardo_giorni = qp_int_optional(qp.get("ritardo_giorni"), "ritardo_giorni")
         # Ordinamento (convenzione order_by/order_dir): whitelist + direzione
         # validate nel service (unica definizione, fail-fast 400).
         order_by = qp_str(qp.get("order_by"))
@@ -165,6 +182,7 @@ class ApiDashboardBacklogDocumenti(DomainAPIView):
         data = fn_dash_backlog_documenti(
             classe=classe,
             area=area,
+            ritardo_giorni=ritardo_giorni,
             order_by=order_by,
             order_dir=order_dir,
             page=page,

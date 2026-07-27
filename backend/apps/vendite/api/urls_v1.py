@@ -17,6 +17,7 @@ from apps.vendite.api.views import (
     ApiFatturazioneRun,
     ApiFatturazioneRunStato,
     ApiLottiList,
+    ApiLottiMensile,
     ApiLottoDetail,
     ApiLottoFattureList,
     ApiLottoSegnalazioniSummary,
@@ -180,6 +181,9 @@ urlpatterns = [
         name="vendite-dashboard-backlog-documenti",
     ),
     path("lotti/", ApiLottiList.as_view(), name="vendite-lotti-list"),
+    # Aggregato conteggi lotti/mese per la sidebar anno/mese (prima di
+    # <int:lotto_id> per chiarezza; "mensile" non è comunque un int).
+    path("lotti/mensile/", ApiLottiMensile.as_view(), name="vendite-lotti-mensile"),
     path("lotti/<int:lotto_id>/", ApiLottoDetail.as_view(), name="vendite-lotto-detail"),
     path("pipeline/run/", ApiRunLottoPipeline.as_view(), name="vendite-run-lotto-pipeline"),
     path(
