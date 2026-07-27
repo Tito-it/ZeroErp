@@ -687,3 +687,50 @@ class OrdiniStepPraticaTests(SimpleTestCase):
         ordini_service.push_a_commessa(55)
 
         mock_step.assert_not_called()
+
+
+class OrdiniFatturazioneImmediataTests(SimpleTestCase):
+    """Corsia di instradamento `fatturazione_immediata` sull'ordine.
+
+    Su ordini e DDT la whitelist BASTA (i mapper sono dict-comprehension sul
+    payload), a differenza del contratto che copia campo per campo — ed e'
+    esattamente per questo che lo stesso gesto sui tre domini aveva prodotto due
+    successi e un no-op silenzioso. Qui si blocca il comportamento, cosi' un
+    futuro refactor verso un mapper esplicito non lo perde in silenzio.
+    """
+
+    @patch(_REPO)
+    def test_crea_ordine_porta_il_flag(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_soggetto_ruolo_id_by_ba.return_value = 555
+        repo.get_stato_id_by_codice.return_value = 1
+        repo.create_ordine.return_value = {"id": 7, "uid": "u", "numero": "ORD0007"}
+        ordini_service.crea_ordine({
+            "billing_account_id": 3, "utility_id": 1, "fatturazione_immediata": True,
+        })
+        self.assertIs(
+            repo.create_ordine.call_args.kwargs["fatturazione_immediata"], True,
+        )
+
+    # Senza la chiave si passa None: il repository omette la colonna e resta il
+    # DEFAULT false del DB (corsia differita).
+    @patch(_REPO)
+    def test_crea_ordine_senza_flag_lascia_il_default(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_soggetto_ruolo_id_by_ba.return_value = 555
+        repo.get_stato_id_by_codice.return_value = 1
+        repo.create_ordine.return_value = {"id": 7, "uid": "u", "numero": "ORD0007"}
+        ordini_service.crea_ordine({"billing_account_id": 3, "utility_id": 1})
+        self.assertIsNone(
+            repo.create_ordine.call_args.kwargs["fatturazione_immediata"],
+        )
+
+    @patch(_REPO)
+    def test_aggiorna_ordine_persiste_il_flag(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_ordine.return_value = {"id": 7, "billing_account_id": 3}
+        ordini_service.aggiorna_ordine(7, {"fatturazione_immediata": True})
+        self.assertIs(
+            repo.update_ordine.call_args.kwargs["fatturazione_immediata"], True,
+        )

@@ -130,14 +130,18 @@ _CREATE_KEYS_TESTATA: frozenset[str] = frozenset({
     # Snapshot categoria cliente: opzionale. Se fornito, congela il valore
     # scelto dall'operatore; se omesso, il trigger DB lo popola dal BA.
     "categoria_cliente_id_snapshot",
-    # ⚠️ `fatturazione_immediata` NON e' qui, e non e' una dimenticanza: la fn
-    # madre `vendite.fn_create_contratto` costruisce l'INSERT da una whitelist
-    # SUA (`v_testata_allowed`) che non contiene ancora la colonna, quindi
-    # passarla qui la farebbe scartare **in silenzio** — il peggiore dei mondi.
-    # Il flag si imposta con la PATCH in DRAFT (whitelist sotto), che copre il
-    # caso d'uso per intero: la corsia va decisa prima del push, e in DRAFT il
-    # contratto non e' ancora pushabile. Estendere la whitelist della fn madre
-    # e' una modifica DB, passata al team ([[feedback_db_actions_passaggio_team]]).
+    # Corsia di instradamento della fatturazione: «questo contratto va fatturato
+    # subito». Si decide PRIMA del push in commessa — dopo, il flag e' inerte
+    # (fa parte della chiave di dedup della commessa) e il guard DB
+    # `trgfn_guard_fatturazione_immediata_immutabile` respinge l'UPDATE.
+    # ⚠️ Non basta la whitelist: il mapper `_build_create_data_testata` copia
+    # campo per campo, quindi la chiave va letta anche li' (lezione del difetto
+    # 2026-07-27: stesso gesto su tre domini, due successi e un no-op).
+    # ⚠️ Contratto con la fn madre (§C4 del brief DB): omettere la chiave oppure
+    # mandare un booleano, MAI `null` — la colonna e' NOT NULL e il filtro della
+    # whitelist DB e' sulla PRESENZA della chiave, non sul valore.
+    "fatturazione_immediata",
+
     # Snapshot valuta fissato al CREATE, opzionale: se non passato, il
     # trigger DB `_a*_set_valuta_default_ins` risolve via
     # `vendite.fn_get_valuta_id` (catena BA → emittente → gestore, brief
@@ -1987,11 +1991,31 @@ class ContrattiService:
         self._apply_optional_positive_int(
             payload, data, "valuta_id", message=_MESSAGE,
         )
+        self._apply_fatturazione_immediata(payload, data)
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
             if meta is not None:
                 data["meta"] = meta
         return data
+
+    # Scopo: Porta `fatturazione_immediata` dal payload al dict che raggiunge il
+    #        DB. Esiste come metodo suo, condiviso da create e update, perche' i
+    #        due mapper del contratto copiano campo per campo: aggiungere la
+    #        chiave alla sola whitelist non basta, ed e' esattamente il difetto
+    #        del 2026-07-27 (whitelist estesa, mapper no → PATCH che rispondeva
+    #        200 con «contratto salvato» e non persisteva nulla).
+    #        Validazione con `optional_bool` e non `bool(...)`: quest'ultimo
+    #        accetterebbe la stringa `"false"` come True.
+    #        Chiave assente o `null` → si OMETTE dal dict: la colonna e' NOT
+    #        NULL e la fn madre filtra sulla PRESENZA della chiave, quindi un
+    #        `None` propagato diventerebbe un 23502 invece del DEFAULT false
+    #        (contratto §C4 del brief DB).
+    def _apply_fatturazione_immediata(
+        self, payload: dict[str, Any], data: dict[str, Any],
+    ) -> None:
+        valore = self._v.optional_bool(payload, "fatturazione_immediata")
+        if valore is not None:
+            data["fatturazione_immediata"] = valore
 
     # Scopo: Compone il dict di update testata. Rivalida coerenza coppia
     #        variazione globale con la foto attuale (listino_id puo' cambiare
@@ -2051,6 +2075,7 @@ class ContrattiService:
         self._apply_optional_positive_int(
             payload, data, "categoria_cliente_id_snapshot", message=_MESSAGE,
         )
+        self._apply_fatturazione_immediata(payload, data)
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
             if meta is not None:

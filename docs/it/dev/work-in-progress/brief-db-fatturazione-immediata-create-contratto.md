@@ -2,11 +2,11 @@
 
 > **Tipo**: brief operativo per il **team DB** · **Target**: `dev/db-tid` ·
 > **Data**: 2026-07-27 · **Owner**: Tid ·
-> **Stato**: ✅ **DB CHIUSO** — changeset `20260727-40` applicato (EXECUTED
-> 2026-07-27 23:55), pgTAP `plan(12)` **verde 12/12**. Resta la doc auto-gen
-> dbzero da rigenerare ·
-> **Priorità**: 🟢 BASSA *lato DB* — ma vedi §3: **c'è un difetto BE bloccante**
-> che va chiuso a prescindere da questo brief.
+> **Stato**: ✅ **DB CHIUSO** (changeset `20260727-40`, pgTAP 12/12) ·
+> ✅ **BE/FE CHIUSO** (2026-07-28: difetto §3 corretto, checklist §5 applicata,
+> 11 test nuovi). Resta la doc auto-gen dbzero da rigenerare ·
+> **Aperto**: solo la validazione a schermo + la variante fail-loud di §6a, che
+> resta al team DB. Le due decisioni di §6 sono chiuse.
 >
 > **Origine**: [brief-be-fe-emissione-fattura-mirata.md](brief-be-fe-emissione-fattura-mirata.md)
 > step BE-6 (deviazione 1) · Fase B di
@@ -141,13 +141,49 @@ commento):
 applicata in tutti gli ambienti. Invertirli riporta lo scarto silenzioso, che è
 esattamente ciò che questo brief evita.
 
-## 6. Proposte lasciate aperte (non fatte qui)
+## 6. Le due proposte emerse — entrambe chiuse (2026-07-28)
 
-Due cose emerse lavorando, entrambe fuori dal perimetro di questo brief perché
-cambierebbero comportamento oltre la singola colonna. Vanno decise, non
-dimenticate.
+Erano fuori dal perimetro del brief perché cambierebbero comportamento oltre la
+singola colonna. Chiuse entrambe: **6a** con un guardrail lato BE, **6b** con
+una decisione di non fare — scritta qui col perché e con la condizione di
+riapertura, così una revisione futura sa cosa rimettere in discussione e su
+quale segnale.
 
-**6a — La whitelist resta «fail-open».** Una chiave ignota è ancora scartata in
+**6a — ✅ CHIUSA lato BE (2026-07-28): guardrail scritto, su ENTRAMBE le whitelist.**
+
+`ContrattiWhitelistCreateAllineataAlDbTests` confronta le whitelist BE con
+quelle della fn madre lette dalla **doc auto-gen** — che riflette l'oggetto
+vivo, gira senza DB (CI-safe) ed è la fonte prevista dalla regola di casa.
+Verifica nei due sensi: chiavi BE ignote al DB (scarto silenzioso, il caso
+grave) e chiavi DB non esposte dal BE (capacità irraggiungibile).
+
+| Whitelist BE | Whitelist DB |
+|---|---|
+| `_CREATE_KEYS_TESTATA` meno `utility` (sotto-entità) | `v_testata_allowed` |
+| `_UTILITY_CREATE_KEYS` più `istanza_utility_id`/`utility_id` (iniettate dal service, non dal payload) | `v_util_allowed` |
+
+⚠️ **La seconda riga è stata aggiunta dopo una domanda di Tid** («sicuro che il
+fail-loud non sia già fatto?»). Verificando si è visto che no, non lo è — ma
+soprattutto che **`p_utility` ha la stessa identica struttura fail-open della
+testata**, e non era presidiata da nessuno. Stessa trappola, un livello sotto:
+presidiata ora, non perché sia già successo ma perché è il meccanismo che è già
+costato un giro sulla testata.
+
+Entrambi i guardrail sono stati provati aggiungendo una chiave finta: **entrambi
+falliscono**, e con il messaggio giusto.
+
+> Reperto minore, ma istruttivo: alla prima stesura il guardrail utility era
+> rosso su `param_1_num`/`param_2_txt`. Non era una divergenza reale — era la
+> regex del test, `[a-z_]+`, che non copre le cifre e quindi quelle due chiavi
+> **non le vedeva affatto**. Un guardrail che legge male la sorgente di verità
+> è peggio di nessun guardrail: corretto in `[a-z0-9_]+`.
+
+La seconda proposta — rendere la fn madre **fail-loud** — **resta aperta e resta
+del team DB**: cambia il comportamento di tutte le chiavi di una madre già in
+uso (e la stessa forma vale per `p_utility`), mentre il guardrail intercetta
+comunque la divergenza nel momento in cui nasce, a rischio zero.
+
+~~**6a — La whitelist resta «fail-open».**~~ Una chiave ignota è ancora scartata in
 silenzio: fra un anno, alla colonna successiva, si ripete identico. Due rimedi
 possibili, in ordine di costo:
 
@@ -161,23 +197,125 @@ possibili, in ordine di costo:
 È la stessa filosofia del guard `20260727-08` («meglio una regola scritta che una
 disciplina affidata alle persone»), applicata al livello sopra.
 
-**6b — La finestra `ATTIVO` non è coperta da nessuno.** Il flag conta solo prima
-del push. Ma:
+**6b — ✅ DECISA (Tid, 2026-07-28): la finestra `ATTIVO` NON si apre.**
 
-- il push parte da `ATTIVO`;
-- in `ATTIVO` la PATCH ammette solo `valido_al` e `meta`.
+### Il vuoto, descritto per bene
 
-Fra i due c'è un vuoto: un contratto attivato il 1° e pushato a fine mese ha
-settimane in cui il DB permetterebbe ancora il cambio e il BE no. Su ordini e
-DDT il caso non esiste (documenti one-shot); su un contratto ricorrente
-«me ne accorgo dopo l'attivazione, prima del primo push» è realistico, e oggi
-l'unico rimedio è rifare il contratto. Il guard DB sa **esattamente** quando il
-flag diventa intoccabile; la regola BE approssima per stato ed è più restrittiva
-del dominio. Da decidere: aggiungere il flag a
-`_CONTRATTO_PATCH_ALLOWED_BY_STATE["ATTIVO"]` lasciando al guard l'ultima
-parola, oppure scrivere qui perché no.
+Il flag conta solo prima del push, e il push parte da `ATTIVO`
+(`fn_list_contratti_da_pushare` filtra quello stato). In `ATTIVO` la PATCH
+ammette solo `valido_al` e `meta`. Quindi:
+
+| Momento del contratto | Il DB lascia cambiare il flag? | Il BE? |
+|---|---|---|
+| `DRAFT` | sì (nessuna riga in `commesse_sorgenti`) | sì |
+| `ATTIVO`, **non ancora pushato** | **sì** | **no** ← il vuoto |
+| pushato in commessa | no (guard `20260727-08`) | no |
+
+Il vuoto è reale: il DB ragiona sul **fatto** («esiste una riga in
+`commesse_sorgenti`?»), il BE sullo **stato**, che del push è solo
+un'approssimazione — e approssima per eccesso.
+
+⚠️ **Non è una contraddizione con §B3** del brief principale («l'indicazione si
+stabilisce prima che il lavoro entri in commessa»): in quella riga il lavoro in
+commessa non c'è ancora. `ATTIVO` e `pushato` non sono la stessa cosa, ed è la
+confusione fra i due che fa sembrare la questione un rimpallo fra DB e BE. Non
+lo è: il brief DB metteva due strade sul tavolo senza sceglierne una.
+
+### Perché si è deciso di NON aprire
+
+1. **Il caso d'uso ha già una risposta, ed è migliore.** «Me ne accorgo dopo, e
+   voglio fatturare subito quel lavoro» è coperto **interamente**
+   dall'**emissione mirata** (Parte A di questa stessa slice): si seleziona il
+   gruppo e si fattura, senza toccare la corsia. Aprire il flag darebbe due modi
+   di ottenere la stessa cosa — cioè due posti dove decidere la stessa cosa, che
+   è esattamente la ragione per cui **D-6** ha escluso il flag dai consumi.
+2. **La regola «in `ATTIVO` si tocca solo `valido_al` e `meta`» non è un
+   dettaglio**: è una disciplina dichiarata («per cambi sostanziali serve un
+   nuovo contratto, eventualmente con `parent_contratto_id` — pattern
+   audit-friendly»). Il flag decide su quale corsia fiscale finisce il lavoro:
+   è un cambio sostanziale, non una rifinitura. Fargli un'eccezione apre una
+   crepa in una regola netta, e la prossima eccezione si chiede più facilmente.
+3. **La finestra è più stretta di quanto sembri.** `commesse_sorgenti` ha
+   `UNIQUE` **globale** su `(sorgente_tipo_id, sorgente_uid)`: un contratto è
+   legato a **una sola commessa per sempre**, e la corsia si fissa al **primo**
+   push. Il vuoto quindi non riguarda «ogni mese di un contratto ricorrente» ma
+   solo l'intervallo *attivazione → primo push*. Passato quello, il flag è
+   inerte per costruzione e nessuna regola BE lo cambierebbe.
+4. **Che il BE sia più restrittivo del DB non è un difetto.** Il guard DB è
+   l'ultima linea e ragiona sul fatto; la regola BE è politica di dominio e può
+   legittimamente essere più stretta. Difese a granularità diversa sono la
+   norma, non un'incoerenza da sanare.
+
+**Nessuna modifica al codice**: `_CONTRATTO_PATCH_ALLOWED_BY_STATE["ATTIVO"]`
+resta `{valido_al, meta}`.
+
+### Quando riaprire
+
+Il caso che questa decisione **non** copre è diverso da quello discusso: non
+«fattura subito questo lavoro» (risolto dalla mirata), ma «il **prossimo** push
+di questo contratto deve partire sulla corsia veloce», su un contratto attivato
+e non ancora pushato. Segnale concreto da tenere d'occhio: **operatori che
+rifanno un contratto solo per cambiare la corsia**. Se succede più di
+aneddoticamente, si riapre — e la strada è quella già individuata (flag in
+whitelist `ATTIVO`, ultima parola al guard DB), non una nuova.
 
 ## 7. Registro
+
+### 2026-07-28 · BE/FE — difetto chiuso, checklist applicata ✅
+
+**Il difetto di §3 è confermato** e corretto. Verificato sul codice prima di
+accettarlo: `_build_update_data_testata` copia campo per campo e la chiave non
+era fra quelle. La diagnosi del brief era esatta, sintomo compreso.
+
+**Un anello in più di quelli elencati.** La checklist §5 dava il punto 1
+(«rimettere la chiave in `_CREATE_KEYS_TESTATA`») come sufficiente per la
+create: non lo era. Anche **`_build_create_data_testata` è un mapper esplicito**
+— stessa trappola, stesso file, dieci righe sopra. Con la sola whitelist la
+create avrebbe ripetuto il no-op silenzioso della PATCH.
+
+Per non lasciare la stessa trappola una terza volta, la lettura del flag è ora
+**un metodo unico** `_apply_fatturazione_immediata(payload, data)` chiamato dai
+due mapper: aggiungere un percorso senza accorgersene resta possibile, ma
+almeno non ci sono due implementazioni da tenere allineate.
+
+**Scostamento dal fix proposto.** §3 suggeriva
+`data[...] = bool(payload["fatturazione_immediata"])`. Non l'ho usato:
+`bool("false")` è `True`, quindi una stringa dal client avrebbe messo il
+contratto sulla corsia veloce. Si usa `PayloadValidator.optional_bool`, che
+rifiuta i non-booleani con un 400 parlante — è il validator già in uso in questo
+service, e la disciplina «niente coercion silenziosa» è quella di casa.
+
+**Il contratto C4 è rispettato in modo più stretto**: chiave assente *o* `null`
+→ la chiave viene **omessa** dal dict, quindi la fn madre non la vede mai e
+resta il `DEFAULT false`. Il BE non manda `null`, come richiesto.
+
+**Difetto FE evitato togliendo il `v-if="isEdit"`**: il campo usava
+`:disabled="isLocked(...)"` senza il guard `isEdit &&` che tutti gli altri campi
+del drawer hanno. In creazione il blob capabilities non esiste, quindi `isLocked`
+è `true` e il toggle sarebbe nato **disabilitato** — il campo appena sbloccato,
+inutilizzabile. Allineato al pattern del file.
+
+**Checklist §5**: 6/6 applicati (whitelist, i 4 commenti diventati falsi, gate
+`isEdit` del template, scorporo in `handleSave`).
+
+**Test — il buco segnalato in §3 («nessun test copre il flag») è chiuso**:
+
+| Dominio | Casi |
+|---|---|
+| contratti | 6 — create con/senza/`null`, PATCH persiste, `false` è un valore non un'assenza, tipo non booleano rifiutato |
+| ordini | 3 — create con/senza flag, PATCH persiste |
+| DDT | 2 — create, PATCH persiste |
+
+Verificato che i test **presidino davvero il difetto**: simulando la rimozione
+della chiamata al mapper, 2 casi diventano rossi.
+
+Totale `apps.vendite`: 1347 → **1358**, baseline invariata (17 fail + 84 error,
+identici a HEAD). Build FE verde.
+
+**Nota sull'ordine di rilascio (§5)**: rispettato — il changeset `20260727-40`
+risulta EXECUTED prima della modifica BE, e l'ambiente è uno solo
+([[project_no_produzione_solo_sviluppo]]).
+
 
 ### 2026-07-27 · Analisi critica del brief
 
@@ -219,6 +357,9 @@ una riga (da 111 a 110).
 
 1. Doc auto-gen dbzero da rigenerare (`fn_create_contratto.md`) → poi il brief
    può passare in `work-done`.
-2. **BE**: il fix del mapper (§3) — indipendente e prioritario, è il vero blocco.
-3. **BE/FE**: la checklist di §5.
-4. Decidere §6a e §6b.
+2. ~~**BE**: il fix del mapper (§3)~~ ✅ 2026-07-28.
+3. ~~**BE/FE**: la checklist di §5~~ ✅ 2026-07-28.
+4. ~~Decidere §6a e §6b~~ ✅ 2026-07-28: 6a chiusa col guardrail BE (la
+   variante fail-loud della fn madre resta al team DB); 6b decisa — **non si
+   apre**, motivi e condizioni di riapertura scritti in §6.
+5. Validazione a schermo del campo sui tre domini.
