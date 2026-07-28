@@ -1,0 +1,116 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R1-R4, ARMAMENTO — ENABLE ROW LEVEL SECURITY su vendite.fatture_righe e
+#   vendite.fatture_riepiloghi_iva.
+#   (brief RLS satelliti fattura §5; slice 20260729-01..06)
+#
+# PERCHE' UN CHANGESET A SE'. I quattro precedenti creano policy INERTI: senza
+# ENABLE non filtrano nulla e non possono rompere niente. Questo e' il momento
+# in cui il comportamento del database cambia per tutti — undici lettori di
+# fatture_righe, quattro viste security_invoker, il giro di fatturazione, la
+# stampa. Un armamento mescolato alla creazione delle policy sarebbe
+# irriconoscibile in DATABASECHANGELOG e non rollbackabile da solo; isolato, si
+# disarma con un rollback di un changeset e le policy restano dove sono.
+#
+# NO FORCE, a parita' con tutta la famiglia (relrowsecurity=t, relforcerowsecurity=f):
+# l'owner (titodb) resta esente, cosi' migrazioni, job owner e pgTAP non si
+# bloccano. Il FORCE e' un'ondata coordinata futura, fuori da questa slice
+# (cfr. brief-db-rls-commesse §2).
+# ⚠️ Da non confondere: NO FORCE NON significa "la RLS non morde in produzione".
+# Il runtime applicativo e' zeroerp_app, che NON e' l'owner ed e' NOBYPASSRLS
+# (20260601-38) -> pienamente soggetto. Alcuni commenti sparsi nel repo
+# affermano il contrario ("l'owner zeroerp_app la bypassa"): sono errati, e
+# hanno gia' indotto in errore chi li ha letti.
+#
+# PRIMA DI APPLICARE — la catena di verifica che precede questo changeset:
+#   1. i quattro percorsi di esecuzione sono coperti (vedi header 20260729-01:
+#      batch e stampa via ruolo BYPASSRLS Path A, coda lavori e web via scope
+#      operatore coerente su lotto/fattura/righe);
+#   2. il pgTAP funzionale 20260729-06 dimostra il comportamento runtime, non
+#      solo l'esistenza delle policy.
+#
+# DOPO L'APPLICAZIONE — smoke sulle tre viste che possono cambiare forma
+# (nessuna dovrebbe, per l'invariante; sono i punti dove una divergenza si
+# manifesterebbe):
+#   - vw_dash_competenza_attivita  LEFT JOIN -> l'unica che fallirebbe IN
+#                                  SILENZIO: campi fattura a NULL, cioe'
+#                                  un'attivita' fatturata che appare come non
+#                                  fatturata (e la quota del 20260728-13
+#                                  calcolata su NULL);
+#   - vw_dash_competenza_errori    JOIN      -> righe che spariscono da una
+#                                  vista di diagnostica: sotto-riporto;
+#   - vw_documento_lineage_archi   JOIN      -> archi di lineage mancanti.
+# Confronto rapido, da sessione operatore: le tre viste devono restituire gli
+# stessi conteggi di prima dell'armamento.
+#
+# KILL-SWITCH: se qualcosa si comporta in modo inatteso,
+#   ALTER TABLE vendite.fatture_righe DISABLE ROW LEVEL SECURITY;
+# riporta immediatamente al comportamento precedente senza toccare le policy.
+#
+# Dipendenze: le quattro policy dei changeset 20260729-01..04.
+# Verifica: db/pgtap/rls/test-rls-fatture-satelliti-functional.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260729-05-enable-rls-fatture-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260729-05-enable-rls-fatture-satelliti
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        ENABLE ROW LEVEL SECURITY (NO FORCE) su vendite.fatture_righe e
+        vendite.fatture_riepiloghi_iva: arma le quattro policy dei changeset
+        20260729-01..04. Isolato di proposito — e' il momento in cui il
+        comportamento cambia, e si disarma da solo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # Tutte e quattro le policy devono esistere: armare a meta' lascerebbe
+            # una veste scoperta senza che nulla lo segnali.
+            - sqlCheck:
+                expectedResult: 4
+                sql: |
+                  SELECT COUNT(*) FROM pg_policies
+                   WHERE schemaname = 'vendite'
+                     AND policyname IN ('rls_fatture_righe_ef_whitelist',
+                                        'rls_fatture_righe_ba_ownership',
+                                        'rls_fatture_riepiloghi_iva_ef_whitelist',
+                                        'rls_fatture_riepiloghi_iva_ba_ownership');
+            # Il canale batch DEVE avere fatture_righe nel proprio perimetro, o il
+            # giro di fatturazione si ferma appena la RLS morde. Verifica sul GRANT
+            # reale del ruolo BYPASSRLS, non sulla fiducia nel provisioning.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_roles WHERE rolname = 'zeroerp_batch_fatturazione'
+                    AND rolbypassrls;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- NO FORCE: l'owner (titodb) e i ruoli BYPASSRLS restano esenti.
+              -- Il runtime app (zeroerp_app, NOBYPASSRLS, non owner) e' invece
+              -- pienamente soggetto: da qui in poi vede solo cio' che le policy
+              -- gli concedono.
+              ALTER TABLE vendite.fatture_righe ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_riepiloghi_iva ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Disarma senza toccare le policy: tornano inerti, non spariscono.
+              ALTER TABLE vendite.fatture_righe DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_riepiloghi_iva DISABLE ROW LEVEL SECURITY;
