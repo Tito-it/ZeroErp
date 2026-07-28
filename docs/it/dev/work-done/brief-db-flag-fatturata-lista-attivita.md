@@ -108,9 +108,12 @@ esattamente quello del guard BE: **esiste un'AF con `fattura_riga_id` valorizzat
 > ([tabella:15](../../dbzero/vendite/tabelle/attivita_fatturabili.md#L15)),
 > `DEFAULT false`. Un revisore lo nota e chiede: «perché non usi il flag pronto?».
 > Verificato che `fatturato` e `fattura_riga_id` si muovono **sempre in coppia**:
-> `fn_generate_fatture_righe` fa `SET fattura_riga_id = ..., fatturato = true`
-> insieme ([doc:85](../../dbzero/vendite/funzioni/fn_generate_fatture_righe.md#L85)),
-> `fn_cleanup_fatture_by_ids` li azzera insieme. Oggi equivalenti. **La scelta di
+> il generatore delle righe fa `SET fattura_riga_id = ..., fatturato = true`
+> insieme, `fn_cleanup_fatture_by_ids` li azzera insieme. Oggi equivalenti.
+> *(All'epoca il riscontro era sulla funzione SQL `fn_generate_fatture_righe`,
+> [ritirata il 2026-07-28](brief-db-ritiro-generatore-righe-fattura-sql.md)
+> perché non in esercizio; la coppia è governata dal servizio Python
+> `FattureRigheService`, che si comporta allo stesso modo.)* **La scelta di
 > `fattura_riga_id` resta la giusta** (D4): specchia il guard BE, non un flag
 > parallelo. Ma la scelta va *motivata* contro `fatturato`, non ignorata.
 

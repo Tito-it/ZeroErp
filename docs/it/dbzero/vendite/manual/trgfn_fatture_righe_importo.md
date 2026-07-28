@@ -87,7 +87,9 @@ nessuno la cerca.
 
 Le regole per articolo sono opzionali: la `LEFT JOIN` da una riga-base garantisce
 sempre un risultato, e i `COALESCE` applicano `2 / HALF_UP` quando la riga di
-regole non esiste. È lo stesso pattern di `fn_group_attivita_fatturabili`.
+regole non esiste. È lo stesso pattern che usava `fn_group_attivita_fatturabili`
+(funzione ritirata il 2026-07-28, changeset `20260728-21`) e che oggi vive nel
+servizio Python `FattureRigheService`.
 
 Ordine dei trigger `BEFORE` sulla tabella:
 

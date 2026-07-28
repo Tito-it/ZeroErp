@@ -68,7 +68,6 @@ db/pgtap/ui/test-lista-contratti-seed.sql	ASSERZIONE
 db/pgtap/ui/test-lista-offerte-seed.sql	ASSERZIONE
 db/pgtap/ui/test-lista-ordini-seed.sql	ASSERZIONE
 db/pgtap/ui/test-lista-preventivi-seed.sql	ASSERZIONE
-db/pgtap/vendite/test-articolo-regole-fatturazione.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-attivita-fatturabili.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-attivita-lotto-info-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-attivita-prezzo-bloccato-v1.sql	ERRORE_FIXTURE

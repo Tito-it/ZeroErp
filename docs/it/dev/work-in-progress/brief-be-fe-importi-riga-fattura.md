@@ -34,7 +34,7 @@
 | **B4** | `visibilita_componenti` fuori dal BE (pronto per `-18`) | breaking su `pipeline_repository` + `types` + service | ✅ **FATTO** |
 | **B5** | Coda stampa: 2 voci in `ERRORE`, tentativi esauriti | — | ⏭️ **non necessario** (Tid, 2026-07-28) |
 | **B6** | `stato_esecuzione`: RUNNING all'avvio, COMPLETED alla fine | 8 attività su 8 erano ferme a `PENDING` (§3.4) | ✅ **FATTO** |
-| **B7** | Ritirare la funzione DB gemella | è la trappola che ha causato questo giro | ✅ **brief pronto** → [brief-db-ritiro-generatore-righe-fattura-sql.md](brief-db-ritiro-generatore-righe-fattura-sql.md) |
+| **B7** | Ritirare la funzione DB gemella | è la trappola che ha causato questo giro | ✅ **brief pronto** → [brief-db-ritiro-generatore-righe-fattura-sql.md](../work-done/brief-db-ritiro-generatore-righe-fattura-sql.md) |
 | **B8** | Template: dettaglio kit + `sconto_percentuale` | | ✅ **FATTO** — Fattura v2 (id 73) e Ordini vendita v2 (id 74), PUBBLICATE dal 2026-07-28 |
 | **T** | Test BE | **3393 verdi** sull'intera suite; +11 casi nuovi su aggregazione e kit | ✅ **FATTO** (integrazione DB: §10.2 casi 7-8 ⬜) |
 | **FE** | Frontend | ✅ **nessuna modifica** — verificato (§8) | ✅ |
@@ -352,7 +352,7 @@ apposta (§10.2, casi 5-6).
 
 | Changeset | Effetto su Python |
 |---|---|
-| `-17` | **Nessuno**: modifica `fn_group_attivita_fatturabili` (SQL), mentre Python usa `_build_group_key`. Da chiarire in B7 se quella funzione SQL sia in esercizio o residuo come la gemella |
+| `-17` | **Nessuno**: modificava `fn_group_attivita_fatturabili` (SQL), mentre Python usa `_build_group_key`. ✅ Chiarito in B7: era **residuo**, e la funzione è stata **rimossa** il 2026-07-28 (`20260728-21`). Il changeset resta in changelog — è già pushato e non si riscrive la storia |
 | `-18` | ⚠️ **Breaking**: `DROP` di `articolo_regole_fatturazione.visibilita_componenti`, letta in 5 punti del BE (§6.4) |
 
 ### F. Verifica di contorno
@@ -662,7 +662,7 @@ smoke attuale promuove un PDF fatto interamente di trattini.
 |---|---|---|---|
 | **P1** | ~~Quale implementazione sopravvive~~ | — | ✅ **CHIUSA**: resta Python (§3) |
 | **P2** | La funzione SQL si **droppa** o resta con commento di non-esercizio? | Tid + team DB | **Droppare**: un residuo che sembra vivo costa più di quanto valga (§7) |
-| **P3** | `fn_group_attivita_fatturabili` SQL: in esercizio o residuo come la gemella? | BE + team DB | Da verificare nello stesso brief B7 |
+| **P3** | ~~`fn_group_attivita_fatturabili` SQL: in esercizio o residuo come la gemella?~~ | — | ✅ **CHIUSA**: **residuo**, unico chiamante era la gemella. Entrambe **rimosse** dal DB il 2026-07-28 (changeset `20260728-21`, verificato sul vivo) — [brief B7](../work-done/brief-db-ritiro-generatore-righe-fattura-sql.md) |
 | **P4** | Chiave di gruppo su `float` o `Decimal`? (§6.1) | BE | **`Decimal`**: il prezzo è ciò che rende l'aggregazione un'identità esatta |
 | **P5** | `list_fattura_righe` legge la vista di esposizione **subito** (B3) o dopo? | Tid | **Subito**: rimandare significa che PDF e XML nascono già divergenti (R17) |
 | **P6** | Test di integrazione su DB reale: nuova famiglia smoke o estensione? | BE | Estendere gli smoke esistenti — meno superficie nuova |

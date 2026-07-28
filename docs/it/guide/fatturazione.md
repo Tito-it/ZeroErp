@@ -518,8 +518,10 @@ attività**.
 
 ### Come si aggrega
 
-`fn_generate_fatture_righe` raggruppa le attività del lotto per la chiave che
-produce `fn_group_attivita_fatturabili`:
+L'aggregazione la fa il **backend**, non il database: il servizio
+`FattureRigheService` (`apps/vendite/services/fatture_righe_service.py`),
+invocato dal task `generate_fatture_righe` della pipeline. Raggruppa le attività
+del lotto per la chiave che costruisce `_build_group_key`:
 
 > articolo · billing account destinatario · unità di misura · **prezzo unitario**
 > · IVA · competenza dal/al · **istanza di kit**
