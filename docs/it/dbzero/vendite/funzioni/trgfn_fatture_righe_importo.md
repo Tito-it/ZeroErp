@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_fatture_righe_importo.md" %}
 # ⚙️ Funzione `trgfn_fatture_righe_importo`
 
 ```sql
