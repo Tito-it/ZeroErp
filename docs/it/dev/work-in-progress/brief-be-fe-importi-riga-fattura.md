@@ -599,6 +599,26 @@ attività componente su 8, per il brief DB §4.7), quindi la vista si comporta c
 un passante e la modifica è a rischio basso. Ma è anche il motivo per cui **non
 sarà collaudata dai dati reali**: serve un caso di prova costruito apposta.
 
+### 9-bis. R17 e l'XML SDI: oggi non è violata, domani sì
+
+Verificato il 2026-07-28: **il tratto SDI non emette ancora righe.**
+`fn_prepare_sdi_payload` non nomina mai `fatture_righe` — costruisce testata,
+`riepiloghi_iva` e totale. E in `backend/apps/` non esiste alcun builder
+FatturaPA (nessun riferimento a `FatturaElettronica` / `DettaglioLinee`),
+coerentemente con `PROJECT_CONTEXT`: *«Builder XML SDI: payload pronto, ma
+generazione file FatturaPA non ancora implementata»*.
+
+Quindi R17 **non è violata oggi**: c'è un solo consumatore di righe, la stampa,
+e legge la vista.
+
+⚠️ **Ma è una trappola a scadenza.** Il giorno in cui si scrive il builder
+`DettaglioLinee`, la sorgente delle righe deve essere `vw_fattura_righe_esposte`,
+**non** `vendite.fatture_righe`. Prendendole dalla tabella, l'XML trasmetterebbe
+i componenti sciolti mentre il PDF mostra il kit raggruppato: totali identici,
+quindi nulla di irregolare e nessun errore — ma due uscite dello stesso documento
+che raccontano dettagli diversi, e nessuno se ne accorgerebbe. Va scritto nel
+brief del builder SDI, non lasciato alla memoria.
+
 ---
 
 ## 10. Test
