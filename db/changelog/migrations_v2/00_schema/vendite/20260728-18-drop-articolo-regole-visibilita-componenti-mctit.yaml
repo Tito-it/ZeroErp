@@ -55,7 +55,19 @@
 #
 # Ordine: DEVE seguire il 20260728-17, che smette di leggerla. La numerazione lo
 #   garantisce — l'autogen ordina per YYYYMMDD-NN e solo poi per path, quindi -17
-#   (20_code) precede -18 (00_schema) malgrado la fase.
+#   (20_code) precede -18 (00_schema) malgrado la fase. (Verificato 2026-07-28:
+#   scripts/gen_master_autogen.py usa sort_key = (data, seq, path).)
+#
+# ⚠️ MODIFICATO DOPO IL PUSH — eccezione concordata (Tid, 2026-07-28).
+#   Il file era gia' su origin/dev/db-tid e origin/Tito-dev quando si e' scoperto
+#   che la sua sqlCheck era insoddisfacibile (dettaglio nel blocco preConditions):
+#   il changeset falliva SEMPRE, in qualunque stato del database. Non era quindi
+#   applicato da nessuna parte — non poteva esserlo — e nessun checksum in
+#   DATABASECHANGELOG poteva rompersi; porta comunque validCheckSums: ANY.
+#   Correggerlo in place era l'unica via: Liquibase ordina per (data, seq, path)
+#   e si ferma qui, quindi un changeset con numero piu' alto non sarebbe mai
+#   stato raggiunto, e i numeri < 18 di questa data sono tutti gia' occupati.
+#   CHI HA GIA' IL BRANCH deve fare pull prima del prossimo migrate.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -82,6 +94,29 @@ databaseChangeLog:
                 columnName: visibilita_componenti
             # La funzione non deve piu' leggerla: senza il 20260728-17 questo
             # DROP la romperebbe alla prima esecuzione.
+            #
+            # ⚠️ CORREZIONE 2026-07-28 (eccezione concordata alla regola "mai
+            #   modificare changelog gia' pushati" — vedi nota in testa).
+            #   La prima stesura confrontava direttamente pg_get_functiondef()
+            #   con LIKE '%visibilita_componenti%', ed era INSODDISFACIBILE in
+            #   entrambi gli stati possibili del database:
+            #     - senza il 20260728-17, il corpo contiene la lettura vera
+            #       COALESCE(r.visibilita_componenti, 'solo_padre')  -> match;
+            #     - con il 20260728-17 applicato, il corpo contiene la frase
+            #       "-- rev 2026-07-28: `visibilita_componenti` NON viene piu'
+            #       letta", perche' pg_get_functiondef() restituisce il sorgente
+            #       COMMENTI INCLUSI                                 -> match.
+            #   Il changeset falliva quindi sempre, con la funzione che aveva
+            #   gia' fatto il suo lavoro: la guardia verificava una STRINGA
+            #   invece di una DIPENDENZA. (Il COMMENT ON FUNCTION e' innocuo:
+            #   non fa parte di pg_get_functiondef.)
+            #
+            #   regexp_replace('--.*', '', 'gn') spoglia i commenti di riga
+            #   prima del confronto; il flag 'n' impedisce a '.' di attraversare
+            #   i newline, quindi cancella i commenti e nient'altro. La
+            #   protezione resta intera: senza il 20260728-17 la lettura
+            #   r.visibilita_componenti e' codice, non commento, e il DROP viene
+            #   ancora fermato.
             - sqlCheck:
                 expectedResult: 0
                 sql: >
@@ -89,7 +124,8 @@ databaseChangeLog:
                   JOIN pg_namespace n ON n.oid = p.pronamespace
                   WHERE n.nspname = 'vendite'
                     AND p.proname = 'fn_group_attivita_fatturabili'
-                    AND pg_get_functiondef(p.oid) LIKE '%visibilita_componenti%'
+                    AND regexp_replace(pg_get_functiondef(p.oid), '--.*', '', 'gn')
+                        LIKE '%visibilita_componenti%'
       changes:
         - sql:
             dbms: postgresql

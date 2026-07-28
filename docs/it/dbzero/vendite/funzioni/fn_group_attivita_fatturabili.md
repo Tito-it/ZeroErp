@@ -46,9 +46,15 @@ BEGIN
     -- riga in articolo_regole_fatturazione; un SELECT diretto darebbe 0
     -- righe e la COALESCE non servirebbe a nulla). ALIAS espliciti: senza,
     -- i campi del record si chiamerebbero 'coalesce' e l'accesso
-    -- v_regole.visibilita_componenti fallirebbe. (fix 2026-07-21)
-    SELECT COALESCE(r.visibilita_componenti, 'solo_padre')       AS visibilita_componenti,
-           COALESCE(r.calcolo_qta_padre, 'fissa')                AS calcolo_qta_padre,
+    -- v_regole.calcolo_qta_padre fallirebbe. (fix 2026-07-21)
+    --
+    -- rev 2026-07-28: `visibilita_componenti` NON viene piu' letta ne'
+    -- trasportata. Non e' la regola di esposizione della fattura — quella
+    -- e' catalogo.articoli_componenti.esposto_in_fattura, per singolo
+    -- componente, congelata sulla riga di fattura dal 20260728-14/15.
+    -- La colonna qui veniva calcolata e abbandonata dentro
+    -- meta.group_key, senza che nessuno la applicasse.
+    SELECT COALESCE(r.calcolo_qta_padre, 'fissa')                AS calcolo_qta_padre,
            COALESCE(r.arrotondamento_importi_dec, 2)             AS arrotondamento_importi_dec,
            COALESCE(r.arrotondamento_quantita_dec, 3)            AS arrotondamento_quantita_dec,
            COALESCE(r.metodo_arrotondamento_importi, 'HALF_UP')  AS metodo_arrotondamento_importi,
@@ -65,7 +71,6 @@ BEGIN
         'uom_id', v_uom_id, 'prezzo_unitario', v_prezzo_unitario, 'iva_id', v_iva_id,
         'competenza_dal', CASE WHEN v_use_competenza THEN v_comp_dal ELSE NULL END,
         'competenza_al', CASE WHEN v_use_competenza THEN v_comp_al ELSE NULL END,
-        'visibilita_componenti', v_regole.visibilita_componenti,
         'calcolo_qta_padre', v_regole.calcolo_qta_padre,
         'arrotondamento_importi_dec', v_regole.arrotondamento_importi_dec,
         'arrotondamento_quantita_dec', v_regole.arrotondamento_quantita_dec,
@@ -76,7 +81,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_group_attivita_fatturabili(p_attivita_id bigint)
-IS 'Chiave aggregazione riga fattura da attivita_fatturabili con fallback regole articolo (LEFT JOIN: default se manca la riga articolo_regole_fatturazione). rev 2026-07-21: fix alias record v_regole + fallback no-row (il path fn_generate_fatture_righe era rotto per qualunque articolo).';
+IS 'Costruisce la chiave di raggruppamento di un''attivita'' fatturabile: articolo, billing account destinatario, unita'' di misura, prezzo unitario, IVA, competenza, piu'' le regole di arrotondamento dell''articolo (fallback 2 / HALF_UP / 3). rev 2026-07-28: NON trasporta piu'' `visibilita_componenti`. Non era la regola di esposizione della fattura — quella e'' catalogo.articoli_componenti.esposto_in_fattura, per singolo componente, congelata sulla riga di fattura (kit_esposto_in_fattura) e resa da vw_fattura_righe_esposte. Qui veniva calcolata e abbandonata dentro meta.group_key senza che nessuno la applicasse: tenere due meccanismi che sembrano governare la stessa cosa e'' costato una sessione intera per capire quale comandasse. Il raggruppamento NON cambia: la chiave viene tolta da tutte le righe allo stesso modo, e il suo valore era comunque determinato dall''articolo, che nella chiave resta. brief-fix-importi-riga-fattura-zero §4.7-bis.';
 ```
 
 ---

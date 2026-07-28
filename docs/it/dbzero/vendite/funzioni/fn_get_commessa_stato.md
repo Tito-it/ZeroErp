@@ -44,12 +44,24 @@ BEGIN
         c.billing_account_id,
         c.utility_id,
         c.emittente_soggetto_ruolo_id,
+        -- rev 2026-07-28 (brief-annullamento-righe-manuali-commessa §3-ter):
+        -- il FUNNEL e' cieco alle righe ANNULLATA, il TOTALE no.
+        -- total_attivita resta il conteggio FISICO: una riga
+        -- annullata esiste, e questo e' l'unico numero da cui si
+        -- vede che qualcosa e' stato annullato (totale >
+        -- approvate + non approvate). Nota: stato_approvazione di
+        -- una riga annullata resta 'APPROVATA' (assi distinti),
+        -- quindi senza il filtro esplicito continuerebbe a
+        -- pesare sul funnel.
         COALESCE(count(ca.id), 0)::BIGINT AS total_attivita,
-        COALESCE(count(*) FILTER (WHERE ca.stato_approvazione = 'APPROVATA'), 0)::BIGINT,
-        COALESCE(count(*) FILTER (WHERE ca.stato_approvazione <> 'APPROVATA'), 0)::BIGINT,
+        COALESCE(count(*) FILTER (WHERE ca.stato_approvazione = 'APPROVATA'
+                                    AND ca.stato_emissione <> 'ANNULLATA'), 0)::BIGINT,
+        COALESCE(count(*) FILTER (WHERE ca.stato_approvazione <> 'APPROVATA'
+                                    AND ca.stato_emissione <> 'ANNULLATA'), 0)::BIGINT,
         COALESCE(count(*) FILTER (WHERE ca.stato_emissione = 'EMESSA'), 0)::BIGINT,
-        COALESCE(count(*) FILTER (WHERE ca.stato_emissione <> 'EMESSA'), 0)::BIGINT,
-        COALESCE(count(*) FILTER (WHERE ca.prezzo_da_riallineare IS TRUE), 0)::BIGINT,
+        COALESCE(count(*) FILTER (WHERE ca.stato_emissione NOT IN ('EMESSA', 'ANNULLATA')), 0)::BIGINT,
+        COALESCE(count(*) FILTER (WHERE ca.prezzo_da_riallineare IS TRUE
+                                    AND ca.stato_emissione <> 'ANNULLATA'), 0)::BIGINT,
         GREATEST(c.data_update, COALESCE(max(ca.data_update), c.data_update)),
         -- rev 2026-07-24: identificazione della testata.
         -- ATTENZIONE: 'stato_commessa' qui sopra e' sc.codice (codice
@@ -78,7 +90,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_commessa_stato(p_commessa_id bigint)
-IS 'Stato testata commessa con flag operativi e contatori attivita in singolo round-trip. rev 2026-07-24 (brief-db-guard-uscita-commessa-e-capabilities D6): + commessa_codice (c.codice — da non confondere con stato_commessa, che e'' il codice dello STATO) e + cliente_display (anagrafiche.soggetti.ragione_sociale_completa via billing_account->soggetti_ruoli->soggetti, STESSA espressione di vw_dash_competenza_attivita). Senza di questi il drawer mostrava #<PK> mentre la lista mostra il codice: non correlabili dall''operatore. LEFT JOIN sulla catena cliente: un BA senza soggetto non fa sparire la riga.';
+IS 'Stato testata commessa con flag operativi e contatori attivita in singolo round-trip. rev 2026-07-24 (brief-db-guard-uscita-commessa-e-capabilities D6): + commessa_codice (c.codice — da non confondere con stato_commessa, che e'' il codice dello STATO) e + cliente_display (anagrafiche.soggetti.ragione_sociale_completa via billing_account->soggetti_ruoli->soggetti, STESSA espressione di vw_dash_competenza_attivita). LEFT JOIN sulla catena cliente: un BA senza soggetto non fa sparire la riga. rev 2026-07-28 (brief-annullamento-righe-manuali-commessa §3-ter): i contatori del FUNNEL (total_approvate, total_non_approvate, total_non_emesse, total_prezzo_da_riallineare) escludono le righe con stato_emissione=ANNULLATA, coerentemente con tutte le altre porte del dominio; total_attivita resta invece il conteggio FISICO delle righe -- una riga annullata esiste, e il totale e'' l''unico numero da cui si vede che qualcosa e'' stato annullato. Serve il filtro esplicito perche'' stato_approvazione di una riga annullata resta APPROVATA (assi distinti). total_emesse invariato.';
 ```
 
 ---

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_arrotonda_importo.md" %}
 # ⚙️ Funzione `fn_arrotonda_importo`
 
 ```sql

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_fatture_righe_guard_congelamento.md" %}
 # ⚙️ Funzione `trgfn_fatture_righe_guard_congelamento`
 
 ```sql

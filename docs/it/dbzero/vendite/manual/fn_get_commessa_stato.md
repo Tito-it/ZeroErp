@@ -34,6 +34,16 @@ Restituisce in una singola query lo stato operativo di una commessa:
   * `total_approvate` / `total_non_approvate`
   * `total_emesse` / `total_non_emesse`
   * `total_prezzo_da_riallineare`
+* **Righe annullate (rev 2026-07-28)**: i contatori del **funnel**
+  (`total_approvate`, `total_non_approvate`, `total_non_emesse`,
+  `total_prezzo_da_riallineare`) **escludono** le righe con
+  `stato_emissione = 'ANNULLATA'`, coerentemente con tutte le altre porte del
+  dominio. `total_attivita` resta invece il conteggio **fisico** delle righe:
+  una riga annullata esiste, ed è l'unico numero da cui si vede che qualcosa è
+  stato annullato (`totale > approvate + non approvate`).
+  Il filtro esplicito serve perché `stato_approvazione` di una riga annullata
+  resta `APPROVATA`: approvazione ed emissione sono due assi distinti.
+  Vedi [vendite.fn_annulla_commessa_attivita](/dbzero/vendite/funzioni/fn_annulla_commessa_attivita).
 * `last_update` e` il massimo tra update testata commessa e update ultima riga attivita`.
 
 ---
