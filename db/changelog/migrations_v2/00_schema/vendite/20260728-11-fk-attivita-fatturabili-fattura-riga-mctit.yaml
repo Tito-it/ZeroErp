@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D4 — il puntatore riga-fattura diventa una vera foreign key
+#   (brief-fix-importi-riga-fattura-zero.md §2.13 e §4.6, punto 3)
+#
+# IL FATTO. `vendite.attivita_fatturabili.fattura_riga_id` e' oggi un `bigint`
+#   NUDO verso `vendite.fatture_righe`: nessun vincolo di integrita'. Regge perche'
+#   vendite.fn_cleanup_fatture_by_ids ripulisce a mano il riferimento quando
+#   cancella le fatture — una compensazione applicativa al posto di un vincolo.
+#
+# PERCHE' ADESSO. Finche' il rapporto e' 1:1 il danno di un puntatore pendente e'
+#   limitato. Con l'aggregazione (D4, 20260728-12) quel puntatore **diventa la
+#   struttura della fattura**: e' l'unico legame fra la riga di sintesi e le n
+#   attivita' che la compongono, ed e' anche cio' che sostituisce le colonne
+#   `sorgente_*` — che sulla riga aggregata vanno a NULL, non avendo piu' una
+#   sorgente singola. Senza vincolo, prima o poi ci saranno attivita' che puntano
+#   a righe inesistenti e nessuno se ne accorgera'.
+#
+# ⚠️ PERCHE' `ON DELETE SET NULL` E NON IL DEFAULT `NO ACTION`.
+#   fn_cleanup_fatture_by_ids cancella le righe di fattura **prima** di
+#   riallineare le attivita': con NO ACTION quella DELETE violerebbe la FK e il
+#   reset lotto si romperebbe. Con SET NULL il riferimento si libera da solo,
+#   nell'ordine giusto, e la funzione continua a fare il resto del suo lavoro
+#   (`fatturato = false`, `stato_esecuzione = NULL`) che una FK non puo' fare.
+#
+#   ⚠️ E c'e' un'interazione da conoscere: SET NULL e' un UPDATE sull'attivita', e
+#   vendite.trgfn_attivita_fatturabili_guard_fatturato blocca QUALUNQUE update su
+#   una riga con `fattura_riga_id` valorizzato — cioe' esattamente quelle. Il
+#   percorso funziona perche' fn_cleanup_fatture_by_ids imposta la GUC
+#   `zeroerp.maintenance_reset_lotto_draft`, che quel guard onora.
+#   VERIFICATO in transazione: con la GUC attiva, `DELETE FROM fatture_righe`
+#   porta a NULL il puntatore dell'attivita' collegata senza errori.
+#   Fuori dal percorso di manutenzione la cancellazione di una riga gia'
+#   fatturata resta bloccata, ed e' giusto cosi'.
+#
+# `ON UPDATE CASCADE`: convenzione di tutte le altre FK della tabella.
+#
+# INDICE: gia' presente (`ix_attivita_fatturabili_fattura_riga_id`), quindi non
+#   serve alcun seed per la policy indici FK ([[reference_fk_index_policy_optin]]).
+#
+# DATI: verificato prima della scrittura — zero attivita' con un
+#   `fattura_riga_id` orfano, quindi la FK si crea senza bonifiche.
+#
+# Dipendenze: nessuna sul piano tecnico; logicamente prepara il 20260728-12 (D4).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260728-11-fk-attivita-fatturabili-fattura-riga-mctit.yaml
+
+  - changeSet:
+      id: 20260728-11-fk-attivita-fatturabili-fattura-riga
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        FK vendite.attivita_fatturabili.fattura_riga_id ->
+        vendite.fatture_righe(id), ON UPDATE CASCADE ON DELETE SET NULL. Il
+        puntatore che regge l'aggregazione smette di essere un bigint nudo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - foreignKeyConstraintExists:
+                    schemaName: vendite
+                    foreignKeyName: fk_attivita_fatturabili_fattura_riga
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM vendite.attivita_fatturabili a
+                   WHERE a.fattura_riga_id IS NOT NULL
+                     AND NOT EXISTS (SELECT 1 FROM vendite.fatture_righe r
+                                      WHERE r.id = a.fattura_riga_id)
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili
+                  ADD CONSTRAINT fk_attivita_fatturabili_fattura_riga
+                  FOREIGN KEY (fattura_riga_id)
+                  REFERENCES vendite.fatture_righe(id)
+                  ON UPDATE CASCADE
+                  ON DELETE SET NULL;
+
+              COMMENT ON COLUMN vendite.attivita_fatturabili.fattura_riga_id IS
+                  'Riga di fattura che aggrega questa attivita''. E'' il legame *n*->1 fra la '
+                  'riga di sintesi e il suo dettaglio, e dal 20260728-12 e'' l''UNICO: sulla riga '
+                  'aggregata le colonne sorgente_* vanno a NULL, non esistendo piu'' una sorgente '
+                  'singola. ON DELETE SET NULL perche'' fn_cleanup_fatture_by_ids cancella le '
+                  'righe prima di riallineare le attivita''; l''UPDATE implicito passa il guard '
+                  'guard_fatturato solo grazie alla GUC zeroerp.maintenance_reset_lotto_draft che '
+                  'quella funzione imposta. brief-fix-importi-riga-fattura-zero §4.6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili
+                  DROP CONSTRAINT IF EXISTS fk_attivita_fatturabili_fattura_riga;

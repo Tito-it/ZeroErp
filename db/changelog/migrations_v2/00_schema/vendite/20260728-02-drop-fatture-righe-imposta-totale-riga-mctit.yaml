@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D1-ter — via imposta_riga e totale_riga da vendite.fatture_righe
+#   (brief-fix-importi-riga-fattura-zero.md §4.3)
+#
+# DECISIONE DI DOMINIO (Tid, 2026-07-28): «l'imposta di riga in Italia non
+#   esiste». L'IVA si liquida per ALIQUOTA nei riepiloghi
+#   (vendite.fatture_riepiloghi_iva), non per riga: e' cosi' che il modello e'
+#   nato. Le due colonne erano persistite e MAI scritte — 7 righe su 7 a NULL,
+#   come imponibile_riga prima del 20260728-01.
+#
+# COSA DOVEVANO ESSERE, per il verbale. La specifica sta nel manuale dbzero
+#   (docs/it/dbzero/vendite/manual/fatture_righe.md, righe 65-67):
+#       imposta_riga = round(imponibile_riga * (iva_perc/100), dec_importi)
+#       totale_riga  = imponibile_riga + imposta_riga        -- il lordo di riga
+#   Il manuale la classificava pero' come voce OPZIONALE di roadmap, e nessuno
+#   l'ha implementata: e' l'origine dell'intero difetto.
+#
+# PERCHE' SI RIMUOVONO E NON SI ALIMENTANO:
+#   1. NON SONO CALCOLABILI DALLA RIGA. Servirebbe l'aliquota, che dipende dallo
+#      stato dell'emittente e si risolve con
+#      config.fn_get_aliquota_iva(iva_id, stato_emittente_id) — informazione che
+#      sulla riga non c'e'. Sono quindi incompatibili con la colonna generata del
+#      20260728-01 e richiederebbero un meccanismo proprio, per un dato che
+#      nessuno usa.
+#   2. NESSUN CONSUMATORE VIVO. Verificato su pg_proc, pg_views e pg_depend:
+#      nessuna funzione e nessuna vista dipende da queste due colonne. L'unico
+#      riferimento era quello ROTTO di fn_prepare_sdi_payload, che peraltro le
+#      cercava sulla TABELLA SBAGLIATA (i riepiloghi anziche' le righe) — chi
+#      l'ha scritto ragionava per aggregato. Corretto dal changeset D2.
+#   3. Una colonna persistita e mai scritta e' il difetto che ha prodotto questo
+#      brief. Tenerne due «per eventuali regimi esteri» significa riprodurlo
+#      volontariamente. Il modello sa gia' gestire l'IVA multi-stato a livello di
+#      aggregato: se un regime richiedesse l'imposta per riga, la colonna si
+#      riaggiunge INSIEME alla regola che la riempie.
+#
+# ⚠️ NON TOCCARE GLI OMONIMI. `totale_riga` esiste anche come colonna CALCOLATA
+#   (`imponibile + imposta`) nelle viste di riepilogo IVA degli altri documenti —
+#   vw_ordini_riepilogo_iva_dettaglio, vw_ddt_riepilogo_iva_dettaglio,
+#   vw_preventivi_riepilogo_iva_dettaglio — ed e' letta da
+#   vendite.fn_ricalcola_totali_ordine. Non c'entra nulla con queste colonne e
+#   NON va bonificata per simmetria.
+#
+# ⚠️ BREAKING SUL BACKEND, DICHIARATO E ACCETTATO. `list_fattura_righe`
+#   (backend/apps/vendite/db/vendite_repository.py, righe 1633-1634) seleziona
+#   `r.imposta_riga, r.totale_riga` direttamente dalla tabella: dopo questo
+#   changeset quella query FALLISCE. Decisione Tid 2026-07-28: nessuno step di
+#   compatibilita', non essendoci produzione. Il DB atterra, il BE si adegua
+#   (step B0 del brief). La rottura e' segnalata, non ammorbidita.
+#   NON toccare invece _riepilogo_iva_repo_mixin.py, che pure seleziona
+#   `totale_riga`: legge le viste di riepilogo, cioe' l'omonimo.
+#
+# NOTA SULLO STORICO: storico.fatture_righe conserva i dati in una colonna
+#   `snapshot` JSONB, non colonna-per-colonna — la rimozione non la tocca e gli
+#   snapshot gia' scritti restano leggibili.
+#
+# Dipendenze: 20260728-01 (stessa tabella, stesso brief). Seguito dal changeset
+#   D2 che corregge fn_prepare_sdi_payload.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260728-02-drop-fatture-righe-imposta-totale-riga-mctit.yaml
+
+  - changeSet:
+      id: 20260728-02-drop-fatture-righe-imposta-totale-riga
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Rimuove vendite.fatture_righe.imposta_riga e .totale_riga: l'imposta di
+        riga non esiste nel regime italiano, non sono calcolabili dalla riga e
+        nessun consumatore vivo le usa. Breaking dichiarato su
+        list_fattura_righe (BE).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_righe
+                columnName: imposta_riga
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_righe
+                columnName: totale_riga
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Nessun CASCADE: se una dipendenza esistesse, e' giusto che il
+              -- changeset si fermi invece di trascinarsi dietro un oggetto.
+              ALTER TABLE vendite.fatture_righe DROP COLUMN imposta_riga;
+              ALTER TABLE vendite.fatture_righe DROP COLUMN totale_riga;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina le colonne nella forma pre-changeset: persistite,
+              -- nullabili e vuote (com'erano — 7 righe su 7 a NULL).
+              ALTER TABLE vendite.fatture_righe ADD COLUMN imposta_riga numeric(18,6);
+              ALTER TABLE vendite.fatture_righe ADD COLUMN totale_riga  numeric(18,6);
+              COMMENT ON COLUMN vendite.fatture_righe.imposta_riga IS 'Imposta riga (snapshot calcolo)';
+              COMMENT ON COLUMN vendite.fatture_righe.totale_riga  IS 'Totale riga (snapshot calcolo)';

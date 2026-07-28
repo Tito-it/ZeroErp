@@ -12,24 +12,38 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 22-01-2026)
-`vendite.fatture_righe` contiene le **righe economiche** di una fattura: descrizione, articolo (opzionale), UoM, quantità, prezzo, sconti, IVA e **importi congelati** (*snapshot*) al momento della generazione. Ogni riga è ordinata tramite `riga_nr` ed è collegata a una testata `vendite.fatture` (FK `fattura_id`). Supporta la **destinazione a BA diverso** dalla testata e l’idempotenza di import riga‑per‑riga.
+(latest review **28-07-2026** — revisione sostanziale, vedi ⚠️ in fondo alla sezione)
+`vendite.fatture_righe` contiene le **righe economiche** di una fattura: descrizione, articolo (opzionale), UoM, quantità, prezzo, sconti, IVA e **imponibile congelato** (*snapshot*) al momento della generazione. Ogni riga è ordinata tramite `riga_nr` ed è collegata a una testata `vendite.fatture` (FK `fattura_id`). Supporta la **destinazione a BA diverso** dalla testata.
 
 Obiettivi principali:
 
-* Conservare **valori definitivi** (imponibile, imposta, totale) per garantire riproducibilità documentale nel tempo.
+* Conservare il **valore definitivo** della riga per garantire riproducibilità documentale nel tempo.
+* Essere il **dettaglio** della fattura: una riga rappresenta l'**aggregazione di 1..n attività fatturabili**, che vi puntano tramite `attivita_fatturabili.fattura_riga_id`.
 * Permettere **override di IVA e attributi fiscali** (esigibilità, split payment) a livello riga.
 * Mantenere riferimenti all’**articolo di catalogo** e all’**unità di misura** utilizzata per il calcolo.
-* Supportare **tracciabilità di origine** (sorgente_tipo / sorgente_uid / sorgente_riga) per import e riconciliazioni.
+
+> ⚠️ **Questo manuale è stato corretto il 2026-07-28, e vale la pena sapere perché.**
+> La versione precedente descriveva tre colonne di importo (`imponibile_riga`,
+> `imposta_riga`, `totale_riga`) con le loro formule, e classificava il trigger
+> che avrebbe dovuto calcolarle come *«opzionale»* in una sezione di roadmap.
+> Quel trigger non è mai stato scritto, mentre il backend dava per fatto che il
+> DB calcolasse gli importi: risultato, **ogni fattura del sistema è rimasta a
+> 0,00 € fino al 2026-07-28**. Il documento citava inoltre una colonna
+> `iva_perc` che sulla riga non esiste.
+> Chi legge questa pagina la usa come specifica: da qui in avanti descrive **cosa
+> il database fa**, non cosa potrebbe fare.
+> Storia completa: `brief-fix-importi-riga-fattura-zero.md`.
 
 ---
 
 ### Collocazione nel flusso
 
-1. **Popolamento**: generazione da attività fatturabili, ordini, contratti o input manuale; calcolo `imponibile_riga`, `imposta_riga`, `totale_riga` con snapshot delle regole (incluse `iva_perc`, `iva_natura`).
-2. **Ordinamento**: assegnazione `riga_nr` progressivo per fattura; vincolo unico `(fattura_id, riga_nr)`.
-3. **Totali testata**: la somma delle righe alimenta i campi `imponibile_tot`, `imposta_tot`, e convergono nei riepiloghi IVA.
-4. **Controlli**: normalizzazione/guard tramite trigger `trg_fatture_righe_ins_upd_norm_guard` (coerenze su quantità/prezzo/IVA/UoM/sconti, e allineamento campi snapshot).
+1. **Popolamento**: `vendite.fn_generate_fatture_righe` **aggrega** le attività fatturabili del lotto per chiave di raggruppamento (articolo · BA destinatario · UoM · **prezzo unitario** · IVA · competenza · istanza di kit) e produce **una riga per gruppo**. Le *n* attività del gruppo vengono collegate alla riga con `fattura_riga_id`.
+2. **Calcolo dell'importo**: NON lo fa chi scrive la riga. Lo calcola il trigger `trg_fatture_righe_a20_importo_ins_upd` a ogni `INSERT`/`UPDATE` — vedi *Logiche di calcolo*.
+3. **Ordinamento**: `riga_nr` progressivo per fattura, assegnato con ordinamento **deterministico** dei gruppi; vincolo unico `(fattura_id, riga_nr)`.
+4. **Totali testata**: la somma delle righe alimenta i riepiloghi IVA e da lì `imponibile_tot`, `imposta_tot`, `totale_doc`, `totale_a_pagare`.
+5. **Congelamento**: superata la soglia `DRAFT`/`EMESSA`, il guard `trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt` respinge `INSERT`, `UPDATE` **e** `DELETE`. La riga diventa uno snapshot fiscale intoccabile.
+6. **Normalizzazione**: `trg_fatture_righe_guard_normalize_ins_upd` eredita il BA destinatario dalla testata e allinea lo snapshot `iva_natura`.
 
 ---
 
@@ -37,10 +51,24 @@ Obiettivi principali:
 
 * **Identità e collegamenti**: `fattura_id` (testata), `riga_nr` (ordine), `articolo_id` (opzionale), `uom_id` (unità misura), `dest_billing_account_id` (attribuzione economica a BA figlio).
 * **Dati merce/servizio**: `descrizione`, `qta` , `prezzo_unitario` , `sconto_percentuale` (0–100, default 0). Per q.ta e prezzo leggere le note contenute nel documento
-* **IVA e fiscali**: `iva_id` (aliquota), `iva_perc`, `iva_natura` (snapshot), `esigibilita` (I|D|S), `split_payment`.
-* **Importi congelati**: `imponibile_riga`, `imposta_riga`, `totale_riga` (sempre valorizzati al closing della riga).
+* **IVA e fiscali**: `iva_id` (aliquota), `iva_natura` (snapshot), `esigibilita` (I|D|S), `split_payment`.
+* **Importo congelato**: `imponibile_riga` — `NOT NULL`, **calcolato dal DB**, mai da chi scrive la riga. Un valore passato dall'esterno viene **sovrascritto**.
+* **Snapshot kit** (`NULL` sulle righe non-kit, tutti valorizzati insieme sulle righe di kit): `kit_key` (identità dell'**istanza** di kit), `kit_esposto_in_fattura`, `kit_articolo_padre_id`, `kit_descrizione_padre`. Vedi *Kit ed esposizione*.
 * **Governance**: `meta` (JSONB, NOT NULL), `storicizza`, `tx_id`, audit `data_*`/`user_*`.
-* **Idempotenza import**: `sorgente_tipo_id`, `sorgente_uid`, `sorgente_riga` con **unique parziale** su (sorgente_tipo_id, sorgente_uid).
+* **Tracciabilità di origine**: `sorgente_tipo_id`, `sorgente_uid`, `sorgente_riga` con **unique parziale** su (sorgente_tipo_id, sorgente_uid). ⚠️ Sulle righe prodotte dall'aggregazione sono **NULL**: con *n* attività di sorgenti diverse non esiste una sorgente singola da dichiarare, e sceglierne una sarebbe una bugia. La tracciabilità passa da `attivita_fatturabili.fattura_riga_id`.
+
+> ❌ **`imposta_riga` e `totale_riga` NON esistono più** (rimosse il 2026-07-28).
+> L'imposta di riga non esiste nel regime italiano: l'IVA si liquida per aliquota
+> in `vendite.fatture_riepiloghi_iva`, ed è così che il modello è nato. Erano
+> colonne persistite e mai scritte, e non erano nemmeno calcolabili dalla riga —
+> l'aliquota dipende dallo stato dell'emittente, che sulla riga non c'è.
+> ⚠️ `totale_riga` resta un nome vivo **altrove**: è la colonna calcolata
+> (`imponibile + imposta`) delle viste di riepilogo IVA di ordini, DDT e
+> preventivi. Omonimia, non la stessa cosa.
+>
+> ❌ **`iva_perc` non è mai esistita** su questa tabella: il manuale precedente la
+> citava per errore. L'aliquota si risolve da `iva_id` con
+> `config.fn_get_aliquota_iva(iva_id, stato_emittente_id)`.
 
 ---
 
@@ -50,7 +78,8 @@ Obiettivi principali:
 * **CHECK**:
 
   * `chk_fatture_righe_sconto` → `sconto_percentuale` 0..100 (rinominato da `chk_fatture_righe_sconto_perc`, unificazione 2026-06-05).
-  * `chk_fatr_iva_perc` → iva_perc 0..100 (se valorizzato).
+  * `chk_fatture_righe_kit_coerente` → o la riga **non è** di kit (tutte le colonne `kit_*` NULL), o lo è per intero (chiave, flag ed articolo padre valorizzati). Una riga con metadati a metà sarebbe indistinguibile da una riga normale per la vista di esposizione, e sparirebbe dal raggruppamento senza un fiato.
+  * ~~`chk_fatr_iva_perc`~~ → **non esiste**: il manuale precedente lo citava insieme alla colonna `iva_perc`, che su questa tabella non c'è mai stata.
 * **UNIQUE**:
 
   * `uq_fatture_righe_riga_nr` su `(fattura_id, riga_nr)` (per progressivo di stampa/ordinamento).
@@ -59,14 +88,80 @@ Obiettivi principali:
 
 ---
 
-### Logiche di calcolo (indicative)
+### Logiche di calcolo — **come funziona davvero**
 
-* **Base**:
-  `imponibile_riga = round(qta * prezzo_unitario * (1 - sconto_percentuale/100), dec_importi)`
-  `imposta_riga    = round(imponibile_riga * (iva_perc/100), dec_importi)`
-  `totale_riga     = imponibile_riga + imposta_riga`
-* **Rounding**: usare le funzioni centralizzate del modulo vendite (decimali/metodo) per coerenza con testata e policy articolo.
-* **Override fiscali**: `iva_id` guida la natura/percentuale; `iva_perc`/`iva_natura` **devono essere snapshot** coerenti al momento di emissione.
+**L'importo lo calcola il database**, con il trigger
+`trg_fatture_righe_a20_importo_ins_upd`, a ogni `INSERT` e `UPDATE`:
+
+```
+imponibile_riga = arrotonda(
+      qta × prezzo_unitario × (1 − COALESCE(sconto_percentuale,0)/100),
+      decimali,   ← vendite.articolo_regole_fatturazione.arrotondamento_importi_dec   (default 2)
+      metodo      ← vendite.articolo_regole_fatturazione.metodo_arrotondamento_importi (default HALF_UP)
+  )
+```
+
+**Le regole che tengono in piedi il calcolo**, e cosa succede se saltano:
+
+| Regola | Presidiata da | Se salta |
+|---|---|---|
+| L'importo lo calcola il DB, mai chi scrive la riga | trigger `a20` | importi arbitrari dall'esterno — è il difetto d'origine |
+| L'arrotondamento avviene **una sola volta**, sul risultato | la formula: arrotonda il totale, mai gli addendi | scarti da doppio arrotondamento |
+| Decimali e metodo vengono dalle regole **dell'articolo** | trigger + `script.fn_arrotonda_importo` | la fattura ignora la configurazione |
+| Un metodo non riconosciuto **solleva** | `script.fn_arrotonda_importo` | default silenzioso: importo sbagliato che sembra giusto |
+| La somma delle quantità aggregate è **esatta** | `numeric(18,6)` su addendi a 6 decimali | perdita di precisione a monte dell'importo |
+| Oltre `EMESSA` non si tocca nulla | guard `a10` | una fattura emessa cambia valore dopo l'emissione |
+
+⚠️ **`arrotondamento_quantita_dec` non si applica MAI alla quantità aggregata**
+di una riga: è una regola della **singola attività**, a monte. Arrotondare la
+somma perderebbe precisione dove nessuno la cerca — a monte dell'importo.
+
+**L'arrotondamento è in un punto solo**: `script.fn_arrotonda_importo(valore,
+decimali, metodo)`, con vocabolario unico per tutto il modello — `UP` (allontana
+da zero), `DOWN` (avvicina a zero), `HALF_UP`, `HALF_DOWN`.
+
+⚠️ **Non confondere con l'arrotondamento del TOTALE A PAGARE**, che segue la
+configurazione **emittente-utility** in `fn_ricalcola_totali_fattura` e ha un
+saldo riportato fra documenti. Sono **due regole distinte**: quella di riga è
+per articolo, quella del totale è per emittente.
+
+**Conseguenza attesa, non un difetto**: con le righe arrotondate al centesimo,
+`fatture_riepiloghi_iva.arrotondamento` risulta **sempre zero** — se le righe
+sono esatte al centesimo non c'è scarto da conservare.
+
+---
+
+### Kit ed esposizione in fattura
+
+Un articolo composito (kit) **non arriva in fattura come riga unica**: il push lo
+espande e in commessa entrano **solo i componenti**, mai il padre. È il modello
+unificato componenti BoM del 2026-05-13, ed è voluto.
+
+Di conseguenza `fatture_righe` conserva **sempre tutte le righe componente**, con
+articolo, quantità e prezzo propri: è il **dettaglio**. Il raggruppamento per la
+presentazione è una **rappresentazione**, prodotta dalla vista
+`vendite.vw_fattura_righe_esposte`.
+
+| Colonna | Contenuto |
+|---|---|
+| `kit_key` | identità dell'**istanza** di kit (prefisso del `segment_key`, senza la parte `#CMP`). Non l'articolo padre: lo stesso kit può comparire due volte sulla stessa fattura da righe sorgente diverse |
+| `kit_esposto_in_fattura` | snapshot di `catalogo.articoli_componenti.esposto_in_fattura` per **quella** componente |
+| `kit_articolo_padre_id` | dal `meta` dell'attività (`componente_di`), già risolto dal push |
+| `kit_descrizione_padre` | congelata per poterla stampare senza risalire a monte |
+
+⚠️ **`esposto_in_fattura` è la regola**, non
+`articolo_regole_fatturazione.visibilita_componenti` — quest'ultima non era
+applicata da nessuno ed è stata **rimossa** dal modello il 2026-07-28.
+
+**Congelamento senza meccanismi aggiuntivi**: lo snapshot sta sulla riga, e le
+righe oltre `EMESSA` sono già intoccabili per effetto del guard `a10`. Quindi
+cambiare la distinta **non tocca** le fatture emesse, mentre rigenerare una
+fattura (reset lotto) rilegge il flag corrente — e l'esposizione cambia, com'è
+giusto.
+
+⚠️ **La vista vale per OGNI uscita**: PDF, XML SDI, portale. Non è «la vista di
+stampa»: se il PDF mostrasse il kit raggruppato e l'XML trasmettesse i
+componenti, avremmo due uscite dello stesso documento con dettagli diversi.
 
 ---
 
@@ -80,26 +175,38 @@ WHERE r.fattura_id = :fattura_id
   AND COALESCE(r.imponibile_riga,0) > 0
 ORDER BY r.riga_nr;
 
--- 2) Somma righe → totali testata
-SELECT 
-  SUM(r.imponibile_riga) AS imponibile,
-  SUM(r.imposta_riga)    AS imposta,
-  SUM(r.totale_riga)     AS totale
+-- 2) Somma righe. L'IMPOSTA NON SI SOMMA DALLE RIGHE: si liquida per aliquota
+--    nei riepiloghi, che sono l'unica fonte corretta per imposta e totale.
+SELECT SUM(r.imponibile_riga) AS imponibile
 FROM vendite.fatture_righe r
 WHERE r.fattura_id = :fattura_id;
 
--- 3) Idempotenza import righe
-SELECT r.id
-FROM vendite.fatture_righe r
-WHERE r.sorgente_tipo_id = :src_tipo
-  AND r.sorgente_uid = :src_uid;
+SELECT SUM(ri.imponibile) AS imponibile,
+       SUM(ri.imposta)    AS imposta
+FROM vendite.fatture_riepiloghi_iva ri
+WHERE ri.fattura_id = :fattura_id;
+
+-- 3) Il DETTAGLIO di una riga: le attività che la compongono.
+--    Con l'aggregazione una riga può nascere da n attività.
+SELECT a.id, a.quantita, a.prezzo_unitario, a.commessa_attivita_id
+FROM vendite.attivita_fatturabili a
+WHERE a.fattura_riga_id = :riga_id
+ORDER BY a.id;
+
+-- 4) Il documento COME VA RAPPRESENTATO (PDF, SDI, portale).
+--    Mai leggere fatture_righe direttamente per produrre un'uscita: i kit
+--    vanno esposti secondo lo snapshot, e questa vista lo fa.
+SELECT tipo_riga, riga_nr, descrizione, qta, prezzo_unitario, imponibile
+FROM vendite.vw_fattura_righe_esposte
+WHERE fattura_id = :fattura_id
+ORDER BY ordinamento, livello, riga_nr;
 ```
 
 ---
 
 ### Best practice operative
 
-* **Snapshot completo**: valorizzare sempre  `iva_natura`, `imponibile_riga`, `imposta_riga`, `totale_riga` al termine del calcolo riga.
+* ⚠️ **NON valorizzare `imponibile_riga`**: lo calcola il trigger, e un valore passato dall'esterno viene sovrascritto in silenzio. Se scrivendo codice o una fixture ti serve fornirlo per far tornare un conto, il calcolo si è rotto — è il segnale, non la soluzione.
 * **Progressivo riga**: assegnare `riga_nr` in modo **contiguo** e consolidato prima della numerazione della fattura.
 * **Override BA**: usare `dest_billing_account_id` solo quando necessario (es. ripartizioni o refatturazioni intra‑BA).
 * **Validazioni**: bloccare quantità negative e prezzi negativi a livello applicativo (qui sono consentiti consetiti tutti i valori).
@@ -109,8 +216,17 @@ WHERE r.sorgente_tipo_id = :src_tipo
 
 ### ⚠️ Osservazioni & possibili migliorie
 
-1. **Calcolo automatico importi**: opzionale trigger `BEFORE INSERT/UPDATE` per calcolare e arrotondare `imponibile_riga`, `imposta_riga`, `totale_riga` se non forniti.
-3. **Gestione bundle/kit**: se servono righe descrittive non valorizzate, usare `qta = 0` e `totali = 0` con tipo riga in `meta`.
+1. ✅ ~~**Calcolo automatico importi**: opzionale trigger `BEFORE INSERT/UPDATE` per calcolare e arrotondare gli importi se non forniti.~~
+   **FATTO il 2026-07-28** — e la parola «opzionale» è costata cara: il trigger
+   non è mai stato scritto, il backend lo dava per fatto, e ogni fattura del
+   sistema è rimasta a 0,00 € per mesi. Una regola scritta come facoltativa in
+   un manuale e assunta come presente nel codice a valle è il modo in cui un
+   buco sopravvive senza che nessuno menta.
+2. ✅ ~~**Gestione bundle/kit**: se servono righe descrittive non valorizzate, usare `qta = 0` e `totali = 0` con tipo riga in `meta`.~~
+   **Risolto diversamente**: le righe descrittive non si simulano con quantità e
+   importi a zero, che sarebbero dati falsi. I componenti restano righe vere col
+   loro valore, e la **rappresentazione** li rende descrittivi sotto il padre —
+   vedi *Kit ed esposizione in fattura*.
 
 ---
 

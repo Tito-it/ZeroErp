@@ -261,7 +261,9 @@
 - [trgfn_fatture_log_sync_ai_stmt](funzioni/trgfn_fatture_log_sync_ai_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo INSERT su `vendite.fatture_log` (trigger statement-level).
 - [trgfn_fatture_log_sync_au_stmt](funzioni/trgfn_fatture_log_sync_au_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo UPDATE su `vendite.fatture_log` (trigger statement-level).
 - [trgfn_fatture_numerata_non_annulabile](funzioni/trgfn_fatture_numerata_non_annulabile.md) — Blocca il passaggio a stato `ANNULLATA` per una fattura gia` numerata.
+- [trgfn_fatture_righe_guard_congelamento](funzioni/trgfn_fatture_righe_guard_congelamento.md)
 - [trgfn_fatture_righe_guard_normalize](funzioni/trgfn_fatture_righe_guard_normalize.md) — Normalizza i dati di riga fattura su inserimento/aggiornamento: * eredita `dest_billing_account_id` dalla testata se assente; * allinea lo snapshot `iva_natura` in base a `config.iva`.
+- [trgfn_fatture_righe_importo](funzioni/trgfn_fatture_righe_importo.md)
 - [trgfn_guard_fatturazione_immediata_immutabile](funzioni/trgfn_guard_fatturazione_immediata_immutabile.md) — Impedire la modifica di `fatturazione_immediata` su un documento **già inviato in commessa**.
 - [trgfn_listini_guard_tipologia_utility](funzioni/trgfn_listini_guard_tipologia_utility.md) — Guard defense-in-depth: verifica che la coppia `(utility_id, tipologia_id)` su `vendite.listini` sia ammessa dalla matrice `config.listini_tipologie_utilities` con `attivo = true`.
 - [trgfn_listini_righe_comp_guard_immutabilita_v5](funzioni/trgfn_listini_righe_comp_guard_immutabilita_v5.md)
@@ -337,6 +339,7 @@
 - [vw_documento_lineage](views/vw_documento_lineage.md) — `vendite.vw_documento_lineage` è la vista **summary** (una riga per documento) pensata per **arricchire le liste vendite** con un solo JOIN. Risponde a due domande dalle liste:
 - [vw_documento_lineage_archi](views/vw_documento_lineage_archi.md) — `vendite.vw_documento_lineage_archi` è il **grafo di genealogia/transito** dei documenti vendite in forma **normalizzata**: **una riga per arco** (relazione padre→figlio tra due documenti). È la base da cui derivano sia la summary `vw_documento_lineage` sia il traversal `fn_documento_lineage`.
 - [vw_documento_lineage_nodi](views/vw_documento_lineage_nodi.md) — `vendite.vw_documento_lineage_nodi` è la **dimensione nodo** del grafo di genealogia dei documenti vendite (brief-db-lineage-documenti-vendite): **una riga per documento** delle 8 testate-nodo (preventivo, offerta, ordine, contratto, DDT, fattura, commessa, reso), con la **chiave nativa polimorfa** e lo **stato/fase normalizzati**.
+- [vw_fattura_righe_esposte](views/vw_fattura_righe_esposte.md)
 - [vw_lotti_fatture_incoerenti](views/vw_lotti_fatture_incoerenti.md)
 - [vw_offerte_commerciali_lista](views/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)
 - [vw_ordini_lista](views/vw_ordini_lista.md) — (rev 2026-06-03 — rev1)

@@ -2,10 +2,24 @@
 
 > **Tipo**: brief operativo **misto DB + BE + FE** · **Target DB**: `dev/db-tid` ·
 > **Target BE/FE**: `dev/backend-tid` · **Data**: 2026-07-28 · **Owner**: Tid ·
-> **Stato**: 🟡 **DECISIONI DB CHIUSE (2026-07-28) — sviluppo da iniziare** ·
+> **Stato**: 🟢 **PERIMETRO DB COMPLETO** (2026-07-28) — 18 changeset, `-07…-16`
+> applicati, `-17/-18` scritti e validati. pgTAP verdi, zero regressioni.
+> Restano **documentazione** (in corso) e il **perimetro BE** ·
 > **Priorità**: 🔴 **ALTA — bug logico del modello**
-> ([[feedback_bug_logici_modello]]): oggi **ogni fattura emessa dal sistema ha
-> totale 0,00 €**. Non è un caso limite: è il 100% dei casi.
+> ([[feedback_bug_logici_modello]]): fino al 2026-07-28 **ogni fattura emessa dal
+> sistema aveva totale 0,00 €**. Non era un caso limite: era il 100% dei casi.
+>
+> ✅ **Verificato a valle**: il lotto `LTF-0000390` ha prodotto la fattura **362**,
+> imponibile **200,00**, numerata **2026/R2/6** — la prima fattura del sistema con
+> un totale diverso da zero.
+>
+> ⚠️ **Il perimetro è cambiato in corsa.** La prima analisi trattava un difetto di
+> calcolo: «nessuno valorizza l'importo di riga». La seconda ha stabilito che
+> **anche l'oggetto è sbagliato**: una riga di fattura deve essere
+> l'**aggregazione di 1..n attività fatturabili**, non la copia di una sola. Da
+> qui tre requisiti nuovi (D4 aggregazione, D5 dettaglio componenti) e il
+> rifacimento di D1, che era già stato applicato nella forma a colonna generata e
+> va **revocato**. Dettaglio in §4.1 e §12.
 >
 > **Origine**: segnalazione Tid 2026-07-27 sul lotto `LTF-0000359` («la fattura è
 > zero perché tutte le quantità sono azzerate»); analisi su DB vivo `dbdev` la
@@ -38,12 +52,16 @@
 
 | Fase | Contenuto | Owner | Stato |
 |---|---|---|---|
-| **D1** — importo di riga | `imponibile_riga` diventa **colonna generata** `round(..., 2)` `NOT NULL` | team DB | 🔴 da fare |
-| **D1-bis** — congelamento | gli **input** della riga non si modificano oltre la soglia di stato | team DB | 🔴 da fare |
-| **D1-ter** — pulizia modello | `imposta_riga` e `totale_riga` **rimosse** ⚠️ *breaking sul BE* | team DB | 🔴 da fare |
-| **D2** — payload SDI | `fn_prepare_sdi_payload` referenzia una colonna inesistente | team DB | 🔴 da fare |
-| **D3** — fattura vuota | guard: non si numera una fattura **senza righe** (origine di 207/208) | team DB | 🔴 da fare |
-| **T** — pgTAP | i test attuali **mascherano** il difetto; le fixture si romperanno da sole (§8.1) | team DB | 🔴 da fare |
+| **D1** — importo di riga | ~~colonna generata~~ → **trigger** che legge le regole di arrotondamento **per articolo** | team DB | ✅ applicato (`-07…-10`), verificato sul lotto `LTF-0000390` |
+| **D1-bis** — congelamento | gli **input** della riga non si modificano oltre la soglia di stato | team DB | ✅ applicato (`20260728-03/04`) |
+| **D1-ter** — pulizia modello | `imposta_riga` e `totale_riga` **rimosse** ⚠️ *breaking sul BE* | team DB | ✅ applicato (`20260728-02`) |
+| **D2** — payload SDI | `fn_prepare_sdi_payload` referenzia una colonna inesistente | team DB | ✅ applicato (`20260728-06`) |
+| **D3** — fattura vuota | guard: non si numera una fattura **senza righe** (origine di 207/208) | team DB | ✅ applicato (`20260728-05`) |
+| **D4** — ⭐ **aggregazione** | una riga di fattura = aggregazione di **1..n** attività fatturabili (§4.6) | team DB | ✅ applicato (`-11/-12`) + quota dashboard (`-13`) |
+| **D5** — esposizione kit | snapshot sulla riga + vista di rappresentazione unica (§4.7-bis) | team DB | ✅ applicato (`-14/-15/-16`) |
+| **PULIZIA** — `visibilita_componenti` | rimossa: nessun consumatore vivo, non era la regola (§4.7-bis) | team DB | ✍️ scritti `-17/-18`, da applicare ⚠️ *breaking sul BE* |
+| **T** — pgTAP | fixture risanate + file nuovo da 19 casi (§8.1) | team DB | ✅ verdi, zero regressioni |
+| **DOC** — documentazione | manuali dbzero, guida fatturazione, regole §4.7-ter | team DB | 🟡 in corso |
 | **DATI** — fatture a zero | **nessun intervento** — decisione Tid 2026-07-28 (§7) | — | ✅ chiuso |
 | **B0** — colonne rimosse | `list_fattura_righe` smette di selezionare le 2 colonne | BE | ⏸️ attende D1-ter |
 | **B1** — context builder fattura | allineamento nomi campo riga al contratto documenti | BE | ⏸️ attende D1 |
@@ -198,6 +216,33 @@ vendita (`ordini_repository` espone `sconto_percentuale`). La colonna Sconto è
 muta su entrambe le stampe. Il template Preventivo è invece robusto: usa catene
 di fallback (`r.get("qta") or r.get("quantita")`, ecc.).
 
+#### 2.6-bis Evidenza dalla coda di stampa (2026-07-28) — un quarto campo, e più grave
+
+Rilevato ispezionando `vendite.fatture_stampa_coda` durante la verifica del lotto
+`LTF-0000390`:
+
+| Coda | Fattura | Stato | Tentativi | Errore |
+|---|---|---|---|---|
+| 1 | 210 | **ERRORE** *(tentativi esauriti)* | 5 | `E_DOCUMENTI_RENDER_FAILED` → `UndefinedError: 'dict object' has no attribute 'denominazione'` |
+
+Due cose che il censimento della tabella qui sopra non conteneva:
+
+1. **C'è un quarto campo disallineato: `denominazione`.** Non era stato censito
+   perché il confronto era stato fatto sulle colonne di *riga*, mentre questo sta
+   in un'altra parte del context (probabilmente l'intestazione cliente). Chi
+   corregge il template lo chiuda **nella stessa passata** degli altri tre,
+   invece di scoprirli uno per volta a ogni stampa.
+2. **Qui il template NON usa `.get()`.** L'errore è un `UndefinedError`, cioè
+   `StrictUndefined` è scattato: in quel punto c'è un accesso diretto. È
+   esattamente il comportamento che §5.4 raccomanda di estendere a tutti i campi
+   — con il risultato che questo difetto si è **fermato** invece di stampare un
+   trattino, ed è per questo che lo abbiamo trovato.
+
+⚠️ La voce è in stato `ERRORE` con 5 tentativi esauriti: quella fattura **non si
+stampa da prima** di questo brief, e nessuno se n'era accorto. Dopo la correzione
+del template va rimessa in coda a mano — a differenza delle voci `PENDING`, che
+ripartono da sole.
+
 ### 2.7 Difetto latente sul payload SDI
 
 `vendite.fn_prepare_sdi_payload` contiene:
@@ -304,9 +349,79 @@ la colonna calcolata delle viste di riepilogo IVA degli altri tre documenti.
 Rimuovere `fatture_righe.totale_riga` **non** le tocca, e non vanno «bonificate»
 per simmetria.
 
+### 2.12 ⚠️ Esiste un arrotondamento configurabile **di riga**, per articolo
+
+Rilevato nella 2ª analisi (2026-07-28) e **correzione a §2.10**, che era
+incompleta.
+
+`vendite.articolo_regole_fatturazione` definisce, con `UNIQUE (articolo_id)` e
+quindi una riga per articolo:
+
+- `arrotondamento_importi_dec` / `metodo_arrotondamento_importi`
+- `arrotondamento_quantita_dec` / `metodo_arrotondamento_quantita`
+- `visibilita_componenti`, `calcolo_qta_padre`
+
+e il suo manuale dice che le regole vengono lette *«durante la generazione righe
+documento (preventivo → ordine → DDT → fattura)»*, al punto *«Calcolo importi e
+totali: applica i decimali e i metodi di arrotondamento configurati»*.
+
+**È la configurazione di riga che §2.10 dava per inesistente.** Quella sezione
+resta valida per `anagrafiche.emittenti_fiscali_utilities`, che governa davvero
+il solo totale a pagare; ma non è l'unica tabella in gioco. Le due convivono su
+livelli diversi:
+
+| Livello | Tabella | Governa |
+|---|---|---|
+| Riga di fattura | `vendite.articolo_regole_fatturazione` | decimali e metodo **dell'importo di riga**, per articolo |
+| Totale a pagare | `anagrafiche.emittenti_fiscali_utilities` | decimali e metodo del **dovuto**, con saldo riportato fra documenti |
+
+`fn_group_attivita_fatturabili` legge già oggi le regole dell'articolo e le
+porta dentro `meta.group_key` di ogni riga generata — dove restano inutilizzate.
+
+Stato dei dati: tutte e 5 le righe valgono `2 / HALF_UP`, `quantita_dec = 3`,
+`visibilita = solo_padre`. Il comportamento configurato coincide oggi con la
+formula fissa: è **una configurazione, non una costante**, ed è la ragione per
+cui D1 non può essere una colonna generata (§4.1).
+
+### 2.13 La catena è 1:1:1, e non esiste un secondo livello di righe fattura
+
+Verificato su codice e dati nella 2ª analisi, in risposta al dubbio *«sicuro che
+non ci sia un altro livello di righe fatture?»*.
+
+**Nessun livello nascosto**:
+
+- l'unica tabella con FK verso `vendite.fatture_righe` è `vendite.note_fatture`;
+- delle 25 tabelle `fattur*` di `vendite`, nessuna è un dettaglio di riga;
+- la guida stessa (§Tabelle core → *Livello fatturazione*) elenca
+  `attivita_fatturabili`, `fatturazione_lotti`, `fatture`, `fatture_righe`,
+  `fatture_riepiloghi_iva`, `fatture_scadenze`. Fine.
+
+**La catena, oggi**:
+
+| Passo | Funzione | Rapporto |
+|---|---|---|
+| `commesse_attivita` → `attivita_fatturabili` | `fn_emit_attivita_fatturabili_da_commessa` | **1:1** — travaso di ~35 colonne, `prezzo_snapshot` → `prezzo_unitario`, `id` → `commessa_attivita_id` |
+| `attivita_fatturabili` → `fatture_righe` | `fn_generate_fatture_righe` | **1:1** — ciclo per attività, `qta = quantita`, `prezzo_unitario = prezzo_unitario` |
+
+Confermato anche sui dati: nessuna riga di fattura alimentata da più di
+un'attività, nessuna attività alimentata da più di una riga di commessa. La
+catena della fattura 329: `commessa_attivita 192 (q=100, p=5)` → `AF 358` →
+`riga 89` → imponibile 500.
+
+**Il dettaglio della riga esiste già e sono le attività stesse**: 52 colonne, con
+il puntatore `attivita_fatturabili.fattura_riga_id`. Non serve una tabella nuova
+per aggregare (§4.6).
+
+⚠️ **Ma quel puntatore non ha una foreign key.** È un `bigint` nudo verso
+`vendite.fatture_righe`. Oggi regge perché `fn_cleanup_fatture_by_ids` ripulisce
+a mano il riferimento quando cancella le fatture — una compensazione applicativa
+al posto di un vincolo. Quando il rapporto diventa *n*:1 quel puntatore **è** la
+struttura della fattura: senza vincolo, prima o poi ci saranno attività che
+puntano a righe inesistenti e nessuno se ne accorgerà.
+
 ---
 
-## 3. Diagnosi — cinque difetti distinti
+## 3. Diagnosi — sette difetti distinti
 
 | # | Difetto | Effetto oggi | Livello |
 |---|---|---|---|
@@ -315,16 +430,26 @@ per simmetria.
 | **C** | `fn_prepare_sdi_payload` referenzia `fatture_riepiloghi_iva.totale_riga`, colonna inesistente | Latente: esplode al primo passaggio a INVIATA | **DB** |
 | **D** | Nessun presidio impedisce di modificare una riga di fattura **dopo l'emissione** | Uno `UPDATE fatture_righe SET qta=999` su una DEFINITIVA passa. Oggi non si nota perché gli importi sono già vuoti; con **A** risolto, l'importo seguirebbe la nuova quantità | **DB** |
 | **E** | Una fattura può ricevere **numerazione fiscale senza avere righe** | Le fatture 207 e 208 sono DEFINITIVE e vuote (§7): documenti fiscali che non sarebbero mai dovuti esistere | **DB** |
+| **F** ⭐ | La riga di fattura **non aggrega**: `fn_generate_fatture_righe` ne produce una per ogni attività fatturabile | Fatture con *n* righe dove ne servirebbe una. Non è un difetto di calcolo ma **dell'oggetto**: la riga è la copia di un dettaglio invece della sua sintesi | **DB** |
+| **G** | `visibilita_componenti` **non ha dove atterrare** | La regola che decide se sulla stampa vanno mostrati i componenti di un kit viene calcolata, messa in `meta.group_key` e ignorata: la stampa non sa cosa mettere nel dettaglio | **DB** |
 
-**A**, **C**, **D** ed **E** sono di competenza del team DB. **B** è metà backend
-(shape del context) e metà dato applicativo (HTML del template, che risiede in
-tabella e si modifica dall'app, non da migration — verificato: nessun changelog
-in `migrations_v2` contiene l'HTML di quei template).
+**A**, **C**, **D**, **E**, **F** e **G** sono di competenza del team DB. **B** è
+metà backend (shape del context) e metà dato applicativo (HTML del template, che
+risiede in tabella e si modifica dall'app, non da migration — verificato: nessun
+changelog in `migrations_v2` contiene l'HTML di quei template).
 
 **D** ed **E** sono stati aggiunti dall'analisi critica del 2026-07-28. Non sono
 scoperte laterali: sono **la stessa famiglia di difetto** — un invariante che il
 modello dà per acquisito e nessuno presidia. Chiuderli qui evita di riaprire il
 tema fra sei mesi, quando gli importi saranno valorizzati e quindi *modificabili*.
+
+**F** e **G** vengono dalla seconda analisi (2026-07-28, §12) e sono di natura
+diversa: non un presidio mancante ma **un pezzo di modello mai collegato**.
+`fn_group_attivita_fatturabili` calcola una chiave di raggruppamento completa e
+la salva in `meta.group_key` di ogni riga — senza raggruppare niente;
+`attivita_fatturabili.fattura_riga_id` esiste per reggere un rapporto *n*→1 che
+oggi è sempre 1→1. Il disegno c'è per intero, l'implementazione no. È la stessa
+storia degli importi, un livello più su.
 
 ---
 
@@ -350,35 +475,57 @@ stessa regola in due linguaggi, che divergeranno. Il presidio deve stare **dove
 la riga viene scritta**, in un punto solo, valido per qualunque scrittore
 attuale o futuro ([[feedback_normalize_guard_simmetrico]]).
 
-**Soluzione decisa: colonna generata.** `imponibile_riga` diventa
+> ⚠️ **REVISIONE DEL 2026-07-28 (2ª analisi).** Questo requisito era stato chiuso
+> con una **colonna generata** ed è stato applicato sul DB in quella forma
+> (`20260728-01`). **Va revocato.** Il motivo non è la formula, che resta valida,
+> ma il fatto che una colonna generata può usare solo dati della propria riga e
+> **non può leggere le regole di arrotondamento configurate per articolo**
+> (§2.12). La prima analisi aveva escluso quella configurazione dopo aver
+> guardato solo `anagrafiche.emittenti_fiscali_utilities` — che governa davvero
+> il solo totale a pagare — e non `vendite.articolo_regole_fatturazione`, che è
+> invece **di riga**. Vedi §12 per il registro della revisione.
 
-```sql
-imponibile_riga numeric(18,6)
-  GENERATED ALWAYS AS (
-      round(qta * prezzo_unitario * (1 - COALESCE(sconto_percentuale, 0) / 100), 2)
-  ) STORED
-  NOT NULL
+**Soluzione: trigger `BEFORE INSERT OR UPDATE` che calcola l'importo.**
+
+```
+imponibile_riga = arrotonda(
+        qta × prezzo_unitario × (1 − COALESCE(sconto_percentuale,0)/100),
+        decimali  ← articolo_regole_fatturazione.arrotondamento_importi_dec   (default 2)
+        metodo    ← articolo_regole_fatturazione.metodo_arrotondamento_importi (default HALF_UP)
+    )
 ```
 
-**Perché la colonna generata e non un trigger.** È il presidio più forte
-disponibile: il valore lo calcola il motore, e **nessun `INSERT` o `UPDATE`, in
-nessun linguaggio, oggi o fra due anni, può scriverlo diverso** — un trigger si
-può disabilitare, una colonna generata no. L'invariante smette di essere una
-promessa del comportamento e diventa una proprietà della tabella. Il requisito
-«un punto solo, valido per qualunque scrittore» è soddisfatto per costruzione.
+**Perché il trigger e non la colonna generata**: `articolo_id` è una colonna
+della riga, quindi un trigger può risalire alle regole dell'articolo; una colonna
+generata no. Si perde la garanzia assoluta del motore, ma non molto: un
+`BEFORE INSERT OR UPDATE` scatta comunque per **ogni** scrittore, funzione DB o
+Python che sia. La differenza è teorica (un trigger si può disabilitare, il
+motore no), non pratica.
 
-**Perché `NOT NULL`**: `qta` e `prezzo_unitario` sono già `NOT NULL`, quindi
+**Perché i decimali non sono un hardcode**: `arrotondamento_importi_dec` è una
+configurazione **per articolo**, documentata come applicata *«durante la
+generazione righe documento (preventivo → ordine → DDT → fattura)»* e al
+*«calcolo importi e totali»*. Oggi tutte e 5 le righe di
+`articolo_regole_fatturazione` valgono `2 / HALF_UP`, quindi il comportamento
+coincide con la formula fissa — ma è una configurazione, non una costante.
+
+> **Il valore di riga resta a 2 decimali** (domanda esplicita di Tid). Il tipo
+> della colonna resta `numeric(18,6)`: è il **contenitore**, non la regola.
+> Stringerlo a `numeric(18,2)` ri-arrotonderebbe **in silenzio** l'importo di un
+> articolo configurato a 3 decimali — un secondo arrotondamento invisibile,
+> esattamente la classe di difetto che questo brief chiude.
+
+**`NOT NULL` resta**: `qta` e `prezzo_unitario` sono già `NOT NULL`, quindi
 l'espressione non può mai produrre vuoto. Dichiararlo è il modo di **scrivere**
-l'invariante nello schema invece di limitarsi a garantirlo.
+l'invariante nello schema invece di limitarsi a garantirlo. Con il trigger va
+imposto dopo il primo popolamento.
 
-**Perché il `2` non è un hardcode.** L'arrotondamento configurabile
-(`arrotondamento_importi_dec` / `metodo_arrotondamento_importi`) governa il
-**totale a pagare**, non la riga — verificato in `fn_ricalcola_totali_fattura`,
-che lo applica a `totale_doc + fondi + arrotondamento_precedente` (§2.10). La
-riga di fattura si arrotonda a 2 decimali per convenzione fiscale italiana: è
-una regola diversa, non lo stesso parametro applicato due volte. Nota tecnica:
-`round(numeric, int)` di PostgreSQL arrotonda per eccesso sul mezzo, che
-coincide con `HALF_UP` senza doverlo dichiarare.
+**Estrazione richiesta — `fn_arrotonda_importo(valore, decimali, metodo)`.** Il
+`CASE` con i quattro metodi (`CEIL` / `FLOOR` / `HALF_DOWN` / `HALF_UP`) oggi
+vive **inline** dentro `fn_ricalcola_totali_fattura`. Con questo trigger nasce il
+secondo consumatore: o si richiama, o si riscrive — e riscrivere significa due
+copie della stessa regola fiscale destinate a divergere. È il momento di
+estrarla, né prima né dopo ([[feedback_regola_del_2_estrai_bb]]).
 
 **Formula**:
 
@@ -394,16 +541,35 @@ un calcolo di presentazione.
 
 **Vincoli tecnici da mettere a verbale, non da scoprire in corsa**:
 
-1. **Serve `DROP` + `ADD`**: PostgreSQL non consente di trasformare in generata
-   una colonna già esistente. Con 7 righe tutte a NULL non si perde nulla, ma il
-   changeset deve dirlo.
-2. **La colonna diventa non scrivibile**: qualunque codice provi ad assegnarle un
-   valore riceve un errore. Nessuno scrittore vivo lo fa (§2.3) — ma **le fixture
-   pgTAP sì**, e si romperanno (§8.1). È l'esito voluto: la pulizia delle fixture
-   non è più una raccomandazione da ricordare, è obbligatoria per far girare i
-   test. Il difetto non può ripresentarsi.
-3. **Le 7 righe esistenti si valorizzano da sole** all'`ADD COLUMN`, senza una
-   riga di backfill (§7).
+1. **Non serve alcun rollback, e non si tocca nessuna vista.** Il passaggio da
+   colonna generata a colonna normale si fa in posto:
+
+   ```sql
+   ALTER TABLE vendite.fatture_righe ALTER COLUMN imponibile_riga DROP EXPRESSION;
+   ```
+
+   Verificato in transazione: la colonna smette di essere generata, **`NOT NULL`
+   resta**, i **valori sono conservati** (7/7 valorizzate, totale 2.700) e la
+   catena delle quattro viste dipendenti **non viene toccata**. Cade quindi tutto
+   il rischio del ritorno — niente `DROP`+`ADD`, niente ricreazione con
+   `security_invoker` da ri-specificare.
+
+2. ⚛️ **`DROP EXPRESSION` e armamento del trigger vanno nello STESSO changeset.**
+   Un trigger **non può assegnare** un valore a una colonna generata (PostgreSQL
+   lo rifiuta), quindi non si può armare prima; ma appena tolta la generazione la
+   colonna resta `NOT NULL` **senza nessuno che la riempia**, quindi non si può
+   aspettare dopo. Fra i due atti esiste una finestra in cui qualunque `INSERT`
+   fallirebbe: si chiude mettendoli nella stessa transazione di changeset.
+
+3. **Nessun backfill.** `DROP EXPRESSION` conserva i valori già calcolati: le 7
+   righe restano corrette senza un `UPDATE` di innesco, e senza dover
+   attraversare il guard D1-bis sulle 5 fatture già numerate.
+
+4. **Le fixture pgTAP si romperanno comunque** (§8.1): con il trigger l'importo
+   iniettato a mano verrebbe **sovrascritto**, non rifiutato. È un
+   peggioramento rispetto alla colonna generata, che le faceva fallire in modo
+   rumoroso: va compensato con un test esplicito (caso 7 di §8.1) che verifichi
+   che il valore scritto dall'esterno **non** sopravvive.
 
 **Criteri di accettazione D1**:
 
@@ -416,8 +582,13 @@ un calcolo di presentazione.
 5. In DRAFT, aggiornando `qta`, `prezzo_unitario` o `sconto_percentuale` di una
    riga esistente, l'imponibile si riallinea da sé. Oltre la soglia di stato
    l'`UPDATE` è respinto a monte (D1-bis), quindi il caso non si pone.
-6. Un tentativo di scrivere direttamente `imponibile_riga` **fallisce**.
-7. Dopo `fn_ricalcola_riepilogo_iva_fattura` + `fn_ricalcola_totali_fattura`
+6. Un valore di `imponibile_riga` passato dall'esterno viene **ignorato**: dopo
+   l'`INSERT` la colonna contiene il valore calcolato, non quello fornito.
+7. Un articolo con `arrotondamento_importi_dec = 3` produce un imponibile a **3**
+   decimali; uno con `metodo = FLOOR` tronca invece di arrotondare. È il test che
+   distingue il trigger dalla formula fissa — senza, i due sono indistinguibili
+   sui dati attuali.
+8. Dopo `fn_ricalcola_riepilogo_iva_fattura` + `fn_ricalcola_totali_fattura`
    sulla fattura 329 rigenerata, `totale_doc` vale 610,00 (500 + 22% IVA —
    aliquota della riga verificata sul DB).
 
@@ -463,6 +634,50 @@ liberamente.
 3. `UPDATE` di una colonna **non** di importo (es. `descrizione`) oltre la
    soglia → da decidere in implementazione, ma la scelta va scritta.
 4. `DELETE` di una riga oltre la soglia → coerente col punto 2.
+
+### 4.1-ter Un solo vocabolario per i metodi di arrotondamento
+
+> **Aggiunto il 2026-07-28 su decisione di Tid**: *«unifichiamo anche i metodi…
+> confermo quelli di emittenti fiscali utilities»*.
+
+Estraendo `fn_arrotonda_importo` è emerso che il metodo di arrotondamento è
+configurabile in **quattro punti** del modello, e ogni punto ammetteva un insieme
+**diverso** di valori. In comune ce n'era **uno solo**:
+
+| Dove | Vocabolario |
+|---|---|
+| `anagrafiche.emittenti_fiscali_utilities.metodo_arrotondamento_importi` | `UP` `DOWN` `HALF_UP` `HALF_DOWN` |
+| `config.termini_pagamento.arrotondamento_metodo` | `HALF_UP` `HALF_DOWN` `HALF_EVEN` |
+| `vendite.articolo_regole_fatturazione.metodo_arrotondamento_importi` | `HALF_UP` `HALF_EVEN` `FLOOR` `CEIL` |
+| `vendite.articolo_regole_fatturazione.metodo_arrotondamento_quantita` | `HALF_UP` `HALF_EVEN` `FLOOR` `CEIL` |
+
+Tre vocabolari per la stessa idea. Una funzione condivisa avrebbe dovuto
+gestirne l'unione — sette nomi per quattro comportamenti, alcuni sovrapposti solo
+in parte — e chi scrive codice che arrotonda avrebbe dovuto sapere **quale** dei
+tre stava leggendo.
+
+**Decisione: vale il vocabolario di `emittenti_fiscali_utilities`**, esteso a
+tutti e quattro i punti:
+
+```
+UP        allontana da zero      DOWN       avvicina a zero
+HALF_UP   sul mezzo allontana    HALF_DOWN  sul mezzo avvicina
+```
+
+**Cosa sparisce, e perché si può**:
+
+- **`CEIL` e `FLOOR`**: sui valori **non negativi** — la totalità dei casi di
+  fatturazione — coincidono con `UP` e `DOWN`. La differenza esiste solo sui
+  negativi (verso ±∞ anziché da/verso zero) e nessuno la sfruttava.
+- **`HALF_EVEN`** (arrotondamento bancario): era un valore **ammesso** in due
+  tabelle ma **nessuna funzione del database lo implementava** — verificato su
+  `pg_proc`. Era una promessa scritta nel CHECK e mai mantenuta: la stessa forma
+  di difetto che questo brief chiude sugli importi. Se servisse davvero, si
+  riaggiunge **insieme** al codice che lo applica.
+
+**Nessuna migrazione di dati**: tutte e 16 le righe configurate nei quattro punti
+valgono `HALF_UP`, che sopravvive. Il changeset ha una `preCondition` che lo
+verifica e si ferma se trova un valore fuori vocabolario.
 
 ### 4.2 Precisione dell'importo di riga — **DECISA: arrotondato a 2 decimali**
 
@@ -593,7 +808,452 @@ assegna numerazione fiscale se non ha almeno una riga.
 numerazione avviene al passaggio a `DEFINITIVA`, ma va verificato dove il modello
 la assegna davvero prima di scegliere il punto in cui armare il guard.
 
-### 4.6 Fuori perimetro DB
+### 4.6 ⭐ Requisito D4 — la riga di fattura è un'**aggregazione**
+
+> **Aggiunto il 2026-07-28 (2ª analisi), su decisione di Tid**: *«è fondamentale
+> che una riga della fattura sia l'aggregazione di 1 o n righe di attività
+> fatturabili secondo le regole già esistenti»*.
+
+**Invariante richiesto**: una riga di `vendite.fatture_righe` rappresenta
+l'aggregazione di **1..n** righe di `vendite.attivita_fatturabili` che
+condividono la stessa chiave di raggruppamento. Il legame è
+`attivita_fatturabili.fattura_riga_id`, che diventa l'**unico** riferimento fra
+riga e dettaglio.
+
+**Lo stato di fatto** (§2.13): oggi `fn_generate_fatture_righe` cicla sulle
+attività e ne inserisce **una riga per ciascuna**. Il rapporto è 1:1 nel codice e
+nei dati (verificato: nessuna riga alimentata da più di un'attività). Ma il
+disegno dell'aggregazione **esiste già per intero** e non serve alcuna tabella
+nuova:
+
+- la **chiave** la produce `fn_group_attivita_fatturabili`: articolo · billing
+  account destinatario · unità di misura · **prezzo unitario** · IVA · competenza
+  dal/al;
+- il **puntatore *n*→1** è `attivita_fatturabili.fattura_riga_id`, che ha senso
+  solo in un rapporto molti-a-uno: se fosse per sempre 1:1 quella colonna sarebbe
+  inutile. La sua esistenza *è* la prova che l'aggregazione era prevista;
+- il **dettaglio** sono le attività stesse (52 colonne: quantità, prezzo,
+  competenza, sorgente, snapshot di pricing).
+
+**L'algoritmo**:
+
+```
+per ogni fattura del lotto:
+    raggruppa le attività per la chiave di fn_group_attivita_fatturabili
+    per ogni gruppo:
+        qta    = SUM(quantita)          ← somma ESATTA, mai arrotondata
+        prezzo = prezzo del gruppo      ← unico per costruzione: è nella chiave
+        → INSERT di UNA riga
+        → UPDATE delle n attività: fattura_riga_id = riga appena creata
+    l'importo lo calcola il trigger di D1 (§4.1)
+```
+
+**Perché questo È la sommatoria, e non un'approssimazione.** Il prezzo unitario
+fa parte della chiave, quindi è costante dentro il gruppo:
+
+```
+Σ(qᵢ × p)  =  p × Σqᵢ  =  qta × prezzo_unitario
+```
+
+è un'**identità**, non un'approssimazione. E la somma delle quantità è esatta:
+ogni `quantita` è `numeric(18,6)`, la somma di addendi a 6 decimali ha esattamente
+6 decimali, e `qta` è `numeric(18,6)`. Nessun troncamento in nessun punto.
+L'unico arrotondamento è quello finale, sull'importo.
+
+> ⚠️ **`arrotondamento_quantita_dec` non si applica MAI all'aggregato.**
+> È una regola della **singola attività**, a monte. Arrotondare la quantità
+> sommata prima di scriverla in `qta` perderebbe precisione lì — a monte
+> dell'importo, dove nessuno la cerca. È la garanzia esplicitamente richiesta da
+> Tid e va scritta nel modello, non lasciata all'implementazione.
+
+**Cosa va modificato** — otto punti, tutti conseguenza diretta:
+
+| # | Oggetto | Cosa |
+|---|---|---|
+| 1 | `fn_generate_fatture_righe` | da ciclo per attività a raggruppamento: una riga per gruppo, `qta` = somma esatta, poi `UPDATE` delle *n* attività |
+| 2 | `fatture_righe.sorgente_*` | **NULL** sulle righe aggregate (vedi sotto) |
+| 3 | `attivita_fatturabili.fattura_riga_id` | **aggiungere la FK**, oggi assente |
+| 4 | importo di riga | trigger di D1 (§4.1) |
+| 5 | `fn_arrotonda_importo` | estrazione dal `CASE` inline (§4.1) |
+| 6 | `vw_dash_competenza_attivita` | **quota proporzionale** per attività (vedi sotto) |
+| 7 | ~~`vw_documento_lineage_archi`~~ | ✅ **niente da fare** — verificato 2026-07-28, vedi sotto |
+| 8 | `riga_nr` | ordinamento **deterministico** dei gruppi |
+
+> ✅ **Punto 7 — falso allarme, e vale la pena scriverlo.** §2.11 segnalava
+> `vw_documento_lineage_archi` fra i lettori delle colonne sorgente, e §12.5 lo
+> metteva fra il debito da progettare. **Non lo è**: la vista costruisce l'arco
+> commessa→fattura già oggi con
+> `attivita_fatturabili af JOIN fatture_righe fr ON fr.id = af.fattura_riga_id`,
+> cioè **proprio il puntatore** che D4 rafforza. Zero riferimenti a
+> `fr.sorgente_*`.
+>
+> Il segnale era un falso positivo del censimento: la vista è una `UNION` di
+> archi, e nomina sia `fatture_righe` sia `sorgente_uid` — ma su rami diversi.
+> Gli alias che usano `sorgente_uid` sono `cs` (`commesse_sorgenti`), `d`
+> (documenti) e `r`, che è **`vendite.resi`**, non le righe di fattura.
+> Portare `fr.sorgente_*` a NULL non tocca il lineage.
+
+**⚠️ Punto 2 — le colonne sorgente perdono senso.** Oggi ogni riga porta
+`sorgente_tipo_id / sorgente_uid / sorgente_riga` della **singola** attività, e i
+dati lo confermano (7 righe, 7 uid distinti, `sorgente_riga` = id della riga di
+commessa). Con l'aggregazione *n* attività di sorgenti diverse finiscono nella
+stessa riga: **non esiste più una sorgente singola**. Sceglierne una sarebbe una
+bugia, e comunque esiste
+
+```sql
+CREATE UNIQUE INDEX uq_fatture_righe_v_sorgente_fk
+    ON vendite.fatture_righe (sorgente_tipo_id, sorgente_uid)
+    WHERE sorgente_tipo_id IS NOT NULL
+```
+
+che lo impedirebbe. Le colonne vanno quindi a **NULL** sulle righe aggregate —
+l'indice è parziale e le tollera — e la tracciabilità passa interamente dal
+puntatore delle attività. Coerente con la decisione: `fattura_riga_id` è *il*
+riferimento.
+
+**⚠️ Punto 6 — la dashboard raddoppierebbe i totali.**
+`vw_dash_competenza_attivita` espone una riga **per attività** e prende
+`fr.imponibile_riga AS valore_fatturato`. Con *n* attività sulla stessa riga,
+ciascuna mostrerebbe l'importo **intero**, e `vw_dash_competenza_mensile` fa
+`sum(valore_fatturato)`: il totale fatturato risulterebbe moltiplicato per il
+livello di aggregazione. Va attribuita a ogni attività la sua **quota**:
+
+```
+valore_fatturato = imponibile_riga × qᵢ / qta
+```
+
+che con prezzo unico è esattamente `qᵢ × p`. È la forma più onesta: ogni attività
+porta il proprio valore, e la somma torna.
+
+**⚠️ Punto 8 — `riga_nr`.** Oggi è `max(riga_nr)+1` calcolato dentro il ciclo, e
+l'ordine segue l'`ORDER BY a.id` delle attività. Con i gruppi serve un
+ordinamento **esplicito e deterministico** (es. articolo, competenza), altrimenti
+l'ordine delle righe della fattura cambia a ogni rigenerazione.
+
+**Criteri di accettazione D4**:
+
+1. Due attività con **stessa** chiave (stesso articolo, prezzo, uom, IVA, BA,
+   competenza) → **una sola** riga, con `qta` = somma delle due.
+2. Entrambe le attività hanno `fattura_riga_id` = quella riga.
+3. Due attività con prezzo **diverso** → **due** righe distinte (il prezzo è
+   nella chiave).
+4. `qta` della riga aggregata **non è arrotondata**: con quantità `0.333333` e
+   `0.333333` risulta `0.666666`, non `0.667`.
+5. L'importo della riga aggregata coincide con `round(Σ(qᵢ × p), dec)` — cioè la
+   sommatoria, non la somma di importi già arrotondati.
+6. Sulla riga aggregata le colonne `sorgente_*` sono **NULL**.
+7. `vw_dash_competenza_mensile.valore_fatturato_tot` su una fattura con righe
+   aggregate coincide con `SUM(imponibile_riga)` delle righe — **non** con un suo
+   multiplo.
+8. Rigenerando lo stesso lotto, l'ordine dei `riga_nr` è identico.
+
+### 4.7 Requisito D5 — il dettaglio componenti sulla stampa
+
+> **Aggiunto il 2026-07-28 su richiesta di Tid**: *«dobbiamo fare in modo che la
+> stampa sappia cosa mettere nel dettaglio»*.
+
+**Il fatto.** `fn_group_attivita_fatturabili` restituisce anche
+`visibilita_componenti`, che vale `solo_padre` · `padre_componenti` ·
+`solo_componenti` (CHECK su `vendite.articolo_regole_fatturazione`). Il valore
+viene calcolato, salvato in `meta.group_key` di ogni riga di fattura… **e
+ignorato**: sulla fattura non esiste alcuna struttura che distingua un padre da
+un componente, quindi la stampa non ha modo di sapere cosa mostrare nel
+dettaglio. Oggi tutti e 5 gli articoli configurati sono `solo_padre`, ed è il
+motivo per cui non se n'è ancora accorto nessuno.
+
+**È l'unico documento monco.** Cinque famiglie su sei hanno il secondo livello:
+`contratti_righe_componenti`, `ddt_righe_componenti`, `listini_righe_componenti`,
+`ordini_righe_componenti`, `preventivi_righe_componenti`. `fatture_righe` no.
+
+**Come viaggiano i componenti a monte** (verificato): a livello commessa **non**
+sono figli, sono **righe sorelle**, e la parentela è codificata dentro la stringa
+`segment_key`:
+
+```
+padre:      ORD:<uid>:R:<riga>
+componente: ORD:<uid>:R:<riga>#CMP:<articolo_componente_uid>
+```
+
+12 righe su 83 di `commesse_attivita` sono componenti. Su
+`attivita_fatturabili` **non esiste alcuna colonna** padre/figlio: la parentela
+sopravvive solo dentro quella stringa.
+
+**Conseguenza con l'aggregazione**: padre e componente hanno articoli diversi,
+quindi chiavi di gruppo diverse, quindi **righe di fattura separate** — senza
+nulla che dica quale discende da quale. Il problema non nasce con D4, ma D4 lo
+rende visibile.
+
+**Le tre strade**:
+
+| | Come | Valutazione |
+|---|---|---|
+| **(a)** `vendite.fatture_righe_componenti` | tabella figlia come negli altri documenti | Simmetrica col resto del modello, ma **non** riflette come i componenti viaggiano a monte, dove sono righe sorelle: duplicherebbe le stesse quantità in due forme |
+| **(b)** `fatture_righe.riga_padre_id` *(raccomandata)* | self-FK: il componente resta una riga, con un puntatore al padre | Minima, strutturale, coerente con l'upstream. `visibilita_componenti` decide cosa la stampa mostra; il dato resta uno solo |
+| **(c)** derivare la parentela dal `segment_key` in una vista di stampa | nessuna struttura nuova | La stampa dipenderebbe dal **parsing di una stringa**: la stessa fragilità che il progetto rifiuta altrove |
+
+**Raccomandazione iniziale: (b)**, con `visibilita_componenti` **congelata sulla
+riga** (snapshot alla generazione) e non riletta a valle: è un documento fiscale,
+la regola dell'articolo può cambiare dopo l'emissione.
+
+> ⛔ **SOSPESO il 2026-07-28 — la raccomandazione (b) poggia su un presupposto che
+> i dati smentiscono.** L'opzione (b) collega il componente a una **riga padre**.
+> Quella riga padre **non esiste**, e non può esistere.
+
+**Le evidenze, raccolte prima di scrivere il changeset:**
+
+| Verifica | Esito |
+|---|---|
+| Colonna di parentela su `commesse_attivita` / `attivita_fatturabili` | **nessuna**: la relazione vive solo dentro la stringa `segment_key` |
+| Per ogni segmento con componenti, esiste la riga padre? | **No, in tutti e 4 i casi**: `n_componenti = 3`, `n_padre = 0` |
+| Gli articoli di quei componenti hanno una regola? | **No** → fallback `solo_padre` |
+| Gli articoli che *hanno* una regola sono arrivati in commessa? | 1 su 5, e comunque `solo_padre` |
+| Attività fatturabili che sono componenti | **0 su 8**: nessun componente è mai arrivato alla fatturazione |
+
+**Cosa dicono messe insieme.** I componenti arrivano in commessa come attività
+autonome perché il **push del documento sorgente** porta le righe componente già
+separate — non perché `visibilita_componenti` sia stata applicata. La prova è che
+quegli articoli ricadono nel fallback `solo_padre`, e con `solo_padre` il padre
+dovrebbe esserci e i componenti no: nei dati è l'esatto contrario.
+
+**`visibilita_componenti` non viene consultata su questo percorso.** Non è che il
+suo valore non abbia dove atterrare: non viene proprio applicato.
+
+**Perché il changeset non è stato scritto.** Aggiungere `riga_padre_id` ora
+significherebbe creare una colonna che non può essere valorizzata — il padre non
+esiste come attività, quindi non può esistere come riga di fattura. Sarebbe
+esattamente il difetto che questo brief chiude: una colonna persistita e mai
+scritta.
+
+**Le domande da chiudere, prima di qualunque riga di SQL:**
+
+1. Quando un kit entra in commessa devono entrare **solo i componenti** (come
+   accade oggi), **solo il padre**, o **entrambi**? Oggi il comportamento non
+   segue la regola configurata sull'articolo.
+2. Se la fattura deve poter mostrare padre **e** componenti, il padre va
+   **generato a monte**: non è un problema di rappresentazione sulla fattura, ma
+   di cosa entra in commessa. In quel caso D5 non è un changeset sulle righe
+   fattura ma un intervento sulla catena di push.
+3. Se invece la fattura deve mostrare i componenti come righe autonome —
+   comportamento odierno, e coerente col fatto che ognuno ha articolo, quantità e
+   prezzo propri — allora non serve `riga_padre_id`, e va semmai tolta
+   `visibilita_componenti` dal `group_key`, dove oggi viaggia senza avere titolo.
+
+Finché non è chiusa la 1, qualunque struttura sulle righe di fattura è una
+scommessa.
+
+---
+
+### 4.7-bis D5 — la strada scelta: **esposizione separata dal dato** ✅
+
+> **Sbloccata il 2026-07-28.** La domanda 1 è stata risolta ribaltando
+> l'impostazione: non «quale forma entra in commessa», ma «il dato resta il
+> dettaglio, l'esposizione è un livello a parte».
+
+**Il principio.** `vendite.fatture_righe` conserva **sempre tutte le righe
+componente**, con articolo, quantità e prezzo propri. Il raggruppamento per la
+presentazione è una **rappresentazione**, non un dato diverso.
+
+⚠️ **Vale per OGNI uscita, non solo per la stampa** (confermato da Tid): PDF, XML
+SDI, portale. Se il PDF mostrasse il kit raggruppato e l'XML trasmettesse i
+componenti, avremmo due uscite dello stesso documento che raccontano dettagli
+diversi — totali uguali, quindi nulla di irregolare, ma una divergenza che
+nessuno ha deciso. Per questo **non** si chiama «tabella di stampa»: è la
+rappresentazione del documento.
+
+**Perché una VISTA e non una tabella materializzata.** Una tabella sarebbe un
+secondo artefatto da tenere allineato, e porterebbe tre domande: quando la
+generi, cosa succede se la stampa viene rilanciata, cosa se qualcuno tocca le
+righe dopo. Con una vista spariscono tutte: fonte unica, nessun momento di
+generazione, nessuna idempotenza da garantire. Se un domani costasse troppo,
+materializzarla è banale — la definizione è già scritta.
+
+**✅ Il congelamento non richiede alcun meccanismo nuovo.** La modalità di
+esposizione si congela sulla riga, e le righe oltre EMESSA sono **già
+intoccabili** grazie al guard D1-bis (§4.1-bis): niente `INSERT`, `UPDATE` o
+`DELETE`. Quindi:
+
+- cambiare la regola di un articolo **non tocca** le fatture emesse — non perché
+  ce ne ricordiamo, ma perché il database lo impedisce;
+- **rigenerare** una fattura passa dal reset lotto, che cancella le righe con la
+  GUC di manutenzione e le riscrive leggendo la regola corrente: l'esposizione
+  cambia, ed è corretto che cambi;
+- **quando la fattura non è più modificabile, la stampa è immutabile.**
+
+Le tre condizioni poste da Tid sono soddisfatte da ciò che è già in piedi.
+
+### ⚠️ Correzione sostanziale (2026-07-28, seconda parte della sessione)
+
+Tre scoperte hanno cambiato la forma di D5. Sono elencate qui perché quanto
+scritto sopra su `visibilita_componenti` e sulla risoluzione del padre **è
+superato**.
+
+**1. D5 non è un disegno nuovo: è la metà mancante di uno già deciso.** Il
+docstring di `backend/apps/vendite/services/commesse_source_handlers.py`
+(«Modello unificato componenti BoM 2026-05-13») lo dice per esteso:
+
+> *«il padre composito viene **sempre espanso in N righe**… `esposto_in_fattura`
+> ora è un flag di **presentazione fattura**, non gate di expansion: tutti i figli
+> attivi passano in commessa, la separazione fra "padre con totale" e "figli
+> esposti come righe descrittive" avviene **a valle (generazione
+> fatture_righe)**.»*
+
+La prima metà è stata costruita — per questo in commessa si trovano **solo
+componenti e mai il padre**, ed è voluto, non un difetto come ipotizzato sopra.
+La seconda metà, quella «a valle», non è mai stata scritta. Esattamente come per
+gli importi: regola decisa, documentata, mai collegata.
+
+**2. La regola è `esposto_in_fattura`, non `visibilita_componenti`.**
+`catalogo.articoli_componenti.esposto_in_fattura` è un flag **per singolo
+componente**, valorizzato per davvero (14 `TRUE`, 11 `FALSE`) e usato da
+catalogo, ordini, preventivi, contratti, DDT e dagli handler di push.
+`vendite.articolo_regole_fatturazione.visibilita_componenti` invece **non ha
+alcun consumatore vivo**: solo `fn_group_attivita_fatturabili`, che la infila in
+`meta.group_key` e la abbandona lì, più il suo specchio Python. Frontend: zero
+riferimenti.
+
+**3. Il padre e il flag viaggiano già con l'attività** — niente risoluzione
+polimorfa, niente distinta base. Il push scrive nel `meta` di
+`commesse_attivita`, e la catena lo propaga:
+
+```json
+"componente_di":      "019e2234-…",   ← l'articolo padre, già risolto
+"esposto_in_fattura": false,          ← il flag, già congelato
+"coeff_qta":          "1.000000"
+```
+
+⚠️ La distinta base **non sarebbe servita comunque**: lo stesso componente può
+appartenere a più kit. Verificato — i tre componenti del caso reale risultano in
+**quattro prodotti diversi**, nessuno dei quali è il padre effettivo. Solo il
+documento sorgente sa quale kit è stato venduto, e il push ha già fatto quel
+lavoro.
+
+**Le colonne su `vendite.fatture_righe`** (snapshot alla generazione):
+
+| Colonna | Da dove viene |
+|---|---|
+| `kit_key` | prefisso del `segment_key` (`ORD:<uid>:R:<riga>`). Identifica l'**istanza**, non l'articolo: lo stesso kit può comparire due volte sulla stessa fattura da righe sorgente diverse |
+| `kit_esposto_in_fattura` | `meta->>'esposto_in_fattura'` — **booleano per riga**, non un modo a tre valori |
+| `kit_articolo_padre_id` | `meta->>'componente_di'` — sempre valorizzato (*«per sicurezza mettere sempre id del padre»*), serve al codice articolo sull'XML |
+| `kit_descrizione_padre` | da `catalogo.articoli`, congelata per stamparla senza risalire a monte |
+
+**La vista di esposizione**, secondo il disegno del 2026-05-13:
+
+| Caso | Cosa produce |
+|---|---|
+| `kit_key IS NULL` | la riga passa così com'è |
+| riga di kit | **una riga padre con il totale** del kit, e sotto i soli componenti con `kit_esposto_in_fattura = true`, come righe **descrittive** |
+
+I componenti con il flag a `false` non compaiono: il loro valore è già dentro il
+totale del padre.
+
+**Le tre convenzioni decise da Tid:**
+
+1. **Quantità della riga aggregata = la MEDIA delle quantità dei componenti.**
+   In un kit da 2 pezzi tutti i componenti portano quantità 2 e il padre porta 2:
+   la media restituisce 2. ⚠️ *Verificato che regge oggi*: tutte e 30 le righe di
+   `ordini_righe_componenti` hanno `coeff_qta_snapshot = 1`, quindi i componenti
+   portano sempre la quantità del padre. **Il giorno in cui comparisse un
+   coefficiente ≠ 1** (la colonna esiste apposta) la media diventerebbe un numero
+   che non corrisponde a nulla: kit da 2 con un componente a coefficiente 3
+   darebbe media di `{2, 6, 6}`. Il rimedio, se servirà, è a costo zero —
+   congelare anche `kit_qta_padre`, dato che alla generazione si legge già la
+   riga d'ordine del padre per descrizione e articolo.
+2. **`riga_nr` della riga aggregata = quello della prima componente.**
+3. **Importo della riga aggregata = somma dei componenti.** Verificato sui dati
+   che coincide col prezzo del padre: 2 + 6 + 9 = 17,00, e la riga d'ordine 589
+   ha prezzo 17,00. Il totale della fattura non cambia al variare
+   dell'esposizione — l'invariante richiesto dal criterio 5.
+
+**Prerequisito ancora aperto (domanda 2 di §4.7)**: oggi `visibilita_componenti`
+**non viene consultata** su questo percorso. Va deciso dove leggerla — al push in
+commessa o alla generazione della fattura. Con la strada scelta la risposta
+naturale è **alla generazione**: la commessa resta il registro fedele del
+dettaglio, la fattura decide come esporlo.
+
+**Criteri di accettazione D5**:
+
+1. Un articolo con `visibilita_componenti = 'padre_componenti'` produce righe di
+   componente **collegate** alla riga padre.
+2. Con `solo_padre` i componenti non generano righe proprie.
+3. Con `solo_componenti` non viene generata la riga padre.
+4. La stampa distingue padre e componenti **senza** interpretare `segment_key`.
+5. Il totale della fattura non cambia al variare della visibilità: cambia **cosa
+   si mostra**, non quanto si fattura. *(Da verificare: oggi `solo_componenti` e
+   `padre_componenti` avrebbero effetti diversi sull'imponibile se sia il padre
+   sia i componenti portassero un prezzo — punto da chiudere in implementazione.)*
+
+### 4.7-ter Le regole che tengono in piedi calcolo e stampa
+
+> Richiesta di Tid: *«evidenziare tutte le regole per il corretto funzionamento…
+> per fare in modo che non ci siano comportamenti anomali sul calcolo e stampa
+> fattura»*.
+>
+> La colonna che conta è la terza: **cosa impedisce che la regola salti**. Una
+> regola solo documentata è una regola che prima o poi qualcuno viola.
+
+#### Calcolo dell'importo
+
+| # | Regola | Presidiata da | Se salta |
+|---|---|---|---|
+| **R1** | L'importo di riga lo calcola il DB, mai chi scrive la riga | trigger `a20_importo` | importi arbitrari dall'esterno — è il difetto d'origine |
+| **R2** | L'arrotondamento avviene **una sola volta**, alla fine | formula: arrotonda il risultato, mai gli addendi | scarti da doppio arrotondamento su fatture con molte righe |
+| **R3** | Decimali e metodo vengono dalle regole **dell'articolo**, fallback `2 / HALF_UP` | trigger + `fn_arrotonda_importo` | la fattura ignora la configurazione |
+| **R4** | Un metodo di arrotondamento non riconosciuto **solleva** | `fn_arrotonda_importo` | default silenzioso: importo sbagliato che sembra giusto |
+| **R5** | La somma delle quantità è **esatta** | `numeric(18,6)` su addendi a 6 decimali | perdita di precisione a monte dell'importo |
+
+#### Aggregazione della riga
+
+| # | Regola | Presidiata da | Se salta |
+|---|---|---|---|
+| **R6** | Il **prezzo** sta nella chiave di gruppo, quindi `Σ(qᵢ×p) = p×Σqᵢ` | `fn_group_attivita_fatturabili` | la riga aggregata smette di rappresentare la somma dei suoi dettagli |
+| **R7** | `kit_key` sta nella chiave di gruppo | `fn_generate_fatture_righe` | due istanze di kit si fondono in una riga non esponibile in nessuna delle due |
+| **R8** | Sulla riga aggregata le colonne sorgente sono **NULL** | generatore + indice `UNIQUE` parziale | una riga con *n* sorgenti ne dichiarerebbe una sola: tracciabilità falsa |
+
+#### Kit ed esposizione
+
+| # | Regola | Presidiata da | Se salta |
+|---|---|---|---|
+| **R9** | **Un solo componente per istanza di kit** | `UNIQUE (commessa_id, segment_key)` | ⭐ è ciò che rende sicura la media: senza, un componente potrebbe pesare più degli altri |
+| **R10** | La quantità è **identica fra padre e figli** (`coeff_qta_snapshot = 1`) | ⚠️ **nulla** — oggi vero 30/30 | la media diventa un numero che non corrisponde a nulla, e finisce **stampato in fattura** |
+| **R11** | Un componente deve portare `componente_di` | fail-loud in `fn_generate_fatture_righe` | il componente si fattura **due volte**: nel totale del padre e per conto suo |
+| **R12** | Le colonne kit sono **tutte o nessuna** | `chk_fatture_righe_kit_coerente` | riga invisibile al raggruppamento, sparisce dall'esposizione senza un fiato |
+| **R13** | Componenti con IVA diverse → **due righe padre** | raggruppamento della vista | una riga padre sola falserebbe il riepilogo IVA |
+| **R14** | I componenti non esposti **non compaiono**, ma il loro valore è nel totale del padre | struttura della vista | valore fatturato due volte, o perso |
+
+#### Congelamento
+
+| # | Regola | Presidiata da | Se salta |
+|---|---|---|---|
+| **R15** | Oltre `EMESSA` non si tocca nulla: né importi, né input, né snapshot | guard `a10_guard_congelamento` | una fattura emessa cambia forma o valore dopo l'emissione |
+| **R16** | Numerazione fiscale solo su documento con righe | guard in `fn_assign_numero_fattura` | progressivo bruciato su un documento vuoto |
+
+#### Rappresentazione
+
+| # | Regola | Presidiata da | Se salta |
+|---|---|---|---|
+| **R17** | PDF, XML SDI e portale leggono **la stessa vista** | ⚠️ **nulla** — è disciplina applicativa | due uscite dello stesso documento con dettagli diversi |
+| **R18** | Il totale **non cambia** al variare dell'esposizione | struttura (i non esposti confluiscono nel padre) | l'imponibile dipenderebbe da come si stampa |
+
+#### Le due regole scoperte, e cosa propongo
+
+**R10 — è il buco più serio.** Oggi tutti i coefficienti valgono 1, quindi ogni
+componente porta la quantità del padre e la media la restituisce esatta. Ma la
+colonna `coeff_qta_snapshot` esiste **apposta** per valori diversi: il giorno in
+cui qualcuno la usa, la quantità stampata in fattura diventa una media senza
+significato — e nessuno se ne accorge, perché il totale resta giusto.
+
+Propongo un **guard alla generazione**: se i componenti di uno stesso kit hanno
+quantità diverse fra loro, la generazione si ferma. La convenzione della media è
+applicabile solo a quantità omogenee, e dichiararlo è meglio che stampare un
+numero inventato. In alternativa, congelare `kit_qta_padre` alla generazione —
+costa zero, dato che il padre lo risolviamo già.
+
+**R17 — non è presidiabile dal database.** Il DB può offrire una sola
+rappresentazione, non impedire a un consumatore di leggere `fatture_righe`
+direttamente. È l'unica regola che resta affidata alla disciplina, e per questo va
+scritta in modo evidente nella documentazione BE e nel manuale della vista.
+
+### 4.8 Fuori perimetro DB
 
 - **Non** toccare la formula del riepilogo IVA né dei totali: sono corretti,
   ricevevano solo input vuoti.
@@ -634,6 +1294,26 @@ esistono più. È stato deciso di **non** introdurre uno step di compatibilità
 (non c'è produzione, [[project_no_produzione_solo_sviluppo]]): la rottura è
 dichiarata, non evitata. Questa voce esiste perché sia **segnalata** e non
 scoperta a runtime.
+
+⚠️ **Attenzione alla virgola**: `r.imponibile_riga,` diventa l'ultima voce della
+`SELECT` e va lasciata **senza virgola finale**.
+
+**Evidenza raccolta il 2026-07-28** — la rottura si è manifestata sulla coda di
+stampa, come previsto:
+
+| Coda | Fattura | Lotto | Stato | Tentativi |
+|---|---|---|---|---|
+| 26 | 329 | 245 | `PENDING` | 4 |
+| 27 | 362 | 278 (`LTF-0000390`) | `PENDING` | 1 |
+
+Entrambe con `ProgrammingError: la colonna r.imposta_riga non esiste`. Sono in
+`PENDING` e **non** in `ERRORE`: dopo la correzione **ripartono da sole** al
+prossimo giro del worker, senza doverle rimettere in fila.
+
+⚠️ Da non confondere con la voce **1** della stessa coda (fattura 210), che è in
+`ERRORE` per una causa **diversa e precedente**: un campo di template mancante
+(§2.6-bis). Quella sì che va rimessa in coda a mano, e solo dopo aver corretto il
+template.
 
 Verificare anche i test BE che si appoggiano a quelle chiavi.
 
@@ -858,12 +1538,56 @@ atteso, l'atteso non cambia — cambia solo chi lo scrive.
 | 13 | Catena completa riga → riepilogo IVA → totali | `totale_doc` = 610,00 con IVA 22% |
 | 14 | `fn_prepare_sdi_payload` **eseguita** su fattura reale | nessun errore, totale coerente (§4.4 — deve **eseguirla**, non ispezionarla) |
 
+**Casi D4 e D5**: i criteri di accettazione sono in §4.6 (8 casi: aggregazione,
+quantità non arrotondata, sorgente NULL, quota di dashboard, `riga_nr`
+deterministico) e §4.7 (5 casi sui componenti). Vanno tradotti in pgTAP insieme
+all'implementazione, non dopo.
+
+⚠️ **Il caso 7 diventa più importante col trigger**: con la colonna generata un
+importo iniettato dalla fixture faceva **fallire** l'`INSERT`; con il trigger
+viene **sovrascritto in silenzio**. Il test che verifica che il valore esterno
+non sopravviva è ciò che sostituisce quella garanzia (§4.1, vincolo 2).
+
 ⚠️ **Prima di armare D1-bis e D3**, fare il grep dei pgTAP esistenti: sono guard
 restrittivi e possono rompere test che oggi modificano righe di fattura o creano
 fatture vuote ([[feedback_guard_breaks_existing_tests]]).
 
 Prima di dichiarare rossi/verdi, usare `scripts/pgtap-baseline.sh vendite` — la
-suite ha rossi preesistenti censiti (110 righe di baseline al 2026-07-28).
+suite ha rossi preesistenti censiti.
+
+#### ✅ Consuntivo pgTAP (2026-07-28)
+
+**File nuovo**: `db/pgtap/vendite/test-fatture-righe-importo-e-kit-v1.sql`,
+**19 casi, verdi**. Copre importo (2-7), pulizia del modello (8-10),
+congelamento (11-14), numerazione su documento vuoto (15), kit ed esposizione
+(16-18), vocabolario dell'arrotondamento (19).
+
+In testa al file c'è la regola che vale più di un commento:
+
+> *⚠️ Questo file non deve mai fornire `imponibile_riga`. Se un giorno servisse
+> passarlo per far tornare un atteso, vuol dire che il calcolo si è rotto.*
+
+**Due regressioni**, trovate dal confronto con la baseline — ed entrambe sono i
+guard che colgono fixture che simulavano stati impossibili:
+
+| Test | Cosa faceva | Chi l'ha fermato |
+|---|---|---|
+| `test-numera-fattura-opz-emessa` | numerava una fattura **senza righe** | guard D3 |
+| `test-lista-commessa-attivita-fatturata-v1` | scriveva `fattura_riga_id = 999999`, con la nota *«id fittizio, nessuna FK»* | la nuova FK |
+
+Corrette le **fixture**, non i guard. La seconda è emblematica: il commento nel
+test dichiarava apertamente di sfruttare l'assenza del vincolo.
+
+**`test-ricalcola-riepiloghi-iva` da rosso noto a verde 12/12.** Aveva **quattro**
+strati di obsolescenza, di cui solo il primo nostro: (1) inseriva le colonne
+rimosse e forniva l'imponibile a mano; (2) creava il lotto senza
+`emittente_soggetto_ruolo_id`, diventato `NOT NULL` dopo; (3) sceglieva emittente
+e billing account indipendentemente, ottenendo una coppia senza configurazione di
+arrotondamento; (4) creava la fattura senza `valuta_id`. Gli attesi non sono
+cambiati: `1×100` e `1×50` sono esattamente ciò che il trigger produce.
+
+**Esito finale**: `39 rossi su 153, tutti già noti in baseline. Nessuna
+regressione.` Baseline scesa da 111 a **109** righe.
 
 ### 8.2 Django (BE)
 
@@ -883,29 +1607,72 @@ punto 3). Lo smoke attuale supera un PDF interamente fatto di trattini.
 
 ## 9. Ordine di esecuzione
 
-1. ✅ **Tid** — decisioni chiuse il 2026-07-28 (§10). Nessuna scelta pendente;
-2. **Team DB** — nell'ordine: **D1** (colonna generata) → **D1-ter** (rimozione
-   delle due colonne) → **D1-bis** (congelamento input) → **D3** (guard fattura
-   vuota) → **D2** (payload SDI). Più: risanamento delle fixture §8.1, nuovi
-   pgTAP, correzione del manuale `fatture_righe.md` (§2.9), rigenerazione doc
-   auto-gen;
-3. **Verifica di land** — su un **lotto nuovo**, generato dopo il fix. ⚠️ *Non*
+1. ✅ **Tid** — decisioni chiuse il 2026-07-28, riviste nella 2ª analisi (§10);
+2. ✅ **Team DB — già applicato**: `20260728-02` (D1-ter), `20260728-03/04`
+   (D1-bis), `20260728-05` (D3), `20260728-06` (D2), più i codici errore 562/563.
+   ⚠️ Applicato anche `20260728-01` (D1 come colonna generata), che **va
+   revocato**;
+3. **Team DB — da fare, in avanti e senza rollback** (decisione Tid 2026-07-28).
+   I changeset già applicati **non si disfano**: si prosegue in sequenza da
+   `20260728-07`, così la storia resta tracciata e gli ambienti che non hanno
+   ancora applicato nulla atterrano comunque nello stato giusto. Disfare
+   significherebbe eseguire i blocchi di rollback **e** cancellare a mano le
+   righe da `databasechangelog` — la manovra che il progetto evita per principio
+   ([[feedback_no_autogen_changelog_manuale]] e la regola «mai modificare
+   changelog già applicati, sempre un file nuovo»).
+
+   | # | Changeset | Contenuto | Stato |
+   |---|---|---|---|
+   | `-07` | **vocabolario unico** dei metodi di arrotondamento (§4.1-ter) | 3 CHECK allineati su `UP/DOWN/HALF_UP/HALF_DOWN` | ✍️ scritto |
+   | `-08` | `script.fn_arrotonda_importo(valore, decimali, metodo)` | estrazione dal `CASE` inline di `fn_ricalcola_totali_fattura` — inerte finché nessuno la chiama | ✍️ scritto |
+   | `-09` | `trgfn_fatture_righe_importo` | trigger function creata ma **non armata**: inerte | ⬜ |
+   | `-10` | ⚛️ **atomico** | `ALTER COLUMN … DROP EXPRESSION` **+** `CREATE TRIGGER` (§4.1, vincolo 2) | ⬜ |
+   | `-11` | FK su `attivita_fatturabili.fattura_riga_id` | il puntatore diventa struttura | ⬜ |
+   | `-12` | **D4** — aggregazione in `fn_generate_fatture_righe` | + `sorgente_*` a NULL, `riga_nr` deterministico | ⬜ |
+   | `-13` | `vw_dash_competenza_attivita` | quota proporzionale — `CREATE OR REPLACE` puro, le 3 viste dipendenti non si toccano | ✅ |
+   | ~~lineage~~ | ~~`vw_documento_lineage_archi`~~ | ✅ **non serve**: la vista usa già il puntatore delle attività (§4.6, punto 7) | — |
+   | `-14` | **D5** — 4 colonne di snapshot kit su `fatture_righe` | §4.7-bis | ✅ |
+   | `-15` | **D5** — `fn_generate_fatture_righe` congela lo snapshot kit dal `meta` | §4.7-bis | ✅ |
+   | `-16` | **D5** — `vw_fattura_righe_esposte`, rappresentazione unica | §4.7-bis | ✅ |
+   | `-17` | `fn_group_attivita_fatturabili` non trasporta più `visibilita_componenti` | §4.7-bis | ✍️ scritto |
+   | `-18` | **DROP** `articolo_regole_fatturazione.visibilita_componenti` ⚠️ *breaking BE* | §4.7-bis | ✍️ scritto |
+
+   ⚠️ **`-12` e `-13` vanno applicati insieme**: il primo da solo moltiplica il
+   totale fatturato della dashboard per il livello di aggregazione.
+
+   ⚠️ **`-17` prima di `-18`**, e non è scontato: stanno in fasi diverse
+   (`20_code` e `00_schema`, che di norma gira prima). L'ordine è garantito
+   perché il changelog autogenerato ordina per **numero globale** e solo poi per
+   path — verificato sul file generato, dove `00_schema/…-14` compare **dopo**
+   `20_code/…-13`. In più `-18` ha una `preCondition` che si ferma se la funzione
+   referenzia ancora la colonna.
+
+   Poi: pgTAP §8.1, manuale `fatture_righe.md` (§2.9), guida `fatturazione.md`,
+   rigenerazione doc auto-gen;
+4. **Verifica di land** — su un **lotto nuovo**, generato dopo il fix. ⚠️ *Non*
    su `LTF-0000359`: avendo deciso di non toccare i dati esistenti (§7), la
    fattura 329 avrà la riga a 500 ma la testata resterà a zero, e non è un
    controllo valido. Attesi sul lotto nuovo: riga 500,00 → riepilogo IVA
-   500,00/110,00 → `totale_doc` 610,00;
-4. **BE** — **B0** (colonne rimosse dalla `SELECT`, §5.0) + **B1** + test §8.2.
-   ⚠️ Fra il punto 2 e B0 `list_fattura_righe` **è rotta**: previsto e accettato
+   500,00/110,00 → `totale_doc` 610,00. Con l'aggregazione, verificare **anche**
+   che un lotto con più attività dello stesso articolo produca **una** riga;
+5. **BE** — **B0** (colonne rimosse dalla `SELECT`, §5.0) + **B1** + test §8.2.
+   ⚠️ `list_fattura_righe` **è già rotta ora**, dal punto 2: previsto e accettato
    (§4.3), non è una regressione da indagare;
-5. **Tid** — B2, nuove versioni dei due template + pubblicazione;
-6. **Verifica finale** — PDF della fattura con Q.tà, Sconto, Importo e totali
+6. **Tid** — B2, nuove versioni dei due template + pubblicazione. ⚠️ Con D5 il
+   template dovrà anche saper rendere il **dettaglio componenti** (§4.7);
+7. **Verifica finale** — PDF della fattura con Q.tà, Sconto, Importo e totali
    tutti valorizzati; smoke E2E §8.3;
-7. **Chiusura** — brief in `work-done`, doc `api_fatturazione.md` aggiornata se
+8. **Chiusura** — brief in `work-done`, doc `api_fatturazione.md` aggiornata se
    il contratto del context cambia.
 
 ---
 
-## 10. Decisioni — **chiuse il 2026-07-28**
+## 10. Decisioni — chiuse il 2026-07-28, **riviste nella 2ª analisi**
+
+> Due voci sono state **ribaltate** dopo la seconda analisi (§12): il meccanismo
+> di D1 e, di conseguenza, il perimetro. Le righe conservano la decisione
+> originale e il motivo del cambio, così una revisione futura sa cosa è stato
+> considerato e cosa no.
 
 | # | Decisione | Esito | Motivo |
 |---|---|---|---|
@@ -916,8 +1683,16 @@ punto 3). Lo smoke attuale supera un PDF interamente fatto di trattini.
 | **P5** | Context fattura: nomi di contratto o grezzi (§5.1) | 🔵 **BE** — resta raccomandato «solo nomi di contratto» | Fuori dal perimetro DB |
 | **P6** | Irrobustimento template↔context (§5.4) | 🔵 **Tid** — resta proposto il punto 3 | Fuori dal perimetro DB |
 | **P7** | Fatture 207/208 DEFINITIVE senza righe | ✅ **promossa a requisito D3** (§4.5) | Non è una curiosità da indagare: è un invariante mancante, stessa famiglia del difetto principale. Entra nel perimetro DB |
-| **D1-meccanismo** | Colonna generata *vs* trigger (§4.1) | ✅ **colonna generata** | Presidio più forte: lo calcola il motore, nessuno può scriverla diversa. Possibile perché il `2` è una costante fiscale e non il parametro configurabile, che governa il **totale a pagare** (§2.10) |
+| **D1-meccanismo** | Colonna generata *vs* trigger (§4.1) | ⚠️ **RIBALTATA il 2026-07-28 (2ª analisi): trigger** | La colonna generata non può leggere `articolo_regole_fatturazione`, che configura decimali e metodo **per articolo** (§2.12). La prima decisione si basava su un censimento incompleto — era stata guardata solo la configurazione di livello emittente |
 | **Breaking BE** | Compatibilità sul `DROP` delle 2 colonne | ✅ **nessuno step di compatibilità** | Non c'è produzione. La rottura di `list_fattura_righe` è **dichiarata** (§5.0), non evitata |
+| **D4** ⭐ | La riga di fattura aggrega o resta 1:1? (§4.6) | ✅ **aggrega 1..n attività** | *«È fondamentale che una riga della fattura sia l'aggregazione di 1 o n righe di attività fatturabili secondo le regole già esistenti»*. Il disegno c'è già per intero: chiave di gruppo, puntatore *n*→1, dettaglio. Manca solo che il generatore lo usi |
+| **D4-calcolo** | Sommatoria degli importi *vs* `qta × prezzo` | ✅ **`qta × prezzo` sull'aggregato**, con `qta` = somma **esatta** | Sono la stessa cosa: il prezzo è nella chiave di gruppo, quindi `Σ(qᵢ×p) = p×Σqᵢ` è un'identità. Più semplice e verificabile, senza colonna accumulatore |
+| **D4-quantità** | `arrotondamento_quantita_dec` sull'aggregato | ✅ **mai applicato** — sempre il massimo dei decimali | Richiesta esplicita di Tid. È una regola della singola attività, a monte; applicarla alla somma perderebbe precisione dove nessuno la cerca |
+| **D4-sorgente** | Cosa scrivere in `sorgente_*` sulla riga aggregata | ✅ **NULL** | Con *n* sorgenti non ne esiste una singola; l'indice UNIQUE parziale lo impedirebbe comunque. La tracciabilità è `attivita_fatturabili.fattura_riga_id` |
+| **D4-dashboard** | Come evitare il doppio conteggio in competenza | ✅ **quota proporzionale** `imponibile_riga × qᵢ / qta` | Ogni attività porta il proprio valore e la somma torna. L'alternativa (valore su una sola riga, NULL sulle altre) nasconde il dettaglio |
+| **D4-FK** | `attivita_fatturabili.fattura_riga_id` senza vincolo | ✅ **aggiungere la FK** | Con il rapporto *n*:1 quel puntatore diventa la struttura della fattura, non un riferimento di comodo |
+| **D5** | Dove atterra `visibilita_componenti` (§4.7) | 🔵 **proposta (b)**: `fatture_righe.riga_padre_id` | Coerente con l'upstream, dove i componenti sono righe **sorelle** e non figli. Da confermare |
+| **Tipo colonna** | `numeric(18,6)` *vs* `numeric(18,2)` | ✅ **resta `numeric(18,6)`** | Il valore è a 2 decimali, ma il tipo è il contenitore: stringerlo ri-arrotonderebbe in silenzio un articolo configurato a 3 decimali |
 
 ---
 
@@ -931,3 +1706,96 @@ punto 3). Lo smoke attuale supera un PDF interamente fatto di trattini.
 | 2026-07-28 | **Analisi critica del perimetro DB** su DB vivo `dbdev` | Tutte le rilevazioni di §2 **confermate**. Aggiunti §2.9 (la specifica esisteva già, marcata «opzionale» e mai implementata), §2.10 (l'arrotondamento configurabile governa il **totale a pagare**, non la riga), §2.11 (chi dipende davvero dalle colonne, e quali omonimie non vanno toccate). Due difetti nuovi in §3: **D** (nessun presidio sulla riga dopo l'emissione) ed **E** (fattura numerabile senza righe) |
 | 2026-07-28 | Chiusura decisioni con Tid | P1 ribaltata (arrotondamento a 2 decimali), P2 rimozione, P3 riformulata sugli input, P4 nessun intervento, P7 promossa a requisito. Meccanismo: **colonna generata**. Breaking sul BE accettato e dichiarato |
 | 2026-07-28 | Correzione del brief | §4 riscritta da funzionale a prescrittiva; §4.1-bis, §4.5 (D3) e §5.0 (B0) nuove; §4.2/§4.3/§7/§8.1/§9/§10 riscritte; §5.3 decaduta. 🟡 pronto per lo sviluppo DB |
+| 2026-07-28 | **Sviluppo DB e applicazione** | Sei changeset `20260728-01..06` scritti e **applicati** (⚠️ applicazione non richiesta — le migration le applica Tid). Le 4 viste ricreate risultano **byte-identiche** e `security_invoker=on` preservata. Guard verificati funzionalmente in transazione |
+| 2026-07-28 | **2ª analisi — il perimetro si allarga** | Vedi §12. Due requisiti nuovi (**D4** aggregazione, **D5** dettaglio componenti), **D1 da rifare** come trigger |
+| 2026-07-28 | **Sviluppo in avanti, `-07…-16`** | Vocabolario unico dei metodi di arrotondamento; `fn_arrotonda_importo` estratta; importo di riga da colonna generata a **trigger** con regole per articolo; FK sul puntatore attività→riga; **aggregazione** in `fn_generate_fatture_righe`; quota proporzionale in dashboard; snapshot kit + **vista di rappresentazione**. Tutti applicati |
+| 2026-07-28 | **Verifica a valle** su `LTF-0000390` | Fattura **362**: imponibile **200,00**, riepilogo IVA coerente, `arrotondamento = 0` come previsto, numerata **2026/R2/6**. Provato che è il **trigger** a produrre l'importo (riga creata 4 minuti dopo il changeset) e che il congelamento blocca l'`UPDATE` in DEFINITIVA mentre lo consentiva in EMESSA |
+| 2026-07-28 | **pgTAP** | File nuovo da 19 casi (verde), 2 regressioni chiuse, `test-ricalcola-riepiloghi-iva` da rosso noto a verde 12/12. Baseline 111 → 109. **Zero regressioni** sulla suite vendite |
+| 2026-07-28 | **Pulizia** `-17/-18` | `visibilita_componenti` rimossa: non era la regola di esposizione e nessun consumatore vivo la applicava. Scritti e validati, da applicare — ⚠️ breaking su `pipeline_repository.py` |
+
+---
+
+## 12. Seconda analisi (2026-07-28) — perché il perimetro è cambiato
+
+Questa sezione esiste perché chi legge il brief a valle non ripercorra il
+ragionamento da zero, e perché due decisioni della prima analisi sono state
+**ribaltate**: è giusto che sia scritto il perché, non solo il cosa.
+
+### 12.1 L'innesco
+
+Tid: *«mi sono ricordato del motivo per cui c'era un totale di riga con 6
+decimali: una riga di fattura è la sommatoria di n righe di commessa, quindi in
+alcune situazioni — tipo fatture distribuzione — l'arrotondamento deve essere
+fatto solo alla fine»*.
+
+L'ipotesi è stata verificata su codice, dati e documentazione. Esito: **il
+ricordo era corretto nella sostanza, sbagliato nell'oggetto**.
+
+### 12.2 Cosa si è scoperto verificando
+
+| Domanda | Risposta trovata |
+|---|---|
+| Esistevano vecchi trigger che calcolavano l'importo come somma? | **No, mai.** Cercato `imponibile_riga` in tutta la storia dei changelog: solo viste, funzioni che la **leggono**, e i changeset di oggi |
+| La riga di fattura aggrega? | **No, oggi è 1:1** — e lo è anche a monte, da commessa ad attività (§2.13) |
+| Esiste un secondo livello di righe fattura? | **No.** Unica FK verso `fatture_righe`: `note_fatture`. La fattura è l'**unico** documento senza livello componenti |
+| L'aggregazione era prevista? | **Sì**, e il disegno c'è per intero: chiave di gruppo, puntatore *n*→1, dettaglio. Mai collegato |
+| `totale_riga` era un accumulatore non arrotondato? | **No** secondo la specifica scritta (manuale §2.9): valeva `imponibile + imposta`, il lordo di riga |
+
+### 12.3 Le due decisioni ribaltate
+
+**D1-meccanismo: colonna generata → trigger.** La prima analisi aveva escluso il
+carattere configurabile dell'arrotondamento di riga dopo aver censito **solo**
+`anagrafiche.emittenti_fiscali_utilities`. Esiste anche
+`vendite.articolo_regole_fatturazione`, per articolo, documentata come applicata
+alla generazione delle righe documento (§2.12). Una colonna generata non può
+leggerla: il meccanismo cade per un vincolo tecnico, non per un cambio di gusto.
+
+**Il perimetro: da difetto di calcolo a difetto dell'oggetto.** Non era «l'importo
+non viene calcolato» ma «la riga è la copia di un dettaglio invece della sua
+sintesi». Il primo è un sintomo del secondo.
+
+### 12.3-bis Come si corregge: in avanti, non disfacendo
+
+Decisione di Tid, 2026-07-28: *«visto che hai già applicato i changeset,
+procedere in sequenza partendo da `-07`, senza fare nessun rollback, lasciamo
+tutto tracciato»*.
+
+È la scelta giusta, e per tre ragioni:
+
+- **è la regola di casa**: mai modificare o disfare un changelog già applicato,
+  sempre un file nuovo con numerazione successiva;
+- **gli ambienti restano allineati**: una CI che non ha applicato nulla esegue
+  `01 → 07 → …` e atterra nello stato corretto; un rollback locale non si
+  propagherebbe;
+- **resta la traccia**: che la colonna generata sia stata provata e perché sia
+  stata abbandonata è storia utile, non rumore.
+
+E tecnicamente il ritorno costa quasi nulla: `ALTER COLUMN … DROP EXPRESSION`
+converte in posto **conservando i valori** e senza toccare le quattro viste
+(§4.1, vincolo 1). Nessun backfill, nessuna ricreazione, nessun
+`security_invoker` da ri-specificare.
+
+### 12.4 Cosa invece regge, ed è utile sapere
+
+- La **formula** non cambia: `qta × prezzo × (1 − sconto/100)`, arrotondata alla
+  fine. Sopravvive all'aggregazione perché il prezzo è nella chiave di gruppo, e
+  `Σ(qᵢ×p) = p×Σqᵢ` è un'identità (§4.6).
+- La preoccupazione sugli arrotondamenti intermedi è **fondata ma già risolta**
+  dalla forma scelta: si somma sulle quantità a 6 decimali, mai su importi già
+  arrotondati.
+- Tutti gli altri requisiti applicati (D1-bis, D1-ter, D2, D3) **non dipendono**
+  dalla forma di `imponibile_riga` e restano validi.
+
+### 12.5 Debito rilevato e non ancora in perimetro
+
+- ~~**`vw_documento_lineage_archi`** legge le colonne sorgente della riga~~ →
+  ✅ **rientrato il 2026-07-28**: non le legge affatto, l'arco commessa→fattura
+  passa già da `attivita_fatturabili.fattura_riga_id`. Era un falso positivo del
+  censimento di §2.11 (la vista è una `UNION` e nomina `fatture_righe` e
+  `sorgente_uid` su rami diversi: l'alias `r` è `vendite.resi`). Dettaglio in
+  §4.6, punto 7.
+- **La fattura è l'unico documento senza livello componenti** (§2.13). D5 lo
+  chiude per la stampa; resta da capire se serva anche altrove.
+- **`sconto_percentuale` di riga resta 0**: le attività fatturabili non hanno uno
+  sconto proprio. La formula lo prevede, il dato non arriva da nessuna parte.
+  Fuori perimetro, ma è una colonna che oggi non può che valere zero.

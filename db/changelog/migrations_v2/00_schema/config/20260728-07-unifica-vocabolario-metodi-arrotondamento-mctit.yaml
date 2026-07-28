@@ -1,0 +1,176 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Un solo vocabolario per i metodi di arrotondamento
+#   (brief-fix-importi-riga-fattura-zero.md §4.1 — decisione Tid 2026-07-28)
+#
+# IL PROBLEMA. Il metodo di arrotondamento e' configurabile in quattro punti del
+#   modello, e ogni punto ammetteva un insieme DIVERSO di valori. In comune ce
+#   n'era uno solo:
+#
+#     anagrafiche.emittenti_fiscali_utilities.metodo_arrotondamento_importi
+#         UP · DOWN · HALF_UP · HALF_DOWN
+#     config.termini_pagamento.arrotondamento_metodo
+#         HALF_UP · HALF_DOWN · HALF_EVEN
+#     vendite.articolo_regole_fatturazione.metodo_arrotondamento_importi
+#         HALF_UP · HALF_EVEN · FLOOR · CEIL
+#     vendite.articolo_regole_fatturazione.metodo_arrotondamento_quantita
+#         HALF_UP · HALF_EVEN · FLOOR · CEIL
+#
+#   Tre vocabolari per la stessa idea. Chi scrive codice che arrotonda deve
+#   sapere QUALE dei tre sta leggendo, e una funzione condivisa dovrebbe
+#   gestirne l'unione — sette nomi per quattro comportamenti, con l'aggravante
+#   che alcuni si sovrappongono solo in parte.
+#
+# LA DECISIONE (Tid, 2026-07-28): vale il vocabolario di
+#   `emittenti_fiscali_utilities`. Diventa l'unico per tutti e quattro i punti:
+#
+#       UP · DOWN · HALF_UP · HALF_DOWN
+#
+#   Sono quattro comportamenti distinti e sufficienti: allontana da zero,
+#   avvicina a zero, e le due varianti sul mezzo.
+#
+# ⚠️ COSA SPARISCE, e perche' si puo'.
+#   * CEIL e FLOOR: sui valori NON NEGATIVI — la totalita' dei casi di
+#     fatturazione — coincidono con UP e DOWN. La differenza esiste solo sui
+#     negativi (verso +/-infinito anziche' da/verso zero) e non era sfruttata da
+#     nessuna parte.
+#   * HALF_EVEN (arrotondamento bancario): era un valore AMMESSO in due tabelle
+#     ma **nessuna funzione del database lo implementava** — verificato su
+#     pg_proc. Era una promessa scritta nel CHECK e mai mantenuta: esattamente
+#     la stessa forma di difetto che questo brief sta chiudendo sugli importi.
+#     Se un giorno servisse davvero, si riaggiunge INSIEME al codice che lo
+#     applica, non prima.
+#
+# NESSUNA MIGRAZIONE DI DATI. Verificato riga per riga: tutte e 16 le righe
+#   configurate nei quattro punti valgono `HALF_UP`, che sopravvive
+#   nell'unificazione. Nessun valore da tradurre, nessun backfill.
+#
+# `emittenti_fiscali_utilities` non viene toccata: il suo CHECK e' gia' quello
+#   canonico. Si allineano gli altri tre.
+#
+# Dipendenze: nessuna. Il consumatore e' script.fn_arrotonda_importo
+#   (20260728-08), che implementa esattamente questi quattro metodi e solleva su
+#   qualunque altro valore.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260728-07-unifica-vocabolario-metodi-arrotondamento-mctit.yaml
+
+  - changeSet:
+      id: 20260728-07-unifica-vocabolario-metodi-arrotondamento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Un solo vocabolario per i metodi di arrotondamento in tutto il modello:
+        UP, DOWN, HALF_UP, HALF_DOWN (quello di emittenti_fiscali_utilities).
+        Spariscono CEIL/FLOOR (ridondanti sui non negativi) e HALF_EVEN (ammesso
+        ma mai implementato). Nessuna migrazione dati: tutto e' gia' HALF_UP.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM config.termini_pagamento
+                   WHERE arrotondamento_metodo IS NOT NULL
+                     AND arrotondamento_metodo NOT IN ('UP','DOWN','HALF_UP','HALF_DOWN')
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM vendite.articolo_regole_fatturazione
+                   WHERE (metodo_arrotondamento_importi IS NOT NULL
+                          AND metodo_arrotondamento_importi NOT IN ('UP','DOWN','HALF_UP','HALF_DOWN'))
+                      OR (metodo_arrotondamento_quantita IS NOT NULL
+                          AND metodo_arrotondamento_quantita NOT IN ('UP','DOWN','HALF_UP','HALF_DOWN'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- config.termini_pagamento
+              --   era: HALF_UP · HALF_DOWN · HALF_EVEN
+              -- ============================================================
+              ALTER TABLE config.termini_pagamento
+                  DROP CONSTRAINT chk_termini_pagamento_arrotondamento_metodo;
+
+              ALTER TABLE config.termini_pagamento
+                  ADD CONSTRAINT chk_termini_pagamento_arrotondamento_metodo
+                  CHECK (arrotondamento_metodo IS NULL
+                         OR arrotondamento_metodo IN ('UP', 'DOWN', 'HALF_UP', 'HALF_DOWN'));
+
+              -- ============================================================
+              -- vendite.articolo_regole_fatturazione (importi e quantita')
+              --   era: HALF_UP · HALF_EVEN · FLOOR · CEIL
+              -- ============================================================
+              ALTER TABLE vendite.articolo_regole_fatturazione
+                  DROP CONSTRAINT chk_regole_metodo_arrotondamento_importi;
+
+              ALTER TABLE vendite.articolo_regole_fatturazione
+                  ADD CONSTRAINT chk_regole_metodo_arrotondamento_importi
+                  CHECK (metodo_arrotondamento_importi IS NULL
+                         OR metodo_arrotondamento_importi IN ('UP', 'DOWN', 'HALF_UP', 'HALF_DOWN'));
+
+              ALTER TABLE vendite.articolo_regole_fatturazione
+                  DROP CONSTRAINT chk_regole_metodo_arrotondamento_quantita;
+
+              ALTER TABLE vendite.articolo_regole_fatturazione
+                  ADD CONSTRAINT chk_regole_metodo_arrotondamento_quantita
+                  CHECK (metodo_arrotondamento_quantita IS NULL
+                         OR metodo_arrotondamento_quantita IN ('UP', 'DOWN', 'HALF_UP', 'HALF_DOWN'));
+
+              -- ============================================================
+              -- Il vocabolario, scritto dove chi legge la tabella lo trova.
+              -- ============================================================
+              COMMENT ON COLUMN config.termini_pagamento.arrotondamento_metodo IS
+                  'Metodo di arrotondamento. Vocabolario UNICO del modello (rev 2026-07-28): '
+                  'UP = allontana da zero, DOWN = avvicina a zero, HALF_UP = sul mezzo allontana, '
+                  'HALF_DOWN = sul mezzo avvicina. Applicato da script.fn_arrotonda_importo.';
+
+              COMMENT ON COLUMN vendite.articolo_regole_fatturazione.metodo_arrotondamento_importi IS
+                  'Metodo di arrotondamento degli IMPORTI di riga per questo articolo. Vocabolario '
+                  'UNICO del modello (rev 2026-07-28): UP, DOWN, HALF_UP, HALF_DOWN. Applicato da '
+                  'script.fn_arrotonda_importo, letto dal trigger sull''importo di riga fattura. '
+                  'Prima ammetteva HALF_EVEN, FLOOR e CEIL: HALF_EVEN non era implementato da alcuna '
+                  'funzione, FLOOR e CEIL coincidono con DOWN e UP sui valori non negativi.';
+
+              COMMENT ON COLUMN vendite.articolo_regole_fatturazione.metodo_arrotondamento_quantita IS
+                  'Metodo di arrotondamento delle QUANTITA'' per questo articolo. Vocabolario UNICO '
+                  'del modello (rev 2026-07-28): UP, DOWN, HALF_UP, HALF_DOWN. ⚠️ Si applica alla '
+                  'quantita'' della SINGOLA attivita'', mai alla quantita'' aggregata di una riga di '
+                  'fattura: la somma resta a precisione piena e l''unico arrotondamento e'' quello '
+                  'finale sull''importo (brief-fix-importi-riga-fattura-zero §4.6).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina i tre vocabolari originali, disallineati fra loro.
+              ALTER TABLE config.termini_pagamento
+                  DROP CONSTRAINT chk_termini_pagamento_arrotondamento_metodo;
+              ALTER TABLE config.termini_pagamento
+                  ADD CONSTRAINT chk_termini_pagamento_arrotondamento_metodo
+                  CHECK ((arrotondamento_metodo)::text = ANY (ARRAY['HALF_UP','HALF_DOWN','HALF_EVEN']));
+
+              ALTER TABLE vendite.articolo_regole_fatturazione
+                  DROP CONSTRAINT chk_regole_metodo_arrotondamento_importi;
+              ALTER TABLE vendite.articolo_regole_fatturazione
+                  ADD CONSTRAINT chk_regole_metodo_arrotondamento_importi
+                  CHECK ((metodo_arrotondamento_importi)::text = ANY (ARRAY['HALF_UP','HALF_EVEN','FLOOR','CEIL']));
+
+              ALTER TABLE vendite.articolo_regole_fatturazione
+                  DROP CONSTRAINT chk_regole_metodo_arrotondamento_quantita;
+              ALTER TABLE vendite.articolo_regole_fatturazione
+                  ADD CONSTRAINT chk_regole_metodo_arrotondamento_quantita
+                  CHECK ((metodo_arrotondamento_quantita)::text = ANY (ARRAY['HALF_UP','HALF_EVEN','FLOOR','CEIL']));

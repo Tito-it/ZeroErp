@@ -49,6 +49,27 @@ BEGIN
         );
     END IF;
 
+    -- ----------------------------------------------------
+    -- Guard D3: un documento senza righe non si numera.
+    -- ⚠️ QUI e non piu' sotto: il progressivo di registro non
+    --    torna indietro (nextval non fa rollback), quindi fallire
+    --    dopo fn_get_next_progressivo lascerebbe comunque un buco
+    --    nella numerazione fiscale.
+    -- brief-fix-importi-riga-fattura-zero §4.5.
+    -- ----------------------------------------------------
+    PERFORM 1
+       FROM vendite.fatture_righe r
+      WHERE r.fattura_id = p_fattura_id
+      LIMIT 1;
+    IF NOT FOUND THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_assign_numero_fattura', 'E_FATTURA_SENZA_RIGHE',
+            jsonb_build_object('fattura_id', p_fattura_id,
+                               'registro_id', v_registro_id),
+            NULL::uuid, p_fattura_id::text
+        );
+    END IF;
+
     -- Calcolo progressivo
     v_anno := vendite.fn_get_anno_registro(v_data);
     v_numero := vendite.fn_get_next_progressivo(v_registro_id, v_data, v_serie);
@@ -71,7 +92,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_assign_numero_fattura(p_fattura_id bigint)
-IS 'Assegna anno/serie/numero alla fattura usando registro e progressivo con lock.';
+IS 'Assegna anno/serie/numero alla fattura usando registro e progressivo con lock. rev 2026-07-28: rifiuta con E_FATTURA_SENZA_RIGHE una fattura priva di righe, PRIMA di consumare il progressivo (nextval non fa rollback: fallire dopo lascerebbe comunque un buco nella numerazione fiscale). E'' il punto UNICO in cui il progressivo viene assegnato — fn_numera_fattura_opz_emessa delega qui — quindi il presidio vale per qualunque percorso, senza doverli enumerare. Origine: fatture 207 e 208, DEFINITIVE e senza alcuna riga. Non retroattivo. brief-fix-importi-riga-fattura-zero §4.5 (D3).';
 ```
 
 ---

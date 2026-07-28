@@ -1,0 +1,196 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D5 — lo snapshot di esposizione del kit sulla riga di fattura
+#   (brief-fix-importi-riga-fattura-zero.md §4.7-bis)
+#
+# ⚠️ NON E' UN DISEGNO NUOVO: E' LA META' MANCANTE DI UNO GIA' DECISO.
+#   Il docstring di backend/apps/vendite/services/commesse_source_handlers.py
+#   («Modello unificato componenti BoM 2026-05-13») lo dice per esteso:
+#
+#     «il padre composito viene SEMPRE espanso in N righe (una per ciascun
+#      componente attivo della riga sorgente). `esposto_in_fattura` ora e' un
+#      flag di PRESENTAZIONE FATTURA, non gate di expansion: tutti i figli attivi
+#      passano in commessa, la separazione fra "padre con totale" e "figli
+#      esposti come righe descrittive" avviene A VALLE (generazione
+#      fatture_righe).»
+#
+#   La prima meta' e' stata costruita — per questo in commessa si trovano solo
+#   componenti e mai il padre, ed e' voluto. La seconda meta', quella «a valle»,
+#   non e' mai stata scritta. Esattamente come per gli importi di riga: regola
+#   decisa, documentata, e mai collegata.
+#
+# ✅ L'INFORMAZIONE VIAGGIA GIA' CON L'ATTIVITA'. Non serve alcuna risoluzione
+#   polimorfa per sorgente ne' la distinta base: il push scrive nel `meta` di
+#   vendite.commesse_attivita, e la catena lo propaga fino alle attivita'
+#   fatturabili:
+#
+#     "componente_di":      <uuid articolo padre>     -- il padre, gia' risolto
+#     "esposto_in_fattura": true|false                -- il flag, gia' congelato
+#     "coeff_qta":          <numeric>
+#
+#   ⚠️ La distinta base NON sarebbe servita comunque: lo stesso articolo
+#   componente puo' appartenere a piu' kit (verificato: i tre componenti del
+#   nostro caso risultano in quattro prodotti diversi, nessuno dei quali e' il
+#   padre effettivo). Solo il documento sorgente sa quale kit e' stato venduto,
+#   e il push ha gia' fatto quel lavoro.
+#
+# ⚠️ `esposto_in_fattura` E' LA REGOLA, NON `visibilita_componenti`.
+#   Verificato: `vendite.articolo_regole_fatturazione.visibilita_componenti` non
+#   ha ALCUN consumatore vivo — solo fn_group_attivita_fatturabili, che la mette
+#   in `meta.group_key` e la abbandona li', piu' il suo specchio Python. Frontend:
+#   zero riferimenti. `esposto_in_fattura` invece e' usato da catalogo, ordini,
+#   preventivi, contratti, DDT e dagli handler di push, ed e' valorizzato per
+#   davvero (14 componenti a TRUE, 11 a FALSE).
+#
+# IL PRINCIPIO. vendite.fatture_righe conserva SEMPRE tutte le righe componente,
+#   con articolo, quantita' e prezzo propri: il dato resta il dettaglio. Il
+#   raggruppamento per la presentazione e' una RAPPRESENTAZIONE, prodotta da una
+#   vista a valle (changeset separato), non un dato diverso.
+#
+# ⚠️ VALE PER OGNI USCITA, non solo per la stampa: PDF, XML SDI, portale leggono
+#   la stessa rappresentazione. Se il PDF mostrasse il kit raggruppato e l'XML
+#   trasmettesse i componenti avremmo due uscite dello stesso documento con
+#   dettagli diversi — totali uguali, quindi niente di irregolare, ma una
+#   divergenza che nessuno ha deciso.
+#
+# ✅ IL CONGELAMENTO NON RICHIEDE NULLA DI NUOVO. Queste colonne sono uno
+#   snapshot preso alla generazione, e le righe oltre EMESSA sono gia'
+#   intoccabili grazie al guard D1-bis (20260728-03/04):
+#     * cambiare `esposto_in_fattura` in distinta NON tocca le fatture emesse —
+#       non perche' ce ne ricordiamo, ma perche' il database lo impedisce;
+#     * rigenerare una fattura passa dal reset lotto, che riscrive le righe
+#       leggendo il flag corrente: l'esposizione cambia, ed e' corretto;
+#     * quando la fattura non e' piu' modificabile, la stampa e' immutabile.
+#   Sono le tre condizioni poste da Tid, soddisfatte da cio' che c'e' gia'.
+#
+# `kit_key` E' IL PREFISSO DEL SEGMENTO, non l'articolo padre: lo stesso kit puo'
+#   comparire due volte sulla stessa fattura da due righe d'ordine diverse, e
+#   vanno esposti come due gruppi distinti. Il prefisso identifica l'ISTANZA, ed
+#   e' ricavabile senza logica per sorgente (`split_part(segment_key,'#CMP:',1)`).
+#
+# COERENZA GARANTITA DA CHECK: o la riga non e' di kit (tutto NULL), o lo e' e
+#   allora chiave, flag e articolo padre ci sono. Una riga con metadati a meta'
+#   sarebbe indistinguibile da una riga normale per la vista, e sparirebbe dal
+#   raggruppamento senza un fiato.
+#
+# NESSUN INDICE: la vista raggruppa per `kit_key`, non per articolo padre
+#   ([[reference_fk_index_policy_optin]]). NESSUN require_attivo sull'articolo
+#   padre: e' uno snapshot storico, non un riferimento operativo.
+#
+# Dipendenze: nessuna. Popolate dal changeset che aggiorna
+#   fn_generate_fatture_righe; consumate dalla vista di esposizione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260728-14-alter-fatture-righe-kit-esposizione-mctit.yaml
+
+  - changeSet:
+      id: 20260728-14-alter-fatture-righe-kit-esposizione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Snapshot di esposizione del kit su vendite.fatture_righe: kit_key,
+        kit_esposto_in_fattura, kit_articolo_padre_id, kit_descrizione_padre.
+        Il dato resta il dettaglio (tutte le componenti), la rappresentazione la
+        produce una vista a valle.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_righe
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatture_righe
+                    columnName: kit_key
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_righe
+                  ADD COLUMN kit_key                text,
+                  ADD COLUMN kit_esposto_in_fattura boolean,
+                  ADD COLUMN kit_articolo_padre_id  uuid,
+                  ADD COLUMN kit_descrizione_padre  character varying(150);
+
+              -- O non e' una riga di kit, o lo e' per intero. Una riga con
+              -- metadati a meta' sparirebbe dal raggruppamento senza un fiato.
+              ALTER TABLE vendite.fatture_righe
+                  ADD CONSTRAINT chk_fatture_righe_kit_coerente
+                  CHECK (
+                      (kit_key IS NULL
+                       AND kit_esposto_in_fattura IS NULL
+                       AND kit_articolo_padre_id IS NULL
+                       AND kit_descrizione_padre IS NULL)
+                      OR
+                      (kit_key IS NOT NULL
+                       AND kit_esposto_in_fattura IS NOT NULL
+                       AND kit_articolo_padre_id IS NOT NULL)
+                  );
+
+              ALTER TABLE vendite.fatture_righe
+                  ADD CONSTRAINT fk_fatture_righe_kit_articolo_padre
+                  FOREIGN KEY (kit_articolo_padre_id)
+                  REFERENCES catalogo.articoli(id)
+                  ON UPDATE CASCADE;
+
+              COMMENT ON COLUMN vendite.fatture_righe.kit_key IS
+                  'Identita'' dell''ISTANZA di kit a cui la riga appartiene: raggruppa le righe '
+                  'che vanno esposte insieme. NULL sulle righe non-kit. E'' il prefisso del '
+                  'segment_key dell''attivita'' (ORD:<uid>:R:<riga>, senza la parte #CMP) e non '
+                  'l''articolo padre: lo stesso kit puo'' comparire due volte sulla stessa '
+                  'fattura da due righe sorgente diverse, e vanno esposti come gruppi distinti. '
+                  'Ricavabile senza logica per sorgente. '
+                  'brief-fix-importi-riga-fattura-zero §4.7-bis (D5).';
+
+              COMMENT ON COLUMN vendite.fatture_righe.kit_esposto_in_fattura IS
+                  'Snapshot di catalogo.articoli_componenti.esposto_in_fattura per QUESTA '
+                  'componente, propagato dal push in commesse_attivita.meta->>''esposto_in_fattura''. '
+                  'E'' il flag di PRESENTAZIONE della fattura, come dichiarato dal modello '
+                  'unificato componenti BoM del 2026-05-13: tutti i componenti attivi passano in '
+                  'commessa, e la separazione fra padre-con-totale e figli-descrittivi avviene '
+                  'alla generazione delle righe fattura. ⚠️ NON confondere con '
+                  'articolo_regole_fatturazione.visibilita_componenti, che non ha alcun '
+                  'consumatore vivo. Snapshot e non lettura al volo: la distinta puo'' cambiare '
+                  'dopo l''emissione e una fattura emessa non deve cambiare aspetto.';
+
+              COMMENT ON COLUMN vendite.fatture_righe.kit_articolo_padre_id IS
+                  'Articolo padre del kit, dal meta dell''attivita'' (`componente_di`), gia'' '
+                  'risolto dal push. Sempre valorizzato sulle righe di kit: per il PDF basterebbe '
+                  'la descrizione, ma l''XML SDI vuole il codice articolo e il padre NON e'' una '
+                  'riga di fattura da cui ricavarlo. ⚠️ La distinta base non basterebbe a '
+                  'risolverlo: lo stesso componente puo'' appartenere a piu'' kit. Nessun '
+                  'require_attivo: e'' uno snapshot storico, non un riferimento operativo.';
+
+              COMMENT ON COLUMN vendite.fatture_righe.kit_descrizione_padre IS
+                  'Descrizione del padre congelata alla generazione. Ridondante rispetto all''id '
+                  'solo in apparenza: la descrizione a catalogo puo'' cambiare dopo l''emissione '
+                  'e la fattura deve continuare a stampare quella di allora — stesso motivo per '
+                  'cui `descrizione` e'' copiata sulla riga invece di essere risolta al volo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture_righe
+                  DROP CONSTRAINT IF EXISTS fk_fatture_righe_kit_articolo_padre;
+              ALTER TABLE vendite.fatture_righe
+                  DROP CONSTRAINT IF EXISTS chk_fatture_righe_kit_coerente;
+              ALTER TABLE vendite.fatture_righe
+                  DROP COLUMN IF EXISTS kit_descrizione_padre,
+                  DROP COLUMN IF EXISTS kit_articolo_padre_id,
+                  DROP COLUMN IF EXISTS kit_esposto_in_fattura,
+                  DROP COLUMN IF EXISTS kit_key;

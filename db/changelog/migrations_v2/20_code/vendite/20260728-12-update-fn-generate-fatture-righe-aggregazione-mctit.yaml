@@ -1,0 +1,347 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D4 — una riga di fattura e' l'AGGREGAZIONE di 1..n attivita' fatturabili
+#   (brief-fix-importi-riga-fattura-zero.md §4.6)
+#
+# IL DIFETTO CHE CHIUDE. La funzione cicla sulle attivita' e ne inserisce **una
+#   riga di fattura per ciascuna**. Non e' un difetto di calcolo ma
+#   dell'OGGETTO: la riga e' la copia di un dettaglio invece della sua sintesi.
+#   Il disegno dell'aggregazione esisteva gia' per intero — la chiave la produce
+#   fn_group_attivita_fatturabili, il puntatore n->1 e'
+#   attivita_fatturabili.fattura_riga_id, il dettaglio sono le attivita' stesse —
+#   ma non era mai stato collegato: la chiave veniva calcolata, salvata in
+#   `meta.group_key` e ignorata.
+#
+# LA CHIAVE DI RAGGRUPPAMENTO e' quella gia' esistente, non se ne inventa una:
+#   articolo · billing account destinatario · unita' di misura · PREZZO UNITARIO ·
+#   IVA · competenza dal/al. Si aggrega per (fattura, chiave): due attivita' che
+#   ricadono su TESTATE diverse non si fondono mai, anche a chiave identica.
+#
+# ⚠️ PERCHE' `qta = SUM(quantita)` E' GIA' LA SOMMATORIA DEGLI IMPORTI.
+#   Il prezzo unitario fa parte della chiave, quindi e' costante dentro il
+#   gruppo:
+#           Σ(qᵢ × p)  =  p × Σqᵢ  =  qta × prezzo_unitario
+#   e' un'IDENTITA', non un'approssimazione. E la somma delle quantita' e'
+#   esatta: ogni `quantita` e' numeric(18,6), la somma di addendi a 6 decimali ha
+#   esattamente 6 decimali, e `qta` e' numeric(18,6). Nessun troncamento in
+#   nessun punto: l'unico arrotondamento e' quello finale sull'importo, che fa il
+#   trigger a20 (20260728-09/10).
+#
+#   ⚠️ `arrotondamento_quantita_dec` NON si applica MAI qui. E' una regola della
+#   SINGOLA attivita', a monte. Arrotondare la quantita' sommata prima di
+#   scriverla perderebbe precisione a monte dell'importo, dove nessuno la cerca.
+#   Garanzia richiesta esplicitamente da Tid, §4.6 del brief.
+#
+# ⚠️ LE COLONNE SORGENTE VANNO A NULL. Con n attivita' di sorgenti diverse nella
+#   stessa riga non esiste piu' una sorgente singola: sceglierne una sarebbe una
+#   bugia, e l'indice UNIQUE parziale
+#   `uq_fatture_righe_v_sorgente_fk (sorgente_tipo_id, sorgente_uid)` lo
+#   impedirebbe comunque. Vanno a NULL **sempre**, anche quando il gruppo ha una
+#   sola attivita': una colonna popolata a volte si' e a volte no e' una trappola
+#   peggiore di una sempre vuota. La tracciabilita' passa interamente da
+#   attivita_fatturabili.fattura_riga_id, che dal 20260728-11 e' una vera FK.
+#
+# ⚠️ `riga_nr` DETERMINISTICO. Prima l'ordine seguiva `ORDER BY a.id` delle
+#   attivita'; ora i gruppi vengono ordinati esplicitamente per
+#   (fattura, articolo, competenza, prezzo), altrimenti l'ordine delle righe
+#   della fattura cambierebbe a ogni rigenerazione dello stesso lotto.
+#
+# DUE PASSATE, e non e' pignoleria. La prima risolve testata e chiave per ogni
+#   attivita' e le deposita in una temp table; la seconda aggrega e scrive. Serve
+#   perche' `fn_get_or_create_fattura_header` **crea** la testata: e' una funzione
+#   con effetti, e chiamarla dentro una CTE poi aggregata lascerebbe al planner
+#   la liberta' di decidere quante volte eseguirla. Cosi' invece viene invocata
+#   esattamente una volta per attivita', nello stesso ordine di prima.
+#
+# VALORE DI RITORNO: resta il numero di ATTIVITA' elaborate, non di righe
+#   prodotte. E' cio' che contava anche prima (una attivita' = una riga) ed e'
+#   cio' che conta il ramo dry-run: cambiarlo in «righe generate» renderebbe
+#   incomparabili i log prima/dopo e i due rami fra loro.
+#
+# DRY-RUN: comportamento invariato, inclusa la stranezza preesistente per cui
+#   crea comunque le testate (fn_get_or_create_fattura_header viene chiamata
+#   prima del `CONTINUE`). Non e' perimetro di questo brief e non la si cambia di
+#   nascosto.
+#
+# Base: doc auto-gen docs/it/dbzero/vendite/funzioni/fn_generate_fatture_righe.md
+#   Dipendenze: 20260728-11 (FK sul puntatore). A valle: 20260728-13 adegua
+#   vw_dash_competenza_attivita, che altrimenti conteggerebbe n volte lo stesso
+#   importo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260728-12-update-fn-generate-fatture-righe-aggregazione-mctit.yaml
+
+  - changeSet:
+      id: 20260728-12-update-fn-generate-fatture-righe-aggregazione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_generate_fatture_righe aggrega: una riga di fattura per ogni gruppo
+        (fattura + chiave di fn_group_attivita_fatturabili), qta = somma esatta
+        delle quantita', colonne sorgente a NULL, riga_nr deterministico.
+      preConditions:
+        - onFail: HALT
+        - foreignKeyConstraintExists:
+            schemaName: vendite
+            foreignKeyName: fk_attivita_fatturabili_fattura_riga
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_generate_fatture_righe(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE,
+                  p_dry_run  boolean DEFAULT false
+              )
+              RETURNS integer
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: generare le righe di fattura del lotto AGGREGANDO le
+              --        attivita' fatturabili per chiave di raggruppamento.
+              --        Una riga = 1..n attivita'; il legame e'
+              --        attivita_fatturabili.fattura_riga_id.
+              -- brief-fix-importi-riga-fattura-zero §4.6 (D4).
+              DECLARE
+                  v_count           INTEGER := 0;
+                  v_lock_batch_id   vendite.fatturazione_lotti.lock_batch_id%TYPE;
+                  v_row             RECORD;
+                  v_grp             RECORD;
+                  v_riga_nr         INTEGER;
+                  v_fattura_riga_id vendite.fatture_righe.id%TYPE;
+              BEGIN
+                  -- Guard: parametro obbligatorio
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_generate_fatture_righe', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  -- Recupera lock_batch_id dal lotto
+                  SELECT fl.lock_batch_id INTO v_lock_batch_id
+                    FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
+
+                  -- Marca attivita' come RUNNING (invariato)
+                  IF NOT p_dry_run AND v_lock_batch_id IS NOT NULL THEN
+                      UPDATE vendite.attivita_fatturabili a
+                         SET stato_esecuzione = 'RUNNING',
+                             data_update = now(), user_update = current_user
+                       WHERE a.lock_batch_id = v_lock_batch_id
+                         AND a.fatturato IS FALSE
+                         AND COALESCE(a.lock_in_fatturazione, false) IS TRUE
+                         AND (a.stato_esecuzione IS NULL OR a.stato_esecuzione IN ('PENDING', 'RUNNING'));
+                  END IF;
+
+                  -- ====================================================
+                  -- PASSATA 1 — testata e chiave di gruppo per ogni
+                  --   attivita'. In una temp table e non in una CTE:
+                  --   fn_get_or_create_fattura_header CREA la testata, e
+                  --   dentro una CTE aggregata il planner sarebbe libero di
+                  --   decidere quante volte chiamarla.
+                  -- ====================================================
+                  --   ⚠️ Tipi ESPLICITI e non %TYPE: CREATE TABLE e' DDL puro
+                  --   anche dentro una funzione plpgsql, e li' %TYPE non e'
+                  --   valido ([[feedback_type_ddl_contexts]]). I tipi
+                  --   corrispondono a attivita_fatturabili.id (bigint),
+                  --   .quantita (numeric(18,6)) e fatture.id (bigint).
+                  DROP TABLE IF EXISTS tmp_gen_righe;
+                  CREATE TEMP TABLE tmp_gen_righe (
+                      attivita_id bigint,
+                      quantita    numeric(18,6),
+                      fattura_id  bigint,
+                      grp         jsonb
+                  ) ON COMMIT DROP;
+
+                  FOR v_row IN
+                      SELECT a.id, a.quantita
+                        FROM vendite.attivita_fatturabili a
+                       WHERE a.lock_batch_id = v_lock_batch_id
+                         AND a.fatturato IS FALSE
+                         AND COALESCE(a.lock_in_fatturazione, false) IS TRUE
+                       ORDER BY a.id
+                  LOOP
+                      INSERT INTO tmp_gen_righe (attivita_id, quantita, fattura_id, grp)
+                      VALUES (
+                          v_row.id,
+                          v_row.quantita,
+                          vendite.fn_get_or_create_fattura_header(p_lotto_id, v_row.id),
+                          vendite.fn_group_attivita_fatturabili(v_row.id)
+                      );
+
+                      -- Il conteggio e' sulle ATTIVITA' elaborate, come prima.
+                      v_count := v_count + 1;
+                  END LOOP;
+
+                  IF p_dry_run THEN
+                      RETURN v_count;
+                  END IF;
+
+                  -- ====================================================
+                  -- PASSATA 2 — una riga per gruppo (fattura + chiave).
+                  --   ORDER BY esplicito: senza, l'ordine dei riga_nr
+                  --   cambierebbe a ogni rigenerazione dello stesso lotto.
+                  -- ====================================================
+                  FOR v_grp IN
+                      SELECT t.fattura_id,
+                             t.grp,
+                             SUM(t.quantita)                        AS qta_totale,
+                             array_agg(t.attivita_id ORDER BY t.attivita_id) AS attivita_ids,
+                             count(*)::int                          AS n_attivita
+                        FROM tmp_gen_righe t
+                       GROUP BY t.fattura_id, t.grp
+                       ORDER BY t.fattura_id,
+                                (t.grp->>'articolo_id'),
+                                COALESCE(t.grp->>'competenza_dal', ''),
+                                COALESCE(t.grp->>'competenza_al', ''),
+                                COALESCE(t.grp->>'prezzo_unitario', ''),
+                                COALESCE(t.grp->>'uom_id', '')
+                  LOOP
+                      SELECT COALESCE(max(r.riga_nr), 0) + 1 INTO v_riga_nr
+                        FROM vendite.fatture_righe r WHERE r.fattura_id = v_grp.fattura_id;
+
+                      INSERT INTO vendite.fatture_righe (
+                          fattura_id, riga_nr, articolo_id, descrizione, uom_id,
+                          qta, prezzo_unitario, iva_id, dest_billing_account_id,
+                          sorgente_tipo_id, sorgente_uid, sorgente_riga, meta
+                      )
+                      VALUES (
+                          v_grp.fattura_id,
+                          v_riga_nr,
+                          (v_grp.grp->>'articolo_id')::UUID,
+                          (SELECT descrizione FROM catalogo.articoli
+                            WHERE id = (v_grp.grp->>'articolo_id')::UUID),
+                          (v_grp.grp->>'uom_id')::BIGINT,
+                          -- Somma ESATTA: mai arrotondata (§4.6).
+                          v_grp.qta_totale,
+                          (v_grp.grp->>'prezzo_unitario')::NUMERIC,
+                          (v_grp.grp->>'iva_id')::INTEGER,
+                          (v_grp.grp->>'dest_billing_account_id')::BIGINT,
+                          -- Le sorgenti sono n: nessuna singola da scrivere.
+                          -- La tracciabilita' e' attivita_fatturabili.fattura_riga_id.
+                          NULL, NULL, NULL,
+                          jsonb_build_object(
+                              'group_key',    v_grp.grp,
+                              'n_attivita',   v_grp.n_attivita,
+                              'attivita_ids', to_jsonb(v_grp.attivita_ids)
+                          )
+                      )
+                      RETURNING id INTO v_fattura_riga_id;
+
+                      -- Tutte le attivita' del gruppo puntano a questa riga.
+                      UPDATE vendite.attivita_fatturabili
+                         SET fattura_riga_id = v_fattura_riga_id,
+                             fatturato = true,
+                             stato_esecuzione = 'COMPLETED',
+                             data_update = now(), user_update = current_user
+                       WHERE id = ANY(v_grp.attivita_ids);
+                  END LOOP;
+
+                  RETURN v_count;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_generate_fatture_righe(bigint, boolean)
+              IS 'Genera le righe di fattura del lotto AGGREGANDO le attivita'' fatturabili: una riga per ogni gruppo (testata + chiave di fn_group_attivita_fatturabili = articolo, BA destinatario, uom, prezzo unitario, IVA, competenza). rev 2026-07-28: prima produceva una riga per OGNI attivita'', cioe'' la copia di un dettaglio invece della sua sintesi. `qta` e'' la somma ESATTA delle quantita'', mai arrotondata: il prezzo e'' nella chiave, quindi Σ(qᵢ×p) = p×Σqᵢ e l''unico arrotondamento e'' quello finale sull''importo, fatto dal trigger a20. Le colonne sorgente_* vanno a NULL sulle righe prodotte — con n sorgenti non ne esiste una singola, e l''indice UNIQUE parziale lo impedirebbe: la tracciabilita'' e'' attivita_fatturabili.fattura_riga_id (FK dal 20260728-11). riga_nr segue un ordinamento esplicito dei gruppi, altrimenti cambierebbe a ogni rigenerazione. Due passate perche'' fn_get_or_create_fattura_header ha effetti e non va lasciata al planner dentro una CTE aggregata. Il valore di ritorno resta il numero di ATTIVITA'' elaborate. brief-fix-importi-riga-fattura-zero §4.6 (D4).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rollback: torna al ciclo 1:1 per attivita' (stato pre-D4).
+              CREATE OR REPLACE FUNCTION vendite.fn_generate_fatture_righe(
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE,
+                  p_dry_run  boolean DEFAULT false
+              )
+              RETURNS integer
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_count           INTEGER := 0;
+                  v_row             RECORD;
+                  v_fattura_id      vendite.fatture.id%TYPE;
+                  v_group           JSONB;
+                  v_riga_nr         INTEGER;
+                  v_fattura_riga_id vendite.fatture_righe.id%TYPE;
+                  v_lock_batch_id   vendite.fatturazione_lotti.lock_batch_id%TYPE;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_generate_fatture_righe', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  SELECT fl.lock_batch_id INTO v_lock_batch_id
+                    FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
+
+                  IF NOT p_dry_run AND v_lock_batch_id IS NOT NULL THEN
+                      UPDATE vendite.attivita_fatturabili a
+                         SET stato_esecuzione = 'RUNNING',
+                             data_update = now(), user_update = current_user
+                       WHERE a.lock_batch_id = v_lock_batch_id
+                         AND a.fatturato IS FALSE
+                         AND COALESCE(a.lock_in_fatturazione, false) IS TRUE
+                         AND (a.stato_esecuzione IS NULL OR a.stato_esecuzione IN ('PENDING', 'RUNNING'));
+                  END IF;
+
+                  FOR v_row IN
+                      SELECT a.id, a.articolo_id, a.quantita, a.prezzo_unitario,
+                             a.uom_id, a.sorgente_tipo_id, a.sorgente_uid, a.sorgente_riga
+                        FROM vendite.attivita_fatturabili a
+                       WHERE a.lock_batch_id = v_lock_batch_id
+                         AND a.fatturato IS FALSE
+                         AND COALESCE(a.lock_in_fatturazione, false) IS TRUE
+                       ORDER BY a.id
+                  LOOP
+                      v_fattura_id := vendite.fn_get_or_create_fattura_header(p_lotto_id, v_row.id);
+                      v_group := vendite.fn_group_attivita_fatturabili(v_row.id);
+
+                      IF p_dry_run THEN
+                          v_count := v_count + 1;
+                          CONTINUE;
+                      END IF;
+
+                      SELECT COALESCE(max(r.riga_nr), 0) + 1 INTO v_riga_nr
+                        FROM vendite.fatture_righe r WHERE r.fattura_id = v_fattura_id;
+
+                      INSERT INTO vendite.fatture_righe (
+                          fattura_id, riga_nr, articolo_id, descrizione, uom_id,
+                          qta, prezzo_unitario, iva_id, dest_billing_account_id,
+                          sorgente_tipo_id, sorgente_uid, sorgente_riga, meta
+                      )
+                      VALUES (
+                          v_fattura_id, v_riga_nr, v_row.articolo_id,
+                          (SELECT descrizione FROM catalogo.articoli WHERE id = v_row.articolo_id),
+                          (v_group->>'uom_id')::BIGINT, v_row.quantita, v_row.prezzo_unitario,
+                          (v_group->>'iva_id')::INTEGER, (v_group->>'dest_billing_account_id')::BIGINT,
+                          v_row.sorgente_tipo_id, v_row.sorgente_uid, v_row.sorgente_riga,
+                          jsonb_build_object('group_key', v_group)
+                      )
+                      RETURNING id INTO v_fattura_riga_id;
+
+                      UPDATE vendite.attivita_fatturabili
+                         SET fattura_riga_id = v_fattura_riga_id, fatturato = true,
+                             stato_esecuzione = 'COMPLETED',
+                             data_update = now(), user_update = current_user
+                       WHERE id = v_row.id;
+
+                      v_count := v_count + 1;
+                  END LOOP;
+
+                  RETURN v_count;
+              END;
+              $function$;

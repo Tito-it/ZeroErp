@@ -96,6 +96,26 @@ SELECT ok(
   'Inserimento fattura di test'
 );
 
+-- ⚠️ 2026-07-28: la fattura di test deve avere ALMENO UNA RIGA.
+--   Prima non ne aveva, e la si numerava comunque: una numerazione fiscale su
+--   documento vuoto, cioe' proprio cio' che il guard D3 in
+--   vendite.fn_assign_numero_fattura ora rifiuta (E_FATTURA_SENZA_RIGHE).
+--   Il guard non e' troppo severo: la fixture simulava uno stato che nella
+--   realta' ha prodotto le fatture 207 e 208, DEFINITIVE e senza alcuna riga.
+--   L'importo della riga lo calcola il trigger a20 (1 x 100 -> 100,00).
+--   brief-fix-importi-riga-fattura-zero §4.5.
+INSERT INTO vendite.fatture_righe (
+  fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta
+)
+SELECT
+  (SELECT id FROM tmp_fattura_nf),
+  1,
+  'Riga di test numerazione',
+  1::numeric,
+  100::numeric,
+  (SELECT id FROM config.iva WHERE attivo IS TRUE ORDER BY id LIMIT 1),
+  jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_nf));
+
 -- ============================================================
 -- 3) Numerazione fattura
 -- ============================================================

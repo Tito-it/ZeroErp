@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D1-bis — arma trgfn_fatture_righe_guard_congelamento su vendite.fatture_righe
+#   (brief-fix-importi-riga-fattura-zero.md §4.1-bis)
+#
+# Funzione: vendite.trgfn_fatture_righe_guard_congelamento (20260728-03), che
+#   porta il razionale completo.
+#
+# FASE _a10_ (guard): il nome determina l'ordine di scatto — PostgreSQL esegue i
+#   trigger di pari tipo in ordine alfabetico. `a10` viene prima di
+#   `guard_normalize` e di `z90_storico`, quindi un'operazione respinta non
+#   lascia scritture nello storico ne' fa lavorare inutilmente il normalize.
+#
+# UN SOLO TRIGGER PER TRE EVENTI: non si separano INSERT/UPDATE/DELETE. La
+#   regola e' una sola («oltre la soglia le righe non si toccano») e tenerla in
+#   un punto solo evita che qualcuno domani ne aggiorni due su tre.
+#
+# NESSUNA CLAUSOLA WHEN: a differenza del guard sul flag di corsia
+#   (20260727-09, che filtra su IS DISTINCT FROM), qui non esiste una
+#   «riscrittura innocua». Anche riscrivere lo stesso valore su un documento
+#   emesso e' un'operazione che non deve avvenire, e nel caso DELETE una WHEN
+#   non avrebbe comunque senso.
+#
+# Dipendenze: 20260728-03 (funzione), codice errore 562 (seed CSV).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260728-04-create-trg-fatture-righe-guard-congelamento-mctit.yaml
+
+  - changeSet:
+      id: 20260728-04-create-trg-fatture-righe-guard-congelamento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Arma trgfn_fatture_righe_guard_congelamento su vendite.fatture_righe
+        (BEFORE INSERT OR UPDATE OR DELETE, fase a10).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'vendite'
+                AND p.proname = 'trgfn_fatture_righe_guard_congelamento'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt
+                  ON vendite.fatture_righe;
+
+              CREATE TRIGGER trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.fatture_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_fatture_righe_guard_congelamento();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_righe_a10_guard_congelamento_ins_upd_dlt
+                  ON vendite.fatture_righe;

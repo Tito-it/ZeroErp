@@ -1,0 +1,431 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D1 — vendite.fatture_righe.imponibile_riga diventa COLONNA GENERATA
+#   (brief-fix-importi-riga-fattura-zero.md §4.1)
+#
+# IL PROBLEMA CHE CHIUDE. La colonna esisteva dal principio ma NESSUNO la
+#   scriveva: ne' vendite.fn_generate_fatture_righe (unico scrittore DB), ne' il
+#   repository Python, ne' un trigger. Risultato: 7 righe di fattura su 7 con
+#   imponibile NULL, che fn_ricalcola_riepilogo_iva_fattura trasformava in zero
+#   con un COALESCE, fino a produrre fatture con totale 0,00 EUR — il 100% delle
+#   fatture emesse dal sistema. La regola era persino gia' scritta nel manuale
+#   dbzero, ma classificata come voce «opzionale» di roadmap e mai implementata.
+#
+# PERCHE' UNA COLONNA GENERATA E NON UN TRIGGER. E' il presidio piu' forte
+#   disponibile: il valore lo calcola il motore, e nessun INSERT o UPDATE, in
+#   nessun linguaggio, oggi o fra due anni, puo' scriverlo diverso. Un trigger si
+#   puo' disabilitare, una colonna generata no. L'invariante smette di essere una
+#   promessa del comportamento e diventa una proprieta' della tabella. Effetto
+#   collaterale voluto: le fixture pgTAP che iniettavano l'imponibile a mano
+#   ora FALLISCONO, quindi la loro bonifica non e' piu' affidata alla memoria di
+#   qualcuno (§8.1 del brief).
+#
+# PERCHE' NOT NULL. qta e prezzo_unitario sono gia' NOT NULL, quindi
+#   l'espressione non puo' mai produrre vuoto. Dichiararlo e' il modo di
+#   SCRIVERE l'invariante nello schema invece di limitarsi a garantirlo.
+#
+# ⚠️ PERCHE' IL «2» NON E' UN HARDCODE. L'arrotondamento configurabile
+#   (anagrafiche.emittenti_fiscali_utilities.arrotondamento_importi_dec /
+#   metodo_arrotondamento_importi) governa il TOTALE A PAGARE, non la riga:
+#   fn_ricalcola_totali_fattura lo applica a
+#   `totale_doc + fondi + arrotondamento_precedente`, ed e' anche il motivo per
+#   cui esiste il saldo riportato fra documenti (fn_set_arrotondamento_scope).
+#   La riga di fattura si arrotonda a 2 decimali per convenzione fiscale
+#   italiana: e' una regola DIVERSA, non lo stesso parametro applicato due volte.
+#   Le due NON vanno unificate. Nota: round(numeric, int) di PostgreSQL arrotonda
+#   per eccesso sul mezzo, che coincide con HALF_UP senza doverlo dichiarare.
+#
+# ⚠️ CONSEGUENZA ATTESA, NON UN DIFETTO: con le righe gia' esatte al centesimo,
+#   vendite.fatture_riepiloghi_iva.arrotondamento — che vale
+#   `SUM(righe) - ROUND(SUM(righe), 2)` — risultera' SEMPRE ZERO. Corretto: se le
+#   righe sono esatte al centesimo non esiste scarto da conservare. La colonna
+#   resta disponibile per un'eventuale rettifica esplicita.
+#
+# ⚠️ PERCHE' QUATTRO VISTE DENTRO UN CHANGESET DI SCHEMA. PostgreSQL non
+#   consente di trasformare in generata una colonna gia' esistente
+#   (`ALTER ... SET EXPRESSION` vale solo per colonne gia' generate: verificato
+#   su PG 18.4), quindi serve DROP + ADD. E il DROP e' bloccato dalla catena di
+#   dipendenza:
+#       vw_dash_competenza_attivita            (legge fatture_righe.imponibile_riga)
+#         └─ vw_dash_competenza_mensile
+#         └─ vw_dash_competenza_gruppi
+#              └─ vw_dash_competenza_gruppi_riepilogo
+#   Le quattro viste vanno quindi eliminate e ricreate NELLA STESSA UNITA'
+#   ATOMICA: non e' separabile in due changeSet perche' la fase 00_schema gira
+#   PRIMA della 20_code, quindi un DROP VIEW in 20_code arriverebbe dopo l'ALTER
+#   e non servirebbe a nulla. Precedente in casa: 00_schema/config/20260311-01.
+#
+#   🔒 Le quattro viste hanno `security_invoker=on` e la reloption NON e'
+#   visibile in pg_get_viewdef: va RI-SPECIFICATA a ogni ricreazione, altrimenti
+#   PostgreSQL la azzera e si riapre il buco RLS sullo scope emittente chiuso
+#   dal fix V-1. Definizioni prese dalla doc auto-gen dbzero (fonte di verita'),
+#   non dagli YAML originali.
+#
+# DATI ESISTENTI: l'ADD COLUMN calcola il valore anche per le righe gia'
+#   presenti — le 7 righe si valorizzano da sole (200 / 400x5 / 500), senza una
+#   riga di backfill. Le TESTATE delle fatture gia' numerate restano pero' a
+#   zero: i riepiloghi e i totali si ricalcolano solo con due funzioni che
+#   rifiutano i documenti fuori da DRAFT/EMESSA. Decisione Tid 2026-07-28: non si
+#   interviene (§7 del brief).
+#
+# Dipendenze: nessuna. Seguito da 20260728-02 (rimozione di imposta_riga e
+#   totale_riga, §4.3).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260728-01-alter-fatture-righe-imponibile-generato-mctit.yaml
+
+  - changeSet:
+      id: 20260728-01-alter-fatture-righe-imponibile-generato
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fatture_righe.imponibile_riga diventa colonna generata
+        round(qta * prezzo_unitario * (1 - sconto/100), 2) STORED NOT NULL.
+        Le 4 viste dash competenza vengono ricreate (security_invoker=on
+        ri-specificata) perche' bloccano il DROP della colonna.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_righe
+                columnName: imponibile_riga
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_righe
+                columnName: qta
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_righe
+                columnName: sconto_percentuale
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- 1) Via le viste dipendenti (ordine: dalla foglia alla radice).
+              --    Non e' una bonifica: e' l'unico modo di liberare la colonna.
+              -- ============================================================
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_gruppi_riepilogo;
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_gruppi;
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_mensile;
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_attivita;
+
+              -- ============================================================
+              -- 2) La colonna: da persistita-e-mai-scritta a generata.
+              -- ============================================================
+              ALTER TABLE vendite.fatture_righe DROP COLUMN imponibile_riga;
+
+              ALTER TABLE vendite.fatture_righe
+                  ADD COLUMN imponibile_riga numeric(18,6)
+                  GENERATED ALWAYS AS (
+                      round(qta * prezzo_unitario * (1 - COALESCE(sconto_percentuale, 0) / 100), 2)
+                  ) STORED
+                  NOT NULL;
+
+              COMMENT ON COLUMN vendite.fatture_righe.imponibile_riga IS
+                  'Imponibile di riga, COLONNA GENERATA: round(qta * prezzo_unitario * '
+                  '(1 - COALESCE(sconto_percentuale,0)/100), 2). Non e'' scrivibile — '
+                  'qualunque tentativo di assegnarle un valore fallisce, ed e'' voluto: '
+                  'prima di questo changeset la colonna esisteva ma nessuno la scriveva, '
+                  'e ogni fattura del sistema valeva 0,00 EUR. I 2 decimali sono la '
+                  'convenzione fiscale della RIGA e NON il parametro configurabile '
+                  'arrotondamento_importi_dec, che governa il TOTALE A PAGARE '
+                  '(fn_ricalcola_totali_fattura): due regole distinte, non unificare. '
+                  'Conseguenza attesa: fatture_riepiloghi_iva.arrotondamento risulta '
+                  'sempre zero, perche'' con righe esatte al centesimo non c''e'' scarto '
+                  'da conservare. brief-fix-importi-riga-fattura-zero §4.1, rev 2026-07-28.';
+
+              -- ============================================================
+              -- 3) Le viste tornano identiche (radice -> foglie).
+              --    🔒 security_invoker=on RI-SPECIFICATA: non e' ereditata.
+              --    Definizioni dalla doc auto-gen dbzero.
+              -- ============================================================
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+              WITH (security_invoker=on) AS
+              SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  (
+                      CASE
+                          WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                          WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                          WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                          ELSE 'FATTURATA'::text
+                      END)::character varying AS stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE ((date_trunc('month'::text, af.data_insert))::date > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  fr.imponibile_riga AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  ca.sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key
+                 FROM (((((((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
+                   LEFT JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                   LEFT JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE (flf.fattura_id = f.id)
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON (true))
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
+
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_mensile
+              WITH (security_invoker=on) AS
+              SELECT competenza_mese,
+                  stadio,
+                  stato_fattura_codice_interno,
+                  (count(*))::integer AS n_attivita,
+                  COALESCE(sum(valore), (0)::numeric) AS valore_tot,
+                  COALESCE(sum(valore_fatturato), (0)::numeric) AS valore_fatturato_tot,
+                  (count(*) FILTER (WHERE emessa_in_ritardo))::integer AS n_in_ritardo,
+                  COALESCE(sum(valore) FILTER (WHERE emessa_in_ritardo), (0)::numeric) AS valore_in_ritardo
+                 FROM vendite.vw_dash_competenza_attivita
+                GROUP BY competenza_mese, stadio, stato_fattura_codice_interno;
+
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi
+              WITH (security_invoker=on) AS
+              WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), (0)::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(((a.tipo_movimento)::text = 'ONERE'::text)) AS ha_oneri
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area AS area_documento,
+                  COALESCE(doc.codice, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid
+                 FROM ((aggregato g
+                   LEFT JOIN config.sorgenti s ON ((s.id = g.sorgente_tipo_id)))
+                   LEFT JOIN LATERAL ( SELECT d.codice
+                         FROM vendite.vw_dash_fatturazione_documenti d
+                        WHERE ((s.area IS NOT NULL) AND ((d.area)::text = (s.area)::text) AND (d.documento_uid = g.sorgente_uid))
+                        ORDER BY d.competenza_mese DESC NULLS LAST
+                       LIMIT 1) doc ON (true));
+
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi_riepilogo
+              WITH (security_invoker=on) AS
+              SELECT competenza_mese,
+                  stadio,
+                  emittente_soggetto_ruolo_id,
+                  (count(*))::integer AS n_gruppi,
+                  (COALESCE(sum(n_attivita), (0)::numeric))::bigint AS n_attivita,
+                  COALESCE(sum(valore), (0)::numeric) AS valore,
+                  (count(*) FILTER (WHERE ((tipo_gruppo)::text = 'ONERI_COMMESSA'::text)))::integer AS n_gruppi_oneri
+                 FROM vendite.vw_dash_competenza_gruppi g
+                GROUP BY competenza_mese, stadio, emittente_soggetto_ruolo_id;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rollback: la colonna torna persistita e NULLABILE (stato
+              -- pre-changeset). I valori NON si conservano: erano NULL prima e
+              -- tornano NULL, il che e' esattamente lo stato di partenza.
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_gruppi_riepilogo;
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_gruppi;
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_mensile;
+              DROP VIEW IF EXISTS vendite.vw_dash_competenza_attivita;
+
+              ALTER TABLE vendite.fatture_righe DROP COLUMN imponibile_riga;
+              ALTER TABLE vendite.fatture_righe ADD COLUMN imponibile_riga numeric(18,6);
+              COMMENT ON COLUMN vendite.fatture_righe.imponibile_riga IS 'Imponibile riga (snapshot calcolo)';
+
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+              WITH (security_invoker=on) AS
+              SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  (
+                      CASE
+                          WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                          WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                          WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                          ELSE 'FATTURATA'::text
+                      END)::character varying AS stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE ((date_trunc('month'::text, af.data_insert))::date > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  fr.imponibile_riga AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  ca.sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key
+                 FROM (((((((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
+                   LEFT JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                   LEFT JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE (flf.fattura_id = f.id)
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON (true))
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
+
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_mensile
+              WITH (security_invoker=on) AS
+              SELECT competenza_mese,
+                  stadio,
+                  stato_fattura_codice_interno,
+                  (count(*))::integer AS n_attivita,
+                  COALESCE(sum(valore), (0)::numeric) AS valore_tot,
+                  COALESCE(sum(valore_fatturato), (0)::numeric) AS valore_fatturato_tot,
+                  (count(*) FILTER (WHERE emessa_in_ritardo))::integer AS n_in_ritardo,
+                  COALESCE(sum(valore) FILTER (WHERE emessa_in_ritardo), (0)::numeric) AS valore_in_ritardo
+                 FROM vendite.vw_dash_competenza_attivita
+                GROUP BY competenza_mese, stadio, stato_fattura_codice_interno;
+
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi
+              WITH (security_invoker=on) AS
+              WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), (0)::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(((a.tipo_movimento)::text = 'ONERE'::text)) AS ha_oneri
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area AS area_documento,
+                  COALESCE(doc.codice, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid
+                 FROM ((aggregato g
+                   LEFT JOIN config.sorgenti s ON ((s.id = g.sorgente_tipo_id)))
+                   LEFT JOIN LATERAL ( SELECT d.codice
+                         FROM vendite.vw_dash_fatturazione_documenti d
+                        WHERE ((s.area IS NOT NULL) AND ((d.area)::text = (s.area)::text) AND (d.documento_uid = g.sorgente_uid))
+                        ORDER BY d.competenza_mese DESC NULLS LAST
+                       LIMIT 1) doc ON (true));
+
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_gruppi_riepilogo
+              WITH (security_invoker=on) AS
+              SELECT competenza_mese,
+                  stadio,
+                  emittente_soggetto_ruolo_id,
+                  (count(*))::integer AS n_gruppi,
+                  (COALESCE(sum(n_attivita), (0)::numeric))::bigint AS n_attivita,
+                  COALESCE(sum(valore), (0)::numeric) AS valore,
+                  (count(*) FILTER (WHERE ((tipo_gruppo)::text = 'ONERI_COMMESSA'::text)))::integer AS n_gruppi_oneri
+                 FROM vendite.vw_dash_competenza_gruppi g
+                GROUP BY competenza_mese, stadio, emittente_soggetto_ruolo_id;

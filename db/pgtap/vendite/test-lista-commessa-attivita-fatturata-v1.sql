@@ -20,7 +20,8 @@
 --
 -- Nota fixture: le righe si creano via fn_upsert_commessa_attivita (sourceless);
 -- le AF via INSERT diretto (no fn_emit, che esige una ROOT source reale).
--- fattura_riga_id non ha FK -> un id fittizio non-NULL basta per il criterio.
+-- ⚠️ fattura_riga_id HA una FK dal 20260728-11 (prima no): non basta piu' un id
+-- fittizio, serve una riga di fattura vera — la crea il fixture qui sotto.
 -- Le righe APPROVATA+NON_EMESSA esigono tipo_doc (guard tipo_doc_emittibile):
 -- si passa sempre tipo_doc all'upsert.
 -- ------------------------------------------------------------
@@ -138,7 +139,34 @@ SELECT r.articolo_id, r.istanza_utility_id, DATE '2026-10-15', 1,
        (SELECT id_af_non_fatt FROM tmp_att_lcf), NULL, false
 FROM tmp_refs_lcf r;
 
--- AF per la riga 3: fattura_riga_id valorizzato (id fittizio, nessuna FK).
+-- ⚠️ 2026-07-28: serve una riga di fattura VERA.
+--   Prima qui c'era `fattura_riga_id = 999999` con la nota «id fittizio, nessuna
+--   FK»: sfruttava letteralmente l'assenza del vincolo. Dal 20260728-11 la FK
+--   esiste (ON UPDATE CASCADE ON DELETE SET NULL), perche' con l'aggregazione
+--   quel puntatore diventa la struttura portante della fattura — e un puntatore
+--   pendente non sarebbe piu' un dettaglio.
+--   L'importo della riga lo calcola il trigger a20.
+CREATE TEMP TABLE tmp_fattura_lcf AS
+WITH f AS (
+  INSERT INTO vendite.fatture (registro_id, data, emittente_soggetto_ruolo_id,
+                               billing_account_id, meta)
+  SELECT (SELECT id FROM vendite.registri_fatturazione ORDER BY id LIMIT 1),
+         current_date,
+         anagrafiche.fn_get_emittente_fiscale_id((SELECT billing_account_id FROM tmp_refs_lcf)),
+         (SELECT billing_account_id FROM tmp_refs_lcf),
+         jsonb_build_object('test_scope', 'pgtap_lista_commessa_attivita_fatturata')
+  RETURNING id
+), r AS (
+  INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
+                                     prezzo_unitario, meta)
+  SELECT f.id, 1, 'Riga di test', 1::numeric, 10::numeric,
+         jsonb_build_object('test_scope', 'pgtap_lista_commessa_attivita_fatturata')
+  FROM f
+  RETURNING id
+)
+SELECT (SELECT id FROM f) AS fattura_id, (SELECT id FROM r) AS riga_id;
+
+-- AF per la riga 3: fattura_riga_id valorizzato con una riga esistente.
 INSERT INTO vendite.attivita_fatturabili (
   articolo_id, istanza_utility_id, data_attivita, quantita,
   competenza_mese, competenza_dal, competenza_al,
@@ -148,7 +176,7 @@ SELECT r.articolo_id, r.istanza_utility_id, DATE '2026-10-15', 1,
        DATE '2026-10-01', DATE '2026-10-01', DATE '2026-10-31',
        r.uom_id, 10.000000, r.tipo_doc_fiscale_id,
        (SELECT commessa_id FROM tmp_commessa_lcf),
-       (SELECT id_af_fatt FROM tmp_att_lcf), 999999, true
+       (SELECT id_af_fatt FROM tmp_att_lcf), (SELECT riga_id FROM tmp_fattura_lcf), true
 FROM tmp_refs_lcf r;
 
 -- ============================================================

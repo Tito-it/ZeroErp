@@ -39,7 +39,12 @@ SELECT ca.competenza_mese,
     f.numero AS fattura_numero,
     sdf.codice_interno AS stato_fattura_codice_interno,
     sdf.codice AS stato_fattura_codice,
-    fr.imponibile_riga AS valore_fatturato,
+    (
+        CASE
+            WHEN (fr.id IS NULL) THEN NULL::numeric
+            WHEN (COALESCE(fr.qta, (0)::numeric) = (0)::numeric) THEN (0)::numeric
+            ELSE ((fr.imponibile_riga * af.quantita) / fr.qta)
+        END)::numeric(18,6) AS valore_fatturato,
     COALESCE(f.critical, false) AS fattura_critical,
     lf.lotto_id,
     ca.sorgente_tipo_id,
