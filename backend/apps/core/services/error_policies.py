@@ -1442,6 +1442,13 @@ class ErrorPolicyRegistry:
         "E_GROUP_ATTIVITA_VALIDATION": ErrorPolicy(code="E_GROUP_ATTIVITA_VALIDATION", http_status=400, ui_action="highlight_form_fields", user_message="Parametri gruppo attivita non validi."),
         "E_GROUP_ATTIVITA_NOT_FOUND": ErrorPolicy(code="E_GROUP_ATTIVITA_NOT_FOUND", http_status=404, ui_action="show_empty_state", user_message="Gruppo attivita non trovato."),
         "E_GROUP_ATTIVITA_INVALID_DATA": ErrorPolicy(code="E_GROUP_ATTIVITA_INVALID_DATA", http_status=400, ui_action="show_error_banner", user_message="Dati gruppo attivita non validi."),
+        # ── Generazione righe fattura: kit (brief-fix-importi-riga-fattura-zero §4.7-bis) ──
+        # Dati incoerenti a monte, non input dell'utente: 409 e banner, perche' la
+        # correzione sta sul documento sorgente e non su questa schermata.
+        "E_ATTIVITA_KIT_SENZA_PADRE": ErrorPolicy(code="E_ATTIVITA_KIT_SENZA_PADRE", http_status=409, ui_action="show_error_banner", user_message="Componente di kit senza articolo padre: correggere il documento di origine."),
+        "E_KIT_QUANTITA_DISOMOGENEE": ErrorPolicy(code="E_KIT_QUANTITA_DISOMOGENEE", http_status=409, ui_action="show_error_banner", user_message="Componenti dello stesso kit con quantita diverse: la fattura non e' rappresentabile."),
+        # Difetto di programmazione, non condizione di dominio: 500.
+        "E_BATCH_ARRAY_DISALLINEATI": ErrorPolicy(code="E_BATCH_ARRAY_DISALLINEATI", http_status=500, ui_action="show_error_banner", user_message="Errore interno nella generazione delle righe."),
         # ── Autenticazione ──
         "E_AUTHENTICATION_FAILED": ErrorPolicy(code="E_AUTHENTICATION_FAILED", http_status=401, ui_action="show_error_banner", user_message="Autenticazione fallita."),
         "E_NOT_AUTHENTICATED": ErrorPolicy(code="E_NOT_AUTHENTICATED", http_status=401, ui_action="show_error_banner", user_message="Non autenticato."),
