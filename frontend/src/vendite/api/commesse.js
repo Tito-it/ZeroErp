@@ -96,6 +96,19 @@ export function variazionePrezzoAttivita(commessaId, attId, { prezzo, motivo }) 
   )
 }
 
+// POST annullamento di una riga MANUALE (onere) caricata per errore. Non
+// cancella nulla: porta `stato_emissione` ad ANNULLATA, valore che tutte le
+// porte verso fattura e cockpit gia' filtrano. `motivo` obbligatorio lato BE e
+// lato DB (l'unica traccia del PERCHE' e' l'evento di log). Gate azione di
+// processo `carica_voce_manuale`, lo stesso della porta oneri.
+export function annullaRigaCommessa(commessaId, attId, { motivo }) {
+  return api.post(
+    `${BASE}/${commessaId}/attivita/${attId}/annulla/`,
+    { motivo },
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
 // POST sblocco prezzo (N7-sblocco): rimuove il blocco e ricalcola dal resolver.
 // `motivo` obbligatorio lato BE (fn_sblocca_prezzo → _parse_motivo): senza,
 // l'endpoint risponde 400 «Motivo obbligatorio».

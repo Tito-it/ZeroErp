@@ -12,15 +12,22 @@ class PipelineStepLogMeta(TypedDict):
     dry_run: bool
 
 
+# Chiave di raggruppamento delle attivita' fatturabili in riga di fattura.
+# Serializzata in `fatture_righe.meta.group_key` come traccia dell'aggregazione.
+# `prezzo_unitario` e' una STRINGA canonica e non un float: il prezzo e' cio' che
+# rende l'aggregazione un'identita' esatta (somma(qi*p) = p*somma(qi)), e
+# raggruppare su un float la renderebbe approssimata.
+# `visibilita_componenti` e' uscita dal modello il 2026-07-28: non era la regola
+# di esposizione dei kit (quella e' `articoli_componenti.esposto_in_fattura`) e
+# non aveva alcun consumatore vivo.
 class GroupAttivitaKey(TypedDict):
-    articolo_id: int
+    articolo_id: str  # uuid (catalogo.articoli.id)
     dest_billing_account_id: int
     uom_id: int | None
-    prezzo_unitario: float | None
+    prezzo_unitario: str | None
     iva_id: int | None
     competenza_dal: str | None
     competenza_al: str | None
-    visibilita_componenti: str
     calcolo_qta_padre: str
     arrotondamento_importi_dec: int
     arrotondamento_quantita_dec: int

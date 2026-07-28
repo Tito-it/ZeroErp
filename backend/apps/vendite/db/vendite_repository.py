@@ -1606,14 +1606,36 @@ class VenditeRepository:
             return row_to_dict(cursor)
 
     # Scopo: Righe fattura con decodifiche articolo/uom/iva per il context
-    #        builder. Espone gli importi di riga già mantenuti dal DB
-    #        (imponibile/imposta/totale) + `iva_natura` per le righe non
-    #        imponibili. Ordine stabile per riga_nr. Lettura pura.
+    #        builder. Espone i nomi di CONTRATTO condivisi con ordini/DDT/
+    #        preventivi (`quantita`, `importo_riga`), non i nomi di colonna DB:
+    #        i template documento sono uniformi fra tipi documento.
+    #        `importo_riga` è mantenuto dal DB — trigger `a20_importo` su
+    #        `vendite.fatture_righe` (brief-fix-importi-riga-fattura-zero §4.1,
+    #        requisito D1): fino al 2026-07-28 nessuno lo scriveva e ogni
+    #        fattura valeva 0,00.
+    #        `imposta_riga`/`totale_riga` NON esistono più (§4.3, D1-ter):
+    #        l'imposta di riga non è un concetto del modello italiano e l'IVA è
+    #        governata per aggregato in `fatture_riepiloghi_iva`.
+    #        FONTE: `vendite.vw_fattura_righe_esposte`, NON la tabella. È la
+    #        rappresentazione unica del documento (regola R17): PDF, XML SDI e
+    #        portale devono mostrare lo stesso dettaglio, altrimenti due uscite
+    #        dello stesso documento raccontano cose diverse. La vista risolve i
+    #        kit — una riga `KIT_PADRE` con il totale, sotto i soli componenti
+    #        con `kit_esposto_in_fattura`; sulle fatture senza kit è un
+    #        passante. È l'unica regola che il DB non può presidiare da solo:
+    #        il presidio è questa query.
+    #        `tipo_riga` (NORMALE/KIT_PADRE/KIT_COMPONENTE) e `livello` (0/1)
+    #        servono al template per rendere la gerarchia; `id` è NULL sulle
+    #        righe KIT_PADRE, che non esistono in tabella.
+    #        Ordine per `ordinamento` e non per `riga_nr`: è la colonna che
+    #        tiene padre e componenti nella sequenza giusta.
     def list_fattura_righe(self, fattura_id: int) -> list[dict[str, Any]]:
         sql = """
             SELECT
-                r.id,
+                r.fatture_righe_id  AS id,
                 r.fattura_id,
+                r.tipo_riga,
+                r.livello,
                 r.riga_nr,
                 r.articolo_id,
                 a.codice            AS articolo_codice,
@@ -1621,7 +1643,7 @@ class VenditeRepository:
                 r.descrizione,
                 r.uom_id,
                 um.codice           AS uom_codice,
-                r.qta,
+                r.qta               AS quantita,
                 r.prezzo_unitario,
                 r.sconto_percentuale,
                 r.iva_id,
@@ -1629,15 +1651,13 @@ class VenditeRepository:
                 iva.descrizione     AS iva_descrizione,
                 iva.aliquota_iva    AS iva_aliquota,
                 r.iva_natura,
-                r.imponibile_riga,
-                r.imposta_riga,
-                r.totale_riga
-              FROM vendite.fatture_righe r
+                r.imponibile        AS importo_riga
+              FROM vendite.vw_fattura_righe_esposte r
               LEFT JOIN catalogo.articoli a      ON a.id  = r.articolo_id
               LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_id
               LEFT JOIN config.iva iva           ON iva.id = r.iva_id
              WHERE r.fattura_id = %s
-             ORDER BY r.riga_nr, r.id
+             ORDER BY r.ordinamento, r.livello, r.riga_nr
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(fattura_id)])

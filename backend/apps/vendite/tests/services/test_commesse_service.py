@@ -60,6 +60,17 @@ CommessaPortaOneriServiceTests (porta oneri §A1):
 - test_aggiungi_onere_istanza_esplicita_incoerente_raises
 - test_aggiungi_onere_payload_invalido / _commessa_not_found
 - test_aggiungi_onere_traduce_errori_madre / _errore_db_sconosciuto_fallback
+
+CommessaAnnullaRigaManualeServiceTests (annullamento riga manuale §5):
+- test_annulla_ok_delega_alla_madre
+- test_annulla_riga_fuori_scope_o_inesistente_404
+- test_annulla_commessa_non_modificabile_rifiutata
+- test_annulla_riga_gia_annullata_codice_dedicato
+- test_annulla_riga_da_push_non_manuale
+- test_annulla_riga_gia_emessa
+- test_annulla_ordine_guard_identita_prima_di_stato
+- test_annulla_senza_motivo / _motivo_troppo_lungo
+- test_annulla_traduce_errori_madre / _errore_db_sconosciuto_fallback
 """
 
 from decimal import Decimal
@@ -802,6 +813,12 @@ class CommesseServiceTests(TestCase):
         "uom_id": 1,
         "data_attivita": "2026-04-01",
         "meta": None,
+        # Le tre colonne aggiunte alla proiezione per i guard dell'annullamento
+        # riga manuale (G3): la fixture deve rispettare la forma REALE del
+        # contratto, altrimenti insegna una forma che non esiste.
+        "stato_emissione": "NON_EMESSA",
+        "sorgente_tipo_id": None,
+        "tipo_movimento": "ONERE",
         "commessa_stato": "BOZZA",
         "commessa_modificabile": True,
         "af_id": 601,
@@ -1421,4 +1438,216 @@ class CommessaPortaOneriServiceTests(TestCase):
                 importo="10",
                 tipo_doc_fiscale_id=7,
             )
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+
+
+class CommessaAnnullaRigaManualeServiceTests(TestCase):
+    """Annullamento riga MANUALE di commessa (brief-annullamento-righe-manuali-
+    commessa §5).
+
+    La riga non si cancella: passa ad `ANNULLATA`, valore gia' filtrato da tutte
+    le porte verso fattura e cockpit. Il perimetro Python e' lo scoping
+    riga<->commessa, il guard di stato commessa, i tre guard di ammissibilita'
+    anticipati e la traduzione degli errori della madre. Le due scritture
+    (UPDATE + evento di log) e la difesa contro le corse (FOR UPDATE) vivono
+    nella madre DB e NON sono testate qui.
+    """
+
+    _ATT = {
+        "id": 501,
+        "commessa_id": 10,
+        "stato_emissione": "NON_EMESSA",
+        "sorgente_tipo_id": None,
+        "tipo_movimento": "ONERE",
+        "prezzo_snapshot": "500.0000000000",
+        "commessa_stato": "BOZZA",
+        "commessa_modificabile": True,
+        "fattura_riga_id": None,
+    }
+
+    def _att(self, **override):
+        att = dict(self._ATT)
+        att.update(override)
+        return att
+
+    # Scopo: happy path — la madre riceve id riga e motivo normalizzato, la
+    #        risposta dichiara lo stato raggiunto.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_annulla_ok_delega_alla_madre(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import annulla_attivita_manuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_attivita_pricing.return_value = self._att()
+        repo.annulla_attivita.return_value = 501
+
+        result = annulla_attivita_manuale(10, 501, {"motivo": "  causale sbagliata  "})
+
+        self.assertEqual(result["attivita_id"], 501)
+        self.assertEqual(result["commessa_id"], 10)
+        self.assertEqual(result["stato_emissione"], "ANNULLATA")
+        repo.annulla_attivita.assert_called_once_with(
+            attivita_id=501, motivo="causale sbagliata",
+        )
+
+    # Scopo: G4 — lo scoping riga<->commessa passa dalla WHERE su ENTRAMBI gli
+    #        id: id di un'altra commessa (o inesistente) → 404, mai
+    #        l'annullamento della riga di un altro cliente. La RLS non copre il
+    #        buco (policy ENABLE ... NO FORCE, l'app gira come owner).
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_annulla_riga_fuori_scope_o_inesistente_404(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import annulla_attivita_manuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_attivita_pricing.return_value = None
+
+        with self.assertRaises(ServiceError) as ctx:
+            annulla_attivita_manuale(10, 501, {"motivo": "errore"})
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_ATTIVITA_NOT_FOUND")
+        repo.get_attivita_pricing.assert_called_once_with(10, 501)
+        repo.annulla_attivita.assert_not_called()
+
+    # Scopo: G5 — annullare una riga *e'* modificare la commessa: stesso guard
+    #        data-driven (stati_commessa.modificabile) delle azioni prezzo.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_annulla_commessa_non_modificabile_rifiutata(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import annulla_attivita_manuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_attivita_pricing.return_value = self._att(
+            commessa_stato="CHIUSA", commessa_modificabile=False,
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            annulla_attivita_manuale(10, 501, {"motivo": "errore"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA")
+        repo.annulla_attivita.assert_not_called()
+
+    # Scopo: G1 — riannullare NON cade su «gia' emessa» (messaggio falso, manda
+    #        a cercare una fattura che non esiste): codice dedicato.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_annulla_riga_gia_annullata_codice_dedicato(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import annulla_attivita_manuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_attivita_pricing.return_value = self._att(stato_emissione="ANNULLATA")
+
+        with self.assertRaises(ServiceError) as ctx:
+            annulla_attivita_manuale(10, 501, {"motivo": "errore"})
+        self.assertEqual(ctx.exception.code, "E_RIGA_COMMESSA_GIA_ANNULLATA")
+        repo.annulla_attivita.assert_not_called()
+
+    # Scopo: riga da push (sourceful) → non annullabile qui, il rimedio e' a
+    #        monte sul documento.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_annulla_riga_da_push_non_manuale(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import annulla_attivita_manuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_attivita_pricing.return_value = self._att(
+            sorgente_tipo_id=3, tipo_movimento="ATTIVITA",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            annulla_attivita_manuale(10, 501, {"motivo": "errore"})
+        self.assertEqual(ctx.exception.code, "E_RIGA_COMMESSA_NON_MANUALE")
+        repo.annulla_attivita.assert_not_called()
+
+    # Scopo: riga gia' emessa → ha generato un'AF; annullarla qui la lascerebbe
+    #        orfana in viaggio verso la fattura.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_annulla_riga_gia_emessa(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import annulla_attivita_manuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_attivita_pricing.return_value = self._att(stato_emissione="EMESSA")
+
+        with self.assertRaises(ServiceError) as ctx:
+            annulla_attivita_manuale(10, 501, {"motivo": "errore"})
+        self.assertEqual(ctx.exception.code, "E_RIGA_COMMESSA_GIA_EMESSA")
+        repo.annulla_attivita.assert_not_called()
+
+    # Scopo: l'ORDINE dei guard non e' indifferente — una riga da push GIA'
+    #        EMESSA deve sentirsi dire «nasce da un documento», non «gia'
+    #        emessa»: il secondo suggerisce che, se non lo fosse, si potrebbe
+    #        annullare (falso). Stesso ordine della madre DB.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_annulla_ordine_guard_identita_prima_di_stato(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import annulla_attivita_manuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_attivita_pricing.return_value = self._att(
+            sorgente_tipo_id=3, stato_emissione="EMESSA",
+        )
+
+        with self.assertRaises(ServiceError) as ctx:
+            annulla_attivita_manuale(10, 501, {"motivo": "errore"})
+        self.assertEqual(ctx.exception.code, "E_RIGA_COMMESSA_NON_MANUALE")
+
+    # Scopo: motivo obbligatorio col codice DEDICATO (567), simmetrico alla
+    #        madre: l'annullamento e' irreversibile e l'unica traccia del
+    #        PERCHE' e' l'evento di log.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_annulla_senza_motivo(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import annulla_attivita_manuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_attivita_pricing.return_value = self._att()
+
+        for payload in ({}, {"motivo": None}, {"motivo": "   "}, {"motivo": 123}):
+            with self.subTest(payload=payload):
+                with self.assertRaises(ServiceError) as ctx:
+                    annulla_attivita_manuale(10, 501, payload)
+                self.assertEqual(
+                    ctx.exception.code, "E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO",
+                )
+        repo.annulla_attivita.assert_not_called()
+
+    # Scopo: motivo oltre il cap → stesso codice dedicato, non un 500 dal DB.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_annulla_motivo_troppo_lungo(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import annulla_attivita_manuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_attivita_pricing.return_value = self._att()
+
+        with self.assertRaises(ServiceError) as ctx:
+            annulla_attivita_manuale(10, 501, {"motivo": "x" * 501})
+        self.assertEqual(ctx.exception.code, "E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO")
+        repo.annulla_attivita.assert_not_called()
+
+    # Scopo: i guard della madre (che sotto FOR UPDATE vedono le corse che la
+    #        rilettura applicativa non vede) arrivano all'operatore col LORO
+    #        codice — altrimenti la policy 409 verrebbe scavalcata dal 400 di
+    #        fallback.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_annulla_traduce_errori_madre(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import annulla_attivita_manuale
+
+        attesi = [
+            "E_RIGA_COMMESSA_GIA_ANNULLATA",
+            "E_RIGA_COMMESSA_NON_MANUALE",
+            "E_RIGA_COMMESSA_GIA_EMESSA",
+            "E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO",
+        ]
+        for codice in attesi:
+            repo = mock_repo_cls.return_value
+            repo.get_attivita_pricing.return_value = self._att()
+            repo.annulla_attivita.side_effect = DatabaseError(f"{codice}: messaggio dal DB")
+            with self.subTest(codice=codice):
+                with self.assertRaises(ServiceError) as ctx:
+                    annulla_attivita_manuale(10, 501, {"motivo": "errore"})
+                self.assertEqual(ctx.exception.code, codice)
+
+    # Scopo: errore DB non riconosciuto → fallback di validazione, mai un 500
+    #        muto sull'operatore.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_annulla_errore_db_sconosciuto_fallback(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import annulla_attivita_manuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_attivita_pricing.return_value = self._att()
+        repo.annulla_attivita.side_effect = DatabaseError("guasto imprevisto")
+
+        with self.assertRaises(ServiceError) as ctx:
+            annulla_attivita_manuale(10, 501, {"motivo": "errore"})
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")

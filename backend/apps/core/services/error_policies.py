@@ -802,6 +802,45 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Chiusura non consentita: restano righe approvate non ancora emesse.",
         ),
+        # Annullamento riga MANUALE di commessa (guard DB 564-567,
+        # brief-annullamento-righe-manuali-commessa §4d). Quattro codici
+        # DISTINTI e non uno generico: ogni causa porta l'operatore a un'azione
+        # diversa. In particolare `GIA_ANNULLATA` esiste separato da
+        # `GIA_EMESSA` perche' dire «e` entrata nella catena di fatturazione» a
+        # chi ha semplicemente cliccato due volte e` FALSO, e lo manda a cercare
+        # una fattura che non esiste.
+        # 409 sui tre conflitti di stato (non e` un input da correggere, e` un
+        # fatto), 400 sul motivo mancante (campo del form).
+        "E_RIGA_COMMESSA_GIA_ANNULLATA": ErrorPolicy(
+            code="E_RIGA_COMMESSA_GIA_ANNULLATA",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message="La riga era gia` stata annullata.",
+        ),
+        "E_RIGA_COMMESSA_NON_MANUALE": ErrorPolicy(
+            code="E_RIGA_COMMESSA_NON_MANUALE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La riga nasce da un documento e non si annulla qui: "
+                "il rimedio e` sul documento sorgente."
+            ),
+        ),
+        "E_RIGA_COMMESSA_GIA_EMESSA": ErrorPolicy(
+            code="E_RIGA_COMMESSA_GIA_EMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Riga gia` entrata nella catena di fatturazione: "
+                "la correzione passa dalla nota di credito."
+            ),
+        ),
+        "E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO": ErrorPolicy(
+            code="E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Motivo obbligatorio per annullare la riga.",
+        ),
         # ── Pratiche ──
         "E_PRATICA_VALIDATION": ErrorPolicy(
             code="E_PRATICA_VALIDATION",
@@ -1442,6 +1481,13 @@ class ErrorPolicyRegistry:
         "E_GROUP_ATTIVITA_VALIDATION": ErrorPolicy(code="E_GROUP_ATTIVITA_VALIDATION", http_status=400, ui_action="highlight_form_fields", user_message="Parametri gruppo attivita non validi."),
         "E_GROUP_ATTIVITA_NOT_FOUND": ErrorPolicy(code="E_GROUP_ATTIVITA_NOT_FOUND", http_status=404, ui_action="show_empty_state", user_message="Gruppo attivita non trovato."),
         "E_GROUP_ATTIVITA_INVALID_DATA": ErrorPolicy(code="E_GROUP_ATTIVITA_INVALID_DATA", http_status=400, ui_action="show_error_banner", user_message="Dati gruppo attivita non validi."),
+        # ── Generazione righe fattura: kit (brief-fix-importi-riga-fattura-zero §4.7-bis) ──
+        # Dati incoerenti a monte, non input dell'utente: 409 e banner, perche' la
+        # correzione sta sul documento sorgente e non su questa schermata.
+        "E_ATTIVITA_KIT_SENZA_PADRE": ErrorPolicy(code="E_ATTIVITA_KIT_SENZA_PADRE", http_status=409, ui_action="show_error_banner", user_message="Componente di kit senza articolo padre: correggere il documento di origine."),
+        "E_KIT_QUANTITA_DISOMOGENEE": ErrorPolicy(code="E_KIT_QUANTITA_DISOMOGENEE", http_status=409, ui_action="show_error_banner", user_message="Componenti dello stesso kit con quantita diverse: la fattura non e' rappresentabile."),
+        # Difetto di programmazione, non condizione di dominio: 500.
+        "E_BATCH_ARRAY_DISALLINEATI": ErrorPolicy(code="E_BATCH_ARRAY_DISALLINEATI", http_status=500, ui_action="show_error_banner", user_message="Errore interno nella generazione delle righe."),
         # ── Autenticazione ──
         "E_AUTHENTICATION_FAILED": ErrorPolicy(code="E_AUTHENTICATION_FAILED", http_status=401, ui_action="show_error_banner", user_message="Autenticazione fallita."),
         "E_NOT_AUTHENTICATED": ErrorPolicy(code="E_NOT_AUTHENTICATED", http_status=401, ui_action="show_error_banner", user_message="Non autenticato."),

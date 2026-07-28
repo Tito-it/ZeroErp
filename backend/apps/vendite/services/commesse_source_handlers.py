@@ -40,6 +40,7 @@ from apps.vendite.db.commesse_repository import (
     CommesseRepository,
     PushableRow,
 )
+from apps.vendite.services import _kit_meta as kit_meta
 from apps.vendite.services.pricing_service import PricingService
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,9 @@ _IS_COMPOSITO_MODULE_CACHE_TTL_SECONDS = 300
 
 # Chiavi `meta` condivise tra BoMComponentExpander (scrittura) e il wiring
 # audit pricing (lettura): centralizzate per evitare drift silente sui literal.
-_META_KEY_COMPONENTE_DI = "componente_di"
+# Il contratto kit (`componente_di`, `esposto_in_fattura`, suffisso del
+# `segment_key`) sta in `_kit_meta`: e' letto anche dalla generazione righe
+# fattura, che e' l'altro capo del contratto.
 _META_KEY_ORIGINE_PREZZO = "origine_prezzo"
 
 # Valori ammessi per `commesse_attivita.origine_prezzo` (CHECK
@@ -240,9 +243,9 @@ class BoMComponentExpander:
         # Meta: preservo tutto del padre, aggiungo audit componente.
         # `componente_di` permette tracing inverso in commesse_attivita.
         nuovo_meta = dict(row.meta or {})
-        nuovo_meta["esposto_in_fattura"] = esposto_in_fattura
-        nuovo_meta[_META_KEY_COMPONENTE_DI] = str(row.articolo_id)
-        nuovo_meta["coeff_qta"] = str(coeff_qta)
+        nuovo_meta[kit_meta.META_KEY_ESPOSTO_IN_FATTURA] = esposto_in_fattura
+        nuovo_meta[kit_meta.META_KEY_COMPONENTE_DI] = str(row.articolo_id)
+        nuovo_meta[kit_meta.META_KEY_COEFF_QTA] = str(coeff_qta)
         if origine_prezzo is not None:
             nuovo_meta[_META_KEY_ORIGINE_PREZZO] = origine_prezzo
 
@@ -252,7 +255,9 @@ class BoMComponentExpander:
             uom_id=componente_uom_id,
             quantita=quantita_componente,
             prezzo_snapshot=componente_prezzo,
-            segment_key=f"{row.segment_key}#CMP:{componente_id}",
+            segment_key=kit_meta.segment_key_componente(
+                row.segment_key, componente_id
+            ),
             meta=nuovo_meta,
         )
 
@@ -569,7 +574,7 @@ class BaseSourceHandler(ABC):
             return {}
 
         # Contesto BUNDLE per i componenti BoM: il padre e' tracciato in meta.
-        padre_contesto = (row.meta or {}).get(_META_KEY_COMPONENTE_DI)
+        padre_contesto = (row.meta or {}).get(kit_meta.META_KEY_COMPONENTE_DI)
         cache_key = (
             str(row.articolo_id),
             row.uom_id,

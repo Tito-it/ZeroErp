@@ -15,6 +15,7 @@ Funzioni esposte:
 - approva_commessa_attivita — approvazione righe di una commessa (write, A-1)
 - approva_attivita_competenza — approvazione massiva per mese (write, A-2)
 - aggiungi_onere_commessa   — porta oneri: riga di puro valore (write)
+- annulla_attivita_manuale  — annullamento di una riga manuale di commessa (write)
 """
 
 from datetime import date, datetime, timezone
@@ -963,12 +964,20 @@ def _parse_prezzo(payload: dict[str, Any], *, function_name: str) -> Decimal:
     return prezzo
 
 
-# Scopo: Helper — parsing motivo obbligatorio dal payload.
-def _parse_motivo(payload: dict[str, Any], *, function_name: str) -> str:
+# Scopo: Helper — parsing motivo obbligatorio dal payload. `code` parametrico
+#        perche' l'annullamento riga manuale ha un codice DEDICATO
+#        (`E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO`, 567) simmetrico a quello della
+#        madre DB: il messaggio deve essere lo stesso da qualunque lato arrivi.
+def _parse_motivo(
+    payload: dict[str, Any],
+    *,
+    function_name: str,
+    code: str = "E_COMMESSA_VALIDATION",
+) -> str:
     motivo = payload.get("motivo")
     ErrorManager.require(
         motivo and isinstance(motivo, str) and motivo.strip(),
-        code="E_COMMESSA_VALIDATION",
+        code=code,
         message="Motivo obbligatorio.",
         detail="Il campo motivo e` obbligatorio per questa operazione.",
         context={"field": "motivo"},
@@ -979,7 +988,7 @@ def _parse_motivo(payload: dict[str, Any], *, function_name: str) -> str:
     motivo = motivo.strip()
     ErrorManager.require(
         len(motivo) <= _MOTIVO_MAX_LENGTH,
-        code="E_COMMESSA_VALIDATION",
+        code=code,
         message="Motivo troppo lungo.",
         detail=f"Massimo {_MOTIVO_MAX_LENGTH} caratteri.",
         context={"field": "motivo", "length": len(motivo)},
@@ -1199,5 +1208,148 @@ def fn_sblocca_prezzo(
         "prezzo_bloccato_precedente": str(att["prezzo_snapshot"]),
         "prezzo_ricalcolato": nuovo_prezzo,
         "prezzo_bloccato": False,
+        "motivo": motivo,
+    }
+
+
+# --- Annullamento riga MANUALE di commessa ---
+# (brief-annullamento-righe-manuali-commessa §5)
+#
+# La riga non si cancella: passa a `stato_emissione='ANNULLATA'`, valore che
+# TUTTE le porte verso la fattura e verso il cockpit gia' filtrano
+# (fn_emit_attivita_fatturabili_da_commessa, fn_list_commesse_emittibili,
+# fn_list_emittibili_lane, vw_dash_competenza_attivita/_gruppi,
+# vw_dash_fatturazione_commesse). E' il libro giornale: annullare senza
+# cancellare, con il motivo tracciato nell'evento di log.
+
+_STATO_EMISSIONE_ANNULLATA = "ANNULLATA"
+_STATO_EMISSIONE_NON_EMESSA = "NON_EMESSA"
+
+# Marker P0001 → codice applicativo per gli errori della madre DB (564-567).
+# I guard applicativi sotto arrivano prima nel caso normale, ma la madre resta
+# l'ultima parola: sotto `FOR UPDATE` intercetta le corse (due annullamenti
+# simultanei, un'emissione concorrente) che la rilettura applicativa non vede.
+_ANNULLA_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("E_RIGA_COMMESSA_GIA_ANNULLATA", ("E_RIGA_COMMESSA_GIA_ANNULLATA",)),
+    ("E_RIGA_COMMESSA_NON_MANUALE", ("E_RIGA_COMMESSA_NON_MANUALE",)),
+    ("E_RIGA_COMMESSA_GIA_EMESSA", ("E_RIGA_COMMESSA_GIA_EMESSA",)),
+    ("E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO", ("E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO",)),
+)
+
+
+# Scopo: Helper — i tre guard di ammissibilita' dell'annullamento, nello STESSO
+#        ordine della madre DB (§4b del brief). L'ordine non e' indifferente:
+#        «non manuale» viene PRIMA di «gia' emessa» perche' e' l'IDENTITA' della
+#        riga, non una sua condizione — dire «gia' emessa» a una riga da push
+#        suggerisce che, se non lo fosse, si potrebbe annullare (falso: il
+#        rimedio e' a monte, sul documento). «Gia' annullata» resta in testa
+#        perche' una riga ANNULLATA e' per costruzione manuale e non toglie il
+#        posto a una diagnosi migliore.
+def _assert_annullabile(
+    att: dict[str, Any],
+    *,
+    function_name: str,
+) -> None:
+    stato_emissione = str(att.get("stato_emissione") or "")
+    ErrorManager.require(
+        stato_emissione != _STATO_EMISSIONE_ANNULLATA,
+        code="E_RIGA_COMMESSA_GIA_ANNULLATA",
+        message="La riga e` gia` annullata.",
+        detail="L`operazione era gia` stata fatta: nessun secondo annullamento.",
+        context={"attivita_id": att.get("id"), "stato_emissione": stato_emissione},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    # Sourceless = non nata da un documento = manuale (fn_build_gruppo_
+    # fatturabile_key definisce cosi' il gruppo `MAN:<commessa_id>`). Il CHECK
+    # chk_commesse_attivita_sorgente_pair garantisce la coerenza della coppia.
+    ErrorManager.require(
+        att.get("sorgente_tipo_id") is None,
+        code="E_RIGA_COMMESSA_NON_MANUALE",
+        message="La riga nasce da un documento: il rimedio e` a monte.",
+        detail=(
+            "Solo le righe manuali (sourceless) si annullano qui. Questa riga ha "
+            f"sorgente_tipo_id={att.get('sorgente_tipo_id')}: intervenire sul "
+            "documento sorgente."
+        ),
+        context={
+            "attivita_id": att.get("id"),
+            "sorgente_tipo_id": att.get("sorgente_tipo_id"),
+        },
+        function_name=function_name,
+        log_to_db=False,
+    )
+    # `<> NON_EMESSA` e non `= EMESSA`: se domani il CHECK ammettesse un quarto
+    # stato, il default resta il rifiuto (fail-closed, come la madre).
+    ErrorManager.require(
+        stato_emissione == _STATO_EMISSIONE_NON_EMESSA,
+        code="E_RIGA_COMMESSA_GIA_EMESSA",
+        message="Riga gia` entrata nella catena di fatturazione.",
+        detail=(
+            f"stato_emissione={stato_emissione}: la riga ha gia` generato "
+            "un`attivita` fatturabile. Annullarla qui lascerebbe un`AF orfana; "
+            "la correzione di un documento gia` emesso e` la nota di credito."
+        ),
+        context={"attivita_id": att.get("id"), "stato_emissione": stato_emissione},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+
+# Scopo: Annulla una riga MANUALE di commessa caricata per errore (causale
+#        sbagliata, importo sbagliato, doppio click): la riga resta, con importo
+#        e storia, ma esce dal giro — `stato_emissione='ANNULLATA'` e' gia'
+#        filtrato da tutte le porte verso fattura e cockpit.
+#        Perimetro: righe manuali (sourceless) NON ancora emesse, su commessa
+#        ancora modificabile. Delegato alla madre DB `fn_annulla_commessa_
+#        attivita` (UPDATE + evento di log in una SELECT atomica); qui vivono lo
+#        scoping riga<->commessa, il guard di stato commessa e i guard di
+#        ammissibilita' anticipati, per rispondere 4xx parlanti al posto di una
+#        traduzione di RAISE. Risultato: {commessa_id, attivita_id, stato_emissione, motivo}.
+#        Il presidio di autorizzazione (`carica_voce_manuale`) e' sulla view.
+def annulla_attivita_manuale(
+    commessa_id: int,
+    attivita_id: int,
+    payload: dict[str, Any],
+) -> dict[str, object]:
+    function_name = "vendite.commesse_service.annulla_attivita_manuale"
+
+    # Scoping riga<->commessa: la `WHERE` di get_attivita_pricing filtra su
+    # ENTRAMBI gli id. Senza, il `commessa_id` dell'URL sarebbe decorativo e si
+    # annullerebbe la riga di un altro cliente indovinando un intero — la RLS
+    # non copre il buco (policy `ENABLE ... NO FORCE`, l'app gira come owner).
+    att = _get_attivita_pricing_or_raise(commessa_id, attivita_id, function_name=function_name)
+    # Annullare una riga *e'* modificare la commessa: stesso guard data-driven
+    # (`stati_commessa.modificabile`) delle tre azioni prezzo sorelle. Resta nel
+    # BE e non scende nella madre: il gemello `fn_aggiungi_onere_commessa` non
+    # fa quel lookup e qui non si apre una dipendenza che la porta non ha.
+    _assert_commessa_modificabile(att, function_name=function_name)
+    _assert_annullabile(att, function_name=function_name)
+
+    motivo = _parse_motivo(
+        payload,
+        function_name=function_name,
+        code="E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO",
+    )
+
+    repo = CommesseRepository()
+    try:
+        repo.annulla_attivita(attivita_id=attivita_id, motivo=motivo)
+    except DatabaseError as exc:
+        # I guard della madre sono errori d'uso (o corse perse): vanno
+        # all'operatore col loro codice, non come E_DATABASE generico.
+        ErrorManager.raise_from_database_error(
+            exc,
+            known_markers=_ANNULLA_DB_ERROR_MARKERS,
+            fallback_code="E_COMMESSA_VALIDATION",
+            message="Riga non annullata: operazione non ammessa.",
+            context={"commessa_id": commessa_id, "attivita_id": attivita_id},
+            function_name=function_name,
+        )
+
+    return {
+        "commessa_id": commessa_id,
+        "attivita_id": attivita_id,
+        "stato_emissione": _STATO_EMISSIONE_ANNULLATA,
         "motivo": motivo,
     }

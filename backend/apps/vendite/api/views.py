@@ -32,6 +32,7 @@ from apps.vendite.services._fatturazione_job_helpers import (
 )
 from apps.vendite.services.commesse_service import (
     aggiungi_onere_commessa,
+    annulla_attivita_manuale,
     approva_attivita_competenza,
     approva_commessa_attivita,
     cambia_stato_commessa,
@@ -1489,6 +1490,12 @@ _SBLOCCA_PREZZO_REQUEST = inline_serializer(
         "motivo": serializers.CharField(required=True),
     },
 )
+_ANNULLA_RIGA_REQUEST = inline_serializer(
+    name="VenditeAnnullaRigaCommessaRequest",
+    fields={
+        "motivo": serializers.CharField(required=True),
+    },
+)
 
 
 class ApiCommessaAttivitaRiallineaPrezzo(DomainAPIView):
@@ -1561,4 +1568,56 @@ class ApiCommessaAttivitaSbloccaPrezzo(DomainAPIView):
         return handle_post_json(
             request,
             handler=lambda payload: fn_sblocca_prezzo(commessa_id, att_id, payload),
+        )
+
+
+class ApiCommessaAttivitaAnnulla(DomainAPIView):
+    """Annulla una riga MANUALE di commessa caricata per errore
+    (brief-annullamento-righe-manuali-commessa §5). Non cancella: porta
+    `stato_emissione` ad `ANNULLATA` — valore che tutte le porte verso fattura e
+    cockpit gia' filtrano — e traccia il motivo nell'evento di log.
+
+    Gate `carica_voce_manuale` (decisione Tid §5): chi puo' caricare una voce
+    manuale puo' annullarla, nessun permesso dedicato. Perimetro chiuso dai
+    guard del service + della madre DB: righe sourceless, non ancora emesse,
+    su commessa modificabile."""
+
+    area_funzionale = "vendite"
+    post_permission = "carica_voce_manuale"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Chiave idempotenza obbligatoria per endpoint write.",
+            )
+        ],
+        request=_ANNULLA_RIGA_REQUEST,
+        responses={
+            200: inline_serializer(
+                name="VenditeAnnullaRigaCommessaResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="VenditeAnnullaRigaCommessaData",
+                        fields={
+                            "commessa_id": serializers.IntegerField(),
+                            "attivita_id": serializers.IntegerField(),
+                            "stato_emissione": serializers.CharField(),
+                            "motivo": serializers.CharField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Annulla una riga manuale (onere) non ancora emessa della commessa.
+    def post(self, request: Request, commessa_id: int, att_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: annulla_attivita_manuale(commessa_id, att_id, payload),
+            require_idempotency_key=True,
         )

@@ -133,13 +133,25 @@ class BuildContextFatturaTests(SimpleTestCase):
         self.assertEqual(ctx["_meta"]["auth_user_id"], 9)
         self.assertEqual(ctx["_meta"]["locale"], "it-IT")
 
-    # 1. Le righe del repo passano intatte nel context.
+    # 1. Le righe del repo passano intatte nel context, con i nomi di CONTRATTO
+    #    condivisi con ordini/DDT/preventivi (`quantita`, `importo_riga`).
+    #    Fino al 2026-07-28 il repo esponeva `qta`/`imponibile_riga` mentre il
+    #    template leggeva `quantita`/`importo_riga`: `.get()` disinnesca
+    #    StrictUndefined, quindi il PDF stampava `-` senza alcun errore.
     def test_build_context_righe_propagate(self) -> None:
         repo = MagicMock()
         repo.get_fattura_testata.return_value = _testata_row()
         repo.list_fattura_righe.return_value = [
-            {"id": 1, "articolo_descrizione": "Art A", "qta": "2"},
-            {"id": 2, "articolo_descrizione": "Art B", "qta": "1"},
+            {
+                "id": 1, "articolo_descrizione": "Art A",
+                "quantita": "2", "prezzo_unitario": "10.00",
+                "sconto_percentuale": "0.00", "importo_riga": "20.00",
+            },
+            {
+                "id": 2, "articolo_descrizione": "Art B",
+                "quantita": "1", "prezzo_unitario": "5.00",
+                "sconto_percentuale": "0.00", "importo_riga": "5.00",
+            },
         ]
         repo.list_fattura_riepilogo_iva.return_value = []
 
@@ -148,6 +160,30 @@ class BuildContextFatturaTests(SimpleTestCase):
         self.assertEqual(len(ctx["righe"]), 2)
         self.assertEqual(ctx["righe"][0]["articolo_descrizione"], "Art A")
         repo.list_fattura_righe.assert_called_once_with(42)
+
+    # 1-bis. Il template legge queste chiavi con `.get()`: se cambiano nome non
+    #        c'e' errore, c'e' un trattino. Il contratto va asserito qui.
+    def test_build_context_righe_chiavi_di_contratto(self) -> None:
+        repo = MagicMock()
+        repo.get_fattura_testata.return_value = _testata_row()
+        repo.list_fattura_righe.return_value = [
+            {
+                "id": 1, "riga_nr": 1, "descrizione": "Riga",
+                "uom_codice": "PZ", "iva_codice": "22",
+                "quantita": "2", "prezzo_unitario": "10.00",
+                "sconto_percentuale": "0.00", "importo_riga": "20.00",
+            },
+        ]
+        repo.list_fattura_riepilogo_iva.return_value = []
+
+        riga = FatturaDocumentContextBuilder(repo=repo).build_context(42)["righe"][0]
+
+        for chiave in ("quantita", "prezzo_unitario", "sconto_percentuale", "importo_riga"):
+            self.assertIn(chiave, riga, f"chiave di contratto mancante: {chiave}")
+        # Rimosse dal modello il 2026-07-28 (D1-ter): l'imposta di riga non e'
+        # un concetto italiano e l'IVA e' governata per aggregato.
+        for chiave in ("imposta_riga", "totale_riga"):
+            self.assertNotIn(chiave, riga)
 
     # 2. Il riepilogo IVA (tabella reale) passa intatto nel context.
     def test_build_context_riepilogo_iva_propagate(self) -> None:
