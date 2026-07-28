@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R2 — policy rls_fatture_righe_ba_ownership su vendite.fatture_righe.
+#   (brief RLS satelliti fattura §5; slice 20260729-01..06)
+#
+# E' LA META' CHE MANCAVA. In tutto lo schema vendite le policy ba_ownership
+# sono oggi esattamente due — vendite.fatture e vendite.fatture_scadenze, cioe'
+# TESTATA + PIANO RATE. Il team DB aveva pre-armato la RLS per il portale sulle
+# tabelle che si aspettava il portale leggesse, e si e' fermato prima del
+# CONTENUTO del documento. Ma una fattura a video e' fatta di righe: e' la prima
+# cosa che un cliente apre.
+#
+# FOR SELECT, NON FOR ALL — ed e' deliberato, non una svista di simmetria col
+# changeset gemello 20260729-01. Un cliente del portale LEGGE la propria
+# fattura: non deve poter inserire, modificare o cancellare una riga nemmeno
+# della fattura sua. La differenza e' identica a quella gia' in atto su
+# fatture_scadenze (ef_whitelist FOR ALL, ba_ownership FOR SELECT) e va
+# preservata: allineare le due per "coerenza" aprirebbe la scrittura a una veste
+# esterna.
+#
+# GATE E IDENTITA'. Il gate e' CLIENTE_PORTALE e la chiave e'
+# app.current_identita_id (bigint), NON app.current_user_id (integer) come nel
+# ramo operatore: sono due assi di identita' diversi. SHOP_CUSTOMER resta fuori
+# — le fatture B2B non sono ricevute shop (decisione 20260420-08).
+#
+# PERCHE' ARMARLA ORA CHE IL PORTALE NON C'E'. Gli endpoint fatture del portale
+# sono dichiarati come futuri in apps/portale/api/views.py. Arrivare dopo di
+# loro significherebbe correggere un buco di sicurezza su codice vivo; arrivare
+# prima significa che il primo endpoint nasce gia' dentro il recinto.
+# ⚠️ Il rovescio, da tenere presente: una policy pre-armata e mai esercitata
+# sembra funzionare finche' non la si prova. Per questo la slice porta un pgTAP
+# FUNZIONALE (20260729-06) e non solo strutturale: chi scrivera' il portale si
+# fidera' di questa policy, e la fiducia va guadagnata adesso.
+#
+# INVARIANTE: vale identica a quella scritta nell'header del 20260729-01 — la
+# funzione di scope deve restare quella della TESTATA. Qui e'
+# fn_scope_ba_ownership_via_fattura, la stessa che protegge vendite.fatture.
+#
+# Dipendenze: vendite.fatture_righe.fattura_id (NOT NULL),
+#   script.fn_scope_ba_ownership_via_fattura (STABLE, inlineable).
+# Verifica: db/pgtap/rls/test-rls-fatture-satelliti-functional.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260729-02-create-policy-rls-fatture-righe-ba-ownership-mctit.yaml
+
+  - changeSet:
+      id: 20260729-02-create-policy-rls-fatture-righe-ba-ownership
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Policy rls_fatture_righe_ba_ownership su vendite.fatture_righe
+        (FOR SELECT, gate CLIENTE_PORTALE, scope via
+        fn_scope_ba_ownership_via_fattura). Mirror di
+        rls_fatture_scadenze_ba_ownership. Nessun ENABLE qui: 20260729-05.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_righe
+                columnName: fattura_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                   WHERE n.nspname='script' AND p.proname='fn_scope_ba_ownership_via_fattura';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_righe_ba_ownership ON vendite.fatture_righe;
+
+              CREATE POLICY rls_fatture_righe_ba_ownership ON vendite.fatture_righe
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_ba_ownership_via_fattura(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              fattura_id
+                          )
+                  );
+
+              COMMENT ON POLICY rls_fatture_righe_ba_ownership ON vendite.fatture_righe IS
+                  'RLS portale: CLIENTE_PORTALE vede le righe delle PROPRIE fatture B2B '
+                  '(fn_scope_ba_ownership_via_fattura, stesso scope della testata). '
+                  'FOR SELECT e non FOR ALL: deliberato — un cliente legge la propria '
+                  'fattura, non la scrive, nemmeno la sua. SHOP_CUSTOMER escluso (le '
+                  'fatture B2B non sono ricevute shop, 20260420-08). Pre-armata per gli '
+                  'endpoint portale ancora da scrivere: e'' il contenuto del documento, '
+                  'la meta'' che mancava accanto a fatture + fatture_scadenze. '
+                  'rev 2026-07-29.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_righe_ba_ownership ON vendite.fatture_righe;
