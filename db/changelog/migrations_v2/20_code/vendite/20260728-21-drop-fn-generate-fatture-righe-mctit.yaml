@@ -1,0 +1,181 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ritiro del generatore righe fattura SQL, non in esercizio
+#   (brief-db-ritiro-generatore-righe-fattura-sql.md §5 passo 1)
+#
+# COSA SI RIMUOVE:
+#     vendite.fn_generate_fatture_righe(bigint, boolean)
+#     vendite.fn_group_attivita_fatturabili(bigint)
+#
+# PERCHE'. Il task `generate_fatture_righe` della pipeline NON esegue queste
+#   funzioni: dal 2026-02-03 (commit ece04a5ff, «Riscritto funzioni sql
+#   fatturazione in Python») il percorso vivo e'
+#   apps/vendite/services/fatture_righe_service.py, chiamato da
+#   pipeline_step_executor.py:454. E' l'unica eccezione fra i nove task che
+#   hanno una funzione SQL — tutti gli altri passano davvero dal DB.
+#
+#   Le due funzioni sono quindi un RESIDUO che sembra implementazione. Non e'
+#   un'ipotesi: il 2026-07-28 i changeset -12 (aggregazione D4) e -15 (snapshot
+#   kit D5) sono stati scritti, testati e applicati QUI, cioe' su codice che
+#   nessuno esegue. Il requisito era giusto, l'oggetto no — e non c'e' stato
+#   alcun sintomo, perche' il trigger dell'importo (20260728-09) funziona per
+#   qualunque scrittore e le fatture risultavano corrette lo stesso.
+#   Una giornata di lavoro DB persa contro un oggetto morto.
+#
+#   La frase che lo ha reso possibile e' nel manuale backend di febbraio: «la
+#   funzione SQL puo' restare per compatibilita' storica/transitoria». E' stata
+#   messa alla prova e ha fallito. Si rimuove l'oggetto, non si aggiunge un
+#   secondo avviso.
+#
+# EVIDENZE DI NON-USO raccolte prima di decidere:
+#   * nessun chiamante nel DB: cercate in tutti i prosrc dello schema. L'unico
+#     riscontro e' trgfn_fatture_righe_importo, che le NOMINA in due commenti
+#     `--` storici (chi non scriveva imponibile_riga a febbraio) e non le chiama;
+#   * fn_group_attivita_fatturabili aveva un solo chiamante reale, la gemella
+#     qui sopra: ritirata quella, resta a zero;
+#   * il registro Python ALLOWED_TASK_FUNCTIONS (pipeline_repository.py:148) le
+#     nomina ma e' inerte: nessuna configurazione di pipeline valorizza la chiave
+#     `fn`, ne' sul DB vivo ne' nel seed (fatturazione_pipeline.csv,
+#     pipeline_task_registry*.csv), quindi il guard non scatta mai. Verificato su
+#     entrambi i piani perche' un DB di CI si costruisce dal seed, non da dev;
+#   * frontend: nessun riferimento, mai avuto.
+#
+# ⚠️ LE DUE FUNZIONI INSIEME, MA NON PER UNA DIPENDENZA. Vanno rimosse nello
+#   stesso changeset perche' non ha senso lasciare uno stato intermedio in cui la
+#   gemella sopravvive senza chiamanti — e' lo stesso meccanismo che ha tenuto in
+#   vita il residuo da febbraio. Non perche' il motore lo imponga: PostgreSQL NON
+#   registra in pg_depend le chiamate fra funzioni plpgsql (il corpo e' una
+#   stringa risolta a runtime), quindi droppare prima la chiamata RIUSCIREBBE
+#   comunque. Entrambe sono plpgsql. Nessun CASCADE: se qualcosa dipendesse
+#   davvero da loro e' giusto che il changeset si fermi.
+#
+# EFFETTO SUI TEST, dichiarato: db/pgtap/vendite/test-porta-oneri-giro-completo-v1.sql
+#   invocava fn_generate_fatture_righe e passa da plan(12) a plan(9) nello stesso
+#   commit. Le 3 asserzioni rimosse erano verdi su codice non eseguito — non si
+#   perde copertura sulla fatturazione, si prende atto di non averla mai avuta su
+#   quel tratto. La copertura vera va costruita come smoke sul percorso Python
+#   (§5 passo 5 del brief, lavoro BE, non blocca questo changeset).
+#
+# NON SI TOCCA fn_get_or_create_fattura_header: resta in esercizio, la chiama il
+#   servizio Python via batch_get_or_create_fattura_headers.
+#
+# ROLLBACK: non ricostruisce i corpi (sono lunghi e gia' versionati). Chi deve
+#   tornare indietro riapplica -12/-15 per la gemella e -17 per la chiave di
+#   gruppo, che sono l'ultima revisione di ciascuna. Il rollback e' quindi un
+#   no-op DICHIARATO (`SELECT 1;` con la motivazione dentro), non un dimenticato:
+#   stessa forma del 20260415-03-drop-fn-resolve-prezzo-listino-old.
+#
+# Contesto: non siamo in produzione ([[project_no_produzione_solo_sviluppo]])
+#   → breaking secco, nessuna fase di compatibilita'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260728-21-drop-fn-generate-fatture-righe-mctit.yaml
+
+  - changeSet:
+      id: 20260728-21-drop-fn-generate-fatture-righe
+      author: mctit
+      runOnChange: false
+
+      failOnError: true
+      comment: >
+        Ritira vendite.fn_generate_fatture_righe e
+        vendite.fn_group_attivita_fatturabili: residui non in esercizio dal
+        2026-02-03 (il task pipeline esegue FattureRigheService in Python).
+        Zero chiamanti nel DB. Il pgTAP che le invocava passa a plan(9) nello
+        stesso commit.
+      # ⚠️ onFail: HALT, NON MARK_RAN. Errore pagato il 2026-07-28: la prima
+      #   stesura aveva MARK_RAN, e quando la guardia non e' passata Liquibase ha
+      #   fatto esattamente cio' che gli era stato chiesto — saltare le modifiche
+      #   e SEGNARE IL CHANGESET COME ESEGUITO. Nessun errore a video, il DROP
+      #   non eseguito, e la riga in DATABASECHANGELOG: il migrate successivo lo
+      #   considera gia' fatto e non riprova. Un silenzio, cioe' il difetto che
+      #   questo changeset esiste per rimuovere.
+      #   Regola: per un cambiamento che DEVE accadere, una precondition che non
+      #   passa e' un errore da mostrare, non un caso da assorbire. MARK_RAN ha
+      #   senso solo dove il changeset e' genuinamente opzionale.
+      #
+      # ⚠️ VIA le preconditions di esistenza. La prima stesura pretendeva
+      #   expectedResult: 1 su ciascuna delle due funzioni. Non serve e fa danno:
+      #     * non serve, perche' il DROP e' IF EXISTS — su un DB dove non ci sono
+      #       (o dove il changeset gira due volte) e' gia' un no-op;
+      #     * fa danno, perche' con una firma in overload sopravvissuta il conteggio
+      #       fa 2, la guardia fallisce e — con MARK_RAN — il changeset si
+      #       auto-archivia senza aver fatto niente.
+      #   Resta la sola guardia che porta informazione: nessun altro le chiama.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # Guardia di non-uso: nessun'ALTRA funzione dello schema deve
+            # chiamarle. Si escludono le due che si stanno rimuovendo (la
+            # gemella chiama l'altra: e' proprio il caso previsto) e
+            # trgfn_fatture_righe_importo, che le nomina solo in commenti `--`
+            # storici. regexp_replace spoglia i commenti di riga prima del
+            # confronto, con flag 'n' perche' '.' non attraversi i newline:
+            # cosi' la guardia verifica una CHIAMATA, non una STRINGA.
+            # (Stesso inciampo gia' pagato dal 20260728-18.)
+            #
+            # ⚠️ DUE PRESIDI CONTRO pg_get_functiondef, entrambi necessari —
+            #   la prima stesura di questa guardia e' esplosa in faccia al
+            #   migrate del 2026-07-28 con:
+            #       ERRORE: "array_agg" e' una funzione di aggregazione
+            #
+            #   1. `prokind = 'f'`: pg_get_functiondef() SOLLEVA su aggregate
+            #      ('a') e window ('w'). Vanno escluse, non filtrate a valle.
+            #   2. `AS MATERIALIZED`: PostgreSQL NON garantisce l'ordine di
+            #      valutazione dei predicati di una WHERE. Con tutto in un solo
+            #      livello, il planner puo' valutare pg_get_functiondef(p.oid)
+            #      PRIMA del filtro su nspname/prokind — cioe' su righe che non
+            #      sarebbero mai arrivate al confronto, incluse le aggregate di
+            #      pg_catalog. Ed e' esattamente quello che ha fatto. La CTE
+            #      materializzata e' una barriera di ottimizzazione esplicita
+            #      (PG 12+): il set di candidati viene chiuso prima, e solo
+            #      allora si legge il corpo.
+            #
+            #   Il 20260728-18 non incappava in questo perche' filtrava su un
+            #   `proname` singolo e selettivo: il planner non aveva alternative.
+            #   Qui si scandisce l'intero schema, e la differenza emerge.
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  WITH candidate AS MATERIALIZED (
+                      SELECT p.oid
+                      FROM pg_proc p
+                      JOIN pg_namespace n ON n.oid = p.pronamespace
+                      WHERE n.nspname = 'vendite'
+                        AND p.prokind = 'f'
+                        AND p.proname NOT IN (
+                              'fn_generate_fatture_righe',
+                              'fn_group_attivita_fatturabili',
+                              'trgfn_fatture_righe_importo')
+                  )
+                  SELECT count(*) FROM candidate c
+                  WHERE regexp_replace(pg_get_functiondef(c.oid), '--.*', '', 'gn')
+                        ~ '(fn_generate_fatture_righe|fn_group_attivita_fatturabili)'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ordine: prima la chiamante, poi la chiamata. Non e' obbligato
+              -- (plpgsql non genera dipendenze), ma e' l'ordine che si legge.
+              -- Niente CASCADE, per scelta: un DROP che si ferma e' informazione.
+              DROP FUNCTION IF EXISTS vendite.fn_generate_fatture_righe(bigint, boolean);
+              DROP FUNCTION IF EXISTS vendite.fn_group_attivita_fatturabili(bigint);
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback non disponibile, per scelta: i corpi delle due funzioni
+              -- sono lunghi e gia' versionati altrove. Chi deve tornare indietro
+              -- riapplica i changeset che ne sono l'ultima revisione — -12/-15
+              -- per fn_generate_fatture_righe, -17 per fn_group_attivita_fatturabili
+              -- — invece di conservarne qui una copia che invecchierebbe.
+              SELECT 1;

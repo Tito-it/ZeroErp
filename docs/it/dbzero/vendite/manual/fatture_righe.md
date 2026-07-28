@@ -38,7 +38,10 @@ Obiettivi principali:
 
 ### Collocazione nel flusso
 
-1. **Popolamento**: `vendite.fn_generate_fatture_righe` **aggrega** le attività fatturabili del lotto per chiave di raggruppamento (articolo · BA destinatario · UoM · **prezzo unitario** · IVA · competenza · istanza di kit) e produce **una riga per gruppo**. Le *n* attività del gruppo vengono collegate alla riga con `fattura_riga_id`.
+1. **Popolamento**: lo fa il **backend**, non il DB — `FattureRigheService.generate_fatture_righe` (`apps/vendite/services/fatture_righe_service.py`), invocato dal task `generate_fatture_righe` della pipeline. **Aggrega** le attività fatturabili del lotto per chiave di raggruppamento — `_build_group_key`: articolo · BA destinatario · UoM · **prezzo unitario** · IVA · competenza · istanza di kit — e produce **una riga per gruppo**. Le *n* attività del gruppo vengono collegate alla riga con `fattura_riga_id`.
+
+    ⚠️ Esisteva una funzione SQL gemella (`vendite.fn_generate_fatture_righe`), **ritirata il 2026-07-28** col changeset `20260728-21`: non era in esercizio dal 2026-02-03, e averla lasciata «per compatibilità storica» è costato una giornata di sviluppo su codice morto. Vedi `brief-db-ritiro-generatore-righe-fattura-sql.md`.
+
 2. **Calcolo dell'importo**: NON lo fa chi scrive la riga. Lo calcola il trigger `trg_fatture_righe_a20_importo_ins_upd` a ogni `INSERT`/`UPDATE` — vedi *Logiche di calcolo*.
 3. **Ordinamento**: `riga_nr` progressivo per fattura, assegnato con ordinamento **deterministico** dei gruppi; vincolo unico `(fattura_id, riga_nr)`.
 4. **Totali testata**: la somma delle righe alimenta i riepiloghi IVA e da lì `imponibile_tot`, `imposta_tot`, `totale_doc`, `totale_a_pagare`.

@@ -1,22 +1,31 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Test: porta oneri — GIRO COMPLETO onere → emissione → AF → fattura.
+-- Test: porta oneri — onere → emissione → attività fatturabile → lotto.
 -- Brief: brief-db-immutabilita-quantita-e-porta-oneri §4c.7 (step 9).
 --
 -- Verifica che una riga onere (sourceless, tipo_movimento='ONERE') faccia il
 -- "giro normale da APPROVATA in poi": emissione (fn_emit) crea l'attività
--- fatturabile propagando ONERE + qta=1 + prezzo; poi il lotto + generate_fatture_righe
--- producono la riga di fattura. PAYOFF: l'IVA della riga fattura è quella
--- dell'articolo-onere (penale = fuori campo art.15), non un default → il modello
--- articolo↔causale porta l'IVA per-onere fino in fattura.
+-- fatturabile propagando ONERE + qta=1 + prezzo + l'articolo-onere, e la riga
+-- entra nel lotto. PAYOFF: l'AF porta l'articolo-onere, e con esso la SUA IVA
+-- (penale = fuori campo art.15) → il modello articolo↔causale porta l'IVA
+-- per-onere fino al confine della fatturazione.
 --
 -- fn_emit esige una ROOT source sulla COMMESSA (non sulla riga): la si crea con
--- fn_link_commessa_sorgente. Il lock delle AF nel lotto (step select_attivita del
--- runner) è emulato a mano (lock_batch_id + lock_in_fatturazione) per pilotare
--- fn_generate_fatture_righe in puro SQL.
+-- fn_link_commessa_sorgente.
+--
+-- ⚠️ PERIMETRO — perché il test si ferma alla AF e non arriva alla riga di
+-- fattura. Fino al 2026-07-28 questo file proseguiva invocando
+-- vendite.fn_generate_fatture_righe (3 asserzioni: riga generata, qta/prezzo,
+-- IVA sulla riga). Quella funzione NON era in esercizio dal 2026-02-03 — il task
+-- della pipeline esegue apps/vendite/services/fatture_righe_service.py — ed è
+-- stata rimossa dal changeset 20260728-21. Le 3 asserzioni erano quindi verdi su
+-- codice che nessuno eseguiva: toglierle non riduce la copertura reale, la
+-- dichiara. Il tratto AF → riga di fattura va coperto da uno smoke sul percorso
+-- Python (brief-db-ritiro-generatore-righe-fattura-sql §5 passo 5), che è dove
+-- quel codice vive davvero.
 -- ------------------------------------------------------------
--- Indice test (1..12):
+-- Indice test (1..9):
 --   1  onere creato (CA ONERE)
 --   2  commessa con ROOT source
 --   3  fn_emit: 1 AF inserita
@@ -26,13 +35,10 @@
 --   7  AF: approvato=true + link commessa_attivita_id
 --   8  AF: sorgente COMMESSA (pull idempotente)
 --   9  lotto creato
---  10  fn_generate_fatture_righe: 1 riga generata
---  11  fattura_riga: qta=1 e prezzo_unitario=importo
---  12  fattura_riga: iva_id = IVA dell'articolo-onere (penale fuori campo) + AF fatturata
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(12);
+SELECT plan(9);
 
 -- Le madri/viste sono SECURITY INVOKER: dai un ruolo applicativo.
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
@@ -134,7 +140,7 @@ SELECT is(
   'COMMESSA'::varchar,
   '8) AF: sorgente COMMESSA (pull idempotente)');
 
--- ===== fattura: lotto + lock manuale AF + generate =====
+-- ===== lotto =====
 CREATE TEMP TABLE tmp_lotto AS
 SELECT vendite.fn_create_fatturazione_lotto(
   p_competenza_mese => DATE '2026-07-01',
@@ -148,34 +154,11 @@ SELECT vendite.fn_create_fatturazione_lotto(
 
 SELECT ok((SELECT lotto_id IS NOT NULL FROM tmp_lotto), '9) lotto creato');
 
--- Emula lo step select_attivita: locka l'AF dell'onere nel lotto.
-UPDATE vendite.attivita_fatturabili a
-   SET lock_batch_id = '11111111-1111-1111-1111-111111111111'::uuid,
-       lock_in_fatturazione = true,
-       stato_esecuzione = 'PENDING'
- WHERE a.id = (SELECT id FROM tmp_af);
-
-CREATE TEMP TABLE tmp_gen AS
-SELECT vendite.fn_generate_fatture_righe((SELECT lotto_id FROM tmp_lotto)) AS righe;
-
-SELECT is((SELECT righe FROM tmp_gen), 1, '10) fn_generate_fatture_righe: 1 riga generata');
-
--- Riga di fattura dell'onere (via la AF ora fatturata)
-CREATE TEMP TABLE tmp_fr AS
-SELECT r.*
-FROM vendite.fatture_righe r
-WHERE r.id = (SELECT fattura_riga_id FROM vendite.attivita_fatturabili WHERE id = (SELECT id FROM tmp_af));
-
-SELECT ok(
-  (SELECT qta = 1 AND prezzo_unitario = 150.00 FROM tmp_fr),
-  '11) fattura_riga: qta=1 e prezzo_unitario=importo');
-
--- PAYOFF: l'IVA della riga fattura è quella dell'articolo-onere (penale fuori campo),
--- + l'AF risulta fatturata.
-SELECT ok(
-  (SELECT (SELECT iva_id FROM tmp_fr) = (SELECT iva_onere_id FROM tmp_refs)
-      AND (SELECT fatturato FROM vendite.attivita_fatturabili WHERE id = (SELECT id FROM tmp_af)) IS TRUE),
-  '12) fattura_riga: iva_id = IVA articolo-onere (penale fuori campo) + AF fatturata');
+-- Qui finiva il tratto verso la riga di fattura: emulazione del lock
+-- select_attivita + fn_generate_fatture_righe + 3 asserzioni. Rimosso col
+-- changeset 20260728-21 (funzione ritirata, mai in esercizio) — vedi il
+-- ⚠️ PERIMETRO in testa al file. Anche l'emulazione del lock è sparita con
+-- l'unico consumatore che ne aveva bisogno: era setup, non copertura.
 
 SELECT * FROM finish();
 ROLLBACK;

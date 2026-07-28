@@ -126,7 +126,6 @@
 - [fn_genera_ddt_riconsegna](funzioni/fn_genera_ddt_riconsegna.md) — (rev 2026-07-26)
 - [fn_genera_fondi_fattura_source](funzioni/fn_genera_fondi_fattura_source.md) — (latest review 12-02-2026)   La funzione **`vendite.fn_genera_fondi_fattura_source()`** genera record in `fatture_fondi_fattura_source` per fatture con `minimo = true`, e mantiene allineata la source in base al saldo documento.
 - [fn_genera_pratica_da_preventivo](funzioni/fn_genera_pratica_da_preventivo.md) — (latest review 08-07-2026)
-- [fn_generate_fatture_righe](funzioni/fn_generate_fatture_righe.md) — (latest review 07-02-2026)   (Deprecate-trasferite in django)   La funzione **`vendite.fn_generate_fatture_righe()`** genera le righe fattura partendo dalle `attivita_fatturabili` lockate sul lotto.
 - [fn_get_anno_registro](funzioni/fn_get_anno_registro.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_anno_registro`** calcola l’anno di riferimento per la numerazione dei registri con `reset_policy = ANNUALE`.
 - [fn_get_arrotondamento_scope](funzioni/fn_get_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_arrotondamento_scope()`** restituisce il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione (BA, utility, tipo documento, emittente, valuta). Se l'ambito non esiste, ritorna `0`.
 - [fn_get_commessa_stato](funzioni/fn_get_commessa_stato.md) — (latest review 26-02-2026)   Restituisce in una singola query lo stato operativo di una commessa:
@@ -142,7 +141,6 @@
 - [fn_get_totale_fondi_fattura](funzioni/fn_get_totale_fondi_fattura.md) — La funzione **`vendite.fn_get_totale_fondi_fattura()`** restituisce il totale dei fondi fattura **attivi** associati alla testata.
 - [fn_get_valuta_id](funzioni/fn_get_valuta_id.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_valuta_id`** risolve la valuta con fallback al **gestore** quando non esistono valori specifici su BA/utility.
 - [fn_get_vendite_note](funzioni/fn_get_vendite_note.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_vendite_note()`** e` un wrapper su `script.fn_get_note('vendite.note')` per recuperare le note vendite da tabella partizionata in modo uniforme.
-- [fn_group_attivita_fatturabili](funzioni/fn_group_attivita_fatturabili.md) — (latest review 07-02-2026)   (Deprecate-trasferite in django)   La funzione **`vendite.fn_group_attivita_fatturabili()`** costruisce la **chiave di aggregazione riga** a partire da una riga di `attivita_fatturabili`.
 - [fn_guard_lotto_fatture_stato_coerente](funzioni/fn_guard_lotto_fatture_stato_coerente.md)
 - [fn_link_commessa_sorgente](funzioni/fn_link_commessa_sorgente.md) — (latest review 24-02-2026) Collega la ROOT source a una commessa in modo idempotente e coerente.
 - [fn_list_attivita_sorgenti_abilitate](funzioni/fn_list_attivita_sorgenti_abilitate.md)
