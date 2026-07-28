@@ -12,14 +12,21 @@ CREATE OR REPLACE FUNCTION vendite.fn_generate_fatture_righe(p_lotto_id bigint, 
  RETURNS integer
  LANGUAGE plpgsql
 AS $function$
+-- Scopo: generare le righe di fattura del lotto AGGREGANDO le
+--        attivita' fatturabili per chiave di raggruppamento, e
+--        congelando lo snapshot di esposizione del kit.
+-- brief-fix-importi-riga-fattura-zero §4.6 (D4) e §4.7-bis (D5).
 DECLARE
-    v_count          INTEGER := 0;
-    v_row            RECORD;
-    v_fattura_id     vendite.fatture.id%TYPE;
-    v_group          JSONB;
-    v_riga_nr        INTEGER;
+    v_count           INTEGER := 0;
+    v_lock_batch_id   vendite.fatturazione_lotti.lock_batch_id%TYPE;
+    v_row             RECORD;
+    v_grp             RECORD;
+    v_riga_nr         INTEGER;
     v_fattura_riga_id vendite.fatture_righe.id%TYPE;
-    v_lock_batch_id  vendite.fatturazione_lotti.lock_batch_id%TYPE;
+    v_segment         text;
+    v_kit_key         text;
+    v_kit_padre       uuid;
+    v_kit_esposto     boolean;
 BEGIN
     -- Guard: parametro obbligatorio
     IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
@@ -30,11 +37,10 @@ BEGIN
         );
     END IF;
 
-    -- Recupera lock_batch_id dal lotto
     SELECT fl.lock_batch_id INTO v_lock_batch_id
       FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
 
-    -- Marca attivita' come RUNNING
+    -- Marca attivita' come RUNNING (invariato)
     IF NOT p_dry_run AND v_lock_batch_id IS NOT NULL THEN
         UPDATE vendite.attivita_fatturabili a
            SET stato_esecuzione = 'RUNNING',
@@ -45,49 +51,154 @@ BEGIN
            AND (a.stato_esecuzione IS NULL OR a.stato_esecuzione IN ('PENDING', 'RUNNING'));
     END IF;
 
-    -- Loop generazione righe
+    -- ====================================================
+    -- PASSATA 1 — testata, chiave di gruppo e snapshot kit
+    --   per ogni attivita'. In una temp table e non in una
+    --   CTE: fn_get_or_create_fattura_header CREA la testata,
+    --   e dentro una CTE aggregata il planner sarebbe libero
+    --   di decidere quante volte chiamarla.
+    --   ⚠️ Tipi ESPLICITI e non %TYPE: CREATE TABLE e' DDL
+    --   puro anche dentro plpgsql ([[feedback_type_ddl_contexts]]).
+    -- ====================================================
+    DROP TABLE IF EXISTS tmp_gen_righe;
+    CREATE TEMP TABLE tmp_gen_righe (
+        attivita_id  bigint,
+        quantita     numeric(18,6),
+        fattura_id   bigint,
+        grp          jsonb,
+        kit_key      text,
+        kit_padre    uuid,
+        kit_esposto  boolean
+    ) ON COMMIT DROP;
+
     FOR v_row IN
-        SELECT a.id, a.articolo_id, a.quantita, a.prezzo_unitario,
-               a.uom_id, a.sorgente_tipo_id, a.sorgente_uid, a.sorgente_riga
+        SELECT a.id, a.quantita, a.meta
           FROM vendite.attivita_fatturabili a
          WHERE a.lock_batch_id = v_lock_batch_id
            AND a.fatturato IS FALSE
            AND COALESCE(a.lock_in_fatturazione, false) IS TRUE
          ORDER BY a.id
     LOOP
-        v_fattura_id := vendite.fn_get_or_create_fattura_header(p_lotto_id, v_row.id);
-        v_group := vendite.fn_group_attivita_fatturabili(v_row.id);
+        -- Snapshot kit dal meta: tutto gia' risolto dal push,
+        -- nessuna logica per sorgente.
+        v_segment := v_row.meta->>'segment_key';
 
-        IF p_dry_run THEN
-            v_count := v_count + 1;
-            CONTINUE;
+        IF v_segment IS NOT NULL AND v_segment LIKE '%#CMP:%' THEN
+            v_kit_key     := split_part(v_segment, '#CMP:', 1);
+            v_kit_padre   := NULLIF(v_row.meta->>'componente_di', '')::uuid;
+            v_kit_esposto := COALESCE((v_row.meta->>'esposto_in_fattura')::boolean, false);
+
+            IF v_kit_padre IS NULL THEN
+                -- Trattarla come riga normale la farebbe fatturare
+                -- DUE volte: una dentro il totale del padre e una
+                -- per conto suo. Meglio fermarsi.
+                PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_generate_fatture_righe', 'E_VALORE_MANCANTE',
+                    jsonb_build_object(
+                        'attivita_fatturabili_id', v_row.id,
+                        'segment_key', v_segment,
+                        'chiave_mancante', 'componente_di'),
+                    NULL::uuid,
+                    concat('componente_di assente nel meta dell''attivita'' ', v_row.id)
+                );
+            END IF;
+        ELSE
+            v_kit_key     := NULL;
+            v_kit_padre   := NULL;
+            v_kit_esposto := NULL;
         END IF;
 
+        INSERT INTO tmp_gen_righe (attivita_id, quantita, fattura_id, grp,
+                                   kit_key, kit_padre, kit_esposto)
+        VALUES (
+            v_row.id,
+            v_row.quantita,
+            vendite.fn_get_or_create_fattura_header(p_lotto_id, v_row.id),
+            vendite.fn_group_attivita_fatturabili(v_row.id),
+            v_kit_key, v_kit_padre, v_kit_esposto
+        );
+
+        -- Il conteggio e' sulle ATTIVITA' elaborate, come prima.
+        v_count := v_count + 1;
+    END LOOP;
+
+    IF p_dry_run THEN
+        RETURN v_count;
+    END IF;
+
+    -- ====================================================
+    -- PASSATA 2 — una riga per gruppo.
+    --   ⚠️ kit_key nel GROUP BY: due istanze di kit diverse
+    --   possono contenere lo stesso componente allo stesso
+    --   prezzo, e fonderle darebbe una riga che appartiene a
+    --   due kit e non e' esponibile in nessuno dei due.
+    -- ====================================================
+    FOR v_grp IN
+        SELECT t.fattura_id,
+               t.grp,
+               t.kit_key,
+               t.kit_padre,
+               t.kit_esposto,
+               SUM(t.quantita)                                 AS qta_totale,
+               array_agg(t.attivita_id ORDER BY t.attivita_id) AS attivita_ids,
+               count(*)::int                                   AS n_attivita
+          FROM tmp_gen_righe t
+         GROUP BY t.fattura_id, t.grp, t.kit_key, t.kit_padre, t.kit_esposto
+         ORDER BY t.fattura_id,
+                  (t.grp->>'articolo_id'),
+                  COALESCE(t.grp->>'competenza_dal', ''),
+                  COALESCE(t.grp->>'competenza_al', ''),
+                  COALESCE(t.grp->>'prezzo_unitario', ''),
+                  COALESCE(t.grp->>'uom_id', ''),
+                  COALESCE(t.kit_key, '')
+    LOOP
         SELECT COALESCE(max(r.riga_nr), 0) + 1 INTO v_riga_nr
-          FROM vendite.fatture_righe r WHERE r.fattura_id = v_fattura_id;
+          FROM vendite.fatture_righe r WHERE r.fattura_id = v_grp.fattura_id;
 
         INSERT INTO vendite.fatture_righe (
             fattura_id, riga_nr, articolo_id, descrizione, uom_id,
             qta, prezzo_unitario, iva_id, dest_billing_account_id,
-            sorgente_tipo_id, sorgente_uid, sorgente_riga, meta
+            sorgente_tipo_id, sorgente_uid, sorgente_riga,
+            kit_key, kit_esposto_in_fattura, kit_articolo_padre_id,
+            kit_descrizione_padre, meta
         )
         VALUES (
-            v_fattura_id, v_riga_nr, v_row.articolo_id,
-            (SELECT descrizione FROM catalogo.articoli WHERE id = v_row.articolo_id),
-            (v_group->>'uom_id')::BIGINT, v_row.quantita, v_row.prezzo_unitario,
-            (v_group->>'iva_id')::INTEGER, (v_group->>'dest_billing_account_id')::BIGINT,
-            v_row.sorgente_tipo_id, v_row.sorgente_uid, v_row.sorgente_riga,
-            jsonb_build_object('group_key', v_group)
+            v_grp.fattura_id,
+            v_riga_nr,
+            (v_grp.grp->>'articolo_id')::UUID,
+            (SELECT descrizione FROM catalogo.articoli
+              WHERE id = (v_grp.grp->>'articolo_id')::UUID),
+            (v_grp.grp->>'uom_id')::BIGINT,
+            -- Somma ESATTA: mai arrotondata (§4.6).
+            v_grp.qta_totale,
+            (v_grp.grp->>'prezzo_unitario')::NUMERIC,
+            (v_grp.grp->>'iva_id')::INTEGER,
+            (v_grp.grp->>'dest_billing_account_id')::BIGINT,
+            -- Le sorgenti sono n: nessuna singola da scrivere.
+            NULL, NULL, NULL,
+            -- Snapshot kit: congelato qui, immutabile oltre EMESSA
+            -- per effetto del guard di congelamento.
+            v_grp.kit_key,
+            v_grp.kit_esposto,
+            v_grp.kit_padre,
+            CASE WHEN v_grp.kit_padre IS NULL THEN NULL
+                 ELSE (SELECT descrizione FROM catalogo.articoli
+                        WHERE id = v_grp.kit_padre)
+            END,
+            jsonb_build_object(
+                'group_key',    v_grp.grp,
+                'n_attivita',   v_grp.n_attivita,
+                'attivita_ids', to_jsonb(v_grp.attivita_ids)
+            )
         )
         RETURNING id INTO v_fattura_riga_id;
 
         UPDATE vendite.attivita_fatturabili
-           SET fattura_riga_id = v_fattura_riga_id, fatturato = true,
+           SET fattura_riga_id = v_fattura_riga_id,
+               fatturato = true,
                stato_esecuzione = 'COMPLETED',
                data_update = now(), user_update = current_user
-         WHERE id = v_row.id;
-
-        v_count := v_count + 1;
+         WHERE id = ANY(v_grp.attivita_ids);
     END LOOP;
 
     RETURN v_count;
@@ -95,7 +206,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_generate_fatture_righe(p_lotto_id bigint, p_dry_run boolean)
-IS 'Genera righe fattura da attivita lockate e aggiorna stato_esecuzione (RUNNING/COMPLETED).';
+IS 'Genera le righe di fattura del lotto AGGREGANDO le attivita'' fatturabili: una riga per gruppo (testata + chiave di fn_group_attivita_fatturabili + istanza di kit). rev 2026-07-28 (D5): congela sulla riga lo snapshot di esposizione del kit — kit_key (prefisso del segment_key), kit_esposto_in_fattura, kit_articolo_padre_id e la descrizione del padre — leggendoli dal `meta` dell''attivita'', dove il push li ha gia'' risolti: nessuna logica per sorgente, e la distinta base non basterebbe comunque perche'' lo stesso componente puo'' appartenere a piu'' kit. ⚠️ kit_key entra nella chiave di raggruppamento: due istanze di kit diverse possono contenere lo stesso componente allo stesso prezzo, e fonderle darebbe una riga appartenente a due kit, non esponibile in nessuno dei due. Un''attivita'' con segmento #CMP ma senza `componente_di` FERMA la generazione (E_VALORE_MANCANTE): trattarla come riga normale la farebbe fatturare due volte, dentro il totale del padre e per conto suo. brief-fix-importi-riga-fattura-zero §4.6 e §4.7-bis.';
 ```
 
 ---

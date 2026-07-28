@@ -106,5 +106,4 @@ db/pgtap/vendite/test-guard-esclusione-figlio-bundle-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-listini-versioni-guard-transizione-stato-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-ordini-modello-ext.sql	ASSERZIONE
 db/pgtap/vendite/test-preventivi-approvazione-prezzo.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-ricalcola-riepiloghi-iva.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-ricalcola-totali-fattura-arrotondamento.sql	ERRORE_FIXTURE

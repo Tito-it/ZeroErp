@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Via `visibilita_componenti` da vendite.articolo_regole_fatturazione
+#   (brief-fix-importi-riga-fattura-zero.md §4.7-bis)
+#
+# LA STORIA, in breve, perche' e' istruttiva. Il modello aveva DUE meccanismi che
+#   sembravano governare la stessa cosa — se i componenti di un kit si vedono in
+#   fattura:
+#
+#     vendite.articolo_regole_fatturazione.visibilita_componenti
+#         per ARTICOLO, tre valori, MAI applicata da nessuno
+#     catalogo.articoli_componenti.esposto_in_fattura
+#         per COMPONENTE, booleana, usata davvero
+#
+#   Capire quale comandasse e' costato una sessione intera di indagine. La
+#   risposta e' la seconda, e lo dice il modello unificato componenti BoM del
+#   2026-05-13: «`esposto_in_fattura` ora e' un flag di presentazione fattura».
+#   La prima veniva letta da fn_group_attivita_fatturabili, infilata in
+#   `meta.group_key` di ogni riga generata, e li' abbandonata.
+#
+# LE EVIDENZE raccolte prima di decidere:
+#   * consumatori DB: solo fn_group_attivita_fatturabili (rimossa dal 20260728-17);
+#   * frontend: ZERO riferimenti;
+#   * i dati la contraddicevano: gli articoli dei componenti in commessa ricadono
+#     nel fallback `solo_padre`, e con quella regola il padre dovrebbe esserci e i
+#     componenti no — nei dati e' l'esatto contrario;
+#   * `esposto_in_fattura` invece e' valorizzata (14 TRUE / 11 FALSE) e usata da
+#     catalogo, ordini, preventivi, contratti, DDT e dagli handler di push.
+#
+# PERCHE' RIMUOVERLA invece di lasciarla li'. Una colonna che sembra governare
+#   una regola e non la governa e' peggio di una colonna assente: e' la stessa
+#   forma di difetto che questo brief chiude sugli importi — un contenitore senza
+#   chi lo riempie, che qualcuno un giorno legge credendolo valido. Ora che
+#   l'esposizione e' congelata sulla riga di fattura (kit_esposto_in_fattura) e
+#   resa da vw_fattura_righe_esposte, tenerla e' garantire la prossima ambiguita'.
+#
+# ⚠️ BREAKING SUL BACKEND, dichiarato e accettato.
+#   backend/apps/vendite/db/pipeline_repository.py legge la colonna con SQL
+#   proprio alle righe 1143 e 1199 (`COALESCE(r.visibilita_componenti,
+#   'solo_padre')`): dopo questo changeset quelle query FALLISCONO. Vanno tolte,
+#   insieme al campo in `types.py:23`, alla dataclass in
+#   `pipeline_repository.py:84` e all'uso in `fatture_righe_service.py:81`.
+#   Nessuno step di compatibilita': non c'e' produzione
+#   ([[project_no_produzione_solo_sviluppo]]).
+#
+# NON SI TOCCA `calcolo_qta_padre`, che vive nella stessa tabella: quella governa
+#   la quantita' del padre nell'esplosione BoM, e' un'altra cosa e non e' stata
+#   indagata qui.
+#
+# Ordine: DEVE seguire il 20260728-17, che smette di leggerla. La numerazione lo
+#   garantisce — l'autogen ordina per YYYYMMDD-NN e solo poi per path, quindi -17
+#   (20_code) precede -18 (00_schema) malgrado la fase.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260728-18-drop-articolo-regole-visibilita-componenti-mctit.yaml
+
+  - changeSet:
+      id: 20260728-18-drop-articolo-regole-visibilita-componenti
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Rimuove vendite.articolo_regole_fatturazione.visibilita_componenti: non
+        era la regola di esposizione della fattura (lo e' esposto_in_fattura per
+        componente) e nessun consumatore vivo la applicava. Breaking dichiarato
+        su pipeline_repository.py.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: articolo_regole_fatturazione
+                columnName: visibilita_componenti
+            # La funzione non deve piu' leggerla: senza il 20260728-17 questo
+            # DROP la romperebbe alla prima esecuzione.
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite'
+                    AND p.proname = 'fn_group_attivita_fatturabili'
+                    AND pg_get_functiondef(p.oid) LIKE '%visibilita_componenti%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Nessun CASCADE: se qualcosa dipendesse ancora dalla colonna e'
+              -- giusto che il changeset si fermi invece di trascinarselo dietro.
+              ALTER TABLE vendite.articolo_regole_fatturazione
+                  DROP COLUMN visibilita_componenti;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ripristina colonna, default e CHECK nella forma pre-changeset.
+              ALTER TABLE vendite.articolo_regole_fatturazione
+                  ADD COLUMN visibilita_componenti character varying(20);
+
+              ALTER TABLE vendite.articolo_regole_fatturazione
+                  ADD CONSTRAINT chk_regole_visibilita_componenti
+                  CHECK (visibilita_componenti IS NULL
+                         OR visibilita_componenti IN ('solo_padre', 'padre_componenti', 'solo_componenti'));
+
+              UPDATE vendite.articolo_regole_fatturazione
+                 SET visibilita_componenti = 'solo_padre'
+               WHERE visibilita_componenti IS NULL;

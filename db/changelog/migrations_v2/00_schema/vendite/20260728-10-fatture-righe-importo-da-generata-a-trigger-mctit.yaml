@@ -1,0 +1,161 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D1 — l'importo di riga passa da COLONNA GENERATA a TRIGGER
+#   (brief-fix-importi-riga-fattura-zero.md §4.1, vincolo 2)
+#
+# ⚛️ I DUE ATTI STANNO INSIEME, E NON E' UN VEZZO DI ORDINE.
+#     * finche' `imponibile_riga` e' GENERATED, un trigger che le assegni un
+#       valore viene RIFIUTATO da PostgreSQL: non si puo' armare prima;
+#     * appena tolta la generazione la colonna resta NOT NULL **senza nessuno che
+#       la riempia**: non si puo' aspettare dopo.
+#   Fra i due atti c'e' una finestra in cui qualunque INSERT fallirebbe. Liquibase
+#   esegue un changeSet in una transazione: metterli qui la chiude.
+#
+# PERCHE' SI CAMBIA MECCANISMO. La colonna generata (20260728-01) e' il presidio
+#   piu' forte possibile, ma usa **solo dati della propria riga**: non puo'
+#   leggere vendite.articolo_regole_fatturazione, che configura decimali e metodo
+#   di arrotondamento **per articolo** — configurazione documentata come applicata
+#   proprio alla generazione delle righe documento. La prima analisi l'aveva
+#   esclusa dopo aver censito solo la configurazione di livello emittente, che
+#   governa il totale a pagare. Vedi §12 del brief per il registro della
+#   revisione.
+#
+# ⚠️ AVANTI, NON INDIETRO. Il 20260728-01 **non viene disfatto**: resta applicato
+#   e tracciato. E' la regola di casa (mai modificare o annullare un changelog
+#   gia' applicato, sempre un file nuovo) ed e' anche cio' che tiene allineati gli
+#   ambienti: una CI che parte da zero esegue 01 -> 10 e atterra nello stato
+#   giusto, mentre un rollback locale non si propagherebbe.
+#
+# COSTO REALE DEL RITORNO: quasi nullo. `ALTER COLUMN ... DROP EXPRESSION`
+#   converte in posto, **conserva i valori** (verificato: 7 righe su 7 restano
+#   valorizzate, totale 2.700) e **non tocca** la catena delle quattro viste
+#   dipendenti. Niente DROP+ADD, niente ricreazione con `security_invoker` da
+#   ri-specificare, e soprattutto NIENTE BACKFILL: le righe gia' calcolate
+#   restano corrette, quindi non si deve attraversare il guard di congelamento
+#   sulle 5 fatture gia' numerate.
+#
+# ⚠️ ROLLBACK NON AUTOMATICO — e il changeset lo dice invece di fingere.
+#   Tornare alla colonna generata richiede DROP COLUMN + ADD COLUMN (PostgreSQL
+#   non consente di aggiungere un'espressione di generazione a una colonna
+#   esistente), e quel DROP e' bloccato dalle quattro viste in cascata. Un
+#   rollback che si limitasse a togliere il trigger lascerebbe una colonna
+#   NOT NULL senza nessuno che la riempie: ogni INSERT fallirebbe. Meglio un
+#   rollback che si ferma dichiarando il perche' che uno che riporta la tabella
+#   in uno stato rotto.
+#
+# ORDINE DEI TRIGGER sulla tabella dopo questo changeset (solo i BEFORE):
+#     a10  guard_congelamento   -> puo' respingere l'operazione
+#     a20  importo              -> calcola l'imponibile        <-- questo
+#     ---  audit / tx_id / guard_normalize
+#     z90  storico
+#
+# Dipendenze: 20260728-09 (trigger function), che a sua volta dipende dal
+#   20260728-08 (script.fn_arrotonda_importo) e dal 20260728-07 (vocabolario).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260728-10-fatture-righe-importo-da-generata-a-trigger-mctit.yaml
+
+  - changeSet:
+      id: 20260728-10-fatture-righe-importo-da-generata-a-trigger
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fatture_righe.imponibile_riga smette di essere colonna generata e
+        passa al trigger trgfn_fatture_righe_importo, che applica le regole di
+        arrotondamento per articolo. I due atti sono nello stesso changeSet: fra
+        di essi la colonna sarebbe NOT NULL senza nessuno che la riempie.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_attribute a
+                  WHERE a.attrelid = 'vendite.fatture_righe'::regclass
+                    AND a.attname = 'imponibile_riga'
+                    AND a.attgenerated = 's'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'vendite'
+                    AND p.proname = 'trgfn_fatture_righe_importo'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- 1) Via la generazione. Conversione IN POSTO: i valori restano,
+              --    NOT NULL resta, le quattro viste dipendenti non si toccano.
+              -- ============================================================
+              ALTER TABLE vendite.fatture_righe
+                  ALTER COLUMN imponibile_riga DROP EXPRESSION;
+
+              -- ============================================================
+              -- 2) Subito il trigger, nella stessa transazione: fra il punto 1
+              --    e questo la colonna sarebbe NOT NULL senza chi la riempie.
+              -- ============================================================
+              DROP TRIGGER IF EXISTS trg_fatture_righe_a20_importo_ins_upd
+                  ON vendite.fatture_righe;
+
+              CREATE TRIGGER trg_fatture_righe_a20_importo_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.fatture_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_fatture_righe_importo();
+
+              -- ============================================================
+              -- 3) Il commento diceva «COLONNA GENERATA»: ora non lo e' piu'.
+              -- ============================================================
+              COMMENT ON COLUMN vendite.fatture_righe.imponibile_riga IS
+                  'Imponibile di riga, calcolato dal trigger '
+                  'trg_fatture_righe_a20_importo_ins_upd: qta * prezzo_unitario * '
+                  '(1 - COALESCE(sconto_percentuale,0)/100), arrotondato con i decimali e il '
+                  'metodo configurati su vendite.articolo_regole_fatturazione per l''articolo '
+                  'della riga (fallback 2 / HALF_UP) tramite script.fn_arrotonda_importo. '
+                  'Un valore passato dall''esterno viene SOVRASCRITTO. '
+                  'Era una colonna GENERATED (20260728-01): il meccanismo e'' cambiato perche'' '
+                  'una generated usa solo dati della propria riga e non puo'' leggere le regole '
+                  'per articolo. NON confondere con l''arrotondamento del TOTALE A PAGARE, che '
+                  'segue la configurazione emittente-utility in fn_ricalcola_totali_fattura: '
+                  'sono due regole distinte. brief-fix-importi-riga-fattura-zero §4.1, '
+                  'rev 2026-07-28.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rollback NON automatico, e lo si dichiara invece di fingerlo.
+              --
+              -- Tornare alla colonna generata richiede DROP COLUMN + ADD COLUMN
+              -- (PostgreSQL non consente di aggiungere un'espressione di
+              -- generazione a una colonna esistente), e quel DROP e' bloccato
+              -- dalle quattro viste in cascata vw_dash_competenza_*. Limitarsi a
+              -- togliere il trigger lascerebbe una colonna NOT NULL senza
+              -- nessuno che la riempie: ogni INSERT fallirebbe.
+              --
+              -- Procedura manuale, se davvero servisse:
+              --   1. DROP TRIGGER trg_fatture_righe_a20_importo_ins_upd
+              --        ON vendite.fatture_righe;
+              --   2. eseguire il blocco `changes` del 20260728-01, che gia'
+              --      contiene drop e ricreazione delle 4 viste con
+              --      security_invoker=on ri-specificata.
+              DO $$
+              BEGIN
+                  RAISE EXCEPTION
+                      'Rollback non automatico del 20260728-10: la colonna generata non e'' ripristinabile in posto (serve DROP+ADD, bloccato da 4 viste). Procedura manuale nel commento del changeset.';
+              END
+              $$;
