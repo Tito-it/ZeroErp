@@ -2,6 +2,7 @@ from django.urls import include, path
 
 from apps.vendite.api.views import (
     ApiCommessaAttivita,
+    ApiCommessaAttivitaAnnulla,
     ApiCommessaAttivitaApprova,
     ApiCommessaAttivitaRiallineaPrezzo,
     ApiCommessaAttivitaSbloccaPrezzo,
@@ -263,6 +264,14 @@ urlpatterns = [
         "commesse/<int:commessa_id>/attivita/<int:att_id>/sblocca-prezzo/",
         ApiCommessaAttivitaSbloccaPrezzo.as_view(),
         name="vendite-commessa-attivita-sblocca-prezzo",
+    ),
+    # Annullamento di una riga MANUALE (onere) caricata per errore: non
+    # cancella, porta stato_emissione ad ANNULLATA (gia' filtrato da tutte le
+    # porte verso fattura e cockpit). Gate `carica_voce_manuale`.
+    path(
+        "commesse/<int:commessa_id>/attivita/<int:att_id>/annulla/",
+        ApiCommessaAttivitaAnnulla.as_view(),
+        name="vendite-commessa-attivita-annulla",
     ),
     path(
         "commesse/<int:commessa_id>/attivita/",

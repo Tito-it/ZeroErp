@@ -555,6 +555,36 @@ class CommesseRepository:
         assert row is not None
         return int(row[0])
 
+    # Scopo: Wrapper 1:1 della madre DB `vendite.fn_annulla_commessa_attivita`
+    #        (UPDATE stato -> ANNULLATA + INSERT evento di log, atomici).
+    def annulla_attivita(self, *, attivita_id: int, motivo: str) -> int:
+        """Annulla una riga MANUALE di commessa: non cancella nulla, porta
+        `stato_emissione` ad `ANNULLATA` e scrive l'evento
+        `RIGA_MANUALE_ANNULLATA` su `commesse_attivita_log`. Restituisce
+        l'`attivita_id`.
+
+        La madre applica i propri guard (gia' annullata / non manuale / gia'
+        emessa / motivo obbligatorio) sotto `SELECT ... FOR UPDATE`, quindi e'
+        anche la difesa contro due annullamenti concorrenti. Una sola SELECT di
+        funzione = unita' atomica per costruzione: niente `transaction.atomic`
+        nel service (api.md §Atomicita' e composizione di scritture).
+
+        NB: la madre NON conosce la commessa — lo scoping riga<->commessa
+        (l'`id` nell'URL) e' a carico del service."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT vendite.fn_annulla_commessa_attivita(
+                    p_commessa_attivita_id => %s,
+                    p_motivo => %s
+                )
+                """,
+                [attivita_id, motivo],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
+
     # Scopo: Attivita' in stadio DA_APPROVARE del mese di competenza, raggruppate
     #        per commessa, per l'approvazione massiva A-2 (WYSIWYG con la card).
     def list_da_approvare_per_competenza(
@@ -1268,6 +1298,16 @@ class CommesseRepository:
                     ca.uom_id,
                     ca.data_attivita,
                     ca.meta,
+                    -- Identita' e stato della riga: servono ai guard
+                    -- dell'annullamento riga manuale (brief-annullamento-righe-
+                    -- manuali-commessa §5-bis G3). `sorgente_tipo_id IS NULL`
+                    -- e' il discriminante di "riga manuale" (sourceless, cfr.
+                    -- fn_build_gruppo_fatturabile_key); `stato_emissione`
+                    -- distingue NON_EMESSA / EMESSA / ANNULLATA. Zero costo:
+                    -- sono colonne di `ca`, gia' in join.
+                    ca.stato_emissione,
+                    ca.sorgente_tipo_id,
+                    ca.tipo_movimento,
                     sc.codice_interno AS commessa_stato,
                     sc.modificabile AS commessa_modificabile,
                     c.billing_account_id,
