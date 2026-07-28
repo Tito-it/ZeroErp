@@ -1189,6 +1189,38 @@ class CommesseApprovazioneServiceTests(TestCase):
             approva_attivita_competenza(competenza_mese=_date(2026, 7, 1))
 
 
+# Scopo: riga di stato commessa nella forma REALE prodotta da
+#        `CommesseRepository.get_commessa_stato` — un `CommessaStatoResult`,
+#        cioe' un TypedDict, cioe' un dict. Tutte le chiavi del contratto sono
+#        presenti: se il service ne legge una nuova, il test la vede mancare
+#        invece di inventarla come farebbe un mock.
+def _commessa_stato_default(**override: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "stato_commessa_id": 1,
+        "stato_commessa": "IN_CORSO",
+        "chiude_commessa": False,
+        "emittibile": True,
+        "modificabile": True,
+        "policy_fatturazione": "A_CONSUNTIVO",
+        "fatturazione_immediata": False,
+        "priorita_operativa": None,
+        "billing_account_id": 900,
+        "utility_id": 3,
+        "emittente_soggetto_ruolo_id": 77,
+        "total_attivita": 0,
+        "total_approvate": 0,
+        "total_non_approvate": 0,
+        "total_emesse": 0,
+        "total_non_emesse": 0,
+        "total_prezzo_da_riallineare": 0,
+        "last_update": None,
+        "commessa_codice": "CMS0000001",
+        "cliente_display": "Cliente Prova",
+    }
+    base.update(override)
+    return base
+
+
 class CommessaPortaOneriServiceTests(TestCase):
     """Porta oneri (brief-be-fe-immutabilita-quantita-e-porta-oneri §A1).
 
@@ -1198,11 +1230,18 @@ class CommessaPortaOneriServiceTests(TestCase):
     sourceless) vivono nel DB e NON sono testate qui.
     """
 
+    # ⚠️ Lo stato commessa e' un **dict**, non un oggetto: `CommessaStatoResult`
+    # e' un TypedDict e il repository lo costruisce come tale. La fixture usava
+    # un `MagicMock`, che accetta QUALUNQUE attributo: il service leggeva
+    # `stato.billing_account_id`, i test erano verdi e in produzione l'endpoint
+    # rispondeva 500 `AttributeError` (difetto del 2026-07-28, emerso solo alla
+    # prova in-app). Una fixture che non rispetta la forma reale del contratto
+    # non protegge: insegna la forma sbagliata.
     def _repo_ok(self, mock_repo_cls, *, billing_account_id=900):
         repo = mock_repo_cls.return_value
-        stato = MagicMock()
-        stato.billing_account_id = billing_account_id
-        repo.get_commessa_stato.return_value = stato
+        repo.get_commessa_stato.return_value = _commessa_stato_default(
+            billing_account_id=billing_account_id,
+        )
         repo.aggiungi_onere.return_value = 5150
         return repo
 
