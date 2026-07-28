@@ -278,4 +278,4 @@ tiebreaker deterministico su chiavi naturali (la union non ha PK).
   (`DashboardCompetenzaView.vue`, store `dashboardCompetenza.js`).
 - **Emissione mirata (2026-07-27)**: aggiunto `gruppi/` sopra le viste
   `20260727-18/19`. Additivo: i quattro endpoint preesistenti sono invariati.
-  Brief: `dev/work-in-progress/brief-be-fe-emissione-fattura-mirata.md`.
+  Brief: `dev/work-done/brief-be-fe-emissione-fattura-mirata.md`.

@@ -2,15 +2,17 @@
 
 > **Tipo**: brief operativo per il **team DB** · **Target**: `dev/db-tid` ·
 > **Data**: 2026-07-27 · **Owner**: Tid ·
-> **Stato**: ✅ **DB CHIUSO** (changeset `20260727-40`, pgTAP 12/12) ·
-> ✅ **BE/FE CHIUSO** (2026-07-28: difetto §3 corretto, checklist §5 applicata,
-> 11 test nuovi). Resta la doc auto-gen dbzero da rigenerare ·
-> **Aperto**: solo la validazione a schermo + la variante fail-loud di §6a, che
-> resta al team DB. Le due decisioni di §6 sono chiuse.
+> **Stato**: ✅ **CHIUSO** (2026-07-28) — DB (changeset `20260727-40`, pgTAP
+> 12/12, doc auto-gen rigenerata in `1f8759d3d`) + BE/FE (difetto §3 corretto,
+> checklist §5 applicata, 3 guardrail, 14 test nuovi). Decisioni §6 entrambe
+> prese ·
+> **Fuori perimetro, tracciato**: la variante *fail-loud* della fn madre (§6a)
+> resta una proposta del team DB; la validazione a schermo è routine di
+> rilascio.
 >
 > **Origine**: [brief-be-fe-emissione-fattura-mirata.md](brief-be-fe-emissione-fattura-mirata.md)
 > step BE-6 (deviazione 1) · Fase B di
-> [brief-db-emissione-fattura-per-documento-sorgente.md](brief-db-emissione-fattura-per-documento-sorgente.md).
+> [brief-db-emissione-fattura-per-documento-sorgente.md](../work-in-progress/brief-db-emissione-fattura-per-documento-sorgente.md).
 
 ---
 
@@ -172,11 +174,62 @@ costato un giro sulla testata.
 Entrambi i guardrail sono stati provati aggiungendo una chiave finta: **entrambi
 falliscono**, e con il messaggio giusto.
 
-> Reperto minore, ma istruttivo: alla prima stesura il guardrail utility era
-> rosso su `param_1_num`/`param_2_txt`. Non era una divergenza reale — era la
-> regex del test, `[a-z_]+`, che non copre le cifre e quindi quelle due chiavi
-> **non le vedeva affatto**. Un guardrail che legge male la sorgente di verità
-> è peggio di nessun guardrail: corretto in `[a-z0-9_]+`.
+> Reperto minore: alla prima stesura il guardrail utility era rosso su
+> `param_1_num`/`param_2_txt`. Non era una divergenza reale — era la regex del
+> test, `[a-z_]+`, che non copre le cifre. Corretta in `[a-z0-9_]+`.
+>
+> ⚠️ **Correzione di un mio commento**: avevo scritto che una regex lossy
+> avrebbe potuto produrre un falso VERDE nascondendo il problema. Non è così, e
+> il team DB l'ha rilevato: il lato BE **non è parsato** (viene dal frozenset
+> Python), quindi perdere chiavi nel parsing del lato DB può solo far crescere
+> `be - db` → **falso rosso sul caso grave, mai falso verde**. Era il modo
+> sicuro di sbagliare. Conseguenza pratica: la regex **non va irrobustita
+> oltre**.
+
+**Limite del guardrail, scritto nel docstring**: è vero quanto l'ultima
+rigenerazione della doc auto-gen. Non confronta il BE con il *database* ma con
+un *documento*: se la fn madre cambia e la doc non viene rigenerata, il
+confronto avviene contro una definizione stale e il test può restare verde
+mentre il DB diverge. La rigenerazione fa parte del rilascio di ogni changeset
+che tocchi la funzione — il presidio la presuppone, non la sostituisce.
+
+### 6a-bis — il guardrail che mancava davvero: la catena di UPDATE ✅
+
+Indicato dal team DB come «il solo guardrail da aggiungere, se se ne aggiunge
+uno», e hanno ragione: **il difetto del 2026-07-27 non è nato sulla create ma
+sull'update**, dove l'allineamento è a tre e l'anello di mezzo non era
+presidiato da nulla.
+
+```
+_UPDATE_KEYS_TESTATA  →  _build_update_data_testata  →  _UPDATE_WRITE_COLS
+(cosa si accetta)        (cosa si mappa)                (cosa si scrive)
+```
+
+Basta che una colonna manchi in **uno solo** dei tre e l'UPDATE non la scrive,
+senza un fiato. È stato corretto a mano, e a mano si sarebbe ripetuto.
+
+`ContrattiCatenaUpdateTests`, 3 casi:
+
+| # | Anello | Cosa verifica |
+|---|---|---|
+| 1 | — | ogni chiave della whitelist ha un **campione** nel test: è il gancio che costringe a passare di qui quando si allarga la whitelist |
+| 2 ⭐ | 1 → 2 | ogni chiave **attraversa il mapper** e arriva al repository, una alla volta, dal service pubblico |
+| 3 | 1 ↔ 3 | ciò che si accetta è esattamente ciò che si sa scrivere |
+
+Il caso 2 è quello che sarebbe stato rosso sul difetto reale. Verificato
+simulando entrambi i modi di romperlo — mapper che perde la chiave, e chiave
+nuova in whitelist senza campione: **entrambi rilevati**.
+
+Ha richiesto una modifica minima al repository: `write_cols` era una tupla
+**locale** dentro `update_contratto`, quindi il terzo anello non era
+ispezionabile da nessun test. Promossa a costante di classe
+`_UPDATE_WRITE_COLS`, nessun cambio di comportamento.
+
+⚠️ **Perimetro**: copre la testata del **contratto**. Ordini e DDT hanno mapper
+generici (dict-comprehension), dove la whitelist è già l'unico anello — per loro
+il rischio non esiste nella stessa forma.
+
+---
 
 La seconda proposta — rendere la fn madre **fail-loud** — **resta aperta e resta
 del team DB**: cambia il comportamento di tutte le chiavi di una madre già in
@@ -353,13 +406,30 @@ utility è libera, così la coppia è garantita e non sperata.
 Effetto collaterale utile: il file rientra dalla baseline dei rossi, che cala di
 una riga (da 111 a 110).
 
-### Prossimo passo
+### 2026-07-28 · Chiusura
 
-1. Doc auto-gen dbzero da rigenerare (`fn_create_contratto.md`) → poi il brief
-   può passare in `work-done`.
-2. ~~**BE**: il fix del mapper (§3)~~ ✅ 2026-07-28.
-3. ~~**BE/FE**: la checklist di §5~~ ✅ 2026-07-28.
-4. ~~Decidere §6a e §6b~~ ✅ 2026-07-28: 6a chiusa col guardrail BE (la
-   variante fail-loud della fn madre resta al team DB); 6b decisa — **non si
-   apre**, motivi e condizioni di riapertura scritti in §6.
-5. Validazione a schermo del campo sui tre domini.
+Tutte le voci del perimetro sono chiuse. Consuntivo:
+
+| | Prodotto |
+|---|---|
+| **DB** | changeset `20260727-40` (whitelist estesa), pgTAP `plan(9)`→`plan(12)` verde, fixture riparato, una riga rientrata dalla baseline dei rossi, doc auto-gen rigenerata (`1f8759d3d`) |
+| **BE** | difetto del mapper corretto su **entrambi** i percorsi (update *e* create), lettura del flag estratta in un metodo unico, `write_cols` promossa a costante di classe per renderla ispezionabile |
+| **FE** | campo disponibile anche in creazione, scorporo rimosso, 4 commenti diventati falsi aggiornati, guard `isEdit &&` sul `disabled` |
+| **Guardrail** | 3 — whitelist create testata, whitelist create utility, **catena di update a tre anelli** |
+| **Test** | 14 nuovi (6 contratti flag, 3 ordini, 2 DDT, 3 catena update) + 2 whitelist create; ognuno provato rompendo di proposito ciò che deve intercettare |
+| **Baseline** | invariata: 17 fail + 84 error su `apps.vendite`, identici a HEAD |
+
+**Cosa ha insegnato questo brief, al di là della colonna.** Lo stesso gesto —
+«aggiungi la chiave alla whitelist» — su tre domini ha prodotto due successi e
+un no-op silenzioso, perché il contratto è l'unico con mapper espliciti. Il
+difetto non stava in nessuna delle due whitelist ma **fra** di esse, ed è per
+questo che nessuna revisione delle liste lo avrebbe trovato. I guardrail nati
+qui presidiano gli **spazi fra gli anelli**, non gli anelli.
+
+### Resta fuori perimetro (tracciato, non dimenticato)
+
+| Cosa | Di chi | Note |
+|---|---|---|
+| Variante **fail-loud** della fn madre (§6a) | team DB | Cambia il comportamento di tutte le chiavi di `p_testata` **e** `p_utility` di una madre già in uso. I due guardrail intercettano comunque la divergenza nel momento in cui nasce, a rischio zero |
+| Riapertura di **§6b** | Tid | Solo sul segnale scritto in §6: operatori che rifanno un contratto per cambiare corsia |
+| Validazione a schermo del campo sui tre domini | Tid | Routine di rilascio, non un residuo di progetto |

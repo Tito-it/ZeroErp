@@ -720,6 +720,12 @@ def aggiungi_onere_commessa(
         )
 
     repo = CommesseRepository()
+    # ⚠️ `get_commessa_stato` ritorna un `CommessaStatoResult`, che e' un
+    # **TypedDict**: a runtime e' un dict normale e si legge con `stato["x"]`.
+    # L'accesso ad attributo (`stato.x`) compila, passa i test se lo stato e'
+    # mockato con un MagicMock — che accetta qualunque attributo — e poi
+    # esplode in produzione con AttributeError (difetto del 2026-07-28,
+    # rilevato solo alla prova in-app della porta oneri).
     stato = repo.get_commessa_stato(commessa_id)
     if stato is None:
         ErrorManager.raise_error(
@@ -743,7 +749,7 @@ def aggiungi_onere_commessa(
     from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 
     istanza_derivata = BillingAccountRepository().get_istanza_utility_id(
-        stato.billing_account_id
+        stato["billing_account_id"]
     )
     if istanza_utility_id is None:
         istanza_utility_id = istanza_derivata
@@ -755,12 +761,12 @@ def aggiungi_onere_commessa(
             message="Istanza utility non coerente con la commessa.",
             detail=(
                 f"istanza_utility_id={istanza_utility_id} non e' l'istanza del "
-                f"billing account {stato.billing_account_id} della commessa "
+                f"billing account {stato["billing_account_id"]} della commessa "
                 f"(attesa: {istanza_derivata})."
             ),
             context={
                 "commessa_id": commessa_id,
-                "billing_account_id": stato.billing_account_id,
+                "billing_account_id": stato["billing_account_id"],
                 "istanza_utility_id": istanza_utility_id,
             },
             function_name=_fn,
@@ -772,9 +778,9 @@ def aggiungi_onere_commessa(
         message="Istanza utility non risolvibile.",
         detail=(
             "istanza_utility_id non passata e non derivabile dal billing account "
-            f"{stato.billing_account_id} della commessa."
+            f"{stato["billing_account_id"]} della commessa."
         ),
-        context={"commessa_id": commessa_id, "billing_account_id": stato.billing_account_id},
+        context={"commessa_id": commessa_id, "billing_account_id": stato["billing_account_id"]},
         function_name=_fn,
         log_to_db=True,
     )

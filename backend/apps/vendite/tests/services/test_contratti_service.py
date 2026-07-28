@@ -2787,6 +2787,14 @@ class ContrattiWhitelistCreateAllineataAlDbTests(TestCase):
     mai dagli YAML, che i `runOnChange` successivi rendono stale). Il test gira
     quindi senza DB, come richiesto in CI.
 
+    ⚠️ **Limite da conoscere**: questo guardrail è vero quanto l'ultima
+    rigenerazione della doc auto-gen. Non confronta il BE con il *database*, ma
+    con un *documento*: se la fn madre cambia e la doc non viene rigenerata, il
+    confronto avviene contro una definizione stale e il test può restare verde
+    mentre il DB diverge davvero. La rigenerazione fa parte del rilascio di ogni
+    changeset che tocchi la funzione — questo presidio la presuppone, non la
+    sostituisce.
+
     Il momento in cui fallisce è l'unico utile: quando le due liste divergono.
     """
 
@@ -2831,6 +2839,10 @@ class ContrattiWhitelistCreateAllineataAlDbTests(TestCase):
         # `[a-z0-9_]` e non `[a-z_]`: esistono colonne con cifre nel nome
         # (`param_1_num`, `param_2_txt`) e una classe senza `0-9` le avrebbe
         # semplicemente NON viste, facendole apparire come divergenze.
+        # Non serve irrobustirla oltre: il lato BE NON e' parsato (viene dal
+        # frozenset Python), quindi una regex che perde chiavi puo' solo
+        # produrre FALSI ROSSI sul caso grave (`be - db`), mai falsi verdi.
+        # E' il modo sicuro di sbagliare.
         return set(re.findall(r"'([a-z0-9_]+)'", match.group(1)))
 
     def test_whitelist_be_e_db_combaciano(self) -> None:
@@ -2881,4 +2893,129 @@ class ContrattiWhitelistCreateAllineataAlDbTests(TestCase):
             non_esposte, [],
             f"vendite.fn_create_contratto accetta chiavi utility che il BE non "
             f"compone: {non_esposte}. Se è voluto, escluderle qui col motivo.",
+        )
+
+
+class ContrattiCatenaUpdateTests(TestCase):
+    """Guardrail: i TRE anelli della PATCH di testata restano allineati.
+
+    Il difetto del 2026-07-27 non è nato sulla create ma qui. La catena è:
+
+        _UPDATE_KEYS_TESTATA  →  _build_update_data_testata  →  _UPDATE_WRITE_COLS
+        (cosa si accetta)        (cosa si mappa)                (cosa si scrive)
+
+    Basta che una colonna manchi in **uno solo** dei tre e l'UPDATE non la
+    scrive — senza errore. Nel caso reale (`fatturazione_immediata`) mancava
+    l'anello di mezzo: la PATCH dal drawer rispondeva 200 con «contratto
+    salvato» e non persisteva nulla, perché il payload conteneva comunque altri
+    campi e il guard «nessun campo aggiornabile» non scattava.
+
+    È stato corretto a mano, e a mano si sarebbe ripetuto alla colonna dopo:
+    il mapper è l'unico dei tre anelli che nessun test confrontava. Segnalato
+    dal team DB come «il solo guardrail da aggiungere, se se ne aggiunge uno».
+
+    Il test attraversa la catena **una chiave alla volta**, dal service pubblico
+    fino alla chiamata al repository: è l'unico modo per accorgersi di un anello
+    che non passa la palla.
+    """
+
+    # Valore valido per ogni chiave della whitelist. Il dizionario È parte del
+    # guardrail: aggiungere una chiave a `_UPDATE_KEYS_TESTATA` senza aggiungere
+    # qui un campione fa fallire il primo test — che è il momento in cui serve
+    # fermarsi a pensare se il mapper la gestisce.
+    _CAMPIONI: dict[str, object] = {
+        "ambito": "COMMODITY",
+        "valido_dal": "2026-03-01",
+        "valido_al": "2026-12-31",
+        "parent_contratto_id": 5,
+        "data": "2026-03-01",
+        "listino_id": 200,
+        "tipo_variazione_globale": "PERCENTUALE",
+        "valore_variazione_globale": "-5",
+        "categoria_cliente_id_snapshot": 3,
+        "fatturazione_immediata": True,
+        "meta": {"nota": "guardrail"},
+    }
+
+    # Coppia che il dominio valida insieme (entrambe NULL o entrambe valorizzate):
+    # testarne una da sola darebbe un errore di coerenza, non un esito sul mapper.
+    _PARTNER: dict[str, str] = {
+        "tipo_variazione_globale": "valore_variazione_globale",
+        "valore_variazione_globale": "tipo_variazione_globale",
+    }
+
+    # 1) Ogni chiave accettata ha un campione: è il gancio che costringe a
+    #    passare di qui quando si allarga la whitelist.
+    def test_ogni_chiave_accettata_ha_un_campione(self) -> None:
+        from apps.vendite.services.contratti_service import _UPDATE_KEYS_TESTATA
+
+        senza_campione = sorted(set(_UPDATE_KEYS_TESTATA) - set(self._CAMPIONI))
+        self.assertEqual(
+            senza_campione, [],
+            f"Chiavi in _UPDATE_KEYS_TESTATA senza campione in questo test: "
+            f"{senza_campione}. Aggiungerne uno valido e verificare che "
+            f"_build_update_data_testata le legga davvero.",
+        )
+
+    # 2) ⭐ Anello 1 → 2: ogni chiave accettata ATTRAVERSA il mapper e arriva al
+    #    repository. È il test che sarebbe stato rosso sul difetto reale.
+    @patch("apps.vendite.services.contratti_service.ListiniRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_ogni_chiave_attraversa_il_mapper(self, repo_cls, listini_cls) -> None:
+        from apps.vendite.services.contratti_service import (
+            _UPDATE_KEYS_TESTATA,
+            ContrattiService,
+        )
+
+        repo = repo_cls.return_value
+        repo.update_contratto.return_value = True
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+        repo.count_righe_attive.return_value = 0
+        repo.count_eccezioni_bloccanti.return_value = {}
+        listini_cls.return_value.has_versione_attiva.return_value = True
+
+        for chiave in sorted(_UPDATE_KEYS_TESTATA):
+            with self.subTest(chiave=chiave):
+                repo.get_contratto.return_value = _testata_default()
+                payload: dict[str, object] = {chiave: self._CAMPIONI[chiave]}
+                partner = self._PARTNER.get(chiave)
+                if partner is not None:
+                    payload[partner] = self._CAMPIONI[partner]
+
+                repo.update_contratto.reset_mock()
+                ContrattiService().update_contratto(1, payload)
+
+                self.assertTrue(
+                    repo.update_contratto.called,
+                    f"'{chiave}': la PATCH non ha raggiunto il repository.",
+                )
+                data = repo.update_contratto.call_args.args[1]
+                self.assertIn(
+                    chiave, data,
+                    f"'{chiave}' è accettata da _UPDATE_KEYS_TESTATA ma "
+                    f"_build_update_data_testata NON la legge: l'UPDATE la "
+                    f"ignorerebbe in silenzio (difetto 2026-07-27).",
+                )
+
+    # 3) Anello 1 ↔ 3: ciò che si accetta è esattamente ciò che si sa scrivere.
+    #    Una colonna nella whitelist ma non in _UPDATE_WRITE_COLS verrebbe
+    #    mappata e poi scartata dal repository — stesso silenzio, un anello più
+    #    in là.
+    def test_whitelist_e_colonne_scrivibili_combaciano(self) -> None:
+        from apps.vendite.db.contratti_repository import ContrattiRepository
+        from apps.vendite.services.contratti_service import _UPDATE_KEYS_TESTATA
+
+        accettate = set(_UPDATE_KEYS_TESTATA)
+        scrivibili = set(ContrattiRepository._UPDATE_WRITE_COLS)
+
+        self.assertEqual(
+            sorted(accettate - scrivibili), [],
+            "Chiavi accettate dal service che il repository non scrive: "
+            "verrebbero perse dopo il mapper.",
+        )
+        self.assertEqual(
+            sorted(scrivibili - accettate), [],
+            "Colonne scrivibili dal repository che il service non accetta: "
+            "capacità irraggiungibile (o whitelist da allargare).",
         )

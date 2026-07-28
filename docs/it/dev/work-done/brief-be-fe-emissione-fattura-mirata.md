@@ -1,12 +1,12 @@
 # Brief BE/FE — Emissione fattura mirata per gruppo fatturabile
 
 > **Tipo**: brief operativo BE + FE · **Target**: `dev/backend-tid` ·
-> **Data**: 2026-07-27 · **Owner**: Tid · **Stato**: 🟢 **PERIMETRO BE/FE COMPLETO — da validare a schermo**
+> **Data**: 2026-07-27 → **chiuso 2026-07-28** · **Owner**: Tid · **Stato**: ✅ **CHIUSO** — codice completo, validato a schermo da Tid
 > · **Priorità**: 🟠 MEDIA
 >
-> **Origine**: [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md)
+> **Origine**: [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md)
 > §8 punti 3-6 · contratto DB in
-> [brief-db-emissione-fattura-per-documento-sorgente.md](brief-db-emissione-fattura-per-documento-sorgente.md)
+> [brief-db-emissione-fattura-per-documento-sorgente.md](../work-in-progress/brief-db-emissione-fattura-per-documento-sorgente.md)
 > §8-bis.
 >
 > **Prerequisito DB**: ✅ **completo, applicato e testato** (Fase A + Fase B,
@@ -144,7 +144,7 @@ automatico. Ferma a EMESSA come la differita (gate fiscale I-7 invariato).
 | **BE-3** | ✅ | `services/fatturazione_driver_service.py` | Corsia `mirata` in `_MODALITA`; parametro `gruppi` propagato a discovery e pipeline; `summary["lotti"]` compatto (R2) |
 | **BE-4** | ✅ | `services/fatturazione_giro_handler.py`, `api/views.py` | Payload job `gruppi`; corsia scelta dalla presenza dei gruppi; digest nella chiave business (R1); validazione payload |
 | **BE-5** | ✅ | `db/vendite_repository.py`, `services/vendite_service.py`, `api/views_dashboard_competenza.py`, `api/urls_v1.py` | `GET /vendite/dashboard-competenza/gruppi/` — lista paginata + `riepilogo` nella stessa risposta |
-| **BE-6** | ✅ | ordini / contratti / DDT (repo + service + view) | `fatturazione_immediata` in create/update/detail/lista |
+| **BE-6** | ✅ | ordini / contratti / DDT (repo + service + view) | `fatturazione_immediata` in create/update/detail/lista. ⚠️ Il ✅ della prima consegna era **parziale e silenzioso** sui contratti: vedi registro 2026-07-28 |
 | **BE-7** | ✅ | `tests/services/`, `docs/it/backend/vendite/manual/` | Test service + manuali API |
 
 ### Frontend
@@ -200,7 +200,8 @@ automatico. Ferma a EMESSA come la differita (gate fiscale I-7 invariato).
    flag si imposta con la PATCH in DRAFT — che copre il caso d'uso per intero
    (la corsia va decisa prima del push, e in DRAFT il contratto non è
    pushabile). Estendere la whitelist è una modifica DB, passata al team:
-   [brief-db-fatturazione-immediata-create-contratto.md](brief-db-fatturazione-immediata-create-contratto.md).
+   [brief-db-fatturazione-immediata-create-contratto.md](brief-db-fatturazione-immediata-create-contratto.md)
+   (chiuso 2026-07-28).
 2. **Nessun campo «flag bloccato» esposto.** Si pensava servisse un indicatore
    «documento già pushato → flag readonly». Verificato sulle capability: la
    testata è editabile solo in DRAFT (ordini, DDT) e la whitelist di patch per
@@ -317,9 +318,72 @@ esattamente la sorpresa da evitare.
 **Test**: 6 casi nuovi in `test_dashboard_competenza_service` (32 verdi), di cui
 il più importante è quello che verifica che la facet **non** riceva il filtro.
 
+### 2026-07-28 · BE-6 riaperto e chiuso davvero — difetto trovato dal team DB
+
+Lo step BE-6 era dichiarato ✅ ma **non funzionava sui contratti**, e il modo in
+cui non funzionava è il peggiore: la PATCH dal drawer rispondeva **200 con
+«contratto salvato» senza persistere il flag**. Il payload conteneva comunque
+altri campi, quindi il guard «nessun campo aggiornabile» non scattava e non c'era
+nulla a video che lo tradisse.
+
+**La causa**: il contratto è l'unico dei tre documenti con **mapper espliciti**
+(`_build_create_data_testata` / `_build_update_data_testata`), che copiano campo
+per campo. Ordini e DDT usano una dict-comprehension sul payload, dove estendere
+la whitelist *è* sufficiente. Lo stesso gesto su tre file ha dato **due successi
+e un no-op**. Il difetto non stava in nessuna whitelist ma **fra** whitelist e
+repository: nessuna revisione delle liste l'avrebbe trovato.
+
+Rilevato dal team DB lavorando su
+[brief-db-fatturazione-immediata-create-contratto](brief-db-fatturazione-immediata-create-contratto.md),
+dove vive il dettaglio completo. Qui basti: mapper corretti su **entrambi** i
+percorsi (non solo l'update segnalato — anche la create aveva la stessa
+trappola), lettura del flag estratta in un metodo unico, **14 test nuovi** sui
+tre domini e **3 guardrail** che presidiano gli spazi fra gli anelli:
+
+| Guardrail | Cosa confronta |
+|---|---|
+| whitelist create testata | BE ↔ `v_testata_allowed` della fn madre (dalla doc auto-gen) |
+| whitelist create utility | BE ↔ `v_util_allowed` (stessa struttura fail-open, non presidiata da nessuno) |
+| **catena di update** | `_UPDATE_KEYS_TESTATA` → `_build_update_data_testata` → `_UPDATE_WRITE_COLS`, l'anello di mezzo che aveva prodotto il difetto |
+
+**Lezione da portarsi dietro**: quando si estende un campo «su tutti i domini»,
+il rischio non è la whitelist dimenticata — quella si vede. È il dominio che ha
+una forma diversa dagli altri.
+
 ### Prossimo passo
 
-1. **Validazione a schermo di Tid** (cockpit → card «Da emettere» → selezione →
-   Fattura → «vai al lotto»; e i tre difetti corretti).
-2. Whitelist DB della create contratto (brief passato al team).
-3. A validazione fatta: brief in `work-done`.
+### 2026-07-28 · Validazione a schermo ✅ — brief CHIUSO
+
+Tid ha eseguito la prova sui dati veri. Con questo cade l'ultima voce aperta:
+il perimetro §8 punti 3-6 dell'analisi è consegnato per intero.
+
+**Consuntivo della slice**
+
+| | Prodotto |
+|---|---|
+| **Backend** | emissione mirata per gruppo fatturabile (criterio persistito sul lotto, corsia `mirata`, esito a lista di lotti), endpoint lista gruppi + riepilogo + facet, flag `fatturazione_immediata` sui tre documenti |
+| **Frontend** | card «Da emettere» sui gruppi fatturabili con selezione multipagina, filtro tipo documento, riga di totali dal DB, N «vai al lotto», 3 difetti cockpit, flag nei tre drawer |
+| **Bonifiche non richieste ma dovute** | 6/6 liste dei cruscotti ora clampano l'offset e dichiarano la pagina effettiva (erano 4/6, con una combinazione contraddittoria) |
+| **Guardrail** | 3 sulle whitelist/catene del contratto, nati dal difetto BE-6 |
+| **Test** | 20 (emissione mirata) + 6 (facet/filtro) + 14 (flag e catene) = **40 nuovi**, baseline invariata |
+| **Doc** | `api_fatturazione`, `api_dashboard_competenza`, `api.md`, catalogo BB backend e frontend |
+
+**Le tre cose che questa slice ha insegnato**, al di là della funzione:
+
+1. **Un criterio che non è un parametro.** Gli step della pipeline ricevono solo
+   `lotto_id`: il perimetro doveva diventare *stato del lotto*, scritto nella
+   stessa transazione. Chi riprenderà in mano il giro deve saperlo prima di
+   toccarlo — è in cima al catalogo BB backend.
+2. **I difetti che rispondono 200.** Due dei tre problemi peggiori trovati qui
+   (dedup della coda che assorbe la seconda emissione; PATCH contratto che dice
+   «salvato» e non salva) non producevano errori. I test che li presidiano sono
+   stati tutti provati *rompendo di proposito* ciò che devono intercettare: è
+   l'unico modo per sapere che un guardrail guarda.
+3. **Il dominio con la forma diversa.** Estendere un campo «su tutti i domini»
+   fallisce sul dominio che è fatto diversamente dagli altri, non su quello
+   dimenticato.
+
+**Resta fuori perimetro, tracciato altrove**: `Fatturate` → lista fatture/lotti
+(BF-3), filtri utility/cliente/emittente sulla lista gruppi, deploy dei timer
+batch (§8 punto 7 dell'analisi), variante *fail-loud* della fn madre contratto
+(team DB).
