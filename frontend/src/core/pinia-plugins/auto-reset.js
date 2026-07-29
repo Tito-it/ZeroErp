@@ -31,10 +31,25 @@
 
 import { getActivePinia } from 'pinia'
 
-// Scopo: aggiunge `$resetToInitial()` e marca lo store come user-scoped.
+// Registro degli store user-scoped istanziati, una entry per istanza di Pinia.
+//
+// Perche' un registro nostro e non `pinia._s`: quella e' la mappa interna di
+// Pinia (API privata, nessuna garanzia di stabilita' fra major). Il plugin
+// vede gia' ogni store al momento della creazione, quindi il registro lo
+// costruiamo noi con sola API pubblica e restiamo indipendenti dagli interni
+// della libreria. Il sintomo di una rottura li' sarebbe silenzioso — l'utente
+// B che vede i dati dell'utente A — e nessun test lo intercetterebbe.
+//
+// WeakMap sull'istanza di Pinia (non un Set globale): in HMR e nei test si
+// creano piu' istanze, e gli store della vecchia non devono sopravvivere
+// nella nuova.
+const _userScopedStores = new WeakMap()
+
+// Scopo: aggiunge `$resetToInitial()`, marca lo store come user-scoped e lo
+//        iscrive al registro di reset.
 //        Funzione di registrazione da passare a `pinia.use(autoResetPlugin)`
 //        in `main.js`.
-export function autoResetPlugin({ store, options }) {
+export function autoResetPlugin({ pinia, store, options }) {
   if (!options?.userScoped) return
 
   // Snapshot dello state al momento della creazione dello store.
@@ -47,9 +62,28 @@ export function autoResetPlugin({ store, options }) {
   // un'action `clearUserState()` esplicita che azzera davvero.
   const initial = JSON.parse(JSON.stringify(store.$state))
 
+  // Marcatore diagnostico: non serve piu' a filtrare (ci pensa il registro),
+  // ma rende riconoscibile uno store user-scoped nei Vue devtools.
   store.$isUserScoped = true
   store.$resetToInitial = () => {
     store.$patch(initial)
+  }
+
+  // Iscrizione al registro dell'istanza di Pinia corrente.
+  let registry = _userScopedStores.get(pinia)
+  if (!registry) {
+    registry = new Set()
+    _userScopedStores.set(pinia, registry)
+  }
+  registry.add(store)
+
+  // Uno store distrutto esce dal registro: `$dispose()` e' API pubblica, e
+  // senza questo il registro terrebbe in vita store morti (oggi nessuno lo
+  // chiama, ma il costo di tenerlo onesto e' tre righe).
+  const dispose = store.$dispose.bind(store)
+  store.$dispose = () => {
+    registry.delete(store)
+    dispose()
   }
 }
 
@@ -87,9 +121,9 @@ export function registerUserScopedResetter(fn) {
 //        Dopo gli store, esegue tutti i resetter module-scope registrati.
 export function resetAllUserScopedStores() {
   const pinia = getActivePinia()
-  if (pinia) {
-    for (const store of pinia._s.values()) {
-      if (!store.$isUserScoped) continue
+  const registry = pinia ? _userScopedStores.get(pinia) : null
+  if (registry) {
+    for (const store of registry) {
       if (typeof store.clearUserState === 'function') {
         store.clearUserState()
       } else if (typeof store.$resetToInitial === 'function') {

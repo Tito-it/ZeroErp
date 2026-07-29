@@ -21,6 +21,18 @@ export default defineConfig([
     },
   },
 
+  {
+    // Gli script in `scripts/` sono CLI di verifica eseguite da Node, non
+    // codice di bundle: senza i globals Node, `process` risulta non definito.
+    name: 'app/node-scripts',
+    files: ['scripts/**/*.{js,mjs}'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+
   js.configs.recommended,
   ...pluginVue.configs['flat/essential'],
 
