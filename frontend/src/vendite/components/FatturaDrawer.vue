@@ -25,6 +25,7 @@ import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import RiepilogoIvaTable from '../../core/components/RiepilogoIvaTable.vue'
+import ScadenzeSintesi from '../../core/components/ScadenzeSintesi.vue'
 import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import FatturaNoteDrawer from './FatturaNoteDrawer.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -175,15 +176,16 @@ const campiDocumento = computed(() => {
   ]
 })
 
-// Totali: `importo` invece di `value` perché passano tutti da formatCurrency.
-// `visible` copre le voci che si mostrano solo se valorizzate (bollo,
-// arrotondamento); `forte` marca le due righe di totale.
+// Totali di CHIUSURA, resi sotto il riepilogo IVA: imponibile e imposta NON si
+// ripetono qui — sono già il footer di quadratura di `RiepilogoIvaTable`.
+// Restano bollo e arrotondamento (solo se valorizzati: sono rettifiche, non
+// voci fisse del documento) e le due righe forti di totale.
+// ⚠️ `totale_doc` NON è la somma del riepilogo IVA: include bollo e
+// arrotondamento. È il numero della testata, l'unico autorevole.
 const campiTotali = computed(() => {
   const f = fattura.value ?? {}
   const arrotondamento = Number(f.arrotondamento_attuale ?? 0)
   return [
-    { labelKey: 'vendite.fatture.imponibile', importo: f.imponibile_tot },
-    { labelKey: 'vendite.fatture.imposta', importo: f.imposta_tot },
     {
       labelKey: 'vendite.fatture.bollo',
       importo: f.bollo_importo,
@@ -197,6 +199,14 @@ const campiTotali = computed(() => {
     { labelKey: 'vendite.fatture.totale_doc', importo: f.totale_doc, forte: true },
     { labelKey: 'vendite.fatture.totale_a_pagare', importo: f.totale_a_pagare, forte: true },
   ].filter((c) => c.visible !== false)
+})
+
+// Utility del billing account: qualificatore di contesto della fattura, reso
+// sotto lo stato. Descrizione con fallback sul codice (`utility_codice` è
+// sempre valorizzato, la descrizione può mancare su config incomplete).
+const utilityLabel = computed(() => {
+  const f = fattura.value ?? {}
+  return f.utility_descrizione || f.utility_codice || null
 })
 
 // Scopo: sconto riga — percentuale formattata it-IT solo se > 0, '—'
@@ -284,84 +294,63 @@ function onNoteSaved(total) {
         </div>
 
         <template v-if="fattura">
+          <!-- Header: numero e data emissione etichettati (in un documento
+               fiscale un valore nudo non dice quale dei due è). Il cliente non
+               sta qui: è la prima voce della sezione Cliente. -->
           <DrawerEntityHeader>
+            <span class="app-drawer-header-muted">{{ t('vendite.fatture.label_numero') }}</span>
             <Tag :value="numeroDisplay" severity="secondary" />
-            <span v-if="fattura.ragione_sociale_completa" class="app-drawer-header-muted">
-              {{ fattura.ragione_sociale_completa }}
-            </span>
-            <span v-if="fattura.data" class="app-drawer-header-muted">
-              {{ displayDate(fattura.data) }}
-            </span>
+            <template v-if="fattura.data">
+              <span class="app-drawer-header-muted">
+                {{ t('vendite.fatture.data_emissione') }}
+              </span>
+              <span>{{ displayDate(fattura.data) }}</span>
+            </template>
             <template #status>
-              <Tag
-                v-if="fattura.stato_descrizione"
-                :value="fattura.stato_descrizione"
-                :severity="statoDocFiscaleSeverity(fattura.stato_codice_interno)"
-              />
+              <!-- Stato in alto, utility sotto: è il contesto del documento
+                   (quale servizio si sta fatturando), non un suo stato. -->
+              <div class="app-drawer-header-status-stack">
+                <Tag
+                  v-if="fattura.stato_descrizione"
+                  :value="fattura.stato_descrizione"
+                  :severity="statoDocFiscaleSeverity(fattura.stato_codice_interno)"
+                />
+                <Tag v-if="utilityLabel" :value="utilityLabel" severity="info" />
+              </div>
             </template>
           </DrawerEntityHeader>
 
           <DrawerActionsBar :actions="drawerActions" />
 
-          <!-- Cliente / emittente / pagamento + totali. -->
-          <div class="app-fattura-testata">
-            <div class="app-fattura-anagrafica">
+          <!-- Cliente e Documento affiancati (`form-grid-2col`, collassa a una
+               colonna su schermi stretti): due schede corte, nessuna ragione di
+               incolonnarle su un drawer WIDE. -->
+          <div class="form-grid-2col">
+            <div>
               <div class="app-drawer-section"><h4>{{ t('vendite.fatture.sez_cliente') }}</h4></div>
-              <div v-for="c in campiCliente" :key="c.labelKey" class="app-fattura-riga">
-                <span class="app-fattura-label">{{ t(c.labelKey) }}</span>
-                <span>{{ c.value || '—' }}</span>
-              </div>
-
-              <div class="app-drawer-section"><h4>{{ t('vendite.fatture.sez_documento') }}</h4></div>
-              <div v-for="c in campiDocumento" :key="c.labelKey" class="app-fattura-riga">
-                <span class="app-fattura-label">{{ t(c.labelKey) }}</span>
+              <div v-for="c in campiCliente" :key="c.labelKey" class="app-doc-campo">
+                <span class="app-doc-campo-label">{{ t(c.labelKey) }}</span>
                 <span>{{ c.value || '—' }}</span>
               </div>
             </div>
 
-            <!-- Totali. `totale_doc` e `totale_a_pagare` entrambi: divergono
-                 quando ci sono fondi/acconti applicati, e mostrarne uno solo
-                 lascia l'operatore senza spiegazione. Placeholder '—' per gli
-                 importi assenti: NULL non è zero (mai inventare uno 0,00 su un
-                 documento fiscale). -->
-            <div class="app-fattura-totali">
-              <div class="app-drawer-section"><h4>{{ t('vendite.fatture.sez_totali') }}</h4></div>
-              <div
-                v-for="c in campiTotali"
-                :key="c.labelKey"
-                class="app-fattura-riga"
-                :class="{ 'app-fattura-riga--totale': c.forte }"
-              >
-                <span class="app-fattura-label">{{ t(c.labelKey) }}</span>
-                <span>{{ formatCurrency(c.importo, { placeholder: '—' }) }}</span>
+            <div>
+              <div class="app-drawer-section"><h4>{{ t('vendite.fatture.sez_documento') }}</h4></div>
+              <div v-for="c in campiDocumento" :key="c.labelKey" class="app-doc-campo">
+                <span class="app-doc-campo-label">{{ t(c.labelKey) }}</span>
+                <span>{{ c.value || '—' }}</span>
+              </div>
+              <!-- Scadenza: la prossima rata PER DATA, col chip che apre il
+                   piano completo. Non è uno stato di pagamento — il modello non
+                   sa quale rata sia stata incassata (vedi useScadenzeSintesi). -->
+              <div class="app-doc-campo">
+                <span class="app-doc-campo-label">
+                  {{ t('vendite.fatture.prossima_rata') }}
+                </span>
+                <ScadenzeSintesi :scadenze="scadenze" />
               </div>
             </div>
           </div>
-
-          <!-- Scadenze: la «data scadenza» non è un campo di testata, è una o
-               più rate. Mostrarne una sola mentirebbe sulle rateizzate. -->
-          <template v-if="scadenze.length">
-            <div class="app-drawer-section"><h4>{{ t('vendite.fatture.sez_scadenze') }}</h4></div>
-            <DataTable
-              :value="scadenze"
-              class="app-datatable app-datatable--inner"
-              striped-rows
-              size="small"
-              data-key="id"
-            >
-              <Column field="numero_rata" :header="t('vendite.fatture.col_rata')" style="width: 70px;" />
-              <Column field="data_scadenza" :header="t('vendite.fatture.col_scadenza')" style="width: 120px;">
-                <template #body="{ data }">
-                  {{ data.data_scadenza ? displayDate(data.data_scadenza) : '—' }}
-                </template>
-              </Column>
-              <Column field="importo" :header="t('vendite.fatture.col_importo')">
-                <template #body="{ data }">
-                  {{ formatCurrency(data.importo, { placeholder: '—' }) }}
-                </template>
-              </Column>
-            </DataTable>
-          </template>
 
           <!-- Righe. Fonte: vw_fattura_righe_esposte (kit già risolti). -->
           <div class="app-drawer-section"><h4>{{ t('vendite.fatture.sez_righe') }}</h4></div>
@@ -427,6 +416,26 @@ function onNoteSaved(total) {
                label esenti con natura, footer di quadratura, totale documento).
                Lettura pura da fatture_riepiloghi_iva: nessun ricalcolo qui. -->
           <RiepilogoIvaTable :items="riepilogoIva" show-esigibilita show-subtitle />
+
+          <!-- Chiusura del documento: bollo/arrotondamento se ci sono, poi i
+               due totali. `totale_doc` e `totale_a_pagare` entrambi perché
+               divergono quando ci sono fondi/acconti applicati, e mostrarne uno
+               solo lascia l'operatore senza spiegazione. Placeholder '—' sugli
+               importi assenti: NULL non è zero, e su un documento fiscale uno
+               zero inventato è un'informazione falsa. -->
+          <div class="app-doc-totali">
+            <div
+              v-for="c in campiTotali"
+              :key="c.labelKey"
+              class="app-doc-totali-riga"
+              :class="{ 'app-doc-totali-riga--forte': c.forte }"
+            >
+              <span class="app-doc-totali-label">{{ t(c.labelKey) }}</span>
+              <span class="app-doc-totali-value">
+                {{ formatCurrency(c.importo, { placeholder: '—' }) }}
+              </span>
+            </div>
+          </div>
         </template>
       </template>
 
@@ -456,35 +465,8 @@ function onNoteSaved(total) {
 </template>
 
 <style scoped>
-.app-fattura-testata {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.5rem;
-  margin-top: 0.75rem;
-}
-.app-fattura-anagrafica {
-  flex: 2 1 22rem;
-  min-width: 0;
-}
-.app-fattura-totali {
-  flex: 1 1 14rem;
-  min-width: 0;
-}
-.app-fattura-riga {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.15rem 0;
-  font-size: var(--app-font-size-sm);
-}
-.app-fattura-label {
-  color: var(--app-text-muted);
-  white-space: nowrap;
-}
-.app-fattura-riga--totale {
-  font-weight: 600;
-  font-size: var(--app-font-size-base);
-}
+/* Solo decorazione della tabella righe: il layout della scheda (campi
+   label/valore, totali di chiusura) vive nelle classi globali `app-doc-*`. */
 .app-fattura-articolo {
   color: var(--app-text-muted);
   margin-right: 0.4rem;

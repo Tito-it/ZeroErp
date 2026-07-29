@@ -190,7 +190,19 @@ Due punti di merito:
 - **Nessuno sconto di testata**: `sconto_tot` non è una colonna di
   `vendite.fatture`. Lo sconto vive solo per riga (`sconto_percentuale`).
 - **La «data scadenza» non è un campo di testata**: è una o più rate in
-  `vendite.fatture_scadenze`.
+  `vendite.fatture_scadenze`. Il frontend ne mostra una sintesi (prossima rata
+  per data + piano completo in popover, BB `ScadenzeSintesi`).
+- **Nessuna imputazione incasso → rata.** `vendite.fatture_scadenze` non ha
+  stato di pagamento e `pagamenti.vendite_movimenti` è legato a `fattura_id`,
+  **non** a una scadenza: il residuo si conosce solo per fattura
+  (`pagamenti.fn_get_saldo_fattura` = `totale_a_pagare − movimenti attivi`).
+  Conseguenza per il consumer: **«quale rata è stata pagata» non è una domanda
+  a cui il modello sa rispondere.** Su una fattura a 3 rate con un incasso
+  parziale non si può dire se il cliente ha saldato la prima o versato un
+  acconto sulla terza — quindi niente stati «insoluta/scaduta» derivati dalle
+  sole date, che su una fattura già incassata sarebbero falsi. Se servirà
+  davvero (solleciti, scadenzario), il prerequisito è **DB**: una imputazione
+  incasso→scadenza, non un calcolo applicativo.
 - **Una fattura in DRAFT ha `numero` NULL**: il progressivo si assegna alla
   numerazione fiscale.
 

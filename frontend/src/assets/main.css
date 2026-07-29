@@ -195,6 +195,64 @@ a {
   font-size: 0.85rem;
 }
 
+/* Colonna nello slot #status dell'header: stato in alto, qualificatori sotto
+ * (es. utility della fattura). Allineati a destra come il Tag stato. */
+.app-drawer-header-status-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+/* ===== Scheda documento — drawer di CONSULTAZIONE =====
+ * Coppie label/valore delle sezioni anagrafiche (cliente, documento) e area
+ * totali di chiusura. Nate col drawer fattura (2026-07-29): i prossimi drawer
+ * di consultazione documento riusano queste, non le riscrivono scoped.
+ */
+.app-doc-campo {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.15rem 0;
+  font-size: var(--app-font-size-sm);
+}
+.app-doc-campo-label {
+  color: var(--app-text-muted);
+  white-space: nowrap;
+}
+
+/* Totali di chiusura documento: righe allineate a destra sotto il riepilogo
+ * IVA. Stesso registro visivo del totale di RiepilogoIvaTable, di cui è la
+ * continuazione naturale a schermo. */
+.app-doc-totali {
+  display: flex;
+  flex-direction: column;
+  margin-top: 0.25rem;
+}
+.app-doc-totali-riga {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.25rem 0.75rem 0;
+  font-size: var(--app-font-size-sm);
+}
+.app-doc-totali-label {
+  color: var(--app-text-muted);
+  font-weight: 600;
+}
+.app-doc-totali-value {
+  font-weight: 600;
+}
+/* Riga di totale forte (totale documento, totale a pagare). */
+.app-doc-totali-riga--forte {
+  font-size: 1rem;
+}
+.app-doc-totali-riga--forte .app-doc-totali-value {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
 /* ===== Barra azioni drawer (DrawerActionsBar) =====
  * Riga flex sotto l'header con azioni di processo (state transitions, manage
  * sub-drawer, secondary). Responsive: vedi @media (hover: none) sotto.
