@@ -1,8 +1,14 @@
 # Piano operativo — Migrazione a PrimeVue 5 (+ @primeuix/themes 3, primeicons 8)
 
 > **Tipo**: piano operativo FE (`dev/backend-tid`) · **Data**: 2026-07-29 ·
-> **Owner**: Tid · **Stato**: ⬜ **DA ESEGUIRE** — pianificato, non iniziato ·
-> **Raccomandazione**: **non ora**, vedi §1. Il piano è pronto per quando si decide di partire.
+> **Owner**: Tid · **Stato**: 🟡 **IN CORSO** — §6.1 (Pinia 4) **chiuso** il
+> 2026-07-29, controprova in-app superata; §6.2/6.3 (primeicons) e §6.4
+> (PrimeVue 5) da fare ·
+> **Raccomandazione invariata sul resto**: **non ora**, vedi §1.
+>
+> Pinia era il caso a sé — superficie minima e indipendente da PrimeVue — e per
+> questo è stato staccato dagli altri tre. La raccomandazione di aspettare
+> riguardava (e riguarda) `primevue`/`@primeuix/themes`/`primeicons`.
 >
 > **Contesto**: non siamo in produzione
 > ([[project_no_produzione_solo_sviluppo]]) → breaking secchi ammessi.
@@ -34,7 +40,7 @@ Tre regole per chi esegue:
 | `primevue` | 4.5.5 | 5.0.0 | **2026-07-15** | 1 |
 | `@primeuix/themes` | 2.0.3 | 3.0.0 | 2026-07-15 | 1 |
 | `primeicons` | 7.0.0 | 8.0.0 | 2026-07-15 | 1 |
-| `pinia` | 3.0.4 | 4.0.2 | 2026-07-14 | 3 |
+| ~~`pinia`~~ | ~~3.0.4~~ | **4.0.2 ✅ fatto** | 2026-07-14 | 3 |
 
 Sono uscite **tutte due settimane fa** e tre su quattro sono ancora al `.0.0`.
 PrimeVue 4.0.0 è del luglio 2024 e oggi è alla 4.5.5: cinque minor di
@@ -135,15 +141,24 @@ camion al posto di una matita.
 Il changelog di 8.0.0 non è pubblicato, quindi è un ignoto — ma **meccanicamente
 verificabile**. C'è uno script pronto e collaudato: §6.3.
 
-### R3 — `pinia._s` nel plugin auto-reset 🔴
+### R3 — `pinia._s` nel plugin auto-reset ✅ RISOLTO (2026-07-29)
 
-`src/core/pinia-plugins/auto-reset.js:91` itera `pinia._s` — **API privata**
-(la mappa interna degli store). Pinia 4 non promette nulla al riguardo.
+**Testo originale**: `src/core/pinia-plugins/auto-reset.js:91` itera `pinia._s`
+— **API privata** (la mappa interna degli store). Pinia 4 non promette nulla al
+riguardo. Se cambia, il reset degli store `userScoped` al logout smette di
+funzionare, e il sintomo è **silenzioso**: l'utente B vede filtri e cache
+dell'utente A sullo stesso browser.
 
-Se cambia, il reset degli store `userScoped` al logout smette di funzionare, e
-il sintomo è **silenzioso**: l'utente B vede filtri e cache dell'utente A sullo
-stesso browser. Per gravità è il peggiore dei tre — nessun test lo copre, e non
-si manifesta con un errore ma con dati sbagliati a video.
+**Come è andata**: il rischio non si è materializzato — su Pinia 4 `_s` esiste
+ancora ed è ancora iterabile. Il plugin è stato comunque riscritto su sola API
+pubblica (registro proprio degli store) e il caso è ora coperto da
+`frontend/scripts/check-pinia-user-scoped-reset.mjs`. Dettaglio in §9.
+
+⚠️ **La lezione da portarsi dietro negli step 6.3 e 6.4** è che la gravità qui
+non stava nella probabilità della rottura, ma nel fatto che **il sintomo era
+silenzioso e non c'era modo di accorgersene**. È esattamente la forma di R2
+(codepoint delle icone): la mitigazione giusta non è sperare, è costruire il
+controllo meccanico *prima* di aggiornare.
 
 ---
 
@@ -191,7 +206,7 @@ cd frontend
 export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && nvm use --lts
 ```
 
-### 6.1 — Pinia 4 (il più isolato, si può fare anche da solo)
+### 6.1 — Pinia 4 ✅ ESEGUITO il 2026-07-29 (dettaglio in §9)
 
 ```bash
 npm i pinia@^4 @vue/devtools-api
@@ -203,17 +218,24 @@ npm run lint
 dipendenza transitiva. L'altra novità è che il pacchetto è **ESM-only** (per noi
 irrilevante: Vite lo è già).
 
-**Verifica — l'unica che conta, ed è manuale** (R3):
+**Verifica del reset user-scoped** — ora è meccanica e va tenuta verde:
+
+```bash
+node scripts/check-pinia-user-scoped-reset.mjs     # 9/9, exit 0
+```
+
+Se va rosso, al logout i dati dell'utente precedente restano in memoria:
+**non proseguire**.
+
+Controprova in-app — **fatta il 2026-07-29, superata**. Va rifatta solo se si
+tocca `auto-reset.js` o il flusso di logout, perché lo script non copre né il
+logout vero né i 39 store reali con i loro `clearUserState`:
 
 1. login utente A;
 2. applica filtri su una lista (es. clienti: ricerca + filtro data);
 3. **logout**;
 4. login utente B;
 5. **i filtri devono essere spariti.**
-
-Se sono ancora lì, `pinia._s` è cambiato e il reset user-scoped è morto: **non
-proseguire**, va riscritto `auto-reset.js` su API pubbliche
-(`pinia.use(...)` + registro proprio degli store invece di leggere `_s`).
 
 Commit: `chore(fe): pinia 4 + @vue/devtools-api`.
 
@@ -349,6 +371,58 @@ npm ci                    # ripristina node_modules dal lock
 ---
 
 ## 9. Registro
+
+### 2026-07-29 · Step 6.1 eseguito — Pinia 4
+
+Fatto su `dev/backend-tid` (non su un branch dedicato: scelta di Tid).
+`pinia` 3.0.4 → **4.0.2**, `@vue/devtools-api` **8.2.1** aggiunto esplicito.
+`npm i` ha rimosso 17 pacchetti transitivi. Build verde, `npm run lint` verde.
+
+**R3 non si e' materializzato, e la premessa era sbagliata.** Sondato
+direttamente su Pinia 4: `pinia._s` **esiste ancora ed e' ancora iterabile**.
+Il codice precedente avrebbe continuato a funzionare. Era un rischio *latente*
+— dipendere da un interno senza garanzie — non una rottura in arrivo.
+
+Prima dell'upgrade `auto-reset.js` e' stato comunque riscritto su sola API
+pubblica: il plugin costruisce un **registro proprio** degli store user-scoped
+(li vede gia' tutti alla creazione, `_s` non serviva), in una `WeakMap` sull'
+istanza di Pinia — cosi' HMR e test non si trascinano store di istanze morte —
+con rimozione dal registro su `$dispose()`.
+
+Aggiunta la rete che mancava: **`frontend/scripts/check-pinia-user-scoped-reset.mjs`**,
+9 verifiche che girano in Node in un secondo, senza browser. Copre store con
+snapshot, store con `clearUserState`, store *non* user-scoped che deve
+sopravvivere, resetter module-scope, secondo logout consecutivo, e un controllo
+che il plugin non torni a leggere `pinia._*`. Verde su 3.0.4 **e** su 4.0.2.
+
+Tre cose emerse strada facendo:
+
+1. **La prima stesura del test passava per il motivo sbagliato.** `pinia.use()`
+   chiamato prima di `app.use(pinia)` mette il plugin in coda, e la coda la
+   scarica `install(app)`: senza una app Vue il plugin non gira e il test
+   verifica il nulla. Ora replica la sequenza di `src/main.js`.
+2. **`npm run lint` era gia' rosso prima di questo lavoro**: `scripts/*.mjs` non
+   aveva i globals Node in `eslint.config.js` — 5 errori `'process' is not
+   defined` su `check-primeicons-codepoints.mjs` (committato in `6d255b200`).
+   Aggiunto il blocco `app/node-scripts`. Senza, il gate «lint verde» non era
+   utilizzabile da **nessuno** dei quattro step.
+3. **La superficie Pinia dell'app e' minuscola**, ed e' questo il vero motivo
+   del rischio basso — non il build verde: solo `createPinia`, `defineStore`,
+   `getActivePinia`, `storeToRefs` (tutte presenti in v4); `$patch`, `$state` e
+   `$dispose` compaiono **solo** dentro `auto-reset.js`. I 43 store non toccano
+   altro.
+
+Note: `npm audit` segnala 1 high (`eslint → minimatch → brace-expansion`),
+**preesistente e non correlato**. In dev la console mostra al logout
+`[PINIA_R1004] Pinia instance not found in context`: e' `getActivePinia()`
+chiamato fuori da un contesto d'iniezione, Pinia 3 emetteva lo stesso avviso in
+forma discorsiva — non e' una regressione.
+
+**Controprova in-app: fatta da Tid il 2026-07-29, superata.** Login A → filtri
+su una lista → logout → login B: i filtri risultano azzerati. Serviva perche'
+lo script esercita il plugin con reattivita' Vue reale ma non il flusso di
+logout vero (`stores/auth.js`) ne' i 39 store reali con i loro
+`clearUserState`. **Step 6.1 chiuso, nessun residuo.**
 
 ### 2026-07-29 · Analisi e piano
 
