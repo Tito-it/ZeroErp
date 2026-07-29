@@ -16,6 +16,7 @@ from django.db import connection
 
 from apps.core.db._helpers import (
     LIST_MAX_LIMIT,
+    coerce_jsonb_dict,
     fetch_paged_with_total,
     iso_or_none,
     jsonb_out,
@@ -144,10 +145,26 @@ class VenditePipelineRepository:
 
     DOMINIO_CODE = "FATTURAZIONE"
 
-    # `fn` nei JSON task e` mantenuto come token di compatibilita` SQL legacy.
+    # Mappa dichiarativa task -> funzione SQL che il task esegue. NON e' una
+    # allowlist di sicurezza e non guida il dispatch: ogni handler in
+    # `pipeline_step_executor` chiama un metodo repository esplicito. Serve a
+    # due cose: documentare dove vive l'implementazione di ogni task, e
+    # intercettare una config di pipeline che dichiari un `fn` diverso da quello
+    # atteso. Quel controllo, oggi, non scatta mai — nessuna riga di
+    # `vendite.fatturazione_pipeline` valorizza la chiave `fn` (verificato:
+    # 0 su 8), quindi `_validate_task_function_name` riceve sempre `fn_name=None`.
+    #
+    # `None` = il task NON ha una funzione SQL: l'implementazione e' Python.
+    # Un `fn` dichiarato in config per un task a `None` e' respinto con
+    # E_TASK_NOT_ALLOWED (config stale): vedi `_validate_task_function_name`.
     ALLOWED_TASK_FUNCTIONS = {
         "select_attivita": "vendite.fn_select_attivita_fatturabili",
-        "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
+        # `vendite.fn_generate_fatture_righe` e' stata RIMOSSA il 2026-07-28
+        # (changeset 20260728-21): l'implementazione in esercizio e'
+        # `FattureRigheService.generate_fatture_righe`. Lasciare qui il nome di
+        # una funzione inesistente e' precisamente cio' che ha fatto scrivere
+        # due requisiti di aggregazione su codice non eseguito.
+        "generate_fatture_righe": None,
         "genera_fondi_source_lotto": "vendite.fn_genera_fondi_fattura_source",
         "applica_fondi_lotto": "vendite.fn_applica_fondi_fattura",
         "ricalcola_iva_lotto": "vendite.fn_ricalcola_riepiloghi_iva_lotto",
@@ -1289,7 +1306,10 @@ class VenditePipelineRepository:
                 sorgente_uid=row[6],
                 sorgente_riga=row[7],
                 articolo_descrizione=row[8],
-                meta=row[9],
+                # Il driver restituisce `jsonb` come STRINGA: senza coercion
+                # lo snapshot kit a valle farebbe `str.get(...)`. I test
+                # mockati non lo vedono, iniettano gia' dei dict.
+                meta=coerce_jsonb_dict(row[9]),
             )
             for row in rows
         ]

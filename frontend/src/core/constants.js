@@ -343,6 +343,10 @@ export const MANAGE_ICONS = {
   // Ispezione read-only (apre un dettaglio in sola lettura). Distinta da EDIT
   // (modifica) — usata dalle azioni "Ispeziona" quando l'entita' non e' editabile.
   INSPECT: 'pi pi-eye',
+  // Archivio documenti generati (dialog PdfDocumentiSorgenteDialog): lista
+  // stampe + allegati di una sorgente. Regola del 2: era hardcoded
+  // `pi pi-folder-open` in LottoDrawer e FatturaDrawer.
+  ARCHIVE: 'pi pi-folder-open',
 }
 
 // Scope readonly — area (schema DB) passata come primo arg a useReadonlyMode.
@@ -370,6 +374,7 @@ export const READONLY_MODELS = {
   CONTO_BANCARIO: 'conto_bancario',
   CONTRATTO: 'contratto',
   DDT: 'ddt',
+  FATTURA: 'fattura',
   RESO: 'reso',
   FORNITORE: 'fornitore',
   OFFERTA_COMMERCIALE: 'offerta_commerciale',

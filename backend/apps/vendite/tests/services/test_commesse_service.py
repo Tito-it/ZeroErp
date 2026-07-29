@@ -1491,8 +1491,11 @@ class CommessaAnnullaRigaManualeServiceTests(TestCase):
 
     # Scopo: G4 — lo scoping riga<->commessa passa dalla WHERE su ENTRAMBI gli
     #        id: id di un'altra commessa (o inesistente) → 404, mai
-    #        l'annullamento della riga di un altro cliente. La RLS non copre il
-    #        buco (policy ENABLE ... NO FORCE, l'app gira come owner).
+    #        l'annullamento della riga di un altro cliente. La RLS si applica
+    #        (l'app non e' owner della tabella) ma risponde a un'altra domanda —
+    #        whitelist emittente della commessa, non appartenenza della riga a
+    #        QUESTA commessa: fra due commesse dello stesso emittente non
+    #        distingue. Questo guard e' l'unico che chiude il caso.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     def test_annulla_riga_fuori_scope_o_inesistente_404(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import annulla_attivita_manuale

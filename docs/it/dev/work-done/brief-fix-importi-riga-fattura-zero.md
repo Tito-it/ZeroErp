@@ -1623,19 +1623,26 @@ punto 3). Lo smoke attuale supera un PDF interamente fatto di trattini.
 
    | # | Changeset | Contenuto | Stato |
    |---|---|---|---|
-   | `-07` | **vocabolario unico** dei metodi di arrotondamento (§4.1-ter) | 3 CHECK allineati su `UP/DOWN/HALF_UP/HALF_DOWN` | ✍️ scritto |
-   | `-08` | `script.fn_arrotonda_importo(valore, decimali, metodo)` | estrazione dal `CASE` inline di `fn_ricalcola_totali_fattura` — inerte finché nessuno la chiama | ✍️ scritto |
-   | `-09` | `trgfn_fatture_righe_importo` | trigger function creata ma **non armata**: inerte | ⬜ |
-   | `-10` | ⚛️ **atomico** | `ALTER COLUMN … DROP EXPRESSION` **+** `CREATE TRIGGER` (§4.1, vincolo 2) | ⬜ |
-   | `-11` | FK su `attivita_fatturabili.fattura_riga_id` | il puntatore diventa struttura | ⬜ |
-   | `-12` | **D4** — aggregazione in `fn_generate_fatture_righe` | + `sorgente_*` a NULL, `riga_nr` deterministico | ⬜ |
+   | `-07` | **vocabolario unico** dei metodi di arrotondamento (§4.1-ter) | 3 CHECK allineati su `UP/DOWN/HALF_UP/HALF_DOWN` | ✅ |
+   | `-08` | `script.fn_arrotonda_importo(valore, decimali, metodo)` | estrazione dal `CASE` inline di `fn_ricalcola_totali_fattura` | ✅ |
+   | `-09` | `trgfn_fatture_righe_importo` | trigger function | ✅ |
+   | `-10` | ⚛️ **atomico** | `ALTER COLUMN … DROP EXPRESSION` **+** `CREATE TRIGGER` (§4.1, vincolo 2) | ✅ |
+   | `-11` | FK su `attivita_fatturabili.fattura_riga_id` | il puntatore diventa struttura | ✅ |
+   | `-12` | **D4** — aggregazione in `fn_generate_fatture_righe` | + `sorgente_*` a NULL, `riga_nr` deterministico | ✅ ⚠️ vedi nota |
    | `-13` | `vw_dash_competenza_attivita` | quota proporzionale — `CREATE OR REPLACE` puro, le 3 viste dipendenti non si toccano | ✅ |
    | ~~lineage~~ | ~~`vw_documento_lineage_archi`~~ | ✅ **non serve**: la vista usa già il puntatore delle attività (§4.6, punto 7) | — |
    | `-14` | **D5** — 4 colonne di snapshot kit su `fatture_righe` | §4.7-bis | ✅ |
    | `-15` | **D5** — `fn_generate_fatture_righe` congela lo snapshot kit dal `meta` | §4.7-bis | ✅ |
    | `-16` | **D5** — `vw_fattura_righe_esposte`, rappresentazione unica | §4.7-bis | ✅ |
-   | `-17` | `fn_group_attivita_fatturabili` non trasporta più `visibilita_componenti` | §4.7-bis | ✍️ scritto |
-   | `-18` | **DROP** `articolo_regole_fatturazione.visibilita_componenti` ⚠️ *breaking BE* | §4.7-bis | ✍️ scritto |
+   | `-17` | `fn_group_attivita_fatturabili` non trasporta più `visibilita_componenti` | §4.7-bis | ✅ (2026-07-28 14:30) |
+   | `-18` | **DROP** `articolo_regole_fatturazione.visibilita_componenti` ⚠️ *breaking BE* | §4.7-bis | ✅ (2026-07-28 16:57) |
+   | `-21` | **DROP** `fn_generate_fatture_righe` + `fn_group_attivita_fatturabili` | brief di ritiro, §5 passo 1 | ✅ |
+
+   ⚠️ **Nota su `-12` e `-15`**: sono stati scritti sulla funzione SQL, che
+   **nessun percorso eseguiva** — il task pipeline usa il servizio Python. Non
+   hanno mai prodotto effetto e sono spariti col `DROP` del `-21`. D4 e D5
+   vivono ora in `FattureRigheService`. Storia:
+   [brief-db-ritiro-generatore-righe-fattura-sql](../work-done/brief-db-ritiro-generatore-righe-fattura-sql.md).
 
    ⚠️ **`-12` e `-13` vanno applicati insieme**: il primo da solo moltiplica il
    totale fatturato della dashboard per il livello di aggregazione.
@@ -1711,6 +1718,7 @@ punto 3). Lo smoke attuale supera un PDF interamente fatto di trattini.
 | 2026-07-28 | **Sviluppo in avanti, `-07…-16`** | Vocabolario unico dei metodi di arrotondamento; `fn_arrotonda_importo` estratta; importo di riga da colonna generata a **trigger** con regole per articolo; FK sul puntatore attività→riga; **aggregazione** in `fn_generate_fatture_righe`; quota proporzionale in dashboard; snapshot kit + **vista di rappresentazione**. Tutti applicati |
 | 2026-07-28 | **Verifica a valle** su `LTF-0000390` | Fattura **362**: imponibile **200,00**, riepilogo IVA coerente, `arrotondamento = 0` come previsto, numerata **2026/R2/6**. Provato che è il **trigger** a produrre l'importo (riga creata 4 minuti dopo il changeset) e che il congelamento blocca l'`UPDATE` in DEFINITIVA mentre lo consentiva in EMESSA |
 | 2026-07-28 | **pgTAP** | File nuovo da 19 casi (verde), 2 regressioni chiuse, `test-ricalcola-riepiloghi-iva` da rosso noto a verde 12/12. Baseline 111 → 109. **Zero regressioni** sulla suite vendite |
+| 2026-07-28 | **Chiusura** | `-17`/`-18` applicati; `-21` ha rimosso le due funzioni SQL residue. **D4 e D5 portati nel servizio Python** (l'implementazione in esercizio) e verificati su DB reale con smoke dedicato, 10/10. Il perimetro BE/FE è tracciato in [brief-be-fe-importi-riga-fattura](brief-be-fe-importi-riga-fattura.md), che resta aperto su due residui di collaudo/doc |
 | 2026-07-28 | **Pulizia** `-17/-18` | `visibilita_componenti` rimossa: non era la regola di esposizione e nessun consumatore vivo la applicava. Scritti e validati, da applicare — ⚠️ breaking su `pipeline_repository.py` |
 
 ---

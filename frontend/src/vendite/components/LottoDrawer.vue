@@ -24,6 +24,7 @@ import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
+import FatturaDrawer from './FatturaDrawer.vue'
 import { useDocumentiPerSorgenteStore } from '../../documenti/stores/documentiPerSorgente'
 import { SORGENTE_CODES } from '../../documenti/constants'
 import { downloadBlob } from '../../core/utils/download'
@@ -97,6 +98,10 @@ const tabLoading = ref(false)
 // dopo va in TDZ silenziosa (memoria feedback_vue_watch_immediate_tdz).
 const pdfDialogVisible = ref(false)
 const pdfFatturaId = ref(null)
+// Drawer di consultazione fattura: stessa regola di dichiarazione anticipata
+// (il watch immediate sotto lo resetta).
+const fatturaDrawerVisible = ref(false)
+const fatturaDrawerId = ref(null)
 
 const isErrore = computed(() => lotto.value?.stato_lotto === 'ERRORE')
 const isInEsecuzione = computed(() => lotto.value?.stato_lotto === 'IN_ESECUZIONE')
@@ -163,7 +168,9 @@ watch(
   async ([visible]) => {
     // Il dialog documenti e' teleported (fuori dal DOM del drawer): senza
     // chiusura esplicita resterebbe aperto orfano alla chiusura del drawer.
+    // Stessa ragione per il drawer fattura, anch'esso teleported.
     pdfDialogVisible.value = false
+    fatturaDrawerVisible.value = false
     if (!visible || !props.lottoId) return
     lotto.value = null
     fatture.value = []
@@ -285,11 +292,29 @@ function apriDocumentiFattura(row) {
   pdfDialogVisible.value = true
 }
 
+// Scopo: apre il drawer di consultazione della fattura (documento a video).
+//        Il drawer si sovrappone a questo: e' consultazione pura e alla
+//        chiusura si torna al lotto senza ricaricare nulla.
+function apriFattura(row) {
+  fatturaDrawerId.value = row.fattura_id
+  fatturaDrawerVisible.value = true
+}
+
 // Azioni di riga fattura: stampa (anteprima + archivio) sempre disponibili
 // (lettura); reset a bozza solo per fattura DRAFT fuori sola-lettura. Il gate
 // reset usa il codice stabile (codice_interno), MAI la descrizione display.
 function buildFatturaActions(row) {
   const actions = [
+    {
+      // Apre il documento a video (testata + righe + riepilogo IVA): fino a
+      // ieri la fattura si poteva solo scaricare in PDF per sapere cosa c'e'
+      // dentro. Prima voce del kebab perche' e' la consultazione, non
+      // un'azione — le due voci di stampa restano sotto.
+      key: 'apri',
+      label: t('vendite.lotti.azione_apri_fattura'),
+      icon: MANAGE_ICONS.INSPECT,
+      command: () => apriFattura(row),
+    },
     {
       key: 'anteprima',
       label: t('vendite.lotti.azione_anteprima_fattura'),
@@ -299,7 +324,7 @@ function buildFatturaActions(row) {
     {
       key: 'documenti',
       label: t('vendite.lotti.azione_documenti_fattura'),
-      icon: 'pi pi-folder-open',
+      icon: MANAGE_ICONS.ARCHIVE,
       command: () => apriDocumentiFattura(row),
     },
   ]
@@ -537,6 +562,12 @@ function fatturaNumero(row) {
       :sorgente-code="SORGENTE_CODES.FATTURA"
       :sorgente-id="pdfFatturaId"
       :title="t('vendite.lotti.documenti_fattura_titolo')"
+    />
+
+    <!-- Consultazione della fattura a video (documento completo). -->
+    <FatturaDrawer
+      v-model:visible="fatturaDrawerVisible"
+      :fattura-id="fatturaDrawerId"
     />
   </Drawer>
 </template>

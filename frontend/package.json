@@ -20,22 +20,22 @@
     "primeicons": "^7.0.0",
     "primevue": "^4.5.5",
     "vue": "^3.5.40",
-    "vue-i18n": "^11.4.7",
+    "vue-i18n": "^11.4.8",
     "vue-router": "^5.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@vitejs/plugin-vue": "^6.0.8",
-    "eslint": "^10.7.0",
+    "eslint": "^10.8.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-oxlint": "~1.75.0",
+    "eslint-plugin-oxlint": "~1.76.0",
     "eslint-plugin-vue": "~10.10.0",
-    "globals": "^17.7.0",
-    "npm-run-all2": "^9.0.2",
-    "oxlint": "~1.75.0",
+    "globals": "^17.8.0",
+    "npm-run-all2": "^9.0.3",
+    "oxlint": "~1.76.0",
     "prettier": "3.9.6",
     "vite": "^8.1.5",
-    "vite-plugin-vue-devtools": "^8.1.5"
+    "vite-plugin-vue-devtools": "^8.2.1"
   },
   "overrides": {
     "form-data": "^4.0.6"

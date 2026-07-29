@@ -12,6 +12,34 @@ export const STATO_APPROVAZIONE = Object.freeze({
   REJECTED: 'REJECTED',
 })
 
+// Stato di emissione di una riga di commessa
+// (`vendite.commesse_attivita.stato_emissione`, CHECK
+// `chk_commesse_attivita_stato_emissione` — verificato sul DB 2026-07-29).
+// NON_EMESSA = ancora lavorabile; EMESSA = ha generato la sua
+// `attivita_fatturabili` ed e' in viaggio verso la fattura; ANNULLATA = riga
+// manuale tolta dal giro senza cancellarla (il valore che TUTTE le porte verso
+// fattura e cockpit gia' filtrano, cfr. brief-annullamento-righe-manuali-commessa).
+// ⚠️ Gemello cromatico in `core/utils/severity.js` (`STATO_EMISSIONE_ATTIVITA_MAP`):
+// le due liste vanno tenute allineate a mano — `core/` non puo' importare da un
+// dominio, quindi la derivazione automatica non e' praticabile.
+export const STATO_EMISSIONE_ATTIVITA = Object.freeze({
+  NON_EMESSA: 'NON_EMESSA',
+  EMESSA: 'EMESSA',
+  ANNULLATA: 'ANNULLATA',
+})
+
+// Stato di approvazione di una riga di commessa
+// (`vendite.commesse_attivita.stato_approvazione`). Gemello dell'asse
+// emissione qui sopra — stessa avvertenza: la mappa cromatica vive in
+// `core/utils/severity.js` (`STATO_APPROVAZIONE_ATTIVITA_MAP`) e va tenuta
+// allineata a mano. ⚠️ NON confondere con `STATO_APPROVAZIONE` (PENDING/
+// APPROVED/REJECTED): quello e' il workflow di approvazione PREZZO.
+export const STATO_APPROVAZIONE_ATTIVITA = Object.freeze({
+  BOZZA: 'BOZZA',
+  APPROVATA: 'APPROVATA',
+  RIFIUTATA: 'RIFIUTATA',
+})
+
 // Codici azione di processo (`config.azioni_processo.permission_codename`).
 // Usati con `auth.isActionAllowed(...)` per gating UI lato FE.
 export const PRICING_ACTIONS = Object.freeze({

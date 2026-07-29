@@ -191,7 +191,7 @@ valore del CHECK già onorato da tutte le porte a valle. È il libro giornale:
 annullare senza cancellare, con il motivo tracciato. Nessun «ripristina» — se
 serve, si ricarica l'onere.
 
-Brief: `docs/it/dev/work-in-progress/brief-annullamento-righe-manuali-commessa.md`.
+Brief: `docs/it/dev/work-done/brief-annullamento-righe-manuali-commessa.md`.
 
 ### Input
 
@@ -223,9 +223,15 @@ Brief: `docs/it/dev/work-in-progress/brief-annullamento-righe-manuali-commessa.m
 - **Scoping riga↔commessa esplicito**: il service rilegge la riga con
   `_get_attivita_pricing_or_raise(commessa_id, attivita_id)`, la cui `WHERE`
   filtra su entrambi gli id. Senza, il `commessa_id` dell'URL sarebbe decorativo
-  e si annullerebbe la riga di un altro cliente indovinando un intero — e la
-  **RLS non copre il buco** (`rls_commesse_attivita_ef_whitelist` è
-  `ENABLE ... NO FORCE` e l'app gira come owner).
+  e si annullerebbe la riga di un altro cliente indovinando un intero.
+  **La RLS non copre il buco**, ma non perché sia dormiente: la policy
+  `rls_commesse_attivita_ef_whitelist` **si applica** all'app (`zeroerp_app` non
+  è owner della tabella — l'owner è `titodb` — e non ha `BYPASSRLS`; `NO FORCE`
+  esenta il solo owner). Risponde però a una domanda **diversa**: «l'operatore è
+  nella whitelist dell'emittente di questa commessa?», non «questa riga
+  appartiene alla commessa nell'URL?». Un operatore autorizzato sull'emittente X
+  può quindi ancora colpire la riga di un'**altra** commessa dello stesso
+  emittente: il guard applicativo è l'unico che chiude quel caso.
 - **Guard «commessa modificabile»** (data-driven su `stati_commessa.modificabile`):
   annullare una riga *è* modificare la commessa, come le tre azioni prezzo
   sorelle. Vive nel BE e **non** scende nella madre — il gemello

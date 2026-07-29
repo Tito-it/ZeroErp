@@ -38,6 +38,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
 import { DRAWER_WIDTH, PAGINATION } from '../../core/constants'
+import { STATO_APPROVAZIONE_ATTIVITA, STATO_EMISSIONE_ATTIVITA } from '../constants'
 import { displayDate, toDateString } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { extractApiError } from '../../core/utils/apiError'
@@ -121,7 +122,10 @@ const contatori = computed(() => {
 
 // Selezione: solo le righe ancora approvabili (BOZZA + NON_EMESSA).
 const righeApprovabili = computed(() =>
-  righe.value.filter((r) => r.stato_approvazione === 'BOZZA' && r.stato_emissione === 'NON_EMESSA'),
+  righe.value.filter(
+    (r) => r.stato_approvazione === STATO_APPROVAZIONE_ATTIVITA.BOZZA
+      && r.stato_emissione === STATO_EMISSIONE_ATTIVITA.NON_EMESSA,
+  ),
 )
 const { isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected } =
   useSelezioneToggle({ selected, selezionabili: righeApprovabili })
@@ -369,7 +373,7 @@ function buildRowActions(row) {
       severity: 'danger',
       visible: canVoceManuale.value
         && row.sorgente_tipo_id === null
-        && row.stato_emissione === 'NON_EMESSA',
+        && row.stato_emissione === STATO_EMISSIONE_ATTIVITA.NON_EMESSA,
       command: () => apriAnnullaRiga(row),
     },
   ]

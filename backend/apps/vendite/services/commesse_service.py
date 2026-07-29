@@ -1316,8 +1316,14 @@ def annulla_attivita_manuale(
 
     # Scoping riga<->commessa: la `WHERE` di get_attivita_pricing filtra su
     # ENTRAMBI gli id. Senza, il `commessa_id` dell'URL sarebbe decorativo e si
-    # annullerebbe la riga di un altro cliente indovinando un intero — la RLS
-    # non copre il buco (policy `ENABLE ... NO FORCE`, l'app gira come owner).
+    # annullerebbe la riga di un altro cliente indovinando un intero.
+    # La RLS non copre il buco — e NON perche' sia dormiente: la policy
+    # `rls_commesse_attivita_ef_whitelist` si applica eccome (l'app `zeroerp_app`
+    # non e' owner della tabella e non ha BYPASSRLS; `NO FORCE` esenta il solo
+    # owner). Risponde pero' a una domanda DIVERSA — «l'operatore e' nella
+    # whitelist dell'emittente di questa commessa?» — non «questa riga e' di
+    # QUESTA commessa?»: un operatore in scope sull'emittente puo' ancora
+    # colpire la riga di un'altra commessa dello stesso emittente.
     att = _get_attivita_pricing_or_raise(commessa_id, attivita_id, function_name=function_name)
     # Annullare una riga *e'* modificare la commessa: stesso guard data-driven
     # (`stati_commessa.modificabile`) delle tre azioni prezzo sorelle. Resta nel

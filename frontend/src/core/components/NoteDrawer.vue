@@ -47,11 +47,15 @@ const props = defineProps({
   // Il caller costruisce l'array dalle righe gia' caricate nel drawer padre.
   righeOptions: { type: Array, default: () => [] },
 })
+// `saved` porta il TOTALE note del documento dopo l'operazione (create, update
+// o delete): il drawer lo conosce già dalla lista appena ricaricata, così il
+// padre può aggiornare un badge counter senza una seconda chiamata. Il
+// payload è additivo — i consumer che ignorano l'argomento non cambiano.
 const emit = defineEmits(['update:visible', 'saved'])
 
 // toRef preserva la reattivita' della prop: se il padre cambia preventivoId
 // l'apiClient computed restituisce un nuovo oggetto e useNote dereffa via unref.
-const { notes, loading: listLoading, loadAll, remove } = useNote({
+const { notes, total, loading: listLoading, loadAll, remove } = useNote({
   apiClient: toRef(props, 'apiClient'),
 })
 
@@ -205,7 +209,8 @@ async function onSaveForm() {
   editId.value = null
   form.value = defaultForm()
   await loadAll({ page_size: PAGE_SIZE_DEFAULT })
-  emit('saved')
+  // `total` è già aggiornato dal loadAll qui sopra.
+  emit('saved', total.value)
 }
 
 // Scopo: elimina nota per id, ricarica lista, notifica padre.
@@ -213,7 +218,7 @@ async function onDelete(n) {
   const ok = await remove(n.id)
   if (ok) {
     await loadAll({ page_size: PAGE_SIZE_DEFAULT })
-    emit('saved')
+    emit('saved', total.value)
   }
 }
 
