@@ -1,13 +1,16 @@
 # Brief BE/FE — Importi e aggregazione righe fattura, dopo il land DB
 
 > **Tipo**: brief operativo **BE + FE** · **Target**: `dev/backend-tid` ·
-> **Data**: 2026-07-28 · **Owner**: Tid · **Stato**: 🔴 **APERTO** ·
-> **Priorità**: 🔴 **ALTA** — la generazione PDF delle fatture è **ferma** (due
-> voci in coda in `ERRORE` con i tentativi esauriti) e i requisiti **D4** e
-> **D5** appena landati sul DB **non hanno effetto** sul percorso che gira.
+> **Data**: 2026-07-28 · **Owner**: Tid · **Stato**: 🟢 **COMPLETO**
+> (agg. 2026-07-29) — sviluppo, collaudo su DB reale e documentazione del
+> contratto chiusi. · **Priorità**: 🟢 — il problema che l'ha aperto è
+> risolto: la stampa funziona, D4 e D5 sono attivi sul percorso in esercizio.
+>
+> ~~la generazione PDF delle fatture è ferma e i requisiti D4/D5 non hanno
+> effetto sul percorso che gira~~ → **risolto il 2026-07-28**.
 >
 > **Origine**: sostituisce §5 e §6 di
-> [brief-fix-importi-riga-fattura-zero.md](brief-fix-importi-riga-fattura-zero.md),
+> [brief-fix-importi-riga-fattura-zero.md](../work-done/brief-fix-importi-riga-fattura-zero.md),
 > scritte prima della 2ª analisi DB e ferme al perimetro iniziale (allora: solo
 > B0 + B1 + «FE: nulla da fare»). Il perimetro DB è poi cresciuto con **D4**
 > (aggregazione) e **D5** (kit/esposizione), che hanno conseguenze BE che quelle
@@ -36,8 +39,11 @@
 | **B6** | `stato_esecuzione`: RUNNING all'avvio, COMPLETED alla fine | 8 attività su 8 erano ferme a `PENDING` (§3.4) | ✅ **FATTO** |
 | **B7** | Ritirare la funzione DB gemella | è la trappola che ha causato questo giro | ✅ **brief pronto** → [brief-db-ritiro-generatore-righe-fattura-sql.md](../work-done/brief-db-ritiro-generatore-righe-fattura-sql.md) |
 | **B8** | Template: dettaglio kit + `sconto_percentuale` | | ✅ **FATTO** — Fattura v2 (id 73) e Ordini vendita v2 (id 74), PUBBLICATE dal 2026-07-28 |
-| **T** | Test BE | **3393 verdi** sull'intera suite; +11 casi nuovi su aggregazione e kit | ✅ **FATTO** (integrazione DB: §10.2 casi 7-8 ⬜) |
+| **T** | Test BE | **3407 verdi** sull'intera suite; +11 casi unit su aggregazione e kit | ✅ **FATTO** |
+| **T2** | Smoke su DB reale (§10.2 casi 7-8) | copre il tratto AF → riga fattura, mai coperto prima sul codice vivo | ✅ **FATTO** — `backend/scripts/tests/smoke-fatturazione-aggregazione-righe.py`, **10/10 verdi**. Ha trovato un bug reale al primo giro (§10.3) |
 | **FE** | Frontend | ✅ **nessuna modifica** — verificato (§8) | ✅ |
+| **R1** | Smoke E2E che asserisce sul **contenuto** del PDF (§10.2 caso 9) | un PDF di soli trattini superava lo smoke C-9 | ✅ **FATTO** — `smoke-fatturazione-render-stampa.py`, **8/8**, con auto-verifica a mutazione. Ha trovato un **terzo** difetto: `or "-"` stampa lo zero come assente → template **v3** |
+| **R2** | Manuale del contratto context↔template fattura | è il contratto che si è rotto tre volte | ✅ **FATTO** — [template_fattura_contratto](../../backend/vendite/manual/template_fattura_contratto.md), indicizzato |
 
 > ✅ **Prerequisito DB soddisfatto**: `-17` e `-18` sono stati applicati il
 > 2026-07-28 alle 14:30 e alle 16:57. `articolo_regole_fatturazione.visibilita_componenti`
@@ -71,15 +77,13 @@ Rilevato sul DB vivo `dbdev` il 2026-07-28, **non** letto dal brief.
 | `vw_dash_competenza_attivita` con quota proporzionale | presente — `valore_fatturato` ora valorizzato (attività 192 → 500,00; 190 → 200,00) |
 | `fn_generate_fatture_righe` riscritta con aggregazione + snapshot kit | presente ⚠️ **ma non è la funzione in esercizio** (§2) |
 
-### NON applicato ⬜
+### Applicato dopo la stesura ✅ (agg. 2026-07-29)
 
-| Changeset | Contenuto | Conseguenza |
+| Changeset | Contenuto | Esito |
 |---|---|---|
-| `-17` | `fn_group_attivita_fatturabili` smette di trasportare `visibilita_componenti` | — |
-| `-18` | **DROP** `articolo_regole_fatturazione.visibilita_componenti` | ⚠️ breaking BE quando verrà applicato (§6) |
-
-Verificato: la colonna `visibilita_componenti` **esiste ancora**. Il BE non è
-ancora rotto da questo, ma lo sarà.
+| `-17` | `fn_group_attivita_fatturabili` non trasporta più `visibilita_componenti` | ✅ 2026-07-28 14:30 |
+| `-18` | **DROP** `articolo_regole_fatturazione.visibilita_componenti` | ✅ 2026-07-28 16:57 — il BE era già pronto (B4), riprovato sul DB reale dopo il `DROP`: nessuna rottura |
+| `-21` | **DROP** delle due funzioni SQL residue | ✅ — brief di ritiro chiuso |
 
 ---
 
@@ -654,6 +658,33 @@ mock nasconde. Vanno come smoke bash contro `dbdev`, nella famiglia
 
 Il caso 9 è quello che avrebbe intercettato **entrambi** i difetti originali: lo
 smoke attuale promuove un PDF fatto interamente di trattini.
+
+### 10.3 Lo smoke ha trovato un bug reale al primo giro
+
+`backend/scripts/tests/smoke-fatturazione-aggregazione-righe.py` — 10 asserzioni,
+tutte verdi, ma **non alla prima esecuzione**.
+
+**Il difetto**: in questo progetto il driver restituisce le colonne `jsonb` come
+**stringa**, non come `dict` (verificato: `SELECT '{"a":1}'::jsonb` torna `str`).
+`_build_kit_snapshot` faceva `meta.get(...)` sul `meta` dell'attività, quindi
+sarebbe esploso con `AttributeError` **il primo giorno in cui un componente di
+kit fosse arrivato in fatturazione** — cioè esattamente lo scenario che D5 serve
+a gestire, e che oggi non si verifica mai (0 attività componente su 8).
+
+**Perché i test unit non potevano vederlo**: iniettano `AttivitaDaFatturare(meta={...})`
+con un dict già pronto. Il mock rende vera l'ipotesi sbagliata. È **la stessa
+forma** del difetto d'origine (§2.8: le fixture pgTAP fornivano `imponibile_riga`,
+cioè proprio il dato che il percorso di produzione non generava).
+
+**La correzione**: `list_attivita_da_fatturare` usa ora `coerce_jsonb_dict`,
+l'helper di casa già esistente in `apps/core/db/_helpers.py` — nato dalla stessa
+regola-del-2 in `pratiche_repository` e replicato altrove. Non l'avevo cercato:
+il difetto non è solo tecnico, è che ho riscritto a mano un problema già risolto.
+
+> Vale come argomento generale: gli unit test mockati coprono la logica, non il
+> **contratto col database**. Su questa slice il contratto è stato rotto due
+> volte — colonne che nessuno scriveva, e ora un tipo che nessuno convertiva — e
+> in entrambi i casi la suite era verde.
 
 ---
 

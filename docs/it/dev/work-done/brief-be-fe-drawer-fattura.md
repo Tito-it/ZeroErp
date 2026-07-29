@@ -1,8 +1,10 @@
 # Brief — Drawer di visualizzazione fattura
 
 > **Tipo**: brief BE/FE (`dev/backend-tid`) · **Data**: 2026-07-28 · **Owner**: Tid ·
-> **Stato**: ⬜ **DA FARE** · **Priorità**: 🟠 MEDIA (buco di consultazione: la
-> fattura oggi si vede solo in PDF) ·
+> **Stato**: ✅ **REALIZZATO** — BE + FE completi e verificati (§11), incluso il
+> prerequisito RLS satelliti chiuso dal team DB il 2026-07-29 ·
+> **Priorità**: era 🟠 MEDIA (buco di consultazione: la fattura si vedeva solo
+> in PDF) ·
 > **Prerequisiti DB**: ✅ **nessuno** — vedi §2
 >
 > **Origine**: richiesta di Tid del 2026-07-28. *«Manca un drawer di
@@ -186,16 +188,21 @@ orchestrando i quattro lettori di §2. Nessuna logica nuova: solo composizione.
 
 ### 5-bis. Il pezzo non ovvio: la RLS copre la testata, NON i satelliti
 
+> ✅ **Superato il 2026-07-29** — vedi §5-quater. Il quadro sotto è quello
+> **all'analisi** (2026-07-28) e resta perché è la ragione per cui la regola
+> «testata prima» è entrata nel service. La regola è rimasta; la sua
+> motivazione si è ristretta.
+
 Verificato sul DB vivo il 2026-07-28:
 
 | Tabella / vista | RLS | Conseguenza |
 | --- | --- | --- |
 | `vendite.fatture` | ✅ **ON** — policy `rls_fatture_ef_whitelist` + `rls_fatture_ba_ownership` | una fattura fuori scope **non è leggibile**: 0 righe → 404 gratis |
-| `vendite.fatture_righe` | ❌ **OFF** | leggibile da chiunque, conoscendo l'id |
-| `vendite.fatture_riepiloghi_iva` | ❌ **OFF** | idem |
-| `vendite.note_fatture` | ❌ **OFF** | idem |
+| `vendite.fatture_righe` | ❌ **OFF** → ✅ dal 29/07 | leggibile da chiunque, conoscendo l'id |
+| `vendite.fatture_riepiloghi_iva` | ❌ **OFF** → ✅ dal 29/07 | idem |
+| `vendite.note_fatture` | ❌ **OFF** (tuttora) | idem |
 | `vendite.fatture_scadenze` | ✅ ON | protetta |
-| `vw_fattura_righe_esposte` | `security_invoker=on` … | …ma poggia su `fatture_righe`, che RLS non ha → **nessuna protezione ereditata** |
+| `vw_fattura_righe_esposte` | `security_invoker=on` … | …ma poggiava su `fatture_righe`, che RLS non aveva → **nessuna protezione ereditata** |
 
 > ⚠️ **Regola vincolante per il service**: caricare **PRIMA** la testata e
 > **fermarsi con 404** se è `None`; solo dopo leggere righe, riepilogo IVA,
@@ -209,7 +216,7 @@ Difesa in profondità: `VenditeRepository` ha già `_add_scope_emittente`
 `get_scope_user_id(request)`, coerentemente con la policy di casa «i filtri
 applicativi restano e si sommano».
 
-### 5-ter. Nota per il team DB (non blocca questo brief)
+### 5-ter. Nota per il team DB (non blocca questo brief) — ✅ raccolta e chiusa
 
 `fatture_righe` e `fatture_riepiloghi_iva` **senza RLS** non sono un problema
 finché l'unico percorso di lettura passa dalla testata, ma è una difesa che
@@ -217,6 +224,42 @@ dipende dalla disciplina di ogni chiamante invece che dalla struttura. Vale la
 pena valutare una policy `via_fattura` simmetrica a quella di
 `commesse_attivita` (`fn_scope_ef_whitelist_via_commessa`). **Fuori perimetro
 qui**: annotato per una valutazione separata.
+
+→ Diventato [brief-db-rls-satelliti-fattura-portale](brief-db-rls-satelliti-fattura-portale.md),
+**applicato dal team DB il 2026-07-29**.
+
+### 5-quater. Dopo il changeset RLS satelliti (2026-07-29)
+
+Quattro policy nuove: operatore `FOR ALL` e portale `FOR SELECT` su entrambe le
+tabelle, tutte via le funzioni di scope **della testata**. La distinzione
+`FOR SELECT` sul portale non era nel brief ed è più stretta di quanto chiesto:
+un cliente legge il contenuto della propria fattura e non può scriverlo.
+
+**Sul BE non è cambiato nulla**, come previsto. Verificato:
+
+| Controllo | Esito |
+| --- | --- |
+| Le policy mordono | ✅ `fatture_righe` 8 reali → **0** visibili senza GUC (era 8/8) |
+| Il drawer operatore legge ancora | ✅ risultati **identici** al pre-RLS su tutte e 7 le fatture |
+| Suite Django | ✅ verde |
+
+> Il secondo controllo era il rischio vero, ed è **silenzioso**: una policy che
+> non passa non solleva errori, restituisce zero righe. Il drawer avrebbe
+> mostrato una fattura vuota, perfettamente formata e perfettamente falsa. Solo
+> il confronto coi valori pre-RLS lo intercetta.
+
+**La regola «testata prima» resta**, con motivazione ristretta: non è più
+l'unica difesa su quelle due tabelle, ma è ciò che produce il 404 unificato
+invece di un documento a metà, e resta l'unica copertura per i satelliti ancora
+senza policy (`note_fatture`, `fatture_indirizzi`, `fatture_fondi_fattura`,
+`fatture_sdi`).
+
+⚠️ **Vincolo ereditato dal team DB**: le policy sui satelliti devono continuare
+a passare dalle funzioni di scope della testata. È ciò che rende il filtro
+tutto-o-niente per fattura e tiene completi il `count` di
+`fn_assign_numero_fattura` e la `SUM` di `fn_ricalcola_riepilogo_iva_fattura`.
+Un criterio proprio renderebbe possibili le **somme parziali** — e un riepilogo
+IVA parziale non fallisce: si scrive e basta.
 
 ---
 
@@ -272,7 +315,7 @@ FormFooter close-only
 | --- | --- |
 | Titolo + badge readonly | `DrawerTitle` |
 | Testata documento | `DrawerEntityHeader` (+ slot `#status`) |
-| Barra azioni | `DrawerActionsBar` (`kind: 'manage'` con `badge` sul counter note) |
+| Barra azioni | `DrawerActionsBar` (`kind: 'manage'` con `badge` sul counter note) — **realizzato 2026-07-29**, vedi §11d |
 | Stato fiscale colorato | `statoDocFiscaleSeverity` (`core/utils/severity.js`) — **già mappato** |
 | Vedi stampa / allegati | `EntityPdfButton` / `PdfDocumentiSorgenteDialog`, `sorgenteCode = 'FATTURA'` |
 | Note | `NoteDrawer` + wrapper thin `FatturaNoteDrawer.vue` (~30 righe, clone di `PreventivoNoteDrawer`) via `makeNotesApi('/vendite/fatture/<id>')` |
@@ -347,7 +390,8 @@ Richiesta di Tid. Analisi condotta sul DB vivo e sul codice, non sui brief.
 
 1. **Il lettore esisteva già** (§2): la stima è passata da «costruire la lettura
    di una fattura» a «esporre un contesto già collaudato».
-2. **La RLS protegge la testata ma non i satelliti** (§5-bis): da qui la regola
+2. **La RLS protegge la testata ma non i satelliti** (§5-bis — chiuso dal team
+   DB il 2026-07-29, §5-quater): da qui la regola
    vincolante «testata prima, 404, poi il resto», che è l'unica cosa
    veramente delicata di tutto l'endpoint.
 3. **Lo sconto di testata non esiste** (§3e): il campo che il context builder
@@ -355,3 +399,124 @@ Richiesta di Tid. Analisi condotta sul DB vivo e sul codice, non sui brief.
 
 **Decisioni Tid**: note sì (BB esistente) · Passaggi no · contesto operativo no ·
 ristampa no.
+
+---
+
+## 11. Esecuzione — `dev/backend-tid`, 2026-07-28/29
+
+Tutto il piano di §9 realizzato. `B3` è caduto: `E_FATTURA_NON_TROVATA` era già
+registrato.
+
+**Decisioni prese scrivendo**, oltre a quelle di §4:
+
+- **`model_permission = ("vendite", "fattura")` sul dettaglio**, non previsto
+  dal brief: quel model **è** catalogato in `config.area_model_overrides`,
+  quindi un admin può bloccare le fatture come singolo oggetto e il drawer deve
+  rispettarlo. Verificato che non rompe l'operatore normale — senza override il
+  resolver ricade sul livello area.
+- **`get_fattura_testata` con `auth_user_id` opzionale** (default `None`): il
+  filtro applicativo si somma alla RLS solo per il nuovo endpoint. Il percorso
+  del motore documentale resta invariato, byte per byte.
+- **Il wrapper note esclude le righe `KIT_PADRE`** dal select riga: sono
+  sintetiche della vista (`id` NULL) e non possono reggere la FK
+  `note_fatture.target_riga_id`.
+- **Testata come dati, non come markup**: i campi del blocco anagrafico sono
+  tre `computed` con `labelKey` **letterale** e un solo `v-for`. La prima
+  stesura usava `t(\`vendite.fatture.${k}\`)` — chiave costruita a pezzi, che
+  `check_i18n_keys.py` classifica come «punto cieco» e non verifica: avrebbe
+  tolto duplicazione introducendo esattamente il difetto silenzioso che quel
+  guard esiste per intercettare.
+
+### 11a. Un bug trovato in revisione (pre-esistente, non del drawer)
+
+`psycopg 3` fuori dall'ORM **non decodifica i jsonb**: arrivano come `str`.
+Conseguenza doppia:
+
+1. l'endpoint avrebbe emesso `"meta"` come **stringa** JSON invece che oggetto;
+2. molto peggio — `_shape_scadenza` del context builder **PDF** esegue
+   `meta.get("modalita_codice")` su quel valore. Riprodotto:
+   `AttributeError: 'str' object has no attribute 'get'`. La generazione del PDF
+   sarebbe esplosa **alla prima scadenza con `meta` non-NULL**, latente solo
+   perché nessuna scadenza di test ne ha uno.
+
+Chiuso applicando il BB `jsonb_out` nei due lettori (`get_fattura_testata`,
+`list_fattura_scadenze`) — la cui docstring descrive lo stesso incidente già
+capitato una volta col worker della coda generica.
+
+### 11b. Verifiche
+
+| Cosa | Esito |
+| --- | --- |
+| Suite Django | ✅ 3414 test verdi |
+| Build Vite · `check_i18n_keys` | ✅ · ✅ parità it/en, nessuna chiave rotta né dinamica |
+| Schema OpenAPI · rotte vive | ✅ · ✅ `401` (non `404`) su dettaglio, note e documenti |
+| **Lettori contro le 7 fatture reali** | ✅ tutte e quattro le letture girano; decodifiche cliente/emittente/stato/IVA corrette |
+| **Il cancello di scope morde** | ✅ senza GUC → RLS → `404`; con operatore reale → documento completo |
+| Ordine dei parametri dello scope filter | ✅ il param dello scope è ultimo, come il suo `%s` |
+| Post-changeset RLS satelliti (29/07) | ✅ risultati **identici** al pre-RLS: nessuna regressione silenziosa |
+| Badge counter note (§11d) | ✅ smoke `smoke-fattura-contatore-note.py` 6/6 su percorso reale (nota creata e rollbackata) |
+
+### 11c. Cosa NON è stato esercitato
+
+- **Validazione in-app di Tid** sul drawer aperto dal `LottoDrawer`: da fare.
+  In particolare la **sovrapposizione drawer-su-drawer** (§7c) è il punto che
+  nessun test automatico può coprire.
+- **Kit e rate multiple**: nessuna fattura del DB di test ha righe `KIT_PADRE`
+  né scadenze. La resa gerarchica padre/componenti e il blocco scadenze non
+  sono mai stati visti a video — sono i due casi su cui varrebbe la pena
+  costruire un documento apposta.
+- **Totali a zero**: quasi tutte le fatture di test hanno `totale_doc = 0`
+  (dati creati prima del fix importi-riga). Il drawer mostra fedelmente ciò che
+  è nel documento: se in validazione compaiono zeri, non è il drawer.
+
+---
+
+## 11d. Badge counter note (2026-07-29)
+
+Ultimo residuo del §7a/§7b, chiuso dopo la review. Zero round-trip aggiuntivi
+in **entrambe** le direzioni:
+
+| Momento | Fonte del numero |
+| --- | --- |
+| Apertura del drawer | `contatori.note` nel payload del dettaglio (già in volo) |
+| Dopo create/update/delete di una nota | il **totale che il sub-drawer già conosce**, ripropagato con `saved(total)` |
+
+### Le tre decisioni
+
+**1. `contatori` dict, non `note_count` scalare.** Il drawer ha già una seconda
+azione (archivio documenti) che domani vorrà il suo badge: un dict regge il
+prossimo contatore senza cambiare la shape della risposta.
+
+**2. Il conteggio passa dal service del BB note, non dal repo.**
+`PartitionedNoteService.count_per_target` esisteva già — commento «per badge UI»
+— e **non aveva un solo consumer di produzione**: solo un test. Chiamare il
+repository direttamente avrebbe aperto una seconda strada verso lo stesso dato,
+lasciando il metodo del BB codice morto. È la stessa forma del difetto trovato
+stamattina (`fn_generate_fatture_righe`: due requisiti scritti su una funzione
+che nessuno eseguiva), quindi gli si è dato il suo primo consumer.
+
+> Conseguenza di layering: le 6 istanze `PartitionedNoteRepository` sono state
+> spostate da `api/note_views.py` a **`db/note_repositories.py`**. I parametri
+> di partizione sono un fatto di accesso ai dati, e un service non può importare
+> da `api/` senza invertire i layer. La view resta puro cablaggio.
+
+**3. Il refresh NON rilegge il dettaglio.** Ricaricarlo mentre il drawer note è
+aperto sopra rigenererebbe `righe`, cioè le opzioni del select riga che il figlio
+sta usando in quel momento. Il totale arriva dall'evento: additivo, i consumer
+che ignorano l'argomento (`ArticoloDrawer`) non cambiano.
+
+### L'invariante fragile che lo smoke presidia
+
+Il badge ha **due fonti** per lo stesso numero, quindi devono contare lo stesso
+insieme. Oggi coincidono perché né `count_per_target` né la lista note filtrano
+su `visibile` (`include_invisible=True` di default). Se un domani il default
+della lista cambiasse, il badge mostrerebbe un numero all'apertura e un altro
+dopo il primo salvataggio — e **nessun test unitario potrebbe vederlo**, perché
+i due percorsi sono mockati separatamente.
+
+`backend/scripts/tests/smoke-fattura-contatore-note.py` caso 5 confronta i due
+numeri su una nota resa invisibile. Il caso 6 verifica l'altra cosa che i mock
+non vedono: `vendite.note_fatture` **non ha RLS**, quindi il `COUNT` su una
+fattura fuori scope risponderebbe — non lo fa solo perché il cancello di testata
+chiude con 404 prima. Lato unit test la stessa regola è presidiata da
+`test_note_non_contate_se_testata_none`.

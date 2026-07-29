@@ -291,9 +291,15 @@ class PipelineStepExecutor:
         stato_doc_fiscale_id: int | None = None,
     ) -> None:
         # `fn` resta un token di compatibilita` SQL nella configurazione processi.
-        allowed = self.repository.ALLOWED_TASK_FUNCTIONS.get(task)
-        if allowed is None:
+        # Task fuori mappa: nessun vincolo dichiarato qui (il dispatch fallisce
+        # altrove se il task non esiste). Diverso dal valore `None` IN mappa:
+        # quello significa task Python-only, e un `fn` dichiarato in config per
+        # un task Python-only e' per definizione stale (es. la rimossa
+        # `vendite.fn_generate_fatture_righe`) → deve fallire, non passare.
+        functions = self.repository.ALLOWED_TASK_FUNCTIONS
+        if task not in functions:
             return
+        allowed = functions[task]
         if fn_name and fn_name != allowed:
             if lotto_id is not None:
                 self.error_logger.log_error(

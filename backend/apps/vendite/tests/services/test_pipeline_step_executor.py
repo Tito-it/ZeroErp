@@ -52,7 +52,9 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.is_stato_doc_chiude_lotto.return_value = True
         repo.ALLOWED_TASK_FUNCTIONS = {
             "select_attivita": "vendite.fn_select_attivita_fatturabili",
-            "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
+            # Speculare alla mappa reale: None = task Python-only
+            # (`FattureRigheService`), la fn SQL e' stata rimossa (20260728-21).
+            "generate_fatture_righe": None,
             "genera_fondi_source_lotto": "vendite.fn_genera_fondi_fattura_source",
             "applica_fondi_lotto": "vendite.fn_applica_fondi_fattura",
             "ricalcola_iva_lotto": "vendite.fn_ricalcola_riepiloghi_iva_lotto",

@@ -50,5 +50,6 @@
 - [pr_run_lotto_pipeline](manual/pr_run_lotto_pipeline.md) — Orchestrare l'esecuzione della pipeline di fatturazione per un lotto, gestendo:
 - [pricing_service](manual/pricing_service.md) — Wrapper Python su due funzioni DB del pricing v5:
 - [push_preventivo_handler](manual/push_preventivo_handler.md) — Handler flusso vendita.push_preventivo — orchestratore **CONFERMA_VENDITA**, primo handler reale del motore pratiche. Al passaggio del flusso CONFERMA in IN_CORSO **smista per natura** le righe del preventivo ACCETTATO…
+- [template_fattura_contratto](manual/template_fattura_contratto.md) — Contratto fra il context builder FATTURA e il template documentale: chiavi esposte, regole di rendering (mai `or "-"` sui numerici: lo zero e' falsy) e presidio smoke. Il contratto si e' rotto tre volte senza mai produrre un errore.
 - [template_contratto_iniziale](manual/template_contratto_iniziale.md) — Template HTML iniziale per la generazione PDF di un contratto commerciale tramite context builder CONTRATTO.
 - [template_offerta_iniziale](manual/template_offerta_iniziale.md) — Template HTML iniziale per la generazione PDF di un'**offerta commerciale** tramite il context builder OFFERTA_COMMERCIALE. Da copiare in documenti.template_documenti_versioni.html_template come prima versione PUBBLICAT…

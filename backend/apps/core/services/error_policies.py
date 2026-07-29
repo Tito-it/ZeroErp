@@ -1796,12 +1796,6 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Tipo di lavoro non cablato nel sistema.",
         ),
-        "E_PREZZO_LISTINO_NON_TROVATO": ErrorPolicy(
-            code="E_PREZZO_LISTINO_NON_TROVATO",
-            http_status=404,
-            ui_action="show_empty_state",
-            user_message="Prezzo listino non trovato.",
-        ),
         "E_EMITTENTE_DEFAULT_MISSING": ErrorPolicy(
             code="E_EMITTENTE_DEFAULT_MISSING",
             http_status=404,

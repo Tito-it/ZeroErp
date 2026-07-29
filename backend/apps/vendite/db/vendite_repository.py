@@ -15,6 +15,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    jsonb_out,
     query_paged_view,
     row_to_dict,
     rows_to_list,
@@ -1507,7 +1508,20 @@ class VenditeRepository:
     #        come li mantiene la pipeline (`*_tot`, bollo, arrotondamento,
     #        totale_a_pagare). Lettura pura: nessun calcolo fiscale in Python.
     #        None se la fattura non esiste (o è fuori scope RLS).
-    def get_fattura_testata(self, fattura_id: int) -> dict[str, Any] | None:
+    # Scopo: Testata fattura completa di decodifiche (cliente, emittente,
+    #        pagamento, totali) per il context builder del PDF **e** per
+    #        l'endpoint di dettaglio del drawer fattura.
+    #        `auth_user_id` opzionale = difesa in profondita' applicativa che si
+    #        SOMMA alla RLS di `vendite.fatture` (policy `rls_fatture_ef_whitelist`,
+    #        attiva sul ruolo dell'app: `zeroerp_app` non e' owner della tabella).
+    #        Default `None` = nessun filtro applicativo: e' il percorso del motore
+    #        documentale, che applica lo scope a monte e non va toccato.
+    def get_fattura_testata(
+        self,
+        fattura_id: int,
+        *,
+        auth_user_id: int | None = None,
+    ) -> dict[str, Any] | None:
         sql = """
             SELECT
                 f.id,
@@ -1592,18 +1606,32 @@ class VenditeRepository:
                 ON val.id = f.valuta_id
              WHERE f.id = %s
         """
+        # Parametri nell'ordine dei %s: subquery sede emittente, subquery
+        # indirizzo fatturazione cliente, id fattura.
+        params: list[Any] = [
+            TIPO_INDIRIZZO_SEDE_LEGALE,
+            TIPO_INDIRIZZO_FATTURAZIONE,
+            int(fattura_id),
+        ]
+        # Scope emittente applicativo (convenzione SR) appeso alla WHERE solo
+        # quando il chiamante lo chiede: l'helper non aggiunge nulla per
+        # auth_user_id None o per un utente che vede tutto (admin globale).
+        conditions: list[str] = []
+        self._add_scope_emittente(
+            auth_user_id, "f.emittente_soggetto_ruolo_id", conditions, params,
+        )
+        if conditions:
+            sql += " AND " + " AND ".join(conditions)
         with connection.cursor() as cursor:
-            # Parametri nell'ordine dei %s: subquery sede emittente, subquery
-            # indirizzo fatturazione cliente, id fattura.
-            cursor.execute(
-                sql,
-                [
-                    TIPO_INDIRIZZO_SEDE_LEGALE,
-                    TIPO_INDIRIZZO_FATTURAZIONE,
-                    int(fattura_id),
-                ],
-            )
-            return row_to_dict(cursor)
+            cursor.execute(sql, params)
+            row = row_to_dict(cursor)
+        if row is not None:
+            # psycopg 3 fuori dall'ORM NON decodifica i jsonb: `meta` arriva
+            # come `str`. Senza questa riga il consumer JSON riceverebbe una
+            # STRINGA al posto dell'oggetto, e chi ci fa `.get()` muore al
+            # primo accesso (BB `jsonb_out`, nato esattamente da questo bug).
+            row["meta"] = jsonb_out(row.get("meta"))
+        return row
 
     # Scopo: Righe fattura con decodifiche articolo/uom/iva per il context
     #        builder. Espone i nomi di CONTRATTO condivisi con ordini/DDT/
@@ -1713,7 +1741,15 @@ class VenditeRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(fattura_id)])
-            return rows_to_list(cursor)
+            rows = rows_to_list(cursor)
+        # ⚠️ `meta` e' jsonb e da cursor RAW arriva come `str` (psycopg 3 non lo
+        # decodifica fuori dall'ORM). Senza `jsonb_out` il `_shape_scadenza` del
+        # context builder PDF esegue `meta.get("modalita_codice")` su una
+        # stringa → AttributeError → 500 alla prima scadenza con meta non-NULL.
+        # Latente finora solo perche' nessuna scadenza di test ha meta.
+        for row in rows:
+            row["meta"] = jsonb_out(row.get("meta"))
+        return rows
 
     # ------------------------------------------------------------------
     # Lineage documenti (genealogia/transiti — brief-be-fe-lineage)

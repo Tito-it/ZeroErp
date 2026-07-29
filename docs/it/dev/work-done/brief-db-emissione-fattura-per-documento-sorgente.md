@@ -2,14 +2,14 @@
 
 > **Tipo**: brief operativo per il **team DB** · **Target**: `dev/db-tid` ·
 > **Data**: 2026-07-27 · **Owner**: Tid · **Stato**: 🟢 **PERIMETRO DB
-> COMPLETO — applicato e testato** (agg. 2026-07-27). Fase B e Fase A chiuse,
-> rifiniture incluse; nessuna voce di piano aperta. Restano: **commit della
-> Fase A**, rigenerazione doc auto-gen, e il rientro schedulato **P6**.
+> COMPLETO — CHIUSO** (agg. 2026-07-29). Fase B e Fase A chiuse, rifiniture
+> incluse, commit e doc auto-gen verificati; il BE/FE gemello è chiuso e
+> validato. P6 è uscito dal perimetro (vedi sotto).
 > · **Priorità**: 🟠 MEDIA (abilita un'esigenza operativa reale; additivo,
 > nessun dato a rischio).
 >
 > **Conseguenza per BE/FE**: il prerequisito DB **non è più bloccante**. I punti
-> 3-6 del perimetro in [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md)
+> 3-6 del perimetro in [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md)
 > §8 possono partire, con il contratto di **§8-bis** di questo brief.
 >
 > **Come leggere questo brief**: §1-§5 descrivono **cosa serve**. §6 riporta le
@@ -19,7 +19,7 @@
 > stato fatto** — con il consuntivo in testa. §4 «Fatti verificati» è il
 > contesto rilevato sul codice/DB vivo.
 >
-> **Origine**: [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md),
+> **Origine**: [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md),
 > decisioni Tid 2026-07-26/27.
 >
 > **Contesto**: non siamo in produzione ([[project_no_produzione_solo_sviluppo]])
@@ -47,16 +47,23 @@
 > P3 (pgTAP vs guard B5), P4/D-9 (chiave di gruppo = `uid`) e P5 (doc sorgente
 > polimorfa) chiusi il 2026-07-27.
 >
-> **Cosa resta**, in ordine:
+> **Cosa resta: nulla.** Chiuso il 2026-07-29, verificato voce per voce:
 >
-> 1. **commit della Fase A** (`20260727-10..19` + pgTAP + doc) e rigenerazione
->    doc auto-gen `dbzero` — a cura di Tid;
-> 2. **P6** — rientro concordato sui 9 pgTAP rossi per `E_SORG_FORMATO`, di cui
->    3 non censiti nel backlog di
->    [brief-db-bonifica-pgtap-sorgente-polimorfa](../work-done/brief-db-bonifica-pgtap-sorgente-polimorfa.md)
->    (§10.4). **Non sono regressioni di questa slice**: verificato uno per uno;
-> 3. **BE/FE** — punti 3-6 del perimetro, con il contratto di §8-bis.
-
+> 1. ~~commit della Fase A~~ → ✅ i dieci changeset `20260727-10..19` sono
+>    tracciati da git;
+> 2. ~~rigenerazione doc auto-gen `dbzero`~~ → ✅ verificati presenti i manuali
+>    dei tre oggetti nuovi (`fn_build_gruppo_fatturabile_key`,
+>    `fatturazione_lotti_gruppi`, `vw_dash_competenza_gruppi`);
+> 3. ~~BE/FE, punti 3-6 del perimetro~~ → ✅
+>    [brief-be-fe-emissione-fattura-mirata](brief-be-fe-emissione-fattura-mirata.md),
+>    stato «CHIUSO — codice completo, validato a schermo da Tid»;
+> 4. **P6** — rientro sui 9 pgTAP rossi per `E_SORG_FORMATO` → **spostato fuori
+>    da questo brief**. Non è una voce di questa slice ma igiene della suite, ed
+>    è stato assorbito da un problema più grande: la baseline pgTAP non è
+>    confrontabile perché registrata con un utente diverso da quello con cui il
+>    runner esegue. Vedi
+>    [brief-db-pgtap-runner-rls-baseline](../work-in-progress/brief-db-pgtap-runner-rls-baseline.md).
+>
 ---
 
 ## 1. Cosa serve, in una frase
@@ -539,7 +546,7 @@ un flag creerebbe due luoghi dove decidere la stessa cosa. In
 `fn_list_consumi_da_pushare` la costante `FALSE` resta, ma va **commentata come
 scelta di dominio**, non lasciata sembrare una dimenticanza.
 
-> Questa decisione si discostava da [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md)
+> Questa decisione si discostava da [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md)
 > §5.3, che diceva «tutte le sorgenti (… consumi)». ✅ **Confermata da Tid il
 > 2026-07-27: sui consumi NO.** Il perimetro della Fase B è quindi definitivo:
 > ordini, contratti, DDT. Reversibile a costo basso: se domani servisse, la
@@ -779,7 +786,7 @@ A7-ter e A9 sono rifiniture a valle, fuori dal cammino critico.
 - **Colonna `gruppo_key` su `attivita_fatturabili`**: scartata in D-2, da
   riaprire solo su evidenza di `EXPLAIN`.
 - **BE e FE**: fuori perimetro DB. Riprendono dai punti 3-6 di
-  [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md) §8.
+  [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md) §8.
 
 ---
 
@@ -977,7 +984,7 @@ DB): `commesse_repository.py`, `pipeline_repository.py`, `commesse_service.py`,
 - Garanzie da 10 a **18** (G11-G18), ognuna con il fatto d'origine.
 - Decisioni **D-1…D-9** chiuse (§6); punti aperti **P1-P5** tutti chiusi.
 - Allineata l'analisi committente
-  [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md)
+  [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md)
   sui due punti superati (§6.1 e §5.3).
 
 ### 2026-07-27 · Bonifica documentale «sorgente polimorfa»
@@ -1138,15 +1145,15 @@ Chiusa la Fase A **con le rifiniture**, il perimetro DB del brief è
 
 1. **P6** — rientro sui pgTAP rossi della sorgente polimorfa (concordato);
 2. **BE/FE** — punti 3-6 del perimetro in
-   [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md) §8,
+   [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md) §8,
    con il contratto di §8-bis di questo brief.
 
 ---
 
 ## 12. Riferimenti
 
-- Analisi committente: [analisi-emissione-fattura-ondemand.md](analisi-emissione-fattura-ondemand.md)
+- Analisi committente: [analisi-emissione-fattura-ondemand.md](../work-in-progress/analisi-emissione-fattura-ondemand.md)
   (§5.1-bis commessa≠documento · §5.3 flag · §5.5 design UI e gruppo fatturabile)
-- Porta oneri (righe sourceless): [brief-db-immutabilita-quantita-e-porta-oneri.md](brief-db-immutabilita-quantita-e-porta-oneri.md)
+- Porta oneri (righe sourceless): [brief-db-immutabilita-quantita-e-porta-oneri.md](../work-in-progress/brief-db-immutabilita-quantita-e-porta-oneri.md)
 - Commessa multi-sorgente: [brief-db-commesse-multi-sorgente.md](../work-done/brief-db-commesse-multi-sorgente.md)
 - Guida processo: [fatturazione.md](../../guide/fatturazione.md)
