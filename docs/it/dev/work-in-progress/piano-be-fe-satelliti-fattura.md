@@ -117,10 +117,41 @@ Modello per tutti e tre: `backend/scripts/tests/smoke-fatturazione-aggregazione-
 
 ## 4. Fasi, in ordine obbligato
 
-### Fase 0 — Ripuntamento del mixin indirizzi (nuova, 2026-07-30)
+### Fase 0 — Ripuntamento del mixin indirizzi ✅ **FATTA (2026-07-31)**
 
-**Prerequisito della Fase 1**, e la fase più delicata di tutto il piano BE —
-perché è l'unica che **cambia il comportamento di cinque flussi già in esercizio**.
+> **Sbloccata** dal push del team DB fino al punto 2 del piano DB: verificato sul
+> DB vivo che esistono `script.fn_resolve_indirizzo_documento`,
+> `script.fn_snapshot_indirizzo_soggetto` e
+> `vendite.trgfn_fattura_satellite_guard_congelamento`, mentre
+> `fn_snapshot_indirizzi_fattura`/`_lotto` (2.1/2.2) **non** ci sono ancora —
+> quindi la Fase 0 è arrivata **prima** della 2.1, come doveva.
+>
+> **Cosa è stato fatto**
+>
+> | File | Modifica |
+> |---|---|
+> | `db/_indirizzi_repo_mixin.py` | nuovo `resolve_indirizzo_documento(*, soggetto_ruolo_id, istanza_utility_id, tipo_codice)` che delega alla funzione DB; **rimossi** `find_indirizzo_ruolo_per_tipi` e `find_snapshot_soggetto_per_tipi` (la catena non è più duplicata in Python); nuovo `get_ancora_indirizzi_documento` → coppia `(soggetto_ruolo, istanza)` in **una** query, con `get_soggetto_ruolo_documento` che ora vi delega (un solo SQL da mantenere); nuovo attributo `_indirizzi_doc_istanza_column` |
+> | `services/_indirizzi_documento_helpers.py` | `auto_assegna_indirizzo_default` passa l'**istanza del documento** e usa le origini restituite dal DB. Resta **best-effort**: politica d'errore invariata per i 5 domini interattivi |
+> | `db/{preventivi,offerte,contratti}_repository.py` | `_indirizzi_doc_istanza_column = "istanza_utility_id"` — i soli **precontrattuali** hanno l'istanza in testata; ordini/DDT/fatture la ricavano dal BA (invariante 1:1 della guida istanze) |
+> | `tests/services/test_indirizzi_documento_helpers.py` | **nuovo, 9 test.** Questo percorso girava su 5 domini **senza un solo test**: è il motivo per cui il difetto dell'istanza è vissuto inosservato |
+> | `scripts/tests/smoke-indirizzi-documento-catena.py` | **nuovo, 9 casi** sul DB reale (3, 3b, 3c: precedenza istanza, senza istanza, cross-istanza) |
+>
+> **Esito delle verifiche:** 2062 test verdi · smoke catena **9/9** · smoke
+> render-stampa e contatore-note verdi (nessuna regressione) · rollback pulito ·
+> **validazione in-app di Tid (2026-07-31)**: la creazione documento continua a
+> popolare lo slot indirizzo come prima — chiuso l'unico residuo (il tratto
+> `crea_<documento>` → helper dei 5 service, che la fase non toccava).
+> **Fase 0 chiusa senza riserve.**
+>
+> **La prova che il difetto è chiuso** è il caso 3 dello smoke: con due indirizzi
+> dello stesso tipo — uno generico e uno per istanza — ora vince **quello
+> dell'istanza** (col vecchio `NULLS FIRST` vinceva il generico), e un documento
+> **senza** istanza continua a prendere il generico (caso 3b).
+>
+> **Due scoperte da riportare al team DB** (§4-ter).
+
+**Era la fase più delicata di tutto il piano BE**, perché è l'unica che
+**cambia il comportamento di cinque flussi già in esercizio**.
 
 Il piano DB (2.0-b) crea `script.fn_resolve_indirizzo_documento`, che assorbe in
 SQL la catena di risoluzione oggi implementata nel mixin Python. La scelta è
@@ -279,6 +310,52 @@ Rinominarlo sarebbe una migrazione di dati senza guadagno.
 > **I punti 2, 3 e 4 di D-L restano il valore vero della decisione** — in
 > particolare l'**over-free del `lock_batch_id`** (C-22), che è un bug e va
 > corretto comunque, e che non induce nessun lavoro applicativo.
+
+## 4-ter. 📎 Due note per il team DB, emerse scrivendo la Fase 0 (2026-07-31)
+
+Nessuna delle due è un difetto: sono **trappole da fixture** che ho incontrato di
+persona collaudando la catena, e che si ripresenteranno scrivendo i pgTAP del
+punto **2.4** del piano DB. Riportarle qui fa risparmiare due giri a vuoto.
+
+### (a) `CON` non è ottenibile dal layer RUOLO di un cliente
+
+Misurato sul DB il 2026-07-31:
+
+| Insieme | Tipi |
+|---|---|
+| Whitelist ambito `FATTURE` (`tipi_indirizzi_allowed`) | `RES`, **`FATT`** (obbligatorio), `FORNITURA`, `CON` |
+| Ammessi al **ruolo cliente** (`tipi_ruolo_tipi_indirizzo`, tipo_ruolo 1) | `RES`, `DOMFISC`, `POSTA`, `SPED`, `FATT`, `FORNITURA` — **`CON` assente** |
+| Presenti sul layer **SOGGETTO** (dati reali) | `RES`, `DOMFISC`, `SEDELEG`, `POSTA`, `SPED`, `FATT`, **`CON`** |
+
+`CON` è ammesso al solo `tipo_ruolo = 8`. Quindi sul layer RUOLO di un cliente
+**non può esistere**, e per una fattura può arrivare solo dal layer SOGGETTO.
+
+Non è un problema di comportamento — D-2 dice che i tipi opzionali mancanti non
+generano errore, quindi il task 2.1 fa la sua ricerca e va avanti. Ma ha **due
+conseguenze pratiche**:
+
+1. **la fixture pgTAP di 2.4 non può inserire un `CON` sul ruolo cliente**: il
+   trigger `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo` la respinge con
+   `E_TIPO_INDIRIZZO_NON_PERMESSO`. Per esercitare `CON` bisogna passare dal
+   layer SOGGETTO (o usare un ruolo di tipo 8);
+2. vale la pena **decidere consapevolmente** se lo slot `CON` sulla fattura ha
+   senso: oggi resterà vuoto in tutti i casi in cui il cliente non ha un
+   indirizzo di consegna sul soggetto. Le alternative sono ammettere `CON` al
+   ruolo cliente, togliere `CON` dalla whitelist `FATTURE`, o accettarlo come
+   slot che si popola solo per via anagrafica indiretta. Non urge, ma meglio
+   scritto che scoperto in validazione.
+
+### (b) Gli indirizzi «liberi» hanno un CHECK a quattro campi
+
+`anagrafiche.indirizzi` non ha colonne CAP/città. Per una riga **non
+normalizzata** il vincolo `chk_indirizzi_free_requirements` pretende
+`indirizzo_libero` **+** `stato_id` **+** la terna
+`(locality, postal_box, administrative_area | sublocality)` — oppure la coppia
+normalizzata `(comune_id, codice_postale_id)`. Una `INSERT` con il solo
+`indirizzo_libero` viene respinta.
+
+È il secondo inciampo che ho avuto: le fixture di 2.4 vanno scritte con la terna
+completa (nel mio smoke: `'Roma', '00100', 'RM'` + `stato_id` dell'Italia).
 
 ## 5. Verifiche trasversali (a ogni fase)
 
