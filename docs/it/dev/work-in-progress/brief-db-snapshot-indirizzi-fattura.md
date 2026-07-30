@@ -1,8 +1,23 @@
 # Brief DB — Snapshot indirizzi della fattura
 
+> ⚠️ **REVISIONE 2026-07-30 — questo brief è SUPERATO IN PIÙ PUNTI.**
+> Il documento operativo di riferimento è
+> **[piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md)**: unifica
+> questo brief e il fratello, riporta la verifica critica sul codice vivo
+> (22 rilievi) e le decisioni chiuse da Tid il 2026-07-29/30.
+> **Non lavorare da questo brief senza aver letto quel piano.**
+>
+> | § di qui | Cosa è cambiato | Rif. |
+> |---|---|---|
+> | §4 D-1 | La motivazione era **sbagliata**: i documenti fratelli **copiano** lo snapshot dal sorgente, e risolvono dall'anagrafica solo quando nascono **senza** sorgente. La decisione resta (la fattura risolve sempre dall'anagrafica) ma per un altro motivo: aggrega N sorgenti e le attività sourceless non hanno snapshot da copiare | C-1, C-14 |
+> | §5.1 | La catena ha **due layer** (RUOLO → SOGGETTO), non uno; e va risolta **per istanza** (`istanza_utility_id = ba.istanza_utility_id`, fallback `IS NULL`), altrimenti è non deterministica: un soggetto può avere N indirizzi dello stesso tipo, uno per istanza. Estratta in `script.fn_resolve_indirizzo_documento` + `fn_snapshot_indirizzo_soggetto` | C-2, C-14, D-O |
+> | §5.3-5.4 | Il lock è **uno solo, parametrico**, condiviso con `fatture_scadenze`. La bonifica dello storico **non si fa**: non siamo in produzione, le fatture di test si rigenerano | C-11, §3.8 del piano |
+> | §5.5 | Id di seed **fissati** e coordinati col brief fratello, che rivendicava gli stessi | C-6 |
+> | §7 | RLS e guard di scope emittente **non sono più «da valutare col consumer»**: entrano in Fase 1 | C-12 |
+>
 > **Destinatario:** team DB (`dev/db-tid`)
 > **Richiedente:** BE (`dev/backend-tid`) — Tid ha approvato disegno e precedenze il 2026-07-29
-> **Stato:** da lavorare
+> **Stato:** superato dal piano unificato (vedi sopra)
 > **Vincolo:** il BE non procede fino all'apply di questo brief (regola prerequisiti DB)
 > **Fratello:** [brief-db-generazione-scadenze-fattura.md](brief-db-generazione-scadenze-fattura.md) — stesso cantiere, step diverso della pipeline
 > **Lavoro applicativo a valle:** [piano-be-fe-satelliti-fattura.md](piano-be-fe-satelliti-fattura.md) — include gli **smoke di accettazione** che collaudano questo brief
@@ -63,6 +78,19 @@ questo brief è quella cascata.
 | D-2 | Tipi da snapshottare: **tutti e quattro** quelli in whitelist per l'ambito `FATTURE` — `FATT`, `CON`, `FORNITURA`, `RES`. **Solo `FATT` è obbligatorio**; per gli altri tre, se l'indirizzo non esiste **si procede senza errore** |
 | D-3 | Il task va nello step **DRAFT**, dopo `generate_fatture_righe` (non dipende dai totali) |
 
+> ⚠️ **Rev. 2026-07-30 — la motivazione qui sotto è sbagliata nei fatti.**
+> I documenti fratelli **non** risolvono dall'anagrafica alla loro creazione:
+> **copiano 1:1 lo snapshot del documento sorgente** (`fn_push_preventivo_a_ordine`
+> §4-bis, `fn_genera_ddt_da_ordine`, `fn_push_offerta_a_contratto`). Risolvono
+> dall'anagrafica **solo quando nascono senza sorgente**, e per via di un helper
+> Python **best-effort** che riempie **un solo slot**.
+> La **decisione resta valida** — la fattura risolve sempre dall'anagrafica — ma
+> il motivo è un altro: la fattura aggrega N sorgenti, e le attività *sourceless*
+> (oneri di commessa, consumi) **non hanno alcuno snapshot da copiare**. È
+> l'unica regola che copre tutti i casi. Conseguenza da accettare
+> esplicitamente: la fattura può stampare un indirizzo **diverso** da quello del
+> DDT/ordine che sta fatturando. Rif. C-1 e C-14 del piano.
+
 ### Perché non serve nessuna regola di conflitto (D-1)
 
 Una prima stesura di questo brief prevedeva una cascata documentale con regola di
@@ -116,6 +144,30 @@ clona handler e wrapper senza inventare nulla.
 
 **Per ciascuno dei quattro tipi di D-2**, due passi soli:
 
+> ⚠️ **Rev. 2026-07-30 — il Passo 1 qui sotto è incompleto su due fronti.**
+>
+> **(a) La catena ha due layer, non uno.** Oltre a
+> `vw_indirizzi_resolved_ruolo` esiste il layer **SOGGETTO**
+> (`vw_indirizzi_resolved_soggetto`), che il helper Python interroga come
+> fallback. Guardando solo il primo, un cliente il cui `FATT` vive sul layer
+> soggetto farebbe **fallire la fattura** con `E_INDIRIZZO_FATTURA_MANCANTE`
+> — mentre il suo ordine si era risolto benissimo.
+>
+> **(b) Va risolto per ISTANZA.** `anagrafiche.indirizzi` ha due unique
+> parziali — `(ruolo, istanza, tipo)` e `(ruolo, tipo) WHERE istanza IS NULL` —
+> quindi **un soggetto_ruolo può avere N indirizzi dello stesso tipo**, uno per
+> istanza utility più uno generico. Risolvere per `(ruolo, tipo)` e basta è
+> **non deterministico**. Regola: precedenza a
+> `istanza_utility_id = ba.istanza_utility_id`, fallback `IS NULL`.
+> *(Il codice esistente ha lo stesso difetto: ordina `istanza_utility_id NULLS
+> FIRST LIMIT 1`, cioè preferisce il generico e ignora l'istanza del documento.)*
+>
+> **Realizzazione (piano, Fase 2.0):** `script.fn_snapshot_indirizzo_soggetto`
+> (gemella di `fn_snapshot_indirizzo` per il layer che non ha `indirizzo_id`) +
+> `script.fn_resolve_indirizzo_documento(ruolo, istanza, tipo)` come **unica**
+> implementazione della catena, riusata poi dal mixin Python.
+> Rif. C-2, C-14, D-O del piano.
+
 **Passo 1 — risoluzione dall'anagrafica del cliente.**
 Risolve l'indirizzo del tipo richiesto sul `soggetto_ruolo` del cliente della
 fattura (via `billing_account_id` → `ba.soggetto_ruolo_id`), usando le viste
@@ -162,9 +214,14 @@ L'helper è già ambito-parametrico: serve il trigger su `vendite.fatture` per
 l'ambito `FATTURE`, con errore `E_INDIRIZZO_DOC_OBBLIGATORIO`.
 
 ⚠️ **Ordine di accensione, non negoziabile**: prima il task che popola, poi il
-guard. Invertirli blocca la fatturazione. Con dati storici privi di snapshot
+guard. Invertirli blocca la fatturazione. ~~Con dati storici privi di snapshot
 (le 7 fatture attuali) va valutata una bonifica o l'accensione limitata alle
-fatture nuove.
+fatture nuove.~~
+
+> ⚠️ **Rev. 2026-07-30 — la bonifica non si fa.** Non siamo in produzione: le 7
+> fatture sono dati di test e **si cancellano e rigenerano**. Niente accensione
+> graduale, niente migration di bonifica, e — nel piano BE/FE — niente fallback
+> «transitorio» del context builder. Rif. §3.8 del piano.
 
 ### 5.4 Lock post-emissione
 
@@ -178,7 +235,13 @@ Senza questo lock lo «snapshot congelato» resta una promessa non presidiata.
 
 ### 5.5 Seed: registrazione del task
 
-Solo append a CSV esistenti:
+Solo append a CSV esistenti.
+
+> ⚠️ **Rev. 2026-07-30 — collisione di id col brief fratello.** Entrambi i brief
+> rivendicavano «ultimo id occupato: 18» sul registry e «16» sulla task_policy.
+> Allocazione **fissata** nel piano (§3.1): indirizzi → registry **19**, impl
+> **19**, policy **17** (pipeline 1) e **18** (pipeline 8); scadenze → registry
+> **20**, impl **20**, policy **19-23**. Rif. C-6.
 
 | File | Riga |
 |---|---|
@@ -240,6 +303,12 @@ presenta**.
    solo dalla pipeline;
 5. FE: montare `DocumentoIndirizziSection` sul `FatturaDrawer` **solo** se si fa
    il punto 4 (in sola lettura basta esporre gli indirizzi nel dettaglio).
+
+> ⚠️ **Rev. 2026-07-30 — non è più «da valutare col consumer».** `fatture_indirizzi`
+> è l'**unica** satellite senza né RLS né guard di scope emittente
+> (`fatture_scadenze` ha entrambi; `fatture_righe` e `fatture_riepiloghi_iva`
+> hanno le policy dal 2026-07-29). La simmetria costa poco ed entra in **Fase 1**
+> del piano, non quando il consumer sarà già scritto. Rif. C-12.
 
 ⚠️ **Vincolo RLS da rispettare**: `vendite.fatture_indirizzi` **non ha policy
 RLS** (a differenza di `fatture`, `fatture_righe`, `fatture_riepiloghi_iva`,

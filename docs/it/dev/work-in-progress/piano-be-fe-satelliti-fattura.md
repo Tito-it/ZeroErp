@@ -1,5 +1,18 @@
 # Piano BE/FE — satelliti della fattura (indirizzi + piano rate)
 
+> ⚠️ **REVISIONE 2026-07-30 — leggere prima
+> [piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md).**
+> La verifica critica sui due brief ha cambiato alcune premesse di questo piano:
+>
+> | § di qui | Cosa cambia | Rif. |
+> |---|---|---|
+> | §4 Fase 2 | Il **fallback «transitorio»** del context builder alla vista live **non si scrive**: non siamo in produzione, le 7 fatture di test si cancellano e rigenerano. Era codice che nasceva già da rimuovere | §3.8 |
+> | §4 Fase 5 | Cade la **bonifica/esclusione** delle fatture storiche prima di accendere il guard `FATT`, per lo stesso motivo | §3.8 |
+> | §4 Fase 4 | Il follow-up temuto sui **«gruppi con termini misti» non serve**: un gruppo fatturabile è **un solo** documento sorgente (o gli oneri di **una** commessa), quindi porta un solo termine per costruzione. D-7 non può spaccarlo. Resta vero che una corsa su tutto il mese può produrre **più fatture** di prima: è lo smoke §3.3 a sorvegliarlo | C-10 |
+> | §4 Fase 1 | Il mixin `IndirizziDocumentoRepositoryMixin` va **ripuntato** su `script.fn_resolve_indirizzo_documento`: oggi `find_indirizzo_ruolo_per_tipi` preferisce l'indirizzo generico e **ignora l'istanza** del documento. È una **correzione**, non un refactor estetico | C-14c |
+> | **nuovo** | La riforma **D-I** elimina due campi dal `ClienteDrawer` (`tipo_gg_scadenza_ft`, `nr_giorni_scadenza`) con le 4 opzioni `opt_gg_*` e le relative chiavi i18n. Lavoro FE non previsto qui | D-I |
+> | **nuovo** | Fase 6 DB aggiunge un verbo al `LottoDrawer` (ritorno a DRAFT / estrazione fattura) e una **lista «estratte»** nel cockpit | D-N-bis |
+>
 > **Owner:** BE (`dev/backend-tid`)
 > **Stato:** in attesa dei prerequisiti DB
 > **Prerequisiti (bloccanti):**

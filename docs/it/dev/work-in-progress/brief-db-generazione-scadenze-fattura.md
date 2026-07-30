@@ -1,8 +1,43 @@
 # Brief DB — Generazione del piano rate della fattura (scadenze)
 
+> 🔴 **REVISIONE 2026-07-30 — questo brief è SUPERATO IN PARTE SOSTANZIALE.**
+> Il documento operativo di riferimento è
+> **[piano-db-satelliti-fattura.md](piano-db-satelliti-fattura.md)**.
+> **Non lavorare da questo brief senza aver letto quel piano.**
+>
+> **La causa è una sola decisione, D-I: un solo meccanismo per le condizioni di
+> pagamento.** Le colonne `clienti.tipo_gg_scadenza_ft` / `nr_giorni_scadenza` e
+> `fatture.giorni_pagamento` / `fine_mese` **si eliminano**; resta solo
+> `termine_pagamento_id`, e `config.termini_pagamento` prende una forma piatta
+> (giorni + booleano `fine_mese`). Cade così tutto l'impianto del «percorso
+> legacy» che occupa buona parte di questo brief.
+>
+> | § di qui | Esito | Rif. |
+> |---|---|---|
+> | **D-2, D-3, D-4** | ❌ **eliminate**: non c'è più una coppia legacy a cui dare precedenza, di cui definire la semantica, né un'ambiguità da presidiare | D-I |
+> | **§4.3** (guard mutua esclusione) | ❌ **eliminato**, con il suo codice errore. La bonifica dei 2 clienti resta ma come **migrazione verso il catalogo** | D-I |
+> | **§4.4-bis** (la «contraddizione risolta») | ❌ **eliminata**: serviva solo a rappresentare il percorso legacy in testata | D-I |
+> | **§5.5** | 🔄 **si ribalta**: le due colonne si deprecano davvero — era la risposta della prima stesura, tornata giusta | D-I |
+> | **§6 punti 4, 5, 6-bis** | ❌ **eliminati**: presidiavano il percorso legacy | D-I |
+> | §4.2 | 🔄 L'elemento di chiave è la **coppia** `(termine_pagamento_id, modalita_pagamento_id)` — la **modalità entra in chiave** con lo stesso argomento del termine, e la tripla con `giorni_pagamento`/`fine_mese` non serve più | D-B, C-9 |
+> | §4.1 + §4.2 | ⚠️ Una **sola** implementazione della catena: se `fn_resolve_termini_pagamento` resta in piedi e non chiamata, il secondo risolutore torna a esistere | C-13 |
+> | §4.4 | ➕ La **formula** del generatore va scritta (il brief non la contiene). Un solo ramo, nessun caso speciale | C-5 |
+> | §4.5 | 🔄 `totale_a_pagare` **0 o negativo non è un errore**: nessuna rata, e log non critico sul negativo. Errore solo su NULL | D-D, C-4 |
+> | §4.6 | ✅ Verificato: durante la tappa EMESSA le fatture sono **ancora DRAFT** (il sync è dopo i task). Il rerun → il wrapper salta, la per-fattura solleva | D-F, C-8 |
+> | §4.8 | ⚠️ L'invariante pgTAP citato copre **solo DEFINITIVA**: la divergenza della corsia giornaliera resterebbe muta. Corsia 2 **allineata** e invariante **esteso** | D-C, C-7 |
+> | §5.2-5.4 | 🔄 Non sono domande aperte: `tipo_offset` → booleano `fine_mese`, `unita_intervallo` eliminata, `ripartizione` ristretta a `UGUALI` **nel dominio**, non solo a runtime | D-E |
+>
+> **Sei lavori che questo brief non prevede** e che il piano ha aggiunto:
+> guard di coerenza in `fn_assign_numero_fattura` prima di consumare il
+> progressivo (D-K) · ambito arrotondamenti da allineare alla chiave, che D-7
+> altrimenti rende non riproducibile (D-N) · ritorno del lotto a DRAFT (Fase 6) ·
+> estrazione di una fattura da lotto EMESSA verso ANNULLATA (D-N-bis) ·
+> eliminazione del flag dormiente `esclusa` (D-M) · rinomina delle funzioni di
+> reset e correzione dell'over-free del `lock_batch_id` (D-L).
+>
 > **Destinatario:** team DB (`dev/db-tid`)
 > **Richiedente:** BE (`dev/backend-tid`) — Tid ha approvato disegno e precedenze il 2026-07-29
-> **Stato:** da lavorare
+> **Stato:** superato dal piano unificato (vedi sopra)
 > **Vincolo:** il BE non procede fino all'apply di questo brief (regola prerequisiti DB)
 > **Fratello:** [brief-db-snapshot-indirizzi-fattura.md](brief-db-snapshot-indirizzi-fattura.md) — stesso cantiere, step DRAFT
 > **Lavoro applicativo a valle:** [piano-be-fe-satelliti-fattura.md](piano-be-fe-satelliti-fattura.md) — include gli **smoke di accettazione** che collaudano questo brief
@@ -92,6 +127,13 @@ Tre conseguenze operative:
 | D-5 | **Lock post-numerazione** sulle scadenze: approvato |
 | D-6 | Vanno corrette le anomalie segnalate in §5 |
 | D-7 | **Il termine di pagamento entra nella CHIAVE DI AGGREGAZIONE della fattura.** Avendo permesso di scegliere il termine sul documento, quel termine va rispettato: attività con termini diversi generano **fatture diverse**, non una fattura con un termine arbitrario (§4.2) |
+
+> 🔴 **Rev. 2026-07-30 — D-2, D-3 e D-4 sono ELIMINATE.** Con D-I le colonne
+> `clienti.tipo_gg_scadenza_ft` e `nr_giorni_scadenza` non esistono più: non c'è
+> una coppia legacy a cui dare precedenza (D-2), di cui definire la semantica
+> (D-3), né un'ambiguità da presidiare con un guard (D-4). Chi ha condizioni
+> particolari usa un **termine dedicato nel catalogo**.
+> **D-1, D-5, D-6 e D-7 restano valide.**
 
 ### Perché EMESSA e non DRAFT (D-1)
 
@@ -280,7 +322,14 @@ quindi il proprio cliente, con condizioni potenzialmente diverse. Con `termine` 
 chiave (D-7) il conflitto si risolve da sé: termini diversi → fatture diverse.
 Da tenere presente quando la gerarchia verrà attivata.
 
-### 4.3 Guard di mutua esclusione su `anagrafiche.clienti` (D-4)
+### 4.3 ~~Guard di mutua esclusione su `anagrafiche.clienti` (D-4)~~ — ELIMINATO
+
+> 🔴 **Rev. 2026-07-30.** Sezione superata da D-I: con le due colonne eliminate,
+> **l'ambiguità non è più rappresentabile per costruzione**. Niente guard, niente
+> `E_CLIENTI_CONDIZIONI_PAGAMENTO_AMBIGUE`, niente ordine obbligato di
+> accensione. Dei 2 clienti resta la **migrazione al catalogo** (piano, 3a.4):
+> si ripuntano al termine equivalente, creandolo se manca. Sono dati di test,
+> si sistemano al momento. Il testo sotto è conservato solo come storia.
 
 Oggi **nessun vincolo** impedisce di avere insieme `tipo_gg_scadenza_ft IN ('G','F')`
 (con giorni) **e** `termine_pagamento_id` valorizzato: due condizioni di pagamento
@@ -359,7 +408,16 @@ Comportamento richiesto:
 7. errori di dominio via `script.fn_log_and_raise_error` con codici
    distinguibili (vedi §4.5).
 
-### 4.4-bis ⚠️ Come la testata rappresenta il percorso legacy (contraddizione risolta)
+### 4.4-bis ~~Come la testata rappresenta il percorso legacy~~ — ELIMINATA
+
+> 🔴 **Rev. 2026-07-30.** Questa sezione esisteva **solo** per rappresentare il
+> percorso legacy in testata. Con D-I il percorso legacy non c'è più: la
+> contraddizione che risolveva **non può più nascere**, e
+> `fatture.giorni_pagamento` / `fine_mese` si eliminano insieme a lei.
+> Il generatore ha **un solo ramo**: legge `termine_pagamento_id`, e se è NULL
+> è `E_SCADENZE_TERMINE_MANCANTE` senza ambiguità da distinguere.
+> Il testo sotto è conservato come storia — resta un buon esempio di
+> contraddizione trovata in revisione.
 
 **Difetto trovato nella revisione del 2026-07-29, nella prima stesura di questo
 brief.** Due sue affermazioni non stanno insieme:
@@ -411,6 +469,24 @@ che rispondono sulla stessa fattura.
 Il task gira per lotto ma il BE lo eseguirà **per fattura** dove serve la
 granularità: un conflitto deve produrre un errore **della singola fattura**, così
 il lotto prosegue sulle altre e l'operatore vede quali fatture sono bloccate.
+> 🔄 **Rev. 2026-07-30 — due righe della tabella cambiano.**
+>
+> - **`totale_a_pagare` NULL o ≤ 0**: l'errore vale **solo su NULL**. I fondi
+>   sono «addebiti/**accrediti**» e si sottraggono, quindi `= 0` (fattura coperta
+>   da acconti) e `< 0` (saldo a favore) sono **documenti legittimi** → nessuna
+>   rata, nessun errore, e un log **non critico** sul negativo. Prove: la
+>   funzione dei totali tratta esplicitamente il caso negativo in ogni ramo di
+>   arrotondamento, e `CHECK (importo >= 0)` su `fatture_scadenze` ha già deciso
+>   che un documento a credito non si rateizza. Un errore critico qui bloccherebbe
+>   il lotto al primo cliente con acconto capiente. Rif. D-D, C-4.
+> - **Fattura già numerata**: lo scenario **non è raggiungibile** dal giro
+>   automatico (il runner riparte dallo step corrente o dal successivo, mai
+>   indietro). Il presidio si fa comunque, ma **diviso**: il **wrapper di lotto
+>   filtra e salta** con log non critico, la **funzione per-fattura solleva**.
+>   Rif. D-F, C-8.
+> - `numero_rate < 1` è già impedito da `chk_termini_pag_numero_rate_pos`: quel
+>   ramo di `E_SCADENZE_TERMINE_INVALIDO` è codice morto. Rif. C-5.
+
 Codici proposti (da registrare come da convenzione):
 
 | Caso | Comportamento |
@@ -503,7 +579,18 @@ Non esiste tabella figlia per percentuali/date per singola rata: oggi un piano
 «30% subito + saldo a 60 giorni» non è esprimibile. → dichiararlo **fuori scope**
 oppure modellare `config.termini_pagamento_rate`.
 
-### 5.5 `fatture.giorni_pagamento` / `fatture.fine_mese` — ✅ RISOLTO, non si deprecano
+### 5.5 `fatture.giorni_pagamento` / `fatture.fine_mese` — 🔄 SI DEPRECANO DAVVERO
+
+> 🔴 **Rev. 2026-07-30 — questa sezione si ribalta.** Con D-I le due colonne
+> tornano inutili e **si eliminano**: era la risposta della prima stesura, ed è
+> tornata quella giusta. Servivano solo a rappresentare il percorso legacy, che
+> non esiste più (§4.4-bis). La domanda originale — «valorizzarle o
+> deprecarle?» — era la domanda giusta: aveva solo bisogno che il percorso
+> legacy sparisse per avere una risposta netta.
+>
+> Il testo sotto è conservato come storia.
+
+#### ~~✅ RISOLTO, non si deprecano~~
 
 Scalari di testata pre-esistenti al modello termini, **mai popolati da nulla**.
 La prima stesura chiedeva se valorizzarli «per compatibilità» o deprecarli.
@@ -520,6 +607,13 @@ giusta — aveva solo bisogno di essere collegata al problema che risolveva.
 ---
 
 ## 6. Test pgTAP attesi
+
+> 🔄 **Rev. 2026-07-30.** I punti **4, 5 e 6-bis si eliminano**: presidiavano il
+> percorso legacy, che con D-I non esiste. Il punto 1 perde il ramo 2a. In
+> compenso il piano ne aggiunge tre che qui mancano: **idempotenza del ricalcolo
+> totali** (stesso totale *e* stessa scomposizione), **due fatture stesso BA con
+> termini diversi → saldi d'arrotondamento distinti**, e il rifiuto della
+> **numerazione incoerente** senza consumare il progressivo.
 
 1. `fn_resolve_termini_pagamento`: un test **per ciascun ramo** della catena §4.2
    — 1 (documento sorgente), 2a (coppia legacy del cliente), 2b (termine
