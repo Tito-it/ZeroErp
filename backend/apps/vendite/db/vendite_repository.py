@@ -15,6 +15,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    LIST_MAX_LIMIT,
     jsonb_out,
     query_paged_view,
     row_to_dict,
@@ -283,12 +284,13 @@ class VenditeRepository:
         order_dir: str | None = None,
         limit: int,
         offset: int,
-        max_limit: int = 200,
+        max_limit: int = LIST_MAX_LIMIT,
     ) -> tuple[list[LottoListRow], int]:
-        # Il cap a 200 protegge la lista a video; l'export ha bisogno di
-        # alzarlo (fino a EXPORT_MAX_ROWS + 1, per poter *rilevare* il
-        # superamento del limite invece di troncare in silenzio). Resta un cap
-        # esplicito passato dal chiamante: nessun percorso senza tetto.
+        # Il cap standard (LIST_MAX_LIMIT, fonte unica in core/db/_helpers)
+        # protegge la lista a video; l'export lo alza esplicitamente (fino a
+        # EXPORT_MAX_ROWS + 1, per poter *rilevare* il superamento del limite
+        # invece di troncare in silenzio). Resta un cap passato dal chiamante:
+        # nessun percorso senza tetto.
         safe_limit = max(1, min(int(limit), max_limit))
         safe_offset = max(0, int(offset))
 
@@ -1400,7 +1402,7 @@ class VenditeRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[LottoFattureRow], int]:
-        safe_limit = max(1, min(int(limit), 200))
+        safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
         safe_offset = max(0, int(offset))
 
         # Ordinamento: solo valori dalla whitelist entrano nella query.

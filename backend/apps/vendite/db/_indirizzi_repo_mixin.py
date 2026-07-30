@@ -52,6 +52,13 @@ class IndirizziDocumentoRepositoryMixin:
       l'identita' che il FE usa per il picker, e regge anche i documenti
       con billing_account NULL (ordine prospect, DDT da evasione di ordine
       senza BA). None = risoluzione solo via billing_account.
+    - ``_indirizzi_doc_istanza_column`` (opzionale): colonna istanza NATIVA
+      della testata. La dichiarano i soli documenti **precontrattuali**
+      (preventivi, offerte, contratti), che scelgono l'istanza prima che
+      esista un BA e la congelano sulla testata. Gli **esecutivi** (ordini,
+      DDT, fatture) hanno sempre un BA e l'istanza e' univoca da li'
+      (``ba.istanza_utility_id``, FK NOT NULL): non duplicano la colonna.
+      Vedi guida `gestione-delle-istanze-utility` §«relazione 1:1 per utility».
     """
 
     _indirizzi_table: str
@@ -59,19 +66,28 @@ class IndirizziDocumentoRepositoryMixin:
     _indirizzi_ambito: str
     _indirizzi_documento_table: str
     _indirizzi_doc_sr_column: str | None = None
+    _indirizzi_doc_istanza_column: str | None = None
 
-    # Scopo: soggetto_ruolo del CLIENTE/DESTINATARIO del documento, ancora
-    #        unica per guard ownership picker e auto-assegnazione default:
-    #        colonna nativa della testata se il dominio la dichiara
-    #        (fallback BA), altrimenti solo via billing_account. LEFT JOIN:
-    #        un documento senza BA con colonna nativa resta risolvibile.
-    #        None se documento inesistente o soggetto_ruolo non risolvibile.
-    def get_soggetto_ruolo_documento(self, documento_id: int) -> int | None:
-        col = self._indirizzi_doc_sr_column
-        sr_expr = f"COALESCE(d.{col}, ba.soggetto_ruolo_id)" if col \
+    # Scopo: Ancora del documento per la risoluzione indirizzi: la coppia
+    #        (soggetto_ruolo, istanza_utility). Una sola query, perche' i due
+    #        valori stanno sulla stessa riga di testata.
+    #        - soggetto_ruolo: colonna nativa se dichiarata (fallback BA);
+    #        - istanza: colonna nativa se dichiarata (precontrattuali),
+    #          altrimenti da `ba.istanza_utility_id` (esecutivi).
+    #        LEFT JOIN sul BA: un documento senza BA ma con colonna nativa
+    #        resta risolvibile (ordine prospect, DDT da evasione senza BA).
+    #        (None, None) se il documento non esiste.
+    def get_ancora_indirizzi_documento(
+        self, documento_id: int,
+    ) -> tuple[int | None, int | None]:
+        sr_col = self._indirizzi_doc_sr_column
+        ist_col = self._indirizzi_doc_istanza_column
+        sr_expr = f"COALESCE(d.{sr_col}, ba.soggetto_ruolo_id)" if sr_col \
             else "ba.soggetto_ruolo_id"
+        ist_expr = f"COALESCE(d.{ist_col}, ba.istanza_utility_id)" if ist_col \
+            else "ba.istanza_utility_id"
         sql = f"""
-            SELECT {sr_expr}
+            SELECT {sr_expr}, {ist_expr}
               FROM {self._indirizzi_documento_table} d
               LEFT JOIN anagrafiche.billing_account ba
                 ON ba.id = d.billing_account_id
@@ -80,7 +96,14 @@ class IndirizziDocumentoRepositoryMixin:
         with connection.cursor() as cursor:
             cursor.execute(sql, [documento_id])
             row = cursor.fetchone()
-            return row[0] if row else None
+            return (row[0], row[1]) if row else (None, None)
+
+    # Scopo: soggetto_ruolo del CLIENTE/DESTINATARIO del documento, ancora
+    #        unica per il guard di ownership del picker. Delega alla coppia
+    #        sopra: un solo SQL da mantenere.
+    def get_soggetto_ruolo_documento(self, documento_id: int) -> int | None:
+        soggetto_ruolo, _ = self.get_ancora_indirizzi_documento(documento_id)
+        return soggetto_ruolo
 
     # Scopo: Tipi indirizzo ammessi per l'ambito del documento (slot del
     #        pannello FE): il GET li restituisce insieme alle righe cosi' la
@@ -128,66 +151,46 @@ class IndirizziDocumentoRepositoryMixin:
             cursor.execute(sql, [documento_id])
             return [_snapshot_to_dict(r) for r in rows_to_list(cursor)]
 
-    # Scopo: Primo indirizzo di RUOLO del cliente per priorita' di tipo
-    #        (es. ['CON','FATT']: consegna, altrimenti fatturazione — regola
-    #        default UX v2). Preferisce la riga generica (istanza NULL).
-    #        None se il ruolo non ha indirizzi dei tipi richiesti.
-    def find_indirizzo_ruolo_per_tipi(
-        self, soggetto_ruolo_id: int, tipi_codici: list[str],
-    ) -> int | None:
-        sql = """
-            SELECT i.id
-              FROM anagrafiche.indirizzi i
-              JOIN config.tipi_indirizzi ti ON ti.id = i.tipo_indirizzo_id
-             WHERE i.soggetto_ruolo_id = %s
-               AND ti.codice_interno = ANY(%s)
-             ORDER BY array_position(%s::text[], ti.codice_interno),
-                      i.istanza_utility_id NULLS FIRST
-             LIMIT 1
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_ruolo_id, tipi_codici, tipi_codici])
-            row = cursor.fetchone()
-            return row[0] if row else None
-
-    # Scopo: Snapshot dal layer SOGGETTO (vw_indirizzi_resolved_soggetto) per
-    #        priorita' di tipo: usato dall'auto-assegnazione quando il RUOLO
-    #        non ha l'indirizzo (gli indirizzi soggetto non hanno riga in
-    #        anagrafiche.indirizzi -> nessun aggancio origine possibile).
-    #        Match su codice_interno IMMUTABILE (la vista espone il codice
-    #        mutabile). None se il soggetto non ha indirizzi dei tipi chiesti.
-    def find_snapshot_soggetto_per_tipi(
-        self, soggetto_ruolo_id: int, tipi_codici: list[str],
+    # Scopo: Risolve l'indirizzo di un tipo per il documento delegando a
+    #        `script.fn_resolve_indirizzo_documento` (2026-07-31): catena a due
+    #        layer RUOLO → SOGGETTO con **precedenza all'istanza** del documento.
+    #        Ritorna {snapshot, origine_indirizzo_id, origine_soggetto_ruolo_id}
+    #        oppure None se nessun layer ha risposto (l'obbligatorieta' la
+    #        decide il chiamante, non questa).
+    #
+    # ⚠️ Perche' l'SQL non sta piu' qui. Fino al 2026-07-30 il mixin aveva due
+    #    metodi propri (`find_indirizzo_ruolo_per_tipi` +
+    #    `find_snapshot_soggetto_per_tipi`) con la catena replicata in Python, e
+    #    stava per nascerne una **terza** copia per il task fattura. Ora la
+    #    catena ha un solo proprietario a DB (regola del 2 / D-5: lo snapshot si
+    #    compone server-side, mai a mano).
+    #    Due conseguenze di merito, entrambe volute:
+    #      1. l'ordinamento e' cambiato. Il vecchio SQL faceva
+    #         `ORDER BY ... i.istanza_utility_id NULLS FIRST`, cioe' preferiva
+    #         l'indirizzo **generico** e ignorava l'istanza del documento; la
+    #         funzione DB fa `ORDER BY (istanza_utility_id IS NULL)` e mette
+    #         davanti quello **dell'istanza richiesta**. Per un ERP di utilities
+    #         e' il verso giusto;
+    #      2. il layer SOGGETTO non compone piu' lo snapshot in Python (5 chiavi
+    #         assemblate a mano): lo produce `fn_snapshot_indirizzo_soggetto`
+    #         con lo **stesso shape canonico** del layer RUOLO.
+    def resolve_indirizzo_documento(
+        self,
+        *,
+        soggetto_ruolo_id: int,
+        istanza_utility_id: int | None,
+        tipo_codice: str,
     ) -> dict[str, Any] | None:
         sql = """
-            SELECT ti.codice_interno AS tipo_codice,
-                   v.indirizzo_display, v.indirizzo_libero, v.cap,
-                   v.comune_descrizione, v.provincia_sigla, v.stato_iso2
-              FROM anagrafiche.vw_indirizzi_resolved_soggetto v
-              JOIN config.tipi_indirizzi ti ON ti.id = v.tipo_indirizzo_id
-              JOIN anagrafiche.soggetti_ruoli sr ON sr.soggetto_id = v.soggetto_id
-             WHERE sr.id = %s
-               AND ti.codice_interno = ANY(%s)
-             ORDER BY array_position(%s::text[], ti.codice_interno)
-             LIMIT 1
+            SELECT snapshot, origine_indirizzo_id, origine_soggetto_ruolo_id
+              FROM script.fn_resolve_indirizzo_documento(%s, %s, %s)
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_ruolo_id, tipi_codici, tipi_codici])
+            cursor.execute(sql, [soggetto_ruolo_id, istanza_utility_id, tipo_codice])
             row = row_to_dict(cursor)
         if row is None:
             return None
-        snapshot = {
-            "via": row["indirizzo_display"] or row["indirizzo_libero"] or "",
-            "cap": row["cap"] or "",
-            "citta": row["comune_descrizione"] or "",
-            # char(n) a DB: trim del padding.
-            "prov": (row["provincia_sigla"] or "").strip(),
-            "stato": (row["stato_iso2"] or "").strip(),
-        }
-        return {
-            "tipo_codice": row["tipo_codice"],
-            "snapshot": {k: v.strip() for k, v in snapshot.items() if v.strip()},
-        }
+        return _snapshot_to_dict(row)
 
     # Scopo: Compone server-side lo snapshot canonico da un indirizzo
     #        anagrafico di ruolo (D-5, single source DB). Ritorna

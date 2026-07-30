@@ -158,36 +158,33 @@ def auto_assegna_indirizzo_default(
         esistenti = {r["tipo_indirizzo_id"] for r in repo.list_indirizzi(documento_id)}
         if default["tipo_indirizzo_id"] in esistenti:
             return
-        soggetto_ruolo = repo.get_soggetto_ruolo_documento(documento_id)
+        soggetto_ruolo, istanza_utility = repo.get_ancora_indirizzi_documento(
+            documento_id)
         if soggetto_ruolo is None:
             return
         # Catena di priorita' (decisa con Tid 2026-07-12): per ciascun tipo
-        # (CON, poi FATT) prima il layer RUOLO (aggancio origine), poi il
-        # layer SOGGETTO (snapshot senza origine: nessuna riga agganciabile).
+        # (CON, poi FATT) si prova a risolvere l'indirizzo.
+        # Dal 2026-07-31 i due layer (RUOLO con aggancio origine → SOGGETTO
+        # senza) vivono dentro `script.fn_resolve_indirizzo_documento`, che
+        # applica anche la **precedenza all'istanza** del documento: qui resta
+        # solo la priorita' fra i TIPI, che e' regola di UX e non di dominio.
         for tipo_codice in ("CON", "FATT"):
-            origine = repo.find_indirizzo_ruolo_per_tipi(soggetto_ruolo, [tipo_codice])
-            if origine is not None:
-                resolved = repo.snapshot_from_origine(origine)
+            risolto = repo.resolve_indirizzo_documento(
+                soggetto_ruolo_id=soggetto_ruolo,
+                istanza_utility_id=istanza_utility,
+                tipo_codice=tipo_codice,
+            )
+            if risolto is not None:
+                # `origine_indirizzo_id` valorizzato = layer RUOLO (riga
+                # agganciabile); NULL con `origine_soggetto_ruolo_id` valorizzato
+                # = layer SOGGETTO, che il FE distingue dal vero una-tantum
+                # digitato (quello non ha nessuna delle due origini).
                 repo.upsert_indirizzo(
                     documento_id=documento_id,
                     tipo_indirizzo_id=int(default["tipo_indirizzo_id"]),
-                    snapshot=dict(resolved["snapshot"]),
-                    origine_indirizzo_id=origine,
-                    origine_soggetto_ruolo_id=resolved["origine_soggetto_ruolo_id"],
-                )
-                return
-            dal_soggetto = repo.find_snapshot_soggetto_per_tipi(
-                soggetto_ruolo, [tipo_codice])
-            if dal_soggetto is not None:
-                # origine_soggetto_ruolo_id valorizzato: distingue "deriva
-                # dall'anagrafica del soggetto" (tag FE "Soggetto") dal vero
-                # una-tantum digitato (entrambi senza origine_indirizzo_id).
-                repo.upsert_indirizzo(
-                    documento_id=documento_id,
-                    tipo_indirizzo_id=int(default["tipo_indirizzo_id"]),
-                    snapshot=dal_soggetto["snapshot"],
-                    origine_indirizzo_id=None,
-                    origine_soggetto_ruolo_id=soggetto_ruolo,
+                    snapshot=dict(risolto["snapshot"]),
+                    origine_indirizzo_id=risolto["origine_indirizzo_id"],
+                    origine_soggetto_ruolo_id=risolto["origine_soggetto_ruolo_id"],
                 )
                 return
     except Exception:
