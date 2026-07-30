@@ -19,6 +19,12 @@
 > Tid (§2). I brief restano il design-of-record: le correzioni che questo
 > documento propone vanno riportate lì una volta approvate (§5).
 >
+> 📎 **Annotazioni del BE in coda al documento (§8, 2026-07-30).** Il BE ha
+> verificato i perimetri su richiesta di Tid e ha aggiunto una sezione finale con
+> le ricadute **di competenza DB**: numeri riverificati (chiude W-3, con **due
+> correzioni**), una proposta su D-L, e il riallineamento dei blocchi applicativi.
+> Sono annotazioni esterne: **il resto del documento non è stato modificato**.
+>
 > ⚠️ **Revisione 2026-07-29, seconda sessione.** Nel chiudere le domande aperte
 > una alla volta è emersa una **decisione strutturante**: **D-I — un solo
 > meccanismo per le condizioni di pagamento** (C-16). Le colonne
@@ -1014,3 +1020,134 @@ rientrati** e alcune debolezze che restano.
 | **W-3** | **Nessun numero è stato riverificato**: 0 righe scadenze, 2 clienti legacy, 7 fatture, 0 ordini/preventivi vengono dai brief. Se «2 clienti» fosse «20», la 3a.4 cambia peso | Ricontare all'apply, prima di 3a.4 |
 | **W-4** | Stime **ottimistiche dove c'è frontend**: «3a ~1 giornata DB» copre nove punti | Trattarle come ordine di grandezza |
 | **W-5** | **Undici decisioni in una sessione.** Le prime otto istruite una per una; le ultime sono arrivate quando l'inerzia del «confermo» era già presa | Ciò che è nato da una verifica (D-I, D-K, C-18, C-20) regge meglio di ciò che è stato deciso di slancio |
+
+---
+
+## 8. 📎 Annotazioni del BE (2026-07-30)
+
+> **Chi scrive:** BE (`dev/backend-tid`). **Perché:** Tid ha chiesto una verifica
+> dei perimetri — *«il DB non si è preso carico di attività che avevamo definito
+> BE?»*. Esito: **nessuna sovrapposizione**, nessun doppio lavoro. Questa sezione
+> raccoglie solo le ricadute **di competenza DB**; quelle applicative sono state
+> recepite nel [piano BE/FE](piano-be-fe-satelliti-fattura.md) (§0, §4-bis, §9).
+>
+> Sono **annotazioni esterne, aggiunte in coda**: le sezioni §0-§7 di questo
+> documento non sono state toccate.
+
+### 8.1 W-3 chiuso: i numeri, riverificati sul DB — con **due correzioni**
+
+W-3 chiedeva di ricontare all'apply. Fatto il **2026-07-30** sul DB di sviluppo,
+contesto operatore. I dati confermano quasi tutto, **tranne due**:
+
+| Dato | Nel piano/brief | Verificato 2026-07-30 | |
+|---|---|---|---|
+| Righe `vendite.fatture_scadenze` | 0 | **0** su 7 fatture | ✅ |
+| Fatture con `termine_pagamento_id` / `modalita_pagamento_id` | 0 | **0** e **0** su 7 | ✅ |
+| Clienti con coppia legacy (`G`/`F` + giorni) | 2 | **2** su 21 | ✅ |
+| Clienti con `tipo_gg_scadenza_ft = 'M'` | «si contano sul momento» (D-G) | **0** | ✅ risolto |
+| Clienti con `termine_pagamento_id` | 3 | **3** su 21 | ✅ |
+| Clienti con **entrambi** (ambigui) | 2 | **2** — cioè tutti quelli con la coppia | ✅ |
+| Termini in catalogo | 4 | **4** | ✅ |
+| BA / istanze / clienti | 21 / 21 / 21 | **21 / 21 / 21**, zero condizioni discordanti | ✅ |
+| BA figli (`parent_account_id`) | 0 | **0** | ✅ |
+| `fatture_indirizzi` (vs sorelle) | 0 (16/10/5/1) | **0** · ddt **16** · ordini **10** · preventivi **5** · contratti **1** · offerte **0** | ✅ |
+| Lotti | — | **29, tutti MASSIVO**; nessun GIORNALIERO mai eseguito | ✅ conferma C-7/D-C latente |
+| FK satelliti → `vendite.fatture` | CASCADE | **CASCADE** su `fatture_scadenze`, `fatture_indirizzi`, `fatture_righe` | ✅ |
+| **`vendite.ordini`** | **«0 righe in totale»** | **85 righe**, di cui **7 con termine** (**1** termine distinto) e 5 con modalità | ❌ **da correggere** |
+| **`vendite.preventivi`** | **«0 righe in totale»** | **157 righe**, di cui **19 con termine** (**1** termine distinto) | ❌ **da correggere** |
+| Attività fatturabili non ancora fatturate | — | **0** | ℹ️ |
+
+**La conclusione di §2-bis del brief scadenze regge, ma per motivi diversi da
+quelli scritti.** «D-7 oggi ha raggio d'azione nullo» era motivato con *«non ci
+sono proprio ordini né preventivi»*: falso, ce ne sono 242. La frammentazione
+resta però **improbabile sui dati attuali** perché:
+
+1. dei documenti che portano un termine, il termine è **sempre lo stesso**
+   (1 valore distinto sugli ordini, 1 sui preventivi) → nessuna divergenza
+   possibile fra documenti dello stesso BA;
+2. non c'è **nessuna attività fatturabile in attesa** (0), quindi nulla da
+   aggregare adesso.
+
+Perché la correzione conta comunque: se quel «0 righe» viene riusato per un'altra
+decisione, l'errore si propaga. E cambia **un'attività del piano**: 3b.5 dice
+*«il livello 1 non ha dati: la fixture è il lavoro»* — in realtà ci sono 7 ordini
+e 19 preventivi con termine su cui appoggiarsi. Per testare la **divergenza** serve
+comunque creare un **secondo** termine di catalogo, perché di distinti ce n'è uno.
+
+### 8.2 Proposta su D-L: la rinomina è la parte rinunciabile
+
+D-L contiene tre cose di valore molto diverso:
+
+| Punto | Natura | Lavoro BE indotto |
+|---|---|---|
+| pt. 3 — **over-free del `lock_batch_id`** (C-22) | 🔴 **bug**: resettare *una* fattura libera le attività di *tutto* il lotto | nessuno |
+| pt. 2 — asimmetria di perimetro fra le due funzioni | correzione | nessuno |
+| pt. 1 — **rinomina** delle due funzioni | leggibilità | **4 righe obbligatorie** + disallineamento nominale |
+
+Misurato: se rinominate, **devono** seguire `pipeline_repository.py:174`
+(`ALLOWED_TASK_FUNCTIONS`), `:1985`, `:2006` e un mock di test — altrimenti il
+reset muore con `42883 function does not exist`. Tutto il resto sono **nomi Python
+interni** (`pipeline_service.fn_reset_lotto_draft`, import, view, `@patch`),
+invisibili al DB: per decisione di Tid **non si rinominano**, quindi resterebbe un
+disallineamento («annulla» a DB, «reset» in Python).
+
+> 💡 **Se l'obiettivo è minimizzare il lavoro applicativo, rinunciate al solo
+> punto 1.** I punti 2 e 3 — che sono il valore vero, uno dei due è un bug — non
+> inducono nessun lavoro BE, e il disallineamento nominale non nasce. La decisione
+> è vostra: a noi costa poco in ogni caso, ma «gratis» è meglio di «poco».
+
+### 8.3 Riallineamento dei blocchi applicativi (owner BE)
+
+Quattro voci del piano vivono dentro fasi DB ma sono lavoro applicativo:
+**3a.7** (drawer cliente + service/repository/view/error_policies), **6.6**
+(filtro API + `types.py`; il resto è DB), **6.7** (verbo `LottoDrawer` + lista
+«estratte»), **D-L** (le 4 righe di §8.2).
+
+Non c'è doppio lavoro — nessuna è anche nel piano BE/FE — ma il rischio è
+l'opposto: **l'omissione**. Il team DB non tocca i `.vue` né `types.py`; il BE non
+apre una fase marcata DB. Ora sono elencate nel piano BE/FE **§4-bis** con owner
+esplicito.
+
+> **Proposta**: sostituire in 3a.7 / 6.6 / 6.7 l'elenco dei file applicativi con
+> un rimando a quel §4-bis, tenendo qui solo l'innesco («appena cadono le colonne,
+> il drawer va adeguato»). Due elenchi della stessa cosa divergono; uno no.
+
+### 8.4 C-14b/c: lo spostamento della catena indirizzi vale più di una riga
+
+`script.fn_resolve_indirizzo_documento` (2.0-b) è la scelta giusta — era la
+seconda implementazione della stessa regola, e quella Python ha il difetto reale
+di C-14c. Ma §5 la chiude con *«lavoro BE, ma è una correzione»*, e questo
+**sottostima l'impatto**: quel mixin è montato su **cinque domini in esercizio**
+(preventivi, offerte, ordini, DDT, contratti) e ripuntarlo **cambia quale
+indirizzo propongono** — oggi il generico, domani quello dell'istanza.
+
+Nel piano BE/FE è diventata la **Fase 0**, prerequisito di tutto, con ~mezza
+giornata e test di regressione sui cinque flussi. Nessuna richiesta al DB: serve
+solo che sappiate che **non è una riga**, e che la Fase 0 va **prima** della Fase 2
+DB (indirizzi), altrimenti il task fattura girerebbe su una catena diversa da
+quella dei fratelli — cioè il problema che C-14b vuole chiudere.
+
+### 8.5 W-2: gli smoke del BE possono collaudare anche la Fase 3a
+
+W-2 nota che le fasi DB non hanno un criterio di «fatto» end-to-end, e che la 3a è
+la più esposta. Gli smoke del piano BE/FE §3 passano dalla **pipeline reale** e
+possono coprirla senza nulla di nuovo: dopo la riforma,
+`smoke-fattura-scadenze.py` asserisce già che la testata porti
+`termine_pagamento_id` e `modalita_pagamento_id` e che le rate quadrino — cioè che
+la catena **risolva attraverso il catalogo riformato**. Se la 3a ha rotto qualcosa,
+lo smoke lo dice.
+
+Aggiungiamo una sola asserzione, che è il vero rischio di 3a.4: **nessun cliente
+resta senza condizioni** dopo la migrazione. Un conteggio, non un test complicato.
+
+### 8.6 Chiuso da Tid: due cose che non si fanno
+
+Coerenti con il vostro §3.8, e ora scritte anche nel piano BE/FE §9:
+
+- **le 7 fatture storiche non si rigenerano** con una procedura: sono dati di
+  test, se inciampano nel guard `FATT` si cancellano e si rifà un giro. Nessun
+  codice, nessun passo di piano, nessuna bonifica;
+- **niente fallback** nel context builder, per la stessa ragione.
+
+> Criterio generale che ne emerge: davanti a un dato di test sbagliato la risposta
+> è **rifare il dato**, non scrivere codice che lo tollera.
