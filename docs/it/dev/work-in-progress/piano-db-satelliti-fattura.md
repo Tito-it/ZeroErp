@@ -1247,8 +1247,8 @@ Coerenti con il vostro §3.8, e ora scritte anche nel piano BE/FE §9:
 
 | | |
 |---|---|
-| **Fasi** | 0 / 8 completate · Fase 1 **in corso** |
-| **changeSet** | **6 scritti** (`20260730-01`…`-06`) + 7 codici errore + 2 script di ruolo · **1 applicato** |
+| **Fasi** | **1 / 8 completate** (Fase 1 ✅ 2026-07-30) · Fase 2 in corso |
+| **changeSet** | **8 scritti** (`20260730-01`…`-08`) + 7 codici errore + 2 script di ruolo · **6 applicati** |
 | **pgTAP** | 0 nuovi · 0 adeguati |
 | **Doc** | 0 / 8 guide (§4-bis) · 0 / 3 manuali `dbzero` |
 | **Stato** | analisi chiusa, 15 decisioni prese, sviluppo avviato sulla Fase 1 |
@@ -1258,16 +1258,16 @@ Coerenti con il vostro §3.8, e ora scritte anche nel piano BE/FE §9:
 | Passo | Stato | changeSet | Note |
 |---|---|---|---|
 | 1.1 `trgfn_fattura_satellite_guard_congelamento()` parametrica | ✅ **applicata** (2026-07-30) | `20260730-01` | Clone di `trgfn_fatture_righe_guard_congelamento` con bypass GUC e uscita su stato NULL. ⚠️ **Deviazione dal piano**: `TG_ARGV[0]` = colonna FK, **niente `TG_ARGV[1]`** — un codice errore solo (`E_FATTURA_SATELLITE_CONGELATO`), con la tabella nel messaggio e nel payload. Due argomenti dove ne basta uno sono due posti in cui sbagliare il montaggio, e `error_policies.py` mappa un codice solo |
-| 1.2 Montaggio su `fatture_scadenze` e `fatture_indirizzi` | 🟡 **scritto, non applicato** | `20260730-02` | Due trigger in **un** changeSet: è la stessa regola sulle due tabelle, separarli inviterebbe ad armarne uno e dimenticare l'altro. `fatture_riepiloghi_iva` resta fuori perimetro: la sua riscrittura passa da `fn_ricalcola_riepilogo_iva_fattura`, che la soglia ce l'ha già |
-| 1.3 Codici errore (append `messaggi_errore.csv`) | 🟡 **scritto, non applicato** | — (solo CSV) | 7 codici, **id 568-574**, nessun loader nuovo: il `runOnChange` esistente ripesca il file |
-| 1.4 RLS + guard scope emittente su `fatture_indirizzi` | 🟡 **scritto, non applicato** | `20260730-03`, `-04`, `-05`, `-06` | Policy separate + armamento **isolato**, sul pattern di `20260729-01..05`. 🔴 **Prerequisito trovato ora (C-24)**: `fatture_indirizzi` **non era nel perimetro del ruolo batch** — aggiunta `'iu'` a `provision_db_role_batch_fatturazione.sql` e al `check_`. Senza, il task di Fase 2 fallirebbe: BYPASSRLS salta la RLS, **non i GRANT** |
+| 1.2 Montaggio su `fatture_scadenze` e `fatture_indirizzi` | ✅ **applicato** (2026-07-30) | `20260730-02` | Due trigger in **un** changeSet: è la stessa regola sulle due tabelle, separarli inviterebbe ad armarne uno e dimenticare l'altro. `fatture_riepiloghi_iva` resta fuori perimetro: la sua riscrittura passa da `fn_ricalcola_riepilogo_iva_fattura`, che la soglia ce l'ha già |
+| 1.3 Codici errore (append `messaggi_errore.csv`) | ✅ **applicato** (2026-07-30) | — (solo CSV) | 7 codici, **id 568-574**, nessun loader nuovo: il `runOnChange` esistente ripesca il file |
+| 1.4 RLS + guard scope emittente su `fatture_indirizzi` | ✅ **applicato** (2026-07-30) · grant batch aggiunto al provisioning, che **gira in pipeline** (`ci.yaml`). Solo sul DB di sviluppo va rilanciato una volta | `20260730-03`, `-04`, `-05`, `-06` | Policy separate + armamento **isolato**, sul pattern di `20260729-01..05`. 🔴 **Prerequisito trovato ora (C-24)**: `fatture_indirizzi` **non era nel perimetro del ruolo batch** — aggiunta `'iu'` a `provision_db_role_batch_fatturazione.sql` e al `check_`. Senza, il task di Fase 2 fallirebbe: BYPASSRLS salta la RLS, **non i GRANT** |
 
 ### Fase 2 — Indirizzi (step DRAFT)
 
 | Passo | Stato | changeSet | Note |
 |---|---|---|---|
-| 2.0-a `fn_snapshot_indirizzo_soggetto` | ⬜ | — | |
-| 2.0-b `fn_resolve_indirizzo_documento` | ⬜ | — | ⚠️ sblocca la **Fase 0 del BE**, che va prima di 2.1 |
+| 2.0-a `fn_snapshot_indirizzo_soggetto` | 🟡 **scritto, non applicato** | `20260730-07` | Chiave `(soggetto_id, tipo)` e **non** un id: la vista soggetto espone un `indirizzo_id` che è la PK di un'**altra** tabella — passarlo alla gemella restituirebbe in silenzio l'indirizzo di ruolo con lo stesso numero. Assenza = zero righe, non errore |
+| 2.0-b `fn_resolve_indirizzo_documento` | 🟡 **scritto, non applicato** | `20260730-08` | Layer RUOLO (con **precedenza per istanza**, poi generico) → layer SOGGETTO. Determinismo dalle due unique parziali: candidati al massimo due, `ORDER BY (istanza IS NULL)` sceglie fra quelli. Assenza = zero righe. ⚠️ Una volta applicata **sblocca la Fase 0 del BE**, che va prima di 2.1 |
 | 2.1 `fn_snapshot_indirizzi_fattura` | ⬜ | — | |
 | 2.2 `fn_snapshot_indirizzi_lotto` | ⬜ | — | |
 | 2.3 Seed pipeline DRAFT (corsie 1 e 8) | ⬜ | — | registry 19, impl 19, policy 17-18 |
