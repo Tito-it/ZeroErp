@@ -9,10 +9,18 @@
 # DB-ORD (db-brief-ordini-vendita §4): valori espliciti di priorita per le
 # colonne della lista vendite.ordini (lista_id risolto da codice).
 #
-# Stesso meccanismo dei seed preventivi/offerte (20260603-07/08): la colonna
-# priorita NON vive nel CSV lista_colonna.csv (il loader 20260507-07, gia'
-# mergiato, non la espone), nasce con DEFAULT 50 (20260602-13) e qui si
-# impostano i pesi di dominio. Il re-run del loader NON tocca priorita.
+# Stesso meccanismo dei seed preventivi/offerte (20260603-07/08): priorita nasce
+# con DEFAULT 50 (20260602-13) e qui si impostano i pesi di dominio.
+#
+# ⚠️ RETTIFICA 2026-07-30 — il testo originale diceva che «la colonna priorita
+# NON vive nel CSV lista_colonna.csv (il loader 20260507-07, gia' mergiato, non la
+# espone)» e che «il re-run del loader NON tocca priorita». Era vero quando questo
+# file e' stato scritto; NON lo e' piu': il loader espone tutte e 24 le colonne,
+# priorita compresa, e il CSV ne porta i valori. Questo changeSet e' quindi oggi
+# ridondante ma idempotente, e per una lista NUOVA non serve replicarlo: basta
+# l'append a lista_colonna.csv con priorita valorizzata. Dettaglio e rettifica
+# completa in 20260709-17 (gemello DDT) e in
+# docs/it/dev/work-in-progress/piano-migrazione-primevue-5.md §8-bis.
 #
 # Asse priorita (peso ritiro dinamico, piu' alto = resiste di piu'):
 #   numero/azioni (100) identificatore/azione. ragione_sociale(95), stato(90),
