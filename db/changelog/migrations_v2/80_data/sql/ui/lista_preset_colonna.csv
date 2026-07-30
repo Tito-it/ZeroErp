@@ -167,4 +167,4 @@ preset_id,colonna_id,ordine,visibile,fissata
 12,213,90,t,f
 12,214,100,t,f
 12,215,110,f,f
-12,216,999,t,f
+12,216,999,f,f

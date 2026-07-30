@@ -1,4 +1,4 @@
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -14,7 +14,11 @@ from apps.core.services.coda_lavori.repository import (
 from apps.core.services.coda_lavori.scope import scope_key_da_emittenti
 from apps.core.services.auth_helpers import extract_identita_id_from_request
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.db.vendite_repository import VenditeRepository
 from apps.core.api.payload_validators import (
     optional_bool,
     optional_int,
@@ -57,6 +61,7 @@ from apps.vendite.services.pipeline_service import (
 )
 from apps.vendite.services.vendite_service import (
     fn_get_lotto,
+    fn_export_lotti,
     fn_list_lotti,
     fn_list_lotto_fatture,
     fn_lotti_mensile,
@@ -363,6 +368,63 @@ class ApiResetLottoFatturaDraft(DomainAPIView):
 
 
 
+# Whitelist di ordinamento della lista lotti: derivata dalla mappa del
+# repository invece che ricopiata, cosi' le due non possono divergere (stesso
+# accorgimento di `_ORDER_BY_CONTRATTI` in contratti_service). La mappa e'
+# l'unica fonte di verita': chi aggiunge una colonna ordinabile la tocca una
+# volta sola.
+_ORDER_BY_LOTTI: frozenset[str] = frozenset(VenditeRepository.LOTTI_SORT_COLUMNS)
+
+# Codice del catalogo colonne: lista e export devono citare LA STESSA stringa,
+# altrimenti l'export esporta le colonne di un'altra lista senza accorgersene.
+_LISTA_CODICE_LOTTI = "vendite.lotti"
+
+
+# Scopo: parsing unico di filtri e ordinamento della lista lotti, condiviso fra
+#        lista (ApiLottiList) ed export (ApiLottiExportView). Un solo punto di
+#        verita': il contratto dell'export e' «stessi filtri della lista», e due
+#        parser separati lo romperebbero in silenzio al primo filtro aggiunto da
+#        una parte sola.
+#
+#        `order_by` e' il `campo_sorgente` del catalogo (e' cio' che
+#        <ListaConfigurabile> emette come sortField, montando le Column con
+#        :field="col.campo_sorgente"), validato contro la whitelist del
+#        repository: una chiave sconosciuta e' un errore esplicito, non un
+#        ordinamento ignorato — la freccia a video direbbe una cosa e i dati
+#        un'altra.
+# Risultato: dict pronto per il **kwargs di fn_list_lotti / fn_export_lotti.
+def _parse_lotti_query(qp, *, function_name: str) -> dict:
+    raw_competenza = qp.get("competenza_mese")
+    raw_utility = qp.get("utility_id")
+    stato_lotto_raw = qp.get("stato_lotto")
+    raw_area = qp.get("area_geografica_id")
+    raw_tipo_doc = qp.get("tipo_doc_fiscale_id")
+    raw_emittente = qp.get("emittente_soggetto_ruolo_id")
+
+    raw_order_by = qp.get("order_by")
+    order_by = raw_order_by.strip() or None if raw_order_by is not None else None
+    order_dir = qp.get("order_dir")
+    if order_by is not None:
+        order_by, order_dir = validate_order_params(
+            order_by,
+            (order_dir or "asc").lower(),
+            allowed_columns=_ORDER_BY_LOTTI,
+            error_code="E_SEARCH_VALIDATION",
+            function_name=function_name,
+        )
+
+    return {
+        "competenza_mese": optional_iso_date({"competenza_mese": raw_competenza}, "competenza_mese"),
+        "utility_id": optional_int({"utility_id": raw_utility}, "utility_id") if raw_utility is not None else None,
+        "stato_lotto": stato_lotto_raw.strip() or None if stato_lotto_raw is not None else None,
+        "area_geografica_id": optional_int({"area_geografica_id": raw_area}, "area_geografica_id") if raw_area is not None else None,
+        "tipo_doc_fiscale_id": optional_int({"tipo_doc_fiscale_id": raw_tipo_doc}, "tipo_doc_fiscale_id") if raw_tipo_doc is not None else None,
+        "emittente_soggetto_ruolo_id": optional_int({"emittente_soggetto_ruolo_id": raw_emittente}, "emittente_soggetto_ruolo_id") if raw_emittente is not None else None,
+        "order_by": order_by,
+        "order_dir": order_dir,
+    }
+
+
 class ApiLottiList(DomainAPIView):
     area_funzionale = "vendite"
     is_search_endpoint = True
@@ -375,6 +437,8 @@ class ApiLottiList(DomainAPIView):
             OpenApiParameter(name="area_geografica_id", type=int, location=OpenApiParameter.QUERY, required=False, description="Filtro per area geografica fatturazione."),
             OpenApiParameter(name="tipo_doc_fiscale_id", type=int, location=OpenApiParameter.QUERY, required=False, description="Filtro per tipo documento fiscale."),
             OpenApiParameter(name="emittente_soggetto_ruolo_id", type=int, location=OpenApiParameter.QUERY, required=False, description="Filtro per emittente fiscale (soggetto_ruolo_id)."),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento: `campo_sorgente` del catalogo lista `vendite.lotti` (codice, competenza_mese, tipo_lotto, tipo_doc_fiscale_descrizione, utility_descrizione, area_geografica_descrizione, stato_lotto, stato_operativo, stato_doc_fiscale_descrizione, data_insert, user_insert)."),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc | desc (default asc)."),
             OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
             OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description="Dimensione pagina (default 50, max 200)."),
         ],
@@ -399,41 +463,96 @@ class ApiLottiList(DomainAPIView):
     )
     # Scopo: Restituisce via GET l'elenco paginato dei lotti fatturazione con filtri opzionali.
     def get(self, request: Request) -> JsonResponse:
-        raw_competenza = request.query_params.get("competenza_mese")
-        competenza_mese = optional_iso_date({"competenza_mese": raw_competenza}, "competenza_mese")
-
-        raw_utility = request.query_params.get("utility_id")
-        utility_id = optional_int({"utility_id": raw_utility}, "utility_id") if raw_utility is not None else None
-
-        stato_lotto_raw = request.query_params.get("stato_lotto")
-        stato_lotto = stato_lotto_raw.strip() or None if stato_lotto_raw is not None else None
-
-        raw_area = request.query_params.get("area_geografica_id")
-        area_geografica_id = optional_int({"area_geografica_id": raw_area}, "area_geografica_id") if raw_area is not None else None
-
-        raw_tipo_doc = request.query_params.get("tipo_doc_fiscale_id")
-        tipo_doc_fiscale_id = optional_int({"tipo_doc_fiscale_id": raw_tipo_doc}, "tipo_doc_fiscale_id") if raw_tipo_doc is not None else None
-
-        raw_emittente = request.query_params.get("emittente_soggetto_ruolo_id")
-        emittente_soggetto_ruolo_id = optional_int({"emittente_soggetto_ruolo_id": raw_emittente}, "emittente_soggetto_ruolo_id") if raw_emittente is not None else None
+        filtri = _parse_lotti_query(
+            request.query_params, function_name="vendite.views.ApiLottiList.get",
+        )
 
         page = optional_int({"page": request.query_params.get("page", "1")}, "page")
         page_size = optional_int({"page_size": request.query_params.get("page_size", "50")}, "page_size")
 
-        auth_user_id = get_scope_user_id(request)
-
         data = fn_list_lotti(
-            competenza_mese=competenza_mese,
-            utility_id=utility_id,
-            stato_lotto=stato_lotto,
-            area_geografica_id=area_geografica_id,
-            tipo_doc_fiscale_id=tipo_doc_fiscale_id,
-            emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
-            auth_user_id=auth_user_id,
+            **filtri,
+            auth_user_id=get_scope_user_id(request),
             page=page,
             page_size=page_size,
         )
         return success_response(data)
+
+
+class ApiLottiExportView(DomainAPIView):
+    """GET /api/v1/vendite/lotti/export/?formato=csv|xlsx
+
+    Esporta i lotti filtrati dalla query string — **stessi parametri e stesso
+    ordinamento del list endpoint**, così il file rispecchia ciò che
+    l'operatore sta guardando.
+
+    Le colonne le decide il catalogo `vendite.lotti` attraverso
+    `UiService.get_lista_config`: colonne nascoste escluse, ordine e permessi
+    dell'utente rispettati. L'export non ha una lista di colonne propria, che
+    divergerebbe dalla tabella al primo cambio di configurazione.
+
+    Hard cap `EXPORT_MAX_ROWS`: oltre, `E_UI_EXPORT_LIMIT_EXCEEDED` (422) —
+    meglio un errore che un file troncato senza dirlo.
+
+    NB: il parametro si chiama `formato` (italiano) e NON `format`, che DRF
+    intercetta come magic parameter di content-negotiation prima della view.
+    """
+
+    area_funzionale = "vendite"
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="formato", type=str, required=False, description="csv (default) | xlsx"),
+            OpenApiParameter(name="competenza_mese", type=str, required=False, description="Filtro mese di competenza (YYYY-MM-DD)."),
+            OpenApiParameter(name="utility_id", type=int, required=False),
+            OpenApiParameter(name="stato_lotto", type=str, required=False),
+            OpenApiParameter(name="area_geografica_id", type=int, required=False),
+            OpenApiParameter(name="tipo_doc_fiscale_id", type=int, required=False),
+            OpenApiParameter(name="emittente_soggetto_ruolo_id", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False, description="`campo_sorgente` del catalogo `vendite.lotti` (stessa whitelist della lista)."),
+            OpenApiParameter(name="order_dir", type=str, required=False, description="asc | desc"),
+        ],
+        responses={
+            (200, "text/csv"): bytes,
+            (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): bytes,
+        },
+    )
+    # Scopo: Genera il file CSV/XLSX dei lotti secondo il catalogo colonne della lista.
+    def get(self, request: Request) -> HttpResponse:
+        fmt = parse_export_format(request)
+        filtri = _parse_lotti_query(
+            request.query_params, function_name="vendite.views.ApiLottiExportView.get",
+        )
+
+        results, total = fn_export_lotti(
+            **filtri,
+            auth_user_id=get_scope_user_id(request),
+            max_rows=EXPORT_MAX_ROWS + 1,
+        )
+
+        # Filtri riportati nell'intestazione del file: solo quelli valorizzati,
+        # così chi riapre l'export sa che fotografia stava guardando.
+        filtri_applicati = {
+            chiave: str(valore)
+            for chiave, valore in (
+                ("competenza_mese", filtri["competenza_mese"]),
+                ("stato_lotto", filtri["stato_lotto"]),
+                ("utility_id", filtri["utility_id"]),
+                ("area_geografica_id", filtri["area_geografica_id"]),
+                ("tipo_doc_fiscale_id", filtri["tipo_doc_fiscale_id"]),
+            )
+            if valore is not None
+        }
+
+        return build_export_response(
+            request,
+            lista_codice=_LISTA_CODICE_LOTTI,
+            results=results,
+            total=total,
+            filtri_applicati=filtri_applicati or None,
+            fmt=fmt,
+        )
 
 
 class ApiLottiMensile(DomainAPIView):

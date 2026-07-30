@@ -8,11 +8,11 @@
 //        stato/step/gate vivono nel motore, la lista rende e naviga.
 import { ref, computed, onActivated } from 'vue'
 import { useI18n } from 'vue-i18n'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
-import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
+import ExportDialog from '../../core/components/ExportDialog.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import DashMesiSidebar from '../../core/components/dash/DashMesiSidebar.vue'
@@ -21,17 +21,18 @@ import LottoDrawer from '../components/LottoDrawer.vue'
 import FatturazioneEsitiPanel from '../components/FatturazioneEsitiPanel.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
-import { usePagedDashFetch } from '../../core/composables/usePagedDashFetch'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useDashMesiNav } from '../../core/composables/useDashMesiNav'
 import { extractApiError } from '../../core/utils/apiError'
-import { displayDate, displayTimestamp } from '../../core/utils/date'
-import { MANAGE_ICONS, PAGINATION, READONLY_DOMAINS } from '../../core/constants'
+import { READONLY_DOMAINS } from '../../core/constants'
 import { statoLottoSeverity } from '../../core/utils/severity'
-import { listLotti, listLottiMensile } from '../api/lotti'
+import { exportLotti, listLottiMensile } from '../api/lotti'
+import { useLottiStore } from '../stores/lotti'
 
 const { t } = useI18n()
 const notify = useNotify()
 useReadonlyMode(READONLY_DOMAINS.VENDITE)
+const store = useLottiStore()
 
 // Filtro stato lotto (select statico sui valori di dominio; una nuova voce si
 // mostra comunque via fail-visible).
@@ -76,24 +77,31 @@ const statoOptions = computed(() => [
   { value: 'ERRORE', label: t('vendite.lotti.stato_errore') },
 ])
 
-// Scopo: fetch di pagina per il BB paginato (filtri correnti nella query).
-function fetchLottiPage(paging) {
-  const params = { page: paging.page, page_size: paging.page_size }
-  if (competenzaParam.value) params.competenza_mese = competenzaParam.value
-  if (statoFilter.value) params.stato_lotto = statoFilter.value
-  return listLotti(params)
-}
-
-// BB standard delle liste paginate dash: guard anti-race, unwrap envelope,
-// adozione pagina effettiva BE (niente stato paginazione hand-rolled).
+// Scaffolding della lista configurabile (useSearchTable + export + pageActions).
+// L'export riceve gli STESSI filtri della lista: il file rispecchia ciò che si
+// sta guardando, ordinamento incluso.
 const {
-  items, count, page, pageSize, loading, fetch: fetchLotti, applyPageEvent,
-} = usePagedDashFetch(fetchLottiPage, { defaultPageSize: PAGINATION.DEFAULT_ROWS })
+  onPage, onSort, paginatorProps, tablePage, reload,
+  listaRef, dirty,
+  exportDialogVisible, exportLoading, onExportConfirm, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  exportFn: exportLotti,
+  getExportParams: (fmt) => {
+    const p = { formato: fmt }
+    if (store.filters.competenza_mese) p.competenza_mese = store.filters.competenza_mese
+    if (store.filters.stato_lotto) p.stato_lotto = store.filters.stato_lotto
+    if (store.filters.order_by) {
+      p.order_by = store.filters.order_by
+      p.order_dir = store.filters.order_dir || 'desc'
+    }
+    return p
+  },
+})
 
-// Scopo: carica con toast d'errore (il BB propaga l'eccezione: fail-visible).
+// Scopo: carica la lista con toast d'errore (fail-visible: lo store propaga).
 async function load() {
   try {
-    await fetchLotti()
+    await store.fetchList()
   } catch (err) {
     notify.error(extractApiError(err, t('common.error')))
   }
@@ -112,23 +120,39 @@ async function loadMensile() {
   }
 }
 
-function onPage(event) {
-  applyPageEvent(event)
-  load()
+// Scopo: riversa i filtri della view (mese dalla sidebar, stato dal select)
+//        nello store, che è la sola fonte che il BB legge. Il reset a pagina 1
+//        avviene SOLO se un filtro è davvero cambiato: su una riattivazione
+//        senza cambi (rientro nel tab) l'operatore deve ritrovare la SUA
+//        pagina, non la prima — stessa filosofia del refresh idempotente di
+//        useSearchTable («offset invariato, cambia solo il contenuto righe»).
+function syncFiltri() {
+  const competenza = competenzaParam.value
+  const stato = statoFilter.value
+  if (store.filters.competenza_mese !== competenza || store.filters.stato_lotto !== stato) {
+    store.filters.competenza_mese = competenza
+    store.filters.stato_lotto = stato
+    store.filters.offset = 0
+  }
 }
 
 // Scopo: cambio mese/filtro stato → lista da pagina 1 (il badge non cambia:
 //        è la fotografia dell'anno, ricaricata solo al cambio anno).
 function onFilterChange() {
-  page.value = 1
+  syncFiltri()
   load()
 }
 
 // KeepAlive (ContentTabs): onActivated scatta anche al primo mount e a ogni
-// rientro nel tab — un solo hook, niente doppio fetch iniziale
-// (feedback_keepalive_onactivated). Ricarica lista + badge dell'anno.
+// rientro nel tab (feedback_keepalive_onactivated).
+// ⚠️ useSearchTable registra il PROPRIO onActivated (refresh idempotente
+// sulle riattivazioni) PRIMA di questo, quindi sulle riattivazioni il suo
+// fetch è già in volo quando arriviamo qui: il guard su `store.loading`
+// evita il doppio fetch concorrente. Al primo mount invece il suo hook si
+// auto-salta (firstActivation) ed è QUESTO a fare il fetch iniziale.
 onActivated(() => {
-  load()
+  syncFiltri()
+  if (!store.loading) load()
   loadMensile()
 })
 
@@ -136,34 +160,29 @@ onActivated(() => {
 const drawerVisible = ref(false)
 const drawerLottoId = ref(null)
 
+// Scopo: accesso alla riga con il click, come le liste standard. L'unica
+//        azione era «apri», cioè lo stesso gesto: il kebab è stato tolto
+//        (decisione Tid 2026-07-31) e la colonna `azioni` disattivata nel
+//        catalogo — si riattiva lì quando le azioni di riga diventeranno
+//        più d'una.
 function apriLotto(row) {
   drawerLottoId.value = row.id
   drawerVisible.value = true
 }
 
-function buildRowActions(row) {
-  return [
-    {
-      key: 'apri',
-      label: t('vendite.lotti.azione_apri'),
-      icon: 'pi pi-search',
-      command: () => apriLotto(row),
-    },
-  ]
-}
-
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: () => {
-      load()
-      loadMensile()
-    },
-  },
-])
+// Azioni di pagina: quelle standard del BB (reload / personalizza colonne /
+// export), con due adattamenti al registro lotti:
+//   - niente «Nuovo»: un lotto non si crea da qui, lo genera la pipeline. Il BB
+//     la include sempre, e senza `onNew` sarebbe un pulsante che non fa nulla;
+//   - «Ricarica» aggiorna ANCHE i badge per-mese della sidebar, che il BB non
+//     conosce: la fotografia dell'anno deve restare coerente con la lista.
+const azioniPagina = computed(() =>
+  pageActions.value
+    .filter((a) => a.key !== 'new')
+    .map((a) => (a.key === 'reload'
+      ? { ...a, command: () => { reload(); loadMensile() } }
+      : a)),
+)
 </script>
 
 <template>
@@ -173,8 +192,9 @@ const pageActions = computed(() => [
         <h2 style="margin: 0;">{{ t('vendite.lotti.page_title') }}</h2>
         <small class="text-color-secondary">{{ t('vendite.lotti.page_description') }}</small>
       </div>
-      <PageActionsBar :actions="pageActions">
+      <PageActionsBar :actions="azioniPagina">
         <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
           <ReadonlyBadge />
         </template>
       </PageActionsBar>
@@ -239,81 +259,65 @@ const pageActions = computed(() => [
           </div>
         </div>
 
-        <DataTable
-          :value="items"
-          :loading="loading"
-          :total-records="count"
-          :rows="pageSize"
-          :first="(page - 1) * pageSize"
-          paginator
-          paginator-position="top"
-          lazy
-          :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
-          class="app-datatable"
-          striped-rows
-          data-key="id"
+        <!-- Colonne, ordine e visibilità arrivano dal catalogo `vendite.lotti`:
+             qui restano solo le celle che hanno un rendering proprio. Le altre
+             (documento, utility, area geografica, creato, creato da) le rende il
+             BB dal `formato` del catalogo. -->
+        <ListaConfigurabile
+          ref="listaRef"
+          codice="vendite.lotti"
+          :rows="store.items"
+          :total="store.totalRecords"
+          :loading="store.loading"
+          :paginator-options="paginatorProps"
+          :page="tablePage"
+          :sort-field="paginatorProps.sortField"
+          :sort-order="paginatorProps.sortOrder"
           @page="onPage"
-          @row-click="({ data }) => apriLotto(data)"
+          @sort="onSort"
+          @row-click="apriLotto"
+          @config-loaded="onConfigLoaded"
         >
-      <Column field="codice" :header="t('vendite.lotti.col_codice')" style="width: 160px;">
-        <template #body="{ data }">
-          <strong>{{ data.codice }}</strong>
-        </template>
-      </Column>
-      <Column field="competenza_mese" :header="t('vendite.lotti.col_competenza')" style="width: 110px;">
-        <template #body="{ data }">
-          {{ data.competenza_mese ? displayDate(data.competenza_mese) : '—' }}
-        </template>
-      </Column>
-      <Column field="tipo_lotto" :header="t('vendite.lotti.col_tipo')" style="width: 120px;">
-        <template #body="{ data }">
-          <Tag :value="data.tipo_lotto" severity="secondary" />
-        </template>
-      </Column>
-      <Column field="tipo_doc_fiscale_descrizione" :header="t('vendite.lotti.col_tipo_doc')">
-        <template #body="{ data }">
-          {{ data.tipo_doc_fiscale_descrizione ?? '—' }}
-        </template>
-      </Column>
-      <Column field="utility_descrizione" :header="t('vendite.lotti.col_utility')">
-        <template #body="{ data }">
-          {{ data.utility_descrizione ?? '—' }}
-        </template>
-      </Column>
-      <Column field="stato_lotto" :header="t('vendite.lotti.col_stato')" style="width: 130px;">
-        <template #body="{ data }">
-          <Tag :value="data.stato_lotto" :severity="statoLottoSeverity(data.stato_lotto)" />
-        </template>
-      </Column>
-      <Column field="stato_doc_fiscale_descrizione" :header="t('vendite.lotti.col_stato_doc')" style="width: 150px;">
-        <template #body="{ data }">
-          <Tag
-            v-if="data.stato_doc_fiscale_descrizione"
-            :value="data.stato_doc_fiscale_descrizione"
-            severity="info"
-          />
-          <span v-else>—</span>
-        </template>
-      </Column>
-      <Column field="data_insert" :header="t('vendite.lotti.col_creato')" style="width: 150px;">
-        <template #body="{ data }">
-          {{ data.data_insert ? displayTimestamp(data.data_insert) : '—' }}
-        </template>
-      </Column>
-      <Column :header="t('vendite.lotti.col_azioni')" class="app-col-actions" :exportable="false">
-        <template #body="{ data }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-        </template>
-      </Column>
-      <template #empty>
-        <div class="app-empty-state">
-          <i class="pi pi-server" />
-          <p>{{ t('vendite.lotti.nessun_lotto') }}</p>
-        </div>
-      </template>
-        </DataTable>
+          <template #cell-codice="{ data }">
+            <strong>{{ data.codice }}</strong>
+          </template>
+          <template #cell-tipo_lotto="{ data }">
+            <Tag :value="data.tipo_lotto" severity="secondary" />
+          </template>
+          <template #cell-stato_lotto="{ data }">
+            <Tag :value="data.stato_lotto" :severity="statoLottoSeverity(data.stato_lotto)" />
+          </template>
+          <!-- Stato operativo: informazione interna della pipeline, resa come
+               Tag neutro — non è uno stato di dominio come `stato_lotto` e non
+               deve competere con lui a colpo d'occhio. -->
+          <template #cell-stato_operativo="{ data }">
+            <Tag v-if="data.stato_operativo" :value="data.stato_operativo" severity="secondary" />
+            <span v-else>—</span>
+          </template>
+          <template #cell-stato_doc_fiscale="{ data }">
+            <Tag
+              v-if="data.stato_doc_fiscale_descrizione"
+              :value="data.stato_doc_fiscale_descrizione"
+              severity="info"
+            />
+            <span v-else>—</span>
+          </template>
+
+          <template #empty>
+            <div class="app-empty-state">
+              <i class="pi pi-server" />
+              <p>{{ t('vendite.lotti.nessun_lotto') }}</p>
+            </div>
+          </template>
+        </ListaConfigurabile>
       </div>
     </div>
+
+    <ExportDialog
+      v-model:visible="exportDialogVisible"
+      :loading="exportLoading"
+      @export="onExportConfirm"
+    />
 
     <LottoDrawer
       v-model:visible="drawerVisible"

@@ -238,6 +238,35 @@ class VenditeRepository:
             "user_insert": str(row[17]),
         }
 
+    # Colonne ordinabili della lista lotti: chiave esposta al FE -> espressione
+    # SQL. Whitelist: nell'ORDER BY entrano solo chiavi note piu' la direzione
+    # ASC/DESC, mai input utente grezzo. Stessa convenzione di
+    # DASH_APERTO_SORT_COLUMNS e di `_ORDER_COLS_CONTRATTI`.
+    #
+    # ⚠️ La chiave e' il `campo_sorgente` del catalogo, NON il `codice` logico.
+    # `<ListaConfigurabile>` monta le Column con `:field="col.campo_sorgente"`,
+    # quindi `event.sortField` — e con esso `store.filters.order_by` — porta il
+    # nome FISICO. Chiavare sui codici logici farebbe fallire con 400 proprio le
+    # colonne in cui i due nomi divergono (`utility` vs `utility_descrizione`).
+    #
+    # Deve restare allineata al catalogo `vendite.lotti`: una colonna marcata
+    # `ordinabile = t` nel seed ma assente qui mostra una freccia che non ordina;
+    # il contrario lascia inutilizzabile una colonna ordinabile. `azioni` non c'e'
+    # per costruzione (tipo_colonna='azione', nessun campo_sorgente).
+    LOTTI_SORT_COLUMNS = {
+        "codice": "fl.codice",
+        "competenza_mese": "fl.competenza_mese",
+        "tipo_lotto": "fl.tipo_lotto",
+        "tipo_doc_fiscale_descrizione": "tdf.descrizione",
+        "utility_descrizione": "u.descrizione",
+        "area_geografica_descrizione": "agf.descrizione",
+        "stato_lotto": "fl.stato_lotto",
+        "stato_operativo": "fl.stato_operativo",
+        "stato_doc_fiscale_descrizione": "sdf.descrizione",
+        "data_insert": "fl.data_insert",
+        "user_insert": "fl.user_insert",
+    }
+
     # Perimetro: solo lettura; nessun side-effect.
     # Risultato: tuple (lista LottoListRow, conteggio totale).
     def list_lotti(
@@ -250,10 +279,17 @@ class VenditeRepository:
         tipo_doc_fiscale_id: int | None,
         emittente_soggetto_ruolo_id: int | None,
         auth_user_id: int | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int,
         offset: int,
+        max_limit: int = 200,
     ) -> tuple[list[LottoListRow], int]:
-        safe_limit = max(1, min(int(limit), 200))
+        # Il cap a 200 protegge la lista a video; l'export ha bisogno di
+        # alzarlo (fino a EXPORT_MAX_ROWS + 1, per poter *rilevare* il
+        # superamento del limite invece di troncare in silenzio). Resta un cap
+        # esplicito passato dal chiamante: nessun percorso senza tetto.
+        safe_limit = max(1, min(int(limit), max_limit))
         safe_offset = max(0, int(offset))
 
         conditions: list[str] = []
@@ -294,12 +330,25 @@ class VenditeRepository:
             {where_clause}
         """
 
+        # ORDER BY server-side (corretto su TUTTE le pagine, non solo su quella
+        # visibile): colonna dalla whitelist + direzione, con tiebreak stabile
+        # su fl.id per una paginazione deterministica anche a parita' di valore.
+        # order_by assente o non ammesso -> ordine storico (il piu' recente
+        # prima), cioe' esattamente il comportamento precedente: la lista non
+        # cambia aspetto finche' l'utente non tocca un'intestazione.
+        sort_col = self.LOTTI_SORT_COLUMNS.get(order_by or "")
+        if sort_col is not None:
+            direction = sql_order_direction(order_dir)
+            order_clause = f"ORDER BY {sort_col} {direction}, fl.id DESC"
+        else:
+            order_clause = "ORDER BY fl.data_insert DESC, fl.id DESC"
+
         data_sql = f"""
             SELECT {self._LOTTO_SELECT_COLS}
             FROM vendite.fatturazione_lotti fl
             {joins}
             {where_clause}
-            ORDER BY fl.data_insert DESC, fl.id DESC
+            {order_clause}
             LIMIT %s OFFSET %s
         """
 

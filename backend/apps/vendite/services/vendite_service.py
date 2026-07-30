@@ -114,6 +114,8 @@ def fn_list_lotti(
     tipo_doc_fiscale_id: int | None = None,
     emittente_soggetto_ruolo_id: int | None = None,
     auth_user_id: int | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> dict[str, object]:
@@ -128,10 +130,54 @@ def fn_list_lotti(
         tipo_doc_fiscale_id=tipo_doc_fiscale_id,
         emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
         auth_user_id=auth_user_id,
+        order_by=order_by,
+        order_dir=order_dir,
         limit=page_size,
         offset=offset,
     )
     return _build_list_response(results, total_count, page, page_size)
+
+
+# Scopo: Estrae i lotti per l'EXPORT (CSV/XLSX), con gli stessi filtri e lo
+#        stesso ordinamento della lista a video — così il file rispecchia ciò
+#        che l'operatore stava guardando.
+#
+#        Perché non passa da `fn_list_lotti`: quella valida `page_size` con
+#        `validate_pagination`, che impone il tetto di 200 righe della lista.
+#        L'export ne ha bisogno di più, e chiede `EXPORT_MAX_ROWS + 1` di
+#        proposito: la riga in eccesso serve a **rilevare** il superamento del
+#        limite (`build_export_response` solleva `E_UI_EXPORT_LIMIT_EXCEEDED`)
+#        invece di consegnare un file troncato in silenzio.
+# Perimetro: sola lettura; scope emittente applicato in repository come la lista.
+# Risultato: tuple (righe, conteggio totale) da passare a `build_export_response`.
+def fn_export_lotti(
+    *,
+    competenza_mese: date | None = None,
+    utility_id: int | None = None,
+    stato_lotto: str | None = None,
+    area_geografica_id: int | None = None,
+    tipo_doc_fiscale_id: int | None = None,
+    emittente_soggetto_ruolo_id: int | None = None,
+    auth_user_id: int | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    max_rows: int,
+) -> tuple[list[LottoListRow], int]:
+    repository = VenditeRepository()
+    return repository.list_lotti(
+        competenza_mese=competenza_mese,
+        utility_id=utility_id,
+        stato_lotto=stato_lotto,
+        area_geografica_id=area_geografica_id,
+        tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+        emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+        auth_user_id=auth_user_id,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=max_rows,
+        offset=0,
+        max_limit=max_rows,
+    )
 
 
 # Range anni accettato (mirror del clamp FE useDashMesiNav): fuori range → 400,

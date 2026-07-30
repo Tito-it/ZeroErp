@@ -1007,42 +1007,67 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ☐ | `catalogo/components/ArticoliSearchTable.vue` | 9 | sì |
 | ☐ | `strumenti/components/CodaStampaTab.vue` | 9 | sì |
 | ☐ | `vendite/components/CommessaGestioneDrawer.vue` | 9 | sì |
-| ☐ | `vendite/views/LottiListView.vue` | 9 | sì |
+| ✅ 2026-07-31 | `vendite/views/LottiListView.vue` | 9 | sì |
 | ☐ | `vendite/views/SituazioneApertaView.vue` | 10 | sì |
 | ☐ | `vendite/components/ContrattoRigheDrawer.vue` | 11 | — |
 | ☐ | `vendite/views/DashboardBacklogView.vue` | 11 | sì |
 | ☐ | `vendite/components/ListiniSearchTable.vue` | 13 | sì |
 | ☐ | `vendite/views/DashboardCompetenzaView.vue` | 23 | sì |
 
-##### `vendite.lotti` — seed DB pronto, resta BE/FE (2026-07-30)
+##### `vendite.lotti` — ✅ CONVERTITA il 2026-07-31, validata in-app da Tid
 
-La configurazione è **già nei quattro CSV** (`lista_id = 12`, colonne `205..216`,
-preset `lotti_default`): non serve rigenerarla né scrivere changeset, i loader
-sono `runOnChange` e la ripescano. Applicata e risolta in transazione di prova
-contro il DB (`fn_resolve_lista_config` → 12 colonne, 9 visibili) e poi
-rollbackata: il DB di sviluppo non la ha ancora finché non si lancia il migrate.
+Prima conversione dell'inventario, fatta a perimetro pieno: ordinamento
+server-side, export CSV/XLSX, personalizzazione colonne. **Le lezioni sotto
+valgono per le prossime 33 e correggono tre affermazioni della stesura
+precedente di questo stesso blocco.**
 
-Tre cose decise lato DB che chi converte il `.vue` deve sapere:
+**Cosa è stato fatto** (2026-07-30/31, non committato):
 
-- **Tutte le colonne sono `ordinabile=f`.** `ApiLottiList` non accetta
-  `order_by`: [vendite_repository.py](../../../../backend/apps/vendite/db/vendite_repository.py)
-  ha `ORDER BY fl.data_insert DESC, fl.id DESC` fisso. Oggi nessuna colonna
-  della lista è `sortable`, quindi non si perde niente — ma finché il BE non
-  espone l'ordinamento (con la whitelist di `validate_order_params`) mettere
-  `ordinabile=t` significherebbe una freccia d'ordinamento che non ordina.
-- **Tre colonne sono nel catalogo ma invisibili nel preset**:
-  `area_geografica`, `stato_operativo`, `user_insert`. L'endpoint le restituisce
-  già (`_LOTTO_SELECT_COLS`) e sono ciò che rende la personalizzazione utile:
-  senza colonne aggiungibili l'utente può solo togliere.
-- **Mancano tre chiavi i18n**: `vendite.lotti.col_area_geografica`,
-  `col_stato_operativo`, `col_creato_da`. Sono già dichiarate nel seed, e il
-  `te()` di `<ListaConfigurabile>` fa fallback all'`etichetta` italiana del
-  catalogo finché non si aggiungono a `it.json`/`en.json`.
+- BE: `order_by`/`order_dir` su `ApiLottiList` (whitelist `LOTTI_SORT_COLUMNS`
+  nel repository, tiebreak `fl.id`, fallback all'ordine storico) + endpoint
+  `GET /vendite/lotti/export/` via `build_export_response`; parsing filtri
+  **condiviso** fra lista ed export (`_parse_lotti_query`) — il contratto
+  «l'export rispecchia la lista» vive in un parser solo;
+- FE: store `vendite-lotti` (`userScoped`, converte `limit/offset` →
+  `page/page_size` in `buildParams`) + view su `<ListaConfigurabile>` con
+  `useListaConfigurabilePage`; 5 slot di cella, il resto lo rende il catalogo;
+- seed: 11 colonne `ordinabile=t`; colonna `azioni` **disattivata**
+  (`attivo=f` + preset `visibile=f`): l'unica azione era «apri», cioè il
+  row-click — decisione Tid, si riattiva dal catalogo quando le azioni
+  diventeranno più d'una;
+- i18n: le 3 chiavi mancanti aggiunte a `it.json`/`en.json`;
+- test: `test_lotti_lista_configurabile.py`, 5 test CI-safe che presidiano
+  l'allineamento seed↔whitelist **in entrambi i versi**.
 
-⚠️ `LottiListView` usa `usePagedDashFetch`, non `useSearchTable`: è una delle 6
-liste "cockpit" del Gruppo A, quindi **`useListaConfigurabilePage` non si
-applica** e il wiring (`useListaConfig`, pulsante personalizza, badge, export)
-va fatto a mano. Le altre 23 liste del gruppo hanno il telaio standard.
+**Lezioni per le prossime conversioni:**
+
+1. 🔴 **La whitelist di ordinamento si chiava sul `campo_sorgente`, MAI sul
+   `codice` logico.** `<ListaConfigurabile>` monta le Column con
+   `:field="col.campo_sorgente"`, quindi `event.sortField` → `order_by` porta
+   il nome **fisico**. Chiavata sui codici, 4 colonne su 11 rispondevano 400 al
+   primo click — trovato prima di arrivare a video solo per confronto con
+   `_ORDER_COLS_CONTRATTI`. Replicare anche il **test di allineamento**
+   seed↔whitelist: è l'invariante che nessun build rompe.
+2. **«useListaConfigurabilePage non si applica alle liste cockpit» era
+   sbagliato.** Bastava creare lo store col contratto atteso (`filters` con
+   `limit/offset/order_by/order_dir/search`, `hasSearched`, `fetchList`):
+   nessun wiring a mano. Vale per le altre 5 liste cockpit.
+3. ⚠️ **Doppio `onActivated`**: `useSearchTable` ne registra uno proprio
+   (refresh idempotente sulle riattivazioni) che parte PRIMA di quello della
+   view. Senza guard su `store.loading` si fanno due fetch concorrenti; e il
+   sync dei filtri della view deve azzerare `offset` **solo se un filtro è
+   cambiato**, o l'operatore perde la pagina a ogni rientro nel tab.
+4. **Export**: serve una porta di servizio dedicata (qui `fn_export_lotti`) —
+   la funzione di lista passa da `validate_pagination`, che impone il tetto di
+   200 righe e impedirebbe perfino di *rilevare* il superamento di
+   `EXPORT_MAX_ROWS`.
+5. **Colonna `azioni` senza azioni**: se il kebab non serve, disattivarla nel
+   catalogo (`attivo=f`), non solo omettere lo slot — altrimenti resta
+   riesumabile dalla personalizzazione come colonna vuota.
+
+**Resta vero** dalla stesura precedente: le 3 colonne extra invisibili
+(`area_geografica`, `stato_operativo`, `user_insert`) sono ciò che rende la
+personalizzazione utile — l'endpoint le restituiva già.
 
 #### Gruppo B — tabelle annidate (37 file, senza paginator)
 
@@ -1113,6 +1138,33 @@ maturità.
 ---
 
 ## 9. Registro
+
+### 2026-07-31 · Prima conversione dell'inventario: `vendite.lotti` — FATTA e validata
+
+Prima lista del Gruppo A convertita a `<ListaConfigurabile>`, **a perimetro
+pieno** (decisione Tid: ordinamento + export insieme alla conversione, non
+rinviati). Validata in-app da Tid. Dettaglio e lezioni nel blocco
+«`vendite.lotti` — CONVERTITA» sopra l'inventario; qui i fatti di processo:
+
+- **Sequenza che ha funzionato**: prima il BE (ordinamento con whitelist +
+  export), poi lo store, poi la view, poi seed/i18n — ogni strato collaudato
+  prima di appoggiarci il successivo. 2200 test Django, build, lint, i18n
+  verdi a ogni passo.
+- **Un bug intercettato prima del video**: whitelist di ordinamento chiavata
+  sul `codice` logico invece che sul `campo_sorgente` (lezione 1 del blocco).
+  È nato un test CI-safe che rende l'errore impossibile da rifare in silenzio
+  su questa lista, e il pattern va replicato sulle prossime.
+- **Revisione critica a valle** (richiesta Tid): trovati e corretti il reset
+  pagina a ogni rientro nel tab + doppio fetch concorrente (doppio
+  `onActivated`), la duplicazione del parsing lista/export, e un commento che
+  documentava la convenzione sbagliata. Nota lasciata agli atti: `onPage`/
+  `onSort` di `useSearchTable` chiamano `fetchList` senza catch — pattern
+  pre-esistente comune a TUTTE le liste standard, da valutare a parte.
+- **Kebab rimosso** (decisione Tid): il row-click apre il drawer, l'unica
+  azione era ridondante. Colonna `azioni` disattivata nel catalogo, chiave
+  i18n orfana rimossa.
+- Restano nel Gruppo A: **33 liste**. Le 4 senza endpoint paginato sono
+  invariate (lotti era già lazy).
 
 ### 2026-07-29 · Il cambio di licenza — e il rollback di primeicons
 
