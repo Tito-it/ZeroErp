@@ -24,12 +24,15 @@
 #
 # PERCORSI DI ESECUZIONE — gli stessi verificati il 2026-07-29 per le sorelle:
 #   - cron/batch  -> system_process_context, ruolo BYPASSRLS
-#                    zeroerp_batch_fatturazione. ⚠️ VERIFICARE che
-#                    fatture_indirizzi sia nel suo perimetro 'iud'
-#                    (provision_db_role_batch_fatturazione.sql): a differenza di
-#                    fatture_righe e fatture_scadenze, questa tabella non e' mai
-#                    stata scritta da un batch, quindi la grant potrebbe non
-#                    esserci. BYPASSRLS salta la RLS ma NON i GRANT.
+#                    zeroerp_batch_fatturazione. ✅ VERIFICATO il 2026-07-30:
+#                    fatture_indirizzi NON era nel perimetro — a differenza di
+#                    fatture_righe e fatture_scadenze, nessun batch l'aveva mai
+#                    scritta. Aggiunta con grado 'iu' (upsert, mai DELETE) a
+#                    scripts/sql/provision_db_role_batch_fatturazione.sql e al
+#                    check_ gemello. BYPASSRLS salta la RLS ma NON i GRANT.
+#                    Il provisioning gira gia' in pipeline (ci.yaml): nessun
+#                    intervento manuale, salvo rilanciarlo una volta sul DB di
+#                    sviluppo, dove non e' incluso nel make db-migrate.
 #   - web         -> scope operatore (policy ef_whitelist);
 #   - portale     -> policy ba_ownership, sola lettura.
 #

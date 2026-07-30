@@ -1,0 +1,215 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 2.0-b — catena UNICA di risoluzione dell'indirizzo di un documento
+#   (piano-db-satelliti-fattura.md C-14b, Fase 2.0-b).
+#
+# COS'ERA IL PROBLEMA. La regola «da dove prende l'indirizzo un documento» era
+#   implementata in Python, dentro IndirizziDocumentoRepositoryMixin. Il task di
+#   snapshot della fattura (Fase 2.1) avrebbe dovuto implementarla una SECONDA
+#   volta in SQL: due punti che rispondono alla stessa domanda, che e' il difetto
+#   che questo piano insegue da C-13 in poi. Qui la catena diventa una sola, e il
+#   mixin Python ci si ripunta sopra (Fase 0 del piano BE/FE).
+#
+# LA CATENA, in due layer — l'ordine NON e' arbitrario:
+#   1) RUOLO   (anagrafiche.indirizzi) -> ha una riga vera, quindi lo snapshot
+#              porta origine_indirizzo_id: la provenienza resta agganciata e
+#              l'indirizzo e' ritrovabile.
+#   2) SOGGETTO (anagrafiche.indirizzi_soggetti) -> non ha riga agganciabile:
+#              origine_indirizzo_id resta NULL e si valorizza
+#              origine_soggetto_ruolo_id. E' quella coppia a distinguere «deriva
+#              dall'anagrafica del soggetto» da un indirizzo una-tantum digitato
+#              a mano (entrambi senza origine_indirizzo_id).
+#
+# ⚠️ PRECEDENZA PER ISTANZA — e' la correzione, non un dettaglio. Un
+#   soggetto_ruolo puo' avere PIU' indirizzi dello stesso tipo: uno per istanza
+#   utility piu' uno generico. Lo impongono due unique parziali su
+#   anagrafiche.indirizzi:
+#     uq_indirizzi_ruolo_istanza_tipo    (ruolo, istanza, tipo) WHERE istanza NOT NULL
+#     uq_indirizzi_ruolo_tipo_no_istanza (ruolo, tipo)          WHERE istanza IS NULL
+#   In un ERP di utilities e' il modello giusto: la stessa persona con luce, gas e
+#   idrico e' UN ruolo con TRE istanze. Il codice Python di oggi pero' ordina
+#   `istanza_utility_id NULLS FIRST` — cioe' preferisce il generico e IGNORA
+#   l'istanza del documento. Qui si inverte: prima quello dell'istanza, poi il
+#   generico come fallback.
+#   Determinismo: per le due unique i candidati sono al massimo DUE (uno per
+#   ramo), e l'ORDER BY sceglie fra quelli. Nessun LIMIT 1 lasciato al caso.
+#
+# ASSENZA = ZERO RIGHE. Nessun layer ha risposto -> nessuna riga, non un errore.
+#   E' il chiamante a sapere se quel tipo di indirizzo e' obbligatorio: per la
+#   fattura FATT lo e' (E_INDIRIZZO_FATTURA_MANCANTE), CON/FORNITURA/RES no.
+#   Decidere qui sarebbe decidere al posto suo.
+#
+# TIPO PER codice_interno e mai per codice: il primo e' immutabile, il secondo
+#   e' modificabile dall'utente. Un tipo inesistente e' un errore di
+#   configurazione o di programmazione, non un caso da tollerare: fail loud.
+#
+# Dipendenze: script.fn_snapshot_indirizzo (layer RUOLO),
+#   script.fn_snapshot_indirizzo_soggetto (20260730-07, layer SOGGETTO).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260730-08-create-fn-resolve-indirizzo-documento-mctit.yaml
+
+  - changeSet:
+      id: 20260730-08-create-fn-resolve-indirizzo-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Catena unica di risoluzione indirizzo documento: layer RUOLO (con
+        precedenza per istanza utility) poi layer SOGGETTO. Assenza = zero righe.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script'
+                AND p.proname IN ('fn_snapshot_indirizzo',
+                                  'fn_snapshot_indirizzo_soggetto')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_resolve_indirizzo_documento(bigint, bigint, character varying);
+
+              CREATE FUNCTION script.fn_resolve_indirizzo_documento(
+                  p_soggetto_ruolo_id  anagrafiche.indirizzi.soggetto_ruolo_id%TYPE,
+                  p_istanza_utility_id anagrafiche.indirizzi.istanza_utility_id%TYPE,
+                  p_tipo_codice        config.tipi_indirizzi.codice_interno%TYPE)
+               RETURNS TABLE(snapshot                  jsonb,
+                             origine_indirizzo_id      anagrafiche.indirizzi.id%TYPE,
+                             origine_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: rispondere alla domanda «da dove prende l'indirizzo di
+              --        tipo X questo documento», UNA volta sola per tutto il
+              --        sistema. Due layer, con precedenza all'istanza utility.
+              -- Uso:   task di snapshot dei documenti + mixin Python (via BE).
+              DECLARE
+                  v_tipo_id      config.tipi_indirizzi.id%TYPE;
+                  v_indirizzo_id anagrafiche.indirizzi.id%TYPE;
+                  v_soggetto_id  anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+                  v_snapshot     jsonb;
+                  v_origine_sr   anagrafiche.soggetti_ruoli.id%TYPE;
+              BEGIN
+                  -- ===== Guard parametri =====
+                  IF p_soggetto_ruolo_id IS NULL OR p_soggetto_ruolo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_resolve_indirizzo_documento', 'E_VALIDAZIONE',
+                          jsonb_build_object('p_soggetto_ruolo_id', p_soggetto_ruolo_id),
+                          NULL::uuid, 'p_soggetto_ruolo_id deve essere > 0');
+                  END IF;
+
+                  -- L'istanza e' OPZIONALE (documenti non legati a una utility),
+                  -- ma se c'e' deve essere un id valido: zero o negativo e'
+                  -- un errore del chiamante, non «nessuna istanza».
+                  IF p_istanza_utility_id IS NOT NULL AND p_istanza_utility_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_resolve_indirizzo_documento', 'E_VALIDAZIONE',
+                          jsonb_build_object('p_istanza_utility_id', p_istanza_utility_id),
+                          NULL::uuid, 'p_istanza_utility_id se fornito deve essere > 0');
+                  END IF;
+
+                  IF p_tipo_codice IS NULL OR btrim(p_tipo_codice) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_resolve_indirizzo_documento', 'E_VALIDAZIONE',
+                          jsonb_build_object('p_tipo_codice', p_tipo_codice),
+                          NULL::uuid, 'p_tipo_codice obbligatorio');
+                  END IF;
+
+                  -- Tipo per codice_interno (immutabile), mai per codice.
+                  SELECT t.id INTO v_tipo_id
+                    FROM config.tipi_indirizzi t
+                   WHERE t.codice_interno = p_tipo_codice;
+
+                  IF v_tipo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_resolve_indirizzo_documento', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('codice_interno', p_tipo_codice),
+                          NULL::uuid, concat('tipo indirizzo non configurato: ', p_tipo_codice));
+                  END IF;
+
+                  -- ===== Layer 1: RUOLO, con precedenza per ISTANZA =====
+                  -- I candidati sono al massimo due (le due unique parziali):
+                  -- quello dell'istanza richiesta e quello generico. L'ORDER BY
+                  -- su (istanza IS NULL) mette il primo davanti — i booleani
+                  -- ordinano false prima di true — quindi la scelta e'
+                  -- deterministica, non un LIMIT 1 lasciato al caso.
+                  -- Se p_istanza_utility_id e' NULL il confronto non e' mai vero
+                  -- e resta solo il generico: comportamento corretto per i
+                  -- documenti che non hanno una utility.
+                  SELECT i.id INTO v_indirizzo_id
+                    FROM anagrafiche.indirizzi i
+                   WHERE i.soggetto_ruolo_id = p_soggetto_ruolo_id
+                     AND i.tipo_indirizzo_id = v_tipo_id
+                     AND (i.istanza_utility_id = p_istanza_utility_id
+                          OR i.istanza_utility_id IS NULL)
+                   ORDER BY (i.istanza_utility_id IS NULL)
+                   LIMIT 1;
+
+                  IF v_indirizzo_id IS NOT NULL THEN
+                      -- Composizione delegata: mai snapshot fatti a mano (D-5).
+                      -- fn_snapshot_indirizzo solleva se non trova l'id, ma qui
+                      -- non puo' accadere: l'id arriva da anagrafiche.indirizzi
+                      -- filtrato per soggetto_ruolo, e la vista che lei legge fa
+                      -- INNER JOIN proprio su soggetti_ruoli.
+                      SELECT s.snapshot, s.origine_soggetto_ruolo_id
+                        INTO v_snapshot, v_origine_sr
+                        FROM script.fn_snapshot_indirizzo(v_indirizzo_id) s;
+
+                      snapshot                  := v_snapshot;
+                      origine_indirizzo_id      := v_indirizzo_id;
+                      origine_soggetto_ruolo_id := v_origine_sr;
+                      RETURN NEXT;
+                      RETURN;
+                  END IF;
+
+                  -- ===== Layer 2: SOGGETTO (fallback) =====
+                  SELECT sr.soggetto_id INTO v_soggetto_id
+                    FROM anagrafiche.soggetti_ruoli sr
+                   WHERE sr.id = p_soggetto_ruolo_id;
+
+                  IF v_soggetto_id IS NOT NULL THEN
+                      SELECT s.snapshot INTO v_snapshot
+                        FROM script.fn_snapshot_indirizzo_soggetto(v_soggetto_id, v_tipo_id) s;
+
+                      IF v_snapshot IS NOT NULL THEN
+                          -- origine_indirizzo_id NULL + origine_soggetto_ruolo_id
+                          -- valorizzato: e' la coppia che dice «viene
+                          -- dall'anagrafica del soggetto» e lo distingue da un
+                          -- una-tantum digitato a mano.
+                          snapshot                  := v_snapshot;
+                          origine_indirizzo_id      := NULL;
+                          origine_soggetto_ruolo_id := p_soggetto_ruolo_id;
+                          RETURN NEXT;
+                          RETURN;
+                      END IF;
+                  END IF;
+
+                  -- Nessun layer ha risposto: zero righe. Se quel tipo di
+                  -- indirizzo sia obbligatorio lo sa il chiamante, non questa.
+                  RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_resolve_indirizzo_documento(bigint, bigint, character varying)
+              IS 'Catena UNICA di risoluzione dell''indirizzo di un documento, condivisa da tutti i domini: layer RUOLO (anagrafiche.indirizzi, con origine_indirizzo_id agganciato) e, come fallback, layer SOGGETTO (anagrafiche.indirizzi_soggetti, origine_indirizzo_id NULL + origine_soggetto_ruolo_id valorizzato — la coppia che distingue «derivato dall''anagrafica del soggetto» da un una-tantum digitato). PRECEDENZA PER ISTANZA UTILITY, poi il generico: un soggetto_ruolo puo'' avere piu'' indirizzi dello stesso tipo (uq_indirizzi_ruolo_istanza_tipo + uq_indirizzi_ruolo_tipo_no_istanza), e in un ERP di utilities la stessa persona con luce, gas e idrico e'' UN ruolo con TRE istanze. Determinismo garantito dalle due unique parziali: i candidati sono al massimo due e l''ORDER BY sceglie fra quelli. Composizione dello snapshot sempre delegata a fn_snapshot_indirizzo / fn_snapshot_indirizzo_soggetto, mai a mano (D-5). Assenza = ZERO RIGHE e non errore: l''obbligatorieta'' di un tipo la conosce il chiamante. STABLE. piano-db-satelliti-fattura C-14b, Fase 2.0-b.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_resolve_indirizzo_documento(bigint, bigint, character varying);
