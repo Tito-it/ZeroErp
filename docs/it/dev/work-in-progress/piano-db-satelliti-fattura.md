@@ -702,7 +702,7 @@ il privilegio sul figlio.
 
 ## 2. Decisioni
 
-### 2.1 Chiuse da Tid il 2026-07-29
+### 2.1 Chiuse da Tid il 2026-07-29/31
 
 | # | Decisione | Esito |
 |---|---|---|
@@ -720,6 +720,7 @@ il privilegio sul figlio.
 | **D-G** | Bonifiche dei dati esistenti | ✅ **DECISA: non è un cantiere.** Sono **dati di test** ([[project_no_produzione_solo_sviluppo]]): si correggono o si cancellano al momento, senza migration né passi preparatori. I 2 clienti con la coppia legacy si ripuntano al catalogo dentro 3a.4; i clienti con `M` **si contano al momento dell'applicazione** (Tid: probabilmente nessuno); le 7 fatture senza snapshot si cancellano e rigenerano. Nessuna query di bonifica da preparare in anticipo |
 | **D-D** | Base di ripartizione `totale_a_pagare` a zero o negativa | ✅ **DECISA**. `NULL` → `E_SCADENZE_BASE_NON_PRONTA` (unico caso che segnala un difetto reale: passi fuori ordine). `= 0` → **nessuna rata, nessun log**: fattura interamente coperta da acconti, situazione normale. `< 0` → **nessuna rata + log NON critico** sulla fattura: un saldo a favore del cliente va visto, perché a volte è corretto e a volte è un fondo configurato male. Motivi: i fondi `F_F_ADD_ACC` sono «addebiti/**accrediti**» e si sottraggono; `fn_ricalcola_totali_fattura` tratta esplicitamente il caso negativo in ogni ramo di arrotondamento (`ELSE -ceil(abs(...))`), quindi è uno stato **previsto** dal modello; `CHECK (importo >= 0)` su `fatture_scadenze` ha già deciso che un documento a credito **non si rateizza**. ⚠️ Un errore critico qui **bloccherebbe il lotto** al primo cliente con acconto capiente. La regola non cambierà con l'arrivo del tipo documento «nota di credito» (oggi `tipo_doc_fiscale` è FRONTOFFICE/BACKOFFICE: la nota di credito **non esiste** come tipo) |
 | **D-C** | Corsia GIORNALIERO / step EMESSA (`fatturazione_pipeline` id 2, `processi = []`) | ✅ **DECISA: allineare i `processi` alla corsia MASSIVO** (fondi → IVA → scadenze), **lasciando il `rollback` com'è** — la corsia immediata arriva da sola fino alla numerazione, e una fattura numerata non si resetta: darle un percorso di reset sarebbe offrire un'uscita che il gate fiscale poi nega. **Più**: estendere l'invariante pgTAP a **tutte** le tappe, non solo DEFINITIVA (C-7). Motivo della decisione: la corsia immediata **non ha fermata** (`fatturazione_driver_service.py:55`) e nessun trigger ricalcola IVA/totali — con la tappa vuota emetterebbe **da sola** documenti numerati, stampati e inviati allo SDI senza riepilogo IVA né totali. Non è una corsia che calcola meno: è una corsia che emette documenti invalidi appena qualcuno l'accende |
+| **D-P** | Indirizzi della fattura quando il BA ha un **padre** (punto sollevato scrivendo la 2.1) | ✅ **DECISA (Tid, 2026-07-31): la fattura è del padre, quindi indirizzi del padre.** La testata porta già il BA padre (`fn_build_fattura_key`: `COALESCE(ba.parent_account_id, a.billing_account_id)`) e con esso la sua istanza, che in gerarchia è **fittizia**: esiste per soddisfare il `NOT NULL` del BA, non per descrivere un punto di fornitura reale. 2.1 risolve quindi da `fatture.billing_account_id` **così com'è, senza sapere nulla della gerarchia** — nessun caso speciale da scrivere, e la regola vale identica con e senza padre. Tre conseguenze: **(a)** sul BA padre `FORNITURA` non ci sarà quasi mai, ed è il **caso normale, non un difetto** — solo `FATT` è obbligatorio (`tipi_indirizzi_allowed`, id 8), gli altri tre mancanti danno zero righe e nessun errore; **(b)** se sul padre non esiste un indirizzo legato all'istanza fittizia, la catena scende da sola al generico — è il ramo di fallback già scritto nella 2.0-b, non serve altro; **(c)** il **sotto-dettaglio per figlio** delle fatture utilities (gas/energia), dove vanno esposte la fornitura e l'istanza **reali** di ciascun figlio, **non potrà vivere in `fatture_indirizzi`**: `uq_fatture_indirizzi_uno_per_tipo_` ammette **una sola** `FORNITURA` per fattura. Andrà nel **corpo** del documento (righe / contesto documentale). È la separazione corretta anche per la FatturaPA — la testata è la controparte fiscale, il corpo è il dettaglio tecnico — quindi il vincolo non è un limite da aggirare ma la conferma che la decisione è coerente |
 | **D-B** | La **modalità di pagamento** entra nella chiave di aggregazione | ✅ **DECISA: entra.** L'elemento di chiave è la **coppia** `(termine_pagamento_id, modalita_pagamento_id)` — due sole FK, coerenti con la testata e col `WHERE` del lookup (era una quaterna con `giorni_pagamento`/`fine_mese`: D-I le elimina). Catena della modalità: `ordini.modalita_pagamento_id` → `clienti.modalita_pagamento_id` → NULL (nessun default inventato: `config.modalita_pagamento` non ha una riga «default» e sceglierne una arbitrariamente finirebbe sulla FatturaPA) |
 
 ### 2.2 Ancora aperte
@@ -1235,7 +1236,7 @@ Coerenti con il vostro §3.8, e ora scritte anche nel piano BE/FE §9:
 > `YYYYMMDD-NN-<tipo>-<descrizione>-mctit.yaml`, **un changeSet per file**, sempre
 > `logicalFilePath`, `runOnChange: false` nello stato committato. La numerazione
 > `NN` è una **sequenza globale per data fra tutte le cartelle**: i numeri qui
-> sotto si assegnano al momento della scrittura. Ultimo occupato: **20260729-05**.
+> sotto si assegnano al momento della scrittura. Ultimo occupato: **20260731-01**.
 >
 > ⚠️ **Da dove si copia cosa** (le due metà hanno fonti diverse; sbagliarle è un
 > errore silenzioso): il **corpo** di una funzione esistente dalla doc auto-gen
@@ -1248,10 +1249,10 @@ Coerenti con il vostro §3.8, e ora scritte anche nel piano BE/FE §9:
 | | |
 |---|---|
 | **Fasi** | **1 / 8 completate** (Fase 1 ✅ 2026-07-30) · Fase 2 in corso |
-| **changeSet** | **8 scritti** (`20260730-01`…`-08`) + 7 codici errore + 2 script di ruolo · **6 applicati** |
+| **changeSet** | **9 scritti** (`20260730-01`…`-08`, `20260731-01`) + 7 codici errore + 2 script di ruolo · **8 applicati** |
 | **pgTAP** | 0 nuovi · 0 adeguati |
-| **Doc** | 0 / 8 guide (§4-bis) · 0 / 3 manuali `dbzero` |
-| **Stato** | analisi chiusa, 15 decisioni prese, sviluppo avviato sulla Fase 1 |
+| **Doc** | 0 / 8 guide (§4-bis) · 0 / 3 manuali `dbzero` · ⚠️ auto-gen `dbzero` **non ancora rigenerata** per le due funzioni `script.*` di 2.0 |
+| **Stato** | analisi chiusa, 16 decisioni prese, Fase 2 avviata: il 2.0 è in piedi, il prossimo passo è 2.1 |
 
 ### Fase 1 — Fondamenta comuni
 
@@ -1266,11 +1267,11 @@ Coerenti con il vostro §3.8, e ora scritte anche nel piano BE/FE §9:
 
 | Passo | Stato | changeSet | Note |
 |---|---|---|---|
-| 2.0-a `fn_snapshot_indirizzo_soggetto` | 🟡 **scritto, non applicato** | `20260730-07` | Chiave `(soggetto_id, tipo)` e **non** un id: la vista soggetto espone un `indirizzo_id` che è la PK di un'**altra** tabella — passarlo alla gemella restituirebbe in silenzio l'indirizzo di ruolo con lo stesso numero. Assenza = zero righe, non errore |
-| 2.0-b `fn_resolve_indirizzo_documento` | 🟡 **scritto, non applicato** | `20260730-08` | Layer RUOLO (con **precedenza per istanza**, poi generico) → layer SOGGETTO. Determinismo dalle due unique parziali: candidati al massimo due, `ORDER BY (istanza IS NULL)` sceglie fra quelli. Assenza = zero righe. ⚠️ Una volta applicata **sblocca la Fase 0 del BE**, che va prima di 2.1 |
-| 2.1 `fn_snapshot_indirizzi_fattura` | ⬜ | — | |
-| 2.2 `fn_snapshot_indirizzi_lotto` | ⬜ | — | |
-| 2.3 Seed pipeline DRAFT (corsie 1 e 8) | ⬜ | — | registry 19, impl 19, policy 17-18 |
+| 2.0-a `fn_snapshot_indirizzo_soggetto` | ✅ **applicata** (2026-07-31, da Tid) | `20260730-07` | Chiave `(soggetto_id, tipo)` e **non** un id: la vista soggetto espone un `indirizzo_id` che è la PK di un'**altra** tabella — passarlo alla gemella restituirebbe in silenzio l'indirizzo di ruolo con lo stesso numero. Assenza = zero righe, non errore |
+| 2.0-b `fn_resolve_indirizzo_documento` | ✅ **applicata** (2026-07-31, da Tid) | `20260730-08` | Layer RUOLO (con **precedenza per istanza**, poi generico) → layer SOGGETTO. Determinismo dalle due unique parziali: candidati al massimo due, `ORDER BY (istanza IS NULL)` sceglie fra quelli. Assenza = zero righe. 🔴 **Ora che è applicata la Fase 0 del BE è sbloccata e va eseguita PRIMA di 2.1**: finché il mixin non è ripuntato qui, fattura e cinque documenti fratelli risolvono l'indirizzo in due modi diversi (C-14b) |
+| 2.1 `fn_snapshot_indirizzi_fattura` | 🟡 **scritta, non applicata** (2026-07-31) | `20260731-01` | ⛔ **non prima della Fase 0 del BE** (riga sopra). Risolve dal BA di **testata**, che in gerarchia è già il **padre**, senza casi speciali: **D-P**. Chiama 2.0-b per i 4 tipi ammessi in ambito `FATTURE` (`tipi_indirizzi_allowed`: **8 `FATT` obbligatorio**, 10 `CON`, 9, 1 `RES`); upsert su `uq_fatture_indirizzi_uno_per_tipo_`, coerente col grado `'iu'` concesso al ruolo batch in 1.4 |
+| 2.2 `fn_snapshot_indirizzi_lotto` | ⬜ | — | **D-F esteso agli indirizzi** (Tid, 2026-07-31): il wrapper **filtra sullo stato prima di scrivere** e per le fatture oltre EMESSA non chiama nemmeno la per-fattura. ⚠️ «Salta» non significa «lascia indietro»: una fattura definitiva **non ha lavoro da fare** — il suo snapshot è stato preso in DRAFT ed è quello definitivo. Il giro **non si ferma e non è fallito**, le altre fatture ricevono il loro lavoro completo, lo step si chiude normalmente, e la traccia è un **log non critico**. Il `critical` bloccherebbe l'avanzamento del runner, cioè proprio il blocco che si vuole evitare. Il modello `fn_ricalcola_riepiloghi_iva_lotto` **non** filtra: qui si devia, e la deviazione è voluta |
+| 2.3 Seed pipeline DRAFT (corsie 1 e 8) | ⬜ | — | registry 19, impl 19, policy 17-18. 🔴 **Il seed va in due tempi** (verificato 2026-07-31): il dispatch dei task **non è dinamico** — `pipeline_repository.py:160` tiene la whitelist Python `ALLOWED_TASK_FUNCTIONS`, e `snapshot_indirizzi_lotto` **non c'è**. Parte **inerte** (registry + impl + task_policy): seminabile quando si vuole, non fa partire nulla. Parte di **armamento** (il task nei `processi` dello step DRAFT): solo **dopo** che il BE ha registrato task e handler, altrimenti il lotto muore su un task sconosciuto. Stesso criterio del seed in due gruppi della coda di stampa |
 | 2.4 pgTAP indirizzi | ⬜ | — | incluso il test del layer SOGGETTO |
 | 2.5 Guard `FATT` obbligatorio | ⬜ | — | ⚠️ mai prima di 2.1-2.3 |
 | 2.6 pgTAP lock | ⬜ | — | |
