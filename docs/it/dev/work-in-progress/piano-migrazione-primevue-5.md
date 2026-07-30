@@ -786,6 +786,153 @@ mai**.
 Totale file con `DataTable` grezza: **77**, di cui **6** sono i
 wrapper stessi (giusto che la usino) → **bersaglio reale: 71**.
 
+#### Cosa serve davvero per convertire una lista (leggere prima di iniziare)
+
+⚠️ **`<ListaConfigurabile>` non è uno scambio di componente.** Il BB è
+parametrizzato dalla configurazione risolta dal BE
+(`ui.fn_resolve_lista_config`), quindi ogni lista ha bisogno del proprio
+**`codice`** registrato: una riga in `ui.lista_definizione` + N righe in
+`ui.lista_colonna` (facoltative: `lista_colonna_permesso` per le colonne
+riservate a profilo, `lista_preset` per i preset di colonne).
+
+**La configurazione la crei tu, senza aspettare nessuno.** Esiste
+l'amministrazione in-app: `ListaDefinizionePanel`, `ListaColonnaPanel`,
+`ListaColonnaPermessoPanel`, `ListaPresetPanel`, con gli endpoint
+`ApiAdminListaDefinizione*`. È **dato, non DDL** — nessun brief, nessun blocco.
+
+🔵 **Va comunque seedato in Liquibase, altrimenti vive solo nel tuo DB.** Le 11
+liste già configurate sono anche nei CSV di seed: una lista creata soltanto
+dall'app **sparisce su un'installazione pulita**. Ma il seed è più leggero di
+quanto sembri.
+
+> ⚠️ **Rettifica 2026-07-30.** Una stesura precedente di questa sezione diceva
+> che «ogni lista migrata prima o poi vuole il suo changeset di seed». **È
+> sbagliato**: non serve alcun changeset nuovo. Tutti e quattro i loader sono
+> `runOnChange: true` + `validCheckSums: ANY` + `loadUpdateData`, cioè **mirror
+> vivi dei CSV**, progettati per rigirare a ogni modifica del file (lo dice il
+> commento di `20260507-07`). **Appendere le righe basta**: il loader le
+> ripesca, i checksum non si rompono.
+>
+> | CSV in `80_data/sql/ui/` | Loader | Chiave |
+> | --- | --- | --- |
+> | `lista_definizione.csv` | `20260507-06` | `id` |
+> | `lista_colonna.csv` | `20260507-07` | `id` |
+> | `lista_preset.csv` | `20260507-08` | `id` |
+> | `lista_preset_colonna.csv` | `20260507-09` | `preset_id,colonna_id` |
+>
+> Resta lavoro da concordare col team DB perché sono file sotto `db/`
+> ([[feedback_db_actions_passaggio_team]]) — ma è una **revisione di righe CSV**,
+> non una migrazione da scrivere. E si consegna a lotti per dominio, non una
+> lista per volta.
+
+⚠️ **Non fidarsi dei changeset `priorita` come modello.** Esistono
+`20260603-15` (ordini), `20260709-17` (DDT) e gemelli che impostano `priorita`
+con un `UPDATE` dedicato, e il loro commento diceva che la colonna «non vive nel
+CSV». **Era vero quando sono stati scritti, non più**: il loader `20260507-07`
+espone tutte e 24 le colonne, `priorita` compresa, e il CSV ne porta i valori
+(verificato: per `vendite.ddt` il CSV ha 100/95/90… allineati al DB). Quei
+changeset sono oggi **ridondanti ma idempotenti**. Il commento fuorviante è
+stato rettificato in entrambi i file il 2026-07-30. **Per una lista nuova non
+replicarli**: `priorita` si valorizza direttamente nel CSV.
+
+**Dimensione dell'impegno, misurata**: il Gruppo A è **34 liste / 269 colonne**,
+contro le 204 colonne delle 11 liste attuali (media 18,5). Il seed finale **più
+che raddoppia** la configurazione esistente — ed è la ragione per cui esiste il
+generatore (più sotto), non per cui va temuto.
+
+**I cinque prerequisiti tecnici**, da verificare riga per riga:
+
+| # | Prerequisito | Perché |
+| --- | --- | --- |
+| 1 | **Endpoint paginato server-side** | il BB ha `lazy` **fisso**, non parametrico: senza paginazione server-side non si monta |
+| 2 | **Codici colonna == campi dell'API** | il BB rende `data[codice]`: il nome è un contratto, non un'etichetta |
+| 3 | **Display field risolti dal BE** (JOIN) | niente lookup client-side, altrimenti la colonna mostra un id ([[feedback_display_fields_backend]]) |
+| 4 | **Il caller resta padrone dei dati** | fornisce `rows`/`total`/`loading` e gestisce `@page`/`@sort`; il BB **non fa fetch** |
+| 5 | **Rendering custom via slot** | `cell-{codice}` per la cella, `actions` + `RowActionsMenu` per le azioni di riga |
+
+🔴 **Quattro liste del Gruppo A non soddisfano il prerequisito 1** (colonna
+`Lazy` = «—»): richiedono **prima** un endpoint paginato lato BE, quindi non
+sono spuntabili «di passaggio» come le altre —
+`ArticoloBomDrawer`, `ContrattiBillingAccountDrawer`, `ContrattoRigheDrawer`,
+`OffertaEccezioniDrawer`.
+
+#### Il generatore: `scripts/gen_seed_lista.py`
+
+Compilare 269 colonne a mano è lavoro meccanico, e il meccanico si genera. Lo
+script legge il `.vue` con le `<Column>` attuali e produce le righe pronte per i
+quattro CSV di seed.
+
+```bash
+backend/.venv/bin/python scripts/gen_seed_lista.py \
+    --codice catalogo.uom_tipi --descrizione "Tipi unità di misura" \
+    --vue frontend/src/catalogo/components/UomTipiSearchTable.vue
+```
+
+**Non scrive sul DB e non applica nulla**: stampa righe da rivedere
+([[feedback_db_actions_passaggio_team]]).
+
+⚠️ **Quello che esce è strutturalmente corretto e semanticamente una bozza.**
+La distinzione è la cosa da tenere a mente:
+
+| Lo fa lo script | Resta da curare a mano |
+| --- | --- |
+| Le 4 tabelle e i loro collegamenti | `codice` logico vs `campo_sorgente`: lo script *propone* togliendo i suffissi, ma il nome è una scelta di presentazione |
+| Gli `id`, in continuità col massimo esistente | `priorita` (ritiro responsive), `gruppo`/`gruppo_ordine`, `larghezza_default` |
+| L'ordine delle colonne visibili, preso dal `.vue` | `sensibile`, `ricercabile_full`, `filtrabile`, `ordinabile` |
+| Chiavi i18n ed etichette risolte da `it.json` | `formato`, se il `.vue` usa un formatter non riconosciuto |
+| `tipo_dato` e allineamento — **dedotti dal DB**, vedi sotto | I `tipo_dato` **ambigui**, che lo script rifiuta di indovinare e segnala |
+| Quali colonne sono visibili nel preset di default | **Le colonne extra invisibili**: lo script *non* le aggiunge — sceglierle è progettazione |
+| La colonna `azioni` (`tipo_colonna='azione'`) | |
+
+Il risparmio è sulle righe da compilare, **non sulle decisioni**. Ogni
+esecuzione stampa in coda l'elenco di ciò che è uscito coi default, invece di
+far finta di saperlo.
+
+> **`tipo_dato` viene dal DB, non da un default.** Una prima versione lo lasciava
+> `string` quando la lista non dichiarava una sorgente — cioè quasi sempre, dato
+> che per il Gruppo A una `vw_*` dedicata in genere non esiste. Era il difetto
+> peggiore di tutti perché **silenzioso**: una colonna con `tipo_dato` sbagliato
+> non dà errore, semplicemente non ordina e non filtra come dovrebbe, e te ne
+> accorgi settimane dopo.
+>
+> Ora lo script cerca ogni campo **per nome** fra tutte le tabelle e viste del DB
+> e ne prende il tipo, con una regola di sicurezza: **lo accetta solo se non
+> ambiguo**. Misurato il 2026-07-30, dopo la mappatura a `ui.tipo_dato`,
+> **1567 nomi su 1588 (98,7%)** risolvono a un tipo solo — l'ambiguità dei tipi
+> PG sparisce perché `varchar`, `text` e `char` mappano tutti su `string`. Lo
+> schema della lista ha la precedenza sugli altri. I ~21 residui (`id`, `numero`,
+> `data_evento`, `split_payment`…) restano `string` e vengono **elencati come
+> decisione aperta**, non indovinati.
+>
+> Effetto su una lista vera (`LottiListView`): `competenza_mese` → `date` con
+> `formato=date_short`, `data_insert` → `datetime`, `attivo` → `boolean` con
+> allineamento `center`.
+>
+> Passare `--sorgente schema.oggetto` (**tabella oppure vista**: per
+> `information_schema` sono la stessa cosa) resta preferibile quando la sorgente
+> è nota — dà i tipi certi invece che dedotti, e propone i campi non usati come
+> candidati per le colonne invisibili.
+>
+> **Perché la fonte è il `.vue` e non la vista DB.** La prima versione dello
+> script generava le colonne introspezionando `vista_sql`. L'autoverifica su
+> liste già configurate l'ha bocciata: `vendite.ddt` ha **24 colonne
+> configurate contro 63 esposte dalla vista**, e 8 di quelle configurate —
+> `stato`, `valuta`, `pratica`, `azioni` — nella vista **non esistono**. Il
+> motivo è che `ui.lista_colonna.codice` è un nome **logico** e
+> `campo_sorgente` la colonna fisica (`stato` → `stato_descrizione`): **61
+> colonne su 204** differiscono. Generare dalla vista avrebbe prodotto 63
+> colonne coi nomi sbagliati e perso comunque `azioni`.
+>
+> Resta utile passare `--vista` quando esiste: dà i tipi veri (niente
+> `string` ovunque) e propone i campi non usati come candidati. Ma per il
+> Gruppo A una vista dedicata in genere **non c'è**.
+>
+> L'autoverifica è riutilizzabile e va rilanciata se si tocca il generatore:
+>
+> ```bash
+> backend/.venv/bin/python scripts/gen_seed_lista.py --verifica vendite.ddt
+> ```
+
 #### Non toccare — sono lo strato, non i clienti
 
 - `core/components/ConfigTablePanel.vue`
