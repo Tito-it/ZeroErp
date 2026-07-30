@@ -170,6 +170,10 @@ INSERT INTO _perimeter (nspname, relname, grade) VALUES
     -- INSERT+UPDATE: run-log task (start->complete) + upsert ON CONFLICT DO UPDATE
     ('vendite', 'fatturazione_lotti_task_runs',     'iu'),
     ('vendite', 'fatture_arrotondamenti_scope',     'iu'),
+    -- snapshot indirizzi fattura (task DRAFT): upsert ON CONFLICT (fattura_id,
+    -- tipo_indirizzo_id) DO UPDATE, mai DELETE — la pulizia arriva dalla CASCADE
+    -- sulla testata, che non richiede il privilegio sul figlio.
+    ('vendite', 'fatture_indirizzi',                'iu'),
     -- INSERT only: append-only (audit/log) o upsert ON CONFLICT DO NOTHING
     ('vendite', 'event_log',                        'i'),
     ('vendite', 'attivita_fatturabili_log',         'i'),

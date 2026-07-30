@@ -86,6 +86,26 @@ Conseguenze già visibili o imminenti:
 
 ## 2-bis. Su quali dati atterra questo lavoro (misurato 2026-07-29)
 
+> 🔴 **Rev. 2026-07-30 — due misure di questa sezione sono SBAGLIATE.**
+> Riverificate sul DB dal BE:
+>
+> | Riga di sotto | Scritto | Reale |
+> |---|---|---|
+> | livello 1 — `vendite.ordini` | «**0 righe in totale**» | **85 righe**, 7 con termine |
+> | livello 1 — `vendite.preventivi` | «**0 righe in totale**» | **157 righe**, 19 con termine |
+>
+> **La conclusione «D-7 oggi ha raggio d'azione nullo» resta vera, ma il motivo
+> scritto qui è falso.** Non è che i documenti non esistano — ce ne sono 242. È
+> che il termine, dove c'è, è **sempre lo stesso** (1 valore distinto su ordini,
+> 1 su preventivi) e che **non c'è nessuna attività fatturabile in attesa** (0).
+> Il motivo giusto è più fragile di quello sbagliato: basta un secondo termine in
+> catalogo perché la divergenza diventi possibile.
+>
+> Ricaduta sul punto 3 di questa sezione e sui test: il ramo 1 **ha** dati su cui
+> appoggiarsi, ma per testare la **divergenza** serve comunque creare un secondo
+> termine — quella è la fixture vera. Tutte le altre misure sono confermate, e i
+> clienti con `tipo_gg_scadenza_ft = 'M'` sono **0**.
+
 La catena di precedenza di §4.2 ha tre livelli. Questi sono i dati che oggi la
 alimentano — e cambiano la percezione del rischio di D-7 e della bonifica D-4:
 

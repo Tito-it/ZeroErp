@@ -877,16 +877,46 @@ La distinzione è la cosa da tenere a mente:
 | Lo fa lo script | Resta da curare a mano |
 | --- | --- |
 | Le 4 tabelle e i loro collegamenti | `codice` logico vs `campo_sorgente`: lo script *propone* togliendo i suffissi, ma il nome è una scelta di presentazione |
-| Gli `id`, in continuità col massimo esistente | `priorita` (ritiro responsive), `gruppo`/`gruppo_ordine`, `larghezza_default` |
-| L'ordine delle colonne visibili, preso dal `.vue` | `sensibile`, `ricercabile_full`, `filtrabile`, `ordinabile` |
+| Gli `id`, oltre il massimo fra CSV **e DB** | `priorita` (ritiro responsive), `gruppo`/`gruppo_ordine`, `larghezza_default` |
+| L'ordine delle colonne visibili, preso dal `.vue` | `sensibile`, `ricercabile_full` |
 | Chiavi i18n ed etichette risolte da `it.json` | `formato`, se il `.vue` usa un formatter non riconosciuto |
 | `tipo_dato` e allineamento — **dedotti dal DB**, vedi sotto | I `tipo_dato` **ambigui**, che lo script rifiuta di indovinare e segnala |
 | Quali colonne sono visibili nel preset di default | **Le colonne extra invisibili**: lo script *non* le aggiunge — sceglierle è progettazione |
-| La colonna `azioni` (`tipo_colonna='azione'`) | |
+| La colonna `azioni` (`tipo_colonna='azione'`) e le colonne **calcolate FE** (senza `field=`, `campo_sorgente` vuoto) | Se una calcolata ha in realtà un campo sorgente, indicarlo |
+| `tipo_colonna='identificatore'` sulla prima colonna | Confermare che sia davvero quella da non poter nascondere |
 
 Il risparmio è sulle righe da compilare, **non sulle decisioni**. Ogni
 esecuzione stampa in coda l'elenco di ciò che è uscito coi default, invece di
 far finta di saperlo.
+
+##### Non rifare due volte lo stesso lavoro
+
+L'allineamento si fa a più mani e su più giorni, e la configurazione di una
+lista si può creare anche **dai pannelli di amministrazione in-app** — dove
+però vive solo nel DB di chi l'ha fatta. Lo script parte quindi sempre da cosa
+esiste già, nei CSV e nel DB:
+
+```bash
+# fotografia di tutte le liste: seedate, fatte in-app, divergenti
+backend/.venv/bin/python scripts/gen_seed_lista.py --stato
+
+# recupera in CSV il lavoro già fatto (non lo rigenera: lo esporta dal DB)
+backend/.venv/bin/python scripts/gen_seed_lista.py --esporta catalogo.uom_tipi
+```
+
+- **Generare una lista che esiste già non parte**: lo script dice dov'è e
+  rimanda a `--esporta` (`--forza` solo per ripartire davvero da capo).
+- `--esporta` emette **solo ciò che manca ai CSV**, quindi rilanciarlo non
+  duplica niente; le righe con la stessa chiave ma valori diversi le elenca a
+  parte, da **sostituire** in place — appenderne una seconda con lo stesso `id`
+  renderebbe ambiguo `loadUpdateData`.
+- Gli `id` nuovi si allocano oltre il massimo fra CSV **e** DB: due persone che
+  lavorano in parallelo non si scavalcano.
+
+⚠️ **Un file `.vue` può contenere più `<DataTable>`** (tabella principale +
+riga di espansione, o più schede). Lo script legge solo quella scelta da
+`--tabella` (default: la prima) e dichiara in coda quante colonne ha lasciato
+fuori. Fonderle produrrebbe una lista sbagliata e `codice` duplicati.
 
 > **`tipo_dato` viene dal DB, non da un default.** Una prima versione lo lasciava
 > `string` quando la lista non dichiarava una sorgente — cioè quasi sempre, dato
@@ -983,6 +1013,36 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ☐ | `vendite/views/DashboardBacklogView.vue` | 11 | sì |
 | ☐ | `vendite/components/ListiniSearchTable.vue` | 13 | sì |
 | ☐ | `vendite/views/DashboardCompetenzaView.vue` | 23 | sì |
+
+##### `vendite.lotti` — seed DB pronto, resta BE/FE (2026-07-30)
+
+La configurazione è **già nei quattro CSV** (`lista_id = 12`, colonne `205..216`,
+preset `lotti_default`): non serve rigenerarla né scrivere changeset, i loader
+sono `runOnChange` e la ripescano. Applicata e risolta in transazione di prova
+contro il DB (`fn_resolve_lista_config` → 12 colonne, 9 visibili) e poi
+rollbackata: il DB di sviluppo non la ha ancora finché non si lancia il migrate.
+
+Tre cose decise lato DB che chi converte il `.vue` deve sapere:
+
+- **Tutte le colonne sono `ordinabile=f`.** `ApiLottiList` non accetta
+  `order_by`: [vendite_repository.py](../../../../backend/apps/vendite/db/vendite_repository.py)
+  ha `ORDER BY fl.data_insert DESC, fl.id DESC` fisso. Oggi nessuna colonna
+  della lista è `sortable`, quindi non si perde niente — ma finché il BE non
+  espone l'ordinamento (con la whitelist di `validate_order_params`) mettere
+  `ordinabile=t` significherebbe una freccia d'ordinamento che non ordina.
+- **Tre colonne sono nel catalogo ma invisibili nel preset**:
+  `area_geografica`, `stato_operativo`, `user_insert`. L'endpoint le restituisce
+  già (`_LOTTO_SELECT_COLS`) e sono ciò che rende la personalizzazione utile:
+  senza colonne aggiungibili l'utente può solo togliere.
+- **Mancano tre chiavi i18n**: `vendite.lotti.col_area_geografica`,
+  `col_stato_operativo`, `col_creato_da`. Sono già dichiarate nel seed, e il
+  `te()` di `<ListaConfigurabile>` fa fallback all'`etichetta` italiana del
+  catalogo finché non si aggiungono a `it.json`/`en.json`.
+
+⚠️ `LottiListView` usa `usePagedDashFetch`, non `useSearchTable`: è una delle 6
+liste "cockpit" del Gruppo A, quindi **`useListaConfigurabilePage` non si
+applica** e il wiring (`useListaConfig`, pulsante personalizza, badge, export)
+va fatto a mano. Le altre 23 liste del gruppo hanno il telaio standard.
 
 #### Gruppo B — tabelle annidate (37 file, senza paginator)
 

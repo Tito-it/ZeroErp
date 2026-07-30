@@ -72,6 +72,7 @@ INSERT INTO _perimeter (nspname, relname, grade) VALUES
     ('pagamenti', 'vendite_contabili_righe',        'iud'),
     ('vendite', 'fatturazione_lotti_task_runs',     'iu'),
     ('vendite', 'fatture_arrotondamenti_scope',     'iu'),
+    ('vendite', 'fatture_indirizzi',                'iu'),
     ('vendite', 'event_log',                        'i'),
     ('vendite', 'attivita_fatturabili_log',         'i'),
     ('pagamenti', 'vendite_contabili_lotti',        'i'),

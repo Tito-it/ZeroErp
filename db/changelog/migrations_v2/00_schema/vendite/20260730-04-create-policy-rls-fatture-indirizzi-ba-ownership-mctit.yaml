@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 1.4 — RLS portale su vendite.fatture_indirizzi
+#   (piano-db-satelliti-fattura.md C-12, Fase 1.4).
+#
+# Gemella di 20260729-02 (fatture_righe) e 20260729-04 (riepiloghi IVA): stesso
+#   scope della testata, stessa forma. Qui vale la pena dire cosa espone.
+#
+# COSA VEDE IL CLIENTE. Gli indirizzi congelati sulla PROPRIA fattura sono un dato
+#   suo: intestazione, via, CAP, citta' — cioe' esattamente quello che gia' legge
+#   stampato sul PDF della fattura che ha ricevuto. La policy non apre niente di
+#   nuovo, allinea il canale API a quello che il documento dice gia'.
+#
+# FOR SELECT E NON FOR ALL: deliberato, come per le sorelle. Un cliente legge la
+#   propria fattura, non la scrive — nemmeno la sua. Un indirizzo di fatturazione
+#   modificabile dal destinatario sarebbe una falsificazione del documento.
+#
+# SHOP_CUSTOMER ESCLUSO (20260420-08): le fatture B2B non sono ricevute shop, e il
+#   ruolo shop non deve vederle ne' direttamente ne' attraverso i satelliti.
+#
+# ⚠️ Stesso INVARIANTE di 20260730-03: lo scope e' quello della TESTATA
+#   (script.fn_scope_ba_ownership_via_fattura), mai un criterio proprio.
+#
+# ENABLE ROW LEVEL SECURITY: 20260730-05, isolato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260730-04-create-policy-rls-fatture-indirizzi-ba-ownership-mctit.yaml
+
+  - changeSet:
+      id: 20260730-04-create-policy-rls-fatture-indirizzi-ba-ownership
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Policy RLS portale su vendite.fatture_indirizzi: CLIENTE_PORTALE legge gli
+        indirizzi delle proprie fatture B2B (FOR SELECT, scope della testata).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script'
+                AND p.proname = 'fn_scope_ba_ownership_via_fattura'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_indirizzi_ba_ownership ON vendite.fatture_indirizzi;
+
+              CREATE POLICY rls_fatture_indirizzi_ba_ownership ON vendite.fatture_indirizzi
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_ba_ownership_via_fattura(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              fattura_id
+                          )
+                  );
+
+              COMMENT ON POLICY rls_fatture_indirizzi_ba_ownership ON vendite.fatture_indirizzi IS
+                  'RLS portale: CLIENTE_PORTALE vede gli indirizzi congelati sulle PROPRIE fatture '
+                  'B2B (fn_scope_ba_ownership_via_fattura, stesso scope della testata). Non espone '
+                  'nulla di nuovo: e'' cio'' che il cliente legge gia'' stampato sul PDF che ha '
+                  'ricevuto. FOR SELECT e non FOR ALL: deliberato — un indirizzo di fatturazione '
+                  'modificabile dal destinatario sarebbe una falsificazione del documento. '
+                  'SHOP_CUSTOMER escluso (le fatture B2B non sono ricevute shop, 20260420-08). '
+                  'piano-db-satelliti-fattura C-12, Fase 1.4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_indirizzi_ba_ownership ON vendite.fatture_indirizzi;

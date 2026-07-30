@@ -10,3 +10,4 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 9,9,resi_default,Vista standard resi di vendita,sistema,,,t,25,,t,2026-07-18 00:00:00,mctit
 10,10,resi_da_accreditare_default,Vista standard coda accrediti,sistema,,,t,25,,t,2026-07-18 00:00:00,mctit
 11,11,resi_da_riconsegnare_default,Vista standard coda ri-consegne,sistema,,,t,25,,t,2026-07-18 00:00:00,mctit
+12,12,lotti_default,Vista standard lotti di fatturazione,sistema,,,t,25,,t,2026-07-30 00:00:00,mctit

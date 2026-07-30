@@ -10,3 +10,4 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert
 9,vendite.resi,Resi di vendita,vendite,vw_resi_lista,t,2026-07-13 00:00:00,mctit
 10,vendite.resi_da_accreditare,Resi da accreditare,vendite,vw_resi_da_accreditare,t,2026-07-14 00:00:00,mctit
 11,vendite.resi_da_riconsegnare,Resi da ri-consegnare,vendite,vw_resi_da_riconsegnare,t,2026-07-14 00:00:00,mctit
+12,vendite.lotti,Lotti di fatturazione,vendite,NULL,t,2026-07-30 00:00:00,mctit
