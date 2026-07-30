@@ -234,7 +234,7 @@ Sono elencate qui perché **l'owner è il BE**; la fase DB resta il loro innesco
 | **3a.7** — riforma condizioni di pagamento (D-I) | `ClienteDrawer.vue`: via i due campi `tipo_gg_scadenza_ft` / `nr_giorni_scadenza`, le **4 opzioni `opt_gg_*`** e le loro chiavi i18n (it+en). Lato BE: `fn_update_cliente`, `clienti_repository`, `clienti_service`, `views_clienti`, `error_policies` | **Contestuale** al DROP delle colonne (3a.5): appena cadono, il drawer mostrerebbe campi inesistenti |
 | **6.6** — eliminazione del flag `esclusa` (D-M) | **filtro API** e **`types.py`** (il resto è DB) | Con la Fase 6 DB |
 | **6.7** — ritorno a DRAFT / estrazione (D-N-bis) | Verbo nel `LottoDrawer` con conferma esplicita di **cosa si perde**, e **lista «estratte»** nel cockpit | Dopo 6.0-6.5 DB |
-| **D-L** — rinomina funzioni di reset | **Solo 4 righe** (vedi sotto) | Contestuale alla rinomina |
+| **D-L** — rinomina funzioni di reset | **4 righe obbligatorie + ~12 nomi Python** da allineare (vedi sotto): decisione Tid 2026-07-30, si rinomina su **entrambi** gli strati | Contestuale alla rinomina |
 
 ### D-L: il minimo indispensabile, misurato
 
@@ -250,23 +250,35 @@ quattro righe devono seguire**, altrimenti il reset lotto muore con
 | `backend/apps/vendite/db/pipeline_repository.py:2006` | `FROM vendite.fn_reset_lotto_fattura_draft(%s, %s)` |
 | `backend/apps/vendite/tests/services/test_pipeline_step_executor.py:64` | mappa `ALLOWED_TASK_FUNCTIONS` mockata |
 
-**Tutto il resto NON si tocca** (decisione Tid 2026-07-30): gli entrypoint Python
-omonimi (`pipeline_service.fn_reset_lotto_draft` e gemello), i loro import in
-`services/__init__.py` e `api/views.py`, le due view e i `@patch` dei test sono
-**nomi Python**, invisibili al database. Rinominarli sarebbe allineamento
-estetico su ~12 punti.
-
-> **Debito accettato consapevolmente**: resta un disallineamento nominale — la
-> funzione DB si chiamerà «annulla», l'entrypoint Python continuerà a chiamarsi
-> «reset». Si scioglie quando qualcuno passerà da lì per altri motivi.
+> 🔄 **Rev. 2026-07-30 (decisione Tid, che supera il paragrafo precedente).**
+> **Si rinomina su ENTRAMBI gli strati**: i nomi Python vanno resi coerenti con
+> quelli DB. La proposta di rinunciare alla rinomina **non è stata accolta**, e
+> nemmeno quella di rinominare solo a DB.
 >
-> 💡 **Osservazione per il team DB**: se l'obiettivo è ridurre al minimo il lavoro
-> applicativo, **la rinomina è la parte rinunciabile di D-L**. Il valore di quella
-> decisione sta nei punti 2 e 3 — l'asimmetria di perimetro e soprattutto
-> l'**over-free del `lock_batch_id`** (C-22: resettare *una* fattura libera le
-> attività di *tutto* il lotto), che è un bug e va corretto comunque. Rinunciando
-> alla sola rinomina, il lavoro BE di D-L scende a **zero** e il disallineamento
-> nominale non nasce.
+> **Motivo**: rinominare solo a DB scambia un disallineamento con uno peggiore.
+> Un nome che mente ma è coerente ovunque si impara una volta; due nomi diversi
+> per la stessa cosa su due strati si sbagliano ogni volta. Il «debito accettato
+> consapevolmente» sarebbe stato pagato da chiunque leggesse il codice dopo.
+
+**Oltre alle quattro righe obbligatorie, vanno rinominati anche i nomi Python**
+(~12 punti, meccanici):
+
+| File | Cosa |
+|---|---|
+| `services/pipeline_service.py` | entrypoint `fn_reset_lotto_draft` / `fn_reset_lotto_fattura_draft` → nomi allineati a quelli DB |
+| `services/__init__.py` | import e `__all__` |
+| `api/views.py` | import e chiamate nelle due view |
+| `db/pipeline_repository.py` | i metodi `reset_lotto_draft` / `reset_lotto_fattura_draft` |
+| `services/lotto_reset_service.py` | il metodo omonimo |
+| test | i `@patch` che puntano ai nomi vecchi |
+
+⚠️ Il **`task_code`** del registry (`reset_lotto_draft`) **resta invariato**: è il
+nome del *task* di pipeline, non della funzione, e vive nei CSV di seed.
+Rinominarlo sarebbe una migrazione di dati senza guadagno.
+
+> **I punti 2, 3 e 4 di D-L restano il valore vero della decisione** — in
+> particolare l'**over-free del `lock_batch_id`** (C-22), che è un bug e va
+> corretto comunque, e che non induce nessun lavoro applicativo.
 
 ## 5. Verifiche trasversali (a ogni fase)
 

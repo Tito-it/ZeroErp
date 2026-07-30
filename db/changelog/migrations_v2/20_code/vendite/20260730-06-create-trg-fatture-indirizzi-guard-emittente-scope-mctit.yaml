@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 1.4 — guard di scope emittente su vendite.fatture_indirizzi
+#   (piano-db-satelliti-fattura.md C-12, Fase 1.4).
+#
+# COMPLETA LA SIMMETRIA. fatture_scadenze ha DUE presidi: le policy RLS e questo
+#   trigger (trg_fatture_scadenze_a10_guard_emittente_scope_ins_upd). Le policy
+#   arrivano da 20260730-03/04; questo e' il secondo.
+#
+# PERCHE' DUE PRESIDI PER LA STESSA COSA — non e' ridondanza:
+#   - la RLS filtra CIO' CHE SI VEDE e blocca le scritture fuori scope, ma solo
+#     per i ruoli che non hanno BYPASSRLS e non sono owner;
+#   - questo trigger e' DEFENSE-IN-DEPTH applicativa: guarda app.current_user_id
+#     e, se c'e', pretende che quell'utente abbia scope sull'emittente della
+#     fattura. Vale anche su percorsi che la RLS non copre.
+#   Le due difese hanno perimetri diversi: dove una tace, l'altra parla.
+#
+# SKIP IN BATCH, per disegno della funzione: se app.current_user_id non e' settato
+#   (job, cron, migrazioni) il guard esce subito. E' cio' che permette al task di
+#   snapshot di girare in contesto sistema senza un utente. Non e' un buco: in
+#   quel contesto il perimetro lo danno i GRANT del ruolo batch.
+#
+# MODO 'fattura': la colonna passata contiene un fattura_id, che la funzione
+#   risolve in emittente attraverso vendite.fatture. Identico al montaggio su
+#   fatture_scadenze — deve restare identico, per lo stesso invariante «scope
+#   delegato alla testata» delle policy.
+#
+# SOLO INSERT E UPDATE, non DELETE: la funzione legge NEW, che sul DELETE non
+#   esiste. La cancellazione fuori scope e' coperta dalla RLS e, oltre la soglia
+#   fiscale, dal guard di congelamento (20260730-02).
+#
+# ORDINE DI SCATTO: entrambi i guard sono in fase a10 e PostgreSQL li esegue in
+#   ordine alfabetico — «congelamento» prima di «emittente_scope». Corretto:
+#   un'operazione su un documento congelato va respinta prima ancora di chiedersi
+#   chi la sta facendo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260730-06-create-trg-fatture-indirizzi-guard-emittente-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260730-06-create-trg-fatture-indirizzi-guard-emittente-scope
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Arma script.trgfn_guard_emittente_scope('fattura','fattura_id') su
+        vendite.fatture_indirizzi (BEFORE INSERT OR UPDATE, fase a10), a parita'
+        con fatture_scadenze.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script'
+                AND p.proname = 'trgfn_guard_emittente_scope'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_indirizzi_a10_guard_emittente_scope_ins_upd
+                  ON vendite.fatture_indirizzi;
+
+              CREATE TRIGGER trg_fatture_indirizzi_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.fatture_indirizzi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fattura', 'fattura_id');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_indirizzi_a10_guard_emittente_scope_ins_upd
+                  ON vendite.fatture_indirizzi;

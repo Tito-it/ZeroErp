@@ -1,0 +1,171 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 1.1 — guard di congelamento PARAMETRICO per i satelliti della fattura
+#   (piano-db-satelliti-fattura.md C-11 / D-K).
+#
+# PERCHE' PARAMETRICO. Il brief indirizzi (§5.4) e il brief scadenze (§4.6)
+#   chiedevano lo stesso trigger, con la stessa soglia e lo stesso bypass, su due
+#   tabelle diverse. Con fatture_riepiloghi_iva — che pure non ce l'ha — sarebbero
+#   tre copie da tenere allineate a mano. Regola del 2: una funzione sola,
+#   montata N volte, con la colonna FK passata in TG_ARGV[0].
+#
+# MODELLO: vendite.trgfn_fatture_righe_guard_congelamento (20260728-03), da cui
+#   sono ripresi i tre comportamenti non ovvi:
+#
+#   1) BYPASS GUC. fn_cleanup_fatture_by_ids imposta
+#      zeroerp.maintenance_reset_lotto_draft per attraversare i guard della
+#      famiglia durante il reset lotto. Senza, il reset morirebbe qui.
+#
+#   2) USCITA SU STATO NULL. Le FK dei satelliti verso vendite.fatture sono
+#      ON DELETE CASCADE: quando cade la testata, PostgreSQL cancella i figli e
+#      questo trigger scatta su ogni riga — ma la riga padre non c'e' piu', quindi
+#      la lookup dello stato non trova nulla. Fallire li' darebbe un errore
+#      fuorviante su un problema che sta altrove. E' questa uscita, non la sola
+#      GUC, a rendere innocua la cascata.
+#
+#   3) SOGLIA PER codice_interno, mai per codice: il primo e' immutabile
+#      (trg_stati_doc_fiscale lock), il secondo no. Identica a quella di
+#      fn_ricalcola_riepilogo_iva_fattura: DRAFT ed EMESSA lavorabili, oltre no.
+#
+# UN SOLO CODICE ERRORE, non uno per tabella (deviazione consapevole dalla
+#   proposta iniziale del piano, che prevedeva TG_ARGV[1] = codice): il nome della
+#   tabella entra nel messaggio e nel payload, e error_policies.py mappa un codice
+#   solo. Due argomenti dove ne basta uno sono due posti in cui sbagliare il
+#   montaggio.
+#
+# Dipendenze: codice errore E_FATTURA_SATELLITE_CONGELATO (seed CSV, id 568).
+#   Il codice serve a runtime, non alla creazione: 20_code precede 80_data.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260730-01-create-trgfn-fattura-satellite-guard-congelamento-mctit.yaml
+
+  - changeSet:
+      id: 20260730-01-create-trgfn-fattura-satellite-guard-congelamento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard di congelamento parametrico per i satelliti della fattura: oltre la
+        soglia DRAFT/EMESSA il documento e' uno snapshot fiscale e i suoi satelliti
+        non si toccano. Colonna FK verso la fattura in TG_ARGV[0].
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fattura_satellite_guard_congelamento()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: la fattura e' un documento fiscale — superata la soglia
+              --        DRAFT/EMESSA i suoi SATELLITI (scadenze, indirizzi,
+              --        riepiloghi) sono uno snapshot e non si toccano piu', ne'
+              --        in scrittura ne' in cancellazione.
+              -- Uso:   BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW
+              --        EXECUTE FUNCTION ...('<colonna_fk_fattura>')
+              -- Parametrico perche' la stessa regola vale su piu' tabelle:
+              --   una funzione, N montaggi (piano C-11).
+              DECLARE
+                  v_fk_col      text := TG_ARGV[0];
+                  v_row         jsonb;
+                  v_fattura_id  vendite.fatture.id%TYPE;
+                  v_riga_id     bigint;
+                  v_stato       config.stati_doc_fiscale.codice_interno%TYPE;
+                  v_allow_reset text;
+              BEGIN
+                  -- Guard di montaggio: senza la colonna FK il trigger non sa
+                  -- quale fattura guardare. Errore esplicito, mai silenzio.
+                  IF v_fk_col IS NULL OR btrim(v_fk_col) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'trgfn_fattura_satellite_guard_congelamento',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'parametro', 'TG_ARGV[0]',
+                              'tabella',   TG_TABLE_NAME,
+                              'trigger',   TG_NAME),
+                          NULL::uuid,
+                          'TG_ARGV[0] (colonna FK verso vendite.fatture) obbligatorio'
+                      );
+                  END IF;
+
+                  -- Bypass di manutenzione: stesso contratto degli altri guard
+                  -- della famiglia. fn_cleanup_fatture_by_ids (reset lotto)
+                  -- imposta questa GUC per attraversarli.
+                  v_allow_reset := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
+                  IF COALESCE(lower(v_allow_reset), 'off') IN ('on', 'true', '1') THEN
+                      IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+                  END IF;
+
+                  -- Riga come jsonb: e' cio' che rende la funzione indipendente
+                  -- dalla forma della tabella su cui e' montata.
+                  IF TG_OP = 'DELETE' THEN
+                      v_row := to_jsonb(OLD);
+                  ELSE
+                      v_row := to_jsonb(NEW);
+                  END IF;
+
+                  v_fattura_id := NULLIF(v_row ->> v_fk_col, '')::bigint;
+                  v_riga_id    := NULLIF(v_row ->> 'id', '')::bigint;
+
+                  -- Riga non ancora agganciata a una fattura: non e' questo il
+                  -- guard che deve occuparsene.
+                  IF v_fattura_id IS NULL THEN
+                      IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+                  END IF;
+
+                  -- Stato per codice_interno (immutabile), mai per codice.
+                  SELECT s.codice_interno
+                    INTO v_stato
+                    FROM vendite.fatture f
+                    JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
+                   WHERE f.id = v_fattura_id;
+
+                  -- Fattura senza stato — o gia' cancellata, che e' il caso
+                  -- della DELETE in cascata dalla testata: la riga padre non
+                  -- c'e' piu' quando i figli scattano. Fallire qui darebbe un
+                  -- errore fuorviante su un problema che sta altrove.
+                  IF v_stato IS NULL THEN
+                      IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+                  END IF;
+
+                  -- Stessa soglia di fn_ricalcola_riepilogo_iva_fattura.
+                  IF v_stato NOT IN ('DRAFT', 'EMESSA') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'trgfn_fattura_satellite_guard_congelamento',
+                          'E_FATTURA_SATELLITE_CONGELATO',
+                          jsonb_build_object(
+                              'operazione', TG_OP,
+                              'tabella',    TG_TABLE_NAME,
+                              'fattura_id', v_fattura_id,
+                              'riga_id',    v_riga_id,
+                              'stato',      v_stato,
+                              'soglia',     'DRAFT,EMESSA'),
+                          NULL::uuid,
+                          v_fattura_id::text, v_stato, TG_TABLE_NAME
+                      );
+                  END IF;
+
+                  IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fattura_satellite_guard_congelamento()
+              IS 'Guard (BEFORE INSERT OR UPDATE OR DELETE) PARAMETRICO per i satelliti della fattura: oltre la soglia DRAFT/EMESSA il documento e'' uno snapshot fiscale e i suoi satelliti non si toccano piu''. La colonna FK verso vendite.fatture si passa in TG_ARGV[0], cosi'' la stessa regola vale su fatture_scadenze, fatture_indirizzi e (quando servira'') fatture_riepiloghi_iva senza copie da tenere allineate. Soglia identica a fn_ricalcola_riepilogo_iva_fattura, per codice_interno. Bypass via GUC zeroerp.maintenance_reset_lotto_draft, che vendite.fn_cleanup_fatture_by_ids imposta per il reset lotto. Esce in testa se la fattura non ha stato: e'' il caso della DELETE in CASCADE dalla testata, in cui la riga padre non esiste piu'' quando i figli scattano. Errore: E_FATTURA_SATELLITE_CONGELATO. Modello: trgfn_fatture_righe_guard_congelamento. piano-db-satelliti-fattura C-11, Fase 1.1.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.trgfn_fattura_satellite_guard_congelamento();

@@ -43,11 +43,25 @@ Contro la doc auto-generata `docs/it/dbzero/` (che riflette gli oggetti **vivi**
 i CSV di seed, le migration `20_code`, i pgTAP e il codice Django. **Non**
 sui YAML come fonte di definizione (regola AGENTS.md).
 
-⚠️ **Non verificate in questa sessione** le misure che richiedono il DB vivo
-(«0 righe in `fatture_scadenze`», «2 clienti con entrambe le condizioni», «21 BA
-/ 21 istanze / 21 clienti», «0 ordini e 0 preventivi»): il DB sta su un altro
-server. Sono prese per buone dai brief, che le hanno misurate oggi. Tutto il
-resto qui sotto è stato riletto sul codice.
+~~⚠️ **Non verificate in questa sessione** le misure che richiedono il DB vivo:
+il DB sta su un altro server, sono prese per buone dai brief.~~
+
+✅ **Riverificate dal BE il 2026-07-30** sul DB di sviluppo (§8.1). Quasi tutte
+confermate, **due sbagliate** — ed erano nel brief, non misurate da noi:
+
+| Dato | Nei brief | Reale |
+|---|---|---|
+| `vendite.ordini` | «**0 righe in totale**» | **85 righe**, 7 con termine (1 valore distinto) |
+| `vendite.preventivi` | «**0 righe in totale**» | **157 righe**, 19 con termine (1 valore distinto) |
+
+La conclusione di §2-bis del brief scadenze — «D-7 oggi non frammenta niente» —
+**regge, ma per un motivo diverso** da quello scritto: non perché i documenti non
+esistano (ce ne sono 242), ma perché **il termine è sempre lo stesso** e non c'è
+**nessuna attività fatturabile in attesa** (0). Il motivo giusto è più fragile del
+motivo sbagliato: basta un secondo termine in catalogo perché la divergenza
+diventi possibile.
+
+Ricaduta operativa in **3b.5**. Tutto il resto è stato riletto sul codice.
 
 ---
 
@@ -662,6 +676,28 @@ emesso, ma la somma di ciò che è stato emesso *e di ciò che è stato buttato*
 → **D-N pezzo 3**: `fn_cleanup_fatture_by_ids` storna dal saldo d'ambito il
 `arrotondamento_attuale` di ogni fattura che cancella, **prima** di cancellarla.
 
+#### C-24 🔴 [ruolo batch] `fatture_indirizzi` **non era nel perimetro** del ruolo di fatturazione
+
+Trovato scrivendo la Fase 1.4 (2026-07-30). Il perimetro DML di
+`zeroerp_batch_fatturazione` è dichiarato in
+`scripts/sql/provision_db_role_batch_fatturazione.sql` e verificato dal `check_`
+gemello. `fatture_scadenze` c'è (`'iud'`), `fatture_riepiloghi_iva` c'è,
+`fatture_arrotondamenti_scope` c'è (`'iu'`) — **`fatture_indirizzi` no**.
+
+Non è mai emerso perché **nessun batch ha mai scritto su quella tabella**: è
+vuota. Il task di Fase 2 sarebbe il primo, e sarebbe anche il primo a fallire —
+**BYPASSRLS salta la RLS, non i GRANT**
+([[reference_batch_role_grants_provision_script]]).
+
+Aggiunta `('vendite', 'fatture_indirizzi', 'iu')` a entrambi gli script. Grado
+`'iu'` e non `'iud'`: il task fa **upsert** (`ON CONFLICT DO UPDATE`) e non
+cancella mai; la pulizia arriva dalla `CASCADE` sulla testata, che non richiede
+il privilegio sul figlio.
+
+> Vale come promemoria per ogni tabella nuova che un batch dovrà scrivere: il
+> perimetro è **fail-loud per disegno**, quindi il difetto si manifesta al primo
+> giro reale e non prima.
+
 ---
 
 ## 2. Decisioni
@@ -678,7 +714,7 @@ emesso, ma la somma di ciò che è stato emesso *e di ciò che è stato buttato*
 | **D-N** ⭐ | Arrotondamenti: idempotenza e verità della testata (C-20) | ✅ **DECISA, rimedio in due pezzi.** (1) **Chiave dell'ambito = chiave di aggregazione**: `fatture_arrotondamenti_scope` prende anche `termine_pagamento_id` e `modalita_pagamento_id`, altrimenti D-7 fa condividere il saldo a due fatture diverse. (2) **Storno del proprio contributo al ricalcolo**: `fn_ricalcola_totali_fattura` legge `saldo_scope − COALESCE(f.arrotondamento_attuale, 0)`, così il ricalcolo **ripete** il primo invece di convergerci e i campi in testata restano veri — uno dei due va in stampa. (3) 🔴 **Storno alla cancellazione** (C-23): `fn_cleanup_fatture_by_ids` deve stornare dal saldo d'ambito l'`arrotondamento_attuale` di ogni fattura che cancella, **prima** di cancellarla. Senza, il saldo diventa la somma di ciò che è stato emesso *e* di ciò che è stato buttato. I tre pezzi vanno **insieme**: due su tre è peggio di zero, perché sembra a posto |
 | **D-N-bis** ⭐ | Estrazione di una fattura da un lotto **EMESSA** | ✅ **DECISA: modello «reperto».** Una o più fatture non numerate si possono **togliere** da un lotto EMESSA: si **stacca** il collegamento al lotto, la fattura passa ad **ANNULLATA** e le sue **attività tornano libere** (il giro successivo produce la fattura giusta). Perché ANNULLATA e non DRAFT: lo stato ha già la semantica esatta — `applica_lotto = false`, `applica_fattura = true`, `is_abortito = true`, fase `CHIUSO` — mentre una DRAFT staccata sarebbe **ambigua** (sembra lavorabile e non lo è, entra nei conteggi delle bozze). Serve l'append della transizione `EMESSA → ANNULLATA` per la **fattura** (oggi la matrice non ce l'ha). La fattura estratta resta come **documentazione**: è l'artefatto diagnostico che dice cosa non andava, e alimenta una lista «estratte» nel cockpit. ⚠️ Non è riprendibile per disegno: il suo contenuto è la fotografia del dato sbagliato, e la correzione avviene **a monte** (commessa, anagrafica) |
 | **D-K** ⭐ | Guard di coerenza **prima di consumare il numero fiscale** | ✅ **DECISA.** In `fn_assign_numero_fattura` (non nel wrapper: è il punto UNICO in cui il progressivo si consuma, e `nextval` non fa rollback — C-19), accanto al precedente `E_FATTURA_SENZA_RIGHE`. Blocca con `E_FATTURA_NON_NUMERABILE_INCOERENTE` se: `totale_a_pagare IS NULL` · ci sono righe ma nessun riepilogo IVA · `totale_a_pagare > 0` e nessuna rata o `Σ importo ≠ totale_a_pagare` · `totale_a_pagare <= 0` e ci sono rate (coerente con D-D). Motivo: oggi la numerazione **non controlla nulla** e numererebbe una fattura senza totali, senza IVA e senza rate — è ciò che avrebbe lasciato passare fino allo SDI i documenti della corsia GIORNALIERO (D-C). Non rincorre gli scrittori: verifica il **risultato**, quindi copre anche le cause future e il caso più probabile di tutti (il task scadenze che non ha girato affatto). ⚠️ **Costo reale**: romperà le fixture pgTAP che numerano fatture prive di satelliti — vanno adeguate |
-| **D-L** | Le due funzioni di reset lotto (C-17) | ✅ **DECISA.** (1) **Rinominare** perché i nomi dicano l'esito: `fn_reset_lotto_draft` → `fn_annulla_lotto_da_draft`, `fn_reset_lotto_fattura_draft` → `fn_elimina_fattura_draft_da_lotto`. Impatto misurato: `ALLOWED_TASK_FUNCTIONS` (`pipeline_repository.py:174`), repository, service, view, pgTAP; il **task_code** `reset_lotto_draft` del registry può restare invariato (è il nome del task, non della funzione). (2) **Sanare l'asimmetria** di perimetro fra la versione globale e quella singola. (3) 🔴 **Correggere l'over-free del `lock_batch_id`** (C-22): la funzione per-fattura deve passare `NULL`, altrimenti resettare **una** fattura libera le attività di **tutto** il lotto. Prerequisito di D-N-bis. (4) Il «ritorno a DRAFT» che il nome evocava **non esiste** e va costruito: → **Fase 6** |
+| **D-L** | Le due funzioni di reset lotto (C-17) | ✅ **DECISA su tutti e quattro i punti.** (1) **Si rinomina su ENTRAMBI gli strati** (Tid, 2026-07-30): `fn_reset_lotto_draft` → `fn_annulla_lotto_da_draft`, `fn_reset_lotto_fattura_draft` → `fn_elimina_fattura_draft_da_lotto`, **e i nomi Python si allineano**. Il BE aveva proposto di rinunciare alla rinomina o di farla solo a DB (§8.2): **non accolto** — rinominare un solo strato scambia un disallineamento con uno peggiore, perché un nome che mente ma è coerente ovunque si impara una volta, mentre due nomi diversi per la stessa cosa si sbagliano ogni volta. ⚠️ Il **`task_code`** `reset_lotto_draft` del registry **resta**: è il nome del *task*, non della funzione, e vive nei CSV. Impatto misurato: `ALLOWED_TASK_FUNCTIONS` (`pipeline_repository.py:174`), repository, service, view, pgTAP; il **task_code** `reset_lotto_draft` del registry può restare invariato (è il nome del task, non della funzione). (2) **Sanare l'asimmetria** di perimetro fra la versione globale e quella singola. (3) 🔴 **Correggere l'over-free del `lock_batch_id`** (C-22): la funzione per-fattura deve passare `NULL`, altrimenti resettare **una** fattura libera le attività di **tutto** il lotto. Prerequisito di D-N-bis. (4) Il «ritorno a DRAFT» che il nome evocava **non esiste** e va costruito: → **Fase 6** |
 | **D-F** | Rerun della tappa EMESSA su fatture oltre soglia | ✅ **DECISA.** La funzione **per-fattura solleva** `E_SCADENZE_FATTURA_BLOCCATA`; il **wrapper di lotto filtra** su DRAFT/EMESSA e salta le altre con log non critico. Verificato che oggi lo scenario **non è raggiungibile** dal giro automatico (`_select_steps` riparte dallo step corrente in errore o dal successivo, mai indietro): è un presidio, non una riparazione. Si fa comunque perché (a) la per-fattura sarà chiamabile da endpoint e (b) il fratello `fn_ricalcola_riepiloghi_iva_lotto` **non filtra** e la sua per-fattura solleva — quindi se lo scenario diventasse raggiungibile il giro esploderebbe già una riga prima. ⚠️ Nota: quella solleva `E_PARAMETRO_INVALIDO` per un problema di **stato** — codice fuorviante, da allineare quando si tocca quell'area |
 | **D-J** | `clienti.termine_pagamento_id` obbligatorio? | ✅ **DECISA: resta nullable**, con fallback al default `TP_1RATA` |
 | **D-G** | Bonifiche dei dati esistenti | ✅ **DECISA: non è un cantiere.** Sono **dati di test** ([[project_no_produzione_solo_sviluppo]]): si correggono o si cancellano al momento, senza migration né passi preparatori. I 2 clienti con la coppia legacy si ripuntano al catalogo dentro 3a.4; i clienti con `M` **si contano al momento dell'applicazione** (Tid: probabilmente nessuno); le 7 fatture senza snapshot si cancellano e rigenerano. Nessuna query di bonifica da preparare in anticipo |
@@ -766,7 +802,7 @@ complicata. Nessun dato in produzione, quindi si fa netto.
 | 3a.4 | **Migrazione dei clienti**: per ciascuno con la coppia legacy, puntarlo al termine di catalogo equivalente (creandolo in 3a.1 se manca). A mano, sono 2; i clienti con `M` si contano qui, sul momento (D-G: dati di test, nessuna preparazione) |
 | 3a.5 | DROP di `anagrafiche.clienti.tipo_gg_scadenza_ft` e `nr_giorni_scadenza`; DROP del trigger `trg_clienti_normalize_giorni_scadenza_ins_upd` e della funzione `trgfn_clienti_normalize_giorni_scadenza`; DROP del CHECK `chk_clienti_tipo_gg_scadenza_ft` |
 | 3a.6 | DROP di `vendite.fatture.giorni_pagamento` e `fine_mese` (§5.5: tornano inutili) |
-| 3a.7 | BE/FE: `ClienteDrawer.vue` (via i due campi + le 4 opzioni `opt_gg_*` e le loro chiavi i18n), `fn_update_cliente`, `clienti_repository`, `clienti_service`, `views_clienti`, `error_policies` |
+| 3a.7 | **Innesco applicativo**: appena cadono le due colonne, il drawer cliente e la catena BE vanno adeguati. ⚠️ L'elenco dei file **non sta qui**: owner e punti di intervento in [piano BE/FE §4-bis](piano-be-fe-satelliti-fattura.md). *Due elenchi della stessa cosa divergono; uno no* (proposta BE §8.3, accolta). Resta DB: `fn_update_cliente`, che è una funzione SQL |
 | 3a.8 | pgTAP: **rimuovere** `test-clienti-normalize-giorni-scadenza-v1.sql` (il trigger non esiste più) e adeguare `create-cliente.sql` e `test-fn-get-evento-stato-corrente-cliente-v1.sql`, che valorizzano le colonne eliminate |
 | 3a.9 | Doc: `dbzero/config/manual/termini_pagamento.md` e `dbzero/anagrafiche/manual/trgfn_clienti_normalize_giorni_scadenza.md` (quest'ultima da ritirare) |
 
@@ -792,7 +828,7 @@ in isolamento, prima di appoggiarci sopra le scadenze.
 | 3b.4-bis | **Arrotondamenti, pezzo 1 (D-N)**: `fatture_arrotondamenti_scope` prende `termine_pagamento_id` e `modalita_pagamento_id` in chiave d'ambito. **Va fatto nello stesso changeset della chiave**: separarli lascia una finestra in cui due fatture condividono il saldo (C-20) |
 | 3b.4-ter | **Arrotondamenti, pezzo 2 (D-N)**: `fn_ricalcola_totali_fattura` legge `saldo_scope − COALESCE(f.arrotondamento_attuale, 0)` |
 | 3b.4-quater | **Arrotondamenti, pezzo 3 (D-N / C-23)**: `fn_cleanup_fatture_by_ids` storna dal saldo d'ambito l'`arrotondamento_attuale` delle fatture che cancella, prima della `DELETE`. ⚠️ Stessa funzione toccata da D-L (over-free del `lock_batch_id`): **coordinare i due interventi** in un changeset solo |
-| 3b.5 | pgTAP: **idempotenza del ricalcolo** (due esecuzioni → stesso totale **e stessa scomposizione** `precedente`/`attuale`; il secondo è il test che oggi manca) · **due fatture stesso BA con termini diversi** → saldi d'ambito distinti, e il rerun non sposta i totali · un test **per livello** della catena (il livello 1 non ha dati: la fixture è il lavoro) · due attività stesso BA termini diversi → **due** fatture · termine uguale → **una** · riesecuzione → nessuna terza · **utility diverse → due fatture** (regressione sul bug chiave/lookup) · invariante «ogni elemento della chiave compare nel `WHERE` del lookup» |
+| 3b.5 | pgTAP: **idempotenza del ricalcolo** (due esecuzioni → stesso totale **e stessa scomposizione** `precedente`/`attuale`; il secondo è il test che oggi manca) · **due fatture stesso BA con termini diversi** → saldi d'ambito distinti, e il rerun non sposta i totali · un test **per livello** della catena. ⚠️ **Correzione 2026-07-30**: il livello 1 **ha dati** (7 ordini e 19 preventivi con termine, §8.1) — il brief diceva «0 righe» ed era falso. Ma il termine è **sempre lo stesso**: per testare la **divergenza** serve comunque creare un **secondo termine di catalogo**, che è la vera fixture · due attività stesso BA termini diversi → **due** fatture · termine uguale → **una** · riesecuzione → nessuna terza · **utility diverse → due fatture** (regressione sul bug chiave/lookup) · invariante «ogni elemento della chiave compare nel `WHERE` del lookup» |
 
 ⚠️ Da rileggere nello stesso passaggio: `smoke-fatturazione-aggregazione-righe.py`
 e i pgTAP che contano le fatture di un lotto, che oggi assumono l'aggregazione
@@ -866,12 +902,21 @@ ritorno non annulla mai un numero fiscale.
 | 6.3 | Pulizia di ciò che è stato prodotto in EMESSA: `fatture_scadenze` **cancellate**, `fatture_riepiloghi_iva` e totali azzerati, fondi via `fn_reset_fondi_fattura` (esiste già). `fatture_indirizzi` **si lasciano**: sono prodotte in DRAFT e si rigenerano da sole (upsert idempotente) |
 | 6.4 | ⚠️ **Il rerun deve ripartire dallo step giusto.** In `_select_steps`, un rilancio su lotto non in errore riparte da `steps[current_index + 1]` — cioè da EMESSA, **saltando la rigenerazione delle righe in DRAFT**. Il ritorno deve lasciare il lotto in una condizione che faccia ripartire da DRAFT, altrimenti l'operatore riporta indietro il documento e poi non riesce a correggerlo |
 | 6.5 | **Estrazione per-fattura da lotto EMESSA (D-N-bis)** — l'operazione «togli questa fattura dal giro»: append della transizione `EMESSA → ANNULLATA` per la **fattura**; `vendite.fn_estrai_fattura_da_lotto(p_lotto_id, p_fattura_id)` che (a) rifiuta se la fattura è **numerata**, (b) **stacca** la riga `fatturazione_lotti_fatture`, (c) porta la fattura ad **ANNULLATA**, (d) libera **solo** le sue attività. ⚠️ Dipende dalla correzione dell'over-free (D-L pt.3, C-22): senza, libera quelle di tutto il lotto |
-| 6.6 | **Eliminazione del flag `esclusa` (D-M)**: `fn_lotto_emittente_stati_lf`, `fn_lotto_stato_esecuzione_v2`, `fn_guard_lotto_fatture_stato_coerente` (resta la sola eccezione `critical`), outbox di stampa, filtro API, `types.py`. Da fare **qui**, non prima: l'estrazione è ciò che rende il flag definitivamente inutile |
-| 6.7 | BE/FE: il verbo nel `LottoDrawer` con la conferma esplicita di cosa si perde, e la **lista «estratte»** nel cockpit — è il promemoria che giustifica il modello «reperto» |
+| 6.6 | **Eliminazione del flag `esclusa` (D-M)** — perimetro DB: `fn_lotto_emittente_stati_lf`, `fn_lotto_stato_esecuzione_v2`, `fn_guard_lotto_fatture_stato_coerente` (resta la sola eccezione `critical`), outbox di stampa, colonna. Da fare **qui**, non prima: l'estrazione è ciò che rende il flag definitivamente inutile. Il lato applicativo (filtro API, `types.py`) è in [piano BE/FE §4-bis](piano-be-fe-satelliti-fattura.md) |
+| 6.7 | **Innesco applicativo**: verbo nel `LottoDrawer` e **lista «estratte»** nel cockpit — è il promemoria che giustifica il modello «reperto». Punti di intervento in [piano BE/FE §4-bis](piano-be-fe-satelliti-fattura.md) |
 | 6.8 | pgTAP: transizione `EMESSA → DRAFT` ammessa per la fattura · lotto+fatture allineati al commit · scadenze e riepiloghi azzerati · ritorno rifiutato su lotto GIORNALIERO · ritorno rifiutato se **una sola** fattura è numerata · **estrazione**: fattura ad ANNULLATA e staccata, **solo** le sue attività liberate (le altre del lotto restano bloccate — è il test di C-22), estrazione rifiutata su fattura numerata |
 
 ### 3.7 Ordine di accensione, non negoziabile
 
+0. ⚠️ **Intreccio con il piano BE** (loro §8.4, accolto): la catena indirizzi
+   passa in SQL, e il mixin Python va ripuntato sulla stessa funzione. L'ordine
+   **non** è «BE prima» — la funzione deve prima esistere — ma:
+   **DB 2.0-a/2.0-b** (crea `fn_snapshot_indirizzo_soggetto` e
+   `fn_resolve_indirizzo_documento`) → **BE Fase 0** (ripunta il mixin) →
+   **DB 2.1-2.5** e BE Fase 1.
+   Se il task fattura partisse mentre il mixin è ancora sulla vecchia catena, i
+   cinque documenti fratelli e la fattura risolverebbero **in due modi diversi**
+   — cioè esattamente il difetto che C-14b vuole chiudere;
 1. task indirizzi (2.1-2.3) → **poi** guard `FATT` (2.5);
 2. semina del catalogo termini (3a.1) → **poi** migrazione clienti (3a.4) → **poi**
    DROP delle colonne (3a.5). Invertirli lascia clienti senza condizioni;
@@ -881,6 +926,26 @@ ritorno non annulla mai un numero fiscale.
    prima, blocca ogni numerazione perché le rate non esistono ancora;
 6. satelliti completi (Fasi 2 e 4) → **poi** ritorno a DRAFT (Fase 6), che deve
    saper ripulire ciò che quelle fasi producono.
+
+### 3.7-bis Verifiche trasversali
+
+**Non le duplichiamo qui**: l'elenco è in
+[piano BE/FE §5](piano-be-fe-satelliti-fattura.md) e vale per entrambi i lati
+(test Django, `check_i18n_keys.py`, build Vite, smoke rieseguiti). Due elenchi
+della stessa cosa divergono — stesso criterio applicato in 3a.7 / 6.6 / 6.7.
+
+Quello che aggiungiamo, perché è specifico del lato DB:
+
+- **`scripts/pgtap-baseline.sh vendite`** prima *e* dopo ogni fase. La suite ha
+  rossi preesistenti: senza il confronto non si distingue una regressione da un
+  rosso noto, e ci si attribuisce colpe altrui o si mascherano le proprie;
+- ⚠️ la baseline è un **registro di debito**: le fasi 3a e 6 **rimuovono** dei
+  pgTAP (`test-clienti-normalize-giorni-scadenza-v1.sql`) e ne **adeguano** altri
+  (`create-cliente.sql`, le fixture che numerano fatture prive di satelliti). Va
+  aggiornata con `--update`, non lasciata a divergere;
+- **doc auto-gen `dbzero`**: si rigenera dopo ogni fase che tocca funzioni,
+  tabelle o viste. È la fonte da cui il prossimo intervento leggerà le
+  definizioni: se resta indietro, il prossimo parte da un DDL stale.
 
 ### 3.8 Cosa **non** si scrive, perché non siamo in produzione
 
@@ -1016,10 +1081,12 @@ rientrati** e alcune debolezze che restano.
 | # | Debolezza | Mitigazione |
 |---|---|---|
 | **W-1** | La **Fase 6** è la parte meno istruita: disegnata in pochi scambi, mentre D-I è nata da una verifica su cinque tabelle | ✅ **affrontata**: §3.6 ha ora un passo **6.0 di analisi preliminare obbligatoria** con sei punti aperti, di cui uno già deciso (task_run) e uno rinviato (log critici). Il settimo — il saldo d'arrotondamento orfano — ne è uscito ed è diventato D-N pezzo 3 |
-| **W-2** | **Nessun criterio di «fatto» per le fasi DB.** Il piano BE/FE ha gli smoke di accettazione che passano dalla pipeline reale; qui ci sono i pgTAP, che verificano le funzioni ma non la catena. La 3a è la fase con più superficie e nessun collaudo end-to-end | Definire almeno un collaudo per 3a prima di iniziarla |
-| **W-3** | **Nessun numero è stato riverificato**: 0 righe scadenze, 2 clienti legacy, 7 fatture, 0 ordini/preventivi vengono dai brief. Se «2 clienti» fosse «20», la 3a.4 cambia peso | Ricontare all'apply, prima di 3a.4 |
+| **W-2** | **Nessun criterio di «fatto» per le fasi DB.** La 3a è la fase con più superficie e nessun collaudo end-to-end | ✅ **chiuso dal BE (§8.5)**: gli smoke §3 del piano BE/FE passano dalla **pipeline reale** e coprono anche la 3a — `smoke-fattura-scadenze.py` asserisce già che la testata porti `termine_pagamento_id` e `modalita_pagamento_id` e che le rate quadrino, cioè che la catena **risolva attraverso il catalogo riformato**. Più una asserzione nuova sul vero rischio di 3a.4: **nessun cliente resta senza condizioni** dopo la migrazione |
+| **W-3** | **Nessun numero è stato riverificato** | ✅ **chiuso dal BE (§8.1)** — e **aveva ragione di esistere**: due misure erano sbagliate. «0 ordini e 0 preventivi» era in realtà **85 e 157**. La conclusione su D-7 regge ma per un altro motivo, più fragile (§0). I clienti con `M` sono **0**, quindi quella verifica di D-G è chiusa senza lavoro |
 | **W-4** | Stime **ottimistiche dove c'è frontend**: «3a ~1 giornata DB» copre nove punti | Trattarle come ordine di grandezza |
 | **W-5** | **Undici decisioni in una sessione.** Le prime otto istruite una per una; le ultime sono arrivate quando l'inerzia del «confermo» era già presa | Ciò che è nato da una verifica (D-I, D-K, C-18, C-20) regge meglio di ciò che è stato deciso di slancio |
+
+---
 
 ---
 
@@ -1151,3 +1218,112 @@ Coerenti con il vostro §3.8, e ora scritte anche nel piano BE/FE §9:
 
 > Criterio generale che ne emerge: davanti a un dato di test sbagliato la risposta
 > è **rifare il dato**, non scrivere codice che lo tollera.
+
+---
+
+## 9. Registro di avanzamento
+
+> **Come si usa.** Ogni passo ha uno stato: ⬜ da fare · 🟡 in corso · ✅ fatto e
+> testato · ⛔ bloccato · ⏭️ rinviato. Si aggiorna **qui**, non altrove.
+>
+> **Uno step si dichiara ✅ solo quando**: changeSet **applicato** + pgTAP del
+> passo **verdi** + `pgtap-baseline.sh` senza regressioni + doc auto-gen
+> **rigenerata**. Scritto ma non applicato resta 🟡: è la differenza che ci ha già
+> ingannato due volte (test verdi su codice morto).
+>
+> **Convenzioni di changeSet** — `db/changelog/migrations_v2/`, naming
+> `YYYYMMDD-NN-<tipo>-<descrizione>-mctit.yaml`, **un changeSet per file**, sempre
+> `logicalFilePath`, `runOnChange: false` nello stato committato. La numerazione
+> `NN` è una **sequenza globale per data fra tutte le cartelle**: i numeri qui
+> sotto si assegnano al momento della scrittura. Ultimo occupato: **20260729-05**.
+>
+> ⚠️ **Da dove si copia cosa** (le due metà hanno fonti diverse; sbagliarle è un
+> errore silenzioso): il **corpo** di una funzione esistente dalla doc auto-gen
+> `docs/it/dbzero/` (riflette l'oggetto vivo); la **firma + `RETURNS`**
+> dall'**ultimo YAML** che la definisce (l'auto-gen scioglie i `%TYPE`); il
+> `COMMENT ON FUNCTION` con i tipi **risolti**.
+
+### Consuntivo
+
+| | |
+|---|---|
+| **Fasi** | 0 / 8 completate · Fase 1 **in corso** |
+| **changeSet** | **6 scritti** (`20260730-01`…`-06`) + 7 codici errore + 2 script di ruolo · **1 applicato** |
+| **pgTAP** | 0 nuovi · 0 adeguati |
+| **Doc** | 0 / 8 guide (§4-bis) · 0 / 3 manuali `dbzero` |
+| **Stato** | analisi chiusa, 15 decisioni prese, sviluppo avviato sulla Fase 1 |
+
+### Fase 1 — Fondamenta comuni
+
+| Passo | Stato | changeSet | Note |
+|---|---|---|---|
+| 1.1 `trgfn_fattura_satellite_guard_congelamento()` parametrica | ✅ **applicata** (2026-07-30) | `20260730-01` | Clone di `trgfn_fatture_righe_guard_congelamento` con bypass GUC e uscita su stato NULL. ⚠️ **Deviazione dal piano**: `TG_ARGV[0]` = colonna FK, **niente `TG_ARGV[1]`** — un codice errore solo (`E_FATTURA_SATELLITE_CONGELATO`), con la tabella nel messaggio e nel payload. Due argomenti dove ne basta uno sono due posti in cui sbagliare il montaggio, e `error_policies.py` mappa un codice solo |
+| 1.2 Montaggio su `fatture_scadenze` e `fatture_indirizzi` | 🟡 **scritto, non applicato** | `20260730-02` | Due trigger in **un** changeSet: è la stessa regola sulle due tabelle, separarli inviterebbe ad armarne uno e dimenticare l'altro. `fatture_riepiloghi_iva` resta fuori perimetro: la sua riscrittura passa da `fn_ricalcola_riepilogo_iva_fattura`, che la soglia ce l'ha già |
+| 1.3 Codici errore (append `messaggi_errore.csv`) | 🟡 **scritto, non applicato** | — (solo CSV) | 7 codici, **id 568-574**, nessun loader nuovo: il `runOnChange` esistente ripesca il file |
+| 1.4 RLS + guard scope emittente su `fatture_indirizzi` | 🟡 **scritto, non applicato** | `20260730-03`, `-04`, `-05`, `-06` | Policy separate + armamento **isolato**, sul pattern di `20260729-01..05`. 🔴 **Prerequisito trovato ora (C-24)**: `fatture_indirizzi` **non era nel perimetro del ruolo batch** — aggiunta `'iu'` a `provision_db_role_batch_fatturazione.sql` e al `check_`. Senza, il task di Fase 2 fallirebbe: BYPASSRLS salta la RLS, **non i GRANT** |
+
+### Fase 2 — Indirizzi (step DRAFT)
+
+| Passo | Stato | changeSet | Note |
+|---|---|---|---|
+| 2.0-a `fn_snapshot_indirizzo_soggetto` | ⬜ | — | |
+| 2.0-b `fn_resolve_indirizzo_documento` | ⬜ | — | ⚠️ sblocca la **Fase 0 del BE**, che va prima di 2.1 |
+| 2.1 `fn_snapshot_indirizzi_fattura` | ⬜ | — | |
+| 2.2 `fn_snapshot_indirizzi_lotto` | ⬜ | — | |
+| 2.3 Seed pipeline DRAFT (corsie 1 e 8) | ⬜ | — | registry 19, impl 19, policy 17-18 |
+| 2.4 pgTAP indirizzi | ⬜ | — | incluso il test del layer SOGGETTO |
+| 2.5 Guard `FATT` obbligatorio | ⬜ | — | ⚠️ mai prima di 2.1-2.3 |
+| 2.6 pgTAP lock | ⬜ | — | |
+
+### Fase 3a — Riforma condizioni di pagamento
+
+| Passo | Stato | changeSet | Note |
+|---|---|---|---|
+| 3a.1 Semina catalogo termini | ⬜ | — | prerequisito operativo di tutto il resto |
+| 3a.2 Riforma `config.termini_pagamento` | ⬜ | — | `tipo_offset` → `fine_mese` bool |
+| 3a.3 Riscrittura seed 4 termini | ⬜ | — | |
+| 3a.4 Migrazione clienti | ⬜ | — | 2 clienti; quelli con `M` sono **0** (verificato) |
+| 3a.5 DROP colonne `clienti` + trigger + CHECK | ⬜ | — | |
+| 3a.6 DROP `fatture.giorni_pagamento` / `fine_mese` | ⬜ | — | |
+| 3a.7 Innesco applicativo | ⬜ | — | owner BE, §4-bis del loro piano |
+| 3a.8 pgTAP da rimuovere/adeguare | ⬜ | — | aggiornare la **baseline** |
+| 3a.9 Doc | ⬜ | — | |
+
+### Fase 3b — Chiave (D-7) + arrotondamenti
+
+| Passo | Stato | changeSet | Note |
+|---|---|---|---|
+| 3b.1 Catena unica per attività | ⬜ | — | |
+| 3b.2 `fn_build_fattura_key` + coppia | ⬜ | — | |
+| 3b.3 `fn_get_or_create_fattura_header` lookup + INSERT | ⬜ | — | include il fix `utility_id` |
+| 3b.4-bis Ambito arrotondamenti = chiave | ⬜ | — | **stesso changeSet** di 3b.2 |
+| 3b.4-ter Storno al ricalcolo | ⬜ | — | |
+| 3b.4-quater Storno alla cancellazione (C-23) | ⬜ | — | ⚠️ coordinare con D-L pt.3, stessa funzione |
+| 3b.5 pgTAP chiave + idempotenza | ⬜ | — | serve un **secondo termine** di catalogo |
+
+### Fase 4 / 4b — Scadenze + guard numerazione
+
+| Passo | Stato | changeSet | Note |
+|---|---|---|---|
+| 4.1 `fn_genera_scadenze_fattura` | ⬜ | — | |
+| 4.2 `fn_genera_scadenze_lotto` | ⬜ | — | |
+| 4.3 Seed EMESSA + riempimento corsia 2 | ⬜ | — | policy 19-23 |
+| 4.3-bis Invariante pgTAP esteso | ⬜ | — | |
+| 4.4 Doc | ⬜ | — | |
+| 4.5 pgTAP scadenze | ⬜ | — | |
+| 4b.1-4b.4 Guard numerazione (D-K) | ⬜ | — | ⚠️ adeguare le fixture che numerano |
+
+### Fase 6 — Ritorno a DRAFT + estrazione
+
+| Passo | Stato | changeSet | Note |
+|---|---|---|---|
+| **6.0 Analisi preliminare** | ⬜ | — | 🔴 **obbligatoria**: 6 punti, i passi sotto si riscrivono dopo |
+| 6.1-6.8 | ⏭️ | — | in attesa di 6.0 |
+
+### D-L — Funzioni di reset
+
+| Passo | Stato | changeSet | Note |
+|---|---|---|---|
+| D-L.1 Rinomina (DB **e** Python) | ⬜ | — | `task_code` del registry **invariato** |
+| D-L.2 Asimmetria di perimetro | ⬜ | — | |
+| D-L.3 Over-free `lock_batch_id` (C-22) | ⬜ | — | 🔴 **bug**; prerequisito di 6.5 |

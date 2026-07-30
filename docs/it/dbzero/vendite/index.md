@@ -251,6 +251,7 @@
 - [trgfn_dlt_block_ordrig_ddtrig](funzioni/trgfn_dlt_block_ordrig_ddtrig.md) — La trigger function `vendite.trgfn_dlt_block_ordrig_ddtrig()` blocca la cancellazione fisica di righe ordine/DDT per preservare la coerenza del fulfillment e la tracciabilità operativa.
 - [trgfn_documenti_sync_canali](funzioni/trgfn_documenti_sync_canali.md) — (latest review 24-02-2026)   La funzione trigger `vendite.trgfn_documenti_sync_canali()` mantiene allineato il registro `documenti_fatturazione_canali` sugli eventi principali dei documenti commerciali.
 - [trgfn_event_log_append_only](funzioni/trgfn_event_log_append_only.md)
+- [trgfn_fattura_satellite_guard_congelamento](funzioni/trgfn_fattura_satellite_guard_congelamento.md)
 - [trgfn_fatturazione_lotti_attivita_gen_codice](funzioni/trgfn_fatturazione_lotti_attivita_gen_codice.md) — Genera automaticamente `codice` su `vendite.attivita_fatturabili_lotti` quando non valorizzato in INSERT/UPDATE.
 - [trgfn_fatturazione_lotti_gen_codice](funzioni/trgfn_fatturazione_lotti_gen_codice.md) — Genera automaticamente `codice` su `vendite.fatturazione_lotti` quando non valorizzato in INSERT/UPDATE.
 - [trgfn_fatturazione_lotti_guard_stato](funzioni/trgfn_fatturazione_lotti_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatturazione_lotti_guard_stato()`** controlla le transizioni tra stati documento sui lotti di fatturazione.
