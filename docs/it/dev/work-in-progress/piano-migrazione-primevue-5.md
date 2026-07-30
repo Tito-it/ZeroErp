@@ -1,10 +1,13 @@
 # Piano operativo — Migrazione a PrimeVue 5 (+ @primeuix/themes 3, primeicons 8)
 
 > **Tipo**: piano operativo FE (`dev/backend-tid`) · **Data**: 2026-07-29 ·
-> **Owner**: Tid · **Stato**: 🔴 **FERMO — la premessa del piano è caduta**.
-> §6.1 (Pinia 4) è **chiuso e resta valido**. §6.2/6.3 (primeicons 8) è stato
-> eseguito e poi **annullato**. §6.4 (PrimeVue 5 + themes 3) **non è più una
-> questione tecnica**.
+> **Owner**: Tid · **Stato**: 🔴 **UPGRADE FERMO** / 🟢 **DISACCOPPIAMENTO IN
+> CORSO**. §6.1 (Pinia 4) è **chiuso e resta valido**. §6.2/6.3 (primeicons 8)
+> è stato eseguito e poi **annullato**. §6.4 (PrimeVue 5 + themes 3) **non è
+> più una questione tecnica**. Il binario vivo è §8-bis: la conversione delle
+> liste a `<ListaConfigurabile>` è partita — **1/34 fatta e validata**
+> (`vendite.lotti`, 2026-07-31) — ed è utile con QUALUNQUE esito della
+> questione licenza.
 >
 > 🚨 **PrimeVue ha cambiato licenza al confine della major.** `primevue`,
 > `@primeuix/themes` e `primeicons` erano **MIT** fino alla versione
