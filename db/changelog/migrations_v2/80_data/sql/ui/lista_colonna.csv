@@ -203,15 +203,15 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 202,10,tenuti,Tenuti,Pezzi tenuti dal cliente sulla partita,tenuti,informazione,numeric,,110,95,right,Accredito,5,f,t,t,f,f,t,2026-07-18 00:00:00,mctit,vendite.resi_da_accreditare.col_tenuti,15
 203,10,fatturati,Fatturati,Pezzi fatturati sulla partita,fatturati,informazione,numeric,,110,96,right,Accredito,5,f,t,t,f,f,t,2026-07-18 00:00:00,mctit,vendite.resi_da_accreditare.col_fatturati,15
 204,11,qta_rinunciata,Definitiva,Quantità dichiarata definitiva: non tornerà al cliente,qta_rinunciata,informazione,numeric,,110,75,right,Ri-consegna,3,f,t,t,f,f,t,2026-07-26 00:00:00,mctit,vendite.resi_da_riconsegnare.col_rinunciata,25
-205,12,codice,Codice,Codice del lotto di fatturazione,codice,identificatore,string,,160,10,left,Identificazione,1,f,f,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_codice,100
-206,12,competenza_mese,Competenza,Mese di competenza fatturato dal lotto,competenza_mese,informazione,date,date_short,110,20,center,Identificazione,1,t,f,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_competenza,90
-207,12,tipo_lotto,Tipo,Tipo di giro di fatturazione,tipo_lotto,informazione,string,,120,30,center,Identificazione,1,f,f,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_tipo,30
-208,12,tipo_doc_fiscale,Documento,Tipo di documento fiscale prodotto dal lotto,tipo_doc_fiscale_descrizione,informazione,string,,180,40,left,Classificazione,2,t,f,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_tipo_doc,60
-209,12,utility,Utility,Utility di riferimento del lotto,utility_descrizione,informazione,string,,150,50,left,Classificazione,2,t,f,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_utility,55
-210,12,area_geografica,Area geografica,Area geografica di fatturazione del lotto,area_geografica_descrizione,informazione,string,,160,60,left,Classificazione,2,t,f,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_area_geografica,25
-211,12,stato_lotto,Stato,Stato corrente del giro di fatturazione,stato_lotto,informazione,string,,130,70,center,Stato,3,t,f,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_stato,95
-212,12,stato_operativo,Stato operativo,Stato operativo interno della pipeline,stato_operativo,informazione,string,,140,80,center,Stato,3,f,f,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_stato_operativo,20
-213,12,stato_doc_fiscale,Stato fiscale,Stato fiscale dei documenti del lotto,stato_doc_fiscale_descrizione,informazione,string,,150,90,center,Stato,3,f,f,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_stato_doc,50
-214,12,data_insert,Creato,Data e ora di creazione del lotto,data_insert,informazione,datetime,datetime_short,150,100,center,Audit,4,f,f,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_creato,10
-215,12,user_insert,Creato da,Utente che ha generato il lotto,user_insert,informazione,string,,120,110,left,Audit,4,f,f,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_creato_da,5
-216,12,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-07-30 00:00:00,mctit,common.col_azioni,100
+205,12,codice,Codice,Codice del lotto di fatturazione,codice,identificatore,string,,160,10,left,Identificazione,1,f,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_codice,100
+206,12,competenza_mese,Competenza,Mese di competenza fatturato dal lotto,competenza_mese,informazione,date,date_short,110,20,center,Identificazione,1,t,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_competenza,90
+207,12,tipo_lotto,Tipo,Tipo di giro di fatturazione,tipo_lotto,informazione,string,,120,30,center,Identificazione,1,f,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_tipo,30
+208,12,tipo_doc_fiscale,Documento,Tipo di documento fiscale prodotto dal lotto,tipo_doc_fiscale_descrizione,informazione,string,,180,40,left,Classificazione,2,t,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_tipo_doc,60
+209,12,utility,Utility,Utility di riferimento del lotto,utility_descrizione,informazione,string,,150,50,left,Classificazione,2,t,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_utility,55
+210,12,area_geografica,Area geografica,Area geografica di fatturazione del lotto,area_geografica_descrizione,informazione,string,,160,60,left,Classificazione,2,t,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_area_geografica,25
+211,12,stato_lotto,Stato,Stato corrente del giro di fatturazione,stato_lotto,informazione,string,,130,70,center,Stato,3,t,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_stato,95
+212,12,stato_operativo,Stato operativo,Stato operativo interno della pipeline,stato_operativo,informazione,string,,140,80,center,Stato,3,f,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_stato_operativo,20
+213,12,stato_doc_fiscale,Stato fiscale,Stato fiscale dei documenti del lotto,stato_doc_fiscale_descrizione,informazione,string,,150,90,center,Stato,3,f,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_stato_doc,50
+214,12,data_insert,Creato,Data e ora di creazione del lotto,data_insert,informazione,datetime,datetime_short,150,100,center,Audit,4,f,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_creato,10
+215,12,user_insert,Creato da,Utente che ha generato il lotto,user_insert,informazione,string,,120,110,left,Audit,4,f,t,t,f,f,t,2026-07-30 00:00:00,mctit,vendite.lotti.col_creato_da,5
+216,12,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,f,2026-07-30 00:00:00,mctit,common.col_azioni,100
