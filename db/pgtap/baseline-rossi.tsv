@@ -1,4 +1,3 @@
-db/pgtap/anagrafiche/create-cliente.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/create-gestore-indirizzo-res-domfisc.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/create-gestore-indirizzo-res.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/create-soggetto-bank-branches.sql	ERRORE_FIXTURE
@@ -68,7 +67,6 @@ db/pgtap/ui/test-lista-contratti-seed.sql	ASSERZIONE
 db/pgtap/ui/test-lista-offerte-seed.sql	ASSERZIONE
 db/pgtap/ui/test-lista-ordini-seed.sql	ASSERZIONE
 db/pgtap/ui/test-lista-preventivi-seed.sql	ASSERZIONE
-db/pgtap/vendite/test-articolo-regole-fatturazione.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-attivita-fatturabili.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-attivita-lotto-info-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-attivita-prezzo-bloccato-v1.sql	ERRORE_FIXTURE
@@ -89,7 +87,6 @@ db/pgtap/vendite/test-fatturazione-reset-lotto-draft.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fatture-arrotondamenti-scope.sql	ASSERZIONE
 db/pgtap/vendite/test-fn-cambia-stato-preventivo.sql	ASSERZIONE
 db/pgtap/vendite/test-fn-contratto-righe-preview-nuovi-campi-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fn-init-componenti-jsonb-override-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-fn-list-commessa-attivita-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-commesse-emittibili-fatturazione-immediata-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-contratti-da-pushare-v1.sql	ERRORE_FIXTURE
@@ -106,5 +103,4 @@ db/pgtap/vendite/test-guard-esclusione-figlio-bundle-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-listini-versioni-guard-transizione-stato-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-ordini-modello-ext.sql	ASSERZIONE
 db/pgtap/vendite/test-preventivi-approvazione-prezzo.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-ricalcola-riepiloghi-iva.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-ricalcola-totali-fattura-arrotondamento.sql	ERRORE_FIXTURE

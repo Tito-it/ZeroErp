@@ -15,6 +15,8 @@ from decimal import Decimal
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_enum_param, validate_pagination
+from apps.core.services.partitioned_note_service import PartitionedNoteService
+from apps.vendite.db.note_repositories import NOTE_REPO_FATTURA
 from apps.vendite.db.vendite_repository import (
     DASH_APERTO_AREE,
     DASH_APERTO_FASI,
@@ -112,6 +114,8 @@ def fn_list_lotti(
     tipo_doc_fiscale_id: int | None = None,
     emittente_soggetto_ruolo_id: int | None = None,
     auth_user_id: int | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> dict[str, object]:
@@ -126,10 +130,54 @@ def fn_list_lotti(
         tipo_doc_fiscale_id=tipo_doc_fiscale_id,
         emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
         auth_user_id=auth_user_id,
+        order_by=order_by,
+        order_dir=order_dir,
         limit=page_size,
         offset=offset,
     )
     return _build_list_response(results, total_count, page, page_size)
+
+
+# Scopo: Estrae i lotti per l'EXPORT (CSV/XLSX), con gli stessi filtri e lo
+#        stesso ordinamento della lista a video — così il file rispecchia ciò
+#        che l'operatore stava guardando.
+#
+#        Perché non passa da `fn_list_lotti`: quella valida `page_size` con
+#        `validate_pagination`, che impone il tetto di 200 righe della lista.
+#        L'export ne ha bisogno di più, e chiede `EXPORT_MAX_ROWS + 1` di
+#        proposito: la riga in eccesso serve a **rilevare** il superamento del
+#        limite (`build_export_response` solleva `E_UI_EXPORT_LIMIT_EXCEEDED`)
+#        invece di consegnare un file troncato in silenzio.
+# Perimetro: sola lettura; scope emittente applicato in repository come la lista.
+# Risultato: tuple (righe, conteggio totale) da passare a `build_export_response`.
+def fn_export_lotti(
+    *,
+    competenza_mese: date | None = None,
+    utility_id: int | None = None,
+    stato_lotto: str | None = None,
+    area_geografica_id: int | None = None,
+    tipo_doc_fiscale_id: int | None = None,
+    emittente_soggetto_ruolo_id: int | None = None,
+    auth_user_id: int | None = None,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    max_rows: int,
+) -> tuple[list[LottoListRow], int]:
+    repository = VenditeRepository()
+    return repository.list_lotti(
+        competenza_mese=competenza_mese,
+        utility_id=utility_id,
+        stato_lotto=stato_lotto,
+        area_geografica_id=area_geografica_id,
+        tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+        emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+        auth_user_id=auth_user_id,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=max_rows,
+        offset=0,
+        max_limit=max_rows,
+    )
 
 
 # Range anni accettato (mirror del clamp FE useDashMesiNav): fuori range → 400,
@@ -1055,4 +1103,99 @@ def get_documento_passaggi(
         "frontiera": frontiera,
         "avanti": avanti,
         "indietro": indietro,
+    }
+
+
+# ------------------------------------------------------------------
+# Dettaglio fattura (drawer di consultazione)
+# brief-be-fe-drawer-fattura §5
+# ------------------------------------------------------------------
+
+_FN_FATTURA_DETTAGLIO = "vendite.vendite_service.get_fattura_dettaglio"
+
+
+# Scopo: Documento fattura completo per la consultazione a video: testata
+#        (cliente + emittente + pagamento + totali gia' decodificati), righe,
+#        riepilogo IVA e piano rate, in una sola risposta.
+#        Perimetro: SOLA LETTURA, nessun ricalcolo. Gli stessi quattro lettori
+#        alimentano il contesto del PDF (`FatturaDocumentContextBuilder`), quindi
+#        video e stampa raccontano lo stesso documento per costruzione — regola
+#        R17, non disciplina del chiamante.
+#        Risultato: {fattura, righe, riepilogo_iva, scadenze, contatori}.
+#        `contatori` alimenta i badge della barra azioni del drawer senza un
+#        secondo round-trip: oggi solo `note` (il sub-drawer note e' separato e
+#        il padre non ne carica la lista). E' un dict e non uno scalare
+#        `note_count` per reggere i prossimi badge (documenti generati,
+#        allegati) senza cambiare la shape della risposta.
+#
+# ⚠️ ORDINE VINCOLANTE — testata PRIMA, 404, poi i satelliti.
+#    `vendite.fatture` ha la RLS attiva (`rls_fatture_ef_whitelist` +
+#    `rls_fatture_ba_ownership`) e il ruolo dell'app vi e' soggetto: una fattura
+#    fuori scope non e' leggibile e qui diventa 404.
+#
+#    Aggiornamento 2026-07-29: dal changeset RLS satelliti anche `fatture_righe`
+#    e `fatture_riepiloghi_iva` hanno le proprie policy (operatore `FOR ALL` via
+#    `fn_scope_ef_whitelist_via_fattura`, portale `FOR SELECT` via
+#    `fn_scope_ba_ownership_via_fattura`). Verificato: 8 righe reali, **0**
+#    visibili senza GUC — prima erano 8 su 8.
+#    L'ordine resta vincolante, ma per due ragioni diverse da prima:
+#      1. e' il 404 unificato — senza il cancello si restituirebbe un documento
+#         a meta' (testata assente, satelliti vuoti) invece di un errore netto;
+#      2. i satelliti protetti sono DUE, non tutti: `note_fatture`,
+#         `fatture_indirizzi`, `fatture_fondi_fattura`, `fatture_sdi` restano
+#         senza policy. Qualunque lettura futura che li aggiunga qui e' coperta
+#         solo dal fatto che si passa prima dalla testata. E' esattamente il
+#         caso del conteggio note aggiunto per il badge: `note_fatture` non ha
+#         RLS, quindi quel COUNT su una fattura fuori scope risponderebbe —
+#         non lo fa solo perche' il cancello sopra ha gia' chiuso con 404.
+#    Cfr. brief-db-rls-satelliti-fattura-portale (chiuso 2026-07-29).
+def get_fattura_dettaglio(
+    *,
+    fattura_id: int,
+    auth_user_id: int | None = None,
+) -> dict[str, object]:
+    ErrorManager.require(
+        bool(fattura_id and fattura_id > 0),
+        code="E_VENDITE_VALIDATION",
+        message="Parametri non validi.",
+        detail="fattura_id obbligatorio e > 0",
+        context={"fattura_id": fattura_id},
+        function_name=_FN_FATTURA_DETTAGLIO,
+        log_to_db=True,
+    )
+    repository = VenditeRepository()
+
+    # 1. IL CANCELLO. Scope applicativo (auth_user_id) sommato alla RLS.
+    testata = repository.get_fattura_testata(fattura_id, auth_user_id=auth_user_id)
+    if testata is None:
+        # Inesistente e fuori scope danno la STESSA risposta: un 404 che
+        # distinguesse i due casi confermerebbe l'esistenza di una fattura di
+        # un altro emittente (api.md §Scope emittente).
+        ErrorManager.raise_error(
+            code="E_FATTURA_NON_TROVATA",
+            message="Fattura non trovata.",
+            detail=f"Nessuna fattura accessibile con id={fattura_id}",
+            context={"fattura_id": fattura_id},
+            function_name=_FN_FATTURA_DETTAGLIO,
+            log_to_db=True,
+        )
+    assert testata is not None
+
+    # 2. Solo ORA i satelliti: la testata ha gia' autorizzato l'accesso.
+    #    Il conteggio note passa dal service del BB note (`count_per_target`,
+    #    nato "per badge UI" e finora senza consumer): stessa porta della lista
+    #    note esposta dall'API, quindi un domani i due perimetri non possono
+    #    divergere. Oggi non filtra su `visibile`, esattamente come la lista
+    #    (`include_invisible=True` di default) — il badge non "salta" quando il
+    #    sub-drawer note si aggiorna da solo.
+    return {
+        "fattura": dict(testata),
+        "righe": repository.list_fattura_righe(fattura_id),
+        "riepilogo_iva": repository.list_fattura_riepilogo_iva(fattura_id),
+        "scadenze": repository.list_fattura_scadenze(fattura_id),
+        "contatori": {
+            "note": PartitionedNoteService(repo=NOTE_REPO_FATTURA).count_per_target(
+                target_id=fattura_id,
+            ),
+        },
     }

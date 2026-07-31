@@ -169,7 +169,29 @@ SELECT throws_ok(
 -- ------------------------------------------------------------
 -- 7) Riallineamento con la funzione canonica => guard verde.
 --    Non-regressione: il percorso reale della pipeline non e' ostacolato.
+--
+-- ⚠️ PREPARAZIONE OBBLIGATORIA DAL 2026-07-31 (piano satelliti I.4). Il sync
+--    porta a EMESSA la sola fattura non critical e non esclusa — il caso 'ok' —
+--    e da oggi vendite.trgfn_fatture_guard_uscita_draft pretende che chi lascia
+--    la bozza sia completo: indirizzo obbligatorio dell'ambito FATTURE piu'
+--    intestazione fiscale congelata delle due parti. Senza queste due
+--    scritture il sync fallirebbe con E_FATTURA_NON_EMETTIBILE_INCOMPLETA e il
+--    test 7 diventerebbe rosso per una ragione che non sta esaminando.
+--    Le altre due fatture (critical ed esclusa) restano volutamente nude: il
+--    sync non le tocca, ed e' proprio cio' che il test 8 verifica.
 -- ------------------------------------------------------------
+INSERT INTO vendite.fatture_indirizzi (fattura_id, tipo_indirizzo_id, snapshot)
+SELECT f.id,
+       (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'FATT'),
+       '{"intestazione":"Cliente pgTAP","via":"Via Guard Coerenza"}'::jsonb
+  FROM tmp_fatture_glf f
+ WHERE f.caso = 'ok';
+
+UPDATE vendite.fatture
+   SET emittente_snapshot = '{"denominazione":"Emittente pgTAP"}'::jsonb,
+       cliente_snapshot   = '{"denominazione":"Cliente pgTAP"}'::jsonb
+ WHERE id = (SELECT id FROM tmp_fatture_glf WHERE caso = 'ok');
+
 SELECT vendite.fn_sync_lotto_fatture_stato(
   (SELECT lotto_id FROM tmp_lotto_glf),
   (SELECT stato_emessa_id FROM tmp_refs_glf)

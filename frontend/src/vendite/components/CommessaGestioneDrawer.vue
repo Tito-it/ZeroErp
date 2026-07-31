@@ -38,6 +38,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import { useSelezioneToggle } from '../_shared/righe/useSelezioneToggle'
 import { DRAWER_WIDTH, PAGINATION } from '../../core/constants'
+import { STATO_APPROVAZIONE_ATTIVITA, STATO_EMISSIONE_ATTIVITA } from '../constants'
 import { displayDate, toDateString } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { extractApiError } from '../../core/utils/apiError'
@@ -48,6 +49,7 @@ import {
 } from '../../core/utils/severity'
 import {
   aggiungiOnereCommessa,
+  annullaRigaCommessa,
   approvaCommessaAttivita,
   cambiaStatoCommessa,
   getCommessaStato,
@@ -85,6 +87,10 @@ const canApprova = computed(() => !isReadonly.value && canApprovare.value)
 // Gate azioni prezzo N5/N7 (specchio del `post_permission` sugli endpoint:
 // senza il permesso il kebab non le propone invece di farle fallire in 403).
 const { isAllowed: canPrezzo } = useActionPermission('prezzo_override_manuale')
+// Gate della porta oneri: lo STESSO codename autorizza il caricamento di una
+// voce manuale e il suo annullamento (decisione Tid §5 del brief) — chi puo'
+// caricare puo' disfare, nessun permesso dedicato.
+const { isAllowed: canVoceManuale } = useActionPermission('carica_voce_manuale')
 // Gate di STATO commessa per le azioni prezzo (specchio di
 // `_assert_commessa_modificabile` lato BE, data-driven su
 // stati_commessa.modificabile): su CHIUSA/ANNULLATA il kebab non propone
@@ -116,7 +122,10 @@ const contatori = computed(() => {
 
 // Selezione: solo le righe ancora approvabili (BOZZA + NON_EMESSA).
 const righeApprovabili = computed(() =>
-  righe.value.filter((r) => r.stato_approvazione === 'BOZZA' && r.stato_emissione === 'NON_EMESSA'),
+  righe.value.filter(
+    (r) => r.stato_approvazione === STATO_APPROVAZIONE_ATTIVITA.BOZZA
+      && r.stato_emissione === STATO_EMISSIONE_ATTIVITA.NON_EMESSA,
+  ),
 )
 const { isSelectable, isSelected, toggleRow, toggleAll, allSelected, anySelected } =
   useSelezioneToggle({ selected, selezionabili: righeApprovabili })
@@ -298,22 +307,31 @@ const sbloccaDialog = ref(false)
 const sbloccaRiga = ref(null)
 const sbloccaMotivo = ref('')
 
-// Scopo: kebab riga — azioni prezzo condizionate dai flag riga; il guard vero
-//        (riga fatturata, commessa non modificabile) resta al BE (fail-visible).
+// Scopo: kebab riga — array UNICO con i gate sulle singole voci; il guard vero
+//        (riga fatturata, commessa non modificabile, riga non manuale) resta al
+//        BE (fail-visible).
+//
+// ⚠️ Niente early-return sui permessi (G10 del brief annullamento): il
+// preambolo `if (!canPrezzo) return []` rendeva l'intero kebab invisibile a chi
+// ha `carica_voce_manuale` ma NON `prezzo_override_manuale` — cioe' esattamente
+// il destinatario dell'annullamento riga. I gate stanno sulle voci, non sulla
+// funzione: due permessi diversi non possono condividere una sola porta.
+// Restano condizioni comuni solo quelle che valgono per QUALUNQUE azione di
+// riga: ispezione pura e commessa non piu' modificabile.
 function buildRowActions(row) {
-  if (isReadonly.value || !canPrezzo.value || !canEditRighe.value) return []
+  if (isReadonly.value || !canEditRighe.value) return []
   // Riga fatturata: nessuna azione prezzo (le tre sono tutte rifiutate dal
   // guard BE `_assert_non_fatturata`). `fatturata` = EXISTS di un'AF con
   // fattura_riga_id valorizzato, esposta dalla lista (changeset 20260724-07):
   // specchio esatto del guard, non `stato_emissione` (che resta EMESSA anche
   // dopo un reset-lotto che ha reso il prezzo di nuovo modificabile).
-  if (row.fatturata) return []
+  const prezzoOk = canPrezzo.value && !row.fatturata
   return [
     {
       key: 'riallinea',
       label: t('vendite.commesse.azione_riallinea'),
       icon: 'pi pi-sync',
-      visible: !row.prezzo_bloccato,
+      visible: prezzoOk && !row.prezzo_bloccato,
       command: () => riallinea(row, false),
     },
     {
@@ -322,7 +340,7 @@ function buildRowActions(row) {
       key: 'variazione',
       label: t('vendite.commesse.azione_variazione'),
       icon: 'pi pi-pencil',
-      visible: !row.prezzo_bloccato,
+      visible: prezzoOk && !row.prezzo_bloccato,
       command: () => {
         variazioneRiga.value = row
         variazionePrezzo.value = null
@@ -337,8 +355,26 @@ function buildRowActions(row) {
       key: 'sblocca',
       label: t('vendite.commesse.azione_sblocca'),
       icon: 'pi pi-key',
-      visible: row.prezzo_bloccato === true,
+      visible: prezzoOk && row.prezzo_bloccato === true,
       command: () => sblocca(row),
+    },
+    {
+      // Annullamento riga MANUALE: solo righe sourceless e non ancora emesse
+      // (specchio esatto dei guard BE/DB). `sorgente_tipo_id === null` e' il
+      // discriminante di «manuale» — non `segment_key LIKE 'MAN:%'` (i prefissi
+      // sono una convenzione di leggibilita', non un contratto) ne'
+      // `tipo_movimento = 'ONERE'` (natura, non origine: il CHECK ammette gia'
+      // RETTIFICA). La label dice «voce manuale» e non «riga» per non
+      // confondersi con «Annulla commessa» della barra azioni, a due centimetri
+      // di distanza e di tutt'altra portata.
+      key: 'annulla-riga',
+      label: t('vendite.commesse.azione_annulla_riga'),
+      icon: 'pi pi-ban',
+      severity: 'danger',
+      visible: canVoceManuale.value
+        && row.sorgente_tipo_id === null
+        && row.stato_emissione === STATO_EMISSIONE_ATTIVITA.NON_EMESSA,
+      command: () => apriAnnullaRiga(row),
     },
   ]
 }
@@ -397,6 +433,40 @@ async function salvaSblocco() {
   if (res !== null) {
     sbloccaDialog.value = false
     notify.success(t('vendite.commesse.sblocca_esito'))
+    await reloadAll()
+    emit('saved')
+  }
+}
+
+// ------------------------------------------------------------------ annullamento riga manuale
+// La riga non si cancella: passa ad ANNULLATA (tag rosso gia' mappato in
+// STATO_EMISSIONE_ATTIVITA_MAP) e sparisce dalle porte verso fattura e cockpit.
+// Dialog e non semplice conferma: il motivo e' obbligatorio (BE + madre DB) ed
+// e' l'unica traccia del PERCHE' — stesso pattern della variazione prezzo.
+const annullaRigaDialog = ref(false)
+const annullaRigaRiga = ref(null)
+const annullaRigaMotivo = ref('')
+
+// Scopo: apre il dialog azzerando il motivo (mai residui del giro precedente).
+function apriAnnullaRiga(row) {
+  annullaRigaRiga.value = row
+  annullaRigaMotivo.value = ''
+  annullaRigaDialog.value = true
+}
+
+const annullaRigaValido = computed(() =>
+  String(annullaRigaMotivo.value ?? '').trim().length > 0)
+
+// Scopo: annulla la riga manuale; al successo ricarica testata (i contatori
+//        escludono le annullate) e righe.
+async function salvaAnnullaRiga() {
+  const res = await execute(() =>
+    annullaRigaCommessa(props.commessaId, annullaRigaRiga.value.id, {
+      motivo: annullaRigaMotivo.value,
+    }))
+  if (res !== null) {
+    annullaRigaDialog.value = false
+    notify.success(t('vendite.commesse.annulla_riga_esito'))
     await reloadAll()
     emit('saved')
   }
@@ -641,6 +711,27 @@ const drawerActions = computed(() => [
       <div class="form-field">
         <label>{{ t('vendite.commesse.sblocca_motivo') }}</label>
         <Textarea v-model="sbloccaMotivo" rows="3" fluid />
+      </div>
+    </AppDialog>
+
+    <!-- Dialog annullamento riga manuale — motivo obbligatorio (BE + DB). -->
+    <AppDialog
+      v-model:visible="annullaRigaDialog"
+      :header="t('vendite.commesse.annulla_riga_header')"
+      width="sm"
+      :loading="loading"
+      :save-disabled="!annullaRigaValido"
+      :save-label="t('vendite.commesse.annulla_riga_salva')"
+      save-severity="danger"
+      @save="salvaAnnullaRiga"
+      @cancel="annullaRigaDialog = false"
+    >
+      <p class="text-color-secondary" style="margin-top: 0;">
+        {{ t('vendite.commesse.annulla_riga_conferma') }}
+      </p>
+      <div class="form-field">
+        <label>{{ t('vendite.commesse.annulla_riga_motivo') }}</label>
+        <Textarea v-model="annullaRigaMotivo" rows="3" fluid />
       </div>
     </AppDialog>
 

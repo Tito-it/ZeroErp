@@ -428,10 +428,10 @@ function buildPayload() {
     data: toIsoDate(f.data),
     parent_contratto_id: f.parent_contratto_id || null,
     categoria_cliente_id_snapshot: f.categoria_cliente_id_snapshot || null,
-    // Corsia di instradamento: solo in PATCH. La fn madre di create
-    // (vendite.fn_create_contratto) ha una whitelist SUA che non contiene
-    // ancora la colonna e la scarterebbe in silenzio -> il create la omette
-    // esplicitamente (vedi handleSave). Brief DB passato al team.
+    // Corsia di instradamento: accettata sia in create sia in PATCH dal
+    // 2026-07-27 (changeset DB 20260727-40, che ha esteso la whitelist della
+    // fn madre `vendite.fn_create_contratto`). Sempre un booleano, mai null:
+    // la colonna e' NOT NULL e la fn madre filtra sulla presenza della chiave.
     fatturazione_immediata: !!f.fatturazione_immediata,
   }
   // Pricing — refactor modalita 2026-05-15: niente piu' if-chain modalita.
@@ -457,10 +457,6 @@ async function handleSave() {
     if (result !== null) emit('saved', result)
   } else {
     const f = form.value
-    // `fatturazione_immediata` viaggia solo nella PATCH: il BE rifiuta le
-    // chiavi fuori dalla whitelist di create con un 400, e la fn madre DB la
-    // scarterebbe comunque in silenzio. Si scorpora qui, esplicitamente.
-    const { fatturazione_immediata: _soloInPatch, ...campiCreate } = buildPayload()
     const payload = {
       emittente_fiscale_id: f.emittente_fiscale_id,
       billing_account_id: f.billing_account_id,
@@ -470,7 +466,7 @@ async function handleSave() {
       // (non in _UPDATE_KEYS_TESTATA BE). Se null, il trigger DB la
       // risolve via fn_get_valuta_id (BA→emittente→gestore).
       valuta_id: f.valuta_id || null,
-      ...campiCreate,
+      ...buildPayload(),
     }
     // Utility 1:1 inline: tipo/classe utenza (opzionali)
     if (f.utility_tipo_utenza_id || f.utility_classe_utenza_id) {
@@ -838,17 +834,17 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 
       <!-- Corsia di fatturazione: instradamento deciso PRIMA che il contratto
            entri in commessa; dopo il push il flag e' inerte e il DB respinge
-           la modifica. Solo in MODIFICA e solo in bozza: la create non lo
-           accetta ancora (whitelist della fn madre DB, brief al team) e in
-           ATTIVO la PATCH ammette solo la data di fine validita'. -->
-      <div v-if="isEdit" class="form-grid-2col mt-1">
+           la modifica. Disponibile sia in creazione sia in modifica; in ATTIVO
+           la PATCH ammette solo la data di fine validita', quindi il campo
+           risulta bloccato da `isReadonly`. -->
+      <div class="form-grid-2col mt-1">
         <div class="form-field">
           <label for="ctr-fatt-immediata">{{ t('vendite.contratti.field_fatturazione_immediata') }}</label>
           <div class="app-form-inline-toggle">
             <ToggleSwitch
               input-id="ctr-fatt-immediata"
               v-model="form.fatturazione_immediata"
-              :disabled="isLocked('fatturazione_immediata') || isReadonly" />
+              :disabled="(isEdit && isLocked('fatturazione_immediata')) || isReadonly" />
             <small class="text-color-secondary">
               {{ t('vendite.contratti.fatturazione_immediata_hint') }}
             </small>

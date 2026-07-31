@@ -25,6 +25,10 @@ Indice test eseguiti:
 23) PipelineStepExecutorUnitTests.test_pull_attivita_da_commessa_empty_list_no_emit
 24) PipelineStepExecutorUnitTests.test_execute_step_runs_stampa_documenti_lotto_task (C-2c)
 25) PipelineStepExecutorUnitTests.test_execute_step_stampa_documenti_lotto_dry_run_skips (C-2c)
+26) PipelineStepExecutorUnitTests.test_execute_step_runs_snapshot_indirizzi_lotto_task (Fase 2 satelliti)
+27) PipelineStepExecutorUnitTests.test_execute_step_snapshot_indirizzi_dry_run_skips
+28) PipelineStepExecutorUnitTests.test_execute_step_snapshot_indirizzi_failed_rows_chiude_task_run_errore (D-Q p.3)
+29) PipelineStepExecutorUnitTests.test_execute_step_snapshot_indirizzi_senza_falliti_completa_task_run
 """
 
 from unittest.mock import MagicMock, patch
@@ -52,7 +56,9 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.is_stato_doc_chiude_lotto.return_value = True
         repo.ALLOWED_TASK_FUNCTIONS = {
             "select_attivita": "vendite.fn_select_attivita_fatturabili",
-            "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
+            # Speculare alla mappa reale: None = task Python-only
+            # (`FattureRigheService`), la fn SQL e' stata rimossa (20260728-21).
+            "generate_fatture_righe": None,
             "genera_fondi_source_lotto": "vendite.fn_genera_fondi_fattura_source",
             "applica_fondi_lotto": "vendite.fn_applica_fondi_fattura",
             "ricalcola_iva_lotto": "vendite.fn_ricalcola_riepiloghi_iva_lotto",
@@ -60,6 +66,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
             "close_lotto": None,
             "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
+            "snapshot_indirizzi_lotto": "vendite.fn_snapshot_fattura_lotto",
         }
         # Tracing: default nessuna policy → nessun tracing (test esistenti non cambiano).
         repo.get_pipeline_id_for_step.return_value = 100
@@ -640,3 +647,127 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
 
         commesse_repo.list_commesse_emittibili.assert_called_once()
         commesse_repo.emit_attivita_fatturabili.assert_not_called()
+
+    # Scopo: task `snapshot_indirizzi_lotto` (Fase 2 satelliti fattura) — il
+    #        run felice esegue il wrapper repo col batch di default e, senza
+    #        fatture fallite, il task_run chiude in COMPLETATO.
+    def test_execute_step_runs_snapshot_indirizzi_lotto_task(self):
+        processi = [{
+            "task": "snapshot_indirizzi_lotto",
+            "fase": "Snapshot indirizzi fattura",
+            "params": {"implementation_key": "default"},
+        }]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "snapshot_indirizzi_lotto_default"
+        repo.run_snapshot_indirizzi_lotto_task.return_value = {
+            "fatture_count": 3, "inserted_rows": 3, "updated_rows": 0,
+            "intestazioni_scritte": 3, "skipped_rows": 0, "failed_rows": 0,
+        }
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=1,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.run_snapshot_indirizzi_lotto_task.assert_called_once_with(
+            lotto_id=1, batch_size=1000,
+        )
+
+    # Scopo: dry-run — nessuna esecuzione del wrapper (gate in _run_validated_task).
+    def test_execute_step_snapshot_indirizzi_dry_run_skips(self):
+        processi = [{
+            "task": "snapshot_indirizzi_lotto",
+            "fase": "Snapshot indirizzi fattura",
+            "params": {"implementation_key": "default"},
+        }]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "snapshot_indirizzi_lotto_default"
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=1,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=True,
+        )
+
+        repo.run_snapshot_indirizzi_lotto_task.assert_not_called()
+
+    # Scopo: ⚠️ D-Q p.3, IL TEST CHE CONTA — `failed_rows > 0` chiude il
+    #        task_run in ERRORE (fail_lotto_task_run) e NON in COMPLETATO,
+    #        SENZA sollevare: al rilancio dello step il resolver dara' RESUME
+    #        (policy RESUME_TASK) invece di SKIP e il task verra' ripetuto.
+    #        Con COMPLETATO la correzione dell'anagrafica non verrebbe mai
+    #        riletta; con un raise il rollback cancellerebbe anche il lavoro
+    #        delle fatture sane e la marcatura di quelle rotte.
+    def test_execute_step_snapshot_indirizzi_failed_rows_chiude_task_run_errore(self):
+        processi = [{
+            "task": "snapshot_indirizzi_lotto",
+            "fase": "Snapshot indirizzi fattura",
+            "params": {"implementation_key": "default"},
+        }]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "snapshot_indirizzi_lotto_default"
+        repo.task_policy_exists.return_value = True
+        run_mode = MagicMock()
+        run_mode.execution_mode = "RUN"
+        repo.resolve_lotto_task_execution_mode.return_value = run_mode
+        task_run = MagicMock()
+        task_run.task_run_id = 777
+        repo.start_lotto_task_run.return_value = task_run
+        repo.run_snapshot_indirizzi_lotto_task.return_value = {
+            "fatture_count": 3, "inserted_rows": 2, "updated_rows": 0,
+            "intestazioni_scritte": 2, "skipped_rows": 0, "failed_rows": 1,
+        }
+
+        # Nessuna eccezione: lo step si completa (D-Q).
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=1,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.fail_lotto_task_run.assert_called_once()
+        args, kwargs = repo.fail_lotto_task_run.call_args
+        self.assertEqual(args[0], 777)
+        self.assertEqual(args[1], "E_INDIRIZZO_FATTURA_MANCANTE")
+        self.assertEqual(kwargs["meta"]["failed_rows"], 1)
+        repo.complete_lotto_task_run.assert_not_called()
+
+    # Scopo: simmetrico — `failed_rows == 0` con tracing attivo chiude il
+    #        task_run in COMPLETATO (nessun fail).
+    def test_execute_step_snapshot_indirizzi_senza_falliti_completa_task_run(self):
+        processi = [{
+            "task": "snapshot_indirizzi_lotto",
+            "fase": "Snapshot indirizzi fattura",
+            "params": {"implementation_key": "default"},
+        }]
+        executor, repo, _, _ = self._build_executor(processi)
+        repo.get_task_handler_code.return_value = "snapshot_indirizzi_lotto_default"
+        repo.task_policy_exists.return_value = True
+        run_mode = MagicMock()
+        run_mode.execution_mode = "RUN"
+        repo.resolve_lotto_task_execution_mode.return_value = run_mode
+        task_run = MagicMock()
+        task_run.task_run_id = 778
+        repo.start_lotto_task_run.return_value = task_run
+        repo.run_snapshot_indirizzi_lotto_task.return_value = {
+            "fatture_count": 2, "inserted_rows": 2, "updated_rows": 0,
+            "intestazioni_scritte": 2, "skipped_rows": 0, "failed_rows": 0,
+        }
+
+        executor.execute_step(
+            lotto_id=1,
+            stato_doc_fiscale_id=1,
+            tipo_lotto="MASSIVO",
+            rollback=False,
+            dry_run=False,
+        )
+
+        repo.complete_lotto_task_run.assert_called_once_with(778)
+        repo.fail_lotto_task_run.assert_not_called()

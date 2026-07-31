@@ -18,8 +18,18 @@ from apps.vendite.api.fatture_documenti_views import (
     ApiFatturaDocumentoFileDownload,
     ApiFatturaDocumentoGenera,
 )
+from apps.vendite.api.fatture_views import ApiFatturaDetail
+from apps.vendite.api.note_views import ApiFatturaNoteDetail, ApiFatturaNoteList
 
 urlpatterns = [
+    # Note della fattura (BB partizionato, sesto dominio del ciclo attivo).
+    # PRIMA del dettaglio `<int:fattura_id>/`: `note/` è un segmento letterale
+    # e non collide, ma tenere le rotte più specifiche in testa evita sorprese
+    # se un domani il dettaglio diventasse un pattern più permissivo.
+    path("<int:fattura_id>/note/", ApiFatturaNoteList.as_view(),
+         name="vendite-fattura-note-list"),
+    path("<int:fattura_id>/note/<int:note_id>/", ApiFatturaNoteDetail.as_view(),
+         name="vendite-fattura-note-detail"),
     # Documenti generati (stampa PDF) — motore `documenti`, sorgente FATTURA.
     # Clone della catena ordini/DDT, SENZA emissione (la fattura non si emette).
     path("<int:sorgente_id>/documenti/", ApiFatturaDocumentiList.as_view(),
@@ -37,4 +47,9 @@ urlpatterns = [
     path("<int:sorgente_id>/documenti/<int:documento_id>/file/<int:file_id>/",
          ApiFatturaDocumentoFileDownload.as_view(),
          name="vendite-fattura-documenti-file-download"),
+    # Dettaglio di consultazione (drawer fattura): testata + righe + riepilogo
+    # IVA + scadenze in un round-trip. ULTIMA della lista: `<int:fattura_id>/`
+    # è il pattern più generico e deve cedere il passo a `note/` e `documenti/`.
+    path("<int:fattura_id>/", ApiFatturaDetail.as_view(),
+         name="vendite-fattura-detail"),
 ]

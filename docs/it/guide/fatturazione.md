@@ -497,6 +497,111 @@ Per evitare ambiguita` tra SQL legacy e runtime applicativo:
 
 ---
 
+## La riga di fattura: aggregazione, importo, esposizione
+
+> Sezione aggiunta il **2026-07-28**. Fino a quella data queste regole non erano
+> scritte da nessuna parte, e ricostruirle è costato una sessione intera di
+> indagine sul codice e sui dati. Riferimento:
+> `brief-fix-importi-riga-fattura-zero.md`.
+
+### Tre livelli, non due
+
+| Livello | Tabella | Cosa contiene |
+|---|---|---|
+| Dettaglio | `vendite.attivita_fatturabili` | il lavoro fatturabile, riga per riga: quantità, prezzo, competenza, sorgente |
+| Sintesi | `vendite.fatture_righe` | **una riga per gruppo**: aggrega 1..n attività |
+| Rappresentazione | `vendite.vw_fattura_righe_esposte` | come il documento va **mostrato**: PDF, XML SDI, portale |
+
+Il legame fra i primi due è `attivita_fatturabili.fattura_riga_id`. Non esiste
+una tabella di dettaglio *sotto* la riga di fattura: **il dettaglio sono le
+attività**.
+
+### Come si aggrega
+
+L'aggregazione la fa il **backend**, non il database: il servizio
+`FattureRigheService` (`apps/vendite/services/fatture_righe_service.py`),
+invocato dal task `generate_fatture_righe` della pipeline. Raggruppa le attività
+del lotto per la chiave che costruisce `_build_group_key`:
+
+> articolo · billing account destinatario · unità di misura · **prezzo unitario**
+> · IVA · competenza dal/al · **istanza di kit**
+
+e produce **una riga per gruppo**, con `qta` = somma **esatta** delle quantità.
+
+Il fatto che il **prezzo stia nella chiave** non è un dettaglio: rende
+`Σ(qᵢ × p) = p × Σqᵢ` un'identità, quindi la riga aggregata rappresenta
+esattamente la somma dei suoi dettagli. Se un giorno il prezzo uscisse dalla
+chiave, quella proprietà cadrebbe.
+
+⚠️ Sulle righe aggregate le colonne `sorgente_*` sono **NULL**: con *n* attività
+di sorgenti diverse non esiste una sorgente singola. La tracciabilità è il
+puntatore delle attività.
+
+### Come si calcola l'importo
+
+Lo calcola il **database**, con un trigger, a ogni scrittura:
+
+```
+imponibile_riga = arrotonda(qta × prezzo × (1 − sconto/100), decimali, metodo)
+```
+
+dove decimali e metodo vengono da `vendite.articolo_regole_fatturazione`
+**dell'articolo** (default 2 / HALF_UP), applicati da
+`script.fn_arrotonda_importo` — unico punto in cui vive la regola.
+
+**Due arrotondamenti diversi, da non confondere**:
+
+| Cosa | Configurazione | Chi lo applica |
+|---|---|---|
+| Importo di **riga** | `articolo_regole_fatturazione` (per articolo) | trigger sulla riga |
+| **Totale a pagare** | `emittenti_fiscali_utilities` (per emittente-utility) | `fn_ricalcola_totali_fattura`, con saldo riportato fra documenti |
+
+⚠️ `arrotondamento_quantita_dec` si applica alla quantità della **singola
+attività**, mai alla quantità aggregata di una riga: arrotondare la somma
+perderebbe precisione a monte dell'importo, dove nessuno la cerca.
+
+### Come si espone un kit
+
+Un articolo composito **non arriva in fattura come riga unica**: il push lo
+espande e in commessa entrano **solo i componenti**, mai il padre. È il modello
+unificato componenti BoM del 2026-05-13, ed è voluto.
+
+La regola di esposizione è
+**`catalogo.articoli_componenti.esposto_in_fattura`**, per singolo componente.
+Viene congelata sulla riga di fattura alla generazione, insieme all'identità del
+kit e all'articolo padre. La vista `vw_fattura_righe_esposte` produce poi:
+
+- **una riga padre** con il totale del kit;
+- sotto, i soli componenti con il flag a `true`, come righe **descrittive** senza
+  importo.
+
+I componenti non esposti non compaiono, ma il loro valore è nel totale del padre:
+**il totale del documento non cambia mai al variare dell'esposizione**.
+
+⚠️ **Non è "la vista di stampa"**: PDF, XML SDI e portale devono leggere **la
+stessa** rappresentazione. Altrimenti si producono due uscite dello stesso
+documento con dettagli diversi — totali uguali, quindi nulla di irregolare, ma
+una divergenza che nessuno ha deciso.
+
+### Quando il documento si congela
+
+Superata la soglia `DRAFT`/`EMESSA`, sulle righe non si può più fare **nulla**:
+né `UPDATE`, né `DELETE`, né `INSERT` di righe nuove. Il presidio agisce sugli
+**input** (quantità, prezzo, sconto, IVA) e non sull'importo: congelare il solo
+importo lascerebbe passare una riga con `qta=999` e `imponibile=500`, incoerente
+e indistinguibile da un dato buono.
+
+Ne segue, senza bisogno di altri meccanismi, che **una fattura emessa non cambia
+aspetto nel tempo**: cambiare la distinta o le regole dell'articolo non tocca i
+documenti già emessi. Rigenerare una fattura passa invece dal reset del lotto,
+che riscrive le righe leggendo le regole correnti.
+
+E **non si numera un documento vuoto**: `fn_assign_numero_fattura` rifiuta una
+fattura senza righe, prima che il progressivo venga consumato — `nextval` non fa
+rollback, quindi fallire dopo lascerebbe comunque un buco nella numerazione.
+
+---
+
 ## Dashboard operative
 
 > Questa sezione descrive l'**assetto realmente implementato** (aggiornata

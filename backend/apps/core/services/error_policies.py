@@ -802,6 +802,45 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Chiusura non consentita: restano righe approvate non ancora emesse.",
         ),
+        # Annullamento riga MANUALE di commessa (guard DB 564-567,
+        # brief-annullamento-righe-manuali-commessa §4d). Quattro codici
+        # DISTINTI e non uno generico: ogni causa porta l'operatore a un'azione
+        # diversa. In particolare `GIA_ANNULLATA` esiste separato da
+        # `GIA_EMESSA` perche' dire «e` entrata nella catena di fatturazione» a
+        # chi ha semplicemente cliccato due volte e` FALSO, e lo manda a cercare
+        # una fattura che non esiste.
+        # 409 sui tre conflitti di stato (non e` un input da correggere, e` un
+        # fatto), 400 sul motivo mancante (campo del form).
+        "E_RIGA_COMMESSA_GIA_ANNULLATA": ErrorPolicy(
+            code="E_RIGA_COMMESSA_GIA_ANNULLATA",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message="La riga era gia` stata annullata.",
+        ),
+        "E_RIGA_COMMESSA_NON_MANUALE": ErrorPolicy(
+            code="E_RIGA_COMMESSA_NON_MANUALE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La riga nasce da un documento e non si annulla qui: "
+                "il rimedio e` sul documento sorgente."
+            ),
+        ),
+        "E_RIGA_COMMESSA_GIA_EMESSA": ErrorPolicy(
+            code="E_RIGA_COMMESSA_GIA_EMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Riga gia` entrata nella catena di fatturazione: "
+                "la correzione passa dalla nota di credito."
+            ),
+        ),
+        "E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO": ErrorPolicy(
+            code="E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Motivo obbligatorio per annullare la riga.",
+        ),
         # ── Pratiche ──
         "E_PRATICA_VALIDATION": ErrorPolicy(
             code="E_PRATICA_VALIDATION",
@@ -1201,22 +1240,16 @@ class ErrorPolicyRegistry:
                          "puo' essere rimossa solo come parte della "
                          "disattivazione utente.",
         ),
-        # ── Clienti / Fornitori — normalize+guard payload pagamento/fiscali ──
+        # ── Fornitori — normalize+guard payload pagamento/fiscali ──
         # Fase 2 refactor anagrafiche (landed 2026-04-27). Trigger DB:
-        # anagrafiche.trgfn_clienti_normalize_giorni_scadenza (raise se
-        # tipo_gg_scadenza_ft IN ('G','F') AND nr_giorni_scadenza IS NULL/<=0).
-        # Pattern simmetrico al gemello fornitori (raise se ritenuta_acconto=true
-        # AND ritenuta_aliquota IS NULL/<=0). Codici seedati in
-        # config.messaggi_errore (id 397, 398).
-        "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI": ErrorPolicy(
-            code="E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI",
-            http_status=400,
-            ui_action="highlight_form_fields",
-            user_message=(
-                "Numero giorni scadenza obbligatorio quando il tipo calcolo "
-                "scadenza e' G (somma giorni) o F (fine mese + somma)."
-            ),
-        ),
+        # anagrafiche.trgfn_fornitori_guard_normalize (raise se
+        # ritenuta_acconto=true AND ritenuta_aliquota IS NULL/<=0). Codice
+        # seedato in config.messaggi_errore (id 398).
+        # Il gemello clienti (E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI) e' stato
+        # RITIRATO il 2026-07-31 con la DROP del trigger normalize e delle
+        # colonne tipo_gg_scadenza_ft/nr_giorni_scadenza (riforma D-I,
+        # piano-db-satelliti 3a.5): le condizioni di pagamento cliente passano
+        # da config.termini_pagamento e il guard non e' piu' raggiungibile.
         "E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA": ErrorPolicy(
             code="E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA",
             http_status=400,
@@ -1442,6 +1475,13 @@ class ErrorPolicyRegistry:
         "E_GROUP_ATTIVITA_VALIDATION": ErrorPolicy(code="E_GROUP_ATTIVITA_VALIDATION", http_status=400, ui_action="highlight_form_fields", user_message="Parametri gruppo attivita non validi."),
         "E_GROUP_ATTIVITA_NOT_FOUND": ErrorPolicy(code="E_GROUP_ATTIVITA_NOT_FOUND", http_status=404, ui_action="show_empty_state", user_message="Gruppo attivita non trovato."),
         "E_GROUP_ATTIVITA_INVALID_DATA": ErrorPolicy(code="E_GROUP_ATTIVITA_INVALID_DATA", http_status=400, ui_action="show_error_banner", user_message="Dati gruppo attivita non validi."),
+        # ── Generazione righe fattura: kit (brief-fix-importi-riga-fattura-zero §4.7-bis) ──
+        # Dati incoerenti a monte, non input dell'utente: 409 e banner, perche' la
+        # correzione sta sul documento sorgente e non su questa schermata.
+        "E_ATTIVITA_KIT_SENZA_PADRE": ErrorPolicy(code="E_ATTIVITA_KIT_SENZA_PADRE", http_status=409, ui_action="show_error_banner", user_message="Componente di kit senza articolo padre: correggere il documento di origine."),
+        "E_KIT_QUANTITA_DISOMOGENEE": ErrorPolicy(code="E_KIT_QUANTITA_DISOMOGENEE", http_status=409, ui_action="show_error_banner", user_message="Componenti dello stesso kit con quantita diverse: la fattura non e' rappresentabile."),
+        # Difetto di programmazione, non condizione di dominio: 500.
+        "E_BATCH_ARRAY_DISALLINEATI": ErrorPolicy(code="E_BATCH_ARRAY_DISALLINEATI", http_status=500, ui_action="show_error_banner", user_message="Errore interno nella generazione delle righe."),
         # ── Autenticazione ──
         "E_AUTHENTICATION_FAILED": ErrorPolicy(code="E_AUTHENTICATION_FAILED", http_status=401, ui_action="show_error_banner", user_message="Autenticazione fallita."),
         "E_NOT_AUTHENTICATED": ErrorPolicy(code="E_NOT_AUTHENTICATED", http_status=401, ui_action="show_error_banner", user_message="Non autenticato."),
@@ -1750,12 +1790,6 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Tipo di lavoro non cablato nel sistema.",
         ),
-        "E_PREZZO_LISTINO_NON_TROVATO": ErrorPolicy(
-            code="E_PREZZO_LISTINO_NON_TROVATO",
-            http_status=404,
-            ui_action="show_empty_state",
-            user_message="Prezzo listino non trovato.",
-        ),
         "E_EMITTENTE_DEFAULT_MISSING": ErrorPolicy(
             code="E_EMITTENTE_DEFAULT_MISSING",
             http_status=404,
@@ -2010,6 +2044,29 @@ class ErrorPolicyRegistry:
             user_message=(
                 "Indirizzo obbligatorio mancante: impostare l'indirizzo di "
                 "consegna prima dell'emissione."
+            ),
+        ),
+        # Guard DB all'uscita da DRAFT della FATTURA
+        # (trgfn_fatture_guard_uscita_draft, I.4 brief intestazione §10.9):
+        # criterio ALLARGATO rispetto al gemello DDT — indirizzi obbligatori
+        # dell'ambito FATTURE *e* intestazione fiscale congelata
+        # (emittente_snapshot/cliente_snapshot). UN codice solo: chi lo riceve
+        # fa la stessa cosa in entrambi i casi (rieseguire lo step DRAFT, che
+        # riscrive tutto ed e' idempotente); la diagnosi sta nel messaggio DB e
+        # nel payload (indirizzi_mancanti / intestazione_mancante), non nel
+        # ramo di codice. NON E_INDIRIZZO_DOC_OBBLIGATORIO: per una
+        # cliente_snapshot mancante direbbe una cosa falsa e manderebbe
+        # l'operatore a cercare un indirizzo che c'e'.
+        # 409 e non 400/422: lo stato attuale della risorsa non consente
+        # l'azione (documento incompleto), non input malformato — stessa
+        # famiglia di _DUPLICATO/_IN_ESECUZIONE (api.md §Tassonomia).
+        "E_FATTURA_NON_EMETTIBILE_INCOMPLETA": ErrorPolicy(
+            code="E_FATTURA_NON_EMETTIBILE_INCOMPLETA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Fattura non emettibile: documento incompleto. Rieseguire lo "
+                "step DRAFT del lotto (riscrive indirizzi e intestazione)."
             ),
         ),
         # Cliente (billing_account_id/destinatario) immutabile post-create:

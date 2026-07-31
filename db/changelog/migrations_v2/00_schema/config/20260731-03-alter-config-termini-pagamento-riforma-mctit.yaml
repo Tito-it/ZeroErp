@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3a.2 — riforma di config.termini_pagamento
+#   (piano-db-satelliti-fattura.md D-I / D-E, rilievo C-16).
+#
+# PERCHE'. Il modello diceva «giorni + fine mese» in TRE grafie diverse:
+#   la coppia lettera+giorni su anagrafiche.clienti, la coppia
+#   giorni+booleano su fornitori e fatture, e il termine strutturato di questo
+#   catalogo. D-I ha deciso che ne resta UNA: il termine di pagamento. Questo
+#   changeSet porta il catalogo nella forma che la rende sufficiente.
+#
+# ⚠️ LA LETTERA `M` E' IL MOTIVO DELLA RIFORMA, non un dettaglio. Lo stesso
+#   valore significava tre cose in tre posti: «mesi» in tipo_offset, «manuale»
+#   nella doc di clienti, «Mese» a video nel drawer. Un valore su cui database,
+#   documentazione e interfaccia dicono cose diverse non e' un valore: e' un
+#   malinteso con un CHECK intorno. Sparisce insieme alla colonna.
+#
+# COSA CAMBIA:
+#   1) `fine_mese boolean NOT NULL DEFAULT false` sostituisce `tipo_offset`.
+#      Un booleano dice esattamente cio' che serve; le quattro lettere
+#      dicevano quattro cose di cui due non erano onorabili.
+#   2) `intervallo` e `primo_offset_giorni` diventano NOT NULL DEFAULT 0 e si
+#      intendono SEMPRE in giorni. Sparisce ogni semantica del NULL: «nessun
+#      offset» e' 0, non «non lo so».
+#   3) `unita_intervallo` eliminata: era morta e pure incoerente nel seed
+#      (tutte le righe 'G', comprese quelle con tipo_offset F/N).
+#   4) `chk_termini_pagamento_intervallo_uso` eliminato: descriveva quale
+#      lettera potesse portare un intervallo, e le lettere non ci sono piu'.
+#      `chk_termini_pagamento_intervallo_range` riscritto su >= 0.
+#   5) `ripartizione` ristretta a 'UGUALI': LIBERA non e' un algoritmo
+#      mancante ma un pezzo di MODELLO mancante (nessuna tabella figlia per
+#      percentuali o date per rata), e PROPORZIONALE non ha una base rispetto
+#      a cui essere proporzionale. Toglierli dal dominio, invece di rifiutarli
+#      a runtime, fa fallire la configurazione quando la si SALVA e non
+#      settimane dopo, durante il giro notturno.
+#
+# ⚠️ ORDINE: il backfill di `fine_mese` viene PRIMA della DROP di
+#   `tipo_offset`. Invertirli perderebbe l'informazione sulle righe gia' in
+#   tabella, e il ricaricamento del CSV (3a.3) arriva dopo, nella fase 80_data.
+#
+# ℹ️ Censito il 2026-07-31: `tipo_offset` e `unita_intervallo` non compaiono in
+#   nessun file di backend/ o frontend/src/, ne' in alcuna funzione o vista.
+#   L'unico punto da adeguare e' il pgTAP test-fattura-utils-critical-termini,
+#   che le valorizza in una INSERT di fixture (3a.8).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260731-03-alter-config-termini-pagamento-riforma-mctit.yaml
+
+  - changeSet:
+      id: 20260731-03-alter-config-termini-pagamento-riforma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Riforma config.termini_pagamento (D-I/D-E): tipo_offset -> fine_mese
+        booleano, offset sempre in giorni e NOT NULL DEFAULT 0, via
+        unita_intervallo, ripartizione ristretta a UGUALI.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: config
+            tableName: termini_pagamento
+            columnName: tipo_offset
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- 1) Nuova colonna + backfill PRIMA di perdere la vecchia.
+              ALTER TABLE config.termini_pagamento
+                ADD COLUMN IF NOT EXISTS fine_mese boolean NOT NULL DEFAULT false;
+
+              UPDATE config.termini_pagamento
+                 SET fine_mese = (tipo_offset = 'F')
+               WHERE fine_mese IS DISTINCT FROM (tipo_offset = 'F');
+
+              -- 2) ⚠️ I vincoli del vecchio modello cadono PRIMA di normalizzare
+              --    gli offset, non dopo. chk_termini_pagamento_intervallo_uso
+              --    pretende che con tipo_offset 'N' l'intervallo sia NULL:
+              --    portarlo a 0 mentre quel vincolo e' ancora in piedi lo viola.
+              --    Non e' teorico -- e' successo, sulla riga TP_1RATA, che e'
+              --    l'unica del seed con la coppia (N, NULL).
+              ALTER TABLE config.termini_pagamento
+                DROP CONSTRAINT IF EXISTS chk_termini_pagamento_intervallo_uso,
+                DROP CONSTRAINT IF EXISTS chk_termini_pagamento_intervallo_range,
+                DROP CONSTRAINT IF EXISTS chk_termini_pagamento_tipo_offset;
+
+              -- 3) Gli offset diventano obbligatori e sempre in giorni.
+              --    Il NULL di oggi significa «nessun offset»: e' uno zero.
+              UPDATE config.termini_pagamento SET intervallo = 0
+               WHERE intervallo IS NULL;
+              UPDATE config.termini_pagamento SET primo_offset_giorni = 0
+               WHERE primo_offset_giorni IS NULL;
+
+              ALTER TABLE config.termini_pagamento
+                ALTER COLUMN intervallo          SET DEFAULT 0,
+                ALTER COLUMN intervallo          SET NOT NULL,
+                ALTER COLUMN primo_offset_giorni SET DEFAULT 0,
+                ALTER COLUMN primo_offset_giorni SET NOT NULL;
+
+              -- Range riscritto sul modello nuovo: due interi non negativi,
+              -- senza piu' nessuna semantica del NULL da presidiare.
+              ALTER TABLE config.termini_pagamento
+                ADD CONSTRAINT chk_termini_pagamento_intervallo_range
+                CHECK (intervallo >= 0 AND primo_offset_giorni >= 0);
+
+              -- 4) Ripartizione: un solo valore onorabile.
+              ALTER TABLE config.termini_pagamento
+                DROP CONSTRAINT IF EXISTS chk_termini_pagamento_ripartizione;
+
+              ALTER TABLE config.termini_pagamento
+                ADD CONSTRAINT chk_termini_pagamento_ripartizione
+                CHECK (ripartizione = 'UGUALI');
+
+              -- 5) Via le colonne che non servono piu'.
+              ALTER TABLE config.termini_pagamento DROP COLUMN unita_intervallo;
+              ALTER TABLE config.termini_pagamento DROP COLUMN tipo_offset;
+
+              COMMENT ON COLUMN config.termini_pagamento.fine_mese
+              IS 'Se true, la data di scadenza calcolata si sposta a fine mese. Sostituisce tipo_offset (D-I/D-E): un booleano dice esattamente cio'' che serve, mentre le quattro lettere G/M/F/N dicevano quattro cose di cui due non erano onorabili — e la stessa `M` significava «mesi» qui, «manuale» nella doc di clienti e «Mese» a video.';
+
+              COMMENT ON COLUMN config.termini_pagamento.primo_offset_giorni
+              IS 'Giorni fra la data fattura e la prima rata. SEMPRE in giorni, NOT NULL DEFAULT 0: «nessun offset» e'' zero, non NULL.';
+
+              COMMENT ON COLUMN config.termini_pagamento.intervallo
+              IS 'Giorni fra una rata e la successiva. SEMPRE in giorni, NOT NULL DEFAULT 0. Con numero_rate = 1 non ha effetto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              -- Rollback best-effort: `M` e `N` non si ricostruiscono, perche'
+              -- nessuna riga li usava e nessun consumatore li leggeva.
+              ALTER TABLE config.termini_pagamento
+                ADD COLUMN IF NOT EXISTS unita_intervallo character(1) NOT NULL DEFAULT 'G',
+                ADD COLUMN IF NOT EXISTS tipo_offset character(1) NOT NULL DEFAULT 'N';
+
+              UPDATE config.termini_pagamento
+                 SET tipo_offset = CASE WHEN fine_mese THEN 'F' ELSE 'G' END,
+                     unita_intervallo = 'G';
+
+              ALTER TABLE config.termini_pagamento
+                DROP CONSTRAINT IF EXISTS chk_termini_pagamento_ripartizione,
+                DROP CONSTRAINT IF EXISTS chk_termini_pagamento_intervallo_range;
+
+              ALTER TABLE config.termini_pagamento DROP COLUMN fine_mese;

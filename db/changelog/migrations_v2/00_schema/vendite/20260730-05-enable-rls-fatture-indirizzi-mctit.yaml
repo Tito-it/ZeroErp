@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 1.4 — ARMAMENTO: ENABLE ROW LEVEL SECURITY su vendite.fatture_indirizzi
+#   (piano-db-satelliti-fattura.md C-12, Fase 1.4).
+#
+# ISOLATO DALLE POLICY, come 20260729-05 per righe e riepiloghi. E' questo il
+#   changeSet in cui il comportamento cambia: finche' la RLS non e' armata le
+#   policy sono inerti. Tenerlo separato significa poterlo identificare — e
+#   annullare — da solo, senza toccare le definizioni.
+#
+# NO FORCE, a parita' con tutta la famiglia (relrowsecurity=t,
+#   relforcerowsecurity=f): l'owner della tabella (titodb) e i ruoli BYPASSRLS
+#   restano esenti. Il FORCE e' un'ondata coordinata futura, fuori da questa slice.
+#
+# ⚠️ Da non confondere: NO FORCE NON significa «la RLS non morde». Il canale
+#   applicativo gira su zeroerp_app, che non e' owner e non ha BYPASSRLS: per lui
+#   le policy sono pienamente attive.
+#
+# PERCORSI DI ESECUZIONE — gli stessi verificati il 2026-07-29 per le sorelle:
+#   - cron/batch  -> system_process_context, ruolo BYPASSRLS
+#                    zeroerp_batch_fatturazione. ✅ VERIFICATO il 2026-07-30:
+#                    fatture_indirizzi NON era nel perimetro — a differenza di
+#                    fatture_righe e fatture_scadenze, nessun batch l'aveva mai
+#                    scritta. Aggiunta con grado 'iu' (upsert, mai DELETE) a
+#                    scripts/sql/provision_db_role_batch_fatturazione.sql e al
+#                    check_ gemello. BYPASSRLS salta la RLS ma NON i GRANT.
+#                    Il provisioning gira gia' in pipeline (ci.yaml): nessun
+#                    intervento manuale, salvo rilanciarlo una volta sul DB di
+#                    sviluppo, dove non e' incluso nel make db-migrate.
+#   - web         -> scope operatore (policy ef_whitelist);
+#   - portale     -> policy ba_ownership, sola lettura.
+#
+# ORDINE: dopo 20260730-03 e -04. Armare prima delle policy renderebbe la tabella
+#   invisibile a tutti tranne owner e BYPASSRLS — cioe' romperebbe il canale
+#   applicativo per il tempo che intercorre.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260730-05-enable-rls-fatture-indirizzi-mctit.yaml
+
+  - changeSet:
+      id: 20260730-05-enable-rls-fatture-indirizzi
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        ENABLE ROW LEVEL SECURITY (NO FORCE) su vendite.fatture_indirizzi, dopo le
+        due policy. E' il changeSet in cui l'accesso alla tabella cambia.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_policies
+              WHERE schemaname = 'vendite'
+                AND tablename = 'fatture_indirizzi'
+                AND policyname IN ('rls_fatture_indirizzi_ef_whitelist',
+                                   'rls_fatture_indirizzi_ba_ownership')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- NO FORCE: l'owner (titodb) e i ruoli BYPASSRLS restano esenti.
+              ALTER TABLE vendite.fatture_indirizzi ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatture_indirizzi DISABLE ROW LEVEL SECURITY;

@@ -10,8 +10,9 @@
 //
 // Le chiavi sono i codici sorgente (`config.sorgenti.codice_interno`) piu' le
 // chiavi NON-sorgente dei drawer che non hanno un tipo sorgente proprio
-// (COMMESSA_GESTIONE). Solo FATTURA resta esclusa: nodo terminale senza drawer
-// proprio (Q4 brief lineage).
+// (COMMESSA_GESTIONE). FATTURA e' entrata il 2026-07-29 col drawer di
+// consultazione (brief-be-fe-drawer-fattura): il grafo e' completo, nessun
+// nodo resta senza drawer.
 //
 // I drawer sono caricati via import dinamico (`load`) di proposito: ogni drawer
 // documento importa staticamente `DocumentoCollegamentiBar`, che monta l'host —
@@ -43,6 +44,7 @@ export const DOCUMENTO_DRAWER_TIPI = Object.freeze({
   CONTRATTO: 'CONTRATTO',
   DDT_VENDITA: 'DDT_VENDITA',
   RESO_VENDITA: 'RESO_VENDITA',
+  FATTURA: 'FATTURA',
   COMMESSA: 'COMMESSA',
   COMMESSA_GESTIONE: 'COMMESSA_GESTIONE',
 })
@@ -65,6 +67,11 @@ export const DOCUMENTO_DRAWERS = {
     drawer(() => import('../../ddt/components/DdtDrawer.vue'), 'ddtId', true),
   [DOCUMENTO_DRAWER_TIPI.RESO_VENDITA]:
     drawer(() => import('../../resi/components/ResoDrawer.vue'), 'resoId', false),
+  // Drawer di CONSULTAZIONE della fattura (2026-07-29): sola lettura per
+  // costruzione, nessun `mode`. Chiude l'ultimo buco del grafo lineage — le
+  // tappe FATTURA dei "Passaggi" e le righe dei drill-down diventano apribili.
+  [DOCUMENTO_DRAWER_TIPI.FATTURA]:
+    drawer(() => import('../../components/FatturaDrawer.vue'), 'fatturaId', false),
   // Fase C: la commessa non ha lista/CRUD, ma il suo nodo lineage è
   // consultabile in un drawer leggero (genealogia inversa). Read-only:
   // nessun `mode`.
@@ -89,7 +96,7 @@ export const SORGENTE_DRAWER_TIPI = Object.keys(DOCUMENTO_DRAWERS).filter(
 //        risolto dal BE e un tipo sorgente con drawer. Regola UNICA (era
 //        ripetuta in 3 file, 2026-07-25): la usa chi decide se rendere il
 //        codice come link e chi apre il drawer. `docId` null = documento fuori
-//        scope RLS -> tappa consultiva; FATTURA = nodo terminale senza drawer.
+//        scope RLS -> tappa consultiva.
 export function isTappaApribile(row) {
   return row?.docId != null && SORGENTE_DRAWER_TIPI.includes(row.tipoCodice)
 }

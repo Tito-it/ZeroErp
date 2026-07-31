@@ -15,6 +15,8 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import (
+    LIST_MAX_LIMIT,
+    jsonb_out,
     query_paged_view,
     row_to_dict,
     rows_to_list,
@@ -116,11 +118,13 @@ DASH_COMPETENZA_STADI: tuple[str, ...] = (
     "FATTURATA",
 )
 
-# Codici stabili (codice_interno di config.tipi_indirizzi) dei tipi indirizzo
-# risolti nella testata fattura per la stampa (C-9): sede legale dell'emittente
-# e indirizzo di fatturazione del cliente. Costanti passate come parametri SQL
-# (mai letterali embedded nella query — lezione review A+B sul letterale stadio).
-TIPO_INDIRIZZO_SEDE_LEGALE = "SEDELEG"
+# Codice stabile (codice_interno di config.tipi_indirizzi) dello slot letto
+# nella testata fattura per la stampa: indirizzo di fatturazione del cliente,
+# dalla riga FATT del satellite congelato `fatture_indirizzi`. Costante passata
+# come parametro SQL (mai letterale embedded — lezione review A+B sul letterale
+# stadio). La gemella TIPO_INDIRIZZO_SEDE_LEGALE e' stata RITIRATA con la Fase 2
+# satelliti (2026-07-31): la sede dell'emittente ora arriva gia' risolta dentro
+# `emittente_snapshot->'sede'`, congelata a DB — qui non si risolve piu' nulla.
 TIPO_INDIRIZZO_FATTURAZIONE = "FATT"
 
 # Classi di azionabilita' della Lente 2 Backlog, nell'ordine di esposizione UI
@@ -237,6 +241,35 @@ class VenditeRepository:
             "user_insert": str(row[17]),
         }
 
+    # Colonne ordinabili della lista lotti: chiave esposta al FE -> espressione
+    # SQL. Whitelist: nell'ORDER BY entrano solo chiavi note piu' la direzione
+    # ASC/DESC, mai input utente grezzo. Stessa convenzione di
+    # DASH_APERTO_SORT_COLUMNS e di `_ORDER_COLS_CONTRATTI`.
+    #
+    # ⚠️ La chiave e' il `campo_sorgente` del catalogo, NON il `codice` logico.
+    # `<ListaConfigurabile>` monta le Column con `:field="col.campo_sorgente"`,
+    # quindi `event.sortField` — e con esso `store.filters.order_by` — porta il
+    # nome FISICO. Chiavare sui codici logici farebbe fallire con 400 proprio le
+    # colonne in cui i due nomi divergono (`utility` vs `utility_descrizione`).
+    #
+    # Deve restare allineata al catalogo `vendite.lotti`: una colonna marcata
+    # `ordinabile = t` nel seed ma assente qui mostra una freccia che non ordina;
+    # il contrario lascia inutilizzabile una colonna ordinabile. `azioni` non c'e'
+    # per costruzione (tipo_colonna='azione', nessun campo_sorgente).
+    LOTTI_SORT_COLUMNS = {
+        "codice": "fl.codice",
+        "competenza_mese": "fl.competenza_mese",
+        "tipo_lotto": "fl.tipo_lotto",
+        "tipo_doc_fiscale_descrizione": "tdf.descrizione",
+        "utility_descrizione": "u.descrizione",
+        "area_geografica_descrizione": "agf.descrizione",
+        "stato_lotto": "fl.stato_lotto",
+        "stato_operativo": "fl.stato_operativo",
+        "stato_doc_fiscale_descrizione": "sdf.descrizione",
+        "data_insert": "fl.data_insert",
+        "user_insert": "fl.user_insert",
+    }
+
     # Perimetro: solo lettura; nessun side-effect.
     # Risultato: tuple (lista LottoListRow, conteggio totale).
     def list_lotti(
@@ -249,10 +282,18 @@ class VenditeRepository:
         tipo_doc_fiscale_id: int | None,
         emittente_soggetto_ruolo_id: int | None,
         auth_user_id: int | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int,
         offset: int,
+        max_limit: int = LIST_MAX_LIMIT,
     ) -> tuple[list[LottoListRow], int]:
-        safe_limit = max(1, min(int(limit), 200))
+        # Il cap standard (LIST_MAX_LIMIT, fonte unica in core/db/_helpers)
+        # protegge la lista a video; l'export lo alza esplicitamente (fino a
+        # EXPORT_MAX_ROWS + 1, per poter *rilevare* il superamento del limite
+        # invece di troncare in silenzio). Resta un cap passato dal chiamante:
+        # nessun percorso senza tetto.
+        safe_limit = max(1, min(int(limit), max_limit))
         safe_offset = max(0, int(offset))
 
         conditions: list[str] = []
@@ -293,12 +334,25 @@ class VenditeRepository:
             {where_clause}
         """
 
+        # ORDER BY server-side (corretto su TUTTE le pagine, non solo su quella
+        # visibile): colonna dalla whitelist + direzione, con tiebreak stabile
+        # su fl.id per una paginazione deterministica anche a parita' di valore.
+        # order_by assente o non ammesso -> ordine storico (il piu' recente
+        # prima), cioe' esattamente il comportamento precedente: la lista non
+        # cambia aspetto finche' l'utente non tocca un'intestazione.
+        sort_col = self.LOTTI_SORT_COLUMNS.get(order_by or "")
+        if sort_col is not None:
+            direction = sql_order_direction(order_dir)
+            order_clause = f"ORDER BY {sort_col} {direction}, fl.id DESC"
+        else:
+            order_clause = "ORDER BY fl.data_insert DESC, fl.id DESC"
+
         data_sql = f"""
             SELECT {self._LOTTO_SELECT_COLS}
             FROM vendite.fatturazione_lotti fl
             {joins}
             {where_clause}
-            ORDER BY fl.data_insert DESC, fl.id DESC
+            {order_clause}
             LIMIT %s OFFSET %s
         """
 
@@ -1350,7 +1404,7 @@ class VenditeRepository:
         limit: int,
         offset: int,
     ) -> tuple[list[LottoFattureRow], int]:
-        safe_limit = max(1, min(int(limit), 200))
+        safe_limit = max(1, min(int(limit), LIST_MAX_LIMIT))
         safe_offset = max(0, int(offset))
 
         # Ordinamento: solo valori dalla whitelist entrano nella query.
@@ -1501,13 +1555,41 @@ class VenditeRepository:
             cursor.execute(sql, [int(fattura_id)])
             return row_to_dict(cursor)
 
-    # Scopo: Testata fattura per il context builder documentale (stampa).
-    #        Denormalizza cliente (BA → soggetto), emittente (SR → EF PK+codice),
-    #        stato/tipo doc fiscale e valuta; espone i totali di testata così
-    #        come li mantiene la pipeline (`*_tot`, bollo, arrotondamento,
-    #        totale_a_pagare). Lettura pura: nessun calcolo fiscale in Python.
-    #        None se la fattura non esiste (o è fuori scope RLS).
-    def get_fattura_testata(self, fattura_id: int) -> dict[str, Any] | None:
+    # Scopo: Testata fattura completa di decodifiche (cliente, emittente,
+    #        pagamento, totali) per il context builder del PDF **e** per
+    #        l'endpoint di dettaglio del drawer fattura.
+    #
+    #        ⚠️ RISTAMPA CONFORME (Fase 2 piano BE/FE satelliti, 2026-07-31):
+    #        l'intestazione delle due parti NON si legge piu' dall'anagrafica
+    #        viva ma dagli SNAPSHOT congelati allo step DRAFT dalla pipeline
+    #        (`fn_snapshot_fattura_lotto`):
+    #          - identita' fiscale emittente/cliente → `f.emittente_snapshot` /
+    #            `f.cliente_snapshot` (testata, guard di congelamento);
+    #          - indirizzo di fatturazione cliente → riga `FATT` di
+    #            `vendite.fatture_indirizzi`.
+    #        Le chiavi piatte esposte restano IDENTICHE (contratto del drawer
+    #        FE e del template PDF): cambia solo la sorgente. NESSUN fallback
+    #        alla vista live (§9 del piano): una fattura senza snapshot mostra
+    #        i campi vuoti, ed e' giusto che si veda.
+    #        La rimozione delle vecchie subquery su vw_indirizzi_resolved_ruolo
+    #        chiude anche i DUE difetti del §10.3 del brief intestazione (il
+    #        filtro confrontava codice_interno con la colonna `codice`, e la
+    #        vista contiene il solo layer RUOLO — la sede legale dell'emittente
+    #        non era MAI stata stampata).
+    #
+    #        Lettura pura: nessun calcolo fiscale in Python. None se la fattura
+    #        non esiste (o è fuori scope RLS).
+    #        `auth_user_id` opzionale = difesa in profondita' applicativa che si
+    #        SOMMA alla RLS di `vendite.fatture` (policy `rls_fatture_ef_whitelist`,
+    #        attiva sul ruolo dell'app: `zeroerp_app` non e' owner della tabella).
+    #        Default `None` = nessun filtro applicativo: e' il percorso del motore
+    #        documentale, che applica lo scope a monte e non va toccato.
+    def get_fattura_testata(
+        self,
+        fattura_id: int,
+        *,
+        auth_user_id: int | None = None,
+    ) -> dict[str, Any] | None:
         sql = """
             SELECT
                 f.id,
@@ -1523,40 +1605,53 @@ class VenditeRepository:
                 sdf.codice_interno           AS stato_codice_interno,
                 sdf.descrizione              AS stato_descrizione,
                 f.emittente_soggetto_ruolo_id,
-                ef.id                        AS emittente_fiscale_id,
-                ef.codice                    AS emittente_fiscale_codice,
-                srd_em.ragione_sociale_completa   AS emittente_denominazione,
-                srd_em.id_fiscale_univoco_cf_piva AS emittente_piva,
-                srd_em.codice_fiscale             AS emittente_cf,
-                -- Sede legale emittente (stringa formattata) — tipo indirizzo
-                -- TIPO_INDIRIZZO_SEDE_LEGALE (codice_interno stabile, parametro).
-                -- Subquery scalare: un solo valore anche con più indirizzi
-                -- dello stesso tipo (no fan-out).
-                (SELECT ind_em.indirizzo_display
-                   FROM anagrafiche.vw_indirizzi_resolved_ruolo ind_em
-                  WHERE ind_em.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
-                    AND ind_em.tipo_indirizzo_codice = %s
-                  ORDER BY ind_em.indirizzo_id
-                  LIMIT 1)                  AS emittente_sede,
+                -- ===== Intestazione EMITTENTE: dallo snapshot congelato =====
+                -- Chiavi piatte derivate dal jsonb per compatibilita' col
+                -- contratto esistente (drawer FE + template PDF v1). NULL se
+                -- lo snapshot manca (fattura pre-Fase 1): niente fallback.
+                (f.emittente_snapshot->>'emittente_fiscale_id')::bigint
+                                             AS emittente_fiscale_id,
+                f.emittente_snapshot->>'emittente_codice'
+                                             AS emittente_fiscale_codice,
+                f.emittente_snapshot->>'denominazione'
+                                             AS emittente_denominazione,
+                f.emittente_snapshot->>'id_fiscale'
+                                             AS emittente_piva,
+                f.emittente_snapshot->>'codice_fiscale'
+                                             AS emittente_cf,
+                -- Sede legale: display dello snapshot indirizzo annidato
+                -- (composto a DB da fn_resolve_indirizzo_documento, due layer).
+                f.emittente_snapshot->'sede'->>'display'
+                                             AS emittente_sede,
                 util.codice                  AS utility_codice,
                 util.descrizione             AS utility_descrizione,
                 mpag.codice                  AS pagamento_modalita_codice,
                 tpag.codice_interno          AS pagamento_termine_codice,
                 f.billing_account_id,
-                ba.codice                    AS ba_codice,
-                ba.soggetto_ruolo_id         AS cliente_soggetto_ruolo_id,
-                srd.soggetto_id,
-                srd.ragione_sociale_completa,
-                srd.id_fiscale_univoco_cf_piva,
-                -- Indirizzo di fatturazione cliente — tipo
-                -- TIPO_INDIRIZZO_FATTURAZIONE (parametro). Subquery scalare
-                -- come per l'emittente.
-                (SELECT ind_cli.indirizzo_display
-                   FROM anagrafiche.vw_indirizzi_resolved_ruolo ind_cli
-                  WHERE ind_cli.soggetto_ruolo_id = ba.soggetto_ruolo_id
-                    AND ind_cli.tipo_indirizzo_codice = %s
-                  ORDER BY ind_cli.indirizzo_id
-                  LIMIT 1)                  AS cliente_indirizzo,
+                -- ===== Intestazione CLIENTE: dallo snapshot congelato =====
+                f.cliente_snapshot->>'ba_codice'          AS ba_codice,
+                (f.cliente_snapshot->>'soggetto_ruolo_id')::bigint
+                                             AS cliente_soggetto_ruolo_id,
+                (f.cliente_snapshot->>'soggetto_id')::uuid AS soggetto_id,
+                f.cliente_snapshot->>'denominazione'
+                                             AS ragione_sociale_completa,
+                f.cliente_snapshot->>'id_fiscale'
+                                             AS id_fiscale_univoco_cf_piva,
+                -- Indirizzo di fatturazione cliente: riga FATT del satellite
+                -- congelato (unica per la UNIQUE (fattura_id, tipo)). E' QUESTA
+                -- la lettura che rende la ristampa conforme: modificare
+                -- l'anagrafica non cambia piu' il documento.
+                (SELECT fi.snapshot->>'display'
+                   FROM vendite.fatture_indirizzi fi
+                   JOIN config.tipi_indirizzi ti ON ti.id = fi.tipo_indirizzo_id
+                  WHERE fi.fattura_id = f.id
+                    AND ti.codice_interno = %s)
+                                             AS cliente_indirizzo,
+                -- Snapshot integrali: per i consumer che vorranno i campi
+                -- ricchi (REA, forma giuridica, codice SDI) senza riaprire
+                -- questa SELECT. Shape interno non contrattuale (brief §10.2).
+                f.emittente_snapshot,
+                f.cliente_snapshot,
                 f.valuta_id,
                 val.iso_code                 AS valuta_codice,
                 f.tasso_cambio,
@@ -1570,10 +1665,6 @@ class VenditeRepository:
                 f.data_contabilizzazione,
                 f.meta
               FROM vendite.fatture f
-              LEFT JOIN anagrafiche.emittenti_fiscali ef
-                ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
-              LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd_em
-                ON srd_em.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
               JOIN anagrafiche.billing_account ba
                 ON ba.id = f.billing_account_id
               LEFT JOIN config.utilities util
@@ -1582,8 +1673,6 @@ class VenditeRepository:
                 ON mpag.id = f.modalita_pagamento_id
               LEFT JOIN config.termini_pagamento tpag
                 ON tpag.id = f.termine_pagamento_id
-              JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
-                ON srd.soggetto_ruolo_id = ba.soggetto_ruolo_id
               LEFT JOIN config.tipi_doc_fiscale tdf
                 ON tdf.id = f.tipo_doc_fiscale_id
               LEFT JOIN config.stati_doc_fiscale sdf
@@ -1592,28 +1681,65 @@ class VenditeRepository:
                 ON val.id = f.valuta_id
              WHERE f.id = %s
         """
+        # Parametri nell'ordine dei %s: subquery indirizzo fatturazione
+        # cliente (riga FATT del satellite), id fattura.
+        params: list[Any] = [
+            TIPO_INDIRIZZO_FATTURAZIONE,
+            int(fattura_id),
+        ]
+        # Scope emittente applicativo (convenzione SR) appeso alla WHERE solo
+        # quando il chiamante lo chiede: l'helper non aggiunge nulla per
+        # auth_user_id None o per un utente che vede tutto (admin globale).
+        conditions: list[str] = []
+        self._add_scope_emittente(
+            auth_user_id, "f.emittente_soggetto_ruolo_id", conditions, params,
+        )
+        if conditions:
+            sql += " AND " + " AND ".join(conditions)
         with connection.cursor() as cursor:
-            # Parametri nell'ordine dei %s: subquery sede emittente, subquery
-            # indirizzo fatturazione cliente, id fattura.
-            cursor.execute(
-                sql,
-                [
-                    TIPO_INDIRIZZO_SEDE_LEGALE,
-                    TIPO_INDIRIZZO_FATTURAZIONE,
-                    int(fattura_id),
-                ],
-            )
-            return row_to_dict(cursor)
+            cursor.execute(sql, params)
+            row = row_to_dict(cursor)
+        if row is not None:
+            # psycopg 3 fuori dall'ORM NON decodifica i jsonb: `meta` arriva
+            # come `str`. Senza questa riga il consumer JSON riceverebbe una
+            # STRINGA al posto dell'oggetto, e chi ci fa `.get()` muore al
+            # primo accesso (BB `jsonb_out`, nato esattamente da questo bug).
+            row["meta"] = jsonb_out(row.get("meta"))
+            row["emittente_snapshot"] = jsonb_out(row.get("emittente_snapshot"))
+            row["cliente_snapshot"] = jsonb_out(row.get("cliente_snapshot"))
+        return row
 
     # Scopo: Righe fattura con decodifiche articolo/uom/iva per il context
-    #        builder. Espone gli importi di riga già mantenuti dal DB
-    #        (imponibile/imposta/totale) + `iva_natura` per le righe non
-    #        imponibili. Ordine stabile per riga_nr. Lettura pura.
+    #        builder. Espone i nomi di CONTRATTO condivisi con ordini/DDT/
+    #        preventivi (`quantita`, `importo_riga`), non i nomi di colonna DB:
+    #        i template documento sono uniformi fra tipi documento.
+    #        `importo_riga` è mantenuto dal DB — trigger `a20_importo` su
+    #        `vendite.fatture_righe` (brief-fix-importi-riga-fattura-zero §4.1,
+    #        requisito D1): fino al 2026-07-28 nessuno lo scriveva e ogni
+    #        fattura valeva 0,00.
+    #        `imposta_riga`/`totale_riga` NON esistono più (§4.3, D1-ter):
+    #        l'imposta di riga non è un concetto del modello italiano e l'IVA è
+    #        governata per aggregato in `fatture_riepiloghi_iva`.
+    #        FONTE: `vendite.vw_fattura_righe_esposte`, NON la tabella. È la
+    #        rappresentazione unica del documento (regola R17): PDF, XML SDI e
+    #        portale devono mostrare lo stesso dettaglio, altrimenti due uscite
+    #        dello stesso documento raccontano cose diverse. La vista risolve i
+    #        kit — una riga `KIT_PADRE` con il totale, sotto i soli componenti
+    #        con `kit_esposto_in_fattura`; sulle fatture senza kit è un
+    #        passante. È l'unica regola che il DB non può presidiare da solo:
+    #        il presidio è questa query.
+    #        `tipo_riga` (NORMALE/KIT_PADRE/KIT_COMPONENTE) e `livello` (0/1)
+    #        servono al template per rendere la gerarchia; `id` è NULL sulle
+    #        righe KIT_PADRE, che non esistono in tabella.
+    #        Ordine per `ordinamento` e non per `riga_nr`: è la colonna che
+    #        tiene padre e componenti nella sequenza giusta.
     def list_fattura_righe(self, fattura_id: int) -> list[dict[str, Any]]:
         sql = """
             SELECT
-                r.id,
+                r.fatture_righe_id  AS id,
                 r.fattura_id,
+                r.tipo_riga,
+                r.livello,
                 r.riga_nr,
                 r.articolo_id,
                 a.codice            AS articolo_codice,
@@ -1621,7 +1747,7 @@ class VenditeRepository:
                 r.descrizione,
                 r.uom_id,
                 um.codice           AS uom_codice,
-                r.qta,
+                r.qta               AS quantita,
                 r.prezzo_unitario,
                 r.sconto_percentuale,
                 r.iva_id,
@@ -1629,15 +1755,13 @@ class VenditeRepository:
                 iva.descrizione     AS iva_descrizione,
                 iva.aliquota_iva    AS iva_aliquota,
                 r.iva_natura,
-                r.imponibile_riga,
-                r.imposta_riga,
-                r.totale_riga
-              FROM vendite.fatture_righe r
+                r.imponibile        AS importo_riga
+              FROM vendite.vw_fattura_righe_esposte r
               LEFT JOIN catalogo.articoli a      ON a.id  = r.articolo_id
               LEFT JOIN catalogo.unita_misura um ON um.id = r.uom_id
               LEFT JOIN config.iva iva           ON iva.id = r.iva_id
              WHERE r.fattura_id = %s
-             ORDER BY r.riga_nr, r.id
+             ORDER BY r.ordinamento, r.livello, r.riga_nr
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(fattura_id)])
@@ -1693,7 +1817,15 @@ class VenditeRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(fattura_id)])
-            return rows_to_list(cursor)
+            rows = rows_to_list(cursor)
+        # ⚠️ `meta` e' jsonb e da cursor RAW arriva come `str` (psycopg 3 non lo
+        # decodifica fuori dall'ORM). Senza `jsonb_out` il `_shape_scadenza` del
+        # context builder PDF esegue `meta.get("modalita_codice")` su una
+        # stringa → AttributeError → 500 alla prima scadenza con meta non-NULL.
+        # Latente finora solo perche' nessuna scadenza di test ha meta.
+        for row in rows:
+            row["meta"] = jsonb_out(row.get("meta"))
+        return rows
 
     # ------------------------------------------------------------------
     # Lineage documenti (genealogia/transiti — brief-be-fe-lineage)

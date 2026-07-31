@@ -433,3 +433,38 @@ class DdtDbErrorsTests(SimpleTestCase):
         self.assertEqual(
             cm.exception.code, "E_STATO_DDT_TRANSIZIONE_NON_VALIDA",
         )
+
+
+class DdtFatturazioneImmediataTests(SimpleTestCase):
+    """Corsia di instradamento `fatturazione_immediata` sul DDT.
+
+    Gemello di `OrdiniFatturazioneImmediataTests`: qui la whitelist basta
+    (mapper generico), ma il comportamento va bloccato — il difetto del
+    2026-07-27 sui contratti e' nato proprio dal dare per scontato che il gesto
+    fosse identico sui tre domini.
+    """
+
+    @patch(_REPO)
+    def test_crea_ddt_porta_il_flag(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_destinatario_soggetto_ruolo_id_by_ba.return_value = 555
+        repo.get_soggetto_ruolo_id_by_ba.return_value = 555
+        repo.get_stato_id_by_codice.return_value = 1
+        repo.create_ddt.return_value = {"id": 9, "uid": "u", "numero": None}
+        ddt_service.crea_ddt({
+            "billing_account_id": 3, "utility_id": 1, "fatturazione_immediata": True,
+        })
+        self.assertIs(
+            repo.create_ddt.call_args.kwargs["fatturazione_immediata"], True,
+        )
+
+    @patch(_REPO)
+    def test_aggiorna_ddt_persiste_il_flag(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = {
+            "id": 9, "billing_account_id": 3, "stato_codice_interno": "DRAFT",
+        }
+        ddt_service.aggiorna_ddt(9, {"fatturazione_immediata": True})
+        self.assertIs(
+            repo.update_ddt.call_args.kwargs["fatturazione_immediata"], True,
+        )

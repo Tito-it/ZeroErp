@@ -2638,3 +2638,384 @@ class ContrattiServicePricingGateTests(TestCase):
         # L2 chiamato con accept_for_approval=True
         gate_l2.assert_called_once()
         self.assertTrue(gate_l2.call_args.kwargs["accept_for_approval"])
+
+
+class ContrattiFatturazioneImmediataTests(TestCase):
+    """Corsia di instradamento `fatturazione_immediata` sul contratto.
+
+    Nasce da un difetto reale (2026-07-27, rilevato dal team DB): la chiave era
+    stata aggiunta alle whitelist di create/update e alle `write_cols` del
+    repository, ma i due mapper del contratto — unici fra i tre documenti a
+    copiare campo per campo invece che con una dict-comprehension — non la
+    leggevano. Sintomo peggiore: la PATCH dal drawer rispondeva **200 con
+    «contratto salvato» senza persistere nulla**, perche' il payload conteneva
+    comunque altri campi e quindi il guard «nessun campo aggiornabile» non
+    scattava. Questi test presidiano l'anello che mancava.
+    """
+
+    # 1) CREATE: il flag arriva al dict che va alla fn madre.
+    @patch("apps.vendite.services.contratti_service.ListiniRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_porta_il_flag_alla_fn_madre(self, repo_cls, listini_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.create_contratto_atomico.return_value = 7
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+        listini_cls.return_value.has_versione_attiva.return_value = True
+
+        ContrattiService().create_contratto({
+            "billing_account_id": 1,
+            "istanza_utility_id": 2,
+            "utility_id": 3,
+            "valido_dal": "2026-01-01",
+            "fatturazione_immediata": True,
+        })
+        testata = repo.create_contratto_atomico.call_args.kwargs["testata"]
+        self.assertIs(testata["fatturazione_immediata"], True)
+
+    # 2) CREATE senza la chiave: NON deve finire nel dict — la fn madre filtra
+    #    sulla PRESENZA, e mandarla a None darebbe 23502 su colonna NOT NULL
+    #    invece del DEFAULT false (contratto §C4 del brief DB).
+    @patch("apps.vendite.services.contratti_service.ListiniRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_senza_chiave_non_la_inventa(self, repo_cls, listini_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.create_contratto_atomico.return_value = 7
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+        listini_cls.return_value.has_versione_attiva.return_value = True
+
+        ContrattiService().create_contratto({
+            "billing_account_id": 1,
+            "istanza_utility_id": 2,
+            "utility_id": 3,
+            "valido_dal": "2026-01-01",
+        })
+        testata = repo.create_contratto_atomico.call_args.kwargs["testata"]
+        self.assertNotIn("fatturazione_immediata", testata)
+
+    # 3) CREATE con la chiave a `null`: si OMETTE, non si propaga None (che sulla
+    #    colonna NOT NULL diventerebbe un 23502 opaco per l'operatore).
+    @patch("apps.vendite.services.contratti_service.ListiniRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_chiave_nulla_viene_omessa(self, repo_cls, listini_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.create_contratto_atomico.return_value = 7
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+        listini_cls.return_value.has_versione_attiva.return_value = True
+
+        ContrattiService().create_contratto({
+            "billing_account_id": 1,
+            "istanza_utility_id": 2,
+            "utility_id": 3,
+            "valido_dal": "2026-01-01",
+            "fatturazione_immediata": None,
+        })
+        testata = repo.create_contratto_atomico.call_args.kwargs["testata"]
+        self.assertNotIn("fatturazione_immediata", testata)
+
+    # 4) ⭐ PATCH: il flag raggiunge il repository. E' il test che sarebbe stato
+    #    rosso col difetto — la whitelist bastava, il mapper no.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_patch_persiste_il_flag(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.update_contratto.return_value = True
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+
+        ContrattiService().update_contratto(1, {"fatturazione_immediata": True})
+
+        data = repo.update_contratto.call_args.args[1]
+        self.assertIs(data["fatturazione_immediata"], True)
+
+    # 5) PATCH a `false`: valore legittimo, non «assente». Con un mapper che
+    #    testasse la verita' del valore invece della presenza della chiave,
+    #    riportare un contratto sulla corsia differita sarebbe impossibile.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_patch_false_e_un_valore_non_un_assenza(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.update_contratto.return_value = True
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+
+        ContrattiService().update_contratto(1, {"fatturazione_immediata": False})
+
+        data = repo.update_contratto.call_args.args[1]
+        self.assertIs(data["fatturazione_immediata"], False)
+
+    # 6) Tipo sbagliato → 400. `bool("false")` sarebbe True: la validazione via
+    #    `optional_bool` e' cio' che rende impossibile quella trappola.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_patch_valore_non_booleano_rifiutato(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()
+
+        with self.assertRaises(ServiceError):
+            ContrattiService().update_contratto(1, {"fatturazione_immediata": "false"})
+
+
+class ContrattiWhitelistCreateAllineataAlDbTests(TestCase):
+    """Guardrail §6a: la whitelist BE della create combacia con quella della fn madre.
+
+    Il problema che chiude: `vendite.fn_create_contratto` costruisce l'INSERT
+    da una whitelist SUA e **scarta in silenzio** le chiavi che non conosce
+    (`WHERE key = ANY(v_testata_allowed)`) — nessun errore, nessun log, il campo
+    sembra funzionare e non fa nulla. È così che `fatturazione_immediata` è
+    rimasta inerte per un giro (brief-db-fatturazione-immediata-create-contratto).
+    Senza un presidio, alla colonna successiva si ripete identico.
+
+    Il confronto avviene con la **doc auto-generata**, che riflette l'oggetto
+    vivo nel DB (regola di casa: le definizioni si leggono da `docs/it/dbzero/`,
+    mai dagli YAML, che i `runOnChange` successivi rendono stale). Il test gira
+    quindi senza DB, come richiesto in CI.
+
+    ⚠️ **Limite da conoscere**: questo guardrail è vero quanto l'ultima
+    rigenerazione della doc auto-gen. Non confronta il BE con il *database*, ma
+    con un *documento*: se la fn madre cambia e la doc non viene rigenerata, il
+    confronto avviene contro una definizione stale e il test può restare verde
+    mentre il DB diverge davvero. La rigenerazione fa parte del rilascio di ogni
+    changeset che tocchi la funzione — questo presidio la presuppone, non la
+    sostituisce.
+
+    Il momento in cui fallisce è l'unico utile: quando le due liste divergono.
+    """
+
+    # Sotto-entità, non colonna della testata: viaggia nel secondo parametro
+    # (`p_utility`) della fn madre, che ha una whitelist sua (verificata dal
+    # secondo test di questa classe).
+    _NON_COLONNE = frozenset({"utility"})
+
+    # Chiavi della riga utility che il service INIETTA (non arrivano dal
+    # payload del client, che quindi non le ha nella sua whitelist): la fn
+    # madre le accetta e `_build_utility_data` le valorizza in create.
+    _UTILITY_INIETTATE = frozenset({"istanza_utility_id", "utility_id"})
+
+    _DOC = (
+        "docs/it/dbzero/vendite/funzioni/fn_create_contratto.md"
+    )
+
+    # Scopo: estrae una whitelist (`v_testata_allowed` / `v_util_allowed`)
+    #        dalla definizione VIVA nella doc auto-gen.
+    def _whitelist_db(self, nome: str) -> set[str]:
+        import re
+        from pathlib import Path
+
+        # backend/apps/vendite/tests/services/<file> -> radice repo
+        radice = Path(__file__).resolve().parents[5]
+        doc = radice / self._DOC
+        self.assertTrue(
+            doc.is_file(),
+            f"Doc auto-gen non trovata: {doc}. Se la funzione è stata rinominata "
+            f"o la doc spostata, aggiornare questo guardrail — non rimuoverlo.",
+        )
+        testo = doc.read_text(encoding="utf-8")
+        match = re.search(
+            rf"{nome}\s+text\[\]\s*:=\s*ARRAY\[(.*?)\]", testo, re.S,
+        )
+        self.assertIsNotNone(
+            match,
+            f"{nome} non trovata nella doc auto-gen di fn_create_contratto: "
+            f"la doc è stale o la funzione è cambiata forma.",
+        )
+        assert match is not None
+        # `[a-z0-9_]` e non `[a-z_]`: esistono colonne con cifre nel nome
+        # (`param_1_num`, `param_2_txt`) e una classe senza `0-9` le avrebbe
+        # semplicemente NON viste, facendole apparire come divergenze.
+        # Non serve irrobustirla oltre: il lato BE NON e' parsato (viene dal
+        # frozenset Python), quindi una regex che perde chiavi puo' solo
+        # produrre FALSI ROSSI sul caso grave (`be - db`), mai falsi verdi.
+        # E' il modo sicuro di sbagliare.
+        return set(re.findall(r"'([a-z0-9_]+)'", match.group(1)))
+
+    def test_whitelist_be_e_db_combaciano(self) -> None:
+        from apps.vendite.services.contratti_service import _CREATE_KEYS_TESTATA
+
+        be = set(_CREATE_KEYS_TESTATA) - self._NON_COLONNE
+        db = self._whitelist_db("v_testata_allowed")
+
+        # Chiavi che il BE accetta e la fn madre NON conosce: sono quelle che
+        # verrebbero SCARTATE IN SILENZIO. È il caso grave.
+        scartate = sorted(be - db)
+        self.assertEqual(
+            scartate, [],
+            f"Il BE accetta chiavi che vendite.fn_create_contratto scarterebbe "
+            f"in silenzio: {scartate}. Aggiungerle a v_testata_allowed (brief DB) "
+            f"oppure toglierle dalla whitelist BE.",
+        )
+
+        # Chiavi che la fn madre accetta e il BE non espone: non è un bug, ma è
+        # capacità DB non raggiungibile — va vista, non subita.
+        non_esposte = sorted(db - be)
+        self.assertEqual(
+            non_esposte, [],
+            f"vendite.fn_create_contratto accetta chiavi che il BE non espone: "
+            f"{non_esposte}. Se è voluto, escluderle esplicitamente qui con il "
+            f"motivo; altrimenti aggiungerle a _CREATE_KEYS_TESTATA.",
+        )
+
+    # La sotto-entità utility ha la STESSA struttura fail-open della testata
+    # (`WHERE key = ANY(v_util_allowed)`), quindi la stessa trappola: una chiave
+    # aggiunta al BE e non alla fn madre verrebbe scartata senza un fiato.
+    # Presidiata qui, non perché sia già successo ma perché è lo stesso identico
+    # meccanismo che è già costato un giro sulla testata.
+    def test_whitelist_utility_be_e_db_combaciano(self) -> None:
+        from apps.vendite.services.contratti_service import _UTILITY_CREATE_KEYS
+
+        be = set(_UTILITY_CREATE_KEYS) | self._UTILITY_INIETTATE
+        db = self._whitelist_db("v_util_allowed")
+
+        scartate = sorted(be - db)
+        self.assertEqual(
+            scartate, [],
+            f"Il BE compone la riga utility con chiavi che "
+            f"vendite.fn_create_contratto scarterebbe in silenzio: {scartate}.",
+        )
+        non_esposte = sorted(db - be)
+        self.assertEqual(
+            non_esposte, [],
+            f"vendite.fn_create_contratto accetta chiavi utility che il BE non "
+            f"compone: {non_esposte}. Se è voluto, escluderle qui col motivo.",
+        )
+
+
+class ContrattiCatenaUpdateTests(TestCase):
+    """Guardrail: i TRE anelli della PATCH di testata restano allineati.
+
+    Il difetto del 2026-07-27 non è nato sulla create ma qui. La catena è:
+
+        _UPDATE_KEYS_TESTATA  →  _build_update_data_testata  →  _UPDATE_WRITE_COLS
+        (cosa si accetta)        (cosa si mappa)                (cosa si scrive)
+
+    Basta che una colonna manchi in **uno solo** dei tre e l'UPDATE non la
+    scrive — senza errore. Nel caso reale (`fatturazione_immediata`) mancava
+    l'anello di mezzo: la PATCH dal drawer rispondeva 200 con «contratto
+    salvato» e non persisteva nulla, perché il payload conteneva comunque altri
+    campi e il guard «nessun campo aggiornabile» non scattava.
+
+    È stato corretto a mano, e a mano si sarebbe ripetuto alla colonna dopo:
+    il mapper è l'unico dei tre anelli che nessun test confrontava. Segnalato
+    dal team DB come «il solo guardrail da aggiungere, se se ne aggiunge uno».
+
+    Il test attraversa la catena **una chiave alla volta**, dal service pubblico
+    fino alla chiamata al repository: è l'unico modo per accorgersi di un anello
+    che non passa la palla.
+    """
+
+    # Valore valido per ogni chiave della whitelist. Il dizionario È parte del
+    # guardrail: aggiungere una chiave a `_UPDATE_KEYS_TESTATA` senza aggiungere
+    # qui un campione fa fallire il primo test — che è il momento in cui serve
+    # fermarsi a pensare se il mapper la gestisce.
+    _CAMPIONI: dict[str, object] = {
+        "ambito": "COMMODITY",
+        "valido_dal": "2026-03-01",
+        "valido_al": "2026-12-31",
+        "parent_contratto_id": 5,
+        "data": "2026-03-01",
+        "listino_id": 200,
+        "tipo_variazione_globale": "PERCENTUALE",
+        "valore_variazione_globale": "-5",
+        "categoria_cliente_id_snapshot": 3,
+        "fatturazione_immediata": True,
+        "meta": {"nota": "guardrail"},
+    }
+
+    # Coppia che il dominio valida insieme (entrambe NULL o entrambe valorizzate):
+    # testarne una da sola darebbe un errore di coerenza, non un esito sul mapper.
+    _PARTNER: dict[str, str] = {
+        "tipo_variazione_globale": "valore_variazione_globale",
+        "valore_variazione_globale": "tipo_variazione_globale",
+    }
+
+    # 1) Ogni chiave accettata ha un campione: è il gancio che costringe a
+    #    passare di qui quando si allarga la whitelist.
+    def test_ogni_chiave_accettata_ha_un_campione(self) -> None:
+        from apps.vendite.services.contratti_service import _UPDATE_KEYS_TESTATA
+
+        senza_campione = sorted(set(_UPDATE_KEYS_TESTATA) - set(self._CAMPIONI))
+        self.assertEqual(
+            senza_campione, [],
+            f"Chiavi in _UPDATE_KEYS_TESTATA senza campione in questo test: "
+            f"{senza_campione}. Aggiungerne uno valido e verificare che "
+            f"_build_update_data_testata le legga davvero.",
+        )
+
+    # 2) ⭐ Anello 1 → 2: ogni chiave accettata ATTRAVERSA il mapper e arriva al
+    #    repository. È il test che sarebbe stato rosso sul difetto reale.
+    @patch("apps.vendite.services.contratti_service.ListiniRepository")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_ogni_chiave_attraversa_il_mapper(self, repo_cls, listini_cls) -> None:
+        from apps.vendite.services.contratti_service import (
+            _UPDATE_KEYS_TESTATA,
+            ContrattiService,
+        )
+
+        repo = repo_cls.return_value
+        repo.update_contratto.return_value = True
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+        repo.count_righe_attive.return_value = 0
+        repo.count_eccezioni_bloccanti.return_value = {}
+        listini_cls.return_value.has_versione_attiva.return_value = True
+
+        for chiave in sorted(_UPDATE_KEYS_TESTATA):
+            with self.subTest(chiave=chiave):
+                repo.get_contratto.return_value = _testata_default()
+                payload: dict[str, object] = {chiave: self._CAMPIONI[chiave]}
+                partner = self._PARTNER.get(chiave)
+                if partner is not None:
+                    payload[partner] = self._CAMPIONI[partner]
+
+                repo.update_contratto.reset_mock()
+                ContrattiService().update_contratto(1, payload)
+
+                self.assertTrue(
+                    repo.update_contratto.called,
+                    f"'{chiave}': la PATCH non ha raggiunto il repository.",
+                )
+                data = repo.update_contratto.call_args.args[1]
+                self.assertIn(
+                    chiave, data,
+                    f"'{chiave}' è accettata da _UPDATE_KEYS_TESTATA ma "
+                    f"_build_update_data_testata NON la legge: l'UPDATE la "
+                    f"ignorerebbe in silenzio (difetto 2026-07-27).",
+                )
+
+    # 3) Anello 1 ↔ 3: ciò che si accetta è esattamente ciò che si sa scrivere.
+    #    Una colonna nella whitelist ma non in _UPDATE_WRITE_COLS verrebbe
+    #    mappata e poi scartata dal repository — stesso silenzio, un anello più
+    #    in là.
+    def test_whitelist_e_colonne_scrivibili_combaciano(self) -> None:
+        from apps.vendite.db.contratti_repository import ContrattiRepository
+        from apps.vendite.services.contratti_service import _UPDATE_KEYS_TESTATA
+
+        accettate = set(_UPDATE_KEYS_TESTATA)
+        scrivibili = set(ContrattiRepository._UPDATE_WRITE_COLS)
+
+        self.assertEqual(
+            sorted(accettate - scrivibili), [],
+            "Chiavi accettate dal service che il repository non scrive: "
+            "verrebbero perse dopo il mapper.",
+        )
+        self.assertEqual(
+            sorted(scrivibili - accettate), [],
+            "Colonne scrivibili dal repository che il service non accetta: "
+            "capacità irraggiungibile (o whitelist da allargare).",
+        )

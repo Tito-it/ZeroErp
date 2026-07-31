@@ -17,3 +17,4 @@ id,dominio_id,task_code,descrizione,attivo,meta,data_insert,user_insert,data_upd
 16,2,deduplica_attivita,Deduplica attivita su chiavi sorgente,true,{},2026-02-22 15:30:00+01,titodb,,
 17,1,pull_attivita_da_commessa,Pull attivita fatturabili da commesse emittibili (perimetro lotto),true,{},2026-06-15 09:00:00+02,titodb,,
 18,1,stampa_documenti_lotto,Accodamento stampa documenti del lotto (delega a coda + processo generico),true,{},2026-07-20 00:00:00+02,titodb,,
+19,1,snapshot_indirizzi_lotto,Snapshot indirizzi fattura da anagrafica cliente (step DRAFT),true,{},2026-07-31 00:00:00+02,titodb,,

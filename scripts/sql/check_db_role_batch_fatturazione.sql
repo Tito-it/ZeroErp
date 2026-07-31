@@ -72,10 +72,18 @@ INSERT INTO _perimeter (nspname, relname, grade) VALUES
     ('pagamenti', 'vendite_contabili_righe',        'iud'),
     ('vendite', 'fatturazione_lotti_task_runs',     'iu'),
     ('vendite', 'fatture_arrotondamenti_scope',     'iu'),
+    ('vendite', 'fatture_indirizzi',                'iu'),
     ('vendite', 'event_log',                        'i'),
     ('vendite', 'attivita_fatturabili_log',         'i'),
     ('pagamenti', 'vendite_contabili_lotti',        'i'),
-    ('vendite', 'commesse_attivita',                'u');
+    -- Allineamento 2026-07-30: queste quattro erano nel provisioning ma non qui,
+    -- quindi il [3a] le segnalava come «privilegi fuori perimetro» a ogni giro.
+    -- Erano falsi positivi, e un check che grida al lupo insegna a ignorarlo.
+    ('documenti', 'documenti_generati',             'i'),
+    ('documenti', 'documenti_generati_file',        'i'),
+    ('documenti', 'documenti_generati_eventi',      'i'),
+    ('vendite', 'commesse_attivita',                'u'),
+    ('vendite', 'fatture_stampa_coda',              'u');
 
 -- Espansione grado -> privilegi attesi (single source per 3a/3b)
 CREATE TEMP TABLE _perimeter_priv AS

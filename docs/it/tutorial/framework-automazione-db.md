@@ -34,14 +34,14 @@ CREATE TABLE catalogo.categorie_materiali (
     descrizione TEXT NOT NULL,
     attivo BOOLEAN NOT NULL DEFAULT true,
     tx_id UUID,
-    date_insert TIMESTAMPTZ NOT NULL DEFAULT now(),
+    data_insert TIMESTAMPTZ NOT NULL DEFAULT now(),
     user_insert TEXT NOT NULL DEFAULT current_user,
-    date_update TIMESTAMPTZ,
+    data_update TIMESTAMPTZ,
     user_update TEXT
 );
 ```
 
-La tabella ha tutte le colonne standard: `tx_id`, `attivo`, campi audit (`date_insert`, `user_insert`, `date_update`, `user_update`), e `codice_interno`. Il framework puo applicare tutte le regole core.
+La tabella ha tutte le colonne standard: `tx_id`, `attivo`, campi audit (`data_insert`, `user_insert`, `data_update`, `user_update`), e `codice_interno`. Il framework puo applicare tutte le regole core.
 
 ---
 
@@ -211,10 +211,10 @@ UPDATE catalogo.categorie_materiali
 SET descrizione = 'Materiale di test aggiornato'
 WHERE codice_interno = 'TEST001';
 
-SELECT date_update, user_update
+SELECT data_update, user_update
 FROM catalogo.categorie_materiali
 WHERE codice_interno = 'TEST001';
--- date_update e user_update devono essere valorizzati
+-- data_update e user_update devono essere valorizzati
 
 -- Test STORICO: verifica snapshot
 SELECT *

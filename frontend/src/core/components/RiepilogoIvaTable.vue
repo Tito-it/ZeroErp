@@ -26,9 +26,30 @@ const props = defineProps({
   items: { type: Array, default: () => [] },
   // Mostra colonna arrotondamento (diagnostica). Off di default per UX pulita.
   showArrotondamento: { type: Boolean, default: false },
+  // Mostra colonna esigibilita' IVA decodificata (fatture: I/D/S FatturaPA).
+  // Off di default: preventivi/ordini/DDT non la espongono.
+  showEsigibilita: { type: Boolean, default: false },
   // Mostra tooltip didascalico sotto al titolo (riferimento normativo).
   showSubtitle: { type: Boolean, default: false },
 })
+
+// Decodifica esigibilita' IVA (character(1) FatturaPA, CHECK
+// `chk_fatture_r_iva_esigibilita`). Chiavi i18n LETTERALI e complete: e' la
+// forma che `scripts/check_i18n_keys.py` sa verificare — una chiave costruita
+// a template sarebbe un punto cieco del guard.
+const ESIGIBILITA_LABEL_KEYS = {
+  I: 'common.riepilogo_iva_esigibilita_immediata',
+  D: 'common.riepilogo_iva_esigibilita_differita',
+  S: 'common.riepilogo_iva_esigibilita_split',
+}
+
+// Scopo: label esigibilita' — decodifica nota, codice grezzo come fallback
+// (un valore fuori vocabolario e' piu' utile visibile che nascosto), '—' se NULL.
+function esigibilitaLabel(row) {
+  const key = ESIGIBILITA_LABEL_KEYS[row.esigibilita]
+  if (key) return t(key)
+  return row.esigibilita || '—'
+}
 
 // Totali aggregati: somma imponibile + imposta delle righe. Ridondante con la
 // testata documento ma utile come check di quadratura nel componente stesso.
@@ -107,6 +128,13 @@ function aliquotaLabel(row) {
         style="width: 30%;">
         <template #body="{ data }">{{ formatCurrency(data.imposta) }}</template>
         <template #footer>{{ formatCurrency(totals.imposta) }}</template>
+      </Column>
+
+      <Column v-if="showEsigibilita" field="esigibilita"
+        :header="t('common.riepilogo_iva_col_esigibilita')"
+        header-style="text-align: left;" body-style="text-align: left;"
+        style="width: 15%;">
+        <template #body="{ data }">{{ esigibilitaLabel(data) }}</template>
       </Column>
 
       <Column v-if="showArrotondamento" field="arrotondamento"

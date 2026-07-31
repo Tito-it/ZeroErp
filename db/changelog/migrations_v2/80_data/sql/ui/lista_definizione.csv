@@ -10,3 +10,14 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert
 9,vendite.resi,Resi di vendita,vendite,vw_resi_lista,t,2026-07-13 00:00:00,mctit
 10,vendite.resi_da_accreditare,Resi da accreditare,vendite,vw_resi_da_accreditare,t,2026-07-14 00:00:00,mctit
 11,vendite.resi_da_riconsegnare,Resi da ri-consegnare,vendite,vw_resi_da_riconsegnare,t,2026-07-14 00:00:00,mctit
+12,vendite.lotti,Lotti di fatturazione,vendite,NULL,t,2026-07-30 00:00:00,mctit
+13,anagrafiche.categorie_clienti,Categorie clienti,anagrafiche,categorie_clienti,t,2026-07-31 00:00:00,mctit
+14,config.utilities_tipi_ruolo,Matrice utility / tipi ruolo,config,NULL,t,2026-07-31 00:00:00,mctit
+15,anagrafiche.indirizzi,Indirizzi,anagrafiche,vw_indirizzi_dettaglio,t,2026-07-31 00:00:00,mctit
+16,config.tipi_ruolo_tipi_indirizzo,Matrice tipi ruolo / tipi indirizzo,config,NULL,t,2026-07-31 00:00:00,mctit
+17,pratiche.pratiche,Pratiche,pratiche,NULL,t,2026-07-31 00:00:00,mctit
+18,anagrafiche.emittenti_fiscali,Emittenti fiscali,anagrafiche,NULL,t,2026-07-31 00:00:00,mctit
+19,anagrafiche.emittente_billing_account,Billing account dell emittente fiscale,anagrafiche,NULL,t,2026-07-31 00:00:00,mctit
+20,catalogo.uom_tipi,Tipi di unita di misura,catalogo,uom_tipi,t,2026-07-31 00:00:00,mctit
+21,catalogo.unita_misura,Unita di misura,catalogo,NULL,t,2026-07-31 00:00:00,mctit
+22,catalogo.conversioni_uom,Conversioni tra unita di misura,catalogo,NULL,t,2026-07-31 00:00:00,mctit

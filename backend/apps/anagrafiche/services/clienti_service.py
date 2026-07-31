@@ -224,16 +224,14 @@ class ClientiService:
 
         # Dati cliente (passati direttamente al repository)
         cliente_data: dict[str, Any] = {}
-        for key in ["termine_pagamento_id", "modalita_pagamento_id", "iva_id",
-                     "nr_giorni_scadenza"]:
+        for key in ["termine_pagamento_id", "modalita_pagamento_id", "iva_id"]:
             val = optional_int(payload, key)
             if val is not None:
                 cliente_data[key] = val
         # iva_id e' NOT NULL senza default DB: se non fornito, risolvi dal DB
         if "iva_id" not in cliente_data:
             cliente_data["iva_id"] = self._repo.get_default_iva_id()
-        for key in ["tipo_gg_scadenza_ft", "cliente_pa", "split_payment",
-                     "garanzia_tipo"]:
+        for key in ["cliente_pa", "split_payment", "garanzia_tipo"]:
             val = optional_str(payload, key)
             if val is not None:
                 cliente_data[key] = val

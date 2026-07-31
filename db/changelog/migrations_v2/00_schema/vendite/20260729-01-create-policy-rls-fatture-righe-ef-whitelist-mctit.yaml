@@ -1,0 +1,171 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R1 — policy rls_fatture_righe_ef_whitelist su vendite.fatture_righe.
+#   (brief RLS satelliti fattura §5; slice 20260729-01..06)
+#
+# PERCHE' ORA. La regola di casa non e' "RLS su tutto": e' RLS sulle TESTATE,
+# piu' i figli letti da una veste diversa dall'operatore. Oggi le uniche due
+# eccezioni sono fatture_scadenze e commesse_attivita. fatture_righe si comporta
+# come tutte le altre righe del progetto — non e' una svista.
+# Lo diventera' il giorno in cui nascera' il portale fatture: gli endpoint sono
+# gia' dichiarati come futuri in apps/portale/api/views.py, e un cliente vedra'
+# il DETTAGLIO della propria fattura, cioe' righe e riepilogo IVA. Il
+# pre-armamento per il portale e' oggi a meta': fatture e fatture_scadenze hanno
+# ba_ownership, fatture_righe e fatture_riepiloghi_iva no.
+# Va chiuso PRIMA che gli endpoint nascano: dopo sarebbe una correzione di
+# sicurezza su codice vivo invece che un prerequisito.
+#
+# GRAVITA' ASIMMETRICA. Un buco ef_whitelist espone i dati di un altro
+# EMITTENTE (colleghi della stessa azienda). Un buco ba_ownership espone quelli
+# di un altro CLIENTE: nomi, articoli, prezzi e importi di terzi a un utente
+# esterno che indovina un intero in un URL. Sono due gravita' diverse, e questa
+# slice arma entrambe le difese.
+#
+# ============================================================================
+# ⚠️ INVARIANTE PORTANTE — non e' uno stile, e' cio' che tiene in piedi i conti
+# ============================================================================
+# Le policy su fatture_righe e fatture_riepiloghi_iva DEVONO usare le STESSE
+# funzioni di scope della testata (fn_scope_ef_whitelist_via_fattura,
+# fn_scope_ba_ownership_via_fattura), MAI un criterio proprio e mai una colonna
+# denormalizzata.
+#
+# Il motivo. Tre funzioni SECURITY INVOKER non leggono le righe: le CONTANO o le
+# SOMMANO.
+#   - fn_ricalcola_riepilogo_iva_fattura   somma le righe per ricostruire il
+#                                          riepilogo IVA;
+#   - fn_assign_numero_fattura             le conta, per il guard
+#                                          E_FATTURA_SENZA_RIGHE (563);
+#   - fn_cleanup_fatture_by_ids            le cancella nel reset lotto.
+# La RLS non fa errore: restituisce MENO RIGHE. Una somma incompleta diventa un
+# riepilogo IVA sbagliato che nessuno segnala — si scrive e basta.
+#
+# Perche' oggi e' sicuro: condividendo la funzione di scope della testata, il
+# filtro e' TUTTO-O-NIENTE PER FATTURA. Chi vede la fattura vede tutte le sue
+# righe, quindi count e SUM sono completi; chi non la vede non vede nulla, e
+# rifiutare e' il comportamento corretto. Non esiste un percorso in cui si veda
+# il padre ma non i figli.
+# Il giorno che una delle due divergesse, le somme PARZIALI diventerebbero
+# possibili. E' questo che l'invariante protegge.
+#
+# PERCHE' `FOR ALL` E NON `FOR SELECT` (lezione Ondata 2, 20260603-16..25). Con
+# la sola SELECT ogni scrittura operatore — anche in-scope — fallisce, perche'
+# nessuna policy copre INSERT/UPDATE/DELETE.
+# Su fatture_righe scrivono:
+#   - il BE, con INSERT diretta da apps/vendite/db/pipeline_repository.py
+#     (percorso vivo dal 2026-02-03; la vecchia fn_generate_fatture_righe era
+#     codice morto ed e' stata ritirata dal 20260728-21). Gira su
+#     `django.db.connection`, cioe' zeroerp_app — NOBYPASSRLS e non owner —
+#     quindi PIENAMENTE soggetta a WITH CHECK, salvo dentro
+#     system_process_context;
+#   - fn_cleanup_fatture_by_ids, con la DELETE del reset lotto.
+# Senza FOR ALL il giro di fatturazione si blocca appena la RLS viene armata.
+# WITH CHECK = USING, a parita' con fatture_scadenze.
+#
+# PERCORSI DI ESECUZIONE — verificati il 2026-07-29, nessuno richiede modifiche:
+#   - cron/batch  -> system_process_context, ruolo BYPASSRLS
+#                    zeroerp_batch_fatturazione (Path A). fatture_righe e
+#                    fatture_riepiloghi_iva sono GIA' nel suo perimetro ('iud',
+#                    provision_db_role_batch_fatturazione.sql).
+#   - stampa PDF  -> stesso canale; genera_documento in contesto sistema ha un
+#                    guard FAIL-LOUD che pretende una connessione BYPASSRLS.
+#   - coda lavori -> operator_identity_context: RLS ATTIVA con i 5 GUC
+#                    dell'operatore. Sicuro per l'invariante sopra (lotto,
+#                    fattura e righe risolvono allo stesso emittente).
+#   - web         -> scope operatore, idem.
+#
+# EFFETTI COLLATERALI ATTESI sulle viste security_invoker=on che joinano
+# fatture_righe (da verificare con uno smoke dopo l'armamento, 20260729-05):
+#   - vw_fattura_righe_esposte     FROM       -> filtra: e' lo scopo
+#   - vw_dash_competenza_errori    JOIN       -> righe che spariscono
+#   - vw_documento_lineage_archi   JOIN       -> archi che spariscono
+#   - vw_dash_competenza_attivita  LEFT JOIN  -> campi fattura a NULL: l'unico
+#                                  che fallirebbe IN SILENZIO (un'attivita'
+#                                  fatturata apparirebbe come non fatturata).
+# Per l'invariante sopra nessuno di questi deve manifestarsi: le viste filtrano
+# gia' per emittente della commessa, e la fattura di quella commessa ha lo
+# stesso emittente. Sono i punti dove una divergenza futura si vedrebbe.
+#
+# ENABLE ROW LEVEL SECURITY NON sta qui: e' isolato nel 20260729-05, dopo tutte
+# e quattro le policy. L'armamento e' il momento in cui tutto cambia, e deve
+# essere un changeset solo — riconoscibile e rollbackabile da solo.
+#
+# Dipendenze: vendite.fatture_righe.fattura_id (NOT NULL),
+#   script.fn_scope_ef_whitelist_via_fattura (STABLE, inlineable).
+# Verifica: db/pgtap/rls/test-rls-fatture-satelliti-functional.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/vendite/20260729-01-create-policy-rls-fatture-righe-ef-whitelist-mctit.yaml
+
+    - changeSet:
+          id: 20260729-01-create-policy-rls-fatture-righe-ef-whitelist
+          author: mctit
+          runOnChange: false
+          validCheckSums:
+              - ANY
+          failOnError: true
+          comment: >
+              Policy rls_fatture_righe_ef_whitelist su vendite.fatture_righe (FOR ALL,
+              scope emittente via fn_scope_ef_whitelist_via_fattura, gate OPERATORE).
+              Mirror esatto di rls_fatture_scadenze_ef_whitelist. Nessun ENABLE qui:
+              l'armamento e' nel 20260729-05.
+          preConditions:
+              - onFail: HALT
+              - and:
+                    - columnExists:
+                          schemaName: vendite
+                          tableName: fatture_righe
+                          columnName: fattura_id
+                    - sqlCheck:
+                          expectedResult: 1
+                          sql: |
+                              SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                               WHERE n.nspname='script' AND p.proname='fn_scope_ef_whitelist_via_fattura';
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        DROP POLICY IF EXISTS rls_fatture_righe_ef_whitelist ON vendite.fatture_righe;
+
+                        CREATE POLICY rls_fatture_righe_ef_whitelist ON vendite.fatture_righe
+                            AS PERMISSIVE
+                            FOR ALL
+                            USING (
+                                current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                                AND script.fn_scope_ef_whitelist_via_fattura(
+                                    NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                    fattura_id
+                                )
+                            )
+                            WITH CHECK (
+                                current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                                AND script.fn_scope_ef_whitelist_via_fattura(
+                                    NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                                    fattura_id
+                                )
+                            );
+
+                        COMMENT ON POLICY rls_fatture_righe_ef_whitelist ON vendite.fatture_righe IS
+                            'RLS operatore: vede/scrive solo le righe di fatture con emittente in '
+                            'whitelist, scope delegato alla TESTATA (fn_scope_ef_whitelist_via_fattura). '
+                            'FOR ALL con WITH CHECK = USING: la sola SELECT bloccherebbe le scritture '
+                            'del giro (fn_generate_fatture_righe, fn_cleanup_fatture_by_ids) — lezione '
+                            'Ondata 2. INVARIANTE: la funzione di scope deve restare quella della '
+                            'testata, mai un criterio proprio: e'' cio'' che rende il filtro '
+                            'tutto-o-niente per fattura e tiene completi il count di '
+                            'fn_assign_numero_fattura e la SUM di fn_ricalcola_riepilogo_iva_fattura. '
+                            'rev 2026-07-29.';
+          rollback:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    sql: |
+                        DROP POLICY IF EXISTS rls_fatture_righe_ef_whitelist ON vendite.fatture_righe;

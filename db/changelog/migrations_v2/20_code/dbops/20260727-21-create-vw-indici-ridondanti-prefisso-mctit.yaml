@@ -61,6 +61,22 @@
 #   policy o con un DROP in changeSet. Senza questa colonna la vista
 #   suggerirebbe DROP che l'automazione rifarebbe al giro successivo.
 #
+# ⚠️ NESSUN GRANT AL RUOLO BATCH, ed e' un errore che questo changeSet ha
+#   davvero fatto fallire in CI. La prima stesura faceva
+#   "GRANT SELECT ... TO zeroerp_batch_fatturazione", che sul DB di sviluppo
+#   funziona perche' il ruolo c'e'. In CI no: il workflow provisiona il ruolo
+#   batch DOPO le migrazioni standard — BYPASSRLS richiede superuser, quindi lo
+#   crea come 'postgres', non via Liquibase — e la pipeline si fermava con
+#   «role "zeroerp_batch_fatturazione" does not exist».
+#   Il GRANT era anche inutile: scripts/sql/provision_db_role_batch_fatturazione.sql
+#   fa GRANT SELECT ON ALL TABLES IN SCHEMA dbops piu' ALTER DEFAULT PRIVILEGES,
+#   quindi la vista e' coperta su ogni ambiente. Regola generale: i privilegi
+#   dei ruoli batch stanno nel provisioning, mai in un changeSet.
+#
+# validCheckSum ANY: il changeSet era gia' EXECUTED sul DB di sviluppo quando la
+#   riga del GRANT e' stata rimossa. Senza tolleranza sul checksum il migrate
+#   successivo su quel DB fallirebbe in validazione.
+#
 # Dipendenze: dbops.automation_scope, dbops.fk_index_policy.
 # ------------------------------------------------------------
 
@@ -72,6 +88,8 @@ databaseChangeLog:
       author: mctit
       runAlways: false
       runOnChange: false
+      validCheckSum:
+        - ANY
       comment: >
         Nuova dbops.vw_indici_ridondanti_prefisso: btree non-unique le cui
         colonne chiave sono prefisso di un altro btree (stessi opclass,
@@ -177,7 +195,12 @@ databaseChangeLog:
             stripComments: false
             sql: |
               GRANT SELECT, INSERT, UPDATE, DELETE ON dbops.vw_indici_ridondanti_prefisso TO zeroerp_app;
-              GRANT SELECT ON dbops.vw_indici_ridondanti_prefisso TO zeroerp_batch_fatturazione;
+              -- Nessun GRANT a zeroerp_batch_fatturazione: il ruolo batch NON esiste
+              -- durante le migrazioni standard (la CI lo provisiona DOPO, come
+              -- postgres, perche' BYPASSRLS richiede superuser). I suoi privilegi
+              -- arrivano da scripts/sql/provision_db_role_batch_fatturazione.sql,
+              -- che fa GRANT SELECT ON ALL TABLES IN SCHEMA dbops + ALTER DEFAULT
+              -- PRIVILEGES: questa vista e' quindi gia' coperta, su ogni ambiente.
 
               COMMENT ON VIEW dbops.vw_indici_ridondanti_prefisso IS
                   'Indici btree ridondanti PER PREFISSO negli schemi in '

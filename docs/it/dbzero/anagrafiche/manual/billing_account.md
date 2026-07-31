@@ -134,8 +134,8 @@ Quando un BA ha un parent (gerarchia), nella catena di fatturazione il BA figlio
 Flusso in dettaglio:
 
 1. `fn_build_fattura_key`: usa `COALESCE(ba.parent_account_id, a.billing_account_id)` per risolvere al padre
-2. `fn_group_attivita_fatturabili`: estrae `a.billing_account_id` (figlio) come `dest_billing_account_id`
-3. `fn_generate_fatture_righe`: inserisce `dest_billing_account_id` nelle righe fattura
+2. `FattureRigheService._build_group_key` (backend): estrae `a.billing_account_id` (figlio) come `dest_billing_account_id` e lo mette nella chiave di raggruppamento
+3. `FattureRigheService.generate_fatture_righe` (backend): inserisce `dest_billing_account_id` nelle righe fattura
 4. `trgfn_fatture_righe_guard_normalize`: fallback — se `dest_billing_account_id` e NULL, eredita da `fatture.billing_account_id`
 
 La risoluzione al padre e **incondizionata**: se `parent_account_id` e valorizzato, la fattura va al padre. Se non si vuole aggregare un figlio al padre, la soluzione e **non impostare `parent_account_id`** (non serve un flag separato).

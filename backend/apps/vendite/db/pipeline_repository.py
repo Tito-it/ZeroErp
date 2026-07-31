@@ -16,6 +16,7 @@ from django.db import connection
 
 from apps.core.db._helpers import (
     LIST_MAX_LIMIT,
+    coerce_jsonb_dict,
     fetch_paged_with_total,
     iso_or_none,
     jsonb_out,
@@ -81,7 +82,6 @@ class GroupAttivitaInput:
     competenza_dal: date | None
     competenza_al: date | None
     data_attivita: date | None
-    visibilita_componenti: str
     calcolo_qta_padre: str
     arrotondamento_importi_dec: int
     arrotondamento_quantita_dec: int
@@ -100,6 +100,12 @@ class AttivitaDaFatturare:
     sorgente_uid: str | None
     sorgente_riga: int | None
     articolo_descrizione: str | None
+    # `meta` dell'attivita': porta lo snapshot kit gia' risolto dal push
+    # (`segment_key`, `componente_di`, `esposto_in_fattura`). Nessuna
+    # risoluzione di distinta base a valle: lo stesso componente puo'
+    # appartenere a piu' kit, solo il documento sorgente sa quale e' stato
+    # venduto. Vedi brief-fix-importi-riga-fattura-zero §4.7-bis (D5).
+    meta: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -139,10 +145,26 @@ class VenditePipelineRepository:
 
     DOMINIO_CODE = "FATTURAZIONE"
 
-    # `fn` nei JSON task e` mantenuto come token di compatibilita` SQL legacy.
+    # Mappa dichiarativa task -> funzione SQL che il task esegue. NON e' una
+    # allowlist di sicurezza e non guida il dispatch: ogni handler in
+    # `pipeline_step_executor` chiama un metodo repository esplicito. Serve a
+    # due cose: documentare dove vive l'implementazione di ogni task, e
+    # intercettare una config di pipeline che dichiari un `fn` diverso da quello
+    # atteso. Quel controllo, oggi, non scatta mai — nessuna riga di
+    # `vendite.fatturazione_pipeline` valorizza la chiave `fn` (verificato:
+    # 0 su 8), quindi `_validate_task_function_name` riceve sempre `fn_name=None`.
+    #
+    # `None` = il task NON ha una funzione SQL: l'implementazione e' Python.
+    # Un `fn` dichiarato in config per un task a `None` e' respinto con
+    # E_TASK_NOT_ALLOWED (config stale): vedi `_validate_task_function_name`.
     ALLOWED_TASK_FUNCTIONS = {
         "select_attivita": "vendite.fn_select_attivita_fatturabili",
-        "generate_fatture_righe": "vendite.fn_generate_fatture_righe",
+        # `vendite.fn_generate_fatture_righe` e' stata RIMOSSA il 2026-07-28
+        # (changeset 20260728-21): l'implementazione in esercizio e'
+        # `FattureRigheService.generate_fatture_righe`. Lasciare qui il nome di
+        # una funzione inesistente e' precisamente cio' che ha fatto scrivere
+        # due requisiti di aggregazione su codice non eseguito.
+        "generate_fatture_righe": None,
         "genera_fondi_source_lotto": "vendite.fn_genera_fondi_fattura_source",
         "applica_fondi_lotto": "vendite.fn_applica_fondi_fattura",
         "ricalcola_iva_lotto": "vendite.fn_ricalcola_riepiloghi_iva_lotto",
@@ -151,6 +173,12 @@ class VenditePipelineRepository:
         "close_lotto": None,
         "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
         "pull_attivita_da_commessa": "vendite.fn_emit_attivita_fatturabili_da_commessa",
+        # Il `task_code` resta `snapshot_indirizzi_lotto` (seed, handler, policy
+        # e registry non si muovono); la funzione SQL e' stata rinominata dal
+        # team DB in `fn_snapshot_fattura_lotto` quando ha iniziato a scrivere
+        # anche l'intestazione — il nome vecchio ne diceva meta' (brief
+        # snapshot-intestazione §10.8).
+        "snapshot_indirizzi_lotto": "vendite.fn_snapshot_fattura_lotto",
     }
 
     # Scopo: Gestisce `_to_jsonb_param` nel flusso applicativo del modulo.
@@ -1140,7 +1168,6 @@ class VenditePipelineRepository:
                     a.competenza_dal,
                     a.competenza_al,
                     a.data_attivita,
-                    COALESCE(r.visibilita_componenti, 'solo_padre') AS visibilita_componenti,
                     COALESCE(r.calcolo_qta_padre, 'fissa') AS calcolo_qta_padre,
                     COALESCE(r.arrotondamento_importi_dec, 2) AS arrotondamento_importi_dec,
                     COALESCE(r.arrotondamento_quantita_dec, 3) AS arrotondamento_quantita_dec,
@@ -1168,12 +1195,11 @@ class VenditePipelineRepository:
             competenza_dal=row[6],
             competenza_al=row[7],
             data_attivita=row[8],
-            visibilita_componenti=row[9],
-            calcolo_qta_padre=row[10],
-            arrotondamento_importi_dec=int(row[11]),
-            arrotondamento_quantita_dec=int(row[12]),
-            metodo_arrotondamento_importi=row[13],
-            metodo_arrotondamento_quantita=row[14],
+            calcolo_qta_padre=row[9],
+            arrotondamento_importi_dec=int(row[10]),
+            arrotondamento_quantita_dec=int(row[11]),
+            metodo_arrotondamento_importi=row[12],
+            metodo_arrotondamento_quantita=row[13],
         )
 
     # Scopo: Fetch batch di GroupAttivitaInput per una lista di attivita_id.
@@ -1196,7 +1222,6 @@ class VenditePipelineRepository:
                     a.competenza_dal,
                     a.competenza_al,
                     a.data_attivita,
-                    COALESCE(r.visibilita_componenti, 'solo_padre') AS visibilita_componenti,
                     COALESCE(r.calcolo_qta_padre, 'fissa') AS calcolo_qta_padre,
                     COALESCE(r.arrotondamento_importi_dec, 2) AS arrotondamento_importi_dec,
                     COALESCE(r.arrotondamento_quantita_dec, 3) AS arrotondamento_quantita_dec,
@@ -1226,12 +1251,11 @@ class VenditePipelineRepository:
                 competenza_dal=row[6],
                 competenza_al=row[7],
                 data_attivita=row[8],
-                visibilita_componenti=row[9],
-                calcolo_qta_padre=row[10],
-                arrotondamento_importi_dec=int(row[11]),
-                arrotondamento_quantita_dec=int(row[12]),
-                metodo_arrotondamento_importi=row[13],
-                metodo_arrotondamento_quantita=row[14],
+                calcolo_qta_padre=row[9],
+                arrotondamento_importi_dec=int(row[10]),
+                arrotondamento_quantita_dec=int(row[11]),
+                metodo_arrotondamento_importi=row[12],
+                metodo_arrotondamento_quantita=row[13],
             )
         return result
 
@@ -1253,7 +1277,8 @@ class VenditePipelineRepository:
                     a.sorgente_tipo_id,
                     a.sorgente_uid,
                     a.sorgente_riga,
-                    art.descrizione
+                    art.descrizione,
+                    a.meta
                 FROM vendite.attivita_fatturabili a
                 JOIN catalogo.articoli art
                   ON art.id = a.articolo_id
@@ -1287,6 +1312,10 @@ class VenditePipelineRepository:
                 sorgente_uid=row[6],
                 sorgente_riga=row[7],
                 articolo_descrizione=row[8],
+                # Il driver restituisce `jsonb` come STRINGA: senza coercion
+                # lo snapshot kit a valle farebbe `str.get(...)`. I test
+                # mockati non lo vedono, iniettano gia' dei dict.
+                meta=coerce_jsonb_dict(row[9]),
             )
             for row in rows
         ]
@@ -1476,6 +1505,82 @@ class VenditePipelineRepository:
                 """,
                 [lotto_id, batch_size],
             )
+
+    # Scopo: Esegue lo snapshot dei satelliti «di intestazione» delle fatture
+    #        del lotto delegando a `vendite.fn_snapshot_fattura_lotto` (Fase 2.2
+    #        piano DB satelliti). Il wrapper DB chiama due funzioni sorelle —
+    #        indirizzi (`fatture_indirizzi`) e intestazione fiscale
+    #        (`fatture.emittente_snapshot` / `cliente_snapshot`) — nella stessa
+    #        transazione, ed e' il motivo per cui i contatori sono sei:
+    #        `intestazioni_scritte` misura il lavoro che le righe di indirizzo
+    #        non descrivono (brief snapshot-intestazione §10.1).
+    #        La funzione NON solleva per la singola fattura difettosa (D-Q: le
+    #        altre ricevono il loro lavoro; la difettosa e' marcata 'C' su
+    #        fatture_log dal DB): l'esito arriva nei contatori, e
+    #        `failed_rows > 0` e' il segnale che l'handler traduce in task_run
+    #        ERRORE — altrimenti il rilancio dello step salterebbe il task
+    #        (COMPLETATO → SKIP) e la correzione non verrebbe mai riletta.
+    #        Il nome del metodo segue il `task_code`, non la funzione SQL: il
+    #        task e' l'ancora stabile del registry, la funzione e' dietro il
+    #        wrapper.
+    def run_snapshot_indirizzi_lotto_task(
+        self,
+        *,
+        lotto_id: int,
+        batch_size: int = 1000,
+    ) -> dict[str, int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT fatture_count, inserted_rows, updated_rows,
+                       intestazioni_scritte, skipped_rows, failed_rows
+                FROM vendite.fn_snapshot_fattura_lotto(%s, %s)
+                """,
+                [lotto_id, batch_size],
+            )
+            row = cursor.fetchone()
+        assert row is not None  # la fn ritorna sempre una riga di contatori
+        return {
+            "fatture_count": int(row[0]),
+            "inserted_rows": int(row[1]),
+            "updated_rows": int(row[2]),
+            "intestazioni_scritte": int(row[3]),
+            "skipped_rows": int(row[4]),
+            "failed_rows": int(row[5]),
+        }
+
+    # Scopo: Ritira le segnalazioni critiche di LOTTO alzate dal BE (D-Q p.2:
+    #        «chi alza la bandiera la abbassa»). Due famiglie, riconoscibili dal
+    #        meta e MAI le righe altrui:
+    #        - gli errori pipeline scritti da PipelineErrorLogger scope LOTTO
+    #          (`meta->>'scope' = 'LOTTO'`);
+    #        - gli esiti derivati da `fn_log_lotto_esito_fatture`
+    #          (`meta->>'source' = 'fatture_log'`): sono FOTOGRAFIE dei log
+    #          fatture — la pipeline ne scrive una fresca a fine step, quindi le
+    #          vecchie sono stale per costruzione. Senza questo ritiro un lotto
+    #          resterebbe bloccato per sempre dalla fotografia di un problema
+    #          gia' risolto (i log fatture li ritira il task DB al successo, ma
+    #          nessuno ritirava la loro copia derivata).
+    #        Chiamata DENTRO la transazione dello step: se lo step fallisce, il
+    #        rollback ripristina le bandiere — e' cio' che rende il ritiro
+    #        equivalente a «solo al successo» senza logica in piu'.
+    #        Ritorna il numero di righe disattivate (telemetria/test).
+    def disattiva_segnalazioni_lotto_be(self, lotto_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.fatturazione_lotti_log
+                   SET disabilitato = TRUE,
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE lotto_id = %s
+                   AND disabilitato IS FALSE
+                   AND status = 'C'
+                   AND (meta->>'scope' = 'LOTTO' OR meta->>'source' = 'fatture_log')
+                """,
+                [lotto_id],
+            )
+            return cursor.rowcount
 
     # Scopo: Prepara e restituisce il dataset SDI del lotto mappato in oggetti tipizzati.
     def run_prepare_sdi_payload_lotto_task(
@@ -2098,35 +2203,104 @@ class VenditePipelineRepository:
                 [fattura_riga_id, attivita_id],
             )
 
-    # Scopo: Inserisce batch di righe fattura e marca le attivita come fatturate in un solo round-trip.
-    # Usa CTE con unnest per INSERT + UPDATE atomico. La correlazione usa (fattura_id, riga_nr) unico.
-    def batch_insert_righe_and_mark(
-        self,
-        *,
-        attivita_ids: list[int],
-        fattura_ids: list[int],
-        riga_nrs: list[int],
-        articolo_ids: list[str],  # uuid (catalogo.articoli.id) — cast ::uuid[] nell'unnest
-        descrizioni: list[str | None],
-        uom_ids: list[int | None],
-        qtas: list[Decimal | None],
-        prezzi_unitari: list[Decimal | None],
-        iva_ids: list[int | None],
-        dest_billing_account_ids: list[int],
-        sorgente_tipo_ids: list[int | None],
-        sorgente_uids: list[str | None],
-        sorgente_righe: list[int | None],
-        metas: list[str | None],
-    ) -> int:
-        if not attivita_ids:
-            return 0
+    # Scopo: Marca come RUNNING le attivita' lockate sul lotto, prima della
+    #        generazione righe. Chiude il passo centrale del ciclo di vita
+    #        `stato_esecuzione` (select -> PENDING, generazione -> RUNNING ->
+    #        COMPLETED, reset -> NULL), che fino al 2026-07-28 non avveniva mai
+    #        sul percorso Python: tutte le attivita' fatturate restavano PENDING.
+    def mark_attivita_running(self, lotto_id: int) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                WITH input_data AS (
+                UPDATE vendite.attivita_fatturabili a
+                   SET stato_esecuzione = 'RUNNING',
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE a.lock_batch_id = (
+                           SELECT fl.lock_batch_id
+                           FROM vendite.fatturazione_lotti fl
+                           WHERE fl.id = %s
+                       )
+                   AND a.fatturato IS FALSE
+                   AND COALESCE(a.lock_in_fatturazione, false) IS TRUE
+                   AND (a.stato_esecuzione IS NULL
+                        OR a.stato_esecuzione IN ('PENDING', 'RUNNING'))
+                """,
+                [lotto_id],
+            )
+            return cursor.rowcount
+
+    # Scopo: Inserisce in un solo round-trip le righe fattura AGGREGATE e collega
+    #        a ciascuna le *n* attivita' che l'hanno prodotta, marcandole
+    #        fatturate e COMPLETED.
+    #        Perimetro e risultato atteso: gli array `righe_*` descrivono UNA
+    #        riga di fattura ciascuno (gia' aggregata dal servizio); gli array
+    #        `att_*` descrivono UNA attivita' ciascuno e portano le coordinate
+    #        (fattura_id, riga_nr) della riga di destinazione. La correlazione
+    #        e' quindi *n*->1 e non piu' 1:1 come prima del 2026-07-28
+    #        (brief-fix-importi-riga-fattura-zero §4.6, requisito D4).
+    #        `imponibile_riga` NON viene passato: lo calcola il trigger
+    #        `a20_importo`, e un valore esterno verrebbe comunque sovrascritto.
+    #        `kit_descrizione_padre` e' risolta qui con una sottoquery per
+    #        congelarla senza un round-trip aggiuntivo.
+    def batch_insert_righe_and_mark(
+        self,
+        *,
+        righe_fattura_ids: list[int],
+        righe_nrs: list[int],
+        righe_articolo_ids: list[str],  # uuid — cast ::uuid[] nell'unnest
+        righe_descrizioni: list[str | None],
+        righe_uom_ids: list[int | None],
+        righe_qtas: list[Decimal | None],
+        righe_prezzi_unitari: list[Decimal | None],
+        righe_iva_ids: list[int | None],
+        righe_dest_billing_account_ids: list[int],
+        righe_kit_keys: list[str | None],
+        righe_kit_esposti: list[bool | None],
+        righe_kit_articolo_padre_ids: list[str | None],  # uuid
+        righe_metas: list[str | None],
+        att_ids: list[int],
+        att_fattura_ids: list[int],
+        att_riga_nrs: list[int],
+    ) -> int:
+        if not att_ids:
+            return 0
+
+        # ⚠️ `unnest(a, b, c)` con array di lunghezze diverse NON solleva: riempie
+        # di NULL i piu' corti. Un disallineamento fra questi array produrrebbe
+        # quindi righe di fattura silenziosamente sbagliate — non un errore.
+        # Verificato su PG 18: `unnest(ARRAY[1,2,3], ARRAY[10,20])` -> 3 righe.
+        righe = {
+            "fattura_ids": righe_fattura_ids, "nrs": righe_nrs,
+            "articolo_ids": righe_articolo_ids, "descrizioni": righe_descrizioni,
+            "uom_ids": righe_uom_ids, "qtas": righe_qtas,
+            "prezzi": righe_prezzi_unitari, "iva_ids": righe_iva_ids,
+            "dest_ba_ids": righe_dest_billing_account_ids,
+            "kit_keys": righe_kit_keys, "kit_esposti": righe_kit_esposti,
+            "kit_padri": righe_kit_articolo_padre_ids, "metas": righe_metas,
+        }
+        att = {
+            "att_ids": att_ids, "att_fattura_ids": att_fattura_ids,
+            "att_riga_nrs": att_riga_nrs,
+        }
+        for gruppo, atteso in ((righe, len(righe_nrs)), (att, len(att_ids))):
+            disallineati = {k: len(v) for k, v in gruppo.items() if len(v) != atteso}
+            ErrorManager.require(
+                not disallineati,
+                code="E_BATCH_ARRAY_DISALLINEATI",
+                message="Array batch di lunghezza incoerente.",
+                detail=f"attesa={atteso} disallineati={disallineati}",
+                context={"attesa": atteso, "disallineati": disallineati},
+                function_name="vendite.pipeline_repository.batch_insert_righe_and_mark",
+                log_to_db=True,
+            )
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                WITH righe_input AS (
                     SELECT *
                     FROM unnest(
-                        %s::int[],
                         %s::int[],
                         %s::int[],
                         %s::uuid[],
@@ -2136,61 +2310,84 @@ class VenditePipelineRepository:
                         %s::numeric[],
                         %s::int[],
                         %s::int[],
-                        %s::int[],
+                        %s::text[],
+                        %s::boolean[],
                         %s::uuid[],
-                        %s::int[],
                         %s::jsonb[]
                     ) AS t(
-                        attivita_id, fattura_id, riga_nr, articolo_id,
-                        descrizione, uom_id, qta, prezzo_unitario,
-                        iva_id, dest_billing_account_id,
-                        sorgente_tipo_id, sorgente_uid, sorgente_riga, meta
+                        fattura_id, riga_nr, articolo_id, descrizione,
+                        uom_id, qta, prezzo_unitario, iva_id,
+                        dest_billing_account_id,
+                        kit_key, kit_esposto_in_fattura, kit_articolo_padre_id,
+                        meta
                     )
                 ),
                 inserted AS (
                     INSERT INTO vendite.fatture_righe (
                         fattura_id, riga_nr, articolo_id, descrizione,
                         uom_id, qta, prezzo_unitario, iva_id,
-                        dest_billing_account_id, sorgente_tipo_id,
-                        sorgente_uid, sorgente_riga, meta
+                        dest_billing_account_id,
+                        sorgente_tipo_id, sorgente_uid, sorgente_riga,
+                        kit_key, kit_esposto_in_fattura,
+                        kit_articolo_padre_id, kit_descrizione_padre,
+                        meta
                     )
                     SELECT
                         d.fattura_id, d.riga_nr, d.articolo_id, d.descrizione,
                         d.uom_id, d.qta, d.prezzo_unitario, d.iva_id,
-                        d.dest_billing_account_id, d.sorgente_tipo_id,
-                        d.sorgente_uid, d.sorgente_riga, d.meta
-                    FROM input_data d
+                        d.dest_billing_account_id,
+                        -- La riga aggrega n attivita' con n sorgenti: nessuna
+                        -- singola da dichiarare. La tracciabilita' passa dal
+                        -- puntatore attivita_fatturabili.fattura_riga_id (D4).
+                        NULL, NULL, NULL,
+                        d.kit_key, d.kit_esposto_in_fattura,
+                        d.kit_articolo_padre_id,
+                        CASE WHEN d.kit_articolo_padre_id IS NULL THEN NULL
+                             ELSE (SELECT art.descrizione
+                                     FROM catalogo.articoli art
+                                    WHERE art.id = d.kit_articolo_padre_id)
+                        END,
+                        d.meta
+                    FROM righe_input d
                     RETURNING id, fattura_id, riga_nr
                 ),
+                att_input AS (
+                    SELECT *
+                    FROM unnest(%s::int[], %s::int[], %s::int[])
+                      AS t(attivita_id, fattura_id, riga_nr)
+                ),
                 correlated AS (
-                    SELECT i.id AS fattura_riga_id, d.attivita_id
+                    SELECT i.id AS fattura_riga_id, a.attivita_id
                     FROM inserted i
-                    JOIN input_data d
-                      ON d.fattura_id = i.fattura_id AND d.riga_nr = i.riga_nr
+                    JOIN att_input a
+                      ON a.fattura_id = i.fattura_id AND a.riga_nr = i.riga_nr
                 )
                 UPDATE vendite.attivita_fatturabili a
                 SET fattura_riga_id = c.fattura_riga_id,
                     fatturato = TRUE,
+                    stato_esecuzione = 'COMPLETED',
                     data_update = now(),
                     user_update = current_user
                 FROM correlated c
                 WHERE a.id = c.attivita_id
                 """,
                 [
-                    attivita_ids,
-                    fattura_ids,
-                    riga_nrs,
-                    articolo_ids,
-                    descrizioni,
-                    uom_ids,
-                    qtas,
-                    prezzi_unitari,
-                    iva_ids,
-                    dest_billing_account_ids,
-                    sorgente_tipo_ids,
-                    sorgente_uids,
-                    sorgente_righe,
-                    metas,
+                    righe_fattura_ids,
+                    righe_nrs,
+                    righe_articolo_ids,
+                    righe_descrizioni,
+                    righe_uom_ids,
+                    righe_qtas,
+                    righe_prezzi_unitari,
+                    righe_iva_ids,
+                    righe_dest_billing_account_ids,
+                    righe_kit_keys,
+                    righe_kit_esposti,
+                    righe_kit_articolo_padre_ids,
+                    righe_metas,
+                    att_ids,
+                    att_fattura_ids,
+                    att_riga_nrs,
                 ],
             )
             return cursor.rowcount

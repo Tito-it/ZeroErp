@@ -1,0 +1,294 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 2.2 — wrapper di lotto dello snapshot indirizzi
+#   (piano-db-satelliti-fattura.md Fase 2.2, D-F esteso agli indirizzi).
+#
+# COS'E'. Il giro sulle fatture del lotto, con la stessa forma del fratello
+#   vendite.fn_ricalcola_riepiloghi_iva_lotto (batch + chiamata per-fattura).
+#   Cambiano due comportamenti, ed entrambi sono decisioni, non dettagli.
+#
+# ⚠️ 1) LE FATTURE OLTRE EMESSA SI FILTRANO PRIMA DI SCRIVERE (D-F esteso agli
+#   indirizzi, Tid 2026-07-31). «Saltare» NON significa lasciare indietro una
+#   fattura: significa che per un documento definitivo questo task NON HA LAVORO
+#   DA FARE. Il suo snapshot e' stato preso quando era in bozza ed e' quello
+#   definitivo — riscriverlo sarebbe illecito, non ometterlo. Il giro quindi non
+#   si ferma, non viene marcato fallito, tutte le altre fatture ricevono il loro
+#   lavoro completo e lo step si chiude normalmente. La traccia e' UNA nota
+#   informativa di lotto per esecuzione, non una segnalazione per fattura:
+#   un documento chiuso non ha nulla da dire su di se', e ripetere la nota a ogni
+#   riesecuzione produrrebbe solo rumore su documenti che nessuno riaprira'.
+#   Il fratello IVA NON filtra: qui si devia da lui consapevolmente. Con lui, una
+#   sola fattura definitiva farebbe morire l'intero lotto.
+#
+# ⚠️ 2) IL FALLIMENTO DI UNA FATTURA NON UCCIDE IL GIRO. Se un cliente non ha
+#   l'indirizzo di fatturazione, la sua fattura non e' emettibile — ma le altre
+#   cinquanta del lotto sono corrette e vanno lavorate. Far risalire l'eccezione
+#   le butterebbe tutte, e soprattutto costringerebbe a scoprire i clienti
+#   incompleti UNO PER GIRO: correggi, rilancia, fallisce sul successivo. Qui il
+#   giro prosegue e OGNI fattura difettosa viene marcata: l'operatore vede
+#   l'elenco completo in una volta sola.
+#
+#   Meccanismo: sotto-blocco BEGIN/EXCEPTION per fattura — stesso schema gia' in
+#   uso in vendite.fn_batch_upsert_commessa_attivita. Il rollback e' limitato
+#   alla singola fattura; il resto della transazione resta vivo.
+#
+# ⚠️ SI CATTURA raise_exception (P0001), NON `others`. script.fn_log_and_raise_error
+#   solleva sempre con RAISE EXCEPTION senza ERRCODE, quindi TUTTI gli errori di
+#   dominio arrivano come P0001. Un guasto di sistema — permesso negato (42501),
+#   funzione inesistente (42883), deadlock — ha un altro SQLSTATE e DEVE passare:
+#   non e' il difetto di una fattura, e' il difetto del giro, e va gridato. Con
+#   `WHEN others` un errore di GRANT diventerebbe «venti fatture con un problema
+#   di anagrafica», che e' il modo migliore per cercare per giorni nel posto
+#   sbagliato.
+#
+# PERCHE' 'C' E NON 'W' sulla fattura difettosa. Una fattura senza indirizzo
+#   obbligatorio non deve diventare EMESSA: il critical e' cio' che la ferma al
+#   confine dello step (il runner blocca l'avanzamento in presenza di criticita'
+#   attive). Con 'W' il lotto proseguirebbe e il guard di emissione (2.5) la
+#   fermerebbe comunque, ma piu' tardi e con meno informazioni. Bloccare al
+#   momento in cui il difetto e' visibile e' meglio che bloccare a valle.
+#
+# ⚠️ 3) OGNI TASK RITIRA LA PROPRIA SEGNALAZIONE (Tid, 2026-07-31). Il disegno
+#   voluto e': lo step si completa, la fattura difettosa resta marcata, il lotto
+#   NON avanza — e per uscirne o si estrae il documento dal lotto, o si RILANCIA
+#   LO STESSO STEP (ero su DRAFT rilancio DRAFT). Perche' il rilancio funzioni
+#   davvero, la marcatura deve poter sparire quando il problema e' risolto:
+#   altrimenti si corregge l'anagrafica, si rilancia, e la fattura resta in
+#   ERRORE per una ragione che non esiste piu'.
+#   Verificato il 2026-07-31: nessuno, oggi, porta `disabilitato` a true — i log
+#   critici cadono solo con fn_cleanup_fatture_by_ids, cioe' distruggendo la
+#   fattura. Quindi il task se ne fa carico: quando lo snapshot di una fattura
+#   riesce, ritira i propri critical precedenti su quella fattura.
+#   ⚠️ Solo i PROPRI: il filtro su meta->>'source' non e' pignoleria. Spegnere la
+#   segnalazione di un altro task significherebbe dichiarare risolto un problema
+#   che non si e' nemmeno guardato. Chi alza la bandiera e' l'unico che sa
+#   quando abbassarla.
+#   Nessuna infrastruttura nuova: il trigger AFTER UPDATE statement su
+#   fatture_log richiama fn_sync_fatture_log_critical_lotto, che ricalcola
+#   `critical` e `stato_esecuzione` contando i soli log con
+#   `disabilitato IS FALSE`. La disattivazione basta.
+#
+# ℹ️ Resta fuori dal nostro perimetro la meta' applicativa dello stesso disegno:
+#   oggi il runner rifiuta QUALUNQUE esecuzione in presenza di criticita', quindi
+#   vieta anche il rilancio dello stesso step — cioe' proprio la via d'uscita.
+#   E' lavoro BE (lotto_segnalazioni_service): distinguere «non avanzare» da
+#   «non ripartire». E' anche il punto B dell'analisi 6.0, che qui morde prima.
+#
+# CINQUE CONTATORI E NON TRE. Il fratello ne torna tre. Qui servono anche
+#   `skipped_rows` e `failed_rows`: senza, un giro che non ha toccato nulla
+#   perche' era tutto definitivo e un giro che non ha toccato nulla perche' era
+#   gia' tutto allineato si leggono identici, e un giro con tre fatture rotte si
+#   legge come un successo.
+#
+# Dipendenze: vendite.fn_snapshot_indirizzi_fattura (20260731-01),
+#   vendite.fn_log_pipeline_fase, vendite.fatture_log.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260731-02-create-fn-snapshot-indirizzi-lotto-mctit.yaml
+
+  - changeSet:
+      id: 20260731-02-create-fn-snapshot-indirizzi-lotto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Wrapper di lotto dello snapshot indirizzi: filtra le fatture oltre
+        EMESSA (D-F esteso), prosegue il giro marcando le singole fatture
+        difettose, ritorna cinque contatori.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'vendite'
+                AND p.proname IN ('fn_snapshot_indirizzi_fattura',
+                                  'fn_log_pipeline_fase')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_snapshot_indirizzi_lotto(bigint, integer);
+
+              CREATE FUNCTION vendite.fn_snapshot_indirizzi_lotto(
+                  p_lotto_id   vendite.fatturazione_lotti.id%TYPE,
+                  p_batch_size integer DEFAULT 1000)
+               RETURNS TABLE(fatture_count integer,
+                             inserted_rows integer,
+                             updated_rows  integer,
+                             skipped_rows  integer,
+                             failed_rows   integer)
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: eseguire lo snapshot degli indirizzi su tutte le fatture
+              --        lavorabili di un lotto, senza che una fattura definitiva
+              --        o una fattura difettosa fermino le altre.
+              -- Uso:   task snapshot_indirizzi_lotto dello step DRAFT.
+              DECLARE
+                  v_ids           BIGINT[];
+                  v_slice         BIGINT[];
+                  v_fattura_id    vendite.fatture.id%TYPE;
+                  v_start         INTEGER := 1;
+                  v_end           INTEGER := 0;
+                  v_max           INTEGER := 0;
+                  v_batch_size    INTEGER := 1000;
+                  v_fatture_count INTEGER := 0;
+                  v_inserted      INTEGER := 0;
+                  v_updated       INTEGER := 0;
+                  v_skipped       INTEGER := 0;
+                  v_failed        INTEGER := 0;
+                  v_tmp_ins       INTEGER;
+                  v_tmp_upd       INTEGER;
+                  v_err_msg       TEXT;
+                  v_err_state     TEXT;
+              BEGIN
+                  -- ===== Guard parametri =====
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_snapshot_indirizzi_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_batch_size IS NULL OR p_batch_size <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_snapshot_indirizzi_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_batch_size', 'valore', p_batch_size),
+                          NULL::uuid, 'p_batch_size obbligatorio e > 0');
+                  END IF;
+
+                  v_batch_size := p_batch_size;
+
+                  -- ===== Chi si lavora e chi no, in una sola lettura =====
+                  -- La soglia e' la stessa del guard di congelamento montato in
+                  -- 1.2: oltre EMESSA lo snapshot e' definitivo. Filtrare QUI e'
+                  -- diverso da provarci e riprendersi: non si tenta nemmeno la
+                  -- scrittura, quindi non si sveglia il guard.
+                  SELECT array_agg(lf.fattura_id ORDER BY lf.fattura_id)
+                             FILTER (WHERE s.codice_interno IN ('DRAFT', 'EMESSA')),
+                         count(*)
+                             FILTER (WHERE s.codice_interno IS NULL
+                                        OR s.codice_interno NOT IN ('DRAFT', 'EMESSA'))
+                    INTO v_ids, v_skipped
+                    FROM vendite.fatturazione_lotti_fatture lf
+                    JOIN vendite.fatture f ON f.id = lf.fattura_id
+                    LEFT JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
+                   WHERE lf.lotto_id = p_lotto_id;
+
+                  v_skipped := COALESCE(v_skipped, 0);
+
+                  IF v_ids IS NULL THEN
+                      -- Nessuna fattura lavorabile: puo' essere un lotto vuoto
+                      -- (nulla da dire) o un lotto tutto definitivo (da dire).
+                      IF v_skipped > 0 THEN
+                          PERFORM vendite.fn_log_pipeline_fase(
+                              p_lotto_id, NULL, 'Snapshot indirizzi', 'I',
+                              format('Nessuna fattura lavorabile: %s gia'' oltre EMESSA, snapshot definitivo.', v_skipped),
+                              jsonb_build_object('task', 'snapshot_indirizzi_lotto',
+                                                 'skipped', v_skipped));
+                      END IF;
+
+                      RETURN QUERY SELECT 0, 0, 0, v_skipped, 0;
+                      RETURN;
+                  END IF;
+
+                  v_max := array_length(v_ids, 1);
+
+                  -- ===== Giro a batch, come il fratello IVA =====
+                  WHILE v_start <= v_max LOOP
+                      v_end   := LEAST(v_start + v_batch_size - 1, v_max);
+                      v_slice := v_ids[v_start:v_end];
+
+                      FOR i IN 1..array_length(v_slice, 1) LOOP
+                          v_fattura_id    := v_slice[i];
+                          v_fatture_count := v_fatture_count + 1;
+
+                          BEGIN
+                              SELECT r.inserted_rows, r.updated_rows
+                                INTO v_tmp_ins, v_tmp_upd
+                                FROM vendite.fn_snapshot_indirizzi_fattura(v_fattura_id) r;
+
+                              v_inserted := v_inserted + COALESCE(v_tmp_ins, 0);
+                              v_updated  := v_updated  + COALESCE(v_tmp_upd, 0);
+
+                              -- Ritiro della PROPRIA segnalazione precedente:
+                              -- il problema di ieri e' risolto, quindi la
+                              -- bandiera va abbassata. Senza, un rilancio dello
+                              -- step lascerebbe la fattura in ERRORE per
+                              -- sempre. Il filtro su meta->>'source' e'
+                              -- essenziale: si ritira solo cio' che questo task
+                              -- ha alzato, mai la segnalazione di un altro.
+                              -- Il resto lo fa da solo il trigger AFTER UPDATE
+                              -- su fatture_log, che ricalcola critical e
+                              -- stato_esecuzione dai soli log attivi.
+                              UPDATE vendite.fatture_log fl
+                                 SET disabilitato = TRUE
+                               WHERE fl.fattura_id = v_fattura_id
+                                 AND fl.disabilitato IS FALSE
+                                 AND fl.status = 'C'
+                                 AND fl.meta->>'source' = 'fn_snapshot_indirizzi_lotto';
+
+                          EXCEPTION WHEN raise_exception THEN
+                              -- Solo gli errori di dominio (P0001) finiscono
+                              -- qui: un guasto di sistema ha altro SQLSTATE e
+                              -- deve continuare a salire. Vedi testata.
+                              GET STACKED DIAGNOSTICS
+                                  v_err_msg   = MESSAGE_TEXT,
+                                  v_err_state = RETURNED_SQLSTATE;
+
+                              v_failed := v_failed + 1;
+
+                              -- Marcatura critical: e' cio' che impedisce a
+                              -- questa fattura di diventare EMESSA, mentre le
+                              -- altre del lotto proseguono.
+                              INSERT INTO vendite.fatture_log (
+                                          fattura_id, data_ora, messaggio,
+                                          status, disabilitato, meta)
+                              VALUES (v_fattura_id, now(),
+                                      format('Snapshot indirizzi non riuscito: %s', v_err_msg),
+                                      'C', FALSE,
+                                      jsonb_build_object(
+                                          'task',     'snapshot_indirizzi_lotto',
+                                          'lotto_id', p_lotto_id,
+                                          'sqlstate', v_err_state,
+                                          'source',   'fn_snapshot_indirizzi_lotto'));
+                          END;
+                      END LOOP;
+
+                      v_start := v_end + 1;
+                  END LOOP;
+
+                  -- ===== Una nota sola, a fine giro, per i documenti chiusi =====
+                  IF v_skipped > 0 THEN
+                      PERFORM vendite.fn_log_pipeline_fase(
+                          p_lotto_id, NULL, 'Snapshot indirizzi', 'I',
+                          format('%s fatture non toccate perche'' oltre EMESSA: snapshot gia'' definitivo.', v_skipped),
+                          jsonb_build_object('task', 'snapshot_indirizzi_lotto',
+                                             'skipped', v_skipped,
+                                             'lavorate', v_fatture_count));
+                  END IF;
+
+                  RETURN QUERY SELECT v_fatture_count, v_inserted, v_updated, v_skipped, v_failed;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_snapshot_indirizzi_lotto(bigint, integer)
+              IS 'Wrapper di lotto dello snapshot indirizzi, sulla forma di vendite.fn_ricalcola_riepiloghi_iva_lotto (batch + chiamata per-fattura) ma con due comportamenti diversi, entrambi voluti. (1) Le fatture oltre EMESSA si FILTRANO prima di scrivere (D-F esteso agli indirizzi): per un documento definitivo questo task non ha lavoro da fare — lo snapshot e'' stato preso in bozza ed e'' quello definitivo — quindi il giro non si ferma, non e'' fallito, le altre fatture ricevono il loro lavoro completo e resta una sola nota informativa di lotto. Il fratello IVA non filtra: con lui una sola fattura definitiva ucciderebbe il lotto. (2) Il fallimento di UNA fattura non uccide il giro: sotto-blocco BEGIN/EXCEPTION per fattura (schema gia'' in uso in fn_batch_upsert_commessa_attivita), la fattura difettosa viene marcata ''C'' su fatture_log — che e'' cio'' che le impedisce di diventare EMESSA — e il giro prosegue, cosi'' l''operatore vede TUTTI i clienti incompleti in una volta invece di scoprirne uno per esecuzione. Si cattura raise_exception (P0001), non others: gli errori di dominio arrivano tutti come P0001 da fn_log_and_raise_error, mentre un guasto di sistema (permesso negato, funzione inesistente, deadlock) ha altro SQLSTATE e deve salire. Ritorna cinque contatori — fatture_count, inserted_rows, updated_rows, skipped_rows, failed_rows — perche'' con tre un giro tutto definitivo, un giro gia'' allineato e un giro con fatture rotte si leggerebbero identici. (3) Quando lo snapshot di una fattura riesce, il task RITIRA le proprie segnalazioni critiche precedenti su quella fattura (disabilitato = true, filtrando su meta->>''source''): serve perche'' la via d''uscita voluta e'' «si rilancia lo stesso step», e senza il ritiro la fattura resterebbe in ERRORE per un problema gia'' risolto. Solo le proprie: spegnere la segnalazione di un altro task equivarrebbe a dichiarare risolto cio'' che non si e'' guardato. Il ricalcolo di critical/stato_esecuzione lo fa da se'' il trigger AFTER UPDATE su fatture_log. piano-db-satelliti-fattura Fase 2.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_snapshot_indirizzi_lotto(bigint, integer);

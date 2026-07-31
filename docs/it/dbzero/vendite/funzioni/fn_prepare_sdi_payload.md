@@ -46,8 +46,11 @@ BEGIN
     -- Upsert fatture_sdi + RETURN QUERY (logica invariata dall'originale)
     RETURN QUERY
     WITH target_fatture AS (
+        -- rev 2026-07-28: si porta dietro anche totale_a_pagare,
+        -- letto qui dalla testata invece che ricostruito a valle.
         SELECT f.id AS f_id, f.numero, f.data, f.billing_account_id,
                f.emittente_soggetto_ruolo_id, f.valuta_id,
+               f.totale_a_pagare,
                COALESCE(f.anno::text, '') || COALESCE(f.serie, '') || COALESCE(f.numero::text, '') AS codice_doc
           FROM vendite.fatturazione_lotti_fatture lf
           JOIN vendite.fatture f ON f.id = lf.fattura_id
@@ -67,14 +70,20 @@ BEGIN
     SELECT u.fs_id, u.fs_fattura_id, u.fs_tentativo, u.fs_stato_sdi_id,
            tf.codice_doc, tf.numero, tf.data, tf.billing_account_id,
            tf.emittente_soggetto_ruolo_id, tf.valuta_id,
-           COALESCE((SELECT SUM(ri.totale_riga) FROM vendite.fatture_riepiloghi_iva ri WHERE ri.fattura_id = u.fs_fattura_id), 0)
+           -- rev 2026-07-28: era SUM(ri.totale_riga) su
+           -- vendite.fatture_riepiloghi_iva, colonna INESISTENTE
+           -- (errore latente: plpgsql pianifica alla prima
+           -- esecuzione). Il totale dovuto e' quello che
+           -- fn_ricalcola_totali_fattura ha gia' calcolato,
+           -- fondi e arrotondamento inclusi.
+           COALESCE(tf.totale_a_pagare, 0)
       FROM upserted u
       JOIN target_fatture tf ON tf.f_id = u.fs_fattura_id;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_prepare_sdi_payload(p_lotto_id bigint, p_stato_sdi_codice_interno character varying, p_force_new_tentativo boolean)
-IS 'Prepara dataset SDI per lotto e apre/riusa tentativi su fatture_sdi.';
+IS 'Prepara dataset SDI per lotto e apre/riusa tentativi su fatture_sdi. rev 2026-07-28: il totale documento viene letto da vendite.fatture.totale_a_pagare — prima sommava fatture_riepiloghi_iva.totale_riga, colonna che su quella tabella NON esiste (le sue colonne di importo sono imponibile, imposta, arrotondamento). Era un errore latente: plpgsql pianifica alla prima esecuzione, quindi sarebbe esploso al primo lotto portato a INVIATA. totale_a_pagare e'' il valore prodotto da fn_ricalcola_totali_fattura, fondi e arrotondamento dell''emittente-utility inclusi: ricostruirlo qui sarebbe una seconda implementazione della stessa regola fiscale. NB: `totale_riga` esiste, ma come colonna calcolata delle viste di riepilogo IVA degli ALTRI documenti (vw_ordini_riepilogo_iva_dettaglio e sorelle) — omonimia, non la stessa cosa. brief-fix-importi-riga-fattura-zero §4.4 (D2).';
 ```
 
 ---

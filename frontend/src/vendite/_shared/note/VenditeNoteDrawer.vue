@@ -25,6 +25,8 @@ const props = defineProps({
   codeField: { type: String, default: 'codice_articolo' },
   descField: { type: String, default: 'descrizione' },
 })
+// `saved` ripropaga il TOTALE note emesso dal BB `NoteDrawer` (vedi lì): serve
+// ai padri che mostrano un badge counter, es. il drawer fattura.
 const emit = defineEmits(['update:visible', 'saved'])
 
 const apiClient = computed(() => {
@@ -34,8 +36,12 @@ const apiClient = computed(() => {
 
 // Adapter righe → opzioni select. Label "{codice} — {descrizione}" con
 // fallback su id; campi parametrici per assorbire la divergenza offerta.
+// ⚠️ Le righe senza `id` sono escluse: alcune viste di esposizione producono
+// righe sintetiche (es. KIT_PADRE di `vw_fattura_righe_esposte`, id NULL) che
+// non esistono in tabella e non possono reggere la FK `target_riga_id` — senza
+// guard il select mostrerebbe un'opzione «#null» che fallisce al salvataggio.
 const righeOptions = computed(() => {
-  return (props.righe || []).map((r) => {
+  return (props.righe || []).filter((r) => r.id != null).map((r) => {
     const code = r[props.codeField]
     const desc = r[props.descField]
     return {
@@ -55,6 +61,6 @@ const righeOptions = computed(() => {
     :title="title"
     supports-riga
     :righe-options="righeOptions"
-    @saved="emit('saved')"
+    @saved="(total) => emit('saved', total)"
   />
 </template>

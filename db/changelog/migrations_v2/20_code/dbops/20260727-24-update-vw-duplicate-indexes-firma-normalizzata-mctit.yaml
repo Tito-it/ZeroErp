@@ -49,9 +49,25 @@
 #   aggiungono quattro), e CREATE OR REPLACE VIEW non lo consente. Il DROP
 #   perde i privilegi: esistono ALTER DEFAULT PRIVILEGES di titodb su dbops che
 #   li rimetterebbero, ma valgono solo se l'esecutore e' titodb — rete di
-#   sicurezza, non garanzia. I GRANT sono quindi RIEMESSI esplicitamente sotto,
-#   identici a quelli rilevati prima del drop:
-#     zeroerp_app=arwd, zeroerp_batch_fatturazione=r
+#   sicurezza, non garanzia. Il GRANT a zeroerp_app e' quindi riemesso
+#   esplicitamente sotto.
+#
+# ⚠️ MA NON QUELLO AL RUOLO BATCH, ed e' un errore che questo changeSet ha
+#   davvero fatto fallire in CI. La prima stesura riemetteva anche
+#   "GRANT SELECT ... TO zeroerp_batch_fatturazione", che sul DB di sviluppo
+#   funziona perche' il ruolo c'e'. In CI no: il workflow provisiona il ruolo
+#   batch DOPO le migrazioni standard — BYPASSRLS richiede superuser, quindi lo
+#   crea come 'postgres', non via Liquibase — e la pipeline si fermava con
+#   «role "zeroerp_batch_fatturazione" does not exist».
+#   Il GRANT era anche inutile: scripts/sql/provision_db_role_batch_fatturazione.sql
+#   fa GRANT SELECT ON ALL TABLES IN SCHEMA dbops piu' ALTER DEFAULT PRIVILEGES,
+#   quindi la vista e' coperta su ogni ambiente senza che il changeSet ci metta
+#   mano. Regola generale: i privilegi dei ruoli batch stanno nel provisioning,
+#   mai in un changeSet.
+#
+# validCheckSum ANY: il changeSet era gia' EXECUTED sul DB di sviluppo quando la
+#   riga del GRANT e' stata rimossa. Senza tolleranza sul checksum il migrate
+#   successivo su quel DB fallirebbe in validazione.
 #
 # NESSUN CONSUMATORE. Verificato il 2026-07-27 su backend Django, frontend,
 #   modelli db_table, CI, scripts/, tools/, setup/, pgTAP, viste dipendenti
@@ -69,6 +85,8 @@ databaseChangeLog:
       author: mctit
       runAlways: false
       runOnChange: false
+      validCheckSum:
+        - ANY
       comment: >
         Ricrea dbops.vw_duplicate_indexes raggruppando per firma normalizzata
         (metodo, opclass, collation, ordinamento, espressioni, predicato)
@@ -157,7 +175,12 @@ databaseChangeLog:
             stripComments: false
             sql: |
               GRANT SELECT, INSERT, UPDATE, DELETE ON dbops.vw_duplicate_indexes TO zeroerp_app;
-              GRANT SELECT ON dbops.vw_duplicate_indexes TO zeroerp_batch_fatturazione;
+              -- Nessun GRANT a zeroerp_batch_fatturazione: il ruolo batch NON esiste
+              -- durante le migrazioni standard (la CI lo provisiona DOPO, come
+              -- postgres, perche' BYPASSRLS richiede superuser). I suoi privilegi
+              -- arrivano da scripts/sql/provision_db_role_batch_fatturazione.sql,
+              -- che fa GRANT SELECT ON ALL TABLES IN SCHEMA dbops + ALTER DEFAULT
+              -- PRIVILEGES: questa vista e' quindi gia' coperta, su ogni ambiente.
 
               COMMENT ON VIEW dbops.vw_duplicate_indexes IS
                   'Indici DUPLICATI ESATTI negli schemi in dbops.automation_scope. '
@@ -223,4 +246,9 @@ databaseChangeLog:
             splitStatements: true
             sql: |
               GRANT SELECT, INSERT, UPDATE, DELETE ON dbops.vw_duplicate_indexes TO zeroerp_app;
-              GRANT SELECT ON dbops.vw_duplicate_indexes TO zeroerp_batch_fatturazione;
+              -- Nessun GRANT a zeroerp_batch_fatturazione: il ruolo batch NON esiste
+              -- durante le migrazioni standard (la CI lo provisiona DOPO, come
+              -- postgres, perche' BYPASSRLS richiede superuser). I suoi privilegi
+              -- arrivano da scripts/sql/provision_db_role_batch_fatturazione.sql,
+              -- che fa GRANT SELECT ON ALL TABLES IN SCHEMA dbops + ALTER DEFAULT
+              -- PRIVILEGES: questa vista e' quindi gia' coperta, su ogni ambiente.

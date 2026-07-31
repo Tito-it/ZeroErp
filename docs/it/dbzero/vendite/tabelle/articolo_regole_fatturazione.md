@@ -6,7 +6,6 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| visibilita_componenti | character varying | NO | 'solo_padre'::character varying |
 | calcolo_qta_padre | character varying | NO | 'fissa'::character varying |
 | arrotondamento_importi_dec | smallint | NO | 2 |
 | arrotondamento_quantita_dec | smallint | NO | 3 |
@@ -28,7 +27,6 @@
 | CHECK | chk_regole_decimali_quantita |  |
 | CHECK | chk_regole_metodo_arrotondamento_importi |  |
 | CHECK | chk_regole_metodo_arrotondamento_quantita |  |
-| CHECK | chk_regole_visibilita_componenti |  |
 | FOREIGN KEY | fk_articolo_regole_fatturazione_articoli | articolo_id |
 | PRIMARY KEY | pk_articolo_regole_fatturazione | id |
 | UNIQUE | uq_articolo_regole_fatturazione_articolo | articolo_id |

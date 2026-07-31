@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 1.2 — arma trgfn_fattura_satellite_guard_congelamento sui due satelliti
+#   della fattura (piano-db-satelliti-fattura.md C-11, Fase 1.2).
+#
+# Funzione: vendite.trgfn_fattura_satellite_guard_congelamento (20260730-01), che
+#   porta il razionale completo. Qui si passa solo la colonna FK in TG_ARGV[0].
+#
+# DUE TRIGGER IN UN SOLO CHANGESET, deliberatamente. Non sono due decisioni: sono
+#   la stessa regola applicata alle due tabelle che il brief indirizzi (§5.4) e il
+#   brief scadenze (§4.6) chiedevano di proteggere. Separarli inviterebbe ad
+#   armarne uno e dimenticare l'altro, ed e' proprio l'asimmetria che questa fase
+#   esiste per chiudere.
+#
+# FASE _a10_ (guard): il nome determina l'ordine di scatto — PostgreSQL esegue i
+#   trigger di pari tipo in ordine alfabetico. `a10` viene prima di
+#   `audit_data_user`, `gen_tx_id` e `z90_storico`, quindi un'operazione respinta
+#   non lascia scritture nello storico ne' fa lavorare inutilmente gli altri.
+#
+# UN SOLO TRIGGER PER TRE EVENTI per tabella: la regola e' una sola («oltre la
+#   soglia i satelliti non si toccano») e tenerla in un punto solo evita che
+#   qualcuno domani ne aggiorni due su tre.
+#
+# NESSUNA CLAUSOLA WHEN: su un documento emesso non esiste una «riscrittura
+#   innocua» — anche riscrivere lo stesso valore e' un'operazione che non deve
+#   avvenire — e sul DELETE una WHEN non avrebbe comunque senso.
+#
+# PERCHE' NON fatture_riepiloghi_iva. Anche lei e' un satellite senza guard, ma
+#   la sua riscrittura passa da fn_ricalcola_riepilogo_iva_fattura, che la soglia
+#   ce l'ha gia' dentro. Armarla qui e' fuori dal perimetro di questo piano: si
+#   fara' quando si tocchera' quell'area, con la stessa funzione e senza scrivere
+#   altro codice — che e' il motivo per cui la funzione e' parametrica.
+#
+# Dipendenze: 20260730-01 (funzione), codice errore 568 (seed CSV).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260730-02-create-trg-fatture-satelliti-guard-congelamento-mctit.yaml
+
+  - changeSet:
+      id: 20260730-02-create-trg-fatture-satelliti-guard-congelamento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Arma trgfn_fattura_satellite_guard_congelamento su vendite.fatture_scadenze
+        e vendite.fatture_indirizzi (BEFORE INSERT OR UPDATE OR DELETE, fase a10).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'vendite'
+                AND p.proname = 'trgfn_fattura_satellite_guard_congelamento'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- vendite.fatture_scadenze: le rate nascono nello step EMESSA,
+              -- quando la fattura e' ancora lavorabile. Oltre la soglia sono uno
+              -- snapshot: il piano rate finisce sul PDF e nel blocco DatiPagamento
+              -- della FatturaPA, quindi riscriverlo cambia un documento emesso.
+              DROP TRIGGER IF EXISTS trg_fatture_scadenze_a10_guard_congelamento_ins_upd_dlt
+                  ON vendite.fatture_scadenze;
+
+              CREATE TRIGGER trg_fatture_scadenze_a10_guard_congelamento_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.fatture_scadenze
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_fattura_satellite_guard_congelamento('fattura_id');
+
+              -- vendite.fatture_indirizzi: lo snapshot degli indirizzi nasce
+              -- nello step DRAFT ed e' cio' che rende la RISTAMPA conforme. Se
+              -- restasse riscrivibile dopo l'emissione, una rigenerazione
+              -- riporterebbe l'indirizzo corrente su una fattura gia' trasmessa
+              -- allo SDI — cioe' esattamente il difetto che lo snapshot esiste
+              -- per impedire.
+              DROP TRIGGER IF EXISTS trg_fatture_indirizzi_a10_guard_congelamento_ins_upd_dlt
+                  ON vendite.fatture_indirizzi;
+
+              CREATE TRIGGER trg_fatture_indirizzi_a10_guard_congelamento_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.fatture_indirizzi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_fattura_satellite_guard_congelamento('fattura_id');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_scadenze_a10_guard_congelamento_ins_upd_dlt
+                  ON vendite.fatture_scadenze;
+
+              DROP TRIGGER IF EXISTS trg_fatture_indirizzi_a10_guard_congelamento_ins_upd_dlt
+                  ON vendite.fatture_indirizzi;

@@ -1,0 +1,168 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R1-R4, ARMAMENTO — ENABLE ROW LEVEL SECURITY su vendite.fatture_righe e
+#   vendite.fatture_riepiloghi_iva.
+#   (brief RLS satelliti fattura §5; slice 20260729-01..06)
+#
+# PERCHE' UN CHANGESET A SE'. I quattro precedenti creano policy INERTI: senza
+# ENABLE non filtrano nulla e non possono rompere niente. Questo e' il momento
+# in cui il comportamento del database cambia per tutti — undici lettori di
+# fatture_righe, quattro viste security_invoker, il giro di fatturazione, la
+# stampa. Un armamento mescolato alla creazione delle policy sarebbe
+# irriconoscibile in DATABASECHANGELOG e non rollbackabile da solo; isolato, si
+# disarma con un rollback di un changeset e le policy restano dove sono.
+#
+# NO FORCE, a parita' con tutta la famiglia (relrowsecurity=t, relforcerowsecurity=f):
+# l'owner (titodb) resta esente, cosi' migrazioni, job owner e pgTAP non si
+# bloccano. Il FORCE e' un'ondata coordinata futura, fuori da questa slice
+# (cfr. brief-db-rls-commesse §2).
+# ⚠️ Da non confondere: NO FORCE NON significa "la RLS non morde in produzione".
+# Il runtime applicativo e' zeroerp_app, che NON e' l'owner ed e' NOBYPASSRLS
+# (20260601-38) -> pienamente soggetto. Alcuni commenti sparsi nel repo
+# affermano il contrario ("l'owner zeroerp_app la bypassa"): sono errati, e
+# hanno gia' indotto in errore chi li ha letti.
+#
+# PRIMA DI APPLICARE — la catena di verifica che precede questo changeset:
+#   1. i quattro percorsi di esecuzione sono coperti (vedi header 20260729-01:
+#      batch e stampa via ruolo BYPASSRLS Path A, coda lavori e web via scope
+#      operatore coerente su lotto/fattura/righe);
+#   2. il pgTAP funzionale 20260729-06 dimostra il comportamento runtime, non
+#      solo l'esistenza delle policy.
+#
+# DOPO L'APPLICAZIONE — smoke sulle tre viste che possono cambiare forma
+# (nessuna dovrebbe, per l'invariante; sono i punti dove una divergenza si
+# manifesterebbe):
+#   - vw_dash_competenza_attivita  LEFT JOIN -> l'unica che fallirebbe IN
+#                                  SILENZIO: campi fattura a NULL, cioe'
+#                                  un'attivita' fatturata che appare come non
+#                                  fatturata (e la quota del 20260728-13
+#                                  calcolata su NULL);
+#   - vw_dash_competenza_errori    JOIN      -> righe che spariscono da una
+#                                  vista di diagnostica: sotto-riporto;
+#   - vw_documento_lineage_archi   JOIN      -> archi di lineage mancanti.
+# Confronto rapido, da sessione operatore: le tre viste devono restituire gli
+# stessi conteggi di prima dell'armamento.
+#
+# KILL-SWITCH: se qualcosa si comporta in modo inatteso,
+#   ALTER TABLE vendite.fatture_righe DISABLE ROW LEVEL SECURITY;
+# riporta immediatamente al comportamento precedente senza toccare le policy.
+#
+# Dipendenze: le quattro policy dei changeset 20260729-01..04.
+# Verifica: db/pgtap/rls/test-rls-fatture-satelliti-functional.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260729-05-enable-rls-fatture-satelliti-mctit.yaml
+
+  - changeSet:
+      id: 20260729-05-enable-rls-fatture-satelliti
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        ENABLE ROW LEVEL SECURITY (NO FORCE) su vendite.fatture_righe e
+        vendite.fatture_riepiloghi_iva: arma le quattro policy dei changeset
+        20260729-01..04. Isolato di proposito — e' il momento in cui il
+        comportamento cambia, e si disarma da solo.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # Tutte e quattro le policy devono esistere: armare a meta' lascerebbe
+            # una veste scoperta senza che nulla lo segnali.
+            - sqlCheck:
+                expectedResult: 4
+                sql: |
+                  SELECT COUNT(*) FROM pg_policies
+                   WHERE schemaname = 'vendite'
+                     AND policyname IN ('rls_fatture_righe_ef_whitelist',
+                                        'rls_fatture_righe_ba_ownership',
+                                        'rls_fatture_riepiloghi_iva_ef_whitelist',
+                                        'rls_fatture_riepiloghi_iva_ba_ownership');
+            # Il canale batch, SE ESISTE, deve avere BYPASSRLS *e* il perimetro DML
+            # su entrambe le tabelle che si stanno armando: senza, il giro di
+            # fatturazione si ferma appena la RLS morde. BYPASSRLS salta la RLS ma
+            # NON i GRANT ([[reference_batch_role_grants_provision_script]]) — sono
+            # due condizioni separate e servono entrambe.
+            #
+            # ⚠️ has_table_privilege UNA PRIVILEGE PER CHIAMATA, non la lista.
+            #   has_table_privilege(r, t, 'SELECT,INSERT,UPDATE,DELETE') e' vero se
+            #   il ruolo ha ANCHE UNA SOLA delle voci elencate (semantica OR, cfr.
+            #   manuale PostgreSQL). Scritta cosi' la guardia passerebbe con il solo
+            #   SELECT, cioe' proprio nel caso che deve fermare. Da qui gli otto
+            #   AND espliciti: verbosi, ma sono un AND vero.
+            #
+            # Gradi verificati sul DB provisionato il 2026-07-31: SELECT/INSERT/
+            # UPDATE/DELETE su entrambe ('iud' del provisioning, DELETE incluso —
+            # serve al reset lotto di fn_cleanup_fatture_by_ids).
+            #
+            # ⚠️ CORREZIONE 2026-07-31 — eccezione alla regola «mai modificare un
+            #   changelog gia' pushato», stessa natura di quella del 20260728-18
+            #   (vedi nota in testa a quel file). La prima stesura chiedeva:
+            #       SELECT COUNT(*) ... WHERE rolname = '...' AND rolbypassrls  = 1
+            #   e ROMPEVA LA CI «standard, no provision»: quel ruolo lo crea
+            #   scripts/sql/provision_db_role_batch_fatturazione.sql, che e'
+            #   provisioning e NON gira li'. Risultato 0, atteso 1, HALT.
+            #
+            #   Il difetto non era il numero: era che la guardia confondeva DUE
+            #   situazioni opposte, entrambe con COUNT = 0 —
+            #       (a) ambiente SENZA canale batch (CI no-provision): non c'e'
+            #           nulla da proteggere, l'armamento e' innocuo;
+            #       (b) canale batch presente ma SENZA BYPASSRLS: e' il caso
+            #           pericoloso, quello per cui la guardia esiste.
+            #   Chiedendo «== 1» le trattava allo stesso modo, cioe' bloccava (a)
+            #   — l'unico dei due che non fa danno.
+            #
+            #   Invertita in «nessun ruolo con la postura sbagliata»: 0 quando il
+            #   ruolo manca (a) e 0 quando c'e' ed e' corretto; 1 solo nel caso
+            #   (b). La guardia ora distingue cio' che prima confondeva, ed e'
+            #   piu' stretta, non piu' lasca.
+            #
+            #   Sugli ambienti dove il changeset e' GIA' applicato non cambia
+            #   nulla: le preConditions non si rivalutano, e c'e' validCheckSums: ANY.
+            #   Modificare in place e' anche l'unica via possibile — Liquibase si
+            #   ferma qui, quindi un changeset con numero piu' alto non verrebbe
+            #   mai raggiunto.
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT COUNT(*) FROM pg_roles r
+                   WHERE r.rolname = 'zeroerp_batch_fatturazione'
+                     AND NOT (
+                           r.rolbypassrls
+                       AND has_table_privilege(r.oid, 'vendite.fatture_righe', 'SELECT')
+                       AND has_table_privilege(r.oid, 'vendite.fatture_righe', 'INSERT')
+                       AND has_table_privilege(r.oid, 'vendite.fatture_righe', 'UPDATE')
+                       AND has_table_privilege(r.oid, 'vendite.fatture_righe', 'DELETE')
+                       AND has_table_privilege(r.oid, 'vendite.fatture_riepiloghi_iva', 'SELECT')
+                       AND has_table_privilege(r.oid, 'vendite.fatture_riepiloghi_iva', 'INSERT')
+                       AND has_table_privilege(r.oid, 'vendite.fatture_riepiloghi_iva', 'UPDATE')
+                       AND has_table_privilege(r.oid, 'vendite.fatture_riepiloghi_iva', 'DELETE')
+                     );
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- NO FORCE: l'owner (titodb) e i ruoli BYPASSRLS restano esenti.
+              -- Il runtime app (zeroerp_app, NOBYPASSRLS, non owner) e' invece
+              -- pienamente soggetto: da qui in poi vede solo cio' che le policy
+              -- gli concedono.
+              ALTER TABLE vendite.fatture_righe ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_riepiloghi_iva ENABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Disarma senza toccare le policy: tornano inerti, non spariscono.
+              ALTER TABLE vendite.fatture_righe DISABLE ROW LEVEL SECURITY;
+              ALTER TABLE vendite.fatture_riepiloghi_iva DISABLE ROW LEVEL SECURITY;

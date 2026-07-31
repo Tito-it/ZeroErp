@@ -1,0 +1,225 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D4 — la dashboard di competenza attribuisce a ogni attivita' la SUA QUOTA
+#   (brief-fix-importi-riga-fattura-zero.md §4.6, punto 6)
+#
+# ⚠️ PERCHE' E' OBBLIGATORIO INSIEME AL 20260728-12, non dopo.
+#   La vista espone una riga per ATTIVITA' e prendeva il valore fatturato cosi':
+#
+#       fr.imponibile_riga AS valore_fatturato
+#
+#   Finche' il rapporto attivita'->riga e' 1:1 funziona. Con l'aggregazione (D4)
+#   n attivita' puntano alla stessa riga, e ciascuna delle n righe della vista
+#   mostrerebbe l'importo INTERO. E vw_dash_competenza_mensile fa
+#   `sum(valore_fatturato)`: il totale fatturato risulterebbe moltiplicato per il
+#   livello di aggregazione. Applicare il 20260728-12 senza questo significa
+#   gonfiare la dashboard.
+#
+# LA QUOTA:
+#       valore_fatturato = imponibile_riga × quantita_attivita / qta_riga
+#
+#   Con prezzo unico dentro il gruppo — e il prezzo E' nella chiave di
+#   raggruppamento — questa e' esattamente `qᵢ × p`, cioe' il contributo reale
+#   dell'attivita'. Ogni attivita' porta il proprio valore e la somma torna.
+#   L'alternativa (importo su una sola delle n, NULL sulle altre) darebbe un
+#   totale giusto ma un dettaglio falso.
+#
+# ✅ NESSUN CAMBIO DI COMPORTAMENTO OGGI. Con una attivita' per riga —
+#   la situazione attuale — `quantita_attivita = qta_riga`, quindi la quota vale
+#   esattamente `imponibile_riga`. Verificato sui dati veri: 500, 200, 400, 400
+#   restano identici. E' un'estensione pura, non una riscrittura.
+#
+# ⚠️ IL CAST `::numeric(18,6)` NON E' COSMETICO. La colonna della vista e'
+#   dichiarata `numeric(18,6)` e `CREATE OR REPLACE VIEW` **rifiuta** di cambiare
+#   il tipo di una colonna esistente: senza cast, la divisione produrrebbe un
+#   `numeric` senza typmod e il changeset fallirebbe. Il cast e' anche cio' che
+#   evita code decimali lunghe nelle somme.
+#
+# SCARTO DI RIPARTIZIONE: con quantita' che non dividono l'importo (es. 200 su
+#   tre attivita' da 1) la somma delle quote puo' discostarsi dall'importo di riga
+#   di ~1e-6 per effetto del troncamento a 6 decimali. E' un ordine di grandezza
+#   irrilevante per un cruscotto gestionale, e resta comunque sotto il centesimo.
+#
+# 🔒 `security_invoker=on` RI-SPECIFICATA: la reloption non e' visibile in
+#   pg_get_viewdef e PostgreSQL la AZZERA a ogni CREATE OR REPLACE. Dimenticarla
+#   riapre il buco RLS sullo scope emittente chiuso dal fix V-1.
+#
+# ⚠️ NOTA PER CHI VERIFICA: questa vista e' `security_invoker` e fuori dal
+#   contesto operatore (GUC `app.current_user_id` vuota) restituisce **zero
+#   righe** — lo scope emittente non risolve nulla. Non e' un difetto della
+#   modifica: per controllare la quota si interroga il join sottostante
+#   (commesse_attivita -> attivita_fatturabili -> fatture_righe) oppure si
+#   impersona un operatore.
+#
+# LE TRE VISTE DIPENDENTI NON SI TOCCANO: nomi e tipi delle colonne restano
+#   identici, quindi `CREATE OR REPLACE` puro. Nessun DROP a cascata.
+#
+# Base: doc auto-gen docs/it/dbzero/vendite/views/vw_dash_competenza_attivita.md
+#   Dipendenze: 20260728-12 (aggregazione).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260728-13-update-vw-dash-competenza-attivita-quota-mctit.yaml
+
+  - changeSet:
+      id: 20260728-13-update-vw-dash-competenza-attivita-quota
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vw_dash_competenza_attivita: valore_fatturato diventa la QUOTA
+        dell'attivita' sull'importo di riga (imponibile_riga * qta_attivita /
+        qta_riga), altrimenti con l'aggregazione il totale mensile si moltiplica
+        per il livello di aggregazione.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+              WITH (security_invoker=on) AS
+              SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  (
+                      CASE
+                          WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                          WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                          WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                          ELSE 'FATTURATA'::text
+                      END)::character varying AS stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE ((date_trunc('month'::text, af.data_insert))::date > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  -- rev 2026-07-28 (D4): la QUOTA dell'attivita', non l'importo
+                  -- intero della riga. Con l'aggregazione n attivita' puntano
+                  -- alla stessa riga e la somma di vw_dash_competenza_mensile
+                  -- conterebbe n volte lo stesso valore. Con una sola attivita'
+                  -- per riga il risultato e' identico a prima.
+                  -- Il cast a numeric(18,6) e' obbligatorio: CREATE OR REPLACE
+                  -- VIEW non puo' cambiare il tipo di una colonna esistente.
+                  (CASE
+                       WHEN fr.id IS NULL THEN NULL::numeric
+                       WHEN COALESCE(fr.qta, (0)::numeric) = (0)::numeric THEN (0)::numeric
+                       ELSE ((fr.imponibile_riga * af.quantita) / fr.qta)
+                   END)::numeric(18,6) AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  ca.sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key
+                 FROM (((((((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
+                   LEFT JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                   LEFT JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE (flf.fattura_id = f.id)
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON (true))
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rollback: torna all'importo INTERO della riga su ogni attivita'.
+              -- ⚠️ Valido solo senza aggregazione: con righe aggregate il totale
+              -- di vw_dash_competenza_mensile risulta moltiplicato.
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+              WITH (security_invoker=on) AS
+              SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  (
+                      CASE
+                          WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                          WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                          WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                          ELSE 'FATTURATA'::text
+                      END)::character varying AS stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE ((date_trunc('month'::text, af.data_insert))::date > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  fr.imponibile_riga AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  ca.sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key
+                 FROM (((((((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
+                   LEFT JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                   LEFT JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE (flf.fattura_id = f.id)
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON (true))
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));

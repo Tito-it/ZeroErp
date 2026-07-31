@@ -1,12 +1,17 @@
 <script setup>
-// Scopo: pagina lista emittenti fiscali (admin only).
+// Scopo: pagina lista emittenti fiscali (admin only), configurabile
+//        (`<ListaConfigurabile codice="anagrafiche.emittenti_fiscali">`):
+//        colonne, ordine e visibilita' dal catalogo `ui.lista_colonna`, con
+//        ritiro dinamico e personalizzazione per utente.
 // Click riga -> apre EmittenteFiscaleDrawer (anagrafica) in modifica.
 // Pulsanti riga BA / Utilities -> aprono i drawer DEDICATI per la sotto-entita',
 // senza passare dal drawer dati.
-import { computed, ref, onMounted } from 'vue'
+// Nessun export: il dominio non ha endpoint (lo scaffolding omette l'azione da
+// se', non ricevendo `exportFn`).
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
@@ -14,19 +19,26 @@ import { READONLY_DOMAINS, TAB_ENTITIES, MANAGE_ICONS } from '../../core/constan
 import EmittenteFiscaleDrawer from '../components/EmittenteFiscaleDrawer.vue'
 import EmittenteFiscaleBillingAccountDrawer from '../components/EmittenteFiscaleBillingAccountDrawer.vue'
 import EmittenteFiscaleUtilitiesDrawer from '../components/EmittenteFiscaleUtilitiesDrawer.vue'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Badge from 'primevue/badge'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 
 const { t } = useI18n()
 const store = useEmittentiFiscaliStore()
-const { searchText, applyFilters, reload, paginatorProps, onPage, onSort } = useSearchTable(store)
+const {
+  searchText, applyFilters, paginatorProps, onPage, onSort, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  newTooltipKey: 'amministrazione.emittenti_fiscali.new',
+  onNew: () => openCreate(),
+  searchTableOptions: { defaultSortField: 'descrizione' },
+})
 
 // Tre drawer indipendenti: anagrafica, BA mapping, utility matrix.
 const drawer = useDrawerState()
@@ -44,25 +56,6 @@ const attivoOptions = [
   { label: t('amministrazione.stato_attivo'), value: true },
   { label: t('amministrazione.stato_inattivo'), value: false }
 ]
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('amministrazione.emittenti_fiscali.new'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    command: openCreate,
-  },
-])
-
 onMounted(() => { store.fetchList() })
 
 function applyExtraFilters() {
@@ -124,45 +117,42 @@ function buildRowActions(data) {
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
           <ReadonlyBadge />
         </template>
       </PageActionsBar>
     </div>
 
-    <DataTable
-      :value="store.items"
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="anagrafiche.emittenti_fiscali"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      v-bind="paginatorProps"
-      lazy
-      removable-sort
-      striped-rows
-      scrollable
-      scrollHeight="flex"
-      class="app-datatable"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
       @page="onPage"
       @sort="onSort"
-      @row-click="(e) => openEdit(e.data)"
-      selection-mode="single"
-      data-key="id"
+      @row-click="openEdit"
+      @config-loaded="onConfigLoaded"
     >
-      <Column field="codice" :header="t('amministrazione.emittenti_fiscali.col_codice')" sortable style="width: 220px;" />
-      <Column field="descrizione" :header="t('amministrazione.emittenti_fiscali.col_descrizione')" sortable />
-      <Column field="ragione_sociale_completa" :header="t('amministrazione.emittenti_fiscali.col_ragione_sociale')" sortable />
-      <Column field="partita_iva" :header="t('amministrazione.emittenti_fiscali.col_piva')" style="width: 160px;" />
-      <Column field="attivo" :header="t('amministrazione.emittenti_fiscali.col_attivo')" sortable style="width: 110px;">
-        <template #body="{ data }">
-          <Badge
-            :value="data.attivo ? t('amministrazione.stato_attivo') : t('amministrazione.stato_inattivo')"
-            :severity="data.attivo ? 'success' : 'danger'"
-          />
-        </template>
-      </Column>
-      <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
-        <template #body="{ data }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-        </template>
-      </Column>
-    </DataTable>
+      <template #cell-attivo="{ data }">
+        <Badge
+          :value="data.attivo ? t('amministrazione.stato_attivo') : t('amministrazione.stato_inattivo')"
+          :severity="data.attivo ? 'success' : 'danger'"
+        />
+      </template>
+
+      <!-- v-if sul TEMPLATE dello slot, non sul menu: senza slot `actions` la
+           BB non monta proprio la colonna (haAzioni), come la <Column v-if>
+           pre-conversione. Il v-if interno lascerebbe una colonna vuota. -->
+      <template v-if="!isReadonly" #actions="{ data, compact }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)"
+          :force-compact="compact" />
+      </template>
+    </ListaConfigurabile>
     </template>
 
     <EmittenteFiscaleDrawer

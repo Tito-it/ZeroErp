@@ -9,10 +9,23 @@
 # Read-side DDT (brief §13) — priorita (peso ritiro dinamico) per le colonne
 # della lista vendite.ddt (lista_id risolto da codice 'vendite.ddt').
 #
-# Stesso meccanismo dei seed ordini/preventivi/offerte (20260603-15/07/08): la
-# colonna priorita NON vive nel CSV lista_colonna.csv (il loader 20260507-07 non
-# la espone), nasce con DEFAULT 50 (20260602-13) e qui si impostano i pesi di
-# dominio. Il re-run del loader NON tocca priorita.
+# Stesso meccanismo dei seed ordini/preventivi/offerte (20260603-15/07/08):
+# priorita nasce con DEFAULT 50 (20260602-13) e qui si impostano i pesi di dominio.
+#
+# ⚠️ RETTIFICA 2026-07-30 — il testo originale diceva che «la colonna priorita
+# NON vive nel CSV lista_colonna.csv (il loader 20260507-07 non la espone)» e che
+# «il re-run del loader NON tocca priorita». Era vero quando questo file e' stato
+# scritto; NON lo e' piu'. Il loader 20260507-07 espone tutte e 24 le colonne,
+# priorita compresa, e lista_colonna.csv ne porta i valori di dominio (verificato:
+# per vendite.ddt il CSV ha 100/95/90... allineati a quanto c'e' nel DB).
+# Conseguenze:
+#   - questo changeSet e' oggi RIDONDANTE ma idempotente: scrive gli stessi valori
+#     che il loader carica. Non fa danno e non va rimosso a cuor leggero, perche'
+#     resta il presidio se il CSV tornasse a 50;
+#   - per una lista NUOVA non serve un changeSet come questo: basta l'append a
+#     lista_colonna.csv con priorita valorizzata, che il loader runOnChange
+#     ripesca. Vedi docs/it/dev/work-in-progress/piano-migrazione-primevue-5.md
+#     §8-bis.
 #
 # Definizione lista + colonne: append a
 #   80_data/sql/ui/lista_definizione.csv (riga 8 vendite.ddt -> vw_ddt_lista) e

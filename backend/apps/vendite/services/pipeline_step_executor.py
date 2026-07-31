@@ -7,6 +7,7 @@
 
 
 import logging
+from dataclasses import dataclass, field
 from typing import Any
 
 from django.db import transaction
@@ -20,6 +21,25 @@ from apps.vendite.services.pipeline_error_logger import PipelineErrorLogger
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 
 # Esecutore di singolo step pipeline con mapping task JSON -> azioni applicative.
+
+
+# Scopo: Esito di un task che ha COMPLETATO il proprio giro ma con una parte
+#        delle fatture in errore (D-Q p.3). Un handler che lo ritorna NON
+#        interrompe lo step — le fatture sane hanno ricevuto il loro lavoro e la
+#        transazione deve committare (i log 'C' per-fattura li ha gia' scritti
+#        il DB) — ma il task_run va chiuso in ERRORE e non in COMPLETATO:
+#        `fn_resolve_lotto_task_execution_mode` risolve COMPLETATO → SKIP, e al
+#        rilancio dello step il task verrebbe SALTATO — la correzione
+#        dell'anagrafica non verrebbe mai riletta. Con ERRORE risolve RESUME
+#        (policy RESUME_TASK) e il rilancio ripete davvero il task.
+#        ⚠️ NON sollevare al suo posto: un raise farebbe rollback dell'intero
+#        step, cancellando anche il lavoro delle fatture sane E la marcatura
+#        di quelle rotte — il rilancio ripartirebbe da zero, identico, per sempre.
+@dataclass(frozen=True)
+class TaskEsitoParziale:
+    error_code: str
+    error_message: str
+    meta: dict[str, Any] = field(default_factory=dict)
 
 class PipelineStepExecutor:
     """Controparte Django della funzione SQL vendite.fn_execute_pipeline_step."""
@@ -48,6 +68,7 @@ class PipelineStepExecutor:
             "close_lotto_default": self._handle_close_lotto_task,
             "reset_lotto_draft_default": self._handle_reset_lotto_draft_task,
             "pull_attivita_da_commessa_default": self._handle_pull_attivita_da_commessa_task,
+            "snapshot_indirizzi_lotto_default": self._handle_snapshot_indirizzi_lotto_task,
         }
 
     # Scopo: Gestisce uno step pipeline validando input, risolvendo processi da configurazione DB e dispatch dei task
@@ -252,7 +273,7 @@ class PipelineStepExecutor:
             task_run_id = task_run_result.task_run_id
 
         try:
-            task_handler(
+            handler_result = task_handler(
                 task=task,
                 fn_name=fn_name,
                 lotto_id=lotto_id,
@@ -265,7 +286,18 @@ class PipelineStepExecutor:
             self._fail_task_run_safely(task_run_id, exc)
             raise
         if task_run_id is not None:
-            self.repository.complete_lotto_task_run(task_run_id)
+            # D-Q p.3: un esito PARZIALE (giro completato, alcune fatture in
+            # errore) chiude il run in ERRORE senza interrompere lo step: e' cio'
+            # che al rilancio produce RESUME invece di SKIP. Vedi TaskEsitoParziale.
+            if isinstance(handler_result, TaskEsitoParziale):
+                self.repository.fail_lotto_task_run(
+                    task_run_id,
+                    handler_result.error_code,
+                    handler_result.error_message,
+                    meta=handler_result.meta,
+                )
+            else:
+                self.repository.complete_lotto_task_run(task_run_id)
 
     # Scopo: Tenta di marcare il task run in errore senza mascherare l'eccezione originale.
     def _fail_task_run_safely(self, task_run_id: int | None, exc: BaseException) -> None:
@@ -291,9 +323,15 @@ class PipelineStepExecutor:
         stato_doc_fiscale_id: int | None = None,
     ) -> None:
         # `fn` resta un token di compatibilita` SQL nella configurazione processi.
-        allowed = self.repository.ALLOWED_TASK_FUNCTIONS.get(task)
-        if allowed is None:
+        # Task fuori mappa: nessun vincolo dichiarato qui (il dispatch fallisce
+        # altrove se il task non esiste). Diverso dal valore `None` IN mappa:
+        # quello significa task Python-only, e un `fn` dichiarato in config per
+        # un task Python-only e' per definizione stale (es. la rimossa
+        # `vendite.fn_generate_fatture_righe`) → deve fallire, non passare.
+        functions = self.repository.ALLOWED_TASK_FUNCTIONS
+        if task not in functions:
             return
+        allowed = functions[task]
         if fn_name and fn_name != allowed:
             if lotto_id is not None:
                 self.error_logger.log_error(
@@ -388,7 +426,10 @@ class PipelineStepExecutor:
             function_name="vendite.pipeline_step_executor._run_per_fattura_task",
         )
 
-    # Scopo: Applica validazione task e gate dry-run prima di eseguire l'azione reale.
+    # Scopo: Applica validazione task e gate dry-run prima di eseguire l'azione
+    #        reale. Ritorna il risultato dell'azione (None in dry-run): serve
+    #        agli handler che leggono i contatori della funzione DB (es.
+    #        `failed_rows` dello snapshot indirizzi, D-Q p.3).
     def _run_validated_task(
         self,
         *,
@@ -398,7 +439,7 @@ class PipelineStepExecutor:
         stato_doc_fiscale_id: int,
         dry_run: bool,
         action: Any,
-    ) -> None:
+    ) -> Any:
         self._validate_task_function_name(
             task=task,
             fn_name=fn_name,
@@ -406,8 +447,8 @@ class PipelineStepExecutor:
             stato_doc_fiscale_id=stato_doc_fiscale_id,
         )
         if dry_run:
-            return
-        action()
+            return None
+        return action()
 
     # Scopo: Seleziona e opzionalmente locka le attivita fatturabili eleggibili per il lotto.
     def _handle_select_attivita_task(
@@ -757,3 +798,54 @@ class PipelineStepExecutor:
                 function_name="vendite.pipeline_step_executor._handle_pull_attivita_da_commessa_task",
                 log_to_db=True,
             )
+
+    # Scopo: Task `snapshot_indirizzi_lotto` (step DRAFT, piano DB satelliti
+    #        Fase 2): congela i satelliti di intestazione delle fatture del
+    #        lotto — indirizzi in `vendite.fatture_indirizzi` e intestazione
+    #        fiscale delle due parti in `fatture.emittente_snapshot` /
+    #        `cliente_snapshot` — via `fn_snapshot_fattura_lotto`.
+    #        La funzione DB applica D-Q da sola: la fattura senza indirizzo
+    #        `FATT` viene marcata 'C' su fatture_log (→ `stato_esecuzione`
+    #        ERRORE sulla ponte) e le ALTRE ricevono il loro snapshot — il giro
+    #        non si ferma e questo handler NON solleva. Se pero' `failed_rows`
+    #        e' > 0 il task_run va chiuso in ERRORE (`TaskEsitoParziale`):
+    #        altrimenti al rilancio dello step il resolver darebbe SKIP e la
+    #        correzione dell'anagrafica non verrebbe mai riletta (D-Q p.3).
+    def _handle_snapshot_indirizzi_lotto_task(
+        self,
+        *,
+        task: str,
+        fn_name: str | None,
+        lotto_id: int,
+        stato_doc_fiscale_id: int,
+        context: LottoContext,
+        params: dict[str, Any],
+        dry_run: bool,
+    ) -> TaskEsitoParziale | None:
+        batch_size_raw = params.get("batch_size")
+        batch_size = int(batch_size_raw) if batch_size_raw is not None else 1000
+        esito = self._run_validated_task(
+            task=task,
+            fn_name=fn_name,
+            lotto_id=lotto_id,
+            stato_doc_fiscale_id=stato_doc_fiscale_id,
+            dry_run=dry_run,
+            action=lambda: self.repository.run_snapshot_indirizzi_lotto_task(
+                lotto_id=lotto_id, batch_size=batch_size,
+            ),
+        )
+        if esito is None:  # dry-run: nessuna esecuzione, nessun esito.
+            return None
+        failed_rows = int(esito.get("failed_rows") or 0)
+        if failed_rows > 0:
+            # Codice gia' seedato dal team DB (Fase 1.3): e' il motivo dominante
+            # reale del fallimento per-fattura, non un codice sintetico nuovo.
+            return TaskEsitoParziale(
+                error_code="E_INDIRIZZO_FATTURA_MANCANTE",
+                error_message=(
+                    f"Snapshot indirizzi completato con {failed_rows} fatture "
+                    "in errore (dettaglio sui log fattura)."
+                ),
+                meta={"task": task, **esito},
+            )
+        return None

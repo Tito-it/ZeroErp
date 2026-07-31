@@ -23,7 +23,10 @@
 // `getExportParams` e' invocata SOLO al click di export (lazy): puo' quindi
 // riferire `searchText`/ref dei filtri definiti nel componente DOPO il
 // destructuring (closure lazy). `extraActions` (opzionale) inserisce azioni
-// utility custom prima di "Nuovo".
+// utility custom prima di "Nuovo". `onReload` (opzionale) sostituisce il
+// comando del pulsante "Ricarica" per le pagine che devono ricaricare anche
+// altro insieme alla lista (il caller richiama `reload` dentro il proprio
+// handler).
 
 import { computed, ref, unref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -40,6 +43,7 @@ export function useListaConfigurabilePage(
     onNew,
     searchTableOptions = {},
     extraActions = null,
+    onReload = null,
   } = {},
 ) {
   const { t } = useI18n()
@@ -83,13 +87,26 @@ export function useListaConfigurabilePage(
         : (extraActions?.value ?? extraActions ?? [])
     const extras = Array.isArray(rawExtras) ? rawExtras : []
     const personalizzaLabel = t('lista_config.personalizza_colonne')
+    // `export` e `new` sono CONDIZIONATE al proprio handler: senza `exportFn`
+    // il dialog si aprirebbe e `onExportConfirm` uscirebbe subito (pulsante
+    // che non fa nulla), e senza `onNew` il comando sarebbe `undefined`.
+    // Prima erano incondizionate e i caller senza "Nuovo" filtravano a mano —
+    // stesso `filter(a => a.key !== 'new')` ripetuto in 3 file: la condizione
+    // vive qui una volta sola (2026-07-31).
+    const conExport = typeof exportFn === 'function'
+    const conNew = typeof onNew === 'function'
     return [
       {
         key: 'reload',
         kind: 'utility',
         label: t('common.reload_list'),
         icon: MANAGE_ICONS.RELOAD,
-        command: search.reload,
+        // `onReload` (opzionale) SOSTITUISCE il reload di lista quando la
+        // pagina deve ricaricare anche altro insieme alla lista — es. il tab
+        // BA emittente, dove il summary e' indipendente dalla pagina corrente
+        // e senza di lui il pulsante "default" resta disallineato. Il caller
+        // richiama `reload` (esposto qui sotto) dentro il proprio handler.
+        command: onReload ?? search.reload,
       },
       {
         key: 'personalizza-colonne',
@@ -104,7 +121,7 @@ export function useListaConfigurabilePage(
         disabled: !configReady.value,
         command: () => listaRef.value?.openModal?.(),
       },
-      {
+      ...(conExport ? [{
         key: 'export',
         kind: 'utility',
         label: t('lista_config.export'),
@@ -112,9 +129,9 @@ export function useListaConfigurabilePage(
         icon: MANAGE_ICONS.DOWNLOAD,
         disabled: exportLoading.value,
         command: () => { exportDialogVisible.value = true },
-      },
+      }] : []),
       ...extras,
-      {
+      ...(conNew ? [{
         key: 'new',
         kind: 'primary',
         label: t('common.new'),
@@ -122,7 +139,7 @@ export function useListaConfigurabilePage(
         icon: MANAGE_ICONS.ADD,
         hideWhenReadonly: true,
         command: onNew,
-      },
+      }] : []),
     ]
   })
 

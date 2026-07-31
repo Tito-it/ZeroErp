@@ -1,0 +1,265 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fix — padding nei campi a larghezza fissa dello snapshot indirizzo
+#   (segnalazione BE 2026-07-31, su giro reale: lotto LTF-0000579).
+#
+# COS'ERA SUCCESSO. Lo snapshot congelato conteneva "prov": "AV        ".
+#   config.province.sigla e' un `character(10)`, e PostgreSQL restituisce i
+#   `char(n)` con il riempimento a spazi fino alla larghezza dichiarata. Il
+#   valore finiva cosi' com'era dentro il jsonb.
+#
+# ⚠️ PERCHE' CONTA PIU' DI UN DIFETTO ESTETICO. Su un dato congelato l'errore e'
+#   permanente: lo snapshot esiste per non cambiare mai piu', quindi ogni
+#   fattura emessa da qui in avanti si porterebbe dietro quegli spazi per
+#   sempre. E il campo Provincia della FatturaPA e' di DUE caratteri: un valore
+#   di dieci non e' «un po' brutto», e' fuori specifica.
+#
+# ⚠️ ERA GIA' NOTO, ED E' STATO RINVIATO. Il changeSet 20260730-07 lo scrive in
+#   chiaro: «provincia_sigla e' un char(n) e puo' portare padding. La gemella
+#   non lo toglie, quindi non lo toglie nemmeno questa — la parita' di shape
+#   viene prima. Se si decide di normalizzarlo va fatto su ENTRAMBE.» La scelta
+#   di allora era difendibile (due funzioni che compongono lo stesso shape non
+#   devono divergere) ma la decisione rinviata e' arrivata al momento peggiore:
+#   dopo che un documento fiscale l'aveva gia' congelata. Il rinvio si paga qui.
+#
+# COSA CAMBIA. Ogni valore testuale dello snapshot passa da
+#   `NULLIF(btrim(...), '')`. Non solo `prov`:
+#     - `prov`   <- config.province.sigla        character(10)  ← il caso visto
+#     - `stato`  <- config.stati.codice_iso2     character(n)   ← stesso rischio
+#     - gli altri sono varchar/text e il btrim e' innocuo, ma applicarlo a tutti
+#       toglie la domanda «questo campo e' a larghezza fissa?» dal futuro.
+#   L'aggiunta di NULLIF ha un secondo effetto voluto: una stringa vuota diventa
+#   NULL e `jsonb_strip_nulls` la elimina, invece di lasciare una chiave che
+#   dice «» — che non e' un dato, e' un dato mancante travestito.
+#
+# ⚠️ LE DUE FUNZIONI SI CORREGGONO INSIEME, IN UN SOLO changeSet. E' la stessa
+#   regola sulla stessa composizione: separarle inviterebbe a sistemarne una e
+#   dimenticare l'altra, che e' esattamente la divergenza che D-O esiste per
+#   impedire. Stesso criterio gia' usato in 20260730-02 per i due trigger.
+#
+# ℹ️ RICADUTA SUI DATI GIA' SCRITTI. Le righe gia' congelate mantengono il
+#   padding: sono dati di test ([[project_no_produzione_solo_sviluppo]]) e non
+#   si bonificano. Quelle delle fatture ancora lavorabili si sistemano da sole
+#   al primo rerun del task: l'upsert di fn_snapshot_indirizzi_fattura riscrive
+#   quando il valore differisce, e dopo questo fix differisce.
+#
+# ℹ️ Tocca anche i cinque documenti fratelli (DDT, ordini, preventivi, offerte,
+#   contratti): usano la stessa funzione e avevano lo stesso difetto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/script/20260731-04-update-fn-snapshot-indirizzo-trim-mctit.yaml
+
+    - changeSet:
+          id: 20260731-04-update-fn-snapshot-indirizzo-trim
+          author: mctit
+
+          runOnChange: false
+          validCheckSums:
+              - ANY
+          failOnError: true
+          comment: >
+              Toglie il padding dei campi a larghezza fissa (province.sigla,
+              stati.codice_iso2) dallo snapshot indirizzo, su entrambe le funzioni
+              gemelle. Segnalazione BE su giro reale.
+          preConditions:
+              - onFail: HALT
+              - sqlCheck:
+                    expectedResult: 2
+                    sql: >
+                        SELECT count(*) FROM pg_proc p
+                        JOIN pg_namespace n ON n.oid = p.pronamespace
+                        WHERE n.nspname = 'script'
+                          AND p.proname IN ('fn_snapshot_indirizzo',
+                                            'fn_snapshot_indirizzo_soggetto')
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION script.fn_snapshot_indirizzo(
+                            p_indirizzo_id anagrafiche.indirizzi.id%TYPE
+                        )
+                        RETURNS TABLE (
+                            snapshot                   jsonb,
+                            origine_soggetto_ruolo_id  anagrafiche.soggetti_ruoli.id%TYPE
+                        )
+                         LANGUAGE plpgsql
+                         STABLE
+                        AS $function$
+                        DECLARE
+                            v_r        record;
+                            v_via      text;
+                        BEGIN
+                            -- Guard input (ID: errore se NULL o <= 0).
+                            IF p_indirizzo_id IS NULL OR p_indirizzo_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'script', 'fn_snapshot_indirizzo', 'E_VALIDAZIONE',
+                                    jsonb_build_object('p_indirizzo_id', p_indirizzo_id),
+                                    NULL::uuid, 'p_indirizzo_id deve essere > 0');
+                            END IF;
+
+                            -- Risoluzione dell'indirizzo di ruolo + intestazione soggetto.
+                            SELECT r.soggetto_ruolo_id,
+                                   r.soggetto_id,
+                                   r.is_normalizzato,
+                                   r.via_norm,
+                                   r.civico,
+                                   r.cap,
+                                   r.comune_descrizione,
+                                   r.provincia_sigla,
+                                   r.stato_iso2,
+                                   r.indirizzo_display,
+                                   r.indirizzo_libero,
+                                   s.ragione_sociale_completa
+                              INTO v_r
+                              FROM anagrafiche.vw_indirizzi_resolved_ruolo r
+                              LEFT JOIN anagrafiche.soggetti s ON s.id = r.soggetto_id
+                             WHERE r.indirizzo_id = p_indirizzo_id;
+
+                            IF NOT FOUND THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'script', 'fn_snapshot_indirizzo',
+                                    'E_INDIRIZZO_SNAPSHOT_NOT_FOUND',
+                                    jsonb_build_object('indirizzo_id', p_indirizzo_id),
+                                    NULL::uuid, p_indirizzo_id::text);
+                            END IF;
+
+                            -- Componente "via": normalizzato -> via_norm + civico;
+                            -- libero -> indirizzo_libero.
+                            v_via := CASE
+                                       WHEN v_r.is_normalizzato
+                                         THEN NULLIF(trim(both ' ' FROM
+                                                COALESCE(v_r.via_norm::text, '') || ' ' ||
+                                                COALESCE(v_r.civico::text, '')), '')
+                                       ELSE v_r.indirizzo_libero
+                                     END;
+
+                            -- Shape canonico (Q1): etichette umane + display.
+                            -- jsonb_strip_nulls: le chiavi nulle non compaiono.
+                            -- ⚠️ NULLIF(btrim(...)) su OGNI valore: `prov` arriva da un
+                            -- character(10) e `stato` da un character(n), quindi senza
+                            -- btrim lo snapshot congelerebbe "AV        " per sempre.
+                            -- Applicato a tutti i campi, non solo ai due colpevoli: cosi'
+                            -- la domanda «questo e' a larghezza fissa?» non si ripresenta.
+                            snapshot := jsonb_strip_nulls(jsonb_build_object(
+                                'intestazione', NULLIF(btrim(v_r.ragione_sociale_completa::text), ''),
+                                'via',          NULLIF(btrim(v_via), ''),
+                                'cap',          NULLIF(btrim(v_r.cap::text), ''),
+                                'citta',        NULLIF(btrim(v_r.comune_descrizione::text), ''),
+                                'prov',         NULLIF(btrim(v_r.provincia_sigla::text), ''),
+                                'stato',        NULLIF(btrim(v_r.stato_iso2::text), ''),
+                                'display',      NULLIF(btrim(v_r.indirizzo_display::text), '')
+                            ));
+
+                            origine_soggetto_ruolo_id := v_r.soggetto_ruolo_id;
+
+                            RETURN NEXT;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION script.fn_snapshot_indirizzo(bigint)
+                        IS 'Compone lo snapshot canonico (intestazione, via, cap, citta, prov, stato, display) di un indirizzo del layer RUOLO, a partire dal suo id. Ogni valore passa da NULLIF(btrim(...)): `prov` arriva da config.province.sigla che e'' un character(10) e `stato` da config.stati.codice_iso2 — senza il btrim lo snapshot congelerebbe il riempimento a spazi per sempre, e la Provincia della FatturaPA e'' di due caratteri (fix 2026-07-31, segnalazione BE su giro reale). Le chiavi vuote diventano NULL e spariscono con jsonb_strip_nulls. Gemella: script.fn_snapshot_indirizzo_soggetto, che deve restare identica nello shape.';
+
+                        CREATE OR REPLACE FUNCTION script.fn_snapshot_indirizzo_soggetto(
+                            p_soggetto_id       anagrafiche.indirizzi_soggetti.soggetto_id%TYPE,
+                            p_tipo_indirizzo_id anagrafiche.indirizzi_soggetti.tipo_indirizzo_id%TYPE)
+                         RETURNS TABLE(snapshot jsonb)
+                         LANGUAGE plpgsql
+                         STABLE
+                        AS $function$
+                        -- Scopo: comporre lo snapshot canonico di un indirizzo del layer
+                        --        SOGGETTO (anagrafiche.indirizzi_soggetti), che non ha
+                        --        riga in anagrafiche.indirizzi e quindi non e'
+                        --        raggiungibile da script.fn_snapshot_indirizzo.
+                        -- Uso:   fallback della catena di risoluzione, dopo il layer RUOLO
+                        --        (script.fn_resolve_indirizzo_documento).
+                        DECLARE
+                            v_r   record;
+                            v_via text;
+                        BEGIN
+                            -- Guard input. Il soggetto e' un uuid: si controlla solo il
+                            -- NULL; il tipo e' un id numerico e vale la regola generale
+                            -- (errore se NULL o <= 0, mai normalizzazione silenziosa).
+                            IF p_soggetto_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'script', 'fn_snapshot_indirizzo_soggetto', 'E_VALIDAZIONE',
+                                    jsonb_build_object('p_soggetto_id', p_soggetto_id),
+                                    NULL::uuid, 'p_soggetto_id obbligatorio');
+                            END IF;
+
+                            IF p_tipo_indirizzo_id IS NULL OR p_tipo_indirizzo_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'script', 'fn_snapshot_indirizzo_soggetto', 'E_VALIDAZIONE',
+                                    jsonb_build_object('p_tipo_indirizzo_id', p_tipo_indirizzo_id),
+                                    NULL::uuid, 'p_tipo_indirizzo_id deve essere > 0');
+                            END IF;
+
+                            -- Risoluzione: la coppia (soggetto, tipo) e' UNIQUE
+                            -- (uq_indirizzi_soggetti_soggetto_tipo), quindi la riga e'
+                            -- una sola per costruzione — nessun LIMIT 1 da giustificare.
+                            SELECT r.is_normalizzato,
+                                   r.via_norm,
+                                   r.civico,
+                                   r.cap,
+                                   r.comune_descrizione,
+                                   r.provincia_sigla,
+                                   r.stato_iso2,
+                                   r.indirizzo_display,
+                                   r.indirizzo_libero,
+                                   s.ragione_sociale_completa
+                              INTO v_r
+                              FROM anagrafiche.vw_indirizzi_resolved_soggetto r
+                              LEFT JOIN anagrafiche.soggetti s ON s.id = r.soggetto_id
+                             WHERE r.soggetto_id = p_soggetto_id
+                               AND r.tipo_indirizzo_id = p_tipo_indirizzo_id;
+
+                            -- Assenza = zero righe, NON errore: e' il caso normale di un
+                            -- fallback. Differenza deliberata dalla gemella, che invece
+                            -- riceve un id che deve esistere e solleva se non lo trova.
+                            IF NOT FOUND THEN
+                                RETURN;
+                            END IF;
+
+                            -- Componente "via": normalizzato -> via_norm + civico;
+                            -- libero -> indirizzo_libero. Identica alla gemella.
+                            v_via := CASE
+                                       WHEN v_r.is_normalizzato
+                                         THEN NULLIF(trim(both ' ' FROM
+                                                COALESCE(v_r.via_norm::text, '') || ' ' ||
+                                                COALESCE(v_r.civico::text, '')), '')
+                                       ELSE v_r.indirizzo_libero
+                                     END;
+
+                            -- Shape canonico (Q1), identico alla gemella — btrim incluso:
+                            -- la parita' vale anche per le correzioni, altrimenti lo
+                            -- stesso indirizzo cambierebbe forma a seconda del layer.
+                            snapshot := jsonb_strip_nulls(jsonb_build_object(
+                                'intestazione', NULLIF(btrim(v_r.ragione_sociale_completa::text), ''),
+                                'via',          NULLIF(btrim(v_via), ''),
+                                'cap',          NULLIF(btrim(v_r.cap::text), ''),
+                                'citta',        NULLIF(btrim(v_r.comune_descrizione::text), ''),
+                                'prov',         NULLIF(btrim(v_r.provincia_sigla::text), ''),
+                                'stato',        NULLIF(btrim(v_r.stato_iso2::text), ''),
+                                'display',      NULLIF(btrim(v_r.indirizzo_display::text), '')
+                            ));
+
+                            RETURN NEXT;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION script.fn_snapshot_indirizzo_soggetto(uuid, integer)
+                        IS 'Gemella di script.fn_snapshot_indirizzo per il layer SOGGETTO: compone lo STESSO shape canonico (intestazione, via, cap, citta, prov, stato, display) a partire da (soggetto_id, tipo_indirizzo_id). Esiste perche'' gli indirizzi di soggetto stanno in anagrafiche.indirizzi_soggetti e non hanno riga in anagrafiche.indirizzi: non c''e'' un p_indirizzo_id da passare alla gemella, e la colonna indirizzo_id della vista soggetto e'' la PK di un''ALTRA tabella — passarla alla gemella restituirebbe in silenzio l''indirizzo di ruolo con lo stesso numero. Prende la coppia (soggetto, tipo) proprio per rendere impossibile quello scambio. Assenza = zero righe e non errore: e'' il fallback della catena e il chiamante deve poter scendere di livello. Determinismo garantito da uq_indirizzi_soggetti_soggetto_tipo. Ogni valore passa da NULLIF(btrim(...)) come nella gemella (fix 2026-07-31: prov da character(10) congelava il riempimento a spazi). STABLE. piano-db-satelliti-fattura D-O, Fase 2.0-a.';
+          rollback:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    sql: |
+                        SELECT 'rollback non previsto: reintrodurrebbe il padding negli snapshot' AS nota;

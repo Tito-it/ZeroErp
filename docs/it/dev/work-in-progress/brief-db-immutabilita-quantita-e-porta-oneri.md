@@ -12,8 +12,15 @@
 > `fn_aggiungi_onere_commessa(…, p_articolo_onere_id, …)` (riga SOURCELESS qta=1 APPROVATA +
 > writer `commesse_attivita_log`), codici 552/553/554. **pgTAP tutti verdi** (porta base
 > `plan(19)`, contatore cieco `plan(5)`, giro completo onere→fattura `plan(12)` 12/12 dopo il
-> fix `fn_group` — vedi §7 step 9). **Restano solo BE**: ponte approvazione (step 2, hardening),
-> permessi prezzo N5/N7 (step 8). Verificato sul codice vivo **2026-07-21**.
+> fix `fn_group` — vedi §7 step 9).
+>
+> ⚠️ **Header corretto il 2026-07-28**: diceva ancora «restano solo BE: ponte approvazione
+> (step 2), permessi prezzo N5/N7 (step 8)». **Entrambi chiusi il 2026-07-23** e registrati
+> nella tabella di §7, ma la testata non era stata aggiornata — verificato sul codice vivo:
+> `p_righe_ids` è passato dal ponte (`commesse_repository`), `prezzo_override_manuale` è su
+> tutte e tre le view prezzo, e il [brief BE/FE compagno](../work-done/brief-be-fe-immutabilita-quantita-e-porta-oneri.md)
+> è già in `work-done`. **Resta la sola voce dello step 10: la validazione in-app della porta
+> oneri**, che al 2026-07-23 era senza bersaglio (`vendite.commesse` vuota su dev).
 >
 > **✅ Decisioni ratificate con Tid (2026-07-21)**: (a) causali **mono-lingua `descrizione`**
 > come i vocabolari gemelli (`tipi_reso`…), NON `label_key` (§4c.3 rivisto); (b) causale su

@@ -14,7 +14,7 @@ Indice test eseguiti:
 1) test_atomico_chiama_fn_madre           — una sola SELECT su fn_update_cliente con (id, categoria, jsonb)
 2) test_atomico_whitelist_scarta_ignoti   — chiavi non whitelisted escluse dal jsonb
 3) test_atomico_normalizza_empty_nullable — stringa vuota su campo nullable -> None nel jsonb
-4) test_atomico_normalizza_empty_numerico  — nr_giorni_scadenza/garanzia_importo "" -> None (no crash ::integer/::numeric)
+4) test_atomico_normalizza_empty_numerico  — termine_pagamento_id/garanzia_importo "" -> None (no crash ::integer/::numeric)
 5) test_atomico_ritorna_flag              — mappa la row (categoria_aggiornata, campi_aggiornati)
 """
 
@@ -82,15 +82,15 @@ class UpdateClienteAtomicoTests(TestCase):
 
     @patch(CURSOR)
     def test_atomico_normalizza_empty_numerico(self, mocked_factory):
-        """Empty su campi numerici nullable (nr_giorni_scadenza, garanzia_importo)
+        """Empty su campi numerici nullable (termine_pagamento_id, garanzia_importo)
         -> None: la fn madre non deve ricevere '' e crashare su ::integer/::numeric."""
         cursor = _mock_cursor(mocked_factory)
         ClientiRepository().update_cliente_atomico(
             1, ba_categoria_cliente_id=None,
-            cliente_fields={"nr_giorni_scadenza": "", "garanzia_importo": "  "},
+            cliente_fields={"termine_pagamento_id": "", "garanzia_importo": "  "},
         )
         payload = _payload_jsonb(cursor)
-        self.assertIsNone(payload["nr_giorni_scadenza"])
+        self.assertIsNone(payload["termine_pagamento_id"])
         self.assertIsNone(payload["garanzia_importo"])
 
     @patch(CURSOR)

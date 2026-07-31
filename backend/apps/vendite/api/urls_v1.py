@@ -2,6 +2,7 @@ from django.urls import include, path
 
 from apps.vendite.api.views import (
     ApiCommessaAttivita,
+    ApiCommessaAttivitaAnnulla,
     ApiCommessaAttivitaApprova,
     ApiCommessaAttivitaRiallineaPrezzo,
     ApiCommessaAttivitaSbloccaPrezzo,
@@ -16,6 +17,7 @@ from apps.vendite.api.views import (
     ApiFatturazioneRistampaLotto,
     ApiFatturazioneRun,
     ApiFatturazioneRunStato,
+    ApiLottiExportView,
     ApiLottiList,
     ApiLottiMensile,
     ApiLottoDetail,
@@ -190,6 +192,8 @@ urlpatterns = [
         name="vendite-dashboard-backlog-documenti",
     ),
     path("lotti/", ApiLottiList.as_view(), name="vendite-lotti-list"),
+    # Export CSV/XLSX della lista (colonne dal catalogo `vendite.lotti`).
+    path("lotti/export/", ApiLottiExportView.as_view(), name="vendite-lotti-export"),
     # Aggregato conteggi lotti/mese per la sidebar anno/mese (prima di
     # <int:lotto_id> per chiarezza; "mensile" non è comunque un int).
     path("lotti/mensile/", ApiLottiMensile.as_view(), name="vendite-lotti-mensile"),
@@ -263,6 +267,14 @@ urlpatterns = [
         "commesse/<int:commessa_id>/attivita/<int:att_id>/sblocca-prezzo/",
         ApiCommessaAttivitaSbloccaPrezzo.as_view(),
         name="vendite-commessa-attivita-sblocca-prezzo",
+    ),
+    # Annullamento di una riga MANUALE (onere) caricata per errore: non
+    # cancella, porta stato_emissione ad ANNULLATA (gia' filtrato da tutte le
+    # porte verso fattura e cockpit). Gate `carica_voce_manuale`.
+    path(
+        "commesse/<int:commessa_id>/attivita/<int:att_id>/annulla/",
+        ApiCommessaAttivitaAnnulla.as_view(),
+        name="vendite-commessa-attivita-annulla",
     ),
     path(
         "commesse/<int:commessa_id>/attivita/",

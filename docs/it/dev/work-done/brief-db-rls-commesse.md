@@ -54,8 +54,17 @@ Note di modello:
   risultante: commessa senza emittente visibile/scrivibile **solo** ad admin globale.
   È il comportamento voluto (chi ha uno scope non deve toccare ciò che non è attribuito).
 * **NO FORCE** (parità famiglia: `relrowsecurity=t`, `relforcerowsecurity=f`): l'owner
-  `zeroerp_app` bypassa finché non arriva l'ondata FORCE coordinata; il canale batch
-  (`system_process_context`, ruolo BYPASSRLS) resta esente per costruzione.
+  della tabella (`titodb`) è esente finché non arriva l'ondata FORCE coordinata; il
+  canale batch (`system_process_context`, ruolo BYPASSRLS) resta esente per costruzione.
+  ⚠️ **Correzione 2026-07-28**: questa riga diceva *«l'owner `zeroerp_app` bypassa»*.
+  `zeroerp_app` **non è owner** (lo è `titodb`), non ne è membro
+  (`pg_has_role → false`) e non ha `BYPASSRLS` → **la policy gli si applica già
+  oggi**. Verificato empiricamente sulla famiglia gemella: `vendite.fatture` ha 7
+  righe reali (`pg_class.reltuples`) e ne mostra **0** all'app senza GUC operatore.
+  L'errore è lo stesso già corretto in
+  [brief-db-contesto-sistema-batch-fatturazione-rls.md](brief-db-contesto-sistema-batch-fatturazione-rls.md) §1
+  («non è vero che oggi funziona perché la RLS è dormiente per via di NO FORCE»);
+  da qui si era propagato in `brief-annullamento-righe-manuali-commessa` §5-bis.
 * **Nessuna colonna denormalizzata** su `commesse_attivita`: la policy passa dal padre
   (stesso pattern `fatture_scadenze`; una riga attività non cambia mai commessa).
 

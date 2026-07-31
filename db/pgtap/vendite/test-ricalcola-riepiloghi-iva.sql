@@ -24,18 +24,31 @@ SELECT plan(12);
 -- ============================================================
 CREATE TEMP TABLE tmp_costanti_iva AS
 SELECT 'pgtap_ricalcola_iva'::text AS test_scope;
+-- ⚠️ 2026-07-28: emittente e billing account NON si scelgono piu' in modo
+--   indipendente. `fn_ricalcola_totali_fattura` richiede la configurazione
+--   (emittente, utility) su anagrafiche.emittenti_fiscali_utilities per leggere
+--   decimali e metodo di arrotondamento del totale, e solleva E_CONFIG_MANCANTE
+--   se non la trova. Prendendo «l'emittente piu' recente» e «il BA piu' recente»
+--   la coppia risultante non era configurata, e il test si fermava a meta'.
+--   Ora si parte DALLA configurazione e si sceglie un BA con quella utility.
 CREATE TEMP TABLE tmp_refs_iva AS
+WITH cfg AS (
+  SELECT efu.emittente_soggetto_ruolo_id, efu.utility_id
+    FROM anagrafiche.emittenti_fiscali_utilities efu
+   WHERE efu.attivo IS TRUE
+     AND EXISTS (SELECT 1 FROM anagrafiche.billing_account ba
+                  WHERE ba.utility_id = efu.utility_id)
+   ORDER BY efu.emittente_soggetto_ruolo_id, efu.utility_id
+   LIMIT 1
+)
 SELECT (
-    SELECT soggetto_ruolo_id
-    FROM anagrafiche.emittenti_fiscali
-    WHERE attivo IS TRUE
-    ORDER BY data_insert DESC NULLS LAST
-    LIMIT 1
+    SELECT emittente_soggetto_ruolo_id FROM cfg
   ) AS emittente_soggetto_ruolo_id,
   (
-    SELECT id
-    FROM anagrafiche.billing_account
-    ORDER BY data_insert DESC NULLS LAST
+    SELECT ba.id
+    FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id = (SELECT utility_id FROM cfg)
+    ORDER BY ba.data_insert DESC NULLS LAST
     LIMIT 1
   ) AS billing_account_id,
   (
@@ -113,6 +126,9 @@ SELECT ok(
 -- 2) Fattura di test
 -- ============================================================
 CREATE TEMP TABLE tmp_fattura_iva AS WITH ins AS (
+  -- ⚠️ 2026-07-28: aggiunta `valuta_id`, richiesta da
+  --   fn_ricalcola_totali_fattura (p_valuta_id obbligatorio) per risolvere lo
+  --   scope di arrotondamento. Senza, il test si fermava prima degli ultimi casi.
   INSERT INTO vendite.fatture (
       registro_id,
       data,
@@ -120,6 +136,7 @@ CREATE TEMP TABLE tmp_fattura_iva AS WITH ins AS (
       billing_account_id,
       tipo_doc_fiscale_id,
       stato_doc_fiscale_id,
+      valuta_id,
       meta
     )
   SELECT (
@@ -142,6 +159,9 @@ CREATE TEMP TABLE tmp_fattura_iva AS WITH ins AS (
     (
       SELECT stato_doc_fiscale_id
       FROM tmp_refs_iva
+    ),
+    (
+      SELECT id FROM config.valute ORDER BY id LIMIT 1
     ),
     jsonb_build_object(
       'test_scope',
@@ -171,9 +191,6 @@ INSERT INTO vendite.fatture_righe (
     qta,
     prezzo_unitario,
     iva_id,
-    imponibile_riga,
-    imposta_riga,
-    totale_riga,
     meta
   )
 SELECT (
@@ -188,9 +205,6 @@ SELECT (
     SELECT iva_id
     FROM tmp_refs_iva
   ),
-  v.imponibile_riga,
-  v.imposta_riga,
-  v.totale_riga,
   jsonb_build_object(
     'test_scope',
     (
@@ -199,32 +213,33 @@ SELECT (
     )
   )
 FROM (
+    -- ⚠️ 2026-07-28: la fixture NON fornisce piu' gli importi di riga.
+    --   `imponibile_riga` e' calcolato dal trigger a20 (qta * prezzo * (1-sconto/100),
+    --   arrotondato secondo le regole dell'articolo), e `imposta_riga`/`totale_riga`
+    --   non esistono piu' sul modello: l'imposta di riga non esiste nel regime
+    --   italiano, l'IVA si liquida per aliquota nei riepiloghi.
+    --   Gli attesi NON cambiano: 1x100 -> 100 e 1x50 -> 50 sono esattamente cio'
+    --   che il trigger produce. Prima la fixture forniva alla catena il dato che
+    --   il percorso di produzione non generava mai — ed e' il motivo per cui il
+    --   difetto e' sopravvissuto a una suite verde.
+    --   brief-fix-importi-riga-fattura-zero §8.1.
     VALUES (
         1,
         'Riga IVA 1',
         1::numeric,
-        100::numeric,
-        100::numeric,
-        22::numeric,
-        122::numeric
+        100::numeric
       ),
       (
         2,
         'Riga IVA 2',
         1::numeric,
-        50::numeric,
-        50::numeric,
-        11::numeric,
-        61::numeric
+        50::numeric
       )
   ) AS v(
     riga_nr,
     descrizione,
     qta,
-    prezzo_unitario,
-    imponibile_riga,
-    imposta_riga,
-    totale_riga
+    prezzo_unitario
   );
 SELECT ok(true, 'Inserimento righe fattura di test');
 -- ============================================================
@@ -348,15 +363,25 @@ SELECT is(
 -- ============================================================
 -- 6) Lotto + collegamento fattura
 -- ============================================================
+-- ⚠️ 2026-07-28: aggiunto `emittente_soggetto_ruolo_id`, diventato NOT NULL su
+--   vendite.fatturazione_lotti dopo la stesura di questo test. Era la ragione per
+--   cui il file risultava in `baseline-rossi.tsv` come ERRORE_FIXTURE: si fermava
+--   qui e non eseguiva gli ultimi quattro casi. Il riferimento era gia'
+--   disponibile in tmp_refs_iva, non serviva altro.
 CREATE TEMP TABLE tmp_lotto_iva AS WITH ins AS (
   INSERT INTO vendite.fatturazione_lotti (
       competenza_mese,
       tipo_doc_fiscale_id,
+      emittente_soggetto_ruolo_id,
       meta
     )
   SELECT date_trunc('month', current_date)::date,
     (
       SELECT tipo_doc_fiscale_id
+      FROM tmp_refs_iva
+    ),
+    (
+      SELECT emittente_soggetto_ruolo_id
       FROM tmp_refs_iva
     ),
     jsonb_build_object(

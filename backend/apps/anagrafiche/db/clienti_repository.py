@@ -23,10 +23,27 @@ from apps.core.db._helpers import (
 )
 
 
-_CLIENTI_ORDER_COLS = {
-    "ragione_sociale_completa", "codice_fiscale", "soggetto_codice",
-    "ba_codice", "utility_descrizione", "stato_descrizione",
-    "data_attivazione", "data_chiusura",
+# Whitelist colonne ammesse per ORDER BY: chiave = `campo_sorgente` del catalogo
+# 'anagrafiche.clienti' (e' quello che `<ListaConfigurabile>` invia come
+# sortField), valore = espressione SQL. Qualificata dove la chiave e' una
+# colonna fisica (la query joina sei tabelle: un nome nudo diventerebbe ambiguo
+# alla prima omonimia); nuda dove e' un alias di output della SELECT, che
+# ORDER BY risolve solo cosi'.
+#
+# L'identificativo fiscale a video e' SEMPRE `id_fiscale_univoco_cf_piva` (la
+# colonna GENERATED che unifica CF e P.IVA). `codice_fiscale` e `partita_iva`
+# nudi non sono esposti da nessuna colonna della lista: fuori dalla whitelist.
+_CLIENTI_ORDER_COLS: dict[str, str] = {
+    "ragione_sociale_completa": "s.ragione_sociale_completa",
+    "id_fiscale_univoco_cf_piva": "s.id_fiscale_univoco_cf_piva",
+    "soggetto_codice": "soggetto_codice",
+    "ba_codice": "ba_codice",
+    "utility_descrizione": "utility_descrizione",
+    "stato_descrizione": "stato_descrizione",
+    "data_attivazione": "cl.data_attivazione",
+    "data_sospensione": "cl.data_sospensione",
+    "data_riattivazione": "cl.data_riattivazione",
+    "data_chiusura": "cl.data_chiusura",
 }
 
 
@@ -147,7 +164,6 @@ class ClientiRepository:
         # Colonne opzionali: incluse solo se valorizzate (non None)
         _OPTIONAL = [
             "termine_pagamento_id", "modalita_pagamento_id", "iva_id",
-            "tipo_gg_scadenza_ft", "nr_giorni_scadenza",
             "cliente_pa", "split_payment",
             "codice_cig", "codice_cup", "codice_commessa",
             "servizio_da_fatturare",
@@ -218,7 +234,9 @@ class ClientiRepository:
         limit: int = 25, offset: int = 0,
         order_by: str = "ragione_sociale_completa", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = order_by if order_by in _CLIENTI_ORDER_COLS else "ragione_sociale_completa"
+        order_col = _CLIENTI_ORDER_COLS.get(
+            order_by, _CLIENTI_ORDER_COLS["ragione_sociale_completa"]
+        )
         direction = sql_order_direction(order_dir)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
@@ -352,9 +370,10 @@ class ClientiRepository:
                    -- Pareggio = RIATTIVAZIONE. Niente logica nel frontend.
                    evt.data_evento_stato,
                    evt.tipo_evento_stato,
-                   -- Pagamento
-                   cl.tipo_gg_scadenza_ft,
-                   cl.nr_giorni_scadenza,
+                   -- Pagamento — unico meccanismo: termine di catalogo +
+                   -- modalita' (D-I). La coppia legacy tipo_gg_scadenza_ft /
+                   -- nr_giorni_scadenza non si legge piu': le colonne cadono
+                   -- con la 3a.5 del piano DB satelliti.
                    cl.termine_pagamento_id,
                    cl.modalita_pagamento_id,
                    cl.iva_id,
@@ -422,7 +441,6 @@ class ClientiRepository:
     # (fornitori/emittenti). Aggiungere un campo editabile => aggiornare ENTRAMBI.
     _UPDATE_ALLOWED = {
         "iva_id", "modalita_pagamento_id", "termine_pagamento_id",
-        "tipo_gg_scadenza_ft", "nr_giorni_scadenza",
         "cliente_pa", "split_payment",
         "codice_cig", "codice_cup", "codice_commessa",
         "servizio_da_fatturare",

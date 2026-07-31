@@ -9,10 +9,8 @@
 | codice_interno | character varying | NO |  |
 | descrizione | character varying | NO |  |
 | numero_rate | smallint | NO |  |
-| unita_intervallo | character | NO |  |
-| intervallo | smallint | YES |  |
-| primo_offset_giorni | smallint | YES |  |
-| tipo_offset | character | NO | 'N'::bpchar |
+| intervallo | smallint | NO | 0 |
+| primo_offset_giorni | smallint | NO | 0 |
 | ripartizione | character varying | NO | 'UGUALI'::character varying |
 | arrotondamento_metodo | character varying | NO | 'HALF_UP'::character varying |
 | arrotondamento_decimali | smallint | NO | 2 |
@@ -21,6 +19,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| fine_mese | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -29,9 +28,7 @@
 | CHECK | chk_termini_pag_numero_rate_pos |  |
 | CHECK | chk_termini_pagamento_arrotondamento_metodo |  |
 | CHECK | chk_termini_pagamento_intervallo_range |  |
-| CHECK | chk_termini_pagamento_intervallo_uso |  |
 | CHECK | chk_termini_pagamento_ripartizione |  |
-| CHECK | chk_termini_pagamento_tipo_offset |  |
 | PRIMARY KEY | pk_termini_pagamento | id |
 | UNIQUE | uq_cfg_termini_pagamento_codice_interno | codice_interno |
 | UNIQUE | uq_termini_pagamento_codice | codice |

@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 1.4 — RLS operatore su vendite.fatture_indirizzi
+#   (piano-db-satelliti-fattura.md C-12, Fase 1.4).
+#
+# PERCHE' ORA E NON «QUANDO CI SARA' UN CONSUMER». Il brief indirizzi (§7) la
+#   lasciava «da valutare col consumer». Ma fatture_indirizzi sta per diventare
+#   popolata (Fase 2) ed e' l'UNICA satellite della fattura senza alcun presidio:
+#     fatture_scadenze      -> 2 policy + guard di scope emittente
+#     fatture_righe         -> 2 policy (20260729-01/02)
+#     fatture_riepiloghi_iva-> 2 policy (20260729-03/04)
+#     fatture_indirizzi     -> NIENTE
+#   Armarla dopo, quando il dettaglio fattura la leggera' gia', significherebbe
+#   scoprire l'asimmetria da un accesso fuori scope invece che da un piano.
+#
+# ⚠️ INVARIANTE PORTANTE — identico a quello di 20260729-01, che lo argomenta per
+#   esteso: la policy DEVE usare la stessa funzione di scope della TESTATA
+#   (script.fn_scope_ef_whitelist_via_fattura), mai un criterio proprio e mai una
+#   colonna denormalizzata. Il filtro resta cosi' TUTTO-O-NIENTE PER FATTURA: chi
+#   vede la fattura vede tutti i suoi indirizzi, chi non la vede non ne vede
+#   nessuno. Non esiste un percorso in cui si veda il padre ma non i figli.
+#
+#   Qui la posta e' diversa da quella delle righe — nessuno SOMMA gli indirizzi —
+#   ma non minore: script.fn_indirizzi_obbligatori_mancanti CONTA i tipi presenti
+#   per decidere se la fattura e' emettibile. Una RLS che restituisse MENO RIGHE
+#   non darebbe errore: farebbe risultare mancante un indirizzo che c'e', e
+#   bloccherebbe l'emissione di una fattura valida.
+#
+# PERCHE' `FOR ALL` E NON `FOR SELECT` (lezione Ondata 2, 20260603-16..25): con la
+#   sola SELECT ogni scrittura operatore fallirebbe, perche' nessuna policy
+#   coprirebbe INSERT/UPDATE. Su questa tabella scrivono il task di snapshot
+#   (Fase 2) e l'upsert del BB Python, entrambi su zeroerp_app — NOBYPASSRLS e non
+#   owner — quindi pienamente soggetti a WITH CHECK fuori da system_process_context.
+#   WITH CHECK = USING, a parita' con le sorelle.
+#
+# ENABLE ROW LEVEL SECURITY NON sta qui: e' isolato nel 20260730-05, dopo
+#   entrambe le policy. L'armamento e' il momento in cui il comportamento cambia,
+#   e deve essere un changeSet identificabile da solo — stessa scelta di
+#   20260729-05.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260730-03-create-policy-rls-fatture-indirizzi-ef-whitelist-mctit.yaml
+
+  - changeSet:
+      id: 20260730-03-create-policy-rls-fatture-indirizzi-ef-whitelist
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Policy RLS operatore su vendite.fatture_indirizzi: scope delegato alla
+        testata (fn_scope_ef_whitelist_via_fattura), FOR ALL con WITH CHECK = USING.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script'
+                AND p.proname = 'fn_scope_ef_whitelist_via_fattura'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_indirizzi_ef_whitelist ON vendite.fatture_indirizzi;
+
+              CREATE POLICY rls_fatture_indirizzi_ef_whitelist ON vendite.fatture_indirizzi
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              fattura_id
+                          )
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_fattura(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              fattura_id
+                          )
+                  );
+
+              COMMENT ON POLICY rls_fatture_indirizzi_ef_whitelist ON vendite.fatture_indirizzi IS
+                  'RLS operatore: vede/scrive solo gli indirizzi di fatture con emittente in '
+                  'whitelist, scope delegato alla TESTATA (fn_scope_ef_whitelist_via_fattura). '
+                  'FOR ALL con WITH CHECK = USING: la sola SELECT bloccherebbe le scritture del '
+                  'task di snapshot e dell''upsert del BB indirizzi — lezione Ondata 2. '
+                  'INVARIANTE: la funzione di scope deve restare quella della testata. Qui non si '
+                  'sommano righe, ma fn_indirizzi_obbligatori_mancanti CONTA i tipi presenti per '
+                  'decidere se la fattura e'' emettibile: una RLS che restituisse meno righe non '
+                  'darebbe errore, farebbe risultare mancante un indirizzo che c''e''. '
+                  'piano-db-satelliti-fattura C-12, Fase 1.4.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_indirizzi_ef_whitelist ON vendite.fatture_indirizzi;

@@ -349,20 +349,32 @@ SELECT ok(
 -- =========================================================
 -- 19) CHECK origine: valore non in lista -> violazione CHECK
 --     Richiede riga composita con BoM esposta disponibile.
+--
+-- ⚠️ Rev. 2026-08-01 — la fixture sceglieva la riga BoM valida a CURRENT_DATE,
+--    ma il guard che sta a monte del CHECK la valuta alla DATA DEL DOCUMENTO.
+--    Finche' i due istanti coincidevano il test passava; quando il preventivo
+--    piu' vecchio del DB e' uscito dalla finestra di validita' del componente,
+--    l'INSERT ha cominciato a morire prima, con
+--    «La riga BoM [...] non e' valida alla data documento [data=2026-05-11]» —
+--    cioe' un rosso che non parlava del CHECK in esame. Ora il criterio di
+--    selezione e' LO STESSO del guard (`ac.validita @> p.data`): la fixture non
+--    puo' piu' scegliere una riga che il guard rifiutera', e il test smette di
+--    dipendere da quanto tempo e' passato. Nessuna asserzione cambiata.
 -- =========================================================
 SELECT CASE
     WHEN NOT EXISTS (
              SELECT 1 FROM vendite.preventivi_righe pr
-               JOIN catalogo.articoli a ON a.id = pr.articolo_id
+               JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+               JOIN catalogo.articoli a  ON a.id = pr.articolo_id
               WHERE a.is_composito = TRUE
                 AND EXISTS (
                     SELECT 1 FROM catalogo.articoli_componenti ac
                      WHERE ac.prodotto_id = a.id
                        AND ac.esposto_in_fattura = TRUE
-                       AND ac.validita @> CURRENT_DATE
+                       AND ac.validita @> p.data
                 )
          )
-    THEN skip('19) prerequisiti non disponibili (nessuna riga composita con BoM esposta)')
+    THEN skip('19) prerequisiti non disponibili (nessuna riga composita con BoM esposta valida alla data documento)')
     ELSE throws_like(
         $$
         DO $inner$
@@ -373,20 +385,26 @@ SELECT CASE
         BEGIN
             SELECT pr.id INTO v_riga_id
               FROM vendite.preventivi_righe pr
-              JOIN catalogo.articoli a ON a.id = pr.articolo_id
+              JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+              JOIN catalogo.articoli a  ON a.id = pr.articolo_id
              WHERE a.is_composito = TRUE
                AND EXISTS (
                    SELECT 1 FROM catalogo.articoli_componenti ac
                     WHERE ac.prodotto_id = a.id
                       AND ac.esposto_in_fattura = TRUE
-                      AND ac.validita @> CURRENT_DATE
+                      AND ac.validita @> p.data
                )
              LIMIT 1;
 
+            -- Stessa finestra della selezione sopra: la riga BoM deve essere
+            -- valida alla data del documento a cui verra' agganciata.
             SELECT ac.id, ac.componente_id INTO v_bom_id, v_comp_id
-              FROM catalogo.articoli_componenti ac
-             WHERE ac.prodotto_id = (SELECT articolo_id FROM vendite.preventivi_righe WHERE id = v_riga_id)
-               AND ac.esposto_in_fattura = TRUE AND ac.validita @> CURRENT_DATE
+              FROM vendite.preventivi_righe pr
+              JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+              JOIN catalogo.articoli_componenti ac ON ac.prodotto_id = pr.articolo_id
+             WHERE pr.id = v_riga_id
+               AND ac.esposto_in_fattura = TRUE
+               AND ac.validita @> p.data
              LIMIT 1;
 
             INSERT INTO vendite.preventivi_righe_componenti

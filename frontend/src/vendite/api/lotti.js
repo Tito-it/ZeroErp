@@ -13,6 +13,15 @@ export function listLotti(params = {}) {
   return api.get(`${BASE}/`, { params })
 }
 
+// Export CSV/XLSX della lista configurabile `vendite.lotti`: stessi filtri e
+// stesso ordinamento della lista a video, colonne dal catalogo (nascoste
+// escluse, permessi rispettati). `responseType: 'blob'` e NON passare da
+// useApiHandler, che unwrappando l'envelope perderebbe header e binario
+// (memoria feedback_blob_download_no_useapihandler).
+export function exportLotti(params = {}) {
+  return api.get(`${BASE}/export/`, { params, responseType: 'blob' })
+}
+
 // GET conteggi lotti/mese di un anno (badge sidebar anno/mese). Fotografia
 // completa (nessun filtro stato): { anno, mesi: [{competenza_mese, n_lotti}] }.
 export function listLottiMensile(anno) {

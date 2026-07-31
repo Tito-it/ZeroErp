@@ -1,0 +1,289 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 2.1 — snapshot degli indirizzi di UNA fattura
+#   (piano-db-satelliti-fattura.md Fase 2.1, D-A / D-P / C-14).
+#
+# COS'E'. La fattura era l'unico documento di vendita senza snapshot degli
+#   indirizzi: la stampa leggeva l'anagrafica VIVA, quindi la ristampa di un
+#   documento fiscale poteva cambiare indirizzo dopo un trasloco del cliente.
+#   Questa funzione fissa la fotografia; la scrive nello step DRAFT, quando il
+#   documento e' ancora lavorabile.
+#
+# DA DOVE RISOLVE (D-A). Sempre dall'anagrafica, mai copiando dai documenti
+#   sorgente come fanno i fratelli. Non e' un'eccezione capricciosa: una fattura
+#   aggrega N sorgenti, e le attivita' sourceless (oneri di commessa, consumi)
+#   non hanno alcuno snapshot da copiare. La risoluzione dall'anagrafica e'
+#   l'unica regola che copre tutti i casi — ed e' lo stesso ramo che i fratelli
+#   applicano quando nascono senza sorgente.
+#
+# QUALE CONTROPARTE (D-P, Tid 2026-07-31). Il billing account di TESTATA, cosi'
+#   com'e'. In gerarchia fn_build_fattura_key ha gia' messo li' il BA *padre*
+#   (COALESCE(ba.parent_account_id, …)): la fattura e' del padre, quindi gli
+#   indirizzi sono del padre, e questa funzione non deve sapere nulla della
+#   gerarchia — nessun caso speciale, stessa riga di codice con e senza padre.
+#   L'istanza del padre e' tipicamente fittizia (esiste per il NOT NULL del BA,
+#   non per descrivere una fornitura reale): se non c'e' un indirizzo legato a
+#   quell'istanza la catena scende da sola al generico. Ne segue che sul padre
+#   FORNITURA non ci sara' quasi mai, ed e' il caso NORMALE, non un difetto. Il
+#   sotto-dettaglio per figlio delle fatture utilities (gas/energia), dove
+#   servono fornitura e istanza reali di ciascun figlio, non potrebbe comunque
+#   stare qui: uq_fatture_indirizzi_uno_per_tipo_ ammette UNA sola FORNITURA per
+#   fattura. Quel dettaglio appartiene al CORPO del documento.
+#
+# ⚠️ NESSUN ELENCO DI TIPI SCRITTO NEL CODICE. I tipi da risolvere si leggono da
+#   config.tipi_indirizzi_allowed (ambito FATTURE, attivo), e l'obbligatorieta'
+#   dalla colonna `obbligatorio` della stessa tabella, via
+#   script.fn_indirizzi_obbligatori_mancanti — la stessa funzione che
+#   interroghera' il guard di 2.5. Motivo: il seed e' gia' la fonte di verita' e
+#   la domanda «quali indirizzi servono a una fattura» deve avere UNA risposta
+#   sola. Un elenco hardcoded qui sarebbe il secondo, e i due divergerebbero al
+#   primo tipo aggiunto. Oggi l'ambito FATTURE ammette FATT (obbligatorio), CON,
+#   FORNITURA e RES: se domani ne cambia uno, questa funzione lo segue da sola.
+#
+# UPSERT, MAI DELETE. Il perimetro DML concesso al ruolo batch su questa tabella
+#   e' 'iu' (C-24): la funzione aggiorna o inserisce, non cancella mai. La
+#   pulizia arriva dalla CASCADE sulla testata quando la fattura cade.
+#
+# ⚠️ IL `WHERE` SULLA DO UPDATE NON E' UN'OTTIMIZZAZIONE. Riscrivere una riga
+#   identica avrebbe tre effetti indesiderati: sporcherebbe data_update/tx_id
+#   di audit, gonfierebbe updated_rows facendo sembrare cambiato cio' che non e'
+#   cambiato, e — soprattutto — sveglierebbe il guard di congelamento montato in
+#   1.2 su una riesecuzione che non modifica nulla. Con il WHERE, un rerun a
+#   dati invariati e' un vero no-op: zero UPDATE, zero trigger, (0,0) di ritorno.
+#   Il guard continua a bloccare cio' che deve bloccare — i CAMBIAMENTI su un
+#   documento oltre EMESSA — che e' esattamente il suo scopo.
+#
+# xmax = 0 nella RETURNING: e' l'idioma per distinguere, dentro una
+#   INSERT … ON CONFLICT, la riga appena inserita (xmax a zero) da quella
+#   aggiornata. Serve perche' la funzione ritorna i due contatori separati.
+#
+# NESSUN CONTROLLO DI STATO QUI. La sorella fn_ricalcola_riepilogo_iva_fattura
+#   verifica in proprio che lo stato sia DRAFT/EMESSA; questa no, di proposito:
+#   dopo 1.2 la soglia e' presidiata dal trigger a10 su fatture_indirizzi, che
+#   vale per QUALUNQUE scrittore e non solo per chi si ricorda di chiamarla.
+#   Ripeterla qui sarebbe la seconda implementazione della stessa regola (C-11).
+#
+# FAIL-LOUD SUGLI OBBLIGATORI (C-14d). Il helper Python dei documenti fratelli e'
+#   best-effort: sbaglia in silenzio e lascia che sia un operatore, davanti a un
+#   pannello, ad accorgersene. Qui non c'e' nessuno — e' il giro notturno, e il
+#   documento e' fiscale — quindi l'assenza di un indirizzo obbligatorio ferma la
+#   fattura con E_INDIRIZZO_FATTURA_MANCANTE. Si riusa la CATENA dei fratelli,
+#   non la loro politica d'errore.
+#
+# ℹ️ La verifica finale guarda il CONTENUTO DELLA TABELLA, non solo cio' che
+#   questo giro ha risolto: e' la stessa domanda che fara' il guard di 2.5, e le
+#   due devono rispondere identico. Conseguenza da conoscere: se una riga
+#   scritta da un giro precedente non e' piu' risolvibile in anagrafica, resta —
+#   e vale come indirizzo presente. Coerente con «upsert, mai delete», e con il
+#   fatto che uno snapshot obsoleto e' pur sempre un indirizzo, mentre nessuno
+#   snapshot non lo e'.
+#
+# Dipendenze: script.fn_resolve_indirizzo_documento (20260730-08),
+#   script.fn_indirizzi_obbligatori_mancanti, config.tipi_indirizzi_allowed,
+#   codice errore E_INDIRIZZO_FATTURA_MANCANTE (id 569, Fase 1.3).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260731-01-create-fn-snapshot-indirizzi-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20260731-01-create-fn-snapshot-indirizzi-fattura
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Snapshot degli indirizzi di una fattura: risoluzione dall'anagrafica del
+        cliente del BA di testata per ogni tipo ammesso in ambito FATTURE,
+        upsert idempotente, fail-loud sugli obbligatori mancanti.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script'
+                AND p.proname IN ('fn_resolve_indirizzo_documento',
+                                  'fn_indirizzi_obbligatori_mancanti')
+      # ⚠️ RIMOSSA 2026-07-31 — eccezione alla regola «mai modificare un changelog
+      #   gia' pushato», stessa natura di quella del 20260728-18. C'era qui una
+      #   seconda sqlCheck:
+      #       SELECT count(*) FROM config.messaggi_errore
+      #        WHERE codice = 'E_INDIRIZZO_FATTURA_MANCANTE' AND lingua = 'it'   = 1
+      #   e ROMPEVA LA CI «standard, no provision» con Expected '1' got '0'.
+      #
+      #   NON era un dato mancante: il codice 569 e' regolarmente nel CSV
+      #   (80_data/sql/config/messaggi_errore.csv). Era un errore di FASE.
+      #   changelog-master-v2.yaml include migrations_v2/changelog-autogen.yaml
+      #   (00_schema + 20_code) PRIMA di includeAll su migrations_v2/80_data:
+      #   quindi TUTTO il 20_code gira prima di QUALUNQUE seed. Su un database
+      #   costruito da zero quella precondition non poteva passare — mai, per
+      #   costruzione. Su dev passava solo perche' il CSV era stato caricato da
+      #   una run precedente, il che la rendeva invisibile fino alla CI.
+      #   ([[feedback_liquibase_phase_ordering_preconditions]])
+      #
+      #   E non serviva comunque: il codice errore serve quando la funzione
+      #   VIENE ESEGUITA — script.fn_log_and_raise_error risolve il messaggio al
+      #   momento del raise — non quando viene creata. A quel punto 80_data e'
+      #   caricato da un pezzo. Una precondition che pretende un seed per
+      #   installare del codice lega due fasi che il progetto tiene separate
+      #   apposta.
+      #
+      #   Resta la prima sqlCheck: le due funzioni script.* sono una dipendenza
+      #   VERA, chiamate dal corpo, e vivono nella stessa fase (20_code).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_snapshot_indirizzi_fattura(bigint);
+
+              CREATE FUNCTION vendite.fn_snapshot_indirizzi_fattura(
+                  p_fattura_id vendite.fatture.id%TYPE)
+               RETURNS TABLE(inserted_rows integer, updated_rows integer)
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: fissare lo snapshot degli indirizzi di UNA fattura,
+              --        risolvendoli dall'anagrafica del cliente del billing
+              --        account di testata. Deterministica e fail-loud: se manca
+              --        un indirizzo obbligatorio la fattura si ferma qui.
+              -- Uso:   task snapshot_indirizzi_lotto (step DRAFT), via il
+              --        wrapper di lotto vendite.fn_snapshot_indirizzi_lotto.
+              DECLARE
+                  v_soggetto_ruolo_id  anagrafiche.billing_account.soggetto_ruolo_id%TYPE;
+                  v_istanza_utility_id anagrafiche.billing_account.istanza_utility_id%TYPE;
+                  v_tx_id              vendite.fatture.tx_id%TYPE;
+                  v_tipo               record;
+                  v_res                record;
+                  v_is_insert          boolean;
+                  v_inserted           integer := 0;
+                  v_updated            integer := 0;
+                  v_tipi_presenti      integer[];   -- niente colonna%TYPE[]: PG non lo supporta
+                  v_mancanti           text[];
+              BEGIN
+                  -- ===== Guard parametro =====
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_snapshot_indirizzi_fattura', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id),
+                          NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                  END IF;
+
+                  -- ===== Controparte: il BA di TESTATA, cosi' com'e' (D-P) =====
+                  -- In gerarchia e' gia' il BA padre: ce l'ha messo
+                  -- fn_build_fattura_key. Qui non si guarda parent_account_id,
+                  -- e non e' una dimenticanza — e' la decisione.
+                  SELECT ba.soggetto_ruolo_id, ba.istanza_utility_id, f.tx_id
+                    INTO v_soggetto_ruolo_id, v_istanza_utility_id, v_tx_id
+                    FROM vendite.fatture f
+                    JOIN anagrafiche.billing_account ba ON ba.id = f.billing_account_id
+                   WHERE f.id = p_fattura_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_snapshot_indirizzi_fattura', 'E_FATTURA_NON_TROVATA',
+                          jsonb_build_object('fattura_id', p_fattura_id),
+                          NULL::uuid, p_fattura_id::text);
+                  END IF;
+
+                  -- ===== Un giro per ogni tipo ammesso in ambito FATTURE =====
+                  -- L'elenco viene dal seed, non dal codice: vedi testata.
+                  FOR v_tipo IN
+                      SELECT a.tipo_indirizzo_id, t.codice_interno
+                        FROM config.tipi_indirizzi_allowed a
+                        JOIN config.tipi_indirizzi t ON t.id = a.tipo_indirizzo_id
+                       WHERE a.ambito = 'FATTURE'
+                         AND a.attivo IS TRUE
+                       ORDER BY a.tipo_indirizzo_id
+                  LOOP
+                      -- Catena unica di risoluzione (C-14b): layer RUOLO con
+                      -- precedenza per istanza, poi layer SOGGETTO.
+                      SELECT r.snapshot, r.origine_indirizzo_id, r.origine_soggetto_ruolo_id
+                        INTO v_res
+                        FROM script.fn_resolve_indirizzo_documento(
+                                 v_soggetto_ruolo_id,
+                                 v_istanza_utility_id,
+                                 v_tipo.codice_interno) r;
+
+                      -- Zero righe = quel tipo non e' risolvibile per questo
+                      -- cliente. Non e' un errore: se sia obbligatorio si
+                      -- decide dopo il ciclo, sul seed.
+                      CONTINUE WHEN NOT FOUND;
+
+                      v_is_insert := NULL;
+
+                      INSERT INTO vendite.fatture_indirizzi (
+                                  fattura_id, tipo_indirizzo_id, snapshot,
+                                  origine_indirizzo_id, origine_soggetto_ruolo_id)
+                      VALUES (p_fattura_id, v_tipo.tipo_indirizzo_id, v_res.snapshot,
+                              v_res.origine_indirizzo_id, v_res.origine_soggetto_ruolo_id)
+                      ON CONFLICT (fattura_id, tipo_indirizzo_id) DO UPDATE
+                         SET snapshot                  = EXCLUDED.snapshot,
+                             origine_indirizzo_id      = EXCLUDED.origine_indirizzo_id,
+                             origine_soggetto_ruolo_id = EXCLUDED.origine_soggetto_ruolo_id
+                       WHERE vendite.fatture_indirizzi.snapshot
+                                 IS DISTINCT FROM EXCLUDED.snapshot
+                          OR vendite.fatture_indirizzi.origine_indirizzo_id
+                                 IS DISTINCT FROM EXCLUDED.origine_indirizzo_id
+                          OR vendite.fatture_indirizzi.origine_soggetto_ruolo_id
+                                 IS DISTINCT FROM EXCLUDED.origine_soggetto_ruolo_id
+                      RETURNING (xmax = 0) INTO v_is_insert;
+
+                      -- xmax = 0 -> riga inserita; xmax valorizzato -> aggiornata.
+                      -- Nessuna riga di ritorno -> il WHERE ha filtrato: dato
+                      -- gia' allineato, nessuno dei due contatori si muove.
+                      IF v_is_insert IS TRUE THEN
+                          v_inserted := v_inserted + 1;
+                      ELSIF v_is_insert IS FALSE THEN
+                          v_updated := v_updated + 1;
+                      END IF;
+                  END LOOP;
+
+                  -- ===== Obbligatori mancanti: fail-loud (C-14d) =====
+                  -- Si guarda il contenuto della tabella, che e' la stessa
+                  -- domanda che fara' il guard di 2.5: due punti che rispondono
+                  -- alla stessa cosa devono leggere la stessa cosa.
+                  SELECT array_agg(fi.tipo_indirizzo_id)
+                    INTO v_tipi_presenti
+                    FROM vendite.fatture_indirizzi fi
+                   WHERE fi.fattura_id = p_fattura_id;
+
+                  v_mancanti := script.fn_indirizzi_obbligatori_mancanti(
+                                    'FATTURE', v_tipi_presenti);
+
+                  IF COALESCE(array_length(v_mancanti, 1), 0) > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_snapshot_indirizzi_fattura',
+                          'E_INDIRIZZO_FATTURA_MANCANTE',
+                          jsonb_build_object(
+                              'fattura_id',         p_fattura_id,
+                              'soggetto_ruolo_id',  v_soggetto_ruolo_id,
+                              'istanza_utility_id', v_istanza_utility_id,
+                              'mancanti',           v_mancanti),
+                          v_tx_id,
+                          p_fattura_id::text,
+                          v_soggetto_ruolo_id::text,
+                          v_istanza_utility_id::text);
+                  END IF;
+
+                  RETURN QUERY SELECT v_inserted, v_updated;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_snapshot_indirizzi_fattura(bigint)
+              IS 'Fissa lo snapshot degli indirizzi di UNA fattura risolvendoli dall''anagrafica del cliente del billing account di TESTATA — che in gerarchia e'' gia'' il BA padre (D-P): la fattura e'' del padre, quindi gli indirizzi sono del padre, e la funzione non conosce la gerarchia. Risolve sempre dall''anagrafica e mai copiando dai documenti sorgente (D-A): una fattura aggrega N sorgenti e le attivita'' sourceless non hanno snapshot da copiare. I tipi da risolvere e la loro obbligatorieta'' vengono da config.tipi_indirizzi_allowed (ambito FATTURE), mai da un elenco scritto nel codice: la stessa fonte che interroga il guard di emissione. Upsert idempotente su (fattura_id, tipo_indirizzo_id) con WHERE IS DISTINCT FROM, quindi un rerun a dati invariati e'' un vero no-op (0,0) che non tocca l''audit ne'' sveglia il guard di congelamento; non cancella mai (perimetro batch ''iu''). Assenza di un tipo non obbligatorio = nessuna riga e nessun errore; assenza di un obbligatorio = E_INDIRIZZO_FATTURA_MANCANTE, perche'' nel giro notturno non c''e'' nessun operatore davanti e il documento e'' fiscale (C-14d). La soglia di stato non e'' ricontrollata qui: la presidia il trigger a10 di 1.2, per qualunque scrittore. Ritorna (inserted_rows, updated_rows). piano-db-satelliti-fattura Fase 2.1.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_snapshot_indirizzi_fattura(bigint);

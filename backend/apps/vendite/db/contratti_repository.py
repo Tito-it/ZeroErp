@@ -70,12 +70,13 @@ _ORDER_COLS_CONTRATTI: dict[str, str] = {
     "tipo_variazione_globale": "v.tipo_variazione_globale",
     "valore_variazione_globale": "v.valore_variazione_globale",
     "valuta_codice": "v.valuta_codice",
-    "emittente_fiscale_codice": "v.emittente_fiscale_codice",
     "stato_descrizione": "v.stato_descrizione",
-    # codice_interno = logica (immutabile); codice = display (mutabile). Vedi
-    # linee-guida-sql.md §6c. La vista ora espone entrambi con nome fedele.
-    "stato_codice_interno": "v.stato_codice_interno",
-    "stato_codice": "v.stato_codice",
+    # `stato_codice_interno`, `stato_codice` ed `emittente_fiscale_codice` sono
+    # uscite il 2026-07-31: nessuna colonna del catalogo le usa come
+    # `campo_sorgente` (le prime due sono tecniche — danno la severity al Tag di
+    # stato, nel seed sono invisibili e `ordinabile=f`; la colonna Emittente
+    # legge `emittente_fiscale_descrizione`). Una voce che nessuna colonna puo'
+    # richiedere e' una capacita' irraggiungibile, non una riserva.
     "categoria_cliente_snapshot_codice": "v.categoria_cliente_snapshot_codice",
     "data_insert": "v.data_insert",
     "data_update": "v.data_update",
@@ -295,6 +296,8 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     _indirizzi_fk_documento = "contratto_id"
     _indirizzi_ambito = "CONTRATTI"
     _indirizzi_documento_table = "vendite.contratti"
+    # Precontrattuale: istanza congelata in testata (vedi preventivi).
+    _indirizzi_doc_istanza_column = "istanza_utility_id"
 
     # =================================================================
     # Lista e dettaglio testata
@@ -709,26 +712,35 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     # Scopo: Aggiorna una testata contratto. `numero` immutabile (trigger
     #        lock_columns). stato_doc_contratto_id si aggiorna via
     #        update_stato() per leggibilita'.
+    # Colonne scrivibili dalla PATCH di testata: ULTIMO dei tre anelli della
+    # catena `_UPDATE_KEYS_TESTATA` → `_build_update_data_testata` → qui. Se una
+    # colonna manca in uno qualsiasi dei tre, l'UPDATE non la scrive e nessuno
+    # se ne accorge — e' il difetto costato un giro su `fatturazione_immediata`
+    # (2026-07-27). Promossa da locale a costante di classe per renderla
+    # ISPEZIONABILE dal guardrail `ContrattiCatenaUpdateTests`, che confronta i
+    # tre anelli fra loro: senza un punto di accesso, il terzo anello non era
+    # verificabile da un test.
+    _UPDATE_WRITE_COLS: tuple[str, ...] = (
+        "ambito",
+        "valido_dal",
+        "valido_al",
+        "parent_contratto_id",
+        "data",
+        "listino_id",
+        "tipo_variazione_globale",
+        "valore_variazione_globale",
+        "categoria_cliente_id_snapshot",
+        # Corsia di instradamento (Fase B brief emissione mirata): il guard
+        # DB respinge l'UPDATE dopo il push in commessa, e la whitelist di
+        # patch per stato lo ammette solo in DRAFT.
+        "fatturazione_immediata",
+        "meta",
+    )
+
     def update_contratto(self, contratto_id: int, data: dict[str, Any]) -> bool:
-        write_cols = (
-            "ambito",
-            "valido_dal",
-            "valido_al",
-            "parent_contratto_id",
-            "data",
-            "listino_id",
-            "tipo_variazione_globale",
-            "valore_variazione_globale",
-            "categoria_cliente_id_snapshot",
-            # Corsia di instradamento (Fase B brief emissione mirata): il guard
-            # DB respinge l'UPDATE dopo il push in commessa, e la whitelist di
-            # patch per stato lo ammette solo in DRAFT.
-            "fatturazione_immediata",
-            "meta",
-        )
         set_parts: list[str] = []
         vals: list[Any] = []
-        for col in write_cols:
+        for col in self._UPDATE_WRITE_COLS:
             if col in data:
                 ph, val = _ph_and_val(col, data[col])
                 set_parts.append(f"{col} = {ph}")

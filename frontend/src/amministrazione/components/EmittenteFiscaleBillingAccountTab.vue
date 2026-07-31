@@ -1,20 +1,24 @@
 <script setup>
-// Scopo: Tab autonomo riusabile per la gestione del mapping BA -> emittente fiscale.
+// Scopo: Tab autonomo riusabile per la gestione del mapping BA -> emittente
+// fiscale, configurabile
+// (`<ListaConfigurabile codice="anagrafiche.emittente_billing_account">`):
+// colonne, ordine e visibilita' dal catalogo `ui.lista_colonna`.
 // Lista paginata con search su ragione_sociale/codice BA/id_fiscale.
-// Pattern allineato a UtilitiesTipiRuoloSearchTable (useSearchTable + store dedicato).
+// Nessuna azione "Nuovo": l'inserimento ha una sua form sopra la lista (lookup
+// BA + i due pulsanti), quindi lo scaffolding non riceve `onNew`.
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEmittentiFiscaliBAStore } from '../stores/emittentiFiscaliBA'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS } from '../../core/constants'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import Badge from 'primevue/badge'
@@ -33,27 +37,23 @@ const props = defineProps({
 const selectedBA = ref(null)
 const adding = ref(false)
 
-const { searchText, onPage, onSort, reload: reloadList, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'billing_account_codice'
+const {
+  searchText, onPage, onSort, reload: reloadList, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  searchTableOptions: { defaultSortField: 'billing_account_codice' },
+  // Arrow lazy: `reloadAll` e' dichiarata sotto e viene risolta al click.
+  onReload: () => reloadAll(),
 })
 
-// Reload composto: ricarica lista + summary in parallelo (entrambi necessari
-// per coerenza del pulsante "default", che dipende dal summary indipendente
-// dalla pagina). Allineato al pattern Promise.all gia' usato da
-// addMapping/removeMapping nello store.
-function reload() {
+// Reload composto: ricarica lista + summary (entrambi necessari per coerenza
+// del pulsante "default", che dipende dal summary indipendente dalla pagina).
+// Passato come `onReload` allo scaffolding, cosi' il pulsante "Ricarica" della
+// PageActionsBar ricarica davvero tutto quello che la pagina mostra.
+function reloadAll() {
   reloadList()
   store.fetchSummary()
 }
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-])
 
 // Quando l'emittenteId cambia, aggiorna lo store e ricarica lista + summary.
 // Il summary e' indipendente dalla pagina corrente (vedi A8/C3 del WIP):
@@ -175,50 +175,54 @@ function buildRowActions(data) {
           style="width: 300px;"
         />
       </div>
-      <PageActionsBar :actions="pageActions" />
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
+        </template>
+      </PageActionsBar>
     </div>
 
-    <DataTable
-      :value="store.items"
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="anagrafiche.emittente_billing_account"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      v-bind="paginatorProps"
-      lazy
-      removable-sort
-      striped-rows
-      scrollable
-      scrollHeight="flex"
-      class="app-datatable"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
       @page="onPage"
       @sort="onSort"
+      @config-loaded="onConfigLoaded"
     >
-      <Column :header="t('amministrazione.emittenti_fiscali.ba_col_default')" style="width: 110px;">
-        <template #body="{ data }">
-          <Badge v-if="data.is_default" :value="t('common.default')" severity="info" />
-        </template>
-      </Column>
-      <Column field="billing_account_codice" :header="t('amministrazione.emittenti_fiscali.ba_col_codice')" sortable style="width: 180px;">
-        <template #body="{ data }">
-          {{ data.billing_account_codice || '—' }}
-        </template>
-      </Column>
-      <Column field="billing_account_ragione_sociale" :header="t('amministrazione.emittenti_fiscali.ba_col_ragione_sociale')" sortable>
-        <template #body="{ data }">
-          {{ data.billing_account_ragione_sociale || t('amministrazione.emittenti_fiscali.ba_default_label') }}
-        </template>
-      </Column>
-      <Column field="id_fiscale_univoco" :header="t('amministrazione.emittenti_fiscali.ba_col_id_fiscale')" sortable style="width: 200px;">
-        <template #body="{ data }">
-          {{ data.id_fiscale_univoco || '—' }}
-        </template>
-      </Column>
-      <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
-        <template #body="{ data }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-        </template>
-      </Column>
+      <!-- `is_default` e' una colonna vera del catalogo (boolean, ordinabile):
+           lo slot serve solo a tenere il Badge al posto del "Si'/No". -->
+      <template #cell-is_default="{ data }">
+        <Badge v-if="data.is_default" :value="t('common.default')" severity="info" />
+      </template>
+      <template #cell-billing_account_codice="{ data }">
+        {{ data.billing_account_codice || '—' }}
+      </template>
+      <template #cell-billing_account_ragione_sociale="{ data }">
+        {{ data.billing_account_ragione_sociale || t('amministrazione.emittenti_fiscali.ba_default_label') }}
+      </template>
+      <!-- Slot sul `codice` della colonna (`id_fiscale`), non sul campo letto
+           (`id_fiscale_univoco`): sono due nomi diversi. -->
+      <template #cell-id_fiscale="{ data }">
+        {{ data.id_fiscale_univoco || '—' }}
+      </template>
+
+      <!-- v-if sul TEMPLATE dello slot: senza slot `actions` la BB non monta
+           la colonna (haAzioni), come la <Column v-if> pre-conversione. -->
+      <template v-if="!isReadonly" #actions="{ data, compact }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)"
+          :force-compact="compact" />
+      </template>
+
       <template #empty>
         <div class="app-empty">{{ t('amministrazione.emittenti_fiscali.ba_empty') }}</div>
       </template>
-    </DataTable>
+    </ListaConfigurabile>
   </div>
 </template>

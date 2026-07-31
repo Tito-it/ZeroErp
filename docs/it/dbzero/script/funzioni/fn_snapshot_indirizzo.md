@@ -63,14 +63,19 @@ BEGIN
 
     -- Shape canonico (Q1): etichette umane + display.
     -- jsonb_strip_nulls: le chiavi nulle non compaiono.
+    -- ⚠️ NULLIF(btrim(...)) su OGNI valore: `prov` arriva da un
+    -- character(10) e `stato` da un character(n), quindi senza
+    -- btrim lo snapshot congelerebbe "AV        " per sempre.
+    -- Applicato a tutti i campi, non solo ai due colpevoli: cosi'
+    -- la domanda «questo e' a larghezza fissa?» non si ripresenta.
     snapshot := jsonb_strip_nulls(jsonb_build_object(
-        'intestazione', v_r.ragione_sociale_completa,
-        'via',          v_via,
-        'cap',          v_r.cap,
-        'citta',        v_r.comune_descrizione,
-        'prov',         v_r.provincia_sigla,
-        'stato',        v_r.stato_iso2,
-        'display',      v_r.indirizzo_display
+        'intestazione', NULLIF(btrim(v_r.ragione_sociale_completa::text), ''),
+        'via',          NULLIF(btrim(v_via), ''),
+        'cap',          NULLIF(btrim(v_r.cap::text), ''),
+        'citta',        NULLIF(btrim(v_r.comune_descrizione::text), ''),
+        'prov',         NULLIF(btrim(v_r.provincia_sigla::text), ''),
+        'stato',        NULLIF(btrim(v_r.stato_iso2::text), ''),
+        'display',      NULLIF(btrim(v_r.indirizzo_display::text), '')
     ));
 
     origine_soggetto_ruolo_id := v_r.soggetto_ruolo_id;
@@ -78,6 +83,9 @@ BEGIN
     RETURN NEXT;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_snapshot_indirizzo(p_indirizzo_id bigint)
+IS 'Compone lo snapshot canonico (intestazione, via, cap, citta, prov, stato, display) di un indirizzo del layer RUOLO, a partire dal suo id. Ogni valore passa da NULLIF(btrim(...)): `prov` arriva da config.province.sigla che e'' un character(10) e `stato` da config.stati.codice_iso2 — senza il btrim lo snapshot congelerebbe il riempimento a spazi per sempre, e la Provincia della FatturaPA e'' di due caratteri (fix 2026-07-31, segnalazione BE su giro reale). Le chiavi vuote diventano NULL e spariscono con jsonb_strip_nulls. Gemella: script.fn_snapshot_indirizzo_soggetto, che deve restare identica nello shape.';
 ```
 
 ---

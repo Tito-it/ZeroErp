@@ -76,6 +76,7 @@
 | FOREIGN KEY | fk_attivita_fatturabili_commessa | commessa_id |
 | FOREIGN KEY | fk_attivita_fatturabili_commessa_attivita | commessa_attivita_id |
 | FOREIGN KEY | fk_attivita_fatturabili_contratto | contratto_id |
+| FOREIGN KEY | fk_attivita_fatturabili_fattura_riga | fattura_riga_id |
 | FOREIGN KEY | fk_attivita_fatturabili_istanze_utilities | istanza_utility_id |
 | FOREIGN KEY | fk_attivita_fatturabili_promo | promo_id |
 | FOREIGN KEY | fk_attivita_fatturabili_sorgente_origine_tipo | sorgente_origine_tipo_id |

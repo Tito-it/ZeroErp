@@ -57,9 +57,11 @@ _ORDER_COLS_PREVENTIVI: dict[str, str] = {
     "validita_al": "v.validita_al",
     "validita_dal": "v.validita_dal",
     "stato_descrizione": "v.stato_descrizione",
-    "stato_codice_interno": "v.stato_codice_interno",
+    # `stato_codice_interno` (tecnica, severity del Tag) ed
+    # `emittente_fiscale_codice` (la colonna Emittente legge
+    # `emittente_fiscale_descrizione`) sono uscite il 2026-07-31: nessuna
+    # colonna del catalogo le invia come sortField.
     "valuta_codice": "v.valuta_codice",
-    "emittente_fiscale_codice": "v.emittente_fiscale_codice",
     "competenza_mese": "v.competenza_mese",
     "data_insert": "v.data_insert",
     # Colonne lineage (Fase B brief-be-fe-lineage): pratica + fase ordinabili
@@ -120,6 +122,10 @@ class PreventiviRepository(
     _indirizzi_fk_documento = "preventivo_id"
     _indirizzi_ambito = "PREVENTIVI"
     _indirizzi_documento_table = "vendite.preventivi"
+    # Precontrattuale: l'istanza si sceglie prima che esista un BA ed e'
+    # congelata in testata → e' quella che dà la precedenza nella risoluzione
+    # indirizzi (fallback `ba.istanza_utility_id`).
+    _indirizzi_doc_istanza_column = "istanza_utility_id"
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_preventivi_lista)

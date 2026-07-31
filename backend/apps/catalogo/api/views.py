@@ -869,24 +869,39 @@ class ApiUnitaMisuraDisattiva(DomainAPIView):
 class ApiConversioniList(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "unita_misura")
+    is_search_endpoint = True
 
     @extend_schema(
         parameters=[
+            OpenApiParameter(name="search", type=str, required=False),
             OpenApiParameter(name="attivo", type=bool, required=False, description="Filtro attivo (null=tutti)"),
             OpenApiParameter(name="uom_id", type=int, required=False, description="Filtra conversioni per UoM (from o to)"),
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={200: inline_serializer(
             name="CatalogoConversioniListResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField()), "meta": serializers.DictField(required=False)},
+            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
         )},
     )
-    # Scopo: Lista completa conversioni UoM (dataset piccolo, no paginazione).
-    #        Filtro opzionale uom_id per mostrare conversioni di una specifica UoM.
+    # Scopo: Lista paginata conversioni UoM, allineata alle due sorelle UoM
+    #        (`ApiUomTipiList`/`ApiUnitaMisuraList`): stessi query param, stesso
+    #        envelope paginato. Filtro opzionale uom_id per le conversioni di
+    #        una specifica UoM (sotto-drawer).
     def get(self, request: Request) -> JsonResponse:
-        uom_id_raw = request.query_params.get("uom_id")
-        uom_id = int(uom_id_raw) if uom_id_raw else None
-        result = fn_list_conversioni(uom_id=uom_id)
-        return success_response(result)
+        p = parse_list_params(request.query_params, default_order="uom_from_codice")
+        results, total = fn_list_conversioni(
+            attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
+            uom_id=qp_int_optional(request.query_params.get("uom_id"), "uom_id"),
+            search=p["search"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
     @extend_schema(
         request=inline_serializer(

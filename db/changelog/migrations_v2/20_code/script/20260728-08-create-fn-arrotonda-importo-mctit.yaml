@@ -1,0 +1,166 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_arrotonda_importo — la regola di arrotondamento in UN punto solo
+#   (brief-fix-importi-riga-fattura-zero.md §4.1)
+#
+# PERCHE' ADESSO. Il `CASE` con i metodi di arrotondamento vive oggi **inline**
+#   dentro vendite.fn_ricalcola_totali_fattura, con un solo consumatore. Il
+#   trigger sull'importo di riga (20260728-09/10) e' il secondo: o si richiama, o
+#   si riscrive — e riscrivere significa due copie della stessa regola fiscale
+#   destinate a divergere. E' il momento di estrarre, ne' prima ne' dopo
+#   ([[feedback_regola_del_2_estrai_bb]]).
+#
+# VOCABOLARIO: uno solo per tutto il modello, unificato dal 20260728-07 —
+#   UP · DOWN · HALF_UP · HALF_DOWN. Questa funzione li implementa tutti e
+#   quattro, e nient'altro.
+#
+#     UP        allontana da zero      ( 2.001 ->  2.01 ; -2.001 -> -2.01 )
+#     DOWN      avvicina a zero        ( 2.009 ->  2.00 ; -2.009 -> -2.00 )
+#     HALF_UP   sul mezzo allontana    ( 2.005 ->  2.01 ; -2.005 -> -2.01 )
+#     HALF_DOWN sul mezzo avvicina     ( 2.005 ->  2.00 ; -2.005 -> -2.00 )
+#
+#   Il comportamento sui NEGATIVI e' quello del `CASE` inline che questa funzione
+#   sostituisce (`ceil(abs(x))` col segno riapplicato): nessun risultato
+#   preesistente cambia.
+#
+# ⚠️ NESSUN DEFAULT SILENZIOSO. Un metodo non riconosciuto SOLLEVA. Il `CASE`
+#   inline attuale ha invece un `ELSE` che assorbe qualunque valore ignoto in
+#   HALF_UP: se domani una configurazione contenesse un refuso, l'importo
+#   risulterebbe comunque "giusto" e nessuno se ne accorgerebbe. Con il CHECK
+#   unificato il caso e' improbabile, ma un helper fiscale non deve indovinare.
+#
+# PERCHE' IN `script` E NON IN `vendite`. I nomi dei metodi arrivano da tabelle di
+#   configurazione in TRE schemi diversi (anagrafiche, config, vendite): la regola
+#   non appartiene a nessun dominio in particolare. E' un helper trasversale, come
+#   le altre script.fn_*.
+#
+# PERCHE' NON IMMUTABLE. L'errore passa da script.fn_log_and_raise_error, che
+#   scrive sul canale di log: la funzione resta VOLATILE. Non serve immutabile —
+#   il consumatore e' un trigger, non un indice ne' una colonna generata.
+#
+# INPUT NULL: la funzione e' STRICT (NULL in -> NULL out). Guardare i parametri
+#   spetta ai chiamanti, che gia' lo fanno: fn_ricalcola_totali_fattura solleva
+#   E_CONFIG_MANCANTE se mancano i decimali dell'emittente, e il trigger di riga
+#   applica i default 2 / HALF_UP delle regole articolo.
+#
+# Dipendenze: 20260728-07 (vocabolario unificato). Consumatore: 20260728-09
+#   (trigger importo di riga). vendite.fn_ricalcola_totali_fattura verra'
+#   allineata quando la si tocchera' per motivi suoi: sostituire ora un `CASE`
+#   funzionante dentro una funzione fiscale gia' testata sarebbe rischio senza
+#   guadagno.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260728-08-create-fn-arrotonda-importo-mctit.yaml
+
+  - changeSet:
+      id: 20260728-08-create-fn-arrotonda-importo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_arrotonda_importo(valore, decimali, metodo): la regola di
+        arrotondamento in un punto solo, sul vocabolario unico
+        UP/DOWN/HALF_UP/HALF_DOWN. Solleva sui metodi non riconosciuti.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_arrotonda_importo(
+                  p_valore    numeric,
+                  p_decimali  integer,
+                  p_metodo    text
+              )
+              RETURNS numeric
+              LANGUAGE plpgsql
+              STRICT
+              SECURITY INVOKER
+              AS
+              $BODY$
+              -- Scopo: arrotondare un importo secondo decimali e metodo
+              --        configurati, in UN punto solo per tutto il database.
+              -- Vocabolario unico (20260728-07):
+              --   UP        allontana da zero
+              --   DOWN      avvicina a zero
+              --   HALF_UP   sul mezzo allontana da zero
+              --   HALF_DOWN sul mezzo avvicina a zero
+              -- brief-fix-importi-riga-fattura-zero §4.1.
+              DECLARE
+                  v_scala   numeric;
+                  v_scalato numeric;
+                  v_intero  numeric;
+              BEGIN
+                  IF p_decimali < 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_arrotonda_importo', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_decimali', 'valore', p_decimali),
+                          NULL::uuid, 'p_decimali deve essere >= 0'
+                      );
+                  END IF;
+
+                  v_scala   := power(10::numeric, p_decimali);
+                  v_scalato := p_valore * v_scala;
+
+                  CASE upper(btrim(p_metodo))
+
+                      WHEN 'UP' THEN
+                          v_intero := CASE WHEN v_scalato >= 0
+                                           THEN  ceil(v_scalato)
+                                           ELSE -ceil(abs(v_scalato))
+                                      END;
+
+                      WHEN 'DOWN' THEN
+                          v_intero := CASE WHEN v_scalato >= 0
+                                           THEN  floor(v_scalato)
+                                           ELSE -floor(abs(v_scalato))
+                                      END;
+
+                      WHEN 'HALF_UP' THEN
+                          v_intero := CASE WHEN v_scalato >= 0
+                                           THEN  floor(v_scalato + 0.5)
+                                           ELSE -floor(abs(v_scalato) + 0.5)
+                                      END;
+
+                      WHEN 'HALF_DOWN' THEN
+                          v_intero := CASE WHEN v_scalato >= 0
+                                           THEN  ceil(v_scalato - 0.5)
+                                           ELSE -ceil(abs(v_scalato) - 0.5)
+                                      END;
+
+                      ELSE
+                          -- Un metodo non riconosciuto e' una configurazione
+                          -- sbagliata, e deve fermarsi qui invece di diventare
+                          -- un importo sbagliato che nessuno nota.
+                          PERFORM script.fn_log_and_raise_error(
+                              'script', 'fn_arrotonda_importo', 'E_PARAMETRO_INVALIDO',
+                              jsonb_build_object(
+                                  'parametro', 'p_metodo',
+                                  'valore',    p_metodo,
+                                  'ammessi',   'UP,DOWN,HALF_UP,HALF_DOWN'),
+                              NULL::uuid,
+                              concat('metodo di arrotondamento non riconosciuto: ', p_metodo)
+                          );
+                  END CASE;
+
+                  RETURN v_intero / v_scala;
+              END;
+              $BODY$;
+
+              COMMENT ON FUNCTION script.fn_arrotonda_importo(numeric, integer, text)
+              IS 'Arrotonda un importo secondo decimali e metodo configurati, in UN punto solo per tutto il database. Vocabolario unico del modello (20260728-07): UP = allontana da zero, DOWN = avvicina a zero, HALF_UP = sul mezzo allontana, HALF_DOWN = sul mezzo avvicina. Estratta dal CASE inline di vendite.fn_ricalcola_totali_fattura, di cui conserva esattamente la semantica sui negativi (ceil/floor sull''assoluto col segno riapplicato). ⚠️ Un metodo non riconosciuto SOLLEVA E_PARAMETRO_INVALIDO invece di cadere in un default silenzioso: il CASE inline assorbiva l''ignoto in HALF_UP, e un importo sbagliato che sembra giusto e'' il peggiore dei casi. STRICT: guardare i parametri spetta ai chiamanti, che gia'' lo fanno. VOLATILE perche'' l''errore passa dal canale di log. brief-fix-importi-riga-fattura-zero §4.1, rev 2026-07-28.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_arrotonda_importo(numeric, integer, text);

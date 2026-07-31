@@ -172,3 +172,117 @@ Dashboard Competenza mostra (stessa vista del drill-down, WYSIWYG). Verbo
 
 - `vendite.vw_dash_competenza_attivita` (read, selezione popolazione)
 - `vendite.fn_approva_commessa_attivita` (write, per commessa)
+
+---
+
+## Azione ANNULLA — riga MANUALE di commessa
+
+### Scopo
+
+Togliere dal giro una **voce manuale** (tipicamente un onere) caricata per
+errore — causale sbagliata, importo sbagliato, doppio click. Fino al 2026-07-28
+non c'era rimedio: nessun DELETE, l'onere di storno negativo è vietato per
+costruzione (`fn_aggiungi_onere_commessa` rifiuta `importo <= 0`) e la
+variazione prezzo eccezionale esige `prezzo > 0` — una penale da 500 € inserita
+per sbaglio poteva diventare da 1 €, **non sparire**.
+
+La riga **non si cancella**: passa a `stato_emissione = 'ANNULLATA'`, il terzo
+valore del CHECK già onorato da tutte le porte a valle. È il libro giornale:
+annullare senza cancellare, con il motivo tracciato. Nessun «ripristina» — se
+serve, si ricarica l'onere.
+
+Brief: `docs/it/dev/work-done/brief-annullamento-righe-manuali-commessa.md`.
+
+### Input
+
+- Metodo: `POST`
+- Path: `/api/v1/vendite/commesse/<commessa_id>/attivita/<att_id>/annulla/`
+- Header: `Authorization: Bearer <token>` + `Idempotency-Key` (obbligatoria)
+- Permesso: azione di processo **`carica_voce_manuale`** — lo **stesso** della
+  porta oneri (decisione Tid): chi può caricare una voce manuale può annullarla,
+  nessun permesso dedicato.
+- Body JSON:
+  - `motivo` (string, **obbligatorio**, max 500) — l'annullamento è
+    irreversibile e l'unica traccia del *perché* è l'evento di log.
+
+### Output
+
+- `200`: `{ "data": { "commessa_id": 42, "attivita_id": 501, "stato_emissione": "ANNULLATA", "motivo": "causale sbagliata" } }`
+- `400`: `E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO` — motivo assente, vuoto o oltre i 500 caratteri
+- `403`: azione di processo non abilitata
+- `404`: `E_COMMESSA_ATTIVITA_NOT_FOUND` — riga inesistente **oppure non
+  appartenente alla commessa dell'URL** (nessun leak fra i due casi)
+- `409`: `E_RIGA_COMMESSA_GIA_ANNULLATA` / `E_RIGA_COMMESSA_NON_MANUALE` /
+  `E_RIGA_COMMESSA_GIA_EMESSA` / `E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA`
+  (commessa non più modificabile)
+
+### Regole
+
+- View `ApiCommessaAttivitaAnnulla` → service `annulla_attivita_manuale` →
+  `CommesseRepository.annulla_attivita` → madre DB.
+- **Scoping riga↔commessa esplicito**: il service rilegge la riga con
+  `_get_attivita_pricing_or_raise(commessa_id, attivita_id)`, la cui `WHERE`
+  filtra su entrambi gli id. Senza, il `commessa_id` dell'URL sarebbe decorativo
+  e si annullerebbe la riga di un altro cliente indovinando un intero.
+  **La RLS non copre il buco**, ma non perché sia dormiente: la policy
+  `rls_commesse_attivita_ef_whitelist` **si applica** all'app (`zeroerp_app` non
+  è owner della tabella — l'owner è `titodb` — e non ha `BYPASSRLS`; `NO FORCE`
+  esenta il solo owner). Risponde però a una domanda **diversa**: «l'operatore è
+  nella whitelist dell'emittente di questa commessa?», non «questa riga
+  appartiene alla commessa nell'URL?». Un operatore autorizzato sull'emittente X
+  può quindi ancora colpire la riga di un'**altra** commessa dello stesso
+  emittente: il guard applicativo è l'unico che chiude quel caso.
+- **Guard «commessa modificabile»** (data-driven su `stati_commessa.modificabile`):
+  annullare una riga *è* modificare la commessa, come le tre azioni prezzo
+  sorelle. Vive nel BE e **non** scende nella madre — il gemello
+  `fn_aggiungi_onere_commessa` non fa quel lookup.
+- **Ordine dei guard**, identico a quello della madre e non indifferente:
+  1. *già annullata* — una riga `ANNULLATA` è per costruzione manuale, quindi in
+     testa non toglie il posto a una diagnosi migliore. Codice **dedicato**:
+     dire «è entrata nella catena di fatturazione» a chi ha cliccato due volte è
+     un'informazione **falsa**, e lo manda a cercare una fattura che non esiste.
+  2. *non manuale* — **prima** di «già emessa» perché è l'**identità** della
+     riga, non una sua condizione: a una riga da push dire «già emessa»
+     suggerisce che, se non lo fosse, si potrebbe annullare (falso — il rimedio
+     è a monte, sul documento).
+  3. *già emessa* — la riga ha già generato un'`attivita_fatturabili`:
+     annullarla qui la lascerebbe orfana in viaggio verso la fattura.
+- Discriminante di «riga manuale» = **`sorgente_tipo_id IS NULL`** (sourceless),
+  la stessa definizione con cui `fn_build_gruppo_fatturabile_key` costruisce il
+  gruppo `MAN:<commessa_id>`. **Non** `tipo_movimento = 'ONERE'` (è la natura del
+  movimento, non l'origine: il CHECK ammette già `RETTIFICA`) né
+  `segment_key LIKE 'MAN:%'` (i prefissi sono una convenzione di leggibilità,
+  non un contratto). ⚠️ Il giorno che nasce un **secondo** tipo di riga
+  sourceless questo perimetro va **riletto**, non dato per buono: `carica_voce_manuale`
+  lo coprirebbe automaticamente.
+- I guard applicativi arrivano prima nel caso normale, ma **la madre resta
+  l'ultima parola**: sotto `SELECT ... FOR UPDATE` intercetta le corse (due
+  annullamenti simultanei, un'emissione concorrente) che la rilettura
+  applicativa non vede. I suoi codici sono tradotti 1:1 dal service
+  (`_ANNULLA_DB_ERROR_MARKERS`), mai appiattiti su `E_DATABASE`.
+- Nessun `transaction.atomic()`: una sola `SELECT` di funzione madre = unità
+  atomica per costruzione (UPDATE + evento di log insieme).
+
+### Effetti a valle (nessun filtro nuovo da scrivere)
+
+`ANNULLATA` era già onorato ovunque conti — è questa la ragione per cui il
+lavoro DB è stato *una funzione* e non «colonna + backfill + filtri»:
+
+| Dove | Effetto |
+| --- | --- |
+| `fn_emit_attivita_fatturabili_da_commessa` | filtra `NON_EMESSA` → **mai in fattura** |
+| `fn_list_commesse_emittibili` / `fn_list_emittibili_lane` | nessuna terna, nessun lotto |
+| `vw_dash_competenza_attivita` / `vw_dash_competenza_gruppi` | sparisce dal cockpit |
+| `vw_dash_fatturazione_commesse` | idem |
+| `fn_approva_commessa_attivita` | filtra `NON_EMESSA` → **non ri-approvabile** (il «nessun ripristina» è strutturale) |
+| `script.fn_check_commessa_chiudibile` | annullare **sblocca la chiusura** della commessa, prima incastrata fra il guard di uscita e un onere non togliibile |
+| `fn_get_commessa_stato` | `total_approvate`/`total_non_approvate`/`total_non_emesse`/`total_prezzo_da_riallineare` escludono le annullate; `total_attivita` resta il conteggio **fisico** (la riga esiste) |
+
+### Dipendenze DB
+
+- `vendite.fn_annulla_commessa_attivita(p_commessa_attivita_id, p_motivo) → bigint`
+  — madre: `FOR UPDATE` + guard + `UPDATE stato_emissione` + evento
+  `RIGA_MANUALE_ANNULLATA` su `vendite.commesse_attivita_log`
+- `config.messaggi_errore` ids **564-567** (i quattro codici sopra)
+- `vendite.commesse_attivita.stato_emissione` — CHECK a tre valori
+  (`NON_EMESSA` / `EMESSA` / `ANNULLATA`): **nessuna colonna nuova**

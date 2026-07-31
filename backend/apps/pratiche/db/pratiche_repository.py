@@ -27,10 +27,22 @@ from apps.core.services.error_manager import ErrorManager
 __all__ = ["PraticheRepository", "coerce_jsonb_dict"]
 
 
-_PRATICHE_ORDER_COLS = {
-    "codice", "descrizione", "data_apertura", "data_scadenza", "data_insert",
-    "tipo_prestazione_descrizione", "stato_descrizione",
-    "priorita_descrizione", "soggetto_display", "risorsa_umana_display",
+# Whitelist colonne ammesse per ORDER BY: chiave = `campo_sorgente` del catalogo
+# 'pratiche.pratiche' (e' quello che `<ListaConfigurabile>` invia come
+# sortField), valore = espressione SQL. Qualificata dove la chiave e' una
+# colonna fisica (la query joina otto tabelle); nuda dove e' un alias di output
+# della SELECT, che ORDER BY risolve solo cosi'.
+_PRATICHE_ORDER_COLS: dict[str, str] = {
+    "codice": "p.codice",
+    "descrizione": "p.descrizione",
+    "data_apertura": "p.data_apertura",
+    "data_scadenza": "p.data_scadenza",
+    "data_insert": "p.data_insert",
+    "tipo_prestazione_descrizione": "tipo_prestazione_descrizione",
+    "stato_descrizione": "stato_descrizione",
+    "priorita_descrizione": "priorita_descrizione",
+    "soggetto_display": "soggetto_display",
+    "risorsa_umana_display": "risorsa_umana_display",
 }
 
 
@@ -178,7 +190,9 @@ class PraticheRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
-        order_col = order_by if order_by in _PRATICHE_ORDER_COLS else "data_insert"
+        order_col = _PRATICHE_ORDER_COLS.get(
+            order_by, _PRATICHE_ORDER_COLS["data_insert"]
+        )
         direction = sql_order_direction(order_dir)
 
         conditions: list[str] = ["p.emittente_fiscale_id = %s"]

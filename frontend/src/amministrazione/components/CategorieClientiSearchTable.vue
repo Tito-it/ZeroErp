@@ -1,21 +1,24 @@
 <script setup>
-// Scopo: DataTable admin categorie cliente (anagrafiche.categorie_clienti).
-//        Pattern UtilitiesTipiRuoloSearchTable. Tabella codice/descrizione
-//        classica + flag partecipa_promo + ordinamento + attivo.
-import { computed, ref, onMounted } from 'vue'
+// Scopo: Lista admin categorie cliente, configurabile
+//        (`<ListaConfigurabile codice="anagrafiche.categorie_clienti">`):
+//        colonne, ordine e visibilita' dal catalogo `ui.lista_colonna`, con
+//        ritiro dinamico e personalizzazione per utente.
+//        Nessun export: il dominio non ha endpoint (lo scaffolding omette
+//        l'azione da se', non ricevendo `exportFn`).
+import {ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCategorieClientiStore } from '../stores/categorieClienti'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { TAB_ENTITIES } from '../../core/constants'
 import { buildBoolOptions } from '../../core/utils/options'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import AttivoTag from '../../core/components/AttivoTag.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
@@ -24,32 +27,20 @@ const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = useCategorieClientiStore()
 const isBlocked = useInjectBlocked()
-const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'ordinamento'
+
+const {
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  newTooltipKey: 'amministrazione.categorie_clienti.new',
+  onNew: () => emit('new'),
+  searchTableOptions: { defaultSortField: 'ordinamento' },
 })
 
 const attivoFilter = ref(true)
 const partecipaPromoFilter = ref(null)
 
 const boolOptions = buildBoolOptions(t)
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('amministrazione.categorie_clienti.new'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    command: () => emit('new'),
-  },
-])
 
 function onAttivoChange() {
   store.filters.attivo = attivoFilter.value
@@ -61,7 +52,8 @@ function onPartecipaPromoChange() {
   applyFilters()
 }
 
-function onRowClick(event) { emit('row-click', event.data) }
+// `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
+function onRowClick(data) { emit('row-click', data) }
 
 useTabFreshness(store, TAB_ENTITIES.CATEGORIE_CLIENTI)
 onMounted(() => store.fetchList())
@@ -99,69 +91,37 @@ onMounted(() => store.fetchList())
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
           <ReadonlyBadge />
         </template>
       </PageActionsBar>
     </div>
 
-    <DataTable
-      :value="store.items"
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="anagrafiche.categorie_clienti"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      v-bind="paginatorProps"
-      lazy
-      removable-sort
-      striped-rows
-      scrollable
-      scrollHeight="flex"
-      class="app-datatable"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
       @page="onPage"
       @sort="onSort"
       @row-click="onRowClick"
-      selection-mode="single"
-      data-key="id"
+      @config-loaded="onConfigLoaded"
     >
-      <Column
-        field="codice"
-        :header="t('amministrazione.categorie_clienti.col_codice')"
-        sortable
-        style="width: 160px;"
-      />
-      <Column
-        field="descrizione"
-        :header="t('amministrazione.categorie_clienti.col_descrizione')"
-        sortable
-        style="min-width: 300px;"
-      />
-      <Column
-        field="ordinamento"
-        :header="t('amministrazione.categorie_clienti.col_ordinamento')"
-        sortable
-        style="width: 120px;"
-      />
-      <Column
-        field="partecipa_promo"
-        :header="t('amministrazione.categorie_clienti.col_partecipa_promo')"
-        sortable
-        style="width: 160px;"
-      >
-        <template #body="{ data }">
-          <Tag
-            :value="data.partecipa_promo ? t('common.yes') : t('common.no')"
-            :severity="data.partecipa_promo ? 'info' : 'secondary'"
-          />
-        </template>
-      </Column>
-      <Column
-        field="attivo"
-        :header="t('amministrazione.categorie_clienti.col_attivo')"
-        sortable
-        style="width: 100px;"
-      >
-        <template #body="{ data }">
-          <AttivoTag :active="data.attivo" />
-        </template>
-      </Column>
-    </DataTable>
+      <template #cell-partecipa_promo="{ data }">
+        <Tag
+          :value="data.partecipa_promo ? t('common.yes') : t('common.no')"
+          :severity="data.partecipa_promo ? 'info' : 'secondary'"
+        />
+      </template>
+      <template #cell-attivo="{ data }">
+        <AttivoTag :active="data.attivo" />
+      </template>
+    </ListaConfigurabile>
     </template>
   </div>
 </template>

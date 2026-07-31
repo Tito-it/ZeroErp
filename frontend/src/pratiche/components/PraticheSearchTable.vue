@@ -1,34 +1,47 @@
 <script setup>
-// Scopo: DataTable paginata pratiche con search, filtro stato, priorita' e data.
-// I campi display (stato_descrizione, soggetto_display, ecc.) arrivano dal backend via JOIN.
-// I lookup servono solo per popolare i filtri Select.
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+// Scopo: Lista pratiche configurabile
+//        (`<ListaConfigurabile codice="pratiche.pratiche">`): colonne, ordine e
+//        visibilita' dal catalogo `ui.lista_colonna`, con ritiro dinamico e
+//        personalizzazione per utente. I campi display (stato_descrizione,
+//        soggetto_display, ecc.) arrivano dal backend via JOIN; i lookup
+//        servono solo a popolare i filtri Select. Nessun export: il dominio non
+//        ha endpoint (lo scaffolding omette l'azione da se', non ricevendo
+//        `exportFn`).
+import { ref, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePraticheStore } from '../stores/pratiche'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import { displayDate, toDateString } from '../../core/utils/date'
+import { toDateString } from '../../core/utils/date'
 import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
 import ToggleSwitch from 'primevue/toggleswitch'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { TAB_ENTITIES } from '../../core/constants'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = usePraticheStore()
 const isBlocked = useInjectBlocked()
-const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'data_apertura',
-  defaultSortOrder: -1
+const {
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  newTooltipKey: 'pratiche.nuova_pratica',
+  onNew: () => emit('new'),
+  // 'desc' (stringa), NON -1: il contratto di useSearchTable e' 'asc'/'desc'.
+  // Il -1 storico era dormiente (lo store preimposta gia' order_by/order_dir,
+  // quindi il ramo default non scatta), ma se mai scattasse -1 finirebbe in
+  // `order_dir` cosi' com'e': BE in fallback ASC e freccia header spenta.
+  searchTableOptions: { defaultSortField: 'data_apertura', defaultSortOrder: 'desc' },
 })
 
 // Init dallo store (persistente nella sessione, userScoped): al rientro in
@@ -50,24 +63,6 @@ const soloInterneFilter = ref(store.filters.solo_interne || false)
 // Filtro data sempre attivo: default inizio mese precedente (dal store)
 const dataDaFilter = ref(store.filters.data_da ? new Date(store.filters.data_da + 'T00:00:00') : null)
 const dataAFilter = ref(null)
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('pratiche.nuova_pratica'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    command: () => emit('new'),
-  },
-])
 
 function onStatoChange() {
   // value-field="codice": il BE filtra per codice_interno (param `stato`);
@@ -101,40 +96,20 @@ function onDataAChange() {
   applyFilters()
 }
 
-function onRowClick(event) { emit('row-click', event.data) }
+// `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
+function onRowClick(data) { emit('row-click', data) }
 
 useTabFreshness(store, TAB_ENTITIES.PRATICA)
 
-// Scopo: calcolo dinamico altezza scroll DataTable.
-// Desktop (>=1280px): calcola altezza dal viewport reale meno area flussi.
-// Mobile/tablet (<1280px): niente scroll interno, la pagina scrolla.
-const tableContainer = ref(null)
-const tableScrollHeight = ref(null)
-
-function recalcScrollHeight() {
-  if (window.innerWidth < 1280) {
-    // Mobile/tablet: niente scroll interno DataTable, scrolla il container padre
-    tableScrollHeight.value = null
-    return
-  }
-  if (!tableContainer.value) return
-  const rect = tableContainer.value.getBoundingClientRect()
-  const available = window.innerHeight - rect.top - 100 - 240
-  tableScrollHeight.value = Math.max(available, 150) + 'px'
-}
-
 // Lista eager: carica subito col filtro data sempre attivo (default inizio
-// mese precedente impostato dallo store).
-onMounted(() => {
-  store.fetchList()
-  recalcScrollHeight()
-  window.addEventListener('resize', recalcScrollHeight)
-})
-onUnmounted(() => { window.removeEventListener('resize', recalcScrollHeight) })
+// mese precedente impostato dallo store). L'altezza di scroll non si calcola
+// piu' a mano (ResizeObserver + listener resize rimossi): `<ListaConfigurabile>`
+// fissa `scrollable` + `scroll-height="flex"`, che e' la regola del pattern.
+onMounted(() => { store.fetchList() })
 </script>
 
 <template>
-  <div ref="tableContainer" class="app-tab-content">
+  <div class="app-tab-content">
     <AccessoBloccatoPanel v-if="isBlocked" />
 
     <template v-else>
@@ -196,48 +171,37 @@ onUnmounted(() => { window.removeEventListener('resize', recalcScrollHeight) })
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
           <ReadonlyBadge />
         </template>
       </PageActionsBar>
     </div>
 
-    <DataTable
-      :value="store.items"
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="pratiche.pratiche"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      v-bind="paginatorProps"
-      lazy
-      removable-sort
-      striped-rows
-      :scrollable="!!tableScrollHeight"
-      :scrollHeight="tableScrollHeight || undefined"
-      class="app-datatable"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
       @page="onPage"
       @sort="onSort"
       @row-click="onRowClick"
-      selection-mode="single"
-      data-key="id"
+      @config-loaded="onConfigLoaded"
     >
-      <Column field="codice" :header="t('pratiche.col_codice')" sortable style="width: 110px;" />
-      <Column field="tipo_prestazione_descrizione" :header="t('pratiche.col_tipo_prestazione')" sortable style="width: 200px;" />
-      <Column field="soggetto_display" :header="t('pratiche.col_soggetto')" sortable style="width: 200px;" />
-      <Column field="risorsa_umana_display" :header="t('pratiche.col_assegnata_a')" sortable style="width: 160px;" />
-      <Column field="data_scadenza" :header="t('pratiche.col_data_scadenza')" sortable style="width: 110px;">
-        <template #body="{ data }">{{ displayDate(data.data_scadenza) }}</template>
-      </Column>
-      <Column field="data_apertura" :header="t('pratiche.col_data_apertura')" sortable style="width: 110px;">
-        <template #body="{ data }">{{ displayDate(data.data_apertura) }}</template>
-      </Column>
-      <Column field="priorita_descrizione" :header="t('pratiche.col_priorita')" sortable style="width: 110px;">
-        <template #body="{ data }">
-          <Tag v-if="data.priorita_descrizione" :value="data.priorita_descrizione" :severity="prioritaPraticaSeverity(data.priorita_codice_interno)" />
-        </template>
-      </Column>
-      <Column field="stato_descrizione" :header="t('pratiche.col_stato')" sortable style="width: 110px;">
-        <template #body="{ data }">
-          <Tag :value="data.stato_descrizione" :severity="statoPraticaSeverity(data.stato_codice_interno)" />
-        </template>
-      </Column>
-    </DataTable>
+      <!-- Le date non hanno slot: il seed dichiara `date_short` /
+           `datetime_short` e il formatter di serie le rende gia' cosi'. -->
+      <template #cell-priorita="{ data }">
+        <Tag v-if="data.priorita_descrizione" :value="data.priorita_descrizione"
+          :severity="prioritaPraticaSeverity(data.priorita_codice_interno)" />
+      </template>
+      <template #cell-stato="{ data }">
+        <Tag :value="data.stato_descrizione" :severity="statoPraticaSeverity(data.stato_codice_interno)" />
+      </template>
+    </ListaConfigurabile>
     </template>
   </div>
 </template>

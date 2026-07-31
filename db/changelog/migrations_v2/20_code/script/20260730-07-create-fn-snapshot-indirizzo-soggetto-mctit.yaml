@@ -1,0 +1,164 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 2.0-a — snapshot indirizzo dal layer SOGGETTO
+#   (piano-db-satelliti-fattura.md D-O / C-14, Fase 2.0-a).
+#
+# PERCHE' UNA GEMELLA E NON UN PARAMETRO IN PIU'. script.fn_snapshot_indirizzo
+#   compone lo snapshot a partire da un p_indirizzo_id e legge
+#   vw_indirizzi_resolved_ruolo. Gli indirizzi di SOGGETTO stanno in un'altra
+#   tabella (anagrafiche.indirizzi_soggetti): non hanno riga in
+#   anagrafiche.indirizzi, quindi non esiste un id da passarle.
+#
+# ⚠️ E NON BASTA «PASSARLE L'ALTRO ID». La vista del layer soggetto espone pure
+#   una colonna indirizzo_id, ma e' la PK di indirizzi_soggetti — sequenza
+#   diversa, spazio di id diverso. Passarla a fn_snapshot_indirizzo non darebbe
+#   «non trovato»: darebbe, con ottima probabilita', l'indirizzo di RUOLO che per
+#   caso ha lo stesso numero. Un errore silenzioso che produce un documento
+#   fiscale con l'indirizzo di qualcun altro.
+#   E' il motivo per cui questa funzione prende (soggetto_id, tipo) e non un id:
+#   la chiamata e' autodescrittiva e i due layer non si possono confondere.
+#
+# STESSO SHAPE CANONICO della gemella — intestazione, via, cap, citta, prov,
+#   stato, display, con jsonb_strip_nulls e la stessa composizione della «via»
+#   (normalizzato -> via_norm + civico; libero -> indirizzo_libero). E' l'intero
+#   punto di D-O: la composizione dello snapshot ha UN proprietario, e la regola
+#   «mai comporre a mano» (D-5 del design-of-record) vale per entrambi i layer.
+#   Oggi il mixin Python compone a mano proprio questo layer: da qui in poi non
+#   servira' piu'.
+#
+# ASSENZA = ZERO RIGHE, NON ERRORE. Qui sta l'unica differenza di comportamento
+#   con la gemella, ed e' voluta: fn_snapshot_indirizzo riceve un id che DEVE
+#   esistere, quindi se non lo trova solleva. Questa riceve una coppia
+#   (soggetto, tipo) di cui l'assenza e' il caso NORMALE — e' il fallback della
+#   catena, e il chiamante deve poter scendere al livello successivo senza
+#   inciampare in un'eccezione.
+#
+# DETERMINISMO: garantito da uq_indirizzi_soggetti_soggetto_tipo
+#   (UNIQUE su soggetto_id, tipo_indirizzo_id). Nessun LIMIT 1 senza ORDER BY.
+#
+# ℹ️ Nota su provincia_sigla: e' un char(n) e puo' portare padding. La gemella
+#   non lo toglie, quindi non lo toglie nemmeno questa — la parita' di shape
+#   viene prima. Se si decide di normalizzarlo va fatto su ENTRAMBE, altrimenti
+#   lo stesso indirizzo cambierebbe forma a seconda del layer da cui arriva.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260730-07-create-fn-snapshot-indirizzo-soggetto-mctit.yaml
+
+  - changeSet:
+      id: 20260730-07-create-fn-snapshot-indirizzo-soggetto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Gemella di script.fn_snapshot_indirizzo per il layer SOGGETTO: stesso
+        shape canonico, chiave (soggetto_id, tipo_indirizzo_id), assenza = zero
+        righe e non errore.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_snapshot_indirizzo_soggetto(
+                  p_soggetto_id       anagrafiche.indirizzi_soggetti.soggetto_id%TYPE,
+                  p_tipo_indirizzo_id anagrafiche.indirizzi_soggetti.tipo_indirizzo_id%TYPE)
+               RETURNS TABLE(snapshot jsonb)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: comporre lo snapshot canonico di un indirizzo del layer
+              --        SOGGETTO (anagrafiche.indirizzi_soggetti), che non ha
+              --        riga in anagrafiche.indirizzi e quindi non e'
+              --        raggiungibile da script.fn_snapshot_indirizzo.
+              -- Uso:   fallback della catena di risoluzione, dopo il layer RUOLO
+              --        (script.fn_resolve_indirizzo_documento).
+              DECLARE
+                  v_r   record;
+                  v_via text;
+              BEGIN
+                  -- Guard input. Il soggetto e' un uuid: si controlla solo il
+                  -- NULL; il tipo e' un id numerico e vale la regola generale
+                  -- (errore se NULL o <= 0, mai normalizzazione silenziosa).
+                  IF p_soggetto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_snapshot_indirizzo_soggetto', 'E_VALIDAZIONE',
+                          jsonb_build_object('p_soggetto_id', p_soggetto_id),
+                          NULL::uuid, 'p_soggetto_id obbligatorio');
+                  END IF;
+
+                  IF p_tipo_indirizzo_id IS NULL OR p_tipo_indirizzo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_snapshot_indirizzo_soggetto', 'E_VALIDAZIONE',
+                          jsonb_build_object('p_tipo_indirizzo_id', p_tipo_indirizzo_id),
+                          NULL::uuid, 'p_tipo_indirizzo_id deve essere > 0');
+                  END IF;
+
+                  -- Risoluzione: la coppia (soggetto, tipo) e' UNIQUE
+                  -- (uq_indirizzi_soggetti_soggetto_tipo), quindi la riga e'
+                  -- una sola per costruzione — nessun LIMIT 1 da giustificare.
+                  SELECT r.is_normalizzato,
+                         r.via_norm,
+                         r.civico,
+                         r.cap,
+                         r.comune_descrizione,
+                         r.provincia_sigla,
+                         r.stato_iso2,
+                         r.indirizzo_display,
+                         r.indirizzo_libero,
+                         s.ragione_sociale_completa
+                    INTO v_r
+                    FROM anagrafiche.vw_indirizzi_resolved_soggetto r
+                    LEFT JOIN anagrafiche.soggetti s ON s.id = r.soggetto_id
+                   WHERE r.soggetto_id = p_soggetto_id
+                     AND r.tipo_indirizzo_id = p_tipo_indirizzo_id;
+
+                  -- Assenza = zero righe, NON errore: e' il caso normale di un
+                  -- fallback. Differenza deliberata dalla gemella, che invece
+                  -- riceve un id che deve esistere e solleva se non lo trova.
+                  IF NOT FOUND THEN
+                      RETURN;
+                  END IF;
+
+                  -- Componente "via": normalizzato -> via_norm + civico;
+                  -- libero -> indirizzo_libero. Identica alla gemella.
+                  v_via := CASE
+                             WHEN v_r.is_normalizzato
+                               THEN NULLIF(trim(both ' ' FROM
+                                      COALESCE(v_r.via_norm::text, '') || ' ' ||
+                                      COALESCE(v_r.civico::text, '')), '')
+                             ELSE v_r.indirizzo_libero
+                           END;
+
+                  -- Shape canonico (Q1): etichette umane + display.
+                  -- jsonb_strip_nulls: le chiavi nulle non compaiono.
+                  snapshot := jsonb_strip_nulls(jsonb_build_object(
+                      'intestazione', v_r.ragione_sociale_completa,
+                      'via',          v_via,
+                      'cap',          v_r.cap,
+                      'citta',        v_r.comune_descrizione,
+                      'prov',         v_r.provincia_sigla,
+                      'stato',        v_r.stato_iso2,
+                      'display',      v_r.indirizzo_display
+                  ));
+
+                  RETURN NEXT;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_snapshot_indirizzo_soggetto(uuid, integer)
+              IS 'Gemella di script.fn_snapshot_indirizzo per il layer SOGGETTO: compone lo STESSO shape canonico (intestazione, via, cap, citta, prov, stato, display) a partire da (soggetto_id, tipo_indirizzo_id). Esiste perche'' gli indirizzi di soggetto stanno in anagrafiche.indirizzi_soggetti e non hanno riga in anagrafiche.indirizzi: non c''e'' un p_indirizzo_id da passare alla gemella, e la colonna indirizzo_id della vista soggetto e'' la PK di un''ALTRA tabella — passarla alla gemella restituirebbe in silenzio l''indirizzo di ruolo con lo stesso numero. Prende la coppia (soggetto, tipo) proprio per rendere impossibile quello scambio. Assenza = zero righe e non errore: e'' il fallback della catena e il chiamante deve poter scendere di livello. Determinismo garantito da uq_indirizzi_soggetti_soggetto_tipo. STABLE. piano-db-satelliti-fattura D-O, Fase 2.0-a.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_snapshot_indirizzo_soggetto(uuid, integer);

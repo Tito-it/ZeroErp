@@ -2,32 +2,34 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Cablaggio note partizionate (vendite.note_preventivo, note_contratto)
-#        sul building block apps.core.partitioned_note_*. Una entry per dominio
-#        sorgente: aggiungere ordini/DDT/fatture/AF si riduce a clonare 3 righe.
+# Scopo: Cablaggio note partizionate dei 6 domini del ciclo attivo vendite sul
+#        building block apps.core.partitioned_note_*. Qui vive SOLO il cablaggio
+#        (service factory + view): i parametri di partizione stanno in
+#        `apps/vendite/db/note_repositories.py`, perche' li consuma anche il
+#        service del dettaglio fattura (contatore note) e un service non puo'
+#        importare da `api/`. Aggiungere un dominio = una istanza repo la` +
+#        una factory e una coppia di view qui.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 from apps.core.api.partitioned_note_views import make_note_views
-from apps.core.db.partitioned_note_repository import PartitionedNoteRepository
 from apps.core.services.partitioned_note_service import PartitionedNoteService
-
-# Scopo: Factory dei service note preventivo. Istanza repo singleton-friendly
-#        (no stato runtime); il service e' istanziato per-request per evitare
-#        accumulo di stato fra richieste concorrenti.
-_PREVENTIVO_REPO = PartitionedNoteRepository(
-    partition_table="vendite.note_preventivo",
-    target_tipo="PREVENTIVO",
-    parent_table="vendite.preventivi",
-    parent_pk="id",
-    child_table="vendite.preventivi_righe",
-    child_parent_fk="preventivo_id",
+from apps.vendite.db.note_repositories import (
+    NOTE_REPO_CONTRATTO,
+    NOTE_REPO_DDT,
+    NOTE_REPO_FATTURA,
+    NOTE_REPO_OFFERTA,
+    NOTE_REPO_ORDINE,
+    NOTE_REPO_PREVENTIVO,
 )
 
 
+# Scopo: Factory dei service note preventivo. Il service e' istanziato
+#        per-request per evitare accumulo di stato fra richieste concorrenti
+#        (il repo, senza stato runtime, resta condiviso).
 def _preventivo_service_factory() -> PartitionedNoteService:
-    return PartitionedNoteService(repo=_PREVENTIVO_REPO)
+    return PartitionedNoteService(repo=NOTE_REPO_PREVENTIVO)
 
 
 ApiPreventivoNoteList, ApiPreventivoNoteDetail = make_note_views(
@@ -40,18 +42,8 @@ ApiPreventivoNoteList, ApiPreventivoNoteDetail = make_note_views(
 
 
 # Scopo: Factory dei service note contratto.
-_CONTRATTO_REPO = PartitionedNoteRepository(
-    partition_table="vendite.note_contratto",
-    target_tipo="CONTRATTO",
-    parent_table="vendite.contratti",
-    parent_pk="id",
-    child_table="vendite.contratti_righe",
-    child_parent_fk="contratto_id",
-)
-
-
 def _contratto_service_factory() -> PartitionedNoteService:
-    return PartitionedNoteService(repo=_CONTRATTO_REPO)
+    return PartitionedNoteService(repo=NOTE_REPO_CONTRATTO)
 
 
 ApiContrattoNoteList, ApiContrattoNoteDetail = make_note_views(
@@ -63,24 +55,9 @@ ApiContrattoNoteList, ApiContrattoNoteDetail = make_note_views(
 )
 
 
-# Scopo: Factory dei service note offerta commerciale. Partizione
-#        'OFFERTA' (target_tipo varchar(16) ammette solo 7 caratteri;
-#        'OFFERTA_COMMERCIALE' (19) e' troppo lungo — vedi doc
-#        `vendite.note_offerte_commerciali`). Il child_table
-#        `vendite.offerte_commerciali_eccezioni` collega le note di RIGA
-#        via FK `offerta_id` (verificata su dbzero/vendite/tabelle).
-_OFFERTA_REPO = PartitionedNoteRepository(
-    partition_table="vendite.note_offerte_commerciali",
-    target_tipo="OFFERTA",
-    parent_table="vendite.offerte_commerciali",
-    parent_pk="id",
-    child_table="vendite.offerte_commerciali_eccezioni",
-    child_parent_fk="offerta_id",
-)
-
-
+# Scopo: Factory dei service note offerta commerciale.
 def _offerta_service_factory() -> PartitionedNoteService:
-    return PartitionedNoteService(repo=_OFFERTA_REPO)
+    return PartitionedNoteService(repo=NOTE_REPO_OFFERTA)
 
 
 ApiOffertaNoteList, ApiOffertaNoteDetail = make_note_views(
@@ -92,22 +69,9 @@ ApiOffertaNoteList, ApiOffertaNoteDetail = make_note_views(
 )
 
 
-# Scopo: Factory dei service note ordine di vendita. Partizione 'ORDINE'
-#        (target_tipo varchar(16): 'ORDINE' = 6 char, ok). Il child_table
-#        `vendite.ordini_righe` collega le note di RIGA via FK `ordine_id`
-#        (note_ordini.target_riga_id → ordini_righe.id).
-_ORDINE_REPO = PartitionedNoteRepository(
-    partition_table="vendite.note_ordini",
-    target_tipo="ORDINE",
-    parent_table="vendite.ordini",
-    parent_pk="id",
-    child_table="vendite.ordini_righe",
-    child_parent_fk="ordine_id",
-)
-
-
+# Scopo: Factory dei service note ordine di vendita.
 def _ordine_service_factory() -> PartitionedNoteService:
-    return PartitionedNoteService(repo=_ORDINE_REPO)
+    return PartitionedNoteService(repo=NOTE_REPO_ORDINE)
 
 
 ApiOrdineNoteList, ApiOrdineNoteDetail = make_note_views(
@@ -119,22 +83,9 @@ ApiOrdineNoteList, ApiOrdineNoteDetail = make_note_views(
 )
 
 
-# Scopo: Factory dei service note DDT di vendita. Partizione 'DDT'
-#        (target_tipo varchar(16): 'DDT' = 3 char, ok). Il child_table
-#        `vendite.ddt_righe` collega le note di RIGA via FK `ddt_id`
-#        (note_ddt.target_riga_id -> ddt_righe.id).
-_DDT_REPO = PartitionedNoteRepository(
-    partition_table="vendite.note_ddt",
-    target_tipo="DDT",
-    parent_table="vendite.ddt",
-    parent_pk="id",
-    child_table="vendite.ddt_righe",
-    child_parent_fk="ddt_id",
-)
-
-
+# Scopo: Factory dei service note DDT di vendita.
 def _ddt_service_factory() -> PartitionedNoteService:
-    return PartitionedNoteService(repo=_DDT_REPO)
+    return PartitionedNoteService(repo=NOTE_REPO_DDT)
 
 
 ApiDdtNoteList, ApiDdtNoteDetail = make_note_views(
@@ -143,4 +94,18 @@ ApiDdtNoteList, ApiDdtNoteDetail = make_note_views(
     service_factory=_ddt_service_factory,
     target_tipo="DDT",
     model_permission=("vendite", "ddt"),
+)
+
+
+# Scopo: Factory dei service note fattura.
+def _fattura_service_factory() -> PartitionedNoteService:
+    return PartitionedNoteService(repo=NOTE_REPO_FATTURA)
+
+
+ApiFatturaNoteList, ApiFatturaNoteDetail = make_note_views(
+    area_funzionale="vendite",
+    parent_path_param="fattura_id",
+    service_factory=_fattura_service_factory,
+    target_tipo="FATTURA",
+    model_permission=("vendite", "fattura"),
 )

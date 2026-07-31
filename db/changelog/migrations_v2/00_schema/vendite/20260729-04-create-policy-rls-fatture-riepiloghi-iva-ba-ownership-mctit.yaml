@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R4 — policy rls_fatture_riepiloghi_iva_ba_ownership su
+#   vendite.fatture_riepiloghi_iva.
+#   (brief RLS satelliti fattura §5; slice 20260729-01..06)
+#
+# L'ultima delle quattro: chiude il pre-armamento portale sul contenuto della
+# fattura. Con questa, il perimetro ba_ownership dello schema vendite passa da
+# due tabelle (fatture, fatture_scadenze) a quattro — testata, piano rate,
+# righe, riepilogo IVA. Cioe' esattamente cio' che un portale mostra aprendo una
+# fattura.
+#
+# FOR SELECT, come il gemello 20260729-02: il cliente legge il riepilogo IVA
+# della propria fattura, non lo scrive. Qui la lettura sola e' anche piu' ovvia
+# che sulle righe — il riepilogo e' un dato CALCOLATO dal ricalcolo interno, e
+# non esiste alcuna ragione perche' una veste esterna possa toccarlo.
+#
+# Gate CLIENTE_PORTALE su app.current_identita_id (bigint). SHOP_CUSTOMER
+# escluso, a parita' con tutta la famiglia fattura (20260420-08).
+#
+# INVARIANTE: fn_scope_ba_ownership_via_fattura, la stessa funzione che protegge
+# la testata e le righe. Vedi l'header del 20260729-01 per il perche' non e'
+# negoziabile.
+#
+# Dipendenze: vendite.fatture_riepiloghi_iva.fattura_id (NOT NULL),
+#   script.fn_scope_ba_ownership_via_fattura.
+# Verifica: db/pgtap/rls/test-rls-fatture-satelliti-functional.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260729-04-create-policy-rls-fatture-riepiloghi-iva-ba-ownership-mctit.yaml
+
+  - changeSet:
+      id: 20260729-04-create-policy-rls-fatture-riepiloghi-iva-ba-ownership
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Policy rls_fatture_riepiloghi_iva_ba_ownership (FOR SELECT, gate
+        CLIENTE_PORTALE, scope via fn_scope_ba_ownership_via_fattura). Ultima
+        delle quattro: il perimetro ba_ownership passa da 2 a 4 tabelle.
+        Nessun ENABLE qui: 20260729-05.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture_riepiloghi_iva
+                columnName: fattura_id
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                   WHERE n.nspname='script' AND p.proname='fn_scope_ba_ownership_via_fattura';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_riepiloghi_iva_ba_ownership
+                  ON vendite.fatture_riepiloghi_iva;
+
+              CREATE POLICY rls_fatture_riepiloghi_iva_ba_ownership
+                  ON vendite.fatture_riepiloghi_iva
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_ba_ownership_via_fattura(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              fattura_id
+                          )
+                  );
+
+              COMMENT ON POLICY rls_fatture_riepiloghi_iva_ba_ownership
+                  ON vendite.fatture_riepiloghi_iva IS
+                  'RLS portale: CLIENTE_PORTALE vede il riepilogo IVA delle PROPRIE fatture '
+                  'B2B (fn_scope_ba_ownership_via_fattura, stesso scope di testata e righe). '
+                  'FOR SELECT: il riepilogo e'' un dato calcolato dal ricalcolo interno, '
+                  'nessuna veste esterna deve poterlo toccare. SHOP_CUSTOMER escluso. '
+                  'Con questa il perimetro ba_ownership di vendite passa da 2 tabelle '
+                  '(fatture, fatture_scadenze) a 4: testata, rate, righe, riepilogo — cioe'' '
+                  'la fattura come la vede un cliente. rev 2026-07-29.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_riepiloghi_iva_ba_ownership
+                  ON vendite.fatture_riepiloghi_iva;
