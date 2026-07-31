@@ -208,15 +208,29 @@ Due punti di merito:
 
 ## Dipendenze DB
 
-- `vendite.fatture` (+ JOIN `anagrafiche.emittenti_fiscali`,
-  `vw_soggetti_ruoli_dettaglio`, `billing_account`, `config.tipi_doc_fiscale`,
+- `vendite.fatture` (+ JOIN `billing_account`, `config.tipi_doc_fiscale`,
   `stati_doc_fiscale`, `valute`, `modalita_pagamento`, `termini_pagamento`,
-  `utilities`, `anagrafiche.vw_indirizzi_resolved_ruolo`)
+  `utilities`)
+- `vendite.fatture_indirizzi` (riga `FATT` → `cliente_indirizzo`)
 - `vendite.vw_fattura_righe_esposte`
 - `vendite.fatture_riepiloghi_iva`
 - `vendite.fatture_scadenze`
 
-Nessuna funzione, vista o colonna nuova: **zero lavoro DB**.
+> **Rev. 2026-07-31 — ristampa conforme (Fase 2 satelliti).** L'intestazione
+> delle due parti non si legge più dall'anagrafica viva ma dagli **snapshot
+> congelati** allo step DRAFT: `emittente_denominazione`/`emittente_piva`/
+> `emittente_cf`/`emittente_sede` derivano da `fatture.emittente_snapshot`;
+> `ragione_sociale_completa`/`id_fiscale_univoco_cf_piva`/`ba_codice` da
+> `fatture.cliente_snapshot`; `cliente_indirizzo` dalla riga `FATT` di
+> `fatture_indirizzi`. Le chiavi del payload sono INVARIATE — è cambiata la
+> provenienza. Cadute le JOIN su `emittenti_fiscali`,
+> `vw_soggetti_ruoli_dettaglio` e `vw_indirizzi_resolved_ruolo`. Il payload
+> espone in aggiunta `emittente_snapshot` e `cliente_snapshot` integrali
+> (shape interno non contrattuale, brief intestazione §10.2). Una fattura
+> **senza** snapshot (emessa prima della Fase 1) mostra questi campi a NULL:
+> **nessun fallback** per decisione (piano BE/FE §9 — dati di test, si
+> rigenerano). ⚠️ `billing_account_id`/`ba_codice` nello snapshot cliente sono
+> il BA **padre** (D-P), non il conto del consumatore nelle gerarchie.
 
 ---
 

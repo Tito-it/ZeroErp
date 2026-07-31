@@ -1240,22 +1240,16 @@ class ErrorPolicyRegistry:
                          "puo' essere rimossa solo come parte della "
                          "disattivazione utente.",
         ),
-        # ── Clienti / Fornitori — normalize+guard payload pagamento/fiscali ──
+        # ── Fornitori — normalize+guard payload pagamento/fiscali ──
         # Fase 2 refactor anagrafiche (landed 2026-04-27). Trigger DB:
-        # anagrafiche.trgfn_clienti_normalize_giorni_scadenza (raise se
-        # tipo_gg_scadenza_ft IN ('G','F') AND nr_giorni_scadenza IS NULL/<=0).
-        # Pattern simmetrico al gemello fornitori (raise se ritenuta_acconto=true
-        # AND ritenuta_aliquota IS NULL/<=0). Codici seedati in
-        # config.messaggi_errore (id 397, 398).
-        "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI": ErrorPolicy(
-            code="E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI",
-            http_status=400,
-            ui_action="highlight_form_fields",
-            user_message=(
-                "Numero giorni scadenza obbligatorio quando il tipo calcolo "
-                "scadenza e' G (somma giorni) o F (fine mese + somma)."
-            ),
-        ),
+        # anagrafiche.trgfn_fornitori_guard_normalize (raise se
+        # ritenuta_acconto=true AND ritenuta_aliquota IS NULL/<=0). Codice
+        # seedato in config.messaggi_errore (id 398).
+        # Il gemello clienti (E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI) e' stato
+        # RITIRATO il 2026-07-31 con la DROP del trigger normalize e delle
+        # colonne tipo_gg_scadenza_ft/nr_giorni_scadenza (riforma D-I,
+        # piano-db-satelliti 3a.5): le condizioni di pagamento cliente passano
+        # da config.termini_pagamento e il guard non e' piu' raggiungibile.
         "E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA": ErrorPolicy(
             code="E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA",
             http_status=400,

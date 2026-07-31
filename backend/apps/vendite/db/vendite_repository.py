@@ -118,11 +118,13 @@ DASH_COMPETENZA_STADI: tuple[str, ...] = (
     "FATTURATA",
 )
 
-# Codici stabili (codice_interno di config.tipi_indirizzi) dei tipi indirizzo
-# risolti nella testata fattura per la stampa (C-9): sede legale dell'emittente
-# e indirizzo di fatturazione del cliente. Costanti passate come parametri SQL
-# (mai letterali embedded nella query — lezione review A+B sul letterale stadio).
-TIPO_INDIRIZZO_SEDE_LEGALE = "SEDELEG"
+# Codice stabile (codice_interno di config.tipi_indirizzi) dello slot letto
+# nella testata fattura per la stampa: indirizzo di fatturazione del cliente,
+# dalla riga FATT del satellite congelato `fatture_indirizzi`. Costante passata
+# come parametro SQL (mai letterale embedded — lezione review A+B sul letterale
+# stadio). La gemella TIPO_INDIRIZZO_SEDE_LEGALE e' stata RITIRATA con la Fase 2
+# satelliti (2026-07-31): la sede dell'emittente ora arriva gia' risolta dentro
+# `emittente_snapshot->'sede'`, congelata a DB — qui non si risolve piu' nulla.
 TIPO_INDIRIZZO_FATTURAZIONE = "FATT"
 
 # Classi di azionabilita' della Lente 2 Backlog, nell'ordine di esposizione UI
@@ -1553,15 +1555,30 @@ class VenditeRepository:
             cursor.execute(sql, [int(fattura_id)])
             return row_to_dict(cursor)
 
-    # Scopo: Testata fattura per il context builder documentale (stampa).
-    #        Denormalizza cliente (BA → soggetto), emittente (SR → EF PK+codice),
-    #        stato/tipo doc fiscale e valuta; espone i totali di testata così
-    #        come li mantiene la pipeline (`*_tot`, bollo, arrotondamento,
-    #        totale_a_pagare). Lettura pura: nessun calcolo fiscale in Python.
-    #        None se la fattura non esiste (o è fuori scope RLS).
     # Scopo: Testata fattura completa di decodifiche (cliente, emittente,
     #        pagamento, totali) per il context builder del PDF **e** per
     #        l'endpoint di dettaglio del drawer fattura.
+    #
+    #        ⚠️ RISTAMPA CONFORME (Fase 2 piano BE/FE satelliti, 2026-07-31):
+    #        l'intestazione delle due parti NON si legge piu' dall'anagrafica
+    #        viva ma dagli SNAPSHOT congelati allo step DRAFT dalla pipeline
+    #        (`fn_snapshot_fattura_lotto`):
+    #          - identita' fiscale emittente/cliente → `f.emittente_snapshot` /
+    #            `f.cliente_snapshot` (testata, guard di congelamento);
+    #          - indirizzo di fatturazione cliente → riga `FATT` di
+    #            `vendite.fatture_indirizzi`.
+    #        Le chiavi piatte esposte restano IDENTICHE (contratto del drawer
+    #        FE e del template PDF): cambia solo la sorgente. NESSUN fallback
+    #        alla vista live (§9 del piano): una fattura senza snapshot mostra
+    #        i campi vuoti, ed e' giusto che si veda.
+    #        La rimozione delle vecchie subquery su vw_indirizzi_resolved_ruolo
+    #        chiude anche i DUE difetti del §10.3 del brief intestazione (il
+    #        filtro confrontava codice_interno con la colonna `codice`, e la
+    #        vista contiene il solo layer RUOLO — la sede legale dell'emittente
+    #        non era MAI stata stampata).
+    #
+    #        Lettura pura: nessun calcolo fiscale in Python. None se la fattura
+    #        non esiste (o è fuori scope RLS).
     #        `auth_user_id` opzionale = difesa in profondita' applicativa che si
     #        SOMMA alla RLS di `vendite.fatture` (policy `rls_fatture_ef_whitelist`,
     #        attiva sul ruolo dell'app: `zeroerp_app` non e' owner della tabella).
@@ -1588,40 +1605,53 @@ class VenditeRepository:
                 sdf.codice_interno           AS stato_codice_interno,
                 sdf.descrizione              AS stato_descrizione,
                 f.emittente_soggetto_ruolo_id,
-                ef.id                        AS emittente_fiscale_id,
-                ef.codice                    AS emittente_fiscale_codice,
-                srd_em.ragione_sociale_completa   AS emittente_denominazione,
-                srd_em.id_fiscale_univoco_cf_piva AS emittente_piva,
-                srd_em.codice_fiscale             AS emittente_cf,
-                -- Sede legale emittente (stringa formattata) — tipo indirizzo
-                -- TIPO_INDIRIZZO_SEDE_LEGALE (codice_interno stabile, parametro).
-                -- Subquery scalare: un solo valore anche con più indirizzi
-                -- dello stesso tipo (no fan-out).
-                (SELECT ind_em.indirizzo_display
-                   FROM anagrafiche.vw_indirizzi_resolved_ruolo ind_em
-                  WHERE ind_em.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
-                    AND ind_em.tipo_indirizzo_codice = %s
-                  ORDER BY ind_em.indirizzo_id
-                  LIMIT 1)                  AS emittente_sede,
+                -- ===== Intestazione EMITTENTE: dallo snapshot congelato =====
+                -- Chiavi piatte derivate dal jsonb per compatibilita' col
+                -- contratto esistente (drawer FE + template PDF v1). NULL se
+                -- lo snapshot manca (fattura pre-Fase 1): niente fallback.
+                (f.emittente_snapshot->>'emittente_fiscale_id')::bigint
+                                             AS emittente_fiscale_id,
+                f.emittente_snapshot->>'emittente_codice'
+                                             AS emittente_fiscale_codice,
+                f.emittente_snapshot->>'denominazione'
+                                             AS emittente_denominazione,
+                f.emittente_snapshot->>'id_fiscale'
+                                             AS emittente_piva,
+                f.emittente_snapshot->>'codice_fiscale'
+                                             AS emittente_cf,
+                -- Sede legale: display dello snapshot indirizzo annidato
+                -- (composto a DB da fn_resolve_indirizzo_documento, due layer).
+                f.emittente_snapshot->'sede'->>'display'
+                                             AS emittente_sede,
                 util.codice                  AS utility_codice,
                 util.descrizione             AS utility_descrizione,
                 mpag.codice                  AS pagamento_modalita_codice,
                 tpag.codice_interno          AS pagamento_termine_codice,
                 f.billing_account_id,
-                ba.codice                    AS ba_codice,
-                ba.soggetto_ruolo_id         AS cliente_soggetto_ruolo_id,
-                srd.soggetto_id,
-                srd.ragione_sociale_completa,
-                srd.id_fiscale_univoco_cf_piva,
-                -- Indirizzo di fatturazione cliente — tipo
-                -- TIPO_INDIRIZZO_FATTURAZIONE (parametro). Subquery scalare
-                -- come per l'emittente.
-                (SELECT ind_cli.indirizzo_display
-                   FROM anagrafiche.vw_indirizzi_resolved_ruolo ind_cli
-                  WHERE ind_cli.soggetto_ruolo_id = ba.soggetto_ruolo_id
-                    AND ind_cli.tipo_indirizzo_codice = %s
-                  ORDER BY ind_cli.indirizzo_id
-                  LIMIT 1)                  AS cliente_indirizzo,
+                -- ===== Intestazione CLIENTE: dallo snapshot congelato =====
+                f.cliente_snapshot->>'ba_codice'          AS ba_codice,
+                (f.cliente_snapshot->>'soggetto_ruolo_id')::bigint
+                                             AS cliente_soggetto_ruolo_id,
+                (f.cliente_snapshot->>'soggetto_id')::uuid AS soggetto_id,
+                f.cliente_snapshot->>'denominazione'
+                                             AS ragione_sociale_completa,
+                f.cliente_snapshot->>'id_fiscale'
+                                             AS id_fiscale_univoco_cf_piva,
+                -- Indirizzo di fatturazione cliente: riga FATT del satellite
+                -- congelato (unica per la UNIQUE (fattura_id, tipo)). E' QUESTA
+                -- la lettura che rende la ristampa conforme: modificare
+                -- l'anagrafica non cambia piu' il documento.
+                (SELECT fi.snapshot->>'display'
+                   FROM vendite.fatture_indirizzi fi
+                   JOIN config.tipi_indirizzi ti ON ti.id = fi.tipo_indirizzo_id
+                  WHERE fi.fattura_id = f.id
+                    AND ti.codice_interno = %s)
+                                             AS cliente_indirizzo,
+                -- Snapshot integrali: per i consumer che vorranno i campi
+                -- ricchi (REA, forma giuridica, codice SDI) senza riaprire
+                -- questa SELECT. Shape interno non contrattuale (brief §10.2).
+                f.emittente_snapshot,
+                f.cliente_snapshot,
                 f.valuta_id,
                 val.iso_code                 AS valuta_codice,
                 f.tasso_cambio,
@@ -1635,10 +1665,6 @@ class VenditeRepository:
                 f.data_contabilizzazione,
                 f.meta
               FROM vendite.fatture f
-              LEFT JOIN anagrafiche.emittenti_fiscali ef
-                ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
-              LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd_em
-                ON srd_em.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
               JOIN anagrafiche.billing_account ba
                 ON ba.id = f.billing_account_id
               LEFT JOIN config.utilities util
@@ -1647,8 +1673,6 @@ class VenditeRepository:
                 ON mpag.id = f.modalita_pagamento_id
               LEFT JOIN config.termini_pagamento tpag
                 ON tpag.id = f.termine_pagamento_id
-              JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
-                ON srd.soggetto_ruolo_id = ba.soggetto_ruolo_id
               LEFT JOIN config.tipi_doc_fiscale tdf
                 ON tdf.id = f.tipo_doc_fiscale_id
               LEFT JOIN config.stati_doc_fiscale sdf
@@ -1657,10 +1681,9 @@ class VenditeRepository:
                 ON val.id = f.valuta_id
              WHERE f.id = %s
         """
-        # Parametri nell'ordine dei %s: subquery sede emittente, subquery
-        # indirizzo fatturazione cliente, id fattura.
+        # Parametri nell'ordine dei %s: subquery indirizzo fatturazione
+        # cliente (riga FATT del satellite), id fattura.
         params: list[Any] = [
-            TIPO_INDIRIZZO_SEDE_LEGALE,
             TIPO_INDIRIZZO_FATTURAZIONE,
             int(fattura_id),
         ]
@@ -1682,6 +1705,8 @@ class VenditeRepository:
             # STRINGA al posto dell'oggetto, e chi ci fa `.get()` muore al
             # primo accesso (BB `jsonb_out`, nato esattamente da questo bug).
             row["meta"] = jsonb_out(row.get("meta"))
+            row["emittente_snapshot"] = jsonb_out(row.get("emittente_snapshot"))
+            row["cliente_snapshot"] = jsonb_out(row.get("cliente_snapshot"))
         return row
 
     # Scopo: Righe fattura con decodifiche articolo/uom/iva per il context

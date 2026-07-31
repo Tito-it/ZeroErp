@@ -20,7 +20,9 @@ useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 const store = useEmailLogsStore()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'data_insert',
-  defaultSortOrder: -1
+  // 'desc', NON -1: il contratto di useSearchTable e' 'asc'/'desc' (il -1
+  // era dormiente solo perche' lo store preimposta gia' order_by/order_dir).
+  defaultSortOrder: 'desc'
 })
 
 // Email logs e' read-only (nessun create/update/delete) quindi non serve

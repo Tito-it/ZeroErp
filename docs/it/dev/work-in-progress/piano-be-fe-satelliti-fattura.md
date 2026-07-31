@@ -24,10 +24,10 @@
 > ci rimanda e non lo duplica.
 >
 > **Owner:** BE (`dev/backend-tid`)
-> **Stato (2026-07-31 sera):** Fasi 0 e 1 ✅ · 4-bis: D-Q ✅, DB 2.3 ✅ (incl.
-> riallineamento al wrapper rinominato `fn_snapshot_fattura_lotto`), 3a.7 ✅
-> (anticipata) · **prossima: Fase 2**, sbloccata — prerequisiti DB tutti
-> applicati (brief intestazione §10.8) · Fasi 3-5 in attesa del brief scadenze
+> **Stato (2026-07-31 notte):** Fasi 0, 1 e **2** ✅ · 4-bis: D-Q ✅, DB 2.3 ✅
+> (incl. riallineamento al wrapper rinominato `fn_snapshot_fattura_lotto`),
+> 3a.7 ✅ (anticipata, residui chiusi) · Fasi 3-4 in attesa del brief scadenze ·
+> Fase 5 = 2.5/I.4 lato DB · aperto: giro pipeline reale post-rinomina (§3.1)
 > **Prerequisiti (bloccanti):**
 > [brief-db-snapshot-indirizzi-fattura.md](brief-db-snapshot-indirizzi-fattura.md) ·
 > [brief-db-generazione-scadenze-fattura.md](brief-db-generazione-scadenze-fattura.md)
@@ -88,11 +88,15 @@ codice morto con i test verdi.
 | 5 | **Ristampa conforme**: il PDF stampa l'indirizzo dello **snapshot**; modificando l'indirizzo in anagrafica e ristampando, il documento **non cambia** ⟵ *l'asserzione che giustifica tutto il lavoro* |
 | 6 | Idempotenza: rigenerando il giro non nascono righe duplicate |
 
-> **Stato 2026-07-31 (sera): 8 asserzioni, verde**, con il ciclo D-Q completo
-> (errore → marcatura → correzione → rilancio → ritiro segnalazioni) e il caso 8
-> (ristampa conforme) in **SKIP dichiarato** fino alla Fase 2. Dal rinominarsi
-> del wrapper mostra anche `intestazioni_scritte` (1 alla correzione, 0 al terzo
-> giro: l'intestazione è idempotente come le righe).
+> **Stato 2026-07-31 (notte): 8/8 verde, caso 8 ACCESO con la Fase 2** — il
+> ciclo D-Q completo (errore → marcatura → correzione → rilancio → ritiro
+> segnalazioni) più la ristampa conforme vera: contesto ancorato ai **valori
+> congelati** (display della riga `FATT` + `emittente_snapshot`, non solo
+> confrontato con sé stesso — due letture live sarebbero uguali fra loro anche
+> senza snapshot), poi deriva anagrafica → contesto **identico**
+> (`identici_post_deriva=True`). Dal rinominarsi del wrapper mostra anche
+> `intestazioni_scritte` (1 alla correzione, 0 al terzo giro: l'intestazione è
+> idempotente come le righe).
 >
 > ⚠️ **Due lezioni di fixture, pagate sul campo.**
 >
@@ -102,14 +106,22 @@ codice morto con i test verdi.
 >    `origine_indirizzo_id`, e la FK ha fatto morire lo smoke *nella fixture*,
 >    non in un'asserzione. Ora le righe si **ri-puntano a un tipo di
 >    parcheggio** — ammesso al ruolo ma fuori dall'ambito `FATTURE` — così la
->    riga sopravvive alla FK e la catena non trova comunque `FATT`. Vale per
->    qualunque smoke futuro: più snapshot congeliamo, meno i dati anagrafici
->    sono cancellabili, anche dentro una transazione che fa rollback.
+>    riga sopravvive alla FK e la catena non trova comunque `FATT`. Due
+>    finezze uscite dalla review critica, entrambe misurate sul DB: (a) la
+>    selezione del parcheggio rispecchia il guard della matrice **per intero**
+>    (`attivo` E finestra `valido_dal/valido_al` — solo-attivo passerebbe la
+>    selezione e morirebbe sul guard); (b) **un solo tipo basta per tutte le
+>    righe**: le unique di `anagrafiche.indirizzi` sono parziali — `(sr, tipo)`
+>    con istanza NULL, `(sr, istanza, tipo)` altrimenti — quindi la generica è
+>    al più una e le altre non collidono mai fra loro. Vale per qualunque smoke
+>    futuro: più snapshot congeliamo, meno i dati anagrafici sono cancellabili,
+>    anche dentro una transazione che fa rollback.
 > 2. **Passa dal wrapper, non dallo step** (rilievo del team DB, §10.7 del brief
 >    intestazione). Finché lo smoke chiama `run_snapshot_indirizzi_lotto_task`
->    direttamente, dimostra la catena wrapper → funzione DB → D-Q, **non** che
->    la pipeline invochi quel wrapper. Ora che l'armamento c'è, va rifatto un
->    giro reale — o modificato lo smoke perché esegua lo step. **Aperto.**
+>    direttamente, dimostra la catena wrapper → funzione DB → D-Q → contesto di
+>    stampa, **non** che la pipeline invochi quel wrapper. Ora che l'armamento
+>    c'è, va rifatto un giro reale — o modificato lo smoke perché esegua lo
+>    step. **Unico aperto del cantiere indirizzi.**
 
 ### 3.2 `smoke-fattura-scadenze.py`
 
@@ -243,7 +255,37 @@ Senza questa fase la Fase 1 gira su una catena diversa da quella dei fratelli, e
 
 Verifica di fase: smoke §3.1 casi 1-4 e 6 verdi.
 
-### Fase 2 — Ristampa conforme (il motivo per cui esiste la Fase 1)
+### Fase 2 — Ristampa conforme ✅ **FATTA (2026-07-31, sera)**
+
+> **Realizzata la sera stessa dello sblocco.** Perimetro effettivo — piu'
+> piccolo del previsto, perche' le chiavi piatte della testata sono il
+> contratto condiviso di drawer FE e template PDF, e derivarle **dentro la
+> SQL** dagli snapshot lascia builder e FE intatti per costruzione:
+>
+> | File | Cosa |
+> |---|---|
+> | `db/vendite_repository.py` (`get_fattura_testata`) | intestazioni delle due parti derivate da `emittente_snapshot`/`cliente_snapshot` (`->>`), indirizzo cliente dalla riga `FATT` di `fatture_indirizzi`; **rimosse** le due subquery su `vw_indirizzi_resolved_ruolo` (con entrambi i difetti §10.3) e le JOIN su `vw_soggetti_ruoli_dettaglio`/`emittenti_fiscali`; esposti anche gli snapshot integrali (shape non contrattuale); ritirata la costante `TIPO_INDIRIZZO_SEDE_LEGALE` |
+> | `services/fattura_document_context_builder.py` | **solo commenti**: shape e codice invariati, la sorgente e' cambiata sotto le stesse chiavi |
+> | `scripts/tests/smoke-fattura-indirizzi-snapshot.py` | asserzione 8 **accesa**: contesto ancorato ai valori congelati (non solo a se' stesso) + deriva anagrafica → contesto identico |
+> | `docs/it/backend/vendite/manual/api_fattura_dettaglio.md` | «Dipendenze DB» riscritte (cadute le 3 JOIN) + nota di provenienza: chiavi invariate, sorgente = snapshot, NULL senza fallback, avvertenza D-P sul BA padre |
+>
+> **Verifiche:** smoke §3.1 **8/8 verde** (caso 8: `identici_post_deriva=True`)
+> · `smoke-fatturazione-render-stampa.py` verde (PDF reale 18KB dal contesto
+> nuovo) · suite 2487 verdi. Le fatture **pre**-snapshot stampano intestazione
+> vuota: voluto (§9, dati di test — si rigenerano).
+>
+> **Review critica post-scrittura (2026-08-01)**: tre assunzioni verificate sul
+> DB e non sulla fiducia — la subquery scalare `FATT` senza `LIMIT 1` non può
+> esplodere (`uq_tipi_indirizzi_codice_interno` × `uq_fatture_indirizzi_uno_per_tipo_`,
+> e a vincoli rotti l'errore sarebbe rumoroso, che è il fallimento giusto); il
+> confronto `ctx_dopo == ctx_prima` non può flappare (i tre lettori del builder
+> hanno ORDER BY deterministici); `jsonb_out` è NULL-preserving (pre-snapshot →
+> `null`, non `{}`). Un solo fix: la doc manuale qui sopra, ultimo consumatore
+> della vecchia provenienza. **Asimmetria nota e voluta**: la lista fatture del
+> `LottoDrawer` mostra la ragione sociale **live**, il dettaglio/PDF quella
+> **congelata** — la lista è una vista operativa, il documento è il documento.
+
+(Testo originale della fase:)
 
 > ⚠️ **Estesa il 2026-07-31 — leggere
 > [brief-db-snapshot-intestazione-fattura.md](brief-db-snapshot-intestazione-fattura.md)
@@ -374,7 +416,7 @@ Sono elencate qui perché **l'owner è il BE**; la fase DB resta il loro innesco
 
 | Innesco (piano DB) | Cosa tocca a noi | Quando |
 |---|---|---|
-| **3a.7** — riforma condizioni di pagamento (D-I) | ✅ **FATTA (2026-07-31, PR #1100), ANTICIPATA rispetto al DROP** — decisione presa con Tid e team DB: le colonne legacy non avevano lettori a valle e il `NOT NULL` ha un `DEFAULT`, quindi anticipare **elimina** l'accoppiamento invece di gestirlo — 3a.5/3a.6 diventano DROP pure, senza deploy FE da sincronizzare. Fatto: `ClienteDrawer.vue` (via i 2 campi + `tipoGgOptions`), 6 chiavi i18n it+en, `clienti_repository` (2 whitelist + SELECT), `clienti_service`, `views_clienti`, `test_clienti_repository`. Verifiche: 1068 test verdi, `check_i18n_keys` pulito, eslint + build Vite ok. **Restano**: `fn_update_cliente` (SQL, owner DB, con 3a.5) e il codice `E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI` in `error_policies.py`, da togliere **con** la DROP del trigger, non prima (il guard è ancora raggiungibile) | ~~Contestuale al DROP~~ → anticipata |
+| **3a.7** — riforma condizioni di pagamento (D-I) | ✅ **FATTA (2026-07-31, PR #1100), ANTICIPATA rispetto al DROP** — decisione presa con Tid e team DB: le colonne legacy non avevano lettori a valle e il `NOT NULL` ha un `DEFAULT`, quindi anticipare **elimina** l'accoppiamento invece di gestirlo — 3a.5/3a.6 diventano DROP pure, senza deploy FE da sincronizzare. Fatto: `ClienteDrawer.vue` (via i 2 campi + `tipoGgOptions`), 6 chiavi i18n it+en, `clienti_repository` (2 whitelist + SELECT), `clienti_service`, `views_clienti`, `test_clienti_repository`. Verifiche: 1068 test verdi, `check_i18n_keys` pulito, eslint + build Vite ok. **Residui CHIUSI la sera stessa**: `fn_update_cliente` riscritta dal DB (`20260731-08`, con 3a.5) e `E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI` **ritirato** da `error_policies.py` — il trigger non esiste più, la policy era codice morto; resta il gemello fornitori, che il suo trigger ce l'ha ancora. **3a.7 completamente chiusa** | ~~Contestuale al DROP~~ → anticipata |
 | **6.6** — eliminazione del flag `esclusa` (D-M) | **filtro API** e **`types.py`** (il resto è DB) | Con la Fase 6 DB |
 | **6.7** — ritorno a DRAFT / estrazione (D-N-bis) | Verbo nel `LottoDrawer` con conferma esplicita di **cosa si perde**, e **lista «estratte»** nel cockpit | Dopo 6.0-6.5 DB |
 | **D-L** — rinomina funzioni di reset | **4 righe obbligatorie + ~12 nomi Python** da allineare (vedi sotto): decisione Tid 2026-07-30, si rinomina su **entrambi** gli strati | Contestuale alla rinomina |
@@ -553,6 +595,12 @@ completa (nel mio smoke: `'Roma', '00100', 'RM'` + `stato_id` dell'Italia).
      mostrano in sola lettura (o non si mostrano affatto).
 2. **Gli indirizzi vanno esposti nel dettaglio fattura?** Se sì, il payload cresce
    di una chiave e vale l'avvertenza RLS del §6.
+   ℹ️ *Aggiornamento Fase 2 (2026-07-31)*: il payload del dettaglio espone già
+   `emittente_snapshot` e `cliente_snapshot` integrali (additivo, shape non
+   contrattuale — brief intestazione §10.2) e `cliente_indirizzo` ora è il
+   display della riga `FATT` congelata. La decisione aperta resta quella sulla
+   **lista** delle righe di `fatture_indirizzi` (gli slot per tipo), non
+   sull'intestazione.
 3. **Badge documenti** nella barra azioni del drawer: il payload ha già
    `contatori` come dict proprio per questo — se serve, si aggiunge un contatore
    senza cambiare la shape.
