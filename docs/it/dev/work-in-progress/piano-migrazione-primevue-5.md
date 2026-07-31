@@ -5,9 +5,9 @@
 > CORSO**. §6.1 (Pinia 4) è **chiuso e resta valido**. §6.2/6.3 (primeicons 8)
 > è stato eseguito e poi **annullato**. §6.4 (PrimeVue 5 + themes 3) **non è
 > più una questione tecnica**. Il binario vivo è §8-bis: la conversione delle
-> liste a `<ListaConfigurabile>` è partita — **1/34 fatta e validata**
-> (`vendite.lotti`, 2026-07-31) — ed è utile con QUALUNQUE esito della
-> questione licenza.
+> liste a `<ListaConfigurabile>` è partita — **5/34 fatte e tutte validate
+> in-app** (`vendite.lotti` + le 4 del primo lotto, 2026-07-31) — ed è utile
+> con QUALUNQUE esito della questione licenza.
 >
 > 🚨 **PrimeVue ha cambiato licenza al confine della major.** `primevue`,
 > `@primeuix/themes` e `primeicons` erano **MIT** fino alla versione
@@ -983,11 +983,11 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✓ | File | Col. | Lazy |
 | --- | --- | --- | --- |
 | ☐ | `catalogo/components/UomTipiSearchTable.vue` | 4 | sì |
-| ☐ 🔵 | `amministrazione/components/CategorieClientiSearchTable.vue` | 5 | sì |
+| ✅ 31-07 | `amministrazione/components/CategorieClientiSearchTable.vue` | 5 | sì |
 | ☐ | `amministrazione/components/EmittenteFiscaleBillingAccountTab.vue` | 5 | sì |
-| ☐ 🔵 | `amministrazione/components/UtilitiesTipiRuoloSearchTable.vue` | 5 | sì |
+| ✅ 31-07 | `amministrazione/components/UtilitiesTipiRuoloSearchTable.vue` | 5 | sì |
 | ☐ | `amministrazione/views/AuditLogView.vue` | 5 | sì |
-| ☐ 🔵 | `anagrafiche/components/IndirizziSearchTable.vue` | 5 | sì |
+| ✅ 31-07 | `anagrafiche/components/IndirizziSearchTable.vue` | 5 | sì |
 | ☐ | `vendite/views/ApprovazioniPrezzoListView.vue` | 5 | sì |
 | ☐ | `amministrazione/views/EmailAccountsListView.vue` | 6 | sì |
 | ☐ | `amministrazione/views/EmailTemplatesListView.vue` | 6 | sì |
@@ -1005,7 +1005,7 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ☐ | `vendite/components/PromoArticoliSearchTable.vue` | 8 | sì |
 | ☐ | `vendite/offerte/components/OffertaEccezioniDrawer.vue` | 8 | — |
 | ☐ | `amministrazione/components/CategorieClientiListiniSearchTable.vue` | 9 | sì |
-| ☐ 🔵 | `amministrazione/components/TipiRuoloTipiIndirizzoSearchTable.vue` | 9 | sì |
+| ✅ 31-07 | `amministrazione/components/TipiRuoloTipiIndirizzoSearchTable.vue` | 9 | sì |
 | ☐ | `amministrazione/views/OperatoriListView.vue` | 9 | sì |
 | ☐ | `catalogo/components/ArticoliSearchTable.vue` | 9 | sì |
 | ☐ | `strumenti/components/CodaStampaTab.vue` | 9 | sì |
@@ -1072,7 +1072,48 @@ precedente di questo stesso blocco.**
 (`area_geografica`, `stato_operativo`, `user_insert`) sono ciò che rende la
 personalizzazione utile — l'endpoint le restituiva già.
 
-##### Primo lotto dopo lotti — 4 liste, seed DB pronto (2026-07-31)
+##### Primo lotto dopo lotti — ✅ 4 liste CONVERTITE e validate in-app (2026-07-31)
+
+> Il blocco sotto è la consegna del team DB, lasciata com'era. Esito della
+> conversione FE: **tutte e quattro fatte e validate in-app da Tid**, e la
+> previsione si è avverata — costo una frazione di `vendite.lotti`, perché
+> avevano già store, `useSearchTable` e ordinamento BE. Zero lavoro backend.
+
+**Cosa è servito davvero, per lista:** sostituire `useSearchTable` con
+`useListaConfigurabilePage`, `<DataTable>`+`<Column>` con
+`<ListaConfigurabile codice="…">`, spostare le celle custom negli slot
+`cell-{codice}`, e cancellare il blocco `pageActions` scritto a mano. Le
+specificità sono state preservate: `v-show` dell'empty-state e
+`data-key="indirizzo_dettaglio_id"` su indirizzi, editing inline (ToggleSwitch
+e Select con `@click.stop`) sulla matrice tipi_ruolo × tipi_indirizzo.
+
+**Due lezioni nuove, che valgono per le prossime 29:**
+
+6. 🔵 **Le azioni «Nuovo» ed «Esporta» sono ora CONDIZIONALI nel building
+   block.** Queste quattro liste non hanno endpoint di export, e lo scaffolding
+   includeva l'azione sempre: sarebbero nate con un pulsante che apre un dialog
+   inerte. Ora `export` compare solo con `exportFn` e `new` solo con `onNew`.
+   Effetto collaterale utile: il `filter(a => a.key !== 'new')` che era
+   duplicato in 3 file (`ResiSearchTable`, `ResiCodaTable`, `LottiListView`) è
+   stato **rimosso** — non serve più. Non reintrodurlo.
+7. ⚠️ **`@row-click` cambia firma**: `<ListaConfigurabile>` emette `data`
+   direttamente, `<DataTable>` emetteva l'evento PrimeVue. Ogni
+   `onRowClick(event) { emit('row-click', event.data) }` va diventare
+   `onRowClick(data)`. Silenzioso: non rompe il build, rompe il click.
+
+**Igiene da non saltare**: tolti gli import diventati orfani (`computed`,
+`MANAGE_ICONS`, `displayDate`) — il lint li prende, ma solo se lo si lancia.
+Le chiavi i18n `col_*` **non** diventano orfane: le referenzia il seed via
+`etichetta_i18n_key` (44 colonne sulle 5 liste convertite).
+
+**Presidio esteso, non duplicato**: il test di allineamento seed↔whitelist è
+stato generalizzato in `apps/core/tests/test_liste_configurabili_seed.py` —
+tabella `_LISTE`, una riga per lista convertita, `subTest` per lista. Copre
+tutte e 5. In `test_lotti_lista_configurabile.py` è rimasto solo ciò che è
+specifico dei lotti (cap export, whitelist condivisa lista/export). **Per la
+prossima conversione: aggiungere una riga a `_LISTE`, non un file di test.**
+
+##### La consegna del team DB (2026-07-31)
 
 > 🔵 nell'inventario = **il seed DB c'è già**: la lista è pronta da convertire
 > senza aspettare nessuno, e senza rigenerare niente.
@@ -1185,6 +1226,40 @@ maturità.
 ---
 
 ## 9. Registro
+
+### 2026-07-31 · Primo lotto convertito: 4 liste in un giro, e un building block sistemato
+
+Quattro conversioni (`anagrafiche.categorie_clienti`, `config.utilities_tipi_ruolo`,
+`anagrafiche.indirizzi`, `config.tipi_ruolo_tipi_indirizzo`) a partire dal seed
+consegnato dal team DB. **Zero lavoro backend**: ordinamento e whitelist
+c'erano già, ed erano già chiavate sui nomi fisici — la scelta del team DB di
+partire da queste si è rivelata giusta sul merito, non solo sulla carta.
+
+**La verifica sugli standard (richiesta di Tid) ha prodotto il risultato più
+utile del giro.** Le quattro liste non hanno endpoint di export, ma
+`useListaConfigurabilePage` includeva l'azione «Esporta» in modo
+incondizionato: sarebbero nate con quattro pulsanti che aprono un dialog
+inerte. Stessa forma per «Nuovo», che chi non ce l'ha filtrava a mano — e quel
+filtro era già duplicato **tre volte**, oltre la regola del 2. Le due azioni
+sono ora condizionate al proprio handler dentro il BB (verificati tutti e 12 i
+chiamanti: comportamento invariato), i tre filtri manuali sono spariti, e il
+catalogo BB è stato corretto: descriveva quattro azioni «standard» senza dire
+che due sono condizionali.
+
+**Presidio esteso invece che duplicato**: il test di allineamento
+seed↔whitelist nato per i lotti è stato generalizzato in
+`apps/core/tests/test_liste_configurabili_seed.py` (tabella `_LISTE` +
+`subTest`), e copre tutte e 5 le liste convertite. Sta in `core` perché il
+contratto è del building block, non di un dominio. Aggiungere una lista =
+aggiungere una riga.
+
+**Validate in-app da Tid** il 2026-07-31, tutte e quattro.
+
+**Verifiche**: 1250 test su `core`/`ui`/`anagrafiche`/`config` verdi, build,
+lint e `check_i18n_keys` puliti. La suite `vendite` ha 23 rossi in
+`pipeline_runner`, **estranei a questo lavoro**: isolati con uno stash mirato —
+senza i file di un'altra attività in corso la suite passa, e nessuno dei rossi
+tocca liste o catalogo.
 
 ### 2026-07-30/31 · Il filone DB: generatore riparato, `vendite.lotti` e il primo lotto seedati
 

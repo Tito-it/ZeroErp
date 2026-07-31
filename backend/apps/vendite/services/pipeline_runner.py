@@ -406,9 +406,21 @@ class LottoPipelineRunner:
                 )
                 # Modalita` operativa: un run esegue un solo step pipeline (il prossimo disponibile).
                 steps = steps[:1]
-                # Blocco avanzamento: con almeno una criticita` attiva il lotto richiede correzioni.
+                # Blocco avanzamento (D-Q p.1): con criticita` attive il lotto
+                # NON AVANZA allo step successivo, ma il RILANCIO dello STESSO
+                # step resta ammesso — e` la via d'uscita definita da Tid
+                # (correggo l'anagrafica → rieseguo lo step → il task ritira le
+                # proprie segnalazioni al successo). Prima questo gate rifiutava
+                # qualunque esecuzione: la correzione era impossibile per
+                # costruzione e l'unica uscita reale era rifare il lotto.
+                selected_step = steps[0] if steps else None
+                is_rilancio_stesso_step = (
+                    selected_step is not None
+                    and lotto_stato_doc_corrente is not None
+                    and selected_step.stato_doc_fiscale_id == lotto_stato_doc_corrente
+                )
                 lotto_signal_status = self.lotto_segnalazioni_service.evaluate_lotto_status(lotto_id)
-                if lotto_signal_status.blocks_next_step:
+                if lotto_signal_status.blocks_next_step and not is_rilancio_stesso_step:
                     ErrorManager.raise_error(
                         code="E_PIPELINE_LOTTO_CRITICAL",
                         message="Lotto bloccato per segnalazioni critiche attive.",
@@ -429,6 +441,19 @@ class LottoPipelineRunner:
                         function_name="vendite.run_lotto_pipeline",
                         log_to_db=True,
                     )
+                # D-Q p.2 — «chi alza la bandiera la abbassa»: prima di eseguire
+                # lo step si ritirano le segnalazioni di LOTTO alzate dal BE
+                # (errori pipeline del runner + fotografie esito derivate dai
+                # log fatture). Siamo DENTRO la transazione dello step: se lo
+                # step fallisce, il rollback ripristina le bandiere — il ritiro
+                # e` quindi effettivo SOLO al successo, senza logica in piu`.
+                # A fine step `log_lotto_esito_fatture` scrive comunque la
+                # fotografia fresca: se le fatture sono ancora rotte, il blocco
+                # si ricostruisce da solo dallo stato corrente — mai da quello
+                # vecchio. I log per-fattura non si toccano: quelli li ritira il
+                # task DB che li ha scritti, quando il problema e` risolto.
+                if steps:
+                    self.repository.disattiva_segnalazioni_lotto_be(lotto_id)
                 self.repository.set_lotto_job_stato(lotto_id, "IN_ESECUZIONE", "Avvio pipeline")
                 correlation_id = (
                     str(lotto_context.lock_batch_id)
@@ -472,14 +497,47 @@ class LottoPipelineRunner:
                         correlation_id=correlation_id,
                     )
 
-                self.repository.set_lotto_job_stato(lotto_id, "COMPLETATO", "Pipeline completata")
+                # D-Q: lo step si e` completato (le fatture sane hanno il loro
+                # lavoro), ma se restano fatture in errore il lotto va marcato
+                # ERRORE — e` cio` che rende il prossimo run un RILANCIO dello
+                # stesso step (`is_massivo_error_rerun` → steps[current:]) invece
+                # di un avanzamento, che il gate sopra bloccherebbe. Nessuna
+                # eccezione: sollevare qui farebbe rollback anche del lavoro
+                # delle fatture sane e della loro marcatura.
+                stato_finale = (
+                    self.lotto_segnalazioni_service.evaluate_lotto_status(lotto_id)
+                    if steps else None
+                )
+                step_con_errori = stato_finale is not None and stato_finale.is_error
+                if step_con_errori:
+                    assert stato_finale is not None
+                    self.repository.set_lotto_job_stato(
+                        lotto_id,
+                        "ERRORE",
+                        "Step completato con fatture in errore: correggere e rilanciare lo step",
+                    )
+                else:
+                    self.repository.set_lotto_job_stato(lotto_id, "COMPLETATO", "Pipeline completata")
                 self.repository.log_event(
                     domain="PIPELINE",
                     entity_type="LOTTO",
                     entity_id=lotto_id,
                     event_code="PIPELINE_COMPLETED",
                     correlation_id=correlation_id,
-                    payload={"tipo_lotto": effective_tipo_lotto},
+                    payload={
+                        "tipo_lotto": effective_tipo_lotto,
+                        "con_errori": step_con_errori,
+                        **(
+                            {
+                                "critical_count": stato_finale.critical_count,
+                                "stato_esecuzione_errore_count": (
+                                    stato_finale.fatture_stato_esecuzione_errore_count
+                                ),
+                            }
+                            if step_con_errori and stato_finale is not None
+                            else {}
+                        ),
+                    },
                 )
                 # DRY-RUN = NESSUNA PERSISTENZA (fix 2026-07-22, segnalazione team DB).
                 # Prima lo stato fiscale del lotto veniva avanzato in modo
@@ -597,6 +655,13 @@ class LottoPipelineRunner:
                 self.repository.get_lotto_stato_doc_fiscale_id(lotto_id)
                 if lotto_id else None
             )
+            # D-Q: un lotto in errore rilancia lo STESSO step (stato_doc non
+            # cambia). Serve ricordarlo per distinguere, a parità di
+            # before==after, il rilancio RIUSCITO (continua: ora si può
+            # avanzare) dalla catena esaurita (stop).
+            era_in_errore = (
+                self.repository.is_lotto_in_errore(lotto_id) if lotto_id else False
+            )
             run_params = params if lotto_id is None else replace(params, lotto_id=lotto_id)
             try:
                 # Il rollback del dry-run e' gestito a livello driver (transazione
@@ -621,7 +686,34 @@ class LottoPipelineRunner:
                     raise
                 break
             after_stato_doc = self.repository.get_lotto_stato_doc_fiscale_id(lotto_id)
+            # D-Q: se il run si e` chiuso senza eccezione ma il lotto e` in
+            # ERRORE (step completato con fatture difettose), fermarsi qui con
+            # motivo parlante: iterare ancora rieseguirebbe lo stesso step su
+            # dati identici. Motivo riusato (BLOCCATO_CRITICITA): i consumer lo
+            # gestiscono gia`, e la semantica e` la stessa — criticita` attive.
+            if self.repository.is_lotto_in_errore(lotto_id):
+                if after_stato_doc != before_stato_doc:
+                    step_eseguiti += 1
+                    last_stato_doc = after_stato_doc
+                motivo_stop = "BLOCCATO_CRITICITA"
+                errore = {
+                    "code": "E_PIPELINE_LOTTO_CRITICAL",
+                    "message": (
+                        "Step completato con fatture in errore: correggere e "
+                        "rilanciare lo step."
+                    ),
+                    "detail": None,
+                }
+                break
             if after_stato_doc == before_stato_doc:
+                if era_in_errore:
+                    # Rilancio dello stesso step RIUSCITO (lotto uscito
+                    # dall'errore, stato_doc invariato per costruzione): la
+                    # catena ora puo` avanzare — si continua, non si esce con un
+                    # finto COMPLETATO a meta` strada.
+                    step_eseguiti += 1
+                    last_stato_doc = after_stato_doc
+                    continue
                 # Nessun avanzamento: catena esaurita (nessuno step eseguito).
                 motivo_stop = "COMPLETATO"
                 break

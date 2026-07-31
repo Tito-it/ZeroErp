@@ -83,6 +83,14 @@ export function useListaConfigurabilePage(
         : (extraActions?.value ?? extraActions ?? [])
     const extras = Array.isArray(rawExtras) ? rawExtras : []
     const personalizzaLabel = t('lista_config.personalizza_colonne')
+    // `export` e `new` sono CONDIZIONATE al proprio handler: senza `exportFn`
+    // il dialog si aprirebbe e `onExportConfirm` uscirebbe subito (pulsante
+    // che non fa nulla), e senza `onNew` il comando sarebbe `undefined`.
+    // Prima erano incondizionate e i caller senza "Nuovo" filtravano a mano —
+    // stesso `filter(a => a.key !== 'new')` ripetuto in 3 file: la condizione
+    // vive qui una volta sola (2026-07-31).
+    const conExport = typeof exportFn === 'function'
+    const conNew = typeof onNew === 'function'
     return [
       {
         key: 'reload',
@@ -104,7 +112,7 @@ export function useListaConfigurabilePage(
         disabled: !configReady.value,
         command: () => listaRef.value?.openModal?.(),
       },
-      {
+      ...(conExport ? [{
         key: 'export',
         kind: 'utility',
         label: t('lista_config.export'),
@@ -112,9 +120,9 @@ export function useListaConfigurabilePage(
         icon: MANAGE_ICONS.DOWNLOAD,
         disabled: exportLoading.value,
         command: () => { exportDialogVisible.value = true },
-      },
+      }] : []),
       ...extras,
-      {
+      ...(conNew ? [{
         key: 'new',
         kind: 'primary',
         label: t('common.new'),
@@ -122,7 +130,7 @@ export function useListaConfigurabilePage(
         icon: MANAGE_ICONS.ADD,
         hideWhenReadonly: true,
         command: onNew,
-      },
+      }] : []),
     ]
   })
 

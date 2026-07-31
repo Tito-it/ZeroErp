@@ -182,7 +182,30 @@ come modifica funzionale, non come refactor:
 Senza questa fase la Fase 1 gira su una catena diversa da quella dei fratelli, ed
 è esattamente il problema che il piano DB voleva chiudere.
 
-### Fase 1 — Task snapshot indirizzi (dopo apply brief indirizzi)
+### Fase 1 — Task snapshot indirizzi ✅ **FATTA (2026-07-31)** — con la metà applicativa di D-Q
+
+> Sbloccata dal push DB fino a 2.4 (2.0-2.2 applicate, 2.3 parte inerte
+> seminata, pgTAP verdi). Realizzato in un passaggio unico il cablaggio del
+> task E i **tre punti della nota D-Q** (§4-bis):
+>
+> | Pezzo | Dove |
+> |---|---|
+> | Wrapper `run_snapshot_indirizzi_lotto_task` (5 contatori) + voce in `ALLOWED_TASK_FUNCTIONS` + **`disattiva_segnalazioni_lotto_be`** | `db/pipeline_repository.py` |
+> | Handler `_handle_snapshot_indirizzi_lotto_task` + **`TaskEsitoParziale`**: `failed_rows > 0` → task_run **ERRORE senza sollevare** (D-Q p.3 — con COMPLETATO il rilancio darebbe SKIP; con un raise il rollback cancellerebbe il lavoro delle fatture sane) | `services/pipeline_step_executor.py` |
+> | **Gate D-Q p.1**: il blocco critico vale per l'**avanzamento**; il **rilancio dello stesso step è ammesso**. A fine step con fatture in errore il lotto va in ERRORE (abilita il rerun); il **ritiro bandiere BE** (p.2, errori runner + fotografie esito derivate) avviene a inizio step dentro la transazione — rollback-safe = «solo al successo» | `services/pipeline_runner.py` |
+> | Driver `until_done`: si ferma con `BLOCCATO_CRITICITA` + errore strutturato su step con fatture in errore; **prosegue** dopo un rilancio riuscito (flusso «correggo → premo una volta → finisce») | `services/pipeline_runner.py` |
+>
+> **Verifiche:** 2073 test verdi (**9 nuovi**: 4 executor, 5 runner) · smoke
+> §3.1 **attivo e verde** (`smoke-fattura-indirizzi-snapshot.py`: ciclo D-Q
+> reale — errore → C log + ponte ERRORE → correzione → rilancio → **ritiro
+> segnalazioni** → idempotenza; caso ristampa in SKIP fino alla Fase 2) ·
+> 4 smoke esistenti senza regressioni.
+>
+> **Palla al DB**: armamento 2.3 parte 2 (il nodo nei `processi` DRAFT di
+> entrambe le corsie) → poi 2.5 (guard `FATT`). I tre prerequisiti BE citati
+> nel loro piano sono chiusi.
+
+(Contenuto originale della fase, realizzato come sopra:)
 
 | Punto di intervento | Cosa |
 |---|---|
@@ -195,6 +218,31 @@ Senza questa fase la Fase 1 gira su una catena diversa da quella dei fratelli, e
 Verifica di fase: smoke §3.1 casi 1-4 e 6 verdi.
 
 ### Fase 2 — Ristampa conforme (il motivo per cui esiste la Fase 1)
+
+> ⚠️ **Estesa il 2026-07-31 — leggere
+> [brief-db-snapshot-intestazione-fattura.md](brief-db-snapshot-intestazione-fattura.md)
+> prima di scrivere questa fase.** Misurando per rispondere a una domanda di Tid
+> («per l'emittente possiamo usare lo storico degli indirizzi?» — no, §2 del
+> brief) è emerso che il perimetro qui sotto è **incompleto**: congela
+> l'indirizzo del cliente e lascia live la sua ragione sociale e P.IVA, più
+> l'intera intestazione dell'emittente. Risultato: incoerenza dentro lo stesso
+> blocco stampato.
+>
+> Due fatti che cambiano la fase:
+>
+> - la **sede legale dell'emittente non è mai stata stampata**: la subquery di
+>   `vendite_repository.py:1600-1605` filtra `tipo_indirizzo_codice = 'SEDELEG'`
+>   ma la vista espone in quella colonna il `codice` (`SEDE-LEG`) — 0 match
+>   sempre. Il tipo `FATT` funziona solo perché i due codici coincidono per caso;
+> - `vendite.fatture` e `fatture_indirizzi` hanno **0 righe**: le «7 fatture
+>   storiche» del §9 non esistono più, quindi non c'è nulla da migrare e la
+>   forma definitiva costa oggi meno di qualsiasi giorno futuro.
+>
+> **Conseguenza operativa:** questa fase si scrive **una volta sola**, sulla
+> forma decisa nel brief (snapshot intestazione in testata + indirizzo cliente da
+> `fatture_indirizzi`), invece di ripuntare il context builder due volte. Fino
+> alla decisione su §3.1-3.2 del brief, la fase resta ferma — ma è già ferma in
+> attesa dell'armamento 2.3 parte 2.
 
 | Punto di intervento | Cosa |
 |---|---|

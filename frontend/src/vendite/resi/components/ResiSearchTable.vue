@@ -7,7 +7,7 @@
 // origine, emittente). Clone ridotto di DdtSearchTable (brief §11): NIENTE
 // azione "Nuovo" (il reso nasce SOLO dal pannello nel drawer DDT), filtrata via.
 // Export CSV/XLSX operativo (endpoint BE `/vendite/resi/export/`, DEF-1).
-import { onMounted, computed } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import DatePicker from 'primevue/datepicker'
@@ -44,11 +44,8 @@ const {
   searchTableOptions: { defaultSortField: 'data', defaultSortOrder: 'desc' },
 })
 
-// Niente "Nuovo" (il reso nasce dal DDT consegnato): si filtra la sola azione
-// standard non pertinente. L'export è ora operativo (endpoint BE DEF-1).
-const resiPageActions = computed(
-  () => pageActions.value.filter(a => a.key !== 'new'),
-)
+// Niente "Nuovo": il reso nasce dal DDT consegnato. Non serve filtrare —
+// lo scaffolding include l'azione solo se riceve `onNew`.
 
 // Params export: filtri da store.filters + search dal ref immediato + sort
 // corrente. Il BE rispetta colonne visibili/ordine/permessi (DEF-1).
@@ -108,7 +105,7 @@ onMounted(() => store.fetchList())
             :date-format="DATE_FORMAT" show-icon show-button-bar style="width: 150px;"
             @date-select="onDataAlChange" @clear-click="onDataAlChange" />
         </div>
-        <PageActionsBar :actions="resiPageActions">
+        <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />
             <ReadonlyBadge />

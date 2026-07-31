@@ -32,6 +32,9 @@ class LottoSegnalazioniService:
 
     # Scopo: Calcola stato aggregato del lotto con regola di blocco su presenza di almeno un critical attivo
     # o di fatture con stato_esecuzione='ERRORE' nella tabella ponte (guard unificata PRE-1).
+    # ⚠️ `blocks_next_step` significa NON AVANZARE allo step successivo — non
+    # «non eseguire nulla»: il RILANCIO dello stesso step e' ammesso (D-Q p.1)
+    # e la distinzione la applica il runner, che qui legge solo i conteggi.
     def evaluate_lotto_status(self, lotto_id: int) -> LottoSignalStatus:
         summary = self.repository.get_lotto_segnalazioni_summary(lotto_id)
         critical_count = summary["fatture_critical_count"] + summary["lotto_critical_count"]

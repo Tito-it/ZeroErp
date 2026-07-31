@@ -173,6 +173,7 @@ class VenditePipelineRepository:
         "close_lotto": None,
         "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
         "pull_attivita_da_commessa": "vendite.fn_emit_attivita_fatturabili_da_commessa",
+        "snapshot_indirizzi_lotto": "vendite.fn_snapshot_indirizzi_lotto",
     }
 
     # Scopo: Gestisce `_to_jsonb_param` nel flusso applicativo del modulo.
@@ -1499,6 +1500,72 @@ class VenditePipelineRepository:
                 """,
                 [lotto_id, batch_size],
             )
+
+    # Scopo: Esegue lo snapshot indirizzi delle fatture del lotto delegando a
+    #        `vendite.fn_snapshot_indirizzi_lotto` (Fase 2.2 piano DB satelliti).
+    #        La funzione NON solleva per la singola fattura difettosa (D-Q: le
+    #        altre ricevono il loro lavoro; la difettosa e' marcata 'C' su
+    #        fatture_log dal DB): l'esito arriva nei 5 contatori, e
+    #        `failed_rows > 0` e' il segnale che l'handler traduce in task_run
+    #        ERRORE — altrimenti il rilancio dello step salterebbe il task
+    #        (COMPLETATO → SKIP) e la correzione non verrebbe mai riletta.
+    def run_snapshot_indirizzi_lotto_task(
+        self,
+        *,
+        lotto_id: int,
+        batch_size: int = 1000,
+    ) -> dict[str, int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT fatture_count, inserted_rows, updated_rows,
+                       skipped_rows, failed_rows
+                FROM vendite.fn_snapshot_indirizzi_lotto(%s, %s)
+                """,
+                [lotto_id, batch_size],
+            )
+            row = cursor.fetchone()
+        assert row is not None  # la fn ritorna sempre una riga di contatori
+        return {
+            "fatture_count": int(row[0]),
+            "inserted_rows": int(row[1]),
+            "updated_rows": int(row[2]),
+            "skipped_rows": int(row[3]),
+            "failed_rows": int(row[4]),
+        }
+
+    # Scopo: Ritira le segnalazioni critiche di LOTTO alzate dal BE (D-Q p.2:
+    #        «chi alza la bandiera la abbassa»). Due famiglie, riconoscibili dal
+    #        meta e MAI le righe altrui:
+    #        - gli errori pipeline scritti da PipelineErrorLogger scope LOTTO
+    #          (`meta->>'scope' = 'LOTTO'`);
+    #        - gli esiti derivati da `fn_log_lotto_esito_fatture`
+    #          (`meta->>'source' = 'fatture_log'`): sono FOTOGRAFIE dei log
+    #          fatture — la pipeline ne scrive una fresca a fine step, quindi le
+    #          vecchie sono stale per costruzione. Senza questo ritiro un lotto
+    #          resterebbe bloccato per sempre dalla fotografia di un problema
+    #          gia' risolto (i log fatture li ritira il task DB al successo, ma
+    #          nessuno ritirava la loro copia derivata).
+    #        Chiamata DENTRO la transazione dello step: se lo step fallisce, il
+    #        rollback ripristina le bandiere — e' cio' che rende il ritiro
+    #        equivalente a «solo al successo» senza logica in piu'.
+    #        Ritorna il numero di righe disattivate (telemetria/test).
+    def disattiva_segnalazioni_lotto_be(self, lotto_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.fatturazione_lotti_log
+                   SET disabilitato = TRUE,
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE lotto_id = %s
+                   AND disabilitato IS FALSE
+                   AND status = 'C'
+                   AND (meta->>'scope' = 'LOTTO' OR meta->>'source' = 'fatture_log')
+                """,
+                [lotto_id],
+            )
+            return cursor.rowcount
 
     # Scopo: Prepara e restituisce il dataset SDI del lotto mappato in oggetti tipizzati.
     def run_prepare_sdi_payload_lotto_task(

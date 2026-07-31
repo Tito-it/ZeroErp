@@ -140,6 +140,11 @@ class TestPreventiviService(unittest.TestCase):
         # ramo aggancio-commessa di push_a_commessa (rev.3) resta no-op — i test
         # pratica-aware lo sovrascrivono esplicitamente.
         self.mock_repo.get_pratica_id_by_preventivo_root.return_value = None
+        # Ancora indirizzi (Fase 0 satelliti, 2026-07-31): la coppia
+        # (soggetto_ruolo, istanza) va restituita come TUPLA — un MagicMock nudo
+        # non si spacchetta e l'auto-assegnazione best-effort loggherebbe un
+        # warning rumoroso a ogni crea_*. (None, None) = nessuna assegnazione.
+        self.mock_repo.get_ancora_indirizzi_documento.return_value = (None, None)
 
         # Mock BB anagrafiche usati da crea_preventivo per validator dominio
         # (post brief DB rev2: derivazione istanza dal BA + pre-check coerenza
