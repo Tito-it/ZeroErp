@@ -293,4 +293,6 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 292,22,uom_to_codice,UoM A,Codice dell unita di misura di arrivo,uom_to_codice,informazione,string,,130,30,left,Conversione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,catalogo.col_uom_a,90
 293,22,uom_to_descrizione,Descrizione A,Descrizione dell unita di misura di arrivo,uom_to_descrizione,informazione,string,,220,40,left,Conversione,1,f,f,t,t,f,t,2026-07-31 00:00:00,mctit,catalogo.col_desc_a,55
 294,22,fattore,Fattore,Fattore di conversione da UoM Da a UoM A,fattore,informazione,numeric,,120,50,right,Conversione,1,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,catalogo.col_fattore,80
-295,22,attivo,Attivo,Conversione attiva o disattivata,attivo,informazione,boolean,yesno,110,60,center,Stato,2,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,catalogo.col_attivo,50
+295,22,attivo,Attivo,Conversione attiva o disattivata,attivo,informazione,boolean,yesno,110,60,center,Stato,3,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,catalogo.col_attivo,50
+296,22,valido_dal,Valido dal,Inizio validita della conversione,valido_dal,informazione,date,date_short,120,52,center,Validita,2,f,t,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_valido_dal,40
+297,22,valido_al,Valido al,Fine validita della conversione — vuoto significa senza scadenza,valido_al,informazione,date,date_short,120,54,center,Validita,2,f,t,t,f,f,t,2026-08-01 00:00:00,mctit,catalogo.col_valido_al,35

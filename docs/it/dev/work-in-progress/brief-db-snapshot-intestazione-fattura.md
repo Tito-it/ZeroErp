@@ -309,6 +309,12 @@ che si ripresenteranno scrivendo le vostre fixture.
 4. **Il ruolo `EF` non ha matrice** (§3.6): una fixture che inserisce indirizzi
    su un emittente oggi passa per fail-open. Se seedate la matrice, quelle
    fixture cominciano a essere verificate davvero — atteso, ma va saputo prima.
+   ℹ️ *Aggiornamento 2026-08-01 (§10.10)*: il ruolo `EF` non ha matrice **e non
+   ha indirizzi** — misurato su tutta la popolazione, **42 emittenti su 42**
+   hanno la sede sul layer SOGGETTO e **zero** sul RUOLO. Una fixture che
+   pretendesse la sede dell'emittente sul ruolo non troverebbe nulla: va cercata
+   sul soggetto, oppure risolta con `script.fn_resolve_indirizzo_documento`, che
+   scende da sola.
 
 ---
 
@@ -577,9 +583,10 @@ per voi: **filtrare sull'identità del passo, mai sul nome di ciò che lo esegue
 #### Cosa resta a noi
 
 Il guard **2.5 col criterio allargato** (§3.5) — **consegnato lo stesso giorno,
-vedi §10.9** — e il seed della matrice `EF` (§3.6, non urgente: la sede si
-risolve già dal layer SOGGETTO). Da qui in avanti la vostra Fase 2 non è più
-bloccata: la forma è quella qui sopra e non cambierà sotto di voi.
+§10.9** — la copertura pgTAP dell'intestazione — **§10.10** — e il seed della
+matrice `EF` (§3.6, non urgente: la sede si risolve già dal layer SOGGETTO). Da
+qui in avanti la vostra Fase 2 non è più bloccata: la forma è quella qui sopra e
+non cambierà sotto di voi.
 
 ---
 
@@ -655,3 +662,70 @@ percorso che porta una fattura fuori dalla bozza pretende il documento completo 
 compresi gli script di appoggio che oggi muovono lo stato con un `UPDATE`
 diretto. Ce ne sono già due fra i nostri pgTAP, ed è il motivo per cui li abbiamo
 adeguati nello stesso giro invece di scoprirlo alla prossima esecuzione.
+
+---
+
+### 10.10 Consegna — la copertura pgTAP, e la prova che la sede viene dal soggetto
+
+**Verde il 2026-08-01**: `db/pgtap/vendite/test-snapshot-intestazione-fattura-v1.sql`,
+`plan(12)`, su `vendite.fn_snapshot_intestazione_fattura` e sul guard di
+congelamento della testata (§3.4). Con questo il cantiere intestazione è chiuso
+salvo il seed della matrice `EF`, che resta non urgente — e ora sappiamo
+*misuratamente* perché.
+
+**Perché arriva dopo, e non è un dettaglio di processo.** Le due colonne erano
+applicate da I.1-I.3 e avevano già **tre** consumatori — il vostro contesto di
+stampa, il guard I.4, il wrapper di lotto — senza che nessun test ne
+descrivesse la **forma**. Il wrapper era coperto, la sorella no: è la classe di
+buco che sembra chiusa perché qualcosa vicino a lei lo è.
+
+#### La misura che vi riguarda: §10.3 vale su tutta la popolazione
+
+Il rilievo §10.3 diceva «i ruoli `EF` non hanno alcun indirizzo» su un
+censimento. Rimisurato il 2026-08-01 sull'intera popolazione degli emittenti
+raggiungibili da un billing account:
+
+| | |
+|---|---|
+| emittenti con sede sul layer **SOGGETTO** | **42 su 42** |
+| emittenti con sede sul layer **RUOLO** | **0** |
+
+Non è un campione e non è un caso: è **strutturale**. Ne seguono due cose per
+voi. La prima è che la vostra §5 — che toglie del tutto la subquery su
+`vw_indirizzi_resolved_ruolo` — non era un miglioramento marginale: quella
+vista, per costruzione, non avrebbe **mai** potuto contenere la sede di un
+emittente. La seconda è che il seed §3.6 della matrice `EF` non sblocca nulla
+che oggi sia bloccato, e resta la cosa a bassa priorità che avevamo detto.
+
+#### Come è scritto il test, per le due cose che potreste voler riusare
+
+**I casi 8 e 9 sono una coppia e vanno letti insieme.** Il 9 verifica che la
+sede ci sia e abbia lo shape canonico; da solo passerebbe anche se l'indirizzo
+venisse dal layer RUOLO, cioè dal caso banale. È l'**8** a dimostrare che quel
+layer è vuoto per l'emittente della fixture, e quindi che l'unica strada
+percorribile era il fallback sul SOGGETTO. Un test di fallback che non prova
+l'assenza della via principale non prova il fallback.
+
+**Il caso 7 non guarda una colonna, guarda una proprietà**: che *nessun* valore
+testuale dello snapshot sia diverso dal proprio `btrim`. Copre così i
+`character(n)` di oggi — `province.sigla`, `stati.codice_iso2`,
+`dati_societari.destinatario_fe`, quest'ultimo segnalato a voi in §10.8 — **e
+quelli che nessuno ha ancora aggiunto**. Se leggete quei campi live da qualche
+altra parte, la stessa forma di controllo è riusabile così com'è.
+
+Il **caso 6** presidia l'unica promessa che lo shape fa pur restando non
+contrattuale (§10.2): le chiavi assenti **non compaiono**, invece di comparire a
+`null`. Il guard I.4 verifica l'intestazione con `jsonb_typeof` proprio perché
+si fida di questo.
+
+#### Una cosa che il test ha reso visibile, e che è vostra
+
+Sull'emittente di test lo snapshot **non contiene** `regime_fiscale_rf`, né
+`forma_giuridica`; sul cliente mancano `codice_sdi`, `pec_fatturazione` e
+`destinatario_fe`. Non è un difetto della funzione — `jsonb_strip_nulls` sta
+facendo il suo lavoro su campi anagrafici non valorizzati — ma sono esattamente
+le chiavi che il `CedentePrestatore` e l'instradamento SDI della FatturaPA
+pretenderanno. Il perimetro §3.1 l'avevamo accolto **completo** proprio per non
+rifare il giro dopo (§10.2): vale la pena che quei campi vengano popolati in
+anagrafica **prima** che il builder XML esista, altrimenti la prima fattura
+elettronica vera scoprirà il buco al posto nostro.

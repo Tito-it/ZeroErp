@@ -5,9 +5,10 @@
 > CORSO**. §6.1 (Pinia 4) è **chiuso e resta valido**. §6.2/6.3 (primeicons 8)
 > è stato eseguito e poi **annullato**. §6.4 (PrimeVue 5 + themes 3) **non è
 > più una questione tecnica**. Il binario vivo è §8-bis: la conversione delle
-> liste a `<ListaConfigurabile>` è partita — **5/34 fatte e tutte validate
-> in-app** (`vendite.lotti` + le 4 del primo lotto, 2026-07-31) — ed è utile
-> con QUALUNQUE esito della questione licenza.
+> liste a `<ListaConfigurabile>` è partita — **8/34 convertite** (`vendite.lotti`
+> e le 4 del primo lotto il 2026-07-31, le 3 del secondo il 2026-08-01) e **3
+> col seed già pronto** in attesa di conversione — ed è utile con QUALUNQUE
+> esito della questione licenza.
 >
 > 🚨 **PrimeVue ha cambiato licenza al confine della major.** `primevue`,
 > `@primeuix/themes` e `primeicons` erano **MIT** fino alla versione
@@ -984,14 +985,14 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | --- | --- | --- | --- |
 | ☐ 🔵 | `catalogo/components/UomTipiSearchTable.vue` | 4 | sì |
 | ✅ 31-07 | `amministrazione/components/CategorieClientiSearchTable.vue` | 5 | sì |
-| ☐ 🔵 | `amministrazione/components/EmittenteFiscaleBillingAccountTab.vue` | 5 | sì |
+| ✅ 01-08 | `amministrazione/components/EmittenteFiscaleBillingAccountTab.vue` | 5 | sì |
 | ✅ 31-07 | `amministrazione/components/UtilitiesTipiRuoloSearchTable.vue` | 5 | sì |
 | ☐ | `amministrazione/views/AuditLogView.vue` | 5 | sì |
 | ✅ 31-07 | `anagrafiche/components/IndirizziSearchTable.vue` | 5 | sì |
 | ☐ | `vendite/views/ApprovazioniPrezzoListView.vue` | 5 | sì |
 | ☐ | `amministrazione/views/EmailAccountsListView.vue` | 6 | sì |
 | ☐ | `amministrazione/views/EmailTemplatesListView.vue` | 6 | sì |
-| ☐ 🔵 | `amministrazione/views/EmittentiFiscaliListView.vue` | 6 | sì |
+| ✅ 01-08 | `amministrazione/views/EmittentiFiscaliListView.vue` | 6 | sì |
 | ☐ | `catalogo/components/ArticoloBomDrawer.vue` | 6 | — |
 | ☐ 🔵 | `catalogo/components/ConversioniUomSearchTable.vue` | 6 | sì |
 | ☐ 🔵 | `catalogo/components/UnitaMisuraSearchTable.vue` | 6 | sì |
@@ -999,7 +1000,7 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ☐ | `amministrazione/views/EmailLogsListView.vue` | 7 | sì |
 | ☐ | `config/components/TemplateDocumentiSearchTable.vue` | 7 | sì |
 | ☐ | `config/components/TemplateAssetSearchTable.vue` | 8 | sì |
-| ☐ 🔵 | `pratiche/components/PraticheSearchTable.vue` | 8 | sì |
+| ✅ 01-08 | `pratiche/components/PraticheSearchTable.vue` | 8 | sì |
 | ☐ | `strumenti/components/CodaLavoriTab.vue` | 8 | sì |
 | ☐ | `vendite/components/ContrattiBillingAccountDrawer.vue` | 8 | — |
 | ☐ | `vendite/components/PromoArticoliSearchTable.vue` | 8 | sì |
@@ -1319,13 +1320,22 @@ Perché ciascuna rimozione è sicura:
 direzioni, `_DEBITO_WHITELIST_LOGICA` svuotato. La previsione era «applicata
 questa tabella il registro non si riduce, si svuota»: è andata così.
 
-##### Secondo lotto — 3 liste, seed DB pronto (2026-07-31)
+##### Secondo lotto — ✅ 3 liste CONVERTITE (seed 2026-07-31, conversione 2026-08-01)
+
+> **Esito, verificato sul pushato**: tutte e tre montano `<ListaConfigurabile>`
+> (`PraticheSearchTable`, `EmittentiFiscaliListView`,
+> `EmittenteFiscaleBillingAccountTab`), le **tre chiavi i18n** che il seed
+> dichiarava sono state aggiunte a `it.json`/`en.json`, le tre liste sono state
+> registrate in `_LISTE` (con una funzione dedicata per la whitelist annidata
+> del tab BA), e **`partita_iva` è entrata in `_EMITTENTI_ORDER_COLS`**: l'unica
+> voce che il lotto chiedeva. Ricontrollato incrociando whitelist e seed:
+> **residuo zero nelle due direzioni** su tutte e tre.
 
 | Lista | `lista_id` | Colonne | Visibili | Lavoro BE |
 | --- | --- | --- | --- | --- |
-| `pratiche.pratiche` | 17 | 10 | 8 | **nessuno** |
-| `anagrafiche.emittenti_fiscali` | 18 | 9 | 6 | 1 voce di whitelist |
-| `anagrafiche.emittente_billing_account` | 19 | 6 | 5 | **nessuno** |
+| `pratiche.pratiche` | 17 | 10 | 8 | nessuno |
+| `anagrafiche.emittenti_fiscali` | 18 | 9 | 6 | 1 voce di whitelist ✅ fatta |
+| `anagrafiche.emittente_billing_account` | 19 | 6 | 5 | nessuno |
 
 Righe `250..274` nei quattro CSV, `vista_sql` NULL su tutte e tre (i campi
 nascono da JOIN). Applicate in transazione di prova e rollbackate; l'ordine
@@ -1336,11 +1346,10 @@ billing account hanno whitelist complete e già chiavate sui `campo_sorgente` �
 zero bugiarde e zero capacità irraggiungibili, in entrambe le direzioni. Sono
 le prime liste seedate che nascono già in regola.
 
-🔴 **L'unica cosa aperta di tutto il filone ordinamenti** è
-**`partita_iva` su `anagrafiche.emittenti_fiscali`**, ed è una **rottura del
-nucleo**: per un emittente la P.IVA *è* l'identificativo fiscale, quindi per la
-regola di dominio deve ordinare. **Una riga in `_EMITTENTI_ORDER_COLS`.** È
-posteriore alla commessa che il BE ha già chiuso, quindi non l'hanno vista.
+✅ L'unica voce che il lotto chiedeva — **`partita_iva` su
+`anagrafiche.emittenti_fiscali`**, rottura del nucleo perché per un emittente la
+P.IVA *è* l'identificativo fiscale — è stata aggiunta a
+`_EMITTENTI_ORDER_COLS` il 2026-08-01.
 
 Da sapere prima di convertire i `.vue`:
 
@@ -1362,7 +1371,12 @@ Da sapere prima di convertire i `.vue`:
   BE sa già cercare e ordinare), `valuta`/`regime fiscale`/`data_insert` su
   emittenti, `data_insert` sul tab BA.
 
-##### Terzo lotto — le 3 liste UoM di `catalogo` (2026-07-31)
+##### Terzo lotto — le 3 liste UoM di `catalogo` — 🔵 seed pronto, da convertire
+
+> Stato al 2026-08-01: seedate il 2026-07-31, **non ancora convertite** (sono
+> state consegnate dopo il giro di lavoro BE/FE). Sono le uniche tre liste con
+> il seed pronto e la conversione ancora aperta, e l'unico residuo di
+> allineamento rimasto in tutto il sistema: le tre voci `attivo` qui sotto.
 
 | Lista | `lista_id` | Colonne | Visibili | `vista_sql` |
 | --- | --- | --- | --- | --- |
