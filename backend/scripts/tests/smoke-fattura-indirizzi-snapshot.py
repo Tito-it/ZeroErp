@@ -175,11 +175,56 @@ with transaction.atomic():
         print(f"lotto {lotto_id}: {n_fatture} fatture DRAFT\n")
 
         # --- FASE ERRORE: il cliente NON deve avere FATT risolvibile ----------
-        # Layer RUOLO: si tolgono le righe FATT (effimero, rollback finale).
+        # Layer RUOLO. ⚠️ Le righe FATT NON si cancellano: possono essere
+        # referenziate come origine dagli snapshot congelati di ALTRI documenti
+        # (`ddt_indirizzi.origine_indirizzo_id` e gemelli), e la FK farebbe
+        # morire lo smoke nella fixture invece che in un'asserzione — successo
+        # davvero il 2026-07-31, appena un DDT ha congelato quell'indirizzo.
+        # Si ri-puntano a un tipo «di parcheggio»: ammesso al ruolo, ma fuori
+        # dall'ambito FATTURE. La riga sopravvive (FK salva) e la catena non
+        # trova piu' FATT. Effimero come tutto il resto: rollback finale.
+        # I filtri attivo/valido_dal/valido_al DEVONO rispecchiare il guard
+        # trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo per intero: una riga
+        # di matrice scaduta passerebbe una selezione solo-attivo e verrebbe
+        # respinta dal guard — e lo smoke morirebbe di nuovo nella fixture.
         cur.execute(
-            "DELETE FROM anagrafiche.indirizzi WHERE soggetto_ruolo_id = %s"
-            "   AND tipo_indirizzo_id = %s", [sr_id, tipo_fatt],
+            """
+            SELECT m.tipo_indirizzo_id
+              FROM config.tipi_ruolo_tipi_indirizzo m
+              JOIN anagrafiche.soggetti_ruoli sr ON sr.id = %s
+             WHERE m.tipo_ruolo_id = sr.tipo_ruolo_id
+               AND m.attivo IS TRUE
+               AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
+               AND (m.valido_al  IS NULL OR m.valido_al  >= CURRENT_DATE)
+               AND m.tipo_indirizzo_id NOT IN (
+                     SELECT a.tipo_indirizzo_id FROM config.tipi_indirizzi_allowed a
+                      WHERE a.ambito = 'FATTURE' AND a.attivo IS TRUE)
+               AND m.tipo_indirizzo_id NOT IN (
+                     SELECT i.tipo_indirizzo_id FROM anagrafiche.indirizzi i
+                      WHERE i.soggetto_ruolo_id = %s)
+             ORDER BY m.tipo_indirizzo_id
+            """, [sr_id, sr_id],
         )
+        parcheggio = [r[0] for r in cur.fetchall()]
+        # UN tipo di parcheggio basta per TUTTE le righe FATT: le unique di
+        # anagrafiche.indirizzi sono parziali — (sr, tipo) solo con istanza
+        # NULL, (sr, istanza, tipo) altrimenti — quindi la riga generica e'
+        # al piu' una e le altre hanno istanze tutte diverse: ri-tipate allo
+        # stesso parcheggio non collidono mai fra loro.
+        if parcheggio:
+            cur.execute(
+                "UPDATE anagrafiche.indirizzi SET tipo_indirizzo_id = %s"
+                "  WHERE soggetto_ruolo_id = %s AND tipo_indirizzo_id = %s",
+                [parcheggio[0], sr_id, tipo_fatt],
+            )
+        else:
+            # Nessun tipo libero in matrice: la DELETE e' l'ultima risorsa e
+            # regge finche' la riga non e' origine di qualche snapshot.
+            cur.execute(
+                "DELETE FROM anagrafiche.indirizzi"
+                "  WHERE soggetto_ruolo_id = %s AND tipo_indirizzo_id = %s",
+                [sr_id, tipo_fatt],
+            )
         # Layer SOGGETTO: anche il FATT proprio del soggetto va tolto (tabella
         # `anagrafiche.indirizzi_soggetti`, sorgente del ramo SOGGETTO della
         # vista risolta), altrimenti la catena risolve comunque — e la fase

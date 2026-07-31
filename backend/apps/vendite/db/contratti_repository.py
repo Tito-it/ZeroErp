@@ -70,12 +70,13 @@ _ORDER_COLS_CONTRATTI: dict[str, str] = {
     "tipo_variazione_globale": "v.tipo_variazione_globale",
     "valore_variazione_globale": "v.valore_variazione_globale",
     "valuta_codice": "v.valuta_codice",
-    "emittente_fiscale_codice": "v.emittente_fiscale_codice",
     "stato_descrizione": "v.stato_descrizione",
-    # codice_interno = logica (immutabile); codice = display (mutabile). Vedi
-    # linee-guida-sql.md §6c. La vista ora espone entrambi con nome fedele.
-    "stato_codice_interno": "v.stato_codice_interno",
-    "stato_codice": "v.stato_codice",
+    # `stato_codice_interno`, `stato_codice` ed `emittente_fiscale_codice` sono
+    # uscite il 2026-07-31: nessuna colonna del catalogo le usa come
+    # `campo_sorgente` (le prime due sono tecniche — danno la severity al Tag di
+    # stato, nel seed sono invisibili e `ordinabile=f`; la colonna Emittente
+    # legge `emittente_fiscale_descrizione`). Una voce che nessuna colonna puo'
+    # richiedere e' una capacita' irraggiungibile, non una riserva.
     "categoria_cliente_snapshot_codice": "v.categoria_cliente_snapshot_codice",
     "data_insert": "v.data_insert",
     "data_update": "v.data_update",

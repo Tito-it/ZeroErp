@@ -87,7 +87,7 @@ async function onPersonalizzaApply(payload) {
   applyDashChange(c => {
     const perCodice = new Map((c.widget || []).map(w => [w.codice, w]))
     c.widget = payload.widget.map(w => ({
-      ...(perCodice.get(w.codice) || {}),
+      ...perCodice.get(w.codice),
       ...w,
     }))
   })

@@ -24,7 +24,10 @@
 > ci rimanda e non lo duplica.
 >
 > **Owner:** BE (`dev/backend-tid`)
-> **Stato:** in attesa dei prerequisiti DB
+> **Stato (2026-07-31 sera):** Fasi 0 e 1 ✅ · 4-bis: D-Q ✅, DB 2.3 ✅ (incl.
+> riallineamento al wrapper rinominato `fn_snapshot_fattura_lotto`), 3a.7 ✅
+> (anticipata) · **prossima: Fase 2**, sbloccata — prerequisiti DB tutti
+> applicati (brief intestazione §10.8) · Fasi 3-5 in attesa del brief scadenze
 > **Prerequisiti (bloccanti):**
 > [brief-db-snapshot-indirizzi-fattura.md](brief-db-snapshot-indirizzi-fattura.md) ·
 > [brief-db-generazione-scadenze-fattura.md](brief-db-generazione-scadenze-fattura.md)
@@ -84,6 +87,29 @@ codice morto con i test verdi.
 | 4 | I tipi opzionali (`CON`, `FORNITURA`, `RES`) **non fanno fallire** il giro se assenti |
 | 5 | **Ristampa conforme**: il PDF stampa l'indirizzo dello **snapshot**; modificando l'indirizzo in anagrafica e ristampando, il documento **non cambia** ⟵ *l'asserzione che giustifica tutto il lavoro* |
 | 6 | Idempotenza: rigenerando il giro non nascono righe duplicate |
+
+> **Stato 2026-07-31 (sera): 8 asserzioni, verde**, con il ciclo D-Q completo
+> (errore → marcatura → correzione → rilancio → ritiro segnalazioni) e il caso 8
+> (ristampa conforme) in **SKIP dichiarato** fino alla Fase 2. Dal rinominarsi
+> del wrapper mostra anche `intestazioni_scritte` (1 alla correzione, 0 al terzo
+> giro: l'intestazione è idempotente come le righe).
+>
+> ⚠️ **Due lezioni di fixture, pagate sul campo.**
+>
+> 1. **Non si cancellano righe di `anagrafiche.indirizzi`.** La fase «errore»
+>    toglieva al cliente il tipo `FATT` con una DELETE; il 2026-07-31 ha smesso
+>    di funzionare perché un DDT aveva **congelato quell'indirizzo** come
+>    `origine_indirizzo_id`, e la FK ha fatto morire lo smoke *nella fixture*,
+>    non in un'asserzione. Ora le righe si **ri-puntano a un tipo di
+>    parcheggio** — ammesso al ruolo ma fuori dall'ambito `FATTURE` — così la
+>    riga sopravvive alla FK e la catena non trova comunque `FATT`. Vale per
+>    qualunque smoke futuro: più snapshot congeliamo, meno i dati anagrafici
+>    sono cancellabili, anche dentro una transazione che fa rollback.
+> 2. **Passa dal wrapper, non dallo step** (rilievo del team DB, §10.7 del brief
+>    intestazione). Finché lo smoke chiama `run_snapshot_indirizzi_lotto_task`
+>    direttamente, dimostra la catena wrapper → funzione DB → D-Q, **non** che
+>    la pipeline invochi quel wrapper. Ora che l'armamento c'è, va rifatto un
+>    giro reale — o modificato lo smoke perché esegua lo step. **Aperto.**
 
 ### 3.2 `smoke-fattura-scadenze.py`
 
@@ -190,7 +216,7 @@ Senza questa fase la Fase 1 gira su una catena diversa da quella dei fratelli, e
 >
 > | Pezzo | Dove |
 > |---|---|
-> | Wrapper `run_snapshot_indirizzi_lotto_task` (5 contatori) + voce in `ALLOWED_TASK_FUNCTIONS` + **`disattiva_segnalazioni_lotto_be`** | `db/pipeline_repository.py` |
+> | Wrapper `run_snapshot_indirizzi_lotto_task` (5 contatori; **6 dal 2026-07-31 sera**: la funzione DB è diventata `fn_snapshot_fattura_lotto` e aggiunge `intestazioni_scritte` — vedi la riga «DB 2.3» del §4-bis) + voce in `ALLOWED_TASK_FUNCTIONS` + **`disattiva_segnalazioni_lotto_be`** | `db/pipeline_repository.py` |
 > | Handler `_handle_snapshot_indirizzi_lotto_task` + **`TaskEsitoParziale`**: `failed_rows > 0` → task_run **ERRORE senza sollevare** (D-Q p.3 — con COMPLETATO il rilancio darebbe SKIP; con un raise il rollback cancellerebbe il lavoro delle fatture sane) | `services/pipeline_step_executor.py` |
 > | **Gate D-Q p.1**: il blocco critico vale per l'**avanzamento**; il **rilancio dello stesso step è ammesso**. A fine step con fatture in errore il lotto va in ERRORE (abilita il rerun); il **ritiro bandiere BE** (p.2, errori runner + fotografie esito derivate) avviene a inizio step dentro la transazione — rollback-safe = «solo al successo» | `services/pipeline_runner.py` |
 > | Driver `until_done`: si ferma con `BLOCCATO_CRITICITA` + errore strutturato su step con fatture in errore; **prosegue** dopo un rilancio riuscito (flusso «correggo → premo una volta → finisce») | `services/pipeline_runner.py` |
@@ -242,14 +268,50 @@ Verifica di fase: smoke §3.1 casi 1-4 e 6 verdi.
 >
 > **Conseguenza operativa:** questa fase si scrive **una volta sola**, sulla
 > forma decisa nel brief (snapshot intestazione in testata + indirizzo cliente da
-> `fatture_indirizzi`), invece di ripuntare il context builder due volte. Fino
-> alla decisione su §3.1-3.2 del brief, la fase resta ferma — ma è già ferma in
-> attesa dell'armamento 2.3 parte 2.
+> `fatture_indirizzi`), invece di ripuntare il context builder due volte.
+>
+> ---
+>
+> ### ✅ Sbloccata la sera del 2026-07-31 — il DB ha accolto e applicato
+>
+> Risposta del team DB nel §10 del brief, e **tutto già a DB**: colonne
+> `fatture.emittente_snapshot` / `cliente_snapshot` con guard di congelamento
+> (`20260731-05`), `fn_snapshot_intestazione_fattura` (`-06`), wrapper
+> `fn_snapshot_fattura_lotto` che chiama le due sorelle (`-07`), più
+> l'armamento del nodo nelle corsie DRAFT. **Nulla resta da attendere: la Fase 2
+> è nostra e basta scriverla.**
+>
+> **Correzione di merito da recepire (§10.3 del brief): i difetti sono due,
+> non uno.** Oltre al confronto `codice`/`codice_interno`, la subquery legge
+> `vw_indirizzi_resolved_ruolo`, che per costruzione contiene il **solo layer
+> RUOLO** (`WHERE scope = 'RUOLO'`) — e il ruolo `EF` non ha **alcun**
+> indirizzo: la sede dell'emittente sta sul layer SOGGETTO. È il secondo a
+> spiegare la sede vuota, e vale **identico sulla riga del cliente**. Leggere lo
+> snapshot li chiude entrambi in un colpo, perché lo snapshot è composto da
+> `fn_resolve_indirizzo_documento`, che i due layer li attraversa già.
+>
+> **Lo shape contro cui scrivere `_shape_emittente` / `_shape_cliente`**:
+> `denominazione`, `codice_fiscale`, `id_fiscale`, `regime_fiscale_rf`, `sede`,
+> `rea`, `capitale_sociale`, `forma_giuridica`, `socio_unico`, `liquidazione`;
+> lato cliente `codice_sdi`, `pec_fatturazione`, `destinatario_fe`,
+> `billing_account_id`/`ba_codice`. Regola dichiarata dal DB: di ogni entità
+> referenziata si congela il **valore** e l'id sta **accanto**, non al posto suo
+> — un id da solo non è uno snapshot. ⚠️ Lo shape è **interno e non
+> contrattuale** finché il builder XML FatturaPA non esiste: aggiungere o
+> rinominare chiavi resta lecito senza migrazioni.
+>
+> ⚠️ **Normalizzare le chiavi mancanti**: il DB **omette** le chiavi nulle e il
+> template gira con `StrictUndefined`. Il builder deve proiettare sull'elenco
+> completo e ordinato, come fa già `DdtDocumentContextBuilder` con
+> `SNAPSHOT_KEYS_ORDERED`.
+>
+> **Il `billing_account_id` dello snapshot cliente è il BA *padre*** (D-P), non
+> il conto di chi ha consumato: non va letto come «il conto del cliente».
 
 | Punto di intervento | Cosa |
 |---|---|
-| `backend/apps/vendite/db/vendite_repository.py:1564-1573` | l'indirizzo cliente **non** più dalla vista live `vw_indirizzi_resolved_ruolo`, ma dallo **snapshot** `fatture_indirizzi` (tipo `FATT`) |
-| `backend/apps/vendite/services/fattura_document_context_builder.py:206-208` | consumare il nuovo campo |
+| `backend/apps/vendite/db/vendite_repository.py` (`get_fattura_testata`, ~1576-1650) | le **quattro** letture live → snapshot: `emittente_snapshot` e `cliente_snapshot` dalla testata, indirizzo cliente dalla riga `FATT` di `fatture_indirizzi`. **Spariscono** le due subquery su `vw_indirizzi_resolved_ruolo` (e con loro entrambi i difetti del §10.3 del brief) e le JOIN su `vw_soggetti_ruoli_dettaglio` per i dati che ora vivono negli snapshot |
+| `backend/apps/vendite/services/fattura_document_context_builder.py` (`_shape_cliente`, ~199-211) | `_shape_cliente` legge lo snapshot + nuovo `_shape_emittente`; proiezione su chiavi complete e ordinate (StrictUndefined) |
 | — | modello già fatto: `DdtDocumentContextBuilder` è l'unico context builder che legge gli snapshot |
 
 **Nessun fallback** (rev. 2026-07-30, §9). La prima stesura prevedeva di ricadere
@@ -312,12 +374,12 @@ Sono elencate qui perché **l'owner è il BE**; la fase DB resta il loro innesco
 
 | Innesco (piano DB) | Cosa tocca a noi | Quando |
 |---|---|---|
-| **3a.7** — riforma condizioni di pagamento (D-I) | `ClienteDrawer.vue`: via i due campi `tipo_gg_scadenza_ft` / `nr_giorni_scadenza`, le **4 opzioni `opt_gg_*`** e le loro chiavi i18n (it+en). Lato BE: `fn_update_cliente`, `clienti_repository`, `clienti_service`, `views_clienti`, `error_policies` | **Contestuale** al DROP delle colonne (3a.5): appena cadono, il drawer mostrerebbe campi inesistenti |
+| **3a.7** — riforma condizioni di pagamento (D-I) | ✅ **FATTA (2026-07-31, PR #1100), ANTICIPATA rispetto al DROP** — decisione presa con Tid e team DB: le colonne legacy non avevano lettori a valle e il `NOT NULL` ha un `DEFAULT`, quindi anticipare **elimina** l'accoppiamento invece di gestirlo — 3a.5/3a.6 diventano DROP pure, senza deploy FE da sincronizzare. Fatto: `ClienteDrawer.vue` (via i 2 campi + `tipoGgOptions`), 6 chiavi i18n it+en, `clienti_repository` (2 whitelist + SELECT), `clienti_service`, `views_clienti`, `test_clienti_repository`. Verifiche: 1068 test verdi, `check_i18n_keys` pulito, eslint + build Vite ok. **Restano**: `fn_update_cliente` (SQL, owner DB, con 3a.5) e il codice `E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI` in `error_policies.py`, da togliere **con** la DROP del trigger, non prima (il guard è ancora raggiungibile) | ~~Contestuale al DROP~~ → anticipata |
 | **6.6** — eliminazione del flag `esclusa` (D-M) | **filtro API** e **`types.py`** (il resto è DB) | Con la Fase 6 DB |
 | **6.7** — ritorno a DRAFT / estrazione (D-N-bis) | Verbo nel `LottoDrawer` con conferma esplicita di **cosa si perde**, e **lista «estratte»** nel cockpit | Dopo 6.0-6.5 DB |
 | **D-L** — rinomina funzioni di reset | **4 righe obbligatorie + ~12 nomi Python** da allineare (vedi sotto): decisione Tid 2026-07-30, si rinomina su **entrambi** gli strati | Contestuale alla rinomina |
 | **D-Q** — fattura in errore, lotto non avanza ma si rilancia (decisione Tid 2026-07-31) | **La regola di blocco** (`lotto_segnalazioni_service`) e **il ritiro delle segnalazioni scritte dal BE** (vedi sotto): senza, la via d'uscita definita da Tid non esiste | **Prima** dell'accensione del task in pipeline (DB 2.3) |
-| **DB 2.3** — seed del task snapshot indirizzi | Registrare `snapshot_indirizzi_lotto` in `ALLOWED_TASK_FUNCTIONS` (`pipeline_repository.py:160`) **+ handler**: il dispatch non è dinamico, quindi finché non c'è il task non è eseguibile | **Prima** che il DB armi lo step DRAFT |
+| **DB 2.3** — seed del task snapshot indirizzi | ✅ **FATTA** (registrazione + handler in Fase 1; armamento DB applicato il 2026-07-31). **Coda del 2026-07-31 sera**: il DB ha rinominato il wrapper in `fn_snapshot_fattura_lotto` (scrive anche l'intestazione — brief §10.8) e il BE è stato riallineato: valore in `ALLOWED_TASK_FUNCTIONS`, query del wrapper, **sesto contatore `intestazioni_scritte`** già letto. Il `task_code` e il nome del metodo Python restano `snapshot_indirizzi_lotto`/`run_snapshot_indirizzi_lotto_task`: l'ancora stabile è il task, non la funzione dietro il wrapper | ~~Prima che il DB armi lo step DRAFT~~ → chiusa |
 
 ### D-L: il minimo indispensabile, misurato
 

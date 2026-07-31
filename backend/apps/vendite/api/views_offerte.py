@@ -236,11 +236,11 @@ class ApiOfferteList(DomainAPIView):
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False,
-                             description="campo_sorgente colonna catalogo 'vendite.offerte' "
-                                         "(es. codice | ragione_sociale_completa | ba_codice | "
-                                         "utility_codice | listino_codice | validita_dal | "
-                                         "validita_al | data_emissione | stato_descrizione | "
-                                         "data_insert). 'revisione_numero' non ordinabile."),
+                             # Derivata dalla whitelist del repository: era un
+                             # elenco scritto a mano e aveva gia' divergito.
+                             description="campo_sorgente colonna catalogo 'vendite.offerte' ("
+                                         + " | ".join(sorted(offerte_service._ORDER_BY_OFFERTE))
+                                         + "). 'revisione_numero' non ordinabile."),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={200: inline_serializer(

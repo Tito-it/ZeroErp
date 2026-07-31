@@ -187,10 +187,11 @@ onMounted(() => {
         @row-click="onRowClick"
         @config-loaded="onConfigLoaded"
       >
-        <!-- Cell custom: codice fiscale o, in fallback, partita IVA. -->
-        <template #cell-codice_fiscale="{ data }">
-          {{ data.id_fiscale_univoco_cf_piva || data.codice_fiscale || data.partita_iva }}
-        </template>
+        <!-- Nessuno slot per l'Id. Fiscale: la colonna del catalogo si chiama
+             `id_fiscale` e legge `id_fiscale_univoco_cf_piva`, che il formatter
+             di serie risolve da solo. Il fallback `|| codice_fiscale ||
+             partita_iva` era codice morto: la colonna generata e' NULL solo
+             quando lo sono entrambe le sorgenti. -->
 
         <!-- Date semplici (slot espliciti per robustezza se il seed omette `formato`). -->
         <template #cell-data_attivazione="{ value }">{{ displayDate(value) }}</template>

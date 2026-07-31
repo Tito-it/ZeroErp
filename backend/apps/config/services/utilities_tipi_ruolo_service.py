@@ -15,6 +15,7 @@ from typing import Any
 from django.db import IntegrityError
 
 from apps.config.db.utilities_tipi_ruolo_repository import (
+    _ORDER_COLS,
     UtilitiesTipiRuoloRepository,
 )
 from apps.core.services.error_manager import ErrorManager
@@ -50,16 +51,11 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     ),
 }
 
-# Whitelist colonne ammesse per ORDER BY (riflette repository).
-_ORDER_BY_VALIDI: frozenset[str] = frozenset({
-    "utility_codice",
-    "utility_descrizione",
-    "tipo_ruolo_codice",
-    "tipo_ruolo_descrizione",
-    "attivo",
-    "data_insert",
-    "data_update",
-})
+# Whitelist order_by ammessi dal service (gate prima del repository), DERIVATA
+# dalla whitelist del repository (`_ORDER_COLS`), unica fonte di verita' —
+# stesso schema di `_ORDER_BY_CONTRATTI`/`_ORDER_BY_OFFERTE`. Era una copia a
+# mano: su offerte la stessa copia aveva gia' divergito in entrambi i versi.
+_ORDER_BY_VALIDI: frozenset[str] = frozenset(_ORDER_COLS)
 
 # Chiavi ammesse in payload create (FK + flag opzionale).
 _CREATE_KEYS: frozenset[str] = frozenset({"utility_id", "tipo_ruolo_id", "attivo"})

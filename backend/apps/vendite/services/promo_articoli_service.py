@@ -25,7 +25,10 @@ from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
 )
-from apps.vendite.db.promo_articoli_repository import PromoArticoliRepository
+from apps.vendite.db.promo_articoli_repository import (
+    _ORDER_COLS,
+    PromoArticoliRepository,
+)
 
 
 # Codici errore (registrati in error_policies.py).
@@ -53,18 +56,11 @@ _UPDATE_KEYS_INIZIATA: frozenset[str] = frozenset({
 })
 
 
-_ORDER_BY_VALIDI: frozenset[str] = frozenset({
-    "codice",
-    "descrizione",
-    "articolo_codice",
-    "articolo_descrizione",
-    "uom_codice",
-    "valido_dal",
-    "valido_al",
-    "attivo",
-    "data_insert",
-    "data_update",
-})
+# Whitelist order_by ammessi dal service (gate prima del repository), DERIVATA
+# dalla whitelist del repository (`_ORDER_COLS`), unica fonte di verita' —
+# stesso schema di `_ORDER_BY_CONTRATTI`/`_ORDER_BY_OFFERTE`. Era una copia a
+# mano: su offerte la stessa copia aveva gia' divergito in entrambi i versi.
+_ORDER_BY_VALIDI: frozenset[str] = frozenset(_ORDER_COLS)
 
 
 # Chiavi ammesse in create: dimensioni + variazione + date + meta.

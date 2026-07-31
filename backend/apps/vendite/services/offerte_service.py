@@ -39,7 +39,7 @@ from apps.core.services.payload_helpers import (
     translate_db_errors,
 )
 from apps.vendite.db.listini_repository import ListiniRepository
-from apps.vendite.db.offerte_repository import OfferteRepository
+from apps.vendite.db.offerte_repository import _ORDER_COLS_OFFERTE, OfferteRepository
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
     auto_assegna_indirizzo_default,
@@ -116,26 +116,16 @@ _ESITI_AMMESSI_DA_EMESSA: frozenset[str] = frozenset(
 )
 
 
-# Whitelist order_by ammessi dal service (gate prima del repository). Allineata
-# ai `campo_sorgente` del catalogo lista 'vendite.offerte' (DEF-8): la lista
-# configurabile invia il campo_sorgente canonico come sortField.
+# Whitelist order_by ammessi dal service (gate prima del repository), DERIVATA
+# dalla whitelist del repository (`_ORDER_COLS_OFFERTE`), unica fonte di verita'
+# — stesso schema di `_ORDER_BY_CONTRATTI`.
+#
+# Era una copia scritta a mano, e il 2026-07-31 aveva gia' divergito: teneva
+# `stato_codice_interno` e `data_update` dopo che il repository li aveva persi.
+# Un gate piu' largo del repository non protegge, sposta il difetto di un piano:
+# la chiave passa la validazione e poi il repository ripiega in silenzio.
 # `revisione_numero` ASSENTE: non ordinabile (decisione §7.3).
-_ORDER_BY_OFFERTE: frozenset[str] = frozenset({
-    "codice",
-    "ragione_sociale_completa",
-    "ba_codice",
-    "id_fiscale_univoco_cf_piva",
-    "utility_codice",
-    "utility_descrizione",
-    "listino_codice",
-    "validita_dal",
-    "validita_al",
-    "data_emissione",
-    "stato_descrizione",
-    "stato_codice_interno",
-    "data_insert",
-    "data_update",
-})
+_ORDER_BY_OFFERTE: frozenset[str] = frozenset(_ORDER_COLS_OFFERTE)
 
 
 # Stati terminali (no editing, no transizioni uscenti).

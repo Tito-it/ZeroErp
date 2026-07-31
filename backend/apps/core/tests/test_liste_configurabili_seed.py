@@ -102,6 +102,21 @@ def _whitelist_tipi_ruolo_tipi_indirizzo() -> set[str]:
     return set(m._ORDER_COLS)
 
 
+# Scopo: whitelist delle due CODE resi. ⚠️ Non sono `_ORDER_COLS_RESI`: le code
+#        leggono viste dedicate e hanno mappe proprie in `_CODA_META`, indicizzate
+#        per nome vista. Il registro le ha attribuite alla costante sbagliata fino
+#        al 2026-07-31 — stesso inganno del difetto che questo modulo presidia:
+#        una whitelist va letta dal simbolo che il repository USA, non da quello
+#        che sembra suo per nome.
+def _whitelist_coda_resi(vista: str):
+    def risolvi() -> set[str]:
+        from apps.vendite.db import resi_repository as m
+
+        return set(m._CODA_META[vista]["order_cols"])
+
+    return risolvi
+
+
 # Scopo: fabbrica di risolutori per le whitelist che vivono in una costante di
 #        modulo con nome proprio (la maggioranza). Evita nove funzioni identiche
 #        a meno del nome — le uniche scritte a mano sopra sono quelle con una
@@ -139,8 +154,8 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("vendite.ordini", _da_costante("apps.vendite.db.ordini_repository", "_ORDER_COLS_ORDINI")),
     ("vendite.preventivi", _da_costante("apps.vendite.db.preventivi_repository", "_ORDER_COLS_PREVENTIVI")),
     ("vendite.resi", _da_costante("apps.vendite.db.resi_repository", "_ORDER_COLS_RESI")),
-    ("vendite.resi_da_accreditare", _da_costante("apps.vendite.db.resi_repository", "_ORDER_COLS_RESI")),
-    ("vendite.resi_da_riconsegnare", _da_costante("apps.vendite.db.resi_repository", "_ORDER_COLS_RESI")),
+    ("vendite.resi_da_accreditare", _whitelist_coda_resi("vendite.vw_resi_da_accreditare")),
+    ("vendite.resi_da_riconsegnare", _whitelist_coda_resi("vendite.vw_resi_da_riconsegnare")),
 )
 
 
@@ -154,27 +169,15 @@ _LISTE: tuple[tuple[str, object], ...] = (
 # nessun rosso, solo una freccia che non fa quello che promette.
 #
 # Rilevate il 2026-07-31 estendendo il registro a tutto il codice: 25 casi su 11
-# liste. NON corrette in quella sede perche' ognuna e' una decisione (si cambia
-# la chiave della whitelist o il `campo_sorgente` del seed?) su 9 repository
-# diversi, ed erano fuori dal perimetro del lavoro in corso.
+# liste. **CHIUSO in giornata**, in due mosse: il team DB ha allineato il seed
+# (30 colonne fuori dal nucleo portate a `ordinabile=f`, colonna Emittente e
+# Id. Fiscale rinominate col nome fedele al campo che leggono), il BE ha
+# ri-chiavato le whitelist dei 9 repository sui `campo_sorgente`.
 #
-# Questo insieme deve **calare**. Chi tocca una di queste liste la sistemi e la
-# tolga da qui: il test `test_il_debito_non_cresce` impedisce di aggiungerne.
-_DEBITO_WHITELIST_LOGICA: frozenset[str] = frozenset({
-    "anagrafiche.clienti",
-    "anagrafiche.fornitori",
-    # `anagrafiche.soggetti` RIENTRATA il 2026-07-31: whitelist ri-chiavata sul
-    # campo fisico (`id_fiscale_univoco_cf_piva`) e mappata a espressioni SQL
-    # qualificate. Ora e' presidiata dai test stretti.
-    "vendite.contratti",
-    "vendite.ddt",
-    "vendite.offerte",
-    "vendite.ordini",
-    "vendite.preventivi",
-    "vendite.resi",
-    "vendite.resi_da_accreditare",
-    "vendite.resi_da_riconsegnare",
-})
+# **L'insieme e' VUOTO e deve restare vuoto**: da qui in avanti ogni lista e'
+# esaminata dai test stretti 1-3. Ri-aggiungere un codice qui non e' una
+# soluzione, e' spegnere il presidio proprio dove serve.
+_DEBITO_WHITELIST_LOGICA: frozenset[str] = frozenset()
 
 
 # Scopo: liste su cui il contratto seed<->whitelist e' esigibile, cioe' tutte

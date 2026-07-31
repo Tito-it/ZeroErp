@@ -173,7 +173,12 @@ class VenditePipelineRepository:
         "close_lotto": None,
         "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
         "pull_attivita_da_commessa": "vendite.fn_emit_attivita_fatturabili_da_commessa",
-        "snapshot_indirizzi_lotto": "vendite.fn_snapshot_indirizzi_lotto",
+        # Il `task_code` resta `snapshot_indirizzi_lotto` (seed, handler, policy
+        # e registry non si muovono); la funzione SQL e' stata rinominata dal
+        # team DB in `fn_snapshot_fattura_lotto` quando ha iniziato a scrivere
+        # anche l'intestazione — il nome vecchio ne diceva meta' (brief
+        # snapshot-intestazione §10.8).
+        "snapshot_indirizzi_lotto": "vendite.fn_snapshot_fattura_lotto",
     }
 
     # Scopo: Gestisce `_to_jsonb_param` nel flusso applicativo del modulo.
@@ -1501,14 +1506,23 @@ class VenditePipelineRepository:
                 [lotto_id, batch_size],
             )
 
-    # Scopo: Esegue lo snapshot indirizzi delle fatture del lotto delegando a
-    #        `vendite.fn_snapshot_indirizzi_lotto` (Fase 2.2 piano DB satelliti).
+    # Scopo: Esegue lo snapshot dei satelliti «di intestazione» delle fatture
+    #        del lotto delegando a `vendite.fn_snapshot_fattura_lotto` (Fase 2.2
+    #        piano DB satelliti). Il wrapper DB chiama due funzioni sorelle —
+    #        indirizzi (`fatture_indirizzi`) e intestazione fiscale
+    #        (`fatture.emittente_snapshot` / `cliente_snapshot`) — nella stessa
+    #        transazione, ed e' il motivo per cui i contatori sono sei:
+    #        `intestazioni_scritte` misura il lavoro che le righe di indirizzo
+    #        non descrivono (brief snapshot-intestazione §10.1).
     #        La funzione NON solleva per la singola fattura difettosa (D-Q: le
     #        altre ricevono il loro lavoro; la difettosa e' marcata 'C' su
-    #        fatture_log dal DB): l'esito arriva nei 5 contatori, e
+    #        fatture_log dal DB): l'esito arriva nei contatori, e
     #        `failed_rows > 0` e' il segnale che l'handler traduce in task_run
     #        ERRORE — altrimenti il rilancio dello step salterebbe il task
     #        (COMPLETATO → SKIP) e la correzione non verrebbe mai riletta.
+    #        Il nome del metodo segue il `task_code`, non la funzione SQL: il
+    #        task e' l'ancora stabile del registry, la funzione e' dietro il
+    #        wrapper.
     def run_snapshot_indirizzi_lotto_task(
         self,
         *,
@@ -1519,8 +1533,8 @@ class VenditePipelineRepository:
             cursor.execute(
                 """
                 SELECT fatture_count, inserted_rows, updated_rows,
-                       skipped_rows, failed_rows
-                FROM vendite.fn_snapshot_indirizzi_lotto(%s, %s)
+                       intestazioni_scritte, skipped_rows, failed_rows
+                FROM vendite.fn_snapshot_fattura_lotto(%s, %s)
                 """,
                 [lotto_id, batch_size],
             )
@@ -1530,8 +1544,9 @@ class VenditePipelineRepository:
             "fatture_count": int(row[0]),
             "inserted_rows": int(row[1]),
             "updated_rows": int(row[2]),
-            "skipped_rows": int(row[3]),
-            "failed_rows": int(row[4]),
+            "intestazioni_scritte": int(row[3]),
+            "skipped_rows": int(row[4]),
+            "failed_rows": int(row[5]),
         }
 
     # Scopo: Ritira le segnalazioni critiche di LOTTO alzate dal BE (D-Q p.2:
