@@ -155,7 +155,7 @@ applicate via `fn_scope_*` falliscono in modo **fail-closed**.
 | Caratteristica       | GUC (`myapp.*`, `dbops.*`)                        | Tabelle (`config.parameters` + overrides)                  |
 | -------------------- | ------------------------------------------------- | ---------------------------------------------------------- |
 | **Ambito**           | Cluster/DB/Role/Session                           | Record-level (tenant, utente, funzione, sessione)          |
-| **Versioning/Audit** | No (solo DDL o conf file)                         | Si' (Liquibase, trigger di audit, date_insert, ecc.)       |
+| **Versioning/Audit** | No (solo DDL o conf file)                         | Si' (Liquibase, trigger di audit, data_insert, ecc.)       |
 | **Dinamico**         | Si' (SET/ALTER in sessione)                       | Si' (modificabile in runtime con query)                    |
 | **Use case**         | Configurazioni DB-centriche (lingua, connessioni) | Configurazioni business-centriche (feature-flag, timeouts) |
 

@@ -1,0 +1,116 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Snapshot dell'intestazione fiscale della fattura — le due colonne
+#   (brief-db-snapshot-intestazione-fattura.md §3.1/§3.2/§3.4, risposta DB §10).
+#
+# COS'E'. La Fase 2 congela l'indirizzo del cliente. Tutto il resto
+#   dell'intestazione — denominazione, P.IVA e CF delle DUE parti, e la sede
+#   dell'emittente — continua a leggersi live dall'anagrafica al momento della
+#   stampa. Ne segue che un cliente che cambia ragione sociale cambia la
+#   ristampa di tutte le sue fatture passate, e lo fa lasciando congelato
+#   l'indirizzo nel rigo sotto: un blocco stampato incoerente con se stesso, che
+#   e' peggio di uno interamente vivo perche' SEMBRA congelato.
+#
+# ⚠️ PERCHE' IN TESTATA E NON IN fatture_indirizzi. Non e' comodita': e'
+#   cardinalita'. `uq_fatture_indirizzi_uno_per_tipo_` ammette UNA riga per
+#   (fattura, tipo), quindi mettere li' la sede legale renderebbe IMPOSSIBILE
+#   avere insieme quella dell'emittente e quella di un cliente persona
+#   giuridica. Lo stesso vincolo ci aveva gia' detto dove non puo' stare il
+#   sotto-dettaglio per figlio delle fatture utilities (D-P). Due volte lo
+#   stesso vincolo dice la stessa cosa: `fatture_indirizzi` e' la collezione
+#   degli indirizzi DEL CLIENTE, non «gli indirizzi della fattura».
+#   L'asimmetria che ne risulta e' voluta e non e' di garanzia: il cliente ha N
+#   slot perche' il documento puo' usarne piu' d'uno, l'emittente ne ha uno solo
+#   che non e' uno slot ma una riga della sua intestazione.
+#
+# NULLABLE, e non e' una rinuncia. La fattura nasce prima che il task di
+#   snapshot giri: pretendere le colonne piene alla INSERT vieterebbe la
+#   creazione stessa. L'obbligo vive al confine dello step — il guard 2.5
+#   allargato: una fattura non lascia DRAFT senza intestazione congelata.
+#
+# ⚠️ LO SHAPE NON E' CONTRATTUALE. Finche' il builder XML FatturaPA non esiste,
+#   le chiavi dentro i due jsonb possono essere aggiunte, rinominate o annidate
+#   senza migrazioni. Dichiararlo ora costa nulla; scoprirlo dopo aver promesso
+#   un contratto costa una migrazione su documenti fiscali (risposta DB §10.2).
+#
+# ⚠️ IL GUARD DI CONGELAMENTO E' QUELLO CHE ABBIAMO GIA'. Un satellite blindato
+#   e una testata aperta sarebbero una porta di servizio sulla stessa garanzia
+#   (§3.4 del brief). Ma non serve una funzione nuova:
+#   trgfn_fattura_satellite_guard_congelamento prende in TG_ARGV[0] il nome
+#   della colonna che punta alla fattura, e per la fattura STESSA quella colonna
+#   e' `id`. Estrae il valore con to_jsonb(NEW) ->> TG_ARGV[0], quindi funziona
+#   senza sapere su quale tabella e' montato. Terza volta che il guard
+#   parametrico di C-11 si ripaga.
+#
+# ⚠️ `UPDATE OF` NON E' UN'OTTIMIZZAZIONE, E' LA CORRETTEZZA. Senza l'elenco
+#   delle colonne il trigger scatterebbe su OGNI update della fattura, e da
+#   DEFINITIVA in poi bloccherebbe anche modifiche legittime che con
+#   l'intestazione non c'entrano nulla.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260731-05-alter-fatture-add-intestazione-snapshot-mctit.yaml
+
+  - changeSet:
+      id: 20260731-05-alter-fatture-add-intestazione-snapshot
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Due colonne jsonb per lo snapshot dell'intestazione fiscale
+        (emittente e cliente) su vendite.fatture, protette dallo stesso guard
+        di congelamento dei satelliti.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'vendite'
+                AND p.proname = 'trgfn_fattura_satellite_guard_congelamento'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture
+                ADD COLUMN IF NOT EXISTS emittente_snapshot jsonb,
+                ADD COLUMN IF NOT EXISTS cliente_snapshot   jsonb;
+
+              COMMENT ON COLUMN vendite.fatture.emittente_snapshot
+              IS 'Identita'' fiscale dell''emittente al momento in cui la fattura e'' nata: denominazione, codice fiscale, id fiscale, regime fiscale, dati societari (REA, capitale sociale, socio unico, liquidazione, forma giuridica) e sede legale nello shape canonico degli indirizzi. Congelata: la ristampa di una fattura di due anni fa deve mostrare l''emittente di allora, non quello di oggi. Shape NON contrattuale finche'' il builder XML FatturaPA non esiste. Presenza presidiata dal guard di uscita da DRAFT, non da un NOT NULL: la fattura nasce prima che il task di snapshot giri.';
+
+              COMMENT ON COLUMN vendite.fatture.cliente_snapshot
+              IS 'Identita'' fiscale del cliente al momento in cui la fattura e'' nata: denominazione, codice fiscale, id fiscale, e i dati di instradamento SDI (codice destinatario, PEC di fatturazione) — «a chi l''abbiamo trasmessa» e'' un fatto del documento e non puo'' cambiare retroattivamente. ⚠️ Il billing account qui riportato e'' quello di TESTATA, che in gerarchia e'' il BA PADRE (D-P): non e'' il conto del figlio che ha consumato. L''indirizzo di fatturazione NON sta qui: sta in vendite.fatture_indirizzi, che e'' la collezione degli indirizzi del cliente. Shape NON contrattuale finche'' il builder XML FatturaPA non esiste.';
+
+              -- Stessa protezione dei satelliti: oltre la soglia DRAFT/EMESSA
+              -- l'intestazione e' uno snapshot fiscale e non si tocca piu'.
+              -- Il guard e' quello parametrico di 1.1: per la fattura stessa
+              -- la colonna che punta alla fattura e' `id`.
+              DROP TRIGGER IF EXISTS trg_fatture_a10_guard_intestazione_congelata_upd
+                ON vendite.fatture;
+
+              CREATE TRIGGER trg_fatture_a10_guard_intestazione_congelata_upd
+                BEFORE UPDATE OF emittente_snapshot, cliente_snapshot
+                ON vendite.fatture
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_fattura_satellite_guard_congelamento('id');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_a10_guard_intestazione_congelata_upd
+                ON vendite.fatture;
+
+              ALTER TABLE vendite.fatture
+                DROP COLUMN IF EXISTS emittente_snapshot,
+                DROP COLUMN IF EXISTS cliente_snapshot;

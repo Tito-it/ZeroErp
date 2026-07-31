@@ -326,13 +326,21 @@ usi legittimi di `codice`). Caso di studio completo: [analisi-hardcoded-codice.m
 Standardizzare i campi di auditing:
 
 ```sql
-date_insert    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP WITH TIME ZONE
+data_insert    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP WITH TIME ZONE
 user_insert    TEXT      NOT NULL DEFAULT CURRENT_USER
 data_update    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP WITH TIME ZONE
 user_update    TEXT      NOT NULL DEFAULT CURRENT_USER
 ```
 
-I trigger o constraint di sistema possono aggiornare `date_update/user_update` su UPDATE manuale o con `trigger` dedicato.
+⚠️ **`data_`, non `date_`.** Fino al 2026-07-31 questo blocco scriveva
+`date_insert` (e la riga sotto `date_update`), mentre la seconda colonna era
+gia` `data_update`: incoerente al suo interno, e sbagliato rispetto al DB —
+dove le colonne di audit sono **806 e si chiamano tutte `data_insert` /
+`data_update`**, zero con `date_`. Il refuso e` gia` finito almeno una volta
+nel codice (`_SOGGETTI_ORDER_COLS`), dove non da` errore: fa semplicemente
+smettere di funzionare l'ordinamento per data di creazione.
+
+I trigger o constraint di sistema possono aggiornare `data_update/user_update` su UPDATE manuale o con `trigger` dedicato.
 
 ---
 

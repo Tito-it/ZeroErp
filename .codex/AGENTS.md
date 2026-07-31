@@ -153,7 +153,7 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
 - Schemas/tables/columns naming per `linee-guida-sql.md`
 - Prefer UUID for master entities; SERIAL/IDENTITY for technical tables
 - Use `tx_id UUID` when required by transaction-id policy
-- Audit fields: `date_insert`, `user_insert`, `date_update`, `user_update`
+- Audit fields: `data_insert`, `user_insert`, `data_update`, `user_update` (⚠️ `data_`, non `date_`: nel DB sono 806 colonne e nessuna usa `date_`)
 - Index naming: `ix_<table>_<column>`; check duplicates via `dbops.vw_duplicate_indexes`
 - FK index policy applied in `90_end` with `dbops.apply_fk_index_policy()`
 - FK index: non crearli manualmente; se necessari, rispettare il naming di policy e registrare in `dbops.fk_index_policy` (consentito true/false) tramite `dbops.fn_seed_fk_index_policy()` o `dbops.fn_populate_fk_index_policy()`
