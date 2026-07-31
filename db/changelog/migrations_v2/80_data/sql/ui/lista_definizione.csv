@@ -15,3 +15,6 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert
 14,config.utilities_tipi_ruolo,Matrice utility / tipi ruolo,config,NULL,t,2026-07-31 00:00:00,mctit
 15,anagrafiche.indirizzi,Indirizzi,anagrafiche,vw_indirizzi_dettaglio,t,2026-07-31 00:00:00,mctit
 16,config.tipi_ruolo_tipi_indirizzo,Matrice tipi ruolo / tipi indirizzo,config,NULL,t,2026-07-31 00:00:00,mctit
+17,pratiche.pratiche,Pratiche,pratiche,NULL,t,2026-07-31 00:00:00,mctit
+18,anagrafiche.emittenti_fiscali,Emittenti fiscali,anagrafiche,NULL,t,2026-07-31 00:00:00,mctit
+19,anagrafiche.emittente_billing_account,Billing account dell emittente fiscale,anagrafiche,NULL,t,2026-07-31 00:00:00,mctit

@@ -7,8 +7,6 @@
 | id | bigint | NO |  |
 | soggetto_ruolo_id | bigint | NO |  |
 | istanza_utility_id | bigint | NO |  |
-| tipo_gg_scadenza_ft | character | NO | 'N'::bpchar |
-| nr_giorni_scadenza | integer | YES |  |
 | modalita_pagamento_id | integer | YES |  |
 | cliente_pa | character | NO | 'N'::bpchar |
 | codice_cig | character varying | YES |  |
@@ -43,7 +41,6 @@
 | CHECK | chk_clienti_date_coerenti |  |
 | CHECK | chk_clienti_garanzia_importo_nonneg |  |
 | CHECK | chk_clienti_garanzia_tipo |  |
-| CHECK | chk_clienti_tipo_gg_scadenza_ft |  |
 | FOREIGN KEY | fk_clienti_billing_account | billing_account_id, istanza_utility_id |
 | FOREIGN KEY | fk_clienti_istanze_utilities | istanza_utility_id |
 | FOREIGN KEY | fk_clienti_pdp | pdp_id |
@@ -88,14 +85,12 @@
 | trg_clienti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_clienti_guard_ruolo_cliente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_guard_ruolo_cliente()` |
 | trg_clienti_guard_ruolo_cliente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_guard_ruolo_cliente()` |
-| trg_clienti_normalize_giorni_scadenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_normalize_giorni_scadenza()` |
-| trg_clienti_normalize_giorni_scadenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_normalize_giorni_scadenza()` |
-| trg_clienti_set_periodo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_set_periodo()` |
 | trg_clienti_set_periodo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_set_periodo()` |
-| trg_clienti_sync_pdp_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_pdp()` |
+| trg_clienti_set_periodo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_set_periodo()` |
 | trg_clienti_sync_pdp_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_pdp()` |
-| trg_clienti_sync_utility_from_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_utility_from_ba()` |
+| trg_clienti_sync_pdp_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_pdp()` |
 | trg_clienti_sync_utility_from_ba_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_utility_from_ba()` |
+| trg_clienti_sync_utility_from_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_utility_from_ba()` |
 | trg_clienti_z10_set_parent_istanza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_set_parent_istanza()` |
 | trg_clienti_z10_set_parent_istanza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_clienti_set_parent_istanza()` |
 | trg_clienti_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('cliente_id')` |

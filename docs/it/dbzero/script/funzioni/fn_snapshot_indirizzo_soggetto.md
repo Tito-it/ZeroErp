@@ -75,16 +75,17 @@ BEGIN
                ELSE v_r.indirizzo_libero
              END;
 
-    -- Shape canonico (Q1): etichette umane + display.
-    -- jsonb_strip_nulls: le chiavi nulle non compaiono.
+    -- Shape canonico (Q1), identico alla gemella — btrim incluso:
+    -- la parita' vale anche per le correzioni, altrimenti lo
+    -- stesso indirizzo cambierebbe forma a seconda del layer.
     snapshot := jsonb_strip_nulls(jsonb_build_object(
-        'intestazione', v_r.ragione_sociale_completa,
-        'via',          v_via,
-        'cap',          v_r.cap,
-        'citta',        v_r.comune_descrizione,
-        'prov',         v_r.provincia_sigla,
-        'stato',        v_r.stato_iso2,
-        'display',      v_r.indirizzo_display
+        'intestazione', NULLIF(btrim(v_r.ragione_sociale_completa::text), ''),
+        'via',          NULLIF(btrim(v_via), ''),
+        'cap',          NULLIF(btrim(v_r.cap::text), ''),
+        'citta',        NULLIF(btrim(v_r.comune_descrizione::text), ''),
+        'prov',         NULLIF(btrim(v_r.provincia_sigla::text), ''),
+        'stato',        NULLIF(btrim(v_r.stato_iso2::text), ''),
+        'display',      NULLIF(btrim(v_r.indirizzo_display::text), '')
     ));
 
     RETURN NEXT;
@@ -92,7 +93,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_snapshot_indirizzo_soggetto(p_soggetto_id uuid, p_tipo_indirizzo_id integer)
-IS 'Gemella di script.fn_snapshot_indirizzo per il layer SOGGETTO: compone lo STESSO shape canonico (intestazione, via, cap, citta, prov, stato, display) a partire da (soggetto_id, tipo_indirizzo_id). Esiste perche'' gli indirizzi di soggetto stanno in anagrafiche.indirizzi_soggetti e non hanno riga in anagrafiche.indirizzi: non c''e'' un p_indirizzo_id da passare alla gemella, e la colonna indirizzo_id della vista soggetto e'' la PK di un''ALTRA tabella — passarla alla gemella restituirebbe in silenzio l''indirizzo di ruolo con lo stesso numero. Prende la coppia (soggetto, tipo) proprio per rendere impossibile quello scambio. Assenza = zero righe e non errore: e'' il fallback della catena e il chiamante deve poter scendere di livello. Determinismo garantito da uq_indirizzi_soggetti_soggetto_tipo. STABLE. piano-db-satelliti-fattura D-O, Fase 2.0-a.';
+IS 'Gemella di script.fn_snapshot_indirizzo per il layer SOGGETTO: compone lo STESSO shape canonico (intestazione, via, cap, citta, prov, stato, display) a partire da (soggetto_id, tipo_indirizzo_id). Esiste perche'' gli indirizzi di soggetto stanno in anagrafiche.indirizzi_soggetti e non hanno riga in anagrafiche.indirizzi: non c''e'' un p_indirizzo_id da passare alla gemella, e la colonna indirizzo_id della vista soggetto e'' la PK di un''ALTRA tabella — passarla alla gemella restituirebbe in silenzio l''indirizzo di ruolo con lo stesso numero. Prende la coppia (soggetto, tipo) proprio per rendere impossibile quello scambio. Assenza = zero righe e non errore: e'' il fallback della catena e il chiamante deve poter scendere di livello. Determinismo garantito da uq_indirizzi_soggetti_soggetto_tipo. Ogni valore passa da NULLIF(btrim(...)) come nella gemella (fix 2026-07-31: prov da character(10) congelava il riempimento a spazi). STABLE. piano-db-satelliti-fattura D-O, Fase 2.0-a.';
 ```
 
 ---

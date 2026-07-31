@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3a.5 — via la coppia legacy delle condizioni di pagamento dal cliente
+#   (piano-db-satelliti-fattura.md D-I, rilievo C-16).
+#
+# COSA CADE E PERCHE'. Il modello diceva «giorni + fine mese» in TRE grafie
+#   diverse. D-I ne ha lasciata UNA: il termine di pagamento di catalogo. Qui
+#   sparisce la piu' vecchia — la coppia lettera + giorni sul cliente — con
+#   tutto il suo apparato: trigger di normalizzazione, funzione del trigger e
+#   il CHECK sulla lettera.
+#
+# ⚠️ LA LETTERA `M` E' IL MOTIVO. Lo stesso valore significava tre cose in tre
+#   posti: «mesi» in config.termini_pagamento.tipo_offset, «manuale» nella doc
+#   di clienti, «Mese» a video nel drawer. Un valore su cui database,
+#   documentazione e interfaccia dicono cose diverse non e' un valore.
+#
+# ORDINE RISPETTATO (§3.7 del piano, non negoziabile):
+#   1. catalogo seminato   (3a.1, applicata — 9 termini)
+#   2. riforma del catalogo (3a.2/3a.3, applicate)
+#   3. clienti ripuntati    (3a.4, fatta dal BE: i 2 con la coppia legacy)
+#   4. ⟵ SIAMO QUI: cadono le colonne
+#   Invertire 3 e 4 avrebbe lasciato clienti senza condizioni di pagamento.
+#
+# ⚠️ IL TRIGGER SI DROPPA ESPLICITAMENTE, non basta la DROP COLUMN. Il CHECK
+#   sparisce da solo insieme alla colonna che vincola — PostgreSQL lo porta via
+#   in cascata — ma trgfn_clienti_normalize_giorni_scadenza e' plpgsql: la sua
+#   dipendenza dalle colonne non e' registrata nel catalogo, quindi
+#   sopravviverebbe alla DROP e fallirebbe al primo INSERT di un cliente.
+#   E' la stessa ragione per cui fn_update_cliente e' stata riscritta prima
+#   (20260731-08).
+#
+# ℹ️ Perimetro applicativo gia' chiuso dal BE il 2026-07-31: drawer cliente,
+#   chiavi i18n, `_OPTIONAL`, `_UPDATE_ALLOWED` e la SELECT del repository.
+#   Verificato su tutto il repo: le uniche occorrenze rimaste sono COMMENTI.
+#
+# ℹ️ I changelog storici (baseline, legacy, 20260427-03/04, 20260410-03) le
+#   nominano ancora: sono storia e non si toccano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260731-09-drop-clienti-condizioni-legacy-mctit.yaml
+
+  - changeSet:
+      id: 20260731-09-drop-clienti-condizioni-legacy
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        DROP di anagrafiche.clienti.tipo_gg_scadenza_ft e nr_giorni_scadenza,
+        del trigger di normalizzazione e della sua funzione (D-I). Resta il
+        solo termine_pagamento_id.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: anagrafiche
+            tableName: clienti
+            columnName: tipo_gg_scadenza_ft
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- 1) Prima il trigger: e' plpgsql, la DROP COLUMN non lo
+              --    invaliderebbe e resterebbe a fallire a runtime.
+              DROP TRIGGER IF EXISTS trg_clienti_normalize_giorni_scadenza_ins_upd
+                ON anagrafiche.clienti;
+
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_clienti_normalize_giorni_scadenza();
+
+              -- 2) Poi le colonne. Il CHECK chk_clienti_tipo_gg_scadenza_ft
+              --    vincola la sola colonna che se ne va, quindi cade con lei.
+              ALTER TABLE anagrafiche.clienti
+                DROP COLUMN tipo_gg_scadenza_ft,
+                DROP COLUMN nr_giorni_scadenza;
+
+              COMMENT ON COLUMN anagrafiche.clienti.termine_pagamento_id
+              IS 'Condizioni di pagamento del cliente: UNICO meccanismo dal 2026-07-31 (D-I). La coppia legacy tipo_gg_scadenza_ft + nr_giorni_scadenza e'' stata eliminata — chi ha condizioni particolari usa un termine dedicato in config.termini_pagamento. Resta NULLABLE (D-J): la catena di risoluzione scende al default TP_1RATA, quindi un cliente senza termine produce una rata alla data fattura, non zero rate.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              -- Rollback strutturale: le colonne tornano vuote. I valori non si
+              -- ricostruiscono, ed e' corretto — vivono nel catalogo dei termini.
+              ALTER TABLE anagrafiche.clienti
+                ADD COLUMN IF NOT EXISTS tipo_gg_scadenza_ft character(1) NOT NULL DEFAULT 'N',
+                ADD COLUMN IF NOT EXISTS nr_giorni_scadenza integer;
