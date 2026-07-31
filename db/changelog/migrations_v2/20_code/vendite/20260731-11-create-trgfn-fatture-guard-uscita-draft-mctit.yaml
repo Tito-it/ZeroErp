@@ -1,0 +1,238 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 2.5 / I.4 — guard di completezza sull'uscita dalla bozza
+#   (piano-db-satelliti-fattura.md Fase 2.5, allargata da
+#    brief-db-snapshot-intestazione-fattura.md §3.5).
+#
+# LA REGOLA. Una fattura non lascia lo stato DRAFT se non e' completa di cio'
+#   che il documento STAMPA: gli indirizzi marcati obbligatori per l'ambito
+#   FATTURE e l'intestazione fiscale congelata delle due parti. Sono i due lati
+#   della stessa garanzia — la ristampa di un documento emesso deve restare
+#   identica a se stessa — e presidiarne uno solo e' peggio che non presidiarne
+#   nessuno: un blocco stampato meta' congelato e meta' vivo e' incoerente al
+#   proprio interno pur SEMBRANDO congelato.
+#
+# PERCHE' UN GUARD SOLO E NON DUE. Il piano prevedeva il solo «FATT
+#   obbligatorio» sul modello DDT; il brief intestazione ha allargato il
+#   criterio mentre 2.5 non era ancora scritta. Nasce quindi gia' completa
+#   invece di essere riaperta fra una settimana — ed e' il motivo per cui
+#   questo passo e' stato messo dopo I.1-I.3 e non prima.
+#
+# UN SOLO CODICE ERRORE (E_FATTURA_NON_EMETTIBILE_INCOMPLETA, id 575), non uno
+#   per causa: chi lo riceve deve fare la stessa cosa in entrambi i casi
+#   (rieseguire lo step DRAFT), il dettaglio di CHE COSA manca sta nel payload e
+#   nel messaggio, ed error_policies.py mappa un codice solo. Stesso criterio
+#   della deviazione consapevole di 1.1.
+#
+# TRE COMPORTAMENTI NON OVVI, tutti deliberati:
+#
+#   1) SI PRESIDIA L'USCITA DALLA BOZZA, NON OGNI AVANZAMENTO. Il guard esce in
+#      testa se lo stato di partenza non e' DRAFT. Oltre DRAFT il documento e'
+#      gia' passato di qui, e a proteggerlo c'e' il guard di congelamento dei
+#      satelliti (1.1/1.2 + I.1). Allargare il presidio a ogni transizione non
+#      aggiungerebbe una garanzia: aggiungerebbe una seconda occasione di
+#      fallire su un documento gia' emesso, che e' il momento peggiore.
+#
+#   2) LO STATO ABORTITO E' ESENTE. Una bozza incompleta deve restare
+#      chiudibile: questo guard presidia l'emissione, non l'abbandono. Senza
+#      l'esenzione sarebbe LUI la ragione per cui un documento rotto non si puo'
+#      archiviare — la stessa classe di trappola dell'uscita su stato NULL in
+#      1.1. Oggi config.stati_doc_fiscale_transizioni non ammette DRAFT ->
+#      ANNULLATA, quindi il ramo non e' raggiungibile: e' la dichiarazione di
+#      PERIMETRO del guard, e serve il giorno in cui quella transizione verra'
+#      seminata.
+#
+#   3) SOLO UPDATE, NON INSERT. Una fattura che nascesse gia' oltre DRAFT non
+#      passerebbe di qui. Non e' una svista: l'unico creatore applicativo e'
+#      vendite.fn_get_or_create_fattura_header, che inserisce SEMPRE in DRAFT
+#      (e fallisce con E_CONFIG_MANCANTE se lo stato non esiste) — la porta e'
+#      chiusa a monte per costruzione, non da questo trigger. Montarlo anche su
+#      INSERT romperebbe le fixture pgTAP che creano fatture direttamente in
+#      DEFINITIVA per collaudare i guard di congelamento, senza chiudere nulla
+#      che non sia gia' chiuso. Stessa lettura gia' messa a verbale in 2.6.
+#
+# NESSUN BYPASS GUC, a differenza dei guard di congelamento della famiglia. La
+#   GUC zeroerp.maintenance_reset_lotto_draft serve a fn_cleanup_fatture_by_ids
+#   per RIPORTARE INDIETRO un lotto: percorso che non attraversa mai questa
+#   soglia, perche' non esce dalla bozza — ci rientra. Aggiungere qui un bypass
+#   aprirebbe una porta di servizio sull'emissione in cambio di nulla.
+#
+# INDIRIZZI DATA-DRIVEN, non «FATT» cablato: la lista arriva da
+#   config.tipi_indirizzi_allowed via script.fn_indirizzi_obbligatori_mancanti,
+#   lo stesso building block gia' usato da script.fn_check_ddt_emittibile. Oggi
+#   l'ambito FATTURE marca obbligatorio il solo tipo 8 (FATT); il giorno in cui
+#   ne marchera' un altro, il guard lo pretende senza una riga di codice nuova.
+#
+# INTESTAZIONE: SI CONTROLLA IL TIPO, NON SOLO IL NULL. Le due colonne sono
+#   jsonb e fn_snapshot_intestazione_fattura applica jsonb_strip_nulls, quindi
+#   uno snapshot senza dati arriva qui come '{}' e non come NULL. Un controllo
+#   sul solo IS NULL lascerebbe passare l'oggetto vuoto — cioe' proprio il caso
+#   «snapshot mai scritto» che il brief §3.5 chiede di intercettare.
+#
+# PERCHE' LA LOGICA E' QUI E NON IN UNA fn_check_* PURA. Il modello DDT delega a
+#   script.fn_check_ddt_emittibile perche' quella lista ha DUE lettori: i guard
+#   di emissione e fn_available_actions_ddt, che ne fa il «disabled + reason»
+#   della UI. Per la fattura il secondo lettore non esiste: lo stato lo muove la
+#   pipeline, non un pulsante. Regola del 2 — si estrae quando arriva il
+#   secondo, esattamente come ci e' arrivato il DDT (delega introdotta il
+#   2026-07-19, dopo i guard).
+#
+# Dipendenze: codice errore E_FATTURA_NON_EMETTIBILE_INCOMPLETA (seed CSV, id
+#   575) e script.fn_indirizzi_obbligatori_mancanti. Il codice errore serve a
+#   runtime, non alla creazione: 20_code precede 80_data.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260731-11-create-trgfn-fatture-guard-uscita-draft-mctit.yaml
+
+  - changeSet:
+      id: 20260731-11-create-trgfn-fatture-guard-uscita-draft
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Guard di completezza sull'uscita dalla bozza: una fattura non lascia DRAFT
+        senza gli indirizzi obbligatori dell'ambito FATTURE e senza l'intestazione
+        fiscale congelata delle due parti.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'script'
+                AND p.proname = 'fn_indirizzi_obbligatori_mancanti'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_guard_uscita_draft()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: una fattura non lascia lo stato DRAFT se non e' completa
+              --        di cio' che il documento stampa — gli indirizzi marcati
+              --        obbligatori per l'ambito FATTURE e l'intestazione
+              --        fiscale congelata delle due parti.
+              -- Uso:   BEFORE UPDATE OF stato_doc_fiscale_id FOR EACH ROW
+              -- Piano: piano-db-satelliti-fattura Fase 2.5, criterio allargato
+              --        dal brief intestazione §3.5 (passo I.4).
+              DECLARE
+                  v_old_codice   config.stati_doc_fiscale.codice_interno%TYPE;
+                  v_new_codice   config.stati_doc_fiscale.codice_interno%TYPE;
+                  v_new_abortito config.stati_doc_fiscale.is_abortito%TYPE;
+                  v_presenti     integer[];
+                  v_ind_mancanti text[];
+                  v_int_mancanti text[] := ARRAY[]::text[];
+                  v_riassunto    text[] := ARRAY[]::text[];
+              BEGIN
+                  -- Solo il cambio di stato interessa. Il trigger e' gia' su
+                  -- UPDATE OF, ma quella clausola scatta anche quando la colonna
+                  -- viene riscritta con lo stesso valore.
+                  IF NEW.stato_doc_fiscale_id IS NOT DISTINCT FROM OLD.stato_doc_fiscale_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT s.codice_interno
+                    INTO v_old_codice
+                    FROM config.stati_doc_fiscale s
+                   WHERE s.id = OLD.stato_doc_fiscale_id;
+
+                  -- Si presidia l'USCITA dalla bozza, non ogni avanzamento:
+                  -- oltre DRAFT il documento e' gia' passato di qui, e a
+                  -- proteggerlo c'e' il guard di congelamento dei satelliti.
+                  IF v_old_codice IS DISTINCT FROM 'DRAFT' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT s.codice_interno, s.is_abortito
+                    INTO v_new_codice, v_new_abortito
+                    FROM config.stati_doc_fiscale s
+                   WHERE s.id = NEW.stato_doc_fiscale_id;
+
+                  -- Abbandono: una bozza incompleta deve restare chiudibile.
+                  -- Questo guard presidia l'emissione, non l'abbandono.
+                  IF COALESCE(v_new_abortito, FALSE) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 1. INDIRIZZI — dalla matrice config.tipi_indirizzi_allowed,
+                  --    non da un codice cablato: stesso building block di
+                  --    script.fn_check_ddt_emittibile.
+                  SELECT array_agg(fi.tipo_indirizzo_id)
+                    INTO v_presenti
+                    FROM vendite.fatture_indirizzi fi
+                   WHERE fi.fattura_id = NEW.id;
+
+                  v_ind_mancanti := script.fn_indirizzi_obbligatori_mancanti('FATTURE', v_presenti);
+
+                  IF array_length(v_ind_mancanti, 1) IS NOT NULL THEN
+                      v_riassunto := v_riassunto
+                          || format('indirizzi obbligatori mancanti: %s',
+                                    array_to_string(v_ind_mancanti, ', '));
+                  END IF;
+
+                  -- 2. INTESTAZIONE — le due colonne di testata scritte da
+                  --    vendite.fn_snapshot_intestazione_fattura. Si controlla il
+                  --    TIPO e non il solo NULL: jsonb_strip_nulls e' applicato a
+                  --    monte, quindi uno snapshot senza dati arriva qui come
+                  --    '{}' e passerebbe un test sul solo IS NULL.
+                  IF COALESCE(jsonb_typeof(NEW.emittente_snapshot), 'null') <> 'object'
+                     OR NEW.emittente_snapshot = '{}'::jsonb THEN
+                      v_int_mancanti := v_int_mancanti || 'emittente_snapshot'::text;
+                  END IF;
+
+                  IF COALESCE(jsonb_typeof(NEW.cliente_snapshot), 'null') <> 'object'
+                     OR NEW.cliente_snapshot = '{}'::jsonb THEN
+                      v_int_mancanti := v_int_mancanti || 'cliente_snapshot'::text;
+                  END IF;
+
+                  IF array_length(v_int_mancanti, 1) IS NOT NULL THEN
+                      v_riassunto := v_riassunto
+                          || format('intestazione non congelata: %s',
+                                    array_to_string(v_int_mancanti, ', '));
+                  END IF;
+
+                  IF array_length(v_riassunto, 1) IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite',
+                      'trgfn_fatture_guard_uscita_draft',
+                      'E_FATTURA_NON_EMETTIBILE_INCOMPLETA',
+                      jsonb_build_object(
+                          'fattura_id',            NEW.id,
+                          'numero',                NEW.numero,
+                          'stato_da',              v_old_codice,
+                          'stato_a',               v_new_codice,
+                          'indirizzi_mancanti',    to_jsonb(v_ind_mancanti),
+                          'intestazione_mancante', to_jsonb(v_int_mancanti)),
+                      NEW.tx_id,
+                      NEW.id::text,
+                      array_to_string(v_riassunto, '; ')
+                  );
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_fatture_guard_uscita_draft()
+              IS 'Guard (BEFORE UPDATE OF stato_doc_fiscale_id) di completezza sull''uscita dalla bozza: una fattura non lascia DRAFT senza gli indirizzi marcati obbligatori per l''ambito FATTURE (matrice config.tipi_indirizzi_allowed via script.fn_indirizzi_obbligatori_mancanti, oggi il solo FATT) e senza l''intestazione fiscale congelata delle due parti (emittente_snapshot e cliente_snapshot, scritte da fn_snapshot_intestazione_fattura). Sono i due lati della stessa garanzia di ristampa conforme: presidiarne uno solo lascerebbe un blocco stampato meta'' congelato e meta'' vivo. Esce in testa se lo stato di partenza non e'' DRAFT (oltre quella soglia il presidio e'' del guard di congelamento dei satelliti) e se lo stato di destinazione e'' abortito (una bozza incompleta deve restare chiudibile). Solo UPDATE: l''unico creatore applicativo, fn_get_or_create_fattura_header, inserisce sempre in DRAFT. Nessun bypass GUC: il reset lotto rientra nella bozza, non ne esce. L''intestazione si verifica per jsonb_typeof e non per IS NULL, perche'' jsonb_strip_nulls fa arrivare uno snapshot vuoto come ''{}''. Errore: E_FATTURA_NON_EMETTIBILE_INCOMPLETA. Modello: trgfn_ddt_guard_indirizzi_obbligatori. piano-db-satelliti-fattura Fase 2.5 + brief intestazione §3.5 (I.4).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.trgfn_fatture_guard_uscita_draft();

@@ -273,3 +273,24 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 272,19,id_fiscale,Id. fiscale,Identificativo fiscale univoco (CF o P.IVA) — colonna unica per disegno,id_fiscale_univoco,informazione,string,,170,40,left,Billing account,2,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.ba_col_id_fiscale,85
 273,19,data_insert,Data inserimento,Data e ora di creazione del mapping,data_insert,informazione,datetime,datetime_short,150,50,center,Audit,3,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,common.data_insert,10
 274,19,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-07-31 00:00:00,mctit,common.col_azioni,100
+275,20,codice,Codice,Codice del tipo di unita di misura,codice,identificatore,string,,150,10,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,catalogo.col_codice,100
+276,20,codice_interno,Codice interno,Codice interno usato dalla logica di dominio,codice_interno,informazione,string,,180,20,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,catalogo.col_codice_interno,80
+277,20,descrizione,Descrizione,Descrizione del tipo di unita di misura,descrizione,informazione,string,,300,30,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,catalogo.col_descrizione,95
+278,20,attivo,Attivo,Tipo attivo o disattivato,attivo,informazione,boolean,yesno,110,40,center,Stato,2,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,catalogo.col_attivo,60
+279,20,data_insert,Data inserimento,Data e ora di creazione del tipo,data_insert,informazione,datetime,datetime_short,150,50,center,Audit,3,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,common.data_insert,10
+280,20,data_update,Data aggiornamento,Data e ora dell'ultima modifica,data_update,informazione,datetime,datetime_short,150,60,center,Audit,3,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,common.data_update,5
+281,21,codice,Codice,Codice dell unita di misura,codice,identificatore,string,,150,10,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,catalogo.col_codice,100
+282,21,descrizione,Descrizione,Descrizione dell unita di misura,descrizione,informazione,string,,280,20,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,catalogo.col_descrizione,95
+283,21,tipo_uom_codice,Tipo UoM,Codice del tipo di unita di misura,tipo_uom_codice,informazione,string,,130,30,left,Classificazione,2,t,f,t,f,f,t,2026-07-31 00:00:00,mctit,catalogo.uom_tipo,70
+284,21,tipo_uom_descrizione,Descrizione tipo,Descrizione del tipo di unita di misura,tipo_uom_descrizione,informazione,string,,200,40,left,Classificazione,2,f,f,t,f,f,t,2026-07-31 00:00:00,mctit,catalogo.uom_tipo,30
+285,21,descrizione_fattura,Desc. Fattura,Descrizione da riportare in fattura,descrizione_fattura,informazione,string,,180,50,left,Documento,3,f,f,t,f,f,t,2026-07-31 00:00:00,mctit,catalogo.col_desc_fattura,50
+286,21,attivo,Attivo,Unita di misura attiva o disattivata,attivo,informazione,boolean,yesno,110,60,center,Stato,4,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,catalogo.col_attivo,60
+287,21,data_insert,Data inserimento,Data e ora di creazione dell unita di misura,data_insert,informazione,datetime,datetime_short,150,70,center,Audit,5,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,common.data_insert,10
+288,21,data_update,Data aggiornamento,Data e ora dell'ultima modifica,data_update,informazione,datetime,datetime_short,150,80,center,Audit,5,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,common.data_update,5
+289,21,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-07-31 00:00:00,mctit,common.col_azioni,100
+290,22,uom_from_codice,UoM Da,Codice dell unita di misura di partenza,uom_from_codice,identificatore,string,,130,10,left,Conversione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,catalogo.col_uom_da,100
+291,22,uom_from_descrizione,Descrizione Da,Descrizione dell unita di misura di partenza,uom_from_descrizione,informazione,string,,220,20,left,Conversione,1,f,f,t,t,f,t,2026-07-31 00:00:00,mctit,catalogo.col_desc_da,60
+292,22,uom_to_codice,UoM A,Codice dell unita di misura di arrivo,uom_to_codice,informazione,string,,130,30,left,Conversione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,catalogo.col_uom_a,90
+293,22,uom_to_descrizione,Descrizione A,Descrizione dell unita di misura di arrivo,uom_to_descrizione,informazione,string,,220,40,left,Conversione,1,f,f,t,t,f,t,2026-07-31 00:00:00,mctit,catalogo.col_desc_a,55
+294,22,fattore,Fattore,Fattore di conversione da UoM Da a UoM A,fattore,informazione,numeric,,120,50,right,Conversione,1,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,catalogo.col_fattore,80
+295,22,attivo,Attivo,Conversione attiva o disattivata,attivo,informazione,boolean,yesno,110,60,center,Stato,2,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,catalogo.col_attivo,50

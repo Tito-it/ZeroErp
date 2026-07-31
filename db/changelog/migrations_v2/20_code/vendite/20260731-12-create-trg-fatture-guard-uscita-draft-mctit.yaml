@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 2.5 / I.4 — arma trgfn_fatture_guard_uscita_draft su vendite.fatture
+#   (piano-db-satelliti-fattura.md Fase 2.5 + brief intestazione §3.5).
+#
+# Funzione: vendite.trgfn_fatture_guard_uscita_draft (20260731-11), che porta il
+#   razionale completo. Qui vivono solo le tre scelte di MONTAGGIO.
+#
+# 1) FASE _a10_ (guard), come da linee-guida-trigger: prima linea di difesa, e
+#    il prefisso impone l'ordine — PostgreSQL esegue i trigger di pari tipo in
+#    ordine lessicografico, quindi un'operazione respinta non fa lavorare
+#    audit_data_user, gen_tx_id e z90_storico.
+#
+# 2) IL NOME DECIDE CHI PARLA PER PRIMO, e qui non e' un dettaglio. Fra i guard
+#    a10 di vendite.fatture l'ordine lessicografico e':
+#
+#      guard_emittente_scope < guard_intestazione_congelata
+#                            < guard_stato < guard_uscita_draft
+#
+#    cioe' questo trigger scatta DOPO trgfn_fatture_guard_stato. E' voluto: una
+#    transizione non ammessa dalla matrice config.stati_doc_fiscale_transizioni
+#    deve essere respinta COME transizione illegale, non come documento
+#    incompleto. Con l'ordine invertito, un tentativo DRAFT -> DEFINITIVA (che la
+#    matrice non ammette) tornerebbe «fattura incompleta»: un messaggio che manda
+#    a cercare il problema dalla parte sbagliata. La descrizione breve e' quindi
+#    scelta anche per come ordina, e va tenuta cosi'.
+#
+# 3) UPDATE OF stato_doc_fiscale_id e non UPDATE secco: la regola riguarda una
+#    sola colonna, e lo standard (linee-guida-trigger, «Scelta tra UPDATE vs
+#    UPDATE OF colonna») e' di restringere quando si puo'. Una fattura in bozza
+#    viene riscritta di continuo dalla pipeline — totali, riepiloghi, snapshot —
+#    e senza OF il guard rifarebbe due letture su config e una su
+#    fatture_indirizzi a ogni singola di quelle scritture.
+#
+# NIENTE CLAUSOLA WHEN. Sarebbe tentante scriverla
+# (`WHEN (OLD.stato_doc_fiscale_id IS DISTINCT FROM NEW.stato_doc_fiscale_id)`)
+#   per risparmiare la chiamata a funzione sui no-op, ma la stessa condizione e'
+#   gia' la prima riga della funzione: duplicarla nel montaggio significa avere
+#   due punti da tenere allineati, e nessuno dei due sarebbe piu' quello vero.
+#
+# ⚠️ EFFETTO SULLE FIXTURE. Questo e' un guard restrittivo su un percorso che i
+#   test gia' attraversano: due pgTAP verdi muovono una fattura da DRAFT senza
+#   satelliti e vengono adeguati nello stesso giro —
+#   test-guard-lotto-fatture-stato-coerente.sql (che chiama
+#   fn_sync_lotto_fatture_stato verso EMESSA) e
+#   test-fatture-righe-importo-e-kit-v1.sql (che percorre DRAFT -> EMESSA ->
+#   DEFINITIVA per superare la soglia di congelamento). Non e' un danno
+#   collaterale: e' il guard che fa il suo lavoro anche sulle fixture, che dal
+#   2026-07-31 devono completare la fattura prima di emetterla come farebbe la
+#   pipeline.
+#
+# Dipendenze: 20260731-11 (funzione), codice errore 575 (seed CSV), colonne
+#   emittente_snapshot / cliente_snapshot (20260731-05).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260731-12-create-trg-fatture-guard-uscita-draft-mctit.yaml
+
+  - changeSet:
+      id: 20260731-12-create-trg-fatture-guard-uscita-draft
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Arma trgfn_fatture_guard_uscita_draft su vendite.fatture
+        (BEFORE UPDATE OF stato_doc_fiscale_id, fase a10).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'vendite'
+                AND p.proname = 'trgfn_fatture_guard_uscita_draft'
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM information_schema.columns
+              WHERE table_schema = 'vendite'
+                AND table_name = 'fatture'
+                AND column_name IN ('emittente_snapshot', 'cliente_snapshot')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_a10_guard_uscita_draft_upd
+                  ON vendite.fatture;
+
+              CREATE TRIGGER trg_fatture_a10_guard_uscita_draft_upd
+                  BEFORE UPDATE OF stato_doc_fiscale_id ON vendite.fatture
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_fatture_guard_uscita_draft();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_a10_guard_uscita_draft_upd
+                  ON vendite.fatture;

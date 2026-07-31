@@ -211,7 +211,8 @@ Una volta che il task popola la tabella, va agganciato il guard che pretende
 (`trg_ddt_a10_guard_indirizzi_obbligatori_upd` → `trgfn_ddt_guard_indirizzi_obbligatori`
 → `script.fn_check_ddt_emittibile` → `script.fn_indirizzi_obbligatori_mancanti`).
 L'helper è già ambito-parametrico: serve il trigger su `vendite.fatture` per
-l'ambito `FATTURE`, con errore `E_INDIRIZZO_DOC_OBBLIGATORIO`.
+l'ambito `FATTURE`, ~~con errore `E_INDIRIZZO_DOC_OBBLIGATORIO`~~ — **entrambe
+queste due frasi sono state superate: vedi la rev. 2026-07-31 qui sotto.**
 
 ⚠️ **Ordine di accensione, non negoziabile**: prima il task che popola, poi il
 guard. Invertirli blocca la fatturazione. ~~Con dati storici privi di snapshot
@@ -222,6 +223,37 @@ fatture nuove.~~
 > fatture sono dati di test e **si cancellano e rigenerano**. Niente accensione
 > graduale, niente migration di bonifica, e — nel piano BE/FE — niente fallback
 > «transitorio» del context builder. Rif. §3.8 del piano.
+
+<!-- separatore: due revisioni distinte, non un unico blockquote -->
+
+> ✅ **Rev. 2026-07-31 — fatto, ma con due scostamenti da questo paragrafo.**
+> Il guard è applicato e verde: `vendite.trgfn_fatture_guard_uscita_draft`
+> (changeSet `20260731-11` funzione, `20260731-12` montaggio), pgTAP
+> `test-fattura-guard-uscita-draft-v1.sql` `plan(11)`.
+>
+> 🔴 **1. Il codice errore non è `E_INDIRIZZO_DOC_OBBLIGATORIO`.** È
+> **`E_FATTURA_NON_EMETTIBILE_INCOMPLETA`** (id 575), da registrare in
+> `error_policies.py`. Il motivo è che nel frattempo il criterio si è allargato:
+> il brief intestazione §3.5 ha stabilito che una fattura non lascia `DRAFT`
+> senza **anche** l'intestazione fiscale congelata delle due parti
+> (`emittente_snapshot`, `cliente_snapshot`). Segnalare una `cliente_snapshot`
+> mancante con un codice che dice «indirizzo obbligatorio mancante» direbbe una
+> cosa **falsa**, non solo imprecisa, e manderebbe a cercare un indirizzo che
+> c'è. Il dettaglio di cosa manca sta nel messaggio e nel payload
+> (`indirizzi_mancanti`, `intestazione_mancante`), non in codici distinti: chi
+> riceve l'errore fa comunque la stessa cosa, cioè rieseguire lo step DRAFT.
+> Razionale completo in `brief-db-snapshot-intestazione-fattura.md` §10.9.
+>
+> **2. Non è «il modello esatto del DDT».** La catena del DDT passa da
+> `script.fn_check_ddt_emittibile` perché quella lista ha **due** lettori — i
+> guard e `fn_available_actions_ddt`, che ne fa il «disabled + reason» della UI.
+> Per la fattura il secondo lettore non esiste: lo stato lo muove la pipeline,
+> non un pulsante. La logica sta quindi dentro il trigger, e si estrarrà in una
+> `fn_check_*` pura quando arriverà il secondo consumatore — che è esattamente
+> come ci è arrivato il DDT (delega introdotta il 2026-07-19, **dopo** i guard).
+> Il building block condiviso resta `script.fn_indirizzi_obbligatori_mancanti`,
+> chiamato direttamente: gli indirizzi obbligatori restano data-driven dalla
+> matrice, non da un `FATT` cablato.
 
 ### 5.4 Lock post-emissione
 
@@ -271,8 +303,13 @@ presenta**.
    → `E_TIPO_INDIRIZZO` dal trigger esistente.
 5. Idempotenza: doppia esecuzione → stesso risultato, nessun duplicato
    (UNIQUE uno-per-tipo rispettato), `updated_rows` coerente.
-6. Guard §5.3: emissione di fattura senza `FATT` → `E_INDIRIZZO_DOC_OBBLIGATORIO`;
-   con `FATT` → passa.
+6. Guard §5.3: emissione di fattura senza `FATT` → ~~`E_INDIRIZZO_DOC_OBBLIGATORIO`~~
+   **`E_FATTURA_NON_EMETTIBILE_INCOMPLETA`** (rev. 2026-07-31, vedi §5.3); con
+   `FATT` → passa **solo se anche l'intestazione è congelata**, perché il
+   criterio è allargato. Coperto da
+   `db/pgtap/vendite/test-fattura-guard-uscita-draft-v1.sql`, che prova le due
+   metà **separatamente**: senza nulla, con il solo indirizzo, e con
+   l'intestazione a `{}` invece che NULL.
 7. Lock §5.4: scrittura su fattura oltre EMESSA → errore; percorso reset → ammesso.
 8. Seed: presenza e posizione del task in `processi` di **entrambe** le corsie
    DRAFT + presenza delle task_policy.

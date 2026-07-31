@@ -576,7 +576,82 @@ per voi: **filtrare sull'identità del passo, mai sul nome di ciò che lo esegue
 
 #### Cosa resta a noi
 
-Il guard **2.5 col criterio allargato** (§3.5) e il seed della matrice `EF`
-(§3.6, non urgente: la sede si risolve già dal layer SOGGETTO). Da qui in avanti
-la vostra Fase 2 non è più bloccata: la forma è quella qui sopra e non cambierà
-sotto di voi.
+Il guard **2.5 col criterio allargato** (§3.5) — **consegnato lo stesso giorno,
+vedi §10.9** — e il seed della matrice `EF` (§3.6, non urgente: la sede si
+risolve già dal layer SOGGETTO). Da qui in avanti la vostra Fase 2 non è più
+bloccata: la forma è quella qui sopra e non cambierà sotto di voi.
+
+---
+
+### 10.9 Consegna — il guard §3.5, e **il codice errore non è quello annunciato**
+
+**Applicato e verde** il 2026-07-31, subito dopo I.1-I.3. Due changeSet:
+
+| # | Cosa | changeSet |
+|---|---|---|
+| I.4 | `vendite.trgfn_fatture_guard_uscita_draft` | `20260731-11` |
+| I.4 | montaggio su `vendite.fatture`, `BEFORE UPDATE OF stato_doc_fiscale_id` | `20260731-12` |
+
+pgTAP nuovo `db/pgtap/vendite/test-fattura-guard-uscita-draft-v1.sql`, `plan(11)`
+verde; due pgTAP verdi preesistenti adeguati perché attraversano la soglia con
+fatture nude (`test-guard-lotto-fatture-stato-coerente.sql`,
+`test-fatture-righe-importo-e-kit-v1.sql`).
+
+#### 🔴 La riga che dovete cambiare, la seconda
+
+Il guard **non** solleva `E_INDIRIZZO_DOC_OBBLIGATORIO`, che è ciò che il brief
+fratello annunciava (`brief-db-snapshot-indirizzi-fattura.md` §5.3, scritto
+quando il criterio era ancora il solo indirizzo). Solleva un codice suo:
+
+```
+E_FATTURA_NON_EMETTIBILE_INCOMPLETA   (id 575, seed CSV)
+"Fattura %s non emettibile: %s."
+```
+
+dove il secondo `%s` è il riassunto di cosa manca — per esempio
+`indirizzi obbligatori mancanti: FATT; intestazione non congelata:
+emittente_snapshot, cliente_snapshot`. Il payload strutturato porta le due liste
+separate (`indirizzi_mancanti`, `intestazione_mancante`) più `stato_da` /
+`stato_a`.
+
+**Perché un codice nuovo e non quello del DDT.** `E_INDIRIZZO_DOC_OBBLIGATORIO`
+descrive un'assenza di **indirizzi**, ed è corretto per il DDT. Qui il criterio è
+allargato: usarlo per segnalare che manca `cliente_snapshot` direbbe una cosa
+falsa, non solo imprecisa — e manderebbe l'operatore a cercare un indirizzo che
+c'è. Un codice solo e non due perché **chi lo riceve fa la stessa cosa in
+entrambi i casi** (rieseguire lo step DRAFT): la distinzione serve alla
+diagnosi, che sta nel messaggio e nel payload, non al ramo di codice. È lo stesso
+criterio della deviazione già presa su `E_FATTURA_SATELLITE_CONGELATO`.
+
+Da registrare in `error_policies.py`. Categoria: è un **409** (`_INCOMPLETA` non
+è nella tabella dei suffissi di `api.md` — decidetelo voi, ma il caso è «lo
+stato attuale della risorsa non consente l'azione», non un input malformato).
+
+#### Quattro scelte di montaggio che vi riguardano
+
+1. **Presidia l'uscita dalla bozza, non ogni avanzamento.** Esce in testa se lo
+   stato di partenza non è `DRAFT`. Oltre quella soglia il presidio è del guard
+   di congelamento: allargarlo darebbe una seconda occasione di fallire su un
+   documento già emesso.
+2. **Solo `UPDATE`, non `INSERT`.** L'unico creatore applicativo,
+   `fn_get_or_create_fattura_header`, inserisce **sempre** in `DRAFT`: la porta è
+   chiusa a monte per costruzione, non da questo trigger.
+3. **Nessun bypass GUC**, a differenza dei guard di congelamento della famiglia.
+   `zeroerp.maintenance_reset_lotto_draft` serve al reset lotto, che *rientra*
+   nella bozza invece di uscirne — un bypass qui sarebbe una porta di servizio
+   sull'emissione in cambio di nulla.
+4. **Il nome ordina dopo `guard_stato`.** Una transizione non ammessa dalla
+   matrice deve essere respinta *come transizione illegale*, non come «documento
+   incompleto». Il test 11 del pgTAP presidia esattamente quell'ordine.
+
+#### Due cose per la vostra §6
+
+L'asserzione **14** («una fattura senza intestazione congelata non lascia
+DRAFT») è ora presidiata anche a livello DB dal pgTAP: il vostro smoke la
+verifica **attraverso la pipeline**, che è il pezzo che a noi manca.
+
+Nel comporre le fixture dello smoke, tenete conto che d'ora in poi **qualunque**
+percorso che porta una fattura fuori dalla bozza pretende il documento completo —
+compresi gli script di appoggio che oggi muovono lo stato con un `UPDATE`
+diretto. Ce ne sono già due fra i nostri pgTAP, ed è il motivo per cui li abbiamo
+adeguati nello stesso giro invece di scoprirlo alla prossima esecuzione.
