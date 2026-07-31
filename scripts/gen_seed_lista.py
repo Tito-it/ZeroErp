@@ -53,6 +53,15 @@ sparirebbe):
 Autoverifica (confronta una lista gia' configurata con la sua vista):
 
     backend/.venv/bin/python scripts/gen_seed_lista.py --verifica vendite.ddt
+
+Controllo di consegna, da lanciare PRIMA di passare un lotto al team BE:
+confronta il flag `ordinabile` del seed con la whitelist di ordinamento del
+repository che serve la lista. Una colonna `ordinabile=t` fuori whitelist non
+da' errore da nessuna parte — a video resta una freccia che non ordina.
+Non usa il DB, quindi gira ovunque ci sia il repo:
+
+    python scripts/gen_seed_lista.py --verifica-ordinamento
+    python scripts/gen_seed_lista.py --verifica-ordinamento vendite.ordini
 """
 
 from __future__ import annotations
@@ -67,10 +76,13 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
+# Import pigro: `--verifica-ordinamento` legge solo CSV e sorgenti Python, e
+# deve poter girare dove psycopg non c'e' (server DB, CI). Chi ha bisogno del
+# DB se lo sente dire da connetti(), non all'avvio.
 try:
     import psycopg
 except ImportError:  # pragma: no cover
-    sys.exit("psycopg non disponibile: usa backend/.venv/bin/python")
+    psycopg = None
 
 ROOT = Path(__file__).resolve().parent.parent
 SEED_DIR = ROOT / "db/changelog/migrations_v2/80_data/sql/ui"
@@ -106,6 +118,79 @@ FORMATO_DA_TEMPLATE = {
 TIPO_DA_FORMATO = {
     "date_short": "date", "datetime_short": "datetime",
     "currency_eur": "numeric", "number": "numeric",
+}
+
+# ── Contratto seed <-> backend: dove vive la whitelist di ordinamento ──────
+#
+# `<ListaConfigurabile>` monta le Column con `:field="campo_sorgente"`, quindi
+# l'`order_by` che arriva al backend porta il nome FISICO della colonna. Una
+# colonna `ordinabile=t` il cui `campo_sorgente` non e' nella whitelist del
+# repository non da' errore: il repository ripiega in silenzio sull'ordinamento
+# di default. A video resta una freccia che non ordina — il difetto piu' caro
+# che questo seed possa produrre, perche' nessuno se ne accorge.
+#
+# Questa mappa dice, per ogni lista, DOVE leggere quella whitelist. Va tenuta
+# completa: `--verifica-ordinamento` si ferma sulle liste che non trova qui,
+# invece di dichiararle a posto (una lista saltata in silenzio e' esattamente
+# come non aver fatto il controllo).
+#
+# Forme supportate, tutte incontrate davvero:
+#   (file, costante)              costante di modulo, dict oppure set
+#   (file, costante, "class X")   costante dentro una classe
+#   (file, "_CODA_META", chiave)  mappa annidata: <chiave>["order_cols"]
+WHITELIST_BE: dict[str, tuple] = {
+    "anagrafiche.clienti": ("apps/anagrafiche/db/clienti_repository.py", "_CLIENTI_ORDER_COLS"),
+    "anagrafiche.soggetti": ("apps/anagrafiche/db/soggetti_repository.py", "_SOGGETTI_ORDER_COLS"),
+    "anagrafiche.fornitori": ("apps/anagrafiche/db/fornitori_repository.py", "_FORNITORI_ORDER_COLS"),
+    "anagrafiche.categorie_clienti": ("apps/anagrafiche/db/categorie_clienti_repository.py", "_ORDER_COLS"),
+    "anagrafiche.indirizzi": ("apps/anagrafiche/db/indirizzi_repository.py", "_ORDER_COLS"),
+    "anagrafiche.emittenti_fiscali": ("apps/anagrafiche/db/emittenti_fiscali_repository.py",
+                                      "_EMITTENTI_ORDER_COLS"),
+    # Annidata nella classe: nel modulo esiste anche `_EMITTENTI_ORDER_COLS`,
+    # che contiene `_ORDER_COLS` come sottostringa. Senza l'ancora di classe si
+    # leggerebbe la costante sbagliata.
+    "anagrafiche.emittente_billing_account": ("apps/anagrafiche/db/emittenti_fiscali_repository.py",
+                                              "_ORDER_COLS",
+                                              "class EmittentiFiscaliBillingAccountRepository"),
+    "config.utilities_tipi_ruolo": ("apps/config/db/utilities_tipi_ruolo_repository.py", "_ORDER_COLS"),
+    "config.tipi_ruolo_tipi_indirizzo": ("apps/config/db/tipi_ruolo_tipi_indirizzo_repository.py",
+                                         "_ORDER_COLS"),
+    "pratiche.pratiche": ("apps/pratiche/db/pratiche_repository.py", "_PRATICHE_ORDER_COLS"),
+    "vendite.lotti": ("apps/vendite/db/vendite_repository.py", "LOTTI_SORT_COLUMNS"),
+    "vendite.contratti": ("apps/vendite/db/contratti_repository.py", "_ORDER_COLS_CONTRATTI"),
+    "vendite.preventivi": ("apps/vendite/db/preventivi_repository.py", "_ORDER_COLS_PREVENTIVI"),
+    "vendite.offerte": ("apps/vendite/db/offerte_repository.py", "_ORDER_COLS_OFFERTE"),
+    "vendite.ordini": ("apps/vendite/db/ordini_repository.py", "_ORDER_COLS_ORDINI"),
+    "vendite.ddt": ("apps/vendite/db/ddt_repository.py", "_ORDER_COLS_DDT"),
+    "vendite.resi": ("apps/vendite/db/resi_repository.py", "_ORDER_COLS_RESI"),
+    # Le due code NON usano `_ORDER_COLS_RESI`: hanno mappe proprie, con colonne
+    # completamente diverse. Averle lette dalla costante sbagliata ci ha fatto
+    # contare 18 colonne rotte che erano zero.
+    "vendite.resi_da_accreditare": ("apps/vendite/db/resi_repository.py", "_CODA_META",
+                                    "vendite.vw_resi_da_accreditare"),
+    "vendite.resi_da_riconsegnare": ("apps/vendite/db/resi_repository.py", "_CODA_META",
+                                     "vendite.vw_resi_da_riconsegnare"),
+    "catalogo.uom_tipi": ("apps/catalogo/db/catalogo_repository.py", "UOM_TIPI_ORDER_COLUMNS"),
+    "catalogo.unita_misura": ("apps/catalogo/db/catalogo_repository.py", "UOM_ORDER_COLUMNS"),
+    "catalogo.conversioni_uom": ("apps/catalogo/db/catalogo_repository.py",
+                                 "UOM_CONVERSIONI_ORDER_COLUMNS"),
+}
+
+# Colonne che devono ordinare SEMPRE, quando la lista ce l'ha (regola di
+# dominio, Tid 2026-07-31): la data che individua il contesto ha priorita' su
+# tutto, poi il numero/codice del contesto, la ragione sociale, il billing
+# account, l'id fiscale, la utility, il totale e lo stato.
+# Riconosciute per sottostringa sul `codice` della colonna; basta che UNA delle
+# candidate ordini perche' il concetto sia coperto.
+NUCLEO_ORDINABILE: dict[str, tuple[str, ...]] = {
+    "data": ("data_", "data"),
+    "numero/codice": ("numero", "codice"),
+    "ragione sociale": ("ragione_sociale", "denominazione", "soggetto", "destinatario"),
+    "billing account": ("billing_account", "ba_codice"),
+    "id fiscale": ("id_fiscale", "partita_iva"),
+    "utility": ("utility",),
+    "totale": ("totale",),
+    "stato": ("stato", "attivo"),
 }
 
 CAMPI_DEF = ["id", "codice", "descrizione", "schema_dati", "vista_sql", "attivo",
@@ -158,6 +243,9 @@ RE_COLONNA = re.compile(r"<Column\b(.*?)(?:/>|>(.*?)</Column>)", re.S)
 
 # Scopo: apre la connessione al DB leggendo backend/.env (stesse variabili del BE).
 def connetti():
+    if psycopg is None:
+        sys.exit("psycopg non disponibile: usa backend/.venv/bin/python "
+                 "(serve solo ai comandi che leggono il DB)")
     env = {}
     percorso = ROOT / "backend/.env"
     if percorso.exists():
@@ -684,6 +772,127 @@ def genera(codice, descrizione, schema, vista, cols_vista, cols_vue, dizionario,
     return riga_def, righe_col, riga_preset, righe_pc, avvisi
 
 
+# Scopo: estrae le chiavi di una costante-whitelist dal sorgente di un
+#        repository backend. Lettura statica: non importa Django, quindi gira
+#        anche dove il backend non e' installato (es. il server DB).
+#
+#        Due accortezze pagate a caro prezzo:
+#        1. i **commenti vanno tolti prima**: dentro ai commenti di quelle
+#           costanti compaiono parole come `campo_sorgente`, che finivano per
+#           errore fra le chiavi e mascheravano colonne rotte;
+#        2. il nome va ancorato a **inizio riga**, altrimenti `_ORDER_COLS`
+#           aggancia `_EMITTENTI_ORDER_COLS` che lo contiene.
+#
+#        Solleva ValueError se non trova la costante: meglio fermarsi che
+#        rispondere "nessun problema" perche' non si e' guardato niente.
+def whitelist_backend(percorso: str, costante: str, dentro: str | None = None) -> set[str]:
+    file = ROOT / "backend" / percorso
+    if not file.exists():
+        raise ValueError(f"sorgente backend non trovato: {percorso}")
+    testo = file.read_text(encoding="utf-8")
+
+    if costante == "_CODA_META":
+        # Mappa annidata: <vista>: { "order_cols": { ... } }
+        try:
+            inizio = testo.index(f'"{dentro}"')
+            inizio = testo.index('"order_cols"', inizio)
+        except ValueError:
+            raise ValueError(f"`{dentro}` senza `order_cols` in {percorso}") from None
+    else:
+        base = testo.index(dentro) if dentro else 0
+        if dentro and dentro not in testo:
+            raise ValueError(f"ancora `{dentro}` non trovata in {percorso}")
+        m = re.compile(rf"^[ \t]*{re.escape(costante)}\s*(?::[^=\n]*)?=\s*\{{",
+                       re.M).search(testo, base)
+        if not m:
+            raise ValueError(f"costante `{costante}` non trovata in {percorso}"
+                             + (f" dopo `{dentro}`" if dentro else ""))
+        inizio = m.start()
+
+    apertura = testo.index("{", inizio)
+    profondita = 0
+    for fine in range(apertura, len(testo)):
+        profondita += (testo[fine] == "{") - (testo[fine] == "}")
+        if profondita == 0:
+            break
+    corpo = "\n".join(r for r in testo[apertura:fine + 1].splitlines()
+                      if not r.strip().startswith("#"))
+    # Forma dict (`"chiave": "v.colonna"`) oppure set (`"chiave", ...`).
+    chiavi = set(re.findall(r'"([a-z_0-9]+)"\s*:', corpo))
+    return chiavi or set(re.findall(r'"([a-z_0-9]+)"', corpo))
+
+
+# Scopo: confronta il seed con la whitelist di ordinamento del backend, lista
+#        per lista, e riporta i tre modi in cui possono divergere.
+#        Gira PRIMA della consegna al team BE (il loro presidio,
+#        apps/core/tests/test_liste_configurabili_seed.py, gira dopo che il
+#        seed e' atterrato: sono complementari, non doppioni).
+#        Non tocca il DB e non scrive niente.
+def verifica_ordinamento(solo: str | None = None) -> int:
+    liste = [r for r in righe_csv("lista_definizione.csv").values()
+             if r["attivo"] == "t" and (solo is None or r["codice"] == solo)]
+    if solo and not liste:
+        print(f"[X] lista `{solo}` non presente nel seed", file=sys.stderr)
+        return 1
+    colonne = list(csv.DictReader((SEED_DIR / "lista_colonna.csv").open(encoding="utf-8")))
+
+    problemi = saltate = 0
+    for riga in sorted(liste, key=lambda r: r["codice"]):
+        codice = riga["codice"]
+        if codice not in WHITELIST_BE:
+            saltate += 1
+            print(f"  {codice:<40}[X] NON MAPPATA — aggiungerla a WHITELIST_BE "
+                  "(non posso dire se e' a posto)")
+            continue
+        try:
+            wl = whitelist_backend(*WHITELIST_BE[codice])
+        except ValueError as errore:
+            saltate += 1
+            print(f"  {codice:<40}[X] whitelist illeggibile: {errore}")
+            continue
+
+        attive = [c for c in colonne
+                  if c["lista_id"] == riga["id"] and c["attivo"] == "t"
+                  and c["tipo_colonna"] != "azione" and c["campo_sorgente"]]
+        ordinabili = {c["campo_sorgente"] for c in attive if c["ordinabile"] == "t"}
+        a_catalogo = {c["campo_sorgente"] for c in attive}
+
+        # 1. promette e non mantiene: freccia a video, ripiego silenzioso a valle.
+        bugiarde = sorted(ordinabili - wl)
+        # 2. il backend sa ordinare una colonna che il seed non offre. Solo per
+        #    le colonne A CATALOGO: una whitelist puo' legittimamente conoscere
+        #    campi che la lista non mostra (stessa regola del test del BE).
+        irraggiungibili = sorted((wl & a_catalogo) - ordinabili)
+        # 3. regola di dominio: il nucleo ordina sempre.
+        rotte = [nome for nome, chiavi in NUCLEO_ORDINABILE.items()
+                 if (cand := [c for c in attive if any(k in c["codice"] for k in chiavi)])
+                 and not any(c["campo_sorgente"] in wl for c in cand)]
+
+        if not bugiarde and not irraggiungibili and not rotte:
+            print(f"  {codice:<40}ok  ({len(attive)} colonne, whitelist {len(wl)})")
+            continue
+        problemi += 1
+        print(f"  {codice:<40}KO")
+        if bugiarde:
+            print(f"      promettono l'ordinamento ma il BE non ce l'ha: {', '.join(bugiarde)}")
+        if irraggiungibili:
+            print(f"      il BE sa ordinarle ma il seed non le offre : {', '.join(irraggiungibili)}")
+        if rotte:
+            print(f"      NUCLEO rotto (deve ordinare sempre)        : {', '.join(rotte)}")
+
+    plurale = lambda n, s, p: f"{n} {s if n == 1 else p}"  # noqa: E731
+    print()
+    if saltate:
+        print(f"[X] {plurale(saltate, 'lista non verificata', 'liste non verificate')}: "
+              "finche' restano, questo comando NON dice che il seed e' a posto")
+    if problemi:
+        print(f"[X] {plurale(problemi, 'lista', 'liste')} con divergenze seed <-> backend")
+    if not problemi and not saltate:
+        print(f"[ok] {plurale(len(liste), 'lista allineata', 'liste allineate')} "
+              "col backend in tutte e tre le direzioni")
+    return 1 if (problemi or saltate) else 0
+
+
 # Scopo: autoverifica — confronta le colonne di una lista GIA' configurata con
 #        quelle esposte dalla sua vista. Serve a sapere se l'introspezione e'
 #        credibile PRIMA di usarla su liste nuove.
@@ -838,12 +1047,23 @@ def main() -> int:
                    help="recupera in CSV il lavoro gia' fatto su una lista esistente")
     p.add_argument("--verifica", metavar="CODICE",
                    help="autoverifica su una lista gia' configurata")
+    p.add_argument("--verifica-ordinamento", metavar="CODICE", nargs="?", const="__tutte__",
+                   dest="verifica_ordinamento",
+                   help="confronta `ordinabile` nel seed con la whitelist di ordinamento "
+                        "del backend (tutte le liste, o solo quella indicata). Non usa il "
+                        "DB: gira ovunque ci sia il repo")
     p.add_argument("--forza", action="store_true",
                    help="genera comunque una bozza anche se la lista esiste gia' "
                         "(gli id restano nuovi: serve solo per ripartire da capo)")
     args = p.parse_args()
     if not args.data:
         args.data = f"{date.today().isoformat()} 00:00:00"
+
+    # Prima di aprire la connessione: questo controllo legge solo CSV e sorgenti
+    # e deve poter girare anche dove il DB non e' raggiungibile (CI, server BE).
+    if args.verifica_ordinamento:
+        return verifica_ordinamento(
+            None if args.verifica_ordinamento == "__tutte__" else args.verifica_ordinamento)
 
     with connetti() as conn:
         if args.stato:

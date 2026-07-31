@@ -6,7 +6,7 @@
 -- 4) MASSIVO DRAFT: terzo task = generate_fatture_righe
 -- 5) GIORNALIERO DRAFT: pipeline esiste (esattamente 1, perimetro default)
 -- 6) GIORNALIERO DRAFT: primo task = pull_attivita_da_commessa
--- 7) GIORNALIERO DRAFT: sequenza di 3 task (pull -> select -> genera)
+-- 7) GIORNALIERO DRAFT: sequenza completa e ordinata dei task
 -- 8) chiude_lotto: esattamente 1 stato con flag TRUE (vincolo singleton)
 -- 9) chiude_lotto: lo stato TRUE e' DEFINITIVA
 -- 10) REGISTRATA: chiude_lotto = false (flag spostato)
@@ -89,15 +89,26 @@ SELECT is(
   'GIORNALIERO DRAFT: primo task = pull_attivita_da_commessa'
 );
 
+-- ⚠️ Rev. 2026-08-01 — l'asserzione era `jsonb_array_length = 3` ed e' diventata
+--    rossa quando l'armamento della Fase 2 del piano satelliti (2.3 parte 2) ha
+--    aggiunto `snapshot_indirizzi_lotto` in coda alla corsia DRAFT di ENTRAMBE
+--    le pipeline. Non e' stata alzata a 4: un numero nudo si rompe a ogni task
+--    aggiunto e, quando si rompe, non dice ne' quale task e' comparso ne' se e'
+--    finito nel posto giusto. La sequenza ORDINATA dei nomi costa uguale, regge
+--    lo stesso invariante (nessuna aggiunta accidentale) e in piu' presidia
+--    l'ORDINE — che qui e' sostanza: lo snapshot degli indirizzi deve stare
+--    DOPO generate_fatture_righe, perche' lavora su fatture che devono gia'
+--    esistere.
 SELECT is(
   (
-    SELECT jsonb_array_length(processi)
-    FROM vendite.fatturazione_pipeline
-    WHERE tipo_lotto = 'GIORNALIERO' AND stato_doc_fiscale_id = 1
-      AND utility_id IS NULL AND tipo_doc_fiscale_id IS NULL
+    SELECT string_agg(p ->> 'task', ' -> ' ORDER BY ord)
+    FROM vendite.fatturazione_pipeline fp
+    CROSS JOIN LATERAL jsonb_array_elements(fp.processi) WITH ORDINALITY AS t(p, ord)
+    WHERE fp.tipo_lotto = 'GIORNALIERO' AND fp.stato_doc_fiscale_id = 1
+      AND fp.utility_id IS NULL AND fp.tipo_doc_fiscale_id IS NULL
   ),
-  3,
-  'GIORNALIERO DRAFT: sequenza di 3 task (pull -> select -> genera)'
+  'pull_attivita_da_commessa -> select_attivita -> generate_fatture_righe -> snapshot_indirizzi_lotto',
+  'GIORNALIERO DRAFT: sequenza completa e ordinata dei task'
 );
 
 -- 8-10) chiude_lotto: flag spostato su DEFINITIVA, tolto da REGISTRATA, singleton rispettato.
