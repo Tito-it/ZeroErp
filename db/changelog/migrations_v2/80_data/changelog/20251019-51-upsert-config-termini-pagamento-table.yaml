@@ -38,10 +38,14 @@ databaseChangeLog:
               - column: { name: codice_interno,    type: STRING }              
               - column: { name: descrizione,  type: STRING }
               - column: { name: numero_rate,  type: INTEGER }
-              - column: { name: unita_intervallo,  type: STRING }
+              # 2026-07-31 (piano-db-satelliti-fattura 3a.2/3a.3, D-I/D-E):
+              # via `unita_intervallo` (colonna eliminata) e `tipo_offset`
+              # (sostituito dal booleano `fine_mese`). Il loader e' runOnChange,
+              # quindi resta il mirror vivo del CSV: si estende in place, non si
+              # duplica in un loader nuovo.
               - column: { name: intervallo,  type: INTEGER }
               - column: { name: primo_offset_giorni,  type: INTEGER }
-              - column: { name: tipo_offset,  type: STRING }
+              - column: { name: fine_mese,  type: BOOLEAN }
               - column: { name: ripartizione,  type: STRING }
               - column: { name: arrotondamento_metodo,  type: STRING }
               - column: { name: arrotondamento_decimali,  type: INTEGER }
@@ -53,4 +57,6 @@ databaseChangeLog:
                   name: data_update
                   type: STRING 
                   defaultValue: "NOW()"
-              - column: { name: storicizza,  type: BOOLEAN }
+              # `storicizza` rimossa dall'elenco il 2026-07-31: non esiste ne'
+              # nella tabella ne' nel CSV — era una riga inerte che descriveva
+              # una colonna immaginaria.
