@@ -11,3 +11,7 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 10,10,resi_da_accreditare_default,Vista standard coda accrediti,sistema,,,t,25,,t,2026-07-18 00:00:00,mctit
 11,11,resi_da_riconsegnare_default,Vista standard coda ri-consegne,sistema,,,t,25,,t,2026-07-18 00:00:00,mctit
 12,12,lotti_default,Vista standard lotti di fatturazione,sistema,,,t,25,,t,2026-07-30 00:00:00,mctit
+13,13,categorie_clienti_default,Vista standard categorie clienti,sistema,,,t,25,"[{""col"":""ordinamento"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
+14,14,utilities_tipi_ruolo_default,Vista standard matrice utility / ruoli,sistema,,,t,25,"[{""col"":""utility_descrizione"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
+15,15,indirizzi_default,Vista standard indirizzi,sistema,,,t,25,"[{""col"":""indirizzo_normalizzato"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
+16,16,tipi_ruolo_tipi_indirizzo_default,Vista standard matrice ruoli / indirizzi,sistema,,,t,25,"[{""col"":""tipo_ruolo_descrizione"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit

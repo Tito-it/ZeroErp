@@ -983,11 +983,11 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ✓ | File | Col. | Lazy |
 | --- | --- | --- | --- |
 | ☐ | `catalogo/components/UomTipiSearchTable.vue` | 4 | sì |
-| ☐ | `amministrazione/components/CategorieClientiSearchTable.vue` | 5 | sì |
+| ☐ 🔵 | `amministrazione/components/CategorieClientiSearchTable.vue` | 5 | sì |
 | ☐ | `amministrazione/components/EmittenteFiscaleBillingAccountTab.vue` | 5 | sì |
-| ☐ | `amministrazione/components/UtilitiesTipiRuoloSearchTable.vue` | 5 | sì |
+| ☐ 🔵 | `amministrazione/components/UtilitiesTipiRuoloSearchTable.vue` | 5 | sì |
 | ☐ | `amministrazione/views/AuditLogView.vue` | 5 | sì |
-| ☐ | `anagrafiche/components/IndirizziSearchTable.vue` | 5 | sì |
+| ☐ 🔵 | `anagrafiche/components/IndirizziSearchTable.vue` | 5 | sì |
 | ☐ | `vendite/views/ApprovazioniPrezzoListView.vue` | 5 | sì |
 | ☐ | `amministrazione/views/EmailAccountsListView.vue` | 6 | sì |
 | ☐ | `amministrazione/views/EmailTemplatesListView.vue` | 6 | sì |
@@ -1005,7 +1005,7 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ☐ | `vendite/components/PromoArticoliSearchTable.vue` | 8 | sì |
 | ☐ | `vendite/offerte/components/OffertaEccezioniDrawer.vue` | 8 | — |
 | ☐ | `amministrazione/components/CategorieClientiListiniSearchTable.vue` | 9 | sì |
-| ☐ | `amministrazione/components/TipiRuoloTipiIndirizzoSearchTable.vue` | 9 | sì |
+| ☐ 🔵 | `amministrazione/components/TipiRuoloTipiIndirizzoSearchTable.vue` | 9 | sì |
 | ☐ | `amministrazione/views/OperatoriListView.vue` | 9 | sì |
 | ☐ | `catalogo/components/ArticoliSearchTable.vue` | 9 | sì |
 | ☐ | `strumenti/components/CodaStampaTab.vue` | 9 | sì |
@@ -1071,6 +1071,50 @@ precedente di questo stesso blocco.**
 **Resta vero** dalla stesura precedente: le 3 colonne extra invisibili
 (`area_geografica`, `stato_operativo`, `user_insert`) sono ciò che rende la
 personalizzazione utile — l'endpoint le restituiva già.
+
+##### Primo lotto dopo lotti — 4 liste, seed DB pronto (2026-07-31)
+
+> 🔵 nell'inventario = **il seed DB c'è già**: la lista è pronta da convertire
+> senza aspettare nessuno, e senza rigenerare niente.
+
+Scelte perché **l'ordinamento server-side esiste già** in tutte e quattro
+(`_ORDER_COLS` nei rispettivi repository) e le chiavi di quelle whitelist sono
+già i nomi **fisici** — cioè proprio ciò che il seed mette in `campo_sorgente`.
+La lezione n.1 lì costa zero, ed è il motivo per cui questo lotto viene prima
+delle 5 cockpit, dove ordinamento **ed** export sono da scrivere per ciascuna.
+
+| Lista | `lista_id` | Colonne | Visibili | `vista_sql` |
+| --- | --- | --- | --- | --- |
+| `anagrafiche.categorie_clienti` | 13 | 7 | 5 | `categorie_clienti` (tabella) |
+| `config.utilities_tipi_ruolo` | 14 | 7 | 5 | NULL — campi joinati |
+| `anagrafiche.indirizzi` | 15 | 7 | 5 | `vw_indirizzi_dettaglio` |
+| `config.tipi_ruolo_tipi_indirizzo` | 16 | 12 | 9 | NULL — campi joinati |
+
+Righe `217..249` nei quattro CSV, **nessun changeset**. Applicate in transazione
+di prova e rollbackate; l'ordine delle colonne visibili è **identico a quello di
+oggi** in tutte e quattro.
+
+Cosa sapere prima di convertire i `.vue`:
+
+- ✅ **Invariante della lezione n.1 già verificata**: ogni colonna `ordinabile=t`
+  ha il `campo_sorgente` dentro la whitelist del suo repository. Nessuna
+  whitelist BE da scrivere — resta da replicare il **test** di allineamento.
+- ⚠️ **Due colonne sono `ordinabile=f` apposta**: `fallback_codice` e
+  `fallback_descrizione` (lista 16) non sono in `_ORDER_COLS`. Se le si vuole
+  ordinabili va estesa la whitelist **e poi** il seed, in quest'ordine.
+- **Zero nuove chiavi i18n**: le extra invisibili riusano `common.data_insert` /
+  `common.data_update`. L'unica senza chiave è `fallback_descrizione`, che cade
+  sull'etichetta italiana del catalogo.
+- **Nessuna colonna `azioni`**: nessuna delle quattro ha un kebab di riga, quindi
+  la lezione n.5 non si applica — non crearla per simmetria.
+- **`vista_sql` valorizzato su due liste**: lì il guard
+  `trgfn_ui_lista_colonna_a10_valida_campo_sorgente` valida davvero i campi. Sulle
+  due matrici resta NULL perché `tipo_ruolo_descrizione` & c. nascono da JOIN e
+  non esistono in nessuna singola relazione.
+- **`ordinamento_default` del preset** replica il default che il BE già applica
+  (`ordinamento`, `utility_descrizione`, `indirizzo_normalizzato`,
+  `tipo_ruolo_descrizione`): al primo caricamento la lista non si riordina sotto
+  gli occhi dell'operatore.
 
 #### Gruppo B — tabelle annidate (37 file, senza paginator)
 
@@ -1141,6 +1185,60 @@ maturità.
 ---
 
 ## 9. Registro
+
+### 2026-07-30/31 · Il filone DB: generatore riparato, `vendite.lotti` e il primo lotto seedati
+
+Filone parallelo alla conversione, su `dev/db-tid`: la configurazione delle
+liste è **dato sotto `db/`**, quindi nasce di qua e arriva al FE già pronta.
+Tre passaggi, in ordine.
+
+**1. Il generatore è stato verificato eseguendolo, e riparato.** Non una
+rilettura: `gen_seed_lista.py` è stato lanciato contro il DB e passato su tutti
+e 34 i file del Gruppo A. Sei difetti, due dei quali avrebbero prodotto seed
+sbagliati **in silenzio**:
+
+- `vista_sql` usciva come cella vuota, ma `20260507-06` dichiara
+  `nullValue: "NULL"` (gli altri tre loader `""`): diventava `vista_sql = ''`,
+  il guard non saltava più e l'apply falliva con `E_UI_VISTA_SQL_NON_TROVATA` —
+  cioè per **ogni lista senza vista**, che è il caso normale del Gruppo A.
+  Dimostrato in transazione: `''` → errore, `NULL` → passa;
+- **14 colonne visibili scartate senza dirlo**: le `<Column>` senza `field=` ma
+  con header sono colonne calcolate FE, che il DB prevede
+  (`campo_sorgente` NULL, come `sosp_riatt` in clienti). Su
+  `ContrattoRigheDrawer` ne leggeva 5 su 11;
+- `codice` duplicati in **8 file su 34** (`uom_from_codice` e
+  `uom_from_descrizione` collassavano entrambi su `uom_from`), che
+  `uq_ui_lista_colonna_lista_codice` avrebbe rifiutato;
+- i file con **più `<DataTable>`** (`ListiniSearchTable`, `DashboardCompetenzaView`)
+  fondevano in una sola lista le colonne di tabelle diverse;
+- `formato=number_2` **non esiste** in `CellaConfigurabile`: cadeva nel default
+  e mostrava il numero grezzo. Ora `number`;
+- `tipo_colonna` era sempre `informazione`: nessuna colonna `identificatore`,
+  cioè nessuna colonna non-nascondibile, contro la convenzione di 11 liste su 11.
+
+Dopo la riparazione i conti tornano al pezzo: 269 `<Column>` = 243 lette + 19
+azioni + annidate + expander, **zero collisioni**.
+
+**2. Idempotenza, perché il lavoro procede a più mani** (richiesta Tid). Una
+lista si può configurare anche dai pannelli di amministrazione, e in quel caso
+vive solo nel DB di chi l'ha fatta. Aggiunti `--stato` (fotografia CSV vs DB) e
+`--esporta` (recupera in CSV il lavoro già fatto, solo le righe mancanti);
+generare una lista che esiste già **non parte**, e gli id si allocano oltre il
+massimo fra CSV **e** DB. Controprova: rimossa `vendite.resi` dai CSV e
+rigenerata da `--esporta` → 26 righe **identiche byte per byte** all'originale.
+
+**3. I seed.** `vendite.lotti` (id 12) il 30/07 — poi convertita dal BE, vedi
+l'altra voce di oggi; il primo lotto di quattro (id 13-16, 33 colonne) il 31/07.
+Scelte per un motivo misurabile: hanno **già** `_ORDER_COLS` nel repository, con
+le chiavi sui nomi fisici, quindi la lezione n.1 lì costa zero. L'allineamento
+`ordinabile=t` ↔ whitelist BE è stato **verificato meccanicamente** leggendo le
+whitelist dal sorgente: nessuna colonna fuori. Tutti i seed applicati in
+transazione e rollbackati prima della consegna.
+
+Nota di metodo, visto che si ripeterà: il generatore fa le righe, **non le
+decisioni**. `ordinabile`, `priorita`, le colonne extra invisibili e
+l'identificatore restano scelte, e sbagliarle non dà errore — dà una lista che
+sembra giusta.
 
 ### 2026-07-31 · Prima conversione dell'inventario: `vendite.lotti` — FATTA e validata
 
