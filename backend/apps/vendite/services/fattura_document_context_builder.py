@@ -143,12 +143,15 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
                 "codice_interno": testata.get("stato_codice_interno"),
                 "descrizione": testata.get("stato_descrizione"),
             },
-            # Intestazione emittente (chi emette la fattura): denominazione +
-            # identificativi fiscali dal dettaglio soggetto-ruolo + sede legale
-            # (indirizzo tipo SEDELEG) dalla vista indirizzi risolti (JOIN in
-            # get_fattura_testata). `piva` = id fiscale univoco (P.IVA per le
-            # imprese); `cf` = codice fiscale. `sede` None se l'emittente non ha
-            # un indirizzo SEDELEG registrato.
+            # Intestazione emittente (chi emette la fattura): dallo SNAPSHOT
+            # congelato `fatture.emittente_snapshot` (Fase 2 satelliti,
+            # 2026-07-31 — ristampa conforme: l'anagrafica puo' cambiare, il
+            # documento no). Le chiavi piatte sono derivate dal jsonb in
+            # `get_fattura_testata`; `sede` e' il display dell'indirizzo
+            # annidato, risolto a DB sui due layer RUOLO→SOGGETTO al momento
+            # dello snapshot. `piva` = id fiscale univoco (P.IVA per le
+            # imprese); `cf` = codice fiscale. Tutto None se lo snapshot manca
+            # (fattura pre-Fase 1): nessun fallback per decisione (§9 piano).
             "emittente": {
                 "id": testata.get("emittente_fiscale_id"),
                 "codice": testata.get("emittente_fiscale_codice"),
@@ -194,16 +197,21 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
             "meta": testata.get("meta") or {},
         }
 
-    # Scopo: Sotto-dict "cliente" (billing account → soggetto). Denominazione/
-    #        id fiscale denormalizzati dalla vista soggetti_ruoli_dettaglio.
+    # Scopo: Sotto-dict "cliente" dallo SNAPSHOT congelato
+    #        `fatture.cliente_snapshot` (chiavi piatte derivate in
+    #        `get_fattura_testata`) + indirizzo di fatturazione dalla riga
+    #        `FATT` del satellite `fatture_indirizzi`. Ristampa conforme:
+    #        nessuna lettura live dell'anagrafica.
+    #        ⚠️ `billing_account_id`/`ba_codice` sono il BA *padre* (D-P), non
+    #        il conto del consumatore nelle gerarchie.
     def _shape_cliente(self, testata: dict[str, Any]) -> dict[str, Any]:
         return {
             "soggetto_ruolo_id": testata.get("cliente_soggetto_ruolo_id"),
             "soggetto_id": testata.get("soggetto_id"),
             "denominazione": testata.get("ragione_sociale_completa"),
             "id_fiscale": testata.get("id_fiscale_univoco_cf_piva"),
-            # Indirizzo di fatturazione del cliente (tipo FATT) dalla vista
-            # indirizzi risolti. None se non registrato; chiave sempre presente
+            # Display dello snapshot FATT congelato. None se assente (fattura
+            # pre-snapshot, nessun fallback — §9); chiave sempre presente
             # (StrictUndefined); il template la guarda con {% if %}.
             "indirizzo": testata.get("cliente_indirizzo"),
             "billing_account_id": testata.get("billing_account_id"),

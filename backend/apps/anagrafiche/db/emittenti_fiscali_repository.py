@@ -22,9 +22,21 @@ from apps.core.db._helpers import (
 )
 
 
-_EMITTENTI_ORDER_COLS = {
-    "codice", "descrizione", "ragione_sociale_completa",
-    "attivo", "data_insert",
+# Whitelist colonne ammesse per ORDER BY: chiave = `campo_sorgente` del catalogo
+# 'anagrafiche.emittenti_fiscali' (e' quello che `<ListaConfigurabile>` invia
+# come sortField), valore = espressione SQL qualificata.
+#
+# `partita_iva` aggiunta il 2026-07-31 col seed del secondo lotto: per un
+# emittente la P.IVA *e'* l'identificativo fiscale, quindi appartiene al nucleo
+# sempre ordinabile. `valuta_iso` e `regime_fiscale_rf` restano fuori: nel seed
+# sono `ordinabile=f`.
+_EMITTENTI_ORDER_COLS: dict[str, str] = {
+    "codice": "ef.codice",
+    "descrizione": "ef.descrizione",
+    "ragione_sociale_completa": "s.ragione_sociale_completa",
+    "partita_iva": "s.partita_iva",
+    "attivo": "ef.attivo",
+    "data_insert": "ef.data_insert",
 }
 
 
@@ -115,7 +127,9 @@ class EmittentiFiscaliRepository:
         order_by: str = "descrizione",
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = order_by if order_by in _EMITTENTI_ORDER_COLS else "descrizione"
+        order_col = _EMITTENTI_ORDER_COLS.get(
+            order_by, _EMITTENTI_ORDER_COLS["descrizione"]
+        )
         direction = sql_order_direction(order_dir)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
@@ -285,9 +299,14 @@ class EmittentiFiscaliBillingAccountRepository:
       - is_default e billing_account_id sono vincolati da un CHECK: True+NULL oppure False+NOT NULL.
     """
 
-    _ORDER_COLS = {
-        "billing_account_codice", "billing_account_ragione_sociale",
-        "id_fiscale_univoco", "is_default", "data_insert",
+    # Whitelist ORDER BY: chiave = `campo_sorgente` del catalogo
+    # 'anagrafiche.emittente_billing_account', valore = espressione qualificata.
+    _ORDER_COLS: dict[str, str] = {
+        "billing_account_codice": "ba.codice",
+        "billing_account_ragione_sociale": "s.ragione_sociale_completa",
+        "id_fiscale_univoco": "s.id_fiscale_univoco_cf_piva",
+        "is_default": "m.is_default",
+        "data_insert": "m.data_insert",
     }
 
     # Scopo: Lista paginata mapping BA per un emittente, con search su
@@ -302,8 +321,16 @@ class EmittentiFiscaliBillingAccountRepository:
         order_by: str = "billing_account_codice",
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = order_by if order_by in self._ORDER_COLS else "billing_account_codice"
+        order_col = self._ORDER_COLS.get(
+            order_by, self._ORDER_COLS["billing_account_codice"]
+        )
         direction = sql_order_direction(order_dir)
+        # Default-first e' il prefisso fisso dell'ordinamento (la riga default
+        # in testa qualunque colonna si ordini). Se pero' l'operatore ordina
+        # PROPRIO per is_default — colonna del catalogo, `ordinabile=t` — il
+        # prefisso vincerebbe sempre sulla direzione scelta (freccia che non
+        # ordina): in quel caso l'unica chiave e' la sua, con la sua direzione.
+        order_prefix = "" if order_col == "m.is_default" else "m.is_default DESC, "
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT m.id,
@@ -325,7 +352,7 @@ class EmittentiFiscaliBillingAccountRepository:
                     OR s.ragione_sociale_completa ILIKE %s
                     OR s.id_fiscale_univoco_cf_piva ILIKE %s
                    ))
-             ORDER BY m.is_default DESC, {order_col} {direction}, m.id
+             ORDER BY {order_prefix}{order_col} {direction}, m.id
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params: list[Any] = [

@@ -25,8 +25,9 @@
 #   5  shape canonico dello snapshot + origine_indirizzo_id valorizzato
 #   6  tipi opzionali assenti (CON/FORNITURA/RES) -> nessun errore
 #   7  idempotenza: terzo giro -> nessuna riga nuova (0 inserted), niente dup
-#   8  ristampa conforme -> SKIP dichiarato (Fase 2: il context builder legge
-#      ancora la vista live; l'asserzione si accende con quella fase)
+#   8  RISTAMPA CONFORME (accesa con la Fase 2): il contesto di stampa viene
+#      dagli snapshot congelati (riga FATT + emittente_snapshot) e NON cambia
+#      dopo una modifica all'anagrafica
 # ------------------------------------------------------------
 
 import uuid
@@ -360,8 +361,49 @@ with transaction.atomic():
           esito_ter["inserted_rows"] == 0 and esito_ter["failed_rows"] == 0,
           f"esito={esito_ter} righe_totali={tot_righe}")
 
-    print("  SKIP 8) ristampa conforme: il context builder legge ancora la "
-          "vista live — l'asserzione si accende con la Fase 2")
+    # 8) RISTAMPA CONFORME — l'asserzione che giustifica tutto il lavoro
+    #    (accesa con la Fase 2, 2026-07-31). Il contesto di stampa legge SOLO
+    #    gli snapshot congelati: si sporca l'anagrafica e si ricostruisce ->
+    #    il documento NON cambia. In piu' si ancora il contesto ai valori
+    #    congelati (indirizzo = display della riga FATT del satellite,
+    #    denominazione emittente = emittente_snapshot), non solo a se' stesso:
+    #    due letture live sarebbero uguali fra loro anche senza snapshot.
+    from apps.vendite.services.fattura_document_context_builder import (
+        FatturaDocumentContextBuilder,
+    )
+    builder = FatturaDocumentContextBuilder()
+    fattura_id_1 = fattura_ids[0]
+    ctx_prima = builder.build_context(fattura_id_1)
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            SELECT fi.snapshot->>'display',
+                   f.emittente_snapshot->>'denominazione'
+              FROM vendite.fatture f
+              JOIN vendite.fatture_indirizzi fi ON fi.fattura_id = f.id
+              JOIN config.tipi_indirizzi ti ON ti.id = fi.tipo_indirizzo_id
+             WHERE f.id = %s AND ti.codice_interno = 'FATT'
+            """, [fattura_id_1],
+        )
+        srow8 = cur.fetchone()
+        assert srow8 is not None
+        display_snap, emitt_denom_snap = srow8
+        # Deriva anagrafica post-emissione: si sporca l'indirizzo di
+        # correzione — la catena live ora risolverebbe un'altra via.
+        cur.execute(
+            "UPDATE anagrafiche.indirizzi"
+            "   SET indirizzo_libero = 'VIA DERIVATA DOPO EMISSIONE 999'"
+            " WHERE id = %s", [id_fatt_nuovo],
+        )
+    ctx_dopo = builder.build_context(fattura_id_1)
+    check("8) ristampa conforme: contesto dagli snapshot, immune alla deriva anagrafica",
+          display_snap is not None
+          and ctx_prima["cliente"]["indirizzo"] == display_snap
+          and ctx_prima["fattura"]["emittente"]["denominazione"] == emitt_denom_snap
+          and ctx_dopo == ctx_prima,
+          f"indirizzo={ctx_prima['cliente']['indirizzo']!r} atteso={display_snap!r} "
+          f"emittente={ctx_prima['fattura']['emittente']['denominazione']!r} "
+          f"identici_post_deriva={ctx_dopo == ctx_prima}")
 
     transaction.set_rollback(True)
 

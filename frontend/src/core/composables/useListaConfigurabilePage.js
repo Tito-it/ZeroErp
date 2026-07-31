@@ -23,7 +23,10 @@
 // `getExportParams` e' invocata SOLO al click di export (lazy): puo' quindi
 // riferire `searchText`/ref dei filtri definiti nel componente DOPO il
 // destructuring (closure lazy). `extraActions` (opzionale) inserisce azioni
-// utility custom prima di "Nuovo".
+// utility custom prima di "Nuovo". `onReload` (opzionale) sostituisce il
+// comando del pulsante "Ricarica" per le pagine che devono ricaricare anche
+// altro insieme alla lista (il caller richiama `reload` dentro il proprio
+// handler).
 
 import { computed, ref, unref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -40,6 +43,7 @@ export function useListaConfigurabilePage(
     onNew,
     searchTableOptions = {},
     extraActions = null,
+    onReload = null,
   } = {},
 ) {
   const { t } = useI18n()
@@ -97,7 +101,12 @@ export function useListaConfigurabilePage(
         kind: 'utility',
         label: t('common.reload_list'),
         icon: MANAGE_ICONS.RELOAD,
-        command: search.reload,
+        // `onReload` (opzionale) SOSTITUISCE il reload di lista quando la
+        // pagina deve ricaricare anche altro insieme alla lista — es. il tab
+        // BA emittente, dove il summary e' indipendente dalla pagina corrente
+        // e senza di lui il pulsante "default" resta disallineato. Il caller
+        // richiama `reload` (esposto qui sotto) dentro il proprio handler.
+        command: onReload ?? search.reload,
       },
       {
         key: 'personalizza-colonne',

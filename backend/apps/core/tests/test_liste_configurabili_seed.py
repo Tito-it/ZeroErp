@@ -102,6 +102,16 @@ def _whitelist_tipi_ruolo_tipi_indirizzo() -> set[str]:
     return set(m._ORDER_COLS)
 
 
+# Scopo: whitelist del tab BA dell'emittente. Vive come attributo di CLASSE
+#        (come `LOTTI_SORT_COLUMNS`), non come costante di modulo.
+def _whitelist_emittente_billing_account() -> set[str]:
+    from apps.anagrafiche.db.emittenti_fiscali_repository import (
+        EmittentiFiscaliBillingAccountRepository,
+    )
+
+    return set(EmittentiFiscaliBillingAccountRepository._ORDER_COLS)
+
+
 # Scopo: whitelist delle due CODE resi. ⚠️ Non sono `_ORDER_COLS_RESI`: le code
 #        leggono viste dedicate e hanno mappe proprie in `_CODA_META`, indicizzate
 #        per nome vista. Il registro le ha attribuite alla costante sbagliata fino
@@ -144,6 +154,11 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("config.utilities_tipi_ruolo", _whitelist_utilities_tipi_ruolo),
     ("anagrafiche.indirizzi", _whitelist_indirizzi),
     ("config.tipi_ruolo_tipi_indirizzo", _whitelist_tipi_ruolo_tipi_indirizzo),
+    # Secondo lotto, 2026-07-31 (seed nato gia' in regola: `pratiche` e il tab
+    # BA non hanno chiesto nulla al backend, emittenti solo `partita_iva`).
+    ("pratiche.pratiche", _da_costante("apps.pratiche.db.pratiche_repository", "_PRATICHE_ORDER_COLS")),
+    ("anagrafiche.emittenti_fiscali", _da_costante("apps.anagrafiche.db.emittenti_fiscali_repository", "_EMITTENTI_ORDER_COLS")),
+    ("anagrafiche.emittente_billing_account", _whitelist_emittente_billing_account),
     # Preesistenti: erano fuori da qualunque presidio prima del 2026-07-31.
     ("anagrafiche.clienti", _da_costante("apps.anagrafiche.db.clienti_repository", "_CLIENTI_ORDER_COLS")),
     ("anagrafiche.fornitori", _da_costante("apps.anagrafiche.db.fornitori_repository", "_FORNITORI_ORDER_COLS")),
