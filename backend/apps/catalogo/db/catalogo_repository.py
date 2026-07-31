@@ -28,25 +28,43 @@ ARTICOLI_ORDER_COLUMNS: dict[str, str] = {
 # modulo (non piu' dict locali ai metodi) cosi' il service deriva le sue
 # `_*_ORDER_BY_VALIDI` da qui, unica fonte di verita' — stesso schema di
 # ARTICOLI_ORDER_COLUMNS / LISTINI_ORDER_COLUMNS.
-UOM_TIPI_ORDER_COLUMNS: dict[str, str] = {
+# ⚠️ Ogni mappa vale SOLO per la query omonima: l'alias `ut` e' `uom_tipi` in
+# `list_uom_tipi`/`list_unita_misura` ma e' l'unita' di misura di DESTINAZIONE
+# in `list_uom_conversioni`. Non sono intercambiabili.
+#
+# `attivo` aggiunta il 2026-08-01 col seed del terzo lotto: la colonna *Attivo*
+# e' visibile su tutte e tre le liste, e lo stato appartiene al nucleo sempre
+# ordinabile.
+UOM_TIPI_ORDER_COLUMNS: dict[str, str] = {  # alias: ut = catalogo.uom_tipi
     "codice": "ut.codice",
     "codice_interno": "ut.codice_interno",
     "descrizione": "ut.descrizione",
+    "attivo": "ut.attivo",
     "data_insert": "ut.data_insert",
     "data_update": "ut.data_update",
 }
 
-UOM_ORDER_COLUMNS: dict[str, str] = {
+UOM_ORDER_COLUMNS: dict[str, str] = {  # alias: u = catalogo.unita_misura
     "codice": "u.codice",
     "descrizione": "u.descrizione",
+    "attivo": "u.attivo",
     "data_insert": "u.data_insert",
     "data_update": "u.data_update",
 }
 
+# alias: c = unita_misura_conversioni, uf = UoM origine, ut = UoM destinazione
+#
+# `valido_dal`/`valido_al` pronte dal 2026-08-01 (regola di dominio: le date di
+# validita', quando una lista le mostra, ordinano SEMPRE — e `valido_al` e' il
+# default d'elezione). Il seed delle due colonne e' in arrivo dal team DB;
+# tenerle gia' qui evita la finestra di frecce bugiarde alla consegna.
 UOM_CONVERSIONI_ORDER_COLUMNS: dict[str, str] = {
     "uom_from_codice": "uf.codice",
     "uom_to_codice": "ut.codice",
     "fattore": "c.fattore",
+    "valido_dal": "c.valido_dal",
+    "valido_al": "c.valido_al",
+    "attivo": "c.attivo",
 }
 
 ARTICOLI_CREATE_COLUMNS: dict[str, str] = {

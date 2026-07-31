@@ -2161,21 +2161,40 @@ _CONV_UPDATE_KEYS: frozenset[str] = frozenset({
 _CONV_ORDER_BY_VALIDI: frozenset[str] = frozenset(UOM_CONVERSIONI_ORDER_COLUMNS)
 
 
-# Scopo: Lista completa conversioni UoM (no paginazione — dataset piccolo).
-#        Restituisce tutte le conversioni con join UoM per display.
+# Scopo: Lista paginata conversioni UoM, con join UoM per display.
+#        Filtro opzionale `uom_id` (conversioni da/verso una UoM), usato dal
+#        sotto-drawer conversioni.
+#
+# Paginata e ordinabile dal 2026-08-01 (seed lista 'catalogo.conversioni_uom',
+# terzo lotto). Prima ignorava `order_by` e leggeva 9999 righe in un colpo:
+# il repository sapeva gia' ordinare e paginare, era questo strato a
+# schiacciarlo — e col catalogo che dichiara 4 colonne ordinabili sarebbero
+# state 4 frecce che non ordinano.
 def fn_list_conversioni(
     *,
     attivo: bool | None = None,
     uom_id: int | None = None,
-) -> list[dict[str, object]]:
+    search: str | None = None,
+    order_by: str = "uom_from_codice",
+    order_dir: str = "asc",
+    limit: int = 25,
+    offset: int = 0,
+) -> tuple[list[dict[str, object]], int]:
+    function_name = "catalogo.catalogo_service.fn_list_conversioni"
+    order_by, order_dir = _validate_uom_order(
+        order_by,
+        order_dir,
+        allowed=_CONV_ORDER_BY_VALIDI,
+        function_name=function_name,
+    )
     repository = CatalogoRepository()
-    results, _total = repository.list_conversioni(
+    return repository.list_conversioni(
         attivo=attivo,
         uom_id=uom_id,
-        limit=9999, offset=0,
-        order_by="uom_from_codice", order_dir="asc",
+        search=search,
+        limit=limit, offset=offset,
+        order_by=order_by, order_dir=order_dir,
     )
-    return results
 
 
 # Scopo: Dettaglio singola conversione UoM.

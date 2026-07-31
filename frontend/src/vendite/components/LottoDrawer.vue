@@ -107,6 +107,13 @@ const isErrore = computed(() => lotto.value?.stato_lotto === 'ERRORE')
 const isInEsecuzione = computed(() => lotto.value?.stato_lotto === 'IN_ESECUZIONE')
 // Gate fiscale I-7: il lotto è numerabile quando è in EMESSA (prossimo step =
 // DEFINITIVA). Gate sul CODICE stabile, mai la descrizione display (lezione B-4).
+// Gate del pulsante «Annulla lotto»: fn_reset_lotto_draft ammette SOLO lotti in
+// DRAFT (E_PARAMETRO_INVALIDO altrove). Senza questo v-if il pulsante era un
+// vicolo cieco da EMESSA in poi: visibile per solo permesso, errore criptico al
+// click (bug trovato in-app da Tid il 2026-07-31). Il verbo per uscire da
+// EMESSA (ritorno a DRAFT / estrazione fattura) è D-N-bis, fase 6.7 DB: quando
+// arriverà sarà un'azione distinta, non questa.
+const isDraft = computed(() => lotto.value?.stato_doc_fiscale_codice === 'DRAFT')
 const isEmessa = computed(() => lotto.value?.stato_doc_fiscale_codice === 'EMESSA')
 // Lotto DEFINITIVA (fatture numerate) → abilita la ristampa MASSIVA (C-8):
 // re-stampa, mai numerazione (il BE gate DEFINITIVA garantisce I-7).
@@ -233,7 +240,12 @@ function ristampaDocumenti() {
   })
 }
 
-// Scopo: riporta il lotto a bozza — DEMOLIZIONE. Conferma forte e onesta.
+// Scopo: ANNULLA il lotto DRAFT — demolizione. Il nome storico «reset/riporta
+//        a bozza» mentiva: fn_reset_lotto_draft porta il lotto ad
+//        ANNULLATA/CHIUSO (le fatture pre-fiscali si eliminano, le attività
+//        tornano libere); non esiste nessun «ritorno in bozza». Etichette
+//        allineate al verbo vero (stessa presa d'atto della rinomina DB D-L
+//        → fn_annulla_lotto_da_draft); conferma forte e onesta.
 function resetDraft() {
   confirmAction({
     title: t('vendite.lotti.reset_header'),
@@ -426,7 +438,7 @@ function fatturaNumero(row) {
             @click="ristampaDocumenti"
           />
           <Button
-            v-if="canResetLotto"
+            v-if="canResetLotto && isDraft"
             :label="t('vendite.lotti.reset')"
             icon="pi pi-undo"
             severity="danger"

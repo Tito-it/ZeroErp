@@ -19,6 +19,8 @@
 #   1  D-Q parte «errore»: cliente SENZA indirizzo FATT -> failed_rows = n
 #      fatture, log 'C' su fatture_log, stato_esecuzione ERRORE sulla ponte
 #   2  il giro NON è morto: la funzione ha risposto, nessuna eccezione
+#   2b guard uscita DRAFT (I.4): la fattura incompleta NON esce dalla bozza
+#      nemmeno con UPDATE diretto -> E_FATTURA_NON_EMETTIBILE_INCOMPLETA
 #   3  correzione + rilancio: failed_rows = 0, ogni fattura ha la riga FATT
 #   4  D-Q parte «ritiro»: al successo i log 'C' del task sono disabilitati
 #      e la ponte NON è più in ERRORE
@@ -262,6 +264,31 @@ with transaction.atomic():
     check("2) giro vivo: log 'C' per fattura + ponte in ERRORE (nessuna eccezione)",
           con_log_c == n_fatture and in_errore == n_fatture,
           f"log_C={con_log_c} ponte_errore={in_errore}")
+
+    # 2b) Guard uscita DRAFT (I.4, brief intestazione §10.9): la fattura e'
+    #     incompleta PER COSTRUZIONE proprio adesso (niente FATT, niente
+    #     intestazione) — un UPDATE diretto verso EMESSA deve essere respinto
+    #     con E_FATTURA_NON_EMETTIBILE_INCOMPLETA. Savepoint dedicato: il
+    #     RAISE del trigger non deve avvelenare la transazione dello smoke.
+    from django.db import DatabaseError
+    guard_msg = ""
+    try:
+        with transaction.atomic():  # savepoint
+            with connection.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE vendite.fatture
+                       SET stato_doc_fiscale_id =
+                           (SELECT id FROM config.stati_doc_fiscale
+                             WHERE codice_interno = 'EMESSA')
+                     WHERE id = %s
+                    """, [fattura_ids[0]],
+                )
+    except DatabaseError as exc:
+        guard_msg = str(exc)
+    check("2b) guard uscita DRAFT: fattura incompleta respinta con il codice giusto",
+          "E_FATTURA_NON_EMETTIBILE_INCOMPLETA" in guard_msg,
+          f"errore={'(nessuno! il guard non e scattato)' if not guard_msg else guard_msg.splitlines()[0][:120]}")
 
     # --- CORREZIONE + RILANCIO -------------------------------------------
     with connection.cursor() as cur:
