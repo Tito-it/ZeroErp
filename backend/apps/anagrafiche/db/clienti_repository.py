@@ -147,7 +147,6 @@ class ClientiRepository:
         # Colonne opzionali: incluse solo se valorizzate (non None)
         _OPTIONAL = [
             "termine_pagamento_id", "modalita_pagamento_id", "iva_id",
-            "tipo_gg_scadenza_ft", "nr_giorni_scadenza",
             "cliente_pa", "split_payment",
             "codice_cig", "codice_cup", "codice_commessa",
             "servizio_da_fatturare",
@@ -352,9 +351,10 @@ class ClientiRepository:
                    -- Pareggio = RIATTIVAZIONE. Niente logica nel frontend.
                    evt.data_evento_stato,
                    evt.tipo_evento_stato,
-                   -- Pagamento
-                   cl.tipo_gg_scadenza_ft,
-                   cl.nr_giorni_scadenza,
+                   -- Pagamento — unico meccanismo: termine di catalogo +
+                   -- modalita' (D-I). La coppia legacy tipo_gg_scadenza_ft /
+                   -- nr_giorni_scadenza non si legge piu': le colonne cadono
+                   -- con la 3a.5 del piano DB satelliti.
                    cl.termine_pagamento_id,
                    cl.modalita_pagamento_id,
                    cl.iva_id,
@@ -422,7 +422,6 @@ class ClientiRepository:
     # (fornitori/emittenti). Aggiungere un campo editabile => aggiornare ENTRAMBI.
     _UPDATE_ALLOWED = {
         "iva_id", "modalita_pagamento_id", "termine_pagamento_id",
-        "tipo_gg_scadenza_ft", "nr_giorni_scadenza",
         "cliente_pa", "split_payment",
         "codice_cig", "codice_cup", "codice_commessa",
         "servizio_da_fatturare",
