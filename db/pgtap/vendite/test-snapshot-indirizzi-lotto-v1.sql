@@ -1,7 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Test: vendite.fn_snapshot_indirizzi_lotto (Fase 2.2)
+-- Test: vendite.fn_snapshot_fattura_lotto (Fase 2.2 + brief intestazione)
 --       comportamento D-Q: lo step si completa, la fattura difettosa resta
 --       marcata, il lotto non avanza, il rilancio ripulisce
 -- Piano: piano-db-satelliti-fattura.md Fase 2.2 / D-F esteso / D-Q
@@ -9,7 +9,7 @@
 -- Indice test (1..12):
 --  1) Fixture: due BA con spazio indirizzi libero e ruoli distinti
 --  2) Lotto, tre fatture e ponte creati
---  3) Primo giro: 2 lavorate, 1 inserita, 1 saltata, 1 fallita
+--  3) Primo giro: 2 lavorate, 1 indirizzo, 1 intestazione, 1 saltata, 1 fallita
 --  4) La fattura DEFINITIVA non e' stata toccata
 --  5) La fattura risolvibile ha il suo snapshot
 --  6) La fattura difettosa e' marcata 'C' dal task
@@ -18,7 +18,7 @@
 --  9) Corretta l'anagrafica, il secondo giro non fallisce piu'
 -- 10) La segnalazione del task e' ritirata e lo stato_esecuzione si sblocca
 -- 11) Il ritiro tocca solo le PROPRIE segnalazioni
--- 12) Idempotenza: il terzo giro non scrive nulla
+-- 12) Idempotenza: il terzo giro non scrive nulla, intestazione compresa
 -- ------------------------------------------------------------
 -- COSA STA DAVVERO PROVANDO QUESTO FILE. Non «la funzione scrive gli
 -- indirizzi» -- quello lo prova gia' test-snapshot-indirizzi-fattura-v1 sulla
@@ -194,15 +194,15 @@ END;
 CREATE TEMP TABLE tmp_run1_sil AS
 SELECT s.*
   FROM tmp_lotto_sil l
- CROSS JOIN LATERAL vendite.fn_snapshot_indirizzi_lotto(l.lotto_id) s;
+ CROSS JOIN LATERAL vendite.fn_snapshot_fattura_lotto(l.lotto_id) s;
 
 SELECT CASE WHEN NOT (SELECT ok FROM tmp_gate_sil)
   THEN skip('fixture non disponibile', 1)
   ELSE is(
-    (SELECT format('%s/%s/%s/%s/%s', fatture_count, inserted_rows, updated_rows,
-                   skipped_rows, failed_rows) FROM tmp_run1_sil),
-    '2/1/0/1/1',
-    '3) primo giro: 2 lavorate, 1 inserita, 0 aggiornate, 1 saltata, 1 fallita')
+    (SELECT format('%s/%s/%s/%s/%s/%s', fatture_count, inserted_rows, updated_rows,
+                   intestazioni_scritte, skipped_rows, failed_rows) FROM tmp_run1_sil),
+    '2/1/0/1/1/1',
+    '3) primo giro: 2 lavorate, 1 indirizzo, 1 intestazione, 1 saltata, 1 fallita')
 END;
 
 -- 4) La definitiva non e' stata toccata.
@@ -232,7 +232,7 @@ SELECT CASE WHEN NOT (SELECT ok FROM tmp_gate_sil)
     (SELECT count(*)::int FROM vendite.fatture_log fl, tmp_fatture_sil f
       WHERE fl.fattura_id = f.id AND f.caso = 'senza_indirizzo'
         AND fl.status = 'C' AND fl.disabilitato IS FALSE
-        AND fl.meta ->> 'source' = 'fn_snapshot_indirizzi_lotto'),
+        AND fl.meta ->> 'task' = 'snapshot_indirizzi_lotto'),
     1,
     '6) la fattura difettosa e'' marcata critical dal task')
 END;
@@ -279,7 +279,7 @@ SELECT b.soggetto_ruolo_id, ti.fatt_id, NULL,
 CREATE TEMP TABLE tmp_run2_sil AS
 SELECT s.*
   FROM tmp_lotto_sil l
- CROSS JOIN LATERAL vendite.fn_snapshot_indirizzi_lotto(l.lotto_id) s;
+ CROSS JOIN LATERAL vendite.fn_snapshot_fattura_lotto(l.lotto_id) s;
 
 SELECT CASE WHEN NOT (SELECT ok FROM tmp_gate_sil)
   THEN skip('fixture non disponibile', 1)
@@ -302,7 +302,7 @@ SELECT CASE WHEN NOT (SELECT ok FROM tmp_gate_sil)
        JOIN tmp_fatture_sil f ON f.id = fl.fattura_id
        JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = f.id
       WHERE f.caso = 'senza_indirizzo'
-        AND fl.meta ->> 'source' = 'fn_snapshot_indirizzi_lotto'),
+        AND fl.meta ->> 'task' = 'snapshot_indirizzi_lotto'),
     'true|true',
     '10) segnalazione ritirata e stato_esecuzione sbloccato')
 END;
@@ -314,13 +314,15 @@ END;
 -- ============================================================
 INSERT INTO vendite.fatture_log (fattura_id, data_ora, messaggio, status, disabilitato, meta)
 SELECT f.id, now(), 'Segnalazione di un altro task', 'C', FALSE,
-       jsonb_build_object('source', 'un_altro_task')
+       -- Stessa CHIAVE, valore diverso: cosi' il test prova che il filtro
+       -- discrimina sul task e non si limita a guardare se la chiave c'e'.
+       jsonb_build_object('task', 'un_altro_task', 'source', 'un_altro_task')
   FROM tmp_fatture_sil f WHERE f.caso = 'senza_indirizzo';
 
 CREATE TEMP TABLE tmp_run3_sil AS
 SELECT s.*
   FROM tmp_lotto_sil l
- CROSS JOIN LATERAL vendite.fn_snapshot_indirizzi_lotto(l.lotto_id) s;
+ CROSS JOIN LATERAL vendite.fn_snapshot_fattura_lotto(l.lotto_id) s;
 
 SELECT CASE WHEN NOT (SELECT ok FROM tmp_gate_sil)
   THEN skip('fixture non disponibile', 1)
@@ -337,10 +339,11 @@ END;
 SELECT CASE WHEN NOT (SELECT ok FROM tmp_gate_sil)
   THEN skip('fixture non disponibile', 1)
   ELSE is(
-    (SELECT format('%s/%s/%s', inserted_rows, updated_rows, failed_rows)
+    (SELECT format('%s/%s/%s/%s', inserted_rows, updated_rows,
+                   intestazioni_scritte, failed_rows)
        FROM tmp_run3_sil),
-    '0/0/0',
-    '12) idempotenza: il terzo giro non scrive nulla')
+    '0/0/0/0',
+    '12) idempotenza: il terzo giro non scrive nulla, intestazione compresa')
 END;
 
 SELECT * FROM finish();

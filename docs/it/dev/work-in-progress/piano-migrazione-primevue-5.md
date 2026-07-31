@@ -1115,8 +1115,11 @@ prossima conversione: aggiungere una riga a `_LISTE`, non un file di test.**
 
 ##### La consegna del team DB (2026-07-31)
 
-> 🔵 nell'inventario = **il seed DB c'è già**: la lista è pronta da convertire
-> senza aspettare nessuno, e senza rigenerare niente.
+> **Convenzione dell'inventario**: `☐` da fare · `☐ 🔵` **seed DB già pronto**,
+> la lista è convertibile senza aspettare nessuno e senza rigenerare niente ·
+> `✅ gg-mm` convertita e validata. Queste quattro sono passate da 🔵 a ✅ in
+> giornata, quindi al momento nessuna riga porta 🔵 — il marcatore serve al
+> prossimo lotto seedato.
 
 Scelte perché **l'ordinamento server-side esiste già** in tutte e quattro
 (`_ORDER_COLS` nei rispettivi repository) e le chiavi di quelle whitelist sono
@@ -1156,6 +1159,141 @@ Cosa sapere prima di convertire i `.vue`:
   (`ordinamento`, `utility_descrizione`, `indirizzo_normalizzato`,
   `tipo_ruolo_descrizione`): al primo caricamento la lista non si riordina sotto
   gli occhi dell'operatore.
+
+#### 🔴 APERTO — commessa BE: whitelist di ordinamento, 9 repository
+
+> Consegna del team DB del 2026-07-31. **Nessuna modifica al seed è richiesta al
+> BE**: le celle di competenza DB sono già state cambiate. Qui c'è solo ciò che
+> va toccato nei repository. Il ragionamento completo è in §9 («Debito "freccia
+> che non ordina"»); questa è la lista operativa.
+
+##### Prima di leggere la tabella: l'id fiscale è UNA colonna sola, per disegno
+
+Le liste **non** mostrano il codice fiscale e la partita IVA separati. Mostrano
+`id_fiscale_univoco_cf_piva`, la colonna **unificata** (`GENERATED ALWAYS`:
+vale il CF oppure la P.IVA), ed è una scelta deliberata — una colonna sola
+invece di due mezze vuote.
+
+I nomi in gioco sono due e non vanno scambiati:
+
+| | Nome | Dove si usa |
+| --- | --- | --- |
+| Nome della colonna (`codice`) | `id_fiscale` | slot FE `cell-id_fiscale`, preferenze utente |
+| Campo letto (`campo_sorgente`) | `id_fiscale_univoco_cf_piva` | **è questo che va in whitelist** |
+
+Scambiarli è precisamente ciò che ha prodotto il difetto.
+
+> **Correzione applicata al seed il 2026-07-31.** Su clienti e soggetti quella
+> colonna si chiamava `codice_fiscale` pur mostrando l'id fiscale unificato —
+> unico caso su 9 liste, ovunque altrove era già `id_fiscale`. Il nome bugiardo
+> è **la radice del difetto**: chi ha scritto `_CLIENTI_ORDER_COLS` e
+> `_SOGGETTI_ORDER_COLS` ha messo in whitelist `codice_fiscale` leggendo il
+> nome della colonna, non il campo che legge. Ora il `codice` è `id_fiscale` su
+> tutte e 9, e l'`etichetta_estesa` dice cosa contiene davvero.
+>
+> **Ricaduta FE, minima**: `ClientiSearchTable.vue:191` e
+> `SoggettiSearchTable.vue:152` hanno uno slot `#cell-codice_fiscale` che ora
+> non aggancia più. Non è una regressione: senza slot la cella cade sul
+> formatter di serie, che legge `data[campo_sorgente]` — **lo stesso identico
+> valore**. I due slot si possono **cancellare** invece che rinominare (quello
+> di clienti ha anche un fallback `|| codice_fiscale || partita_iva` che è
+> codice morto: se la colonna generata è NULL lo sono anche le due sorgenti).
+> Restano 2 preferenze utente salvate che citano il vecchio codice: siamo in
+> sviluppo, si ripuliscono a mano ([[project_no_produzione_solo_sviluppo]]).
+
+⚠️ **Ci sono voci da TOGLIERE, non solo da aggiungere** — è la parte che si
+salta leggendo in fretta, ed è quella che fa fallire il presidio. Il test
+`test_seed_offre_tutto_cio_che_il_backend_sa_ordinare` controlla anche il verso
+opposto: una voce in whitelist che **nessuna colonna del catalogo usa** è una
+capacità irraggiungibile, e va rimossa. Nessuna delle rimozioni sotto perde un
+ordinamento realmente offerto all'operatore.
+
+| Repository | ➕ Aggiungere | ➖ Togliere |
+| --- | --- | --- |
+| `_CLIENTI_ORDER_COLS` | `id_fiscale_univoco_cf_piva`, `data_sospensione`, `data_riattivazione` | `codice_fiscale` |
+| `_SOGGETTI_ORDER_COLS` | `id_fiscale_univoco_cf_piva` | `codice_fiscale`, `partita_iva`, `date_insert` |
+| `_FORNITORI_ORDER_COLS` | `id_fiscale_univoco_cf_piva`, `data_update` | `attivo`, `codice_fiscale`, `partita_iva` |
+| `_ORDER_COLS_ORDINI` | `imponibile_tot`, `iva_tot`, `anno`, `serie`, `utility_descrizione` | `stato_codice_interno` |
+| `_ORDER_COLS_DDT` | `anno`, `serie` | `stato_codice_interno` |
+| `_ORDER_COLS_OFFERTE` | `data_accettazione`, `data_rifiuto`, `data_annullamento` | `stato_codice_interno`, `data_update` |
+| `_ORDER_COLS_CONTRATTI` | — | `emittente_fiscale_codice`, `stato_codice`, `stato_codice_interno` |
+| `_ORDER_COLS_PREVENTIVI` | — | `emittente_fiscale_codice`, `stato_codice_interno` |
+| `_ORDER_COLS_RESI` | — | `stato_codice_interno` |
+
+**Perché queste aggiunte e non altre.** Sono tutte applicazioni della stessa
+regola di dominio (nucleo sempre ordinabile) o del criterio di simmetria che ne
+discende: `id_fiscale_univoco_cf_piva` è **nucleo** su clienti, soggetti e
+fornitori; `anno`/`serie` sono l'identità del documento accanto al `numero`;
+`imponibile_tot`/`iva_tot` stanno accanto a `totale`; le date di ciclo vita
+(`data_accettazione`/`rifiuto`/`annullamento` su offerte, `data_sospensione`/
+`data_riattivazione` su clienti, `data_update` su fornitori) hanno le sorelle
+dello stesso gruppo già ordinabili. **Tutto il resto è già stato portato a
+`ordinabile=f` nel seed**: 30 colonne, lavoro DB, già fatto.
+
+Due note sulle rimozioni, oltre a quelle già dette:
+
+- **`stato_codice_interno` compare in 6 whitelist su 9** ed è sempre lo stesso
+  caso: colonna tecnica che dà la severity al Tag di stato, nel seed
+  `ordinabile=f` e invisibile. Verificato che **nessun repository la usa come
+  ordinamento di default** (i default sono `data`, `data_insert`,
+  `tipo_ruolo_descrizione`…), quindi toglierla non cambia comportamento.
+- **`codice_fiscale` e `partita_iva` su `_FORNITORI_ORDER_COLS`** sono diventate
+  orfane il 2026-07-31, **su richiesta del BE**: le due colonne omonime del
+  catalogo (id 28 e 29) sono state disattivate (`attivo=f`). `fornitori` era
+  l'unica lista del sistema a esporre tre colonne fiscali insieme; ovunque
+  altrove ce n'è una sola, `id_fiscale`, che punta al campo `GENERATED`.
+  Nessuna informazione va persa: l'espressione generata **concatena** CF e
+  P.IVA quando ci sono entrambe e differiscono, non ne sceglie una.
+- **`data_update` su `_ORDER_COLS_OFFERTE`** è un caso a parte: è mappata di
+  proposito su `v.data_insert` come compatibilità all'indietro, con tanto di
+  commento. Nessuna colonna la richiede. Toglierla è coerente col presidio, ma
+  è l'unica rimozione che cancella una scelta deliberata: decidete voi.
+
+🔵 **Correzione al registro `_LISTE` del presidio.** `vendite.resi_da_accreditare`
+e `vendite.resi_da_riconsegnare` sono registrate con `_ORDER_COLS_RESI`, ma **non
+è la loro whitelist**: le due code usano `_CODA_META[<vista>]["order_cols"]`
+(`resi_repository.py`), che sono due mappe distinte e — verificato — **già
+perfette**, chiavate sui `campo_sorgente`, zero residuo in entrambe le direzioni.
+Finché restano nel registro di debito i test 1-3 le saltano e l'errore non si
+vede; togliendole di lì senza correggere la costante andrebbero rosse per un
+motivo falso. È lo stesso equivoco che ha ingannato anche la nostra prima
+misura, che le contava fra le peggiori.
+
+Perché ciascuna rimozione è sicura:
+
+- **`stato_codice_interno`** (ordini) — è la colonna tecnica che dà il colore al
+  Tag di stato: nel seed è `ordinabile=f` e invisibile, nessuno la ordina.
+- **`codice_fiscale`** e **`partita_iva`** (clienti, soggetti) — sono i due
+  campi **separati**, e nessuna colonna di queste due liste li mostra: mostrano
+  l'unificato (vedi sopra). Toglierli **non** toglie niente all'operatore.
+  Nota: su `anagrafiche.fornitori` invece esistono davvero come colonne
+  distinte, accanto a `id_fiscale` — lì restano al loro posto.
+- **`date_insert`** (soggetti) — **è un refuso**: la colonna si chiama
+  `data_insert`. **Rettifica del 2026-07-31**: una stesura precedente qui
+  parlava di «errore 500», ed era allarmista. Dall'interfaccia non può
+  succedere: il frontend manda solo `campo_sorgente` di colonne esistenti, e
+  `date_insert` non è il campo di nessuna colonna. Il danno reale è più
+  banale e più probabile: se domani si aggiunge ai soggetti una colonna
+  *Creazione* / *Data movimento* (`campo_sorgente = data_insert`, come già su
+  12 liste su 16), **non ordinerà**, perché `data_insert` ≠ `date_insert`. Due
+  strade, entrambe accettabili: toglierla, oppure **scriverla giusta**.
+
+> ℹ️ **Se si vuole la colonna «Data movimento» sui soggetti** servono tre cose,
+> in quest'ordine: (1) l'API deve restituirla — oggi il `SELECT` della lista
+> soggetti **non** include `data_insert`, quindi è lavoro BE; (2) la riga nel
+> seed, che facciamo noi (il modello c'è già identico su 12 liste: `datetime` +
+> `datetime_short`, invisibile di default); (3) `data_insert` scritto bene in
+> whitelist. Senza il punto 1 gli altri due non servono a niente.
+
+**Esito atteso**, calcolato riga per riga contro il seed: applicata questa
+tabella, **tutte e 11 le liste vanno a residuo zero nelle due direzioni** e
+`_DEBITO_WHITELIST_LOGICA` si svuota — non si riduce, si svuota. Quattro liste
+(`contratti`, `preventivi`, `resi`, più le due code) sono **già** a zero adesso,
+perché per loro serviva solo il lavoro sul seed, che è fatto.
+
+Le 16 colonne che oggi promettono ancora un ordinamento inesistente sono
+esattamente le 16 aggiunte della colonna ➕: **la finestra si chiude quando
+chiude questa commessa**, e non prima. Nessun'altra è rimasta indietro.
 
 #### Gruppo B — tabelle annidate (37 file, senza paginator)
 
@@ -1260,6 +1398,150 @@ lint e `check_i18n_keys` puliti. La suite `vendite` ha 23 rossi in
 `pipeline_runner`, **estranei a questo lavoro**: isolati con uno stash mirato —
 senza i file di un'altra attività in corso la suite passa, e nessuno dei rossi
 tocca liste o catalogo.
+
+### 2026-07-31 · Debito «freccia che non ordina»: il nucleo di Tid, e `vendite.ordini` come pilota
+
+Estendendo il presidio a tutte le liste è emerso che il registro
+`_DEBITO_WHITELIST_LOGICA` copre un caso solo (whitelist chiavata sui codici
+logici) ma **non** il suo gemello: colonne dichiarate `ordinabile=t` nel seed
+per cui il backend non ha proprio quell'ordinamento. Stesso sintomo — il
+repository ripiega in silenzio sul default — e nessun test lo vede, perché i
+test 1-3 saltano proprio le 11 liste del registro.
+
+**La regola di dominio (Tid).** Esiste un nucleo di colonne **sempre**
+ordinabili: la **data** del contesto (data ordine, data fattura, data pratica)
+che ha priorità su tutto, il **numero** del contesto, **ragione sociale**,
+**billing account**, **id fiscale**, **utility**, **totale**, **stato**. Il
+resto si valuta caso per caso.
+
+Verificato su tutte e 11 le liste preesistenti: il nucleo è **già rispettato
+quasi ovunque**, 4 caselle rotte in tutto —
+
+| Lista | Rotte |
+| --- | --- |
+| `anagrafiche.clienti` | id fiscale |
+| `anagrafiche.soggetti` | id fiscale |
+| `vendite.resi_da_riconsegnare` | numero, stato |
+
+Le prime due sono lo stesso difetto: la whitelist dice `codice_fiscale`, la
+colonna legge `id_fiscale_univoco_cf_piva`. Il nucleo non è quindi una regola
+da imporre: è la **fotografia di com'è già fatto il sistema**, e vale come
+invariante da presidiare anche sulle liste future.
+
+**Pilota `vendite.ordini`** (la peggiore: 12 colonne bugiarde su 24 dichiarate
+ordinabili). Nota che spiega perché nessuno se n'era accorto: **tutte e 12 sono
+fuori dal preset di default** — le incontra solo chi si personalizza le colonne.
+
+- **Lato DB, fatto**: 7 colonne portate a `ordinabile=f` — `Canale`,
+  `Mod. pagamento`, `Termine pag.`, `Valuta`, `Emittente`, `Origine`, `Agente`.
+  La freccia sparisce dall'intestazione e nessuno ci prova più.
+- **Lato BE, da fare** (decisione Tid: eccezioni accettate): aggiungere a
+  `_ORDER_COLS_ORDINI` le 5 voci `imponibile_tot`, `iva_tot`, `anno`, `serie`,
+  `utility_descrizione` — *Imponibile*/*IVA* perché sono fratelli di *Totale*
+  che è nel nucleo, *Anno*/*Serie* perché sono l'identità del documento insieme
+  al *Numero*, *Descr. Utility* per ordinare per esteso e non per codice.
+  **E togliere `stato_codice_interno`**: è la colonna tecnica che dà il colore
+  al Tag di stato, non è offerta all'operatore e farebbe fallire il controllo
+  inverso.
+
+Fatte queste due cose i conti tornano esatti — 17 colonne ordinabili nel seed,
+17 voci in whitelist, **zero residuo in entrambe le direzioni** — e
+`vendite.ordini` può **uscire da `_DEBITO_WHITELIST_LOGICA`**, prima delle 11.
+Finché il BE non aggiunge le 5 voci quelle colonne restano bugiarde: è
+l'unica finestra aperta, ed è voluta.
+
+**Poi tutte le altre, con lo stesso metodo** (2026-07-31, secondo giro). Il
+lavoro sul seed è chiuso su **tutte e 11 le liste**: 30 colonne fuori dal nucleo
+portate a `ordinabile=f`, e la colonna *Emittente* rinominata da
+`emittente_fiscale_codice` a `emittente_fiscale` su 6 liste — stessa bugia di
+nome dell'*Id. Fiscale* (il `codice` diceva «codice», il `campo_sorgente` legge
+`emittente_fiscale_descrizione`), e stavolta **nessuno slot FE la usa**, quindi
+la rinomina non tocca il frontend. Quel che resta è tutto nella tabella della
+commessa qui sotto.
+
+⚠️ **Due misure sbagliate, corrette.** La prima stesura contava 48 colonne
+rotte su 8 liste. Erano due errori di misura, entrambi miei:
+
+1. l'estrattore delle whitelist leggeva anche **dentro i commenti** del
+   sorgente, e parole come `campo_sorgente` finivano per errore fra le chiavi;
+2. soprattutto: `resi_da_accreditare` e `resi_da_riconsegnare` **non usano**
+   `_ORDER_COLS_RESI` — hanno whitelist proprie in `_CODA_META`, già perfette.
+   Le contavo fra le peggiori (10 e 8 colonne rotte) e sono a **zero**.
+
+Il debito vero era **39 colonne su 9 liste**, non 48 su 8. La lezione è che una
+whitelist va letta **dal simbolo che il repository usa davvero**, non da quello
+che sembra suo per nome — ed è lo stesso inganno in cui è caduto il registro
+`_LISTE` del presidio (vedi in fondo alla commessa).
+
+**Poi `anagrafiche.clienti` e `anagrafiche.soggetti` — l'*Id. Fiscale*.** È
+l'unica rottura del nucleo che si vede **nella vista di default**: la colonna
+c'è, sembra ordinabile e non lo è. Causa identica sulle due liste — la colonna
+mostra `id_fiscale_univoco_cf_piva` (il campo unificato CF-o-P.IVA) mentre la
+whitelist conosce solo `codice_fiscale` e `partita_iva`, che sono i due campi
+separati. **Qui il seed non ha nulla da correggere: `campo_sorgente` è giusto,
+è la whitelist che guarda altrove.** Lavoro tutto lato BE:
+
+| Repository | Aggiungere | Togliere |
+| --- | --- | --- |
+| `_CLIENTI_ORDER_COLS` | `id_fiscale_univoco_cf_piva`, `data_sospensione`, `data_riattivazione` | `codice_fiscale` |
+| `_SOGGETTI_ORDER_COLS` | `id_fiscale_univoco_cf_piva` | `codice_fiscale`, `partita_iva`, `date_insert` |
+
+- Le due **date di ciclo vita** su clienti (*Sospeso il*, *Riattivato il*) sono
+  proposte in aggiunta per lo stesso motivo di *Imponibile*/*IVA* sugli ordini:
+  le sorelle dello stesso gruppo (*Attivazione*, *Chiusura*) ordinano già, e la
+  regola di dominio dà priorità alle date. Se si preferisce non toccare il BE,
+  l'alternativa è **due celle** nel seed (`ordinabile=f`): dimmelo e cambia lì.
+- Le voci da togliere non sono ordinamenti persi: **nessuna colonna del catalogo
+  le usa**, e restando dentro farebbero fallire il controllo inverso.
+- ⚠️ **`date_insert` è un refuso**: la colonna in `anagrafiche.soggetti` si
+  chiama `data_insert`. Dettaglio e rettifica nella commessa; in breve: non è
+  un errore 500 come diceva una prima stesura, è una colonna *Creazione* che
+  domani non ordinerebbe. Va tolta, o scritta giusta.
+
+Verificato: dopo queste modifiche **entrambe le liste hanno zero residuo nelle
+due direzioni** (clienti 10 = 10, soggetti 4 = 4) e possono uscire dal registro
+di debito insieme a `vendite.ordini`.
+
+> **La radice del refuso non era del BE.** `docs/it/linee-guida-sql.md` §7 e
+> `.codex/AGENTS.md` documentavano i campi di audit come `date_insert` /
+> `date_update`, mentre nel DB sono **806 colonne e si chiamano tutte
+> `data_*`**, zero con `date_`. Il blocco della linea guida era perfino
+> incoerente con sé stesso (`date_insert` sulla prima riga, `data_update` sulla
+> terza). Corretti entrambi, più il tutorial `framework-automazione-db.md` (5
+> occorrenze: è il posto peggiore, insegna) e altri 2 documenti. Restano solo
+> le occorrenze nei changelog storici, che non si riscrivono, e in
+> `docs/it/dev/work-done/`, che è archivio.
+
+**Richiesta del BE sulle colonne fiscali di `anagrafiche.fornitori`** (arrivata
+e applicata il 2026-07-31). Le righe **28** (`codice_fiscale`) e **29**
+(`partita_iva`) sono state disattivate: `fornitori` era l'unica lista del
+sistema a esporre tre colonne fiscali insieme, mentre ovunque altrove ce n'è
+una sola — `id_fiscale`, che punta al campo `GENERATED`. Oltre ad `attivo=f` ho
+messo anche `ordinabile=f` (una colonna spenta non deve restare dichiarata
+ordinabile) e riscritto l'`etichetta_estesa`, così chi le ritrova nel catalogo
+capisce perché sono lì e perché sono spente.
+
+Tre cose emerse controllando, che vale la pena avere agli atti:
+
+- **Nessun dato si perde, ed è più forte dell'argomento di coerenza.** Il dubbio
+  legittimo era «un fornitore con CF *e* P.IVA diversi perde un'informazione».
+  Non la perde: l'espressione generata **concatena** invece di scegliere.
+
+  ```sql
+  CASE WHEN codice_fiscale IS NOT NULL AND partita_iva IS NOT NULL
+            AND codice_fiscale <> partita_iva
+       THEN codice_fiscale || ' ' || partita_iva
+       ELSE COALESCE(codice_fiscale, partita_iva) END
+  ```
+
+  La colonna unificata è un **sovrainsieme** delle due. È l'obiezione che
+  qualcuno rifarà: la risposta sta qui.
+- **Ricaduta sulla commessa**: spegnere le due colonne rende orfane altrettante
+  voci di `_FORNITORI_ORDER_COLS`. La riga della tabella ora chiede di togliere
+  `attivo`, `codice_fiscale` **e** `partita_iva`.
+- La richiesta indicava `lista_id 4`, ma `anagrafiche.fornitori` è **3** (4 è
+  `vendite.contratti`). Gli id di riga erano giusti, quindi l'istruzione era
+  comunque univoca.
 
 ### 2026-07-30/31 · Il filone DB: generatore riparato, `vendite.lotti` e il primo lotto seedati
 

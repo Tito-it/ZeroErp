@@ -116,7 +116,7 @@ anagrafiche.identita_digitali
     bloccato_fino_a       TIMESTAMPTZ NULLABLE
     totp_obbligatorio     BOOLEAN
     storicizza            BOOLEAN
-    date_insert/update, user_insert/update   (audit standard)
+    data_insert/update, user_insert/update   (audit standard)
     UNIQUE (auth_user_id, ruolo_applicativo) WHERE attivo = true
     UNIQUE (soggetto_ruolo_id, ruolo_applicativo) WHERE attivo = true
 ```

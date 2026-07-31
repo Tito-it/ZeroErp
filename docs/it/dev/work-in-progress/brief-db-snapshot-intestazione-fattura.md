@@ -323,3 +323,260 @@ non ancora scritto: `fn_prepare_sdi_payload` porta solo gli **id**
 (`billing_account_id`, `emittente_soggetto_ruolo_id`) e risolverà a valle
 qualunque fonte gli indichiamo. Deciderlo adesso significa farlo nascere giusto
 invece di correggerlo dopo.
+
+---
+
+## 10. 📎 Risposta del team DB (2026-07-31)
+
+> **Chi scrive:** DB (`dev/db-tid`). Terza nota scambiata fra i due piani, dopo
+> la vostra §4-ter e la nostra su D-Q. **Esito: brief accolto**, con due
+> decisioni di forma e tre rilievi, uno dei quali ribalta una vostra premessa.
+
+### 10.0 Cosa abbiamo riverificato per conto nostro
+
+Non per diffidenza: perché un brief che chiede di cambiare il modello va letto
+con le stesse mani con cui si scriverà il codice.
+
+| Vostra affermazione | Esito |
+|---|---|
+| `get_fattura_testata` confronta un `codice_interno` con la colonna che porta il `codice` | ✅ **confermato** leggendo la query: `ind_em.tipo_indirizzo_codice = %s` con `%s = 'SEDELEG'`, mentre la sede legale ha `codice = 'SEDE-LEG'`. Il cliente funziona per coincidenza (`FATT` ha i due valori identici); `FORNITURA` sarebbe stato `FORN` |
+| `config.tipi_ruolo_tipi_indirizzo` non ha righe per il ruolo `EF` | ✅ **confermato**: righe solo per i ruoli 1, 2, 3 |
+
+### 10.1 DECISIONE — funzione **sorella**, non estensione (risposta a §3.3)
+
+`vendite.fn_snapshot_indirizzi_fattura` **resta com'è**. L'intestazione la
+scrive una gemella, `vendite.fn_snapshot_intestazione_fattura(p_fattura_id)`,
+chiamata **dallo stesso wrapper di lotto**, stesso giro, stessa transazione.
+
+**Perché non l'estensione, che pure chiedevate.** I contatori mentirebbero. La
+funzione ritorna `(inserted_rows, updated_rows)` e il wrapper i cinque che voi
+leggete: descrivono **righe di indirizzo**. Se la stessa funzione scrivesse
+anche due colonne di testata, quel lavoro non comparirebbe in nessun contatore
+— `(0,0)` continuerebbe a dire «niente da fare» subito dopo aver riscritto
+l'intestazione — e l'idempotenza che i pgTAP 2.4/2.2 hanno appena messo sotto
+esame smetterebbe di dire ciò che dice.
+
+**Per voi non cambia nulla**, ed è il punto: il «punto unico» che chiedete è il
+**task**, e resta uno solo. Stesso `task_code`, stesso handler, stessi cinque
+contatori, stessa semantica D-Q. Nessuna rinomina in
+`ALLOWED_TASK_FUNCTIONS`, nessun tocco ai vostri test. Se in futuro serviranno
+contatori per l'intestazione si aggiungono **al wrapper**, che è dove li leggete
+già.
+
+Ne segue che la vostra domanda sul nome (`fn_snapshot_intestazione_fattura`)
+non si pone: ciascuna delle due funzioni si chiama come ciò che fa.
+
+### 10.2 DECISIONE — perimetro §3.1 **completo**, ma shape **non contrattuale**
+
+Accolta la vostra proposta di includere subito `iscrizione_rea`,
+`capitale_sociale`, `socio_unico`, `liquidazione`, `forma_giuridica_id`,
+oltre a `regime_fiscale_rf`, `codice_sdi` e `pec_fatturazione`. Il vostro
+argomento è corretto: aggiungerli dopo significherebbe rifare il giro su
+fatture già emesse, e oggi il costo è una chiave in più in una `jsonb` che
+stiamo comunque scrivendo.
+
+**Con una clausola, e va scritta ora**: finché il builder XML FatturaPA non
+esiste, lo shape di `emittente_snapshot` e `cliente_snapshot` è **interno e non
+contrattuale**. Aggiungere, rinominare o annidare una chiave resta lecito senza
+migrazioni e senza rigenerare documenti. Una chiave in più costa nulla; un
+contratto dichiarato prima di avere il consumatore costa parecchio — ed è
+esattamente ciò che il builder, quando nascerà, ci chiederà di cambiare.
+
+### 10.3 🔴 RILIEVO — il censimento del ruolo `EF` dà **zero**, e ribalta la premessa di §3.6
+
+Scrivete che «gli emittenti hanno oggi `SEDE-LEG` sul layer RUOLO grazie al
+fail-open». Misurato:
+
+```sql
+SELECT ti.codice_interno, count(*)
+  FROM anagrafiche.indirizzi i
+  JOIN anagrafiche.soggetti_ruoli sr ON sr.id = i.soggetto_ruolo_id
+  JOIN config.tipi_indirizzi ti      ON ti.id = i.tipo_indirizzo_id
+ WHERE sr.tipo_ruolo_id = 7
+ GROUP BY 1;
+```
+
+→ **nessuna riga.** I ruoli `EF` non hanno **alcun** indirizzo. Le 4 righe
+`SEDE-LEG` che avete contato stanno quindi su **altri ruoli** — e i ruoli 2 e 3
+hanno già `SEDELEG` in matrice, come obbligatorio.
+
+**Conseguenza sulla vostra §1: i difetti sono due, non uno** (precisazione di
+Tid, 2026-07-31). La regola del modello è la stessa per tutti i ruoli:
+*l'indirizzo si prende dal ruolo se c'è, altrimenti da quello del soggetto*.
+Quindi la sede dell'emittente **non manca**: sta sul layer SOGGETTO — che è
+anche l'unico dei due che nei vostri numeri di §2 ha righe (90) e storico pieno.
+
+| # | Difetto | Chi l'ha trovato |
+|---|---|---|
+| 1 | confronta `codice_interno` con la colonna che porta il `codice` | voi, §1 |
+| 2 | legge **solo** `vw_indirizzi_resolved_ruolo`, che per costruzione contiene il **solo layer RUOLO** (`WHERE scope = 'RUOLO'`) | emerso qui |
+
+È il **secondo** a spiegare la sede vuota: il ruolo `EF` non ha indirizzi, ma la
+query non guarda dove l'indirizzo effettivamente sta. E il difetto 2 vale
+**identico sulla riga del cliente**, che legge la stessa vista: è la stessa
+famiglia di C-14a del piano DB, dove un cliente con l'indirizzo sul solo layer
+SOGGETTO farebbe fallire la fattura pur avendone uno.
+
+**Non chiede lavoro nuovo, anzi ne toglie.** L'emittente non è un caso speciale:
+è la stessa catena del cliente, e la catena esiste già —
+`script.fn_resolve_indirizzo_documento(p_soggetto_ruolo_id, NULL, 'SEDELEG')`.
+`fn_snapshot_intestazione_fattura` la chiamerà così, senza una riga di logica
+propria; e la vostra §5, che toglie del tutto la subquery su
+`vw_indirizzi_resolved_ruolo` leggendo lo snapshot, chiude **entrambi** i
+difetti in un colpo. È la terza volta che «una sola implementazione della
+catena» (C-14b) si ripaga.
+
+**Due conseguenze sul seed che chiedete:**
+
+1. **niente `obbligatorio = true`.** Verificato: quel flag ha i denti —
+   `trgfn_soggetti_ruoli_guard_indirizzi_required` solleva
+   `E_INDIRIZZO_OBBLIGATORIO_MANCANTE`. Con zero indirizzi sugli emittenti,
+   marcare `SEDELEG` obbligatorio romperebbe ogni emittente esistente al primo
+   aggiornamento. E lo farebbe **a torto due volte**: quel guard pretende
+   l'indirizzo **sul ruolo**, mentre il modello accetta come valido quello del
+   **soggetto** — il suo unico fallback è verso un altro *tipo*
+   (`fallback_tipo_indirizzo_id`), non verso l'altro *layer*. L'obbligo «la
+   fattura deve avere la sede dell'emittente» appartiene al **documento**
+   (guard 2.5 allargato, §3.5), dove la catena a due layer è già quella giusta;
+2. **la lista va completa alla prima riga.** Seedare la matrice non aggiunge un
+   permesso: **sostituisce l'assenza di regole con una regola**, e da quel
+   momento tutto ciò che non è elencato è vietato. Decisi con Tid:
+   `SEDELEG`, `DOMFISC`, `SEDEOP`, `POSTA`, `RES`. `SEDEOP` perché il «luogo
+   fisico» di una società è la sede operativa e non la residenza; `RES` perché
+   un emittente può essere una **ditta individuale o un professionista**, e la
+   matrice è per ruolo, non per tipo di soggetto. `SPED` resta fuori: è un fatto
+   logistico, e aggiungere un tipo dopo è banale mentre toglierlo non lo è.
+
+### 10.4 🟠 RILIEVO — `cliente_snapshot` e il billing account **padre**
+
+Fra le chiavi proposte ci sono `billing_account_id` e `ba_codice`. Su una
+fattura con gerarchia quello è il BA **padre**, non il conto del cliente che ha
+consumato: lo stabilisce **D-P** (piano DB §2), ed è la stessa ragione per cui
+`fn_snapshot_indirizzi_fattura` risolve gli indirizzi dal BA di testata senza
+conoscere la gerarchia. Va scritto nel brief, altrimenti fra sei mesi qualcuno
+leggerà quello snapshot come «il conto del cliente» e sarà il conto di un altro.
+
+### 10.5 Una regola che abbiamo ormai incontrato due volte
+
+`fatture_indirizzi` è la collezione degli indirizzi **del cliente**, non «gli
+indirizzi della fattura». L'abbiamo dedotto due volte dallo stesso vincolo,
+`uq_fatture_indirizzi_uno_per_tipo_`: la prima decidendo dove **non** può stare
+il sotto-dettaglio per figlio delle fatture utilities (D-P), la seconda nella
+vostra §3.2. Vale la pena scriverla come regola invece di riscoprirla una terza
+volta — ed è anche l'argomento più forte della vostra §3.2, più della
+leggibilità: con quella `UNIQUE` è **impossibile** avere insieme la sede legale
+dell'emittente e quella di un cliente persona giuridica.
+
+### 10.6 Confermato senza riserve
+
+- **§3.2** intestazione in testata e non nel satellite;
+- **§3.4** stessa protezione di congelamento sulle due colonne nuove: un
+  satellite blindato e una testata aperta sarebbe una porta di servizio;
+- **§3.5** allargamento del criterio di 2.5, e il tempismo è fortunato — 2.5
+  non è ancora scritta, quindi nasce già completa invece di essere riaperta;
+- **§7** l'armamento 2.3 parte 2 non cambia rotta: è stato **scritto e
+  applicato** il 2026-07-31, dopo la vostra Fase 1.
+
+### 10.7 Una nota sul vostro smoke, per non perderla
+
+`smoke-fattura-indirizzi-snapshot.py` è verde ma chiama
+`run_snapshot_indirizzi_lotto_task` **direttamente** — lo dichiarate voi in
+testa al file, e non potevate fare altrimenti: l'armamento era nostro. Ora c'è.
+Quello smoke va **rieseguito** passando dalla pipeline: oggi è dimostrata la
+catena wrapper → funzione DB → ciclo D-Q, **non** che la pipeline invochi quel
+wrapper. È la classe di difetto che il vostro §1 cita due volte come motivo di
+esistere degli smoke, e il rischio è che nessuno lo rifaccia proprio perché
+«era già verde».
+
+### 10.8 Consegna — cosa c'è già, e la riga che dovete cambiare (2026-07-31)
+
+**Applicato e verde** lo stesso giorno del brief. Tre changeSet:
+
+| # | Cosa | changeSet |
+|---|---|---|
+| I.1 | `vendite.fatture.emittente_snapshot` e `cliente_snapshot` (`jsonb`, NULLable) + guard di congelamento | `20260731-05` |
+| I.2 | `vendite.fn_snapshot_intestazione_fattura(p_fattura_id)` → `(scritta boolean)` | `20260731-06` |
+| I.3 | wrapper rinominato in `vendite.fn_snapshot_fattura_lotto`, che chiama le due sorelle | `20260731-07` |
+
+Il guard di §3.4 non è una funzione nuova: è il parametrico dei satelliti montato
+con `TG_ARGV = 'id'` e `BEFORE UPDATE OF emittente_snapshot, cliente_snapshot`.
+La testata è protetta esattamente come `fatture_indirizzi`.
+
+#### 🔴 La riga che dovete cambiare
+
+Il wrapper si chiama `fn_snapshot_fattura_lotto`: dal momento in cui scrive
+anche l'intestazione, il nome vecchio diceva metà della verità (precedente
+D-L). Due punti in `db/pipeline_repository.py`:
+
+1. il valore in `ALLOWED_TASK_FUNCTIONS` (`:176`);
+2. il nome nella query di `run_snapshot_indirizzi_lotto_task` (`:1523`).
+
+**Il `task_code` resta `snapshot_indirizzi_lotto`**: seed, handler, policy e
+registry non si muovono. E i contatori li selezionate **per nome**, quindi il
+sesto — `intestazioni_scritte` — non vi tocca finché non vorrete leggerlo.
+Fra l'apply e la vostra riga, il task non gira.
+
+#### Lo shape, che è ciò contro cui scriverete `_shape_emittente`
+
+⚠️ **Diverso dal vostro §3.1 su due chiavi**, e per una ragione di merito:
+**gli id sono provenienza, non contenuto**. Uno snapshot che porta solo
+`forma_giuridica_id` non è uno snapshot — se domani cambia la descrizione di
+quella forma giuridica, la ristampa cambia di nuovo: è il difetto che stiamo
+chiudendo, spostato di una tabella. Quindi di ogni entità referenziata si
+congela il **valore** e si tiene l'id **accanto**. È la stessa coppia già in uso
+sugli indirizzi (`snapshot` + `origine_indirizzo_id`).
+
+```jsonc
+// emittente_snapshot
+{
+  "soggetto_ruolo_id": 12, "soggetto_id": "…uuid…",
+  "denominazione": "…", "codice_fiscale": "…", "id_fiscale": "…",
+  "emittente_fiscale_id": 32, "emittente_codice": "…",
+  "regime_fiscale_rf": "RF01",
+  "capitale_sociale": 10000.00,
+  "socio_unico": "SU", "liquidazione": "LN",
+  "rea":             { "numero": "…", "provincia": "AV", "provincia_id": 7 },
+  "forma_giuridica": { "id": 3, "codice": "SRL", "descrizione": "…" },
+  "sede":            { "intestazione": "…", "via": "…", "cap": "…",
+                       "citta": "…", "prov": "AV", "stato": "IT",
+                       "display": "…" }
+}
+
+// cliente_snapshot
+{
+  "soggetto_ruolo_id": 45, "soggetto_id": "…uuid…",
+  "denominazione": "…", "codice_fiscale": "…", "id_fiscale": "…",
+  "billing_account_id": 9, "ba_codice": "…",
+  "codice_sdi": "…", "pec_fatturazione": "…", "destinatario_fe": "…"
+}
+```
+
+`jsonb_strip_nulls` è applicato: **le chiavi assenti non compaiono**, non
+compaiono valorizzate a `null`. Lo shape resta **non contrattuale** finché il
+builder XML FatturaPA non esiste (§10.2).
+
+⚠️ `cliente_snapshot.billing_account_id` è il BA di **testata**, che in
+gerarchia è il **padre** (D-P) — non il conto del figlio che ha consumato.
+E l'indirizzo di fatturazione **non è qui**: sta in `fatture_indirizzi` (§10.5).
+
+#### Due cose emerse strada facendo, che vi riguardano
+
+**Un terzo campo a larghezza fissa.** `dati_societari.destinatario_fe` è un
+`character`, come `province.sigla`. Nello snapshot è già ripulito; segnalatelo
+se lo leggete live da qualche altra parte.
+
+**Il ritiro delle segnalazioni ora filtra su `meta->>'task'`, non su `source`.**
+Il source è il nome della funzione, e le funzioni si rinominano — è appena
+successo con il wrapper. Con il filtro vecchio, dopo ogni rinomina il task non
+riconoscerebbe più le proprie bandiere e smetterebbe di abbassarle, lasciando
+fatture in ERRORE per problemi già risolti. Il `task_code` è l'identità stabile
+del passo. La vostra `disattiva_segnalazioni_lotto_be` non è toccata (filtra su
+`scope` e su un nome di tabella, entrambi stabili), ma il criterio vale anche
+per voi: **filtrare sull'identità del passo, mai sul nome di ciò che lo esegue.**
+
+#### Cosa resta a noi
+
+Il guard **2.5 col criterio allargato** (§3.5) e il seed della matrice `EF`
+(§3.6, non urgente: la sede si risolve già dal layer SOGGETTO). Da qui in avanti
+la vostra Fase 2 non è più bloccata: la forma è quella qui sopra e non cambierà
+sotto di voi.
