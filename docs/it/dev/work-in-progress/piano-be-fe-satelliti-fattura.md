@@ -24,10 +24,13 @@
 > ci rimanda e non lo duplica.
 >
 > **Owner:** BE (`dev/backend-tid`)
-> **Stato (2026-07-31 notte):** Fasi 0, 1 e **2** ✅ · 4-bis: D-Q ✅, DB 2.3 ✅
-> (incl. riallineamento al wrapper rinominato `fn_snapshot_fattura_lotto`),
-> 3a.7 ✅ (anticipata, residui chiusi) · Fasi 3-4 in attesa del brief scadenze ·
-> Fase 5 = 2.5/I.4 lato DB · aperto: giro pipeline reale post-rinomina (§3.1)
+> **Stato (2026-08-01): cantiere indirizzi+intestazione COMPLETO.** Fasi 0, 1,
+> **2** e **5** ✅ (guard uscita DRAFT col criterio allargato +
+> `E_FATTURA_NON_EMETTIBILE_INCOMPLETA` registrato 409) · 4-bis: D-Q ✅, DB 2.3
+> ✅, 3a.7 ✅ · **giro pipeline reale ✅** (lotti 603/604, prime 3 fatture
+> interamente conformi — §3.1 lezione 2) · restano SOLO le Fasi 3-4, in attesa
+> del brief scadenze (con la decisione sui 18/21 clienti senza
+> `termine_pagamento_id`)
 > **Prerequisiti (bloccanti):**
 > [brief-db-snapshot-indirizzi-fattura.md](brief-db-snapshot-indirizzi-fattura.md) ·
 > [brief-db-generazione-scadenze-fattura.md](brief-db-generazione-scadenze-fattura.md)
@@ -119,9 +122,18 @@ codice morto con i test verdi.
 > 2. **Passa dal wrapper, non dallo step** (rilievo del team DB, §10.7 del brief
 >    intestazione). Finché lo smoke chiama `run_snapshot_indirizzi_lotto_task`
 >    direttamente, dimostra la catena wrapper → funzione DB → D-Q → contesto di
->    stampa, **non** che la pipeline invochi quel wrapper. Ora che l'armamento
->    c'è, va rifatto un giro reale — o modificato lo smoke perché esegua lo
->    step. **Unico aperto del cantiere indirizzi.**
+>    stampa, **non** che la pipeline invochi quel wrapper.
+>    ✅ **CHIUSO il 2026-08-01 con un giro reale** (`run_fatturazione_batch
+>    --modalita differita`, canale di sistema): lotti **603/604**
+>    (`LTF-0000679/680`), `snapshot_indirizzi_lotto` **COMPLETATO nei
+>    task_run di entrambi** — cioè seed → executor → handler → wrapper
+>    rinominato, la catena intera. Le 3 fatture prodotte (834-836) sono le
+>    **prime interamente conformi**: `emittente_snapshot` + `cliente_snapshot`
+>    + 2 righe indirizzo ciascuna, `prov` pulita (`AV`/`MC`/`CB`), sede
+>    emittente valorizzata dal layer SOGGETTO — e hanno **attraversato il
+>    guard di uscita DRAFT**, che è la controprova positiva dell'asserzione
+>    2b. Lo smoke resta com'è: la copertura pipeline la dà il giro, non una
+>    fixture che simula lo step.
 
 ### 3.2 `smoke-fattura-scadenze.py`
 
@@ -387,15 +399,35 @@ Il termine in chiave cambia **quante** fatture nascono. Da sorvegliare:
 
 Verifica di fase: smoke §3.3 + suite completa vendite.
 
-### Fase 5 — Accensione del guard `FATT` obbligatorio (coordinata col DB)
+### Fase 5 — Accensione del guard `FATT` obbligatorio ✅ **FATTA (2026-07-31, notte)**
 
-Il guard sta nel brief DB, ma la **sequenza è condivisa**: si accende **solo dopo**
-che la Fase 1 gira, altrimenti blocca la pipeline.
+> **Acceso dal DB col criterio GIÀ allargato** (I.4, brief intestazione §10.9,
+> changeSet `20260731-11/-12`, pgTAP plan(11) verde):
+> `trgfn_fatture_guard_uscita_draft` presidia l'**uscita dalla bozza** — per
+> QUALUNQUE percorso, UPDATE diretto compreso, senza bypass GUC — e pretende
+> il documento completo: indirizzi obbligatori dell'ambito `FATTURE` **e**
+> intestazione congelata (`emittente_snapshot`/`cliente_snapshot`). La
+> sequenza chiesta da questa fase è stata rispettata: armamento 2.3 parte 2
+> confermato su giro reale **prima** dell'accensione.
+>
+> **Metà BE, fatta contestualmente:**
+>
+> | Cosa | Dove |
+> |---|---|
+> | ⚠️ Il codice errore **non è quello annunciato** dal brief indirizzi §5.3 (`E_INDIRIZZO_DOC_OBBLIGATORIO`, scritto quando il criterio era il solo indirizzo): il guard solleva **`E_FATTURA_NON_EMETTIBILE_INCOMPLETA`** (id 575). Registrato con **409** (stato della risorsa, non input malformato — famiglia `_DUPLICATO`/`_IN_ESECUZIONE`; `_INCOMPLETA` non era nella tassonomia api.md, decisione nostra come richiesto). UN codice solo: chi lo riceve fa la stessa cosa in entrambi i casi — rieseguire lo step DRAFT; la diagnosi sta nel messaggio e nel payload (`indirizzi_mancanti`/`intestazione_mancante`) | `error_policies.py` |
+> | Asserzione **2b** nello smoke: nella fase «errore» la fattura è incompleta per costruzione — UPDATE diretto verso EMESSA respinto col codice giusto (savepoint dedicato, la transazione dello smoke sopravvive). È l'asserzione 14 del brief (§6) dal lato applicativo | `smoke-fattura-indirizzi-snapshot.py` |
+> | Censimento percorsi: **nessuno** script BE o smoke muove lo stato fattura con UPDATE diretto (verificato su `backend/`) — l'avvertenza §10.9 punto 2 per noi è a vuoto | — |
+>
+> **Verifiche:** smoke §3.1 **9 casi verdi** (2b incluso: il messaggio DB
+> compone davvero le due metà della diagnosi) · suite 2487 verdi.
+>
+> Resta vera l'ultima riga di questa fase com'era scritta: la verifica che
+> conta è che il task popoli le fatture **nuove** — ✅ data dal **giro reale
+> del 2026-08-01** (lotti 603/604: 3 fatture complete attraverso il guard,
+> dettaglio in §3.1 lezione 2).
 
-Le 7 fatture storiche senza snapshot **non si bonificano** (§9): se inciampano nel
-guard si cancellano e si rifà un giro. L'unica verifica che serve è che il task
-della Fase 1 popoli davvero le fatture **nuove** — cioè lo smoke §3.1, non un
-censimento dello storico.
+Le fatture storiche senza snapshot **non si bonificano** (§9): se inciampano nel
+guard si cancellano e si rifà un giro.
 
 ### Fase 6 — Frontend
 
@@ -418,7 +450,7 @@ Sono elencate qui perché **l'owner è il BE**; la fase DB resta il loro innesco
 |---|---|---|
 | **3a.7** — riforma condizioni di pagamento (D-I) | ✅ **FATTA (2026-07-31, PR #1100), ANTICIPATA rispetto al DROP** — decisione presa con Tid e team DB: le colonne legacy non avevano lettori a valle e il `NOT NULL` ha un `DEFAULT`, quindi anticipare **elimina** l'accoppiamento invece di gestirlo — 3a.5/3a.6 diventano DROP pure, senza deploy FE da sincronizzare. Fatto: `ClienteDrawer.vue` (via i 2 campi + `tipoGgOptions`), 6 chiavi i18n it+en, `clienti_repository` (2 whitelist + SELECT), `clienti_service`, `views_clienti`, `test_clienti_repository`. Verifiche: 1068 test verdi, `check_i18n_keys` pulito, eslint + build Vite ok. **Residui CHIUSI la sera stessa**: `fn_update_cliente` riscritta dal DB (`20260731-08`, con 3a.5) e `E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI` **ritirato** da `error_policies.py` — il trigger non esiste più, la policy era codice morto; resta il gemello fornitori, che il suo trigger ce l'ha ancora. **3a.7 completamente chiusa** | ~~Contestuale al DROP~~ → anticipata |
 | **6.6** — eliminazione del flag `esclusa` (D-M) | **filtro API** e **`types.py`** (il resto è DB) | Con la Fase 6 DB |
-| **6.7** — ritorno a DRAFT / estrazione (D-N-bis) | Verbo nel `LottoDrawer` con conferma esplicita di **cosa si perde**, e **lista «estratte»** nel cockpit | Dopo 6.0-6.5 DB |
+| **6.7** — ritorno a DRAFT / estrazione (D-N-bis) | Verbo nel `LottoDrawer` con conferma esplicita di **cosa si perde**, e **lista «estratte»** nel cockpit. ✅ **Anticipo fatto il 2026-08-01** (bug trovato in-app da Tid: da un lotto EMESSA il pulsante «Riporta a bozza» era un vicolo cieco con `E_PARAMETRO_INVALIDO`): il pulsante ora è **gated su lotto DRAFT** (`canResetLotto && isDraft`) e le etichette dicono la verità — «**Annulla lotto**», conferma «passa ad ANNULLATA e viene chiuso: non si riapre», esito «Lotto annullato» (it+en; chiavi i18n `reset*` invariate: rispecchiano il `task_code`, che per D-L non si muove). Il commento nel `.vue` rimanda a QUESTA riga per il verbo vero di uscita da EMESSA: quando 6.7 arriverà sarà un'azione **distinta**, non una riapertura di quel gate | Dopo 6.0-6.5 DB (il fix etichetta/gate NON lo sostituisce) |
 | **D-L** — rinomina funzioni di reset | **4 righe obbligatorie + ~12 nomi Python** da allineare (vedi sotto): decisione Tid 2026-07-30, si rinomina su **entrambi** gli strati | Contestuale alla rinomina |
 | **D-Q** — fattura in errore, lotto non avanza ma si rilancia (decisione Tid 2026-07-31) | **La regola di blocco** (`lotto_segnalazioni_service`) e **il ritiro delle segnalazioni scritte dal BE** (vedi sotto): senza, la via d'uscita definita da Tid non esiste | **Prima** dell'accensione del task in pipeline (DB 2.3) |
 | **DB 2.3** — seed del task snapshot indirizzi | ✅ **FATTA** (registrazione + handler in Fase 1; armamento DB applicato il 2026-07-31). **Coda del 2026-07-31 sera**: il DB ha rinominato il wrapper in `fn_snapshot_fattura_lotto` (scrive anche l'intestazione — brief §10.8) e il BE è stato riallineato: valore in `ALLOWED_TASK_FUNCTIONS`, query del wrapper, **sesto contatore `intestazioni_scritte`** già letto. Il `task_code` e il nome del metodo Python restano `snapshot_indirizzi_lotto`/`run_snapshot_indirizzi_lotto_task`: l'ancora stabile è il task, non la funzione dietro il wrapper | ~~Prima che il DB armi lo step DRAFT~~ → chiusa |

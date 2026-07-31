@@ -73,9 +73,11 @@ async function loadConversioni() {
   if (!props.uomId) return
   listLoading.value = true
   try {
-    const res = await listConversioniUom({ uom_id: props.uomId })
-    const payload = res.data?.data
-    conversioniList.value = (Array.isArray(payload) ? payload : payload?.results || [])
+    // `limit` esplicito: dal 2026-08-01 l'endpoint e' paginato (default 25) e
+    // qui servono TUTTE le conversioni della UoM, non la prima pagina. 200 e'
+    // il tetto del repository; le conversioni di una singola UoM sono poche.
+    const res = await listConversioniUom({ uom_id: props.uomId, limit: 200 })
+    conversioniList.value = res.data?.data?.results || []
   } catch {
     conversioniList.value = []
   } finally {

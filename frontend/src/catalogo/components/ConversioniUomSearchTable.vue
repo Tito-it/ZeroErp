@@ -1,48 +1,42 @@
 <script setup>
-// Scopo: DataTable conversioni UoM. Dataset piccolo caricato tutto,
-// paginazione/sort client-side, layout standard via useSearchTable.
-import { computed, onMounted } from 'vue'
+// Scopo: Lista conversioni UoM configurabile
+//        (`<ListaConfigurabile codice="catalogo.conversioni_uom">`): colonne,
+//        ordine e visibilita' dal catalogo `ui.lista_colonna`. Paginazione,
+//        sort e search sono server-side (endpoint allineato alle due sorelle
+//        UoM il 2026-08-01). Nessuna colonna azioni: il catalogo non la
+//        prevede, la riga si apre col click.
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConversioniUomStore } from '../stores/conversioniUom'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import AttivoTag from '../../core/components/AttivoTag.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { TAB_ENTITIES } from '../../core/constants'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = useConversioniUomStore()
 const isBlocked = useInjectBlocked()
-const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'uom_from_descrizione'
+const {
+  searchText, onPage, onSort, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  newTooltipKey: 'catalogo.nuova_conversione',
+  onNew: () => emit('new'),
+  // `uom_from_codice`, non la descrizione: e' il preset default del seed ed e'
+  // l'unico dei due che il BE sa ordinare (la descrizione e' `ordinabile=f`).
+  searchTableOptions: { defaultSortField: 'uom_from_codice' },
 })
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('catalogo.nuova_conversione'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    command: () => emit('new'),
-  },
-])
 
-function onRowClick(event) { emit('row-click', event.data) }
+// `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
+function onRowClick(data) { emit('row-click', data) }
 
 useTabFreshness(store, TAB_ENTITIES.CONVERSIONI_UOM)
 onMounted(() => store.fetchList())
@@ -59,35 +53,34 @@ onMounted(() => store.fetchList())
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
           <ReadonlyBadge />
         </template>
       </PageActionsBar>
     </div>
 
-    <DataTable
-      :value="store.items"
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="catalogo.conversioni_uom"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      v-bind="paginatorProps"
-      lazy removable-sort striped-rows scrollable scrollHeight="flex"
-      class="app-datatable"
-      @page="onPage" @sort="onSort" @row-click="onRowClick"
-      selection-mode="single" data-key="id"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
+      @page="onPage"
+      @sort="onSort"
+      @row-click="onRowClick"
+      @config-loaded="onConfigLoaded"
     >
-      <Column field="uom_from_codice" :header="t('catalogo.col_uom_da')" sortable style="width: 140px;" />
-      <Column field="uom_from_descrizione" :header="t('catalogo.col_desc_da')" sortable style="min-width: 180px;" />
-      <Column field="uom_to_codice" :header="t('catalogo.col_uom_a')" sortable style="width: 140px;" />
-      <Column field="uom_to_descrizione" :header="t('catalogo.col_desc_a')" style="min-width: 180px;" />
-      <Column field="fattore" :header="t('catalogo.col_fattore')" sortable style="width: 120px;">
-        <template #body="{ data }">
-          <span class="font-mono">{{ data.fattore }}</span>
-        </template>
-      </Column>
-      <Column field="attivo" :header="t('catalogo.col_attivo')" style="width: 90px;">
-        <template #body="{ data }">
-          <AttivoTag :active="data.attivo" />
-        </template>
-      </Column>
-    </DataTable>
+      <template #cell-fattore="{ data }">
+        <span class="font-mono">{{ data.fattore }}</span>
+      </template>
+      <template #cell-attivo="{ data }">
+        <AttivoTag :active="data.attivo" />
+      </template>
+    </ListaConfigurabile>
     </template>
   </div>
 </template>

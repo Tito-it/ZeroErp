@@ -1,5 +1,7 @@
 // Store Pinia per la gestione conversioni UoM.
-// Dataset piccolo: carica tutto dal backend, paginazione/sort/search client-side via useSearchTable.
+// Paginazione, sort e search sono SERVER-SIDE (2026-08-01), come le due sorelle
+// uomTipi/unitaMisura: prima caricava tutto e teneva `order_by` nei filtri senza
+// mai inviarlo, quindi ordinare non faceva niente e il paginator era decorativo.
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listConversioniUom, getConversioneUom, createConversioneUom, updateConversioneUom } from '../api/catalogo'
@@ -19,18 +21,34 @@ export const useConversioniUomStore = defineStore('catalogo-conversioni-uom', ()
     attivo: true,
     limit: 25,
     offset: 0,
-    order_by: 'uom_from_descrizione',
+    // `uom_from_codice`, non `uom_from_descrizione`: la descrizione non e' in
+    // whitelist BE (e nel seed e' `ordinabile=f`), quindi chiedendola l'ordine
+    // ripiegava in silenzio sul codice.
+    order_by: 'uom_from_codice',
     order_dir: 'asc'
   })
 
-  // Scopo: Carica tutte le conversioni dal backend.
-  //        Paginazione e sort sono gestiti client-side da PrimeVue DataTable.
+  // Scopo: Carica la pagina corrente delle conversioni (server-side).
   async function fetchList() {
+    const f = filters.value
+    const searchTerm = (f.search || '').trim()
+
     loading.value = true
     try {
-      const res = await listConversioniUom()
-      items.value = res.data.data || []
-      totalRecords.value = items.value.length
+      const params = {
+        limit: f.limit,
+        offset: f.offset,
+      }
+      if (f.order_by) {
+        params.order_by = f.order_by
+        params.order_dir = f.order_dir || 'asc'
+      }
+      if (searchTerm) params.search = searchTerm
+      if (f.attivo != null) params.attivo = f.attivo
+
+      const res = await listConversioniUom(params)
+      items.value = res.data.data.results
+      totalRecords.value = res.data.data.count
       hasSearched.value = true
     } finally {
       loading.value = false

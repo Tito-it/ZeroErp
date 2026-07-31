@@ -2046,6 +2046,29 @@ class ErrorPolicyRegistry:
                 "consegna prima dell'emissione."
             ),
         ),
+        # Guard DB all'uscita da DRAFT della FATTURA
+        # (trgfn_fatture_guard_uscita_draft, I.4 brief intestazione §10.9):
+        # criterio ALLARGATO rispetto al gemello DDT — indirizzi obbligatori
+        # dell'ambito FATTURE *e* intestazione fiscale congelata
+        # (emittente_snapshot/cliente_snapshot). UN codice solo: chi lo riceve
+        # fa la stessa cosa in entrambi i casi (rieseguire lo step DRAFT, che
+        # riscrive tutto ed e' idempotente); la diagnosi sta nel messaggio DB e
+        # nel payload (indirizzi_mancanti / intestazione_mancante), non nel
+        # ramo di codice. NON E_INDIRIZZO_DOC_OBBLIGATORIO: per una
+        # cliente_snapshot mancante direbbe una cosa falsa e manderebbe
+        # l'operatore a cercare un indirizzo che c'e'.
+        # 409 e non 400/422: lo stato attuale della risorsa non consente
+        # l'azione (documento incompleto), non input malformato — stessa
+        # famiglia di _DUPLICATO/_IN_ESECUZIONE (api.md §Tassonomia).
+        "E_FATTURA_NON_EMETTIBILE_INCOMPLETA": ErrorPolicy(
+            code="E_FATTURA_NON_EMETTIBILE_INCOMPLETA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Fattura non emettibile: documento incompleto. Rieseguire lo "
+                "step DRAFT del lotto (riscrive indirizzi e intestazione)."
+            ),
+        ),
         # Cliente (billing_account_id/destinatario) immutabile post-create:
         # cambiare cliente = nuovo DDT (mirror E_ORD_CLIENTE_IMMUTABILE).
         "E_DDT_CLIENTE_IMMUTABILE": ErrorPolicy(

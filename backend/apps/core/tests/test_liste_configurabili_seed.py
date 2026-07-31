@@ -159,6 +159,12 @@ _LISTE: tuple[tuple[str, object], ...] = (
     ("pratiche.pratiche", _da_costante("apps.pratiche.db.pratiche_repository", "_PRATICHE_ORDER_COLS")),
     ("anagrafiche.emittenti_fiscali", _da_costante("apps.anagrafiche.db.emittenti_fiscali_repository", "_EMITTENTI_ORDER_COLS")),
     ("anagrafiche.emittente_billing_account", _whitelist_emittente_billing_account),
+    # Terzo lotto, 2026-08-01: le tre liste UoM di catalogo. L'ordinamento
+    # server-side non esisteva quando erano state scartate; ora c'e', e le
+    # mappe vivono come costanti di modulo del repository.
+    ("catalogo.uom_tipi", _da_costante("apps.catalogo.db.catalogo_repository", "UOM_TIPI_ORDER_COLUMNS")),
+    ("catalogo.unita_misura", _da_costante("apps.catalogo.db.catalogo_repository", "UOM_ORDER_COLUMNS")),
+    ("catalogo.conversioni_uom", _da_costante("apps.catalogo.db.catalogo_repository", "UOM_CONVERSIONI_ORDER_COLUMNS")),
     # Preesistenti: erano fuori da qualunque presidio prima del 2026-07-31.
     ("anagrafiche.clienti", _da_costante("apps.anagrafiche.db.clienti_repository", "_CLIENTI_ORDER_COLS")),
     ("anagrafiche.fornitori", _da_costante("apps.anagrafiche.db.fornitori_repository", "_FORNITORI_ORDER_COLS")),
