@@ -7,10 +7,10 @@
 --
 -- Strategia: prendi un cliente esistente, fai UPDATE delle date
 -- (data_sospensione/data_riattivazione) per ogni scenario. Tutto in
--- BEGIN/ROLLBACK quindi nessun side-effect persistente. Il trigger di
--- normalize giorni_scadenza non scatta (clausola OF tipo_gg_scadenza_ft,
--- nr_giorni_scadenza). Eventuali altri trigger BEFORE UPDATE su clienti
--- non interferiscono con sosp/riatt.
+-- BEGIN/ROLLBACK quindi nessun side-effect persistente. Eventuali trigger
+-- BEFORE UPDATE su clienti non interferiscono con sosp/riatt.
+-- (rev 2026-07-31: il trigger di normalize giorni_scadenza, che qui si
+--  citava come non scattante, non esiste piu' — D-I, piano satelliti 3a.5.)
 --
 -- Indice test (1..8):
 --   1) sosp NULL, riatt NULL -> (NULL, NULL)

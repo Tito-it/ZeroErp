@@ -984,14 +984,14 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | --- | --- | --- | --- |
 | ☐ | `catalogo/components/UomTipiSearchTable.vue` | 4 | sì |
 | ✅ 31-07 | `amministrazione/components/CategorieClientiSearchTable.vue` | 5 | sì |
-| ☐ | `amministrazione/components/EmittenteFiscaleBillingAccountTab.vue` | 5 | sì |
+| ☐ 🔵 | `amministrazione/components/EmittenteFiscaleBillingAccountTab.vue` | 5 | sì |
 | ✅ 31-07 | `amministrazione/components/UtilitiesTipiRuoloSearchTable.vue` | 5 | sì |
 | ☐ | `amministrazione/views/AuditLogView.vue` | 5 | sì |
 | ✅ 31-07 | `anagrafiche/components/IndirizziSearchTable.vue` | 5 | sì |
 | ☐ | `vendite/views/ApprovazioniPrezzoListView.vue` | 5 | sì |
 | ☐ | `amministrazione/views/EmailAccountsListView.vue` | 6 | sì |
 | ☐ | `amministrazione/views/EmailTemplatesListView.vue` | 6 | sì |
-| ☐ | `amministrazione/views/EmittentiFiscaliListView.vue` | 6 | sì |
+| ☐ 🔵 | `amministrazione/views/EmittentiFiscaliListView.vue` | 6 | sì |
 | ☐ | `catalogo/components/ArticoloBomDrawer.vue` | 6 | — |
 | ☐ | `catalogo/components/ConversioniUomSearchTable.vue` | 6 | sì |
 | ☐ | `catalogo/components/UnitaMisuraSearchTable.vue` | 6 | sì |
@@ -999,7 +999,7 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ☐ | `amministrazione/views/EmailLogsListView.vue` | 7 | sì |
 | ☐ | `config/components/TemplateDocumentiSearchTable.vue` | 7 | sì |
 | ☐ | `config/components/TemplateAssetSearchTable.vue` | 8 | sì |
-| ☐ | `pratiche/components/PraticheSearchTable.vue` | 8 | sì |
+| ☐ 🔵 | `pratiche/components/PraticheSearchTable.vue` | 8 | sì |
 | ☐ | `strumenti/components/CodaLavoriTab.vue` | 8 | sì |
 | ☐ | `vendite/components/ContrattiBillingAccountDrawer.vue` | 8 | — |
 | ☐ | `vendite/components/PromoArticoliSearchTable.vue` | 8 | sì |
@@ -1219,6 +1219,7 @@ ordinamento realmente offerto all'operatore.
 | `_ORDER_COLS_CONTRATTI` | — | `emittente_fiscale_codice`, `stato_codice`, `stato_codice_interno` |
 | `_ORDER_COLS_PREVENTIVI` | — | `emittente_fiscale_codice`, `stato_codice_interno` |
 | `_ORDER_COLS_RESI` | — | `stato_codice_interno` |
+| `_EMITTENTI_ORDER_COLS` | `partita_iva` | — |
 
 **Perché queste aggiunte e non altre.** Sono tutte applicazioni della stessa
 regola di dominio (nucleo sempre ordinabile) o del criterio di simmetria che ne
@@ -1294,6 +1295,48 @@ perché per loro serviva solo il lavoro sul seed, che è fatto.
 Le 16 colonne che oggi promettono ancora un ordinamento inesistente sono
 esattamente le 16 aggiunte della colonna ➕: **la finestra si chiude quando
 chiude questa commessa**, e non prima. Nessun'altra è rimasta indietro.
+
+##### Secondo lotto — 3 liste, seed DB pronto (2026-07-31)
+
+| Lista | `lista_id` | Colonne | Visibili | Lavoro BE |
+| --- | --- | --- | --- | --- |
+| `pratiche.pratiche` | 17 | 10 | 8 | **nessuno** |
+| `anagrafiche.emittenti_fiscali` | 18 | 9 | 6 | 1 voce di whitelist |
+| `anagrafiche.emittente_billing_account` | 19 | 6 | 5 | **nessuno** |
+
+Righe `250..274` nei quattro CSV, `vista_sql` NULL su tutte e tre (i campi
+nascono da JOIN). Applicate in transazione di prova e rollbackate; l'ordine
+delle colonne visibili è quello di oggi.
+
+**Due liste su tre non chiedono niente al backend**: `pratiche` e il tab
+billing account hanno whitelist complete e già chiavate sui `campo_sorgente` —
+zero bugiarde e zero capacità irraggiungibili, in entrambe le direzioni. Sono
+le prime liste seedate che nascono già in regola.
+
+L'unica eccezione è **`partita_iva` su `anagrafiche.emittenti_fiscali`**, ed è
+una **rottura del nucleo**: per un emittente la P.IVA *è* l'identificativo
+fiscale, quindi per la regola di dominio deve ordinare. Una voce in
+`_EMITTENTI_ORDER_COLS`, già aggiunta alla tabella della commessa.
+
+Da sapere prima di convertire i `.vue`:
+
+- **La colonna «Default» del tab billing account non è una colonna calcolata.**
+  Nel `.vue` è una `<Column>` senza `field` che disegna un Badge, ma il dato
+  esiste (`is_default`) ed è pure ordinabile: nel seed è una colonna vera con
+  `campo_sorgente = is_default`, tipo `boolean`. Serve solo lo slot
+  `cell-is_default` per tenere il Badge.
+- **L'identificatore non è la prima colonna** su quella lista: è `Codice BA`,
+  che sta in seconda posizione. La colonna non-nascondibile dev'essere quella
+  che identifica la riga, non quella che capita per prima.
+- **Tre chiavi i18n da aggiungere**: `pratiche.col_descrizione`,
+  `amministrazione.emittenti_fiscali.col_valuta` e `…col_regime_fiscale`. Sono
+  già dichiarate nel seed e servono a tre colonne **invisibili di default**;
+  finché non ci sono, il `te()` di `<ListaConfigurabile>` fa fallback
+  sull'etichetta italiana del catalogo. Tutte le altre esistono già.
+- **Colonne extra invisibili**: `descrizione` e `data_insert` su pratiche
+  (entrambe ordinabili: la lista mostra il codice ma non la descrizione, che il
+  BE sa già cercare e ordinare), `valuta`/`regime fiscale`/`data_insert` su
+  emittenti, `data_insert` sul tab BA.
 
 #### Gruppo B — tabelle annidate (37 file, senza paginator)
 

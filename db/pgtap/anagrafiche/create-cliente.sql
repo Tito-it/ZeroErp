@@ -1,325 +1,223 @@
--- ---------------------------------------------------------
+-- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
--- Liquibase changelog per Zero ERP
+-- pgTAP test per Zero ERP
 -- Copyright (C) 2025 Tid (Michele Carlo Titini)
 --
--- Rilasciato sotto GNU GPLv3 o versione successiva.
--- Vedi LICENSE.md per il testo completo della licenza.
+-- Test: costruzione della catena cliente — soggetto, ruolo, istanza utility,
+--       billing account, cliente — e coerenza dei suoi legami.
 -- ------------------------------------------------------------
-
-
--- Numero di test
+-- Indice test (1..8):
+--   1) Trovato il ruolo CLIENTE in config.tipi_ruoli
+--   2) Trovata l'utility di test in config.utilities
+--   2-bis) Riferimenti risolti per codice: tipo soggetto e stato
+--   3) Inserito il soggetto (persona fisica privata, tipo PR)
+--   4) Assegnato il ruolo cliente via script.fn_get_or_create_soggetto_ruolo
+--   5) Inserita l'istanza utility (fittizia)
+--   6) Inserito il billing account per quell'istanza
+--   7) Inserito il cliente
+--   8) I legami del cliente col billing account sono coerenti
+-- ------------------------------------------------------------
+-- ⚠️ RISCRITTO IL 2026-07-31: da fixture che COMMITTAVA a test in
+--   BEGIN/ROLLBACK, come gli altri 140.
+--
+-- COS'ERA. Il file era un generatore di dati: creava un cliente di prova e lo
+--   COMMITTAVA, e per essere rieseguibile apriva con cinque DELETE di pulizia.
+--   Quelle DELETE hanno smesso di funzionare quando e' arrivato il guard
+--   script.trgfn_delete_block_by_guc su anagrafiche.clienti (seed
+--   automation_delete_block_ruoli, 2026-01-23): da allora il file moriva alla
+--   prima istruzione con E_DELETE_NOT_ALLOWED, senza eseguire NESSUNA
+--   asserzione — ed era la prima riga di db/pgtap/baseline-rossi.tsv,
+--   classificato ERRORE_FIXTURE.
+--
+-- PERCHE' LA CURA NON E' LA GUC DI MANUTENZIONE. Si poteva sbloccare con
+--   `SET zeroerp.maintenance_ruoli_delete = 'on'`, cioe' aggirare il guard.
+--   Ma le DELETE esistevano SOLO perche' il file committava: in
+--   BEGIN/ROLLBACK non serve pulire nulla, quindi il guard non viene nemmeno
+--   sfiorato. Si toglie la causa invece di disinnescare il sintomo, e sparisce
+--   anche il motivo per cui questo file era diverso da tutti gli altri.
+--
+-- ⚠️ IL DEBITO CHE QUESTA RISCRITTURA RENDE VISIBILE. Il soggetto storico con
+--   CF 'TTNMHL68E07D042Z' resta in tabella (non lo cancelliamo: vedi sotto),
+--   ma da qui in avanti NESSUNO lo ricrea. Tre pgTAP lo cercano li' —
+--   test-contatti-soggetto-cliente (oggi verde), test-risorse-umane e
+--   soggetti-con-contatti (gia' rossi) — e oggi lo trovano solo perche' questo
+--   file lo aveva committato tempo fa. Vanno resi autosufficienti: e' un debito
+--   che questa riscrittura rende visibile, non uno che introduce. Un test che
+--   dipende dai residui di un altro test e' verde per fortuna, non per
+--   costruzione.
+-- ------------------------------------------------------------
+BEGIN;
 SELECT plan(8);
 
 -- =========================================================
--- Costanti di test
+-- Costanti di test (CF finto ma sintatticamente valido; la P.IVA non serve:
+-- il tipo PR non la richiede)
 -- =========================================================
--- TODO: adatta piva/cf/codici a tuo piacere, basta che siano univoci e finti
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,   -- config.tipi_ruoli.codice
-        'GAS'::varchar             AS codice_utility_test     -- config.utilities.codice
-)
--- Cleanup iniziale: CLIENTI
-DELETE FROM anagrafiche.clienti cli
-USING anagrafiche.soggetti_ruoli sr,
-      anagrafiche.soggetti s,
-      costanti k
-WHERE cli.soggetto_ruolo_id = sr.id
-  AND sr.soggetto_id = s.id
-  AND s.codice_fiscale = k.cf_test;
+-- ⚠️ Niente id numerici indovinati: si risolve tutto per codice_interno.
+-- Era la fragilita' di fondo di questo file — vedi il tipo soggetto qui sotto.
+-- ⚠️ CF PROPRIO, diverso da quello storico. Il codice fiscale e' validato
+--   con l'algoritmo vero (script.fn_valida_codice_fiscale calcola il carattere
+--   di controllo), quindi non e' una stringa qualsiasi: questo e' generato e
+--   verificato. E' DIVERSO da 'TTNMHL68E07D042Z' di proposito — quel soggetto
+--   esiste ancora in tabella, lasciato da quando questo file committava, ed e'
+--   letto da altri tre pgTAP. Riusarlo qui darebbe una violazione di
+--   uq_soggetto_idstato_id_fiscale_univoco; cancellarlo romperebbe loro.
+--   Un test si crea i propri dati e non contende quelli di un altro.
+CREATE TEMP TABLE tmp_costanti_cc AS
+SELECT 'PGTPCL00A01H501Y'::text AS cf_test,
+       'CL'::varchar            AS codice_ruolo_cliente,  -- tipi_ruoli.codice_interno
+       -- ⚠️ BASE e non GAS: GAS/ENERGIA/IDRICO hanno richiede_pdp = true e il
+       --   guard pretende un punto di prelievo sul cliente. Questo file
+       --   costruisce la CATENA cliente, non collauda le regole di una
+       --   commodity: si sceglie l'utility che non aggiunge requisiti estranei.
+       'BASE'::varchar          AS codice_utility_test,   -- utilities.codice_interno
+       'PR'::varchar            AS codice_tipo_soggetto,  -- tipi_soggetto_dettaglio.codice_interno
+       'STANDARD'::varchar      AS codice_categoria_cliente;  -- categorie_clienti.codice_interno
 
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-)
--- Cleanup: BILLING ACCOUNT
-DELETE FROM anagrafiche.billing_account ba
-USING anagrafiche.istanze_utilities iu,
-      anagrafiche.soggetti_ruoli sr,
-      anagrafiche.soggetti s,
-      costanti k
-WHERE ba.istanza_utility_id = iu.id
-  AND ba.soggetto_ruolo_id = sr.id
-  AND sr.soggetto_id = s.id
-  AND s.codice_fiscale = k.cf_test;
-  
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-)
--- Cleanup: ISTANZE
-DELETE FROM anagrafiche.istanze_utilities iu
-USING anagrafiche.soggetti s,
-      costanti k
-WHERE iu.soggetto_id = s.id
-  AND s.codice_fiscale = k.cf_test;
-
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-)
--- Cleanup: SOGGETTI_RUOLI
-DELETE FROM anagrafiche.soggetti_ruoli sr
-USING anagrafiche.soggetti s,
-      config.tipi_ruoli tr,
-      costanti k
-WHERE sr.soggetto_id = s.id
-  AND sr.tipo_ruolo_id = tr.id
-    AND s.codice_fiscale = k.cf_test
-  AND tr.codice_interno = k.codice_ruolo_cliente;
-
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-)
-/*
--- Cleanup: CONTATTI
-DELETE FROM anagrafiche.contatti c
-USING anagrafiche.soggetti s,
-      costanti k
-WHERE c.soggetto_id = s.id
-  AND s.codice_fiscale = k.cf_test;
-
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-)
-
-*/
--- Cleanup: SOGGETTI
-DELETE FROM anagrafiche.soggetti s
-USING costanti k
-WHERE s.codice_fiscale = k.cf_test;
-
--- =========================================================
--- Inizio transazione applicativa
--- =========================================================
-BEGIN;
-
--- Imposto il transaction id per la sessione
---SELECT dbops.fn_get_or_create_session_tx_id();
+-- Tipo soggetto e stato, risolti e non ipotizzati.
+-- ⚠️ `PR` = «Persona Fisica - Privato»: piva_obbligatoria = false,
+--   cf_obbligatorio = true. Il file usava l'id 3 hardcoded, che e' `SC`
+--   (Societa' di Capitali) e pretende la partita IVA — mentre l'INSERT la
+--   teneva commentata. Da quando esiste il guard
+--   trgfn_soggetti_guard_cf_piva_obbligatori, quella combinazione non passa
+--   piu': persona fisica dichiarata societa'. Risolvere per codice_interno
+--   rende l'incoerenza impossibile invece che solo corretta una volta.
+CREATE TEMP TABLE tmp_rif_cc AS
+SELECT (SELECT tsd.id FROM config.tipi_soggetto_dettaglio tsd, tmp_costanti_cc k
+         WHERE tsd.codice_interno = k.codice_tipo_soggetto
+           AND tsd.stato_iso2 = 'IT')                         AS tipo_soggetto_dettaglio_id,
+       (SELECT st.id FROM config.stati st WHERE st.codice_iso2 = 'IT') AS stato_id,
+       -- Aggiunta al billing account nell'aprile 2026 e diventata NOT NULL
+       -- dopo: il file e' piu' vecchio della colonna e non la valorizzava.
+       (SELECT cc.id FROM anagrafiche.categorie_clienti cc, tmp_costanti_cc k
+         WHERE cc.codice_interno = k.codice_categoria_cliente
+           AND cc.attivo)                                  AS categoria_cliente_id;
 
 -- ---------------------------------------------------------
--- 1) Recupero ruolo CLIENTE (config.tipi_ruoli)
+-- 1) Ruolo CLIENTE
 -- ---------------------------------------------------------
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-),
-ruolo_cliente AS (
-    SELECT tr.id
-    FROM config.tipi_ruoli tr, costanti k
-    WHERE tr.codice_interno = k.codice_ruolo_cliente
-)
-SELECT *
-INTO TEMP TABLE tmp_ruolo_cliente
-FROM ruolo_cliente;
+CREATE TEMP TABLE tmp_ruolo_cliente AS
+SELECT tr.id
+  FROM config.tipi_ruoli tr, tmp_costanti_cc k
+ WHERE tr.codice_interno = k.codice_ruolo_cliente;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_ruolo_cliente),
     1,
-    'Trovato esattamente 1 ruolo cliente (config.tipi_ruoli.codice = CL)'
+    'Trovato esattamente 1 ruolo cliente (config.tipi_ruoli.codice_interno = CL)'
 );
 
 -- ---------------------------------------------------------
--- 2) Recupero utility (config.utilities)
+-- 2) Utility di test
 -- ---------------------------------------------------------
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-),
-utility_sel AS (
-    SELECT u.id
-    FROM config.utilities u, costanti k
-    WHERE u.codice_interno = k.codice_utility_test
-)
-SELECT *
-INTO TEMP TABLE tmp_utility
-FROM utility_sel;
+CREATE TEMP TABLE tmp_utility AS
+SELECT u.id
+  FROM config.utilities u, tmp_costanti_cc k
+ WHERE u.codice_interno = k.codice_utility_test;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_utility),
     1,
-    'Trovata esattamente 1 utility di test (config.utilities.codice = GAS)'
+    'Trovata esattamente 1 utility di test (config.utilities.codice_interno = BASE)'
 );
 
 -- ---------------------------------------------------------
--- 3) Inserimento soggetto (PG) e contatto
+-- 3) Soggetto (persona fisica)
 -- ---------------------------------------------------------
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-),
-nuovo_soggetto AS (
+CREATE TEMP TABLE tmp_soggetto AS
+WITH ins AS (
     INSERT INTO anagrafiche.soggetti (
-        ragione_sociale,
-        cognome,
-        nome,
-        sesso,
-        stato_id,
-       -- partita_iva,
-        codice_fiscale,
-        tipo_soggetto_dettaglio_id,
-        storicizza,
-        attivo
+        ragione_sociale, cognome, nome, sesso, stato_id,
+        codice_fiscale, tipo_soggetto_dettaglio_id, storicizza, attivo
     )
-    SELECT
-        NULL,
-        'Titini',
-        'Michele Carlo',
-        'M',
-        1,                 -- TODO: stato_id IT, adatta se diverso
-       -- k.piva_test,
-        k.cf_test,
-        3,                 -- TODO: tipo_soggetto_dettaglio_id (PG IT), adatta se diverso
-        TRUE,
-        TRUE
-    FROM costanti k
+    SELECT NULL, 'Pgtap', 'Cliente Test', 'M',
+           r.stato_id,
+           k.cf_test,
+           r.tipo_soggetto_dettaglio_id,
+           TRUE, TRUE
+      FROM tmp_costanti_cc k, tmp_rif_cc r
     RETURNING id, codice
 )
-SELECT *
-INTO TEMP TABLE tmp_soggetto
-FROM nuovo_soggetto;
+SELECT id, codice FROM ins;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_soggetto),
     1,
-    'Inserito esattamente 1 soggetto di test (PG)'
+    'Inserito esattamente 1 soggetto di test (PF)'
 );
 
--- Contatto minimo valido per soddisfare il constraint sui soggetti
+-- Contatto minimo: soddisfa il constraint sui soggetti.
 INSERT INTO anagrafiche.contatti (
-    tipo_contatto_id,
-    soggetto_id,
-    nominativo,
-    email,
-    is_default,
-    default_context
+    tipo_contatto_id, soggetto_id, nominativo, email,
+    is_default, default_context
 )
-VALUES (
-    1,  -- TODO: tipo_contatto_id valido da config.tipi_contatti
-    (SELECT id FROM tmp_soggetto),
-    'Referente Titini Test pgTAP',
-    'cliente.titini@example.com',
-    TRUE,
-    'soggetto'
-);
+SELECT 1, s.id, 'Referente pgTAP create-cliente',
+       'pgtap.create-cliente@example.com', TRUE, 'soggetto'
+  FROM tmp_soggetto s;
 
-
-
--- 4) Assegnazione ruolo CLIENTE (soggetti_ruoli) tramite fn_get_or_create_soggetto_ruolo
-WITH costanti AS (
-    SELECT
-        '01677080440'::text        AS piva_test,
-        'TTNMHL68E07D042Z'::text   AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL  AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-),
-soggetto_ruolo AS (
-    SELECT
-        script.fn_get_or_create_soggetto_ruolo(
-            p_soggetto_id   := s.id,
-            p_cd_int_ruolo  := k.codice_ruolo_cliente
-        ) AS id
-    FROM tmp_soggetto s,
-         costanti k
+-- Indirizzi obbligatori del soggetto.
+-- ⚠️ config.tipi_soggetto_dettaglio_tipi_indirizzo pretende, per il tipo PR,
+--   RES + DOMFISC + FATT — ma FATT ha fallback su DOMFISC, quindi due bastano.
+--   Il guard e' un constraint trigger DEFERRABLE
+--   (trgfn_soggetti_guard_indirizzi_required): non scatta all'INSERT, scatta
+--   al SET CONSTRAINTS in fondo al file. Un soggetto senza i suoi indirizzi
+--   obbligatori non e' un soggetto valido, quindi la fixture li deve creare.
+--   Forma libera completa: chk_indirizzi_free_requirements vuole
+--   indirizzo_libero + stato_id + (locality, postal_box, administrative_area).
+INSERT INTO anagrafiche.indirizzi_soggetti (
+    soggetto_id, tipo_indirizzo_id,
+    indirizzo_libero, stato_id, locality, postal_box, administrative_area
 )
-SELECT id
-INTO TEMP TABLE tmp_soggetto_ruolo
-FROM soggetto_ruolo;
+SELECT s.id, ti.id,
+       'Via pgTAP create-cliente 1', r.stato_id, 'Roma', '00100', 'RM'
+  FROM tmp_soggetto s, tmp_rif_cc r, config.tipi_indirizzi ti
+ WHERE ti.codice_interno IN ('RES', 'DOMFISC');
+
+-- ---------------------------------------------------------
+-- 4) Ruolo cliente sul soggetto (via funzione di dominio)
+-- ---------------------------------------------------------
+CREATE TEMP TABLE tmp_soggetto_ruolo AS
+SELECT script.fn_get_or_create_soggetto_ruolo(
+           p_soggetto_id  := s.id,
+           p_cd_int_ruolo := k.codice_ruolo_cliente
+       ) AS id
+  FROM tmp_soggetto s, tmp_costanti_cc k;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_soggetto_ruolo),
     1,
-    'Assegnato esattamente 1 ruolo cliente al soggetto di test tramite fn_get_or_create_soggetto_ruolo'
+    'Assegnato esattamente 1 ruolo cliente via script.fn_get_or_create_soggetto_ruolo'
 );
 
+-- Indirizzo obbligatorio del RUOLO cliente.
+-- ⚠️ Serve ANCHE questo, oltre a quelli di soggetto: sono due guard distinti
+--   su due matrici distinte. config.tipi_ruolo_tipi_indirizzo pretende FATT
+--   per il ruolo CLIENTE, e trgfn_soggetti_ruoli_guard_indirizzi_required lo
+--   cerca in anagrafiche.indirizzi — il layer RUOLO. Il suo fallback porta a
+--   un altro TIPO (DOMFISC), non all'altro LAYER: un indirizzo di soggetto,
+--   per quanto presente, non lo soddisfa.
+INSERT INTO anagrafiche.indirizzi (
+    soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
+    indirizzo_libero, stato_id, locality, postal_box, administrative_area
+)
+SELECT sr.id, ti.id, NULL,
+       'Via pgTAP create-cliente 2', r.stato_id, 'Roma', '00100', 'RM'
+  FROM tmp_soggetto_ruolo sr, tmp_rif_cc r, config.tipi_indirizzi ti
+ WHERE ti.codice_interno = 'FATT';
 
 -- ---------------------------------------------------------
--- 5) Creazione istanza_utility (fittizia = TRUE, senza indirizzo)
---     ⚠ Richiede che il modello permetta indirizzo_dettaglio_id NULL
---        quando fittizia = TRUE, come da guida.
+-- 5) Istanza utility (fittizia: nessun indirizzo di dettaglio)
 -- ---------------------------------------------------------
---WITH costanti AS (
---    SELECT
---        '01677080440'::text   AS piva_test,
---        'TTNMHL68E07D042Z'::text  AS cf_test,
---        NULL  AS codice_istanza_test,
---        NULL   AS codice_ba_test,
---        'CL'::varchar              AS codice_ruolo_cliente,
---        'GAS'::varchar             AS codice_utility_test
---)
-
-WITH ins_istanze_utilities AS (
-
+CREATE TEMP TABLE tmp_istanza AS
+WITH ins AS (
     INSERT INTO anagrafiche.istanze_utilities (
-        fittizia,
-    -- codice,
-        proprietario_inquilino,
-        soggetto_id,
-        indirizzo_dettaglio_id
+        fittizia, proprietario_inquilino, soggetto_id, indirizzo_dettaglio_id
     )
-    SELECT
-        TRUE,                            -- fittizia
-    -- k.codice_istanza_test,           -- codice istanza
-        'I',                             -- proprietario_inquilino (I = inquilino? Adatta se serve)
-        s.id,
-        NULL                             -- nessun indirizzo_dettaglio per istanza fittizia
-    FROM tmp_soggetto s
-        -- costanti k
+    SELECT TRUE, 'I', s.id, NULL
+      FROM tmp_soggetto s
     RETURNING id
 )
-
-SELECT id
-INTO TEMP TABLE tmp_istanza
-FROM ins_istanze_utilities;
+SELECT id FROM ins;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_istanza),
@@ -327,233 +225,80 @@ SELECT is(
     'Inserita esattamente 1 istanza_utility di test'
 );
 
-
 -- ---------------------------------------------------------
--- 6) Creazione billing_account per l’istanza
+-- 6) Billing account per l'istanza (codice generato dal trigger)
 -- ---------------------------------------------------------
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-), 
-ins_billing_account AS (
+CREATE TEMP TABLE tmp_billing_account AS
+WITH ins AS (
     INSERT INTO anagrafiche.billing_account (
-        istanza_utility_id,
-        soggetto_ruolo_id,
-        utility_id,
-        codice
+        istanza_utility_id, soggetto_ruolo_id, utility_id, codice,
+        categoria_cliente_id
     )
-    SELECT
-        i.id,
-        sr.id,
-        u.id,
-        k.codice_ba_test
-    FROM tmp_istanza i,
-         tmp_soggetto_ruolo sr,
-         tmp_utility u,
-         costanti k
+    -- `codice` NULL di proposito: lo genera trgfn_billing_account_gen_codice.
+    SELECT i.id, sr.id, u.id, NULL, r.categoria_cliente_id
+      FROM tmp_istanza i, tmp_soggetto_ruolo sr, tmp_utility u, tmp_rif_cc r
     RETURNING id
 )
-SELECT id
-INTO TEMP TABLE tmp_billing_account
-FROM ins_billing_account;
+SELECT id FROM ins;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_billing_account),
     1,
-    'Inserito esattamente 1 billing_account per l’istanza di test'
+    'Inserito esattamente 1 billing_account per l''istanza di test'
 );
 
-
 -- ---------------------------------------------------------
--- 7) Creazione cliente (clienti)
+-- 7) Cliente
 -- ---------------------------------------------------------
-
+CREATE TEMP TABLE tmp_cliente AS
 WITH stato AS (
-    -- prendi uno stato cliente "di default", adatta il filtro al tuo dominio
-    SELECT id
-    FROM config.stati_cliente
-    WHERE codice_interno = 'PR'   -- oppure il tuo codice reale
-    LIMIT 1
-),
-iva AS (
-    -- prendi un codice IVA valido (es. 22%)
-    SELECT id
-    FROM config.iva
-    WHERE codice = '22'            -- adatta al tuo codice reale
-    LIMIT 1
-),
-ins AS (
+    SELECT id FROM config.stati_cliente WHERE codice_interno = 'PR' LIMIT 1
+), iva AS (
+    SELECT id FROM config.iva WHERE codice = '22' LIMIT 1
+), ins AS (
     INSERT INTO anagrafiche.clienti (
-        soggetto_ruolo_id,
-        istanza_utility_id,
-        stato_cliente_id,
-        iva_id,
-        billing_account_id
-        -- tipo_gg_scadenza_ft, nr_giorni_scadenza, cliente_pa
-        -- hanno default, usiamo quelli
+        soggetto_ruolo_id, istanza_utility_id, stato_cliente_id,
+        iva_id, billing_account_id,
+        -- Nullable, ma il test 8 verifica proprio che coincida con quella del
+        -- billing account: lasciarla NULL renderebbe ba_match_utility NULL e
+        -- il test rosso per omissione invece che per incoerenza.
+        utility_id
+        -- cliente_pa ha default, usiamo quello.
+        -- (rev 2026-07-31: tipo_gg_scadenza_ft e nr_giorni_scadenza, che qui
+        --  erano citate, non esistono piu' — D-I, piano satelliti 3a.5.)
     )
-    SELECT
-        sr.id,
-        i.id,
-        sc.id,
-        v.id,
-        ba.id
-    FROM tmp_soggetto_ruolo   sr,
-         tmp_istanza          i,
-         stato                sc,
-         iva                  v,
-         tmp_billing_account  ba
+    SELECT sr.id, i.id, sc.id, v.id, ba.id, u.id
+      FROM tmp_soggetto_ruolo sr, tmp_istanza i, stato sc, iva v,
+           tmp_billing_account ba, tmp_utility u
     RETURNING id
 )
-SELECT id
-INTO TEMP TABLE tmp_cliente
-FROM ins;
+SELECT id FROM ins;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_cliente),
     1,
-    'Inserito esattamente 1 cliente collegato all’istanza, al ruolo cliente e al billing_account'
+    'Inserito esattamente 1 cliente collegato a istanza, ruolo e billing_account'
 );
 
-
--- 
 -- ---------------------------------------------------------
--- 8) Verifica che il cliente di test abbia tutti i legami coerenti con il billing_account
+-- 8) Coerenza dei legami cliente <-> billing account
 -- ---------------------------------------------------------
-
-
-
 SELECT is(
     (SELECT count(*)::int
-     FROM dbops.diag_v_clienti_links v
-     WHERE v.cliente_id IN (SELECT id FROM tmp_cliente)
-       AND v.ba_match_istanza
-       AND v.ba_match_soggetto_ruolo
-       AND v.ba_match_utility),
+       -- rev 2026-07-31: la vista e' stata rinominata in vw_* (20260402-06),
+       -- il file puntava ancora al nome vecchio.
+       FROM dbops.vw_diag_v_clienti_links v
+      WHERE v.cliente_id IN (SELECT id FROM tmp_cliente)
+        AND v.ba_match_istanza
+        AND v.ba_match_soggetto_ruolo
+        AND v.ba_match_utility),
     1,
     'Il cliente di test ha legami coerenti con billing_account (istanza, soggetto_ruolo, utility).'
 );
 
-
-
-
--- Forzo valutazione dei constraint deferrable
+-- Forza la valutazione dei constraint deferrable PRIMA del rollback:
+-- senza, un vincolo violato passerebbe inosservato perche' nessuno commetta.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-COMMIT;
-
-
-/*
--- =========================================================
--- Cleanup finale (idempotenza)
--- =========================================================
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-)
-DELETE FROM anagrafiche.clienti cli
-USING anagrafiche.soggetti_ruoli sr,
-      anagrafiche.soggetti s,
-      costanti k
-WHERE cli.soggetto_ruolo_id = sr.id
-  AND sr.soggetto_id = s.id
-   AND s.codice_fiscale = k.cf_test;
-
-
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-)
-DELETE FROM anagrafiche.billing_account ba
-USING anagrafiche.istanze_utilities iu,
-      anagrafiche.soggetti_ruoli sr,
-      anagrafiche.soggetti s,
-      costanti k
-WHERE ba.istanza_utility_id = iu.id
-  AND ba.soggetto_ruolo_id = sr.id
-  AND sr.soggetto_id = s.id
-  AND s.codice_fiscale = k.cf_test;
-
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-)
-DELETE FROM anagrafiche.istanze_utilities iu
-USING anagrafiche.soggetti s,
-      costanti k
-WHERE iu.soggetto_id = s.id
-  AND s.codice_fiscale = k.cf_test;
-
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-)
-DELETE FROM anagrafiche.soggetti_ruoli sr
-USING anagrafiche.soggetti s,
-      config.tipi_ruoli tr,
-      costanti k
-WHERE sr.soggetto_id = s.id
-  AND sr.tipo_ruolo_id = tr.id
-  AND s.codice_fiscale = k.cf_test
-  AND tr.codice_interno = k.codice_ruolo_cliente;
-
-
-
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-)
-DELETE FROM anagrafiche.soggetti s
-USING costanti k
-WHERE s.codice_fiscale = k.cf_test;
-
-
-WITH costanti AS (
-    SELECT
-        '01677080440'::text   AS piva_test,
-        'TTNMHL68E07D042Z'::text  AS cf_test,
-        NULL  AS codice_istanza_test,
-        NULL   AS codice_ba_test,
-        'CL'::varchar              AS codice_ruolo_cliente,
-        'GAS'::varchar             AS codice_utility_test
-)
-DELETE FROM anagrafiche.contatti c
-USING anagrafiche.soggetti s,
-      costanti k
-WHERE c.soggetto_id = s.id
- AND s.codice_fiscale = k.cf_test;
-
-
-*/
--- Fine test
 SELECT * FROM finish();
+ROLLBACK;

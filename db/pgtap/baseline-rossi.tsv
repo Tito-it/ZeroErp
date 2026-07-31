@@ -1,4 +1,3 @@
-db/pgtap/anagrafiche/create-cliente.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/create-gestore-indirizzo-res-domfisc.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/create-gestore-indirizzo-res.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/create-soggetto-bank-branches.sql	ERRORE_FIXTURE

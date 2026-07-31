@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3a.6 — via giorni_pagamento e fine_mese dalla testata fattura
+#   (piano-db-satelliti-fattura.md D-I, §5.5 del brief scadenze «si ribalta»).
+#
+# PERCHE' ESISTEVANO. Solo per rappresentare in testata il percorso legacy: la
+#   fattura copiava la coppia lettera+giorni del cliente, perche' quel cliente
+#   poteva avere condizioni che il catalogo dei termini non sapeva esprimere.
+#   Con D-I quel percorso non esiste piu' — le condizioni vivono in
+#   config.termini_pagamento e la fattura porta `termine_pagamento_id` piu'
+#   `termine_pagamento_snapshot` — quindi le due colonne non rappresentano
+#   piu' niente.
+#
+# ⚠️ MAI SCRITTE DA NESSUNO. Verificato il 2026-07-31 su tutto il repo:
+#   nessun file Python, Vue o JS le nomina; nessuna funzione e nessuna vista
+#   del DB le legge; nessun pgTAP le usa. Erano gia' colonne morte prima di
+#   diventarlo per decisione — il che spiega perche' la prima stesura del brief
+#   scadenze proponeva di eliminarle e la seconda le aveva recuperate per
+#   sbaglio: nessuno se ne sarebbe accorto in nessuno dei due casi.
+#
+# ⚠️ DA NON CONFONDERE con `config.termini_pagamento.fine_mese`, che e' NUOVA
+#   (20260731-03) ed e' il cuore del modello riformato. Stesso nome, significato
+#   opposto: quella dice «questo TERMINE sposta a fine mese», questa diceva
+#   «questa FATTURA porta una condizione copiata dal cliente».
+#
+# ℹ️ `anagrafiche.fornitori` conserva la stessa grafia (giorni_pagamento +
+#   fine_mese accanto al proprio termine_pagamento_id): e' il lato acquisti,
+#   fuori dal perimetro di questo cantiere, ed e' tracciato come debito nel
+#   piano (§3.3-a).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260731-10-drop-fatture-condizioni-legacy-mctit.yaml
+
+  - changeSet:
+      id: 20260731-10-drop-fatture-condizioni-legacy
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        DROP di vendite.fatture.giorni_pagamento e fine_mese: rappresentavano
+        il percorso legacy delle condizioni di pagamento, che D-I elimina.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: fatture
+            columnName: giorni_pagamento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatture
+                DROP COLUMN giorni_pagamento,
+                DROP COLUMN fine_mese;
+
+              COMMENT ON COLUMN vendite.fatture.termine_pagamento_id
+              IS 'Termine di pagamento con cui la fattura e'' stata emessa, dal catalogo config.termini_pagamento. Dal 2026-07-31 (D-I) e'' l''UNICO meccanismo: le colonne giorni_pagamento e fine_mese, che rappresentavano il percorso legacy copiato dal cliente, sono state eliminate. Entra nella chiave di aggregazione insieme a modalita_pagamento_id (D-7/D-B): due attivita'' dello stesso billing account con termini diversi producono due fatture. Il contenuto congelato del termine sta in termine_pagamento_snapshot.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            sql: |
+              ALTER TABLE vendite.fatture
+                ADD COLUMN IF NOT EXISTS giorni_pagamento smallint,
+                ADD COLUMN IF NOT EXISTS fine_mese boolean;

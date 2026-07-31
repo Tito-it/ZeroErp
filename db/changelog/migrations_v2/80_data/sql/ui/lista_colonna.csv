@@ -248,3 +248,28 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 247,16,fallback_descrizione,Descrizione fallback,Descrizione del tipo indirizzo di ripiego,fallback_descrizione,informazione,string,,200,100,left,Regola,3,f,f,t,f,f,t,2026-07-31 00:00:00,mctit,,20
 248,16,data_insert,Data inserimento,Data e ora di creazione della regola,data_insert,informazione,datetime,datetime_short,150,110,center,Audit,6,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,common.data_insert,10
 249,16,data_update,Data aggiornamento,Data e ora dell'ultima modifica,data_update,informazione,datetime,datetime_short,150,120,center,Audit,6,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,common.data_update,5
+250,17,codice,Codice,Codice della pratica,codice,identificatore,string,,140,10,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,pratiche.col_codice,100
+251,17,descrizione,Descrizione,Descrizione della pratica,descrizione,informazione,string,,280,20,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,pratiche.col_descrizione,85
+252,17,tipo_prestazione,Tipo,Tipo di prestazione della pratica,tipo_prestazione_descrizione,informazione,string,,160,30,left,Classificazione,2,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,pratiche.col_tipo_prestazione,60
+253,17,soggetto,Soggetto,Soggetto intestatario della pratica,soggetto_display,informazione,string,,220,40,left,Soggetto,3,t,t,t,t,f,t,2026-07-31 00:00:00,mctit,pratiche.col_soggetto,95
+254,17,risorsa_umana,Assegnata a,Risorsa a cui la pratica e assegnata,risorsa_umana_display,informazione,string,,180,50,left,Assegnazione,4,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,pratiche.col_assegnata_a,55
+255,17,data_scadenza,Scadenza,Data di scadenza della pratica,data_scadenza,informazione,date,date_short,110,60,center,Date,5,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,pratiche.col_data_scadenza,90
+256,17,data_apertura,Apertura,Data di apertura della pratica,data_apertura,informazione,date,date_short,110,70,center,Date,5,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,pratiche.col_data_apertura,80
+257,17,priorita,Priorita,Priorita assegnata alla pratica,priorita_descrizione,informazione,string,,110,80,center,Stato,6,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,pratiche.col_priorita,70
+258,17,stato,Stato,Stato corrente della pratica,stato_descrizione,informazione,string,,130,90,center,Stato,6,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,pratiche.col_stato,92
+259,17,data_insert,Data inserimento,Data e ora di creazione della pratica,data_insert,informazione,datetime,datetime_short,150,100,center,Audit,7,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,common.data_insert,10
+260,18,codice,Codice,Codice dell emittente fiscale,codice,identificatore,string,,140,10,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_codice,100
+261,18,descrizione,Descrizione,Descrizione dell emittente fiscale,descrizione,informazione,string,,220,20,left,Identificazione,1,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_descrizione,95
+262,18,ragione_sociale,Ragione sociale,Ragione sociale del soggetto emittente,ragione_sociale_completa,informazione,string,,260,30,left,Soggetto,2,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_ragione_sociale,90
+263,18,partita_iva,Partita IVA,Partita IVA dell emittente fiscale,partita_iva,informazione,string,,150,40,left,Soggetto,2,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_piva,75
+264,18,attivo,Stato,Emittente attivo o disattivato,attivo,informazione,boolean,yesno,110,50,center,Stato,3,t,t,t,f,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_attivo,60
+265,18,valuta,Valuta,Valuta di fatturazione dell emittente,valuta_iso,informazione,string,,90,60,left,Configurazione,4,f,f,t,f,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_valuta,30
+266,18,regime_fiscale,Regime fiscale,Codice del regime fiscale (RF),regime_fiscale_rf,informazione,string,,130,70,left,Configurazione,4,f,f,t,f,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.col_regime_fiscale,25
+267,18,data_insert,Data inserimento,Data e ora di creazione dell emittente,data_insert,informazione,datetime,datetime_short,150,80,center,Audit,5,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,common.data_insert,10
+268,18,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-07-31 00:00:00,mctit,common.col_azioni,100
+269,19,is_default,Default,Billing account predefinito dell emittente,is_default,informazione,boolean,yesno,110,10,center,Mapping,1,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.ba_col_default,70
+270,19,billing_account_codice,Codice BA,Codice del billing account,billing_account_codice,identificatore,string,,180,20,left,Billing account,2,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.ba_col_codice,100
+271,19,billing_account_ragione_sociale,Ragione sociale,Ragione sociale del soggetto del billing account,billing_account_ragione_sociale,informazione,string,,260,30,left,Billing account,2,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.ba_col_ragione_sociale,95
+272,19,id_fiscale,Id. fiscale,Identificativo fiscale univoco (CF o P.IVA) — colonna unica per disegno,id_fiscale_univoco,informazione,string,,170,40,left,Billing account,2,f,t,t,t,f,t,2026-07-31 00:00:00,mctit,amministrazione.emittenti_fiscali.ba_col_id_fiscale,85
+273,19,data_insert,Data inserimento,Data e ora di creazione del mapping,data_insert,informazione,datetime,datetime_short,150,50,center,Audit,3,f,t,t,f,f,t,2026-07-31 00:00:00,mctit,common.data_insert,10
+274,19,azioni,Azioni,,,azione,string,,70,999,center,,99,f,f,f,f,f,t,2026-07-31 00:00:00,mctit,common.col_azioni,100

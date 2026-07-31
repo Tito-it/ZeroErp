@@ -948,6 +948,15 @@ Quello che aggiungiamo, perché è specifico del lato DB:
   pgTAP (`test-clienti-normalize-giorni-scadenza-v1.sql`) e ne **adeguano** altri
   (`create-cliente.sql`, le fixture che numerano fatture prive di satelliti). Va
   aggiornata con `--update`, non lasciata a divergere;
+- ⚠️ **Contare righe su una tabella con RLS senza il GUC operatore dà ZERO, non
+  un errore** (trappola pagata dal BE il 2026-07-31: `vendite.fatture` misurata
+  «0 righe» e usata per due decisioni, in realtà **8**). È il modo peggiore di
+  sbagliare una misura, perché il fail-closed somiglia a un dato. Vale per
+  `vendite.*` e per `anagrafiche.billing_account`; **non** per
+  `anagrafiche.indirizzi`, `indirizzi_soggetti` e `soggetti_ruoli`, che RLS non
+  ce l'hanno — verificato prima di fidarsi del censimento EF di §10.3 del brief
+  intestazione. Prima di usare un conteggio per decidere, chiedersi se quella
+  tabella ha RLS;
 - **doc auto-gen `dbzero`**: si rigenera dopo ogni fase che tocca funzioni,
   tabelle o viste. È la fonte da cui il prossimo intervento leggerà le
   definizioni: se resta indietro, il prossimo parte da un DDL stale.
@@ -1240,7 +1249,7 @@ Coerenti con il vostro §3.8, e ora scritte anche nel piano BE/FE §9:
 > `YYYYMMDD-NN-<tipo>-<descrizione>-mctit.yaml`, **un changeSet per file**, sempre
 > `logicalFilePath`, `runOnChange: false` nello stato committato. La numerazione
 > `NN` è una **sequenza globale per data fra tutte le cartelle**: i numeri qui
-> sotto si assegnano al momento della scrittura. Ultimo occupato: **20260731-06**.
+> sotto si assegnano al momento della scrittura. Ultimo occupato: **20260731-10**.
 >
 > ⚠️ **Da dove si copia cosa** (le due metà hanno fonti diverse; sbagliarle è un
 > errore silenzioso): il **corpo** di una funzione esistente dalla doc auto-gen
@@ -1252,11 +1261,11 @@ Coerenti con il vostro §3.8, e ora scritte anche nel piano BE/FE §9:
 
 | | |
 |---|---|
-| **Fasi** | **1 / 8 completate** (Fase 1 ✅ 2026-07-30) · Fase 2 in corso |
-| **changeSet** | **11 scritti** (`20260730-01`…`-08`, `20260731-01`…`-03`) + 7 codici errore + 2 script di ruolo + seed task 2.3 + catalogo termini 3a.1/3a.3 · **11 applicati** |
-| **pgTAP** | **3 nuovi verdi** (`test-snapshot-indirizzi-fattura-v1` plan 16 con 1 skip atteso — la posizione, finché il task non è armato; `test-fattura-satelliti-lock-congelamento-v1` plan 11; `test-snapshot-indirizzi-lotto-v1` plan 12) · 0 adeguati |
+| **Fasi** | **Fase 1 ✅** · **Fase 2 ✅** salvo 2.5 · **Fase 3a ✅** salvo la doc (3a.9) · **cantiere intestazione** I.1-I.3 ✅ |
+| **changeSet** | **18 scritti** (`20260730-01`…`-08`, `20260731-01`…`-10`) + 7 codici errore + 2 script di ruolo + seed (task 2.3, catalogo termini, armamento pipeline) · **18 applicati** |
+| **pgTAP** | **3 nuovi verdi** (`test-snapshot-indirizzi-fattura-v1` plan 16; `test-fattura-satelliti-lock-congelamento-v1` plan 11; `test-snapshot-indirizzi-lotto-v1` plan 12) · **3 adeguati** · **1 rimosso** · **1 rientrato dalla baseline** (`create-cliente.sql`: 108 → 107 righe) |
 | **Doc** | 0 / 8 guide (§4-bis) · 0 / 3 manuali `dbzero` · ✅ auto-gen `dbzero` rigenerata (le 4 funzioni nuove ci sono) |
-| **Stato** | analisi chiusa, **17 decisioni** prese. **Fase 2 chiusa per quanto è nostro** (2.0-2.4 e 2.6 fatte; ⛔ resta **2.5**, non applicabile finché il task non è armato — e l'armamento dipende dai **tre** interventi BE di D-Q). **Fase 3a avviata**: 3a.1-3a.3 applicate, il catalogo è riformato e ricco di 9 termini. Prossimo: **3a.4** (2 clienti da ripuntare, a mano) e poi 3a.5/3a.6, le DROP che innescano il lavoro BE/FE di 3a.7 |
+| **Stato** | analisi chiusa, **17 decisioni** prese. **Fase 2 chiusa** (2.0-2.4, 2.6; armamento applicato e confermato su giro reale) tranne **2.5**, che aspetta il criterio allargato del brief intestazione. **Fase 3a chiusa** salvo la doc (3a.9): il modello ha **una sola grafia** per le condizioni di pagamento. **Cantiere intestazione** I.1-I.3 applicati e verdi. Prossimi: **I.4** (2.5 allargato), I.5, I.6, poi la **Fase 3b** (chiave D-7), ora sbloccata |
 
 ### Fase 1 — Fondamenta comuni
 
@@ -1305,11 +1314,12 @@ Coerenti con il vostro §3.8, e ora scritte anche nel piano BE/FE §9:
 | 3a.2 Riforma `config.termini_pagamento` | ✅ **applicata** (2026-07-31) · baseline `vendite` senza novità | `20260731-03` | `tipo_offset` → `fine_mese` bool. ⚠️ Il **backfill di `fine_mese` precede la DROP** di `tipo_offset`: invertirli perderebbe l'informazione sulle righe già in tabella, e il ricaricamento del CSV arriva dopo (fase `80_data`). ✅ **Censimento dei consumatori fatto (2026-07-31): non ce ne sono.** `tipo_offset` e `unita_intervallo` non compaiono in **nessun** file di `backend/` o `frontend/src/`, né in alcuna funzione o vista `dbzero`. L'unico punto da adeguare è il pgTAP `test-fattura-utils-critical-termini.sql`, che le valorizza in una `INSERT` di fixture (→ 3a.8). La riforma è quindi molto meno rischiosa di quanto la parola «breaking» suggerisse: **si tocca una colonna che nessuno legge** |
 | 3a.3 Riscrittura seed termini | ✅ **applicata** (2026-07-31) | — (CSV + loader) | CSV riscritto nella nuova forma per **tutti e 9** i termini (non 4: la semina di 3a.1 ne ha aggiunti 5), mappatura di C-16 — `tipo_offset='F'` → `fine_mese=t`, `N` → offset a 0. **Loader esteso in place** (`20251019-51`): è `runOnChange`, quindi resta il mirror vivo del CSV; via `unita_intervallo` e `tipo_offset`, dentro `fine_mese`. Tolta anche la voce inerte `storicizza`, che descriveva una colonna inesistente sia nella tabella sia nel CSV |
 | 3a.4 Migrazione clienti | ⬜ | — | 2 clienti; quelli con `M` sono **0** (verificato) |
-| 3a.5 DROP colonne `clienti` + trigger + CHECK | ⬜ | — | |
-| 3a.6 DROP `fatture.giorni_pagamento` / `fine_mese` | ⬜ | — | |
-| 3a.7 Innesco applicativo | ⬜ | — | owner BE, §4-bis del loro piano |
-| 3a.8 pgTAP da rimuovere/adeguare | ⬜ | — | aggiornare la **baseline**. Elenco verificato il 2026-07-31: `test-clienti-normalize-giorni-scadenza-v1.sql` (da **rimuovere**), `create-cliente.sql` e `test-fn-get-evento-stato-corrente-cliente-v1.sql` (valorizzano le colonne cliente eliminate), **+ `test-fattura-utils-critical-termini.sql`**, che inserisce `unita_intervallo` e `tipo_offset` in fixture — non era nell'elenco originale, ✅ **già adeguato** (2026-07-31) contestualmente a 3a.2/3a.3, per non lasciare un rosso noto in mezzo. Gli altri tre restano da fare con 3a.5/3a.6 |
-| 3a.9 Doc | ⬜ | — | |
+| 3a.5 DROP colonne `clienti` + trigger + CHECK | ✅ **applicata** (2026-07-31) | `20260731-08` (fn), `20260731-09` (DDL) | ⚠️ **Due changeSet, in quest'ordine logico**: prima `fn_update_cliente` senza le due chiavi, poi la DROP. La funzione è plpgsql, quindi la DROP **non la invaliderebbe**: resterebbe creabile e apparentemente sana, e fallirebbe al primo salvataggio di un cliente. Stessa ragione per il trigger `trg_clienti_normalize_giorni_scadenza_ins_upd`, droppato esplicitamente; il `CHECK` invece cade da solo con la colonna. ✅ Perimetro applicativo chiuso dal BE il 2026-07-31 (3a.7): verificato su tutto il repo, le occorrenze rimaste sono **solo commenti** |
+| 3a.6 DROP `fatture.giorni_pagamento` / `fine_mese` | ✅ **applicata** (2026-07-31) | `20260731-10` | ✅ **Zero consumatori**, verificato: nessun file Python/Vue/JS, nessuna funzione o vista DB, nessun pgTAP. Erano colonne morte già prima di diventarlo per decisione. ⚠️ Da non confondere con `config.termini_pagamento.fine_mese`, che è **nuova** e opposta di significato |
+| 3a.7 Innesco applicativo | ✅ **fatto dal BE** (2026-07-31) | — | drawer cliente, chiavi i18n, `_OPTIONAL`, `_UPDATE_ALLOWED` e la `SELECT` del repository. La metà DB (`fn_update_cliente`) è in 3a.5 |
+| 3a.8 pgTAP da rimuovere/adeguare | ✅ **fatto e verde** (2026-07-31) | — | `test-clienti-normalize-giorni-scadenza-v1.sql` **rimosso** (10 test sul trigger che sparisce). `test-fn-get-evento-stato-corrente-cliente-v1.sql`: solo un commento stale, aggiornato. ⚠️ **`create-cliente.sql` è diventato un cantiere a sé** — vedi riga sotto. `test-fattura-utils-critical-termini.sql` era già stato adeguato con 3a.2/3a.3 |
+| 3a.8-bis `create-cliente.sql` — fixture riportata al presente | ✅ **verde, fuori baseline** (2026-07-31) | — | Era la **prima riga** di `baseline-rossi.tsv` come `ERRORE_FIXTURE`, e moriva al primo statement: quindi **zero asserzioni eseguite**, e sei difetti nascosti dietro il primo. Convertita da fixture che **committava** a test in `BEGIN/ROLLBACK` — le `DELETE` di pulizia esistevano solo per il commit, e con esse è sparito lo scontro col guard `delete_block_by_guc`: **tolta la causa, non aggirato il sintomo** (nessuna GUC di manutenzione). Gli altri sei erano deriva fra fixture e modello: tipo soggetto `SC` per una persona fisica (guard CF/P.IVA), `categoria_cliente_id` diventata NOT NULL, utility `GAS` che pretende il PDP, vista rinominata in `vw_*`, `clienti.utility_id` mai valorizzata, e **due matrici di indirizzi obbligatori** (soggetto e ruolo, guard distinti su tabelle distinte). Ora risolve **tutto per codice_interno**: niente id indovinati, che era la fragilità di fondo. CF proprio (`PGTPCL00A01H501Y`, generato e verificato con l'algoritmo del check char) per non contendere quello storico. ⚠️ **Debito reso visibile**: il soggetto storico `TTNMHL68E07D042Z` resta in tabella ma **nessuno lo ricrea più**; `test-contatti-soggetto-cliente.sql` è verde solo perché quel dato è ancora lì. ℹ️ Nella baseline restano **6 fixture `create-*`**, con ogni probabilità rotte dallo stesso guard e curabili allo stesso modo |
+| 3a.9 Doc | ⬜ | — | Due manuali: `dbzero/config/manual/termini_pagamento.md` **da riscrivere** sulla forma riformata, e `dbzero/anagrafiche/manual/trgfn_clienti_normalize_giorni_scadenza.md` **da ritirare**. ⚠️ Da ritirare anche la pagina **auto-gen** `anagrafiche/funzioni/trgfn_clienti_normalize_giorni_scadenza.md`: la rigenerazione aggiunge e aggiorna, **non cancella gli orfani**, quindi resta a documentare una funzione che non esiste più |
 
 ### Fase 3b — Chiave (D-7) + arrotondamenti
 
