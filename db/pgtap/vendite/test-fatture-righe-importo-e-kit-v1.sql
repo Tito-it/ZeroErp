@@ -202,6 +202,24 @@ SELECT is(
   '11) entro soglia l''UPDATE passa e l''importo si riallinea (200 x 5)');
 
 -- DRAFT -> EMESSA -> DEFINITIVA: la soglia si supera solo cosi'.
+--
+-- ⚠️ PREPARAZIONE OBBLIGATORIA DAL 2026-07-31 (piano satelliti I.4). Il primo
+--    passo e' un'uscita dalla bozza, e vendite.trgfn_fatture_guard_uscita_draft
+--    pretende che chi la lascia sia completo: indirizzo obbligatorio
+--    dell'ambito FATTURE piu' intestazione fiscale congelata delle due parti.
+--    Qui non si sta collaudando quel guard — si sta solo portando la fattura
+--    oltre la soglia di congelamento per il test 12 — quindi si soddisfa il
+--    requisito con lo stretto necessario, come farebbe lo step DRAFT del lotto.
+INSERT INTO vendite.fatture_indirizzi (fattura_id, tipo_indirizzo_id, snapshot)
+SELECT (SELECT id FROM tmp_fattura_fri),
+       (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'FATT'),
+       '{"intestazione":"Cliente pgTAP","via":"Via Importo Riga"}'::jsonb;
+
+UPDATE vendite.fatture
+   SET emittente_snapshot = '{"denominazione":"Emittente pgTAP"}'::jsonb,
+       cliente_snapshot   = '{"denominazione":"Cliente pgTAP"}'::jsonb
+ WHERE id = (SELECT id FROM tmp_fattura_fri);
+
 UPDATE vendite.fatture SET stato_doc_fiscale_id = (SELECT stato_emessa FROM tmp_refs_fri)
  WHERE id = (SELECT id FROM tmp_fattura_fri);
 UPDATE vendite.fatture SET stato_doc_fiscale_id = (SELECT stato_definitiva FROM tmp_refs_fri)

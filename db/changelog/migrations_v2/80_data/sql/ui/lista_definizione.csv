@@ -18,3 +18,6 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert
 17,pratiche.pratiche,Pratiche,pratiche,NULL,t,2026-07-31 00:00:00,mctit
 18,anagrafiche.emittenti_fiscali,Emittenti fiscali,anagrafiche,NULL,t,2026-07-31 00:00:00,mctit
 19,anagrafiche.emittente_billing_account,Billing account dell emittente fiscale,anagrafiche,NULL,t,2026-07-31 00:00:00,mctit
+20,catalogo.uom_tipi,Tipi di unita di misura,catalogo,uom_tipi,t,2026-07-31 00:00:00,mctit
+21,catalogo.unita_misura,Unita di misura,catalogo,NULL,t,2026-07-31 00:00:00,mctit
+22,catalogo.conversioni_uom,Conversioni tra unita di misura,catalogo,NULL,t,2026-07-31 00:00:00,mctit

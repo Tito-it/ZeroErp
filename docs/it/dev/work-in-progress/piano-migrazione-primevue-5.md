@@ -982,7 +982,7 @@ semplice alla più complessa, così le prime servono da rodaggio.
 
 | ✓ | File | Col. | Lazy |
 | --- | --- | --- | --- |
-| ☐ | `catalogo/components/UomTipiSearchTable.vue` | 4 | sì |
+| ☐ 🔵 | `catalogo/components/UomTipiSearchTable.vue` | 4 | sì |
 | ✅ 31-07 | `amministrazione/components/CategorieClientiSearchTable.vue` | 5 | sì |
 | ☐ 🔵 | `amministrazione/components/EmittenteFiscaleBillingAccountTab.vue` | 5 | sì |
 | ✅ 31-07 | `amministrazione/components/UtilitiesTipiRuoloSearchTable.vue` | 5 | sì |
@@ -993,8 +993,8 @@ semplice alla più complessa, così le prime servono da rodaggio.
 | ☐ | `amministrazione/views/EmailTemplatesListView.vue` | 6 | sì |
 | ☐ 🔵 | `amministrazione/views/EmittentiFiscaliListView.vue` | 6 | sì |
 | ☐ | `catalogo/components/ArticoloBomDrawer.vue` | 6 | — |
-| ☐ | `catalogo/components/ConversioniUomSearchTable.vue` | 6 | sì |
-| ☐ | `catalogo/components/UnitaMisuraSearchTable.vue` | 6 | sì |
+| ☐ 🔵 | `catalogo/components/ConversioniUomSearchTable.vue` | 6 | sì |
+| ☐ 🔵 | `catalogo/components/UnitaMisuraSearchTable.vue` | 6 | sì |
 | ☐ | `vendite/components/VersioneDrawer.vue` | 6 | sì |
 | ☐ | `amministrazione/views/EmailLogsListView.vue` | 7 | sì |
 | ☐ | `config/components/TemplateDocumentiSearchTable.vue` | 7 | sì |
@@ -1160,12 +1160,41 @@ Cosa sapere prima di convertire i `.vue`:
   `tipo_ruolo_descrizione`): al primo caricamento la lista non si riordina sotto
   gli occhi dell'operatore.
 
-#### 🔴 APERTO — commessa BE: whitelist di ordinamento, 9 repository
+#### ✅ CHIUSA — commessa BE: whitelist di ordinamento (2026-07-31)
 
-> Consegna del team DB del 2026-07-31. **Nessuna modifica al seed è richiesta al
-> BE**: le celle di competenza DB sono già state cambiate. Qui c'è solo ciò che
-> va toccato nei repository. Il ragionamento completo è in §9 («Debito "freccia
-> che non ordina"»); questa è la lista operativa.
+> **Stato al 2026-07-31, verificato sul pushato** (`origin/Tito-dev`,
+> «Aggiornamento come da test-fn-get-evento-stato-corrente-cliente-v1.sql e
+> piano-migrazione-primevue-5.md»): il BE ha eseguito **tutta** la tabella qui
+> sotto. Ricontrollato meccanicamente leggendo le whitelist dal sorgente
+> pushato e incrociandole col seed: **11 liste su 12 a residuo zero** nelle due
+> direzioni.
+>
+> - `_DEBITO_WHITELIST_LOGICA` è ora **`frozenset()`** — il registro di debito
+>   non si è ridotto, si è **svuotato**;
+> - `_LISTE` legge le due code resi da `_CODA_META` invece che da
+>   `_ORDER_COLS_RESI`: la correzione che avevamo segnalato è applicata;
+> - `date_insert` su soggetti è stato **scritto giusto** (`data_insert`,
+>   qualificato `s.data_insert` perché la query joina tre tabelle che hanno
+>   tutte i campi audit) invece che tolto — la strada che avevamo indicato come
+>   alternativa. Non è un residuo: il test intersecta la whitelist con le
+>   colonne del catalogo, quindi una capacità tenuta pronta per una colonna che
+>   ancora non c'è è legittima.
+>
+> ⚠️ **Resta aperta una sola voce**, ed è **posteriore** a questo lavoro:
+> `partita_iva` su `_EMITTENTI_ORDER_COLS`, che nasce col secondo lotto di seed
+> (vedi il blocco «Secondo lotto» più sotto). È una rottura del nucleo, una riga.
+>
+> Nota di metodo: la nostra misura contava anche `data_insert` su soggetti come
+> residuo. Sbagliato — la definizione del test è più precisa della nostra:
+> `(whitelist ∩ catalogo) − ordinabili`. Una whitelist **può** legittimamente
+> conoscere campi che la lista non mostra.
+
+##### La commessa, per riferimento — tutte le righe sono state eseguite
+
+> Consegna del team DB del 2026-07-31. **Nessuna modifica al seed era richiesta
+> al BE**: le celle di competenza DB erano già cambiate. Il ragionamento
+> completo è in §9 («Debito "freccia che non ordina"»); questa era la lista
+> operativa.
 
 ##### Prima di leggere la tabella: l'id fiscale è UNA colonna sola, per disegno
 
@@ -1286,15 +1315,9 @@ Perché ciascuna rimozione è sicura:
 > `datetime_short`, invisibile di default); (3) `data_insert` scritto bene in
 > whitelist. Senza il punto 1 gli altri due non servono a niente.
 
-**Esito atteso**, calcolato riga per riga contro il seed: applicata questa
-tabella, **tutte e 11 le liste vanno a residuo zero nelle due direzioni** e
-`_DEBITO_WHITELIST_LOGICA` si svuota — non si riduce, si svuota. Quattro liste
-(`contratti`, `preventivi`, `resi`, più le due code) sono **già** a zero adesso,
-perché per loro serviva solo il lavoro sul seed, che è fatto.
-
-Le 16 colonne che oggi promettono ancora un ordinamento inesistente sono
-esattamente le 16 aggiunte della colonna ➕: **la finestra si chiude quando
-chiude questa commessa**, e non prima. Nessun'altra è rimasta indietro.
+**Esito, verificato sul pushato**: tutte e 11 le liste a residuo zero nelle due
+direzioni, `_DEBITO_WHITELIST_LOGICA` svuotato. La previsione era «applicata
+questa tabella il registro non si riduce, si svuota»: è andata così.
 
 ##### Secondo lotto — 3 liste, seed DB pronto (2026-07-31)
 
@@ -1313,10 +1336,11 @@ billing account hanno whitelist complete e già chiavate sui `campo_sorgente` �
 zero bugiarde e zero capacità irraggiungibili, in entrambe le direzioni. Sono
 le prime liste seedate che nascono già in regola.
 
-L'unica eccezione è **`partita_iva` su `anagrafiche.emittenti_fiscali`**, ed è
-una **rottura del nucleo**: per un emittente la P.IVA *è* l'identificativo
-fiscale, quindi per la regola di dominio deve ordinare. Una voce in
-`_EMITTENTI_ORDER_COLS`, già aggiunta alla tabella della commessa.
+🔴 **L'unica cosa aperta di tutto il filone ordinamenti** è
+**`partita_iva` su `anagrafiche.emittenti_fiscali`**, ed è una **rottura del
+nucleo**: per un emittente la P.IVA *è* l'identificativo fiscale, quindi per la
+regola di dominio deve ordinare. **Una riga in `_EMITTENTI_ORDER_COLS`.** È
+posteriore alla commessa che il BE ha già chiuso, quindi non l'hanno vista.
 
 Da sapere prima di convertire i `.vue`:
 
@@ -1337,6 +1361,52 @@ Da sapere prima di convertire i `.vue`:
   (entrambe ordinabili: la lista mostra il codice ma non la descrizione, che il
   BE sa già cercare e ordinare), `valuta`/`regime fiscale`/`data_insert` su
   emittenti, `data_insert` sul tab BA.
+
+##### Terzo lotto — le 3 liste UoM di `catalogo` (2026-07-31)
+
+| Lista | `lista_id` | Colonne | Visibili | `vista_sql` |
+| --- | --- | --- | --- | --- |
+| `catalogo.uom_tipi` | 20 | 6 | 4 | `uom_tipi` (tabella) |
+| `catalogo.unita_misura` | 21 | 9 | 6 | NULL — campi joinati |
+| `catalogo.conversioni_uom` | 22 | 6 | 6 | NULL — campi joinati |
+
+Righe `275..295`. **L'ordinamento server-side per queste tre non c'era, e nel
+frattempo il BE l'ha aggiunto** (`UOM_TIPI_ORDER_COLUMNS`, `UOM_ORDER_COLUMNS`,
+`UOM_CONVERSIONI_ORDER_COLUMNS` in `catalogo_repository.py`), quindi il lotto è
+partito da una base che non esisteva quando l'avevamo scartato. Applicate in
+transazione di prova e rollbackate.
+
+🔴 **Una sola cosa da chiedere al BE, ripetuta tre volte**: `attivo` non è in
+nessuna delle tre whitelist, ma la colonna *Attivo* c'è ed è visibile su tutte
+e tre. È una **rottura del nucleo** (lo stato ordina sempre) e vale lo stesso
+precedente delle quattro liste del primo lotto, dove `attivo` era in whitelist
+e infatti ordina. Tre righe:
+
+| Whitelist | ➕ Aggiungere |
+| --- | --- |
+| `UOM_TIPI_ORDER_COLUMNS` | `attivo` → `ut.attivo` |
+| `UOM_ORDER_COLUMNS` | `attivo` → `u.attivo` |
+| `UOM_CONVERSIONI_ORDER_COLUMNS` | `attivo` → `c.attivo` |
+
+A parte quello: **zero bugiarde e zero capacità irraggiungibili** su tutte e
+tre, e **zero nuove chiavi i18n** — le colonne extra invisibili riusano
+`common.data_insert` / `common.data_update`.
+
+Da sapere prima di convertire i `.vue`:
+
+- **`catalogo.uom_tipi` ha `vista_sql` valorizzato** sulla tabella base: tutti i
+  suoi campi vengono da lì, quindi il guard `campo_sorgente` fa un lavoro vero.
+  Le altre due joinano e restano NULL.
+- **Colonne non ordinabili per scelta**, perché il BE non le espone e non sono
+  nucleo: `tipo_uom_codice`, `tipo_uom_descrizione` e `descrizione_fattura` su
+  `unita_misura`; `uom_from_descrizione` e `uom_to_descrizione` su
+  `conversioni_uom` (le rispettive colonne *codice* ordinano). Se servono, sono
+  altre voci di whitelist — ma nessuno le ha chieste.
+- **`valido_dal` / `valido_al` di `conversioni_uom` non sono state seedate**:
+  l'API le restituisce, ma servirebbero due chiavi i18n nuove **e** due voci di
+  whitelist per non nascere già bugiarde. Sono disponibili se le si vuole: dirlo
+  e diventano due righe.
+- **`conversioni_uom` non ha colonna azioni**: nel `.vue` non c'è kebab di riga.
 
 #### Gruppo B — tabelle annidate (37 file, senza paginator)
 

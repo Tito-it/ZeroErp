@@ -1,0 +1,247 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Copyright (C) 2026 Tid (Michele Carlo Titini)
+--
+-- Rilasciato sotto GNU GPLv3 o versione successiva.
+-- Vedi LICENSE.md per il testo completo della licenza.
+-- ------------------------------------------------------------
+-- Test: vendite.trgfn_fatture_guard_uscita_draft (changeSet 20260731-11)
+--       montata su vendite.fatture (changeSet 20260731-12)
+-- Piano: piano-db-satelliti-fattura.md Fase 2.5, criterio allargato dal
+--        brief-db-snapshot-intestazione-fattura.md §3.5 (passo I.4)
+-- ------------------------------------------------------------
+-- Indice test (1..11):
+--   1) Cablaggio: BEFORE UPDATE OF stato_doc_fiscale_id, FOR EACH ROW
+--   2) Fixture: tre fatture nude create (due DRAFT, una EMESSA)
+--   3) DRAFT -> EMESSA a mani vuote: rifiutato
+--   4) ...e il messaggio nomina ENTRAMBE le mancanze
+--   5) Con il solo indirizzo FATT: ancora rifiutato, e solo per l'intestazione
+--   6) Intestazione a '{}' e non NULL: ancora rifiutata (jsonb_typeof, non IS NULL)
+--   7) Fattura completa: DRAFT -> EMESSA passa
+--   8) Fattura gia' oltre la bozza: EMESSA -> DEFINITIVA passa anche se nuda
+--   9) Riscrittura dello stato con lo stesso valore: nessun presidio
+--  10) UPDATE di un'altra colonna: il trigger non scatta affatto
+--  11) Ordine dei guard: una transizione illegale parla come transizione
+-- ------------------------------------------------------------
+-- PERCHE' IL TEST 4 NON E' UN DOPPIONE DEL 3. Il 3 prova che il guard blocca;
+-- il 4 prova CHE COSA sta bloccando. Senza, un guard che controllasse i soli
+-- indirizzi (cioe' la Fase 2.5 come era scritta PRIMA del brief intestazione)
+-- renderebbe verde il 3 pur avendo perso meta' del criterio. Il 5 chiude la
+-- tenaglia dall'altro lato: con l'indirizzo a posto deve restare rosso, e per
+-- l'intestazione soltanto.
+--
+-- PERCHE' IL TEST 6 ESISTE. fn_snapshot_intestazione_fattura applica
+-- jsonb_strip_nulls: uno snapshot senza dati arriva in colonna come '{}' e non
+-- come NULL. Un guard che controllasse il solo IS NULL lo dichiarerebbe
+-- presente — cioe' proprio il caso «snapshot mai scritto» che il brief §3.5
+-- chiede di intercettare. E' il test che distingue jsonb_typeof da IS NULL.
+--
+-- PERCHE' L'8 USA UNA FATTURA NUDA. Se riusasse quella completata dal 7 non
+-- proverebbe nulla: passerebbe perche' e' completa, non perche' il guard esce
+-- in testa sullo stato di partenza. La fattura nuda in EMESSA e' l'unico modo
+-- di distinguere le due ragioni.
+--
+-- PERCHE' L'11 USA throws_like E NON throws_ok. Entrambi i guard sollevano
+-- P0001: il codice SQLSTATE non distingue chi ha parlato. La verifica sta nel
+-- MESSAGGIO — se un giorno la descrizione breve del trigger venisse cambiata in
+-- modo da anticipare trgfn_fatture_guard_stato, una transizione illegale
+-- verrebbe segnalata come «documento incompleto» e manderebbe a cercare il
+-- problema dalla parte sbagliata. Questo test e' il presidio di quell'ordine.
+--
+-- Idempotente: BEGIN ... ROLLBACK.
+-- ------------------------------------------------------------
+BEGIN;
+SELECT plan(11);
+
+-- ============================================================
+-- 1) Cablaggio sul catalogo.
+--    tgtype = 19 -> ROW(1) + BEFORE(2) + UPDATE(16).
+--    tgattr porta la colonna della clausola UPDATE OF: il suo output testuale
+--    per un solo elemento e' il numero d'attributo.
+-- ============================================================
+SELECT is(
+  (SELECT count(*)::int
+     FROM pg_trigger t
+     JOIN pg_class c     ON c.oid = t.tgrelid
+     JOIN pg_namespace n ON n.oid = c.relnamespace
+     JOIN pg_proc p      ON p.oid = t.tgfoid
+    WHERE n.nspname = 'vendite'
+      AND c.relname = 'fatture'
+      AND p.proname = 'trgfn_fatture_guard_uscita_draft'
+      AND NOT t.tgisinternal
+      AND t.tgtype = 19
+      AND t.tgattr::text = (SELECT a.attnum::text
+                              FROM pg_attribute a
+                             WHERE a.attrelid = 'vendite.fatture'::regclass
+                               AND a.attname  = 'stato_doc_fiscale_id')),
+  1,
+  '1) guard montato BEFORE UPDATE OF stato_doc_fiscale_id FOR EACH ROW'
+);
+
+-- ============================================================
+-- Riferimenti e fixture (stesso criterio di 2.6: si parte da un BA che ha un
+-- emittente fiscale risolvibile, altrimenti la fattura non e' creabile)
+-- ============================================================
+CREATE TEMP TABLE tmp_refs_gud AS
+SELECT
+  ba.id                                          AS billing_account_id,
+  anagrafiche.fn_get_emittente_fiscale_id(ba.id) AS emittente_soggetto_ruolo_id,
+  (SELECT m.registro_id
+     FROM vendite.tipi_doc_fiscale_registri m
+     JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
+    WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1) AS registro_id,
+  (SELECT m.tipo_doc_fiscale_id
+     FROM vendite.tipi_doc_fiscale_registri m
+     JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
+    WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1) AS tipo_doc_fiscale_id,
+  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
+  (SELECT s.id FROM config.stati_doc_fiscale s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE)      AS stato_draft_id,
+  (SELECT s.id FROM config.stati_doc_fiscale s
+    WHERE s.codice_interno = 'EMESSA' AND s.attivo IS TRUE)     AS stato_emessa_id,
+  (SELECT s.id FROM config.stati_doc_fiscale s
+    WHERE s.codice_interno = 'DEFINITIVA' AND s.attivo IS TRUE) AS stato_def_id,
+  (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'FATT') AS fatt_id
+FROM anagrafiche.billing_account ba
+WHERE anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+ORDER BY ba.id
+LIMIT 1;
+
+CREATE TEMP TABLE tmp_fatture_gud AS
+WITH ins AS (
+  INSERT INTO vendite.fatture (
+    registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
+    tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, meta
+  )
+  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id,
+         r.billing_account_id, r.tipo_doc_fiscale_id, v.stato_id, r.valuta_id,
+         jsonb_build_object('test', 'pgtap_guard_uscita_draft', 'caso', v.caso)
+    FROM tmp_refs_gud r
+   CROSS JOIN LATERAL (VALUES ('lavorata',  r.stato_draft_id),
+                              ('intatta',   r.stato_draft_id),
+                              ('gia_fuori', r.stato_emessa_id)) AS v(caso, stato_id)
+  RETURNING id, meta ->> 'caso' AS caso
+)
+SELECT id, caso FROM ins;
+
+SELECT is(
+  (SELECT count(*)::int FROM tmp_fatture_gud), 3,
+  '2) fixture: tre fatture nude create (due DRAFT, una EMESSA)'
+);
+
+-- ============================================================
+-- 3-4) A mani vuote non si esce dalla bozza, e si sa perche'.
+-- ============================================================
+SELECT throws_ok(
+  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+         (SELECT stato_emessa_id FROM tmp_refs_gud),
+         (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata')),
+  'P0001', NULL,
+  '3) DRAFT -> EMESSA senza indirizzi ne'' intestazione: rifiutato'
+);
+
+SELECT throws_like(
+  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+         (SELECT stato_emessa_id FROM tmp_refs_gud),
+         (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata')),
+  '%indirizzi obbligatori mancanti: FATT%intestazione non congelata: emittente_snapshot, cliente_snapshot%',
+  '4) il messaggio nomina entrambe le mancanze, non solo gli indirizzi'
+);
+
+-- ============================================================
+-- 5) Con il solo indirizzo a posto il criterio ALLARGATO deve restare rosso —
+--    ed e' l'unica meta' che deve ancora comparire nel messaggio.
+-- ============================================================
+INSERT INTO vendite.fatture_indirizzi (fattura_id, tipo_indirizzo_id, snapshot)
+SELECT f.id, r.fatt_id,
+       '{"intestazione":"Cliente pgTAP","via":"Via Guard 1","cap":"83100"}'::jsonb
+  FROM tmp_fatture_gud f, tmp_refs_gud r
+ WHERE f.caso = 'lavorata';
+
+SELECT throws_like(
+  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+         (SELECT stato_emessa_id FROM tmp_refs_gud),
+         (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata')),
+  '%intestazione non congelata: emittente_snapshot, cliente_snapshot%',
+  '5) con il solo indirizzo FATT: rifiutato, e solo per l''intestazione'
+);
+
+-- ============================================================
+-- 6) Lo snapshot vuoto e' il caso che jsonb_strip_nulls produce davvero:
+--    valorizzato, ma senza dentro nulla. Non deve valere come congelato.
+-- ============================================================
+UPDATE vendite.fatture
+   SET emittente_snapshot = '{}'::jsonb,
+       cliente_snapshot   = '{}'::jsonb
+ WHERE id = (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata');
+
+SELECT throws_like(
+  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+         (SELECT stato_emessa_id FROM tmp_refs_gud),
+         (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata')),
+  '%intestazione non congelata: emittente_snapshot, cliente_snapshot%',
+  '6) intestazione a ''{}'' e non NULL: ancora rifiutata'
+);
+
+-- ============================================================
+-- 7) Documento completo: la porta si apre. E' il test di NON-REGRESSIONE che
+--    dice che la pipeline reale non e' ostacolata.
+-- ============================================================
+UPDATE vendite.fatture
+   SET emittente_snapshot = '{"denominazione":"Emittente pgTAP","id_fiscale":"00000000000"}'::jsonb,
+       cliente_snapshot   = '{"denominazione":"Cliente pgTAP","id_fiscale":"11111111111"}'::jsonb
+ WHERE id = (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata');
+
+SELECT lives_ok(
+  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+         (SELECT stato_emessa_id FROM tmp_refs_gud),
+         (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata')),
+  '7) fattura completa: DRAFT -> EMESSA ammesso'
+);
+
+-- ============================================================
+-- 8) Il presidio e' sull'USCITA dalla bozza, non su ogni avanzamento: oltre
+--    DRAFT tocca al guard di congelamento dei satelliti, non a questo.
+-- ============================================================
+SELECT lives_ok(
+  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+         (SELECT stato_def_id FROM tmp_refs_gud),
+         (SELECT id FROM tmp_fatture_gud WHERE caso = 'gia_fuori')),
+  '8) fattura nuda gia'' in EMESSA: EMESSA -> DEFINITIVA ammesso'
+);
+
+-- ============================================================
+-- 9-10) Il guard non deve intralciare la lavorazione della bozza, che la
+--       pipeline riscrive di continuo.
+-- ============================================================
+SELECT lives_ok(
+  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+         (SELECT stato_draft_id FROM tmp_refs_gud),
+         (SELECT id FROM tmp_fatture_gud WHERE caso = 'intatta')),
+  '9) riscrittura dello stato con lo stesso valore: nessun presidio'
+);
+
+SELECT lives_ok(
+  format($$ UPDATE vendite.fatture SET data_contabilizzazione = current_date WHERE id = %s $$,
+         (SELECT id FROM tmp_fatture_gud WHERE caso = 'intatta')),
+  '10) UPDATE di un''altra colonna su fattura nuda in DRAFT: ammesso'
+);
+
+-- ============================================================
+-- 11) ORDINE DEI GUARD. DRAFT -> DEFINITIVA non e' una transizione ammessa per
+--     la fattura (config.stati_doc_fiscale_transizioni ha la coppia 1->8 solo
+--     con solo_lotto = true). Deve rispondere trgfn_fatture_guard_stato, che
+--     scatta prima per ordine lessicografico del nome — e non questo guard, che
+--     direbbe «documento incompleto» su un problema che incompleto non e'.
+-- ============================================================
+SELECT throws_like(
+  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+         (SELECT stato_def_id FROM tmp_refs_gud),
+         (SELECT id FROM tmp_fatture_gud WHERE caso = 'intatta')),
+  '%Parametro non coerente%',
+  '11) transizione illegale da DRAFT: parla il guard di transizione, non questo'
+);
+
+SELECT * FROM finish();
+ROLLBACK;
