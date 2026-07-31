@@ -163,7 +163,9 @@ _LISTE: tuple[tuple[str, object], ...] = (
 _DEBITO_WHITELIST_LOGICA: frozenset[str] = frozenset({
     "anagrafiche.clienti",
     "anagrafiche.fornitori",
-    "anagrafiche.soggetti",
+    # `anagrafiche.soggetti` RIENTRATA il 2026-07-31: whitelist ri-chiavata sul
+    # campo fisico (`id_fiscale_univoco_cf_piva`) e mappata a espressioni SQL
+    # qualificate. Ora e' presidiata dai test stretti.
     "vendite.contratti",
     "vendite.ddt",
     "vendite.offerte",

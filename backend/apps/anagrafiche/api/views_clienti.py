@@ -124,8 +124,6 @@ class ClientiDetailView(DomainAPIView):
             "iva_id": serializers.IntegerField(required=False),
             "modalita_pagamento_id": serializers.IntegerField(required=False),
             "termine_pagamento_id": serializers.IntegerField(required=False),
-            "tipo_gg_scadenza_ft": serializers.CharField(required=False),
-            "nr_giorni_scadenza": serializers.IntegerField(required=False),
             "cliente_pa": serializers.CharField(required=False),
             "split_payment": serializers.CharField(required=False),
             "garanzia_tipo": serializers.CharField(required=False),

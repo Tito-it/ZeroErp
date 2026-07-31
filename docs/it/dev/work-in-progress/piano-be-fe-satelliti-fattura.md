@@ -234,9 +234,11 @@ Verifica di fase: smoke §3.1 casi 1-4 e 6 verdi.
 >   `vendite_repository.py:1600-1605` filtra `tipo_indirizzo_codice = 'SEDELEG'`
 >   ma la vista espone in quella colonna il `codice` (`SEDE-LEG`) — 0 match
 >   sempre. Il tipo `FATT` funziona solo perché i due codici coincidono per caso;
-> - `vendite.fatture` e `fatture_indirizzi` hanno **0 righe**: le «7 fatture
->   storiche» del §9 non esistono più, quindi non c'è nulla da migrare e la
->   forma definitiva costa oggi meno di qualsiasi giorno futuro.
+> - le fatture in tabella sono **8** (conteggio con bypass RLS: senza GUC
+>   operatore `vendite.fatture` appare vuota, fail-closed), tutte di test e già
+>   dichiarate sacrificabili dal §9 — quindi niente da migrare, ma il numero
+>   cresce a ogni giro di prova: la forma definitiva costa oggi meno di
+>   qualsiasi giorno futuro.
 >
 > **Conseguenza operativa:** questa fase si scrive **una volta sola**, sulla
 > forma decisa nel brief (snapshot intestazione in testata + indirizzo cliente da

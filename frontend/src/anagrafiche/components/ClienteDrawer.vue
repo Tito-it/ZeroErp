@@ -67,12 +67,6 @@ const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId({
 const utilities = useLookup(() => lookupUtilitiesPerEmittente(TIPO_RUOLO.CLIENTE))
 
 // Opzioni statiche (label tramite i18n)
-const tipoGgOptions = computed(() => [
-  { value: 'N', label: t('anagrafiche.clienti.opt_gg_nessuno') },
-  { value: 'G', label: t('anagrafiche.clienti.opt_gg_giorni') },
-  { value: 'M', label: t('anagrafiche.clienti.opt_gg_mese') },
-  { value: 'F', label: t('anagrafiche.clienti.opt_gg_fine_mese') },
-])
 const paOptions = computed(() => [
   { value: 'N', label: t('common.no') },
   { value: 'S', label: t('common.yes') },
@@ -139,7 +133,6 @@ function defaultForm() {
     utility_id: null, indirizzo_dettaglio_id: null,
     ba_categoria_cliente_id: null,
     iva_id: null, modalita_pagamento_id: null, termine_pagamento_id: null,
-    tipo_gg_scadenza_ft: 'N', nr_giorni_scadenza: 0,
     cliente_pa: 'N', split_payment: 'N',
     codice_cig: null, codice_cup: null, codice_commessa: null,
     servizio_da_fatturare: true,
@@ -170,8 +163,6 @@ function populateFormFromDetail(d) {
     iva_id: d.iva_id,
     modalita_pagamento_id: d.modalita_pagamento_id,
     termine_pagamento_id: d.termine_pagamento_id,
-    tipo_gg_scadenza_ft: (d.tipo_gg_scadenza_ft || 'N').trim(),
-    nr_giorni_scadenza: d.nr_giorni_scadenza || 0,
     cliente_pa: (d.cliente_pa || 'N').trim(),
     split_payment: (d.split_payment || 'N').trim(),
     codice_cig: d.codice_cig,
@@ -279,8 +270,6 @@ function buildEditablePayload() {
     iva_id: f.iva_id || null,
     modalita_pagamento_id: f.modalita_pagamento_id || null,
     termine_pagamento_id: f.termine_pagamento_id || null,
-    tipo_gg_scadenza_ft: f.tipo_gg_scadenza_ft,
-    nr_giorni_scadenza: f.nr_giorni_scadenza,
     cliente_pa: f.cliente_pa,
     split_payment: f.split_payment,
     codice_cig: f.codice_cig || null,
@@ -507,17 +496,6 @@ const onClose = useDrawerClose(emit, 'cancelled')
             <label>{{ t('anagrafiche.clienti.field_termine_pagamento') }}</label>
             <LookupSelect v-model="form.termine_pagamento_id" rel="config.termini_pagamento" class="w-full"
               :placeholder="t('anagrafiche.clienti.select_termine')" show-clear />
-          </div>
-        </div>
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('anagrafiche.clienti.field_tipo_gg_scadenza') }}</label>
-            <Select v-model="form.tipo_gg_scadenza_ft" :options="tipoGgOptions"
-              option-label="label" option-value="value" class="w-full" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('anagrafiche.clienti.field_nr_giorni') }}</label>
-            <InputNumber v-model="form.nr_giorni_scadenza" class="w-full" :min="0" />
           </div>
         </div>
 

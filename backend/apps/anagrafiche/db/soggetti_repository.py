@@ -24,9 +24,24 @@ from apps.core.db.parameter_repository import ParameterRepository
 from django.db import connection
 
 
-_SOGGETTI_ORDER_COLS = {
-    "codice", "ragione_sociale_completa", "codice_fiscale", "partita_iva",
-    "tipo_descrizione", "date_insert",
+# Whitelist colonne ammesse per ORDER BY: chiave = campo_sorgente inviato dal
+# client, valore = espressione SQL qualificata. Qualificata perche' la lista
+# joina tre tabelle che hanno tutte i campi audit: un `data_insert` nudo in
+# ORDER BY sarebbe ambiguo (soggetti / tipi_soggetto_dettaglio / tipi_soggetto).
+# `tipo_descrizione` resta nudo: e' un alias di output della SELECT.
+#
+# L'identificativo fiscale a video e' SEMPRE `id_fiscale_univoco_cf_piva` (la
+# colonna GENERATED che sceglie fra CF e P.IVA): il catalogo la espone con
+# `codice = 'codice_fiscale'` ma `campo_sorgente = id_fiscale_univoco_cf_piva`,
+# ed e' il secondo che il frontend invia come sortField. `codice_fiscale` e
+# `partita_iva` NON stanno qui: nudi non arrivano mai dalla lista, e tenerli
+# reintrodurrebbe la chiave logica che il presidio vieta.
+_SOGGETTI_ORDER_COLS: dict[str, str] = {
+    "codice": "s.codice",
+    "ragione_sociale_completa": "s.ragione_sociale_completa",
+    "id_fiscale_univoco_cf_piva": "s.id_fiscale_univoco_cf_piva",
+    "tipo_descrizione": "tipo_descrizione",
+    "data_insert": "s.data_insert",
 }
 
 # Scopo: clausola scope emittente sul ruolo CL (regola del 2: usata da
@@ -128,7 +143,9 @@ class SoggettiRepository:
         limit: int = 25, offset: int = 0,
         order_by: str = "ragione_sociale_completa", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = order_by if order_by in _SOGGETTI_ORDER_COLS else "ragione_sociale_completa"
+        order_col = _SOGGETTI_ORDER_COLS.get(
+            order_by, _SOGGETTI_ORDER_COLS["ragione_sociale_completa"]
+        )
         direction = sql_order_direction(order_dir)
         # escape_ilike: senza, una search contenente %/_ agisce da wildcard
         # (stesso fix dei lookup BA/istanze/soggetti-ruoli).
