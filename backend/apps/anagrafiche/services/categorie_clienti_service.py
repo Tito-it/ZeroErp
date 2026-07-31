@@ -18,6 +18,7 @@ from typing import Any
 from django.db import IntegrityError
 
 from apps.anagrafiche.db.categorie_clienti_repository import (
+    _ORDER_COLS,
     CategorieClientiRepository,
 )
 from apps.core.services.error_manager import ErrorManager
@@ -32,16 +33,11 @@ E_ANAG_VALIDAZIONE = "E_ANAG_VALIDAZIONE"
 E_ANAG_DUPLICATO = "E_ANAG_DUPLICATO"
 E_ANAG_NOT_FOUND = "E_ANAG_NOT_FOUND"
 
-# Whitelist colonne ammesse per ORDER BY (riflette repository).
-_ORDER_BY_VALIDI: frozenset[str] = frozenset({
-    "codice",
-    "descrizione",
-    "ordinamento",
-    "partecipa_promo",
-    "attivo",
-    "data_insert",
-    "data_update",
-})
+# Whitelist order_by ammessi dal service (gate prima del repository), DERIVATA
+# dalla whitelist del repository (`_ORDER_COLS`), unica fonte di verita' —
+# stesso schema di `_ORDER_BY_CONTRATTI`/`_ORDER_BY_OFFERTE`. Era una copia a
+# mano: su offerte la stessa copia aveva gia' divergito in entrambi i versi.
+_ORDER_BY_VALIDI: frozenset[str] = frozenset(_ORDER_COLS)
 
 # Chiavi ammesse in payload create (anagrafica completa).
 _CREATE_KEYS: frozenset[str] = frozenset({

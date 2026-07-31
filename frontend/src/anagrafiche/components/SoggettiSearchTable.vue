@@ -148,10 +148,10 @@ onMounted(() => {
         @row-click="onRowClick"
         @config-loaded="onConfigLoaded"
       >
-        <!-- CF / P.IVA: campo `id_fiscale_univoco_cf_piva` (GENERATED ALWAYS). -->
-        <template #cell-codice_fiscale="{ data }">
-          {{ data.id_fiscale_univoco_cf_piva }}
-        </template>
+        <!-- Nessuno slot per l'Id. Fiscale: la colonna del catalogo si chiama
+             `id_fiscale` e legge `id_fiscale_univoco_cf_piva` (GENERATED
+             ALWAYS). Il formatter di serie legge gia' `data[campo_sorgente]`,
+             cioe' lo stesso identico valore. -->
 
         <!-- Ruoli: TagList aggregato dal repo via jsonb_agg. -->
         <template #cell-ruoli="{ data }">

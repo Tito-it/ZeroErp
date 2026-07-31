@@ -24,6 +24,31 @@ ARTICOLI_ORDER_COLUMNS: dict[str, str] = {
     "data_update": "a.data_update",
 }
 
+# Whitelist ORDER BY delle liste UoM (tipi / unita' / conversioni). Costanti di
+# modulo (non piu' dict locali ai metodi) cosi' il service deriva le sue
+# `_*_ORDER_BY_VALIDI` da qui, unica fonte di verita' — stesso schema di
+# ARTICOLI_ORDER_COLUMNS / LISTINI_ORDER_COLUMNS.
+UOM_TIPI_ORDER_COLUMNS: dict[str, str] = {
+    "codice": "ut.codice",
+    "codice_interno": "ut.codice_interno",
+    "descrizione": "ut.descrizione",
+    "data_insert": "ut.data_insert",
+    "data_update": "ut.data_update",
+}
+
+UOM_ORDER_COLUMNS: dict[str, str] = {
+    "codice": "u.codice",
+    "descrizione": "u.descrizione",
+    "data_insert": "u.data_insert",
+    "data_update": "u.data_update",
+}
+
+UOM_CONVERSIONI_ORDER_COLUMNS: dict[str, str] = {
+    "uom_from_codice": "uf.codice",
+    "uom_to_codice": "ut.codice",
+    "fattore": "c.fattore",
+}
+
 ARTICOLI_CREATE_COLUMNS: dict[str, str] = {
     "codice": "text",
     "descrizione": "text",
@@ -439,14 +464,7 @@ class CatalogoRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
-        order_map = {
-            "codice": "ut.codice",
-            "codice_interno": "ut.codice_interno",
-            "descrizione": "ut.descrizione",
-            "data_insert": "ut.data_insert",
-            "data_update": "ut.data_update",
-        }
-        order_column = order_map.get(order_by, "ut.descrizione")
+        order_column = UOM_TIPI_ORDER_COLUMNS.get(order_by, "ut.descrizione")
         safe_order_dir = "DESC" if order_dir.lower() == "desc" else "ASC"
 
         conditions: list[str] = []
@@ -550,8 +568,7 @@ class CatalogoRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
-        order_map = {"codice": "u.codice", "descrizione": "u.descrizione", "data_insert": "u.data_insert", "data_update": "u.data_update"}
-        order_column = order_map.get(order_by, "u.codice")
+        order_column = UOM_ORDER_COLUMNS.get(order_by, "u.codice")
         safe_order_dir = "DESC" if order_dir.lower() == "desc" else "ASC"
 
         conditions: list[str] = []
@@ -658,12 +675,7 @@ class CatalogoRepository:
         limit: int = 25, offset: int = 0,
         order_by: str = "uom_from_codice", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_map = {
-            "uom_from_codice": "uf.codice",
-            "uom_to_codice": "ut.codice",
-            "fattore": "c.fattore",
-        }
-        order_column = order_map.get(order_by, "uf.codice")
+        order_column = UOM_CONVERSIONI_ORDER_COLUMNS.get(order_by, "uf.codice")
         safe_order_dir = "DESC" if order_dir.upper() == "DESC" else "ASC"
         safe_limit = min(max(limit, 1), 200)
         safe_offset = max(offset, 0)

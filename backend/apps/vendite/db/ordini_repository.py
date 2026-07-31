@@ -40,15 +40,19 @@ from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixi
 #        ordinabili (fuori dalla whitelist): la chiave logica e' `numero`.
 _ORDER_COLS_ORDINI: dict[str, str] = {
     "numero": "v.numero",
+    "anno": "v.anno",
+    "serie": "v.serie",
     "data": "v.data",
     "ragione_sociale_completa": "v.ragione_sociale_completa",
     "ba_codice": "v.ba_codice",
     "id_fiscale_univoco_cf_piva": "v.id_fiscale_univoco_cf_piva",
     "utility_codice": "v.utility_codice",
+    "utility_descrizione": "v.utility_descrizione",
     "totale_doc": "v.totale_doc",
+    "imponibile_tot": "v.imponibile_tot",
+    "iva_tot": "v.iva_tot",
     "fatturazione_trigger": "v.fatturazione_trigger",
     "stato_descrizione": "v.stato_descrizione",
-    "stato_codice_interno": "v.stato_codice_interno",
     "data_insert": "v.data_insert",
     # Colonne lineage (Fase B): pratica + fase ordinabili (frontiera no).
     "pratica_numero": "v.pratica_numero",

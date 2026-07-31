@@ -23,6 +23,9 @@ from apps.catalogo.db.catalogo_repository import (
     ARTICOLI_CREATE_COLUMNS,
     ARTICOLI_ORDER_COLUMNS,
     ARTICOLI_UPDATE_COLUMNS,
+    UOM_CONVERSIONI_ORDER_COLUMNS,
+    UOM_ORDER_COLUMNS,
+    UOM_TIPI_ORDER_COLUMNS,
     CatalogoRepository,
 )
 from apps.catalogo.db.catalogo_uom_repository import (
@@ -1792,16 +1795,13 @@ def fn_delete_nota(nota_id: int) -> dict[str, object]:
 # Sezione CRUD uom_tipi / unita_misura
 # ============================================================
 
-_UOM_TIPO_ORDER_BY_VALIDI: frozenset[str] = frozenset({
-    "codice",
-    "codice_interno",
-    "descrizione",
-    "data_insert",
-    "data_update",
-})
+# Whitelist order_by derivate dalle costanti del repository, unica fonte di
+# verita' — stesso schema di `_ORDER_BY_CONTRATTI`/`_ORDER_BY_OFFERTE`. Erano
+# copie a mano: su offerte la stessa copia aveva gia' divergito.
+_UOM_TIPO_ORDER_BY_VALIDI: frozenset[str] = frozenset(UOM_TIPI_ORDER_COLUMNS)
 _UOM_TIPO_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset({"codice", "codice_interno", "descrizione"})
 _UOM_TIPO_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset({"descrizione", "attivo"})
-_UOM_ORDER_BY_VALIDI: frozenset[str] = frozenset({"codice", "descrizione", "data_insert", "data_update"})
+_UOM_ORDER_BY_VALIDI: frozenset[str] = frozenset(UOM_ORDER_COLUMNS)
 _UOM_ALLOWED_KEYS: frozenset[str] = frozenset({"codice", "descrizione", "descrizione_fattura", "tipo_uom_id"})
 
 
@@ -2158,9 +2158,7 @@ _CONV_CREATE_KEYS: frozenset[str] = frozenset({
 _CONV_UPDATE_KEYS: frozenset[str] = frozenset({
     "fattore", "valido_dal", "valido_al", "attivo",
 })
-_CONV_ORDER_BY_VALIDI: frozenset[str] = frozenset({
-    "uom_from_codice", "uom_to_codice", "fattore",
-})
+_CONV_ORDER_BY_VALIDI: frozenset[str] = frozenset(UOM_CONVERSIONI_ORDER_COLUMNS)
 
 
 # Scopo: Lista completa conversioni UoM (no paginazione — dataset piccolo).

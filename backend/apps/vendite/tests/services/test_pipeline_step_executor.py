@@ -66,7 +66,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
             "close_lotto": None,
             "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
-            "snapshot_indirizzi_lotto": "vendite.fn_snapshot_indirizzi_lotto",
+            "snapshot_indirizzi_lotto": "vendite.fn_snapshot_fattura_lotto",
         }
         # Tracing: default nessuna policy → nessun tracing (test esistenti non cambiano).
         repo.get_pipeline_id_for_step.return_value = 100
@@ -661,7 +661,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.get_task_handler_code.return_value = "snapshot_indirizzi_lotto_default"
         repo.run_snapshot_indirizzi_lotto_task.return_value = {
             "fatture_count": 3, "inserted_rows": 3, "updated_rows": 0,
-            "skipped_rows": 0, "failed_rows": 0,
+            "intestazioni_scritte": 3, "skipped_rows": 0, "failed_rows": 0,
         }
 
         executor.execute_step(
@@ -720,7 +720,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.start_lotto_task_run.return_value = task_run
         repo.run_snapshot_indirizzi_lotto_task.return_value = {
             "fatture_count": 3, "inserted_rows": 2, "updated_rows": 0,
-            "skipped_rows": 0, "failed_rows": 1,
+            "intestazioni_scritte": 2, "skipped_rows": 0, "failed_rows": 1,
         }
 
         # Nessuna eccezione: lo step si completa (D-Q).
@@ -758,7 +758,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         repo.start_lotto_task_run.return_value = task_run
         repo.run_snapshot_indirizzi_lotto_task.return_value = {
             "fatture_count": 2, "inserted_rows": 2, "updated_rows": 0,
-            "skipped_rows": 0, "failed_rows": 0,
+            "intestazioni_scritte": 2, "skipped_rows": 0, "failed_rows": 0,
         }
 
         executor.execute_step(

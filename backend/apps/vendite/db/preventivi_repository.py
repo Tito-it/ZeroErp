@@ -57,9 +57,11 @@ _ORDER_COLS_PREVENTIVI: dict[str, str] = {
     "validita_al": "v.validita_al",
     "validita_dal": "v.validita_dal",
     "stato_descrizione": "v.stato_descrizione",
-    "stato_codice_interno": "v.stato_codice_interno",
+    # `stato_codice_interno` (tecnica, severity del Tag) ed
+    # `emittente_fiscale_codice` (la colonna Emittente legge
+    # `emittente_fiscale_descrizione`) sono uscite il 2026-07-31: nessuna
+    # colonna del catalogo le invia come sortField.
     "valuta_codice": "v.valuta_codice",
-    "emittente_fiscale_codice": "v.emittente_fiscale_codice",
     "competenza_mese": "v.competenza_mese",
     "data_insert": "v.data_insert",
     # Colonne lineage (Fase B brief-be-fe-lineage): pratica + fase ordinabili

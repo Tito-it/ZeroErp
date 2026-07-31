@@ -800,8 +800,10 @@ class PipelineStepExecutor:
             )
 
     # Scopo: Task `snapshot_indirizzi_lotto` (step DRAFT, piano DB satelliti
-    #        Fase 2): congela gli indirizzi delle fatture del lotto in
-    #        `vendite.fatture_indirizzi` via `fn_snapshot_indirizzi_lotto`.
+    #        Fase 2): congela i satelliti di intestazione delle fatture del
+    #        lotto — indirizzi in `vendite.fatture_indirizzi` e intestazione
+    #        fiscale delle due parti in `fatture.emittente_snapshot` /
+    #        `cliente_snapshot` — via `fn_snapshot_fattura_lotto`.
     #        La funzione DB applica D-Q da sola: la fattura senza indirizzo
     #        `FATT` viene marcata 'C' su fatture_log (→ `stato_esecuzione`
     #        ERRORE sulla ponte) e le ALTRE ricevono il loro snapshot — il giro

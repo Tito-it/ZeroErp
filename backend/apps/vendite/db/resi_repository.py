@@ -44,7 +44,8 @@ _ORDER_COLS_RESI: dict[str, str] = {
     "ba_codice": "v.ba_codice",
     "id_fiscale_univoco_cf_piva": "v.id_fiscale_univoco_cf_piva",
     "stato_descrizione": "v.stato_descrizione",
-    "stato_codice_interno": "v.stato_codice_interno",
+    # `stato_codice_interno` uscita il 2026-07-31: colonna tecnica (severity del
+    # Tag di stato), nel seed invisibile e `ordinabile=f`.
     "ddt_origine_numero": "v.ddt_origine_numero",
     "data_insert": "v.data_insert",
 }

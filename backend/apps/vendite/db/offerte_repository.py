@@ -124,12 +124,10 @@ _ORDER_COLS_OFFERTE: dict[str, str] = {
     "validita_al": "v.validita_al",
     "data_emissione": "v.data_emissione",
     "stato_descrizione": "v.stato_descrizione",
-    "stato_codice_interno": "v.stato_codice_interno",
+    "data_accettazione": "v.data_accettazione",
+    "data_rifiuto": "v.data_rifiuto",
+    "data_annullamento": "v.data_annullamento",
     "data_insert": "v.data_insert",
-    # data_update non e' esposta nella vista lista (non serve in lista). Resta
-    # nel detail. Mappato a data_insert come fallback safe per backward compat
-    # di eventuali order_by sortando data_update.
-    "data_update": "v.data_insert",
     # Colonne lineage (Fase B): pratica + fase ordinabili (frontiera no).
     "pratica_numero": "v.pratica_numero",
     "fase": "v.fase",

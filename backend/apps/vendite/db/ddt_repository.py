@@ -40,12 +40,13 @@ from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixi
 #        `vendite.vw_ddt_lista` (alias `v`).
 _ORDER_COLS_DDT: dict[str, str] = {
     "numero": "v.numero",
+    "anno": "v.anno",
+    "serie": "v.serie",
     "data": "v.data",
     "destinatario_denominazione": "v.destinatario_denominazione",
     "ba_codice": "v.ba_codice",
     "id_fiscale_univoco_cf_piva": "v.id_fiscale_univoco_cf_piva",
     "stato_descrizione": "v.stato_descrizione",
-    "stato_codice_interno": "v.stato_codice_interno",
     "causale_trasporto_descrizione": "v.causale_trasporto_descrizione",
     "ordine_origine_numero": "v.ordine_origine_numero",
     "data_insert": "v.data_insert",

@@ -17,10 +17,23 @@ from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
 from apps.core.db._helpers import extract_paginated, row_to_dict, sql_order_direction
 
 
-_FORNITORI_ORDER_COLS = {
-    "codice", "ragione_sociale_completa", "codice_fiscale",
-    "partita_iva", "stato_descrizione", "attivo",
-    "modalita_pagamento_desc", "data_insert",
+# Whitelist colonne ammesse per ORDER BY: chiave = `campo_sorgente` del catalogo
+# 'anagrafiche.fornitori', valore = colonna della vista `vw_fornitori_dettaglio`
+# (alias `v`).
+#
+# `codice_fiscale`, `partita_iva` e `attivo` sono uscite il 2026-07-31: le prime
+# due perche' le colonne omonime del catalogo sono state disattivate (l'id
+# fiscale a video e' SEMPRE `id_fiscale_univoco_cf_piva`, che concatena CF e
+# P.IVA quando differiscono, quindi e' un sovrainsieme), `attivo` perche' nessuna
+# colonna del catalogo la espone.
+_FORNITORI_ORDER_COLS: dict[str, str] = {
+    "codice": "v.codice",
+    "ragione_sociale_completa": "v.ragione_sociale_completa",
+    "id_fiscale_univoco_cf_piva": "v.id_fiscale_univoco_cf_piva",
+    "stato_descrizione": "v.stato_descrizione",
+    "modalita_pagamento_desc": "v.modalita_pagamento_desc",
+    "data_insert": "v.data_insert",
+    "data_update": "v.data_update",
 }
 
 
@@ -88,7 +101,9 @@ class FornitoriRepository:
         limit: int = 25, offset: int = 0,
         order_by: str = "ragione_sociale_completa", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = order_by if order_by in _FORNITORI_ORDER_COLS else "ragione_sociale_completa"
+        order_col = _FORNITORI_ORDER_COLS.get(
+            order_by, _FORNITORI_ORDER_COLS["ragione_sociale_completa"]
+        )
         direction = sql_order_direction(order_dir)
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
