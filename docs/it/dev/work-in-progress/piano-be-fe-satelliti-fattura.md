@@ -266,6 +266,8 @@ Sono elencate qui perché **l'owner è il BE**; la fase DB resta il loro innesco
 | **6.6** — eliminazione del flag `esclusa` (D-M) | **filtro API** e **`types.py`** (il resto è DB) | Con la Fase 6 DB |
 | **6.7** — ritorno a DRAFT / estrazione (D-N-bis) | Verbo nel `LottoDrawer` con conferma esplicita di **cosa si perde**, e **lista «estratte»** nel cockpit | Dopo 6.0-6.5 DB |
 | **D-L** — rinomina funzioni di reset | **4 righe obbligatorie + ~12 nomi Python** da allineare (vedi sotto): decisione Tid 2026-07-30, si rinomina su **entrambi** gli strati | Contestuale alla rinomina |
+| **D-Q** — fattura in errore, lotto non avanza ma si rilancia (decisione Tid 2026-07-31) | **La regola di blocco** (`lotto_segnalazioni_service`) e **il ritiro delle segnalazioni scritte dal BE** (vedi sotto): senza, la via d'uscita definita da Tid non esiste | **Prima** dell'accensione del task in pipeline (DB 2.3) |
+| **DB 2.3** — seed del task snapshot indirizzi | Registrare `snapshot_indirizzi_lotto` in `ALLOWED_TASK_FUNCTIONS` (`pipeline_repository.py:160`) **+ handler**: il dispatch non è dinamico, quindi finché non c'è il task non è eseguibile | **Prima** che il DB armi lo step DRAFT |
 
 ### D-L: il minimo indispensabile, misurato
 
@@ -310,6 +312,57 @@ Rinominarlo sarebbe una migrazione di dati senza guadagno.
 > **I punti 2, 3 e 4 di D-L restano il valore vero della decisione** — in
 > particolare l'**over-free del `lock_batch_id`** (C-22), che è un bug e va
 > corretto comunque, e che non induce nessun lavoro applicativo.
+
+### D-Q: la metà applicativa — 📎 nota del team DB (2026-07-31)
+
+> **Chi scrive:** DB (`dev/db-tid`), scrivendo la Fase 2.2. Simmetrica alla vostra
+> §4-ter. **Perché vi riguarda:** la decisione D-Q di Tid è per metà vostra, e
+> senza quella metà il disegno non sta in piedi — il lato DB è pronto ma il
+> runner non lo lascia partire.
+
+**La regola decisa da Tid** (piano DB §2, D-Q): se una fattura è difettosa, lo
+step **si completa lo stesso**, la fattura resta **marcata in errore**, il lotto
+**non avanza** allo step successivo. Per uscirne, due strade: **estrarre** il
+documento dal lotto, oppure **rilanciare lo stesso step** — *ero su DRAFT
+rilancio DRAFT, ero su EMESSA rieseguo EMESSA*.
+
+**Cosa abbiamo già fatto lato DB.** La marcatura per-fattura esiste da sempre e
+funziona: log `'C'` su `fatture_log` → `fn_sync_fatture_log_critical_lotto` →
+`fn_resolve_stato_esecuzione` (`critical` → `ERRORE`) su
+`fatturazione_lotti_fatture`. In `fn_snapshot_indirizzi_lotto` (2.2) abbiamo
+aggiunto il pezzo mancante: **al successo il task ritira le proprie segnalazioni
+precedenti** (`disabilitato = true`, filtrando su `meta->>'source'`), così il
+rilancio dello step riporta davvero a posto la fattura. Il ricalcolo lo fa da sé
+il trigger `AFTER UPDATE` su `fatture_log`.
+
+**I due punti che restano a voi.**
+
+| # | Dove | Cosa |
+|---|---|---|
+| 1 | `services/lotto_segnalazioni_service.py` (`evaluate_lotto_status`) + `services/pipeline_runner.py:410-431` | Oggi `blocks_next_step` è vero se esiste **una** criticità o **una** fattura in `ERRORE`, e il runner rifiuta **qualunque** esecuzione con `E_PIPELINE_LOTTO_CRITICAL`. Va distinto **«non avanzare»** da **«non ripartire»**: il rilancio dello **stesso** step deve essere ammesso, l'avanzamento al successivo no. Finché questa riga non cambia, la via d'uscita di D-Q è vietata dal codice |
+| 2 | `services/pipeline_error_logger.py` + `services/pipeline_runner.py:76-86` | Su **qualunque** errore di pipeline il runner scrive un critical di **scope LOTTO**, e **nessuno lo ritira mai**. Quindi anche risolto il punto 1, un lotto che ha avuto un giro fallito resterebbe bloccato per una segnalazione vecchia. Stesso principio che abbiamo applicato a DB: **chi alza la bandiera la abbassa** — al successo dello step, le segnalazioni di lotto scritte dal BE per quello step vanno disattivate |
+| 3 | Handler del task (`pipeline_step_executor`, scrittura di `fatturazione_lotti_task_runs`) | 🔴 **Senza questo, il punto 1 non basta.** `fn_resolve_lotto_task_execution_mode` risolve `task_stato = 'COMPLETATO'` → **`SKIP`**. Il nostro task **non solleva** quando una fattura fallisce (per disegno: le altre devono essere lavorate), quindi il `task_run` risulterebbe COMPLETATO e **il rilancio dello step salterebbe il task** — l'anagrafica corretta non verrebbe mai riletta. L'handler deve registrare il `task_run` come **`ERRORE`** quando `failed_rows > 0`: allora la risoluzione dà `RESUME` (la policy è `RESUME_TASK`) e il rilancio funziona. È il motivo per cui `fn_snapshot_indirizzi_lotto` ritorna **cinque** contatori invece di tre: `failed_rows` esiste perché voi possiate distinguere «fatto» da «fatto, ma con rifiuti» |
+
+**Tre fatti verificati il 2026-07-31**, perché non li ridobbiate cercare:
+
+- **nessuno** porta `disabilitato` a `true`, in tutto `backend/apps/` — la colonna
+  esiste, i lettori la rispettano, ma non ha scrittori;
+- i log critici spariscono **solo** con `fn_cleanup_fatture_by_ids`, cioè
+  distruggendo la fattura: oggi l'unica uscita reale è rifare il lotto;
+- disattivare un log **basta**: il trigger `AFTER UPDATE` su `fatture_log`
+  richiama `fn_sync_fatture_log_critical_lotto`, che conta i soli log con
+  `disabilitato IS FALSE` e riallinea `critical` e `stato_esecuzione`. Non serve
+  scrivere nient'altro.
+
+> ⚠️ **Sfumatura da non invertire**, vale per entrambi i lati: lo step **corrente
+> riprova** le fatture in errore (è la correzione), gli step **a valle le
+> saltano** (lì la fattura è un rifiuto). Se il DRAFT le filtrasse, non si
+> potrebbe più correggere; se l'EMESSA le riprovasse, una fattura senza
+> indirizzo arriverebbe alla numerazione.
+>
+> 📌 È anche il **punto B dell'analisi 6.0** del piano DB, dove è annotato come
+> «rinviato, vedremo». Segnaliamo che **morde prima**: si presenterà al primo
+> cliente senza indirizzo di fatturazione, non in Fase 6.
 
 ## 4-ter. 📎 Due note per il team DB, emerse scrivendo la Fase 0 (2026-07-31)
 
