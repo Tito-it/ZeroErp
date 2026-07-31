@@ -113,11 +113,32 @@ databaseChangeLog:
               WHERE n.nspname = 'script'
                 AND p.proname IN ('fn_resolve_indirizzo_documento',
                                   'fn_indirizzi_obbligatori_mancanti')
-        - sqlCheck:
-            expectedResult: 1
-            sql: >
-              SELECT count(*) FROM config.messaggi_errore
-              WHERE codice = 'E_INDIRIZZO_FATTURA_MANCANTE' AND lingua = 'it'
+      # ⚠️ RIMOSSA 2026-07-31 — eccezione alla regola «mai modificare un changelog
+      #   gia' pushato», stessa natura di quella del 20260728-18. C'era qui una
+      #   seconda sqlCheck:
+      #       SELECT count(*) FROM config.messaggi_errore
+      #        WHERE codice = 'E_INDIRIZZO_FATTURA_MANCANTE' AND lingua = 'it'   = 1
+      #   e ROMPEVA LA CI «standard, no provision» con Expected '1' got '0'.
+      #
+      #   NON era un dato mancante: il codice 569 e' regolarmente nel CSV
+      #   (80_data/sql/config/messaggi_errore.csv). Era un errore di FASE.
+      #   changelog-master-v2.yaml include migrations_v2/changelog-autogen.yaml
+      #   (00_schema + 20_code) PRIMA di includeAll su migrations_v2/80_data:
+      #   quindi TUTTO il 20_code gira prima di QUALUNQUE seed. Su un database
+      #   costruito da zero quella precondition non poteva passare — mai, per
+      #   costruzione. Su dev passava solo perche' il CSV era stato caricato da
+      #   una run precedente, il che la rendeva invisibile fino alla CI.
+      #   ([[feedback_liquibase_phase_ordering_preconditions]])
+      #
+      #   E non serviva comunque: il codice errore serve quando la funzione
+      #   VIENE ESEGUITA — script.fn_log_and_raise_error risolve il messaggio al
+      #   momento del raise — non quando viene creata. A quel punto 80_data e'
+      #   caricato da un pezzo. Una precondition che pretende un seed per
+      #   installare del codice lega due fasi che il progetto tiene separate
+      #   apposta.
+      #
+      #   Resta la prima sqlCheck: le due funzioni script.* sono una dipendenza
+      #   VERA, chiamate dal corpo, e vivono nella stessa fase (20_code).
       changes:
         - sql:
             dbms: postgresql
