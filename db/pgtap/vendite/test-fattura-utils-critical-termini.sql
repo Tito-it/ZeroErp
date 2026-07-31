@@ -38,15 +38,18 @@ WITH existing AS (
   ORDER BY tp.id
   LIMIT 1
 ), ins AS (
+  -- rev 2026-07-31 (piano-db-satelliti-fattura 3a.2, D-I/D-E): la fixture
+  -- valorizzava `unita_intervallo` (colonna eliminata) e `tipo_offset`
+  -- (sostituito da `fine_mese`). Il vecchio 'N' -- «nessun offset» -- si
+  -- scrive ora con gli offset a zero e fine_mese false.
   INSERT INTO config.termini_pagamento (
     codice,
     codice_interno,
     descrizione,
     numero_rate,
-    unita_intervallo,
     intervallo,
     primo_offset_giorni,
-    tipo_offset,
+    fine_mese,
     ripartizione,
     arrotondamento_metodo,
     arrotondamento_decimali,
@@ -57,10 +60,9 @@ WITH existing AS (
     'TP_1RATA',
     'Termine default test pgTap',
     1,
-    'G',
     0,
     0,
-    'N',
+    FALSE,
     'UGUALI',
     'HALF_UP',
     2,

@@ -86,14 +86,66 @@ databaseChangeLog:
                                         'rls_fatture_righe_ba_ownership',
                                         'rls_fatture_riepiloghi_iva_ef_whitelist',
                                         'rls_fatture_riepiloghi_iva_ba_ownership');
-            # Il canale batch DEVE avere fatture_righe nel proprio perimetro, o il
-            # giro di fatturazione si ferma appena la RLS morde. Verifica sul GRANT
-            # reale del ruolo BYPASSRLS, non sulla fiducia nel provisioning.
+            # Il canale batch, SE ESISTE, deve avere BYPASSRLS *e* il perimetro DML
+            # su entrambe le tabelle che si stanno armando: senza, il giro di
+            # fatturazione si ferma appena la RLS morde. BYPASSRLS salta la RLS ma
+            # NON i GRANT ([[reference_batch_role_grants_provision_script]]) — sono
+            # due condizioni separate e servono entrambe.
+            #
+            # ⚠️ has_table_privilege UNA PRIVILEGE PER CHIAMATA, non la lista.
+            #   has_table_privilege(r, t, 'SELECT,INSERT,UPDATE,DELETE') e' vero se
+            #   il ruolo ha ANCHE UNA SOLA delle voci elencate (semantica OR, cfr.
+            #   manuale PostgreSQL). Scritta cosi' la guardia passerebbe con il solo
+            #   SELECT, cioe' proprio nel caso che deve fermare. Da qui gli otto
+            #   AND espliciti: verbosi, ma sono un AND vero.
+            #
+            # Gradi verificati sul DB provisionato il 2026-07-31: SELECT/INSERT/
+            # UPDATE/DELETE su entrambe ('iud' del provisioning, DELETE incluso —
+            # serve al reset lotto di fn_cleanup_fatture_by_ids).
+            #
+            # ⚠️ CORREZIONE 2026-07-31 — eccezione alla regola «mai modificare un
+            #   changelog gia' pushato», stessa natura di quella del 20260728-18
+            #   (vedi nota in testa a quel file). La prima stesura chiedeva:
+            #       SELECT COUNT(*) ... WHERE rolname = '...' AND rolbypassrls  = 1
+            #   e ROMPEVA LA CI «standard, no provision»: quel ruolo lo crea
+            #   scripts/sql/provision_db_role_batch_fatturazione.sql, che e'
+            #   provisioning e NON gira li'. Risultato 0, atteso 1, HALT.
+            #
+            #   Il difetto non era il numero: era che la guardia confondeva DUE
+            #   situazioni opposte, entrambe con COUNT = 0 —
+            #       (a) ambiente SENZA canale batch (CI no-provision): non c'e'
+            #           nulla da proteggere, l'armamento e' innocuo;
+            #       (b) canale batch presente ma SENZA BYPASSRLS: e' il caso
+            #           pericoloso, quello per cui la guardia esiste.
+            #   Chiedendo «== 1» le trattava allo stesso modo, cioe' bloccava (a)
+            #   — l'unico dei due che non fa danno.
+            #
+            #   Invertita in «nessun ruolo con la postura sbagliata»: 0 quando il
+            #   ruolo manca (a) e 0 quando c'e' ed e' corretto; 1 solo nel caso
+            #   (b). La guardia ora distingue cio' che prima confondeva, ed e'
+            #   piu' stretta, non piu' lasca.
+            #
+            #   Sugli ambienti dove il changeset e' GIA' applicato non cambia
+            #   nulla: le preConditions non si rivalutano, e c'e' validCheckSums: ANY.
+            #   Modificare in place e' anche l'unica via possibile — Liquibase si
+            #   ferma qui, quindi un changeset con numero piu' alto non verrebbe
+            #   mai raggiunto.
             - sqlCheck:
-                expectedResult: 1
+                expectedResult: 0
                 sql: |
-                  SELECT COUNT(*) FROM pg_roles WHERE rolname = 'zeroerp_batch_fatturazione'
-                    AND rolbypassrls;
+                  SELECT COUNT(*) FROM pg_roles r
+                   WHERE r.rolname = 'zeroerp_batch_fatturazione'
+                     AND NOT (
+                           r.rolbypassrls
+                       AND has_table_privilege(r.oid, 'vendite.fatture_righe', 'SELECT')
+                       AND has_table_privilege(r.oid, 'vendite.fatture_righe', 'INSERT')
+                       AND has_table_privilege(r.oid, 'vendite.fatture_righe', 'UPDATE')
+                       AND has_table_privilege(r.oid, 'vendite.fatture_righe', 'DELETE')
+                       AND has_table_privilege(r.oid, 'vendite.fatture_riepiloghi_iva', 'SELECT')
+                       AND has_table_privilege(r.oid, 'vendite.fatture_riepiloghi_iva', 'INSERT')
+                       AND has_table_privilege(r.oid, 'vendite.fatture_riepiloghi_iva', 'UPDATE')
+                       AND has_table_privilege(r.oid, 'vendite.fatture_riepiloghi_iva', 'DELETE')
+                     );
       changes:
         - sql:
             dbms: postgresql
