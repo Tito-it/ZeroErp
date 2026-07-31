@@ -170,18 +170,16 @@ function apriLotto(row) {
   drawerVisible.value = true
 }
 
-// Azioni di pagina: quelle standard del BB (reload / personalizza colonne /
-// export), con due adattamenti al registro lotti:
-//   - niente «Nuovo»: un lotto non si crea da qui, lo genera la pipeline. Il BB
-//     la include sempre, e senza `onNew` sarebbe un pulsante che non fa nulla;
-//   - «Ricarica» aggiorna ANCHE i badge per-mese della sidebar, che il BB non
-//     conosce: la fotografia dell'anno deve restare coerente con la lista.
+// Azioni di pagina: quelle standard del BB (reload / personalizza / export).
+// Niente «Nuovo» — un lotto non si crea da qui, lo genera la pipeline: lo
+// scaffolding lo omette da sé, non ricevendo `onNew`.
+// Unico adattamento: «Ricarica» aggiorna ANCHE i badge per-mese della sidebar,
+// che il BB non conosce — la fotografia dell'anno deve restare coerente con la
+// lista.
 const azioniPagina = computed(() =>
-  pageActions.value
-    .filter((a) => a.key !== 'new')
-    .map((a) => (a.key === 'reload'
-      ? { ...a, command: () => { reload(); loadMensile() } }
-      : a)),
+  pageActions.value.map((a) => (a.key === 'reload'
+    ? { ...a, command: () => { reload(); loadMensile() } }
+    : a)),
 )
 </script>
 

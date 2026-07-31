@@ -27,6 +27,15 @@ Indice test eseguiti:
 25) test_until_done_stops_on_no_progress_without_chiude_flag
 26) test_until_done_existing_lotto_already_at_last_step_no_phantom_step
 27) test_until_done_blocked_by_critical_returns_outcome
+28) test_runner_rilancio_stesso_step_ammesso_con_criticita (D-Q p.1)
+29) test_runner_step_con_fatture_in_errore_marca_lotto_errore (D-Q)
+30) test_runner_non_ritira_segnalazioni_senza_step_da_eseguire (D-Q p.2)
+31) test_until_done_si_ferma_su_step_con_fatture_in_errore (D-Q, driver)
+32) test_until_done_prosegue_dopo_rilancio_riuscito (D-Q, driver)
+
+Nota D-Q (2026-07-31): i test 13-14 ora esercitano il blocco sull'AVANZAMENTO
+(lotto esistente → step successivo); il rilancio dello STESSO step con
+criticita' attive e' ammesso per disegno (test 28).
 """
 
 from contextlib import contextmanager, nullcontext
@@ -146,6 +155,11 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         # Scopo: Gestisce `log_lotto_esito_fatture` nel flusso applicativo del modulo.
         def log_lotto_esito_fatture(self, lotto_id):
             return None
+
+        # Scopo: Stub del ritiro bandiere BE (D-Q p.2) con tracking chiamate.
+        def disattiva_segnalazioni_lotto_be(self, lotto_id):
+            self.disattiva_calls = getattr(self, "disattiva_calls", 0) + 1
+            return 0
 
         # Scopo: Stub `sync_lotto_fatture_stato` con tracking delle chiamate (lotto, stato).
         def sync_lotto_fatture_stato(self, *, lotto_id, stato_doc_fiscale_id=None):
@@ -537,12 +551,16 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "fatture_stato_esecuzione_errore_count": 0,
                 }
 
+        # D-Q p.1: il blocco vale per l'AVANZAMENTO. Lotto ESISTENTE (non in
+        # errore) su stato 1 → step selezionato = 2 (successivo) → bloccato.
+        # Un run che ricadesse sullo stesso step sarebbe invece un rilancio,
+        # ammesso (vedi test dedicato).
         repo = _CriticalSignalsRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
         with _fake_tx():
             with self.assertRaises(ServiceError) as exc:
-                runner.run_pipeline(LottoPipelineParams(dry_run=False))
+                runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=False))
         self.assertEqual(exc.exception.code, "E_PIPELINE_LOTTO_CRITICAL")
         self.assertFalse(step_executor.called)
 
@@ -561,13 +579,95 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     "fatture_stato_esecuzione_errore_count": 2,
                 }
 
+        # Come sopra: lotto ESISTENTE che tenterebbe l'avanzamento allo step 2.
         repo = _StatoEsecuzioneErroreRepo()
         step_executor = self._StepExecutorMock()
         runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
         with _fake_tx():
             with self.assertRaises(ServiceError) as exc:
-                runner.run_pipeline(LottoPipelineParams(dry_run=False))
+                runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=False))
         self.assertEqual(exc.exception.code, "E_PIPELINE_LOTTO_CRITICAL")
+        self.assertFalse(step_executor.called)
+
+    # Scopo: D-Q p.1 — il RILANCIO dello STESSO step e' ammesso anche con
+    #        criticita' attive: e' la via d'uscita (correggi → rilancia lo
+    #        step). Lotto MASSIVO in errore su stato 1 → step selezionato = 1
+    #        (corrente) → il gate non scatta e lo step viene eseguito.
+    #        A fine step le criticita' sono ancora attive → il lotto resta
+    #        marcato ERRORE (non un falso COMPLETATO).
+    def test_runner_rilancio_stesso_step_ammesso_con_criticita(self):
+        class _ErroreRerunRepo(self._RepoMock):
+            # Scopo: lotto in errore (abilita il resume sullo step corrente).
+            def get_lotto_job_stato(self, lotto_id):
+                return "ERRORE"
+
+            # Scopo: criticita' attive prima E dopo lo step.
+            def get_lotto_segnalazioni_summary(self, lotto_id):
+                return {
+                    "fatture_critical_count": 1,
+                    "fatture_warning_count": 0,
+                    "lotto_critical_count": 0,
+                    "lotto_warning_count": 0,
+                    "lotto_info_count": 0,
+                    "fatture_stato_esecuzione_errore_count": 1,
+                }
+
+        repo = _ErroreRerunRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with _fake_tx():
+            result = runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=False))
+        self.assertEqual(result, 10)
+        self.assertTrue(step_executor.called)
+        # Il ritiro bandiere BE e' avvenuto prima dello step (D-Q p.2).
+        self.assertEqual(getattr(repo, "disattiva_calls", 0), 1)
+        # Fatture ancora in errore a fine step → lotto marcato ERRORE.
+        self.assertEqual(repo.last_stato, "ERRORE")
+
+    # Scopo: D-Q — a fine step, se le fatture risultano in errore (il task le ha
+    #        marcate senza fermare il giro), il lotto va in ERRORE e non in
+    #        COMPLETATO: e' cio' che rende il run successivo un rilancio dello
+    #        stesso step. Gate pulito all'avvio (nessuna criticita'), errore
+    #        comparso DURANTE lo step: la summary e' stateful.
+    def test_runner_step_con_fatture_in_errore_marca_lotto_errore(self):
+        class _ErroreDuranteStepRepo(self._RepoMock):
+            # Scopo: prima valutazione pulita (gate), seconda con errori (esito).
+            def get_lotto_segnalazioni_summary(self, lotto_id):
+                self.summary_calls = getattr(self, "summary_calls", 0) + 1
+                errore = self.summary_calls > 1
+                return {
+                    "fatture_critical_count": 1 if errore else 0,
+                    "fatture_warning_count": 0,
+                    "lotto_critical_count": 0,
+                    "lotto_warning_count": 0,
+                    "lotto_info_count": 0,
+                    "fatture_stato_esecuzione_errore_count": 1 if errore else 0,
+                }
+
+        repo = _ErroreDuranteStepRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with _fake_tx():
+            result = runner.run_pipeline(LottoPipelineParams(dry_run=False))
+        self.assertEqual(result, 10)
+        self.assertTrue(step_executor.called)
+        self.assertEqual(repo.last_stato, "ERRORE")
+
+    # Scopo: D-Q p.2 — nessun ritiro bandiere quando non c'e' NESSUNO step da
+    #        eseguire (lotto gia' all'ultimo step): il run non deve toccare le
+    #        segnalazioni di un lavoro che non sta facendo.
+    def test_runner_non_ritira_segnalazioni_senza_step_da_eseguire(self):
+        class _UltimoStepRepo(self._RepoMock):
+            # Scopo: lotto gia' sull'ultimo step del catalogo (8).
+            def get_lotto_stato_doc_fiscale_id(self, lotto_id):
+                return 8
+
+        repo = _UltimoStepRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with _fake_tx():
+            runner.run_pipeline(LottoPipelineParams(lotto_id=10, dry_run=False))
+        self.assertEqual(getattr(repo, "disattiva_calls", 0), 0)
         self.assertFalse(step_executor.called)
 
     # Scopo: Verifica che la sola presenza di warning (senza critical e senza stato_esecuzione=ERRORE)
@@ -793,3 +893,92 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertEqual(len(step_executor.calls), 0)
         # Run vero (dry_run=False): il driver non marca MAI il rollback.
         self.assertEqual(rollback_calls, [])
+
+    # Scopo: D-Q — lo step si completa ma alcune fatture restano in errore
+    #        (marcate dal task senza fermare il giro): il driver NON itera sullo
+    #        stesso step con dati identici — si ferma con motivo parlante
+    #        BLOCCATO_CRITICITA e l'errore strutturato, contando lo step
+    #        eseguito. E' l'esito che il cockpit mostra all'operatore.
+    def test_until_done_si_ferma_su_step_con_fatture_in_errore(self):
+        class _ErroreDuranteStepStatefulRepo(self._StatefulRepo):
+            # Scopo: job stato reale (il runner lo scrive, il driver lo rilegge).
+            def __init__(self):
+                super().__init__(chiude_su=8)
+                self._job = "DRAFT"
+
+            def get_lotto_job_stato(self, lotto_id):
+                return self._job
+
+            def set_lotto_job_stato(self, lotto_id, stato, messaggio):
+                self._job = stato
+                self.last_stato = stato
+
+            # Scopo: gate pulito (1a valutazione), errori comparsi nello step.
+            def get_lotto_segnalazioni_summary(self, lotto_id):
+                self.summary_calls = getattr(self, "summary_calls", 0) + 1
+                errore = self.summary_calls > 1
+                return {
+                    "fatture_critical_count": 1 if errore else 0,
+                    "fatture_warning_count": 0,
+                    "lotto_critical_count": 0,
+                    "lotto_warning_count": 0,
+                    "lotto_info_count": 0,
+                    "fatture_stato_esecuzione_errore_count": 1 if errore else 0,
+                }
+
+        repo = _ErroreDuranteStepStatefulRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with _fake_tx():
+            esito = runner.run_lotto_until_done(LottoPipelineParams(dry_run=False))
+        self.assertEqual(esito["motivo_stop"], "BLOCCATO_CRITICITA")
+        self.assertEqual(esito["step_eseguiti"], 1)
+        self.assertEqual(esito["errore"]["code"], "E_PIPELINE_LOTTO_CRITICAL")
+        self.assertEqual(len(step_executor.calls), 1)
+
+    # Scopo: D-Q — RILANCIO riuscito dello step in errore: il driver NON esce
+    #        con un finto COMPLETATO a meta' strada, prosegue e porta la catena
+    #        fino in fondo ([1 rilanciato, 2, 8]). E' il flusso operatore
+    #        «correggo → premo una volta → finisce».
+    def test_until_done_prosegue_dopo_rilancio_riuscito(self):
+        class _RilancioRiuscitoRepo(self._StatefulRepo):
+            # Scopo: lotto ESISTENTE in errore sullo step 1; le criticita'
+            #        risultano attive solo alla prima valutazione (il rilancio
+            #        le risolve: i task ritirano le proprie segnalazioni).
+            def __init__(self):
+                super().__init__(chiude_su=8)
+                self.current = 1
+                self._job = "ERRORE"
+
+            def get_lotto_job_stato(self, lotto_id):
+                return self._job
+
+            def set_lotto_job_stato(self, lotto_id, stato, messaggio):
+                self._job = stato
+                self.last_stato = stato
+
+            def get_lotto_segnalazioni_summary(self, lotto_id):
+                self.summary_calls = getattr(self, "summary_calls", 0) + 1
+                errore = self.summary_calls == 1
+                return {
+                    "fatture_critical_count": 1 if errore else 0,
+                    "fatture_warning_count": 0,
+                    "lotto_critical_count": 0,
+                    "lotto_warning_count": 0,
+                    "lotto_info_count": 0,
+                    "fatture_stato_esecuzione_errore_count": 0,
+                }
+
+        repo = _RilancioRiuscitoRepo()
+        step_executor = self._StepExecutorMock()
+        runner = LottoPipelineRunner(repository=repo, step_executor=step_executor)
+        with _fake_tx():
+            esito = runner.run_lotto_until_done(
+                LottoPipelineParams(lotto_id=10, dry_run=False)
+            )
+        self.assertEqual(esito["motivo_stop"], "COMPLETATO")
+        self.assertEqual(esito["step_eseguiti"], 3)
+        self.assertIsNone(esito["errore"])
+        self.assertEqual(
+            [c["stato_doc_fiscale_id"] for c in step_executor.calls], [1, 2, 8],
+        )

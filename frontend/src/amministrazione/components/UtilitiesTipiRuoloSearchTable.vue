@@ -1,20 +1,23 @@
 <script setup>
-// Scopo: DataTable paginata matrice utilities x tipi_ruolo con filtri search,
-//        attivo, utility, tipo_ruolo. Pattern unita_misura.
-import { computed, ref, onMounted } from 'vue'
+// Scopo: Lista admin della matrice utilities x tipi_ruolo, configurabile
+//        (`<ListaConfigurabile codice="config.utilities_tipi_ruolo">`): colonne,
+//        ordine e visibilita' dal catalogo `ui.lista_colonna`, con ritiro dinamico
+//        e personalizzazione per utente. Filtri search/attivo/utility/tipo_ruolo
+//        restano del caller. Nessun export: il dominio non ha endpoint.
+import {ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUtilitiesTipiRuoloStore } from '../stores/utilitiesTipiRuolo'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { TAB_ENTITIES } from '../../core/constants'
 import { buildBoolOptions } from '../../core/utils/options'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
@@ -23,8 +26,13 @@ const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = useUtilitiesTipiRuoloStore()
 const isBlocked = useInjectBlocked()
-const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'utility_descrizione'
+const {
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  newTooltipKey: 'amministrazione.matrice_utilities_ruoli.new_row',
+  onNew: () => emit('new'),
+  searchTableOptions: { defaultSortField: 'utility_descrizione' },
 })
 
 const attivoFilter = ref(true)
@@ -32,24 +40,6 @@ const utilityFilter = ref(null)
 const tipoRuoloFilter = ref(null)
 
 const boolOptions = buildBoolOptions(t)
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('amministrazione.matrice_utilities_ruoli.new_row'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    command: () => emit('new'),
-  },
-])
 
 function onAttivoChange() {
   store.filters.attivo = attivoFilter.value
@@ -68,7 +58,8 @@ function onTipoRuoloChange(value) {
   applyFilters()
 }
 
-function onRowClick(event) { emit('row-click', event.data) }
+// `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
+function onRowClick(data) { emit('row-click', data) }
 
 useTabFreshness(store, TAB_ENTITIES.UTILITIES_TIPI_RUOLO)
 onMounted(() => store.fetchList())
@@ -113,62 +104,31 @@ onMounted(() => store.fetchList())
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
           <ReadonlyBadge />
         </template>
       </PageActionsBar>
     </div>
 
-    <DataTable
-      :value="store.items"
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="config.utilities_tipi_ruolo"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      v-bind="paginatorProps"
-      lazy
-      removable-sort
-      striped-rows
-      scrollable
-      scrollHeight="flex"
-      class="app-datatable"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
       @page="onPage"
       @sort="onSort"
       @row-click="onRowClick"
-      selection-mode="single"
-      data-key="id"
+      @config-loaded="onConfigLoaded"
     >
-      <Column
-        field="utility_codice"
-        :header="t('amministrazione.matrice_utilities_ruoli.col_utility_codice')"
-        sortable
-        style="width: 130px;"
-      />
-      <Column
-        field="utility_descrizione"
-        :header="t('amministrazione.matrice_utilities_ruoli.col_utility_descrizione')"
-        sortable
-        style="min-width: 220px;"
-      />
-      <Column
-        field="tipo_ruolo_codice"
-        :header="t('amministrazione.matrice_utilities_ruoli.col_tipo_ruolo_codice')"
-        sortable
-        style="width: 120px;"
-      />
-      <Column
-        field="tipo_ruolo_descrizione"
-        :header="t('amministrazione.matrice_utilities_ruoli.col_tipo_ruolo_descrizione')"
-        sortable
-        style="min-width: 220px;"
-      />
-      <Column
-        field="attivo"
-        :header="t('amministrazione.matrice_utilities_ruoli.col_attivo')"
-        sortable
-        style="width: 100px;"
-      >
-        <template #body="{ data }">
-          <AttivoTag :active="data.attivo" />
-        </template>
-      </Column>
-    </DataTable>
+      <template #cell-attivo="{ data }">
+        <AttivoTag :active="data.attivo" />
+      </template>
+    </ListaConfigurabile>
     </template>
   </div>
 </template>

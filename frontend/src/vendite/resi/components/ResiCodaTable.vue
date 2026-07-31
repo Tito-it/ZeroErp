@@ -79,11 +79,8 @@ const {
   searchTableOptions: { defaultSortField: 'data', defaultSortOrder: 'desc' },
 })
 
-// Le code non hanno "Nuovo" (il reso nasce dal DDT consegnato): si filtra
-// l'azione standard dello scaffolding, restano reload/personalizza/export.
-const codaPageActions = computed(
-  () => pageActions.value.filter((a) => a.key !== 'new'),
-)
+// Le code non hanno "Nuovo" (il reso nasce dal DDT consegnato): lo
+// scaffolding omette l'azione da sé, non ricevendo `onNew`.
 
 // --- Filtri custom (toolbar caller): date opzionali, NESSUN default (coda). ---
 const { bindDate, bindSelect } = useStoreFilterBindings(store, applyFilters)
@@ -175,7 +172,7 @@ onMounted(() => store.fetchList())
             @change="onEtichettaChange"
           />
         </div>
-        <PageActionsBar :actions="codaPageActions">
+        <PageActionsBar :actions="pageActions">
           <template #suffix>
             <ListaConfigStatusTag :dirty="dirty" />
             <ReadonlyBadge />
