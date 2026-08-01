@@ -1,12 +1,15 @@
 <script setup>
-// Scopo: DataTable paginata articoli con search, filtri e ordinamento.
-import { computed, ref, onMounted } from 'vue'
+// Scopo: Lista articoli configurabile
+//        (`<ListaConfigurabile codice="catalogo.articoli">`): colonne, ordine e
+//        visibilita' dal catalogo `ui.lista_colonna`, con ritiro dinamico e
+//        personalizzazione per utente. Lista a ricerca obbligatoria: resta
+//        nascosta finche' non si e' cercato. Nessun export: il dominio non ha
+//        endpoint (lo scaffolding omette l'azione da se').
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useArticoliStore } from '../stores/articoli'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
@@ -14,6 +17,8 @@ import AttivoTag from '../../core/components/AttivoTag.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
@@ -26,26 +31,20 @@ const emit = defineEmits(['new', 'row-click', 'manage-uom', 'manage-bom', 'manag
 const { t, te } = useI18n()
 const store = useArticoliStore()
 const isBlocked = useInjectBlocked()
-const { searchText, onPage, onSort, applyFilters, reloadAction, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'descrizione'
+const {
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  newTooltipKey: 'catalogo.nuovo_articolo',
+  onNew: () => emit('new'),
+  // Allineato al preset del seed (`codice asc`); lo store parte gia' da qui.
+  searchTableOptions: { defaultSortField: 'codice' },
 })
 
 const attivoFilter = ref(true)
 const compositoFilter = ref(null)
 const tipologiaFilter = ref(null)
 const gruppoFilter = ref(null)
-const pageActions = computed(() => [
-  reloadAction(),
-  {
-    key: 'new',
-    kind: 'primary',
-    label: t('common.new'),
-    tooltip: t('catalogo.nuovo_articolo'),
-    icon: MANAGE_ICONS.ADD,
-    hideWhenReadonly: true,
-    command: () => emit('new'),
-  },
-])
 
 const boolOptions = buildBoolOptions(t)
 const attivoOptions = [
@@ -70,7 +69,8 @@ function onGruppoChange() {
   applyFilters()
 }
 
-function onRowClick(event) { emit('row-click', event.data) }
+// `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
+function onRowClick(data) { emit('row-click', data) }
 
 // Scopo: azioni di riga dell'articolo (sub-drawer gestionali).
 // Capability BoM (Fase 6) letta dalla vista DB: data.puo_gestire_bom +
@@ -137,6 +137,7 @@ onMounted(() => {
       </div>
       <PageActionsBar :actions="pageActions">
         <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
           <ReadonlyBadge />
         </template>
       </PageActionsBar>
@@ -144,44 +145,42 @@ onMounted(() => {
 
     <SearchHint v-if="!store.hasSearched && !store.loading" />
 
-    <DataTable
+    <ListaConfigurabile
       v-show="store.hasSearched || store.loading"
-      :value="store.items"
+      ref="listaRef"
+      codice="catalogo.articoli"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      v-bind="paginatorProps"
-      lazy removable-sort striped-rows scrollable scrollHeight="flex"
-      class="app-datatable"
-      @page="onPage" @sort="onSort" @row-click="onRowClick"
-      selection-mode="single" data-key="id"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
+      @page="onPage"
+      @sort="onSort"
+      @row-click="onRowClick"
+      @config-loaded="onConfigLoaded"
     >
-      <Column field="codice" :header="t('catalogo.col_codice')" sortable style="width: 100px;">
-        <template #body="{ data }">
-          <span class="codice-truncate" :title="data.codice">{{ data.codice }}</span>
-        </template>
-      </Column>
-      <Column field="descrizione" :header="t('catalogo.col_descrizione')" sortable style="width: 220px;" />
-      <Column field="uom_codice" :header="t('catalogo.col_uom')" sortable style="width: 80px;" />
-      <Column field="tipologia_descrizione" :header="t('catalogo.col_tipologia')" style="width: 120px;" />
-      <Column field="gruppo_descrizione" :header="t('catalogo.col_gruppo')" style="width: 120px;" />
-      <Column field="iva_ref_id" :header="t('catalogo.col_iva')" style="width: 70px;">
-        <template #body="{ data }">{{ data.iva_aliquota_iva != null ? `${data.iva_aliquota_iva}%` : '' }}</template>
-      </Column>
-      <Column field="is_solo_componente" :header="t('catalogo.col_solo_comp')" style="width: 90px;">
-        <template #body="{ data }">
-          <Tag :value="data.is_solo_componente ? t('common.yes') : t('common.no')" :severity="data.is_solo_componente ? 'info' : 'secondary'" />
-        </template>
-      </Column>
-      <Column field="attivo" :header="t('catalogo.col_attivo')" style="width: 80px;">
-        <template #body="{ data }">
-          <AttivoTag :active="data.attivo" />
-        </template>
-      </Column>
-      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
-        <template #body="{ data }">
-          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-        </template>
-      </Column>
-    </DataTable>
+      <template #cell-codice="{ data }">
+        <span class="codice-truncate" :title="data.codice">{{ data.codice }}</span>
+      </template>
+      <!-- La colonna IVA porta `iva_ref_id` come campo (e' quello che il seed
+           dichiara), ma a video vale l'aliquota: senza slot si vedrebbe l'id. -->
+      <template #cell-iva_ref_id="{ data }">
+        {{ data.iva_aliquota_iva != null ? `${data.iva_aliquota_iva}%` : '' }}
+      </template>
+      <template #cell-is_solo_componente="{ data }">
+        <Tag :value="data.is_solo_componente ? t('common.yes') : t('common.no')"
+          :severity="data.is_solo_componente ? 'info' : 'secondary'" />
+      </template>
+      <template #cell-attivo="{ data }">
+        <AttivoTag :active="data.attivo" />
+      </template>
+
+      <template #actions="{ data, compact }">
+        <RowActionsMenu :row="data" :actions="buildRowActions(data)" :force-compact="compact" />
+      </template>
+    </ListaConfigurabile>
     </template>
   </div>
 </template>

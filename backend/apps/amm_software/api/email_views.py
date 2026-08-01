@@ -17,7 +17,11 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import optional_int
+from apps.core.api.payload_validators import (
+    optional_int,
+    paginated_envelope,
+    parse_list_params,
+)
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
 from apps.core.services.email_service import SMTP_PLACEHOLDER_HOST, EmailDispatchService
@@ -92,19 +96,26 @@ class EmailAccountListView(AdminAPIView):
             OpenApiParameter(name="search", type=str, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={200: dict},
     )
-    # Scopo: Lista paginata account email con filtro ricerca.
+    # Scopo: Lista paginata account email con filtro ricerca e ordinamento.
     def get(self, request: Request) -> JsonResponse:
-        qp = request.query_params
+        p = parse_list_params(
+            request.query_params, default_order="codice",
+            default_limit=DEFAULT_LIMIT, max_limit=MAX_LIMIT,
+        )
         repo = EmailRepository()
         results, total = repo.list_accounts(
-            search=qp.get("search") or None,
-            limit=min(optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT, MAX_LIMIT),
-            offset=optional_int({"v": qp.get("offset")}, "v") or 0,
+            search=p["search"],
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
         )
-        return success_response({"count": total, "results": results})
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
     @extend_schema(responses={200: dict})
     # Scopo: Crea un nuovo account email SMTP.
@@ -252,20 +263,30 @@ class EmailTemplateListView(AdminAPIView):
             OpenApiParameter(name="codice", type=str, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={200: dict},
     )
-    # Scopo: Lista paginata template email con filtro per codice e ricerca.
+    # Scopo: Lista paginata template email con filtro per codice, ricerca e
+    #        ordinamento.
     def get(self, request: Request) -> JsonResponse:
-        qp = request.query_params
+        p = parse_list_params(
+            request.query_params, default_order="",
+            default_limit=DEFAULT_LIMIT, max_limit=MAX_LIMIT,
+        )
         repo = EmailRepository()
         results, total = repo.list_templates(
-            search=qp.get("search") or None,
-            codice=qp.get("codice") or None,
-            limit=min(optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT, MAX_LIMIT),
-            offset=optional_int({"v": qp.get("offset")}, "v") or 0,
+            search=p["search"],
+            codice=request.query_params.get("codice") or None,
+            limit=p["limit"],
+            offset=p["offset"],
+            # `order_by` vuoto = nessuna scelta dell'operatore: il repository
+            # tiene il suo default a due chiavi (codice + lingua).
+            order_by=p["order_by"] or None,
+            order_dir=p["order_dir"],
         )
-        return success_response({"count": total, "results": results})
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
     @extend_schema(responses={200: dict})
     # Scopo: Crea un nuovo template email.
@@ -398,25 +419,37 @@ class EmailLogListView(AdminAPIView):
             OpenApiParameter(name="data_a", type=str, required=False, description="Data fine (YYYY-MM-DD)"),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={200: dict},
     )
-    # Scopo: Lista paginata log email con filtri. Admin vede tutti gli ambiti.
+    # Scopo: Lista paginata log email con filtri e ordinamento. Admin vede
+    #        tutti gli ambiti.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
+        p = parse_list_params(
+            qp, default_order="data_insert",
+            default_limit=DEFAULT_LIMIT, max_limit=MAX_LIMIT,
+        )
         repo = EmailRepository()
         results, total = repo.list_logs(
-            search=qp.get("search") or None,
+            search=p["search"],
             stato=qp.get("stato") or None,
             ambito=qp.get("ambito") or None,
             unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
             pratica_id=optional_int({"v": qp.get("pratica_id")}, "v"),
             data_da=qp.get("data_da") or None,
             data_a=qp.get("data_a") or None,
-            limit=min(optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT, MAX_LIMIT),
-            offset=optional_int({"v": qp.get("offset")}, "v") or 0,
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            # `parse_list_params` default 'asc'; per i log il default e' DESC
+            # (il piu' recente in testa), quindi lo si forza solo quando
+            # l'operatore non ha scelto.
+            order_dir=qp.get("order_dir") or "desc",
         )
-        return success_response({"count": total, "results": results})
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
 
 class EmailLogDetailView(AdminAPIView):
