@@ -42,7 +42,7 @@ class AnnullaLottoDaDraftResult(TypedDict):
     deleted_righe: int
 
 
-class EliminaFatturaDraftDaLottoResult(TypedDict):
+class EliminaFatturaDaLottoDraftResult(TypedDict):
     updated_attivita: int
     deleted_fatture: int
     deleted_righe: int

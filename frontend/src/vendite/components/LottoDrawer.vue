@@ -340,7 +340,14 @@ function buildFatturaActions(row) {
       command: () => apriDocumentiFattura(row),
     },
   ]
-  if (!isReadonly.value && canResetFattura.value && row.stato_doc_fiscale_codice === 'DRAFT') {
+  // Perimetro allargato dal DB il 2026-08-02 (D-T): l'estrazione accetta
+  // qualunque fattura PRE-FISCALE, cioe' non numerata — DRAFT **o EMESSA** —
+  // e lotti sia MASSIVO sia GIORNALIERO. Restringere qui a DRAFT nasconderebbe
+  // l'azione proprio nel caso che la motiva: la fattura EMESSA critica rimasta
+  // indietro in un lotto. Il presidio vero e' fiscale e sta a DB (le numerate
+  // sono rifiutate), qui si evita solo di proporre un'azione impossibile.
+  const preFiscale = ['DRAFT', 'EMESSA'].includes(row.stato_doc_fiscale_codice)
+  if (!isReadonly.value && canResetFattura.value && preFiscale) {
     actions.push({
       key: 'reset',
       label: t('vendite.lotti.azione_reset_fattura'),

@@ -30,7 +30,7 @@ from apps.vendite.types import (
     LottoSegnalazioniSummary,
     LottoTaskRunRow,
     AnnullaLottoDaDraftResult,
-    EliminaFatturaDraftDaLottoResult,
+    EliminaFatturaDaLottoDraftResult,
 )
 
 # Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
@@ -2087,15 +2087,15 @@ class VenditePipelineRepository:
     #        alla primitiva di cleanup: passare quello del lotto libererebbe
     #        l'INTERO batch invece della sola fattura (C-22/D-L.3, misurato dal
     #        team DB: 15 attivita' liberate contro 0).
-    def elimina_fattura_draft_da_lotto(
+    def elimina_fattura_da_lotto_draft(
         self,
         lotto_id: int,
         fattura_id: int,
-    ) -> EliminaFatturaDraftDaLottoResult:
+    ) -> EliminaFatturaDaLottoDraftResult:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT updated_attivita, deleted_fatture, deleted_righe "
-                "FROM vendite.fn_elimina_fattura_draft_da_lotto(%s, %s)",
+                "FROM vendite.fn_elimina_fattura_da_lotto_draft(%s, %s)",
                 [lotto_id, fattura_id],
             )
             row = cursor.fetchone()

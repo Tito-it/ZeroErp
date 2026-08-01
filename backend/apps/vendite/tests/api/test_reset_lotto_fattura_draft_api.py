@@ -34,7 +34,7 @@ class VenditeResetLottoFatturaDraftApiTests(JwtMockedApiTest):
 
     # Scopo: Verifica il caso `test_reset_lotto_fattura_draft_ok`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.fn_elimina_fattura_draft_da_lotto")
+    @patch("apps.vendite.api.views.fn_elimina_fattura_da_lotto_draft")
     def test_reset_lotto_fattura_draft_ok(self, mocked_service, _mock_auth):
         mocked_service.return_value = {
             "updated_attivita": 1,
@@ -82,7 +82,7 @@ class VenditeResetLottoFatturaDraftApiTests(JwtMockedApiTest):
     @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_applicativo", return_value="OPERATORE")
     @patch("apps.core.services.permissions_resolver.PermissionResolver.is_super_admin", return_value=False)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
-    @patch("apps.vendite.api.views.fn_elimina_fattura_draft_da_lotto")
+    @patch("apps.vendite.api.views.fn_elimina_fattura_da_lotto_draft")
     def test_reset_lotto_fattura_draft_post_permission_allowed(
         self, mocked_service, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
     ):

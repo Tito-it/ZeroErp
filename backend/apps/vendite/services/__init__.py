@@ -4,7 +4,7 @@ from apps.vendite.services.pipeline_service import (
     fn_get_lotto_task_runs,
     fn_prepare_sdi_payload_lotto,
     fn_annulla_lotto_da_draft,
-    fn_elimina_fattura_draft_da_lotto,
+    fn_elimina_fattura_da_lotto_draft,
     run_lotto_pipeline,
 )
 
@@ -15,5 +15,5 @@ __all__ = [
     "fn_get_lotto_task_runs",
     "fn_prepare_sdi_payload_lotto",
     "fn_annulla_lotto_da_draft",
-    "fn_elimina_fattura_draft_da_lotto",
+    "fn_elimina_fattura_da_lotto_draft",
 ]
