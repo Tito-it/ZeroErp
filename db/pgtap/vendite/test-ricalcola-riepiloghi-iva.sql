@@ -71,7 +71,12 @@ SELECT (
     WHERE codice_interno IN ('DRAFT')
     ORDER BY id
     LIMIT 1
-  ) AS stato_doc_fiscale_id;
+  ) AS stato_doc_fiscale_id,
+  -- 3b.3: l'utility della configurazione va portata IN TESTATA. Il ricalcolo
+  -- non la deduce piu' da lotto/BA, la legge da vendite.fatture.utility_id:
+  -- prenderla da `cfg` e non dal BA e' cio' che tiene la coppia
+  -- (emittente, utility) esattamente quella scelta qui sopra.
+  (SELECT utility_id FROM cfg) AS utility_id;
 SELECT ok(
     (
       SELECT emittente_soggetto_ruolo_id IS NOT NULL
@@ -137,6 +142,7 @@ CREATE TEMP TABLE tmp_fattura_iva AS WITH ins AS (
       tipo_doc_fiscale_id,
       stato_doc_fiscale_id,
       valuta_id,
+      utility_id,
       meta
     )
   SELECT (
@@ -162,6 +168,10 @@ CREATE TEMP TABLE tmp_fattura_iva AS WITH ins AS (
     ),
     (
       SELECT id FROM config.valute ORDER BY id LIMIT 1
+    ),
+    (
+      SELECT utility_id
+      FROM tmp_refs_iva
     ),
     jsonb_build_object(
       'test_scope',

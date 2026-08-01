@@ -1,0 +1,338 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Fase 3b.4-quater + D-L punto 3 — la cancellazione di una fattura smette di
+#   lasciare due tracce sbagliate: il proprio arrotondamento nel saldo
+#   d'ambito, e le attivita' delle ALTRE fatture sbloccate
+#   (piano-db-satelliti-fattura.md §3.3-b, rilievi C-23 e C-22, decisioni D-N e D-L).
+#
+# PERCHE' UN CHANGESET SOLO: lo prescrive il piano («⚠️ stessa funzione toccata
+#   da D-L: coordinare i due interventi in un changeset solo») e le due
+#   correzioni stanno sulla stessa catena — `fn_reset_lotto_fattura_draft`
+#   chiama `fn_cleanup_fatture_by_ids`. Separarle vorrebbe dire riscrivere due
+#   volte la stessa storia nel registro delle migration.
+#
+# ── 3b.4-quater / C-23: il saldo d'ambito di un documento che non c'e' piu' ─
+#   `fn_cleanup_fatture_by_ids` non nominava MAI
+#   `vendite.fatture_arrotondamenti_scope`: azzerava fondi, note, riepiloghi,
+#   righe, log, link e la fattura, ma il contributo che quella fattura aveva
+#   lasciato nel saldo d'ambito restava li'. La fattura successiva dello stesso
+#   ambito ereditava quindi il riporto di un documento **cancellato**: il saldo
+#   smetteva di essere il residuo di cio' che e' stato emesso e diventava la
+#   somma di cio' che e' stato emesso **e di cio' che e' stato buttato**.
+#
+#   Con 3b.4-ter gia' applicato, la meta' mancante era anche peggio della
+#   simmetria rotta: il ricalcolo storna il proprio contributo e la
+#   cancellazione no, cioe' «meta' del meccanismo sistemato e meta' no, che e'
+#   peggio di entrambe le meta' rotte perche' sembra a posto» (D-N).
+#
+#   🔴 Nota non ovvia: questo storno diventa **scrivibile solo ora**. L'ambito
+#   ha sette colonne e una e' `utility_id`, che la fattura non portava fino a
+#   3b.3 (D-S) — senza quella colonna non c'era modo di identificare da quale
+#   ambito stornare, se non ridedurla, che e' l'errore che D-S ha tolto.
+#
+#   Tre scelte da non ri-discutere:
+#   **(a) UPDATE e non upsert.** Se la riga d'ambito non esiste, quella fattura
+#   non ha mai contribuito — il suo arrotondamento non e' mai entrato in nessun
+#   saldo — e crearne una con saldo negativo inventerebbe un debito che nessuno
+#   ha maturato. `fn_set_arrotondamento_scope` non e' quindi il building block
+#   giusto qui: fa un upsert, ed e' esattamente cio' che non vogliamo.
+#   **(b) `IS NOT DISTINCT FROM` sulle due colonne nullable** dell'ambito:
+#   quarta forma della stessa trappola dei NULL di questa fase (dopo il `WHERE`
+#   di 3b.0-b, l'indice di 3b.4-bis e il lookup di 3b.3). Con `=` le fatture
+#   senza modalita' — la maggioranza — non troverebbero il proprio ambito e non
+#   stornerebbero **niente, in silenzio**.
+#   **(c) aggregato per ambito, non un giro per fattura**: il reset di lotto
+#   cancella molte fatture in una volta e piu' d'una puo' insistere sullo stesso
+#   ambito. Il `GROUP BY` somma le quote e tocca la riga una volta sola; un
+#   ciclo funzionerebbe, ma leggerebbe e riscriverebbe lo stesso saldo N volte.
+#
+#   Una fattura con `utility_id` NULL (creata a mano: fixture, manutenzione) non
+#   combacia con nessun ambito e non storna nulla. E' corretto e non e' un buco:
+#   una fattura del genere non e' mai passata dal ricalcolo — l'avrebbe respinta
+#   con E_CONFIG_MANCANTE — quindi non ha nessun contributo da togliere.
+#
+#   POSIZIONE: lo storno e' la **prima** cosa che la funzione fa, prima di
+#   qualunque cancellazione. Verificato il 2026-08-01 che nulla, oggi, tocca i
+#   totali prima della DELETE (`fn_reset_fondi_fattura` non ricalcola, e nessun
+#   trigger su `fatture_righe`/`fatture_riepiloghi_iva`/`fatture_fondi_fattura`
+#   chiama `fn_ricalcola_totali_fattura`), ma metterlo in testa rende la
+#   correttezza indipendente da cosa verra' inserito qui dentro domani.
+#
+# ── D-L punto 3 / C-22: resettare UNA fattura smontava tutto il lotto ──────
+#   `fn_reset_lotto_fattura_draft` passava alla primitiva il `lock_batch_id`
+#   **del lotto**. Dentro `fn_cleanup_fatture_by_ids` il ripristino delle
+#   attivita' ha due rami in OR:
+#
+#       WHERE (p_lock_batch_id IS NOT NULL AND lock_batch_id = p_lock_batch_id)
+#          OR fattura_riga_id = ANY(v_righe_ids);
+#
+#   Il primo prende **tutte** le attivita' del lotto. Nel reset globale e'
+#   corretto — libera anche quelle agganciate al batch che non sono mai
+#   diventate riga — ma nel reset per-fattura sblocca e smarca come non
+#   fatturate le attivita' delle **altre** fatture, che pero' restano dove sono:
+#   documenti che esistono, con righe, le cui attivita' risultano da fatturare.
+#   Rimedio: la per-fattura passa `NULL`, e il secondo ramo da solo libera
+#   esattamente le attivita' di quella fattura. La funzione globale continua a
+#   passare il proprio `lock_batch_id`: li' il primo ramo serve.
+#   ⚠️ E' prerequisito di D-N-bis e della Fase 6, dove l'estrazione per-fattura
+#   diventa un'operazione ordinaria invece che un caso di manutenzione.
+#
+# NESSUNA DROP: firme e `RETURNS TABLE` restano identici, quindi
+#   `CREATE OR REPLACE` sostituisce davvero.
+#
+# EFFETTO SUL DATO ESISTENTE: nessuno. Le due correzioni cambiano cosa succede
+#   alla PROSSIMA cancellazione; i saldi gia' sporcati da cancellazioni passate
+#   non si bonificano qui (dati di sviluppo, D-G).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260801-07-storno-arrotondamento-cleanup-e-reset-per-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20260801-07-storno-arrotondamento-cleanup-e-reset-per-fattura
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        3b.4-quater (C-23): fn_cleanup_fatture_by_ids storna dal saldo
+        d'ambito l'arrotondamento delle fatture che cancella, prima di
+        cancellarle — senza, il saldo diventa la somma di cio' che e' stato
+        emesso e di cio' che e' stato buttato. D-L pt.3 (C-22):
+        fn_reset_lotto_fattura_draft passa NULL come lock_batch_id, altrimenti
+        resettare una fattura libera le attivita' di tutto il lotto.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ══ 1. Cleanup: storno del contributo d'arrotondamento ══════════
+              CREATE OR REPLACE FUNCTION vendite.fn_cleanup_fatture_by_ids(
+                p_fatture_ids bigint[],
+                p_lock_batch_id vendite.fatturazione_lotti.lock_batch_id%TYPE
+              )
+              RETURNS TABLE(
+                deleted_fatture integer,
+                deleted_righe integer,
+                updated_attivita integer
+              )
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_righe_ids bigint[];
+                v_deleted_fatture integer := 0;
+                v_deleted_righe integer := 0;
+                v_updated_attivita integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Cleanup centralizzato di fatture/righe e ripristino
+                --   attivita_fatturabili collegate.
+                --
+                -- Regole:
+                --   - usa GUC di manutenzione per bypass guard fatturato
+                --   - su ripristino: stato_esecuzione torna a NULL
+                --   - D-N pezzo 3 (C-23): PRIMA di cancellare, restituisce
+                --     all'ambito di compensazione l'arrotondamento che le
+                --     fatture cancellate gli avevano lasciato
+                -- =========================================================
+                IF p_fatture_ids IS NULL OR array_length(p_fatture_ids, 1) IS NULL THEN
+                  RETURN QUERY SELECT 0, 0, 0;
+                  RETURN;
+                END IF;
+
+                PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', 'on', true);
+
+                -- ── D-N pezzo 3 / C-23: storno prima di ogni cancellazione ────
+                -- In testa alla funzione perche' legge le fatture INTATTE: cosi'
+                -- resta corretto qualunque passo venga aggiunto qui sotto.
+                -- UPDATE e non upsert: se la riga d'ambito non c'e', quella
+                -- fattura non ha mai contribuito e non c'e' niente da togliere —
+                -- crearla con saldo negativo inventerebbe un debito.
+                -- IS NOT DISTINCT FROM sulle due colonne nullable: con `=` le
+                -- fatture senza modalita' (la maggioranza) non troverebbero il
+                -- proprio ambito e non stornerebbero nulla, in silenzio.
+                WITH storno AS (
+                  SELECT f.billing_account_id,
+                         f.utility_id,
+                         f.tipo_doc_fiscale_id,
+                         f.emittente_soggetto_ruolo_id,
+                         f.valuta_id,
+                         f.termine_pagamento_id,
+                         f.modalita_pagamento_id,
+                         SUM(COALESCE(f.arrotondamento_attuale, 0)) AS quota
+                    FROM vendite.fatture f
+                   WHERE f.id = ANY(p_fatture_ids)
+                     AND COALESCE(f.arrotondamento_attuale, 0) <> 0
+                   GROUP BY f.billing_account_id, f.utility_id, f.tipo_doc_fiscale_id,
+                            f.emittente_soggetto_ruolo_id, f.valuta_id,
+                            f.termine_pagamento_id, f.modalita_pagamento_id
+                )
+                UPDATE vendite.fatture_arrotondamenti_scope s
+                   SET saldo_arrotondamento = s.saldo_arrotondamento - st.quota
+                  FROM storno st
+                 WHERE s.billing_account_id          = st.billing_account_id
+                   AND s.utility_id                  = st.utility_id
+                   AND s.tipo_doc_fiscale_id         = st.tipo_doc_fiscale_id
+                   AND s.emittente_soggetto_ruolo_id = st.emittente_soggetto_ruolo_id
+                   AND s.valuta_id                   = st.valuta_id
+                   AND s.termine_pagamento_id  IS NOT DISTINCT FROM st.termine_pagamento_id
+                   AND s.modalita_pagamento_id IS NOT DISTINCT FROM st.modalita_pagamento_id;
+
+                PERFORM vendite.fn_reset_fondi_fattura(f_id)
+                  FROM unnest(p_fatture_ids) AS f_id;
+
+                SELECT array_agg(r.id)
+                  INTO v_righe_ids
+                  FROM vendite.fatture_righe r
+                 WHERE r.fattura_id = ANY(p_fatture_ids);
+
+                IF v_righe_ids IS NULL THEN
+                  v_righe_ids := ARRAY[]::bigint[];
+                END IF;
+
+                DELETE FROM vendite.note
+                 WHERE target_tipo = 'FATTURA'
+                   AND target_riga_id = ANY(v_righe_ids);
+
+                DELETE FROM vendite.note
+                 WHERE target_tipo = 'FATTURA'
+                   AND target_id = ANY(p_fatture_ids);
+
+                DELETE FROM vendite.fatture_riepiloghi_iva
+                 WHERE fattura_id = ANY(p_fatture_ids);
+
+                DELETE FROM vendite.fatture_righe
+                 WHERE fattura_id = ANY(p_fatture_ids);
+                GET DIAGNOSTICS v_deleted_righe = ROW_COUNT;
+
+                DELETE FROM vendite.fatture_log
+                 WHERE fattura_id = ANY(p_fatture_ids);
+
+                DELETE FROM vendite.fatturazione_lotti_fatture
+                 WHERE fattura_id = ANY(p_fatture_ids);
+
+                DELETE FROM vendite.fatture
+                 WHERE id = ANY(p_fatture_ids);
+                GET DIAGNOSTICS v_deleted_fatture = ROW_COUNT;
+
+                -- ⚠️ Il primo ramo prende TUTTE le attivita' del batch: e'
+                -- voluto nel reset globale (libera anche quelle agganciate al
+                -- lotto che non sono mai diventate riga) ed e' il motivo per cui
+                -- il reset PER-FATTURA deve passare p_lock_batch_id NULL (C-22).
+                UPDATE vendite.attivita_fatturabili
+                   SET lock_in_fatturazione = false,
+                       lock_batch_id = NULL,
+                       fatturato = false,
+                       fattura_riga_id = NULL,
+                       stato_esecuzione = NULL,
+                       data_update = now(),
+                       user_update = current_user
+                 WHERE (p_lock_batch_id IS NOT NULL AND lock_batch_id = p_lock_batch_id)
+                    OR fattura_riga_id = ANY(v_righe_ids);
+                GET DIAGNOSTICS v_updated_attivita = ROW_COUNT;
+
+                RETURN QUERY
+                SELECT v_deleted_fatture, v_deleted_righe, v_updated_attivita;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_cleanup_fatture_by_ids(bigint[], uuid)
+              IS 'Cleanup centralizzato fatture/righe con ripristino attivita e reset stato_esecuzione=NULL. Da D-N pezzo 3 (C-23) restituisce all''ambito di compensazione l''arrotondamento delle fatture che cancella, PRIMA di cancellarle: senza, il saldo d''ambito diventa la somma di cio'' che e'' stato emesso e di cio'' che e'' stato buttato, e la fattura successiva eredita il riporto di un documento che non esiste piu''. Lo storno e'' un UPDATE e non un upsert (nessuna riga d''ambito = nessun contributo mai dato) e confronta le due colonne nullable con IS NOT DISTINCT FROM. ⚠️ Il ramo lock_batch_id del ripristino attivita libera TUTTO il batch: chi resetta una sola fattura deve passare NULL (C-22).';
+
+              -- ══ 2. Reset per-fattura: niente lock_batch_id (C-22) ═══════════
+              CREATE OR REPLACE FUNCTION vendite.fn_reset_lotto_fattura_draft(
+                  p_lotto_id   vendite.fatturazione_lotti.id%TYPE,
+                  p_fattura_id vendite.fatture.id%TYPE
+              )
+              RETURNS TABLE(updated_attivita INTEGER, deleted_fatture INTEGER, deleted_righe INTEGER)
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: toglie UNA fattura DRAFT da un lotto MASSIVO senza
+              --        annullare il lotto.
+              -- Regole: C-22 — alla primitiva si passa `NULL` come
+              --         `p_lock_batch_id`. Passando quello del lotto si
+              --         attiverebbe il ramo «tutte le attivita' del batch» e si
+              --         libererebbero anche quelle delle ALTRE fatture, che pero'
+              --         restano dove sono: documenti esistenti, con righe, le cui
+              --         attivita' risultano da fatturare. Il ramo per riga, da
+              --         solo, libera esattamente le attivita' di questa fattura.
+              DECLARE
+                  v_tipo_lotto           vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                  v_stato_doc_fiscale_id vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
+                  v_draft_id             config.stati_doc_fiscale.id%TYPE;
+                  v_is_linked            BOOLEAN := FALSE;
+                  v_updated_attivita     INTEGER := 0;
+                  v_deleted_fatture      INTEGER := 0;
+                  v_deleted_righe        INTEGER := 0;
+              BEGIN
+                  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_fattura_draft', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                  END IF;
+
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_fattura_draft', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                  END IF;
+
+                  -- ⚠️ `lock_batch_id` del lotto NON si legge piu': non serve a
+                  -- questa funzione e averlo a portata di mano e' cio' che ha
+                  -- portato a passarlo (C-22).
+                  SELECT fl.tipo_lotto, fl.stato_doc_fiscale_id
+                    INTO v_tipo_lotto, v_stato_doc_fiscale_id
+                    FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
+
+                  IF v_tipo_lotto IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_fattura_draft', 'E_VALORE_MANCANTE',
+                          jsonb_build_object('lotto_id', p_lotto_id), NULL::uuid, concat('lotto_id ', p_lotto_id));
+                  END IF;
+
+                  IF v_tipo_lotto <> 'MASSIVO' THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_fattura_draft', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'tipo_lotto', 'valore', v_tipo_lotto, 'lotto_id', p_lotto_id),
+                          NULL::uuid, concat('reset solo per MASSIVO, tipo=', v_tipo_lotto));
+                  END IF;
+
+                  SELECT s.id INTO v_draft_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1;
+                  IF v_draft_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_fattura_draft', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('codice_interno', 'DRAFT'), NULL::uuid, 'stato DRAFT non configurato');
+                  END IF;
+
+                  IF v_stato_doc_fiscale_id IS DISTINCT FROM v_draft_id THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_fattura_draft', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'stato_doc_fiscale', 'valore', v_stato_doc_fiscale_id, 'lotto_id', p_lotto_id),
+                          NULL::uuid, concat('reset solo se DRAFT, stato=', v_stato_doc_fiscale_id));
+                  END IF;
+
+                  SELECT EXISTS (
+                      SELECT 1 FROM vendite.fatturazione_lotti_fatture lf
+                      JOIN vendite.fatture f ON f.id = lf.fattura_id
+                      WHERE lf.lotto_id = p_lotto_id AND lf.fattura_id = p_fattura_id AND f.stato_doc_fiscale_id = v_draft_id
+                  ) INTO v_is_linked;
+
+                  IF COALESCE(v_is_linked, FALSE) = FALSE THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_fattura_draft', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'fattura_non_collegata_o_non_draft', 'lotto_id', p_lotto_id, 'fattura_id', p_fattura_id),
+                          NULL::uuid, 'fattura non collegata al lotto o non in DRAFT');
+                  END IF;
+
+                  -- C-22: NULL, non il lock_batch_id del lotto.
+                  SELECT c.deleted_fatture, c.deleted_righe, c.updated_attivita INTO v_deleted_fatture, v_deleted_righe, v_updated_attivita
+                    FROM vendite.fn_cleanup_fatture_by_ids(ARRAY[p_fattura_id], NULL::uuid) AS c;
+
+                  RETURN QUERY SELECT v_updated_attivita, v_deleted_fatture, v_deleted_righe;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_reset_lotto_fattura_draft(bigint, bigint)
+              IS 'Reset singola fattura DRAFT in lotto MASSIVO senza annullare il lotto. Da C-22 passa NULL come lock_batch_id alla primitiva di cleanup: col lock_batch_id del lotto si sbloccavano e si smarcavano come non fatturate anche le attivita delle ALTRE fatture del lotto, che pero'' restavano al loro posto. Prerequisito di D-N-bis e della Fase 6.';

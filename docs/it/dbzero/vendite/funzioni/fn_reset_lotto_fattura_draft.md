@@ -12,10 +12,18 @@ CREATE OR REPLACE FUNCTION vendite.fn_reset_lotto_fattura_draft(p_lotto_id bigin
  RETURNS TABLE(updated_attivita integer, deleted_fatture integer, deleted_righe integer)
  LANGUAGE plpgsql
 AS $function$
+-- Scopo: toglie UNA fattura DRAFT da un lotto MASSIVO senza
+--        annullare il lotto.
+-- Regole: C-22 — alla primitiva si passa `NULL` come
+--         `p_lock_batch_id`. Passando quello del lotto si
+--         attiverebbe il ramo «tutte le attivita' del batch» e si
+--         libererebbero anche quelle delle ALTRE fatture, che pero'
+--         restano dove sono: documenti esistenti, con righe, le cui
+--         attivita' risultano da fatturare. Il ramo per riga, da
+--         solo, libera esattamente le attivita' di questa fattura.
 DECLARE
     v_tipo_lotto           vendite.fatturazione_lotti.tipo_lotto%TYPE;
     v_stato_doc_fiscale_id vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
-    v_lock_batch_id        vendite.fatturazione_lotti.lock_batch_id%TYPE;
     v_draft_id             config.stati_doc_fiscale.id%TYPE;
     v_is_linked            BOOLEAN := FALSE;
     v_updated_attivita     INTEGER := 0;
@@ -32,8 +40,11 @@ BEGIN
             jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
     END IF;
 
-    SELECT fl.tipo_lotto, fl.stato_doc_fiscale_id, fl.lock_batch_id
-      INTO v_tipo_lotto, v_stato_doc_fiscale_id, v_lock_batch_id
+    -- ⚠️ `lock_batch_id` del lotto NON si legge piu': non serve a
+    -- questa funzione e averlo a portata di mano e' cio' che ha
+    -- portato a passarlo (C-22).
+    SELECT fl.tipo_lotto, fl.stato_doc_fiscale_id
+      INTO v_tipo_lotto, v_stato_doc_fiscale_id
       FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
 
     IF v_tipo_lotto IS NULL THEN
@@ -71,15 +82,16 @@ BEGIN
             NULL::uuid, 'fattura non collegata al lotto o non in DRAFT');
     END IF;
 
+    -- C-22: NULL, non il lock_batch_id del lotto.
     SELECT c.deleted_fatture, c.deleted_righe, c.updated_attivita INTO v_deleted_fatture, v_deleted_righe, v_updated_attivita
-      FROM vendite.fn_cleanup_fatture_by_ids(ARRAY[p_fattura_id], v_lock_batch_id) AS c;
+      FROM vendite.fn_cleanup_fatture_by_ids(ARRAY[p_fattura_id], NULL::uuid) AS c;
 
     RETURN QUERY SELECT v_updated_attivita, v_deleted_fatture, v_deleted_righe;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_reset_lotto_fattura_draft(p_lotto_id bigint, p_fattura_id bigint)
-IS 'Reset singola fattura DRAFT in lotto MASSIVO senza annullare il lotto.';
+IS 'Reset singola fattura DRAFT in lotto MASSIVO senza annullare il lotto. Da C-22 passa NULL come lock_batch_id alla primitiva di cleanup: col lock_batch_id del lotto si sbloccavano e si smarcavano come non fatturate anche le attivita delle ALTRE fatture del lotto, che pero'' restavano al loro posto. Prerequisito di D-N-bis e della Fase 6.';
 ```
 
 ---

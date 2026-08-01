@@ -83,7 +83,11 @@ SELECT (SELECT emittente_soggetto_ruolo_id FROM cfg) AS emittente_soggetto_ruolo
        (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'EMESSA')     AS stato_emessa,
        (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DEFINITIVA') AS stato_definitiva,
        (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE
-         ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                     AS articolo_id;
+         ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                     AS articolo_id,
+       -- 3b.3: l'utility va scritta IN TESTATA. Il ricalcolo la legge da
+       -- vendite.fatture.utility_id invece di dedurla da lotto/BA, quindi la
+       -- fixture deve portarla dalla stessa `cfg` da cui prende l'emittente.
+       (SELECT utility_id FROM cfg)                                          AS utility_id;
 
 SELECT ok(
   (SELECT emittente_soggetto_ruolo_id IS NOT NULL
@@ -105,9 +109,11 @@ SELECT * FROM ins;
 CREATE OR REPLACE FUNCTION pg_temp.fx_fattura_fri(p_stato bigint)
 RETURNS bigint LANGUAGE sql AS $fx$
   INSERT INTO vendite.fatture (registro_id, data, emittente_soggetto_ruolo_id,
-                               billing_account_id, stato_doc_fiscale_id, valuta_id, meta)
+                               billing_account_id, stato_doc_fiscale_id, valuta_id,
+                               utility_id, meta)
   SELECT (SELECT id FROM tmp_reg_fri), current_date,
          r.emittente_soggetto_ruolo_id, r.billing_account_id, p_stato, r.valuta_id,
+         r.utility_id,
          jsonb_build_object('test_scope', 'pgtap_fatture_righe_importo')
     FROM tmp_refs_fri r
   RETURNING id;

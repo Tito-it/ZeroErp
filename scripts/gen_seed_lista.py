@@ -862,6 +862,7 @@ def verifica_ordinamento(solo: str | None = None) -> int:
         print(f"[X] lista `{solo}` non presente nel seed", file=sys.stderr)
         return 1
     colonne = list(csv.DictReader((SEED_DIR / "lista_colonna.csv").open(encoding="utf-8")))
+    preset = list(csv.DictReader((SEED_DIR / "lista_preset.csv").open(encoding="utf-8")))
 
     problemi = saltate = 0
     for riga in sorted(liste, key=lambda r: r["codice"]):
@@ -895,7 +896,34 @@ def verifica_ordinamento(solo: str | None = None) -> int:
                  if (cand := [c for c in attive if any(k in c["codice"] for k in chiavi)])
                  and not any(c["campo_sorgente"] in wl for c in cand)]
 
-        if not bugiarde and not irraggiungibili and not rotte:
+        # 4. l'ordinamento di APERTURA della lista. `ordinamento_default` del
+        #    preset deve puntare a una colonna che il backend sa ordinare E che
+        #    il seed offre come ordinabile. E' una quarta direzione, non un
+        #    doppione delle prime tre: quelle guardano le COLONNE, questa
+        #    guarda il primo ORDER BY che la lista manda da sola, prima che
+        #    l'utente tocchi niente. Un default rotto non si manifesta come
+        #    freccia che non ordina — si manifesta come lista che apre
+        #    nell'ordine sbagliato, e nessuno lo collega al seed.
+        #    Trovato cosi' il difetto di `anagrafiche.clienti` (2026-08-01):
+        #    default scritto col `codice` logico (`ragione_sociale`) invece che
+        #    col `campo_sorgente` (`ragione_sociale_completa`), quindi fuori
+        #    whitelist E fuori seed. Era li' da maggio.
+        default_rotti = []
+        for pre in preset:
+            grezzo = (pre["ordinamento_default"] or "").strip()
+            if pre["lista_id"] != riga["id"] or not grezzo:
+                continue
+            try:
+                col = json.loads(grezzo)[0]["col"]
+            except (ValueError, KeyError, IndexError, TypeError):
+                default_rotti.append(f"{pre['codice']}: `ordinamento_default` illeggibile")
+                continue
+            if col not in wl:
+                default_rotti.append(f"{pre['codice']}: `{col}` non e' nella whitelist del BE")
+            elif col not in ordinabili:
+                default_rotti.append(f"{pre['codice']}: `{col}` non e' offerta come ordinabile")
+
+        if not bugiarde and not irraggiungibili and not rotte and not default_rotti:
             print(f"  {codice:<40}ok  ({len(attive)} colonne, whitelist {len(wl)})")
             continue
         problemi += 1
@@ -906,6 +934,8 @@ def verifica_ordinamento(solo: str | None = None) -> int:
             print(f"      il BE sa ordinarle ma il seed non le offre : {', '.join(irraggiungibili)}")
         if rotte:
             print(f"      NUCLEO rotto (deve ordinare sempre)        : {', '.join(rotte)}")
+        if default_rotti:
+            print(f"      ordinamento di APERTURA del preset        : {'; '.join(default_rotti)}")
 
     plurale = lambda n, s, p: f"{n} {s if n == 1 else p}"  # noqa: E731
     print()
