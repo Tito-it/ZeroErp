@@ -20,7 +20,10 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 19,19,emittente_billing_account_default,Vista standard billing account emittente,sistema,,,t,25,"[{""col"":""billing_account_codice"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
 20,20,uom_tipi_default,Vista standard tipi di unita di misura,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
 21,21,unita_misura_default,Vista standard unita di misura,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
-22,22,conversioni_uom_default,Vista standard conversioni UoM,sistema,,,t,25,"[{""col"":""valido_al"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
-23,23,promo_articoli_default,Vista standard promozioni articolo,sistema,,,t,25,"[{""col"":""valido_al"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
+22,22,conversioni_uom_default,Vista standard conversioni UoM,sistema,,,t,25,"[{""col"":""valido_al"",""dir"":""desc""}]",t,2026-07-31 00:00:00,mctit
+23,23,promo_articoli_default,Vista standard promozioni articolo,sistema,,,t,25,"[{""col"":""valido_al"",""dir"":""desc""}]",t,2026-08-01 00:00:00,mctit
 24,24,template_documenti_default,Vista standard template documenti,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
 25,25,template_asset_default,Vista standard asset template,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
+26,26,articoli_default,Vista standard articoli,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
+27,27,listini_default,Vista standard listini,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
+28,28,operatori_default,Vista standard operatori,sistema,,,t,25,"[{""col"":""soggetto_cognome"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit

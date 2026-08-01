@@ -183,6 +183,13 @@ WHITELIST_BE: dict[str, tuple] = {
     "documenti.template_asset": ("apps/documenti/db/documenti_repository.py",
                                  "ASSET_ORDER_COLUMNS"),
     "vendite.promo_articoli": ("apps/vendite/db/promo_articoli_repository.py", "_ORDER_COLS"),
+    # Quinto lotto (2026-08-01). Stesso criterio del quarto: mappate prima di
+    # generare. `ALLOWED_ORDER_COLUMNS` e' un `frozenset({...})` — forma che il
+    # lettore ha imparato a leggere proprio per questa lista.
+    "catalogo.articoli": ("apps/catalogo/db/catalogo_repository.py", "ARTICOLI_ORDER_COLUMNS"),
+    "vendite.listini": ("apps/vendite/db/listini_repository.py", "LISTINI_ORDER_COLUMNS"),
+    "anagrafiche.operatori": ("apps/amm_software/db/amm_software_repository.py",
+                              "ALLOWED_ORDER_COLUMNS"),
 }
 
 # Colonne che devono ordinare SEMPRE, quando la lista ce l'ha (regola di
@@ -199,7 +206,11 @@ NUCLEO_ORDINABILE: dict[str, tuple[str, ...]] = {
     "id fiscale": ("id_fiscale", "partita_iva"),
     "utility": ("utility",),
     "totale": ("totale",),
-    "stato": ("stato", "attivo"),
+    # `is_active`/`is_attivo`: stessa colonna di dominio con nome inglese
+    # (amm_software). Senza questi alias il controllo segnalerebbe «nucleo
+    # rotto: stato» su una lista che lo stato lo ordina eccome — un falso
+    # allarme che, ripetuto, insegna a ignorare il controllo.
+    "stato": ("stato", "attivo", "is_active"),
 }
 
 CAMPI_DEF = ["id", "codice", "descrizione", "schema_dati", "vista_sql", "attivo",
@@ -811,7 +822,14 @@ def whitelist_backend(percorso: str, costante: str, dentro: str | None = None) -
         base = testo.index(dentro) if dentro else 0
         if dentro and dentro not in testo:
             raise ValueError(f"ancora `{dentro}` non trovata in {percorso}")
-        m = re.compile(rf"^[ \t]*{re.escape(costante)}\s*(?::[^=\n]*)?=\s*\{{",
+        # `NOME = {...}`, `NOME: tipo = {...}`, ma anche `NOME = frozenset({...})`
+        # / `set({...})`: la forma con wrapper e' usata dove la whitelist e' un
+        # insieme immutabile (amm_software). Senza questo ramo il lettore non
+        # trova la costante e la lista viene SALTATA dal controllo di consegna —
+        # cioe' dichiarata a posto senza essere stata guardata, che e' il modo
+        # peggiore di fallire per uno strumento che esiste per guardare.
+        m = re.compile(rf"^[ \t]*{re.escape(costante)}\s*(?::[^=\n]*)?=\s*"
+                       rf"(?:frozenset|set)?\s*\(?\s*\{{",
                        re.M).search(testo, base)
         if not m:
             raise ValueError(f"costante `{costante}` non trovata in {percorso}"
