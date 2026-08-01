@@ -48,7 +48,7 @@ export function useSearchTable(store, options = {}) {
   // Scopo: una ricerca ESTERNA (deep-link `?search=` da "apri documento",
   // ricerca universale, AI) deve trovare il documento OVUNQUE nel tempo:
   // azzera i default temporali UX (`data_da`/`data_a`) se la lista li usa.
-  // Senza questo, i documenti piu' vecchi del default anno-1 risultano
+  // Senza questo, i documenti piu' vecchi del default standard risultano
   // "non trovati" proprio quando qualcuno li cerca per codice (es. il
   // backlog fatturazione, ordinato per anzianita'). Il default e' una
   // scelta UX, non una regola dati: l'operatore lo vede azzerato nei

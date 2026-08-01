@@ -31,7 +31,7 @@ _ORDER_COLS: dict[str, str] = {
     "listino_codice": "l.codice",
     "listino_descrizione": "l.descrizione",
     "valido_dal": "m.valido_dal",
-    "valido_al": "m.valido_al",
+    "valido_al": "COALESCE(m.valido_al, 'infinity'::date)",
     "attivo": "m.attivo",
     "data_insert": "m.data_insert",
     "data_update": "m.data_update",

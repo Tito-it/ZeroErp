@@ -24,13 +24,19 @@
 > ci rimanda e non lo duplica.
 >
 > **Owner:** BE (`dev/backend-tid`)
-> **Stato (2026-08-01): cantiere indirizzi+intestazione COMPLETO.** Fasi 0, 1,
-> **2** e **5** ✅ (guard uscita DRAFT col criterio allargato +
+> **Stato (2026-08-01, sera): cantiere indirizzi+intestazione COMPLETO.** Fasi
+> 0, 1, **2** e **5** ✅ (guard uscita DRAFT col criterio allargato +
 > `E_FATTURA_NON_EMETTIBILE_INCOMPLETA` registrato 409) · 4-bis: D-Q ✅, DB 2.3
 > ✅, 3a.7 ✅ · **giro pipeline reale ✅** (lotti 603/604, prime 3 fatture
-> interamente conformi — §3.1 lezione 2) · restano SOLO le Fasi 3-4, in attesa
-> del brief scadenze (con la decisione sui 18/21 clienti senza
-> `termine_pagamento_id`)
+> interamente conformi — §3.1 lezione 2).
+> **Fase 4 ✅ CHIUSA (2026-08-01)** dalla chiusura della Fase 3b DB: nessuna
+> regressione, **smoke §3.3 scritto e verde** (6/6, con prova di mutazione),
+> ricaduta **D-S** (utility in colonna) corretta, e la nostra segnalazione sui
+> clienti senza termine **chiusa da D-J** (fallback `TP_1RATA` nella catena).
+> **Fase 3 (task scadenze)** è l'unica ferma: aspetta che il DB apra la sua
+> Fase 4 — il cui brief è marcato «superato in parte sostanziale» da D-I e va
+> riscritto prima di partire. ⏸️ **D-L.1**: la rinomina è già decisa (D-L,
+> 2026-07-30) — da concordare col DB solo l'**ordine dell'apply**.
 > **Prerequisiti (bloccanti):**
 > [brief-db-snapshot-indirizzi-fattura.md](brief-db-snapshot-indirizzi-fattura.md) ·
 > [brief-db-generazione-scadenze-fattura.md](brief-db-generazione-scadenze-fattura.md)
@@ -158,7 +164,32 @@ codice morto con i test verdi.
 | 8 | Percorso coppia legacy (cliente con giorni): **una sola rata**, data = data fattura + giorni, spostata a fine mese quando previsto |
 | 9 | Idempotenza: doppia esecuzione → stesse rate, nessun duplicato |
 
-### 3.3 `smoke-fattura-aggregazione-termini.py` — il presidio di D-7
+### 3.3 `smoke-fattura-aggregazione-termini.py` — il presidio di D-7 ✅ **SCRITTO E VERDE (2026-08-01)**
+
+> **6 casi verdi** sul percorso reale (`FattureRigheService.generate_fatture_righe`,
+> il servizio del task di pipeline). Il fixture passa dalla **via reale di
+> D-R**: il termine si mette sulla **commessa** e la catena
+> `fn_resolve_termini_pagamento` lo raccoglie — così un solo smoke esercita
+> D-R, la catena, la chiave e il lookup. Un fixture che avesse forzato
+> `fatture.termine_pagamento_id` avrebbe testato sé stesso.
+>
+> **Come è costruito:** tre commesse sullo **stesso** cliente/utility/emittente
+> — C1 e C3 con `TP_30G_1R`, C2 con `TP_90G_1R` — e un'attività ciascuna.
+> Attesa: **2 fatture, non 3**. È la forma che dimostra le due metà insieme:
+> termini diversi separano, e due commesse **diverse** con lo stesso termine
+> **confluiscono** (§3.3 asserzioni 1 e 2 in un colpo).
+>
+> ✅ **Prova di mutazione**: rieseguito con i tre termini uguali nasce **1
+> fattura invece di 2** e i casi 1, 2 e 5 diventano rossi — il file morde dove
+> dice di mordere.
+>
+> ⚠️ **Un caso del §3.3 non è esercitabile qui, e sta scritto nel file**: «utility
+> diverse → due fatture». L'utility in chiave viene dal BA dell'**attività**,
+> quindi servirebbero due BA distinti — e allora a separare sarebbe anche il
+> BA: l'asserzione non discriminerebbe. È presidiato dove può esserlo davvero,
+> il pgTAP `test-chiave-fattura-tre-specchi-v1` (3b.5). Qui resta il **caso 6**,
+> che copre la metà applicativa del difetto: che la testata **porti** la propria
+> `utility_id` invece di dedurla (D-S).
 
 Lo smoke **più importante**, perché D-7 cambia quante fatture nascono:
 
@@ -396,7 +427,38 @@ test dell'executor devono asserirlo, non fidarsi.
 
 Verifica di fase: smoke §3.2 completo.
 
-### Fase 4 — Regressioni di D-7 (contestuale alla Fase 3)
+### Fase 4 — Regressioni di D-7 🟡 **SBLOCCATA (2026-08-01): la chiave è a DB**
+
+> **Cos'è cambiato.** La **Fase 3b del piano DB è CHIUSA** (`20260801-01..07`):
+> il termine è in chiave, `fn_build_fattura_key` e il lookup di
+> `fn_get_or_create_fattura_header` si specchiano, l'ambito arrotondamenti
+> segue la chiave. Quindi **questa fase non aspetta più la Fase 3**: le
+> regressioni di D-7 sono osservabili adesso, e la Fase 3 (task scadenze)
+> resta l'unica ferma, in attesa che il DB apra la sua Fase 4.
+>
+> **Prima verifica fatta (2026-08-01): nessuna regressione.**
+> `smoke-fatturazione-aggregazione-righe.py` **verde, 10/10** — e la riga
+> «da rileggere» qui sotto si chiude con una precisazione che vale la pena
+> scrivere: quello smoke aggrega **righe dentro una fattura**, non fatture
+> dentro un lotto. D-7 cambia *quante fatture nascono*, non *come si
+> raggruppano le righe*: due presidi diversi, e il timore del piano era mal
+> indirizzato.
+>
+> **Due ricadute DB arrivate con 3b, una già chiusa:**
+>
+> | Decisione | Ricaduta BE | Stato |
+> |---|---|---|
+> | **D-S** — `vendite.fatture.utility_id` diventa una **colonna vera** (la chiave prende l'utility dal BA dell'**attività**, la testata porta il BA **padre**: due derivazioni che divergono al primo BA gerarchico) | `get_fattura_testata` deduceva l'utility da `ba.utility_id` — **stesso difetto latente** che D-S ha tolto dal ricalcolo totali | ✅ **corretto**: la testata legge `f.utility_id` e la JOIN su `config.utilities` segue la colonna. Verificato su fattura 835: `utility_id=5 → BASE / Servizio Base` |
+> | **D-L.1** — rinomina `fn_reset_lotto_draft` → `fn_annulla_lotto_da_draft`, `fn_reset_lotto_fattura_draft` → `fn_elimina_fattura_draft_da_lotto` | allineamento Python su entrambi gli strati | ✅ **FATTA (2026-08-01)**, subito dopo l'apply DB — le vecchie funzioni erano già state droppate, quindi il task di rollback `reset_lotto_draft` era **rotto**. Rinominati: le 2 chiamate SQL, i 2 metodi del repository, i 2 metodi del service, i 2 entrypoint `fn_*`, i 2 TypedDict (`AnnullaLottoDaDraftResult`, `EliminaFatturaDraftDaLottoResult`), `__init__`, `views`, 5 file di test. ⚠️ **Restano invariati per progetto**, e il perché è nei commenti: il `task_code` `reset_lotto_draft` (seed CSV dei `rollback`), la chiave handler `reset_lotto_draft_default`, i due `post_permission` (seed `config.azioni_processo`) e gli URL `reset-draft/` (contratto API + FE). Verifica: 2075 test verdi **e** chiamata reale in transazione — gli unit test mockano il repository e non avrebbero visto un nome SQL sbagliato |
+>
+> **E una risposta che chiude una nostra segnalazione.** Il timore sui
+> **19 clienti su 21 senza `termine_pagamento_id`** («zero rate in silenzio»)
+> era **già deciso** da **D-J**: la colonna resta nullable e la catena
+> `fn_resolve_termini_pagamento` scende al default **`TP_1RATA`**, quindi quei
+> clienti producono **una rata alla data fattura**, non zero. Il fallback vive
+> **nella catena, non nel generatore** (che «legge e non risolve», 4.1 DB) —
+> altrimenti rinascerebbe il secondo risolutore che C-13 esiste per
+> eliminare. Nessuna azione BE: la voce si chiude.
 
 Il termine in chiave cambia **quante** fatture nascono. Da sorvegliare:
 
@@ -407,6 +469,12 @@ Il termine in chiave cambia **quante** fatture nascono. Da sorvegliare:
 | Emissione mirata per gruppi | ✅ **nessun follow-up** (§9): un gruppo fatturabile è un solo documento sorgente — o gli oneri di una sola commessa — quindi porta un solo termine per costruzione, e D-7 non può spaccarlo |
 
 Verifica di fase: smoke §3.3 + suite completa vendite.
+✅ **Entrambe fatte il 2026-08-01**: `smoke-fattura-aggregazione-termini.py`
+**6/6 verde** con prova di mutazione (§3.3), `smoke-fatturazione-aggregazione-righe.py`
+10/10 senza regressioni, suite **2075 verdi**. **Fase 4 chiusa** per quanto
+riguarda D-7 lato aggregazione; resta da guardare il **cockpit/dashboard
+competenza** (riga 2 della tabella) quando ci saranno dati con termini misti:
+oggi ogni commessa ha un solo termine e il perimetro mostrato non può divergere.
 
 ### Fase 5 — Accensione del guard `FATT` obbligatorio ✅ **FATTA (2026-07-31, notte)**
 

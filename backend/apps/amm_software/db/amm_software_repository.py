@@ -22,14 +22,27 @@ from apps.core.services.error_manager import ErrorManager
 from apps.amm_software.constants import DEFAULT_LIMIT
 from apps.amm_software.types import OperatoreDetailRow, OperatoreRow
 
-# Colonne ammesse per ordinamento lista operatori. Niente piu' "ruolo_sistema":
-# il campo legacy non e' esposto. Per ordinare per stato amministrativo si usa
-# `is_super_admin` o `ruolo_applicativo`.
-ALLOWED_ORDER_COLUMNS = frozenset({
-    "last_name", "soggetto_cognome", "username", "is_super_admin",
-    "ruolo_applicativo", "is_active", "unita_organizzativa_nome",
-    "valido_dal", "valido_al",
-})
+# Whitelist ORDER BY lista operatori: chiave = `campo_sorgente` inviato dal
+# frontend, valore = espressione SQL. Le chiavi che sono alias di output della
+# SELECT restano nude (ORDER BY le risolve solo cosi'). Niente piu'
+# "ruolo_sistema": il campo legacy non e' esposto. Per ordinare per stato
+# amministrativo si usa `is_super_admin` o `ruolo_applicativo`.
+#
+# `valido_al` NULL = incarico senza scadenza, cioe' validita' INFINITA: va in
+# testa in DESC, non in fondo. Senza il COALESCE finirebbe dal lato sbagliato
+# (la SELECT casta a `::text`, quindi l'alias nudo ordinerebbe pure come
+# stringa: qui si ordina la colonna vera).
+ALLOWED_ORDER_COLUMNS: dict[str, str] = {
+    "last_name": "last_name",
+    "soggetto_cognome": "soggetto_cognome",
+    "username": "username",
+    "is_super_admin": "is_super_admin",
+    "ruolo_applicativo": "ruolo_applicativo",
+    "is_active": "is_active",
+    "unita_organizzativa_nome": "unita_organizzativa_nome",
+    "valido_dal": "ru.valido_dal",
+    "valido_al": "COALESCE(ru.valido_al, 'infinity'::date)",
+}
 
 
 # Fase 8 — Model riservati: non possono essere target di override granulari.
@@ -125,10 +138,12 @@ class AmmSoftwareRepository:
 
         where_clause = " AND ".join(conditions) if conditions else "TRUE"
 
-        # Ordinamento sicuro (whitelist)
-        if order_by and order_by in ALLOWED_ORDER_COLUMNS:
+        # Ordinamento sicuro (whitelist): la mappa traduce il campo inviato dal
+        # client nell'espressione SQL, in un passaggio solo.
+        order_column = ALLOWED_ORDER_COLUMNS.get(order_by or "")
+        if order_column:
             direction = sql_order_direction(order_dir)
-            order_clause = f"ORDER BY {order_by} {direction}, au.id"
+            order_clause = f"ORDER BY {order_column} {direction}, au.id"
         else:
             order_clause = "ORDER BY soggetto_cognome ASC, au.username ASC, au.id"
 
@@ -947,11 +962,21 @@ class AmmSoftwareRepository:
 
     _OP_LABELS: dict[int, str] = {1: "INIZIALE", 2: "MODIFICA", 3: "ELIMINAZIONE"}
 
-    # Colonne ammesse per ordinamento audit log (whitelist).
-    _AUDIT_ORDER_COLUMNS: frozenset[str] = frozenset({
-        "timestamp", "valid_from", "user_modifica", "user_insert",
-        "tabella", "tipo_operazione",
-    })
+    # Whitelist ORDER BY audit log: chiave = `campo_sorgente` che il frontend
+    # invia come sortField (il nome del campo COME APPARE nel risultato),
+    # valore = colonna reale della CTE `events`. I due nomi divergono su tre
+    # colonne su quattro, ed e' l'unico posto del sistema dove succede.
+    #
+    # Era un `frozenset` confrontato DOPO una mappatura interna, e conteneva sia
+    # i nomi logici sia quelli SQL. `tabella` -> `code` non tornava (`code` non
+    # era nell'insieme): l'ordinamento per *Tabella* ripiegava in silenzio sul
+    # default, pur essendo `sortable` a video. Una mappa sola, letta una volta.
+    _AUDIT_ORDER_COLUMNS: dict[str, str] = {
+        "timestamp": "valid_from",
+        "tabella": "code",
+        "tipo_operazione": "tipo_operazione",
+        "user_modifica": "user_insert",
+    }
 
     # Scopo: Restituisce le sorgenti audit ammesse (Fase 5).
     #        Single source of truth lato DB: `script.vw_audit_sources` gia'
@@ -1094,17 +1119,12 @@ class AmmSoftwareRepository:
             sql += "AND valid_from < (%s::date + INTERVAL '1 day') "
             params.append(data_a)
 
-        # Ordinamento sicuro (whitelist). Il FE manda il nome campo come
-        # appare nel risultato; mappiamo al nome colonna SQL.
-        _col_map = {
-            "timestamp": "valid_from",
-            "user_modifica": "user_insert",
-            "tabella": "code",
-        }
-        safe_col = _col_map.get(order_by, order_by) if order_by else None
-        if safe_col and safe_col in self._AUDIT_ORDER_COLUMNS:
+        # Ordinamento sicuro: la whitelist traduce il nome di risultato nel nome
+        # colonna in un passaggio solo (vedi `_AUDIT_ORDER_COLUMNS`).
+        order_column = self._AUDIT_ORDER_COLUMNS.get(order_by or "")
+        if order_column:
             direction = sql_order_direction(order_dir, default_desc=True)
-            sql += f"ORDER BY {safe_col} {direction}, valid_from DESC "  # noqa: S608
+            sql += f"ORDER BY {order_column} {direction}, valid_from DESC "  # noqa: S608
         else:
             sql += "ORDER BY valid_from DESC "
         sql += "LIMIT %s OFFSET %s"

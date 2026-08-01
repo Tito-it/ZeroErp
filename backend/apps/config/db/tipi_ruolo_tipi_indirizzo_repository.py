@@ -24,8 +24,8 @@ _ORDER_COLS: dict[str, str] = {
     "tipo_indirizzo_descrizione": "ti.descrizione",
     "obbligatorio": "trti.obbligatorio",
     "attivo": "trti.attivo",
-    "valido_dal": "trti.valido_dal",
-    "valido_al": "trti.valido_al",
+    "valido_dal": "COALESCE(trti.valido_dal, '-infinity'::date)",
+    "valido_al": "COALESCE(trti.valido_al, 'infinity'::date)",
     "data_insert": "trti.data_insert",
     "data_update": "trti.data_update",
 }

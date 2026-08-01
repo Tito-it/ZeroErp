@@ -1623,6 +1623,16 @@ class VenditeRepository:
                 -- (composto a DB da fn_resolve_indirizzo_documento, due layer).
                 f.emittente_snapshot->'sede'->>'display'
                                              AS emittente_sede,
+                -- Utility del documento: dalla COLONNA di testata (D-S,
+                -- 2026-08-01), non dedotta dal billing account. Sono due
+                -- derivazioni diverse e possono divergere: la chiave di
+                -- aggregazione prende l'utility dal BA dell'**attivita'** (il
+                -- figlio), mentre `f.billing_account_id` e' il BA della
+                -- fattura (il **padre**, D-P). Finche' non esistono BA con
+                -- `parent_account_id` le due coincidono, ma dedurla da `ba`
+                -- rimetterebbe qui lo stesso difetto latente che D-S ha
+                -- appena tolto dal ricalcolo totali.
+                f.utility_id,
                 util.codice                  AS utility_codice,
                 util.descrizione             AS utility_descrizione,
                 mpag.codice                  AS pagamento_modalita_codice,
@@ -1668,7 +1678,7 @@ class VenditeRepository:
               JOIN anagrafiche.billing_account ba
                 ON ba.id = f.billing_account_id
               LEFT JOIN config.utilities util
-                ON util.id = ba.utility_id
+                ON util.id = f.utility_id
               LEFT JOIN config.modalita_pagamento mpag
                 ON mpag.id = f.modalita_pagamento_id
               LEFT JOIN config.termini_pagamento tpag

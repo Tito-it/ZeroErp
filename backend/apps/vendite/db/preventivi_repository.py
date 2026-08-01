@@ -54,8 +54,8 @@ _ORDER_COLS_PREVENTIVI: dict[str, str] = {
     "totale_documento": "v.totale_documento",
     "totale_imponibile": "v.totale_imponibile",
     "totale_iva": "v.totale_iva",
-    "validita_al": "v.validita_al",
-    "validita_dal": "v.validita_dal",
+    "validita_al": "COALESCE(v.validita_al, 'infinity'::date)",
+    "validita_dal": "COALESCE(v.validita_dal, '-infinity'::date)",
     "stato_descrizione": "v.stato_descrizione",
     # `stato_codice_interno` (tecnica, severity del Tag) ed
     # `emittente_fiscale_codice` (la colonna Emittente legge

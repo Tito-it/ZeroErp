@@ -155,7 +155,7 @@ ASSET_ORDER_COLUMNS: dict[str, str] = {
     "data_insert": "a.data_insert",
     "data_update": "a.data_update",
     "valido_dal": "a.valido_dal",
-    "valido_al": "a.valido_al",
+    "valido_al": "COALESCE(a.valido_al, 'infinity'::date)",
 }
 
 

@@ -11,6 +11,7 @@
 // Le due code (vw_resi_da_*) sono consumate da ResiCodaTable direttamente
 // via API + usePagedDashFetch (stato pagina locale al componente).
 
+import { defaultFiltroDataDaString } from '../../../core/utils/date'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -38,9 +39,9 @@ import {
 export const useResiStore = defineStore('vendite-resi', () => {
   const { emitDataChanged } = useTabEvents()
 
-  // Default data_da: 1 gennaio anno corrente - 1 (frontend-standards "Filtro
-  // data standard"): la lista parte popolata sull'ultimo anno + anno corrente.
-  const defaultDataDa = `${new Date().getFullYear() - 1}-01-01`
+  // Floor temporale di default delle liste: vedi `defaultFiltroDataDaString`
+  // (oggi-60gg al primo del mese). Regola unica di progetto, non ricalcolata qui.
+  const defaultDataDa = defaultFiltroDataDaString()
 
   const filters = ref({
     search: '',
@@ -57,7 +58,7 @@ export const useResiStore = defineStore('vendite-resi', () => {
   })
 
   // Lista paginata resi con guardia empty-state standard (BB
-  // useListaEmptyStateFetch). `data_da` default-anno-1 conta come filtro
+  // useListaEmptyStateFetch). `data_da` col default standard conta come filtro
   // attivo: la lista si popola al mount. limit/offset come DDT/ordini.
   const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
     filters,

@@ -120,3 +120,41 @@ export function addDaysToToday(n) {
   if (n) d.setDate(d.getDate() + Number(n))
   return d
 }
+
+/**
+ * Giorni di arretrato del floor temporale di default delle liste.
+ * Sta qui, non nei singoli store: e' una scelta UX di progetto, e cambiarla
+ * deve costare una riga sola.
+ */
+export const LISTE_FILTRO_DATA_GIORNI = 60
+
+/**
+ * Floor temporale di DEFAULT delle liste: `oggi - 60 giorni`, riportato al
+ * PRIMO GIORNO del mese risultante. Es. oggi 15-08-2026 -> 01-06-2026.
+ *
+ * L'allineamento al giorno 1 non e' un arrotondamento estetico: rende il
+ * default stabile dentro il mese (non scorre di un giorno ogni giorno, quindi
+ * l'operatore non vede la lista cambiare da sola) e fa sempre vedere il mese
+ * corrente per intero, che e' come si legge un archivio operativo.
+ *
+ * Regola precedente (fino al 2026-08-01): 1° gennaio dell'anno-1. Era troppo
+ * larga — su liste popolate significava scorrere fino a due anni di documenti
+ * per arrivare a quelli di ieri.
+ *
+ * @returns {Date} - Date locale a mezzanotte, primo del mese.
+ */
+export function defaultFiltroDataDa() {
+  const d = addDaysToToday(-LISTE_FILTRO_DATA_GIORNI)
+  d.setDate(1)
+  return d
+}
+
+/**
+ * Come `defaultFiltroDataDa()`, ma in stringa `YYYY-MM-DD`: e' la forma che
+ * gli store mettono in `filters.data_da` e che il backend riceve.
+ *
+ * @returns {string} - Data ISO (solo giorno).
+ */
+export function defaultFiltroDataDaString() {
+  return toDateString(defaultFiltroDataDa())
+}

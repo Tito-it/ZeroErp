@@ -137,7 +137,7 @@ function buildRowActions(data) {
 
 useTabFreshness(store, TAB_ENTITIES.OFFERTA_COMMERCIALE)
 
-// Lista con filtro data_da default anno-1 (frontend-standards "Filtro data
+// Lista con filtro data_da default standard (frontend-standards "Filtro data
 // standard"): auto-load al mount, lo store guard hasFilters considera data_da
 // come filtro attivo.
 onMounted(() => store.fetchList())

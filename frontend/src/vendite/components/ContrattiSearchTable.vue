@@ -14,6 +14,7 @@ import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { exportContratti } from '../api/contratti'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { statoContrattoSeverity } from '../../core/utils/severity'
+import { defaultFiltroDataDa } from '../../core/utils/date'
 import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
@@ -57,11 +58,11 @@ const { bindSelect, bindDate } = useStoreFilterBindings(store, applyFilters)
 const { value: statoFilter, onChange: onStatoChange } = bindSelect('stato_doc_contratto_id')
 const { value: utilityFilter, onChange: onUtilityChange } = bindSelect('utility_id')
 const { value: ambitoFilter, onChange: onAmbitoChange } = bindSelect('ambito')
-// data_da: la lista vuole sempre un floor → clearTo ripristina anno-1
-// (sostituisce il ramo else custom; parseIsoDate local-safe sana il tz-shift
-// del vecchio `new Date(iso)`).
+// data_da: la lista vuole sempre un floor → `clearTo` ripristina lo stesso
+// default dello store (regola unica in core/utils/date). Ricalcolarlo qui
+// significherebbe due formule da tenere allineate a mano.
 const { value: dataDaFilter, onChange: onDataDaChange } = bindDate('data_da', {
-  clearTo: () => new Date(`${new Date().getFullYear() - 1}-01-01T00:00:00`),
+  clearTo: defaultFiltroDataDa,
 })
 const { value: dataAFilter, onChange: onDataAChange } = bindDate('data_a')
 // scadenza_mese: cast a YYYY-MM da Date → resta custom.
@@ -150,7 +151,7 @@ function buildRowActions(data) {
 }
 
 useTabFreshness(store, TAB_ENTITIES.CONTRATTO)
-// data_da ha sempre un default (anno-1): la lista si carica subito.
+// data_da ha sempre un default (floor standard): la lista si carica subito.
 onMounted(() => {
   store.fetchList()
 })

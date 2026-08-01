@@ -26,22 +26,22 @@ class LottoResetFatturaServiceUnitTests(SimpleTestCase):
         service = LottoResetService(repository=repo)
 
         with self.assertRaises(ServiceError) as exc:
-            service.reset_lotto_fattura_draft(lotto_id=0, fattura_id=0)
+            service.elimina_fattura_draft_da_lotto(lotto_id=0, fattura_id=0)
 
         self.assertEqual(exc.exception.code, "E_RESET_LOTTO_FATTURA_VALIDATION")
-        repo.reset_lotto_fattura_draft.assert_not_called()
+        repo.elimina_fattura_draft_da_lotto.assert_not_called()
 
     # Scopo: Verifica il caso `test_reset_lotto_fattura_draft_ok`.
     def test_reset_lotto_fattura_draft_ok(self):
         repo = MagicMock()
-        repo.reset_lotto_fattura_draft.return_value = {
+        repo.elimina_fattura_draft_da_lotto.return_value = {
             "updated_attivita": 1,
             "deleted_fatture": 1,
             "deleted_righe": 1,
         }
         service = LottoResetService(repository=repo)
 
-        result = service.reset_lotto_fattura_draft(lotto_id=10, fattura_id=22)
+        result = service.elimina_fattura_draft_da_lotto(lotto_id=10, fattura_id=22)
 
-        repo.reset_lotto_fattura_draft.assert_called_once_with(10, 22)
+        repo.elimina_fattura_draft_da_lotto.assert_called_once_with(10, 22)
         self.assertEqual(result["deleted_fatture"], 1)

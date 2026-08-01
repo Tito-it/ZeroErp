@@ -1,28 +1,39 @@
 <script setup>
-import { computed, ref, onMounted } from 'vue'
+// Scopo: Lista log email configurabile
+//        (`<ListaConfigurabile codice="config.email_log">`): colonne, ordine e
+//        visibilita' dal catalogo `ui.lista_colonna`, con ritiro dinamico e
+//        personalizzazione per utente. Lista di sola consultazione: niente
+//        "Nuovo", niente click di riga (non c'e' un drawer di dettaglio) e
+//        niente export — lo scaffolding omette le azioni da se'.
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import DatePicker from 'primevue/datepicker'
 import InputText from 'primevue/inputtext'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS, READONLY_DOMAINS } from '../../core/constants'
+import { READONLY_DOMAINS } from '../../core/constants'
 import { useEmailLogsStore } from '../stores/emailLogs'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { getEmailLogStatoSeverity } from '../constants'
-import { displayTimestamp, toDateString } from '../../core/utils/date'
+import { toDateString } from '../../core/utils/date'
 import EmailLogStatoSelect from '../components/EmailLogStatoSelect.vue'
 
 const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 const store = useEmailLogsStore()
-const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'data_insert',
-  // 'desc', NON -1: il contratto di useSearchTable e' 'asc'/'desc' (il -1
-  // era dormiente solo perche' lo store preimposta gia' order_by/order_dir).
-  defaultSortOrder: 'desc'
+const {
+  searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  searchTableOptions: {
+    defaultSortField: 'data_insert',
+    // 'desc', NON -1: il contratto di useSearchTable e' 'asc'/'desc' (il -1
+    // era dormiente solo perche' lo store preimposta gia' order_by/order_dir).
+    defaultSortOrder: 'desc',
+  },
 })
 
 // Email logs e' read-only (nessun create/update/delete) quindi non serve
@@ -35,15 +46,6 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 // Filtro data: default ultimi 30 giorni
 const dataDaFilter = ref(store.filters.data_da ? new Date(store.filters.data_da + 'T00:00:00') : null)
 const dataAFilter = ref(null)
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-])
 
 function onStatoChange(val) {
   store.filters.stato = val
@@ -98,40 +100,35 @@ onMounted(() => {
           @clear-click="onDataAChange"
         />
       </div>
-      <PageActionsBar :actions="pageActions" />
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
+        </template>
+      </PageActionsBar>
     </div>
 
-    <DataTable
-      v-bind="paginatorProps"
-      :value="store.items"
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="config.email_log"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      :totalRecords="store.totalRecords"
-      lazy
-      removable-sort
-      striped-rows
-      scrollable
-      scrollHeight="flex"
-      class="app-datatable"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
       @page="onPage"
       @sort="onSort"
+      @config-loaded="onConfigLoaded"
     >
-      <Column field="data_insert" :header="t('amministrazione.email_inviato_at')" sortable style="width: 150px;">
-        <template #body="{ data }">{{ displayTimestamp(data.data_insert) }}</template>
-      </Column>
-      <Column field="destinatario" :header="t('amministrazione.email_destinatario')" sortable style="width: 200px;" />
-      <Column field="oggetto" :header="t('amministrazione.email_oggetto')" sortable style="width: 220px;" />
-      <Column field="template_codice" :header="t('amministrazione.email_template')" style="width: 150px;" />
-      <Column field="account_codice" :header="t('amministrazione.email_account')" style="width: 110px;" />
-      <Column field="errore" :header="t('amministrazione.email_errore')">
-        <template #body="{ data }">
-          <span v-if="data.errore" class="text-red-500" style="font-size: 0.85rem;">{{ data.errore }}</span>
-        </template>
-      </Column>
-      <Column field="stato" :header="t('amministrazione.email_stato')" sortable style="width: 100px;">
-        <template #body="{ data }">
-          <Tag :value="data.stato" :severity="getEmailLogStatoSeverity(data.stato)" />
-        </template>
-      </Column>
-    </DataTable>
+      <!-- La data non ha slot: il seed dichiara `datetime_short` e il formatter
+           di serie la rende gia' cosi'. -->
+      <template #cell-errore="{ data }">
+        <span v-if="data.errore" class="text-red-500" style="font-size: 0.85rem;">{{ data.errore }}</span>
+      </template>
+      <template #cell-stato="{ data }">
+        <Tag :value="data.stato" :severity="getEmailLogStatoSeverity(data.stato)" />
+      </template>
+    </ListaConfigurabile>
   </div>
 </template>

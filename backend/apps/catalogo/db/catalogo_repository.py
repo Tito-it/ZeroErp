@@ -68,7 +68,7 @@ UOM_CONVERSIONI_ORDER_COLUMNS: dict[str, str] = {
     "uom_to_codice": "ut.codice",
     "fattore": "c.fattore",
     "valido_dal": "c.valido_dal",
-    "valido_al": "c.valido_al",
+    "valido_al": "COALESCE(c.valido_al, 'infinity'::date)",
     "attivo": "c.attivo",
 }
 

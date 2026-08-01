@@ -11,6 +11,7 @@
 // nessun endpoint BE). L'evasione (genera DDT da ordine) vive nel dominio
 // ordine, non qui.
 
+import { defaultFiltroDataDaString } from '../../../core/utils/date'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -37,9 +38,9 @@ import {
 export const useDdtStore = defineStore('vendite-ddt', () => {
   const { emitDataChanged } = useTabEvents()
 
-  // Default data_da: 1 gennaio anno corrente - 1 (frontend-standards "Filtro
-  // data standard"): la lista parte popolata sull'ultimo anno + anno corrente.
-  const defaultDataDa = `${new Date().getFullYear() - 1}-01-01`
+  // Floor temporale di default delle liste: vedi `defaultFiltroDataDaString`
+  // (oggi-60gg al primo del mese). Regola unica di progetto, non ricalcolata qui.
+  const defaultDataDa = defaultFiltroDataDaString()
 
   const filters = ref({
     search: '',
@@ -57,7 +58,7 @@ export const useDdtStore = defineStore('vendite-ddt', () => {
   })
 
   // Lista paginata DDT con guardia empty-state standard (BB
-  // useListaEmptyStateFetch). `data_da` default-anno-1 conta come filtro attivo:
+  // useListaEmptyStateFetch). `data_da` col default standard conta come filtro attivo:
   // la lista si popola al mount. Il DDT usa limit/offset (non page/page_size).
   const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
     filters,

@@ -11,7 +11,7 @@
 // Ciò che resta al caller, perché DIVERGE legittimamente fra domini, sono i 3
 // callback iniettati:
 //  - `hasActiveFilters(f)` → bool: quali filtri contano come "ricerca attiva"
-//    (stato/utility/date/listino/...). `data_da` default-anno-1 di solito conta,
+//    (stato/utility/date/listino/...). `data_da` col default standard di solito conta,
 //    così la lista si popola al mount.
 //  - `buildParams(f, searchTerm)` → object: la mappatura filtri→query params,
 //    che differisce per dominio (es. preventivi usa page/page_size, offerte e
