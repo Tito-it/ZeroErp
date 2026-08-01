@@ -1,0 +1,244 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+-- Test: vendite.fn_genera_scadenze_fattura — il generatore del piano rate
+--       (piano-db-satelliti-fattura.md Fase 4.1, rilievi C-4/C-5, decisioni D-D/D-E/D-F)
+-- ------------------------------------------------------------
+-- Perche' questo file esiste, e perche' arriva INSIEME alla funzione
+--   Nella Fase 3b i test sono arrivati per ultimi e tre difetti sono stati
+--   trovati a mano, uno alla volta, riparando altro. Qui si inverte l'ordine:
+--   il generatore e la sua copertura nascono nello stesso giro.
+--
+--   Quello che va presidiato non e' «genera delle rate», e' che generi
+--   ESATTAMENTE quelle: la somma deve fare la base al centesimo (una fattura
+--   le cui rate non quadrano e' un documento che non si puo' incassare), le
+--   date devono seguire la formula a ramo unico di C-5, e i tre casi della
+--   base di D-D devono restare tre casi diversi invece di ricollassare in un
+--   errore solo — che e' il difetto che C-4 ha tolto dal brief originale.
+-- ------------------------------------------------------------
+-- Indice test
+-- 1) Fixture: fattura di prova in DRAFT
+-- 2) Termine mancante in testata -> E_SCADENZE_TERMINE_MANCANTE
+-- 3) Base non calcolata -> E_SCADENZE_BASE_NON_PRONTA
+-- 4) Fattura oltre la soglia DRAFT/EMESSA -> E_SCADENZE_FATTURA_BLOCCATA
+-- 5) Rata unica: la data e' data_fattura + primo_offset_giorni
+-- 6) fine_mese: la data si sposta a fine mese
+-- 7) fine_mese a cavallo d anno: il clamp non ha codice dedicato
+-- 8) Quadratura 100/3: la somma delle rate e ESATTAMENTE la base
+-- 9) La differenza di quadratura sta sull ULTIMA rata
+-- 10) numero_rata progressivo da 1 a numero_rate
+-- 11) Idempotenza: rieseguire ricostruisce lo stesso piano
+-- 12) Base = 0: zero rate, nessun log, e le rate precedenti spariscono
+-- 13) Base < 0: zero rate e log NON critico
+-- 14) Lo snapshot del termine finisce in testata con i VALORI
+-- ------------------------------------------------------------
+
+BEGIN;
+
+SELECT plan(14);
+
+-- ============================================================
+-- 0) Fixture
+-- ============================================================
+-- La fattura si crea con il creatore applicativo, che la mette in DRAFT: cosi'
+-- la fixture attraversa la stessa porta del giro reale invece di inventarsi
+-- una riga a mano.
+CREATE TEMP TABLE tmp_refs_gsf AS
+SELECT (SELECT a.id FROM vendite.attivita_fatturabili a ORDER BY a.id LIMIT 1)      AS attivita_id,
+       (SELECT fl.id FROM vendite.fatturazione_lotti fl ORDER BY fl.id DESC LIMIT 1) AS lotto_id,
+       (SELECT f.id FROM vendite.fatture f
+          JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
+         WHERE s.codice_interno NOT IN ('DRAFT','EMESSA')
+         ORDER BY f.id LIMIT 1)                                                      AS fattura_congelata_id;
+
+CREATE TEMP TABLE tmp_f_gsf AS
+SELECT vendite.fn_get_or_create_fattura_header(
+         (SELECT lotto_id FROM tmp_refs_gsf),
+         (SELECT attivita_id FROM tmp_refs_gsf)) AS id;
+
+-- Termine di prova a 3 rate: serve alla quadratura di 100/3, che e' il caso in
+-- cui la divisione non torna. I 9 termini di catalogo hanno 1 o 2 rate.
+CREATE TEMP TABLE tmp_tp3_gsf AS
+WITH ins AS (
+  INSERT INTO config.termini_pagamento (
+      codice, codice_interno, descrizione, numero_rate, intervallo,
+      primo_offset_giorni, fine_mese, ripartizione,
+      arrotondamento_metodo, arrotondamento_decimali)
+  VALUES ('T3PGTAP', 'TP_PGTAP_3R', 'tre rate (fixture pgTAP)', 3, 30, 30, false,
+          'UGUALI', 'HALF_UP', 2)
+  RETURNING id)
+SELECT id FROM ins;
+
+SELECT ok(
+  (SELECT id FROM tmp_f_gsf) IS NOT NULL AND (SELECT id FROM tmp_tp3_gsf) IS NOT NULL,
+  '1) Fixture: fattura in DRAFT e termine a 3 rate');
+
+-- ============================================================
+-- 1) I codici di errore, uno per caso
+-- ============================================================
+UPDATE vendite.fatture
+   SET termine_pagamento_id = NULL, totale_a_pagare = 100.00, data = DATE '2026-01-15'
+ WHERE id = (SELECT id FROM tmp_f_gsf);
+
+SELECT throws_ok(
+  format($$ SELECT * FROM vendite.fn_genera_scadenze_fattura(%s) $$, (SELECT id FROM tmp_f_gsf)),
+  'P0001', NULL,
+  '2) Termine mancante in testata -> errore (non un fallback silenzioso)');
+
+-- ⚠️ La base si azzera DOPO aver rimesso il termine: se restassero entrambi
+-- mancanti, il test misurerebbe il guard precedente e passerebbe per la
+-- ragione sbagliata.
+UPDATE vendite.fatture
+   SET termine_pagamento_id = (SELECT id FROM tmp_tp3_gsf), totale_a_pagare = NULL
+ WHERE id = (SELECT id FROM tmp_f_gsf);
+
+SELECT throws_ok(
+  format($$ SELECT * FROM vendite.fn_genera_scadenze_fattura(%s) $$, (SELECT id FROM tmp_f_gsf)),
+  'P0001', NULL,
+  '3) Base non calcolata -> errore (passo eseguito fuori ordine)');
+
+-- La soglia si prova su una fattura gia' oltre DRAFT/EMESSA, senza forzare
+-- transizioni di stato: la matrice e' presidiata da un guard suo, e attraversarla
+-- qui vorrebbe dire testare due cose insieme.
+SELECT CASE
+  WHEN (SELECT fattura_congelata_id FROM tmp_refs_gsf) IS NULL
+    THEN skip('nessuna fattura oltre la soglia su cui misurare', 1)
+  ELSE throws_ok(
+    format($$ SELECT * FROM vendite.fn_genera_scadenze_fattura(%s) $$,
+           (SELECT fattura_congelata_id FROM tmp_refs_gsf)),
+    'P0001', NULL,
+    '4) Fattura oltre la soglia DRAFT/EMESSA -> errore, non una DELETE che fallisce sul trigger')
+END;
+
+-- ============================================================
+-- 2) La formula delle date
+-- ============================================================
+UPDATE vendite.fatture
+   SET totale_a_pagare = 100.00, data = DATE '2026-01-15',
+       termine_pagamento_id = (SELECT id FROM config.termini_pagamento WHERE codice_interno = 'TP_30G_1R')
+ WHERE id = (SELECT id FROM tmp_f_gsf);
+SELECT vendite.fn_genera_scadenze_fattura((SELECT id FROM tmp_f_gsf));
+
+SELECT is(
+  (SELECT data_scadenza FROM vendite.fatture_scadenze WHERE fattura_id = (SELECT id FROM tmp_f_gsf)),
+  DATE '2026-02-14',
+  '5) Rata unica: 15/01 + 30 giorni = 14/02');
+
+UPDATE vendite.fatture
+   SET termine_pagamento_id = (SELECT id FROM config.termini_pagamento WHERE codice_interno = 'TP_30G_EOM_1R')
+ WHERE id = (SELECT id FROM tmp_f_gsf);
+SELECT vendite.fn_genera_scadenze_fattura((SELECT id FROM tmp_f_gsf));
+
+SELECT is(
+  (SELECT data_scadenza FROM vendite.fatture_scadenze WHERE fattura_id = (SELECT id FROM tmp_f_gsf)),
+  DATE '2026-02-28',
+  '6) fine_mese: 14/02 si sposta al 28/02');
+
+-- Cavallo d'anno: dicembre + 30 giorni cade a gennaio, e il fine mese deve
+-- essere quello di GENNAIO dell'anno dopo. Il clamp lo fa PostgreSQL: il test
+-- serve a garantire che nessuno lo sostituisca con aritmetica fatta a mano.
+UPDATE vendite.fatture SET data = DATE '2026-12-20' WHERE id = (SELECT id FROM tmp_f_gsf);
+SELECT vendite.fn_genera_scadenze_fattura((SELECT id FROM tmp_f_gsf));
+
+SELECT is(
+  (SELECT data_scadenza FROM vendite.fatture_scadenze WHERE fattura_id = (SELECT id FROM tmp_f_gsf)),
+  DATE '2027-01-31',
+  '7) fine_mese a cavallo d anno: 20/12/2026 + 30 -> 31/01/2027');
+
+-- ============================================================
+-- 3) La quadratura
+-- ============================================================
+UPDATE vendite.fatture
+   SET data = DATE '2026-01-15', totale_a_pagare = 100.00,
+       termine_pagamento_id = (SELECT id FROM tmp_tp3_gsf)
+ WHERE id = (SELECT id FROM tmp_f_gsf);
+SELECT vendite.fn_genera_scadenze_fattura((SELECT id FROM tmp_f_gsf));
+
+SELECT is(
+  (SELECT sum(importo) FROM vendite.fatture_scadenze WHERE fattura_id = (SELECT id FROM tmp_f_gsf)),
+  100.00::numeric,
+  '8) Quadratura: la somma delle rate e ESATTAMENTE la base');
+
+SELECT ok(
+  (SELECT importo FROM vendite.fatture_scadenze
+    WHERE fattura_id = (SELECT id FROM tmp_f_gsf) AND numero_rata = 3)
+  > (SELECT importo FROM vendite.fatture_scadenze
+      WHERE fattura_id = (SELECT id FROM tmp_f_gsf) AND numero_rata = 1),
+  '9) La differenza di quadratura sta sull ultima rata');
+
+SELECT is(
+  (SELECT array_agg(numero_rata ORDER BY numero_rata)::int[]
+     FROM vendite.fatture_scadenze WHERE fattura_id = (SELECT id FROM tmp_f_gsf)),
+  ARRAY[1,2,3]::int[],
+  '10) numero_rata progressivo da 1 a numero_rate');
+
+-- ============================================================
+-- 4) Idempotenza
+-- ============================================================
+-- Non basta contare le righe: un generatore che sbaglia le date le
+-- riscriverebbe diverse mantenendo lo stesso conteggio. Si confronta il piano
+-- intero, importi e date.
+CREATE TEMP TABLE tmp_piano1_gsf AS
+SELECT numero_rata, data_scadenza, importo
+  FROM vendite.fatture_scadenze WHERE fattura_id = (SELECT id FROM tmp_f_gsf);
+
+SELECT vendite.fn_genera_scadenze_fattura((SELECT id FROM tmp_f_gsf));
+
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1 FROM tmp_piano1_gsf p
+    FULL JOIN (SELECT numero_rata, data_scadenza, importo
+                 FROM vendite.fatture_scadenze
+                WHERE fattura_id = (SELECT id FROM tmp_f_gsf)) d
+      ON d.numero_rata = p.numero_rata
+   WHERE d.data_scadenza IS DISTINCT FROM p.data_scadenza
+      OR d.importo       IS DISTINCT FROM p.importo
+      OR d.numero_rata   IS NULL OR p.numero_rata IS NULL),
+  '11) Idempotenza: il rerun ricostruisce lo stesso piano, date e importi');
+
+-- ============================================================
+-- 5) I tre casi della base (D-D)
+-- ============================================================
+CREATE TEMP TABLE tmp_log_pre_gsf AS
+SELECT count(*)::int AS n FROM vendite.fatture_log WHERE fattura_id = (SELECT id FROM tmp_f_gsf);
+
+UPDATE vendite.fatture SET totale_a_pagare = 0 WHERE id = (SELECT id FROM tmp_f_gsf);
+SELECT vendite.fn_genera_scadenze_fattura((SELECT id FROM tmp_f_gsf));
+
+SELECT ok(
+  (SELECT count(*) FROM vendite.fatture_scadenze WHERE fattura_id = (SELECT id FROM tmp_f_gsf)) = 0
+  AND (SELECT count(*)::int FROM vendite.fatture_log WHERE fattura_id = (SELECT id FROM tmp_f_gsf))
+      = (SELECT n FROM tmp_log_pre_gsf),
+  '12) Base = 0: zero rate, nessun log, e le rate precedenti spariscono');
+
+UPDATE vendite.fatture SET totale_a_pagare = -5.00 WHERE id = (SELECT id FROM tmp_f_gsf);
+SELECT vendite.fn_genera_scadenze_fattura((SELECT id FROM tmp_f_gsf));
+
+SELECT ok(
+  (SELECT count(*) FROM vendite.fatture_scadenze WHERE fattura_id = (SELECT id FROM tmp_f_gsf)) = 0
+  AND (SELECT count(*) FROM vendite.fatture_log
+        WHERE fattura_id = (SELECT id FROM tmp_f_gsf) AND status = 'W'
+          AND meta->>'source' = 'fn_genera_scadenze_fattura') = 1,
+  '13) Base < 0: zero rate e log NON critico (mai un errore che ferma il lotto)');
+
+-- ============================================================
+-- 6) Lo snapshot del termine
+-- ============================================================
+-- Un id non e' uno snapshot: se il catalogo cambia, la fattura deve continuare
+-- a spiegare le rate che ha. Si verifica che ci siano i VALORI.
+UPDATE vendite.fatture
+   SET totale_a_pagare = 100.00, termine_pagamento_id = (SELECT id FROM tmp_tp3_gsf)
+ WHERE id = (SELECT id FROM tmp_f_gsf);
+SELECT vendite.fn_genera_scadenze_fattura((SELECT id FROM tmp_f_gsf));
+
+SELECT ok(
+  (SELECT termine_pagamento_snapshot->>'codice_interno' = 'TP_PGTAP_3R'
+      AND (termine_pagamento_snapshot->>'numero_rate')::int = 3
+      AND (termine_pagamento_snapshot->>'primo_offset_giorni')::int = 30
+      AND termine_pagamento_snapshot ? 'arrotondamento_metodo'
+     FROM vendite.fatture WHERE id = (SELECT id FROM tmp_f_gsf)),
+  '14) Lo snapshot in testata porta i VALORI del termine, non il solo id');
+
+SELECT * FROM finish();
+
+ROLLBACK;

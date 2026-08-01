@@ -14,8 +14,8 @@
 >
 **Approfondimento funzioni:**
 >
-• [vendite.fn_reset_lotto_draft](/dbzero/vendite/funzioni/fn_reset_lotto_draft)  
-> • [vendite.fn_reset_lotto_fattura_draft](/dbzero/vendite/funzioni/fn_reset_lotto_fattura_draft)  
+• [vendite.fn_annulla_lotto_da_draft](/dbzero/vendite/funzioni/fn_annulla_lotto_da_draft)  
+> • [vendite.fn_elimina_fattura_draft_da_lotto](/dbzero/vendite/funzioni/fn_elimina_fattura_draft_da_lotto)  
 
 ---
 ### 🎯 Scopo Principale
