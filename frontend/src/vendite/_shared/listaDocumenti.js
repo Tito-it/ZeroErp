@@ -8,7 +8,7 @@
 // `extract_doc_list_filters` (vendite/api/_list_filters_helpers.py).
 
 // Scopo: true se almeno un filtro non-search è attivo (il default temporale
-//        data_da anno-1 conta come filtro: la lista si popola al mount).
+//        data_da col default standard conta come filtro: la lista si popola al mount).
 export function hasDocListActiveFilters(f, { withUtility = false } = {}) {
   return f.stato_codice_interno != null
     || f.billing_account_id != null

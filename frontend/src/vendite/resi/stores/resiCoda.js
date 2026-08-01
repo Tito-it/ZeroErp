@@ -8,8 +8,9 @@
 // userScoped: true → reset al logout (autoResetPlugin): lo stato utente non
 // deve sopravvivere al cambio operatore (memoria feedback_pinia_userscoped).
 //
-// Semantica CODA DI LAVORO: niente default temporale `data_da` anno-1 (che
-// nasconderebbe il lavoro arretrato pendente): `alwaysFetch: true` carica sempre
+// Semantica CODA DI LAVORO: niente floor temporale `data_da` di default (il
+// floor standard delle liste nasconderebbe il lavoro arretrato pendente):
+// `alwaysFetch: true` carica sempre
 // al mount tutte le righe pertinenti; i filtri data restano opzionali. Le viste
 // BE si auto-limitano ai resi CONFERMATO con copertura/credito pendente.
 

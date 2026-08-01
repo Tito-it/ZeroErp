@@ -133,35 +133,30 @@ function collapseAllRows() {
   expandedRows.value = {}
 }
 
-async function toggleAllRows() {
+function toggleAllRows() {
   if (allRowsExpanded.value) {
     collapseAllRows()
     return
   }
   expandAllRows()
-  await Promise.all(
-    store.items
-      .filter(it => !store.versioniByListino[it.id])
-      .map(it => store.fetchVersioniListino(it.id))
-  )
+  // Il caricamento delle versioni mancanti lo fa il watch qui sotto: vale per
+  // QUALUNQUE strada porti una riga ad aprirsi, non solo per questo pulsante.
 }
 
-// Toggle expansion di una singola riga (usato dal pulsante "versioni" della riga).
-// Il fetch lazy serve per i casi in cui il preload del store e' fallito o
-// quando l'utente collassa-riapre senza cambiare pagina.
-async function toggleExpand(listino) {
-  const next = { ...expandedRows.value }
-  if (next[listino.id]) {
-    delete next[listino.id]
-    expandedRows.value = next
-  } else {
-    next[listino.id] = true
-    expandedRows.value = next
-    if (!store.versioniByListino[listino.id]) {
-      await store.fetchVersioniListino(listino.id)
-    }
-  }
-}
+// Scopo: carica le versioni delle righe appena aperte che non le hanno in
+// cache. Il preload dello store dentro `fetchList` copre il caso normale;
+// questo e' la rete per quando fallisce — senza, il pannello resterebbe con lo
+// spinner all'infinito, perche' nessun altro andrebbe a caricarle.
+//
+// Sta su un watch e non dentro un handler perche' i modi di aprire una riga
+// sono piu' d'uno (chevron della lista, "espandi tutte", ripristino di stato):
+// legarlo a un pulsante solo e' esattamente il difetto che aveva la versione
+// precedente, dove il chevron apriva senza caricare nulla.
+watch(expandedRows, (aperte) => {
+  Object.keys(aperte || {})
+    .filter(id => aperte[id] && !store.versioniByListino[id])
+    .forEach(id => store.fetchVersioniListino(Number(id)))
+})
 
 // Stato dialog conferma attivazione (D3) — dichiarato prima delle funzioni
 // che lo referenziano per evitare TDZ in caso di chiamata sincrona durante setup.
@@ -258,15 +253,13 @@ const extraPageActions = computed(() => [
 
 const pageActions = pageActionsBase
 
-// Scopo: azioni di riga del listino (toggle expansion + elimina conditional).
+// Scopo: azioni di riga del listino. Niente toggle versioni: ad aprire e
+// chiudere la riga ci pensa il chevron di `<ListaConfigurabile>`, a sinistra.
+// Prima della conversione quel chevron non c'era e il toggle stava qui; averli
+// entrambi non era solo ridondante — i due comandi si disallineavano a video e,
+// peggio, solo questo caricava le versioni mancanti.
 function buildListinoActions(data) {
   return [
-    {
-      key: 'toggle-versioni',
-      label: expandedRows.value[data.id] ? t('vendite.listini.nascondi_versioni') : t('vendite.listini.mostra_versioni'),
-      icon: expandedRows.value[data.id] ? MANAGE_ICONS.COLLAPSE : MANAGE_ICONS.EXPAND,
-      command: () => toggleExpand(data),
-    },
     {
       key: 'elimina-listino',
       label: t('vendite.listini.elimina_listino'),

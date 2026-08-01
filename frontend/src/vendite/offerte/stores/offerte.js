@@ -11,6 +11,7 @@
 // l'esposizione separata (POST/PATCH `/utility/`) resta come endpoint BE
 // per smoke test e consumer esterni, ma il drawer FE non la usa.
 
+import { defaultFiltroDataDaString } from '../../../core/utils/date'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -40,9 +41,9 @@ import {
 export const useOfferteStore = defineStore('vendite-offerte', () => {
   const { emitDataChanged } = useTabEvents()
 
-  // Default data_da: 1 gennaio anno corrente - 1. Coerente con frontend-standards
-  // "Filtro data standard" — la lista parte popolata sull'ultimo anno+anno corrente.
-  const defaultDataDa = `${new Date().getFullYear() - 1}-01-01`
+  // Floor temporale di default delle liste: vedi `defaultFiltroDataDaString`
+  // (oggi-60gg al primo del mese). Regola unica di progetto, non ricalcolata qui.
+  const defaultDataDa = defaultFiltroDataDaString()
 
   const filters = ref({
     search: '',
@@ -69,7 +70,7 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
   })
 
   // Lista paginata offerte con guardia empty-state standard (BB
-  // useListaEmptyStateFetch). `data_da` default-anno-1 conta come filtro attivo:
+  // useListaEmptyStateFetch). `data_da` col default standard conta come filtro attivo:
   // la lista si popola al mount. Offerte usa limit/offset + filtri validita_dal_*.
   const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
     filters,

@@ -466,7 +466,10 @@ onMounted(() => {
 Ogni SearchTable che mostra dati con data di apertura/creazione deve avere il filtro data:
 
 - **Due DatePicker**: "Dal" (`data_da`) e "Al" (`data_a`) nella toolbar filtri
-- **Default `data_da` solo frontend**: 1 gennaio dell'anno corrente - 1 (es. `2025-01-01` se oggi e' `2026-03-29`)
+- **Default `data_da` solo frontend**: **oggi - 60 giorni, riportato al primo
+  giorno del mese risultante** (es. oggi `15-08-2026` -> `01-06-2026`).
+  Il calcolo NON si riscrive nello store: si chiama
+  `defaultFiltroDataDaString()` da `core/utils/date`
 - **`data_a`**: null (nessun limite superiore di default)
 - Il filtro si applica su `data_insert` (o colonna data apertura dedicata se esiste)
 - Backend: applica `WHERE data_insert >= data_da::date AND data_insert < (data_a::date + INTERVAL '1 day')`
@@ -479,17 +482,34 @@ l'operatore deve poter vedere, modificare o cancellare il valore che limita la l
 Se una lista non espone i DatePicker `data_da`/`data_a`, non deve inviare `data_da`
 di default e il backend non deve inventarlo.
 
-**Implementazione nello store:**
+**Perche' allineato al primo del mese** e non "oggi - 60 giorni" secco: cosi' il
+default e' **stabile dentro il mese** — non scorre di un giorno ogni giorno,
+quindi l'operatore non vede la lista cambiare da sola — e il mese piu' vecchio
+del periodo si vede sempre per intero, che e' come si legge un archivio
+operativo.
+
+> **Storico**: fino al 2026-08-01 il default era il 1° gennaio dell'anno-1. Era
+> troppo largo: su liste popolate significava scorrere fino a due anni di
+> documenti per arrivare a quelli di ieri. La formula viveva **copiata a mano in
+> 8 punti**; ora e' una funzione sola.
+
+**Implementazione nello store** — si importa, non si ricalcola:
 
 ```js
-const defaultDataDa = `${new Date().getFullYear() - 1}-01-01`
+import { defaultFiltroDataDaString } from '../../core/utils/date'
 
 const filters = ref({
   // ... altri filtri ...
-  data_da: defaultDataDa,
+  data_da: defaultFiltroDataDaString(),
   data_a: null,
 })
 ```
+
+Se serve una `Date` invece della stringa (es. il `clearTo` di
+`useStoreFilterBindings`, o un filtro tenuto in `reactive` come nelle code di
+lavoro), la variante e' `defaultFiltroDataDa()`. Le due condividono la formula:
+cambiare i 60 giorni e' una riga in `core/utils/date`
+(`LISTE_FILTRO_DATA_GIORNI`).
 
 **Implementazione nella SearchTable:**
 

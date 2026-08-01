@@ -29,8 +29,8 @@ from apps.vendite.types import (
     LottoPipelineMeta,
     LottoSegnalazioniSummary,
     LottoTaskRunRow,
-    ResetLottoDraftResult,
-    ResetLottoFatturaDraftResult,
+    AnnullaLottoDaDraftResult,
+    EliminaFatturaDraftDaLottoResult,
 )
 
 # Repository SQL: incapsula accesso DB per orchestrazione pipeline vendite.
@@ -171,7 +171,7 @@ class VenditePipelineRepository:
         "prepare_sdi_payload_lotto": "vendite.fn_prepare_sdi_payload",
         "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
         "close_lotto": None,
-        "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
+        "reset_lotto_draft": "vendite.fn_annulla_lotto_da_draft",
         "pull_attivita_da_commessa": "vendite.fn_emit_attivita_fatturabili_da_commessa",
         # Il `task_code` resta `snapshot_indirizzi_lotto` (seed, handler, policy
         # e registry non si muovono); la funzione SQL e' stata rinominata dal
@@ -2059,12 +2059,18 @@ class VenditePipelineRepository:
             assert row is not None
         return row[0]
 
-    # Scopo: Gestisce `reset_lotto_draft` nel flusso applicativo del modulo.
-    def reset_lotto_draft(self, lotto_id: int) -> ResetLottoDraftResult:
+    # Scopo: ANNULLA un lotto che si trova in DRAFT: porta il lotto ad
+    #        ANNULLATA/CHIUSO, elimina le sue fatture pre-fiscali (non
+    #        numerate) e libera le attivita'. Non «riporta a bozza»: il nome
+    #        vecchio (`reset_lotto_draft`) diceva il contrario di cio' che fa,
+    #        ed e' la ragione di D-L. ⚠️ Il `task_code` di pipeline resta
+    #        `reset_lotto_draft` (seed CSV, immutabile) e cosi' il
+    #        `post_permission`: qui cambia solo il nome della funzione.
+    def annulla_lotto_da_draft(self, lotto_id: int) -> AnnullaLottoDaDraftResult:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT updated_lotti, updated_attivita, deleted_fatture, deleted_righe "
-                "FROM vendite.fn_reset_lotto_draft(%s)",
+                "FROM vendite.fn_annulla_lotto_da_draft(%s)",
                 [lotto_id],
             )
             row = cursor.fetchone()
@@ -2076,16 +2082,20 @@ class VenditePipelineRepository:
             "deleted_righe": int(row[3]),
         }
 
-    # Scopo: Gestisce `reset_lotto_fattura_draft` nel flusso applicativo del modulo.
-    def reset_lotto_fattura_draft(
+    # Scopo: Elimina UNA fattura DRAFT dal lotto (estrazione per-fattura),
+    #        liberandone le attivita'. ⚠️ Passa `NULL` come `lock_batch_id`
+    #        alla primitiva di cleanup: passare quello del lotto libererebbe
+    #        l'INTERO batch invece della sola fattura (C-22/D-L.3, misurato dal
+    #        team DB: 15 attivita' liberate contro 0).
+    def elimina_fattura_draft_da_lotto(
         self,
         lotto_id: int,
         fattura_id: int,
-    ) -> ResetLottoFatturaDraftResult:
+    ) -> EliminaFatturaDraftDaLottoResult:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT updated_attivita, deleted_fatture, deleted_righe "
-                "FROM vendite.fn_reset_lotto_fattura_draft(%s, %s)",
+                "FROM vendite.fn_elimina_fattura_draft_da_lotto(%s, %s)",
                 [lotto_id, fattura_id],
             )
             row = cursor.fetchone()

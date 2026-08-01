@@ -24,8 +24,8 @@ from apps.vendite.types import (
     GroupAttivitaKey,
     LottoPipelineMeta,
     LottoTaskRunRow,
-    ResetLottoDraftResult,
-    ResetLottoFatturaDraftResult,
+    AnnullaLottoDaDraftResult,
+    EliminaFatturaDraftDaLottoResult,
 )
 
 # Facade servizi: mantiene firme dichiarative e delega alle classi OOP.
@@ -487,22 +487,24 @@ def fn_generate_fatture_righe(*, lotto_id: int, dry_run: bool = False) -> int:
     return service.generate_fatture_righe(lotto_id, dry_run=dry_run)
 
 
-# Scopo: Facade applicativa: esegue reset tecnico completo del lotto in stato DRAFT.
-def fn_reset_lotto_draft(*, lotto_id: int) -> ResetLottoDraftResult:
-    """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_reset_lotto_draft."""
+# Scopo: Facade applicativa: ANNULLA il lotto che si trova in DRAFT (stato ad
+#        ANNULLATA/CHIUSO, fatture pre-fiscali eliminate, attivita' liberate).
+def fn_annulla_lotto_da_draft(*, lotto_id: int) -> AnnullaLottoDaDraftResult:
+    """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_annulla_lotto_da_draft."""
     service = LottoResetService()
-    return service.reset_lotto_draft(lotto_id)
+    return service.annulla_lotto_da_draft(lotto_id)
 
 
-# Scopo: Facade applicativa: esegue reset tecnico della singola fattura DRAFT nel lotto.
-def fn_reset_lotto_fattura_draft(
+# Scopo: Facade applicativa: elimina UNA fattura DRAFT dal lotto, liberandone
+#        le attivita' (estrazione per-fattura).
+def fn_elimina_fattura_draft_da_lotto(
     *,
     lotto_id: int,
     fattura_id: int,
-) -> ResetLottoFatturaDraftResult:
-    """Entrypoint servizio Python per reset singola fattura del lotto."""
+) -> EliminaFatturaDraftDaLottoResult:
+    """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_elimina_fattura_draft_da_lotto."""
     service = LottoResetService()
-    return service.reset_lotto_fattura_draft(lotto_id, fattura_id)
+    return service.elimina_fattura_draft_da_lotto(lotto_id, fattura_id)
 
 
 # Scopo: Restituisce riepilogo segnalazioni del lotto con regola di blocco step successivo.

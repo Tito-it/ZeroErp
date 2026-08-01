@@ -65,7 +65,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             "prepare_sdi_payload_lotto": "vendite.fn_prepare_sdi_payload",
             "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
             "close_lotto": None,
-            "reset_lotto_draft": "vendite.fn_reset_lotto_draft",
+            "reset_lotto_draft": "vendite.fn_annulla_lotto_da_draft",
             "snapshot_indirizzi_lotto": "vendite.fn_snapshot_fattura_lotto",
         }
         # Tracing: default nessuna policy → nessun tracing (test esistenti non cambiano).
@@ -331,7 +331,7 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             dry_run=False,
         )
 
-        repo.reset_lotto_draft.assert_called_once_with(12)
+        repo.annulla_lotto_da_draft.assert_called_once_with(12)
 
     # Scopo: Verifica il caso `test_execute_step_numera_logs_fattura_error_on_single_failure`.
     def test_execute_step_numera_logs_fattura_error_on_single_failure(self):

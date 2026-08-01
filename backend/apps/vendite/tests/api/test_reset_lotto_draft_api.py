@@ -27,7 +27,7 @@ class VenditeResetLottoDraftApiTests(JwtMockedApiTest):
 
     # Scopo: Verifica il caso `test_reset_lotto_draft_ok`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views.fn_reset_lotto_draft")
+    @patch("apps.vendite.api.views.fn_annulla_lotto_da_draft")
     def test_reset_lotto_draft_ok(self, mocked_service, _mock_auth):
         mocked_service.return_value = {
             "updated_lotti": 1,
@@ -74,7 +74,7 @@ class VenditeResetLottoDraftApiTests(JwtMockedApiTest):
     @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_applicativo", return_value="OPERATORE")
     @patch("apps.core.services.permissions_resolver.PermissionResolver.is_super_admin", return_value=False)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
-    @patch("apps.vendite.api.views.fn_reset_lotto_draft")
+    @patch("apps.vendite.api.views.fn_annulla_lotto_da_draft")
     def test_reset_lotto_draft_post_permission_allowed(
         self, mocked_service, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
     ):

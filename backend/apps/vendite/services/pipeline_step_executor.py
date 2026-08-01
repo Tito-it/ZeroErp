@@ -702,7 +702,11 @@ class PipelineStepExecutor:
             action=_action,
         )
 
-    # Scopo: Gestisce il reset tecnico completo del lotto in stato DRAFT
+    # Scopo: Task di ROLLBACK `reset_lotto_draft`: annulla il lotto in DRAFT.
+    #        ⚠️ Il nome dell'handler segue il `task_code` (immutabile, vive nel
+    #        seed CSV dei `rollback`), non la funzione SQL — che dopo D-L si
+    #        chiama `fn_annulla_lotto_da_draft` perche' e' un annullamento e
+    #        non un ritorno in bozza.
     def _handle_reset_lotto_draft_task(
         self,
         *,
@@ -721,7 +725,7 @@ class PipelineStepExecutor:
             lotto_id=lotto_id,
             stato_doc_fiscale_id=stato_doc_fiscale_id,
             dry_run=dry_run,
-            action=lambda: self.repository.reset_lotto_draft(lotto_id),
+            action=lambda: self.repository.annulla_lotto_da_draft(lotto_id),
         )
 
     # Scopo: Pull commesse → attivita fatturabili (step 0 pipeline fatturazione).

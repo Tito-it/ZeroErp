@@ -8,6 +8,7 @@
 // Niente revisioni ne' listino in testata (a differenza di preventivi/offerte):
 // gli ordini fissano i prezzi alle righe alla conferma.
 
+import { defaultFiltroDataDaString } from '../../../core/utils/date'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -35,9 +36,9 @@ import {
 export const useOrdiniStore = defineStore('vendite-ordini', () => {
   const { emitDataChanged } = useTabEvents()
 
-  // Default data_da: 1 gennaio anno corrente - 1 (frontend-standards "Filtro
-  // data standard"): la lista parte popolata sull'ultimo anno + anno corrente.
-  const defaultDataDa = `${new Date().getFullYear() - 1}-01-01`
+  // Floor temporale di default delle liste: vedi `defaultFiltroDataDaString`
+  // (oggi-60gg al primo del mese). Regola unica di progetto, non ricalcolata qui.
+  const defaultDataDa = defaultFiltroDataDaString()
 
   const filters = ref({
     search: '',
@@ -55,7 +56,7 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
   })
 
   // Lista paginata ordini con guardia empty-state standard (BB
-  // useListaEmptyStateFetch). `data_da` default-anno-1 conta come filtro attivo:
+  // useListaEmptyStateFetch). `data_da` col default standard conta come filtro attivo:
   // la lista si popola al mount. Ordini usa limit/offset (non page/page_size).
   const { items, totalRecords, loading, hasSearched, fetchList } = useListaEmptyStateFetch({
     filters,

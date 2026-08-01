@@ -36,7 +36,7 @@ const { execute, loading: azioneLoading } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const isReadonly = useInjectReadonly()
 
-// Filtri condivisi dei tab code (ambito, stato, date con default anno-1) —
+// Filtri condivisi dei tab code (ambito, stato, date con default standard) —
 // composable estratto alla 2ª copia (regola del 2). Default per questo tab
 // (2026-07-23, richiesta Tid): stato IN_CORSO (la domanda primaria è «cosa
 // sta girando ora»), ordinamento «avviato» discendente.

@@ -47,7 +47,7 @@ export function useStoreFilterBindings(store, applyFilters) {
 
   // Filtro data: ref Date local-safe dallo store (ISO 'YYYY-MM-DD'), onChange
   // serializza con `toDateString`. `clearTo` (opzionale) ripristina un floor
-  // quando l'utente cancella (es. contratti: anno-1, la lista vuole un floor).
+  // quando l'utente cancella (es. contratti: il floor standard, la lista ne vuole uno).
   // Stesso sync store→ref di bindSelect (vale solo per i cambi esterni:
   // il floor clearTo resta legato al gesto utente di svuotamento).
   function bindDate(storeKey, { clearTo = null } = {}) {

@@ -1,16 +1,22 @@
 <script setup>
-import { computed, onMounted } from 'vue'
+// Scopo: Lista template email configurabile
+//        (`<ListaConfigurabile codice="config.email_template">`): colonne,
+//        ordine e visibilita' dal catalogo `ui.lista_colonna`, con ritiro
+//        dinamico e personalizzazione per utente. Nessuna azione "Nuovo" (i
+//        template nascono dal seed) e nessun export: lo scaffolding le omette
+//        da se', non ricevendo `onNew` ne' `exportFn`.
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS, READONLY_DOMAINS, TAB_ENTITIES } from '../../core/constants'
+import { READONLY_DOMAINS, TAB_ENTITIES } from '../../core/constants'
 import { useEmailTemplatesStore } from '../stores/emailTemplates'
-import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
+import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
+import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import EmailTemplateDrawer from '../components/EmailTemplateDrawer.vue'
 
@@ -18,18 +24,12 @@ const { t } = useI18n()
 useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 const store = useEmailTemplatesStore()
 const drawer = useDrawerState()
-const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'codice'
+const {
+  searchText, onPage, onSort, paginatorProps, tablePage,
+  listaRef, dirty, onConfigLoaded, pageActions,
+} = useListaConfigurabilePage(store, {
+  searchTableOptions: { defaultSortField: 'codice' },
 })
-const pageActions = computed(() => [
-  {
-    key: 'reload',
-    kind: 'utility',
-    label: t('common.reload_list'),
-    icon: MANAGE_ICONS.RELOAD,
-    command: reload,
-  },
-])
 
 useTabFreshness(store, TAB_ENTITIES.EMAIL_TEMPLATES)
 
@@ -37,7 +37,8 @@ onMounted(() => {
   store.fetchList()
 })
 
-function onRowClick({ data }) {
+// `<ListaConfigurabile>` emette `data` direttamente (non l'evento PrimeVue).
+function onRowClick(data) {
   drawer.editRow(data, 'id')
 }
 </script>
@@ -48,41 +49,39 @@ function onRowClick({ data }) {
       <div class="app-page-filters">
         <InputText v-model="searchText" :placeholder="t('common.search')" style="width: 250px;" />
       </div>
-      <PageActionsBar :actions="pageActions" />
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
+        </template>
+      </PageActionsBar>
     </div>
 
-    <DataTable
-      v-bind="paginatorProps"
-      :value="store.items"
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="config.email_template"
+      :rows="store.items"
+      :total="store.totalRecords"
       :loading="store.loading"
-      :totalRecords="store.totalRecords"
-      lazy
-      removable-sort
-      striped-rows
-      scrollable
-      scrollHeight="flex"
-      class="app-datatable"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
       @page="onPage"
       @sort="onSort"
       @row-click="onRowClick"
+      @config-loaded="onConfigLoaded"
     >
-      <Column field="codice" :header="t('amministrazione.email_codice')" sortable style="width: 180px;" />
-      <Column field="oggetto" :header="t('amministrazione.email_oggetto')" sortable />
-      <Column field="lingua" :header="t('amministrazione.email_lingua')" style="width: 80px;" />
-      <Column field="unita_organizzativa_descrizione" :header="t('amministrazione.email_uo')" style="width: 180px;" />
-      <Column field="variabili_disponibili" :header="t('amministrazione.email_variabili')" style="width: 200px;">
-        <template #body="{ data }">
-          <span v-if="data.variabili_disponibili">
-            {{ data.variabili_disponibili.join(', ') }}
-          </span>
-        </template>
-      </Column>
-      <Column field="attivo" :header="t('amministrazione.email_attivo')" style="width: 80px;">
-        <template #body="{ data }">
-          <AttivoTag :active="data.attivo" :active-label="t('amministrazione.email_attivo')" :inactive-label="t('amministrazione.email_non_attivo')" />
-        </template>
-      </Column>
-    </DataTable>
+      <!-- Array JSONB: senza slot si vedrebbe la resa grezza della lista. -->
+      <template #cell-variabili_disponibili="{ data }">
+        <span v-if="data.variabili_disponibili">
+          {{ data.variabili_disponibili.join(', ') }}
+        </span>
+      </template>
+      <template #cell-attivo="{ data }">
+        <AttivoTag :active="data.attivo" :active-label="t('amministrazione.email_attivo')"
+          :inactive-label="t('amministrazione.email_non_attivo')" />
+      </template>
+    </ListaConfigurabile>
 
     <EmailTemplateDrawer
       :visible="drawer.state.visible"

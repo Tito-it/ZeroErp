@@ -2,7 +2,7 @@
 //        miei/tutti (aperto a tutti gli operatori — la lista è visibilità,
 //        `canManage` resta esportato per il gate delle AZIONI nei tab),
 //        stato dal vocabolario severity e
-//        range date con data_da default 01/01 anno-1 (regola di progetto
+//        range date con `data_da` al floor standard di progetto (regola
 //        «filtro data obbligatorio su liste»). Estratto alla 2ª copia
 //        (regola del 2) da CodaLavoriTab/CodaStampaTab: stato filtri +
 //        param-building in un punto solo; la toolbar gemella vive in
@@ -10,7 +10,7 @@
 import { computed, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useActionPermission } from '../../core/composables/useActionPermission'
-import { toDateString } from '../../core/utils/date'
+import { defaultFiltroDataDa, toDateString } from '../../core/utils/date'
 
 // Opzioni per-tab (2026-07-23, richiesta Tid):
 //  - `statoDefault`: stato preselezionato all'apertura (lavori → 'IN_CORSO':
@@ -33,8 +33,8 @@ export function useCodaFiltri(
   const filtri = reactive({
     ambito: 'miei',
     stato: statoDefault,
-    // Floor temporale di default (come contratti/ordini: anno-1).
-    dataDa: new Date(new Date().getFullYear() - 1, 0, 1),
+    // Floor temporale di default, regola unica di progetto (core/utils/date).
+    dataDa: defaultFiltroDataDa(),
     dataA: null,
   })
 

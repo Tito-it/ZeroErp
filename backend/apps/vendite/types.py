@@ -35,14 +35,14 @@ class GroupAttivitaKey(TypedDict):
     metodo_arrotondamento_quantita: str
 
 
-class ResetLottoDraftResult(TypedDict):
+class AnnullaLottoDaDraftResult(TypedDict):
     updated_lotti: int
     updated_attivita: int
     deleted_fatture: int
     deleted_righe: int
 
 
-class ResetLottoFatturaDraftResult(TypedDict):
+class EliminaFatturaDraftDaLottoResult(TypedDict):
     updated_attivita: int
     deleted_fatture: int
     deleted_righe: int

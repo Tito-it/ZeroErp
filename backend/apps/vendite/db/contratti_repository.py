@@ -58,7 +58,7 @@ _ORDER_COLS_CONTRATTI: dict[str, str] = {
     "numero": "v.numero",
     "data": "v.data",
     "valido_dal": "v.valido_dal",
-    "valido_al": "v.valido_al",
+    "valido_al": "COALESCE(v.valido_al, 'infinity'::date)",
     "ba_codice": "v.ba_codice",
     "ragione_sociale_completa": "v.ragione_sociale_completa",
     "id_fiscale_univoco_cf_piva": "v.id_fiscale_univoco_cf_piva",
