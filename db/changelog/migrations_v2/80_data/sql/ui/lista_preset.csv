@@ -27,3 +27,8 @@ id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is
 26,26,articoli_default,Vista standard articoli,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
 27,27,listini_default,Vista standard listini,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
 28,28,operatori_default,Vista standard operatori,sistema,,,t,25,"[{""col"":""soggetto_cognome"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
+29,29,email_account_default,Vista standard account email,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
+30,30,email_template_default,Vista standard template email,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
+31,31,email_log_default,Vista standard log email,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-01 00:00:00,mctit
+32,32,audit_log_default,Vista standard log di audit,sistema,,,t,25,"[{""col"":""timestamp"",""dir"":""desc""}]",t,2026-08-01 00:00:00,mctit
+33,33,categorie_listini_default,Vista standard listini per categoria,sistema,,,t,25,"[{""col"":""valido_al"",""dir"":""desc""}]",t,2026-08-01 00:00:00,mctit
