@@ -118,7 +118,7 @@
 - [fn_ddt_riga_componenti_init](manual/fn_ddt_riga_componenti_init.md)
 - [fn_ddt_riga_componenti_preview](manual/fn_ddt_riga_componenti_preview.md)
 - [fn_documento_lineage](manual/fn_documento_lineage.md) — `vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo** del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento: ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e `livello`/`ordine` per il rendering a timeline/albero.
-- [fn_elimina_fattura_draft_da_lotto](manual/fn_elimina_fattura_draft_da_lotto.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_elimina_fattura_draft_da_lotto()`** effettua il reset tecnico di **una singola fattura** appartenente a un lotto **MASSIVO** in stato **DRAFT**, senza annullare il lotto.
+- [fn_elimina_fattura_da_lotto_draft](manual/fn_elimina_fattura_da_lotto_draft.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_elimina_fattura_da_lotto_draft()`** effettua il reset tecnico di **una singola fattura** appartenente a un lotto **MASSIVO** in stato **DRAFT**, senza annullare il lotto.
 - [fn_emit_attivita_fatturabili_da_commessa](manual/fn_emit_attivita_fatturabili_da_commessa.md) — (latest review 16-06-2026) Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
 - [fn_espandi_listino_versione](manual/fn_espandi_listino_versione.md)
 - [fn_fail_lotto_task_run](manual/fn_fail_lotto_task_run.md) — Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.

@@ -257,7 +257,7 @@ END;
 SELECT ok(
   (SELECT pg_get_functiondef(p.oid) LIKE '%fn_cleanup_fatture_by_ids(ARRAY[p_fattura_id], NULL%'
      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = 'vendite' AND p.proname = 'fn_elimina_fattura_draft_da_lotto'),
+    WHERE n.nspname = 'vendite' AND p.proname = 'fn_elimina_fattura_da_lotto_draft'),
   '12) C-22: il reset per-fattura passa NULL come lock_batch_id');
 
 SELECT * FROM finish();
