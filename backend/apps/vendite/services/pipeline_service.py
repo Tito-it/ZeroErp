@@ -25,7 +25,7 @@ from apps.vendite.types import (
     LottoPipelineMeta,
     LottoTaskRunRow,
     AnnullaLottoDaDraftResult,
-    EliminaFatturaDraftDaLottoResult,
+    EliminaFatturaDaLottoDraftResult,
 )
 
 # Facade servizi: mantiene firme dichiarative e delega alle classi OOP.
@@ -497,14 +497,14 @@ def fn_annulla_lotto_da_draft(*, lotto_id: int) -> AnnullaLottoDaDraftResult:
 
 # Scopo: Facade applicativa: elimina UNA fattura DRAFT dal lotto, liberandone
 #        le attivita' (estrazione per-fattura).
-def fn_elimina_fattura_draft_da_lotto(
+def fn_elimina_fattura_da_lotto_draft(
     *,
     lotto_id: int,
     fattura_id: int,
-) -> EliminaFatturaDraftDaLottoResult:
-    """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_elimina_fattura_draft_da_lotto."""
+) -> EliminaFatturaDaLottoDraftResult:
+    """Entrypoint servizio Python con lo stesso intento della funzione SQL fn_elimina_fattura_da_lotto_draft."""
     service = LottoResetService()
-    return service.elimina_fattura_draft_da_lotto(lotto_id, fattura_id)
+    return service.elimina_fattura_da_lotto_draft(lotto_id, fattura_id)
 
 
 # Scopo: Restituisce riepilogo segnalazioni del lotto con regola di blocco step successivo.

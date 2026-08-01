@@ -30,12 +30,20 @@ import { listEmittentiFiscali } from '../../amministrazione/api/amministrazione'
 const LOOKUP_KEY = 'amm.emittenti_fiscali'
 
 // Scopo: Compone il label di una option lookup (admin combo).
-//        Preferisce ragione_sociale (piu' parlante) e affianca il codice
+//        Usa la ragione sociale del soggetto emittente e affianca il codice
 //        come secondario, allineato al pattern degli altri Select wrapper
 //        (es. IvaSelect: "descrizione (codice)").
+//        Il vecchio fallback `|| opt.descrizione` e' stato tolto il 2026-08-02:
+//        esisteva perche' una sola delle sorgenti (il record denormalizzato)
+//        portava `emittenti_fiscali.descrizione`, e faceva mostrare allo stesso
+//        campo due valori diversi a seconda del percorso. Ora TUTTE le sorgenti
+//        (lookup admin, record denormalizzato, profilo operatore) portano la
+//        ragione sociale del soggetto: il fallback era codice morto e teneva in
+//        vita una colonna in via di eliminazione. Vedi
+//        `brief-emittente-ragione-sociale-dal-soggetto.md`.
 export function formatEmittenteOptionLabel(opt) {
   if (!opt) return ''
-  const main = opt.ragione_sociale || opt.descrizione || ''
+  const main = opt.ragione_sociale || ''
   const codice = opt.codice || ''
   if (main && codice) return `${main} (${codice})`
   return main || codice || ''

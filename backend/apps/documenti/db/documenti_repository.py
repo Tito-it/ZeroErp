@@ -281,7 +281,7 @@ _ASSET_PROJECTION = """
     a.sha256,
     a.emittente_fiscale_id,
     ef.codice             AS emittente_fiscale_codice,
-    COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
+    s_ef.ragione_sociale_completa
                           AS emittente_fiscale_descrizione,
     a.valido_dal,
     a.valido_al,
@@ -322,7 +322,7 @@ _TEMPLATES_PROJECTION = """
     t.file_name_pattern,
     t.emittente_fiscale_id,
     ef.codice            AS emittente_fiscale_codice,
-    COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
+    s_ef.ragione_sociale_completa
                          AS emittente_fiscale_descrizione,
     t.data_insert,
     t.data_update

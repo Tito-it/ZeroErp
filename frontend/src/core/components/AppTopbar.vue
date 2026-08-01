@@ -48,8 +48,12 @@ const companyName = computed(() => {
   if (auth.emittenteCorrente) {
     return auth.emittenteCorrente.ragioneSociale || ''
   }
+  // Il blocco `emittente` del profilo porta sempre `ragione_sociale_completa`
+  // (merge con fn_get_soggetto_dati_by_ruolo): il fallback su
+  // `emittente_descrizione` era codice morto ed e' stato tolto il 2026-08-02
+  // (`brief-emittente-ragione-sociale-dal-soggetto.md`).
   const em = auth.user?.emittente
-  return em?.ragione_sociale_completa || em?.emittente_descrizione || ''
+  return em?.ragione_sociale_completa || ''
 })
 
 const formattedDate = computed(() => {

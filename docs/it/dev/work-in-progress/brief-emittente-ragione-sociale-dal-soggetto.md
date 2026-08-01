@@ -6,8 +6,11 @@
 > in SQL, e l'ultimo miglio è a video.
 > **Cos'è:** la proposta di eliminare `anagrafiche.emittenti_fiscali.descrizione`
 > e far leggere ovunque la ragione sociale del **soggetto** associato.
-> **Stato:** proposta misurata, **nessuna riga scritta**. Serve una decisione
-> prima di aprire il cantiere.
+> **Stato (agg. 2026-08-02, BE/FE):** decisione presa da Tid — **si toglie**,
+> con ordine BE+FE prima e DROP in coda. **Fase 2 (BE) e Fase 3 (FE) ESEGUITE**
+> e verdi. Restano la Fase 1 residua e la Fase 4, entrambe di competenza DB:
+> vedi **§10**, che è il capitolo operativo aggiornato — le sezioni 1-9 restano
+> come sono state scritte, con due rettifiche di misura segnalate in loco.
 
 ---
 
@@ -69,6 +72,26 @@ ancora, e la sorgente è pure quella sbagliata.
 
 **Non è quindi un problema estetico di nove liste: è un documento che può
 stampare un'etichetta interna al posto della ragione sociale.**
+
+> ⚠️ **Rettifica di misura (BE, 2026-08-02) — il rischio non era attivo.**
+> `testata["emittente_fiscale_descrizione"]` non arriva da `ef.descrizione`:
+> arriva da `_SELECT_COLS_OFFERTA` (`offerte_repository.py:158`), che dal
+> 2026-07-13 proietta `COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)`.
+> L'offerta stampava **già** la ragione sociale del soggetto; «TEST» sarebbe
+> uscito solo con `ragione_sociale_completa` NULL, caso che §3 misura come
+> inesistente (26/26 piene).
+>
+> La colonna era davvero fra i lettori — ma **come ramo di fallback**, non come
+> sorgente. La lezione è quella di
+> [[feedback_whitelist_dal_percorso_reale]]: il difetto non stava nella colonna,
+> stava nel percorso, e il percorso era già stato sistemato da un altro
+> cantiere. Prima di dichiarare urgente un punto di stampa, leggere la query che
+> alimenta il dict, non solo la riga che lo compone.
+>
+> Questo **non** indebolisce la proposta: il fallback è comunque codice che
+> tiene in vita una colonna sbagliata, e §7 dice giustamente che non lo
+> vogliamo. Sposta solo la Fase 2.2 da «urgenza» a «pulizia», ed è la ragione
+> per cui l'ordine BE+FE→DROP si è potuto seguire con calma.
 
 ### La prova che il problema era già stato sentito
 
@@ -178,6 +201,19 @@ liste e un documento nello stesso istante.
 
 ### Fase 1 — DB: cambiare la sorgente, non il nome (owner DB)
 
+> ⚠️ **Rettifica di misura (BE, 2026-08-02) — la Fase 1 è già in piedi per tre
+> quarti, dal 13 luglio.** Le 6 viste `vw_*_lista` proiettano già
+> `COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)` — migration
+> `20260713-06..09`, `20260713-33`, poi le `20260715-*` del lineage, dal brief
+> `brief-db-ddt-emittente-user-e-etichetta-soggetto.md`. Idem
+> `script.fn_get_user_emittenti_scope` e `script.fn_get_operatore_detail`.
+> **Resta scoperta una sola funzione**: `script.fn_get_user_profile`, che legge
+> `ef.descrizione AS emittente_descrizione` secco (due rami della union interna,
+> poi la chiave `emittente_descrizione` del blocco `emittente`).
+>
+> Quindi la 1.1 non è «cambiare la sorgente» ma **togliere il ramo di
+> fallback**, che §7 non vuole. Dettaglio operativo in §10.3.
+
 | # | Attività |
 |---|---|
 | 1.1 | Le **6 viste** `vw_*_lista` proiettano `emittente_fiscale_descrizione` da `ragione_sociale_completa` invece che da `ef.descrizione`. **L'alias resta identico**: nessun lettore a valle si accorge di niente, ed è ciò che rende questa fase invisibile e reversibile |
@@ -269,3 +305,135 @@ riga in un difetto di modello con un documento sbagliato dentro.
 Vale la pena notare che **nessuno dei due da solo bastava**: il controllo non
 sapeva che la colonna fosse concettualmente sbagliata, e la domanda non sarebbe
 stata fatta se il controllo non avesse messo il dito lì.
+
+---
+
+## 10. Esecuzione — stato al 2026-08-02 (scrive BE/FE)
+
+### 10.1 Le decisioni di §8, prese
+
+| # | Domanda | Decisione (Tid, 2026-08-02) |
+|---|---|---|
+| 1 | Si toglie o si tiene? | **Si toglie.** DROP come da §5 Fase 4 — niente rinomina in `nota_interna` |
+| 2 | La 2.2 si anticipa? | Domanda superata: il rischio non era attivo (rettifica in §1). Fatta comunque insieme al resto |
+| 3 | Regia | BE/FE eseguono per primi, senza aspettare nulla; il DB chiude con fallback + seed + DROP |
+
+**Perché BE/FE è potuto partire subito**, contro l'abitudine di aspettare i
+prerequisiti DB: ripuntare quei `SELECT` su `soggetti.ragione_sociale_completa`
+usa join già disponibili e alias invariati. Non c'era niente da attendere, e
+l'ordine di §5 («la DROP è l'ultimo passo») è rispettato per intero.
+
+### 10.2 Fase 2 (BE) e Fase 3 (FE) — FATTE
+
+**I lettori diretti ripuntati** (mostravano l'etichetta interna a video):
+
+| File | Cosa |
+|---|---|
+| `pratiche/db/definizioni_repository.py` | `_DEFINIZIONE_SELECT`: `emittente_display` da `s_ef.ragione_sociale_completa` + join `soggetti_ruoli`/`soggetti`. Alimenta la colonna Emittente di *Definizioni workflow* (ordinabile) |
+| `config/db/utilities_tipi_ruolo_repository.py` | `emittente_descrizione` e l'`ORDER BY` della lista usage. I due join stanno in `_USAGE_FROM_WHERE` (condiviso con la count): sono 1:1 su PK, la cardinalità non cambia |
+| `ui/db/ui_admin_repository.py` | `_PRESET_SELECT_SQL` dei preset lista (Blocco F) |
+| `amm_software/db/amm_software_repository.py` | `list_emittenti_fiscali`: `ef.descrizione` tolta dalla proiezione **e** dal tiebreaker d'ordine (ora `ef.codice`) |
+
+**I fallback `COALESCE(..., ef.descrizione)` rimossi** — §7 non li vuole, e con
+la DROP in arrivo sarebbero comunque diventati un errore a runtime: 2 punti in
+`documenti_repository`, 1 in `contratti_repository`, 1 in `offerte_repository`,
+1 in `preventivi_repository`, 1 nella `string_agg` degli emittenti in
+`amm_software_repository`.
+
+**Documentazione del tipo** (2.3): il commento di `emittente_fiscale_descrizione`
+in `vendite/types.py` (`PreventivoDetailRow`, `OffertaRow`) e in
+`documenti/types.py` dice ora a chiare lettere che l'alias porta la ragione
+sociale del soggetto e che la rinomina è una fase separata. È la prima cosa che
+legge chi arriva dopo.
+
+**Test (2.4): nessuna fixture da rivedere.** I 5 punti che asseriscono su
+`emittente_fiscale_descrizione` o sono assert sull'alias nel SQL (invariato) o
+sono dict con ragioni sociali plausibili («Acme SRL», «Azienda Emittente Spa»).
+La previsione di §5 non si è verificata.
+
+**Fase 3 (FE)** — l'ordine di §3.1 è stato rispettato: il fallback è stato
+tolto **dopo** aver verificato che tutte e tre le sorgenti portano
+`ragione_sociale`.
+
+| File | Cosa |
+|---|---|
+| `core/composables/useEmittenteFiscaleField.js` | 🎯 tolto il ramo `or opt.descrizione` da `formatEmittenteOptionLabel` — la definizione di «fatto» del FE secondo §3.1 |
+| `core/components/EmittenteFiscaleField.vue` | tolta la chiave `descrizione` duplicata da `recordAsOption` e `operatoreAsOption`: era una copia dello stesso valore, viva solo grazie al fallback |
+| `stores/auth.js` · `core/components/AppTopbar.vue` | tolto `?? emittente_descrizione`: il blocco `emittente` del profilo porta sempre `ragione_sociale_completa` (merge con `fn_get_soggetto_dati_by_ruolo`) — era codice morto |
+| `amministrazione/components/UtilityTipoRuoloDrawer.vue` + locali IT/EN | header colonna da *Descrizione* a **Ragione sociale**: l'alias del payload resta, ma l'etichetta a video deve dire cosa mostra |
+
+⚠️ **§3.3 era un falso bersaglio**: `DdtForm.vue`, `TemplateDocumentoDrawer.vue`
+e `TemplateAssetDrawer.vue` non leggono `ef.descrizione` — **trasportano**
+l'alias verso `EmittenteFiscaleField`, e la loro sorgente
+(`documenti_repository`) era già corretta. Nessuna modifica necessaria.
+
+**Verifica**: **3444 test BE verdi**, lint e build FE puliti, locali IT/EN
+simmetrici (3651 chiavi per parte).
+
+⚠️ **Ma le 3444 girano a DB mockato e non provano una riga di SQL.** Le query
+toccate sono state quindi eseguite contro il **DB reale**, in sola lettura,
+compreso l'`ORDER BY` sull'alias ripuntato — che è il punto cieco tipico
+([[feedback_whitelist_dal_percorso_reale]]: la freccia c'è, e al click ripiega
+in silenzio). Esito, sui due emittenti che §1 citava come divergenti:
+
+| Query | Esito |
+|---|---|
+| `documenti.list_templates` / `list_asset`, `ORDER BY emittente_fiscale_descrizione` | 6 e 1 righe, ordina, valore «Gestore Test pgTAP» |
+| `utilities_tipi_ruolo.list_emittenti_usage` | `PGTAP-EF-…` → «Gestore Test pgTAP» (era «Emittente fiscale test 1») |
+| `pratiche.list_definizioni` | `emittente_fiscale_id=44` → «Azienda SC REQUIRED con dati» (era «TEST») |
+| `amm_software.list_emittenti_fiscali` | 2 righe, nessuna `descrizione` in payload |
+| `ui_admin.list_preset_by_lista(18)` | 1 riga, join preset↔soggetto ok |
+
+I due valori sbagliati della tabella di §1 sono spariti dal video: è la
+dimostrazione diretta del criterio 6.1, non un'inferenza dal codice.
+
+> 💡 Per la validazione in-app serve `kill -HUP` sul master gunicorn: il BE di
+> sviluppo non ha autoreload ([[project_backend_gunicorn_reload]]).
+
+### 10.3 Cosa resta, e a chi
+
+**Owner DB — Fase 1 residua** (indipendente, si può fare subito):
+
+1. Togliere il ramo `ef.descrizione` dal `COALESCE` delle **6 viste**
+   `vw_*_lista` e delle **2 funzioni** `fn_get_user_emittenti_scope` /
+   `fn_get_operatore_detail`: resta la sola `ragione_sociale_completa`.
+2. `script.fn_get_user_profile`: è l'unico lettore DB ancora **senza**
+   `COALESCE`. Due rami della union interna proiettano `ef.descrizione AS
+   emittente_descrizione` e la variabile finisce nella chiave
+   `emittente_descrizione` del blocco `emittente`. Il FE non la legge più
+   (10.2), quindi la chiave può sparire con la colonna.
+3. pgTAP §5 1.3: la fixture deve far **divergere di proposito** i due valori,
+   altrimenti il test passa senza provare niente.
+
+**Owner DB + BE insieme — la cerniera, ed è l'unico punto che va sincronizzato.**
+`anagrafiche/db/emittenti_fiscali_repository.py` è rimasto volutamente indietro:
+è la lista 18 e il drawer dell'emittente stesso, dove `descrizione` è una
+colonna **mostrata, ordinabile, ricercabile e scritta** (è `NOT NULL`). Toccare
+una sponda sola rompe qualcosa in entrambi i versi:
+
+| Se si fa prima… | Cosa si rompe |
+|---|---|
+| il BE (tolgo `descrizione` da whitelist/SELECT/search) | la colonna 261 del seed resta e la lista 18 mostra una colonna vuota |
+| la DROP | il `SELECT ef.descrizione` del repository va in errore, e il drawer non può più creare un emittente |
+
+Sequenza senza stati rotti, **in tre battute**:
+
+1. **DB** — seed `lista_colonna`: via la riga `261` (`descrizione` della lista
+   18) e `ordinamento_default` del preset `18` da `descrizione` a
+   `ragione_sociale` (§5 4.3). È revisione di righe CSV, i loader sono
+   `runOnChange` (cf. `piano-migrazione-primevue-5.md` §8-bis);
+2. **BE/FE** — `emittenti_fiscali_repository` (whitelist `_EMITTENTI_ORDER_COLS`,
+   proiezione lista + dettaglio, `ILIKE` di ricerca) e il drawer emittenti che
+   scrive il campo;
+3. **DB** — `DROP COLUMN` + adeguamento di `fn_crea_emittente_fiscale` /
+   `fn_update_*` + pgTAP (§5 4.2/4.4).
+
+### 10.4 Definizione di «fatto» — dove siamo
+
+| § | Criterio | Stato |
+|---|---|---|
+| 6.1 | Ragione sociale su tutte e 9 le liste | ✅ per costruzione (viste già a posto + i 4 lettori diretti ripuntati). Resta la **verifica a video** di §3.4 |
+| 6.2 | Offerta stampata con la ragione sociale del soggetto | ✅ (lo era già; ora senza fallback) |
+| 6.3 | Emittente **persona fisica** col nome completo | ⏳ **non dimostrato**: nessuno dei due emittenti in tabella è una PF. È il test che distingue `ragione_sociale_completa` da `ragione_sociale` — senza, la scelta di §3 resta argomentata ma non provata |
+| 6.4 | `grep` a zero su tutto il repo | 🟡 restano i soli punti della cerniera (`emittenti_fiscali_repository`, 4 righe) e i 2 falsi positivi di `pratiche_repository` (lì `ef` è `config.esiti_flussi_pratiche`, non l'emittente) |
+| 6.5 | Colonna sparita, pgTAP verde | ⏳ owner DB |

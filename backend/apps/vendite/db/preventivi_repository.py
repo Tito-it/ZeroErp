@@ -290,7 +290,7 @@ class PreventiviRepository(
                 p.totale_documento::text AS totale_documento,
                 p.emittente_fiscale_id,
                 ef.codice AS emittente_fiscale_codice,
-                COALESCE(s_ef.ragione_sociale_completa, ef.descrizione)
+                s_ef.ragione_sociale_completa
                     AS emittente_fiscale_descrizione,
                 -- Flag informativo (UX): il BA ha un contratto ATTIVO per
                 -- la coppia (utility, data preventivo)? Se false il pricing

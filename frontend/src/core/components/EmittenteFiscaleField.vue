@@ -66,8 +66,12 @@ const {
 const useAdminLookup = computed(() => isAdminMode.value && !props.isEdit)
 
 // Sintesi della singola option per i casi disabled (edit o operatore-mode).
-// Riusa lo stesso shape del lookup admin (campi `id, codice, ragione_sociale,
-// descrizione`) cosi' il `formatEmittenteOptionLabel` produce display uniforme.
+// Riusa lo stesso shape del lookup admin (campi `id, codice, ragione_sociale`)
+// cosi' il `formatEmittenteOptionLabel` produce display uniforme.
+// La chiave `descrizione` e' stata tolta il 2026-08-02: era una copia dello
+// stesso valore, tenuta in vita solo dal fallback del formatter — ora rimosso
+// (`brief-emittente-ragione-sociale-dal-soggetto.md`). Il campo denormalizzato
+// `emittente_fiscale_descrizione` porta gia' la ragione sociale del soggetto.
 const recordAsOption = computed(() => {
   const r = props.record
   if (!r || r.emittente_fiscale_id == null) return null
@@ -75,7 +79,6 @@ const recordAsOption = computed(() => {
     id: r.emittente_fiscale_id,
     codice: r.emittente_fiscale_codice ?? null,
     ragione_sociale: r.emittente_fiscale_descrizione ?? null,
-    descrizione: r.emittente_fiscale_descrizione ?? null,
   }
 })
 
@@ -86,7 +89,6 @@ const operatoreAsOption = computed(() => {
     id: ef.id,
     codice: ef.codice,
     ragione_sociale: ef.ragioneSociale,
-    descrizione: ef.ragioneSociale,
   }
 })
 

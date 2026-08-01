@@ -53,7 +53,7 @@ from apps.vendite.services.pipeline_service import (
     fn_get_lotto_segnalazioni_summary,
     fn_get_lotto_task_runs,
     fn_annulla_lotto_da_draft,
-    fn_elimina_fattura_draft_da_lotto,
+    fn_elimina_fattura_da_lotto_draft,
     numera_lotto,
     ristampa_lotto,
     run_lotto_pipeline,
@@ -360,7 +360,7 @@ class ApiResetLottoFatturaDraft(DomainAPIView):
     def post(self, request: Request, lotto_id: int, fattura_id: int) -> JsonResponse:
         # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
         def _handler(_payload: dict[str, object]) -> dict[str, object]:
-            result = fn_elimina_fattura_draft_da_lotto(lotto_id=lotto_id, fattura_id=fattura_id)
+            result = fn_elimina_fattura_da_lotto_draft(lotto_id=lotto_id, fattura_id=fattura_id)
             return result
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)

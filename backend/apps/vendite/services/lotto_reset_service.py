@@ -8,7 +8,7 @@
 
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
-from apps.vendite.types import AnnullaLottoDaDraftResult, EliminaFatturaDraftDaLottoResult
+from apps.vendite.types import AnnullaLottoDaDraftResult, EliminaFatturaDaLottoDraftResult
 
 # Servizio applicativo: espone il reset tecnico lotto DRAFT.
 
@@ -37,22 +37,22 @@ class LottoResetService:
 
     # Scopo: Estrazione/eliminazione di una singola fattura DRAFT dal lotto
     #        (guard sui parametri + delega al repository).
-    def elimina_fattura_draft_da_lotto(
+    def elimina_fattura_da_lotto_draft(
         self,
         lotto_id: int,
         fattura_id: int,
-    ) -> EliminaFatturaDraftDaLottoResult:
+    ) -> EliminaFatturaDaLottoDraftResult:
         ErrorManager.require(
             lotto_id is not None and lotto_id > 0 and fattura_id is not None and fattura_id > 0,
             code="E_RESET_LOTTO_FATTURA_VALIDATION",
             message="Parametri reset fattura non validi.",
             detail="lotto_id e fattura_id obbligatori e > 0",
             context={"lotto_id": lotto_id, "fattura_id": fattura_id},
-            function_name="vendite.lotto_reset_service.elimina_fattura_draft_da_lotto",
+            function_name="vendite.lotto_reset_service.elimina_fattura_da_lotto_draft",
             log_to_db=True,
         )
         assert lotto_id is not None
         assert lotto_id > 0
         assert fattura_id is not None
         assert fattura_id > 0
-        return self.repository.elimina_fattura_draft_da_lotto(lotto_id, fattura_id)
+        return self.repository.elimina_fattura_da_lotto_draft(lotto_id, fattura_id)

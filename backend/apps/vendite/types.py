@@ -42,7 +42,7 @@ class AnnullaLottoDaDraftResult(TypedDict):
     deleted_righe: int
 
 
-class EliminaFatturaDraftDaLottoResult(TypedDict):
+class EliminaFatturaDaLottoDraftResult(TypedDict):
     updated_attivita: int
     deleted_fatture: int
     deleted_righe: int
@@ -243,6 +243,11 @@ class PreventivoDetailRow(TypedDict):
     totale_documento: str | None
     emittente_fiscale_id: int | None
     emittente_fiscale_codice: str | None
+    # ⚠️ Nonostante il nome, porta la RAGIONE SOCIALE del soggetto emittente
+    # (`soggetti.ragione_sociale_completa`), non `emittenti_fiscali.descrizione`:
+    # quella e' un'etichetta interna divergente, in via di eliminazione (brief
+    # `brief-emittente-ragione-sociale-dal-soggetto.md`). L'alias e' rimasto per
+    # non rompere 40+ punti a valle; la rinomina e' una fase separata.
     emittente_fiscale_descrizione: str | None
     ba_ha_contratto_attivo: bool
     storicizza: bool
@@ -419,6 +424,8 @@ class OffertaRow(TypedDict):
     # Denormalizzazione EF (pattern preventivi): consumati da
     # `EmittenteFiscaleField` in modalita' edit per costruire la option
     # singola del Select disabled senza round-trip aggiuntivo.
+    # ⚠️ `emittente_fiscale_descrizione` porta la RAGIONE SOCIALE del soggetto
+    # emittente, non `emittenti_fiscali.descrizione` (vedi PreventivoDetailRow).
     emittente_fiscale_codice: str | None
     emittente_fiscale_descrizione: str | None
     ba_codice: str | None
