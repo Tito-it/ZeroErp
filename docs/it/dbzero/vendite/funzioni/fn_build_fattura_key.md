@@ -12,15 +12,25 @@ CREATE OR REPLACE FUNCTION vendite.fn_build_fattura_key(p_attivita_id bigint)
  RETURNS jsonb
  LANGUAGE plpgsql
 AS $function$
+-- Scopo: chiave logica di aggregazione del documento a partire da una
+--        attivita' fatturabile. Da D-7/D-B comprende anche le
+--        condizioni di pagamento: due attivita' con termini diversi
+--        finiscono su due fatture.
+-- Regole: le condizioni si risolvono con la catena UNICA
+--         (fn_resolve_termini_pagamento, 3b.1) — questa e' la
+--         chiamata che chiude C-13, perche' una catena riscritta e
+--         mai invocata resta un secondo risolutore in attesa d'uso.
 DECLARE
-    v_ba_id              anagrafiche.billing_account.id%TYPE;
-    v_ba_fattura_id      anagrafiche.billing_account.id%TYPE;
+    v_ba_id               anagrafiche.billing_account.id%TYPE;
+    v_ba_fattura_id       anagrafiche.billing_account.id%TYPE;
     v_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE;
-    v_valuta_id          config.valute.id%TYPE;
-    v_utility_id         config.utilities.id%TYPE;
-    v_emittente_id       anagrafiche.soggetti_ruoli.id%TYPE;
-    v_reseller_id        anagrafiche.soggetti_ruoli.id%TYPE;
-    v_registro_id        vendite.registri_fatturazione.id%TYPE;
+    v_valuta_id           config.valute.id%TYPE;
+    v_utility_id          config.utilities.id%TYPE;
+    v_emittente_id        anagrafiche.soggetti_ruoli.id%TYPE;
+    v_reseller_id         anagrafiche.soggetti_ruoli.id%TYPE;
+    v_registro_id         vendite.registri_fatturazione.id%TYPE;
+    v_termine_id          config.termini_pagamento.id%TYPE;
+    v_modalita_id         config.modalita_pagamento.id%TYPE;
 BEGIN
     -- Guard: parametro obbligatorio
     IF p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
@@ -64,6 +74,11 @@ BEGIN
     -- Registro dal tipo documento
     v_registro_id := vendite.fn_get_registro_id(v_tipo_doc_fiscale_id);
 
+    -- Condizioni di pagamento: catena unica (3b.1).
+    SELECT t.termine_pagamento_id, t.modalita_pagamento_id
+      INTO v_termine_id, v_modalita_id
+      FROM vendite.fn_resolve_termini_pagamento(p_attivita_id) t;
+
     RETURN jsonb_build_object(
         'billing_account_id', v_ba_fattura_id,
         'tipo_doc_fiscale_id', v_tipo_doc_fiscale_id,
@@ -71,13 +86,15 @@ BEGIN
         'emittente_soggetto_ruolo_id', v_emittente_id,
         'reseller_soggetto_ruolo_id', v_reseller_id,
         'utility_id', v_utility_id,
-        'registro_id', v_registro_id
+        'registro_id', v_registro_id,
+        'termine_pagamento_id', v_termine_id,
+        'modalita_pagamento_id', v_modalita_id
     );
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_build_fattura_key(p_attivita_id bigint)
-IS 'Chiave logica aggregazione documento da attivita_fatturabili. BA padre se presente, emittente, reseller, registro.';
+IS 'Chiave logica aggregazione documento da attivita_fatturabili. BA padre se presente, emittente, reseller, registro, e da D-7/D-B la coppia (termine_pagamento_id, modalita_pagamento_id) risolta dalla catena unica fn_resolve_termini_pagamento.';
 ```
 
 ---

@@ -174,6 +174,15 @@ WHITELIST_BE: dict[str, tuple] = {
     "catalogo.unita_misura": ("apps/catalogo/db/catalogo_repository.py", "UOM_ORDER_COLUMNS"),
     "catalogo.conversioni_uom": ("apps/catalogo/db/catalogo_repository.py",
                                  "UOM_CONVERSIONI_ORDER_COLUMNS"),
+    # Quarto lotto (2026-08-01). Mappate PRIMA di generare il seed: il
+    # controllo di consegna salta le liste che non trova qui, e una lista
+    # saltata in silenzio e' come non aver fatto il controllo. Le tre whitelist
+    # esistono gia' — e' il criterio con cui il lotto e' stato scelto.
+    "documenti.template_documenti": ("apps/documenti/db/documenti_repository.py",
+                                     "TEMPLATES_ORDER_COLUMNS"),
+    "documenti.template_asset": ("apps/documenti/db/documenti_repository.py",
+                                 "ASSET_ORDER_COLUMNS"),
+    "vendite.promo_articoli": ("apps/vendite/db/promo_articoli_repository.py", "_ORDER_COLS"),
 }
 
 # Colonne che devono ordinare SEMPRE, quando la lista ce l'ha (regola di
